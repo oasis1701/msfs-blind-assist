@@ -105,24 +105,33 @@ public class FenixFcuReadoutTests : IDisposable
         }
     }
 
+    // The third column is the OTHER leg's twin: the one that would complete the readout if the
+    // continuous delivery had been counted as the leg that is not its twin.
     [Theory]
-    [InlineData("isRequestingHeading", "N_FCU_HEADING")]
-    [InlineData("isRequestingHeading", "I_FCU_HEADING_MANAGED")]
-    [InlineData("isRequestingSpeed", "N_FCU_SPEED")]
-    [InlineData("isRequestingSpeed", "I_FCU_SPEED_MANAGED")]
-    [InlineData("isRequestingAltitude", "N_FCU_ALTITUDE")]
-    [InlineData("isRequestingAltitude", "I_FCU_ALTITUDE_MANAGED")]
-    [InlineData("isRequestingVS", "N_FCU_VS")]
-    [InlineData("isRequestingVS", "B_FCU_VERTICALSPEED_DASHED")]
-    [InlineData("isRequestingBaro", "N_FCU_EFIS1_BARO_HPA")]
-    [InlineData("isRequestingBaro", "N_FCU_EFIS1_BARO_INCH")]
-    public void A_continuous_delivery_during_a_readout_goes_to_the_generic_path(string flag, string continuousKey)
+    [InlineData("isRequestingHeading", "N_FCU_HEADING", "I_FCU_HEADING_MANAGED_READOUT")]
+    [InlineData("isRequestingHeading", "I_FCU_HEADING_MANAGED", "N_FCU_HEADING_READOUT")]
+    [InlineData("isRequestingSpeed", "N_FCU_SPEED", "I_FCU_SPEED_MANAGED_READOUT")]
+    [InlineData("isRequestingSpeed", "I_FCU_SPEED_MANAGED", "N_FCU_SPEED_READOUT")]
+    [InlineData("isRequestingAltitude", "N_FCU_ALTITUDE", "I_FCU_ALTITUDE_MANAGED_READOUT")]
+    [InlineData("isRequestingAltitude", "I_FCU_ALTITUDE_MANAGED", "N_FCU_ALTITUDE_READOUT")]
+    [InlineData("isRequestingVS", "N_FCU_VS", "B_FCU_VERTICALSPEED_DASHED_READOUT")]
+    [InlineData("isRequestingVS", "B_FCU_VERTICALSPEED_DASHED", "N_FCU_VS_READOUT")]
+    [InlineData("isRequestingBaro", "N_FCU_EFIS1_BARO_HPA", "N_FCU_EFIS1_BARO_INCH_READOUT")]
+    [InlineData("isRequestingBaro", "N_FCU_EFIS1_BARO_INCH", "N_FCU_EFIS1_BARO_HPA_READOUT")]
+    public void A_continuous_delivery_during_a_readout_goes_to_the_generic_path(
+        string flag, string continuousKey, string otherLegTwinKey)
     {
         var def = new FenixA320Definition();
         var speech = new SpeechCapture();
         Arm(def, flag);
 
         Assert.False(def.ProcessSimVarUpdate(continuousKey, 1, speech));
+        Assert.Empty(speech.All);
+
+        // It was not counted as a leg either: the readout still waits for its other twin, so one
+        // twin leg alone completes nothing. Had the continuous value been stored as the missing
+        // leg, this single delivery would have completed the readout and spoken.
+        Assert.True(def.ProcessSimVarUpdate(otherLegTwinKey, 1, speech));
         Assert.Empty(speech.All);
     }
 

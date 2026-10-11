@@ -97,7 +97,7 @@ The Fenix MCDU window (`Forms/FenixA320/FenixMCDUForm.cs`, `Services/FenixMCDUSe
 
 **Both MCDUs live.** One subscription carries `aircraft.mcdu1.display` and `aircraft.mcdu2.display` (`FenixMcduSides`), and each `next` message names its screen. `FenixMcduScreens` keeps the latest screen of each side; only the selected side is shown and spoken, and a side switch shows the stored screen at once, with no reconnect (it used to disconnect and resubscribe, paying the 2 s address penalty). Key presses go to the selected side (`FenixMcduSides.KeyRef`). The connection messages name no side: "MCDU connected" / "MCDU disconnected".
 
-**Ctrl+Shift+L / Ctrl+Shift+R** switch to the left / right MCDU from anywhere in the window, the side selector included (MD-11 precedent, `FenixMCDUForm.SideShortcut`). Off the selector the app says "Left MCDU" / "Right MCDU" before the page title; on it, only the title, because the screen reader reads the new item ([CORE-7]).
+**Ctrl+Shift+L / Ctrl+Shift+R** switch to the left / right MCDU from anywhere in the window, the side selector included (MD-11 precedent, `FenixMCDUForm.SideShortcut`). Off the selector the app says "Left MCDU" / "Right MCDU" before the page title; on it, only the title, because the screen reader reads the new item ([CORE-7]). Pressing the chord for the side already shown changes nothing on screen, so off the selector it says just "Left MCDU" / "Right MCDU" (a silent key would sound dropped); on the selector it stays silent.
 
 ### Fenix FCU and altimeter readouts read on request (2026-10)
 

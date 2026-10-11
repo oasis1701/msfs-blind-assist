@@ -567,7 +567,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["I_FCU_SPEED_MANAGED"] = new SimConnect.SimVarDefinition
             {
-                Name = "I_FCU_SPEED_MANAGED", ExcludeFromBatch = true, // FCU readout force-reads this — keep individual def (SimConnect-ceiling batch-skip regression)
+                Name = "I_FCU_SPEED_MANAGED", ExcludeFromBatch = true, // own subscription since f500915db; the FCU readout reads the _READOUT twin ([A320-41])
                 DisplayName = "FCU SPEED Mode",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -1374,7 +1374,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["N_FCU_EFIS1_BARO_INCH"] = new SimConnect.SimVarDefinition
             {
-                Name = "N_FCU_EFIS1_BARO_INCH", ExcludeFromBatch = true, // baro readout force-reads this — keep individual def
+                Name = "N_FCU_EFIS1_BARO_INCH", ExcludeFromBatch = true, // own subscription since f500915db; the baro readout reads the _READOUT twin ([A320-41])
                 DisplayName = "EFIS1 BARO INHG Value",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -1383,7 +1383,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["N_FCU_EFIS1_BARO_HPA"] = new SimConnect.SimVarDefinition
             {
-                Name = "N_FCU_EFIS1_BARO_HPA", ExcludeFromBatch = true, // baro readout force-reads this — keep individual def
+                Name = "N_FCU_EFIS1_BARO_HPA", ExcludeFromBatch = true, // own subscription since f500915db; the baro readout reads the _READOUT twin ([A320-41])
                 DisplayName = "EFIS1 BARO HPA Value",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,

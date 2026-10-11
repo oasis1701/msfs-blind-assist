@@ -204,11 +204,21 @@ public class FenixMCDUService : IDisposable
             DisplayUpdated?.Invoke(show);
     }
 
-    public async Task SendButtonPress(string buttonName)
+    /// <summary>The side now shown in the window (<see cref="FenixMcduSides.Left"/> or Right). UI thread only.</summary>
+    public int SelectedSide => _screens.Selected;
+
+    // The side is read once, so the press and its release reach the same MCDU even if the
+    // pilot switches sides in the 50 ms between them.
+    public Task SendButtonPress(string buttonName) => SendButtonPress(buttonName, _screens.Selected);
+
+    /// <summary>
+    /// Presses a key on the given MCDU. A caller that sends several keys as one entry reads
+    /// <see cref="SelectedSide"/> once and passes it to every press, so a side switch part-way
+    /// through cannot split the entry across both MCDUs.
+    /// </summary>
+    public async Task SendButtonPress(string buttonName, int side)
     {
-        // The side is read once, so the press and its release reach the same MCDU even if the
-        // pilot switches sides in the 50 ms between them.
-        var keyName = FenixMcduSides.KeyRef(_screens.Selected, buttonName);
+        var keyName = FenixMcduSides.KeyRef(side, buttonName);
 
         // Send key press (value: 1)
         await SendKeyWrite(keyName, 1);

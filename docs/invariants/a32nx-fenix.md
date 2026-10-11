@@ -126,8 +126,8 @@ Corrected 2026-10-09: "two separate calc calls" was not enough; two calls issued
 ## A320-40
 
 - Address the Fenix data service (`FenixMCDUService`: the MCDU subscription and the key writes) as `127.0.0.1`, never `localhost`. The service listens on IPv4 only. `localhost` resolves to `::1` first, and Windows spends about 2 s refusing `::1` before it falls back to `127.0.0.1`, on every NEW connection. The key writes' `HttpClient` loses its pooled connection between 55 and 65 s idle, so the first MCDU key press after about a minute idle stalled 2-3 s (the pilot's report, 2026-10-11).
-- Measured 2026-10-11 (.NET 10.0.12, Fenix in flight), one long-lived `HttpClient`, one read after each idle gap, `localhost` / `127.0.0.1`: first request 2014 / 47 ms; after 30 s 1 / 0 ms; after 55 s 1 / 1 ms; after 65 s 2005 / 1 ms; after 125 s 2006 / 1 ms; after 140 s 2005 / 2 ms. The display WebSocket never dropped all day, so the stall was the key writes, plus every side switch, which reconnected until the both-sides change.
-- `FenixDataServiceAddressTests` fails on any `ws://localhost` or `http://localhost` in `FenixMCDUService.cs`. Not changed here, named in the PR: the Fenix EFB window (`FenixEFBForm`, a WebView2 page; browsers try both addresses almost at once), `ActiveSkyClient` and the iFly EFB window. → [a32nx.md](../a32nx.md)
+- Measured 2026-10-11 (.NET 10.0.12, Fenix in flight), one long-lived `HttpClient`, one read after each idle gap, `localhost` / `127.0.0.1`: first request 2014 / 47 ms; after 30 s 1 / 0 ms; after 55 s 1 / 1 ms; after 65 s 2005 / 1 ms; after 125 s 2006 / 1 ms; after 140 s 2005 / 2 ms. The display WebSocket never dropped all day, so the stall was the key writes, plus every side switch, which used to reconnect.
+- `FenixDataServiceAddressTests` fails on any `ws://localhost` or `http://localhost` in `FenixMCDUService.cs`. Not covered by this rule: the Fenix EFB window (`FenixEFBForm`, a WebView2 page; browsers try both addresses almost at once), `ActiveSkyClient` and the iFly EFB window. → [a32nx.md](../a32nx.md)
 
 ## A320-41
 

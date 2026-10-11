@@ -333,11 +333,21 @@ public class FenixMCDUForm : Form
     private void Form_KeyDown(object? sender, KeyEventArgs e)
     {
         // Ctrl+Shift+L / Ctrl+Shift+R: switch MCDU from anywhere in the window, the side selector
-        // included (MD-11 precedent). Setting the selector runs its change handler; choosing the
-        // side already shown changes nothing, so nothing is said.
+        // included (MD-11 precedent). Setting the selector runs its change handler, which says the
+        // side. Choosing the side already shown fires no change event, so confirm it here instead
+        // (off the selector only, as the handler does, and as the MD-11 does for its unit chords):
+        // silence would sound like a dropped key.
         if (SideShortcut.For(e.KeyCode, e.Control, e.Shift, e.Alt) is int side)
         {
-            mcduSelector.SelectedIndex = side - 1;
+            if (side - 1 == mcduSelector.SelectedIndex)
+            {
+                if (!mcduSelector.Focused)
+                    _announcer.Announce($"{SideName(side)} MCDU");
+            }
+            else
+            {
+                mcduSelector.SelectedIndex = side - 1;
+            }
             e.Handled = true;
             e.SuppressKeyPress = true;
             return;
@@ -467,6 +477,9 @@ public class FenixMCDUForm : Form
 
     private async Task SendTextToMCDU(string text)
     {
+        // The side is read once, so the whole entry lands on the MCDU that was shown when Enter was
+        // pressed, even if the pilot switches sides while it is still being typed in.
+        int side = _service.SelectedSide;
         foreach (char c in text)
         {
             string? buttonName = c switch
@@ -482,7 +495,7 @@ public class FenixMCDUForm : Form
 
             if (buttonName != null)
             {
-                await _service.SendButtonPress(buttonName);
+                await _service.SendButtonPress(buttonName, side);
                 // Delay between presses to ensure the MCDU processes each press-release cycle
                 await Task.Delay(50);
             }
