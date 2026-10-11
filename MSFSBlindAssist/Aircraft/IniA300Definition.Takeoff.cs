@@ -21,14 +21,21 @@ public partial class IniA300Definition
     // The raw VR and FCU speed, so V2 can be judged again whenever either changes.
     private double _rawVr, _rawFcuSpeed;
 
+    // V1 and VR's entry read-backs, baseline-first and seeded after a load as the altitude window's is.
+    private readonly Dictionary<string, A300WindowTracker> _vSpeedEntries = A300TakeoffCallouts.Speeds
+        .Where(s => A300TakeoffCallouts.IsSpoken(s.Key))
+        .ToDictionary(s => s.Key, _ => new A300WindowTracker(), StringComparer.Ordinal);
+
     public override string? TakeoffCalloutFeedKey => A300TakeoffCallouts.IasKey;
 
     public override bool TakeoffCalloutFeedNeeded => _takeoffCallouts.NeedsSamples(_calloutOnGround);
 
     /// <summary>
-    /// The three speeds ride the batch (consumed silently; each carries its call's Ctrl+M row), and
-    /// airspeed streams per SIM_FRAME on its own subscription: the 1 Hz batch would call "Rotate" up
-    /// to a second late.
+    /// The three speeds ride the batch, each with the Ctrl+M row that mutes its entry read-back and its
+    /// call (consumed here: <see cref="TryHandleTakeoffCallouts"/> speaks V1 and VR). They stay in
+    /// "number": a batched L:var is read in its registered unit, and a speed unit would convert the
+    /// FMS's plain knots. Airspeed streams per SIM_FRAME on its own subscription: the 1 Hz batch would
+    /// call "Rotate" up to a second late.
     /// </summary>
     private static void RegisterTakeoffCallouts(Dictionary<string, SimVarDefinition> vars, HashSet<string> batchNames)
     {
@@ -80,11 +87,13 @@ public partial class IniA300Definition
                 return false;
             case A300TakeoffCallouts.V1Key:
                 _takeoffCallouts.SetV1(value);
+                SpeakEntry(varName, value, announcer);
                 return true;
             case A300TakeoffCallouts.VrKey:
                 _rawVr = value;
                 _takeoffCallouts.SetVR(value);
                 _takeoffCallouts.SetV2(A300TakeoffCallouts.PlausibleV2(_rawVr, _rawFcuSpeed));
+                SpeakEntry(varName, value, announcer);
                 return true;
             case A300TakeoffCallouts.V2Key:
                 _rawFcuSpeed = value;
@@ -92,6 +101,18 @@ public partial class IniA300Definition
                 return true;
         }
         return false;
+    }
+
+    /// <summary>"V1: 148 knots" as the pilot enters a speed, and "not set" when an FMS reset clears it.
+    /// Spoken here, inside MainForm's mute wrap, and checked against the speed's own row as the lights
+    /// are, so muting V1 silences its read-back and its call together.</summary>
+    private void SpeakEntry(string key, double value, ScreenReaderAnnouncer announcer)
+    {
+        if (_seedGate.Armed)
+            _seedGate.NoteValue(key, value, ownedByAircraft: true);
+        if (_vSpeedEntries[key].Observe(A300TakeoffCallouts.Entry(key, value), Clock()) is string phrase
+            && !announcer.Suppressed && !IsMuted(key))
+            announcer.Announce(phrase);
     }
 
     private bool IsCalloutMuted(string callout) =>

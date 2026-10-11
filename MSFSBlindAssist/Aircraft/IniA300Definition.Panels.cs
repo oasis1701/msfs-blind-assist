@@ -201,6 +201,11 @@ public partial class IniA300Definition
                 return A300DisplayText.Feet(value);
             case "GROUND_VELOCITY":
                 return A300DisplayText.Knots(value);
+            case A300TakeoffCallouts.V1Key:
+            case A300TakeoffCallouts.VrKey:
+                return A300TakeoffCallouts.Speed(value);
+            case A300TakeoffCallouts.V2Key:
+                return A300TakeoffCallouts.V2(_sim is { } vSim && Cached(vSim, A300TakeoffCallouts.VrKey) is double vr ? vr : 0, value);
             case A300Trp.ModeKey:
                 return _sim is { } trpSim
                     ? A300Trp.Line(value, Cached(trpSim, A300Trp.AutoModeKey), Cached(trpSim, A300Readouts.FlexTemperatureKey),

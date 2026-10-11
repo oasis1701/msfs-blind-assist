@@ -135,9 +135,25 @@ public class IniA300DisplayPanelTests
             "PLANE_PITCH_DEGREES", "PLANE_BANK_DEGREES", A300Readouts.PfdHeadingKey, A300Readouts.PfdAirspeedKey,
             "INDICATED_ALTITUDE", A300Readouts.PfdVerticalSpeedKey, A300Readouts.PfdRadioAltitudeKey,
             A300IlsDeviation.LocalizerKey, A300IlsDeviation.GlideslopeKey,
+            A300TakeoffCallouts.V1Key, A300TakeoffCallouts.VrKey, A300TakeoffCallouts.V2Key,
             A300Readouts.VlsKey, A300Readouts.VmaxKey, A300Readouts.GreenDotKey, A300Readouts.SSpeedKey, A300Readouts.FSpeedKey,
             A300Readouts.VsSpeedKey, A300Readouts.MinimumsKey,
         }, _def.GetPanelDisplayVariables()["PFD"]);
+    }
+
+    [Fact]
+    public void The_take_off_speeds_read_as_the_mcdu_and_the_fcu_set_them()
+    {
+        // V1 and VR from the MCDU's TAKEOFF page; 0 is a speed the FMS does not have.
+        Assert.Equal("148 knots", Shown(A300TakeoffCallouts.V1Key, 148));
+        Assert.Equal("not set", Shown(A300TakeoffCallouts.VrKey, 0));
+        // V2 is the FCU speed window ("V2 [FCU]" on the TAKEOFF page), shown only when it is plausibly V2,
+        // as the V2 call-out judges it ([A300-11]).
+        _cache[A300TakeoffCallouts.VrKey] = 151;
+        Assert.Equal("155 knots", Shown(A300TakeoffCallouts.V2Key, 155));
+        Assert.Equal(A300TakeoffCallouts.V2NotSet, Shown(A300TakeoffCallouts.V2Key, 250));   // the window left at 250
+        _cache.Remove(A300TakeoffCallouts.VrKey);
+        Assert.Equal(A300TakeoffCallouts.V2NotSet, Shown(A300TakeoffCallouts.V2Key, 155));   // no VR to judge it by
     }
 
     [Fact]

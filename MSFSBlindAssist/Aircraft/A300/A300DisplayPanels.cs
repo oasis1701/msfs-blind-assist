@@ -21,6 +21,7 @@ public static class A300DisplayPanels
         "PLANE_PITCH_DEGREES", "PLANE_BANK_DEGREES", A300Readouts.PfdHeadingKey, A300Readouts.PfdAirspeedKey,
         "INDICATED_ALTITUDE", A300Readouts.PfdVerticalSpeedKey, A300Readouts.PfdRadioAltitudeKey,
         A300IlsDeviation.LocalizerKey, A300IlsDeviation.GlideslopeKey,
+        A300TakeoffCallouts.V1Key, A300TakeoffCallouts.VrKey, A300TakeoffCallouts.V2Key,
         A300Readouts.VlsKey, A300Readouts.VmaxKey, A300Readouts.GreenDotKey, A300Readouts.SSpeedKey, A300Readouts.FSpeedKey,
         A300Readouts.VsSpeedKey, A300Readouts.MinimumsKey,
     };

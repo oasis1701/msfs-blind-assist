@@ -1,3 +1,4 @@
+using System.Globalization;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Aircraft.A300;
 using MSFSBlindAssist.SimConnect;
@@ -78,12 +79,89 @@ public class IniA300TakeoffCalloutTests
     }
 
     [Fact]
-    public void Entering_the_speeds_is_consumed_and_says_nothing()
+    public void Each_speed_is_named_as_the_fleet_names_it()
     {
+        // The name is what the monitor speaks ("V1: 148 knots") and the Ctrl+M row and PFD box line,
+        // as on the FBW A380, whose rows also mute the call-outs.
+        var vars = _def.GetVariables();
+        Assert.Equal("V1", vars[A300TakeoffCallouts.V1Key].DisplayName);
+        Assert.Equal("VR", vars[A300TakeoffCallouts.VrKey].DisplayName);
+        Assert.Equal("V2", vars[A300TakeoffCallouts.V2Key].DisplayName);
+    }
+
+    [Fact]
+    public void Every_speed_is_consumed_and_its_first_reading_says_nothing()
+    {
+        // The first reading after a connect or a load is the baseline: speeds already set stay silent.
         foreach (var (key, _, _) in A300TakeoffCallouts.Speeds)
             Assert.True(_def.ProcessSimVarUpdate(key, 150, _speech));
         Assert.True(_def.ProcessSimVarUpdate(A300TakeoffCallouts.IasKey, 20, _speech));
         Assert.Empty(_speech.All);
+    }
+
+    [Theory]
+    [InlineData("en-US")]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void Entering_v1_or_vr_is_spoken_in_knots(string culture)
+    {
+        // The FBW A380's wording ("V1: 142 knots"). The speeds stay in "number" (a batched L:var is read
+        // in its registered unit), so the definition speaks them rather than the monitor.
+        var saved = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(culture);
+            Speeds(0, 0, 250);   // the baseline: nothing entered yet
+            Deliver(A300TakeoffCallouts.V1Key, 148);
+            Deliver(A300TakeoffCallouts.VrKey, 151);
+            Assert.Equal(new[] { "V1: 148 knots", "VR: 151 knots" }, _speech.All);
+            Assert.Equal("number", _def.GetVariables()[A300TakeoffCallouts.V1Key].Units);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = saved;
+        }
+    }
+
+    [Fact]
+    public void A_cleared_speed_is_spoken_as_not_set()
+    {
+        // The FMS clears them to 0 only on a reset (resetFMC, or the aircraft reloading), never after
+        // take-off, so a clear always means the speeds must be entered again.
+        Speeds(148, 151, 155);
+        Deliver(A300TakeoffCallouts.V1Key, 0);
+        Assert.Equal(new[] { "V1: not set" }, _speech.All);
+    }
+
+    [Fact]
+    public void V2_changes_are_never_spoken()
+    {
+        // V2 follows the FCU speed window, so every speed knob turn moves it ([A300-11]).
+        Speeds(148, 151, 250);
+        Deliver(A300TakeoffCallouts.V2Key, 155);
+        Assert.Empty(_speech.All);
+    }
+
+    [Fact]
+    public void An_entry_is_muted_by_its_speeds_row_and_while_suppressed()
+    {
+        Speeds(0, 0, 250);
+        _muted.Add(A300TakeoffCallouts.V1Key);
+        Deliver(A300TakeoffCallouts.V1Key, 148);
+        _speech.Suppressed = true;
+        Deliver(A300TakeoffCallouts.VrKey, 151);
+        Assert.Empty(_speech.All);
+    }
+
+    [Fact]
+    public void After_a_context_reset_the_next_reading_is_a_baseline()
+    {
+        Speeds(148, 151, 155);
+        _def.OnSimContextReset();
+        Deliver(A300TakeoffCallouts.V1Key, 140);   // a loaded flight's speed
+        Assert.Empty(_speech.All);
+        Deliver(A300TakeoffCallouts.V1Key, 142);
+        Assert.Equal(new[] { "V1: 142 knots" }, _speech.All);
     }
 
     [Fact]

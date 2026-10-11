@@ -32,6 +32,7 @@ Split from `a300.md` on 2026-10-10, when the rule-file cap fell to 8,000 charact
 ## A300-11
 
 - The A300 take-off call-outs (`A300TakeoffCallouts`) take V1 and VR from `L:INI_V1_FMGS`/`L:INI_VR_FMGS` (the MCDU take-off page) and V2 from `L:INI_V2_FMGS`, which FOLLOWS THE FCU SPEED WINDOW (250 with V2 typed as 150, measured 2026-10-04), because the A300 crew sets V2 on the FCU for take-off. So V2 is used only when `PlausibleV2` accepts it: at or above VR and at most 30 knots above. Never read `INI_V2_FMGS` as the MCDU's V2, and never announce its changes (every FCU speed change moves it). The arm is dropped on every context reset AND reconnect, never the speeds (the shared machine's rule). → [a300.md](../a300.md)
+- V1 and VR ARE spoken as they are entered (2026-10-11, the FBW A380's "V1: 148 knots" and "not set" on a clear), by the definition (`SpeakEntry`), never the monitor: the speeds stay registered in "number", because a batched L:var is read in its registered unit and "knots" would convert the FMS's plain knots (`IniA300TakeoffCalloutTests` pins it). The PFD box shows V2 only through `PlausibleV2`, as the call-out judges it.
 
 ## A300-14
 

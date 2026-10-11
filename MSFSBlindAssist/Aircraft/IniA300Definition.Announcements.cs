@@ -148,6 +148,8 @@ public partial class IniA300Definition
         _fmaTracker.Reset();
         _engagementTracker.Reset();
         _altitudeWindow.Reset();
+        foreach (var entry in _vSpeedEntries.Values)
+            entry.Reset();
         _takeoffCallouts.Reset();
         _lampBoard.Reset();
         _lampSpeech.Clear();
@@ -173,7 +175,8 @@ public partial class IniA300Definition
         var sim = _sim;
         if (sim == null)
             yield break;
-        foreach (var key in A300Announcements.AnnouncedKeys.Union(A300LampBoard.InputKeys).Append(A300Readouts.AltitudeKey))
+        foreach (var key in A300Announcements.AnnouncedKeys.Union(A300LampBoard.InputKeys).Append(A300Readouts.AltitudeKey)
+                     .Concat(_vSpeedEntries.Keys))
             if (Cached(sim, key) is double value)
                 yield return new KeyValuePair<string, double>(key, value);
     }
@@ -189,6 +192,9 @@ public partial class IniA300Definition
                 seeded++;
         if (Cached(sim, A300Readouts.AltitudeKey) is double altitude && _altitudeWindow.Seed(A300FcuWindows.Altitude(altitude)))
             seeded++;
+        foreach (var (key, entry) in _vSpeedEntries)
+            if (Cached(sim, key) is double speed && entry.Seed(A300TakeoffCallouts.Entry(key, speed)))
+                seeded++;
         Log.Debug("A300", $"Context reset: {seeded} baselines seeded from the cache ({trigger}, {_seedGate.Deliveries} batch deliveries).");
     }
 }

@@ -199,7 +199,9 @@ The Displays section has a status box (Ctrl+3) for each screen:
                        CMD 1, CMD 2 or Dual), the FCU windows, attitude, heading, airspeed,
                        altitude, vertical speed, radio altitude, localizer and glideslope
                        deviation in dots ("1.2 dots left of localizer", "0.8 dots above
-                       glideslope"), VLS, VMAX, green dot, S and F speeds, VS and minimums. Green
+                       glideslope"), V1, VR and V2, VLS, VMAX, green dot, S and F speeds, VS and
+                       minimums. V2 is the FCU speed window, shown only when it is no more than
+                       30 knots above VR (with the window left at 250 it reads not set). Green
                        dot, S and F say "not shown at this flap setting" where the speed tape does
                        not draw them; the deviation reads "not shown, EFIS not on ILS" unless the
                        captain's EFIS nav selector is on ILS, as the PFD shows it.
@@ -564,8 +566,10 @@ covers the three autobrake armed lights.
 Take-off: "V1", "Rotate" and "V2" as the airspeed reaches them on the take-off roll. V1 and VR
 come from the MCDU's TAKE OFF page. V2 is the FCU speed, which the A300 crew sets to V2 for
 take-off, so set the FCU speed to V2 before you go: it is called only when it is no more than
-30 knots above VR (with the window left at 250 there is no V2 call). Entering the speeds is not
-spoken; the MCDU shows them.
+30 knots above VR (with the window left at 250 there is no V2 call). Entering V1 or VR on the
+MCDU is spoken ("V1: 148 knots"), and so is the FMS clearing them ("V1: not set"), which it does
+only when it resets. V2 is not spoken as you set it: the FCU speed read-back already says it. The
+V1, VR and V2 rows in Ctrl+M each turn off that speed's entry read-back and its call.
 
 The autopilot and autothrottle: "Autopilot disconnected", "Autopilot CMD 1" (or CMD 2, Dual),
 "Autothrottle disconnected" and "Autothrottle armed" when something other than MSFS Blind Assist
