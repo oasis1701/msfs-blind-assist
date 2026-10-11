@@ -157,12 +157,14 @@ internal static class ResumeDecision
 /// </summary>
 internal static class DiskSpaceRequirement
 {
+    // Measured on 2026-10-10 with the full dump (8.36 M places): Natural Earth 63 MB on disk,
+    // staging peaked at 372 MB, the packed database is 332 MB. Rounded up for growth.
     /// <summary>Natural Earth GeoJSON as stored on disk (decompressed).</summary>
     internal const long NaturalEarthBytes = 70L * 1024 * 1024;
     /// <summary>The unsorted staging database the importer writes first.</summary>
-    internal const long StagingBytes = 550L * 1024 * 1024;
+    internal const long StagingBytes = 420L * 1024 * 1024;
     /// <summary>The clustered copy that becomes the live database.</summary>
-    internal const long BuiltBytes = 450L * 1024 * 1024;
+    internal const long BuiltBytes = 380L * 1024 * 1024;
     internal const long MarginBytes = 300L * 1024 * 1024;
 
     /// <summary>Bytes needed before starting (the rest of the download plus the build).</summary>

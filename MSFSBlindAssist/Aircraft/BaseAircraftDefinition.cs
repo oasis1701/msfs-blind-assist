@@ -438,9 +438,10 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// Resolves the spoken time-zone name at a given lat/lon. Falls back to
     /// the system's local time zone when lat/lon are missing, the
     /// GeoTimeZone lookup fails, or no Windows mapping exists for the IANA
-    /// id. Always returns a non-null, non-empty string.
+    /// id. Always returns a non-null, non-empty string. Also used by the Location Info
+    /// window's "Where you are" box (<c>Services/Geography/OfflineLocationService</c>).
     /// </summary>
-    private static string LookupTimeZoneName(double? lat, double? lon)
+    internal static string LookupTimeZoneName(double? lat, double? lon)
     {
         try
         {
