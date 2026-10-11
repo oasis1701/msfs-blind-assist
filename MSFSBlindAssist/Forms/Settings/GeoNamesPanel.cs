@@ -1,14 +1,22 @@
+using MSFSBlindAssist.Services.Geography;
 using MSFSBlindAssist.Settings;
 
 namespace MSFSBlindAssist.Forms.Settings;
 
-/// <summary>GeoNames section of the unified Settings dialog. Extracted from the retired
-/// standalone GeoNames API key dialog — same controls, same AccessibleNames/TabIndex-free
-/// layout, but Save/Cancel are gone (the dialog owns OK/Cancel) and the old dialog's per-field
-/// validation + radius-limit warning now live in <see cref="Validate"/>.</summary>
+/// <summary>GeoNames section of the unified Settings dialog: the location data download (Output C
+/// and Location Info read only that local data) and the ranges and limits the lookups use. The
+/// download job belongs to MainForm, so it keeps running after Settings closes; this panel only
+/// shows its status (a read-only TextBox, VAT-13) and starts or cancels it.</summary>
 public class GeoNamesPanel : UserControl, ISettingsPanel
 {
-    private TextBox _apiUsernameTextBox = null!;
+    /// <summary>The Major Cities range ceiling: query cost grows with the area searched.</summary>
+    internal const int MaxMajorCitiesMiles = 310;
+    internal const int MaxMajorCitiesKm = 500;
+
+    private readonly LocationDataDownloader? _downloader;
+    private TextBox _locationStatusTextBox = null!;
+    private Button _downloadButton = null!;
+    private Button _cancelDownloadButton = null!;
     private TextBox _nearbyCitiesTextBox = null!;
     private TextBox _regionalCitiesTextBox = null!;
     private TextBox _majorCitiesTextBox = null!;
@@ -26,9 +34,11 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
 
     public string TabTitle => "GeoNames";
 
-    public GeoNamesPanel()
+    internal GeoNamesPanel(LocationDataDownloader? downloader = null)
     {
+        _downloader = downloader;
         InitializeComponent();
+        if (_downloader != null) _downloader.StatusChanged += OnDownloadStatusChanged;
     }
 
     private void InitializeComponent()
@@ -37,38 +47,67 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
         int labelHeight = 23;
         int textBoxHeight = 23;
         int spacing = 30;
+        AutoScroll = true; // the download section made the tab taller than the dialog
 
-        // API Username section
-        var apiLabel = new Label
+        // Location data section: status first, so tabbing in reads what is installed or running.
+        var locationLabel = new Label
         {
-            Text = "GeoNames API Username (required for location services):",
+            Text = "Location data for Output C and Location Info (downloaded once, then used offline):",
             Location = new System.Drawing.Point(20, yPos),
-            Size = new System.Drawing.Size(450, labelHeight),
-            AccessibleName = "GeoNames API Username label"
+            Size = new System.Drawing.Size(600, labelHeight),
         };
-        Controls.Add(apiLabel);
+        Controls.Add(locationLabel);
 
         yPos += labelHeight + 5;
-        _apiUsernameTextBox = new TextBox
+        _locationStatusTextBox = new TextBox
         {
             Location = new System.Drawing.Point(20, yPos),
-            Size = new System.Drawing.Size(300, textBoxHeight),
-            AccessibleName = "GeoNames API Username",
-            AccessibleDescription = "Enter your GeoNames API username"
+            Size = new System.Drawing.Size(600, 54),
+            Multiline = true,
+            ReadOnly = true,
+            ScrollBars = ScrollBars.Vertical,
+            AccessibleName = "Location data status",
+            Text = "Location data status unavailable.",
         };
-        Controls.Add(_apiUsernameTextBox);
+        Controls.Add(_locationStatusTextBox);
 
-        var registerLabel = new Label
+        yPos += 54 + 8;
+        _downloadButton = new Button
         {
-            Text = "Register for free at geonames.org",
-            Location = new System.Drawing.Point(330, yPos),
-            Size = new System.Drawing.Size(150, labelHeight),
-            ForeColor = System.Drawing.Color.Gray,
-            AccessibleName = "Registration info"
+            Text = "Download location data",
+            Location = new System.Drawing.Point(20, yPos),
+            Size = new System.Drawing.Size(200, 30),
+            AccessibleName = "Download location data",
+            Enabled = _downloader != null,
         };
-        Controls.Add(registerLabel);
+        _downloadButton.Click += (_, _) => _downloader?.Start();
+        Controls.Add(_downloadButton);
 
-        yPos += spacing + 10;
+        _cancelDownloadButton = new Button
+        {
+            Text = "Cancel download",
+            Location = new System.Drawing.Point(230, yPos),
+            Size = new System.Drawing.Size(150, 30),
+            AccessibleName = "Cancel download",
+            Enabled = false,
+        };
+        _cancelDownloadButton.Click += (_, _) => _downloader?.Cancel();
+        Controls.Add(_cancelDownloadButton);
+
+        yPos += 30 + 8;
+        var creditTextBox = new TextBox
+        {
+            Location = new System.Drawing.Point(20, yPos),
+            Size = new System.Drawing.Size(600, 38),
+            Multiline = true,
+            ReadOnly = true,
+            AccessibleName = "Data credits",
+            Text = "Place data © GeoNames (geonames.org), licensed CC BY 4.0. "
+                + "Shapes (seas, coastline, lakes, regions, states) from Natural Earth, public domain.",
+        };
+        Controls.Add(creditTextBox);
+
+        yPos += 38 + 18;
 
         // Distance ranges section
         var distanceLabel = new Label
@@ -377,10 +416,12 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
 
     public void LoadFrom(UserSettings settings)
     {
-        _apiUsernameTextBox.Text = settings.GeoNamesApiUsername;
+        ApplyDownloadStatus();
         _nearbyCitiesTextBox.Text = settings.NearbyCitiesRange.ToString();
         _regionalCitiesTextBox.Text = settings.RegionalCitiesRange.ToString();
-        _majorCitiesTextBox.Text = settings.MajorCitiesRange.ToString();
+        // A range saved before the ceiling existed is shown clamped, so OK never meets an error.
+        int majorCeiling = settings.DistanceUnits == "kilometers" ? MaxMajorCitiesKm : MaxMajorCitiesMiles;
+        _majorCitiesTextBox.Text = Math.Min(settings.MajorCitiesRange, majorCeiling).ToString();
         _populationThresholdTextBox.Text = settings.MajorCityPopulationThreshold.ToString();
         _landmarksTextBox.Text = settings.LandmarksRange.ToString();
 
@@ -417,29 +458,13 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
             return false;
         }
 
-        if (!(int.TryParse(_majorCitiesTextBox.Text, out int majorCities) && majorCities > 0))
+        int majorCeiling = _kilometersRadioButton.Checked ? MaxMajorCitiesKm : MaxMajorCitiesMiles;
+        string majorUnits = _kilometersRadioButton.Checked ? "kilometers" : "miles";
+        if (!(int.TryParse(_majorCitiesTextBox.Text, out int majorCities) && majorCities > 0 && majorCities <= majorCeiling))
         {
-            error = "Please enter a valid number for Major Cities Range.";
+            error = $"Please enter a number from 1 to {majorCeiling} ({majorUnits}) for Major Cities Range.";
             focus = _majorCitiesTextBox;
             return false;
-        }
-
-        // Check if radius exceeds GeoNames API limit (300 km / ~186 miles)
-        var units = _kilometersRadioButton.Checked ? "km" : "miles";
-        var radiusKm = units == "km" ? majorCities : (int)Math.Round(majorCities * 1.60934);
-        if (radiusKm > 300)
-        {
-            var maxInUnits = units == "km" ? "300 km" : "186 miles";
-            var result = MessageBox.Show(
-                $"Warning: Major Cities range of {majorCities} {units} exceeds the GeoNames API free service limit of {maxInUnits}.\n\nThe application will automatically cap the radius at {maxInUnits} for API calls.\n\nDo you want to continue?",
-                "Radius Limit Warning", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-
-            if (result == DialogResult.No)
-            {
-                error = "Major Cities Range was not saved. Adjust the value or confirm the radius limit warning to continue.";
-                focus = _majorCitiesTextBox;
-                return false;
-            }
         }
 
         if (!(int.TryParse(_populationThresholdTextBox.Text, out int populationThreshold) && populationThreshold >= 500))
@@ -505,26 +530,10 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
 
     public void ApplyTo(UserSettings settings)
     {
-        settings.GeoNamesApiUsername = _apiUsernameTextBox.Text.Trim();
-
         settings.NearbyCitiesRange = int.Parse(_nearbyCitiesTextBox.Text);
         settings.RegionalCitiesRange = int.Parse(_regionalCitiesTextBox.Text);
         settings.MajorCitiesRange = int.Parse(_majorCitiesTextBox.Text);
-
-        int populationThreshold = int.Parse(_populationThresholdTextBox.Text);
-        settings.MajorCityPopulationThreshold = populationThreshold;
-
-        // Determine the appropriate API threshold based on user's population threshold.
-        // Use MORE restrictive API filters for HIGHER population requirements — this prevents
-        // flooding results with small cities when searching for large ones.
-        settings.MajorCityAPIThreshold = populationThreshold switch
-        {
-            >= 50000 => "cities15000",
-            >= 15000 => "cities15000",
-            >= 5000 => "cities5000",
-            _ => "cities1000"
-        };
-
+        settings.MajorCityPopulationThreshold = int.Parse(_populationThresholdTextBox.Text);
         settings.LandmarksRange = int.Parse(_landmarksTextBox.Text);
 
         settings.MaxNearbyPlacesToShow = int.Parse(_maxNearbyPlacesTextBox.Text);
@@ -539,5 +548,52 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
 
     public void OnLeaving()
     {
+    }
+
+    /// <summary>Raised on the download worker's thread; never <c>Invoke</c> (it could deadlock
+    /// against a UI thread waiting on the job), and a closing dialog may have no handle left.</summary>
+    private void OnDownloadStatusChanged(object? sender, DownloadStatus status)
+    {
+        try
+        {
+            if (IsHandleCreated && !IsDisposed) BeginInvoke(ApplyDownloadStatus);
+        }
+        catch (InvalidOperationException)
+        {
+            // Handle destroyed between the check and the post: nothing to update.
+        }
+    }
+
+    /// <summary>Shows the job's LATEST status (never the posted one, so a late progress post can
+    /// never overwrite the final line), rewriting only what changed so the screen reader keeps
+    /// its place in the box.</summary>
+    private void ApplyDownloadStatus()
+    {
+        if (IsDisposed) return;
+        if (_downloader == null)
+        {
+            DisplayText.SetPreserveCaret(_locationStatusTextBox, "Location data status unavailable.");
+            return;
+        }
+        var status = _downloader.Status;
+        if (status.Phase == DownloadJobPhase.Idle) status = _downloader.IdleStatus();
+        DisplayText.SetPreserveCaret(_locationStatusTextBox, status.Text);
+
+        bool running = status.IsRunning;
+        _downloadButton.Enabled = !running;
+        _cancelDownloadButton.Enabled = running;
+        string label = _downloader.HasData ? "Update location data" : "Download location data";
+        if (_downloadButton.Text != label)
+        {
+            _downloadButton.Text = label;
+            _downloadButton.AccessibleName = label;
+        }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        // Unsubscribe here, never in OnLeaving: that runs on every tab switch.
+        if (disposing && _downloader != null) _downloader.StatusChanged -= OnDownloadStatusChanged;
+        base.Dispose(disposing);
     }
 }
