@@ -99,6 +99,10 @@ The Fenix MCDU window (`Forms/FenixA320/FenixMCDUForm.cs`, `Services/FenixMCDUSe
 
 **Ctrl+Shift+L / Ctrl+Shift+R** switch to the left / right MCDU from anywhere in the window, the side selector included (MD-11 precedent, `FenixMCDUForm.SideShortcut`). Off the selector the app says "Left MCDU" / "Right MCDU" before the page title; on it, only the title, because the screen reader reads the new item ([CORE-7]).
 
+### Fenix FCU and altimeter readouts read on request (2026-10)
+
+Output-mode Shift+H/S/A/V and B each force-read two values. Their continuous originals (`N_FCU_*`, `I_FCU_*_MANAGED`, `B_FCU_VERTICALSPEED_DASHED`, `N_FCU_EFIS1_BARO_*`) stream on their own once-a-second subscriptions (ExcludeFromBatch since `f500915db`), and since `c5c624a84` a forced read of such a var waits for its next delivery instead of replacing the subscription: up to a second before the readout spoke. The readouts now read on-request twins, `<name>_READOUT` (`FcuReadoutVariables`), answered within a frame ([A320-41]). The originals keep their subscriptions, Ctrl+M rows and the FCU set windows' cache reads, and a readout no longer swallows one of their deliveries. The wording is unchanged.
+
 ### Fenix MCDU selected-option marker — colour ALONE is not enough (2026-08)
 
 **Symptom:** the CONFIG > FAILURES page (Failures = LSK 2R) cycles FAILURE TYPE between NONE / MINOR / ALL, but the MCDU window rendered `1: ←NONE/MINOR/ALL  RANDOM*` — **no accessible indication of which option was active**, on any of the three settings. Same for FAILURE RATE (REALISTIC / HIGH).
