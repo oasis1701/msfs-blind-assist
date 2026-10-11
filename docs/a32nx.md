@@ -346,15 +346,32 @@ mixed-green rule above writes "---------- *EGLL/LFPG"; the cost index beside the
 "*137". That is the same marking the rule already gives green values on PERF TAKE OFF and FUEL PRED,
 so it is left alone rather than special-cased for one page.
 
-**Seen on the A32NX by the 2026-10-11 sweep, fixed on the A380 only** (the A32NX keeps its own
-code; see [a380x.md](a380x.md), "FBW-drift sweep `1bbd304..76db0aef1`"): the FMS clears both
-approach minimums when the approach changes (#10724) and the A32NX definition speaks only a SET
-minimum, so the clear is silent; and MSFSBA's A/THR disconnect sends `A32NX.FCU_ATHR_DISCONNECT_PUSH`,
-while the PseudoFWC, like the A380's FWS, counts an instinctive disconnect only from the
-`A32NX.AUTO_THROTTLE_DISCONNECT` key the WASM re-emits for the stock `AUTO_THROTTLE_DISCONNECT`.
-Each wants its own change and in-sim test. The rest of the sweep found nothing to change on the
-A32NX: events, FMGC word layouts, FMA and autothrust encodings and the MCDU agent's hooks are as
-they were at `1bbd304`, and the WIND page's request / uplink flow reads through the MCDU window.
+**Cleared minimums and the A/THR disconnect (2026-10-11 sweep; the A380 got the same fixes,
+[a380x.md](a380x.md), "FBW-drift sweep `1bbd304..76db0aef1`").**
+- The FMS clears both approach minimums when the approach changes (#10724), and the definition
+  spoke only a SET minimum, so the clear was silent. `ApproachMinimums.Announcement` now speaks
+  "Baro minimum cleared" / "Decision height cleared", except while a flight load or reconnect
+  settles (`IsFcuValueSettling`: the FMS starting over writes MDA 0 and DH -1).
+- MSFSBA's A/THR disconnect sent `A32NX.FCU_ATHR_DISCONNECT_PUSH`, which only sets the
+  disconnect; the PseudoFWC counts a disconnect as voluntary only from the
+  `A32NX.AUTO_THROTTLE_DISCONNECT` key the WASM re-emits for the masked stock
+  `AUTO_THROTTLE_DISCONNECT` (the hardware-button binding), so the FWC gave AUTO FLT A/THR OFF.
+  The panel button and the Ctrl+P window now send `FlyByWireA320Definition.AutothrustDisconnectEvent`
+  (pinned by `A32nxAutothrustDisconnectTests`). No autobrake side effect on the A32NX: only the
+  FWC listens. The Headwind A330 inherits both; its fbw.wasm and SystemsHost carry the same
+  re-emit and intercept.
+
+**A32NX NO DH never reaches `AIRLINER_DECISION_HEIGHT` (measured 2026-10-12, not changed).** The
+FMS mirrors the PERF APPR DH with `SetSimVarValue('L:AIRLINER_DECISION_HEIGHT', 'feet', radio ?? -1)`,
+and NO DH is the string `'NO DH'`, which the sim ignores: a probe L:var holding 200 still held
+200 after the same write. So after NO DH the "Radio minimum" row and the call-out keep the
+previous DH. The PFD reads NO DH from the FM EIS discrete word 2, bit 29 (`A32NX_FMCMainDisplay.ts`,
+`arincEisWord2`), which the FMS sets only once it transmits minimums (near the destination). An FBW
+defect; reading NO DH would mean decoding that word.
+
+The rest of the sweep found nothing to change on the A32NX: events, FMGC word layouts, FMA and
+autothrust encodings and the MCDU agent's hooks are as they were at `1bbd304`, and the WIND page's
+request / uplink flow reads through the MCDU window.
 
 ### Cleared V-speeds are spoken "not set" (2026-09-25)
 

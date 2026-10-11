@@ -1,1 +1,1 @@
-The FlyByWire A380's new MFD WIND page works in the MCDU window: every wind field says its phase, row and column, so you can enter winds and request, insert or clear a company wind uplink.
+The FlyByWire A380's new MFD WIND page works in the MCDU window: every wind field says its phase, row and column, so you can enter winds and request, insert or clear a company wind uplink. A value typed into a pick list that doesn't offer it is reported as "Not in list".

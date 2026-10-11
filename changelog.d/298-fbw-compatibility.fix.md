@@ -1,1 +1,1 @@
-FlyByWire A32NX: the PFD status box's speed target matches the PFD again, with a new approach speed (VAPP) row. FlyByWire A380: a minimum the FMS clears is announced, NO DH reads as such, and Autothrust Disconnect gives the A/THR OFF memo instead of a caution.
+FlyByWire A32NX and A380: a minimum the FMS clears is now announced, and Autothrust Disconnect gives the A/THR OFF memo instead of a caution. On the A32NX the PFD status box's speed target matches the PFD again, with a new approach speed (VAPP) row; on the A380, NO DH reads as such.
