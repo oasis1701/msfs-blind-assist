@@ -50,10 +50,18 @@ internal static class LocationPhrases
     private static readonly string[] Directions =
         { "north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest" };
 
-    /// <summary>Output C or Location Info pressed with no usable location data installed.</summary>
-    internal static string Unavailable(bool needsUpdate) => needsUpdate
-        ? "Location data needs an update. Update it in Settings, GeoNames tab."
-        : "Location data not downloaded. Download it in Settings, GeoNames tab.";
+    /// <summary>Output C or Location Info pressed with no usable location data installed: a
+    /// download or build in progress (never send the pilot back to a button already pressed), a
+    /// build waiting for the next start, data from an older version, or none.</summary>
+    internal static string Unavailable(bool needsUpdate, DownloadJobPhase job = DownloadJobPhase.Idle, bool readyAtNextStart = false) => job switch
+    {
+        DownloadJobPhase.Downloading => "Location data is still downloading.",
+        DownloadJobPhase.Building => "Location data is still being built.",
+        _ when readyAtNextStart => LocationDataStatusText.ReadyAtNextStart,
+        _ => needsUpdate
+            ? "Location data needs an update. Update it in Settings, GeoNames tab."
+            : "Location data not downloaded. Download it in Settings, GeoNames tab.",
+    };
 
     internal static double ToUnit(double nm, bool kilometres) => kilometres ? nm * KmPerNm : nm * MilesPerNm;
 

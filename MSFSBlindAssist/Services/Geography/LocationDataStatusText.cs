@@ -9,8 +9,12 @@ namespace MSFSBlindAssist.Services.Geography;
 /// </summary>
 internal static class LocationDataStatusText
 {
-    internal static string Idle(LocationDataInfo? info, int schemaVersion, long partialBytes, bool downloadComplete = false)
+    /// <summary>A verified build whose swap was put off until the next start (something held a file).</summary>
+    internal const string ReadyAtNextStart = "Location data is ready and will be used from the next start of MSFS Blind Assist.";
+
+    internal static string Idle(LocationDataInfo? info, int schemaVersion, long partialBytes, bool downloadComplete = false, bool readyAtNextStart = false)
     {
+        if (readyAtNextStart) return ReadyAtNextStart; // a press now would only download 400 MB and delete it
         if (downloadComplete && (info is null || info.SchemaVersion != schemaVersion || !info.Complete))
             return "Downloaded but not built yet. Press "
                 + (info is null ? "Download" : "Update") + " location data to build it; nothing is downloaded again.";
