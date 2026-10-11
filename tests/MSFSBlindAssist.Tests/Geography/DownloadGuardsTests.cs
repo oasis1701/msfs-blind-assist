@@ -84,10 +84,12 @@ public class DownloadGuardsTests
     [InlineData(200, 0, null, null, 1000L, ResumeOutcome.Fresh)]
     [InlineData(200, 400, null, null, 1000L, ResumeOutcome.RestartChanged)]   // If-Range failed: new file
     [InlineData(206, 400, 400L, 1000L, 1000L, ResumeOutcome.Append)]
-    [InlineData(206, 400, 300L, 1000L, 1000L, ResumeOutcome.RestartChanged)] // wrong start
-    [InlineData(206, 400, 400L, 1200L, 1000L, ResumeOutcome.RestartChanged)] // different file size
+    [InlineData(206, 400, 300L, 1000L, 1000L, ResumeOutcome.DiscardPartial)] // wrong start: never written
+    [InlineData(206, 400, 400L, 1200L, 1000L, ResumeOutcome.DiscardPartial)] // different file size
     [InlineData(416, 1000, null, null, 1000L, ResumeOutcome.AlreadyComplete)]
-    [InlineData(416, 400, null, null, 1000L, ResumeOutcome.RestartChanged)]
+    [InlineData(416, 400, null, 1000L, 1000L, ResumeOutcome.DiscardPartial)]
+    [InlineData(206, 0, 0L, 1000L, null, ResumeOutcome.Fail)]                 // a 206 to a request with no Range: no loop
+    [InlineData(416, 0, null, 1000L, null, ResumeOutcome.Fail)]
     [InlineData(503, 400, null, null, 1000L, ResumeOutcome.Fail)]
     public void Resume_accepts_only_the_exact_tail_of_the_same_file(
         int status, long part, long? from, long? total, long? known, ResumeOutcome expected)

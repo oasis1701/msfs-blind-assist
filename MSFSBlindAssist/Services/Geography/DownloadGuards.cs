@@ -112,11 +112,17 @@ public enum ResumeOutcome
     Fresh,
     /// <summary>The server sent exactly the missing tail of the same file.</summary>
     Append,
-    /// <summary>The file on the server is not the one the partial file came from: start over.</summary>
+    /// <summary>A 200 with the whole file although a partial file was offered: the file on the
+    /// server is not the one the partial file came from. Write this body from the start.</summary>
     RestartChanged,
+    /// <summary>A 206 that is not the missing tail (wrong start or a different size), or a 416
+    /// that disagrees about the size. Only a 200 carries the whole file, so this body is read
+    /// NOT AT ALL: the partial file and its validator go, and the next request sends no Range.</summary>
+    DiscardPartial,
     /// <summary>The partial file already holds the whole file.</summary>
     AlreadyComplete,
-    /// <summary>Any other answer: an error to report.</summary>
+    /// <summary>Any other answer, including a 206 or 416 to a request that sent no Range: an
+    /// error to report.</summary>
     Fail,
 }
 
@@ -124,7 +130,9 @@ public enum ResumeOutcome
 /// Reads the server's answer to a resumed request. The request carries <c>If-Range</c> with the
 /// validator saved when the partial file was started, so a server that rebuilt the file in the
 /// meantime (GeoNames rebuilds its dump daily) answers 200 with the new file instead of a 206
-/// tail that would splice two different files together.
+/// tail that would splice two different files together. A 206 or 416 that fits neither case is
+/// never written: its body is a tail from the wrong offset or an error page, and saving it as
+/// the whole file would hand the build a damaged dump.
 /// </summary>
 internal static class ResumeDecision
 {
@@ -139,11 +147,10 @@ internal static class ResumeDecision
                 if (partLength > 0 && contentRangeFrom == partLength
                     && (knownTotal is null || contentRangeTotal == knownTotal))
                     return ResumeOutcome.Append;
-                return ResumeOutcome.RestartChanged;
+                return partLength > 0 ? ResumeOutcome.DiscardPartial : ResumeOutcome.Fail;
             case 416:
-                return knownTotal is long total && partLength == total
-                    ? ResumeOutcome.AlreadyComplete
-                    : ResumeOutcome.RestartChanged;
+                if (knownTotal is long total && partLength == total) return ResumeOutcome.AlreadyComplete;
+                return partLength > 0 ? ResumeOutcome.DiscardPartial : ResumeOutcome.Fail;
             default:
                 return ResumeOutcome.Fail;
         }

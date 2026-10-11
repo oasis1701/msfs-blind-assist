@@ -113,20 +113,58 @@ public sealed class LocationDataDownloaderTests : IDisposable
     }
 
     [Fact(Timeout = 30_000)]
-    public async Task A_complete_download_is_kept_for_reuse_when_the_build_fails()
+    public async Task A_dump_the_build_rejected_is_deleted_so_the_next_press_downloads_afresh()
     {
         using var d = new LocationDataDownloader(_store, _server, _server, FixtureHashes, _ => long.MaxValue)
         {
             MinimumPlaces = 1,
-            MinimumRows = 1_000, // the fixture dump is too short: the build fails after the download
+            MinimumRows = 1_000, // the fixture dump is too short: the build rejects it after the download
         };
         d.Start();
         await d.Job;
 
         Assert.Equal(DownloadJobPhase.Failed, d.Status.Phase);
         Assert.False(_store.IsAvailable);
-        Assert.Contains("Downloaded but not built yet.", d.Status.Text);
+        // Kept, it would fail the same way on every press for three days (LOC-4).
+        Assert.False(File.Exists(Path.Combine(_store.DownloadFolder, "allCountries.zip")));
+        Assert.False(File.Exists(Path.Combine(_store.DownloadFolder, "allCountries.zip.json")));
+        Assert.DoesNotContain("Downloaded but not built yet.", d.Status.Text);
+        Assert.StartsWith("Not downloaded.", d.IdleStatus().Text);
+    }
+
+    [Fact(Timeout = 30_000)]
+    public async Task A_build_the_pilot_cancels_keeps_the_whole_download_for_the_next_press()
+    {
+        using var d = Downloader();
+        // Cancel as soon as the job says it is building: the build then stops at its first check.
+        d.StatusChanged += (_, s) => { if (s.Phase == DownloadJobPhase.Building) d.Cancel(); };
+        d.Start();
+        await d.Job;
+
+        Assert.Equal(DownloadJobPhase.Cancelled, d.Status.Phase);
+        Assert.False(_store.IsAvailable);
         Assert.True(File.Exists(Path.Combine(_store.DownloadFolder, "allCountries.zip")));
+        Assert.StartsWith("Downloaded but not built yet.", d.IdleStatus().Text);
+    }
+
+    [Theory(Timeout = 30_000)]
+    [InlineData(HttpStatusCode.PartialContent)]    // a 206 from the wrong offset
+    [InlineData(HttpStatusCode.RequestedRangeNotSatisfiable)] // a 416 that disagrees about the size
+    public async Task A_resume_answer_that_is_not_the_tail_is_dropped_unread_and_the_download_starts_over(HttpStatusCode answer)
+    {
+        WritePartial(half: true, etag: FakeServer.ZipETag);
+        _server.BadResumeAnswer = answer;
+        using var d = Downloader();
+        d.Start();
+        await d.Job;
+
+        // Had the body been written as the whole file, the build would have failed on it.
+        Assert.Equal(DownloadJobPhase.Ready, d.Status.Phase);
+        Assert.True(_store.IsAvailable);
+        Assert.Equal(2, _server.ZipRequests.Count);
+        Assert.NotNull(_server.ZipRequests[0].Range);
+        Assert.Null(_server.ZipRequests[1].Range); // the retry asks for the whole file
+        Assert.Contains(_spoken, s => s == "The partial download could not be resumed; starting the download again.");
     }
 
     [Fact(Timeout = 30_000)]
@@ -199,6 +237,9 @@ public sealed class LocationDataDownloaderTests : IDisposable
         internal readonly List<HttpRequestHeaders> ZipRequests = new();
         internal TaskCompletionSource? HoldZipBody;
         internal readonly TaskCompletionSource ZipBodyStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        /// <summary>A misbehaving answer to a Range request: 206 with the tail from the wrong offset,
+        /// or 416 with an error page. A request without a Range is served normally.</summary>
+        internal HttpStatusCode? BadResumeAnswer;
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
@@ -215,6 +256,21 @@ public sealed class LocationDataDownloaderTests : IDisposable
             HttpResponseMessage response;
             var range = request.Headers.Range?.Ranges.SingleOrDefault();
             bool validatorMatches = request.Headers.IfRange?.EntityTag?.ToString() == ZipETag;
+            if (range?.From is long bad && BadResumeAnswer is { } status)
+            {
+                await Task.Yield();
+                if (status == HttpStatusCode.PartialContent)
+                {
+                    long wrong = bad + 7;
+                    var tail = new HttpResponseMessage(status) { Content = new ByteArrayContent(Zip[(int)wrong..]) };
+                    tail.Content.Headers.ContentRange = new ContentRangeHeaderValue(wrong, Zip.Length - 1, Zip.Length);
+                    tail.Headers.ETag = new EntityTagHeaderValue(ZipETag);
+                    return tail;
+                }
+                var page = new HttpResponseMessage(status) { Content = new StringContent("<html>Requested Range Not Satisfiable</html>") };
+                page.Content.Headers.ContentRange = new ContentRangeHeaderValue(Zip.Length);
+                return page;
+            }
             if (range?.From is long from && validatorMatches)
             {
                 response = new HttpResponseMessage(HttpStatusCode.PartialContent) { Content = new ByteArrayContent(Zip[(int)from..]) };

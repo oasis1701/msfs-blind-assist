@@ -187,6 +187,7 @@ internal sealed class LocationDataDownloader : IDisposable
     private async Task RunAsync(CancellationToken ct)
     {
         bool update = _store.IsAvailable;
+        bool building = false;
         try
         {
             Directory.CreateDirectory(_store.DownloadFolder);
@@ -205,6 +206,7 @@ internal sealed class LocationDataDownloader : IDisposable
             CheckSpace(DiskSpaceRequirement.BeforeBuild());
             Say("Download finished. Building location data; this takes about a minute.", immediate: false);
             SetStatus(new DownloadStatus(DownloadJobPhase.Building, "Building location data: 0 percent", 0));
+            building = true;
             var info = await RunBuildAsync(inputs, ct).ConfigureAwait(false);
 
             DeleteDownloads();
@@ -233,6 +235,11 @@ internal sealed class LocationDataDownloader : IDisposable
         }
         catch (Exception ex)
         {
+            // A whole dump is kept for the next press after a cancel, a full disk or a lost
+            // connection. Not after the build's own checks rejected it (no allCountries.txt, ended
+            // early, a CRC mismatch, below the row floors): kept, it would fail the same way on
+            // every press for three days, with no way out a pilot can find.
+            if (building && ex is InvalidDataException) DiscardDump();
             string reason = ex switch
             {
                 LocationDownloadException lde => lde.Message,
@@ -388,6 +395,16 @@ internal sealed class LocationDataDownloader : IDisposable
                     case ResumeOutcome.Fail:
                         response.EnsureSuccessStatusCode();
                         throw new HttpRequestException($"HTTP {(int)response.StatusCode}", null, response.StatusCode);
+                    case ResumeOutcome.DiscardPartial:
+                        // A 206 from the wrong offset or a 416 that disagrees about the size: only a
+                        // 200 carries the whole file, so none of this body is written. The partial
+                        // file goes and the next request, with no Range, gets a 200 or a plain error.
+                        Log.Warn("LocationData", $"HTTP {(int)response.StatusCode} does not continue the partial file; starting over");
+                        Say("The partial download could not be resumed; starting the download again.", immediate: false);
+                        LocationDataStore.DeleteQuietly(part);
+                        LocationDataStore.DeleteQuietly(sidecar);
+                        meta = null;
+                        continue;
                     case ResumeOutcome.Fresh:
                     case ResumeOutcome.RestartChanged:
                         if (outcome == ResumeOutcome.RestartChanged)
@@ -522,6 +539,14 @@ internal sealed class LocationDataDownloader : IDisposable
         };
         thread.Start();
         return done.Task;
+    }
+
+    /// <summary>Removes a whole dump (and its validator) the build rejected, so the next press
+    /// downloads afresh instead of rebuilding the same damaged file.</summary>
+    private void DiscardDump()
+    {
+        LocationDataStore.DeleteQuietly(ZipPath);
+        LocationDataStore.DeleteQuietly(ZipPath + ".json");
     }
 
     private void DeleteDownloads()

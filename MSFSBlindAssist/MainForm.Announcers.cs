@@ -2906,9 +2906,9 @@ public partial class MainForm
 
     /// <summary>
     /// Output > C and the periodic nearest-place timer, answered from the offline location data
-    /// (Settings → GeoNames) in milliseconds: "Over Chesapeake Bay, coast 5.2 miles west. Near
-    /// Dares Beach, …" over water, the familiar "Near …" sentence over land (with the coast
-    /// within 50 miles). The wording is <c>LocationPhrases.NearestCitySentence</c>'s alone.
+    /// (Settings → GeoNames) in milliseconds: "Over Chesapeake Bay, nearest land 5.2 miles west.
+    /// Near Dares Beach, …" over water, the familiar "Near …" sentence over land (with the named
+    /// coast within the Coast Range). The wording is <c>LocationPhrases.NearestCitySentence</c>'s alone.
     /// A press without the data says so; the timer stays silent rather than nag every interval.
     /// </summary>
     private void AnnounceNearestCity(bool userInitiated)
