@@ -138,3 +138,35 @@ test('Entering a waypoint in a pick list selects the matching option instead of 
   assert.strictEqual(clicked.join(','), 'ELB');
   assert.strictEqual(typed.join(','), '88,89,90,13');
 });
+
+// A fixed-value list (DropdownMenu with neither keyboardEntryAllowed nor freeTextAllowed) ignores
+// typed keys and ENTER since #10929 and stays open: nothing was set, and the MFD says nothing, so
+// sendToField reports "nomatch" for the window to speak. A list that takes typing closes on ENTER.
+function pickListHarness(acceptsTyping) {
+  const { window, A } = loadFixture('wind_crz');
+  const root = window.document.body.firstElementChild;
+  const combo = Array.from(A.enumerateLines(root)).find((e) => /^CRZ WIND AT/.test(e.text));
+  const outer = window.document.querySelector('.mfd-dropdown-outer');
+  const menu = outer.parentElement.querySelector('.mfd-dropdown-menu');
+  // FBW's DropdownMenu: a click on the outer toggles the list; ENTER in the field closes it
+  // only when the list takes typing.
+  outer.addEventListener('click', () => { menu.style.display = menu.style.display === 'none' ? 'block' : 'none'; });
+  if (acceptsTyping) {
+    outer.querySelector('.mfd-input-field-text-input').addEventListener('keypress', (ev) => {
+      if (ev.keyCode === 13) menu.style.display = 'none';
+    });
+  }
+  return { A, combo, menu };
+}
+
+test('A fixed-value pick list that ignores a typed value reports nomatch and is closed again', () => {
+  const { A, combo, menu } = pickListHarness(false);
+  assert.strictEqual(A.sendToField(combo.idx, 'XYZ'), 'nomatch');
+  assert.strictEqual(menu.style.display, 'none', 'the list was left open over the page');
+});
+
+test('A pick list that takes typing reports ok', () => {
+  const { A, combo, menu } = pickListHarness(true);
+  assert.strictEqual(A.sendToField(combo.idx, 'XYZ'), 'ok');
+  assert.strictEqual(menu.style.display, 'none');
+});

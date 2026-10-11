@@ -38,7 +38,8 @@ namespace MSFSBlindAssist.Forms.FBWA380;
 /// changes are announced without the user having to refocus.
 ///
 /// State pushes consumed: fbwa380_mcdu_screen (title + footer),
-/// fbwa380_mcdu_elements (the numbered list), fbwa380_mcdu_connected.
+/// fbwa380_mcdu_elements (the numbered list), fbwa380_mcdu_connected,
+/// fbwa380_mcdu_field_result (an entry the MFD refused: "Not in list").
 /// Commands sent: navigate, type_key, key_prev_page/key_next_page,
 /// select_mcdu, get_mcdu_elements, click_mcdu_element, send_scratchpad,
 /// send_to_field.
@@ -424,7 +425,25 @@ public class FBWA380MCDUForm : Form
         }
         if (e.Type == StateTypeScreen)   { HandleScreenPush(e); return; }
         if (e.Type == StateTypeElements) { HandleElementsPush(e); return; }
+        if (e.Type == CoherentDebuggerClient.StateTypeFieldResult)
+        {
+            string? phrase = FieldResultPhrase(e.Data.TryGetValue("result", out var r) ? r ?? "" : "");
+            if (phrase != null) SafeBeginInvoke(() => _announcer.Announce(phrase));
+        }
     }
+
+    /// <summary>
+    /// What to say when the MFD agent refuses an entry (sendToField's verdict), or null. The
+    /// window has already spoken the typed text as it sent it; this says it set nothing. A
+    /// fixed-value pick list ignores typed text (FBW #10929) and the MFD shows no message for
+    /// it; a list that takes typing shows ENTRY NOT IN LIST in its footer, read as usual.
+    /// </summary>
+    internal static string? FieldResultPhrase(string result) => result switch
+    {
+        "nomatch" => "Not in list",
+        "inactive" => "Unavailable",
+        _ => null
+    };
 
     private void HandleScreenPush(EFBStateUpdateEventArgs e)
     {

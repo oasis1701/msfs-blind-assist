@@ -52,6 +52,12 @@ namespace MSFSBlindAssist.SimConnect
         public event EventHandler<EFBStateUpdateEventArgs>? StateUpdated;
         public event Action<string>? Error;
 
+        /// <summary>State push: the agent refused a field entry; Data["result"] is its verdict.</summary>
+        public const string StateTypeFieldResult = "fbwa380_mcdu_field_result";
+
+        /// <summary>A sendToField verdict the window should hear: the entry set nothing.</summary>
+        internal static bool IsFieldRefusal(string result) => result is "nomatch" or "inactive";
+
         private readonly SynchronizationContext? _syncContext;
         private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(4) };
         private readonly SemaphoreSlim _sendLock = new(1, 1);
@@ -137,12 +143,20 @@ namespace MSFSBlindAssist.SimConnect
         public void EnqueueCommand(string command, Dictionary<string, string>? payload = null)
         {
             // Translate the form's command vocabulary into an agent call and
-            // fire it (fire-and-forget; the next poll reflects the result).
+            // fire it (fire-and-forget; the next poll reflects the result). A field
+            // entry the agent refuses is pushed back: the poll cannot show it, since a
+            // fixed-value list that ignores typed text changes nothing on the page.
             string? expr = BuildCommandExpression(command, payload);
             if (expr == null) return;
+            bool reportsRefusal = command == "send_to_field";
             _ = Task.Run(async () =>
             {
-                try { await EvalAsync(expr); }
+                try
+                {
+                    string result = await EvalAsync(expr);
+                    if (reportsRefusal && IsFieldRefusal(result))
+                        Raise(StateTypeFieldResult, new Dictionary<string, string> { ["result"] = result });
+                }
                 catch { /* a dropped command self-heals on the next poll */ }
             });
         }

@@ -11,7 +11,7 @@
 //   __MSFSBA_A380.scrape(mcduIndex)            -> JSON string (see below)
 //   __MSFSBA_A380.setMcdu(n)                   -> "" (1=Capt, 2=FO)
 //   __MSFSBA_A380.clickElement(index)          -> "ok"|"missing"
-//   __MSFSBA_A380.sendToField(index, text)     -> "ok"|"missing"
+//   __MSFSBA_A380.sendToField(index, text)     -> "ok"|"missing"|"inactive"|"noinput"|"nomatch"
 //   __MSFSBA_A380.sendScratchpad(text)         -> "ok"
 //   __MSFSBA_A380.fireKey(key)                 -> "ok"     (KCCU key name)
 //   __MSFSBA_A380.ping()                       -> "MSFSBA_A380_OK"
@@ -2095,8 +2095,9 @@
       if (isClear) A.clearFocusedField(span);       // backspace + ENTER (clears, closes)
       else A.typeIntoField(span, newValue, true);   // type + ENTER (commits, closes)
       // A fixed-value list ignores typed keys and ENTER since #10929, leaving itself open
-      // over the page: close it.
-      if (A.dropdownIsOpen(dd)) A.clickNode(dd);
+      // over the page, and nothing was set (the value matched no option, or it would have
+      // been clicked above): close it and say so, since the MFD itself says nothing.
+      if (A.dropdownIsOpen(dd)) { A.clickNode(dd); return isClear ? "ok" : "nomatch"; }
       return "ok";
     }
 
