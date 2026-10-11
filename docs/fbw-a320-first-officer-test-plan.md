@@ -11,7 +11,7 @@ suppressed-announcer guard so the FO's own step narration stays the single voice
 automated test project (SimConnect/UI app), so the repo owner verifies the sections below against
 a live sim (MSFS 2020 or 2024) with the FlyByWire A32NX loaded.
 
-Open the window from **Tools → "FlyByWire A32NX First Officer"**. The window has two tabs:
+Open the window from **File → "FlyByWire A32NX First Officer"**. The window has two tabs:
 **Flows** and **Checklists** — the same shared `FirstOfficerForm<TExec,TState>` UI as the PMDG
 777/737, Fenix, and A380 windows.
 
@@ -69,7 +69,7 @@ system is also silently wrong:
 
 ## Part A — Window & gating
 
-1. Load the FlyByWire A32NX. Confirm **Tools → "FlyByWire A32NX First Officer"** appears. (First
+1. Load the FlyByWire A32NX. Confirm **File → "FlyByWire A32NX First Officer"** appears. (First
    Officer automation settings live in **File → Settings… → First Officer**, a tab visible for
    every aircraft.)
 2. Open the window — confirm it has exactly two tabs, **Flows** and **Checklists**, matching the

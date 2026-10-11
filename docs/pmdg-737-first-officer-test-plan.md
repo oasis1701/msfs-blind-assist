@@ -6,7 +6,7 @@ The pure logic has an xUnit suite (`tests/MSFSBlindAssist.Tests`, run by CI), bu
 SimConnect/UI paths cannot be unit-tested, so the repo owner verifies the two halves below
 against a live sim (MSFS 2020 or 2024).
 
-Open the window from **Tools → "PMDG 737 First Officer"** (above the 777 item) while the
+Open the window from **File → "PMDG 737 First Officer"** (above the 777 item) while the
 PMDG 737-800 is loaded. The window has two tabs: **Flows** and **Checklists**.
 
 ---

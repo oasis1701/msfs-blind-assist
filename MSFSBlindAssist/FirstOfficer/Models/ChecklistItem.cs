@@ -265,7 +265,8 @@ public class ChecklistItem<TExec, TState>
     /// "QNH 1013"), spoken after the label when the pilot ticks it and shown on the status
     /// line. Null, or a null/blank result, leaves both texts exactly as they are without it.
     /// Never used for the tree node text, so a changing value never makes the screen reader
-    /// re-read a line. A320-family read-backs set it (Airbus prints a blank there).
+    /// re-read a line. Airbus read-backs set it on lines where the card leaves a blank and the First
+    /// Officer reads the value: the A320 family's (FOA-8) and the FlyByWire A380's (FOA-9).
     /// </summary>
     public Func<TState, string?>? LiveValue { get; set; }
 

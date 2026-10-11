@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using MSFSBlindAssist.FirstOfficer;          // PMDG777*Definitions
@@ -15,10 +14,9 @@ using IFly737 = MSFSBlindAssist.FirstOfficer.IFly737;
 namespace MSFSBlindAssist.Tests.FirstOfficer;
 
 /// <summary>
-/// Cross-profile structural invariants for the 2026-07-13 checklist refinements:
-/// the uniform Before Start tail (ACARS → pushback/start clearance), the A380's
-/// before-the-line separator, and the A320 family's Airbus-card read-backs (no line markers,
-/// no Before/After Takeoff list).
+/// Cross-profile structural invariants for the checklist refinements: the uniform Before Start tail
+/// (ACARS → pushback/start clearance), and the Airbus read-backs: the A320 family's card (FOA-8) and the
+/// FBW A380's own ECL (FOA-9), with no line markers and no Before/After Takeoff list.
 /// Pure-logic over the data-driven Build() methods — the automated safety net.
 /// </summary>
 public class FoChecklistRefinementTests
@@ -62,15 +60,6 @@ public class FoChecklistRefinementTests
         Assert.Equal(FlowStepActionType.CaptainReminder, steps[^1].Type);
     }
 
-    private static void AssertHasLineSeparator<TExec, TState>(
-        IEnumerable<ChecklistGroup<TExec, TState>> groups, string groupId)
-        where TExec : IFoActionExecutor where TState : IFoStateEvaluator
-    {
-        var items = GroupItems(groups, groupId);
-        Assert.Contains(items, i => i.Type == ChecklistItemType.Informational
-            && i.Label.Contains("line", StringComparison.OrdinalIgnoreCase));
-    }
-
     // ---- Task 3: uniform Before Start tail across the fleet (five PMDG/FBW jets +
     //      the iFly 737 MAX8, added in the iFly First Officer profile task) ----
     [Fact] public void Fenix_BeforeStartTail()
@@ -105,10 +94,6 @@ public class FoChecklistRefinementTests
     { AssertBeforeStartTail(Md11.Md11FoChecklistDefinitions.Build());
       AssertBeforeStartFlowTail(Md11.Md11FoFlowDefinitions.Build()); }
 
-    // ---- Task 2: Airbus before/after-the-line separators (the A380 keeps its own card) ----
-    [Fact] public void A380_BeforeStartCL_HasLine()
-        => AssertHasLineSeparator(A380.FbwA380ChecklistDefinitions.Build(), "BEFORE_START_CL");
-
     // ---- A320 family follows the Nov 2021 Airbus card: no line markers, no Before/After Takeoff read-backs ----
     [Fact] public void A320_Readbacks_FollowTheAirbusCard()
     {
@@ -124,6 +109,17 @@ public class FoChecklistRefinementTests
             Assert.All(list.Where(g => g.Id.EndsWith("_CL")),
                 g => Assert.DoesNotContain(MSFSBlindAssist.FirstOfficer.Models.ChecklistItemType.Informational, g.Items));
         }
+    }
+
+    // ---- the FBW A380 follows its own ECL (FOA-9): no Before/After Takeoff, After Landing or Departure
+    //      Change read-back, and no line markers ----
+    [Fact] public void A380_Readbacks_FollowTheEcl()
+    {
+        var groups = A380.FbwA380ChecklistDefinitions.Build();
+        Assert.DoesNotContain(groups, g => g.Id is "BEFORE_TAKEOFF_CL" or "AFTER_TAKEOFF_CL"
+            or "AFTER_LANDING_CL" or "DEPARTURE_CHANGE_CL");
+        Assert.All(groups.Where(g => g.Id.EndsWith("_CL")),
+            g => Assert.DoesNotContain(g.Items, i => i.Type == ChecklistItemType.Informational));
     }
 
     // ---- guardrail: the Airbus *_CL read-back groups stay action-free (FO-3) ----
