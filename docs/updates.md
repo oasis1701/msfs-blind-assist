@@ -1,7 +1,8 @@
 # Updates and release channels
 
-MSFS Blind Assist can update itself from GitHub. **Settings → Updates** controls two
-things: which builds it offers, and whether it looks for them on its own.
+MSFS Blind Assist can update itself from GitHub. **Settings → Updates** controls which
+builds it offers and whether it looks for them on its own, and whether the app offers
+missing data (the navigation database, the location data) when it starts.
 
 ## The two channels
 
@@ -25,6 +26,22 @@ unreachable). Only **Application → Check for Updates** reports those out loud.
 When an update is found the app announces it and opens the update window. It will do this
 at every launch while an update is outstanding; turn the checkbox off if you would rather
 look on your own.
+
+## Checking for missing data
+
+*Check for missing data when the app starts* is on by default (UPD-9). At launch, before the
+update check, it opens **Set up MSFS Blind Assist** when the navigation database is not built
+for either simulator, or the location data for Output C and Location Info is not downloaded
+or needs an update. The window opens on a read-only box listing only what is missing, then:
+
+- **Download location data** (or **Update location data**) starts the download in the
+  background, as the GeoNames tab does. If the navigation database is missing too, the window
+  stays open on its button.
+- **Build navigation database** closes the window and opens Database Settings.
+- **Not now** (Escape) closes it.
+
+It appears at every launch while something is missing; a dismissal is never remembered. Turn
+the checkbox off to stop it (`Services/StartupDataCheck.cs`, `Forms/StartupDataDialog.cs`).
 
 ## Going back to a release build
 

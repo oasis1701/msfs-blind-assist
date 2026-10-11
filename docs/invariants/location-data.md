@@ -4,7 +4,7 @@ Each section is the complete text of one rule. Its one-line form, under the same
 
 ## LOC-1
 
-- Output C and Location Info answer only from the local database (`OfflineLocationService`); the one piece of network code is `LocationDataDownloader`, run from the GeoNames tab. Never add an online lookup at key-press time. → [location-data.md](../location-data.md)
+- Output C and Location Info answer only from the local database (`OfflineLocationService`); the one piece of network code is `LocationDataDownloader`, started only by the pilot (GeoNames tab, startup data check). Never add an online lookup at key-press time. → [location-data.md](../location-data.md)
 
 Why. Until 2026-10 both features called the free GeoNames web service. One press sent 40 requests in six back-to-back waits, each with a 10 s timeout; on the owner's flights of 2026-10-08 and 2026-10-09 the server answered `canceling statement due to statement timeout` or not at all, and C stayed silent for 60 s. Each press also cost about 143 of the account's 1,000 hourly credits. The local database answers in 5 to 25 ms with no account, and the data it holds never changes during a flight. The downloader is the only code that may reach the network, and only when the pilot asks for it in Settings.
 

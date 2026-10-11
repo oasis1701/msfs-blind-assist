@@ -52,7 +52,8 @@ the undersea class, stored for later use. The finished database is about 330 MB 
 
 ## Downloading and building
 
-`LocationDataDownloader` (owned by MainForm, started from `GeoNamesPanel`):
+`LocationDataDownloader` (owned by MainForm, started from `GeoNamesPanel` or, at launch while the
+data is missing, from the startup data check's `StartupDataDialog`, UPD-9):
 
 1. Checks free disk space (the peak is about 1.5 GB: the 400 MB download, a 370 MB staging file
    and the 330 MB result; an update's old database is already on disk). Says "Downloading location

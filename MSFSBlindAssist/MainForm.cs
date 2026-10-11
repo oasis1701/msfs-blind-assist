@@ -554,15 +554,18 @@ public partial class MainForm : Form
 
     /// <summary>
     /// Fires once, the first time the window is displayed. The bool is belt and braces:
-    /// Shown is documented as first-display only, and a second update check would be
-    /// harmless but pointless.
+    /// Shown is documented as first-display only, and a second round of startup checks would
+    /// be pointless.
     /// </summary>
-    private bool _startupUpdateCheckDone;
+    private bool _startupChecksDone;
 
     private void MainForm_Shown(object? sender, EventArgs e)
     {
-        if (_startupUpdateCheckDone) return;
-        _startupUpdateCheckDone = true;
+        if (_startupChecksDone) return;
+        _startupChecksDone = true;
+
+        // First, and it waits for the pilot, so the update dialog never stacks on it (UPD-9).
+        OfferMissingData();
 
         if (!SettingsManager.Current.CheckForUpdatesOnStartup) return;
 
@@ -583,6 +586,35 @@ public partial class MainForm : Form
         // Deliberately not awaited: startup must not wait on a network round-trip.
         // RunUpdateCheckAsync swallows everything when userInitiated is false.
         _ = RunUpdateCheckAsync(userInitiated: false);
+    }
+
+    /// <summary>
+    /// The startup data check (UPD-9): offers the navigation database and the location data while
+    /// either is missing, on every launch, silenced only by its setting; a dismissal is never
+    /// remembered. A navigation database for either simulator counts: connecting switches between them.
+    /// </summary>
+    private void OfferMissingData()
+    {
+        try
+        {
+            var needs = StartupDataCheck.Find(
+                SettingsManager.Current.CheckForMissingDataOnStartup,
+                NavdataReaderBuilder.DatabaseExists("FS2020") || NavdataReaderBuilder.DatabaseExists("FS2024"),
+                offlineLocationService.IsAvailable, offlineLocationService.NeedsUpdate, offlineLocationService.ReadyAtNextStart);
+            if (!needs.Any) return;
+
+            bool build;
+            using (var dialog = new StartupDataDialog(needs, locationDataDownloader.Start))
+            {
+                dialog.ShowDialog(this);
+                build = dialog.BuildNavigationDatabaseChosen;
+            }
+            if (build) DatabaseSettingsMenuItem_Click(null, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("MainForm", $"Startup data check failed: {ex.Message}");
+        }
     }
 
     private void InitializeManagers()

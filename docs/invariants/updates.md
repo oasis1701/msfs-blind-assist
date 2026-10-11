@@ -34,3 +34,9 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 ## UPD-8
 
 - The rolling preview's version travels in the release NAME (`Preview build <version>`), never the tag — the tag is the fixed string `preview` so the release can be updated in place, and a fixed tag cannot carry a changing version. `UpdateCandidateSelector.ResolveVersion` falls back from tag to name; reading only the tag made every preview an unparseable candidate and left the Preview channel permanently reporting "you are running the latest version". → [updates.md](../updates.md)
+
+## UPD-9
+
+- The startup data check (`StartupDataCheck`) shows its dialog on EVERY launch while the navigation database or location data is missing, silenced only by the Updates tab's "Check for missing data when the app starts"; never remember a dismissal, and run it before the update check so the two dialogs never stack. → [updates.md](../updates.md)
+
+Why. Nothing told a new pilot that the navigation database and the location data exist until a feature needing them was pressed, often after take-off: "Configure database from File menu first", "Location data not downloaded" (the owner's request, 2026-10-11). The dialog offers only what is missing: the navigation database when none is built for either simulator (connecting switches between them, so one built is enough), and the location data when it is not downloaded or was built for an older version, never while a verified build waits for the next start. It follows the update check's precedent and Robin's rule of 2026-08-09: a recurring prompt is governed by exactly one visible setting and behaves the same every launch. A remembered dismissal is a second, invisible setting the pilot cannot see or reason about. `MainForm_Shown` runs it before the update check, and the dialog is modal, so the update window can never open on top of it.
