@@ -60,6 +60,17 @@ public static class DatabasePathResolver
     }
 
     /// <summary>
+    /// The offline location database (GeoNames + Natural Earth) that Output C and Location
+    /// Info read: %APPDATA%\MSFSBlindAssist\databases\location-data.sqlite. One file for both
+    /// simulators, so no legacy FBWBA fallback (it never existed there). Its build files
+    /// (.staging, .building, .ready) and the download folder sit beside it.
+    /// </summary>
+    public static string GetLocationDataPath()
+    {
+        return Path.Combine(GetDatabasesFolder(CanonicalFolderName), "location-data.sqlite");
+    }
+
+    /// <summary>
     /// Resolves the path to an *existing* database file.
     ///
     /// Checks the canonical location first; if missing there, falls back to

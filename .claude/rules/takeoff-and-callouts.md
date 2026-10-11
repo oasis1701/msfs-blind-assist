@@ -14,6 +14,8 @@ paths:
   - "MSFSBlindAssist/Services/TakeoffRollCallouts.cs"
   - "MSFSBlindAssist/Services/UnusualAttitudeMonitor.cs"
   - "tests/MSFSBlindAssist.Tests/**/*UnusualAttitude*.cs"
+  - "MSFSBlindAssist/Forms/RunwayTeleportForm.cs"
+  - "MSFSBlindAssist/MainForm.Announcers.cs"
 ---
 # Takeoff assist and flight callouts rules
 

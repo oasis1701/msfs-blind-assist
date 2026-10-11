@@ -1,0 +1,174 @@
+# Stand lists and names: GSX merge, concourse letters, the parking reader and caches — rules in full
+
+Each section is the complete text of one rule. Its one-line form, under the same ID, is in `.claude/rules/gsx-stands.md`, which Claude Code loads when it reads matching code. Background: [gsx.md](../gsx.md).
+The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" pointer is the original's. Cross-references such as "the bullet below", "above" or "under Core" point at CLAUDE.md's old single list, whose rules now live in several files: search `docs/invariants/` for the rule's key name to find it.
+
+## DCK-2
+
+- `GsxNavdataMerger` must never cross-concourse-borrow coordinates — a navdata candidate may only donate coordinates when its normalized concourse matches the GSX gate's; otherwise drop the spot (a mislabeled coordinate on another pier is worse than omission). → [gsx.md](../gsx.md)
+
+Moved 2026-10-10 from gsx-stands-docking.md (split for the rule budget).
+
+## DCK-6
+
+- Two file-parsing paths deliberately SURVIVED the Remote API move and are NOT version floors — no GSX update retires either: (1) the `.ini`/navdata gate LIST, because `handlerData.airport` only ever describes the airport GSX has LOADED while `TaxiAssistForm`/`GateTeleportForm` both accept a typed remote ICAO (`GateDataSource` takes the API path only when the `handlerData` capability is advertised AND `handlerData.airport.icao` equals the requested ICAO); and (2) the `.py`/`.ini` stop-offset chain, because the API cannot supply the docking stop at all — see the "Remote API does NOT publish the docking stop position" bullet at the end of this group. → [gsx.md](../gsx.md)
+
+Moved 2026-10-10 from gsx-stands-docking.md (split for the rule budget).
+
+## DCK-7
+
+- `ParkingSpot.GsxIdentifier` is populated ONLY by `GsxRemoteParkingReader`, so a gate list served from the `.ini`/navdata fallback cannot be auto-selected — `gate.select` degrades to `BadArgs`, i.e. to manual selection, which is the pre-existing baseline and the intended degradation. `ParkingSpot.Radius` is FEET on a navdata spot and METRES on a GSX one — convert by `Source`, never assume. → [gsx.md](../gsx.md)
+
+Moved 2026-10-10 from gsx-stands-docking.md (split for the rule budget).
+
+## DCK-8
+
+- `ParkingSpot.Name` is the CONCOURSE LETTER on every path, GSX Remote API included — NEVER terminal prose. GSX's `uiTerminalName` belongs in `ParkingSpot.TerminalName`, which `Describe()` renders after the type (i.e. after the first spaced dash, the boundary `SayIntentionsClearanceParser.NormalizeParkingName` cuts at) and before the Jetway/VDGS notes — but ONLY when it DISAMBIGUATES (`TerminalNameDisambiguates`, set by `GsxTerminalDisambiguator.Mark` at the end of `GateDataSource`'s Remote API path for the stands whose letter+number+suffix another stand STILL shares after lettering), and stripped of its size-hint tail by `ParkingSpot.SpeakableTerminalName`. `uiTerminalName` is the profile author's SECTION HEADER, not always a terminal: at KJFK "Terminal 4 - Concourse B" (five stands share "Gate 2", so it is essential), at EHAM "A-Platform =< Medium " / "K/M-Platform buffer overflow (TD) N/A " — rendered on a UNIQUE stand that read "A 42 - Gate Small, A-Platform =< Medium" ("equals less than") for no information (live EHAM 2026-08-15). Terminal prose in `Name` broke three consumers at once: `GateAliasResolver` (`StandId.Parse` rejects it, so EVERY online alias candidate was dropped), SayIntentions' assigned-gate resolution — which then falls through its whole chain to the ARRIVAL RUNWAY — and MainForm's parked-at-the-right-stand check. The terminal must still reach the LABEL for a COLLIDING stand, though: `uiGateName` alone names five different KJFK stands and the dropdown de-duplicates by label text, so four of five would be unreachable. Split the identity with `StandId.Parse`, the shared canonical parse, never a local regex. → [gsx.md](../gsx.md)
+
+Moved 2026-10-10 from gsx-stands-docking.md (split for the rule budget).
+
+## DCK-9
+
+- Stating that convention does NOT populate it: `uiGateName` usually carries no letter (KJFK: 9 of 231 stands do, 91 carry it only in `uiTerminalName`, 131 have none anywhere), so `GsxConcourseLetterFiller` BORROWS it and `GateDataSource` runs it right after the reader. Without it the 91 render as "25" while SayIntentions asks for "B25", and that lands on the ARRIVAL RUNWAY exactly like terminal-prose-in-`Name` did. The borrow is NAME-ONLY (never the coordinates/heading/radius/stop — that is why it is not a `GsxNavdataMerger` call), never overwrites a letter GSX did supply, and a stand left letterless is a CORRECT answer — `Name = ""` must stay a supported shape (131 KJFK stands, all of ENGM). → [gsx.md](../gsx.md)
+
+Moved 2026-10-10 from gsx-stands-docking.md (split for the rule budget).
+
+## DCK-10
+
+- The two letter sources are ordered `uiTerminalName`'s "Concourse X" wording FIRST, navdata second, and that order is MEASURED — never flip it back on general "navdata is authoritative" grounds. Across all 222 letterless KJFK stands joined to real fs2024 navdata the two DISAGREE on 46 (32 agree, 52 navdata-only, 13 terminal-only, 79 letterless), and GSX is right every sampled time: navdata calls T4's "Gate 25" concourse A, but KJFK T4 is Concourse A (A2-A7) + Concourse B (B20-B41), so it is B25 — what ATC and SI say. Navdata's letter is the BGL parking-name enum (`GATE_A`…`GATE_Z` → `MapParkingName`), i.e. whatever the scenery author set, so navdata is authoritative for stand GEOMETRY and demonstrably NOT for the concourse letter — a measured exception, not a contradiction. Navdata still decides wherever the terminal names no concourse: position AND number must agree inside a measured 10 m (closest two KJFK stands 21.2 m; closest same-number/different-letter pair 227.4 m), and two in-range navdata stands disagreeing are REFUSED, never arbitrated. Never widen the radius or the "Concourse" wording to "improve" recall — leading with GSX prose can already invent a letter at an airport that letters concourses but not gates, and the filter's strictness is the only mitigation. → [gsx.md](../gsx.md)
+
+Moved 2026-10-10 from gsx-stands-docking.md (split for the rule budget).
+
+## DCK-11
+
+- A heading from the Remote API must be normalized to 0-360 through the SAME `GsxProfileParser.NormalizeHeading` the `.ini` path uses — GSX publishes SIGNED headings (122/231 in the KJFK capture, 37/68 live at ENGM) and the number is SPOKEN ("gate heading -120"), which a pilot cannot reconcile with a heading indicator. `double.NaN` must pass through UNCHANGED: it is the "GSX published no heading" sentinel `HasUsableHeading` tests for. → [gsx.md](../gsx.md)
+
+Moved 2026-10-10 from gsx-stands-docking.md (split for the rule budget).
+
+## DCK-12
+
+- Deice pads live in `handlerData.airport.deIceAreas`, NOT in `handlerData.airport.parkings` (live ENGM: 9 pads in their own collection; the distinct `uiType` values across all 99 parkings contain no pad) — so `GsxRemoteParkingReader` needs NO deice exclusion and cannot leak a pad into the gate list. `GetDeiceAreas` stays on the `.ini`'s `is_deicearea` key because nothing has wired `deIceAreas` up yet, NOT because the API can't tell a pad from a stand. → [gsx.md](../gsx.md)
+
+Moved 2026-10-10 from gsx-stands-docking.md (split for the rule budget).
+
+## DCK-13
+
+- **Never mutate a list handed back by `GateDataSource`/`ParkingSpotSource.GetSelectableGates`** (`.Clear()`, `.Remove`, `.Sort`) — it is the SAME instance `GateDataSource` holds in its per-ICAO caches, as `ParkingSpotSource`'s own doc says. `GateTeleportForm.ClearGatesAndParking` cleared it in place, emptying GSX's cached gate list, and the retyped ICAO then hit that cache and reported "No gates or parking found" for the rest of the dialog's life — slipping past `TryBuildGatesFromRemoteApi`'s deliberate refusal to CACHE an empty list, which sits after the cache-hit early return. Drop the reference instead. → [gsx.md](../gsx.md)
+
+Moved 2026-10-10 from gsx-stands-docking.md (split for the rule budget).
+
+## DCK-14
+
+- **Any cache holding STAND NAMES must be keyed on `GateDataSource.GetGateListVersion`'s token as well as the ICAO, compared through `ShouldRebuildGateList`** (which rebuilds on an upgrade/refresh and never on the downgrade a transient GSX drop causes). Names are frozen into a `TaxiGraph`'s nodes at build time, so a graph built before GSX published the airport keeps navdata's concourse letters forever: `TaxiAssistForm._graph` (its same-ICAO early return matched for the whole session) and `TaxiGuidanceManager._whereAmICachedGraph` (whose only invalidations are the online taxiway-name fetch and `ClearWhereAmICache`, which at the time had no production caller at all — a database switch calls it now, for the runway-shape memo that rides on the same pair, so a switch is no longer among the gaps here) both said "Gate A 25" while the destination combo and the TCAS label said "B 25" — the one-stand-two-names defect `ParkingSpotSource` exists to remove. → [gsx.md](../gsx.md)
+
+Moved 2026-10-10 from gsx-stands-docking.md (split for the rule budget).
+
+## DCK-15
+
+- **A DATABASE switch is invalidated by CLOSING the window, not by a cache clear** — `RefreshDatabaseProvider` closes `tcasForm` alongside `electronicFlightBagForm` because `GateResolver` captures its provider in a `readonly` field at construction. `GateResolver.ClearCache()` has no production caller and could not fix a database switch even if it did (it clears the spot cache and never touches the provider); the gate-list token does not move on a database switch either. → [gsx.md](../gsx.md)
+
+Moved 2026-10-10 from gsx-stands-docking.md (split for the rule budget).
+
+## DCK-36
+
+- A per-ICAO gate-list cache must key on `GateDataSource.GetGateListVersion(icao)` as well as the ICAO — an O(1) compare-only token (`api:{HandlerDataVersion}`/`ini`/`navdata`; never a file, DB or `GetGates`, it is compared per keystroke; not a substitute for `GetActiveSource`) — compared through `GateDataSource.ShouldRebuildGateList`, which rebuilds on an UPGRADE/refresh and NEVER on the downgrade a transient GSX drop causes. A consumer that needs ONLY the token and holds no GateDataSource of its own reads the static `GateDataSource.ComputeGateListVersion` over the same four GSX signals (MainForm's `GateListVersion`, behind both the surroundings catalog cache — asked on every position sample the passing-callout monitor handles — and the Where-Am-I graph cache), never a GateDataSource constructed per ask; `GetGateListVersion` is that same call on its own fields, so the two cannot drift. A list bound from the fallback before GSX published the airport is otherwise served identifier-less all session (`TaxiAssistForm._cachedGateSpots`, `GateResolver`). `TaxiAssistForm` re-checks it on show, at the top of Calculate, and before a SayIntentions import resolves; a chosen stand the rebuilt list no longer carries leaves NOTHING selected (never item 0) — announced QUEUED on show, an `AnnounceCalculateAbort` on Calculate. → [gsx.md](../gsx.md)
+
+Moved 2026-10-10 from gsx-stands-docking.md (split for the rule budget).
+
+## DCK-37
+
+- `GateResolver` (the TCAS "at Gate …" label) names stands through `ParkingSpotSource.GetNamedSpots` — never raw `GetParkingSpots` (two names for one stand in one session) and never `GetSelectableGates` (it names, it does not act). → [gsx.md](../gsx.md)
+
+Moved 2026-10-10 from gsx-stands-docking.md (split for the rule budget).
+
+## DCK-38
+
+- `GsxGateMapper.MapGsxTypeToNavdataType` maps `GATE_EXTRA`(GSX 15)→navdata 14 and `RAMP_GA_EXTRA`(GSX 14)→navdata 15 — the numbering is SWAPPED between the two enums; leaving them unmapped made every A380-class stand "Spot N - Unknown" on the Remote API path. → [gsx.md](../gsx.md)
+
+Moved 2026-10-10 from gsx-stands-docking.md (split for the rule budget).
+
+## DCK-40
+
+- A stand has ONE name app-wide, and it is CORRECTED IN PLACE on the navdata list — the graph's spot SET is never swapped. `Services/ParkingSpotSource` has two shapes and the difference is load-bearing: `GetSelectableGates` (GSX's own list, for anything that must ACT on a stand — it carries `GsxIdentifier`, the stop position, max wingspan, `TerminalName`) and `GetNamedSpots` (navdata's own SET — same spots, count, coordinates and order — with only the concourse letter corrected from the gate list via `GsxStandNameOverlay`, then `AugmentParking` re-run so aliases resolve against the corrected identity). Every `TaxiGraph.Build` call given parking (the next bullet carves out the builds given none) and the SayIntentions parked-at-the-right-stand check use `GetNamedSpots`; the two selection dialogs use `GetSelectableGates`. NEVER call `IAirportDataProvider.GetParkingSpots` directly to build a list a pilot can hear a stand named from — that is navdata's BGL parking-name enum, which disagrees with GSX on 46 of 222 KJFK stands (GSX right in every sampled case), and it is how an aircraft parked exactly at B25 came to be told *"Aircraft appears near A 25, not assigned gate Terminal 4 Gate B25."*. `TaxiGuidanceManager.ParkingSpotSupplier` is the seam for its three graph builds and DEFAULTS to `GetParkingSpots` so unwired callers stay byte-identical. Call it where a graph is built or a dialog opens, NEVER on a position update, and its per-ICAO caches are `ConcurrentDictionary`s since PR #238 §8a, so one instance MAY now be touched from the UI thread and a background thread at once — that was the prerequisite for moving `LandingExitForm`'s `GetNamedSpots`/`GetRunwayStarts`/`GetRunways` off the UI thread, where they ran inline while a screen-reader user was arrowing the exit combo. MainForm's supplier still builds a fresh one per call, which is now belt-and-braces rather than required. What is UNCHANGED: never MUTATE a list `GateDataSource` hands back — it is the same instance held in its cache. → [gsx.md](../gsx.md)
+
+Corrected 2026-10-08: "every `TaxiGraph.Build` bar the one runway-rows-only build" became every build given parking, as DCK-41 now names the builds given none. Evidence: `OsmPlanningGraph` in `Navigation/Briefing/OsmPlanningGraph.cs`, which calls `TaxiGraph.Build` with an empty parking list.
+
+Moved 2026-10-10 from gsx-stands-docking.md (split for the rule budget).
+
+## DCK-41
+
+- NAMING a stand and deciding WHICH NODES ARE PARKING are different jobs, and only the first may change — which is why the seam above corrects names in place instead of handing `TaxiGraph.Build` the GSX list. `Build`'s parking pass only LABELS an existing node (`FindNearestNode` within 100 m — it creates no node and moves none), and `TaxiNode.ParkingName` has four consumers inside `DescribeLocation` (readout), plus the route briefing's own-position endpoint (also a readout). But the same pass ALSO writes `node.Type = TaxiNodeType.Parking` unconditionally, and `Type` is read by `NamedHoldingPointResolver` (skips parking nodes when snapping a named holding point — a Progressive-Taxi terminator target, and a resolver whose snap radii are probe-pinned and must not be re-tuned), by `HoldShortNodeResolver`, and by the route truncation in `TaxiGuidanceManager.Routing`. So a differently-sized spot list marks a different set of nodes `Parking` and can MOVE A HOLD-SHORT — a runway-incursion surface, not a readout — and additionally strips the Where-Am-I label off any stand it omits (GSX excludes Vehicle/Fuel stands and drops the ones nothing can orient (DCK-42): 230 of KJFK's 231 survive with no navdata, all 231 once navdata fills Gate 1A). Never feed `Build` a list that is not navdata's own set. The exceptions are the builds given NO parking at all. Two are runway-rows-only `Build`s with no taxi paths — `RunwayPavement.BuildShapesFromRunwayRows` (the passing-callout runway probe's shapes) and MainForm's ground-traffic `RunwaySupplier` (the runway watch's runways when take-off assist has a runway but no route was built): only their runway centrelines are kept, and the graph is thrown away at once, never naming a stand, marking a node or placing a hold-short. The third is the route briefing's online planning graph (`OsmPlanningGraph`), a paths-bearing build that passes NO parking, so its parking pass marks nothing: its stands stay in the bundle for the stand picker only. → [taxi-guidance.md](../taxi-guidance.md)
+
+Corrected 2026-10-08: "the ONE exception" became the three builds given no parking at all: MainForm's ground-traffic `RunwaySupplier` is a second runway-rows-only build, and the briefing's `OsmPlanningGraph`, which this text already described in its last sentence, is a paths-bearing one. Evidence: the `TaxiGraph.Build` calls in `RunwayPavement.BuildShapesFromRunwayRows`, in `MainForm` (`groundTrafficMonitor.RunwaySupplier`) and in `OsmPlanningGraph`, each passing an empty parking list.
+
+Moved 2026-10-10 from gsx-stands-docking.md (split for the rule budget).
+
+## DCK-42
+
+- GSX's Remote API publishes a stand's `heading`, `type`, `hasJetway` and `airlineCodes` only when a GSX profile section covers it. A stand no section covers arrives with position, `uiType`, `uiTerminalName`, `parkingSystem`, `gateDistanceThreshold` and `maxWingspan` 999 alone.
+- Measured:
+  - KSAN live, 2026-10-07: 75 of 79 selectable stands. The installed profile is LatinVFR's, written for a different scenery, and its 4 matching sections are exactly the 4 stands with a heading.
+  - KSFO, no profile: 208 of 208 in that day's log.
+  - The committed KATL capture: 4 of 8.
+  - KJFK (iniBuilds profile): 1 of 231 has no heading (Gate 1A), yet it is otherwise covered (`type`, a 66 m wingspan). A missing heading and a missing size are therefore separate gaps, and the filler fills each on its own.
+- Impact before the fix: `DropUnusableHeadings` left KSAN with 4 stands after touchdown and aborted the SayIntentions import of its assigned Gate 115. At KSFO the whole list fell back to navdata, without GSX identity.
+- Why navdata is the donor:
+  - All 75 KSAN stands have a same-numbered navdata stand 0.36–4.50 m away (median 2.16).
+  - Live RJAA, 2026-10-09 (stock scenery, no GSX profile): GSX published all 154 selectable stands unconfigured, and every one has a same-numbered navdata stand 0.11–5.17 m away (median 2.49), so all 154 are kept.
+  - Where both publish a heading (187 KJFK stands), they agree to a median 0.24°, max 6.68°, with no 180° flips.
+- Why the stand keeps GSX's POSITION and takes only navdata's heading. The GSX-to-navdata offset is not noise: it grows with distance from the airport reference point (correlation 0.92 at RJAA) and is the difference between converting metres from that point to degrees with a flat 111,132.954 m per degree (navdata) and with the WGS84 ellipsoid at the airport's latitude (GSX). Re-projecting navdata's position that way, with no fitted parameter, leaves a residual of median 0.36 m, max 1.01 m at RJAA (from 2.50/5.17), and median 0.24 m, max 0.44 m on the KSAN capture (from 2.17/4.51); what remains is the rounding of navdata's single-precision coordinates (up to ~0.7 m in longitude). So GSX's point is the more precise of the two, and the scale (east −0.28%, north +0.16% at RJAA) bends a heading by at most 0.13°.
+- Rules of the fill:
+  - The `.ini`'s `this_parking_pos` heading still wins (GSX's own data, joined first).
+  - It never overwrites a published value.
+  - Donors are NAVDATA rows only (`GateSource.Navdata`): the size math assumes a radius in feet (DCK-7). Every `IAirportDataProvider` returns navdata rows today; the filter keeps a future GSX-sourced row from being shrunk 3.28 times.
+  - Candidates are the rows with the spot's number within `MatchRadiusMetres`. When any carries the spot's own suffix (trimmed, case-insensitive), only those remain: a MARS parent "20" is a different, wider stand from its child "20A".
+  - The concourse letter is NOT compared: navdata's letter is wrong on 46 of 222 KJFK stands that are the same physical stand (DCK-10), so a letter test would refuse true donors.
+  - An unnumbered stand (Number 0) matches an unnumbered row, and only when exactly ONE remains after the suffix step (two unnumbered rows in range, one of them carrying the stand's own suffix, leave that one).
+  - Remaining candidates disagreeing with the NEAREST one by more than `MaxHeadingDisagreementDegrees` (10°) are refused, never arbitrated (each candidate is compared with the nearest, not pairwise).
+  - The size sets `Radius` = navdata feet × 0.3048 and `MaxWingspanMeters` = twice that. That is the fit navdata's own `FitsAircraft` gives, so the fit filter and SayIntentions' position match (SI-7) behave as on a navdata list.
+  - The filler shares `GsxConcourseLetterFiller`'s one lazy navdata read and is skipped when nothing needs it.
+  - A stand neither source can orient is still dropped.
+  - For a stand flagged `ParkingSpot.GsxUnconfigured` only, an accepted donor also lends `HasJetway` and `AirlineCodes` (DCK-44).
+- Why the suffix and the unnumbered rule (review of #271, 2026-10-09, against the fs2024 navdata: 302,258 parking rows at 22,666 airports):
+  - Every non-fuel stand with a same-numbered row within 14.5 m was simulated with GSX positions offset as measured at KSAN (median 2.16 m, max 4.50). Number-only matching: 280.6 of 337 stand-equivalents right, 53.4 refused (then dropped), 3.0 given a sibling's geometry. Own suffix first: 332.2 right, 3.3 refused, 1.5 wrong. The refusals were MARS siblings that point different ways, e.g. EGSS 15/15R (9.4 m apart, 19.7°), EIDW 411L/411T (6.8 m, 74.9°).
+  - Unnumbered stands: 2,574 non-fuel rows, mostly GA ramps. Where an airport has more than one, the nearest other one is a median 59.5 m away and never within 14.5 m. KSFO's 208 navdata stands are exactly GSX's 208, and its one unnumbered stand (Northwest parking, number 0) was dropped before this rule, though the navdata fallback had listed it.
+
+→ [gsx.md](../gsx.md)
+
+Moved 2026-10-10 from gsx-stands-docking.md (split for the rule budget).
+
+## DCK-43
+
+- `type` is absent on every unconfigured stand (live KSAN: 75 of 79, exactly the 75 without a heading), while `uiType` is present on all of them. (The committed KATL capture carries no `type` on any stand because it was trimmed when saved, so it is not evidence either way.)
+- Upper-cased with spaces as underscores, `uiType` IS the constant name the reader already maps ("Gate Medium" → `GATE_MEDIUM`). On all 231 KJFK stands it resolves to the same navdata type as `type`.
+- Without it, the recovered stands read "Spot 115 - Unknown", outside every gate category.
+- A PRESENT `type` with no matching constant falls back to `uiType` too (review of #271, 2026-10-09; pinned by `An_unmatched_type_number_falls_back_to_uiType`). It used to degrade to 0, but `uiType` is never worse: it matched `type` on all 231 KJFK stands, and an unknown `uiType` still gives 0 (`An_unmatched_type_number_with_an_unknown_uiType_is_still_unknown`). No capture has shown the case: all 325 captured entries carry the type constants.
+- Use `ToUpperInvariant`, never `ToUpper`: in tr-TR "Ramp Mil Cargo" folds to `RAMP_MİL_CARGO`.
+- `maxWingspan` 999.0 is on every selectable stand GSX sends with neither a heading nor a `type` (live KSAN 75 of 75, KATL 4 of 4) and on all 7 of KJFK's Vehicle/Fuel entries, and on no selectable stand that has a heading (KJFK's 231 top out at 90 m). Read as 499.5 m it would make every such stand fit any aircraft, so it reads as unpublished and `GsxNavdataGeometryFiller` (DCK-42) fills the real size.
+- The sentinel applies to every stand, not only unconfigured ones, and that is safe on the evidence: across the 5,030 parking sections of the 32 `.ini` profiles installed on a real machine (2026-10-09), not one lacks `maxwingspan` or sets it at 999 or more (the largest is 97 m). A profile-covered stand therefore never reaches the sentinel through its own section.
+
+→ [gsx.md](../gsx.md)
+
+Moved 2026-10-10 from gsx-stands-docking.md (split for the rule budget).
+
+## DCK-44
+
+- `ParkingSpot.GsxUnconfigured` marks a stand GSX's Remote API published with NO profile-derived field: no `heading` and no `hasJetway`. `GsxRemoteParkingReader.ReadOne` sets it from exactly that pair (`!heading.HasValue && !HasValue(p, "hasJetway")`); no other path sets it (navdata and `.ini` spots are false).
+- A JSON null counts as no value for BOTH fields (review of #271, 2026-10-09). `heading` was already read by value kind, but `hasJetway` was tested by key presence, so `"hasJetway": null` read as "configured". The live wire carries ~100 keys per parking and some are null (`stopPosition` on every one), while the committed captures are trimmed to the fields the reader reads, so they cannot show which form GSX uses for an unconfigured stand. Pinned by `A_stand_GSX_sends_with_null_heading_and_null_hasJetway_is_unconfigured`.
+- Measured on the committed captures, per selectable stand (Vehicle and Fuel excluded), by which of `heading`, `hasJetway`, `airlineCodes` and `type` GSX sent:
+
+  | Capture | Stands | None of the four | All four | Other |
+  | --- | --- | --- | --- | --- |
+  | KSAN | 79 | 75 | 4 | 0 |
+  | KATL | 8 | 4 | 0 | 4 with `heading`, `hasJetway` and `airlineCodes` (`type` was trimmed from the capture) |
+  | KJFK | 231 | 0 | 230 | 1: Gate 1A, with no `heading` but `hasJetway`, `airlineCodes` and `type` |
+
+  So "no `heading` AND no `hasJetway`" identifies exactly the stands no profile covers on all three: KSAN 75, KATL 4, KJFK 0.
+- Live RJAA, 2026-10-09 (stock scenery, no GSX profile; a read-only Remote API snapshot): each parking carries 123 keys; on all 154 selectable stands `heading`, `hasJetway`, `type` and `airlineCodes` are ABSENT, not null, `maxWingspan` is 999, `parkingSystem` "Marshaller" and `gateDistanceThreshold` 25. Some other keys are null (`stopPosition`, `exclude_radius`), which is why a null still counts as no value. RJAA publishes no unnumbered stand ("Parking 1", "Gate …"); how GSX names one (KSFO's Northwest parking 0) is still unobserved.
+- A missing heading ALONE is not the signal. KJFK's Gate 1A (Terminal 8 - Concourse B) lacks only its heading; a profile covers it, GSX published its jet-bridge flag and airline codes, and navdata must never overwrite them. Its heading is borrowed (DCK-42), nothing else.
+- Why the filler needs the flag. Without it, 53 of KSAN's 75 recovered gates read "no jetway": navdata's `has_jetway` is 1 on 53 of its 79 rows (gates 20-51 and 101-121, e.g. 115) and 0 on the GA and cargo ramps (e.g. N Parking 10), while an unconfigured GSX stand always reads `HasJetway` false. `ParkingSpot.Describe` then drops "(Jetway)" from the label and `DockingGuidanceManager` says "Door on your left" instead of "Jetway on your left". At an airport with no profile (KSFO, 208 of 208) that is a regression against the navdata list the recovered one replaces. So `GsxNavdataGeometryFiller` copies the donor's `HasJetway` (and a non-empty `AirlineCodes`) onto a flagged stand, and onto no other.
+- Why the surroundings catalog needs the flag. An unconfigured stand's `TerminalName` is not a profile author's section title but GSX's own synthesized grouping (KSAN: "Ramp" 53, "N Parking" 10, "Gate N" 6, "Gate W" 3, "E Parking" 3: 75 in all). The 4 profile-covered stands Gate N 1-4 carry the same "Gate N" header, which is why an unconfigured stand must never join a configured stand's group (pinned by `An_unconfigured_stand_never_joins_a_configured_stands_group`). Before this fix those stands never reached `GsxTerminalFeatureSource` (they were dropped, or the list was the navdata fallback, which its `Source` test excludes), and navdata, OSM and the scenery already describe those areas. Letting them in made the Look Around readout and the passing callouts announce a "Gate W" or "N Parking" place no other source recognises. `GsxTerminalFeatureSource.Read` skips them, which keeps every GSX-synthesized header out of the catalog: KSAN yields the one feature its 4 configured stands make, "Gate N". (A profile-covered stand that navdata now orients, KJFK's Gate 1A shape, was dropped before and correctly joins its own section now.)
+
+→ [gsx.md](../gsx.md)
+
+Moved 2026-10-10 from gsx-stands-docking.md (split for the rule budget).

@@ -72,6 +72,14 @@ public partial class MainForm : Form
     // none for any airport. Shares the indexer's cache folder; its own census.json there.
     private readonly MSFSBlindAssist.Services.SceneryIndex.SceneryPackageCensus sceneryCensus = new(SceneryIndexCacheDir);
 
+    // Output C and Location Info read the offline GeoNames + Natural Earth database; the job that
+    // downloads and builds it is started from Settings → GeoNames and owned here, so it keeps
+    // running after Settings closes. Its speech is marshalled in InitializeManagers.
+    private readonly Services.Geography.LocationDataDownloader locationDataDownloader =
+        new(Services.Geography.LocationDataStore.Default);
+    private readonly Services.Geography.OfflineLocationService offlineLocationService =
+        new(Services.Geography.LocationDataStore.Default);
+
     private ChecklistForm? checklistForm;
 
     private FenixMonitorManagerForm? fenixMonitorManagerForm;
@@ -475,7 +483,7 @@ public partial class MainForm : Form
     // refreshButton.Click can restore it — otherwise the blind user "lands elsewhere".
     private Control? _refreshFocusReturn = null;
 
-    // The status list's GotFocus repaints and re-reads (SIM-19). These tell it the work was
+    // The status list's GotFocus repaints and re-reads (SIM-21). These tell it the work was
     // just done: Ctrl+3 repaints BEFORE focusing (so NVDA's first read is current), and a
     // finished Refresh has just repainted AND re-read everything before handing focus back.
     private bool _displayListPaintedForFocus;
@@ -617,6 +625,22 @@ public partial class MainForm : Form
     private void InitializeManagers()
     {
         announcer = new ScreenReaderAnnouncer(this.Handle);
+
+        // Location data download speech arrives on the job's worker threads and the announcer is
+        // UI-thread only, so marshal (BeginInvoke, never Invoke). Progress and stalls are queued
+        // so they never cut off a callout; the press confirmation, errors and "ready" are immediate.
+        locationDataDownloader.Speak += (_, speech) => SafeBeginInvoke(() =>
+        {
+            if (speech.Immediate) announcer.AnnounceImmediate(speech.Text);
+            else announcer.Announce(speech.Text);
+        });
+        // Remove half-built files a crash left and promote a verified build whose swap never
+        // finished. Off the UI thread: a promotion may wait out an antivirus scan.
+        _ = Task.Run(() =>
+        {
+            try { Services.Geography.LocationDataStore.Default.Sweep(); }
+            catch (Exception ex) { Log.Warn("LocationData", $"Startup sweep failed: {ex.Message}"); }
+        });
 
         // Guidance-tone routing notices. These arrive on the router's own worker thread, and
         // ScreenReaderAnnouncer silently no-ops off the UI thread, so this has to marshal.
@@ -868,7 +892,8 @@ public partial class MainForm : Form
                 taxiGuidanceManager.IsLandingExitTaxiSteering);
         // The runway watch has its OWN gate: takeoff assist switches on at lineup alignment, and the
         // line-up wait is exactly when traffic landing on or entering the runway matters most, so the
-        // watch keeps running until the takeoff roll passes 30 kt (PR #247 review R1).
+        // watch keeps running until the takeoff roll reaches 30 kt; an unknown ground speed cuts it too
+        // (PR #247 review R1).
         groundTrafficMonitor.RunwayWatchSuppressCheck = () =>
             GroundTrafficSuppression.SuppressRunwayWatch(
                 takeoffAssistManager.IsActive,
@@ -1273,6 +1298,12 @@ public partial class MainForm : Form
 
         // Clean up the VATSIM pipe server (owns a background listener thread)
         vatsimService?.Dispose();
+
+        // A location data download or build in progress: cancel without speaking, give the build
+        // up to 2 s to let go of its files, drop the half-built ones and keep the partial download
+        // for next time. Before announcer.Cleanup below, though it speaks nothing on this path.
+        locationDataDownloader.Shutdown(TimeSpan.FromSeconds(2));
+        locationDataDownloader.Dispose();
 
         // Clean up A380X Coherent clients
         coherentClient?.Dispose();

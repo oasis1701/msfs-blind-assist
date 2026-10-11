@@ -1,0 +1,1 @@
+The ten largest Claude Code rule files are split by topic so the rules hook always shows a rule file in full, and no file loads a rule twice; CI now enforces both and caps a rule file at 8,000 characters.

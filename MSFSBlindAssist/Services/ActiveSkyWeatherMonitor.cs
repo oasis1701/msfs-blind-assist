@@ -356,7 +356,8 @@ public class ActiveSkyWeatherMonitor : IDisposable
         else if (conditions.SurfaceVisibility > 0)
         {
             // SurfaceVisibility is in statute miles per the AS JSON API.
-            // CLAUDE.md requires both km and SM in both source paths, so
+            // CLAUDE.md required both km and SM in both source paths (a
+            // weather-radar note no rule or doc has carried since 2026-07), so
             // speak SM verbatim with the km equivalent alongside.
             double sm = conditions.SurfaceVisibility;
             int km = (int)Math.Round(sm * 1.609);

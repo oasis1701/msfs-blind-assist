@@ -1,0 +1,1 @@
+On the FlyByWire A320, Headwind A330 and FlyByWire A380, picking a thrust-lever detent from the Thrust Levers combos no longer repeats the detent your screen reader just read; the A380 still tells you once the levers actually reach it.

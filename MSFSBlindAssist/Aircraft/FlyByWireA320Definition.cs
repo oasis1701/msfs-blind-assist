@@ -529,7 +529,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // Runway turn-off lights. The real A320 has ONE RWY TURN OFF switch
         // (SWITCH_OVHD_EXTLT_RWY, A320_NEO_INTERIOR.xml:1880-1895). It reads state from
         // LIGHT TAXI:2 (left) and LIGHT TAXI:3 (right) and fires the indexed K:2:TAXI_LIGHTS_SET
-        // RPN: "INDEX VALUE (>K:2:TAXI_LIGHTS_SET)" (from FBW_Switch_LeftClick_MouseWheel template,
+        // RPN: "<value> <index> r (>K:2:TAXI_LIGHTS_SET)" (from FBW_Switch_LeftClick_MouseWheel template,
         // Airbus.xml:250-255). MSFSBA exposes a single combo (this "LIGHT TAXI:2" entry, displayed
         // as "Runway Turn Off Lights") whose set drives BOTH sides via that same RPN — see the
         // "LIGHT TAXI:2" branch in MainForm's lighting block. LIGHT TAXI:2 is the representative
@@ -8626,7 +8626,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // calibration band centers; custom EFB calibrations may differ — see pass-2 checklist. Two engines on the A320.
         // NOTE (2026-06-12): a live-mapping in-RPN variant (band center computed from
         // A32NX_THROTTLE_MAPPING_*_LOW/HIGH:n) was tried and REVERTED at the user's
-        // request — it broke the detent announcements in their setup. See commit
+        // request — it did not work in their setup. See commit
         // 34a97a2a / the revert commit for the variant if ever revisited.
         if (varKey == "THROTTLE_ALL_DETENT" || (varKey.StartsWith("THROTTLE_") && varKey.EndsWith("_DETENT")))
         {
@@ -8636,19 +8636,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             // CLB [-0.05,0.05] / FLX [0.45,0.55] / TOGA [0.95,1]. The old -0.70 fell
             // in the gap between REV-IDLE and IDLE and never reached the detent.
             double[] detentAxis = { -1.0, -0.80, -0.50, 0.0, 0.50, 1.0 };
-            string[] dnames = { "Reverse", "Reverse Idle", "Idle", "Climb", "Flex M C T", "TOGA" };
             if (didx < 0 || didx >= detentAxis.Length) return true;
             uint ex1 = unchecked((uint)(int)Math.Round(detentAxis[didx] * 16384));
+            // No press confirmation: the screen reader already spoke the combo's value (CORE-7).
             if (varKey == "THROTTLE_ALL_DETENT")
             {
                 for (int n = 1; n <= 2; n++) simConnect.SendEvent($"THROTTLE{n}_AXIS_SET_EX1", ex1);
-                announcer.Announce($"All thrust levers {dnames[didx]}");
             }
             else
             {
                 int eng = varKey.Length > 9 && char.IsDigit(varKey[9]) ? varKey[9] - '0' : 1;
                 simConnect.SendEvent($"THROTTLE{eng}_AXIS_SET_EX1", ex1);
-                announcer.Announce($"Thrust lever {eng} {dnames[didx]}");
             }
             return true;
         }
