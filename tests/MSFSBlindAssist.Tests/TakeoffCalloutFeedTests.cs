@@ -50,7 +50,24 @@ public class TakeoffCalloutFeedTests
         Assert.Equal(A380TakeoffCallouts.IasKey, new FlyByWireA380Definition().TakeoffCalloutFeedKey);
         Assert.Equal(MSFSBlindAssist.Aircraft.MD11.Md11TakeoffCallouts.IasKey, new TFDiMD11Definition().TakeoffCalloutFeedKey);
         Assert.Equal("IFLY_IAS", new IFly737MAXDefinition().TakeoffCalloutFeedKey);
-        Assert.Null(new FlyByWireA320Definition().TakeoffCalloutFeedKey);
+        Assert.Equal(A320TakeoffCallouts.IasKey, new FlyByWireA320Definition().TakeoffCalloutFeedKey);
+        Assert.Equal(A320TakeoffCallouts.IasKey, new HeadwindA330Definition().TakeoffCalloutFeedKey);   // inherited
+        Assert.Null(new FenixA320Definition().TakeoffCalloutFeedKey);   // its V1/rotate are Takeoff Assist's
+    }
+
+    [Fact]
+    public void The_a320_feed_pauses_once_airborne_with_nothing_left_to_call_and_resumes_at_touchdown()
+    {
+        var def = new FlyByWireA320Definition();
+        var speech = new SpeechCapture();
+        Assert.True(def.TakeoffCalloutFeedNeeded);                          // parked
+
+        def.ProcessSimVarUpdate("SIM_ON_GROUND", 0, speech);
+        def.ProcessSimVarUpdate(A320TakeoffCallouts.IasKey, 250, speech);  // cruise, no roll armed
+        Assert.False(def.TakeoffCalloutFeedNeeded);
+
+        def.ProcessSimVarUpdate("SIM_ON_GROUND", 1, speech);               // touchdown
+        Assert.True(def.TakeoffCalloutFeedNeeded);
     }
 
     [Fact]

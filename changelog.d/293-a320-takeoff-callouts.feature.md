@@ -1,0 +1,1 @@
+The FlyByWire A320 and the Headwind A330 now call "V1", "Rotate" and "V2" on the take-off roll from the speeds entered on the MCDU PERF page. Each call can be muted in the Monitor Manager with its speed's row.

@@ -353,6 +353,36 @@ before the CLIMB phase does. It can never arrive with anything below TAKEOFF, wh
 takeoff thrust is. (A first version gated on "past TAKEOFF", reasoning from the name sort within one
 batch; a second review found the two ride different batches.)
 
+### Take-off roll callouts: V1, Rotate, V2 (added 2026-10-11)
+
+The A32NX calls "V1", "Rotate" and "V2" on the take-off roll, as the A380, the MD-11 and the iFly
+do, through the same `TakeoffVSpeedCallouts` machine; `A320TakeoffCallouts` wires it. Before this,
+MSFSBA called nothing at V1 or VR on the A32NX: Takeoff Assist's "V1"/"rotate" have been Fenix-only
+since they were added, and the A32NX plays no V-speed callout of its own (its FWS sounds in
+`sound.xml` are the radio heights, "retard", minimums and the speed and pitch warnings). A pilot who
+flew the A380 or the Fenix expected them (user report, 2026-10-11: Takeoff Assist said "80 knots" and
+"100 knots", then nothing).
+
+- **Speeds** are the FMS's `L:AIRLINER_V1_SPEED`/`_VR_`/`_V2_` (knots), the `PFD_V1`/`PFD_VR`/`PFD_V2`
+  rows that already announce "V1: 142 knots" as the pilot enters them. They are peeked, never
+  consumed, AHEAD of the branch above that swallows the FMS's post-takeoff clear. That clear comes
+  only once the phase is past TAKEOFF (`A32NX_FMCMainDisplay.ts`), so the roll keeps its speeds;
+  cleared speeds (-1/-1/0 since #10855, 0/0/0 before it and on the Headwind A330) arm nothing.
+- **Airspeed** is `AIRSPEED INDICATED` on its own per-frame subscription (`A320_TAKEOFF_CALLOUT_IAS`:
+  `HighFrequency`, `ExcludeFromBatch`, hidden from Ctrl+M), paused once airborne with no roll armed
+  and resumed at touchdown (`TakeoffCalloutFeedNeeded`), as on the A380.
+- **The rule is the shared machine's**: armed on the ground below 40 kt with V1 and VR set, fired on
+  upward crossings, one utterance per sample ("V1, Rotate" when V1 = VR), interrupting, so it never
+  queues behind Takeoff Assist's "100 knots" or a ground-speed call.
+- **Mutes**: each call rides its speed's Ctrl+M row (V1 → "V1", Rotate → "VR", V2 → "V2"); the feed is
+  `IsMuteWrapExempt` and checks the rows itself.
+- **Resets**: the ARM is dropped, the speeds kept, on every context reset and on a reconnect. The
+  Headwind A330's `ResetAnnouncementBaselines` override calls the base, so it gets both.
+
+The Headwind A330 inherits all of it. The Fenix keeps Takeoff Assist's own "V1"/"rotate" (queued,
+only while Takeoff Assist is on); it was not moved onto the machine. Pinned by
+`A320TakeoffCalloutsTests` and `TakeoffCalloutFeedTests`; not yet flown.
+
 ### Discrete-word readouts were decoded from the wrong bits (fixed 2026-09-25)
 
 The A32NX shares `Arinc429Word` with the A380, and until 2026-09-25 its `BitValueOr` tested a
