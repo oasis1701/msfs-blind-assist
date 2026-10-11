@@ -39,7 +39,9 @@ public class FBWA380AutopilotWindow : FBWA380FCUWindowBase
         // NOTE: not fire-tested live (would disconnect the AP in flight) — verify on the ground.
         apDisc.Click += (s, e) => { simConnect.SendEvent("A32NX.FCU_AP_DISCONNECT_PUSH"); RefreshStates(); };
         var athrDisc = new Button { Text = "A/THR disconnect", Location = new Point(210, 155), Size = new Size(180, 35), TabIndex = 7, AccessibleName = "Autothrust disconnect" };
-        athrDisc.Click += (s, e) => { simConnect.SendEvent("A32NX.FCU_ATHR_DISCONNECT_PUSH"); RefreshStates(); };
+        // The instinctive disconnect (FlyByWireA380Definition.AutothrustDisconnectEvent): the FWS
+        // takes it as voluntary, so the A/THR OFF memo, not the AUTO FLT A/THR OFF caution.
+        athrDisc.Click += (s, e) => { simConnect.SendEvent(FlyByWireA380Definition.AutothrustDisconnectEvent); RefreshStates(); };
 
         var closeButton = new Button { Text = "Close", Location = new Point(140, 250), Size = new Size(140, 35), TabIndex = 8, DialogResult = DialogResult.OK, AccessibleName = "Close" };
         closeButton.Click += (s, e) => Close();
