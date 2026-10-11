@@ -7,14 +7,11 @@ paths:
 ---
 # Rules the DA40 work found in shared code
 
-Rules about shared code that the DA40 work measured. A line guarding a shared file is MIRRORED word for word into the rule file that loads that file; change it here and in its mirrors together. Full text of each rule: docs/invariants/da40-shared-code.md.
+Rules about shared code that the DA40 work measured. A line guarding a shared file is MIRRORED word for word into the rule file that loads that file; change it here and in its mirrors together. Full text of each rule: docs/invariants/da40-shared-code.md. DA40S-3, DA40S-4 and DA40S-6 govern every aircraft definition, so they live in variable-definitions.md, which loads on this aircraft too.
 
 - [DA40S-1] `GetCachedVariableValue` is keyed by the VARIABLE KEY, never the SimVar name, and holds a variable when it is `Continuous && IsAnnounced` (`ExcludeFromBatch` vars too); never turn a cache miss into 0 (`EveryCacheLookupNamesACachedVariableKey`). Full: docs/invariants/da40-shared-code.md#da40s-1
 - [DA40S-2] A settle timer outlasts the sample period of what feeds it: over 1000 ms for a batch-fed value; a SIM_FRAME-fed value carries a `FAST-SAMPLED` marker (`CowsDA40SettleExceedsBatchTests`); an own-write grace outlasts the settle. Full: docs/invariants/da40-shared-code.md#da40s-2
-- [DA40S-3] An L:var is registered `Units = "number"`, never a converting unit; use `SimVarDefinition.Scale` for a scale. Full: docs/invariants/da40-shared-code.md#da40s-3
-- [DA40S-4] `ABS_AMBIENT_TEMPERATURE` is kelvin and an L:var's Units field is a label: use the `AMBIENT TEMPERATURE` SimVar. Full: docs/invariants/da40-shared-code.md#da40s-4
 - [DA40S-5] `SimVarDefinition.Format` defaults to "F0" and `ValueDescriptions` is never null (test `Count`, not null). Full: docs/invariants/da40-shared-code.md#da40s-5
-- [DA40S-6] A non-percentage numeric control never sets `RenderAsSlider` (the TrackBar is 0-100); `HelpText` reaches the pilot on BUTTONS only, never the other PanelBuilder sites. Full: docs/invariants/da40-shared-code.md#da40s-6
 - [DA40S-7] A background monitor starts in BOTH `MainForm_Load` and `SwitchAircraft`, or it never runs for the aircraft the app opens with. Full: docs/invariants/da40-shared-code.md#da40s-7
 - [DA40S-8] A `CoherentDisplayClient` agent returns a string containing `MSFSBA_DISP_INSTALLED`; the client reports a wrong answer once per socket, and that report stays. Full: docs/invariants/da40-shared-code.md#da40s-8
 - [DA40S-9] `NativeChecklistReader` renders the aircraft's own `Checklist/*.xml`, walking each page's children IN ORDER including one level of `<Block>`; it is pinned against the installed package, and packages resolve from UserCfg.opt's active key. Full: docs/invariants/da40-shared-code.md#da40s-9

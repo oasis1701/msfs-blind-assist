@@ -2,6 +2,7 @@
 
 Each section is the complete text of one rule. Its one-line form, under the same ID, is in `.claude/rules/da40-shared-code.md`, which Claude Code loads when it reads matching code. Background: [da40.md](../da40.md).
 The text is verbatim from the CLAUDE.md invariants PR #242 added; where two bullets told one rule they sit together under one ID. A trailing "→ doc" pointer is the original's.
+DA40S-3, DA40S-4 and DA40S-6 govern every aircraft definition, so they live in [variable-definitions.md](variable-definitions.md), whose rule file loads on all of them.
 
 ## DA40S-1
 
@@ -13,25 +14,11 @@ The text is verbatim from the CLAUDE.md invariants PR #242 added; where two bull
 
 - **⚠️ A SETTLE TIMER MUST EXCEED ONE BATCH PERIOD.** The continuous batch samples at 1 Hz, so a knob swept for several seconds delivers a new value every second — and the DA40 radio settle at 300 ms expired between every pair, announcing each intermediate frequency the knob passed through instead of the one it stopped on (reported as "it announces 700, 800"; those were real readings a second apart, mid-sweep). Just over the period is the trick: each delivery restarts the timer while the knob moves, and it runs out only on the resting value. ⚠️ It COSTS LAG and nothing at 1 Hz avoids that — worst case is one batch period to notice the last change plus the settle. Shortening it does not buy speed, it buys the intermediate announcements back. → [da40.md](../da40.md)
 
-## DA40S-3
-
-- **An L:var must be registered `Units = "number"`, never a converting unit** - it holds a RAW NUMBER, so a data definition asking for `inHg`/`percent`/a velocity makes SimConnect convert from its own base unit. The DA40 standby subscale asked in `inHg` and read ZERO while set correctly ("Standby 0 hectopascals, 0.01 inches"); where a scale IS wanted, use `SimVarDefinition.Scale` and leave the unit `number`. Same trap as the A380 TCAS vertical-speed L:vars. -> [da40.md](../da40.md)
-
-## DA40S-4
-
-- `ABS_AMBIENT_TEMPERATURE` is KELVIN and the L:var's Units field is a LABEL, not a conversion — use the `AMBIENT TEMPERATURE` SimVar. → [da40.md](../da40.md)
-
 ## DA40S-5
 
 - `SimVarDefinition.Format` DEFAULTS to `"F0"` — a fractional readout that does not set its own Format silently reads WHOLE numbers (the trim scan said "1" beside an announcement saying 1.74). → [da40.md](../da40.md)
 
 - `SimVarDefinition.ValueDescriptions` is NEVER null — it initialises to an EMPTY dictionary — so any test for "has no descriptions" must check `Count`, not null. A `== null` test is always false: the DA40's unit-rendering fallback was written that way and was dead from the day it was added. → [da40.md](../da40.md)
-
-## DA40S-6
-
-- A non-percentage numeric control must NOT set `RenderAsSlider` — MainForm's `TrackBar` is hardcoded 0-100 and maps the value as a percentage of that range; a key ending `_SET` renders as a typed entry instead. → [da40.md](../da40.md)
-
-- **`SimVarDefinition.HelpText` reaches the pilot on BUTTONS and nowhere else** — `MainForm.PanelBuilder` sets `AccessibleDescription` at exactly one of its eleven control sites, so a combo, typed entry, slider, readout or status row discards it. ⚠️ That was briefly "fixed" by wiring all eleven, and the fix was REVERTED on the pilot's ruling: the DA40's help text was then deleted outright and the rest of the app's fifteen lines are all on buttons, where they already worked. So the one-site render is CORRECT and must stay — do not re-wire the other ten to "rescue" a help line. If a fact cannot be carried by a control's NAME, it belongs in the aircraft's doc, not in a description the pilot has to hunt for. → [da40.md](../da40.md)
 
 ## DA40S-7
 

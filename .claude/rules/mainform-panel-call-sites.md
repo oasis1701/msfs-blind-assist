@@ -12,5 +12,5 @@ MIRRORS: copied word for word from pmdg-777.md, a32nx-fenix.md, a380-panels.md, 
 - [A380C-18] Never re-add an A380 RMP "Radios" panel on stock COM standby-set/swap events, which the FBW A380 ignores; anything else tuning COM with stock events must ask `IAircraftDefinition.StockComTuningRefusal` first and speak it. Full: docs/invariants/a380-coherent.md#a380c-18
 - [HS-5] A display-only Flight Data sub-panel needs a `BuildPanelControls` entry, even an empty one, or MainForm's panel build early-returns and the panel renders nothing. Full: docs/invariants/hs787.md#hs-5
 
-Mirrored from da40-shared-code.md (it governs the PanelBuilder sites; change it there and here together):
-- [DA40S-6] A non-percentage numeric control never sets `RenderAsSlider` (the TrackBar is 0-100); `HelpText` reaches the pilot on BUTTONS only, never the other PanelBuilder sites. Full: docs/invariants/da40-shared-code.md#da40s-6
+Mirrored from variable-definitions.md (it governs the PanelBuilder sites; change it there and here together):
+- [DA40S-6] A non-percentage numeric control never sets `RenderAsSlider` (the TrackBar is 0-100); `HelpText` reaches the pilot on BUTTONS only, never the other PanelBuilder sites. Full: docs/invariants/variable-definitions.md#da40s-6
