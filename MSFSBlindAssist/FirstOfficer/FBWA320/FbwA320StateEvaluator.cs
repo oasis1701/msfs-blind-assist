@@ -81,7 +81,9 @@ public sealed class FbwA320StateEvaluator : LVarStateEvaluator
         "A32NX_GEAR_CENTER_POSITION", "A32NX_GEAR_LEFT_POSITION", "A32NX_GEAR_RIGHT_POSITION",
         // Read-back live values (the Airbus card's "SET"/"CHECKED" lines speak the value the
         // First Officer reads). Polling a Continuous var is harmless; the OnRequest ones need it.
-        "FUEL_QUANTITY_KG", "A32NX_EFB_USING_METRIC_UNIT",
+        // Fuel is FUEL_TOTAL_WEIGHT_KG, never the fuel hotkey's FUEL_QUANTITY_KG, which MainForm
+        // speaks on every delivery (FoPollSilenceTests).
+        "FUEL_TOTAL_WEIGHT_KG", "A32NX_EFB_USING_METRIC_UNIT",
         "PFD_V1", "PFD_VR", "PFD_V2", "A32NX_AIRLINER_TO_FLEX_TEMP",
         "A32NX_FAC_1_RUDDER_TRIM_POS", "A32NX_GPWS_FLAPS3",
         "A32NX_FCU_LEFT_EIS_BARO_HPA", "A32NX_FCU_LEFT_EIS_BARO",
@@ -134,12 +136,12 @@ public sealed class FbwA320StateEvaluator : LVarStateEvaluator
     }
 
     /// <summary>Total fuel in the EFB's unit (A32NX_EFB_USING_METRIC_UNIT 1 = kg, 0 = lb);
-    /// <c>FUEL_QUANTITY_KG</c> is read in kilograms. Null when the fuel or the unit is unknown.</summary>
+    /// <c>FUEL_TOTAL_WEIGHT_KG</c> is read in kilograms. Null when the fuel or the unit is unknown.</summary>
     public string? FuelText()
     {
         double metric = GetValue("A32NX_EFB_USING_METRIC_UNIT");
         if (double.IsNaN(metric)) return null;
-        return AirbusReadbackFormat.FuelQuantity(GetValue("FUEL_QUANTITY_KG"), pounds: metric < 0.5);
+        return AirbusReadbackFormat.FuelQuantity(GetValue("FUEL_TOTAL_WEIGHT_KG"), pounds: metric < 0.5);
     }
 
     /// <summary>1 when FlyByWire's own engine state (0 Off / 1 On / 2 Starting / 3 Shutting

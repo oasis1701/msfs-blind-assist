@@ -1306,6 +1306,18 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "FUEL TOTAL QUANTITY WEIGHT", DisplayName = "Fuel on board",
             Type = SimConnect.SimVarType.SimVar, Units = "kilograms", UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
+        // The same total fuel for the First Officer's Cockpit Preparation read-back ("Fuel
+        // quantity: CHECKED"), polled each second by the FO window (FbwA320StateEvaluator and
+        // HwA330StateEvaluator OnRequestPollFields). Never poll FUEL_QUANTITY_KG for it: that is
+        // the fuel hotkey's variable, and MainForm.HandleSpecialAnnouncements speaks every
+        // delivery of it, so the poll spoke "Fuel on board" every second. A silent cache, like
+        // the Fenix's FUEL TOTAL QUANTITY WEIGHT (FoPollSilenceTests).
+        ["FUEL_TOTAL_WEIGHT_KG"] = new SimConnect.SimVarDefinition
+        {
+            Name = "FUEL TOTAL QUANTITY WEIGHT", DisplayName = "Total Fuel Weight",
+            Type = SimConnect.SimVarType.SimVar, Units = "kilograms", UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ExcludeFromMonitorManager = true
+        },
         // Brake pressures (the "triple indicator" — normal/alternate/accumulator, psi) +
         // brake status (parity with the A380; useful for the taxi brake check). Live:
         // NORM 0 while not braking, ALTN ~2100, ACC ~3000.

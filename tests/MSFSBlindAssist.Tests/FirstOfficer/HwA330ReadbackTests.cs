@@ -194,7 +194,7 @@ public class HwA330ReadbackTests
 
     private static readonly string[] ReadbackPollFields =
     {
-        "FUEL_QUANTITY_KG", "A32NX_EFB_USING_METRIC_UNIT",
+        "FUEL_TOTAL_WEIGHT_KG", "A32NX_EFB_USING_METRIC_UNIT",
         "PFD_V1", "PFD_VR", "PFD_V2", "A32NX_AIRLINER_TO_FLEX_TEMP",
         "A32NX_FAC_1_RUDDER_TRIM_POS", "A32NX_GPWS_FLAPS3",
         "KOHLSMAN SETTING STD:1", "KOHLSMAN SETTING MB:1", "A32NX_FCU_EFIS_L_BARO_IS_INHG",

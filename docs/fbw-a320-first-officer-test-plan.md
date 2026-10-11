@@ -363,6 +363,11 @@ now read **"Auto-manage flaps (FBW A380 and A32NX)."**
 3. **Sim disconnect/reconnect re-wires.** Disconnect MSFSBA from the sim (or restart the sim) with
    the A32NX FO window open, then reconnect — confirm the executor/evaluator re-wire without
    requiring the window to be closed and reopened.
+4. **The window's poll stays silent (2026-10-11).** Open the First Officer window and wait a
+   minute without touching anything: nothing is spoken, in particular no "Fuel on board". Then
+   press right bracket and Shift+F once: it speaks the fuel once. Tick Cockpit Preparation's "Fuel quantity:
+   CHECKED": it speaks the total fuel in the EFB's unit. (The read-back used to poll the fuel
+   key's own variable, which is spoken on every delivery, so the fuel was read out every second.)
 
 ---
 
