@@ -299,8 +299,9 @@ public class PMDGNG3DataManager : IPMDGDataManager
     private readonly Dictionary<string, bool> _localSwitchStates = new()
     {
         // APU GEN 1/2 removed — they're now two-button push pairs (no state
-        // displayed), so no local tracking is needed. Engine GEN 1/2 remain
-        // here as combos with local-state display.
+        // displayed), so no local tracking is needed. Engine GEN 1/2 are push
+        // pairs too now, but their remembered state is still published under
+        // these silent varKeys for the First Officer's generator checklist item.
         ["ELEC_GenSw_0"]    = false,
         ["ELEC_GenSw_1"]    = false,
     };
