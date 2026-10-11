@@ -1,0 +1,1 @@
+PMDG 737: Shift+1 to Shift+6 in output mode now read the flap maneuvering speeds (flaps up, 1, 5, 10, 15 and 25) for your current weight, without a slow PFD read. They are calculated, as on the iFly 737 MAX, from VREF tables taken from the -700 and -800 FMCs, so they match the FMC to the knot. The -600 uses the -700's table and the -900 the -800's.
