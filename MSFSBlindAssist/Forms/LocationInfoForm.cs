@@ -1,9 +1,14 @@
 using MSFSBlindAssist.Models;
-using MSFSBlindAssist.Services;
-using MSFSBlindAssist.Accessibility;
-using MSFSBlindAssist.Utils.Logging;
+using MSFSBlindAssist.Services.Geography;
 
 namespace MSFSBlindAssist.Forms;
+
+/// <summary>
+/// The Location Info window (Output > Shift+L). It opens already filled from the offline location
+/// data (the lookup takes milliseconds), with the "Where you are" box first and focused, so the
+/// screen reader reads it on arrival; nothing else is spoken, since a separate summary would only
+/// repeat that box (CORE-7). Escape or Alt+F4 closes it and returns focus to the simulator.
+/// </summary>
 public partial class LocationInfoForm : Form
 {
     // Windows API declarations for focus management
@@ -14,6 +19,7 @@ public partial class LocationInfoForm : Form
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     private TableLayoutPanel mainLayout = null!;
+    private TextBox whereYouAreTextBox = null!;
     private TextBox nearbyPlacesTextBox = null!;
     private TextBox majorCitiesTextBox = null!;
     private TextBox cardinalDirectionsTextBox = null!;
@@ -21,23 +27,14 @@ public partial class LocationInfoForm : Form
     private TextBox terrainTextBox = null!;
     private TextBox waterBodiesTextBox = null!;
     private TextBox touristLandmarksTextBox = null!;
-    private double latitude;
-    private double longitude;
-    private GeoNamesService geoNamesService = null!;
-    private ScreenReaderAnnouncer? announcer;
     private readonly IntPtr previousWindow;
 
-    public LocationInfoForm(double lat, double lon, ScreenReaderAnnouncer? screenReaderAnnouncer = null)
+    internal LocationInfoForm(LocationReport report, bool kilometres)
     {
         // Capture the current foreground window (likely the simulator)
         previousWindow = GetForegroundWindow();
-
-        latitude = lat;
-        longitude = lon;
-        announcer = screenReaderAnnouncer;
-        geoNamesService = new GeoNamesService();
         InitializeComponent();
-        // LoadLocationInfoAsync() moved to Shown event to ensure handle is created
+        Populate(report, kilometres);
     }
 
     private void InitializeComponent()
@@ -46,61 +43,49 @@ public partial class LocationInfoForm : Form
 
         // Form properties
         this.Text = "Location Information";
-        this.Size = new System.Drawing.Size(800, 600);
+        this.Size = new System.Drawing.Size(800, 640);
         this.StartPosition = FormStartPosition.CenterScreen;
         this.FormBorderStyle = FormBorderStyle.Sizable;
-        this.MinimumSize = new System.Drawing.Size(700, 500);
+        this.MinimumSize = new System.Drawing.Size(700, 540);
         this.MaximizeBox = true;
         this.MinimizeBox = true;
         this.ShowInTaskbar = true;
         this.TopMost = true;
 
-        // Create main layout
+        const int rows = 8;
         mainLayout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 7,
+            RowCount = rows,
             AutoSize = true
         };
-
-        // Set row styles for equal distribution
-        for (int i = 0; i < 7; i++)
+        for (int i = 0; i < rows; i++)
         {
-            mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 14.3f));
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f / rows));
         }
         mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
 
-        // Create category text boxes
+        // "Where you are" first: the box the window opens on.
+        whereYouAreTextBox = CreateCategoryTextBox("Where you are");
         majorCitiesTextBox = CreateCategoryTextBox("Major Cities");
-        majorCitiesTextBox.TabIndex = 0;
-
         touristLandmarksTextBox = CreateCategoryTextBox("Tourist Landmarks");
-        touristLandmarksTextBox.TabIndex = 1;
-
         terrainTextBox = CreateCategoryTextBox("Terrain");
-        terrainTextBox.TabIndex = 2;
-
         nearbyPlacesTextBox = CreateCategoryTextBox("Nearby Places");
-        nearbyPlacesTextBox.TabIndex = 3;
-
         cardinalDirectionsTextBox = CreateCategoryTextBox("Cardinal Directions");
-        cardinalDirectionsTextBox.TabIndex = 4;
-
         airportsTextBox = CreateCategoryTextBox("Airports");
-        airportsTextBox.TabIndex = 5;
-
         waterBodiesTextBox = CreateCategoryTextBox("Water Bodies");
-        waterBodiesTextBox.TabIndex = 6;
 
-        // Add controls to layout
-        mainLayout.Controls.Add(majorCitiesTextBox, 0, 0);
-        mainLayout.Controls.Add(touristLandmarksTextBox, 0, 1);
-        mainLayout.Controls.Add(terrainTextBox, 0, 2);
-        mainLayout.Controls.Add(nearbyPlacesTextBox, 0, 3);
-        mainLayout.Controls.Add(cardinalDirectionsTextBox, 0, 4);
-        mainLayout.Controls.Add(airportsTextBox, 0, 5);
-        mainLayout.Controls.Add(waterBodiesTextBox, 0, 6);
+        var boxes = new[]
+        {
+            whereYouAreTextBox, majorCitiesTextBox, touristLandmarksTextBox, terrainTextBox,
+            nearbyPlacesTextBox, cardinalDirectionsTextBox, airportsTextBox, waterBodiesTextBox,
+        };
+        for (int i = 0; i < boxes.Length; i++)
+        {
+            boxes[i].TabIndex = i;
+            mainLayout.Controls.Add(boxes[i], 0, i);
+        }
 
         this.Controls.Add(mainLayout);
 
@@ -115,10 +100,7 @@ public partial class LocationInfoForm : Form
             Activate();
             TopMost = true;
             TopMost = false; // Flash to bring to front
-            majorCitiesTextBox.Focus();
-
-            // Start loading location data after handle is created
-            LoadLocationInfoAsync();
+            whereYouAreTextBox.Focus();
         };
 
         this.ResumeLayout(false);
@@ -138,7 +120,6 @@ public partial class LocationInfoForm : Form
             TabStop = true,
             AccessibleName = categoryName,
             AccessibleDescription = $"{categoryName} information",
-            Text = "Loading..."
         };
     }
 
@@ -151,198 +132,34 @@ public partial class LocationInfoForm : Form
         }
     }
 
-    /// <summary>
-    /// Safely invokes an action on the UI thread, checking for handle creation and thread requirements
-    /// </summary>
-    private void SafeInvoke(Action action)
+    private void Populate(LocationReport report, bool kilometres)
     {
-        if (!IsHandleCreated || IsDisposed)
-        {
-            // Form not ready or already disposed, skip the action
-            return;
-        }
+        whereYouAreTextBox.Text = LocationPhrases.WhereYouAreText(report.Where, kilometres);
 
-        if (InvokeRequired)
-        {
-            try
-            {
-                BeginInvoke(action);
-            }
-            catch (ObjectDisposedException)
-            {
-                // Form was disposed while trying to invoke, ignore
-            }
-            catch (InvalidOperationException)
-            {
-                // Handle was destroyed, ignore
-            }
-        }
-        else
-        {
-            action();
-        }
-    }
+        var data = report.Details ?? new LocationData();
+        nearbyPlacesTextBox.Text = data.NearbyPlaces.Count > 0
+            ? string.Join("\r\n", data.NearbyPlaces)
+            : "No nearby places found.";
+        majorCitiesTextBox.Text = data.MajorCities.Count > 0
+            ? string.Join("\r\n", data.MajorCities)
+            : "No major cities found.";
 
-    private async void LoadLocationInfoAsync()
-    {
-        try
-        {
-            var locationData = await geoNamesService.GetLocationInfoAsync(latitude, longitude);
+        string directions = data.Directions.ToString().Trim();
+        cardinalDirectionsTextBox.Text = directions.Length > 0
+            ? directions
+            : "No cardinal direction information available.";
 
-            // Populate each category textbox - using SafeInvoke for thread safety
-            SafeInvoke(() =>
-            {
-                PopulateCategoryTextBoxes(locationData);
-
-                // Announce summary to screen reader
-                AnnounceSummary(locationData);
-
-                // Ensure focus is set after data is loaded
-                majorCitiesTextBox.Focus();
-            });
-        }
-        catch (Exception ex)
-        {
-            var errorMessage = "Error loading location information:\r\n\r\n";
-
-            if (ex.Message.Contains("username is not configured"))
-            {
-                errorMessage += "GeoNames API username is not configured.\r\n";
-                errorMessage += "Please go to File → Define GeoNames API Key to configure your API settings.\r\n\r\n";
-                errorMessage += "You can register for a free GeoNames account at geonames.org";
-            }
-            else
-            {
-                errorMessage += $"Technical details: {ex.Message}\r\n\r\n";
-                errorMessage += "This could be due to:\r\n";
-                errorMessage += "• No internet connection\r\n";
-                errorMessage += "• Invalid API username\r\n";
-                errorMessage += "• GeoNames service temporarily unavailable\r\n";
-                errorMessage += "• API rate limit exceeded";
-            }
-
-            // Show error in textboxes - using SafeInvoke for thread safety
-            SafeInvoke(() =>
-            {
-                // Show error in the first textbox
-                majorCitiesTextBox.Text = errorMessage;
-                // Clear other textboxes
-                touristLandmarksTextBox.Text = "";
-                terrainTextBox.Text = "";
-                nearbyPlacesTextBox.Text = "";
-                cardinalDirectionsTextBox.Text = "";
-                airportsTextBox.Text = "";
-                waterBodiesTextBox.Text = "";
-
-                // Ensure focus is set even on error
-                majorCitiesTextBox.Focus();
-            });
-        }
-    }
-
-    private void PopulateCategoryTextBoxes(LocationData data)
-    {
-        // Nearby Places
-        if (data.NearbyPlaces != null && data.NearbyPlaces.Count > 0)
-        {
-            nearbyPlacesTextBox.Text = string.Join("\r\n", data.NearbyPlaces);
-        }
-        else
-        {
-            nearbyPlacesTextBox.Text = "No nearby places found.";
-        }
-
-        // Major Cities
-        if (data.MajorCities != null && data.MajorCities.Count > 0)
-        {
-            majorCitiesTextBox.Text = string.Join("\r\n", data.MajorCities);
-        }
-        else
-        {
-            majorCitiesTextBox.Text = "No major cities found.";
-        }
-
-        // Cardinal Directions
-        if (data.Directions != null && !string.IsNullOrEmpty(data.Directions.ToString().Trim()))
-        {
-            cardinalDirectionsTextBox.Text = data.Directions.ToString();
-        }
-        else
-        {
-            cardinalDirectionsTextBox.Text = "No cardinal direction information available.";
-        }
-
-        // Categorized Landmarks
         PopulateLandmarkTextBox(airportsTextBox, data.CategorizedLandmarks, "Airports");
         PopulateLandmarkTextBox(terrainTextBox, data.CategorizedLandmarks, "Terrain");
         PopulateLandmarkTextBox(waterBodiesTextBox, data.CategorizedLandmarks, "Water Bodies");
         PopulateLandmarkTextBox(touristLandmarksTextBox, data.CategorizedLandmarks, "Tourist Landmarks");
     }
 
-    private void PopulateLandmarkTextBox(TextBox textBox, Dictionary<string, List<Landmark>> categorizedLandmarks, string category)
+    private static void PopulateLandmarkTextBox(TextBox textBox, Dictionary<string, List<Landmark>> categorizedLandmarks, string category)
     {
-        if (categorizedLandmarks != null && categorizedLandmarks.ContainsKey(category) && categorizedLandmarks[category].Count > 0)
-        {
-            textBox.Text = string.Join("\r\n", categorizedLandmarks[category]);
-        }
-        else
-        {
-            textBox.Text = $"No {category.ToLower()} found.";
-        }
-    }
-
-
-    private void AnnounceSummary(LocationData data)
-    {
-        try
-        {
-            var summary = new StringBuilder();
-
-            // Find the closest place for summary
-            if (data.NearbyPlaces != null && data.NearbyPlaces.Count > 0)
-            {
-                var closest = data.NearbyPlaces[0];
-                summary.Append($"Near {closest.Name}");
-
-                if (!string.IsNullOrEmpty(closest.State))
-                {
-                    summary.Append($", {closest.State}");
-                }
-
-                if (closest.Distance > 0)
-                {
-                    summary.Append($", {closest.Distance:F0} miles {closest.Direction}");
-                }
-
-                // Add major landmark if available
-                if (data.NearbyPlaces.Count > 1)
-                {
-                    var secondPlace = data.NearbyPlaces[1];
-                    if (secondPlace.Type == "airport" || secondPlace.Name.Contains("Airport"))
-                    {
-                        summary.Append($". {secondPlace.Name} {secondPlace.Distance:F0} miles {secondPlace.Direction}");
-                    }
-                }
-            }
-            else if (data.Regional != null && !string.IsNullOrEmpty(data.Regional.State))
-            {
-                summary.Append($"Currently in {data.Regional.State}");
-                if (!string.IsNullOrEmpty(data.Regional.Country))
-                {
-                    summary.Append($", {data.Regional.Country}");
-                }
-            }
-
-            if (summary.Length > 0 && announcer != null)
-            {
-                // Use the application's screen reader announcer
-                announcer.Announce(summary.ToString());
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Debug("Forms", $"Error announcing summary: {ex.Message}");
-        }
+        textBox.Text = categorizedLandmarks.TryGetValue(category, out var list) && list.Count > 0
+            ? string.Join("\r\n", list)
+            : $"No {category.ToLowerInvariant()} found.";
     }
 
     protected override void OnFormClosed(FormClosedEventArgs e)
@@ -354,9 +171,6 @@ public partial class LocationInfoForm : Form
         {
             SetForegroundWindow(previousWindow);
         }
-
-        // Clean up resources if needed
-        geoNamesService = null!;
     }
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)

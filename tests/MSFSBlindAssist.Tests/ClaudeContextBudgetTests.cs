@@ -735,12 +735,11 @@ public class ClaudeContextBudgetTests
             "MSFSBlindAssist/Services/NdWaypointReadout.cs", "MSFSBlindAssist/Services/RelativeDirection.cs",
             "MSFSBlindAssist/Navigation/NavigationCalculator.cs", "MSFSBlindAssist/Navigation/RunwayCenterlineTracker.cs",
         },
-        ["a feature with no rules or doc of its own yet (TCAS display, SimBrief planner, GeoNames, waypoint tracking, "
+        ["a feature with no rules or doc of its own yet (TCAS display, SimBrief planner, waypoint tracking, "
             + "landing rate): when it gains a rule, give it a rule file and drop its entries"] = new[]
         {
             "MSFSBlindAssist/Services/TcasService.cs", "MSFSBlindAssist/Forms/TcasForm.cs",
             "MSFSBlindAssist/Services/SimBriefService.cs", "MSFSBlindAssist/Forms/SimBriefPlannerForm.cs",
-            "MSFSBlindAssist/Services/GeoNamesService.cs", "MSFSBlindAssist/Forms/LocationInfoForm.cs",
             "MSFSBlindAssist/Navigation/WaypointTracker.cs", "MSFSBlindAssist/Forms/TrackFixForm.cs",
             "MSFSBlindAssist/Forms/TrackFixForm.Designer.cs", "MSFSBlindAssist/Services/LandingRateAnnouncer.cs",
         },
