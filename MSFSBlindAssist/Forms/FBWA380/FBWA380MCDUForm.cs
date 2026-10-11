@@ -75,14 +75,12 @@ public class FBWA380MCDUForm : Form
         new("ACTIVE: F-PLN",      "Active",   0, "FPLN"),
         new("ACTIVE: PERF",       "Active",   1, "PERF"),
         new("ACTIVE: FUEL & LOAD","Active",   2, ""),
-        // ACTIVE/WIND: KEPT but flagged. The A380X WIND page is not implemented yet —
-        // FmsHeader.tsx hardcodes the menu item disabled:true, there is no MfdFmsWind
-        // component, and no 'fms/active/wind' route is registered. Verified live (with a
-        // VCBI/VOMM flight plan loaded the WIND menu item stayed DISABLED). Selecting it
-        // is a clean no-op (navigateById returns "disabled"); the label says so. Winds
-        // are entered via INIT > TRIP WIND + the F-PLN per-waypoint wind revision. When
-        // FBW ships the page, drop the suffix (and it'll navigate via Active index 3).
-        new("ACTIVE: WIND (not on this build)", "Active", 3, ""),
+        // ACTIVE/WIND: the FMS wind page with the company wind uplink, shipped in FBW #10929
+        // (76db0aef1, 2026-10-09; FmsHeader.tsx enables the menu item, MfdPageDirectory routes
+        // fms/active|sec1|sec2/wind). Kept on the page-selector click rather than its URI: on
+        // an older build the item is disabled (navigateById says so), where the URI would
+        // land on the not-found page. The agent names every wind field (buildWindLines).
+        new("ACTIVE: WIND",       "Active",   3, ""),
         new("ACTIVE: INIT",       "Active",   4, "INIT"),
         new("POSITION: MONITOR",  "Position", 0, ""),
         new("POSITION: REPORT",   "Position", 1, ""),
@@ -97,6 +95,10 @@ public class FBWA380MCDUForm : Form
         new("SEC 1: F-PLN",       "", -1, "", "fms/sec1/f-pln"),
         new("SEC 2: F-PLN",       "", -1, "", "fms/sec2/f-pln"),
         new("SEC 3: F-PLN",       "", -1, "", "fms/sec3/f-pln"),
+        // Secondary-plan winds (#10929). FBW routes no SEC 3 wind page (MfdPageDirectory.tsx),
+        // so there is no entry for it.
+        new("SEC 1: WIND",        "", -1, "", "fms/sec1/wind"),
+        new("SEC 2: WIND",        "", -1, "", "fms/sec2/wind"),
         new("DATA: STATUS",       "Data",     0, ""),
         new("DATA: WAYPOINT",     "Data",     1, ""),
         new("DATA: NAVAID",       "Data",     2, ""),
