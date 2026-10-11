@@ -637,7 +637,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
 
         // Display-only panel: it still needs an (empty) panel-controls entry or
         // MainForm's panel builder returns early and renders NOTHING — the HS787
-        // Flight-Data-panels bug (see CLAUDE.md "Empty Flight Data panels").
+        // Flight-Data-panels bug (see [HS-5]).
         PanelList(P);
 
         // CDU FAIL annunciators (2026-07-23 audit finding — PMDG 737 parity with

@@ -109,7 +109,7 @@ public class SceneryPackageDiskTests : IDisposable
         Assert.Empty(Directory.GetFiles(cache, "*.tmp"));
     }
 
-    // ---- the package's own layout.json (review SI-1) ------------------------------------------
+    // ---- the package's own layout.json ([SUR-7]) -----------------------------------------------
 
     private static string Fixture(string name) => Path.Combine(AppContext.BaseDirectory, "Fixtures", name);
 

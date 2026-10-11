@@ -15,8 +15,8 @@ namespace MSFSBlindAssist.Services;
 /// only when GSX advertises the <c>handlerData</c> capability. This is not a version-gated
 /// fallback: <c>handlerData</c> genuinely has no data for any OTHER airport, so a pilot typing
 /// a remote ICAO (route planning, gate teleport at a different field) always falls through to
-/// the next source. See docs/superpowers/specs/2026-08-12-gsx-remote-api-gate-list-and-selection-design.md
-/// §"The API only knows the CURRENT airport".</item>
+/// the next source. See [DCK-6] and docs/gsx.md, "Developer internals" (its gate-list
+/// source-selection bullet: the API only knows the CURRENT airport).</item>
 /// <item>The GSX <c>.ini</c> profile (accurate) when GSX is available AND a profile matches the
 /// ICAO — parsed by <see cref="GsxProfileParser"/> and overlaid on navdata by
 /// <see cref="GsxNavdataMerger"/>. Parsed profiles are cached per (path, last-write-time).</item>
