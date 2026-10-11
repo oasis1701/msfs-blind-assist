@@ -62,12 +62,8 @@ public static class A300EwdMemos
     public static bool IsInputOrLine(string key) =>
         key == LineKey || key.StartsWith("A300_MEMO_IN_", StringComparison.Ordinal);
 
-    /// <summary>The status line: the memos shown, or "none".</summary>
+    /// <summary>The status line: the memos shown, or "none". Memos are never spoken (owner, 2026-10-11).</summary>
     public static string Line(IReadOnlyCollection<string> words) => words.Count == 0 ? "none" : string.Join(", ", words);
-
-    /// <summary>"Memo: APU running", "Memos: APU running, Seat belts on".</summary>
-    public static string Phrase(IReadOnlyCollection<string> words) =>
-        $"{(words.Count == 1 ? "Memo" : "Memos")}: {string.Join(", ", words)}";
 
     private static A300Memo Memo(int number, string text, string words, Func<Func<string, double?>, bool?> condition) =>
         new(number, text, words, condition);

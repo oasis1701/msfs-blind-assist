@@ -154,15 +154,10 @@ public class A300EwdMemosTests
     public void The_line_lists_the_memos_shown(string[] words, string line) =>
         Assert.Equal(line, A300EwdMemos.Line(words));
 
-    [Theory]
-    [InlineData(new[] { "APU running" }, "Memo: APU running")]
-    [InlineData(new[] { "APU running", "Seat belts on" }, "Memos: APU running, Seat belts on")]
-    public void New_memos_are_said_in_one_sentence(string[] words, string phrase) =>
-        Assert.Equal(phrase, A300EwdMemos.Phrase(words));
 }
 
 /// <summary>How the A300 definition carries the memos: their inputs on their own subscriptions, consumed silently,
-/// read at the end of each sample (where the FMA is composed), shown on the ECAM Memos box and spoken as they appear.</summary>
+/// read at the end of each sample (where the FMA is composed) and shown on the ECAM Memos box, never spoken.</summary>
 public class IniA300MemoBehaviourTests
 {
     private long _now = 10_000;
@@ -219,44 +214,43 @@ public class IniA300MemoBehaviourTests
     }
 
     [Fact]
-    public void The_memo_line_is_on_the_ecam_memos_box_and_carries_the_ctrl_m_row()
+    public void The_memo_line_is_on_the_ecam_memos_box_with_no_ctrl_m_row()
     {
+        // Memos are never spoken (owner, 2026-10-11), so a row would mute nothing ([VAR-9]).
         var line = _def.GetVariables()[A300EwdMemos.LineKey];
-        Assert.Equal("ECAM memos", line.DisplayName);
-        Assert.True(line.IsAnnounced);
-        Assert.False(line.ExcludeFromMonitorManager);
+        Assert.True(line.ExcludeFromMonitorManager);
+        Assert.True(line.RenderAsReadOnlyStatus);
         Assert.Contains(A300EwdMemos.LineKey, _def.GetPanelDisplayVariables()[A300EwdMemos.Panel]);
         Assert.Contains(A300EwdMemos.Panel, _def.GetPanelStructure()[A300DisplayPanels.Section]);
         Assert.True(_def.ProcessSimVarUpdate(A300EwdMemos.LineKey, 1, _speech));
+        Assert.Empty(_speech.All);
     }
 
     [Fact]
-    public void A_memo_appearing_is_spoken_and_shown()
+    public void A_memo_appearing_is_shown_and_never_spoken()
     {
+        // Owner, 2026-10-11: a sign or light gives its switch read-back only, as on the Fenix, the PMDGs, the
+        // iFly and the MD-11; "Memo: Seat belts on" a few seconds later repeated the switch.
         Assert.Empty(Sample());   // the baseline
         Assert.Equal("none", BoxLine());
         Input("INI_SEATBELTS_SWITCH", 1);
+        Input("INI_apu_available", 1);
         Assert.Empty(Sample());
         Assert.Empty(Sample(2000));
-        Assert.Equal(new[] { "Memo: Seat belts on" }, Sample());
-        Assert.Equal("Seat belts on", BoxLine());
+        Assert.Empty(Sample());
+        Assert.Empty(Sample(5000));
+        Assert.Equal("APU running, Seat belts on", BoxLine());
         Input("INI_SEATBELTS_SWITCH", 0);
-        Assert.Empty(Sample());   // a memo going is not spoken
-        Assert.Equal("none", BoxLine());
+        Assert.Empty(Sample());
+        Assert.Equal("APU running", BoxLine());
     }
 
     [Fact]
-    public void Memos_at_load_are_the_baseline_and_a_muted_row_is_silent()
+    public void Memos_at_load_are_the_baseline_of_the_box()
     {
         Input("INI_PARKING_BRAKE_STATUS", 1);
         Assert.Empty(Sample());
         Assert.Equal("Parking brake on", BoxLine());
-        _muted.Add(A300EwdMemos.LineKey);
-        Input("INI_apu_available", 1);
-        Sample();
-        Sample(3000);
-        Assert.Empty(Sample());
-        Assert.Equal("APU running, Parking brake on", BoxLine());
     }
 
     [Fact]

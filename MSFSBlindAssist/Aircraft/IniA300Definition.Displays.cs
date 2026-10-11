@@ -73,7 +73,7 @@ public partial class IniA300Definition
         foreach (var callout in engagement.Concat(callouts))
             if (!IsMuted(A300FmaSources.MuteKeyFor(callout.Column)))
                 announcer.Announce(callout.Phrase);
-        UpdateMemos(sim, announcer, now);
+        UpdateMemos(sim, now);
     }
 
     private readonly A300MemoTracker _memoTracker = new();
@@ -82,18 +82,16 @@ public partial class IniA300Definition
     private string? _memoLine;
 
     /// <summary>
-    /// The E/WD memos (<see cref="A300EwdMemos"/>), read once a sample, after a flight load has settled: the
-    /// ECAM Memos box shows them, and a memo appearing is spoken, as the FBW Airbuses speak theirs, unless the
-    /// "ECAM memos" Ctrl+M row is unticked. A memo going is not spoken.
+    /// The E/WD memos (<see cref="A300EwdMemos"/>), read once a sample, after a flight load has settled, for the
+    /// ECAM Memos box. Never spoken (owner, 2026-10-11): most follow a switch, and a sign or light gives its
+    /// switch read-back only, as on the Fenix, the PMDGs, the iFly and the MD-11.
     /// </summary>
-    private void UpdateMemos(SimConnectManager sim, ScreenReaderAnnouncer announcer, long now)
+    private void UpdateMemos(SimConnectManager sim, long now)
     {
         var update = _memoTracker.Update(key => Cached(sim, key), now);
         if (!_memoTracker.HasBaseline)
             return;   // an input is still unread
         _memoLine = A300EwdMemos.Line(update.Displayed.Select(m => m.Words).ToArray());
-        if (update.Shown.Count > 0 && !IsMuted(A300EwdMemos.LineKey))
-            announcer.Announce(A300EwdMemos.Phrase(update.Shown.Select(m => m.Words).ToArray()));
     }
 
     /// <summary>Whether the switch is where MSFSBA just commanded it (<see cref="A300CommandedState"/>).</summary>

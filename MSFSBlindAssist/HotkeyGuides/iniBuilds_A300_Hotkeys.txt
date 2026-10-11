@@ -21,8 +21,9 @@ Rotate, V2), the fault and warning lights, autopilot and autothrottle disconnect
 altitude window. Everything is read from the aircraft's own values, not from pictures.
 
 The upper ECAM's memos are read as the aircraft shows them: the ECAM Memos status box in the
-Displays section lists them ("APU running, Parking brake on, Seat belts on"), and a memo is
-announced when it appears ("Memo: No smoking on"). Its Ctrl+M row is "ECAM memos".
+Displays section lists them ("APU running, Parking brake on, Seat belts on"). They are not
+announced: when you switch a sign or light, your screen reader reads the switch, as on the other
+aircraft.
 
 Not in the status boxes: the upper ECAM's warnings, and the ND's waypoint name and bearing. The
 A300 keeps these inside its own display software, not in values the simulator shares. Read them
