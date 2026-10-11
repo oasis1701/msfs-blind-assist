@@ -769,13 +769,15 @@ public class ClaudeContextBudgetTests
             "BRF-6 GetAssignedStatusAsync", "SI-30 ValidateDatabaseSimulatorMatch", "MD11-23 CalcPathVerdict.PilotWarning",
             "VAT-12 HotkeyAction.ToggleVatsimAnnouncements", "WX-10 HasOwnIcingAnnouncer",
             "DCK-19 UpdateHeadingErrorWithThresholds",
+            "A300-1 ExecuteCalculatorCodeUnique", "A300-7 DefAnnounceMuteSets", "A300-7 Md11SeedGate",
+            "A300-17 ValueInputForm",
         },
         ["named as what never to use: the rule guards the code that must avoid it"] = new[]
         {
             "DCK-17 CalculateCrossTrackError", "EXIT-1 LastKnownPosition", "EXIT-9 Runway.Length",
             "P777-14 RequestVariable", "STR-17 Runway.StartLat", "STR-17 StartLon", "SUR-4 GetNearbyAirportICAOs",
             "SUR-24 GetTaxiPaths", "SUR-1 TaxiGraph.Build", "SI-27 TaxiGraph", "BRF-1 TaxiGuidanceManager",
-            "TKO-3 TaxiGuidanceManager",
+            "TKO-3 TaxiGuidanceManager", "A300-1 SetLVar", "A300-17 ShowTrackedWindow",
         },
         ["named as the model the rule's code copies, or as a reader its change would break"] = new[]
         {
@@ -796,7 +798,7 @@ public class ClaudeContextBudgetTests
         {
             "A320-10 SimVarDefinition.IsNotSet", "A380-2 RenderAsButton", "A380-10 RenderAsButton",
             "A380F-12 ExcludeFromBatch", "ARINC-2 ValueDescriptions", "MD11-11 ExcludeFromMonitorManager",
-            "MD11-22 SimVarDefinition.ValueToDescriptionKey",
+            "MD11-22 SimVarDefinition.ValueToDescriptionKey", "A300-28 HighFrequency",
         },
         ["a MainForm field declared in MainForm.cs and used by the partial the rule loads on"] = new[]
         {
@@ -805,7 +807,7 @@ public class ClaudeContextBudgetTests
         ["the same name, other code: the rule means a framework method, an enum value or a record parameter the "
             + "declaration index does not see"] = new[]
         {
-            "A380C-3 SendAsync", "TRF-3 IdentityKey", "HLD-11 HoldShort", "SUR-22 HoldShort",
+            "A380C-3 SendAsync", "TRF-3 IdentityKey", "HLD-11 HoldShort", "SUR-22 HoldShort", "GSX-5 AlreadyThere",
         },
     };
 
