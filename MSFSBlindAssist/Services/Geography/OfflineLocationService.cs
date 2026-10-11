@@ -47,6 +47,9 @@ internal sealed class OfflineLocationService
 
     internal bool IsAvailable => _store.IsAvailable;
 
+    /// <summary>A database is installed but was built for another schema.</summary>
+    internal bool NeedsUpdate => _store.NeedsUpdate;
+
     /// <summary>For Output C. Null when no usable database is installed.</summary>
     internal LocationReport? GetNearest(double lat, double lon, LocationQuerySettings settings) =>
         _store.IsAvailable ? _store.Read(c => Report(c, lat, lon, settings, details: false)) : null;
@@ -161,6 +164,7 @@ internal sealed class OfflineLocationService
             {
                 Name = p.Name, State = state, Country = country,
                 Distance = LocationPhrases.ToUnit(p.DistanceNm, s.Kilometres),
+                Unit = LocationPhrases.UnitWord(s.Kilometres),
                 Direction = LocationPhrases.Direction(p.BearingTrue),
                 Type = category.ToString().ToLowerInvariant(),
             };
@@ -173,6 +177,7 @@ internal sealed class OfflineLocationService
         {
             Name = p.Name, State = state, Country = country, Population = p.Population,
             Distance = LocationPhrases.ToUnit(p.DistanceNm, s.Kilometres),
+            Unit = LocationPhrases.UnitWord(s.Kilometres),
             Direction = LocationPhrases.Direction(p.BearingTrue), Type = type,
         };
     }

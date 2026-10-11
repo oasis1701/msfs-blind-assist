@@ -44,6 +44,11 @@ internal static class LocationPhrases
     private static readonly string[] Directions =
         { "north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest" };
 
+    /// <summary>Output C or Location Info pressed with no usable location data installed.</summary>
+    internal static string Unavailable(bool needsUpdate) => needsUpdate
+        ? "Location data needs an update. Update it in Settings, GeoNames tab."
+        : "Location data not downloaded. Download it in Settings, GeoNames tab.";
+
     internal static double ToUnit(double nm, bool kilometres) => kilometres ? nm * KmPerNm : nm * MilesPerNm;
 
     /// <summary>The unit word as the settings store it and the online lookups spoke it.</summary>

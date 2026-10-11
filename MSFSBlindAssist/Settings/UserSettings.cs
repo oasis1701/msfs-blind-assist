@@ -174,8 +174,9 @@ public class UserSettings
         // Aircraft Settings
         public string LastAircraft { get; set; } = "A320";
 
-        // GeoNames API Settings
-        public string GeoNamesApiUsername { get; set; } = "";
+        // Nearest-place announcements (Output C's periodic form). There is NO GeoNames username any
+        // more: Output C and Location Info read the offline location data downloaded from the
+        // GeoNames tab, so the online API account (and its old setting) was retired.
         public int NearestCityAnnouncementInterval { get; set; } = 0; // 0 = Off, otherwise seconds
 
         // SimBrief Settings
@@ -210,11 +211,8 @@ public class UserSettings
         public int NearbyCitiesRange { get; set; } = 25;
         public int RegionalCitiesRange { get; set; } = 50;
         public int MajorCitiesRange { get; set; } = 185;
+        // One range for all four landmark lists (airports, terrain, water, tourist landmarks).
         public int LandmarksRange { get; set; } = 30;
-        public int AirportsRange { get; set; } = 50;
-        public int TerrainRange { get; set; } = 30;
-        public int WaterBodiesRange { get; set; } = 20;
-        public int TouristLandmarksRange { get; set; } = 25;
 
         // Display Limits
         public int MaxNearbyPlacesToShow { get; set; } = 10;
@@ -226,7 +224,6 @@ public class UserSettings
 
         // City Filtering
         public int MajorCityPopulationThreshold { get; set; } = 50000;
-        public string MajorCityAPIThreshold { get; set; } = "cities15000";
 
         // Units
         public string DistanceUnits { get; set; } = "miles";

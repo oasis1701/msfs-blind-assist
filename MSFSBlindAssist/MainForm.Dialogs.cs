@@ -117,16 +117,29 @@ public partial class MainForm
             return;
         }
 
+        if (!offlineLocationService.IsAvailable)
+        {
+            announcer.AnnounceImmediate(Services.Geography.LocationPhrases.Unavailable(offlineLocationService.NeedsUpdate));
+            return;
+        }
+
         try
         {
-            announcer.AnnounceImmediate("Requesting aircraft position...");
-
-            simConnectManager.RequestAircraftPositionAsync((position) =>
+            // The lookup is local and takes milliseconds, so the window opens already filled: no
+            // "Requesting…" or "Loading…" stage, and its focused first box is what NVDA reads.
+            var query = Services.Geography.LocationQuerySettings.From(MSFSBlindAssist.Settings.SettingsManager.Current);
+            simConnectManager.RequestAircraftPositionAsync(async position =>
             {
-                // This callback runs when position data is received
+                // This callback runs on the UI thread, so the await resumes there.
                 try
                 {
-                    var locationForm = new Forms.LocationInfoForm(position.Latitude, position.Longitude, announcer);
+                    var report = await Task.Run(() => offlineLocationService.GetLocationInfo(position.Latitude, position.Longitude, query));
+                    if (report?.Details is null)
+                    {
+                        announcer.AnnounceImmediate(Services.Geography.LocationPhrases.Unavailable(offlineLocationService.NeedsUpdate));
+                        return;
+                    }
+                    var locationForm = new Forms.LocationInfoForm(report, query.Kilometres);
                     locationForm.Show();
                 }
                 catch (Exception ex)
