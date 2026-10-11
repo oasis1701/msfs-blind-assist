@@ -91,6 +91,10 @@ The A32NX panel set in `FlyByWireA320Definition.cs` is now at parity with the A3
 **TO CONFIG announces its result** (`AnnounceTakeoffConfigResult`, via the `onHeld` callback + `TakeoffConfigTestHoldMs = 1500`): the button is held 1.5 s so the FWC evaluates the config, then the cached `I_MIP_MASTER_WARNING_CAPT` is read and spoken — "Takeoff config normal." / "Takeoff config: check configuration." — the blind-pilot equivalent of the sighted `TO CONFIG NORMAL`, then it releases. Verification is in-sim (no automated tests); the reproduce/validate recipe is the §5.3 MCP recipe: press `1 (>L:S_ECAM_TO)` → master warning fires → `0` → clears. **First Officer flow has the SAME bug on its own writer** (`FirstOfficer/Generic/LVarActionExecutor.cs` `PulseCoreAsync`, on the `feature/first-officer` branch) — apply the identical release there when that branch is worked.
 
 
+### Fenix MCDU window: the data service connection (2026-10)
+
+The Fenix MCDU window (`Forms/FenixA320/FenixMCDUForm.cs`, `Services/FenixMCDUService.cs`) reads the screens from the Fenix data service, a GraphQL server on port 8083: one `graphql-transport-ws` subscription for the screens, and one HTTP POST per key edge (`writeInt` 1 then 0 on `system.switches.S_CDU{n}_KEY_<key>`). Address it as `127.0.0.1`, never `localhost` ([A320-40]): it listens on IPv4 only, and Windows spends about 2 s refusing `::1` on every new connection. The key client's pooled connection goes after about a minute idle, so the first key press after a pause used to stall about 2 s (measured 2,005 ms against 1 ms). The receive loop answers the service's 15-second `ping` with a `pong`, and the app disposes the service on exit as well as on an aircraft switch.
+
 ### Fenix MCDU selected-option marker — colour ALONE is not enough (2026-08)
 
 **Symptom:** the CONFIG > FAILURES page (Failures = LSK 2R) cycles FAILURE TYPE between NONE / MINOR / ALL, but the MCDU window rendered `1: ←NONE/MINOR/ALL  RANDOM*` — **no accessible indication of which option was active**, on any of the three settings. Same for FAILURE RATE (REALISTIC / HIGH).

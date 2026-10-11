@@ -38,8 +38,12 @@ public class MCDULinePair
 
 public class FenixMCDUService : IDisposable
 {
-    private const string WS_URL = "ws://localhost:8083/graphql";
-    private const string HTTP_URL = "http://localhost:8083/graphql";
+    // 127.0.0.1, never by name ([A320-40]): the Fenix data service listens on IPv4 only, and
+    // Windows spends about 2 s refusing ::1 on every new connection before it falls back. The key
+    // writes' pooled connection goes after about a minute idle, so by name the first key press
+    // after a pause stalled 2 s.
+    private const string WS_URL = "ws://127.0.0.1:8083/graphql";
+    private const string HTTP_URL = "http://127.0.0.1:8083/graphql";
 
     private ClientWebSocket? _ws;
     private CancellationTokenSource? _cts;
@@ -170,6 +174,13 @@ public class FenixMCDUService : IDisposable
                 {
                     Log.Debug("Services", $"Parse error: {ex.Message}");
                 }
+            }
+            else if (msgType == "ping")
+            {
+                // graphql-transport-ws keepalive: the service pings about every 15 s and the
+                // protocol expects a pong. Only this loop sends after the subscribe, so this
+                // never overlaps another SendAsync.
+                await SendJson(new { type = "pong" }, ct);
             }
             else if (msgType == "error" || msgType == "complete")
             {
