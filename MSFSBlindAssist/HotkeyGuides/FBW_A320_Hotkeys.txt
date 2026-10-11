@@ -340,4 +340,8 @@ Automatic Announcements:
   - Master Warning / Master Caution
   - Altimeter setting, approach minimums, flaps and gear
   - Ground speed callouts while on the ground
+  - "V1", "Rotate" and "V2" on the take-off roll, as the airspeed reaches the
+    speeds entered on the MCDU PERF TAKE OFF page (one call, "V1, Rotate", when
+    V1 and VR are the same). They arm on the ground below 40 knots with V1 and VR
+    entered; mute each with its speed's row (V1, VR, V2).
   Mute any of these from the Monitor Manager (Ctrl+M).
