@@ -106,6 +106,17 @@ public class LocationPhrasesTests
     }
 
     [Fact]
+    public void Without_data_c_says_what_is_happening_to_it()
+    {
+        Assert.Equal("Location data not downloaded. Download it in Settings, GeoNames tab.", LocationPhrases.Unavailable(false));
+        Assert.Equal("Location data needs an update. Update it in Settings, GeoNames tab.", LocationPhrases.Unavailable(true));
+        // A pilot who already pressed Download is never sent back to it.
+        Assert.Equal("Location data is still downloading.", LocationPhrases.Unavailable(false, DownloadJobPhase.Downloading));
+        Assert.Equal("Location data is still being built.", LocationPhrases.Unavailable(true, DownloadJobPhase.Building));
+        Assert.Equal(LocationDataStatusText.ReadyAtNextStart, LocationPhrases.Unavailable(false, DownloadJobPhase.Ready, readyAtNextStart: true));
+    }
+
+    [Fact]
     public void Where_you_are_box_over_the_bay()
     {
         Assert.Equal(

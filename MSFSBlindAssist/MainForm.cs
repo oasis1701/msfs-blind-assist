@@ -622,11 +622,16 @@ public partial class MainForm : Form
             if (speech.Immediate) announcer.AnnounceImmediate(speech.Text);
             else announcer.Announce(speech.Text);
         });
-        // Remove half-built files a crash left and promote a verified build whose swap never
-        // finished. Off the UI thread: a promotion may wait out an antivirus scan.
+        // Remove half-built files a crash left, promote a verified build whose swap never finished
+        // and drop a whole download past its reuse window. Off the UI thread: a promotion may wait
+        // out an antivirus scan.
         _ = Task.Run(() =>
         {
-            try { Services.Geography.LocationDataStore.Default.Sweep(); }
+            try
+            {
+                Services.Geography.LocationDataStore.Default.Sweep();
+                locationDataDownloader.SweepExpiredDownload();
+            }
             catch (Exception ex) { Log.Warn("LocationData", $"Startup sweep failed: {ex.Message}"); }
         });
 

@@ -29,13 +29,14 @@ public sealed class LocationDataDownloaderTests : IDisposable
         try { Directory.Delete(_dir, recursive: true); } catch (IOException) { }
     }
 
-    private static readonly IReadOnlyDictionary<NaturalEarthLayer, string> FixtureHashes =
-        GeographyFixtureWorld.Shapes.ToDictionary(kv => kv.Key,
-            kv => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(kv.Value))));
+    private static IReadOnlyDictionary<NaturalEarthLayer, string> Hashes(IReadOnlyDictionary<NaturalEarthLayer, string> shapes) =>
+        shapes.ToDictionary(kv => kv.Key, kv => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(kv.Value))));
+
+    private static readonly IReadOnlyDictionary<NaturalEarthLayer, string> FixtureHashes = Hashes(GeographyFixtureWorld.Shapes);
 
     private LocationDataDownloader Downloader(long freeBytes = long.MaxValue)
     {
-        var d = new LocationDataDownloader(_store, _server, _server, FixtureHashes, _ => freeBytes)
+        var d = new LocationDataDownloader(_store, _server, _server, Hashes(_server.Shapes), _ => freeBytes)
         {
             MinimumPlaces = 1,
             MinimumRows = 1,
@@ -218,6 +219,134 @@ public sealed class LocationDataDownloaderTests : IDisposable
         Assert.StartsWith("Not downloaded. About ", d.Status.Text);
     }
 
+    [Fact(Timeout = 30_000)]
+    public async Task A_dump_served_without_a_length_still_resumes_after_a_dropped_connection()
+    {
+        // A scanning proxy re-chunks the 200, so no Content-Length arrives; the line then drops.
+        _server.DropFirstZipBodyWithoutLength = true;
+        using var d = Downloader();
+        d.Start();
+        await d.Job;
+
+        Assert.True(_store.IsAvailable);
+        Assert.Equal(2, _server.ZipRequests.Count);
+        Assert.NotNull(_server.ZipRequests[1].Range); // the tail, not the whole file again
+        Assert.DoesNotContain(_spoken, s => s.Contains("could not be resumed"));
+    }
+
+    [Fact(Timeout = 30_000)]
+    public async Task A_complete_download_is_built_offline_from_the_files_already_on_disk()
+    {
+        // "Nothing is downloaded again": the name files and shapes of the earlier attempt are reused too.
+        WriteCompleteDownload(FakeServer.Zip);
+        File.WriteAllText(Path.Combine(_store.DownloadFolder, "countryInfo.txt"), GeographyFixtureWorld.CountryInfo);
+        File.WriteAllText(Path.Combine(_store.DownloadFolder, "admin1CodesASCII.txt"), GeographyFixtureWorld.Admin1);
+        foreach (var (layer, file) in NaturalEarthShapes.LayerFiles)
+            File.WriteAllText(Path.Combine(_store.DownloadFolder, file + ".geojson"), GeographyFixtureWorld.Shapes[layer]);
+        _server.Offline = true;
+        using var d = Downloader();
+        d.Start();
+        await d.Job;
+
+        Assert.True(_store.IsAvailable);
+        Assert.Equal("Building location data from the earlier download.", _spoken[0]);
+    }
+
+    [Fact(Timeout = 30_000)]
+    public async Task A_build_failure_that_is_not_the_dumps_fault_keeps_the_download()
+    {
+        // A Natural Earth layer with no shapes fails the build, but the GeoNames dump is fine:
+        // deleting it would cost the next press 400 MB for nothing.
+        _server.Shapes = new Dictionary<NaturalEarthLayer, string>(GeographyFixtureWorld.Shapes)
+        {
+            [NaturalEarthLayer.Marine] = "{\"type\":\"FeatureCollection\",\"features\":[]}",
+        };
+        using var d = Downloader();
+        d.Start();
+        await d.Job;
+
+        Assert.Equal(DownloadJobPhase.Failed, d.Status.Phase);
+        Assert.True(File.Exists(Path.Combine(_store.DownloadFolder, "allCountries.zip")));
+        Assert.StartsWith("Downloaded but not built yet.", d.IdleStatus().Text);
+    }
+
+    [Fact(Timeout = 30_000)]
+    public async Task A_damaged_zip_is_deleted_like_any_dump_the_build_rejected()
+    {
+        string zip = WriteCompleteDownload(FakeServer.Zip[..^20]); // its end-of-central-directory record is cut off
+        using var d = Downloader();
+        d.Start();
+        await d.Job;
+
+        Assert.Equal(DownloadJobPhase.Failed, d.Status.Phase);
+        Assert.False(File.Exists(zip));
+        Assert.False(File.Exists(zip + ".json"));
+    }
+
+    [Fact]
+    public void A_whole_download_past_its_reuse_window_is_removed_at_startup()
+    {
+        string zip = WriteCompleteDownload(FakeServer.Zip);
+        using var d = Downloader();
+        d.SweepExpiredDownload();
+        Assert.True(File.Exists(zip)); // within 3 days: kept for the next press
+
+        File.SetLastWriteTimeUtc(zip, DateTime.UtcNow.AddDays(-4));
+        d.SweepExpiredDownload();
+        Assert.False(Directory.Exists(_store.DownloadFolder)); // never built from again: about 466 MB freed
+    }
+
+    [Fact]
+    public void A_build_waiting_for_the_next_start_is_not_offered_as_a_fresh_download()
+    {
+        new LocationDataBuilder(_store).Build(GeographyFixtureWorld.WriteInputs(_dir), null, CancellationToken.None);
+        File.Move(_store.DatabasePath, _store.ReadyPath); // the swap was put off: an antivirus held the file
+        var store = new LocationDataStore(_store.DatabasePath);
+        using var d = new LocationDataDownloader(store, _server, _server, FixtureHashes, _ => long.MaxValue);
+
+        Assert.True(d.HasData); // "Update location data", never "Download"
+        Assert.Equal(LocationDataStatusText.ReadyAtNextStart, d.IdleStatus().Text);
+    }
+
+    [Fact]
+    public void A_network_share_skips_the_disk_space_check_instead_of_failing()
+    {
+        // A redirected %APPDATA% (\\server\share\...) has a root DriveInfo rejects.
+        Assert.Equal(long.MaxValue, LocationDataDownloader.FreeBytes(@"\\server\share\"));
+    }
+
+    [Fact]
+    public void A_timeout_is_a_server_that_did_not_answer_never_a_cancel()
+    {
+        Assert.Equal("the download server did not answer. Check the internet connection.",
+            LocationDataDownloader.FailureReason(new TaskCanceledException("The operation was canceled.")));
+    }
+
+    [Fact]
+    public void Network_and_disk_failures_are_told_apart()
+    {
+        const string network = "the connection to the download server was lost. Check the internet connection.";
+        Assert.Equal(network, LocationDataDownloader.FailureReason(new HttpIOException(HttpRequestError.ResponseEnded, "The response ended prematurely.")));
+        Assert.Equal(network, LocationDataDownloader.FailureReason(
+            new IOException("Unable to read data from the transport connection.", new System.Net.Sockets.SocketException(10054))));
+        Assert.True(LocationDataDownloader.IsRetryable(new HttpIOException(HttpRequestError.ResponseEnded)));
+
+        var full = new IOException("There is not enough space on the disk.", unchecked((int)0x80070070));
+        Assert.Equal("a file could not be written: There is not enough space on the disk.", LocationDataDownloader.FailureReason(full));
+        Assert.False(LocationDataDownloader.IsRetryable(full)); // retrying the network never frees the disk
+    }
+
+    /// <summary>A whole dump with its validator, as a cancelled or failed build leaves it.</summary>
+    private string WriteCompleteDownload(byte[] bytes)
+    {
+        Directory.CreateDirectory(_store.DownloadFolder);
+        string zip = Path.Combine(_store.DownloadFolder, "allCountries.zip");
+        File.WriteAllBytes(zip, bytes);
+        File.WriteAllText(zip + ".json",
+            $"{{\"Url\":\"{LocationDataDownloader.GeoNamesBaseUrl}allCountries.zip\",\"ETag\":\"\\\"dump-v1\\\"\",\"Total\":{bytes.Length}}}");
+        return zip;
+    }
+
     private void WritePartial(bool half, string etag)
     {
         Directory.CreateDirectory(_store.DownloadFolder);
@@ -240,15 +369,22 @@ public sealed class LocationDataDownloaderTests : IDisposable
         /// <summary>A misbehaving answer to a Range request: 206 with the tail from the wrong offset,
         /// or 416 with an error page. A request without a Range is served normally.</summary>
         internal HttpStatusCode? BadResumeAnswer;
+        /// <summary>No network at all: every request fails as an unreachable host does.</summary>
+        internal bool Offline;
+        /// <summary>The first whole-file answer has no Content-Length (a re-chunking proxy) and its
+        /// connection drops halfway.</summary>
+        internal bool DropFirstZipBodyWithoutLength;
+        internal IReadOnlyDictionary<NaturalEarthLayer, string> Shapes = GeographyFixtureWorld.Shapes;
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
+            if (Offline) throw new HttpRequestException("No such host is known.");
             string url = request.RequestUri!.ToString();
             if (url == LocationDataDownloader.GeoNamesBaseUrl + "countryInfo.txt") return Text(GeographyFixtureWorld.CountryInfo);
             if (url == LocationDataDownloader.GeoNamesBaseUrl + "admin1CodesASCII.txt") return Text(GeographyFixtureWorld.Admin1);
             foreach (var (layer, file) in NaturalEarthShapes.LayerFiles)
                 if (url == LocationDataDownloader.NaturalEarthBaseUrl + file + ".geojson")
-                    return Text(GeographyFixtureWorld.Shapes[layer]);
+                    return Text(Shapes[layer]);
             if (url != LocationDataDownloader.GeoNamesBaseUrl + "allCountries.zip")
                 return new HttpResponseMessage(HttpStatusCode.NotFound);
 
@@ -279,6 +415,16 @@ public sealed class LocationDataDownloaderTests : IDisposable
             else
             {
                 response = new HttpResponseMessage(HttpStatusCode.OK);
+                if (DropFirstZipBodyWithoutLength)
+                {
+                    DropFirstZipBodyWithoutLength = false;
+                    // A stream that cannot seek gives StreamContent no length to send.
+                    response.Content = new StreamContent(new DroppingStream(Zip));
+                    response.Headers.ETag = new EntityTagHeaderValue(ZipETag);
+                    response.Content.Headers.LastModified = ZipModified;
+                    await Task.Yield();
+                    return response;
+                }
                 if (HoldZipBody is { } hold)
                 {
                     // Send half, then wait (a stalled or slow line) until the test releases it.
@@ -296,6 +442,32 @@ public sealed class LocationDataDownloaderTests : IDisposable
 
         private static HttpResponseMessage Text(string body) =>
             new(HttpStatusCode.OK) { Content = new ByteArrayContent(Encoding.UTF8.GetBytes(body)) };
+    }
+
+    /// <summary>Gives the first half of the bytes, then fails as a reset connection does.</summary>
+    private sealed class DroppingStream(byte[] bytes) : Stream
+    {
+        private int _position;
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            int half = bytes.Length / 2;
+            if (_position >= half) throw new IOException("Unable to read data from the transport connection.");
+            int n = Math.Min(count, half - _position);
+            bytes.AsSpan(_position, n).CopyTo(buffer.AsSpan(offset, n));
+            _position += n;
+            return n;
+        }
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => _position; set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     /// <summary>Gives the first half of the bytes, then blocks (honouring the reader's token) until released.</summary>

@@ -2925,7 +2925,7 @@ public partial class MainForm
 
             if (!offlineLocationService.IsAvailable)
             {
-                if (userInitiated) announcer.Announce(LocationPhrases.Unavailable(offlineLocationService.NeedsUpdate));
+                if (userInitiated) announcer.Announce(LocationDataUnavailableText());
                 return;
             }
 
@@ -2939,7 +2939,7 @@ public partial class MainForm
                     var report = await Task.Run(() => offlineLocationService.GetNearest(position.Latitude, position.Longitude, query));
                     if (report is null)
                     {
-                        if (userInitiated) announcer.Announce(LocationPhrases.Unavailable(offlineLocationService.NeedsUpdate));
+                        if (userInitiated) announcer.Announce(LocationDataUnavailableText());
                         return;
                     }
                     string sentence = LocationPhrases.NearestCitySentence(report.Where, report.Nearest, query.Kilometres, query.NearbyRange);
@@ -2958,4 +2958,9 @@ public partial class MainForm
             Log.Debug("MainForm", $"Error during nearest city announcement: {ex.Message}");
         }
     }
+
+    /// <summary>What C and Shift+L say without usable location data: a download or build in
+    /// progress, a build waiting for the next start, an old database, or none.</summary>
+    private string LocationDataUnavailableText() => LocationPhrases.Unavailable(
+        offlineLocationService.NeedsUpdate, locationDataDownloader.Status.Phase, offlineLocationService.ReadyAtNextStart);
 }

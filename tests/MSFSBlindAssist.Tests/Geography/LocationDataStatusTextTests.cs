@@ -40,6 +40,16 @@ public class LocationDataStatusTextTests
     }
 
     [Fact]
+    public void A_build_waiting_for_the_next_start_says_so()
+    {
+        Assert.Equal("Location data is ready and will be used from the next start of MSFS Blind Assist.",
+            LocationDataStatusText.Idle(null, LocationDataStore.SchemaVersion, 0, readyAtNextStart: true));
+        // An update waiting to replace current data too: the next start installs the new build.
+        Assert.Equal(LocationDataStatusText.ReadyAtNextStart,
+            LocationDataStatusText.Idle(Installed, LocationDataStore.SchemaVersion, 0, readyAtNextStart: true));
+    }
+
+    [Fact]
     public void Nothing_yet_explains_the_download_and_the_disk_it_needs()
     {
         string text = LocationDataStatusText.Idle(null, LocationDataStore.SchemaVersion, 0);

@@ -12,13 +12,30 @@ internal sealed record LocationQuerySettings(
 {
     internal const double KmPerMile = 1.609344;
 
-    internal static LocationQuerySettings From(UserSettings s) => new(
-        s.DistanceUnits == "kilometers", s.NearbyCitiesRange, s.RegionalCitiesRange, s.MajorCitiesRange,
-        s.LandmarksRange, s.MajorCityPopulationThreshold, s.MaxNearbyPlacesToShow, s.MaxMajorCitiesToShow,
-        s.MaxAirportsToShow, s.MaxTerrainFeaturesToShow, s.MaxWaterBodiesToShow, s.MaxTouristLandmarksToShow)
+    /// <summary>The ceiling of every search range, in the tab's units: a query's cost grows with
+    /// the area it searches (the retired web service capped every radius at 300 km).</summary>
+    internal const int MaxRangeMiles = 310;
+    internal const int MaxRangeKm = 500;
+    /// <summary>The Coast Range ceiling, in either unit (1,000 miles is 1,609 km, inside the coast
+    /// search's 3,000 km reach).</summary>
+    internal const int MaxCoastRange = 1000;
+
+    internal static int MaxRange(bool kilometres) => kilometres ? MaxRangeKm : MaxRangeMiles;
+
+    /// <summary>Clamped here, where the lookups read them: a value saved before the ceilings
+    /// existed (the old tab accepted any) must not make every C press scan a continent.</summary>
+    internal static LocationQuerySettings From(UserSettings s)
     {
-        CoastRange = s.CoastRange,
-    };
+        bool kilometres = s.DistanceUnits == "kilometers";
+        int Range(int value) => Math.Clamp(value, 1, MaxRange(kilometres));
+        return new(
+            kilometres, Range(s.NearbyCitiesRange), Range(s.RegionalCitiesRange), Range(s.MajorCitiesRange),
+            Range(s.LandmarksRange), s.MajorCityPopulationThreshold, s.MaxNearbyPlacesToShow, s.MaxMajorCitiesToShow,
+            s.MaxAirportsToShow, s.MaxTerrainFeaturesToShow, s.MaxWaterBodiesToShow, s.MaxTouristLandmarksToShow)
+        {
+            CoastRange = Math.Clamp(s.CoastRange, 1, MaxCoastRange),
+        };
+    }
 
     /// <summary>The GeoNames tab's Coast Range, in the tab's units (default 50): over land the sea
     /// coast is mentioned only within it. At sea and over a lake the nearest land or shore is always said.</summary>
@@ -38,7 +55,8 @@ internal sealed record LocationReport(WhereYouAre Where, PlaceHit? Nearest, Loca
 /// <summary>
 /// Answers Output C and Location Info from the local database: no network at lookup time. A
 /// position is classified lake first (Natural Earth's states cover the Great Lakes), then land
-/// (inside a state polygon), then sea (inside a named marine polygon). Over water the edge is the
+/// (inside a state polygon), then sea (inside a named marine polygon, unless within
+/// <see cref="ShoreBandKm"/> of the coastline: then it is ashore). Over water the edge is the
 /// nearest land (a lake's own outline, its islands included; the sea coast at any distance at
 /// sea); over land it is the sea coast, searched only within the Coast Range and named by the sea just
 /// past it. The area (state, province, canton…) always comes from GeoNames, the source the C
@@ -51,6 +69,11 @@ internal sealed class OfflineLocationService
     private static readonly double[] CoastSearchStepsKm = { 50, 100, 200, 400, 800, 1600, 3000 };
     private const double SeaCoastMaxKm = 3000; // Point Nemo, the farthest point from land, is about 2,700 km out
     private const int CardinalCandidates = 20;
+    /// <summary>A "sea" position this close to the coastline is ashore. Natural Earth's coastline is
+    /// good to about a kilometre, its seas are simplified further, and its state outlines leave out
+    /// many islands and coastal airports: Auckland, St Maarten and Madeira lie within 0.1 km of the
+    /// coastline, Hong Kong's reclaimed island 1.75 km off it, all inside a sea shape.</summary>
+    private const double ShoreBandKm = 2.0;
 
     private readonly LocationDataStore _store;
 
@@ -60,6 +83,9 @@ internal sealed class OfflineLocationService
 
     /// <summary>A database is installed but was built for another schema.</summary>
     internal bool NeedsUpdate => _store.NeedsUpdate;
+
+    /// <summary>A verified build waits for the next start to replace the live file.</summary>
+    internal bool ReadyAtNextStart => _store.ReadyAtNextStart;
 
     /// <summary>For Output C. Null when no usable database is installed.</summary>
     internal LocationReport? GetNearest(double lat, double lon, LocationQuerySettings settings) =>
@@ -82,8 +108,18 @@ internal sealed class OfflineLocationService
         EdgePoint? edge = lake
             ? NearestOnRings(hits.Lake!.Rings, closed: true, lat, lon)
             : NearestCoast(c, lat, lon, sea ? SeaCoastMaxKm : s.CoastOverLandKm);
+        // Within the shore band a "sea" position is ashore (an island or coastal airport the state
+        // outlines leave out): the land sentence, its coast named by the sea shape it lies in.
+        bool ashore = sea && edge is { } shore && shore.Nm * LocationPhrases.KmPerNm <= ShoreBandKm;
+        if (ashore)
+        {
+            sea = false;
+            if (edge!.Nm * LocationPhrases.KmPerNm > s.CoastOverLandKm) edge = null;
+        }
         // Over land, name the water at the coast: "English Channel coast", not just "coast".
-        string? coastWater = !lake && !sea && edge is { } e ? SeaBeyond(c, e, lat, lon) : null;
+        string? coastWater = null;
+        if (!lake && !sea && edge is { } e)
+            coastWater = ashore ? hits.Marine!.Name : SeaBeyond(c, e, lat, lon);
 
         var nearby = Places(c, lat, lon, s.Km(s.NearbyRange), LocationCategory.Town, LocationCategory.Village)
             .OrderBy(p => p.DistanceNm).ToList();
