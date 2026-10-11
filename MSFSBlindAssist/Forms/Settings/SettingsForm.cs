@@ -13,9 +13,10 @@ public class SettingsForm : Form
     private readonly List<ISettingsPanel> _panels = new();
     private ISettingsPanel? _currentPanel;
 
-    public SettingsForm(Func<Task>? refreshTaxiwayNames = null,
+    internal SettingsForm(Func<Task>? refreshTaxiwayNames = null,
                         Func<Services.VPilot.VatsimStatus?>? vatsimStatus = null,
-                        Func<string>? sceneryIndexStatus = null)
+                        Func<string>? sceneryIndexStatus = null,
+                        Services.Geography.LocationDataDownloader? locationDataDownloader = null)
     {
         Text = "Settings";
         StartPosition = FormStartPosition.CenterParent;
@@ -35,7 +36,7 @@ public class SettingsForm : Form
         AddPanel(new AnnouncementsPanel());
         AddPanel(new WeatherPanel());
         AddPanel(new VatsimPanel(vatsimStatus));
-        AddPanel(new GeoNamesPanel());
+        AddPanel(new GeoNamesPanel(locationDataDownloader));
         AddPanel(new SimBriefPanel());
         AddPanel(new AiSettingsPanel());
         AddPanel(new AudioPanel());
