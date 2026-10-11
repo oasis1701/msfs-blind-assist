@@ -346,6 +346,16 @@ mixed-green rule above writes "---------- *EGLL/LFPG"; the cost index beside the
 "*137". That is the same marking the rule already gives green values on PERF TAKE OFF and FUEL PRED,
 so it is left alone rather than special-cased for one page.
 
+**Seen on the A32NX by the 2026-10-11 sweep, fixed on the A380 only** (the A32NX keeps its own
+code; see [a380x.md](a380x.md), "FBW-drift sweep `1bbd304..76db0aef1`"): the FMS clears both
+approach minimums when the approach changes (#10724) and the A32NX definition speaks only a SET
+minimum, so the clear is silent; and MSFSBA's A/THR disconnect sends `A32NX.FCU_ATHR_DISCONNECT_PUSH`,
+while the PseudoFWC, like the A380's FWS, counts an instinctive disconnect only from the
+`A32NX.AUTO_THROTTLE_DISCONNECT` key the WASM re-emits for the stock `AUTO_THROTTLE_DISCONNECT`.
+Each wants its own change and in-sim test. The rest of the sweep found nothing to change on the
+A32NX: events, FMGC word layouts, FMA and autothrust encodings and the MCDU agent's hooks are as
+they were at `1bbd304`, and the WIND page's request / uplink flow reads through the MCDU window.
+
 ### Cleared V-speeds are spoken "not set" (2026-09-25)
 
 FBW #10855 (`1bbd304`, 18 Aug 2026 — the A32NX half of an A380 commit, in `A32NX_FMCMainDisplay.ts`)
