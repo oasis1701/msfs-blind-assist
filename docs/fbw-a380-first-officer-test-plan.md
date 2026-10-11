@@ -180,7 +180,8 @@ quantity: SET, 12,400 kilograms: unchecked") re-opens the list.
    self-resets). Tick it with RTO disarmed — confirm it arms. **Untick and retick while RTO is
    already armed** — confirm the guarded action does **NOT** re-press the momentary switch
    (a second press would disarm it); the tick should recognize the armed state and no-op.
-5. **Read-back items never fire a switch.** Tick a self-ticking read-back line — e.g. "Beacon: ON"
+5. **Read-back items never fire a switch.** Untick and re-tick a self-ticking read-back line (after
+   its flow it is already ticked), or tick one before running its flow — e.g. "Beacon: ON"
    (Before Start Checklist), "Radar: ON" (Taxi Checklist), "Ground spoilers: ARM" (Landing
    Checklist — it reads the real `A32NX_SPOILERS_ARMED`, not the write-only Act key), "Engines: OFF",
    "Wing lights: OFF" or "Fuel pumps: OFF" (Parking Checklist). Confirm **no switch moves**: the line
