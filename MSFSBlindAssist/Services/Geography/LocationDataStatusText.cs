@@ -9,8 +9,11 @@ namespace MSFSBlindAssist.Services.Geography;
 /// </summary>
 internal static class LocationDataStatusText
 {
-    internal static string Idle(LocationDataInfo? info, int schemaVersion, long partialBytes)
+    internal static string Idle(LocationDataInfo? info, int schemaVersion, long partialBytes, bool downloadComplete = false)
     {
+        if (downloadComplete && (info is null || info.SchemaVersion != schemaVersion || !info.Complete))
+            return "Downloaded but not built yet. Press "
+                + (info is null ? "Download" : "Update") + " location data to build it; nothing is downloaded again.";
         if (info is { Complete: true } && info.SchemaVersion == schemaVersion)
         {
             var parts = new List<string> { "Ready." };

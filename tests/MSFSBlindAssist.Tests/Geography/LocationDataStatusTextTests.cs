@@ -31,6 +31,15 @@ public class LocationDataStatusTextTests
     }
 
     [Fact]
+    public void A_whole_download_waiting_to_be_built_says_so()
+    {
+        Assert.Equal("Downloaded but not built yet. Press Download location data to build it; nothing is downloaded again.",
+            LocationDataStatusText.Idle(null, LocationDataStore.SchemaVersion, 0, downloadComplete: true));
+        // With current data installed, the leftover download only matters to the next update.
+        Assert.StartsWith("Ready.", LocationDataStatusText.Idle(Installed, LocationDataStore.SchemaVersion, 0, downloadComplete: true));
+    }
+
+    [Fact]
     public void Nothing_yet_explains_the_download_and_the_disk_it_needs()
     {
         string text = LocationDataStatusText.Idle(null, LocationDataStore.SchemaVersion, 0);

@@ -66,7 +66,9 @@ the undersea class, stored for later use. The finished database is about 330 MB 
    test, `complete=1`, rename to `.ready`, then the swap under the store's write lock (LOC-2).
 4. Deletes the downloads and says "Location data ready, 8.4 million places."
 
-Cancel keeps the partial download, so the next press resumes. Closing the app cancels silently.
+Cancel keeps the partial download, so the next press resumes. A build that fails or is cancelled
+keeps the whole download and its validator (`allCountries.zip.json`) for 3 days, and the next press
+builds from it without downloading again. Closing the app cancels silently.
 At startup `LocationDataStore.Sweep` removes half-built files and promotes a `.ready` file whose
 swap an antivirus scan blocked. The GeoNames tab's status box shows the job's latest state in
 place (LOC-5); with no job running it describes the installed data, a kept partial download, or

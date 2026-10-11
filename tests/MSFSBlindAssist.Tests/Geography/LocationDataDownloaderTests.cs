@@ -94,6 +94,42 @@ public sealed class LocationDataDownloaderTests : IDisposable
     }
 
     [Fact(Timeout = 30_000)]
+    public async Task A_complete_download_left_by_a_failed_build_is_built_without_fetching_it_again()
+    {
+        Directory.CreateDirectory(_store.DownloadFolder);
+        string zip = Path.Combine(_store.DownloadFolder, "allCountries.zip");
+        File.WriteAllBytes(zip, FakeServer.Zip);
+        File.WriteAllText(zip + ".json",
+            $"{{\"Url\":\"{LocationDataDownloader.GeoNamesBaseUrl}allCountries.zip\",\"ETag\":\"\\\"dump-v1\\\"\",\"Total\":{FakeServer.Zip.Length}}}");
+        using var d = Downloader();
+        Assert.StartsWith("Downloaded but not built yet.", d.IdleStatus().Text);
+
+        d.Start();
+        await d.Job;
+
+        Assert.Empty(_server.ZipRequests);
+        Assert.True(_store.IsAvailable);
+        Assert.Equal("Building location data from the earlier download.", _spoken[0]);
+    }
+
+    [Fact(Timeout = 30_000)]
+    public async Task A_complete_download_is_kept_for_reuse_when_the_build_fails()
+    {
+        using var d = new LocationDataDownloader(_store, _server, _server, FixtureHashes, _ => long.MaxValue)
+        {
+            MinimumPlaces = 1,
+            MinimumRows = 1_000, // the fixture dump is too short: the build fails after the download
+        };
+        d.Start();
+        await d.Job;
+
+        Assert.Equal(DownloadJobPhase.Failed, d.Status.Phase);
+        Assert.False(_store.IsAvailable);
+        Assert.Contains("Downloaded but not built yet.", d.Status.Text);
+        Assert.True(File.Exists(Path.Combine(_store.DownloadFolder, "allCountries.zip")));
+    }
+
+    [Fact(Timeout = 30_000)]
     public async Task Too_little_disk_space_fails_before_downloading_anything()
     {
         using var d = Downloader(freeBytes: 100L * 1024 * 1024);

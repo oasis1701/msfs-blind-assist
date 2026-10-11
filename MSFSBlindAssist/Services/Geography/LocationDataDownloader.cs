@@ -145,18 +145,41 @@ internal sealed class LocationDataDownloader : IDisposable
         _cts?.Dispose();
     }
 
-    /// <summary>The status when no job runs: installed data, an update needed, or nothing yet.</summary>
+    /// <summary>The status when no job runs: installed data, an update needed, a download waiting
+    /// to be built or resumed, or nothing yet.</summary>
     internal DownloadStatus IdleStatus() => new(DownloadJobPhase.Idle,
-        LocationDataStatusText.Idle(_store.Info, LocationDataStore.SchemaVersion, PartialBytes()));
+        LocationDataStatusText.Idle(_store.Info, LocationDataStore.SchemaVersion, PartialBytes(), CompleteDump() is not null));
+
+    private string ZipPath => Path.Combine(_store.DownloadFolder, "allCountries.zip");
 
     private long PartialBytes()
     {
         try
         {
-            var part = new FileInfo(Path.Combine(_store.DownloadFolder, "allCountries.zip.part"));
+            var part = new FileInfo(ZipPath + ".part");
             return part.Exists ? part.Length : 0;
         }
         catch (IOException) { return 0; }
+    }
+
+    /// <summary>How long a whole dump left by a cancelled or failed build is reused. Places hardly
+    /// change in days, and an Update pressed weeks later should still fetch the current dump.</summary>
+    private static readonly TimeSpan CompleteDumpReuse = TimeSpan.FromDays(3);
+
+    /// <summary>A whole dump a cancelled or failed build left behind, with the validator saved
+    /// when it was downloaded; null when there is none, it does not match its saved size, or it is
+    /// older than <see cref="CompleteDumpReuse"/>. Reused so the next press builds without fetching
+    /// 400 MB again.</summary>
+    private PartMeta? CompleteDump()
+    {
+        try
+        {
+            var meta = LoadMeta(ZipPath + ".json", GeoNamesBaseUrl + "allCountries.zip");
+            if (meta is null || !File.Exists(ZipPath)) return null;
+            var zip = new FileInfo(ZipPath);
+            return zip.Length == meta.Total && DateTime.UtcNow - zip.LastWriteTimeUtc < CompleteDumpReuse ? meta : null;
+        }
+        catch (IOException) { return null; }
     }
 
     // ---- the job ----
@@ -168,11 +191,14 @@ internal sealed class LocationDataDownloader : IDisposable
         {
             Directory.CreateDirectory(_store.DownloadFolder);
             long partial = PartialBytes();
-            long remaining = Math.Max(0, GeoNamesZipEstimateBytes - partial) + NaturalEarthDownloadEstimateBytes;
+            bool haveDump = CompleteDump() is not null;
+            long remaining = (haveDump ? 0 : Math.Max(0, GeoNamesZipEstimateBytes - partial)) + NaturalEarthDownloadEstimateBytes;
             CheckSpace(DiskSpaceRequirement.BeforeDownload(remaining));
 
             string verb = update ? "Updating" : partial > 0 ? "Resuming" : "Downloading";
-            Say($"{verb} location data, about {DiskSpaceRequirement.Spoken(remaining)} to download.", immediate: true);
+            Say(haveDump
+                ? $"{(update ? "Updating" : "Building")} location data from the earlier download."
+                : $"{verb} location data, about {DiskSpaceRequirement.Spoken(remaining)} to download.", immediate: true);
 
             var inputs = await DownloadAllAsync(ct).ConfigureAwait(false);
 
@@ -291,7 +317,7 @@ internal sealed class LocationDataDownloader : IDisposable
         }
     }
 
-    private sealed class PartMeta
+    private sealed record PartMeta
     {
         public string Url { get; set; } = "";
         public string? ETag { get; set; }
@@ -299,13 +325,24 @@ internal sealed class LocationDataDownloader : IDisposable
         public long Total { get; set; }
     }
 
+    /// <summary>The dump's date ("2026-10-10") from its Last-Modified, for the status box.</summary>
+    private static string DumpDate(PartMeta? meta) =>
+        (meta?.LastModified ?? DateTimeOffset.UtcNow).UtcDateTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
     /// <summary>The 402 MB dump: resumable, stall-watched, retried while it makes progress.</summary>
     private async Task<(string Path, string Date)> DownloadGeoNamesZipAsync(CancellationToken ct)
     {
         string url = GeoNamesBaseUrl + "allCountries.zip";
-        string part = Path.Combine(_store.DownloadFolder, "allCountries.zip.part");
+        string final = ZipPath;
+        string part = final + ".part";
         string sidecar = part + ".json";
-        string final = Path.Combine(_store.DownloadFolder, "allCountries.zip");
+
+        if (CompleteDump() is { } earlier)
+        {
+            Log.Info("LocationData", "Reusing the complete GeoNames dump from an earlier attempt");
+            return (final, DumpDate(earlier));
+        }
+
         var meta = LoadMeta(sidecar, url);
         var gate = new DownloadProgressGate();
         var budget = new RetryBudget();
@@ -404,9 +441,11 @@ internal sealed class LocationDataDownloader : IDisposable
                 if (meta is { Total: > 0 } && length != meta.Total)
                     throw new IOException($"the download ended at {length} of {meta.Total} bytes");
                 File.Move(part, final, overwrite: true);
+                // The validator stays beside the whole file, so a build that fails or is cancelled
+                // can reuse it (CompleteDump) instead of fetching 400 MB again.
+                if (meta is not null) SaveMeta(final + ".json", meta with { Total = length });
                 LocationDataStore.DeleteQuietly(sidecar);
-                var date = (meta?.LastModified ?? DateTimeOffset.UtcNow).UtcDateTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-                return (final, date);
+                return (final, DumpDate(meta));
             }
             catch (Exception ex) when (!ct.IsCancellationRequested && IsRetryable(ex))
             {
