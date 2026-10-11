@@ -13,8 +13,8 @@ namespace MSFSBlindAssist.Tests;
 /// fields this reader touches — Fixtures/gsx-handlerdata-parkings-kjfk.json), plus targeted
 /// synthetic shape tests (clearly separated below) for absence/malformed-input handling the
 /// real capture never exercises.
-/// See docs/superpowers/specs/2026-08-12-gsx-remote-api-gate-list-and-selection-design.md
-/// §"Data reference" and §"ParkingSpot is both the list model and the docking input".
+/// See [DCK-7], [DCK-8], [DCK-11], [DCK-43] and docs/gsx.md, "Developer internals" (the
+/// GsxRemoteParkingReader bullet).
 /// </summary>
 public class GsxRemoteParkingReaderTests
 {

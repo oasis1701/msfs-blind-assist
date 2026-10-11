@@ -287,3 +287,7 @@ Alt+Arrow Navigation:
   Alt+Right    Next section
   Alt+Up       Scroll up
   Alt+Down     Scroll down
+
+MCDU Side:
+  Ctrl+Shift+L  Left MCDU (Captain)
+  Ctrl+Shift+R  Right MCDU (First Officer)

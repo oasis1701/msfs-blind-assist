@@ -1,0 +1,1 @@
+Fixes from the post-merge review of the offline location data (#292): no freeze while new data is swapped in, coastal airports are no longer said to be at sea, and download failures say what actually happened.

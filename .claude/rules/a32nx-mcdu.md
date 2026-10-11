@@ -4,6 +4,7 @@ paths:
   - "MSFSBlindAssist/SimConnect/CoherentEvalClient.cs"
   - "MSFSBlindAssist/SimConnect/CoherentLinkState.cs"
   - "MSFSBlindAssist/SimConnect/CoherentViewOwnership.cs"
+  - "MSFSBlindAssist/SimConnect/WakeableDelay.cs"
   - "MSFSBlindAssist/Services/FbwMcdu*.cs"
   - "MSFSBlindAssist/Services/FlyByWireMCDU*.cs"
   - "MSFSBlindAssist/Services/FlyByWireSimBridgeMcduClient.cs"
