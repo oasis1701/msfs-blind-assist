@@ -68,6 +68,57 @@ public sealed class OfflineLocationServiceTests : IDisposable
     }
 
     [Fact]
+    public void A_sea_point_within_two_kilometres_of_the_coastline_is_ashore()
+    {
+        // Natural Earth's simplified seas overlap the shore and its state outlines leave out many
+        // coastal airports (Auckland, Hong Kong, Madeira). 0.87 km off the fixture coast, inside the
+        // bay's shape and outside Maryland's, is answered as land, the coast named by that bay.
+        var report = Built().GetNearest(38.55, -76.59, Miles)!;
+        Assert.Equal(WaterKind.None, report.Where.Water);
+        Assert.Equal("Test Bay", report.Where.CoastWater);
+        Assert.Equal("Maryland", report.Where.State);
+        Assert.Equal("Near Bayside, Maryland, United States, 5.9 miles east, Test Bay coast 0.5 miles west",
+            LocationPhrases.NearestCitySentence(report.Where, report.Nearest, false, 25));
+    }
+
+    [Fact]
+    public void Every_search_range_is_capped_where_the_lookups_read_it()
+    {
+        // The retired web service capped every radius at 300 km; a value saved before this ceiling
+        // existed must not make every C press scan a continent.
+        var settings = new MSFSBlindAssist.Settings.UserSettings
+        {
+            NearbyCitiesRange = 5000, RegionalCitiesRange = 5000, MajorCitiesRange = 1000, LandmarksRange = 5000, CoastRange = 5000,
+        };
+        var miles = LocationQuerySettings.From(settings);
+        Assert.Equal(new[] { 310, 310, 310, 310 }, new[] { miles.NearbyRange, miles.RegionalRange, miles.MajorRange, miles.LandmarksRange });
+        Assert.Equal(1000, miles.CoastRange);
+
+        settings.DistanceUnits = "kilometers";
+        var km = LocationQuerySettings.From(settings);
+        Assert.Equal(new[] { 500, 500, 500, 500 }, new[] { km.NearbyRange, km.RegionalRange, km.MajorRange, km.LandmarksRange });
+    }
+
+    [Fact]
+    public void A_swap_waiting_out_a_held_file_never_blocks_lookups()
+    {
+        Built();
+        File.Copy(_store.DatabasePath, _store.ReadyPath);
+        Assert.True(_store.IsAvailable);
+        // Held without delete sharing (an antivirus scan), the new file cannot be moved: the swap retries.
+        using (new FileStream(_store.ReadyPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            var swap = Task.Run(() => _store.TryPromote(TimeSpan.FromSeconds(2)));
+            Thread.Sleep(100); // inside the first back-off
+            var waited = System.Diagnostics.Stopwatch.StartNew();
+            Assert.True(_store.IsAvailable); // C, Shift+L and the GeoNames tab ask this on the UI thread
+            waited.Stop();
+            Assert.False(swap.Result);
+            Assert.True(waited.ElapsedMilliseconds < 1000, $"a lookup waited {waited.ElapsedMilliseconds} ms behind the swap's retries");
+        }
+    }
+
+    [Fact]
     public void Over_land_the_area_is_spelled_as_geonames_spells_it()
     {
         var report = Built().GetNearest(38.9, -76.9, Miles)!;
@@ -188,7 +239,7 @@ public sealed class OfflineLocationServiceTests : IDisposable
         Built();
         var before = File.ReadAllBytes(_store.DatabasePath);
         var tooShort = WriteInputs(minimumRows: 1_000);
-        Assert.Throws<InvalidDataException>(() => new LocationDataBuilder(_store).Build(tooShort, null, CancellationToken.None));
+        Assert.Throws<GeoNamesDumpRejectedException>(() => new LocationDataBuilder(_store).Build(tooShort, null, CancellationToken.None));
         Assert.Equal(before, File.ReadAllBytes(_store.DatabasePath));
         Assert.False(File.Exists(_store.StagingPath));
         Assert.False(File.Exists(_store.BuildingPath));

@@ -9,13 +9,6 @@ namespace MSFSBlindAssist.Forms.Settings;
 /// shows its status (a read-only TextBox, VAT-13) and starts or cancels it.</summary>
 public class GeoNamesPanel : UserControl, ISettingsPanel
 {
-    /// <summary>The Major Cities range ceiling: query cost grows with the area searched.</summary>
-    internal const int MaxMajorCitiesMiles = 310;
-    internal const int MaxMajorCitiesKm = 500;
-    /// <summary>The Coast Range ceiling, in either unit (1,000 miles is 1,609 km, inside the coast
-    /// search's 3,000 km reach).</summary>
-    internal const int MaxCoastRange = 1000;
-
     private readonly LocationDataDownloader? _downloader;
     private TextBox _locationStatusTextBox = null!;
     private Button _downloadButton = null!;
@@ -444,14 +437,15 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
     public void LoadFrom(UserSettings settings)
     {
         ApplyDownloadStatus();
-        _nearbyCitiesTextBox.Text = settings.NearbyCitiesRange.ToString();
-        _regionalCitiesTextBox.Text = settings.RegionalCitiesRange.ToString();
-        // A range saved before the ceiling existed is shown clamped, so OK never meets an error.
-        int majorCeiling = settings.DistanceUnits == "kilometers" ? MaxMajorCitiesKm : MaxMajorCitiesMiles;
-        _majorCitiesTextBox.Text = Math.Min(settings.MajorCitiesRange, majorCeiling).ToString();
+        // A range saved before the ceilings existed is shown clamped, as the lookups read it, so OK
+        // never meets an error.
+        int ceiling = LocationQuerySettings.MaxRange(settings.DistanceUnits == "kilometers");
+        _nearbyCitiesTextBox.Text = Math.Clamp(settings.NearbyCitiesRange, 1, ceiling).ToString();
+        _regionalCitiesTextBox.Text = Math.Clamp(settings.RegionalCitiesRange, 1, ceiling).ToString();
+        _majorCitiesTextBox.Text = Math.Clamp(settings.MajorCitiesRange, 1, ceiling).ToString();
         _populationThresholdTextBox.Text = settings.MajorCityPopulationThreshold.ToString();
-        _landmarksTextBox.Text = settings.LandmarksRange.ToString();
-        _coastRangeTextBox.Text = Math.Clamp(settings.CoastRange, 1, MaxCoastRange).ToString();
+        _landmarksTextBox.Text = Math.Clamp(settings.LandmarksRange, 1, ceiling).ToString();
+        _coastRangeTextBox.Text = Math.Clamp(settings.CoastRange, 1, LocationQuerySettings.MaxCoastRange).ToString();
 
         _maxNearbyPlacesTextBox.Text = settings.MaxNearbyPlacesToShow.ToString();
         _maxMajorCitiesTextBox.Text = settings.MaxMajorCitiesToShow.ToString();
@@ -472,25 +466,26 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
 
     public bool Validate(out string error, out Control? focus)
     {
-        if (!(int.TryParse(_nearbyCitiesTextBox.Text, out int nearbyCities) && nearbyCities > 0))
+        // The ceilings the lookups clamp to (LocationQuerySettings.From): query cost grows with the area searched.
+        int ceiling = LocationQuerySettings.MaxRange(_kilometersRadioButton.Checked);
+        string units = _kilometersRadioButton.Checked ? "kilometers" : "miles";
+        if (!(int.TryParse(_nearbyCitiesTextBox.Text, out int nearbyCities) && nearbyCities > 0 && nearbyCities <= ceiling))
         {
-            error = "Please enter a valid number for Nearby Cities Range.";
+            error = $"Please enter a number from 1 to {ceiling} ({units}) for Nearby Cities Range.";
             focus = _nearbyCitiesTextBox;
             return false;
         }
 
-        if (!(int.TryParse(_regionalCitiesTextBox.Text, out int regionalCities) && regionalCities > 0))
+        if (!(int.TryParse(_regionalCitiesTextBox.Text, out int regionalCities) && regionalCities > 0 && regionalCities <= ceiling))
         {
-            error = "Please enter a valid number for Regional Cities Range.";
+            error = $"Please enter a number from 1 to {ceiling} ({units}) for Regional Cities Range.";
             focus = _regionalCitiesTextBox;
             return false;
         }
 
-        int majorCeiling = _kilometersRadioButton.Checked ? MaxMajorCitiesKm : MaxMajorCitiesMiles;
-        string majorUnits = _kilometersRadioButton.Checked ? "kilometers" : "miles";
-        if (!(int.TryParse(_majorCitiesTextBox.Text, out int majorCities) && majorCities > 0 && majorCities <= majorCeiling))
+        if (!(int.TryParse(_majorCitiesTextBox.Text, out int majorCities) && majorCities > 0 && majorCities <= ceiling))
         {
-            error = $"Please enter a number from 1 to {majorCeiling} ({majorUnits}) for Major Cities Range.";
+            error = $"Please enter a number from 1 to {ceiling} ({units}) for Major Cities Range.";
             focus = _majorCitiesTextBox;
             return false;
         }
@@ -502,16 +497,16 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
             return false;
         }
 
-        if (!(int.TryParse(_landmarksTextBox.Text, out int landmarks) && landmarks > 0))
+        if (!(int.TryParse(_landmarksTextBox.Text, out int landmarks) && landmarks > 0 && landmarks <= ceiling))
         {
-            error = "Please enter a valid number for Landmarks Range.";
+            error = $"Please enter a number from 1 to {ceiling} ({units}) for Landmarks Range.";
             focus = _landmarksTextBox;
             return false;
         }
 
-        if (!(int.TryParse(_coastRangeTextBox.Text, out int coastRange) && coastRange > 0 && coastRange <= MaxCoastRange))
+        if (!(int.TryParse(_coastRangeTextBox.Text, out int coastRange) && coastRange > 0 && coastRange <= LocationQuerySettings.MaxCoastRange))
         {
-            error = $"Please enter a number from 1 to {MaxCoastRange} ({(_kilometersRadioButton.Checked ? "kilometers" : "miles")}) for Coast Range.";
+            error = $"Please enter a number from 1 to {LocationQuerySettings.MaxCoastRange} ({units}) for Coast Range.";
             focus = _coastRangeTextBox;
             return false;
         }
@@ -586,6 +581,15 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
     {
     }
 
+    /// <summary>Status posts made before this tab was first shown were dropped: an unselected
+    /// TabPage's controls have no handle yet. Show the latest whenever the tab appears, as
+    /// VatsimPanel does; it only rewrites the box, never speaks.</summary>
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        if (Visible) ApplyDownloadStatus();
+    }
+
     /// <summary>Raised on the download worker's thread; never <c>Invoke</c> (it could deadlock
     /// against a UI thread waiting on the job), and a closing dialog may have no handle left.</summary>
     private void OnDownloadStatusChanged(object? sender, DownloadStatus status)
@@ -615,9 +619,20 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
         if (status.Phase == DownloadJobPhase.Idle) status = _downloader.IdleStatus();
         DisplayText.SetPreserveCaret(_locationStatusTextBox, status.Text);
 
-        bool running = status.IsRunning;
-        _downloadButton.Enabled = !running;
-        _cancelDownloadButton.Enabled = running;
+        // WinForms moves focus off a control it disables, to the next tab stop: enable the button
+        // that takes over first, so a Download press lands on Cancel, never on the credits box
+        // behind it, and hand focus back to Download before Cancel goes when the job ends.
+        if (status.IsRunning)
+        {
+            _cancelDownloadButton.Enabled = true;
+            _downloadButton.Enabled = false;
+        }
+        else
+        {
+            _downloadButton.Enabled = true;
+            if (_cancelDownloadButton.Focused) _downloadButton.Focus();
+            _cancelDownloadButton.Enabled = false;
+        }
         string label = _downloader.HasData ? "Update location data" : "Download location data";
         if (_downloadButton.Text != label)
         {
