@@ -86,10 +86,16 @@ public class LocationPhrasesTests
     }
 
     [Fact]
-    public void Over_a_lake_the_edge_is_the_nearest_land_too()
+    public void Over_a_lake_the_edge_is_its_shore()
     {
-        var lake = new WhereYouAre { Water = WaterKind.Lake, WaterName = "Lake Michigan", EdgeNm = Nm(20), EdgeBearingTrue = 90 };
-        Assert.Equal("Over Lake Michigan, nearest land 20 miles east", LocationPhrases.NearestCitySentence(lake, null, false, 25));
+        var lake = new WhereYouAre
+        {
+            Water = WaterKind.Lake, WaterName = "Lake Michigan", EdgeNm = Nm(20), EdgeBearingTrue = 90,
+            State = "Michigan", Country = "United States",
+        };
+        Assert.Equal("Over Lake Michigan, shore 20 miles east", LocationPhrases.NearestCitySentence(lake, null, false, 25));
+        Assert.StartsWith("Over Lake Michigan\r\nShore: 20 miles east\r\nNear: Michigan, United States",
+            LocationPhrases.WhereYouAreText(lake, false));
     }
 
     [Fact]

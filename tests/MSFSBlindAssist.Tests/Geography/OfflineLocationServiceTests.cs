@@ -106,14 +106,14 @@ public sealed class OfflineLocationServiceTests : IDisposable
     }
 
     [Fact]
-    public void Over_a_lake_the_nearest_land_comes_from_its_own_outline()
+    public void Over_a_lake_the_shore_comes_from_its_own_outline()
     {
         var report = Built().GetNearest(43.5, -87.0, Miles)!;
         Assert.Equal(WaterKind.Lake, report.Where.Water);
         Assert.Equal("Test Lake", report.Where.WaterName);
         Assert.InRange(report.Where.EdgeNm!.Value, 21.0, 22.5); // 0.5° of longitude at 43.5°N, not the sea coast
         Assert.Null(report.Nearest);
-        Assert.StartsWith("Over Test Lake, nearest land ", LocationPhrases.NearestCitySentence(report.Where, null, false, 25));
+        Assert.StartsWith("Over Test Lake, shore ", LocationPhrases.NearestCitySentence(report.Where, null, false, 25));
     }
 
     [Fact]

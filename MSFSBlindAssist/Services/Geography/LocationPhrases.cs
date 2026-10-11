@@ -12,8 +12,8 @@ internal sealed record WhereYouAre
 {
     public WaterKind Water { get; init; }
     public string? WaterName { get; init; }
-    /// <summary>Over water (sea or lake): the distance to the nearest land. Over land: the distance
-    /// to the sea coast. Null when none was found in range.</summary>
+    /// <summary>At sea: the distance to the nearest land. Over a lake: to its shore (its own outline,
+    /// islands included). Over land: to the sea coast. Null when none was found in range.</summary>
     public double? EdgeNm { get; init; }
     public double EdgeBearingTrue { get; init; }
     /// <summary>Over land: the named sea or bay at that coast ("English Channel"), when Natural
@@ -32,8 +32,9 @@ internal sealed record WhereYouAre
 
 /// <summary>
 /// Everything Location Info and Output > C say, composed in one place. Over water the water
-/// comes first and the distance is to the nearest land ("Over Chesapeake Bay, nearest land 5.2
-/// miles west. Near Dares Beach, …"); over land the sentence is the familiar "Near …" one, with
+/// comes first and the distance is to the nearest land at sea ("Over Chesapeake Bay, nearest land
+/// 5.2 miles west. Near Dares Beach, …") and to the shore over a lake ("Over Lake Michigan, shore
+/// 24 miles east"); over land the sentence is the familiar "Near …" one, with
 /// the sea coast added, named when Natural Earth names its water ("English Channel coast 1.2
 /// miles south"), only within 50 miles (80 km). The area line says "In:" over land and "Near:"
 /// over water, never "State:", which fits few countries outside the US. Numbers are invariant:
@@ -91,15 +92,20 @@ internal static class LocationPhrases
         return s + ", " + PlaceDistance(place.DistanceNm, kilometres) + " " + Direction(place.BearingTrue);
     }
 
-    /// <summary>For C: "nearest land 5.2 miles west" over water, "English Channel coast 1.2 miles
-    /// south" (or plain "coast …" when the water is unnamed) over land; null when there is no edge.</summary>
+    /// <summary>For C: "nearest land 5.2 miles west" at sea, "shore 24 miles east" over a lake,
+    /// "English Channel coast 1.2 miles south" (or plain "coast …" when the water is unnamed) over
+    /// land; null when there is no edge.</summary>
     internal static string? EdgeClause(WhereYouAre where, bool kilometres)
     {
         if (where.EdgeNm is not double nm) return null;
-        string what = IsOverWater(where) ? "nearest land"
+        string what = IsOverWater(where) ? EdgeWord(where).ToLowerInvariant()
             : string.IsNullOrEmpty(where.CoastWater) ? "coast" : where.CoastWater + " coast";
         return what + " " + EdgeDistance(nm, kilometres) + " " + Direction(where.EdgeBearingTrue);
     }
+
+    /// <summary>What the distance is to over water: a lake's "Shore", at sea the "Nearest land"
+    /// (owner, 2026-10-10: "coast" over the sea said neither of what nor to what).</summary>
+    private static string EdgeWord(WhereYouAre where) => where.Water == WaterKind.Lake ? "Shore" : "Nearest land";
 
     private static bool IsOverWater(WhereYouAre where) =>
         where.Water != WaterKind.None && !string.IsNullOrEmpty(where.WaterName);
@@ -125,9 +131,9 @@ internal static class LocationPhrases
     }
 
     /// <summary>The "Where you are" box of the Location Info window, one fact per line. Over water:
-    /// "Over …", "Nearest land: …", "Near: Maryland, United States". Over land: "In: Bavaria,
-    /// Germany", the region, "Coast: English Channel, 1.2 miles south" within 50 miles. Then the
-    /// time zone.</summary>
+    /// "Over …", "Nearest land: …" (at sea) or "Shore: …" (over a lake), "Near: Maryland, United
+    /// States". Over land: "In: Bavaria, Germany", the region, "Coast: English Channel, 1.2 miles
+    /// south" within 50 miles. Then the time zone.</summary>
     internal static string WhereYouAreText(WhereYouAre where, bool kilometres)
     {
         var lines = new List<string>();
@@ -140,7 +146,7 @@ internal static class LocationPhrases
         if (overWater)
         {
             lines.Add("Over " + where.WaterName);
-            if (distance is not null) lines.Add("Nearest land: " + distance);
+            if (distance is not null) lines.Add(EdgeWord(where) + ": " + distance);
             if (area is not null) lines.Add("Near: " + area);
         }
         else if (area is not null)
