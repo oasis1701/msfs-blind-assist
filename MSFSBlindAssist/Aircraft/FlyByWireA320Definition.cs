@@ -1654,9 +1654,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             DisplayName = "Red AP Disconnect",
             Type = SimConnect.SimVarType.Event
         },
-        ["A32NX.FCU_ATHR_DISCONNECT_PUSH"] = new SimConnect.SimVarDefinition
+        // The thrust levers' instinctive disconnect, as a hardware button sends it: the stock
+        // AUTO_THROTTLE_DISCONNECT, which the WASM masks and re-emits as the
+        // A32NX.AUTO_THROTTLE_DISCONNECT the PseudoFWC counts as voluntary (the A/THR OFF memo).
+        // Not A32NX.FCU_ATHR_DISCONNECT_PUSH, which the FWC never sees: AUTO FLT A/THR OFF.
+        [AutothrustDisconnectEvent] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX.FCU_ATHR_DISCONNECT_PUSH",
+            Name = AutothrustDisconnectEvent,
             DisplayName = "Red ATHR Disconnect",
             Type = SimConnect.SimVarType.Event
         },
@@ -6067,7 +6071,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX.FCU_AP_2_PUSH",
             "A32NX.FCU_ATHR_PUSH",
             "A32NX.FCU_AP_DISCONNECT_PUSH",
-            "A32NX.FCU_ATHR_DISCONNECT_PUSH",
+            AutothrustDisconnectEvent,
             "A32NX.FCU_SPD_MACH_TOGGLE_PUSH",
             "A32NX.FCU_TRK_FPA_TOGGLE_PUSH"
         },
@@ -7508,6 +7512,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     /// <summary>The PFD box's speed-target row (FlyByWirePfdSpeedTarget); FMGC 1's word.</summary>
     public const string PfdSpeedTargetKey = "PFD_SPEED_TARGET";
 
+    /// <summary>The autothrust instinctive disconnect (see its registration).</summary>
+    public const string AutothrustDisconnectEvent = "AUTO_THROTTLE_DISCONNECT";
+
     // The speed-target row's siblings: not rows themselves, so a panel open or the live tick would
     // never re-read them unless requested here.
     private static readonly string[] PfdSpeedTargetSiblings =
@@ -8043,20 +8050,22 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // NCD until the FMS transmits minimums (phase > cruise, or cruise within 250 NM:
         // shouldTransmitMinimums in A32NX_FMCMainDisplay.ts), so a minimum entered at the
         // gate read "Not set" (live-verified: MCDU MDA 220 → AIRLINER var 220 instantly,
-        // FM1 word still NCD). Announce when set/changed; no announce on clear
-        // (FBW resets MDA→0, DH→-1). Sentinel decode shared with the display path via
-        // ApproachMinimums — DH 0 is a valid CAT III entry and MUST announce (ft >= 0),
-        // matching the "0 feet" the panel shows; MDA can never decode to 0.
+        // FM1 word still NCD). Announced when set, changed or cleared (ApproachMinimums.
+        // Announcement): the FMS clears both when the approach changes (FBW #10724), a change the
+        // pilot did not make; a clear while a flight load or reconnect settles is the FMS
+        // starting over (FBW resets MDA→0, DH→-1). Sentinel decode shared with the display path
+        // — DH 0 is a valid CAT III entry and MUST announce (ft >= 0), matching the "0 feet" the
+        // panel shows; MDA can never decode to 0. (NO DH does not reach this var at all: the FMS
+        // writes the string 'NO DH' to it, which the sim ignores, leaving the old DH — measured
+        // 2026-10-12. The PFD reads NO DH from the FM EIS discrete word 2, bit 29.)
         if (varName == "AIRLINER_MINIMUM_DESCENT_ALTITUDE" || varName == "AIRLINER_DECISION_HEIGHT")
         {
             bool baro = varName.EndsWith("DESCENT_ALTITUDE", StringComparison.Ordinal);
             int ft = ApproachMinimums.ToFeet(isDecisionHeight: !baro, value);
-            if (ft != (baro ? _lastBaroMin : _lastDh))
-            {
-                if (baro) _lastBaroMin = ft; else _lastDh = ft;
-                if (ft >= 0)
-                    announcer.Announce($"{(baro ? "Baro minimum" : "Decision height")} {ft} feet");
-            }
+            string? phrase = ApproachMinimums.Announcement(isDecisionHeight: !baro, baro ? _lastBaroMin : _lastDh, ft,
+                reseeding: IsFcuValueSettling);
+            if (baro) _lastBaroMin = ft; else _lastDh = ft;
+            if (phrase != null) announcer.Announce(phrase);
             return true;
         }
 

@@ -24,17 +24,11 @@ public static class A380Minimums
             : ApproachMinimums.DisplayText(isDecisionHeight, value);
 
     /// <summary>
-    /// What to say when a minimum reads <paramref name="feet"/> (ApproachMinimums.ToFeet; -1 =
-    /// unset) after <paramref name="previousFeet"/> (-2 = nothing seen yet), or null. A minimum
-    /// set at connect is spoken; one unset at connect is not. <paramref name="reseeding"/>: a
-    /// flight load or reconnect is still settling (FBW's initSimVars writes MDA 0 and DH -1 when
-    /// the MFD starts), so a clear then is the new situation, not one to narrate.
+    /// <see cref="ApproachMinimums.Announcement"/>, with a DH of 0 spoken as NO DH (FBW's
+    /// initSimVars writes MDA 0 and DH -1 when the MFD starts: the <paramref name="reseeding"/> case).
     /// </summary>
     public static string? Announcement(bool isDecisionHeight, int previousFeet, int feet, bool reseeding = false)
-    {
-        if (feet == previousFeet) return null;
-        string name = isDecisionHeight ? "Decision height" : "Baro minimum";
-        if (feet >= 0) return isDecisionHeight && feet == 0 ? NoDh : $"{name} {feet} feet";
-        return previousFeet >= 0 && !reseeding ? $"{name} cleared" : null;
-    }
+        => isDecisionHeight && feet == 0 && previousFeet != 0
+            ? NoDh
+            : ApproachMinimums.Announcement(isDecisionHeight, previousFeet, feet, reseeding);
 }
