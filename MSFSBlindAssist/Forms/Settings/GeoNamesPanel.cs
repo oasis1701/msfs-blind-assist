@@ -12,6 +12,9 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
     /// <summary>The Major Cities range ceiling: query cost grows with the area searched.</summary>
     internal const int MaxMajorCitiesMiles = 310;
     internal const int MaxMajorCitiesKm = 500;
+    /// <summary>The Coast Range ceiling, in either unit (1,000 miles is 1,609 km, inside the coast
+    /// search's 3,000 km reach).</summary>
+    internal const int MaxCoastRange = 1000;
 
     private readonly LocationDataDownloader? _downloader;
     private TextBox _locationStatusTextBox = null!;
@@ -22,6 +25,7 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
     private TextBox _majorCitiesTextBox = null!;
     private TextBox _populationThresholdTextBox = null!;
     private TextBox _landmarksTextBox = null!;
+    private TextBox _coastRangeTextBox = null!;
     private TextBox _maxNearbyPlacesTextBox = null!;
     private TextBox _maxMajorCitiesTextBox = null!;
     private TextBox _maxAirportsTextBox = null!;
@@ -229,6 +233,28 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
         };
         Controls.Add(_landmarksTextBox);
 
+        yPos += spacing;
+
+        // Coast: over land the sea coast is mentioned only within this range; at sea and over a
+        // lake the nearest land or shore is always said.
+        var coastRangeLabel = new Label
+        {
+            Text = "Coast Range:",
+            Location = new System.Drawing.Point(20, yPos),
+            Size = new System.Drawing.Size(150, labelHeight)
+        };
+        Controls.Add(coastRangeLabel);
+
+        _coastRangeTextBox = new TextBox
+        {
+            Location = new System.Drawing.Point(180, yPos),
+            Size = new System.Drawing.Size(60, textBoxHeight),
+            AccessibleName = "Coast range",
+            AccessibleDescription = "Over land, the sea coast is mentioned when it is within this many miles or kilometers. "
+                + "Over water the nearest land is always said."
+        };
+        Controls.Add(_coastRangeTextBox);
+
         yPos += spacing + 10;
 
         // Units selection
@@ -402,6 +428,7 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
         _majorCitiesTextBox.Text = "185";
         _populationThresholdTextBox.Text = "50000";
         _landmarksTextBox.Text = "30";
+        _coastRangeTextBox.Text = "50";
 
         // Reset maximum results to defaults
         _maxNearbyPlacesTextBox.Text = "10";
@@ -424,6 +451,7 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
         _majorCitiesTextBox.Text = Math.Min(settings.MajorCitiesRange, majorCeiling).ToString();
         _populationThresholdTextBox.Text = settings.MajorCityPopulationThreshold.ToString();
         _landmarksTextBox.Text = settings.LandmarksRange.ToString();
+        _coastRangeTextBox.Text = Math.Clamp(settings.CoastRange, 1, MaxCoastRange).ToString();
 
         _maxNearbyPlacesTextBox.Text = settings.MaxNearbyPlacesToShow.ToString();
         _maxMajorCitiesTextBox.Text = settings.MaxMajorCitiesToShow.ToString();
@@ -481,6 +509,13 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
             return false;
         }
 
+        if (!(int.TryParse(_coastRangeTextBox.Text, out int coastRange) && coastRange > 0 && coastRange <= MaxCoastRange))
+        {
+            error = $"Please enter a number from 1 to {MaxCoastRange} ({(_kilometersRadioButton.Checked ? "kilometers" : "miles")}) for Coast Range.";
+            focus = _coastRangeTextBox;
+            return false;
+        }
+
         if (!(int.TryParse(_maxNearbyPlacesTextBox.Text, out int maxNearbyPlaces) && maxNearbyPlaces > 0 && maxNearbyPlaces <= 50))
         {
             error = "Please enter a valid number (1-50) for Maximum Nearby Places.";
@@ -535,6 +570,7 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
         settings.MajorCitiesRange = int.Parse(_majorCitiesTextBox.Text);
         settings.MajorCityPopulationThreshold = int.Parse(_populationThresholdTextBox.Text);
         settings.LandmarksRange = int.Parse(_landmarksTextBox.Text);
+        settings.CoastRange = int.Parse(_coastRangeTextBox.Text);
 
         settings.MaxNearbyPlacesToShow = int.Parse(_maxNearbyPlacesTextBox.Text);
         settings.MaxMajorCitiesToShow = int.Parse(_maxMajorCitiesTextBox.Text);

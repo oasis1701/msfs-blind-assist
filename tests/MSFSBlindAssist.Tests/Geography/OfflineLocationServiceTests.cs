@@ -88,6 +88,39 @@ public sealed class OfflineLocationServiceTests : IDisposable
     }
 
     [Fact]
+    public void Over_land_the_coast_is_said_only_within_the_coast_range()
+    {
+        var service = Built();
+        // The fixture coast is about 16 miles (26 km) from this point.
+        Assert.NotNull(service.GetNearest(38.9, -76.9, Miles)!.Where.EdgeNm);                       // default 50 miles
+        var narrow = service.GetNearest(38.9, -76.9, Miles with { CoastRange = 10 })!;
+        Assert.Null(narrow.Where.EdgeNm);
+        Assert.DoesNotContain("coast", LocationPhrases.NearestCitySentence(narrow.Where, narrow.Nearest, false, 25));
+        Assert.DoesNotContain("Coast:", LocationPhrases.WhereYouAreText(narrow.Where, false));
+
+        var km = Miles with { Kilometres = true, NearbyRange = 40 };
+        Assert.Null(service.GetNearest(38.9, -76.9, km with { CoastRange = 20 })!.Where.EdgeNm);
+        Assert.NotNull(service.GetNearest(38.9, -76.9, km with { CoastRange = 30 })!.Where.EdgeNm);
+    }
+
+    [Fact]
+    public void The_coast_range_never_limits_nearest_land_over_water()
+    {
+        var report = Built().GetNearest(38.55, -76.42, Miles with { CoastRange = 1 })!;
+        Assert.Equal(WaterKind.Sea, report.Where.Water);
+        Assert.NotNull(report.Where.EdgeNm); // 9.7 miles to land, still said
+    }
+
+    [Fact]
+    public void The_coast_range_comes_from_the_geonames_tab()
+    {
+        var settings = new MSFSBlindAssist.Settings.UserSettings();
+        Assert.Equal(50, LocationQuerySettings.From(settings).CoastRange);
+        settings.CoastRange = 200;
+        Assert.Equal(200, LocationQuerySettings.From(settings).CoastRange);
+    }
+
+    [Fact]
     public void A_town_across_the_border_never_names_the_area_you_are_in()
     {
         var report = Built().GetNearest(38.31, -76.9, Miles)!; // just inside Maryland's outline

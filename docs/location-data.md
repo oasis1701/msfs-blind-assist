@@ -83,9 +83,11 @@ then sea (inside a named marine polygon) (LOC-6):
 - At sea, the distance is to the **nearest land**: the coastline searched outward up to 3,000 km
   (Point Nemo gives about 1,670 miles). Over a lake it is to the **shore**, from the lake's own
   outline (islands included): "Over Lake Michigan, shore 24 miles east".
-- Over land, the distance is to the **sea coast**, only within 50 miles or 80 km, and named by the
-  Natural Earth sea found by stepping 1 to 25 km past the coast point ("English Channel"); unnamed
-  where that water is not in Natural Earth (San Francisco Bay, the Øresund).
+- Over land, the distance is to the **sea coast**, searched only within the GeoNames tab's
+  **Coast Range** (default 50, 1 to 1,000, in the tab's units), and named by the Natural Earth sea
+  found by stepping 1 to 25 km past the coast point ("English Channel"); unnamed where that water
+  is not in Natural Earth (San Francisco Bay, the Øresund). The Coast Range never limits what is
+  said over water.
 - The **area** is each country's first-level division (a US state, a German state, a Swiss canton,
   a French region, England or Scotland) in GeoNames' spelling, the one C uses: over land from the
   nearest town inside the same state outline, so a town across a border never names it; over
@@ -96,14 +98,14 @@ then sea (inside a named marine polygon) (LOC-6):
 
 - **Output C**, water first: "Over Chesapeake Bay, nearest land 5.2 miles west. Near Dares Beach,
   Maryland, United States, 5.4 miles west." Over land: "Near Brighton, England, United Kingdom,
-  0.5 miles north, English Channel coast 1.2 miles south" (the coast clause only within 50 miles).
+  0.5 miles north, English Channel coast 1.2 miles south" (the coast clause only within the Coast Range).
   No town within the nearby range: "No town within 25 miles, <area>, <country>". The periodic
   announcement uses the same sentence and stays silent when no data is installed.
 - **Location Info**: a "Where you are" box first, then the seven lists. Over water: "Over
   Chesapeake Bay", "Nearest land: 5.2 miles west" ("Shore: …" over a lake), "Near: Maryland,
   United States". Over land:
   "In: Bavaria, Germany", "Region: Alps, mountain range" (when inside one), "Coast: English
-  Channel, 1.2 miles south" (within 50 miles). Then "Time zone: …" (the GeoTimeZone package). The
+  Channel, 1.2 miles south" (within the Coast Range). Then "Time zone: …" (the GeoTimeZone package). The
   window opens already filled and focused on that box, and speaks nothing itself. The landmark
   lists share the tab's one Landmarks Range; the Major Cities range is capped at 310 miles or 500 km.
 

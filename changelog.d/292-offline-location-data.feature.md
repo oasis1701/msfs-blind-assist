@@ -7,9 +7,10 @@ Until the data is downloaded, C tells you how to get it.
 
 C now says the sea, bay or lake you are over and how far land is: "Over Chesapeake Bay,
 nearest land 5.2 miles west. Near Dares Beach, Maryland, United States, 5.4 miles west", or
-"Over Lake Michigan, shore 24 miles east". Over land it adds the coast when it is within 50
-miles, named by its sea: "English Channel coast 1.2 miles south". The automatic nearest-city
-announcement uses the same sentence.
+"Over Lake Michigan, shore 24 miles east". Over land it adds the coast, named by its sea, when
+it is within the new Coast Range setting in the GeoNames tab (50 by default, up to 1,000):
+"English Channel coast 1.2 miles south". The automatic nearest-city announcement uses the same
+sentence.
 
 Location Info opens already filled, on a new first box, Where you are: the water you are over
 and the nearest land, or the state or province you are in ("In: Bavaria, Germany"), the

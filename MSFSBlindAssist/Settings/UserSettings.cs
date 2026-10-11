@@ -213,6 +213,9 @@ public class UserSettings
         public int MajorCitiesRange { get; set; } = 185;
         // One range for all four landmark lists (airports, terrain, water, tourist landmarks).
         public int LandmarksRange { get; set; } = 30;
+        // Over land, Output C and Location Info mention the sea coast only within this distance.
+        // At sea and over lakes the nearest land or shore is always said (owner, 2026-10-10).
+        public int CoastRange { get; set; } = 50;
 
         // Display Limits
         public int MaxNearbyPlacesToShow { get; set; } = 10;

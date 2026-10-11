@@ -15,12 +15,20 @@ internal sealed record LocationQuerySettings(
     internal static LocationQuerySettings From(UserSettings s) => new(
         s.DistanceUnits == "kilometers", s.NearbyCitiesRange, s.RegionalCitiesRange, s.MajorCitiesRange,
         s.LandmarksRange, s.MajorCityPopulationThreshold, s.MaxNearbyPlacesToShow, s.MaxMajorCitiesToShow,
-        s.MaxAirportsToShow, s.MaxTerrainFeaturesToShow, s.MaxWaterBodiesToShow, s.MaxTouristLandmarksToShow);
+        s.MaxAirportsToShow, s.MaxTerrainFeaturesToShow, s.MaxWaterBodiesToShow, s.MaxTouristLandmarksToShow)
+    {
+        CoastRange = s.CoastRange,
+    };
+
+    /// <summary>The GeoNames tab's Coast Range, in the tab's units (default 50): over land the sea
+    /// coast is mentioned only within it. At sea and over a lake the nearest land or shore is always said.</summary>
+    public int CoastRange { get; init; } = 50;
 
     internal double Km(int range) => Kilometres ? range : range * KmPerMile;
 
-    /// <summary>How far the coast is searched over land: only a coast within 50 miles / 80 km is said.</summary>
-    internal double CoastOverLandKm => Kilometres ? LocationPhrases.CoastOverLandKm : LocationPhrases.CoastOverLandMiles * KmPerMile;
+    /// <summary>How far the coast is searched over land: the Coast Range. A coast beyond it is not
+    /// found, so nothing past it is ever said.</summary>
+    internal double CoastOverLandKm => Km(Math.Max(1, CoastRange));
 }
 
 /// <summary>Everything one lookup found: the "where" facts, the nearest place, and (for the
@@ -32,7 +40,7 @@ internal sealed record LocationReport(WhereYouAre Where, PlaceHit? Nearest, Loca
 /// position is classified lake first (Natural Earth's states cover the Great Lakes), then land
 /// (inside a state polygon), then sea (inside a named marine polygon). Over water the edge is the
 /// nearest land (a lake's own outline, its islands included; the sea coast at any distance at
-/// sea); over land it is the sea coast, searched only within 50 miles and named by the sea just
+/// sea); over land it is the sea coast, searched only within the Coast Range and named by the sea just
 /// past it. The area (state, province, canton…) always comes from GeoNames, the source the C
 /// sentence names places from: over land the nearest town inside the same state outline (so a
 /// town across a border never names it), over water the nearest town. Every lookup runs under

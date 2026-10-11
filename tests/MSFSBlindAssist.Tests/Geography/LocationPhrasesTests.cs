@@ -51,20 +51,22 @@ public class LocationPhrasesTests
     [Fact]
     public void Inland_is_todays_sentence_without_the_coast()
     {
-        var inland = new WhereYouAre { State = "Virginia", Country = "United States", EdgeNm = Nm(117), EdgeBearingTrue = 45 };
+        // Beyond the Coast Range the service finds no coast, so there is no edge to say.
+        var inland = new WhereYouAre { State = "Virginia", Country = "United States" };
         Assert.Equal("Near Laurel Grove, Virginia, United States, 1.6 miles north",
             LocationPhrases.NearestCitySentence(inland, LaurelGrove, false, 25));
     }
 
     [Fact]
-    public void Over_land_the_coast_is_added_within_50_miles()
+    public void Over_land_a_coast_the_service_found_is_added()
     {
         var nearCoast = new WhereYouAre { EdgeNm = Nm(2.6), EdgeBearingTrue = 0 };
         Assert.Equal("Near Laurel Grove, Virginia, United States, 1.6 miles north, coast 2.6 miles north",
             LocationPhrases.NearestCitySentence(nearCoast, LaurelGrove, false, 25));
 
-        var at51 = nearCoast with { EdgeNm = Nm(51) };
-        Assert.DoesNotContain("coast", LocationPhrases.NearestCitySentence(at51, LaurelGrove, false, 25));
+        // A pilot who widened the Coast Range hears a far coast too: the phrases never filter by distance.
+        var far = nearCoast with { EdgeNm = Nm(240) };
+        Assert.EndsWith(", coast 240 miles north", LocationPhrases.NearestCitySentence(far, LaurelGrove, false, 25));
     }
 
     [Fact]
@@ -77,12 +79,10 @@ public class LocationPhrasesTests
     }
 
     [Fact]
-    public void Over_land_the_coast_threshold_is_80_km_in_kilometres()
+    public void Over_land_the_coast_is_said_in_kilometres_when_selected()
     {
         var at70km = new WhereYouAre { EdgeNm = 70 / LocationPhrases.KmPerNm, EdgeBearingTrue = 90 };
         Assert.EndsWith(", coast 70 kilometers east", LocationPhrases.NearestCitySentence(at70km, LaurelGrove, true, 40));
-        var at90km = at70km with { EdgeNm = 90 / LocationPhrases.KmPerNm };
-        Assert.DoesNotContain("coast", LocationPhrases.NearestCitySentence(at90km, LaurelGrove, true, 40));
     }
 
     [Fact]
@@ -101,7 +101,7 @@ public class LocationPhrasesTests
     [Fact]
     public void Land_without_a_town_in_range_still_answers()
     {
-        var empty = new WhereYouAre { State = "Tamanrasset", Country = "Algeria", EdgeNm = Nm(700), EdgeBearingTrue = 0 };
+        var empty = new WhereYouAre { State = "Tamanrasset", Country = "Algeria" };
         Assert.Equal("No town within 25 miles, Tamanrasset, Algeria", LocationPhrases.NearestCitySentence(empty, null, false, 25));
     }
 
@@ -119,7 +119,7 @@ public class LocationPhrasesTests
         var alps = new WhereYouAre
         {
             State = "Grisons", Country = "Switzerland", Region = "Alps", RegionKind = "mountain range",
-            EdgeNm = Nm(130), EdgeBearingTrue = 135, TimeZone = "W. Europe Daylight Time",
+            EdgeBearingTrue = 135, TimeZone = "W. Europe Daylight Time", // no coast within the Coast Range
         };
         Assert.Equal("In: Grisons, Switzerland\r\nRegion: Alps, mountain range\r\nTime zone: W. Europe Daylight Time",
             LocationPhrases.WhereYouAreText(alps, false));

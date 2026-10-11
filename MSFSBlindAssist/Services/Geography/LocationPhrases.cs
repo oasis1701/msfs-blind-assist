@@ -36,16 +36,16 @@ internal sealed record WhereYouAre
 /// 5.2 miles west. Near Dares Beach, …") and to the shore over a lake ("Over Lake Michigan, shore
 /// 24 miles east"); over land the sentence is the familiar "Near …" one, with
 /// the sea coast added, named when Natural Earth names its water ("English Channel coast 1.2
-/// miles south"), only within 50 miles (80 km). The area line says "In:" over land and "Near:"
-/// over water, never "State:", which fits few countries outside the US. Numbers are invariant:
-/// a pilot on a German Windows still hears "5.4 miles".
+/// miles south"), whenever the service found one: it searches over land only within the
+/// pilot's Coast Range (<see cref="LocationQuerySettings.CoastRange"/>), so these phrases never
+/// filter by distance themselves. The area line says "In:" over land and "Near:" over water,
+/// never "State:", which fits few countries outside the US. Numbers are invariant: a pilot on a
+/// German Windows still hears "5.4 miles".
 /// </summary>
 internal static class LocationPhrases
 {
     internal const double MilesPerNm = 1.1507794480235425;
     internal const double KmPerNm = 1.852;
-    internal const double CoastOverLandMiles = 50;
-    internal const double CoastOverLandKm = 80;
 
     private static readonly string[] Directions =
         { "north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest" };
@@ -79,9 +79,6 @@ internal static class LocationPhrases
             ? Inv($"{v:0.0} {UnitWord(kilometres)}")
             : Inv($"{Math.Round(v):0} {UnitWord(kilometres)}");
     }
-
-    internal static bool CoastCloseOverLand(double nm, bool kilometres) =>
-        ToUnit(nm, kilometres) <= (kilometres ? CoastOverLandKm : CoastOverLandMiles);
 
     /// <summary>"Near Dares Beach, Maryland, United States, 5.4 miles west".</summary>
     internal static string PlaceClause(PlaceHit place, bool kilometres)
@@ -120,20 +117,21 @@ internal static class LocationPhrases
             return place is null ? lead : lead + ". " + PlaceClause(place, kilometres);
         }
 
-        bool coastClose = edge is not null && CoastCloseOverLand(where.EdgeNm!.Value, kilometres);
+        // Over land the service found a coast only within the pilot's Coast Range.
+        string coast = edge is null ? "" : ", " + edge;
         if (place is not null)
-            return PlaceClause(place, kilometres) + (coastClose ? ", " + edge : "");
+            return PlaceClause(place, kilometres) + coast;
 
         var s = Inv($"No town within {nearbyRange} {UnitWord(kilometres)}");
         string? area = StateAndCountry(where);
         if (area is not null) s += ", " + area;
-        return s + (coastClose ? ", " + edge : "");
+        return s + coast;
     }
 
     /// <summary>The "Where you are" box of the Location Info window, one fact per line. Over water:
     /// "Over …", "Nearest land: …" (at sea) or "Shore: …" (over a lake), "Near: Maryland, United
     /// States". Over land: "In: Bavaria, Germany", the region, "Coast: English Channel, 1.2 miles
-    /// south" within 50 miles. Then the time zone.</summary>
+    /// south" when the service found a coast within the Coast Range. Then the time zone.</summary>
     internal static string WhereYouAreText(WhereYouAre where, bool kilometres)
     {
         var lines = new List<string>();
@@ -155,7 +153,7 @@ internal static class LocationPhrases
         }
         if (!string.IsNullOrEmpty(where.Region))
             lines.Add("Region: " + where.Region + (string.IsNullOrEmpty(where.RegionKind) ? "" : ", " + where.RegionKind));
-        if (!overWater && distance is not null && CoastCloseOverLand(where.EdgeNm!.Value, kilometres))
+        if (!overWater && distance is not null)
             lines.Add("Coast: " + (string.IsNullOrEmpty(where.CoastWater) ? "" : where.CoastWater + ", ") + distance);
         if (!string.IsNullOrEmpty(where.TimeZone))
             lines.Add("Time zone: " + where.TimeZone);
