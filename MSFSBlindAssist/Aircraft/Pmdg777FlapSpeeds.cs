@@ -40,26 +40,20 @@ public static class Pmdg777FlapSpeeds
 
     /// <summary>777F and -200LR VREF30 by gross weight in thousands of pounds,
     /// as the APPROACH REF page takes it. Flat at 134 below about 450 klb.</summary>
-    private static readonly (double Klb, int Vref30)[] TableFreighterAndLr =
-    {
+    private static readonly MeasuredVrefTable TableFreighterAndLr = new(MeasuredVrefTable.Beyond.HoldEndValue,
         (350.0, 134), (400.0, 134), (450.0, 135), (500.0, 139), (575.0, 149),
-        (650.0, 162), (710.0, 174), (766.0, 181),
-    };
+        (650.0, 162), (710.0, 174), (766.0, 181));
 
     /// <summary>-300ER. No floor down to 400 klb.</summary>
-    private static readonly (double Klb, int Vref30)[] Table300Er =
-    {
+    private static readonly MeasuredVrefTable Table300Er = new(MeasuredVrefTable.Beyond.HoldEndValue,
         (400.0, 127), (450.0, 135), (500.0, 142), (554.0, 150), (625.0, 159),
-        (700.0, 173), (775.0, 183),
-    };
+        (700.0, 173), (775.0, 183));
 
     /// <summary>-200ER (GE90; the Rolls-Royce read identically at 470 and 630).
     /// Flat at about 127 at light weights, no heavy-end bend before MTOW.</summary>
-    private static readonly (double Klb, int Vref30)[] Table200Er =
-    {
+    private static readonly MeasuredVrefTable Table200Er = new(MeasuredVrefTable.Beyond.HoldEndValue,
         (325.0, 127), (375.0, 128), (425.0, 132), (470.0, 140), (525.0, 147),
-        (600.0, 157), (630.0, 160), (656.0, 163),
-    };
+        (600.0, 157), (630.0, 160), (656.0, 163));
 
     public static bool IsPlausibleWeight(double grossWeightLbs) =>
         grossWeightLbs >= MinWeightLbs && grossWeightLbs <= MaxWeightLbs;
@@ -68,7 +62,7 @@ public static class Pmdg777FlapSpeeds
     /// 3 -300, 4 -200LR, 5 777F, 6 -300ER), or null when the model is unknown
     /// (0 before the first CDA snapshot). PMDG ships no -200 or -300, so those
     /// borrow the -200ER's and -300ER's tables.</summary>
-    private static (double Klb, int Vref30)[]? TableFor(int aircraftModel) => aircraftModel switch
+    private static MeasuredVrefTable? TableFor(int aircraftModel) => aircraftModel switch
     {
         1 or 2 => Table200Er,
         3 or 6 => Table300Er,
@@ -80,9 +74,7 @@ public static class Pmdg777FlapSpeeds
 
     /// <summary>VREF30 in knots, or null for an unknown model.</summary>
     public static int? Vref30Knots(double grossWeightLbs, int aircraftModel) =>
-        TableFor(aircraftModel) is { } table
-            ? (int)Math.Round(Interpolate(table, grossWeightLbs / 1000.0), MidpointRounding.AwayFromZero)
-            : null;
+        TableFor(aircraftModel)?.Knots(grossWeightLbs);
 
     public static int? ManeuverSpeedKnots(double grossWeightLbs, int aircraftModel, int scheduleIndex) =>
         Vref30Knots(grossWeightLbs, aircraftModel) is { } vref30
@@ -90,19 +82,14 @@ public static class Pmdg777FlapSpeeds
             : null;
 
     /// <summary>Spoken name for a schedule entry ("Flaps up", "Flaps 1", ...).</summary>
-    public static string FlapName(int scheduleIndex) =>
-        Schedule[scheduleIndex].Flap == "up" ? "Flaps up" : $"Flaps {Schedule[scheduleIndex].Flap}";
+    public static string FlapName(int scheduleIndex) => FlapManeuverSpeeds.FlapName(Schedule[scheduleIndex].Flap);
 
-    /// <summary>Linear between measured points; beyond either end, that end's value.</summary>
-    private static double Interpolate((double Klb, int Vref30)[] table, double klb)
-    {
-        if (klb <= table[0].Klb) return table[0].Vref30;
-        for (int i = 1; i < table.Length; i++)
-        {
-            var (aKlb, aVref) = table[i - 1];
-            var (bKlb, bVref) = table[i];
-            if (klb <= bKlb) return aVref + (bVref - aVref) * (klb - aKlb) / (bKlb - aKlb);
-        }
-        return table[^1].Vref30;
-    }
+    /// <summary>The Shift+1..5 readout for a delivered gross weight (null: none delivered),
+    /// or <see cref="FlapManeuverSpeeds.Unavailable"/> when the weight is not believable or
+    /// the model is unknown.</summary>
+    public static string Describe(double? grossWeightLbs, int aircraftModel, int scheduleIndex) =>
+        grossWeightLbs is { } lbs && IsPlausibleWeight(lbs)
+            && ManeuverSpeedKnots(lbs, aircraftModel, scheduleIndex) is { } knots
+            ? FlapManeuverSpeeds.Sentence(Schedule[scheduleIndex].Flap, knots)
+            : FlapManeuverSpeeds.Unavailable;
 }

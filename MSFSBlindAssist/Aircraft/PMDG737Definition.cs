@@ -627,16 +627,18 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // ELEC_GenSw bool lies), which started at Off on every load and never saw
         // the APU GEN trip the engine gens off the bus; re-picking the "On" the
         // combo already showed sent nothing, so the switch looked stuck. The
-        // truthful state is the Gen Bus 1/2 Off annunciators below, announced
-        // and listed on the Electrical panel after the buttons.
-        d["ELEC_GenSw_0_On"]         = Momentary("ELEC_GenSw_0_On",  "Generator 1 On");
-        d["ELEC_GenSw_0_Off"]        = Momentary("ELEC_GenSw_0_Off", "Generator 1 Off");
-        d["ELEC_GenSw_1_On"]         = Momentary("ELEC_GenSw_1_On",  "Generator 2 On");
-        d["ELEC_GenSw_1_Off"]        = Momentary("ELEC_GenSw_1_Off", "Generator 2 Off");
+        // truthful state is the GEN OFF BUS lights below, announced and listed
+        // on the Electrical panel after the buttons. Each button and its light
+        // take their name from one constant ([VAR-1]).
+        const string Gen1 = "Generator 1", Gen2 = "Generator 2", ApuGen = "APU Gen";
+        d["ELEC_GenSw_0_On"]         = Momentary("ELEC_GenSw_0_On",  $"{Gen1} On");
+        d["ELEC_GenSw_0_Off"]        = Momentary("ELEC_GenSw_0_Off", $"{Gen1} Off");
+        d["ELEC_GenSw_1_On"]         = Momentary("ELEC_GenSw_1_On",  $"{Gen2} On");
+        d["ELEC_GenSw_1_Off"]        = Momentary("ELEC_GenSw_1_Off", $"{Gen2} Off");
         // The remembered GEN 1/2 state is kept, silent and off every panel, as the
         // varKey PMDGNG3DataManager publishes it under (NotifyLocalSwitchState):
         // the First Officer branch's generator checklist item still reads it.
-        foreach (var (genKey, genName) in new[] { ("ELEC_GenSw_0", "Generator 1"), ("ELEC_GenSw_1", "Generator 2") })
+        foreach (var (genKey, genName) in new[] { ("ELEC_GenSw_0", Gen1), ("ELEC_GenSw_1", Gen2) })
         {
             d[genKey] = Toggle(genKey, genName);
             d[genKey].IsAnnounced = false;
@@ -650,23 +652,28 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // state that could be out of sync with reality, we expose stateless
         // action buttons that just dispatch a directional press. Dispatch
         // shape per button is in _directionalPushMap below.
-        d["ELEC_APUGenSw_0_On"]      = Momentary("ELEC_APUGenSw_0_On",  "APU Gen 1 On");
-        d["ELEC_APUGenSw_0_Off"]     = Momentary("ELEC_APUGenSw_0_Off", "APU Gen 1 Off");
-        d["ELEC_APUGenSw_1_On"]      = Momentary("ELEC_APUGenSw_1_On",  "APU Gen 2 On");
-        d["ELEC_APUGenSw_1_Off"]     = Momentary("ELEC_APUGenSw_1_Off", "APU Gen 2 Off");
+        d["ELEC_APUGenSw_0_On"]      = Momentary("ELEC_APUGenSw_0_On",  $"{ApuGen} 1 On");
+        d["ELEC_APUGenSw_0_Off"]     = Momentary("ELEC_APUGenSw_0_Off", $"{ApuGen} 1 Off");
+        d["ELEC_APUGenSw_1_On"]      = Momentary("ELEC_APUGenSw_1_On",  $"{ApuGen} 2 On");
+        d["ELEC_APUGenSw_1_Off"]     = Momentary("ELEC_APUGenSw_1_Off", $"{ApuGen} 2 Off");
         // TFM: `_offOrOnStates` (0:on, 1:off); SDK lines 171-174: bus-off annunciator arrays,
         // no inline comments. Resolved with TFM's inverted convention: these are `annunOFF`
         // lamps — they light when the named bus/source is OFF. byte=1 means the lamp is lit
         // → the bus IS off → announce "off". Default Annun would announce "on" when the lamp
-        // lights, which contradicts the lamp's semantic meaning. Applies to all eight bus-off
-        // annunciators below.
+        // lights, which contradicts the lamp's semantic meaning. Applies to the four
+        // TRANSFER BUS / SOURCE OFF annunciators below.
         d["ELEC_annunTRANSFER_BUS_OFF_0"] = AnnunInverted("ELEC_annunTRANSFER_BUS_OFF_0", "Transfer Bus 1 Off");
         d["ELEC_annunTRANSFER_BUS_OFF_1"] = AnnunInverted("ELEC_annunTRANSFER_BUS_OFF_1", "Transfer Bus 2 Off");
         d["ELEC_annunSOURCE_OFF_0"]  = AnnunInverted("ELEC_annunSOURCE_OFF_0", "Source 1 Off");
         d["ELEC_annunSOURCE_OFF_1"]  = AnnunInverted("ELEC_annunSOURCE_OFF_1", "Source 2 Off");
-        d["ELEC_annunGEN_BUS_OFF_0"] = AnnunInverted("ELEC_annunGEN_BUS_OFF_0", "Gen Bus 1 Off");
-        d["ELEC_annunGEN_BUS_OFF_1"] = AnnunInverted("ELEC_annunGEN_BUS_OFF_1", "Gen Bus 2 Off");
-        d["ELEC_annunAPU_GEN_OFF_BUS"] = AnnunInverted("ELEC_annunAPU_GEN_OFF_BUS", "APU Gen Off Bus");
+        // The GEN OFF BUS and APU GEN OFF BUS lights are the generator buttons' read-back on
+        // the Electrical panel, so they are named for the LIGHT, as on the iFly MAX: "on" =
+        // lit, as the cockpit shows it. The inverted "Gen Bus 1 Off: on" sounded lit while the
+        // light was dark. The APU light is one for both APU generators, and dark whenever the
+        // APU is not running.
+        d["ELEC_annunGEN_BUS_OFF_0"] = Annun("ELEC_annunGEN_BUS_OFF_0", $"{Gen1} Off Bus light");
+        d["ELEC_annunGEN_BUS_OFF_1"] = Annun("ELEC_annunGEN_BUS_OFF_1", $"{Gen2} Off Bus light");
+        d["ELEC_annunAPU_GEN_OFF_BUS"] = Annun("ELEC_annunAPU_GEN_OFF_BUS", $"{ApuGen} Off Bus light");
         d["ELEC_MeterDisplayTop"]    = Display("ELEC_MeterDisplayTop", "Electrical Meter Top Display");
         d["ELEC_MeterDisplayBottom"] = Display("ELEC_MeterDisplayBottom", "Electrical Meter Bottom Display");
         // ELEC_BusPowered[16] — bus-powered indicators (SDK line 299, `bool[16]`). All 16 are
@@ -1467,18 +1474,15 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["FMC_DistanceToDest"]    = Quantity("FMC_DistanceToDest", "Distance To Destination");
         d["FMC_flightNumber"]      = Display("FMC_flightNumber", "Flight Number");
         // Gross weight for the CALCULATED flap maneuvering speeds (Pmdg737FlapSpeeds;
-        // the bugs are exposed nowhere). No continuous stream (IsAnnounced = false,
-        // the iFly's IFLY_FLAP_SPEEDS shape): the Shift+1..6 readout requests a fresh
-        // read per press (AnnounceFlapManeuverSpeedAsync).
+        // the bugs are exposed nowhere). OnRequest, never a stream: the Shift+1..6
+        // readout reads it fresh per press (AnnounceFlapManeuverSpeed).
         d["PMDG737_FLAP_SPEEDS_GW"] = new SimConnect.SimVarDefinition
         {
             Name = "TOTAL WEIGHT",
             DisplayName = "Gross Weight (flap speeds)",
             Type = SimConnect.SimVarType.SimVar,
             Units = "pounds",
-            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = false,
-            ExcludeFromMonitorManager = true,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
         };
 
         // General / misc
@@ -5316,26 +5320,29 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     /// </summary>
     protected override IReadOnlyList<AiDisplayRead> DisplayReads => Pmdg737DisplayReads.All;
 
-    /// <summary>Output-mode Shift+1..6 flap maneuver speed readout. Reads the
-    /// gross weight fresh on every press (PMDG737_FLAP_SPEEDS_GW has no
-    /// continuous stream) and speaks only on a DELIVERED value, never a cache
-    /// left by an earlier press. async void on the UI thread.</summary>
-    private async void AnnounceFlapManeuverSpeedAsync(int scheduleIndex,
+    /// <summary>Output-mode Shift+1..6 flap maneuver speed readout: a fresh
+    /// gross-weight read per press (PMDG737_FLAP_SPEEDS_GW is OnRequest), spoken
+    /// through FlapManeuverSpeeds.AnnounceAsync. The variant comes from the CDA
+    /// AircraftModel, the TITLE only as a fallback; an unknown one is logged once.</summary>
+    private void AnnounceFlapManeuverSpeed(int scheduleIndex,
         SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
-        double? lbs = await simConnect.ReadFreshAsync("PMDG737_FLAP_SPEEDS_GW", 1000);
-        if (lbs is not { } weight || !Pmdg737FlapSpeeds.IsPlausibleWeight(weight))
+        _ = FlapManeuverSpeeds.AnnounceAsync(simConnect, announcer, "PMDG737_FLAP_SPEEDS_GW", "PMDG737", lbs =>
         {
-            announcer.AnnounceImmediate("Flap speeds unavailable.");
-            return;
-        }
-        string title = simConnect.CurrentAircraftTitle;
-        if (Pmdg737FlapSpeeds.VariantFromTitle(title) == null)
-            Log.Info("PMDG737", $"Flap speeds: no 737 variant in title '{title}', using the -800 table");
-        announcer.AnnounceImmediate(
-            $"{Pmdg737FlapSpeeds.FlapName(scheduleIndex)} maneuver speed " +
-            $"{Pmdg737FlapSpeeds.ManeuverSpeedKnots(weight, title, scheduleIndex)} knots, calculated");
+            var dm = simConnect.PMDGDataManager;
+            int model = dm != null && dm.IsReady ? (int)dm.GetFieldValue("AircraftModel") : 0;
+            string title = simConnect.CurrentAircraftTitle;
+            int? variant = Pmdg737FlapSpeeds.Variant(model, title);
+            if (variant == null && !_flapSpeedVariantUnknownLogged)
+            {
+                _flapSpeedVariantUnknownLogged = true;
+                Log.Info("PMDG737", $"Flap speeds: AircraftModel {model} and title '{title}' name no 737 variant, using the -800 table");
+            }
+            return Pmdg737FlapSpeeds.Describe(lbs, variant, scheduleIndex);
+        });
     }
+
+    private bool _flapSpeedVariantUnknownLogged;
 
 
     public override bool HandleHotkeyAction(
@@ -5582,12 +5589,12 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // over this variant's measured VREF40 table (Pmdg737FlapSpeeds); the
             // readout says "calculated" because nothing exposes the PFD bugs.
             // ------------------------------------------------------------------
-            case HotkeyAction.ReadSpeedGD:  AnnounceFlapManeuverSpeedAsync(0, simConnect, announcer); return true; // Shift+1: flaps up
-            case HotkeyAction.ReadSpeedS:   AnnounceFlapManeuverSpeedAsync(1, simConnect, announcer); return true; // Shift+2: flaps 1
-            case HotkeyAction.ReadSpeedF:   AnnounceFlapManeuverSpeedAsync(2, simConnect, announcer); return true; // Shift+3: flaps 5
-            case HotkeyAction.ReadSpeedVLS: AnnounceFlapManeuverSpeedAsync(3, simConnect, announcer); return true; // Shift+4: flaps 10
-            case HotkeyAction.ReadSpeedVS:  AnnounceFlapManeuverSpeedAsync(4, simConnect, announcer); return true; // Shift+5: flaps 15
-            case HotkeyAction.ReadSpeedVFE: AnnounceFlapManeuverSpeedAsync(5, simConnect, announcer); return true; // Shift+6: flaps 25
+            case HotkeyAction.ReadSpeedGD:  AnnounceFlapManeuverSpeed(0, simConnect, announcer); return true; // Shift+1: flaps up
+            case HotkeyAction.ReadSpeedS:   AnnounceFlapManeuverSpeed(1, simConnect, announcer); return true; // Shift+2: flaps 1
+            case HotkeyAction.ReadSpeedF:   AnnounceFlapManeuverSpeed(2, simConnect, announcer); return true; // Shift+3: flaps 5
+            case HotkeyAction.ReadSpeedVLS: AnnounceFlapManeuverSpeed(3, simConnect, announcer); return true; // Shift+4: flaps 10
+            case HotkeyAction.ReadSpeedVS:  AnnounceFlapManeuverSpeed(4, simConnect, announcer); return true; // Shift+5: flaps 15
+            case HotkeyAction.ReadSpeedVFE: AnnounceFlapManeuverSpeed(5, simConnect, announcer); return true; // Shift+6: flaps 25
 
             // ------------------------------------------------------------------
             // MCP Direct-Set Input Dialogs

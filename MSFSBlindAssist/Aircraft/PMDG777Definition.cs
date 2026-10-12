@@ -4562,18 +4562,16 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 IsAnnounced = true
             },
             // Gross weight for the CALCULATED flap maneuvering speeds (Pmdg777FlapSpeeds;
-            // the bugs are exposed nowhere). No continuous stream (IsAnnounced = false,
-            // as PMDG737_FLAP_SPEEDS_GW): the Shift+1..5 readout requests a fresh read
-            // per press (AnnounceFlapManeuverSpeedAsync).
+            // the bugs are exposed nowhere). OnRequest, never a stream, as
+            // PMDG737_FLAP_SPEEDS_GW: the Shift+1..5 readout reads it fresh per press
+            // (AnnounceFlapManeuverSpeed).
             ["PMDG777_FLAP_SPEEDS_GW"] = new SimConnect.SimVarDefinition
             {
                 Name = "TOTAL WEIGHT",
                 DisplayName = "Gross Weight (flap speeds)",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "pounds",
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = false,
-                ExcludeFromMonitorManager = true,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             },
 
             // Altimeter setting — read from SimConnect for reliable STD detection
@@ -6932,27 +6930,21 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     /// </summary>
     protected override IReadOnlyList<AiDisplayRead> DisplayReads => Pmdg777DisplayReads.All;
 
-    /// <summary>Output-mode Shift+1..5 flap maneuver speed readout. Reads the
-    /// gross weight fresh on every press (PMDG777_FLAP_SPEEDS_GW has no
-    /// continuous stream) and speaks only on a DELIVERED value, never a cache
-    /// left by an earlier press. The variant comes from the CDA AircraftModel;
-    /// before the first snapshot it is unknown and the readout says unavailable.
-    /// async void on the UI thread.</summary>
-    private async void AnnounceFlapManeuverSpeedAsync(int scheduleIndex,
+    /// <summary>Output-mode Shift+1..5 flap maneuver speed readout: a fresh
+    /// gross-weight read per press (PMDG777_FLAP_SPEEDS_GW is OnRequest), spoken
+    /// through FlapManeuverSpeeds.AnnounceAsync. The variant comes from the CDA
+    /// AircraftModel; before the first snapshot it is unknown and the readout says
+    /// unavailable.</summary>
+    private static void AnnounceFlapManeuverSpeed(int scheduleIndex,
         SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
-        double? lbs = await simConnect.ReadFreshAsync("PMDG777_FLAP_SPEEDS_GW", 1000);
-        int model = GetAircraftModel(simConnect);
-        if (lbs is not { } weight || !Pmdg777FlapSpeeds.IsPlausibleWeight(weight)
-            || Pmdg777FlapSpeeds.ManeuverSpeedKnots(weight, model, scheduleIndex) is not { } knots)
+        _ = FlapManeuverSpeeds.AnnounceAsync(simConnect, announcer, "PMDG777_FLAP_SPEEDS_GW", "PMDG", lbs =>
         {
+            int model = GetAircraftModel(simConnect);
             if (!Pmdg777FlapSpeeds.IsKnownModel(model))
                 Log.Info("PMDG", $"Flap speeds: unknown 777 AircraftModel {model}");
-            announcer.AnnounceImmediate("Flap speeds unavailable.");
-            return;
-        }
-        announcer.AnnounceImmediate(
-            $"{Pmdg777FlapSpeeds.FlapName(scheduleIndex)} maneuver speed {knots} knots, calculated");
+            return Pmdg777FlapSpeeds.Describe(lbs, model, scheduleIndex);
+        });
     }
 
 
@@ -7328,11 +7320,11 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             // variant's measured VREF30 table (Pmdg777FlapSpeeds); the readout
             // says "calculated" because nothing exposes the PFD bugs.
             // ------------------------------------------------------------------
-            case HotkeyAction.ReadSpeedGD:  AnnounceFlapManeuverSpeedAsync(0, simConnect, announcer); return true; // Shift+1: flaps up
-            case HotkeyAction.ReadSpeedS:   AnnounceFlapManeuverSpeedAsync(1, simConnect, announcer); return true; // Shift+2: flaps 1
-            case HotkeyAction.ReadSpeedF:   AnnounceFlapManeuverSpeedAsync(2, simConnect, announcer); return true; // Shift+3: flaps 5
-            case HotkeyAction.ReadSpeedVLS: AnnounceFlapManeuverSpeedAsync(3, simConnect, announcer); return true; // Shift+4: flaps 15
-            case HotkeyAction.ReadSpeedVS:  AnnounceFlapManeuverSpeedAsync(4, simConnect, announcer); return true; // Shift+5: flaps 20
+            case HotkeyAction.ReadSpeedGD:  AnnounceFlapManeuverSpeed(0, simConnect, announcer); return true; // Shift+1: flaps up
+            case HotkeyAction.ReadSpeedS:   AnnounceFlapManeuverSpeed(1, simConnect, announcer); return true; // Shift+2: flaps 1
+            case HotkeyAction.ReadSpeedF:   AnnounceFlapManeuverSpeed(2, simConnect, announcer); return true; // Shift+3: flaps 5
+            case HotkeyAction.ReadSpeedVLS: AnnounceFlapManeuverSpeed(3, simConnect, announcer); return true; // Shift+4: flaps 15
+            case HotkeyAction.ReadSpeedVS:  AnnounceFlapManeuverSpeed(4, simConnect, announcer); return true; // Shift+5: flaps 20
 
             case HotkeyAction.MonitorManager:
                 // PMDG announcement monitor (Input + Ctrl+M). Hotkey arrives in

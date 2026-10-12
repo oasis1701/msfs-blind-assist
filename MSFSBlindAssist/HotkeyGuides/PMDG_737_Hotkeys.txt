@@ -1,4 +1,4 @@
-PMDG 737-800 HOTKEY REFERENCE
+PMDG 737 HOTKEY REFERENCE
 
 Application Navigation:
   Ctrl+1     Focus Sections List

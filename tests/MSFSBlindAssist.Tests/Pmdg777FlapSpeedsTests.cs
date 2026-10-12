@@ -133,6 +133,24 @@ public class Pmdg777FlapSpeedsTests
     }
 
     [Fact]
+    public void Describe_SpeaksTheCalculatedSpeed()
+    {
+        Assert.Equal("Flaps up maneuver speed 242 knots, calculated",
+            Pmdg777FlapSpeeds.Describe(650000, ModelFreighter, 0));
+        Assert.Equal("Flaps 20 maneuver speed 182 knots, calculated",
+            Pmdg777FlapSpeeds.Describe(650000, ModelFreighter, 4));
+    }
+
+    [Theory]
+    [InlineData(null, ModelFreighter)]      // nothing delivered (timeout, disconnect, aircraft switch)
+    [InlineData(150000.0, ModelFreighter)]  // delivered but not believable
+    [InlineData(500000.0, 0)]               // CDA not ready: the variant is unknown
+    public void Describe_WithoutABelievableWeightOrAKnownModel_SaysUnavailable(double? lbs, int model)
+    {
+        Assert.Equal("Flap speeds unavailable.", Pmdg777FlapSpeeds.Describe(lbs, model, 0));
+    }
+
+    [Fact]
     public void Speeds_DoNotDependOnTheCulture()
     {
         var saved = CultureInfo.CurrentCulture;
@@ -141,6 +159,9 @@ public class Pmdg777FlapSpeedsTests
             CultureInfo.CurrentCulture = new CultureInfo("de-DE");
             Assert.Equal(168, Pmdg777FlapSpeeds.Vref30Knots(680000, ModelFreighter));
             Assert.Equal("Flaps 15", Pmdg777FlapSpeeds.FlapName(3));
+            // 680 klb on the freighter: VREF30 168 + 20 = 188, spoken with no separator.
+            Assert.Equal("Flaps 15 maneuver speed 188 knots, calculated",
+                Pmdg777FlapSpeeds.Describe(680000, ModelFreighter, 3));
         }
         finally { CultureInfo.CurrentCulture = saved; }
     }

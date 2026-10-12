@@ -329,28 +329,20 @@ public class PMDGNG3DataManager : IPMDGDataManager
     /// providing power. Verified against ELEC_BusPowered[] and the
     /// annunciator OFF lamps via the PMDGDispatchTester rig 2026-05-24.
     /// For these specific fields we OVERRIDE the natural snapshot value with
-    /// a derived value computed from the truthful fields PMDG also exposes.
-    /// Synthetic events fire AFTER the natural foreach in DetectAndRaiseChanges
-    /// so they win in the per-frame cache.
+    /// a published value of our own. Synthetic events fire AFTER the natural
+    /// foreach in DetectAndRaiseChanges so they win in the per-frame cache.
     ///
-    /// Derivation rules (display the EFFECTIVE bus-connected state, not the
-    /// raw switch detent — PMDG doesn't reliably expose detent position):
-    ///   - ELEC_GrdPwrSw   ⟵ ELEC_BusPowered[9] OR [10] (AC GROUND SVC) —
-    ///                       these buses are only ever powered by GPU.
-    ///   - ELEC_APUGenSw_X ⟵ (APU_Selector >= 1) AND
-    ///                       (NOT ELEC_annunAPU_GEN_OFF_BUS).
-    ///                       The annunciator lights when APU is running but
-    ///                       gen is off-bus, so NOT-annun says "either APU
-    ///                       off OR gen on-bus" — gating on APU running
-    ///                       disambiguates to "gen on-bus". PMDG exposes a
-    ///                       single shared annunciator so both APU gens
-    ///                       display the same state.
-    ///   - ELEC_GenSw_X    ⟵ NOT ELEC_annunGEN_BUS_OFF[X] —
-    ///                       lamp lit ⟹ no gen on this bus ⟹ engine gen off.
-    ///                       Lamp off ⟹ some gen (engine or APU) is on bus;
-    ///                       if APU is the source the user will see APU GEN
-    ///                       shown ON too, so this gives the user enough info
-    ///                       to disambiguate by looking at both rows.
+    /// What is published now:
+    ///   - ELEC_GrdPwrSw, ELEC_APUGenSw_X: nothing — they are stateless
+    ///                       push-button pairs on the panel.
+    ///   - ELEC_GenSw_X    ⟵ the LOCALLY REMEMBERED state (_localSwitchStates,
+    ///                       set by NotifyLocalSwitchState on a GEN 1/2 press),
+    ///                       NOT a derived bus state. It starts Off on every
+    ///                       load and misses a cockpit click or an APU GEN
+    ///                       trip. The truthful "is engine gen X on its bus"
+    ///                       signal is NOT ELEC_annunGEN_BUS_OFF[X], the GEN
+    ///                       OFF BUS light.
+    ///   - ENG_StartLever_X ⟵ FUEL_annunENG_VALVE_CLOSED[X] (see the body).
     /// </summary>
     private void RaiseDerivedFieldOverrides(PMDGNG3DataStruct newData, bool isFirstSnapshot)
     {
