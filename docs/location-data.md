@@ -1,8 +1,9 @@
 # Offline location data (Output C and Location Info)
 
 Output > C (the nearest place) and Output > Shift+L (the Location Info window) answer from a local
-database each pilot downloads once, from Settings → GeoNames → Download location data. Nothing is
-looked up online when a pilot presses a key. Rules: `.claude/rules/location-data.md` (LOC-n).
+database each pilot downloads once, from Settings → GeoNames → Download location data, or from the
+dialog the app opens at launch while the data is missing (UPD-9). Nothing is looked up online when
+a pilot presses a key. Rules: `.claude/rules/location-data.md` (LOC-n).
 
 ## Why it is offline
 
@@ -52,7 +53,8 @@ the undersea class, stored for later use. The finished database is about 330 MB 
 
 ## Downloading and building
 
-`LocationDataDownloader` (owned by MainForm, started from `GeoNamesPanel`):
+`LocationDataDownloader` (owned by MainForm, started from `GeoNamesPanel` or, at launch while the
+data is missing, from the startup data check's `StartupDataDialog`, UPD-9):
 
 1. Checks free disk space (the peak is about 1.5 GB: the 400 MB download, a 370 MB staging file
    and the 330 MB result; an update's old database is already on disk). Says "Downloading location

@@ -1,0 +1,1 @@
+PMDG 777: Shift+1 to Shift+5 in output mode now read the flap maneuvering speeds (flaps up, 1, 5, 15 and 20) for your current weight, as on the PMDG 737. They come from VREF tables read off each 777 variant's own FMC and match it at the weights measured; between those weights they are estimates.
