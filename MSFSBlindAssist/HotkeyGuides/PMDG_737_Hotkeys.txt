@@ -1,4 +1,4 @@
-PMDG 737-800 HOTKEY REFERENCE
+PMDG 737 HOTKEY REFERENCE
 
 Application Navigation:
   Ctrl+1     Focus Sections List
@@ -42,6 +42,14 @@ Weight:
 
 Flaps:
   L          Read Flap Position
+
+Flap Maneuver Speeds (calculated for your current weight):
+  Shift+1    Flaps up maneuver speed
+  Shift+2    Flaps 1 maneuver speed
+  Shift+3    Flaps 5 maneuver speed
+  Shift+4    Flaps 10 maneuver speed
+  Shift+5    Flaps 15 maneuver speed
+  Shift+6    Flaps 25 maneuver speed
 
 Landing Gear:
   Shift+G    Read Gear Position
