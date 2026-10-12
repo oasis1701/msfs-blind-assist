@@ -1,0 +1,15 @@
+# PMDG SDK setup check — rules in full
+
+Each section is the complete text of one rule. Its one-line form, under the same ID, is in `.claude/rules/pmdg-sdk.md`, which Claude Code loads when it reads matching code. Background: [pmdg-737.md](../pmdg-737.md) and [pmdg-777.md](../pmdg-777.md), "Options.ini requirement".
+
+## PSDK-1
+
+- MSFSBA never writes, backs up or patches a PMDG options file (`737_Options.ini`, `777_Options.ini`). `PMDGSdkSetupCheck` only reads each installed variant's file, opened with `FileShare.ReadWrite | FileShare.Delete` so a write PMDG makes at the same moment never fails, and `PMDGSdkSetupDialog` tells the pilot which lines to add, with a Copy lines button and an Open folder button that selects the file in Explorer.
+- Why: the team decided on 2026-10-12, reviewing PR #240, that the app must not rewrite a user's configuration file. That PR's first version patched the file in place while the aircraft was loaded, and its review found the write path fragile on every side: a duplicate `[SDK]` section left in place, padding rules PMDG's own files contradict, a re-encoded file, a temporary file left behind, and a read that could make PMDG's own write fail. PMDG rewrites this file itself: on the owner's FS2024 install the 737 files carry `[SDK]` at line 7, ahead of `[IRS]`, where PMDG's writer put it, so an outside edit races a writer it cannot see.
+- Pinned by `PMDGSdkSetupCheckTests.A_file_the_simulator_has_open_for_writing_is_still_read` (a plain `File.ReadAllLines` fails it).
+
+## PSDK-2
+
+- The check runs only when the pilot picks the PMDG 737 or 777 from the Aircraft menu (`MainForm.OfferPmdgSdkSetup`, called at the end of `SwitchAircraft`), whether or not the simulator is connected, and never at connect. It shows its dialog on every such pick while any installed variant's file lacks the lines, or while none exists yet; a dismissal is never remembered.
+- Why: PR #240's first version raised its dialogs when the aircraft connected, as a background event with no spoken cue; with the simulator in front, an unowned dialog opens behind it and the screen reader says nothing. A menu pick is a direct action with MSFSBA in front, so the reader reads the dialog. Never remembering a dismissal is the owner's standing preference for anything that could nag (the startup data check, [UPD-9], works the same way).
+- Known gap, accepted: at startup MainForm restores `LastAircraft` without `SwitchAircraft`, so a pilot already on a PMDG profile sees the dialog only when picking it again.

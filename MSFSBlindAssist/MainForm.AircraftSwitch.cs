@@ -309,16 +309,6 @@ public partial class MainForm
                     pmdgProgPageMonitor = null;
                 }
                 EnsurePMDGProgPageMonitor();
-
-                // Fire-and-forget: checks whether this variant's options.ini has the SDK
-                // data-broadcast lines the CDU window needs, and offers to add them if not.
-                // CheckAsync does its file IO off-thread and marshals its own dialogs back to
-                // this form's UI thread, so this call never blocks the rest of connection setup
-                // below.
-                string titleSnapshot = simConnectManager.CurrentAircraftTitle;
-                string aircraftCodeSnapshot = currentAircraft.AircraftCode;
-                _ = _pmdgSdkBroadcastConfigurator.CheckAsync(
-                    aircraftCodeSnapshot, titleSnapshot, simConnectManager.AircraftCfgCatalog, this);
             }
 
             else if (currentAircraft?.AircraftCode == "TFDI_MD11")
@@ -1133,17 +1123,6 @@ public partial class MainForm
             {
                 simConnectManager.PMDGDataManager.VariableChanged += OnPMDGVariableChanged;
             }
-
-            // Same SDK data-broadcast check as the connect-time hook in OnConnectionStatusChanged
-            // (MainForm.AircraftSwitch.cs), but for a manual pick from the Aircraft menu — a pilot
-            // switching MSFSBA's own profile onto a PMDG aircraft that's already loaded in the sim
-            // (e.g. auto-detect picked the wrong def) gets checked here too, not only on the next
-            // SimConnect reconnect. Gated the same way InitializePMDG above is: only meaningful
-            // once actually connected, since the title this reads comes from the live sim.
-            string titleSnapshot = simConnectManager.CurrentAircraftTitle;
-            string aircraftCodeSnapshot = newAircraft.AircraftCode;
-            _ = _pmdgSdkBroadcastConfigurator.CheckAsync(
-                aircraftCodeSnapshot, titleSnapshot, simConnectManager.AircraftCfgCatalog, this);
         }
         else
         {
@@ -1215,6 +1194,37 @@ public partial class MainForm
 
         // Update aircraft-specific menu items visibility
         UpdateAircraftSpecificMenuItems();
+
+        OfferPmdgSdkSetup(currentAircraft.AircraftCode);
+    }
+
+    // Bumped by every aircraft switch, so only the latest pick's check may open the setup dialog.
+    private int _pmdgSdkSetupSeq;
+
+    /// <summary>
+    /// After an Aircraft-menu pick of the PMDG 737 or 777 (SwitchAircraft's only callers for them),
+    /// reads every installed variant's options file off the UI thread and, while any lacks the [SDK]
+    /// lines or none exists yet, shows how to add them. It never edits the file ([PSDK-1]). Runs
+    /// connected or not, and on every pick while something is missing: a dismissal is never
+    /// remembered. Never at connect, where the dialog would open behind the simulator unheard.
+    /// </summary>
+    private async void OfferPmdgSdkSetup(string aircraftCode)
+    {
+        int ticket = ++_pmdgSdkSetupSeq;
+        var family = MSFSBlindAssist.Services.PMDG.PMDGSdkFamily.ForAircraftCode(aircraftCode);
+        if (family == null) return;
+        try
+        {
+            var result = await Task.Run(() => MSFSBlindAssist.Services.PMDG.PMDGSdkSetupCheck.Run(family));
+            if (ticket != _pmdgSdkSetupSeq || IsDisposed || !result.NeedsAttention) return;
+
+            using var dialog = new Forms.PMDG.PMDGSdkSetupDialog(result, announcer);
+            dialog.ShowDialog(this);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("PMDG", $"SDK setup check failed for {aircraftCode}: {ex.Message}");
+        }
     }
 
     /// <summary>

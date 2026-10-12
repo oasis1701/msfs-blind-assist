@@ -78,6 +78,28 @@ EFB's missing minimums — not a gap to fix.
 
 **System Display synoptic read-outs (`PMDG777Definition.SystemDisplay.cs`, partial class).** A read-only status box in the **Displays → System Display** panel, organized like the real Display Select Panel synoptic pages. A single combo (`PMDG777_SD_PAGE`, `SdPageKey`) selects one of 9 pages (0 Engine, 1 Status, 2 Electrical, 3 Hydraulics, 4 Fuel, 5 Air, 6 Doors, 7 Gear, 8 Flight Controls); selecting a page writes a private L:var (`PMDG777_MSFSBA_SD_PAGE`), and `RefreshSystemDisplayAsync` repaints the box. **HYBRID data sourcing** — each row is `(label, var, fmt)`: most values are **stock SimVars** read from the SimConnect cache (`GetCachedVariableValue` — oil temp/press/qty, EGT, N1/N2, fuel flow, hydraulic pressure/reservoir, electrical voltages, cabin alt/rate/diff, CG%MAC, gear, control surfaces/trim), while a small set of PMDG-SDK-broadcast fields (`_sdPmdgVars`: feed-tank fuel quantities, duct pressures, brake accumulator, IRS aligned, APU running, door states) are read **live** via `simConnect.PMDGDataManager.GetFieldValue(name)` (with `_N` array-index suffix), because OnRequest PMDGVars never land in the SimConnect cache. The box rides the GENERIC MainForm `_DISPLAY_`/`_REFRESH_` status-box infra (a navigable ListBox with a 1 s live auto-refresh + coalesced in-place row reconcile — see "Status-display boxes refresh live") — `OnDisplayPanelShown` triggers a refresh when the panel is shown; `TryGetDisplayOverride(SdPageKey, …)` renders the page name + content. **Documented gaps not in the SDK** (so NOT covered): oxygen, water, brake temp, tire pressure, APU N/EGT/load, generator load amps, EICAS alert message TEXT (WASM-only), wear/cycles, chrono elapsed time. **Formatting (2026-06-21):** the shared `Lbs`/`Pph` formatters show weight/fuel in BOTH units — "`<lb>` pounds (`<kg>` kg)" / "… pounds per hour (… kg per hour)" (1 lb = 0.45359237 kg) — covering every pounds field on every page (Fuel Flow, Fuel Used, Gross Weight, Total Fuel, per-tank). The continuous readouts carry ONE decimal place (`{v:0.0}` on percent / volts / psi / degrees-C) so sub-unit changes are visible — integer rounding had made live values look frozen (a reservoir at 96.9% read a static "97"). Weight/fuel stay whole (sub-unit is noise on a 6-digit number); N1/N2, vibration, flaps, diff-pressure already carried a decimal. The row formatters are `private static` methods (not per-call local funcs) so the compiler caches the method-group delegates — the auto-refresh tick and the 9-page registration loop don't re-allocate them; `TryGetDisplayOverride` renders the page name from `_sdPage` (the same source `_sdContent` was composed from), NOT the cached L:var `value`, which lags the calc-write/read-back and would briefly show the wrong header over fresh content. **PMDG-broadcast reads are gated on `IPMDGDataManager.IsReady`** — until the first CDA snapshot arrives `GetFieldValue` returns `0.0` for EVERY field (interface contract), which `DoorState(0)="open"` would render as "every door open" / "0 lb"; not-ready now renders `--` (matching the stock-SimVar cache-miss path). **MainForm's PMDG panel-populate loop only force-reads `Type == PMDGVar` controls** (`MainForm.cs` ~6598) — reading a non-PMDG control (the SD page combo is an `LVar`) via `GetFieldValue` returns the `0.0` "unknown field" sentinel, which used to force-reset the combo to page 0 on every panel re-show; non-PMDG controls populate via combo-creation + continuous monitoring instead.
 
+## Options.ini requirement
+
+Each installed variant keeps its own `777_Options.ini` in its package's `work` folder, in the same four
+storage trees as the 737 (see docs/pmdg-737.md, "Options.ini requirement"; on the owner's FS2024
+Store install, `...\LocalState\WASM\MSFS2024\pmdg-aircraft-77x\work\777_Options.ini`, all four
+variants). The package folders are `pmdg-aircraft-77er` (777-200ER), `-77l` (777-200LR), `-77f`
+(777F) and `-77w` (777-300ER). The 777 needs the center CDU line as well, because
+`PMDG777DataManager` maps all three CDU areas:
+
+```ini
+[SDK]
+EnableDataBroadcast=1
+EnableCDUBroadcast.0=1
+EnableCDUBroadcast.1=1
+EnableCDUBroadcast.2=1
+```
+
+On the owner's install PMDG keeps this block as the file's last lines, with no blank line after it,
+and the broadcast works. The pilot adds it; MSFSBA never edits the file ([PSDK-1]). Picking the PMDG
+777 from the Aircraft menu opens the PMDG 777 SDK setup dialog while any installed variant's file
+lacks the lines or none exists yet ([PSDK-2]).
+
 
 ## AI display reads (Alt+P / Alt+N / Alt+E / Alt+S / Alt+I)
 

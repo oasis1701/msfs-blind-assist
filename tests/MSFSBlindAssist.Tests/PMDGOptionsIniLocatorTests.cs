@@ -1,107 +1,80 @@
-// PMDG's per-variant options.ini lives in one of four places depending on simulator generation
-// (FS2020/FS2024) and storefront (MS Store/Steam) — confirmed against PMDG's own forum, not
-// guessed. These tests pin the four candidate paths and their ordering; the actual "does this
-// file exist" check is thin, untested IO glue (PMDGOptionsIniLocator.FindExisting), consistent
-// with this codebase's convention of not unit-testing raw disk access.
+// PMDG keeps each variant's <family>_Options.ini in that package's "work" folder, in one of four
+// storage trees (FS2024/FS2020 x Store/Steam). The check looks for EVERY installed variant of the
+// family, since each variant has its own file and each needs the [SDK] lines.
 
 using MSFSBlindAssist.Services.PMDG;
 
 namespace MSFSBlindAssist.Tests;
 
-public class PMDGOptionsIniLocatorTests
+public class PMDGOptionsIniLocatorTests : IDisposable
 {
-    [Fact]
-    public void Builds_all_four_storefront_and_generation_candidates()
-    {
-        var candidates = PMDGOptionsIniLocator.BuildCandidatePaths("pmdg-aircraft-738", "737", "FS2024");
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "msfsba-pmdg-" + Guid.NewGuid().ToString("N"));
+    public void Dispose() { try { Directory.Delete(_root, true); } catch { } }
 
-        Assert.Equal(4, candidates.Count);
+    private string WriteOptionsFile(string storageRoot, string packageFolder, string fileName)
+    {
+        string work = Path.Combine(storageRoot, packageFolder, "work");
+        Directory.CreateDirectory(work);
+        string path = Path.Combine(work, fileName);
+        File.WriteAllLines(path, new[] { "[IRS]", "LastPosValid=0" });
+        return path;
     }
 
     [Fact]
-    public void Every_candidate_uses_the_family_prefixed_ini_filename()
+    public void The_storage_roots_are_the_FS2024_WASM_trees_then_the_FS2020_package_trees()
     {
-        var candidates = PMDGOptionsIniLocator.BuildCandidatePaths("pmdg-aircraft-77f", "777", "FS2024");
+        var roots = PMDGOptionsIniLocator.StorageRoots(@"C:\Local", @"C:\Roaming");
 
-        Assert.All(candidates, path => Assert.EndsWith("777_Options.ini", path));
+        Assert.Equal(new[]
+        {
+            @"C:\Local\Packages\Microsoft.Limitless_8wekyb3d8bbwe\LocalState\WASM\MSFS2024",
+            @"C:\Roaming\Microsoft Flight Simulator 2024\WASM\MSFS2024",
+            @"C:\Local\Packages\Microsoft.FlightSimulator_8wekyb3d8bbwe\LocalState\packages",
+            @"C:\Roaming\Microsoft Flight Simulator\Packages",
+        }, roots.Select(r => r.Path));
+        Assert.Equal(new[] { "MSFS 2024", "MSFS 2024", "MSFS 2020", "MSFS 2020" }, roots.Select(r => r.Simulator));
     }
 
     [Fact]
-    public void Every_candidate_includes_the_package_folder_name()
+    public void Finds_every_installed_variant_of_the_family_and_nothing_else()
     {
-        var candidates = PMDGOptionsIniLocator.BuildCandidatePaths("pmdg-aircraft-739", "737", "FS2024");
+        string root = Path.Combine(_root, "MSFS2024");
+        string p738 = WriteOptionsFile(root, "pmdg-aircraft-738", "737_Options.ini");
+        string p736 = WriteOptionsFile(root, "pmdg-aircraft-736", "737_Options.ini");
+        WriteOptionsFile(root, "pmdg-aircraft-77w", "777_Options.ini");          // the other family
+        WriteOptionsFile(root, "fenix-a320", "737_Options.ini");                  // not a PMDG package
+        Directory.CreateDirectory(Path.Combine(root, "pmdg-aircraft-739", "work")); // never loaded: no file yet
 
-        Assert.All(candidates, path => Assert.Contains("pmdg-aircraft-739", path));
+        var found = PMDGOptionsIniLocator.FindOptionsFiles(
+            new[] { new PMDGStorageRoot(root, "MSFS 2024") }, PMDGSdkFamily.B737);
+
+        Assert.Equal(new[] { p736, p738 }, found.Select(f => f.Path));
+        Assert.Equal(new[] { "pmdg-aircraft-736", "pmdg-aircraft-738" }, found.Select(f => f.PackageFolder));
+        Assert.All(found, f => Assert.Equal("MSFS 2024", f.Simulator));
     }
 
     [Fact]
-    public void Includes_the_FS2024_MS_Store_work_folder_under_the_WASM_MSFS2024_tree()
+    public void Looks_in_every_root_and_tags_each_file_with_its_simulator()
     {
-        var candidates = PMDGOptionsIniLocator.BuildCandidatePaths("pmdg-aircraft-738", "737", "FS2024");
+        string fs2024 = Path.Combine(_root, "MSFS2024");
+        string fs2020 = Path.Combine(_root, "packages");
+        string in2024 = WriteOptionsFile(fs2024, "pmdg-aircraft-77w", "777_Options.ini");
+        string in2020 = WriteOptionsFile(fs2020, "pmdg-aircraft-77w", "777_Options.ini");
 
-        Assert.Contains(candidates, path =>
-            path.Contains("Microsoft.Limitless_8wekyb3d8bbwe", StringComparison.Ordinal) &&
-            path.Contains(Path.Combine("WASM", "MSFS2024"), StringComparison.Ordinal) &&
-            path.Contains(Path.Combine("pmdg-aircraft-738", "work"), StringComparison.Ordinal));
+        var found = PMDGOptionsIniLocator.FindOptionsFiles(
+            new[] { new PMDGStorageRoot(fs2024, "MSFS 2024"), new PMDGStorageRoot(fs2020, "MSFS 2020") },
+            PMDGSdkFamily.B777);
+
+        Assert.Equal(new[] { in2024, in2020 }, found.Select(f => f.Path));
+        Assert.Equal(new[] { "MSFS 2024", "MSFS 2020" }, found.Select(f => f.Simulator));
     }
 
     [Fact]
-    public void Includes_the_FS2024_Steam_work_folder_under_the_WASM_MSFS2024_tree()
+    public void A_root_that_does_not_exist_finds_nothing_rather_than_throwing()
     {
-        var candidates = PMDGOptionsIniLocator.BuildCandidatePaths("pmdg-aircraft-738", "737", "FS2024");
+        var found = PMDGOptionsIniLocator.FindOptionsFiles(
+            new[] { new PMDGStorageRoot(Path.Combine(_root, "absent"), "MSFS 2020") }, PMDGSdkFamily.B737);
 
-        Assert.Contains(candidates, path =>
-            path.Contains("Microsoft Flight Simulator 2024", StringComparison.Ordinal) &&
-            path.Contains(Path.Combine("WASM", "MSFS2024"), StringComparison.Ordinal) &&
-            path.Contains(Path.Combine("pmdg-aircraft-738", "work"), StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void Includes_the_FS2020_MS_Store_work_folder_under_LocalState_packages()
-    {
-        var candidates = PMDGOptionsIniLocator.BuildCandidatePaths("pmdg-aircraft-738", "737", "FS2020");
-
-        Assert.Contains(candidates, path =>
-            path.Contains("Microsoft.FlightSimulator_8wekyb3d8bbwe", StringComparison.Ordinal) &&
-            path.Contains(Path.Combine("LocalState", "packages", "pmdg-aircraft-738", "work"), StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void Includes_the_FS2020_Steam_work_folder_under_Microsoft_Flight_Simulator_Packages()
-    {
-        var candidates = PMDGOptionsIniLocator.BuildCandidatePaths("pmdg-aircraft-738", "737", "FS2020");
-
-        Assert.Contains(candidates, path =>
-            !path.Contains("2024", StringComparison.Ordinal) &&
-            path.Contains(Path.Combine("Microsoft Flight Simulator", "Packages", "pmdg-aircraft-738", "work"), StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void Tries_the_detected_running_simulators_own_paths_first_when_FS2020_is_running()
-    {
-        var candidates = PMDGOptionsIniLocator.BuildCandidatePaths("pmdg-aircraft-738", "737", "FS2020");
-
-        // The FS2020 candidates (WASM\MSFS2024 absent) must be tried before the FS2024 ones.
-        Assert.DoesNotContain("MSFS2024", candidates[0]);
-        Assert.DoesNotContain("MSFS2024", candidates[1]);
-    }
-
-    [Fact]
-    public void Tries_the_detected_running_simulators_own_paths_first_when_FS2024_is_running()
-    {
-        var candidates = PMDGOptionsIniLocator.BuildCandidatePaths("pmdg-aircraft-738", "737", "FS2024");
-
-        Assert.Contains("MSFS2024", candidates[0]);
-        Assert.Contains("MSFS2024", candidates[1]);
-    }
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("Unknown")]
-    public void An_unresolved_running_simulator_tries_FS2024_first_as_the_newer_sim(string? runningSimulatorVersion)
-    {
-        var candidates = PMDGOptionsIniLocator.BuildCandidatePaths("pmdg-aircraft-738", "737", runningSimulatorVersion);
-
-        Assert.Contains("MSFS2024", candidates[0]);
+        Assert.Empty(found);
     }
 }
