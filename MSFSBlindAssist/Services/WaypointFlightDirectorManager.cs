@@ -165,6 +165,7 @@ public class WaypointFlightDirectorManager : IDisposable
         activeSlot = firstFilled == 0 ? 1 : firstFilled;
         apMutedAnnounced = false;
         hasLat = hasLon = hasAlt = hasTrack = hasAoa = false;
+        vsFpm = double.NaN;   // the first sample seeds the vertical-speed filter afresh
         lastRateTime = DateTime.MinValue;
         yawRateDegPerSec = 0;
         cmdInit = false;   // command slew baseline re-seeds on the first frame
@@ -206,7 +207,18 @@ public class WaypointFlightDirectorManager : IDisposable
     public void UpdateHeading(double v) => hdgMag = v;
     public void UpdateGroundTrack(double v) { groundTrack = v; hasTrack = true; }
     public void UpdateGroundSpeed(double v) => groundSpeedKts = v;
-    public void UpdateVerticalSpeed(double v) => vsFpm = v;
+    /// <summary>The TRUE vertical velocity (WFD-16), smoothed over <see cref="VsTauSec"/>: the
+    /// projected crossing altitude multiplies it by minutes to the fix, so turbulence chop the
+    /// indicated figure's VSI filter used to hide would swing the projection hundreds of feet and
+    /// flick the vertical gate. Two seconds of lag is nothing against a horizon of minutes.</summary>
+    public void UpdateVerticalSpeed(double v)
+    {
+        DateTime now = DateTime.UtcNow;
+        vsFpm = G.SmoothTowards(vsFpm, v, (now - lastVsTime).TotalSeconds, VsTauSec);
+        lastVsTime = now;
+    }
+    private const double VsTauSec = 2.0;
+    private DateTime lastVsTime = DateTime.MinValue;
     public void UpdateMagVar(double v) => magvar = v;
     public void UpdatePitch(double standardPitchDeg) => actualPitchDeg = standardPitchDeg;
     public void UpdateBank(double simConnectBankDeg) => actualBankDegSc = simConnectBankDeg;
@@ -357,7 +369,7 @@ public class WaypointFlightDirectorManager : IDisposable
         cmdPitch = G.CommandedPitchDeg(0.0, EffectiveAoaDeg, profile.MaxPitchDeg);
         if (slot.Value.Constraint != AltitudeConstraintType.None && slot.Value.CrossingAltitude.HasValue)
         {
-            double projected = G.ProjectedCrossingAltFt(altMsl, vsFpm, distNm, groundSpeedKts);
+            double projected = G.ProjectedCrossingAltFt(altMsl, double.IsFinite(vsFpm) ? vsFpm : 0.0, distNm, groundSpeedKts);
             var (vActive, targetAlt) = G.ResolveVerticalTarget(
                 slot.Value.Constraint, slot.Value.CrossingAltitude, slot.Value.CrossingAltitudeUpper, projected);
             if (vActive)

@@ -379,4 +379,24 @@ public class WaypointFlightDirectorGeometryTests
     {
         Assert.False(WaypointFlightDirectorGeometry.HasArrived(2.0, 105, 100, 0.5));
     }
+    // SmoothTowards: the time-based low-pass on the TRUE vertical velocity (WFD-16).
+    [Fact]
+    public void SmoothTowards_moves_by_one_minus_e_to_the_minus_dt_over_tau()
+    {
+        // dt = tau: 1 - 1/e = 63.2% of the way.
+        Assert.Equal(-632.12, WaypointFlightDirectorGeometry.SmoothTowards(0, -1000, 2.0, 2.0), 2);
+        // The same 2 s in 60 frames of 1/30 s lands in the same place: frame-rate independent.
+        double v = 0;
+        for (int i = 0; i < 60; i++) v = WaypointFlightDirectorGeometry.SmoothTowards(v, -1000, 1.0 / 30.0, 2.0);
+        Assert.Equal(-632.12, v, 1);
+    }
+
+    [Fact]
+    public void SmoothTowards_seeds_from_the_sample_and_survives_bad_input()
+    {
+        Assert.Equal(-400, WaypointFlightDirectorGeometry.SmoothTowards(double.NaN, -400, 0.03, 2.0));
+        Assert.Equal(-400, WaypointFlightDirectorGeometry.SmoothTowards(-100, -400, 11.0, 2.0));   // a gap past 5 tau restarts
+        Assert.Equal(-100, WaypointFlightDirectorGeometry.SmoothTowards(-100, -400, 0.0, 2.0));    // no time, no move
+        Assert.Equal(-100, WaypointFlightDirectorGeometry.SmoothTowards(-100, double.NaN, 0.03, 2.0));
+    }
 }

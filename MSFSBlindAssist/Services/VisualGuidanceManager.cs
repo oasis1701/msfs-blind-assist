@@ -376,6 +376,7 @@ public class VisualGuidanceManager : IDisposable
         previousGlideslopeTimestamp = null;
         previousDesiredPitch = 0.0;
         smoothedCurrentFPM = null;
+        lastVerticalSpeedTime = DateTime.MinValue;   // the next sample seeds the input filter
 
         // Reset flare state
         lastFlarePitch = 3.0;
@@ -613,7 +614,21 @@ public class VisualGuidanceManager : IDisposable
     /// Updates performance data for dynamic pitch calculation
     /// </summary>
     public void UpdateGroundSpeed(double groundSpeedKnots) => currentGroundSpeedKnots = groundSpeedKnots;
-    public void UpdateVerticalSpeed(double verticalSpeedFPM) => currentVerticalSpeedFPM = verticalSpeedFPM;
+    /// <summary>
+    /// The TRUE vertical velocity (WFD-16), low-passed over <see cref="VsInputTauSec"/> in TIME:
+    /// the indicated figure's VSI filter used to hide turbulence chop, and the glidepath PID's
+    /// per-frame smoothing and rate term would turn it into desired-tone warble. Half a second is
+    /// a quarter of the VSI's lag, so the law keeps most of what the true figure gains it.
+    /// </summary>
+    public void UpdateVerticalSpeed(double verticalSpeedFPM)
+    {
+        DateTime now = DateTime.UtcNow;
+        currentVerticalSpeedFPM = WaypointFlightDirectorGeometry.SmoothTowards(
+            currentVerticalSpeedFPM, verticalSpeedFPM, (now - lastVerticalSpeedTime).TotalSeconds, VsInputTauSec);
+        lastVerticalSpeedTime = now;
+    }
+    private const double VsInputTauSec = 0.5;
+    private DateTime lastVerticalSpeedTime = DateTime.MinValue;
 
     /// <summary>
     /// Processes all cached data when complete position update is available

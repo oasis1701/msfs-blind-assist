@@ -36,6 +36,22 @@ public static class WaypointFlightDirectorGeometry
     private const double Rad2Deg = 180.0 / System.Math.PI;
     private const double Deg2Rad = System.Math.PI / 180.0;
 
+    /// <summary>
+    /// Time-based exponential smoothing: moves <paramref name="previous"/> toward
+    /// <paramref name="sample"/> by 1 - e^(-dt/tau), so the time constant is the same at any frame
+    /// rate. Used on the TRUE vertical velocity (WFD-16), which carries turbulence chop the
+    /// indicated figure's VSI filter used to hide. A non-finite previous value, or a gap longer
+    /// than five time constants, restarts from the sample; a non-positive or non-finite dt keeps
+    /// the previous value.
+    /// </summary>
+    public static double SmoothTowards(double previous, double sample, double dtSeconds, double tauSeconds)
+    {
+        if (!double.IsFinite(sample)) return previous;
+        if (!double.IsFinite(previous) || tauSeconds <= 0.0 || dtSeconds > 5.0 * tauSeconds) return sample;
+        if (!(dtSeconds > 0.0)) return previous;
+        return previous + (1.0 - System.Math.Exp(-dtSeconds / tauSeconds)) * (sample - previous);
+    }
+
     /// <summary>Normalises an angle (degrees) to the range (-180, +180].</summary>
     public static double NormalizeSigned(double degrees)
     {
