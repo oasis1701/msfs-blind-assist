@@ -355,14 +355,9 @@ public class AircraftActionExecutor : IFoActionExecutor
 
                 case Dispatch.Directional:
                     _sc.SendPMDGEvent(eventName, id, t > 0 ? MouseFlagLeftSingle : MouseFlagRightSingle);
-                    // Engine GEN 1/2 state is locally tracked in PMDGNG3DataManager (PMDG's
-                    // raw ELEC_GenSw bool lies — always ~1 at rest). The panel path notifies
-                    // it on every dispatch; without this mirror the FO's generator writes were
-                    // invisible to the checklist auto-detect (BT_GEN never ticked) and to the
-                    // panel combos. GPU / APU GENs are stateless push pairs — nothing to track.
-                    if (eventName == "EVT_OH_ELEC_GEN1_SWITCH" || eventName == "EVT_OH_ELEC_GEN2_SWITCH")
-                        (_sc.PMDGDataManager as PMDGNG3DataManager)?.NotifyLocalSwitchState(
-                            eventName == "EVT_OH_ELEC_GEN1_SWITCH" ? "ELEC_GenSw_0" : "ELEC_GenSw_1", t > 0);
+                    // Nothing to track: GPU, GEN and APU GEN are stateless push pairs, and the
+                    // evaluator reads the engine generators from their GEN OFF BUS lights
+                    // (FO_GEN1_ON_BUS / FO_GEN2_ON_BUS).
                     return true;
 
                 case Dispatch.AbsoluteSelector:

@@ -231,10 +231,10 @@ public static class PMDG737ChecklistDefinitions
         Items = new()
         {
             // After-start power transfer (folded in from the former After Start flow).
-            // Generator state is the locally-tracked ELEC_GenSw (PMDG's raw bool lies);
-            // the FO executor now notifies it on every GEN dispatch so this ticks.
-            Auto("BT_GEN", "BEFORE_TAXI", "Generators: ON", "ELEC_GenSw_0", v => v > 0.5,
-                new[] { "ELEC_GenSw_1" }, (e, _) => e.SetGenerators(1)),
+            // Each engine generator on its bus, from its GEN OFF BUS light (GeneratorBusState;
+            // PMDG's raw ELEC_GenSw bool reads 1 at rest).
+            Auto("BT_GEN", "BEFORE_TAXI", "Generators: ON", GeneratorBusState.OnBusFields[0], v => v > 0.5,
+                new[] { GeneratorBusState.OnBusFields[1] }, (e, _) => e.SetGenerators(1)),
             Auto("BT_APUBLEED_OFF", "BEFORE_TAXI", "APU bleed air: OFF", "AIR_APUBleedAirSwitch", v => v < 0.5, (e, _) => e.SetApuBleed(0)),
             Auto("BT_APU", "BEFORE_TAXI", "APU: OFF", "APU_Selector", v => v < 0.5, (e, _) => e.SetApuSelector(0)),
             Auto("BT_PROBE", "BEFORE_TAXI", "Probe heat: ON", "ICE_ProbeHeatSw_0", v => v > 0.5,
@@ -489,7 +489,7 @@ public static class PMDG737ChecklistDefinitions
         Id = "BEFORE_TAXI_CL", Name = "Before Taxi Checklist",
         Items = new()
         {
-            Auto("BTC_GEN", "BEFORE_TAXI_CL", "Generators: ON", "ELEC_GenSw_0", v => v > 0.5, new[] { "ELEC_GenSw_1" }, action: null),
+            Auto("BTC_GEN", "BEFORE_TAXI_CL", "Generators: ON", GeneratorBusState.OnBusFields[0], v => v > 0.5, new[] { GeneratorBusState.OnBusFields[1] }, action: null),
             Auto("BTC_PROBE", "BEFORE_TAXI_CL", "Probe heat: ON", "ICE_ProbeHeatSw_0", v => v > 0.5, new[] { "ICE_ProbeHeatSw_1" }, action: null),
             Reminder("BTC_ANTIICE", "BEFORE_TAXI_CL", "Anti-ice: as required"),
             Auto("BTC_ISO", "BEFORE_TAXI_CL", "Isolation valve: AUTO", "AIR_IsolationValveSwitch", v => v > 0.5 && v < 1.5, action: null),

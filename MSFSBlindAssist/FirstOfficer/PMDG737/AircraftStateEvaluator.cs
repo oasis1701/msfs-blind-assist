@@ -7,7 +7,7 @@ namespace MSFSBlindAssist.FirstOfficer.PMDG737;
 /// Read-only access to PMDG 737 NG3 aircraft state via <see cref="PMDGNG3DataManager"/>,
 /// implementing the shared <see cref="IFoStateEvaluator"/> contract. All field names are
 /// verified against <c>PMDGNG3DataStruct.cs</c>; array fields are read with the
-/// underscore-index form (e.g. <c>"ELEC_GenSw_0"</c>).
+/// underscore-index form (e.g. <c>"ELEC_annunGEN_BUS_OFF_0"</c>).
 /// </summary>
 public class AircraftStateEvaluator : IFoStateEvaluator
 {
@@ -84,6 +84,12 @@ public class AircraftStateEvaluator : IFoStateEvaluator
                 : (RawFieldOn("ELEC_annunGRD_POWER_AVAILABLE")
                    && (RawFieldOn("ELEC_BusPowered_9") || RawFieldOn("ELEC_BusPowered_10")) ? 1 : 0);
 
+        // Engine generator X ON ITS BUS: its GEN OFF BUS light dark AND its transfer bus
+        // powered (GeneratorBusState). Never the raw ELEC_GenSw bool, which reads 1 at rest.
+        for (int gen = 0; gen < GeneratorBusState.OnBusFields.Count; gen++)
+            if (field == GeneratorBusState.OnBusFields[gen])
+                return !CdaReady ? double.NaN : (GeneratorBusState.IsOnBus(gen, RawValue) ? 1 : 0);
+
         // Merged Before-Start "Fuel pumps: ON" detection (§6): wing on AND center matches
         // fuel state. ONE synthetic (never a primary+additional split — the Auto() helper
         // applies the same condition to every field, which cannot express wing≠center logic).
@@ -148,8 +154,8 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     // Electrical
     // -----------------------------------------------------------------------
     public bool IsBatteryOn()      => IsOn("ELEC_BatSelector");   // ON = byte 1 (up detent; byte 2 is an unreachable enum phantom, see PMDG737Definition battery comment)
-    public bool IsGen1On()         => IsOn("ELEC_GenSw_0");
-    public bool IsGen2On()         => IsOn("ELEC_GenSw_1");
+    public bool IsGen1On()         => IsOn(GeneratorBusState.OnBusFields[0]);   // on its bus, from the GEN OFF BUS light
+    public bool IsGen2On()         => IsOn(GeneratorBusState.OnBusFields[1]);
     public bool AreGeneratorsOn()  => IsGen1On() && IsGen2On();
     public bool IsApuGen1On()      => IsOn("ELEC_APUGenSw_0");
     public bool IsApuGen2On()      => IsOn("ELEC_APUGenSw_1");

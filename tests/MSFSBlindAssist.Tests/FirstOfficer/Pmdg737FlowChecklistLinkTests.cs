@@ -90,8 +90,9 @@ public class Pmdg737FlowChecklistLinkTests
         Id("EVT_OH_LIGHTS_ANT_COL", "LTS_AntiCollisionSw");
         Id("EVT_OH_LIGHTS_L_ENGINE_START", "ENG_StartSelector_0");
         Id("EVT_OH_LIGHTS_R_ENGINE_START", "ENG_StartSelector_1");
-        Id("EVT_OH_ELEC_GEN1_SWITCH", "ELEC_GenSw_0");
-        Id("EVT_OH_ELEC_GEN2_SWITCH", "ELEC_GenSw_1");
+        // A GEN ON press puts that generator on its bus (its GEN OFF BUS light goes dark).
+        Id("EVT_OH_ELEC_GEN1_SWITCH", GeneratorBusState.OnBusFields[0]);
+        Id("EVT_OH_ELEC_GEN2_SWITCH", GeneratorBusState.OnBusFields[1]);
         Id("EVT_OH_LIGHTS_TAXI", "LTS_TaxiSw");
         Id("EVT_OH_LIGHTS_L_TURNOFF", "LTS_RunwayTurnoffSw_0");
         Id("EVT_OH_LIGHTS_R_TURNOFF", "LTS_RunwayTurnoffSw_1");
