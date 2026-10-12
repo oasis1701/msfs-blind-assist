@@ -612,4 +612,34 @@ public class LandingGuidanceLawTests
             prev = now;
         }
     }
+    [Fact]
+    public void HeldFlareTarget_HoldsTheApproachSink_ThenRoundsOutLow()
+    {
+        // DA40 profile: tau 3 s, 80 fpm at touchdown, engaged at 50 ft sinking 380 fpm.
+        // Above (380-80)*3/60 = 15 ft the target is the approach sink: no "floating" tone.
+        Assert.Equal(-380.0, LandingGuidanceLaws.FlareTargetVsFpm(50.0, 3.0, 80.0, 380.0), 6);
+        Assert.Equal(-380.0, LandingGuidanceLaws.FlareTargetVsFpm(15.0, 3.0, 80.0, 380.0), 6);
+        Assert.Equal(-280.0, LandingGuidanceLaws.FlareTargetVsFpm(10.0, 3.0, 80.0, 380.0), 6);
+        Assert.Equal(-80.0, LandingGuidanceLaws.FlareTargetVsFpm(0.0, 3.0, 80.0, 380.0), 6);
+    }
+
+    [Fact]
+    public void HeldFlareTarget_NotDescendingAtEngage_IsThePlainLaw()
+    {
+        Assert.Equal(LandingGuidanceLaws.FlareTargetVsFpm(30.0, 3.0, 80.0),
+            LandingGuidanceLaws.FlareTargetVsFpm(30.0, 3.0, 80.0, 0.0), 6);
+        // An entry sink under the touchdown sink never asks for less than the touchdown sink.
+        Assert.Equal(-80.0, LandingGuidanceLaws.FlareTargetVsFpm(30.0, 3.0, 80.0, 50.0), 6);
+    }
+
+    [Fact]
+    public void FlareCallout_LeadsTheFlareHeightBySpeechLatency_AndNeverWhileClimbing()
+    {
+        // 360 fpm = 6 ft/s: 0.3 s ahead of 15 ft is 16.8 ft.
+        Assert.False(LandingGuidanceLaws.FlareCalloutDue(17.0, 15.0, -360.0, 0.3));
+        Assert.True(LandingGuidanceLaws.FlareCalloutDue(16.7, 15.0, -360.0, 0.3));
+        Assert.True(LandingGuidanceLaws.FlareCalloutDue(12.0, 15.0, -360.0, 0.3));
+        Assert.False(LandingGuidanceLaws.FlareCalloutDue(12.0, 15.0, 0.0, 0.3));
+        Assert.False(LandingGuidanceLaws.FlareCalloutDue(12.0, 15.0, 200.0, 0.3));
+    }
 }

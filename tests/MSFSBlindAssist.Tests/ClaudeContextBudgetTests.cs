@@ -790,7 +790,7 @@ public class ClaudeContextBudgetTests
         {
             "ROL-10 ExitBearingTrue", "ROL-21 ExitBearingTrue", "ROL-28 DistanceFromThresholdFeet", "SI-7 ParkingSpot.Radius",
             "SI-13 TaxiPathStampUtc", "SIC-23 ClearanceText", "STR-6 TurnAngleDegrees", "STR-16 TurnDirection",
-            "SUR-12 TaxiNode.Type", "HLD-5 RunwayCenterline",
+            "SUR-12 TaxiNode.Type", "HLD-5 RunwayCenterline", "ROL-32 VisualGuidanceProfile", "ROL-32 FlareTriggerWheelHeightFt",
         },
         ["a setting the rule's code reads or writes"] = new[]
         {

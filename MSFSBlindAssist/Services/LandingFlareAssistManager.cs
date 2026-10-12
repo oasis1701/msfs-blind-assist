@@ -1,4 +1,5 @@
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Settings;
@@ -48,6 +49,12 @@ namespace MSFSBlindAssist.Services;
 /// headings from 1000 ft were tried and rejected by the pilot as too much
 /// talking on short final; the flare tones are the whole airborne instrument.
 ///
+/// FLARE CALLOUT: "Flare" is spoken once per engagement as the gear reaches the aircraft's own
+/// flare height (VisualGuidanceProfile.FlareTriggerWheelHeightFt, the height visual guidance flares
+/// at), FLARE_CALLOUT_LEAD_SEC early so the word lands at the height. The sink-rate law is the
+/// aircraft's too (FlareSinkTauSec, FlareTouchdownSinkFpm, FlareHoldsEntrySink): a light single
+/// holds its approach sink and rounds out low, a jet flies the plain exponential from 50 ft.
+///
 /// Go-around (climb back above 100 ft gear height) silences the tones with a
 /// spoken cue — silence must never be mistakable for "on profile" — and re-arms
 /// for the next approach. A bounce (airborne again below that height) drops
@@ -66,8 +73,11 @@ public class LandingFlareAssistManager : IDisposable
     private enum Phase { Armed, Flare, Rollout }
 
     private readonly ScreenReaderAnnouncer announcer;
-    // Per-aircraft datum→gear height correction (VisualGuidanceProfile.FlareAltitudeBiasFt).
-    private readonly Func<double> getFlareAglBiasFt;
+    // The aircraft's visual-guidance profile: the datum→gear height correction
+    // (FlareAltitudeBiasFt, read every frame so an aircraft switch after arming is honoured),
+    // the flare height, the flare law and the rollout end speed (snapshotted at flare engage).
+    private readonly Func<VisualGuidanceProfile?> getProfile;
+    private VisualGuidanceProfile engagedProfile = new();
     // True while visual guidance's dual tones are running — if so, VG owns the approach
     // audio and the flare phase stays silent (VG has its own flare cue); the rollout
     // pan tone still runs because VG auto-deactivates at touchdown.
@@ -131,6 +141,8 @@ public class LandingFlareAssistManager : IDisposable
     private bool verticalCueLostAnnounced; // "sink rate cue unavailable" spoken this engagement
     private bool silentFlare;            // flare engaged while visual guidance owns approach audio
     private bool rolloutAnnounced;       // announce "Rollout guidance." once per approach (not per bounce)
+    private bool flareCalloutSpoken;     // "Flare" spoken this engagement (a bounce does not repeat it)
+    private double entrySinkFpm;         // sink rate at flare engage (+ = descending), for FlareHoldsEntrySink
     // Taxi guidance as MainForm forwards it from TaxiGuidanceManager.StateChanged (StepTaxiHandover).
     private bool taxiInLandingRollout;        // taxi guidance is in, or momentarily reloading, a landing rollout
     private bool taxiGuidanceActive;          // its last observed state is not Inactive
@@ -164,8 +176,11 @@ public class LandingFlareAssistManager : IDisposable
     // targetVS = −(gearAGL / τ · 60 + bias). τ = 6 s, bias = 120 fpm gives:
     // 50 ft → −620 fpm (≈ approach descent), 20 ft → −320, 10 ft → −220, 0 ft → −120
     // (a firm-but-comfortable touchdown). The tone encodes vsError = actual − target.
-    private const double FLARE_TAU_SEC = 6.0;
-    private const double FLARE_TOUCHDOWN_BIAS_FPM = 120.0;
+    // τ and the touchdown sink are the aircraft's (VisualGuidanceProfile.FlareSinkTauSec and
+    // FlareTouchdownSinkFpm); the defaults are the jet numbers above.
+    // The spoken "Flare" leads the flare height by this much at the current sink rate: roughly
+    // a screen reader's start-of-speech latency, so the word is heard AT the height.
+    private const double FLARE_CALLOUT_LEAD_SEC = 0.3;
     private const double FLARE_DEADBAND_FPM = 60.0;        // silence — on profile
     private const double FLARE_FPM_PER_TONE_UNIT = 60.0;   // 360 fpm error = full-scale tone
     private const float FLARE_TONE_MIN_HZ = 250f;
@@ -201,7 +216,7 @@ public class LandingFlareAssistManager : IDisposable
     private const double PAN_FULL_RANGE_DEGREES = 5.0;
 
     // --- Rollout handoff --------------------------------------------------------------
-    private const double ROLLOUT_END_GS_KTS = 40.0;
+    // Without exit guidance the rollout ends at the aircraft's VisualGuidanceProfile.RolloutGuidanceEndKnots (40 kt default).
     private const double ROLLOUT_END_GS_WITH_EXIT_GUIDANCE_KTS = 55.0;
     private const double ROLLOUT_TURNOFF_HDG_DEG = 20.0;   // pilot committed to a runway exit
     private const double ROLLOUT_TURNOFF_MAX_GS_KTS = 90.0; // above this a heading swing is touchdown yaw/crab, not an exit
@@ -215,14 +230,14 @@ public class LandingFlareAssistManager : IDisposable
     public event EventHandler<bool>? EngagedChanged;
 
     public LandingFlareAssistManager(ScreenReaderAnnouncer screenReaderAnnouncer,
-        Func<double> flareAglBiasFtProvider,
+        Func<VisualGuidanceProfile?> profileProvider,
         Func<bool> visualGuidanceActiveCheck,
         Func<bool> landingExitGuidanceActiveCheck,
         Func<bool> landingExitTaxiSteeringCheck,
         Func<bool> landingExitPlanPendingCheck)
     {
         announcer = screenReaderAnnouncer;
-        getFlareAglBiasFt = flareAglBiasFtProvider;
+        getProfile = profileProvider;
         isVisualGuidanceActive = visualGuidanceActiveCheck;
         isLandingExitGuidanceActive = landingExitGuidanceActiveCheck;
         isLandingExitTaxiSteering = landingExitTaxiSteeringCheck;
@@ -341,7 +356,7 @@ public class LandingFlareAssistManager : IDisposable
     {
         if (!armed || runway == null) return;
 
-        double gearAgl = Math.Max(0.0, d.AGL - getFlareAglBiasFt());
+        double gearAgl = Math.Max(0.0, d.AGL - (getProfile()?.FlareAltitudeBiasFt ?? 12.0));
         bool onGround = d.OnGround >= 0.5;
 
         // Smooth VS continuously so the flare tone has a stable input the moment it engages.
@@ -396,6 +411,7 @@ public class LandingFlareAssistManager : IDisposable
                         StartVerticalToneIfNeeded();
                         StartLateralToneIfNeeded();
                     }
+                    UpdateFlareCallout(gearAgl);
                     UpdateFlareVerticalTone(gearAgl);
                     UpdateFlareLateralTone(d);
                 }
@@ -461,6 +477,9 @@ public class LandingFlareAssistManager : IDisposable
     {
         phase = Phase.Flare;
         rolloutAnnounced = false;
+        flareCalloutSpoken = false;
+        engagedProfile = getProfile() ?? new VisualGuidanceProfile();
+        entrySinkFpm = -vsSmoothed;
         crossTrackRateInitialized = false;   // fresh differentiator per engagement
         // Visual guidance active = it owns the approach audio (its own flare cue included).
         // Stay silent through the flare; the rollout pan tone still runs after touchdown
@@ -505,7 +524,10 @@ public class LandingFlareAssistManager : IDisposable
     /// </summary>
     private void UpdateFlareVerticalTone(double gearAgl)
     {
-        double targetVs = LandingGuidanceLaws.FlareTargetVsFpm(gearAgl, FLARE_TAU_SEC, FLARE_TOUCHDOWN_BIAS_FPM);
+        var p = engagedProfile;
+        double targetVs = p.FlareHoldsEntrySink
+            ? LandingGuidanceLaws.FlareTargetVsFpm(gearAgl, p.FlareSinkTauSec, p.FlareTouchdownSinkFpm, entrySinkFpm)
+            : LandingGuidanceLaws.FlareTargetVsFpm(gearAgl, p.FlareSinkTauSec, p.FlareTouchdownSinkFpm);
         double vsError = vsSmoothed - targetVs;   // < 0: sinking too fast → pull up (high tone)
 
         if (Math.Abs(vsError) <= FLARE_DEADBAND_FPM)
@@ -520,6 +542,23 @@ public class LandingFlareAssistManager : IDisposable
                 vsError, FLARE_FPM_PER_TONE_UNIT, TONE_UNIT_RANGE));
             verticalTone.UpdateVolume(SettingsManager.Current.TakeoffAssistToneVolume);
         }
+    }
+
+    /// <summary>
+    /// "Flare", once per engagement, as the gear reaches the aircraft's flare height
+    /// (<see cref="VisualGuidanceProfile.FlareTriggerWheelHeightFt"/>). Interrupting: it is the one
+    /// moment a sighted pilot acts on what they see, and a queued word arrives on the runway.
+    /// Never under a silent flare: visual guidance speaks its own "Flare" at the same height.
+    /// </summary>
+    private void UpdateFlareCallout(double gearAgl)
+    {
+        if (flareCalloutSpoken) return;
+        if (!LandingGuidanceLaws.FlareCalloutDue(gearAgl, engagedProfile.FlareTriggerWheelHeightFt,
+                vsSmoothed, FLARE_CALLOUT_LEAD_SEC))
+            return;
+        flareCalloutSpoken = true;
+        announcer.AnnounceImmediate("Flare");
+        Log.Debug("LandingFlareAssist", $"Flare callout at {gearAgl:F1} ft gear height, VS {vsSmoothed:F0} fpm");
     }
 
     /// <summary>
@@ -699,7 +738,7 @@ public class LandingFlareAssistManager : IDisposable
         while (headingDiff > 180.0) headingDiff -= 360.0;
         while (headingDiff < -180.0) headingDiff += 360.0;
 
-        var end = DecideRolloutEnd(d.GroundSpeedKnots, headingDiff,
+        var end = DecideRolloutEnd(d.GroundSpeedKnots, headingDiff, engagedProfile.RolloutGuidanceEndKnots,
             exitGuidanceActive: isLandingExitGuidanceActive(),
             taxiGuidanceSteering: isLandingExitTaxiSteering(),
             taxiGuidanceSeen: taxiGuidanceSeenThisRollout);
@@ -733,7 +772,7 @@ public class LandingFlareAssistManager : IDisposable
     /// <summary>
     /// When the rollout ends and what it says. Pure — <c>LandingFlareRolloutEndTests</c>.
     ///
-    /// Ends below ROLLOUT_END_GS_KTS; below ROLLOUT_END_GS_WITH_EXIT_GUIDANCE_KTS while the landing-exit
+    /// Ends below the aircraft's <paramref name="rolloutEndKts"/> (VisualGuidanceProfile.RolloutGuidanceEndKnots); below ROLLOUT_END_GS_WITH_EXIT_GUIDANCE_KTS while the landing-exit
     /// planner's rollout guidance runs, so our pan tone is gone before its exit-steering tone (active below
     /// ~50 kt near the exit) starts; or once the pilot turns off the runway below ROLLOUT_TURNOFF_MAX_GS_KTS.
     /// Taxi guidance ALREADY steering ends it at any speed, silently: a rapid exit can take the handoff far
@@ -743,11 +782,11 @@ public class LandingFlareAssistManager : IDisposable
     /// or "Exit reached…".
     /// </summary>
     internal static RolloutEnd DecideRolloutEnd(double groundSpeedKts, double headingOffRunwayDeg,
-        bool exitGuidanceActive, bool taxiGuidanceSteering, bool taxiGuidanceSeen)
+        double rolloutEndKts, bool exitGuidanceActive, bool taxiGuidanceSteering, bool taxiGuidanceSeen)
     {
         if (taxiGuidanceSteering) return RolloutEnd.Silent;
 
-        double endGs = exitGuidanceActive ? ROLLOUT_END_GS_WITH_EXIT_GUIDANCE_KTS : ROLLOUT_END_GS_KTS;
+        double endGs = exitGuidanceActive ? ROLLOUT_END_GS_WITH_EXIT_GUIDANCE_KTS : rolloutEndKts;
         bool turnedOff = Math.Abs(headingOffRunwayDeg) > ROLLOUT_TURNOFF_HDG_DEG &&
                          groundSpeedKts < ROLLOUT_TURNOFF_MAX_GS_KTS;
         if (groundSpeedKts >= endGs && !turnedOff) return RolloutEnd.Continue;

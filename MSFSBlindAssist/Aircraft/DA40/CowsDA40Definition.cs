@@ -1064,7 +1064,23 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         MaxBankRateDegPerSec      = 8.0,
         TonePitchRangeDeg         = 10.0,   // wider GA attitude envelope than a jet
         ToneBankRangeDeg          = 10.0,
-        GlideslopeAltitudeBiasFt  = 50.0    // ICAO TCH only
+        GlideslopeAltitudeBiasFt  = 50.0,   // ICAO TCH only
+        // The flare, for visual guidance and the manual landing assist. The datum sits 2.7 ft
+        // above the wheels (STATIC CG TO GROUND, and PLANE ALT ABOVE GROUND parked; measured
+        // 2026-10-12): the A320's inherited 12 ft declared touchdown at ~17 ft real height and
+        // engaged the landing assist 12 ft high. A light single rounds out at 10-20 ft (FAA
+        // Airplane Flying Handbook), not a jet's 30. The flare law holds the approach sink
+        // (~360-400 fpm at the AFM's 66-77 KIAS on a 3 degree path) until the 3 s exponential
+        // falls below it - at ~15 ft - and touches down at 80 fpm; a jet's 6 s law from 50 ft
+        // asked a DA40 on a normal approach for 620 fpm ("floating") the whole way down.
+        FlareAltitudeBiasFt       = 2.7,
+        FlareTriggerWheelHeightFt = 15.0,
+        FlareTargetPitchDeg       = 6.0,
+        FlareSinkTauSec           = 3.0,
+        FlareTouchdownSinkFpm     = 80.0,
+        FlareHoldsEntrySink       = true,
+        // Touchdown is at ~55 kt; the jets' 40 kt end left a few seconds of rollout tone.
+        RolloutGuidanceEndKnots   = 20.0
     };
 
     // Short wheelbase and a castoring nosewheel — the DA40 pivots far faster than any

@@ -13,8 +13,18 @@ namespace MSFSBlindAssist.Tests;
 public class LandingFlareRolloutEndTests
 {
     private static End Decide(double gs, double hdg = 0.0, bool exitGuidance = false,
-        bool taxiSteering = false, bool taxiSeen = false)
-        => LandingFlareAssistManager.DecideRolloutEnd(gs, hdg, exitGuidance, taxiSteering, taxiSeen);
+        bool taxiSteering = false, bool taxiSeen = false, double rolloutEndKts = 40.0)
+        => LandingFlareAssistManager.DecideRolloutEnd(gs, hdg, rolloutEndKts, exitGuidance, taxiSteering, taxiSeen);
+
+    [Fact]
+    public void A_light_single_ends_at_its_own_profile_speed_but_never_below_55_with_exit_guidance()
+    {
+        // The DA40 touches down near 55 kt: a jet's 40 kt end left a few seconds of rollout tone.
+        Assert.Equal(End.Continue, Decide(39.9, rolloutEndKts: 20.0));
+        Assert.Equal(End.Interrupting, Decide(19.9, rolloutEndKts: 20.0));
+        // Exit guidance's own tone starts below ~50 kt, so the 55 kt hand-off is not the profile's.
+        Assert.Equal(End.Queued, Decide(54.9, exitGuidance: true, taxiSeen: true, rolloutEndKts: 20.0));
+    }
 
     [Fact]
     public void Without_taxi_guidance_it_ends_below_40_kt_and_interrupts_as_before()

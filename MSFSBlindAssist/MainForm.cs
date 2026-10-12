@@ -902,7 +902,7 @@ public partial class MainForm : Form
         // Delegates read live state so aircraft swaps and guidance-mode changes after
         // arming are always honored.
         flareAssistManager = new LandingFlareAssistManager(announcer,
-            () => currentAircraft?.GetVisualGuidanceProfile()?.FlareAltitudeBiasFt ?? 12.0,
+            () => currentAircraft?.GetVisualGuidanceProfile(),
             () => visualGuidanceManager.IsActive,
             () => taxiGuidanceManager.IsLandingExitRolloutGuidanceActive,
             () => taxiGuidanceManager.IsLandingExitTaxiSteering,
