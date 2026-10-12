@@ -2816,6 +2816,12 @@
         try {
             A.M.walk(view.scrollController, "", out, 0, null);
             A.M.nameByRow(out, /MenuDialog$/.test(A.M.viewKey() || ""));
+            // A field named the same as its box says the name once: the procedure pages' boxes
+            // are "Departure", "Runway", "Transition" and so are their fields, which read
+            // "Runway, Runway: 16C" and, in the rows, the box heading over "Runway: 16C".
+            for (var dn = 0; dn < out.length; dn++) {
+                if (out[dn].label && out[dn].label === out[dn].group) out[dn].label = "";
+            }
         } finally {
             A.M._tc = null;
         }
@@ -2929,7 +2935,10 @@
             if (!r) continue;
             if (!(r in firstOfRow)) { firstOfRow[r] = canName(fields[m]) ? fields[m].value : ""; continue; }
             // Not the first of its row, and carrying no label of its own.
-            if (!fields[m].label && firstOfRow[r] && !selfNamed(fields[m])) fields[m].label = firstOfRow[r];
+            // A BUTTON is never named after its row: the procedure page's Load button sat in
+            // the airport's row and read "LOWG: Load?".
+            if (!fields[m].label && firstOfRow[r] && !selfNamed(fields[m]) &&
+                fields[m].kind !== "button") fields[m].label = firstOfRow[r];
         }
     };
 
@@ -4554,9 +4563,19 @@
     /// feet", "bearing blank°", "GS blank KT" and "Load %: ———" - a screen reader says "en
     /// dash" four times, or a unit with nothing in front of it. Said once, for every row and
     /// every read-back: "blank". A single minus sign is a negative number and is untouched.
+    // ⚠️ "<--" IS THE FIELD LIST'S CURSOR MARKER ("Select Approach   <-- cursor"), not a
+    // placeholder, so a dash run straight after "<" is left alone. Every dash code point the
+    // G1000 draws is covered - hyphen, en and em dash, minus sign, figure dash - because a
+    // run of mixed ones ("––––‐") left a stray tail ("blank-"). Underscore runs ("______",
+    // "_ _ _ _") are the same placeholder.
     A.tidy = function (s) {
         return String(s)
-            .replace(/[–—\-]{2,}(?::[–—\-]{2,})*/g, "blank")
+            .replace(/(^|[^<])[\-‐‑‒–—―−]{2,}(?::[\-‐‑‒–—―−]{2,})*/g, "$1blank")
+            // Underscores straight after an ident pad it to the box's width ("LOWG__"):
+            // they are dropped, not read. A run standing on its own is an empty box.
+            .replace(/([A-Za-z0-9])_+/g, "$1")
+            .replace(/_(?:\s?_)+/g, "blank")
+            .replace(/blank[\-‐‑‒–—―−]+/g, "blank")
             .replace(/blank\s*(?:°|(?:NM|KT|FT|FPM|GPH|IN|HPA|feet|knots|degrees)\b)/g, "blank");
     };
 

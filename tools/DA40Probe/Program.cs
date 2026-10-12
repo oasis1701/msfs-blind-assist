@@ -396,6 +396,17 @@ internal sealed class ProbeForm : Form
                         case "quit": _watch.WriteLine($"{t}\tSERVE\tquit"); return;
                         case "wait": await Task.Delay(int.Parse(arg)); break;
                         case "calc": _m.ExecuteCalculatorCodeUnique(arg); break;
+                        case "teleport":
+                        {
+                            // teleport lat,lon,altFt,headingTrue[,air] - MSFSBA's own TeleportAircraft
+                            var p = arg.Split(',').Select(x => x.Trim()).ToArray();
+                            _m.TeleportAircraft(double.Parse(p[0], CultureInfo.InvariantCulture),
+                                double.Parse(p[1], CultureInfo.InvariantCulture),
+                                double.Parse(p[2], CultureInfo.InvariantCulture),
+                                double.Parse(p[3], CultureInfo.InvariantCulture),
+                                onGround: !(p.Length > 4 && p[4] == "air"));
+                            break;
+                        }
                         case "ie":
                         {
                             var kv = arg.Split('=');
