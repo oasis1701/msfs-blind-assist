@@ -2364,7 +2364,7 @@
         }
 
         var summary = "";
-        try { summary = A.summary(); } catch (e) { summary = ""; }
+        try { summary = A.tidy(A.summary()); } catch (e) { summary = ""; }
 
         // The VIEW KEY rides along because the caller has to know WHAT it is looking at
         // before it can decide how long to wait for it. The page selector commits about a
@@ -4548,10 +4548,22 @@
         }
     };
 
+    /// ⚠️ A PLACEHOLDER IS "blank", WITH NO UNIT AND NO DASHES. The G1000 draws a value it
+    /// does not have as dashes ("––––", "———", "--:--") or underscores (read as "blank"
+    /// elsewhere), and the unit stays drawn beside it, so rows read "Selected altitude: ––––
+    /// feet", "bearing blank°", "GS blank KT" and "Load %: ———" - a screen reader says "en
+    /// dash" four times, or a unit with nothing in front of it. Said once, for every row and
+    /// every read-back: "blank". A single minus sign is a negative number and is untouched.
+    A.tidy = function (s) {
+        return String(s)
+            .replace(/[–—\-]{2,}(?::[–—\-]{2,})*/g, "blank")
+            .replace(/blank\s*(?:°|(?:NM|KT|FT|FPM|GPH|IN|HPA|feet|knots|degrees)\b)/g, "blank");
+    };
+
     window.__MSFSBA_DISP = {
         scrape: function () {
             try {
-                return JSON.stringify({ ok: true, rows: A.rows() });
+                return JSON.stringify({ ok: true, rows: A.rows().map(A.tidy) });
             } catch (e) {
                 return JSON.stringify({ ok: false, error: String(e) });
             }
