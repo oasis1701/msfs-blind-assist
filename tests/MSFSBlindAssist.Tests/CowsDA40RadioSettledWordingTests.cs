@@ -71,4 +71,30 @@ public class CowsDA40RadioSettledWordingTests
             Assert.Equal(UpdateFrequency.Continuous, vars[key].UpdateFrequency);
         }
     }
+    private sealed class Said : MSFSBlindAssist.Accessibility.ScreenReaderAnnouncer
+    {
+        public string Last = "";
+        public Said() : base(System.IntPtr.Zero) { }
+        public override void AnnounceImmediate(string m) => Last = m;
+        public override void Announce(string m) => Last = m;
+    }
+
+    [Theory]
+    // Refused at the instrument's own measured range, never clamped (2026-10-12): 200.0 used
+    // to tune 136.999 and 50000 to set 18000, each confirmed as if typed.
+    [InlineData(200.0, 118.0, 136.99, "0.000", "the COM band", "200.000 is outside the COM band, 118.000 to 136.990. Not set.")]
+    [InlineData(50000.0, -1000.0, 30000.0, "0", "the selected altitude range, in feet", "50000 is outside the selected altitude range, in feet, -1000 to 30000. Not set.")]
+    public void AValueOutsideTheInstrumentsRangeIsRefusedAndSaid(double value, double lo, double hi, string format, string what, string said)
+    {
+        var was = Thread.CurrentThread.CurrentCulture;
+        Thread.CurrentThread.CurrentCulture = new CultureInfo("de-DE");
+        try
+        {
+            var ann = new Said();
+            Assert.True(CowsDA40Definition.OutOfRange(ann, value, lo, hi, format, what));
+            Assert.Equal(said, ann.Last);
+            Assert.False(CowsDA40Definition.OutOfRange(ann, (lo + hi) / 2, lo, hi, format, what));
+        }
+        finally { Thread.CurrentThread.CurrentCulture = was; }
+    }
 }

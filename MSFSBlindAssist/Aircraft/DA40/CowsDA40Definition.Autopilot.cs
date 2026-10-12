@@ -326,6 +326,21 @@ public partial class CowsDA40Definition
         };
     }
 
+    /// <summary>
+    /// Refuses a typed value outside what the instrument accepts, saying the range, and
+    /// returns true when it did. Nothing is sent: a value the pilot did not type is never
+    /// put into the aeroplane on their behalf.
+    /// </summary>
+    internal static bool OutOfRange(Accessibility.ScreenReaderAnnouncer announcer, double value,
+        double low, double high, string format, string what)
+    {
+        if (value >= low && value <= high) return false;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        announcer.AnnounceImmediate(
+            $"{value.ToString(format, inv)} is outside {what}, {low.ToString(format, inv)} to {high.ToString(format, inv)}. Not set.");
+        return true;
+    }
+
     // ---------- The AFCS's own health, settled ----------
     //
     // ⚠️ A POWER DIP MADE THESE CHURN. An in-flight restart's crank dropped the AFCS bus, and
@@ -624,11 +639,14 @@ public partial class CowsDA40Definition
 
             case "DA40_AP_ALT_SET":
             {
+                // ⚠️ THE G1000'S OWN RANGE, REFUSED OUTSIDE IT, NEVER CLAMPED. This clamped to
+                // 0-18,000 ft, a limit of MSFSBA's own invention, and confirmed the clamped value
+                // as if it had been typed: 50000 became "Selected altitude 18000 feet". The
+                // preselect itself holds -1,000 to 30,000 ft (measured 2026-10-12: 60000 and
+                // -2000 written directly settled at 30000 and -1000).
+                if (OutOfRange(announcer, value, -1000, 30000, "0", "the selected altitude range, in feet")) return true;
                 MarkRadioSetByUs("DA40_AP_ALT_SET");
-                // The selected altitude is entered in FEET and the event takes feet, but
-                // the aeroplane's ceiling is the sane clamp: an entry slip of one digit
-                // would otherwise command a climb the aircraft cannot make.
-                int feet = (int)Math.Clamp(Math.Round(value / 100.0) * 100.0, 0, 18000);
+                int feet = (int)(Math.Round(value / 100.0) * 100.0);
                 // ⚠️ AP_ALT_VAR_SET_ENGLISH IS AN INCREMENT AND IGNORES ITS PARAMETER, so
                 // this control never once set the altitude a pilot typed. Measured on the
                 // live DA40 with the preselect at 0: "5000 (>K:AP_ALT_VAR_SET_ENGLISH)"
@@ -657,8 +675,11 @@ public partial class CowsDA40Definition
 
             case "DA40_AP_VS_SET":
             {
+                // The GFC 700's range, measured: +1,500 fpm up (3000 settled at 1500) and at
+                // least -3,000 down. Refused outside it, never clamped.
+                if (OutOfRange(announcer, value, -3000, 1500, "0", "the vertical speed range, in feet per minute")) return true;
                 MarkRadioSetByUs("DA40_AP_VS_SET");
-                int fpm = (int)Math.Clamp(Math.Round(value / 100.0) * 100.0, -2000, 2000);
+                int fpm = (int)(Math.Round(value / 100.0) * 100.0);
                 simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{fpm} (>K:AP_VS_VAR_SET_ENGLISH)"));
                 announcer.AnnounceImmediate(fpm == 0
                     ? "Selected vertical speed level"
@@ -668,11 +689,12 @@ public partial class CowsDA40Definition
 
             case "DA40_AP_IAS_SET":
             {
+                // The GFC 700's own FLC reference range, measured: 300 settled at 165 and 20 at
+                // 70. Refused outside it, never clamped (60 to 172 was MSFSBA's guess, and 30
+                // became a confirmed "Selected airspeed 60 knots").
+                if (OutOfRange(announcer, value, 70, 165, "0", "the flight level change speed range, in knots")) return true;
                 MarkRadioSetByUs("DA40_AP_IAS_SET");
-                // Between the flap-limit end of the envelope and Vne. Flight level change
-                // pitches for this speed, so a value outside the envelope is a command to
-                // stall or to overspeed.
-                int kt = (int)Math.Clamp(Math.Round(value), 60, 172);
+                int kt = (int)Math.Round(value);
                 simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{kt} (>K:AP_SPD_VAR_SET)"));
                 announcer.AnnounceImmediate($"Selected airspeed {kt} knots");
                 return true;

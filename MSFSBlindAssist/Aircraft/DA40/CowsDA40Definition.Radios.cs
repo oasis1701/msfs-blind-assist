@@ -233,7 +233,10 @@ public partial class CowsDA40Definition
             case "DA40_RADIO_COM2_SET":
             {
                 int radio = varKey.Contains('2') ? 2 : 1;
-                double mhz = Math.Clamp(value, 118.0, 136.999);
+                // ⚠️ REFUSED, NEVER CLAMPED: 200.0 used to tune 136.999 - not even a channel -
+                // and confirm it as if it had been typed (2026-10-12).
+                if (OutOfRange(announcer, value, 118.0, 136.99, "0.000", "the COM band")) return true;
+                double mhz = value;
 
                 // ⚠️ RAW HERTZ, NOT BCD16 - AND THE OLD NOTE SAYING OTHERWISE WAS WRONG.
                 // This wrote COM_STBY_RADIO_SET with a BCD16 word on the recorded belief that
@@ -250,7 +253,7 @@ public partial class CowsDA40Definition
                 long hz = (long)Math.Round(mhz * 1_000_000.0);
                 simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{hz} (>K:{evt})"));
                 MarkRadioSetByUs(varKey);   // the case falls through COM1/COM2
-                announcer.AnnounceImmediate($"COM {radio} standby {mhz:0.000}");
+                announcer.AnnounceImmediate(FormattableString.Invariant($"COM {radio} standby {mhz:0.000}"));
                 return true;
             }
 
@@ -258,11 +261,12 @@ public partial class CowsDA40Definition
             case "DA40_RADIO_NAV2_SET":
             {
                 int radio = varKey.Contains('2') ? 2 : 1;
-                double mhz = Math.Clamp(value, 108.0, 117.95);
+                if (OutOfRange(announcer, value, 108.0, 117.95, "0.00", "the NAV band")) return true;
+                double mhz = value;
                 long hz = (long)Math.Round(mhz * 1_000_000.0);
                 simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{hz} (>K:NAV{radio}_STBY_SET_HZ)"));
                 MarkRadioSetByUs(varKey);   // the case falls through NAV1/NAV2
-                announcer.AnnounceImmediate($"NAV {radio} standby {mhz:0.00}");
+                announcer.AnnounceImmediate(FormattableString.Invariant($"NAV {radio} standby {mhz:0.00}"));
                 return true;
             }
 

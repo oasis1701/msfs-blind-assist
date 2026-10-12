@@ -63,8 +63,9 @@ public partial class CowsDA40Definition
         switch (action)
         {
             case HotkeyAction.FCUSetAltitude:
-                title = "Selected Altitude"; kind = "altitude"; range = "0 to 18000 feet";
-                setKey = "DA40_AP_ALT_SET"; lo = 0; hi = 18000;
+                // The G1000's own ranges, measured in flight 2026-10-12 (see the setters).
+                title = "Selected Altitude"; kind = "altitude"; range = "minus 1000 to 30000 feet";
+                setKey = "DA40_AP_ALT_SET"; lo = -1000; hi = 30000;
                 toggles = new()
                 {
                     // Named for what it DOES: ALT captures the altitude the aeroplane is AT,
@@ -77,14 +78,14 @@ public partial class CowsDA40Definition
                 break;
 
             case HotkeyAction.FCUSetSpeed:
-                title = "Selected Airspeed"; kind = "airspeed"; range = "60 to 172 knots";
-                setKey = "DA40_AP_IAS_SET"; lo = 60; hi = 172;
+                title = "Selected Airspeed"; kind = "airspeed"; range = "70 to 165 knots";
+                setKey = "DA40_AP_IAS_SET"; lo = 70; hi = 165;
                 toggles = new() { ModeToggle("&Flight level change", "DA40_AP_FLC", sc, ann) };
                 break;
 
             case HotkeyAction.FCUSetHeading:
-                title = "Heading Bug"; kind = "heading"; range = "0 to 359 degrees";
-                setKey = "DA40_AP_HDG_SET"; lo = 0; hi = 359;
+                title = "Heading Bug"; kind = "heading"; range = "1 to 360 degrees";
+                setKey = "DA40_AP_HDG_SET"; lo = 0; hi = 360;
                 toggles = new()
                 {
                     ModeToggle("&Heading mode", "DA40_AP_HDG", sc, ann),
@@ -97,8 +98,8 @@ public partial class CowsDA40Definition
 
             case HotkeyAction.FCUSetVS:
                 title = "Selected Vertical Speed"; kind = "vertical speed";
-                range = "minus 2000 to 2000 feet per minute";
-                setKey = "DA40_AP_VS_SET"; lo = -2000; hi = 2000;
+                range = "minus 3000 to 1500 feet per minute";
+                setKey = "DA40_AP_VS_SET"; lo = -3000; hi = 1500;
                 toggles = new()
                 {
                     ModeToggle("&Vertical speed mode", "DA40_AP_VS", sc, ann),
