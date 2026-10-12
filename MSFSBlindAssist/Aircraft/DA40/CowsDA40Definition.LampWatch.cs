@@ -55,7 +55,17 @@ public partial class CowsDA40Definition
     /// The switch, the circuit that proves it is lit, and what to call it.
     ///
     /// Circuit numbers are the model's own, harvested from its breaker logic rather than
-    /// guessed: 14 landing, 26 anti-collision, 27 position, 28 taxi.
+    /// guessed: 14 landing, 27 position, 28 taxi.
+    ///
+    /// ⚠️ THE STROBE IS NOT ITS CIRCUIT. The model FLASHES it by connecting circuit 26 for a
+    /// quarter of a second in every 1.25 (`L:STROBE_TIMMER` past 1 sets `L:STROBE_ON`, which
+    /// connects the circuit), so a one-second sample of `CIRCUIT ON:26` read "not powered"
+    /// four times in five and the watch said "Strobe lights not lit" over and over with every
+    /// breaker in. The flash timer is the lamp: the model advances it only while the switch is
+    /// on, `CB_STB` is in and the main bus is above 20.5 volts, and holds it at exactly 0
+    /// otherwise. The ACL failure does not stop it - the gate reads `L:FAILURES_ACL_LIGHT`,
+    /// which nothing writes, while the failure itself is `L:FAILURES_LIGHT_ACL` and only adds
+    /// its 200 watt short to the bus - so the strobe keeps flashing through it, as modelled.
     ///
     /// The CABIN lights are deliberately absent even though they have circuits (29 and 30):
     /// their switch is a three-position selector rather than an on/off, and the aeroplane
@@ -67,7 +77,7 @@ public partial class CowsDA40Definition
         ("DA40_LIGHT_LANDING",  "DA40_CIRCUIT_LANDING",  "Landing light"),
         ("DA40_LIGHT_TAXI",     "DA40_CIRCUIT_TAXI",     "Taxi light"),
         ("DA40_LIGHT_POSITION", "DA40_CIRCUIT_POSITION", "Position lights"),
-        ("DA40_LIGHT_STROBE",   "DA40_CIRCUIT_STROBE",   "Strobe lights")
+        ("DA40_LIGHT_STROBE",   "DA40_STROBE_FLASH",     "Strobe lights")
     };
 
     /// <summary>Exposed for the tests, which check both halves of every pair are cached.</summary>
@@ -77,25 +87,31 @@ public partial class CowsDA40Definition
     internal static void AddLampCircuits(Dictionary<string, SimVarDefinition> v)
     {
         Add("DA40_CIRCUIT_LANDING", 14, "Landing Light Circuit");
-        Add("DA40_CIRCUIT_STROBE", 26, "Strobe Light Circuit");
         Add("DA40_CIRCUIT_POSITION", 27, "Position Light Circuit");
         Add("DA40_CIRCUIT_TAXI", 28, "Taxi Light Circuit");
 
-        void Add(string key, int index, string label)
+        Watch("DA40_STROBE_FLASH", "STROBE_TIMMER", "Strobe Flash Timer", SimVarType.LVar, "number");
+
+        void Add(string key, int index, string label) =>
+            Watch(key, "CIRCUIT ON:" + index, label, SimVarType.SimVar, "bool");
+
+        void Watch(string key, string name, string label, SimVarType type, string units)
         {
             v[key] = new SimVarDefinition
             {
-                Name = "CIRCUIT ON:" + index,
+                Name = name,
                 DisplayName = label,
-                Type = SimVarType.SimVar,
-                Units = "bool",
+                Type = type,
+                Units = units,
                 // Continuous and announced to reach the batch cache; silenced and kept out
                 // of the Monitor Manager below, because on its own a circuit switching is
                 // just the light switch's echo.
                 UpdateFrequency = UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 ExcludeFromMonitorManager = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Not powered", [1] = "Powered" }
+                ValueDescriptions = units == "bool"
+                    ? new Dictionary<double, string> { [0] = "Not powered", [1] = "Powered" }
+                    : new Dictionary<double, string>()
             };
         }
     }
@@ -104,12 +120,19 @@ public partial class CowsDA40Definition
     private ScreenReaderAnnouncer? _lampAnnouncer;
     private SimConnectManager? _lampSimConnect;
     private readonly Dictionary<string, bool> _lampFaulted = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, bool> _lampLit = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Whether a lamp readout says lit: a circuit reads 1, the strobe's flash timer anything
+    /// but its resting 0.
+    /// </summary>
+    internal static bool LampReadsLit(double value) => value > 1e-6;
 
     /// <summary>
     /// Notes that a switch or a circuit moved and arms the settle. Returns true for a
     /// CIRCUIT, which is how the circuit readouts stay out of the generic announcer.
     /// </summary>
-    private bool NoteLampChange(string varKey, ScreenReaderAnnouncer announcer)
+    private bool NoteLampChange(string varKey, double value, ScreenReaderAnnouncer announcer)
     {
         bool isCircuit = false, isSwitch = false;
         foreach (var pair in LampPairs)
@@ -121,6 +144,17 @@ public partial class CowsDA40Definition
         if (!isCircuit && !isSwitch) return false;
 
         _lampAnnouncer = announcer;
+
+        // A lamp re-arms the settle only when it goes from lit to dark or back. The strobe's
+        // flash timer changes on every sample while it runs, and a stop-then-start on each of
+        // those would hold the settle off for as long as the strobe flashes.
+        if (isCircuit)
+        {
+            bool lit = LampReadsLit(value);
+            bool known = _lampLit.TryGetValue(varKey, out bool wasLit);
+            _lampLit[varKey] = lit;
+            if (known && wasLit == lit) return true;
+        }
 
         if (_lampTimer == null)
         {
@@ -155,7 +189,7 @@ public partial class CowsDA40Definition
             double? circuit = _lampSimConnect.GetCachedVariableValue(pair.Circuit);
             if (sw is null || circuit is null) continue;
 
-            bool faulted = sw.Value >= 0.5 && circuit.Value < 0.5;
+            bool faulted = sw.Value >= 0.5 && !LampReadsLit(circuit.Value);
 
             // Only the transition INTO a fault is spoken. Coming out of one is silent: the
             // pilot either switched the light off, and the switch already said so, or put
@@ -176,5 +210,6 @@ public partial class CowsDA40Definition
         try { _lampTimer?.Stop(); _lampTimer?.Dispose(); } catch { }
         _lampTimer = null;
         _lampFaulted.Clear();
+        _lampLit.Clear();
     }
 }

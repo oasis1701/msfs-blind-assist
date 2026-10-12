@@ -17,6 +17,9 @@ using MSFSBlindAssist.Utils;
 // DA40Probe <NG|XLS> ie "INPUT_EVENT,readKey"  - step an input event 0,1,2,1,0
 // DA40Probe <NG|XLS> press "EVENT[=v],..."     - set each input event once (default 1)
 // DA40Probe <NG|XLS> calcloop "rpn|ms|secs"    - repeat a calculator string (a held input)
+// DA40Probe <NG|XLS> serve <command file>       - one connection for a whole session: runs the
+//                                                 commands appended to the file and logs every
+//                                                 variable change and everything MSFSBA says
 internal static class Program
 {
     [STAThread]
@@ -138,7 +141,12 @@ internal sealed class ProbeForm : Form
 
         // ---------------- live ----------------
         _m = new SimConnectManager(Handle) { CurrentAircraft = def };
-        _m.SimVarUpdated += (_, e) => { try { def.ProcessSimVarUpdate(e.VarName, e.Value, cap); } catch { } };
+        _m.SimVarUpdated += (_, e) =>
+        {
+            bool handled = false;
+            try { handled = def.ProcessSimVarUpdate(e.VarName, e.Value, cap); } catch { }
+            if (_mode == "serve") Watch(e.VarName, e.Value, handled, vars, cap);
+        };
         _m.ContinuousBatchDelivered += (_, b) => { try { def.OnContinuousBatchDelivered(b); } catch { } };
         _m.Connect();
         Line("connecting...");
@@ -177,6 +185,12 @@ internal sealed class ProbeForm : Form
                 await Task.Delay(1500);
                 Line($"{parts[0]}={val}\tsent={ok}");
             }
+            return;
+        }
+
+        if (_mode == "serve")
+        {
+            await Serve(def, vars, cap);
             return;
         }
 
@@ -315,6 +329,105 @@ internal sealed class ProbeForm : Form
     }
 
     private static string Fmt(double? v) => v.HasValue ? v.Value.ToString("0.###") : "null";
+
+    // ---------------- serve ----------------
+    // The watcher half: every change of every registered variable, and what MSFSBA would say
+    // about it. A variable the definition does not consume reaches MainForm's generic
+    // announcer, which speaks its value description; that is logged as GENERIC, so the log
+    // is as close to what the pilot hears as a harness without MainForm can get.
+    private readonly Dictionary<string, double> _lastSeen = new(StringComparer.Ordinal);
+    private StreamWriter? _watch;
+
+    private void Watch(string key, double value, bool handled, Dictionary<string, SimVarDefinition> vars, Cap cap)
+    {
+        if (_watch == null) return;
+        bool known = _lastSeen.TryGetValue(key, out double was);
+        _lastSeen[key] = value;
+        if (known && Math.Abs(was - value) < 1e-9) return;
+        string t = DateTime.Now.ToString("HH:mm:ss.fff");
+        vars.TryGetValue(key, out var d);
+        string generic = "";
+        if (!handled && known && d is { IsAnnounced: true } && d.ValueDescriptions.TryGetValue(Math.Round(value), out var desc))
+            generic = $"\tGENERIC:{d.DisplayName}: {desc}";
+        _watch.WriteLine($"{t}\tVAR\t{key}\t{(known ? Fmt(was) : "-")} -> {Fmt(value)}{(handled ? "\tdef" : "")}{generic}");
+        string said = cap.Drain();
+        if (said.Length > 0) _watch.WriteLine($"{t}\tSAID\t{said}");
+    }
+
+    private async Task Serve(CowsDA40Definition def, Dictionary<string, SimVarDefinition> vars, Cap cap)
+    {
+        string cmdFile = _filter!;
+        string logFile = Path.ChangeExtension(cmdFile, ".log");
+        _watch = new StreamWriter(logFile, append: true) { AutoFlush = true };
+        _m!.RequestEnumerateInputEvents();
+        await Task.Delay(3000);
+        _watch.WriteLine($"{DateTime.Now:HH:mm:ss.fff}\tSERVE\tready, {vars.Count} variables");
+        long done = File.Exists(cmdFile) ? new FileInfo(cmdFile).Length : 0;
+        while (true)
+        {
+            string said = cap.Drain();
+            if (said.Length > 0) _watch.WriteLine($"{DateTime.Now:HH:mm:ss.fff}\tSAID\t{said}");
+            await Task.Delay(100);
+            if (!File.Exists(cmdFile)) continue;
+            long len = new FileInfo(cmdFile).Length;
+            if (len <= done) { if (len < done) done = len; continue; }
+            string text;
+            using (var fs = new FileStream(cmdFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            {
+                fs.Seek(done, SeekOrigin.Begin);
+                using var sr = new StreamReader(fs);
+                text = await sr.ReadToEndAsync();
+            }
+            int lastNl = text.LastIndexOf('\n');
+            if (lastNl < 0) continue;
+            done += System.Text.Encoding.UTF8.GetByteCount(text.Substring(0, lastNl + 1));
+            foreach (var raw in text.Substring(0, lastNl + 1).Split('\n'))
+            {
+                string line = raw.Trim();
+                if (line.Length == 0) continue;
+                string t = DateTime.Now.ToString("HH:mm:ss.fff");
+                _watch.WriteLine($"{t}\tCMD\t{line}");
+                int sp = line.IndexOf(' ');
+                string verb = sp < 0 ? line : line.Substring(0, sp), arg = sp < 0 ? "" : line.Substring(sp + 1).Trim();
+                try
+                {
+                    switch (verb)
+                    {
+                        case "quit": _watch.WriteLine($"{t}\tSERVE\tquit"); return;
+                        case "wait": await Task.Delay(int.Parse(arg)); break;
+                        case "calc": _m.ExecuteCalculatorCodeUnique(arg); break;
+                        case "ie":
+                        {
+                            var kv = arg.Split('=');
+                            bool ok = _m.TrySetInputEvent(kv[0], kv.Length > 1 ? double.Parse(kv[1], CultureInfo.InvariantCulture) : 1);
+                            _watch.WriteLine($"{t}\tIE\t{kv[0]} sent={ok}");
+                            break;
+                        }
+                        case "set":
+                        {
+                            var kv = arg.Split('=');
+                            if (!vars.TryGetValue(kv[0], out var d)) { _watch.WriteLine($"{t}\tERR\tno variable {kv[0]}"); break; }
+                            Apply(def, kv[0], double.Parse(kv[1], CultureInfo.InvariantCulture), d, cap);
+                            break;
+                        }
+                        case "read":
+                            foreach (var k in arg.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                                _watch.WriteLine($"{t}\tREAD\t{k.Trim()}={Fmt(await Read(k.Trim()))}");
+                            break;
+                        case "hotkey":
+                        {
+                            var action = Enum.Parse<MSFSBlindAssist.Hotkeys.HotkeyAction>(arg);
+                            bool handled = def.HandleHotkeyAction(action, _m, cap, this, null!);
+                            _watch.WriteLine($"{t}\tHOTKEY\t{arg} {(handled ? "handled" : "NOT HANDLED")}");
+                            break;
+                        }
+                        default: _watch.WriteLine($"{t}\tERR\tunknown command {verb}"); break;
+                    }
+                }
+                catch (Exception ex) { _watch.WriteLine($"{t}\tERR\t{ex.GetType().Name}: {ex.Message}"); }
+            }
+        }
+    }
 
     private async Task<double?> Read(string key)
     {

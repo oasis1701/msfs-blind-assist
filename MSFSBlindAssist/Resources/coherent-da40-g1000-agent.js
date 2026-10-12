@@ -17,7 +17,7 @@
 (function () {
     var A = {};
 
-    A.VERSION = 25;
+    A.VERSION = 26;
 
     function visible(el) {
         if (!el) return false;
@@ -681,24 +681,13 @@
         var dme = shown(".DME-window");
         if (dme) out.push("DME: " + A.fieldsOf(dme));
 
-        // The wind window has four settings - off and three display modes - and says so
-        // itself when it has no data to show, which is worth passing on rather than
-        // hiding: "no wind data" is why the number is missing.
-        // The wind window has four settings - off and three display modes - and says so
-        // itself when it has no data to show. THE THREE MODES LOOK IDENTICAL WITHOUT A
-        // WIND SOLUTION, which is why they were reported as doing nothing: each mode has
-        // its own sub-block, all three stay hidden while the G1000 has no wind, and the
-        // overlay shows its placeholder instead. Measured: Off hides the overlay and all
-        // three options show it, so the softkeys work. Saying WHY there is no number is
-        // the difference between a broken-looking control and an honest one.
-        var wind = shown(".wind-overlay");
-        if (wind) {
-            var w = A.fieldsOf(wind);
-            if (/NO\s*WIND\s*DATA/i.test(w)) {
-                w = "no wind data - the G1000 needs a wind solution, which it computes in flight";
-            }
-            out.push("Wind: " + w);
-        }
+        // ⚠️ THE WIND IS READ ONCE, AT THE TOP, BY A.wind(). A second reader of the same
+        // .wind-overlay sat here and the PFD said "Wind: NO WIND DATA" and then "Wind: no
+        // wind data - the G1000 needs a wind solution, which it computes in flight": the same
+        // box twice, the second time with an explanation the pilot did not ask for (DA40-8).
+        // The three wind modes look identical without a wind solution because each mode's
+        // block stays hidden and the overlay shows its own NO WIND DATA placeholder, which
+        // A.wind() reads as the display prints it.
 
         // Approach minimums, shown against the altitude tape once the pilot has set one.
         var mins = shown(".mins-temp-comp-container");
@@ -898,6 +887,19 @@
             }
             if (!title && lines.length && lines[0].charAt(lines[0].length - 1) !== ":") {
                 title = lines.shift();
+            }
+
+            // ⚠️ THE HEADING IS THE TITLE, SO IT IS NOT ALSO A LINE. A pane whose title came
+            // from its own header child still carried that header in its lines, because the
+            // row walk above reads every child: the PFD Alerts window read "Alerts:" and then
+            // "Alerts" before the first message (reported from the cockpit as the word alert
+            // doubled). Every pane titled this way had the same echo, so it is removed for all
+            // of them, compared on letters and digits only.
+            var titleKey = String(title || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+            if (titleKey) {
+                lines = lines.filter(function (l) {
+                    return String(l).toUpperCase().replace(/[^A-Z0-9]/g, "") !== titleKey;
+                });
             }
             if (lines.length || title) out.push({ title: title || "Window", lines: lines });
         }
@@ -2653,7 +2655,7 @@
             // "Failures Mode: Normal: Engine Damage: ON" (reported from the cockpit). Reaching
             // a list container means the row had no label of its own, and that is the answer.
             if (hasClassContaining(e2, "-list") || hasClassContaining(e2, "listcontainer")) return "";
-            var whole = text(e2);
+            var whole = A.M.ctext(e2);
             var cut = whole;
             for (var i = 0; i < strip.length; i++) cut = cut.split(strip[i]).join(" ");
             cut = cut.replace(/\s+/g, " ").trim();
@@ -2701,7 +2703,7 @@
             if (hasClassContaining(e, "groupbox")) {
                 var boxed = e.querySelector(".groupbox-title");
                 if (boxed) {
-                    var bv = text(boxed);
+                    var bv = A.M.ctext(boxed);
                     if (bv && bv.length <= 40) return bv;
                 }
             }
@@ -2720,7 +2722,7 @@
         for (var d2 = 0; d2 < 8 && e; d2++) {
             var titled = e.querySelector("[class*=title]");
             if (titled && titled !== host && !titled.contains(host)) {
-                var tv = text(titled);
+                var tv = A.M.ctext(titled);
                 if (tv && tv.length <= 40 && tv !== label) return tv;
             }
             e = e.parentElement;
@@ -2730,13 +2732,40 @@
     };
 
     /// Every field on the page, in the order the knob walks them.
+    ///
+    /// ⚠️ THE TEXT OF AN ANCESTOR IS READ ONCE PER WALK. labelOf and groupOf climb up to
+    /// eight ancestors per field and read each one's whole text, and on a long list those
+    /// ancestors are the SAME list containers for every row - so the Flight Plan Catalog's 99
+    /// slots read the whole catalog about six hundred times, and one key's read-back took
+    /// 1.6 s and one scrape 2.1 s (measured live, reported from the cockpit as the catalog
+    /// lagging by seconds). The cache lives for one walk only, so nothing is ever stale.
     A.M.fields = function () {
         var view = A.M.view();
         var out = [];
         if (!view || !view.scrollController) return out;
-        A.M.walk(view.scrollController, "", out, 0);
-        A.M.nameByRow(out, /MenuDialog$/.test(A.M.viewKey() || ""));
+        A.M._tc = (typeof Map === "function") ? new Map() : null;
+        try {
+            A.M.walk(view.scrollController, "", out, 0, null);
+            A.M.nameByRow(out, /MenuDialog$/.test(A.M.viewKey() || ""));
+        } finally {
+            A.M._tc = null;
+        }
         return out;
+    };
+
+    /// text(), remembered for the duration of one walk (see A.M.fields).
+    A.M.ctext = function (el) {
+        var tc = A.M._tc;
+        if (!tc || !el) return text(el);
+        var v = tc.get(el);
+        if (v === undefined) { v = text(el); tc.set(el, v); }
+        return v;
+    };
+
+    /// An empty slot of a list: its number, if any, and nothing but placeholder underscores.
+    A.M.isEmptySlot = function (value) {
+        var v = String(value || "").replace(/^\s*\d+\s*,?\s*/, "");
+        return /_/.test(v) && /^[_\s\/]+$/.test(v);
     };
 
     // ⚠️ A GROUP TITLE EVERY FIELD SHARES IS NOT A LABEL, AND THE ROW IS THROWN AWAY.
@@ -2825,6 +2854,8 @@
 
         var firstOfRow = {};
         for (var m = 0; m < fields.length; m++) {
+            // A list entry is a whole item of its own, never a row's subject or its field.
+            if (fields[m].entry) continue;
             var r = rowOf(fields[m].p);
             if (!r) continue;
             if (!(r in firstOfRow)) { firstOfRow[r] = canName(fields[m]) ? fields[m].value : ""; continue; }
@@ -2833,7 +2864,7 @@
         }
     };
 
-    A.M.walk = function (sc, prefix, out, depth) {
+    A.M.walk = function (sc, prefix, out, depth, list) {
         var n = 0;
         try { n = sc.getControlsCount(); } catch (e) { return; }
 
@@ -2848,7 +2879,40 @@
                 // An EMPTY group with nothing in the other framework either is a
                 // placeholder the page never filled in; reporting "blank field" four times
                 // running is noise, so it is dropped.
-                if (inner > 0) { A.M.walk(c.scrollController, path, out, depth + 1); }
+                // A LIST's direct children are its ENTRIES (see below); everything else
+                // walks as before.
+                var isList = !!(c.constructor && c.constructor.name === "List");
+                if (inner > 0) { A.M.walk(c.scrollController, path, out, depth + 1, isList ? { group: null } : null); }
+                continue;
+            }
+
+            // ⚠️ A LIST ENTRY IS ONE THING, READ FIELD BY FIELD, AND NAMES NOTHING. The Flight
+            // Plan Catalog's slots are a number span and a name block, so their text welded
+            // into "1LOWG/LOWK", and row naming then labelled every slot after the first:
+            // "1LOWG/LOWK: 3_ _ _ _ _ _/_ _ _ _ _ _" ninety-seven times. An entry is read
+            // through its fields ("1, LOWG/LOWK"), an empty one says so, and none of them
+            // climbs for a label: the list's box is looked up once and shared.
+            if (list && kind === "field") {
+                var ev = A.M.valueOf(c);
+                try {
+                    var d0 = A.M.hostOf(c);
+                    while (d0 && d0.children && d0.children.length === 1) d0 = d0.children[0];
+                    var rt = A.M.rowText(d0);
+                    if (rt) ev = rt;
+                } catch (e6) { }
+                var empty = A.M.isEmptySlot(ev);
+                if (empty) {
+                    var num = /^\s*(\d+)/.exec(ev);
+                    ev = (num ? num[1] + ", " : "") + "empty";
+                }
+                if (list.group === null) list.group = A.M.groupOf(c, "");
+                out.push({
+                    p: path, kind: kind, group: list.group, label: "", value: ev, ctrl: c,
+                    able: !(c.getIsFocusable && !c.getIsFocusable()),
+                    focused: !!(c.getIsFocused && c.getIsFocused()),
+                    active: !!(c.getIsActivated && c.getIsActivated()),
+                    entry: true, empty: empty
+                });
                 continue;
             }
 
@@ -3135,7 +3199,9 @@
             }
         } catch (e) { }
 
-        var names = ["itemRef", "el", "rootRef", "activeRef", "containerRef"];
+        // `frequencyEl`: the Nearest VOR page's frequency box, a control that keeps its one
+        // readable node under that name.
+        var names = ["itemRef", "el", "rootRef", "activeRef", "containerRef", "frequencyEl"];
         for (var i = 0; i < names.length; i++) {
             try {
                 var v = c[names[i]];
@@ -3155,6 +3221,20 @@
             }
         } catch (e) { }
         return null;
+    };
+
+    /// The title of the box an element is drawn in ("Frequency"), from the instrument's own
+    /// groupbox + groupbox-title pairing, or "" when it sits in none.
+    A.M.boxTitleOf = function (el) {
+        var e = el;
+        for (var d = 0; d < 6 && e && e.nodeType === 1; d++) {
+            if (hasClassContaining(e, "groupbox")) {
+                var t = text(e.querySelector(".groupbox-title"));
+                if (t && t.length <= 40) return t;
+            }
+            e = e.parentElement;
+        }
+        return "";
     };
 
     /// A LIST ROW IS READ FIELD BY FIELD, never through the text joiner. The last digit of
@@ -3196,12 +3276,35 @@
             // Deepest first: the innermost thing with any text of its own is the one the
             // cursor is actually on. The root itself is skipped - its text is the whole
             // page.
+            var t2El = null;
             for (var c = chain.length - 1; c >= 1; c--) {
                 var el2 = A.M.f2Element(chain[c]);
                 var candidate = A.M.rowText(el2);
-                if (candidate) { t2 = candidate; break; }
+                if (candidate) { t2 = candidate; t2El = el2; break; }
+            }
+
+            // ⚠️ A ROOT WITH NO CHILDREN IS ITSELF THE FIELD. The Nearest VOR page's FREQ
+            // softkey focuses NearestVorFrequencyGroup, a control with no children of its own
+            // that draws the frequency in `frequencyEl`. Reached as a root, its chain is the
+            // root alone and the walk above skips a root, so the window answered "nothing
+            // under the cursor" with the frequency highlighted on screen (reported from the
+            // cockpit as the VOR frequency showing wrongly with the cursor on). A childless
+            // root that is not the page's own UI root is read.
+            if (!t2 && chain.length === 1 && roots[i] !== view.uiRoot) {
+                var own = A.M.f2Element(roots[i]);
+                var ownText = A.M.rowText(own);
+                if (ownText && ownText.length <= 60) { t2 = ownText; t2El = own; }
             }
             if (!t2) continue;
+
+            // A BARE NUMBER IS NAMED BY ITS BOX. "112.70" alone does not say it is the
+            // frequency ENT will load; the box it is drawn in does ("Frequency"). Only a value
+            // with no letters gets the name: a row that already says what it is keeps its
+            // own words.
+            if (!/[A-Za-z]/.test(t2) && t2El) {
+                var box = A.M.boxTitleOf(t2El);
+                if (box) t2 = box + ", " + t2;
+            }
 
             // A checklist item draws its LEADER as a run of seventy dots ("Parking brake
             // .......... SET"), which the window's rows already read as " ... " but the
@@ -3726,9 +3829,9 @@
 
     /// Every field on the page as readable rows, so a pilot can SCAN the page in the window
     /// instead of turning the knob through it and hearing one field at a time.
-    A.M.fieldRows = function () {
+    A.M.fieldRows = function (walked) {
         var rows = [];
-        var f = A.M.fields();
+        var f = walked || A.M.fields();
         var lastGroup = null;
 
         for (var i = 0; i < f.length; i++) {
@@ -3739,6 +3842,20 @@
             if (f[i].group && f[i].group !== lastGroup) {
                 rows.push(f[i].group);
                 lastGroup = f[i].group;
+            }
+
+            // A RUN OF EMPTY SLOTS IS ONE ROW. The catalog has 99 slots and a pilot with two
+            // plans arrowed past 97 identical blank ones to reach the softkeys. The slot the
+            // cursor is on keeps a row of its own.
+            if (f[i].empty && !f[i].focused) {
+                var j = i;
+                while (j + 1 < f.length && f[j + 1].empty && !f[j + 1].focused) j++;
+                var first = /^(\d+)/.exec(f[i].value), last = /^(\d+)/.exec(f[j].value);
+                rows.push((f[i].group ? "  " : "") +
+                    (j > i && first && last ? "Slots " + first[1] + " to " + last[1] + " empty"
+                     : first ? "Slot " + first[1] + " empty" : "Empty"));
+                i = j;
+                continue;
             }
 
             var line = (f[i].group ? "  " : "") +
@@ -4301,14 +4418,14 @@
     };
 
     A.pushFields = function (rows) {
-        var fields = [];
-        try { fields = A.M.fieldRows(); } catch (e) { fields = []; }
+        // ONE walk for the rows and the count: the count used to walk the page a second time.
+        var walked = [], fields = [];
+        try { walked = A.M.fields(); fields = A.M.fieldRows(walked); } catch (e) { fields = []; }
         if (!fields.length) return;
 
         // The COUNT is fields, not rows: the box headings are in the list too and counting
         // them said "Fields (19)" over fourteen fields.
-        var n = 0;
-        try { n = A.M.fields().length; } catch (e) { n = fields.length; }
+        var n = walked.length || fields.length;
 
         var on = null;
         try { on = A.M.cursor(); } catch (e) { on = null; }

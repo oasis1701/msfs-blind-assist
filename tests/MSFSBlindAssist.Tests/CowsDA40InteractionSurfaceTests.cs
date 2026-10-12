@@ -283,4 +283,23 @@ public class CowsDA40InteractionSurfaceTests
             }
         }
     }
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void TheStrobeIsJudgedByItsFlashTimerNotItsFlashingCircuit(DA40Variant variant)
+    {
+        // The model connects circuit 26 for a quarter second in every 1.25: sampled once a
+        // second it read "not powered" most of the time and "Strobe lights not lit" was
+        // spoken over and over with the strobe working. The flash timer rests at exactly 0
+        // only when the strobe is unpowered.
+        var vars = new CowsDA40Definition(variant).GetVariables();
+        var strobe = CowsDA40Definition.LampPairKeys.Single(p => p.Switch == "DA40_LIGHT_STROBE");
+        Assert.Equal("STROBE_TIMMER", vars[strobe.Circuit].Name);
+        Assert.Equal(SimVarType.LVar, vars[strobe.Circuit].Type);
+        Assert.DoesNotContain(vars.Values, v => v.Name == "CIRCUIT ON:26");
+
+        Assert.False(CowsDA40Definition.LampReadsLit(0));
+        Assert.True(CowsDA40Definition.LampReadsLit(0.21));
+        Assert.True(CowsDA40Definition.LampReadsLit(1));
+    }
 }

@@ -292,34 +292,91 @@ public sealed class CowsDA40DisplayForm : Form
         // Hold the redraw while the pilot is reading. The rows themselves are NOT held
         // back from anything else - the caller has already fed the CAS watcher and the
         // units reader by the time this runs.
-        if ((DateTime.UtcNow - _lastNavKeyAt).TotalMilliseconds < RowQuietMs)
+        //
+        // ⚠️ BUT NEVER HOLD A DIFFERENT SCREEN, AND NEVER HOLD FOR LONG. Every arrow key
+        // restarted the hold, so a pilot reading down a page they had just turned to kept
+        // reading the PREVIOUS page under the new title for as long as they kept reading -
+        // reported from the cockpit as other pages' contents showing on the current page,
+        // and as the arrow keys showing wrong data with the cursor off. The softkey rows
+        // went stale the same way, so Enter on "Softkey 8: 7" pressed whatever key 8 had
+        // become. A new page, window or softkey row now redraws at once
+        // (<see cref="MustRedrawNow"/>), and a value-only change waits at most
+        // <see cref="RowHoldCapMs"/>.
+        bool reading = (DateTime.UtcNow - _lastNavKeyAt).TotalMilliseconds < RowQuietMs;
+        if (reading && !MustRedrawNow(_shownRows, rows))
         {
+            if (_heldRows == null) _holdStartedAt = DateTime.UtcNow;
             _heldRows = rows;
 
-            if (_rowSettle == null)
+            if ((DateTime.UtcNow - _holdStartedAt).TotalMilliseconds < RowHoldCapMs)
             {
-                _rowSettle = new System.Windows.Forms.Timer { Interval = 400 };
-                _rowSettle.Tick += (_, _) =>
+                if (_rowSettle == null)
                 {
-                    if (_disposed) { _rowSettle?.Stop(); return; }
-                    if ((DateTime.UtcNow - _lastNavKeyAt).TotalMilliseconds < RowQuietMs) return;
+                    _rowSettle = new System.Windows.Forms.Timer { Interval = 400 };
+                    _rowSettle.Tick += (_, _) =>
+                    {
+                        if (_disposed) { _rowSettle?.Stop(); return; }
+                        bool stillReading = (DateTime.UtcNow - _lastNavKeyAt).TotalMilliseconds < RowQuietMs;
+                        bool heldTooLong = (DateTime.UtcNow - _holdStartedAt).TotalMilliseconds >= RowHoldCapMs;
+                        if (stillReading && !heldTooLong) return;
 
-                    _rowSettle!.Stop();
-                    var held = _heldRows;
-                    _heldRows = null;
-                    if (held != null) ApplyRows(held);
-                };
+                        _rowSettle!.Stop();
+                        var held = _heldRows;
+                        _heldRows = null;
+                        if (held != null) ApplyRows(held);
+                    };
+                }
+
+                _rowSettle.Start();
+                return;
             }
-
-            _rowSettle.Start();
-            return;
         }
 
+        _heldRows = null;
         ApplyRows(rows);
+    }
+
+    /// <summary>
+    /// The longest a value-only redraw waits while the pilot keeps reading. Long enough that
+    /// arrowing down a page is not interrupted on every poll, short enough that what they
+    /// read is never more than a few seconds old.
+    /// </summary>
+    private const int RowHoldCapMs = 5000;
+
+    private DateTime _holdStartedAt = DateTime.MinValue;
+
+    /// <summary>What the list is showing, so an incoming scrape can be told apart from it.</summary>
+    private List<string> _shownRows = new();
+
+    /// <summary>
+    /// Whether an incoming scrape is a different SCREEN from the one the list shows: another
+    /// page or window, a window opening or closing, or different softkeys. Those redraw at
+    /// once even while the pilot is reading, because reading the old screen under the new
+    /// one's title is wrong, and Enter acts on the softkey rows. Pure so the suite can pin it.
+    /// </summary>
+    internal static bool MustRedrawNow(IReadOnlyList<string> shown, IReadOnlyList<string> incoming)
+        => ScreenIdentity(shown) != ScreenIdentity(incoming);
+
+    /// <summary>
+    /// The first row (the page, or the PFD's CAS count), every top-level heading ("Alerts:",
+    /// "Page content:", "Fields (14), cursor on:") and every softkey row.
+    /// </summary>
+    private static string ScreenIdentity(IReadOnlyList<string> rows)
+    {
+        if (rows.Count == 0) return "";
+        var sb = new System.Text.StringBuilder(rows[0]);
+        for (int i = 1; i < rows.Count; i++)
+        {
+            string r = rows[i];
+            bool heading = r.Length > 0 && r[0] != ' ' && r.EndsWith(':');
+            if (heading || SoftkeyRow.IsMatch(r)) sb.Append('\n').Append(r);
+        }
+        return sb.ToString();
     }
 
     private void ApplyRows(List<string> rows)
     {
+        _shownRows = rows;
 
         // The client raises this on the thread that created it, which is this UI thread —
         // but a handle can be destroyed between the check and the call on a close race, so
@@ -1440,8 +1497,9 @@ public sealed class CowsDA40DisplayForm : Form
         }
 
         // What the display said BEFORE the press, so the read-back can say what the press
-        // actually did rather than only whether the menu changed.
-        var before = new List<string>(_client.CurrentRows);
+        // actually did rather than only whether the menu changed. Taken at the FIRST press of
+        // a burst only: see ReadBackAfterPress.
+        if (_pressBaseline == null) _pressBaseline = new List<string>(_client.CurrentRows);
         string pressedLabel = LabelOf(_text.SelectedItem?.ToString() ?? "");
 
         // UNIQUE, not plain. MobiFlight's command channel coalesces two consecutive
@@ -1454,11 +1512,37 @@ public sealed class CowsDA40DisplayForm : Form
         // through the unique form; this call was the exception that proved it.
         _simConnect.ExecuteCalculatorCodeUnique($"1 (>H:AS1000_{_side}_SOFTKEYS_{key})");
 
-        // A press can replace the whole row, so read it back at once rather than waiting
+        // A press can replace the whole row, so read it back promptly rather than waiting
         // for the next poll - the pilot needs to know what the keys became.
-        _ = ReadBackAfterPress(before, pressedLabel);
+        _pressLabel = pressedLabel;
+        if (_pressSettle == null)
+        {
+            _pressSettle = new System.Windows.Forms.Timer { Interval = PressSettleMs };
+            _pressSettle.Tick += (_, _) => { _pressSettle?.Stop(); _ = ReadBackAfterPress(); };
+        }
+        _pressSettle.Stop();
+        _pressSettle.Start();
         return true;
     }
+
+    /// <summary>
+    /// How long after the LAST softkey press of a burst the display is read back.
+    ///
+    /// ⚠️ ONE ANSWER PER BURST. Each press used to start its own read-back against its own
+    /// "before", so a squawk keyed quickly ran four read-backs at once, each racing the
+    /// others for the display and the list. A press restarts this settle and one read says
+    /// where the burst landed, the same rule the radio knobs follow. A pilot keying one digit
+    /// at a time still hears every digit.
+    /// </summary>
+    private const int PressSettleMs = 300;
+
+    private System.Windows.Forms.Timer? _pressSettle;
+
+    /// <summary>The rows before the first press of the current burst; null between bursts.</summary>
+    private List<string>? _pressBaseline;
+
+    /// <summary>The label of the last key pressed in the burst, spoken if nothing moved.</summary>
+    private string _pressLabel = "";
 
     /// <summary>
     /// Says what a softkey press DID.
@@ -1476,14 +1560,18 @@ public sealed class CowsDA40DisplayForm : Form
     /// barometric row for STD Baro — in every case the thing the key was pressed to
     /// change, and never twelve labels the pilot already knows.
     /// </summary>
-    private async Task ReadBackAfterPress(List<string> before, string pressedLabel)
+    private async Task ReadBackAfterPress()
     {
-        // One short settle: the display rebuilds its softkey row over a frame or two.
-        await Task.Delay(250);
-        if (_disposed) return;
+        var before = _pressBaseline ?? new List<string>();
+        string pressedLabel = _pressLabel;
+        _pressBaseline = null;
 
         var rows = await _client.ScrapeNowAsync();
         if (_disposed) return;
+
+        // The list shows what the keys ARE now, at once and whatever the reading hold says:
+        // Enter acts on these rows, and a stale "Softkey 8: 7" presses whatever key 8 became.
+        ApplyRows(rows);
 
         // ⚠️ SEMICOLONS, BECAUSE A LABEL CAN NOW CONTAIN A COMMA. A dimmed key reads
         // "Activate, dimmed", so comma-joining the row turned the Flight Plan Catalog —
@@ -1494,17 +1582,21 @@ public sealed class CowsDA40DisplayForm : Form
         // The comparison uses the same join on both sides, so it is unaffected — and it now
         // fires when only the AVAILABILITY changed, which is right: focusing a flight in the
         // catalog enables eight keys without altering one label, and that used to be silent.
+        // Softkey rows are excluded on purpose: a key's own VALUE field rides on its row, so
+        // including them would announce "Softkey 6: CDI GPS" where the pilot wants
+        // "Navigation source: GPS".
+        string changed = FirstChangedRow(before, rows);
+
         string joined = string.Join("; ", SoftkeyLabels(rows));
         if (joined != string.Join("; ", SoftkeyLabels(before)))
         {
-            SayOther("Softkeys now: " + joined);
+            // ⚠️ THE VALUE FIRST WHEN A PRESS DID BOTH. The fourth digit of a squawk commits
+            // the code AND puts the transponder keys back, and only the keys were spoken - so
+            // the pilot never heard the code they had just set.
+            SayOther((changed.Length > 0 ? changed + ". " : "") + "Softkeys now: " + joined);
             return;
         }
 
-        // Softkey rows are excluded on purpose: the labels are identical by the branch
-        // above, and a key's own VALUE field rides on its row, so including them would
-        // announce "Softkey 6: CDI GPS" where the pilot wants "Navigation source: GPS".
-        string changed = FirstChangedRow(before, rows);
         if (changed.Length > 0)
         {
             SayOther(changed);
@@ -1570,25 +1662,66 @@ public sealed class CowsDA40DisplayForm : Form
     /// A row that only EXISTS in the new state is not a change either — it is a window
     /// that just opened, and the softkey branch above has already spoken for that.
     /// </summary>
-    private static string FirstChangedRow(List<string> before, List<string> after)
+    internal static string FirstChangedRow(List<string> before, List<string> after)
     {
         var old = BuildRowMap(before);
         var seen = new Dictionary<string, int>(StringComparer.Ordinal);
+        var selfMoving = InSelfMovingBlock(after);
 
-        foreach (string row in after)
+        for (int i = 0; i < after.Count; i++)
         {
+            string row = after[i];
             if (SoftkeyRow.IsMatch(row)) continue;
             string label = RowLabel(row);
             if (label.Length == 0) continue;
 
+            // Counted before the skip, the same way BuildRowMap counts every labelled row,
+            // so a label's occurrence numbers line up on both sides.
             seen.TryGetValue(label, out int n);
             seen[label] = n + 1;
+            if (selfMoving[i] || ChangesOnItsOwn(label)) continue;
 
             string key = label + "#" + n;
             if (old.TryGetValue(key, out string? was) && was != row.Trim()) return row.Trim();
         }
 
         return "";
+    }
+
+    /// <summary>
+    /// Rows that move with the clock or the aeroplane rather than with a key.
+    ///
+    /// ⚠️ THE CLOCK ANSWERED FOR THE TRANSPONDER. The read-back compares against the rows
+    /// from the last poll, up to 1.2 s old, and on the PFD the "Time:" row (UTC to the second)
+    /// comes before "Transponder:". So a squawk digit was answered with the time of day and
+    /// the code was never heard - reported from the cockpit as the transponder not taking or
+    /// not refreshing its code. A key never sets any of these.
+    /// </summary>
+    private static bool ChangesOnItsOwn(string label) => label switch
+    {
+        "Time" or "Information bar" or "Data bar" or "Active waypoint" or "Wind" or
+        "Cross track" or "Vertical deviation" or "DME" or "CAS messages" => true,
+        _ => label.StartsWith("Bearing pointer", StringComparison.Ordinal)
+    };
+
+    /// <summary>
+    /// The rows of the blocks that move on their own: the engine strip's gauges and the CAS
+    /// messages, each indented under its heading. Indentation alone is not the test - a setup
+    /// page's fields are indented too, and they are exactly what a key changes.
+    /// </summary>
+    private static bool[] InSelfMovingBlock(List<string> rows)
+    {
+        var flags = new bool[rows.Count];
+        bool inBlock = false;
+        for (int i = 0; i < rows.Count; i++)
+        {
+            string r = rows[i];
+            if (r.Length > 0 && r[0] != ' ')
+                inBlock = r.StartsWith("Engine strip:", StringComparison.Ordinal) ||
+                          r.StartsWith("CAS messages:", StringComparison.Ordinal);
+            else flags[i] = inBlock;
+        }
+        return flags;
     }
 
     private static Dictionary<string, string> BuildRowMap(IEnumerable<string> rows)

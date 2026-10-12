@@ -30,7 +30,7 @@ paths:
 Loaded with the DA40 airframe partials. Full text of each rule: docs/invariants/da40-airframe.md.
 
 - [DA40F-1] The DA40's own breakers are `L:CB_*` toggles (0 in, 1 pulled, 34 per variant) and are independent of the sim's per-bus breakers: a sim-level pulled breaker can kill a circuit while every `L:CB_*` reads in. Full: docs/invariants/da40-airframe.md#da40f-1
-- [DA40F-2] `L:STATE_LIGHT_*` are save-state mirrors, not lamps; what gates a light is `CIRCUIT ON:n`. Announce a light fault in one short sentence and say nothing when it clears. Full: docs/invariants/da40-airframe.md#da40f-2
+- [DA40F-2] `L:STATE_LIGHT_*` are save-state mirrors, not lamps; a light is lit when `CIRCUIT ON:n` is, except the flashed strobe, whose lamp is `L:STROBE_TIMMER` (0 only when unpowered). Announce a light fault in one short sentence and say nothing when it clears. Full: docs/invariants/da40-airframe.md#da40f-2
 - [DA40F-3] The XLS master is a split rocker: `DA40_ELEC_ALT_MASTER` (XLS-only) applies the interlock from the state read BEFORE toggling, through `ExecuteCalculatorCodeUnique`; only `TOGGLE_ALTERNATOR1` moves it, `ALTERNATOR1_SET` is inert. Full: docs/invariants/da40-airframe.md#da40f-3
 - [DA40F-4] `TOGGLE_AIRCRAFT_EXIT` goes through `ExecuteCalculatorCodeUnique` (event index = SimVar index + 1); a door announces Open or Closed on a settle, never a percentage; the canopy has no latch state to model. Full: docs/invariants/da40-airframe.md#da40f-4
 - [DA40F-5] DA40 rudder trim is not adjustable: COWS writes `RUDDER TRIM PCT` every frame, so a `RUDDER_TRIM_SET` write is overwritten. Full: docs/invariants/da40-airframe.md#da40f-5
