@@ -589,13 +589,20 @@ public partial class MainForm : Form
     /// </summary>
     private bool _startupChecksDone;
 
-    private void MainForm_Shown(object? sender, EventArgs e)
+    private async void MainForm_Shown(object? sender, EventArgs e)
     {
         if (_startupChecksDone) return;
         _startupChecksDone = true;
 
         // First, and it waits for the pilot, so the update dialog never stacks on it (UPD-9).
         OfferMissingData();
+
+        // A PMDG 737 or 777 profile restored from LastAircraft never passes SwitchAircraft, so
+        // this is its only check after a relaunch: a pilot who mis-edited the options file must
+        // hear about it again ([PSDK-2]). Awaited until its dialog closes, so the update dialog
+        // never stacks on it either. Never throws.
+        await OfferPmdgSdkSetupAsync(currentAircraft.AircraftCode);
+        if (IsDisposed) return;
 
         if (!SettingsManager.Current.CheckForUpdatesOnStartup) return;
 
