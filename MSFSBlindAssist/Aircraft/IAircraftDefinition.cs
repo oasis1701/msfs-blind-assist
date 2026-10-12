@@ -223,26 +223,30 @@ public sealed class WaypointFlightDirectorProfile
     };
 
     /// <summary>
-    /// COWS Diamond DA40 NG and XLS (PR #242): a light single. CLASS ESTIMATE, pending the GFC 700
-    /// HDG-mode measurement (docs/waypoint-flight-director.md, "Tuning an aircraft profile from its own
-    /// autopilot"). Cruise 110-130 KTAS, so a standard-rate turn is 16-20 degrees of bank; the
-    /// airframe rolls far quicker than any jet and covers ground at half an A320's speed, so it
-    /// captures a fix closer and intercepts a course more steeply per mile. Vy is about 8 degrees
-    /// nose up, so the pitch limit and tone range are 10 (WFD-2).
+    /// COWS Diamond DA40 NG and XLS (PR #242), MEASURED from its own GFC 700 (2026-10-12, LOWG,
+    /// 5,000 ft): four HDG turns of 90 degrees, right and left at 110 and 85 KIAS, bank and heading
+    /// at 4 Hz. A pure proportional law: bank per degree of error 1.5-2.1 through the rollout
+    /// (1.7), rollout onset 12 degrees out at 110 kt and 9 at 85 (cap / gain), overshoot under a
+    /// degree, so no lead. Steady bank 18.0-18.5 at 110 kt and 14-14.5 at 85: the GFC 700 flies
+    /// about standard rate, scaling with speed; the FD's one fixed cap is the cruise figure.
+    /// Roll-in 4.3-4.5 deg/s. Flown closed-loop on the FD's own commands the same day: three fixes,
+    /// two 90-degree turns and an at-or-below descent, each fix sequenced and every rollout within
+    /// 2 degrees. Capture 0.4 NM: the turn radius at 110 kt and 18 degrees is about 0.6 NM.
+    /// Vy is about 8 degrees nose up, so the pitch limit and tone range are 10 (WFD-2).
     /// </summary>
     public static WaypointFlightDirectorProfile CowsDA40 => new()
     {
-        KRollDegPerDegTrack = 1.0,
-        MaxBankDeg = 20.0,
+        KRollDegPerDegTrack = 1.7,
+        MaxBankDeg = 18.0,
         MaxPitchDeg = 10.0,
         TonePitchRangeDeg = 10.0,
-        CaptureRadiusNm = 0.3,
+        CaptureRadiusNm = 0.4,
         LowSpeedFloorKts = 30.0,
-        BankRateLeadSec = 0.6,
+        BankRateLeadSec = 0.0,
         TypicalApproachAoaDeg = 4.0,
         MaxInterceptDeg = 45.0,
         InterceptDegPerNm = 30.0,
-        MaxBankRateDegPerSec = 6.0,
+        MaxBankRateDegPerSec = 4.5,
         MaxPitchRateDegPerSec = 3.0,
         VerticalArmRangeNm = 10.0,
     };

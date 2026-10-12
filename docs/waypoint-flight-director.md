@@ -194,7 +194,7 @@ baseline, so the choice is visible in the definition rather than inherited by ac
 | HorizonSim 787 — class estimate | 0.9 | 30° | 5.0°/s ᵈ | 10° | 0.8 NM | 60 kt | 1.3 s |
 | PMDG 737-800 — class estimate | 1.1 ᵈ | 30° | 5.0°/s ᵈ | 12° ᵈ | 0.5 NM ᵈ | 40 kt ᵈ | 1.0 s ᵈ |
 | iFly 737 MAX8 — class estimate | 1.1 ᵈ | 30° | 5.0°/s ᵈ | 12° ᵈ | 0.5 NM ᵈ | 40 kt ᵈ | 1.0 s ᵈ |
-| COWS DA40 NG/XLS — class estimate (PR #242, `ForAircraftCode`) | 1.0 | 20° | 6.0°/s | 10° | 0.3 NM | 30 kt | 0.6 s |
+| **COWS DA40 NG/XLS** — measured (PR #242, `ForAircraftCode`) | **1.7** | 18° | 4.5°/s | 10° | 0.4 NM | 30 kt | 0 s |
 
 ᵈ = inherited from `WaypointFlightDirectorProfile`'s baseline default rather than set explicitly.
 This table is transcribed by hand from the definitions and has drifted from them before, so treat
@@ -228,7 +228,7 @@ track, so LNAV is the comparable Boeing mode:
 | FBW A320, Fenix A320, A380X, A330 | **25°** | Airbus FG "Roll Limit 2" runs 15-25° with TAS (Roll Limit 1 reaches 30°, engine-out 15°) |
 | PMDG 737, iFly 737 MAX8 | **30°** | AFDS commands up to 30° in LNAV above 200 ft AGL (8° below); the FMC plans ~25° to keep 5° spare |
 | PMDG 777, HS787 | **30°** | 777/787 command 30° in LNAV; 777 HDG SEL is held to 25 (BANK LIMIT selector 5-25, AUTO 15-25 by TAS) |
-| COWS DA40 (GFC 700) | **20°** | class estimate: standard rate at 110-130 KTAS is 16-20°; to be measured from the GFC 700 in HDG |
+| COWS DA40 (GFC 700) | **18°** | measured in HDG: 18.0-18.5° at 110 KIAS, 14-14.5° at 85 (about standard rate, so it DOES scale with speed); the cap is the cruise figure |
 
 Approach-AoA fallbacks likewise: **5.0°** on the narrowbodies (published approach attitude ~2° pitch
 on a 3° path for the A319/A320, ~2.5° for the 737, giving ~5-5.5° AoA), 4.0-4.5° on the widebodies.
@@ -258,6 +258,8 @@ Two assumptions died here. The gain of 0.9 commanded barely a third of the bank 
 (9° where the AFDS uses 25 at 10° off track) — the FD could not converge, which is what "it feels
 like I am always deviating" actually was. And the bank cap is **not** scaled by true airspeed: 25°
 at 180 kt and 25° at 280 kt, so the BANK LIMIT AUTO 15-25 range does not show up here.
+
+**The COWS DA40 is measured too (2026-10-12), and it is the first whose bank cap scales with speed.** Four GFC 700 HDG turns of 90° at 5,000 ft over Graz, right and left at 110 and 85 KIAS, 4 Hz bank and heading. Bank per degree of remaining error 1.5-2.1 through every rollout (1.7 fitted), rollout onset 12° out at 110 kt and 9° at 85 (the cap over the gain, as the law predicts), overshoot under 1°, roll-in 4.3-4.5°/s: a pure proportional law again, so no lead. The steady bank was 18.0-18.5° at 110 kt and 14-14.5° at 85, about standard rate, unlike the 777's fixed 25°; the profile's one fixed cap takes the cruise figure. Then flown closed loop on the FD's own commands (a scripted pilot following the commanded bank and pitch): three fixes 4-5 NM apart, two 90° turns and a 1,000 ft at-or-below descent. Every fix sequenced on arrival and every rollout settled within 2°; the descent armed and flew about -2° but crossed the last fix 90 ft high, which is the law aiming exactly at the fix with no margin, not a DA40 matter.
 
 **The FlyByWire A380X is measured too (2026-09), and it proves the point about not copying gains.**
 Two AP-flown HDG SEL turns at 4000 ft / 180 kt, right and left. Bank and roll rate came out almost
