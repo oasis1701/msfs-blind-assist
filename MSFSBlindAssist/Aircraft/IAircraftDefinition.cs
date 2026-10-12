@@ -205,6 +205,47 @@ public sealed class WaypointFlightDirectorProfile
     public double TonePitchRangeDeg { get; init; } = 12.0;
 
     public double ToneBankRangeDeg { get; init; } = 5.0;
+
+    /// <summary>
+    /// The profile for an aircraft whose definition does not state its own, by
+    /// <see cref="IAircraftDefinition.AircraftCode"/>; the A320 baseline for any other code.
+    /// <para>
+    /// This is where an aircraft added by ANOTHER open pull request keeps its numbers until both
+    /// are merged (WFD-3): its definition cannot override a method this one introduces, and the
+    /// numbers must not wait for the merge order. Once both are on main, move the entry into the
+    /// definition's own override and delete it here.
+    /// </para>
+    /// </summary>
+    public static WaypointFlightDirectorProfile ForAircraftCode(string? aircraftCode) => aircraftCode switch
+    {
+        "COWS_DA40NG" or "COWS_DA40XLS" => CowsDA40,
+        _ => new()
+    };
+
+    /// <summary>
+    /// COWS Diamond DA40 NG and XLS (PR #242): a light single, flown live with the FD's own
+    /// commands on 2026-10-12. Cruise 110-130 KTAS, so a standard-rate turn is 16-20 degrees of
+    /// bank and the GFC 700 itself limits bank to about 22; the airframe rolls far quicker than
+    /// any jet, so it takes a short rate lead and a quick slew, and covers ground at half an
+    /// A320's speed, so it captures a fix closer and intercepts a course more steeply per mile.
+    /// Pitch: Vy is about 8 degrees nose up, so the tone range is 10 (WFD-2: equal to MaxPitchDeg).
+    /// </summary>
+    public static WaypointFlightDirectorProfile CowsDA40 => new()
+    {
+        KRollDegPerDegTrack = 1.0,
+        MaxBankDeg = 20.0,
+        MaxPitchDeg = 10.0,
+        TonePitchRangeDeg = 10.0,
+        CaptureRadiusNm = 0.3,
+        LowSpeedFloorKts = 30.0,
+        BankRateLeadSec = 0.6,
+        TypicalApproachAoaDeg = 4.0,
+        MaxInterceptDeg = 45.0,
+        InterceptDegPerNm = 30.0,
+        MaxBankRateDegPerSec = 6.0,
+        MaxPitchRateDegPerSec = 3.0,
+        VerticalArmRangeNm = 10.0,
+    };
 }
 
 /// <summary>

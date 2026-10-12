@@ -935,9 +935,12 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     public virtual VisualGuidanceProfile GetVisualGuidanceProfile() => new();
 
     /// <summary>
-    /// Default Waypoint Flight Director profile (A320 baseline). Override on heavier/faster jets.
+    /// Default Waypoint Flight Director profile: the A320 baseline, or the profile
+    /// <see cref="WaypointFlightDirectorProfile.ForAircraftCode"/> holds for an aircraft whose
+    /// definition does not state its own yet. Override on heavier/faster jets.
     /// </summary>
-    public virtual WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new();
+    public virtual WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() =>
+        WaypointFlightDirectorProfile.ForAircraftCode(AircraftCode);
 
     public virtual double TaxiTurnLeadSeconds => 1.2;   // neutral default; airframes tune via override
 
