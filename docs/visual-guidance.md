@@ -136,6 +136,8 @@ Approach AoA, Vref reference, and the pitch/bank rate caps are aircraft-shaped �
 | `FlareTargetPitchDeg` | 6.0° | 4.5° | Pitch commanded during the Flare phase. A320 FCTM ~+5–6°; Boeing 777 FCTM "2–3° pitch increase from approach attitude" → ~+4–4.5° given the 777's +1.5° approach pitch. |
 | `TonePitchRangeDeg` | 6 | 10 | Pitch saturation. 777 widens to 10° (30 Hz/° matching slope) for gentler beat at small errors during a stabilized approach; A320 keeps the precision-oriented 6°. |
 
+**The glidepath law reads TRUE vertical velocity (2026-10-12).** The 505 stream's vertical speed is `VELOCITY WORLD Y`, not `VERTICAL SPEED`: the latter is the indicated figure, filtered like a VSI, and on the COWS DA40 it lagged the aeroplane by about two seconds (it read -300 fpm through a level balloon). A lagged input to the pitch PID's rate term is phase lag in the loop, so the commanded attitude chased a descent that had already changed. Only the input changed, not the PID (VG-18); the V hotkey still reads the indicated figure, as the VSI shows it (WFD-16).
+
 ### Glidepath altitude calibration
 
 VG measures altitude as the SimConnect **reference datum** (`PLANE ALTITUDE − threshold elevation`). Two facts make a raw `distance × tan(3°)` glidepath wrong:

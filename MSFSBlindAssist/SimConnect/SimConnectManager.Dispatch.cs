@@ -672,6 +672,9 @@ public partial class SimConnectManager
                     HeadingMagnetic = vgData.HeadingMagnetic,
                     MagneticVariation = vgData.MagneticVariation,
                     GroundSpeedKnots = vgData.GroundSpeedKnots,
+                    // The TRUE vertical velocity (VELOCITY WORLD Y, WFD-16), where AIRCRAFT_POSITION
+                    // carries the indicated VERTICAL SPEED; only a go-around log line reads it from
+                    // lastKnownPosition.
                     VerticalSpeedFPM = vgData.VerticalSpeedFPM,
                     // Carried forward, never defaulted — see the surface note on the mirrors below.
                     SurfaceType = lastKnownPosition?.SurfaceType ?? 0,

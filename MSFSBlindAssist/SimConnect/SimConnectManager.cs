@@ -718,7 +718,8 @@ public partial class SimConnectManager
         public double HeadingMagnetic;
         public double MagneticVariation;
         public double GroundSpeedKnots;
-        public double VerticalSpeedFPM;
+        public double VerticalSpeedFPM;     // VELOCITY WORLD Y in fpm: the TRUE vertical velocity, + up.
+                                            // Never VERTICAL SPEED, the indicated (VSI-filtered) figure.
         public double AGL;
         public double GroundTrack;
         // Attitude (radians from SimConnect; consumers convert to degrees + standard convention).

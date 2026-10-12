@@ -120,6 +120,8 @@ below what's audible when matching two tones by ear.
 
 ## Vertical guidance (crossing altitudes)
 
+The projected crossing altitude is computed from the TRUE vertical velocity (`VELOCITY WORLD Y`, WFD-16), never the indicated `VERTICAL SPEED`, which lags like a VSI (about two seconds on the COWS DA40).
+
 Each slot can carry an optional crossing target. Commanded pitch ≈ **required flight-path angle +
 live angle of attack** — the live AoA encodes weight/flap/speed, so this needs no performance model.
 

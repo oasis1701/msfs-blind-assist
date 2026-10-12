@@ -197,7 +197,12 @@ public partial class SimConnectManager
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)4);
         sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "GROUND VELOCITY", "knots",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)5);
-        sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "VERTICAL SPEED", "feet per minute",
+        // TRUE vertical velocity, never VERTICAL SPEED: that is the INDICATED figure, filtered
+        // like a VSI. Measured on the COWS DA40 (2026-10-12) it lagged the aeroplane by about two
+        // seconds and read -300 fpm through a level balloon. Visual guidance's glidepath law and the
+        // waypoint FD's projected crossing altitude both steer on it, so a lagged figure made them
+        // chase descents that had already changed.
+        sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "VELOCITY WORLD Y", "feet per minute",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)6);
         sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "PLANE ALT ABOVE GROUND", "feet",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)7);
