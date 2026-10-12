@@ -68,6 +68,11 @@ public class UserSettings
         // it never blocks startup and stays completely silent on any failure.
         public bool CheckForUpdatesOnStartup { get; set; } = true;
 
+        // On by default: at launch, offer the navigation database and the location data while
+        // either is missing (Services/StartupDataCheck, UPD-9). The ONLY thing that silences the
+        // dialog: a dismissal is never remembered.
+        public bool CheckForMissingDataOnStartup { get; set; } = true;
+
         // Hand Fly Settings
         // Default is Both (tone + spoken pitch/bank): spoken pitch is safety-relevant
         // whenever Hand Fly engages — the auto-handoff at rotation AND a manual

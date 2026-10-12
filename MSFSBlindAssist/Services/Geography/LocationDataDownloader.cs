@@ -161,6 +161,14 @@ internal sealed class LocationDataDownloader : IDisposable
         LocationDataStatusText.Idle(_store.Info, LocationDataStore.SchemaVersion, PartialBytes(), CompleteDump() is not null,
             _store.ReadyAtNextStart));
 
+    /// <summary>What a status box shows (the GeoNames tab, the startup data check): the running or
+    /// last job's status, or <see cref="IdleStatus"/> when none ran.</summary>
+    internal DownloadStatus DisplayStatus()
+    {
+        var status = Status;
+        return status.Phase == DownloadJobPhase.Idle ? IdleStatus() : status;
+    }
+
     private string ZipPath => Path.Combine(_store.DownloadFolder, "allCountries.zip");
 
     private long PartialBytes()
