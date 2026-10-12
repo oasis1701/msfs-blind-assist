@@ -1,8 +1,9 @@
 # Offline location data (Output C and Location Info)
 
 Output > C (the nearest place) and Output > Shift+L (the Location Info window) answer from a local
-database each pilot downloads once, from Settings → GeoNames → Download location data. Nothing is
-looked up online when a pilot presses a key. Rules: `.claude/rules/location-data.md` (LOC-n).
+database each pilot downloads once, from Settings → GeoNames → Download location data, or from the
+dialog the app opens at launch while the data is missing (UPD-9). Nothing is looked up online when
+a pilot presses a key. Rules: `.claude/rules/location-data.md` (LOC-n).
 
 ## Why it is offline
 
@@ -52,7 +53,8 @@ the undersea class, stored for later use. The finished database is about 330 MB 
 
 ## Downloading and building
 
-`LocationDataDownloader` (owned by MainForm, started from `GeoNamesPanel`):
+`LocationDataDownloader` (owned by MainForm, started from `GeoNamesPanel` or, at launch while the
+data is missing, from the startup data check's `StartupDataDialog`, UPD-9):
 
 1. Checks free disk space (the peak is about 1.5 GB: the 400 MB download, a 370 MB staging file
    and the 330 MB result; an update's old database is already on disk). Says "Downloading location
@@ -69,11 +71,14 @@ the undersea class, stored for later use. The finished database is about 330 MB 
 
 Cancel keeps the partial download, so the next press resumes. A build that is cancelled, or fails
 for a reason other than the data (disk, a file in use), keeps the whole download and its validator
-(`allCountries.zip.json`) for 3 days, and the next press builds from it without downloading again.
-A dump the build's own checks rejected is deleted, so the next press downloads afresh (LOC-4).
+(`allCountries.zip.json`) for 3 days, and the next press builds from it, its name files and shapes
+included, without the network; after 3 days the next start removes it.
+A dump the build's own checks rejected (`GeoNamesDumpRejectedException`) is deleted, so the next
+press downloads afresh (LOC-4).
 Closing the app cancels silently.
 At startup `LocationDataStore.Sweep` removes half-built files and promotes a `.ready` file whose
-swap an antivirus scan blocked. The GeoNames tab's status box shows the job's latest state in
+swap an antivirus scan blocked; until then C, Location Info and the GeoNames tab say the data is
+ready at the next start. The GeoNames tab's status box shows the job's latest state in
 place (LOC-5); with no job running it describes the installed data, a kept partial download, or
 what a download will take.
 
@@ -85,6 +90,10 @@ then sea (inside a named marine polygon) (LOC-6):
 - At sea, the distance is to the **nearest land**: the coastline searched outward up to 3,000 km
   (Point Nemo gives about 1,670 miles). Over a lake it is to the **shore**, from the lake's own
   outline (islands included): "Over Lake Michigan, shore 24 miles east".
+- Within 2 km of the coastline a "sea" position is **ashore**: Natural Earth's simplified seas
+  overlap the shore, and its state outlines leave out many islands and coastal airports (Auckland,
+  Hong Kong, Madeira, St Maarten). It gets the land sentence, its coast named by the sea shape it
+  lies in. An island missing from the coastline itself (Baltra, in the Galápagos) still reads as sea.
 - Over land, the distance is to the **sea coast**, searched only within the GeoNames tab's
   **Coast Range** (default 50, 1 to 1,000, in the tab's units), and named by the Natural Earth sea
   found by stepping 1 to 25 km past the coast point ("English Channel"); unnamed where that water
@@ -109,7 +118,9 @@ then sea (inside a named marine polygon) (LOC-6):
   "In: Bavaria, Germany", "Region: Alps, mountain range" (when inside one), "Coast: English
   Channel, 1.2 miles south" (within the Coast Range). Then "Time zone: …" (the GeoTimeZone package). The
   window opens already filled and focused on that box, and speaks nothing itself. The landmark
-  lists share the tab's one Landmarks Range; the Major Cities range is capped at 310 miles or 500 km.
+  lists share the tab's one Landmarks Range. Every range is capped at 310 miles or 500 km (the
+  Coast Range at 1,000) where the lookups read it (`LocationQuerySettings.From`), so a larger
+  value saved before the cap existed never makes a press scan a continent.
 
 Numbers are invariant everywhere (LOC-3).
 

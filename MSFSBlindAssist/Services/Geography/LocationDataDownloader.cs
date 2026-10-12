@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text.Json;
 using MSFSBlindAssist.Utils.Logging;
@@ -73,8 +74,17 @@ internal sealed class LocationDataDownloader : IDisposable
         _zipClient = CreateClient(zipHandler ?? CreateHandler(DecompressionMethods.None));
         _fileClient = CreateClient(fileHandler ?? CreateHandler(DecompressionMethods.All));
         _naturalEarthSha256 = naturalEarthSha256 ?? NaturalEarthSha256;
-        _freeBytes = freeBytes ?? (root => new DriveInfo(root).AvailableFreeSpace);
+        _freeBytes = freeBytes ?? FreeBytes;
         _status = IdleStatus();
+    }
+
+    /// <summary>Free bytes on the drive at <paramref name="root"/>. DriveInfo rejects a network
+    /// share's root (\\server\share, a redirected %APPDATA%), so that one skips the check instead
+    /// of failing every press; a share that fills up fails the write and says so.</summary>
+    internal static long FreeBytes(string root)
+    {
+        try { return new DriveInfo(root).AvailableFreeSpace; }
+        catch (ArgumentException) { return long.MaxValue; }
     }
 
     /// <summary>Test seam: the build's sanity floors (the real dump has ~13.5 M rows, ~8.4 M kept).</summary>
@@ -97,9 +107,9 @@ internal sealed class LocationDataDownloader : IDisposable
 
     internal bool IsRunning => Status.IsRunning;
 
-    /// <summary>True when some database is installed (current or needing an update): the
-    /// button then says "Update location data".</summary>
-    internal bool HasData => _store.IsAvailable || _store.NeedsUpdate;
+    /// <summary>True when some database is installed (current, needing an update, or a build
+    /// waiting for the next start): the button then says "Update location data".</summary>
+    internal bool HasData => _store.IsAvailable || _store.NeedsUpdate || _store.ReadyAtNextStart;
 
     /// <summary>Starts a download (or an update, when data exists). Ignored while a job runs.</summary>
     internal void Start()
@@ -146,9 +156,18 @@ internal sealed class LocationDataDownloader : IDisposable
     }
 
     /// <summary>The status when no job runs: installed data, an update needed, a download waiting
-    /// to be built or resumed, or nothing yet.</summary>
+    /// to be built or resumed, a build waiting for the next start, or nothing yet.</summary>
     internal DownloadStatus IdleStatus() => new(DownloadJobPhase.Idle,
-        LocationDataStatusText.Idle(_store.Info, LocationDataStore.SchemaVersion, PartialBytes(), CompleteDump() is not null));
+        LocationDataStatusText.Idle(_store.Info, LocationDataStore.SchemaVersion, PartialBytes(), CompleteDump() is not null,
+            _store.ReadyAtNextStart));
+
+    /// <summary>What a status box shows (the GeoNames tab, the startup data check): the running or
+    /// last job's status, or <see cref="IdleStatus"/> when none ran.</summary>
+    internal DownloadStatus DisplayStatus()
+    {
+        var status = Status;
+        return status.Phase == DownloadJobPhase.Idle ? IdleStatus() : status;
+    }
 
     private string ZipPath => Path.Combine(_store.DownloadFolder, "allCountries.zip");
 
@@ -187,7 +206,6 @@ internal sealed class LocationDataDownloader : IDisposable
     private async Task RunAsync(CancellationToken ct)
     {
         bool update = _store.IsAvailable;
-        bool building = false;
         try
         {
             Directory.CreateDirectory(_store.DownloadFolder);
@@ -206,17 +224,15 @@ internal sealed class LocationDataDownloader : IDisposable
             CheckSpace(DiskSpaceRequirement.BeforeBuild());
             Say("Download finished. Building location data; this takes about a minute.", immediate: false);
             SetStatus(new DownloadStatus(DownloadJobPhase.Building, "Building location data: 0 percent", 0));
-            building = true;
             var info = await RunBuildAsync(inputs, ct).ConfigureAwait(false);
 
             DeleteDownloads();
             string places = LocationDataStatusText.Millions(info.PlaceCount);
-            if (File.Exists(_store.ReadyPath))
+            if (_store.ReadyAtNextStart)
             {
                 // Something (usually an antivirus scan) held the old file through every retry.
-                const string later = "Location data is ready and will be used from the next start of MSFS Blind Assist.";
-                SetStatus(new DownloadStatus(DownloadJobPhase.Ready, later));
-                Say(later, immediate: true);
+                SetStatus(new DownloadStatus(DownloadJobPhase.Ready, LocationDataStatusText.ReadyAtNextStart));
+                Say(LocationDataStatusText.ReadyAtNextStart, immediate: true);
                 return;
             }
             SetStatus(new DownloadStatus(DownloadJobPhase.Ready, LocationDataStatusText.Idle(_store.Info ?? info, LocationDataStore.SchemaVersion, 0)));
@@ -235,26 +251,56 @@ internal sealed class LocationDataDownloader : IDisposable
         }
         catch (Exception ex)
         {
-            // A whole dump is kept for the next press after a cancel, a full disk or a lost
-            // connection. Not after the build's own checks rejected it (no allCountries.txt, ended
-            // early, a CRC mismatch, below the row floors): kept, it would fail the same way on
-            // every press for three days, with no way out a pilot can find.
-            if (building && ex is InvalidDataException) DiscardDump();
-            string reason = ex switch
-            {
-                LocationDownloadException lde => lde.Message,
-                InvalidDataException ide => ide.Message,
-                HttpRequestException hre when hre.StatusCode is { } code => $"the server answered {(int)code} {code}.",
-                HttpRequestException => "the download server could not be reached. Check the internet connection.",
-                IOException io => "a file could not be written: " + io.Message,
-                UnauthorizedAccessException ua => "a file could not be written: " + ua.Message,
-                _ => ex.Message,
-            };
-            string text = "Location data download failed: " + reason;
+            // A whole dump is kept for the next press after a cancel, a full disk, a lost
+            // connection or any build failure that is not the dump's. Not after the dump's own
+            // checks rejected it (a damaged zip, no allCountries.txt, ended early, a CRC mismatch,
+            // below the row floors): kept, it would fail the same way on every press for three
+            // days, with no way out a pilot can find.
+            if (ex is GeoNamesDumpRejectedException) DiscardDump();
+            string text = "Location data download failed: " + FailureReason(ex);
             Log.Error("LocationData", text, ex);
             SetStatus(new DownloadStatus(DownloadJobPhase.Failed, text + Environment.NewLine + IdleStatus().Text));
             if (!_silentCancel) Say(text, immediate: true);
         }
+    }
+
+    /// <summary>Why a job failed, as the pilot hears it after "Location data download failed: ".</summary>
+    internal static string FailureReason(Exception ex) => ex switch
+    {
+        LocationDownloadException lde => lde.Message,
+        GeoNamesDumpRejectedException dre => dre.Message,
+        InvalidDataException ide => ide.Message,
+        HttpRequestException hre when hre.StatusCode is { } code => $"the server answered {(int)code} {code}.",
+        HttpRequestException => "the download server could not be reached. Check the internet connection.",
+        // The pilot's own cancel is caught before this: here it is a connect or header timeout, or a stall.
+        OperationCanceledException => "the download server did not answer. Check the internet connection.",
+        IOException io when IsNetworkError(io) => "the connection to the download server was lost. Check the internet connection.",
+        IOException io => "a file could not be written: " + io.Message,
+        UnauthorizedAccessException ua => "a file could not be written: " + ua.Message,
+        _ => ex.Message,
+    };
+
+    /// <summary>A connection that broke mid-transfer (the response ended early, or a socket error
+    /// under the transport stream), never a local file.</summary>
+    private static bool IsNetworkError(IOException io) =>
+        io is HttpIOException || io.InnerException is SocketException || io.InnerException?.InnerException is SocketException;
+
+    /// <summary>A full disk or a file another program holds (Win32 112, 39, 32, 33): retrying the
+    /// download never cures it, so it fails at once, worded as the file problem it is.</summary>
+    private static bool IsDiskError(IOException io) =>
+        unchecked((uint)io.HResult) >> 16 == 0x8007 && (io.HResult & 0xFFFF) is 0x70 or 0x27 or 0x20 or 0x21;
+
+    /// <summary>At startup: a whole download past <see cref="CompleteDumpReuse"/> is never built
+    /// from again, so it goes rather than sit unmentioned in the download folder (about 466 MB);
+    /// a newer partial download stays for its resume.</summary>
+    internal void SweepExpiredDownload()
+    {
+        if (Status.IsRunning) return;
+        var zip = new FileInfo(ZipPath);
+        if (!zip.Exists || DateTime.UtcNow - zip.LastWriteTimeUtc < CompleteDumpReuse) return;
+        Log.Info("LocationData", "Removing a whole download past its reuse window");
+        if (PartialBytes() > 0) DiscardDump();
+        else DeleteDownloads();
     }
 
     private void CheckSpace(long needed)
@@ -271,9 +317,14 @@ internal sealed class LocationDataDownloader : IDisposable
         string folder = _store.DownloadFolder;
         string country = Path.Combine(folder, "countryInfo.txt");
         string admin1 = Path.Combine(folder, "admin1CodesASCII.txt");
-        SetStatus(new DownloadStatus(DownloadJobPhase.Downloading, "Downloading GeoNames country and state names.", 0));
-        await DownloadSmallFileAsync(GeoNamesBaseUrl + "countryInfo.txt", country, null, ct).ConfigureAwait(false);
-        await DownloadSmallFileAsync(GeoNamesBaseUrl + "admin1CodesASCII.txt", admin1, null, ct).ConfigureAwait(false);
+        // A whole dump a failed or cancelled build left is built without the network, as the status
+        // box promises ("nothing is downloaded again"): its name files are still beside it.
+        if (CompleteDump() is null || !File.Exists(country) || !File.Exists(admin1))
+        {
+            SetStatus(new DownloadStatus(DownloadJobPhase.Downloading, "Downloading GeoNames country and state names.", 0));
+            await DownloadSmallFileAsync(GeoNamesBaseUrl + "countryInfo.txt", country, null, ct).ConfigureAwait(false);
+            await DownloadSmallFileAsync(GeoNamesBaseUrl + "admin1CodesASCII.txt", admin1, null, ct).ConfigureAwait(false);
+        }
 
         var shapes = new Dictionary<NaturalEarthLayer, string>();
         int n = 0;
@@ -385,7 +436,9 @@ internal sealed class LocationDataDownloader : IDisposable
 
                 using var response = await SendAsync(_zipClient, request, attemptCts.Token).ConfigureAwait(false);
                 var range = response.Content.Headers.ContentRange;
-                var outcome = ResumeDecision.Decide((int)response.StatusCode, partLength, range?.From, range?.Length, meta?.Total);
+                // A 200 without Content-Length left Total 0: an unknown size, never one every 206 disagrees with.
+                var outcome = ResumeDecision.Decide((int)response.StatusCode, partLength, range?.From, range?.Length,
+                    meta is { Total: > 0 } ? meta.Total : null);
                 Log.Info("LocationData", $"GeoNames request: HTTP {(int)response.StatusCode}, part {partLength} bytes, outcome {outcome}");
 
                 switch (outcome)
@@ -466,12 +519,14 @@ internal sealed class LocationDataDownloader : IDisposable
             }
             catch (Exception ex) when (!ct.IsCancellationRequested && IsRetryable(ex))
             {
-                bool stalled = ex is OperationCanceledException;
+                // Only the stall watchdog cancels the attempt itself; a connect or header timeout is a
+                // server that did not answer, not "no data for a minute".
+                bool stalled = ex is OperationCanceledException && attemptCts.IsCancellationRequested;
                 if (!budget.AttemptFailed(bytesThisAttempt))
                     throw new LocationDownloadException(stalled
                         ? "the download kept stalling. The partial download is kept; try again later."
                         : "the download server could not be reached. Check the internet connection; the partial download is kept.");
-                string why = stalled ? "No data for a minute." : "Connection lost.";
+                string why = stalled ? "No data for a minute." : ex is OperationCanceledException ? "No answer from the server." : "Connection lost.";
                 Log.Warn("LocationData", $"GeoNames attempt failed ({ex.Message}); retry {budget.RetryNumber} of {RetryBudget.MaxNoProgressRetries}");
                 Say($"{why} Retrying, attempt {budget.RetryNumber} of {RetryBudget.MaxNoProgressRetries}.", immediate: false);
                 SetStatus(new DownloadStatus(DownloadJobPhase.Downloading,
@@ -570,11 +625,11 @@ internal sealed class LocationDataDownloader : IDisposable
         return await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, headers.Token).ConfigureAwait(false);
     }
 
-    private static bool IsRetryable(Exception ex) => ex switch
+    internal static bool IsRetryable(Exception ex) => ex switch
     {
         HttpRequestException hre => hre.StatusCode is null || (int)hre.StatusCode >= 500 || hre.StatusCode == HttpStatusCode.RequestTimeout,
         OperationCanceledException => true, // a stall abort or the header timeout (the pilot's cancel is filtered by the callers)
-        IOException => true,
+        IOException io => !IsDiskError(io), // a dropped connection; never a full disk or a held file
         InvalidDataException => true,       // a checksum mismatch: fetch again
         _ => false,
     };

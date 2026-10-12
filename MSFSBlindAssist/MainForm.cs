@@ -73,8 +73,8 @@ public partial class MainForm : Form
     private readonly MSFSBlindAssist.Services.SceneryIndex.SceneryPackageCensus sceneryCensus = new(SceneryIndexCacheDir);
 
     // Output C and Location Info read the offline GeoNames + Natural Earth database; the job that
-    // downloads and builds it is started from Settings → GeoNames and owned here, so it keeps
-    // running after Settings closes. Its speech is marshalled in InitializeManagers.
+    // downloads and builds it is started from Settings → GeoNames or the startup data check (UPD-9)
+    // and owned here, so it keeps running after either closes. Its speech is marshalled in InitializeManagers.
     private readonly Services.Geography.LocationDataDownloader locationDataDownloader =
         new(Services.Geography.LocationDataStore.Default);
     private readonly Services.Geography.OfflineLocationService offlineLocationService =
@@ -554,17 +554,29 @@ public partial class MainForm : Form
 
     /// <summary>
     /// Fires once, the first time the window is displayed. The bool is belt and braces:
-    /// Shown is documented as first-display only, and a second update check would be
-    /// harmless but pointless.
+    /// Shown is documented as first-display only, and a second round of startup checks would
+    /// be pointless.
     /// </summary>
-    private bool _startupUpdateCheckDone;
+    private bool _startupChecksDone;
 
     private void MainForm_Shown(object? sender, EventArgs e)
     {
-        if (_startupUpdateCheckDone) return;
-        _startupUpdateCheckDone = true;
+        if (_startupChecksDone) return;
+        _startupChecksDone = true;
+
+        // First, and it waits for the pilot, so the update dialog never stacks on it (UPD-9).
+        OfferMissingData();
 
         if (!SettingsManager.Current.CheckForUpdatesOnStartup) return;
+
+        // A location download started from that dialog may still run: an update accepted now
+        // restarts the app and Shutdown cancels the download without a word. Skip this launch's
+        // check; the next launch asks again (UPD-9).
+        if (locationDataDownloader.IsRunning)
+        {
+            Log.Debug("Updates", "Startup update check skipped: the location data download is running.");
+            return;
+        }
 
         // A local build reports 0.0.0 (the csproj's placeholder — CI passes the real
         // -p:Version), which loses to every published tag, so without this every
@@ -585,6 +597,34 @@ public partial class MainForm : Form
         _ = RunUpdateCheckAsync(userInitiated: false);
     }
 
+    /// <summary>
+    /// The startup data check (UPD-9): offers the navigation database and the location data while
+    /// either is missing, on every launch, silenced only by its setting; a dismissal is never
+    /// remembered. Only the database of the simulator the app last connected to counts: it is the one
+    /// every feature opens. Nothing is probed while the setting is off.
+    /// </summary>
+    private void OfferMissingData()
+    {
+        try
+        {
+            var settings = SettingsManager.Current;
+            var needs = StartupDataCheck.Find(settings.CheckForMissingDataOnStartup, settings.SimulatorVersion,
+                NavdataReaderBuilder.DatabaseExists,
+                () => offlineLocationService.ReadyAtNextStart, () => offlineLocationService.IsAvailable);
+            if (!needs.Any) return;
+
+            using (var dialog = new StartupDataDialog(needs, locationDataDownloader))
+            {
+                if (dialog.ShowDialog(this) != DialogResult.Yes) return;
+            }
+            DatabaseSettingsMenuItem_Click(null, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("MainForm", $"Startup data check failed: {ex.Message}");
+        }
+    }
+
     private void InitializeManagers()
     {
         announcer = new ScreenReaderAnnouncer(this.Handle);
@@ -597,11 +637,16 @@ public partial class MainForm : Form
             if (speech.Immediate) announcer.AnnounceImmediate(speech.Text);
             else announcer.Announce(speech.Text);
         });
-        // Remove half-built files a crash left and promote a verified build whose swap never
-        // finished. Off the UI thread: a promotion may wait out an antivirus scan.
+        // Remove half-built files a crash left, promote a verified build whose swap never finished
+        // and drop a whole download past its reuse window. Off the UI thread: a promotion may wait
+        // out an antivirus scan.
         _ = Task.Run(() =>
         {
-            try { Services.Geography.LocationDataStore.Default.Sweep(); }
+            try
+            {
+                Services.Geography.LocationDataStore.Default.Sweep();
+                locationDataDownloader.SweepExpiredDownload();
+            }
             catch (Exception ex) { Log.Warn("LocationData", $"Startup sweep failed: {ex.Message}"); }
         });
 
@@ -1280,6 +1325,11 @@ public partial class MainForm : Form
         // tick through Disconnect()'s DoEvents pump below and could still speak.
         if (flyByWireMCDUForm != null && !flyByWireMCDUForm.IsDisposed) flyByWireMCDUForm.Dispose();
         flyByWireMCDUService?.Dispose();
+
+        // Fenix MCDU: its data-service socket and reconnect loop (otherwise only disposed on
+        // aircraft swap). The window first, then the service, as above.
+        if (fenixMCDUForm != null && !fenixMCDUForm.IsDisposed) fenixMCDUForm.Dispose();
+        fenixMCDUService?.Dispose();
 
         // Clean up PMDG EFB Coherent clients (otherwise only disposed on aircraft swap —
         // a user who opens the EFB then quits without switching aircraft leaks the socket + poll loop).
