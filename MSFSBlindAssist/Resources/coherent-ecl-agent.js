@@ -12,7 +12,7 @@
 // items (verified live: C/L shows the menu, UP/DOWN move the cursor, CHECK opens
 // the selected checklist or ticks the selected manual item, sensed items auto-tick).
 // The DOM lines themselves have no click handlers, which is why interaction goes
-// through the ECP L-vars rather than synthetic clicks. CoherentEclClient.cs sends
+// through the ECP L-vars rather than synthetic clicks. CoherentEWDClient.cs sends
 // this file, then calls __MSFSBA_ECL.scrape() -> JSON { ok, rows:[{text,type,
 // checked,style,selected}] }.
 //

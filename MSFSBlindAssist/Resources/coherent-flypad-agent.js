@@ -1022,8 +1022,8 @@
   A.markOwned = function (n) { if (n && n.setAttribute) n.setAttribute("data-fbw-ground-region", "1"); };
 
   // A380 Quick Controls "Cabin Lighting" row — suppressed. Its rc-slider has no native
-  // input and the injected agent CANNOT write SimVars (Coherent restriction — see the
-  // CLAUDE.md flyPad note), so it can't be set from here; it surfaced as a misleading
+  // input and the injected agent CANNOT write SimVars (Coherent restriction — see
+  // [FPD-1]), so it can't be set from here; it surfaced as a misleading
   // "0%Set Cabin Lighting" button. Cabin brightness/auto are now app-side panel controls
   // (A380 Interior Lighting). Own the whole row so the generic passes skip it.
   A.suppressCabinLighting = function (root) {

@@ -529,7 +529,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // Runway turn-off lights. The real A320 has ONE RWY TURN OFF switch
         // (SWITCH_OVHD_EXTLT_RWY, A320_NEO_INTERIOR.xml:1880-1895). It reads state from
         // LIGHT TAXI:2 (left) and LIGHT TAXI:3 (right) and fires the indexed K:2:TAXI_LIGHTS_SET
-        // RPN: "INDEX VALUE (>K:2:TAXI_LIGHTS_SET)" (from FBW_Switch_LeftClick_MouseWheel template,
+        // RPN: "<value> <index> r (>K:2:TAXI_LIGHTS_SET)" (from FBW_Switch_LeftClick_MouseWheel template,
         // Airbus.xml:250-255). MSFSBA exposes a single combo (this "LIGHT TAXI:2" entry, displayed
         // as "Runway Turn Off Lights") whose set drives BOTH sides via that same RPN — see the
         // "LIGHT TAXI:2" branch in MainForm's lighting block. LIGHT TAXI:2 is the representative
@@ -2934,6 +2934,20 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "AIRLINER_V2_SPEED", DisplayName = "V2",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true, Units = "knots", NotSetBelow = 1
+        },
+        // Take-off roll "V1" / "Rotate" / "V2" as those speeds are reached (A320TakeoffCallouts).
+        // Indicated airspeed fed per SIM_FRAME — the A380 / MD-11 / iFly pattern: IsAnnounced to be
+        // monitored at all, ExcludeFromBatch + HighFrequency for a per-var SIM_FRAME subscription (the
+        // 1 Hz batch would call "Rotate" up to a second, ~5 kt, late). Consumed, never spoken, hidden
+        // from Ctrl+M: each call is muted through its V1 / VR / V2 row above, which also mutes that
+        // speed's set-announce. One individual data definition; the batch layout is unchanged.
+        [A320TakeoffCallouts.IasKey] = new SimConnect.SimVarDefinition
+        {
+            Name = "AIRSPEED INDICATED", DisplayName = "Take-off callout airspeed",
+            Type = SimConnect.SimVarType.SimVar, Units = "knots",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true, ExcludeFromBatch = true, HighFrequency = true,
+            ExcludeFromMonitorManager = true
         },
         // ---- PFD: alpha-protection speeds (FAC1 ARINC429 words, knots; in-flight-only ----
         // -> "not available" on the ground is CORRECT). Auto-decoded by the generic ARINC path.
@@ -6627,10 +6641,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         pendingSpeedValue = pendingSpeedStatus = null;
         pendingAltitudeValue = pendingAltitudeStatus = null;
         pendingVSFPAValue = pendingVSFPAMode = null;
+        // The roll callouts' ARM (never the speeds, which a reconnect does not reliably redeliver):
+        // a flight load delivers the per-frame airspeed ahead of the 1 Hz SIM_ON_GROUND, so an arm
+        // kept from a parked aircraft would call V1, Rotate and V2 at the loaded cruise.
+        _takeoffCallouts.Reset();
     }
 
     public override void ResetAnnouncementBaselines()
     {
+        // The roll callouts' ARM goes on the reconnect too (as on the A380, the MD-11 and the iFly):
+        // nothing armed before a drop may fire on a later landing rollout. The speeds are kept.
+        _takeoffCallouts.Reset();
         _prevVertArmed = -1;
         _prevLatArmed = -1;
         _altConstraintFmgc1 = false;
@@ -6794,6 +6815,27 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // ---- Speed-brake handle band (10% steps) last announced; -1 = silent first-sample
     // baseline. See the band announce in ProcessSimVarUpdate (A380 parity).
     private int _lastSpoilerBand = -1;
+
+    // ---- Take-off roll "V1" / "Rotate" / "V2" (A320TakeoffCallouts, on the shared
+    // TakeoffVSpeedCallouts machine). Its ARM is dropped on every context reset and on a
+    // reconnect — never the speeds — exactly as the A380, the MD-11 and the iFly drop theirs: a
+    // further user of a shared machine needs every reset the first one has.
+    private readonly TakeoffVSpeedCallouts _takeoffCallouts = new();
+    // The last SIM_ON_GROUND sample. Starts true: a ramp start is the norm, and an airborne start is
+    // harmless, because the machine arms only on a sample below 40 kt, which the air never delivers.
+    private bool _calloutOnGround = true;
+    /// <inheritdoc />
+    public override string? TakeoffCalloutFeedKey => A320TakeoffCallouts.IasKey;
+    /// <inheritdoc />
+    public override bool TakeoffCalloutFeedNeeded => _takeoffCallouts.NeedsSamples(_calloutOnGround);
+
+    /// <summary>
+    /// The take-off airspeed feed speaks V1, Rotate and V2, whose Ctrl+M rows are the V-speeds', so it
+    /// is kept out of MainForm's mute wrap and checks each call's row itself. The feed is hidden from
+    /// Ctrl+M, so it is never a muted row of its own; it is named here so the branch's shape is
+    /// stated, as the A380 states it.
+    /// </summary>
+    public override bool IsMuteWrapExempt(string varName) => varName == A320TakeoffCallouts.IasKey;
 
     // ---- Approach minimums last-announced values (-1 = unset); see ProcessSimVarUpdate.
     private int _lastBaroMin = -1, _lastDh = -1;
@@ -7845,6 +7887,34 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
     public override bool ProcessSimVarUpdate(string varName, double value, Accessibility.ScreenReaderAnnouncer announcer)
     {
+        // Take-off roll V-speed callouts, fed per SIM_FRAME (hot path — first branch). The contract
+        // is TakeoffVSpeedCallouts': arms on the ground below 40 kt with V1 and VR set, upward
+        // crossings only, once per roll, a rejected take-off re-arms. AnnounceImmediate,
+        // deliberately: "V1" and "Rotate" are action cues whose value IS the timing, and a queued
+        // announce would wait out Takeoff Assist's "100 knots" or a ground-speed callout already
+        // being spoken. It interrupts, so the calls one sample crosses go out as ONE utterance
+        // (Compose) — spoken one by one, "V1" was cut off by "Rotate" whenever V1 = VR.
+        // AnnounceImmediate bypasses both MainForm's Suppressed wrap and the Ctrl+M mute, so both
+        // are applied here — per speed, keyed on the V1 / VR / V2 rows (A320TakeoffCallouts.Keys),
+        // as the A380, the MD-11 and the iFly do.
+        if (varName == A320TakeoffCallouts.IasKey)
+        {
+            var callouts = _takeoffCallouts.ProcessSample(value, _calloutOnGround);
+            if (callouts.Count > 0 && !announcer.Suppressed)
+            {
+                var muted = Settings.SettingsManager.Current.A32NXDisabledMonitorVariablesSet;
+                string? sentence = TakeoffVSpeedCallouts.Compose(callouts, callout => A320TakeoffCallouts.Keys.IsMuted(callout, muted));
+                if (sentence != null) announcer.AnnounceImmediate(sentence);   // "V1, Rotate": one utterance, never two
+            }
+            return true;
+        }
+        // Air/ground for the roll callouts and the FMS V-speeds that arm them — both PEEKED, never
+        // consumed: SIM_ON_GROUND still reaches the base's "On ground"/"Airborne", and the monitor
+        // still speaks "V1: 142 knots" as the pilot enters a speed. Up here, ahead of every branch
+        // that could consume them (the post-takeoff clear below is one).
+        if (varName == "SIM_ON_GROUND") _calloutOnGround = value >= 0.5;
+        else if (A320TakeoffCallouts.Keys.IsVSpeedKey(varName)) A320TakeoffCallouts.Keys.Feed(_takeoffCallouts, varName, value);
+
         // Wipers — OFF/SLOW/FAST is a two-var state (circuit switch + power). Store each
         // half as it arrives and recompute the per-side position so the "… Position"
         // readout is live (rendered from _wiperState* in TryGetDisplayOverride).
@@ -8626,7 +8696,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // calibration band centers; custom EFB calibrations may differ — see pass-2 checklist. Two engines on the A320.
         // NOTE (2026-06-12): a live-mapping in-RPN variant (band center computed from
         // A32NX_THROTTLE_MAPPING_*_LOW/HIGH:n) was tried and REVERTED at the user's
-        // request — it broke the detent announcements in their setup. See commit
+        // request — it did not work in their setup. See commit
         // 34a97a2a / the revert commit for the variant if ever revisited.
         if (varKey == "THROTTLE_ALL_DETENT" || (varKey.StartsWith("THROTTLE_") && varKey.EndsWith("_DETENT")))
         {
@@ -8636,19 +8706,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             // CLB [-0.05,0.05] / FLX [0.45,0.55] / TOGA [0.95,1]. The old -0.70 fell
             // in the gap between REV-IDLE and IDLE and never reached the detent.
             double[] detentAxis = { -1.0, -0.80, -0.50, 0.0, 0.50, 1.0 };
-            string[] dnames = { "Reverse", "Reverse Idle", "Idle", "Climb", "Flex M C T", "TOGA" };
             if (didx < 0 || didx >= detentAxis.Length) return true;
             uint ex1 = unchecked((uint)(int)Math.Round(detentAxis[didx] * 16384));
+            // No press confirmation: the screen reader already spoke the combo's value (CORE-7).
             if (varKey == "THROTTLE_ALL_DETENT")
             {
                 for (int n = 1; n <= 2; n++) simConnect.SendEvent($"THROTTLE{n}_AXIS_SET_EX1", ex1);
-                announcer.Announce($"All thrust levers {dnames[didx]}");
             }
             else
             {
                 int eng = varKey.Length > 9 && char.IsDigit(varKey[9]) ? varKey[9] - '0' : 1;
                 simConnect.SendEvent($"THROTTLE{eng}_AXIS_SET_EX1", ex1);
-                announcer.Announce($"Thrust lever {eng} {dnames[didx]}");
             }
             return true;
         }

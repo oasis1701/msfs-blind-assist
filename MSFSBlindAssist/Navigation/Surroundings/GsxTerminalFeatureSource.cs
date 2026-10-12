@@ -7,7 +7,8 @@ namespace MSFSBlindAssist.Navigation.Surroundings;
 /// GSX's uiTerminalName per stand, grouped into features, from the selectable list (GetNamedSpots
 /// carries no TerminalName). The header is a profile author's free-text section title, so its kind
 /// comes from its words and its stands (<see cref="KindOf"/>) and its name drops the author's notes
-/// (<see cref="PlaceName"/>).
+/// (<see cref="PlaceName"/>). For a stand no GSX profile covers (<see cref="ParkingSpot.GsxUnconfigured"/>)
+/// the header is GSX's own synthesized grouping, not an author's title, so those stands are skipped [DCK-44].
 /// </summary>
 public static class GsxTerminalFeatureSource
 {
@@ -21,8 +22,15 @@ public static class GsxTerminalFeatureSource
         var result = new List<AirportFeature>();
         // Grouped by the header as written; the catalog's same-name rule decides whether two
         // sections that clean to one name are one place.
+        // A stand GSX published unconfigured has no profile section, so its header is GSX's own
+        // synthesized grouping ("N Parking", "Gate W", "Ramp"), not a profile author's section title
+        // [DCK-44]. Before the unconfigured-stand fix those stands never reached this source (dropped,
+        // or the list was the navdata fallback, which the Source test excludes), and navdata, OSM and
+        // the scenery already describe those areas; skipping them keeps every GSX-synthesized header
+        // out of the catalog. (A profile-covered stand that navdata now orients, KJFK's Gate 1A shape,
+        // was dropped before and correctly joins its own section now.)
         var groups = selectableGates
-            .Where(s => s.Source == GateSource.Gsx)
+            .Where(s => s.Source == GateSource.Gsx && !s.GsxUnconfigured)
             .Select(s => (Spot: s, Header: ParkingSpot.SpeakableTerminalName(s.TerminalName).Trim()))
             .Where(x => x.Header.Length > 0)
             .GroupBy(x => x.Header, x => x.Spot, StringComparer.OrdinalIgnoreCase);

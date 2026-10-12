@@ -24,6 +24,9 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*FbwVSpeed*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*CoherentLinkState*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*CoherentViewOwnership*.cs"
+  - "MSFSBlindAssist/Aircraft/ArmedAltitudeMode.cs"
+  - "MSFSBlindAssist/Aircraft/WiperPosition.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*WiperPosition*.cs"
 ---
 # FlyByWire A32NX and Fenix A320 rules
 
@@ -33,8 +36,7 @@ Loaded when Claude reads matching code. Background: docs/a32nx.md. Full text of 
 - [A320-2] The A32NX C/B TRIPPED cautions need a monitored bit AND flight phase 1/2/6 AND a full 60-second confirm; don't declare them broken after a short wait. Full: docs/invariants/a32nx-fenix.md#a320-2
 - [A320-3] Every Fenix panel pushbutton must get a full PRESS-RELEASE pulse (0→1→0), never press-only: a press-only pulse leaves the button held down for the whole session (the stuck TO CONFIG / ECAM STATUS bug). Full: docs/invariants/a32nx-fenix.md#a320-3
 - [A320-4] Do not revert `ExecuteButtonTransition` to the press-only form: the release is safe for all ~150 Fenix buttons, since systems latch on the 0→1 rising edge into a separate indicator var. Full: docs/invariants/a32nx-fenix.md#a320-4
-- [A320-5] The A32NX MCDU runs over Coherent (`CoherentA32nxMcduClient`) with SimBridge as fallback, picked by `FbwMcduTransportArbiter`, which never replays a remembered frame; the client claims its view (`CoherentViewOwnership`), and never add a Captain/FO side selector. (more: see full) Full: docs/invariants/a32nx-fenix.md#a320-5
-- [A320-6] The A32NX Flight Director control vars are `A32NX_FCU_EFIS_{L,R}_FD_ACTIVE`, NOT `TOGGLE_FLIGHT_DIRECTOR`/`A320_Neo_FCU_FD_n_PUSH`/`A380X_EFIS_L_FD_BUTTON_IS_ON`; those genuinely fail, so don't re-conclude "uncontrollable". Full: docs/invariants/a32nx-fenix.md#a320-6
+- [A320-6] The A32NX Flight Director controls are the `A32NX.FCU_EFIS_{L,R}_FD_PUSH` events, with state `A32NX_FCU_EFIS_{L,R}_FD_LIGHT_ON` (`_FD_ACTIVE` does not exist), NOT `TOGGLE_FLIGHT_DIRECTOR`/`A320_Neo_FCU_FD_n_PUSH`/`A380X_EFIS_L_FD_BUTTON_IS_ON`; those genuinely fail, so don't re-conclude "uncontrollable". Full: docs/invariants/a32nx-fenix.md#a320-6
 - [A320-7] Never test A32NX overhead L:var writes via the unreliable data-def `SetLVar` path: the calculator path sticks for all of them, and the old "computed outputs that revert" verdict was an artifact of the wrong path. Full: docs/invariants/a32nx-fenix.md#a320-7
 - [A320-8] The `A32NX_RMP_{L,R}_VHF{n}_VOLUME` L:vars do not exist in dev FBW; do not re-add the ACP volume combos, the physical ACP is unmodeled. Full: docs/invariants/a32nx-fenix.md#a320-8
 - [A320-9] The armed-ALT constraint qualifier is the SSM of `A32NX_FMGC_{1,2}_FM_ALTITUDE_CONSTRAINT` (both FMGCs ORed), not a discrete bit; never port the A380 rule by assumption. Anything spoken from a callback outside `ProcessSimVarUpdate` must check `A32NXDisabledMonitorVariablesSet` itself. (more: see full) Full: docs/invariants/a32nx-fenix.md#a320-9
@@ -42,7 +44,7 @@ Loaded when Claude reads matching code. Background: docs/a32nx.md. Full text of 
 - [A320-11] The A32NX predicted takeoff pitch-trim sign is INVERTED vs the A380 (`-ths`, negative = nose up); never copy a sign convention between the two FMSes without checking the writer. Full: docs/invariants/a32nx-fenix.md#a320-11
 - [A320-12] FUEL MODE SEL junction options are 1-based (`t+1`, not `t`): the raw toggle value selects the wrong option even though the L:var/light appears to follow. Full: docs/invariants/a32nx-fenix.md#a320-12
 - [A320-13] The evacuation-horn shut-off L:var write is ONE-WAY; never pulse it back to 0, that resumes the horn. Full: docs/invariants/a32nx-fenix.md#a320-13
-- [A320-14] Momentary FBW L:var button pulses must be TWO SEPARATE calc calls, never one same-frame `1 (>L:X) 0 (>L:X)` string: the Rust sampler doesn't see a same-tick pulse. Full: docs/invariants/a32nx-fenix.md#a320-14
+- [A320-14] Momentary FBW L:var button pulses must be TWO SEPARATE calc calls spaced ~250 ms apart (`PulseMomentaryLVar`), never one same-frame `1 (>L:X) 0 (>L:X)` string, nor two back-to-back calls (they land in one frame and the second overwrites the first): the Rust sampler doesn't see a same-tick pulse. Full: docs/invariants/a32nx-fenix.md#a320-14
 - [A320-15] The A32NX DCDU display must be a ListBox, not a multiline TextBox: in a TextBox a right-aligned key label reads on a separate braille line from its leading key number. Full: docs/invariants/a32nx-fenix.md#a320-15
 - [A320-16] Map a DCDU soft-key slot by POSITION (a Y-threshold), never by simple L/R order: an empty-state key can be alone on a side yet still live on the second slot. Full: docs/invariants/a32nx-fenix.md#a320-16
 - [A320-17] DCDU page-scroll direction must be DOWN=forward everywhere: answer keys stay inactive until the pilot pages to the end of a multi-page uplink, so an inverted direction silently blocks answering. Full: docs/invariants/a32nx-fenix.md#a320-17
@@ -50,7 +52,6 @@ Loaded when Claude reads matching code. Background: docs/a32nx.md. Full text of 
 - [A320-19] Check the per-DCDU-key ACTIVE flags before firing; an inactive key must never falsely confirm a press. Full: docs/invariants/a32nx-fenix.md#a320-19
 - [A320-20] An inactive DCDU key must not dead-end on "read to the end first" (FBW loses `reachedEndOfMessage`): re-assert with `POEPLUS` and retry, but ONLY when the scraped page counter shows nothing left to read; never page past unread text. Full: docs/invariants/a32nx-fenix.md#a320-20
 - [A320-21] A32NX FCU baro polarity is PULL=STD/PUSH=QNH, the opposite of the A380's PUSH=STD/PULL=QNH; never harmonize them. Full: docs/invariants/a32nx-fenix.md#a320-21
-- [A320-22] FCU dial callouts (A32NX, Headwind A330, A380) listen only to sources that say themselves whether the window shows a selection, never the `A32NX_FCU_AFS_DISPLAY_*_VALUE` values; changes are STAGED, released at batch end only while the FCU is available. (more: see full) Full: docs/invariants/a32nx-fenix.md#a320-22
 - [A320-23] The A32NX autobrake set must use the MobiFlight calculator path, never `SetLVar` (the data-def write is unreliable for this FBW L:var). Full: docs/invariants/a32nx-fenix.md#a320-23
 - [A320-24] Never re-fold the A380's metric-altitude (MTRS) feature into the A32NX: the real A320 has no MTRS button (A330+/A380 only). Full: docs/invariants/a32nx-fenix.md#a320-24
 - [A320-25] A32NX approach minimums read the plain-feet `AIRLINER_*` L:vars, never the `A32NX_FM1_*` ARINC words: those are NCD until near destination, so a gate-entered MDA/DH read "Not set". Full: docs/invariants/a32nx-fenix.md#a320-25
@@ -60,6 +61,6 @@ Loaded when Claude reads matching code. Background: docs/a32nx.md. Full text of 
 - [A320-29] A32NX seat belts is genuinely 2-position ON/OFF in the FBW model (no AUTO, unlike the A380); don't "fix" it to 3-position. Full: docs/invariants/a32nx-fenix.md#a320-29
 - [A320-30] A32NX "Passengers on Board" sums the `A32NX_PAX_{A..D}_DESIRED` planned bitmasks, not the lagging boarded set. Full: docs/invariants/a32nx-fenix.md#a320-30
 - [A320-31] The Fenix MCDU marks selection with cyan AND large font: never gate the `*` marker on green alone nor broaden the colour test to cyan; detect it in `FenixMcduFormat`'s conservative size rule, run after the colour rule. Keep `SpecialChars`' `\uXXXX` escapes. (more: see full) Full: docs/invariants/a32nx-fenix.md#a320-31
-
-Mirrored from a380-coherent.md (it governs `_doorDefs` in FlyByWireA320Definition.cs; change it there and here together):
-- [A380C-16] Keep `A.DOOR_NAMES` (flyPad agent) in sync with each aircraft def's `_doorDefs` table, so the flyPad label and the spoken door name agree. Full: docs/invariants/a380-coherent.md#a380c-16
+- [A320-40] `FenixMCDUService` addresses the Fenix data service as 127.0.0.1, never localhost: it listens on IPv4 only, and refusing ::1 costs about 2 s on every new connection. Full: docs/invariants/a32nx-fenix.md#a320-40
+- [A320-41] Fenix hotkey readouts (FCU Shift+H/S/A/V, altimeter B) force-read the on-request `_READOUT` twins (`FcuReadoutVariables`), never the continuous originals: a forced read of one waits 0-1 s. Full: docs/invariants/a32nx-fenix.md#a320-41
+- [A380-8] Every A32NX DCDU H-event fire (`FlyByWireDcduForm.FireDcduEvent`; the A380 has no DCDU) must be sequence-uniquified too, or the WILCO then SEND second press on the same slot is silently dropped. Full: docs/invariants/a32nx-fenix.md#a380-8

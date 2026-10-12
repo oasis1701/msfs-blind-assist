@@ -7,9 +7,8 @@ namespace MSFSBlindAssist.Tests;
 /// <summary>
 /// Pins <see cref="GsxRemoteGateSelector"/>'s decision logic — the request builder plus
 /// Task 1's interpreter — entirely without a socket, via an injected send delegate and an
-/// injected capability set. See
-/// docs/superpowers/specs/2026-08-12-gsx-remote-api-gate-list-and-selection-design.md
-/// §"GsxRemoteGateSelector.cs — REVISED".
+/// injected capability set. See [GSX-1], [GSX-2], [GSX-5], [GSX-6] and docs/gsx.md,
+/// "Developer internals" (the <c>gate.select</c> bullet).
 ///
 /// Every wire shape here is hand-written from the guide, same caveat as
 /// GsxGateSelectResultTests: no live gate.select capture exists yet.
