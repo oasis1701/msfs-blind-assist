@@ -843,21 +843,22 @@ public partial class FlyByWireA380Definition
             }
             return true;
         }
-        // Minimums (CORRECTED 2026-07): plain-feet L:vars the MFD PERF page writes
-        // (AIRLINER_MINIMUM_DESCENT_ALTITUDE = baro MDA, AIRLINER_DECISION_HEIGHT = radio
-        // DH), NOT the ARINC429 FM1 words (which are NCD until approach range). Announce
-        // when a minimum is set/changed; no announce on clear. Sentinel decode shared with
-        // the display path via ApproachMinimums (MDA unset <= 0; DH unset < 0 — DH 0 is a
-        // valid CAT III entry and MUST announce, matching the "0 feet" the panel shows).
+        // Minimums (CORRECTED 2026-07): plain-feet L:vars the active plan's PERF APPR minimums
+        // are mirrored into (AIRLINER_MINIMUM_DESCENT_ALTITUDE = baro MDA,
+        // AIRLINER_DECISION_HEIGHT = radio DH), NOT the ARINC429 FM1 words (which are NCD until
+        // approach range). Announced when set, changed or cleared (A380Minimums: since FBW
+        // #10929 the FMS's own clear on an approach change reaches these vars); a DH of 0 is
+        // NO DH on the A380. A clear while a flight load or reconnect settles, or on the ground
+        // after a flight (the DONE-phase reset's initSimVars), is the FMS starting over, not news
+        // (ApproachMinimums.IsFmsReset). Sentinels shared with the display path via ApproachMinimums.
         if (varName == "AIRLINER_MINIMUM_DESCENT_ALTITUDE" || varName == "AIRLINER_DECISION_HEIGHT")
         {
             bool baro = varName.EndsWith("DESCENT_ALTITUDE", StringComparison.Ordinal);
             int ft = ApproachMinimums.ToFeet(isDecisionHeight: !baro, value);
-            if (ft != (baro ? _lastBaroMin : _lastDh))
-            {
-                if (baro) _lastBaroMin = ft; else _lastDh = ft;
-                if (ft >= 0) announcer.Announce($"{(baro ? "Baro minimum" : "Decision height")} {ft} feet");
-            }
+            string? phrase = A380Minimums.Announcement(isDecisionHeight: !baro, baro ? _lastBaroMin : _lastDh, ft,
+                reseeding: ApproachMinimums.IsFmsReset(IsFcuValueSettling, _calloutOnGround, _fmgcPhaseA380));
+            if (baro) _lastBaroMin = ft; else _lastDh = ft;
+            if (phrase != null) announcer.Announce(phrase);
             return true;
         }
         if (_reqBaro && varName == "KOHLSMAN_HG")
@@ -1237,10 +1238,9 @@ public partial class FlyByWireA380Definition
         // prev >= 0 (declared sentinel -1 = unseen), independent per index — no
         // baseline-completion coupling like the thrust-lever group.
         for (int i = 0; i < _gpuAvail.Length; i++) _gpuAvail[i] = -1;
-        // Deliberately NOT reset: _lastBaroMin/_lastDh (minimums). Their gate is a plain
-        // "changed" compare with no first-read suppression — a set minimum is meant to
-        // announce on connect. Seeded to -2 (impossible sentinel, since -1 is a valid
-        // "none/NCD" reading) precisely so the first read always announces. Resetting them
+        // Deliberately NOT reset: _lastBaroMin/_lastDh (minimums). A380Minimums.Announcement
+        // speaks any set or changed value, a set minimum on connect included, and stays silent
+        // on a clear while the FMS starts over (ApproachMinimums.IsFmsReset). Resetting them
         // here would make a still-set minimum re-announce on reconnect as noise.
     }
 

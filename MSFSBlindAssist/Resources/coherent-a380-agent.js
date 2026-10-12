@@ -11,7 +11,8 @@
 //   __MSFSBA_A380.scrape(mcduIndex)            -> JSON string (see below)
 //   __MSFSBA_A380.setMcdu(n)                   -> "" (1=Capt, 2=FO)
 //   __MSFSBA_A380.clickElement(index)          -> "ok"|"missing"
-//   __MSFSBA_A380.sendToField(index, text)     -> "ok"|"missing"
+//   __MSFSBA_A380.sendToField(index, text)     -> "ok"|"missing"|"inactive"|"noinput"|"nomatch"|"noclear"
+//   __MSFSBA_A380.navigateById(prefix, i, key) -> "ok"|"key"|"disabled"|"missing"
 //   __MSFSBA_A380.sendScratchpad(text)         -> "ok"
 //   __MSFSBA_A380.fireKey(key)                 -> "ok"     (KCCU key name)
 //   __MSFSBA_A380.ping()                       -> "MSFSBA_A380_OK"
@@ -154,6 +155,11 @@
       // STAR / VIA on the departure & arrival pages, plus SPD ALT, F-PLN INFO).
       // Classify it as a dropdown so it reads as a combo box, not a plain button.
       try { if (node.querySelector('[class*="dropdown-arrow"]')) return "dropdown"; } catch (e) {}
+      // A button drawn WITHOUT the arrow (showArrow=false) can still open a menu: the
+      // CPNY WIND button, once an uplink is received, offers INSERT* / CLEAR*. FBW's
+      // Button renders its items into the sibling .mfd-dropdown-menu whether or not it
+      // is open (Button.tsx), so a populated menu marks a combo too.
+      if (A.siblingMenuHasItems(node)) return "dropdown";
       return "button";
     }
     if (c.contains("mfd-icon-button")) return "icon";
@@ -162,6 +168,21 @@
     if (c.contains("mfd-page-selector-outer")) return "tab";
     if (c.contains("mfd-fms-fpln-duplicate-table-row")) return "button";
     return "other";
+  };
+
+  // True when a Button's own menu (the .mfd-dropdown-menu beside it in its
+  // .mfd-dropdown-container) holds at least one option. Count OPTIONS, not children:
+  // Button.tsx renders its items inside a wrapper <div> even when there are none, so
+  // every arrow-less menu button (INIT's CPNY F-PLN REQUEST among them) has a child.
+  A.siblingMenuHasItems = function (node) {
+    var p = node.parentElement;
+    if (!p || !p.classList || !p.classList.contains("mfd-dropdown-container")) return false;
+    for (var i = 0; i < p.children.length; i++) {
+      var c = p.children[i];
+      if (c.classList && c.classList.contains("mfd-dropdown-menu"))
+        return !!c.querySelector(".mfd-dropdown-menu-element");
+    }
+    return false;
   };
 
   // For a label+value widget (SURV / ADS-C), join the label and its value span.
@@ -251,6 +272,11 @@
   // so multi-span / stacked button captions don't mash together ("ACTIVATE" +
   // "APPR*" -> "ACTIVATE APPR*", not "ACTIVATEAPPR*"). The FBW MFD renders many
   // two-word/two-line button labels as adjacent spans with no whitespace.
+  // A child that is not drawn (A.isVisible: the COMPUTED style, not a class name) is
+  // skipped. FBW's `hidden` class alone does not hide: the CPNY WIND button's "*" carries
+  // it once a request is pending or an uplink is received (FBW #10929,
+  // CpnyWindButtonUtils.tsx), but its inline style="display: flex" beats `.hidden
+  // { display: none; }`, so the star stays on screen and is read, as a pilot sees it.
   A.spacedText = function (n) {
     var parts = [];
     (function walk(node, depth) {
@@ -258,7 +284,7 @@
       for (var i = 0; i < node.childNodes.length; i++) {
         var c = node.childNodes[i];
         if (c.nodeType === 3) { var t = c.nodeValue; if (t && t.replace(/\s+/g, "")) parts.push(clean(t)); }
-        else if (c.nodeType === 1) { walk(c, depth + 1); }
+        else if (c.nodeType === 1 && A.isVisible(c)) { walk(c, depth + 1); }
       }
     })(n, 0);
     return parts.join(" ").replace(/\s+/g, " ").trim();
@@ -355,6 +381,10 @@
     if (kind === "survstatus") {
       return A.labelValueText(n) || "(button)";
     }
+    if (kind === "icon") {
+      var il = A.windIconLabel(n);
+      if (il) return il;
+    }
     var bt = A.spacedText(n);
     if (!bt && n.getAttribute) bt = clean(n.getAttribute("aria-label") || n.getAttribute("title") || "");
     return bt;
@@ -384,6 +414,7 @@
     for (var i = 0; i < items.length; i++) {
       var inp = items[i];
       if (inp.kind !== "input") continue;
+      if (inp.windLabeled) continue;   // named by buildWindLines from its row, never by geometry
       if (typeof inp.left !== "number") continue;
       var best = null, bestRight = -1;
       for (var j = 0; j < items.length; j++) {
@@ -555,6 +586,144 @@
       items.push({ top: r.top - pageRect.top, left: r.left - pageRect.left, right: r.right - pageRect.left, bot: r.bottom - pageRect.top, idx: 0, kind: "text", text: labT + ": " + shown, value: "", disabled: false, perf: true });
     }
     return idx;
+  };
+
+  // ---- WIND page (FBW #10929, MfdFmsWindPage.tsx) ------------------------------
+  // The page is a table of wind rows (CLB 5, CRZ 4 per cruise waypoint, DES 5) whose three
+  // InputFields carry no label: ALT and T.WIND are column headers above the first row only,
+  // so a geometric pairing names nothing (or names the ALTN direction field with the cruise
+  // level beside it), and a row's altitude field is padded lower than its direction and
+  // speed (MfdFmsWindPage.scss), often a row bucket lower, so a plain sort read them out of
+  // order. Name each field from its
+  // row's structure instead, give the three one reading position, and read the HISTORY
+  // entries and the ALTN TRIP WIND row as one line each. Interactive items keep their idx;
+  // the static parts consumed here are owned so the generic pass skips them.
+  A.WIND_PHASE_WORDS = { CLB: "Climb", CRZ: "Cruise", DES: "Descent" };
+
+  A.windPageContainer = function (page) {
+    var cs = page.querySelectorAll(".mfd-fms-wind-page-container");
+    for (var i = 0; i < cs.length; i++) { if (A.isVisible(cs[i])) return cs[i]; }
+    return null;
+  };
+
+  // The CRZ tab's next/previous cruise-waypoint arrows: IconButtons with no text, in that
+  // order (MfdFmsWindPage.tsx: double-down = next, then double-up = previous).
+  A.windIconLabel = function (n) {
+    var box = A.ancestorWithClass(n, "mfd-fms-wind-page-buttons-container");
+    if (!box) return "";
+    var icons = box.querySelectorAll(".mfd-icon-button");
+    if (icons.length > 0 && icons[0] === n) return "Next cruise waypoint";
+    if (icons.length > 1 && icons[1] === n) return "Previous cruise waypoint";
+    return "";
+  };
+
+  A.buildWindLines = function (page, pageRect, items) {
+    var cont = A.windPageContainer(page);
+    if (!cont) return;
+    function own(el) { try { el.setAttribute("data-fbwa380-perf-owned", "1"); } catch (e) {} }
+    function relTop(el) { return el.getBoundingClientRect().top - pageRect.top; }
+    function itemFor(el) {
+      var ix = parseInt(el.getAttribute("data-fbwa380-mcdu-idx"), 10);
+      for (var k = 0; k < items.length; k++) { if (items[k].idx === ix) return items[k]; }
+      return null;
+    }
+    function isBlank(v) { return !v || v === "blank" || /^[-\s.]*$/.test(v); }
+    function name(field, label, top) {
+      var it = itemFor(field);
+      if (!it) return;
+      var span = field.querySelector(".mfd-input-field-text-input");
+      var computed = !!(span && span.classList.contains("computedByFms"));
+      var v = it.value;
+      var shown = isBlank(v) ? "blank"
+        : (it.leadUnit ? it.leadUnit + " " : "") + v + (it.ownUnit ? " " + it.ownUnit : "");
+      it.text = label + ": " + shown + (computed && !isBlank(v) ? " (computed)" : "");
+      it.top = top;
+      it.windLabeled = true;
+    }
+    function fields(row, sel) { return row.querySelectorAll(sel + " .mfd-input-field-container[data-fbwa380-mcdu-idx]"); }
+
+    var title = cont.querySelector(".mfd-fms-wind-page-title-container");
+    var history = !!(title && title.classList.contains("history"));
+    var phase = "";
+    if (cont.classList.contains("crz")) phase = "Cruise";
+    else if (title) {
+      var tt = clean(title.textContent).toUpperCase();
+      for (var key in A.WIND_PHASE_WORDS) { if (tt.indexOf(key) >= 0) { phase = A.WIND_PHASE_WORDS[key]; break; } }
+    }
+
+    // The ALT / T.WIND column header: every field now says which column it is.
+    var heads = cont.querySelectorAll(".mfd-fms-wind-page-table-row.header");
+    for (var h = 0; h < heads.length; h++) own(heads[h]);
+
+    // CRZ: the next/previous arrows sit a little higher than the CRZ WIND AT list they step
+    // through; read them right after it.
+    var pick = cont.querySelector(".mfd-fms-wind-page-crz-dropdown-container [data-fbwa380-mcdu-idx]");
+    var pickItem = pick ? itemFor(pick) : null;
+    if (pickItem) {
+      var arrows = cont.querySelectorAll(".mfd-fms-wind-page-buttons-container [data-fbwa380-mcdu-idx]");
+      for (var ar0 = 0; ar0 < arrows.length; ar0++) {
+        var ai0 = itemFor(arrows[ar0]);
+        if (ai0) ai0.top = pickItem.top;
+      }
+    }
+
+    var rows = cont.querySelectorAll(".mfd-fms-wind-page-table-row");
+    var n = 0;
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      if (row.classList.contains("header")) continue;
+      n++;
+      if (history) {
+        own(row);
+        var shownWrap = row.firstElementChild;
+        if (!shownWrap || !A.isVisible(shownWrap)) continue;
+        var flEl = row.querySelector(".mfd-fms-wind-page-history-wind-fl-value");
+        var tagEl = row.querySelector(".mfd-label.mfd-fms-wind-page-history-wind-fl-label");
+        var vals = row.querySelectorAll(".mfd-fms-wind-history-wind-entry .mfd-label");
+        var fl = flEl ? clean(flEl.textContent) : "";
+        if (!fl) continue;
+        var dir = vals.length > 0 ? clean(vals[0].textContent) : "";
+        var spd = vals.length > 1 ? clean(vals[1].textContent).replace(/^\//, "") : "";
+        // "---" is a level with no wind recorded (HistoryWind.ts: an undefined vector), not calm.
+        var wind = (isBlank(dir) || isBlank(spd)) ? "not recorded" : dir + " °, " + spd + " KT";
+        var cruise = tagEl && clean(tagEl.textContent).toUpperCase() === "CRZ";
+        var hr = row.getBoundingClientRect();
+        items.push({ top: hr.top - pageRect.top, left: 0, right: hr.right - pageRect.left, bot: hr.bottom - pageRect.top,
+          idx: 0, kind: "text", text: "History wind " + n + ": FL " + fl + (cruise ? " (cruise)" : "") + ", " + wind,
+          value: "", disabled: false, perf: true });
+        continue;
+      }
+      var top = relTop(row);
+      var label = phase + " wind " + n;
+      var alt = fields(row, ".mfd-fms-wind-altitude-entry-container");
+      if (alt.length > 0) name(alt[0], label + (phase === "Cruise" ? " flight level" : " altitude"), top);
+      var ds = fields(row, ".mfd-fms-wind-direction-speed-entry-container");
+      if (ds.length > 0) name(ds[0], label + " direction", top);
+      if (ds.length > 1) name(ds[1], label + " speed", top);
+    }
+
+    // DES: the ALTN TRIP WIND row — its heading, the alternate's cruise level (static) and a
+    // direction / speed pair.
+    var altn = cont.querySelector(".mfd-fms-wind-alternate-row");
+    if (altn && A.isVisible(altn)) {
+      var heading = altn.querySelector(".mfd-label");
+      var flBox = altn.querySelector(".mfd-fms-wind-alternate-row-cruise-fl");
+      var cfl = "";
+      if (flBox) {
+        var lv = flBox.querySelector(".mfd-label");
+        cfl = lv ? clean(lv.textContent) : "";
+        own(flBox);
+      }
+      if (heading) own(heading);
+      var at = relTop(altn);
+      var ar = altn.getBoundingClientRect();
+      items.push({ top: at, left: 0, right: ar.right - pageRect.left, bot: ar.bottom - pageRect.top,
+        idx: 0, kind: "text", text: "ALTN trip wind" + (isBlank(cfl) ? "" : ", cruise FL " + cfl),
+        value: "", disabled: false, perf: true });
+      var af = fields(altn, ".mfd-fms-wind-direction-speed-entry-container");
+      if (af.length > 0) name(af[0], "ALTN trip wind direction", at);
+      if (af.length > 1) name(af[1], "ALTN trip wind speed", at);
+    }
   };
 
   // ---- SURV CONTROLS page: header-prefix the radios + toggle buttons ----------
@@ -840,7 +1009,7 @@
       // once the FMS computes them in flight they fold in as ", 250 knots" /
       // ", flight level 350". Captured by column position WITH a value-pattern
       // guard so a mis-placed cell can never inject garbage. (Verify in flight.)
-      var spd = "", alt = "", efob = "", windDir = "", windMag = "";
+      var spd = "", alt = "", efob = "", windDir = "", windMag = "", windSlash = false;
       var cells = L.getElementsByTagName("*");
       for (var p = 0; p < cells.length; p++) {
         var pc = cells[p];
@@ -850,15 +1019,18 @@
         if (!pt || isDash(pt)) continue;
         var relX = pc.getBoundingClientRect().left - lr.left;
         if (efobWindMode) {
-          // EFOB column ("NN.N" tonnes) sits in the old speed band; the wind splits
-          // into direction (TAIL/HEAD/ddd° or ditto) + "/" + magnitude (knots or
-          // ditto) across the old altitude band. The "--.-"/"---" blanks were
-          // already dropped by isDash above; skip only the "/" separator glyph.
-          if (pt === "/") continue;
+          // EFOB column ("NN.N" tonnes) sits in the old speed band; the wind is a
+          // direction (TL/HD for a tail/headwind component, ddd°, or a ditto), a "/",
+          // and a magnitude (knots or a ditto), right of it in the altitude column. Since
+          // FBW #10929 each half is the text of a 45 px span (MfdFmsFpln.tsx ~1800), so a
+          // magnitude can start left of where the old x=472 split expected it: the "/",
+          // in document order, is what separates the two. The "--.-"/"---" blanks were
+          // already dropped by isDash above.
           if (!efob && relX >= 300 && relX < 405 && /^\d{1,3}\.\d$/.test(pt)) efob = pt;
-          else if (relX >= 405 && relX < 520) {
-            if (relX < 472) { if (!windDir) windDir = pt; }   // direction slot (left)
-            else { if (!windMag) windMag = pt; }              // magnitude slot (right)
+          else if (relX >= 380 && relX < 520) {
+            if (pt === "/") windSlash = true;
+            else if (!windSlash) { if (!windDir) windDir = pt; }   // before the "/"
+            else { if (!windMag) windMag = pt; }                   // after it
           }
         } else {
           // A '"' is the SPD/ALT ditto mark (prediction unchanged from the line
@@ -896,22 +1068,21 @@
       // constraint LITERAL as displayed ("+250", "-FL100", "WINDOW"). A "*"
       // constraint marker stays prepended exactly as displayed. Hold rows put the
       // hold speed into the time column under its on-screen "SPD" annotation
-      // ("SPD 210"). EFOB/T.WIND view: same grid, spd column = EFOB ("36.5"),
-      // alt column = wind ("TAIL/7", dittos literal), no labels.
-      var spdCell = "", altCell = "", timeCell = "";
+      // ("SPD 210"), in both views. EFOB/T.WIND view: same grid, spd column = EFOB
+      // ("36.5"), alt column = wind ("TL/7", dittos literal), no labels.
+      var spdCell = "", altCell = "";
+      var timeCell = isHoldRow ? (holdSpd ? "SPD " + holdSpd : "") : eta;
       if (efobWindMode) {
         spdCell = efob;
         // Strip the FBW zero-padding on a numeric wind magnitude (007 -> 7);
         // a '"' ditto passes through literally.
         var wmag = windMag.replace(/^0+(?=\d)/, "");
         if (windDir || wmag) altCell = (windDir && wmag) ? windDir + "/" + wmag : (windDir || wmag);
-        timeCell = eta;
       } else {
         if (spd) spdCell = (spdCon ? "*" : "") + spd;
         else if (conSpd) spdCell = conSpd;
         if (alt) altCell = (altCon ? "*" : "") + alt;
         else if (conAlt) altCell = conAlt;
-        timeCell = isHoldRow ? (holdSpd ? "SPD " + holdSpd : "") : eta;
       }
       var gridLine = padCell(ident, 8) + padCell(anno, 6) +
                      padCell(track, 5) +
@@ -1251,6 +1422,9 @@
     //     header ("TCAS: TA/RA", "WXR: AUTO"); matched headers are owned so the
     //     static pass below skips them. Enriches existing items in place (idx kept).
     if (A.isSurvPage(page)) idx = A.buildSurvControls(page, pageRect, items, idx);
+
+    // 1f) WIND page → name every wind field from its row (see buildWindLines).
+    A.buildWindLines(page, pageRect, items);
 
     // 2) static-text leaves not inside an interactive control above.
     var all = page.getElementsByTagName("*");
@@ -1727,19 +1901,26 @@
     } catch (e4) {}
   };
 
-  // Type a string into a focused text-input span via keypress events, then ENTER.
-  // Only chars the field accepts are sent; others (e.g. lowercase already upper-cased)
-  // map to their ASCII code. Dispatched synchronously — the handlers are synchronous.
-  A.typeIntoField = function (span, text, commit) {
-    var v = String(text || "").toUpperCase();
+  // The keypress codes for typing `text`: upper-cased, and only the chars the field
+  // accepts (the rest are dropped).
+  A.entryKeyCodes = function (text) {
+    var v = String(text || "").toUpperCase(), codes = [];
     for (var i = 0; i < v.length; i++) {
       var ch = v.charAt(i);
       // Comma is the European decimal separator; map it to a period so users
       // on comma-decimal locales can type coordinates, altitudes, etc.
       if (ch === ",") ch = ".";
-      if (!/^[A-Z0-9/.+\- ]$/.test(ch)) continue;
-      A.dispatchKey(span, "keypress", ch.charCodeAt(0));
+      if (/^[A-Z0-9/.+\- ]$/.test(ch)) codes.push(ch.charCodeAt(0));
     }
+    return codes;
+  };
+
+  // Type a string into a focused text-input span via keypress events, then ENTER.
+  // Dispatched synchronously — the key handlers are synchronous (FBW validates the
+  // entry asynchronously after ENTER).
+  A.typeIntoField = function (span, text, commit) {
+    var codes = A.entryKeyCodes(text);
+    for (var i = 0; i < codes.length; i++) A.dispatchKey(span, "keypress", codes[i]);
     if (commit) A.dispatchKey(span, "keypress", 13);
   };
 
@@ -1861,6 +2042,25 @@
     } catch (e) { return false; }
   };
 
+  // The option of a DropdownMenu (its .mfd-dropdown-outer) whose text is `text`, ignoring
+  // case and surrounding blanks, else null.
+  A.dropdownOptionFor = function (outer, text) {
+    var want = clean(String(text == null ? "" : text)).toUpperCase();
+    if (!want) return null;
+    var cont = outer.parentElement;
+    var menu = cont && cont.querySelector(".mfd-dropdown-menu");
+    if (!menu) return null;
+    var opts = menu.querySelectorAll(".mfd-dropdown-menu-element");
+    for (var i = 0; i < opts.length; i++) {
+      if (clean(opts[i].textContent).toUpperCase() === want) return opts[i];
+    }
+    return null;
+  };
+
+  // Option ids of the DropdownMenus that take FREE TEXT (MfdFmsFplnDirectTo.tsx,
+  // InsertNextWptFrom.tsx: `${captOrFo}_MFD_{directTo,insertNextWpt}Dropdown_${i}`).
+  A.FREE_TEXT_LIST_ID = /_MFD_(directToDropdown|insertNextWptDropdown)_\d+$/;
+
   A.sendToField = function (index, newValue) {
     var node = document.querySelector('[data-fbwa380-mcdu-idx="' + index + '"]');
     if (!node) return "missing";
@@ -1878,26 +2078,52 @@
     for (var i = 0; i < A._mcduElements.length; i++) {
       if (A._mcduElements[i].idx === index) { info = A._mcduElements[i]; break; }
     }
-    // Non-input (button/dropdown/tab/menu) — just click.
-    if (info && info.kind !== "input") { A.clickNode(node); return "ok"; }
+    // Empty newValue = a CLEAR request (the form's Backspace/Delete on a field). A clear
+    // needs a real BACKSPACE+ENTER, not a bare ENTER (see clearFocusedField).
+    var isClear = (newValue === null || String(newValue) === "");
+
+    // Non-input (button/dropdown/tab/menu) — just click. A clear is refused, never
+    // clicked: CLR on INSERT WIND *, CANCEL WIND * or a SURV toggle would press it.
+    if (info && info.kind !== "input") { if (isClear) return "noclear"; A.clickNode(node); return "ok"; }
 
     var span = node.querySelector(".mfd-input-field-text-input");
-    if (!span) { A.clickNode(node); return "noinput"; }
+    if (!span) { if (isClear) return "noclear"; A.clickNode(node); return "noinput"; }
     var spanningDiv = node.querySelector(".mfd-input-field-text-input-container");
 
     // DropdownMenu-wrapped input (e.g. ATC COM "NOTIFY TO ATC", any combo field):
     // its InputField is handleFocusBlurExternally, so a direct span click does NOT
     // focus it — the field only becomes editable when the DROPDOWN is opened
     // (DropdownMenu focuses the inner InputField on open). So open it first.
-    // Empty newValue = a CLEAR request (the form's Backspace/Delete on a field). A clear
-    // needs a real BACKSPACE+ENTER, not a bare ENTER (see clearFocusedField).
-    var isClear = (newValue === null || String(newValue) === "");
-
     var dd = A.ancestorWithClass(node, "mfd-dropdown-outer");
     if (dd) {
+      // A value the list offers is CLICKED, as a pilot picks it: since FBW #10929 a typed
+      // entry that matches an option reaches the page as free text (index -1), which the
+      // WIND page's CRZ WIND AT ignores while showing the typed name, and VERT REV / STEP
+      // ALTs take as no waypoint at all (DropdownMenu.onFieldSubmit). An option's click
+      // handler fires with the list closed (as the page selectors' do). Not on a list that
+      // takes FREE TEXT (DIRECT TO, INSERT NEXT WPT), which #10929 left alone: a typed ident
+      // there has always been looked up in the database (DUPLICATE NAMES when ambiguous),
+      // and picking the plan's leg instead would change what the entry means.
+      if (!isClear) {
+        var opt = A.dropdownOptionFor(dd, newValue);
+        if (opt && !A.FREE_TEXT_LIST_ID.test(opt.id || "")) { A.clickNode(opt); return "ok"; }
+      }
+      if (isClear && /^[\s\-.▯]*$/.test(span.textContent)) return "ok";   // nothing to clear
       if (!A.dropdownIsOpen(dd)) A.clickNode(dd);   // toggle open -> focuses inner field
-      if (isClear) A.clearFocusedField(span);       // backspace + ENTER (clears, closes)
-      else A.typeIntoField(span, newValue, true);   // type + ENTER (commits, closes)
+      // A fixed-value list ignores every key (InputField: fixedValuesDropDown) and the MFD
+      // says nothing, so the entry sets nothing. Tell it apart BEFORE ENTER, from whether
+      // the first key changed the field: a list that takes typing shows its edit buffer at
+      // once. Whether the list closes after ENTER cannot tell: FBW validates asynchronously
+      // and closes it only after its 500 ms wait.
+      var before = span.textContent;
+      var keys = isClear ? [8] : A.entryKeyCodes(newValue);   // BACKSPACE empties the buffer
+      if (keys.length > 0) A.dispatchKey(span, isClear ? "keydown" : "keypress", keys[0]);
+      if (span.textContent === before) {
+        if (A.dropdownIsOpen(dd)) A.clickNode(dd);   // close it again, or it stays over the page
+        return isClear ? "noclear" : "nomatch";
+      }
+      for (var k = 1; k < keys.length; k++) A.dispatchKey(span, "keypress", keys[k]);
+      A.dispatchKey(span, "keypress", 13);           // ENTER: FBW commits, then closes the list
       return "ok";
     }
 

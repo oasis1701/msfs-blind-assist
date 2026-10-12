@@ -304,7 +304,7 @@ public partial class FlyByWireA380Definition
             "A32NX.FCU_ALT_PUSH", "A32NX.FCU_ALT_PULL", "A32NX_FCU_ALT_INCREMENT_1000",
             "A32NX.FCU_VS_PUSH", "A32NX.FCU_VS_PULL",
             "A32NX.FCU_SPD_MACH_TOGGLE_PUSH",
-            "A32NX.FCU_AP_DISCONNECT_PUSH", "A32NX.FCU_ATHR_DISCONNECT_PUSH",
+            "A32NX.FCU_AP_DISCONNECT_PUSH", AutothrustDisconnectEvent,
             A380MetricAltitude.ControlKey
         };
         p["OIT"] = new List<string> { "A380X_SWITCH_OIT_SIDE_LEFT", "A380X_SWITCH_OIT_SIDE_RIGHT" };
