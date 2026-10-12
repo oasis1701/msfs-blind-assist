@@ -223,12 +223,12 @@ public sealed class WaypointFlightDirectorProfile
     };
 
     /// <summary>
-    /// COWS Diamond DA40 NG and XLS (PR #242): a light single, flown live with the FD's own
-    /// commands on 2026-10-12. Cruise 110-130 KTAS, so a standard-rate turn is 16-20 degrees of
-    /// bank and the GFC 700 itself limits bank to about 22; the airframe rolls far quicker than
-    /// any jet, so it takes a short rate lead and a quick slew, and covers ground at half an
-    /// A320's speed, so it captures a fix closer and intercepts a course more steeply per mile.
-    /// Pitch: Vy is about 8 degrees nose up, so the tone range is 10 (WFD-2: equal to MaxPitchDeg).
+    /// COWS Diamond DA40 NG and XLS (PR #242): a light single. CLASS ESTIMATE, pending the GFC 700
+    /// HDG-mode measurement (docs/waypoint-flight-director.md, "Tuning an aircraft profile from its own
+    /// autopilot"). Cruise 110-130 KTAS, so a standard-rate turn is 16-20 degrees of bank; the
+    /// airframe rolls far quicker than any jet and covers ground at half an A320's speed, so it
+    /// captures a fix closer and intercepts a course more steeply per mile. Vy is about 8 degrees
+    /// nose up, so the pitch limit and tone range are 10 (WFD-2).
     /// </summary>
     public static WaypointFlightDirectorProfile CowsDA40 => new()
     {

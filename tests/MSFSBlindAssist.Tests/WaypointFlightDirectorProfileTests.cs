@@ -42,4 +42,20 @@ public class WaypointFlightDirectorProfileTests
         var p = WaypointFlightDirectorProfile.CowsDA40;
         Assert.Equal(p.MaxPitchDeg, p.TonePitchRangeDeg);
     }
+
+    private sealed class Da40CodedDefinition : YourAircraftDefinition
+    {
+        public override string AircraftCode => "COWS_DA40NG";
+    }
+
+    [Fact]
+    public void ADefinitionWithoutItsOwnOverrideIsRoutedByItsCode()
+    {
+        // The base class's default is what delivers the table's entry to the DA40, whose
+        // definition (PR #242) does not override the method.
+        Assert.Equal(WaypointFlightDirectorProfile.CowsDA40.CaptureRadiusNm,
+            new Da40CodedDefinition().GetWaypointFlightDirectorProfile().CaptureRadiusNm);
+        Assert.Equal(new WaypointFlightDirectorProfile().CaptureRadiusNm,
+            new YourAircraftDefinition().GetWaypointFlightDirectorProfile().CaptureRadiusNm);
+    }
 }

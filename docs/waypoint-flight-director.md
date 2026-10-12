@@ -181,7 +181,8 @@ Heavier/faster jets roll more slowly and cover ground faster, so they use a gent
 larger capture radius and a longer rate-lead.
 
 Every supported aircraft carries an explicit profile — including the ones that simply take the
-baseline, so the choice is visible in the definition rather than inherited by accident.
+baseline, so the choice is visible in the definition rather than inherited by accident. An aircraft whose definition is in another open pull request keeps its profile in
+`WaypointFlightDirectorProfile.ForAircraftCode` until both are merged (WFD-3).
 
 | Aircraft | Roll gain (°/° error) | Max bank | Roll rate | Max pitch | Capture radius | Speed floor | Rate-lead |
 |---|---|---|---|---|---|---|---|
@@ -193,6 +194,7 @@ baseline, so the choice is visible in the definition rather than inherited by ac
 | HorizonSim 787 — class estimate | 0.9 | 30° | 5.0°/s ᵈ | 10° | 0.8 NM | 60 kt | 1.3 s |
 | PMDG 737-800 — class estimate | 1.1 ᵈ | 30° | 5.0°/s ᵈ | 12° ᵈ | 0.5 NM ᵈ | 40 kt ᵈ | 1.0 s ᵈ |
 | iFly 737 MAX8 — class estimate | 1.1 ᵈ | 30° | 5.0°/s ᵈ | 12° ᵈ | 0.5 NM ᵈ | 40 kt ᵈ | 1.0 s ᵈ |
+| COWS DA40 NG/XLS — class estimate (PR #242, `ForAircraftCode`) | 1.0 | 20° | 6.0°/s | 10° | 0.3 NM | 30 kt | 0.6 s |
 
 ᵈ = inherited from `WaypointFlightDirectorProfile`'s baseline default rather than set explicitly.
 This table is transcribed by hand from the definitions and has drifted from them before, so treat
@@ -226,6 +228,7 @@ track, so LNAV is the comparable Boeing mode:
 | FBW A320, Fenix A320, A380X, A330 | **25°** | Airbus FG "Roll Limit 2" runs 15-25° with TAS (Roll Limit 1 reaches 30°, engine-out 15°) |
 | PMDG 737, iFly 737 MAX8 | **30°** | AFDS commands up to 30° in LNAV above 200 ft AGL (8° below); the FMC plans ~25° to keep 5° spare |
 | PMDG 777, HS787 | **30°** | 777/787 command 30° in LNAV; 777 HDG SEL is held to 25 (BANK LIMIT selector 5-25, AUTO 15-25 by TAS) |
+| COWS DA40 (GFC 700) | **20°** | class estimate: standard rate at 110-130 KTAS is 16-20°; to be measured from the GFC 700 in HDG |
 
 Approach-AoA fallbacks likewise: **5.0°** on the narrowbodies (published approach attitude ~2° pitch
 on a 3° path for the A319/A320, ~2.5° for the 737, giving ~5-5.5° AoA), 4.0-4.5° on the widebodies.
