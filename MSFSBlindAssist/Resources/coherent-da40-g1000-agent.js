@@ -105,9 +105,14 @@
             // abbreviation from its meaning, and running them together is a real loss on
             // the one pane whose whole job is spelling an abbreviation out. The date
             // reads perfectly well spaced; the alert does not read well closed up.
+            // \u26A0\uFE0F THE DEGREE SIGN GLUES TO ITS NUMBER, AND AFTER IT ONLY TO A UNIT LETTER
+            // (\u00B0C, \u00B0F, \u00B0M, \u00B0T). Gluing whatever followed it welded the next field on: the VNV
+            // box read "FPA -3.0\u00B0VS REQ" and the reference VOR "GRZ 116.00229\u00B015.0 NM"
+            // (in flight, 2026-10-12).
             var glue = (/[0-9.:]/.test(a) && /[0-9.:]/.test(b)) ||
                        /[([]/.test(a) || /[)\],.]/.test(b) ||
-                       /[\u00B0]/.test(a) || /[\u00B0]/.test(b);
+                       (/[\u00B0]/.test(a) && /^[CFMT](?![A-Za-z])/.test(parts[i])) ||
+                       /[\u00B0]/.test(b);
             out += (glue ? "" : " ") + parts[i];
         }
 
@@ -1527,6 +1532,42 @@
         return out;
     };
 
+    /// The visible FIELDS of a box, in order: an element holding only inline content (text,
+    /// spans, images) is one field ("229" + "°" is "229°"), a block holding blocks is walked
+    /// into. A short word-only field followed by one with a value becomes "LABEL: value", which
+    /// is how the VNV profile pairs "VS TGT" with "-493 FPM". <paramref name="skip"/> (the box
+    /// title) is left out.
+    A.leafFields = function (root, skip, raw) {
+        var fields = [];
+        var walk = function (el) {
+            if (!el || el === skip || !visible(el)) return;
+            var kids = el.children, block = false;
+            for (var i = 0; i < kids.length; i++) {
+                var tag = kids[i].tagName;
+                if (tag !== "SPAN" && tag !== "IMG" && tag !== "svg" && tag !== "BR") { block = true; break; }
+            }
+            if (!block) {
+                var t = spacedText(el);
+                if (t) fields.push(t);
+                return;
+            }
+            for (var j = 0; j < kids.length; j++) walk(kids[j]);
+        };
+        walk(root);
+        if (raw) return fields;
+
+        var paired = [];
+        for (var k = 0; k < fields.length; k++) {
+            var f = fields[k], n = fields[k + 1];
+            var isLabel = f.length <= 14 && !/\d/.test(f) && /^[A-Z][A-Z .\/]*$/.test(f);
+            if (isLabel && n !== undefined && (/\d/.test(n) || /^(_|blank)/.test(n))) {
+                paired.push(f + ": " + n);
+                k++;
+            } else paired.push(f);
+        }
+        return paired;
+    };
+
     A.rowsOf = function (box) {
         var out = [];
 
@@ -1692,6 +1733,25 @@
         // EITHER end: it leads in a setup box and TRAILS in a dialog box, where the title
         // element is the last child.
         if (!out.length) {
+            // FIELD BY FIELD FIRST. The spaced walk below glues digit runs across fields,
+            // so the Reference VOR box read "GRZ 116.00229°15.0 NM" and the VNV profile
+            // "FPA -3.0°VS REQ blank" (in flight, 2026-10-12).
+            // ONLY WHERE THE PLAIN READING WELDS: a box whose fields read the same spaced as
+            // joined ("Graz AUSTRIA 1103 FT", "N 46°49.80' E 015°08.05'") keeps the plain
+            // reading, because pairing an all-capital word with the number after it there
+            // made "AUSTRIA: 1103 FT".
+            var titleEl0 = box.querySelector(".groupbox-title");
+            var leafs = A.leafFields(box, titleEl0, true);
+            var plainBox = spacedText(box);
+            var plainTitle = text(titleEl0);
+            if (plainTitle && plainBox.indexOf(plainTitle) === 0) plainBox = plainBox.substring(plainTitle.length).trim();
+            else if (plainTitle && plainBox.lastIndexOf(plainTitle) === plainBox.length - plainTitle.length)
+                plainBox = plainBox.substring(0, plainBox.length - plainTitle.length).trim();
+            if (leafs.length >= 2 && leafs.join(" ").replace(/\s+/g, " ") !== plainBox.replace(/\s+/g, " ")) {
+                out.push(A.leafFields(box, titleEl0).join(", "));
+                return out;
+            }
+
             var whole = spacedText(box);
             var bt = text(box.querySelector(".groupbox-title"));
             if (whole && bt) {
@@ -2007,8 +2067,22 @@
         var left = g.querySelector(".left-value");
         var right = g.querySelector(".right-value");
         if (left && right) {
+            // ⚠️ NAMED AS THE DISPLAY NAMES IT, OR IT IS TWO BARE NUMBERS. The fuel box draws a
+            // temperature pair labelled only "°C" and a quantity pair whose name ("Main") is a
+            // .gauge-label and whose unit ("Gal") is the scale's last tick label; read as the
+            // first version did, the page said "°C: left 23, right 16" and "left 14, right 14"
+            // with no name at all (in flight, 2026-10-12). AFM 7: "Fuel temp. left & right
+            // tank", so left and right are the AFM's own words.
             var mid = g.querySelector(".gauge-text > .label");
             var unit = mid ? text(mid) : "";
+            if (/^°/.test(unit)) unit = "Temperature " + unit;
+            if (!unit) {
+                var name = text(g.querySelector(".gauge-label"));
+                var ticks = g.querySelectorAll(".tick-labels > *");
+                var tickUnit = ticks.length ? text(ticks[ticks.length - 1]) : "";
+                if (/^\d/.test(tickUnit)) tickUnit = "";
+                unit = [name, tickUnit].filter(function (x) { return x; }).join(" ");
+            }
             return (unit ? unit + ": " : "") + "left " + text(left) + ", right " + text(right);
         }
 
@@ -4334,6 +4408,16 @@
                 // wherever they appear; only VALUES are said once.
                 if (/:$/.test(String(page[g]).trim())) { kept.push(page[g]); continue; }
 
+                // ⚠️ A MAP'S LABELS ARE NOT CONTENT. The map pages' content walk returned the
+                // compass rose letter ("N"), the orientation and "Detail" (each already a row of
+                // its own) and the range rings ("1 NM", "2 NM"), so the Navigation Map read
+                // "2.5 NM, N, HDG UP, Detail" as its whole content (in flight, 2026-10-12). The
+                // range is said by the Map range row below.
+                var mapLabel = String(page[g]).trim();
+                if (/^[NESW]$/.test(mapLabel) || /^(HDG|TRK|NORTH|DTK) UP$/.test(mapLabel) ||
+                    /^Detail$/.test(mapLabel) ||
+                    /^(AUTO\s*)?\d+(\.\d+)?\s*NM$/.test(mapLabel)) continue;
+
                 var pk = String(page[g]).toUpperCase().replace(/[^A-Z0-9]/g, "");
                 if (pk && already[pk]) continue;
                 kept.push(page[g]);
@@ -4651,6 +4735,9 @@
     // "_ _ _ _") are the same placeholder.
     A.tidy = function (s) {
         return String(s)
+            // The Garmin font draws Direct-To (the D with an arrow) as "Ð": "VNV Ð" is the
+            // VNV Direct-To softkey.
+            .replace(/Ð/g, "Direct-To")
             .replace(/(^|[^<])[\-‐‑‒–—―−]{2,}(?::[\-‐‑‒–—―−]{2,})*/g, "$1blank")
             // Underscores straight after an ident pad it to the box's width ("LOWG__"):
             // they are dropped, not read. A run standing on its own is an empty box.

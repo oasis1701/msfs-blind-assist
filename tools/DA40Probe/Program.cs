@@ -337,6 +337,22 @@ internal sealed class ProbeForm : Form
     // is as close to what the pilot hears as a harness without MainForm can get.
     private readonly Dictionary<string, double> _lastSeen = new(StringComparer.Ordinal);
     private StreamWriter? _watch;
+    private CoherentDisplayClient? _pfd;
+    private List<string> _pfdRows = new();
+
+    private void LogPfdDiff(List<string> rows)
+    {
+        static string Norm(string r) => System.Text.RegularExpressions.Regex.Replace(
+            System.Text.RegularExpressions.Regex.Replace(r, @"UTC \d\d:\d\d:\d\d", "UTC"), @"TMR \d+:\d\d:\d\d", "TMR");
+        var now = rows.Select(Norm).ToList();
+        var was = new HashSet<string>(_pfdRows);
+        var isNow = new HashSet<string>(now);
+        var came = now.Where(r => !was.Contains(r)).Select(r => "+ " + r);
+        var gone = _pfdRows.Where(r => !isNow.Contains(r)).Select(r => "- " + r);
+        string diff = string.Join(" || ", came.Concat(gone));
+        if (diff.Length > 0) _watch?.WriteLine($"{DateTime.Now:HH:mm:ss.fff}\tPFD\t{diff}");
+        _pfdRows = now;
+    }
 
     private void Watch(string key, double value, bool handled, Dictionary<string, SimVarDefinition> vars, Cap cap)
     {
@@ -396,6 +412,37 @@ internal sealed class ProbeForm : Form
                         case "quit": _watch.WriteLine($"{t}\tSERVE\tquit"); return;
                         case "wait": await Task.Delay(int.Parse(arg)); break;
                         case "calc": _m.ExecuteCalculatorCodeUnique(arg); break;
+                        case "casmon":
+                        {
+                            // What MainForm does for the DA40: the PFD watched over its own
+                            // socket, every scrape fed to the CAS/FMA announcer, plus the lamp
+                            // watch and the waypoint sequencer. The PFD rows are logged as diffs.
+                            if (_pfd != null) break;
+                            // StartCasMonitor would open its own PFD socket; the announcer it
+                            // sets is what OnCasRows speaks through, so it is set directly.
+                            typeof(CowsDA40Definition).GetField("_casAnnouncer",
+                                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+                                .SetValue(def, cap);
+                            def.AttachLampWatch(_m);
+                            def.AttachWaypointSequencer(_m, cap);
+                            _pfd = new CoherentDisplayClient("AS1000_PFD", pollIntervalMs: 1500,
+                                agentFileName: "coherent-da40-g1000-agent.js");
+                            _pfd.RowsUpdated += rows =>
+                            {
+                                try { def.ProcessCasRows(rows); } catch (Exception ex) { _watch?.WriteLine($"{DateTime.Now:HH:mm:ss.fff}\tERR\tCAS {ex.Message}"); }
+                                LogPfdDiff(rows);
+                            };
+                            _pfd.Error += msg => _watch?.WriteLine($"{DateTime.Now:HH:mm:ss.fff}\tERR\tPFD {msg}");
+                            _pfd.Start();
+                            break;
+                        }
+                        case "pfdjs":
+                        {
+                            if (_pfd == null) { _watch.WriteLine($"{t}\tERR\tcasmon first"); break; }
+                            string r = await _pfd.InvokeAsync(arg);
+                            _watch.WriteLine($"{t}\tPFDJS\t{r}");
+                            break;
+                        }
                         case "teleport":
                         {
                             // teleport lat,lon,altFt,headingTrue[,air] - MSFSBA's own TeleportAircraft
