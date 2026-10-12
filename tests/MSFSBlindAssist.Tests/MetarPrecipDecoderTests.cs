@@ -2,7 +2,7 @@
 //   MSFSBlindAssist.Forms.WeatherRadarForm.ParsePrecipFromMetar            (Forms/WeatherRadarForm.cs ~:432)
 //   MSFSBlindAssist.Services.WeatherRadarFormPrecipShim.ParsePrecipFromMetar (Services/ActiveSkyWeatherMonitor.cs ~:828)
 //
-// CLAUDE.md documents these as intentional copies that must be kept manually in sync
+// [WX-4] documents these as intentional copies that must be kept manually in sync
 // ("Keep in sync with the WeatherRadarForm copy if either is changed"). This suite pins
 // CURRENT behavior of both copies against one shared METAR vector set and mechanically
 // asserts the two copies still agree, so any future edit that updates one copy but not
