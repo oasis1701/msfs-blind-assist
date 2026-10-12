@@ -13,4 +13,4 @@ MIRRORS: copied word for word from pmdg-777.md, a32nx-fenix.md, a380-panels.md, 
 - [HS-5] A display-only Flight Data sub-panel needs a `BuildPanelControls` entry, even an empty one, or MainForm's panel build early-returns and the panel renders nothing. Full: docs/invariants/hs787.md#hs-5
 
 Mirrored from variable-definitions.md (it governs the PanelBuilder sites; change it there and here together):
-- [DA40S-6] A non-percentage numeric control never sets `RenderAsSlider` (the TrackBar is 0-100); `HelpText` reaches the pilot on BUTTONS only, never the other PanelBuilder sites. Full: docs/invariants/variable-definitions.md#da40s-6
+- [DA40S-6] A non-percentage control never sets `RenderAsSlider` (0-100); `HelpText` reaches the pilot on buttons only. Full: docs/invariants/variable-definitions.md#da40s-6

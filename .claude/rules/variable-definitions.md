@@ -34,7 +34,7 @@ Mirrored from simconnect-data.md (they govern the definitions that issue `Reques
 - [SIM-5] `SimConnectManager.RequestVariable` must stay safe from ANY thread: off the UI thread it POSTS itself there (`UiThreadGate`; a post refused at shutdown is dropped, never run inline). Never read `continuousVariableIndexMap` or issue `RequestDataOnSimObject` from a pool thread directly. Full: docs/invariants/simconnect-data.md#sim-5
 - [SIM-6] Request ids 341–348 (camera reads), 505–508 (guidance frames) and 600–607 (ground-traffic sweeps) are reserved: never assign one elsewhere, and grep for raw `(DATA_REQUESTS)` casts before choosing a new id, because a reused id REPLACES the existing request. Pinned by `GroundTrafficRequestIdTests` and `CameraReadWaitersTests`. Full: docs/invariants/simconnect-data.md#sim-6
 
-From the DA40 work (PR #242); they govern every aircraft definition, the DA40's included:
-- [DA40S-3] An L:var is registered `Units = "number"`, never a converting unit; use `SimVarDefinition.Scale` for a scale. Full: docs/invariants/variable-definitions.md#da40s-3
-- [DA40S-4] `ABS_AMBIENT_TEMPERATURE` is kelvin and an L:var's Units field is a label: use the `AMBIENT TEMPERATURE` SimVar. Full: docs/invariants/variable-definitions.md#da40s-4
-- [DA40S-6] A non-percentage numeric control never sets `RenderAsSlider` (the TrackBar is 0-100); `HelpText` reaches the pilot on BUTTONS only, never the other PanelBuilder sites. Full: docs/invariants/variable-definitions.md#da40s-6
+From the DA40 work, for every definition:
+- [DA40S-3] An L:var is `Units = "number"`; scale it with `SimVarDefinition.Scale`. Full: docs/invariants/variable-definitions.md#da40s-3
+- [DA40S-4] `ABS_AMBIENT_TEMPERATURE` is kelvin: use the `AMBIENT TEMPERATURE` SimVar. Full: docs/invariants/variable-definitions.md#da40s-4
+- [DA40S-6] A non-percentage control never sets `RenderAsSlider` (0-100); `HelpText` reaches the pilot on buttons only. Full: docs/invariants/variable-definitions.md#da40s-6
