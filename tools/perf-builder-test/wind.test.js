@@ -75,14 +75,22 @@ test('CRZ: the waypoint arrows are named, propagated values say computed', () =>
   assertSelectable('wind_crz');
 });
 
-test('A received uplink: no hidden star, and the button reads as the menu it is', () => {
+// The CPNY WIND "*" carries FBW's `hidden` class once a request is pending or an uplink is
+// received, but its inline style="display: flex" beats `.hidden { display: none; }`: it stays on
+// screen, so it is read. A child that is not drawn is not.
+test('A received uplink reads as the menu it is; the star reads while it is drawn', () => {
   const b = scrapeElements('wind_crz').find((e) => /RECEIVED/.test(e.text));
   assert.ok(b, 'uplink button missing');
-  assert.strictEqual(b.text, 'RECEIVED CPNY WIND');
+  assert.strictEqual(b.text, 'RECEIVED CPNY WIND *');
   assert.strictEqual(b.kind, 'dropdown');
   const pending = scrapeElements('wind_des').find((e) => /PENDING/.test(e.text));
-  assert.strictEqual(pending.text, 'REQUEST PENDING...');
+  assert.strictEqual(pending.text, 'REQUEST PENDING... *');
   assert.strictEqual(pending.kind, 'button', 'a button with no menu stays a button');
+
+  const { window, A } = loadFixture('wind_des');
+  window.document.querySelector('.mfd-button span.hidden').removeAttribute('data-vis');
+  const undrawn = Array.from(A.enumerateLines(window.document.body.firstElementChild)).find((e) => /PENDING/.test(e.text));
+  assert.strictEqual(undrawn.text, 'REQUEST PENDING...');
 });
 
 test('DES: the alternate row names its cruise level once, and its two fields', () => {
@@ -105,6 +113,22 @@ test('HISTORY: one line per recorded wind', () => {
   assert.ok(t.includes('INSERT HISTORY WIND *'));
 });
 
+// A level with no wind recorded (HistoryWind.ts: an undefined vector, e.g. the first flight's
+// FL050/150/250 defaults) is drawn "---" / "---": not recorded, never calm.
+test('HISTORY: a level with no wind recorded is not read as calm', () => {
+  const { window, A } = loadFixture('wind_history');
+  const row = window.document.querySelectorAll('.mfd-fms-wind-page-table-row.entry')[2];
+  row.firstElementChild.setAttribute('style', 'display: flex; flex-direction: row;');
+  row.querySelectorAll('*').forEach((e) => e.setAttribute('data-vis', '1'));
+  row.firstElementChild.setAttribute('data-vis', '1');
+  row.querySelector('.mfd-fms-wind-page-history-wind-fl-value').textContent = '250';
+  const vals = row.querySelectorAll('.mfd-fms-wind-history-wind-entry .mfd-label');
+  vals[0].textContent = '---';
+  vals[1].textContent = ' ---';
+  const t = Array.from(A.enumerateLines(window.document.body.firstElementChild), (e) => String(e.text));
+  assert.ok(t.includes('History wind 3: FL 250, not recorded'), t.join(NL));
+});
+
 // F-PLN in the EFOB / T.WIND view: since #10929 the wind's direction and magnitude are the text of
 // two 45 px spans either side of a "/", so a magnitude can start left of the x=472 column split
 // the parse used; the "/" is what separates them.
@@ -115,6 +139,28 @@ test('F-PLN EFOB/T.WIND: direction and magnitude split at the "/", wherever they
   assert.strictEqual(wpt('WAYPT2'), 'WAYPT2  J102  261° 29  35.9 "/"    18:04');
   assert.strictEqual(wpt('WAYPT3'), 'WAYPT3  J102  261° 29  35.1 270°/45 18:04');
   assert.strictEqual(wpt('WAYPT4'), 'WAYPT4  J102  261° 29  34.8        18:04');
+});
+
+// A HOLD row keeps its hold speed ("SPD 210") in the time column in the EFOB/T.WIND view too: FBW
+// draws it there in both views. fpln_polish, switched with its column-header toggle.
+test('F-PLN EFOB/T.WIND: a hold row keeps its hold speed', () => {
+  function holdLine(efob) {
+    const { window, A } = loadFixture('fpln_polish');
+    const doc = window.document;
+    const root = doc.body.firstElementChild;
+    const nav = doc.querySelector('.mfd-navigator-container') || root;
+    const toggle = doc.createElement('div');
+    toggle.className = 'mfd-dropdown-container';
+    toggle.setAttribute('data-vis', '1');
+    toggle.setAttribute('data-rect', '150,300,556,200');
+    toggle.innerHTML = '<span class="mfd-button" data-vis="1" data-rect="150,300,556,200"><span data-vis="1" data-rect="150,300,556,200">' +
+      '<div class="mfd-fms-fpln-button-speed-alt" data-vis="1" data-rect="155,310,546,195">' + (efob ? 'EFOB T.WIND' : 'SPD ALT') +
+      '</div></span></span><div class="mfd-dropdown-menu" style="display: none" data-rect="0,0,0,0"></div>';
+    nav.insertBefore(toggle, nav.firstChild);
+    return Array.from(A.enumerateLines(root), (e) => String(e.text)).find((s) => /^HOLD/.test(s)) || '(missing)';
+  }
+  assert.ok(/SPD 210$/.test(holdLine(false)), holdLine(false));
+  assert.ok(/SPD 210$/.test(holdLine(true)), holdLine(true));
 });
 
 test('Entering a waypoint in a pick list selects the matching option instead of typing it', () => {
@@ -132,41 +178,91 @@ test('Entering a waypoint in a pick list selects the matching option instead of 
   assert.strictEqual(A.sendToField(combo.idx, 'elb'), 'ok');
   assert.strictEqual(clicked.join(','), 'ELB', 'the ELB option was not clicked');
   assert.strictEqual(typed.length, 0, 'a listed waypoint must not be typed');
-
-  // Not in the list: typed as before (the MFD then says ENTRY NOT IN LIST).
-  assert.strictEqual(A.sendToField(combo.idx, 'XYZ'), 'ok');
-  assert.strictEqual(clicked.join(','), 'ELB');
-  assert.strictEqual(typed.join(','), '88,89,90,13');
 });
 
-// A fixed-value list (DropdownMenu with neither keyboardEntryAllowed nor freeTextAllowed) ignores
-// typed keys and ENTER since #10929 and stays open: nothing was set, and the MFD says nothing, so
-// sendToField reports "nomatch" for the window to speak. A list that takes typing closes on ENTER.
+// FBW's DropdownMenu as sendToField meets it: a click on the outer toggles the list. A list that
+// takes typing shows each key in its field at once and, after ENTER, validates asynchronously and
+// closes the list only then (InputField.validateAndUpdate: an async parse, then a 500 ms wait). A
+// fixed-value list (neither keyboardEntryAllowed nor freeTextAllowed) ignores every key, ENTER
+// included, and the MFD says nothing, so sendToField reports "nomatch" / "noclear" for the window
+// to speak.
 function pickListHarness(acceptsTyping) {
   const { window, A } = loadFixture('wind_crz');
   const root = window.document.body.firstElementChild;
   const combo = Array.from(A.enumerateLines(root)).find((e) => /^CRZ WIND AT/.test(e.text));
   const outer = window.document.querySelector('.mfd-dropdown-outer');
   const menu = outer.parentElement.querySelector('.mfd-dropdown-menu');
-  // FBW's DropdownMenu: a click on the outer toggles the list; ENTER in the field closes it
-  // only when the list takes typing.
+  const field = outer.querySelector('.mfd-input-field-text-input');
+  const options = Array.from(menu.querySelectorAll('.mfd-dropdown-menu-element'));
+  const clicked = [], typed = [];
+  for (const opt of options) opt.addEventListener('click', () => clicked.push(opt.textContent));
   outer.addEventListener('click', () => { menu.style.display = menu.style.display === 'none' ? 'block' : 'none'; });
+  field.addEventListener('keypress', (ev) => typed.push(ev.keyCode));
+  let commit;
+  const committed = new Promise((resolve) => { commit = resolve; });
   if (acceptsTyping) {
-    outer.querySelector('.mfd-input-field-text-input').addEventListener('keypress', (ev) => {
-      if (ev.keyCode === 13) menu.style.display = 'none';
+    let buffer = '';
+    field.addEventListener('keydown', (ev) => { if (ev.keyCode === 8) { buffer = ''; field.textContent = buffer; } });
+    field.addEventListener('keypress', (ev) => {
+      if (ev.keyCode !== 13) { buffer += String.fromCharCode(ev.keyCode); field.textContent = buffer; return; }
+      setTimeout(() => { menu.style.display = 'none'; commit(buffer); }, 0);
     });
   }
-  return { A, combo, menu };
+  return { A, combo, menu, options, clicked, typed, committed };
 }
 
 test('A fixed-value pick list that ignores a typed value reports nomatch and is closed again', () => {
-  const { A, combo, menu } = pickListHarness(false);
+  const { A, combo, menu, typed } = pickListHarness(false);
   assert.strictEqual(A.sendToField(combo.idx, 'XYZ'), 'nomatch');
   assert.strictEqual(menu.style.display, 'none', 'the list was left open over the page');
+  assert.ok(!typed.includes(13), 'ENTER sent to a list that ignored the keys');
 });
 
-test('A pick list that takes typing reports ok', () => {
-  const { A, combo, menu } = pickListHarness(true);
-  assert.strictEqual(A.sendToField(combo.idx, 'XYZ'), 'ok');
+test('A fixed-value pick list that ignores a clear reports noclear and is closed again', () => {
+  const { A, combo, menu } = pickListHarness(false);
+  assert.strictEqual(A.sendToField(combo.idx, ''), 'noclear');
   assert.strictEqual(menu.style.display, 'none');
+});
+
+// Whether the list is still open when sendToField returns says nothing: FBW closes it only after
+// its asynchronous validation.
+test('A pick list that takes typing reports ok, and FBW closes it after validating', async () => {
+  const { A, combo, menu, typed, committed } = pickListHarness(true);
+  assert.strictEqual(A.sendToField(combo.idx, 'XYZ'), 'ok');
+  assert.strictEqual(typed.join(','), '88,89,90,13');
+  assert.strictEqual(menu.style.display, 'block', 'open until FBW has validated');
+  assert.strictEqual(await committed, 'XYZ');
+  assert.strictEqual(menu.style.display, 'none');
+});
+
+test('A clear on a pick list that takes typing reports ok', async () => {
+  const { A, combo, committed } = pickListHarness(true);
+  assert.strictEqual(A.sendToField(combo.idx, ''), 'ok');
+  assert.strictEqual(await committed, '');
+});
+
+// DIRECT TO and INSERT NEXT WPT take FREE TEXT, which #10929 left alone: a typed ident there has
+// always been looked up in the database (DUPLICATE NAMES when ambiguous), so it is typed even when
+// the list offers it. Simulated by giving the CRZ WIND AT options the DIRECT TO list's ids.
+test('A free-text list types a listed ident instead of picking the plan option', async () => {
+  const { A, combo, options, clicked, typed, committed } = pickListHarness(true);
+  options.forEach((opt, i) => { opt.id = 'CAPT_MFD_directToDropdown_' + i; });
+  assert.strictEqual(A.sendToField(combo.idx, 'elb'), 'ok');
+  assert.strictEqual(clicked.length, 0, 'the plan option was picked');
+  assert.strictEqual(typed.join(','), '69,76,66,13');
+  assert.strictEqual(await committed, 'ELB');
+});
+
+// CLR or Delete on a button must never press it: INSERT WIND * would commit the draft winds,
+// CANCEL WIND * discard them.
+test('A clear sent to a button is refused, never clicked', () => {
+  const { window, A } = loadFixture('wind_clb');
+  const items = Array.from(A.enumerateLines(window.document.body.firstElementChild));
+  for (const label of ['INSERT WIND *', 'CANCEL WIND *']) {
+    const btn = items.find((e) => e.text === label);
+    let pressed = 0;
+    window.document.querySelector('[data-fbwa380-mcdu-idx="' + btn.idx + '"]').addEventListener('click', () => pressed++);
+    assert.strictEqual(A.sendToField(btn.idx, ''), 'noclear', label);
+    assert.strictEqual(pressed, 0, label + ' was pressed');
+  }
 });

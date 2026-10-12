@@ -2047,7 +2047,9 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // AUTO_THROTTLE_DISCONNECT, which the WASM masks and re-emits as the
         // A32NX.AUTO_THROTTLE_DISCONNECT the FWS counts as a voluntary disconnect (FBW #10934).
         // Not A32NX.FCU_ATHR_DISCONNECT_PUSH, which the FWS never sees: AUTO FLT A/THR OFF.
-        // On the ground it also disarms the autobrake, as the real pushbutton does.
+        // While the autobrake is BRAKING (BTV or any mode but RTO) it also releases it, as the
+        // real pushbutton does (autobrakes.rs: AUTOBRAKE_INSTINCTIVE_DISCONNECT; FBW then raises
+        // AUTO BRK OFF); an autobrake that is only armed is left alone.
         Evt(AutothrustDisconnectEvent, AutothrustDisconnectEvent, "Autothrust Disconnect");
         Evt("A32NX.FCU_SPD_MACH_TOGGLE_PUSH", "A32NX.FCU_SPD_MACH_TOGGLE_PUSH", "Speed / Mach Toggle");
         Evt("A32NX.FCU_TRK_FPA_TOGGLE_PUSH", "A32NX.FCU_TRK_FPA_TOGGLE_PUSH", "TRK / FPA Toggle");

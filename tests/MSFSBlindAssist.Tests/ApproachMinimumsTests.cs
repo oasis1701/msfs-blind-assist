@@ -94,4 +94,38 @@ public class ApproachMinimumsTests
     {
         Assert.Null(ApproachMinimums.Announcement(dh, previous, feet, reseeding));
     }
+
+    // ---- When a clear is the FMS starting over (IsFmsReset) ----
+    // Both FBW FMSes reset their plans at flight phase DONE (30 s on the ground after landing, or at
+    // engine shutdown) and write MDA 0 / DH -1. The DONE phase (7) can be delivered after that
+    // clear, so the rollout's APPROACH (5) already counts. Phases: 0 PREFLIGHT, 1 TAKEOFF ..
+    // 5 APPROACH, 6 GO AROUND, 7 DONE; -1 = not read yet.
+
+    [Theory]
+    [InlineData(true, false, 3)]    // a flight load or reconnect still settling, anywhere
+    [InlineData(false, true, 5)]    // rollout, before DONE is delivered
+    [InlineData(false, true, 7)]    // DONE
+    [InlineData(false, true, 1)]    // shutdown after a rejected take-off
+    [InlineData(false, true, 4)]    // landed without an APPROACH phase, then shut down
+    public void IsFmsReset_TheFmsStartingOverIsNotNews(bool settling, bool onGround, int phase)
+    {
+        Assert.True(ApproachMinimums.IsFmsReset(settling, onGround, phase));
+    }
+
+    [Theory]
+    [InlineData(false, true, 0)]    // an approach change at the gate: news
+    [InlineData(false, true, -1)]   // phase not read yet: speak, as before
+    [InlineData(false, false, 5)]   // an approach change in flight: news
+    [InlineData(false, false, 4)]
+    public void IsFmsReset_AClearTheFmsMakesInFlightOrAtTheGateIsNews(bool settling, bool onGround, int phase)
+    {
+        Assert.False(ApproachMinimums.IsFmsReset(settling, onGround, phase));
+    }
+
+    [Fact]
+    public void A_clear_after_landing_is_silent()
+    {
+        Assert.Null(ApproachMinimums.Announcement(isDecisionHeight: false, previousFeet: 220, feet: -1,
+            reseeding: ApproachMinimums.IsFmsReset(settling: false, onGround: true, fmgcPhase: 5)));
+    }
 }

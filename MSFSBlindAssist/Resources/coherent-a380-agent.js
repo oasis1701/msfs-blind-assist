@@ -11,7 +11,8 @@
 //   __MSFSBA_A380.scrape(mcduIndex)            -> JSON string (see below)
 //   __MSFSBA_A380.setMcdu(n)                   -> "" (1=Capt, 2=FO)
 //   __MSFSBA_A380.clickElement(index)          -> "ok"|"missing"
-//   __MSFSBA_A380.sendToField(index, text)     -> "ok"|"missing"|"inactive"|"noinput"|"nomatch"
+//   __MSFSBA_A380.sendToField(index, text)     -> "ok"|"missing"|"inactive"|"noinput"|"nomatch"|"noclear"
+//   __MSFSBA_A380.navigateById(prefix, i, key) -> "ok"|"key"|"disabled"|"missing"
 //   __MSFSBA_A380.sendScratchpad(text)         -> "ok"
 //   __MSFSBA_A380.fireKey(key)                 -> "ok"     (KCCU key name)
 //   __MSFSBA_A380.ping()                       -> "MSFSBA_A380_OK"
@@ -271,10 +272,11 @@
   // so multi-span / stacked button captions don't mash together ("ACTIVATE" +
   // "APPR*" -> "ACTIVATE APPR*", not "ACTIVATEAPPR*"). The FBW MFD renders many
   // two-word/two-line button labels as adjacent spans with no whitespace.
-  // A child carrying FBW's `hidden` class (display:none, MFD style.scss) is not on
-  // screen and is skipped: the CPNY WIND button hides its "*" that way once a request
-  // is pending or an uplink is received, and on an Airbus display a "*" means "press
-  // me" (FBW #10929, CpnyWindButtonUtils.tsx).
+  // A child that is not drawn (A.isVisible: the COMPUTED style, not a class name) is
+  // skipped. FBW's `hidden` class alone does not hide: the CPNY WIND button's "*" carries
+  // it once a request is pending or an uplink is received (FBW #10929,
+  // CpnyWindButtonUtils.tsx), but its inline style="display: flex" beats `.hidden
+  // { display: none; }`, so the star stays on screen and is read, as a pilot sees it.
   A.spacedText = function (n) {
     var parts = [];
     (function walk(node, depth) {
@@ -282,7 +284,7 @@
       for (var i = 0; i < node.childNodes.length; i++) {
         var c = node.childNodes[i];
         if (c.nodeType === 3) { var t = c.nodeValue; if (t && t.replace(/\s+/g, "")) parts.push(clean(t)); }
-        else if (c.nodeType === 1 && !(c.classList && c.classList.contains("hidden"))) { walk(c, depth + 1); }
+        else if (c.nodeType === 1 && A.isVisible(c)) { walk(c, depth + 1); }
       }
     })(n, 0);
     return parts.join(" ").replace(/\s+/g, " ").trim();
@@ -682,7 +684,8 @@
         if (!fl) continue;
         var dir = vals.length > 0 ? clean(vals[0].textContent) : "";
         var spd = vals.length > 1 ? clean(vals[1].textContent).replace(/^\//, "") : "";
-        var wind = (isBlank(dir) || isBlank(spd)) ? "no wind" : dir + " °, " + spd + " KT";
+        // "---" is a level with no wind recorded (HistoryWind.ts: an undefined vector), not calm.
+        var wind = (isBlank(dir) || isBlank(spd)) ? "not recorded" : dir + " °, " + spd + " KT";
         var cruise = tagEl && clean(tagEl.textContent).toUpperCase() === "CRZ";
         var hr = row.getBoundingClientRect();
         items.push({ top: hr.top - pageRect.top, left: 0, right: hr.right - pageRect.left, bot: hr.bottom - pageRect.top,
@@ -1065,22 +1068,21 @@
       // constraint LITERAL as displayed ("+250", "-FL100", "WINDOW"). A "*"
       // constraint marker stays prepended exactly as displayed. Hold rows put the
       // hold speed into the time column under its on-screen "SPD" annotation
-      // ("SPD 210"). EFOB/T.WIND view: same grid, spd column = EFOB ("36.5"),
-      // alt column = wind ("TL/7", dittos literal), no labels.
-      var spdCell = "", altCell = "", timeCell = "";
+      // ("SPD 210"), in both views. EFOB/T.WIND view: same grid, spd column = EFOB
+      // ("36.5"), alt column = wind ("TL/7", dittos literal), no labels.
+      var spdCell = "", altCell = "";
+      var timeCell = isHoldRow ? (holdSpd ? "SPD " + holdSpd : "") : eta;
       if (efobWindMode) {
         spdCell = efob;
         // Strip the FBW zero-padding on a numeric wind magnitude (007 -> 7);
         // a '"' ditto passes through literally.
         var wmag = windMag.replace(/^0+(?=\d)/, "");
         if (windDir || wmag) altCell = (windDir && wmag) ? windDir + "/" + wmag : (windDir || wmag);
-        timeCell = eta;
       } else {
         if (spd) spdCell = (spdCon ? "*" : "") + spd;
         else if (conSpd) spdCell = conSpd;
         if (alt) altCell = (altCon ? "*" : "") + alt;
         else if (conAlt) altCell = conAlt;
-        timeCell = isHoldRow ? (holdSpd ? "SPD " + holdSpd : "") : eta;
       }
       var gridLine = padCell(ident, 8) + padCell(anno, 6) +
                      padCell(track, 5) +
@@ -1899,19 +1901,26 @@
     } catch (e4) {}
   };
 
-  // Type a string into a focused text-input span via keypress events, then ENTER.
-  // Only chars the field accepts are sent; others (e.g. lowercase already upper-cased)
-  // map to their ASCII code. Dispatched synchronously — the handlers are synchronous.
-  A.typeIntoField = function (span, text, commit) {
-    var v = String(text || "").toUpperCase();
+  // The keypress codes for typing `text`: upper-cased, and only the chars the field
+  // accepts (the rest are dropped).
+  A.entryKeyCodes = function (text) {
+    var v = String(text || "").toUpperCase(), codes = [];
     for (var i = 0; i < v.length; i++) {
       var ch = v.charAt(i);
       // Comma is the European decimal separator; map it to a period so users
       // on comma-decimal locales can type coordinates, altitudes, etc.
       if (ch === ",") ch = ".";
-      if (!/^[A-Z0-9/.+\- ]$/.test(ch)) continue;
-      A.dispatchKey(span, "keypress", ch.charCodeAt(0));
+      if (/^[A-Z0-9/.+\- ]$/.test(ch)) codes.push(ch.charCodeAt(0));
     }
+    return codes;
+  };
+
+  // Type a string into a focused text-input span via keypress events, then ENTER.
+  // Dispatched synchronously — the key handlers are synchronous (FBW validates the
+  // entry asynchronously after ENTER).
+  A.typeIntoField = function (span, text, commit) {
+    var codes = A.entryKeyCodes(text);
+    for (var i = 0; i < codes.length; i++) A.dispatchKey(span, "keypress", codes[i]);
     if (commit) A.dispatchKey(span, "keypress", 13);
   };
 
@@ -2048,6 +2057,10 @@
     return null;
   };
 
+  // Option ids of the DropdownMenus that take FREE TEXT (MfdFmsFplnDirectTo.tsx,
+  // InsertNextWptFrom.tsx: `${captOrFo}_MFD_{directTo,insertNextWpt}Dropdown_${i}`).
+  A.FREE_TEXT_LIST_ID = /_MFD_(directToDropdown|insertNextWptDropdown)_\d+$/;
+
   A.sendToField = function (index, newValue) {
     var node = document.querySelector('[data-fbwa380-mcdu-idx="' + index + '"]');
     if (!node) return "missing";
@@ -2065,39 +2078,52 @@
     for (var i = 0; i < A._mcduElements.length; i++) {
       if (A._mcduElements[i].idx === index) { info = A._mcduElements[i]; break; }
     }
-    // Non-input (button/dropdown/tab/menu) — just click.
-    if (info && info.kind !== "input") { A.clickNode(node); return "ok"; }
+    // Empty newValue = a CLEAR request (the form's Backspace/Delete on a field). A clear
+    // needs a real BACKSPACE+ENTER, not a bare ENTER (see clearFocusedField).
+    var isClear = (newValue === null || String(newValue) === "");
+
+    // Non-input (button/dropdown/tab/menu) — just click. A clear is refused, never
+    // clicked: CLR on INSERT WIND *, CANCEL WIND * or a SURV toggle would press it.
+    if (info && info.kind !== "input") { if (isClear) return "noclear"; A.clickNode(node); return "ok"; }
 
     var span = node.querySelector(".mfd-input-field-text-input");
-    if (!span) { A.clickNode(node); return "noinput"; }
+    if (!span) { if (isClear) return "noclear"; A.clickNode(node); return "noinput"; }
     var spanningDiv = node.querySelector(".mfd-input-field-text-input-container");
 
     // DropdownMenu-wrapped input (e.g. ATC COM "NOTIFY TO ATC", any combo field):
     // its InputField is handleFocusBlurExternally, so a direct span click does NOT
     // focus it — the field only becomes editable when the DROPDOWN is opened
     // (DropdownMenu focuses the inner InputField on open). So open it first.
-    // Empty newValue = a CLEAR request (the form's Backspace/Delete on a field). A clear
-    // needs a real BACKSPACE+ENTER, not a bare ENTER (see clearFocusedField).
-    var isClear = (newValue === null || String(newValue) === "");
-
     var dd = A.ancestorWithClass(node, "mfd-dropdown-outer");
     if (dd) {
       // A value the list offers is CLICKED, as a pilot picks it: since FBW #10929 a typed
       // entry that matches an option reaches the page as free text (index -1), which the
       // WIND page's CRZ WIND AT ignores while showing the typed name, and VERT REV / STEP
       // ALTs take as no waypoint at all (DropdownMenu.onFieldSubmit). An option's click
-      // handler fires with the list closed (as the page selectors' do).
+      // handler fires with the list closed (as the page selectors' do). Not on a list that
+      // takes FREE TEXT (DIRECT TO, INSERT NEXT WPT), which #10929 left alone: a typed ident
+      // there has always been looked up in the database (DUPLICATE NAMES when ambiguous),
+      // and picking the plan's leg instead would change what the entry means.
       if (!isClear) {
         var opt = A.dropdownOptionFor(dd, newValue);
-        if (opt) { A.clickNode(opt); return "ok"; }
+        if (opt && !A.FREE_TEXT_LIST_ID.test(opt.id || "")) { A.clickNode(opt); return "ok"; }
       }
+      if (isClear && /^[\s\-.▯]*$/.test(span.textContent)) return "ok";   // nothing to clear
       if (!A.dropdownIsOpen(dd)) A.clickNode(dd);   // toggle open -> focuses inner field
-      if (isClear) A.clearFocusedField(span);       // backspace + ENTER (clears, closes)
-      else A.typeIntoField(span, newValue, true);   // type + ENTER (commits, closes)
-      // A fixed-value list ignores typed keys and ENTER since #10929, leaving itself open
-      // over the page, and nothing was set (the value matched no option, or it would have
-      // been clicked above): close it and say so, since the MFD itself says nothing.
-      if (A.dropdownIsOpen(dd)) { A.clickNode(dd); return isClear ? "ok" : "nomatch"; }
+      // A fixed-value list ignores every key (InputField: fixedValuesDropDown) and the MFD
+      // says nothing, so the entry sets nothing. Tell it apart BEFORE ENTER, from whether
+      // the first key changed the field: a list that takes typing shows its edit buffer at
+      // once. Whether the list closes after ENTER cannot tell: FBW validates asynchronously
+      // and closes it only after its 500 ms wait.
+      var before = span.textContent;
+      var keys = isClear ? [8] : A.entryKeyCodes(newValue);   // BACKSPACE empties the buffer
+      if (keys.length > 0) A.dispatchKey(span, isClear ? "keydown" : "keypress", keys[0]);
+      if (span.textContent === before) {
+        if (A.dropdownIsOpen(dd)) A.clickNode(dd);   // close it again, or it stays over the page
+        return isClear ? "noclear" : "nomatch";
+      }
+      for (var k = 1; k < keys.length; k++) A.dispatchKey(span, "keypress", keys[k]);
+      A.dispatchKey(span, "keypress", 13);           // ENTER: FBW commits, then closes the list
       return "ok";
     }
 

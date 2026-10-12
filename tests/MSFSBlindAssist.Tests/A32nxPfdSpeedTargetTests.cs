@@ -138,13 +138,17 @@ public class A32nxPfdSpeedRowsTests
     }
 
     [Fact]
-    public void The_headwind_a330_keeps_the_plain_lvar_and_has_no_vapp_row()
+    public void The_headwind_a330_reads_the_speed_target_and_has_no_vapp_row()
     {
-        // Its fork predates #10890: the installed package (0.9.0-382bacb) contains neither the FMGC
-        // PFD_SELECTED_SPEED word nor A32NX_SPEEDS_VAPP, and still writes the plain managed L:var.
-        var pfd = Pfd(new HeadwindA330Definition());
-        Assert.Contains("A32NX_SPEEDS_MANAGED_PFD", pfd);
-        Assert.DoesNotContain(FlyByWireA320Definition.PfdSpeedTargetKey, pfd);
+        // Its fork predates #10890, so its package (0.9.0-382bacb) has no A32NX_SPEEDS_VAPP. It does
+        // have the FMGC PFD_SELECTED_SPEED / DISCRETE_WORD_5 words and the FCU selected airspeed
+        // (FBW #7587), and its own PFD draws its speed target from them.
+        var a330 = new HeadwindA330Definition();
+        var pfd = Pfd(a330);
+        Assert.Contains(FlyByWireA320Definition.PfdSpeedTargetKey, pfd);
+        Assert.DoesNotContain("A32NX_SPEEDS_MANAGED_PFD", pfd);
         Assert.DoesNotContain("A32NX_SPEEDS_VAPP", pfd);
+        Assert.False(a330.GetVariables().ContainsKey("A32NX_SPEEDS_VAPP"), "VAPP still registered on the A330");
+        Assert.True(a330.GetVariables().ContainsKey("A32NX_FMGC_1_DISCRETE_WORD_5"), "the speed target's siblings are gone");
     }
 }

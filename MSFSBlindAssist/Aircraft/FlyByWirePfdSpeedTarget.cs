@@ -46,7 +46,8 @@ public static class FlyByWirePfdSpeedTarget
         return true;
     }
 
-    // Away from zero, as the PFD's own Math.round does for a positive speed.
-    private static string Knots(float value) =>
+    /// <summary>Whole knots, away from zero as the PFD's own Math.round does for a positive speed;
+    /// also the A32NX PFD box's VAPP row.</summary>
+    internal static string Knots(double value) =>
         Math.Round(value, MidpointRounding.AwayFromZero).ToString("0", CultureInfo.InvariantCulture) + " knots";
 }
