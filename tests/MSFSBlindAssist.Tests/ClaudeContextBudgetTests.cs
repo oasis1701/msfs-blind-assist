@@ -760,6 +760,7 @@ public class ClaudeContextBudgetTests
             + "without it"] = new[]
         {
             "A320-7 SetLVar", "A320-23 SetLVar", "DBG-2 SetLVar", "IFLY-2 SetLVar", "MD11-1 SetLVar", "VAR-2 SetLVar",
+            "A220-1 ExecuteCalculatorCode",
             "A380-25 SendEvent", "A380C-24 StopAllMotion", "A320-39 AircraftLoaded",
             "PEFB-6 AnnounceImmediate", "ROL-25 AnnounceImmediate", "TKO-5 AnnounceImmediate", "VAT-3 AnnounceImmediate",
             "VAT-3 AnnounceWithQueue", "VAT-4 QueuedAnnouncementCount", "EXIT-10 AnnounceInstruction",
@@ -772,7 +773,7 @@ public class ClaudeContextBudgetTests
         },
         ["named as what never to use: the rule guards the code that must avoid it"] = new[]
         {
-            "DCK-17 CalculateCrossTrackError", "EXIT-1 LastKnownPosition", "EXIT-9 Runway.Length",
+            "A220-1 SetLVar", "DCK-17 CalculateCrossTrackError", "EXIT-1 LastKnownPosition", "EXIT-9 Runway.Length",
             "P777-14 RequestVariable", "STR-17 Runway.StartLat", "STR-17 StartLon", "SUR-4 GetNearbyAirportICAOs",
             "SUR-24 GetTaxiPaths", "SUR-1 TaxiGraph.Build", "SI-27 TaxiGraph", "BRF-1 TaxiGuidanceManager",
             "TKO-3 TaxiGuidanceManager",
@@ -794,7 +795,7 @@ public class ClaudeContextBudgetTests
         },
         ["a SimVarDefinition field the aircraft definitions set: the rule loads on the definitions"] = new[]
         {
-            "A320-10 SimVarDefinition.IsNotSet", "A380-2 RenderAsButton", "A380-10 RenderAsButton",
+            "A220-4 IsAnnounced", "A320-10 SimVarDefinition.IsNotSet", "A380-2 RenderAsButton", "A380-10 RenderAsButton",
             "A380F-12 ExcludeFromBatch", "ARINC-2 ValueDescriptions", "MD11-11 ExcludeFromMonitorManager",
             "MD11-22 SimVarDefinition.ValueToDescriptionKey",
         },
