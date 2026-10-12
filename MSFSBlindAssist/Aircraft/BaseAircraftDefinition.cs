@@ -34,6 +34,15 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// </summary>
     protected const double TrimHysteresis = 0.03;
 
+    /// <summary>
+    /// Takes <paramref name="degrees"/> as the trim position last spoken, without speaking it.
+    /// For an aircraft whose autopilot trims continuously: the motion it makes is not news,
+    /// and re-basing on it keeps the first pilot trim afterwards from reporting the
+    /// autopilot's whole travel as one step.
+    /// </summary>
+    protected void RebaseTrimAnnouncement(double degrees)
+        => _lastAnnouncedTrimKey = DescribeElevatorTrim(degrees).Key;
+
     // Glideslope alive/lost tracking
     private bool _previousGlideSlopeAlive = false;
 

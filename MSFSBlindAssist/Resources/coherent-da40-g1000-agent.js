@@ -333,11 +333,40 @@
             return "";
         }
 
+        // ⚠️ EACH HALF IS AN ACTIVE MODE, ITS ARMED MODES AND (VERTICAL) A TARGET, IN THEIR OWN
+        // ELEMENTS - read as text they welded into "FLC112KTALTS" (live, climbing out of LOWG
+        // 2026-10-12). Lateral: .lateral-active-mode / .lateral-armed-mode. Vertical:
+        // .activeVerticalMode, .verticalModeValue + .verticalModeUnits, then the armed modes
+        // in `.right`. The target rides last ("target 88 KT") so the CAS watcher can leave it
+        // out of its mode comparison: the selected value is spoken by its own announcer.
+        function lateralModes() {
+            var active = one(".lateral-active-mode");
+            if (!active) return lateral();
+            var armed = one(".lateral-armed-mode");
+            return active + (armed ? ", " + armed + " armed" : "");
+        }
+        function verticalModes() {
+            var host = firstVisible(".fma-ap-vertical-modes");
+            if (!host) return "";
+            var active = text(host.querySelector(".activeVerticalMode"));
+            if (!active) return text(host);
+            var parts = [active];
+            var rights = host.querySelectorAll(".right");
+            for (var i = 0; i < rights.length; i++) {
+                var a = text(rights[i]);
+                if (a) parts.push(a + " armed");
+            }
+            var value = text(host.querySelector(".verticalModeValue"));
+            var units = text(host.querySelector(".verticalModeUnits"));
+            if (value) parts.push("target " + value + (units ? " " + units : ""));
+            return parts.join(", ");
+        }
+
         return {
             autopilot: one(".fma-ap-label"),
             yawDamper: one(".fma-yd-label"),
-            lateral: lateral(),
-            vertical: one(".fma-ap-vertical-modes")
+            lateral: lateralModes(),
+            vertical: verticalModes()
         };
     };
 
@@ -550,21 +579,33 @@
         if (brg || dis) {
             var bits = [];
 
-            // The IDENT, which was the one part missing: bearing and distance to an
-            // unnamed fix say how far without saying to WHAT. It has no class of its own -
-            // it is the plain .dataField beside the two that do - so it is found by
-            // elimination rather than by name.
-            var fields = document.querySelectorAll(".dataField");
-            for (var f = 0; f < fields.length; f++) {
-                var c = classList(fields[f]);
-                if (c.indexOf("FixBrgValue") >= 0 || c.indexOf("FixDistValue") >= 0) continue;
-                var id = text(fields[f]);
-                if (id && /^[A-Z0-9]{2,6}$/.test(id)) { bits.push(id); break; }
+            // ⚠️ THE ACTIVE LEG IS "FROM -> TO", TWO FIELDS IN #CenterBarTopLeft. The first
+            // version took the first ident-shaped .dataField on the page, which is the FROM
+            // fix - so the row named "RW16C" while the aeroplane flew to 2700FT, and
+            // "2700FT" while it flew to WG607. The TO fix is the last field of that box; the
+            // FROM fix is said too, because "2700FT to WG607" is how the leg reads on screen.
+            var legBox = document.getElementById("CenterBarTopLeft");
+            var legFields = legBox ? legBox.querySelectorAll(".dataField") : [];
+            var legIds = [];
+            for (var lf = 0; lf < legFields.length; lf++) {
+                var lt = text(legFields[lf]);
+                if (lt) legIds.push(lt);
             }
+            if (legIds.length >= 2) bits.push(legIds[legIds.length - 1] + ", from " + legIds[0]);
+            else if (legIds.length === 1) bits.push(legIds[0]);
 
             if (brg) bits.push("bearing " + spacedText(brg));
             if (dis) bits.push("distance " + spacedText(dis));
             out.push("Active waypoint: " + bits.join(", "));
+        }
+
+        // THE WAYPOINT ALERTER - "Next DTK 275° in 5 sec", flashing in the same box as the
+        // turn comes up. It is the G1000's turn anticipation and the one cue a sighted pilot
+        // gets before the leg changes; nothing read it.
+        var alerter = shown(".waypoint-alerter");
+        if (alerter) {
+            var at = spacedText(alerter);
+            if (at) out.push("Waypoint alert: " + at);
         }
 
         // Vertical deviation - the glideslope or glidepath needle, and whether there is
@@ -748,6 +789,18 @@
     //
     // The four are Nearest Airports, Alerts (the full text behind the CAS abbreviations),
     // Timer and References, and ADF/DME Tuning.
+    /// Every message in the PFD Alerts window's list, whether or not the window is open.
+    A.alertMessages = function () {
+        var out = [];
+        var items = document.querySelectorAll(".alerts-container .alerts-message");
+        for (var i = 0; i < items.length; i++) {
+            if (window.getComputedStyle(items[i]).display === "none") continue;
+            var t = spacedText(items[i]);
+            if (t && out.indexOf(t) < 0) out.push(t);
+        }
+        return out;
+    };
+
     A.panes = function () {
         var out = [];
         var dialogs = document.querySelectorAll(".popout-dialog");
@@ -852,6 +905,21 @@
                 }
             } else if (A.groupboxLines(d).length) {
                 lines = A.groupboxLines(d);
+            } else if (d.querySelector(".ui-control-list-content")) {
+                // ⚠️ A LIST IS ONE LINE PER ITEM. The PFD Alerts window holds its messages
+                // in a ui-control-list, and the row walk below read the list's container as
+                // ONE line: "PITOT HT OFF - Pitot heat is off. SCHEDULER 1 - FUEL XFER" (live,
+                // in flight 2026-10-12). Each item is a line of its own, the knob's one marked.
+                var lc = d.querySelector(".ui-control-list-content");
+                for (var li = 0; li < lc.children.length; li++) {
+                    var item = lc.children[li];
+                    if (!visible(item)) continue;
+                    var lt2 = spacedText(item);
+                    if (!lt2) continue;
+                    var picked = classList(item).indexOf("highlight-select") >= 0 ||
+                                 !!item.querySelector(".highlight-select");
+                    lines.push(lt2 + (picked ? ", selected" : ""));
+                }
             } else {
                 // One line per row of the pane, so a reader can arrow through it, with
                 // the text nodes spaced rather than run together.
@@ -4419,11 +4487,24 @@
             rows.push("  " + label + ": " + cas[i].text);
         }
 
+        // THE ALERTS WINDOW'S MESSAGES, open or not. Scheduler reminders ("SCHEDULER 1 -
+        // FUEL XFER") and the system messages live only there; a sighted pilot is told by the
+        // Alerts softkey flashing, and nothing read them unless the window was opened. The
+        // list stays in the DOM with the window shut (opacity 0), so it is read regardless.
+        // ⚠️ The row prefix is a CONTRACT with CowsDA40Definition.ExtractAlertMessages.
+        var alerts = A.alertMessages();
+        if (alerts.length) {
+            rows.push("Alert messages: " + alerts.length);
+            for (var am = 0; am < alerts.length; am++) rows.push("  " + alerts[am]);
+        }
+
         var f = A.fma();
         // LATERAL BEFORE VERTICAL, which is the order the strip is drawn in and the order a
         // pilot reads it. Its absence is what made an uncaptured NAV indistinguishable from a
         // captured one - see A.fma().
-        var modes = [f.autopilot, f.lateral, f.vertical, f.yawDamper]
+        // The yaw damper sits with the autopilot, so the vertical target stays the LAST
+        // field - the CAS watcher strips it from its comparison (see A.fma).
+        var modes = [f.autopilot, f.yawDamper, f.lateral, f.vertical]
             .filter(function (x) { return x; });
         rows.push("Autopilot: " + (modes.length ? modes.join(", ") : "off"));
 

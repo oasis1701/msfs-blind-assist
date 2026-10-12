@@ -198,6 +198,40 @@ public partial class CowsDA40Definition
         return cas;
     }
 
+    /// <summary>
+    /// The PFD Alerts window's messages that are not already a CAS line, as "Alert: ..." so
+    /// they ride the same appeared/cleared speech. A scheduler reminder ("SCHEDULER 1 - FUEL
+    /// XFER") exists only there, and a sighted pilot learns of it from the Alerts softkey
+    /// flashing; a CAS caution is listed there too, with its explanation ("PITOT HT OFF - Pitot
+    /// heat is off."), and is already spoken from the CAS block, so it is left out. Pure so the
+    /// suite can pin it.
+    /// </summary>
+    internal static List<string> AlertsNotOnCas(IEnumerable<string> rows, IEnumerable<string> cas)
+    {
+        var casTexts = new HashSet<string>(StringComparer.Ordinal);
+        foreach (string c in cas)
+        {
+            int colon = c.IndexOf(": ", StringComparison.Ordinal);
+            casTexts.Add(colon >= 0 ? c.Substring(colon + 2).Trim() : c.Trim());
+        }
+
+        var alerts = new List<string>();
+        bool inAlerts = false;
+        foreach (string row in rows)
+        {
+            if (row.StartsWith("Alert messages:", StringComparison.Ordinal)) { inAlerts = true; continue; }
+            if (!row.StartsWith("  ", StringComparison.Ordinal)) { inAlerts = false; continue; }
+            if (!inAlerts) continue;
+
+            string message = row.Trim();
+            int dash = message.IndexOf(" - ", StringComparison.Ordinal);
+            string head = dash >= 0 ? message.Substring(0, dash).Trim() : message;
+            if (casTexts.Contains(head)) continue;
+            alerts.Add("Alert: " + message);
+        }
+        return alerts;
+    }
+
     private void OnCasRows(List<string> rows)
     {
         // BEFORE the announcer guard: the units are not an announcement, and they must
@@ -216,10 +250,11 @@ public partial class CowsDA40Definition
         string fma = "";
 
         cas = ExtractCasMessages(rows);
+        cas.AddRange(AlertsNotOnCas(rows, cas));
 
         foreach (string row in rows)
         {
-            if (row.StartsWith("Autopilot: ", StringComparison.Ordinal)) fma = row.Substring(11);
+            if (row.StartsWith("Autopilot: ", StringComparison.Ordinal)) fma = FmaModes(row.Substring(11));
         }
 
         // First pass after a connect is the baseline and is never spoken — and so is every
@@ -271,6 +306,18 @@ public partial class CowsDA40Definition
     /// "off" is the autopilot's resting state and announcing it on every disconnect would be
     /// noise; the modes themselves are the news.
     /// </summary>
+    /// <summary>
+    /// The FMA's MODES, without the vertical target the agent puts last ("AP, YD, GPS, FLC,
+    /// ALTS armed, target 88 KT" gives "AP, YD, GPS, FLC, ALTS armed"). A target change is
+    /// spoken once by the selected-value announcer; comparing it here re-read the whole strip
+    /// on every knob step. Pure so the suite can pin it.
+    /// </summary>
+    internal static string FmaModes(string fma)
+    {
+        int t = fma.LastIndexOf(", target ", StringComparison.Ordinal);
+        return t >= 0 ? fma.Substring(0, t) : fma;
+    }
+
     internal static (string Immediate, List<string> Queued) ComposeCasSpeech(
         IReadOnlyList<string> appeared, IReadOnlyList<string> cleared, string? fmaChange)
     {
@@ -280,7 +327,8 @@ public partial class CowsDA40Definition
         var queued = new List<string>();
         foreach (string known in cleared)
             queued.Add(known.Replace("Caution: ", "").Replace("WARNING: ", "")
-                            .Replace("Advisory: ", "").Replace("Status: ", "") + " cleared");
+                            .Replace("Advisory: ", "").Replace("Status: ", "")
+                            .Replace("Alert: ", "") + " cleared");
 
         return (string.Join(". ", parts.Select(p => p.TrimEnd('.'))) is { Length: > 0 } t ? t + "." : "", queued);
     }

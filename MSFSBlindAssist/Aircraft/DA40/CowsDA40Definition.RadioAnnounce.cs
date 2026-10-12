@@ -144,14 +144,24 @@ public partial class CowsDA40Definition
     /// The key is the honest unit: a value MSFSBA wrote and already spoke is redundant, and
     /// any OTHER value moving in the same window is somebody else's news.
     /// </summary>
+    /// ⚠️ EVERY KEY WRITTEN IN THE GRACE, NOT ONLY THE LAST. Holding just the latest write
+    /// meant three entries in a row - altitude, heading, airspeed - left the first two looking
+    /// like somebody else's change: each setter confirmed itself and then the settle said
+    /// "Selected altitude 10000. Heading bug 164" again (live, LOWG climb-out 2026-10-12).
+    /// </summary>
     private void MarkRadioSetByUs(params string[] varKeys)
     {
         _radioOwnWriteAt = DateTime.UtcNow;
-        _radioOwnWriteKeys = varKeys;
+        foreach (var key in varKeys) _radioOwnWrites[key] = _radioOwnWriteAt;
     }
 
-    // More than one only for a course typed before the CDI source is known (CdiCourseKeys).
-    private string[] _radioOwnWriteKeys = Array.Empty<string>();
+    /// <summary>The keys MSFSBA wrote, and when; each is ours for RadioOwnWriteGraceMs.</summary>
+    private readonly Dictionary<string, DateTime> _radioOwnWrites = new(StringComparer.Ordinal);
+
+    /// <summary>Whether <paramref name="key"/> was written by MSFSBA inside the grace.</summary>
+    private bool WrittenByUs(string key, DateTime now) =>
+        _radioOwnWrites.TryGetValue(key, out var at) &&
+        (now - at).TotalMilliseconds < RadioOwnWriteGraceMs;
 
     /// <summary>
     /// The display window tuned a radio and has already spoken the result.
@@ -248,7 +258,8 @@ public partial class CowsDA40Definition
             // The suppression is justified ONLY for a value MSFSBA itself echoed back as it
             // was typed; an autopilot preselect that happens to change in the same window is
             // somebody else's news and must still be spoken.
-            foreach (var own in _radioOwnWriteKeys) if (own.Length > 0) pending.Remove(own);
+            var now = DateTime.UtcNow;
+            foreach (var key in pending.Keys.ToList()) if (WrittenByUs(key, now)) pending.Remove(key);
             if (pending.Count == 0) return;
         }
 

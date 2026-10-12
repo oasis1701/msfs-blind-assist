@@ -294,6 +294,9 @@ public partial class CowsDA40Definition
 
     private readonly DA40LoadSettle _loadSettle = new();
 
+    /// <summary>Whether the GFC 700 is engaged, as last delivered (see the trim gate in Core).</summary>
+    private bool _apEngaged;
+
     /// <summary>
     /// Runs <paramref name="work"/> with <paramref name="announcer"/> muted while the load
     /// settle runs (<see cref="Accessibility.ScreenReaderAnnouncer.OwnerMute"/>, which silences
@@ -371,6 +374,19 @@ public partial class CowsDA40Definition
         if (IsComAudioSideEffect(varName)) return true;
 
         if (IsSilentCachedReadout(varName)) return true;
+
+        // ⚠️ THE AUTOPILOT'S OWN TRIMMING IS NOT SPOKEN. The shared Shift+T announcer reads
+        // every 0.1 degree of travel, and with the GFC 700 engaged the trim moves all the
+        // time: climbing out at LOWG it said "Trim down 2.4", "Trim down 1.8", "Trim down 2.8"
+        // inside three seconds (2026-10-12). This aeroplane's rule is that the autopilot's
+        // own trimming stays silent; the position is re-based while it flies, so the first
+        // pilot trim after a disconnect speaks only what the pilot moved.
+        if (varName == "DA40_AP_MASTER") _apEngaged = value >= 0.5;
+        if (varName == "MON_ElevatorTrim" && _apEngaged)
+        {
+            RebaseTrimAnnouncement(value);
+            return true;
+        }
 
         // ⚠️ Returns false by design - the switch keeps its own immediate announcement and
         // this only ARMS the bus read-back that follows it. See NotePowerSwitchChange.
