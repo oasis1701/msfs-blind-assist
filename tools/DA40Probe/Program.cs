@@ -434,6 +434,9 @@ internal sealed class ProbeForm : Form
                             };
                             _pfd.Error += msg => _watch?.WriteLine($"{DateTime.Now:HH:mm:ss.fff}\tERR\tPFD {msg}");
                             _pfd.Start();
+                            // Lend the socket the way the display window does, so the waypoint
+                            // sequencer's leg-name read (InvokeOnCasClientAsync) has a road.
+                            def.SuspendCasMonitor(true, _pfd.InvokeAsync);
                             break;
                         }
                         case "pfdjs":
