@@ -124,7 +124,9 @@ public partial class CowsDA40Definition
             Units = "bool",
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
-            ExcludeFromMonitorManager = true
+            ExcludeFromMonitorManager = true,
+            ExcludeFromBatch = true,   // per frame, with the courses it re-syncs
+            HighFrequency = true
         };
         v["DA40_CDI_NAV"] = new SimVarDefinition
         {
@@ -134,7 +136,9 @@ public partial class CowsDA40Definition
             Units = "number",
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
-            ExcludeFromMonitorManager = true
+            ExcludeFromMonitorManager = true,
+            ExcludeFromBatch = true,
+            HighFrequency = true
         };
 
         // ---------- THE KNOBS THEMSELVES ----------
@@ -541,8 +545,15 @@ public partial class CowsDA40Definition
     {
         switch (varName)
         {
-            case "DA40_CDI_GPS": _cdiOnGps = value >= 0.5; return true;
-            case "DA40_CDI_NAV": _cdiNavRadio = value >= 1.5 ? 2 : 1; return true;
+            // A source change re-syncs the course to the new receiver's, and that course is
+            // the CDI's own move, not a knob: it keeps its name (ApModeSyncMs) - a bare "283"
+            // after the CDI went to LOC2 on short final said nothing placeable (2026-10-12).
+            case "DA40_CDI_GPS":
+                if (_cdiOnGps != (value >= 0.5)) _apModeChangedAt = DateTime.UtcNow;
+                _cdiOnGps = value >= 0.5; return true;
+            case "DA40_CDI_NAV":
+                if (_cdiNavRadio != (value >= 1.5 ? 2 : 1)) _apModeChangedAt = DateTime.UtcNow;
+                _cdiNavRadio = value >= 1.5 ? 2 : 1; return true;
             default: return false;
         }
     }
