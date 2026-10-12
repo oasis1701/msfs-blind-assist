@@ -192,4 +192,206 @@ public class FbwMcduFormatTests
         Assert.Empty(data.Annunciators);
         Assert.Equal(new[] { false, false, false, false }, data.Arrows);
     }
+
+    // --- Green markers must not cost a column --------------------------------------------
+
+    private static string Sp(int n) => string.Concat(Enumerable.Repeat("{sp}", n));
+
+    private static MCDUDisplayData SingleValueRow(string valueCell, string right = "", string center = "")
+        => FbwMcduFormat.BuildDisplayData(new JObject
+        {
+            ["lines"] = new JArray
+            {
+                new JArray { "", "", "" },
+                new JArray { valueCell, right, center },
+            },
+        });
+
+    [Fact]
+    public void BuildDisplayData_keeps_the_right_hand_value_when_green_markers_precede_it()
+    {
+        // Live INIT FUEL PRED line 2 (2026-09-26): FBW sends the whole row, BLOCK included,
+        // in cell 0, padded to exactly 24 columns. The three '*' markers once counted as
+        // columns and pushed "5.1" past column 24, so BLOCK fuel was clipped away. The three
+        // touching green pieces are one value with one '*', which takes the blank padding
+        // column in front of "3.1".
+        string cell = "{white}{sp}{sp}{small}{green}3.1{end}{end}{small}{green}/{end}{end}"
+                    + "{small}{green}0137{end}{end}" + Sp(11)
+                    + "{cyan}5.1{end}{small}{end}{big}{end}{end}";
+
+        var data = SingleValueRow(cell);
+
+        Assert.Equal(" *3.1/0137" + new string(' ', 11) + "5.1", data.RawLines[2]);
+        Assert.Equal("  *3.1/0137" + new string(' ', 11) + "5.1", data.Lines[0].LeftValue);
+    }
+
+    [Fact]
+    public void BuildDisplayData_keeps_a_marked_right_cell_on_the_right_edge()
+    {
+        // The '*' takes the blank column in front, so the value still ends at column 24 like
+        // every unmarked right value, and the line stays 24 wide.
+        var data = SingleValueRow("A", right: "{green}ON{end}/OFF");
+
+        Assert.Equal("A" + new string(' ', 16) + "*ON/OFF", data.RawLines[2]);
+        Assert.Equal("*ON/OFF", data.Lines[0].RightValue);
+    }
+
+    [Fact]
+    public void BuildDisplayData_centres_a_marked_centre_cell_on_its_text()
+        => Assert.Equal(new string(' ', 8) + "*ON/OFF", SingleValueRow("", center: "{green}ON{end}/OFF").RawLines[2]);
+
+    [Fact]
+    public void BuildDisplayData_keeps_the_space_between_text_and_a_marker()
+        // The blank column right after "ALT" is a word gap, not free padding: insert the '*'.
+        => Assert.Equal("ALT *FL370", SingleValueRow("ALT {green}FL370{end}").RawLines[2]);
+
+    [Fact]
+    public void BuildDisplayData_does_not_truncate_a_placeholder_after_green_markers()
+    {
+        // Same page, line 4: LW "---.-" at the right came out as "--".
+        string cell = "{small}{green}0.8{end}{small}{green}/{end}{small}{green}0022{end}"
+                    + Sp(11) + "{cyan}---.-{end}"; // 8 + 11 + 5 = FBW's 24 columns
+
+        var data = SingleValueRow(cell);
+
+        // No blank column in front of "0.8", so the '*' is inserted and the gap after the value
+        // gives the column back: "---.-" still ends at column 24.
+        Assert.Equal("*0.8/0022" + new string(' ', 10) + "---.-", data.RawLines[2]);
+    }
+
+    // --- Live pages, 2026-09-30 (FBW A320 at KIAH, cells as captured) ------------------------
+
+    [Fact]
+    public void DecodeCell_gives_touching_green_pieces_one_star()
+        // FBW sends a green value as separate pieces ("0.8" cyan, "/" green, "0011" green); a
+        // pilot sees one green value, so it is marked once, not "0.8*/*0011".
+        => Assert.Equal("0.8*/0011", FbwMcduFormat.DecodeCell("{cyan}0.8{end}{green}/{end}{green}0011{end}"));
+
+    [Fact]
+    public void DecodeCell_keeps_a_star_for_each_green_value_a_gap_separates()
+        => Assert.Equal("*A *BC", FbwMcduFormat.DecodeCell("{green}A{end} {green}B{end}{white}C{end}"));
+
+    [Fact]
+    public void PositionLine_non_breaking_padding_never_overwrites_text()
+        // FBW pads its cells with U+00A0, not ' '. Padding is blank whichever space it is.
+        => Assert.Equal("ABCDX", FbwMcduFormat.PositionLine("ABCD", "", "\u00A0\u00A0X", 5));
+
+    [Fact]
+    public void BuildDisplayData_lets_a_star_take_non_breaking_padding()
+    {
+        // PERF APPR line 5 (VAPP/VLS): the gap before VLS is four U+00A0.
+        var data = SingleValueRow("{white}{cyan}{small}136{end}{end}\u00A0\u00A0\u00A0\u00A0{green}131{end}{end}",
+                                  right: "{white}{cyan}FULL/{end}{small}CONF3{end}*{end}");
+
+        Assert.Equal("136   *131   FULL/CONF3*", data.RawLines[2]);
+    }
+
+    [Fact]
+    public void BuildDisplayData_keeps_init_fuel_pred_block_fuel_on_the_right_edge()
+    {
+        // INIT FUEL PRED line 2 (TRIP/TIME ... BLOCK), whole row in cell 0.
+        var data = SingleValueRow("{white}{sp}{small}{green}10.2{end}{end}{small}{green}/{end}{end}"
+                                + "{small}{green}0213{end}{end}" + Sp(10) + "{cyan}14.0{end}{small}{end}{big}{end}{end}");
+
+        Assert.Equal("*10.2/0213" + new string(' ', 10) + "14.0", data.RawLines[2]);
+    }
+
+    [Fact]
+    public void BuildDisplayData_repays_an_inserted_star_from_the_next_gap()
+    {
+        // INIT FUEL PRED line 4 (ALTN/TIME, TOW/LW): the '*' in front of "/0011" has text right
+        // before it, so it is inserted; the gap after it gives that column back and still leaves
+        // room for the '*' in front of TOW, so LW ends at column 24.
+        var data = SingleValueRow("{white}{sp}{sp}{small}{cyan}0.8{end}{end}{small}{green}/{end}{end}"
+                                + "{small}{green}0011{end}{end}{sp}{sp}{sp}{small}{green}155.3{end}{end}"
+                                + "{small}{green}/{end}{end}{small}{green}145.1{end}{end}{small}{end}{big}{end}{end}");
+
+        Assert.Equal("  0.8*/0011 *155.3/145.1", data.RawLines[2]);
+    }
+
+    [Fact]
+    public void BuildDisplayData_keeps_extra_time_on_the_right_edge()
+    {
+        // INIT FUEL PRED line 6 (MIN DEST FOB, EXTRA/TIME).
+        var data = SingleValueRow("{white}{sp}{sp}{small}{cyan}2.9{end}{end}" + Sp(11)
+                                + "{small}{green}0.0{end}{end}{small}{green}/{end}{end}{small}{green}0000{end}{end}"
+                                + "{small}{end}{big}{end}{end}");
+
+        Assert.Equal("  2.9" + new string(' ', 10) + "*0.0/0000", data.RawLines[2]);
+    }
+
+    [Fact]
+    public void BuildDisplayData_keeps_the_right_cell_in_place_after_an_inserted_star()
+    {
+        // PERF TAKE OFF line 2 (VR, SLT RETR, TO SHIFT): "S=" leaves no free column for the
+        // '*' in front of 201, and the gap before TO SHIFT gives one back.
+        var data = SingleValueRow("{white}{cyan}149{end}{small}\u00A0\u00A0\u00A0{end}\u00A0S={green}201{end}{end}",
+                                  right: "{white}{inop}{small}[M]{end}[\u00A0\u00A0]*{end}{end}");
+
+        Assert.Equal("149    S=*201   [M][  ]*", data.RawLines[2]);
+    }
+
+    [Fact]
+    public void BuildDisplayData_never_pays_a_star_back_from_inside_an_entry_box()
+    {
+        // FBW draws an entry box from the same U+00A0 it pads with ("[\xa0\xa0\xa0]", PERF TAKE
+        // OFF FLAPS/THS "/[\xa0\xa0\xa0]", the ATC pages' "[\xa0\xa0]"). Its blanks are the box's
+        // width, not a gap: the '*' inserted after "S=" is paid back by the padding after the box,
+        // and the box keeps all three columns.
+        var data = SingleValueRow("{white}S={end}{green}201{end}{white}/[\u00A0\u00A0\u00A0]{end}"
+                                + Sp(10) + "{cyan}ABC{end}");
+
+        Assert.Equal("S=*201/[   ]" + new string(' ', 9) + "ABC", data.RawLines[2]);
+    }
+
+    [Fact]
+    public void DecodeCell_turns_a_non_breaking_space_into_a_plain_space()
+        // The scratchpad, title and page go through DecodeCell alone, never PositionLine.
+        => Assert.Equal("NOT ALLOWED", FbwMcduFormat.DecodeCell("{white}NOT\u00A0ALLOWED{end}"));
+
+    [Fact]
+    public void BuildDisplayData_cell_values_use_plain_spaces()
+    {
+        var data = SingleValueRow("{cyan}[\u00A0\u00A0]{end}", right: "{cyan}[\u00A0]{end}");
+
+        Assert.Equal("[  ]", data.Lines[0].LeftValue);
+        Assert.Equal("[ ]", data.Lines[0].RightValue);
+    }
+
+    [Fact]
+    public void PositionLine_leaves_a_literal_asterisk_as_an_ordinary_column()
+        // Callers outside BuildDisplayData (the DCDU) pass text in which '*' is real content.
+        => Assert.Equal("INSERT*   X", FbwMcduFormat.PositionLine("INSERT*", "", "X", 11));
+
+    // --- Source hygiene ------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("MSFSBlindAssist/Services/FbwMcduFormat.cs")]
+    [InlineData("tests/MSFSBlindAssist.Tests/FbwMcduFormatTests.cs")]
+    [InlineData("tools/fbw-mcdu-probe/mcdu-format.js")]
+    [InlineData("tools/fbw-mcdu-probe/mcdu-format.test.js")]
+    public void Source_spells_the_no_break_space_as_an_escape(string relativePath)
+    {
+        // A literal U+00A0 looks exactly like a space: "ch == ' ' || ch == ' '" reads as a
+        // duplicate compare that a tidy-up deletes, and an editor that normalises it turns the
+        // tests that use it into tests of an ordinary space. Both happen with no compile error.
+        const char noBreakSpace = (char)0xA0;
+        string path = Path.Combine(RepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
+        string[] lines = File.ReadAllLines(path);
+        var offending = new List<int>();
+        for (int n = 0; n < lines.Length; n++)
+        {
+            if (lines[n].IndexOf(noBreakSpace) >= 0) { offending.Add(n + 1); }
+        }
+
+        Assert.True(offending.Count == 0,
+            $"{relativePath} has a literal U+00A0 on line(s) {string.Join(", ", offending)}; write it as an escape.");
+    }
+
+    private static string RepoRoot()
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
+            if (File.Exists(Path.Combine(dir.FullName, "MSFSBlindAssist.sln"))) return dir.FullName;
+        throw new InvalidOperationException($"MSFSBlindAssist.sln was not found above {AppContext.BaseDirectory}");
+    }
 }

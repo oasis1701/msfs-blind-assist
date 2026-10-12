@@ -636,9 +636,11 @@ with nothing to tell the pilot it had not come from a taxi clearance at all. The
 **readback** is published as a transmission too, and is the newest thing on the frequency
 at exactly the moment someone might press the import key.
 
-Excluded on `cleared to land`, `climb and maintain`, `squawk NNNN` and `as filed`. Each
-belongs to clearance delivery and to nothing a ground controller says while taxiing you,
-so excluding on them costs no real taxi clearance.
+Excluded on `cleared to land`, `climb and maintain` and `as filed`. Each belongs to
+clearance delivery and to nothing a ground controller says while taxiing you, so excluding
+on them costs no real taxi clearance. A squawk is deliberately not among them, though
+clearance delivery issues one: a squawk legitimately ends a taxi clearance too (the
+terminator list below), and excluding on it rejected a real clearance outright.
 
 **There are TWO fallbacks and the gate has to cover both.** `MainForm` reads the live
 `getCommsHistory` transmission, and `SayIntentionsService.ReadFlightContext` sets
@@ -992,7 +994,7 @@ would have heard a shortest-path route plus "Could not apply" followed by two hu
 numbers — with nothing in the announcement to reveal that the switch had even happened.
 So the boundary is enforced at the reader itself, coordinates in and nothing else, no
 matter what a future capture appears to add: see the doc comment on
-`ReadTaxiPathPoints` and the CLAUDE.md invariant under "SayIntentions integration" for
+`ReadTaxiPathPoints` and the invariant [SI-9] in [invariants/sayintentions-import.md](invariants/sayintentions-import.md) for
 the same rule stated at the code site.
 
 Turning those coordinates into a route is a separate concern:

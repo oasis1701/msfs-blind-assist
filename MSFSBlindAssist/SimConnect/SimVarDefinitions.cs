@@ -100,7 +100,8 @@ public class SimVarDefinition
     // UI customization properties (aircraft-specific)
     public bool RenderAsButton { get; set; }  // True to render as button instead of combo box (e.g., APU Start)
     /// <summary>
-    /// When true (opt-in, set by the FBW momentary-button helpers), the panel label
+    /// When true (opt-in, set by the momentary-button definitions of the FBW A320/A380, the
+    /// iFly 737 and the TFDi MD-11), the panel label
     /// SUPPRESSES the value-0 resting state ("Released"/"Off"/"Idle") — a momentary
     /// push-button has no meaningful resting value, so appending it reads as noise.
     /// MUST stay opt-in: PMDG 777 MCP buttons and the HS787 Baro STD use value-0
@@ -157,6 +158,23 @@ public class SimVarDefinition
 
     /// <summary>The ValueDescriptions key for <paramref name="value"/>: through <see cref="ValueToDescriptionKey"/> when set, else the value itself.</summary>
     public double DescriptionKeyFor(double value) => ValueToDescriptionKey?.Invoke(value) ?? value;
+
+    /// <summary>
+    /// A panel control whose definition announces it from INSIDE <c>ProcessSimVarUpdate</c> (which
+    /// returns true, so MainForm skips its generic control refresh) but whose open control must
+    /// still FOLLOW a change made elsewhere: MainForm's def-handled branch refreshes it for each
+    /// delivered value this predicate accepts. Accept only values the control can truthfully show —
+    /// a lever's resting positions, never the values it sweeps through, or a focused combo is
+    /// narrated at every one. Set only where the control's write fires on a user commit alone (a
+    /// combo's SelectionChangeCommitted under <c>updatingFromSim</c>), so a refresh can never send
+    /// anything — the HS787-style controls whose write handler reacts to programmatic updates must
+    /// never set it. First user: the iFly 737 MAX speed-brake lever, which the auto speed brake moves.
+    /// </summary>
+    public Func<double, bool>? RefreshControlWhenDefHandled { get; set; }
+
+    /// <summary>Whether MainForm's def-handled branch refreshes this control for <paramref name="value"/>
+    /// (<see cref="RefreshControlWhenDefHandled"/>; never when that is unset).</summary>
+    public bool RefreshesControlWhenDefHandled(double value) => RefreshControlWhenDefHandled?.Invoke(value) == true;
 
     // ----- ARINC429 auto-decode -----
     // When true, the raw double is a FlyByWire ARINC429 word (numeric-truncate to u64; low

@@ -122,21 +122,30 @@ public static class SettingsManager
         /// A Ctrl+M mute on a monitor row that was RE-KEYED moves to the new key. FBW #10855 moved
         /// four A380 controls onto new variables (fixed 2026-09-25): the flight-director combos
         /// FD_1_CTL/FD_2_CTL became the one FD light, the altitude increment moved to the FCU's own
-        /// input, and the per-side baro-unit selectors moved to the EFIS-CP's BARO_IS_INHG inputs. Idempotent without a flag because the OLD key leaves the list: left in place, it
+        /// input, and the per-side baro-unit selectors moved to the EFIS-CP's BARO_IS_INHG inputs.
+        /// The iFly 737 MAX's trim call-out moved from the shared degrees row (MON_ElevatorTrim) to
+        /// its own units field (2026-09-30). Idempotent without a flag because the OLD key leaves the list: left in place, it
         /// would re-mute the new row on every launch after the pilot un-ticked it, and no Ctrl+M row
         /// is left to clear it from. Returns whether anything moved (the caller saves).
         /// </summary>
         internal static bool CarryRenamedMonitorMutes(UserSettings settings)
         {
-            bool moved = false;
-            foreach (var (oldKey, newKey) in A380RenamedMonitorKeys)
-            {
-                if (!settings.A380DisabledMonitorVariables.Remove(oldKey)) continue;
-                if (!settings.A380DisabledMonitorVariables.Contains(newKey))
-                    settings.A380DisabledMonitorVariables.Add(newKey);
-                moved = true;
-            }
+            bool moved = Carry(settings.A380DisabledMonitorVariables, A380RenamedMonitorKeys);
+            moved |= Carry(settings.IFlyDisabledMonitorVariables, IFlyRenamedMonitorKeys);
             return moved;
+
+            static bool Carry(List<string> muted, (string Old, string New)[] renamed)
+            {
+                bool any = false;
+                foreach (var (oldKey, newKey) in renamed)
+                {
+                    if (!muted.Remove(oldKey)) continue;
+                    if (!muted.Contains(newKey))
+                        muted.Add(newKey);
+                    any = true;
+                }
+                return any;
+            }
         }
 
         // Literal keys: Settings does not reach into the aircraft definitions. The new names are
@@ -149,6 +158,12 @@ public static class SettingsManager
             ("XMLVAR_AUTOPILOT_ALTITUDE_INCREMENT", "A32NX_FCU_ALT_INCREMENT_1000"),
             ("XMLVAR_Baro_Selector_HPA_1", "A32NX_FCU_EFIS_L_BARO_IS_INHG"),
             ("XMLVAR_Baro_Selector_HPA_2", "A32NX_FCU_EFIS_R_BARO_IS_INHG"),
+        };
+
+        // The new name is IFly737MAXDefinition.StabTrimUnitsKey.
+        private static readonly (string Old, string New)[] IFlyRenamedMonitorKeys =
+        {
+            ("MON_ElevatorTrim", "Stabilizer_Trim_Pointer_Status"),
         };
 
         /// <summary>

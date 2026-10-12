@@ -1,0 +1,1 @@
+When the navigation database or the location data is missing, MSFS Blind Assist now offers to set it up as soon as it starts, so you find out before your flight instead of when pressing a key after take-off. To stop the offer, turn off "Check for missing data when the app starts" in Settings, Updates tab.

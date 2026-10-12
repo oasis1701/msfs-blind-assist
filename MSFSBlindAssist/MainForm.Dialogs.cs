@@ -117,16 +117,29 @@ public partial class MainForm
             return;
         }
 
+        if (!offlineLocationService.IsAvailable)
+        {
+            announcer.AnnounceImmediate(LocationDataUnavailableText());
+            return;
+        }
+
         try
         {
-            announcer.AnnounceImmediate("Requesting aircraft position...");
-
-            simConnectManager.RequestAircraftPositionAsync((position) =>
+            // The lookup is local and takes milliseconds, so the window opens already filled: no
+            // "Requesting…" or "Loading…" stage, and its focused first box is what NVDA reads.
+            var query = Services.Geography.LocationQuerySettings.From(MSFSBlindAssist.Settings.SettingsManager.Current);
+            simConnectManager.RequestAircraftPositionAsync(async position =>
             {
-                // This callback runs when position data is received
+                // This callback runs on the UI thread, so the await resumes there.
                 try
                 {
-                    var locationForm = new Forms.LocationInfoForm(position.Latitude, position.Longitude, announcer);
+                    var report = await Task.Run(() => offlineLocationService.GetLocationInfo(position.Latitude, position.Longitude, query));
+                    if (report?.Details is null)
+                    {
+                        announcer.AnnounceImmediate(LocationDataUnavailableText());
+                        return;
+                    }
+                    var locationForm = new Forms.LocationInfoForm(report, query.Kilometres);
                     locationForm.Show();
                 }
                 catch (Exception ex)
@@ -270,12 +283,19 @@ public partial class MainForm
         // Ensure output hotkey mode is deactivated before showing dialog
         hotkeyManager.ExitOutputHotkeyMode();
 
-        // Shift+C opens the static text checklist (same for every aircraft, including
-        // the A380). The A380's LIVE Electronic Checklist is on its own key,
-        // Ctrl+Shift+C (ShowChecklistECLDialog).
+        // Shift+C opens this aircraft's static text checklist. An aircraft with none of its own
+        // opens nothing and says so: another aircraft's list must never pass for this one's.
+        // The A380's LIVE Electronic Checklist is on its own key, Ctrl+Shift+C
+        // (ShowChecklistECLDialog).
+        if (currentAircraft.ChecklistFileName is not { } checklistFileName)
+        {
+            announcer.AnnounceImmediate("No checklist for this aircraft.");
+            return;
+        }
+
         if (checklistForm == null || checklistForm.IsDisposed)
         {
-            checklistForm = new ChecklistForm(announcer, currentAircraft.AircraftCode);
+            checklistForm = new ChecklistForm(announcer, checklistFileName);
         }
 
         // Show the form (reuses same instance to preserve checkbox states)
@@ -291,7 +311,11 @@ public partial class MainForm
 
         if (currentAircraft?.AircraftCode != "FBW_A380")
         {
-            announcer.AnnounceImmediate("The live Electronic Checklist is only on the A380. Use Shift+C for the text checklist.");
+            // Point to Shift+C only where it opens something: on an aircraft with no checklist
+            // file it says "No checklist for this aircraft." (ShowChecklistDialog).
+            announcer.AnnounceImmediate(currentAircraft?.ChecklistFileName != null
+                ? "The live Electronic Checklist is only on the A380. Use Shift+C for the text checklist."
+                : "The live Electronic Checklist is only on the A380.");
             return;
         }
         // The live ECL reads through the SHARED A380X_EWD monitor connection (only

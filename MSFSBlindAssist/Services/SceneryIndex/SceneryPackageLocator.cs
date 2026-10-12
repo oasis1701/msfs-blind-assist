@@ -5,7 +5,8 @@ namespace MSFSBlindAssist.Services.SceneryIndex;
 /// e.g. "fs-base-genericairports, C:\...\Community\orbx-airport-ktiw-tacoma-narrows" — an MSFS
 /// 2020 build; an MSFS 2024 one records a path for NO airport, which is why
 /// <see cref="SceneryPackageCensus"/> exists. These are the packages the INDEXER is then handed;
-/// the census finds its own by scanning Community, so this is no longer the only way one is named.
+/// the census finds its own by scanning the add-on folders (Community, and on MSFS 2024 also
+/// Community2024), so this is no longer the only way one is named.
 /// </summary>
 public static class SceneryPackageLocator
 {

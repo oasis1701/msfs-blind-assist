@@ -43,7 +43,7 @@ public partial class MainForm
     /// guaranteed degraded window on every Aircraft-menu switch and bought nothing: for at least
     /// two probe ticks (the timer is 1500 ms and the read-back lags its write by one round)
     /// <c>CalcPathVerified</c> was false, so every FBW <c>SetLVar</c> fell back to the data-def
-    /// write CLAUDE.md calls unreliable for FBW L:vars — overhead switches revert silently — and
+    /// write [A320-7] calls unreliable for FBW L:vars — overhead switches revert silently — and
     /// every dotted A32NX FCU event was queued instead of sent. With no WASM module installed the
     /// window is the probe's full 40 × 1500 ms ≈ 60 s, after which <c>FlushPendingCalcEvents</c>
     /// replays a minute of queued heading/altitude/speed sets at once and drops anything past the
@@ -796,6 +796,11 @@ public partial class MainForm
         // EventIds tables use different event_base + N numberings) and actuate an arbitrary
         // wrong control. Idempotent, so the FBW double-call above is a no-op.
         (oldAircraft as BaseAircraftDefinition)?.DisposeTrackedWindows();
+        // Every def's own timers that could still SPEAK over the next aircraft (the PMDG
+        // speed-brake settle announcer). Unconditional for the same reason as the line above —
+        // never a per-type line — but never on the instance being switched TO.
+        if (!ReferenceEquals(oldAircraft, newAircraft))
+            (oldAircraft as BaseAircraftDefinition)?.OnSwitchedAway();
 
         // The MD-11 def owns the CEVENT pump — a background task draining a queue of event ids
         // into L:CEVENT. Left running it would keep actuating controls on whatever aircraft is

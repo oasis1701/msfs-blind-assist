@@ -1,0 +1,1 @@
+Contributor guidance: before changing how something behaves, check the invariants and compare against the same aircraft type, fix only the aircraft the request is about unless the code is shared, and check the whole of what a fix touches.

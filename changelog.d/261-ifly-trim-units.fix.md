@@ -1,0 +1,1 @@
+iFly 737 MAX: stabiliser trim is now spoken in units, as the trim indicator and the FMC show it ("Trim 5.3", the same as the PMDG 737), instead of an unrelated angle in degrees such as "Trim down 2.3". A mute on the old "Elevator Trim" monitor row carries over to the new "Stabilizer Trim Units" row.

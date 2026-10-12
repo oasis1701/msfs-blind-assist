@@ -376,12 +376,12 @@ public partial class FlyByWireA380Definition
             }
             case "AIRLINER_MINIMUM_DESCENT_ALTITUDE": // baro MDA — plain feet; unset when <= 0
             {
-                displayText = ApproachMinimums.DisplayText(isDecisionHeight: false, value);
+                displayText = A380Minimums.DisplayText(isDecisionHeight: false, value);
                 return true;
             }
-            case "AIRLINER_DECISION_HEIGHT": // radio DH — plain feet; unset < 0 (0 = valid CAT III)
+            case "AIRLINER_DECISION_HEIGHT": // radio DH — plain feet; unset < 0, 0 = NO DH on the A380
             {
-                displayText = ApproachMinimums.DisplayText(isDecisionHeight: true, value);
+                displayText = A380Minimums.DisplayText(isDecisionHeight: true, value);
                 return true;
             }
             case "A32NX_SEC_1_RUDDER_ACTUAL_POSITION":
@@ -443,7 +443,7 @@ public partial class FlyByWireA380Definition
                 double deg = value;
                 displayText = Math.Abs(deg) < 0.05
                     ? "Neutral"
-                    : $"{Math.Abs(deg):0.0} degrees {(deg > 0 ? "up" : "down")}";
+                    : FormattableString.Invariant($"{Math.Abs(deg):0.0} degrees {(deg > 0 ? "up" : "down")}");
                 return true;
             }
             case "A32NX_CHRONO_ELAPSED_TIME":
@@ -1147,7 +1147,7 @@ public partial class FlyByWireA380Definition
                     r.Add(($"Left spoiler {sp}", $"A32NX_HYD_SPOILER_{sp}_LEFT_DEFLECTION", Defl));
                     r.Add(($"Right spoiler {sp}", $"A32NX_HYD_SPOILER_{sp}_RIGHT_DEFLECTION", Defl));
                 }
-                r.Add(("Pitch trim (THS)", "ELEVATOR_TRIM", v => $"{Math.Abs(v):0.0} degrees {(v >= 0 ? "up" : "down")}"));
+                r.Add(("Pitch trim (THS)", "ELEVATOR_TRIM", v => FormattableString.Invariant($"{Math.Abs(v):0.0} degrees {(v >= 0 ? "up" : "down")}")));
                 // Rudder trim — the SEC ARINC429 degrees word (positive = nose-LEFT), same
                 // source + convention as the FCC-panel "Rudder Trim" readout (the SD F/CTL page
                 // shows it but A380SdRows previously omitted it).

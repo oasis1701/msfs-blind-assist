@@ -502,4 +502,11 @@ public interface IAircraftDefinition
     /// (live-verified: its radios tune only through the RMP).
     /// </summary>
     string? StockComTuningRefusal { get; }
+
+    /// <summary>
+    /// The hand-written checklist Shift+C opens (a file under Checklists\), or null when this
+    /// aircraft has none of its own: Shift+C then opens nothing and says
+    /// "No checklist for this aircraft." (MainForm.ShowChecklistDialog).
+    /// </summary>
+    string? ChecklistFileName { get; }
 }

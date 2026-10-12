@@ -112,7 +112,8 @@ public partial class MainForm
         using var dlg = new Forms.Settings.SettingsForm(
             refreshTaxiwayNames: refreshCallback,
             vatsimStatus: () => vatsimService?.GetStatus(),
-            sceneryIndexStatus: () => sceneryIndexer.LastStatus);
+            sceneryIndexStatus: () => sceneryIndexer.LastStatus,
+            locationDataDownloader: locationDataDownloader);
         if (dlg.ShowDialog(this) == DialogResult.OK)
         {
             ApplyRuntimeSettings();
@@ -370,6 +371,24 @@ public partial class MainForm
         {
             hotkeyListForm.ShowDialog(this);
         }
+    }
+
+    // One modeless Sim Performance window at a time: a second click brings the open one forward.
+    // It opens whether or not the sim is connected — the rows say what is measurable (a sim
+    // still loading shows its memory climbing before SimConnect answers) — and it releases its
+    // frame subscription and sampler when closed.
+    private SimPerformanceForm? simPerformanceForm;
+
+    private void SimPerformanceMenuItem_Click(object? sender, EventArgs e)
+    {
+        if (simPerformanceForm is { IsDisposed: false })
+        {
+            simPerformanceForm.Activate();
+            return;
+        }
+        simPerformanceForm = new SimPerformanceForm(simConnectManager);
+        simPerformanceForm.FormClosed += (_, _) => simPerformanceForm = null;
+        simPerformanceForm.Show(this);
     }
 
     private void FMCSettingsMenuItem_Click(object? sender, EventArgs e)

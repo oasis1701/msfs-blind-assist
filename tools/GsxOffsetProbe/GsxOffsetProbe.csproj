@@ -14,5 +14,7 @@
     <Compile Include="..\..\MSFSBlindAssist\Services\Gsx\GsxProfileLocator.cs" Link="Linked\GsxProfileLocator.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Services\Gsx\GsxStopOffsetResolver.cs" Link="Linked\GsxStopOffsetResolver.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Services\AircraftCfgCatalog.cs" Link="Linked\AircraftCfgCatalog.cs" />
+    <!-- The package-folder layout the catalog walks (Community, Community2024, Official*); dependency-free by design so it can be linked here. -->
+    <Compile Include="..\..\MSFSBlindAssist\Database\MsfsPackageLayout.cs" Link="Linked\MsfsPackageLayout.cs" />
   </ItemGroup>
 </Project>

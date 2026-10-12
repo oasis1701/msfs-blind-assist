@@ -133,7 +133,7 @@ public sealed class SceneryPackageIndexer
             }
         }
         string text = status.Count == 0 ? $"{icao}: no installed scenery package found" : $"{icao}: " + string.Join("; ", status);
-        if (status.Count > 0 && locatedByCensus) text += " (located by Community scan)";
+        if (status.Count > 0 && locatedByCensus) text += " (located by add-on folder scan)";
         Volatile.Write(ref _lastStatus, text);
         return all;
     }

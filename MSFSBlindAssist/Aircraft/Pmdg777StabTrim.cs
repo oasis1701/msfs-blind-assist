@@ -42,7 +42,7 @@ public static class Pmdg777StabTrim
     /// <summary>
     /// Stabiliser trim in units, snapped to the nearest <see cref="UnitsStep"/> — the spoken
     /// value always lands on a graduation, and any degree change that crosses a quarter-unit
-    /// boundary is a new value, however small (there is no deadband). Clamped at the bottom: a
+    /// boundary is a new value, however small (the debounce, not this snap, adds the hysteresis). Clamped at the bottom: a
     /// reading a hair under −3.75° rounds to −0.0, and one past the nose-down stop would otherwise
     /// speak a negative trim on a scale that has no negative end. The top is deliberately NOT
     /// clamped — a reading past 14.50 is the one signal that PMDG's stop, or this offset, has moved.

@@ -94,7 +94,7 @@ public override bool ProcessSimVarUpdate(string variableKey, double value,
 | Feature | Behaviour |
 |---|---|
 | Altitude crossing | Announced at each 1,000 ft boundary (climb and descent), with 300 ft hysteresis |
-| Elevator trim | Announced continuously on change ("Trim up 2.35", "Trim down 0.50"), debounced to 0.01°, initial load value suppressed |
+| Elevator trim | Announced continuously on change ("Trim up 2.4", "Trim down 0.5"), in tenths of a degree with a 0.03° hysteresis past each step (PR #260; was hundredths), initial load value suppressed |
 | On ground / Airborne | Announced on phase transitions |
 | Glideslope | "Glideslope alive" / "Glideslope lost" on NAV1 transitions |
 | Hand-fly / visual-guidance vars | Registered at startup, available for those subsystems |
@@ -112,6 +112,6 @@ public override bool ProcessSimVarUpdate(string variableKey, double value,
 Verify in-sim on the HorizonSim 787-9:
 
 1. **Altitude:** Climb through several thousand-foot levels — each crossing announced once. Descend back — each level announced once. No double-announce at same level without 300 ft separation.
-2. **Trim:** Adjust elevator trim wheel — "Trim up/down X.XX" announced continuously. No announcement on app load.
+2. **Trim:** Adjust elevator trim wheel — "Trim up/down X.X" announced continuously. No announcement on app load.
 3. **Ground state:** Load on ground — "On ground" announced. Take off — "Airborne" announced on gear-up.
 4. **Existing 787 features:** Confirm MCP dialogs, EXEC annunciator, TOGA, LNAV/VNAV, fuel balance fault still work as before.

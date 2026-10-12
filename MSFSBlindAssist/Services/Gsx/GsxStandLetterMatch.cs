@@ -80,12 +80,21 @@ internal static class GsxStandLetterMatch
         {
             if (s == null || s.Number <= 0) continue;
             if (!IsSingleLetter(s.Name)) continue;
-            if (double.IsNaN(s.Latitude) || double.IsNaN(s.Longitude)) continue;
-            if (s.Latitude == 0.0 && s.Longitude == 0.0) continue;
+            if (!IsPlaceable(s)) continue;
             donors.Add(s);
         }
         return donors;
     }
+
+    /// <summary>
+    /// True when the row has a real coordinate: neither NaN nor (0,0). Null island is a real
+    /// coordinate to a distance test, so a row with no position would otherwise sit within
+    /// <see cref="MatchRadiusMetres"/> of any stand that also lacked one. Shared with
+    /// <see cref="Gsx.Remote.GsxNavdataGeometryFiller"/>, whose donors need a place but no letter.
+    /// </summary>
+    internal static bool IsPlaceable(ParkingSpot s)
+        => !double.IsNaN(s.Latitude) && !double.IsNaN(s.Longitude)
+           && !(s.Latitude == 0.0 && s.Longitude == 0.0);
 
     /// <summary>
     /// The letter every in-range, same-numbered donor agrees on — or "" when none is in range, or

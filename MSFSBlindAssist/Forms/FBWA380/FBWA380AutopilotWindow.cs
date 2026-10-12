@@ -4,11 +4,11 @@ using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Forms.FBWA380;
 
-// A380 Autopilot panel: AP1/AP2, the flight-director pushbutton, A/THR engage +
+// A380 Autopilot panel: AP1/AP2, the flight-director pushbutton, A/THR (labelled with its state) +
 // disconnect, AP disconnect, APPR/LOC. State labels refresh from the live cache.
 public class FBWA380AutopilotWindow : FBWA380FCUWindowBase
 {
-    private readonly Button ap1, ap2, appr, loc, fd;
+    private readonly Button ap1, ap2, appr, loc, fd, athr;
     private readonly System.Windows.Forms.Timer refreshTimer;
 
     public FBWA380AutopilotWindow(FlyByWireA380Definition aircraft, SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
@@ -32,14 +32,17 @@ public class FBWA380AutopilotWindow : FBWA380FCUWindowBase
         fd = MakeToggle("FD", 20, 110, A380FlightDirector.PushEvent, 4,
             press: () => aircraft.ToggleFlightDirectors(simConnect));
 
-        var athr = new Button { Text = "A/THR engage", Location = new Point(210, 110), Size = new Size(180, 35), TabIndex = 5, AccessibleName = "Autothrust engage" };
+        athr = new Button { Text = "A/THR", Location = new Point(210, 110), Size = new Size(180, 35), TabIndex = 5, AccessibleName = "Autothrust" };
         athr.Click += (s, e) => { simConnect.SendEvent("AUTO_THROTTLE_ARM"); RefreshStates(); };
         var apDisc = new Button { Text = "AP disconnect", Location = new Point(20, 155), Size = new Size(180, 35), TabIndex = 6, AccessibleName = "Autopilot disconnect" };
         // Same A380-new-FCU K-event family as the mode buttons (the dotted H-event is inert).
         // NOTE: not fire-tested live (would disconnect the AP in flight) — verify on the ground.
         apDisc.Click += (s, e) => { simConnect.SendEvent("A32NX.FCU_AP_DISCONNECT_PUSH"); RefreshStates(); };
         var athrDisc = new Button { Text = "A/THR disconnect", Location = new Point(210, 155), Size = new Size(180, 35), TabIndex = 7, AccessibleName = "Autothrust disconnect" };
-        athrDisc.Click += (s, e) => { simConnect.SendEvent("A32NX.FCU_ATHR_DISCONNECT_PUSH"); RefreshStates(); };
+        // The instinctive disconnect (FlyByWireA380Definition.AutothrustDisconnectEvent): the FWS
+        // takes it as voluntary, so the A/THR OFF memo, not the AUTO FLT A/THR OFF caution. While
+        // the autobrake is braking it also releases it, as the real pushbutton does.
+        athrDisc.Click += (s, e) => { simConnect.SendEvent(FlyByWireA380Definition.AutothrustDisconnectEvent); RefreshStates(); };
 
         var closeButton = new Button { Text = "Close", Location = new Point(140, 250), Size = new Size(140, 35), TabIndex = 8, DialogResult = DialogResult.OK, AccessibleName = "Close" };
         closeButton.Click += (s, e) => Close();
@@ -79,6 +82,16 @@ public class FBWA380AutopilotWindow : FBWA380FCUWindowBase
         SetState(loc, "LOC", "A32NX_FCU_LOC_LIGHT_ON");
         SetState(appr, "APPR", "A32NX_FCU_APPR_LIGHT_ON");
         SetState(fd, "FD", A380FlightDirector.StateKey);
+        SetAthrState();
+    }
+
+    // A/THR has three states (Disengaged / Armed / Active), not on/off.
+    private void SetAthrState()
+    {
+        var label = FbwAutothrustButton.Label(
+            simConnect.GetCachedVariableValue(FbwAutothrustButton.StatusVar), aircraft.GetVariables());
+        athr.Text = label.Text;
+        athr.AccessibleName = label.AccessibleName;
     }
 
     private void SetState(Button b, string name, string stateVar)

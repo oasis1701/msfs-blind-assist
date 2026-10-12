@@ -12,7 +12,7 @@ public partial class ChecklistForm : Form
 
     private Panel scrollPanel = null!;
     private List<CheckedListBox> checklistViews = new List<CheckedListBox>();
-    private readonly string aircraftCode;
+    private readonly string checklistFileName;
     private IntPtr previousWindow;
 
     // Static dictionary to persist checkbox states across show/hide cycles
@@ -22,9 +22,9 @@ public partial class ChecklistForm : Form
     private static int lastFocusedListViewIndex = 0;
     private static int lastSelectedItemIndex = 0;
 
-    public ChecklistForm(ScreenReaderAnnouncer announcer, string aircraftCode)
+    public ChecklistForm(ScreenReaderAnnouncer announcer, string checklistFileName)
     {
-        this.aircraftCode = aircraftCode;
+        this.checklistFileName = checklistFileName;
         InitializeComponent();
         SetupAccessibility();
         PopulateChecklist();
@@ -108,24 +108,9 @@ public partial class ChecklistForm : Form
 
     private string GetChecklistText()
     {
-        // Map aircraft codes to checklist filenames
-        var filenameMap = new Dictionary<string, string>
-        {
-            { "A320", "FBW_A320_Checklist.txt" },
-            { "HW_A330", "FBW_A330_Checklist.txt" },
-            { "FENIX_A320CEO", "Fenix_A320_Checklist.txt" },
-            { "FBW_A380", "FBW_A380_Checklist.txt" },
-            { "IFLY_737MAX8", "iFly_737MAX8_Checklist.txt" }
-        };
-
-        // Determine which file to load
-        string filename = filenameMap.ContainsKey(aircraftCode)
-            ? filenameMap[aircraftCode]
-            : "FBW_A320_Checklist.txt"; // Default fallback
-
         // Construct file path
         string appPath = AppDomain.CurrentDomain.BaseDirectory;
-        string filePath = Path.Combine(appPath, "Checklists", filename);
+        string filePath = Path.Combine(appPath, "Checklists", checklistFileName);
 
         try
         {

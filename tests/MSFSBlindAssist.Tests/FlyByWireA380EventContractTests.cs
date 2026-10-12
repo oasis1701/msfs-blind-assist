@@ -8,7 +8,10 @@
 // "I must have pressed the wrong thing".
 //
 // Verified against the FlyByWire tree at a380x commit 1bbd304 ("feat(a380x): add FG part to
-// PRIM", #10855) — the build docs/a380x.md requires.
+// PRIM", #10855) — the build docs/a380x.md requires. Re-verified at 76db0aef1 (#10929,
+// 2026-10-09; FBW-drift sweep of 2026-10-11): every claim below still holds. The line numbers
+// cited are 1bbd304's; at 76db0aef1 they are SimConnectInterface.cpp:2273 / 2280 / 2384,
+// A380FcuComputer.cpp:2146-2153 and FlyByWireInterface.cpp:2352.
 
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.SimConnect;
@@ -182,11 +185,29 @@ public class FlyByWireA380EventContractTests
         });
     }
 
+    // ---- Autothrust instinctive disconnect -------------------------------------------------
+    //
+    // FBW #10934 (27a73e219) rewrote the FWS's A/THR OFF logic around the instinctive
+    // disconnect press, which FwsCore.ts takes ONLY from the key intercept of
+    // A32NX.AUTO_THROTTLE_DISCONNECT. The WASM re-emits that for the stock, masked
+    // AUTO_THROTTLE_DISCONNECT (SimConnectInterface.cpp, the hardware-button binding), while
+    // A32NX.FCU_ATHR_DISCONNECT_PUSH only sets the disconnect. Disconnecting with the latter
+    // reads to the FWS as an involuntary loss: AUTO FLT A/THR OFF with a master caution that a
+    // second press cannot clear, where the real pushbutton gives the A/THR OFF memo.
+    [Fact]
+    public void Autothrust_disconnect_is_the_instinctive_stock_event()
+    {
+        var names = A380EventNames().ToHashSet(StringComparer.Ordinal);
+        Assert.Equal("AUTO_THROTTLE_DISCONNECT", FlyByWireA380Definition.AutothrustDisconnectEvent);
+        Assert.Contains(FlyByWireA380Definition.AutothrustDisconnectEvent, names);
+        Assert.DoesNotContain("A32NX.FCU_ATHR_DISCONNECT_PUSH", names);
+    }
+
     [Fact]
     public void The_inventoried_efis_cp_actuators_are_all_fcu_events()
     {
         // Every one must clear SimConnectManager.IsFbwFcuEvent's "A32NX.FCU_" test, which is
-        // what lets them bypass the calc-path probe on the A380 (CLAUDE.md: a probe false
+        // what lets them bypass the calc-path probe on the A380 ([SIM-10]: a probe false
         // negative there does not degrade an FCU event, it kills it).
         Assert.All(EfisCpActuators, e => Assert.StartsWith("A32NX.FCU_", e, StringComparison.Ordinal));
     }

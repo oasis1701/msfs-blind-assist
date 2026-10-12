@@ -1,0 +1,1 @@
+Ground traffic and TCAS no longer call out your own aircraft. An aircraft with no ATC callsign set could hear itself announced as traffic, for example "Stop, Fly By Wire A320 very close, ahead, 0 feet", or as an aircraft taxiing on the runway it was on.

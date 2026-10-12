@@ -7,9 +7,9 @@ using MSFSBlindAssist.Utils.Logging;
 namespace MSFSBlindAssist.Services.SceneryIndex;
 
 /// <summary>
-/// Which installed Community package models this airport, found from where each package's objects
-/// stand — an MSFS 2024 navdata build records no package paths, so <see cref="SceneryPackageLocator"/>
-/// has nothing there. Header-only: per BGL the section table and placement subsections (40 packages,
+/// Which installed add-on package models this airport — in <c>Community</c> or, on MSFS 2024,
+/// <c>Community2024</c> — found from where each package's objects stand: an MSFS 2024 navdata build
+/// records no package paths, so <see cref="SceneryPackageLocator"/> has nothing there. Header-only: per BGL the section table and placement subsections (40 packages,
 /// 2,443 BGLs, 21 MB measured), plus each package's layout.json content list.
 /// <para>Cached per package on layout.json's stamp, as a placement COUNT per 0.005° cell (a few
 /// hundred cells against tens of thousands of placements). A cell partly overlapping the box counts
@@ -36,10 +36,13 @@ public sealed class SceneryPackageCensus
     /// <summary>Each package's manifest verdict, memoised on its layout.json stamp. Under <c>_lock</c>.</summary>
     private readonly Dictionary<string, (SceneryPackageDisk.LayoutStamp Stamp, bool Scenery)> _sceneryVerdicts = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>The immediate children of Community: a package is a top-level folder.</summary>
+    /// <summary>The immediate children of an add-on folder: a package is a top-level folder.
+    /// <c>IgnoreInaccessible</c> is OFF on purpose: the listing is not recursive, so it only decides
+    /// what an add-on folder that refuses to be LISTED does, and ON it reads as an empty folder with
+    /// no exception, so <see cref="ScenerylikePackages"/> never learns the answer is short.</summary>
     private static readonly EnumerationOptions PackageFolders = new()
     {
-        RecurseSubdirectories = false, IgnoreInaccessible = true, AttributesToSkip = 0,
+        RecurseSubdirectories = false, IgnoreInaccessible = false, AttributesToSkip = 0,
     };
 
     private sealed class CacheFile
@@ -64,18 +67,26 @@ public sealed class SceneryPackageCensus
     /// The packages whose objects stand on <paramref name="box"/>'s airport, most first, at most
     /// <see cref="MaxPackages"/>; empty below <see cref="MinPlacementsInBox"/> or with no Community folder.
     /// </summary>
-    public IReadOnlyList<string> Locate(string communityDir, AirportFacilities box) => Locate(communityDir, box, out _);
+    public IReadOnlyList<string> Locate(string communityDir, AirportFacilities box) => Locate(new[] { communityDir }, box, out _);
+
+    /// <summary>As above over one folder, with the short-scan flag.</summary>
+    public IReadOnlyList<string> Locate(string communityDir, AirportFacilities box, out bool incomplete)
+        => Locate(new[] { communityDir }, box, out incomplete);
 
     /// <summary>
-    /// As above, and whether any scan came back short. A short scan is not cached, but the catalog
-    /// built on it is, so the caller ORs this into the build's degraded bit.
+    /// As above over EVERY add-on folder the simulator loads — <c>Community</c> and, on MSFS 2024,
+    /// <c>Community2024</c> (<see cref="Database.MsfsPackagesLocator.TryGetCommunityPaths"/>) — scored
+    /// together, so the cap and the ordering are over all of them at once. <paramref name="incomplete"/>
+    /// is whether any scan came back short: a short scan is not cached, but the catalog built on it
+    /// is, so the caller ORs this into the build's degraded bit.
     /// </summary>
-    public IReadOnlyList<string> Locate(string communityDir, AirportFacilities box, out bool incomplete)
+    public IReadOnlyList<string> Locate(IReadOnlyList<string> communityDirs, AirportFacilities box, out bool incomplete)
     {
         incomplete = false;
         lock (_lock)
         {
-            if (string.IsNullOrWhiteSpace(communityDir) || !Directory.Exists(communityDir)) return Array.Empty<string>();
+            var dirs = communityDirs.Where(d => !string.IsNullOrWhiteSpace(d) && Directory.Exists(d)).ToList();
+            if (dirs.Count == 0) return Array.Empty<string>();
 
             var cache = _cache ??= Load();
             var known = new Dictionary<string, PackageCells>(StringComparer.OrdinalIgnoreCase);
@@ -86,7 +97,17 @@ public sealed class SceneryPackageCensus
             bool changed = false;
             var clock = Stopwatch.StartNew();
 
-            foreach (var (dir, stamp) in ScenerylikePackages(communityDir))
+            var packages = new List<(string Dir, SceneryPackageDisk.LayoutStamp Stamp)>();
+            foreach (string communityDir in dirs)
+            {
+                packages.AddRange(ScenerylikePackages(communityDir, out bool unlisted));
+                // A folder that is there but could not be LISTED (an installer holding it, an access
+                // error) is a short answer, not an empty one: with two folders it would otherwise cache
+                // the airport with one whole folder's packages missing for the catalog's lifetime.
+                incomplete |= unlisted;
+            }
+
+            foreach (var (dir, stamp) in packages)
             {
                 long len = stamp.Length, ticks = stamp.Ticks;
                 if (known.TryGetValue(dir, out var hit) && hit.Cells != null && hit.LayoutLength == len && hit.LayoutTicks == ticks)
@@ -127,12 +148,14 @@ public sealed class SceneryPackageCensus
     }
 
     /// <summary>
-    /// Every Community package that could be scenery, with its layout.json stamp. A manifest naming
-    /// another content_type is taken at its word; a missing or unreadable one is not a reason to skip
-    /// (skipping the airport's own package costs the whole feature). Memoised on the stamp.
+    /// Every package in one add-on folder that could be scenery, with its layout.json stamp. A manifest
+    /// naming another content_type is taken at its word; a missing or unreadable one is not a reason to
+    /// skip (skipping the airport's own package costs the whole feature). Memoised on the stamp.
+    /// <paramref name="unlisted"/> is true when the folder itself could not be enumerated.
     /// </summary>
-    private List<(string Dir, SceneryPackageDisk.LayoutStamp Stamp)> ScenerylikePackages(string communityDir)
+    private List<(string Dir, SceneryPackageDisk.LayoutStamp Stamp)> ScenerylikePackages(string communityDir, out bool unlisted)
     {
+        unlisted = false;
         var result = new List<(string Dir, SceneryPackageDisk.LayoutStamp Stamp)>();
         try
         {
@@ -144,7 +167,11 @@ public sealed class SceneryPackageCensus
                 if (verdict.Scenery) result.Add((dir, stamp));
             }
         }
-        catch (Exception ex) { Log.Warn("SceneryIndex", $"census: {communityDir}: {ex.Message}"); }
+        catch (Exception ex)
+        {
+            unlisted = true;
+            Log.Warn("SceneryIndex", $"census: {communityDir}: {ex.Message}");
+        }
         return result;
     }
 

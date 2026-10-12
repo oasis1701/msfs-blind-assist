@@ -10,6 +10,7 @@ using MSFSBlindAssist.Forms.PMDG777;
 using MSFSBlindAssist.Forms.HS787;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Services;
+using MSFSBlindAssist.Services.Geography;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.Patching;
 using MSFSBlindAssist.SimConnect;
@@ -257,11 +258,17 @@ public partial class MainForm
             // an open panel's button labels froze on background state changes. The Button
             // branch of UpdateControlFromSimVar is a pure label update — no user-action
             // handler can fire (the combo caveat in the comment above is combo-specific),
-            // so refreshing it here is safe. Everything else keeps the StateVariable-only
-            // path.
-            if (currentAircraft is IFly737MAXDefinition &&
-                currentAircraft.GetVariables().TryGetValue(e.VarName, out var iflyBtnDef) &&
-                iflyBtnDef.RenderAsButton)
+            // so refreshing it here is safe. A control whose RefreshControlWhenDefHandled
+            // accepts the value joins them on any aircraft (first user: the iFly speed-brake
+            // lever COMBO, which self-announces on a settle timer, and accepts only its resting
+            // positions): without this refresh an open combo kept the position it was built
+            // with — "Armed" while the auto speed brake had the lever up, or "Down" while it was
+            // deployed, where picking Down commits nothing because the item is already selected.
+            // It is only set where the write fires on a user commit alone, so a refresh sends
+            // nothing. Everything else keeps the StateVariable-only path.
+            if (currentAircraft.GetVariables().TryGetValue(e.VarName, out var iflyBtnDef) &&
+                ((currentAircraft is IFly737MAXDefinition && iflyBtnDef.RenderAsButton)
+                 || iflyBtnDef.RefreshesControlWhenDefHandled(e.Value)))
             {
                 UpdateControlFromSimVar(e.VarName, e.Value);
             }
@@ -501,7 +508,9 @@ public partial class MainForm
         // below returns for INDICATED_ALTITUDE before speaking, so only these callouts speak.
         if (e.VarName == "INDICATED_ALTITUDE")
         {
-            altitudeCalloutAnnouncer.ProcessAltitude(e.Value, _lastOnGround);
+            // Metres under the A380's metric altitude (FCU MTRS), as the A / Q read-outs below.
+            altitudeCalloutAnnouncer.ProcessAltitude(e.Value, _lastOnGround,
+                metric: currentAircraft is Aircraft.FlyByWireA380Definition a380Callouts && a380Callouts.MetricAlt);
             // 1 Hz gate for the manual-landing flare assist: starts/stops its dedicated
             // SIM_FRAME feed when armed + within the approach altitude window. No-op
             // (single flag compare) when the assist isn't armed.
@@ -1333,9 +1342,11 @@ public partial class MainForm
                     {
                         // Mirror the build-time button-label logic (the RenderAsButton branch):
                         // resting-state (value 0) suppression is OPT-IN via
-                        // SuppressRestingButtonState, set only by the FBW momentary-button
-                        // helpers (ECAM-CP keys, calls, acks, tests) — a momentary push-button
-                        // has no meaningful RESTING state, so relabelling e.g. "ECAM All" to
+                        // SuppressRestingButtonState, set by the momentary-button defs of the
+                        // FBW A320/A380 (ECAM-CP keys, calls, acks, tests), the iFly 737 (Btn,
+                        // McpModeStyleWarning) and the MD-11 (BuildControlVariable) — a
+                        // momentary push-button has no meaningful RESTING state, so
+                        // relabelling e.g. "ECAM All" to
                         // "ECAM All: Released" reads as noise. By DEFAULT the value-0 label
                         // shows: on PMDG ("LNAV: Off") and HS787 ("Baro STD: QNH") it IS
                         // meaningful state and must not be silenced. The functional dispatch
@@ -2540,7 +2551,7 @@ public partial class MainForm
     /// <summary>
     /// Restarts the nearest city announcement timer with current settings.
     /// Stops timer if disabled (interval = 0), or updates interval and restarts if enabled.
-    /// Should be called whenever GeoNames settings are saved.
+    /// Should be called whenever the announcement settings are saved.
     /// </summary>
     private void RestartNearestCityAnnouncementTimer()
     {
@@ -2573,7 +2584,7 @@ public partial class MainForm
     /// </summary>
     private void NearestCityAnnouncementTimer_Tick(object? sender, EventArgs e)
     {
-        AnnounceNearestCity();
+        AnnounceNearestCity(userInitiated: false);
     }
 
     private void WeatherAnnouncementTimer_Tick(object? sender, EventArgs e)
@@ -2896,88 +2907,60 @@ public partial class MainForm
     }
 
     /// <summary>
-    /// Announces the nearest city to the current aircraft position.
-    /// Used by both the periodic timer and the hotkey shortcut (] then C).
+    /// Output > C and the periodic nearest-place timer, answered from the offline location data
+    /// (Settings → GeoNames) in milliseconds: "Over Chesapeake Bay, nearest land 5.2 miles west.
+    /// Near Dares Beach, …" over water, the familiar "Near …" sentence over land (with the named
+    /// coast within the Coast Range). The wording is <c>LocationPhrases.NearestCitySentence</c>'s alone.
+    /// A press without the data says so; the timer stays silent rather than nag every interval.
     /// </summary>
-    private void AnnounceNearestCity()
+    private void AnnounceNearestCity(bool userInitiated)
     {
         try
         {
-            // Guard clause: Check if SimConnect is connected
             if (!simConnectManager.IsConnected)
             {
                 Log.Debug("MainForm", "Nearest city announcement skipped: Not connected to simulator");
                 return;
             }
 
-            // Check if GeoNames API is configured
-            var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
-            if (string.IsNullOrWhiteSpace(settings.GeoNamesApiUsername))
+            if (!offlineLocationService.IsAvailable)
             {
-                announcer.Announce("GeoNames API not configured. Please configure it in the settings.");
+                if (userInitiated) announcer.Announce(LocationDataUnavailableText());
                 return;
             }
 
-            // Request current aircraft position with callback
-            simConnectManager.RequestAircraftPositionAsync(async (position) =>
+            var query = LocationQuerySettings.From(MSFSBlindAssist.Settings.SettingsManager.Current);
+            // The callback runs on the UI thread (SimConnect's message pump), so the await below
+            // resumes there and the announcer is safe to call.
+            simConnectManager.RequestAircraftPositionAsync(async position =>
             {
                 try
                 {
-                    // Get location data from GeoNames service
-                    var geoNamesService = new GeoNamesService();
-                    var locationData = await geoNamesService.GetLocationInfoAsync(position.Latitude, position.Longitude);
-
-                    if (locationData?.NearbyPlaces != null && locationData.NearbyPlaces.Count > 0)
+                    var report = await Task.Run(() => offlineLocationService.GetNearest(position.Latitude, position.Longitude, query));
+                    if (report is null)
                     {
-                        var nearestCity = locationData.NearbyPlaces[0];
-
-                        // Format announcement (same format as LocationInfoForm)
-                        string announcement = $"Near {nearestCity.Name}";
-                        if (!string.IsNullOrEmpty(nearestCity.State))
-                        {
-                            announcement += $", {nearestCity.State}";
-                        }
-                        if (!string.IsNullOrEmpty(nearestCity.Country))
-                        {
-                            announcement += $", {nearestCity.Country}";
-                        }
-                        announcement += $", {nearestCity.Distance:F1} {settings.DistanceUnits} {nearestCity.Direction}";
-
-                        // Check if over a body of water
-                        var waterLandmark = locationData.Landmarks.FirstOrDefault(l => l.Type == "water");
-                        if (waterLandmark != null)
-                        {
-                            announcement += $", {waterLandmark.Name}";
-                        }
-
-                        announcer.Announce(announcement);
-                        Log.Debug("MainForm", $"Nearest city announced: {announcement}");
+                        if (userInitiated) announcer.Announce(LocationDataUnavailableText());
+                        return;
                     }
-                    else
-                    {
-                        // No nearby cities found - check if over water
-                        var waterLandmark = locationData?.Landmarks.FirstOrDefault(l => l.Type == "water");
-                        if (waterLandmark != null)
-                        {
-                            announcer.Announce($"Over {waterLandmark.Name}");
-                            Log.Debug("MainForm", $"Nearest city announced: Over {waterLandmark.Name}");
-                        }
-                        else
-                        {
-                            Log.Debug("MainForm", "Nearest city announcement skipped: No nearby cities found");
-                        }
-                    }
+                    string sentence = LocationPhrases.NearestCitySentence(report.Where, report.Nearest, query.Kilometres, query.NearbyRange);
+                    announcer.Announce(sentence);
+                    Log.Debug("MainForm", $"Nearest city announced: {sentence}");
                 }
                 catch (Exception ex)
                 {
-                    Log.Debug("MainForm", $"Error in nearest city announcement callback: {ex.Message}");
+                    Log.Warn("LocationData", $"Nearest place lookup failed: {ex.Message}");
+                    if (userInitiated) announcer.Announce("Could not read the location data: " + ex.Message);
                 }
             });
         }
         catch (Exception ex)
         {
             Log.Debug("MainForm", $"Error during nearest city announcement: {ex.Message}");
-            // Don't announce errors to avoid interrupting the user
         }
     }
+
+    /// <summary>What C and Shift+L say without usable location data: a download or build in
+    /// progress, a build waiting for the next start, an old database, or none.</summary>
+    private string LocationDataUnavailableText() => LocationPhrases.Unavailable(
+        offlineLocationService.NeedsUpdate, locationDataDownloader.Status.Phase, offlineLocationService.ReadyAtNextStart);
 }
