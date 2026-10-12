@@ -142,6 +142,8 @@ public class LandingFlareAssistManager : IDisposable
     private bool silentFlare;            // flare engaged while visual guidance owns approach audio
     private bool rolloutAnnounced;       // announce "Rollout guidance." once per approach (not per bounce)
     private bool flareCalloutSpoken;     // "Flare" spoken this engagement (a bounce does not repeat it)
+    private double engagePhraseAtSec = double.NegativeInfinity; // when the engage sentence was spoken
+    private double engagePhraseSec;      // its estimated speaking time (0 when the engage was silent)
     private double entrySinkFpm;         // sink rate at flare engage (+ = descending), for FlareHoldsEntrySink
     // Taxi guidance as MainForm forwards it from TaxiGuidanceManager.StateChanged (StepTaxiHandover).
     private bool taxiInLandingRollout;        // taxi guidance is in, or momentarily reloading, a landing rollout
@@ -181,6 +183,16 @@ public class LandingFlareAssistManager : IDisposable
     // The spoken "Flare" leads the flare height by this much at the current sink rate: roughly
     // a screen reader's start-of-speech latency, so the word is heard AT the height.
     private const double FLARE_CALLOUT_LEAD_SEC = 0.3;
+    // How long the engage sentence takes to say, ESTIMATED at a default screen-reader rate (not
+    // measured): "Flare guidance" and the runway correction "Flare guidance, runway 28R, not 28L.".
+    // A "Flare" falling due inside it is queued behind it rather than cutting it off: on a 777 the
+    // call is due about half a second after the 50 ft engage, and the correction names the runway
+    // actually being landed on.
+    private const double ENGAGE_PHRASE_SEC = 1.0;
+    private const double ENGAGE_CORRECTION_PHRASE_SEC = 3.0;
+    // A "Flare" more than this far below the flare height is too late to act on (a float that
+    // drifted down slowly) and is dropped.
+    private const double FLARE_CALLOUT_TOO_LATE_FT = 8.0;
     private const double FLARE_DEADBAND_FPM = 60.0;        // silence — on profile
     private const double FLARE_FPM_PER_TONE_UNIT = 60.0;   // 360 fpm error = full-scale tone
     private const float FLARE_TONE_MIN_HZ = 250f;
@@ -408,6 +420,8 @@ public class LandingFlareAssistManager : IDisposable
                         // VG off mid-flare we take both flare tones over.
                         if (isVisualGuidanceActive()) break;
                         silentFlare = false;
+                        // Below the flare height visual guidance has already said its "Flare".
+                        if (gearAgl <= engagedProfile.FlareTriggerWheelHeightFt) flareCalloutSpoken = true;
                         StartVerticalToneIfNeeded();
                         StartLateralToneIfNeeded();
                     }
@@ -426,6 +440,7 @@ public class LandingFlareAssistManager : IDisposable
                     // Bounce — back into the air below go-around height. Resume flare
                     // guidance so the tones talk the pilot through the second touchdown.
                     phase = Phase.Flare;
+                    flareCalloutSpoken = true;   // the first touchdown's flare was called; a bounce is not a new one
                     if (!silentFlare)
                     {
                         StartVerticalToneIfNeeded();   // restarted — it was stopped at touchdown
@@ -478,6 +493,8 @@ public class LandingFlareAssistManager : IDisposable
         phase = Phase.Flare;
         rolloutAnnounced = false;
         flareCalloutSpoken = false;
+        engagePhraseAtSec = double.NegativeInfinity;
+        engagePhraseSec = 0;
         engagedProfile = getProfile() ?? new VisualGuidanceProfile();
         entrySinkFpm = -vsSmoothed;
         crossTrackRateInitialized = false;   // fresh differentiator per engagement
@@ -511,6 +528,8 @@ public class LandingFlareAssistManager : IDisposable
             StartLateralToneIfNeeded();
             announcer.AnnounceImmediate(LandingAssistRunwaySwitch.FlareGuidancePhrase(
                 runwayLabel, armedRunway?.RunwayID ?? runwayLabel, speakCorrection));
+            engagePhraseAtSec = clock.Elapsed.TotalSeconds;
+            engagePhraseSec = speakCorrection ? ENGAGE_CORRECTION_PHRASE_SEC : ENGAGE_PHRASE_SEC;
             if (speakCorrection) runwayCorrectionSpoken = true;
         }
 
@@ -546,19 +565,49 @@ public class LandingFlareAssistManager : IDisposable
 
     /// <summary>
     /// "Flare", once per engagement, as the gear reaches the aircraft's flare height
-    /// (<see cref="VisualGuidanceProfile.FlareTriggerWheelHeightFt"/>). Interrupting: it is the one
-    /// moment a sighted pilot acts on what they see, and a queued word arrives on the runway.
-    /// Never under a silent flare: visual guidance speaks its own "Flare" at the same height.
+    /// (<see cref="VisualGuidanceProfile.FlareTriggerWheelHeightFt"/>). Interrupting, as it is the one
+    /// moment a sighted pilot acts on what they see - except behind the engage sentence, which it
+    /// queues after rather than cut off. Never under a silent flare (visual guidance speaks its own
+    /// "Flare" at the same height), never again on a bounce.
     /// </summary>
     private void UpdateFlareCallout(double gearAgl)
     {
-        if (flareCalloutSpoken) return;
-        if (!LandingGuidanceLaws.FlareCalloutDue(gearAgl, engagedProfile.FlareTriggerWheelHeightFt,
-                vsSmoothed, FLARE_CALLOUT_LEAD_SEC))
-            return;
+        var call = DecideFlareCallout(flareCalloutSpoken, gearAgl, engagedProfile.FlareTriggerWheelHeightFt,
+            vsSmoothed, clock.Elapsed.TotalSeconds - engagePhraseAtSec, engagePhraseSec);
+        if (call == FlareCall.Wait) return;
         flareCalloutSpoken = true;
-        announcer.AnnounceImmediate("Flare");
-        Log.Debug("LandingFlareAssist", $"Flare callout at {gearAgl:F1} ft gear height, VS {vsSmoothed:F0} fpm");
+        if (call == FlareCall.Now) announcer.AnnounceImmediate("Flare");
+        else if (call == FlareCall.AfterEngagePhrase) announcer.Announce("Flare");
+        Log.Debug("LandingFlareAssist", $"Flare callout {call} at {gearAgl:F1} ft gear height, VS {vsSmoothed:F0} fpm");
+    }
+
+    /// <summary>What <see cref="UpdateFlareCallout"/> does on a flare frame.</summary>
+    internal enum FlareCall
+    {
+        /// <summary>Not yet (or already said).</summary>
+        Wait,
+        /// <summary>Say it now, interrupting.</summary>
+        Now,
+        /// <summary>Queue it: the engage sentence is still being spoken.</summary>
+        AfterEngagePhrase,
+        /// <summary>Too far below the flare height to act on: drop it.</summary>
+        TooLate,
+    }
+
+    /// <summary>
+    /// When "Flare" is spoken (ROL-32). Pure — <c>LandingFlareCalloutTests</c>. Due at the aircraft's
+    /// flare height, led by speech latency (<see cref="LandingGuidanceLaws.FlareCalloutDue"/>); queued
+    /// behind an engage sentence still being spoken so it never cuts off a runway correction; dropped
+    /// when the gear is already more than <see cref="FLARE_CALLOUT_TOO_LATE_FT"/> below the height.
+    /// </summary>
+    internal static FlareCall DecideFlareCallout(bool alreadySaid, double gearAglFt, double flareHeightFt,
+        double verticalSpeedFpm, double secondsSinceEngagePhrase, double engagePhraseSec)
+    {
+        if (alreadySaid) return FlareCall.Wait;
+        if (!LandingGuidanceLaws.FlareCalloutDue(gearAglFt, flareHeightFt, verticalSpeedFpm, FLARE_CALLOUT_LEAD_SEC))
+            return FlareCall.Wait;
+        if (gearAglFt < flareHeightFt - FLARE_CALLOUT_TOO_LATE_FT) return FlareCall.TooLate;
+        return secondsSinceEngagePhrase < engagePhraseSec ? FlareCall.AfterEngagePhrase : FlareCall.Now;
     }
 
     /// <summary>
