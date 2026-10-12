@@ -68,6 +68,11 @@ public class UserSettings
         // it never blocks startup and stays completely silent on any failure.
         public bool CheckForUpdatesOnStartup { get; set; } = true;
 
+        // On by default: at launch, offer the navigation database and the location data while
+        // either is missing (Services/StartupDataCheck, UPD-9). The ONLY thing that silences the
+        // dialog: a dismissal is never remembered.
+        public bool CheckForMissingDataOnStartup { get; set; } = true;
+
         // Hand Fly Settings
         // Default is Both (tone + spoken pitch/bank): spoken pitch is safety-relevant
         // whenever Hand Fly engages — the auto-handoff at rotation AND a manual
@@ -174,8 +179,9 @@ public class UserSettings
         // Aircraft Settings
         public string LastAircraft { get; set; } = "A320";
 
-        // GeoNames API Settings
-        public string GeoNamesApiUsername { get; set; } = "";
+        // Nearest-place announcements (Output C's periodic form). There is NO GeoNames username any
+        // more: Output C and Location Info read the offline location data downloaded from the
+        // GeoNames tab, so the online API account (and its old setting) was retired.
         public int NearestCityAnnouncementInterval { get; set; } = 0; // 0 = Off, otherwise seconds
 
         // SimBrief Settings
@@ -210,11 +216,11 @@ public class UserSettings
         public int NearbyCitiesRange { get; set; } = 25;
         public int RegionalCitiesRange { get; set; } = 50;
         public int MajorCitiesRange { get; set; } = 185;
+        // One range for all four landmark lists (airports, terrain, water, tourist landmarks).
         public int LandmarksRange { get; set; } = 30;
-        public int AirportsRange { get; set; } = 50;
-        public int TerrainRange { get; set; } = 30;
-        public int WaterBodiesRange { get; set; } = 20;
-        public int TouristLandmarksRange { get; set; } = 25;
+        // Over land, Output C and Location Info mention the sea coast only within this distance.
+        // At sea and over lakes the nearest land or shore is always said (owner, 2026-10-10).
+        public int CoastRange { get; set; } = 50;
 
         // Display Limits
         public int MaxNearbyPlacesToShow { get; set; } = 10;
@@ -226,7 +232,6 @@ public class UserSettings
 
         // City Filtering
         public int MajorCityPopulationThreshold { get; set; } = 50000;
-        public string MajorCityAPIThreshold { get; set; } = "cities15000";
 
         // Units
         public string DistanceUnits { get; set; } = "miles";

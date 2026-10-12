@@ -398,8 +398,9 @@ public class LandingExitPlanner
             isRunwayDestination: false,
             prebuiltGraph: _graph,
             announceSummary: false,
-            // The aircraft is still rolling at landing speed, so the pass sets no start hold; this
-            // labels the crossings log line phase=touchdown.
+            // The aircraft is on or beside the runway it landed on, so the pass sets no start hold
+            // (the clear margin refuses one there; it is never a speed gate, HLD-10); this labels
+            // the crossings log line phase=touchdown.
             landingRolloutRoute: true);
 
         if (error != null)

@@ -1,22 +1,21 @@
+using System.Globalization;
 
 namespace MSFSBlindAssist.Models;
 
+/// <summary>The Location Info window's lists, filled by
+/// <c>Services/Geography/OfflineLocationService</c> from the offline location data.</summary>
 public class LocationData
     {
-        public string LocalTime { get; set; } = "";
         public List<NearbyPlace> NearbyPlaces { get; set; }
         public List<NearbyPlace> MajorCities { get; set; }
         public RegionalContext Regional { get; set; }
         public CardinalDirections Directions { get; set; }
-        public List<Landmark> Landmarks { get; set; }
         public Dictionary<string, List<Landmark>> CategorizedLandmarks { get; set; }
-        public WeatherInfo Weather { get; set; } = new WeatherInfo();
 
         public LocationData()
         {
             NearbyPlaces = new List<NearbyPlace>();
             MajorCities = new List<NearbyPlace>();
-            Landmarks = new List<Landmark>();
             CategorizedLandmarks = new Dictionary<string, List<Landmark>>();
             Regional = new RegionalContext();
             Directions = new CardinalDirections();
@@ -29,9 +28,12 @@ public class LocationData
         public string State { get; set; } = "";
         public string Country { get; set; } = "";
         public int Population { get; set; }
+        /// <summary>In <see cref="Unit"/>.</summary>
         public double Distance { get; set; }
+        /// <summary>"miles" or "kilometers", as the GeoNames tab sets it.</summary>
+        public string Unit { get; set; } = "miles";
         public string Direction { get; set; } = "";
-        public string Type { get; set; } = ""; // "city", "town", "airport", etc.
+        public string Type { get; set; } = ""; // "city", "town", "major_city"
 
         public override string ToString()
         {
@@ -41,14 +43,12 @@ public class LocationData
                 location += $", {Country}";
             }
 
+            // Invariant: the window reads "1,234 people" and "12 miles" on any Windows region.
             if (Population > 0 && (Type == "city" || Type == "major_city"))
             {
-                return $"{location} (pop. {Population:N0}) - {Distance:F0} miles {Direction}";
+                return string.Create(CultureInfo.InvariantCulture, $"{location} (pop. {Population:N0}) - {Distance:F0} {Unit} {Direction}");
             }
-            else
-            {
-                return $"{location} - {Distance:F0} miles {Direction}";
-            }
+            return string.Create(CultureInfo.InvariantCulture, $"{location} - {Distance:F0} {Unit} {Direction}");
         }
     }
 
@@ -56,24 +56,6 @@ public class LocationData
     {
         public string State { get; set; } = "";
         public string Country { get; set; } = "";
-        public string County { get; set; } = "";
-        public string MajorCity { get; set; } = "";
-        public double MajorCityDistance { get; set; }
-        public string MajorCityDirection { get; set; } = "";
-
-        public override string ToString()
-        {
-            var result = $"State: {State}, {Country}";
-            if (!string.IsNullOrEmpty(County))
-            {
-                result += $"\nCounty: {County}";
-            }
-            if (!string.IsNullOrEmpty(MajorCity))
-            {
-                result += $"\nMajor City: {MajorCity} - {MajorCityDistance:F0} miles {MajorCityDirection}";
-            }
-            return result;
-        }
     }
 
     public class CardinalDirections
@@ -107,9 +89,12 @@ public class LocationData
         public string Name { get; set; } = "";
         public string State { get; set; } = "";
         public string Country { get; set; } = "";
+        /// <summary>In <see cref="Unit"/>.</summary>
         public double Distance { get; set; }
+        /// <summary>"miles" or "kilometers", as the GeoNames tab sets it.</summary>
+        public string Unit { get; set; } = "miles";
         public string Direction { get; set; } = "";
-        public string Type { get; set; } = ""; // "tower", "stadium", "mall", "park", etc.
+        public string Type { get; set; } = ""; // the LocationCategory, lower case
 
         public override string ToString()
         {
@@ -122,30 +107,6 @@ public class LocationData
             {
                 location += $", {Country}";
             }
-            return $"{location} - {Distance:F0} miles {Direction}";
-        }
-    }
-
-    public class WeatherInfo
-    {
-        public double? Temperature { get; set; }
-        public string Conditions { get; set; } = "";
-        public string WindSpeed { get; set; } = "";
-        public string WindDirection { get; set; } = "";
-        public bool IsAvailable { get; set; }
-
-        public override string ToString()
-        {
-            if (!IsAvailable) return "";
-
-            var result = "";
-            if (Temperature.HasValue)
-                result += $"Temperature: {Temperature:F0}°F\n";
-            if (!string.IsNullOrEmpty(Conditions))
-                result += $"Conditions: {Conditions}\n";
-            if (!string.IsNullOrEmpty(WindSpeed) && !string.IsNullOrEmpty(WindDirection))
-                result += $"Wind: {WindSpeed} from {WindDirection}";
-
-            return result.TrimEnd('\n');
+            return string.Create(CultureInfo.InvariantCulture, $"{location} - {Distance:F0} {Unit} {Direction}");
         }
 }

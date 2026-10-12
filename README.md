@@ -31,7 +31,7 @@ Once installed, the app checks GitHub for updates at startup and installs them f
 - Additional tools to assist visually impaired pilots to fly, for example, take-off assistance which announces when the pilot is deviating from the runway, as well as pitch monitoring.
 - Touchdown feedback on every aircraft: read your last landing rate (touchdown vertical speed) and the peak g-force of the landing with a hotkey.
 - Aircraft-specific dedicated systems. On the FlyByWire A32NX for example, blind users can hear and read all engine and display warning messages, read fuel and payload and weight/balance details in full, hear Flight Mode Annunciator messages, get on-demand information on next waypoint, etc.
-- An extensive text-based location and map viewer. Configurable with filters, lets users read direction and distance to major and small cities, landmarks, terrain and water bodies while they fly!
+- An extensive text-based location and map viewer. Configurable with filters, lets users read direction and distance to major and small cities, landmarks, terrain and water bodies while they fly, plus the sea, bay or lake they are over and how far the coast is! It works offline from free location data (GeoNames and Natural Earth) downloaded once from the settings, with no account needed.
 - A full-featured flight plan route viewer that supports SID, STAR and approach procedures, with waypoint tracking during flight.
 - Airport and runway lookup
 - Much more
@@ -184,6 +184,8 @@ See [Download](#download) above for the current release and preview builds. MSFS
 
 ## Contributing
 Pure-logic changes should come with characterization tests in tests/MSFSBlindAssist.Tests (CI runs them on every PR).
+
+To add an aircraft or a feature, follow the walkthroughs in [docs/adding-features.md](docs/adding-features.md), with the short forms in [docs/QUICK-REFERENCE.md](docs/QUICK-REFERENCE.md). Their code examples compile as part of the test suite.
 
 ## License
 

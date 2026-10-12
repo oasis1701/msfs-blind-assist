@@ -237,7 +237,7 @@ public static class SceneryModelNameClassifier
         var tokens = Words(raw, SkipVendors(raw, start), raw.Length);
         // …unless the ICAO does not END a prefix but a NAME: "DHL_YSSY", "Security_DHL_yssy",
         // "TankOil_KPHX", "Hangar_KTIW_02". Nothing after it then holds a kind word while the words
-        // BEFORE it do, and stripping through it threw the building away whole (review SI-3; the
+        // BEFORE it do, and stripping through it threw the building away whole ([SUR-6]; the
         // rule affects five of the 26,098 names in 35 installed airport packages and names four of
         // them). Then only the ICAO token goes. The words before it must hold a kind word ON THEIR
         // OWN, never one completed across the gap ("Jet_KXYZ_Centre"): MightBeFeature knows no ICAO,

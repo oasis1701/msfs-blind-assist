@@ -1,0 +1,1 @@
+The rules hook's shell guard no longer refuses commands that write no covered file, such as a changelog note written after a subshell or `popd` changed folder, and it finishes several Python scripts within Claude Code's hook timeout.

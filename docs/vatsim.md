@@ -142,7 +142,7 @@ name*, below, for why that matters.
 | `Forms/Settings/VatsimPanel.cs` | The VATSIM settings tab. |
 | `plugins/MSFSBlindAssist.VPilotPlugin/Plugin.cs` | `IPlugin` entry point vPilot loads; subscribes the five `IBroker` events. |
 | `plugins/MSFSBlindAssist.VPilotPlugin/PipeClient.cs` | Background sender thread with a bounded queue — the never-blocks half of the design. |
-| `plugins/MSFSBlindAssist.VPilotPlugin/PluginLog.cs` | The plugin's own log — the one exception to "every write goes through `Log`". |
+| `plugins/MSFSBlindAssist.VPilotPlugin/PluginLog.cs` | The plugin's own log — an exception to "every write goes through `Log`" (see CORE-15). |
 | `plugins/MSFSBlindAssist.VPilotPlugin/VPilotWireFormat.cs` | The wire protocol, linked (not copied) into both assemblies. |
 
 ### Two processes, one pipe
@@ -280,12 +280,13 @@ background instead of taxing vPilot's own event loop.
 ### Why the plugin logs where it does
 
 The plugin writes its own log, `%APPDATA%\MSFSBlindAssist\logs\vpilot-plugin.log`
-— the **one** documented exception to "every log write goes through
-`Utils/Logging/Log`". It runs inside vPilot's process on .NET Framework and
+— one of the two documented exceptions to "every log write goes through
+`Utils/Logging/Log`" (CORE-15 names both; the updater's startup log is the
+other). It runs inside vPilot's process on .NET Framework and
 cannot reference the main app's logger (different process, different target
 framework), so `PluginLog` computes the path itself. It still resolves into the
 same canonical logs folder as everything else, so "send me your logs" stays one
-folder even for this one exception.
+folder even for this exception.
 
 Unlike the original `vPilot-to-TTS` plugin, it also does **not** truncate the
 log on every load. The original wiped its log at the start of every vPilot

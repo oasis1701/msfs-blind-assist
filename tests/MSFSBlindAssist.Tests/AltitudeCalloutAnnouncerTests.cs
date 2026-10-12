@@ -161,4 +161,72 @@ public class AltitudeCalloutAnnouncerTests : IDisposable
         Feed(4_500, 5_010);
         Assert.Empty(spoken);
     }
+
+    // ---- Metric altitude (the FBW A380's FCU MTRS): 300-m bands, the unit spoken ----
+    // The feed stays INDICATED ALTITUDE in feet; the announcer converts. Samples avoid exact
+    // boundaries, so the feet round trip cannot land a sample on the wrong side of one.
+
+    private void FeedMetres(params double[] metres)
+    {
+        foreach (var m in metres) sut.ProcessAltitude(m / 0.3048, onGround: false, metric: true);
+    }
+
+    [Fact]
+    public void Metric_ClimbCrossing_AnnouncesThe300MetreBoundary_WithTheUnit()
+    {
+        FeedMetres(2_950, 3_010);
+        Assert.Equal(new[] { "3000 meters" }, spoken);
+    }
+
+    [Fact]
+    public void Metric_DescentCrossing_AnnouncesTheBoundaryCrossed_NotTheBandEntered()
+    {
+        FeedMetres(9_350, 9_290);
+        Assert.Equal(new[] { "9300 meters" }, spoken);
+    }
+
+    [Fact]
+    public void Metric_EveryThreeHundredMetres_InAClimb()
+    {
+        FeedMetres(850, 910, 1_150, 1_210, 1_490, 1_520);
+        Assert.Equal(new[] { "900 meters", "1200 meters", "1500 meters" }, spoken);
+    }
+
+    [Fact]
+    public void Metric_HoverOnAnnouncedBoundary_DoesNotRepeat()
+    {
+        FeedMetres(10_750, 10_810, 10_790, 10_820, 10_780, 10_805);
+        Assert.Equal(new[] { "10800 meters" }, spoken);
+    }
+
+    [Fact]
+    public void SwitchingUnits_ReBaselinesSilently_ThenAnnouncesInTheNewUnit()
+    {
+        // MTRS pressed between 5,000 and 6,000 ft: the switch itself says nothing (the band
+        // numbers so far are feet), and the next 300-m boundary announces in metres. Back in
+        // feet, the first sample is silent again and the next thousand announces bare.
+        Feed(4_900, 5_010);
+        FeedMetres(1_560);          // 5,118 ft
+        FeedMetres(1_810);
+        Feed(5_990);
+        Feed(6_010);
+        Assert.Equal(new[] { "5000", "1800 meters", "6000" }, spoken);
+    }
+
+    [Fact]
+    public void Metric_CallOut_IsTheSameUnderACommaDecimalCulture()
+    {
+        var saved = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("sv-SE");
+            FeedMetres(11_950, 12_010);
+            Feed(35_900, 36_010);   // a unit change re-baselines, so this pair is baseline + crossing
+            Assert.Equal(new[] { "12000 meters", "36000" }, spoken);
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = saved;
+        }
+    }
 }
