@@ -66,6 +66,19 @@ public partial class CowsDA40Definition
     // it and only the resting value is spoken.
     private const int RadioSettleMs = 1100;
 
+    /// <summary>
+    /// How still an autopilot selected value must be before it is spoken.
+    ///
+    /// FAST-SAMPLED: the selected values (AddApValue) run on per-var SIM_FRAME subscriptions,
+    /// so a knob that is still moving delivers well inside this and only the value it stops
+    /// on is said - within a third of a second of the pilot letting go, where the shared
+    /// 1100 ms radio settle on the 1 Hz batch answered one to two seconds late.
+    /// </summary>
+    private const int ApSettleMs = 300;
+
+    /// <summary>The autopilot's selected values, which settle on their own fast timer.</summary>
+    private static bool IsApSelectedKey(string key) => key.StartsWith("DA40_AP_", StringComparison.Ordinal);
+
     /// <summary>How long after MSFSBA's own set or swap to stay quiet.</summary>
     private const int RadioOwnWriteGraceMs = 2500;
 
@@ -184,24 +197,34 @@ public partial class CowsDA40Definition
 
         _radioPending[varKey] = value;
 
-        if (_radioSettleTimer == null)
+        // The autopilot's selected values settle on their own, shorter timer: their feed is
+        // per-frame, the radios' is 1 Hz (see ApSettleMs and RadioSettleMs).
+        bool ap = IsApSelectedKey(varKey);
+        ref var timer = ref (ap ? ref _apSettleTimer : ref _radioSettleTimer);
+        if (timer == null)
         {
-            _radioSettleTimer = new System.Windows.Forms.Timer { Interval = RadioSettleMs };
-            _radioSettleTimer.Tick += (_, _) => UnderLoadSettle(_radioAnnouncer, FlushRadioSettle);
+            timer = new System.Windows.Forms.Timer { Interval = ap ? ApSettleMs : RadioSettleMs };
+            timer.Tick += ap
+                ? (_, _) => UnderLoadSettle(_radioAnnouncer, () => FlushRadioSettle(apOnly: true))
+                : (_, _) => UnderLoadSettle(_radioAnnouncer, () => FlushRadioSettle(apOnly: false));
         }
 
         // Stop-then-start is what makes it a settle rather than a repeat.
-        _radioSettleTimer.Stop();
-        _radioSettleTimer.Start();
+        timer.Stop();
+        timer.Start();
         return true;
     }
 
-    private void FlushRadioSettle()
-    {
-        _radioSettleTimer?.Stop();
+    private System.Windows.Forms.Timer? _apSettleTimer;
 
-        var pending = new Dictionary<string, double>(_radioPending);
-        _radioPending.Clear();
+    private void FlushRadioSettle(bool apOnly)
+    {
+        (apOnly ? _apSettleTimer : _radioSettleTimer)?.Stop();
+
+        var pending = new Dictionary<string, double>(StringComparer.Ordinal);
+        foreach (var kv in _radioPending)
+            if (IsApSelectedKey(kv.Key) == apOnly) pending[kv.Key] = kv.Value;
+        foreach (var key in pending.Keys) _radioPending.Remove(key);
         if (pending.Count == 0) return;
 
         bool ours = (DateTime.UtcNow - _radioOwnWriteAt).TotalMilliseconds < RadioOwnWriteGraceMs;
@@ -247,27 +270,50 @@ public partial class CowsDA40Definition
             if (muted.Contains(key)) pending.Remove(key);
         if (pending.Count == 0) return;
 
-        // One utterance when several moved. A swap changes active AND standby together, so
-        // two announcements a breath apart is exactly how a pilot loses the first.
-        var parts = new List<string>();
-        foreach (var kv in RadioLabels)
-            if (pending.TryGetValue(kv.Key, out double f))
-            {
-                // A COM frequency needs three decimals (8.33 kHz) and a NAV frequency two,
-                // the same as the typed read-back ("NAV 1 standby 110.50"); a swap read NAV
-                // as "110.500" beside it. An altitude of 9000 read as "9000.000" is a
-                // different kind of wrong, so everything that is not a radio is whole.
-                bool com = kv.Key.IndexOf("RADIO_COM", StringComparison.Ordinal) >= 0;
-                bool nav = kv.Key.IndexOf("RADIO_NAV", StringComparison.Ordinal) >= 0;
-                parts.Add(kv.Value + " " + f.ToString(com ? "0.000" : nav ? "0.00" : "0",
-                    System.Globalization.CultureInfo.InvariantCulture));
-            }
-
         // Immediate for the same reason as the barometric settle: this is the value the
-        // knob came to REST on, 600 ms after the pilot stopped turning, and queueing it
+        // knob came to REST on, moments after the pilot stopped turning, and queueing it
         // behind the display window's own read-backs is what made the altimeter setting
         // arrive so late it read as broken.
-        if (parts.Count > 0) _radioAnnouncer.AnnounceImmediate(string.Join(". ", parts));
+        string said = ComposeSettled(pending);
+        if (said.Length > 0) _radioAnnouncer.AnnounceImmediate(said);
+    }
+
+    /// <summary>
+    /// The settled values as one utterance. Pure so the suite can pin it.
+    ///
+    /// One utterance when several moved: a swap changes active AND standby together, and two
+    /// announcements a breath apart is how a pilot loses the first.
+    ///
+    /// ⚠️ ONE AUTOPILOT VALUE ALONE IS JUST THE VALUE. A heading bug turned on external
+    /// hardware was answered "Heading bug 250", and the pilot asked for "250": the knob they
+    /// turned already says which value it is. Two selected values settling together keep
+    /// their names, because two bare numbers would not say which was which. Radios always
+    /// keep theirs - "COM 1 standby" is which radio, not decoration.
+    /// </summary>
+    internal static string ComposeSettled(IReadOnlyDictionary<string, double> pending)
+    {
+        int apCount = 0;
+        foreach (var key in pending.Keys) if (IsApSelectedKey(key)) apCount++;
+
+        var parts = new List<string>();
+        foreach (var kv in RadioLabels)
+        {
+            if (!pending.TryGetValue(kv.Key, out double f)) continue;
+
+            // A COM frequency needs three decimals (8.33 kHz) and a NAV frequency two, the
+            // same as the typed read-back ("NAV 1 standby 110.50"); a swap read NAV as
+            // "110.500" beside it. A heading or course is three digits, as the bug is read
+            // everywhere else ("005"); anything else is whole.
+            bool com = kv.Key.IndexOf("RADIO_COM", StringComparison.Ordinal) >= 0;
+            bool nav = kv.Key.IndexOf("RADIO_NAV", StringComparison.Ordinal) >= 0;
+            bool angle = kv.Key == "DA40_AP_HDG_SET" || kv.Value == "Course";
+            string value = angle
+                ? (((int)Math.Round(f) % 360 + 360) % 360).ToString("000", System.Globalization.CultureInfo.InvariantCulture)
+                : f.ToString(com ? "0.000" : nav ? "0.00" : "0", System.Globalization.CultureInfo.InvariantCulture);
+
+            parts.Add(IsApSelectedKey(kv.Key) && apCount == 1 ? value : kv.Value + " " + value);
+        }
+        return string.Join(". ", parts);
     }
 
     /// <summary>Stops the settle timer. Called when the aircraft is switched away.</summary>
@@ -275,6 +321,8 @@ public partial class CowsDA40Definition
     {
         try { _radioSettleTimer?.Stop(); _radioSettleTimer?.Dispose(); } catch { }
         _radioSettleTimer = null;
+        try { _apSettleTimer?.Stop(); _apSettleTimer?.Dispose(); } catch { }
+        _apSettleTimer = null;
         _radioPending.Clear();
     }
 }

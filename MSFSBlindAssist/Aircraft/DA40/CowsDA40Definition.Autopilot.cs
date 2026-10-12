@@ -342,6 +342,13 @@ public partial class CowsDA40Definition
             // was never called for them. Exactly the fault the radios had. The generic
             // announcer is kept out by NoteRadioChange returning true, not by this flag.
             IsAnnounced = true,
+            // ⚠️ FAST-SAMPLED, because a knob turned on external hardware was answered one
+            // to two seconds late (reported from the cockpit as laggy): the 1 Hz batch took
+            // up to a second to notice the knob had stopped and the settle another 1.1 s on
+            // top. A per-var SIM_FRAME subscription (seeded at connect, so a static value is
+            // still cached) delivers within a frame, and ApSettleMs is sized for that.
+            ExcludeFromBatch = true,
+            HighFrequency = true,
             Format = format
         };
     }

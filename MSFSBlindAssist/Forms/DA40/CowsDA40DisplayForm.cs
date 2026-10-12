@@ -1038,14 +1038,19 @@ public sealed class CowsDA40DisplayForm : Form
         // believed. What counts as new is the cursor flag OR the text - the flag matters
         // on its own, because arming the cursor can leave the summary identical for a
         // moment and that is precisely the case being missed.
-        if (cursorOn == _lastCursorOn && summary == _lastSpokenSummary)
+        // ⚠️ THE CURSOR PUSH IS ALWAYS READ AGAIN. The cursor arms a frame after the key, so
+        // the first read says the cursor is still off and, on the checklist page, "nothing
+        // under the cursor" - a pilot arming it onto the checklist group heard nothing about
+        // the group (reported from the cockpit as the checklist group or title saying none).
+        bool cursorPush = eventSuffix == "FMS_Upper_PUSH";
+        if (cursorPush || (cursorOn == _lastCursorOn && summary == _lastSpokenSummary))
         {
             // ONLY THE PAGE SELECTOR IS SLOW, and now the read-back says which view it is
             // looking at, so only the page selector pays for it. Before the view key
             // existed this was one wait for every key, which is why four arrow presses in
             // a row felt like the window had hung.
             bool selector = view == "PageSelect" || _lastView == "PageSelect";
-            await Task.Delay(selector ? PageSelectSettleMs : BezelSettleMs);
+            await Task.Delay(selector ? PageSelectSettleMs : cursorPush ? CursorArmMs : BezelSettleMs);
             if (_disposed) return;
 
             (cursorOn, view, focus, summary, accepted) = await FireAndRead(null);
@@ -1322,6 +1327,12 @@ public sealed class CowsDA40DisplayForm : Form
     /// almost at once.
     /// </summary>
     private const int BezelSettleMs = 500;
+
+    /// <summary>
+    /// How long the cursor takes to arm after its push: a frame or two. The push is always
+    /// read again after this (see PressBezel), because the first read is from before it armed.
+    /// </summary>
+    private const int CursorArmMs = 200;
 
     /// <summary>
     /// How long the PAGE SELECTOR takes to commit. It holds the page the knob landed on for

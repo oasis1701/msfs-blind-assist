@@ -1734,6 +1734,28 @@
         return [];
     };
 
+    /// The checklist the page is showing, or "" off the checklist page.
+    A.checklistTitle = function () {
+        var host = firstVisible(".Da40-checklist-page-container");
+        return host ? text(host.querySelector(".checklist-title")) : "";
+    };
+
+    /// Whether a checklist row is ticked: its checkbox carries `completed`.
+    A.checklistItemDone = function (item) {
+        var box = item && item.querySelector ? item.querySelector(".Da40-checklist-checkbox") : null;
+        return !!(box && classList(box).indexOf("completed") >= 0);
+    };
+
+    /// The checklist row the cursor is on, if the checklist page is up and it is a checkable
+    /// item: its element, its words and whether it is ticked.
+    A.checklistFocused = function () {
+        var item = firstVisible(".Da40-checklist-display-list .checklist-focus");
+        if (!item || !item.querySelector(".Da40-checklist-checkbox")) return null;
+        var words = text(item.querySelector(".Da40-checklist-checkbox") || item)
+            .replace(/\.{2,}/g, " ... ").replace(/\s+/g, " ").trim();
+        return { el: item, text: words, done: A.checklistItemDone(item) };
+    };
+
     A.checklistPage = function (p) {
         // A selection popup sits ON TOP of the page, so it must be answered first or the
         // pilot is read the checklist behind the list they are actually navigating.
@@ -1765,14 +1787,21 @@
                 var line = raw.replace(/\.{2,}/g, " ... ").replace(/\s+/g, " ").trim();
 
                 // A note is not an action, and saying so stops a condition being read as
-                // something to do.
-                if (!box) line = "note: " + line;
+                // something to do. A CONDITION ("> If ECU A caution persists:", "# If
+                // additional engine problems are observed:") is its own kind of line: the
+                // marker is the checklist's typography for it, and is said as the word.
+                if (!box) {
+                    line = item.querySelector(".Da40-checklist-subtitle")
+                        ? "condition: " + line.replace(/^[>#]\s*/, "")
+                        : "note: " + line;
+                }
 
                 var cls = classList(item);
                 if (cls.indexOf("checklist-focus") >= 0) line += " (current)";
-                for (var c = 0; c < cls.length; c++) {
-                    if (/checked|completed|complete/i.test(cls[c])) { line += ", done"; break; }
-                }
+                // ⚠️ THE TICK IS ON THE CHECKBOX, NOT THE ROW. `completed` is a class of
+                // .Da40-checklist-checkbox; testing only the row's own classes never found it,
+                // so a ticked item read exactly like an unticked one.
+                if (A.checklistItemDone(item)) line += ", checked";
 
                 lines.push("  " + line);
             }
@@ -2263,9 +2292,49 @@
     /// highlight moving inside a list, the value has already changed and one trip is all
     /// it costs.
     A.press = function (name) {
+        // ⚠️ ENT ON A CHECKLIST ITEM TICKS IT AND MOVES ON, AND ONLY THE MOVE WAS SAID. The
+        // read-back is the item the cursor lands on, so a pilot working down a checklist
+        // never heard that the item they pressed ENT on was ticked (or, pressed again,
+        // unticked). The item is read before the key and its tick after it.
+        var ck = null;
+        if (/_ENT_Push$/.test(String(name))) {
+            try { ck = A.checklistFocused(); } catch (e) { ck = null; }
+        }
+
+        // ⚠️ AND A NEW CHECKLIST IS NAMED. "Go to Next Checklist?" swaps the checklist on the
+        // same page, so no view change announces it, and the read-back was the new list's
+        // first line with nothing to say which checklist it belonged to.
+        var titleBefore = A.checklistTitle();
+
         var fired = A.key(name);
         if (fired !== "ok") return fired;
-        return A.state();
+        var st = A.state();
+
+        var titleAfter = A.checklistTitle();
+        if (titleBefore && titleAfter && titleAfter !== titleBefore) {
+            var tp = st.split("|");
+            if (tp.length >= 5) {
+                var rest = tp.slice(4).join("|");
+                st = tp.slice(0, 4).join("|") + "|Checklist, " + titleAfter + (rest ? ". " + rest : "");
+            }
+            ck = null;
+        }
+
+        if (ck) {
+            var now = A.checklistItemDone(ck.el);
+            if (now !== ck.done) {
+                var parts = st.split("|");
+                if (parts.length >= 5) {
+                    var said = parts.slice(4).join("|");
+                    parts = parts.slice(0, 4);
+                    // Unticking leaves the cursor where it was, so the item is not said twice.
+                    if (said === ck.text) said = "";
+                    parts.push((now ? "Checked, " : "Unchecked, ") + ck.text + (said ? ". " + said : ""));
+                    st = parts.join("|");
+                }
+            }
+        }
+        return st;
     };
 
     /// The display's state as ONE string: "ok|<cursor 0 or 1>|<summary>".
@@ -3297,6 +3366,17 @@
             }
             if (!t2) continue;
 
+            // A CHECKLIST ROW SAYS WHETHER IT IS TICKED, and a condition says it is one, the
+            // same as the window's rows do - walking a checklist with the knob otherwise gave
+            // no way to tell what was done.
+            if (t2El && t2El.closest) {
+                var ckRow = t2El.closest(".Da40-checklist-item-display");
+                if (ckRow) {
+                    if (ckRow.querySelector(".Da40-checklist-subtitle")) t2 = "condition: " + t2.replace(/^[>#]\s*/, "");
+                    else if (A.checklistItemDone(ckRow)) t2 += ", checked";
+                }
+            }
+
             // A BARE NUMBER IS NAMED BY ITS BOX. "112.70" alone does not say it is the
             // frequency ENT will load; the box it is drawn in does ("Frequency"). Only a value
             // with no letters gets the name: a row that already says what it is keeps its
@@ -4193,7 +4273,14 @@
             // heading at the same depth or shallower. Depth is the indent, which is how this
             // walk already expresses nesting.
             var indentOf = function (t) { return /^ */.exec(String(t))[0].length; };
-            var isHead = function (t) { return /:$/.test(String(t).trim()); };
+            // ⚠️ A LINE THAT ALREADY HAS A "LABEL: " IS NOT A HEADING, whatever it ends with.
+            // A checklist condition reads "condition: If ECU A caution persists:" and was
+            // pruned as an empty heading, so every condition vanished from the checklist and
+            // its actions read as unconditional.
+            var isHead = function (t) {
+                var s = String(t).trim();
+                return /:$/.test(s) && !/:\s/.test(s);
+            };
 
             var pruned = [];
             for (var h = 0; h < kept.length; h++) {

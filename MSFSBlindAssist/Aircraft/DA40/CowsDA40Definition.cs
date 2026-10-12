@@ -610,9 +610,14 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
     ///                                            switch" and "land as soon as practical",
     ///                                            and the CAS only ever says ECU FAIL
     ///   the ECU test's own RESULT              — the whole reason for running it
-    ///   the transfer pump stopping itself      — documented behaviour above ~14 gallons,
-    ///                                            and the aeroplane's Tips page tells the
-    ///                                            pilot to set a timer because of it
+    ///
+    /// ⚠️ THE TRANSFER PUMP IS NOT HERE ANY MORE, BECAUSE THE G1000 ALREADY SAYS IT. Its row
+    /// (CIRCUIT ON:22) was promoted for the pump stopping itself above ~14 gallons - but the
+    /// panel's FUEL XFER advisory is that same circuit (panel.xml A_L_AUXPUMP_SIM), and the
+    /// CAS monitor speaks it appearing and clearing. As the pump cycles, which AFM 4A.5.10
+    /// calls normal, every cycle was said twice: "Transfer Pump Running: Yes" and "Advisory:
+    /// FUEL XFER", then "No" and "FUEL XFER cleared" (reported from the cockpit). The CAS
+    /// line is what the cockpit shows, so it is the one that speaks; the row stays on the scan.
     ///
     /// ⚠️ A TRIM RUNAWAY IS DELIBERATELY ABSENT and is already covered. DA40_TRIM_RUNAWAY
     /// shares its SimVar with DA40_FAIL_AFCS_TRIM_RUN, which is already batched and
@@ -627,8 +632,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         "DA40_ECU_LATCH_A",
         "DA40_ECU_LATCH_B",
         "DA40_ECU_TEST_FAIL_A",
-        "DA40_ECU_TEST_FAIL_B",
-        "DA40_FUEL_TRANSFER_RUNNING"
+        "DA40_ECU_TEST_FAIL_B"
     };
 
     public static IReadOnlyCollection<string> AlarmStateKeys => AlarmStates;
