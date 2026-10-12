@@ -773,6 +773,7 @@ public class ClaudeContextBudgetTests
             "DA40-14 OwnerMute", "DA40-23 SetLVar", "DA40-9 _uiSetEcho", "DA40A-3 ExecuteCalculatorCodeUnique",
             "DA40A-9 AnnounceImmediate", "DA40A-16 BaseAircraftDefinition", "DA40F-3 ExecuteCalculatorCodeUnique",
             "DA40F-4 ExecuteCalculatorCodeUnique", "DA40G-2 ExecuteCalculatorCodeUnique",
+            "DA40A-22 RefreshControlWhenDefHandled",
         },
         ["named as what never to use: the rule guards the code that must avoid it"] = new[]
         {

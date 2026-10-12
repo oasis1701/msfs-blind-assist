@@ -94,3 +94,7 @@ The text is verbatim from the CLAUDE.md invariants PR #242 added; where two bull
 ## DA40A-21
 
 - **An autopilot selected value moved outside MSFSBA is spoken as the value alone** (`ComposeSettled`): "250", not "Heading bug 250" — the owner's ruling of 2026-10-12, since the knob the pilot turned already names it. Two selected values settling together keep their names, because two bare numbers say nothing about which is which; a radio always says which radio. The selected values ride per-frame subscriptions (`HighFrequency` + `ExcludeFromBatch`, seeded) with their own `ApSettleMs` (300 ms): on the 1 Hz batch with the shared 1100 ms radio settle the answer came 1-2 s after the knob stopped. MSFSBA's own typed setters keep their named confirmation. → [da40.md](../da40.md)
+
+## DA40A-22
+
+- **The GFC 700 mode rows are SILENT; the FMA speaks the modes.** Every mode change was said twice - the mode button's own row ("Altitude Hold: Off") and the CAS watcher's FMA sentence ("Autopilot AP, ROL, GPS armed, FLC, ALTS armed") - measured in flight 2026-10-12. `ApModeIsSpokenByFma` consumes HDG, NAV, APR, BC, ALT, VS and FLC always, and the master and flight director when they come ON; their OFF is still spoken, because the FMA deliberately says nothing for "off". The combos refresh through `RefreshControlWhenDefHandled` (combos write only on `SelectionChangeCommitted`, so a refresh sends nothing). Modes without AP are the flight director's (DA40G-30). → [da40.md](../da40.md)

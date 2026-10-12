@@ -253,7 +253,9 @@ public partial class CowsDA40Definition
             Units = "bool",
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" },
+            // On is said by the FMA (its modes appear); Off is said here, like the master's.
+            RefreshControlWhenDefHandled = _ => true
         };
 
         // The command attitude the bars are showing. A sighted pilot flies the bars by
@@ -316,9 +318,32 @@ public partial class CowsDA40Definition
             Units = "bool",
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" },
+            // The mode buttons speak through the FMA (ApModeIsSpokenByFma), so their combos
+            // are def-handled - and must still follow the aeroplane in an open panel.
+            RefreshControlWhenDefHandled = _ => true,
+            ExcludeFromMonitorManager = key != "DA40_AP_MASTER"
         };
     }
+
+    /// <summary>
+    /// The GFC 700 mode buttons the FMA already speaks.
+    ///
+    /// ⚠️ EVERY MODE CHANGE WAS SAID TWICE. Pressing FLC in flight produced "Altitude Hold:
+    /// Off" from the generic announcer AND "Autopilot AP, ROL, GPS armed, FLC, ALTS armed" from
+    /// the CAS watcher's FMA; engaging the autopilot added "Flight Director: On", "Autopilot:
+    /// On" and "Navigation Mode: On" to the FMA's own sentence (2026-10-12). The FMA is what a
+    /// sighted pilot reads, and it says active and armed modes in one breath, so these combos
+    /// are silent. The autopilot master keeps ONE word: going OFF, which the FMA deliberately
+    /// does not say (CasMonitor) and which interrupts a sighted pilot with its own tone.
+    /// </summary>
+    internal static bool ApModeIsSpokenByFma(string key, double value) => key switch
+    {
+        "DA40_AP_HDG" or "DA40_AP_NAV" or "DA40_AP_APR" or "DA40_AP_BC" or
+        "DA40_AP_ALT" or "DA40_AP_VS" or "DA40_AP_FLC" => true,
+        "DA40_AP_MASTER" or "DA40_AP_FD" => value >= 0.5,
+        _ => false
+    };
 
     /// <summary>
     /// A selected value: a typed entry, never a slider. MainForm's TrackBar is hardcoded

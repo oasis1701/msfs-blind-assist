@@ -382,6 +382,10 @@ public partial class CowsDA40Definition
         // own trimming stays silent; the position is re-based while it flies, so the first
         // pilot trim after a disconnect speaks only what the pilot moved.
         if (varName == "DA40_AP_MASTER") _apEngaged = value >= 0.5;
+
+        // A GFC 700 mode the FMA already says (ApModeIsSpokenByFma). Handled so the generic
+        // announcer stays out; the combo still refreshes (RefreshControlWhenDefHandled).
+        if (ApModeIsSpokenByFma(varName, value)) return true;
         if (varName == "MON_ElevatorTrim" && _apEngaged)
         {
             RebaseTrimAnnouncement(value);
