@@ -43,6 +43,13 @@ Weight:
 Flaps:
   L          Read Flap Position
 
+Flap Maneuver Speeds (calculated for your current weight):
+  Shift+1    Flaps up maneuver speed
+  Shift+2    Flaps 1 maneuver speed
+  Shift+3    Flaps 5 maneuver speed
+  Shift+4    Flaps 15 maneuver speed
+  Shift+5    Flaps 20 maneuver speed
+
 Landing Gear:
   Shift+G    Read Gear Position
 

@@ -2811,7 +2811,7 @@ All settings persist through `UserSettings`.
 
 **What it does NOT govern (intentionally out of scope):**
 
-- Altitude callouts (always feet — aviation standard, ICAO Annex 5)
+- Altitude callouts (feet — aviation standard, ICAO Annex 5; only the FBW A380's own metric altitude, its FCU MTRS button, switches them to 300-metre bands, see [a380x.md](a380x.md))
 - AGL / vertical-speed callouts (always feet)
 - Takeoff-assist / visual-guidance announcements (altitude/AGL — always feet)
 - Weather visibility (reported in km / statute miles per METAR convention)
