@@ -66,9 +66,16 @@ public partial class CowsDA40Definition
         // Red-guarded on the real aircraft. AFM: "Lift the guard prior to actuating the
         // toggle. After switching, lower the Engine Master switch guard with the toggle
         // in the desired position."
+        //
+        // ⚠️ THE SWITCH IS RECIP ENG ENGINE MASTER SWITCH:1, NOT THE ALTERNATOR. The model's
+        // master is the stock ASOBO_ENGINE_Switch_Master_Template (that SimVar), and COWS's
+        // logic then connects GENERAL ENG MASTER ALTERNATOR:1 behind it only while the ECU
+        // bus is above 17 V. Reading the alternator, the row said "Engine Master: Off" and
+        // "On" again on every start, as cranking sagged the bus, with the switch untouched
+        // (measured live at LOWG, 2026-10-12). The write was always ENGINE_MASTER_1_SET.
         v["DA40_START_ENGINE_MASTER"] = new SimVarDefinition
         {
-            Name = "GENERAL ENG MASTER ALTERNATOR:1",
+            Name = "RECIP ENG ENGINE MASTER SWITCH:1",
             DisplayName = "Engine Master",
             Type = SimVarType.SimVar,
             Units = "bool",

@@ -473,8 +473,12 @@ public partial class CowsDA40Definition
 
         AddFind(v, "DA40_PITOT_HEAT_STOCK", "PITOT HEAT SWITCH:1", SimVarType.SimVar,
             "Pitot Heat Switch", "bool", "F0", offOn);
-        AddFind(v, "DA40_ENGINE_MASTER_STOCK", "RECIP ENG ENGINE MASTER SWITCH:1",
-            SimVarType.SimVar, "Engine Master Switch",
+        // The engine master's own row is now RECIP ENG ENGINE MASTER SWITCH:1 (see
+        // EngineStart), so this mirror reads what the master COMMANDS instead: the alternator
+        // the model connects behind it while the ECU bus is above 17 V. Off with the master
+        // on is the ALTN FAIL the CAS reports, and the bus dip of every start.
+        AddFind(v, "DA40_ALTERNATOR_STOCK", "GENERAL ENG MASTER ALTERNATOR:1",
+            SimVarType.SimVar, "Alternator",
             "bool", "F0", offOn);
         AddFind(v, "DA40_FUEL_PUMP_STOCK", "GENERAL ENG FUEL PUMP SWITCH EX1:1",
             SimVarType.SimVar, "Fuel Pump Switch",
@@ -496,7 +500,7 @@ public partial class CowsDA40Definition
         // ⚠️ The six gauge-backed temperature readouts that were here are GONE - see the
         // retraction above. What is left are the two stock SWITCH mirrors, which are
         // switch positions rather than instrument readings and so defeat no indication.
-        "DA40_ENGINE_MASTER_STOCK", "DA40_FUEL_PUMP_STOCK"
+        "DA40_ALTERNATOR_STOCK", "DA40_FUEL_PUMP_STOCK"
     };
 
     private static readonly List<string> FsCopilotDamageRows2 = new()

@@ -28,12 +28,13 @@ public partial class CowsDA40Definition
 
         // STOCK SimVars, which the package-presence scan cannot see because it checks L:vars:
         // a coolant reservoir and a turbocharger the air-cooled Lycoming has not got, the
-        // NG's single engine master (the XLS has a battery/alternator rocker and a magneto
-        // key), and the NG's EX1 pump switch (the XLS's pump is GENERAL ENG FUEL PUMP
-        // SWITCH:1, its own row). Measured live on the XLS, the coolant read 0 percent.
+        // alternator the NG's single engine master connects (the XLS's own alternator half is
+        // DA40_ELEC_ALT_MASTER on the same SimVar, and the XLS has a magneto key), and the
+        // NG's EX1 pump switch (the XLS's pump is GENERAL ENG FUEL PUMP SWITCH:1, its own
+        // row). Measured live on the XLS, the coolant read 0 percent.
         "DA40_ENG_COOLANT_LEVEL",
         "DA40_FAIL_TURBO_STOCK",
-        "DA40_ENGINE_MASTER_STOCK",
+        "DA40_ALTERNATOR_STOCK",
         "DA40_FUEL_PUMP_STOCK",
 
         // The Austro's electrical system. The XLS has main, essential, hot and emergency

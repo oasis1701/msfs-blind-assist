@@ -118,4 +118,15 @@ public class CowsDA40FsCopilotFindsTests
         Assert.True(def.TryGetDisplayOverride(key, value, out string text));
         Assert.Equal(expected, text);
     }
+    [Fact]
+    public void TheEngineMasterIsTheSwitchAndTheAlternatorIsItsOwnRow()
+    {
+        // The model's master is the stock master-switch template; COWS connects the
+        // alternator behind it only above 17 V on the ECU bus, so a row reading the
+        // alternator said "Engine Master: Off" and "On" on every start (2026-10-12).
+        var vars = new CowsDA40Definition(DA40Variant.NG).GetVariables();
+        Assert.Equal("RECIP ENG ENGINE MASTER SWITCH:1", vars["DA40_START_ENGINE_MASTER"].Name);
+        Assert.Equal("GENERAL ENG MASTER ALTERNATOR:1", vars["DA40_ALTERNATOR_STOCK"].Name);
+        Assert.False(new CowsDA40Definition(DA40Variant.XLS).GetVariables().ContainsKey("DA40_ALTERNATOR_STOCK"));
+    }
 }
