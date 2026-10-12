@@ -73,8 +73,8 @@ public partial class MainForm : Form
     private readonly MSFSBlindAssist.Services.SceneryIndex.SceneryPackageCensus sceneryCensus = new(SceneryIndexCacheDir);
 
     // Output C and Location Info read the offline GeoNames + Natural Earth database; the job that
-    // downloads and builds it is started from Settings → GeoNames and owned here, so it keeps
-    // running after Settings closes. Its speech is marshalled in InitializeManagers.
+    // downloads and builds it is started from Settings → GeoNames or the startup data check (UPD-9)
+    // and owned here, so it keeps running after either closes. Its speech is marshalled in InitializeManagers.
     private readonly Services.Geography.LocationDataDownloader locationDataDownloader =
         new(Services.Geography.LocationDataStore.Default);
     private readonly Services.Geography.OfflineLocationService offlineLocationService =
@@ -569,6 +569,15 @@ public partial class MainForm : Form
 
         if (!SettingsManager.Current.CheckForUpdatesOnStartup) return;
 
+        // A location download started from that dialog may still run: an update accepted now
+        // restarts the app and Shutdown cancels the download without a word. Skip this launch's
+        // check; the next launch asks again (UPD-9).
+        if (locationDataDownloader.IsRunning)
+        {
+            Log.Debug("Updates", "Startup update check skipped: the location data download is running.");
+            return;
+        }
+
         // A local build reports 0.0.0 (the csproj's placeholder — CI passes the real
         // -p:Version), which loses to every published tag, so without this every
         // developer launch would open the update dialog. The MANUAL check still offers
@@ -591,25 +600,24 @@ public partial class MainForm : Form
     /// <summary>
     /// The startup data check (UPD-9): offers the navigation database and the location data while
     /// either is missing, on every launch, silenced only by its setting; a dismissal is never
-    /// remembered. A navigation database for either simulator counts: connecting switches between them.
+    /// remembered. Only the database of the simulator the app last connected to counts: it is the one
+    /// every feature opens. Nothing is probed while the setting is off.
     /// </summary>
     private void OfferMissingData()
     {
         try
         {
-            var needs = StartupDataCheck.Find(
-                SettingsManager.Current.CheckForMissingDataOnStartup,
-                NavdataReaderBuilder.DatabaseExists("FS2020") || NavdataReaderBuilder.DatabaseExists("FS2024"),
-                offlineLocationService.IsAvailable, offlineLocationService.NeedsUpdate, offlineLocationService.ReadyAtNextStart);
+            var settings = SettingsManager.Current;
+            var needs = StartupDataCheck.Find(settings.CheckForMissingDataOnStartup, settings.SimulatorVersion,
+                NavdataReaderBuilder.DatabaseExists,
+                () => offlineLocationService.ReadyAtNextStart, () => offlineLocationService.IsAvailable);
             if (!needs.Any) return;
 
-            bool build;
-            using (var dialog = new StartupDataDialog(needs, locationDataDownloader.Start))
+            using (var dialog = new StartupDataDialog(needs, locationDataDownloader))
             {
-                dialog.ShowDialog(this);
-                build = dialog.BuildNavigationDatabaseChosen;
+                if (dialog.ShowDialog(this) != DialogResult.Yes) return;
             }
-            if (build) DatabaseSettingsMenuItem_Click(null, EventArgs.Empty);
+            DatabaseSettingsMenuItem_Click(null, EventArgs.Empty);
         }
         catch (Exception ex)
         {

@@ -1,30 +1,30 @@
 using MSFSBlindAssist.Services;
+using MSFSBlindAssist.Services.Geography;
 
 namespace MSFSBlindAssist.Forms;
 
 /// <summary>
 /// "Set up MSFS Blind Assist" (UPD-9): at launch, offers the navigation database and the
 /// location data while either is missing. It opens on its read-only description, which the
-/// screen reader reads, and lists only what is missing. Download starts the job in the
-/// background; when the navigation database is missing too, the dialog stays open on that
-/// button. Build closes it, and MainForm opens Database Settings. Escape is Not now.
+/// screen reader reads, and lists only what is missing; the location line is the download job's
+/// own status, as the GeoNames tab shows it, and follows the job once it runs. Download starts the
+/// job and the dialog stays open with focus on that button: a focus change's speech would cut the
+/// job's spoken confirmation, or be cut by it. Build returns Yes, and MainForm opens the Nav
+/// Database window. Escape is Not now, which reads Close once the download started.
 /// </summary>
 internal sealed class StartupDataDialog : Form
 {
     private readonly StartupDataNeeds _needs;
-    private readonly Action _startLocationDownload;
+    private readonly LocationDataDownloader _downloader;
     private TextBox _descriptionTextBox = null!;
-    private Button? _downloadButton;
-    private Button? _buildButton;
+    private Button _closeButton = null!;
 
-    /// <summary>The pilot pressed Build navigation database: MainForm opens Database Settings.</summary>
-    internal bool BuildNavigationDatabaseChosen { get; private set; }
-
-    internal StartupDataDialog(StartupDataNeeds needs, Action startLocationDownload)
+    internal StartupDataDialog(StartupDataNeeds needs, LocationDataDownloader downloader)
     {
         _needs = needs;
-        _startLocationDownload = startLocationDownload;
+        _downloader = downloader;
         InitializeComponent();
+        _downloader.StatusChanged += OnDownloadStatusChanged;
         Shown += (_, _) => _descriptionTextBox.Focus();
     }
 
@@ -47,7 +47,7 @@ internal sealed class StartupDataDialog : Form
             ReadOnly = true,
             ScrollBars = ScrollBars.Vertical,
             AccessibleName = "What is missing",
-            Text = StartupDataCheck.Describe(_needs),
+            Text = Description(),
             TabIndex = 0,
         };
         Controls.Add(_descriptionTextBox);
@@ -62,45 +62,66 @@ internal sealed class StartupDataDialog : Form
         // Buttons carry no AccessibleName: the screen reader reads their Text.
         if (_needs.LocationData)
         {
-            _downloadButton = new Button
+            // The GeoNames tab's label rule (GeoNamesPanel), so both name the action alike.
+            var downloadButton = new Button
             {
-                Text = _needs.LocationDataUpdate ? "&Update location data" : "&Download location data",
+                Text = _downloader.HasData ? "&Update location data" : "&Download location data",
                 AutoSize = true,
             };
-            _downloadButton.Click += OnDownloadClicked;
-            buttonRow.Controls.Add(_downloadButton);
+            downloadButton.Click += OnDownloadClicked;
+            buttonRow.Controls.Add(downloadButton);
         }
         if (_needs.NavigationDatabase)
-        {
-            _buildButton = new Button { Text = "&Build navigation database", AutoSize = true };
-            _buildButton.Click += (_, _) =>
-            {
-                BuildNavigationDatabaseChosen = true;
-                DialogResult = DialogResult.OK;
-            };
-            buttonRow.Controls.Add(_buildButton);
-        }
-        var notNowButton = new Button { Text = "&Not now", AutoSize = true, DialogResult = DialogResult.Cancel };
-        buttonRow.Controls.Add(notNowButton);
+            buttonRow.Controls.Add(new Button { Text = "&Build navigation database", AutoSize = true, DialogResult = DialogResult.Yes });
+        _closeButton = new Button { Text = "&Not now", AutoSize = true, DialogResult = DialogResult.Cancel };
+        buttonRow.Controls.Add(_closeButton);
         Controls.Add(buttonRow);
 
         // Escape is Not now. No AcceptButton: Enter must never start a 400 MB download (the
         // update dialog's rule, UpdateAvailableForm).
-        CancelButton = notNowButton;
+        CancelButton = _closeButton;
     }
 
+    private string Description()
+    {
+        var status = _downloader.DisplayStatus();
+        return StartupDataCheck.Describe(_needs, status.Text, status.IsRunning);
+    }
+
+    /// <summary>Focus stays on the pressed button, so nothing but the job's confirmation is spoken.
+    /// A press while the job runs is ignored (<see cref="LocationDataDownloader.Start"/>), and one
+    /// after it finished never fetches the data again; after a failure it retries.</summary>
     private void OnDownloadClicked(object? sender, EventArgs e)
     {
-        _startLocationDownload();
-        if (_buildButton is null)
+        if (_downloader.Status.Phase == DownloadJobPhase.Ready) return;
+        _downloader.Start();
+        _closeButton.Text = "&Close";
+    }
+
+    /// <summary>Raised on the download worker's thread; never <c>Invoke</c>, and a closing dialog
+    /// may have no handle left (A380C-6).</summary>
+    private void OnDownloadStatusChanged(object? sender, DownloadStatus status)
+    {
+        try
         {
-            DialogResult = DialogResult.OK;
-            return;
+            if (IsHandleCreated && !IsDisposed) BeginInvoke(ApplyDownloadStatus);
         }
-        // The navigation database is still to do: stay open on its button. Focus moves BEFORE
-        // the pressed button goes, or WinForms would move it to the next tab stop by itself.
-        _buildButton.Focus();
-        _downloadButton!.Visible = false;
-        DisplayText.SetPreserveCaret(_descriptionTextBox, StartupDataCheck.Describe(_needs, locationDownloading: true));
+        catch (InvalidOperationException)
+        {
+            // Handle destroyed between the check and the post: nothing to update.
+        }
+    }
+
+    /// <summary>The job's LATEST status (never the posted one), rewritten in place so the screen
+    /// reader keeps its line in the box.</summary>
+    private void ApplyDownloadStatus()
+    {
+        if (!IsDisposed) DisplayText.SetPreserveCaret(_descriptionTextBox, Description());
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) _downloader.StatusChanged -= OnDownloadStatusChanged;
+        base.Dispose(disposing);
     }
 }

@@ -31,14 +31,23 @@ look on your own.
 
 *Check for missing data when the app starts* is on by default (UPD-9). At launch, before the
 update check, it opens **Set up MSFS Blind Assist** when the navigation database is not built
-for either simulator, or the location data for Output C and Location Info is not downloaded
-or needs an update. The window opens on a read-only box listing only what is missing, then:
+for the simulator the app last connected to (the one every feature opens; one built for the
+other simulator does not count), or the location data for Output C and Location Info is not
+downloaded or needs an update. The window opens on a read-only box listing only what is
+missing; its location data line is the GeoNames tab's status (a kept partial download, the
+disk space needed). Then:
 
-- **Download location data** (or **Update location data**) starts the download in the
-  background, as the GeoNames tab does. If the navigation database is missing too, the window
-  stays open on its button.
-- **Build navigation database** closes the window and opens Database Settings.
+- **Download location data** (or **Update location data**, named as the GeoNames tab names it)
+  starts the download in the background. The window stays open with focus on that button, so
+  the spoken confirmation is not cut by a focus change, and its box follows the download.
+  **Not now** then reads **Close**; the download keeps running when the window closes.
+- **Build navigation database** closes the window and opens the Nav Database window
+  (File → Nav Database).
 - **Not now** (Escape) closes it.
+
+While a download started from the window still runs, that launch skips the automatic update
+check: an update accepted then would restart the app and cancel the download without a word.
+The next launch checks again.
 
 It appears at every launch while something is missing; a dismissal is never remembered. Turn
 the checkbox off to stop it (`Services/StartupDataCheck.cs`, `Forms/StartupDataDialog.cs`).

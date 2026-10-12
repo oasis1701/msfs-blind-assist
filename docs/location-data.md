@@ -1,8 +1,9 @@
 # Offline location data (Output C and Location Info)
 
 Output > C (the nearest place) and Output > Shift+L (the Location Info window) answer from a local
-database each pilot downloads once, from Settings → GeoNames → Download location data. Nothing is
-looked up online when a pilot presses a key. Rules: `.claude/rules/location-data.md` (LOC-n).
+database each pilot downloads once, from Settings → GeoNames → Download location data, or from the
+dialog the app opens at launch while the data is missing (UPD-9). Nothing is looked up online when
+a pilot presses a key. Rules: `.claude/rules/location-data.md` (LOC-n).
 
 ## Why it is offline
 
