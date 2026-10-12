@@ -157,9 +157,6 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public bool IsGen1On()         => IsOn(GeneratorBusState.OnBusFields[0]);   // on its bus, from the GEN OFF BUS light
     public bool IsGen2On()         => IsOn(GeneratorBusState.OnBusFields[1]);
     public bool AreGeneratorsOn()  => IsGen1On() && IsGen2On();
-    public bool IsApuGen1On()      => IsOn("ELEC_APUGenSw_0");
-    public bool IsApuGen2On()      => IsOn("ELEC_APUGenSw_1");
-    public bool AreApuGensOn()     => IsApuGen1On() && IsApuGen2On();
     public bool IsGpuAvailable()   => IsOn("ELEC_annunGRD_POWER_AVAILABLE");
     // Reads the FO_GPU_ON synthetic (available && ground-svc bus powered) — NEVER the raw
     // ELEC_GrdPwrSw struct bool, which reads TRUE even with no GPU at the stand (live-
