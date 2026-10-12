@@ -683,7 +683,7 @@ public partial class CowsDA40Definition
                 MarkRadioSetByUs("DA40_AP_HDG_SET");
                 int deg = ((int)Math.Round(value) % 360 + 360) % 360;
                 simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{deg} (>K:HEADING_BUG_SET)"));
-                announcer.AnnounceImmediate($"Heading bug {deg:000}");
+                announcer.AnnounceImmediate("Heading bug " + HeadingWords(deg));
                 return true;
             }
 
@@ -695,7 +695,7 @@ public partial class CowsDA40Definition
                 MarkRadioSetByUs(CdiCourseKeys());
                 int deg = ((int)Math.Round(value) % 360 + 360) % 360;
                 simConnect.ExecuteCalculatorCodeUnique(CourseWrite(deg));
-                announcer.AnnounceImmediate($"Course {deg:000}");
+                announcer.AnnounceImmediate("Course " + HeadingWords(deg));
                 return true;
             }
 

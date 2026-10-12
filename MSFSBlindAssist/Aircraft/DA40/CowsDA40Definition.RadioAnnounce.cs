@@ -301,6 +301,16 @@ public partial class CowsDA40Definition
     /// their names, because two bare numbers would not say which was which. Radios always
     /// keep theirs - "COM 1 standby" is which radio, not decoration.
     /// </summary>
+    /// <summary>
+    /// A heading or course as the G1000 draws it: three digits, and north as 360, never 000
+    /// ("Heading bug 000" was spoken for a bug at north; the HDG box says 360°).
+    /// </summary>
+    internal static string HeadingWords(double degrees)
+    {
+        int d = ((int)Math.Round(degrees) % 360 + 360) % 360;
+        return (d == 0 ? 360 : d).ToString("000", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
     internal static string ComposeSettled(IReadOnlyDictionary<string, double> pending)
     {
         int apCount = 0;
@@ -319,7 +329,7 @@ public partial class CowsDA40Definition
             bool nav = kv.Key.IndexOf("RADIO_NAV", StringComparison.Ordinal) >= 0;
             bool angle = kv.Key == "DA40_AP_HDG_SET" || kv.Value == "Course";
             string value = angle
-                ? (((int)Math.Round(f) % 360 + 360) % 360).ToString("000", System.Globalization.CultureInfo.InvariantCulture)
+                ? HeadingWords(f)
                 : f.ToString(com ? "0.000" : nav ? "0.00" : "0", System.Globalization.CultureInfo.InvariantCulture);
 
             parts.Add(IsApSelectedKey(kv.Key) && apCount == 1 ? value : kv.Value + " " + value);

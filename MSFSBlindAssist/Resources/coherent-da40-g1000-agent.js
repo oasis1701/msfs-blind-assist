@@ -2551,7 +2551,12 @@
 
     /// What the aeroplane resolved the typed ident to, once its search has run.
     A.typedResult = function () {
-        try { return A.M.typed(); } catch (e) { return "error " + e; }
+        // A facility with no city or name (an intersection) pads both with underscores; they
+        // read "ABIRI, _______________, ________________" (in flight, 2026-10-12), and are
+        // dropped: an intersection's ident is the whole of its name.
+        try {
+            return A.tidy(A.M.typed()).replace(/(,\s*blank)+$/, "");
+        } catch (e) { return "error " + e; }
     };
 
     /// The page map, as "Group|Page|Key" rows. An empty key means the stock G1000 draws
@@ -3167,7 +3172,10 @@
             }
 
             var label = kind === "button" ? "" : A.M.labelOf(c, value);
-            var group = A.M.groupOf(c, label);
+            // A BUTTON is boxed only by a real groupbox. The second, title-hunting pass named
+            // the Direct-To dialog's "Activate?" after the neighbouring field title, "BRG"
+            // (2026-10-12).
+            var group = kind === "button" ? A.M.boxTitleOf(A.M.hostOf(c)) : A.M.groupOf(c, label);
             // A Direct-To box has no label of its own on screen - the pilot is looking at
             // a dialog whose whole subject is the waypoint - so it gets named rather than
             // read out as a bare ident with no idea what it is.
