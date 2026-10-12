@@ -119,6 +119,22 @@ public sealed class StartupDataCheckTests : IDisposable
             StartupDataCheck.Describe(new StartupDataNeeds(true, true), "Building location data: 40 percent", locationRunning: true));
     }
 
+    [Theory]
+    [InlineData("Idle", false, "&Download location data", true)]
+    [InlineData("Idle", true, "&Update location data", true)]
+    [InlineData("Downloading", false, "Downloading location data", false)]
+    [InlineData("Building", true, "Building location data", false)]
+    [InlineData("Ready", true, "Location data ready", false)]
+    [InlineData("Failed", false, "&Download location data", true)]
+    [InlineData("Cancelled", true, "&Update location data", true)]
+    public void The_download_button_says_what_the_job_does_and_starts_nothing_while_it_runs_or_once_ready(
+        string phase, bool hasData, string text, bool pressStarts)
+    {
+        // Never dimmed, so it keeps focus; named for what the job does, so a press on a slow
+        // connection visibly did something. After a failure or cancel a press retries.
+        Assert.Equal((text, pressStarts), StartupDataCheck.DownloadButton(Enum.Parse<DownloadJobPhase>(phase), hasData));
+    }
+
     private LocationDataStore Store() => new(Path.Combine(_dir, "location-data.sqlite"));
 
     private static string[] Buttons(StartupDataNeeds needs, LocationDataDownloader downloader)

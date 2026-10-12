@@ -39,8 +39,11 @@ disk space needed). Then:
 
 - **Download location data** (or **Update location data**, named as the GeoNames tab names it)
   starts the download in the background. The window stays open with focus on that button, so
-  the spoken confirmation is not cut by a focus change, and its box follows the download.
-  **Not now** then reads **Close**; the download keeps running when the window closes.
+  no focus change is spoken over the confirmation, and its box follows the download. The
+  button is never dimmed; its label reads *Downloading location data* (then *Building location
+  data*, then *Location data ready*), and a press then starts nothing. After a failure or
+  cancel it reads *Download location data* again and a press retries. **Not now** then reads
+  **Close**; the download keeps running when the window closes.
 - **Build navigation database** closes the window and opens the Nav Database window
   (File → Nav Database).
 - **Not now** (Escape) closes it.

@@ -1,3 +1,5 @@
+using MSFSBlindAssist.Services.Geography;
+
 namespace MSFSBlindAssist.Services;
 
 /// <summary>What the startup data check offers: the navigation database when none is built for the
@@ -52,4 +54,17 @@ internal static class StartupDataCheck
         lines.Add($"To stop this check, turn off \"{SettingName}\" in Settings, Updates tab.");
         return string.Join("\r\n", lines);
     }
+
+    /// <summary>The dialog's Download button for the job's phase. It is never dimmed, so it keeps
+    /// focus (the owner's choice, 2026-10-12): its label says what the job is doing, so a pilot who
+    /// comes back to it on a slow connection is not left wondering whether the press did anything,
+    /// and a press then starts nothing. After a failure or cancel a press retries. Idle, it is
+    /// labelled as the GeoNames tab labels it (Update when some data exists).</summary>
+    internal static (string Text, bool PressStarts) DownloadButton(DownloadJobPhase phase, bool hasData) => phase switch
+    {
+        DownloadJobPhase.Downloading => ("Downloading location data", false),
+        DownloadJobPhase.Building => ("Building location data", false),
+        DownloadJobPhase.Ready => ("Location data ready", false),
+        _ => (hasData ? "&Update location data" : "&Download location data", true),
+    };
 }
