@@ -584,8 +584,10 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         "DA40_POWER_LEVER_SET",
 
         // The key in START, so the lamp watch can hold its verdict through a crank (the bus
-        // dips below the strobe's gate for as long as the key is held).
+        // dips below the strobe's gate for as long as the key is held). The XLS has no key
+        // position row: its magneto key's starter is the one to watch.
         "DA40_START_KEY_POSITION",
+        "DA40_MAG_STARTER",
 
         // The Hobbs meter, which a pilot writes down before and after every flight.
         "DA40_HOBBS"

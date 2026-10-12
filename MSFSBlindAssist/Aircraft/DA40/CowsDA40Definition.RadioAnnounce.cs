@@ -131,8 +131,7 @@ public partial class CowsDA40Definition
     /// <summary>
     /// Called by every path inside MSFSBA that tunes or swaps, so the settle timer knows
     /// the change was ours. The panel field and the swap button both confirm themselves.
-    /// </summary>
-    /// <summary>
+    ///
     /// Remember WHICH key MSFSBA just wrote, so the settle skips that one and nothing else.
     ///
     /// ⚠️ THIS USED TO BE A CATEGORY, AND BOTH SHAPES OF THAT WERE WRONG. Suppressing every
@@ -143,7 +142,7 @@ public partial class CowsDA40Definition
     ///
     /// The key is the honest unit: a value MSFSBA wrote and already spoke is redundant, and
     /// any OTHER value moving in the same window is somebody else's news.
-    /// </summary>
+    ///
     /// ⚠️ EVERY KEY WRITTEN IN THE GRACE, NOT ONLY THE LAST. Holding just the latest write
     /// meant three entries in a row - altitude, heading, airspeed - left the first two looking
     /// like somebody else's change: each setter confirmed itself and then the settle said
@@ -294,18 +293,6 @@ public partial class CowsDA40Definition
     }
 
     /// <summary>
-    /// The settled values as one utterance. Pure so the suite can pin it.
-    ///
-    /// One utterance when several moved: a swap changes active AND standby together, and two
-    /// announcements a breath apart is how a pilot loses the first.
-    ///
-    /// ⚠️ ONE AUTOPILOT VALUE ALONE IS JUST THE VALUE. A heading bug turned on external
-    /// hardware was answered "Heading bug 250", and the pilot asked for "250": the knob they
-    /// turned already says which value it is. Two selected values settling together keep
-    /// their names, because two bare numbers would not say which was which. Radios always
-    /// keep theirs - "COM 1 standby" is which radio, not decoration.
-    /// </summary>
-    /// <summary>
     /// A heading or course as the G1000 draws it: three digits, and north as 360, never 000
     /// ("Heading bug 000" was spoken for a bug at north; the HDG box says 360°).
     /// </summary>
@@ -321,6 +308,18 @@ public partial class CowsDA40Definition
     /// <summary>When a GFC 700 mode last changed (set from the mode rows as they arrive).</summary>
     private DateTime _apModeChangedAt = DateTime.MinValue;
 
+    /// <summary>
+    /// The settled values as one utterance. Pure so the suite can pin it.
+    ///
+    /// One utterance when several moved: a swap changes active AND standby together, and two
+    /// announcements a breath apart is how a pilot loses the first.
+    ///
+    /// ⚠️ ONE AUTOPILOT VALUE ALONE IS JUST THE VALUE. A heading bug turned on external
+    /// hardware was answered "Heading bug 250", and the pilot asked for "250": the knob they
+    /// turned already says which value it is. Two selected values settling together keep
+    /// their names, because two bare numbers would not say which was which. Radios always
+    /// keep theirs - "COM 1 standby" is which radio, not decoration.
+    /// </summary>
     internal static string ComposeSettled(IReadOnlyDictionary<string, double> pending, bool keepNames = false)
     {
         int apCount = 0;

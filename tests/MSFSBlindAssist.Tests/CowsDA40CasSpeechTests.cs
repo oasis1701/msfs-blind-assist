@@ -39,7 +39,7 @@ public class CowsDA40CasSpeechTests
 
     [Theory]
     // The AFCS breaker pulled in flight, 2026-10-12: the director stayed up in PIT.
-    [InlineData("AP, GPS, ALT", "PIT, ALTS armed", "Autopilot off, flight director PIT, ALTS armed")]
+    [InlineData("AP, GPS, ALT", "PIT, ALTS armed", "Flight director PIT, ALTS armed")]
     [InlineData("PIT, ALTS armed", "ALT", "Flight director ALT")]
     [InlineData("ALT", "AP, YD, GPS, ALT", "Autopilot YD, GPS, ALT")]
     [InlineData("off", "AP", "Autopilot on")]

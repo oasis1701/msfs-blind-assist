@@ -84,6 +84,8 @@ public class CowsDA40RadioSettledWordingTests
     // to tune 136.999 and 50000 to set 18000, each confirmed as if typed.
     [InlineData(200.0, 118.0, 136.99, "0.000", "the COM band", "200.000 is outside the COM band, 118.000 to 136.990. Not set.")]
     [InlineData(50000.0, -1000.0, 30000.0, "0", "the selected altitude range, in feet", "50000 is outside the selected altitude range, in feet, -1000 to 30000. Not set.")]
+    // A typed heading used to wrap: 400 set 040 and confirmed it as typed.
+    [InlineData(400.0, 0.0, 360.0, "0", "the heading range, in degrees", "400 is outside the heading range, in degrees, 0 to 360. Not set.")]
     public void AValueOutsideTheInstrumentsRangeIsRefusedAndSaid(double value, double lo, double hi, string format, string what, string said)
     {
         var was = Thread.CurrentThread.CurrentCulture;

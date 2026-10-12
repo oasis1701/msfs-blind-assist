@@ -205,6 +205,8 @@ public sealed class CowsDA40DisplayForm : Form
             _connectWatchdog.Dispose();
             try { _rowSettle?.Stop(); _rowSettle?.Dispose(); } catch { }
             _rowSettle = null;
+            try { _pressSettle?.Stop(); _pressSettle?.Dispose(); } catch { }
+            _pressSettle = null;
             _client.RowsUpdated -= OnRowsUpdated;
             _client.Error -= OnClientError;
             _client.Stop();
@@ -1711,7 +1713,8 @@ public sealed class CowsDA40DisplayForm : Form
     private static bool ChangesOnItsOwn(string label) => label switch
     {
         "Time" or "Information bar" or "Data bar" or "Active waypoint" or "Wind" or
-        "Cross track" or "Vertical deviation" or "DME" or "CAS messages" => true,
+        "Cross track" or "Vertical deviation" or "DME" or "CAS messages" or
+        "Waypoint alert" => true,   // a turn countdown, changing every second
         _ => label.StartsWith("Bearing pointer", StringComparison.Ordinal)
     };
 

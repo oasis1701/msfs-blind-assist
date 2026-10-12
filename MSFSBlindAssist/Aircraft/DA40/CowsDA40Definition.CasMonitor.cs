@@ -344,9 +344,10 @@ public partial class CowsDA40Definition
     /// took the autopilot off and left the director in PIT with ALTS armed, and the change
     /// was spoken "Autopilot PIT, ALTS armed" - telling the pilot the autopilot was flying
     /// (2026-10-12). With "AP" the modes are the autopilot's; without it they are the flight
-    /// director's, and losing "AP" with the director still up says the autopilot went off.
-    /// A plain disconnect to "off" stays silent: that is the resting state, and the
-    /// disconnect tone is the aeroplane's own.
+    /// director's. Losing "AP" with the director still up names the director's modes alone:
+    /// the autopilot master row already says "Autopilot: Off" (DA40A-22), and "Autopilot off,
+    /// flight director ..." here said it twice. A plain disconnect to "off" stays silent: that
+    /// is the resting state, and the disconnect tone is the aeroplane's own.
     /// </summary>
     internal static string DescribeFmaChange(string previous, string current)
     {
@@ -359,6 +360,6 @@ public partial class CowsDA40Definition
             string modes = current == "AP" ? "" : current.Substring(4).Trim();
             return modes.Length > 0 ? "Autopilot " + modes : "Autopilot on";
         }
-        return (HasAp(previous) ? "Autopilot off, flight director " : "Flight director ") + current;
+        return "Flight director " + current;
     }
 }

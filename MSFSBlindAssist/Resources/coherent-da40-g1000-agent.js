@@ -4590,7 +4590,7 @@
         // FUEL XFER") and the system messages live only there; a sighted pilot is told by the
         // Alerts softkey flashing, and nothing read them unless the window was opened. The
         // list stays in the DOM with the window shut (opacity 0), so it is read regardless.
-        // ⚠️ The row prefix is a CONTRACT with CowsDA40Definition.ExtractAlertMessages.
+        // ⚠️ The row prefix is a CONTRACT with CowsDA40Definition.AlertsNotOnCas.
         var alerts = A.alertMessages();
         if (alerts.length) {
             rows.push("Alert messages: " + alerts.length);

@@ -183,7 +183,9 @@ public partial class CowsDA40Definition
         // and the watch said "Strobe lights not lit" on an in-flight restart (2026-10-12).
         // That is the start, not a fault; the verdict waits for the key to come back, when the
         // lamp's own change re-arms this settle.
-        if ((_lampSimConnect.GetCachedVariableValue("DA40_START_KEY_POSITION") ?? 0) > 1.5)
+        // The NG reads its key in START; the XLS, which has no key-position row, its starter.
+        if ((_lampSimConnect.GetCachedVariableValue("DA40_START_KEY_POSITION") ?? 0) > 1.5 ||
+            (_lampSimConnect.GetCachedVariableValue("DA40_MAG_STARTER") ?? 0) > 0.5)
         {
             // Look again after the settle, so a lamp still dark once the key is back is judged.
             _lampTimer?.Start();

@@ -718,6 +718,9 @@ public partial class CowsDA40Definition
 
             case "DA40_AP_HDG_SET":
             {
+                // Refused outside 0-360, never wrapped: a typed 400 used to set 040 and confirm it
+                // as if typed (same rule as the altitude, VS and speed above). 0 and 360 are north.
+                if (OutOfRange(announcer, value, 0, 360, "0", "the heading range, in degrees")) return true;
                 MarkRadioSetByUs("DA40_AP_HDG_SET");
                 int deg = ((int)Math.Round(value) % 360 + 360) % 360;
                 simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{deg} (>K:HEADING_BUG_SET)"));
@@ -730,6 +733,7 @@ public partial class CowsDA40Definition
                 // The CDI's course, chosen in the sim at the moment of the write so a stale
                 // cache cannot send it to the wrong receiver; the cache only says which
                 // settle key to mark as ours.
+                if (OutOfRange(announcer, value, 0, 360, "0", "the course range, in degrees")) return true;
                 MarkRadioSetByUs(CdiCourseKeys());
                 int deg = ((int)Math.Round(value) % 360 + 360) % 360;
                 simConnect.ExecuteCalculatorCodeUnique(CourseWrite(deg));

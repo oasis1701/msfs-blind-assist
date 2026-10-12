@@ -84,7 +84,7 @@ public partial class CowsDA40Definition
                 break;
 
             case HotkeyAction.FCUSetHeading:
-                title = "Heading Bug"; kind = "heading"; range = "1 to 360 degrees";
+                title = "Heading Bug"; kind = "heading"; range = "0 to 360 degrees";
                 setKey = "DA40_AP_HDG_SET"; lo = 0; hi = 360;
                 toggles = new()
                 {
