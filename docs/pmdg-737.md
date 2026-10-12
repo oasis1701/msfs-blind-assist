@@ -4,7 +4,7 @@ Reference for working with `PMDG737Definition`, `PMDGNG3DataManager`, `PMDGNG3Da
 
 ## Scope
 
-Only the 737-800 BW HD is currently supported. The data struct's `AircraftModel` field (`ushort`) discriminates variants if -600 / -700 / -900 support is added later. `EVT_*_600` and `EVT_*_800` entries are both in `EventIds`, so wiring a variant is largely a one-line `_simpleEventMap` change.
+One definition serves every NG3 variant, since they share one SDK struct. It was built on the 737-800 BW HD, and the -700 has been flown with it (2026-10-11). The data struct's `AircraftModel` field (`ushort`; SDK header: 1 -600, 2-4 -700, 5-7 -800, 8-12 -900/-900ER, 13-22 the BDSF, BCF and BBJ versions) is the variant discriminator: the calculated flap speeds pick their measured VREF table from it (`Pmdg737FlapSpeeds.VariantFromModel`), falling back to the TITLE only before the first CDA snapshot or for a value the header does not list. `EVT_*_600` and `EVT_*_800` entries are both in `EventIds`, so wiring a variant-specific event is largely a one-line `_simpleEventMap` change.
 
 ## Panel structure
 

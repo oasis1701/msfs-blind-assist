@@ -1,0 +1,1 @@
+PMDG 737: the engine generators are now On and Off buttons on the Electrical panel, like the APU generators, so choosing On after the APU generator has taken the bus works again. The Generator 1 and 2 Off Bus lights and the APU Gen Off Bus light, one for both APU generators, now sit after the buttons, so you can check whether each engine generator is on its bus.
