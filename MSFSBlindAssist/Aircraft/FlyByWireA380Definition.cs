@@ -42,6 +42,9 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     public override string AircraftCode => "FBW_A380";
     public override string? ChecklistFileName => "FBW_A380_Checklist.txt";
 
+    /// <summary>The autothrust instinctive disconnect (see its Evt registration).</summary>
+    public const string AutothrustDisconnectEvent = "AUTO_THROTTLE_DISCONNECT";
+
     // Taxi-turn rollout-anticipation lead (see IAircraftDefinition.TaxiTurnLeadSeconds).
     // The PR-85 (A380) and PR-87 (taxi rollout anticipation) branches merged
     // independently, so the A380 silently inherited the 1.2 s base default. MEASURED
@@ -665,6 +668,11 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // that to the stock LIGHT POTENTIOMETER (83 = main-panel flood, 7 = ambient). Expose
         // the KNOBs only — the `_LEVEL` vars are computed outputs (and the storm light forces
         // BOTH to 100), so a control bound to one would fight the aircraft.
+        //
+        // Initial values (FBW #10847, 2026-09-20): LightSync starts both knobs at 0 by day; at
+        // night the main-panel flood at 0.10, and the ambient at 0.20 only when spawned cold and
+        // dark. Before, both started at the auto-brightness (~0.85 by day) — a ratio either way,
+        // so the normalisation below stands.
         //
         // ⚠️ UNITS: the pristine, never-yet-written L:var holds a 0..1 RATIO (0.85 = 85 %) and
         // only reads back as 0..100 through a `, percent` suffix. Writing it raw — which the
@@ -2035,7 +2043,14 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // (No EXPED event: the A380 FCU has no EXPED button — see the note by the
         //  FCU push events below. A32NX.FCU_EXPED_PUSH is A320-only.)
         Evt("A32NX.FCU_AP_DISCONNECT_PUSH", "A32NX.FCU_AP_DISCONNECT_PUSH", "Autopilot Disconnect");
-        Evt("A32NX.FCU_ATHR_DISCONNECT_PUSH", "A32NX.FCU_ATHR_DISCONNECT_PUSH", "Autothrust Disconnect");
+        // The thrust levers' instinctive disconnect, as a hardware button sends it: the stock
+        // AUTO_THROTTLE_DISCONNECT, which the WASM masks and re-emits as the
+        // A32NX.AUTO_THROTTLE_DISCONNECT the FWS counts as a voluntary disconnect (FBW #10934).
+        // Not A32NX.FCU_ATHR_DISCONNECT_PUSH, which the FWS never sees: AUTO FLT A/THR OFF.
+        // While the autobrake is BRAKING (BTV or any mode but RTO) it also releases it, as the
+        // real pushbutton does (autobrakes.rs: AUTOBRAKE_INSTINCTIVE_DISCONNECT; FBW then raises
+        // AUTO BRK OFF); an autobrake that is only armed is left alone.
+        Evt(AutothrustDisconnectEvent, AutothrustDisconnectEvent, "Autothrust Disconnect");
         Evt("A32NX.FCU_SPD_MACH_TOGGLE_PUSH", "A32NX.FCU_SPD_MACH_TOGGLE_PUSH", "Speed / Mach Toggle");
         Evt("A32NX.FCU_TRK_FPA_TOGGLE_PUSH", "A32NX.FCU_TRK_FPA_TOGGLE_PUSH", "TRK / FPA Toggle");
         // Altitude increment, 100 / 1000 ft (CORRECTED 2026-09 for FBW #10855). The FCU reads
@@ -3390,7 +3405,7 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     private double _lastBaroL = -1, _lastBaroR = -1; // last announced EFIS baro (hPa, 0.1 resolution)
     private bool? _baroStdL, _baroStdR; // last EFIS baro STD(true)/QNH(false) per side
     private bool? _baroInHgL, _baroInHgR; // last EFIS baro unit inHg(true)/hPa(false) per side
-    private int _lastBaroMin = -2, _lastDh = -2; // last announced minimums (ft; -1 = none/NCD)
+    private int _lastBaroMin = -2, _lastDh = -2; // last minimums read (ft; -1 = none/NCD, -2 = none seen)
 
     // Computer-reset (CB) panel pushbuttons — (L:var, label). Shared by GetVariables
     // (registration) and BuildPanelControls (the "Reset" overhead panel). Source:

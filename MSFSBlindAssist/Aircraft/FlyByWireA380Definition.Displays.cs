@@ -376,12 +376,12 @@ public partial class FlyByWireA380Definition
             }
             case "AIRLINER_MINIMUM_DESCENT_ALTITUDE": // baro MDA — plain feet; unset when <= 0
             {
-                displayText = ApproachMinimums.DisplayText(isDecisionHeight: false, value);
+                displayText = A380Minimums.DisplayText(isDecisionHeight: false, value);
                 return true;
             }
-            case "AIRLINER_DECISION_HEIGHT": // radio DH — plain feet; unset < 0 (0 = valid CAT III)
+            case "AIRLINER_DECISION_HEIGHT": // radio DH — plain feet; unset < 0, 0 = NO DH on the A380
             {
-                displayText = ApproachMinimums.DisplayText(isDecisionHeight: true, value);
+                displayText = A380Minimums.DisplayText(isDecisionHeight: true, value);
                 return true;
             }
             case "A32NX_SEC_1_RUDDER_ACTUAL_POSITION":

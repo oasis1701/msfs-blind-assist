@@ -91,6 +91,15 @@ jobs:
           npm ci --no-audit --no-fund
           npm test
 
+      # The A380 MFD agent (coherent-a380-agent.js): the PERF / STEP ALTs / F-PLN / SURV builders
+      # replayed on live-captured MFD DOMs, and the WIND page reader, the pick-list entry verdicts
+      # and the F-PLN EFOB/T.WIND reading on source-derived fixtures.
+      - name: A380 MFD agent
+        working-directory: tools/perf-builder-test
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+
       # The A380 OANS agent's ARINC decode (the "runway ahead" advisory read the raw word's bits
       # and never showed until 2026-09-25). It needs only SimVar, not a DOM, so it runs in a bare
       # vm context: no dependencies, no lockfile, no npm ci.
