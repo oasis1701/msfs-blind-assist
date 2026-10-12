@@ -1,5 +1,5 @@
-// What a pick of the PMDG 737 or 777 from the Aircraft menu finds on disk, and what the setup
-// dialog is given to say: every installed variant's options file is READ (never written, [PSDK-1]),
+// What the PMDG SDK setup check (an Aircraft-menu pick of the PMDG 737 or 777, or startup with one
+// selected, [PSDK-2]) finds on disk, and what the setup dialog is given to say: every installed variant's options file is READ (never written, [PSDK-1]),
 // and each one still missing the [SDK] lines becomes one row the pilot can open.
 
 using MSFSBlindAssist.Services.PMDG;

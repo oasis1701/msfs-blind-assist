@@ -18,8 +18,9 @@ public sealed record PMDGSdkSetupResult(PMDGSdkFamily Family, int FilesFound, IR
 
 /// <summary>
 /// The check behind the PMDG SDK setup dialog, run when the pilot picks the PMDG 737 or 777 from the
-/// Aircraft menu: READS every installed variant's options file (never writes one, [PSDK-1]) and says
-/// which still lack the <c>[SDK]</c> lines the CDU window and the panel readouts need.
+/// Aircraft menu and at startup for a restored PMDG profile ([PSDK-2]): READS every installed variant's
+/// options file (never writes one, [PSDK-1]) and says which still lack the <c>[SDK]</c> lines the CDU
+/// window and the panel readouts need.
 /// </summary>
 public static class PMDGSdkSetupCheck
 {
@@ -77,7 +78,8 @@ public static class PMDGSdkSetupCheck
                 $"The {family.DisplayName} needs the lines below in that file, or the CDU window and the cockpit " +
                 "readouts stay empty. Once the file exists, close Microsoft Flight Simulator, add the lines at the " +
                 "end of the file, save it and start the simulator again. Picking the " +
-                $"{family.DisplayName} from the Aircraft menu again checks the file and lists where it is.";
+                $"{family.DisplayName} from the Aircraft menu again, or restarting MSFS Blind Assist, checks the " +
+                "file and lists where it is.";
         }
 
         int count = result.Problems.Count;

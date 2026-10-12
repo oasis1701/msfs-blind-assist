@@ -97,8 +97,8 @@ EnableCDUBroadcast.2=1
 
 On the owner's install PMDG keeps this block as the file's last lines, with no blank line after it,
 and the broadcast works. The pilot adds it; MSFSBA never edits the file ([PSDK-1]). Picking the PMDG
-777 from the Aircraft menu opens the PMDG 777 SDK setup dialog while any installed variant's file
-lacks the lines or none exists yet ([PSDK-2]).
+777 from the Aircraft menu, or starting MSFSBA with it as the selected profile, opens the PMDG 777 SDK
+setup dialog while any installed variant's file lacks the lines or none exists yet ([PSDK-2]).
 
 
 ## AI display reads (Alt+P / Alt+N / Alt+E / Alt+S / Alt+I)

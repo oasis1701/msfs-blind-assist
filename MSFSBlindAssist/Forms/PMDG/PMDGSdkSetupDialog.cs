@@ -6,12 +6,13 @@ using MSFSBlindAssist.Utils.Logging;
 namespace MSFSBlindAssist.Forms.PMDG;
 
 /// <summary>
-/// "PMDG 737 SDK setup" (or 777): shown when the pilot picks the aircraft from the Aircraft menu
-/// while an installed variant's options file lacks the <c>[SDK]</c> lines, or none exists yet.
+/// "PMDG 737 SDK setup" (or 777): shown when the pilot picks the aircraft from the Aircraft menu, or
+/// starts MSFSBA with it as the selected profile ([PSDK-2]), while an installed variant's options
+/// file lacks the <c>[SDK]</c> lines, or none exists yet.
 /// MSFSBA never edits that file ([PSDK-1]): the dialog opens on its read-only instructions, which
 /// the screen reader reads, puts the lines to paste in their own read-only box (Copy lines puts them
 /// on the clipboard), lists each file to fix, and Open folder shows the selected file in Explorer.
-/// Shown on every pick while anything is missing; a dismissal is never remembered.
+/// Shown every time while anything is missing; a dismissal is never remembered.
 /// </summary>
 internal sealed class PMDGSdkSetupDialog : Form
 {

@@ -191,9 +191,10 @@ EnableCDUBroadcast.1=1
 ```
 
 The pilot adds it; MSFSBA never edits the file ([PSDK-1]). Picking the PMDG 737 from the Aircraft
-menu reads every installed variant's file and, while any lacks these lines (or none exists yet),
-opens the PMDG 737 SDK setup dialog: the steps, the lines with a Copy lines button, and a row per file
-with Open folder ([PSDK-2]: never at connect). The 777 works the same way (docs/pmdg-777.md).
+menu, or starting MSFSBA with it as the selected profile, reads every installed variant's file and,
+while any lacks these lines (or none exists yet), opens the PMDG 737 SDK setup dialog: the steps, the
+lines with a Copy lines button, and a row per file with Open folder ([PSDK-2]: never at connect). The
+777 works the same way (docs/pmdg-777.md).
 
 ## Fire handles need an active fire to test
 
