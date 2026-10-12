@@ -6,13 +6,14 @@ namespace MSFSBlindAssist.Forms.Settings;
 
 /// <summary>
 /// Updates section of the unified Settings dialog: which releases the update check offers,
-/// and whether it runs automatically at startup.
+/// and whether it, and the missing-data check (UPD-9), run automatically at startup.
 /// </summary>
 public class UpdatesPanel : UserControl, ISettingsPanel
 {
     private RadioButton _releaseRadio = null!;
     private RadioButton _previewRadio = null!;
     private CheckBox _autoCheckBox = null!;
+    private CheckBox _missingDataCheckBox = null!;
     private TextBox _versionTextBox = null!;
 
     /// <summary>
@@ -88,6 +89,20 @@ public class UpdatesPanel : UserControl, ISettingsPanel
                 "something newer is available. It stays silent if there is nothing to report."
         };
         Controls.Add(_autoCheckBox);
+        yPos += labelHeight + 4;
+
+        // Named exactly as the startup dialog names it ("To stop this check, turn off …"); no
+        // AccessibleName, so the screen reader reads this text and the two cannot drift apart.
+        _missingDataCheckBox = new CheckBox
+        {
+            Text = "Check for missing &data when the app starts",
+            Location = new System.Drawing.Point(20, yPos),
+            Size = new System.Drawing.Size(560, labelHeight),
+            AccessibleDescription =
+                "When on, MSFS Blind Assist offers the navigation database and the location data " +
+                "each time it starts while either is missing."
+        };
+        Controls.Add(_missingDataCheckBox);
         yPos += labelHeight + 20;
 
         var versionLabel = new Label
@@ -122,6 +137,7 @@ public class UpdatesPanel : UserControl, ISettingsPanel
         _previewRadio.Checked = settings.UpdateChannel == UpdateChannel.Preview;
         _releaseRadio.Checked = settings.UpdateChannel != UpdateChannel.Preview;
         _autoCheckBox.Checked = settings.CheckForUpdatesOnStartup;
+        _missingDataCheckBox.Checked = settings.CheckForMissingDataOnStartup;
         _versionTextBox.Text = AppVersion.DisplayString;
     }
 
@@ -173,6 +189,7 @@ public class UpdatesPanel : UserControl, ISettingsPanel
     {
         settings.UpdateChannel = _previewRadio.Checked ? UpdateChannel.Preview : UpdateChannel.Release;
         settings.CheckForUpdatesOnStartup = _autoCheckBox.Checked;
+        settings.CheckForMissingDataOnStartup = _missingDataCheckBox.Checked;
     }
 
     public void OnLeaving()

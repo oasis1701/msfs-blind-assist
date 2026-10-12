@@ -38,7 +38,9 @@ namespace MSFSBlindAssist.Forms.FBWA380;
 /// changes are announced without the user having to refocus.
 ///
 /// State pushes consumed: fbwa380_mcdu_screen (title + footer),
-/// fbwa380_mcdu_elements (the numbered list), fbwa380_mcdu_connected.
+/// fbwa380_mcdu_elements (the numbered list), fbwa380_mcdu_connected,
+/// IMcduBridge.StateTypeCommandResult (an entry or page jump the MFD refused:
+/// "Not in list", "Not available").
 /// Commands sent: navigate, type_key, key_prev_page/key_next_page,
 /// select_mcdu, get_mcdu_elements, click_mcdu_element, send_scratchpad,
 /// send_to_field.
@@ -63,7 +65,7 @@ public class FBWA380MCDUForm : Form
 
     // Every MFD page, grouped by top-level tab, with its page-selector index
     // (CAPT/FO_MFD_pageSelector{Prefix}_{Index}) and a KCCU-key fallback. Lets the
-    // user jump to ANY of the 20 pages from one combo box (keyboard accessible),
+    // user jump to ANY page from one combo box (keyboard accessible),
     // in addition to the quick page buttons. (prefix,index) verified live.
     // Uri (when non-empty) navigates via the MFD UIService (navigateTo) — the
     // robust cross-system path used for the ATC COM / D-ATIS pages, which the
@@ -75,14 +77,13 @@ public class FBWA380MCDUForm : Form
         new("ACTIVE: F-PLN",      "Active",   0, "FPLN"),
         new("ACTIVE: PERF",       "Active",   1, "PERF"),
         new("ACTIVE: FUEL & LOAD","Active",   2, ""),
-        // ACTIVE/WIND: KEPT but flagged. The A380X WIND page is not implemented yet —
-        // FmsHeader.tsx hardcodes the menu item disabled:true, there is no MfdFmsWind
-        // component, and no 'fms/active/wind' route is registered. Verified live (with a
-        // VCBI/VOMM flight plan loaded the WIND menu item stayed DISABLED). Selecting it
-        // is a clean no-op (navigateById returns "disabled"); the label says so. Winds
-        // are entered via INIT > TRIP WIND + the F-PLN per-waypoint wind revision. When
-        // FBW ships the page, drop the suffix (and it'll navigate via Active index 3).
-        new("ACTIVE: WIND (not on this build)", "Active", 3, ""),
+        // ACTIVE/WIND: the FMS wind page with the company wind uplink, shipped in FBW #10929
+        // (76db0aef1, 2026-10-09; FmsHeader.tsx enables the menu item, MfdPageDirectory routes
+        // fms/active|sec1|sec2/wind). Kept on the page-selector click rather than its URI: on
+        // an older build the item is disabled, which navigateById reports and the window
+        // speaks ("Not available", CommandResultPhrase), where the URI would land on the
+        // not-found page. The agent names every wind field (buildWindLines).
+        new("ACTIVE: WIND",       "Active",   3, ""),
         new("ACTIVE: INIT",       "Active",   4, "INIT"),
         new("POSITION: MONITOR",  "Position", 0, ""),
         new("POSITION: REPORT",   "Position", 1, ""),
@@ -97,6 +98,11 @@ public class FBWA380MCDUForm : Form
         new("SEC 1: F-PLN",       "", -1, "", "fms/sec1/f-pln"),
         new("SEC 2: F-PLN",       "", -1, "", "fms/sec2/f-pln"),
         new("SEC 3: F-PLN",       "", -1, "", "fms/sec3/f-pln"),
+        // Secondary-plan winds (#10929). FBW routes no SEC 3 wind page (MfdPageDirectory.tsx),
+        // so there is no entry for it. These go by URI (there is no page selector for them), so
+        // on a build older than #10929 they land on the MFD's not-found page.
+        new("SEC 1: WIND",        "", -1, "", "fms/sec1/wind"),
+        new("SEC 2: WIND",        "", -1, "", "fms/sec2/wind"),
         new("DATA: STATUS",       "Data",     0, ""),
         new("DATA: WAYPOINT",     "Data",     1, ""),
         new("DATA: NAVAID",       "Data",     2, ""),
@@ -212,15 +218,15 @@ public class FBWA380MCDUForm : Form
         _mcduSelector.SelectedIndex = 0;
         Controls.Add(_mcduSelector);
 
-        // "Go to page" — direct keyboard access to ALL 20 MFD pages (the quick
-        // buttons below only cover the common ones).
+        // "Go to page" — direct keyboard access to EVERY MFD page in AllPages (the
+        // quick buttons below only cover the common ones).
         _pageSelector = new ComboBox
         {
             Location = new Point(420, y + 30),
             Size = new Size(210, 25),
             DropDownStyle = ComboBoxStyle.DropDownList,
             AccessibleName = "Go to MFD page",
-            AccessibleDescription = "Jump to any of the 20 MFD pages. Choose a page to navigate to it."
+            AccessibleDescription = "Jump to any MFD page. Choose a page to navigate to it."
         };
         foreach (var p in AllPages) _pageSelector.Items.Add(p.Label);
         Controls.Add(_pageSelector);
@@ -421,7 +427,32 @@ public class FBWA380MCDUForm : Form
         }
         if (e.Type == StateTypeScreen)   { HandleScreenPush(e); return; }
         if (e.Type == StateTypeElements) { HandleElementsPush(e); return; }
+        if (e.Type == IMcduBridge.StateTypeCommandResult)
+        {
+            string? phrase = CommandResultPhrase(e.Data.TryGetValue("command", out var c) ? c : "",
+                                                 e.Data.TryGetValue("result", out var r) ? r : "");
+            if (phrase != null) SafeBeginInvoke(() => _announcer.Announce(phrase));
+        }
     }
+
+    /// <summary>
+    /// What to say when the MFD agent reports that a command changed nothing (its verdict), or
+    /// null. For an entry the window has already spoken the typed text, or "Cleared", as it sent
+    /// it; this says it set nothing. A fixed-value pick list ignores typed text and clears (FBW
+    /// #10929) and the MFD shows no message for it; a list that takes typing shows ENTRY NOT IN
+    /// LIST in its footer, read as usual. A page jump does nothing to a disabled page item (WIND
+    /// before #10929; REPORT, GNSS, TIME and the DATA sub-pages) or when the page's selector is not
+    /// on this screen and it has no KCCU key, and no new page title would say so.
+    /// </summary>
+    internal static string? CommandResultPhrase(string command, string result) => (command, result) switch
+    {
+        ("send_to_field", "nomatch") => "Not in list",
+        ("send_to_field", "noclear") => "Cannot be cleared",
+        ("send_to_field", "inactive") => "Unavailable",
+        ("navigate_by_id", "disabled") => "Not available",
+        ("navigate_by_id", "missing") => "Not available from this page",
+        _ => null
+    };
 
     private void HandleScreenPush(EFBStateUpdateEventArgs e)
     {
@@ -684,7 +715,8 @@ public class FBWA380MCDUForm : Form
     ///   • scratchpad (our staging box) has text → clear it ("Scratchpad cleared")
     ///   • else a footer info/error MESSAGE is shown → click the MFD "CLEAR INFO"
     ///     button to dismiss it ("Info cleared") — answers "CLR also clears the message"
-    ///   • else field selected  → clear that field on the MFD
+    ///   • else field selected  → clear that field on the MFD ("Unavailable" when dimmed;
+    ///     a button, tab or icon is never pressed: "Cannot be cleared")
     ///   • else                 → fire KCCU CLR (clears the MFD's own scratchpad)
     /// </summary>
     private void PerformClear()
@@ -711,9 +743,20 @@ public class FBWA380MCDUForm : Form
                 return;
             }
         }
+        if (IsNonFieldControl(SelectedElement()))
+        {
+            _announcer.Announce("Cannot be cleared");
+            return;
+        }
         int fieldIdx = SelectedElementIndex();
         if (fieldIdx > 0)
         {
+            // The MFD ignores a dimmed field: say so up front, as Delete and Enter do.
+            if (SelectedElement()?.Disabled == true)
+            {
+                _announcer.Announce("Unavailable");
+                return;
+            }
             _bridgeServer.EnqueueCommand("send_to_field", new Dictionary<string, string>
             {
                 ["index"] = fieldIdx.ToString(),
@@ -726,6 +769,13 @@ public class FBWA380MCDUForm : Form
             SendTypeKey("BACKSPACE");
         }
     }
+
+    /// <summary>
+    /// True for a selected button, tab, icon or other control that is not a field: there is
+    /// nothing to clear, and the agent clicks any non-input it is sent, so a clear would press
+    /// it (INSERT WIND *, CANCEL WIND *, a SURV toggle).
+    /// </summary>
+    private static bool IsNonFieldControl(McduElement? el) => el is { Index: > 0 } && el.Kind != "input";
 
     private void ScratchpadKeyDown(object? sender, KeyEventArgs e)
     {
@@ -806,7 +856,11 @@ public class FBWA380MCDUForm : Form
             // Clear the selected field on the MFD (send empty value — the
             // agent backspaces over the existing content, then ENT).
             int fieldIdx = SelectedElementIndex();
-            if (fieldIdx > 0)
+            if (IsNonFieldControl(SelectedElement()))
+            {
+                _announcer.Announce("Cannot be cleared");
+            }
+            else if (fieldIdx > 0)
             {
                 if (SelectedElement()?.Disabled == true)
                 {

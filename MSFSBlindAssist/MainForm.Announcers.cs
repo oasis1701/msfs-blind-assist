@@ -516,7 +516,9 @@ public partial class MainForm
         // below returns for INDICATED_ALTITUDE before speaking, so only these callouts speak.
         if (e.VarName == "INDICATED_ALTITUDE")
         {
-            altitudeCalloutAnnouncer.ProcessAltitude(e.Value, _lastOnGround);
+            // Metres under the A380's metric altitude (FCU MTRS), as the A / Q read-outs below.
+            altitudeCalloutAnnouncer.ProcessAltitude(e.Value, _lastOnGround,
+                metric: currentAircraft is Aircraft.FlyByWireA380Definition a380Callouts && a380Callouts.MetricAlt);
             // 1 Hz gate for the manual-landing flare assist: starts/stops its dedicated
             // SIM_FRAME feed when armed + within the approach altitude window. No-op
             // (single flag compare) when the assist isn't armed.
