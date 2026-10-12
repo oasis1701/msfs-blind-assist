@@ -41,10 +41,11 @@ public class CowsDA40CasCoverageTests
         ("Advisory", "STEER AUTOBRAKE"),("Advisory","STEER NWS"),
         ("Advisory", "STEER REAL"),
         // The <ShortText> alerts, drawn in the PFD's .warnings-display box and merged into
-        // the CAS list by the agent (A.cas). The arrows are part of the text.
+        // the CAS list by the agent (A.cas). The arrows are part of the text: arrow characters,
+        // because panel.xml's "<--AIL" dashes read as a placeholder ("AILblank>", 2026-10-12).
         ("WARNING",  "ROLL"),          ("WARNING",  "PTCH"),
         ("WARNING",  "PTRM"),          ("WARNING",  "PULL UP"),
-        ("Caution",  "<--AIL"),        ("Caution",  "AIL-->"),
+        ("Caution",  "←AIL"),         ("Caution",  "AIL→"),
         ("Caution",  "UP ELE"),        ("Caution",  "DN ELE"),
         ("Caution",  "TRAFFIC"),       ("Caution",  "TERRAIN"),
         ("Caution",  "TAWS NA"),

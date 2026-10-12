@@ -17,7 +17,7 @@
 (function () {
     var A = {};
 
-    A.VERSION = 26;
+    A.VERSION = 27;
 
     function visible(el) {
         if (!el) return false;
@@ -252,7 +252,7 @@
 
         // ⚠️ THE SHORT-TEXT ALERTS ARE NOT IN THE CAS WINDOW. Every panel.xml <Alert> with a
         // <ShortText> instead of a <Text> - ROLL, PTCH and PTRM (an autopilot servo failed),
-        // <--AIL, AIL-->, UP ELE and DN ELE (a servo holding force), TRAFFIC, TERRAIN, PULL UP,
+        // ←AIL, AIL→, UP ELE and DN ELE (a servo holding force), TRAFFIC, TERRAIN, PULL UP,
         // TAWS NA - is drawn in ONE box beside the altimeter, .warnings-display, and nothing
         // read it, so a failed pitch servo or a terrain warning reached a sighted pilot and
         // nobody else. They join the CAS list here, so the background CAS watcher announces
@@ -304,8 +304,12 @@
         add(afcs && lv("AFCS_FAIL_ELE") === 1, "PTCH", "warning");
         add(afcs && lv("AFCS_FAIL_TRIM") === 1, "PTRM", "warning");
         var ail = lv("AFCS_FORCE_AIL"), ele = lv("AFCS_FORCE_ELE");
-        add(held("ailL", ail === -1, 6) && afcs, "<--AIL", "caution");
-        add(held("ailR", ail === 1, 6) && afcs, "AIL-->", "caution");
+        // panel.xml spells the arrows "<--AIL" and "AIL-->", and the G1000 draws them as arrows.
+        // As dashes they are a placeholder to the text reader, which said "Caution: AILblank>"
+        // (in flight, 2026-10-12); the arrow characters are what is on the screen, and a screen
+        // reader says them ("left arrow AIL").
+        add(held("ailL", ail === -1, 6) && afcs, "←AIL", "caution");
+        add(held("ailR", ail === 1, 6) && afcs, "AIL→", "caution");
         add(held("eleU", ele === 1, 6) && afcs, "UP ELE", "caution");
         add(held("eleD", ele === -1, 6) && afcs, "DN ELE", "caution");
         add(lv("TAWS_TEST") === 1, "TAWS TEST", "status");
