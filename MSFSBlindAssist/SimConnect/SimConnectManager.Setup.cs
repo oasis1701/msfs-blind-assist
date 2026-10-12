@@ -316,7 +316,11 @@ public partial class SimConnectManager
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)3);
         sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "GROUND VELOCITY", "knots",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)4);
-        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "VERTICAL SPEED", "feet per minute",
+        // TRUE vertical velocity, never VERTICAL SPEED: that is the INDICATED figure, filtered
+        // like a VSI. Measured on the COWS DA40 (2026-10-12) it read -300 fpm through two seconds
+        // of level flight in a flare (a balloon) and barely moved through the whole round-out, so
+        // a sink-rate cue keyed on it told the pilot to keep pulling after the descent had stopped.
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "VELOCITY WORLD Y", "feet per minute",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)5);
         sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "PLANE ALT ABOVE GROUND", "feet",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)6);

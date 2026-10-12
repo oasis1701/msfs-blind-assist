@@ -786,7 +786,8 @@ public partial class SimConnectManager
         public double HeadingMagnetic;      // degrees (requested in degrees, unlike TakeoffAssistData)
         public double MagneticVariation;    // degrees, East positive
         public double GroundSpeedKnots;
-        public double VerticalSpeedFPM;
+        public double VerticalSpeedFPM;     // VELOCITY WORLD Y in fpm: the TRUE vertical velocity, + up.
+                                            // Never VERTICAL SPEED, the indicated (VSI-filtered) figure.
         public double AGL;                  // PLANE ALT ABOVE GROUND — aircraft DATUM height, feet.
                                             // Subtract the aircraft's FlareAltitudeBiasFt for gear height.
         public double PitchRadians;         // body axis: negative = nose up (SimConnect convention)
