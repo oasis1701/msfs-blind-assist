@@ -154,9 +154,6 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     // Electrical
     // -----------------------------------------------------------------------
     public bool IsBatteryOn()      => IsOn("ELEC_BatSelector");   // ON = byte 1 (up detent; byte 2 is an unreachable enum phantom, see PMDG737Definition battery comment)
-    public bool IsGen1On()         => IsOn(GeneratorBusState.OnBusFields[0]);   // on its bus, from the GEN OFF BUS light
-    public bool IsGen2On()         => IsOn(GeneratorBusState.OnBusFields[1]);
-    public bool AreGeneratorsOn()  => IsGen1On() && IsGen2On();
     public bool IsGpuAvailable()   => IsOn("ELEC_annunGRD_POWER_AVAILABLE");
     // Reads the FO_GPU_ON synthetic (available && ground-svc bus powered) — NEVER the raw
     // ELEC_GrdPwrSw struct bool, which reads TRUE even with no GPU at the stand (live-
