@@ -769,13 +769,14 @@ public class ClaudeContextBudgetTests
             "BRF-6 GetAssignedStatusAsync", "SI-30 ValidateDatabaseSimulatorMatch", "MD11-23 CalcPathVerdict.PilotWarning",
             "VAT-12 HotkeyAction.ToggleVatsimAnnouncements", "WX-10 HasOwnIcingAnnouncer",
             "DCK-19 UpdateHeadingErrorWithThresholds",
+            "WFD-8 AnnounceImmediate", "WFD-9 CalculateMagneticBearing",
         },
         ["named as what never to use: the rule guards the code that must avoid it"] = new[]
         {
             "DCK-17 CalculateCrossTrackError", "EXIT-1 LastKnownPosition", "EXIT-9 Runway.Length",
             "P777-14 RequestVariable", "STR-17 Runway.StartLat", "STR-17 StartLon", "SUR-4 GetNearbyAirportICAOs",
             "SUR-24 GetTaxiPaths", "SUR-1 TaxiGraph.Build", "SI-27 TaxiGraph", "BRF-1 TaxiGuidanceManager",
-            "TKO-3 TaxiGuidanceManager",
+            "TKO-3 TaxiGuidanceManager", "WFD-14 AltitudeRestriction",
         },
         ["named as the model the rule's code copies, or as a reader its change would break"] = new[]
         {
@@ -785,7 +786,7 @@ public class ClaudeContextBudgetTests
         {
             "ROL-10 ExitBearingTrue", "ROL-21 ExitBearingTrue", "ROL-28 DistanceFromThresholdFeet", "SI-7 ParkingSpot.Radius",
             "SI-13 TaxiPathStampUtc", "SIC-23 ClearanceText", "STR-6 TurnAngleDegrees", "STR-16 TurnDirection",
-            "SUR-12 TaxiNode.Type", "HLD-5 RunwayCenterline",
+            "SUR-12 TaxiNode.Type", "HLD-5 RunwayCenterline", "WFD-14 WaypointFix.AltDescriptor",
         },
         ["a setting the rule's code reads or writes"] = new[]
         {
