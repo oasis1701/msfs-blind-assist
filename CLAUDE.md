@@ -13,12 +13,12 @@ dotnet build MSFSBlindAssist.sln -c Debug
 dotnet build MSFSBlindAssist.sln -c Release
 ```
 
-The app runs from `MSFSBlindAssist\bin\x64\{Debug|Release}\net10.0-windows\`. Prerequisites: the MSFS_SDK environment variable and the .NET 10 SDK. The solution builds six projects, `tools/PMDGDispatchTester`, `tools/ChangelogBuilder` and the vPilot plugin among them; the standalone probes (`tools/CDUTest`, `IFlySdkProbe`, `StandBridgeSweep`, `LandingExitSweep`) build on their own. Output paths, the projects and the probes in full: [docs/development.md](docs/development.md#build-output-and-traps).
+The app runs from `MSFSBlindAssist\bin\x64\{Debug|Release}\net10.0-windows\`. Prerequisites: the MSFS_SDK environment variable and the .NET 10 SDK. The solution builds six projects, `tools/PMDGDispatchTester`, `tools/ChangelogBuilder` and the vPilot plugin among them; the other 12 `tools/*` projects (`tools/CDUTest`, the probes and the sweeps) build on their own. Output paths, the projects and the probes in full: [docs/development.md](docs/development.md#build-output-and-traps).
 
 - [CORE-1] Always build the `.sln` or pass `-p:Platform=x64`; never the bare `.csproj`, which defaults to AnyCPU and writes to `bin\Debug\…`, so the x64 exe the app runs from never updates. Full: docs/invariants/core.md#core-1
-- [CORE-2] `-r win-x64` (or `dotnet publish -r win-x64`) writes a separate `net10.0-windows\win-x64\` tree a plain build never touches: build to, and check the timestamp in, the folder the app launches from. Full: docs/invariants/core.md#core-2
+- [CORE-2] Keep `RuntimeIdentifier=win-x64` (else the build ships every platform's SQLite binaries) and `AppendRuntimeIdentifierToOutputPath=false` (else it writes to a `win-x64\` folder the app, release.yml and PostBuild never use) in the csproj. `dotnet publish` writes `win-x64\publish\`; other `win-x64\` build output predates 2026-08-25: stale. Full: docs/invariants/core.md#core-2
 - [CORE-3] The exe is file-locked while MSFSBA runs (MSB3021): close the app before building an exe the user will run. Full: docs/invariants/core.md#core-3
-- [CORE-4] `tools/CDUTest` and the other standalone probes (`IFlySdkProbe`, `StandBridgeSweep`, `LandingExitSweep`) build on their own, never as part of the solution. Full: docs/invariants/core.md#core-4
+- [CORE-4] `dotnet build MSFSBlindAssist.sln` builds only `tools/PMDGDispatchTester` and `tools/ChangelogBuilder`; the other 12 `tools/*` projects (`CDUTest`, the probes and the sweeps, listed in docs/development.md) build on their own, never as part of the solution. Full: docs/invariants/core.md#core-4
 
 ## Testing
 
@@ -78,21 +78,21 @@ The `main` branch is protected. Always create a new branch for changes and open 
 
 ### Screen reader announcements
 
-Screen readers already announce every UI control interaction, so the app NEVER announces a button press, a combo or dropdown change, or any other direct interaction in a panel. It ONLY announces numeric input confirmations, error conditions (validation failures) and background state changes the user did not trigger. Two narrow, scoped exceptions exist: the TFDi MD-11's once-after-settle press confirmation ([MD11-11]) and the EFB shell's `announceChange` opt-in ([MD11-26]). Neither is a licence to announce presses anywhere else.
+Screen readers already announce every UI control interaction, so the app never repeats one: it confirms a direct interaction once, and only with what the reader cannot say, and it always speaks numeric input confirmations, validation errors and background state changes the user did not trigger. Today's cases: the TFDi MD-11's once-after-settle press confirmation ([MD11-11]); the EFB shell's `announceChange` opt-in ([MD11-26]); the FBW A320, Headwind A330 and FBW A380 button read-back (`GetButtonStateMapping`, `HandleButtonStateAnnouncement`); the value-dialog toggle read-back (`ValueInputForm`, about 1.2 s after a press); "<name> pressed" for a momentary button or an Idle/Activate action combo with no readable state (`PulseMomentaryLVar`, the A380's `PulseEcpKey`, MainForm's unhandled-button fallback); the A380 FCU push/pull value read-out (`OnPanelButtonFired`); the FBW E/WD pop-out's refresh and the menu's hotkey suspend and resume confirmations.
 
-- [CORE-7] NEVER announce button presses, combo/dropdown changes or any direct UI interaction in panel controls; ONLY numeric input confirmations, validation errors and background state changes. The two scoped exceptions above are the only ones. Full: docs/invariants/core.md#core-7
+- [CORE-7] Never repeat what the screen reader just said (a panel control's press, label or new combo value). Confirm a direct interaction once, only with what the reader cannot say: a state read back after the press, or "<name> pressed" for an action with no readable state. Numeric confirmations, validation errors and background changes always speak. Full: docs/invariants/core.md#core-7
 - [CORE-8] Combo double-announce suppression is GLOBAL, never aircraft-gated: `_uiSetEcho`/`MarkUiSet` plus a wrap that sets `announcer.Suppressed` around `ProcessSimVarUpdate` for any var inside the echo window. Full: docs/invariants/core.md#core-8
-- [CORE-9] The echo-window suppression matches on TIME only, never on value: a combo set can write a different encoding than the SDK reads back, so a value compare silently misses. Full: docs/invariants/core.md#core-9
+- [CORE-9] The echo wrap around `ProcessSimVarUpdate` matches on TIME only, never on value: a combo set can write a different encoding than the SDK reads back, so a value compare silently misses. The generic `_uiSetEcho` gate stays value-matched (opt-out: `UiEchoMatchesAnyValue`), so another source's change inside the window still speaks. Full: docs/invariants/core.md#core-9
 - [CORE-10] Never blanket-suppress value-0 resting-state button labels in MainForm; use the opt-in `SimVarDefinition.SuppressRestingButtonState` only. "LNAV: Off" and "Baro STD: QNH" are real states. Full: docs/invariants/core.md#core-10
 
 ### Everywhere else
 
-- [CORE-16] Area rules (`.claude/rules/`) load only when the Read, Edit or Write tool opens a file, never through `cat`, `sed`, `rg` or Grep: Read a file before changing it, or its area's rules never reach you. Full: docs/invariants/core.md#core-16
+- [CORE-16] Read a file with the Read tool before changing it: area rules load with Read, Edit or Write, and with a lone `cat`, `head`, `tail` or `sed -n` of one file, never with grep, a pipe, a redirect, PowerShell, Grep, Glob or a shell write. `rules-hook.ps1` covers subagent worktrees and `git diff`, and refuses shell writes to covered files. Full: docs/invariants/core.md#core-16
 - [CORE-11] In `SimConnectManager`, set `IsConnected = true` BEFORE calling `SetupDataDefinitions()`: `StartContinuousMonitoring()` guards on it. Full: docs/invariants/core.md#core-11
 - [CORE-12] Never use `TreeView` directly in a form: use `NativeAccessibleTreeView` (the .NET UIA tree gives NVDA a wrong order); a tree with detail data populates its children lazily on `BeforeExpand`. Full: docs/invariants/core.md#core-12
 - [CORE-13] Never hardcode the FBWBA/MSFSBlindAssist database path: reads go through `DatabasePathResolver.ResolveExistingDatabasePath`, writes through `GetCanonicalDatabasePath`. Full: docs/invariants/core.md#core-13
-- [CORE-14] Every diagnostic log path resolves through `Utils/AppLogs.PathFor(...)` into `%APPDATA%\MSFSBlindAssist\logs`; never hand-build one. Full: docs/invariants/core.md#core-14
-- [CORE-15] Never hand-build a log write (`File.AppendAllText`, a raw path): use `Log.Debug/Info/Warn/Error(category, msg)` for debug.log, or `Log.Channel(name)` for a named log. Full: docs/invariants/core.md#core-15
+- [CORE-14] Every diagnostic log path resolves through `Utils/AppLogs.PathFor(...)` into `%APPDATA%\MSFSBlindAssist\logs`; never hand-build one (exempt, as in [CORE-15]: the vPilot plugin and the updater). Full: docs/invariants/core.md#core-14
+- [CORE-15] Never hand-build a log write (`File.AppendAllText`, a raw path): use `Log.Debug/Info/Warn/Error(category, msg)` for debug.log, or `Log.Channel(name)` for a named log. Exempt, as they cannot reference the app: the vPilot plugin's log ([VAT-6]) and the updater's own `%TEMP%` args log (`MSFSBlindAssistUpdater/Program.cs`). Full: docs/invariants/core.md#core-15
 - [VAT-13] Status/diagnostic text in any settings panel is a read-only `TextBox`, never a `Label`: a `Label` is not in the tab order, so a screen-reader user has to hunt for it with the review cursor. Full: docs/invariants/vatsim.md#vat-13
 - [A380C-6] Every form marshaling a background bridge push to the UI thread must wrap `BeginInvoke` in try/catch(InvalidOperationException) (`SafeBeginInvoke`); an `IsHandleCreated` check alone races handle destruction. Full: docs/invariants/a380-coherent.md#a380c-6
 
@@ -101,55 +101,56 @@ Screen readers already announce every UI control interaction, so the app NEVER a
 **Core interfaces:**
 - **IAircraftDefinition** - Contract for all aircraft
 - **BaseAircraftDefinition** - Recommended base class (provides hotkey routing, caching, helpers)
-- **FlyByWireA320Definition** - Reference implementation
+- **`tests/MSFSBlindAssist.Tests/Walkthroughs/YourAircraftDefinition.cs`** - The compiled template to copy for a new aircraft; the walkthroughs in [adding-features.md](docs/adding-features.md) show its parts
 
 **Each aircraft defines:**
-- `GetVariables()` - All simulator variables
+- `BuildVariables()` - All simulator variables, starting from `GetBaseVariables()` (the base class caches them as `GetVariables()`)
 - `GetPanelStructure()` - Section/panel hierarchy
 - `BuildPanelControls()` - Panel-to-variables mapping (cached automatically by base class)
-- `GetHotkeyVariableMap()` - Simple hotkey action → event name mappings
-- `HandleHotkeyAction()` - Custom hotkey logic (optional override)
+- `GetHotkeyVariableMap()` - Optional simple hotkey action → event name map (only the FBW A320 and A380 override it)
+- `HandleHotkeyAction()` - Hotkey logic (most aircraft override it)
 
 ## Quick Reference
 
 - Adding a panel control, background monitoring, an H-variable, a hotkey, an aircraft or a feature: follow its workflow in [adding-features.md](docs/adding-features.md); the short forms are in [QUICK-REFERENCE.md](docs/QUICK-REFERENCE.md). The rules for aircraft code load when you Read it.
-- **`SimConnectManager.SetLVar` — GLOBAL MobiFlight calc-path routing (2026-06):** Every L:var write is routed through the MobiFlight calculator path when connected (gated on `CalcPathVerified`), never the native data-def write, except a name with a space or colon, which takes the data-def write even when it is a real L:var ([SIM-12]). Full routing rules, the H:/dotted event queue, and the RPN invariant-formatting rule: [docs/architecture.md](docs/architecture.md).
+- **`SimConnectManager.SetLVar` — GLOBAL MobiFlight calc-path routing (2026-06):** A `SetLVar` write takes the calculator path only once `CalcPathVerified` is set, which only an aircraft registering `MSFSBA_BRIDGE_PROBE` reaches (FBW A320/A380, Headwind A330, MD-11); a VERIFIED verdict then holds for any aircraft switched to ([MD11-16]). Otherwise, and for a name with a space or colon ([SIM-12]), it takes the native data-def write. Full routing rules, the H:/dotted event queue, and the RPN invariant-formatting rule: [docs/architecture.md](docs/architecture.md).
 
 ## Where things live
 
-Each area's rules load automatically when Claude reads its code; their full text is `docs/invariants/<rule file>.md`. Read a doc when the task needs it.
+Each area's rules load automatically when Claude reads its code; their full text is `docs/invariants/<rule file>.md`. Read a doc when the task needs it. Planning from a doc? Read the rule files in its row too: rules load with code, never with docs.
 
 | Doc | Read when | Rule files |
 | --- | --- | --- |
-| [architecture.md](docs/architecture.md) | Core components, FCU/MCP/display systems, the SimConnect data-definition ceiling, MobiFlight calc-path routing | core-simconnect, monitor-manager, navdata-build, flight-planning-efb |
+| [architecture.md](docs/architecture.md) | Core components, FCU/MCP/display systems, the SimConnect data-definition ceiling, MobiFlight calc-path routing | core-simconnect, simconnect-data, simconnect-events, monitor-manager, navdata-build, flight-planning-efb |
 | [aircraft-definitions.md](docs/aircraft-definitions.md) | The multi-aircraft definition API | variable-definitions |
 | [QUICK-REFERENCE.md](docs/QUICK-REFERENCE.md) | Common patterns and workflows (read first for most tasks) | — |
 | [adding-features.md](docs/adding-features.md) | Step-by-step workflows for common tasks | — |
 | [variable-system.md](docs/variable-system.md) | The three variable patterns (panel, monitoring, hotkey) | — |
 | [hotkey-system.md](docs/hotkey-system.md) | Adding or changing hotkeys | — |
-| [development.md](docs/development.md) | Dependencies, key files, build output paths and traps | — |
-| [tooling.md](docs/tooling.md) | Live debugging over the Coherent debugger (`:19999`), the probes in `tools/`, crash diagnosis | — |
+| [development.md](docs/development.md) | Dependencies, key files, build output paths and traps, and the Claude Code hooks | claude-tooling |
+| [tooling.md](docs/tooling.md) | Live debugging over the Coherent debugger (`:19999`), the probes in `tools/`, crash diagnosis | coherent-clients |
 | [troubleshooting-playbook.md](docs/troubleshooting-playbook.md) | A control "doesn't work": read this FIRST, before calling it broken or unsettable | troubleshooting |
-| [taxi-guidance.md](docs/taxi-guidance.md) | Taxi guidance, runway holds, landing exits and rollout, ground traffic, surroundings, takeoff assist | taxi-routing, runway-holds, taxi-steering, landing-exits, landing-rollout, ground-traffic, surroundings, taxi-augmentation, takeoff-and-callouts |
-| [gsx.md](docs/gsx.md) | GSX gate selection and Remote API, docking guidance, the metres/feet toggle | gsx-remote, gsx-stands-docking |
+| [taxi-guidance.md](docs/taxi-guidance.md) | Taxi guidance, runway holds, landing exits and rollout, ground traffic, surroundings, takeoff assist | taxi-routing, taxi-graph, taxi-position, runway-holds, taxi-steering, landing-exits, landing-rollout, landing-touchdown, rollout-geometry, ground-traffic, surroundings, scenery-index, taxi-augmentation, takeoff-and-callouts |
+| [gsx.md](docs/gsx.md) | GSX gate selection and Remote API, docking guidance, the metres/feet toggle | gsx-remote, gsx-stands-docking, gsx-stands, gsx-docking |
 | [weather.md](docs/weather.md) | ActiveSky, the weather radar, METAR readouts, weather announcements | weather |
-| [sayintentions.md](docs/sayintentions.md) | SayIntentions: clearance parsing, the taxi-route import, readouts | sayintentions-clearance, sayintentions-import, sayintentions-readouts |
+| [sayintentions.md](docs/sayintentions.md) | SayIntentions: clearance parsing, the taxi-route import, readouts | sayintentions-clearance, sayintentions-import, sayintentions-gates, sayintentions-readouts |
 | [vatsim.md](docs/vatsim.md) | VATSIM: the vPilot plugin, pipe server, announcement settings | vatsim |
 | [updates.md](docs/updates.md) | Release and preview channels, the updater, release workflows | updates |
 | [visual-guidance.md](docs/visual-guidance.md) | Visual landing guidance (dual tone), hand fly, the liftoff handoff | visual-guidance |
 | [waypoint-flight-director.md](docs/waypoint-flight-director.md) | The en-route audio flight director to the tracked waypoint slots: dual tone, crossing-altitude constraints, per-aircraft tuning | waypoint-flight-director |
 | [audio.md](docs/audio.md) | Which Windows audio endpoint guidance tones play on | audio-output |
 | [fenix-increment-decrement.md](docs/fenix-increment-decrement.md) | Fenix rotary encoders (RMP, FCU) | — |
-| [a32nx.md](docs/a32nx.md) | FlyByWire A32NX, Fenix A320, Headwind A330: panels, MCDU, DCDU, cockpit controls | a32nx-fenix, fbw-arinc |
-| [a380x.md](docs/a380x.md) | FlyByWire A380X: FCU/EFIS, MFD/MCDU, OANS/BTV, RMP, ECAM, checklists | a380-fcu, a380-coherent, a380-systems, fbw-arinc |
+| [a32nx.md](docs/a32nx.md) | FlyByWire A32NX, Fenix A320, Headwind A330: panels, MCDU, DCDU, cockpit controls | a32nx-fenix, fcu-callouts, tcas-ra, a32nx-mcdu, fbw-arinc |
+| [a380x.md](docs/a380x.md) | FlyByWire A380X: FCU/EFIS, MFD/MCDU, OANS/BTV, RMP, ECAM, checklists | a380-fcu, fcu-callouts, a380-coherent, a380-systems, a380-panels, tcas-ra, fbw-arinc |
 | [flypad.md](docs/flypad.md) | The shared FlyByWire flyPad EFB (A320 and A380) | flypad |
 | [pmdg-777.md](docs/pmdg-777.md) | PMDG 777: CDA switches, CDU indexing, System Display | pmdg-777 |
 | [pmdg-737.md](docs/pmdg-737.md) | PMDG 737-800 NG3: two CDUs, NG3 struct, EFB parity with the 777 (Shift+T) | pmdg-737 |
 | [pmdg-efb.md](docs/pmdg-efb.md) | The PMDG (and HS787 CDU) Coherent-debugger EFB agent | pmdg-efb |
 | [ifly-737.md](docs/ifly-737.md) | iFly 737 MAX8: SDK shared memory + WM_COPYDATA, no MobiFlight, no L:var writes except named clickspot replays | ifly-737 |
 | [hs787.md](docs/hs787.md) | HorizonSim 787-9: CDU, IRS, EICAS over the Coherent debugger | hs787 |
-| [md11.md](docs/md11.md) | TFDi MD-11: CEVENT transport, control state, layout, the control-map generator | md11 |
+| [md11.md](docs/md11.md) | TFDi MD-11: CEVENT transport, control state, layout, the control-map generator | md11, md11-controls |
 | [gemini.md](docs/gemini.md) | AI providers (Gemini or Claude): display reads, scene and route description, route briefing | ai-display, route-briefing |
+| [location-data.md](docs/location-data.md) | Output C and Location Info (Shift+L): the offline GeoNames + Natural Earth download, its database and lookups | location-data |
 
 ## Adding or changing a rule
 
@@ -157,7 +158,7 @@ A rule is a guardrail a future change could break: a "never", a "must", a measur
 
 `- [PREFIX-n] <the rule, naming the key type or method> Full: docs/invariants/<stem>.md#<prefix-n>`
 
-Take the next unused number for that prefix; IDs are never renumbered or reused, so code comments and commit messages can cite them. The explanation, measurements and history go under `## PREFIX-n` in `docs/invariants/<stem>.md`. A new aircraft or subsystem gets its own rule file, with `paths:` globs for its code and its tests, and its own full-text file, plus a row above; until it has a rule, its rule file is a heading and one line naming its doc. Before writing the line, Read the file that DECLARES what it guards (for a partial class, the partial holding that member) and confirm one of the rule file's globs matches it: `TaxiGuidanceManager`, `TaxiGraph` and `MainForm` are split into partials by mechanism, not by area, and no test can check this for you. When a rule's code lives in or is called from another area's files, MIRROR its line word for word into a rule file scoped to those files (`mainform-call-sites.md`, `taxi-call-sites.md`, `settings-call-sites.md`, or a "Mirrored from …" block in an area file that already loads them). CLAUDE.md takes only rules that apply to ANY file in the repository (two area rules are mirrored here for that reason). To change a rule, edit its line, every mirror and its full text together. To retire one, delete its lines and rename its heading `## PREFIX-n (retired: <why>)` so the number is never taken again. `ClaudeContextBudgetTests` (CI) enforces the limits, fails when a file in an aircraft's own folders or a Coherent agent script loads no rule file, or when code loads none while its test does, or when CLAUDE.md gains a section or a doc link outside its map, and says what to do when one is hit. An older code comment that cites CLAUDE.md for a rule ("see the CLAUDE.md flyPad note") means text that now lives in `docs/invariants/`: search there for the rule's key name.
+One mechanism per ID: an independent never, must or exemption gets its own line, unless a test whose failure explains it already pins it. Take the next unused number for that prefix; IDs are never renumbered or reused, so code comments and commit messages can cite them. The explanation, measurements and history go under `## PREFIX-n` in `docs/invariants/<stem>.md`. A new aircraft or subsystem gets its own rule file, with `paths:` globs for its code and its tests, and its own full-text file, plus a row above; until it has a rule, its rule file is a heading and one line naming its doc. Before writing the line, Read the file that DECLARES what it guards (for a partial class, the partial holding that member) and confirm one of the rule file's globs matches it: `TaxiGuidanceManager`, `TaxiGraph` and `MainForm` are split into partials by mechanism, not by area, and the test named below checks only the names a rule gives in backticks, not what it guards. When a rule's code lives in or is called from another area's files, MIRROR its line word for word into a rule file scoped to those files (`mainform-call-sites.md` for no-identifier rules on every partial, `mainform-announcers-call-sites.md`, `mainform-dialogs-call-sites.md`, `mainform-guidance-call-sites.md`, `mainform-surroundings-call-sites.md`, `mainform-services-call-sites.md`, `mainform-sayintentions-call-sites.md`, `mainform-panel-call-sites.md`, `mainform-fcu-echo-call-sites.md`, `mainform-main-call-sites.md`, `mainform-hotkeys-call-sites.md`, `mainform-switch-call-sites.md`, `visual-guidance-call-sites.md`, `a380-forms-call-sites.md`, `a380-definition-call-sites.md`, `a320-definition-call-sites.md`, `a380-panel-controls-call-sites.md`, `flypad-call-sites.md`, `md11-generator-call-sites.md`, `taxi-call-sites.md`, `taxi-manager-call-sites.md`, `rollout-lateral-call-sites.md`, `stands-call-sites.md`, `surroundings-catalog-call-sites.md`, `stand-naming-call-sites.md`, `stand-bridge-call-sites.md`, `landing-exits-call-sites.md`, `go-around-call-sites.md`, `runway-holds-call-sites.md`, `held-runway-call-sites.md`, `runway-shape-call-sites.md`, `sayintentions-gates-call-sites.md`, `briefing-stand-picker-call-sites.md`, `heading-unit-call-sites.md`, `settings-call-sites.md`, `base-definition-call-sites.md`, or a "Mirrored from …" block in an area file that already loads them). CLAUDE.md takes only rules that apply to ANY file in the repository (two area rules are mirrored here for that reason). To change a rule, edit its line, every mirror and its full text together. To retire one, delete its lines and rename its heading `## PREFIX-n (retired: <why>)` so the number is never taken again. `ClaudeContextBudgetTests` (CI) enforces the limits, fails when a file loads a rule twice (a mirror reaching a file that loads its original), when shipped code loads no rule file outside its listed exemptions (an aircraft's own folders need one of their own, and a Coherent agent script is never exempt), or when code loads none while its test does, when a rule loads on no file declaring code it names in backticks (unless `PassingMentions` lists the pair, by reason: code the rule's own code only calls, reads or avoids), or when CLAUDE.md gains a section or a doc link outside its map, and says what to do when one is hit. An older code comment that cites CLAUDE.md for a rule ("see the CLAUDE.md flyPad note") means text that now lives in `docs/invariants/` or elsewhere in `docs/`: search `docs/invariants/`, then `docs/`, for the rule's key name.
 
 ## Technology Stack
 

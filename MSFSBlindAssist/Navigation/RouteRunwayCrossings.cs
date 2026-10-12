@@ -35,7 +35,8 @@ public static class RouteRunwayCrossings
     // could never clear a Progressive Taxi crossing of one. The numeric branch is FIRST so a
     // designator that could match both is read as the number, and each compass alternative ends
     // at a word boundary so ordinary prose ("runway North side") is not a designator.
-    // CultureInvariant beside IgnoreCase per CLAUDE.md: tr-TR folds the pattern letter I.
+    // CultureInvariant beside IgnoreCase, as [SIC-11] requires of SayIntentions' regexes: tr-TR
+    // folds the pattern letter I.
     private static readonly Regex RunwayToken = new(
         @"\brunway\s+([0-9]{1,2}[LRCW]?|N[EW]?|S[EW]?|[EW])\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);

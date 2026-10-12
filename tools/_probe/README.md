@@ -59,7 +59,7 @@ Each probe is an IIFE that returns a string (JSON or plain text):
 | `fbw_lvars_clean.txt` | reference data | a dump of every L:var in the running A380X — grep it for a system + its synonyms |
 | `captures/mcdu_captures.md`, `captures/mfd_pages_recon.md` | reference notes | per-page MCDU/MFD scrape recon |
 
-**Write-stick testing rule ([DBG-1] in docs/invariants/troubleshooting.md; the #103 finding is [A380-23] in docs/invariants/a380-systems.md):** to decide whether an FBW L:var write
+**Write-stick testing rule ([DBG-1] in docs/invariants/troubleshooting.md; the #103 finding is [A380-23] in docs/invariants/a380-panels.md):** to decide whether an FBW L:var write
 sticks, ALWAYS write via the calculator path — `SimVar.SetSimVarValue('L:VAR','number',v)`
 in a Coherent view, or `(>L:VAR)` via `execute_calculator_code`. NEVER use the MCP
 `set_lvar` (native data-def) — it silently fails for many FBW L:vars and produces false

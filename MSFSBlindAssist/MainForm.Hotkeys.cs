@@ -162,7 +162,7 @@ public partial class MainForm
                 ShowLocationInfoDialog();
                 break;
             case HotkeyAction.ReadNearestCity:
-                AnnounceNearestCity();
+                AnnounceNearestCity(userInitiated: true);
                 break;
             case HotkeyAction.SimBriefBriefing:
                 OpenSimBriefBriefing();

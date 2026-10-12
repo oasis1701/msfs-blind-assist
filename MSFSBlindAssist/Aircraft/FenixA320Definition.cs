@@ -97,6 +97,32 @@ public class FenixA320Definition : BaseAircraftDefinition
 
     private Accessibility.ScreenReaderAnnouncer? lastAnnouncer = null;
 
+    // Hotkey-readout twins ([A320-41]): the same L:vars as the continuous originals, read on
+    // request. Each original streams on its own once-a-second subscription (ExcludeFromBatch, so
+    // the readouts kept an individual definition after the SimConnect-ceiling work), and a forced
+    // read of such a var waits for its next delivery, 0-1 s; a twin's forced read is a one-off read
+    // answered within a frame. Never point a readout back at an original.
+    internal const string ReadoutSuffix = "_READOUT";
+    private const string HeadingReadout = "N_FCU_HEADING" + ReadoutSuffix;
+    private const string HeadingManagedReadout = "I_FCU_HEADING_MANAGED" + ReadoutSuffix;
+    private const string SpeedReadout = "N_FCU_SPEED" + ReadoutSuffix;
+    private const string SpeedManagedReadout = "I_FCU_SPEED_MANAGED" + ReadoutSuffix;
+    private const string AltitudeReadout = "N_FCU_ALTITUDE" + ReadoutSuffix;
+    private const string AltitudeManagedReadout = "I_FCU_ALTITUDE_MANAGED" + ReadoutSuffix;
+    private const string VsReadout = "N_FCU_VS" + ReadoutSuffix;
+    private const string VsDashedReadout = "B_FCU_VERTICALSPEED_DASHED" + ReadoutSuffix;
+    private const string BaroHpaReadout = "N_FCU_EFIS1_BARO_HPA" + ReadoutSuffix;
+    private const string BaroInchReadout = "N_FCU_EFIS1_BARO_INCH" + ReadoutSuffix;
+
+    internal static readonly IReadOnlyList<string> FcuReadoutVariables = new[]
+    {
+        HeadingReadout, HeadingManagedReadout,
+        SpeedReadout, SpeedManagedReadout,
+        AltitudeReadout, AltitudeManagedReadout,
+        VsReadout, VsDashedReadout,
+        BaroHpaReadout, BaroInchReadout,
+    };
+
     // Shared ValueDescriptions dictionaries for the two exactly-identical patterns that
     // recur hundreds of times across this aircraft's ~500 switch/knob definitions below.
     // Safe to share a single instance: nothing in the codebase mutates a SimVarDefinition's
@@ -571,7 +597,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["I_FCU_SPEED_MANAGED"] = new SimConnect.SimVarDefinition
             {
-                Name = "I_FCU_SPEED_MANAGED", ExcludeFromBatch = true, // FCU readout force-reads this — keep individual def (SimConnect-ceiling batch-skip regression)
+                Name = "I_FCU_SPEED_MANAGED", ExcludeFromBatch = true, // own subscription since f500915db; the FCU readout reads the _READOUT twin ([A320-41])
                 DisplayName = "FCU SPEED Mode",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -1378,7 +1404,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["N_FCU_EFIS1_BARO_INCH"] = new SimConnect.SimVarDefinition
             {
-                Name = "N_FCU_EFIS1_BARO_INCH", ExcludeFromBatch = true, // baro readout force-reads this — keep individual def
+                Name = "N_FCU_EFIS1_BARO_INCH", ExcludeFromBatch = true, // own subscription since f500915db; the baro readout reads the _READOUT twin ([A320-41])
                 DisplayName = "EFIS1 BARO INHG Value",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -1387,7 +1413,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
             ["N_FCU_EFIS1_BARO_HPA"] = new SimConnect.SimVarDefinition
             {
-                Name = "N_FCU_EFIS1_BARO_HPA", ExcludeFromBatch = true, // baro readout force-reads this — keep individual def
+                Name = "N_FCU_EFIS1_BARO_HPA", ExcludeFromBatch = true, // own subscription since f500915db; the baro readout reads the _READOUT twin ([A320-41])
                 DisplayName = "EFIS1 BARO HPA Value",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -8407,6 +8433,23 @@ public class FenixA320Definition : BaseAircraftDefinition
             variables[kvp.Key] = kvp.Value;
         }
 
+        // The readout twins ([A320-41]), copied from their originals so the two can never disagree
+        // on the L:var or its units. An original that is missing fails here, at load.
+        foreach (string readoutKey in FcuReadoutVariables)
+        {
+            var original = variables[readoutKey[..^ReadoutSuffix.Length]];
+            variables[readoutKey] = new SimConnect.SimVarDefinition
+            {
+                Name = original.Name,
+                DisplayName = original.DisplayName + " (readout)",
+                Type = SimConnect.SimVarType.LVar,
+                Units = original.Units,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = original.ValueDescriptions,
+                ExcludeFromMonitorManager = true,
+            };
+        }
+
         return variables;
     }
 
@@ -11989,7 +12032,7 @@ public class FenixA320Definition : BaseAircraftDefinition
     }
 
     /// <summary>
-    /// Processes SimConnect variable updates, combining FCU value and status variables for hotkey readouts.
+    /// Processes SimConnect variable updates, combining the FCU and altimeter readout twins' two legs for the hotkey readouts ([A320-41]).
     /// </summary>
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
@@ -11997,176 +12040,31 @@ public class FenixA320Definition : BaseAircraftDefinition
         if (lastAnnouncer == null)
             lastAnnouncer = announcer;
 
-        // ========== FCU Heading Readout ==========
-        if (varName == "N_FCU_HEADING")
+        // ========== FCU and Altimeter Readouts ==========
+        // Each readout is two legs, a value and its status, answered by the on-request twins.
+        switch (varName)
         {
-            if (!isRequestingHeading)
-                return false; // Not part of a readout request
-
-            pendingHeadingValue = value;
-            if (pendingHeadingStatus.HasValue)
-            {
-                if (pendingHeadingStatus.Value == 1)
-                {
-                    lastAnnouncer.AnnounceImmediate("Heading is managed");
-                }
-                else
-                {
-                    lastAnnouncer.AnnounceImmediate($"FCU heading {pendingHeadingValue.Value:000}, selected");
-                }
-                pendingHeadingValue = null;
-                pendingHeadingStatus = null;
-                isRequestingHeading = false;
-            }
-            return true;
-        }
-        else if (varName == "I_FCU_HEADING_MANAGED")
-        {
-            if (!isRequestingHeading)
-                return false;
-
-            pendingHeadingStatus = value;
-            if (pendingHeadingValue.HasValue)
-            {
-                if (value == 1)
-                {
-                    lastAnnouncer.AnnounceImmediate("Heading is managed");
-                }
-                else
-                {
-                    lastAnnouncer.AnnounceImmediate($"FCU heading {pendingHeadingValue.Value:000}, selected");
-                }
-                pendingHeadingValue = null;
-                pendingHeadingStatus = null;
-                isRequestingHeading = false;
-            }
-            return true;
-        }
-
-        // ========== FCU Speed Readout ==========
-        else if (varName == "N_FCU_SPEED")
-        {
-            if (!isRequestingSpeed)
-                return false;
-
-            pendingSpeedValue = value;
-            if (pendingSpeedStatus.HasValue)
-            {
-                if (pendingSpeedStatus.Value == 1)
-                {
-                    lastAnnouncer.AnnounceImmediate("Speed is managed");
-                }
-                else
-                {
-                    lastAnnouncer.AnnounceImmediate($"FCU speed {pendingSpeedValue.Value:000}, selected");
-                }
-                pendingSpeedValue = null;
-                pendingSpeedStatus = null;
-                isRequestingSpeed = false;
-            }
-            return true;
-        }
-        else if (varName == "I_FCU_SPEED_MANAGED")
-        {
-            if (!isRequestingSpeed)
-                return false;
-
-            pendingSpeedStatus = value;
-            if (pendingSpeedValue.HasValue)
-            {
-                if (value == 1)
-                {
-                    lastAnnouncer.AnnounceImmediate("Speed is managed");
-                }
-                else
-                {
-                    lastAnnouncer.AnnounceImmediate($"FCU speed {pendingSpeedValue.Value:000}, selected");
-                }
-                pendingSpeedValue = null;
-                pendingSpeedStatus = null;
-                isRequestingSpeed = false;
-            }
-            return true;
-        }
-
-        // ========== FCU Altitude Readout ==========
-        else if (varName == "N_FCU_ALTITUDE")
-        {
-            if (!isRequestingAltitude)
-                return false;
-
-            pendingAltitudeValue = value;
-            if (pendingAltitudeStatus.HasValue)
-            {
-                string status = pendingAltitudeStatus.Value == 1 ? "managed" : "selected";
-                lastAnnouncer.AnnounceImmediate($"FCU altitude {pendingAltitudeValue.Value:00000}, {status}");
-                pendingAltitudeValue = null;
-                pendingAltitudeStatus = null;
-                isRequestingAltitude = false;
-            }
-            return true;
-        }
-        else if (varName == "I_FCU_ALTITUDE_MANAGED")
-        {
-            if (!isRequestingAltitude)
-                return false;
-
-            pendingAltitudeStatus = value;
-            if (pendingAltitudeValue.HasValue)
-            {
-                string status = value == 1 ? "managed" : "selected";
-                lastAnnouncer.AnnounceImmediate($"FCU altitude {pendingAltitudeValue.Value:00000}, {status}");
-                pendingAltitudeValue = null;
-                pendingAltitudeStatus = null;
-                isRequestingAltitude = false;
-            }
-            return true;
-        }
-
-        // ========== FCU Vertical Speed Readout ==========
-        else if (varName == "N_FCU_VS")
-        {
-            if (!isRequestingVS)
-                return false;
-
-            pendingVSValue = value;
-            if (pendingVSStatus.HasValue)
-            {
-                if (pendingVSStatus.Value == 1) // Dashed = managed
-                {
-                    lastAnnouncer.AnnounceImmediate("VS is managed");
-                }
-                else
-                {
-                    lastAnnouncer.AnnounceImmediate($"FCU vertical speed {pendingVSValue.Value:0000}, selected");
-                }
-                pendingVSValue = null;
-                pendingVSStatus = null;
-                isRequestingVS = false;
-            }
-            return true;
-        }
-        else if (varName == "B_FCU_VERTICALSPEED_DASHED")
-        {
-            if (!isRequestingVS)
-                return false;
-
-            pendingVSStatus = value;
-            if (pendingVSValue.HasValue)
-            {
-                if (value == 1) // Dashed = managed
-                {
-                    lastAnnouncer.AnnounceImmediate("VS is managed");
-                }
-                else
-                {
-                    lastAnnouncer.AnnounceImmediate($"FCU vertical speed {pendingVSValue.Value:0000}, selected");
-                }
-                pendingVSValue = null;
-                pendingVSStatus = null;
-                isRequestingVS = false;
-            }
-            return true;
+            case HeadingReadout or HeadingManagedReadout:
+                return ReadoutLeg(ref isRequestingHeading, ref pendingHeadingValue, ref pendingHeadingStatus,
+                    varName == HeadingReadout, value,
+                    static (heading, managed) => managed == 1 ? "Heading is managed" : $"FCU heading {heading:000}, selected");
+            case SpeedReadout or SpeedManagedReadout:
+                return ReadoutLeg(ref isRequestingSpeed, ref pendingSpeedValue, ref pendingSpeedStatus,
+                    varName == SpeedReadout, value,
+                    static (speed, managed) => managed == 1 ? "Speed is managed" : $"FCU speed {speed:000}, selected");
+            case AltitudeReadout or AltitudeManagedReadout:
+                return ReadoutLeg(ref isRequestingAltitude, ref pendingAltitudeValue, ref pendingAltitudeStatus,
+                    varName == AltitudeReadout, value,
+                    static (altitude, managed) => $"FCU altitude {altitude:00000}, {(managed == 1 ? "managed" : "selected")}");
+            case VsReadout or VsDashedReadout:
+                return ReadoutLeg(ref isRequestingVS, ref pendingVSValue, ref pendingVSStatus,
+                    varName == VsReadout, value,
+                    static (vs, dashed) => dashed == 1 ? "VS is managed" : $"FCU vertical speed {vs:0000}, selected"); // dashed = managed
+            case BaroHpaReadout or BaroInchReadout:
+                // Invariant, so the inches read 29.92 on a comma-decimal Windows too, never 29,92.
+                return ReadoutLeg(ref isRequestingBaro, ref pendingBaroHpa, ref pendingBaroInch,
+                    varName == BaroHpaReadout, value,
+                    static (hpa, inch) => FormattableString.Invariant($"Altimeter: {hpa:0}, {inch:0.00}"));
         }
 
         // ========== Suppress baro announcements during set operation ==========
@@ -12174,38 +12072,6 @@ public class FenixA320Definition : BaseAircraftDefinition
             varName == "N_FCU_EFIS2_BARO_HPA" || varName == "N_FCU_EFIS2_BARO_INCH"))
         {
             return true; // Consume the event silently
-        }
-
-        // ========== Altimeter Readout ==========
-        if (varName == "N_FCU_EFIS1_BARO_HPA")
-        {
-            if (!isRequestingBaro)
-                return false;
-
-            pendingBaroHpa = value;
-            if (pendingBaroInch.HasValue)
-            {
-                lastAnnouncer?.AnnounceImmediate($"Altimeter: {pendingBaroHpa.Value:0}, {pendingBaroInch.Value:0.00}");
-                pendingBaroHpa = null;
-                pendingBaroInch = null;
-                isRequestingBaro = false;
-            }
-            return true;
-        }
-        else if (varName == "N_FCU_EFIS1_BARO_INCH")
-        {
-            if (!isRequestingBaro)
-                return false;
-
-            pendingBaroInch = value;
-            if (pendingBaroHpa.HasValue)
-            {
-                lastAnnouncer?.AnnounceImmediate($"Altimeter: {pendingBaroHpa.Value:0}, {pendingBaroInch.Value:0.00}");
-                pendingBaroHpa = null;
-                pendingBaroInch = null;
-                isRequestingBaro = false;
-            }
-            return true;
         }
 
         // ========== RMP Frequency Announcements ==========
@@ -12247,6 +12113,31 @@ public class FenixA320Definition : BaseAircraftDefinition
         return base.ProcessSimVarUpdate(varName, value, announcer);
     }
 
+    /// <summary>
+    /// One leg of a two-leg readout ([A320-41]): stores it, and once the value and its status are
+    /// both in, speaks <paramref name="compose"/>(value, status) and ends the readout. A twin that
+    /// answers no pending readout (a late answer to an abandoned one) is consumed silently: the twin
+    /// speaks only for a readout.
+    /// </summary>
+    private bool ReadoutLeg(ref bool requesting, ref double? pendingValue, ref double? pendingStatus,
+        bool isValueLeg, double value, Func<double, double, string> compose)
+    {
+        if (!requesting)
+            return true;
+
+        if (isValueLeg) pendingValue = value;
+        else pendingStatus = value;
+
+        if (pendingValue is double readValue && pendingStatus is double status)
+        {
+            lastAnnouncer?.AnnounceImmediate(compose(readValue, status));
+            pendingValue = null;
+            pendingStatus = null;
+            requesting = false;
+        }
+        return true;
+    }
+
     // ========== FCU Readout Request Methods ==========
 
     /// <summary>
@@ -12261,8 +12152,8 @@ public class FenixA320Definition : BaseAircraftDefinition
             pendingHeadingValue = null;
             pendingHeadingStatus = null;
 
-            simConnectMgr.RequestVariable("N_FCU_HEADING", forceUpdate: true);
-            simConnectMgr.RequestVariable("I_FCU_HEADING_MANAGED", forceUpdate: true);
+            simConnectMgr.RequestVariable(HeadingReadout, forceUpdate: true);
+            simConnectMgr.RequestVariable(HeadingManagedReadout, forceUpdate: true);
         }
     }
 
@@ -12278,8 +12169,8 @@ public class FenixA320Definition : BaseAircraftDefinition
             pendingSpeedValue = null;
             pendingSpeedStatus = null;
 
-            simConnectMgr.RequestVariable("N_FCU_SPEED", forceUpdate: true);
-            simConnectMgr.RequestVariable("I_FCU_SPEED_MANAGED", forceUpdate: true);
+            simConnectMgr.RequestVariable(SpeedReadout, forceUpdate: true);
+            simConnectMgr.RequestVariable(SpeedManagedReadout, forceUpdate: true);
         }
     }
 
@@ -12295,8 +12186,8 @@ public class FenixA320Definition : BaseAircraftDefinition
             pendingAltitudeValue = null;
             pendingAltitudeStatus = null;
 
-            simConnectMgr.RequestVariable("N_FCU_ALTITUDE", forceUpdate: true);
-            simConnectMgr.RequestVariable("I_FCU_ALTITUDE_MANAGED", forceUpdate: true);
+            simConnectMgr.RequestVariable(AltitudeReadout, forceUpdate: true);
+            simConnectMgr.RequestVariable(AltitudeManagedReadout, forceUpdate: true);
         }
     }
 
@@ -12313,8 +12204,8 @@ public class FenixA320Definition : BaseAircraftDefinition
             pendingVSValue = null;
             pendingVSStatus = null;
 
-            simConnectMgr.RequestVariable("N_FCU_VS", forceUpdate: true);
-            simConnectMgr.RequestVariable("B_FCU_VERTICALSPEED_DASHED", forceUpdate: true);
+            simConnectMgr.RequestVariable(VsReadout, forceUpdate: true);
+            simConnectMgr.RequestVariable(VsDashedReadout, forceUpdate: true);
         }
     }
 
@@ -12334,8 +12225,8 @@ public class FenixA320Definition : BaseAircraftDefinition
             isRequestingBaro = true;
             pendingBaroHpa = null;
             pendingBaroInch = null;
-            simConnectMgr.RequestVariable("N_FCU_EFIS1_BARO_HPA", forceUpdate: true);
-            simConnectMgr.RequestVariable("N_FCU_EFIS1_BARO_INCH", forceUpdate: true);
+            simConnectMgr.RequestVariable(BaroHpaReadout, forceUpdate: true);
+            simConnectMgr.RequestVariable(BaroInchReadout, forceUpdate: true);
         }
     }
 
@@ -12386,11 +12277,11 @@ public class FenixA320Definition : BaseAircraftDefinition
                     {
                         AdjustBaroCounter(counterVar, delta, simConnect);
 
-                        // Verify and correct ±1 step
+                        // Verify and correct ±1 step, on the next delivery, never the cache: the var
+                        // streams once a second, so a forced read is a no-op and the cache can predate
+                        // the counter write, and the correction would then repeat the whole delta.
                         await System.Threading.Tasks.Task.Delay(750);
-                        simConnect.RequestVariable($"N_FCU_EFIS{efis}_BARO_INCH");
-                        await System.Threading.Tasks.Task.Delay(300);
-                        double? verifyInHg = simConnect.GetCachedVariableValue($"N_FCU_EFIS{efis}_BARO_INCH");
+                        double? verifyInHg = await simConnect.ReadFreshAsync($"N_FCU_EFIS{efis}_BARO_INCH", timeoutMs: 1500);
                         if (verifyInHg != null)
                         {
                             double verifyRounded = Math.Round(verifyInHg.Value, 2);
@@ -12416,11 +12307,9 @@ public class FenixA320Definition : BaseAircraftDefinition
                     {
                         AdjustBaroCounter(counterVar, delta, simConnect);
 
-                        // Verify and correct ±1 step
+                        // Verify and correct ±1 step, on the next delivery (see the inHg branch).
                         await System.Threading.Tasks.Task.Delay(750);
-                        simConnect.RequestVariable($"N_FCU_EFIS{efis}_BARO_HPA");
-                        await System.Threading.Tasks.Task.Delay(300);
-                        double? verifyHpa = simConnect.GetCachedVariableValue($"N_FCU_EFIS{efis}_BARO_HPA");
+                        double? verifyHpa = await simConnect.ReadFreshAsync($"N_FCU_EFIS{efis}_BARO_HPA", timeoutMs: 1500);
                         if (verifyHpa != null)
                         {
                             int verifyInt = (int)Math.Round(verifyHpa.Value);
@@ -12444,7 +12333,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             double? finalInch = simConnect.GetCachedVariableValue("N_FCU_EFIS1_BARO_INCH");
             if (finalHpa != null && finalInch != null)
             {
-                announcer.AnnounceImmediate($"Altimeter set: {finalHpa.Value:0}, {finalInch.Value:0.00}");
+                announcer.AnnounceImmediate(FormattableString.Invariant($"Altimeter set: {finalHpa.Value:0}, {finalInch.Value:0.00}"));
             }
         }
         finally

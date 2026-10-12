@@ -33,7 +33,9 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## VG-8
 
-- `VisualGuidanceManager.Initialize` must stay idempotent (calls `Stop()` first) — don't remove that guard. → [visual-guidance.md](../visual-guidance.md)
+- `VisualGuidanceManager.Initialize` must stay idempotent: it disposes any existing tones first (`DisposeTones()`) — don't remove that guard, and never replace it with `Stop()`, which announces "Visual guidance off" just before Initialize's own "Visual guidance active" and nulls the state Initialize is about to set. → [visual-guidance.md](../visual-guidance.md)
+
+Corrected 2026-10-08: the guard is `DisposeTones()`, not `Stop()`; following the old wording would bring back the off-then-active announcement pair. Evidence: `VisualGuidanceManager.Initialize`, whose comment says not to call `Stop()` and which calls `DisposeTones()`.
 
 ## VG-9
 
@@ -53,7 +55,9 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## VG-13
 
-- Desired and current tone waveforms must stay different (triangle + sine) — identical waveforms at a matched state phase-cancel exactly when the pilot most needs the difference audible. → [visual-guidance.md](../visual-guidance.md)
+- Desired and current tone waveforms must default to different shapes (triangle + sine: `UserSettings.VisualGuidanceToneWaveform` and `VisualGuidanceCurrentToneWaveform`, both pilot-settable in `HandFlyPanel`) — identical waveforms at a matched state phase-cancel exactly when the pilot most needs the difference audible. → [visual-guidance.md](../visual-guidance.md)
+
+Corrected 2026-10-08: triangle and sine are the defaults of two user settings, not fixed values. Evidence: `UserSettings.VisualGuidanceToneWaveform` (Triangle) and `VisualGuidanceCurrentToneWaveform` (Sine), set from `Forms/Settings/HandFlyPanel`.
 
 ## VG-14
 

@@ -39,6 +39,8 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 - The Winds Aloft box follows the per-engine source rule: `/GetAtmosphere` when AS is enabled+reachable, Open-Meteo otherwise, each with a visible `Source:` tag — and the ±5000 ft/1000-ft altitude window must stay IDENTICAL between the two sources. That window is now enforced STRUCTURALLY, not by convention: both paths call the single `ActiveSkyFormatting.WindsAloftAltitudes` helper (`WeatherService.ParseWindsAloft` calls it for the Open-Meteo path too) — never reintroduce an inline copy of the ±5000/1000-ft-step math in either path. The AS mode monitor is baseline-first (silent at startup/connect; the baseline survives unreachable gaps so a reconnect in a different mode announces); AS-only UI sections are HIDDEN when the switch is off, never shown with disabled text. → [weather.md](../weather.md)
 
+Split out on 2026-10-09: WX-12 (ActiveSky-only UI is hidden, never disabled) and WX-13 (the mode baseline survives unreachable gaps). This text keeps them as written; each has its own section below.
+
 ## WX-10
 
 - Hazard announcements: turbulence is WORDS-ONLY (raw 1-100 never spoken; ≤25 "smooth" never named as a category) with rising-at-boundary/easing-5-below hysteresis — don't "simplify" the tuned thresholds; the generic STRUCTURAL ICE PCT announcer must SKIP aircraft with `HasOwnIcingAnnouncer` (A380 ice stick) so one icing episode never speaks twice; both trackers are baseline-first (silent first read, reset on aircraft switch AND sim reconnect). → [weather.md](../weather.md)
@@ -46,3 +48,29 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 ## WX-11
 
 - Route-advisory location context is ADDITIVE-ONLY (no geometry → the advisory renders exactly as before, never dropped/blocked); only the FIRST advisory of a positional GetActiveSigmetsAt response is position-matched (bundling); tier-2 borrows aviationweather.gov geometry by EXACT identity match only — never attach geometry to an advisory whose identity didn't match. Route-advisory announcements (2026-07-14) are PROXIMITY EVENTS, not key-novelty: Approach fires once per approach within the configurable ring (`RouteAdvisoryProximityNm`, default 100 nm, clamped 10-500; re-arm = ring + 10 nm) — independent of `SigmetProximityRangeNm`, never fold them together — UNLESS the area is behind the aircraft — behind-suppression is Approach-ONLY, Enter and Leave always fire regardless of bearing; Leave needs 2 consecutive not-inside ticks to confirm (no single-tick boundary-graze flap); once a key has been Inside, Approach is latched off for it forever. Expiry (a key vanishing from the feed) is always SILENT by design — announcing it would resurrect the hourly-SIGMET-reissue double-announce the redesign exists to kill. A positional probe match may only STRENGTHEN an Inside verdict, never weaken one — never derive Leave from a probe match going away. No-geometry advisories announce once and are NEVER dropped, but also never gain Far/Near/Inside distance zoning even if geometry later appears for that key (a recorded follow-up, not a bug). The tracker resets a third way too: a turnaround liftoff (touchdown + ≥5 min ground dwell + liftoff, via `Services/TurnaroundLiftoffDetector.cs`) — a surviving advisory key's Inside latch must not suppress flight 2's approach call; touch-and-goes/bounces and the session's first departure never fire it. → [weather.md](../weather.md)
+
+Split out on 2026-10-09: WX-14 (the probe's first block, and a probe match only strengthens Inside) and WX-15 (the turnaround liftoff reset's wiring). This text keeps them as written; each has its own section below.
+
+## WX-12
+
+- ActiveSky-only UI is HIDDEN while the ActiveSky switch is off, never shown disabled or with "disabled" text: the weather radar's mode, station, profile and route-advisory sections (`WeatherRadarForm.RefreshAsync`, decided on every refresh), the METAR window's ActiveSky METAR and forecast controls (`METARReportForm`) and the Weather panel's ActiveSky settings (`WeatherPanel`). `WeatherPanelTests` pin the panel; both forms need a live client and are untested. → [weather.md](../weather.md)
+
+Split from WX-9 on 2026-10-09: one mechanism per ID.
+
+## WX-13
+
+- The ActiveSky mode-change announcement is baseline-first (`ActiveSkyModeTracker`: silent at startup and on connect), and its baseline SURVIVES unreachable gaps, so ActiveSky coming back in a different mode is announced. `ActiveSkyWeatherMonitor` feeds the tracker only successful reads, and where an unreachable tick resets the WEATHER baseline it never re-seeds or resets the mode tracker: a "reset everything" in that branch silences the reconnect announcement and still passes every test (`ActiveSkyModeTrackerTests` pin the tracker, not the monitor's wiring). → [weather.md](../weather.md)
+
+Split from WX-9 on 2026-10-09: one mechanism per ID.
+
+## WX-14
+
+- `RouteAdvisoryLocator.ComputeFactsAsync` position-matches ONLY the first block of the positional `GetActiveSigmetsAt` probe's answer: the later blocks are bundled advisories unrelated to the position. A probe match only STRENGTHENS an Inside verdict (`probeMatched || IsInside`); never derive outside or Leave from a probe match going away (the tracker keeps the same rule for a no-geometry key, pinned by `RouteAdvisoryProximityTrackerTests`). No locator test supplies a probe body (a fresh client short-circuits), so both halves are unpinned there. → [weather.md](../weather.md)
+
+Split from WX-11 on 2026-10-09: one mechanism per ID.
+
+## WX-15
+
+- The route-advisory proximity tracker also resets on a turnaround liftoff: the `SIM_ON_GROUND` edge in `MainForm.Announcers.cs` calls `_routeAdvisoryProximity.Reset()` when `TurnaroundLiftoffDetector.ObserveEdge` fires (a touchdown, at least 5 minutes on the ground, then a liftoff); without it a surviving advisory key's Inside latch suppresses flight 2's Approach call. Touch-and-goes, bounces and the session's first departure never fire it (`TurnaroundLiftoffDetectorTests`); no test reaches the handler's wiring. → [weather.md](../weather.md)
+
+Split from WX-11 on 2026-10-09: one mechanism per ID.
