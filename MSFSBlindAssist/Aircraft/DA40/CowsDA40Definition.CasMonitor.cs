@@ -284,8 +284,8 @@ public partial class CowsDA40Definition
         string? fmaChange = null;
         if (fma != _lastFma)
         {
+            fmaChange = DescribeFmaChange(_lastFma, fma);
             _lastFma = fma;
-            fmaChange = fma;
         }
 
         var (immediate, queued) = ComposeCasSpeech(appeared, cleared, fmaChange);
@@ -304,8 +304,24 @@ public partial class CowsDA40Definition
     /// top); a message that CLEARED is queued behind it, because a caution going away is how a
     /// pilot learns that what they just did worked, and it must not cut off a new one.
     /// "off" is the autopilot's resting state and announcing it on every disconnect would be
-    /// noise; the modes themselves are the news.
+    /// noise; the modes themselves are the news. <paramref name="fmaChange"/> is already worded
+    /// (<see cref="DescribeFmaChange"/>), or null when the FMA did not change.
     /// </summary>
+    internal static (string Immediate, List<string> Queued) ComposeCasSpeech(
+        IReadOnlyList<string> appeared, IReadOnlyList<string> cleared, string? fmaChange)
+    {
+        var parts = new List<string>(appeared);
+        if (!string.IsNullOrEmpty(fmaChange)) parts.Add(fmaChange);
+
+        var queued = new List<string>();
+        foreach (string known in cleared)
+            queued.Add(known.Replace("Caution: ", "").Replace("WARNING: ", "")
+                            .Replace("Advisory: ", "").Replace("Status: ", "")
+                            .Replace("Alert: ", "") + " cleared");
+
+        return (string.Join(". ", parts.Select(p => p.TrimEnd('.'))) is { Length: > 0 } t ? t + "." : "", queued);
+    }
+
     /// <summary>
     /// The FMA's MODES, without the vertical target the agent puts last ("AP, YD, GPS, FLC,
     /// ALTS armed, target 88 KT" gives "AP, YD, GPS, FLC, ALTS armed"). A target change is
@@ -318,18 +334,28 @@ public partial class CowsDA40Definition
         return t >= 0 ? fma.Substring(0, t) : fma;
     }
 
-    internal static (string Immediate, List<string> Queued) ComposeCasSpeech(
-        IReadOnlyList<string> appeared, IReadOnlyList<string> cleared, string? fmaChange)
+    /// <summary>
+    /// What an FMA change says, or "" for nothing. Pure so the suite can pin it.
+    ///
+    /// ⚠️ MODES WITHOUT "AP" ARE THE FLIGHT DIRECTOR'S. Pulling the AFCS breaker in flight
+    /// took the autopilot off and left the director in PIT with ALTS armed, and the change
+    /// was spoken "Autopilot PIT, ALTS armed" - telling the pilot the autopilot was flying
+    /// (2026-10-12). With "AP" the modes are the autopilot's; without it they are the flight
+    /// director's, and losing "AP" with the director still up says the autopilot went off.
+    /// A plain disconnect to "off" stays silent: that is the resting state, and the
+    /// disconnect tone is the aeroplane's own.
+    /// </summary>
+    internal static string DescribeFmaChange(string previous, string current)
     {
-        var parts = new List<string>(appeared);
-        if (fmaChange != null && fmaChange != "off") parts.Add("Autopilot " + fmaChange);
+        static bool HasAp(string f) =>
+            f == "AP" || f.StartsWith("AP, ", StringComparison.Ordinal);
 
-        var queued = new List<string>();
-        foreach (string known in cleared)
-            queued.Add(known.Replace("Caution: ", "").Replace("WARNING: ", "")
-                            .Replace("Advisory: ", "").Replace("Status: ", "")
-                            .Replace("Alert: ", "") + " cleared");
-
-        return (string.Join(". ", parts.Select(p => p.TrimEnd('.'))) is { Length: > 0 } t ? t + "." : "", queued);
+        if (current.Length == 0 || current == "off") return "";
+        if (HasAp(current))
+        {
+            string modes = current == "AP" ? "" : current.Substring(4).Trim();
+            return modes.Length > 0 ? "Autopilot " + modes : "Autopilot on";
+        }
+        return (HasAp(previous) ? "Autopilot off, flight director " : "Flight director ") + current;
     }
 }

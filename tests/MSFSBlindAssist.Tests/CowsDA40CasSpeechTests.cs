@@ -23,17 +23,28 @@ public class CowsDA40CasSpeechTests
     [Fact]
     public void AnAutopilotModeChangeJoinsTheSentenceInsteadOfCuttingItOff()
     {
-        var (now, _) = CowsDA40Definition.ComposeCasSpeech(new[] { "Caution: LOW FUEL" }, Array.Empty<string>(), "HDG ALT");
+        var (now, _) = CowsDA40Definition.ComposeCasSpeech(new[] { "Caution: LOW FUEL" }, Array.Empty<string>(),
+            CowsDA40Definition.DescribeFmaChange("AP, GPS, ALT", "AP, HDG, ALT"));
 
-        Assert.Equal("Caution: LOW FUEL. Autopilot HDG ALT.", now);
+        Assert.Equal("Caution: LOW FUEL. Autopilot HDG, ALT.", now);
     }
 
     [Fact]
     public void AutopilotOffIsNotNews()
     {
-        var (now, _) = CowsDA40Definition.ComposeCasSpeech(Array.Empty<string>(), Array.Empty<string>(), "off");
+        Assert.Equal("", CowsDA40Definition.DescribeFmaChange("AP, GPS, ALT", "off"));
+        var (now, _) = CowsDA40Definition.ComposeCasSpeech(Array.Empty<string>(), Array.Empty<string>(), "");
         Assert.Equal("", now);
     }
+
+    [Theory]
+    // The AFCS breaker pulled in flight, 2026-10-12: the director stayed up in PIT.
+    [InlineData("AP, GPS, ALT", "PIT, ALTS armed", "Autopilot off, flight director PIT, ALTS armed")]
+    [InlineData("PIT, ALTS armed", "ALT", "Flight director ALT")]
+    [InlineData("ALT", "AP, YD, GPS, ALT", "Autopilot YD, GPS, ALT")]
+    [InlineData("off", "AP", "Autopilot on")]
+    public void ModesWithoutApAreTheFlightDirectors(string previous, string current, string said)
+        => Assert.Equal(said, CowsDA40Definition.DescribeFmaChange(previous, current));
 
     [Fact]
     public void AClearedMessageIsQueuedBehindNotSpokenOverANewOne()
