@@ -615,8 +615,7 @@ public class GeoNamesPanel : UserControl, ISettingsPanel
             DisplayText.SetPreserveCaret(_locationStatusTextBox, "Location data status unavailable.");
             return;
         }
-        var status = _downloader.Status;
-        if (status.Phase == DownloadJobPhase.Idle) status = _downloader.IdleStatus();
+        var status = _downloader.DisplayStatus();
         DisplayText.SetPreserveCaret(_locationStatusTextBox, status.Text);
 
         // WinForms moves focus off a control it disables, to the next tab stop: enable the button

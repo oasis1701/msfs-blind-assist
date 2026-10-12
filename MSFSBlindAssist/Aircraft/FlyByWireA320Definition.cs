@@ -1695,9 +1695,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             DisplayName = "Red AP Disconnect",
             Type = SimConnect.SimVarType.Event
         },
-        ["A32NX.FCU_ATHR_DISCONNECT_PUSH"] = new SimConnect.SimVarDefinition
+        // The thrust levers' instinctive disconnect, as a hardware button sends it: the stock
+        // AUTO_THROTTLE_DISCONNECT, which the WASM masks and re-emits as the
+        // A32NX.AUTO_THROTTLE_DISCONNECT the PseudoFWC counts as voluntary (the A/THR OFF memo).
+        // Not A32NX.FCU_ATHR_DISCONNECT_PUSH, which the FWC never sees: AUTO FLT A/THR OFF.
+        [AutothrustDisconnectEvent] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX.FCU_ATHR_DISCONNECT_PUSH",
+            Name = AutothrustDisconnectEvent,
             DisplayName = "Red ATHR Disconnect",
             Type = SimConnect.SimVarType.Event
         },
@@ -2878,11 +2882,48 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // All OnRequest (force-read on F5 / panel-show), NOT IsAnnounced (would spam).
         // Decoded in TryGetDisplayOverride unless ARINC429 / ValueDescriptions handle it.
         // ---- PFD: managed / preselect speeds (LVar; decoded) ----
-        ["A32NX_SPEEDS_MANAGED_PFD"] = new SimConnect.SimVarDefinition
+        // The PFD's speed target and whether it is managed (FlyByWirePfdSpeedTarget). The row is
+        // FMGC 1's word; the other four are its siblings, force-read with it by OnDisplayPanelShown
+        // and read from the cache by TryGetDisplayOverride. It replaced the plain
+        // A32NX_SPEEDS_MANAGED_PFD, which FBW #10890 stopped writing the approach, go-around and
+        // expedite targets into.
+        [PfdSpeedTargetKey] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_SPEEDS_MANAGED_PFD", DisplayName = "Managed speed",
+            Name = "A32NX_FMGC_1_PFD_SELECTED_SPEED", DisplayName = "Speed target",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-            Units = "knots"
+            Units = "number"
+        },
+        ["A32NX_FMGC_2_PFD_SELECTED_SPEED"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FMGC_2_PFD_SELECTED_SPEED", DisplayName = "FMGC 2 speed target",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Units = "number", ExcludeFromMonitorManager = true
+        },
+        ["A32NX_FMGC_1_DISCRETE_WORD_5"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FMGC_1_DISCRETE_WORD_5", DisplayName = "FMGC 1 discrete word 5",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Units = "number", ExcludeFromMonitorManager = true
+        },
+        ["A32NX_FMGC_2_DISCRETE_WORD_5"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FMGC_2_DISCRETE_WORD_5", DisplayName = "FMGC 2 discrete word 5",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Units = "number", ExcludeFromMonitorManager = true
+        },
+        ["A32NX_FCU_SELECTED_AIRSPEED"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FCU_SELECTED_AIRSPEED", DisplayName = "FCU selected airspeed",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Units = "number", ExcludeFromMonitorManager = true
+        },
+        // VAPP: the pilot's PERF APPR entry, else the FMS's computed one; 0 = none. Written by the
+        // A32NX FMS since FBW #10890 (A32NX_FMCMainDisplay.ts), unitless knots as on the A380.
+        ["A32NX_SPEEDS_VAPP"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_SPEEDS_VAPP", DisplayName = "Approach speed",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Units = "number"
         },
         // Units = knots is REQUIRED (live-verified): the raw number is m/s; reading it
         // with the knots unit returns -1 unset / the real preselect in knots.
@@ -5706,7 +5747,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             // ---- A380-parity status-box additions ----
             "FCU_SEL_ALT",
             "FCU_SEL_HDG",
-            "A32NX_SPEEDS_MANAGED_PFD",
+            PfdSpeedTargetKey,
             "A32NX_SpeedPreselVal",
             "A32NX_MachPreselVal",
             "A32NX_AUTOPILOT_VS_SELECTED",
@@ -5718,6 +5759,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "PFD_GREENDOT",
             "PFD_VF",
             "PFD_VSLOW",
+            "A32NX_SPEEDS_VAPP",
             "PFD_VALPHAPROT",
             "PFD_VALPHAMAX",
             "PFD_VSW",
@@ -6063,7 +6105,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "A32NX.FCU_AP_2_PUSH",
             "A32NX.FCU_ATHR_PUSH",
             "A32NX.FCU_AP_DISCONNECT_PUSH",
-            "A32NX.FCU_ATHR_DISCONNECT_PUSH",
+            AutothrustDisconnectEvent,
             "A32NX.FCU_SPD_MACH_TOGGLE_PUSH",
             "A32NX.FCU_TRK_FPA_TOGGLE_PUSH"
         },
@@ -6731,13 +6773,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // MainForm reads for the window title — reset to the declared default only.
         currentFlightPhase = "";
         // Deliberately NOT reset: _lastBaroMin/_lastDh (minimums) — same reasoning as the
-        // A380, though the sentinel differs: A320 declares both = -1, the SAME value
-        // ApproachMinimums.ToFeet uses for "no minimum set" (unlike the A380, which keeps
-        // an impossible -2 never-read sentinel distinct from its own -1 "none" reading).
-        // Either way, the gate is a plain "did the decoded value change" compare with no
-        // first-read suppression, so a genuinely-set minimum is meant to (re-)announce on
-        // connect; resetting the cache here would make an UNCHANGED minimum look changed
-        // and re-announce it as noise on reconnect.
+        // A380, whose -2 never-read seed behaves exactly like this -1. ApproachMinimums.
+        // Announcement speaks any set or changed value, a set minimum on connect included, and
+        // stays silent on a clear while the FMS starts over (IsFmsReset); resetting the cache
+        // here would make an UNCHANGED minimum look changed and re-announce it as noise on
+        // reconnect.
     }
     // ⚠️ There is NO bit 2 here, and that is not an omission to "fix". FBW's shim builds
     // A32NX_FMA_VERTICAL_ARMED as `altArmed | (clbArmed << 2) | (desArmed << 3) |
@@ -6878,7 +6918,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     /// </summary>
     public override bool IsMuteWrapExempt(string varName) => varName == A320TakeoffCallouts.IasKey;
 
-    // ---- Approach minimums last-announced values (-1 = unset); see ProcessSimVarUpdate.
+    // ---- Approach minimums last values read (-1 = unset); see ProcessSimVarUpdate.
     private int _lastBaroMin = -1, _lastDh = -1;
     private string _sdBoxContent = "";
     private int _sdRefreshSeq;   // "latest request wins" guard for SD-page refresh (mirrors A380)
@@ -7501,9 +7541,28 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // Sim handle captured when any display panel is shown, so sibling-reading display
     // overrides (the computed Vertical Deviation) can read the PFD cache off-render.
     private SimConnect.SimConnectManager? _displaySim;
+    /// <summary>The PFD box's speed-target row (FlyByWirePfdSpeedTarget); FMGC 1's word.</summary>
+    public const string PfdSpeedTargetKey = "PFD_SPEED_TARGET";
+
+    /// <summary>The autothrust instinctive disconnect (see its registration).</summary>
+    public const string AutothrustDisconnectEvent = "AUTO_THROTTLE_DISCONNECT";
+
+    // The speed-target row's siblings: not rows themselves, so a panel open or the live tick would
+    // never re-read them unless requested here.
+    private static readonly string[] PfdSpeedTargetSiblings =
+    {
+        "A32NX_FMGC_2_PFD_SELECTED_SPEED", "A32NX_FMGC_1_DISCRETE_WORD_5",
+        "A32NX_FMGC_2_DISCRETE_WORD_5", "A32NX_FCU_SELECTED_AIRSPEED",
+    };
+
     public override void OnDisplayPanelShown(string panelKey, SimConnect.SimConnectManager simConnect)
     {
         if (simConnect.IsConnected) _displaySim = simConnect;   // for sibling-reading overrides (V/DEV)
+        if (panelKey == "PFD" && simConnect.IsConnected && GetVariables().ContainsKey(PfdSpeedTargetKey))
+        {
+            foreach (string sibling in PfdSpeedTargetSiblings)
+                simConnect.RequestVariable(sibling, forceUpdate: true);
+        }
         // The packed-word *_1 halves aren't in the ND display set (only the *_0 keys render),
         // so a panel open / F5 wouldn't otherwise re-read them — request them here so the
         // decoded ident / approach message is built from fresh halves.
@@ -7825,8 +7884,23 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             displayText = $"{(bcd >> 12) & 0xF}{(bcd >> 8) & 0xF}{(bcd >> 4) & 0xF}{bcd & 0xF}";
             return true;
         }
-        // Managed target speed on the PFD (0 = none shown).
-        if (varKey == "A32NX_SPEEDS_MANAGED_PFD") { displayText = value < 1 ? "none" : $"{value:0} knots"; return true; }
+        // The PFD's speed target, managed or selected, from the FMGC words it draws.
+        if (varKey == PfdSpeedTargetKey)
+        {
+            var s = _displaySim;
+            displayText = FlyByWirePfdSpeedTarget.Describe(value,
+                s?.GetCachedVariableValue("A32NX_FMGC_1_DISCRETE_WORD_5"),
+                s?.GetCachedVariableValue("A32NX_FMGC_2_PFD_SELECTED_SPEED"),
+                s?.GetCachedVariableValue("A32NX_FMGC_2_DISCRETE_WORD_5"),
+                s?.GetCachedVariableValue("A32NX_FCU_SELECTED_AIRSPEED"));
+            return true;
+        }
+        // Approach speed from the FMS (0 = none entered or computed).
+        if (varKey == "A32NX_SPEEDS_VAPP")
+        {
+            displayText = value < 1 ? "not set" : FlyByWirePfdSpeedTarget.Knots(value);
+            return true;
+        }
         // Preselected speed / Mach (set in the MCDU PERF page; -1 = none).
         if (varKey == "A32NX_SpeedPreselVal") { displayText = value < 0 ? "none" : $"{value:0} knots"; return true; }
         if (varKey == "A32NX_MachPreselVal") { displayText = value < 0 ? "none" : $"{value:0.00}"; return true; }
@@ -8005,20 +8079,23 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // NCD until the FMS transmits minimums (phase > cruise, or cruise within 250 NM:
         // shouldTransmitMinimums in A32NX_FMCMainDisplay.ts), so a minimum entered at the
         // gate read "Not set" (live-verified: MCDU MDA 220 → AIRLINER var 220 instantly,
-        // FM1 word still NCD). Announce when set/changed; no announce on clear
-        // (FBW resets MDA→0, DH→-1). Sentinel decode shared with the display path via
-        // ApproachMinimums — DH 0 is a valid CAT III entry and MUST announce (ft >= 0),
-        // matching the "0 feet" the panel shows; MDA can never decode to 0.
+        // FM1 word still NCD). Announced when set, changed or cleared (ApproachMinimums.
+        // Announcement): the FMS clears both when the approach changes (FBW #10724), a change the
+        // pilot did not make; a clear while a flight load or reconnect settles, or on the ground
+        // after a flight (the DONE-phase reset), is the FMS starting over (FBW resets MDA→0,
+        // DH→-1; ApproachMinimums.IsFmsReset). Sentinel decode shared with the display path
+        // — DH 0 is a valid CAT III entry and MUST announce (ft >= 0), matching the "0 feet" the
+        // panel shows; MDA can never decode to 0. (NO DH does not reach this var at all: the FMS
+        // writes the string 'NO DH' to it, which the sim ignores, leaving the old DH — measured
+        // 2026-10-12. The PFD reads NO DH from the FM EIS discrete word 2, bit 29.)
         if (varName == "AIRLINER_MINIMUM_DESCENT_ALTITUDE" || varName == "AIRLINER_DECISION_HEIGHT")
         {
             bool baro = varName.EndsWith("DESCENT_ALTITUDE", StringComparison.Ordinal);
             int ft = ApproachMinimums.ToFeet(isDecisionHeight: !baro, value);
-            if (ft != (baro ? _lastBaroMin : _lastDh))
-            {
-                if (baro) _lastBaroMin = ft; else _lastDh = ft;
-                if (ft >= 0)
-                    announcer.Announce($"{(baro ? "Baro minimum" : "Decision height")} {ft} feet");
-            }
+            string? phrase = ApproachMinimums.Announcement(isDecisionHeight: !baro, baro ? _lastBaroMin : _lastDh, ft,
+                reseeding: ApproachMinimums.IsFmsReset(IsFcuValueSettling, _calloutOnGround, _fmgcPhase));
+            if (baro) _lastBaroMin = ft; else _lastDh = ft;
+            if (phrase != null) announcer.Announce(phrase);
             return true;
         }
 

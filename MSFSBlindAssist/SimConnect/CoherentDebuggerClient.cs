@@ -15,6 +15,10 @@ namespace MSFSBlindAssist.SimConnect
     /// </summary>
     public interface IMcduBridge
     {
+        /// <summary>State push: the verdict of a command whose outcome the page may not show
+        /// (Data["command"], Data["result"]); the window decides what, if anything, to say.</summary>
+        const string StateTypeCommandResult = "fbwa380_mcdu_command_result";
+
         event EventHandler<EFBStateUpdateEventArgs>? StateUpdated;
         bool IsBridgeConnected { get; }
         void EnqueueCommand(string command, Dictionary<string, string>? payload = null);
@@ -36,8 +40,9 @@ namespace MSFSBlindAssist.SimConnect
     ///
     /// Implements IMcduBridge so FBWA380MCDUForm can consume it exactly like
     /// the old EFBBridgeServer: it raises the same fbwa380_mcdu_screen /
-    /// fbwa380_mcdu_elements / fbwa380_mcdu_connected state pushes and accepts
-    /// the same command vocabulary, translating each into an agent call.
+    /// fbwa380_mcdu_elements / fbwa380_mcdu_connected state pushes (plus
+    /// IMcduBridge.StateTypeCommandResult) and accepts the same command
+    /// vocabulary, translating each into an agent call.
     /// </summary>
     public sealed class CoherentDebuggerClient : IMcduBridge, IDisposable
     {
@@ -51,6 +56,10 @@ namespace MSFSBlindAssist.SimConnect
 
         public event EventHandler<EFBStateUpdateEventArgs>? StateUpdated;
         public event Action<string>? Error;
+
+        /// <summary>A command whose verdict is pushed back (<see cref="IMcduBridge.StateTypeCommandResult"/>):
+        /// a field entry, or a page jump the MFD may refuse (a disabled page item).</summary>
+        internal static bool ReportsResult(string command) => command is "send_to_field" or "navigate_by_id";
 
         private readonly SynchronizationContext? _syncContext;
         private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(4) };
@@ -137,12 +146,22 @@ namespace MSFSBlindAssist.SimConnect
         public void EnqueueCommand(string command, Dictionary<string, string>? payload = null)
         {
             // Translate the form's command vocabulary into an agent call and
-            // fire it (fire-and-forget; the next poll reflects the result).
+            // fire it (fire-and-forget; the next poll reflects the result). The verdict
+            // of a field entry or a page jump is pushed back: the poll cannot show a
+            // refusal, since a fixed-value list that ignores typed text, or a disabled
+            // page item, changes nothing on the page.
             string? expr = BuildCommandExpression(command, payload);
             if (expr == null) return;
+            bool reportsResult = ReportsResult(command);
             _ = Task.Run(async () =>
             {
-                try { await EvalAsync(expr); }
+                try
+                {
+                    string result = await EvalAsync(expr);
+                    if (reportsResult && result.Length > 0)
+                        Raise(IMcduBridge.StateTypeCommandResult,
+                            new Dictionary<string, string> { ["command"] = command, ["result"] = result });
+                }
                 catch { /* a dropped command self-heals on the next poll */ }
             });
         }

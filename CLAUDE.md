@@ -135,7 +135,7 @@ Each area's rules load automatically when Claude reads its code; their full text
 | [weather.md](docs/weather.md) | ActiveSky, the weather radar, METAR readouts, weather announcements | weather |
 | [sayintentions.md](docs/sayintentions.md) | SayIntentions: clearance parsing, the taxi-route import, readouts | sayintentions-clearance, sayintentions-import, sayintentions-gates, sayintentions-readouts |
 | [vatsim.md](docs/vatsim.md) | VATSIM: the vPilot plugin, pipe server, announcement settings | vatsim |
-| [updates.md](docs/updates.md) | Release and preview channels, the updater, release workflows | updates |
+| [updates.md](docs/updates.md) | Release and preview channels, the updater, release workflows, the startup data check | updates |
 | [visual-guidance.md](docs/visual-guidance.md) | Visual landing guidance (dual tone), hand fly, the liftoff handoff | visual-guidance |
 | [waypoint-flight-director.md](docs/waypoint-flight-director.md) | The en-route audio flight director to the tracked waypoint slots: dual tone, crossing-altitude constraints, per-aircraft tuning | waypoint-flight-director |
 | [audio.md](docs/audio.md) | Which Windows audio endpoint guidance tones play on | audio-output |
