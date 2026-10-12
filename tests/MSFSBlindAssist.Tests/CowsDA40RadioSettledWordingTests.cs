@@ -97,4 +97,8 @@ public class CowsDA40RadioSettledWordingTests
         }
         finally { Thread.CurrentThread.CurrentCulture = was; }
     }
+    [Fact]
+    public void ATargetTheAutopilotSyncedAsAModeEngagedKeepsItsName()
+        => Assert.Equal("Selected vertical speed 0",
+            CowsDA40Definition.ComposeSettled(new Dictionary<string, double> { ["DA40_AP_VS_SET"] = 0 }, keepNames: true));
 }

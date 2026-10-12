@@ -285,7 +285,11 @@ public partial class CowsDA40Definition
         // knob came to REST on, moments after the pilot stopped turning, and queueing it
         // behind the display window's own read-backs is what made the altimeter setting
         // arrive so late it read as broken.
-        string said = ComposeSettled(pending);
+        // A target the autopilot moved itself as a mode engaged (VS syncs to the current
+        // vertical speed, FLC to the current airspeed) keeps its name: a bare "0" right after
+        // VS engaged said nothing a pilot could place (2026-10-12).
+        bool modeSync = (DateTime.UtcNow - _apModeChangedAt).TotalMilliseconds < ApModeSyncMs;
+        string said = ComposeSettled(pending, keepNames: modeSync);
         if (said.Length > 0) _radioAnnouncer.AnnounceImmediate(said);
     }
 
@@ -311,7 +315,13 @@ public partial class CowsDA40Definition
         return (d == 0 ? 360 : d).ToString("000", System.Globalization.CultureInfo.InvariantCulture);
     }
 
-    internal static string ComposeSettled(IReadOnlyDictionary<string, double> pending)
+    /// <summary>How long after a GFC 700 mode change a target that moves is that mode's sync.</summary>
+    private const int ApModeSyncMs = 2000;
+
+    /// <summary>When a GFC 700 mode last changed (set from the mode rows as they arrive).</summary>
+    private DateTime _apModeChangedAt = DateTime.MinValue;
+
+    internal static string ComposeSettled(IReadOnlyDictionary<string, double> pending, bool keepNames = false)
     {
         int apCount = 0;
         foreach (var key in pending.Keys) if (IsApSelectedKey(key)) apCount++;
@@ -332,7 +342,7 @@ public partial class CowsDA40Definition
                 ? HeadingWords(f)
                 : f.ToString(com ? "0.000" : nav ? "0.00" : "0", System.Globalization.CultureInfo.InvariantCulture);
 
-            parts.Add(IsApSelectedKey(kv.Key) && apCount == 1 ? value : kv.Value + " " + value);
+            parts.Add(IsApSelectedKey(kv.Key) && apCount == 1 && !keepNames ? value : kv.Value + " " + value);
         }
         return string.Join(". ", parts);
     }

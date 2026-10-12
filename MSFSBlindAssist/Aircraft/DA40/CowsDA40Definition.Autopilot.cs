@@ -322,7 +322,12 @@ public partial class CowsDA40Definition
             // The mode buttons speak through the FMA (ApModeIsSpokenByFma), so their combos
             // are def-handled - and must still follow the aeroplane in an open panel.
             RefreshControlWhenDefHandled = _ => true,
-            ExcludeFromMonitorManager = key != "DA40_AP_MASTER"
+            ExcludeFromMonitorManager = key != "DA40_AP_MASTER",
+            // Per frame, like the selected values (AddApValue): the mode change and the target
+            // it syncs (VS to the current rate, FLC to the current speed) then arrive in the
+            // same frame, so the target's settle knows a mode engaged (ApModeSyncMs).
+            ExcludeFromBatch = true,
+            HighFrequency = true
         };
     }
 
