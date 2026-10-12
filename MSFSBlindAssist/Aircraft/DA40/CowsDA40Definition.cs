@@ -1075,9 +1075,13 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         // (~360-400 fpm at the AFM's 66-77 KIAS on a 3 degree path) until the 3 s exponential
         // falls below it - at ~15 ft - and touches down at 80 fpm; a jet's 6 s law from 50 ft
         // asked a DA40 on a normal approach for 620 fpm ("floating") the whole way down.
+        // Flown on the law at LOWG 16C (flaps LDG, 70 KIAS, -380 fpm): "Flare" at 16.9 ft gear
+        // height, the sink followed the target down to a ~120 fpm touchdown at 63 kt, 720 ft past
+        // the threshold, the attitude rising from -2 to +2.5 degrees. So visual guidance's flare
+        // pitch is 3, not the A320's 6, which would balloon this aeroplane.
         FlareAltitudeBiasFt       = 2.7,
         FlareTriggerWheelHeightFt = 15.0,
-        FlareTargetPitchDeg       = 6.0,
+        FlareTargetPitchDeg       = 3.0,
         FlareSinkTauSec           = 3.0,
         FlareTouchdownSinkFpm     = 80.0,
         FlareHoldsEntrySink       = true,
