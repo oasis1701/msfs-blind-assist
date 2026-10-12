@@ -12,6 +12,7 @@ public partial class ChecklistForm : Form
 
     private Panel scrollPanel = null!;
     private List<CheckedListBox> checklistViews = new List<CheckedListBox>();
+    private readonly string aircraftCode;
     private readonly string checklistFileName;
     private IntPtr previousWindow;
 
@@ -22,8 +23,9 @@ public partial class ChecklistForm : Form
     private static int lastFocusedListViewIndex = 0;
     private static int lastSelectedItemIndex = 0;
 
-    public ChecklistForm(ScreenReaderAnnouncer announcer, string checklistFileName)
+    public ChecklistForm(ScreenReaderAnnouncer announcer, string aircraftCode, string checklistFileName)
     {
+        this.aircraftCode = aircraftCode;
         this.checklistFileName = checklistFileName;
         InitializeComponent();
         SetupAccessibility();
@@ -107,64 +109,18 @@ public partial class ChecklistForm : Form
     }
 
     private string GetChecklistText()
-    {
-        // Construct file path
-        string appPath = AppDomain.CurrentDomain.BaseDirectory;
-        string filePath = Path.Combine(appPath, "Checklists", checklistFileName);
-
-        try
-        {
-            if (File.Exists(filePath))
-            {
-                return File.ReadAllText(filePath);
-            }
-            else
-            {
-                return $"[Error]\nChecklist file not found: {filePath}";
-            }
-        }
-        catch (Exception ex)
-        {
-            return $"[Error]\nError loading checklist: {ex.Message}";
-        }
-    }
-
-    private Dictionary<string, List<string>> ParseChecklistText(string text)
-    {
-        var checklistItems = new Dictionary<string, List<string>>();
-        string? currentCategory = null;
-
-        var lines = text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-
-        foreach (var line in lines)
-        {
-            var trimmedLine = line.Trim();
-
-            // Skip empty lines
-            if (string.IsNullOrWhiteSpace(trimmedLine))
-                continue;
-
-            // Check if line is a category (starts with [ and ends with ])
-            if (trimmedLine.StartsWith("[") && trimmedLine.EndsWith("]"))
-            {
-                currentCategory = trimmedLine.Substring(1, trimmedLine.Length - 2);
-                checklistItems[currentCategory] = new List<string>();
-            }
-            else if (currentCategory != null)
-            {
-                // Add item to current category
-                checklistItems[currentCategory].Add(trimmedLine);
-            }
-        }
-
-        return checklistItems;
-    }
+        // The aircraft's own checklist first, then the file the aircraft names — see
+        // ChecklistContent, which owns the order.
+        => Services.ChecklistContent.Load(
+            aircraftCode,
+            checklistFileName,
+            Services.NativeChecklistReader.Render,
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Checklists"));
 
     private void PopulateChecklist()
     {
         // Load and parse checklist from aircraft-specific text file
-        string checklistText = GetChecklistText();
-        var checklistItems = ParseChecklistText(checklistText);
+        var sections = Services.ChecklistContent.Parse(GetChecklistText());
 
         // Clear existing controls and views
         scrollPanel.Controls.Clear();
@@ -173,11 +129,11 @@ public partial class ChecklistForm : Form
         int yPosition = 10;
         int tabIndex = 0;
 
-        // Create a CheckedListBox for each category from the file
-        foreach (var categoryEntry in checklistItems)
+        // Create a CheckedListBox for each category, in the checklist's own order
+        foreach (var section in sections)
         {
-            string category = categoryEntry.Key;
-            var items = categoryEntry.Value;
+            string category = section.Title;
+            var items = section.Items;
 
             // Create label for the category
             var label = new Label
@@ -231,9 +187,7 @@ public partial class ChecklistForm : Form
     }
 
     private string GetItemKey(string category, string itemText)
-    {
-        return $"{category}|{itemText}";
-    }
+        => Services.ChecklistContent.ItemKey(aircraftCode, category, itemText);
 
     private void CheckedListBox_ItemCheck(object? sender, ItemCheckEventArgs e)
     {

@@ -58,3 +58,7 @@ Corrected 2026-10-08: the rule said both headings always arrive in radians and m
 Moved 2026-10-10 from gsx-stands-docking.md (split for the rule budget).
 
 Moved 2026-10-10 from gsx-docking.md: a fact about SimConnect data definitions, not a docking rule.
+
+## SIM-22
+
+- **`VERTICAL SPEED` is the INDICATED vertical speed, filtered like a VSI; a cue that steers on sink rate reads `VELOCITY WORLD Y`.** Measured on the COWS DA40 in the manual landing assist's flare (LOWG 16C, 2026-10-12): through a balloon the MSL altitude held level for 1.8 s while `VERTICAL SPEED` still read -337, -310, -288 fpm, and in a second approach it moved about 1 fpm per quarter-second sample through the whole round-out while `VELOCITY WORLD Y` followed the aeroplane (a 2 s, ±15 fpm wobble on the approach). The flare's sink-rate tone keyed on the indicated figure told the pilot "sinking too fast, pull up" after the descent had stopped, which is how a flare balloons. `FlareAssistData.VerticalSpeedFPM` is therefore `VELOCITY WORLD Y` in feet per minute (positive up). Visual guidance's 505 stream still reads `VERTICAL SPEED`; it steers on pitch, not on sink rate, so it was left alone and is a candidate for its own change. → [architecture.md](../architecture.md)

@@ -1,0 +1,110 @@
+[Before Starting Engine]
+Preflight inspection complete
+Safety belts fastened, passengers briefed
+Rear canopy closed and latched (Cabin, Doors and Windows)
+Parking brake set (Center Console, Brakes)
+Flight controls free and correct (Center Console, Flight Controls reads the surfaces)
+Elevator trim centred, the take-off position (Elevator Trim, Centre Trim)
+Power lever idle (Power and Levers)
+Fuel valve NORMAL, safety wire intact (Fuel System)
+Fuel quantity checked (output F). Above 14 US gallons the gauge reads on its cap: dip the tanks
+ESS BUS off, its normal position (Electrical)
+Electric master on, bus voltage checked (Electrical)
+Annunciations checked (output Alt+E reads the CAS window)
+Strobe lights on (Lighting Switches)
+
+[Starting Engine]
+Engine master on (Engine Start). The ECU heats the glow plugs on a cold engine by itself
+Glow annunciation out before cranking. MSFSBA announces it going out
+Propeller area clear
+Start key START, hold until about 500 RPM, then Release Start Key (Engine Start)
+Oil pressure in the green within a few seconds (output Alt+S)
+No CAS warnings (output Alt+E)
+Avionics master on (Electrical)
+Warm-up: idle for 2 minutes, then up to 50 percent load
+
+[Before Taxiing]
+Altimeters set (input Ctrl+B sets both)
+Radios set: COM and NAV standby, then swap (Radios, or the PFD window, output Alt+P)
+Transponder code set (PFD window softkeys)
+Flight plan loaded (MFD window: output Alt+M, or input Shift+M)
+Flaps cycled UP, T/O, LDG and back to UP (Flaps)
+Taxi light on (Lighting Switches)
+Parking brake released, brakes checked
+
+[Before Take-off]
+Parking brake set
+ECU test run, both results passed (ECU panel, about 26 seconds)
+   Preconditions: power lever idle, voter AUTO, propeller below 1100 RPM, gearbox above 38 C
+ECU voter AUTO (ECU)
+Fuel valve NORMAL (Fuel System)
+Fuel transfer pump as required (Fuel System). It stops itself above about 14 gallons
+Engine instruments in the green (output Alt+S)
+Flaps T/O (Flaps)
+Elevator trim centred (Elevator Trim)
+Canopy closed and latched, no DOOR OPEN warning on the CAS window
+Engine alternate air closed (Ice and Pitot)
+Alternate static valve closed (Ice and Pitot)
+Pitot heat as required (Ice and Pitot)
+Autopilot off, flight director as required (Autopilot)
+Landing light on, strobe lights on (Lighting Switches)
+Transponder altitude reporting
+
+[Take-off]
+Power lever full, load at or above the day's minimum (output E; the minimum is on Power and Levers)
+Rotate 67 KIAS, pitch about 7.5 degrees nose up
+Short-field rotate 60 KIAS, flaps T/O
+Climb 72 KIAS with flaps T/O
+Flaps UP at a safe height (Flaps)
+
+[Climb]
+Climb 88 KIAS, flaps UP
+Load 92 percent or less once climbing. 100 percent is the take-off setting
+Engine temperatures in the green (output Shift+O). On a hot day coolant limits climb power
+Landing light off when clear of the circuit
+
+[Cruise]
+Power set (output E)
+Fuel transfer when the main tank calls for it (Fuel System). Set a timer: it runs about a gallon a minute
+Tank difference checked against the 9 gallon limit (output Shift+F)
+Engine instruments checked (output Alt+S)
+
+[Descent]
+Altimeters set (input Ctrl+B)
+Approach briefing complete, procedure loaded (MFD window, Ctrl+P for procedures)
+Fuel transfer complete, transfer pump off (Fuel System)
+
+[Approach and Landing]
+Downwind: 45 percent load
+Abeam the threshold: 20 percent load, flaps T/O below 110 KIAS, 85 KIAS
+Final: 35 percent load, flaps LDG below 98 KIAS, 77 KIAS
+Short-field approach 69 KIAS
+Landing light on
+Over the threshold reduce power gradually, bleed off speed in the flare
+Touchdown about 65 KIAS, about 5 degrees nose up
+
+[Go-around]
+Power lever full
+Flaps T/O
+Climb 72 KIAS with flaps T/O, then flaps UP at a safe height
+
+[After Landing]
+Flaps UP (Flaps)
+Landing light off, taxi light on
+Pitot heat off (Ice and Pitot)
+Transponder as required
+
+[Engine Shutdown]
+Parking brake set (Brakes)
+Power lever idle
+Avionics master off (Electrical)
+Engine master off (Engine Start)
+Lights off except as required (Lighting Switches)
+Electric master off (Electrical)
+ELT not transmitting (ELT)
+
+[Tips]
+Starting: cycle the engine master to run the glow plugs again
+Reset failures and charge the battery: Reset Failures and Charge Battery on the ECU panel, engine master off, holds 10 seconds
+Best glide 88 KIAS, flaps UP
+Maximum flap speeds: T/O 110 KIAS, LDG 98 KIAS. Never exceed 172 KIAS

@@ -733,6 +733,7 @@ public class ClaudeContextBudgetTests
             "MSFSBlindAssist/Forms/PMDG/", "MSFSBlindAssist/Forms/CduScratchpadAnnouncer.cs", "MSFSBlindAssist/Forms/FbwEwdWindow.cs",
             "MSFSBlindAssist/Forms/NavRadiosForm.cs", "MSFSBlindAssist/Forms/FMCSettingsForm.cs",
             "MSFSBlindAssist/Services/NdWaypointReadout.cs", "MSFSBlindAssist/Services/RelativeDirection.cs",
+            "MSFSBlindAssist/Services/McduWindowRouting.cs",
             "MSFSBlindAssist/Navigation/NavigationCalculator.cs", "MSFSBlindAssist/Navigation/RunwayCenterlineTracker.cs",
         },
         ["a feature with no rules or doc of its own yet (TCAS display, SimBrief planner, waypoint tracking, "
@@ -769,6 +770,10 @@ public class ClaudeContextBudgetTests
             "BRF-6 GetAssignedStatusAsync", "SI-30 ValidateDatabaseSimulatorMatch", "MD11-23 CalcPathVerdict.PilotWarning",
             "VAT-12 HotkeyAction.ToggleVatsimAnnouncements", "WX-10 HasOwnIcingAnnouncer",
             "DCK-19 UpdateHeadingErrorWithThresholds",
+            "DA40-14 OwnerMute", "DA40-23 SetLVar", "DA40-9 _uiSetEcho", "DA40A-3 ExecuteCalculatorCodeUnique",
+            "DA40A-9 AnnounceImmediate", "DA40A-16 BaseAircraftDefinition", "DA40F-3 ExecuteCalculatorCodeUnique",
+            "DA40F-4 ExecuteCalculatorCodeUnique", "DA40G-2 ExecuteCalculatorCodeUnique",
+            "DA40A-22 RefreshControlWhenDefHandled",
         },
         ["named as what never to use: the rule guards the code that must avoid it"] = new[]
         {
@@ -785,18 +790,21 @@ public class ClaudeContextBudgetTests
         {
             "ROL-10 ExitBearingTrue", "ROL-21 ExitBearingTrue", "ROL-28 DistanceFromThresholdFeet", "SI-7 ParkingSpot.Radius",
             "SI-13 TaxiPathStampUtc", "SIC-23 ClearanceText", "STR-6 TurnAngleDegrees", "STR-16 TurnDirection",
-            "SUR-12 TaxiNode.Type", "HLD-5 RunwayCenterline",
+            "SUR-12 TaxiNode.Type", "HLD-5 RunwayCenterline", "ROL-32 VisualGuidanceProfile", "ROL-32 FlareTriggerWheelHeightFt",
         },
         ["a setting the rule's code reads or writes"] = new[]
         {
             "A320-9 A32NXDisabledMonitorVariablesSet", "A320-37 A380DisabledMonitorVariablesSet",
             "MD11-18 Md11DisabledMonitorVariablesSet", "AI-4 UserSettings.GeminiModel", "MON-3 SettingsManager.Save",
+            "DA40A-11 DA40DisabledMonitorVariablesSet",
         },
         ["a SimVarDefinition field the aircraft definitions set: the rule loads on the definitions"] = new[]
         {
             "A320-10 SimVarDefinition.IsNotSet", "A380-2 RenderAsButton", "A380-10 RenderAsButton",
             "A380F-12 ExcludeFromBatch", "ARINC-2 ValueDescriptions", "MD11-11 ExcludeFromMonitorManager",
             "MD11-22 SimVarDefinition.ValueToDescriptionKey",
+            "DA40-7 HelpText", "DA40-9 IsAnnounced", "DA40-23 SimVarType.LVar", "DA40S-3 SimVarDefinition.Scale",
+            "DA40S-6 HelpText", "DA40S-6 RenderAsSlider",
         },
         ["a MainForm field declared in MainForm.cs and used by the partial the rule loads on"] = new[]
         {

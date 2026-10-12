@@ -80,6 +80,13 @@ public class TakeoffAssistManager : IDisposable
     private double? fenixVRSpeed = null;
     private bool isFenixAircraft = false;
 
+    // The two configurable roll callouts. Defaults are the airliner pair, so any aircraft
+    // that never calls ConfigureSpeedCallouts is byte-for-byte unchanged.
+    private double? lowCalloutKts = 80.0;
+    private double? highCalloutKts = 100.0;
+    private string lowCalloutPhrase = "80 knots";
+    private string highCalloutPhrase = "100 knots";
+
     // Configuration constants - shared
     private const int ANNOUNCEMENT_INTERVAL_MS = 500; // 500ms between announcements
     private const double PITCH_THRESHOLD = 1.0; // Announce if pitch changes by >1 degree
@@ -541,21 +548,27 @@ public class TakeoffAssistManager : IDisposable
         if (!isActive) return;
         if (!enableCallouts) return;
 
-        // 80 knots callout (all aircraft)
-        // Use Announce() (queued, non-interrupting) so callouts don't cut each other off
-        if (!hasAnnounced80Knots && currentIAS >= 80.0)
+        // ⚠️ THE 80 AND 100 KNOT CALLS ARE AIRLINER CALLS AND THEY ARE WRONG ON A LIGHT
+        // SINGLE. They were hardcoded "all aircraft". A DA40 rotates at 67 KIAS, so "80 knots"
+        // arrives when the aeroplane is already flying and "100 knots" well into the climb -
+        // two callouts during the busiest ten seconds of the flight, neither of which marks
+        // anything. Reported from the cockpit as exactly that.
+        //
+        // The speeds now come from the aircraft (ConfigureSpeedCallouts). The default is still
+        // 80/100, so every airframe that has not been given a profile behaves as before.
+        // Use Announce() (queued, non-interrupting) so callouts don't cut each other off.
+        if (!hasAnnounced80Knots && lowCalloutKts.HasValue && currentIAS >= lowCalloutKts.Value)
         {
-            announcer.Announce("80 knots");
+            announcer.Announce(lowCalloutPhrase);
             hasAnnounced80Knots = true;
-            Log.Debug("TakeoffAssist", $"Speed callout: 80 knots (IAS={currentIAS:F1})");
+            Log.Debug("TakeoffAssist", $"Speed callout: {lowCalloutPhrase} (IAS={currentIAS:F1})");
         }
 
-        // 100 knots callout (all aircraft)
-        if (!hasAnnounced100Knots && currentIAS >= 100.0)
+        if (!hasAnnounced100Knots && highCalloutKts.HasValue && currentIAS >= highCalloutKts.Value)
         {
-            announcer.Announce("100 knots");
+            announcer.Announce(highCalloutPhrase);
             hasAnnounced100Knots = true;
-            Log.Debug("TakeoffAssist", $"Speed callout: 100 knots (IAS={currentIAS:F1})");
+            Log.Debug("TakeoffAssist", $"Speed callout: {highCalloutPhrase} (IAS={currentIAS:F1})");
         }
 
         // V1 callout (Fenix only, if V1 speed is configured)
@@ -586,6 +599,25 @@ public class TakeoffAssistManager : IDisposable
     /// </summary>
     /// <param name="v1">V1 speed in knots (0 or null = not configured)</param>
     /// <param name="vr">VR speed in knots (0 or null = not configured)</param>
+    /// <summary>
+    /// Replace the two takeoff-roll speed callouts for this aircraft.
+    ///
+    /// A callout is only worth making if it MARKS something on the roll. On an airliner 80 and
+    /// 100 knots are checks in their own right; on a light single they are just numbers said
+    /// after the aeroplane has already flown. Pass null for either to have it not called at all.
+    /// </summary>
+    public void ConfigureSpeedCallouts(double? lowKts, string lowPhrase,
+                                       double? highKts, string highPhrase)
+    {
+        lowCalloutKts = lowKts;
+        highCalloutKts = highKts;
+        lowCalloutPhrase = lowPhrase;
+        highCalloutPhrase = highPhrase;
+        Log.Debug("TakeoffAssist",
+            $"Speed callouts configured: {lowKts?.ToString() ?? "none"} '{lowPhrase}', " +
+            $"{highKts?.ToString() ?? "none"} '{highPhrase}'");
+    }
+
     public void SetFenixVSpeeds(double? v1, double? vr)
     {
         fenixV1Speed = (v1.HasValue && v1.Value > 0) ? v1 : null;
