@@ -129,4 +129,23 @@ public class CowsDA40FsCopilotFindsTests
         Assert.Equal("GENERAL ENG MASTER ALTERNATOR:1", vars["DA40_ALTERNATOR_STOCK"].Name);
         Assert.False(new CowsDA40Definition(DA40Variant.XLS).GetVariables().ContainsKey("DA40_ALTERNATOR_STOCK"));
     }
+    [Theory]
+    // The master off in cruise: the RPM fell to 0 while the flag stayed up (2026-10-12).
+    [InlineData(true, 1.0, 0.0, false)]
+    [InlineData(true, 1.0, 150.0, false)]
+    // Cranking: the flag comes up before the RPM does, and cranking speed is not running.
+    [InlineData(false, 1.0, 300.0, false)]
+    [InlineData(false, 1.0, 695.0, true)]
+    // In the gap the state holds.
+    [InlineData(true, 1.0, 300.0, true)]
+    [InlineData(true, 0.0, 2100.0, false)]
+    public void TheNgRunsOnlyWithTheFlagAndTheCrankshaft(bool was, double flag, double rpm, bool running)
+        => Assert.Equal(running, CowsDA40Definition.EngineRunningFrom(was, flag, rpm));
+
+    [Fact]
+    public void TheRunningStateWaitsForBothInputs()
+    {
+        Assert.Null(CowsDA40Definition.EngineRunningFrom(null, 1.0, null));
+        Assert.Null(CowsDA40Definition.EngineRunningFrom(null, null, 700.0));
+    }
 }

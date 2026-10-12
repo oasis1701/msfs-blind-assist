@@ -57,6 +57,54 @@ public partial class CowsDA40Definition
 {
     private const string EngineStartPanel = "Engine Start";
 
+    // ---------- Is the engine running? ----------
+    //
+    // ⚠️ ON THE NG, GENERAL ENG COMBUSTION DOES NOT SAY. COWS drives the engine's RPM itself
+    // and leaves the sim's combustion flag up: with the Engine Master switched OFF in cruise
+    // the RPM was 0 within six seconds and the flag stayed 1 - for eight seconds in one test
+    // and for SEVEN MINUTES in another, until the master came back on (measured 2026-10-12).
+    // So "Engine: Stopped" came late or not at all, which is the one announcement this
+    // aeroplane must never miss. Running is the flag AND the crankshaft turning above 400
+    // RPM; stopped is no flag OR under 200 RPM (the gap is hysteresis, so a start's
+    // cranking speed cannot read as running). The XLS keeps the flag alone: its piston
+    // engine's flag follows combustion.
+    private const double EngineRunningRpm = 400;
+    private const double EngineStoppedRpm = 200;
+    private double? _engineCombustion, _engineRpm;
+    private bool? _engineRunning;
+
+    /// <summary>Running from the flag and the RPM; null until both are known. Pure for the suite.</summary>
+    internal static bool? EngineRunningFrom(bool? wasRunning, double? combustion, double? rpm)
+    {
+        if (combustion is null || rpm is null) return wasRunning;
+        if (combustion < 0.5 || rpm < EngineStoppedRpm) return false;
+        if (rpm > EngineRunningRpm) return true;
+        return wasRunning ?? false;
+    }
+
+    /// <summary>
+    /// Tracks the NG's running state from its two inputs and speaks it on the change. Returns
+    /// true for the combustion flag, which no longer speaks on its own.
+    /// </summary>
+    private bool NoteEngineRunning(string varName, double value, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        if (_variant != DA40Variant.NG) return false;
+        bool isFlag = varName == "DA40_START_COMBUSTION";
+        if (!isFlag && varName != "DA40_POWER_RPM") return false;
+
+        if (isFlag) _engineCombustion = value; else _engineRpm = value;
+
+        bool? before = _engineRunning;
+        _engineRunning = EngineRunningFrom(before, _engineCombustion, _engineRpm);
+
+        // The first answer is the baseline, never news.
+        if (before.HasValue && _engineRunning.HasValue && before != _engineRunning &&
+            !Settings.SettingsManager.Current.DA40DisabledMonitorVariablesSet.Contains("DA40_START_COMBUSTION"))
+            announcer.AnnounceImmediate(_engineRunning.Value ? "Engine: Running" : "Engine: Stopped");
+
+        return isFlag;
+    }
+
     private static Dictionary<string, SimVarDefinition> BuildEngineStartVariables()
     {
         var v = new Dictionary<string, SimVarDefinition>();

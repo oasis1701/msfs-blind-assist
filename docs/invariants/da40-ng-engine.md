@@ -68,3 +68,7 @@ The text is verbatim from the CLAUDE.md invariants PR #242 added; where two bull
 ## DA40E-15
 
 - **The NG's Engine Master is `RECIP ENG ENGINE MASTER SWITCH:1`, never `GENERAL ENG MASTER ALTERNATOR:1`.** The model's switch is the stock `ASOBO_ENGINE_Switch_Master_Template`; COWS's logic then toggles the alternator to follow it only while `L:ELEC_BUS_ECU1_VOLT` is above 17 V and no alternator failure is set. A row on the alternator said "Engine Master: Off" and "On" during every start as cranking sagged the bus (measured 2026-10-12). The write is `ENGINE_MASTER_1_SET`; the alternator is `DA40_ALTERNATOR_STOCK`, NG-only, because the XLS's alternator half is `DA40_ELEC_ALT_MASTER` on the same SimVar. → [da40.md](../da40.md)
+
+## DA40E-16
+
+- **The NG's "engine running" is the combustion flag AND the crankshaft, never the flag alone.** COWS drives the NG's RPM itself and leaves `GENERAL ENG COMBUSTION:1` up: in flight with the Engine Master off, the RPM was 0 within six seconds while the flag stayed 1 for seven minutes, until the master came back on (measured 2026-10-12). `EngineRunningFrom` says running only with the flag and more than 400 RPM, stopped with no flag or under 200 RPM, and holds in between so a start's cranking speed never reads as running; `NoteEngineRunning` speaks the change once and consumes the flag. The XLS keeps the flag, which follows its piston engine. → [da40.md](../da40.md)

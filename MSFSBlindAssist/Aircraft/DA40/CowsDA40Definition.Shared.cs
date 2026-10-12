@@ -341,6 +341,9 @@ public partial class CowsDA40Definition
         // returns first would leave the elevator comparison with nothing to compare against.
         NoteFlightControlValue(varName, value);
         NoteBusVoltage(varName, value);
+        // The NG's running state, from the combustion flag AND the RPM (the flag alone lied
+        // for minutes). Above the silence gate: the RPM is a silent readout.
+        if (NoteEngineRunning(varName, value, announcer)) return true;
         // The XLS mag check: the tachometer is silent by design and this must see it, so
         // the drop can be read from the RPM the key left BOTH at. Never announces itself.
         NoteMagnetoChange(varName, value, announcer);

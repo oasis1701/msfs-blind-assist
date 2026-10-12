@@ -468,6 +468,12 @@ internal sealed class ProbeForm : Form
                             Apply(def, kv[0], double.Parse(kv[1], CultureInfo.InvariantCulture), d, cap);
                             break;
                         }
+                        case "cache":
+                            // What MSFSBA's cache holds: filled by batch and subscription
+                            // deliveries only, so a key that never arrives reads null here.
+                            foreach (var k in arg.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                                _watch.WriteLine($"{t}\tCACHE\t{k.Trim()}={Fmt(_m.GetCachedVariableValue(k.Trim()))}");
+                            break;
                         case "read":
                             foreach (var k in arg.Split(',', StringSplitOptions.RemoveEmptyEntries))
                                 _watch.WriteLine($"{t}\tREAD\t{k.Trim()}={Fmt(await Read(k.Trim()))}");
