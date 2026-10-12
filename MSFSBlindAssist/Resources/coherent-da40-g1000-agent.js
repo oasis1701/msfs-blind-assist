@@ -801,6 +801,9 @@
         for (var i = 0; i < items.length; i++) {
             if (window.getComputedStyle(items[i]).display === "none") continue;
             var t = spacedText(items[i]);
+            // An empty slot draws only its " - " separator; it was announced "Alert: -."
+            // while the G1000 rebooted mid-start (2026-10-12).
+            if (!/[A-Za-z0-9]/.test(t)) continue;
             if (t && out.indexOf(t) < 0) out.push(t);
         }
         return out;

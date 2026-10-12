@@ -326,6 +326,67 @@ public partial class CowsDA40Definition
         };
     }
 
+    // ---------- The AFCS's own health, settled ----------
+    //
+    // ⚠️ A POWER DIP MADE THESE CHURN. An in-flight restart's crank dropped the AFCS bus, and
+    // in eight seconds the rows said "Autopilot Self Test: not started", "Autopilot Failed:
+    // YES", "Self Test: FAILED - partial panel", "Failed: No", "Self Test: not started",
+    // "Failed: YES", "Failed: No", "Self Test: running" (2026-10-12) - eight lines for one
+    // event whose outcome was "running". The rows now settle and say where they came to rest,
+    // once, in one sentence; a value back where it was says nothing. DA40A-5 still holds: the
+    // test and its result are announced.
+    private static readonly string[] AfcsStatusKeys = { "DA40_AP_SELFTEST", "DA40_AP_PFT", "DA40_AP_FAILED" };
+
+    /// <summary>
+    /// How still the AFCS status must be. A batch-fed value (DA40S-2): over one 1 Hz period,
+    /// and long enough for a crank's dip to come and go.
+    /// </summary>
+    private const int AfcsStatusSettleMs = 2500;
+
+    private System.Windows.Forms.Timer? _afcsSettle;
+    private Accessibility.ScreenReaderAnnouncer? _afcsAnnouncer;
+    private readonly Dictionary<string, double> _afcsPending = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, double> _afcsSpoken = new(StringComparer.Ordinal);
+
+    private bool NoteAfcsStatus(string varKey, double value, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        if (Array.IndexOf(AfcsStatusKeys, varKey) < 0) return false;
+        _afcsAnnouncer = announcer;
+
+        // The first reading is the baseline, never news.
+        if (!_afcsSpoken.ContainsKey(varKey)) { _afcsSpoken[varKey] = value; return true; }
+
+        _afcsPending[varKey] = value;
+        if (_afcsSettle == null)
+        {
+            _afcsSettle = new System.Windows.Forms.Timer { Interval = AfcsStatusSettleMs };
+            _afcsSettle.Tick += (_, _) => UnderLoadSettle(_afcsAnnouncer, FlushAfcsStatus);
+        }
+        _afcsSettle.Stop();
+        _afcsSettle.Start();
+        return true;
+    }
+
+    private void FlushAfcsStatus()
+    {
+        _afcsSettle?.Stop();
+        if (_afcsAnnouncer == null) return;
+        var muted = Settings.SettingsManager.Current.DA40DisabledMonitorVariablesSet;
+        var vars = GetVariables();
+        var parts = new List<string>();
+        foreach (string key in AfcsStatusKeys)
+        {
+            if (!_afcsPending.TryGetValue(key, out double v)) continue;
+            bool changed = !_afcsSpoken.TryGetValue(key, out double was) || Math.Abs(was - v) > 0.01;
+            _afcsSpoken[key] = v;
+            if (!changed || muted.Contains(key) || !vars.TryGetValue(key, out var def)) continue;
+            string state = def.ValueDescriptions.TryGetValue(Math.Round(v), out var d) ? d : v.ToString("0", System.Globalization.CultureInfo.InvariantCulture);
+            parts.Add(def.DisplayName + ": " + state);
+        }
+        _afcsPending.Clear();
+        if (parts.Count > 0) _afcsAnnouncer.AnnounceImmediate(string.Join(". ", parts));
+    }
+
     /// <summary>
     /// The GFC 700 mode buttons the FMA already speaks.
     ///

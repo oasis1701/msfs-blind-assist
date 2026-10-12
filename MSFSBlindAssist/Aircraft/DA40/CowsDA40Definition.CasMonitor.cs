@@ -93,6 +93,9 @@ public partial class CowsDA40Definition
         ResetXlsMixtureState();
         ResetPerfTableState();
         StopRadioAnnounce();
+        try { _afcsSettle?.Stop(); _afcsSettle?.Dispose(); } catch { }
+        _afcsSettle = null;
+        _afcsPending.Clear();
         StopPowerAnnounce();
         StopLampWatch();
         StopDoorAnnounce();

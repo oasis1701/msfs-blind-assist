@@ -583,6 +583,10 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         "DA40_POWER_TARGET_RPM",
         "DA40_POWER_LEVER_SET",
 
+        // The key in START, so the lamp watch can hold its verdict through a crank (the bus
+        // dips below the strobe's gate for as long as the key is held).
+        "DA40_START_KEY_POSITION",
+
         // The Hobbs meter, which a pilot writes down before and after every flight.
         "DA40_HOBBS"
     };

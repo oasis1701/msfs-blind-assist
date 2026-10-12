@@ -178,6 +178,18 @@ public partial class CowsDA40Definition
 
         var muted = Settings.SettingsManager.Current.DA40DisabledMonitorVariablesSet;
 
+        // ⚠️ NOT WHILE THE STARTER TURNS. Cranking pulls the bus under the strobe's 20.5 V
+        // gate for as long as the key is held - six to twelve seconds, far past the settle -
+        // and the watch said "Strobe lights not lit" on an in-flight restart (2026-10-12).
+        // That is the start, not a fault; the verdict waits for the key to come back, when the
+        // lamp's own change re-arms this settle.
+        if ((_lampSimConnect.GetCachedVariableValue("DA40_START_KEY_POSITION") ?? 0) > 1.5)
+        {
+            // Look again after the settle, so a lamp still dark once the key is back is judged.
+            _lampTimer?.Start();
+            return;
+        }
+
         foreach (var pair in LampPairs)
         {
             // Muting the SWITCH mutes this too - they are one thing to a pilot. Checked
