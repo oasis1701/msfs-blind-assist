@@ -9,10 +9,11 @@ namespace MSFSBlindAssist.Aircraft.A300;
 /// aircraft's own order is lost, both ways (measured 2026-10-09): on external power on, the cabin regulator 2
 /// fault cleared 500 ms BEFORE the AC light power rose and MSFSBA heard the power first; on external power
 /// off, the rudder travel limiter 2 fault arrived a second before the power flag. Either way MSFSBA said a
-/// light on that the cockpit never lit, then off. So a first change waits <see cref="GatherMs"/> (one
-/// subscription period, for a power flag still on its way), and a power change holds everything
+/// light on that the cockpit never lit, then off. So each change waits <see cref="GatherMs"/> from its own
+/// arrival (one subscription period, for a power flag still on its way), and a power change holds everything
 /// <see cref="SettleMs"/>. Like the fleet, a power change still speaks every light it lights or darkens,
-/// once, when the power has settled.
+/// once, when the power has settled. A change the definition does not keep still tells this class to
+/// <see cref="Forget"/> the light, so an earlier opposite change is not spoken stale.
 ///
 /// A light going dark is spoken only once it has stayed dark <see cref="OffHoldMs"/>, the iFly 737's flash
 /// filter (design decision, 2026-10-10): a light that lights again inside the hold says nothing, so a flashing light
@@ -25,8 +26,8 @@ public sealed class A300LampSpeech
     /// the power to arrive after it.</summary>
     public const int SettleMs = 2500;
 
-    /// <summary>How long a first change waits: one subscription period and a little, so a power flag
-    /// arriving just after it still nets with it.</summary>
+    /// <summary>How long a change waits from its own arrival: one subscription period and a little, so a
+    /// power flag arriving just after it still nets with it.</summary>
     public const int GatherMs = 1500;
 
     /// <summary>How long a light must stay dark before its "off" is spoken: longer than a flash's dark
@@ -40,7 +41,7 @@ public sealed class A300LampSpeech
     /// <summary>A power change's sentence is still to come: until it is spoken, an off nets in it unheld.</summary>
     private bool _powerSettling;
 
-    /// <summary>Takes a change; the first one since the last sentence opens the gather period. An off is
+    /// <summary>Takes a change; each one extends the gather period to its own <see cref="GatherMs"/>. An off is
     /// held (<see cref="OffHoldMs"/>), and a light lighting again while its off is held is dropped.</summary>
     public void Add(A300LampChange change, long now)
     {
@@ -81,6 +82,19 @@ public sealed class A300LampSpeech
         return net.Count == 0 ? null : A300LampCallouts.Compose(net);
     }
 
+    /// <summary>
+    /// A change the definition does not keep (muted, a just-pressed button's own light, suppressed) leaves the
+    /// light's earlier change, still held or pending, wrong: that light is not where the change left it. Spoken
+    /// later it would be false ("Engine page light off" while it is lit) or, netted with the later change, would
+    /// flip the parity and silence a light that really changed. So the light's held off and every pending change
+    /// of it are dropped; other lights are untouched.
+    /// </summary>
+    public void Forget(string name)
+    {
+        _heldOff.Remove(name);
+        _pending.RemoveAll(change => string.Equals(change.Name, name, StringComparison.Ordinal));
+    }
+
     public void Clear()
     {
         _pending.Clear();
@@ -91,8 +105,9 @@ public sealed class A300LampSpeech
 
     private void Queue(A300LampChange change, long now)
     {
-        if (_pending.Count == 0)
-            _holdUntil = Math.Max(_holdUntil, now + GatherMs);
+        // Every change has its own gather period, not only the first since the last sentence: a power flag or a
+        // fault still on its way after a later change must find it unspoken to net with it.
+        _holdUntil = Math.Max(_holdUntil, now + GatherMs);
         _pending.Add(change);
     }
 

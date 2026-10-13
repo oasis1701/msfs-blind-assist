@@ -74,7 +74,12 @@ public partial class IniA300Definition
             foreach (var change in _lampBoard.Update(varName, value))
             {
                 if (announcer.Suppressed || IsMuted(change.Lamp.MuteKey) || IsPressedButtonsLamp(change.Lamp.Id))
+                {
+                    // Not spoken, but the light has moved on from its earlier change, still held or pending: drop it,
+                    // or it is spoken later although wrong ([A300-24]).
+                    _lampSpeech.Forget(change.Lamp.Name);
                     continue;
+                }
                 _lampSpeech.Add(new A300LampChange(change.Lamp.Name, change.On), Clock());
                 _lampAnnouncer = announcer;
             }

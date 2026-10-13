@@ -517,6 +517,49 @@ public class A300PanelLampTests
         Assert.Equal(new[] { "Pressurization system 2 light off" }, speech.All);
     }
 
+    [Fact]
+    public void A_lamp_relit_by_its_own_press_inside_an_off_hold_is_not_spoken_off()
+    {
+        // The ECAM page lights follow the page shown. Pressing HYD puts the Engine page light out (an off, held for
+        // OffHoldMs), and pressing ENG 1.8 s later lights it again: that is its own button's light, so the change
+        // is skipped, and the held off must go with it. It used to be spoken 3 s after the first press, while lit.
+        var speech = new SpeechCapture();
+        long now = 10_000;
+        var def = new IniA300Definition
+        {
+            Clock = () => now, IsMuted = _ => false, CanLand = _ => true, Send = (_, _) => { },
+            Cached = (_, _) => null, Delay = _ => Task.CompletedTask,
+        };
+        var sim = new SimConnectManager(IntPtr.Zero);
+        def.Attach(sim);
+        string eng = Lamp("ECAM_ENG_SEQ2_LIGHT").Key, hyd = Lamp("ECAM_HYD_SEQ2_LIGHT").Key;
+        string engButton = A300PanelLamps.ByButton.Single(b => b.Value == eng).Key;
+        string hydButton = A300PanelLamps.ByButton.Single(b => b.Value == hyd).Key;
+        const string status = "A300_IN_L_ECAM_CURRENT_STATUS";   // 1 picked, 2 automatic: either lights the page
+        Assert.Contains(status, A300LampBoard.ById[eng].Inputs);
+        void BatchEnd(long ms) { now += ms; def.OnContinuousBatchDelivered(1); }
+        void Page(double page)
+        {
+            def.ProcessSimVarUpdate(eng, page, speech);
+            def.ProcessSimVarUpdate(hyd, page, speech);
+        }
+        void Press(string button) => def.HandleUIVariableSet(button, 1, def.GetVariables()[button], sim, speech);
+
+        def.ProcessSimVarUpdate(A300LampBoard.AcPowerKey, 1, speech);
+        def.ProcessSimVarUpdate(status, 1, speech);
+        Page(1);                                  // Engine lit, Hydraulic dark: silent baselines
+        BatchEnd(A300LampSpeech.GatherMs);
+        Press(hydButton);
+        Page(2);                                  // Engine goes out (held), Hydraulic lights (its own press)
+        now += 1_800;
+        Press(engButton);
+        Page(1);                                  // Engine lights again (its own press); Hydraulic goes out (inside its own press window)
+        for (int i = 0; i < 6; i++)
+            BatchEnd(1_000);
+        Assert.DoesNotContain("Engine page light off", speech.All);
+        Assert.Empty(speech.All);
+    }
+
     private static IEnumerable<string> Said(IReadOnlyList<A300BoardChange> changes) =>
         changes.Select(c => $"{c.Lamp.Name} {(c.On ? "on" : "off")}");
 }

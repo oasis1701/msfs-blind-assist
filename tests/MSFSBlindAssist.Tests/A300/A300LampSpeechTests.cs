@@ -169,4 +169,60 @@ public class A300LampSpeechTests
     [Fact]
     public void The_off_hold_outlasts_a_flash_and_two_subscription_periods() =>
         Assert.True(A300LampSpeech.OffHoldMs is >= 2500 and <= 3500);
+
+    [Fact]
+    public void Forgetting_a_light_drops_its_held_off_and_its_pending_changes()
+    {
+        // A change that is not spoken (muted, a pressed button's own light) leaves the light's earlier, opposite
+        // change to be spoken although it is stale, so the definition tells the speech to forget the light.
+        _speech.Add(Off("Pack 1 fault light"), 10_000);   // held
+        _speech.Add(On("Pack 2 fault light"), 10_000);    // pending
+        _speech.Forget("Pack 1 fault light");
+        _speech.Forget("Pack 2 fault light");
+        Assert.Null(_speech.Flush(10_000 + A300LampSpeech.OffHoldMs));
+    }
+
+    [Fact]
+    public void Forgetting_a_light_leaves_every_other_light_to_be_spoken()
+    {
+        _speech.Add(Off("Pack 1 fault light"), 10_000);
+        _speech.Add(On("Pack 2 fault light"), 10_000);
+        _speech.Add(Off("Pack 3 fault light"), 10_000);
+        _speech.Forget("Pack 2 fault light");
+        Assert.Equal("2 lights off: Pack 1 fault, Pack 3 fault", _speech.Flush(10_000 + A300LampSpeech.OffHoldMs));
+    }
+
+    [Fact]
+    public void A_light_forgotten_and_then_changed_again_is_spoken_by_that_last_change()
+    {
+        // On (unspoken), then off without being kept, then on again: without the forget the two ons would net away
+        // and the pilot would never hear a light that is lit.
+        _speech.Add(On("Pack 1 fault light"), 10_000);
+        _speech.Forget("Pack 1 fault light");
+        _speech.Add(On("Pack 1 fault light"), 11_000);
+        Assert.Equal("Pack 1 fault light on", _speech.Flush(11_000 + A300LampSpeech.GatherMs));
+    }
+
+    [Fact]
+    public void A_change_queued_late_in_a_gather_gets_its_own_gather()
+    {
+        // The first change's gather is over at 11,500, the second's (queued at 10,700) is not: a power flag arriving
+        // at 11,700 must still net with it, not find it already spoken.
+        _speech.Add(On("Pack 1 fault light"), 10_000);
+        _speech.Add(On("Rudder travel limiter system 2 fault light"), 10_700);
+        Assert.Null(_speech.Flush(11_500));
+        _speech.NotePowerChange(11_700);
+        _speech.Add(Off("Rudder travel limiter system 2 fault light"), 11_700);
+        Assert.Equal("Pack 1 fault light on", _speech.Flush(14_200));
+    }
+
+    [Fact]
+    public void A_later_change_never_shortens_the_hold_a_power_change_set()
+    {
+        _speech.NotePowerChange(10_000);
+        _speech.Add(On("Pack 1 fault light"), 10_000);
+        _speech.Add(On("Pack 2 fault light"), 10_500);
+        Assert.Null(_speech.Flush(10_000 + A300LampSpeech.SettleMs - 1));
+        Assert.Equal("2 lights on: Pack 1 fault, Pack 2 fault", _speech.Flush(10_000 + A300LampSpeech.SettleMs));
+    }
 }

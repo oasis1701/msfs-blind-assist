@@ -15,12 +15,17 @@ public sealed record A300AutobrakeButton(int Level, string Name, string DecelKey
 /// DECEL segment is dark; the DECEL segment lights from <c>INI_AUTOBRAKE_LOW/MED/HI_DECEL</c> (the
 /// cockpit's emissive code), which the aircraft sets only at that level, engaged, past 1.36 of
 /// deceleration (<c>update_ab_datarefs</c>). So a label reads "Armed", "Decel" or "Off", as the lamp
-/// does, and the lights are spoken as they change, as the Fenix's are.</item>
+/// does (<see cref="Describe"/> reads an unread DECEL as "Armed", which suits a label), and the lights are
+/// spoken as they change; the board decides the armed one only once its DECEL input has been read.</item>
 /// <item>A press writes <c>INI_ABRK_LOW/MED/HI_COMMAND</c>, which the aircraft consumes: the active
 /// level pressed again disarms it (level 0) by design; any other level arms only with the gear handle
 /// down, green hydraulics at 2,200 psi or more, no autobrake fault, and, with the parking brake off,
 /// <c>INI_brake_system</c> at 0 (<c>INI_autobrake_low_handler</c> and its two siblings). A press says
-/// nothing; a press the aircraft refuses changes no light, so nothing is said.</item>
+/// nothing about its own button's armed light: the screen reader reads the relabeled button, so the
+/// light is left to the label for a few seconds ([CORE-7], <c>IniA300Definition.PressedLampMs</c>), as
+/// for every light-labeled A300 button. The light of the level that was armed going out, the DECEL lights
+/// and any change the pilot did not make are spoken. A press the aircraft refuses changes no light, so
+/// nothing is said.</item>
 /// <item><c>INI_autobrake_armed</c> is NOT the state: only the three button handlers write it, while
 /// the aircraft's own disarms (the gear handle leaving down, its disconnects in <c>INI_autobrake</c>)
 /// set the level to 0 and leave it at 1 ([A300-20]).</item>

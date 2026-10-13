@@ -41,7 +41,8 @@ public class A300AutobrakeTests
 
 /// <summary>
 /// The autobrake buttons in the definition: the variables they read, their labels, what a press says
-/// (nothing), and the lights spoken as they change, like the Fenix's autobrake lights.
+/// (nothing about its own armed light, which the label says), and the lights spoken as they change when the
+/// pilot did not make the change.
 /// </summary>
 public class IniA300AutobrakeTests
 {
@@ -146,13 +147,40 @@ public class IniA300AutobrakeTests
     }
 
     [Fact]
-    public void The_armed_light_speaks_when_the_aircraft_arms_it()
+    public void A_press_that_arms_leaves_its_light_to_the_label()
     {
+        // The relabeled button says "Armed" ([CORE-7]): its own armed light is not spoken as well.
         Baseline();
         Assert.True(Press("A300_AUTO_BRK_MAX"));
         Deliver(A300Autobrake.LevelKey, 3);
         BatchEnd();
+        Assert.Empty(_speech.All);
+    }
+
+    [Fact]
+    public void The_armed_light_speaks_when_the_aircraft_arms_it_without_a_press()
+    {
+        Baseline();
+        Deliver(A300Autobrake.LevelKey, 3);
+        BatchEnd();
         Assert.Equal(new[] { "Autobrake max armed light on" }, _speech.All);
+    }
+
+    [Fact]
+    public void The_aircrafts_own_disarm_after_the_press_is_over_is_spoken()
+    {
+        // The press arms it (the label says so). Later the aircraft disarms it by itself (the gear handle leaves
+        // down): that is no press's own light, so it speaks.
+        Baseline();
+        Assert.True(Press("A300_AUTO_BRK_MAX"));
+        Deliver(A300Autobrake.LevelKey, 3);
+        BatchEnd();
+        _now += IniA300Definition.PressedLampMs;
+        Deliver(A300Autobrake.LevelKey, 0);
+        BatchEnd();
+        _now += A300LampSpeech.OffHoldMs;   // an off waits until the light has stayed dark
+        BatchEnd();
+        Assert.Equal(new[] { "Autobrake max armed light off" }, _speech.All);
     }
 
     [Fact]
@@ -166,7 +194,7 @@ public class IniA300AutobrakeTests
     }
 
     [Fact]
-    public void Pressing_the_active_level_disarms_it_and_its_light_going_out_is_spoken()
+    public void Pressing_the_active_level_disarms_it_silently()
     {
         Baseline(level: 1);
         Assert.True(Press("A300_AUTO_BRK_LO"));
@@ -175,7 +203,32 @@ public class IniA300AutobrakeTests
         BatchEnd();
         _now += A300LampSpeech.OffHoldMs;   // an off waits until the light has stayed dark
         BatchEnd();
+        Assert.Empty(_speech.All);
+    }
+
+    [Fact]
+    public void Pressing_another_level_speaks_the_light_it_puts_out()
+    {
+        // Only the pressed button's own light is left to its label: the level that was armed goes out as well.
+        Baseline(level: 1);
+        Assert.True(Press("A300_AUTO_BRK_MAX"));
+        Deliver(A300Autobrake.LevelKey, 3);
+        BatchEnd();
+        _now += A300LampSpeech.OffHoldMs;   // an off waits until the light has stayed dark
+        BatchEnd();
         Assert.Equal(new[] { "Autobrake low armed light off" }, _speech.All);
+    }
+
+    [Fact]
+    public void A_press_silences_its_buttons_armed_light_but_not_its_decel_light()
+    {
+        // The DECEL light is the aircraft's (it lights it at that level, engaged, past 1.36 of deceleration), so
+        // it speaks even inside the press window; the armed light it takes over from is the button's own.
+        Baseline(level: 3);
+        Assert.True(Press("A300_AUTO_BRK_MAX"));
+        Deliver("A300_AUTOBRAKE_HI_DECEL", 1);
+        BatchEnd();
+        Assert.Equal(new[] { "Autobrake max decel light on" }, _speech.All);
     }
 
     [Fact]

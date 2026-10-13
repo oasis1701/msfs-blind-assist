@@ -56,6 +56,10 @@ public partial class IniA300Definition
             _ = CheckMovedAsync(row, target, simConnect, announcer, ++_pickSeq);
         if (sent && row.Action == A300RowAction.Press && A300PanelLamps.ByButton.TryGetValue(row.Key, out var ownLamp))
             _pressedLampUntil[ownLamp] = Clock() + PressedLampMs;
+        // An autobrake button's label says its own armed segment ([A300-20]), so that light is left to it; its DECEL
+        // light and another level's armed light going out are not the press's own, and still speak.
+        if (sent && row.Action == A300RowAction.Press && A300Autobrake.ByButton.TryGetValue(row.Key, out var autobrake))
+            _pressedLampUntil[autobrake.ArmedLampId] = Clock() + PressedLampMs;
         if (sent && control.Kind == A300Kinds.Spring && row.Action == A300RowAction.Set)
             _ = ReReadAfterSpringAsync(row, value, simConnect, announcer, ++_pickSeq);
 

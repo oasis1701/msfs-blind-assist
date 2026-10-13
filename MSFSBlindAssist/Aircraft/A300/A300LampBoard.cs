@@ -44,7 +44,7 @@ public readonly record struct A300BoardChange(A300BoardLamp Lamp, bool On);
 /// light; both on AC light power) are decided here, so a fault clearing on a dark panel says nothing,
 /// power coming on speaks only the lights that light, and power going off darkens the lit ones.
 /// A lamp's first value with every input read is a silent baseline; an input still unread leaves it
-/// undecided. Pure.
+/// undecided (an armed segment too waits for its DECEL input). Pure.
 /// </summary>
 public sealed class A300LampBoard
 {
@@ -165,10 +165,13 @@ public sealed class A300LampBoard
     {
         foreach (var button in A300Autobrake.ByButton.Values.OrderBy(b => b.Level))
         {
+            // Undecided until its DECEL input is read too ([A300-23]): the segment is lit only while the DECEL one is
+            // dark. A button's label may guess an unread DECEL as "Armed" (Describe), but a baseline must not.
             yield return new A300BoardLamp(button.ArmedLampId, button.Name + " armed light", A300Autobrake.LevelKey,
                 new[] { A300Autobrake.LevelKey, button.DecelKey, AcPowerKey },
-                read => A300Autobrake.Describe(button, read(A300Autobrake.LevelKey), read(button.DecelKey), read(AcPowerKey)) is string state
-                    ? state == "Armed" : null);
+                read => read(button.DecelKey) is null ? null
+                    : A300Autobrake.Describe(button, read(A300Autobrake.LevelKey), read(button.DecelKey), read(AcPowerKey)) is string state
+                        ? state == "Armed" : null);
             yield return new A300BoardLamp(button.DecelKey, button.Name + " decel light", button.DecelKey,
                 new[] { button.DecelKey, AcPowerKey },
                 read => read(button.DecelKey) is double decel && read(AcPowerKey) is double powered ? On(decel) && On(powered) : null);

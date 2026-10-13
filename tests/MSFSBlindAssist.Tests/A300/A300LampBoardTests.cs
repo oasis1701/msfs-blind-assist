@@ -109,6 +109,33 @@ public class A300LampBoardTests
     }
 
     [Fact]
+    public void An_autobrake_armed_light_waits_for_its_decel_input()
+    {
+        // The armed segment is lit while the level is its level AND its DECEL segment is dark, so with the DECEL
+        // input unread it is undecided ([A300-23]: an unread input sets no baseline), not baselined as lit.
+        Feed(A300LampBoard.AcPowerKey, 1);
+        Assert.Empty(Feed(A300Autobrake.LevelKey, 3));
+        Assert.Empty(Feed("A300_AUTOBRAKE_HI_DECEL", 1));   // both max lights' first values: armed dark, decel lit
+        Assert.Equal(new[] { "Autobrake max armed light on", "Autobrake max decel light off" },
+            Feed("A300_AUTOBRAKE_HI_DECEL", 0).OrderBy(s => s, StringComparer.Ordinal).ToList());
+    }
+
+    [Fact]
+    public void An_autobrake_armed_light_stays_undecided_until_its_own_decel_is_read()
+    {
+        // Another button's DECEL light does not decide it: each armed light reads its own button's DECEL.
+        string low = "Autobrake low armed light", max = "Autobrake max armed light";
+        var byName = A300LampBoard.Lamps.ToDictionary(l => l.Name);
+        var values = new Dictionary<string, double>
+        {
+            [A300LampBoard.AcPowerKey] = 1, [A300Autobrake.LevelKey] = 1, ["A300_AUTOBRAKE_LOW_DECEL"] = 0,
+        };
+        double? Read(string key) => values.TryGetValue(key, out var v) ? v : null;
+        Assert.True(A300LampBoard.IsLit(byName[low], Read));
+        Assert.Null(A300LampBoard.IsLit(byName[max], Read));
+    }
+
+    [Fact]
     public void The_autobrake_lights_are_dark_without_ac_light_power()
     {
         Feed(A300LampBoard.AcPowerKey, 0);
