@@ -392,8 +392,10 @@ read-back groups in its order: Cockpit Entry, Preflight, Before Start, Engine St
 Before Takeoff, After Takeoff, Before Landing, After Landing, Parking and Shutdown. TFDi's in-flight
 pages — Passing 10,000 Feet, Passing Transition Altitude, Cruise, Passing Below Transition Level and
 Descending Below 10,000 Feet — are left out on purpose (owner, 2026-10-13): the automatic modes
-below do that work, and the Descent flow and its action group stay for the landing autobrake, local
-QNH and sterile chime reminders. Never re-add them as missing TFDi pages. The read-back groups are
+below cover them (landing lights, standard altimeters and Dial-A-Flap 15, the transition-level
+call; the Cruise page's FMA and FMS checks are the Captain's own), and the Descent flow and its
+action group stay for the landing autobrake, local QNH and sterile chime reminders. Never re-add
+them as missing TFDi pages. The read-back groups are
 CONDENSED (owner request, 2026-10-01), not verbatim: TFDi's Preflight ran 92
 lines and its Engine Start 16, most of them lamps lighting during a test, gauge readings (EGT, oil,
 fuel flow) and panel inspections a blind pilot cannot perform. Each list now holds only switch

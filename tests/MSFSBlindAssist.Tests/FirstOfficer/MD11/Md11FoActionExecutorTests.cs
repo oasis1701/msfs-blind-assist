@@ -743,6 +743,23 @@ public class Md11FoActionExecutorTests : IDisposable
         Assert.Empty(_ac.Events);
     }
 
+    /// <summary>
+    /// The two "External power: OFF" checklist lines run different rules: a hand-tick at Before
+    /// Start must never leave the aircraft on its battery, the one at Shutdown must. Driven through
+    /// the lines' own actions, so wiring the Shutdown switch-off into Before Start is caught.
+    /// </summary>
+    [Theory]
+    [InlineData("BEFORE_START", "BS_EXT_OFF", false)]
+    [InlineData("SHUTDOWN", "SD_EXT_PWR", true)]
+    public async Task ExternalPowerOffLines_DropToTheBatteryOnlyAtShutdown(string groupId, string itemId, bool disconnects)
+    {
+        _ac.ConnectExternalPower();                                   // the GPU is the only source: APU off
+        var line = Md11FoChecklistDefinitions.Build().Single(g => g.Id == groupId).Items.Single(i => i.Id == itemId);
+        await line.CheckAction!(_exec, new Md11FoStateEvaluator());
+        Assert.Equal(disconnects ? 0 : 1, _ac.Get("MD11_OVHD_ELEC_EXT_PWR_ON_LT"));
+        Assert.Equal(!disconnects, _ac.Powered);
+    }
+
     [Fact]
     public async Task ExternalPowerShutdown_APressTheAircraftIgnores_IsNotDone()
     {

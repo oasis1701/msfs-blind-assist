@@ -158,7 +158,7 @@ Not fully run yet.
 4. **Settle:** after Parking and Shutdown, the engine start lines stay ticked.
 5. Run Related Flow from a section starts that section's flow.
 6. Between After Takeoff and Before Landing there is only the Descent section: the 10,000 feet,
-   transition and cruise lists are gone, because the automatic modes do that work.
+   transition and cruise lists are gone, because the automatic modes in session 2 cover them.
 
 ## Session 2 — a short flight
 

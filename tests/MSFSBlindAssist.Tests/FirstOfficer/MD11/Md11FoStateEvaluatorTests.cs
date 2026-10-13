@@ -89,6 +89,8 @@ public class Md11FoStateEvaluatorTests
     [InlineData(0.0, 0.0, 0.0, 1.0)]            // cold and dark
     [InlineData(28.0, 0.0, double.NaN, double.NaN)]   // powered, ON lamp unread
     [InlineData(28.0, double.NaN, 0.0, double.NaN)]   // the power gate not yet delivered
+    [InlineData(24.0, 1.0, 1.0, 0.0)]           // a lit ON lamp is connected whatever the gate says
+    [InlineData(28.0, double.NaN, 1.0, 0.0)]    // ... and before the gate is delivered
     public void ExternalPowerOff_IsTheOnLampDark_OrNothingPowered(double dcVolts, double dc1Off, double onLamp, double want)
     {
         var d = new Dictionary<string, double>

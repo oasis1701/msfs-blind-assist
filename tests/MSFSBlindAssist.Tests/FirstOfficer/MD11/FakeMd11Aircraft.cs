@@ -309,7 +309,8 @@ internal sealed class FakeMd11Aircraft : IMd11FoTransport, IMd11FoFlightState
 
     /// <summary>
     /// EXT PWR toggles the connection. Measured (docs/md11.md §9): external power off with the
-    /// battery still on puts the DC busses back to unpowered, unless the APU is powering them.
+    /// battery still on puts the DC busses back to unpowered. Modelled, not measured: the APU
+    /// keeps them powered when it is powering them.
     /// </summary>
     private void ExtPowerPress()
     {

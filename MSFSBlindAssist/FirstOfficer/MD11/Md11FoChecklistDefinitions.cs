@@ -19,8 +19,9 @@ using CheckFn = System.Func<Md11FoActionExecutor, Md11FoStateEvaluator, System.T
 /// radios, the flight controls). Never re-add a check the pilot has no way to perform. TFDi's
 /// in-flight pages (Passing 10,000 Feet, Passing Transition Altitude, Cruise, Passing Below
 /// Transition Level, Descending Below 10,000 Feet) are left out (owner, 2026-10-13): the
-/// automatic modes do that work (<see cref="Md11FoFlightPhaseMonitor"/>), and the Descent
-/// action group keeps the landing autobrake reminder.
+/// automatic modes cover them (<see cref="Md11FoFlightPhaseMonitor"/>: landing lights, standard
+/// altimeters and Dial-A-Flap 15, the transition-level call), and the Descent action group keeps
+/// the landing autobrake reminder.
 /// </summary>
 public static class Md11FoChecklistDefinitions
 {

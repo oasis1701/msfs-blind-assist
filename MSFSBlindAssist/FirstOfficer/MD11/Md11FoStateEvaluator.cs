@@ -113,13 +113,15 @@ public sealed class Md11FoStateEvaluator : LVarStateEvaluator, IFoEngine3N2Sink,
         ["FO_EXT_POWER_ON"] = Lamps(v => Lit(v[0]), "MD11_OVHD_ELEC_EXT_PWR_ON_LT"),
         // Off when the ON lamp is dark, or when nothing powers the DC busses: connected external
         // power powers them, so on the battery alone (DC1 OFF lit) or cold it cannot be on. The
-        // Shutdown line must tick there, where every lamp field above reads NaN.
+        // Shutdown line must tick there, where every lamp field above reads NaN. A LIT ON lamp is
+        // connected whatever the gate says (the executor's rule: the gate can lag its own lamp).
         ["FO_EXT_POWER_OFF"] = new(new[] { "MD11_OVHD_ELEC_EXT_PWR_ON_LT" }.Concat(PowerInputs).ToArray(), r =>
         {
+            double on = r("MD11_OVHD_ELEC_EXT_PWR_ON_LT");
+            if (Known(on) && Lit(on)) return 0;
             if (!Known(r(TFDiMD11Definition.DcPowerKey), r(TFDiMD11Definition.Dc1BusOffKey))) return double.NaN;
             if (!Powered(r)) return 1;
-            double on = r("MD11_OVHD_ELEC_EXT_PWR_ON_LT");
-            return Known(on) ? B(!Lit(on)) : double.NaN;
+            return Known(on) ? 1 : double.NaN;
         }),
         ["FO_APU_POWER_ON"] = Lamps(v => Lit(v[0]), "MD11_OVHD_ELEC_APU_PWR_ON_LT"),
         ["FO_AUX_PUMP_1_ON"] = Lamps(v => Lit(v[0]), "MD11_OVHD_HYD_AUX_PUMP_1_ON_LT"),
