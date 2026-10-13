@@ -244,7 +244,9 @@ Both MCDUs, Captain and First Officer, read as text: the real screens, live. The
 the screen list: the title, then each line with its label above it, numbered 1 to 6 for the
 line-select keys, then the scratchpad. When the page changes you hear its title and the cursor
 goes to line 1. The window switches on the aircraft's MCDU export (the tablet's External
-Hardware setting) every time it opens, because the aircraft forgets it at each flight load.
+Hardware setting) every time it opens, and again after a flight load while it stays open,
+because the aircraft forgets it at each load. Shown again on the page you left, the window puts
+you back on the line you were on; on any other page, and the first time, you start at the title.
 
 How the screen reads: # is an empty box the MCDU wants filled (dashes are optional fields), the
 arrows beside a title mean there are more pages (Right Arrow or Alt+Right goes to the next one),
@@ -262,7 +264,7 @@ IRS it says "waiting for ALIGN IRS on the MCDU".
 
   Ctrl+1 to Ctrl+6   Left line-select keys 1 to 6
   Alt+1 to Alt+6     Right line-select keys 1 to 6
-                     (or F1 to F6 and F7 to F12, with the alternate layout in FMC Settings)
+                     (or F1 to F6 and F7 to F12, with the alternate layout in File > FMC Settings)
   Page Up / Down     Slew up and down
   Alt+Up / Alt+Down  Slew up and down; on the MCDU unit combo box they open its list instead
   Right Arrow        Next page (on the screen list); Alt+Right from anywhere in the window

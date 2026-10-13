@@ -38,7 +38,8 @@ public partial class IniA300Definition
 
     /// <summary>Whether the MCDU export is known to be on for this connection and flight: off at
     /// construction, cleared by <see cref="OnSimContextReset"/> (a flight load switches the option off
-    /// and a disconnect leaves it unknown, [A300-4]) and by a send that could not land.</summary>
+    /// and a disconnect leaves it unknown, [A300-4]), by <see cref="OnLoadSettled"/> (the aircraft's own
+    /// start-up may switch it off again after the first send) and by a send that could not land.</summary>
     private bool _mcduExportOn;
 
     /// <summary>
@@ -46,8 +47,10 @@ public partial class IniA300Definition
     /// setting). The aircraft publishes the screens only while <c>L:INI_MCDU_OPTION</c> is 1, and it does
     /// not survive a flight load, so the option is sent when <paramref name="force"/> asks (the window
     /// opening) and whenever it is not known to be on for this connection and flight; otherwise nothing
-    /// is sent. True once it is on, sent now or before. False, and still not on, when a send was due but
-    /// the calculator path cannot land (before the sim connects, say): ask again later.
+    /// is sent. The MCDU window asks on every poll, which costs nothing while the export is known to be on.
+    /// True once it is on, sent now or before. False, and still not on, when a send was due but
+    /// the calculator path cannot land (before the sim connects, say): ask again later. False too, sending
+    /// nothing, when the definition is disposed or no sim is attached.
     /// </summary>
     public bool EnsureMcduExport(bool force = false)
     {

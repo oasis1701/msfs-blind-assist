@@ -17,7 +17,8 @@ public struct A300McduRaw
 /// Reads the iniBuilds A300's two MCDU screens as text from the SimConnect client data areas the
 /// aircraft publishes, <c>iniAirbusMCDU_1</c> and <c>iniAirbusMCDU_2</c> (docs/a300.md). The
 /// aircraft publishes them only while its MCDU export option (<c>L:INI_MCDU_OPTION</c>, the
-/// tablet's External Hardware setting) is 1, which the MCDU window switches on when it opens.
+/// tablet's External Hardware setting) is 1, which the MCDU window switches on when it opens and asks for
+/// again on every poll while it is open (<see cref="MSFSBlindAssist.Aircraft.IniA300Definition.EnsureMcduExport"/>).
 ///
 /// The lifecycle is the MD-11 MCDU manager's, for the same reasons: ONE manager per SimConnect
 /// connection (a second MapClientDataNameToID of the same name on one connection is DUPLICATE_ID),

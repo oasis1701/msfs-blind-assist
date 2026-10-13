@@ -808,6 +808,7 @@ public class ClaudeContextBudgetTests
             + "declaration index does not see"] = new[]
         {
             "A380C-3 SendAsync", "TRF-3 IdentityKey", "HLD-11 HoldShort", "SUR-22 HoldShort", "GSX-5 AlreadyThere",
+            "MON-6 SelectedIndex",
         },
     };
 

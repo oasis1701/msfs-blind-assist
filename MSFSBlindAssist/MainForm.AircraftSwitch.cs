@@ -1266,7 +1266,7 @@ public partial class MainForm
                        currentAircraft.AircraftCode.StartsWith("FENIX_", StringComparison.Ordinal);
         bool isHs787 = currentAircraft != null &&
                        currentAircraft.AircraftCode.StartsWith("HS_", StringComparison.Ordinal);
-        fmcSettingsMenuItem.Visible = isPmdg || isFenix || isHs787;
+        fmcSettingsMenuItem.Visible = isPmdg || isFenix || isHs787 || currentAircraft is IniA300Definition;
     }
 
     /// <summary>

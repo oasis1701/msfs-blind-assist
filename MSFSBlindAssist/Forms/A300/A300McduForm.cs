@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
@@ -14,9 +15,14 @@ namespace MSFSBlindAssist.Forms.A300;
 ///
 /// Built on the MD-11 MCDU window's rules: the list is the title, each label above its numbered
 /// line and the scratchpad, and the cursor follows the ROW it was on, never its index; it polls only
-/// while visible, and a re-show catches up silently; a page change is spoken by its title and puts
+/// while visible, and a re-show catches up silently (onto the same page it puts the cursor back on
+/// the row the pilot left, onto another on the title); a page change is spoken by its title and puts
 /// the cursor on line 1; the scratchpad is read back once a burst of keys has settled; the window's
 /// keys never take a chord the focused unit selector needs (<see cref="A300McduKeyRouting"/>).
+///
+/// It keeps the aircraft's MCDU export switched on while it is open: sent on every open, then asked
+/// for on every poll (<see cref="IniA300Definition.EnsureMcduExport"/>), which sends only when the
+/// export is not known to be on, so a flight load with the window open brings the screens back.
 /// </summary>
 public sealed class A300McduForm : Form
 {
@@ -42,8 +48,10 @@ public sealed class A300McduForm : Form
     private IReadOnlyList<A300McduRow>? _rows;
     private readonly Dictionary<A300McduUnit, string> _lastTitle = new();
     private readonly CduScratchpadAnnouncer _scratchpad = new("Scratchpad cleared", stablePolls: 2);
-    private readonly A300McduBlankClocks _blank = new();
+    private readonly A300McduBlankClocks _blankClocks = new();
     private bool _clearing;
+
+    private static readonly A300McduUnit[] Units = { A300McduUnit.Captain, A300McduUnit.FirstOfficer };
 
     /// <summary>Beyond the last queued key: the aircraft applying it, the client-data delivery and the
     /// next poll. A margin, not a measurement — too short reads an entry half-typed.</summary>
@@ -52,18 +60,67 @@ public sealed class A300McduForm : Form
     /// <summary>The clear-all's backstop against an unreadable feed.</summary>
     private const int MaxClearPresses = A300McduText.Cols + 4;
 
+    /// <summary>How long the clear-all waits for the scratchpad to change after a CLR before it gives up. A margin,
+    /// not a measurement: well beyond the key's press and gap (160 ms) plus the aircraft's redraw and the client-data
+    /// delivery. A CLR the aircraft ignores costs this once, and then the clear stops.</summary>
+    public const int ClearConfirmMs = 1500;
+
+    /// <summary>How often the clear-all looks at the scratchpad while it waits.</summary>
+    private const int ClearPollMs = 50;
+
+    /// <summary>The one sentence a clear-all that ran out of road says.</summary>
+    private const string ClearFailed = "Could not clear the scratchpad";
+
+    // Test seams: what the window reads and the clock it keeps, so a test drives it without a sim.
+
+    /// <summary>The unit's latest screen from the data manager; null while it has none.</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    internal Func<A300McduUnit, A300McduScreen?> Screens { get; set; }
+
+    /// <summary>Whether there is a feed to read at all (the A300's data manager exists on this connection).</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    internal Func<bool> HasFeed { get; set; }
+
+    /// <summary>The time every judgement and hold is made against.</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    internal Func<DateTime> UtcNow { get; set; } = () => DateTime.UtcNow;
+
+    /// <summary>The wait between the clear-all's reads of the scratchpad.</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    internal Func<int, Task> Delay { get; set; } = ms => Task.Delay(ms);
+
     public A300McduForm(IniA300Definition definition, SimConnectManager sim, ScreenReaderAnnouncer announcer)
     {
         _definition = definition;
         _sim = sim;
         _announcer = announcer;
+        Screens = unit => _sim.A300McduDataManager?.GetScreen(unit);
+        HasFeed = () => _sim.A300McduDataManager != null;
         BuildLayout();
         MonitorManagerShared.HideOnClose(this, () =>
         {
             if (_previousWindow != IntPtr.Zero) SetForegroundWindow(_previousWindow);
         });
-        _poll.Tick += (_, _) => Poll();
+        _poll.Tick += (_, _) => Tick();
     }
+
+    /// <summary>The list's rows as the screen reader reads them.</summary>
+    internal IReadOnlyList<string> Lines => _display.Items.Cast<object>().Select(o => o.ToString() ?? "").ToList();
+
+    /// <summary>The status box's text.</summary>
+    internal string Status => _statusBox.Text;
+
+    /// <summary>The list's cursor.</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    internal int SelectedIndex
+    {
+        get => _display.SelectedIndex;
+        set => _display.SelectedIndex = value;
+    }
+
+    /// <summary>Picks the unit as the pilot does in the unit selector (the selector's own change handler follows).</summary>
+    internal void SelectUnit(A300McduUnit unit) =>
+        _unitSelector.SelectedIndex = unit == A300McduUnit.FirstOfficer ? 1 : 0;
 
     // ---------------------------------------------------------------------------------
     // Layout
@@ -189,7 +246,7 @@ public sealed class A300McduForm : Form
                 Close();
                 break;
             case A300McduKeyRouting.ActionKind.SelectUnit:
-                _unitSelector.SelectedIndex = action.Unit == A300McduUnit.FirstOfficer ? 1 : 0;
+                SelectUnit(action.Unit);
                 if (!_unitSelector.Focused)
                     _announcer.Announce(_unitSelector.SelectedItem?.ToString() ?? "");
                 break;
@@ -242,35 +299,40 @@ public sealed class A300McduForm : Form
             return;
         }
         var keys = text.Select(c => A300McduKeys.ForChar(c)!).ToList();
-        if (!Send(keys))
+        if (!Send(_unit, keys))
             return;
         _input.Clear();
     }
 
-    private bool Press(string key) => Send(new[] { key });
+    private bool Press(string key) => Send(_unit, new[] { key });
 
-    /// <summary>Queues keys on the selected MCDU and holds the scratchpad read-back until they have
-    /// landed, so an entry is read once, settled. Says why when nothing could be sent.</summary>
-    private bool Send(IReadOnlyList<string> keys)
+    /// <summary>Queues keys on <paramref name="unit"/> and, when it is the unit being read, holds the scratchpad
+    /// read-back until they have landed, so an entry is read once, settled. Says why when nothing could be sent.</summary>
+    private bool Send(A300McduUnit unit, IReadOnlyList<string> keys)
     {
-        if (!_definition.PressMcduKeys(_unit, keys))
+        if (!_definition.PressMcduKeys(unit, keys))
         {
             _announcer.Announce("MCDU unavailable");
             return false;
         }
-        int pending = _definition.McduKeysPending;
-        var until = DateTime.UtcNow.AddMilliseconds(pending * (A300McduKeys.HoldMs + A300McduKeys.GapMs) + SettleMarginMs);
-        if (until > _scratchpad.SuppressUntil)
-            _scratchpad.SuppressUntil = until;
+        if (unit == _unit)
+        {
+            int pending = _definition.McduKeysPending;
+            var until = UtcNow().AddMilliseconds(pending * (A300McduKeys.HoldMs + A300McduKeys.GapMs) + SettleMarginMs);
+            if (until > _scratchpad.SuppressUntil)
+                _scratchpad.SuppressUntil = until;
+        }
         return true;
     }
 
     /// <summary>
-    /// Clears the whole scratchpad: one CLR at a time, re-reading the screen after each has landed,
-    /// and stopping the moment it reads empty. Never a CLR on an empty scratchpad — the A300 then
-    /// puts "CLR" into it. Silent when it works (the read-back says "Scratchpad cleared").
+    /// Clears the whole scratchpad of the unit it started on: one CLR at a time, and after each one waits for the
+    /// scratchpad to read differently (<see cref="ScratchpadChangedAsync"/>) before it looks again, stopping the
+    /// moment it reads empty. It presses that unit to the end, whichever one the pilot switches to meanwhile.
+    /// Never a CLR on an empty scratchpad — the A300 then puts "CLR" into it — and never a second CLR on one the
+    /// aircraft ignored: that stops, saying so once. Silent when it works (the read-back says "Scratchpad cleared").
     /// </summary>
-    private async Task ClearScratchpadAsync()
+    internal async Task ClearScratchpadAsync()
     {
         if (_clearing)
             return;
@@ -280,10 +342,10 @@ public sealed class A300McduForm : Form
             var unit = _unit;
             for (int presses = 0; ; presses++)
             {
-                var screen = _sim.A300McduDataManager?.GetScreen(unit);
+                var screen = Screens(unit);
                 if (screen == null || screen.IsBlank)
                 {
-                    _announcer.Announce("Could not clear the scratchpad");
+                    _announcer.Announce(ClearFailed);
                     return;
                 }
                 if (string.IsNullOrWhiteSpace(screen.Scratchpad))
@@ -292,18 +354,19 @@ public sealed class A300McduForm : Form
                         _announcer.Announce("Scratchpad already empty");
                     return;
                 }
-                if (presses >= MaxClearPresses || unit != _unit)
+                if (presses >= MaxClearPresses)
                 {
-                    _announcer.Announce("Could not clear the scratchpad");
+                    _announcer.Announce(ClearFailed);
                     return;
                 }
-                if (!Press("CLR"))
+                if (!Send(unit, new[] { "CLR" }))
                     return;
-                await Task.Delay(A300McduKeys.HoldMs + A300McduKeys.GapMs + 150);
-                while (_definition.McduKeysPending > 0 && !IsDisposed)
-                    await Task.Delay(50);
-                if (IsDisposed)
+                if (!await ScratchpadChangedAsync(unit, screen.Scratchpad))
+                {
+                    if (!IsDisposed)
+                        _announcer.Announce(ClearFailed);
                     return;
+                }
             }
         }
         catch (Exception ex)
@@ -316,34 +379,76 @@ public sealed class A300McduForm : Form
         }
     }
 
+    /// <summary>
+    /// Waits, looking every <see cref="ClearPollMs"/>, until the unit's scratchpad on a page reads other than
+    /// <paramref name="before"/>; false once <see cref="ClearConfirmMs"/> has passed without that, or the window is
+    /// gone. A blank frame is the page being redrawn, not an answer. A CLR still in the key queue, or not yet
+    /// redrawn, looks like one the aircraft ignored until the bound passes.
+    /// </summary>
+    private async Task<bool> ScratchpadChangedAsync(A300McduUnit unit, string before)
+    {
+        var deadline = UtcNow().AddMilliseconds(ClearConfirmMs);
+        while (true)
+        {
+            await Delay(ClearPollMs);
+            if (IsDisposed)
+                return false;
+            if (Screens(unit) is { IsBlank: false } screen && screen.Scratchpad != before)
+                return true;
+            if (UtcNow() >= deadline)
+                return false;
+        }
+    }
+
     // ---------------------------------------------------------------------------------
     // Read-out
     // ---------------------------------------------------------------------------------
 
-    private void Poll()
+    /// <summary>
+    /// One poll: keeps the aircraft's MCDU export on, ticks both units' blank clocks and shows the selected unit's
+    /// screen. The export is asked for before anything else, whether or not there is a feed yet: a plain ask is free
+    /// while the export is known to be on, and it is what brings the screens back after a flight load or a connect
+    /// that came after the window opened.
+    /// </summary>
+    internal void Tick()
     {
-        var manager = _sim.A300McduDataManager;
-        if (manager == null)
+        _definition.EnsureMcduExport();
+        var now = UtcNow();
+        TickBlankClocks(now);
+        if (!HasFeed())
         {
             _statusBox.Text = $"{UnitName}: not connected";
             return;
         }
-        var screen = manager.GetScreen(_unit);
+        var screen = Screens(_unit);
         if (screen == null)
         {
-            _statusBox.Text = $"{UnitName}: waiting for data";
+            // No frame for this unit (a reconnect's new data manager has delivered none yet): a page drawn
+            // before is not true any more, so the waiting row takes its place.
+            _rendered = null;
+            _rows = null;
+            ShowWaiting();
             return;
         }
         // The FMS's blank frame between pages: draw nothing, say nothing, leave the page and the
         // cursor where they are. Judged before the reference check: a blank that stays is delivered
         // once, so only a poll can tell that it has lasted.
-        if (_blank.Judge(_unit, screen, DateTime.UtcNow) == A300McduDisplayAction.HoldLastPage)
+        if (_blankClocks.Judge(_unit, screen, now) == A300McduDisplayAction.HoldLastPage)
             return;
         if (!ReferenceEquals(screen, _rendered))
             Render(screen, silent: false);
-        if (!screen.IsBlank && _scratchpad.OnPoll(screen.Scratchpad.Trim(), DateTime.UtcNow) is { } say)
+        if (!screen.IsBlank && _scratchpad.OnPoll(screen.Scratchpad.Trim(), now) is { } say)
             _announcer.Announce(say);
         UpdateAnnunciators(silent: false);
+    }
+
+    /// <summary>Both units' blank clocks, from the screens the data manager has cached, whichever unit the window
+    /// shows: the aircraft keeps publishing both, so a unit that has stayed blank is believed blank the moment the
+    /// window switches to it (<see cref="A300McduBlankClocks"/>).</summary>
+    private void TickBlankClocks(DateTime now)
+    {
+        foreach (var unit in Units)
+            _blankClocks.Tick(unit, Screens(unit), now);
     }
 
     /// <summary>Each unit's lit annunciators when last shown.</summary>
@@ -411,21 +516,24 @@ public sealed class A300McduForm : Form
         _rows = null;
         _rendered = null;
         _scratchpad.Reset();
-        var screen = _sim.A300McduDataManager?.GetScreen(_unit);
+        var screen = Screens(_unit);
         if (screen == null)
         {
             ShowWaiting();
             return;
         }
-        // Following a unit anew starts its blank clock again: while the window was not polling it could not
-        // see how long the unit had been blank. A blank not yet judged shows the waiting row, never "blank"
-        // (it may be a page change).
-        _blank.Reset();
-        if (_blank.Follow(_unit, screen, DateTime.UtcNow) == A300McduDisplayAction.ShowWaiting)
+        // A blank the unit's clock has not yet judged shows the waiting row, never "blank" (it may be a page
+        // change). The clock is not started over here: every poll ticks both units' (TickBlankClocks), so a unit
+        // that has been blank for a while is blank at once, and only a re-show starts them again (PrepareToShow).
+        if (_blankClocks.Follow(_unit, screen, UtcNow()) == A300McduDisplayAction.ShowWaiting)
             ShowWaiting();
         else
             Render(screen, silent: true);
-        _scratchpad.OnPoll(screen.Scratchpad.Trim(), DateTime.UtcNow);
+        // The read-back is seeded from a page only. A blank frame reads an empty scratchpad that is not one:
+        // seeded with it, the page that follows would read its whole scratchpad back as news. Poll seeds it
+        // from the first page, silently.
+        if (!screen.IsBlank)
+            _scratchpad.OnPoll(screen.Scratchpad.Trim(), UtcNow());
         UpdateAnnunciators(silent: true);
     }
 
@@ -439,18 +547,38 @@ public sealed class A300McduForm : Form
     // Lifecycle
     // ---------------------------------------------------------------------------------
 
+    /// <summary>
+    /// What <see cref="ShowForm"/> does before it shows a hidden window: catches up silently on whatever the MCDU
+    /// shows now, with every blank clock started over (while the window was hidden nothing polled, so how long a
+    /// unit had been blank is unknown), and puts the cursor where the pilot will find it. Shown again on the same
+    /// page it is back on the row the pilot left; on any other page, and on a first open, it is on the title, which
+    /// the screen reader's own read of the focused row names.
+    /// </summary>
+    internal void PrepareToShow()
+    {
+        var left = CursorRow();
+        _lastTitle.TryGetValue(_unit, out var before);
+        _blankClocks.Reset();
+        Resync();
+        if (_rows == null || _display.Items.Count == 0)
+            return;
+        bool samePage = before != null && _lastTitle.TryGetValue(_unit, out var now) && now == before;
+        int index = samePage ? A300McduRows.Restore(_rows, left) : 0;
+        if (index >= 0 && index < _display.Items.Count)
+            _display.SelectedIndex = index;
+    }
+
     public void ShowForm()
     {
         _previousWindow = GetForegroundWindow();
+        // On every call, not only when the window was hidden: the aircraft forgets the export at each flight load
+        // and the tablet's setting can be switched off by hand, so what MSFSBA remembers sending is no proof. A
+        // pilot who finds the screens stale can press Shift+M again. Idempotent.
+        _definition.EnsureMcduExport(force: true);
         if (!Visible)
         {
-            // The export does not survive a flight load; switching it on is idempotent.
-            _definition.EnsureMcduExport(force: true);
-            Resync();
+            PrepareToShow();
             _poll.Start();
-            // A first open names the page through the screen reader's own read of the focused row.
-            if (_rows != null && _display.Items.Count > 0)
-                _display.SelectedIndex = 0;
         }
         Show();
         BringToFront();

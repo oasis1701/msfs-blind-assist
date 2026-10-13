@@ -494,4 +494,37 @@ public class IniA300McduKeyTests
         Assert.True(_def.EnsureMcduExport());          // so the next plain ensure sends again
         Assert.Equal(2, _sent.Count);
     }
+
+    [Fact]
+    public void A_settled_load_makes_the_next_ask_send_the_export_again()
+    {
+        // The first send after a flight load can land before the aircraft's own start-up, which may switch the
+        // option off again. The seed gate's release (the aircraft has published) clears what is remembered, so
+        // the window's next poll sends it once more ([A300-4]).
+        Assert.True(_def.EnsureMcduExport());
+        Assert.Single(_sent);
+        _def.OnLoadSettled();
+        Assert.True(_def.EnsureMcduExport());
+        Assert.Equal(new[] { "1 (>L:INI_MCDU_OPTION)", "1 (>L:INI_MCDU_OPTION)" }, _sent);
+        Assert.True(_def.EnsureMcduExport());   // sent again, and known to be on again: once is enough
+        Assert.Equal(2, _sent.Count);
+    }
+
+    [Fact]
+    public void A_disposed_definition_sends_nothing_and_says_the_export_is_not_on()
+    {
+        _def.Dispose();
+        Assert.False(_def.EnsureMcduExport());
+        Assert.False(_def.EnsureMcduExport(force: true));
+        Assert.Empty(_sent);
+    }
+
+    [Fact]
+    public void A_definition_with_no_sim_attached_sends_nothing_and_says_the_export_is_not_on()
+    {
+        var detached = new IniA300Definition { CanLand = _ => true, Send = (_, rpn) => _sent.Add(rpn) };
+        Assert.False(detached.EnsureMcduExport());
+        Assert.False(detached.EnsureMcduExport(force: true));
+        Assert.Empty(_sent);
+    }
 }

@@ -106,9 +106,10 @@ public enum A300McduDisplayAction
 /// (measured in flight, 2026-10-04: 60 of 363 frames during four key presses), and the window used to show
 /// "is blank. It may be unpowered." on the first one, dropping the cursor. A blank is believed only
 /// once it has lasted <see cref="SettleMs"/>; until then the page on screen is held. Each unit has its OWN
-/// clock, because both MCDUs keep publishing whichever one the window follows: a unit that has stayed blank
-/// is believed blank the moment the window switches to it, not a second later. Pure: the window hands it
-/// each poll's frames and the time.
+/// clock, because both MCDUs keep publishing whichever one the window follows: the window ticks both on every
+/// poll from the screens the data manager has cached (<see cref="Tick"/>), so a unit that has stayed blank is
+/// believed blank the moment the window switches to it, not a second later. Only a re-show starts every clock
+/// over (<see cref="Reset"/>); a unit switch never does. Pure: the window hands it each poll's frames and the time.
 /// </summary>
 public sealed class A300McduBlankClocks
 {
@@ -144,8 +145,9 @@ public sealed class A300McduBlankClocks
 
     /// <summary>The window starts following a unit (an open, a re-show, a unit switch). Nothing on screen is
     /// this unit's page to hold, so a blank not yet judged shows the waiting row, never
-    /// <see cref="A300McduDisplayAction.HoldLastPage"/>. The unit's clock is not touched: it has been counting
-    /// since the unit went blank, so a blank older than <see cref="SettleMs"/> is judged blank at once.</summary>
+    /// <see cref="A300McduDisplayAction.HoldLastPage"/>. The unit's clock is not restarted: it has been counting
+    /// since the unit went blank (the window ticks both units on every poll), so a blank older than
+    /// <see cref="SettleMs"/> is judged blank at once.</summary>
     public A300McduDisplayAction Follow(A300McduUnit unit, A300McduScreen screen, DateTime now)
     {
         var action = Judge(unit, screen, now);
