@@ -83,7 +83,7 @@ public partial class IniA300Definition
 
     /// <summary>
     /// The E/WD memos (<see cref="A300EwdMemos"/>), read once a sample, after a flight load has settled, for the
-    /// ECAM Memos box. Never spoken (owner, 2026-10-11): most follow a switch, and a sign or light gives its
+    /// ECAM Memos box. Never spoken (design decision, 2026-10-11): most follow a switch, and a sign or light gives its
     /// switch read-back only, as on the Fenix, the PMDGs, the iFly and the MD-11.
     /// </summary>
     private void UpdateMemos(SimConnectManager sim, long now)

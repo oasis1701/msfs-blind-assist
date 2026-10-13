@@ -8,7 +8,7 @@ namespace MSFSBlindAssist.Aircraft.A300;
 public static partial class A300PanelLayout
 {
     /// <summary>
-    /// Panel order per section, the fleet's Airbuses' order (owner decision, 2026-10-09): the FBW A320's
+    /// Panel order per section, the fleet's Airbuses' order (design decision, 2026-10-09): the FBW A320's
     /// overhead order where the A300 has the same panel (Electrical, IRS for ADIRS, APU, Oxygen, Fire,
     /// Hydraulics, Fuel, Air Conditioning, Bleed, Pressurization, ...), the A300's own panels beside their
     /// nearest kin, and its Instrument and Pedestal panels by system. A panel this list does not name keeps
@@ -85,7 +85,7 @@ public static partial class A300PanelLayout
             if (PanelOrder.TryGetValue(section, out var order))
                 placement.Structure[section] = Ordered(placement.Structure[section], order);
 
-        // Each panel follows the aircraft's own checklist (owner decision, 2026-10-10): the rows it names, by the
+        // Each panel follows the aircraft's own checklist (design decision, 2026-10-10): the rows it names, by the
         // first step that names them (the generated map's `checklist`), then the rest in their own order. Stable,
         // so an encoder's two rows and the controls one step names together keep their order.
         foreach (var rows in placement.RowsByPanel.Values)

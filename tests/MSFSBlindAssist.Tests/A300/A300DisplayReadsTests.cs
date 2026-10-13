@@ -7,7 +7,7 @@ using MSFSBlindAssist.Services;
 namespace MSFSBlindAssist.Tests.A300;
 
 /// <summary>
-/// The A300's four AI display reads (owner, 2026-10-10: Alt+P, N, E and S read by AI where data cannot
+/// The A300's four AI display reads (design decision, 2026-10-10: Alt+P, N, E and S read by AI where data cannot
 /// reach; Alt+I stays unbound). The views were measured on the live aircraft (2026-10-10, MSFS 2024
 /// 1.8.16.0, A300-600 Freighter GE, package 1.0.11): instrument view index 3 ("CPT ALTIMETER") frames the
 /// captain's PFD and ND whole; index 17 ("GAUGES") the centre panel with both ECAM screens, the only view

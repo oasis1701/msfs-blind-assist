@@ -6,7 +6,7 @@ using MSFSBlindAssist.SimConnect;
 namespace MSFSBlindAssist.Tests.A300;
 
 /// <summary>
-/// The PFD box's localizer and glideslope deviation, as the A300's PFD draws them (owner, 2026-10-10: read
+/// The PFD box's localizer and glideslope deviation, as the A300's PFD draws them (design decision, 2026-10-10: read
 /// the deviation, not the marker beacons). From the aircraft's code (1.0.11): AP_LOGIC::updateRadioReceiver
 /// stores INI_LOC_DEV and INI_GS_DEV already in dots (the angles divided by 0.8 and 0.4, the FBW's
 /// conversion) and INI_LOC_VALID; PFD::DrawPFD draws both scales only while that side's EFIS nav selector is

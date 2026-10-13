@@ -212,6 +212,15 @@ public class A300WritePlanTests
         Assert.Equal(A300WritePlan.NotSettableRefusal, A300WritePlan.ForStep(Control(A300Kinds.Knob, ""), true).Refusal);
     }
 
+    [Fact]
+    public void A_switch_not_ready_is_said_alone_and_any_other_refusal_after_the_row_name()
+    {
+        Assert.Equal("Switch not ready, please try again in a moment.",
+            A300WritePlan.SpokenRefusal("Battery 1", A300WritePlan.UnknownPositionRefusal));
+        Assert.Equal("Battery 1: not a position of this control",
+            A300WritePlan.SpokenRefusal("Battery 1", A300WritePlan.NotAPositionRefusal));
+    }
+
     [Theory]
     [InlineData("de-DE")]
     [InlineData("sv-SE")]

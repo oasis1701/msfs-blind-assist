@@ -318,8 +318,8 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
         // The MCDUs' annunciators (A300McduLights): the MCDU window's status box and its "MSG" call-out.
         foreach (var light in A300McduLights.All)
             vars[light.Key] = OwnSubscription(light.Var, light.Key);
-        // The E/WD memos' inputs (A300EwdMemos), and the ECAM Memos box's line. Memos are never spoken (owner,
-        // 2026-10-11), so the line has no Ctrl+M row ([VAR-9]).
+        // The E/WD memos' inputs (A300EwdMemos), and the ECAM Memos box's line. Memos are never spoken (design
+        // decision, 2026-10-11), so the line has no Ctrl+M row ([VAR-9]).
         foreach (var input in A300EwdMemos.Inputs)
         {
             var def = OwnSubscription(input.Var, input.Key);

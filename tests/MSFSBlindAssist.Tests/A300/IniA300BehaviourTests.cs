@@ -110,12 +110,12 @@ public class IniA300BehaviourTests
     public void A_switch_the_aircraft_did_not_move_snaps_back_and_says_so()
     {
         // The crossbleed button acts only in manual mode: in auto the aircraft ignores it, and the combo kept
-        // the pilot's pick while the valve stayed open (2026-10-10).
+        // the pilot's pick while the valve stayed open (2026-10-10). Worded as the MD-11 and the iFly 737 word it.
         _cache["A300_AIR_XFEED"] = 1;
         ReadFreshReturns("A300_AIR_XFEED", 1);
         Assert.True(Set("A300_AIR_XFEED", 0));
         Assert.Equal(new[] { "0 (>B:AIRLINER_AIR_XFEED_Set)" }, _sent);
-        Assert.Equal(new[] { "Crossbleed stayed Open" }, _speech.All);
+        Assert.Equal(new[] { "Crossbleed did not move" }, _speech.All);
         Assert.Equal(new[] { "A300_AIR_XFEED" }, _reReads);
     }
 
@@ -153,10 +153,10 @@ public class IniA300BehaviourTests
     }
 
     [Fact]
-    public void A_lever_that_moved_then_dropped_is_not_said_to_have_stayed()
+    public void A_lever_that_moved_then_dropped_is_not_said_to_have_not_moved()
     {
         // Pitch trim 2 picked on with no hydraulics: it engaged, then dropped before the read-back, which said
-        // "Pitch trim 2 stayed Off" after the drop's own "Pitch trim 2 off" (2026-10-10).
+        // it had not moved after the drop's own "Pitch trim 2 off" (2026-10-10).
         var release = new TaskCompletionSource();
         _def.TypedDelay = _ => release.Task;
         _def.ReadFresh = (_, _, _) => Task.FromResult<double?>(0);
@@ -291,7 +291,8 @@ public class IniA300BehaviourTests
     {
         Assert.True(Set("A300_BATT_1", 1));
         Assert.Empty(_sent);
-        Assert.Equal(new[] { "Battery 1: position unknown, try again in a moment" }, _speech.All);
+        // The PMDGs' words for a switch whose state is not read yet.
+        Assert.Equal(new[] { "Switch not ready, please try again in a moment." }, _speech.All);
         Assert.Equal(new[] { "A300_BATT_1" }, _reReads);
     }
 

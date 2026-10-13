@@ -15,7 +15,7 @@ namespace MSFSBlindAssist.Aircraft.A300;
 /// once, when the power has settled.
 ///
 /// A light going dark is spoken only once it has stayed dark <see cref="OffHoldMs"/>, the iFly 737's flash
-/// filter (owner, 2026-10-10): a light that lights again inside the hold says nothing, so a flashing light
+/// filter (design decision, 2026-10-10): a light that lights again inside the hold says nothing, so a flashing light
 /// (the autoland warning light) reads as one "on" at its first batch end, and "off" once it stops. An off
 /// while a power change settles is not held: it nets in the power's own sentence. Pure.
 /// </summary>
@@ -30,7 +30,7 @@ public sealed class A300LampSpeech
     public const int GatherMs = 1500;
 
     /// <summary>How long a light must stay dark before its "off" is spoken: longer than a flash's dark
-    /// phase and two subscription periods (owner, 2026-10-10: about 3 s).</summary>
+    /// phase and two subscription periods (design decision, 2026-10-10: about 3 s).</summary>
     public const int OffHoldMs = 3000;
 
     private readonly List<A300LampChange> _pending = new();

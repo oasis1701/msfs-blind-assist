@@ -35,7 +35,7 @@ public sealed class A300ResolvedLamp
 
 /// <summary>
 /// The cockpit lights read through their own rule, generated from the aircraft's emissive code
-/// (<see cref="A300LampRule"/>, [A300-25]), named here panel by panel (owner decision, 2026-10-09: every
+/// (<see cref="A300LampRule"/>, [A300-25]), named here panel by panel (design decision, 2026-10-09: every
 /// light that can be read is spoken). A switch's OFF or ON legend that only mirrors its
 /// position is left out: the row already says the position. The older fault lights stay in
 /// <see cref="A300FaultLights"/>; a lamp named here never repeats one.
@@ -167,7 +167,7 @@ public static class A300PanelLamps
         new("ATC_FO_SEQ1_LIGHT", "First officer ATC message light", "EFIS First Officer"),
         new("STOP_FO_SEQ1_LIGHT", "First officer stop rudder input light", "EFIS First Officer"),
 
-        // Gear (owner decision 2026-10-09: spoken): each gear's green down light (the overhead gear panel), and
+        // Gear (design decision 2026-10-09: spoken): each gear's green down light (the overhead gear panel), and
         // its unlocked and door open lights (the main panel's; the overhead repeats them). Stock gear index 0 is
         // the nose, 1 left, 2 right; iniBuilds' GEAR1 is the nose and GEAR2 the left, as its overhead pairs them.
         new("GEAR_2_UNLK_SEQ2_LIGHT", "Nose gear down light", "Gear"),
@@ -197,7 +197,7 @@ public static class A300PanelLamps
         new("FO_SW_FD_SEQ2_LIGHT", "First officer flight director to system 2 light", "Source Switching"),
         new("FO_SW_EFIS_SEQ2_LIGHT", "First officer EFIS to SGU 3 light", "Source Switching"),
 
-        // The reversers (owner decision 2026-10-09: spoken): each engine's REV and REV UNLK lights on the main
+        // The reversers (design decision 2026-10-09: spoken): each engine's REV and REV UNLK lights on the main
         // panel; and the rudder trim reset button's light, lit while it resets (it labels the button).
         new("INDICATOR_REVLK1_LIGHT", "Engine 1 reverser deployed light", "Thrust Levers"),
         new("INDICATOR_REVLK2_LIGHT", "Engine 2 reverser deployed light", "Thrust Levers"),

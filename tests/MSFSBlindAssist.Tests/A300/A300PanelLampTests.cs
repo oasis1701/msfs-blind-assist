@@ -7,7 +7,7 @@ namespace MSFSBlindAssist.Tests.A300;
 /// <summary>
 /// The cockpit lights read through their own generated rule (<see cref="A300LampRule"/>): each named from
 /// its button and legend, on its system's panel, spoken as the cockpit lights it and shown in its panel's
-/// status box, with its own Ctrl+M row (owner decision 2026-10-09: every light that can be read is spoken).
+/// status box, with its own Ctrl+M row (design decision 2026-10-09: every light that can be read is spoken).
 /// </summary>
 public class A300PanelLampTests
 {
@@ -329,7 +329,7 @@ public class A300PanelLampTests
     }
 
     [Theory]
-    // Owner decision 2026-10-09: the gear lights are spoken. Stock gear index 0 is the nose, 1 left, 2 right;
+    // Design decision 2026-10-09: the gear lights are spoken. Stock gear index 0 is the nose, 1 left, 2 right;
     // iniBuilds' GEAR1 is the nose and GEAR2 the left, as its overhead lamps pair them with those indices.
     [InlineData("GEAR_2_UNLK_SEQ2_LIGHT", "Nose gear down light", "Gear", "GEAR POSITION:0")]
     [InlineData("GEAR_1_UNLK_SEQ2_LIGHT", "Left gear down light", "Gear", "GEAR POSITION:1")]
@@ -363,7 +363,7 @@ public class A300PanelLampTests
     [InlineData("INI_BAT1_light", "Battery 1 charge light")]
     [InlineData("INI_BAT3_light", "Battery 3 charge light")]
     public void The_battery_lights_are_charge_lights(string var, string name) =>
-        // Owner decision 2026-10-09: they follow the battery's charge current (measured in flight, 2026-10-06).
+        // Design decision 2026-10-09: they follow the battery's charge current (measured in flight, 2026-10-06).
         Assert.Equal(name, A300FaultLights.All.Single(l => l.Var == var).Name);
 
     [Fact]

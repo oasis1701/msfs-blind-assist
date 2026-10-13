@@ -56,7 +56,7 @@ public class IniA300DisplayPanelTests
     [Fact]
     public void A_system_panels_status_box_has_its_lights_then_its_ecam_values()
     {
-        // Owner decision 2026-10-09, as the FBW A320's panels carry their system's values.
+        // Design decision 2026-10-09, as the FBW A320's panels carry their system's values.
         var electrical = _def.GetPanelDisplayVariables()["Electrical"];
         var ecam = A300DisplayPanels.Lines["ECAM Electrical AC"].Concat(A300DisplayPanels.Lines["ECAM Electrical DC"]).ToList();
         Assert.Equal(ecam, electrical.Skip(electrical.Count - ecam.Count));

@@ -3,8 +3,8 @@ using System.Globalization;
 namespace MSFSBlindAssist.Aircraft.A300;
 
 /// <summary>
-/// The PFD box's localizer and glideslope deviation lines, as the captain's PFD draws them (owner,
-/// 2026-10-10: read the deviation, not the marker beacons). From the aircraft's code (1.0.11):
+/// The PFD box's localizer and glideslope deviation lines, as the captain's PFD draws them (design
+/// decision, 2026-10-10: read the deviation, not the marker beacons). From the aircraft's code (1.0.11):
 /// <c>AP_LOGIC::updateRadioReceiver</c> stores <c>INI_LOC_DEV</c> and <c>INI_GS_DEV</c> already in dots (the
 /// radio's angles divided by 0.8 and 0.4, the FBW's conversion) and <c>INI_LOC_VALID</c>; <c>PFD::DrawPFD</c>
 /// draws both scales only while that side's EFIS nav selector is on ILS (2), the localizer pointer while

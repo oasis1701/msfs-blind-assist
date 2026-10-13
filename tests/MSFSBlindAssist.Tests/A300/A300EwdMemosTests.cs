@@ -216,7 +216,7 @@ public class IniA300MemoBehaviourTests
     [Fact]
     public void The_memo_line_is_on_the_ecam_memos_box_with_no_ctrl_m_row()
     {
-        // Memos are never spoken (owner, 2026-10-11), so a row would mute nothing ([VAR-9]).
+        // Memos are never spoken (design decision, 2026-10-11), so a row would mute nothing ([VAR-9]).
         var line = _def.GetVariables()[A300EwdMemos.LineKey];
         Assert.True(line.ExcludeFromMonitorManager);
         Assert.True(line.RenderAsReadOnlyStatus);
@@ -229,7 +229,7 @@ public class IniA300MemoBehaviourTests
     [Fact]
     public void A_memo_appearing_is_shown_and_never_spoken()
     {
-        // Owner, 2026-10-11: a sign or light gives its switch read-back only, as on the Fenix, the PMDGs, the
+        // Design decision, 2026-10-11: a sign or light gives its switch read-back only, as on the Fenix, the PMDGs, the
         // iFly and the MD-11; "Memo: Seat belts on" a few seconds later repeated the switch.
         Assert.Empty(Sample());   // the baseline
         Assert.Equal("none", BoxLine());

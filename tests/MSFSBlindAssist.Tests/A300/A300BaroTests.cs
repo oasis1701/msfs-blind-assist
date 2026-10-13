@@ -20,7 +20,7 @@ public class A300BaroTests
     [Theory]
     [InlineData(0.0, 0.0, A300BaroToggle.Standard)]
     [InlineData(1.0, 1.0, A300BaroToggle.Qnh)]
-    [InlineData(1.0, 0.0, A300BaroToggle.Qnh)]     // sides differ: both end in QNH (owner's default)
+    [InlineData(1.0, 0.0, A300BaroToggle.Qnh)]     // sides differ: both end in QNH (design decision)
     [InlineData(0.0, 1.0, A300BaroToggle.Qnh)]
     [InlineData(null, 0.0, A300BaroToggle.Unknown)]
     [InlineData(0.0, null, A300BaroToggle.Unknown)]

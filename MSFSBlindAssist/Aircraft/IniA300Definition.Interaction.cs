@@ -116,7 +116,8 @@ public partial class IniA300Definition
     /// Reads a picked switch back once it has had time to move. When the aircraft ignored the write (the
     /// crossbleed button in auto mode), the combo would keep the pick while the switch stayed put, and the
     /// next pick would be planned from it: so the row is read again, the stayed position is remembered, and
-    /// it is said once ("Crossbleed stayed Open"), what the screen reader cannot say ([CORE-7]). A switch that
+    /// it is said once, as the MD-11 and the iFly 737 say it ("Crossbleed did not move"), what the screen
+    /// reader cannot say ([CORE-7]); the combo going back shows where it is. A switch that
     /// reached the pick and then dropped by itself (a SAS lever) moved: its drop is the aircraft's, spoken as such.
     /// </summary>
     private async Task CheckMovedAsync(A300PlacedRow row, double target, SimConnectManager sim,
@@ -135,8 +136,7 @@ public partial class IniA300Definition
                 return;
             _commanded.Record(row.Key, now, Clock());
             ReRead(row.Key, sim);
-            if (row.Positions.TryGetValue(Math.Round(now), out var word))
-                announcer.Announce($"{row.Name} stayed {word}");
+            announcer.Announce($"{row.Name} did not move");
         }
         catch (Exception ex)
         {
@@ -216,7 +216,7 @@ public partial class IniA300Definition
     {
         if (plan.Refusal != null)
         {
-            announcer.Announce($"{row.Name}: {plan.Refusal}");
+            announcer.Announce(A300WritePlan.SpokenRefusal(row.Name, plan.Refusal));
             ReRead(row.Key, sim);
             return false;
         }

@@ -33,7 +33,7 @@ public class A300PanelLayoutTests
     [Fact]
     public void The_sections_are_the_fleet_airbuses_sections()
     {
-        // Owner decision 2026-10-09: "Main Panel" is "Instrument", as on the FBW A320, A330 and A380.
+        // Design decision 2026-10-09: "Main Panel" is "Instrument", as on the FBW A320, A330 and A380.
         Assert.Equal(new[] { "Overhead", "Glareshield", "Instrument", "Pedestal", "Cockpit", "Cargo" },
             Placement.Structure.Keys);
     }
@@ -41,7 +41,7 @@ public class A300PanelLayoutTests
     [Fact]
     public void Each_section_lists_its_panels_by_system_in_the_fleet_airbuses_order()
     {
-        // Owner decisions 2026-10-09 (docs/a300.md, "Panels"): sorted by system like the FBW A320 where the A300
+        // Design decisions 2026-10-09 (docs/a300.md, "Panels"): sorted by system like the FBW A320 where the A300
         // has the same panel; A300-only panels keep the manual's name; window and probe heat and the landing
         // elevation knob stay where the A300 has them.
         Assert.Equal(new[]
@@ -336,7 +336,7 @@ public class A300PanelLayoutTests
     [Fact]
     public void After_its_lead_rows_each_panel_follows_the_aircrafts_checklist()
     {
-        // Owner decision, 2026-10-10: a panel's rows in the order the A300's own checklist sets them (each control's
+        // Design decision, 2026-10-10: a panel's rows in the order the A300's own checklist sets them (each control's
         // first checklist step, from the generated map), then the rows it never names, in their own order.
         Assert.Contains(Map.Controls, c => c.Checklist != null);
         foreach (var (panel, rows) in Placement.RowsByPanel)

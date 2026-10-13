@@ -1,11 +1,11 @@
 namespace MSFSBlindAssist.Aircraft.A300;
 
 /// <summary>
-/// The panels iniBuilds groups by place but the fleet's Airbuses group by system (owner decision,
+/// The panels iniBuilds groups by place but the fleet's Airbuses group by system (design decision,
 /// 2026-10-09): the overhead lights panel is Signs, Interior Lighting and Exterior Lighting; the bleed
 /// panel is Bleed and Air Conditioning; the fire panel gives up Cargo Smoke; the main instrument panel and
 /// the throttle quadrant are sorted into the FBW Airbuses' Instrument and Pedestal panels. The window and
-/// probe heat panel and the landing elevation knob stay where the A300 has them (owner, same day).
+/// probe heat panel and the landing elevation knob stay where the A300 has them (design decision, same day).
 /// </summary>
 public static partial class A300PanelLayout
 {

@@ -67,7 +67,7 @@ public class IniA300AutopilotWindowTests
     {
         _def.AutopilotButtons(_sim, _speech)[0].OnPressed();
         Assert.Empty(_sent);
-        Assert.Equal(new[] { "Autopilot 1: " + A300WritePlan.UnknownPositionRefusal }, _speech.All);
+        Assert.Equal(new[] { "Switch not ready, please try again in a moment." }, _speech.All);
     }
 
     [Fact]

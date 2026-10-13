@@ -184,12 +184,12 @@
             this.flyByWireA380MenuItem,
             this.headwindA330MenuItem,
             this.fenixA320MenuItem,
-            this.iniA300MenuItem,
             this.pmdg737MenuItem,
             this.pmdg777MenuItem,
             this.horizonSim787MenuItem,
             this.ifly737MaxMenuItem,
-            this.tfdiMd11MenuItem});
+            this.tfdiMd11MenuItem,
+            this.iniA300MenuItem});
             this.aircraftMenuItem.Name = "aircraftMenuItem";
             this.aircraftMenuItem.Size = new System.Drawing.Size(75, 24);
             this.aircraftMenuItem.Text = "&Aircraft";

@@ -4,7 +4,7 @@ using MSFSBlindAssist.Services;
 namespace MSFSBlindAssist.Aircraft.A300;
 
 /// <summary>
-/// The A300's four AI display reads and the instrument camera view each one needs (owner, 2026-10-10:
+/// The A300's four AI display reads and the instrument camera view each one needs (design decision, 2026-10-10:
 /// Alt+P, N, E and S read by AI where data cannot reach; Alt+I stays unbound, the standby instruments
 /// being all data). The status boxes and call-outs stay data-only ([A300-8]).
 ///

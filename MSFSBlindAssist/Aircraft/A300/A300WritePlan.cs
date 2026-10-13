@@ -68,7 +68,7 @@ public static class A300WritePlan
     /// loop A at about 1.5 s and the fire handle at about 3 s (measured 2026-10-04). An engine loop test's
     /// fire warning comes at about 4.4 s and lasts while it is held (2026-10-09), so 5 s lit the handle about
     /// half a second, netted away inside the lights' gather window ([A300-24]); 7 s gives about 2.5 s. The takeoff config, landing gear warning and smoke tests have no duration
-    /// in the checklist and are held 5 s (owner decision, 2026-10-09): on the same ground probe a 250 ms
+    /// in the checklist and are held 5 s (design decision, 2026-10-09): on the same ground probe a 250 ms
     /// takeoff config press reported nothing even in landing configuration while a 5 s hold warned at
     /// about 3.7 s, the gear warning test's master warning came at about 3.5 s and the smoke test's ECAM
     /// warning at about 3.5 s. The lights a test brings on speak through the fault-light path. Every
@@ -92,9 +92,15 @@ public static class A300WritePlan
     public static int HoldMsFor(A300Control control) =>
         TestHoldMs.TryGetValue(control.Id, out var ms) ? ms : HoldMs;
 
-    public const string UnknownPositionRefusal = "position unknown, try again in a moment";
+    /// <summary>A switch whose position is not read yet: the PMDGs' sentence, spoken alone.</summary>
+    public const string UnknownPositionRefusal = "Switch not ready, please try again in a moment.";
     public const string NotAPositionRefusal = "not a position of this control";
     public const string NotSettableRefusal = "cannot be set from this panel";
+
+    /// <summary>What a refused row says: <see cref="UnknownPositionRefusal"/> alone, as the PMDGs say it,
+    /// any other refusal after the row's name ("Battery 1: not a position of this control").</summary>
+    public static string SpokenRefusal(string rowName, string refusal) =>
+        refusal == UnknownPositionRefusal ? refusal : $"{rowName}: {refusal}";
 
     /// <summary><paramref name="target"/> and <paramref name="current"/> are STATE values (what the
     /// state variable reads; for a knob, its scaled value).</summary>

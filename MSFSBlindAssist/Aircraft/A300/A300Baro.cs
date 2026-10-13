@@ -83,7 +83,7 @@ public static class A300Baro
 
     /// <summary>
     /// What the mode button does: STD only when both sides read QNH; QNH when either reads STD (with the
-    /// sides differing, both end in QNH: the side already there is left alone, owner's default
+    /// sides differing, both end in QNH: the side already there is left alone, a design decision of
     /// 2026-10-09, since the FBW A320's Mode control reads one side only); unknown when a side is unread.
     /// </summary>
     public static A300BaroToggle ToggleFor(double? captainMode, double? firstOfficerMode)

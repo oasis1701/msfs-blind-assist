@@ -80,7 +80,7 @@ public class A300TrimTests
     [InlineData("INDICATOR_REV2_LIGHT", "Engine 2 reverser unlocked light", "INI_ENG2_REVERSE_UNLK_LIGHT")]
     public void The_reverser_lights_are_on_the_thrust_levers_panel(string node, string name, string var)
     {
-        // Owner decision 2026-10-09: the reverser lights are spoken.
+        // Design decision 2026-10-09: the reverser lights are spoken.
         var lamp = A300PanelLamps.Resolved.Single(l => l.Lamp.Node == node);
         Assert.Equal((name, "Thrust Levers", var), (lamp.Lamp.Name, lamp.Lamp.Panel, lamp.Primary.Name));
     }

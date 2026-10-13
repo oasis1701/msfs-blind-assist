@@ -255,7 +255,7 @@ public class A300FaultLightTests
     [Fact]
     public void A_light_that_blinks_inside_one_batch_says_on_then_off_once_it_has_stayed_dark()
     {
-        // The iFly 737's flash filter (owner, 2026-10-10): "on" at once, "off" only after the hold.
+        // The iFly 737's flash filter (design decision, 2026-10-10): "on" at once, "off" only after the hold.
         PowerUp();
         var pack = Lamp("INI_PACK1_FAULT");
         Deliver(pack, 0);

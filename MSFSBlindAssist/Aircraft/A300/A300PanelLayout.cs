@@ -25,7 +25,7 @@ public sealed class A300Placement
 /// iniBuilds grouped the cockpit by (Overhead, Glareshield, Instrument, Pedestal, Cockpit, Cargo), so
 /// an iniBuilds update is picked up by regenerating the map. Where iniBuilds groups by place and the
 /// fleet's Airbuses by system, <see cref="ControlPanels"/> sends each control to its system's panel
-/// (owner decision, 2026-10-09). The ORDER of the panels, and the rows that open a few of them, come
+/// (design decision, 2026-10-09). The ORDER of the panels, and the rows that open a few of them, come
 /// from <see cref="PanelOrder"/> and <see cref="LeadRows"/>; everything else keeps the cockpit file's
 /// order. The pedestal's radio and audio group (iniBuilds' "STD", 113 controls) is divided by what each
 /// control is.

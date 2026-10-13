@@ -210,7 +210,7 @@ public partial class IniA300Definition
         }
         if (CurrentValue(key, sim) is not double now)
         {
-            announcer.AnnounceImmediate($"{name}: {A300WritePlan.UnknownPositionRefusal}");
+            announcer.AnnounceImmediate(A300WritePlan.UnknownPositionRefusal);
             return;
         }
         double target = now >= 0.5 ? 0 : 1;

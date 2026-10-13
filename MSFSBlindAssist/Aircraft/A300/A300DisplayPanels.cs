@@ -62,7 +62,7 @@ public static class A300DisplayPanels
 
     public static bool IsDisplayPanel(string panel) => Lines.ContainsKey(panel);
 
-    /// <summary>The display lines a system panel's status box carries after its lights (owner decision
+    /// <summary>The display lines a system panel's status box carries after its lights (design decision
     /// 2026-10-09, as the FBW A320's panels carry their system's values): its ECAM page's values, and the
     /// standby instruments' readings on their own panel. The Displays section keeps the ECAM pages too.</summary>
     public static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> SystemLines =
