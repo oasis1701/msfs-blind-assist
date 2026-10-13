@@ -76,8 +76,8 @@ test('the loading half reads its fields by what they hold', () => {
 });
 
 // A number box blanks itself on any text that is not a plain number, so what a pilot types is read
-// first: "20,000" and "20 000" are 20000, "12,5" is 12.5, and anything else that is not a number is
-// refused, with the box left exactly as it was.
+// first: "20,000" and "20 000" are 20000, "12,5" is 12.5, an empty entry clears the box, and any other
+// text that is not a number is refused, with the box left exactly as it was.
 const NBSP = String.fromCharCode(0xa0), THIN = String.fromCharCode(0x2009), NARROW = String.fromCharCode(0x202f);
 
 function fuelBox() {
@@ -119,13 +119,27 @@ test('a number box refuses text that is not a number and is left as it was', () 
   assert.strictEqual(A.setValue(idx, '20,000'), true);
   seen.length = 0;
   for (const typed of [
-    'abc', '', '   ', null, '15 kg', '1.234,5', '20 0', '1,23,456', '1,234 567', '0x10', 'Infinity', '1e3', '+5', '--5', '1.2.3',
+    'abc', '15 kg', '1.234,5', '20 0', '1,23,456', '1,234 567', '0x10', 'Infinity', '1e3', '+5', '--5', '1.2.3',
     '9'.repeat(400),
   ]) {
     assert.strictEqual(A.setValue(idx, typed), false, JSON.stringify(typed));
     assert.strictEqual(box.value, '20000', JSON.stringify(typed) + ' leaves the box alone');
   }
   assert.deepStrictEqual(seen, [], 'a refused entry fires nothing');
+});
+
+test('an empty entry clears a number box, and the tablet is told like any typed entry', () => {
+  // A number box is emitted with its real value, so Enter on an emptied box is a deliberate deletion
+  // (a password box is the opposite: emitted empty, so it is never cleared). Spaces alone are empty.
+  const { A, box, seen, idx } = fuelBox();
+  for (const typed of ['', '   ']) {
+    assert.strictEqual(A.setValue(idx, '20,000'), true);
+    assert.strictEqual(box.value, '20000');
+    seen.length = 0;
+    assert.strictEqual(A.setValue(idx, typed), true, JSON.stringify(typed));
+    assert.strictEqual(box.value, '', JSON.stringify(typed) + ' clears the box');
+    assert.deepStrictEqual(seen, ['input', 'change', 'keyup', 'blur'], JSON.stringify(typed));
+  }
 });
 
 test('the loading half has its buttons and the way back', () => {

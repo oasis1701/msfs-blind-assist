@@ -889,11 +889,16 @@
     // and clearing a stored code is not offered here.
     if (el.type === 'password' && !A.clean(text)) return false;
     // A number box blanks itself on text that is not a plain number ("20,000", "12,5"), so the number
-    // the pilot meant is written, or nothing at all when there is none.
+    // the pilot meant is written. An empty entry (or spaces alone) clears the box: it is emitted with its
+    // real value, so Enter on an emptied box is a deliberate deletion. Any other text that is not a
+    // number is refused, and the box is left as it was.
     if (el.type === 'number') {
-      var n = A.typedNumber(text);
-      if (isNaN(n)) return false;
-      text = String(n);
+      if (!A.clean(text)) text = '';
+      else {
+        var n = A.typedNumber(text);
+        if (isNaN(n)) return false;
+        text = String(n);
+      }
     }
     // Never focus(): the tablet's on-screen keyboard opens on a focused field and covers the page.
     el.value = String(text);
