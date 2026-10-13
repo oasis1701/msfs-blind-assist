@@ -225,4 +225,42 @@ public class A300LampSpeechTests
         Assert.Null(_speech.Flush(10_000 + A300LampSpeech.SettleMs - 1));
         Assert.Equal("2 lights on: Pack 1 fault, Pack 2 fault", _speech.Flush(10_000 + A300LampSpeech.SettleMs));
     }
+
+    [Fact]
+    public void A_light_already_pending_does_not_extend_the_gather()
+    {
+        // A NEW light's change gets its own gather (the late-change test above); a further change of a light that is
+        // already waiting does not, or a light changing every few hundred milliseconds would keep the sentence back.
+        _speech.NotePowerChange(10_000);                  // the settle ends at 12,500
+        _speech.Add(On("Pack 1 fault light"), 10_000);
+        _speech.Add(On("Pack 2 fault light"), 11_500);    // a new light: its own gather ends at 13,000
+        _speech.Add(Off("Pack 2 fault light"), 12_000);   // pending already: no gather of its own (it would end at 13,500)
+        Assert.Null(_speech.Flush(12_999));
+        Assert.Equal("Pack 1 fault light on", _speech.Flush(13_000));
+    }
+
+    [Fact]
+    public void A_light_flashing_through_a_power_settle_does_not_hold_the_sentence_back()
+    {
+        // Measured on the built class in review (2026-10-13): while a power change settles an off is queued, not held,
+        // so the autoland light, flashing every 0.6 s, queued a change every 0.6 s. With each one moving the gather on,
+        // the settle never ended while it flashed, and the first sentence came at 22 s instead of 3 s.
+        const string flasher = "Autoland warning light", fault = "Battery 1 fault light";
+        long start = 10_000;
+        var said = new List<(long After, string Text)>();
+        _speech.NotePowerChange(start);
+        for (long after = 0; after <= 24_000; after += 100)
+        {
+            long at = start + after;
+            if (after == 500)
+                _speech.Add(On(fault), at);
+            if (after is >= 200 and <= 19_400 && (after - 200) % 600 == 0)
+                _speech.Add((after - 200) / 600 % 2 == 0 ? On(flasher) : Off(flasher), at);
+            if (after > 0 && after % 1_000 == 0 && _speech.Flush(at) is string text)   // a batch end every second
+                said.Add((after, text));
+        }
+        // The first batch end after the settle (2,500 ms) speaks the fault and the flashing light's net state (five
+        // changes: on). The flashes after it are offs held and canceled by the next on: nothing more is said.
+        Assert.Equal(new[] { (3_000L, "2 lights on: Battery 1 fault, Autoland warning") }, said);
+    }
 }

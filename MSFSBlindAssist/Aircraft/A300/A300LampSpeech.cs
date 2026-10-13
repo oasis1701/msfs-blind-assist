@@ -9,11 +9,13 @@ namespace MSFSBlindAssist.Aircraft.A300;
 /// aircraft's own order is lost, both ways (measured 2026-10-09): on external power on, the cabin regulator 2
 /// fault cleared 500 ms BEFORE the AC light power rose and MSFSBA heard the power first; on external power
 /// off, the rudder travel limiter 2 fault arrived a second before the power flag. Either way MSFSBA said a
-/// light on that the cockpit never lit, then off. So each change waits <see cref="GatherMs"/> from its own
-/// arrival (one subscription period, for a power flag still on its way), and a power change holds everything
-/// <see cref="SettleMs"/>. Like the fleet, a power change still speaks every light it lights or darkens,
-/// once, when the power has settled. A change the definition does not keep still tells this class to
-/// <see cref="Forget"/> the light, so an earlier opposite change is not spoken stale.
+/// light on that the cockpit never lit, then off. So a light's first change since the last sentence waits
+/// <see cref="GatherMs"/> from its own arrival (one subscription period, for a power flag still on its way;
+/// a further change of a light already waiting adds none, or a light flashing through a power settle would
+/// keep the sentence back as long as it flashed), and a power change holds everything <see cref="SettleMs"/>.
+/// Like the fleet, a power change still speaks every light it lights or darkens, once, when the power has
+/// settled. A change the definition does not keep still tells this class to <see cref="Forget"/> the light,
+/// so an earlier opposite change is not spoken stale.
 ///
 /// A light going dark is spoken only once it has stayed dark <see cref="OffHoldMs"/>, the iFly 737's flash
 /// filter (design decision, 2026-10-10): a light that lights again inside the hold says nothing, so a flashing light
@@ -26,8 +28,8 @@ public sealed class A300LampSpeech
     /// the power to arrive after it.</summary>
     public const int SettleMs = 2500;
 
-    /// <summary>How long a change waits from its own arrival: one subscription period and a little, so a
-    /// power flag arriving just after it still nets with it.</summary>
+    /// <summary>How long a light's first change since the last sentence waits from its own arrival: one
+    /// subscription period and a little, so a power flag arriving just after it still nets with it.</summary>
     public const int GatherMs = 1500;
 
     /// <summary>How long a light must stay dark before its "off" is spoken: longer than a flash's dark
@@ -41,8 +43,9 @@ public sealed class A300LampSpeech
     /// <summary>A power change's sentence is still to come: until it is spoken, an off nets in it unheld.</summary>
     private bool _powerSettling;
 
-    /// <summary>Takes a change; each one extends the gather period to its own <see cref="GatherMs"/>. An off is
-    /// held (<see cref="OffHoldMs"/>), and a light lighting again while its off is held is dropped.</summary>
+    /// <summary>Takes a change; one of a light with none pending extends the gather period to its own
+    /// <see cref="GatherMs"/>. An off is held (<see cref="OffHoldMs"/>), and a light lighting again while its off is
+    /// held is dropped.</summary>
     public void Add(A300LampChange change, long now)
     {
         if (change.On && _heldOff.Remove(change.Name))
@@ -105,9 +108,13 @@ public sealed class A300LampSpeech
 
     private void Queue(A300LampChange change, long now)
     {
-        // Every change has its own gather period, not only the first since the last sentence: a power flag or a
-        // fault still on its way after a later change must find it unspoken to net with it.
-        _holdUntil = Math.Max(_holdUntil, now + GatherMs);
+        // A light's first change since the last sentence has its own gather period, not only the very first change:
+        // a power flag or a fault still on its way after it must find it unspoken to net with it. A light that
+        // already has a change pending adds none: while a power change settles an off is queued, not held, so a light
+        // flashing through the settle would queue a change every few hundred milliseconds and, with each one moving
+        // the hold on, keep the sentence back for as long as it flashed (the autoland light: 22 s instead of 3 s).
+        if (!_pending.Exists(p => string.Equals(p.Name, change.Name, StringComparison.Ordinal)))
+            _holdUntil = Math.Max(_holdUntil, now + GatherMs);
         _pending.Add(change);
     }
 

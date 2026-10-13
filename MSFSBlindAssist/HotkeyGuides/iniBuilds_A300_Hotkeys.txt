@@ -144,10 +144,12 @@ temperature back once it has moved ("Flex temperature 46 degrees").
 The buttons on the Autobrake panel say what their lights show: "Autobrake low: Armed",
 "Decel" while the autobrake is braking, or "Off". Pressing the armed level again turns the
 autobrake off, as in the aircraft. The aircraft arms it only with the gear lever down and
-hydraulic pressure. A press says nothing; the autobrake lights are announced as they change, like
-the other lights: "Autobrake max armed light on", "Autobrake low decel light on". The Autobrake
-panel's status display also reads the brake gauge: accumulator pressure and left and right brake
-pressure ("Brake accumulator pressure: 3,000 psi"), and the brakes hot light. The Gear panel's
+hydraulic pressure. A press says nothing, because the button you pressed says Armed or Off itself.
+The autobrake lights you did not press are announced as they change, like the other lights: another
+level going out ("Autobrake low armed light off"), a DECEL light ("Autobrake low decel light on"),
+and the aircraft turning the autobrake off by itself. The Autobrake panel's status display also
+reads the brake gauge: accumulator pressure and left and right brake pressure ("Brake accumulator
+pressure: 3,000 psi"), and the brakes hot light. The Gear panel's
 status display has each gear's down, unlocked and door open lights, spoken as they change ("3
 lights off: Nose gear door open, Left gear door open, Right gear door open").
 
