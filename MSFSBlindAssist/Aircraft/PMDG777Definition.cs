@@ -7541,8 +7541,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         bool hasMachPrefix = trimmed.StartsWith("M", StringComparison.OrdinalIgnoreCase);
         if (hasMachPrefix) trimmed = trimmed.Substring(1);
 
-        if (!double.TryParse(trimmed, System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture, out value))
+        if (!Utils.NumberParsing.TryParseTyped(trimmed, out value))
             return false;
 
         // Either explicit M prefix, or a value < 10 (interpreted as Mach).
@@ -7636,8 +7635,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             "MCP Vertical Speed", "V/S or FPA", "V/S: -8000 to 6000 fpm / FPA: -9.9 to 9.9", announcer,
             input =>
             {
-                if (double.TryParse(input, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out double val))
+                if (Utils.NumberParsing.TryParseTyped(input, out double val))
                 {
                     if (dm != null && (int)dm.GetFieldValue("MCP_VSDial_Mode") == 1)
                     {
@@ -7657,8 +7655,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             toggles,
             input =>
             {
-                if (!double.TryParse(input, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out double val))
+                if (!Utils.NumberParsing.TryParseTyped(input, out double val))
                     return;
 
                 bool isFPA = dm != null && (int)dm.GetFieldValue("MCP_VSDial_Mode") == 1;

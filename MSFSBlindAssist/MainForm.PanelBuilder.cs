@@ -1018,7 +1018,13 @@ public partial class MainForm
                             announcer.Announce($"Squawk set to {squawkCode}");
                         }
                     }
-                    else if (double.TryParse(textBox.Text, out double value))
+                    // Same comma-tolerant invariant parse as the delegation above: the
+                    // PC's culture would refuse "29.92" under sv-SE and read 2992 under de-DE.
+                    else if (double.TryParse(
+                            textBox.Text.Replace(',', '.'),
+                            System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture,
+                            out double value))
                     {
                         // Let aircraft handle special cases first (validation, conversion, multi-step logic)
                         if (currentAircraft.HandleUIVariableSet(varKey, value, varDef, simConnectManager!, announcer))

@@ -308,15 +308,13 @@ public partial class ColdTemperatureCorrectionForm : Form
         _announcer.AnnounceImmediate(message);
     }
 
-    // Accept a signed integer/decimal; reject blanks and garbage. Invariant
-    // culture so a comma isn't mistaken for a decimal point.
+    // Accept a signed integer/decimal with either decimal separator; reject blanks,
+    // garbage and a thousands group ("1,500"), which is never guessed.
     private static bool TryParseSigned(string text, out double value)
     {
         value = 0;
         if (string.IsNullOrWhiteSpace(text)) return false;
-        return double.TryParse(text.Trim(),
-            System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowLeadingSign,
-            System.Globalization.CultureInfo.InvariantCulture, out value);
+        return Utils.NumberParsing.TryParseTyped(text, out value);
     }
 
     private void CloseButton_Click(object? sender, EventArgs e)

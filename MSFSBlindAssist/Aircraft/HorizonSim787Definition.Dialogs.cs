@@ -137,8 +137,7 @@ public partial class HorizonSim787Definition
             "MCP Speed", "speed", "IAS: 100-399 knots / Mach: 0.40-0.99", announcer,
             input =>
             {
-                if (double.TryParse(input, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out double val))
+                if (Utils.NumberParsing.TryParseTyped(input, out double val))
                 {
                     if (val >= 100 && val <= 399) return (true, "");
                     if (val >= 0.4 && val < 1.0)  return (true, "");
@@ -148,8 +147,7 @@ public partial class HorizonSim787Definition
             toggles,
             input =>
             {
-                if (!double.TryParse(input, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out double spd))
+                if (!Utils.NumberParsing.TryParseTyped(input, out double spd))
                     return;
 
                 if (spd < 10.0)
@@ -277,8 +275,7 @@ public partial class HorizonSim787Definition
             announcer,
             input =>
             {
-                if (double.TryParse(input, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out double val))
+                if (Utils.NumberParsing.TryParseTyped(input, out double val))
                 {
                     bool isFPA = (simConnect.GetCachedVariableValue("HS787_FPAMode") ?? 0) > 0;
                     if (isFPA)
@@ -297,8 +294,7 @@ public partial class HorizonSim787Definition
             toggles,
             input =>
             {
-                if (!double.TryParse(input, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out double val))
+                if (!Utils.NumberParsing.TryParseTyped(input, out double val))
                     return;
 
                 bool isFPA = (simConnect.GetCachedVariableValue("HS787_FPAMode") ?? 0) > 0;

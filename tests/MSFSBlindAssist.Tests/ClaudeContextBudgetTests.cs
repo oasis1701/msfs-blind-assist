@@ -713,6 +713,7 @@ public class ClaudeContextBudgetTests
         {
             "MSFSBlindAssist/Program.cs", "MSFSBlindAssist/GlobalUsings.cs", "MSFSBlindAssist/SingleInstanceManager.cs",
             "MSFSBlindAssist/Properties/", "MSFSBlindAssist/Utils/RuntimeChecker.cs", "MSFSBlindAssist/Utils/SimulatorDetector.cs",
+            "MSFSBlindAssist/Utils/NumberParsing.cs",
         },
         ["plain data records: the rules about their fields load with the code that reads them"] = new[]
         {

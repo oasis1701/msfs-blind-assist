@@ -5855,8 +5855,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         bool hasMachPrefix = trimmed.StartsWith("M", StringComparison.OrdinalIgnoreCase);
         if (hasMachPrefix) trimmed = trimmed.Substring(1);
 
-        if (!double.TryParse(trimmed, System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture, out value))
+        if (!Utils.NumberParsing.TryParseTyped(trimmed, out value))
             return false;
 
         // Either explicit M prefix, or a value < 10 (interpreted as Mach).
