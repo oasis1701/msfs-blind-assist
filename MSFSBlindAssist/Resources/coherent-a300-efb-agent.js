@@ -11,7 +11,8 @@
 // Contract, the same as the PMDG and MD-11 agents so the shared FbwEfbForm consumes it:
 //   scrape()            -> JSON string {ok, page, elements:[...]}
 //   clickElement(idx)   -> press the element carrying that stamped idx
-//   setValue(idx, text) -> type into a field, pick a radio option, or move a slider
+//   setValue(idx, text) -> type into a field, pick a radio option, or move a slider; false when
+//                          nothing was written
 // Element: {idx,text,value,controlType,kind,clickable,level,disabled,options,min,max,step,key,announceChange}
 //
 // A press is ONE click: pointerdown, mousedown, pointerup, mouseup, click. The tablet ignores a bare
@@ -583,8 +584,12 @@
         var idxI = A.stamp(el);
         var unit = A.unit(el);
         var name = A.fieldLabel(el) + (unit ? ' (' + unit + ')' : '');
+        // A password (the Hoppie logon code) is never given out: its box comes up empty, and its name says
+        // whether a code is stored. setValue never writes an empty value to it, so Enter on the untouched
+        // box leaves the stored code alone (a placeholder value here used to be written over the code).
         var secret = el.type === 'password';
-        emit({ idx: idxI, text: name, value: secret ? (el.value ? 'set' : '') : A.clean(el.value), controlType: 'text',
+        if (secret && el.value) name += ', code set';
+        emit({ idx: idxI, text: name, value: secret ? '' : A.clean(el.value), controlType: 'text',
           kind: 'static', clickable: false, disabled: !!el.disabled || !!el.readOnly, key: 'field:' + (el.id || idxI) });
         return;
       }
@@ -843,6 +848,24 @@
     el.dispatchEvent(ev);
   };
 
+  // A number the pilot typed → the number, or NaN when it is not one. A space before exactly three digits
+  // groups the thousands of the whole number ("20 000", "12 345,5"; A.clean makes a no-break, thin or
+  // narrow space a plain one), and so does a comma before exactly three digits in a well formed grouping
+  // ("20,000", "1,234,567"). Any other single comma is the decimal point ("12,5", "0,25"). So "0,500" is
+  // a half and "1234,567" a thousand and a fraction, never 500 or 1234567. What is still not a plain
+  // number ("abc", "15 kg", "1.234,5", "1,234 567") is NaN.
+  A.typedNumber = function (text) {
+    var s = A.clean(text), cut = s.search(/[,.]/);
+    if (cut < 0) cut = s.length;
+    s = s.slice(0, cut).replace(/(\d) (?=\d{3}(?!\d))/g, '$1') + s.slice(cut);
+    if (/^-?[1-9]\d{0,2}(,\d{3})+(\.\d+)?$/.test(s)) s = s.replace(/,/g, '');
+    else if (/^-?\d*,\d+$/.test(s)) s = s.replace(',', '.');
+    if (!/^-?(\d+\.?\d*|\.\d+)$/.test(s)) return NaN;
+    var n = +s;
+    return isFinite(n) ? n : NaN;
+  };
+
+  // Types into a field, picks a radio option or moves a slider. False when nothing was written.
   A.setValue = function (idx, text) {
     var el = A.find(idx);
     if (!el) return false;
@@ -861,6 +884,16 @@
       A.fire(el, 'input');
       A.fire(el, 'change');
       return true;
+    }
+    // A password box is never emptied or blanked: an empty entry is the untouched box, not a new code,
+    // and clearing a stored code is not offered here.
+    if (el.type === 'password' && !A.clean(text)) return false;
+    // A number box blanks itself on text that is not a plain number ("20,000", "12,5"), so the number
+    // the pilot meant is written, or nothing at all when there is none.
+    if (el.type === 'number') {
+      var n = A.typedNumber(text);
+      if (isNaN(n)) return false;
+      text = String(n);
     }
     // Never focus(): the tablet's on-screen keyboard opens on a focused field and covers the page.
     el.value = String(text);

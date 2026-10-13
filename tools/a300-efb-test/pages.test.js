@@ -64,6 +64,23 @@ test('the slides\' colour legend is not read, the states being in words on the s
   assert.ok(r.elements.some(e => /^Door 1L slide/.test(e.text)));
 });
 
+test('a slide button says armed or disarmed from its color', () => {
+  // Red is armed and green disarmed, the page's own legend. The harness reports an element's inline
+  // background color as its computed one, so the color the fixture draws is what the reader sees.
+  const { A, window } = load('groundequip');
+  const slide = window.document.getElementById('door1Larmed');
+  const label = () => texts(scrape(A)).find(t => /^Door 1L slide/.test(t));
+  assert.strictEqual(label(), 'Door 1L slide: disarmed', 'the green 1L slide');
+  slide.style.backgroundColor = 'rgb(255, 0, 0)';
+  assert.strictEqual(label(), 'Door 1L slide: armed', 'red');
+  slide.style.backgroundColor = 'rgba(0, 128, 0, 0.5)';
+  assert.strictEqual(label(), 'Door 1L slide: disarmed', 'green with an alpha');
+  slide.style.backgroundColor = 'rgb(128, 128, 128)';
+  assert.strictEqual(label(), 'Door 1L slide', 'a color that is neither says nothing');
+  slide.style.backgroundColor = '';
+  assert.strictEqual(label(), 'Door 1L slide', 'no color says nothing');
+});
+
 // ---- Aircraft Maintenance ------------------------------------------------------------------
 
 const WEAR = {};
