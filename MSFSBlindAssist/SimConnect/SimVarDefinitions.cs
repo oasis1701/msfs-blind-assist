@@ -137,6 +137,15 @@ public class SimVarDefinition
     public IReadOnlyList<string>? StateVariables { get; set; }
 
     /// <summary>
+    /// The control is a read-only, navigable LIST whose rows the definition builds itself through
+    /// <see cref="Aircraft.IAircraftDefinition.GetLiveListItems"/> (first user: the PMDG 737's
+    /// Flashing lights list). MainForm re-reads the rows while the panel is open and reconciles them
+    /// in place (<c>Forms.DisplayList.UpdateInPlace</c>), so the reader's cursor stays put. The var
+    /// is never read from the sim.
+    /// </summary>
+    public bool RenderAsLiveList { get; set; }
+
+    /// <summary>
     /// Maps a raw value onto the <see cref="ValueDescriptions"/> KEY that describes it, for a
     /// variable whose keys are positions but whose value is a continuous travel — the TFDi MD-11
     /// gear lever: keys {0 Up, 1 Down} from the control map, value 0-25 with Down at &gt;= 20. Null

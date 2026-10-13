@@ -332,7 +332,7 @@ public partial class MainForm
             // Add a new row (sliders need a little more height for the TrackBar). A label that
             // wrapped needs a taller row than the fixed 35/48, or its lower lines are clipped.
             int rowIndex = layout.RowCount++;
-            int rowHeight = Math.Max(varDef.RenderAsSlider ? 48 : 35,
+            int rowHeight = Math.Max(varDef.RenderAsSlider ? 48 : varDef.RenderAsLiveList ? LiveListRowHeight : 35,
                 label.GetPreferredSize(new Size(labelColumnMaxWidth, 0)).Height + label.Margin.Vertical);
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, rowHeight));
             layout.Controls.Add(label, 0, rowIndex);
@@ -368,6 +368,26 @@ public partial class MainForm
                 };
                 layout.Controls.Add(tb, 1, rowIndex);
                 currentControls[varKey] = tb;
+            }
+            // Live list: read-only rows the definition builds (GetLiveListItems), kept current by
+            // the live-list timer (StartOrStopLiveListRefresh) and on focus. A ListBox, like the
+            // status display, so arrowing reads one row at a time and a refresh never moves the cursor.
+            else if (varDef.RenderAsLiveList)
+            {
+                ListBox liveList = new ListBox
+                {
+                    Size = new Size(240, LiveListRowHeight - 10),
+                    IntegralHeight = false,
+                    SelectionMode = SelectionMode.One,
+                    HorizontalScrollbar = true,
+                    TabStop = true,
+                    Name = varKey,
+                    AccessibleName = varDef.DisplayName
+                };
+                RefreshLiveList(varKey, liveList);
+                liveList.GotFocus += (s2, e2) => RefreshLiveList(varKey, liveList);
+                layout.Controls.Add(liveList, 1, rowIndex);
+                currentControls[varKey] = liveList;
             }
             // Check RenderAsButton next — buttons may have no ValueDescriptions
             else if (varDef.RenderAsButton)
@@ -1399,6 +1419,7 @@ public partial class MainForm
             // that actually built a status display (have a "_REFRESH_" button) get the timer;
             // everything else stops it so we don't poll in the background on a static panel.
             StartOrStopSdAutoRefresh();
+            StartOrStopLiveListRefresh();
 
             // For PMDG aircraft, populate controls with current data from the data manager
             if (currentAircraft is IPMDGAircraft && simConnectManager?.PMDGDataManager != null)
@@ -1415,6 +1436,8 @@ public partial class MainForm
                     // page combo to page 0) and logs spurious "unknown field" lines. Non-PMDG
                     // controls are populated via combo-creation + continuous monitoring instead.
                     if (varDef.Type != SimVarType.PMDGVar) continue;
+                    // A live list is built by the definition, never read from the sim.
+                    if (varDef.RenderAsLiveList) continue;
 
                     // Read current value from PMDG data manager using the struct field name
                     double value = dm.GetFieldValue(varDef.Name);
@@ -1442,6 +1465,42 @@ public partial class MainForm
             clearTimer.Start();
         })); // End BeginInvoke - deferred control creation
     } // End PanelLoadTimer_Tick
+
+    private const int LiveListRowHeight = 110;
+
+    // Live lists (SimVarDefinition.RenderAsLiveList) re-read twice a second while their panel is
+    // open; the timer runs only when the shown panel has one.
+    private void StartOrStopLiveListRefresh()
+    {
+        bool hasLiveList = currentControls.Values.Any(c => c is ListBox lb && IsLiveList(lb.Name));
+        if (!hasLiveList)
+        {
+            _liveListTimer?.Stop();
+            return;
+        }
+        if (_liveListTimer == null)
+        {
+            _liveListTimer = new System.Windows.Forms.Timer { Interval = 500 };
+            _liveListTimer.Tick += (_, _) =>
+            {
+                bool any = false;
+                foreach (var (key, control) in currentControls)
+                    if (control is ListBox lb && IsLiveList(key)) { RefreshLiveList(key, lb); any = true; }
+                if (!any) _liveListTimer?.Stop();
+            };
+        }
+        _liveListTimer.Start();
+    }
+
+    private bool IsLiveList(string varKey) =>
+        currentAircraft != null
+        && currentAircraft.GetVariables().TryGetValue(varKey, out var def) && def.RenderAsLiveList;
+
+    private void RefreshLiveList(string varKey, ListBox list)
+    {
+        if (currentAircraft?.GetLiveListItems(varKey) is { } items)
+            Forms.DisplayList.UpdateInPlace(list, items);
+    }
 
     // Starts the live status-box auto-refresh when the currently-shown panel has a status
     // display ("_REFRESH_" button); stops it otherwise. Called every time a panel is shown.

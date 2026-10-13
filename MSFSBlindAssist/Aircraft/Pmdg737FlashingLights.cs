@@ -150,10 +150,11 @@ public sealed class Pmdg737FlashingLights
         _ => $"{def.DisplayName}: steady",
     };
 
-    /// <summary>The Flashing lights readout: "A, B flashing", or "No lights flashing".</summary>
-    public static string Readout(IEnumerable<string> flashingNames)
+    /// <summary>The rows of the Flashing lights list: one light per row, or the single row
+    /// "No lights flashing".</summary>
+    public static IReadOnlyList<string> ListRows(IEnumerable<string> flashingNames)
     {
         var names = flashingNames.ToList();
-        return names.Count == 0 ? "No lights flashing" : $"{string.Join(", ", names)} flashing";
+        return names.Count == 0 ? new[] { "No lights flashing" } : names;
     }
 }

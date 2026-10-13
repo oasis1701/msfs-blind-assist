@@ -276,6 +276,13 @@ public interface IAircraftDefinition
     /// </summary>
     bool TryDescribeControlState(string varKey, out string stateText);
 
+    /// <summary>
+    /// The rows of a <see cref="SimConnect.SimVarDefinition.RenderAsLiveList"/> control, built from
+    /// the definition's own state; null for any other key. Called on the UI thread when the panel is
+    /// built and about twice a second while it is open; must be cheap and never request.
+    /// </summary>
+    IReadOnlyList<string>? GetLiveListItems(string varKey);
+
     // Variable Update Processing
 
     /// <summary>

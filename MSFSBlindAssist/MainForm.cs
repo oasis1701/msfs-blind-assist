@@ -339,6 +339,9 @@ public partial class MainForm : Form
     // the first empty populate, so the box updates in place with no flash).
     private System.Windows.Forms.Timer? _sdAutoRefreshTimer;
 
+    // Re-reads the shown panel's live lists (SimVarDefinition.RenderAsLiveList) while it has any.
+    private System.Windows.Forms.Timer? _liveListTimer;
+
     // Liftoff → Hand Fly handoff guard. The handoff is ARMED on the on-ground→
     // airborne edge but only PERFORMED after these confirm a real rotation, so a
     // spurious airborne sample (high-speed roll bump / oleo flicker, or low-speed
@@ -1276,6 +1279,9 @@ public partial class MainForm : Form
 
         _sdAutoRefreshTimer?.Stop();
         _sdAutoRefreshTimer?.Dispose();
+
+        _liveListTimer?.Stop();
+        _liveListTimer?.Dispose();
 
         _liftoffHandoffTimer?.Stop();
         _liftoffHandoffTimer?.Dispose();

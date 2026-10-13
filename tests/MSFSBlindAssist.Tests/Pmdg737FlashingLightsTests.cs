@@ -158,11 +158,11 @@ public class Pmdg737FlashingLightsTests
     }
 
     [Fact]
-    public void The_readout_lists_flashing_lights_or_says_none()
+    public void The_list_has_one_row_per_flashing_light_or_says_none()
     {
-        Assert.Equal("No lights flashing", Pmdg737FlashingLights.Readout(Array.Empty<string>()));
-        Assert.Equal("IRS Left ALIGN, IRS Right ALIGN flashing",
-            Pmdg737FlashingLights.Readout(new[] { "IRS Left ALIGN", "IRS Right ALIGN" }));
+        Assert.Equal(new[] { "No lights flashing" }, Pmdg737FlashingLights.ListRows(Array.Empty<string>()));
+        Assert.Equal(new[] { "IRS Left ALIGN", "IRS Right ALIGN" },
+            Pmdg737FlashingLights.ListRows(new[] { "IRS Left ALIGN", "IRS Right ALIGN" }));
     }
 
     // ----- the definition's wiring -----
@@ -170,16 +170,17 @@ public class Pmdg737FlashingLightsTests
     private static PMDG737Definition Def() => new();
 
     [Fact]
-    public void The_definition_readout_names_flashing_lights_from_its_own_variables()
+    public void The_definition_list_names_flashing_lights_from_its_own_variables()
     {
         var def = Def();
-        Assert.Equal("No lights flashing", def.FlashingLightsReadout());
+        Assert.Equal(new[] { "No lights flashing" }, def.GetLiveListItems("WARN_FlashingLights"));
         foreach (var key in new[] { "IRS_annunALIGN_0", "IRS_annunALIGN_1" })
             for (int i = 0; i < 6; i++)
                 def.FlashingLights.OnValue(key, i % 2 == 0, i * 500);
         var vars = def.GetVariables();
-        Assert.Equal($"{vars["IRS_annunALIGN_0"].DisplayName}, {vars["IRS_annunALIGN_1"].DisplayName} flashing",
-            def.FlashingLightsReadout());
+        Assert.Equal(new[] { vars["IRS_annunALIGN_0"].DisplayName, vars["IRS_annunALIGN_1"].DisplayName },
+            def.GetLiveListItems("WARN_FlashingLights"));
+        Assert.Null(def.GetLiveListItems("IRS_annunALIGN_0"));
     }
 
     [Fact]
@@ -208,11 +209,15 @@ public class Pmdg737FlashingLightsTests
     }
 
     [Fact]
-    public void The_readout_button_is_in_the_Warnings_panel()
+    public void The_flashing_lights_list_is_in_the_Warnings_panel_and_never_read_from_the_sim()
     {
         var def = Def();
+        var v = def.GetVariables()["WARN_FlashingLights"];
         Assert.Contains("WARN_FlashingLights", def.GetPanelControls()["Warnings"]);
-        Assert.True(def.GetVariables()["WARN_FlashingLights"].RenderAsButton);
+        Assert.True(v.RenderAsLiveList);
+        Assert.False(v.RenderAsButton);
+        Assert.False(v.IsAnnounced);
+        Assert.Equal(MSFSBlindAssist.SimConnect.UpdateFrequency.Never, v.UpdateFrequency);
     }
 
     [Fact]
@@ -230,7 +235,7 @@ public class Pmdg737FlashingLightsTests
     }
 
     [Fact]
-    public void Phrases_and_readout_are_the_same_under_a_comma_decimal_culture()
+    public void Phrases_and_list_rows_are_the_same_under_a_comma_decimal_culture()
     {
         var saved = System.Globalization.CultureInfo.CurrentCulture;
         try
@@ -238,7 +243,7 @@ public class Pmdg737FlashingLightsTests
             System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("sv-SE");
             var align = Def().GetVariables()["IRS_annunALIGN_0"];
             Assert.Equal($"{align.DisplayName}: flashing", Pmdg737FlashingLights.Phrase(new(Align, Kind.Flashing), align));
-            Assert.Equal("A, B flashing", Pmdg737FlashingLights.Readout(new[] { "A", "B" }));
+            Assert.Equal(new[] { "No lights flashing" }, Pmdg737FlashingLights.ListRows(Array.Empty<string>()));
         }
         finally
         {

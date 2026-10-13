@@ -1014,9 +1014,16 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // either press, so the LEFT-side events are sufficient.
         d["WARN_ResetFireWarning"]  = Momentary("WARN_ResetFireWarning",  "Clear Fire Warning");
         d["WARN_ResetMasterCaution"] = Momentary("WARN_ResetMasterCaution", "Clear Master Caution");
-        // Readout: which lights the flash filter has marked flashing now (no SDK field behind it;
-        // HandleUIVariableSet answers it, like the cabin composite buttons).
-        d["WARN_FlashingLights"] = Momentary("WARN_FlashingLights", "Flashing lights");
+        // Live list of the lights the flash filter has marked flashing now, one per row. No SDK field
+        // behind it: the rows come from GetLiveListItems.
+        d["WARN_FlashingLights"] = new SimConnect.SimVarDefinition
+        {
+            Name = "WARN_FlashingLights",
+            DisplayName = "Flashing lights",
+            Type = SimConnect.SimVarType.PMDGVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Never,
+            RenderAsLiveList = true
+        };
         // Cabin altitude warning horn cutout — silences the warning horn after
         // a depressurization event so the crew can use the radios. Pure
         // momentary push; SDK exposes only the event, no state field.
@@ -4154,13 +4161,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // plain bools toggled by PMDG's own cabin click-spots (write-stick
         // verified both directions); bins/blinds not fitted on the loaded
         // cabin layout are harmless no-ops.
-        // Flashing lights readout (Warnings panel): what the flash filter is tracking now.
-        if (varKey == "WARN_FlashingLights")
-        {
-            announcer.AnnounceImmediate(FlashingLightsReadout());
-            return true;
-        }
-
         if (varKey is "CABIN_AllBinsOpen" or "CABIN_AllBinsClose")
         {
             double binTarget = varKey == "CABIN_AllBinsOpen" ? 1 : 0;
@@ -5367,9 +5367,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             _flashTimer?.Stop();
     }
 
-    /// <summary>The Flashing lights readout, built from the filter's tracked state.</summary>
-    internal string FlashingLightsReadout() =>
-        Pmdg737FlashingLights.Readout(_flashingLights.FlashingKeys.Select(k => GetVariables()[k].DisplayName));
+    /// <inheritdoc />
+    public override IReadOnlyList<string>? GetLiveListItems(string varKey) =>
+        varKey == "WARN_FlashingLights"
+            ? Pmdg737FlashingLights.ListRows(_flashingLights.FlashingKeys.Select(k => GetVariables()[k].DisplayName))
+            : null;
 
     // -------------------------------------------------------------------
     // Decode `COMM_ReceiverSwitches` bitmask into a comma-separated list of

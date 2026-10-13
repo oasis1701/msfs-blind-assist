@@ -602,6 +602,9 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         return false;
     }
 
+    /// <summary>Default: no live lists.</summary>
+    public virtual IReadOnlyList<string>? GetLiveListItems(string varKey) => null;
+
     /// <summary>
     /// Generic ARINC429 decode. If the var is flagged <see cref="SimConnect.SimVarDefinition.IsArinc429"/>,
     /// decode the raw double via <see cref="SimConnect.Arinc429Word"/> and return "&lt;value&gt; &lt;unit&gt;"

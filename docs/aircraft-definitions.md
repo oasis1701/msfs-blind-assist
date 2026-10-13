@@ -108,6 +108,10 @@ protected override Dictionary<string, SimConnect.SimVarDefinition> BuildVariable
 - `IsAnnounced`: Whether to announce state changes
 - `ValueDescriptions`: Map numeric values to descriptive strings
 - `Units`: Measurement units (e.g., "knots", "feet", "degrees"); defaults to "number"
+- `RenderAsLiveList`: the row is a read-only list whose rows the definition builds in
+  `GetLiveListItems(varKey)`, never read from the sim. MainForm re-reads it twice a second while
+  the panel is open and on focus, through `DisplayList.UpdateInPlace`, so the cursor stays on the
+  row being read. First user: the PMDG 737's Warnings → Flashing lights.
 
 ### Usage
 

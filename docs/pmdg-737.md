@@ -176,8 +176,9 @@ The hold time is 2 s by default, overridable per lamp in `FlashHoldOverridesMs`.
 blink rate has not been measured** (debug.log does not record annunciator changes): if a lamp
 blinks slower than the hold, it reads as on/off and needs an override.
 
-Warnings panel → **Flashing lights** reads which lamps are flashing now, from the filter's own
-state, or "No lights flashing".
+Warnings panel → **Flashing lights** is a live list of the lamps flashing now, one per row, built
+from the filter's own state (`GetLiveListItems`), or the single row "No lights flashing". It
+updates while the panel is open (twice a second, and on focus) without moving the cursor.
 
 Lamps with their own case keep their own wording and are not filtered: the MCP mode lights, the
 master caution, fire warnings and system cautions, the parking brake and the speed-brake lights.
