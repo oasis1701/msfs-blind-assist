@@ -109,7 +109,7 @@ public partial class IniA300Definition
     private void SpeakEntry(string key, double value, ScreenReaderAnnouncer announcer)
     {
         if (_seedGate.Armed)
-            _seedGate.NoteValue(key, value, ownedByAircraft: true);
+            _seedGate.NoteValue(key, value, ownedByAircraft: IsAircraftOwned(key));
         if (_vSpeedEntries[key].Observe(A300TakeoffCallouts.Entry(key, value), Clock()) is string phrase
             && !announcer.Suppressed && !IsMuted(key))
             announcer.Announce(phrase);

@@ -1,5 +1,7 @@
+using System.Reflection;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Aircraft.A300;
+using MSFSBlindAssist.Aircraft.MD11;
 using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Tests.A300;
@@ -475,6 +477,39 @@ public class IniA300BehaviourTests
         Deliver(A300Announcements.GearLeverKey, 0);
         Deliver(A300Announcements.GearLeverKey, 1);
         Assert.Equal(new[] { "Gear lever down" }, _speech.All);
+    }
+
+    [Fact]
+    public void Only_the_aircrafts_own_lvars_prove_it_has_published()
+    {
+        Assert.False(_def.IsAircraftOwned("A300_IN_A_EXTERNAL_POWER_ON_1_BOOL"));   // stock: the sim core writes it
+        Assert.True(_def.IsAircraftOwned(A300LampBoard.AcPowerKey));
+        Assert.False(_def.IsAircraftOwned(A300Levers.FlapsKey));
+        Assert.True(_def.IsAircraftOwned(A300Levers.SpoilersArmKey));
+    }
+
+    private Md11SeedGate SeedGate() =>
+        (Md11SeedGate)typeof(IniA300Definition).GetField("_seedGate", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(_def)!;
+
+    [Theory]
+    // After a flight load the sim core writes the stock SimVars before the aircraft's module has published anything,
+    // so only a change of the aircraft's own L:var counts as the module being up. Every NoteValue site is here.
+    [InlineData("A300_IN_A_EXTERNAL_POWER_ON_1_BOOL", false)]   // the light board: a lamp's stock input
+    [InlineData("A300_LT_GEAR_2_UNLK_SEQ2_LIGHT", false)]       // the light board: the nose gear light, stock GEAR POSITION:0
+    [InlineData(A300LampBoard.AcPowerKey, true)]                // the light board: an L:var
+    [InlineData(A300Levers.FlapsKey, false)]                    // the announced keys: the stock flap handle index
+    [InlineData(A300Levers.SpoilersArmKey, true)]               // the announced keys: an L:var that is not a lamp
+    [InlineData("A300_PITCH_TRIM_1", true)]                     // the announced keys: a SAS lever, L:INI_pitch_trim1
+    [InlineData(A300Announcements.MasterWarningKey, true)]      // the announced keys: a master light
+    [InlineData(A300Readouts.AltitudeKey, true)]                // the altitude window
+    [InlineData(A300TakeoffCallouts.V1Key, true)]               // the V1 read-back
+    public void After_a_context_reset_only_a_change_of_the_aircrafts_own_lvar_counts_as_it_publishing(string key, bool counts)
+    {
+        var gate = SeedGate();
+        _def.OnSimContextReset();
+        Assert.True(gate.Armed);
+        Deliver(key, 1);
+        Assert.Equal(counts, gate.SawChange);
     }
 
     [Fact]

@@ -44,6 +44,16 @@ public partial class IniA300Definition
     /// </summary>
     private readonly Md11SeedGate _seedGate = new();
 
+    /// <summary>
+    /// Whether a change of <paramref name="key"/> proves the aircraft's own module has republished after
+    /// a context reset: only its own L:vars do, as for the MD-11 (<see cref="Md11SeedGate"/>). The sim core
+    /// writes the stock SimVars from the flight file before that module runs (a light's stock input such as
+    /// external power or a gear position, the flap handle index), so a change of one restarts the quiet
+    /// count but never releases the seed. Every <see cref="Md11SeedGate.NoteValue"/> call asks this.
+    /// </summary>
+    internal bool IsAircraftOwned(string key) =>
+        GetVariables().TryGetValue(key, out var def) && def.Type == SimVarType.LVar;
+
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
         NotePickReached(varName, value);   // a picked switch got there (CheckMovedAsync)
@@ -68,7 +78,7 @@ public partial class IniA300Definition
         if (_lampBoard.Handles(varName))
         {
             if (_seedGate.Armed)
-                _seedGate.NoteValue(varName, value, ownedByAircraft: true);
+                _seedGate.NoteValue(varName, value, ownedByAircraft: IsAircraftOwned(varName));
             if (_lampBoard.PowerFlips(varName, value))
                 _lampSpeech.NotePowerChange(Clock());
             foreach (var change in _lampBoard.Update(varName, value))
@@ -103,7 +113,7 @@ public partial class IniA300Definition
         if (A300Announcements.AnnouncedKeys.Contains(varName))
         {
             if (_seedGate.Armed)
-                _seedGate.NoteValue(varName, value, ownedByAircraft: _lamps.ContainsKey(varName));
+                _seedGate.NoteValue(varName, value, ownedByAircraft: IsAircraftOwned(varName));
             if (_tracker.Observe(varName, value) is string phrase)
                 announcer.Announce(phrase);
             return true;
@@ -119,7 +129,7 @@ public partial class IniA300Definition
         if (varName == A300Readouts.AltitudeKey)
         {
             if (_seedGate.Armed)
-                _seedGate.NoteValue(varName, value, ownedByAircraft: true);
+                _seedGate.NoteValue(varName, value, ownedByAircraft: IsAircraftOwned(varName));
             if (_altitudeWindow.Observe(A300FcuWindows.Altitude(value), Clock()) is string window)
                 announcer.Announce(window);
             return true;
