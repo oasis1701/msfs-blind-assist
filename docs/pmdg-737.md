@@ -4,7 +4,7 @@ Reference for working with `PMDG737Definition`, `PMDGNG3DataManager`, `PMDGNG3Da
 
 ## Scope
 
-Only the 737-800 BW HD is currently supported. The data struct's `AircraftModel` field (`ushort`) discriminates variants if -600 / -700 / -900 support is added later. `EVT_*_600` and `EVT_*_800` entries are both in `EventIds`, so wiring a variant is largely a one-line `_simpleEventMap` change.
+One definition serves every NG3 variant, since they share one SDK struct. It was built on the 737-800 BW HD, and the -700 has been flown with it (2026-10-11). The data struct's `AircraftModel` field (`ushort`; SDK header: 1 -600, 2-4 -700, 5-7 -800, 8-12 -900/-900ER, 13-22 the BDSF, BCF and BBJ versions) is the variant discriminator: the calculated flap speeds pick their measured VREF table from it (`Pmdg737FlapSpeeds.VariantFromModel`), falling back to the TITLE only before the first CDA snapshot or for a value the header does not list. `EVT_*_600` and `EVT_*_800` entries are both in `EventIds`, so wiring a variant-specific event is largely a one-line `_simpleEventMap` change.
 
 ## Panel structure
 
@@ -169,13 +169,19 @@ DU source selectors (`MAIN_MainPanelDUSel`, `MAIN_LowerDUSel`) have a "reverse s
 
 ## Options.ini requirement
 
-`737NG3_Options.ini` lives at:
+Each installed variant keeps its own `737_Options.ini` in its package's `work` folder, in MSFS's
+per-package storage (not Community). On an FS2024 Store install (measured on the owner's machine,
+2026-10-12, all four variants):
 
 ```
-%LOCALAPPDATA%\Packages\Microsoft.Limitless_8wekyb3d8bbwe\LocalCache\Packages\Community\pmdg-aircraft-738\work\737NG3_Options.ini
+%LOCALAPPDATA%\Packages\Microsoft.Limitless_8wekyb3d8bbwe\LocalState\WASM\MSFS2024\pmdg-aircraft-73x\work\737_Options.ini
 ```
 
-Must contain:
+FS2024 Steam uses `%APPDATA%\Microsoft Flight Simulator 2024\WASM\MSFS2024\`, FS2020 Store
+`...\Microsoft.FlightSimulator_8wekyb3d8bbwe\LocalState\packages\`, FS2020 Steam
+`%APPDATA%\Microsoft Flight Simulator\Packages\` (`PMDGOptionsIniLocator`). The package folders are
+`pmdg-aircraft-736` (737-600), `-737` (737-700), `-738` (737-800) and `-739` (737-900). PMDG creates
+the file the first time the variant is loaded. It must contain:
 
 ```ini
 [SDK]
@@ -184,7 +190,11 @@ EnableCDUBroadcast.0=1
 EnableCDUBroadcast.1=1
 ```
 
-User-managed (same as the 777's options.ini workflow today).
+The pilot adds it; MSFSBA never edits the file ([PSDK-1]). Picking the PMDG 737 from the Aircraft
+menu, or starting MSFSBA with it as the selected profile, reads every installed variant's file and,
+while any lacks these lines (or none exists yet), opens the PMDG 737 SDK setup dialog: the steps, the
+lines with a Copy lines button, and a row per file with Open folder ([PSDK-2]: never at connect). The
+777 works the same way (docs/pmdg-777.md).
 
 ## Fire handles need an active fire to test
 
