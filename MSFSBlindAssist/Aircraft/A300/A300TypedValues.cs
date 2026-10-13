@@ -7,8 +7,11 @@ public sealed record A300TypedValue(string Key, string Name, string Panel);
 
 /// <summary>What a typed value does: one calculator string and its spoken confirmation, or an error.
 /// <paramref name="Before"/> is sent first, <see cref="A300TypedValues.ModeSwitchSettleMs"/> ahead of
-/// <paramref name="Rpn"/> (the SPD/MACH switch, which the aircraft applies a moment later).</summary>
-public sealed record A300TypedResult(string? Rpn, string? Confirmation, string? Error, string? Before = null)
+/// <paramref name="Rpn"/> (the SPD/MACH switch, which the aircraft applies a moment later).
+/// <paramref name="SpeedMode"/> is the SPD/MACH mode a typed speed is in, 1 for Mach and 0 for knots (null for
+/// any other value): the mode the FCU is in once <paramref name="Before"/> has gone.</summary>
+public sealed record A300TypedResult(string? Rpn, string? Confirmation, string? Error, string? Before = null,
+    double? SpeedMode = null)
 {
     public static A300TypedResult Fail(string error) => new(null, null, error);
 }
@@ -145,7 +148,8 @@ public static class A300TypedValues
     };
 
     /// <summary>Knots (100-399) or Mach (0.10-0.99), whichever the number is; a value in the other
-    /// unit from the FCU's current mode presses SPD/MACH first, in the same string.</summary>
+    /// unit from the FCU's current mode presses SPD/MACH first (<see cref="A300TypedResult.Before"/>, which
+    /// the caller sends and waits out; never in the same string as the write).</summary>
     public static A300TypedResult Speed(double value, bool isMach)
     {
         bool mach = value < 1.0;
@@ -155,13 +159,13 @@ public static class A300TypedValues
             if (m < 0.10 - 1e-9 || m > 0.99 + 1e-9)
                 return A300TypedResult.Fail(SpeedError);
             return new($"{m.ToString("0.00", Inv)} (>L:INI_Airspeed_Dial)", $"Mach {m.ToString("0.00", Inv)}", null,
-                isMach ? null : SpeedMachToggle);
+                isMach ? null : SpeedMachToggle, SpeedMode: 1);
         }
         double kt = Math.Round(value);
         if (kt < 100 || kt > 399)
             return A300TypedResult.Fail(SpeedError);
         return new($"{kt.ToString("0", Inv)} (>L:INI_Airspeed_Dial)", $"Speed {kt.ToString("0", Inv)} knots", null,
-            isMach ? SpeedMachToggle : null);
+            isMach ? SpeedMachToggle : null, SpeedMode: 0);
     }
 
     public static A300TypedResult Heading(double value)

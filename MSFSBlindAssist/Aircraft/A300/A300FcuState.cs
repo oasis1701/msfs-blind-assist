@@ -14,11 +14,14 @@ public static class A300FcuState
 {
     public const string SpeedMachLightKey = "A300_FCU_LT_SPDMACH";
 
+    /// <summary>The SPD/MACH button's row. A press FLIPS the speed window between knots and Mach.</summary>
+    public const string SpeedMachButtonKey = "A300_SPDMACH";
+
     /// <summary>FCU button row key → the light its label reads.</summary>
     public static readonly IReadOnlyDictionary<string, A300FcuLight> ByButton = new Dictionary<string, A300FcuLight>(StringComparer.Ordinal)
     {
         ["A300_ATHR_BUTTON"] = new("A300_FCU_LT_ATHR", "INI_AT_ON", "On", "Off"),
-        ["A300_SPDMACH"] = new(SpeedMachLightKey, "INI_Airspeed_is_mach", "Mach", "Speed"),
+        [SpeedMachButtonKey] = new(SpeedMachLightKey, "INI_Airspeed_is_mach", "Mach", "Speed"),
         ["A300_ALTHLD_BUTTON"] = new("A300_FCU_LT_ALTHLD", "INI_MCU_ALTTUDE_HOLD_LIGHT", "On", "Off"),
         ["A300_LVLCH_BUTTON"] = new("A300_FCU_LT_LVLCH", "INI_MCU_LEVEL_CHANGE_LIGHT", "On", "Off"),
         ["A300_PROFILE_BUTTON"] = new("A300_FCU_LT_PROFILE", "INI_MCU_PROFILE_LIGHT", "On", "Off"),

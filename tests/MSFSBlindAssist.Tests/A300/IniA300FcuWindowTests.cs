@@ -142,6 +142,50 @@ public class IniA300FcuWindowBehaviourTests
     }
 
     [Fact]
+    public void An_altitude_typed_in_the_value_box_is_confirmed_once()
+    {
+        Deliver(A300Readouts.AltitudeKey, 10000);
+        _def.SubmitBoxValue(A300TypedValues.AltitudeKey, "Altitude", 12000, _sim, _speech);
+        _now += 1000;
+        Deliver(A300Readouts.AltitudeKey, 12000);
+        Assert.Equal(new[] { "Altitude 12,000 feet" }, _speech.All);   // the box's confirmation, not a second call-out
+    }
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void An_altitude_typed_in_the_value_box_is_confirmed_once_in_a_comma_decimal_culture(string culture)
+    {
+        var saved = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(culture);
+            Deliver(A300Readouts.AltitudeKey, 10000);
+            _def.SubmitBoxValue(A300TypedValues.AltitudeKey, "Altitude", 12000, _sim, _speech);
+            _now += 1000;
+            Deliver(A300Readouts.AltitudeKey, 12000);
+            Assert.Equal(new[] { "Altitude 12,000 feet" }, _speech.All);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = saved;
+        }
+    }
+
+    [Fact]
+    public void An_altitude_the_box_refuses_does_not_mute_the_call_out()
+    {
+        Deliver(A300Readouts.AltitudeKey, 10000);
+        _def.SubmitBoxValue(A300TypedValues.AltitudeKey, "Altitude", 60000, _sim, _speech);   // out of range
+        _def.CanLand = _ => false;
+        _def.SubmitBoxValue(A300TypedValues.AltitudeKey, "Altitude", 12000, _sim, _speech);   // cannot land
+        _now += 1000;
+        Deliver(A300Readouts.AltitudeKey, 15000);   // the pilot's own knob, not MSFSBA's write
+        Assert.Empty(_sent);
+        Assert.Equal(new[] { "Altitude: 100 to 49,000 feet", "Altitude unavailable", "Altitude 15,000 feet" }, _speech.All);
+    }
+
+    [Fact]
     public async Task A_knob_step_is_read_back_once_it_lands()
     {
         _cache[A300Readouts.HeadingKey] = 271;

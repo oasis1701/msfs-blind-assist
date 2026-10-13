@@ -9,7 +9,7 @@ Split from `a300.md` on 2026-10-10, when the rule-file cap fell to 8,000 charact
 
 ## A300-5
 
-- A300 typed values go through `A300TypedValues` only. NAV frequencies are written as their `_MHZ`/`_KHZ` L:var parts (the combined `INI_VOR1_FREQUENCY` and the stock NAV radio are rebuilt from them, so writing either is silently undone). A typed speed in the other unit sends SPD/MACH, WAITS `ModeSwitchSettleMs`, then writes — never in one string: the aircraft applies the switch later and converts whatever the variable holds then. Altimeters are `index value (>K:2:KOHLSMAN_SET)`, index FIRST. → [a300.md](../a300.md)
+- A300 typed values go through `A300TypedValues` only. NAV frequencies are written as their `_MHZ`/`_KHZ` L:var parts (the combined `INI_VOR1_FREQUENCY` and the stock NAV radio are rebuilt from them, so writing either is silently undone). A typed speed in the other unit sends SPD/MACH, WAITS `ModeSwitchSettleMs`, then writes — never in one string: the aircraft applies the switch later and converts whatever the variable holds then. Whether the flip is needed is decided from the mode MSFSBA last commanded (`SpeedMode`, which `IsMach` reads: a typed speed's flip or a press of the SPD/MACH button, held 2.5 s by `A300CommandedState`), else the cache. The cache lags a second, and the flip is a TOGGLE: a second entry (the value box stays open after Enter) or a speed typed right after the button, planned from the old mode, flipped it back and wrote the number in the wrong unit. Typed speeds also go out one after another (`SendTypedAsync` queues each behind the last), so a write never lands inside an earlier entry's wait (PR #300 review, 2026-10-13). Altimeters are `index value (>K:2:KOHLSMAN_SET)`, index FIRST. → [a300.md](../a300.md)
 
 ## A300-6
 
@@ -36,7 +36,7 @@ Split from `a300.md` on 2026-10-10, when the rule-file cap fell to 8,000 charact
 
 ## A300-14
 
-- Of the A300 FCU windows, ONLY the altitude window is announced on its own (`A300FcuWindows`): `INI_Altitude_Dial` is written by the knob handlers alone, while the aircraft's own autopilot logic also writes the heading, speed and vertical speed windows (heading sync, managed speed, `SyncVerticalSpeed`), so announcing those would speak changes nobody made. A panel knob step on any of the four is read back once it lands; MSFSBA's own typed altitude or altitude step suppresses the altitude call-out for 2.5 s. → [a300.md](../a300.md)
+- Of the A300 FCU windows, ONLY the altitude window is announced on its own (`A300FcuWindows`): `INI_Altitude_Dial` is written by the knob handlers alone, while the aircraft's own autopilot logic also writes the heading, speed and vertical speed windows (heading sync, managed speed, `SyncVerticalSpeed`), so announcing those would speak changes nobody made. A panel knob step on any of the four is read back once it lands; MSFSBA's own typed altitude or altitude step suppresses the altitude call-out for 2.5 s. EVERY way of typing an altitude arms that mute, inside the one typed send (`SendTypedAsync`, on `A300TypedValues.AltitudeKey`, just before the write) and not in each caller: the Ctrl+A value box sent without arming it and spoke "Altitude 12,000 feet" twice, its confirmation and then the window's call-out about a second later (PR #300 review, 2026-10-13). A new way to type an altitude goes through that send. → [a300.md](../a300.md)
 
 ## A300-15
 

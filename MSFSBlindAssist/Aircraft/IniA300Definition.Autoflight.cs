@@ -64,15 +64,46 @@ public partial class IniA300Definition
             announcer.Announce($"{name} unavailable");
             return;
         }
-        if (key == A300TypedValues.AltitudeKey)
-            _altitudeWindow.SuppressEcho(Clock());   // the typed confirmation says it
-        _ = SendTypedAsync(plan, sim, announcer);
+        _ = SendTypedAsync(key, plan, sim, announcer);
     }
 
-    private async Task SendTypedAsync(A300TypedResult plan, SimConnectManager sim, ScreenReaderAnnouncer announcer)
+    /// <summary>The last typed speed's send (finished or not): every typed speed queues behind it. A speed in
+    /// the other unit flips SPD/MACH, waits <see cref="A300TypedValues.ModeSwitchSettleMs"/> for the aircraft to
+    /// apply it and then writes, and a write inside that wait is converted by the switch (a value written with
+    /// it came out as Mach 0.15). The value box stays open after Enter, so a second entry can arrive inside the
+    /// first one's wait. Everything runs on the UI thread.</summary>
+    private Task _speedSends = Task.CompletedTask;
+
+    /// <summary>
+    /// Sends a typed value that was accepted (valid, and the write can land) and confirms it: the one send of the
+    /// panel rows and of the value boxes, so what holds for it holds for both. A typed altitude mutes the altitude
+    /// window's own call-out just before its write, because the confirmation says it; armed here, not by each
+    /// caller, the value box once spoke the altitude twice. A speed in the other unit records the mode its flip
+    /// leaves NOW, so the next entry plans from it and not from the cache, which still shows the old mode
+    /// (<see cref="SpeedMode"/>); the send itself queues behind the last speed's.
+    /// </summary>
+    private Task SendTypedAsync(string key, A300TypedResult plan, SimConnectManager sim, ScreenReaderAnnouncer announcer)
+    {
+        bool speed = key == A300TypedValues.SpeedKey;
+        if (speed && plan.Before != null && plan.SpeedMode is double mode)
+            _commanded.Record(SpeedModeCommand, mode, Clock());
+        var send = SendPlanAsync(speed ? _speedSends : Task.CompletedTask, key, plan, sim, announcer);
+        if (speed)
+            _speedSends = send;
+        return send;
+    }
+
+    private async Task SendPlanAsync(Task earlier, string key, A300TypedResult plan, SimConnectManager sim,
+        ScreenReaderAnnouncer announcer)
     {
         try
         {
+            if (!earlier.IsCompleted)
+            {
+                await earlier;
+                if (_disposed)
+                    return;
+            }
             if (plan.Before != null)
             {
                 Send(sim, plan.Before);
@@ -80,6 +111,8 @@ public partial class IniA300Definition
                 if (_disposed)
                     return;
             }
+            if (key == A300TypedValues.AltitudeKey)
+                _altitudeWindow.SuppressEcho(Clock());   // the typed confirmation says it
             Send(sim, plan.Rpn!);
             if (plan.Confirmation != null)
                 announcer.Announce(plan.Confirmation);
@@ -324,24 +357,35 @@ public partial class IniA300Definition
             buttons,
             input =>
             {
-                if (Parse(input) is not double v || _disposed)
-                    return;
-                if (key == AllAltimetersKey)
-                {
-                    _ = SetAltimetersAsync(v, sim, announcer);
-                    return;
-                }
-                var plan = PlanFor(key, v);
-                if (plan.Error != null)
-                    announcer.AnnounceImmediate($"{name}: {plan.Error}");
-                else if (!CanLand(sim))
-                    announcer.AnnounceImmediate($"{name} unavailable");
-                else
-                    _ = SendTypedAsync(plan, sim, announcer);
+                if (Parse(input) is double v)
+                    SubmitBoxValue(key, name, v, sim, announcer);
             })
         {
             ShowCancelButton = false,
         };
+
+    /// <summary>
+    /// A value typed into a value box and submitted (<see cref="CreateValueBox"/> parses it): refused aloud
+    /// with its range, or sent and confirmed. It takes the send a panel row's typed Set takes
+    /// (<see cref="SendTypedAsync"/>), so a rule of that send holds for both ways of typing a value.
+    /// </summary>
+    internal void SubmitBoxValue(string key, string name, double value, SimConnectManager sim, ScreenReaderAnnouncer announcer)
+    {
+        if (_disposed)
+            return;
+        if (key == AllAltimetersKey)
+        {
+            _ = SetAltimetersAsync(value, sim, announcer);
+            return;
+        }
+        var plan = PlanFor(key, value);
+        if (plan.Error != null)
+            announcer.AnnounceImmediate($"{name}: {plan.Error}");
+        else if (!CanLand(sim))
+            announcer.AnnounceImmediate($"{name} unavailable");
+        else
+            _ = SendTypedAsync(key, plan, sim, announcer);
+    }
 
     /// <summary>Ctrl+B: one entry for all three altimeters, its field named with both units
     /// (<see cref="A300Baro.FieldName"/>), and the one mode button.</summary>

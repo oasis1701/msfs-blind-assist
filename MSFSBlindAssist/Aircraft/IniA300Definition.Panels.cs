@@ -179,8 +179,21 @@ public partial class IniA300Definition
     private bool IsMetric() =>
         _sim is not { } sim || Cached(sim, A300EcamPages.WeightUnitKey) is not double v || v >= 0.5;
 
-    /// <summary>Whether the FCU speed window is in Mach, from the cache (false when unknown).</summary>
-    private bool IsMach() => _sim is { } sim && Cached(sim, A300FcuState.SpeedMachLightKey) is double v && v >= 0.5;
+    /// <summary>What the commanded-mode hold keeps the speed mode under (<see cref="A300CommandedState"/>); in the
+    /// key space of <see cref="CommandKey"/>, where a row's state variable would be the same string.</summary>
+    private const string SpeedModeCommand = "L:INI_Airspeed_is_mach";
+
+    /// <summary>
+    /// The SPD/MACH mode, 1 for Mach: the mode MSFSBA just commanded while that is fresh (a typed speed's flip, or
+    /// the SPD/MACH button), else the cache; null while unread. The mode comes from the 1 Hz batch, which still
+    /// shows the old mode for up to a second after a switch, and a switch FLIPS, so a decision made from the old mode
+    /// flips it back.
+    /// </summary>
+    private double? SpeedMode() =>
+        _commanded.Resolve(SpeedModeCommand, _sim is { } sim ? Cached(sim, A300FcuState.SpeedMachLightKey) : null, Clock());
+
+    /// <summary>Whether the FCU speed window is in Mach (<see cref="SpeedMode"/>; false when unknown).</summary>
+    private bool IsMach() => SpeedMode() is double v && v >= 0.5;
 
     /// <summary>The Displays section's lines that need more than their own value: the FMA columns,
     /// the attitude in words, and the speeds the tape shows only at some flap settings.</summary>

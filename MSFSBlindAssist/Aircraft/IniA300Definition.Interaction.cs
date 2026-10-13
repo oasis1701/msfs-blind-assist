@@ -245,6 +245,10 @@ public partial class IniA300Definition
         }
         if (commandedValue is double target)
             _commanded.Record(CommandKey(row.Key), target, Clock());
+        // The SPD/MACH button is a press, but it FLIPS the mode: a typed speed planned from the cache right after
+        // would flip it back and write the number in the wrong unit. A mode that was never read is not guessed.
+        if (row.Key == A300FcuState.SpeedMachButtonKey && SpeedMode() is double mode)
+            _commanded.Record(SpeedModeCommand, mode >= 0.5 ? 0 : 1, Clock());
         _ = RunAsync(row.Key, plan.Steps, sim);
         return true;
     }
