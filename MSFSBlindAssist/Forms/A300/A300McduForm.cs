@@ -110,9 +110,9 @@ public sealed class A300McduForm : Form
     /// <summary>The status box's text.</summary>
     internal string Status => _statusBox.Text;
 
-    /// <summary>The list's cursor.</summary>
+    /// <summary>The list's cursor: the row the screen reader is on.</summary>
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    internal int SelectedIndex
+    internal int SelectedRow
     {
         get => _display.SelectedIndex;
         set => _display.SelectedIndex = value;

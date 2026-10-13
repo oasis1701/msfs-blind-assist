@@ -507,8 +507,9 @@ public partial class MainForm : Form
         // Set window title
         this.Text = "MSFS Blind Assist";
 
-        // Initial menu visibility for aircraft-conditional items (e.g., the
-        // PMDG-only FMC Settings entry). Subsequent aircraft swaps re-call
+        // Initial menu visibility for aircraft-conditional items (e.g., the FMC
+        // Settings entry, shown for the aircraft whose CDU/MCDU window reads its
+        // settings). Subsequent aircraft swaps re-call
         // UpdateAircraftSpecificMenuItems via SwitchAircraft.
         UpdateAircraftSpecificMenuItems();
 

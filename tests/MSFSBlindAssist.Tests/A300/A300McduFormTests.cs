@@ -224,7 +224,7 @@ public sealed class A300McduFormTests : IDisposable
     {
         _screens[Captain] = Page();
         _form.PrepareToShow();
-        Assert.Equal(0, _form.SelectedIndex);
+        Assert.Equal(0, _form.SelectedRow);
         Assert.StartsWith("Title:", _form.Lines[0], StringComparison.Ordinal);
         Assert.Empty(_speech.All);
     }
@@ -236,9 +236,9 @@ public sealed class A300McduFormTests : IDisposable
         _form.PrepareToShow();
         int line4 = IndexOf("4:");
         Assert.True(line4 > 0);
-        _form.SelectedIndex = line4;
+        _form.SelectedRow = line4;
         _form.PrepareToShow();
-        Assert.Equal(line4, _form.SelectedIndex);
+        Assert.Equal(line4, _form.SelectedRow);
     }
 
     [Fact]
@@ -247,12 +247,12 @@ public sealed class A300McduFormTests : IDisposable
         _screens[Captain] = Page();
         _form.PrepareToShow();
         int line5 = IndexOf("5:");
-        _form.SelectedIndex = line5;
+        _form.SelectedRow = line5;
         // While the window was hidden the pilot's entry changed line 5 and a label appeared above line 2: every row
         // from there on moves down one, and the line's old text is gone. The title is the same, so the page is.
         _screens[Captain] = Page(more: new[] { (3, " ALTN"), (10, "FL350          -56^/36090") });
         _form.PrepareToShow();
-        Assert.StartsWith("5: FL350", _form.Lines[_form.SelectedIndex], StringComparison.Ordinal);
+        Assert.StartsWith("5: FL350", _form.Lines[_form.SelectedRow], StringComparison.Ordinal);
     }
 
     [Fact]
@@ -260,10 +260,10 @@ public sealed class A300McduFormTests : IDisposable
     {
         _screens[Captain] = Page();
         _form.PrepareToShow();
-        _form.SelectedIndex = IndexOf("4:");
+        _form.SelectedRow = IndexOf("4:");
         _screens[Captain] = Page(title: "          F-PLN       ");
         _form.PrepareToShow();
-        Assert.Equal(0, _form.SelectedIndex);
+        Assert.Equal(0, _form.SelectedRow);
         Assert.Empty(_speech.All);   // the title is read by the focused row, never announced
     }
 
