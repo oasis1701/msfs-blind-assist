@@ -20,6 +20,27 @@ public partial class IniA300Definition
     public int McduKeysPending => _mcduQueue.Count + (_mcduHeld != null ? 1 : 0);
 
     /// <summary>
+    /// Raised on the UI thread right after a key has been released, with the unit it went to. The key pump runs slower
+    /// than its nominal <see cref="A300McduKeys.HoldMs"/> + <see cref="A300McduKeys.GapMs"/> a key (each wait is a real
+    /// timer, and a real timer runs long), so a window that has to know when a key has actually gone reads it here
+    /// instead of counting.
+    /// </summary>
+    internal event Action<A300McduUnit>? McduKeyReleased;
+
+    private void RaiseKeyReleased(A300McduUnit unit)
+    {
+        try
+        {
+            McduKeyReleased?.Invoke(unit);
+        }
+        catch (Exception ex)
+        {
+            // A subscriber must never stop the pump: the keys behind this one would stay queued.
+            Log.Warn("A300", $"An MCDU key release handler failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Queues <paramref name="keys"/> on <paramref name="unit"/>. False, having queued NOTHING, when
     /// the calculator path cannot land: a half-sent entry would leave text in the scratchpad the
     /// pilot did not type.
@@ -93,6 +114,7 @@ public partial class IniA300Definition
                 {
                     Send(sim, A300McduKeys.ReleaseRpn(unit, key));
                     _mcduHeld = null;
+                    RaiseKeyReleased(unit);
                 }
                 await Delay(A300McduKeys.GapMs);
             }

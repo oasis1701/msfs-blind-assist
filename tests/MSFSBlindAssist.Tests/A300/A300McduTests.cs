@@ -429,6 +429,31 @@ public class IniA300McduKeyTests
     }
 
     [Fact]
+    public void Each_key_release_is_reported_with_its_unit()
+    {
+        // The window counts its settle margin from the release the pump reports, not from the pump's nominal pace.
+        var released = new List<A300McduUnit>();
+        _def.McduKeyReleased += released.Add;
+        Assert.True(_def.PressMcduKeys(A300McduUnit.FirstOfficer, new[] { "A", "B" }));
+        Assert.Empty(released);   // A is down, not released yet
+        Elapse();                 // A's hold
+        Assert.Equal(new[] { A300McduUnit.FirstOfficer }, released);
+        Elapse();                 // the gap
+        Elapse();                 // B's hold
+        Assert.Equal(new[] { A300McduUnit.FirstOfficer, A300McduUnit.FirstOfficer }, released);
+    }
+
+    [Fact]
+    public void A_release_handler_that_throws_does_not_stop_the_queue()
+    {
+        _def.McduKeyReleased += _ => throw new InvalidOperationException("a subscriber's bug");
+        Assert.True(_def.PressMcduKeys(A300McduUnit.Captain, new[] { "A", "B" }));
+        Elapse();   // A's hold: released, and the handler throws
+        Elapse();   // the gap
+        Assert.Equal("1 (>L:INI_MCDU1_B)", _sent[^1]);   // B goes down all the same
+    }
+
+    [Fact]
     public void Nothing_is_queued_when_a_write_cannot_land()
     {
         _def.CanLand = _ => false;

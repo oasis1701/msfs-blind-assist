@@ -44,6 +44,10 @@ public sealed class A300McduFormTests : IDisposable
     private readonly List<(DateTime Due, Action Fire)> _timers = new();
     private bool _clockedKeys;
     private bool _keysStuck;
+
+    /// <summary>What each of the pump's waits runs long by. The real ones do: Task.Delay(80) takes about 93 ms, so a key is
+    /// about 187 ms and not the nominal 160 the read-back's hold is counted at.</summary>
+    private int _keyWaitExtraMs;
     private string _pad = "";
     private int _clrOnEmptyPad;
 
@@ -89,7 +93,7 @@ public sealed class A300McduFormTests : IDisposable
         if (!_clockedKeys)
             return Task.CompletedTask;
         var done = new TaskCompletionSource();
-        After(ms, () => done.SetResult());
+        After(ms + _keyWaitExtraMs, () => done.SetResult());
         return done.Task;
     }
 
@@ -592,8 +596,69 @@ public sealed class A300McduFormTests : IDisposable
         await _form.ClearScratchpadAsync();
         Assert.DoesNotContain(_sent, s => s == CaptainClr);
         Assert.Equal(new[] { ClearFailed }, _speech.All);
-        // the two keys in the queue need 0.32 s, and the 1.5 s allowance comes on top
-        Assert.InRange((_now - T0).TotalMilliseconds, 320 + A300McduForm.ClearConfirmMs, 320 + A300McduForm.ClearConfirmMs + 100);
+        // the queue has not shrunk for the 1.5 s the clear allows it
+        Assert.InRange((_now - T0).TotalMilliseconds, A300McduForm.ClearConfirmMs, A300McduForm.ClearConfirmMs + 100);
+    }
+
+    // ---- The clear-all at the pump's real pace ----
+
+    [Theory]
+    [InlineData(9)]
+    [InlineData(19)]
+    public async Task A_pump_slower_than_its_nominal_pace_still_gets_its_margin_after_the_last_key(int keys)
+    {
+        // The real pump waits two real timers a key and Task.Delay(80) takes about 93 ms: about 187 ms a key, not the 160
+        // the send's hold is counted at, so the margin that hold leaves after the last key's actual release is 0.25 s for
+        // nine keys and nothing from about nineteen. Delete follows Enter at once, and the aircraft shows a key 350 ms
+        // after it goes down.
+        _clockedKeys = true;
+        _keyWaitExtraMs = 15;   // 95 ms a wait, 190 ms a key
+        AircraftHolds("", 350);
+        _form.PrepareToShow();
+        var entry = Enumerable.Range(0, keys).Select(i => ((char)('A' + i % 26)).ToString()).ToList();
+        Assert.True(_form.Send(Captain, entry));
+
+        await _form.ClearScratchpadAsync();
+        Advance(8000);
+
+        Assert.Equal(0, _clrOnEmptyPad);
+        Assert.Equal(keys, CaptainClrPresses);
+        Assert.Equal("", _pad);
+        Assert.DoesNotContain(ClearFailed, _speech.All);
+    }
+
+    [Fact]
+    public async Task An_entry_typed_on_the_other_unit_after_the_clear_starts_does_not_end_it()
+    {
+        // Ctrl+Shift+R and nine keys on the first officer's MCDU while the captain's clear waits for its first CLR to go. The
+        // keys share the one queue, so the clear waits for them; nothing is stuck, but they were not there when the wait
+        // began, so a bound fixed from the queue at that moment ran out and the clear left the pad half cleared.
+        _clockedKeys = true;
+        _keyWaitExtraMs = 15;
+        AircraftHolds("AB");
+        _screens[FirstOfficer] = Page(FirstOfficer);
+        _form.PrepareToShow();
+        bool typed = false;
+        var wait = _form.Delay;
+        _form.Delay = ms =>
+        {
+            if (!typed)
+            {
+                typed = true;
+                _form.SelectUnit(FirstOfficer);
+                _form.Send(FirstOfficer, "ABCDEFGHI".Select(c => c.ToString()).ToList());
+            }
+            return wait(ms);
+        };
+
+        await _form.ClearScratchpadAsync();
+        Advance(8000);
+
+        Assert.True(typed);
+        Assert.DoesNotContain(ClearFailed, _speech.All);
+        Assert.Equal(2, CaptainClrPresses);
+        Assert.Equal(0, _clrOnEmptyPad);
+        Assert.Equal("", _pad);
     }
 
     // ---- The clear-all after the pilot switches units ----
