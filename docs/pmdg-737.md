@@ -172,9 +172,16 @@ through `Pmdg737FlashingLights` ([P737-3]):
 - a flashing lamp is silent until it stays one way for the hold time: "<light>: steady" or
   "<light>: off".
 
-The hold time is 2 s by default, overridable per lamp in `FlashHoldOverridesMs`. **The real PMDG
-blink rate has not been measured** (debug.log does not record annunciator changes): if a lamp
-blinks slower than the hold, it reads as on/off and needs an override.
+The hold time is 2 s by default, overridable per lamp in `FlashHoldOverridesMs`. A hold must
+outlast the lamp's longest dark spell, or each blink reads as on/off. Every lamp edge is logged to
+debug.log as a `PMDG737Lamps` line, which is how to measure one.
+
+**Measured 2026-10-13, IRS ALIGN** (no position entered): one blink every 5 s, with the SDK value
+arriving about once a second, so each dark spell reads as 2 or 3 s. The 2 s default spoke every
+blink; both ALIGN lamps have a 4 s override. Both blinked within 2 ms of each other, which suggests
+one shared PMDG flash clock: if a second flashing lamp shows the same 5 s rhythm, raise the default
+to 4 s instead of adding overrides (every lamp's "off" then comes 4 s late, not 2). No other lamp has
+been measured.
 
 Warnings panel → **Flashing lights** is a live list of the lamps flashing now, one per row, built
 from the filter's own state (`GetLiveListItems`), or the single row "No lights flashing". It
