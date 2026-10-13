@@ -116,6 +116,20 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
     protected override Dictionary<string, SimVarDefinition> BuildVariables()
     {
         var vars = GetBaseVariables();
+
+        // The glideslope call-out listens to the A300's ILS receiver, NAV 3 ([A300-10]), not the base's NAV 1.
+        // A new definition copied from the base's entry; the base's own entry is not edited.
+        var baseGlideslope = vars["MON_GlideSlopeAlive"];
+        vars["MON_GlideSlopeAlive"] = new SimVarDefinition
+        {
+            Name = "NAV HAS GLIDE SLOPE:3",
+            DisplayName = baseGlideslope.DisplayName,
+            Type = baseGlideslope.Type,
+            Units = baseGlideslope.Units,
+            UpdateFrequency = baseGlideslope.UpdateFrequency,
+            IsAnnounced = baseGlideslope.IsAnnounced,
+        };
+
         var batchNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var def in vars.Values)
             if (ContinuousBatchLayout.RidesBatch(def))

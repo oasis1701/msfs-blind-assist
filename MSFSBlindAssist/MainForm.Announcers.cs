@@ -347,7 +347,9 @@ public partial class MainForm
                 }
 
                 // Check if disabled in the A300 Monitor Manager (the base variables the A300
-                // announces on the generic path: ground state, glideslope and the like).
+                // announces on the generic path: ground state and the like). The glideslope
+                // call-out is spoken inside the base's ProcessSimVarUpdate, under the mute wrap
+                // above, so it never reaches this gate.
                 if (currentAircraft.AircraftCode == IniA300Definition.Code &&
                     Settings.SettingsManager.Current.A300DisabledMonitorVariablesSet.Contains(e.VarName))
                 {

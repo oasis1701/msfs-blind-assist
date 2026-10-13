@@ -476,4 +476,11 @@ public class IniA300BehaviourTests
         Deliver(A300Announcements.GearLeverKey, 1);
         Assert.Equal(new[] { "Gear lever down" }, _speech.All);
     }
+
+    [Fact]
+    public void The_glideslope_call_out_listens_to_the_ils_receiver()
+    {
+        Assert.Equal("NAV HAS GLIDE SLOPE:3", _def.GetVariables()["MON_GlideSlopeAlive"].Name);
+        Assert.Equal("NAV HAS GLIDE SLOPE:1", new FlyByWireA320Definition().GetVariables()["MON_GlideSlopeAlive"].Name);
+    }
 }
