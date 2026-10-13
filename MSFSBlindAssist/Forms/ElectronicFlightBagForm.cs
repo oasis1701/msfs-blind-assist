@@ -2023,24 +2023,24 @@ public partial class ElectronicFlightBagForm : Form
 
                         // Basic Information
                         sb.AppendLine("BASIC INFORMATION:");
-                        sb.AppendLine($"  ICAO:         {reader["icao"]?.ToString() ?? "N/A"}");
-                        sb.AppendLine($"  Ident:        {reader["ident"]?.ToString() ?? "N/A"}");
-                        sb.AppendLine($"  Name:         {reader["name"]?.ToString() ?? "N/A"}");
-                        sb.AppendLine($"  IATA:         {reader["iata"]?.ToString() ?? "N/A"}");
-                        sb.AppendLine($"  FAA:          {reader["faa"]?.ToString() ?? "N/A"}");
-                        sb.AppendLine($"  Local:        {reader["local"]?.ToString() ?? "N/A"}");
+                        sb.AppendLine($"  ICAO:         {FormatAirportText(reader["icao"])}");
+                        sb.AppendLine($"  Ident:        {FormatAirportText(reader["ident"])}");
+                        sb.AppendLine($"  Name:         {FormatAirportText(reader["name"])}");
+                        sb.AppendLine($"  IATA:         {FormatAirportText(reader["iata"])}");
+                        sb.AppendLine($"  FAA:          {FormatAirportText(reader["faa"])}");
+                        sb.AppendLine($"  Local:        {FormatAirportText(reader["local"])}");
                         sb.AppendLine();
 
                         // Location
                         sb.AppendLine("LOCATION:");
-                        sb.AppendLine($"  City:         {reader["city"]?.ToString() ?? "N/A"}");
-                        sb.AppendLine($"  State:        {reader["state"]?.ToString() ?? "N/A"}");
-                        sb.AppendLine($"  Country:      {reader["country"]?.ToString() ?? "N/A"}");
-                        sb.AppendLine($"  Region:       {reader["region"]?.ToString() ?? "N/A"}");
-                        sb.AppendLine($"  Latitude:     {reader["laty"]}");
-                        sb.AppendLine($"  Longitude:    {reader["lonx"]}");
+                        sb.AppendLine($"  City:         {FormatAirportText(reader["city"])}");
+                        sb.AppendLine($"  State:        {FormatAirportText(reader["state"])}");
+                        sb.AppendLine($"  Country:      {FormatAirportText(reader["country"])}");
+                        sb.AppendLine($"  Region:       {FormatAirportText(reader["region"])}");
+                        sb.AppendLine($"  Latitude:     {FormatAirportCoordinate(reader["laty"], 'N', 'S')}");
+                        sb.AppendLine($"  Longitude:    {FormatAirportCoordinate(reader["lonx"], 'E', 'W')}");
                         sb.AppendLine($"  Altitude:     {reader["altitude"]} ft");
-                        sb.AppendLine($"  Mag Var:      {reader["mag_var"]}°");
+                        sb.AppendLine($"  Mag Var:      {FormatAirportMagVar(reader["mag_var"])}");
                         sb.AppendLine();
 
                         // Frequencies
@@ -2096,14 +2096,14 @@ public partial class ElectronicFlightBagForm : Form
                         sb.AppendLine($"  Total Runways:          {reader["num_runways"]}");
                         sb.AppendLine($"  Longest Runway Length:  {reader["longest_runway_length"]} ft");
                         sb.AppendLine($"  Longest Runway Width:   {reader["longest_runway_width"]} ft");
-                        sb.AppendLine($"  Longest Runway Heading: {reader["longest_runway_heading"]}°");
-                        sb.AppendLine($"  Longest Runway Surface: {reader["longest_runway_surface"]?.ToString() ?? "N/A"}");
+                        sb.AppendLine($"  Longest Runway Heading: {FormatAirportHeading(reader["longest_runway_heading"])}");
+                        sb.AppendLine($"  Longest Runway Surface: {FormatAirportText(reader["longest_runway_surface"])}");
                         sb.AppendLine();
 
                         // Parking Info
                         sb.AppendLine("PARKING:");
-                        sb.AppendLine($"  Largest Ramp:           {reader["largest_parking_ramp"]?.ToString() ?? "N/A"}");
-                        sb.AppendLine($"  Largest Gate:           {reader["largest_parking_gate"]?.ToString() ?? "N/A"}");
+                        sb.AppendLine($"  Largest Ramp:           {FormatAirportText(reader["largest_parking_ramp"])}");
+                        sb.AppendLine($"  Largest Gate:           {FormatAirportText(reader["largest_parking_gate"])}");
                         sb.AppendLine();
 
                         // Tower
@@ -2114,8 +2114,8 @@ public partial class ElectronicFlightBagForm : Form
                         {
                             sb.AppendLine("TOWER:");
                             sb.AppendLine($"  Altitude:     {(towerAlt != DBNull.Value ? $"{towerAlt} ft" : "N/A")}");
-                            sb.AppendLine($"  Longitude:    {(towerLonx != DBNull.Value ? towerLonx.ToString() : "N/A")}");
-                            sb.AppendLine($"  Latitude:     {(towerLaty != DBNull.Value ? towerLaty.ToString() : "N/A")}");
+                            sb.AppendLine($"  Longitude:    {FormatAirportCoordinate(towerLonx, 'E', 'W')}");
+                            sb.AppendLine($"  Latitude:     {FormatAirportCoordinate(towerLaty, 'N', 'S')}");
                             sb.AppendLine($"  Has Tower Object: {(Convert.ToInt32(reader["has_tower_object"]) == 1 ? "Yes" : "No")}");
                             sb.AppendLine();
                         }
@@ -2212,6 +2212,44 @@ public partial class ElectronicFlightBagForm : Form
         double value = Convert.ToDouble(khz, System.Globalization.CultureInfo.InvariantCulture);
         if (value <= 0) return "N/A";
         return (value / 1000.0).ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) + " MHz";
+    }
+
+    /// <summary>A text column of the airport row; "N/A" when empty. A database NULL arrives as
+    /// DBNull, whose ToString() is "", so the old <c>?.ToString() ?? "N/A"</c> printed a blank line
+    /// (navdata leaves country, ICAO, IATA, FAA and local empty for almost every airport).</summary>
+    internal static string FormatAirportText(object? value)
+    {
+        string s = value == null || value == DBNull.Value ? "" : value.ToString()!.Trim();
+        return s.Length == 0 ? "N/A" : s;
+    }
+
+    /// <summary>A latitude or longitude in degrees, to 4 decimals (about 10 m) with its hemisphere:
+    /// 57.6600 N, 54.5682 W. Navdata stores these as 32-bit floats, so the raw double printed
+    /// float noise ("57,65998458862305").</summary>
+    internal static string FormatAirportCoordinate(object? degrees, char positive, char negative)
+    {
+        if (degrees == null || degrees == DBNull.Value) return "N/A";
+        double d = Convert.ToDouble(degrees, System.Globalization.CultureInfo.InvariantCulture);
+        return Math.Abs(d).ToString("0.0000", System.Globalization.CultureInfo.InvariantCulture)
+            + " " + (d < 0 ? negative : positive);
+    }
+
+    /// <summary>Magnetic variation to one decimal with its direction: navdata's mag_var is east
+    /// positive (ESGG 5.15 → "5.2° E", CYQX -17.33 → "17.3° W").</summary>
+    internal static string FormatAirportMagVar(object? degrees)
+    {
+        if (degrees == null || degrees == DBNull.Value) return "N/A";
+        double d = Math.Round(Convert.ToDouble(degrees, System.Globalization.CultureInfo.InvariantCulture), 1);
+        string value = Math.Abs(d).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "°";
+        return d == 0 ? value : value + (d < 0 ? " W" : " E");
+    }
+
+    /// <summary>A true heading in whole degrees: 206.0055694580078 → "206°".</summary>
+    internal static string FormatAirportHeading(object? degrees)
+    {
+        if (degrees == null || degrees == DBNull.Value) return "N/A";
+        double d = Convert.ToDouble(degrees, System.Globalization.CultureInfo.InvariantCulture);
+        return Math.Round(d).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + "°";
     }
 
     private string GetRunwayDetailedInfo(string icao, string runwayId)
