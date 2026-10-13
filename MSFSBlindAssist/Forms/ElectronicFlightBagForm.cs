@@ -2045,16 +2045,11 @@ public partial class ElectronicFlightBagForm : Form
 
                         // Frequencies
                         sb.AppendLine("FREQUENCIES:");
-                        var towerFreq = reader["tower_frequency"];
-                        sb.AppendLine($"  Tower:        {(towerFreq != DBNull.Value && Convert.ToInt32(towerFreq) > 0 ? $"{Convert.ToDouble(towerFreq) / 1000000.0:F3} MHz" : "N/A")}");
-                        var atisFreq = reader["atis_frequency"];
-                        sb.AppendLine($"  ATIS:         {(atisFreq != DBNull.Value && Convert.ToInt32(atisFreq) > 0 ? $"{Convert.ToDouble(atisFreq) / 1000000.0:F3} MHz" : "N/A")}");
-                        var awosFreq = reader["awos_frequency"];
-                        sb.AppendLine($"  AWOS:         {(awosFreq != DBNull.Value && Convert.ToInt32(awosFreq) > 0 ? $"{Convert.ToDouble(awosFreq) / 1000000.0:F3} MHz" : "N/A")}");
-                        var asosFreq = reader["asos_frequency"];
-                        sb.AppendLine($"  ASOS:         {(asosFreq != DBNull.Value && Convert.ToInt32(asosFreq) > 0 ? $"{Convert.ToDouble(asosFreq) / 1000000.0:F3} MHz" : "N/A")}");
-                        var unicomFreq = reader["unicom_frequency"];
-                        sb.AppendLine($"  UNICOM:       {(unicomFreq != DBNull.Value && Convert.ToInt32(unicomFreq) > 0 ? $"{Convert.ToDouble(unicomFreq) / 1000000.0:F3} MHz" : "N/A")}");
+                        sb.AppendLine($"  Tower:        {FormatAirportFrequency(reader["tower_frequency"])}");
+                        sb.AppendLine($"  ATIS:         {FormatAirportFrequency(reader["atis_frequency"])}");
+                        sb.AppendLine($"  AWOS:         {FormatAirportFrequency(reader["awos_frequency"])}");
+                        sb.AppendLine($"  ASOS:         {FormatAirportFrequency(reader["asos_frequency"])}");
+                        sb.AppendLine($"  UNICOM:       {FormatAirportFrequency(reader["unicom_frequency"])}");
                         sb.AppendLine();
 
                         // Status
@@ -2203,6 +2198,20 @@ public partial class ElectronicFlightBagForm : Form
         sb.AppendLine();
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// One airport-row frequency (<c>tower_frequency</c>, <c>atis_frequency</c> and the rest), which
+    /// navdata stores in kHz: 118605 → "118.605 MHz". Always a dot, as on the radio panel, whatever
+    /// the Windows number format. "N/A" for a missing or zero value. It used to divide by 1,000,000
+    /// and read "0,119 MHz".
+    /// </summary>
+    internal static string FormatAirportFrequency(object? khz)
+    {
+        if (khz == null || khz == DBNull.Value) return "N/A";
+        double value = Convert.ToDouble(khz, System.Globalization.CultureInfo.InvariantCulture);
+        if (value <= 0) return "N/A";
+        return (value / 1000.0).ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) + " MHz";
     }
 
     private string GetRunwayDetailedInfo(string icao, string runwayId)
