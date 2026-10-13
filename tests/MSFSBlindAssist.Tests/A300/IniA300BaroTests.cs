@@ -229,6 +229,212 @@ public class IniA300BaroTests
         }
     }
 
+    // ---- The Captain Side and First Officer Side panels' "Altimeter setting" boxes: Ctrl+B's sequence for one side ----
+
+    private const string CaptainBox1018 = "1 16288 (>K:2:KOHLSMAN_SET)";
+    private const string FirstOfficerBox1018 = "2 16288 (>K:2:KOHLSMAN_SET)";
+
+    /// <summary>A value typed into a panel's altimeter box and set, the way the panel hands it over.</summary>
+    private void SetBox(string key, double value) =>
+        Assert.True(_def.HandleUIVariableSet(key, value, _def.GetVariables()[key], _sim, _speech));
+
+    [Fact]
+    public void A_captain_box_value_with_the_captain_in_std_pushes_confirms_then_writes()
+    {
+        _cache[A300Baro.Captain.ModeKey] = 1;
+        _cache[A300Baro.FirstOfficer.ModeKey] = 0;
+        SetBox(A300TypedValues.BaroCaptainKey, 1018);
+        Assert.Equal(new[] { Press(A300Baro.Captain.PushKey) }, _sent);   // nothing is written while it reads STD
+        Assert.Empty(_speech.All);
+
+        _fresh[A300Baro.Captain.ModeKey] = 0;
+        _waits.Single().SetResult();
+        Assert.Equal(new[] { Press(A300Baro.Captain.PushKey), CaptainBox1018 }, _sent);
+        Assert.Equal(new[] { "Captain altimeter 1018 hectopascals, 30.06 inches" }, _speech.All);
+    }
+
+    [Fact]
+    public void A_captain_box_value_whose_side_stays_in_std_writes_nothing()
+    {
+        _cache[A300Baro.Captain.ModeKey] = 1;
+        _cache[A300Baro.FirstOfficer.ModeKey] = 0;
+        SetBox(A300TypedValues.BaroCaptainKey, 1018);
+        _fresh[A300Baro.Captain.ModeKey] = 1;
+        _waits.Single().SetResult();
+        Assert.Equal(new[] { Press(A300Baro.Captain.PushKey) }, _sent);   // the push only: no KOHLSMAN write
+        Assert.Equal(new[] { "Captain altimeter did not switch to QNH" }, _speech.All);
+        Assert.Equal(_speech.All, _speech.Interrupts);
+    }
+
+    [Fact]
+    public void A_first_officer_box_value_pushes_only_the_first_officer()
+    {
+        _cache[A300Baro.Captain.ModeKey] = 1;
+        _cache[A300Baro.FirstOfficer.ModeKey] = 1;
+        SetBox(A300TypedValues.BaroFirstOfficerKey, 1018);
+        Assert.Equal(new[] { Press(A300Baro.FirstOfficer.PushKey) }, _sent);   // the captain's STD is not this box's
+
+        _fresh[A300Baro.FirstOfficer.ModeKey] = 0;
+        _waits.Single().SetResult();
+        Assert.Equal(new[] { Press(A300Baro.FirstOfficer.PushKey), FirstOfficerBox1018 }, _sent);
+        Assert.Equal(new[] { "First officer altimeter 1018 hectopascals, 30.06 inches" }, _speech.All);
+    }
+
+    [Fact]
+    public void A_side_box_value_while_std_or_qnh_runs_is_refused_aloud()
+    {
+        _cache[A300Baro.Captain.ModeKey] = 0;
+        _cache[A300Baro.FirstOfficer.ModeKey] = 0;
+        _ = _def.SetStandardAsync(_sim, _speech);
+        _sent.Clear();
+        SetBox(A300TypedValues.BaroFirstOfficerKey, 1018);
+        Assert.Empty(_sent);
+        Assert.Equal(new[] { A300Baro.BusyRefusal }, _speech.All);
+        Assert.Equal(_speech.All, _speech.Interrupts);
+    }
+
+    [Fact]
+    public void While_a_side_box_waits_for_its_push_the_other_altimeter_entries_are_refused_or_ignored()
+    {
+        _cache[A300Baro.Captain.ModeKey] = 1;
+        _cache[A300Baro.FirstOfficer.ModeKey] = 0;
+        SetBox(A300TypedValues.BaroCaptainKey, 1018);
+        _sent.Clear();
+
+        SetBox(A300TypedValues.BaroFirstOfficerKey, 1018);
+        _ = _def.SetAltimetersAsync(1018, _sim, _speech);
+        _ = _def.SetStandardAsync(_sim, _speech);   // a mode press is ignored: the running push speaks
+
+        Assert.Empty(_sent);
+        Assert.Equal(new[] { A300Baro.BusyRefusal, A300Baro.BusyRefusal }, _speech.All);
+    }
+
+    [Fact]
+    public void A_side_box_value_with_its_mode_unread_is_refused()
+    {
+        SetBox(A300TypedValues.BaroCaptainKey, 1018);
+        Assert.Empty(_sent);
+        Assert.Equal(new[] { A300Baro.UnknownModeRefusal }, _speech.All);
+        Assert.Equal(_speech.All, _speech.Interrupts);
+    }
+
+    [Fact]
+    public void A_side_box_needs_only_its_own_sides_mode()
+    {
+        _cache[A300Baro.Captain.ModeKey] = 0;   // the first officer's has not been read
+        SetBox(A300TypedValues.BaroCaptainKey, 1018);
+        SetBox(A300TypedValues.BaroFirstOfficerKey, 1018);
+        Assert.Equal(new[] { CaptainBox1018 }, _sent);
+        Assert.Equal(new[] { "Captain altimeter 1018 hectopascals, 30.06 inches", A300Baro.UnknownModeRefusal }, _speech.All);
+    }
+
+    [Fact]
+    public void A_side_box_value_in_qnh_is_written_at_once()
+    {
+        _cache[A300Baro.FirstOfficer.ModeKey] = 0;
+        SetBox(A300TypedValues.BaroFirstOfficerKey, 1018);
+        Assert.Equal(new[] { FirstOfficerBox1018 }, _sent);
+        Assert.Equal(new[] { "First officer altimeter 1018 hectopascals, 30.06 inches" }, _speech.All);
+        Assert.Empty(_waits);
+    }
+
+    [Fact]
+    public void A_side_box_value_leaves_the_other_side_in_std_alone()
+    {
+        _cache[A300Baro.Captain.ModeKey] = 0;
+        _cache[A300Baro.FirstOfficer.ModeKey] = 1;
+        SetBox(A300TypedValues.BaroCaptainKey, 1018);
+        Assert.Equal(new[] { CaptainBox1018 }, _sent);   // no push, and only the captain's index is written
+        Assert.Empty(_waits);
+    }
+
+    [Fact]
+    public void A_side_box_value_out_of_range_or_unreachable_says_why_and_presses_nothing()
+    {
+        _cache[A300Baro.Captain.ModeKey] = 1;
+        SetBox(A300TypedValues.BaroCaptainKey, 1200);
+        _canLand = false;
+        SetBox(A300TypedValues.BaroCaptainKey, 1018);
+        Assert.Empty(_sent);
+        Assert.Empty(_waits);
+        Assert.Equal(new[] { $"Altimeter setting: {A300TypedValues.AltimeterError}", "Altimeter setting unavailable" },
+            _speech.All);
+    }
+
+    [Fact]
+    public void A_side_box_value_that_was_refused_or_failed_leaves_the_guard_clear()
+    {
+        SetBox(A300TypedValues.BaroCaptainKey, 1018);   // its mode is unread: refused
+        _cache[A300Baro.Captain.ModeKey] = 1;
+        SetBox(A300TypedValues.BaroCaptainKey, 1018);   // pushed, and the side stays in STD
+        _fresh[A300Baro.Captain.ModeKey] = 1;
+        _waits[0].SetResult();
+        _sent.Clear();
+
+        _fresh[A300Baro.Captain.ModeKey] = 0;
+        SetBox(A300TypedValues.BaroCaptainKey, 1018);   // pushed again, and this time it lands
+        _waits[1].SetResult();
+
+        Assert.Equal(new[] { Press(A300Baro.Captain.PushKey), CaptainBox1018 }, _sent);
+        Assert.Equal(new[]
+        {
+            A300Baro.UnknownModeRefusal,
+            "Captain altimeter did not switch to QNH",
+            "Captain altimeter 1018 hectopascals, 30.06 inches",
+        }, _speech.All);
+    }
+
+    [Fact]
+    public void A_side_box_value_for_a_definition_disposed_during_the_settle_writes_nothing()
+    {
+        _cache[A300Baro.Captain.ModeKey] = 1;
+        SetBox(A300TypedValues.BaroCaptainKey, 1018);
+        _def.Dispose();
+        _fresh[A300Baro.Captain.ModeKey] = 0;
+        _waits.Single().SetResult();
+        Assert.Equal(new[] { Press(A300Baro.Captain.PushKey) }, _sent);
+        Assert.Empty(_speech.All);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(1.0)]
+    public void The_standby_box_value_is_written_at_once_whatever_the_sides_read(double? sidesMode)
+    {
+        if (sidesMode is double mode)
+        {
+            _cache[A300Baro.Captain.ModeKey] = mode;
+            _cache[A300Baro.FirstOfficer.ModeKey] = mode;
+        }
+        SetBox(A300TypedValues.BaroStandbyKey, 1018);
+        Assert.Equal(new[] { "3 16288 (>K:2:KOHLSMAN_SET)" }, _sent);   // the standby has no STD: nothing is pushed
+        Assert.Equal(new[] { "Standby altimeter 1018 hectopascals, 30.06 inches" }, _speech.All);
+        Assert.Empty(_waits);
+    }
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void A_side_box_value_after_a_push_reads_the_same_in_a_comma_decimal_culture(string culture)
+    {
+        var saved = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo(culture);
+            _cache[A300Baro.Captain.ModeKey] = 1;
+            _cache[A300Baro.FirstOfficer.ModeKey] = 0;
+            SetBox(A300TypedValues.BaroCaptainKey, 30.06);
+            _fresh[A300Baro.Captain.ModeKey] = 0;
+            _waits.Single().SetResult();
+            Assert.Equal("1 16287 (>K:2:KOHLSMAN_SET)", _sent.Last());
+            Assert.Equal(new[] { "Captain altimeter 1018 hectopascals, 30.06 inches" }, _speech.All);
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = saved;
+        }
+    }
+
     [Fact]
     public void Standard_pulls_waits_confirms_writes_1013_and_reads_back()
     {

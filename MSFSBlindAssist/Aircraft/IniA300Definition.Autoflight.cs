@@ -24,10 +24,11 @@ public partial class IniA300Definition
     /// next 1 Hz delivery.</summary>
     public const int ReadoutTimeoutMs = 2500;
 
-    /// <summary>True while Ctrl+B's STD or QNH sequence or a typed value's push is running: a second press
-    /// in that time is ignored and a typed value refused aloud, because either would decide from the 1 Hz
-    /// cache, which still shows the old modes, and could pull a side already in STD (saving 1013 over the
-    /// pilot's QNH). Everything runs on the UI thread.</summary>
+    /// <summary>True while Ctrl+B's STD or QNH sequence or a typed altimeter value's push (Ctrl+B's, or a
+    /// Captain Side or First Officer Side box's) is running: a second press in that time is ignored and a
+    /// typed value refused aloud, because either would decide from the 1 Hz cache, which still shows the old
+    /// modes, and could pull a side already in STD (saving 1013 over the pilot's QNH). Everything runs on
+    /// the UI thread.</summary>
     private bool _altimetersBusy;
 
     /// <summary>The wait between a typed value's two steps; tests replace it.</summary>
@@ -50,9 +51,22 @@ public partial class IniA300Definition
         return _disposed ? null : values;
     }
 
-    /// <summary>A typed value from a panel box or a dialog: refused aloud with its range, or sent and confirmed.</summary>
+    /// <summary>A typed value from a panel box or a dialog: refused aloud with its range, or sent and confirmed. The
+    /// Captain Side and First Officer Side altimeter boxes run Ctrl+B's sequence for their one side
+    /// (<see cref="SetSideAltimeterAsync"/>); the standby's has no STD and is written like any other value.</summary>
     private void SetTyped(string key, double value, SimConnectManager sim, ScreenReaderAnnouncer announcer, string name)
     {
+        var side = key switch
+        {
+            A300TypedValues.BaroCaptainKey => A300Baro.Captain,
+            A300TypedValues.BaroFirstOfficerKey => A300Baro.FirstOfficer,
+            _ => null,
+        };
+        if (side != null)
+        {
+            _ = SetSideAltimeterAsync(side, key, name, value, sim, announcer);
+            return;
+        }
         var plan = A300TypedValues.Plan(key, value, IsMach());
         if (plan.Error != null)
         {
@@ -464,6 +478,58 @@ public partial class IniA300Definition
         catch (Exception ex)
         {
             Log.Warn("A300", $"Typed altimeters failed: {ex.Message}");
+        }
+        finally
+        {
+            _altimetersBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// A Captain Side or First Officer Side box's typed setting ([A300-22]): Ctrl+B's typed value, for that one
+    /// side. A side in STD did not take a typed setting (in flight, 2026-10-06), so a plain write would be
+    /// confirmed aloud and never land. A side that reads STD is first pushed to QNH and confirmed by reading its
+    /// mode back (<see cref="PressKnobsAsync"/>, which names the side if it stays in STD, and then nothing is
+    /// written); the other side is left alone. The box is refused aloud while a sequence or another box's push
+    /// is running (the cache still shows the old modes) and while this side's mode is unread, as Ctrl+B's typed
+    /// value is (<see cref="SetAltimetersAsync"/>). The standby altimeter has no STD and writes directly.
+    /// </summary>
+    internal async Task SetSideAltimeterAsync(A300BaroSide side, string key, string name, double value,
+        SimConnectManager sim, ScreenReaderAnnouncer announcer)
+    {
+        var plan = A300TypedValues.Plan(key, value, isMach: false);
+        if (plan.Error != null)
+        {
+            announcer.Announce($"{name}: {plan.Error}");
+            return;
+        }
+        if (_altimetersBusy)
+        {
+            announcer.AnnounceImmediate(A300Baro.BusyRefusal);
+            return;
+        }
+        _altimetersBusy = true;
+        try
+        {
+            if (!CanLand(sim))
+            {
+                announcer.Announce($"{name} unavailable");
+                return;
+            }
+            if (Cached(sim, side.ModeKey) is not double mode)
+            {
+                announcer.AnnounceImmediate(A300Baro.UnknownModeRefusal);
+                return;
+            }
+            if (A300Baro.IsStd(mode)
+                && (!await PressKnobsAsync(new[] { side }, s => s.PushKey, wantStd: false, sim, announcer) || _disposed))
+                return;
+            Send(sim, plan.Rpn!);
+            announcer.Announce(plan.Confirmation!);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("A300", $"A side's typed altimeter failed: {ex.Message}");
         }
         finally
         {
