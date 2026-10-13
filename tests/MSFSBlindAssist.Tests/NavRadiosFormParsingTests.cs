@@ -24,6 +24,15 @@ public class NavRadiosFormParsingTests
     public void A_frequency_outside_the_radios_band_is_refused(string text, double min, double max) =>
         Assert.Null(NavRadiosForm.ParseFrequency(text, min, max));
 
+    // NaN parses as a number, and fails both range comparisons, so the range check let it through as a
+    // "frequency" of NaN.
+    [Theory]
+    [InlineData("NaN")]
+    [InlineData("nan")]
+    [InlineData("-NaN")]
+    public void Not_a_number_is_no_frequency(string text) =>
+        Assert.Null(NavRadiosForm.ParseFrequency(text, 108.0, 117.95));
+
     [Theory]
     [InlineData("90", 90)]
     [InlineData("360", 0)]

@@ -518,7 +518,9 @@ FCU Set Values (each opens a small window with its knob and mode buttons; type a
              side and nothing is set. The Altimeter mode button (Alt+M) says QNH or STD, or each
              side while they differ; pressing it goes to STD from QNH, and to QNH otherwise, then
              reads the settings back
-  Ctrl+N     VOR 1, VOR 2 and ILS, frequency and course
+  Ctrl+N     VOR 1, VOR 2 and ILS, frequency and course. The window opens on what the radios
+             report; if they cannot be read you hear "NAV radios unavailable" and nothing opens.
+             Set writes only the fields you changed, and says "NAV radios unchanged" if none
 
 Taxi Guidance:
   Shift+Y    Open Taxi Assist Form (enter ATC taxi clearance, start guidance)

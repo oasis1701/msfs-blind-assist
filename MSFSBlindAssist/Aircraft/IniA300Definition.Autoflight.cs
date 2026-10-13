@@ -790,44 +790,81 @@ public partial class IniA300Definition
         double.TryParse(input.Trim().Replace(',', '.'), System.Globalization.NumberStyles.Float,
             System.Globalization.CultureInfo.InvariantCulture, out double v) ? v : null;
 
-    /// <summary>How long Ctrl+N waits for the NAV radios before opening with 108.00 and course 0.</summary>
+    /// <summary>How long Ctrl+N waits for each read it opens on (the NAV radios, then the ILS frequency and
+    /// course) before it refuses.</summary>
     public const int NavPrefillTimeoutMs = 2000;
 
-    /// <summary>Ctrl+N: VOR 1, VOR 2 and the ILS, frequency and course, pre-filled from NAV 1, NAV 2 and NAV 3
-    /// and the ILS course (the A300 drives them from its VOR radios and its ILS receiver).</summary>
-    private async Task ShowNavRadiosDialogAsync(SimConnectManager sim, ScreenReaderAnnouncer announcer, Form parentForm)
+    private const string NavRadiosUnavailable = "NAV radios unavailable";
+
+    /// <summary>A frequency differs from the one the window opened with when it is this many megahertz away or more.
+    /// The sim reports a tuned frequency with float noise (113.9000015) that the window shows as 113.90, so an
+    /// exact compare would call an untouched field changed.</summary>
+    private const double FrequencyChangeMHz = 0.001;
+
+    /// <summary>NAV 1, NAV 2 and their courses (<see cref="SimConnectManager.RequestNavRadioInfo"/>), or null when
+    /// the sim is not connected or does not answer in <see cref="NavPrefillTimeoutMs"/>; tests replace it. The
+    /// request path needs the SimConnect library, which only a connected manager has loaded.</summary>
+    internal Func<SimConnectManager, Task<SimConnectManager.NavRadioData?>> ReadNavRadios { get; set; } = sim =>
+        sim.IsConnected
+            ? ReadNavRadiosAsync(sim.RequestNavRadioInfo, NavPrefillTimeoutMs)
+            : Task.FromResult<SimConnectManager.NavRadioData?>(null);
+
+    /// <summary>Asks for the radios with <paramref name="request"/>, which hands its answer to the callback it is
+    /// given, and waits for that answer: null when none comes within <paramref name="timeoutMs"/>.</summary>
+    internal static async Task<SimConnectManager.NavRadioData?> ReadNavRadiosAsync(
+        Action<Action<SimConnectManager.NavRadioData>> request, int timeoutMs)
+    {
+        var answer = new TaskCompletionSource<SimConnectManager.NavRadioData>(TaskCreationOptions.RunContinuationsAsynchronously);
+        request(data => answer.TrySetResult(data));
+        try
+        {
+            return await answer.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs));
+        }
+        catch (TimeoutException)
+        {
+            Log.Debug("A300", "NAV radios did not answer.");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Ctrl+N: VOR 1, VOR 2 and the ILS, frequency and course, pre-filled from NAV 1, NAV 2 and NAV 3 and the ILS
+    /// course (the A300 drives them from its VOR radios and its ILS receiver). The window opens only on radios the
+    /// sim reported: when the NAV radios, the ILS frequency or the ILS course go unread, this says so and opens
+    /// nothing, because a window of stand-ins (108.00, course 0) shows values nobody read, and Set would write them
+    /// over radios the pilot never touched. Set writes only what differs from what the window opened with
+    /// (<see cref="SetNavRadios"/>).
+    /// </summary>
+    internal async Task ShowNavRadiosDialogAsync(SimConnectManager sim, ScreenReaderAnnouncer announcer, Form parentForm)
     {
         if (!CanLand(sim))
         {
-            announcer.AnnounceImmediate("NAV radios unavailable");
+            announcer.AnnounceImmediate(NavRadiosUnavailable);
             return;
         }
         try
         {
-            SimConnectManager.NavRadioData? live = null;
-            var answer = new TaskCompletionSource<SimConnectManager.NavRadioData>(TaskCreationOptions.RunContinuationsAsynchronously);
-            sim.RequestNavRadioInfo(data => answer.TrySetResult(data));
-            try
-            {
-                live = await answer.Task.WaitAsync(TimeSpan.FromMilliseconds(NavPrefillTimeoutMs));
-            }
-            catch (TimeoutException)
-            {
-                Log.Debug("A300", "NAV radios did not answer; the dialog opens with 108.00 and course 0.");
-            }
+            var radios = await ReadNavRadios(sim);
             if (_disposed || parentForm.IsDisposed)
                 return;
+            if (radios is not { } live)
+            {
+                announcer.AnnounceImmediate(NavRadiosUnavailable);
+                return;
+            }
             double? ilsFrequency = await ReadFresh(sim, A300Readouts.IlsFrequencyKey, NavPrefillTimeoutMs);
             double? ilsCourse = await ReadFresh(sim, A300Readouts.IlsCourseKey, NavPrefillTimeoutMs);
             if (_disposed || parentForm.IsDisposed)
                 return;
+            if (ilsFrequency is not double frequency || ilsCourse is not double course)
+            {
+                announcer.AnnounceImmediate(NavRadiosUnavailable);
+                return;
+            }
+            var rows = NavRadioRows(live, frequency, course);
+            var opened = UntouchedSettings(rows);
             ShowTrackedWindow(
-                () => new NavRadiosForm(announcer, new[]
-                {
-                    new NavRadioRow("VOR 1", Prefill(live?.Nav1Freq, 108.0), (int)Math.Round(Prefill(live?.Nav1Obs, 0)) % 360),
-                    new NavRadioRow("VOR 2", Prefill(live?.Nav2Freq, 108.0), (int)Math.Round(Prefill(live?.Nav2Obs, 0)) % 360),
-                    new NavRadioRow("ILS", InBand(ilsFrequency, 108.10, 111.95), (int)Math.Round(Prefill(ilsCourse, 0)) % 360, 108.10, 111.95),
-                }, settings => SetNavRadios(settings, sim, announcer)),
+                () => new NavRadiosForm(announcer, rows, settings => SetNavRadios(settings, sim, announcer, opened)),
                 form =>
                 {
                     if (form.Visible) form.Activate();
@@ -840,24 +877,49 @@ public partial class IniA300Definition
         }
     }
 
-    private static double Prefill(double? value, double fallback) => value is double v && v > 0 ? v : fallback;
+    /// <summary>The three radios as the window opens on them. A radio that reads 0 (unpowered) opens on its band's
+    /// floor and course 0, and NAV 3, which can hold a VOR frequency outside the ILS band, opens on the floor.</summary>
+    internal static IReadOnlyList<NavRadioRow> NavRadioRows(SimConnectManager.NavRadioData live, double ilsFrequency,
+        double ilsCourse) => new[]
+    {
+        new NavRadioRow("VOR 1", Prefill(live.Nav1Freq, 108.0), (int)Math.Round(Prefill(live.Nav1Obs, 0)) % 360),
+        new NavRadioRow("VOR 2", Prefill(live.Nav2Freq, 108.0), (int)Math.Round(Prefill(live.Nav2Obs, 0)) % 360),
+        new NavRadioRow("ILS", InBand(ilsFrequency, 108.10, 111.95), (int)Math.Round(Prefill(ilsCourse, 0)) % 360, 108.10, 111.95),
+    };
+
+    /// <summary>What Set hands over when nothing in the window was touched: the rows it opened with.</summary>
+    internal static NavRadioSettings UntouchedSettings(IReadOnlyList<NavRadioRow> rows) =>
+        new(rows[0].FrequencyMHz, rows[0].Course, rows[1].FrequencyMHz, rows[1].Course, rows[2].FrequencyMHz, rows[2].Course);
+
+    private static double Prefill(double value, double fallback) => value > 0 ? value : fallback;
 
     /// <summary>A pre-fill inside a radio's band, else its bottom (NAV 3 can hold a VOR frequency).</summary>
-    private static double InBand(double? value, double min, double max) =>
-        value is double v && v >= min - 1e-9 && v <= max + 1e-9 ? v : min;
+    private static double InBand(double value, double min, double max) =>
+        value >= min - 1e-9 && value <= max + 1e-9 ? value : min;
 
-    internal void SetNavRadios(NavRadioSettings settings, SimConnectManager sim, ScreenReaderAnnouncer announcer)
+    /// <summary>
+    /// The window's Set. <paramref name="opened"/> is what the window was opened with: only a field that differs from
+    /// it is written and confirmed, so retuning VOR 1 leaves VOR 2 and the ILS where they are rather than writing
+    /// their pre-fills over them (an unpowered NAV 3 opens on 108.10 and course 0). A frequency differs when it is
+    /// <see cref="FrequencyChangeMHz"/> or more away, a course when it is not equal, and any field does when the
+    /// window opened without it. With no <paramref name="opened"/> every field is written. When none differs this
+    /// says "NAV radios unchanged".
+    /// </summary>
+    internal void SetNavRadios(NavRadioSettings settings, SimConnectManager sim, ScreenReaderAnnouncer announcer,
+        NavRadioSettings? opened = null)
     {
-        var parts = new List<A300TypedResult>
-        {
-            A300TypedValues.Plan(A300TypedValues.Vor1FrequencyKey, settings.Nav1FreqMHz, false),
-            A300TypedValues.Plan(A300TypedValues.Vor1CourseKey, settings.Nav1Course, false),
-            A300TypedValues.Plan(A300TypedValues.Vor2FrequencyKey, settings.Nav2FreqMHz, false),
-            A300TypedValues.Plan(A300TypedValues.Vor2CourseKey, settings.Nav2Course, false),
-        };
-        if (settings.Nav3FreqMHz is double ilsFrequency)
+        var parts = new List<A300TypedResult>();
+        if (FrequencyChanged(settings.Nav1FreqMHz, opened?.Nav1FreqMHz))
+            parts.Add(A300TypedValues.Plan(A300TypedValues.Vor1FrequencyKey, settings.Nav1FreqMHz, false));
+        if (settings.Nav1Course != opened?.Nav1Course)
+            parts.Add(A300TypedValues.Plan(A300TypedValues.Vor1CourseKey, settings.Nav1Course, false));
+        if (FrequencyChanged(settings.Nav2FreqMHz, opened?.Nav2FreqMHz))
+            parts.Add(A300TypedValues.Plan(A300TypedValues.Vor2FrequencyKey, settings.Nav2FreqMHz, false));
+        if (settings.Nav2Course != opened?.Nav2Course)
+            parts.Add(A300TypedValues.Plan(A300TypedValues.Vor2CourseKey, settings.Nav2Course, false));
+        if (settings.Nav3FreqMHz is double ilsFrequency && FrequencyChanged(ilsFrequency, opened?.Nav3FreqMHz))
             parts.Add(A300TypedValues.Plan(A300TypedValues.IlsFrequencyKey, ilsFrequency, false));
-        if (settings.Nav3Course is int ilsCourse)
+        if (settings.Nav3Course is int ilsCourse && ilsCourse != opened?.Nav3Course)
             parts.Add(A300TypedValues.Plan(A300TypedValues.IlsCourseKey, ilsCourse, false));
         if (parts.FirstOrDefault(p => p.Error != null) is { } bad)
         {
@@ -866,10 +928,21 @@ public partial class IniA300Definition
         }
         if (_disposed || !CanLand(sim))
         {
-            announcer.AnnounceImmediate("NAV radios unavailable");
+            announcer.AnnounceImmediate(NavRadiosUnavailable);
+            return;
+        }
+        if (parts.Count == 0)
+        {
+            announcer.AnnounceImmediate("NAV radios unchanged");
             return;
         }
         Send(sim, string.Join(" ", parts.Select(p => p.Rpn)));
         announcer.AnnounceImmediate(string.Join("; ", parts.Select(p => p.Confirmation)));
     }
+
+    /// <summary>Whether a frequency differs from the one the window opened with (always, for a window opened without
+    /// one). Written as "not within" so that a value that is no number differs, and its plan refuses it aloud, rather
+    /// than being skipped as unchanged.</summary>
+    private static bool FrequencyChanged(double value, double? opened) =>
+        opened is not double was || !(Math.Abs(value - was) < FrequencyChangeMHz);
 }

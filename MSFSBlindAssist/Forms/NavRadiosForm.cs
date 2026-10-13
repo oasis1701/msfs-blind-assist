@@ -70,10 +70,11 @@ public class NavRadiosForm : Form
     }
 
     /// <summary>A typed frequency in megahertz, snapped to its 50 kHz channel ("110.30", "110.3", "110,3",
-    /// or the compact "11030"), or null when it is not a number or lies outside min..max.</summary>
+    /// or the compact "11030"), or null when it is not a number or lies outside min..max. "NaN" parses as a
+    /// number but is none: it fails both range comparisons, so it is refused here before them.</summary>
     internal static double? ParseFrequency(string text, double minMHz, double maxMHz)
     {
-        if (!double.TryParse(text.Trim().Replace(',', '.'), NumberStyles.Float, Inv, out double v))
+        if (!double.TryParse(text.Trim().Replace(',', '.'), NumberStyles.Float, Inv, out double v) || !double.IsFinite(v))
             return null;
         if (v >= 1000) v /= 100.0;          // "11030" -> 110.30
         v = Math.Round(Math.Round(v / 0.05) * 0.05, 2);
