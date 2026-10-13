@@ -8,7 +8,7 @@
 // SCOPE — read before assuming these tests guard the [EFB-6] aliasing invariant: they do
 // NOT. They pass hard-coded doubles/objects straight to the formatter, so they only pin
 // correct RENDERING (F1 rounding, magnetic-heading subtraction, the "ft"/"°" suffixes, the
-// DBNull-to-blank behavior) given values that are ALREADY correctly resolved. They never open
+// DBNull-to-N/A behavior) given values that are ALREADY correctly resolved. They never open
 // a database and cannot detect a dropped `AS end_heading`/`AS end_altitude`/`AS end_lonx`/
 // `AS end_laty` SQL alias, nor a C# revert from reader["end_heading"] back to the ambiguous
 // bare reader["heading"] — the exact regression the [EFB-6] invariant ("GetRunwayDetailedInfo
@@ -63,22 +63,39 @@ public class ElectronicFlightBagFormRunwayInfoTests
         string result = ElectronicFlightBagForm.FormatRunwayHeadingsAndCoordinates(
             endHeadingTrue: 60.0, magVar: 5.0, endLonx: -122.375, endLaty: 37.618);
 
-        Assert.Contains("Longitude:            -122.375", result);
-        Assert.Contains("Latitude:             37.618", result);
+        Assert.Contains("Longitude:            122.3750 W", result);
+        Assert.Contains("Latitude:             37.6180 N", result);
     }
 
     [Fact]
-    public void Missing_coordinates_render_as_blank_not_a_crash()
+    public void Missing_coordinates_render_as_not_available_not_a_crash()
     {
-        // reader["end_lonx"] is DBNull.Value when the column has no value; the original
-        // code interpolates the raw reader value with no null-guard for this field
-        // (unlike most other fields in the method, which explicitly check DBNull.Value) -
-        // DBNull.Value.ToString() is "", so the line renders with a blank value.
+        // reader["end_lonx"] is DBNull.Value when the column has no value. It used to render
+        // as a blank line (DBNull.Value.ToString() is ""); it now reads N/A, like the
+        // airport block.
         string result = ElectronicFlightBagForm.FormatRunwayHeadingsAndCoordinates(
             endHeadingTrue: 90.0, magVar: 0.0, endLonx: DBNull.Value, endLaty: DBNull.Value);
 
-        Assert.Contains("Longitude:            \r\n", result);
-        Assert.Contains("Latitude:             \r\n", result);
+        Assert.Contains("Longitude:            N/A\r\n", result);
+        Assert.Contains("Latitude:             N/A\r\n", result);
+    }
+
+    [Fact]
+    public void Headings_and_coordinates_use_a_dot_under_a_comma_culture()
+    {
+        var saved = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("sv-SE");
+            string result = ElectronicFlightBagForm.FormatRunwayHeadingsAndCoordinates(240.0, -13.5, -122.375, 37.618);
+            Assert.Contains("True Heading:         240.0°", result);
+            Assert.Contains("Magnetic Heading:     253.5°", result);
+            Assert.Contains("Longitude:            122.3750 W", result);
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = saved;
+        }
     }
 
     [Fact]

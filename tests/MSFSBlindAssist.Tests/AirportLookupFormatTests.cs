@@ -73,6 +73,17 @@ public class AirportLookupFormatTests
     }
 
     [Fact]
+    public void An_empty_code_or_place_line_is_left_out()
+    {
+        var sb = new System.Text.StringBuilder();
+        ElectronicFlightBagForm.AppendAirportTextIfPresent(sb, "  Country:      ", DBNull.Value);
+        ElectronicFlightBagForm.AppendAirportTextIfPresent(sb, "  IATA:         ", "");
+        Assert.Equal("", sb.ToString());
+        ElectronicFlightBagForm.AppendAirportTextIfPresent(sb, "  City:         ", "Goteborg");
+        Assert.Equal("  City:         Goteborg" + Environment.NewLine, sb.ToString());
+    }
+
+    [Fact]
     public void Missing_numbers_read_not_available()
     {
         Assert.Equal("N/A", ElectronicFlightBagForm.FormatAirportCoordinate(DBNull.Value, 'N', 'S'));

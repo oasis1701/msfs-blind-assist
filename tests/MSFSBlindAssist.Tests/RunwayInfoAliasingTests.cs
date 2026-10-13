@@ -89,10 +89,11 @@ public class RunwayInfoAliasingTests
 
         string result = ElectronicFlightBagForm.GetRunwayDetailedInfoCore(fixture.DbPath, "FS2020", Icao, "24L");
 
-        Assert.Contains($"Longitude:            {SecondaryLonx}", result);
-        Assert.Contains($"Latitude:             {SecondaryLaty}", result);
-        Assert.DoesNotContain($"Longitude:            {PrimaryLonx}", result);
-        Assert.DoesNotContain($"Latitude:             {PrimaryLaty}", result);
+        // -122.360 / 37.601 (secondary) versus -122.375 / 37.618 (primary), as rendered.
+        Assert.Contains("Longitude:            122.3600 W", result);
+        Assert.Contains("Latitude:             37.6010 N", result);
+        Assert.DoesNotContain("Longitude:            122.3750 W", result);
+        Assert.DoesNotContain("Latitude:             37.6180 N", result);
     }
 
     [Fact]

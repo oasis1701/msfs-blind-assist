@@ -2016,27 +2016,28 @@ public partial class ElectronicFlightBagForm : Form
                 {
                     if (reader.Read())
                     {
-                        sb.AppendLine("═══════════════════════════════════════════════════");
-                        sb.AppendLine($"  AIRPORT INFORMATION - {reader["ident"]?.ToString() ?? icao}");
-                        sb.AppendLine("═══════════════════════════════════════════════════");
+                        sb.AppendLine($"AIRPORT INFORMATION - {FormatAirportText(reader["ident"])}");
                         sb.AppendLine();
 
                         // Basic Information
                         sb.AppendLine("BASIC INFORMATION:");
-                        sb.AppendLine($"  ICAO:         {FormatAirportText(reader["icao"])}");
+                        // Navdata leaves the code and place columns empty for almost every
+                        // airport (the ident IS the ICAO code there); an empty one is left
+                        // out rather than read as "N/A", which sounded like "no ICAO code".
+                        AppendAirportTextIfPresent(sb, "  ICAO:         ", reader["icao"]);
                         sb.AppendLine($"  Ident:        {FormatAirportText(reader["ident"])}");
                         sb.AppendLine($"  Name:         {FormatAirportText(reader["name"])}");
-                        sb.AppendLine($"  IATA:         {FormatAirportText(reader["iata"])}");
-                        sb.AppendLine($"  FAA:          {FormatAirportText(reader["faa"])}");
-                        sb.AppendLine($"  Local:        {FormatAirportText(reader["local"])}");
+                        AppendAirportTextIfPresent(sb, "  IATA:         ", reader["iata"]);
+                        AppendAirportTextIfPresent(sb, "  FAA:          ", reader["faa"]);
+                        AppendAirportTextIfPresent(sb, "  Local:        ", reader["local"]);
                         sb.AppendLine();
 
                         // Location
                         sb.AppendLine("LOCATION:");
-                        sb.AppendLine($"  City:         {FormatAirportText(reader["city"])}");
-                        sb.AppendLine($"  State:        {FormatAirportText(reader["state"])}");
-                        sb.AppendLine($"  Country:      {FormatAirportText(reader["country"])}");
-                        sb.AppendLine($"  Region:       {FormatAirportText(reader["region"])}");
+                        AppendAirportTextIfPresent(sb, "  City:         ", reader["city"]);
+                        AppendAirportTextIfPresent(sb, "  State:        ", reader["state"]);
+                        AppendAirportTextIfPresent(sb, "  Country:      ", reader["country"]);
+                        AppendAirportTextIfPresent(sb, "  ICAO Region:  ", reader["region"]);
                         sb.AppendLine($"  Latitude:     {FormatAirportCoordinate(reader["laty"], 'N', 'S')}");
                         sb.AppendLine($"  Longitude:    {FormatAirportCoordinate(reader["lonx"], 'E', 'W')}");
                         sb.AppendLine($"  Altitude:     {reader["altitude"]} ft");
@@ -2168,13 +2169,14 @@ public partial class ElectronicFlightBagForm : Form
         var sb = new StringBuilder();
 
         sb.AppendLine("HEADINGS:");
-        sb.AppendLine($"  True Heading:         {endHeadingTrue:F1}°");
-        sb.AppendLine($"  Magnetic Heading:     {(endHeadingTrue - magVar):F1}°");
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        sb.AppendLine($"  True Heading:         {endHeadingTrue.ToString("F1", inv)}°");
+        sb.AppendLine($"  Magnetic Heading:     {(endHeadingTrue - magVar).ToString("F1", inv)}°");
         sb.AppendLine();
 
         sb.AppendLine("COORDINATES:");
-        sb.AppendLine($"  Longitude:            {endLonx}");
-        sb.AppendLine($"  Latitude:             {endLaty}");
+        sb.AppendLine($"  Longitude:            {FormatAirportCoordinate(endLonx, 'E', 'W')}");
+        sb.AppendLine($"  Latitude:             {FormatAirportCoordinate(endLaty, 'N', 'S')}");
         sb.AppendLine();
 
         return sb.ToString();
@@ -2221,6 +2223,13 @@ public partial class ElectronicFlightBagForm : Form
     {
         string s = value == null || value == DBNull.Value ? "" : value.ToString()!.Trim();
         return s.Length == 0 ? "N/A" : s;
+    }
+
+    /// <summary>Appends "<paramref name="label"/><value>" only when the column holds text.</summary>
+    internal static void AppendAirportTextIfPresent(StringBuilder sb, string label, object? value)
+    {
+        string text = FormatAirportText(value);
+        if (text != "N/A") sb.AppendLine(label + text);
     }
 
     /// <summary>A latitude or longitude in degrees, to 4 decimals (about 10 m) with its hemisphere:
@@ -2335,9 +2344,7 @@ public partial class ElectronicFlightBagForm : Form
                 {
                     if (reader.Read())
                     {
-                        sb.AppendLine("═══════════════════════════════════════════════════");
-                        sb.AppendLine($"  RUNWAY INFORMATION - {runwayId}");
-                        sb.AppendLine("═══════════════════════════════════════════════════");
+                        sb.AppendLine($"RUNWAY INFORMATION - {runwayId}");
                         sb.AppendLine();
 
                         sb.AppendLine($"Runway ID:        {reader["name"]?.ToString() ?? runwayId}");
