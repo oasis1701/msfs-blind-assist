@@ -307,7 +307,7 @@ public class A300PanelLayoutTests
     [InlineData("A300_PACK2_MODE")]
     public void Pack_mode_reads_auto_or_manual(string key)
     {
-        // iniBuilds' tooltip says OFF and ON, but measured at KSFO (2026-10-04) 0 is automatic (the
+        // iniBuilds' tooltip says OFF and ON, but measured on the ground (2026-10-04) 0 is automatic (the
         // pack ignores its manual temperature switch) and 1 manual (the pack follows it).
         Assert.Equal(new[] { "Auto", "Manual" }, Row(key).Positions.Values);
     }

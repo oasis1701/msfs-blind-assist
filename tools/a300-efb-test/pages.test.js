@@ -22,7 +22,7 @@ test('the flight plan viewer gives the plan with its lines kept', () => {
   const pre = r.elements[0];
   assert.strictEqual(pre.controlType, 'pre');
   assert.strictEqual(pre.kind, 'static');
-  assert.strictEqual(pre.text, '[ OFP ]\nCYYZ-CYUL   ACA412\n\nBLOCK FUEL   6200');
+  assert.strictEqual(pre.text, '[ OFP ]\nEGLL-EHAM   TST101\n\nBLOCK FUEL   6200');
   assert.deepStrictEqual(texts(r).slice(1), ['Close flight plan']);
 });
 

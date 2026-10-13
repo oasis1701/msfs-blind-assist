@@ -146,11 +146,11 @@ const files = {
   'myflight-checklist': tablet('<div id="flight"><div id="checklist_viewer"><img src="a306checklist.png" id="checklist">' +
     '<button id="close_checklist_viewer" class="btn btn-lg btn-danger">Close</button></div>' +
     '<div id="ofp_viewer" data-display="none"><pre id="ofp_data">OFP Not Downloaded</pre><button id="close_ofp_viewer" class="btn btn-lg btn-danger">Close</button></div>' +
-    '<div id="dep_icao">CYYZ</div><button id="open_checklist_viewer" class="btn">CHECKLIST</button></div>'),
+    '<div id="dep_icao">EGLL</div><button id="open_checklist_viewer" class="btn">CHECKLIST</button></div>'),
   'myflight-ofp': tablet('<div id="flight"><div id="checklist_viewer" data-display="none"><img src="a306checklist.png" id="checklist">' +
     '<button id="close_checklist_viewer" class="btn btn-lg btn-danger">Close</button></div>' +
-    '<div id="ofp_viewer"><pre id="ofp_data">[ OFP ]   \nCYYZ-CYUL   ACA412\n\n\n\nBLOCK FUEL   6200\n</pre><button id="close_ofp_viewer" class="btn btn-lg btn-danger">Close</button></div>' +
-    '<div id="dep_icao">CYYZ</div></div>'),
+    '<div id="ofp_viewer"><pre id="ofp_data">[ OFP ]   \nEGLL-EHAM   TST101\n\n\n\nBLOCK FUEL   6200\n</pre><button id="close_ofp_viewer" class="btn btn-lg btn-danger">Close</button></div>' +
+    '<div id="dep_icao">EGLL</div></div>'),
   // A viewer on a hidden page is not open, whatever its own display says.
   'myflight-hidden-ofp': tablet('<div id="dashboard"></div>').replace('</div></div><div class="paused-overlay',
     '</div><div class="hiddenPage" data-display="none"><div id="flight"><div id="ofp_viewer"><pre id="ofp_data">x</pre><button id="close_ofp_viewer">Close</button></div></div></div></div><div class="paused-overlay'),
@@ -244,8 +244,8 @@ const files = {
     '<div class="d-grid gap-2 mb-1 p-3"><input id="hoppie" class="form-control form-control-lg w-100" type="password" name="hoppie" value=""></div></div></div></div>' +
     '</div></div></div></div></div>'),
   'myflight': tablet('<div id="flight">' +
-    '<div class="row"><h2>DEPARTURE</h2><div id="dep_icao">CYYZ</div><div id="depcit">Toronto/Pearson Intl</div></div>' +
-    '<div class="row"><h2>ARRIVAL</h2><div id="arr_icao">CYUL</div></div>' +
+    '<div class="row"><h2>DEPARTURE</h2><div id="dep_icao">EGLL</div><div id="depcit">London/Heathrow</div></div>' +
+    '<div class="row"><h2>ARRIVAL</h2><div id="arr_icao">EHAM</div></div>' +
     '<div class="row"><button id="btn_simbrief" class="btn btn-primary">IMPORT FROM SIMBRIEF</button></div></div>')
 };
 

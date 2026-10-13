@@ -176,7 +176,7 @@ public class A300WritePlanTests
     [InlineData("AIRLINER_SMOKE_TEST")]       // smoke test
     public void A_warning_test_is_held_five_seconds(string id)
     {
-        // The KSFO ground probe (2026-10-04): a 250 ms takeoff config press reported nothing even in
+        // The ground probe (2026-10-04): a 250 ms takeoff config press reported nothing even in
         // landing configuration, while a 5 s hold warned at about 3.7 s; the gear warning test's master
         // warning came at about 3.5 s and the smoke test's ECAM warning at about 3.5 s.
         var c = Control(A300Kinds.Hold, "");

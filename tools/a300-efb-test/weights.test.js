@@ -156,6 +156,6 @@ test('My Flight still reads as before', () => {
   const { A } = load('myflight', {});
   const r = scrape(A);
   assert.strictEqual(r.page, 'My Flight');
-  for (const t of ['Departure: CYYZ', 'Departure city: Toronto/Pearson Intl', 'Arrival: CYUL', 'IMPORT FROM SIMBRIEF', 'Home'])
+  for (const t of ['Departure: EGLL', 'Departure city: London/Heathrow', 'Arrival: EHAM', 'IMPORT FROM SIMBRIEF', 'Home'])
     assert.ok(find(r, t), t);
 });
