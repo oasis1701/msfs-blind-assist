@@ -81,7 +81,7 @@ public sealed class A300McduForm : Form
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     internal Func<bool> HasFeed { get; set; }
 
-    /// <summary>The time every judgement and hold is made against.</summary>
+    /// <summary>The time every judgment and hold is made against.</summary>
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     internal Func<DateTime> UtcNow { get; set; } = () => DateTime.UtcNow;
 
@@ -307,8 +307,9 @@ public sealed class A300McduForm : Form
     private bool Press(string key) => Send(_unit, new[] { key });
 
     /// <summary>Queues keys on <paramref name="unit"/> and, when it is the unit being read, holds the scratchpad
-    /// read-back until they have landed, so an entry is read once, settled. Says why when nothing could be sent.</summary>
-    private bool Send(A300McduUnit unit, IReadOnlyList<string> keys)
+    /// read-back until they have landed, so an entry is read once, settled. Says why when nothing could be sent.
+    /// What the input box and the display's keys call; internal so a test can send an entry as they do.</summary>
+    internal bool Send(A300McduUnit unit, IReadOnlyList<string> keys)
     {
         if (!_definition.PressMcduKeys(unit, keys))
         {
@@ -326,11 +327,15 @@ public sealed class A300McduForm : Form
     }
 
     /// <summary>
-    /// Clears the whole scratchpad of the unit it started on: one CLR at a time, and after each one waits for the
-    /// scratchpad to read differently (<see cref="ScratchpadChangedAsync"/>) before it looks again, stopping the
-    /// moment it reads empty. It presses that unit to the end, whichever one the pilot switches to meanwhile.
-    /// Never a CLR on an empty scratchpad — the A300 then puts "CLR" into it — and never a second CLR on one the
-    /// aircraft ignored: that stops, saying so once. Silent when it works (the read-back says "Scratchpad cleared").
+    /// Clears the whole scratchpad of the unit it started on: one CLR at a time, stopping the moment it reads empty. It
+    /// presses that unit to the end, whichever one the pilot switches to meanwhile. Each round first lets the keys
+    /// already in the queue land and show on the screen (<see cref="KeysLandedAsync"/>: an entry just sent from the
+    /// input box, a Backspace pressed during the clear), because a change of the scratchpad is the only sign that a CLR
+    /// landed and a key ahead of it would read as that sign. The CLR then goes out alone, and the clear waits for its
+    /// release and for the scratchpad to read differently (<see cref="ScratchpadChangedAsync"/>). Never a CLR on an
+    /// empty scratchpad — the A300 then puts "CLR" into it — and never a second CLR on one the aircraft ignored: that
+    /// stops, saying so once, and so does a key queue that is not moving. Silent when it works (the read-back says
+    /// "Scratchpad cleared").
     /// </summary>
     internal async Task ClearScratchpadAsync()
     {
@@ -340,12 +345,18 @@ public sealed class A300McduForm : Form
         try
         {
             var unit = _unit;
+            var ownHold = DateTime.MinValue;   // the read-back hold this clear's last CLR set
             for (int presses = 0; ; presses++)
             {
+                if (!await KeysLandedAsync(unit, ownHold, waitForHold: true))
+                {
+                    GiveUp();
+                    return;
+                }
                 var screen = Screens(unit);
                 if (screen == null || screen.IsBlank)
                 {
-                    _announcer.Announce(ClearFailed);
+                    GiveUp();
                     return;
                 }
                 if (string.IsNullOrWhiteSpace(screen.Scratchpad))
@@ -356,15 +367,17 @@ public sealed class A300McduForm : Form
                 }
                 if (presses >= MaxClearPresses)
                 {
-                    _announcer.Announce(ClearFailed);
+                    GiveUp();
                     return;
                 }
                 if (!Send(unit, new[] { "CLR" }))
                     return;
-                if (!await ScratchpadChangedAsync(unit, screen.Scratchpad))
+                ownHold = _scratchpad.SuppressUntil;
+                // The aircraft's time to answer starts when the CLR has been released, not when it was queued.
+                if (!await KeysLandedAsync(unit, ownHold, waitForHold: false)
+                    || !await ScratchpadChangedAsync(unit, screen.Scratchpad))
                 {
-                    if (!IsDisposed)
-                        _announcer.Announce(ClearFailed);
+                    GiveUp();
                     return;
                 }
             }
@@ -379,11 +392,45 @@ public sealed class A300McduForm : Form
         }
     }
 
+    /// <summary>The clear-all's one failure sentence; nothing once the window is gone (an aircraft switch).</summary>
+    private void GiveUp()
+    {
+        if (!IsDisposed)
+            _announcer.Announce(ClearFailed);
+    }
+
+    /// <summary>
+    /// Waits until the definition's key queue is empty and, when asked and <paramref name="unit"/> is the one being
+    /// read, until the read-back hold that other keys set has passed: the time the aircraft needs to apply them, deliver
+    /// the screen and be polled, so what they typed or deleted is on it. <paramref name="ownHold"/> is the hold this
+    /// clear's last CLR set, which its change of the scratchpad has already answered, so it is not waited for again
+    /// (that would cost over half a second a character). False when this takes longer than the keys in the queue need
+    /// plus <see cref="ClearConfirmMs"/> (a queue that is not moving), or the window is gone.
+    /// </summary>
+    private async Task<bool> KeysLandedAsync(A300McduUnit unit, DateTime ownHold, bool waitForHold)
+    {
+        var deadline = UtcNow().AddMilliseconds(
+            _definition.McduKeysPending * (A300McduKeys.HoldMs + A300McduKeys.GapMs) + ClearConfirmMs);
+        while (true)
+        {
+            bool held = waitForHold && unit == _unit
+                && _scratchpad.SuppressUntil > ownHold && UtcNow() < _scratchpad.SuppressUntil;
+            if (_definition.McduKeysPending == 0 && !held)
+                return true;
+            if (UtcNow() >= deadline)
+                return false;
+            await Delay(ClearPollMs);
+            if (IsDisposed)
+                return false;
+        }
+    }
+
     /// <summary>
     /// Waits, looking every <see cref="ClearPollMs"/>, until the unit's scratchpad on a page reads other than
     /// <paramref name="before"/>; false once <see cref="ClearConfirmMs"/> has passed without that, or the window is
-    /// gone. A blank frame is the page being redrawn, not an answer. A CLR still in the key queue, or not yet
-    /// redrawn, looks like one the aircraft ignored until the bound passes.
+    /// gone. A blank frame is the page being redrawn, not an answer. Any change counts, so a CLR queued behind other
+    /// keys looks like a CLR that has landed, not one the aircraft ignored: the caller has the queue empty before it
+    /// reads <paramref name="before"/> and starts this once its CLR has been released (<see cref="KeysLandedAsync"/>).
     /// </summary>
     private async Task<bool> ScratchpadChangedAsync(A300McduUnit unit, string before)
     {

@@ -847,8 +847,8 @@ public partial class MainForm
 
         taxiGuidanceManager.TurnLeadSeconds = newAircraft.TaxiTurnLeadSeconds;
 
-        // Refresh aircraft-conditional menu items (FMC Settings shows for the aircraft
-        // whose CDU/MCDU window reads its settings).
+        // Refresh aircraft-conditional menu items (FMC Settings shows only for the
+        // aircraft UpdateAircraftSpecificMenuItems names).
         UpdateAircraftSpecificMenuItems();
 
         // Dispose the old PROG-page monitor — it references the previous
@@ -1255,8 +1255,8 @@ public partial class MainForm
     /// Toggles visibility of menu items that are only meaningful for specific
     /// aircraft. Called whenever the loaded aircraft changes (and at initial
     /// MainForm_Load). Gates the FMC Settings item — it's shown only for the
-    /// aircraft whose CDU/MCDU window reads its settings, so the screen reader
-    /// doesn't surface a settings option the user can't act on.
+    /// aircraft this method names, so the screen reader doesn't surface a
+    /// settings option the user can't act on.
     /// </summary>
     private void UpdateAircraftSpecificMenuItems()
     {

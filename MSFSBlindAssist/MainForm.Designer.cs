@@ -117,10 +117,10 @@
             //
             // fmcSettingsMenuItem
             //
-            // Shown for the aircraft whose CDU/MCDU window reads these settings.
-            // Visibility is toggled in MainForm.UpdateAircraftSpecificMenuItems()
-            // each time the loaded aircraft changes; the item is invisible (and
-            // so unreachable by the screen reader) when another aircraft is loaded.
+            // Shown only for the aircraft MainForm.UpdateAircraftSpecificMenuItems()
+            // names. Visibility is toggled there each time the loaded aircraft
+            // changes; the item is invisible (and so unreachable by the screen
+            // reader) when another aircraft is loaded.
             this.fmcSettingsMenuItem.AccessibleName = "FMC Settings";
             this.fmcSettingsMenuItem.AccessibleDescription = "FMC settings: alternate line select keys, and enhanced distance announcements (PMDG only)";
             this.fmcSettingsMenuItem.Name = "fmcSettingsMenuItem";

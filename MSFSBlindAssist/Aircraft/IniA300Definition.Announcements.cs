@@ -156,10 +156,10 @@ public partial class IniA300Definition
     }
 
     /// <summary>
-    /// The seed gate has released after a context reset: the aircraft's own module has published, so a flight
-    /// load has settled. The MCDU export sent before that may have landed ahead of the aircraft's start-up, which
-    /// can switch the option off again, so it is no longer known to be on and the open MCDU window's next poll
-    /// sends it once more ([A300-4]; one extra write per flight load while the window is open).
+    /// The post-load seed gate has released (the load has settled, or its ceiling passed). The MCDU export sent
+    /// before that may have landed ahead of the aircraft's own start-up, which can switch the option off again, so
+    /// it is no longer known to be on and the open MCDU window's next poll sends it once more ([A300-4]; one extra
+    /// write per flight load while the window is open).
     /// </summary>
     internal void OnLoadSettled() => _mcduExportOn = false;
 

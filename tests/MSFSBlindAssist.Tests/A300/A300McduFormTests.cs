@@ -16,6 +16,7 @@ public sealed class A300McduFormTests : IDisposable
 {
     private const string ExportWrite = "1 (>L:INI_MCDU_OPTION)";
     private const string CaptainClr = "1 (>L:INI_MCDU1_CLR)";
+    private const string CaptainKeyDown = "1 (>L:INI_MCDU1_";
     private const string ClearFailed = "Could not clear the scratchpad";
 
     private static readonly DateTime T0 = new(2026, 10, 13, 12, 0, 0, DateTimeKind.Utc);
@@ -34,6 +35,18 @@ public sealed class A300McduFormTests : IDisposable
     /// <summary>What the aircraft does when the captain's CLR key goes down.</summary>
     private Action? _onCaptainClr;
 
+    /// <summary>What the aircraft does when any captain key goes down, given the key's name ("K", "CLR", "NEXT").</summary>
+    private Action<string>? _onCaptainKey;
+
+    // The key queue and the aircraft can run on the window's fake clock (_clockedKeys): each wait the definition makes
+    // (a key's hold and its gap) and each client-data delivery is a timer, fired when the window's own waits move the
+    // clock past it. By default a key is pressed and released at once, and the queue is never seen to hold anything.
+    private readonly List<(DateTime Due, Action Fire)> _timers = new();
+    private bool _clockedKeys;
+    private bool _keysStuck;
+    private string _pad = "";
+    private int _clrOnEmptyPad;
+
     public A300McduFormTests()
     {
         _def = new IniA300Definition
@@ -44,8 +57,10 @@ public sealed class A300McduFormTests : IDisposable
                 _sent.Add(rpn);
                 if (rpn == CaptainClr)
                     _onCaptainClr?.Invoke();
+                if (rpn.StartsWith(CaptainKeyDown, StringComparison.Ordinal))
+                    _onCaptainKey?.Invoke(rpn[CaptainKeyDown.Length..^1]);
             },
-            Delay = _ => Task.CompletedTask,
+            Delay = KeyWait,
         };
         _def.Attach(_sim);
         _form = new A300McduForm(_def, _sim, _speech)
@@ -55,13 +70,86 @@ public sealed class A300McduFormTests : IDisposable
             UtcNow = () => _now,
             Delay = ms =>
             {
-                _now = _now.AddMilliseconds(ms);
+                Advance(ms);
                 return Task.CompletedTask;
             },
         };
     }
 
     public void Dispose() => _form.Dispose();
+
+    // ---- The fake clock ----
+
+    /// <summary>The definition's waits: over at once by default, on the fake clock for <see cref="_clockedKeys"/>,
+    /// never over for <see cref="_keysStuck"/>.</summary>
+    private Task KeyWait(int ms)
+    {
+        if (_keysStuck)
+            return new TaskCompletionSource().Task;
+        if (!_clockedKeys)
+            return Task.CompletedTask;
+        var done = new TaskCompletionSource();
+        After(ms, () => done.SetResult());
+        return done.Task;
+    }
+
+    private void After(int ms, Action fire) => _timers.Add((_now.AddMilliseconds(ms), fire));
+
+    /// <summary>Moves the clock on, firing each timer that falls due on the way at its own time, since a key pump's
+    /// step starts the next.</summary>
+    private void Advance(int ms)
+    {
+        var target = _now.AddMilliseconds(ms);
+        while (true)
+        {
+            int next = -1;
+            for (int i = 0; i < _timers.Count; i++)
+                if (_timers[i].Due <= target && (next < 0 || _timers[i].Due < _timers[next].Due))
+                    next = i;
+            if (next < 0)
+                break;
+            var (due, fire) = _timers[next];
+            _timers.RemoveAt(next);
+            if (due > _now)
+                _now = due;
+            fire();
+        }
+        _now = target;
+    }
+
+    /// <summary>The captain's scratchpad as the A300 drives it from the key L:vars: a letter or digit key types its
+    /// character, CLR deletes one, and CLR on an empty scratchpad types "CLR" into it ([A300-4]). The screen shows each
+    /// result after a client-data delivery of <paramref name="deliveryMs"/>.</summary>
+    private void AircraftHolds(string pad, int deliveryMs = 100)
+    {
+        _pad = pad;
+        _screens[Captain] = Page(scratchpad: pad);
+        _onCaptainKey = key =>
+        {
+            if (key == "CLR")
+            {
+                if (_pad.Length == 0)
+                {
+                    _clrOnEmptyPad++;
+                    _pad = "CLR";
+                }
+                else
+                {
+                    _pad = _pad[..^1];
+                }
+            }
+            else if (key.Length == 1)
+            {
+                _pad += key;
+            }
+            else
+            {
+                return;
+            }
+            var shown = _pad;
+            After(deliveryMs, () => _screens[Captain] = Page(scratchpad: shown));
+        };
+    }
 
     // ---- Screens ----
 
@@ -413,6 +501,99 @@ public sealed class A300McduFormTests : IDisposable
         await _form.ClearScratchpadAsync();
         Assert.Equal(2, CaptainClrPresses);   // never a CLR on an empty pad: the A300 would type CLR into it
         Assert.Empty(_speech.All);
+    }
+
+    // ---- The clear-all and the key queue ----
+
+    [Theory]
+    [InlineData(100)]
+    [InlineData(350)]   // an aircraft slow to show a key: the hold the entry set covers it, the empty queue alone does not
+    public async Task Keys_still_in_the_queue_land_before_the_clear_reads_the_scratchpad(int deliveryMs)
+    {
+        // KLAX was just sent from the input box (four keys, 160 ms each) and Delete follows at once, with KJFK/ on the
+        // screen. A change of the scratchpad is the only sign that a CLR landed, so a key still ahead of the CLR reads as
+        // one, and each such change queued one more CLR: the extras land on an empty scratchpad, where the A300 types CLR
+        // into it ([A300-4]).
+        _clockedKeys = true;
+        AircraftHolds("KJFK/", deliveryMs);
+        _form.PrepareToShow();
+        Assert.True(_form.Send(Captain, new[] { "K", "L", "A", "X" }));
+        Assert.Equal(4, _def.McduKeysPending);
+
+        await _form.ClearScratchpadAsync();
+        Advance(5000);   // whatever the clear left in the queue lands now
+
+        Assert.Equal(0, _clrOnEmptyPad);
+        Assert.Equal(9, CaptainClrPresses);   // KJFK/KLAX is nine characters: one CLR each, not one more
+        Assert.Equal("", _pad);
+        Assert.DoesNotContain(ClearFailed, _speech.All);
+        for (int poll = 0; poll < 8; poll++)   // the window's poll then reads the empty scratchpad back, once
+        {
+            Advance(250);
+            _form.Tick();
+        }
+        Assert.Equal(new[] { "Scratchpad cleared" }, _speech.All);
+    }
+
+    [Fact]
+    public async Task Keys_ahead_of_the_clear_do_not_use_up_the_wait_for_its_effect()
+    {
+        // Twelve page keys are 1.9 s of queue, more than the 1.5 s the aircraft gets to answer a CLR. That time is
+        // counted from the CLR's release, not from its enqueue.
+        _clockedKeys = true;
+        AircraftHolds("AB");
+        _form.PrepareToShow();
+        Assert.True(_form.Send(Captain, Enumerable.Repeat("NEXT", 12).ToList()));
+
+        await _form.ClearScratchpadAsync();
+        Advance(5000);
+
+        Assert.DoesNotContain(ClearFailed, _speech.All);
+        Assert.Equal(2, CaptainClrPresses);
+        Assert.Equal(0, _clrOnEmptyPad);
+        Assert.Equal("", _pad);
+    }
+
+    [Fact]
+    public async Task A_backspace_pressed_during_the_clear_lands_before_the_next_read()
+    {
+        _clockedKeys = true;
+        AircraftHolds("ABC");
+        _form.PrepareToShow();
+        bool pressed = false;
+        var wait = _form.Delay;
+        _form.Delay = ms =>
+        {
+            if (!pressed)
+            {
+                pressed = true;
+                _form.Send(Captain, new[] { "CLR" });   // Backspace on the display, behind the clear's first CLR
+            }
+            return wait(ms);
+        };
+
+        await _form.ClearScratchpadAsync();
+        Advance(5000);
+
+        Assert.True(pressed);
+        Assert.Equal(3, CaptainClrPresses);   // three characters: the clear's CLRs and the Backspace share them
+        Assert.Equal(0, _clrOnEmptyPad);
+        Assert.Equal("", _pad);
+        Assert.DoesNotContain(ClearFailed, _speech.All);
+    }
+
+    [Fact]
+    public async Task A_key_queue_that_never_moves_ends_the_clear_with_one_sentence()
+    {
+        _keysStuck = true;
+        AircraftHolds("AB");
+        _form.PrepareToShow();
+        Assert.True(_form.Send(Captain, new[] { "K", "L" }));   // the first goes down, and the pump never gets on
+        await _form.ClearScratchpadAsync();
+        Assert.DoesNotContain(_sent, s => s == CaptainClr);
+        Assert.Equal(new[] { ClearFailed }, _speech.All);
+        // the two keys in the queue need 0.32 s, and the 1.5 s allowance comes on top
+        Assert.InRange((_now - T0).TotalMilliseconds, 320 + A300McduForm.ClearConfirmMs, 320 + A300McduForm.ClearConfirmMs + 100);
     }
 
     // ---- The blank clocks ----
