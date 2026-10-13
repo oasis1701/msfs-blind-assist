@@ -1,0 +1,1 @@
+On the Fenix A320, the audio control panel now has reception switches for VHF 2, VHF 3, HF 2, INT and MLS, so you can listen to the second and third radios. Before, only VHF 1 and a few others could be switched on, so a frequency tuned on COM 2 or COM 3 stayed silent.
