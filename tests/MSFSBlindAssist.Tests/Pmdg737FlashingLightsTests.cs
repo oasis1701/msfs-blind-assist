@@ -165,6 +165,55 @@ public class Pmdg737FlashingLightsTests
             Pmdg737FlashingLights.ListRows(new[] { "IRS Left ALIGN", "IRS Right ALIGN" }));
     }
 
+    // IRS ALIGN edges measured 2026-10-13 (debug.log PMDG737Lamps, no IRS position entered), in ms
+    // from the first lit edge at 14:31:54.629: one blink every 5 s, dark spells of 2 to 3 s.
+    private static readonly (long T, bool Lit)[] MeasuredAlign =
+    {
+        (0, true), (3000, false), (5004, true), (8005, false), (10018, true), (12999, false),
+        (16002, true), (18004, false), (21013, true), (23022, false), (26023, true),
+    };
+
+    private static List<Kind> Replay(Pmdg737FlashingLights f, (long T, bool Lit)[] edges)
+    {
+        var said = new List<Kind>();
+        long end = edges[^1].T + 1000;
+        int next = 0;
+        for (long t = 0; t <= end; t += 250)
+        {
+            while (next < edges.Length && edges[next].T <= t)
+            {
+                if (f.OnValue(Align, edges[next].Lit, edges[next].T) is { } c) said.Add(c.Kind);
+                next++;
+            }
+            said.AddRange(f.Tick(t).Select(c => c.Kind));
+        }
+        return said;
+    }
+
+    [Fact]
+    public void The_measured_IRS_ALIGN_blink_was_spoken_on_off_with_the_2_s_default()
+    {
+        // What the pilot heard on the first in-sim test: each 2-3 s dark spell outlasted the hold.
+        Assert.Contains(Kind.Off, Replay(new Pmdg737FlashingLights(), MeasuredAlign));
+    }
+
+    [Fact]
+    public void The_measured_IRS_ALIGN_blink_says_on_then_flashing_with_its_override()
+    {
+        var f = new Pmdg737FlashingLights(PMDG737Definition.FlashHoldOverrides);
+        Assert.Equal(new[] { Kind.On, Kind.Flashing }, Replay(f, MeasuredAlign));
+        Assert.Equal(4000, PMDG737Definition.FlashHoldOverrides["IRS_annunALIGN_0"]);
+        Assert.Equal(4000, PMDG737Definition.FlashHoldOverrides["IRS_annunALIGN_1"]);
+    }
+
+    [Fact]
+    public void Every_hold_override_names_a_lamp_the_filter_owns()
+    {
+        var vars = Def().GetVariables();
+        foreach (var key in PMDG737Definition.FlashHoldOverrides.Keys)
+            Assert.True(vars.TryGetValue(key, out var v) && Pmdg737FlashingLights.IsLamp(v), key);
+    }
+
     // ----- the definition's wiring -----
 
     private static PMDG737Definition Def() => new();

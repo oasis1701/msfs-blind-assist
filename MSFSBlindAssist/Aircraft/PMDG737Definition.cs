@@ -98,9 +98,18 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // speak goes through it, so a blinking light (IRS ALIGN with no position entered) speaks "on" and
     // then "flashing" once instead of "on, off" forever. Its held "off" and settle call-outs are spoken
     // from _flashTimer, OUTSIDE MainForm's Ctrl+M wrap, so the tick checks the mute itself.
-    // Per-light hold overrides (ms) for a light that blinks slower than the default hold; empty until
-    // the sim shows one needs it.
-    private static readonly Dictionary<string, int> FlashHoldOverridesMs = new();
+    // Per-light hold overrides (ms) for a light that blinks slower than the default hold.
+    // IRS ALIGN, measured 2026-10-13 (no IRS position entered, PMDGNG3 SDK edges in debug.log's
+    // PMDG737Lamps lines): one blink every 5 s, the SDK value arriving about once a second, so each
+    // dark spell reads as 2 or 3 s. A hold must outlast the longest dark spell: 4 s.
+    private static readonly Dictionary<string, int> FlashHoldOverridesMs = new()
+    {
+        ["IRS_annunALIGN_0"] = 4000,
+        ["IRS_annunALIGN_1"] = 4000,
+    };
+
+    /// <summary>The per-light hold overrides, for the tests that pin the measured values.</summary>
+    internal static IReadOnlyDictionary<string, int> FlashHoldOverrides => FlashHoldOverridesMs;
     private readonly Pmdg737FlashingLights _flashingLights = new(FlashHoldOverridesMs);
     private System.Windows.Forms.Timer? _flashTimer;
     private ScreenReaderAnnouncer? _flashAnnouncer;
@@ -5341,8 +5350,12 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     private void OnLampValue(string varName, bool lit, ScreenReaderAnnouncer announcer)
     {
         _flashAnnouncer = announcer;
-        if (_flashingLights.OnValue(varName, lit, Environment.TickCount64) is { } callout)
-            announcer.Announce(Pmdg737FlashingLights.Phrase(callout, GetVariables()[varName]));
+        var callout = _flashingLights.OnValue(varName, lit, Environment.TickCount64);
+        // One line per lamp edge: the only record of a lamp's real blink timing (the hold time
+        // has to be checked against it).
+        Log.Debug("PMDG737Lamps", $"{varName} {(lit ? "lit" : "dark")}{(callout is { } c ? $" -> {c.Kind}" : "")}");
+        if (callout is { } said)
+            announcer.Announce(Pmdg737FlashingLights.Phrase(said, GetVariables()[varName]));
         if (_flashingLights.HasPending)
         {
             if (_flashTimer == null)
@@ -5358,6 +5371,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     {
         foreach (var callout in _flashingLights.Tick(Environment.TickCount64))
         {
+            Log.Debug("PMDG737Lamps", $"{callout.Key} settled -> {callout.Kind}");
             // Outside MainForm's Ctrl+M wrap: honour the mute here.
             if (Services.DefAnnounceMuteSets.IsMuted(Code, callout.Key, Settings.SettingsManager.Current))
                 continue;
