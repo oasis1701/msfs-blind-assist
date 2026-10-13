@@ -467,8 +467,8 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
     /// point, as it goes off next. Only on the ground with every engine stopped, the Shutdown
     /// flow's own guards, kept here because a checklist hand-tick reaches this directly. The ON
     /// lamp decides, read fresh: dark is nothing to do (the button TOGGLES: a press would connect
-    /// a GPU that is only available), unread refuses. One press, read back: an aircraft that keeps
-    /// external power (TFDi may refuse to drop its last source; not measured) is not done.
+    /// a GPU that is only available), unread refuses. One press, read back: TFDi drops its last
+    /// source to the battery (measured 2026-10-13), but a press that does not take is not done.
     /// </summary>
     private async Task<bool> ExtPowerShutdownAsync(IMd11FoTransport io)
     {

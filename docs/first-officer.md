@@ -370,10 +370,14 @@ battery. Shutdown is the exception (owner, 2026-10-13): its "External power: OFF
 (`ExtPowerShutdown`, after the APU has stopped, before the battery) disconnect without APU power,
 because the battery alone is the point there, and only on the ground with every engine below 10 %
 N2 (unread refuses), skipped when the ON lamp is dark or nothing powers the busses
-(`FO_EXT_POWER_OFF`). One press, read back on the ON lamp. NOT SETTLED: an earlier note here said
-TFDi itself refuses to drop external power when it is the only source, while
-[docs/md11.md](md11.md) §9 measured external power off with only the battery left on; if TFDi
-refuses, the step reports it and the flow still turns the battery off. The APU is shut
+(`FO_EXT_POWER_OFF`). One press, read back on the ON lamp. Measured 2026-10-13 (on the ground at
+the gate, GPU connected and ON, battery on, APU off, one CEVENT press 90142/90143): TFDi DOES drop
+external power when it is the only source — ON dark, AVAIL still lit, AC1 and DC1 OFF lit, bus
+24 V on the battery — so an earlier note here saying TFDi refuses was wrong, and
+[docs/md11.md](md11.md) §9 stands. The press back on reconnected it, though one of the two
+reconnect presses changed nothing (cause unknown: the measuring tool's write or TFDi), which is why
+every press is read back: a press that does not take reports "Skipping" and the flow still turns
+the battery off. The APU is shut
 down only with its bleed closed (an open bleed restarts the shutdown timer) and APU PWR ON lit (a
 press with it dark REQUESTS APU power). Engine, wing and tail anti-ice are left alone in AUTO —
 TFDi toggles them only in MANUAL, and this install reads AUTO. The autobrake goes to T.O. or OFF

@@ -763,8 +763,9 @@ public class Md11FoActionExecutorTests : IDisposable
     [Fact]
     public async Task ExternalPowerShutdown_APressTheAircraftIgnores_IsNotDone()
     {
-        // Not measured either way: TFDi may refuse to drop external power when it is the only
-        // source. Then the ON lamp stays lit, and the step must say so rather than succeed.
+        // TFDi drops external power when it is the only source (measured 2026-10-13), but a press
+        // can fail to take (one reconnect press did, then). The ON lamp stays lit, and the step
+        // must say so rather than succeed.
         _ac.ConnectExternalPower();
         _ac.KeepsTheLastSource = true;
         Assert.False(await _exec.Set(Md11FoActionExecutor.ExtPowerShutdown, 0));

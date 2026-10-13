@@ -36,8 +36,9 @@ internal sealed class FakeMd11Aircraft : IMd11FoTransport, IMd11FoFlightState
     /// <summary>AUTO FLIGHT presses change nothing (a press the aircraft refuses).</summary>
     public bool AutoFlightInert { get; set; }
     /// <summary>
-    /// An EXT PWR press that would leave only the battery changes nothing. Not measured either way
-    /// (docs/first-officer.md): the case the Shutdown step must report rather than call done.
+    /// An EXT PWR press that would leave only the battery changes nothing. TFDi does drop its last
+    /// source (measured 2026-10-13), but a press can fail to take: the case the Shutdown step must
+    /// report rather than call done.
     /// </summary>
     public bool KeepsTheLastSource { get; set; }
 

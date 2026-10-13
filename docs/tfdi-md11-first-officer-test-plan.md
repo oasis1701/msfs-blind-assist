@@ -130,9 +130,9 @@ Not fully run yet.
    off, EVAC off.
 4. **Settle:** run Shutdown once with ground power on the aircraft (GPU connected on the EFB
    Services page, External Power switched on). After the APU has stopped you hear "External
-   power: OFF", then "Battery: OFF", and the aircraft goes dark. If you hear "Skipping: External
-   power: OFF" instead, TFDi would not drop ground power with only the battery left: note it, as it
-   settles an open question. Without ground power the step says "Already set: External power: OFF".
+   power: OFF", then "Battery: OFF", and the aircraft goes dark. TFDi does drop ground power with
+   only the battery left (measured 13 October), so "Skipping: External power: OFF" means the press
+   did not take: note the time. Without ground power the step says "Already set: External power: OFF".
 5. **Listen:** in that run, note whether "APU: OFF" says Skipping (with ground power on, the APU
    is no longer powering the aircraft) and whether the APU still stops within the wait.
 
