@@ -2576,7 +2576,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 StateVariable = "I_ASP_VOICE"
             },
 
-            // Receive Toggle Controls (4 combo boxes)
+            // Receive Toggle Controls (15 combo boxes)
             ["S_ASP_VHF_1_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_VHF_1_REC_LATCH",
@@ -2585,10 +2585,42 @@ public class FenixA320Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = OffOn
             },
+            ["S_ASP_VHF_2_REC_LATCH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_VHF_2_REC_LATCH",
+                DisplayName = "ACP VHF 2 Receive",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = OffOn
+            },
+            ["S_ASP_VHF_3_REC_LATCH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_VHF_3_REC_LATCH",
+                DisplayName = "ACP VHF 3 Receive",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = OffOn
+            },
             ["S_ASP_HF_1_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_HF_1_REC_LATCH",
                 DisplayName = "ACP HF 1 Receive",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = OffOn
+            },
+            ["S_ASP_HF_2_REC_LATCH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_HF_2_REC_LATCH",
+                DisplayName = "ACP HF 2 Receive",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = OffOn
+            },
+            ["S_ASP_INT_REC_LATCH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_INT_REC_LATCH",
+                DisplayName = "ACP INT Receive",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = OffOn
@@ -2613,6 +2645,14 @@ public class FenixA320Definition : BaseAircraftDefinition
             {
                 Name = "S_ASP_ILS_REC_LATCH",
                 DisplayName = "ACP ILS Receive",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = OffOn
+            },
+            ["S_ASP_MLS_REC_LATCH"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_ASP_MLS_REC_LATCH",
+                DisplayName = "ACP MLS Receive",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = OffOn
@@ -7765,6 +7805,15 @@ public class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = OffOn
             },
+            ["I_ASP_MLS_1_REC"] = new SimConnect.SimVarDefinition
+            {
+                Name = "I_ASP_MLS_1_REC",
+                DisplayName = "ACP1 MLS Receive",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = OffOn
+            },
             ["I_ASP_ADF_1_REC"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_ADF_1_REC",
@@ -9028,12 +9077,17 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_ASP_RESET",
                 "S_ASP_VOICE",
 
-                // Receive Toggle Controls (10 combo boxes)
+                // Receive Toggle Controls (15 combo boxes)
                 "S_ASP_VHF_1_REC_LATCH",
+                "S_ASP_VHF_2_REC_LATCH",
+                "S_ASP_VHF_3_REC_LATCH",
                 "S_ASP_HF_1_REC_LATCH",
+                "S_ASP_HF_2_REC_LATCH",
+                "S_ASP_INT_REC_LATCH",
                 "S_ASP_CAB_REC_LATCH",
                 "S_ASP_PA_REC_LATCH",
                 "S_ASP_ILS_REC_LATCH",
+                "S_ASP_MLS_REC_LATCH",
                 "S_ASP_VOR_1_REC_LATCH",
                 "S_ASP_VOR_2_REC_LATCH",
                 "S_ASP_MARKER_REC_LATCH",
@@ -11462,16 +11516,40 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // Receive Toggle Controls (10 combo boxes - use SetLVar)
+            // Receive Toggle Controls (15 combo boxes - use SetLVar)
             if (varKey == "S_ASP_VHF_1_REC_LATCH")
             {
                 simConnect.SetLVar("S_ASP_VHF_1_REC_LATCH", value);
                 return true;
             }
 
+            if (varKey == "S_ASP_VHF_2_REC_LATCH")
+            {
+                simConnect.SetLVar("S_ASP_VHF_2_REC_LATCH", value);
+                return true;
+            }
+
+            if (varKey == "S_ASP_VHF_3_REC_LATCH")
+            {
+                simConnect.SetLVar("S_ASP_VHF_3_REC_LATCH", value);
+                return true;
+            }
+
             if (varKey == "S_ASP_HF_1_REC_LATCH")
             {
                 simConnect.SetLVar("S_ASP_HF_1_REC_LATCH", value);
+                return true;
+            }
+
+            if (varKey == "S_ASP_HF_2_REC_LATCH")
+            {
+                simConnect.SetLVar("S_ASP_HF_2_REC_LATCH", value);
+                return true;
+            }
+
+            if (varKey == "S_ASP_INT_REC_LATCH")
+            {
+                simConnect.SetLVar("S_ASP_INT_REC_LATCH", value);
                 return true;
             }
 
@@ -11490,6 +11568,12 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_ASP_ILS_REC_LATCH")
             {
                 simConnect.SetLVar("S_ASP_ILS_REC_LATCH", value);
+                return true;
+            }
+
+            if (varKey == "S_ASP_MLS_REC_LATCH")
+            {
+                simConnect.SetLVar("S_ASP_MLS_REC_LATCH", value);
                 return true;
             }
 
