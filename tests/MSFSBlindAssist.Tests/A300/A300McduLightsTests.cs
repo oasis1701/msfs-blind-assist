@@ -1,3 +1,4 @@
+using System.Globalization;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Aircraft.A300;
 using MSFSBlindAssist.SimConnect;
@@ -6,7 +7,8 @@ namespace MSFSBlindAssist.Tests.A300;
 
 /// <summary>
 /// Each MCDU's four annunciators (the cockpit's <c>CPT_FMS_*_LIGHT</c> and <c>FO_FMS_*_LIGHT</c> lamps, on the AC
-/// light bus), shown in the MCDU window's status box and spoken as one comes on, as the MD-11's MCDU window does.
+/// light bus), shown in the MCDU window's status box and spoken as one comes on, as the MD-11's MCDU window does
+/// (except the captain's MSG, which its fault light speaks).
 /// </summary>
 public class A300McduLightsTests
 {
@@ -53,12 +55,49 @@ public class A300McduLightsTests
     }
 
     [Theory]
-    [InlineData(new string[0], new[] { "MSG" }, "MSG")]
-    [InlineData(new[] { "MSG" }, new[] { "MSG", "DSPY" }, "DSPY")]
-    [InlineData(new[] { "MSG", "DSPY" }, new[] { "DSPY" }, null)]
-    [InlineData(new[] { "MSG" }, new[] { "MSG" }, null)]
-    public void Only_a_light_coming_on_is_spoken(string[] before, string[] now, string? spoken) =>
-        Assert.Equal(spoken, A300McduLights.ComingOn(before, now));
+    [InlineData(A300McduUnit.FirstOfficer, new string[0], new[] { "MSG" }, "MSG")]
+    [InlineData(A300McduUnit.FirstOfficer, new[] { "MSG" }, new[] { "MSG", "DSPY" }, "DSPY")]
+    [InlineData(A300McduUnit.FirstOfficer, new[] { "MSG", "DSPY" }, new[] { "DSPY" }, null)]
+    [InlineData(A300McduUnit.FirstOfficer, new[] { "MSG" }, new[] { "MSG" }, null)]
+    [InlineData(A300McduUnit.Captain, new string[0], new[] { "FAIL", "OFST" }, "FAIL, OFST")]
+    [InlineData(A300McduUnit.Captain, new[] { "MSG", "DSPY" }, new[] { "DSPY" }, null)]
+    public void Only_a_light_coming_on_is_spoken(A300McduUnit unit, string[] before, string[] now, string? spoken) =>
+        Assert.Equal(spoken, A300McduLights.ComingOn(before, now, unit));
+
+    [Fact]
+    public void The_captains_msg_is_left_to_the_lights()
+    {
+        // The captain's MSG lamp is also the fault light "MCDU message light", which speaks anywhere: the window
+        // saying it too put the same news in the pilot's ear twice. The first officer's MSG has no fault light.
+        Assert.Null(A300McduLights.ComingOn(new[] { "FAIL" }, new[] { "FAIL", "MSG" }, A300McduUnit.Captain));
+        Assert.Equal("DSPY", A300McduLights.ComingOn(Array.Empty<string>(), new[] { "MSG", "DSPY" }, A300McduUnit.Captain));
+        Assert.Equal("MSG", A300McduLights.ComingOn(Array.Empty<string>(), new[] { "MSG" }, A300McduUnit.FirstOfficer));
+
+        var captainsMsg = A300McduLights.For(A300McduUnit.Captain).Single(l => l.Label == "MSG");
+        var officersMsg = A300McduLights.For(A300McduUnit.FirstOfficer).Single(l => l.Label == "MSG");
+        Assert.Contains(A300FaultLights.All, l => l.Var == captainsMsg.Var && l.Name == "MCDU message light");
+        Assert.DoesNotContain(A300FaultLights.All, l => l.Var == officersMsg.Var);
+    }
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void The_call_out_reads_the_same_in_a_comma_decimal_culture(string culture)
+    {
+        var saved = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(culture);
+            Assert.Equal("FAIL, OFST",
+                A300McduLights.ComingOn(new[] { "MSG" }, new[] { "MSG", "FAIL", "OFST" }, A300McduUnit.Captain));
+            Assert.Equal("MSG", A300McduLights.ComingOn(Array.Empty<string>(), new[] { "MSG" }, A300McduUnit.FirstOfficer));
+            Assert.Equal("Captain MCDU: MSG, FAIL", A300McduLights.Status("Captain MCDU", new[] { "MSG", "FAIL" }));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = saved;
+        }
+    }
 
     [Theory]
     [InlineData(new string[0], "Captain MCDU: connected")]

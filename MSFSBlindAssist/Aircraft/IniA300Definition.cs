@@ -329,7 +329,7 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
             vars[line.AligningKey] = OwnSubscription(line.AligningVar, line.AligningKey);
             vars[line.AlignedKey] = OwnSubscription(line.AlignedVar, line.AlignedKey);
         }
-        // The MCDUs' annunciators (A300McduLights): the MCDU window's status box and its "MSG" call-out.
+        // The MCDUs' annunciators (A300McduLights): the MCDU window's status box and its call-out of a light coming on.
         foreach (var light in A300McduLights.All)
             vars[light.Key] = OwnSubscription(light.Var, light.Key);
         // The E/WD memos' inputs (A300EwdMemos), and the ECAM Memos box's line. Memos are never spoken (design

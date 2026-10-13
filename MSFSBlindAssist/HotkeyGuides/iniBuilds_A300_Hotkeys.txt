@@ -251,7 +251,9 @@ arrows beside a title mean there are more pages (Right Arrow or Alt+Right goes t
 and a degree sign is a degree sign. A screen that stays blank for a second says so: the MCDU is
 probably unpowered. The MCDU blanks for a moment on every page change; that is ignored, and the
 cursor stays where it was. The status box at the top shows the MCDU's lit annunciators, MSG, FAIL,
-DSPY and OFST ("Captain MCDU: MSG"), and one coming on is announced while the window is open.
+DSPY and OFST ("Captain MCDU: MSG"), and one coming on is announced while the window is open. The
+Captain's MSG is announced as the fault light "MCDU message light" wherever you are, so the window
+does not say it a second time.
 
 Aligning the IRSs: with all three IRS selectors in Navigate and a FROM/TO on INIT A, INIT A offers
 ALIGN IRS on right line-select key 4 (Alt+4). The IRS panel's status display then counts each
@@ -262,6 +264,7 @@ IRS it says "waiting for ALIGN IRS on the MCDU".
   Alt+1 to Alt+6     Right line-select keys 1 to 6
                      (or F1 to F6 and F7 to F12, with the alternate layout in FMC Settings)
   Page Up / Down     Slew up and down
+  Alt+Up / Alt+Down  Slew up and down; on the MCDU unit combo box they open its list instead
   Right Arrow        Next page (on the screen list); Alt+Right from anywhere in the window
   Backspace          CLR, one character (on the screen list)
   Delete             Clear the whole scratchpad (on the screen list)
@@ -522,7 +525,7 @@ FCU Set Values (each opens a small window with its knob and mode buttons; type a
              reads the settings back
   Ctrl+N     VOR 1, VOR 2 and ILS, frequency and course. The window opens on what the radios
              report; if they cannot be read you hear "NAV radios unavailable" and nothing opens.
-             Set writes only the fields you changed, and says "NAV radios unchanged" if none
+             Set writes only the fields you changed, and says "NAV radios unchanged" if none changed
 
 Taxi Guidance:
   Shift+Y    Open Taxi Assist Form (enter ATC taxi clearance, start guidance)

@@ -75,11 +75,17 @@ public static class A300McduKeys
         return $"Not sent. The MCDU keyboard has no {list} key.";
     }
 
+    /// <summary>
+    /// A refused character as a pilot says it. Named rather than echoed, because a screen reader's symbol
+    /// level decides whether a bare "\" or "[" is read at all. The same 29 names as the MD-11 window's
+    /// (<c>Md11McduKeys.SpokenNames</c>), word for word; a character with no name here is spoken as itself.
+    /// </summary>
     private static string Spoken(char c) => c switch
     {
         ',' => "comma",
         '*' => "asterisk",
         '#' => "hash",
+        '%' => "percent",
         ':' => "colon",
         ';' => "semicolon",
         '\'' => "apostrophe",
@@ -89,6 +95,22 @@ public static class A300McduKeys
         '_' => "underscore",
         '?' => "question mark",
         '!' => "exclamation mark",
+        '&' => "ampersand",
+        '@' => "at sign",
+        '=' => "equals",
+        '<' => "less than",
+        '>' => "greater than",
+        '\\' => "backslash",
+        '[' => "left bracket",
+        ']' => "right bracket",
+        '{' => "left brace",
+        '}' => "right brace",
+        '|' => "vertical bar",
+        '^' => "caret",
+        '~' => "tilde",
+        '`' => "backtick",
+        '$' => "dollar",
+        '\t' => "tab",
         _ => c.ToString(),
     };
 }

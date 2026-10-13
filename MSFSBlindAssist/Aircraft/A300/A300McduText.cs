@@ -105,41 +105,56 @@ public enum A300McduDisplayAction
 /// (<c>Md11McduPresence</c>). The FMS publishes an all-blank frame of 70 to 370 ms on every page key
 /// (measured in flight, 2026-10-04: 60 of 363 frames during four key presses), and the window used to show
 /// "is blank. It may be unpowered." on the first one, dropping the cursor. A blank is believed only
-/// once it has lasted <see cref="SettleMs"/>; until then the page on screen is held. Pure: the
-/// window hands it each poll's frame and the time.
+/// once it has lasted <see cref="SettleMs"/>; until then the page on screen is held. Each unit has its OWN
+/// clock, because both MCDUs keep publishing whichever one the window follows: a unit that has stayed blank
+/// is believed blank the moment the window switches to it, not a second later. Pure: the window hands it
+/// each poll's frames and the time.
 /// </summary>
-public sealed class A300McduBlankFilter
+public sealed class A300McduBlankClocks
 {
     /// <summary>About 2.7 times the longest blank frame measured, and four of the window's 250 ms
     /// polls, so a blank is never believed on one poll.</summary>
     public const int SettleMs = 1000;
 
-    private DateTime? _blankSince;
+    private readonly Dictionary<A300McduUnit, DateTime> _blankSince = new();
 
-    /// <summary>A poll's frame on the unit the window is following.</summary>
-    public A300McduDisplayAction Judge(A300McduScreen screen, DateTime now)
+    /// <summary>A poll's frame for a unit, or null when none is known for it: starts the unit's clock when
+    /// the frame is blank (a clock already running keeps its start) and stops it when the frame is a page or
+    /// there is none, since how long a unit had been blank is unknown once its screen is gone (a flight load, a
+    /// reconnect). Judges nothing, so it can keep the clock of a unit the window is not following.</summary>
+    public void Tick(A300McduUnit unit, A300McduScreen? screen, DateTime now)
     {
+        if (screen is { IsBlank: true })
+            _blankSince.TryAdd(unit, now);
+        else
+            _blankSince.Remove(unit);
+    }
+
+    /// <summary>A poll's frame on the unit the window is following: ticks the unit's clock, then says what to
+    /// do with the frame.</summary>
+    public A300McduDisplayAction Judge(A300McduUnit unit, A300McduScreen screen, DateTime now)
+    {
+        Tick(unit, screen, now);
         if (!screen.IsBlank)
-        {
-            _blankSince = null;
             return A300McduDisplayAction.ShowContent;
-        }
-        _blankSince ??= now;
-        return (now - _blankSince.Value).TotalMilliseconds >= SettleMs
+        return (now - _blankSince[unit]).TotalMilliseconds >= SettleMs
             ? A300McduDisplayAction.ShowBlank
             : A300McduDisplayAction.HoldLastPage;
     }
 
-    /// <summary>The window starts following a unit (an open, a re-show, a unit switch). Nothing on
-    /// screen is this unit's page to hold, so a blank not yet judged shows the waiting row; the
-    /// clock starts again, because while the window was not polling it could not see how long the
-    /// unit had been blank.</summary>
-    public A300McduDisplayAction Restart(A300McduScreen screen, DateTime now)
+    /// <summary>The window starts following a unit (an open, a re-show, a unit switch). Nothing on screen is
+    /// this unit's page to hold, so a blank not yet judged shows the waiting row, never
+    /// <see cref="A300McduDisplayAction.HoldLastPage"/>. The unit's clock is not touched: it has been counting
+    /// since the unit went blank, so a blank older than <see cref="SettleMs"/> is judged blank at once.</summary>
+    public A300McduDisplayAction Follow(A300McduUnit unit, A300McduScreen screen, DateTime now)
     {
-        _blankSince = null;
-        var action = Judge(screen, now);
+        var action = Judge(unit, screen, now);
         return action == A300McduDisplayAction.HoldLastPage ? A300McduDisplayAction.ShowWaiting : action;
     }
+
+    /// <summary>Every clock starts over (the window is shown again): while it was hidden it was not polling
+    /// and could not see how long a unit had been blank.</summary>
+    public void Reset() => _blankSince.Clear();
 }
 
 /// <summary>Which screen row a line of the MCDU window's list stands for.</summary>

@@ -42,7 +42,7 @@ public sealed class A300McduForm : Form
     private IReadOnlyList<A300McduRow>? _rows;
     private readonly Dictionary<A300McduUnit, string> _lastTitle = new();
     private readonly CduScratchpadAnnouncer _scratchpad = new("Scratchpad cleared", stablePolls: 2);
-    private readonly A300McduBlankFilter _blank = new();
+    private readonly A300McduBlankClocks _blank = new();
     private bool _clearing;
 
     /// <summary>Beyond the last queued key: the aircraft applying it, the client-data delivery and the
@@ -337,7 +337,7 @@ public sealed class A300McduForm : Form
         // The FMS's blank frame between pages: draw nothing, say nothing, leave the page and the
         // cursor where they are. Judged before the reference check: a blank that stays is delivered
         // once, so only a poll can tell that it has lasted.
-        if (_blank.Judge(screen, DateTime.UtcNow) == A300McduDisplayAction.HoldLastPage)
+        if (_blank.Judge(_unit, screen, DateTime.UtcNow) == A300McduDisplayAction.HoldLastPage)
             return;
         if (!ReferenceEquals(screen, _rendered))
             Render(screen, silent: false);
@@ -352,7 +352,9 @@ public sealed class A300McduForm : Form
     /// <summary>
     /// The unit's lit annunciators in the status box ("Captain MCDU: MSG"), and one coming on spoken, as the
     /// MD-11's MCDU window does: MSG lighting is how the FMS says "read the scratchpad", with no text change
-    /// behind it. A unit switch or a re-show takes the lights as they are, silently.
+    /// behind it. The captain's MSG is left to its fault light, "MCDU message light", which speaks anywhere
+    /// (<see cref="A300McduLights.ComingOn"/>), so it is not said twice. A unit switch or a re-show takes the
+    /// lights as they are, silently.
     /// </summary>
     private void UpdateAnnunciators(bool silent)
     {
@@ -361,7 +363,7 @@ public sealed class A300McduForm : Form
         _lit[_unit] = lit;
         if (_rendered is { IsBlank: false })
             _statusBox.Text = A300McduLights.Status(UnitName, lit);
-        if (!silent && seen && A300McduLights.ComingOn(before!, lit) is { } on)
+        if (!silent && seen && A300McduLights.ComingOn(before!, lit, _unit) is { } on)
             _announcer.Announce(on);
     }
 
@@ -415,8 +417,11 @@ public sealed class A300McduForm : Form
             ShowWaiting();
             return;
         }
-        // A blank not yet judged shows the waiting row, never "blank" (it may be a page change).
-        if (_blank.Restart(screen, DateTime.UtcNow) == A300McduDisplayAction.ShowWaiting)
+        // Following a unit anew starts its blank clock again: while the window was not polling it could not
+        // see how long the unit had been blank. A blank not yet judged shows the waiting row, never "blank"
+        // (it may be a page change).
+        _blank.Reset();
+        if (_blank.Follow(_unit, screen, DateTime.UtcNow) == A300McduDisplayAction.ShowWaiting)
             ShowWaiting();
         else
             Render(screen, silent: true);
@@ -522,10 +527,14 @@ public static class A300McduKeyRouting
         if (none && keyCode == Keys.PageUp) return Action.Press("UARROW");
         if (none && keyCode == Keys.PageDown) return Action.Press("DOWN");
 
+        // The Alt-only chords. Alt+Up and Alt+Down slew too, as in the MD-11, FBW and Fenix MCDU windows; they sit
+        // after the combo guard above because a focused unit selector needs both to open and close its list.
         if (alt && !control && !shift)
         {
             switch (keyCode)
             {
+                case Keys.Up: return Action.Press("UARROW");
+                case Keys.Down: return Action.Press("DOWN");
                 case Keys.Right: return Action.Press("NEXT");
                 case Keys.S: return new Action(ActionKind.FocusInput);
                 case Keys.Home: return new Action(ActionKind.FocusDisplay);

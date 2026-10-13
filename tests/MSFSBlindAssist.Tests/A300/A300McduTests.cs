@@ -1,7 +1,9 @@
+using System.Globalization;
 using System.Text;
 using System.Windows.Forms;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Aircraft.A300;
+using MSFSBlindAssist.Aircraft.MD11;
 using MSFSBlindAssist.Forms.A300;
 using MSFSBlindAssist.SimConnect;
 using MSFSBlindAssist.SimConnect.A300;
@@ -111,6 +113,70 @@ public class A300McduTests
     }
 
     [Fact]
+    public void A_refused_character_is_named_as_the_md11_names_it()
+    {
+        // A screen reader's symbol level can drop a bare backslash or bracket, so each one is named.
+        Assert.Equal("Not sent. The MCDU keyboard has no backslash key.", A300McduKeys.RefusalFor("KJFK\\"));
+        Assert.Equal("Not sent. The MCDU keyboard has no left bracket or right bracket key.", A300McduKeys.RefusalFor("A[B]"));
+    }
+
+    [Theory]
+    [InlineData(',', "comma")]
+    [InlineData('*', "asterisk")]
+    [InlineData('#', "hash")]
+    [InlineData('%', "percent")]
+    [InlineData(':', "colon")]
+    [InlineData(';', "semicolon")]
+    [InlineData('\'', "apostrophe")]
+    [InlineData('"', "quote")]
+    [InlineData('(', "left parenthesis")]
+    [InlineData(')', "right parenthesis")]
+    [InlineData('_', "underscore")]
+    [InlineData('?', "question mark")]
+    [InlineData('!', "exclamation mark")]
+    [InlineData('&', "ampersand")]
+    [InlineData('@', "at sign")]
+    [InlineData('=', "equals")]
+    [InlineData('<', "less than")]
+    [InlineData('>', "greater than")]
+    [InlineData('\\', "backslash")]
+    [InlineData('[', "left bracket")]
+    [InlineData(']', "right bracket")]
+    [InlineData('{', "left brace")]
+    [InlineData('}', "right brace")]
+    [InlineData('|', "vertical bar")]
+    [InlineData('^', "caret")]
+    [InlineData('~', "tilde")]
+    [InlineData('`', "backtick")]
+    [InlineData('$', "dollar")]
+    [InlineData('\t', "tab")]
+    public void Every_refused_character_is_spoken_by_the_md11s_name(char c, string name)
+    {
+        Assert.Equal($"Not sent. The MCDU keyboard has no {name} key.", A300McduKeys.RefusalFor(c.ToString()));
+        // Two windows, one wording: the MD-11's MCDU window names the same 29 characters the same way.
+        Assert.Equal(Md11McduKeys.RefusalFor(c.ToString()), A300McduKeys.RefusalFor(c.ToString()));
+    }
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void A_refusal_reads_the_same_in_a_comma_decimal_culture(string culture)
+    {
+        var saved = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(culture);
+            Assert.Equal("Not sent. The MCDU keyboard has no percent, dollar or tab key.", A300McduKeys.RefusalFor("1%2$3\t"));
+            Assert.Equal("Not sent. The MCDU keyboard has no comma key.", A300McduKeys.RefusalFor("KJFK,KLAX"));
+            Assert.Null(A300McduKeys.RefusalFor("KJFK/KLAX 12.5"));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = saved;
+        }
+    }
+
+    [Fact]
     public void Keys_are_the_cockpits_own_lvars()
     {
         Assert.Equal("1 (>L:INI_MCDU1_LSK3R)", A300McduKeys.PressRpn(A300McduUnit.Captain, A300McduKeys.Lsk(3, right: true)));
@@ -134,6 +200,8 @@ public class A300McduTests
     [InlineData(Keys.F12, false, false, false, true, "LSK6R")]
     [InlineData(Keys.PageUp, false, false, false, false, "UARROW")]
     [InlineData(Keys.PageDown, false, false, false, false, "DOWN")]
+    [InlineData(Keys.Up, true, false, false, false, "UARROW")]
+    [InlineData(Keys.Down, true, false, false, false, "DOWN")]
     [InlineData(Keys.Right, true, false, false, false, "NEXT")]
     public void Chords_press_mcdu_keys(Keys key, bool alt, bool control, bool shift, bool alternate, string mcduKey)
     {
@@ -143,6 +211,18 @@ public class A300McduTests
     }
 
     [Theory]
+    [InlineData(Keys.Up, true, false, true)]      // Alt+Shift+Up
+    [InlineData(Keys.Down, true, true, false)]    // Ctrl+Alt+Down: how AltGr arrives on some layouts
+    [InlineData(Keys.Up, false, false, false)]    // plain Up: the display list's own arrow
+    [InlineData(Keys.Down, false, true, false)]   // Ctrl+Down
+    public void Up_and_down_slew_only_behind_alt_alone(Keys key, bool alt, bool control, bool shift)
+    {
+        var action = A300McduKeyRouting.Resolve(key, alt, control, shift, A300McduKeyRouting.ComboFocus.None, useAlternateLskKeys: false);
+        Assert.Equal(A300McduKeyRouting.ActionKind.Pass, action.Kind);
+    }
+
+    [Theory]
+    [InlineData(Keys.Up, true)]
     [InlineData(Keys.Down, true)]
     [InlineData(Keys.PageDown, false)]
     [InlineData(Keys.F4, false)]
@@ -175,50 +255,128 @@ public class A300McduTests
     }
 
     private static readonly DateTime T0 = new(2026, 10, 9, 12, 0, 0, DateTimeKind.Utc);
-    private static A300McduScreen Page() => A300McduText.Decode(A300McduUnit.Captain, InitPage())!;
-    private static A300McduScreen Blank() => A300McduText.Decode(A300McduUnit.Captain, new byte[A300McduText.DataSize])!;
+    private static A300McduScreen Page(A300McduUnit unit = A300McduUnit.Captain) => A300McduText.Decode(unit, InitPage())!;
+    private static A300McduScreen Blank(A300McduUnit unit = A300McduUnit.Captain) =>
+        A300McduText.Decode(unit, new byte[A300McduText.DataSize])!;
 
     [Fact]
     public void The_blank_frame_between_pages_holds_the_page()
     {
         // The FMS publishes a blank frame of 70 to 370 ms on every page key (measured in flight, 2026-10-04).
-        var filter = new A300McduBlankFilter();
-        Assert.Equal(A300McduDisplayAction.ShowContent, filter.Judge(Page(), T0));
-        Assert.Equal(A300McduDisplayAction.HoldLastPage, filter.Judge(Blank(), T0.AddMilliseconds(250)));
-        Assert.Equal(A300McduDisplayAction.HoldLastPage, filter.Judge(Blank(), T0.AddMilliseconds(620)));
-        Assert.Equal(A300McduDisplayAction.ShowContent, filter.Judge(Page(), T0.AddMilliseconds(750)));
+        var clocks = new A300McduBlankClocks();
+        var unit = A300McduUnit.Captain;
+        Assert.Equal(A300McduDisplayAction.ShowContent, clocks.Judge(unit, Page(), T0));
+        Assert.Equal(A300McduDisplayAction.HoldLastPage, clocks.Judge(unit, Blank(), T0.AddMilliseconds(250)));
+        Assert.Equal(A300McduDisplayAction.HoldLastPage, clocks.Judge(unit, Blank(), T0.AddMilliseconds(620)));
+        Assert.Equal(A300McduDisplayAction.ShowContent, clocks.Judge(unit, Page(), T0.AddMilliseconds(750)));
     }
 
     [Fact]
     public void A_blank_that_lasts_a_second_is_believed()
     {
-        var filter = new A300McduBlankFilter();
-        Assert.Equal(A300McduDisplayAction.HoldLastPage, filter.Judge(Blank(), T0));
-        Assert.Equal(A300McduDisplayAction.HoldLastPage, filter.Judge(Blank(), T0.AddMilliseconds(999)));
-        Assert.Equal(A300McduDisplayAction.ShowBlank, filter.Judge(Blank(), T0.AddMilliseconds(1000)));
+        var clocks = new A300McduBlankClocks();
+        var unit = A300McduUnit.Captain;
+        Assert.Equal(A300McduDisplayAction.HoldLastPage, clocks.Judge(unit, Blank(), T0));
+        Assert.Equal(A300McduDisplayAction.HoldLastPage, clocks.Judge(unit, Blank(), T0.AddMilliseconds(999)));
+        Assert.Equal(A300McduDisplayAction.ShowBlank, clocks.Judge(unit, Blank(), T0.AddMilliseconds(1000)));
     }
 
     [Fact]
     public void A_page_between_two_blanks_starts_the_wait_again()
     {
-        var filter = new A300McduBlankFilter();
-        filter.Judge(Blank(), T0);
-        filter.Judge(Page(), T0.AddMilliseconds(500));
-        Assert.Equal(A300McduDisplayAction.HoldLastPage, filter.Judge(Blank(), T0.AddMilliseconds(900)));
-        Assert.Equal(A300McduDisplayAction.HoldLastPage, filter.Judge(Blank(), T0.AddMilliseconds(1800)));
-        Assert.Equal(A300McduDisplayAction.ShowBlank, filter.Judge(Blank(), T0.AddMilliseconds(1900)));
+        var clocks = new A300McduBlankClocks();
+        var unit = A300McduUnit.Captain;
+        clocks.Judge(unit, Blank(), T0);
+        clocks.Judge(unit, Page(), T0.AddMilliseconds(500));
+        Assert.Equal(A300McduDisplayAction.HoldLastPage, clocks.Judge(unit, Blank(), T0.AddMilliseconds(900)));
+        Assert.Equal(A300McduDisplayAction.HoldLastPage, clocks.Judge(unit, Blank(), T0.AddMilliseconds(1800)));
+        Assert.Equal(A300McduDisplayAction.ShowBlank, clocks.Judge(unit, Blank(), T0.AddMilliseconds(1900)));
     }
 
     [Fact]
     public void Starting_to_follow_a_unit_on_a_blank_waits_rather_than_holding_another_page()
     {
-        // An open or a unit switch has no page of THIS unit on screen to hold.
-        var filter = new A300McduBlankFilter();
-        filter.Judge(Blank(), T0);
-        Assert.Equal(A300McduDisplayAction.ShowWaiting, filter.Restart(Blank(), T0.AddMilliseconds(5000)));
-        Assert.Equal(A300McduDisplayAction.HoldLastPage, filter.Judge(Blank(), T0.AddMilliseconds(5500)));
-        Assert.Equal(A300McduDisplayAction.ShowBlank, filter.Judge(Blank(), T0.AddMilliseconds(6000)));
-        Assert.Equal(A300McduDisplayAction.ShowContent, filter.Restart(Page(), T0.AddMilliseconds(6100)));
+        // An open or a re-show has no page of THIS unit on screen to hold, and every clock starts over.
+        var clocks = new A300McduBlankClocks();
+        var unit = A300McduUnit.Captain;
+        clocks.Judge(unit, Blank(), T0);
+        clocks.Reset();
+        Assert.Equal(A300McduDisplayAction.ShowWaiting, clocks.Follow(unit, Blank(), T0.AddMilliseconds(5000)));
+        Assert.Equal(A300McduDisplayAction.HoldLastPage, clocks.Judge(unit, Blank(), T0.AddMilliseconds(5500)));
+        Assert.Equal(A300McduDisplayAction.ShowBlank, clocks.Judge(unit, Blank(), T0.AddMilliseconds(6000)));
+        Assert.Equal(A300McduDisplayAction.ShowContent, clocks.Follow(unit, Page(), T0.AddMilliseconds(6100)));
+    }
+
+    [Fact]
+    public void A_unit_blank_for_a_while_is_judged_blank_at_once_when_followed()
+    {
+        // The window sat on the captain's MCDU while the first officer's stayed blank: switching to it is no new blank.
+        var clocks = new A300McduBlankClocks();
+        var fo = A300McduUnit.FirstOfficer;
+        clocks.Tick(fo, Blank(fo), T0);
+        Assert.Equal(A300McduDisplayAction.ShowBlank, clocks.Follow(fo, Blank(fo), T0.AddSeconds(2)));
+    }
+
+    [Theory]
+    [InlineData(0, A300McduDisplayAction.ShowWaiting)]
+    [InlineData(999, A300McduDisplayAction.ShowWaiting)]
+    [InlineData(1000, A300McduDisplayAction.ShowBlank)]
+    [InlineData(5000, A300McduDisplayAction.ShowBlank)]
+    public void Following_a_blank_shows_waiting_until_it_has_lasted_a_second_and_never_holds_a_page(int ms, A300McduDisplayAction expected)
+    {
+        var clocks = new A300McduBlankClocks();
+        var fo = A300McduUnit.FirstOfficer;
+        clocks.Tick(fo, Blank(fo), T0);
+        Assert.Equal(expected, clocks.Follow(fo, Blank(fo), T0.AddMilliseconds(ms)));
+    }
+
+    [Fact]
+    public void A_reshow_starts_every_clock_again()
+    {
+        var clocks = new A300McduBlankClocks();
+        var cpt = A300McduUnit.Captain;
+        var fo = A300McduUnit.FirstOfficer;
+        clocks.Tick(cpt, Blank(cpt), T0);
+        clocks.Tick(fo, Blank(fo), T0);
+        clocks.Reset();
+        Assert.Equal(A300McduDisplayAction.ShowWaiting, clocks.Follow(fo, Blank(fo), T0.AddSeconds(2)));
+        Assert.Equal(A300McduDisplayAction.ShowWaiting, clocks.Follow(cpt, Blank(cpt), T0.AddSeconds(2)));
+    }
+
+    [Fact]
+    public void Each_unit_keeps_its_own_clock()
+    {
+        var clocks = new A300McduBlankClocks();
+        var cpt = A300McduUnit.Captain;
+        var fo = A300McduUnit.FirstOfficer;
+        clocks.Tick(cpt, Blank(cpt), T0);
+        clocks.Tick(fo, Page(fo), T0.AddMilliseconds(500));   // a page on one unit does not end the other's blank
+        Assert.Equal(A300McduDisplayAction.ShowBlank, clocks.Judge(cpt, Blank(cpt), T0.AddMilliseconds(1000)));
+        // The first officer going blank at 2 s starts ITS wait there, whatever the captain's clock reads.
+        Assert.Equal(A300McduDisplayAction.HoldLastPage, clocks.Judge(fo, Blank(fo), T0.AddSeconds(2)));
+        Assert.Equal(A300McduDisplayAction.ShowBlank, clocks.Judge(fo, Blank(fo), T0.AddMilliseconds(3000)));
+    }
+
+    [Fact]
+    public void A_unit_with_no_screen_has_no_clock()
+    {
+        // A flight load or a reconnect forgets the screens, and with them how long a unit had been blank.
+        var clocks = new A300McduBlankClocks();
+        var fo = A300McduUnit.FirstOfficer;
+        clocks.Tick(fo, Blank(fo), T0);
+        clocks.Tick(fo, null, T0.AddMilliseconds(500));
+        Assert.Equal(A300McduDisplayAction.ShowWaiting, clocks.Follow(fo, Blank(fo), T0.AddSeconds(2)));
+    }
+
+    [Fact]
+    public void A_page_ticked_in_ends_that_units_blank()
+    {
+        var clocks = new A300McduBlankClocks();
+        var fo = A300McduUnit.FirstOfficer;
+        clocks.Tick(fo, Blank(fo), T0);
+        clocks.Tick(fo, Page(fo), T0.AddMilliseconds(500));
+        Assert.Equal(A300McduDisplayAction.ShowContent, clocks.Follow(fo, Page(fo), T0.AddSeconds(2)));
+        Assert.Equal(A300McduDisplayAction.ShowWaiting, clocks.Follow(fo, Blank(fo), T0.AddMilliseconds(2100)));
     }
 
     [Theory]
