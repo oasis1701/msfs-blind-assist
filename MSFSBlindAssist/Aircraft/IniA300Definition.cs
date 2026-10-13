@@ -94,11 +94,11 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
     /// A300 is selected and at start-up, and every write path refreshes it.</summary>
     public void Attach(SimConnectManager sim) => _sim = sim;
 
-    // The FCU windows are part 3; until then nothing here takes typed autopilot values.
-    public override FCUControlType GetAltitudeControlType() => FCUControlType.IncrementDecrement;
-    public override FCUControlType GetHeadingControlType() => FCUControlType.IncrementDecrement;
-    public override FCUControlType GetSpeedControlType() => FCUControlType.IncrementDecrement;
-    public override FCUControlType GetVerticalSpeedControlType() => FCUControlType.IncrementDecrement;
+    // The FCU windows take typed values (A300TypedValues), as the MD-11's and the FBW Airbuses' do.
+    public override FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
+    public override FCUControlType GetHeadingControlType() => FCUControlType.SetValue;
+    public override FCUControlType GetSpeedControlType() => FCUControlType.SetValue;
+    public override FCUControlType GetVerticalSpeedControlType() => FCUControlType.SetValue;
 
     public override Dictionary<string, string> GetButtonStateMapping() => new();
 
@@ -278,7 +278,7 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
             vars[button.DecelKey].ExcludeFromMonitorManager = false;
         }
 
-        // The thrust rating panel ([A300-21]): the mode lights the buttons and is the Center Panel's
+        // The thrust rating panel ([A300-21]): the mode lights the buttons and is the Thrust Rating Panel's
         // "TRP" line, which also reads AUTO's limit, the flex temperature (that panel's own readout)
         // and, on GE engines, the N1 limit. Their own subscriptions, never the batch ([A300-9]).
         var trp = OwnSubscription(A300Trp.ModeVar, "TRP");

@@ -7,10 +7,11 @@ public sealed record A300Readout(string Key, string Name, string Panel, string V
     Func<double, string> Format);
 
 /// <summary>
-/// The readouts part 1 places beside the knobs that set them: the four FCU windows, the three
-/// altimeter settings, the flex temperature, the landing elevation and the course knobs. The radio
-/// frequencies come with the radio work in part 3. Every number is formatted with the invariant
-/// culture, so a comma-decimal Windows locale never makes "29.92" read "29,92".
+/// The status box readouts: beside the knobs that set them, the four FCU windows, the three altimeter
+/// settings, the flex temperature, the landing elevation and the course knobs; each panel's gauges and
+/// composed lines (oxygen, brakes, trims, radios, clocks, IRS, cargo door); and the PFD, ND and standby
+/// instrument boxes' values. Every number is formatted with the invariant culture, so a comma-decimal
+/// Windows locale never makes "29.92" read "29,92".
 /// </summary>
 public static class A300Readouts
 {

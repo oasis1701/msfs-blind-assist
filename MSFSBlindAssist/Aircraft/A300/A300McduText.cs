@@ -103,7 +103,7 @@ public enum A300McduDisplayAction
 /// <summary>
 /// Tells the A300 FMS's blank frame between pages from a blank MCDU, the MD-11 window's rule
 /// (<c>Md11McduPresence</c>). The FMS publishes an all-blank frame of 70 to 370 ms on every page key
-/// (flight 1, 2026-10-04: 60 of 363 frames during four key presses), and the window used to show
+/// (measured in flight, 2026-10-04: 60 of 363 frames during four key presses), and the window used to show
 /// "is blank. It may be unpowered." on the first one, dropping the cursor. A blank is believed only
 /// once it has lasted <see cref="SettleMs"/>; until then the page on screen is held. Pure: the
 /// window hands it each poll's frame and the time.

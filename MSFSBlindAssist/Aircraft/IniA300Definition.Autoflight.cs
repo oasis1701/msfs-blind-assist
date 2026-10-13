@@ -372,7 +372,7 @@ public partial class IniA300Definition
     /// <summary>
     /// Ctrl+B's typed value ([A300-22]): every side in STD is first pushed to QNH and confirmed by reading
     /// its mode back (<see cref="PressKnobsAsync"/>, which names a side that stays in STD, and then
-    /// nothing is written), because a side in STD did not take a typed setting (flight 2, 2026-10-06).
+    /// nothing is written), because a side in STD did not take a typed setting (in flight, 2026-10-06).
     /// Then the value goes to all three altimeters and is confirmed as before. The PMDG 737's typed
     /// altimeter takes STD off first the same way (<c>DisengageStdThenRotateAsync</c>).
     /// </summary>

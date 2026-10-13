@@ -6,8 +6,8 @@ namespace MSFSBlindAssist.Aircraft.A300;
 /// The thrust rating panel (TRP), read from the aircraft's own code (package 1.0.11):
 /// <list type="bullet">
 /// <item>A button press writes <c>INI_TRP_&lt;X&gt;_BUTTON</c> 1, which <c>TRP::Update</c> consumes:
-/// TOGA, MCT, CL, CR, AUTO and FLEX TO set <c>INI_TRP_MODE</c> to 1 to 6 (the flight 1 probe measured
-/// the same numbers). Each button's lamp is <c>INI_TRP_MODE</c> == its number (the cockpit's emissive
+/// TOGA, MCT, CL, CR, AUTO and FLEX TO set <c>INI_TRP_MODE</c> to 1 to 6 (a live probe on 2026-10-04
+/// measured the same numbers). Each button's lamp is <c>INI_TRP_MODE</c> == its number (the cockpit's emissive
 /// code), so a button reads "On" only while its own mode is set.</item>
 /// <item>In AUTO the mode STAYS 5 (the AUTO handler writes 5, and <c>TRP::Update</c> itself writes 5 in
 /// a profile climb once past the thrust reduction altitude; read from the code, not measured);
@@ -26,7 +26,7 @@ public static class A300Trp
 {
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
-    /// <summary>The TRP mode; also the Center Panel's "TRP" status line.</summary>
+    /// <summary>The TRP mode; also the Thrust Rating Panel's "TRP" status line.</summary>
     public const string ModeKey = "A300_TRP_MODE";
     public const string ModeVar = "INI_TRP_MODE";
     public const string AutoModeKey = "A300_TRP_AUTO_MODE";

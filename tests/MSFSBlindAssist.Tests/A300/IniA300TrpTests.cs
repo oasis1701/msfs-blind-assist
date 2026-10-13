@@ -71,8 +71,8 @@ public class A300TrpTests
     }
 }
 
-/// <summary>The TRP in the definition: the variables it reads, the buttons' labels, the Center Panel's
-/// TRP line and the flex knob's read-back.</summary>
+/// <summary>The TRP in the definition: the variables it reads, the buttons' labels, the Thrust Rating
+/// Panel's TRP line and the flex knob's read-back.</summary>
 public class IniA300TrpTests
 {
     private readonly IniA300Definition _def;

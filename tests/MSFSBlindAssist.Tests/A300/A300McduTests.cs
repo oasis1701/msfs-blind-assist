@@ -181,7 +181,7 @@ public class A300McduTests
     [Fact]
     public void The_blank_frame_between_pages_holds_the_page()
     {
-        // The FMS publishes a blank frame of 70 to 370 ms on every page key (flight 1, 2026-10-04).
+        // The FMS publishes a blank frame of 70 to 370 ms on every page key (measured in flight, 2026-10-04).
         var filter = new A300McduBlankFilter();
         Assert.Equal(A300McduDisplayAction.ShowContent, filter.Judge(Page(), T0));
         Assert.Equal(A300McduDisplayAction.HoldLastPage, filter.Judge(Blank(), T0.AddMilliseconds(250)));

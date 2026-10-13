@@ -363,7 +363,7 @@ public class A300PanelLampTests
     [InlineData("INI_BAT1_light", "Battery 1 charge light")]
     [InlineData("INI_BAT3_light", "Battery 3 charge light")]
     public void The_battery_lights_are_charge_lights(string var, string name) =>
-        // Owner decision 2026-10-09: they follow the battery's charge current (measured on flight 2).
+        // Owner decision 2026-10-09: they follow the battery's charge current (measured in flight, 2026-10-06).
         Assert.Equal(name, A300FaultLights.All.Single(l => l.Var == var).Name);
 
     [Fact]

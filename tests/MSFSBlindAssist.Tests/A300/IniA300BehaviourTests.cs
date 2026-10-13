@@ -42,6 +42,16 @@ public class IniA300BehaviourTests
     private void Deliver(string key, double value) => _def.ProcessSimVarUpdate(key, value, _speech);
 
     [Fact]
+    public void The_fcu_windows_take_typed_values_as_the_fleet_declares_them()
+    {
+        // The windows are written directly (A300TypedValues), as the MD-11's and the FBW Airbuses' are.
+        Assert.Equal(FCUControlType.SetValue, _def.GetAltitudeControlType());
+        Assert.Equal(FCUControlType.SetValue, _def.GetHeadingControlType());
+        Assert.Equal(FCUControlType.SetValue, _def.GetSpeedControlType());
+        Assert.Equal(FCUControlType.SetValue, _def.GetVerticalSpeedControlType());
+    }
+
+    [Fact]
     public void A_base_variable_is_left_to_mainform()
     {
         Assert.False(Set("SIM_ON_GROUND", 1));

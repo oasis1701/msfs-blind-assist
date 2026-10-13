@@ -33,7 +33,7 @@ public sealed record A300BaroPlan(IReadOnlyList<A300BaroSide> Pressed, string? R
 /// saved value.</item>
 /// </list>
 /// So STD here also sets all three altimeters to 1013.25, and QNH puts each side's saved setting
-/// back ([A300-16]). On flight 2 (2026-10-06) a value typed with both sides in STD reached only the
+/// back ([A300-16]). In flight (2026-10-06) a value typed with both sides in STD reached only the
 /// standby, so a typed value first takes the STD sides to QNH ([A300-22]). Pure.
 /// </summary>
 public static class A300Baro

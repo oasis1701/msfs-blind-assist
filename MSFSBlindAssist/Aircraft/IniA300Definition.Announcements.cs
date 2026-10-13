@@ -81,7 +81,7 @@ public partial class IniA300Definition
             return true;
         }
 
-        // The TRP: shown on its buttons' labels and the Center Panel's TRP line, never spoken.
+        // The TRP: shown on its buttons' labels and the Thrust Rating Panel's TRP line, never spoken.
         if (A300Trp.StateKeys.Contains(varName))
             return true;
 
