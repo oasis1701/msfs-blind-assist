@@ -190,8 +190,7 @@ public partial class IniA300Definition
             await TypedDelay(ToggleReadBackMs);
             if (_disposed)
                 return;
-            var values = await Task.WhenAll(keys.Select(key => ReadFresh(sim, key, ReadoutTimeoutMs)));
-            if (_disposed)
+            if (await ReadAllFreshAsync(sim, keys) is not { } values)
                 return;
             announcer.AnnounceImmediate(values.All(v => v.HasValue)
                 ? compose(values.Select(v => v!.Value).ToArray())

@@ -37,6 +37,19 @@ public partial class IniA300Definition
     internal Func<SimConnectManager, string, int, Task<double?>> ReadFresh { get; set; } =
         (sim, key, timeoutMs) => sim.ReadFreshAsync(key, timeoutMs);
 
+    /// <summary>
+    /// Reads every key fresh at once, so the answers cost one delivery rather than one each, and returns the
+    /// values in key order (null for a key that did not answer). Null when this definition was disposed while
+    /// the reads were out: an aircraft switch disposes it before <see cref="SimConnectManager"/> fails every
+    /// pending read with null, so a caller that carried on would speak a failure over the next aircraft. A
+    /// caller says nothing then.
+    /// </summary>
+    private async Task<double?[]?> ReadAllFreshAsync(SimConnectManager sim, IReadOnlyList<string> keys)
+    {
+        var values = await Task.WhenAll(keys.Select(key => ReadFresh(sim, key, ReadoutTimeoutMs)));
+        return _disposed ? null : values;
+    }
+
     /// <summary>A typed value from a panel box or a dialog: refused aloud with its range, or sent and confirmed.</summary>
     private void SetTyped(string key, double value, SimConnectManager sim, ScreenReaderAnnouncer announcer, string name)
     {
@@ -239,7 +252,9 @@ public partial class IniA300Definition
             await TypedDelay(ToggleReadBackMs);
             if (_disposed)
                 return;
-            if (await ReadFresh(sim, key, ReadoutTimeoutMs) is double value)
+            // A delivery can land after an aircraft switch disposed this definition and before the pending
+            // reads are failed: that value belongs to the old aircraft.
+            if (await ReadFresh(sim, key, ReadoutTimeoutMs) is double value && !_disposed)
                 announcer.AnnounceImmediate(words(value));
         }
         catch (Exception ex)
@@ -248,23 +263,18 @@ public partial class IniA300Definition
         }
     }
 
-    /// <summary>Reads each key fresh and speaks the composed text, or "{what} unavailable".</summary>
+    /// <summary>Reads the keys fresh, together, and speaks the composed text, or "{what} unavailable"; nothing
+    /// once the definition has gone away (<see cref="ReadAllFreshAsync"/>).</summary>
     private async Task SpeakAsync(SimConnectManager sim, ScreenReaderAnnouncer announcer, string what,
         Func<double[], string> compose, params string[] keys)
     {
         try
         {
-            var values = new double[keys.Length];
-            for (int i = 0; i < keys.Length; i++)
-            {
-                if (await ReadFresh(sim, keys[i], ReadoutTimeoutMs) is not double v)
-                {
-                    announcer.AnnounceImmediate($"{what} unavailable");
-                    return;
-                }
-                values[i] = v;
-            }
-            announcer.AnnounceImmediate(compose(values));
+            if (await ReadAllFreshAsync(sim, keys) is not { } values)
+                return;
+            announcer.AnnounceImmediate(values.All(v => v.HasValue)
+                ? compose(values.Select(v => v!.Value).ToArray())
+                : $"{what} unavailable");
         }
         catch (Exception ex)
         {
@@ -499,7 +509,9 @@ public partial class IniA300Definition
     }
 
     /// <summary>Presses each side's knob, waits <see cref="A300Baro.KnobSettleMs"/>, and confirms every
-    /// pressed side now reads the wanted mode; says which one did not, and returns false, otherwise.</summary>
+    /// pressed side now reads the wanted mode (the sides are read together, <see cref="ReadAllFreshAsync"/>);
+    /// says which one did not, and returns false, otherwise. Returns false, saying nothing, once the
+    /// definition has gone away.</summary>
     private async Task<bool> PressKnobsAsync(IReadOnlyList<A300BaroSide> sides, Func<A300BaroSide, string> knob,
         bool wantStd, SimConnectManager sim, ScreenReaderAnnouncer announcer)
     {
@@ -508,13 +520,15 @@ public partial class IniA300Definition
         foreach (var side in sides)
             PressRow(knob(side), sim, announcer);
         await TypedDelay(A300Baro.KnobSettleMs);
-        foreach (var side in sides)
+        if (_disposed)
+            return false;
+        if (await ReadAllFreshAsync(sim, sides.Select(side => side.ModeKey).ToArray()) is not { } modes)
+            return false;
+        for (int i = 0; i < sides.Count; i++)
         {
-            if (_disposed)
-                return false;
-            if (await ReadFresh(sim, side.ModeKey, ReadoutTimeoutMs) is not double mode || A300Baro.IsStd(mode) != wantStd)
+            if (modes[i] is not double mode || A300Baro.IsStd(mode) != wantStd)
             {
-                announcer.AnnounceImmediate($"{side.Name} altimeter did not switch to {(wantStd ? "STD" : "QNH")}");
+                announcer.AnnounceImmediate($"{sides[i].Name} altimeter did not switch to {(wantStd ? "STD" : "QNH")}");
                 return false;
             }
         }
@@ -531,18 +545,12 @@ public partial class IniA300Definition
         await TypedDelay(ToggleReadBackMs);
         if (_disposed)
             return;
-        var values = new double[3];
         string[] keys = { A300Readouts.BaroCaptainKey, A300Readouts.BaroFirstOfficerKey, A300Readouts.BaroStandbyKey };
-        for (int i = 0; i < keys.Length; i++)
-        {
-            if (await ReadFresh(sim, keys[i], ReadoutTimeoutMs) is not double v)
-            {
-                announcer.AnnounceImmediate(Spoken($"{lead}; the altimeters did not report back"));
-                return;
-            }
-            values[i] = v;
-        }
-        announcer.AnnounceImmediate(Spoken(A300Baro.Confirmation(lead, values[0], values[1], values[2])));
+        if (await ReadAllFreshAsync(sim, keys) is not { } values)
+            return;
+        announcer.AnnounceImmediate(Spoken(values is [double captain, double firstOfficer, double standby]
+            ? A300Baro.Confirmation(lead, captain, firstOfficer, standby)
+            : $"{lead}; the altimeters did not report back"));
     }
 
     /// <summary>The buttons of one FCU value box (<see cref="A300AutoflightWindows"/>). A press goes

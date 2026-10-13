@@ -407,6 +407,72 @@ public class IniA300BaroTests
     }
 
     [Fact]
+    public void A_definition_disposed_while_a_mode_read_fails_says_nothing()
+    {
+        _cache[A300Baro.Captain.ModeKey] = 0;
+        _cache[A300Baro.FirstOfficer.ModeKey] = 0;
+        var reads = new TaskCompletionSource<double?>();
+        _def.ReadFresh = (_, _, _) => reads.Task;
+        _ = _def.SetStandardAsync(_sim, _speech);
+        _waits[0].SetResult();
+        _def.Dispose();
+        reads.SetResult(null);   // what SimConnectManager's FailAll delivers on a switch or disconnect
+        Assert.DoesNotContain(Standard, _sent);
+        Assert.Empty(_speech.All);
+    }
+
+    [Fact]
+    public void Both_sides_modes_are_read_together()
+    {
+        _cache[A300Baro.Captain.ModeKey] = 0;
+        _cache[A300Baro.FirstOfficer.ModeKey] = 0;
+        var asked = new List<string>();
+        var reads = new TaskCompletionSource<double?>();
+        _def.ReadFresh = (_, key, _) => { asked.Add(key); return reads.Task; };
+        _ = _def.SetStandardAsync(_sim, _speech);
+        _waits[0].SetResult();
+        Assert.Equal(new[] { A300Baro.Captain.ModeKey, A300Baro.FirstOfficer.ModeKey }, asked);   // before either answers
+    }
+
+    /// <summary>Runs STD to its final read-back: both sides confirm STD at once, then the three settings are asked
+    /// for and left unanswered. Returns the keys asked and the answer to resolve.</summary>
+    private (List<string> Asked, TaskCompletionSource<double?> Settings) StartStandardUntilItsReadBackIsOut()
+    {
+        _cache[A300Baro.Captain.ModeKey] = 0;
+        _cache[A300Baro.FirstOfficer.ModeKey] = 0;
+        var asked = new List<string>();
+        var settings = new TaskCompletionSource<double?>();
+        _def.ReadFresh = (_, key, _) =>
+        {
+            if (key == A300Baro.Captain.ModeKey || key == A300Baro.FirstOfficer.ModeKey)
+                return Task.FromResult<double?>(1);
+            asked.Add(key);
+            return settings.Task;
+        };
+        _ = _def.SetStandardAsync(_sim, _speech);
+        _waits[0].SetResult();   // the knobs have settled: 1013 is written and the read-back's own wait starts
+        _waits[1].SetResult();   // that wait is over: the three settings are asked for
+        return (asked, settings);
+    }
+
+    [Fact]
+    public void The_final_read_back_asks_for_the_three_settings_together()
+    {
+        var (asked, _) = StartStandardUntilItsReadBackIsOut();
+        Assert.Equal(new[] { A300Readouts.BaroCaptainKey, A300Readouts.BaroFirstOfficerKey, A300Readouts.BaroStandbyKey },
+            asked);   // before any answers
+    }
+
+    [Fact]
+    public void A_definition_disposed_while_the_final_read_back_is_out_says_nothing()
+    {
+        var (_, settings) = StartStandardUntilItsReadBackIsOut();
+        _def.Dispose();
+        settings.SetResult(null);   // the read-back would otherwise say "did not report back" over the next aircraft
+        Assert.Empty(_speech.All);
+    }
+
+    [Fact]
     public void Qnh_when_already_qnh_says_so_and_sends_nothing()
     {
         _cache[A300Baro.Captain.ModeKey] = 0;

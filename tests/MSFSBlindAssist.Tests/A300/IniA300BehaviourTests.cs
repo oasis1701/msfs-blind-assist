@@ -195,6 +195,20 @@ public class IniA300BehaviourTests
         Assert.Equal(new[] { "Landing elevation 50 feet" }, _speech.All);
     }
 
+    [Fact]
+    public void A_read_back_whose_value_lands_after_the_definition_went_away_says_nothing()
+    {
+        // An aircraft switch disposes the definition before the pending reads are failed, and a delivery can land
+        // in between: that value belongs to the old aircraft.
+        var read = new TaskCompletionSource<double?>();
+        _def.TypedDelay = _ => Task.CompletedTask;
+        _def.ReadFresh = (_, _, _) => read.Task;
+        Assert.True(Set("A300_LANDING_ELEV_SET#INC", 1));
+        _def.Dispose();
+        read.SetResult(50);
+        Assert.Empty(_speech.All);
+    }
+
     private void ReadFreshReturns(Dictionary<string, double> values)
     {
         _def.TypedDelay = _ => Task.CompletedTask;

@@ -94,4 +94,26 @@ public class IniA300SpeedKeysTests
     {
         Assert.Equal(new[] { "VLS unavailable" }, Press(HotkeyAction.ReadSpeedVLS));
     }
+
+    [Fact]
+    public void A_readout_whose_definition_went_away_says_nothing()
+    {
+        var read = new TaskCompletionSource<double?>();
+        _def.ReadFresh = (_, _, _) => read.Task;
+        Assert.True(_def.HandleHotkeyAction(HotkeyAction.ReadSpeedVLS, _sim, _speech, null!, null!));
+        _def.Dispose();
+        read.SetResult(null);
+        Assert.Empty(_speech.All);
+    }
+
+    [Fact]
+    public void A_green_dot_readout_whose_definition_went_away_says_nothing()
+    {
+        var read = new TaskCompletionSource<double?>();
+        _def.ReadFresh = (_, _, _) => read.Task;
+        Assert.True(_def.HandleHotkeyAction(HotkeyAction.ReadSpeedGD, _sim, _speech, null!, null!));
+        _def.Dispose();
+        read.SetResult(null);   // "Green dot unavailable" would otherwise be said over the next aircraft
+        Assert.Empty(_speech.All);
+    }
 }

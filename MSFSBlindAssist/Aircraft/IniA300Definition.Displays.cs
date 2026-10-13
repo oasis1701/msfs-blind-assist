@@ -147,8 +147,9 @@ public partial class IniA300Definition
     {
         try
         {
-            if (await ReadFresh(sim, A300Readouts.GreenDotKey, ReadoutTimeoutMs) is not double greenDot
-                || await ReadFresh(sim, A300Levers.FlapsKey, ReadoutTimeoutMs) is not double lever)
+            if (await ReadAllFreshAsync(sim, new[] { A300Readouts.GreenDotKey, A300Levers.FlapsKey }) is not { } read)
+                return;
+            if (read is not [double greenDot, double lever])
             {
                 announcer.AnnounceImmediate("Green dot unavailable");
                 return;
@@ -158,9 +159,10 @@ public partial class IniA300Definition
                 announcer.AnnounceImmediate($"Green dot {A300DisplayText.FlapSpeed(A300PfdSpeed.GreenDot, greenDot, lever)}");
                 return;
             }
-            double? instead = await ReadFresh(sim, shown == A300PfdSpeed.S ? A300Readouts.SSpeedKey : A300Readouts.FSpeedKey,
-                ReadoutTimeoutMs);
-            announcer.AnnounceImmediate(A300DisplayText.GreenDotNotShown(shown, instead));
+            string insteadKey = shown == A300PfdSpeed.S ? A300Readouts.SSpeedKey : A300Readouts.FSpeedKey;
+            if (await ReadAllFreshAsync(sim, new[] { insteadKey }) is not { } instead)
+                return;
+            announcer.AnnounceImmediate(A300DisplayText.GreenDotNotShown(shown, instead[0]));
         }
         catch (Exception ex)
         {
