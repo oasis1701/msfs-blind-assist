@@ -159,6 +159,29 @@ DU source selectors (`MAIN_MainPanelDUSel`, `MAIN_LowerDUSel`) have a "reverse s
 
 12 individual `DOOR_annun*` bools (FWD_ENTRY, FWD_SERVICE, AIRSTAIR, …) plus a 4-state `PED_FltDkDoorSel` enum. No 16-byte `DOOR_state[16]` array like the 777.
 
+## Flashing annunciators
+
+The NG3 SDK has no flash flag for annunciators (the only flash flags are the MCP
+`MCP_IASOverspeedFlash` / `MCP_IASUnderspeedFlash`): a blinking lamp is a boolean that flips on
+every blink. Every two-state lamp with no `ProcessSimVarUpdate` case of its own therefore speaks
+through `Pmdg737FlashingLights` ([P737-3]):
+
+- "on" at the first lit edge;
+- an off edge is held, and spoken only once the lamp has stayed off for the hold time;
+- two re-lights inside a hold mark the lamp flashing, spoken once as "<light>: flashing";
+- a flashing lamp is silent until it stays one way for the hold time: "<light>: steady" or
+  "<light>: off".
+
+The hold time is 2 s by default, overridable per lamp in `FlashHoldOverridesMs`. **The real PMDG
+blink rate has not been measured** (debug.log does not record annunciator changes): if a lamp
+blinks slower than the hold, it reads as on/off and needs an override.
+
+Warnings panel → **Flashing lights** reads which lamps are flashing now, from the filter's own
+state, or "No lights flashing".
+
+Lamps with their own case keep their own wording and are not filtered: the MCP mode lights, the
+master caution, fire warnings and system cautions, the parking brake and the speed-brake lights.
+
 ## Press-counter fields
 
 `COMM_Attend_PressCount` and `COMM_GrdCall_PressCount` are byte counters that increment on each press. `ProcessSimVarUpdate` detects edges via signed-wrapping delta against the last known counter value (instance fields `_lastAttendPressCount` / `_lastGrdCallPressCount`).

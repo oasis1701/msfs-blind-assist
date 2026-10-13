@@ -86,7 +86,43 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     internal PmdgSpeedBrakeCallout SpeedBrakeCallout => _speedBrakeCallout;
 
     /// <inheritdoc />
-    public override void OnSwitchedAway() => _speedBrakeCallout.Dispose();
+    public override void OnSwitchedAway()
+    {
+        _speedBrakeCallout.Dispose();
+        ResetFlashingLights();
+        _flashTimer?.Dispose();
+        _flashTimer = null;
+    }
+
+    // Annunciator flash filter (Pmdg737FlashingLights). Every two-state lamp the generic path used to
+    // speak goes through it, so a blinking light (IRS ALIGN with no position entered) speaks "on" and
+    // then "flashing" once instead of "on, off" forever. Its held "off" and settle call-outs are spoken
+    // from _flashTimer, OUTSIDE MainForm's Ctrl+M wrap, so the tick checks the mute itself.
+    // Per-light hold overrides (ms) for a light that blinks slower than the default hold; empty until
+    // the sim shows one needs it.
+    private static readonly Dictionary<string, int> FlashHoldOverridesMs = new();
+    private readonly Pmdg737FlashingLights _flashingLights = new(FlashHoldOverridesMs);
+    private System.Windows.Forms.Timer? _flashTimer;
+    private ScreenReaderAnnouncer? _flashAnnouncer;
+    private HashSet<string>? _lampKeys;
+    private HashSet<string> LampKeys => _lampKeys ??=
+        GetVariables().Where(kv => Pmdg737FlashingLights.IsLamp(kv.Value)).Select(kv => kv.Key).ToHashSet();
+
+    /// <summary>The annunciator flash filter, for the tests that pin its wiring.</summary>
+    internal Pmdg737FlashingLights FlashingLights => _flashingLights;
+
+    /// <inheritdoc />
+    public override void OnSimContextReset()
+    {
+        base.OnSimContextReset();
+        ResetFlashingLights();
+    }
+
+    private void ResetFlashingLights()
+    {
+        _flashingLights.Reset();
+        _flashTimer?.Stop();
+    }
 
     // EFIS Minimums knob step sizes per click on the PMDG NG3 737. RADIO mode
     // (DH) clicks in 1-ft increments; BARO mode (DA) clicks in 20-ft increments.
@@ -191,6 +227,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         var pmdgVars = GetPMDGVariables();
         foreach (var kvp in pmdgVars)
             variables[kvp.Key] = kvp.Value;
+        // Annunciator lamps are announced from ProcessSimVarUpdate (the flash filter, or a case of
+        // their own), which returns true and so skips MainForm's control refresh: an open panel's
+        // lamp row would freeze. A lamp row is read-only, so following every value is safe.
+        foreach (var def in variables.Values.Where(Pmdg737FlashingLights.IsLamp))
+            def.RefreshControlWhenDefHandled = static _ => true;
         return variables;
     }
 
@@ -973,6 +1014,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // either press, so the LEFT-side events are sufficient.
         d["WARN_ResetFireWarning"]  = Momentary("WARN_ResetFireWarning",  "Clear Fire Warning");
         d["WARN_ResetMasterCaution"] = Momentary("WARN_ResetMasterCaution", "Clear Master Caution");
+        // Readout: which lights the flash filter has marked flashing now (no SDK field behind it;
+        // HandleUIVariableSet answers it, like the cabin composite buttons).
+        d["WARN_FlashingLights"] = Momentary("WARN_FlashingLights", "Flashing lights");
         // Cabin altitude warning horn cutout — silences the warning horn after
         // a depressurization event so the crew can use the radios. Pure
         // momentary push; SDK exposes only the event, no state field.
@@ -1964,7 +2008,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "WARN_annunFIRE_WARN_0", "WARN_annunFIRE_WARN_1",
                 "WARN_annunMASTER_CAUTION_0", "WARN_annunMASTER_CAUTION_1",
                 "WARN_ResetFireWarning", "WARN_ResetMasterCaution",
-                "WARN_CabAltHornCutout"
+                "WARN_CabAltHornCutout", "WARN_FlashingLights"
             },
             ["EFIS Captain"] = new List<string>
             {
@@ -4110,6 +4154,13 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // plain bools toggled by PMDG's own cabin click-spots (write-stick
         // verified both directions); bins/blinds not fitted on the loaded
         // cabin layout are harmless no-ops.
+        // Flashing lights readout (Warnings panel): what the flash filter is tracking now.
+        if (varKey == "WARN_FlashingLights")
+        {
+            announcer.AnnounceImmediate(FlashingLightsReadout());
+            return true;
+        }
+
         if (varKey is "CABIN_AllBinsOpen" or "CABIN_AllBinsClose")
         {
             double binTarget = varKey == "CABIN_AllBinsOpen" ? 1 : 0;
@@ -5275,9 +5326,50 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             }
 
             default:
+                // Two-state annunciator lamps with no case of their own: through the flash filter.
+                if (LampKeys.Contains(varName))
+                {
+                    OnLampValue(varName, value > 0.5, announcer);
+                    return true;
+                }
                 return false;
         }
     }
+
+    // A lamp's edge, through the flash filter. Inside MainForm's Ctrl+M wrap, so the immediate "on"
+    // or "flashing" needs no mute check of its own.
+    private void OnLampValue(string varName, bool lit, ScreenReaderAnnouncer announcer)
+    {
+        _flashAnnouncer = announcer;
+        if (_flashingLights.OnValue(varName, lit, Environment.TickCount64) is { } callout)
+            announcer.Announce(Pmdg737FlashingLights.Phrase(callout, GetVariables()[varName]));
+        if (_flashingLights.HasPending)
+        {
+            if (_flashTimer == null)
+            {
+                _flashTimer = new System.Windows.Forms.Timer { Interval = 250 };
+                _flashTimer.Tick += (_, _) => OnFlashTimerTick();
+            }
+            _flashTimer.Start();
+        }
+    }
+
+    private void OnFlashTimerTick()
+    {
+        foreach (var callout in _flashingLights.Tick(Environment.TickCount64))
+        {
+            // Outside MainForm's Ctrl+M wrap: honour the mute here.
+            if (Services.DefAnnounceMuteSets.IsMuted(Code, callout.Key, Settings.SettingsManager.Current))
+                continue;
+            _flashAnnouncer?.Announce(Pmdg737FlashingLights.Phrase(callout, GetVariables()[callout.Key]));
+        }
+        if (!_flashingLights.HasPending)
+            _flashTimer?.Stop();
+    }
+
+    /// <summary>The Flashing lights readout, built from the filter's tracked state.</summary>
+    internal string FlashingLightsReadout() =>
+        Pmdg737FlashingLights.Readout(_flashingLights.FlashingKeys.Select(k => GetVariables()[k].DisplayName));
 
     // -------------------------------------------------------------------
     // Decode `COMM_ReceiverSwitches` bitmask into a comma-separated list of
