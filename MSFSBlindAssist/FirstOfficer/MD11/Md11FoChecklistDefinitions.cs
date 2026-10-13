@@ -16,7 +16,11 @@ using CheckFn = System.Func<Md11FoActionExecutor, Md11FoStateEvaluator, System.T
 /// Preflight alone ran 92 lines, most of them lamps that light during a test, gauge readings and
 /// panel inspections only a sighted crew can see; those are gone. What remains auto-ticks from a
 /// switch position the app reads, or is a Captain item reachable from the app (MCDU, altimeters,
-/// radios, the flight controls). Never re-add a check the pilot has no way to perform.
+/// radios, the flight controls). Never re-add a check the pilot has no way to perform. TFDi's
+/// in-flight pages (Passing 10,000 Feet, Passing Transition Altitude, Cruise, Passing Below
+/// Transition Level, Descending Below 10,000 Feet) are left out (owner, 2026-10-13): the
+/// automatic modes do that work (<see cref="Md11FoFlightPhaseMonitor"/>), and the Descent
+/// action group keeps the landing autobrake reminder.
 /// </summary>
 public static class Md11FoChecklistDefinitions
 {
@@ -29,8 +33,7 @@ public static class Md11FoChecklistDefinitions
         AfterStart(), AfterStartCL(),
         BeforeTakeoff(), BeforeTakeoffCL(),
         AfterTakeoff(), AfterTakeoffCL(),
-        Passing10000CL(), TransitionAltitudeCL(), CruiseCL(), TransitionLevelCL(),
-        Descent(), DescentCL(),
+        Descent(),
         BeforeLanding(), BeforeLandingCL(),
         AfterLanding(), AfterLandingCL(),
         Parking(), ParkingCL(),
@@ -318,6 +321,8 @@ public static class Md11FoChecklistDefinitions
             // SLOW: the APU stops up to 90 s after its bleed valve closes — hold the tick open.
             Auto("SD_APU", "SHUTDOWN", "APU: OFF", "FO_APU_OFF", On,
                 SetThenWait(X.ApuShutdown, 0, "FO_APU_OFF", On, 120)),
+            // Ground power, when it was used: the Shutdown switch-off, which may leave the battery alone.
+            Auto("SD_EXT_PWR", "SHUTDOWN", "External power: OFF", "FO_EXT_POWER_OFF", On, Set(X.ExtPowerShutdown, 0)),
             Auto("SD_BATTERY", "SHUTDOWN", "Battery: OFF", Batt, Off, Set(Batt, 0)),
         }
     };
@@ -476,56 +481,6 @@ public static class Md11FoChecklistDefinitions
             }
         };
     }
-
-    private static Group Passing10000CL() => new()
-    {
-        Id = "PASSING_10000_CL", Name = "Passing 10,000 Feet Checklist",
-        Items = new()
-        {
-            Reminder("P10_STERILE", "PASSING_10000_CL", "Sterile Cockpit: Chime"),
-            Read("P10_LANDING_LIGHTS", "PASSING_10000_CL", "Landing Lights: Off", "FO_LANDING_LIGHTS_OFF", On),
-        }
-    };
-
-    private static Group TransitionAltitudeCL() => new()
-    {
-        Id = "TRANSITION_ALTITUDE_CL", Name = "Passing Transition Altitude Checklist",
-        Items = new()
-        {
-            Read("TAC_STD", "TRANSITION_ALTITUDE_CL", "Altimeters: STD (Pull)", "FO_ALTIMETERS_STD", On),
-            Read("TAC_DAF", "TRANSITION_ALTITUDE_CL", "Dial-a-Flap: Set 15", "FO_DAF_15", On),
-        }
-    };
-
-    private static Group CruiseCL() => new()
-    {
-        Id = "CRUISE_CL", Name = "Cruise Checklist",
-        Items = new()
-        {
-            Reminder("CRC_FMA", "CRUISE_CL", "FMA: Verify"),
-            Reminder("CRC_FMS", "CRUISE_CL", "FMS: Setup for descent"),
-        }
-    };
-
-    private static Group TransitionLevelCL() => new()
-    {
-        Id = "TRANSITION_LEVEL_CL", Name = "Passing Below Transition Level Checklist",
-        Items = new()
-        {
-            Reminder("TLC_QNH", "TRANSITION_LEVEL_CL", "Altimeters: Local QNH"),
-        }
-    };
-
-    private static Group DescentCL() => new()
-    {
-        Id = "DESCENT_CL", Name = "Descending Below 10,000 Feet Checklist",
-        Items = new()
-        {
-            Read("DSC_LANDING_LIGHTS", "DESCENT_CL", "Landing Lights: On", "FO_LANDING_LIGHTS_ON", On),
-            Reminder("DSC_STERILE", "DESCENT_CL", "Sterile Cockpit: Chime"),
-            Reminder("DSC_AUTOBRAKE", "DESCENT_CL", "Autobrakes: As required"),
-        }
-    };
 
     private static Group BeforeLandingCL() => new()
     {

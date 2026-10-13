@@ -365,8 +365,15 @@ to reach 55 %.
 
 **Other rules the executor keeps**, each from TFDi's code or a live measurement. External power is
 decided by its ON lamp, read fresh and first: connect only with AVAIL lit or on the battery alone,
-disconnect only with APU power ON (live: TFDi itself refuses to drop external power when it is the
-only source, so a flow that tried would stall with the aircraft still on the GPU). The APU is shut
+disconnect only with APU power ON — so a Before Start hand-tick never leaves the aircraft on its
+battery. Shutdown is the exception (owner, 2026-10-13): its "External power: OFF" step and line
+(`ExtPowerShutdown`, after the APU has stopped, before the battery) disconnect without APU power,
+because the battery alone is the point there, and only on the ground with every engine below 10 %
+N2 (unread refuses), skipped when the ON lamp is dark or nothing powers the busses
+(`FO_EXT_POWER_OFF`). One press, read back on the ON lamp. NOT SETTLED: an earlier note here said
+TFDi itself refuses to drop external power when it is the only source, while
+[docs/md11.md](md11.md) §9 measured external power off with only the battery left on; if TFDi
+refuses, the step reports it and the flow still turns the battery off. The APU is shut
 down only with its bleed closed (an open bleed restarts the shutdown timer) and APU PWR ON lit (a
 press with it dark REQUESTS APU power). Engine, wing and tail anti-ice are left alone in AUTO —
 TFDi toggles them only in MANUAL, and this install reads AUTO. The autobrake goes to T.O. or OFF
@@ -380,11 +387,14 @@ reads stopped (N2 below 10 %; unread counts as not stopped), and Shutdown also u
 ground. Found live: Power Up started with the engines running cut all three fuel switches, and
 Shutdown switched the IRS and the battery off.
 
-**Checklists.** Action groups mirror each flow, and TFDi's normal checklist is carried as sixteen
+**Checklists.** Action groups mirror each flow, and TFDi's normal checklist is carried as eleven
 read-back groups in its order: Cockpit Entry, Preflight, Before Start, Engine Start, After Start,
-Before Takeoff, After Takeoff, Passing 10,000 Feet, Passing Transition Altitude, Cruise, Passing
-Below Transition Level, Descending Below 10,000 Feet, Before Landing, After Landing, Parking and
-Shutdown. They are CONDENSED (owner request, 2026-10-01), not verbatim: TFDi's Preflight ran 92
+Before Takeoff, After Takeoff, Before Landing, After Landing, Parking and Shutdown. TFDi's in-flight
+pages — Passing 10,000 Feet, Passing Transition Altitude, Cruise, Passing Below Transition Level and
+Descending Below 10,000 Feet — are left out on purpose (owner, 2026-10-13): the automatic modes
+below do that work, and the Descent flow and its action group stay for the landing autobrake, local
+QNH and sterile chime reminders. Never re-add them as missing TFDi pages. The read-back groups are
+CONDENSED (owner request, 2026-10-01), not verbatim: TFDi's Preflight ran 92
 lines and its Engine Start 16, most of them lamps lighting during a test, gauge readings (EGT, oil,
 fuel flow) and panel inspections a blind pilot cannot perform. Each list now holds only switch
 positions the app reads back (auto-tick) and Captain items reachable from MSFSBA (MCDU, altimeters,

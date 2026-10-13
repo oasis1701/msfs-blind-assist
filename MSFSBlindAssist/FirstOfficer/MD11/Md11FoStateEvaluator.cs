@@ -98,8 +98,6 @@ public sealed class Md11FoStateEvaluator : LVarStateEvaluator, IFoEngine3N2Sink,
 
     private static bool Pos(double v, double p) => Md11FoSwitching.AtPosition(v, p);
 
-    private static readonly string[] Alts = { "MD11_CAP_ALTIMETER", "MD11_FO_ALTIMETER", "MD11_STBY_ALTIMETER" };
-
     private static readonly Dictionary<string, Synth> Synthetics = new(StringComparer.Ordinal)
     {
         ["FO_POWERED"] = new(PowerInputs, r => B(Powered(r))),
@@ -113,6 +111,16 @@ public sealed class Md11FoStateEvaluator : LVarStateEvaluator, IFoEngine3N2Sink,
             "MD11_OVHD_LTS_RWY_TURNOFF_L_LT", "MD11_OVHD_LTS_RWY_TURNOFF_R_LT"),
         ["FO_DOME_OFF"] = Lamps(v => !Lit(v[0]), "MD11_LTS_DOME"),
         ["FO_EXT_POWER_ON"] = Lamps(v => Lit(v[0]), "MD11_OVHD_ELEC_EXT_PWR_ON_LT"),
+        // Off when the ON lamp is dark, or when nothing powers the DC busses: connected external
+        // power powers them, so on the battery alone (DC1 OFF lit) or cold it cannot be on. The
+        // Shutdown line must tick there, where every lamp field above reads NaN.
+        ["FO_EXT_POWER_OFF"] = new(new[] { "MD11_OVHD_ELEC_EXT_PWR_ON_LT" }.Concat(PowerInputs).ToArray(), r =>
+        {
+            if (!Known(r(TFDiMD11Definition.DcPowerKey), r(TFDiMD11Definition.Dc1BusOffKey))) return double.NaN;
+            if (!Powered(r)) return 1;
+            double on = r("MD11_OVHD_ELEC_EXT_PWR_ON_LT");
+            return Known(on) ? B(!Lit(on)) : double.NaN;
+        }),
         ["FO_APU_POWER_ON"] = Lamps(v => Lit(v[0]), "MD11_OVHD_ELEC_APU_PWR_ON_LT"),
         ["FO_AUX_PUMP_1_ON"] = Lamps(v => Lit(v[0]), "MD11_OVHD_HYD_AUX_PUMP_1_ON_LT"),
         ["FO_IGNITION_SELECTED"] = Lamps(v => Lit(v[0]) || Lit(v[1]), "MD11_OVHD_ENG_A_LT", "MD11_OVHD_ENG_B_LT"),
@@ -159,7 +167,6 @@ public sealed class Md11FoStateEvaluator : LVarStateEvaluator, IFoEngine3N2Sink,
         ["FO_IRS_OFF"] = Vars(v => v.All(x => Pos(x, 0)), "MD11_OVHD_IRS_1_KB", "MD11_OVHD_IRS_2_KB", "MD11_OVHD_IRS_3_KB"),
         ["FO_FLAPS_UP"] = Vars(v => Md11FoSwitching.FlapDetentIndex(v[0]) == 0, "MD11_FLAP_LATCH"),
         ["FO_FLAPS_DAF"] = Vars(v => Md11FoSwitching.FlapDetentIndex(v[0]) == 2, "MD11_FLAP_LATCH"),
-        ["FO_DAF_15"] = Vars(v => Math.Abs(v[0] - Md11FoSwitching.DialRawFor(15)) <= 1.0, "MD11_DIALAFLAP_WHEEL_RNG"),
         ["FO_GEAR_DOWN"] = Vars(v => Md11GearLever.IsDown(v[0]), "MD11_MIP_GEAR_SW"),
         ["FO_GEAR_UP"] = Vars(v => v[0] < 5, "MD11_MIP_GEAR_SW"),
         ["FO_FUEL_DUMP_SAFE"] = Vars(v => Pos(v[0], 0) && Pos(v[1], 0) && !Lit(v[2]),
@@ -182,13 +189,7 @@ public sealed class Md11FoStateEvaluator : LVarStateEvaluator, IFoEngine3N2Sink,
         ["FO_AUTO_FLIGHT_ON"] = Vars(v => Md11FoSwitching.AutoFlightOn(v[0], v[1]),
             Md11AutopilotEngage.ApStateKey, Md11AutopilotEngage.AtsStateKey),
         ["FO_START_AIR_READY"] = Vars(v => Pos(v[0], 2) && Pos(v[1], 1), "MD11_APU_STATE", "MD11_OVHD_PNEU_APU_BLEED_BT"),
-        ["FO_ALTIMETERS_STD"] = new(Alts, r =>
-        {
-            var v = Alts.Select(r).ToArray();
-            if (!Known(v) || v.Any(x => x <= 0)) return double.NaN;                         // 0 = not yet published
-            return B(v.All(Md11Fcp.IsStandard));
-        }),
-        ["FO_ENGINES_STOPPED"] = Vars(v => v.All(x => x < 10), "FO_ENG1_N2", "FO_ENG2_N2", "FO_ENG3_N2"),
+        ["FO_ENGINES_STOPPED"] = Vars(v => v.All(x => x < Md11FoSwitching.EngineStoppedN2), "FO_ENG1_N2", "FO_ENG2_N2", "FO_ENG3_N2"),
         ["FO_ENG3_START_CUTOUT"] = Vars(v => Pos(v[0], 0) && v[1] >= 45, "MD11_THR_R_START_SW", "FO_ENG3_N2"),
     };
 

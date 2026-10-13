@@ -14,14 +14,20 @@ public class Md11FoChecklistStructureTests
     private static readonly List<ChecklistGroup<Md11FoActionExecutor, Md11FoStateEvaluator>> Groups = Md11FoChecklistDefinitions.Build();
     private static readonly List<FlowDefinition<Md11FoStateEvaluator>> Flows = Md11FoFlowDefinitions.Build();
 
+    /// <summary>
+    /// Owner, 2026-10-13: no read-back list between After Takeoff and Before Landing. TFDi's
+    /// Passing 10,000 Feet, Passing Transition Altitude, Cruise, Passing Below Transition Level
+    /// and Descending Below 10,000 Feet pages are the automatic modes' work (landing lights,
+    /// standard altimeters and Dial-A-Flap 15, the transition-level call); the Descent flow and
+    /// its action list stay, with the landing autobrake reminder.
+    /// </summary>
     [Fact]
     public void GroupIds_InFlightOrder()
         => Assert.Equal(new[]
         {
             "POWER_UP", "COCKPIT_ENTRY_CL", "PREFLIGHT", "PREFLIGHT_CL", "BEFORE_START", "BEFORE_START_CL",
             "ENGINE_START", "ENGINE_START_CL", "AFTER_START", "AFTER_START_CL", "BEFORE_TAKEOFF", "BEFORE_TAKEOFF_CL",
-            "AFTER_TAKEOFF", "AFTER_TAKEOFF_CL", "PASSING_10000_CL", "TRANSITION_ALTITUDE_CL", "CRUISE_CL",
-            "TRANSITION_LEVEL_CL", "DESCENT", "DESCENT_CL", "BEFORE_LANDING", "BEFORE_LANDING_CL",
+            "AFTER_TAKEOFF", "AFTER_TAKEOFF_CL", "DESCENT", "BEFORE_LANDING", "BEFORE_LANDING_CL",
             "AFTER_LANDING", "AFTER_LANDING_CL", "PARKING", "PARKING_CL", "SHUTDOWN", "SHUTDOWN_CL",
         }, Groups.Select(g => g.Id));
 
@@ -236,15 +242,27 @@ public class Md11FoChecklistStructureTests
     }, Labels("AFTER_TAKEOFF_CL"));
 
     [Fact]
-    public void InFlightPhases_Labels()
-    {
-        Assert.Equal(new[] { "Sterile Cockpit: Chime", "Landing Lights: Off" }, Labels("PASSING_10000_CL"));
-        Assert.Equal(new[] { "Altimeters: STD (Pull)", "Dial-a-Flap: Set 15" }, Labels("TRANSITION_ALTITUDE_CL"));
-        Assert.Equal(new[] { "FMA: Verify", "FMS: Setup for descent" }, Labels("CRUISE_CL"));
-        Assert.Equal(new[] { "Altimeters: Local QNH" }, Labels("TRANSITION_LEVEL_CL"));
-        Assert.Equal(new[] { "Landing Lights: On", "Sterile Cockpit: Chime", "Autobrakes: As required" }, Labels("DESCENT_CL"));
-        Assert.Equal(new[] { "Gear: Down", "Flaps/Slats: As required", "Spoilers: Armed", "Missed Approach Altitude: Set" },
+    public void BeforeLanding_Labels()
+        => Assert.Equal(new[] { "Gear: Down", "Flaps/Slats: As required", "Spoilers: Armed", "Missed Approach Altitude: Set" },
             Labels("BEFORE_LANDING_CL"));
+
+    /// <summary>
+    /// The Shutdown line "External power: OFF" ticks on the battery alone, where the plain lamp
+    /// field reads unknown (the busses are dead), and its tick fires the Shutdown switch-off.
+    /// </summary>
+    [Fact]
+    public void Shutdown_ExternalPowerLine_TicksOnTheBatteryAlone()
+    {
+        var line = Groups.Single(g => g.Id == "SHUTDOWN").Items.Single(i => i.Id == "SD_EXT_PWR");
+        Assert.Equal("External power: OFF", line.Label);
+        Assert.NotNull(line.CheckAction);
+        var batteryOnly = new Dictionary<string, double>
+        {
+            [TFDiMD11Definition.DcPowerKey] = 24, [TFDiMD11Definition.Dc1BusOffKey] = 1,
+            ["MD11_OVHD_ELEC_EXT_PWR_ON_LT"] = 0,
+        };
+        double v = Md11FoStateEvaluator.Compute(line.StateFieldName!, k => batteryOnly.TryGetValue(k, out var x) ? x : double.NaN);
+        Assert.True(line.StateCondition!(v), $"{line.StateFieldName} reads {v} on the battery alone");
     }
 
     [Fact]

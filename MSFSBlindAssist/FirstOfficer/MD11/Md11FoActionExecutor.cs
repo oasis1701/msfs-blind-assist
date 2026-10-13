@@ -19,7 +19,8 @@ namespace MSFSBlindAssist.FirstOfficer.MD11;
 /// unreachable); correct a wrong-way step at once, and learn a direction only from a move;
 /// never move the flap handle airborne; never walk the Dial-A-Flap wheel (one direct write);
 /// never set a landing autobrake; hold the annunciator light test only under a lamp-speech mute;
-/// never disconnect external power without APU power on; never press the AUX hydraulic pump over
+/// never disconnect external power without APU power on, except at Shutdown (on the ground, every
+/// engine stopped), where the battery alone is the point; never press the AUX hydraulic pump over
 /// a running hydraulic test; never press engine/wing/tail anti-ice in AUTO (it is TFDi's); never
 /// press AUTO FLIGHT unless the autopilot and autothrottle both read off (it swaps an engaged AP).
 /// There is NO fallback for an unmapped key — that is a mapping bug to surface, not a write to
@@ -29,6 +30,11 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
 {
     // ---- pseudo-keys (composite operations) ----
     public const string ExtPower = "FO_EXT_POWER";
+    /// <summary>
+    /// External power OFF at Shutdown, where leaving the aircraft on its battery is the point
+    /// (the battery goes off next): no APU power needed, only on the ground with every engine stopped.
+    /// </summary>
+    public const string ExtPowerShutdown = "FO_EXT_POWER_SHUTDOWN";
     public const string ApuStart = "FO_APU_START";
     public const string ApuShutdown = "FO_APU_SHUTDOWN";
     public const string Ignition = "FO_IGNITION";
@@ -90,6 +96,7 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
         // Static handlers are called directly; only the ones that read the flight state
         // (_state: N2, on-ground) are instance methods, called through the executor.
         [ExtPower] = (_, io, t) => ExtPowerAsync(io, t),
+        [ExtPowerShutdown] = (e, io, _) => e.ExtPowerShutdownAsync(io),
         [ApuStart] = (_, io, _) => ApuStartAsync(io),
         [ApuShutdown] = (_, io, _) => ApuShutdownAsync(io),
         [Ignition] = (_, io, t) => IgnitionAsync(io, t),
@@ -453,6 +460,38 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
         }
         return await LampToggleAsync(io, c, 0).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// External power OFF at Shutdown (owner, 2026-10-13). The APU is off by then, so the rule
+    /// above (disconnect only with APU power ON) would always refuse; here the battery is the
+    /// point, as it goes off next. Only on the ground with every engine stopped, the Shutdown
+    /// flow's own guards, kept here because a checklist hand-tick reaches this directly. The ON
+    /// lamp decides, read fresh: dark is nothing to do (the button TOGGLES: a press would connect
+    /// a GPU that is only available), unread refuses. One press, read back: an aircraft that keeps
+    /// external power (TFDi may refuse to drop its last source; not measured) is not done.
+    /// </summary>
+    private async Task<bool> ExtPowerShutdownAsync(IMd11FoTransport io)
+    {
+        if (!OnGroundWithEnginesStopped())
+        {
+            Log.Info("MD11 FO", "external power left on: not on the ground with every engine stopped");
+            return false;
+        }
+        const string on = "MD11_OVHD_ELEC_EXT_PWR_ON_LT";
+        bool? connected = Md11FoSwitching.LampState(await io.ReadFreshAsync(on, LampReadTimeoutMs).ConfigureAwait(false), 1);
+        if (connected is null) return false;
+        if (connected == false) return true;
+        var c = Control("MD11_OVHD_ELEC_EXT_PWR_BT");
+        io.NoteActuation(c.Key);
+        if (!io.Press(c.Down, c.Up)) return false;
+        return await WaitForAsync(io, on, v => v <= Md11ControlState.LitThreshold,
+            LampVerifyTimeoutMs, LampReadTimeoutMs).ConfigureAwait(false);
+    }
+
+    /// <summary>Definitely on the ground, and every engine's N2 read and below <see cref="Md11FoSwitching.EngineStoppedN2"/>.</summary>
+    private bool OnGroundWithEnginesStopped()
+        => _state is { OnGround: true } s
+           && Enumerable.Range(1, 3).All(e => s.EngineN2(e) is var n && !double.IsNaN(n) && n < Md11FoSwitching.EngineStoppedN2);
 
     private static async Task<bool> ApuStartAsync(IMd11FoTransport io)
     {

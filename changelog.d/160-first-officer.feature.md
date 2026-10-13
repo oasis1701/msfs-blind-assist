@@ -51,6 +51,11 @@ cabin crew for landing. A finished flow now ticks a line the First Officer can r
 its steps set it or one of its checks confirmed it; a line whose step was skipped is left to the
 aircraft: like any line, it ticks itself when the aircraft shows it done, and stays open until then.
 
+On the TFDi MD-11, the Checklists tab follows TFDi's normal checklist from Cockpit Entry to
+Shutdown. It leaves out the 10,000 feet, transition and cruise pages, because the First Officer
+does that work by itself in flight. If you used ground power, Shutdown switches external power off
+just before the battery.
+
 While the window is open, it also switches the landing lights at 10,000 feet, and you
 can turn that off in Settings. If SimBrief has supplied the transition altitude and
 level, it also sets the altimeters to standard at the transition altitude and back to QNH

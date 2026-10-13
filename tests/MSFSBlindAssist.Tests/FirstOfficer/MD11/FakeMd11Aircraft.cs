@@ -35,6 +35,11 @@ internal sealed class FakeMd11Aircraft : IMd11FoTransport, IMd11FoFlightState
     public long AuxPump1PressedAt { get; private set; } = -1;
     /// <summary>AUTO FLIGHT presses change nothing (a press the aircraft refuses).</summary>
     public bool AutoFlightInert { get; set; }
+    /// <summary>
+    /// An EXT PWR press that would leave only the battery changes nothing. Not measured either way
+    /// (docs/first-officer.md): the case the Shutdown step must report rather than call done.
+    /// </summary>
+    public bool KeepsTheLastSource { get; set; }
 
     public Dictionary<string, double> Vars { get; } = new(StringComparer.Ordinal);
     public List<int> Events { get; } = new();
@@ -242,7 +247,7 @@ internal sealed class FakeMd11Aircraft : IMd11FoTransport, IMd11FoFlightState
             case 73775: Toggle("MD11_AOVHD_EVAC_GRD"); break;
             case 73771: Toggle("MD11_AOVHD_GPWS_GRD"); break;
             // momentary system toggles
-            case 90142: if (GpuAvailable || _extConnected) { _extConnected = !_extConnected; Powered = Powered || _extConnected; } RecomputeLamps(); break;
+            case 90142: ExtPowerPress(); break;
             case 90144:
                 if (Get("MD11_APU_STATE") < 0.5) { Set("MD11_APU_STATE", 1); _apuStartedAt = Clock; _apuPowerRequested = true; }
                 else { _apuPowerRequested = !_apuPowerRequested; if (!_apuPowerRequested) Set("MD11_APU_STATE", 3); }
@@ -300,6 +305,27 @@ internal sealed class FakeMd11Aircraft : IMd11FoTransport, IMd11FoFlightState
                 Set("MD11_FLAP_LATCH", FlapRng[_flapIndex]);
                 break;
         }
+    }
+
+    /// <summary>
+    /// EXT PWR toggles the connection. Measured (docs/md11.md §9): external power off with the
+    /// battery still on puts the DC busses back to unpowered, unless the APU is powering them.
+    /// </summary>
+    private void ExtPowerPress()
+    {
+        bool apuPowering = Get("MD11_APU_STATE") is 2 && _apuPowerRequested;
+        if (_extConnected)
+        {
+            if (KeepsTheLastSource && !apuPowering) return;
+            _extConnected = false;
+            Powered = apuPowering;
+        }
+        else if (GpuAvailable)
+        {
+            _extConnected = true;
+            Powered = true;
+        }
+        RecomputeLamps();
     }
 
     private void ToggleLamp(string lamp) => Set(lamp, Get(lamp) > 0.5 ? 0 : 1);

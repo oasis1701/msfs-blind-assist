@@ -673,6 +673,88 @@ public class Md11FoActionExecutorTests : IDisposable
         Assert.Empty(_ac.Events);
     }
 
+    // ---------------- external power off at Shutdown: the battery is the point ----------------
+
+    [Fact]
+    public async Task ExternalPowerShutdown_DisconnectsWithoutApuPower_LeavingTheBattery()
+    {
+        // Shutdown: the APU is already off and the GPU is the only source. Unlike Before Start,
+        // dropping to the battery here is what the pilot wants (the battery goes off next).
+        _ac.ConnectExternalPower();
+        Assert.True(await _exec.Set(Md11FoActionExecutor.ExtPowerShutdown, 0));
+        Assert.Equal(new[] { 90142, 90143 }, _ac.Events);
+        Assert.Equal(0, _ac.Get("MD11_OVHD_ELEC_EXT_PWR_ON_LT"));
+        Assert.False(_ac.Powered);                                    // on the battery alone
+        Assert.Contains("MD11_OVHD_ELEC_EXT_PWR_BT", _ac.Noted);
+    }
+
+    [Fact]
+    public async Task ExternalPowerShutdown_RefusedAirborne()
+    {
+        _ac.ConnectExternalPower();
+        _ac.GroundState = false;
+        Assert.False(await _exec.Set(Md11FoActionExecutor.ExtPowerShutdown, 0));
+        Assert.Empty(_ac.Events);
+    }
+
+    [Fact]
+    public async Task ExternalPowerShutdown_RefusedWithTheGroundStateUnread()
+    {
+        _ac.ConnectExternalPower();
+        _ac.GroundState = null;
+        Assert.False(await _exec.Set(Md11FoActionExecutor.ExtPowerShutdown, 0));
+        Assert.Empty(_ac.Events);
+    }
+
+    [Theory]
+    [InlineData(1, 20.0)]                 // engine 1 turning
+    [InlineData(3, 60.0)]                 // engine 3 running
+    [InlineData(2, double.NaN)]           // engine 2 unread: never assumed stopped
+    public async Task ExternalPowerShutdown_RefusedUnlessEveryEngineIsStopped(int engine, double n2)
+    {
+        _ac.ConnectExternalPower();
+        _ac.N2[engine] = n2;
+        Assert.False(await _exec.Set(Md11FoActionExecutor.ExtPowerShutdown, 0));
+        Assert.Empty(_ac.Events);
+    }
+
+    [Fact]
+    public async Task ExternalPowerShutdown_NotConnected_PressesNothing()
+    {
+        // The GPU is there (AVAIL) but not on the busses: the button TOGGLES, so a press would connect it.
+        Assert.True(await _exec.Set(Md11FoActionExecutor.ExtPowerShutdown, 0));
+        Assert.Empty(_ac.Events);
+    }
+
+    [Fact]
+    public async Task ExternalPowerShutdown_OnTheBatteryAlready_PressesNothing()
+    {
+        _ac.Powered = false;
+        Assert.True(await _exec.Set(Md11FoActionExecutor.ExtPowerShutdown, 0));
+        Assert.Empty(_ac.Events);
+    }
+
+    [Fact]
+    public async Task ExternalPowerShutdown_RefusesOnAnUnreadOnLamp()
+    {
+        _ac.ConnectExternalPower();
+        _ac.Unreadable.Add("MD11_OVHD_ELEC_EXT_PWR_ON_LT");
+        Assert.False(await _exec.Set(Md11FoActionExecutor.ExtPowerShutdown, 0));
+        Assert.Empty(_ac.Events);
+    }
+
+    [Fact]
+    public async Task ExternalPowerShutdown_APressTheAircraftIgnores_IsNotDone()
+    {
+        // Not measured either way: TFDi may refuse to drop external power when it is the only
+        // source. Then the ON lamp stays lit, and the step must say so rather than succeed.
+        _ac.ConnectExternalPower();
+        _ac.KeepsTheLastSource = true;
+        Assert.False(await _exec.Set(Md11FoActionExecutor.ExtPowerShutdown, 0));
+        Assert.Equal(new[] { 90142, 90143 }, _ac.Events);              // one press, never repeated
+        Assert.Equal(1, _ac.Get("MD11_OVHD_ELEC_EXT_PWR_ON_LT"));
+    }
+
     // ---------------- the hydraulic test is never cut short ----------------
 
     [Fact]

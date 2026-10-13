@@ -279,7 +279,8 @@ public static class Md11FoFlowDefinitions
     {
         Id = "DESCENT", Name = "Descent",
         Description = "Landing lights on; reminders for local QNH, the landing autobrake and the sterile cockpit chime.",
-        RelatedChecklistGroupIds = new[] { "DESCENT", "DESCENT_CL" },
+        // No read-back list: TFDi's in-flight pages are the automatic modes' work (owner, 2026-10-13).
+        RelatedChecklistGroupIds = new[] { "DESCENT" },
         Steps = new()
         {
             Done(Skip(SW("DS_LANDING_LIGHTS", "Landing lights: ON", X.LandingLights, 2), s => s.IsOn("FO_LANDING_LIGHTS_ON")), "DS_LANDING_LIGHTS"),
@@ -360,7 +361,7 @@ public static class Md11FoFlowDefinitions
     private static Flow BuildShutdown() => new()
     {
         Id = "SHUTDOWN", Name = "Shutdown",
-        Description = "Emergency lights and power off, windshield heat off, IRS off, cargo temperatures off, dome off, EVAC off, packs off, APU off, battery off.",
+        Description = "Emergency lights and power off, windshield heat off, IRS off, cargo temperatures off, dome off, EVAC off, packs off, APU off, external power off, battery off.",
         RelatedChecklistGroupIds = new[] { "SHUTDOWN", "SHUTDOWN_CL" },
         Steps = new()
         {
@@ -382,6 +383,8 @@ public static class Md11FoFlowDefinitions
             Done(Skip(SW("SD_PACKS", "Packs: OFF", X.PacksOff, 0), s => s.IsOn("FO_PACKS_OFF")), "SD_PACKS"),
             Done(Skip(SW("SD_APU", "APU: OFF", X.ApuShutdown, 0), s => s.IsOn("FO_APU_OFF")), "SD_APU"),
             WaitForField("SD_APU_STOPPED", "APU to stop", "MD11_APU_STATE", v => v < 0.5, 150),
+            // Ground power, when it was used (owner, 2026-10-13): the last source before the battery.
+            Done(Skip(SW("SD_EXT_PWR", "External power: OFF", X.ExtPowerShutdown, 0), s => s.IsOn("FO_EXT_POWER_OFF")), "SD_EXT_PWR"),
             Done(Skip(SW("SD_BATTERY", "Battery: OFF", Batt, 0), s => s.IsPosition(Batt, 0)), "SD_BATTERY"),
         }
     };

@@ -77,18 +77,27 @@ public class Md11FoStateEvaluatorTests
         Assert.Equal(1, Md11FoStateEvaluator.Compute("FO_GEAR_UP", Read(new() { ["MD11_MIP_GEAR_SW"] = 0 })));
     }
 
-    [Fact]
-    public void AltimetersStd_NeedsAllThreeStandard()
+    /// <summary>
+    /// The Shutdown line "External power: OFF" must tick once the aircraft is on its battery, where
+    /// every lamp field reads unknown. Connected external power powers the DC busses, so with the
+    /// busses dead (battery alone: 24 V with DC1 OFF lit; cold: 0 V) it cannot be on.
+    /// </summary>
+    [Theory]
+    [InlineData(28.0, 0.0, 1.0, 0.0)]           // powered, ON lamp lit: connected
+    [InlineData(28.0, 0.0, 0.0, 1.0)]           // powered by the APU, ON lamp dark
+    [InlineData(24.0, 1.0, 0.0, 1.0)]           // battery alone: DC1 OFF lit
+    [InlineData(0.0, 0.0, 0.0, 1.0)]            // cold and dark
+    [InlineData(28.0, 0.0, double.NaN, double.NaN)]   // powered, ON lamp unread
+    [InlineData(28.0, double.NaN, 0.0, double.NaN)]   // the power gate not yet delivered
+    public void ExternalPowerOff_IsTheOnLampDark_OrNothingPowered(double dcVolts, double dc1Off, double onLamp, double want)
     {
         var d = new Dictionary<string, double>
         {
-            ["MD11_CAP_ALTIMETER"] = 29.92, ["MD11_FO_ALTIMETER"] = 1013.25, ["MD11_STBY_ALTIMETER"] = 29.92,
+            [TFDiMD11Definition.DcPowerKey] = dcVolts,
+            [TFDiMD11Definition.Dc1BusOffKey] = dc1Off,
+            ["MD11_OVHD_ELEC_EXT_PWR_ON_LT"] = onLamp,
         };
-        Assert.Equal(1, Md11FoStateEvaluator.Compute("FO_ALTIMETERS_STD", Read(d)));
-        d["MD11_STBY_ALTIMETER"] = 30.10;
-        Assert.Equal(0, Md11FoStateEvaluator.Compute("FO_ALTIMETERS_STD", Read(d)));
-        d["MD11_STBY_ALTIMETER"] = 0;                                   // an unpublished export
-        Assert.True(double.IsNaN(Md11FoStateEvaluator.Compute("FO_ALTIMETERS_STD", Read(d))));
+        Assert.Equal(want, Md11FoStateEvaluator.Compute("FO_EXT_POWER_OFF", Read(d)));
     }
 
     [Fact]

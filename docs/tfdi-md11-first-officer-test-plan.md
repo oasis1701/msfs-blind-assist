@@ -128,6 +128,13 @@ Not fully run yet.
    off.
 3. Emergency lights and power off, windshield heat off, IRS off, cargo temperatures off, dome
    off, EVAC off.
+4. **Settle:** run Shutdown once with ground power on the aircraft (GPU connected on the EFB
+   Services page, External Power switched on). After the APU has stopped you hear "External
+   power: OFF", then "Battery: OFF", and the aircraft goes dark. If you hear "Skipping: External
+   power: OFF" instead, TFDi would not drop ground power with only the battery left: note it, as it
+   settles an open question. Without ground power the step says "Already set: External power: OFF".
+5. **Listen:** in that run, note whether "APU: OFF" says Skipping (with ground power on, the APU
+   is no longer powering the aircraft) and whether the APU still stops within the wait.
 
 ### Guards, re-runs and the Flows tab
 
@@ -150,6 +157,8 @@ Not fully run yet.
    note which one.
 4. **Settle:** after Parking and Shutdown, the engine start lines stay ticked.
 5. Run Related Flow from a section starts that section's flow.
+6. Between After Takeoff and Before Landing there is only the Descent section: the 10,000 feet,
+   transition and cruise lists are gone, because the automatic modes do that work.
 
 ## Session 2 — a short flight
 

@@ -227,6 +227,28 @@ public class Md11FoFlowStructureTests
     }
 
     /// <summary>
+    /// Owner, 2026-10-13: Shutdown turns ground power off when it was used. It is the last source
+    /// before the battery, so it comes after the APU has stopped; skipped when already off.
+    /// </summary>
+    [Fact]
+    public void Shutdown_TurnsExternalPowerOff_AfterTheApuStopsAndBeforeTheBattery()
+    {
+        var s = Flows.Single(f => f.Id == "SHUTDOWN").Steps;
+        var ext = s.Single(x => x.EventName == Md11FoActionExecutor.ExtPowerShutdown);
+        int at = s.IndexOf(ext);
+        Assert.True(s.FindIndex(x => x.Id == "SD_APU_STOPPED") < at);
+        Assert.Equal(s.FindIndex(x => x.Id == "SD_BATTERY"), at + 1);
+        Assert.Equal("SD_EXT_PWR", ext.CompletesChecklistItemId);
+        Assert.NotNull(ext.SkipCondition);
+    }
+
+    /// <summary>The Shutdown switch-off may leave the aircraft on its battery: never in any other flow.</summary>
+    [Fact]
+    public void TheShutdownExternalPowerSwitchOff_IsUsedOnlyAtShutdown()
+        => Assert.All(Writes().Where(w => w.Key == Md11FoActionExecutor.ExtPowerShutdown),
+            w => Assert.Equal("SHUTDOWN", w.Flow));
+
+    /// <summary>
     /// Power Up and Shutdown are cold-and-dark flows: started by mistake with the engines turning,
     /// Power Up's first step cuts all three fuel switches and Shutdown switches the IRS and the
     /// battery off (both seen live, 2026-09-26). Each must STOP before its first switch unless the

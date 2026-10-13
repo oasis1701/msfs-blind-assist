@@ -39,6 +39,6 @@ public class Md11FoProfileTests
     {
         var p = Profile();
         Assert.Equal(12, p.BuildFlows().Count);
-        Assert.Equal(28, p.BuildChecklists().Count);
+        Assert.Equal(23, p.BuildChecklists().Count);
     }
 }

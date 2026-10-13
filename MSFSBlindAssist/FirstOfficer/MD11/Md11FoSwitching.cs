@@ -34,6 +34,9 @@ public static class Md11FoSwitching
     /// <summary>The fleet-wide "engine running" line (the Boeing profiles' EngineRunningN2).</summary>
     public const double EngineRunningN2 = 50.0;
 
+    /// <summary>An engine below this N2 is stopped (the cold-and-dark guards, and the Shutdown switch-off).</summary>
+    public const double EngineStoppedN2 = 10.0;
+
     public static bool AtPosition(double value, double target)
         => !double.IsNaN(value) && Math.Abs(value - target) < PositionTolerance;
 
