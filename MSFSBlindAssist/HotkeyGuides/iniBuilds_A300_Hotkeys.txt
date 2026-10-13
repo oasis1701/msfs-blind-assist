@@ -166,16 +166,20 @@ Cockpit Door.
 TYPED VALUES - type, then press Set or Enter
 
   FCU panel: Speed or Mach (100 to 399 knots, or Mach 0.10 to 0.99; a value in the other unit
-  switches SPD/MACH for you), Heading (0 to 360), Altitude (100 to 49,000 feet, nearest 100),
-  Vertical speed (-6,000 to 6,000, nearest 100). You hear "Heading 270".
+  switches SPD/MACH for you), Heading (0 to 360), Altitude (100 to 49000 feet, nearest 100),
+  Vertical speed (0, or 100 to 6000 either way, nearest 100). You hear "Heading 270".
+  Altitude, vertical speed and decision height take whole numbers, typed without a thousands
+  separator: "-1500", not "-1,500". A comma is read as a decimal point, so "-1,500" is refused
+  with "type a whole number, without a thousands separator"; a vertical speed of 1 to 99, up or
+  down, is refused too (0 is fine).
   Navigation Radios panel: VOR 1 and VOR 2 frequency (108.00 to 117.95) and course setting, ILS
   frequency (108.10 to 111.95) and course setting.
   VHF Radios panel: VHF 1 and VHF 2 standby frequency (118.000 to 136.990); the transfer buttons
   swap them in.
   Transponder panel: Squawk, four digits each 0 to 7.
   Captain Side, First Officer Side and Standby Instruments panels: the altimeter settings, in
-  inches (29.92) or hectopascals (1013).
-  EFIS Captain panel: Decision height, 0 to 2,500 feet (0 clears it). It sets both pilots'
+  inches (29.92) or hectopascals (1013). A side in STD is taken out of STD first, as Ctrl+B does.
+  EFIS Captain panel: Decision height, 0 to 2500 feet (0 clears it). It sets both pilots'
   minimums, which the PFD box shows and the aircraft's "minimums" call-out uses. You hear
   "Decision height 200 feet".
 
@@ -356,7 +360,8 @@ Display reads (AI; needs an AI key in File > Settings > AI tab):
 Aircraft state:
   L          Read the flaps lever ("Flaps 15/15")
   Shift+G    Read the gear lever
-  B          Read the captain's altimeter setting in both units
+  B          Read the captain's altimeter in both units, "Altimeter: 1013, 29.92", or
+             "Altimeter standard" while the captain's side is in STD
   F          Read total fuel (pounds)
   Shift+F    Read total fuel (kilograms)
   W          Read gross weight (pounds)

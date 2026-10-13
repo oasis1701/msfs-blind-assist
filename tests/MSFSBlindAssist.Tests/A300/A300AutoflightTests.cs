@@ -46,11 +46,55 @@ public class A300TypedValuesTests
     }
 
     [Theory]
+    [InlineData(A300TypedValues.VerticalSpeedKey, -1.5)]
+    [InlineData(A300TypedValues.VerticalSpeedKey, 1500.5)]
+    [InlineData(A300TypedValues.AltitudeKey, 12.5)]
+    [InlineData(A300TypedValues.AltitudeKey, 12000.4)]
+    [InlineData(A300TypedValues.MinimumsKey, 1.2)]
+    [InlineData(A300TypedValues.MinimumsKey, 1200.4)]
+    public void A_number_with_a_fraction_is_refused_as_a_separator_typo(string key, double value)
+    {
+        // Both ways of typing turn a comma into a point, so "-1,500" arrives as -1.5 and "1,200" as 1.2. They used to
+        // round to 0 and 1, and be written and confirmed aloud ("Vertical speed 0 feet per minute").
+        var plan = Plan(key, value);
+        Assert.Null(plan.Rpn);
+        Assert.Null(plan.Confirmation);
+        Assert.Equal(A300TypedValues.WholeNumberError, plan.Error);
+    }
+
+    [Theory]
+    [InlineData(-20)]
+    [InlineData(50)]
+    [InlineData(99)]
+    [InlineData(-99)]
+    public void A_vertical_speed_under_100_is_refused(double value)
+    {
+        // As the MD-11 and the FBW A320 refuse it. 0 is the one value under 100 that stays valid: level off.
+        var plan = Plan(A300TypedValues.VerticalSpeedKey, value);
+        Assert.Null(plan.Rpn);
+        Assert.Equal(A300TypedValues.VerticalSpeedError, plan.Error);
+    }
+
+    [Fact]
+    public void The_typed_value_ranges_carry_no_thousands_separator()
+    {
+        // A box's hint and refusal are what the pilot types back: "-6,000" invites "-1,500".
+        Assert.Equal("type a whole number, without a thousands separator", A300TypedValues.WholeNumberError);
+        Assert.Equal("100 to 49000 feet", A300TypedValues.AltitudeError);
+        Assert.Equal("0, or 100 to 6000 feet per minute either way", A300TypedValues.VerticalSpeedError);
+        Assert.Equal("0 to 2500 feet", A300TypedValues.MinimumsError);
+        foreach (var key in new[] { A300TypedValues.AltitudeKey, A300TypedValues.VerticalSpeedKey, A300TypedValues.MinimumsKey })
+            Assert.DoesNotMatch(@"\d,\d", A300TypedValues.ErrorFor(key));
+    }
+
+    [Theory]
     [InlineData(A300TypedValues.HeadingKey, 360, "0 (>L:INI_HEADING_DIAL)", "Heading 000")]
     [InlineData(A300TypedValues.HeadingKey, 5.4, "5 (>L:INI_HEADING_DIAL)", "Heading 005")]
     [InlineData(A300TypedValues.AltitudeKey, 12049, "12000 (>L:INI_Altitude_Dial)", "Altitude 12,000 feet")]
     [InlineData(A300TypedValues.VerticalSpeedKey, -1520, "-1500 (>L:INI_vvi_dial)", "Vertical speed -1,500 feet per minute")]
-    [InlineData(A300TypedValues.VerticalSpeedKey, -20, "0 (>L:INI_vvi_dial)", "Vertical speed 0 feet per minute")]
+    [InlineData(A300TypedValues.VerticalSpeedKey, 0, "0 (>L:INI_vvi_dial)", "Vertical speed 0 feet per minute")]
+    [InlineData(A300TypedValues.VerticalSpeedKey, 100, "100 (>L:INI_vvi_dial)", "Vertical speed 100 feet per minute")]
+    [InlineData(A300TypedValues.VerticalSpeedKey, -6000, "-6000 (>L:INI_vvi_dial)", "Vertical speed -6,000 feet per minute")]
     [InlineData(A300TypedValues.Vor1FrequencyKey, 113.9, "113 (>L:INI_VOR1_FREQUENCY_MHZ) 90 (>L:INI_VOR1_FREQUENCY_KHZ)", "VOR 1 113.90")]
     [InlineData(A300TypedValues.Vor2FrequencyKey, 112.05, "112 (>L:INI_VOR2_FREQUENCY_MHZ) 5 (>L:INI_VOR2_FREQUENCY_KHZ)", "VOR 2 112.05")]
     [InlineData(A300TypedValues.IlsFrequencyKey, 110.3, "110 (>L:INI_ILS_FREQUENCY_MHZ) 30 (>L:INI_ILS_FREQUENCY_KHZ)", "ILS 110.30")]
@@ -70,7 +114,8 @@ public class A300TypedValuesTests
 
     [Theory]
     [InlineData(200, "200 (>L:INI_MINIMUMS_PILOT) 200 (>L:INI_MINIMUMS_FO)", "Decision height 200 feet")]
-    [InlineData(1200.4, "1200 (>L:INI_MINIMUMS_PILOT) 1200 (>L:INI_MINIMUMS_FO)", "Decision height 1,200 feet")]
+    [InlineData(1200, "1200 (>L:INI_MINIMUMS_PILOT) 1200 (>L:INI_MINIMUMS_FO)", "Decision height 1,200 feet")]
+    [InlineData(2500, "2500 (>L:INI_MINIMUMS_PILOT) 2500 (>L:INI_MINIMUMS_FO)", "Decision height 2,500 feet")]
     [InlineData(0, "0 (>L:INI_MINIMUMS_PILOT) 0 (>L:INI_MINIMUMS_FO)", "Decision height not set")]
     public void A_decision_height_sets_both_pilots_minimums(double value, string rpn, string said)
     {
@@ -87,7 +132,7 @@ public class A300TypedValuesTests
     {
         var plan = Plan(A300TypedValues.MinimumsKey, value);
         Assert.Null(plan.Rpn);
-        Assert.Equal("0 to 2,500 feet", plan.Error);
+        Assert.Equal("0 to 2500 feet", plan.Error);
     }
 
     [Fact]
@@ -96,6 +141,37 @@ public class A300TypedValuesTests
         var plan = A300TypedValues.AllAltimeters(29.92);
         Assert.Equal("1 16211 (>K:2:KOHLSMAN_SET) 2 16211 (>K:2:KOHLSMAN_SET) 3 16211 (>K:2:KOHLSMAN_SET)", plan.Rpn);
         Assert.Equal("Altimeters 1013 hectopascals, 29.92 inches", plan.Confirmation);
+    }
+
+    [Fact]
+    public void A_typed_inch_setting_is_confirmed_as_the_value_written()
+    {
+        // 29.90 inches is 1012.53 hectopascals, but the aircraft stores sixteenths, 16200 of them (1012.5), which every
+        // later read-back says as 1012. The confirmation, worked out from the unrounded 1012.53, said 1013.
+        var plan = A300TypedValues.Altimeter(29.90, new[] { 1 }, "Captain altimeter");
+        Assert.Equal("1 16200 (>K:2:KOHLSMAN_SET)", plan.Rpn);
+        Assert.Equal($"Captain altimeter {A300Readouts.Altimeter(16200 / 16.0)}", plan.Confirmation);
+        Assert.Equal("Captain altimeter 1012 hectopascals, 29.90 inches", plan.Confirmation);
+    }
+
+    [Fact]
+    public void Every_typed_setting_is_confirmed_as_the_aircraft_will_read_it_back()
+    {
+        // Every inch value the box takes (28.20 to 31.30) and every whole hectopascal (955 to 1060): about 3% of the
+        // inch entries differed by one hectopascal.
+        var typed = Enumerable.Range(2820, 3130 - 2820 + 1).Select(h => h / 100.0)
+            .Concat(Enumerable.Range(955, 1060 - 955 + 1).Select(hpa => (double)hpa));
+        var mismatches = new List<string>();
+        foreach (double value in typed)
+        {
+            var plan = A300TypedValues.Altimeter(value, new[] { 1 }, "Captain altimeter");
+            Assert.Null(plan.Error);
+            double stored = double.Parse(plan.Rpn!.Split(' ')[1], CultureInfo.InvariantCulture) / 16;
+            string readBack = $"Captain altimeter {A300Readouts.Altimeter(stored)}";
+            if (plan.Confirmation != readBack)
+                mismatches.Add($"{value.ToString(CultureInfo.InvariantCulture)}: confirmed \"{plan.Confirmation}\", read back \"{readBack}\"");
+        }
+        Assert.Empty(mismatches);
     }
 
     [Theory]
@@ -186,7 +262,78 @@ public class IniA300AutoflightBehaviourTests
     {
         Assert.True(Set(A300TypedValues.AltitudeKey, 60000));
         Assert.Empty(_sent);
-        Assert.Equal(new[] { "Altitude: 100 to 49,000 feet" }, _speech.All);
+        Assert.Equal(new[] { "Altitude: 100 to 49000 feet" }, _speech.All);
+    }
+
+    [Theory]
+    [InlineData(A300TypedValues.VerticalSpeedKey, -1.5, "Vertical speed")]
+    [InlineData(A300TypedValues.AltitudeKey, 12.5, "Altitude")]
+    [InlineData(A300TypedValues.MinimumsKey, 1.2, "Decision height")]
+    public void A_panel_box_value_with_a_fraction_says_why_and_sends_nothing(string key, double value, string name)
+    {
+        // The panel's box hands "-1,500" over as -1.5.
+        Assert.True(Set(key, value));
+        Assert.Empty(_sent);
+        Assert.Equal(new[] { $"{name}: type a whole number, without a thousands separator" }, _speech.All);
+    }
+
+    [Theory]
+    [InlineData("-1,500", "Vertical speed: type a whole number, without a thousands separator")]
+    [InlineData("1.500", "Vertical speed: type a whole number, without a thousands separator")]
+    [InlineData("50", "Vertical speed: 0, or 100 to 6000 feet per minute either way")]
+    [InlineData("6100", "Vertical speed: 0, or 100 to 6000 feet per minute either way")]
+    [InlineData("abc", "Vertical speed: -6000 to 6000 feet per minute")]
+    public void The_value_box_says_why_it_refused_a_vertical_speed(string typed, string said)
+    {
+        // A refusal for a reason other than the range is not answered with a range the number is inside.
+        var (valid, message) = _def.ValidateBoxInput(A300TypedValues.VerticalSpeedKey, "Vertical speed", "-6000 to 6000 feet per minute", typed);
+        Assert.False(valid);
+        Assert.Equal(said, message);
+    }
+
+    [Theory]
+    [InlineData("-1500")]
+    [InlineData("-1500.0")]
+    [InlineData("0")]
+    [InlineData("100")]
+    [InlineData("6000")]
+    public void The_value_box_takes_a_whole_vertical_speed(string typed) =>
+        Assert.Equal((true, ""), _def.ValidateBoxInput(A300TypedValues.VerticalSpeedKey, "Vertical speed", "-6000 to 6000 feet per minute", typed));
+
+    [Theory]
+    [InlineData(A300TypedValues.SpeedKey, "Speed or Mach", "100 to 399 knots, or Mach 0.10 to 0.99", "50")]
+    [InlineData(A300TypedValues.HeadingKey, "Heading", "0 to 360 degrees", "400")]
+    [InlineData(A300TypedValues.AltitudeKey, "Altitude", "100 to 49000 feet", "60000")]
+    [InlineData(IniA300Definition.AllAltimetersKey, "Altimeters", "28.20 to 31.30 inches, or 955 to 1060 hectopascals; sets captain, first officer and standby", "1200")]
+    public void The_value_box_answers_a_number_outside_the_range_with_the_range(string key, string name, string hint, string typed)
+    {
+        // The refusal's own words are the range, so the box says what the panel's box says. The altimeter box's hint
+        // also notes what it sets (all three), which a refusal leaves out.
+        var (valid, message) = _def.ValidateBoxInput(key, name, hint, typed);
+        Assert.False(valid);
+        Assert.Equal($"{name}: {A300TypedValues.ErrorFor(key)}", message);
+    }
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void A_value_with_a_fraction_is_refused_the_same_in_a_comma_decimal_culture(string culture)
+    {
+        var saved = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(culture);
+            Assert.True(Set(A300TypedValues.VerticalSpeedKey, -1.5));
+            Assert.Empty(_sent);
+            Assert.Equal(new[] { "Vertical speed: type a whole number, without a thousands separator" }, _speech.All);
+            Assert.Equal((false, "Altitude: type a whole number, without a thousands separator"),
+                _def.ValidateBoxInput(A300TypedValues.AltitudeKey, "Altitude", "100 to 49000 feet", "12,5"));
+            Assert.Equal((true, ""), _def.ValidateBoxInput(A300TypedValues.AltitudeKey, "Altitude", "100 to 49000 feet", "12000"));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = saved;
+        }
     }
 
     [Fact]

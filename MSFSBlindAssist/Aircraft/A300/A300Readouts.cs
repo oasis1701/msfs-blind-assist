@@ -241,7 +241,27 @@ public static class A300Readouts
 
     /// <summary>"1013 hectopascals, 29.92 inches".</summary>
     public static string Altimeter(double millibars) =>
-        $"{Math.Round(millibars).ToString("0", Inv)} hectopascals, {(millibars * 0.0295299830714).ToString("0.00", Inv)} inches";
+        $"{Hectopascals(millibars)} hectopascals, {Inches(millibars)} inches";
+
+    /// <summary>
+    /// The B key, in the fleet's words (the MD-11's, the Fenix's, the FBW Airbuses', the PMDGs' and the iFly's):
+    /// "Altimeter standard" while the captain's side is in STD, else "Altimeter: 1018, 30.06", hectopascals then
+    /// inches. On the A300 STD is a flag only and the setting keeps its old value ([A300-16]), so a side in STD is
+    /// "standard" whatever the number reads.
+    /// </summary>
+    public static string AltimeterReading(double millibars, bool standard) =>
+        standard ? "Altimeter standard" : $"Altimeter: {Hectopascals(millibars)}, {Inches(millibars)}";
+
+    /// <summary>The F and Shift+F keys: the total fuel weight in whole pounds, or whole kilograms, with a thousands
+    /// separator ("Fuel 12,345 pounds", "Fuel 5,600 kilograms").</summary>
+    public static string Fuel(double pounds, bool kilograms) =>
+        kilograms
+            ? $"Fuel {Math.Round(pounds * 0.45359237).ToString("#,0", Inv)} kilograms"
+            : $"Fuel {Math.Round(pounds).ToString("#,0", Inv)} pounds";
+
+    private static string Hectopascals(double millibars) => Math.Round(millibars).ToString("0", Inv);
+
+    private static string Inches(double millibars) => (millibars * 0.0295299830714).ToString("0.00", Inv);
 
     /// <summary>Headings are shown as the window shows them: floored, three digits, 360 as 000.</summary>
     public static string Heading(double degrees) =>

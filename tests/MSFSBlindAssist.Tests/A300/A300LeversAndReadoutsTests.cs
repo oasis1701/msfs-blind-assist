@@ -63,6 +63,46 @@ public class A300LeversAndReadoutsTests
     }
 
     [Theory]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void The_altimeter_and_fuel_phrases_read_the_same_in_a_comma_decimal_culture(string culture)
+    {
+        var saved = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(culture);
+            // The fleet's B key: both units, hectopascals first, or "standard".
+            Assert.Equal("Altimeter: 1018, 30.06", A300Readouts.AltimeterReading(1017.9375, standard: false));
+            Assert.Equal("Altimeter: 1013, 29.92", A300Readouts.AltimeterReading(1013.25, standard: false));
+            Assert.Equal("Altimeter standard", A300Readouts.AltimeterReading(1013.25, standard: true));
+            Assert.Equal("Fuel 12,345 pounds", A300Readouts.Fuel(12345.4, kilograms: false));
+            Assert.Equal("Fuel 5,600 kilograms", A300Readouts.Fuel(12345.4, kilograms: true));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = saved;
+        }
+    }
+
+    [Fact]
+    public void Standard_ignores_the_setting_the_aircraft_still_holds()
+    {
+        // STD is a flag only on the A300: the setting keeps its old value, which the pilot does not hear.
+        Assert.Equal("Altimeter standard", A300Readouts.AltimeterReading(1024.94, standard: true));
+        Assert.Equal("Altimeter: 1025, 30.27", A300Readouts.AltimeterReading(1024.94, standard: false));
+    }
+
+    [Theory]
+    [InlineData(0, "Fuel 0 pounds", "Fuel 0 kilograms")]
+    [InlineData(999.5, "Fuel 1,000 pounds", "Fuel 453 kilograms")]
+    [InlineData(1234567.2, "Fuel 1,234,567 pounds", "Fuel 559,990 kilograms")]
+    public void Fuel_reads_whole_units_with_a_thousands_separator(double pounds, string inPounds, string inKilograms)
+    {
+        Assert.Equal(inPounds, A300Readouts.Fuel(pounds, kilograms: false));
+        Assert.Equal(inKilograms, A300Readouts.Fuel(pounds, kilograms: true));
+    }
+
+    [Theory]
     [InlineData(0, "000")]
     [InlineData(360, "000")]
     [InlineData(5.9, "005")]

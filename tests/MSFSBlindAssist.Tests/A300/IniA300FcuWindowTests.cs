@@ -182,7 +182,7 @@ public class IniA300FcuWindowBehaviourTests
         _now += 1000;
         Deliver(A300Readouts.AltitudeKey, 15000);   // the pilot's own knob, not MSFSBA's write
         Assert.Empty(_sent);
-        Assert.Equal(new[] { "Altitude: 100 to 49,000 feet", "Altitude unavailable", "Altitude 15,000 feet" }, _speech.All);
+        Assert.Equal(new[] { "Altitude: 100 to 49000 feet", "Altitude unavailable", "Altitude 15,000 feet" }, _speech.All);
     }
 
     [Fact]

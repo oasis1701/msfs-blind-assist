@@ -90,17 +90,28 @@ public static class A300TypedValues
 
     private const string SpeedMachToggle = "1 (>B:AIRLINER_SPDMACH_Set)";
 
+    // What a refusal and a box's hint say is what the pilot types back, so the altitude, vertical speed and decision
+    // height ranges are written without a thousands separator: "-6,000" invites "-1,500" (see IsWhole).
+    public const string WholeNumberError = "type a whole number, without a thousands separator";
     public const string SpeedError = "100 to 399 knots, or Mach 0.10 to 0.99";
     public const string HeadingError = "0 to 360 degrees";
-    public const string AltitudeError = "100 to 49,000 feet";
-    public const string VerticalSpeedError = "-6,000 to 6,000 feet per minute";
+    public const string AltitudeError = "100 to 49000 feet";
+    public const string VerticalSpeedError = "0, or 100 to 6000 feet per minute either way";
     public const string VorError = "108.00 to 117.95 megahertz, in steps of 0.05";
     public const string IlsError = "108.10 to 111.95 megahertz, in steps of 0.05";
     public const string CourseError = "0 to 360 degrees";
     public const string ComError = "118.000 to 136.990 megahertz";
     public const string SquawkError = "four digits, each 0 to 7";
     public const string AltimeterError = "28.20 to 31.30 inches, or 955 to 1060 hectopascals";
-    public const string MinimumsError = "0 to 2,500 feet";
+    public const string MinimumsError = "0 to 2500 feet";
+
+    /// <summary>
+    /// Whether a typed altitude, vertical speed or decision height is a whole number. Both ways of typing a value
+    /// (a panel's box and the value boxes) turn a comma into a point, so "-1,500", the thousands separator the box's
+    /// own hint used to show, arrives as -1.5 and "1,200" as 1.2. Rounding them wrote a vertical speed of 0 and a
+    /// decision height of 1 foot, confirmed aloud; a fraction can only be that typo, so it is refused instead.
+    /// </summary>
+    private static bool IsWhole(double value) => value == Math.Round(value);
 
     /// <summary>The plan for a typed value. <paramref name="isMach"/> is the FCU's current speed mode.</summary>
     public static A300TypedResult Plan(string key, double value, bool isMach)
@@ -178,16 +189,29 @@ public static class A300TypedValues
         return new($"{h.ToString("0", Inv)} (>L:INI_HEADING_DIAL)", $"Heading {h.ToString("000", Inv)}", null);
     }
 
+    /// <summary>Whole feet, 100 to 49000, to the nearest 100 (the knob's step); a fraction is refused (<see cref="IsWhole"/>).</summary>
     public static A300TypedResult Altitude(double value)
     {
+        if (!IsWhole(value))
+            return A300TypedResult.Fail(WholeNumberError);
         double a = Math.Round(value / 100) * 100;
         if (a < 100 || a > 49000)
             return A300TypedResult.Fail(AltitudeError);
         return new($"{a.ToString("0", Inv)} (>L:INI_Altitude_Dial)", $"Altitude {a.ToString("#,0", Inv)} feet", null);
     }
 
+    /// <summary>
+    /// Whole feet per minute, 0 or 100 to 6000 either way, to the nearest 100 (the knob's step). A fraction is
+    /// refused (<see cref="IsWhole"/>), and so is a non-zero value under 100 in magnitude, as the MD-11 and the FBW
+    /// A320 refuse it: it rounded to 0, and was written and confirmed as a level-off nobody asked for. 0 itself is
+    /// the one value under 100 that stays valid.
+    /// </summary>
     public static A300TypedResult VerticalSpeed(double value)
     {
+        if (!IsWhole(value))
+            return A300TypedResult.Fail(WholeNumberError);
+        if (value != 0 && Math.Abs(value) < 100)
+            return A300TypedResult.Fail(VerticalSpeedError);
         double v = Math.Round(value / 100) * 100;
         if (v < -6000 || v > 6000)
             return A300TypedResult.Fail(VerticalSpeedError);
@@ -250,13 +274,20 @@ public static class A300TypedValues
         return null;
     }
 
+    /// <summary>
+    /// A typed altimeter setting. The aircraft takes it in sixteenths of a hectopascal, so the confirmation is of the
+    /// setting that is written, which is what every later read-back says: 29.90 inches is 1012.53 hectopascals, but
+    /// 16200 sixteenths is 1012.5, read back as 1012, and the confirmation, worked out from the unrounded entry,
+    /// said 1013 (about 3% of the inch entries were a hectopascal out).
+    /// </summary>
     public static A300TypedResult Altimeter(double value, IReadOnlyList<int> indexes, string spoken)
     {
         if (Millibars(value) is not double mb)
             return A300TypedResult.Fail(AltimeterError);
-        string units = Math.Round(mb * 16).ToString("0", Inv);
+        double sixteenths = Math.Round(mb * 16);
+        string units = sixteenths.ToString("0", Inv);
         string rpn = string.Join(" ", indexes.Select(i => $"{i.ToString(Inv)} {units} (>K:2:KOHLSMAN_SET)"));
-        return new(rpn, $"{spoken} {A300Readouts.Altimeter(mb)}", null);
+        return new(rpn, $"{spoken} {A300Readouts.Altimeter(sixteenths / 16)}", null);
     }
 
     /// <summary>
@@ -264,11 +295,13 @@ public static class A300TypedValues
     /// <c>INI_MINIMUMS_FO</c>): they are the stored values the PFD and the aircraft's "minimums"
     /// call-out read, and the DH knob moves them only while DH is selected on its EFIS panel (it steps
     /// the flight path angle otherwise). A direct write held, and nothing rewrote it (measured
-    /// 2026-10-04). Whole feet; 0 clears it.
+    /// 2026-10-04). Whole feet; 0 clears it; a fraction is refused (<see cref="IsWhole"/>).
     /// </summary>
     public static A300TypedResult Minimums(double value)
     {
-        double ft = Math.Round(value);
+        if (!IsWhole(value))
+            return A300TypedResult.Fail(WholeNumberError);
+        double ft = value;
         if (ft < 0 || ft > 2500)
             return A300TypedResult.Fail(MinimumsError);
         string text = ft.ToString("0", Inv);

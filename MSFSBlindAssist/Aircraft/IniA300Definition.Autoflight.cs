@@ -153,11 +153,11 @@ public partial class IniA300Definition
                     ValueBoxButtons(A300AutoflightWindows.Heading, sim, announcer), sim, announcer, parentForm, hotkeyManager);
                 return true;
             case HotkeyAction.FCUSetAltitude:
-                ShowValueDialog(A300TypedValues.AltitudeKey, "FCU Altitude", "Altitude", "100 to 49,000 feet",
+                ShowValueDialog(A300TypedValues.AltitudeKey, "FCU Altitude", "Altitude", "100 to 49000 feet",
                     ValueBoxButtons(A300AutoflightWindows.Altitude, sim, announcer), sim, announcer, parentForm, hotkeyManager);
                 return true;
             case HotkeyAction.FCUSetVS:
-                ShowValueDialog(A300TypedValues.VerticalSpeedKey, "FCU Vertical Speed", "Vertical speed", "-6,000 to 6,000 feet per minute",
+                ShowValueDialog(A300TypedValues.VerticalSpeedKey, "FCU Vertical Speed", "Vertical speed", "-6000 to 6000 feet per minute",
                     ValueBoxButtons(A300AutoflightWindows.VerticalSpeed, sim, announcer), sim, announcer, parentForm, hotkeyManager);
                 return true;
             case HotkeyAction.FCUSetBaro:
@@ -223,13 +223,17 @@ public partial class IniA300Definition
                 _ = SpeakAsync(sim, announcer, "Gear", v => A300Announcements.Phrase(A300Announcements.GearLeverKey, v[0])!, A300Announcements.GearLeverKey);
                 return true;
             case HotkeyAction.ReadAltimeter:
-                _ = SpeakAsync(sim, announcer, "Altimeter", v => $"Altimeter {A300Readouts.Altimeter(v[0])}", A300Readouts.BaroCaptainKey);
+                // The fleet's B key: "Altimeter standard" while the captain's side reads STD (its own once-a-second
+                // stream, read from the cache; an unread one leaves the numbers), else both units.
+                _ = SpeakAsync(sim, announcer, "Altimeter",
+                    v => A300Readouts.AltimeterReading(v[0], Cached(sim, A300Baro.Captain.ModeKey) is double mode && A300Baro.IsStd(mode)),
+                    A300Readouts.BaroCaptainKey);
                 return true;
             case HotkeyAction.ReadFuelQuantity:
-                _ = SpeakAsync(sim, announcer, "Fuel", v => $"Fuel {Math.Round(v[0]).ToString("#,0", System.Globalization.CultureInfo.InvariantCulture)} pounds", A300Readouts.FuelTotalKey);
+                _ = SpeakAsync(sim, announcer, "Fuel", v => A300Readouts.Fuel(v[0], kilograms: false), A300Readouts.FuelTotalKey);
                 return true;
             case HotkeyAction.ReadFuelInfo:
-                _ = SpeakAsync(sim, announcer, "Fuel", v => $"Fuel {Math.Round(v[0] * 0.45359237).ToString("#,0", System.Globalization.CultureInfo.InvariantCulture)} kilograms", A300Readouts.FuelTotalKey);
+                _ = SpeakAsync(sim, announcer, "Fuel", v => A300Readouts.Fuel(v[0], kilograms: true), A300Readouts.FuelTotalKey);
                 return true;
             case HotkeyAction.ReadWaypointInfo:
                 sim.RequestSingleValue((int)SimConnectManager.DATA_DEFINITIONS.DEF_GROSS_WEIGHT, "TOTAL WEIGHT", "pounds", "GROSS_WEIGHT");
@@ -242,7 +246,7 @@ public partial class IniA300Definition
     }
 
     /// <summary>Ctrl+B's key in <see cref="CreateValueBox"/>: one entry for all three altimeters.</summary>
-    private const string AllAltimetersKey = "A300_BARO_ALL_SET";
+    internal const string AllAltimetersKey = "A300_BARO_ALL_SET";
 
     private const string AltimeterBoxTitle = "Altimeter Setting";
     private const string AltimeterBoxName = "Altimeters";
@@ -367,7 +371,7 @@ public partial class IniA300Definition
     private ValueInputForm CreateValueBox(string key, string title, string name, string field, string hint,
         List<ToggleButtonDef> buttons, SimConnectManager sim, ScreenReaderAnnouncer announcer) =>
         new(title, field, hint, announcer,
-            input => Parse(input) is double v && PlanFor(key, v).Error == null ? (true, "") : (false, $"{name}: {hint}"),
+            input => ValidateBoxInput(key, name, hint, input),
             buttons,
             input =>
             {
@@ -377,6 +381,20 @@ public partial class IniA300Definition
         {
             ShowCancelButton = false,
         };
+
+    /// <summary>
+    /// The value box's check of what was typed: valid, or what to say. Text that is no number is answered with the
+    /// box's range (<paramref name="hint"/>). A number the plan refuses is answered with the plan's own words, the
+    /// ones a panel's box and <see cref="SubmitBoxValue"/> speak for it: a refusal that is not about the range
+    /// ("type a whole number, without a thousands separator" for "-1,500", which arrives as -1.5; a vertical speed
+    /// under 100) is never answered with a range the number is inside.
+    /// </summary>
+    internal (bool Valid, string Message) ValidateBoxInput(string key, string name, string hint, string input)
+    {
+        if (Parse(input) is not double v)
+            return (false, $"{name}: {hint}");
+        return PlanFor(key, v).Error is { } error ? (false, $"{name}: {error}") : (true, "");
+    }
 
     /// <summary>
     /// A value typed into a value box and submitted (<see cref="CreateValueBox"/> parses it): refused aloud
