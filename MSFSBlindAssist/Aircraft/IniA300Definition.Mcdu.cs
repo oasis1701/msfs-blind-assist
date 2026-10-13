@@ -7,7 +7,7 @@ namespace MSFSBlindAssist.Aircraft;
 /// <summary>
 /// MCDU keys: every press is an L:var pulse, <c>1</c>, <see cref="A300McduKeys.HoldMs"/>, <c>0</c>,
 /// then <see cref="A300McduKeys.GapMs"/> before the next (<see cref="A300McduKeys"/>). Presses are
-/// serialised through ONE queue so a typed entry lands in order however fast the window asks, and
+/// serialized through ONE queue so a typed entry lands in order however fast the window asks, and
 /// each awaits on the UI thread, so SimConnect is never used from a pool thread.
 /// </summary>
 public partial class IniA300Definition

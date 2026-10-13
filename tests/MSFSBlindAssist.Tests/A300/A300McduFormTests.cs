@@ -596,6 +596,87 @@ public sealed class A300McduFormTests : IDisposable
         Assert.InRange((_now - T0).TotalMilliseconds, 320 + A300McduForm.ClearConfirmMs, 320 + A300McduForm.ClearConfirmMs + 100);
     }
 
+    // ---- The clear-all after the pilot switches units ----
+
+    [Theory]
+    [InlineData(200)]
+    [InlineData(350)]
+    public async Task A_unit_switch_at_the_clears_first_wait_does_not_cut_the_wait_for_the_keys(int deliveryMs)
+    {
+        // The pilot moves to the other MCDU (Ctrl+Shift+R) while the clear waits for the four keys of the entry. The clear
+        // goes on with the captain's unit, whose keys still need the settle margin to show on ITS screen: the empty queue
+        // alone is not enough (the 350 ms case of the test above), so the hold is kept per unit and not only for the unit
+        // shown.
+        _clockedKeys = true;
+        AircraftHolds("KJFK/", deliveryMs);
+        _screens[FirstOfficer] = Page(FirstOfficer);
+        _form.PrepareToShow();
+        Assert.True(_form.Send(Captain, new[] { "K", "L", "A", "X" }));
+        bool switched = false;
+        var wait = _form.Delay;
+        _form.Delay = ms =>
+        {
+            if (!switched)
+            {
+                switched = true;
+                _form.SelectUnit(FirstOfficer);
+            }
+            return wait(ms);
+        };
+
+        await _form.ClearScratchpadAsync();
+        Advance(5000);
+
+        Assert.True(switched);
+        Assert.Equal(0, _clrOnEmptyPad);
+        Assert.Equal(9, CaptainClrPresses);
+        Assert.Equal("", _pad);
+        Assert.Empty(_speech.All);   // silent on success; the first officer is the unit shown, so no read-back either
+
+        // Back on the captain's MCDU (Ctrl+Shift+L), Delete finds the scratchpad empty and presses nothing.
+        _form.SelectUnit(Captain);
+        await _form.ClearScratchpadAsync();
+        Assert.Equal(new[] { "Scratchpad already empty" }, _speech.All);
+        Assert.Equal(9, CaptainClrPresses);
+        Assert.Equal(0, _clrOnEmptyPad);
+    }
+
+    [Theory]
+    [InlineData(200)]
+    [InlineData(350)]
+    public async Task A_unit_switch_after_the_queue_has_drained_does_not_cut_the_hold(int deliveryMs)
+    {
+        // The last key of the entry is released but its effect is not on the screen yet when the pilot switches units.
+        _clockedKeys = true;
+        AircraftHolds("KJFK/", deliveryMs);
+        _screens[FirstOfficer] = Page(FirstOfficer);
+        _form.PrepareToShow();
+        Assert.True(_form.Send(Captain, new[] { "K", "L", "A", "X" }));
+        bool switched = false;
+        bool lastKeyNotShownYet = false;
+        var wait = _form.Delay;
+        _form.Delay = ms =>
+        {
+            if (!switched && _def.McduKeysPending == 0)
+            {
+                switched = true;
+                lastKeyNotShownYet = _now < T0.AddMilliseconds(480 + deliveryMs);   // X goes down at 480 ms
+                _form.SelectUnit(FirstOfficer);
+            }
+            return wait(ms);
+        };
+
+        await _form.ClearScratchpadAsync();
+        Advance(5000);
+
+        Assert.True(switched);
+        Assert.True(lastKeyNotShownYet);   // the premise: the switch comes before the last key shows
+        Assert.Equal(0, _clrOnEmptyPad);
+        Assert.Equal(9, CaptainClrPresses);
+        Assert.Equal("", _pad);
+        Assert.Empty(_speech.All);
+    }
+
     // ---- The blank clocks ----
 
     [Fact]
