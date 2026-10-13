@@ -172,6 +172,7 @@ public partial class IniA300Definition
         _pendingPicks.Clear();
         _memoTracker.Reset();
         _memoLine = null;
+        _mcduExportOn = false;   // the MCDU export option is gone after a flight load and unknown after a disconnect ([A300-4])
         _seedGate.Arm(KnownSeedValues());
     }
 

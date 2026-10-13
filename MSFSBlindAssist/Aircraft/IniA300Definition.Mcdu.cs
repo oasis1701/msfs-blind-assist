@@ -36,15 +36,33 @@ public partial class IniA300Definition
         return true;
     }
 
-    /// <summary>Switches on the aircraft's MCDU text export (the tablet's External Hardware → MCDU
-    /// Export setting). The aircraft publishes the screens only while it is 1, and it does not survive
-    /// a flight load, so the window sends it every time it opens.</summary>
-    public bool EnableMcduExport()
+    /// <summary>Whether the MCDU export is known to be on for this connection and flight: off at
+    /// construction, cleared by <see cref="OnSimContextReset"/> (a flight load switches the option off
+    /// and a disconnect leaves it unknown, [A300-4]) and by a send that could not land.</summary>
+    private bool _mcduExportOn;
+
+    /// <summary>
+    /// Keeps the aircraft's MCDU text export switched on (the tablet's External Hardware → MCDU Export
+    /// setting). The aircraft publishes the screens only while <c>L:INI_MCDU_OPTION</c> is 1, and it does
+    /// not survive a flight load, so the option is sent when <paramref name="force"/> asks (the window
+    /// opening) and whenever it is not known to be on for this connection and flight; otherwise nothing
+    /// is sent. True once it is on, sent now or before. False, and still not on, when a send was due but
+    /// the calculator path cannot land (before the sim connects, say): ask again later.
+    /// </summary>
+    public bool EnsureMcduExport(bool force = false)
     {
         var sim = _sim;
-        if (_disposed || sim == null || !CanLand(sim))
+        if (_disposed || sim == null)
             return false;
+        if (_mcduExportOn && !force)
+            return true;
+        if (!CanLand(sim))
+        {
+            _mcduExportOn = false;   // a send that cannot land leaves the option unknown: the next ask sends it
+            return false;
+        }
         Send(sim, "1 (>L:INI_MCDU_OPTION)");
+        _mcduExportOn = true;
         return true;
     }
 

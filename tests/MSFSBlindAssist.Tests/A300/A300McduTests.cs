@@ -433,7 +433,7 @@ public class IniA300McduKeyTests
     {
         _def.CanLand = _ => false;
         Assert.False(_def.PressMcduKeys(A300McduUnit.Captain, new[] { "A" }));
-        Assert.False(_def.EnableMcduExport());
+        Assert.False(_def.EnsureMcduExport());
         Assert.Empty(_sent);
     }
 
@@ -447,10 +447,51 @@ public class IniA300McduKeyTests
         Assert.Equal(2, _sent.Count);
     }
 
+    // The aircraft publishes the screens only while L:INI_MCDU_OPTION is 1, and a flight load clears it
+    // ([A300-4]): the definition remembers whether the export is on for this connection and flight.
+
     [Fact]
-    public void The_export_is_switched_on_with_one_write()
+    public void Ensure_sends_once_and_again_after_a_context_reset()
     {
-        Assert.True(_def.EnableMcduExport());
+        Assert.True(_def.EnsureMcduExport());
         Assert.Equal(new[] { "1 (>L:INI_MCDU_OPTION)" }, _sent);
+        Assert.True(_def.EnsureMcduExport());   // on already: nothing more to send
+        Assert.Single(_sent);
+        _def.OnSimContextReset();               // a disconnect or a flight load switches the option off
+        Assert.True(_def.EnsureMcduExport());
+        Assert.Equal(new[] { "1 (>L:INI_MCDU_OPTION)", "1 (>L:INI_MCDU_OPTION)" }, _sent);
+    }
+
+    [Fact]
+    public void A_failed_export_is_retried()
+    {
+        _def.CanLand = _ => false;
+        Assert.False(_def.EnsureMcduExport());
+        Assert.Empty(_sent);
+        _def.CanLand = _ => true;
+        Assert.True(_def.EnsureMcduExport());
+        Assert.Equal(new[] { "1 (>L:INI_MCDU_OPTION)" }, _sent);
+    }
+
+    [Fact]
+    public void A_forced_ensure_always_sends()
+    {
+        Assert.True(_def.EnsureMcduExport());
+        Assert.True(_def.EnsureMcduExport(force: true));
+        Assert.Equal(2, _sent.Count);
+    }
+
+    [Fact]
+    public void A_forced_send_that_cannot_land_forgets_the_export()
+    {
+        Assert.True(_def.EnsureMcduExport());
+        _def.CanLand = _ => false;
+        Assert.True(_def.EnsureMcduExport());          // a plain ensure while on asks nothing of the write path
+        Assert.Single(_sent);
+        Assert.False(_def.EnsureMcduExport(force: true));   // a send that cannot land: no longer known to be on
+        Assert.Single(_sent);
+        _def.CanLand = _ => true;
+        Assert.True(_def.EnsureMcduExport());          // so the next plain ensure sends again
+        Assert.Equal(2, _sent.Count);
     }
 }

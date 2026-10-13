@@ -445,7 +445,7 @@ public sealed class A300McduForm : Form
         if (!Visible)
         {
             // The export does not survive a flight load; switching it on is idempotent.
-            _definition.EnableMcduExport();
+            _definition.EnsureMcduExport(force: true);
             Resync();
             _poll.Start();
             // A first open names the page through the screen reader's own read of the focused row.
