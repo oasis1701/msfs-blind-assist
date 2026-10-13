@@ -5,8 +5,13 @@ namespace MSFSBlindAssist.Aircraft.A300;
 /// control uses it instead of the SimConnect cache. The cache is fed by the 1 Hz continuous batch,
 /// so for up to a second after a write it still holds the old position; two picks in that window
 /// would both be planned from the stale value, and for a toggle (whose Set FLIPS the switch) the
-/// second pick would flip it the wrong way. Same idea as the L-1011's and the A380's commanded
-/// values. Pure: the caller passes the clock.
+/// second pick would flip it the wrong way. Same idea as the A380's commanded values. Pure: the
+/// caller passes the clock.
+///
+/// The key is the STATE VARIABLE the control flips, not the row that fired the pick
+/// (<c>IniA300Definition.CommandKey</c>): rows with their own Set events can flip one variable (the
+/// courier and crew oxygen supply), and a hold kept per row left the second row planning from its own
+/// stale cache.
 /// </summary>
 public sealed class A300CommandedState
 {

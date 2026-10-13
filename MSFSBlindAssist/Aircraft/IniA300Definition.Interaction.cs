@@ -119,6 +119,8 @@ public partial class IniA300Definition
     /// it is said once, as the MD-11 and the iFly 737 say it ("Crossbleed did not move"), what the screen
     /// reader cannot say ([CORE-7]); the combo going back shows where it is. A switch that
     /// reached the pick and then dropped by itself (a SAS lever) moved: its drop is the aircraft's, spoken as such.
+    /// A reading that is none of the switch's positions (a valve part way across) is neither: nothing is said
+    /// or remembered.
     /// </summary>
     private async Task CheckMovedAsync(A300PlacedRow row, double target, SimConnectManager sim,
         ScreenReaderAnnouncer announcer, int pick)
@@ -130,11 +132,15 @@ public partial class IniA300Definition
             await TypedDelay(ToggleReadBackMs);
             if (_disposed || Superseded())
                 return;
+            // _disposed again after the read: an aircraft switch disposes this definition before the pending reads
+            // are failed, and a delivery can land in between; that value belongs to the old aircraft.
             if (await ReadFresh(sim, row.Key, ReadoutTimeoutMs) is not double now
+                || _disposed
                 || Superseded()
+                || row.Control!.PositionForState(now) is null
                 || Math.Abs(now - target) < A300WritePlan.SameValueTolerance)
                 return;
-            _commanded.Record(row.Key, now, Clock());
+            _commanded.Record(CommandKey(row.Key), now, Clock());
             ReRead(row.Key, sim);
             announcer.Announce($"{row.Name} did not move");
         }
@@ -207,7 +213,17 @@ public partial class IniA300Definition
 
     /// <summary>The value to plan from: what MSFSBA just commanded while it is fresh, else the cache.</summary>
     private double? CurrentValue(string key, SimConnectManager sim) =>
-        _commanded.Resolve(key, Cached(sim, key), Clock());
+        _commanded.Resolve(CommandKey(key), Cached(sim, key), Clock());
+
+    /// <summary>
+    /// What a row's commanded position is kept under: its state variable, so the rows that flip one variable
+    /// through their own Set events (the courier and crew oxygen supply, the dome lights, terrain mode, the
+    /// autoland tests) share one hold. A hold kept per row left the second row planning from its own stale
+    /// cache, and its Set, which FLIPS, put the first row's pick back. A row with no state variable is kept
+    /// under its own key.
+    /// </summary>
+    private string CommandKey(string rowKey) =>
+        _rows.TryGetValue(rowKey, out var row) && row.Control?.StateVar is { Length: > 0 } stateVar ? stateVar : rowKey;
 
     /// <summary>Runs a plan, or refuses it aloud; true when its steps were sent.</summary>
     private bool Execute(A300PlacedRow row, A300Plan plan, SimConnectManager sim, ScreenReaderAnnouncer announcer,
@@ -228,7 +244,7 @@ public partial class IniA300Definition
             return false;
         }
         if (commandedValue is double target)
-            _commanded.Record(row.Key, target, Clock());
+            _commanded.Record(CommandKey(row.Key), target, Clock());
         _ = RunAsync(row.Key, plan.Steps, sim);
         return true;
     }

@@ -29,7 +29,8 @@ public sealed record A300Plan(IReadOnlyList<A300Step> Steps, string? Refusal)
 /// <item>A position already held is not written again.</item>
 /// <item>A TOGGLE or COMMAND flips whatever value is passed (iniBuilds' own "_ON" bindings flip too,
 /// measured live 2026-10-03), so it is sent only when the current position is KNOWN and differs;
-/// an unknown position is refused, because a flip sent the wrong way round inverts the switch.</item>
+/// an unknown position is refused (a value that is none of the control's positions is unknown too),
+/// because a flip sent the wrong way round inverts the switch.</item>
 /// <item>Selectors and knobs are absolute: Set n is position n, whatever the aircraft held.</item>
 /// <item>A hold button is pressed with Set 2 and released with Set 0 after <see cref="HoldMs"/> (a
 /// fire test after its own <see cref="TestHoldMs"/>); a spring switch is held at the picked side for
@@ -113,7 +114,9 @@ public static class A300WritePlan
             {
                 if (control.PositionForState(target) is not double position)
                     return A300Plan.Refused(NotAPositionRefusal);
-                if (current is not double now)
+                // A reading that is none of the control's positions (a valve part way across) is not a position
+                // it is in: a flip planned from it could go the wrong way round.
+                if (current is not double now || control.PositionForState(now) is null)
                     return A300Plan.Refused(UnknownPositionRefusal);
                 if (Math.Abs(now - target) < SameValueTolerance)
                     return A300Plan.AlreadyThere;

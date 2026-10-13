@@ -62,6 +62,33 @@ public class A300WritePlanTests
     }
 
     [Fact]
+    public void A_switch_reading_between_its_positions_is_not_ready()
+    {
+        // A flip planned from a value that is no position could go the wrong way round: a valve or switch in
+        // transit reads between its positions, and that is not a position it is in.
+        var toggle = A300ControlMap.Load().FindByKey("A300_BATT_1")!;
+        Assert.Equal(A300WritePlan.UnknownPositionRefusal, A300WritePlan.ForSet(toggle, 1, 0.6).Refusal);
+    }
+
+    [Theory]
+    [InlineData(A300Kinds.Toggle)]
+    [InlineData(A300Kinds.Command)]
+    public void A_flipping_kind_reading_between_its_positions_is_refused_and_sends_nothing(string kind)
+    {
+        var plan = A300WritePlan.ForSet(Control(kind), 1, 0.5);
+        Assert.Equal(A300WritePlan.UnknownPositionRefusal, plan.Refusal);
+        Assert.True(plan.IsEmpty);
+    }
+
+    [Fact]
+    public void A_selector_reading_between_its_positions_is_still_set_absolutely()
+    {
+        // Only a flip needs to know where the switch is; a selector's Set n is position n whatever it held.
+        var c = Control(A300Kinds.Selector, "0=OFF;1=NAV;2=ATT");
+        Assert.Equal(new[] { "2 (>B:AIRLINER_Test_Set)" }, Rpns(A300WritePlan.ForSet(c, 2, current: 0.5)));
+    }
+
+    [Fact]
     public void A_value_that_is_not_a_position_is_refused()
     {
         Assert.Equal(A300WritePlan.NotAPositionRefusal, A300WritePlan.ForSet(Control(A300Kinds.Toggle), 7, 0).Refusal);

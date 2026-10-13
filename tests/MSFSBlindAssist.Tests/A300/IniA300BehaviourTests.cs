@@ -77,6 +77,31 @@ public class IniA300BehaviourTests
     }
 
     [Fact]
+    public void Two_rows_on_one_variable_share_the_commanded_hold()
+    {
+        // The courier low pressure supply and crew oxygen supply buttons fire their own events but flip ONE
+        // variable (measured live, 2026-10-13: a Set of 1 turned it off while it was on).
+        _cache["A300_COURIER_O2_SUPPLY"] = 0;
+        _cache["A300_PAX_OXY_SUPPLY"] = 0;
+        Assert.True(Set("A300_COURIER_O2_SUPPLY", 1));
+        Assert.True(Set("A300_PAX_OXY_SUPPLY", 1));   // its own cache still says 0
+        Assert.Single(_sent);
+        Assert.Empty(_speech.All);
+    }
+
+    [Fact]
+    public void A_second_row_on_the_same_variable_is_planned_from_the_first_rows_pick()
+    {
+        // The shared hold is the first row's pick, not a block on the second row: asking the other row for the
+        // opposite position is a real flip.
+        _cache["A300_COURIER_O2_SUPPLY"] = 0;
+        _cache["A300_PAX_OXY_SUPPLY"] = 0;
+        Assert.True(Set("A300_COURIER_O2_SUPPLY", 1));
+        Assert.True(Set("A300_PAX_OXY_SUPPLY", 0));
+        Assert.Equal(new[] { "1 (>B:AIRLINER_COURIER_O2_SUPPLY_Set)", "0 (>B:AIRLINER_PAX_OXY_SUPPLY_Set)" }, _sent);
+    }
+
+    [Fact]
     public void A_row_sharing_its_variable_with_another_reads_it_live_on_its_own_subscription()
     {
         // The crew oxygen supply button toggles the courier supply's variable (iniBuilds' wiring): read
@@ -117,6 +142,18 @@ public class IniA300BehaviourTests
         Assert.Equal(new[] { "0 (>B:AIRLINER_AIR_XFEED_Set)" }, _sent);
         Assert.Equal(new[] { "Crossbleed did not move" }, _speech.All);
         Assert.Equal(new[] { "A300_AIR_XFEED" }, _reReads);
+    }
+
+    [Fact]
+    public void A_read_back_between_positions_is_not_called_did_not_move()
+    {
+        // A valve in transit reads between its positions: that is no position, so it is neither "did not move"
+        // nor a position to plan the next pick from.
+        _cache["A300_AIR_XFEED"] = 1;
+        ReadFreshReturns("A300_AIR_XFEED", 0.5);
+        Assert.True(Set("A300_AIR_XFEED", 0));
+        Assert.Empty(_speech.All);
+        Assert.Empty(_reReads);
     }
 
     [Fact]
@@ -207,6 +244,22 @@ public class IniA300BehaviourTests
         _def.Dispose();
         read.SetResult(50);
         Assert.Empty(_speech.All);
+    }
+
+    [Fact]
+    public void A_moved_check_whose_value_lands_after_the_definition_went_away_says_nothing()
+    {
+        // The same for a switch pick's read-back: a real position that is not the pick would say "did not move"
+        // over the next aircraft, and ask for the old aircraft's row again.
+        var read = new TaskCompletionSource<double?>();
+        _def.TypedDelay = _ => Task.CompletedTask;
+        _def.ReadFresh = (_, _, _) => read.Task;
+        _cache["A300_AIR_XFEED"] = 1;
+        Assert.True(Set("A300_AIR_XFEED", 0));
+        _def.Dispose();
+        read.SetResult(1);
+        Assert.Empty(_speech.All);
+        Assert.Empty(_reReads);
     }
 
     private void ReadFreshReturns(Dictionary<string, double> values)

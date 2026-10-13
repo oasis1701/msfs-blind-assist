@@ -96,7 +96,7 @@ public partial class IniA300Definition
 
     /// <summary>Whether the switch is where MSFSBA just commanded it (<see cref="A300CommandedState"/>).</summary>
     private bool OwnPick(string key, bool isOn, long nowMs) =>
-        _commanded.Resolve(key, null, nowMs) is double commanded && (commanded >= 0.5) == isOn;
+        _commanded.Resolve(CommandKey(key), null, nowMs) is double commanded && (commanded >= 0.5) == isOn;
 
     /// <summary>The four AI display reads (Alt+P, N, E and S), run by the base class's dispatch. Only these
     /// keys use AI; the boxes and call-outs stay data-only ([A300-8]).</summary>
