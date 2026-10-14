@@ -238,18 +238,21 @@ public partial class SynapticA220Definition
         RequestSystemsRebaseline();
     }
 
-    /// <summary>V1/VR/V2, each from the first source that has evidence for THAT speed: the PFD's own
-    /// bug (A22X.L PFD Data — a 0 there is the store saying "unset" and does clear), else the
-    /// speed-tape bug when the tape shows it, else nothing: the machine keeps the speed it holds.
-    /// A poll with no source (tap down, a block without the PFD, a bug scrolled off the tape) is
-    /// absence of evidence, not "unset" — treating it as unset disarmed a roll in progress, which
-    /// re-arms only on the ground below 40 kt, and the next poll restored the speeds too late.
-    /// Applied on the UI thread, where the samples run.</summary>
+    /// <summary>V1/VR/V2, decided per BLOCK. With the PFD block (A22X.L PFD Data) present it speaks
+    /// for all three: each speed is the store's value, else the tape's bug, else 0 — the store
+    /// reports an unset speed as null (or 0), so a wiped FMS, a flight load or a fly-again clears
+    /// the previous flight's speeds. With NO PFD block (tap down, a poll whose block lacks the
+    /// PFD) nothing is known: a speed takes the tape's bug when the tape shows it, otherwise the
+    /// machine keeps what it holds. That is absence of evidence, not "unset" — treating it as
+    /// unset disarmed a roll in progress, which re-arms only on the ground below 40 kt, and the
+    /// next poll restored the speeds too late. Applied on the UI thread, where the samples run.</summary>
     private void FeedTakeoffSpeeds(A220Systems.PfdBlock? pfd)
     {
-        double? v1 = pfd?.v1 ?? ScrapedVSpeed("V1");
-        double? vr = pfd?.vr ?? ScrapedVSpeed("VR");
-        double? v2 = pfd?.v2 ?? ScrapedVSpeed("V2");
+        double? Pick(double? stored, string key)
+            => pfd != null ? stored ?? ScrapedVSpeed(key) ?? 0 : ScrapedVSpeed(key);
+        double? v1 = Pick(pfd?.v1, "V1");
+        double? vr = Pick(pfd?.vr, "VR");
+        double? v2 = Pick(pfd?.v2, "V2");
         if (v1 == null && vr == null && v2 == null) return;
         Marshal(() =>
         {

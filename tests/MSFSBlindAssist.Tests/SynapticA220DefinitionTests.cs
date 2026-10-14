@@ -692,6 +692,28 @@ public class SynapticA220SystemsSpeechTests : IDisposable
     }
 
     [Fact]
+    public void ASpeedTheLiveStoreReportsAsNull_IsUnset_NotHeldFromThePreviousFlight()
+    {
+        // The live store reports an unset speed as null (the 2026-10-12 CommBus capture has "vt":null
+        // beside "v1":131), and the agent emits null for any field the store has not carried. With the PFD
+        // block present that is the store saying "unset": a wiped FMS, a flight load or a fly-again
+        // must not leave the previous flight's VR calling Rotate.
+        var def = new SynapticA220Definition();
+        var speech = new SpeechCapture();
+        def.ProcessSystems(WithVSpeeds(131, 135, 139));
+        def.ProcessSystems(WithVSpeeds(null, null, null));            // the FMS wiped them
+        Roll(def, speech, 20, 45, 136);
+        Assert.Equal(new[] { "V-speeds not set — no Rotate call" }, speech.All);
+
+        var fresh = new SynapticA220Definition();                      // the same through the pump's JSON
+        var heard = new SpeechCapture();
+        fresh.ProcessDisplaysSnapshot("{\"ok\":true,\"sys\":{\"lpfd\":{\"v1\":131,\"vr\":135,\"v2\":139}}}");
+        fresh.ProcessDisplaysSnapshot("{\"ok\":true,\"sys\":{\"lpfd\":{\"v1\":null,\"vr\":null,\"v2\":null,\"vref\":null}}}");
+        Roll(fresh, heard, 20, 45, 136);
+        Assert.Equal(new[] { "V-speeds not set — no Rotate call" }, heard.All);
+    }
+
+    [Fact]
     public void ARollWithoutV1_IsNotKnownEither_BecauseTheMachineNeedsBoth()
     {
         var def = new SynapticA220Definition();
