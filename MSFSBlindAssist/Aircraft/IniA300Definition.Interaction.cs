@@ -82,17 +82,8 @@ public partial class IniA300Definition
         bool stepped = row.Action is A300RowAction.Increase or A300RowAction.Decrease;
         if (stepped)
         {
-            // A transponder code knob's step is read back below, so the squawk's outside-change call-out stays quiet for it.
-            NoteOwnRadioChange(control.Key);
-            // An FCU knob step is read back once it lands ("Heading 271"): a numeric confirmation, as a
-            // typed value's is. The altitude window's own call-out is told it is an echo.
-            if (A300FcuWindows.ReadoutByKnob.TryGetValue(control.Key, out var readoutKey))
-            {
-                if (readoutKey == A300Readouts.AltitudeKey)
-                    _altitudeWindow.SuppressEcho(Clock());
-                _ = ReadBackAsync(simConnect, announcer, readoutKey, v => A300FcuWindows.Phrase(readoutKey, v, IsMach()));
-            }
-            // Any other knob that reads back ("Landing elevation 50 feet", "Flex temperature 46 degrees").
+            // A knob that reads its value back once it lands ("Landing elevation 50 feet", "Flex temperature 46 degrees"):
+            // a numeric confirmation, as a typed value's is. The knobs that have a typed box are not rows.
             if (A300Readouts.KnobReadBacks.TryGetValue(control.Key, out var readBack))
                 _ = ReadBackAsync(simConnect, announcer, readBack.Readout, readBack.Phrase);
             // An ADF knob's window, named by its role now ("ADF 1 standby 990") (A300Radios); the VHF knobs are not rows.

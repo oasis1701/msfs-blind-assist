@@ -462,19 +462,6 @@ public class IniA300RadioWatchTests
     }
 
     [Fact]
-    public void A_code_knob_step_delivered_inside_the_window_is_quiet_though_the_batch_end_that_finds_it_comes_after_it()
-    {
-        Baseline();
-        long mark = _now;
-        ReadFreshReturns(new() { [A300Readouts.SquawkCodeKey] = Code("1201") });
-        Assert.True(Set("A300_TCAS_SMALL#INC", 1));
-        DeliverAt(mark + 2000, A300RadioWatches.SquawkKey, Code("1201"));
-        FlushAt(mark + 2600);
-        FlushAt(mark + 3600);
-        Assert.Equal(new[] { "Squawk 1201" }, _speech.All);             // the knob's read-back, once
-    }
-
-    [Fact]
     public void A_squawk_delivered_after_the_window_is_spoken()
     {
         Baseline();
@@ -730,24 +717,6 @@ public class IniA300RadioWatchTests
         BatchEnd();
         BatchEnd();
         Assert.Equal(new[] { "Squawk 5473" }, _speech.All);
-    }
-
-    [Theory]
-    [InlineData("A300_TCAS_BIG#INC")]
-    [InlineData("A300_TCAS_BIG#DEC")]
-    [InlineData("A300_TCAS_SMALL#INC")]
-    [InlineData("A300_TCAS_SMALL#DEC")]
-    public void A_code_knob_step_gives_only_its_read_back(string row)
-    {
-        Baseline();
-        ReadFreshReturns(new() { [A300Readouts.SquawkCodeKey] = Code("1201") });
-        Assert.True(Set(row, 1));
-        Assert.Equal(new[] { "Squawk 1201" }, _speech.All);             // the knob's own read-back
-        Reading(A300RadioWatches.SquawkKey, Code("1201"));
-        BatchEnd();
-        BatchEnd();
-        BatchEnd();
-        Assert.Equal(new[] { "Squawk 1201" }, _speech.All);
     }
 
     [Fact]

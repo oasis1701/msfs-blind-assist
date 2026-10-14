@@ -101,7 +101,6 @@ public static partial class A300PanelLayout
         ["TRP_FLEXTO"] = "Thrust Rating Panel",
         ["FLEX_TEMP"] = "Thrust Rating Panel",
         ["LANDING_ELEV_SET"] = "Landing Elevation",
-        ["STBY_ALTIMETER_KNOB"] = "Standby Instruments",
         ["ADI_CAGE"] = "Standby Instruments",
 
         // Throttle quadrant and the go levers (iniBuilds puts TOGA on the captain's EFIS panel).

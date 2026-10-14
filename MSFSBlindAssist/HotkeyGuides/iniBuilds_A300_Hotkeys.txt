@@ -73,9 +73,12 @@ running, stopped) and "Captain elapsed time: Running" (each press starts or stop
 from zero). Its status display reads each clock: "Captain clock: 07:42 GMT", "Captain chrono: 1
 minute 5 seconds", "Captain elapsed time: 1 hour 5 minutes". The landing elevation knob says its
 value after each step: "Landing elevation 50 feet". A
-dimmer or temperature knob is a slider. A knob that only turns, such as the FCU speed knob or an
-ADF frequency knob, is a pair of buttons, "increase" and "decrease", each one click of the
-knob. The flaps lever, the speed brake lever and the ground spoiler arm are the Flaps and Speed
+dimmer or temperature knob is a slider. A knob that only turns, such as an ADF frequency knob, is
+a pair of buttons, "increase" and "decrease", each one click of the knob. A knob whose value has a
+typed box has no such buttons here (see Typed Values below): the FCU speed, heading, altitude and
+vertical speed knobs, the decision height, altimeter and course knobs, and the transponder code
+knobs. Type the value and press Set; the push and pull buttons of those knobs are still on their
+panels. The flaps lever, the speed brake lever and the ground spoiler arm are the Flaps and Speed
 Brake panel.
 
 When you change a control, MSFS Blind Assist moves it exactly the way a click in the cockpit
@@ -103,19 +106,19 @@ Clear button says whether its light is on.
 
 The Weather Radar panel's status display reads the antenna tilt in degrees ("Antenna tilt: 3
 degrees down"); the tilt slider runs from 15 degrees down at 0 to 15 degrees up at 100. The
-Transponder panel's status display reads the squawk code, and each step of a code knob says the
-new code: "Squawk 7100". The large knob changes the first two digits, the small knob the last two.
-A code set by something other than MSFS Blind Assist is announced too (see Background Announcements).
+Transponder panel's status display reads the squawk code, which its typed box sets (see Typed
+Values below). A code set by something other than MSFS Blind Assist is announced too (see
+Background Announcements).
 
 The VHF and ADF panels each have two windows and a transfer switch that picks which window is in
 use. It does not swap them, so after a transfer the ADF knobs called "standby" tune the frequency
-in use. The ADF panels have their frequency knobs; the VHF, VOR and ILS frequencies have none here,
-because each has a typed box (see Typed Values below): type the frequency and press Set. Each ADF
-knob step says which window it changed: "ADF 1 standby 990" or "ADF 1 active 900". A VHF or ADF
-transfer says the frequency now in use: "VHF 1 active 124.805". The status displays read each
-radio's active and standby frequencies, and each ADF's bearing to its station ("45 degrees right",
-or "no signal"). The Navigation Radios panel's status display reads the VOR and ILS frequencies and
-courses, and each course knob step says the new course: "VOR 1 course 091".
+in use. The ADF panels have their frequency knobs; the VHF, VOR and ILS frequencies and the VOR and
+ILS courses have none here, because each has a typed box (see Typed Values below): type the value
+and press Set. Each ADF knob step says which window it changed: "ADF 1 standby 990" or "ADF 1
+active 900". A VHF or ADF transfer says the frequency now in use: "VHF 1 active 124.805". The
+status displays read each radio's active and standby frequencies, and each ADF's bearing to its
+station ("45 degrees right", or "no signal"). The Navigation Radios panel's status display reads
+the VOR and ILS frequencies and courses.
 
 On each Audio Control Panel, the VHF transmit keys say which one you transmit on: "VHF 1
 transmit: On". Each receiver switch turns that radio on or off in the headset.
@@ -190,9 +193,8 @@ TYPED VALUES - type, then press Set or Enter
   "Decision height 200 feet".
 
 The FCU's mode buttons say whether their mode is on: "Heading select: On", "Level change: Off".
-SPD/MACH says "Speed" or "Mach". The FCU panel's status display shows the four windows. Pressing
-an FCU knob's increase or decrease button reads its window back once it has moved ("Heading
-271", "Altitude 12,100 feet").
+SPD/MACH says "Speed" or "Mach". The FCU panel's status display shows the four windows. The FCU
+knobs themselves have no increase and decrease buttons, because each window has a typed box.
 
 
 THE DISPLAYS
@@ -226,7 +228,8 @@ The Displays section has a status box (Ctrl+3) for each screen:
                        prints. Fuel reads in the weight unit set on the tablet.
 
 The standby instruments (attitude, airspeed, the standby altimeter and its setting, the compass)
-are read on the Instrument section's Standby Instruments panel, with its knob and cage. A system
+are read on the Instrument section's Standby Instruments panel, with its altimeter setting box and
+cage. A system
 panel's own status display also carries its ECAM page's numbers after its lights: Electrical
 shows the AC and DC voltages, frequencies and currents; APU shows its speed, EGT, bleed pressure
 and generator; Hydraulics shows the blue, green and yellow pressures; Fuel shows each tank and
@@ -616,7 +619,7 @@ for example when an ATC program tunes your radio or sets your squawk: "VHF 1 sta
 frequency windows and the radio is read until they agree. VHF 1 and VHF 2 are announced; the ADF
 radios are not. What you set with MSFS Blind Assist is not announced again, as your own screen
 reader or the confirmation says it: a typed VHF standby frequency, a transfer button, a typed
-squawk, a transponder code knob, or tuning COM 1 from the surroundings window. A change made by
+squawk, or tuning COM 1 from the surroundings window. A change made by
 something else in the 2.5 seconds after one of yours, or just before it, is not announced either.
 
 "Glideslope alive" and "Glideslope lost" follow NAV 3, the A300's ILS receiver: tune the ILS

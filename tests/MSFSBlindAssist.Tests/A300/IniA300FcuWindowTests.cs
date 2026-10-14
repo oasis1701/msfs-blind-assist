@@ -74,9 +74,9 @@ public class A300FcuWindowsTests
 }
 
 /// <summary>
-/// The altitude window speaks a change MSFSBA did not make; a knob step from the FCU panel is read
-/// back once it lands. The heading, speed and vertical speed windows never speak on their own (the
-/// autopilot's own logic writes them too).
+/// The altitude window speaks a change MSFSBA did not make, and a typed altitude is confirmed once, not
+/// twice. The heading, speed and vertical speed windows never speak on their own (the autopilot's own
+/// logic writes them too). The four FCU knobs are no panel rows: each window has a typed box.
 /// </summary>
 public class IniA300FcuWindowBehaviourTests
 {
@@ -183,50 +183,6 @@ public class IniA300FcuWindowBehaviourTests
         Deliver(A300Readouts.AltitudeKey, 15000);   // the pilot's own knob, not MSFSBA's write
         Assert.Empty(_sent);
         Assert.Equal(new[] { "Altitude: 100 to 49000 feet", "Altitude unavailable", "Altitude 15,000 feet" }, _speech.All);
-    }
-
-    [Fact]
-    public async Task A_knob_step_is_read_back_once_it_lands()
-    {
-        _cache[A300Readouts.HeadingKey] = 271;
-        Assert.True(Set("A300_HEADING_KNOB#INC", 1));
-        await Task.Yield();
-        Assert.Equal(new[] { "1 (>B:AIRLINER_HEADING_KNOB_Set)" }, _sent);
-        Assert.Equal(new[] { "Heading 271" }, _speech.Interrupts);
-    }
-
-    [Fact]
-    public async Task A_speed_knob_step_reads_mach_in_mach_mode()
-    {
-        _cache[A300FcuState.SpeedMachLightKey] = 1;
-        _cache[A300Readouts.SpeedKey] = 0.79;
-        Assert.True(Set("A300_SPEED_KNOB#DEC", 1));
-        await Task.Yield();
-        Assert.Equal(new[] { "-1 (>B:AIRLINER_SPEED_KNOB_Set)" }, _sent);
-        Assert.Equal(new[] { "Mach 0.79" }, _speech.Interrupts);
-    }
-
-    [Fact]
-    public async Task An_altitude_knob_step_is_read_back_and_not_spoken_twice()
-    {
-        Deliver(A300Readouts.AltitudeKey, 10000);
-        _cache[A300Readouts.AltitudeKey] = 10100;
-        Assert.True(Set("A300_ALT_KNOB#INC", 1));
-        await Task.Yield();
-        _now += 1000;
-        Deliver(A300Readouts.AltitudeKey, 10100);
-        Assert.Equal(new[] { "Altitude 10,100 feet" }, _speech.All);
-    }
-
-    [Fact]
-    public async Task A_step_that_cannot_land_is_not_read_back()
-    {
-        _def.CanLand = _ => false;
-        _cache[A300Readouts.HeadingKey] = 271;
-        Assert.True(Set("A300_HEADING_KNOB#INC", 1));
-        await Task.Yield();
-        Assert.Empty(_sent);
-        Assert.Equal(new[] { "Heading knob increase unavailable" }, _speech.All);
     }
 
     [Fact]

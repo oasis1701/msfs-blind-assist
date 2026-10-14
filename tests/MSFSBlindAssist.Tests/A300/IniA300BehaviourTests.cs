@@ -302,6 +302,41 @@ public class IniA300BehaviourTests
         Assert.Empty(_speech.All);
     }
 
+    [Theory]
+    [InlineData("A300_SPEED_KNOB#INC")]
+    [InlineData("A300_HEADING_KNOB#DEC")]
+    [InlineData("A300_ALT_KNOB#INC")]
+    [InlineData("A300_VS_KNOB#DEC")]
+    [InlineData("A300_CAPT_DH_SET#INC")]
+    [InlineData("A300_FO_DH_SET#DEC")]
+    [InlineData("A300_CPT_ALTIMETER_KNOB#INC")]
+    [InlineData("A300_FO_ALTIMETER_KNOB#DEC")]
+    [InlineData("A300_STBY_ALTIMETER_KNOB#INC")]
+    [InlineData("A300_VOR_CRS_CAPT#DEC")]
+    [InlineData("A300_VOR_CRS_FO#INC")]
+    [InlineData("A300_ILS_CRS#DEC")]
+    [InlineData("A300_TCAS_BIG#INC")]
+    [InlineData("A300_TCAS_SMALL#DEC")]
+    public void A_knob_with_a_typed_box_is_no_row_of_the_definition(string row)
+    {
+        // Left out of the panels (design decision, Robin, 2026-10-14): the definition does not claim it, and nothing is sent.
+        Assert.DoesNotContain(row, _def.GetVariables().Keys);
+        Assert.False(_def.HandleUIVariableSet(row, 1, new SimVarDefinition(), _sim, _speech));
+        Assert.Empty(_sent);
+        Assert.Empty(_speech.All);
+    }
+
+    [Fact]
+    public void An_adf_knob_step_that_cannot_land_is_refused_aloud_and_not_read_back()
+    {
+        var adf = A300Radios.ByTransfer["A300_ADF1_TFR"];
+        ReadFreshReturns(new() { [adf.Window1Key] = 900, [adf.Window2Key] = 990, [adf.TransferKey] = 0 });
+        _def.CanLand = _ => false;
+        Assert.True(Set("A300_CPT_ADF1_BIG#INC", 1));
+        Assert.Empty(_sent);
+        Assert.Equal(new[] { "ADF 1 hundreds increase unavailable" }, _speech.All);
+    }
+
     [Fact]
     public void A_transfer_is_read_back_with_the_frequency_now_in_use()
     {
@@ -417,9 +452,11 @@ public class IniA300BehaviourTests
     [Fact]
     public void An_encoder_row_steps_its_knob()
     {
-        Assert.True(Set("A300_SPEED_KNOB#INC", 1));
-        Assert.True(Set("A300_SPEED_KNOB#DEC", 1));
-        Assert.Equal(new[] { "1 (>B:AIRLINER_SPEED_KNOB_Set)", "-1 (>B:AIRLINER_SPEED_KNOB_Set)" }, _sent);
+        // The altitude bug knob: an encoder with no typed box and no read-back, so nothing but the step is sent or said.
+        Assert.True(Set("A300_CPT_ALTI_BUG_SET#INC", 1));
+        Assert.True(Set("A300_CPT_ALTI_BUG_SET#DEC", 1));
+        Assert.Equal(new[] { "1 (>B:AIRLINER_CPT_ALTI_BUG_SET_Set)", "-1 (>B:AIRLINER_CPT_ALTI_BUG_SET_Set)" }, _sent);
+        Assert.Empty(_speech.All);
     }
 
     [Theory]

@@ -89,16 +89,16 @@ public sealed class A300FrequencyWatch
 
 /// <summary>
 /// The squawk's call-out for a code MSFSBA did not set ([A300-29]): "Squawk 5473", the digits as one number, as a typed
-/// code's confirmation and a code knob's read-back say it. A single value, so there is nothing to hold: it speaks at the
-/// first flush that sees a different code, compared as the formatted digits. The same baseline, own-change (judged at
-/// the code's delivery, not at the flush) and settling rules as <see cref="A300FrequencyWatch"/>. Pure.
+/// code's confirmation says it. A single value, so there is nothing to hold: it speaks at the first flush that sees a
+/// different code, compared as the formatted digits. The same baseline, own-change (judged at the code's delivery, not
+/// at the flush) and settling rules as <see cref="A300FrequencyWatch"/>. Pure.
 /// </summary>
 public sealed class A300SquawkWatch
 {
     private string? _baseline;
     private long? _quietUntilMs;
 
-    /// <summary>MSFSBA is changing the code now (the typed box, a code knob step).</summary>
+    /// <summary>MSFSBA is changing the code now (the typed box).</summary>
     public void MarkOwn(long nowMs) => _quietUntilMs = nowMs + A300CommandedState.HoldMs;
 
     public void Reset()
@@ -134,7 +134,7 @@ public sealed class A300SquawkWatch
 /// <summary>
 /// What the outside-change call-outs read and which of MSFSBA's own actions quiet them ([A300-29]): the VHF radios'
 /// windows and transfer switches, the squawk code, the keys that carry the three Ctrl+M rows ("VHF 1 frequencies",
-/// "VHF 2 frequencies", "Squawk"), and the typed boxes, transfer presses and code knobs that are MSFSBA's own changes.
+/// "VHF 2 frequencies", "Squawk"), and the typed boxes and transfer presses that are MSFSBA's own changes.
 /// The ADF radios are not watched.
 /// </summary>
 public static class A300RadioWatches
@@ -145,11 +145,6 @@ public static class A300RadioWatches
     public const string SquawkVar = "TRANSPONDER CODE:1";
     public const string SquawkUnits = "BCO16";
     public const string SquawkRowName = "Squawk";
-
-    /// <summary>The transponder code knobs' control keys: a step of either is MSFSBA's own change of the squawk, and is
-    /// read back (<see cref="A300Readouts.KnobReadBacks"/>).</summary>
-    public static readonly IReadOnlySet<string> CodeKnobKeys =
-        new HashSet<string>(StringComparer.Ordinal) { "A300_TCAS_BIG", "A300_TCAS_SMALL" };
 
     /// <summary>
     /// Whether a change delivered at <paramref name="deliveredAtMs"/> is taken for the echo of MSFSBA's own change, which
@@ -183,8 +178,8 @@ public static class A300RadioWatches
     /// <summary>The VHF radio a typed standby box (a typed key) or a transfer button (its control key) changes, or null.</summary>
     public static A300Radio? VhfRadioFor(string key) => VhfByOwnKey.GetValueOrDefault(key);
 
-    /// <summary>Whether the typed squawk box (its typed key) or a code knob (its control key) changes the squawk.</summary>
-    public static bool IsSquawkOwnChange(string key) => key == A300TypedValues.SquawkKey || CodeKnobKeys.Contains(key);
+    /// <summary>Whether the typed squawk box (its typed key) changes the squawk. The transponder code knobs are no rows.</summary>
+    public static bool IsSquawkOwnChange(string key) => key == A300TypedValues.SquawkKey;
 
     private static Dictionary<string, A300Radio> BuildVhfByOwnKey()
     {

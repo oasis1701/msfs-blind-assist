@@ -140,7 +140,7 @@ public partial class IniA300Definition
             return true;
 
         // The FCU altitude window: a change MSFSBA did not make ("Altitude 12,000 feet"). Spoken from
-        // here, inside MainForm's mute wrap; MSFSBA's own typed value or knob step is its echo.
+        // here, inside MainForm's mute wrap; MSFSBA's own typed value is its echo.
         if (varName == A300Readouts.AltitudeKey)
         {
             if (_seedGate.Armed)

@@ -107,7 +107,7 @@ public class A300PanelLayoutTests
     [InlineData("A300_CPT_CLOCK_START", "Clock")]
     [InlineData("A300_GPWS_FO", "GPWS")]
     [InlineData("A300_GPWS_FLAPS_CONFIG", "GPWS")]
-    [InlineData("A300_CPT_ALTIMETER_KNOB#INC", "Captain Side")]
+    [InlineData("A300_CPT_ALTIMETER_KNOB_PULL", "Captain Side")]
     [InlineData("A300_FO_OXY_PUSH", "First Officer Side")]
     [InlineData("A300_ENG1_CUTOFF", "Engines")]
     [InlineData("A300_TOGA_SEL", "Thrust Levers")]
@@ -213,8 +213,8 @@ public class A300PanelLayoutTests
     [InlineData("A300_BATT_1", "Battery 1")]
     [InlineData("A300_GEN_2", "Engine 2 generator")]
     [InlineData("A300_NAVATTLEFT", "IRS 1 mode")]
-    [InlineData("A300_FO_ALTIMETER_KNOB#INC", "Altimeter knob increase")]
-    [InlineData("A300_VS_KNOB#DEC", "Vertical speed knob decrease")]
+    [InlineData("A300_FO_ALTIMETER_KNOB_PULL", "Altimeter knob pull")]
+    [InlineData("A300_VS_KNOB_PUSH", "Vertical speed knob push")]
     [InlineData("A300_CPT_VHF1_VOL_BUTTON", "VHF 1 receiver")]
     [InlineData("A300_FO_INT_VOL", "Interphone volume")]
     [InlineData("A300_CPT_HF2_PUSH", "HF 2 transmit")]
@@ -234,8 +234,9 @@ public class A300PanelLayoutTests
     [Fact]
     public void The_first_officers_altimeter_is_not_named_after_the_captains()
     {
-        // iniBuilds titles both altimeter knobs "CPT BAROMETER".
-        Assert.Contains(Row("A300_FO_ALTIMETER_KNOB#INC"), Placement.RowsByPanel["First Officer Side"]);
+        // iniBuilds titles both altimeter knobs "CPT BAROMETER"; their push and pull are the knobs' rows left.
+        Assert.Contains(Row("A300_FO_ALTIMETER_KNOB_PUSH"), Placement.RowsByPanel["First Officer Side"]);
+        Assert.Contains(Row("A300_FO_ALTIMETER_KNOB_PULL"), Placement.RowsByPanel["First Officer Side"]);
         Assert.DoesNotContain(AllRows, r => r.Name.Contains("CPT", StringComparison.Ordinal));
     }
 
@@ -458,20 +459,88 @@ public class A300PanelLayoutTests
         Assert.Equal(A300RowAction.Typed, Row(A300TypedValues.Com2StandbyKey).Action);
     }
 
+    /// <summary>
+    /// The 14 other knobs that already have a typed box, left out on purpose too (design decision, Robin, 2026-10-14), each
+    /// with the box that sets the same value: the FCU speed, heading, altitude and vertical speed knobs, the two decision
+    /// height knobs, the three altimeter knobs, the VOR 1, VOR 2 and ILS course knobs and the two transponder code knobs.
+    /// Each is an encoder, so 28 more increase and decrease rows beside a box that sets the value outright. The generated
+    /// map still holds them ([A300-2]).
+    /// </summary>
+    private static readonly (string Id, string Box)[] LeftOutTypedBoxKnobs =
+    {
+        ("AIRLINER_SPEED_KNOB", A300TypedValues.SpeedKey),
+        ("AIRLINER_HEADING_KNOB", A300TypedValues.HeadingKey),
+        ("AIRLINER_ALT_KNOB", A300TypedValues.AltitudeKey),
+        ("AIRLINER_VS_KNOB", A300TypedValues.VerticalSpeedKey),
+        ("AIRLINER_CAPT_DH_SET", A300TypedValues.MinimumsKey),
+        ("AIRLINER_FO_DH_SET", A300TypedValues.MinimumsKey),
+        ("AIRLINER_CPT_ALTIMETER_KNOB", A300TypedValues.BaroCaptainKey),
+        ("AIRLINER_FO_ALTIMETER_KNOB", A300TypedValues.BaroFirstOfficerKey),
+        ("AIRLINER_STBY_ALTIMETER_KNOB", A300TypedValues.BaroStandbyKey),
+        ("AIRLINER_VOR_CRS_CAPT", A300TypedValues.Vor1CourseKey),
+        ("AIRLINER_VOR_CRS_FO", A300TypedValues.Vor2CourseKey),
+        ("AIRLINER_ILS_CRS", A300TypedValues.IlsCourseKey),
+        ("AIRLINER_TCAS_BIG", A300TypedValues.SquawkKey),
+        ("AIRLINER_TCAS_SMALL", A300TypedValues.SquawkKey),
+    };
+
+    public static IEnumerable<object[]> LeftOutTypedBoxKnobCases() => LeftOutTypedBoxKnobs.Select(k => new object[] { k.Id, k.Box });
+
+    [Theory]
+    [MemberData(nameof(LeftOutTypedBoxKnobCases))]
+    public void A_knob_with_a_typed_box_is_in_the_map_but_not_a_row(string id, string box)
+    {
+        var control = Map.Find(id);
+        Assert.NotNull(control);
+        Assert.Equal(A300Kinds.Encoder, control!.Kind);
+        Assert.False(A300PanelLayout.IsPlaced(control));
+        Assert.DoesNotContain(AllRows, r => r.Control?.Id == id);
+        Assert.DoesNotContain(AllRows, r => r.Key == control.Key + "#INC" || r.Key == control.Key + "#DEC");
+        Assert.Equal(A300RowAction.Typed, Row(box).Action);   // what the knob set, the box sets outright
+    }
+
     [Fact]
-    public void The_navigation_radios_panel_keeps_its_course_knobs_and_typed_boxes()
+    public void Twenty_eight_more_rows_left_with_the_fourteen_typed_box_knobs()
+    {
+        Assert.Equal(14, LeftOutTypedBoxKnobs.Select(k => k.Id).Distinct().Count());
+        var left = LeftOutTypedBoxKnobs.Select(k => Map.Find(k.Id)!.Key)
+            .SelectMany(key => new[] { key + "#INC", key + "#DEC" }).ToList();
+        Assert.Equal(28, left.Count);
+        Assert.Empty(AllRows.Select(r => r.Key).Intersect(left));
+    }
+
+    [Fact]
+    public void Every_left_out_knobs_push_and_pull_keeps_its_row()
+    {
+        // The exclusion is anchored: AIRLINER_SPEED_KNOB leaves, AIRLINER_SPEED_KNOB_PUSH stays.
+        var siblings = Map.Controls
+            .Where(c => LeftOutTypedBoxKnobs.Any(k => c.Id.StartsWith(k.Id + "_", StringComparison.Ordinal))).ToList();
+        Assert.Equal(new[]
+        {
+            "A300_ALT_KNOB_PULL", "A300_ALT_KNOB_PUSH", "A300_CPT_ALTIMETER_KNOB_PULL", "A300_CPT_ALTIMETER_KNOB_PUSH",
+            "A300_FO_ALTIMETER_KNOB_PULL", "A300_FO_ALTIMETER_KNOB_PUSH", "A300_HEADING_KNOB_PULL", "A300_HEADING_KNOB_PUSH",
+            "A300_SPEED_KNOB_PULL", "A300_SPEED_KNOB_PUSH", "A300_VOR_CRS_CAPT_PUSH", "A300_VOR_CRS_FO_PUSH",
+            "A300_VS_KNOB_PULL", "A300_VS_KNOB_PUSH",
+        }, siblings.Select(c => c.Key).Order(StringComparer.Ordinal));
+        Assert.All(siblings, c =>
+        {
+            Assert.True(A300PanelLayout.IsPlaced(c));
+            Assert.Equal(A300RowAction.Press, Row(c.Key).Action);
+        });
+    }
+
+    [Fact]
+    public void The_navigation_radios_panel_keeps_its_course_pushes_and_typed_boxes()
     {
         Assert.Equal(new[]
         {
-            "A300_ILS_COURSE_SET", "A300_ILS_CRS#DEC", "A300_ILS_CRS#INC", "A300_ILS_FREQ_SET",
-            "A300_VOR1_COURSE_SET", "A300_VOR1_FREQ_SET", "A300_VOR2_COURSE_SET", "A300_VOR2_FREQ_SET",
-            "A300_VOR_CRS_CAPT#DEC", "A300_VOR_CRS_CAPT#INC", "A300_VOR_CRS_CAPT_PUSH",
-            "A300_VOR_CRS_FO#DEC", "A300_VOR_CRS_FO#INC", "A300_VOR_CRS_FO_PUSH",
+            "A300_ILS_COURSE_SET", "A300_ILS_FREQ_SET", "A300_VOR1_COURSE_SET", "A300_VOR1_FREQ_SET",
+            "A300_VOR2_COURSE_SET", "A300_VOR2_FREQ_SET", "A300_VOR_CRS_CAPT_PUSH", "A300_VOR_CRS_FO_PUSH",
         }, Placement.RowsByPanel["Navigation Radios"].Select(r => r.Key).Order(StringComparer.Ordinal));
     }
 
     [Fact]
-    public void The_adf_knobs_and_the_transponder_code_knobs_stay_rows()
+    public void The_adf_knobs_and_the_altitude_bug_knobs_stay_rows()
     {
         var adf = Placement.RowsByPanel["ADF Radios"].Select(r => r.Key).ToList();
         foreach (var side in new[] { "CPT", "FO" })
@@ -482,11 +551,46 @@ public class A300PanelLayoutTests
         Assert.Contains("A300_ADF1_TFR", adf);
         Assert.Contains("A300_ADF2_TFR", adf);
 
-        var transponder = Placement.RowsByPanel["Transponder"].Select(r => r.Key).ToList();
-        foreach (var key in new[] { "A300_TCAS_BIG#INC", "A300_TCAS_BIG#DEC", "A300_TCAS_SMALL#INC", "A300_TCAS_SMALL#DEC",
-                     A300TypedValues.SquawkKey })
-            Assert.Contains(key, transponder);
+        // No typed box sets the altitude bug (the altitude the altimeter's own bug marks).
+        var captain = Placement.RowsByPanel["Captain Side"].Select(r => r.Key).ToList();
+        var firstOfficer = Placement.RowsByPanel["First Officer Side"].Select(r => r.Key).ToList();
+        foreach (var step in new[] { "#INC", "#DEC" })
+        {
+            Assert.Contains("A300_CPT_ALTI_BUG_SET" + step, captain);
+            Assert.Contains("A300_FO_ALTI_BUG_SET" + step, firstOfficer);
+        }
     }
+
+    [Fact]
+    public void Only_the_adf_altitude_bug_flex_temperature_and_landing_elevation_knobs_still_step()
+    {
+        var expected = new[] { "CPT", "FO" }
+            .SelectMany(side => new[] { 1, 2 }.SelectMany(window =>
+                new[] { "BIG", "MED", "SMALL" }.Select(digit => $"A300_{side}_ADF{window}_{digit}")))
+            .Concat(new[] { "A300_CPT_ALTI_BUG_SET", "A300_FO_ALTI_BUG_SET", A300Trp.FlexKnobKey, "A300_LANDING_ELEV_SET" })
+            .Order(StringComparer.Ordinal);
+        var stepping = AllRows.Where(r => r.Action is A300RowAction.Increase or A300RowAction.Decrease)
+            .Select(r => r.Control!.Key).Distinct().Order(StringComparer.Ordinal);
+        Assert.Equal(expected, stepping);
+    }
+
+    [Theory]
+    [InlineData("FCU")]
+    [InlineData("EFIS Captain")]
+    [InlineData("EFIS First Officer")]
+    [InlineData("Standby Instruments")]
+    [InlineData("Navigation Radios")]
+    [InlineData("Transponder")]
+    public void A_panel_whose_values_are_typed_has_no_increase_or_decrease_row(string panel) =>
+        Assert.DoesNotContain(Placement.RowsByPanel[panel], r => r.Name.EndsWith(" increase", StringComparison.Ordinal)
+                                                                 || r.Name.EndsWith(" decrease", StringComparison.Ordinal));
+
+    [Theory]
+    [InlineData("Captain Side")]
+    [InlineData("First Officer Side")]
+    public void An_altimeter_side_steps_only_its_altitude_bug(string panel) =>
+        Assert.Equal(new[] { "Altimeter altitude bug increase", "Altimeter altitude bug decrease" },
+            Placement.RowsByPanel[panel].Where(r => r.Action is A300RowAction.Increase or A300RowAction.Decrease).Select(r => r.Name));
 
     [Fact]
     public void No_radio_row_is_named_for_a_megahertz_or_kilohertz_step()

@@ -171,17 +171,6 @@ public class A300LeversAndReadoutsTests
         Assert.Equal(code, readout.Format(bcd));
     }
 
-    [Theory]
-    [InlineData("A300_TCAS_BIG")]
-    [InlineData("A300_TCAS_SMALL")]
-    public void A_transponder_code_knob_step_reads_the_code_back(string knob)
-    {
-        // A step changes two digits at a time (the large knob 7000 to 7100, the small 7000 to 7001, 2026-10-10).
-        var (readout, phrase) = A300Readouts.KnobReadBacks[knob];
-        Assert.Equal("Transponder", A300Readouts.All.Single(r => r.Key == readout).Panel);
-        Assert.Equal("Squawk 7100", phrase(0x7100));
-    }
-
     [Fact]
     public void The_navigation_radios_panel_reads_its_frequencies_and_courses()
     {
@@ -198,32 +187,20 @@ public class A300LeversAndReadoutsTests
         }, lines);
     }
 
-    [Theory]
-    [InlineData("A300_VOR_CRS_CAPT", 91, "VOR 1 course 091")]
-    [InlineData("A300_VOR_CRS_FO", 91, "VOR 2 course 091")]
-    [InlineData("A300_ILS_CRS", 91, "ILS course 091")]
-    public void A_navigation_radio_knob_step_reads_its_window_back(string knob, double value, string phrase)
-    {
-        var (readout, words) = A300Readouts.KnobReadBacks[knob];
-        Assert.Equal("Navigation Radios", A300Readouts.All.Single(r => r.Key == readout).Panel);
-        Assert.Equal(phrase, words(value));
-    }
-
     [Fact]
     public void The_knob_read_backs_are_the_knobs_that_are_rows()
     {
-        // The VOR and ILS frequency knobs left the panels with the VHF ones (design decision, Robin, 2026-10-14): their
-        // typed boxes confirm a frequency. What is left reads back the landing elevation, the flex temperature, the
-        // transponder code and the three courses; the NAV frequency windows stay on the Navigation Radios status display.
-        var expected = new[]
-        {
-            "A300_ILS_CRS", "A300_LANDING_ELEV_SET", A300Trp.FlexKnobKey, "A300_TCAS_BIG", "A300_TCAS_SMALL",
-            "A300_VOR_CRS_CAPT", "A300_VOR_CRS_FO",
-        };
+        // Every knob with a typed box left the panels (design decision, Robin, 2026-10-14), and its box confirms the value
+        // (the FCU windows, the altimeters, the three courses, the squawk). What is left reads back the landing elevation
+        // and the flex temperature; the NAV frequency windows and the courses stay on the Navigation Radios status display.
+        var expected = new[] { "A300_LANDING_ELEV_SET", A300Trp.FlexKnobKey };
         Assert.Equal(expected.Order(StringComparer.Ordinal), A300Readouts.KnobReadBacks.Keys.Order(StringComparer.Ordinal));
         Assert.Contains(A300Readouts.All, r => r.Key == A300Readouts.NavVor1Key);
         Assert.Contains(A300Readouts.All, r => r.Key == A300Readouts.NavVor2Key);
         Assert.Contains(A300Readouts.All, r => r.Key == A300Readouts.NavIlsKey);
+        Assert.Contains(A300Readouts.All, r => r.Key == A300Readouts.IlsCourseKey);
+        Assert.Contains(A300Readouts.All, r => r.Key == "A300_RO_VOR1_COURSE");
+        Assert.Contains(A300Readouts.All, r => r.Key == "A300_RO_VOR2_COURSE");
     }
 
     [Theory]

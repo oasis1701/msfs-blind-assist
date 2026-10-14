@@ -4,26 +4,18 @@ namespace MSFSBlindAssist.Aircraft.A300;
 
 /// <summary>
 /// The four FCU windows in words, worded exactly as the typed values confirm them ("Heading 270",
-/// "Altitude 12,000 feet"), and which readout each FCU knob's step is read back from.
+/// "Altitude 12,000 feet").
 ///
 /// Only the altitude window is announced on its own (<see cref="A300WindowTracker"/>): the aircraft
 /// writes <c>INI_Altitude_Dial</c> from the knob handlers alone, while the heading, speed and vertical
 /// speed windows are also written by the autopilot's own logic (heading sync, managed speed, vertical
 /// speed sync; read from the aircraft's code 2026-10-04), so announcing them would speak changes
-/// nobody made. Those three are read back after a knob step from the panel instead.
+/// nobody made. Those three are read on request (Shift+H, Shift+S and Shift+V), and each window is set by
+/// its typed box: the four FCU knobs are not panel rows.
 /// </summary>
 public static class A300FcuWindows
 {
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
-
-    /// <summary>FCU knob control key → the readout its step is read back from.</summary>
-    public static readonly IReadOnlyDictionary<string, string> ReadoutByKnob = new Dictionary<string, string>(StringComparer.Ordinal)
-    {
-        ["A300_SPEED_KNOB"] = A300Readouts.SpeedKey,
-        ["A300_HEADING_KNOB"] = A300Readouts.HeadingKey,
-        ["A300_ALT_KNOB"] = A300Readouts.AltitudeKey,
-        ["A300_VS_KNOB"] = A300Readouts.VerticalSpeedKey,
-    };
 
     public static string Speed(double value, bool isMach) => isMach
         ? $"Mach {value.ToString("0.00", Inv)}"
@@ -38,15 +30,6 @@ public static class A300FcuWindows
         string text = Math.Round(fpm).ToString("#,0", Inv);
         return $"Vertical speed {(text == "-0" ? "0" : text)} feet per minute";
     }
-
-    /// <summary>A window's words from its readout key.</summary>
-    public static string Phrase(string readoutKey, double value, bool isMach) => readoutKey switch
-    {
-        A300Readouts.SpeedKey => Speed(value, isMach),
-        A300Readouts.HeadingKey => Heading(value),
-        A300Readouts.AltitudeKey => Altitude(value),
-        _ => VerticalSpeed(value),
-    };
 }
 
 /// <summary>

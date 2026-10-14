@@ -368,11 +368,9 @@ public class A300SquawkWatchTests
     }
 
     [Fact]
-    public void The_words_are_the_typed_confirmations_and_the_knob_read_backs()
+    public void The_words_are_the_typed_confirmations()
     {
         Assert.Equal("Squawk 5473", A300Readouts.SquawkPhrase(Code("5473")));
-        Assert.Equal("Squawk 5473", A300Readouts.KnobReadBacks["A300_TCAS_BIG"].Phrase(Code("5473")));
-        Assert.Equal("Squawk 5473", A300Readouts.KnobReadBacks["A300_TCAS_SMALL"].Phrase(Code("5473")));
         Assert.Equal("Squawk 5473", A300TypedValues.Plan(A300TypedValues.SquawkKey, 5473, false).Confirmation);
     }
 
@@ -535,22 +533,13 @@ public class A300RadioWatchesTests
 
     [Theory]
     [InlineData(A300TypedValues.SquawkKey, true)]
-    [InlineData("A300_TCAS_BIG", true)]
-    [InlineData("A300_TCAS_SMALL", true)]
+    [InlineData("A300_TCAS_BIG", false)]      // the code knobs are no rows: the typed box is the one way MSFSBA sets a code
+    [InlineData("A300_TCAS_SMALL", false)]
     [InlineData("A300_TCAS_MODE", false)]
     [InlineData("A300_TCAS_IDENT", false)]
     [InlineData(A300TypedValues.Com1StandbyKey, false)]
-    public void The_typed_squawk_box_and_the_code_knobs_are_the_squawks_own_changes(string key, bool own) =>
+    public void Only_the_typed_squawk_box_is_the_squawks_own_change(string key, bool own) =>
         Assert.Equal(own, A300RadioWatches.IsSquawkOwnChange(key));
-
-    [Fact]
-    public void The_code_knobs_are_the_encoders_that_read_the_squawk_back()
-    {
-        var reading = A300Readouts.KnobReadBacks.Where(kv => kv.Value.Readout == A300Readouts.SquawkCodeKey).Select(kv => kv.Key);
-        Assert.Equal(reading.Order(StringComparer.Ordinal), A300RadioWatches.CodeKnobKeys.Order(StringComparer.Ordinal));
-        var map = A300ControlMap.Load();
-        Assert.All(A300RadioWatches.CodeKnobKeys, key => Assert.Equal(A300Kinds.Encoder, map.FindByKey(key)?.Kind));
-    }
 
     [Fact]
     public void Every_transfer_button_the_radios_name_is_a_button_of_the_map()

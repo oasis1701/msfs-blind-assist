@@ -92,7 +92,7 @@ public partial class IniA300Definition
     /// <summary>
     /// MSFSBA is changing a watched value, and says it itself: marks that watch quiet for 2.5 s
     /// (<see cref="A300CommandedState.HoldMs"/>). <paramref name="key"/> is a typed box's key (the VHF standby boxes and
-    /// the squawk) or a control's key (a VHF transfer button, a transponder code knob). Called as the change is sent.
+    /// the squawk) or a control's key (a VHF transfer button). Called as the change is sent.
     /// </summary>
     private void NoteOwnRadioChange(string key)
     {
