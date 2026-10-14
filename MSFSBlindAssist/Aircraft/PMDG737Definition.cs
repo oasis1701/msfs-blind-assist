@@ -1281,6 +1281,18 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["COMM_ReceiverSwitches_0"] = Display("COMM_ReceiverSwitches_0", "Captain Receivers");
         d["COMM_ReceiverSwitches_1"] = Display("COMM_ReceiverSwitches_1", "First Officer Receivers");
         d["COMM_ReceiverSwitches_2"] = Display("COMM_ReceiverSwitches_2", "Overhead Receivers");
+        // ACP VHF receiver push-on/push-off buttons (EVT_ACP_*_REC_VHFn). A radio is heard only
+        // while its receiver is on at that seat, so COM2 needs VHF 2 receive. Dispatch and the
+        // spoken read-back: _acpReceiverEventMap and the COMM_ReceiverSwitches_* announce.
+        foreach (var (seatKey, seatName) in new[] { ("Capt", "Captain"), ("FO", "First Officer") })
+        {
+            for (int vhf = 1; vhf <= 3; vhf++)
+            {
+                string key = $"ACP_{seatKey}_RecVHF{vhf}";
+                d[key] = Momentary(key, $"{seatName} VHF {vhf} Receiver");
+                d[key].HelpText = $"Turns the {seatName.ToLowerInvariant()} VHF {vhf} receiver on or off. A radio is heard only while its receiver is on.";
+            }
+        }
 
         // Stab trim
         d["TRIM_StabTrimMainElecSw_NORMAL"] = Toggle("TRIM_StabTrimMainElecSw_NORMAL",
@@ -2069,6 +2081,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["Calls"] = new List<string>
             {
                 "COMM_SelectedMic_0", "COMM_SelectedMic_1",
+                "ACP_Capt_RecVHF1", "ACP_Capt_RecVHF2", "ACP_Capt_RecVHF3",
+                "ACP_FO_RecVHF1", "ACP_FO_RecVHF2", "ACP_FO_RecVHF3",
                 "COMM_ServiceInterphoneSw",
                 // Overhead ATTEND / GRD CALL push buttons (live-verified CDA
                 // param-1 dispatch). The press-count announce handler speaks
@@ -3613,6 +3627,24 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         ["COMM_GrndCallBtn"]   = "EVT_OH_GRND_CALL_SWITCH",
     };
 
+    // ACP VHF receiver buttons: one push toggles that receiver, CDA parameter 1 (the shape the
+    // sibling EVT_ACP_*_MIC_* events take). Not live-verified yet.
+    private static readonly Dictionary<string, string> _acpReceiverEventMap = new()
+    {
+        ["ACP_Capt_RecVHF1"] = "EVT_ACP_CAPT_REC_VHF1",
+        ["ACP_Capt_RecVHF2"] = "EVT_ACP_CAPT_REC_VHF2",
+        ["ACP_Capt_RecVHF3"] = "EVT_ACP_CAPT_REC_VHF3",
+        ["ACP_FO_RecVHF1"]   = "EVT_ACP_FO_REC_VHF1",
+        ["ACP_FO_RecVHF2"]   = "EVT_ACP_FO_REC_VHF2",
+        ["ACP_FO_RecVHF3"]   = "EVT_ACP_FO_REC_VHF3",
+    };
+
+    /// <summary>
+    /// When a receiver button was last pressed: the read-back may then speak "none" (the
+    /// pilot just turned the last receiver off), which the announce otherwise suppresses.
+    /// </summary>
+    private DateTime _lastReceiverPressUtc = DateTime.MinValue;
+
     // Jumpseat/armrest combos: varKey = the PMDG-owned read-back L-var (combo
     // display, 0/100), value = the SDK event whose CDA parameter IS the position.
     private static readonly Dictionary<string, string> _sdkFurnitureEventMap = new()
@@ -4521,6 +4553,19 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
 
         // ------------------------------------------------------------------
+        // 3a-2. ACP VHF receiver buttons — one press toggles the receiver.
+        //       Silent here: the COMM_ReceiverSwitches_* announce speaks the
+        //       seat's receiver list once the bitmask changes.
+        // ------------------------------------------------------------------
+        if (_acpReceiverEventMap.TryGetValue(varKey, out string? recEvtName) &&
+            EventIds.TryGetValue(recEvtName, out int recEvId))
+        {
+            _lastReceiverPressUtc = DateTime.UtcNow;
+            simConnect.SendPMDGEvent(recEvtName, (uint)recEvId, 1);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
         // 3b. IRS Mode Selector Unit (left/right rotary). The generic 3+-
         //     position click-walk does NOT move this selector — verified
         //     in-sim 2026-05-25: LEFTSINGLE clicks no-op, but a CDA direct-
@@ -5255,15 +5300,16 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // -------------------------------------------------------------
             // ACP receiver bitmasks (SDK lines 723 + 610-623). Decode the
             // selected-receiver bitmask into a readable string. Suppress when
-            // value is 0 (no receivers selected — usually means "muted"); the
-            // panel display still surfaces the raw value for query.
+            // value is 0 (no receivers selected — usually means "muted"), unless
+            // it is the read-back of a receiver button press.
             // -------------------------------------------------------------
             case "COMM_ReceiverSwitches_0":
             case "COMM_ReceiverSwitches_1":
             case "COMM_ReceiverSwitches_2":
             {
                 uint bits = (uint)value;
-                if (bits == 0) return true;
+                // All receivers off is spoken only as the read-back of a receiver button.
+                if (bits == 0 && DateTime.UtcNow - _lastReceiverPressUtc > TimeSpan.FromSeconds(3)) return true;
                 string acpLabel = varName switch
                 {
                     "COMM_ReceiverSwitches_0" => "Captain receivers",
