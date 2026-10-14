@@ -201,7 +201,14 @@ public partial class SynapticA220Definition
     private readonly TakeoffVSpeedCallouts _takeoffCallouts = new();
     private readonly A220Systems.RollWithoutVrGate _rollWithoutVr = new();
     private bool _calloutOnGround = true;   // last SIM_ON_GROUND; a ramp start is the norm
-    private bool _takeoffVrKnown;
+    // The V1 and VR the machine holds (UI thread; 0 = unset). FeedTakeoffSpeeds only ever changes a
+    // speed on evidence, so these are also what "can the machine arm?" is judged from.
+    private double _heldV1, _heldVr;
+
+    /// <summary>Whether a roll can be called at all: the machine arms only with BOTH V1 and VR
+    /// set, so a missing V1 counts as "not known" exactly like a missing VR.</summary>
+    private bool TakeoffVrKnown
+        => _heldV1 >= TakeoffVSpeedCallouts.ArmBelowKnots && _heldVr >= TakeoffVSpeedCallouts.ArmBelowKnots;
 
     /// <inheritdoc />
     public override string? TakeoffCalloutFeedKey => TakeoffIasKey;
@@ -231,23 +238,28 @@ public partial class SynapticA220Definition
         RequestSystemsRebaseline();
     }
 
-    /// <summary>V1/VR/V2 from the PFD's own bugs (A22X.L PFD Data); the speed-tape scrape is the
-    /// fallback while the store is missing. Applied on the UI thread, where the samples run.</summary>
+    /// <summary>V1/VR/V2, each from the first source that has evidence for THAT speed: the PFD's own
+    /// bug (A22X.L PFD Data — a 0 there is the store saying "unset" and does clear), else the
+    /// speed-tape bug when the tape shows it, else nothing: the machine keeps the speed it holds.
+    /// A poll with no source (tap down, a block without the PFD, a bug scrolled off the tape) is
+    /// absence of evidence, not "unset" — treating it as unset disarmed a roll in progress, which
+    /// re-arms only on the ground below 40 kt, and the next poll restored the speeds too late.
+    /// Applied on the UI thread, where the samples run.</summary>
     private void FeedTakeoffSpeeds(A220Systems.PfdBlock? pfd)
     {
-        double v1 = pfd?.v1 ?? ScrapedVSpeed("V1");
-        double vr = pfd?.vr ?? ScrapedVSpeed("VR");
-        double v2 = pfd?.v2 ?? ScrapedVSpeed("V2");
+        double? v1 = pfd?.v1 ?? ScrapedVSpeed("V1");
+        double? vr = pfd?.vr ?? ScrapedVSpeed("VR");
+        double? v2 = pfd?.v2 ?? ScrapedVSpeed("V2");
+        if (v1 == null && vr == null && v2 == null) return;
         Marshal(() =>
         {
-            _takeoffCallouts.SetV1(v1);
-            _takeoffCallouts.SetVR(vr);
-            _takeoffCallouts.SetV2(v2);
-            _takeoffVrKnown = vr >= TakeoffVSpeedCallouts.ArmBelowKnots;
+            if (v1 is { } a) { _takeoffCallouts.SetV1(a); _heldV1 = a; }
+            if (vr is { } b) { _takeoffCallouts.SetVR(b); _heldVr = b; }
+            if (v2 is { } c) _takeoffCallouts.SetV2(c);
         });
     }
 
-    private double ScrapedVSpeed(string key) => _vSpeeds.TryGetValue(key, out int v) ? v : 0;
+    private double? ScrapedVSpeed(string key) => _vSpeeds.TryGetValue(key, out int v) ? v : null;
 
     /// <summary>One per-frame airspeed sample: "Rotate" at VR on the ground (AnnounceImmediate —
     /// its value IS the timing) and one "V-speeds not set" when a roll starts with no VR.</summary>
@@ -258,7 +270,7 @@ public partial class SynapticA220Definition
         if (double.IsNaN(ias) || ias < 0) return;
         var callouts = _takeoffCallouts.ProcessSample(ias, _calloutOnGround);
         var muted = Settings.SettingsManager.Current.A220DisabledMonitorVariablesSet;
-        if (_rollWithoutVr.Observe(ias, _calloutOnGround, _takeoffVrKnown)
+        if (_rollWithoutVr.Observe(ias, _calloutOnGround, TakeoffVrKnown)
             && !muted.Contains(A220MonitorRows.RotateKey) && !announcer.Suppressed)
             announcer.AnnounceImmediate("V-speeds not set — no Rotate call");
         if (callouts.Count == 0 || announcer.Suppressed) return;

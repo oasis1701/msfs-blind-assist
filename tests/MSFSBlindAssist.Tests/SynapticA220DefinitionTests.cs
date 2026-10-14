@@ -650,6 +650,57 @@ public class SynapticA220SystemsSpeechTests : IDisposable
         Assert.Equal(new[] { "V-speeds not set — no Rotate call" }, silent.All);
     }
 
+    // ---- A poll with no V-speed source must not cost the roll its speeds (review focus 1) ----
+
+    [Fact]
+    public void Rotate_SurvivesPollsWithNoVSpeedSource_MidRoll()
+    {
+        var def = new SynapticA220Definition();
+        var speech = new SpeechCapture();
+        def.ProcessSystems(WithVSpeeds(131, 135, 139));
+        Roll(def, speech, 20, 60);                                    // armed, rolling
+        def.ProcessSystems(null);                                     // the tap hiccups: no store, no tape bugs
+        def.ProcessSystems(WithGear(2));                              // the store is back but this block has no PFD
+        Roll(def, speech, 120, 132, 136, 150);
+        Assert.Equal(new[] { "Rotate" }, speech.All);
+    }
+
+    [Fact]
+    public void Rotate_AGapAcrossTheArmingCrossing_KeepsTheSpeeds_AndSpeaksNoFalseWarning()
+    {
+        var def = new SynapticA220Definition();
+        var speech = new SpeechCapture();
+        def.ProcessSystems(WithVSpeeds(131, 135, 139));               // parked, speeds from the FMS
+        def.ProcessSystems(null);                                     // the gap lands on the roll's first seconds
+        Roll(def, speech, 20, 45, 100, 136);
+        def.ProcessSystems(WithGear(2));
+        Assert.Equal(new[] { "Rotate" }, speech.All);                 // no "V-speeds not set" on the way
+    }
+
+    [Fact]
+    public void Rotate_ASpeedTheStoreDoesNotCarry_TakesTheTapeBugOrKeepsWhatItHeld()
+    {
+        var def = new SynapticA220Definition();
+        var speech = new SpeechCapture();
+        def.ProcessSystems(WithVSpeeds(131, 135, 139));
+        // The store is down; the tape shows only the VR bug, and the pilot has changed it to 140.
+        def.ProcessDisplaysSnapshot("{\"ok\":true,\"spd\":[{\"t\":\"VR 140\",\"y\":300}]}");
+        Roll(def, speech, 20, 60, 136);                               // V1 and V2 held, VR from the tape
+        Assert.Empty(speech.All);
+        Roll(def, speech, 141);
+        Assert.Equal(new[] { "Rotate" }, speech.All);
+    }
+
+    [Fact]
+    public void ARollWithoutV1_IsNotKnownEither_BecauseTheMachineNeedsBoth()
+    {
+        var def = new SynapticA220Definition();
+        var speech = new SpeechCapture();
+        def.ProcessSystems(WithVSpeeds(null, 135, null));             // VR alone cannot arm the machine
+        Roll(def, speech, 20, 45, 136);
+        Assert.Equal(new[] { "V-speeds not set — no Rotate call" }, speech.All);
+    }
+
     [Fact]
     public void Rotate_NeedsAGroundSampleBelowTheArmSpeed_SoConnectingMidRollIsSilent()
     {
