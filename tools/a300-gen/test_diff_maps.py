@@ -87,6 +87,21 @@ class DiffMapsTests(unittest.TestCase):
         self.assertEqual(['changed A guard: null -> "G"', 'changed lamp N flashes: null -> true'],
                          diff_maps.diff(old, new))
 
+    def test_a_reordered_control_list_is_reported(self):
+        # The array order is the row order of the panel rows the checklist does not name.
+        old = {'controls': [control('A'), control('B')]}
+        new = {'controls': [control('B'), control('A')]}
+        line = 'order   controls: the surviving controls are listed in a new order'
+        self.assertEqual([line], diff_maps.diff(old, new))
+        self.assertEqual((1, line + '\n'), run_main(old, new))
+
+    def test_only_the_order_of_the_shared_controls_counts(self):
+        # A control added between two others moves none of the shared ones, and lamps are looked
+        # up by node, so their order is not reported.
+        old = {'controls': [control('A'), control('B')], 'lamps': [lamp('N'), lamp('M')]}
+        new = {'controls': [control('A'), control('X'), control('B')], 'lamps': [lamp('M'), lamp('N')]}
+        self.assertEqual(['added   X (toggle)'], diff_maps.diff(old, new))
+
     def test_exit_status_is_1_on_a_change_and_0_on_none(self):
         self.assertEqual(0, diff_maps.exit_status([]))
         self.assertEqual(1, diff_maps.exit_status(['changed package_version: "1.0.11" -> "1.0.12"']))

@@ -5,8 +5,10 @@ r"""Reports what changed between two A300 control maps, for reviewing a regenera
 
 Every line it prints is something a panel row, a spoken word or a cockpit write may have
 changed for; read each one before committing the new map. It compares every field of every
-control (by id), every lamp (by node: the cockpit rule it lights from and its bus) and every
-other top-level key (the package version), so "no differences" means the maps agree.
+control (by id), the order the controls are listed in (it sets the row order of the panel
+rows the checklist does not name), every lamp (by node: the cockpit rule it lights from and
+its bus) and every other top-level key (the package version), so "no differences" means the
+maps agree.
 
 Exit status: 1 when the maps differ, 0 when they agree, 2 for a wrong argument count.
 """
@@ -41,9 +43,22 @@ def _diff_list(old, new, ident, first, prefix='', tag=lambda entry: ''):
     return lines
 
 
+def _reordered(old, new, ident):
+    """True when the entries both lists carry are listed in a different order."""
+    in_old = {e[ident] for e in old}
+    in_new = {e[ident] for e in new}
+    return ([e[ident] for e in old if e[ident] in in_new]
+            != [e[ident] for e in new if e[ident] in in_old])
+
+
 def diff(old, new):
-    lines = _diff_list(old.get('controls', []), new.get('controls', []), 'id', CONTROL_FIELDS,
+    old_controls, new_controls = old.get('controls', []), new.get('controls', [])
+    lines = _diff_list(old_controls, new_controls, 'id', CONTROL_FIELDS,
                        tag=lambda control: ' (%s)' % control.get('kind'))
+    # The controls' array order is the row order of the panel rows the checklist does not name
+    # (A300PanelLayout); lamps are looked up by node, so their order is not reported.
+    if _reordered(old_controls, new_controls, 'id'):
+        lines.append('order   controls: the surviving controls are listed in a new order')
     lines += _diff_list(old.get('lamps', []), new.get('lamps', []), 'node', LAMP_FIELDS, prefix='lamp ')
     for key in sorted((set(old) | set(new)) - set(LISTS)):
         if old.get(key) != new.get(key):
