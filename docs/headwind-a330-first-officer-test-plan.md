@@ -86,14 +86,14 @@ After Start line "Flaps: takeoff setting" left unticked until the lever reads 1-
 gear up and down read from the legs, and the "TCAS: STANDBY" and "External power: OFF" lines.
 The full run is the A32NX's (Part G of
 [docs/fbw-a320-first-officer-test-plan.md](fbw-a320-first-officer-test-plan.md)); on the A339X
-only these seven checks need the sim (six claims in the table, and the gear legs under it),
-because each reads a variable, or sends an event, that was never confirmed on this airframe. Run
-them in the Part B walk.
+only these eight checks need the sim (six claims in the table, the gear legs and the Securing APU
+flap under it), because each reads a variable, or sends an event, that was never confirmed on this
+airframe. Run them in the Part B walk.
 
 **Do these first: L10, L12 and L13.** A wrong answer on any of them changes what the First Officer
 does or ticks on this airframe: L10 decides whether Engine Start ever finishes, and L12 and L13
-decide whether the Rudder trim and landing-flaps lines tick at all. L11, L14, L15 and the gear
-legs can wait.
+decide whether the Rudder trim and landing-flaps lines tick at all. L11, L14, L15, the gear legs and
+the APU flap can wait.
 
 | # | Claim to settle | How to tell |
 |---|---|---|
@@ -106,6 +106,14 @@ legs can wait.
 
 In the same walk, confirm that After Takeoff's "Landing gear: UP" wait passes once the gear is
 up (the three leg variables are inherited from the A32NX, not measured on the A339X).
+
+**Securing (2026-10-14, [FOA-10](invariants/first-officer-airbus.md#foa-10)):** the flow now waits for
+the APU flap before it switches external power and the batteries OFF. In the same walk, run Securing
+with the APU running: expect "APU master: OFF", then "Waiting for: APU flap to close", then "External
+power: OFF" and both batteries OFF, and the Securing Checklist complete. This also confirms
+`A32NX_APU_FLAP_OPEN_PERCENTAGE` reads on the A339X: if it never does, the wait times out after 150 s
+("Timed out waiting for: APU flap to close") and the flow carries on, so record what the A339X
+publishes for its APU flap instead.
 
 **Observation to report:** with a SimBrief plan loaded, if the flaps do not move after "Flaps:
 takeoff setting", that action line still shows done (the write is not verified).

@@ -237,9 +237,13 @@ aircraft again. No flow completes the other four read-backs.
    seatbelt signs OFF, beacon OFF, fuel pumps ALL OFF, nose light OFF, runway turnoff lights
    OFF, **cockpit lighting bright**, **ECAM page → door**.
 4. **Secure**: ADIRS OFF (all three), crew oxygen OFF, parking brake confirmed SET, APU
-   master OFF, **external power OFF** (a guarded toggle: it must press only while the ON
-   light is lit), batteries 1 and 2 OFF, **cockpit lighting off**: the annunciator is left
-   BRIGHT for the next power-up, and only the dome and the four brightness knobs go off.
+   master OFF, **"Waiting 120 seconds: APU flap to close" when it switched the APU off (the
+   Fenix publishes no flap, so this is a fixed wait; with the APU already off, no wait)**,
+   **external power OFF** (a guarded toggle: it must press only while the ON light is lit),
+   batteries 1 and 2 OFF, **cockpit lighting off**: the annunciator is left BRIGHT for the
+   next power-up, and only the dome and the four brightness knobs go off. The Securing
+   Checklist shows complete. **In-sim check:** run Secure with the APU running: hear the
+   2-minute wait after "APU master: OFF", then external power and the batteries OFF.
 5. **LANDING_CL auto-ticks on approach configuration** — during the approach (before
    touchdown), configure landing gear DOWN, seat belts ON, ground spoilers ARMED, flaps to
    the landing setting, and confirm the **Landing Checklist** (`LANDING_CL`) memo lines

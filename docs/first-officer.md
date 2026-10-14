@@ -172,6 +172,17 @@ run switched off (`FlowStep.RunOnlyIfStepSent`), so an APU that was already off 
 battery is left alone, said aloud, unless both engines read below 10 % N2. Sources and
 judgements: [FOB-22](invariants/first-officer-boeing.md#fob-22).
 
+**Airbus Securing: APU flap before external power (owner, 2026-10-14):** the Fenix, A32NX, A330 and
+A380 Securing flows now run FlyByWire's own order: APU bleed OFF, APU master OFF, wait for the APU
+flap to close ("APU flap to close"), then external power OFF and the batteries OFF, because the flap
+needs APU or external power to close. The FlyByWire jets wait on the published flap position
+(`A32NX_APU_FLAP_OPEN_PERCENTAGE`, up to 150 s; an APU that never ran passes at once); the Fenix
+publishes no flap, so it waits a fixed 2 minutes, and only after an APU master this run switched off.
+The A32NX and A330 no longer skip "External power: OFF" on a switch they could not read, and the Fenix,
+A32NX and A330 Securing now tick and latch the Securing Checklist, "Batteries: OFF" included (left open
+if a battery step is skipped). The A380's order differs from its shipped checklist text by this
+decision. Sources and judgements: [FOA-10](invariants/first-officer-airbus.md#foa-10).
+
 **HeadwindSim A330-900neo First Officer (branch `feature/first-officer`):** a seventh
 profile, `FirstOfficer/HWA330/`, is a **duplicate** of the A32NX profile — not a
 shared-data variant and not a widened aircraft check. `HeadwindA330Definition` inherits

@@ -775,6 +775,10 @@ public static class FbwA380ChecklistDefinitions
                 async (e, _) => { await e.Set("LIGHT_NAV", 0); await e.Set("LIGHT_LOGO", 0); }),
             Auto("SC_APUBLEED_OFF", "SECURE", "APU bleed: OFF", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
                 v => v < 0.5, (e, _) => e.Set("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 0)),
+            // The APU master goes off before external power: the flow waits for the APU flap between
+            // them (owner, 2026-10-14; FOA-10), and that wait has no line here.
+            Auto("SC_APU_OFF", "SECURE", "APU master: OFF", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON",
+                v => v < 0.5, (e, _) => e.Set("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0)),
             Multi("SC_EXTPWR_OFF", "SECURE", "External power: OFF",
                 "A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON", v => v < 0.5,
                 new[] { "A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON", "A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON",
@@ -786,8 +790,6 @@ public static class FbwA380ChecklistDefinitions
                     await e.Set("A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON", 0);
                     await e.Set("A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON", 0);
                 }),
-            Auto("SC_APU_OFF", "SECURE", "APU master: OFF", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON",
-                v => v < 0.5, (e, _) => e.Set("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0)),
             Multi("SC_BAT_OFF", "SECURE", "Batteries: OFF", "A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO",
                 v => v < 0.5,
                 new[] { "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", "A32NX_OVHD_ELEC_BAT_ESS_PB_IS_AUTO",

@@ -15,6 +15,7 @@ paths:
   - "tests/MSFSBlindAssist.Tests/FirstOfficer/Conf3Registration*.cs"
   - "tests/MSFSBlindAssist.Tests/FirstOfficer/EngineModeSelector*.cs"
   - "tests/MSFSBlindAssist.Tests/FirstOfficer/A320Family*.cs"
+  - "tests/MSFSBlindAssist.Tests/FirstOfficer/AirbusSecuring*.cs"
 ---
 # First Officer rules: Fenix A320, FBW A32NX/A380, Headwind A330
 
@@ -29,3 +30,4 @@ Loaded when Claude reads matching code, on top of first-officer.md. Background: 
 - [FOA-7] The A32NX FO's VFE-next flap guard reads the FAC `V_FE_NEXT` word (FAC 1, else 2) via the synthetic `FO_VFE_NEXT`, never `A32NX_SPEEDS_VFEN` (unpublished since FBW #10890: reads 0, so flaps never extend). No data → NaN → hold. The A330 evaluator resolves it to its plain L-var. Full: docs/invariants/first-officer-airbus.md#foa-7
 - [FOA-8] The A320-family read-backs (Fenix, A32NX, A330) follow the Nov 2021 Airbus normal checklist, ECAM memo lines expanded; `A320FamilyParityTests` keeps the Fenix and A32NX equal (allow-list with reasons). Never re-add After Takeoff, Before Takeoff or Departure Change read-backs or line markers; live values go in `ChecklistItem.LiveValue`. Full: docs/invariants/first-officer-airbus.md#foa-8
 - [FOA-9] FBW A380 read-backs are FlyByWire's A380X ECL normal checklists in the ECL's words, single-pilot, blanks SET with a `LiveValue`; never re-add Before Takeoff, After Takeoff, After Landing or Departure Change. Every readable or action line an A380 flow latches has a delivering write or read-only check (`FbwA380FlowChecklistLinkTests`). Full: docs/invariants/first-officer-airbus.md#foa-9
+- [FOA-10] Airbus Securing (owner, 2026-10-14): APU master OFF → wait for the APU flap (FBW jets: `A32NX_APU_FLAP_OPEN_PERCENTAGE` closed, 150 s; Fenix: fixed 120 s, only after this run's master write) → external power OFF → batteries; the flap needs APU or external power to close. Fenix/A32NX/A330 latch `SECURING_CL`. Full: docs/invariants/first-officer-airbus.md#foa-10

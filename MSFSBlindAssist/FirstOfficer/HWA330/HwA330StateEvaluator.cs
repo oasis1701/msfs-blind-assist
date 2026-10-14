@@ -55,6 +55,8 @@ public sealed class HwA330StateEvaluator : LVarStateEvaluator
         "FUEL_PUMP_L1", "FUEL_PUMP_L2", "FUEL_PUMP_R1", "FUEL_PUMP_R2", "FUEL_PUMP_C1", "FUEL_PUMP_C2",
         "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
         "A32NX_OVHD_APU_START_PB_IS_ON", "A32NX_OVHD_APU_START_PB_IS_AVAILABLE",
+        // Securing's APU flap wait (FOA-10): OnRequest and silent, registered by the SD APU page rows.
+        "A32NX_APU_FLAP_OPEN_PERCENTAGE",
         "A32NX_COCKPIT_DOOR_LOCKED", "A32NX_AUTOBRAKES_ARMED_MODE",
         "A32NX_EFIS_L_ND_MODE",
         "A32NX_EFIS_L_ND_RANGE",

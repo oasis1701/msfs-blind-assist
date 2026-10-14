@@ -598,32 +598,41 @@ public static class FenixFlowDefinitions
     private static Flow BuildSecure() => new()
     {
         Id = "SECURE", Name = "Securing",
-        Description = "ADIRS, oxygen, emergency lights, signs, APU and batteries off, cockpit lights off.",
-        RelatedChecklistGroupIds = new[] { "SECURE" },
+        Description = "ADIRS, oxygen, emergency lights, signs, APU off, wait for the APU flap, external power and batteries off, cockpit lights off.",
+        // SECURING_CL: the Securing Checklist read-back, latched by a finished run through the Also links below.
+        RelatedChecklistGroupIds = new[] { "SECURE", "SECURING_CL" },
         Steps = new()
         {
             Done(Skip(Multi("SC_ADIRS", "IRS 1, 2 and 3: OFF",
                     ("S_OH_NAV_IR1_MODE", 0), ("S_OH_NAV_IR2_MODE", 0), ("S_OH_NAV_IR3_MODE", 0)),
                 s => s.IsPosition("S_OH_NAV_IR1_MODE", 0) && s.IsPosition("S_OH_NAV_IR2_MODE", 0)
                      && s.IsPosition("S_OH_NAV_IR3_MODE", 0)), "SC_ADIRS"),
-            Done(Skip(SW("SC_OXY", "Crew oxygen supply: OFF", "S_OH_OXYGEN_CREW_OXYGEN", 0),
-                s => s.IsPosition("S_OH_OXYGEN_CREW_OXYGEN", 0)), "SC_OXY"),
-            Done(Skip(SW("SC_EMEREXIT", "Emergency exit lights: OFF", "S_OH_INT_LT_EMER", 0),
-                s => s.IsPosition("S_OH_INT_LT_EMER", 0)), "SC_EMEREXIT"),
+            Also(Done(Skip(SW("SC_OXY", "Crew oxygen supply: OFF", "S_OH_OXYGEN_CREW_OXYGEN", 0),
+                s => s.IsPosition("S_OH_OXYGEN_CREW_OXYGEN", 0)), "SC_OXY"), "SCC_OXY"),
+            Also(Done(Skip(SW("SC_EMEREXIT", "Emergency exit lights: OFF", "S_OH_INT_LT_EMER", 0),
+                s => s.IsPosition("S_OH_INT_LT_EMER", 0)), "SC_EMEREXIT"), "SCC_EMEREXIT"),
             Done(Skip(SW("SC_NOSMOKE", "No smoking: OFF", "S_OH_SIGNS_SMOKING", 0),
                 s => s.IsPosition("S_OH_SIGNS_SMOKING", 0)), "SC_NOSMOKE"),
             Done(Skip(SW("SC_APUBLEED", "APU bleed: OFF", "S_OH_PNEUMATIC_APU_BLEED", 0),
                 s => s.IsPosition("S_OH_PNEUMATIC_APU_BLEED", 0)), "SC_APUBLEED"),
+            // The skip below is what makes the wait after it conditional: an APU master that already
+            // reads OFF is "Already set", not "sent" (RunOnlyIfStepSent), so no 2-minute wait follows.
             Done(Skip(SW("SC_APUMASTER", "APU master: OFF", "S_OH_ELEC_APU_MASTER", 0),
                 s => s.IsPosition("S_OH_ELEC_APU_MASTER", 0)), "SC_APUMASTER"),
+            // FlyByWire's A320 order (owner, 2026-10-14): wait for the APU flap before external
+            // power goes off. The Fenix publishes no APU flap or speed (and its lamps are never
+            // inferred, FO-11), so this is a fixed 2 minutes — a judgement — and only after an
+            // APU master this run switched off (FOA-10).
+            OnlyIfSent(Wait("SC_APU_WAIT", "APU flap to close", 120), "SC_APUMASTER"),
             // A toggle pushbutton: press only while the ON light reads lit (a press while it is
-            // already off would turn it back ON).
+            // already off would turn it back ON). Skipping on an UNREAD light is the safe direction
+            // for a toggle, so unlike the FBW jets' absolute OFF write this keeps !IsOn.
             Done(Skip(SW("SC_EXTPWR_OFF", "External power: OFF", "S_OH_ELEC_EXT_PWR", 1),
                 s => !s.IsOn("I_OH_ELEC_EXT_PWR_L")), "SC_EXTPWR_OFF"),
-            Done(Skip(SW("SC_BAT1", "Battery 1: OFF", "S_OH_ELEC_BAT1", 0),
-                s => s.IsPosition("S_OH_ELEC_BAT1", 0)), "SC_BAT1"),
-            Done(Skip(SW("SC_BAT2", "Battery 2: OFF", "S_OH_ELEC_BAT2", 0),
-                s => s.IsPosition("S_OH_ELEC_BAT2", 0)), "SC_BAT2"),
+            Also(Done(Skip(SW("SC_BAT1", "Battery 1: OFF", "S_OH_ELEC_BAT1", 0),
+                s => s.IsPosition("S_OH_ELEC_BAT1", 0)), "SC_BAT1"), "SCC_BAT"),
+            Also(Done(Skip(SW("SC_BAT2", "Battery 2: OFF", "S_OH_ELEC_BAT2", 0),
+                s => s.IsPosition("S_OH_ELEC_BAT2", 0)), "SC_BAT2"), "SCC_BAT"),
             // Cockpit lighting off (the A32NX's SC_COCKPITLT point): annunciator left at
             // BRIGHT for the next power-up, dome and knobs off.
             Done(SW("SC_COCKPITLT", "Cockpit lights: annunciator bright", "S_OH_IN_LT_ANN_LT", 1), "SC_COCKPITLT"),
@@ -721,6 +730,15 @@ public static class FenixFlowDefinitions
     private static Step Also(Step step, params string[] alsoCompletes)
     {
         step.AlsoCompletesChecklistItemIds = alsoCompletes;
+        return step;
+    }
+
+    // A wait that follows an earlier switch step: it runs only when that step actually SENT its write
+    // this run, and otherwise passes silently as done (FlowStep.RunOnlyIfStepSent). Only meaningful
+    // after a step that has a SkipCondition reading "already set", or it is "sent" on every run.
+    private static Step OnlyIfSent(Step step, string sentStepId)
+    {
+        step.RunOnlyIfStepSent = sentStepId;
         return step;
     }
 }

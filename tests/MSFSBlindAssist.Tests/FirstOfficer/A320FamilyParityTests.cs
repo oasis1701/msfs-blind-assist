@@ -51,6 +51,11 @@ public class A320FamilyParityTests
     private const string AutobrakePanel =
         "FO-14: the landing-autobrake reminder names each aircraft's own panel location.";
 
+    private const string ApuFlapWait =
+        "The Fenix publishes no APU flap position, and its lamps are never inferred (FO-11), so its wait "
+        + "before external power goes off is a fixed 2 minutes after an APU master this run switched off "
+        + "(owner, 2026-10-14; FOA-10); the A32NX waits for A32NX_APU_FLAP_OPEN_PERCENTAGE to read closed.";
+
     private const string DoorOpenClosedOnly =
         "The Fenix publishes the cockpit door open/closed, not locked: its line is tick-only "
         + "(ActionManual), where the A32NX's detects A32NX_COCKPIT_DOOR_LOCKED.";
@@ -104,6 +109,7 @@ public class A320FamilyParityTests
     private static readonly Dictionary<string, string> KnownStepKindDivergences = new()
     {
         ["EPU_CHK_GEAR"] = GearLeverNotWritable,
+        ["SC_APU_WAIT"] = ApuFlapWait,
     };
 
     /// <summary>Flow steps, on both aircraft, that complete different checklist lines, and why.</summary>

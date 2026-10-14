@@ -127,8 +127,13 @@ own narration.
     aircraft agrees: a master that never reads off leaves "Engine masters 1 to 4: OFF" and the
     Parking Checklist's "Engines: OFF" open; a sign that stays lit leaves "Seatbelt signs: OFF" open.
 12. **Securing**: crew oxygen OFF, the EFB reminder, IRS 1-3 OFF, emergency exit lighting OFF, no
-    smoking OFF, nav and logo lights OFF, APU bleed OFF, external power OFF, APU master OFF, and
-    **batteries OFF last**.
+    smoking OFF, nav and logo lights OFF, APU bleed OFF, APU master OFF, **"Waiting for: APU flap
+    to close"** (up to 150 s; FlyByWire's order, owner 2026-10-14, so external power is no longer
+    switched off before the APU master as in the shipped checklist text), external power OFF, and
+    **batteries OFF last**. **In-sim check:** run Securing with the APU running: hear the flap wait
+    after "APU master: OFF", then external power and the batteries OFF. This also confirms
+    `A32NX_APU_FLAP_OPEN_PERCENTAGE` reads on the A380: if it never does, the wait times out
+    ("Timed out waiting for: APU flap to close") and the flow carries on.
 13. **No double-announce.** Throughout all 12 flows, confirm each step is announced **once**
     by the FO — not twice. The executor wraps every write in a suppressed-announcer guard
     around `ApplyUIVariable`, so the def's own internal `Announce()` calls (e.g. "Rudder trim

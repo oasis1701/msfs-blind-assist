@@ -15,10 +15,14 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 /// </summary>
 public class FoA380SecureFlowTests
 {
+    // The APU master goes off before external power, with the APU flap wait between them: FlyByWire's
+    // own order, chosen by the owner for every Airbus on 2026-10-14 (FOA-10). The A380's shipped
+    // reference text (Checklists/FBW_A380_Checklist.txt) lists external power first; this was the
+    // order until then (SC_EXTPWR_OFF, SC_APU_OFF).
     private static readonly string[] ExpectedSecureIds =
     {
         "SC_OXY", "SC_EFB", "SC_ADIRS", "SC_EMEREXIT", "SC_NOSMOKE",
-        "SC_EXTLT_OFF", "SC_APUBLEED_OFF", "SC_EXTPWR_OFF", "SC_APU_OFF", "SC_BAT_OFF",
+        "SC_EXTLT_OFF", "SC_APUBLEED_OFF", "SC_APU_OFF", "SC_APU_WAIT", "SC_EXTPWR_OFF", "SC_BAT_OFF",
     };
 
     [Fact]
@@ -35,14 +39,24 @@ public class FoA380SecureFlowTests
         Assert.Contains("SECURING_CL", flow.RelatedChecklistGroupIds ?? System.Array.Empty<string>());
     }
 
+    // The Securing action list has one line per step, except for the read-only APU flap wait (SC_APU_WAIT,
+    // owner, 2026-10-14; FOA-10): a pacing wait links no line, so it has none, in the order the flow runs.
     [Fact]
     public void SecureChecklistGroupMirrorsTheFlowOneToOne()
     {
         var flowIds = FbwA380FlowDefinitions.Build()
-            .Single(f => f.Id == "SECURE").Steps.Select(s => s.Id).ToHashSet();
+            .Single(f => f.Id == "SECURE").Steps.Where(s => s.Id != "SC_APU_WAIT").Select(s => s.Id).ToList();
         var itemIds = FbwA380ChecklistDefinitions.Build()
-            .Single(g => g.Id == "SECURE").Items.Select(i => i.Id).ToHashSet();
+            .Single(g => g.Id == "SECURE").Items.Select(i => i.Id).ToList();
         Assert.Equal(flowIds, itemIds);
+    }
+
+    [Fact]
+    public void TheApuFlapWaitLinksNoLine()
+    {
+        var wait = FbwA380FlowDefinitions.Build().Single(f => f.Id == "SECURE").Steps.Single(s => s.Id == "SC_APU_WAIT");
+        Assert.Empty(wait.LinkedChecklistItemIds);
+        Assert.DoesNotContain(FbwA380ChecklistDefinitions.Build().SelectMany(g => g.Items), i => i.Id == "SC_APU_WAIT");
     }
 
     [Fact]
@@ -81,7 +95,8 @@ public class FoA380SecureFlowTests
     }
 
     // -----------------------------------------------------------------------
-    // Payload pinning — the ten SECURE steps' exact (variable, value) writes. Structural
+    // Payload pinning — the SECURE steps' exact (variable, value) writes (the read-only APU
+    // flap wait, SC_APU_WAIT, writes nothing and is pinned in AirbusSecuringPowerOffTests). Structural
     // tests above cover ids/order/mirroring but not a single variable name or target value,
     // which is exactly where the safety lives: an ordinal, case-sensitive lookup dictionary
     // means a wrong casing (e.g. "..._POSITION" vs "..._Position") writes a variable nothing
@@ -119,14 +134,14 @@ public class FoA380SecureFlowTests
         ("SC_APUBLEED_OFF", FlowStepActionType.SetSwitch, "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 0,
             Array.Empty<(string, int)>()),
 
+        ("SC_APU_OFF", FlowStepActionType.SetSwitch, "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0,
+            Array.Empty<(string, int)>()),
+
         ("SC_EXTPWR_OFF", FlowStepActionType.SetSwitchMultiple, null, null, new[]
         {
             ("A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON", 0), ("A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON", 0),
             ("A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON", 0), ("A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON", 0),
         }),
-
-        ("SC_APU_OFF", FlowStepActionType.SetSwitch, "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0,
-            Array.Empty<(string, int)>()),
 
         ("SC_BAT_OFF", FlowStepActionType.SetSwitchMultiple, null, null, new[]
         {

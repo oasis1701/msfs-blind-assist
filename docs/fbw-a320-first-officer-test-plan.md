@@ -161,8 +161,12 @@ just the FO's own narration.
     pumps OFF, nose/turn-off lights OFF, cockpit door UNLOCKED, **cockpit lighting SET
     (parking/bright scene)** per §4.1, **ECAM page → DOOR**.
 13. **Securing** (FSFO 12 tail): IRS 1-3 OFF, crew oxygen OFF, emergency-exit lighting OFF,
-    no-smoking OFF, APU bleed/master OFF, **External power: OFF** (the new line), batteries OFF,
-    **cockpit lighting OFF** (all knobs to 0, dome off, standby compass off) per §4.1.
+    no-smoking OFF, APU bleed/master OFF, **"Waiting for: APU flap to close"** (FlyByWire's order:
+    external power stays on until the flap reads closed, up to 150 s), **External power: OFF**
+    (the new line), batteries OFF, **cockpit lighting OFF** (all knobs to 0, dome off, standby
+    compass off) per §4.1. The Securing Checklist shows complete. **In-sim check:** run Securing
+    with the APU running: hear the flap wait after "APU master: OFF", then external power and the
+    batteries OFF.
 14. **No double-announce.** Throughout all flows, confirm each step is announced **once** — the
     executor wraps every write in a suppressed-announcer guard around `ApplyUIVariable`, so the
     def's own internal `Announce()` calls are dropped and only the FO's step narration speaks.

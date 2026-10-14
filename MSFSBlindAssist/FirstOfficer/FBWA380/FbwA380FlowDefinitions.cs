@@ -39,6 +39,7 @@ using Step = Models.FlowStep<FbwA380StateEvaluator>;
 ///   memo check, the Landing gear-down check (last in its flow, FO-13) and the Parking engines-off wait.
 ///   The two seat-belt waits and the engines-off wait also complete the action line their write ticked,
 ///   which reads the same field, so a timed-out wait keeps that line out of the latch too.
+///   The Securing APU flap wait (SC_APU_WAIT) is a pure pacing wait and links no line.
 ///   A skipped step keeps its lines out of the end-of-flow latch (FO-8), and
 ///   FbwA380FlowChecklistLinkTests pins that no readable or action line in a latched group lacks a step.
 /// </summary>
@@ -574,12 +575,16 @@ public static class FbwA380FlowDefinitions
     // -----------------------------------------------------------------------
     // The power-down phase. PARKING deliberately leaves the aircraft POWERED (it selects
     // the APU generators and APU bleed on for the gate); this is where the jet actually
-    // goes cold and dark. Content and order come from the aircraft's own shipped reference
-    // text, Checklists/FBW_A380_Checklist.txt "[Securing the Aircraft]".
+    // goes cold and dark. The content comes from the aircraft's own shipped reference text,
+    // Checklists/FBW_A380_Checklist.txt "[Securing the Aircraft]". The ORDER of the last four
+    // steps does not: that text lists external power BEFORE the APU master, while FlyByWire's A32NX
+    // guide switches the APU master off, waits for the APU flap to close ("requires either APU or
+    // external power"), then drops external power and the batteries. The owner chose that order
+    // for every Airbus on 2026-10-14 (FOA-10).
     private static Flow BuildSecure() => new()
     {
         Id = "SECURE", Name = "Securing",
-        Description = "Oxygen, ADIRS, signs, exterior lights, APU bleed, ground power, APU master, batteries.",
+        Description = "Oxygen, ADIRS, signs, exterior lights, APU bleed, APU master, wait for the APU flap, ground power, batteries.",
         RelatedChecklistGroupIds = new[] { "SECURING_CL" },
         Steps = new()
         {
@@ -616,6 +621,12 @@ public static class FbwA380FlowDefinitions
             // two below matched them.
             Done(Skip(SW("SC_APUBLEED_OFF", "APU bleed: OFF", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 0),
                 s => s.IsPosition("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 0)), "SC_APUBLEED_OFF"),
+            Done(Skip(SW("SC_APU_OFF", "APU master: OFF", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0),
+                s => s.IsPosition("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0)), "SC_APU_OFF"),
+            // Wait for the APU flap to close BEFORE external power goes off (owner, 2026-10-14; FOA-10):
+            // the flap needs APU or external power to close. Read-only, so it links no line. Instant when
+            // the APU never ran (flap reads 0); an unread flap simply times out and the flow carries on.
+            WaitForField("SC_APU_WAIT", "APU flap to close", "A32NX_APU_FLAP_OPEN_PERCENTAGE", v => v < 0.5, 150),
             Done(Skip(Multi("SC_EXTPWR_OFF", "External power: OFF",
                     ("A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON", 0), ("A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON", 0),
                     ("A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON", 0), ("A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON", 0)),
@@ -623,8 +634,6 @@ public static class FbwA380FlowDefinitions
                   && s.IsPosition("A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON", 0)
                   && s.IsPosition("A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON", 0)
                   && s.IsPosition("A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON", 0)), "SC_EXTPWR_OFF"),
-            Done(Skip(SW("SC_APU_OFF", "APU master: OFF", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0),
-                s => s.IsPosition("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0)), "SC_APU_OFF"),
             // Batteries LAST — the final power source, and the step that makes the jet dark. It also
             // completes the checklist's "Batteries: OFF" (FO-6), which reads the same four.
             Also(Done(Skip(Multi("SC_BAT_OFF", "Batteries: OFF",

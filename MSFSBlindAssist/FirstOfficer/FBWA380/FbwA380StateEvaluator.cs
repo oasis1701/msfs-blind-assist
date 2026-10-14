@@ -53,6 +53,8 @@ public sealed class FbwA380StateEvaluator : LVarStateEvaluator
         "FUELPUMP_TRIM_L", "FUELPUMP_TRIM_R",
         "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
         "A32NX_OVHD_APU_START_PB_IS_ON",
+        // Securing's APU flap wait (FOA-10): OnRequest and silent (FlyByWireA380Definition's Read).
+        "A32NX_APU_FLAP_OPEN_PERCENTAGE",
         "A32NX_COCKPIT_DOOR_LOCKED", "A32NX_AUTOBRAKES_SELECTED_MODE",
         "A32NX_EFIS_L_ND_MODE", "A32NX_EFIS_R_ND_MODE",
         "A32NX_EFIS_L_ND_RANGE", "A32NX_EFIS_R_ND_RANGE",

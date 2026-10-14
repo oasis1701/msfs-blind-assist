@@ -634,8 +634,9 @@ public static class HwA330FlowDefinitions
     private static Flow BuildSecure() => new()
     {
         Id = "SECURE", Name = "Securing",
-        Description = "ADIRS, oxygen, emergency lights, signs, APU and batteries off, cockpit lights off.",
-        RelatedChecklistGroupIds = new[] { "SECURE" },
+        Description = "ADIRS, oxygen, emergency lights, signs, APU off, wait for the APU flap, external power and batteries off, cockpit lights off.",
+        // SECURING_CL: the Securing Checklist read-back, latched by a finished run through the Also links below.
+        RelatedChecklistGroupIds = new[] { "SECURE", "SECURING_CL" },
         Steps = new()
         {
             Done(Skip(Multi("SC_ADIRS", "IRS 1, 2 and 3: OFF",
@@ -645,22 +646,27 @@ public static class HwA330FlowDefinitions
                      && s.IsPosition("A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", 0)
                      && s.IsPosition("A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB", 0)), "SC_ADIRS"),
             // Crew oxygen OFF = 1 (inverted convention, see PF_OXY).
-            Done(Skip(SW("SC_OXY", "Crew oxygen supply: OFF", "PUSH_OVHD_OXYGEN_CREW", 1),
-                s => s.IsPosition("PUSH_OVHD_OXYGEN_CREW", 1)), "SC_OXY"),
-            Done(Skip(SW("SC_EMEREXIT", "Emergency exit lights: OFF", "XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_POSITION", 2),
-                s => s.IsPosition("XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_POSITION", 2)), "SC_EMEREXIT"),
+            Also(Done(Skip(SW("SC_OXY", "Crew oxygen supply: OFF", "PUSH_OVHD_OXYGEN_CREW", 1),
+                s => s.IsPosition("PUSH_OVHD_OXYGEN_CREW", 1)), "SC_OXY"), "SCC_OXY"),
+            Also(Done(Skip(SW("SC_EMEREXIT", "Emergency exit lights: OFF", "XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_POSITION", 2),
+                s => s.IsPosition("XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_POSITION", 2)), "SC_EMEREXIT"), "SCC_EMEREXIT"),
             Done(Skip(SW("SC_NOSMOKE", "No smoking: OFF", "XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_POSITION", 2),
                 s => s.IsPosition("XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_POSITION", 2)), "SC_NOSMOKE"),
             Done(Skip(SW("SC_APUBLEED", "APU bleed: OFF", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 0),
                 s => s.IsPosition("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 0)), "SC_APUBLEED"),
             Done(Skip(SW("SC_APUMASTER", "APU master: OFF", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0),
                 s => s.IsPosition("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0)), "SC_APUMASTER"),
+            // FlyByWire's order (owner, 2026-10-14): wait for the APU flap to close BEFORE external
+            // power goes off — the flap needs APU or external power to close. Instant when the APU
+            // never ran (flap reads 0); an unread flap simply times out and the flow carries on (FOA-10).
+            WaitForField("SC_APU_WAIT", "APU flap to close", "A32NX_APU_FLAP_OPEN_PERCENTAGE", v => v < 0.5, 150),
+            // IsPosition(..., 0), never !IsOn(...): an unread switch must not skip an absolute OFF write.
             Done(Skip(SW("SC_EXTPWR_OFF", "External power: OFF", "A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON", 0),
-                s => !s.IsOn("A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON")), "SC_EXTPWR_OFF"),
-            Done(Skip(SW("SC_BAT1", "Battery 1: OFF", "A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", 0),
-                s => s.IsPosition("A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", 0)), "SC_BAT1"),
-            Done(Skip(SW("SC_BAT2", "Battery 2: OFF", "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", 0),
-                s => s.IsPosition("A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", 0)), "SC_BAT2"),
+                s => s.IsPosition("A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON", 0)), "SC_EXTPWR_OFF"),
+            Also(Done(Skip(SW("SC_BAT1", "Battery 1: OFF", "A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", 0),
+                s => s.IsPosition("A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", 0)), "SC_BAT1"), "SCC_BAT"),
+            Also(Done(Skip(SW("SC_BAT2", "Battery 2: OFF", "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", 0),
+                s => s.IsPosition("A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", 0)), "SC_BAT2"), "SCC_BAT"),
             // ★ Cockpit lighting off (spec §4.1): annunciator left bright for the next power-up,
             // dome and compass light off, scene off (FO-7: a step behind every line).
             Done(SW("SC_COCKPITLT", "Cockpit lights: annunciator bright", "A32NX_OVHD_INTLT_ANN", 1), "SC_COCKPITLT"),
