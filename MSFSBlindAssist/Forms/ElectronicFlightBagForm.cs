@@ -620,10 +620,10 @@ public partial class ElectronicFlightBagForm : Form
         };
 
         // Runway listbox
-        var runwayLabel = new Label { Text = "Runways:", Location = new Point(20, 80), Width = 200 };
+        var runwayLabel = new Label { Text = "Runways:", Location = new Point(580, 80), Width = 200 };
         airportLookupRunwaysListBox = new ListBox
         {
-            Location = new Point(20, 105),
+            Location = new Point(580, 105),
             Size = new Size(200, 100),
             AccessibleName = "Airport Lookup Runways",
             AccessibleDescription = "Select runway for detailed information"
@@ -658,9 +658,10 @@ public partial class ElectronicFlightBagForm : Form
         };
 
         panel.Controls.AddRange(new Control[] {
+            // Tab order: field, Search, the airport, then the runways (list, then the picked one).
             icaoLabel, airportLookupIcaoTextBox, airportLookupSearchButton,
-            runwayLabel, airportLookupRunwaysListBox,
             airportInfoLabel, airportInfoTextBox,
+            runwayLabel, airportLookupRunwaysListBox,
             runwayInfoLabel, runwayInfoTextBox
         });
         lookupTab.Controls.Add(panel);
