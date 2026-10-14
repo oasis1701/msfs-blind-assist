@@ -261,4 +261,173 @@ internal static partial class A220Systems
         public double? total { get; set; }
         public int legs { get; set; }
     }
+
+    // ---- CAS ([A220-36]) ------------------------------------------------------------
+    // "A22X.CAS Data".msg is a bitset over SynapticA220EclData.CasMessages: bit index =
+    // word << 5 | bit (cas.ts dV). The EICAS shows warnings first, then cautions, advisories,
+    // status, newest first within a level (CasStack.tsx).
+
+    internal static List<int> DecodeCasBits(long[]? words)
+    {
+        var active = new List<int>();
+        if (words == null) return active;
+        for (int w = 0; w < words.Length; w++)
+        {
+            uint bits = unchecked((uint)words[w]);
+            for (int b = 0; bits != 0; b++, bits >>= 1)
+                if ((bits & 1) != 0) active.Add((w << 5) | b);
+        }
+        return active;
+    }
+
+    internal readonly record struct CasLine(int Index, A220CasLevel Level, string Text);
+
+    /// <summary>The table's line, or a quiet status line for an index the table does not know.</summary>
+    internal static CasLine Line(int index)
+        => SynapticA220EclData.CasMessage(index) is { } m
+            ? new CasLine(index, m.Level, m.Text)
+            : new CasLine(index, A220CasLevel.Status, Inv($"CAS message {index}"));
+
+    internal static string SeverityWord(A220CasLevel level) => level switch
+    {
+        A220CasLevel.Warning => "Warning",
+        A220CasLevel.Caution => "Caution",
+        A220CasLevel.Advisory => "Advisory",
+        _ => "Status"
+    };
+
+    /// <summary>EICAS order: level descending, then newest first (higher first-seen stamp).</summary>
+    internal static List<CasLine> OrderForDisplay(IEnumerable<int> active, IReadOnlyDictionary<int, long> firstSeen)
+        => active.Distinct().Select(Line)
+            .OrderByDescending(l => (int)l.Level)
+            .ThenByDescending(l => firstSeen.TryGetValue(l.Index, out long s) ? s : long.MinValue)
+            .ThenBy(l => l.Index)
+            .ToList();
+
+    /// <summary>ONE line naming every active warning and caution ("2 cautions: EMER LTS OFF,
+    /// FMS PERF DEP CONFIG"), or null when there are none. Status lines are never listed.</summary>
+    internal static string? CasSummary(IEnumerable<CasLine> ordered)
+    {
+        var w = ordered.Where(l => l.Level == A220CasLevel.Warning).ToList();
+        var c = ordered.Where(l => l.Level == A220CasLevel.Caution).ToList();
+        if (w.Count + c.Count == 0) return null;
+        var counts = new List<string>();
+        if (w.Count > 0) counts.Add(Count(w.Count, "warning", "warnings"));
+        if (c.Count > 0) counts.Add(Count(c.Count, "caution", "cautions"));
+        return $"{string.Join(", ", counts)}: {string.Join(", ", w.Concat(c).Select(l => l.Text))}";
+    }
+
+    private static string Count(int n, string one, string many)
+        => n == 1 ? $"1 {one}" : Inv($"{n} {many}");
+
+    /// <summary>The Alt+E window: one row per message, "Caution: EMER LTS OFF".</summary>
+    internal static string FormatCasWindow(IReadOnlyList<CasLine> ordered)
+        => ordered.Count == 0
+            ? "No CAS messages"
+            : string.Join("\n", ordered.Select(l => $"{SeverityWord(l.Level)}: {l.Text}"));
+
+    /// <summary>The CAS panel row: "1 caution, 1 advisory, 4 status".</summary>
+    internal static string FormatCasCounts(IReadOnlyList<CasLine>? lines)
+    {
+        if (lines == null) return NotAvailable;
+        if (lines.Count == 0) return "no messages";
+        var parts = new List<string>();
+        void Add(A220CasLevel level, string one, string many)
+        {
+            int n = lines.Count(l => l.Level == level);
+            if (n > 0) parts.Add(Count(n, one, many));
+        }
+        Add(A220CasLevel.Warning, "warning", "warnings");
+        Add(A220CasLevel.Caution, "caution", "cautions");
+        Add(A220CasLevel.Advisory, "advisory", "advisories");
+        Add(A220CasLevel.Status, "status", "status");
+        return string.Join(", ", parts);
+    }
+
+    /// <summary>
+    /// The CAS call-out state machine. Baseline-first: the first observation speaks only the
+    /// warnings-and-cautions summary (once per baseline, the warnings row's). After it: a new
+    /// warning/caution interrupts ("Caution: EMER LTS OFF"), a new advisory queues, status is
+    /// never spoken, a cleared warning/caution queues "... cleared"; at most
+    /// <see cref="A220DisplayParsing.MaxNewCasPerPoll"/> new lines per poll plus "... and N
+    /// more". A null bitset (the store stale for a poll) changes NOTHING — the next real one
+    /// diffs against the old baseline, so a gap never speaks false clears.
+    /// </summary>
+    internal sealed class CasMonitor
+    {
+        private HashSet<int>? _prev;
+        private readonly Dictionary<int, long> _firstSeen = new();
+        private long _seq;
+        private bool _summaryDone;
+
+        /// <summary>The messages at the last observation, in EICAS order (reference-swapped).</summary>
+        public List<CasLine> Current { get; private set; } = new();
+
+        /// <summary>True once a bitset has been observed since construction or Reset.</summary>
+        public bool HasData => _prev != null;
+
+        public A220DisplayParsing.Announcements Observe(long[]? msgWords, bool warningsMuted, bool advisoriesMuted)
+        {
+            var result = new A220DisplayParsing.Announcements();
+            if (msgWords == null) return result;
+            var active = DecodeCasBits(msgWords);
+            var next = new HashSet<int>(active);
+
+            if (_prev == null)
+            {
+                foreach (int i in active.OrderBy(i => i)) _firstSeen[i] = ++_seq;
+                _prev = next;
+                Current = OrderForDisplay(next, _firstSeen);
+                if (!_summaryDone)
+                {
+                    _summaryDone = true;
+                    if (!warningsMuted && CasSummary(Current) is { } summary) result.Queued.Add(summary);
+                }
+                return result;
+            }
+
+            foreach (int i in next.Where(i => !_prev.Contains(i)).OrderBy(i => i)) _firstSeen[i] = ++_seq;
+            Current = OrderForDisplay(next, _firstSeen);
+
+            int announced = 0, overflow = 0;
+            foreach (var line in Current)
+            {
+                if (_prev.Contains(line.Index)) continue;
+                bool spoken = line.Level switch
+                {
+                    A220CasLevel.Warning or A220CasLevel.Caution => !warningsMuted,
+                    A220CasLevel.Advisory => !advisoriesMuted,
+                    _ => false
+                };
+                if (!spoken) continue;
+                if (announced >= A220DisplayParsing.MaxNewCasPerPoll) { overflow++; continue; }
+                announced++;
+                string phrase = $"{SeverityWord(line.Level)}: {line.Text}";
+                if (line.Level is A220CasLevel.Warning or A220CasLevel.Caution) result.Immediate.Add(phrase);
+                else result.Queued.Add(phrase);
+            }
+            if (overflow > 0) result.Queued.Add(Inv($"... and {overflow} more"));
+
+            if (!warningsMuted)
+                foreach (int i in _prev.Where(i => !next.Contains(i)).OrderBy(i => i))
+                {
+                    var line = Line(i);
+                    if (line.Level is A220CasLevel.Warning or A220CasLevel.Caution)
+                        result.Queued.Add($"{line.Text} cleared");
+                }
+
+            foreach (int i in _prev.Where(i => !next.Contains(i)).ToList()) _firstSeen.Remove(i);
+            _prev = next;
+            return result;
+        }
+
+        public void Reset()
+        {
+            _prev = null;
+            _firstSeen.Clear();
+            _seq = 0;
+            _summaryDone = false;
+            Current = new List<CasLine>();
+        }
+    }
 }
