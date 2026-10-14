@@ -1061,6 +1061,25 @@ public class SynapticA220DefinitionTests
         def.ProcessSystems(Blocks(CtpStore("l", "\"minimums\":200")));
         Assert.Contains(("A22X_L_MINIMUMS", 200.0), seen);
     }
+
+    [Fact]
+    public void Autobrake_IsTheAircraftsFivePositionScale()
+    {
+        var v = Vars["A22X_AUTOBRAKE"];
+        Assert.Equal("A22X Autobrake", v.Name);
+        Assert.Equal(new[] { "RTO", "OFF", "LO", "MED", "HI" }, Enumerable.Range(0, 5).Select(i => v.ValueDescriptions[i]));
+    }
+
+    [Fact]
+    public void Autobrake_IsNeverSpokenByTheGenericPath()
+    {
+        // CORE-7: the step walk says a refusal itself and a success is silent (the reader reads the
+        // pick). MainForm's generic announce is Continuous + IsAnnounced only, so this OnRequest
+        // combo must stay out of it or every walked detent would be spoken a second time.
+        var v = Vars["A22X_AUTOBRAKE"];
+        Assert.False(v.IsAnnounced);
+        Assert.NotEqual(UpdateFrequency.Continuous, v.UpdateFrequency);
+    }
 }
 
 [Collection("SettingsManagerGlobalState")]

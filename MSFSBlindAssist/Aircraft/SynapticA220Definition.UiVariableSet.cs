@@ -75,8 +75,7 @@ public partial class SynapticA220Definition
                 // A toggle, so an unknown cache (-1) must still actuate.
                 if (Math.Abs(Cached(simConnect, varKey, -1) - value) > 0.5)
                     WriteLVar(simConnect, "A22X External Power Toggle", 1);
-                VerifyGroundPower(simConnect, announcer, varKey, wantOn,
-                    wantOn ? "External power did not connect." : "External power did not disconnect.");
+                VerifyExtPowerWithRetry(simConnect, announcer, wantOn);
                 return true;
             }
             case "A22X_GPU_AVAIL":
@@ -94,13 +93,7 @@ public partial class SynapticA220Definition
                 FireKeyEvent(simConnect, "PARKING_BRAKE_SET", (long)Math.Round(value));
                 return true;
             case "A22X_AUTOBRAKE":
-                FireKeyEvent(simConnect, (int)Math.Round(value) switch
-                {
-                    1 => "AUTOBRAKE_LO_SET",
-                    2 => "AUTOBRAKE_MED_SET",
-                    3 => "AUTOBRAKE_HI_SET",
-                    _ => "AUTOBRAKE_DISARM"
-                });
+                StartAutobrakeWalk(simConnect, announcer, (int)Math.Round(value));
                 return true;
             case "A22X_FLAP_LEVER":
                 SetFlapDetent(simConnect, (int)Math.Round(value));
@@ -108,8 +101,10 @@ public partial class SynapticA220Definition
 
             // ---- master warning/caution acknowledge -----------------------------
             case "A22X_MASTER_CW_CANCEL":
-                // Documented as settable-to-acknowledge: clear the glareshield light.
-                WriteLVar(simConnect, "A22X Master Caution Warning", 0);
+                // The cockpit button writes 1 (Interior/Glareshield/Panel.xml:33-38); the 0 this
+                // used to write cleared nothing. The lamps say whether it took.
+                WriteLVar(simConnect, "A22X Master Caution Warning", 1);
+                VerifyMasterLampsCleared(simConnect, announcer);
                 return true;
 
             // ---- radios / trim / TOD (the transponder is the Avionics partial's) --
@@ -228,4 +223,117 @@ public partial class SynapticA220Definition
             $"{SeqPrefix()}{index} {FlapMaxDetent} / 16383 * (>K:FLAPS_SET)");
     }
 
+    // ---- Autobrake: the verified step walk ([A220-34], the HS-8 pattern) -------------
+
+    private System.Threading.CancellationTokenSource? _autobrakeCancel;
+
+    /// <summary>
+    /// 0 RTO, 1 OFF, 2 LO, 3 MED, 4 HI, moved ONLY by the knob's own
+    /// INCREASE/DECREASE_AUTOBRAKE_CONTROL (cockpit knob XML, NUM_STATES 5). The WASM rewrites
+    /// L:A22X Autobrake every tick, so a direct write and AUTOBRAKE_LO_SET do nothing (live
+    /// 2026-10-12). One step at a time with a fresh read-back between steps, because the
+    /// aircraft REFUSES some steps (OFF to LO on the ground, twice, live) and a burst would hide
+    /// which: a refused step is spoken ("Autobrake LO not available on the ground — still OFF").
+    /// Success is silent (the reader read the pick); the combo is re-read either way.
+    /// </summary>
+    private void StartAutobrakeWalk(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, int target)
+    {
+        var labels = A220.A220Systems.AutobrakeLabels;
+        target = Math.Clamp(target, 0, labels.Length - 1);
+        _autobrakeCancel?.Cancel();
+        var cts = new System.Threading.CancellationTokenSource();
+        _autobrakeCancel = cts;
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            try
+            {
+                double? first = await simConnect.ReadFreshAsync("A22X_AUTOBRAKE", 1500, cts.Token);
+                if (first == null)
+                {
+                    announcer.AnnounceImmediate("Autobrake not set: the selector is not reporting its position.");
+                    return;
+                }
+                int cur = (int)Math.Round(first.Value);
+                for (int step = 0; step < labels.Length && !cts.IsCancellationRequested; step++)
+                {
+                    string? ev = A220.A220Systems.AutobrakeStepEvent(cur, target);
+                    if (ev == null) return;                                    // on the target
+                    FireKeyEvent(simConnect, ev);
+                    await System.Threading.Tasks.Task.Delay(400, cts.Token);
+                    double? after = await simConnect.ReadFreshAsync("A22X_AUTOBRAKE", 1500, cts.Token);
+                    int now = after is { } a ? (int)Math.Round(a) : cur;
+                    if (now == cur)
+                    {
+                        announcer.AnnounceImmediate(A220.A220Systems.AutobrakeRefusal(
+                            cur, A220.A220Systems.AutobrakeNextStep(cur, target), _calloutOnGround));
+                        return;
+                    }
+                    cur = now;
+                }
+                if (!cts.IsCancellationRequested && cur != target)
+                    announcer.AnnounceImmediate(
+                        $"Autobrake stopped at {A220.A220Systems.Label(labels, cur)}, asked for {A220.A220Systems.Label(labels, target)}.");
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { Utils.Logging.Log.Warn("A220", $"Autobrake walk: {ex.Message}"); }
+            finally
+            {
+                // The combo shows the selector's truth again, refused or not.
+                if (!cts.IsCancellationRequested) simConnect.RequestVariable("A22X_AUTOBRAKE", forceUpdate: true);
+            }
+        });
+    }
+
+    /// <summary>After the master caution/warning cancel: a lamp still lit 1.5 s later is said
+    /// (the edge monitor already says "Master Caution clear" when it goes out).</summary>
+    private void VerifyMasterLampsCleared(SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            try
+            {
+                await System.Threading.Tasks.Task.Delay(1500);
+                if (Cached(simConnect, "A22X_WARNING_PBA") > 0.5) announcer.AnnounceImmediate("Master warning still on.");
+                else if (Cached(simConnect, "A22X_CAUTION_PBA") > 0.5) announcer.AnnounceImmediate("Master caution still on.");
+            }
+            catch { /* read-back only */ }
+        });
+    }
+
+    /// <summary>
+    /// EXT PWR read-back with ONE automatic retry: live 2026-10-12 the first disconnect press was
+    /// lost and the second worked (the toggle self-clears to 0 each time). A press whose state
+    /// did not change is written once more; if that does not hold either, the reason is spoken
+    /// (GpuRemovedReason: no GPU, or the beacon making the EFB remove it). Success is silent.
+    /// </summary>
+    private void VerifyExtPowerWithRetry(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, bool wantOn)
+    {
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            try
+            {
+                bool retried = false;
+                while (true)
+                {
+                    await System.Threading.Tasks.Task.Delay(2500);
+                    double state = await simConnect.ReadFreshAsync("A22X_EXT_PWR", 1500) ?? -1;
+                    bool gpuAttached = Cached(simConnect, "A22X_GPU_AVAIL", -1) is not (>= 0 and < 0.5);
+                    switch (A220.A220Systems.ExtPowerCheck(wantOn, state, gpuAttached, retried))
+                    {
+                        case A220.A220Systems.ExtPowerVerdict.Done:
+                            return;
+                        case A220.A220Systems.ExtPowerVerdict.Retry:
+                            retried = true;
+                            WriteLVar(simConnect, "A22X External Power Toggle", 1);
+                            continue;
+                        default:
+                            announcer.AnnounceImmediate(GpuRemovedReason(simConnect,
+                                wantOn ? "External power did not connect." : "External power did not disconnect."));
+                            return;
+                    }
+                }
+            }
+            catch { /* read-back only */ }
+        });
+    }
 }

@@ -16,7 +16,7 @@ public enum A220EclExclusion
     Judgment,
     /// <summary>No MSFSBA control exists for this system yet (doors, cockpit door
     /// panel, reversion panel, avionics cooling, CVR, composite multi-switch
-    /// states, unverified autobrake RTO detent…).</summary>
+    /// states…).</summary>
     NotYetMapped,
 }
 
@@ -270,11 +270,13 @@ public static class A220EclActionMap
         Map("ALTN_FLAP_SW", "A22X_ALTERNATE_FLAP", 1);
         Map("LANDING_GEAR_LEVER_UP", "A22X_GEAR_LEVER", 0);
         Map("LANDING_GEAR_LEVER_DOWN", "A22X_GEAR_LEVER", 1);
-        Map("AUTOBRAKE_LO", "A22X_AUTOBRAKE", 1);
-        Map("AUTOBRAKE_MED", "A22X_AUTOBRAKE", 2);
-        Map("AUTOBRAKE_HI", "A22X_AUTOBRAKE", 3);
-        Excl("AUTOBRAKE_RTO", A220EclExclusion.NotYetMapped);        // RTO detent value unverified in-sim (docs/a220.md)
-        Map("AUTOBRAKE_OFF", "A22X_AUTOBRAKE", 0);
+        // The selector's scale is 0 RTO, 1 OFF, 2 LO, 3 MED, 4 HI ([A220-34]); the write is the
+        // verified step walk, so a step the aircraft refuses is spoken, never assumed done.
+        Map("AUTOBRAKE_RTO", "A22X_AUTOBRAKE", 0);
+        Map("AUTOBRAKE_OFF", "A22X_AUTOBRAKE", 1);
+        Map("AUTOBRAKE_LO", "A22X_AUTOBRAKE", 2);
+        Map("AUTOBRAKE_MED", "A22X_AUTOBRAKE", 3);
+        Map("AUTOBRAKE_HI", "A22X_AUTOBRAKE", 4);
 
         // ---- Doors (EFB Ground Equipment / GSX territory, not panel controls) --
         Excl("FWD_PAX_DOOR_CLOSED", A220EclExclusion.NotYetMapped);

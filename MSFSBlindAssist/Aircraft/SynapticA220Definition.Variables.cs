@@ -396,9 +396,11 @@ public partial class SynapticA220Definition
             ValueDescriptions = Labels("Up", "Down")
         };
         v["A22X_ALTERNATE_GEAR"] = LSwitch("A22X Alternate Gear", "Alternate Gear Extension (guarded)", "Normal", "Pulled");
-        // Selector value labels need in-sim verification (L:A22X Autobrake is documented
-        // as "current autobrake selector setting" without an enum table).
-        v["A22X_AUTOBRAKE"] = LSwitch("A22X Autobrake", "Autobrake", "Off", "LO", "MED", "HI");
+        // The selector's real scale (live 2026-10-12, sensed AUTOBRAKE_RTO/OFF; cockpit knob
+        // NUM_STATES 5): 0 RTO, 1 OFF, 2 LO, 3 MED, 4 HI. Written ONLY by the step walk over
+        // INCREASE/DECREASE_AUTOBRAKE_CONTROL ([A220-34], UiVariableSet partial). The labels are
+        // A220Systems.AutobrakeLabels, the same array the walk's spoken results read.
+        v["A22X_AUTOBRAKE"] = LSwitch("A22X Autobrake", "Autobrake", A220.A220Systems.AutobrakeLabels);
         v["A22X_NOSE_STEER_OFF"] = LSwitch("A22X Nose Steer Off", "Nose Wheel Steering", "On", "Off");
         v["A22X_ALTERNATE_BRAKE"] = LSwitch("A22X Alternate Brake", "Alternate Brakes", "Normal", "Alternate");
         v["A22X_GEAR_AURAL_CANCEL"] = LMomentary("A22X Gear Aural", "Gear Aural Warning Cancel");
@@ -466,8 +468,8 @@ public partial class SynapticA220Definition
         // ==== Glareshield — Warnings / chrono ================================
         v["A22X_MASTER_CW_CANCEL"] = new SimVarDefinition
         {
-            // Settable to acknowledge — the button write is claimed in HandleUIVariableSet
-            // (writes 0 to clear, via the calc path).
+            // The glareshield button writes 1 (Interior/Glareshield/Panel.xml) — claimed in
+            // HandleUIVariableSet, which writes the same and checks the lamps afterwards.
             Name = "A22X Master Caution Warning", DisplayName = "Master Warning/Caution Cancel",
             Type = SimVarType.LVar, Units = "bool", UpdateFrequency = UpdateFrequency.OnRequest,
             RenderAsButton = true, SuppressRestingButtonState = true,

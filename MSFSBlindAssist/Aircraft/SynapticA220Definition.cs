@@ -176,6 +176,7 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
     {
         StopApuStartHold();
         _walkCancel?.Cancel();
+        _autobrakeCancel?.Cancel();
         _autopilotWindow?.Dispose();
         _autopilotWindow = null;
         // The display pump owns the ONE DisplayUnits inspector socket — it must not

@@ -99,4 +99,20 @@ public class A220EclActionMapTests
         Assert.True(A220EclActionMap.TryGet("HYD_1_SOV_CLSD", out var sov));
         Assert.Equal(0, sov.Value);  // Closed=0/Open=1
     }
+
+    [Fact]
+    public void Autobrake_MapsToTheAircraftsScale()
+    {
+        // 0 RTO, 1 OFF, 2 LO, 3 MED, 4 HI ([A220-34]) — RTO is mapped now that the scale is known.
+        foreach (var (name, value) in new[]
+        {
+            ("AUTOBRAKE_RTO", 0.0), ("AUTOBRAKE_OFF", 1.0), ("AUTOBRAKE_LO", 2.0),
+            ("AUTOBRAKE_MED", 3.0), ("AUTOBRAKE_HI", 4.0)
+        })
+        {
+            Assert.True(A220EclActionMap.TryGet(name, out var a), name);
+            Assert.Equal("A22X_AUTOBRAKE", a.ControlKey);
+            Assert.Equal(value, a.Value);
+        }
+    }
 }
