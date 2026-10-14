@@ -25,6 +25,18 @@ TCAS, weather radar and GPWS tests. Load SimBrief brings in the transition altit
 level, the takeoff flap setting and, on the PMDG 737, the pressurization altitudes. It
 loads by itself when the window opens if your SimBrief username is set.
 
+Every aircraft's Before Start Checklist now ends with "Start ACARS", a line you tick yourself
+once you have done it. If you open the First Officer window, or start the app, while already
+flying, or load a flight that starts in the air, every checklist from power-up through After
+Takeoff is marked complete, with one announcement: "In flight: checklists through After Takeoff
+marked complete." Descent and the checklists after it stay open.
+
+On the PMDG 737 and iFly 737, Secure now leaves the aircraft cold and dark. After the APU and
+ground power are off it waits out the APU cool-down (the PMDG 60 seconds, then until the APU is
+cool, then 40 more; the iFly 2 minutes; no wait when the APU was already off) and then switches the
+battery off, and the Electrical Power Down checklist's "Battery: OFF" line ticks. If an engine is
+still turning, the battery is left on and the First Officer tells you so.
+
 On the Fenix A320, FlyByWire A32NX and Headwind A330, the Checklists tab holds Airbus's
 current A320 normal checklist: Cockpit Preparation, Before Start, After Start, Taxi,
 Line-up, Approach, Landing, After Landing, Parking and Securing, with the ECAM takeoff
@@ -37,7 +49,12 @@ Taxi and Line-up are two separate flows, and Run Related Flow starts each one fr
 checklist. Taxi, run while you taxi, arms the autobrake, sets the weather radar and transponder,
 calls the cabin, checks that the spoilers, flaps and seat belts are set and ends with the takeoff
 config test. Line-up, run when you are cleared onto the runway, sets TCAS and the takeoff lights.
-Shutdown has a "TCAS: STANDBY" line and Securing an "External power: OFF" line.
+Shutdown has a "TCAS: STANDBY" line and Securing an "External power: OFF" line. Securing switches
+the APU master off, waits for the APU flap to close (on the FlyByWire A32NX and Headwind A330 until
+the aircraft shows it closed, at most 2½ minutes; on the Fenix 2 minutes; no wait when the APU was
+already off) and only then switches external power and the batteries off, in FlyByWire's own
+order. External power is no longer left on when the app had not yet read its switch, and a finished
+Securing flow now also completes the Securing Checklist.
 
 On the FlyByWire A380, the Checklists tab now holds the A380's own normal checklists from its
 electronic checklist, in its own words (Cockpit Preparation, Before Start, After Start, Taxi,
@@ -50,6 +67,8 @@ and landing flaps) and, last of all, that the gear is down; the Approach flow al
 cabin crew for landing. A finished flow now ticks a line the First Officer can read only when one of
 its steps set it or one of its checks confirmed it; a line whose step was skipped is left to the
 aircraft: like any line, it ticks itself when the aircraft shows it done, and stays open until then.
+Securing on the A380 follows the same order as on the A320 family: the APU flap closes before
+external power and the batteries go off.
 
 On the TFDi MD-11, the Checklists tab follows TFDi's normal checklist from Cockpit Entry to
 Shutdown. It leaves out the 10,000 feet, transition and cruise pages: while the window is open,
