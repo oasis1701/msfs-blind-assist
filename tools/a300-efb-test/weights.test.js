@@ -19,20 +19,20 @@ const KG = {
 const buttons = r => r.elements.filter(e => e.kind === 'button').map(e => e.text);
 
 // The page reads in the tablet's own words, abbreviations and units: FUEL, FWD, MACZFW %, ZFW, BLK
-// FUEL, "31'000Kgs / 68'300Lbs" and "WEIGHT AND BALANCE [kg]" are never expanded or converted
-// (design decision, 2026-10-14).
-const RACING = "31'000Kgs / 68'300Lbs Racing Team Charter";
+// FUEL and "WEIGHT AND BALANCE [kg]" are never expanded or converted (design decision,
+// 2026-10-14). The cargo presets alone keep their friendlier names (Robin, the same day).
+const RACING = 'Racing Team Charter: 31,000 kilograms, 68,300 pounds';
 
-test('the selection half reads only its own controls, the loads as the tablet prints them', () => {
+test('the selection half reads only its own controls, the loads by their friendlier names', () => {
   const { A } = load('weights-selection', { simvars: KG });
   const r = scrape(A);
   assert.strictEqual(r.page, 'Weight and Balance, payload selection');
   assert.deepStrictEqual(buttons(r), [
     RACING,
-    "26'500Kgs / 58'400Lbs Aero Parts Transport",
-    "15'700Kgs / 34'600Lbs Horse Stable Transport",
-    "21'000Kgs / 46'300Lbs Humanitarian Charter",
-    "18'500Kgs / 40'800Lbs Postal Freight",
+    'Aero Parts Transport: 26,500 kilograms, 58,400 pounds',
+    'Horse Stable Transport: 15,700 kilograms, 34,600 pounds',
+    'Humanitarian Charter: 21,000 kilograms, 46,300 pounds',
+    'Postal Freight: 18,500 kilograms, 40,800 pounds',
     'Custom cargo',
     'Cargo from SimBrief',
     'Unload Cargo',
@@ -217,14 +217,19 @@ test('a preset is still pressed with one click', () => {
   const r = scrape(A);
   let clicked = 0;
   window.document.getElementById('payload_horse').addEventListener('click', () => clicked++);
-  assert.ok(A.clickElement(find(r, "15'700Kgs / 34'600Lbs Horse Stable Transport").idx));
+  assert.ok(A.clickElement(find(r, 'Horse Stable Transport: 15,700 kilograms, 34,600 pounds').idx));
   assert.strictEqual(clicked, 1);
 });
 
-test('My Flight still reads as before', () => {
+test('My Flight names its unlabeled values and reads the rest under the tablet\'s own headings', () => {
+  // The airports and cities have no label on the tablet (a sighted pilot reads them by place:
+  // departure left, arrival right), so they are named. METAR, DEP TIME and ROUTING are the tablet's
+  // headings over their values, read as one line each, the heading's words unchanged.
   const { A } = load('myflight', {});
   const r = scrape(A);
   assert.strictEqual(r.page, 'My Flight');
-  for (const t of ['Departure: EGLL', 'Departure city: London/Heathrow', 'Arrival: EHAM', 'IMPORT FROM SIMBRIEF', 'Home'])
+  for (const t of ['Departure: EGLL', 'Departure city: London/Heathrow', 'Arrival: EHAM', 'IMPORT FROM SIMBRIEF', 'Home',
+    'METAR EGLL: EGLL 141750Z 27010KT CAVOK 15/08 Q1013', 'DEP TIME: 1200', 'ROUTING: DVR UL9 KONAN'])
     assert.ok(find(r, t), t);
+  assert.ok(!r.elements.some(e => e.kind === 'heading' && /^(METAR|DEP TIME|ROUTING)/.test(e.text)), 'no heading apart from its value');
 });

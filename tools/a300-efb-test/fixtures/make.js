@@ -286,6 +286,11 @@ const files = {
   'myflight': tablet('<div id="flight">' +
     '<div class="row"><h2>DEPARTURE</h2><div id="dep_icao">EGLL</div><div id="depcit">London/Heathrow</div></div>' +
     '<div class="row"><h2>ARRIVAL</h2><div id="arr_icao">EHAM</div></div>' +
+    // The tablet's own headings over the METAR, the times and the route (its render code, 1.0.11).
+    '<div class="row"><div class="col"><div><h1>METAR <span id="dep_metar_icao">EGLL</span></h1>' +
+    '<div id="depmet">EGLL 141750Z 27010KT CAVOK 15/08 Q1013</div></div></div>' +
+    '<div class="col-sm-3"><div><h1>DEP TIME</h1><div id="deptime">1200</div></div></div></div>' +
+    '<div class="row"><div class="col"><div><h1>ROUTING</h1><div id="route">DVR UL9 KONAN</div></div></div></div>' +
     '<div class="row"><button id="btn_simbrief" class="btn btn-primary">IMPORT FROM SIMBRIEF</button></div></div>')
 };
 

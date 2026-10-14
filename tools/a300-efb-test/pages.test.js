@@ -13,7 +13,7 @@ const texts = r => r.elements.map(e => e.text);
 test('the checklist viewer says it is a picture and offers to close it', () => {
   const r = scrape(load('myflight-checklist').A);
   assert.strictEqual(r.page, 'My Flight, checklist');
-  assert.deepStrictEqual(texts(r), ['The checklist is a picture and cannot be read here.', 'Close checklist']);
+  assert.deepStrictEqual(texts(r), ['The checklist is a picture and cannot be read here.', 'Close']);
 });
 
 test('the flight plan viewer gives the plan with its lines kept', () => {
@@ -23,7 +23,7 @@ test('the flight plan viewer gives the plan with its lines kept', () => {
   assert.strictEqual(pre.controlType, 'pre');
   assert.strictEqual(pre.kind, 'static');
   assert.strictEqual(pre.text, '[ OFP ]\nEGLL-EHAM   TST101\n\nBLOCK FUEL   6200');
-  assert.deepStrictEqual(texts(r).slice(1), ['Close flight plan']);
+  assert.deepStrictEqual(texts(r).slice(1), ['Close']);
 });
 
 test('a viewer on a page that is not showing is not open', () => {
@@ -33,12 +33,23 @@ test('a viewer on a page that is not showing is not open', () => {
 
 // ---- Take Off / Landing --------------------------------------------------------------------
 
-test('the runway list reads each runway in words, marking the ones shown in red', () => {
+// The tablet's own words throughout (design decision, 2026-10-14): the one thing put into words is
+// the red a sighted pilot sees on a runway at or below the tablet's shortest table.
+test('the runway list reads each runway as the tablet prints it, marking the ones shown in red', () => {
   const r = scrape(load('takeoff').A);
-  assert.ok(find(r, 'Cancel runway selection'), 'the Cancel button says what it cancels');
-  const rwy = find(r, 'Runway 18L: 3,000 meters, 9,843 feet');
+  const cancel = find(r, 'Cancel');
+  assert.ok(cancel && cancel.kind === 'button', 'the tablet\'s Cancel');
+  const rwy = find(r, 'RWY 18L [3000m / 9843ft]');
   assert.ok(rwy && rwy.kind === 'button');
-  assert.ok(find(r, 'Runway 09: 1,500 meters, 4,921 feet, marked short'));
+  assert.ok(find(r, 'RWY 09 [1500m / 4921ft], marked short'));
+});
+
+test('a runway reads the same with the list closed, where the tablet\'s line break is not text', () => {
+  // A hidden button's text has no space where the line break was: "RWY 09[1500m / 4921ft]".
+  const { A, window } = load('takeoff');
+  const btn = window.document.getElementById('18L');
+  btn.innerHTML = 'RWY 18L<small style="color: rgb(153, 204, 255)">[3000m / 9843ft]</small>';
+  assert.ok(find(scrape(A), 'RWY 18L [3000m / 9843ft]'));
 });
 
 test('arrows are dropped from a button\'s words', () => {
@@ -112,27 +123,26 @@ test('Landing\'s number boxes take the number the pilot meant', () => {
 // heard nothing happen when it was pressed (PR #300 in-sim run, 2026-10-14). It is read as a
 // choice of the listed runways instead.
 const pickerOf = (r, id) => r.elements.find(e => e.key === 'runway:' + id);
-const TAKEOFF_RUNWAYS = ['Runway 09: 1,500 meters, 4,921 feet, marked short', 'Runway 18L: 3,000 meters, 9,843 feet'];
-const LANDING_RUNWAYS = ['Runway 04R: 3,090 meters, 10,138 feet', 'Runway 15L: 785 meters, 2,575 feet, marked short',
-  'Runway 22R: 2,391 meters, 7,844 feet'];
+const TAKEOFF_RUNWAYS = ['RWY 09 [1500m / 4921ft], marked short', 'RWY 18L [3000m / 9843ft]'];
+const LANDING_RUNWAYS = ['RWY 04R [3090m / 10138ft]', 'RWY 15L [785m / 2575ft], marked short', 'RWY 22R [2391m / 7844ft]'];
 
 test('the runway button is a choice of the listed runways, on the one the tablet preselected', () => {
   const r = scrape(load('takeoff').A);
   const pick = pickerOf(r, 'show_runway_select');
   assert.ok(pick, 'the picker is there');
-  assert.strictEqual(pick.text, 'Runway');
+  assert.strictEqual(pick.text, 'RWY', 'named by the tablet\'s own label');
   assert.strictEqual(pick.controlType, 'select');
   assert.ok(pick.idx > 0, 'stamped, so a choice can be written');
   // The tablet lists its runways by name and preselects the first.
   assert.strictEqual(pick.value, TAKEOFF_RUNWAYS[0]);
   assert.deepStrictEqual(pick.options, TAKEOFF_RUNWAYS, 'the list alone, nothing added');
-  assert.ok(!r.elements.some(e => e.kind === 'button' && /^RWY\b/.test(e.text)), 'no RWY button besides it');
+  assert.ok(!r.elements.some(e => e.kind === 'button' && e.key === 'press:show_runway_select'), 'no RWY button besides it');
 });
 
 test('the picked runway is the choice\'s value, from its own page\'s list', () => {
   // Take Off, hidden behind Landing, has a 04R of its own: only Landing's list is offered.
   const pick = pickerOf(scrape(load('landing').A), 'land_show_runway_select');
-  assert.strictEqual(pick.value, 'Runway 22R: 2,391 meters, 7,844 feet');
+  assert.strictEqual(pick.value, 'RWY 22R [2391m / 7844ft]');
   assert.deepStrictEqual(pick.options, LANDING_RUNWAYS);
 });
 
@@ -170,7 +180,7 @@ test('a runway the list does not hold presses nothing', () => {
   doc.getElementById('show_runway_select').onclick = () => presses.push('open');
   for (const b of doc.querySelectorAll('.rwy-select')) b.onclick = () => presses.push(b.id);
   const pick = pickerOf(scrape(A), 'show_runway_select');
-  assert.strictEqual(A.setValue(pick.idx, 'Runway 36R: 3,000 meters, 9,843 feet'), false);
+  assert.strictEqual(A.setValue(pick.idx, 'RWY 36R [3000m / 9843ft]'), false);
   assert.deepStrictEqual(presses, []);
   assert.strictEqual(doc.getElementById('show_runway_select').value, 'RWY 09', 'the button keeps its runway');
 });
@@ -260,11 +270,14 @@ test('uneven wear gives the most common band as a count and names the other whee
   assert.ok(find(r, 'Tire wear: 8 under 20 percent; nose right 80 to 100 percent; left forward inner beyond the scale'));
 });
 
-test('oil and hydraulic levels read as one line each', () => {
+test('oil and hydraulic levels read as one line each, under the tablet\'s headings and labels', () => {
   const r = scrape(load('maintenance', { simvars: WEAR }).A);
-  for (const t of ['APU oil: 100%', 'Engine 1 oil: 97%', 'Engine 2 oil: 100%',
-    'Blue hydraulic reservoir: 14.5', 'Green hydraulic reservoir: 31.5', 'Yellow hydraulic reservoir: 19.5'])
-    assert.ok(find(r, t), t);
+  const t = texts(r);
+  const oil = t.indexOf('OIL'), hyd = t.indexOf('HYDRAULICS');
+  assert.ok(oil >= 0 && find(r, 'OIL').kind === 'heading', 'the OIL heading');
+  assert.ok(hyd > oil && find(r, 'HYDRAULICS').kind === 'heading', 'the HYDRAULICS heading');
+  assert.deepStrictEqual(t.slice(oil + 1, oil + 4), ['APU: 100%', 'ENG1: 97%', 'ENG2: 100%']);
+  assert.deepStrictEqual(t.slice(hyd + 1, hyd + 4), ['B: 14.5', 'G: 31.5', 'Y: 19.5']);
   assert.ok(!find(r, 'ENG1') && !find(r, 'B'), 'no orphaned labels');
 });
 
@@ -281,10 +294,11 @@ test('the maintenance panels say whether they are open', () => {
 
 // ---- Throttle Calibration ------------------------------------------------------------------
 
-test('the throttles read as positions, without the picture\'s scale words', () => {
+test('the throttles read as the tablet prints them, without the picture\'s scale words', () => {
   const r = scrape(load('throttle').A);
-  assert.ok(find(r, 'Left throttle: 50%'));
-  assert.ok(find(r, 'Right throttle: 48%'));
+  const left = find(r, 'LEFT 50%');
+  assert.ok(left && left.key === 'text:l_pct', 'keyed, so a new position patches in place');
+  assert.ok(find(r, 'RIGHT 48%'));
   assert.ok(!find(r, 'TOGA') && !find(r, 'IDLE'));
 });
 
@@ -340,8 +354,11 @@ test('a chart named after its kind says it once', () => {
 
 test('the chart controls are named', () => {
   const r = scrape(load('charts').A);
-  for (const t of ['Pinned charts', 'Zoom in', 'Pan up', 'Previous chart page', 'Chart page 1 of 2', 'Next chart page'])
+  for (const t of ['Pinned charts', 'Zoom in', 'Pan up', 'Previous chart page', 'Next chart page'])
     assert.ok(find(r, t), t);
+  // The page counter is the tablet's own words.
+  const count = find(r, '1 / 2');
+  assert.ok(count && count.key === 'status:chartpage');
 });
 
 // ---- Enroute Map ---------------------------------------------------------------------------

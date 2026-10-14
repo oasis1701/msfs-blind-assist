@@ -65,14 +65,14 @@ test('the pause dialog is read with its resume button', () => {
   assert.strictEqual(find(r, 'RESUME FLIGHT').kind, 'button');
 });
 
-test('running maintenance is listed above the page, each with its own Finish now', () => {
+test('running maintenance is listed above the page, each with its own Finish Now', () => {
   const r = scrape(load('timers').A);
   assert.strictEqual(r.page, 'Home');
   const t = texts(r);
   assert.deepStrictEqual(t.slice(0, 5), [
-    'Maintenance in progress', 'Replace Brakes', 'All eight brakes are being replaced.', 'Complete in 4:59', 'Finish now: Replace Brakes',
+    'Maintenance in progress', 'Replace Brakes', 'All eight brakes are being replaced.', 'Complete in 4:59', 'Finish Now: Replace Brakes',
   ]);
-  assert.strictEqual(find(r, 'Finish now: Replace Brakes').kind, 'button');
+  assert.strictEqual(find(r, 'Finish Now: Replace Brakes').kind, 'button');
   assert.strictEqual(find(r, 'Maintenance in progress').kind, 'heading');
 });
 

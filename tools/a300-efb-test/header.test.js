@@ -7,12 +7,14 @@ const assert = require('node:assert');
 const { load, scrape, find } = require('./run');
 
 test('the header gives the clocks and the battery in one line', () => {
+  // The clocks keep the tablet's LOCAL and ZULU; "1357" is read as 13:57, the time it is, not a
+  // number in the thousands. The battery is an icon, put in words.
   const r = scrape(load('home').A);
-  const e = find(r, 'Local time 13:57, Zulu time 20:57, charging');
+  const e = find(r, 'LOCAL 13:57, ZULU 20:57, charging');
   assert.ok(e, 'status line');
   assert.strictEqual(e.kind, 'static');
   assert.strictEqual(e.key, 'status:header');
-  assert.ok(find(scrape(load('home-battery').A), 'Local time 13:57, Zulu time 20:57, battery half'));
+  assert.ok(find(scrape(load('home-battery').A), 'LOCAL 13:57, ZULU 20:57, battery half'));
 });
 
 test('the gear is a Control box button that runs the handler on its icon', () => {
@@ -28,14 +30,14 @@ test('the gear is a Control box button that runs the handler on its icon', () =>
 
 test('the simulation-rate badge is read while it shows', () => {
   const r = scrape(load('home').A);
-  assert.ok(find(r, 'Simulation rate: 4x'));
-  assert.ok(!find(scrape(load('home-battery').A), 'Simulation rate: 2x'), 'hidden at 1x');
+  assert.ok(find(r, 'SIMULATION RATE: 4x'));
+  assert.ok(!scrape(load('home-battery').A).elements.some(e => /^SIMULATION RATE/.test(e.text)), 'hidden at 1x');
 });
 
 test('the header comes after the page: status line, then its buttons', () => {
   const r = scrape(load('home').A);
   const t = r.elements.map(e => e.text);
-  assert.deepStrictEqual(t.slice(-3), ['Simulation rate: 4x', 'Local time 13:57, Zulu time 20:57, charging', 'Control box']);
+  assert.deepStrictEqual(t.slice(-3), ['SIMULATION RATE: 4x', 'LOCAL 13:57, ZULU 20:57, charging', 'Control box']);
 });
 
 test('a Home menu item the tablet has switched off is dimmed', () => {

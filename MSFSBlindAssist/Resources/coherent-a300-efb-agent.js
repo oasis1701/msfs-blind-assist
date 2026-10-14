@@ -29,6 +29,10 @@
     maintenance: 'Aircraft Maintenance', throttlecalibration: 'Throttle Calibration', settings: 'Settings'
   };
 
+  // The reader keeps the tablet's own words, abbreviations and units everywhere ("RWY", "OIL",
+  // "ENG1", "DEP TIME", "LOCAL", "1 / 2"): never expand, reword or convert them (design decision,
+  // 2026-10-14). It names only what has no words of its own (an icon, a value with no label), puts a
+  // color into words (a red runway, a slide, wear), and keeps the cargo presets' friendlier names.
   // Icon-only controls, and buttons whose own words read badly, by id.
   A.NAMES = {
     'menu-home-button': 'Home', 'control-box-button': 'Control box',
@@ -36,8 +40,9 @@
     pb_stop: 'Pushback, stop', pb_aft: 'Pushback, straight back',
     switcher_page1: 'Back to payload selection', switcher_page2: 'Loading page',
     payload_cargo: 'Custom cargo', payload_cargo_sb: 'Cargo from SimBrief',
-    hide_runway_select: 'Cancel runway selection', land_hide_runway_select: 'Cancel runway selection',
-    close_checklist_viewer: 'Close checklist', close_ofp_viewer: 'Close flight plan',
+    // The runway list's Cancel is an input in a heading with no label column, so it would be named
+    // from its id: its own word.
+    hide_runway_select: 'Cancel', land_hide_runway_select: 'Cancel',
     // Charts: icon-only buttons.
     filter_pinned: 'Pinned charts', ctrlZoomIn: 'Zoom in', ctrlZoomOut: 'Zoom out', ctrlReset: 'Reset chart view',
     ctrlSidebar: 'Chart list', ctrlDarkLight: 'Day or night chart', ctrlPanUp: 'Pan up', ctrlPanLeft: 'Pan left',
@@ -58,11 +63,9 @@
     fuel_panel: 'L:INI_Fuel_Panel', maint_eng_cowl_l: 'L:INI_Engine_Cowl_Left',
     maint_eng_cowl_r: 'L:INI_Engine_Cowl_Right', maint_apu_cowl: 'L:INI_APU_Cowl_TGT'
   };
-  // Its component state: oil and hydraulic levels, a label over a bar over a value.
-  A.LEVELS = {
-    APU_OIL: 'APU oil', ENG1_OIL: 'Engine 1 oil', ENG2_OIL: 'Engine 2 oil',
-    HYD_BLU: 'Blue hydraulic reservoir', HYD_GRE: 'Green hydraulic reservoir', HYD_YEL: 'Yellow hydraulic reservoir'
-  };
+  // Its component state: oil and hydraulic levels under OIL and HYDRAULICS, each a label (APU, ENG1,
+  // B...) over a bar over a value, read as one line: "ENG1: 97%".
+  A.LEVELS = ['APU_OIL', 'ENG1_OIL', 'ENG2_OIL', 'HYD_BLU', 'HYD_GRE', 'HYD_YEL'];
   // And its wear, which the tablet shows only as colored blocks on a drawing of the gear. The
   // colors are five bands of each variable (its updateMaintIndicators, read 2026-10-04): a brake
   // from 0 to 1, a tire from 0 to 200, green under a fifth, then dark green, yellow, orange, and
@@ -95,9 +98,9 @@
       'Unload Cargo only removes the cargo you can see in the hold; to take its weight off, set the holds to 0 on the loading page and apply.',
     page2: 'Update from SimBrief fills in the cargo and fuel from your latest SimBrief plan. Apply Load to Aircraft puts the cargo and fuel on board.'
   };
-  // The page's boxes, results, loads and heading read in the tablet's own words, abbreviations and
-  // units (FUEL, FWD, LOAD, MACZFW %, ZFW, BLK FUEL, "31'000Kgs / 68'300Lbs", "WEIGHT AND BALANCE
-  // [kg]"): never expand or convert them (design decision, 2026-10-14).
+  // The page's boxes, results and heading read in the tablet's own words, abbreviations and units
+  // (FUEL, FWD, LOAD, MACZFW %, ZFW, BLK FUEL, "WEIGHT AND BALANCE [kg]"); the cargo presets alone
+  // keep their friendlier names (A.presetLabel; Robin, 2026-10-14).
   A.FIELD_NAMES = {
     // Settings: the tablet fetches xml.fetcher.php?userid=, so this box takes the numeric SimBrief
     // Pilot ID, never the user name; its only label is the heading "SimBrief".
@@ -110,13 +113,14 @@
   // The results: read-only boxes the tablet pads with leading zeros ("031.0"), read without them,
   // under their own labels. Their unit is the heading's ("[kg]"), in thousands; MACZFW and MACGW in %.
   A.READOUTS = { output_maczfw: 1, output_maccg: 1, output_zfw: 1, output_tow: 1, output_payload: 1, output_blkfuel: 1 };
+  // A preset's two lines: "31'000Kgs / 68'300Lbs", then its name.
+  A.PRESET_WEIGHT = /^([\d',.]+)\s*kgs?\s*\/\s*([\d',.]+)\s*lbs?$/i;
 
-  // My Flight's values, which sit under headings ("METAR", "DEP TIME") or under nothing at all.
-  A.VALUE_NAMES = {
-    dep_icao: 'Departure', depcit: 'Departure city', arr_icao: 'Arrival', arrcit: 'Arrival city',
-    depmet: 'Departure METAR', arrmet: 'Arrival METAR', deptime: 'Departure time', arrtime: 'Arrival time',
-    route: 'Route'
-  };
+  // My Flight's airports and cities have no label (a sighted pilot reads them by place: departure
+  // left, arrival right), so they are named. Its other values sit under the tablet's own headings
+  // ("METAR KMEM", "DEP TIME", "ARR TIME", "ROUTING") and are read under them, one line each.
+  A.VALUE_NAMES = { dep_icao: 'Departure', depcit: 'Departure city', arr_icao: 'Arrival', arrcit: 'Arrival city' };
+  A.HEADED_VALUES = { depmet: 1, arrmet: 1, deptime: 1, arrtime: 1, route: 1 };
 
   A.visible = function (el) {
     if (!el || el.nodeType !== 1) return false;
@@ -135,11 +139,11 @@
   };
 
   A.clean = function (s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, ''); };
-  // 31000 → "31,000".
+  // "31'000" → 31000; 31000 → "31,000" (the tablet's own separator is an apostrophe).
+  A.num = function (s) { return parseFloat(String(s).replace(/[',]/g, '')); };
   A.thousands = function (n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ','); };
   // "000.0" → "0.0", "060.11" → "60.11".
   A.plainNumber = function (s) { return A.clean(s).replace(/^(-?)0+(?=\d)/, '$1'); };
-  A.sentence = function (s) { s = A.clean(s).toLowerCase(); return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; };
   A.txt = function (el) { return el ? A.clean(el.innerText || el.textContent || '') : ''; };
   A.ownText = function (el) {
     var s = '';
@@ -202,21 +206,25 @@
     } catch (e) { return ''; }
   };
 
-  // A Take Off or Landing runway button: "RWY 18L [3000m / 9843ft]", red when the tablet's tables
-  // start above its length (1,700 m for take-off, 1,300 m for landing).
+  // A Take Off or Landing runway button as the tablet prints it, "RWY 18L [3000m / 9843ft]", the
+  // line break before the bracket read as a space: a hidden list's text has none there ("RWY
+  // 18L[3000m"), and a pick matches the label, so it reads the same open or closed. The tablet draws
+  // it red when its tables start above its length (1,700 m for take-off, 1,300 m for landing): the
+  // one thing put into words, ", marked short".
   A.runwayLabel = function (btn) {
-    var m = /^RWY\s+(\S+)\s*\[\s*([\d.]+)\s*m\s*\/\s*([\d.]+)\s*ft\s*\]$/i.exec(A.txt(btn));
+    var m = /^RWY\s+(\S+?)\s*\[\s*([\d.]+)\s*m\s*\/\s*([\d.]+)\s*ft\s*\]$/i.exec(A.txt(btn));
     if (!m) return '';
     var small = btn.querySelector('small');
     var red = !!small && /^rgb\(\s*255,\s*0,\s*0\s*\)$/.test(small.style.color || '');
-    return 'Runway ' + m[1] + ': ' + A.thousands(+m[2]) + ' meters, ' + A.thousands(+m[3]) + ' feet' + (red ? ', marked short' : '');
+    return 'RWY ' + m[1] + ' [' + m[2] + 'm / ' + m[3] + 'ft]' + (red ? ', marked short' : '');
   };
 
   // Take Off's and Landing's RWY button opens the airport's runway list ABOVE the page, away from
   // the button, so a screen reader heard nothing happen when it was pressed (PR #300 in-sim run,
-  // 2026-10-14). It is read as a choice instead: the list's runways in words, the value the runway
-  // the button names ("RWY 18L"). Each picker's own list, by its container: the tablet ids a runway
-  // button by the runway alone, so both pages can hold a "09".
+  // 2026-10-14). It is read as a choice instead, under its own label (RWY): the list's runways as
+  // A.runwayLabel reads them, the value the runway the button names ("RWY 18L"). Each picker's own
+  // list, by its container: the tablet ids a runway button by the runway alone, so both pages can
+  // hold a "09".
   A.RUNWAY_PICKERS = { show_runway_select: 'runway_opts', land_show_runway_select: 'land_runway_opts' };
   A.runwayButtons = function (picker) {
     var box = A.byId(A.RUNWAY_PICKERS[picker.id]);
@@ -237,7 +245,7 @@
       if (btns[i].id === picked) value = label;
     }
     if (!value) return false;
-    emit({ idx: A.stamp(picker), text: 'Runway', value: value, controlType: 'select', kind: 'static', clickable: false,
+    emit({ idx: A.stamp(picker), text: A.rowLabel(picker) || 'RWY', value: value, controlType: 'select', kind: 'static', clickable: false,
       options: opts, key: 'runway:' + picker.id });
     return true;
   };
@@ -363,6 +371,17 @@
     } catch (e) { return ''; }
   };
 
+  // A cargo preset button, by its friendlier name (kept at Robin's word, 2026-10-14): "Racing Team
+  // Charter: 31,000 kilograms, 68,300 pounds" for the spans "31'000Kgs / 68'300Lbs", "Racing Team
+  // Charter".
+  A.presetLabel = function (btn) {
+    var spans = btn.querySelectorAll ? btn.querySelectorAll('h1 span') : [];
+    if (spans.length < 2) return '';
+    var m = A.PRESET_WEIGHT.exec(A.txt(spans[0]));
+    if (!m) return '';
+    return A.txt(spans[1]) + ': ' + A.thousands(A.num(m[1])) + ' kilograms, ' + A.thousands(A.num(m[2])) + ' pounds';
+  };
+
   // A door button's state from its classes; a slide button's from its color.
   A.doorState = function (btn) {
     if (A.hasClass(btn, 'door-transit')) return 'moving';
@@ -398,7 +417,7 @@
     var timer = /^timer_complete_/.test(el.id || '') ? el.closest('.pop_timer') : null;
     if (timer) {
       var job = timer.querySelector('h1');
-      return 'Finish now' + (job ? ': ' + A.txt(job) : '');
+      return A.txt(el) + (job ? ': ' + A.txt(job) : '');
     }
     if (A.hasClass(el, 'rwy-select') || A.hasClass(el, 'land-rwy-select')) {
       var rwy = A.runwayLabel(el);
@@ -418,6 +437,8 @@
     if (A.hasClass(el, 'page--right')) return 'Next chart page';
     // The Enroute Map's "<" opens its list of map types.
     if (el.closest('#enroutemap-sidebar') && /^[<>]$/.test(A.txt(el))) return 'Map type';
+    var preset = A.presetLabel(el);
+    if (preset) return preset;
     // The tablet's words, without the arrows it draws after some ("CALCULATE >>").
     var t = A.clean(A.txt(el).replace(/(>>|<<|»|«)/g, ' '));
     // A symbol for a name ("+", "-") gives way to the button's own title ("Zoom in").
@@ -532,9 +553,12 @@
         return;
       }
       if (el.id === 'oil-levels' || el.id === 'hyd-levels') {
-        for (var lv in A.LEVELS) {
-          var val = el.querySelector('#' + lv + '_val');
-          if (val) emit({ idx: 0, text: A.LEVELS[lv] + ': ' + A.txt(val), value: '', kind: 'static', clickable: false, key: 'text:' + lv });
+        var lh = el.querySelector('h1, h2, h3, h4, h5, h6');
+        if (lh && A.txt(lh)) emit({ idx: 0, text: A.txt(lh), value: '', kind: 'heading', level: Math.min(6, +lh.tagName.charAt(1)), clickable: false });
+        for (var lv = 0; lv < A.LEVELS.length; lv++) {
+          var bar = el.querySelector('#' + A.LEVELS[lv]), val = el.querySelector('#' + A.LEVELS[lv] + '_val');
+          var lab = bar && bar.previousElementSibling ? A.txt(bar.previousElementSibling) : '';
+          if (val) emit({ idx: 0, text: (lab ? lab + ': ' : '') + A.txt(val), value: '', kind: 'static', clickable: false, key: 'text:' + A.LEVELS[lv] });
         }
         return;
       }
@@ -546,10 +570,10 @@
         if (block) emit({ idx: 0, text: block, value: '', kind: 'static', controlType: 'pre', clickable: false, key: el.id ? 'pre:' + el.id : undefined });
         return;
       }
-      // The Charts viewer's page counter, "1 / 2".
+      // The Charts viewer's page counter, "1 / 2", one line keyed so a new page patches it in place.
       if (A.hasClass(el, 'page--count')) {
-        var pc = /(\d+)\s*\/\s*(\d+)/.exec(A.txt(el));
-        if (pc) emit({ idx: 0, text: 'Chart page ' + pc[1] + ' of ' + pc[2], value: '', kind: 'static', clickable: false, key: 'status:chartpage' });
+        var pc = A.txt(el);
+        if (pc) emit({ idx: 0, text: pc, value: '', kind: 'static', clickable: false, key: 'status:chartpage' });
         return;
       }
 
@@ -629,18 +653,24 @@
         return;
       }
 
-      // My Flight's headings only title the values named below.
+      // My Flight's headings are read with the value under each ("DEP TIME: 1200").
       if (/^H[1-6]$/.test(tag) && el.closest('#flight')) return;
       if (el.id && A.VALUE_NAMES[el.id]) {
         emit({ idx: 0, text: A.VALUE_NAMES[el.id] + ': ' + A.txt(el), value: '', kind: 'static', clickable: false, key: 'text:' + el.id });
         return;
       }
+      if (el.id && A.HEADED_VALUES[el.id]) {
+        var vh = el.previousElementSibling;
+        var vt = vh && /^H[1-6]$/.test(vh.tagName) ? A.txt(vh) : '';
+        emit({ idx: 0, text: (vt ? vt + ': ' : '') + A.txt(el), value: '', kind: 'static', clickable: false, key: 'text:' + el.id });
+        return;
+      }
 
-      // Throttle Calibration's "LEFT 50%" headings are the throttle positions.
+      // Throttle Calibration's "LEFT 50%" headings are the throttle positions: one line each, keyed so
+      // a new position patches in place.
       var pct = /^H[1-6]$/.test(tag) ? el.querySelector('#l_pct, #r_pct') : null;
       if (pct) {
-        emit({ idx: 0, text: (pct.id === 'l_pct' ? 'Left' : 'Right') + ' throttle: ' + A.txt(pct), value: '', kind: 'static',
-          clickable: false, key: 'text:' + pct.id });
+        emit({ idx: 0, text: A.txt(el), value: '', kind: 'static', clickable: false, key: 'text:' + pct.id });
         return;
       }
 
@@ -764,6 +794,8 @@
   // The header bar, after the page: the simulation-rate badge (shown only above 1x), one status
   // line with the clocks and the tablet's battery, then Home and the gear. Only Home used to be
   // read, so the control box behind the gear could not be reached at all.
+  // The clocks keep the tablet's LOCAL and ZULU; their "1357" is read as 13:57, the time it is,
+  // which a screen reader would otherwise say as a number in the thousands. The battery is an icon.
   A.BATTERY = { 'plug.png': 'charging', 'battery-full.png': 'battery full', 'battery-half.png': 'battery half', 'battery-empty.png': 'battery low' };
   A.clock = function (s) { return /^\d{4}$/.test(s) ? s.slice(0, 2) + ':' + s.slice(2) : s; };
   A.statusLine = function () {
@@ -771,9 +803,9 @@
     var times = document.querySelectorAll('#right-menu-bar .time');
     for (var i = 0; i < times.length; i++) {
       var small = times[i].querySelector('.time-small');
-      var which = small ? A.sentence(A.txt(small)) : '';
+      var which = small ? A.txt(small) : '';
       var value = A.ownText(times[i]);
-      if (value) parts.push((which ? which + ' time ' : '') + A.clock(value));
+      if (value) parts.push((which ? which + ' ' : '') + A.clock(value));
     }
     var charge = document.getElementById('charge-state');
     var src = charge ? String(charge.getAttribute('src') || '') : '';
@@ -784,8 +816,8 @@
   A.header = function (emit) {
     var rate = document.querySelector('.sim-rate');
     if (rate && A.visible(rate)) {
-      var m = /SIMULATION RATE:\s*(\S+)/i.exec(A.txt(rate));
-      if (m) emit({ idx: 0, text: 'Simulation rate: ' + m[1], value: '', kind: 'static', clickable: false, key: 'status:simrate' });
+      var said = A.txt(rate);
+      if (/SIMULATION RATE:\s*\S/i.test(said)) emit({ idx: 0, text: said, value: '', kind: 'static', clickable: false, key: 'status:simrate' });
     }
     var line = A.statusLine();
     if (line) emit({ idx: 0, text: line, value: '', kind: 'static', clickable: false, key: 'status:header' });
