@@ -25,8 +25,8 @@ TCAS, weather radar and GPWS tests. Load SimBrief brings in the transition altit
 level, the takeoff flap setting and, on the PMDG 737, the pressurization altitudes. It
 loads by itself when the window opens if your SimBrief username is set.
 
-Every aircraft's Before Start Checklist now ends with "Start ACARS", a line you tick yourself
-once you have done it. If you open the First Officer window while already flying (for example
+Every aircraft's Before Start Checklist now ends with "Start ACARS", a line for you to
+confirm; a finished Before Start flow ticks it with the rest. If you open the First Officer window while already flying (for example
 after starting MSFSBA in the air), or load a flight that starts in the air with the window open,
 every checklist from power-up through After Takeoff is marked complete, with one announcement:
 "In flight: checklists through After Takeoff marked complete." Descent and the checklists after
