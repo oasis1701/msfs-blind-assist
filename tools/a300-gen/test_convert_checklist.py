@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import convert_checklist as cc
@@ -56,6 +57,19 @@ class ConvertChecklistTests(unittest.TestCase):
         self.assertEqual('F-pln: SID, airways, STAR', cc.item_text('F-pln', 'SID, airways, STAR'))
         self.assertEqual('F-pln: SID, airways, STAR', cc.item_text('F-pln:', 'SID, airways, STAR'))
         self.assertEqual('Bleed source: APU bleed', cc.item_text('Bleed source', 'APU bleed'))
+
+    def test_a_slash_joined_abbreviation_keeps_its_case(self):
+        # "ILS/VOR" is not in the list as a word; its part before the slash, ILS, is.
+        self.assertEqual('Radio: ILS/VOR approach', cc.item_text('Radio', 'ILS/VOR approach'))
+        self.assertEqual('Radio: ILS/VOR', cc.item_text('Radio', 'ILS/VOR'))
+        # Any other slash-joined word is still lowercased.
+        self.assertEqual('Switch: on/auto', cc.item_text('Switch', 'On/auto'))
+
+    def test_a_slash_joined_entry_in_the_list_matches_as_a_whole_word(self):
+        # An "A/THR"-style entry: its part before the slash, "A", is no abbreviation, so only
+        # the whole word keeps its case.
+        with mock.patch.object(cc, 'ABBREVIATIONS', cc.ABBREVIATIONS | {'A/THR'}):
+            self.assertEqual('Autothrust: A/THR armed', cc.item_text('Autothrust', 'A/THR armed'))
 
     def test_a_subject_ending_in_a_colon_is_not_doubled(self):
         self.assertEqual('Init a: altn', cc.item_text('Init a:', 'altn'))

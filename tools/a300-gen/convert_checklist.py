@@ -68,8 +68,10 @@ def item_text(subject, expectation):
     if not expectation:
         return subject
     # The first WORD decides, not the text up to the first space: "SID," is the abbreviation SID.
+    # A slash-joined word counts whole ("A/THR"), else by its part before the slash ("ILS/VOR").
     first = FIRST_WORD_RE.match(expectation)
-    keep = first is not None and first.group(0).upper() in ABBREVIATIONS
+    word = first.group(0).upper() if first else ''
+    keep = word in ABBREVIATIONS or word.split('/', 1)[0] in ABBREVIATIONS
     lowered = expectation if keep else expectation[0].lower() + expectation[1:]
     return '%s: %s' % (subject.rstrip(':'), lowered)
 
