@@ -212,6 +212,12 @@ public class LandingFlareAssistManager : IDisposable
     public bool IsArmed => armed;
     public bool IsEngaged => armed && phase != Phase.Armed;
 
+    /// <summary>
+    /// True while the rollout centerline cue runs (flare or rollout-only arming). Exit guidance reads it every
+    /// rollout frame (TaxiGuidanceManager.CenterlineCueEngagedProvider) and pauses its own tone on the runway.
+    /// </summary>
+    public bool IsRolloutEngaged => armed && phase == Phase.Rollout;
+
     /// <summary>Raised when the manager wants the SIM_FRAME feed started (true) or stopped (false).</summary>
     public event EventHandler<bool>? MonitoringRequestChanged;
     /// <summary>Raised on flare-engage (true) and on rollout-complete / go-around / disarm (false).</summary>

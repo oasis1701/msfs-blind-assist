@@ -828,6 +828,9 @@ public partial class MainForm : Form
         // climb-out. Read on the position thread; the SIM_ON_GROUND handler writes it (a bool? field read).
         taxiGuidanceManager.OnGroundProvider = () => simConnectManager?.LastKnownOnGround;
 
+        // While the landing assist's rollout centerline cue runs, exit guidance pauses its own tone on the runway.
+        taxiGuidanceManager.CenterlineCueEngagedProvider = () => flareAssistManager?.IsRolloutEngaged ?? false;
+
         // Same token as the Where-Am-I graph, so a GSX publish re-letters the inferred concourses
         // too. Asked on every monitor sample, so it must stay as cheap as GateListVersion.
         surroundingsCache.VersionSupplier = GateListVersion;

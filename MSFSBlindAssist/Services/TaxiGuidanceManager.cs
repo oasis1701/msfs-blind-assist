@@ -183,6 +183,14 @@ public partial class TaxiGuidanceManager : IDisposable
     /// </summary>
     public Func<bool?>? OnGroundProvider { get; set; }
 
+    /// <summary>
+    /// True while the landing assist's rollout centerline cue is engaged (LandingFlareAssistManager.IsRolloutEngaged),
+    /// read every rollout frame by the tone selection (RolloutExitGate.SelectToneMode's centerlineCueEngaged): exit
+    /// guidance then pauses its own tone on the runway and takes the tone only for the exit. MainForm wires it.
+    /// Unwired counts as not engaged, which is exactly the behaviour before the cue existed.
+    /// </summary>
+    public Func<bool>? CenterlineCueEngagedProvider { get; set; }
+
     // The rollout is held for an airborne sample (LandingExitGoAround.HoldsRollout); logged on each change only.
     private bool _rolloutAirborneHold;
 
@@ -1405,6 +1413,38 @@ public partial class TaxiGuidanceManager : IDisposable
             lock (_stateLock)
             {
                 return _state == TaxiGuidanceState.LandingRollout && !_rolloutNoExitMode;
+            }
+        }
+    }
+
+    /// <summary>
+    /// True while a landing rollout runs: steering at an exit or the runway-end countdown. Read by the landing
+    /// assist's rollout cue, which has no speed end during one (LandingFlareAssistManager.DecideRolloutEnd).
+    /// </summary>
+    public bool IsLandingRollout
+    {
+        get
+        {
+            lock (_stateLock)
+            {
+                return _state == TaxiGuidanceState.LandingRollout;
+            }
+        }
+    }
+
+    /// <summary>
+    /// True while exit guidance owns the rollout tone (Navigation.RolloutExitGate.ExitGuidanceOwnsTone): a landing
+    /// rollout with an exit whose last tone mode is not Centerline. Read every frame by the landing assist's
+    /// rollout cue, which stays engaged but silent while this is true, so the two tones never sound together.
+    /// </summary>
+    public bool ExitGuidanceOwnsRolloutTone
+    {
+        get
+        {
+            lock (_stateLock)
+            {
+                return Navigation.RolloutExitGate.ExitGuidanceOwnsTone(
+                    _state == TaxiGuidanceState.LandingRollout, _rolloutNoExitMode, _rolloutToneMode);
             }
         }
     }

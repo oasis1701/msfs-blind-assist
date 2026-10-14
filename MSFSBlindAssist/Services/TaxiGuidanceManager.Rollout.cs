@@ -1582,11 +1582,12 @@ public partial class TaxiGuidanceManager
             // Fall through — bearing-to-junction tone below acts as the fallback.
         }
 
-        // Rollout steering tone — three modes, selected by RolloutExitGate.SelectToneMode:
+        // Rollout steering tone — three modes, selected by RolloutExitGate.SelectToneMode, plus a
+        // fourth, Centerline, while the landing assist's centerline cue is engaged (see below):
         //
-        // Above ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS (50 kt) the tone is Silent — at runway
-        // speed a pan cue is useless and autopilot crab / crosswind alignment would cause
-        // confusing pan.
+        // Above ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS (50 kt) the tone is Silent — this heading cue's
+        // pan would follow autopilot crab / crosswind alignment at runway speed. The centerline
+        // cue, when engaged, covers this band with a cross-track law instead.
         //
         // Below 50 kt and beyond ROLLOUT_EXIT_TONE_ARM_FT (300 ft) of the chosen exit, the
         // tone is DriftCorrection: desired heading is the runway itself, steering the pilot
@@ -1622,12 +1623,20 @@ public partial class TaxiGuidanceManager
         // Too fast for the targeted exit — by the too-fast rule before its turn point, or declined there
         // ("too fast to turn" with no exit left): the tone holds the runway heading and never leads the
         // pilot toward that exit, nor goes quiet for a turn toward it (RolloutExitGate.SelectToneMode).
+        //
+        // While the landing assist's rollout centerline cue is engaged (CenterlineCueEngagedProvider), the
+        // cue owns the runway and exit guidance the exit: the silent band above 50 kt, the drift band beyond
+        // the exit's turn window and every too-fast frame become Centerline, which pauses this tone while the
+        // cue plays Takeoff Assist's centerline law (LandingFlareAssistManager reads ExitGuidanceOwnsRolloutTone).
+        // KSEA 16R 2026-10-15: an A300 autoland yawed off the runway between 96 and 70 kt, all of it above the
+        // 50 kt line, with no cue at all.
         bool tooFastForExit = _rolloutTooFastNoExit
             || (!_rolloutTurnNowAnnounced
                 && Navigation.RolloutExitGate.IsTooFastToTurn(groundSpeedKts, _rolloutExit.ExitAngleDegrees));
         var toneMode = Navigation.RolloutExitGate.SelectToneMode(
             groundSpeedKts, distToExitFeet, hdgDelta, exitRelBearingDeg,
-            turnWindowFeet, tooFastForExit: tooFastForExit);
+            turnWindowFeet, tooFastForExit: tooFastForExit,
+            centerlineCueEngaged: CenterlineCueEngagedProvider?.Invoke() ?? false);
         if (toneMode != _rolloutToneMode)
         {
             // Start every mode from a clean filter so the pan is sharp and immediate rather
@@ -1640,7 +1649,8 @@ public partial class TaxiGuidanceManager
         // frame that line is written, so a stopped aircraft allocates nothing here per frame.
         bool toneLive = false;
         double toneDesiredHeading = 0.0, toneRawError = 0.0;
-        if (toneMode == Navigation.RolloutToneMode.Silent)
+        // Centerline: the landing assist's cue plays instead of this tone, so this one is paused exactly as for Silent.
+        if (toneMode is Navigation.RolloutToneMode.Silent or Navigation.RolloutToneMode.Centerline)
         {
             _steeringTone.Pause();
             _headingErrorInitialized = false;
