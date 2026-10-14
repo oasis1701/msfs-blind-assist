@@ -1080,6 +1080,23 @@ public class SynapticA220DefinitionTests
         Assert.False(v.IsAnnounced);
         Assert.NotEqual(UpdateFrequency.Continuous, v.UpdateFrequency);
     }
+
+    [Fact]
+    public void AutobrakeWalk_ReleasesTheSelector_WhenItEnds()
+    {
+        var def = new SynapticA220Definition();
+        def.StopDisplayMonitoring(null!);                   // retired: ProcessSimVarUpdate must not start a real Coherent poll
+        var speech = new SpeechCapture();
+        var mgr = new SimConnectManager(IntPtr.Zero);       // never connected: the walk ends at once, however it ends
+        Assert.True(def.HandleUIVariableSet("A22X_AUTOBRAKE", 4, Vars["A22X_AUTOBRAKE"], mgr, speech));
+
+        // A walk in flight consumes the selector's deliveries (the combo is not yanked through each
+        // detent the knob passes); once it ends they must reach the combo again, or the panel never
+        // shows the selector's truth after the walk. In flight is not assertable here (the walk's
+        // first read needs the SimConnect assembly): that is in the in-sim plan.
+        Assert.True(SpinWait.SpinUntil(() => !def.ProcessSimVarUpdate("A22X_AUTOBRAKE", 1, speech), 5000),
+            "the walk never released the selector");
+    }
 }
 
 [Collection("SettingsManagerGlobalState")]

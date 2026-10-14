@@ -278,6 +278,10 @@ public partial class SynapticA220Definition
             catch (Exception ex) { Utils.Logging.Log.Warn("A220", $"Autobrake walk: {ex.Message}"); }
             finally
             {
+                // Release the combo first (ProcessSimVarUpdate consumes the var while a walk is in
+                // flight), so the re-read below reaches it. Only if this walk still owns the slot:
+                // a newer walk that cancelled this one keeps it.
+                System.Threading.Interlocked.CompareExchange(ref _autobrakeCancel, null, cts);
                 // The combo shows the selector's truth again, refused or not.
                 if (!cts.IsCancellationRequested) simConnect.RequestVariable("A22X_AUTOBRAKE", forceUpdate: true);
             }

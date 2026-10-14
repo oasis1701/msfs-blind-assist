@@ -63,6 +63,15 @@ public partial class SynapticA220Definition
 
         switch (varName)
         {
+            // The autobrake step walk (UiVariableSet partial) reads this selector between its
+            // steps. A read that reached MainForm would re-sync the combo to every detent the knob
+            // passes through, under the pilot's focus: the reader would speak each intermediate
+            // detent and the pick would be yanked back mid-walk. So a walk in flight consumes the
+            // var here (the MD-11 walker's pattern, [MD11-8]); the walk says a refusal itself and
+            // re-reads the combo once, after it has released this gate.
+            case "A22X_AUTOBRAKE":
+                return System.Threading.Volatile.Read(ref _autobrakeCancel) != null;
+
             case "A22X_FLIGHT_STAGE":
             {
                 int stage = (int)Math.Round(value);
