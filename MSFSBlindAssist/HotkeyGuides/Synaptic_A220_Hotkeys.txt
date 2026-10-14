@@ -1,0 +1,268 @@
+SYNAPTIC SIMULATIONS A220-300 HOTKEY REFERENCE
+
+Application Navigation:
+  Ctrl+1     Focus Sections List
+  Ctrl+2     Focus Panels List
+  Ctrl+3     Focus Status Display field of the current panel (refreshes it if empty)
+
+Tip: Press the same bracket key again to cancel a mode you activated by accident.
+
+
+HOW THIS AIRCRAFT IS READ
+
+The A220's systems are read from the aircraft's own data link (the same data its
+displays draw): crew alerting messages, gear, doors, engine start, IRS alignment,
+the speed bugs, the transponder and both altimeters. If that link is not up
+(the simulator still loading, the displays unpowered), readouts say "not
+available" rather than guess.
+
+
+OUTPUT MODE - Press right bracket to activate
+
+Flight Control Panel Readouts:
+  Shift+H    Read selected heading, with the lateral mode
+  Shift+S    Read selected speed (FMS or manual), with the autothrottle mode
+  Shift+A    Read selected altitude, with the vertical mode
+  Shift+V    Read the vertical speed or flight path angle target
+  Alt+F      Read the flight directors: on or off per side, the modes, and what
+             they are commanding
+  Ctrl+0     Read Approach Capability
+
+Speed Bugs (from the PFD):
+  Shift+1    Read V1
+  Shift+2    Read VR
+  Shift+3    Read V2
+  Shift+4    Read VREF
+  Shift+5    Read VAC (approach climb speed)
+  Shift+6    Read the flap retraction speed bugs (F0 to F5) and VT
+
+Altitude:
+  Q          Read Altitude AGL
+  A          Read Altitude MSL
+
+Airspeed:
+  S          Read IAS (Indicated Airspeed)
+  T          Read TAS (True Airspeed)
+  G          Read Ground Speed
+  M          Read Mach Number
+
+Heading:
+  H          Read Magnetic Heading
+  U          Read True Heading
+
+Navigation:
+  N          Read COM 1, COM 2, NAV 1 and NAV 2 frequencies
+  W          Read distance and bearing to the active waypoint
+  Ctrl+W     Read the next waypoint and its distance (the captain's navigation display)
+  D          Read distance and time to destination (from the FMS's active flight plan)
+  Shift+D    Read distance to top of descent (from the FMS's active flight plan)
+
+Fuel and Weight:
+  F          Read Fuel Quantity (pounds)
+  Shift+F    Read Fuel Quantity (kilograms)
+  Shift+W    Read Gross Weight (kilograms)
+
+Flaps and Gear:
+  L          Read Flap Position
+  Shift+G    Read the gear lever, the position of each gear and the brake temperatures
+
+Altimeter:
+  B          Read the altimeter as the PFD shows it: inches, hectopascals or standard.
+             The first officer's side is named too when it differs.
+
+Transponder:
+  X          Read the squawk code and the transponder mode
+
+Vertical:
+  V          Read Vertical Speed
+  Ctrl+Shift+R  Read last landing rate (touchdown vertical speed, feet per minute)
+  Ctrl+Shift+G  Read last landing peak g-force
+
+Weather:
+  I          Wind Info
+  O          Read Outside Temperature (Celsius)
+
+Time:
+  Z          Read Local Time at aircraft position
+  Shift+Z    Read Zulu / UTC Time
+
+Location:
+  C          Read Nearest City
+
+Traffic and Weather:
+  R          Announce Tracked TCAS Traffic
+  Ctrl+R     Open TCAS Traffic Window
+  Shift+R    Open Weather Radar Window
+  Alt+G      Announce nearest ground traffic
+
+Crew Alerting (CAS):
+  Alt+E      CAS window - every active warning, caution, advisory and status
+             message, warnings first, one per line. Arrow keys to read, F5
+             refreshes, Escape closes; it refreshes live. No API key needed.
+  Ctrl+E     Turn the CAS call-outs (warnings, cautions and advisories) off or on.
+             New warnings and cautions are spoken as they appear ("Caution: EMER
+             LTS OFF"), advisories are queued, status messages are never spoken.
+             On connecting, one line lists the warnings and cautions already showing.
+
+Cockpit Display Read-outs:
+  Alt+N, Alt+P, Alt+I  Not read on the A220: each says which hotkeys carry
+             the same data.
+  Alt+D      Describe outside scene (AI vision)
+
+Checklists:
+  Shift+C    Text checklist
+  Ctrl+Shift+C  Electronic checklist: the aircraft's own ECL, read item by item,
+             with the items MSFS Blind Assist can do for you
+
+Displays and Windows:
+  Shift+E    Electronic Flight Bag (route viewer, procedure planner, airport lookup)
+  Shift+L    Location Info
+  Alt+L      Look Around (where you are, the apron or concourse you are in, and the nearest buildings with direction and distance)
+  Ctrl+Shift+L  Surroundings window (everything nearby as a list, with the airport's fuel and frequencies)
+                In its Frequencies list, Enter tunes the selected frequency into COM 1 standby
+                and Shift+Enter tunes it straight into COM 1 active; COM 1 is read back to confirm.
+  Shift+M    Show VATSIM METAR Report
+  Ctrl+Shift+T  Cold Temperature Altitude Correction
+  Shift+B    SimBrief Briefing
+
+Background Announcements:
+  Ctrl+M     A220 Monitor Manager - every announcement the A220 makes on its own, each
+             with a checkbox: CAS warnings and cautions, CAS advisories, flight mode
+             annunciations, gear position, engine start progress, IRS alignment, door
+             call-outs, the Rotate call-out, the final approach call-outs, the autopilot
+             and flight guidance modes, and the annunciator lights. Untick any you do
+             not want spoken; the choice is saved. Type in the search box to narrow it.
+  Shift+T    Turn the trim announcements on or off
+
+Tools:
+  Ctrl+H     Activate/deactivate Hand Fly mode
+  Ctrl+V     Activate/deactivate Visual Guidance mode
+  Ctrl+T     Activate/deactivate Takeoff Assistance
+  Ctrl+D     Read Distance to Selected Runway
+  Ctrl+I     Read ILS Guidance System Report
+
+Taxi Guidance:
+  Y          Taxi Status (current taxiway, next turn, distance to destination)
+  Ctrl+Y     Repeat Current Taxi Instruction
+  Alt+Y      Where Am I
+
+Ground Services:
+  Ctrl+G     Read latest GSX tooltip
+
+Waypoint Tracking:
+  1          Track Slot 1
+  2          Track Slot 2
+  3          Track Slot 3
+  4          Track Slot 4
+  5          Track Slot 5
+
+Hand Fly Mode Hotkeys:
+  A          Read MSL
+  S          Read IAS
+  D          Read Distance to Destination Runway
+  H          Read Magnetic Heading
+  P          Read Aircraft Pitch
+  B          Read Aircraft Bank
+  Q          Read AGL
+  V          Read VS
+
+Visual Guidance Mode Hotkeys:
+  F          Read Target VS
+
+SayIntentions:
+  Ctrl+S        Read last SayIntentions transmission
+  Ctrl+Shift+S  Open SayIntentions flight information
+
+VATSIM:
+  Alt+V      Mute or unmute VATSIM announcements (vPilot)
+
+
+INPUT MODE - Press [ to activate
+
+Teleport:
+  Shift+R    Runway Teleport
+  Shift+G    Gate Teleport
+
+Flight Planning:
+  Shift+F    Fix/Waypoint Tracking Window
+  Shift+D    Select Destination Runway
+
+Flight Control Panel (the A220's knobs are walked for you and read back):
+  Ctrl+S     Set speed (knots or Mach, with FMS / manual and knots / Mach buttons)
+  Ctrl+H     Set heading (with HDG, NAV, approach, sync and half bank buttons)
+  Ctrl+A     Set altitude (with FLC, VNAV, altitude hold, unit and fine/coarse buttons)
+  Ctrl+V     Set vertical speed or flight path angle
+  Ctrl+P     Autopilot window (AP, A/T, modes, flight directors)
+  Shift+A    Toggle the autopilot
+  Ctrl+J     Toggle the autothrottle
+  Shift+P    Toggle approach mode
+  Ctrl+L     Toggle NAV mode
+
+FCU Push/Pull:
+  (The A220's knobs have no pull, so each key is the A220 control that does that
+  job; a key never switches off a mode that is already on.)
+  Shift+1    Heading push: sync the heading to the current heading
+  Ctrl+1     Heading pull: HDG mode
+  Shift+2    Altitude push: VNAV
+  Ctrl+2     Altitude pull: FLC
+  Shift+3    Speed push: FMS speed
+  Ctrl+3     Speed pull: manual speed
+  Shift+4    V/S push: level off (altitude hold)
+  Ctrl+4     V/S pull: vertical speed mode
+
+Altimeter and Minimums:
+  Ctrl+B     Altimeter and minimums window: QNH (type hectopascals, like 1013, or
+             inches, like 29.92), the unit, Standard, and the BARO or RADIO minimums,
+             for both sides or one. Each setting is read back from the aircraft.
+             The CTP Captain and CTP First Officer panels carry the same controls.
+
+Radios:
+  Ctrl+N     A220 radios window (nav source, course, NAV 1 and NAV 2 presets,
+             AUTO / MANUAL tuning)
+
+FMS, EFB:
+  Shift+M    FMS window
+  Shift+T    EFB tablet
+
+Taxi Guidance:
+  Shift+Y    Open Taxi Assist Form (enter ATC taxi clearance, start guidance)
+  Y          Continue past current hold-short point
+  Ctrl+Y     Stop Taxi Guidance
+  Shift+X    Open Landing Exit Planner
+
+Ground Services:
+  Alt+G      Open Access GSX window
+
+SayIntentions:
+  Ctrl+Shift+Y Build a taxi route from the last SayIntentions taxi clearance.
+               Fills the Taxi Assist form with the destination, taxiways and
+               hold-short runways ATC gave, and names anything it could not
+               apply. Review the fields and press Calculate Route to start
+               guidance, or turn on auto-start in the SayIntentions section
+               of Settings > Taxi Guidance.
+
+General:
+  Escape     Exit active hotkey mode
+
+
+THE PANELS - WHAT IS NEW FOR A FULL FLIGHT
+
+Transponder panel: Transponder Mode (AUTO, STBY, TA/RA, TA ONLY, ALT ON,
+ALT OFF), TCAS Altitude Limit (refused while the mode is AUTO, as the
+aircraft does), Transponder Code (type four digits, press Enter), Ident and
+Set Flight ID. Each change is read back from the transponder; a change it
+did not take is said.
+
+Gear and Brakes: the Autobrake combo is the selector's real scale - RTO, OFF,
+LO, MED, HI. It is moved one detent at a time and checked after each; a
+detent the aircraft refuses is said ("Autobrake LO not available on the
+ground - still OFF"). The panel's status lists each gear and the brake
+temperatures.
+
+Utilities: Doors lists every door and slide; IRS shows alignment and the
+time to navigation. Doors, gear, IRS alignment and engine starts are also
+announced as they change (each muted in Ctrl+M).
+
+Take-off: "Rotate" is called at VR from the PFD's own speed bugs. The
+aircraft calls V1 itself. If you start a take-off roll with V1 or VR not
+set you hear "V-speeds not set" once, and Rotate is not called.
