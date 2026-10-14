@@ -68,7 +68,7 @@ Pre-condition for the ground flows: start cold-and-dark (or at the matching phas
 | Landing | Start switches CONT; speedbrake ARMED (a deployed speed brake is left alone, see H10); missed-altitude reminder; confirms gear down (three green) |
 | After Landing | Landing lights retract; taxi light ON; strobes steady; anti-ice OFF; probe heat OFF; APU ON; start switches OFF; autobrake OFF |
 | Shutdown | APU gen ON; **start levers CUTOFF then waits for engine spool-down**; signs/lights off; fuel pumps OFF; window heat OFF; transponder STBY |
-| Secure | IRS OFF; emergency exit OFF; window heat OFF; packs OFF; APU OFF; ground power OFF; **waits for the APU to stop (EGT below 300 °C), then 40 s if it switched the APU off**; **Battery OFF last** (left alone, with a spoken reason, while an engine turns). **In-sim check:** run Secure after Shutdown with the APU running: hear the wait, then "Battery: OFF"; the aircraft goes dark and Electrical Power Down shows complete |
+| Secure | IRS OFF; emergency exit OFF; window heat OFF; packs OFF; APU OFF ("Already set" if it already reads OFF); ground power OFF; **if it switched the APU off: waits 60 s, then until the APU EGT is below 300 °C, then 40 s (no wait when the APU was already off)**; **Battery OFF last** (left alone, with a spoken reason, while an engine turns). **In-sim check:** run Secure after Shutdown with the APU running: hear the wait, then "Battery: OFF"; the aircraft goes dark and Electrical Power Down shows complete |
 
 Verify **Pause / Resume / Stop** mid-flow, and that **"Run Related Flow"** from a checklist
 group starts the matching flow.

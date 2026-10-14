@@ -25,8 +25,8 @@ public class Boeing737SecurePowerOffTests
     public void Pmdg_secure_ends_apu_ground_power_cooldown_battery()
     {
         var ids = PmdgSecure().Steps.Select(s => s.Id).ToList();
-        Assert.Equal(new[] { "SE_APU_OFF", "SE_GND_PWR_OFF", "SE_APU_EGT_WAIT", "SE_APU_WAIT", "SE_BAT_OFF" },
-            ids.Skip(ids.Count - 5));
+        Assert.Equal(new[] { "SE_APU_OFF", "SE_GND_PWR_OFF", "SE_APU_COOLDOWN", "SE_APU_EGT_WAIT", "SE_APU_WAIT", "SE_BAT_OFF" },
+            ids.Skip(ids.Count - 6));
     }
 
     [Fact]
@@ -38,9 +38,15 @@ public class Boeing737SecurePowerOffTests
     }
 
     [Fact]
-    public void Pmdg_cooldown_waits_for_egt_then_40_seconds_after_this_runs_apu_switch_off()
+    public void Pmdg_cooldown_is_60_seconds_then_egt_then_40_seconds_after_this_runs_apu_switch_off()
     {
         var steps = PmdgSecure().Steps;
+        // The 737 NG APU's own 60 s cool-down runs first: an unloaded APU can already read
+        // below 300 °C when its switch goes OFF.
+        var cool = steps.Single(s => s.Id == "SE_APU_COOLDOWN");
+        Assert.Equal(FlowStepActionType.WaitSeconds, cool.ActionType);
+        Assert.Equal(60, cool.WaitSeconds);
+        Assert.Equal("SE_APU_OFF", cool.RunOnlyIfStepSent);
         var egt = steps.Single(s => s.Id == "SE_APU_EGT_WAIT");
         Assert.Equal(FlowStepActionType.WaitForCondition, egt.ActionType);
         Assert.Equal("APU_EGTNeedle", egt.ConditionFieldName);
@@ -60,6 +66,15 @@ public class Boeing737SecurePowerOffTests
         Assert.Equal(FlowStepActionType.WaitSeconds, wait.ActionType);
         Assert.Equal(120, wait.WaitSeconds);
         Assert.Equal("SE_APU_OFF", wait.RunOnlyIfStepSent);
+    }
+
+    [Fact]
+    public void The_apu_switch_off_skips_when_the_selector_already_reads_off()
+    {
+        // Without this skip SE_APU_OFF is always "sent" and the fixed cool-down waits run on every
+        // Secure, APU or not. The behaviour is Boeing737SecureApuAlreadyOffTests.
+        Assert.NotNull(PmdgSecure().Steps.Single(s => s.Id == "SE_APU_OFF").SkipCondition);
+        Assert.NotNull(IFlySecure().Steps.Single(s => s.Id == "SE_APU_OFF").SkipCondition);
     }
 
     [Fact]

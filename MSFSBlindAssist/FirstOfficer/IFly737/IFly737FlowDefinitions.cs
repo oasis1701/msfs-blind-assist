@@ -695,8 +695,12 @@ public static class IFly737FlowDefinitions
             Also(Multi("SE_PACKS_OFF", "Packs: OFF", "SE_PACKS",
                 ("Pack_Switch_Status_0", IFly737ActionExecutor.PackOff),
                 ("Pack_Switch_Status_1", IFly737ActionExecutor.PackOff)), "SEC_PACKS"),
-            // APU selector to OFF (absolute set — idempotent when already off).
-            SW("SE_APU_OFF", "APU: OFF", "APU_Switch_Status", IFly737ActionExecutor.ApuOff, checklistItemId: "SE_APU_OFF"),
+            // APU selector to OFF (absolute set — idempotent when already off). It skips on a
+            // switch that DEFINITELY reads OFF (unread is NaN, so it is still sent), so the
+            // cool-down wait below, which follows only a switch-off this run sent, never runs
+            // for an APU that was not running (owner, 2026-10-14).
+            Skip(SW("SE_APU_OFF", "APU: OFF", "APU_Switch_Status", IFly737ActionExecutor.ApuOff, checklistItemId: "SE_APU_OFF"),
+                s => s.IsPosition("APU_Switch_Status", IFly737ActionExecutor.ApuOff)),
             // No GPU-on readback exists to skip on (see class doc) — unconditional press,
             // matching the checklist's own action-only shape for this item.
             SW("SE_GND_PWR_OFF", "Ground power: OFF", "BTN_GRD_PWR_OFF", 1, isMomentary: true, checklistItemId: "SE_GND_PWR_OFF"),

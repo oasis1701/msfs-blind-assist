@@ -560,17 +560,24 @@ public static class PMDG737FlowDefinitions
                 ("EVT_OH_ICE_WINDOW_HEAT_1", 0), ("EVT_OH_ICE_WINDOW_HEAT_2", 0),
                 ("EVT_OH_ICE_WINDOW_HEAT_3", 0), ("EVT_OH_ICE_WINDOW_HEAT_4", 0)), "SEC_WINHEAT"),
             Also(Multi("SE_PACKS_OFF", "Packs: OFF", "SE_PACKS", ("EVT_OH_BLEED_PACK_L_SWITCH", 0), ("EVT_OH_BLEED_PACK_R_SWITCH", 0)), "SEC_PACKS"),
-            // APU selector to OFF (absolute set — idempotent when already off). Ground
-            // power OFF is a directional press, so it is skip-guarded on IsGpuOn() to no-op
-            // when no GPU is connected (mirrors the Before-Start BS_GPU_OFF drop).
-            SW("SE_APU_OFF", "APU: OFF", "EVT_OH_LIGHTS_APU_START", 0, checklistItemId: "SE_APU_OFF"),
+            // APU selector to OFF (absolute set — idempotent when already off). It skips on a
+            // selector that DEFINITELY reads OFF (an unread one is NaN, so it is still sent), so
+            // the cool-down waits below, which follow only a switch-off this run sent, never run
+            // for an APU that was not running (owner, 2026-10-14). Ground power OFF is a
+            // directional press, so it is skip-guarded on IsGpuOn() to no-op when no GPU is
+            // connected (mirrors the Before-Start BS_GPU_OFF drop).
+            Skip(SW("SE_APU_OFF", "APU: OFF", "EVT_OH_LIGHTS_APU_START", 0, checklistItemId: "SE_APU_OFF"),
+                s => s.IsPosition("APU_Selector", 0)),
             Skip(SW("SE_GND_PWR_OFF", "Ground power: OFF", "EVT_OH_ELEC_GRD_PWR_SWITCH", 0, checklistItemId: "SE_GND_PWR_OFF"),
                 s => !s.IsGpuOn()),
             // Cold and dark (owner, 2026-10-14). 737 NG: the APU runs a 60 s cool-down after its
             // switch goes OFF; the battery goes OFF only once the APU has stopped — 40 s after
             // EGT is below 300 °C, for the inlet door and fuel valve to close (spec sources).
-            // The EGT wait is instant on a cold APU; the 40 s only follows an APU this run
-            // switched off.
+            // The 60 s comes first because an unloaded APU can already read below 300 °C the
+            // moment its switch goes OFF. Both fixed waits (60 s, 40 s) follow only an APU THIS
+            // run switched off (SE_APU_OFF skips when the selector already reads OFF); the EGT
+            // wait reads the APU itself, so it stays unconditional and is instant on a cold one.
+            OnlyIfSent(Wait("SE_APU_COOLDOWN", "APU cool-down", 60), "SE_APU_OFF"),
             WaitForField("SE_APU_EGT_WAIT", "APU to stop", "APU_EGTNeedle", v => v < 300, 180),
             OnlyIfSent(Wait("SE_APU_WAIT", "APU inlet door to close", 40), "SE_APU_OFF"),
             // Battery LAST, and never with an engine turning (both N2 read below 10 %).

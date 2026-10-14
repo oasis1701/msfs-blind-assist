@@ -67,6 +67,7 @@ public class FlowStepRunOnlyIfSentIdTests
     [Fact]
     public void The_audit_sees_the_737_cooldown_waits()
     {
+        Assert.Equal("SE_APU_OFF", Flows("PMDG 737").Single(f => f.Flow == "SECURE").Steps.Single(s => s.Id == "SE_APU_COOLDOWN").After);
         Assert.Equal("SE_APU_OFF", Flows("PMDG 737").Single(f => f.Flow == "SECURE").Steps.Single(s => s.Id == "SE_APU_WAIT").After);
         Assert.Equal("SE_APU_OFF", Flows("iFly 737 MAX8").Single(f => f.Flow == "SECURE").Steps.Single(s => s.Id == "SE_APU_WAIT").After);
     }
