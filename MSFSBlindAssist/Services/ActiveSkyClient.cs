@@ -535,12 +535,12 @@ public class ActiveSkyClient
 
     /// <summary>
     /// Parses the JSON returned by GetCurrentConditions / GetWeatherAreaJson.
-    /// All fields come back as STRINGS in the JSON (per ActiveSky's API,
-    /// invariant culture for floats). We tolerate missing fields and parse
-    /// permissively — any field that's missing or unparseable defaults to 0
-    /// or empty. Returns null only if the JSON itself is malformed.
+    /// All fields come back as STRINGS in the JSON (usually invariant culture
+    /// for floats, but not always: see TryParseNumber). We tolerate missing
+    /// fields and parse permissively — any field that's missing or unparseable
+    /// defaults to 0 or empty. Returns null only if the JSON itself is malformed.
     /// </summary>
-    private static Conditions? ParseConditionsJson(string json)
+    internal static Conditions? ParseConditionsJson(string json)
     {
         try
         {
@@ -603,7 +603,8 @@ public class ActiveSkyClient
     }
 
     /// <summary>Parses /GetAtmosphere JSON ({"WeatherData":[{Altitude,WindDirection,
-    /// WindSpeed,Temperature,Pressure}]} — all values strings, invariant culture).
+    /// WindSpeed,Temperature,Pressure}]} — all values strings, usually invariant
+    /// culture but not always: see TryParseNumber).
     /// Null on malformed input; permissive per-field AND per-element like
     /// ParseConditionsJson — a stray non-object array entry is skipped rather than
     /// failing the whole parse.</summary>
@@ -696,24 +697,49 @@ public class ActiveSkyClient
     {
         var a = el.Attribute(name);
         if (a == null) return 0;
-        return double.TryParse(a.Value, System.Globalization.NumberStyles.Float,
-            System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : 0;
+        return TryParseNumber(a.Value, out var d) ? d : 0;
+    }
+
+    /// <summary>
+    /// Parses an ActiveSky number string. Most fields come with an invariant "."
+    /// decimal, but some (seen live 2026-10-12 at ESGG under a Swedish Windows:
+    /// QNH "1014,999", AmbientTemperature "7,992481") come in the OS culture with a
+    /// "," decimal. The old invariant NumberStyles.Any parse took that comma as a
+    /// thousands separator and read 1014999 hPa and 7992481°C. ActiveSky never
+    /// groups thousands (the same capture sent CloudCeiling "6449", with no sv-SE
+    /// group space), so a lone "," is the decimal separator. A three-digit-group
+    /// check cannot stand in for that premise: QNH "1014,999" has three decimals.
+    /// What could only be grouping ("," and "." together, or whitespace inside the
+    /// number) is refused, so the field reads as missing, never guessed. The U+2212
+    /// minus sign .NET 5+ writes for sv-SE, nb-NO, fi-FI and other comma-decimal
+    /// cultures reads as "-".
+    /// </summary>
+    internal static bool TryParseNumber(string? s, out double value)
+    {
+        value = 0;
+        if (string.IsNullOrWhiteSpace(s)) return false;
+        string t = s.Trim();
+        if (t.Contains(','))
+        {
+            if (t.Contains('.')) return false;
+            t = t.Replace(',', '.');
+        }
+        if (t.Contains('\x2212')) t = t.Replace('\x2212', '-');   // U+2212 MINUS SIGN
+        return double.TryParse(t, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out value);
     }
 
     private static double ReadDouble(JsonElement obj, string field)
     {
         if (!obj.TryGetProperty(field, out var v)) return 0;
-        // ActiveSky returns numbers as strings (with invariant decimal
-        // separator). JsonElement.GetDouble works for native numbers but
-        // throws for strings — handle both.
+        // ActiveSky returns numbers as strings, usually with an invariant decimal
+        // separator but sometimes in the OS culture (TryParseNumber).
+        // JsonElement.GetDouble works for native numbers but throws for strings
+        // — handle both.
         if (v.ValueKind == JsonValueKind.Number)
             return v.GetDouble();
-        if (v.ValueKind == JsonValueKind.String)
-        {
-            if (double.TryParse(v.GetString(), System.Globalization.NumberStyles.Any,
-                                System.Globalization.CultureInfo.InvariantCulture, out double d))
-                return d;
-        }
+        if (v.ValueKind == JsonValueKind.String && TryParseNumber(v.GetString(), out double d))
+            return d;
         return 0;
     }
 
@@ -724,9 +750,14 @@ public class ActiveSkyClient
             return v.TryGetInt64(out long n) ? n : (long)v.GetDouble();
         if (v.ValueKind == JsonValueKind.String)
         {
-            if (long.TryParse(v.GetString(), System.Globalization.NumberStyles.Any,
+            // Like the Number branch: exact when integral, else ReadDouble's
+            // culture-tolerant parse, truncated ("1760300000.0", "1760300000,5").
+            string? s = v.GetString();
+            if (long.TryParse(s, System.Globalization.NumberStyles.Integer,
                               System.Globalization.CultureInfo.InvariantCulture, out long n))
                 return n;
+            if (TryParseNumber(s, out double d))
+                return (long)d;
         }
         return 0;
     }
