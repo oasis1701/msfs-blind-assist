@@ -173,8 +173,8 @@ TYPED VALUES - type, then press Set or Enter
   Altitude, vertical speed and decision height take whole numbers, typed without a thousands
   separator: "-1500", not "-1,500", and "12000", not "12,000" or "12 000". A comma is read as a
   decimal point, so these are refused with "type a whole number, without a thousands separator"
-  (a panel's box adds the range, and so does any box for text that is not a number); a vertical
-  speed of 1 to 99, up or down, is refused too (0 is fine).
+  (a panel's box adds the range for "12,000" and "12 000", and any box adds it for text that is
+  not a number); a vertical speed of 1 to 99, up or down, is refused too (0 is fine).
   Navigation Radios panel: VOR 1 and VOR 2 frequency (108.00 to 117.95) and course setting, ILS
   frequency (108.10 to 111.95) and course setting.
   VHF Radios panel: VHF 1 and VHF 2 standby frequency (118.000 to 136.990); the transfer buttons
