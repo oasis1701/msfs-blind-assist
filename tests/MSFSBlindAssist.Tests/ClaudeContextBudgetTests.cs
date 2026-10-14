@@ -769,7 +769,7 @@ public class ClaudeContextBudgetTests
             "BRF-6 GetAssignedStatusAsync", "SI-30 ValidateDatabaseSimulatorMatch", "MD11-23 CalcPathVerdict.PilotWarning",
             "VAT-12 HotkeyAction.ToggleVatsimAnnouncements", "WX-10 HasOwnIcingAnnouncer",
             "DCK-19 UpdateHeadingErrorWithThresholds",
-            "A300-1 ExecuteCalculatorCodeUnique", "A300-7 DefAnnounceMuteSets", "A300-7 Md11SeedGate",
+            "A300-1 ExecuteCalculatorCodeUnique", "A300-7 Md11SeedGate",
             "A300-17 ValueInputForm",
         },
         ["named as what never to use: the rule guards the code that must avoid it"] = new[]
