@@ -102,7 +102,10 @@ public static class A300TypedValues
     public const string ComError = "118.000 to 136.990 megahertz";
     public const string SquawkError = "four digits, each 0 to 7";
     public const string AltimeterError = "28.20 to 31.30 inches, or 955 to 1060 hectopascals";
-    public const string MinimumsError = "0 to 2500 feet";
+
+    /// <summary>The decision height's range. 1 to 9 feet is refused (<see cref="Minimums"/>), so it is not "0 to 2500
+    /// feet", which held a refused 5.</summary>
+    public const string MinimumsError = "0, or 10 to 2500 feet";
 
     /// <summary>
     /// Whether a typed altitude, vertical speed or decision height is a whole number. Both ways of typing a value
@@ -113,32 +116,47 @@ public static class A300TypedValues
     /// </summary>
     private static bool IsWhole(double value) => value == Math.Round(value);
 
+    /// <summary>The values that must be typed as whole numbers (<see cref="IsWhole"/>): the altitude, the vertical speed
+    /// and the decision height.</summary>
+    private static bool WantsWholeNumber(string key) => key is AltitudeKey or VerticalSpeedKey or MinimumsKey;
+
     /// <summary>
     /// What a value box says about the TEXT typed for an altitude, a vertical speed or a decision height, before it is
-    /// read as a number: a comma-grouped integer ("12,000", "-1,000") is refused with <see cref="WholeNumberError"/>.
-    /// Read as a number it is whole (12, -1), so the fraction rule let it through to a refusal by a range that holds what
-    /// was typed ("100 to 49000 feet" for "12,000"), and a decision height of "1,000" was written as 1 foot. Null for any
-    /// other text, and for every other key, where a comma is a decimal point ("121,500" is 121.5).
+    /// read as a number: an integer grouped by a comma ("12,000", "-1,000") or by a space, a no-break space or a narrow
+    /// no-break space ("12 000", the grouping comma-decimal cultures write) is refused with <see cref="WholeNumberError"/>.
+    /// Read as a number the comma grouping is whole (12, -1), so the fraction rule let it through to a refusal by a range
+    /// that holds what was typed ("100 to 49000 feet" for "12,000"), and a decision height of "1,000" was written as 1
+    /// foot; the space grouping is no number, and was answered with that range too. Null for any other text, and for
+    /// every other key, where a comma is a decimal point ("121,500" is 121.5).
     /// </summary>
     public static string? TextError(string key, string text) =>
-        key is AltitudeKey or VerticalSpeedKey or MinimumsKey
-        && Regex.IsMatch(text.Trim(), @"^\s*-?\d{1,3}(,\d{3})+\s*$", RegexOptions.CultureInvariant)
+        WantsWholeNumber(key)
+        && Regex.IsMatch(text.Trim(), @"^\s*-?\d{1,3}([, \u00A0\u202F]\d{3})+\s*$", RegexOptions.CultureInvariant)
             ? WholeNumberError
             : null;
 
     /// <summary>
-    /// The refusal of a whole number a comma-thousand could have made, for a path that has only the number (a panel's box
-    /// hands "12,000" over as 12): the separator first, then the range, which on its own holds what was typed. Callers
-    /// use it for the values such an entry gives inside the range: an altitude of 1 to 49, a vertical speed of 1 to 6
-    /// either way, a decision height of 1 to 9.
+    /// The refusal of an altitude, vertical speed or decision height a thousands separator could have made, for a path
+    /// that has only the number: the separator first, then the range, which on its own holds what was typed. A panel's box
+    /// hands "12,000" over as 12, so callers use it for the values such an entry gives inside the range (an altitude of
+    /// 1 to 49, a vertical speed of 1 to 6 either way, a decision height of 1 to 9), and "12 000" as NaN, so
+    /// <see cref="NotANumberError"/> uses it for a value that is no number.
     /// </summary>
     private static string SeparatorThen(string range) => $"{WholeNumberError}; {range}";
+
+    /// <summary>
+    /// What a typed value that is no number is answered with: for an altitude, a vertical speed or a decision height the
+    /// separator, then the range (<see cref="SeparatorThen"/>), because "12 000" typed in a panel's box arrives as NaN and
+    /// its range alone holds the 12,000 typed; "abc" is answered the same way, the words fitting it as well. Every other
+    /// value is answered with its range (<see cref="ErrorFor"/>).
+    /// </summary>
+    public static string NotANumberError(string key) => WantsWholeNumber(key) ? SeparatorThen(ErrorFor(key)) : ErrorFor(key);
 
     /// <summary>The plan for a typed value. <paramref name="isMach"/> is the FCU's current speed mode.</summary>
     public static A300TypedResult Plan(string key, double value, bool isMach)
     {
         if (double.IsNaN(value) || double.IsInfinity(value))
-            return A300TypedResult.Fail(ErrorFor(key));
+            return A300TypedResult.Fail(NotANumberError(key));
         return key switch
         {
             SpeedKey => Speed(value, isMach),
@@ -322,7 +340,8 @@ public static class A300TypedValues
     /// 2026-10-04). Whole feet; 0 clears it; a fraction is refused (<see cref="IsWhole"/>). So is 1 to 9 feet,
     /// naming the separator (<see cref="SeparatorThen"/>): no real decision height is that low, and "1,000" and
     /// "2,000" typed in a panel's box arrive as 1 and 2, which were written and confirmed ("Decision height 1
-    /// feet"), and with 1 foot set the minimums call-out effectively never came.
+    /// feet"), and with 1 foot set the minimums call-out effectively never came. Every refusal says the range as
+    /// "0, or 10 to 2500 feet" (<see cref="MinimumsError"/>), so a refused 5 never hears a range that holds it.
     /// </summary>
     public static A300TypedResult Minimums(double value)
     {
