@@ -55,6 +55,96 @@ test('the results are read-outs, not fields', () => {
   assert.ok(find(r, 'V1: blank'), 'not calculated yet');
 });
 
+// The RWY button opens the runway list ABOVE the page, away from the button, so a screen reader
+// heard nothing happen when it was pressed (PR #300 in-sim run, 2026-10-14). It is read as a
+// choice of the listed runways instead.
+const pickerOf = (r, id) => r.elements.find(e => e.key === 'runway:' + id);
+const TAKEOFF_RUNWAYS = ['Runway 18L: 3,000 meters, 9,843 feet', 'Runway 09: 1,500 meters, 4,921 feet, marked short'];
+const LANDING_RUNWAYS = ['Runway 04R: 3,090 meters, 10,138 feet', 'Runway 22R: 2,391 meters, 7,844 feet',
+  'Runway 15L: 785 meters, 2,575 feet, marked short'];
+
+test('the runway button is a choice of the listed runways', () => {
+  const r = scrape(load('takeoff').A);
+  const pick = pickerOf(r, 'show_runway_select');
+  assert.ok(pick, 'the picker is there');
+  assert.strictEqual(pick.text, 'Runway');
+  assert.strictEqual(pick.controlType, 'select');
+  assert.ok(pick.idx > 0, 'stamped, so a choice can be written');
+  assert.strictEqual(pick.value, 'None selected', 'the tablet says SELECT until a runway is picked');
+  assert.deepStrictEqual(pick.options, ['None selected'].concat(TAKEOFF_RUNWAYS));
+  assert.ok(!r.elements.some(e => e.kind === 'button' && /^RWY\b/.test(e.text)), 'no RWY button besides it');
+});
+
+test('the picked runway is the choice\'s value, from its own page\'s list', () => {
+  // Take Off, hidden behind Landing, has a 04R of its own: only Landing's list is offered.
+  const pick = pickerOf(scrape(load('landing').A), 'land_show_runway_select');
+  assert.strictEqual(pick.value, 'Runway 22R: 2,391 meters, 7,844 feet');
+  assert.deepStrictEqual(pick.options, LANDING_RUNWAYS, 'no placeholder once a runway is picked');
+});
+
+// Wires the fixture's Landing page the way the tablet does (its show and selectRunway handlers,
+// read 2026-10-14): RWY opens the list; a runway button closes it and names its runway on RWY.
+// Returns the presses in order; a press on Take Off's hidden list is marked as such.
+function wireLanding(doc) {
+  const presses = [];
+  const panel = doc.getElementById('land_runwayPanel'), show = doc.getElementById('land_show_runway_select');
+  show.onclick = () => { presses.push('open'); panel.removeAttribute('data-display'); };
+  for (const b of doc.querySelectorAll('.land-rwy-select')) {
+    b.onclick = () => {
+      presses.push(b.id + (panel.hasAttribute('data-display') ? ' with the list closed' : ''));
+      panel.setAttribute('data-display', 'none');
+      show.value = 'RWY ' + b.id;
+    };
+  }
+  for (const b of doc.querySelectorAll('.rwy-select')) b.onclick = () => presses.push('Take Off ' + b.id);
+  return presses;
+}
+
+test('picking a runway opens the list and presses that runway, as a finger does', () => {
+  const { A, window } = load('landing');
+  const presses = wireLanding(window.document);
+  const pick = pickerOf(scrape(A), 'land_show_runway_select');
+  assert.strictEqual(A.setValue(pick.idx, LANDING_RUNWAYS[0]), true);
+  assert.deepStrictEqual(presses, ['open', '04R'], 'one press each, and never Take Off\'s 04R');
+  assert.strictEqual(pickerOf(scrape(A), 'land_show_runway_select').value, LANDING_RUNWAYS[0]);
+});
+
+test('a runway the list does not hold, or the placeholder, presses nothing', () => {
+  const { A, window } = load('takeoff');
+  const doc = window.document;
+  const presses = [];
+  doc.getElementById('show_runway_select').onclick = () => presses.push('open');
+  for (const b of doc.querySelectorAll('.rwy-select')) b.onclick = () => presses.push(b.id);
+  const pick = pickerOf(scrape(A), 'show_runway_select');
+  assert.strictEqual(A.setValue(pick.idx, 'None selected'), false);
+  assert.strictEqual(A.setValue(pick.idx, 'Runway 36R: 3,000 meters, 9,843 feet'), false);
+  assert.deepStrictEqual(presses, []);
+  assert.strictEqual(doc.getElementById('show_runway_select').value, 'SELECT', 'the button keeps its words');
+});
+
+test('with no runways listed the RWY control stays the tablet\'s button', () => {
+  // Before the tablet knows the airport its list is empty, and a choice of nothing helps no one.
+  const { A, window } = load('takeoff');
+  window.document.getElementById('runway_opts').innerHTML = '';
+  const r = scrape(A);
+  assert.ok(!pickerOf(r, 'show_runway_select'));
+  const btn = find(r, 'RWY: SELECT');
+  assert.ok(btn && btn.kind === 'button');
+});
+
+test('the tablet\'s "Runway Updated" is not read: the choice already says the new runway', () => {
+  const { A, window } = load('landing');
+  const doc = window.document;
+  const toast = doc.createElement('div');
+  toast.className = 'notie-container notie-alert notie-background-success';
+  toast.innerHTML = '<div class="notie-textbox"><div class="notie-textbox-inner">Runway Updated</div></div>';
+  doc.body.appendChild(toast);
+  assert.ok(!scrape(A).elements.some(e => e.kind === 'alert'));
+  doc.querySelector('.notie-textbox-inner').textContent = 'Unable to calculate';
+  assert.deepStrictEqual(scrape(A).elements.filter(e => e.kind === 'alert').map(e => e.text), ['Unable to calculate'],
+    'any other message still is');
+});
+
 // ---- Ground Equipment ----------------------------------------------------------------------
 
 test('the slides\' color legend is not read, the states being in words on the slide buttons', () => {
