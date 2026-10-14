@@ -261,14 +261,18 @@ public partial class SynapticA220Definition
                     FireKeyEvent(simConnect, ev);
                     await System.Threading.Tasks.Task.Delay(400, cts.Token);
                     double? after = await simConnect.ReadFreshAsync("A22X_AUTOBRAKE", 1500, cts.Token);
-                    int now = after is { } a ? (int)Math.Round(a) : cur;
-                    if (now == cur)
+                    switch (A220.A220Systems.AutobrakeStepVerdictFor(cur, after))
                     {
-                        announcer.AnnounceImmediate(A220.A220Systems.AutobrakeRefusal(
-                            cur, A220.A220Systems.AutobrakeNextStep(cur, target), _calloutOnGround));
-                        return;
+                        case A220.A220Systems.AutobrakeStepVerdict.NotConfirmed:
+                            // No delivered read: the knob may have moved, so neither a refusal nor a position is claimed.
+                            announcer.AnnounceImmediate(A220.A220Systems.AutobrakeNotConfirmed(target));
+                            return;
+                        case A220.A220Systems.AutobrakeStepVerdict.Refused:
+                            announcer.AnnounceImmediate(A220.A220Systems.AutobrakeRefusal(
+                                cur, A220.A220Systems.AutobrakeNextStep(cur, target), _calloutOnGround));
+                            return;
                     }
-                    cur = now;
+                    cur = (int)Math.Round(after!.Value);
                 }
                 if (!cts.IsCancellationRequested && cur != target)
                     announcer.AnnounceImmediate(

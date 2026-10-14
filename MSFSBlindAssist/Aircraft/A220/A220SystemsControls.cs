@@ -365,6 +365,19 @@ internal static partial class A220Systems
     internal static string AutobrakeRefusal(int stuckAt, int refusedStep, bool onGround)
         => $"Autobrake {Label(AutobrakeLabels, refusedStep)} not available{(onGround ? " on the ground" : "")} — still {Label(AutobrakeLabels, stuckAt)}";
 
+    internal enum AutobrakeStepVerdict { Moved, Refused, NotConfirmed }
+
+    /// <summary>What a step's read-back means. Only a DELIVERED value equal to where the step started
+    /// is a refusal; a read that never arrived (null: timeout, disconnect) says nothing about the knob,
+    /// which may well have moved, so it is never spoken as a refusal or as a position.</summary>
+    internal static AutobrakeStepVerdict AutobrakeStepVerdictFor(int before, double? after)
+        => after is not { } a ? AutobrakeStepVerdict.NotConfirmed
+         : (int)Math.Round(a) == before ? AutobrakeStepVerdict.Refused
+         : AutobrakeStepVerdict.Moved;
+
+    internal static string AutobrakeNotConfirmed(int target)
+        => $"Autobrake {Label(AutobrakeLabels, target)} not confirmed: the selector is not reporting its position.";
+
     // ---- External power: ONE automatic retry (live 2026-10-12: the first disconnect lost) ---
 
     internal enum ExtPowerVerdict { Done, Retry, Fail }

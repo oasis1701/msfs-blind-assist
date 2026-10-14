@@ -724,6 +724,35 @@ public class SynapticA220SystemsTests
         Assert.Equal("Autobrake HI not available — still MED", AutobrakeRefusal(3, 4, onGround: false));
     }
 
+    [Fact]
+    public void AutobrakeStep_OnlyADeliveredUnchangedValueIsARefusal()
+    {
+        // A read-back that never arrived (timeout, disconnect, FailAll) says nothing about the knob:
+        // it is NOT a refusal, and no position is claimed from it.
+        Assert.Equal(AutobrakeStepVerdict.NotConfirmed, AutobrakeStepVerdictFor(1, null));
+        Assert.Equal(AutobrakeStepVerdict.NotConfirmed, AutobrakeStepVerdictFor(0, null));
+        // Delivered and unchanged: the aircraft refused the step.
+        Assert.Equal(AutobrakeStepVerdict.Refused, AutobrakeStepVerdictFor(1, 1.0));
+        Assert.Equal(AutobrakeStepVerdict.Refused, AutobrakeStepVerdictFor(1, 0.98));
+        // Delivered and moved (including a detent other than the next one): the walk goes on from there.
+        Assert.Equal(AutobrakeStepVerdict.Moved, AutobrakeStepVerdictFor(1, 2.0));
+        Assert.Equal(AutobrakeStepVerdict.Moved, AutobrakeStepVerdictFor(1, 0.0));
+        Assert.Equal(AutobrakeStepVerdict.Moved, AutobrakeStepVerdictFor(1, 3.0));
+    }
+
+    [Fact]
+    public void AutobrakeNotConfirmed_NamesTheAskedDetent_AndClaimsNeitherRefusalNorPosition()
+    {
+        Assert.Equal("Autobrake RTO not confirmed: the selector is not reporting its position.", AutobrakeNotConfirmed(0));
+        Assert.Equal("Autobrake HI not confirmed: the selector is not reporting its position.", AutobrakeNotConfirmed(4));
+        foreach (int target in new[] { 0, 1, 2, 3, 4 })
+        {
+            string said = AutobrakeNotConfirmed(target);
+            Assert.DoesNotContain("not available", said);
+            Assert.DoesNotContain("still", said);
+        }
+    }
+
     // ---- External power: one automatic retry ----------------------------------------
 
     // ExtPowerVerdict is internal and a public test method cannot take it, so the
