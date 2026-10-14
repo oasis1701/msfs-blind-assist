@@ -166,6 +166,16 @@ test('the loading half says what its two buttons do', () => {
   assert.ok(find(r, 'WEIGHT AND BALANCE [kg]'), 'the heading with its unit, which the results are in');
 });
 
+test('the load name in the heading is a line of its own', () => {
+  // The heading holds the chosen load's name in a floated block, which Coherent's text runs straight
+  // into the heading's ("WEIGHT AND BALANCE [kg]Cargo Transport - Simbrief", live 2026-10-15).
+  const { A } = load('weights-loading', { simvars: KG });
+  const t = texts(scrape(A));
+  const h = t.indexOf('WEIGHT AND BALANCE [kg]');
+  assert.ok(h >= 0, 'the heading alone');
+  assert.strictEqual(t[h + 1], 'Cargo Transport - Simbrief', 'then the load');
+});
+
 test('the results are read-outs under the tablet\'s labels, not fields', () => {
   const { A } = load('weights-loading', { simvars: KG });
   const r = scrape(A);

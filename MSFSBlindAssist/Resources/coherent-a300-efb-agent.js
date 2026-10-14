@@ -382,6 +382,15 @@
     return A.txt(spans[1]) + ': ' + A.thousands(A.num(m[1])) + ' kilograms, ' + A.thousands(A.num(m[2])) + ' pounds';
   };
 
+  // A door button's name: the tablet writes "Door Open" over an open door's label and "Door Transit"
+  // over a moving one's, so three open doors all read "Door Open" (live, 2026-10-15); a sighted pilot
+  // tells them apart by where each sits on the drawing. Each door's own closed label, from the
+  // tablet's code (1.0.11).
+  A.DOOR_NAMES = {
+    doors_l1: 'Door 1L', doors_r1: 'Door 1R', doors_l2: 'Door 2L', doors_r2: 'Door 2R',
+    doors_l3: 'Door 3L', doors_r3: 'Door 3R', doors_l4: 'Door 4L', doors_r4: 'Door 4R',
+    doors_mainCargo: 'Main Cargo', doors_fwdCargo: 'Fwd Cargo', doors_aftCargo: 'Aft Cargo', doors_bulkCargo: 'Bulk Cargo'
+  };
   // A door button's state from its classes; a slide button's from its color.
   A.doorState = function (btn) {
     if (A.hasClass(btn, 'door-transit')) return 'moving';
@@ -402,7 +411,7 @@
   };
 
   A.pressLabel = function (el) {
-    if (A.hasClass(el, 'door')) return A.txt(el) + ': ' + A.doorState(el);
+    if (A.hasClass(el, 'door')) return (A.DOOR_NAMES[el.id] || A.txt(el)) + ': ' + A.doorState(el);
     if (A.hasClass(el, 'door-arm')) {
       var s = A.slideState(el);
       return A.slideName(el.id) + (s ? ': ' + s : '');
@@ -601,9 +610,11 @@
       if (tag === 'INPUT' && el.type === 'range') {
         var idxG = A.stamp(el);
         var rl = A.rowLabel(el) || A.headingBefore(el) || A.idWords(el.id);
+        // Ground Equipment's light slider is its whole heading, "<span>CARGO</span> LIGHTING" (CABIN on
+        // the passenger version): its own text alone would be "LIGHTING".
         if (el.id === 'lights_cargo') {
           var t = document.getElementById('lighting_title');
-          rl = (t ? A.txt(t) + ' ' : '') + 'lighting';
+          if (t && t.parentElement && A.txt(t.parentElement)) rl = A.txt(t.parentElement);
         }
         emit({ idx: idxG, text: rl, value: String(el.value), controlType: 'range', kind: 'static', clickable: false,
           min: +el.min || 0, max: +(el.max || 100), step: +(el.step || 1), key: 'range:' + (el.id || idxG) });
@@ -676,14 +687,22 @@
 
       if (/^H[1-6]$/.test(tag)) {
         var ht = A.txt(el);
-        // A heading holding a button (Take Off's "Conditions" + SYNC) reads its own words only.
-        var btns = el.querySelectorAll('button, input');
-        if (btns.length) ht = A.ownText(el);
+        // A heading holding a button (Take Off's "Conditions" + SYNC) or a block of its own (Weight and
+        // Balance's load name, #payload-name, which Coherent's text runs straight into the heading's:
+        // "WEIGHT AND BALANCE [kg]Cargo Transport - Simbrief", live 2026-10-15) reads its own words,
+        // then the button or the block as a line of its own.
+        var btns = el.querySelectorAll('button, input'), blocks = [];
+        for (var hc = 0; hc < el.children.length; hc++) {
+          var child = el.children[hc];
+          if (child.tagName === 'DIV' && !child.querySelector('button, input')) blocks.push(child);
+        }
+        if (btns.length || blocks.length) ht = A.ownText(el);
         // Ground Equipment's slide legend, "Emergency Slides: Red - Armed // Green - Disarmed", sits
         // after the slide buttons, which say armed or disarmed in words: it is not read at all.
         if (/^Emergency Slides\b/i.test(ht)) ht = '';
         if (ht) emit({ idx: 0, text: ht, value: '', kind: 'heading', level: Math.min(6, +tag.charAt(1)), clickable: false });
         for (var b = 0; b < btns.length; b++) walk(btns[b]);
+        for (var bl = 0; bl < blocks.length; bl++) walk(blocks[bl]);
         return;
       }
 
@@ -836,7 +855,7 @@
 
   // A heading that only repeats the name of the field right after it (Settings' "SimBrief" above the
   // SimBrief box) is dropped: the field says it.
-  // "SimBrief" names the field "SimBrief", and "CARGO LIGHTING" the slider "CARGO lighting" — but
+  // "SimBrief" names the field "SimBrief", and "CARGO LIGHTING" the slider "CARGO LIGHTING" — but
   // "PUSHBACK" is a section over "Pushback, turn left", not its name.
   A.sameLabel = function (heading, label) {
     var h = heading.toLowerCase(), l = label.toLowerCase();

@@ -246,6 +246,30 @@ test('a slide button says armed or disarmed from its color', () => {
   assert.strictEqual(label(), 'Door 1L slide', 'no color says nothing');
 });
 
+test('the cargo light slider reads its heading as printed, once', () => {
+  // "<span>CARGO</span> LIGHTING": the slider is the heading's, "CARGO LIGHTING", and the heading
+  // itself is dropped as its echo.
+  const r = scrape(load('groundequip').A);
+  const slider = r.elements.find(e => e.controlType === 'range');
+  assert.ok(slider && slider.text === 'CARGO LIGHTING' && slider.value === '75', slider && slider.text);
+  assert.ok(!r.elements.some(e => e.kind === 'heading' && /LIGHTING/i.test(e.text)), 'no echo heading');
+});
+
+test('a door button names its door even while the tablet\'s label says Door Open or Door Transit', () => {
+  // The tablet writes "Door Open" over an open door's name and "Door Transit" over a moving one's, so
+  // three open doors all read "Door Open: open" (live, 2026-10-15); a sighted pilot tells them apart
+  // by where each sits on the drawing. The name is the door's own closed label, from the tablet's code.
+  const { A, window } = load('groundequip');
+  const doorsOf = () => scrape(A).elements.filter(e => /^press:doors_/.test(e.key || ''));
+  assert.deepStrictEqual(doorsOf().map(e => e.text), ['Door 1L: open', 'Door 1R: closed', 'Main Cargo: closed', 'Aft Cargo: moving']);
+  assert.ok(doorsOf().every(e => e.kind === 'button' && e.announceChange === true), 'pressed, each says its new state');
+  // Closed again, the tablet puts the name back; the label is the same either way.
+  const l1 = window.document.getElementById('doors_l1');
+  l1.className = 'btn btn-info door';
+  l1.innerHTML = '<img class="button-icon" src="queue.png">Door 1L';
+  assert.strictEqual(doorsOf()[0].text, 'Door 1L: closed');
+});
+
 // ---- Aircraft Maintenance ------------------------------------------------------------------
 
 const WEAR = {};
