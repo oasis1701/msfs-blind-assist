@@ -74,6 +74,12 @@ public partial class IniA300Definition
         UpdateMemos(sim, now);
     }
 
+    /// <summary>The FMA as the cache shows it now: what the Displays section's lines (<see cref="FmaLine"/>) and
+    /// the FCU window keys (<see cref="A300FmaReadouts"/>) read. A source not read yet counts as 0, so an annunciator
+    /// that has never been read is not shown.</summary>
+    private A300FmaReading CurrentFma(SimConnectManager? sim) =>
+        A300Fma.Read(A300FmaSources.Compose(key => sim is null ? null : Cached(sim, key)));
+
     private readonly A300MemoTracker _memoTracker = new();
 
     /// <summary>The ECAM Memos box's line, once the memos have a baseline.</summary>

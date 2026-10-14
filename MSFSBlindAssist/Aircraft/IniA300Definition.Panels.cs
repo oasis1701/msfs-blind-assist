@@ -309,7 +309,7 @@ public partial class IniA300Definition
     /// autopilot column beneath it.</summary>
     private string FmaLine(string key)
     {
-        var fma = A300Fma.Read(A300FmaSources.Compose(k => _sim is { } sim ? Cached(sim, k) : null));
+        var fma = CurrentFma(_sim);
         string Column(string? words) => !fma.IsShown ? "not shown" : words ?? "blank";
         return key switch
         {

@@ -204,15 +204,22 @@ public partial class IniA300Definition
                     w => w.ShowForm());
                 return true;
 
-            // Output mode readouts.
+            // Output mode readouts. The speed, heading and altitude keys say the FMA mode on their axis after the
+            // value (A300FmaReadouts), read from the cache when the key speaks, and nothing while the FMA is not shown.
             case HotkeyAction.ReadSpeed:
-                _ = SpeakAsync(sim, announcer, "FCU speed", v => A300FcuState.SpeedWindow(v[0], IsMach()), A300Readouts.SpeedKey);
+                _ = SpeakAsync(sim, announcer, "FCU speed",
+                    v => $"FCU speed {A300FcuState.SpeedWindow(v[0], IsMach())}{A300FmaReadouts.SpeedModes(CurrentFma(sim))}",
+                    A300Readouts.SpeedKey);
                 return true;
             case HotkeyAction.ReadHeading:
-                _ = SpeakAsync(sim, announcer, "FCU heading", v => $"FCU heading {A300Readouts.Heading(v[0])}", A300Readouts.HeadingKey);
+                _ = SpeakAsync(sim, announcer, "FCU heading",
+                    v => $"FCU heading {A300Readouts.Heading(v[0])}{A300FmaReadouts.HeadingModes(CurrentFma(sim))}",
+                    A300Readouts.HeadingKey);
                 return true;
             case HotkeyAction.ReadAltitude:
-                _ = SpeakAsync(sim, announcer, "FCU altitude", v => $"FCU altitude {Readout(A300Readouts.AltitudeKey, v[0])}", A300Readouts.AltitudeKey);
+                _ = SpeakAsync(sim, announcer, "FCU altitude",
+                    v => $"FCU altitude {Readout(A300Readouts.AltitudeKey, v[0])}{A300FmaReadouts.AltitudeModes(CurrentFma(sim))}",
+                    A300Readouts.AltitudeKey);
                 return true;
             case HotkeyAction.ReadFCUVerticalSpeedFPA:
                 _ = SpeakAsync(sim, announcer, "FCU vertical speed", v => $"FCU vertical speed {Readout(A300Readouts.VerticalSpeedKey, v[0])}", A300Readouts.VerticalSpeedKey);

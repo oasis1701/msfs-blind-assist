@@ -341,10 +341,18 @@ apps are pictures and read as little more than their buttons.
 OUTPUT MODE - Press right bracket to activate
 
 FCU:
-  Shift+H    Read the FCU heading window
-  Shift+S    Read the FCU speed window (knots or Mach)
-  Shift+A    Read the FCU altitude window
+  Shift+H    Read the FCU heading window, then the roll mode and what is armed for it:
+             "FCU heading 270, roll mode Heading select, NAV armed"
+  Shift+S    Read the FCU speed window (knots or Mach), then the thrust mode:
+             "FCU speed 250 knots, thrust mode Speed"
+  Shift+A    Read the FCU altitude window, then the pitch mode and what is armed for it:
+             "FCU altitude 12,000 feet, pitch mode Vertical speed, Altitude armed"
   Shift+V    Read the FCU vertical speed window
+  The modes are the flight mode annunciator's, read when you press the key. In Land, Flare,
+  Rollout or Go around there is one mode for both axes, and Shift+H and Shift+A say it in
+  place of the roll or pitch mode ("FCU altitude 3,000 feet, Go around, Altitude armed").
+  While the annunciator is not shown, as before an IRS is aligned, each key says its value
+  alone.
 
 Speed tape:
   Shift+1    Read green dot. At a flap setting where the tape does not show it, you hear the
