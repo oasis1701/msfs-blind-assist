@@ -175,14 +175,15 @@ public class IFly737LandingSpeedbrakeCheckTests
     }
 
     // FlowManager itself is not unit-testable (its ScreenReaderAnnouncer drives a real screen
-    // reader — see its own remarks), so its three checklist hand-offs are pinned on the source:
-    // the already-set and success branches mark, and the Skip branch excludes, EVERY linked id —
-    // not just CompletesChecklistItemId, or LDA_SPDBRK would be latched over an unarmed lever.
+    // reader — see its own remarks), so its checklist hand-offs are pinned on the source:
+    // the already-set, success and RunOnlyIfStepSent-pass branches mark, and the Skip branch
+    // excludes, EVERY linked id — not just CompletesChecklistItemId, or LDA_SPDBRK would be
+    // latched over an unarmed lever.
     [Fact]
     public void FlowManager_marks_and_excludes_every_linked_checklist_item()
     {
         string source = File.ReadAllText(FirstOfficerSourcePath("FlowManager.cs")).Replace("\r\n", "\n");
-        Assert.Equal(2, CountOf(source,
+        Assert.Equal(3, CountOf(source,
             "foreach (var itemId in step.LinkedChecklistItemIds)\n                    _checklist.MarkComplete(itemId);"));
         Assert.Contains(
             "foreach (var itemId in step.LinkedChecklistItemIds)\n                            _unfinishedChecklistItemIds.Add(itemId);",

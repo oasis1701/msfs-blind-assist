@@ -240,6 +240,17 @@ public class FlowStep<TState> : IFlowStepDispatch
     /// </summary>
     public string? RequiresStepSkipText { get; set; }
 
+    /// <summary>
+    /// The id of an earlier SWITCH step of the same flow this step follows. The step runs only
+    /// when that step actually SENT its write in this run; when it was "Already set", skipped,
+    /// left alone, had no target value or failed, this step passes SILENTLY as done — nothing
+    /// spoken, <c>StepCompleted</c> raised, its linked lines marked, not a skip (a step that
+    /// <see cref="RequiresStepId"/> it still runs). For a cool-down wait that only follows an
+    /// APU this run switched off (owner, 2026-10-14). FlowStepRunOnlyIfSentIdTests pins that
+    /// every id names an earlier switch step of the same flow.
+    /// </summary>
+    public string? RunOnlyIfStepSent { get; set; }
+
     // -----------------------------------------------------------------------
     // Leave alone (the aircraft's state says the First Officer must not act)
     // -----------------------------------------------------------------------

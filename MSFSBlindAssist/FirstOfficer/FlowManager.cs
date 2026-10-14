@@ -84,6 +84,10 @@ public class FlowManager<TExec, TState>
     // pins that every profile's RequiresStepId names an earlier step of the same flow.
     private readonly HashSet<string> _skippedStepIds = new(StringComparer.Ordinal);
 
+    // Ids of the SWITCH steps this run actually sent and completed (not "Already set", not
+    // skipped). Read by the FlowStep.RunOnlyIfStepSent gate; cleared when the next run starts.
+    private readonly HashSet<string> _sentStepIds = new(StringComparer.Ordinal);
+
     // What one attempt at a step came to. NoTarget: the step's FlowStep.TargetValueProvider
     // returned null (the data it needs, e.g. a SimBrief plan, is not there), so nothing was
     // sent. That is a SILENT SKIP, never a success (FO-20).
@@ -202,6 +206,7 @@ public class FlowManager<TExec, TState>
     {
         _unfinishedChecklistItemIds.Clear();
         _skippedStepIds.Clear();
+        _sentStepIds.Clear();
         FlowStarted?.Invoke(flow);
         _announcer.AnnounceImmediate($"{flow.Name} flow started");
 
@@ -269,6 +274,20 @@ public class FlowManager<TExec, TState>
                 continue;
             }
 
+            // A step that only follows an earlier switch this run actually SENT
+            // (FlowStep.RunOnlyIfStepSent: the APU cool-down waits). When that switch was
+            // already set, skipped or failed there is nothing to wait for: pass silently as
+            // done — no speech, so no inter-step pause either (FO-5 paces spoken steps), and
+            // not a skip, so a step that requires this one still runs.
+            if (step.RunOnlyIfStepSent != null && !_sentStepIds.Contains(step.RunOnlyIfStepSent))
+            {
+                Log.Debug("FO", $"{flow.Id}.{step.Id}: passed, {step.RunOnlyIfStepSent} was not sent this run");
+                StepCompleted?.Invoke(flow, step, i);
+                foreach (var itemId in step.LinkedChecklistItemIds)
+                    _checklist.MarkComplete(itemId);
+                continue;
+            }
+
             StepStarted?.Invoke(flow, step, i);
 
             StepOutcome outcome = await ExecuteStepAsync(flow, step, i, ct);
@@ -333,6 +352,8 @@ public class FlowManager<TExec, TState>
             else
             {
                 Log.Debug("FO", $"{flow.Id}.{step.Id}: done");
+                if (step.ActionType is FlowStepActionType.SetSwitch or FlowStepActionType.SetSwitchMultiple)
+                    _sentStepIds.Add(step.Id);
                 StepCompleted?.Invoke(flow, step, i);
 
                 // Auto-tick linked checklist item
