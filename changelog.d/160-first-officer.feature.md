@@ -26,10 +26,11 @@ level, the takeoff flap setting and, on the PMDG 737, the pressurization altitud
 loads by itself when the window opens if your SimBrief username is set.
 
 Every aircraft's Before Start Checklist now ends with "Start ACARS", a line you tick yourself
-once you have done it. If you open the First Officer window, or start the app, while already
-flying, or load a flight that starts in the air, every checklist from power-up through After
-Takeoff is marked complete, with one announcement: "In flight: checklists through After Takeoff
-marked complete." Descent and the checklists after it stay open.
+once you have done it. If you open the First Officer window while already flying (for example
+after starting MSFSBA in the air), or load a flight that starts in the air with the window open,
+every checklist from power-up through After Takeoff is marked complete, with one announcement:
+"In flight: checklists through After Takeoff marked complete." Descent and the checklists after
+it stay open.
 
 On the PMDG 737 and iFly 737, Secure now leaves the aircraft cold and dark. After the APU and
 ground power are off it waits out the APU cool-down (the PMDG 60 seconds, then until the APU is
@@ -51,10 +52,10 @@ calls the cabin, checks that the spoilers, flaps and seat belts are set and ends
 config test. Line-up, run when you are cleared onto the runway, sets TCAS and the takeoff lights.
 Shutdown has a "TCAS: STANDBY" line and Securing an "External power: OFF" line. Securing switches
 the APU master off, waits for the APU flap to close (on the FlyByWire A32NX and Headwind A330 until
-the aircraft shows it closed, at most 2½ minutes; on the Fenix 2 minutes; no wait when the APU was
+the aircraft shows it closed, at most 2.5 minutes; on the Fenix 2 minutes; no wait when the APU was
 already off) and only then switches external power and the batteries off, in FlyByWire's own
-order. External power is no longer left on when the app had not yet read its switch, and a finished
-Securing flow now also completes the Securing Checklist.
+order. On the A32NX and A330, external power is now switched off even if the aircraft had not yet
+reported the switch. A finished Securing flow now also completes the Securing Checklist.
 
 On the FlyByWire A380, the Checklists tab now holds the A380's own normal checklists from its
 electronic checklist, in its own words (Cockpit Preparation, Before Start, After Start, Taxi,
