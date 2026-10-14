@@ -5855,8 +5855,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         bool hasMachPrefix = trimmed.StartsWith("M", StringComparison.OrdinalIgnoreCase);
         if (hasMachPrefix) trimmed = trimmed.Substring(1);
 
-        if (!double.TryParse(trimmed, System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture, out value))
+        if (!Utils.NumberParsing.TryParseTyped(trimmed, out value))
             return false;
 
         // Either explicit M prefix, or a value < 10 (interpreted as Mach).
@@ -6009,16 +6008,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             return;
         }
 
-        // Parse "1013", "1013,5", or "29.92" into a single double (locale-tolerant).
-        static bool TryParseBaro(string input, out double value)
-        {
-            return double.TryParse(
-                input.Replace(',', '.'),
-                System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture,
-                out value);
-        }
-
+        // "1013", "1013,5", "29.92" or "29,92" parse through Utils.NumberParsing.TryParseTyped,
+        // the same rules as every other baro box (a thousands group such as "1,013" is refused).
         var dialog = new ValueInputForm(
             "Altimeter", "altimeter", "900-1060 hPa or 26.50-31.30 inHg", announcer,
             input =>
@@ -6026,7 +6017,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 if (string.IsNullOrWhiteSpace(input))
                     return (false, "Enter a value in hPa or inHg");
 
-                if (!TryParseBaro(input, out double value))
+                if (!Utils.NumberParsing.TryParseTyped(input, out double value))
                     return (false, "Enter a numeric value in hPa or inHg");
 
                 // Branch on magnitude — ranges don't overlap (smallest hPa 900 > largest inHg 31.30).
@@ -6067,7 +6058,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             },
             input =>
             {
-                if (!TryParseBaro(input, out double value)) return;
+                if (!Utils.NumberParsing.TryParseTyped(input, out double value)) return;
 
                 if (_baroKnobOp is { IsCompleted: false })
                 {

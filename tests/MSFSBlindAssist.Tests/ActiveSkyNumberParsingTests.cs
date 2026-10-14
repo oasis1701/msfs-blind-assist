@@ -1,6 +1,7 @@
 // ActiveSky number strings: some GetCurrentConditions fields come in the OS culture.
 // Live capture 2026-10-12 at ESGG under Swedish Windows: QNH "1014,999" and
 // AmbientTemperature "7,992481" rendered as 1014999 hPa and 7992481°C.
+// The parser itself is covered in NumberParsingTests.
 
 using System.Globalization;
 using MSFSBlindAssist.Services;
@@ -9,39 +10,8 @@ namespace MSFSBlindAssist.Tests;
 
 public class ActiveSkyNumberParsingTests
 {
-    // Spelled as escapes: a screen reader cannot tell these from "-" and " ".
+    // Spelled as an escape: a screen reader cannot tell it from "-".
     private const string Minus = "\U00002212";   // U+2212 MINUS SIGN, written by .NET 5+ for sv-SE
-    private const string Nbsp = "\U000000A0";    // no-break space, the sv-SE group separator
-    private const string Nnbsp = "\U0000202F";   // narrow no-break space, the fr-FR group separator
-
-    [Theory]
-    [InlineData("1014.999", 1014.999)]
-    [InlineData("1014,999", 1014.999)]
-    [InlineData("7,992481", 7.992481)]
-    [InlineData("-12,5", -12.5)]
-    [InlineData(Minus + "12,5", -12.5)]
-    [InlineData("8", 8.0)]
-    [InlineData("6449", 6449.0)]
-    [InlineData(Nbsp + "7,5" + Nnbsp, 7.5)]   // surrounding spaces are trimmed
-    public void TryParseNumber_reads_invariant_and_comma_decimal_strings(string raw, double expected)
-    {
-        Assert.True(ActiveSkyClient.TryParseNumber(raw, out double d));
-        Assert.Equal(expected, d, 6);
-    }
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("n/a")]
-    // ActiveSky never groups thousands, so anything that could only be grouping is refused.
-    [InlineData("1.014,999")]
-    [InlineData("1,014.999")]
-    [InlineData("1 014,999")]
-    [InlineData("1" + Nbsp + "014,999")]
-    [InlineData("1" + Nnbsp + "014,999")]
-    [InlineData("12 5")]
-    public void TryParseNumber_refuses_non_numbers_and_grouping(string? raw)
-        => Assert.False(ActiveSkyClient.TryParseNumber(raw, out _));
 
     [Fact]
     public void ParseConditionsJson_reads_comma_decimal_fields_under_any_culture()
