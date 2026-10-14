@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Aircraft.A220;
 
@@ -22,12 +23,42 @@ internal static partial class A220Systems
 
     private static string Inv(FormattableString text) => FormattableString.Invariant(text);
 
-    /// <summary>The agent's sys() JSON, or null when it is missing or malformed.</summary>
+    /// <summary>The agent's sys() JSON, or null when it is missing, malformed or not an object.
+    /// Each store is parsed ON ITS OWN: a field of an unexpected type (the DTOs are typed from one
+    /// live capture) leaves only that store null, read as missing, never every systems readout,
+    /// call-out and read-back at once.</summary>
     internal static SystemsBlocks? ParseSystems(string? json)
     {
         if (string.IsNullOrEmpty(json)) return null;
-        try { return JsonSerializer.Deserialize<SystemsBlocks>(json); }
+        JsonDocument doc;
+        try { doc = JsonDocument.Parse(json); }
         catch (JsonException) { return null; }
+        using (doc)
+        {
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return null;
+            var blocks = new SystemsBlocks();
+            foreach (var store in doc.RootElement.EnumerateObject())
+            {
+                if (!StoreProperties.TryGetValue(store.Name, out var property)) continue;
+                try { property.SetValue(blocks, store.Value.Deserialize(property.PropertyType)); }
+                catch (JsonException ex) { LogUnreadableStoreOnce(store.Name, ex.Message); }
+            }
+            return blocks;
+        }
+    }
+
+    private static readonly Dictionary<string, System.Reflection.PropertyInfo> StoreProperties =
+        typeof(SystemsBlocks).GetProperties().ToDictionary(p => p.Name, StringComparer.Ordinal);
+
+    private static readonly HashSet<string> LoggedUnreadableStores = new(StringComparer.Ordinal);
+
+    /// <summary>Once per store per run: the pump polls every second, so a store that stays odd
+    /// would otherwise write the same line each poll.</summary>
+    private static void LogUnreadableStoreOnce(string store, string why)
+    {
+        lock (LoggedUnreadableStores)
+            if (!LoggedUnreadableStores.Add(store)) return;
+        Log.Warn("A220", $"CommBus store '{store}' has a field of an unexpected type and reads as missing: {why}");
     }
 
     // ---- Store DTOs. Property names == the aircraft's own field names, and every one

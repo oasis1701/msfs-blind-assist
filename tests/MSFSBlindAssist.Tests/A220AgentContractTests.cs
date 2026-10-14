@@ -176,6 +176,53 @@ public class A220AgentContractTests
         Assert.Null(A220Systems.ParseSystems(null));
         Assert.Null(A220Systems.ParseSystems(""));
         Assert.Null(A220Systems.ParseSystems("{not json"));
+        Assert.Null(A220Systems.ParseSystems("[1,2]"));
+        Assert.Null(A220Systems.ParseSystems("\"nope\""));
+        Assert.Null(A220Systems.ParseSystems("null"));
         Assert.NotNull(A220Systems.ParseSystems("{\"lpfd\":null}"));
+    }
+
+    // Each store is parsed on its own: one field of an unexpected type (a fraction into an int,
+    // a number into a bool) costs only its own store, never every systems readout at once.
+    [Theory]
+    [InlineData("\"status\":{\"apu_door\":0.5}")]
+    [InlineData("\"gear\":{\"wow\":1}")]
+    [InlineData("\"atc\":{\"mode\":\"TA/RA\"}")]
+    [InlineData("\"cas\":{\"msg\":{\"0\":1}}")]
+    [InlineData("\"doors\":[3,3]")]
+    public void ParseSystems_AStoreWithAnOddField_LeavesOnlyThatStoreMissing(string oddStore)
+    {
+        string json = "{\"lpfd\":{\"vr\":135},\"lctp\":{\"minimums\":1210}," + oddStore + ",\"rads\":{\"qnh_std\":true}}";
+        var blocks = A220Systems.ParseSystems(json);
+        Assert.NotNull(blocks);
+        Assert.Equal(135, blocks!.lpfd?.vr);
+        Assert.Equal(1210, blocks.lctp?.minimums);
+        Assert.True(blocks.rads?.qnh_std);
+        Assert.Null(blocks.status);
+        Assert.Null(blocks.gear);
+        Assert.Null(blocks.atc);
+        Assert.Null(blocks.cas);
+        Assert.Null(blocks.doors);
+    }
+
+    [Fact]
+    public void ParseSystems_ReadsEveryFixtureStore_InTheAgentsShape()
+    {
+        // The capture is keyed by store name; the agent ships the same objects under its keys.
+        string path = Path.Combine(AppContext.BaseDirectory, "Fixtures", "a220-2026-10-12-commbus-stores-engines-running.json");
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        string Raw(string name) => doc.RootElement.GetProperty(name).GetRawText();
+        string json = "{\"lpfd\":" + Raw("A22X.L PFD Data") + ",\"atc\":" + Raw("A22X.ATC Data") + ",\"gear\":" + Raw("A22X.Gear Data")
+            + ",\"doors\":" + Raw("A22X.Doors Data") + ",\"cas\":" + Raw("A22X.CAS Data") + ",\"eng\":" + Raw("A22X.Engine Data")
+            + ",\"lctp\":" + Raw("A22X.L CTP Data") + ",\"status\":" + Raw("A22X.Status Data") + "}";
+        var blocks = A220Systems.ParseSystems(json)!;
+        Assert.Equal(135, blocks.lpfd?.vr);
+        Assert.Equal(2000, blocks.atc?.code);
+        Assert.Equal(2, blocks.gear?.nose_icon);
+        Assert.Equal(3, blocks.doors?.fwd_pax);
+        Assert.Equal(3486581764L, blocks.cas?.ecl?[5]);
+        Assert.Equal(18.5, blocks.eng?.eng1_n1);
+        Assert.Equal(1210, blocks.lctp?.minimums);
+        Assert.Equal(1, blocks.status?.apu_door);
     }
 }

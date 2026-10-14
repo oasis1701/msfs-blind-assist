@@ -67,10 +67,11 @@ public partial class SynapticA220Definition
         Interlocked.Exchange(ref _sysTicks, Environment.TickCount64);
     }
 
-    /// <summary>The snapshot's <c>sys</c> element as blocks, or null when it is absent, null, not
-    /// an object, or has a field of an unexpected type. The snapshot declares it as a raw element
-    /// so one odd store cannot make the snapshot's own deserialisation throw and cost the rest of
-    /// the poll (FMA, CAS scrape, FD, trim); only the systems rows read "not available".</summary>
+    /// <summary>The snapshot's <c>sys</c> element as blocks, or null when it is absent, null or not
+    /// an object. The snapshot declares it as a raw element so one odd store cannot make the
+    /// snapshot's own deserialisation throw and cost the rest of the poll (FMA, CAS scrape, FD,
+    /// trim); and ParseSystems reads each store on its own, so a field of an unexpected type
+    /// leaves only that store's rows "not available".</summary>
     private static A220Systems.SystemsBlocks? SystemsFrom(JsonElement? sys)
         => sys is { ValueKind: JsonValueKind.Object } element ? A220Systems.ParseSystems(element.GetRawText()) : null;
 

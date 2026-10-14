@@ -254,7 +254,6 @@ public class SynapticA220DefinitionTests
     }
 
     [Theory]
-    [InlineData("{\"gear\":{\"nose_icon\":\"two\"}}")]   // a field of the wrong type inside a store
     [InlineData("\"nope\"")]                             // not an object at all
     [InlineData("[1,2]")]
     [InlineData("null")]
@@ -270,6 +269,24 @@ public class SynapticA220DefinitionTests
         Assert.Null(def.LatestSystems);                           // the systems rows no longer claim a state
         Assert.True(def.TryGetDisplayOverride("A22X_GEAR_STATE", 0, out string text));
         Assert.Equal(A220Systems.NotAvailable, text);
+    }
+
+    // A field of the wrong type inside ONE store costs that store alone: the other stores' rows
+    // (and every read-back that polls them) keep their state.
+    [Fact]
+    public void Snapshot_WithAnOddFieldInOneStore_KeepsTheOtherStoresRows()
+    {
+        var def = new SynapticA220Definition();
+        def.ProcessDisplaysSnapshot("{\"ok\":true,\"sys\":{\"gear\":" + GoodGearJson + "}}");   // rows were live
+
+        def.ProcessDisplaysSnapshot("{\"ok\":true,\"fc\":{\"pitch_trim\":4.6},\"sys\":{\"gear\":{\"nose_icon\":\"two\"},"
+            + "\"lctp\":{\"minimums_mode\":0,\"minimums\":1210}}}");
+
+        Assert.Equal(4.6, def.LatestFlightControl?.pitch_trim);
+        Assert.True(def.TryGetDisplayOverride("A22X_GEAR_STATE", 0, out string gear));
+        Assert.Equal(A220Systems.NotAvailable, gear);                   // the odd store claims no state
+        Assert.True(def.TryGetDisplayOverride("A22X_L_MINIMUMS_STATE", 0, out string minimums));
+        Assert.Equal("baro 1210 feet", minimums);                       // the rest of the block survived
     }
 
     [Fact]
