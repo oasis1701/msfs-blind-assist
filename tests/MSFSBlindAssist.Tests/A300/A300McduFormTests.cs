@@ -511,7 +511,7 @@ public sealed class A300McduFormTests : IDisposable
 
     [Theory]
     [InlineData(100)]
-    [InlineData(350)]   // an aircraft slow to show a key: the hold the entry set covers it, the empty queue alone does not
+    [InlineData(350)]   // an aircraft slow to show a key: the unit's 0.4 s margin after the last release covers it, an empty queue does not
     public async Task Keys_still_in_the_queue_land_before_the_clear_reads_the_scratchpad(int deliveryMs)
     {
         // KLAX was just sent from the input box (four keys, 160 ms each) and Delete follows at once, with KJFK/ on the

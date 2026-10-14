@@ -60,9 +60,11 @@ public sealed class A300McduForm : Form
     /// <summary>The clear-all's backstop against an unreadable feed.</summary>
     private const int MaxClearPresses = A300McduText.Cols + 4;
 
-    /// <summary>How long the clear-all waits for the scratchpad to change after a CLR before it gives up. A margin,
-    /// not a measurement: well beyond the key's press and gap (160 ms) plus the aircraft's redraw and the client-data
-    /// delivery. A CLR the aircraft ignores costs this once, and then the clear stops.</summary>
+    /// <summary>How long the clear-all waits for progress before it gives up: for the scratchpad to change once a
+    /// CLR has been released (<see cref="ScratchpadChangedAsync"/>), and for the key queue to shrink while the keys
+    /// ahead of a CLR land (<see cref="KeysLandedAsync"/>). A margin, not a measurement: well beyond the key's press and
+    /// gap (160 ms) plus the aircraft's redraw and the client-data delivery. A CLR the aircraft ignores, or a queue that
+    /// stops shrinking, costs this once, and then the clear stops.</summary>
     public const int ClearConfirmMs = 1500;
 
     /// <summary>How often the clear-all looks at the scratchpad while it waits.</summary>

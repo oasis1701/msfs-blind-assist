@@ -17,9 +17,10 @@ public sealed record NavRadioRow(string Name, double FrequencyMHz, int Course, d
 
 /// <summary>
 /// Dialog for tuning two or three NAV radios (frequency + course), opened from input mode via Ctrl+N.
-/// Fields are pre-filled with the current values; pressing Set applies all of them (re-applying
-/// unchanged values is harmless). Frequency/course are set by the caller's apply callback — see
-/// PMDG737Definition, IFly737MAXDefinition and IniA300Definition.
+/// Fields are pre-filled with the current values, and Set hands every field to the caller's apply
+/// callback, which decides what is written: PMDG737Definition and IFly737MAXDefinition re-apply all of
+/// them, unchanged values too, while IniA300Definition.SetNavRadios writes only the fields that differ
+/// from the ones the window opened with.
 /// </summary>
 public class NavRadiosForm : Form
 {

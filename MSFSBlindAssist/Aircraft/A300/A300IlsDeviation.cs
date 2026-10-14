@@ -21,8 +21,10 @@ public static class A300IlsDeviation
     public const string LocalizerVar = "INI_LOC_DEV";
     public const string GlideslopeVar = "INI_GS_DEV";
 
-    /// <summary>The inputs that decide whether the PFD draws a pointer: their own subscriptions, consumed
-    /// silently (the captain's PFD is the box's, as its minimums are the captain's).</summary>
+    /// <summary>The inputs that decide whether the PFD draws a pointer, read from the cache and consumed silently: the
+    /// EFIS nav selector is its panel row's variable, so it is read from that row's key (an input alias, read through
+    /// <c>IniA300Definition.ReadInput</c>); the localizer's validity and the ILS receiver's glideslope have their own
+    /// subscriptions. The captain's PFD is the box's, as its minimums are the captain's.</summary>
     public const string NavSelectorKey = "A300_IN_ILS_NAV_CPT";
     public const string NavSelectorVar = "INI_efis_selected_nav_capt";
     public const string LocalizerValidKey = "A300_IN_LOC_VALID";

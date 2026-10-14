@@ -597,8 +597,8 @@ public class IniA300BaroTests
     {
         _cache[A300Baro.Captain.ModeKey] = 0;
         _cache[A300Baro.FirstOfficer.ModeKey] = 0;
-        // The last side's confirmation read is still in flight when the definition goes away: nothing
-        // checks the flag between that read and the write.
+        // The last side's confirmation read is still in flight when the definition goes away. Once it answers,
+        // the read helper (ReadAllFreshAsync) finds the definition disposed, so the sequence stops before the write.
         var lastRead = new TaskCompletionSource<double?>();
         _def.ReadFresh = (_, key, _) => key == A300Baro.FirstOfficer.ModeKey
             ? lastRead.Task

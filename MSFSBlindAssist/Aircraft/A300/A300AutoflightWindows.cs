@@ -35,7 +35,7 @@ public static class A300AutoflightWindows
     {
         new A300WindowButton("A300_SPEED_KNOB_PUSH", 'P', A300ButtonState.None),
         new A300WindowButton("A300_SPEED_KNOB_PULL", 'L', A300ButtonState.None),
-        new A300WindowButton("A300_SPDMACH", 'M', A300ButtonState.Lamp),
+        new A300WindowButton(A300FcuState.SpeedMachButtonKey, 'M', A300ButtonState.Lamp),
     };
 
     public static readonly IReadOnlyList<A300WindowButton> Heading = new[]

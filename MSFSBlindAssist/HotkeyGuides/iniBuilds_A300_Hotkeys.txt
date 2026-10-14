@@ -599,6 +599,10 @@ Assist, for example with a hardware knob ("Altitude 12,000 feet"). The heading, 
 vertical speed windows are not announced on their own, because the autopilot moves them itself
 (heading sync, managed speed); read them with Shift+H, Shift+S and Shift+V in output mode.
 
+"Glideslope alive" and "Glideslope lost" follow NAV 3, the A300's ILS receiver: tune the ILS
+frequency on the Navigation Radios panel or with Ctrl+N. An ILS tuned on NAV 1 alone (the VOR 1
+radio) gives no call-out.
+
 The flaps lever, the ground spoiler arm, the gear lever and the parking brake are announced when
 something other than MSFS Blind Assist moves them - a hardware lever, or the aircraft itself
 ("Flaps 15/15", "Parking brake set"). Changes you make in MSFS Blind Assist are not. The same
