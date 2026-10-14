@@ -202,12 +202,6 @@ public static class A300Readouts
             [A300Trp.FlexKnobKey] = (FlexTemperatureKey, A300Trp.FlexPhrase),
             ["A300_TCAS_BIG"] = (SquawkCodeKey, v => $"Squawk {Squawk(v)}"),
             ["A300_TCAS_SMALL"] = (SquawkCodeKey, v => $"Squawk {Squawk(v)}"),
-            ["A300_VOR100_CAPT"] = (NavVor1Key, v => $"VOR 1 {Tuned(v)}"),
-            ["A300_VOR10_CAPT"] = (NavVor1Key, v => $"VOR 1 {Tuned(v)}"),
-            ["A300_VOR100_FO"] = (NavVor2Key, v => $"VOR 2 {Tuned(v)}"),
-            ["A300_VOR10_FO"] = (NavVor2Key, v => $"VOR 2 {Tuned(v)}"),
-            ["A300_ILS_100"] = (NavIlsKey, v => $"ILS {Tuned(v)}"),
-            ["A300_ILS_10"] = (NavIlsKey, v => $"ILS {Tuned(v)}"),
             ["A300_VOR_CRS_CAPT"] = ("A300_RO_VOR1_COURSE", v => $"VOR 1 course {Heading(Math.Round(v))}"),
             ["A300_VOR_CRS_FO"] = ("A300_RO_VOR2_COURSE", v => $"VOR 2 course {Heading(Math.Round(v))}"),
             ["A300_ILS_CRS"] = (IlsCourseKey, v => $"ILS course {Heading(Math.Round(v))}"),
@@ -222,9 +216,6 @@ public static class A300Readouts
             new A300Readout(radio.StandbyKey, $"{name} standby", radio.Panel, radio.TransferVar, false, "number", _ => "unavailable"),
         };
     }
-
-    /// <summary>A VOR or ILS window: "113.15".</summary>
-    private static string Tuned(double megahertz) => megahertz.ToString("0.00", Inv);
 
     /// <summary>"7000": each BCO16 nibble a digit.</summary>
     private static string Squawk(double bcd)

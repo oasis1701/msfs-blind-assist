@@ -89,7 +89,7 @@ public partial class IniA300Definition
             // Any other knob that reads back ("Landing elevation 50 feet", "Flex temperature 46 degrees").
             if (A300Readouts.KnobReadBacks.TryGetValue(control.Key, out var readBack))
                 _ = ReadBackAsync(simConnect, announcer, readBack.Readout, readBack.Phrase);
-            // A VHF or ADF knob's window, named by its role now ("VHF 1 standby 124.805") (A300Radios).
+            // An ADF knob's window, named by its role now ("ADF 1 standby 990") (A300Radios); the VHF knobs are not rows.
             if (A300Radios.ByKnob.TryGetValue(control.Key, out var knob))
             {
                 string windowKey = knob.Window == 1 ? knob.Radio.Window1Key : knob.Radio.Window2Key;

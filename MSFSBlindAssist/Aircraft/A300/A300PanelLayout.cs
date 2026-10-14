@@ -35,9 +35,13 @@ public sealed class A300Placement
 /// same L:vars, so one copy is enough; the IDC's own keypad comes with the IDC work), cosmetic parts
 /// (seats, armrests, visors, yoke bases, the oil-gauge pointer knobs, the tablet brightness buttons)
 /// and second buttons that fire the same event as the first (autothrottle disconnect 2, the second RAT
-/// button). The main cargo door switch is placed: the door moves only while it is held, so its row is a
-/// spring switch (<see cref="A300CargoDoor"/>), and the 70 and 145 degree buttons only pick how far the
-/// door opens.
+/// button), and the VHF and NAV frequency knobs: every one of those radios has a typed frequency box
+/// (<see cref="A300TypedValues"/>), so their 14 megahertz and kilohertz knobs, 28 increase and decrease
+/// rows, only added rows to step through (design decision, Robin, 2026-10-14). The ADF knobs (no typed ADF
+/// box), the course knobs, the transponder code knobs, the transfer buttons and the squelch switches stay,
+/// and the generated map keeps every one of them ([A300-2]). The main cargo door switch is placed: the
+/// door moves only while it is held, so its row is a spring switch (<see cref="A300CargoDoor"/>), and the
+/// 70 and 145 degree buttons only pick how far the door opens.
 ///
 /// Names are what a pilot says: iniBuilds' tooltip titles share names across families ("BATTERY" ×3,
 /// "ENG GEN" ×2) and a few are wrong (the vertical speed knob is titled "ALTITUDE KNOB", the first
@@ -113,7 +117,9 @@ public static partial class A300PanelLayout
 
     private static readonly Regex Excluded = new(
         @"^AIRLINER_(.*_IDC(_BUTTON)?|TABLET_.*|MAN_GEAR_HANDLE|MAN_GEAR_HANDLE_HIDE|CPT_ARMREST|FO_ARMREST|" +
-        @"CPT_YOKE_BASE|FO_YOKE_BASE|CPT_VISOR|FO_VISOR|SEAT_.*|OIL_ENG\d_QTY_LIMIT_MANIP(_PW)?|AT_DISCO2|RAT_FO)$",
+        @"CPT_YOKE_BASE|FO_YOKE_BASE|CPT_VISOR|FO_VISOR|SEAT_.*|OIL_ENG\d_QTY_LIMIT_MANIP(_PW)?|AT_DISCO2|RAT_FO|" +
+        // The VHF and NAV frequency knobs: a typed box replaces each radio's (see the class comment).
+        @"(CPT|FO)_VHF[12]_(MHZ|KHZ)|VOR100_(CAPT|FO)|VOR10_(CAPT|FO)|ILS_100|ILS_10)$",
         RegexOptions.CultureInvariant);
 
     private static readonly Regex Audio = new(
@@ -148,7 +154,7 @@ public static partial class A300PanelLayout
             return "Transponder";
         if (Regex.IsMatch(id, @"ADF\d_(BIG|MED|SMALL|TFR|ANT|TONE)$", RegexOptions.CultureInvariant))
             return "ADF Radios";
-        if (Regex.IsMatch(id, @"_VHF\d_(MHZ|KHZ)$|_VHF_(TFR|SQL)$", RegexOptions.CultureInvariant))
+        if (Regex.IsMatch(id, @"_VHF_(TFR|SQL)$", RegexOptions.CultureInvariant))
             return "VHF Radios";
         if (id.StartsWith("CPT_", StringComparison.Ordinal))
             return "Audio Control Panel Captain";

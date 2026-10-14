@@ -408,6 +408,94 @@ public class A300PanelLayoutTests
         Assert.DoesNotContain(AllRows, r => r.Control?.Kind == A300Kinds.Cover);
     }
 
+    /// <summary>
+    /// The 14 VHF and NAV frequency knobs, left out on purpose (design decision, Robin, 2026-10-14): each is an encoder, so
+    /// 28 increase and decrease rows, and every one of those radios has a typed frequency box (<see cref="A300TypedValues"/>).
+    /// The generated map still holds them ([A300-2]).
+    /// </summary>
+    private static readonly string[] LeftOutFrequencyKnobs =
+    {
+        "AIRLINER_CPT_VHF1_MHZ", "AIRLINER_CPT_VHF1_KHZ", "AIRLINER_CPT_VHF2_MHZ", "AIRLINER_CPT_VHF2_KHZ",
+        "AIRLINER_FO_VHF1_MHZ", "AIRLINER_FO_VHF1_KHZ", "AIRLINER_FO_VHF2_MHZ", "AIRLINER_FO_VHF2_KHZ",
+        "AIRLINER_VOR100_CAPT", "AIRLINER_VOR10_CAPT", "AIRLINER_VOR100_FO", "AIRLINER_VOR10_FO",
+        "AIRLINER_ILS_100", "AIRLINER_ILS_10",
+    };
+
+    public static IEnumerable<object[]> LeftOutFrequencyKnobIds() => LeftOutFrequencyKnobs.Select(id => new object[] { id });
+
+    [Theory]
+    [MemberData(nameof(LeftOutFrequencyKnobIds))]
+    public void A_vhf_or_nav_frequency_knob_is_in_the_map_but_not_a_row(string id)
+    {
+        var control = Map.Find(id);
+        Assert.NotNull(control);
+        Assert.Equal(A300Kinds.Encoder, control!.Kind);
+        Assert.False(A300PanelLayout.IsPlaced(control));
+        Assert.DoesNotContain(AllRows, r => r.Control?.Id == id);
+        Assert.DoesNotContain(AllRows, r => r.Key == control.Key + "#INC" || r.Key == control.Key + "#DEC");
+    }
+
+    [Fact]
+    public void Twenty_eight_rows_left_with_the_fourteen_knobs()
+    {
+        Assert.Equal(14, LeftOutFrequencyKnobs.Distinct().Count());
+        var left = LeftOutFrequencyKnobs.Select(id => Map.Find(id)!.Key)
+            .SelectMany(key => new[] { key + "#INC", key + "#DEC" }).ToList();
+        Assert.Equal(28, left.Count);
+        Assert.Empty(AllRows.Select(r => r.Key).Intersect(left));
+    }
+
+    [Fact]
+    public void The_vhf_radios_panel_keeps_its_transfer_buttons_squelch_switches_and_typed_boxes()
+    {
+        Assert.Equal(new[]
+        {
+            "A300_COM1_STBY_SET", "A300_COM2_STBY_SET", "A300_CPT_VHF_SQL", "A300_CPT_VHF_TFR", "A300_FO_VHF_SQL", "A300_FO_VHF_TFR",
+        }, Placement.RowsByPanel["VHF Radios"].Select(r => r.Key).Order(StringComparer.Ordinal));
+        Assert.Equal(("VHF 1 transfer", A300RowAction.Press), (Row("A300_CPT_VHF_TFR").Name, Row("A300_CPT_VHF_TFR").Action));
+        Assert.Equal(("VHF 2 transfer", A300RowAction.Press), (Row("A300_FO_VHF_TFR").Name, Row("A300_FO_VHF_TFR").Action));
+        Assert.Equal(A300RowAction.Typed, Row(A300TypedValues.Com1StandbyKey).Action);
+        Assert.Equal(A300RowAction.Typed, Row(A300TypedValues.Com2StandbyKey).Action);
+    }
+
+    [Fact]
+    public void The_navigation_radios_panel_keeps_its_course_knobs_and_typed_boxes()
+    {
+        Assert.Equal(new[]
+        {
+            "A300_ILS_COURSE_SET", "A300_ILS_CRS#DEC", "A300_ILS_CRS#INC", "A300_ILS_FREQ_SET",
+            "A300_VOR1_COURSE_SET", "A300_VOR1_FREQ_SET", "A300_VOR2_COURSE_SET", "A300_VOR2_FREQ_SET",
+            "A300_VOR_CRS_CAPT#DEC", "A300_VOR_CRS_CAPT#INC", "A300_VOR_CRS_CAPT_PUSH",
+            "A300_VOR_CRS_FO#DEC", "A300_VOR_CRS_FO#INC", "A300_VOR_CRS_FO_PUSH",
+        }, Placement.RowsByPanel["Navigation Radios"].Select(r => r.Key).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void The_adf_knobs_and_the_transponder_code_knobs_stay_rows()
+    {
+        var adf = Placement.RowsByPanel["ADF Radios"].Select(r => r.Key).ToList();
+        foreach (var side in new[] { "CPT", "FO" })
+            foreach (var window in new[] { 1, 2 })
+                foreach (var digit in new[] { "BIG", "MED", "SMALL" })
+                    foreach (var step in new[] { "#INC", "#DEC" })
+                        Assert.Contains($"A300_{side}_ADF{window}_{digit}{step}", adf);
+        Assert.Contains("A300_ADF1_TFR", adf);
+        Assert.Contains("A300_ADF2_TFR", adf);
+
+        var transponder = Placement.RowsByPanel["Transponder"].Select(r => r.Key).ToList();
+        foreach (var key in new[] { "A300_TCAS_BIG#INC", "A300_TCAS_BIG#DEC", "A300_TCAS_SMALL#INC", "A300_TCAS_SMALL#DEC",
+                     A300TypedValues.SquawkKey })
+            Assert.Contains(key, transponder);
+    }
+
+    [Fact]
+    public void No_radio_row_is_named_for_a_megahertz_or_kilohertz_step()
+    {
+        // The knobs' names ("VHF 1 megahertz", "VOR 1 kilohertz") went with them.
+        Assert.DoesNotContain(AllRows, r => r.Name.Contains("megahertz", StringComparison.OrdinalIgnoreCase)
+                                            || r.Name.Contains("kilohertz", StringComparison.OrdinalIgnoreCase));
+    }
+
     [Theory]
     [InlineData("STORM LIGHT", "Storm light")]
     [InlineData("TA/RA", "TA/RA")]

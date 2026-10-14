@@ -199,12 +199,6 @@ public class A300LeversAndReadoutsTests
     }
 
     [Theory]
-    [InlineData("A300_VOR100_CAPT", 113.15, "VOR 1 113.15")]
-    [InlineData("A300_VOR10_CAPT", 113.15, "VOR 1 113.15")]
-    [InlineData("A300_VOR100_FO", 113.9, "VOR 2 113.90")]
-    [InlineData("A300_VOR10_FO", 113.9, "VOR 2 113.90")]
-    [InlineData("A300_ILS_100", 109.5, "ILS 109.50")]
-    [InlineData("A300_ILS_10", 109.5, "ILS 109.50")]
     [InlineData("A300_VOR_CRS_CAPT", 91, "VOR 1 course 091")]
     [InlineData("A300_VOR_CRS_FO", 91, "VOR 2 course 091")]
     [InlineData("A300_ILS_CRS", 91, "ILS course 091")]
@@ -213,6 +207,23 @@ public class A300LeversAndReadoutsTests
         var (readout, words) = A300Readouts.KnobReadBacks[knob];
         Assert.Equal("Navigation Radios", A300Readouts.All.Single(r => r.Key == readout).Panel);
         Assert.Equal(phrase, words(value));
+    }
+
+    [Fact]
+    public void The_knob_read_backs_are_the_knobs_that_are_rows()
+    {
+        // The VOR and ILS frequency knobs left the panels with the VHF ones (design decision, Robin, 2026-10-14): their
+        // typed boxes confirm a frequency. What is left reads back the landing elevation, the flex temperature, the
+        // transponder code and the three courses; the NAV frequency windows stay on the Navigation Radios status display.
+        var expected = new[]
+        {
+            "A300_ILS_CRS", "A300_LANDING_ELEV_SET", A300Trp.FlexKnobKey, "A300_TCAS_BIG", "A300_TCAS_SMALL",
+            "A300_VOR_CRS_CAPT", "A300_VOR_CRS_FO",
+        };
+        Assert.Equal(expected.Order(StringComparer.Ordinal), A300Readouts.KnobReadBacks.Keys.Order(StringComparer.Ordinal));
+        Assert.Contains(A300Readouts.All, r => r.Key == A300Readouts.NavVor1Key);
+        Assert.Contains(A300Readouts.All, r => r.Key == A300Readouts.NavVor2Key);
+        Assert.Contains(A300Readouts.All, r => r.Key == A300Readouts.NavIlsKey);
     }
 
     [Theory]

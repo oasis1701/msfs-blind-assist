@@ -7,8 +7,9 @@ using Xunit;
 namespace MSFSBlindAssist.Tests.A300;
 
 /// <summary>
-/// The VHF and ADF panels have two windows, each with its own knobs, and a transfer switch that picks the window
-/// in use; it does not swap them (measured 2026-10-10). So a line or a read-back names a window by its role now.
+/// The VHF and ADF panels have two windows and a transfer switch that picks the window in use; it does not swap
+/// them (measured 2026-10-10). So a line or a read-back names a window by its role now. Only the ADF windows have
+/// knobs on the panel (the VHF knobs are not rows, design decision 2026-10-14).
 /// </summary>
 public class A300RadiosTests
 {
@@ -54,19 +55,27 @@ public class A300RadiosTests
     }
 
     [Theory]
-    [InlineData("A300_CPT_VHF1_KHZ", 0, 122805, "VHF 1 active 122.805")]
-    [InlineData("A300_CPT_VHF2_MHZ", 0, 124805, "VHF 1 standby 124.805")]
-    [InlineData("A300_CPT_VHF2_KHZ", 1, 124805, "VHF 1 active 124.805")]
-    [InlineData("A300_FO_VHF1_MHZ", 1, 118000, "VHF 2 standby 118.000")]
-    [InlineData("A300_FO_VHF2_KHZ", 1, 121500, "VHF 2 active 121.500")]
+    // The ADF knobs are the knobs left: each window (1 or 2) against each transfer switch value (0 or 1) is covered, so the
+    // role-by-transfer-switch logic stays pinned now that the VHF knobs are not rows.
     [InlineData("A300_CPT_ADF1_BIG", 1, 900, "ADF 1 active 900")]
     [InlineData("A300_CPT_ADF2_MED", 1, 990, "ADF 1 standby 990")]
+    [InlineData("A300_CPT_ADF1_MED", 0, 900, "ADF 1 standby 900")]
+    [InlineData("A300_CPT_ADF2_SMALL", 0, 990, "ADF 1 active 990")]
     [InlineData("A300_FO_ADF1_SMALL", 0, 900.5, "ADF 2 standby 900.5")]
     [InlineData("A300_FO_ADF2_SMALL", 0, 345, "ADF 2 active 345")]
     public void A_knob_step_reads_back_its_window_by_its_role_now(string knob, double transfer, double window, string phrase)
     {
         var (radio, which) = A300Radios.ByKnob[knob];
         Assert.Equal(phrase, radio.KnobPhrase(which, window, transfer));
+    }
+
+    [Fact]
+    public void Only_the_adf_knobs_are_knobs_the_vhf_ones_are_not_rows()
+    {
+        // Design decision, Robin, 2026-10-14: a typed standby box sets a VHF frequency (A300PanelLayout leaves the knobs out).
+        Assert.Equal(12, A300Radios.ByKnob.Count);
+        Assert.All(A300Radios.ByKnob.Values, knob => Assert.StartsWith("ADF", knob.Radio.Name, StringComparison.Ordinal));
+        Assert.DoesNotContain(A300Radios.ByKnob.Keys, key => key.Contains("_VHF", StringComparison.Ordinal));
     }
 
     [Theory]

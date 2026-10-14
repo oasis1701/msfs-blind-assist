@@ -73,8 +73,8 @@ running, stopped) and "Captain elapsed time: Running" (each press starts or stop
 from zero). Its status display reads each clock: "Captain clock: 07:42 GMT", "Captain chrono: 1
 minute 5 seconds", "Captain elapsed time: 1 hour 5 minutes". The landing elevation knob says its
 value after each step: "Landing elevation 50 feet". A
-dimmer or temperature knob is a slider. A knob that only turns, such as the FCU speed knob or a
-radio frequency knob, is a pair of buttons, "increase" and "decrease", each one click of the
+dimmer or temperature knob is a slider. A knob that only turns, such as the FCU speed knob or an
+ADF frequency knob, is a pair of buttons, "increase" and "decrease", each one click of the
 knob. The flaps lever, the speed brake lever and the ground spoiler arm are the Flaps and Speed
 Brake panel.
 
@@ -106,14 +106,15 @@ degrees down"); the tilt slider runs from 15 degrees down at 0 to 15 degrees up 
 Transponder panel's status display reads the squawk code, and each step of a code knob says the
 new code: "Squawk 7100". The large knob changes the first two digits, the small knob the last two.
 
-The VHF and ADF panels each have two windows with their own knobs, and a transfer switch that picks
-which window is in use. It does not swap them, so after a transfer the knobs called "standby" tune
-the frequency in use. Each knob step says which it changed: "VHF 1 standby 124.810" or "VHF 1
-active 124.805". A transfer says the frequency now in use: "VHF 1 active 124.805". The status
-displays read each radio's active and standby frequencies, and each ADF's bearing to its station
-("45 degrees right", or "no signal"). The Navigation Radios panel's status display reads the VOR
-and ILS frequencies and courses, and each knob step says the new value: "ILS 109.00", "VOR 1
-course 091". The aircraft tunes the VORs itself, so their frequency knobs may not change them.
+The VHF and ADF panels each have two windows and a transfer switch that picks which window is in
+use. It does not swap them, so after a transfer the ADF knobs called "standby" tune the frequency
+in use. The ADF panels have their frequency knobs; the VHF, VOR and ILS frequencies have none here,
+because each has a typed box (see Typed Values below): type the frequency and press Set. Each ADF
+knob step says which window it changed: "ADF 1 standby 990" or "ADF 1 active 900". A VHF or ADF
+transfer says the frequency now in use: "VHF 1 active 124.805". The status displays read each
+radio's active and standby frequencies, and each ADF's bearing to its station ("45 degrees right",
+or "no signal"). The Navigation Radios panel's status display reads the VOR and ILS frequencies and
+courses, and each course knob step says the new course: "VOR 1 course 091".
 
 On each Audio Control Panel, the VHF transmit keys say which one you transmit on: "VHF 1
 transmit: On". Each receiver switch turns that radio on or off in the headset.
@@ -177,8 +178,8 @@ TYPED VALUES - type, then press Set or Enter
   not a number); a vertical speed of 1 to 99, up or down, is refused too (0 is fine).
   Navigation Radios panel: VOR 1 and VOR 2 frequency (108.00 to 117.95) and course setting, ILS
   frequency (108.10 to 111.95) and course setting.
-  VHF Radios panel: VHF 1 and VHF 2 standby frequency (118.000 to 136.990); the transfer buttons
-  swap them in.
+  VHF Radios panel: VHF 1 and VHF 2 standby frequency (118.000 to 136.990); the transfer button
+  puts the standby frequency in use. You hear "VHF 1 standby 121.500".
   Transponder panel: Squawk, four digits each 0 to 7.
   Captain Side, First Officer Side and Standby Instruments panels: the altimeter settings, in
   inches (29.92) or hectopascals (1013). A side in STD is taken out of STD first, as Ctrl+B does.

@@ -3,9 +3,10 @@ using System.Globalization;
 namespace MSFSBlindAssist.Aircraft.A300;
 
 /// <summary>
-/// A VHF or ADF control panel: two windows, each with its own knobs, and a transfer switch that picks the window in
-/// use. It does not swap them (measured 2026-10-10), so after a transfer the knobs iniBuilds calls "standby" tune the
-/// frequency in use: every line and read-back names a window by its role now, from the transfer switch.
+/// A VHF or ADF control panel: two windows and a transfer switch that picks the window in use. It does not swap them
+/// (measured 2026-10-10), so after a transfer the knobs iniBuilds calls "standby" tune the frequency in use: every
+/// line and read-back names a window by its role now, from the transfer switch. The ADF windows have their knobs on
+/// the panel; the VHF knobs are left out of it (a typed standby box sets a VHF frequency, <see cref="A300PanelLayout"/>).
 /// </summary>
 /// <param name="Window1ActiveAt">The transfer switch's value while the first window is in use (VHF 0, ADF 1).</param>
 /// <param name="Divisor">Window value to the frequency shown (the VHF windows hold kilohertz).</param>
@@ -33,7 +34,7 @@ public sealed record A300Radio(string Name, string Id, string Panel, string Wind
     public string Standby(double window1, double window2, double transfer) =>
         Frequency(Window1InUse(transfer) ? window2 : window1);
 
-    /// <summary>"VHF 1 standby 124.805": the window a knob tunes, named by its role now.</summary>
+    /// <summary>"ADF 1 standby 990": the window a knob tunes, named by its role now.</summary>
     public string KnobPhrase(int window, double value, double transfer) =>
         $"{Name} {(window == 1 == Window1InUse(transfer) ? "active" : "standby")} {Frequency(value)}";
 
@@ -54,7 +55,8 @@ public static class A300Radios
 
     private static A300Radio Named(string name) => All.Single(r => r.Name == name);
 
-    /// <summary>Each frequency knob: the radio and the window (1 or 2) it tunes.</summary>
+    /// <summary>Each ADF frequency knob: the radio and the window (1 or 2) it tunes. The VHF knobs are not rows
+    /// (<see cref="A300PanelLayout"/>): a typed standby box sets a VHF frequency.</summary>
     public static readonly IReadOnlyDictionary<string, (A300Radio Radio, int Window)> ByKnob = Knobs();
 
     /// <summary>Each transfer button's radio.</summary>
@@ -107,10 +109,6 @@ public static class A300Radios
             foreach (var key in keys)
                 knobs[key] = (Named(radio), window);
         }
-        Add("VHF 1", 1, "A300_CPT_VHF1_MHZ", "A300_CPT_VHF1_KHZ");
-        Add("VHF 1", 2, "A300_CPT_VHF2_MHZ", "A300_CPT_VHF2_KHZ");
-        Add("VHF 2", 1, "A300_FO_VHF1_MHZ", "A300_FO_VHF1_KHZ");
-        Add("VHF 2", 2, "A300_FO_VHF2_MHZ", "A300_FO_VHF2_KHZ");
         Add("ADF 1", 1, "A300_CPT_ADF1_BIG", "A300_CPT_ADF1_MED", "A300_CPT_ADF1_SMALL");
         Add("ADF 1", 2, "A300_CPT_ADF2_BIG", "A300_CPT_ADF2_MED", "A300_CPT_ADF2_SMALL");
         Add("ADF 2", 1, "A300_FO_ADF1_BIG", "A300_FO_ADF1_MED", "A300_FO_ADF1_SMALL");
