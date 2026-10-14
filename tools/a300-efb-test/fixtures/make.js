@@ -128,6 +128,12 @@ function landRwy(name, metres, red) { return rwy(name, metres, red, 'land-rwy-se
 function perfRow(label, input) {
   return '<div class="row mb-2"><div class="col-sm-4 text-end ini-input-label">' + label + '</div><div class="col-sm-8"><div class="input-group">' + input + '</div></div></div>';
 }
+// A box of the two performance pages, with the unit the tablet prints beside it, if any. The
+// tablet types the wind, and Landing's temperature, weight and extra speed, "string" (a text box).
+function perfBox(label, id, type, value, unit, disabled) {
+  return perfRow(label, '<input type="' + type + '" id="' + id + '"' + (disabled ? ' disabled' : '') + ' value="' + value + '">' +
+    (unit ? '<span class="input-group-text">' + unit + '</span>' : ''));
+}
 function wearBox() {
   let h = '';
   for (const b of ['LFI', 'LFO', 'LRI', 'LRO', 'RFI', 'RFO', 'RRI', 'RRO']) h += '<div class="brake-wear-indicator" id="Brake_Wear_Indicator_' + b + '"></div>';
@@ -160,11 +166,18 @@ const files = {
     '<div id="runwayPanel"><h1>SELECT RUNWAY</h1><input type="button" id="hide_runway_select" value="Cancel">' +
     '<div id="runway_opts" class="row">' + rwy('18L', 3000, false) + rwy('09', 1500, true) + '</div></div>' +
     '<div id="conditions"><h1>CONDITIONS <button id="syncMetar" class="btn">SYNC</button></h1>' +
-    perfRow('RWY', '<input type="button" id="show_runway_select" value="SELECT">') + '</div>' +
-    '<div id="config"><button id="calculate" class="btn">CALCULATE &gt;&gt;</button></div>' +
+    perfRow('RWY', '<input type="button" id="show_runway_select" value="SELECT">') +
+    perfBox('TORA', 'output_tora', 'number', '3000', 'M') + perfBox('HDG', 'output_heading', 'number', '180', '°') +
+    perfBox('WIND', 'input_wind', 'string', '') + perfBox('OAT', 'input_temp', 'number', '', '°C') +
+    perfBox('ALTIMETER', 'input_alt', 'number', '', 'hpa') + '</div>' +
+    '<div id="config">' + perfBox('WEIGHT', 'input_weight', 'number', '100315', 'kg') +
+    perfRow('FLAPS', '<input type="button" id="input_flaps" value="15/15">') + perfRow('AIR COND', '<input type="button" id="input_aircond" value="ON">') +
+    '<button id="calculate" class="btn">CALCULATE &gt;&gt;</button></div>' +
     '<div id="performance"><h1>PERFORMANCE</h1>' +
-    perfRow('FLEX', '<input type="text" id="output_flex" disabled value="45"><span class="input-group-text">°C</span>') +
-    perfRow('V1', '<input type="number" id="output_v1" disabled value="">') + '</div></div>'),
+    perfBox('FLEX', 'output_flex', 'text', '45', '°C', true) + perfBox('V1', 'output_v1', 'number', '', '', true) +
+    perfBox('VR', 'output_vr', 'number', '', '', true) + perfBox('V2', 'output_v2', 'number', '', '', true) +
+    perfBox('MTOW [PERF]', 'output_mtow', 'number', '', '', true) + perfBox('GWCG', 'output_gwcg', 'text', '', '', true) +
+    perfBox('THS', 'output_ths', 'text', '', '', true) + '</div></div>'),
   // Landing as the tablet draws it once the arrival is known (live, 2026-10-14): the runway list
   // closed and 22R picked. Take Off stays in the document behind it, and the tablet names each
   // runway button by the runway alone, so both pages can hold a button with the same id (04R here).
@@ -172,9 +185,22 @@ const files = {
     '<div id="land_runwayPanel" data-display="none"><h1>SELECT RUNWAY</h1><input type="button" id="land_hide_runway_select" value="Cancel">' +
     '<div id="land_runway_opts" class="row">' + landRwy('04R', 3090, false) + landRwy('22R', 2391, false) + landRwy('15L', 785, true) + '</div></div>' +
     '<div id="land_conditions"><h1>CONDITIONS</h1>' +
-    perfRow('RWY', '<input type="button" id="land_show_runway_select" value="RWY 22R">') + '</div></div>').replace('</div></div><div class="paused-overlay',
+    perfRow('RWY', '<input type="button" id="land_show_runway_select" value="RWY 22R">') +
+    perfBox('LENGTH', 'land_output_tora', 'number', '2391', 'M') + perfBox('HDG', 'land_output_heading', 'number', '220', '°') +
+    perfBox('WIND', 'land_input_wind', 'string', '') + perfBox('TEMP', 'land_input_temp', 'string', '', '°C') +
+    perfBox('WEIGHT', 'land_input_weight', 'string', '') + perfBox('EXTRA SPEED', 'land_input_vls', 'string', '0', 'Kts') + '</div>' +
+    '<div><h5>Conditions Contd.</h5>' + perfRow('COND', '<input type="button" id="land_input_surface" value="DRY">') +
+    perfRow('CONFIG', '<input type="button" id="land_input_flaps" value="15/20">') +
+    perfRow('BRAKE', '<input type="button" id="land_input_brake" value="MANUAL">') + '</div>' +
+    '<div id="performance"><h1>PERFORMANCE</h1>' + perfBox('DIST', 'land_output_dist', 'text', '', 'M', true) +
+    perfBox('FACTORED', 'land_output_fdist', 'number', '', 'M', true) + '<button id="land_calculate">CALCULATE &gt;&gt;</button></div>' +
+    // The landing diagram: a picture of the runway with the two distances marked on it.
+    '<div id="diagram"><div id="land_codes" class="alert alert-warning">Landing Performance</div><div id="ld">LD</div><div id="fld">FLD</div></div>' +
+    '</div>').replace('</div></div><div class="paused-overlay',
     '</div><div class="hiddenPage" data-display="none"><div id="takeOffPerfViewer"><div id="runwayPanel" data-display="none">' +
     '<div id="runway_opts" class="row">' + rwy('04R', 2000, false) + '</div></div>' +
+    // Landing's weight box has no unit of its own; Take Off's says the tablet's.
+    perfBox('WEIGHT', 'input_weight', 'number', '', 'kg') +
     perfRow('RWY', '<input type="button" id="show_runway_select" value="RWY 04R">') + '</div></div></div><div class="paused-overlay'),
   'groundequip': tablet('<div id="equip"><button id="door1Larmed" class="door-arm" style="background-color: rgb(0, 128, 0)"></button>' +
     '<h1>Emergency Slides: Red - Armed // Green - Disarmed</h1></div>'),

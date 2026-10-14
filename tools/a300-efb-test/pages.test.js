@@ -55,6 +55,59 @@ test('the results are read-outs, not fields', () => {
   assert.ok(find(r, 'V1: blank'), 'not calculated yet');
 });
 
+// Both pages read in the tablet's own words, abbreviations and units (Robin, 2026-10-14): OAT, AIR
+// COND, TORA, hpa and a wind of direction/speed are the aircraft's and aviation's own terms, and a
+// pilot knows them. Never rename them.
+test('Take Off and Landing read in the tablet\'s own words', () => {
+  const fieldsOf = r => r.elements.filter(e => e.controlType === 'text').map(e => e.text);
+  const set = (doc, id, v) => { doc.getElementById(id).value = v; };
+  const { A: to, window: tw } = load('takeoff');
+  assert.deepStrictEqual(fieldsOf(scrape(to)),
+    ['TORA (M)', 'HDG (°)', 'WIND', 'OAT (°C)', 'ALTIMETER (hpa)', 'WEIGHT (kg)']);
+  // The values of a live calculation (KMEM 09, 2026-10-14).
+  [['output_flex', '63'], ['output_v1', '137'], ['output_vr', '140'], ['output_v2', '144'], ['output_mtow', '152.1'],
+    ['output_gwcg', '23.9%'], ['output_ths', '0.7UP']].forEach(p => set(tw.document, p[0], p[1]));
+  const r = scrape(to);
+  assert.deepStrictEqual(r.elements.filter(e => /^readout:output_/.test(e.key)).map(e => e.text),
+    ['FLEX (°C): 63', 'V1: 137', 'VR: 140', 'V2: 144', 'MTOW [PERF]: 152.1', 'GWCG: 23.9%', 'THS: 0.7UP']);
+  assert.ok(texts(r).includes('AIR COND: ON'));
+
+  const { A: land, window: lw } = load('landing');
+  assert.deepStrictEqual(fieldsOf(scrape(land)),
+    ['LENGTH (M)', 'HDG (°)', 'WIND', 'TEMP (°C)', 'WEIGHT', 'EXTRA SPEED (Kts)']);
+  // A live calculation (KBOS 04L, 2026-10-14).
+  set(lw.document, 'land_output_dist', '1200');
+  set(lw.document, 'land_output_fdist', '1440');
+  const l = scrape(land);
+  assert.deepStrictEqual(l.elements.filter(e => /^readout:land_output_/.test(e.key)).map(e => e.text),
+    ['DIST (M): 1200', 'FACTORED (M): 1440']);
+  for (const t of ['COND: DRY', 'CONFIG: 15/20', 'BRAKE: MANUAL']) assert.ok(texts(l).includes(t), t);
+  assert.ok(l.elements.some(e => e.kind === 'heading' && e.text === 'Conditions Contd.'));
+});
+
+test('the landing diagram is not read: its two marks are the distances above', () => {
+  const r = scrape(load('landing').A);
+  assert.ok(!r.elements.some(e => /^(LD|FLD|Landing Performance)$/.test(e.text)));
+});
+
+// Landing's temperature, weight and extra speed are text boxes the tablet reads with parseInt, so
+// "99,934" was 99 kg and a landing distance of 500 m where 99934 gave 1,200 m (measured live,
+// 2026-10-14). They take a typed number the way a number box does.
+test('Landing\'s number boxes take the number the pilot meant', () => {
+  const { A, window } = load('landing');
+  const doc = window.document;
+  const idxOf = id => scrape(A).elements.find(e => e.key === 'field:' + id).idx;
+  assert.strictEqual(A.setValue(idxOf('land_input_weight'), '99,934'), true);
+  assert.strictEqual(doc.getElementById('land_input_weight').value, '99934');
+  assert.strictEqual(A.setValue(idxOf('land_input_temp'), '-2,5'), true);
+  assert.strictEqual(doc.getElementById('land_input_temp').value, '-2.5');
+  assert.strictEqual(A.setValue(idxOf('land_input_vls'), '5 kt'), false, 'not a number: refused');
+  assert.strictEqual(doc.getElementById('land_input_vls').value, '0', 'and left as it was');
+  // The wind is typed as the tablet splits it, and kept as typed.
+  assert.strictEqual(A.setValue(idxOf('land_input_wind'), '040/08'), true);
+  assert.strictEqual(doc.getElementById('land_input_wind').value, '040/08');
+});
+
 // The RWY button opens the runway list ABOVE the page, away from the button, so a screen reader
 // heard nothing happen when it was pressed (PR #300 in-sim run, 2026-10-14). It is read as a
 // choice of the listed runways instead.

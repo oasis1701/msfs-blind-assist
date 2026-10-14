@@ -265,6 +265,11 @@
   // as an alert would cut off the screen reader reading it.
   A.QUIET_TOASTS = { 'Runway Updated': true };
 
+  // Landing's temperature, weight and extra speed are text boxes the tablet reads with parseInt: a
+  // weight typed "99,934" was 99 kg, and a landing distance of 500 m where 99934 gave 1,200 m
+  // (measured 2026-10-14). They take a typed number as a number box does (A.setValue).
+  A.NUMBER_TEXT = { land_input_temp: true, land_input_weight: true, land_input_vls: true };
+
   // A chart in the Charts list: its name (h1) and its kind (p), "CONDR 4 RNAV [ATC], STAR".
   // A chart named after its kind ("AFC", "AOI") says it once.
   A.chartName = function (row) {
@@ -950,8 +955,9 @@
     // A number box blanks itself on text that is not a plain number ("20,000", "12,5"), so the number
     // the pilot meant is written. An empty entry (or spaces alone) clears the box: it is emitted with its
     // real value, so Enter on an emptied box is a deliberate deletion. Any other text that is not a
-    // number is refused, and the box is left as it was.
-    if (el.type === 'number') {
+    // number is refused, and the box is left as it was. Landing's text boxes that hold numbers
+    // (A.NUMBER_TEXT) are written the same way: the tablet reads them with parseInt.
+    if (el.type === 'number' || A.NUMBER_TEXT[el.id]) {
       if (!A.clean(text)) text = '';
       else {
         var n = A.typedNumber(text);
