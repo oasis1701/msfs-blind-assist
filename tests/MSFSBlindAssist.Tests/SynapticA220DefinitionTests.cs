@@ -671,6 +671,27 @@ public class SynapticA220DefinitionTests
         }, down.All);
     }
 
+    // VAR-5: the older readouts in the hotkey switch speak invariant numbers. CI runs en-US, so only
+    // a comma-decimal culture catches a "Mach 0,78" or "-3,0 degrees".
+    [Theory]
+    [InlineData(HotkeyAction.ReadSpeed, "{\"spd_in_mach\":true,\"spd_sel_mach\":0.78,\"spd_sel_ias\":250,\"spd_fms\":false}",
+        "Manual speed Mach 0.78")]
+    [InlineData(HotkeyAction.ReadFCUVerticalSpeedFPA, "{\"vs_mode\":1,\"vs_sel\":-3.0}", "Flight path angle -3.0 degrees")]
+    public void FcpReadouts_SpeakInvariantNumbers_UnderAGermanCulture(HotkeyAction action, string fcpJson, string expected)
+    {
+        var saved = System.Globalization.CultureInfo.CurrentCulture;
+        System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("de-DE");
+        try
+        {
+            var def = new SynapticA220Definition();
+            def.ProcessDisplaysSnapshot("{\"ok\":true,\"fcp\":" + fcpJson + "}");
+            var speech = new SpeechCapture();
+            Assert.True(def.HandleHotkeyAction(action, new SimConnectManager(IntPtr.Zero), speech, null!, null!));
+            Assert.Equal(new[] { expected }, speech.All);
+        }
+        finally { System.Globalization.CultureInfo.CurrentCulture = saved; }
+    }
+
     // The write paths against a scripted display agent: write calls are recorded and answer SENT,
     // sys() answers the scripted blocks.
 

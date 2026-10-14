@@ -318,7 +318,7 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
                 // Never the stock AIRSPEED/MACH HOLD VARs: they do not follow this FCP
                 // (445 kt with 142 in the window, live 2026-09-24).
                 string target = mach
-                    ? (fcp?.spd_sel_mach is { } m ? $"Mach {m:0.00}" : "not available")
+                    ? (fcp?.spd_sel_mach is { } m ? FormattableString.Invariant($"Mach {m:0.00}") : "not available")
                     : (fcp?.spd_sel_ias is { } k ? $"{(int)Math.Round(k)} knots" : "not available");
                 string at = A220Afdx.AutothrottleStatusPhrase(LatestAutoflight) is { } atMode ? $", {atMode}" : "";
                 announcer.AnnounceImmediate($"{(fms ? "FMS speed" : "Manual speed")} {target}{at}");
@@ -375,7 +375,7 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
                 {
                     double fpa = fcp?.vs_mode == 1 && fcp.vs_sel is { } sel && Math.Abs(sel) <= 9.9
                         ? sel : Cached(simConnect, "A22X_SELECTED_FPA");
-                    announcer.AnnounceImmediate($"Flight path angle {fpa:0.0} degrees{tail}");
+                    announcer.AnnounceImmediate(FormattableString.Invariant($"Flight path angle {fpa:0.0} degrees{tail}"));
                     return true;
                 }
                 int vs = (int)Math.Round(fcp?.vs_sel ?? Cached(simConnect, "A22X_AP_VS"));
@@ -413,10 +413,10 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
             }
             case HotkeyAction.ReadNavRadioInfo:
             {
-                string com1 = $"{Cached(simConnect, "A22X_COM1_ACTIVE"):0.000}";
-                string com2 = $"{Cached(simConnect, "A22X_COM2_ACTIVE"):0.000}";
-                string nav1 = $"{Cached(simConnect, "A22X_NAV1_ACTIVE"):0.00}";
-                string nav2 = $"{Cached(simConnect, "A22X_NAV2_ACTIVE"):0.00}";
+                string com1 = FormattableString.Invariant($"{Cached(simConnect, "A22X_COM1_ACTIVE"):0.000}");
+                string com2 = FormattableString.Invariant($"{Cached(simConnect, "A22X_COM2_ACTIVE"):0.000}");
+                string nav1 = FormattableString.Invariant($"{Cached(simConnect, "A22X_NAV1_ACTIVE"):0.00}");
+                string nav2 = FormattableString.Invariant($"{Cached(simConnect, "A22X_NAV2_ACTIVE"):0.00}");
                 announcer.AnnounceImmediate($"COM 1 {com1}, COM 2 {com2}, NAV 1 {nav1}, NAV 2 {nav2}");
                 return true;
             }
@@ -473,7 +473,7 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
                 }
                 int brg = (int)Math.Round(Cached(simConnect, "A22X_GPS_WP_BRG"));
                 if (brg <= 0) brg += 360;
-                announcer.AnnounceImmediate($"Next waypoint {dist:0.0} miles, bearing {brg:000}");
+                announcer.AnnounceImmediate(FormattableString.Invariant($"Next waypoint {dist:0.0} miles, bearing {brg:000}"));
                 return true;
             }
             // From the FMS's own active flight plan on the CommBus (agent fplnProgress()).
