@@ -99,6 +99,24 @@ public class A220AgentContractTests
     }
 
     [Fact]
+    public void FplnProgress_StopsAtTheMissedApproachSegment()
+    {
+        // The active plan's paths run on into the missed approach, which arr.dtg (the FUEL page's
+        // DEST row) does not include: summing them made the distance to TOD come out short by
+        // the missed-approach length. The boundary is the segment type the aircraft's own LEGS
+        // page and ND split on (instrument.js: `$.typ === 6` = MISSED APPROACH).
+        string js = Agent();
+        int start = js.IndexOf("A.fplnProgress = function", StringComparison.Ordinal);
+        Assert.True(start >= 0, "A.fplnProgress not found");
+        int end = js.IndexOf("ensureCommBus();   // start filling", start, StringComparison.Ordinal);
+        Assert.True(end > start, "end of A.fplnProgress not found");
+        string body = js.Substring(start, end - start);
+        Assert.Contains("segs[q].typ === 6", body);
+        Assert.Contains("i < pathEnd", body);
+        Assert.DoesNotContain("i < paths.length", body);
+    }
+
+    [Fact]
     public void Agent_IsEs5()
     {
         // Line comments go first: the agent's comments quote the aircraft's own ES2015 source.

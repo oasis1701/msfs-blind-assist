@@ -479,6 +479,13 @@
     // legs already flown, so the distance TO GO to the TOD is taken from the destination
     // end: dtg - (total - todFromStart), which needs no active-leg index. Never shipped
     // whole — the plan's legs/paths are large.
+    // The sum stops at the DESTINATION: the plan's paths run on into the missed approach,
+    // which dtg (the FUEL page's DEST row) does not include, so counting it made every TOD
+    // figure come out short by the missed-approach length. The boundary is the plan's own:
+    // a segment with typ 6 is the MISSED APPROACH (instrument.js, LEGS page: `$.typ === 6`
+    // inserts the "MISSED APPROACH" row, line ~72980; ND: Ple()/the path builder split
+    // `segments` on `a.typ === 6`, lines ~87626 and ~87863), and legs/paths are sliced by
+    // each segment's cumulative `len`. No segments = no known boundary = the whole plan.
     A.fplnProgress = function () {
       ensureCommBus();
       var name = 'A220.Flight Plan Update';
@@ -488,7 +495,12 @@
         return JSON.stringify({ ok: false, ageMs: age });
       }
       var act = raw.active, arr = act.arr || null, paths = act.paths || [], todFromStart = null, acc = 0;
-      for (var i = 0; i < paths.length; i++) {
+      var pathEnd = paths.length, segs = act.segments || [], segStart = 0;
+      for (var q = 0; q < segs.length; q++) {
+        if (segs[q] && segs[q].typ === 6) { if (segStart < pathEnd) pathEnd = segStart; break; }
+        segStart += (segs[q] && typeof segs[q].len === 'number') ? segs[q].len : 0;
+      }
+      for (var i = 0; i < pathEnd; i++) {
         var p = paths[i];
         if (!p) continue;
         if (todFromStart === null) {
