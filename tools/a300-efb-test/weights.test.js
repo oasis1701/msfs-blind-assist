@@ -18,23 +18,28 @@ const KG = {
 
 const buttons = r => r.elements.filter(e => e.kind === 'button').map(e => e.text);
 
-test('the selection half reads only its own controls, with the loads in words', () => {
+// The page reads in the tablet's own words, abbreviations and units: FUEL, FWD, MACZFW %, ZFW, BLK
+// FUEL, "31'000Kgs / 68'300Lbs" and "WEIGHT AND BALANCE [kg]" are never expanded or converted
+// (design decision, 2026-10-14).
+const RACING = "31'000Kgs / 68'300Lbs Racing Team Charter";
+
+test('the selection half reads only its own controls, the loads as the tablet prints them', () => {
   const { A } = load('weights-selection', { simvars: KG });
   const r = scrape(A);
   assert.strictEqual(r.page, 'Weight and Balance, payload selection');
   assert.deepStrictEqual(buttons(r), [
-    'Racing Team Charter: 31,000 kilograms, 68,300 pounds',
-    'Aero Parts Transport: 26,500 kilograms, 58,400 pounds',
-    'Horse Stable Transport: 15,700 kilograms, 34,600 pounds',
-    'Humanitarian Charter: 21,000 kilograms, 46,300 pounds',
-    'Postal Freight: 18,500 kilograms, 40,800 pounds',
+    RACING,
+    "26'500Kgs / 58'400Lbs Aero Parts Transport",
+    "15'700Kgs / 34'600Lbs Horse Stable Transport",
+    "21'000Kgs / 46'300Lbs Humanitarian Charter",
+    "18'500Kgs / 40'800Lbs Postal Freight",
     'Custom cargo',
     'Cargo from SimBrief',
     'Unload Cargo',
     'Home',
     'Control box',
   ]);
-  assert.ok(!texts(r).some(t => /^(Apply Load|Total fuel|Gross weight)/.test(t)), 'the loading half is off screen');
+  assert.ok(!texts(r).some(t => /^(Apply Load|FUEL|GW)\b/.test(t)), 'the loading half is off screen');
 });
 
 test('the selection half says what choosing a load does', () => {
@@ -45,7 +50,7 @@ test('the selection half says what choosing a load does', () => {
   const help = 'Choosing a load fills in the hold weights and opens the loading page. Nothing goes on board until you press Apply Load to Aircraft there. ' +
     'Unload Cargo only removes the cargo you can see in the hold; to take its weight off, set the holds to 0 on the loading page and apply.';
   assert.ok(find(r, help), 'help line');
-  assert.ok(texts(r).indexOf(help) < texts(r).indexOf('Racing Team Charter: 31,000 kilograms, 68,300 pounds'), 'help before the loads');
+  assert.ok(texts(r).indexOf(help) < texts(r).indexOf(RACING), 'help before the loads');
 });
 
 test('the forward chevron is a button once a load has been chosen', () => {
@@ -60,17 +65,17 @@ test('the forward chevron is a button once a load has been chosen', () => {
   assert.strictEqual(clicked, 1, 'one click event');
 });
 
-test('the loading half reads its fields by what they hold', () => {
+test('the loading half reads its fields by the tablet\'s labels and units', () => {
   const { A } = load('weights-loading', { simvars: KG });
   const r = scrape(A);
   assert.strictEqual(r.page, 'Weight and Balance, loading');
   const fields = r.elements.filter(e => e.controlType === 'text').map(e => [e.text, e.value]);
   assert.deepStrictEqual(fields, [
-    ['Total cargo (kg)', '0'],
-    ['Total fuel (kg)', '60110'],
-    ['Forward hold (kg)', '10333'],
-    ['Middle hold (kg)', '10333'],
-    ['Aft hold (kg)', '10333'],
+    ['LOAD (kg)', '0'],
+    ['FUEL (kg)', '60110'],
+    ['FWD (kg)', '10333'],
+    ['MID (kg)', '10333'],
+    ['AFT (kg)', '10333'],
   ]);
   assert.ok(!texts(r).some(t => /Racing Team Charter/.test(t)), 'the selection half is off screen');
 });
@@ -84,7 +89,7 @@ function fuelBox() {
   const { A, window } = load('weights-loading', { simvars: KG });
   const box = window.document.getElementById('weight_fuel');
   assert.strictEqual(box.type, 'number');
-  return { A, box, seen: recordEvents(box), idx: find(scrape(A), 'Total fuel (kg)').idx };
+  return { A, box, seen: recordEvents(box), idx: find(scrape(A), 'FUEL (kg)').idx };
 }
 
 test('a number box takes the separators a pilot types', () => {
@@ -158,20 +163,14 @@ test('the loading half says what its two buttons do', () => {
   const { A } = load('weights-loading', { simvars: KG });
   const r = scrape(A);
   assert.ok(find(r, 'Update from SimBrief fills in the cargo and fuel from your latest SimBrief plan. Apply Load to Aircraft puts the cargo and fuel on board.'));
-  assert.ok(find(r, 'Weight and balance'), 'heading without the bracketed unit');
+  assert.ok(find(r, 'WEIGHT AND BALANCE [kg]'), 'the heading with its unit, which the results are in');
 });
 
-test('the results are read-outs in words, not fields', () => {
+test('the results are read-outs under the tablet\'s labels, not fields', () => {
   const { A } = load('weights-loading', { simvars: KG });
   const r = scrape(A);
-  const outs = [
-    'Zero fuel weight center of gravity: 0.0 percent MAC',
-    'Gross weight center of gravity: 24.95 percent MAC',
-    'Zero fuel weight: 0.0 tonnes',
-    'Gross weight: 102.40 tonnes',
-    'Payload: 31.0 tonnes',
-    'Block fuel: 60.11 tonnes',
-  ];
+  // The tablet pads them with leading zeros ("031.0"); they are read without.
+  const outs = ['MACZFW %: 0.0', 'MACGW %: 24.95', 'ZFW: 0.0', 'GW: 102.40', 'PAYLOAD: 31.0', 'BLK FUEL: 60.11'];
   for (const t of outs) {
     const e = find(r, t);
     assert.ok(e, t);
@@ -180,13 +179,14 @@ test('the results are read-outs in words, not fields', () => {
   }
 });
 
-test('in pounds the results are thousands of pounds', () => {
+test('in pounds the heading and boxes say lbs', () => {
   const lbs = {};
   for (const k of Object.keys(KG)) lbs[k.replace('|kilograms', '|pounds')] = KG[k];
   const { A } = load('weights-loading-lbs', { simvars: lbs });
   const r = scrape(A);
-  assert.ok(find(r, 'Gross weight: 102.40 thousand pounds'));
-  assert.ok(find(r, 'Total fuel (lbs)'));
+  assert.ok(find(r, 'WEIGHT AND BALANCE [lbs]'));
+  assert.ok(find(r, 'GW: 102.40'));
+  assert.ok(find(r, 'FUEL (lbs)'));
   assert.ok(find(r, 'On board: payload 31,000 pounds, fuel 60,100 pounds'));
 });
 
@@ -217,7 +217,7 @@ test('a preset is still pressed with one click', () => {
   const r = scrape(A);
   let clicked = 0;
   window.document.getElementById('payload_horse').addEventListener('click', () => clicked++);
-  assert.ok(A.clickElement(find(r, 'Horse Stable Transport: 15,700 kilograms, 34,600 pounds').idx));
+  assert.ok(A.clickElement(find(r, "15'700Kgs / 34'600Lbs Horse Stable Transport").idx));
   assert.strictEqual(clicked, 1);
 });
 

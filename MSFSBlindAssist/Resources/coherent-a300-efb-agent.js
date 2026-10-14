@@ -95,27 +95,21 @@
       'Unload Cargo only removes the cargo you can see in the hold; to take its weight off, set the holds to 0 on the loading page and apply.',
     page2: 'Update from SimBrief fills in the cargo and fuel from your latest SimBrief plan. Apply Load to Aircraft puts the cargo and fuel on board.'
   };
+  // The page's boxes, results, loads and heading read in the tablet's own words, abbreviations and
+  // units (FUEL, FWD, LOAD, MACZFW %, ZFW, BLK FUEL, "31'000Kgs / 68'300Lbs", "WEIGHT AND BALANCE
+  // [kg]"): never expand or convert them (design decision, 2026-10-14).
   A.FIELD_NAMES = {
-    weight_fuel: 'Total fuel', weight_freight_fwd: 'Forward hold', weight_freight_mid: 'Middle hold',
-    weight_freight_aft: 'Aft hold', input_pax: 'Passengers',
     // Settings: the tablet fetches xml.fetcher.php?userid=, so this box takes the numeric SimBrief
     // Pilot ID, never the user name; its only label is the heading "SimBrief".
     simbrief: 'SimBrief Pilot ID, numbers only',
     ng_search: 'Airport'
   };
-  // The cargo field's label column says LOAD (CARGO on the passenger version).
-  A.FIELD_TITLES = { LOAD: 'Total cargo', CARGO: 'Total cargo' };
   // What a stored code adds to a password box's name ("Hoppie, code set"). It is the box's state, not
   // part of the name that a heading above the box echoes (A.dropEchoHeadings).
   A.CODE_SET = ', code set';
-  // The results: read-only boxes, printed in thousands of the tablet's weight unit or in % MAC.
-  A.READOUTS = {
-    output_maczfw: ['Zero fuel weight center of gravity', 'mac'], output_maccg: ['Gross weight center of gravity', 'mac'],
-    output_zfw: ['Zero fuel weight', 'weight'], output_tow: ['Gross weight', 'weight'],
-    output_payload: ['Payload', 'weight'], output_blkfuel: ['Block fuel', 'weight']
-  };
-  // A preset's two lines: "31'000Kgs / 68'300Lbs", then its name.
-  A.PRESET_WEIGHT = /^([\d',.]+)\s*kgs?\s*\/\s*([\d',.]+)\s*lbs?$/i;
+  // The results: read-only boxes the tablet pads with leading zeros ("031.0"), read without them,
+  // under their own labels. Their unit is the heading's ("[kg]"), in thousands; MACZFW and MACGW in %.
+  A.READOUTS = { output_maczfw: 1, output_maccg: 1, output_zfw: 1, output_tow: 1, output_payload: 1, output_blkfuel: 1 };
 
   // My Flight's values, which sit under headings ("METAR", "DEP TIME") or under nothing at all.
   A.VALUE_NAMES = {
@@ -141,8 +135,7 @@
   };
 
   A.clean = function (s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, ''); };
-  // "31'000" → 31000; 31000 → "31,000" (the tablet's own separator is an apostrophe).
-  A.num = function (s) { return parseFloat(String(s).replace(/[',]/g, '')); };
+  // 31000 → "31,000".
   A.thousands = function (n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ','); };
   // "000.0" → "0.0", "060.11" → "60.11".
   A.plainNumber = function (s) { return A.clean(s).replace(/^(-?)0+(?=\d)/, '$1'); };
@@ -338,8 +331,7 @@
 
   A.fieldLabel = function (input) {
     if (A.FIELD_NAMES[input.id]) return A.FIELD_NAMES[input.id];
-    var l = A.rowLabel(input) || A.headingBefore(input) || A.NAMES[input.id] || A.idWords(input.id);
-    return A.FIELD_TITLES[l] || l;
+    return A.rowLabel(input) || A.headingBefore(input) || A.NAMES[input.id] || A.idWords(input.id);
   };
 
   // The tablet's weight unit, from the unit beside its fuel box ("kg" or "lbs").
@@ -348,11 +340,9 @@
     return !!f && /^lb/i.test(A.unit(f));
   };
 
-  // A Weight and Balance result in words: "Gross weight: 102.40 tonnes", "... 24.95 percent MAC".
+  // A Weight and Balance result: "GW: 102.40", "MACGW %: 24.95".
   A.readout = function (input) {
-    var r = A.READOUTS[input.id];
-    var unit = r[1] === 'mac' ? 'percent MAC' : (A.inPounds() ? 'thousand pounds' : 'tonnes');
-    return r[0] + ': ' + A.plainNumber(input.value) + ' ' + unit;
+    return A.fieldLabel(input) + ': ' + A.plainNumber(input.value);
   };
 
   // What is on board now, from the simulator: the payload (stations 3 to 8; 1 and 2 are the
@@ -371,15 +361,6 @@
       return 'On board: payload ' + A.thousands(payload) + ' ' + unit + ', ' +
         (fuelling ? 'fueling in progress' : 'fuel ' + A.thousands(Math.round(fuel / 100) * 100) + ' ' + unit);
     } catch (e) { return ''; }
-  };
-
-  // A preset load button: "Racing Team Charter: 31,000 kilograms, 68,300 pounds".
-  A.presetLabel = function (btn) {
-    var spans = btn.querySelectorAll ? btn.querySelectorAll('h1 span') : [];
-    if (spans.length < 2) return '';
-    var m = A.PRESET_WEIGHT.exec(A.txt(spans[0]));
-    if (!m) return '';
-    return A.txt(spans[1]) + ': ' + A.thousands(A.num(m[1])) + ' kilograms, ' + A.thousands(A.num(m[2])) + ' pounds';
   };
 
   // A door button's state from its classes; a slide button's from its color.
@@ -437,8 +418,6 @@
     if (A.hasClass(el, 'page--right')) return 'Next chart page';
     // The Enroute Map's "<" opens its list of map types.
     if (el.closest('#enroutemap-sidebar') && /^[<>]$/.test(A.txt(el))) return 'Map type';
-    var preset = A.presetLabel(el);
-    if (preset) return preset;
     // The tablet's words, without the arrows it draws after some ("CALCULATE >>").
     var t = A.clean(A.txt(el).replace(/(>>|<<|»|«)/g, ' '));
     // A symbol for a name ("+", "-") gives way to the button's own title ("Zoom in").
@@ -670,8 +649,6 @@
         // A heading holding a button (Take Off's "Conditions" + SYNC) reads its own words only.
         var btns = el.querySelectorAll('button, input');
         if (btns.length) ht = A.ownText(el);
-        // Weight and Balance's capitals and bracketed unit: "WEIGHT AND BALANCE [kg]" → "Weight and balance".
-        if (el.closest('#weights')) ht = A.sentence(ht.replace(/\s*\[[^\]]*\]\s*$/, ''));
         // Ground Equipment's slide legend, "Emergency Slides: Red - Armed // Green - Disarmed", sits
         // after the slide buttons, which say armed or disarmed in words: it is not read at all.
         if (/^Emergency Slides\b/i.test(ht)) ht = '';
