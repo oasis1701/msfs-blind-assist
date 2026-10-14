@@ -303,8 +303,22 @@ internal static partial class A220Systems
         if (failed.Count > 0)
             return string.Join(". ", failed.Select(side => $"{SideWord(side)} baro did not change — still {(wantStd ? "QNH" : "standard")}")) + ".";
         if (wantStd) return sides.Count == 2 ? "Altimeter standard, both sides" : $"{SideWord(sides[0])} altimeter standard";
-        string qnh = FormatQnh(SideBlocks(after, sides[0]).Ctp?.qnh);
-        return sides.Count == 2 ? $"Altimeter {qnh}, both sides" : $"{SideWord(sides[0])} altimeter {qnh}";
+        return QnhSidesText(sides, after);
+    }
+
+    /// <summary>The altimeter each named side now reads, from the CTP stores. Two sides are
+    /// "both sides" only when they read alike: Standard and the unit switch work from each
+    /// side's own value, so they can differ (the file's <see cref="FormatAltimeterReadout"/>
+    /// exists for the same reason), and then each side is named, captain first.</summary>
+    private static string QnhSidesText(IReadOnlyList<int> sides, SystemsBlocks? after)
+    {
+        var ordered = sides.OrderBy(side => side).ToList();
+        string Reads(int side) => FormatQnh(SideBlocks(after, side).Ctp?.qnh);
+        if (ordered.Count != 2) return $"{SideWord(ordered[0])} altimeter {Reads(ordered[0])}";
+        string a = Reads(ordered[0]), b = Reads(ordered[1]);
+        return a == b
+            ? $"Altimeter {a}, both sides"
+            : $"{SideWord(ordered[0])} altimeter {a}, {SideWord(ordered[1]).ToLowerInvariant()} {b}";
     }
 
     internal static string UnitResult(IReadOnlyList<int> sides, bool wantHpa, SystemsBlocks? after)
@@ -312,8 +326,7 @@ internal static partial class A220Systems
         string wantType = wantHpa ? "Hpa" : "InHg";
         if (sides.Any(side => SideBlocks(after, side).Ctp?.qnh?.type != wantType))
             return $"The A220 did not change the altimeter unit — still {(wantHpa ? "inches" : "hectopascals")}.";
-        string value = FormatQnh(SideBlocks(after, sides[0]).Ctp?.qnh);
-        return sides.Count == 2 ? $"Altimeter {value}, both sides" : $"{SideWord(sides[0])} altimeter {value}";
+        return QnhSidesText(sides, after);
     }
 
     internal static string MinimumsResult(IReadOnlyList<int> sides, int feet, SystemsBlocks? after)

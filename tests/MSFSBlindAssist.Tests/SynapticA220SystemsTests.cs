@@ -670,6 +670,33 @@ public class SynapticA220SystemsTests
         Assert.Equal("Captain baro did not change — still QNH.", StdResult(new[] { 1 }, true, qnh));
     }
 
+    // Both sides are only "both sides" when they read alike: Ctrl+B Standard and the unit
+    // switch work from each side's OWN value, so the two sides can differ afterwards.
+    [Fact]
+    public void Ctp_StdAndUnitResults_NameTheSidesWhenTheyDiffer() => UnderCulture("de-DE", () =>
+    {
+        SystemsBlocks Sides(string lType, double lValue, string rType, double rValue) => new()
+        {
+            lads = new AdsBlock { qnh_std = false },
+            rads = new AdsBlock { qnh_std = false },
+            lctp = new CtpBlock { qnh = new QnhValue { type = lType, value = lValue } },
+            rctp = new CtpBlock { qnh = new QnhValue { type = rType, value = rValue } },
+        };
+        var alike = Sides("InHg", 30.13, "InHg", 30.13);
+        var differ = Sides("InHg", 30.13, "InHg", 29.92);
+        var hpaDiffer = Sides("Hpa", 1020, "Hpa", 1013);
+
+        Assert.Equal("Altimeter 30.13 inches, both sides", StdResult(new[] { 1, 2 }, false, alike));
+        Assert.Equal("Captain altimeter 30.13 inches, first officer 29.92 inches", StdResult(new[] { 1, 2 }, false, differ));
+        Assert.Equal("Captain altimeter 30.13 inches, first officer 29.92 inches", StdResult(new[] { 2, 1 }, false, differ));
+        Assert.Equal("First officer altimeter 29.92 inches", StdResult(new[] { 2 }, false, differ));
+
+        Assert.Equal("Altimeter 30.13 inches, both sides", UnitResult(new[] { 1, 2 }, wantHpa: false, alike));
+        Assert.Equal("Captain altimeter 30.13 inches, first officer 29.92 inches", UnitResult(new[] { 1, 2 }, false, differ));
+        Assert.Equal("Captain altimeter 1020 hectopascals, first officer 1013 hectopascals", UnitResult(new[] { 1, 2 }, true, hpaDiffer));
+        Assert.Equal("Captain altimeter 30.13 inches", UnitResult(new[] { 1 }, false, differ));
+    });
+
     [Theory]
     [InlineData(0, true, 0)]
     [InlineData(41000, true, 41000)]
