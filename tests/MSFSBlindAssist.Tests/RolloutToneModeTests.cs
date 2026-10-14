@@ -106,4 +106,92 @@ public class RolloutToneModeTests
         Assert.Equal(RolloutToneMode.DriftCorrection,
             RolloutExitGate.SelectToneMode(20.0, 900.0, 1.5, 13.6, RolloutExitGate.TurnWindowFeet));
     }
+
+    // ---- With the landing assist's centerline cue engaged (KSEA 16R, 2026-10-15) ----
+    //
+    // An A300 autoland held the centerline to 96 kt, then yawed right at 2-3°/s and left the
+    // pavement at 70 kt, 1,303 ft short of exit Q, with no cue: the tone was Silent above 50 kt.
+    // While the cue is engaged, exit guidance yields its silent band and the drift band beyond
+    // the exit's own turn window to it (Centerline), and keeps the tone for the exit itself.
+    // KSEA 16R's exits lie to the left of the runway heading: relative bearing -16.2°.
+
+    private static RolloutToneMode WithCue(double gs, double dist, double hdg = 0.0, double exitRel = -16.2,
+        double window = 294.0, bool tooFast = false)
+        => RolloutExitGate.SelectToneMode(gs, dist, hdg, exitRel, window, tooFast, centerlineCueEngaged: true);
+
+    // The KSEA frame: 86 kt, 1,920 ft from Q, 3.5° right of the runway heading, away from Q.
+    [Fact]
+    public void WithCue_TheKseaVeer_IsCenterline()
+    {
+        Assert.Equal(RolloutToneMode.Centerline, WithCue(86.0, 1920.0, 3.5));
+    }
+
+    // Above 50 kt exit guidance has no tone of its own, so the cue keeps it even near the exit.
+    [Fact]
+    public void WithCue_AboveFiftyKnots_NearTheExit_IsCenterline()
+    {
+        Assert.Equal(RolloutToneMode.Centerline, WithCue(55.0, 200.0));
+    }
+
+    // ...except for a turn toward the exit inside the exit's own window: never fight it.
+    [Fact]
+    public void WithCue_AboveFiftyKnots_TurningTowardTheExitInsideItsWindow_IsSilent()
+    {
+        Assert.Equal(RolloutToneMode.Silent, WithCue(55.0, 250.0, -3.0));
+    }
+
+    [Fact]
+    public void WithCue_AboveFiftyKnots_TurningTowardTheExitBeyondItsWindow_IsCenterline()
+    {
+        Assert.Equal(RolloutToneMode.Centerline, WithCue(55.0, 600.0, -3.0));
+    }
+
+    // Too fast for the exit: there is no turn to protect, so the cue holds the centerline.
+    [Fact]
+    public void WithCue_TooFastForTheExit_IsCenterlineEverywhere()
+    {
+        Assert.Equal(RolloutToneMode.Centerline, WithCue(45.0, 200.0, -3.0, tooFast: true));
+        Assert.Equal(RolloutToneMode.Centerline, WithCue(70.0, 250.0, -3.0, tooFast: true));
+    }
+
+    // At or below 50 kt, the exit zone keeps today's tones.
+    [Fact]
+    public void WithCue_AtOrBelowFiftyKnots_TheExitZoneIsUnchanged()
+    {
+        Assert.Equal(RolloutToneMode.ExitBearing, WithCue(50.0, 300.0));
+        Assert.Equal(RolloutToneMode.Silent, WithCue(40.0, 900.0, -3.0, window: 1000.0));
+        Assert.Equal(RolloutToneMode.DriftCorrection, WithCue(40.0, 900.0, 3.0, window: 1000.0));
+    }
+
+    [Fact]
+    public void WithCue_AtOrBelowFiftyKnots_BeyondTheWindow_IsCenterline()
+    {
+        Assert.Equal(RolloutToneMode.Centerline, WithCue(40.0, 1200.0, 3.0, window: 1000.0));
+    }
+
+    // Without the cue, Centerline is never selected: every case above this section is unchanged.
+    [Fact]
+    public void WithoutTheCue_CenterlineNeverAppears()
+    {
+        foreach (double gs in new[] { 10.0, 50.0, 90.0, 140.0 })
+            foreach (double dist in new[] { 100.0, 600.0, 3000.0 })
+                foreach (bool tooFast in new[] { false, true })
+                    Assert.NotEqual(RolloutToneMode.Centerline,
+                        RolloutExitGate.SelectToneMode(gs, dist, 5.0, -16.2, 294.0, tooFast));
+    }
+
+    // Exit guidance owns the tone only in a rollout with an exit, outside its Centerline mode: the
+    // cue plays with no exit guidance, in the runway-end countdown and in Centerline.
+    [Theory]
+    [InlineData(false, false, RolloutToneMode.Silent, false)]
+    [InlineData(true, true, RolloutToneMode.ExitBearing, false)]
+    [InlineData(true, false, RolloutToneMode.Centerline, false)]
+    [InlineData(true, false, RolloutToneMode.Silent, true)]
+    [InlineData(true, false, RolloutToneMode.DriftCorrection, true)]
+    [InlineData(true, false, RolloutToneMode.ExitBearing, true)]
+    public void ExitGuidanceOwnsTheTone_OnlyInAnExitRolloutOutsideCenterline(
+        bool inLandingRollout, bool noExitMode, RolloutToneMode lastToneMode, bool expected)
+    {
+        Assert.Equal(expected, RolloutExitGate.ExitGuidanceOwnsTone(inLandingRollout, noExitMode, lastToneMode));
+    }
 }
