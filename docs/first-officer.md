@@ -784,3 +784,17 @@ stopped", and `ChecklistManager` treats NaN as "skip both auto-tick and revert".
 
 Pinned by `EngineStartSelectorLatchTests`; `IFly737ProfileStructureTests` names the two
 latched ids explicitly so a third cannot appear silently.
+
+## Opening the window in flight (2026-10-14)
+
+When MSFSBA or the First Officer window starts with the aircraft already flying, or a flight is
+loaded in the air, every checklist from power-up through After Takeoff (action lists and
+read-backs, on all eight profiles) is marked complete and latched, as a finished flow latches it,
+and the First Officer says "In flight: checklists through After Takeoff marked complete." once,
+queued. Descent onwards stay open (owner: "Through After Takeoff"). A takeoff the window watched
+changes nothing; Reset Section / Reset All still work. `InFlightStartDetector` decides (flying at
+first sight, or 500 ft and 50 kt within 5 s of leaving the ground), `FoDepartureGroups` holds the
+departure and arrival group ids, `FirstOfficerForm` wires them (FO-22).
+
+In-sim check (owner runs): load a flight in cruise and open the First Officer window; hear the
+announcement, find the lists through After Takeoff complete and Descent and later open.

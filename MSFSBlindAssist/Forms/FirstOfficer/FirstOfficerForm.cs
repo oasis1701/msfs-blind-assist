@@ -65,6 +65,14 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     private double _latestEng1N2;
     private double _latestEng2N2;
 
+    // In-flight start (owner, 2026-10-14): the window first seeing the aircraft flying without a
+    // takeoff it watched marks the departure checklists complete (FoDepartureGroups). The detector
+    // runs on the SimConnect thread; the marking runs on the UI timer.
+    private readonly InFlightStartDetector _inFlightStart = new();
+    private volatile bool _inFlightCatchUpPending;
+    // _latestIas starts at 0 for the auto manager; the detector needs to know it was never read.
+    private volatile bool _iasReceived;
+
     // ------------------------------------------------------------------
     // UI — core
     // ------------------------------------------------------------------
@@ -158,6 +166,14 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         _autoDetectTimer = new System.Windows.Forms.Timer { Interval = 1000 };
         _autoDetectTimer.Tick += (_, _) =>
         {
+            if (_inFlightCatchUpPending)
+            {
+                _inFlightCatchUpPending = false;
+                // A background change the pilot did not trigger: spoken once, queued (CORE-7).
+                if (FoDepartureGroups.MarkComplete(_checklistMgr) > 0)
+                    _announcer.Announce(FoDepartureGroups.Announcement);
+            }
+
             _checklistMgr.EvaluateAutoDetection();
             if (_simConnect.IsConnected)
             {
@@ -298,6 +314,9 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         // Forward to both monitors (called on SimConnect message thread)
         _flightPhaseMon.Update(pos.Altitude, pos.VerticalSpeedFPM, pos.SimOnGround >= 0.5);
         _foAutoMgr.Update(pos.Altitude, pos.VerticalSpeedFPM, _latestAgl, _latestIas, pos.SimOnGround >= 0.5);
+        if (_inFlightStart.Update(pos.SimOnGround >= 0.5, _latestAgl,
+                _iasReceived ? _latestIas : double.NaN, DateTime.UtcNow))
+            _inFlightCatchUpPending = true;
     }
 
     private void OnSimVarUpdated(object? sender, SimConnect.SimVarUpdateEventArgs e)
@@ -305,7 +324,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         switch (e.VarName)
         {
             case "FO_ALTITUDE_AGL":  _latestAgl = e.Value; break;
-            case "FO_AIRSPEED_IAS":  _latestIas = e.Value; break;
+            case "FO_AIRSPEED_IAS":  _latestIas = e.Value; _iasReceived = true; break;
             case "FO_ENG1_N2":       _latestEng1N2 = e.Value; _stateEval.SetEngineN2(_latestEng1N2, _latestEng2N2); break;
             case "FO_ENG2_N2":       _latestEng2N2 = e.Value; _stateEval.SetEngineN2(_latestEng1N2, _latestEng2N2); break;
             case "FO_ENG3_N2":
