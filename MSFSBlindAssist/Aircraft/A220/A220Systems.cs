@@ -430,4 +430,309 @@ internal static partial class A220Systems
             Current = new List<CasLine>();
         }
     }
+
+    // ---- Colours: the `he` map in afdx/index.ts ([A220-38] evidence table, docs/a220.md) ----
+
+    internal static string? ColourWord(int? colour) => colour switch
+    {
+        0 => "red", 1 => "amber", 2 => "white", 3 => "green", 4 => "cyan", 5 => "gray", _ => null
+    };
+
+    /// <summary>Only an alerting colour is spoken; green and white are the normal states.</summary>
+    private static string AlertSuffix(int? colour) => colour is 0 or 1 ? $" ({ColourWord(colour)})" : "";
+
+    // ---- Gear (EICAS/Components/Gear.tsx: icon 0 transit, 1 UP, 2 DN, null "--") ----------
+
+    internal enum GearPhase { Unknown, Up, Down, Transit, Disagree }
+
+    internal static string IconWord(int? icon) => icon switch
+    {
+        2 => "down", 1 => "up", 0 => "in transit", _ => "unknown"
+    };
+
+    internal static GearPhase Phase(GearBlock? g)
+    {
+        if (g == null) return GearPhase.Unknown;
+        int?[] icons = { g.nose_icon, g.left_icon, g.right_icon };
+        if (icons.Any(i => i == null)) return GearPhase.Unknown;
+        if (icons.All(i => i == 2)) return GearPhase.Down;
+        if (icons.All(i => i == 1)) return GearPhase.Up;
+        if (icons.Any(i => i == 0)) return GearPhase.Transit;
+        return GearPhase.Disagree;
+    }
+
+    private static (string Name, int? Icon, int? Colour)[] Legs(GearBlock g) => new[]
+    {
+        ("nose", g.nose_icon, g.nose_color), ("left", g.left_icon, g.left_color), ("right", g.right_icon, g.right_color)
+    };
+
+    /// <summary>"down and locked" / "up" / per-gear detail with any red or amber box named.</summary>
+    internal static string FormatGear(GearBlock? g)
+    {
+        if (g == null) return NotAvailable;
+        var legs = Legs(g);
+        var phase = Phase(g);
+        bool alerting = legs.Any(l => l.Colour is 0 or 1);
+        if (phase == GearPhase.Down && legs.All(l => l.Colour == 3)) return "down and locked";
+        if (phase == GearPhase.Up && !alerting) return "up";
+        return string.Join(", ", legs.Select(l => $"{l.Name} {IconWord(l.Icon)}{AlertSuffix(l.Colour)}"));
+    }
+
+    /// <summary>The STATUS synoptic's BRAKE TEMP numbers, left outboard to right outboard
+    /// (unitless, toFixed(0) as the synoptic prints them), amber/red named.</summary>
+    internal static string FormatBrakeTemps(GearBlock? g)
+    {
+        if (g == null) return NotAvailable;
+        var brakes = new (double? Temp, int? Colour)[]
+        {
+            (g.left_outb_brake_temp, g.left_outb_brake_color), (g.left_inbd_brake_temp, g.left_inbd_brake_color),
+            (g.right_inbd_brake_temp, g.right_inbd_brake_color), (g.right_outb_brake_temp, g.right_outb_brake_color)
+        };
+        return string.Join(", ", brakes.Select(b => b.Temp is { } t ? Inv($"{t:0}") + AlertSuffix(b.Colour) : "--"));
+    }
+
+    /// <summary>The Shift+G readout: lever, gear, brakes.</summary>
+    internal static string FormatGearReadout(double leverPct, GearBlock? g)
+    {
+        string lever = leverPct >= 0.5 ? "Gear lever down" : "Gear lever up";
+        if (g == null) return $"{lever}. Gear position not available — display link not connected.";
+        return $"{lever}. Gear {FormatGear(g)}. Brake temperatures {FormatBrakeTemps(g)}.";
+    }
+
+    /// <summary>Gear call-outs on a change of phase. Baseline-first, and an Unknown phase
+    /// (unpowered, "--") is a baseline too: powering up is not a gear movement.</summary>
+    internal sealed class GearMonitor
+    {
+        private GearPhase? _prev;
+
+        public string? Observe(GearBlock? g)
+        {
+            if (g == null) return null;
+            var phase = Phase(g);
+            var prev = _prev;
+            _prev = phase;
+            if (prev == null || prev == GearPhase.Unknown || prev == phase || phase == GearPhase.Unknown) return null;
+            string detail = FormatGear(g);
+            return phase switch
+            {
+                GearPhase.Down => detail == "down and locked" ? "Gear down and locked" : $"Gear down: {detail}",
+                GearPhase.Up => "Gear up",
+                GearPhase.Transit => "Gear in transit",
+                GearPhase.Disagree => $"Gear disagree: {detail}",
+                _ => null
+            };
+        }
+
+        public void Reset() => _prev = null;
+    }
+
+    // ---- Doors (Synoptic/Pages/Door.tsx: the value IS a colour index) ---------------------
+
+    internal readonly record struct DoorInfo(string Id, string Name, bool HasSlide);
+
+    /// <summary>Every door the DOOR synoptic draws, in its order; pax and service doors carry
+    /// a slide (ARMED/DISARMED), the overwing exits, cargo and equipment bays do not.</summary>
+    internal static readonly DoorInfo[] Doors =
+    {
+        new("fwd_pax", "Forward passenger door", true),
+        new("fwd_srv", "Forward service door", true),
+        new("l_owee", "Left overwing exit", false),
+        new("r_owee", "Right overwing exit", false),
+        new("aft_pax", "Aft passenger door", true),
+        new("aft_srv", "Aft service door", true),
+        new("fwd_cargo", "Forward cargo door", false),
+        new("aft_cargo", "Aft cargo door", false),
+        new("fwd_equip", "Forward equipment bay door", false),
+        new("mid_equip", "Mid equipment bay door", false),
+        new("aft_equip", "Aft equipment bay door", false),
+    };
+
+    internal static int? DoorValue(DoorsBlock d, string id) => id switch
+    {
+        "fwd_pax" => d.fwd_pax, "fwd_srv" => d.fwd_srv, "aft_pax" => d.aft_pax, "aft_srv" => d.aft_srv,
+        "l_owee" => d.l_owee, "r_owee" => d.r_owee, "fwd_cargo" => d.fwd_cargo, "aft_cargo" => d.aft_cargo,
+        "fwd_equip" => d.fwd_equip, "mid_equip" => d.mid_equip, "aft_equip" => d.aft_equip,
+        _ => null
+    };
+
+    internal static bool? DoorArmed(DoorsBlock d, string id) => id switch
+    {
+        "fwd_pax" => d.fwd_pax_armed, "fwd_srv" => d.fwd_srv_armed,
+        "aft_pax" => d.aft_pax_armed, "aft_srv" => d.aft_srv_armed,
+        _ => null
+    };
+
+    /// <summary>3 = closed (the synoptic hides the label: the normal state); 1 = open (the only
+    /// value that FILLS the symbol); 0 and 2 the bundle draws as red/white outlines without
+    /// naming them, so they are spoken by colour (Task 14 records what they mean live).</summary>
+    internal static string DoorStateWord(int? v) => v switch
+    {
+        3 => "closed", 1 => "open", 0 => "not closed (red)", 2 => "not closed (white)", _ => "unknown"
+    };
+
+    internal static string FormatDoor(DoorsBlock? d, string id)
+    {
+        if (d == null) return NotAvailable;
+        var info = Doors.First(x => x.Id == id);
+        int? v = DoorValue(d, id);
+        string text = DoorStateWord(v);
+        // The synoptic hides ARMED/DISARMED at value 2, so it is not claimed there either.
+        if (info.HasSlide && v != 2 && DoorArmed(d, id) is { } armed) text += armed ? ", armed" : ", disarmed";
+        return text;
+    }
+
+    internal static string FormatDoorsSummary(DoorsBlock? d)
+    {
+        if (d == null) return NotAvailable;
+        var notClosed = Doors.Where(x => DoorValue(d, x.Id) != 3).Select(x => x.Name.ToLowerInvariant()).ToList();
+        return notClosed.Count == 0 ? "all closed" : Inv($"{notClosed.Count} not closed: {string.Join(", ", notClosed)}");
+    }
+
+    /// <summary>Door and slide changes, baseline-first; a door whose value becomes unknown is
+    /// not spoken (the next known value is diffed against the last known one).</summary>
+    internal sealed class DoorMonitor
+    {
+        private Dictionary<string, (int? Value, bool? Armed)>? _prev;
+
+        public List<string> Observe(DoorsBlock? d)
+        {
+            var said = new List<string>();
+            if (d == null) return said;
+            var now = Doors.ToDictionary(x => x.Id, x => (DoorValue(d, x.Id), DoorArmed(d, x.Id)));
+            var prev = _prev;
+            if (prev != null)
+                foreach (var door in Doors)
+                {
+                    var (pv, pa) = prev[door.Id];
+                    var (nv, na) = now[door.Id];
+                    if (nv == null) { now[door.Id] = (pv, na ?? pa); continue; }
+                    if (pv != null && nv != pv) said.Add($"{door.Name} {DoorStateWord(nv)}");
+                    if (door.HasSlide && pa != null && na != null && na != pa)
+                        said.Add($"{door.Name} {(na.Value ? "armed" : "disarmed")}");
+                }
+            _prev = now;
+            return said;
+        }
+
+        public void Reset() => _prev = null;
+    }
+
+    // ---- Engines (EICAS Engines: START box; IGN hidden 0, white 1, green 2) ---------------
+
+    private static bool? Start(EngineBlock e, int n) => n == 1 ? e.eng1_start : e.eng2_start;
+    private static int? Ign(EngineBlock e, int n) => n == 1 ? e.eng1_ign : e.eng2_ign;
+    private static double? N1(EngineBlock e, int n) => n == 1 ? e.eng1_n1 : e.eng2_n1;
+    private static double? N2(EngineBlock e, int n) => n == 1 ? e.eng1_n2 : e.eng2_n2;
+
+    /// <summary>"Engine n" panel row: starting (with ignition and N2) / running (with N1) /
+    /// spooling (N2) / off. A start is complete at N2 ~64 (live 2026-10-12), so 50 % N2
+    /// without the START flag reads as running.</summary>
+    internal static string EngineState(EngineBlock? e, int n)
+    {
+        if (e == null) return NotAvailable;
+        double? n2 = N2(e, n);
+        if (Start(e, n) == true)
+        {
+            string s = "starting";
+            if (Ign(e, n) == 2) s += ", ignition on";
+            if (n2 is { } v) s += Inv($", N2 {v:0} percent");
+            return s;
+        }
+        if (n2 is { } r && r >= 50) return N1(e, n) is { } a ? Inv($"running, N1 {a:0.0} percent") : "running";
+        if (n2 is { } sp && sp >= 5) return Inv($"N2 {sp:0} percent");
+        return "off";
+    }
+
+    /// <summary>Three calls per start: "Engine n starting" (START box on), "Engine n
+    /// ignition" (IGN turns green), "Engine n start complete" (START box off at N2 50+), or
+    /// "... start ended, N2 x percent" for a start that stopped short. Baseline-first.</summary>
+    internal sealed class EngineStartTracker
+    {
+        private readonly bool?[] _start = new bool?[3];
+        private readonly int?[] _ign = new int?[3];
+        private bool _baselined;
+
+        public List<string> Observe(EngineBlock? e)
+        {
+            var said = new List<string>();
+            if (e == null) return said;
+            for (int n = 1; n <= 2; n++)
+            {
+                bool start = Start(e, n) == true;
+                int? ign = Ign(e, n);
+                bool? ps = _start[n];
+                int? pi = _ign[n];
+                _start[n] = start;
+                _ign[n] = ign;
+                if (!_baselined) continue;
+                if (ps == false && start) said.Add($"Engine {n} starting");
+                if (start && pi != 2 && ign == 2) said.Add($"Engine {n} ignition");
+                if (ps == true && !start)
+                    said.Add(N2(e, n) is { } v && v < 50
+                        ? Inv($"Engine {n} start ended, N2 {v:0} percent")
+                        : $"Engine {n} start complete");
+            }
+            _baselined = true;
+            return said;
+        }
+
+        public void Reset()
+        {
+            Array.Clear(_start);
+            Array.Clear(_ign);
+            _baselined = false;
+        }
+    }
+
+    // ---- IRS (FMS POS IRS page `Sx`; PFD Flags ATT/HDG ALIGNING, DO NOT TAXI) -------------
+
+    internal enum IrsPhase { Unknown, Aligning, Aligned }
+
+    internal readonly record struct IrsStatus(IrsPhase Phase, double? MinutesToNav, bool DoNotTaxi);
+
+    /// <summary>Aligning while any IRS reports mode 0-2 (POWER UP / ATTITUDE) or the PFD shows
+    /// ATT/HDG ALIGNING; aligned only when every reporting IRS is in NAVIGATION (3). With no
+    /// FMS position data and no PFD flag the state is Unknown — "align false" alone also means
+    /// unpowered, so it never reads as aligned. (Task 14 confirms the source from a cold start.)</summary>
+    internal static IrsStatus Irs(PfdBlock? pfd, FmsPositionBlock? pos)
+    {
+        bool doNotTaxi = pfd?.stationary_align == true;
+        var units = new[] { pos?.irs_1?.irs, pos?.irs_2?.irs, pos?.irs_3?.irs }
+            .Where(u => u?.mode != null).Select(u => u!).ToList();
+        var aligning = units.Where(u => u.mode is >= 0 and <= 2).ToList();
+        if (aligning.Count > 0)
+            return new IrsStatus(IrsPhase.Aligning, aligning.Select(u => u.time_to_align).Max(), doNotTaxi);
+        if (pfd?.align == true) return new IrsStatus(IrsPhase.Aligning, null, doNotTaxi);
+        if (units.Count > 0 && units.All(u => u.mode == 3)) return new IrsStatus(IrsPhase.Aligned, null, false);
+        return new IrsStatus(IrsPhase.Unknown, null, doNotTaxi);
+    }
+
+    internal static string FormatIrs(IrsStatus s) => s.Phase switch
+    {
+        IrsPhase.Aligned => "aligned",
+        IrsPhase.Aligning => "aligning"
+            + (s.MinutesToNav is { } m ? Inv($", {m:0.0} minutes to navigation") : "")
+            + (s.DoNotTaxi ? ", do not taxi" : ""),
+        _ => NotAvailable
+    };
+
+    /// <summary>"IRS aligning" on entering alignment, "IRS aligned" when it completes.
+    /// Baseline-first; a poll with neither block (haveData false) changes nothing.</summary>
+    internal sealed class IrsMonitor
+    {
+        private IrsPhase? _prev;
+
+        public string? Observe(IrsStatus s, bool haveData)
+        {
+            if (!haveData) return null;
+            var prev = _prev;
+            _prev = s.Phase;
+            if (prev == null || prev == s.Phase) return null;
+            if (s.Phase == IrsPhase.Aligning) return "IRS aligning";
+            if (s.Phase == IrsPhase.Aligned && prev == IrsPhase.Aligning) return "IRS aligned";
+            return null;
+        }
+
+        public void Reset() => _prev = null;
+    }
 }
