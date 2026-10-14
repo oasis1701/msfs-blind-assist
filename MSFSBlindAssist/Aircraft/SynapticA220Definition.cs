@@ -272,6 +272,21 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
                 AnnounceModeResult(simConnect, announcer, "A22X_FG_LNAV", "NAV mode engaged", "NAV mode off");
                 return true;
 
+            // ---- FCU push/pull keys (input mode, Shift/Ctrl+1..4) -------------------
+            // Each is the A220 control that does that key's job (A220FcpKeys). No
+            // ExitInputHotkeyMode(): input mode is one-shot and HotkeyManager ends it after
+            // the key (these open no window).
+            case HotkeyAction.FCUSpeedPush:
+            case HotkeyAction.FCUSpeedPull:
+            case HotkeyAction.FCUHeadingPush:
+            case HotkeyAction.FCUHeadingPull:
+            case HotkeyAction.FCUAltitudePush:
+            case HotkeyAction.FCUAltitudePull:
+            case HotkeyAction.FCUVSPush:
+            case HotkeyAction.FCUVSPull:
+                RunFcpKey(A220FcpKeys.For(action)!.Value, simConnect, announcer);
+                return true;
+
             // ---- FCP / mode read hotkeys ---------------------------------------
             // Values prefer the aircraft's OWN 30 Hz FCP CommBus block over the stock
             // SimVars (the WASM only mirrors those approximately — live 2026-08-10 the
@@ -608,5 +623,76 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
             }
             catch { }
         });
+    }
+
+    /// <summary>
+    /// One FCU push/pull key on the A220 FCP (A220FcpKeys). Mode buttons TOGGLE, so an
+    /// engaged target is never pressed ("FLC already engaged."); every press is followed by
+    /// speech — mode presses through AnnounceModeResult ([A220-6]), the speed ring and the
+    /// heading sync through their own deferred read-back.
+    /// </summary>
+    internal void RunFcpKey(A220FcpKeys.Act act, SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        string? modeKey = A220FcpKeys.ModeKey(act);
+        double? state = modeKey == null ? null : Cached(simConnect, modeKey, -1);
+        bool speed = act is A220FcpKeys.Act.SpeedFms or A220FcpKeys.Act.SpeedManual;
+        if (speed && IsFmsSpeed(simConnect) == (act == A220FcpKeys.Act.SpeedFms)
+            || !speed && !A220FcpKeys.ShouldPress(act, state))
+        {
+            announcer.AnnounceImmediate(A220FcpKeys.AlreadyText(act));
+            return;
+        }
+        switch (act)
+        {
+            case A220FcpKeys.Act.SpeedFms:
+            case A220FcpKeys.Act.SpeedManual:
+            {
+                bool wantFms = act == A220FcpKeys.Act.SpeedFms;
+                WriteLVar(simConnect, "A22X FG Speed Mode", A220FcpKeys.SpeedRingValue(act));
+                _ = System.Threading.Tasks.Task.Run(async () =>
+                {
+                    try
+                    {
+                        await System.Threading.Tasks.Task.Delay(1300);
+                        var fcp = LatestFcp;
+                        bool? isFms = fcp?.spd_sel_ias != null || Cached(simConnect, "A22X_FG_SPEED_MODE", -1) >= 0
+                            ? IsFmsSpeed(simConnect) : null;
+                        announcer.AnnounceImmediate(A220FcpKeys.SpeedResult(
+                            wantFms, isFms, fcp?.spd_sel_ias, fcp?.spd_sel_mach, IsMachSpeed(simConnect)));
+                    }
+                    catch { }
+                });
+                return;
+            }
+            case A220FcpKeys.Act.HeadingSync:
+                FireKeyEvent(simConnect, "HEADING_BUG_SET");
+                _ = System.Threading.Tasks.Task.Run(async () =>
+                {
+                    try
+                    {
+                        await System.Threading.Tasks.Task.Delay(800);
+                        announcer.AnnounceImmediate(A220FcpKeys.HeadingSyncResult(LatestFcp?.hdg_sel));
+                    }
+                    catch { }
+                });
+                return;
+            case A220FcpKeys.Act.HeadingMode:
+                FireKeyEvent(simConnect, "AP_HDG_HOLD");
+                break;
+            case A220FcpKeys.Act.Vnav:
+                PulseLVar(simConnect, "A22X FG VNAV Toggle");
+                break;
+            case A220FcpKeys.Act.Flc:
+                FireKeyEvent(simConnect, "FLIGHT_LEVEL_CHANGE");
+                break;
+            case A220FcpKeys.Act.LevelOff:
+                FireKeyEvent(simConnect, "AP_ALT_HOLD");
+                break;
+            case A220FcpKeys.Act.VsMode:
+                FireKeyEvent(simConnect, "AP_VS_HOLD");
+                break;
+        }
+        string name = A220FcpKeys.Name(act);
+        AnnounceModeResult(simConnect, announcer, modeKey!, $"{name} engaged", $"{name} off");
     }
 }
