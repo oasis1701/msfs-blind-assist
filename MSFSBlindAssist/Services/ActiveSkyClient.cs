@@ -724,7 +724,7 @@ public class ActiveSkyClient
             if (t.Contains('.')) return false;
             t = t.Replace(',', '.');
         }
-        if (t.Contains('−')) t = t.Replace('−', '-');
+        if (t.Contains('\x2212')) t = t.Replace('\x2212', '-');   // U+2212 MINUS SIGN
         return double.TryParse(t, System.Globalization.NumberStyles.Float,
             System.Globalization.CultureInfo.InvariantCulture, out value);
     }

@@ -9,15 +9,20 @@ namespace MSFSBlindAssist.Tests;
 
 public class ActiveSkyNumberParsingTests
 {
+    // Spelled as escapes: a screen reader cannot tell these from "-" and " ".
+    private const string Minus = "\U00002212";   // U+2212 MINUS SIGN, written by .NET 5+ for sv-SE
+    private const string Nbsp = "\U000000A0";    // no-break space, the sv-SE group separator
+    private const string Nnbsp = "\U0000202F";   // narrow no-break space, the fr-FR group separator
+
     [Theory]
     [InlineData("1014.999", 1014.999)]
     [InlineData("1014,999", 1014.999)]
     [InlineData("7,992481", 7.992481)]
     [InlineData("-12,5", -12.5)]
-    [InlineData("−12,5", -12.5)]        // U+2212, the .NET 5+ sv-SE minus sign
+    [InlineData(Minus + "12,5", -12.5)]
     [InlineData("8", 8.0)]
     [InlineData("6449", 6449.0)]
-    [InlineData(" 7,5 ", 7.5)]    // surrounding no-break spaces are trimmed
+    [InlineData(Nbsp + "7,5" + Nnbsp, 7.5)]   // surrounding spaces are trimmed
     public void TryParseNumber_reads_invariant_and_comma_decimal_strings(string raw, double expected)
     {
         Assert.True(ActiveSkyClient.TryParseNumber(raw, out double d));
@@ -32,8 +37,8 @@ public class ActiveSkyNumberParsingTests
     [InlineData("1.014,999")]
     [InlineData("1,014.999")]
     [InlineData("1 014,999")]
-    [InlineData("1 014,999")]           // sv-SE group separator (no-break space)
-    [InlineData("1 014,999")]           // fr-FR group separator (narrow no-break space)
+    [InlineData("1" + Nbsp + "014,999")]
+    [InlineData("1" + Nnbsp + "014,999")]
     [InlineData("12 5")]
     public void TryParseNumber_refuses_non_numbers_and_grouping(string? raw)
         => Assert.False(ActiveSkyClient.TryParseNumber(raw, out _));
@@ -72,10 +77,9 @@ public class ActiveSkyNumberParsingTests
     {
         InSwedish(() =>
         {
-            // "−" is a JSON escape: the parser sees the U+2212 minus sign.
-            const string json = """
+            string json = $$"""
 { "WeatherData": [
-  { "Altitude": "34000", "WindDirection": "286,0", "WindSpeed": "20,0", "Temperature": "−37,1" },
+  { "Altitude": "34000", "WindDirection": "286,0", "WindSpeed": "20,0", "Temperature": "{{Minus}}37,1" },
   { "Altitude": "18000", "WindDirection": "316,0", "WindSpeed": "19,0", "Temperature": "-7,9" } ] }
 """;
             var levels = ActiveSkyClient.ParseAtmosphereJson(json);
@@ -93,10 +97,9 @@ public class ActiveSkyNumberParsingTests
     {
         InSwedish(() =>
         {
-            // "&#x2212;" is the U+2212 minus sign.
-            const string xml = "<Weather><WindLayers>"
+            string xml = "<Weather><WindLayers>"
                 + "<SurfaceLayer WindDirection=\"208\" WindSpeed=\"4\" Turbulence=\"1\" Temp=\"7,5\" Gust=\"14\" />"
-                + "<Layer AltFeet=\"34000\" WindDirection=\"286\" WindSpeed=\"20\" Turbulence=\"0\" Temp=\"&#x2212;37,08\" />"
+                + "<Layer AltFeet=\"34000\" WindDirection=\"286\" WindSpeed=\"20\" Turbulence=\"0\" Temp=\"" + Minus + "37,08\" />"
                 + "</WindLayers><Clouds><Cloud CloudBaseMeters=\"3974,5\" CloudTopMeters=\"7530\" Coverage=\"4\" /></Clouds></Weather>";
             var p = ActiveSkyClient.ParseWeatherInfoXml(xml);
             Assert.NotNull(p);
