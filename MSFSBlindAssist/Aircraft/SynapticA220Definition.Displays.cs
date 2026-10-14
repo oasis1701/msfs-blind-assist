@@ -116,12 +116,15 @@ public partial class SynapticA220Definition
         finally { Interlocked.Exchange(ref _displayPollBusy, 0); }
     }
 
-    private void ProcessDisplaysSnapshot(string raw)
+    internal void ProcessDisplaysSnapshot(string raw)
     {
         DisplaysSnap? snap;
         try { snap = System.Text.Json.JsonSerializer.Deserialize<DisplaysSnap>(raw); }
         catch { return; }
         if (snap == null || !snap.ok) return;
+
+        // The CommBus systems blocks, parsed on their own (see DisplaysSnap.sys).
+        var sys = SystemsFrom(snap.sys);
 
         // ---- AFDX CommBus blocks (FD state/commands, FCP selections, trim) --
         _afdxAutoflight = snap.af;
@@ -166,24 +169,53 @@ public partial class SynapticA220Definition
         if (vSpeeds.Count > 0 || _vSpeeds.Count > 0) _vSpeeds = vSpeeds;
 
         // ---- CAS -----------------------------------------------------------
-        var cas = new List<A220DisplayParsing.DisplayToken>();
-        foreach (var t in snap.cas ?? new())
+        // The CAS Data store is the truth ([A220-36]); the scrape diff below speaks only while
+        // the store is missing, and drops its baseline whenever the store takes over, so a
+        // later fallback re-baselines silently instead of diffing against stale text.
+        if (sys?.cas != null)
         {
-            string text = (t.t ?? "").Trim();
-            if (text.Length == 0) continue;
-            cas.Add(new A220DisplayParsing.DisplayToken(text, t.c ?? "white"));
+            _prevCas = null;
+            _casSignature = "";
         }
-        string casSig = A220DisplayParsing.Signature(cas);
-        if (_prevCas == null)
+        else
         {
-            _prevCas = cas; _casSignature = casSig;    // silent baseline
+            var cas = new List<A220DisplayParsing.DisplayToken>();
+            foreach (var t in snap.cas ?? new())
+            {
+                string text = (t.t ?? "").Trim();
+                if (text.Length == 0) continue;
+                cas.Add(new A220DisplayParsing.DisplayToken(text, t.c ?? "white"));
+            }
+            string casSig = A220DisplayParsing.Signature(cas);
+            if (_prevCas == null)
+            {
+                _prevCas = cas; _casSignature = casSig;    // silent baseline
+            }
+            else if (casSig != _casSignature)
+            {
+                var ann = A220DisplayParsing.DiffCas(_prevCas, cas);
+                _prevCas = cas; _casSignature = casSig;
+                FilterScrapedCas(ann);
+                Speak(ann);
+            }
         }
-        else if (casSig != _casSignature)
+
+        // ---- Systems over the CommBus (Systems partial) --------------------
+        ProcessSystems(sys);
+    }
+
+    /// <summary>The scrape fallback keeps the store's rules: status (memo) lines are never
+    /// spoken, and each severity answers to its own Ctrl+M row.</summary>
+    private static void FilterScrapedCas(A220DisplayParsing.Announcements ann)
+    {
+        ann.Queued.RemoveAll(m => m.StartsWith("Memo: ", StringComparison.Ordinal));
+        if (Muted(A220MonitorRows.CasWarningsKey))
         {
-            var ann = A220DisplayParsing.DiffCas(_prevCas, cas);
-            _prevCas = cas; _casSignature = casSig;
-            Speak(ann);
+            ann.Immediate.Clear();
+            ann.Queued.RemoveAll(m => m.EndsWith(" cleared", StringComparison.Ordinal));
         }
+        if (Muted(A220MonitorRows.CasAdvisoriesKey))
+            ann.Queued.RemoveAll(m => m.StartsWith("Advisory: ", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -301,6 +333,9 @@ public partial class SynapticA220Definition
         public A220Afdx.AutoflightBlock? af { get; set; }
         public A220Afdx.FcpBlock? fcp { get; set; }
         public A220Afdx.FlightControlBlock? fc { get; set; }
+        // A raw element, parsed on its own (SystemsFrom): one store field of an unexpected type
+        // must not make the whole snapshot's Deserialize throw and drop FMA, CAS, FD and trim.
+        public System.Text.Json.JsonElement? sys { get; set; }
         public A220Afdx.TapDiag? diag { get; set; }
     }
     private sealed class FmaTok { public string? t { get; set; } public double x { get; set; } public string? c { get; set; } }

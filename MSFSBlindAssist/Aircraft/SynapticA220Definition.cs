@@ -106,7 +106,7 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
         ["Pedestal"] = new List<string> { "Engines and Ignition", "Trim" },
         ["Main Panel"] = new List<string> { "Gear and Brakes", "Flaps and Speedbrake" },
         ["Radios"] = new List<string> { "COM Radios", "NAV Radios", "Transponder" },
-        ["Utilities"] = new List<string> { "Simulation Options", "Engine Data" }
+        ["Utilities"] = new List<string> { "Simulation Options", "Engine Data", "Doors", "IRS" }
     };
 
     public override Dictionary<string, List<string>> GetPanelDisplayVariables() => new()
@@ -119,12 +119,20 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
         ["APU"] = new List<string> { "A22X_APU_RPM" },
         ["Engine Data"] = new List<string>
         {
+            "A22X_ENG1_STATE", "A22X_ENG2_STATE",
             "A22X_ENG1_N1", "A22X_ENG1_N2", "A22X_ENG1_EGT",
             "A22X_ENG2_N1", "A22X_ENG2_N2", "A22X_ENG2_EGT", "A22X_APU_RPM"
         },
         ["Flight Directors"] = new List<string> { "A22X_L_FD_STATE", "A22X_R_FD_STATE" },
         ["Trim"] = new List<string> { "A22X_STAB_TRIM", "A22X_RUDDER_TRIM_POS" },
-        ["Flaps and Speedbrake"] = new List<string> { "A22X_SPOILER_LEVER_POS" }
+        ["Flaps and Speedbrake"] = new List<string> { "A22X_SPOILER_LEVER_POS" },
+        ["Gear and Brakes"] = new List<string> { "A22X_GEAR_STATE", "A22X_BRAKE_TEMPS" },
+        ["Warnings and Chrono"] = new List<string> { "A22X_CAS_STATE" },
+        ["Transponder"] = new List<string> { "A22X_XPDR_STATE" },
+        ["CTP Captain"] = new List<string> { "A22X_L_ALTIMETER_STATE", "A22X_L_MINIMUMS_STATE" },
+        ["CTP First Officer"] = new List<string> { "A22X_R_ALTIMETER_STATE", "A22X_R_MINIMUMS_STATE" },
+        ["Doors"] = new List<string>(new[] { "A22X_DOORS_STATE" }.Concat(A220Systems.Doors.Select(d => DoorKey(d.Id)))),
+        ["IRS"] = new List<string> { "A22X_IRS_STATE" }
     };
 
     /// <summary>
@@ -137,6 +145,7 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
     /// </summary>
     public override bool TryGetDisplayOverride(string varKey, double value, out string displayText)
     {
+        if (TryGetSystemsDisplay(varKey, out displayText)) return true;
         var af = LatestAutoflight;
         var fc = LatestFlightControl;
         switch (varKey)
@@ -407,8 +416,12 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
             }
             case HotkeyAction.ReadGear:
             {
+                // Lever (stock handle) + each gear and the brake temperatures from the
+                // aircraft's own Gear Data store; "not available" when the link is down.
+                // A22X_GEAR_LEVER reads "percent over 100", a 0..1 fraction, which is what
+                // FormatGearReadout's >= 0.5 lever test expects.
                 RefreshThenAnnounce(simConnect, announcer, "A22X_GEAR_LEVER",
-                    value => value >= 0.5 ? "Gear lever down" : "Gear lever up");
+                    value => A220Systems.FormatGearReadout(value, LatestSystems?.gear));
                 return true;
             }
             case HotkeyAction.ReadFuelQuantity:

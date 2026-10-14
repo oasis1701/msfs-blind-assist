@@ -102,6 +102,16 @@ public partial class SynapticA220Definition
         Format = format
     };
 
+    /// <summary>
+    /// A panel row whose text comes from the CommBus through TryGetDisplayOverride (A380-16: a
+    /// readout-only row must sit in a panel display list or nothing ever requests it). The
+    /// SimVar is only a CARRIER — something MainForm can request so the row renders and
+    /// refreshes; its value is never shown. Every such row shares one cheap stock SimVar: they
+    /// are OnRequest, so the shared name breaks nothing ([VAR-7] concerns batched vars only).
+    /// </summary>
+    private static SimVarDefinition CommBusRow(string display)
+        => Status("ELECTRICAL MAIN BUS VOLTAGE", display, "volts", "F0", SimVarType.SimVar);
+
     protected override Dictionary<string, SimVarDefinition> BuildVariables()
     {
         var v = GetBaseVariables();
@@ -625,6 +635,10 @@ public partial class SynapticA220Definition
         AddQuiet(v, "A22X_GEAR_EXT", "GEAR TOTAL PCT EXTENDED", "percent over 100", SimVarType.SimVar);
         AddQuiet(v, "A22X_GPS_WP_DIST", "GPS WP DISTANCE", "nautical miles", SimVarType.SimVar);
         AddQuiet(v, "A22X_GPS_WP_BRG", "GPS WP BEARING", "degrees", SimVarType.SimVar);
+
+        // ==== CommBus systems rows (Systems partial: TryGetSystemsDisplay) =====
+        foreach (var (key, display) in SystemsRows) v[key] = CommBusRow(display);
+        foreach (var door in A220.A220Systems.Doors) v[DoorKey(door.Id)] = CommBusRow(door.Name);
 
         // ==== Annunciator lamps: batch monitor (baseline-first, generic path) ==
         foreach (var doc in A220.SynapticA220SimVarData.Vars)

@@ -1,5 +1,6 @@
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Aircraft.A220;
+using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Tests;
@@ -166,5 +167,344 @@ public class SynapticA220DefinitionTests
                 $"{key} carries an L: prefix — reads/writes would double it");
         }
         Assert.Contains(Vars.Values, d => d.Type == SimVarType.LVar && d.Name.Contains(' '));
+    }
+
+    // ---- Plan A systems rows (CommBus, rendered by TryGetDisplayOverride) ------------
+
+    private static A220Systems.SystemsBlocks FixtureSystems() => new()
+    {
+        lpfd = SynapticA220SystemsTests.Store<A220Systems.PfdBlock>("A22X.L PFD Data"),
+        atc = SynapticA220SystemsTests.Store<A220Systems.AtcBlock>("A22X.ATC Data"),
+        gear = SynapticA220SystemsTests.Store<A220Systems.GearBlock>("A22X.Gear Data"),
+        doors = SynapticA220SystemsTests.Store<A220Systems.DoorsBlock>("A22X.Doors Data"),
+        cas = SynapticA220SystemsTests.Store<A220Systems.CasBlock>("A22X.CAS Data"),
+        eng = SynapticA220SystemsTests.Store<A220Systems.EngineBlock>("A22X.Engine Data"),
+        lctp = SynapticA220SystemsTests.Store<A220Systems.CtpBlock>("A22X.L CTP Data"),
+    };
+
+    public static TheoryData<string> SystemsRowKeys()
+    {
+        var data = new TheoryData<string>();
+        foreach (var (key, _) in SynapticA220Definition.SystemsRows) data.Add(key);
+        foreach (var door in A220Systems.Doors) data.Add(SynapticA220Definition.DoorKey(door.Id));
+        return data;
+    }
+
+    [Theory, MemberData(nameof(SystemsRowKeys))]
+    public void SystemsRow_IsAPanelDisplayRow_ThatSaysNotAvailableBeforeData(string key)
+    {
+        var def = new SynapticA220Definition();
+        Assert.True(Vars.ContainsKey(key), $"{key} has no variable");
+        Assert.True(Vars[key].RenderAsReadOnlyStatus);
+        Assert.Contains(def.GetPanelDisplayVariables().Values, list => list.Contains(key));
+        Assert.True(def.TryGetDisplayOverride(key, 0, out string text));
+        Assert.Equal(A220Systems.NotAvailable, text);
+    }
+
+    [Fact]
+    public void SystemsRows_RenderTheLiveCapture()
+    {
+        var def = new SynapticA220Definition();
+        def.ProcessSystems(FixtureSystems());
+        string Row(string key) { Assert.True(def.TryGetDisplayOverride(key, 0, out string t)); return t; }
+        Assert.Equal("down and locked", Row("A22X_GEAR_STATE"));
+        Assert.Equal("1, 1, 1, 1", Row("A22X_BRAKE_TEMPS"));
+        Assert.Equal("all closed", Row("A22X_DOORS_STATE"));
+        Assert.Equal("closed, armed", Row("A22X_DOOR_FWD_PAX"));
+        Assert.Equal("running, N1 18.5 percent", Row("A22X_ENG1_STATE"));
+        Assert.Equal("1 advisory, 4 status", Row("A22X_CAS_STATE"));
+        Assert.Equal("squawk 2000, AUTO", Row("A22X_XPDR_STATE"));
+        Assert.Equal("30.13 inches", Row("A22X_L_ALTIMETER_STATE"));
+        Assert.Equal("baro 1210 feet", Row("A22X_L_MINIMUMS_STATE"));
+        Assert.Equal(A220Systems.NotAvailable, Row("A22X_R_ALTIMETER_STATE"));   // no R CTP in the capture
+        Assert.Equal(A220Systems.NotAvailable, Row("A22X_IRS_STATE"));          // aligned before capture: no FMS position
+    }
+
+    [Fact]
+    public void DoorsAndIrs_AreUtilitiesPanels()
+    {
+        var structure = Def.GetPanelStructure();
+        Assert.Contains("Doors", structure["Utilities"]);
+        Assert.Contains("IRS", structure["Utilities"]);
+        Assert.True(Def.GetPanelControls().ContainsKey("Doors"));   // HS-5: a display-only panel needs an entry
+        Assert.True(Def.GetPanelControls().ContainsKey("IRS"));
+    }
+
+    [Fact]
+    public void GearLever_IsAZeroToOneFraction_SoShiftGsThresholdOfHalfHolds()
+    {
+        // FormatGearReadout(leverPct, ...) compares leverPct >= 0.5: the lever var must read 0..1.
+        Assert.Equal("percent over 100", Vars["A22X_GEAR_LEVER"].Units);
+    }
+
+    // ---- The pump's intake: one odd `sys` field must not cost the rest of the snapshot ----
+
+    private const string GoodGearJson =
+        "{\"nose_icon\":2,\"left_icon\":2,\"right_icon\":2,\"nose_color\":3,\"left_color\":3,\"right_color\":3}";
+
+    [Fact]
+    public void Snapshot_WithAGoodSysBlock_FeedsTheRows()
+    {
+        var def = new SynapticA220Definition();
+        def.ProcessDisplaysSnapshot("{\"ok\":true,\"sys\":{\"gear\":" + GoodGearJson + "}}");
+        Assert.NotNull(def.LatestSystems);
+        Assert.True(def.TryGetDisplayOverride("A22X_GEAR_STATE", 0, out string text));
+        Assert.Equal("down and locked", text);
+    }
+
+    [Theory]
+    [InlineData("{\"gear\":{\"nose_icon\":\"two\"}}")]   // a field of the wrong type inside a store
+    [InlineData("\"nope\"")]                             // not an object at all
+    [InlineData("[1,2]")]
+    [InlineData("null")]
+    public void Snapshot_WithAMalformedSysField_StillTakesTheRestOfTheSnapshot(string sysJson)
+    {
+        var def = new SynapticA220Definition();
+        def.ProcessDisplaysSnapshot("{\"ok\":true,\"sys\":{\"gear\":" + GoodGearJson + "}}");   // rows were live
+        Assert.NotNull(def.LatestSystems);
+
+        def.ProcessDisplaysSnapshot("{\"ok\":true,\"fc\":{\"pitch_trim\":4.6},\"sys\":" + sysJson + "}");
+
+        Assert.Equal(4.6, def.LatestFlightControl?.pitch_trim);   // FD/trim/FMA/CAS intake survived the odd field
+        Assert.Null(def.LatestSystems);                           // the systems rows no longer claim a state
+        Assert.True(def.TryGetDisplayOverride("A22X_GEAR_STATE", 0, out string text));
+        Assert.Equal(A220Systems.NotAvailable, text);
+    }
+}
+
+[Collection("SettingsManagerGlobalState")]
+public class SynapticA220SystemsSpeechTests : IDisposable
+{
+    private readonly List<string> _savedMutes = SettingsManager.Current.A220DisabledMonitorVariables;
+
+    public SynapticA220SystemsSpeechTests()
+    {
+        SettingsManager.Current.A220DisabledMonitorVariables = new List<string>();
+        SettingsManager.Current.RebuildDisabledMonitorVariableCaches();
+    }
+
+    public void Dispose()
+    {
+        SettingsManager.Current.A220DisabledMonitorVariables = _savedMutes;
+        SettingsManager.Current.RebuildDisabledMonitorVariableCaches();
+    }
+
+    private static void Mute(params string[] rowKeys)
+    {
+        SettingsManager.Current.A220DisabledMonitorVariables = new List<string>(rowKeys);
+        SettingsManager.Current.RebuildDisabledMonitorVariableCaches();
+    }
+
+    private static A220Systems.SystemsBlocks WithGear(int icon) => new()
+    {
+        gear = new A220Systems.GearBlock
+        {
+            nose_icon = icon, left_icon = icon, right_icon = icon,
+            nose_color = 3, left_color = 3, right_color = 3
+        }
+    };
+
+    [Fact]
+    public void GearTransition_IsSpoken_AndItsRowMutesIt()
+    {
+        var def = new SynapticA220Definition();
+        var speech = new SpeechCapture();
+        def.UseAnnouncer(speech);
+        def.ProcessSystems(WithGear(2));
+        def.ProcessSystems(WithGear(0));
+        Assert.Equal(new[] { "Gear in transit" }, speech.All);
+
+        SettingsManager.Current.A220DisabledMonitorVariables = new List<string> { A220MonitorRows.GearKey };
+        SettingsManager.Current.RebuildDisabledMonitorVariableCaches();
+        def.ProcessSystems(WithGear(1));
+        Assert.Equal(new[] { "Gear in transit" }, speech.All);       // "Gear up" muted
+    }
+
+    [Fact]
+    public void ContextReset_RebaselinesTheMonitors()
+    {
+        var def = new SynapticA220Definition();
+        var speech = new SpeechCapture();
+        def.UseAnnouncer(speech);
+        def.ProcessSystems(WithGear(2));
+        def.RequestSystemsRebaseline();                              // a flight load
+        def.ProcessSystems(WithGear(1));                             // the loaded flight is airborne
+        Assert.Empty(speech.All);                                    // not a gear movement
+    }
+
+    // ---- Every call-out answers to its OWN Ctrl+M row (the pump runs outside the mute wrap) ----
+
+    /// <summary>`before` then `after` speaks exactly <paramref name="expected"/>; with the row muted, nothing.</summary>
+    private static void AssertSpokenUnlessMuted(string rowKey, A220Systems.SystemsBlocks before,
+        A220Systems.SystemsBlocks after, params string[] expected)
+    {
+        Mute();
+        var loud = new SynapticA220Definition();
+        var heard = new SpeechCapture();
+        loud.UseAnnouncer(heard);
+        loud.ProcessSystems(before);
+        loud.ProcessSystems(after);
+        Assert.Equal(expected, heard.All);
+
+        Mute(rowKey);
+        var quiet = new SynapticA220Definition();
+        var silent = new SpeechCapture();
+        quiet.UseAnnouncer(silent);
+        quiet.ProcessSystems(before);
+        quiet.ProcessSystems(after);
+        Assert.Empty(silent.All);
+    }
+
+    private static A220Systems.SystemsBlocks WithCas(params int[] indices) => new()
+    {
+        cas = new A220Systems.CasBlock { msg = SynapticA220SystemsTests.Words(indices) }
+    };
+
+    [Fact]
+    public void CasCautions_AreMutedByTheWarningsRow()
+        => AssertSpokenUnlessMuted(A220MonitorRows.CasWarningsKey, WithCas(), WithCas(526), "Caution: EMER LTS OFF");
+
+    [Fact]
+    public void CasAdvisories_AreMutedByTheAdvisoriesRow()
+        => AssertSpokenUnlessMuted(A220MonitorRows.CasAdvisoriesKey, WithCas(), WithCas(341), "Advisory: EXT PWR AVAIL");
+
+    [Fact]
+    public void EngineStart_IsMutedByItsRow()
+        => AssertSpokenUnlessMuted(A220MonitorRows.EngineStartKey,
+            new A220Systems.SystemsBlocks { eng = new A220Systems.EngineBlock { eng1_start = false } },
+            new A220Systems.SystemsBlocks { eng = new A220Systems.EngineBlock { eng1_start = true } },
+            "Engine 1 starting");
+
+    private static A220Systems.SystemsBlocks WithIrs(int mode) => new()
+    {
+        fmspos = new A220Systems.FmsPositionBlock
+        {
+            irs_1 = new A220Systems.IrsSlot { irs = new A220Systems.IrsUnit { mode = mode, time_to_align = 6 } }
+        }
+    };
+
+    [Fact]
+    public void IrsAligned_IsMutedByItsRow()
+        => AssertSpokenUnlessMuted(A220MonitorRows.IrsKey, WithIrs(1), WithIrs(3), "IRS aligned");
+
+    [Fact]
+    public void IrsCallOut_KeepsItsBaselineAcrossAPollWithNeitherBlock()
+    {
+        // The call site passes haveData = (lpfd != null || fmspos != null): a poll that carries
+        // neither store changes nothing, so aligning -> (gap) -> aligned still speaks.
+        var def = new SynapticA220Definition();
+        var speech = new SpeechCapture();
+        def.UseAnnouncer(speech);
+        def.ProcessSystems(WithIrs(1));
+        def.ProcessSystems(new A220Systems.SystemsBlocks());
+        def.ProcessSystems(WithIrs(3));
+        Assert.Equal(new[] { "IRS aligned" }, speech.All);
+    }
+
+    private static A220Systems.SystemsBlocks WithFwdPaxDoor(int value) => new()
+    {
+        doors = new A220Systems.DoorsBlock { fwd_pax = value }
+    };
+
+    [Fact]
+    public void DoorChange_IsMutedByItsRow()
+        => AssertSpokenUnlessMuted(A220MonitorRows.DoorsKey, WithFwdPaxDoor(3), WithFwdPaxDoor(1),
+            "Forward passenger door open");
+
+    // ---- CAS source switch: the store is the truth, the EICAS scrape only a fallback ([A220-36]) ----
+
+    private const string Caution = "[{\"t\":\"EMER LTS OFF\",\"c\":\"amber\"}]";
+
+    private static string Snap(string casTokens, string sysJson = "")
+        => "{\"ok\":true,\"cas\":" + casTokens + (sysJson.Length == 0 ? "" : ",\"sys\":" + sysJson) + "}";
+
+    private static string StoreMsg(params int[] indices)
+        => "{\"cas\":{\"msg\":[" + string.Join(",", SynapticA220SystemsTests.Words(indices)) + "]}}";
+
+    private static (SynapticA220Definition Def, SpeechCapture Speech) Pump()
+    {
+        var def = new SynapticA220Definition();
+        var speech = new SpeechCapture();
+        def.UseAnnouncer(speech);
+        return (def, speech);
+    }
+
+    [Fact]
+    public void CasScrape_Speaks_WhileTheStoreIsMissing()
+    {
+        var (def, speech) = Pump();
+        def.ProcessDisplaysSnapshot(Snap("[]"));                      // silent baseline
+        def.ProcessDisplaysSnapshot(Snap(Caution));
+        Assert.Equal(new[] { "Caution: EMER LTS OFF" }, speech.All);
+    }
+
+    [Fact]
+    public void CasScrape_IsSilent_WhileTheStoreIsLive_AndRebaselinesWhenItTakesBackOver()
+    {
+        var (def, speech) = Pump();
+        def.ProcessDisplaysSnapshot(Snap("[]", StoreMsg()));
+        def.ProcessDisplaysSnapshot(Snap(Caution, StoreMsg()));       // scrape changed, store says nothing new
+        Assert.Empty(speech.All);
+
+        def.ProcessDisplaysSnapshot(Snap(Caution, "{}"));             // store gone: the scrape re-baselines silently
+        Assert.Empty(speech.All);
+
+        def.ProcessDisplaysSnapshot(Snap("[]", "{}"));                // and now diffs against that baseline
+        Assert.Equal(new[] { "EMER LTS OFF cleared" }, speech.All);
+    }
+
+    [Fact]
+    public void CasStore_Speaks_ThroughThePump()
+    {
+        var (def, speech) = Pump();
+        def.ProcessDisplaysSnapshot(Snap("[]", StoreMsg()));
+        def.ProcessDisplaysSnapshot(Snap("[]", StoreMsg(526)));
+        Assert.Equal(new[] { "Caution: EMER LTS OFF" }, speech.All);
+        Assert.True(def.TryGetDisplayOverride("A22X_CAS_STATE", 0, out string row));
+        Assert.Equal("1 caution", row);
+    }
+
+    [Fact]
+    public void CasRow_SaysNotAvailable_NeverNoMessages_WhenTheStoreIsMissing()
+    {
+        var (def, _) = Pump();
+        def.ProcessDisplaysSnapshot(Snap("[]", StoreMsg()));
+        Assert.True(def.TryGetDisplayOverride("A22X_CAS_STATE", 0, out string live));
+        Assert.Equal("no messages", live);
+
+        def.ProcessDisplaysSnapshot(Snap("[]", "{}"));                // the CAS store went stale for a poll
+        Assert.True(def.TryGetDisplayOverride("A22X_CAS_STATE", 0, out string gap));
+        Assert.Equal(A220Systems.NotAvailable, gap);
+    }
+
+    [Fact]
+    public void CasScrape_NeverSpeaksStatusLines_AndEachSeverityHonoursItsRow()
+    {
+        const string mixed = "[{\"t\":\"SEAT BELTS\",\"c\":\"white\"},{\"t\":\"EXT PWR AVAIL\",\"c\":\"cyan\"},{\"t\":\"EMER LTS OFF\",\"c\":\"amber\"}]";
+        string[] Run()
+        {
+            var (def, speech) = Pump();
+            def.ProcessDisplaysSnapshot(Snap("[]"));
+            def.ProcessDisplaysSnapshot(Snap(mixed));
+            return speech.All.ToArray();
+        }
+
+        Mute();
+        Assert.Equal(new[] { "Caution: EMER LTS OFF", "Advisory: EXT PWR AVAIL" }, Run());   // no "Memo: SEAT BELTS"
+        Mute(A220MonitorRows.CasAdvisoriesKey);
+        Assert.Equal(new[] { "Caution: EMER LTS OFF" }, Run());
+        Mute(A220MonitorRows.CasWarningsKey);
+        Assert.Equal(new[] { "Advisory: EXT PWR AVAIL" }, Run());
+    }
+
+    [Fact]
+    public void Pump_FeedsTheSystemsMonitors()
+    {
+        var (def, speech) = Pump();
+        string Gear(int icon) => "{\"gear\":{\"nose_icon\":" + icon + ",\"left_icon\":" + icon + ",\"right_icon\":" + icon
+            + ",\"nose_color\":3,\"left_color\":3,\"right_color\":3}}";
+        def.ProcessDisplaysSnapshot(Snap("[]", Gear(2)));
+        def.ProcessDisplaysSnapshot(Snap("[]", Gear(0)));
+        Assert.Equal(new[] { "Gear in transit" }, speech.All);
     }
 }

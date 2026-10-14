@@ -109,6 +109,9 @@ public partial class SynapticA220Definition
         },
         ["Transponder"] = new List<string> { "TRANSPONDER_CODE_SET", "A22X_XPDR_IDENT" },
         ["Simulation Options"] = new List<string> { "A22X_TOD_PAUSE", "A22X_TOD_DISTANCE_SET" },
-        ["Engine Data"] = new List<string>()
+        ["Engine Data"] = new List<string>(),
+        // Display-only panels (HS-5: they still need an entry, or the panel builds nothing).
+        ["Doors"] = new List<string>(),
+        ["IRS"] = new List<string>()
     };
 }
