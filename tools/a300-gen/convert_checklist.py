@@ -38,6 +38,7 @@ ABBREVIATIONS = {
     'TRP', 'V1', 'V2', 'VHF', 'VOR', 'VR', 'VS', 'WXR', 'XPDR', 'ZFW',
 }
 WORD_RE = re.compile(r"[A-Za-z0-9']+")
+FIRST_WORD_RE = re.compile(r"[A-Za-z0-9/]+")
 
 
 def sentence_case(text):
@@ -66,9 +67,11 @@ def lookup(loc, attr):
 def item_text(subject, expectation):
     if not expectation:
         return subject
-    first = expectation.split(' ', 1)[0]
-    lowered = expectation if first.upper() in ABBREVIATIONS else expectation[0].lower() + expectation[1:]
-    return '%s: %s' % (subject, lowered)
+    # The first WORD decides, not the text up to the first space: "SID," is the abbreviation SID.
+    first = FIRST_WORD_RE.match(expectation)
+    keep = first is not None and first.group(0).upper() in ABBREVIATIONS
+    lowered = expectation if keep else expectation[0].lower() + expectation[1:]
+    return '%s: %s' % (subject.rstrip(':'), lowered)
 
 
 def _items(container, loc, prefix, out):
@@ -87,7 +90,8 @@ def _items(container, loc, prefix, out):
             if not subject:
                 continue
             text = item_text(subject, sentence_case(lookup(loc, desc.attrib.get('ExpectationTT'))))
-            out.append('%s - %s' % (prefix, text) if prefix else text)
+            label = prefix.rstrip(':')  # a title that ends in a colon must not give ": - "
+            out.append('%s - %s' % (label, text) if label else text)
 
 
 def convert(xml_bytes, loc):

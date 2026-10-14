@@ -94,9 +94,9 @@ Adfs: check tone on and ADF/ant selected to ADF
 Rudder trim: zero
 Weather radar: test
 FMS route (program) - Clear any messages: clr button
-FMS route (program) - Init a:: altn, cost index, crz fl, flt id, weather
-FMS route (program) - F-pln:: ensure runway selected before procedure for SID/stars
-FMS route (program) - F-pln:: sID, airways, STAR
+FMS route (program) - Init a: altn, cost index, crz fl, flt id, weather
+FMS route (program) - F-pln: ensure runway selected before procedure for SID/stars
+FMS route (program) - F-pln: SID, airways, STAR
 Performance data: calculate on EFB and set on FMS init b & TO/appr pages
 TRP - Flex TO temp: as required
 TRP - Select auto: for TO with profile
@@ -160,16 +160,16 @@ Hand signal: received
 Taxi clearance: obtain
 Nose light: taxi
 Brakes: release
-Once both engines running: - Flight controls: check
-Once both engines running: - FCU set pre sel speed
-Once both engines running: - Set alt sel: first stop altitude
-Once both engines running: - Flight directors: on
-Once both engines running: - Required ap mode: prof and nav
-Once both engines running: - Fmas match expected mode: check
-Once both engines running: - Autobrake: max
-Once both engines running: - Transponder: confirm XPDR mode set, correct squawk entered
-Once both engines running: - Weather radar: on
-Once both engines running: - Takeoff config: test
+Once both engines running - Flight controls: check
+Once both engines running - FCU set pre sel speed
+Once both engines running - Set alt sel: first stop altitude
+Once both engines running - Flight directors: on
+Once both engines running - Required ap mode: prof and nav
+Once both engines running - Fmas match expected mode: check
+Once both engines running - Autobrake: max
+Once both engines running - Transponder: confirm XPDR mode set, correct squawk entered
+Once both engines running - Weather radar: on
+Once both engines running - Takeoff config: test
 
 [Runway - Before takeoff checklist]
 Flight controls: checked

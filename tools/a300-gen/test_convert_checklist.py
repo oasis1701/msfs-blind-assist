@@ -51,6 +51,41 @@ class ConvertChecklistTests(unittest.TestCase):
         self.assertEqual('FMC (initialise using MCDU)', cc.sentence_case('FMC (INITIALISE USING MCDU)'))
         self.assertEqual('EFIS control panel - PFD and ND brightness', cc.sentence_case('EFIS CONTROL PANEL - PFD AND ND BRIGHTNESS'))
 
+    def test_an_abbreviation_followed_by_punctuation_keeps_its_case(self):
+        # "SID," is the abbreviation SID, not the word "sID,".
+        self.assertEqual('F-pln: SID, airways, STAR', cc.item_text('F-pln', 'SID, airways, STAR'))
+        self.assertEqual('F-pln: SID, airways, STAR', cc.item_text('F-pln:', 'SID, airways, STAR'))
+        self.assertEqual('Bleed source: APU bleed', cc.item_text('Bleed source', 'APU bleed'))
+
+    def test_a_subject_ending_in_a_colon_is_not_doubled(self):
+        self.assertEqual('Init a: altn', cc.item_text('Init a:', 'altn'))
+
+    def test_a_block_title_ending_in_a_colon_is_not_doubled(self):
+        xml = b"""<?xml version="1.0" encoding="Windows-1252"?>
+<SimBase.Document Type="Checklist" version="1,0"><Checklist.Checklist>
+<Step ChecklistStepId="PREFLIGHT_PUSHBACK">
+  <Page SubjectTT="TT:A300.CHECKLISTS.START">
+    <Block SubjectTT="TT:A300.CHECKLISTS.START.BOTH">
+      <Checkpoint Id="A"><CheckpointDesc SubjectTT="TT:A300.CHECKLISTS.START.GEN" ExpectationTT="TT:A300.CHECKLISTS.ACTION.ON"/></Checkpoint>
+      <Checkpoint Id="B"><CheckpointDesc SubjectTT="TT:A300.CHECKLISTS.START.PACKS" ExpectationTT="TT:MISSING"/></Checkpoint>
+    </Block>
+  </Page>
+</Step>
+</Checklist.Checklist></SimBase.Document>"""
+        loc = dict(LOC)
+        loc.update({
+            'A300.CHECKLISTS.START': 'Engine Start',
+            'A300.CHECKLISTS.START.BOTH': 'ONCE BOTH ENGINES RUNNING:',
+            'A300.CHECKLISTS.START.GEN': 'GENERATORS',
+            'A300.CHECKLISTS.START.PACKS': 'PACKS',
+        })
+        text = cc.convert(xml, loc)
+        self.assertNotIn(': - ', text)
+        self.assertEqual('[Pushback - Engine start]\n'
+                         'Once both engines running - Generators: on\n'
+                         'Once both engines running - Packs\n',
+                         text)
+
 
 if __name__ == '__main__':
     unittest.main()
