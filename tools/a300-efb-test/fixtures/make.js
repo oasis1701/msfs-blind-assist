@@ -164,9 +164,10 @@ const files = {
     '</div><div class="hiddenPage" data-display="none"><div id="flight"><div id="ofp_viewer"><pre id="ofp_data">x</pre><button id="close_ofp_viewer">Close</button></div></div></div></div><div class="paused-overlay'),
   'takeoff': tablet('<div id="perf-bg"></div><div id="takeOffPerfViewer">' +
     '<div id="runwayPanel"><h1>SELECT RUNWAY</h1><input type="button" id="hide_runway_select" value="Cancel">' +
-    '<div id="runway_opts" class="row">' + rwy('18L', 3000, false) + rwy('09', 1500, true) + '</div></div>' +
+    // The tablet sorts the runways by name and preselects the first as it lists them.
+    '<div id="runway_opts" class="row">' + rwy('09', 1500, true) + rwy('18L', 3000, false) + '</div></div>' +
     '<div id="conditions"><h1>CONDITIONS <button id="syncMetar" class="btn">SYNC</button></h1>' +
-    perfRow('RWY', '<input type="button" id="show_runway_select" value="SELECT">') +
+    perfRow('RWY', '<input type="button" id="show_runway_select" value="RWY 09">') +
     perfBox('TORA', 'output_tora', 'number', '3000', 'M') + perfBox('HDG', 'output_heading', 'number', '180', '°') +
     perfBox('WIND', 'input_wind', 'string', '') + perfBox('OAT', 'input_temp', 'number', '', '°C') +
     perfBox('ALTIMETER', 'input_alt', 'number', '', 'hpa') + '</div>' +
@@ -183,7 +184,7 @@ const files = {
   // runway button by the runway alone, so both pages can hold a button with the same id (04R here).
   'landing': tablet('<div id="landing-bg"></div><div id="landingPerfViewer">' +
     '<div id="land_runwayPanel" data-display="none"><h1>SELECT RUNWAY</h1><input type="button" id="land_hide_runway_select" value="Cancel">' +
-    '<div id="land_runway_opts" class="row">' + landRwy('04R', 3090, false) + landRwy('22R', 2391, false) + landRwy('15L', 785, true) + '</div></div>' +
+    '<div id="land_runway_opts" class="row">' + landRwy('04R', 3090, false) + landRwy('15L', 785, true) + landRwy('22R', 2391, false) + '</div></div>' +
     '<div id="land_conditions"><h1>CONDITIONS</h1>' +
     perfRow('RWY', '<input type="button" id="land_show_runway_select" value="RWY 22R">') +
     perfBox('LENGTH', 'land_output_tora', 'number', '2391', 'M') + perfBox('HDG', 'land_output_heading', 'number', '220', '°') +

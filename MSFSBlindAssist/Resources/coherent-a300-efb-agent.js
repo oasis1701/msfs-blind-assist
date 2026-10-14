@@ -225,14 +225,15 @@
   // the button names ("RWY 18L"). Each picker's own list, by its container: the tablet ids a runway
   // button by the runway alone, so both pages can hold a "09".
   A.RUNWAY_PICKERS = { show_runway_select: 'runway_opts', land_show_runway_select: 'land_runway_opts' };
-  // The first choice until a runway is picked (the button says SELECT): a list with nothing chosen
-  // would show its first runway as if it were.
-  A.NO_RUNWAY = 'None selected';
   A.runwayButtons = function (picker) {
     var box = A.byId(A.RUNWAY_PICKERS[picker.id]);
     return box ? box.getElementsByTagName('button') : [];
   };
-  // Emits the picker as a choice; false, leaving it the tablet's button, while no runway is listed.
+  // Emits the picker as a choice; false, leaving it the tablet's button, unless the button names one
+  // of the listed runways. The tablet fills its list and preselects the first runway by name in the
+  // same pass (updateDepartureAirport, read 2026-10-14), so it says SELECT only before it knows the
+  // airport, over an empty list. A choice is never offered with nothing chosen: a list with nothing
+  // chosen would show its first runway as if it were.
   A.runwayPicker = function (picker, emit) {
     var m = /^RWY\s+(\S+)$/i.exec(A.clean(picker.value)), picked = m ? m[1] : '';
     var btns = A.runwayButtons(picker), opts = [], value = '';
@@ -242,15 +243,14 @@
       opts.push(label);
       if (btns[i].id === picked) value = label;
     }
-    if (!opts.length) return false;
-    if (!value) { opts.unshift(A.NO_RUNWAY); value = A.NO_RUNWAY; }
+    if (!value) return false;
     emit({ idx: A.stamp(picker), text: 'Runway', value: value, controlType: 'select', kind: 'static', clickable: false,
       options: opts, key: 'runway:' + picker.id });
     return true;
   };
   // A pick is what a finger does: RWY opens the list, then the runway's own button, whose handler
   // (selectRunway) closes the list and fills TORA, HDG and RWY. False, pressing nothing, for a
-  // runway the list does not hold or for the placeholder.
+  // runway the list does not hold.
   A.pickRunway = function (picker, text) {
     var btns = A.runwayButtons(picker);
     for (var i = 0; i < btns.length; i++) {
