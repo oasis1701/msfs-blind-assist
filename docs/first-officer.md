@@ -438,6 +438,10 @@ clearance, Parking's anti-ice and Shutdown's packs; engine anti-ice moved to Aft
 deliberate differences stay: After Start reads "APU Bleed: Off" where TFDi says "APU: Off" (closing
 the bleed lets the APU shut itself down), and Shutdown reads "APU: Off" where TFDi says "As
 required" (the flow turns it off). TFDi's one-line Takeoff page ("TOGA Power: Set") is left out.
+One line is not on TFDi's page by the owner's word: "Start ACARS" (`BSC_ACARS`, a Captain reminder) ends
+Before Start (owner, 2026-10-14: "Put it in the last item of the actual checklist itself, not the flow or
+action group"), the named exception to "its own TFDi page's lines". Before Start's pushback clearance stays
+out of the read-back; the flow and action list are unchanged, and the finished flow ticks the line.
 A finished flow ticks and latches its read-back list too (`FlowDefinition.CompletionGroupIds`), so
 never add a live read-back line the flow does not deliver: it would read done with the switch
 untouched. The action groups list the same lines in the same order as their flows

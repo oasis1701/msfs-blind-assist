@@ -201,6 +201,7 @@ public class Md11FoChecklistStructureTests
     {
         "APU: Running", "APU Bleed: On", "FMS: Initialized, V-Speeds Set", "IRS: Aligned", "EIS/Bugs: Set",
         "Seat Belt Signs: On", "External Power: Off", "AUX Hydraulic Pump 1: On", "Engine Ignition: A or B", "Beacon: On",
+        "Start ACARS",   // not on the TFDi page: the owner's last line, 2026-10-14 (ACARS is the Captain's)
     }, Labels("BEFORE_START_CL"));
 
     [Fact]

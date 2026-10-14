@@ -603,6 +603,8 @@ public static class IFly737ChecklistDefinitions
             Reminder("BSC_TRIM", "BEFORE_START_CL", "Rudder and aileron trim: free and zero"),
             Auto("BSC_ANTICOL", "BEFORE_START_CL", "Anti-collision light: ON", "Anti_Collision_Light_Switch_Status",
                 v => v > 0.5, action: null),
+            // Not on the maker's card: the owner's last line, 2026-10-14 (ACARS is the Captain's).
+            Reminder("BSC_ACARS", "BEFORE_START_CL", "Start ACARS"),
         }
     };
 

@@ -23,7 +23,8 @@ public class FbwA320ReadbackTests
     private static readonly (string Group, string[] Ids)[] Card =
     {
         ("COCKPIT_PREP_CL", new[] { "CPC_PINS", "CPC_FUEL", "CPC_SEATBELTS", "CPC_ADIRS", "CPC_BARO" }),
-        ("BEFORE_START_CL", new[] { "BSC_PARKBRK", "BSC_TOSPEEDS", "BSC_WINDOWS", "BSC_BEACON" }),
+        // BSC_ACARS is not on the Airbus card: the owner's last line, 2026-10-14 (ACARS is the Captain's).
+        ("BEFORE_START_CL", new[] { "BSC_PARKBRK", "BSC_TOSPEEDS", "BSC_WINDOWS", "BSC_BEACON", "BSC_ACARS" }),
         ("AFTER_START_CL", new[] { "ASC_ANTIICE", "ASC_ECAMSTS", "ASC_PITCH", "ASC_RUDDER" }),
         ("TAXI_CL", new[] { "TXC_FCTEST", "TXC_FLAPS", "TXC_WXR", "TXC_ENGMODE", "TXC_MEMO_AUTOBRK",
                             "TXC_MEMO_SIGNS", "TXC_MEMO_CABIN", "TXC_MEMO_SPLRS", "TXC_MEMO_FLAPS", "TXC_MEMO_TOCFG" }),

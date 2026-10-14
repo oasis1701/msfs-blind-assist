@@ -595,6 +595,8 @@ public static class HwA330ChecklistDefinitions
                     s.GetValue("PFD_V2"), s.GetValue("A32NX_AIRLINER_TO_FLEX_TEMP"))),
             Reminder("BSC_WINDOWS", "BEFORE_START_CL", "Windows: CLOSED"),
             Auto("BSC_BEACON", "BEFORE_START_CL", "Beacon: ON", "LIGHT BEACON", v => v > 0.5, action: null),
+            // Not on the maker's card: the owner's last line, 2026-10-14 (ACARS is the Captain's).
+            Reminder("BSC_ACARS", "BEFORE_START_CL", "Start ACARS"),
         }
     };
 

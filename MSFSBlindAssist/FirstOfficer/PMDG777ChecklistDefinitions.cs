@@ -418,6 +418,8 @@ public static class PMDG777ChecklistDefinitions
             Auto("BSCL_BEACON", "BEFORE_START_CL", "Beacon: ON",
                 "LTS_Beacon_Sw_ON", v => v > 0.5,
                 action: null),
+            // Not on the maker's card: the owner's last line, 2026-10-14 (ACARS is the Captain's).
+            Reminder("BSCL_ACARS", "BEFORE_START_CL", "Start ACARS"),
         }
     };
 

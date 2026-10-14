@@ -34,6 +34,8 @@ public class FbwA380ReadbackTests
             ("BSC_PARKBRK", "Parking brake: SET", R),
             ("BSC_TOSPEEDS", "T.O speeds and thrust: SET", R),
             ("BSC_BEACON", "Beacon: ON", A),
+            // Not in the ECL: the owner's last line, 2026-10-14 (ACARS is the Captain's).
+            ("BSC_ACARS", "Start ACARS", R),
         }),
         ("AFTER_START_CL", "After Start Checklist", new[]
         {

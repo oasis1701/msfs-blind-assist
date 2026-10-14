@@ -399,6 +399,8 @@ public static class Md11FoChecklistDefinitions
                 Read("BSC_AUX_PUMP", G, "AUX Hydraulic Pump 1: On", "FO_AUX_PUMP_1_ON", On),
                 Read("BSC_IGNITION", G, "Engine Ignition: A or B", "FO_IGNITION_SELECTED", On),
                 Read("BSC_BEACON", G, "Beacon: On", "FO_BEACON_ON", On),
+                // Not on the maker's card: the owner's last line, 2026-10-14 (ACARS is the Captain's).
+                Reminder("BSC_ACARS", G, "Start ACARS"),
             }
         };
     }

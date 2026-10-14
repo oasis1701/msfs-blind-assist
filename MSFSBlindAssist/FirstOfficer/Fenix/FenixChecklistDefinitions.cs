@@ -571,6 +571,8 @@ public static class FenixChecklistDefinitions
             Reminder("BSC_WINDOWS", "BEFORE_START_CL", "Windows: CLOSED"),
             Auto("BSC_BEACON", "BEFORE_START_CL", "Beacon: ON",
                 "S_OH_EXT_LT_BEACON", v => v > 0.5, action: null),
+            // Not on the maker's card: the owner's last line, 2026-10-14 (ACARS is the Captain's).
+            Reminder("BSC_ACARS", "BEFORE_START_CL", "Start ACARS"),
         }
     };
 

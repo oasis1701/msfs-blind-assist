@@ -647,6 +647,8 @@ public static class FbwA380ChecklistDefinitions
                 s => AirbusReadbackFormat.TakeoffSpeeds(s.GetValue("PFD_V1"), s.GetValue("PFD_VR"),
                     s.GetValue("PFD_V2"), s.GetValue("A32NX_AIRLINER_TO_FLEX_TEMP"))),
             Auto("BSC_BEACON", "BEFORE_START_CL", "Beacon: ON", "LIGHT_BEACON", v => v > 0.5, action: null),
+            // Not on the maker's card: the owner's last line, 2026-10-14 (ACARS is the Captain's).
+            Reminder("BSC_ACARS", "BEFORE_START_CL", "Start ACARS"),
         }
     };
 

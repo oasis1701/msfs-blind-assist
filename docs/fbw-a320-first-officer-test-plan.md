@@ -199,7 +199,7 @@ speaks the value the First Officer reads when you tick it.
 - **Cockpit Preparation Checklist**: Gear pins and covers: REMOVED. Fuel quantity: CHECKED (live,
   in the EFB's unit). Seat belts: ON. ADIRS: NAV. Baro reference: SET (live).
 - **Before Start Checklist**: Parking brake: SET (live). Takeoff speeds and thrust: SET
-  (live: V1, VR, V2, flex). Windows: CLOSED. Beacon: ON.
+  (live: V1, VR, V2, flex). Windows: CLOSED. Beacon: ON. Start ACARS (a line you confirm).
 - **After Start Checklist**: Anti-ice: SET (live). ECAM status: CHECKED. Pitch trim: SET. Rudder
   trim: NEUTRAL (ticks itself from the FAC rudder trim, under 0.1 degree).
 - **Taxi Checklist**: Flight controls: CHECKED. Flaps setting: SET (live). Radar

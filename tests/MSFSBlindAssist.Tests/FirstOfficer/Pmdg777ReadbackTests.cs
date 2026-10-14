@@ -26,6 +26,10 @@ namespace MSFSBlindAssist.Tests;
 /// - The vendor's LNAV/VNAV arm and "clearance to pressurize the hydraulic systems" lines are
 ///   omitted: Before Start PROCEDURE lines, on no checklist page, pinned by
 ///   Pmdg777FlowOrderingTests.Preflight_and_BeforeStart_no_longer_ask_for_*.
+/// - "Start ACARS" (BSCL_ACARS) is the last line of the Before Start Checklist though it is not on
+///   PMDG's page (owner, 2026-10-14): the one owner-added read-back line, named in
+///   <see cref="OwnerAdded"/>, left out of the line-for-line check and pinned in
+///   <see cref="Ours"/> and BeforeStartAcarsReadbackTests.
 /// </summary>
 public class Pmdg777ReadbackTests
 {
@@ -59,7 +63,8 @@ public class Pmdg777ReadbackTests
         ("BEFORE_START_CL", new[] { "Flight Deck Door: Closed and locked", "Passenger Signs: Set",
             "MCP: Set speed, heading and altitude", "Takeoff Speeds: Set V1, VR and V2 from CDU",
             "CDU Preflight: Complete", "Trim: Elevator set, aileron 0, rudder 0",
-            "Taxi and Takeoff Briefing: Complete", "Beacon: ON" }),
+            "Taxi and Takeoff Briefing: Complete", "Beacon: ON",
+            "Start ACARS" /* not on PMDG's page: the owner's last line, 2026-10-14 (ACARS is the Captain's) */ }),
         ("BEFORE_TAXI_CL", new[] { "Anti-Ice: As required", "Recall: Checked", "Auto Brake: RTO",
             "Flight Controls: Checked", "Ground Equipment: Clear" }),
         ("BEFORE_TKOF_CL", new[] { "Flaps: Set for takeoff" }),
@@ -71,6 +76,14 @@ public class Pmdg777ReadbackTests
         ("SHUTDOWN_CL", new[] { "Hydraulic panel: SET", "Fuel Pumps: OFF", "Flaps: UP",
             "Parking Brake: As required", "Fuel Control Switches: CUTOFF", "Weather Radar: OFF" }),
         ("SECURE_CL", new[] { "ADIRU: OFF", "Emergency Lights: OFF", "Packs: OFF" }),
+    };
+
+    // Read-back lines the OWNER added that PMDG's pages do not have (owner, 2026-10-14): the only
+    // ones, excluded from the line-for-line comparison and pinned by wording in Ours. Never add a
+    // line here without an owner decision; every other line must stay PMDG's (FOB-4).
+    private static readonly (string Group, string ItemId)[] OwnerAdded =
+    {
+        ("BEFORE_START_CL", "BSCL_ACARS"),
     };
 
     private static List<ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator>> Readbacks() =>
@@ -95,7 +108,19 @@ public class Pmdg777ReadbackTests
         var built = Readbacks().ToDictionary(g => g.Id);
         foreach (var (group, _, subjects) in Pmdg)
             Assert.Equal(subjects.Select(Subject),
-                built[group].Items.Select(i => Subject(i.Label.Split(": ")[0])));
+                built[group].Items.Where(i => !OwnerAdded.Contains((group, i.Id)))
+                                  .Select(i => Subject(i.Label.Split(": ")[0])));
+    }
+
+    [Fact]
+    public void Owner_added_lines_exist_and_are_the_only_extras()
+    {
+        var built = Readbacks().ToDictionary(g => g.Id);
+        foreach (var (group, itemId) in OwnerAdded)
+            Assert.Contains(built[group].Items, i => i.Id == itemId);
+        // Anything beyond PMDG's subjects must be on the allow-list.
+        foreach (var (group, _, subjects) in Pmdg)
+            Assert.Equal(subjects.Length + OwnerAdded.Count(o => o.Group == group), built[group].Items.Count);
     }
 
     [Fact]
