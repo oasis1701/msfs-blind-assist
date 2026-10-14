@@ -821,6 +821,37 @@ public class SynapticA220DefinitionTests
         Assert.Empty(unknownSent);
     }
 
+    // A lost read-back used to say "did not change — still QNH"; pressed again, the toggle then
+    // turned STD back off. Now nothing is claimed, and the toggle will not act on the unknown state.
+    [Fact]
+    public async Task Std_WithNoReadBack_IsNotConfirmed_AndTheToggleWillNotActOnIt()
+    {
+        var sent = new List<string>();
+        var speech = new SpeechCapture();
+        var def = CtpDef(() => "{}", sent);                         // the write goes out; no ADS/CTP store answers
+        def.ProcessSystems(Blocks(AdsStore("l", "\"qnh_std\":false")));
+
+        await def.ToggleStdAsync(Cap, speech);
+        Assert.Equal(new[] { "Captain baro not confirmed: the A220 display link did not report it." }, speech.All);
+
+        await def.ToggleStdAsync(Cap, speech);                      // pressed again
+        Assert.Equal(new[] { "ctpSet(1, {\"qnh_std\":true})" }, sent);   // nothing sent from an unknown state
+        Assert.Equal("Standard is not known: the A220 display link is not connected.", speech.All[^1]);
+    }
+
+    [Fact]
+    public async Task TransponderWrites_WithNoAtcBlock_AreNotConfirmed()
+    {
+        var (def, speech) = Scripted("{}");
+        await def.SetXpdrModeAsync(2, speech);
+        await def.SetTcasAltLimitAsync(1, speech);
+        Assert.Equal(new[]
+        {
+            "Transponder mode not confirmed: the A220 display link did not report it.",
+            "TCAS altitude limit not confirmed: the A220 display link did not report it."
+        }, speech.All);
+    }
+
     [Fact]
     public async Task MinimumsMode_IsSilentWhenItLands_AndNamesWhatItKeptWhenItDoesNot()
     {

@@ -11,7 +11,8 @@ namespace MSFSBlindAssist.Aircraft;
 /// "A22X.L/R CTP Action" SetConfig ([A220-33]). Every payload is built by A220Systems
 /// (System.Text.Json, invariant); the agent accepts only the keys and action types MSFSBA sets.
 /// A write the display link cannot carry is refused aloud; a value the aircraft did not take is
-/// spoken as what it kept, and the bus combos are re-sent so the panel shows the truth.
+/// spoken as what it kept, a read-back that never arrived as "not confirmed" (never as a kept
+/// state), and the bus combos are re-sent so the panel shows the truth.
 /// </summary>
 public partial class SynapticA220Definition
 {

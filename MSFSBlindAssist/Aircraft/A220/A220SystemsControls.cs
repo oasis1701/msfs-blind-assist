@@ -149,11 +149,20 @@ internal static partial class A220Systems
             : $"Squawk {NotAvailable}";
     }
 
+    /// <summary>What a write whose read-back never arrived says: the block (or the field the
+    /// verdict reads) is missing, so nothing was read and no state is claimed — never "did not
+    /// change — still …", which sends the pilot to press again (a toggle would then undo it).</summary>
+    internal static string NotConfirmed(string what) => $"{what} not confirmed: the A220 display link did not report it";
+
     internal static string? XpdrModeFailure(int want, AtcBlock? after)
-        => after?.mode == want ? null : $"Transponder mode did not change — still {Label(XpdrModeLabels, after?.mode)}.";
+        => after?.mode is not { } now ? NotConfirmed("Transponder mode") + "."
+         : now == want ? null
+         : $"Transponder mode did not change — still {Label(XpdrModeLabels, now)}.";
 
     internal static string? AltLimitFailure(int want, AtcBlock? after)
-        => after?.tss_limits_sel == want ? null : $"TCAS altitude limit did not change — still {Label(AltLimitLabels, after?.tss_limits_sel)}.";
+        => after?.tss_limits_sel is not { } now ? NotConfirmed("TCAS altitude limit") + "."
+         : now == want ? null
+         : $"TCAS altitude limit did not change — still {Label(AltLimitLabels, now)}.";
 
     private static readonly Regex FlightIdPattern = new("^[A-Z0-9]{2,8}$", RegexOptions.CultureInvariant);
 
@@ -279,29 +288,41 @@ internal static partial class A220Systems
     internal static (CtpBlock? Ctp, AdsBlock? Ads) SideBlocks(SystemsBlocks? s, int side)
         => side == 2 ? (s?.rctp, s?.rads) : (s?.lctp, s?.lads);
 
+    /// <summary>The problems a write left, in order, as one spoken verdict; null when there are none.</summary>
+    private static string? Problems(List<string> problems)
+        => problems.Count == 0 ? null : string.Join(". ", problems) + ".";
+
+    /// <summary>A QNH read back in a known unit (the field the QNH verdicts read).</summary>
+    private static bool QnhReadBack(CtpBlock? ctp) => ctp?.qnh is { type: "Hpa" or "InHg", value: not null };
+
     internal static string QnhResult(IReadOnlyDictionary<int, QnhSetting> wanted, SystemsBlocks? after)
     {
-        var ordered = wanted.OrderBy(w => w.Key).ToList();
-        var failed = new List<string>();
-        foreach (var (side, want) in ordered)
+        var sides = wanted.Keys.OrderBy(side => side).ToList();
+        var problems = new List<string>();
+        foreach (int side in sides)
         {
             var ctp = SideBlocks(after, side).Ctp;
-            if (!QnhLanded(ctp, want))
-                failed.Add($"{SideWord(side)} altimeter did not take the setting — reads {FormatQnh(ctp?.qnh)}");
+            if (!QnhReadBack(ctp)) problems.Add(NotConfirmed($"{SideWord(side)} altimeter"));
+            else if (!QnhLanded(ctp, wanted[side]))
+                problems.Add($"{SideWord(side)} altimeter did not take the setting — reads {FormatQnh(ctp!.qnh)}");
         }
-        if (failed.Count > 0) return string.Join(". ", failed) + ".";
-        var first = ordered[0];
-        string value = FormatQnh(new QnhValue { type = first.Value.Type, value = first.Value.Value });
-        string text = wanted.Count == 2 ? $"Altimeter {value}, both sides" : $"{SideWord(first.Key)} altimeter {value}";
-        bool stdStill = wanted.Keys.Any(side => IsStd(SideBlocks(after, side).Ads, SideBlocks(after, side).Ctp) == true);
+        if (Problems(problems) is { } failed) return failed;
+        // What each side READ BACK, not the setting wanted: each side was sent its own unit.
+        string text = QnhSidesText(sides, after);
+        bool stdStill = sides.Any(side => IsStd(SideBlocks(after, side).Ads, SideBlocks(after, side).Ctp) == true);
         return stdStill ? text + " — standard is still selected" : text;
     }
 
     internal static string StdResult(IReadOnlyList<int> sides, bool wantStd, SystemsBlocks? after)
     {
-        var failed = sides.Where(side => IsStd(SideBlocks(after, side).Ads, SideBlocks(after, side).Ctp) != wantStd).ToList();
-        if (failed.Count > 0)
-            return string.Join(". ", failed.Select(side => $"{SideWord(side)} baro did not change — still {(wantStd ? "QNH" : "standard")}")) + ".";
+        var problems = new List<string>();
+        foreach (int side in sides)
+        {
+            bool? now = IsStd(SideBlocks(after, side).Ads, SideBlocks(after, side).Ctp);
+            if (now == null) problems.Add(NotConfirmed($"{SideWord(side)} baro"));
+            else if (now != wantStd) problems.Add($"{SideWord(side)} baro did not change — still {(wantStd ? "QNH" : "standard")}");
+        }
+        if (Problems(problems) is { } failed) return failed;
         if (wantStd) return sides.Count == 2 ? "Altimeter standard, both sides" : $"{SideWord(sides[0])} altimeter standard";
         return QnhSidesText(sides, after);
     }
@@ -324,17 +345,25 @@ internal static partial class A220Systems
     internal static string UnitResult(IReadOnlyList<int> sides, bool wantHpa, SystemsBlocks? after)
     {
         string wantType = wantHpa ? "Hpa" : "InHg";
-        if (sides.Any(side => SideBlocks(after, side).Ctp?.qnh?.type != wantType))
-            return $"The A220 did not change the altimeter unit — still {(wantHpa ? "inches" : "hectopascals")}.";
-        return QnhSidesText(sides, after);
+        var problems = new List<string>();
+        if (sides.Any(side => QnhReadBack(SideBlocks(after, side).Ctp) && SideBlocks(after, side).Ctp!.qnh!.type != wantType))
+            problems.Add($"The A220 did not change the altimeter unit — still {(wantHpa ? "inches" : "hectopascals")}");
+        problems.AddRange(sides.Where(side => !QnhReadBack(SideBlocks(after, side).Ctp))
+            .Select(side => NotConfirmed($"{SideWord(side)} altimeter unit")));
+        return Problems(problems) ?? QnhSidesText(sides, after);
     }
 
     internal static string MinimumsResult(IReadOnlyList<int> sides, int feet, SystemsBlocks? after)
     {
-        var failed = sides.Where(side => SideBlocks(after, side).Ctp?.minimums is not { } m || Math.Abs(m - feet) >= 0.5).ToList();
-        if (failed.Count > 0)
-            return string.Join(". ", failed.Select(side =>
-                Inv($"{SideWord(side)} minimums did not take {feet} feet — reads {FormatMinimums(SideBlocks(after, side).Ctp)}"))) + ".";
+        var problems = new List<string>();
+        foreach (int side in sides)
+        {
+            var ctp = SideBlocks(after, side).Ctp;
+            if (ctp?.minimums is not { } m) problems.Add(NotConfirmed($"{SideWord(side)} minimums"));
+            else if (Math.Abs(m - feet) >= 0.5)
+                problems.Add(Inv($"{SideWord(side)} minimums did not take {feet} feet — reads {FormatMinimums(ctp)}"));
+        }
+        if (Problems(problems) is { } failed) return failed;
         return sides.Count == 2
             ? Inv($"Minimums {feet} feet, both sides")
             : $"{SideWord(sides[0])} minimums {FormatMinimums(SideBlocks(after, sides[0]).Ctp)}";
@@ -342,10 +371,14 @@ internal static partial class A220Systems
 
     internal static string? MinimumsModeFailure(IReadOnlyList<int> sides, int mode, SystemsBlocks? after)
     {
-        var failed = sides.Where(side => SideBlocks(after, side).Ctp?.minimums_mode != mode).ToList();
-        if (failed.Count == 0) return null;
-        return "Minimums mode did not change — " + string.Join(", ", failed.Select(side =>
-            $"{SideWord(side).ToLowerInvariant()} still {FormatMinimums(SideBlocks(after, side).Ctp)}")) + ".";
+        var kept = sides.Where(side => SideBlocks(after, side).Ctp?.minimums_mode is { } m && m != mode).ToList();
+        var problems = new List<string>();
+        if (kept.Count > 0)
+            problems.Add("Minimums mode did not change — " + string.Join(", ", kept.Select(side =>
+                $"{SideWord(side).ToLowerInvariant()} still {FormatMinimums(SideBlocks(after, side).Ctp)}")));
+        problems.AddRange(sides.Where(side => SideBlocks(after, side).Ctp?.minimums_mode == null)
+            .Select(side => NotConfirmed($"{SideWord(side)} minimums mode")));
+        return Problems(problems);
     }
 
     internal static string CtpQnhJson(QnhSetting q) => JsonSerializer.Serialize(new { qnh = new { type = q.Type, value = q.Value } });

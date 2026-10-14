@@ -536,9 +536,82 @@ public class SynapticA220SystemsTests
         var a = Store<AtcBlock>("A22X.ATC Data");
         Assert.Null(XpdrModeFailure(0, a));
         Assert.Equal("Transponder mode did not change — still AUTO.", XpdrModeFailure(2, a));
-        Assert.Equal("Transponder mode did not change — still unknown.", XpdrModeFailure(2, null));
+        Assert.Equal("Transponder mode not confirmed: the A220 display link did not report it.", XpdrModeFailure(2, null));
         Assert.Equal("TCAS altitude limit did not change — still Normal.", AltLimitFailure(1, a));
     }
+
+    // ---- A read-back that never arrived claims no state ----------------------------------
+    // A missing block, or a block without the field the verdict reads, is "not confirmed", never
+    // "did not change — still ...": at transition altitude a lost STD read-back said "still QNH",
+    // the pilot pressed again, and the toggle turned STD back off.
+
+    private const string NotReported = "not confirmed: the A220 display link did not report it";
+
+    [Fact]
+    public void WriteVerdicts_WithNothingReadBack_AreNotConfirmed_NeverAClaimedState()
+    {
+        var empty = new SystemsBlocks();
+        var noField = new SystemsBlocks
+        {
+            lads = new AdsBlock { qnh_unit = 0 }, lctp = new CtpBlock { course = 90 }   // blocks without the verdict's field
+        };
+        var cap = new[] { 1 };
+        var qnh = new Dictionary<int, QnhSetting> { [1] = new("InHg", 30.13) };
+        foreach (var after in new[] { null, empty, noField })
+        {
+            Assert.Equal($"Captain baro {NotReported}.", StdResult(cap, true, after));
+            Assert.Equal($"Captain baro {NotReported}.", StdResult(cap, false, after));
+            Assert.Equal($"Captain altimeter unit {NotReported}.", UnitResult(cap, true, after));
+            Assert.Equal($"Captain altimeter {NotReported}.", QnhResult(qnh, after));
+            Assert.Equal($"Captain minimums {NotReported}.", MinimumsResult(cap, 200, after));
+            Assert.Equal($"Captain minimums mode {NotReported}.", MinimumsModeFailure(cap, 1, after));
+            Assert.Equal($"Transponder mode {NotReported}.", XpdrModeFailure(2, after?.atc));
+            Assert.Equal($"TCAS altitude limit {NotReported}.", AltLimitFailure(1, after?.atc));
+        }
+        Assert.Equal($"Transponder mode {NotReported}.", XpdrModeFailure(2, new AtcBlock { code = 2000 }));
+        Assert.Equal($"TCAS altitude limit {NotReported}.", AltLimitFailure(1, new AtcBlock { mode = 2 }));
+    }
+
+    [Fact]
+    public void ABothSidesWrite_NamesTheSideThatWasNotReadBack() => UnderCulture("de-DE", () =>
+    {
+        var captainOnly = new SystemsBlocks
+        {
+            lads = new AdsBlock { qnh_std = true },
+            lctp = new CtpBlock { qnh = new QnhValue { type = "Hpa", value = 1013 }, minimums_mode = 1, minimums = 200 },
+        };
+        var both = new[] { 1, 2 };
+        Assert.Equal($"First officer baro {NotReported}.", StdResult(both, true, captainOnly));
+        Assert.Equal($"First officer altimeter unit {NotReported}.", UnitResult(both, true, captainOnly));
+        Assert.Equal($"First officer altimeter {NotReported}.",
+            QnhResult(new Dictionary<int, QnhSetting> { [1] = new("Hpa", 1013), [2] = new("Hpa", 1013) }, captainOnly));
+        Assert.Equal($"First officer minimums {NotReported}.", MinimumsResult(both, 200, captainOnly));
+        Assert.Equal($"First officer minimums mode {NotReported}.", MinimumsModeFailure(both, 1, captainOnly));
+
+        // A refusal on one side and no read-back on the other: each is named for what it is.
+        Assert.Equal($"Captain baro did not change — still standard. First officer baro {NotReported}.",
+            StdResult(both, false, captainOnly));
+        Assert.Equal($"The A220 did not change the altimeter unit — still hectopascals. First officer altimeter unit {NotReported}.",
+            UnitResult(both, false, captainOnly));
+        Assert.Equal($"Captain minimums did not take 250 feet — reads radio 200 feet. First officer minimums {NotReported}.",
+            MinimumsResult(both, 250, captainOnly));
+        Assert.Equal($"Minimums mode did not change — captain still radio 200 feet. First officer minimums mode {NotReported}.",
+            MinimumsModeFailure(both, 0, captainOnly));
+    });
+
+    // The success line reads what each side read back, not the setting that was wanted: each side
+    // is sent the value in its OWN unit, so "both sides" from the wanted value misnamed one of them.
+    [Fact]
+    public void QnhResult_NamesEachSidesReadBack_WhenTheyDiffer() => UnderCulture("de-DE", () =>
+    {
+        SystemsBlocks Read(QnhValue l, QnhValue r) => new() { lctp = new CtpBlock { qnh = l }, rctp = new CtpBlock { qnh = r } };
+        var mixed = Read(new QnhValue { type = "InHg", value = 30.120001 }, new QnhValue { type = "Hpa", value = 1020 });
+        Assert.Equal("Captain altimeter 30.12 inches, first officer 1020 hectopascals",
+            QnhResult(new Dictionary<int, QnhSetting> { [1] = new("InHg", 30.12), [2] = new("Hpa", 1020) }, mixed));
+        var alike = Read(new QnhValue { type = "InHg", value = 30.12 }, new QnhValue { type = "InHg", value = 30.12 });
+        Assert.Equal("Altimeter 30.12 inches, both sides",
+            QnhResult(new Dictionary<int, QnhSetting> { [1] = new("InHg", 30.12), [2] = new("InHg", 30.12) }, alike));
+    });
 
     [Theory]
     [InlineData("dal123", true, "DAL123")]
