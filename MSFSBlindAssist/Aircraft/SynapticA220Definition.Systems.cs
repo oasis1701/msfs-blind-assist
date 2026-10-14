@@ -103,6 +103,7 @@ public partial class SynapticA220Definition
             _engineTracker.Reset();
             _irsMonitor.Reset();
             _doorMonitor.Reset();
+            lock (_bridged) _bridged.Clear();   // every bus state is re-sent to the panel
         }
         StoreSystems(sys);
         FeedTakeoffSpeeds(sys?.lpfd);   // the scrape fallback feeds it too while the store is down
@@ -115,6 +116,7 @@ public partial class SynapticA220Definition
         SpeakRow(A220MonitorRows.IrsKey,
             _irsMonitor.Observe(A220Systems.Irs(sys.lpfd, sys.fmspos), sys.lpfd != null || sys.fmspos != null));
         foreach (string line in _doorMonitor.Observe(sys.doors)) SpeakRow(A220MonitorRows.DoorsKey, line);
+        EmitBridgeValues(sys);
     }
 
     /// <summary>A queued call-out unless its Ctrl+M row is unticked.</summary>
@@ -294,5 +296,46 @@ public partial class SynapticA220Definition
         }
         catch (System.Text.Json.JsonException) { }
         announcer.AnnounceImmediate(tod ? A220Systems.FormatDistanceToTod(p) : A220Systems.FormatDistanceToDestination(p));
+    }
+
+    // ---- The CommBus bridge ([A220-39]) ------------------------------------------------
+    // Some panel controls have NO readable sim variable — their state exists only on the bus
+    // (transponder mode, TCAS altitude limit, baro STD, minimums mode). Their combos are
+    // UpdateFrequency.Never (never read from the sim), and their current value reaches MainForm
+    // here, as a SILENT initial-snapshot update (MainForm.A220 forwards it), exactly as the iFly's
+    // SDK bridge feeds its panel. Silent: the change was either the pilot's own (the screen
+    // reader read the pick) or a read-back the write path speaks itself.
+
+    /// <summary>Raised from the pump thread with (variable key, value) for a bus-only state.</summary>
+    internal event Action<string, double>? CommBusValueChanged;
+
+    private readonly Dictionary<string, double> _bridged = new();
+    private volatile bool _bridgeResendPending;
+
+    /// <summary>Raise <see cref="CommBusValueChanged"/> when the value differs from the last one
+    /// sent, or always with <paramref name="force"/>.</summary>
+    internal void EmitBridgeValue(string key, double value, bool force = false)
+    {
+        lock (_bridged)
+        {
+            if (!force && _bridged.TryGetValue(key, out double last) && Math.Abs(last - value) < 1e-9) return;
+            _bridged[key] = value;
+        }
+        try { CommBusValueChanged?.Invoke(key, value); }
+        catch (Exception ex) { Utils.Logging.Log.Debug("A220", $"CommBus bridge {key}: {ex.Message}"); }
+    }
+
+    /// <summary>After a write the aircraft refused (or a combo pick that may not have landed),
+    /// re-send every bus state on the next poll so each combo shows the truth again.</summary>
+    private void ResendBridge() => _bridgeResendPending = true;
+
+    private void EmitBridgeValues(A220Systems.SystemsBlocks sys)
+    {
+        bool force = _bridgeResendPending;
+        _bridgeResendPending = false;
+        void Emit(string key, double? value) { if (value is { } v) EmitBridgeValue(key, v, force); }
+        Emit("A22X_XPDR_MODE", sys.atc?.mode);
+        Emit("A22X_TCAS_ALT_LIMIT", sys.atc?.tss_limits_sel);
+        Emit("A22X_XPDR_CODE_BUS", sys.atc?.code);
     }
 }

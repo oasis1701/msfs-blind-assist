@@ -107,7 +107,10 @@ public partial class SynapticA220Definition
             // NAV-to-NAV transfer (docs/a220-plan.md W8).
             "A22X_NAV1_STBY_SET", "A22X_NAV2_STBY_SET"
         },
-        ["Transponder"] = new List<string> { "TRANSPONDER_CODE_SET", "A22X_XPDR_IDENT" },
+        ["Transponder"] = new List<string>
+        {
+            "A22X_XPDR_MODE", "A22X_TCAS_ALT_LIMIT", "A22X_XPDR_CODE_SET", "A22X_XPDR_IDENT", "A22X_XPDR_FLIGHT_ID"
+        },
         ["Simulation Options"] = new List<string> { "A22X_TOD_PAUSE", "A22X_TOD_DISTANCE_SET" },
         ["Engine Data"] = new List<string>(),
         // Display-only panels (HS-5: they still need an entry, or the panel builds nothing).

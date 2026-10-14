@@ -187,6 +187,7 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
         // which StopDisplayPump above already tore down.
         DisposeFmsEclForms();
         DisposeRadiosForm();
+        DisposeFlightIdDialog();
     }
 
     public override bool HandleHotkeyAction(HotkeyAction action, SimConnectManager simConnect,
@@ -401,7 +402,11 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
                 return true;
             }
             case HotkeyAction.ReadSquawkCode:
-                announcer.AnnounceImmediate($"Squawk {Cached(simConnect, "A22X_XPDR_CODE", 2000):0000}");
+                // The transponder's own code and mode (A22X.ATC Data); the stock code when the
+                // display link is down. That stock word is BCD16 (squawk 2000 reads 8192), decoded
+                // by FormatSquawkReadout; NaN, never a made-up default, when nothing is cached.
+                announcer.AnnounceImmediate(A220Systems.FormatSquawkReadout(LatestSystems?.atc,
+                    Cached(simConnect, "A22X_XPDR_CODE", double.NaN)));
                 return true;
 
             // ---- Aircraft-state readouts ---------------------------------------

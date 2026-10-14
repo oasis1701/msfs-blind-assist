@@ -28,6 +28,9 @@ public partial class SynapticA220Definition
         _sim = simConnect;
         _announcer = announcer;
 
+        // CommBus-backed controls (Avionics partial): claimed before the generic catch-alls.
+        if (TryHandleAvionicsSet(varKey, value, simConnect, announcer)) return true;
+
         switch (varKey)
         {
             // ---- APU hold-to-start (manual: hold START >= 3 s) -------------------
@@ -109,7 +112,7 @@ public partial class SynapticA220Definition
                 WriteLVar(simConnect, "A22X Master Caution Warning", 0);
                 return true;
 
-            // ---- radios / transponder / TOD -------------------------------------
+            // ---- radios / trim / TOD (the transponder is the Avionics partial's) --
             case "A22X_COM1_STBY_SET":
                 FireKeyEvent(simConnect, "COM_STBY_RADIO_SET_HZ", MhzToHz(value));
                 return true;
@@ -155,7 +158,9 @@ public partial class SynapticA220Definition
             return true;
         }
 
-        // Anything else (e.g. TRANSPONDER_CODE_SET's built-in BCD path) stays generic.
+        // Anything else (a stock SimVar or event control with no special case above) stays generic.
+        // The transponder code is no longer one: A22X_XPDR_CODE_SET is claimed by the Avionics
+        // partial, which verifies the squawk on A22X.ATC Data and falls back to XPNDR_SET itself.
         return base.HandleUIVariableSet(varKey, value, varDef, simConnect, announcer);
     }
 

@@ -32,6 +32,39 @@ public partial class MainForm
         a220MonitorManagerForm.ShowForm();
     }
 
+    private SynapticA220Definition? _a220BridgeDef;
+
+    /// <summary>
+    /// The A220's CommBus bridge ([A220-39]): bus-only control states (transponder mode, TCAS
+    /// altitude limit, baro STD, minimums mode, the entry fields' current values) arrive as
+    /// SILENT initial-snapshot updates, so the panel's combos and entry fields show the aircraft's
+    /// state without any announcement — the iFly SDK bridge's pattern. Re-pointed on every
+    /// aircraft switch; a no-op unless the A220 is loaded.
+    /// </summary>
+    private void StartA220CommBusBridge()
+    {
+        if (_a220BridgeDef != null)
+        {
+            _a220BridgeDef.CommBusValueChanged -= OnA220CommBusValue;
+            _a220BridgeDef = null;
+        }
+        if (currentAircraft is not SynapticA220Definition a220) return;
+        a220.CommBusValueChanged += OnA220CommBusValue;
+        _a220BridgeDef = a220;
+    }
+
+    private void OnA220CommBusValue(string varKey, double value)
+    {
+        if (currentAircraft is not SynapticA220Definition) return;
+        OnSimVarUpdated(this, new SimConnect.SimVarUpdateEventArgs
+        {
+            VarName = varKey,
+            Value = value,
+            Description = string.Empty,
+            IsInitialSnapshot = true,
+        });
+    }
+
     private void SynapticA220MenuItem_Click(object? sender, EventArgs e)
     {
         SwitchAircraft(new SynapticA220Definition());

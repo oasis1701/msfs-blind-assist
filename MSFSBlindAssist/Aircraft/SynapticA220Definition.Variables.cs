@@ -112,6 +112,33 @@ public partial class SynapticA220Definition
     private static SimVarDefinition CommBusRow(string display)
         => Status("ELECTRICAL MAIN BUS VOLTAGE", display, "volts", "F0", SimVarType.SimVar);
 
+    /// <summary>
+    /// A combo whose STATE exists only on the CommBus (transponder mode, TCAS altitude limit,
+    /// baro STD, minimums mode). Never read from the sim — UpdateFrequency.Never registers no
+    /// data definition — its value reaches the panel through CommBusValueChanged as a silent
+    /// snapshot update ([A220-39]), and every write is claimed by TryHandleAvionicsSet. The Name
+    /// is documentation only: no L:var of that name exists or is ever written.
+    /// </summary>
+    private static SimVarDefinition BusCombo(string display, params string[] labels) => new()
+    {
+        Name = "MSFSBA CommBus " + display,
+        DisplayName = display,
+        Type = SimVarType.LVar,
+        Units = "number",
+        UpdateFrequency = UpdateFrequency.Never,
+        ValueDescriptions = Labels(labels)
+    };
+
+    /// <summary>A bus value with no control of its own: an entry field's current-value source.</summary>
+    private static SimVarDefinition BusValue(string display) => new()
+    {
+        Name = "MSFSBA CommBus " + display,
+        DisplayName = display,
+        Type = SimVarType.LVar,
+        Units = "number",
+        UpdateFrequency = UpdateFrequency.Never
+    };
+
     protected override Dictionary<string, SimVarDefinition> BuildVariables()
     {
         var v = GetBaseVariables();
@@ -609,16 +636,27 @@ public partial class SynapticA220Definition
             Name = "COM2_RADIO_SWAP", DisplayName = "COM 2 Swap",
             Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.OnRequest, RenderAsButton = true
         };
-        v["TRANSPONDER_CODE_SET"] = new SimVarDefinition
+        // Transponder / TCAS: the CNS XPDR/TCAS CONTROL dialog's own ConfigAtc calls, read back
+        // from A22X.ATC Data ([A220-35], Avionics partial). Labels are the dialog's, in its order.
+        v["A22X_XPDR_MODE"] = BusCombo("Transponder Mode", A220.A220Systems.XpdrModeLabels);
+        v["A22X_TCAS_ALT_LIMIT"] = BusCombo("TCAS Altitude Limit", A220.A220Systems.AltLimitLabels);
+        v["A22X_XPDR_CODE_BUS"] = BusValue("Transponder Code (bus)");
+        v["A22X_XPDR_CODE_SET"] = new SimVarDefinition
         {
-            // MainForm's built-in _SET special case handles the BCD encoding + XPNDR_SET.
-            Name = "XPNDR_SET", DisplayName = "Transponder Code",
+            // SetCode on the bus, verified; the stock XPNDR_SET only as the verified fallback.
+            Name = "A22X_XPDR_CODE_SET", DisplayName = "Transponder Code",
             Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.Never,
-            CurrentValueSourceKey = "A22X_XPDR_CODE"
+            CurrentValueSourceKey = "A22X_XPDR_CODE_BUS", UnparseableTextAsNaN = true
         };
         v["A22X_XPDR_IDENT"] = new SimVarDefinition
         {
+            // The stock event first, then the dialog's Ident action, verified on ATC Data.
             Name = "XPNDR_IDENT_ON", DisplayName = "Transponder Ident",
+            Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.OnRequest, RenderAsButton = true
+        };
+        v["A22X_XPDR_FLIGHT_ID"] = new SimVarDefinition
+        {
+            Name = "A22X_XPDR_FLIGHT_ID", DisplayName = "Set Flight ID",
             Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.OnRequest, RenderAsButton = true
         };
 

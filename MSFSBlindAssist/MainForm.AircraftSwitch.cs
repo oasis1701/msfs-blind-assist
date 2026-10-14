@@ -1178,6 +1178,8 @@ public partial class MainForm
 
         // Starting the SDK bridge is a no-op unless the new aircraft is the iFly.
         StartIFlySdkBridge();
+        // Likewise the A220's CommBus bridge (MainForm.A220).
+        StartA220CommBusBridge();
 
         // Rebuild sections from new aircraft structure
         foreach (var section in currentAircraft.GetPanelStructure().Keys)

@@ -295,6 +295,118 @@ public class SynapticA220DefinitionTests
         Assert.Equal(SynapticA220Definition.TakeoffIasKey, Def.TakeoffCalloutFeedKey);
         Assert.True(Def.IsMuteWrapExempt(SynapticA220Definition.TakeoffIasKey));
     }
+
+    // ---- The CommBus bridge and the transponder / TCAS controls ([A220-35], [A220-39]) ----
+
+    [Fact]
+    public void Bridge_EmitsBusOnlyStates_OnChangeOnly_AndAllAgainAfterAReset()
+    {
+        var def = new SynapticA220Definition();
+        var seen = new List<(string Key, double Value)>();
+        def.CommBusValueChanged += (k, v) => seen.Add((k, v));
+        def.ProcessSystems(FixtureSystems());
+        Assert.Contains(("A22X_XPDR_MODE", 0.0), seen);
+        Assert.Contains(("A22X_TCAS_ALT_LIMIT", 0.0), seen);
+        Assert.Contains(("A22X_XPDR_CODE_BUS", 2000.0), seen);
+        int first = seen.Count;
+        def.ProcessSystems(FixtureSystems());
+        Assert.Equal(first, seen.Count);                         // unchanged: nothing re-sent
+        def.RequestSystemsRebaseline();
+        def.ProcessSystems(FixtureSystems());
+        Assert.Equal(2 * first, seen.Count);                     // a context reset re-sends it all
+    }
+
+    [Theory]
+    [InlineData("A22X_XPDR_MODE", 6)]
+    [InlineData("A22X_TCAS_ALT_LIMIT", 4)]
+    public void BusCombos_AreNeverReadFromTheSim(string key, int positions)
+    {
+        var v = Vars[key];
+        Assert.Equal(SimVarType.LVar, v.Type);
+        Assert.Equal(UpdateFrequency.Never, v.UpdateFrequency);   // no data definition: the bridge owns its state
+        Assert.Equal(positions, v.ValueDescriptions.Count);
+        Assert.Contains(key, Def.GetPanelControls()["Transponder"]);
+    }
+
+    [Fact]
+    public void BusCombos_TakeTheLabelsOfTheAircraftsOwnDialog_InItsOrder()
+    {
+        Assert.Equal(A220Systems.XpdrModeLabels,
+            Vars["A22X_XPDR_MODE"].ValueDescriptions.OrderBy(p => p.Key).Select(p => p.Value));
+        Assert.Equal(A220Systems.AltLimitLabels,
+            Vars["A22X_TCAS_ALT_LIMIT"].ValueDescriptions.OrderBy(p => p.Key).Select(p => p.Value));
+    }
+
+    [Fact]
+    public void Transponder_Panel_UsesTheBusCodeEntry_NotTheStockOne()
+    {
+        Assert.False(Vars.ContainsKey("TRANSPONDER_CODE_SET"));
+        var entry = Vars["A22X_XPDR_CODE_SET"];
+        Assert.Equal("A22X_XPDR_CODE_BUS", entry.CurrentValueSourceKey);
+        Assert.True(entry.UnparseableTextAsNaN);
+        Assert.Equal(new[] { "A22X_XPDR_MODE", "A22X_TCAS_ALT_LIMIT", "A22X_XPDR_CODE_SET", "A22X_XPDR_IDENT", "A22X_XPDR_FLIGHT_ID" },
+            Def.GetPanelControls()["Transponder"]);
+        Assert.True(Vars["A22X_XPDR_FLIGHT_ID"].RenderAsButton);
+        Assert.True(Vars.ContainsKey("A22X_XPDR_CODE_BUS"));      // the entry's prefill source must exist
+    }
+
+    [Fact]
+    public async Task TcasAltitudeLimit_IsRefusedAloudInAuto_AndTheCombosAreResentTheTruth()
+    {
+        var def = new SynapticA220Definition();
+        var seen = new List<(string Key, double Value)>();
+        def.CommBusValueChanged += (k, v) => seen.Add((k, v));
+        var speech = new SpeechCapture();
+        def.ProcessSystems(FixtureSystems());                      // the fixture transponder is in AUTO (mode 0)
+        int first = seen.Count;
+
+        await def.SetTcasAltLimitAsync(1, speech);                 // refused before anything reaches the agent
+
+        Assert.Equal(new[] { "The TCAS altitude limit cannot be changed in AUTO. Select TA/RA or TA ONLY first." },
+            speech.Interrupts);
+        def.ProcessSystems(FixtureSystems());
+        Assert.Equal(2 * first, seen.Count);                       // the combo that was picked is shown the truth again
+        Assert.Equal(0.0, seen.Last(e => e.Key == "A22X_TCAS_ALT_LIMIT").Value);
+    }
+
+    // The stock TRANSPONDER CODE:1 word is BCD16 (squawk 2000 reads 8192), never the decimal code.
+    [Theory]
+    [InlineData(2000, 2000, 0.0, true)]       // the bus says it landed
+    [InlineData(2000, 1200, 0.0, false)]      // the bus says something else
+    [InlineData(2000, 1200, 8192.0, false)]   // a present bus block outranks the stock word
+    [InlineData(2000, null, 8192.0, true)]    // link down: the stock word, as the BCD of 2000
+    [InlineData(2000, null, 2000.0, false)]   // link down: a decimal 2000 is NOT the squawk 2000
+    [InlineData(1200, null, 4608.0, true)]    // 0x1200
+    [InlineData(2000, null, double.NaN, false)]
+    public void SquawkLanded_ComparesTheStockWordAsBcd_OnlyWhenTheBusIsDown(int code, int? busCode, double stockWord, bool expected)
+    {
+        var atc = busCode is { } c ? new A220Systems.AtcBlock { code = c } : null;
+        Assert.Equal(expected, SynapticA220Definition.SquawkLanded(code, atc, stockWord));
+    }
+
+    // The Flight ID dialog names the current ID (no other readout carries it) and, since an empty
+    // box is refused by the form before the validator runs, clears through its own button.
+    [Theory]
+    [InlineData(false, null, "unknown")]      // no ATC block: the display link is down
+    [InlineData(true, null, "none")]
+    [InlineData(true, "", "none")]
+    [InlineData(true, "00000000", "none")]    // what a clear leaves behind
+    [InlineData(true, "BAW123", "BAW123")]
+    public void FlightIdNow_NamesTheCurrentId_OrWhyNot(bool haveBlock, string? id, string expected)
+    {
+        var atc = haveBlock ? new A220Systems.AtcBlock { id = id } : null;
+        Assert.Equal(expected, SynapticA220Definition.FlightIdNow(atc));
+    }
+
+    [Theory]
+    [InlineData(1200, 0.0, "1200")]           // the bus block is what the transponder reads
+    [InlineData(null, 8192.0, "2000")]        // link down: the stock BCD word, decoded
+    [InlineData(null, 2000.0, "----")]        // not a squawk: never guessed
+    public void SquawkReading_NamesWhatTheTransponderReads(int? busCode, double stockWord, string expected)
+    {
+        var atc = busCode is { } c ? new A220Systems.AtcBlock { code = c } : null;
+        Assert.Equal(expected, SynapticA220Definition.SquawkReading(atc, stockWord));
+    }
 }
 
 [Collection("SettingsManagerGlobalState")]

@@ -549,6 +549,8 @@ public partial class MainForm : Form
         // it works whenever the sim + iFly plugin are running). Generic announcements
         // don't wait on SimConnect either — see StartIFlyAnnouncementGrace's call sites.
         StartIFlySdkBridge();
+        // The A220's CommBus bridge (MainForm.A220): bus-only panel states, silently.
+        StartA220CommBusBridge();
 
         // Don't set focus - let default tab order handle it for proper menu accessibility
     }
