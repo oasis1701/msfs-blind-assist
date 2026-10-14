@@ -91,7 +91,7 @@
     //   Radio Data    vhf.nav_1 / nav_2 (the CNS NAV CONTROL windows).
     // [store, key, group, staleMs]. Group 'afdx' = the blocks the knob walks read fast
     // (A.afdx); 'sys' = the systems stores read once a second (A.sys, snapshot().sys —
-    // Plan A: CAS, gear, doors, engines, IRS, V-speeds, transponder, both CTPs and ADSs);
+    // CAS, gear, doors, engines, IRS, V-speeds, transponder, both CTPs and ADSs);
     // 'fpln' = the FMS's active flight plan, read only by A.fplnProgress. The stores
     // broadcast CHANGES and the DUs ask for a full copy after 3 s of quiet (afdx/index.ts
     // `yt`: r.set(Lp, 3e3)), so a slow store can sit silent for ~3 s between messages:
@@ -418,7 +418,7 @@
       return cbCall('A22X.Display Tune', { index: index, cmd: { type: 'ConfigNav', autotune: !!auto } });
     };
 
-    // ---- Plan A systems: CAS, gear, doors, engines, IRS, V-speeds, XPDR, CTPs --------
+    // ---- Systems: CAS, gear, doors, engines, IRS, V-speeds, XPDR, CTPs ---------------
     // One object per 'sys' store (null while stale) plus the captain's CTP and nav blocks,
     // those two judged on the systems window too (a quiet CTP sits ~3 s between messages, so
     // their 'afdx' 3 s flickered the captain's rows to "not available").

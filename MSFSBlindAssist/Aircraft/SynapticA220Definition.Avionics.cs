@@ -416,7 +416,8 @@ public partial class SynapticA220Definition
 
     /// <summary>The unit: the current setting re-sent in the other unit (the CTP takes its unit
     /// from the qnh type). The converted value is what the reader cannot say, so it is spoken;
-    /// a refusal names the unit kept (Task 14 measures whether the type switches the unit).</summary>
+    /// a refusal names the unit kept (whether the type switches the unit: docs/a220.md "Pending live
+    /// verification").</summary>
     internal async Task SetBaroUnitAsync(bool hpa, IReadOnlyList<int> sides, ScreenReaderAnnouncer announcer)
     {
         var claim = _unitWrites.Begin(sides);

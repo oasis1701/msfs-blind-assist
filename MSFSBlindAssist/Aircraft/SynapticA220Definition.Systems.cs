@@ -5,7 +5,7 @@ using MSFSBlindAssist.Aircraft.A220;
 namespace MSFSBlindAssist.Aircraft;
 
 /// <summary>
-/// Plan A systems over the AFDX CommBus (docs/a220.md "Systems over the CommBus"): the display
+/// Systems over the AFDX CommBus (docs/a220.md "Systems over the CommBus"): the display
 /// pump's once-a-second <c>sys</c> block feeds the CAS, gear, engine-start, IRS and door monitors
 /// and the panel rows that show them. Every decoder is pure (A220Systems, pinned by
 /// SynapticA220SystemsTests); this partial only stores, renders and speaks. The pump runs on a

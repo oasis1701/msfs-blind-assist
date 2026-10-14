@@ -103,7 +103,7 @@ internal static partial class A220Systems
     /// every other add-on documents as the raw BCD16 word: squawk 2000 reads 8192 (the comment at
     /// FlyByWireA380Definition.cs "reading it as number gave the raw BCD integer", the MD-11's
     /// live 0x5473), so a plain decimal like 2000 (0x7D0) is NOT a squawk here and reads as null,
-    /// never guessed. The first live A220 read settles it (the plan's live task).
+    /// never guessed. The first live A220 read settles it (docs/a220.md "Pending live verification").
     /// </summary>
     internal static int? Bcd16ToSquawk(double word)
     {

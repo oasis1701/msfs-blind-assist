@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 using MSFSBlindAssist.Utils.Logging;
 
@@ -253,7 +252,8 @@ internal static partial class A220Systems
         public double? drift { get; set; }
     }
 
-    /// <summary>"A22X.Status Data" — the STATUS synoptic's numbers (read by Plan C's SYN window).</summary>
+    /// <summary>"A22X.Status Data" — the STATUS synoptic's numbers (shipped for a later panel, not
+    /// read yet: docs/a220.md "Systems over the CommBus").</summary>
     internal sealed class StatusBlock
     {
         public double? tat { get; set; }
@@ -462,7 +462,7 @@ internal static partial class A220Systems
         }
     }
 
-    // ---- Colours: the `he` map in afdx/index.ts ([A220-38] evidence table, docs/a220.md) ----
+    // ---- Colours: the `he` map in afdx/index.ts (the enums in docs/a220.md "Systems over the CommBus") ----
 
     internal static string? ColourWord(int? colour) => colour switch
     {
@@ -602,7 +602,8 @@ internal static partial class A220Systems
 
     /// <summary>3 = closed (the synoptic hides the label: the normal state); 1 = open (the only
     /// value that FILLS the symbol); 0 and 2 the bundle draws as red/white outlines without
-    /// naming them, so they are spoken by colour (Task 14 records what they mean live).</summary>
+    /// naming them, so they are spoken by colour (what they mean live: docs/a220.md "Pending live
+    /// verification").</summary>
     internal static string DoorStateWord(int? v) => v switch
     {
         3 => "closed", 1 => "open", 0 => "not closed (red)", 2 => "not closed (white)", _ => "unknown"
@@ -731,7 +732,8 @@ internal static partial class A220Systems
     /// <summary>Aligning while any IRS reports mode 0-2 (POWER UP / ATTITUDE) or the PFD shows
     /// ATT/HDG ALIGNING; aligned only when every reporting IRS is in NAVIGATION (3). With no
     /// FMS position data and no PFD flag the state is Unknown — "align false" alone also means
-    /// unpowered, so it never reads as aligned. (Task 14 confirms the source from a cold start.)</summary>
+    /// unpowered, so it never reads as aligned. (The sequence from a cold start: docs/a220.md
+    /// "Pending live verification".)</summary>
     internal static IrsStatus Irs(PfdBlock? pfd, FmsPositionBlock? pos)
     {
         bool doNotTaxi = pfd?.stationary_align == true;
