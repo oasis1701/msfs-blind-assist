@@ -2,6 +2,7 @@ using System.Reflection;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Aircraft.A300;
 using MSFSBlindAssist.Aircraft.MD11;
+using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Tests.A300;
@@ -223,28 +224,18 @@ public class IniA300BehaviourTests
         Assert.Equal(new[] { "A300_NOSE_TRIM" }, _reReads);
     }
 
-    [Theory]
-    [InlineData("A300_LANDING_ELEV_SET#INC")]
-    [InlineData("A300_LANDING_ELEV_SET#DEC")]
-    public void A_landing_elevation_knob_step_is_read_back(string row)
-    {
-        // A numeric confirmation, as the FCU and flex temperature knobs' (the box alone said it, 2026-10-10).
-        ReadFreshReturns("A300_RO_LANDING_ELEV", 50);
-        Assert.True(Set(row, 1));
-        Assert.Equal(new[] { "Landing elevation 50 feet" }, _speech.All);
-    }
-
     [Fact]
     public void A_read_back_whose_value_lands_after_the_definition_went_away_says_nothing()
     {
         // An aircraft switch disposes the definition before the pending reads are failed, and a delivery can land
-        // in between: that value belongs to the old aircraft.
+        // in between: that value belongs to the old aircraft. The autothrottle button's lamp read-back (Ctrl+J).
         var read = new TaskCompletionSource<double?>();
         _def.TypedDelay = _ => Task.CompletedTask;
         _def.ReadFresh = (_, _, _) => read.Task;
-        Assert.True(Set("A300_LANDING_ELEV_SET#INC", 1));
+        Assert.True(_def.HandleHotkeyAction(HotkeyAction.ToggleAutothrust, _sim, _speech, null!, null!));
+        Assert.Equal(new[] { "1 (>B:AIRLINER_ATHR_Button_Set)" }, _sent);
         _def.Dispose();
-        read.SetResult(50);
+        read.SetResult(1);
         Assert.Empty(_speech.All);
     }
 
@@ -317,6 +308,8 @@ public class IniA300BehaviourTests
     [InlineData("A300_ILS_CRS#DEC")]
     [InlineData("A300_TCAS_BIG#INC")]
     [InlineData("A300_TCAS_SMALL#DEC")]
+    [InlineData("A300_FLEX_TEMP#INC")]
+    [InlineData("A300_LANDING_ELEV_SET#DEC")]
     public void A_knob_with_a_typed_box_is_no_row_of_the_definition(string row)
     {
         // Left out of the panels (design decision, Robin, 2026-10-14): the definition does not claim it, and nothing is sent.

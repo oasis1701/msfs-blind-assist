@@ -53,9 +53,15 @@ public partial class IniA300Definition
 
     /// <summary>A typed value from a panel box or a dialog: refused aloud with its range, or sent and confirmed. The
     /// Captain Side and First Officer Side altimeter boxes run Ctrl+B's sequence for their one side
-    /// (<see cref="SetSideAltimeterAsync"/>); the standby's has no STD and is written like any other value.</summary>
+    /// (<see cref="SetSideAltimeterAsync"/>); the standby's has no STD and is written like any other value. The flex
+    /// temperature and landing elevation boxes turn their knob instead (<see cref="SetByKnobAsync"/>, [A300-30]).</summary>
     private void SetTyped(string key, double value, SimConnectManager sim, ScreenReaderAnnouncer announcer, string name)
     {
+        if (A300TypedValues.IsKnobTyped(key))
+        {
+            _ = SetByKnobAsync(key, value, sim, announcer, name);
+            return;
+        }
         var side = key switch
         {
             A300TypedValues.BaroCaptainKey => A300Baro.Captain,

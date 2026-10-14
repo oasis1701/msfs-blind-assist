@@ -4,8 +4,9 @@ namespace MSFSBlindAssist.Aircraft.A300;
 /// The panels iniBuilds groups by place but the fleet's Airbuses group by system (design decision,
 /// 2026-10-09): the overhead lights panel is Signs, Interior Lighting and Exterior Lighting; the bleed
 /// panel is Bleed and Air Conditioning; the fire panel gives up Cargo Smoke; the main instrument panel and
-/// the throttle quadrant are sorted into the FBW Airbuses' Instrument and Pedestal panels. The window and
-/// probe heat panel and the landing elevation knob stay where the A300 has them (design decision, same day).
+/// the throttle quadrant are sorted into the FBW Airbuses' Instrument and Pedestal panels. The Window and
+/// Probe Heat and Landing Elevation panels stay where the A300 has them (design decision, same day); Landing
+/// Elevation is its typed box alone since its knob was left out (2026-10-14).
 /// </summary>
 public static partial class A300PanelLayout
 {
@@ -99,8 +100,6 @@ public static partial class A300PanelLayout
         ["TRP_CR"] = "Thrust Rating Panel",
         ["TRP_AUTO"] = "Thrust Rating Panel",
         ["TRP_FLEXTO"] = "Thrust Rating Panel",
-        ["FLEX_TEMP"] = "Thrust Rating Panel",
-        ["LANDING_ELEV_SET"] = "Landing Elevation",
         ["ADI_CAGE"] = "Standby Instruments",
 
         // Throttle quadrant and the go levers (iniBuilds puts TOGA on the captain's EFIS panel).
@@ -117,7 +116,8 @@ public static partial class A300PanelLayout
 
     /// <summary>The section of each panel that is not in its controls' own iniBuilds area: the instrument
     /// panel's system panels (the gear gravity handle sits in iniBuilds' cockpit area, the GPWS landing flaps
-    /// switch on the pedestal) and the pedestal's (the go levers sit on the captain's EFIS panel).</summary>
+    /// switch on the pedestal) and the pedestal's (the go levers sit on the captain's EFIS panel). It is also
+    /// where a panel no control is placed on is made for its typed value: Landing Elevation.</summary>
     private static readonly Dictionary<string, string> PanelSections = new(StringComparer.Ordinal)
     {
         ["Warnings"] = "Instrument",

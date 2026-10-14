@@ -18,7 +18,8 @@ namespace MSFSBlindAssist.Aircraft.A300;
 /// limit is read only for GE engines.</item>
 /// <item><c>INI_FLEX_TEMPERATURE</c> is the FMS's flex temperature, copied there every update
 /// (<c>FMGS::Update</c>), so a direct write is undone; the knob steps it one degree, 0 to 72
-/// (<c>INI_flex_temp_up/dn_handler</c>).</item>
+/// (<c>INI_flex_temp_up/dn_handler</c>), and the typed flex temperature turns the knob
+/// (<see cref="A300SteppedKnobs"/>, [A300-30]).</item>
 /// </list>
 /// Pure; every number is formatted with the invariant culture.
 /// </summary>
@@ -39,7 +40,8 @@ public static class A300Trp
     /// <summary>The panel whose status box carries the TRP line (the TRP's own panel).</summary>
     public const string Panel = "Thrust Rating Panel";
 
-    /// <summary>The flex temperature knob (an encoder: its increase and decrease rows).</summary>
+    /// <summary>The flex temperature knob: an encoder with no panel row, which the typed box turns
+    /// (<see cref="A300SteppedKnobs.Flex"/>).</summary>
     public const string FlexKnobKey = "A300_FLEX_TEMP";
 
     /// <summary>TRP button row key → the mode number its lamp shows.</summary>
@@ -90,7 +92,7 @@ public static class A300Trp
         return string.Join(", ", parts);
     }
 
-    /// <summary>A flex knob step read back ("Flex temperature 46 degrees").</summary>
+    /// <summary>A typed flex temperature's confirmation, once the knob has reached it ("Flex temperature 46 degrees").</summary>
     public static string FlexPhrase(double degrees) => $"Flex temperature {Whole(degrees)} degrees";
 
     private static string Whole(double value)

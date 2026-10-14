@@ -145,8 +145,63 @@ public class A300TypedValuesTests
         Assert.Equal("100 to 49000 feet", A300TypedValues.AltitudeError);
         Assert.Equal("0, or 100 to 6000 feet per minute either way", A300TypedValues.VerticalSpeedError);
         Assert.Equal("0, or 10 to 2500 feet", A300TypedValues.MinimumsError);   // 1 to 9 is refused, so not "0 to 2500"
-        foreach (var key in new[] { A300TypedValues.AltitudeKey, A300TypedValues.VerticalSpeedKey, A300TypedValues.MinimumsKey })
+        Assert.Equal("-2000 to 14000 feet", A300TypedValues.ErrorFor(A300TypedValues.LandingElevationKey));
+        Assert.Equal("0 to 72 degrees", A300TypedValues.ErrorFor(A300TypedValues.FlexTemperatureKey));
+        foreach (var key in new[]
+                 {
+                     A300TypedValues.AltitudeKey, A300TypedValues.VerticalSpeedKey, A300TypedValues.MinimumsKey,
+                     A300TypedValues.LandingElevationKey,
+                 })
             Assert.DoesNotMatch(@"\d,\d", A300TypedValues.ErrorFor(key));
+    }
+
+    [Theory]
+    [InlineData(A300TypedValues.FlexTemperatureKey, 45.4, 45)]
+    [InlineData(A300TypedValues.FlexTemperatureKey, 45.5, 46)]          // half a degree: away from zero
+    [InlineData(A300TypedValues.FlexTemperatureKey, 0, 0)]
+    [InlineData(A300TypedValues.FlexTemperatureKey, 72, 72)]
+    [InlineData(A300TypedValues.LandingElevationKey, 5434, 5450)]
+    [InlineData(A300TypedValues.LandingElevationKey, 5425, 5450)]       // half a click: away from zero
+    [InlineData(A300TypedValues.LandingElevationKey, 5424, 5400)]
+    [InlineData(A300TypedValues.LandingElevationKey, -1975, -2000)]     // away from zero below it too
+    [InlineData(A300TypedValues.LandingElevationKey, 13, 0)]            // a field 13 feet up: the knob's nearest click
+    [InlineData(A300TypedValues.LandingElevationKey, -2000, -2000)]
+    [InlineData(A300TypedValues.LandingElevationKey, 14000, 14000)]
+    public void A_typed_value_that_turns_a_knob_goes_to_the_knobs_nearest_click(string key, double typed, double target) =>
+        // The flex temperature knob steps one degree, the landing elevation knob 50 feet (measured 2026-10-14).
+        Assert.Equal(((double?)target, (string?)null), A300TypedValues.KnobTarget(key, typed));
+
+    [Theory]
+    [InlineData(A300TypedValues.FlexTemperatureKey, 73, "0 to 72 degrees")]
+    [InlineData(A300TypedValues.FlexTemperatureKey, -1, "0 to 72 degrees")]
+    [InlineData(A300TypedValues.FlexTemperatureKey, 72.4, "0 to 72 degrees")]   // the range holds what was typed
+    [InlineData(A300TypedValues.FlexTemperatureKey, double.NaN, "0 to 72 degrees")]
+    [InlineData(A300TypedValues.LandingElevationKey, 14001, "-2000 to 14000 feet")]
+    [InlineData(A300TypedValues.LandingElevationKey, -2001, "-2000 to 14000 feet")]
+    // "5,450" in a panel's box arrives as 5.45, and "5 450" as no number: refused by the separator, as an altitude is.
+    [InlineData(A300TypedValues.LandingElevationKey, 5.45, "type a whole number, without a thousands separator")]
+    [InlineData(A300TypedValues.LandingElevationKey, double.NaN,
+        "type a whole number, without a thousands separator; -2000 to 14000 feet")]
+    [InlineData(A300TypedValues.LandingElevationKey, double.PositiveInfinity,
+        "type a whole number, without a thousands separator; -2000 to 14000 feet")]
+    public void A_typed_value_that_turns_a_knob_is_refused_outside_its_range_or_with_a_fraction(string key, double typed,
+        string error) =>
+        Assert.Equal(((double?)null, (string?)error), A300TypedValues.KnobTarget(key, typed));
+
+    [Theory]
+    [InlineData("5,450")]
+    [InlineData("5 450")]
+    [InlineData("5\u00A0450")]   // a no-break space
+    [InlineData("-1,000")]
+    public void A_landing_elevation_grouped_by_a_thousands_separator_is_refused_by_name(string typed) =>
+        Assert.Equal(A300TypedValues.WholeNumberError, A300TypedValues.TextError(A300TypedValues.LandingElevationKey, typed));
+
+    [Fact]
+    public void A_landing_elevation_typed_without_a_separator_and_a_flex_temperature_are_read_as_numbers()
+    {
+        Assert.Null(A300TypedValues.TextError(A300TypedValues.LandingElevationKey, "5450"));
+        // The flex temperature is rounded, not a whole number to type: a comma stays a decimal point.
+        Assert.Null(A300TypedValues.TextError(A300TypedValues.FlexTemperatureKey, "1,000"));
     }
 
     [Theory]

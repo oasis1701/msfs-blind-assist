@@ -49,7 +49,7 @@ public class A300TrpTests
         Assert.Equal(line, A300Trp.Line(mode, autoMode, flex, n1, pw));
 
     [Fact]
-    public void A_flex_knob_step_reads_back_as_the_flex_temperature() =>
+    public void A_typed_flex_temperature_is_confirmed_as_the_flex_temperature() =>
         Assert.Equal("Flex temperature 46 degrees", A300Trp.FlexPhrase(46));
 
     [Theory]
@@ -71,8 +71,8 @@ public class A300TrpTests
     }
 }
 
-/// <summary>The TRP in the definition: the variables it reads, the buttons' labels, the Thrust Rating
-/// Panel's TRP line and the flex knob's read-back.</summary>
+/// <summary>The TRP in the definition: the variables it reads, the buttons' labels and the Thrust Rating
+/// Panel's TRP line. The typed flex temperature, which turns the flex knob, is in IniA300KnobEntryTests.</summary>
 public class IniA300TrpTests
 {
     private readonly IniA300Definition _def;
@@ -145,16 +145,6 @@ public class IniA300TrpTests
         _cache[A300Trp.PwEnginesKey] = 0;
         Assert.True(_def.TryGetDisplayOverride(A300Trp.ModeKey, 6, out var line));
         Assert.Equal("FLEX, 45 degrees, N1 limit 92.1 percent", line);
-    }
-
-    [Fact]
-    public async Task A_flex_knob_step_is_read_back_once_it_lands()
-    {
-        _cache[A300Readouts.FlexTemperatureKey] = 46;
-        Assert.True(Set("A300_FLEX_TEMP#INC", 1));
-        await Task.Yield();
-        Assert.Equal(new[] { "1 (>B:AIRLINER_FLEX_TEMP_Set)" }, _sent);
-        Assert.Equal(new[] { "Flex temperature 46 degrees" }, _speech.Interrupts);
     }
 
     [Fact]

@@ -71,15 +71,15 @@ the other lights it changes ("Captain waypoints light off").
 The Clock panel's buttons say their state: "Captain chrono: Running" (each press goes reset,
 running, stopped) and "Captain elapsed time: Running" (each press starts or stops it; it restarts
 from zero). Its status display reads each clock: "Captain clock: 07:42 GMT", "Captain chrono: 1
-minute 5 seconds", "Captain elapsed time: 1 hour 5 minutes". The landing elevation knob says its
-value after each step: "Landing elevation 50 feet". A
-dimmer or temperature knob is a slider. A knob that only turns, such as an ADF frequency knob, is
+minute 5 seconds", "Captain elapsed time: 1 hour 5 minutes".
+
+A dimmer or temperature knob is a slider. A knob that only turns, such as an ADF frequency knob, is
 a pair of buttons, "increase" and "decrease", each one click of the knob. A knob whose value has a
 typed box has no such buttons here (see Typed Values below): the FCU speed, heading, altitude and
-vertical speed knobs, the decision height, altimeter and course knobs, and the transponder code
-knobs. Type the value and press Set; the push and pull buttons of those knobs are still on their
-panels. The flaps lever, the speed brake lever and the ground spoiler arm are the Flaps and Speed
-Brake panel.
+vertical speed knobs, the decision height, altimeter and course knobs, the transponder code knobs,
+and the flex temperature and landing elevation knobs. Type the value and press Set; the push and
+pull buttons of those knobs are still on their panels. The flaps lever, the speed brake lever and
+the ground spoiler arm are the Flaps and Speed Brake panel.
 
 When you change a control, MSFS Blind Assist moves it exactly the way a click in the cockpit
 would. Nothing is spoken back - your screen reader already says what you chose - unless the
@@ -143,8 +143,7 @@ only moves while its guard is open, exactly as in the aircraft.
 
 The Thrust Rating Panel's buttons say whether their light is on: "TRP climb: On". In AUTO only the
 AUTO button is on; the aircraft picks the limit itself, and the panel's status display says which
-(see below). Pressing the flex temperature knob's increase or decrease button reads the new
-temperature back once it has moved ("Flex temperature 46 degrees").
+(see below). The flex temperature is typed in its box on the same panel (see Typed Values below).
 
 The buttons on the Autobrake panel say what their lights show: "Autobrake low: Armed",
 "Decel" while the autobrake is braking, or "Off". Pressing the armed level again turns the
@@ -191,6 +190,15 @@ TYPED VALUES - type, then press Set or Enter
   real decision height is that low and "1,000" would reach the box as 1). It sets both pilots'
   minimums, which the PFD box shows and the aircraft's "minimums" call-out uses. You hear
   "Decision height 200 feet".
+  Thrust Rating Panel: Flex temperature setting, 0 to 72 degrees.
+  Landing Elevation panel: Landing elevation setting, -2000 to 14000 feet, nearest 50, typed
+  without a thousands separator: "5450", not "5,450" or "5 450", which are refused. A comma before
+  a round thousand is not caught: "5,000" reaches the box as 5 and sets 0 feet.
+  These two turn the aircraft's own knob a click at a time, as the cockpit does, so the value
+  takes a moment to arrive; you hear it once the knob has reached it: "Flex temperature 45
+  degrees", "Landing elevation 5450 feet". If the knob stops short (no power, or the end of its
+  travel), you hear where it stopped: "Flex temperature stopped at 58 degrees". A new value typed
+  while the knob turns takes over from the old one.
 
 The FCU's mode buttons say whether their mode is on: "Heading select: On", "Level change: Off".
 SPD/MACH says "Speed" or "Mach". The FCU panel's status display shows the four windows. The FCU
@@ -229,17 +237,17 @@ The Displays section has a status box (Ctrl+3) for each screen:
 
 The standby instruments (attitude, airspeed, the standby altimeter and its setting, the compass)
 are read on the Instrument section's Standby Instruments panel, with its altimeter setting box and
-cage. A system
-panel's own status display also carries its ECAM page's numbers after its lights: Electrical
-shows the AC and DC voltages, frequencies and currents; APU shows its speed, EGT, bleed pressure
-and generator; Hydraulics shows the blue, green and yellow pressures; Fuel shows each tank and
-the total, in the weight unit set on the tablet; Air Conditioning shows the compartment
-temperatures; Bleed shows the bleed and pack pressures and temperatures; Pressurization shows
-the cabin altitude and differential pressure; Engine Start shows each engine's start valve open
-and starter armed lights, then N1, EGT, N2, fuel flow and the ECAM engine page, so a start can be
+cage. A system panel's own status display also carries its ECAM page's numbers after its lights:
+Electrical shows the AC and DC voltages, frequencies and currents; APU shows its speed, EGT, bleed
+pressure and generator; Hydraulics shows the blue, green and yellow pressures; Fuel shows each
+tank and the total, in the weight unit set on the tablet; Air Conditioning shows the compartment
+temperatures; Bleed shows the bleed and pack pressures and temperatures; Pressurization shows the
+cabin altitude and differential pressure; Engine Start shows each engine's start valve open and
+starter armed lights, then N1, EGT, N2, fuel flow and the ECAM engine page, so a start can be
 flown from it: ignition to Start A, the starter on, the fuel lever on at 20 percent N2 (Engines
-panel), and "Engine 2 start valve open light off" when the start is done. Oxygen shows its six gauges: the crew and courier low pressure and the four crew
-oxygen high pressure gauges, in psi ("Crew oxygen high pressure 1: 1,500 psi").
+panel), and "Engine 2 start valve open light off" when the start is done. Oxygen shows its six
+gauges: the crew and courier low pressure and the four crew oxygen high pressure gauges, in psi
+("Crew oxygen high pressure 1: 1,500 psi").
 
 On the Oxygen panel, the crew oxygen supply button works the courier low pressure supply in this
 aircraft, so the two switches always show the same position.

@@ -192,16 +192,6 @@ public static class A300Readouts
         new A300Readout(StandbyCompassKey, "Standby compass", "Standby Instruments", "WISKEY COMPASS INDICATION DEGREES", true, "degrees", Heading),
     ];
 
-    /// <summary>A knob whose step is read back once it lands: knob control key → its readout and the phrase. A
-    /// numeric confirmation always speaks ([CORE-7]). The knobs that have a typed box are not rows, so they have none.</summary>
-    public static readonly IReadOnlyDictionary<string, (string Readout, Func<double, string> Phrase)> KnobReadBacks =
-        new Dictionary<string, (string, Func<double, string>)>(StringComparer.Ordinal)
-        {
-            ["A300_LANDING_ELEV_SET"] = ("A300_RO_LANDING_ELEV", v => $"Landing elevation {Whole(v)} feet"),
-            // The flex temperature knob steps the TRP's flex temperature ("Flex temperature 46 degrees", [A300-21]).
-            [A300Trp.FlexKnobKey] = (FlexTemperatureKey, A300Trp.FlexPhrase),
-        };
-
     private static A300Readout[] RadioLines(string name)
     {
         var radio = A300Radios.All.Single(r => r.Name == name);

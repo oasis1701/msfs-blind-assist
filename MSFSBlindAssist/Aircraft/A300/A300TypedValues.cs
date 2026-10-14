@@ -37,6 +37,9 @@ public sealed record A300TypedResult(string? Rpn, string? Confirmation, string? 
 /// ILS course: <c>L:INI_ils_course</c>, which the aircraft keeps.</item>
 /// <item>VHF standby: the stock standby set events (the A300 mirrors them). Squawk: <c>K:XPNDR_SET</c>.
 /// Altimeters: <c>index value (&gt;K:2:KOHLSMAN_SET)</c>, index FIRST (value first does nothing).</item>
+/// <item>Flex temperature and landing elevation: never written. The typed value turns the knob click by click
+/// (<see cref="KnobTarget"/>, <see cref="A300SteppedKnobs"/>, [A300-30]; measured in cruise, 2026-10-14): the FMS
+/// copies its flex temperature into <c>INI_FLEX_TEMPERATURE</c> on every update, so a write is undone.</item>
 /// </list>
 /// Pure: the definition sends the strings and speaks the confirmations. Every number is formatted
 /// with the invariant culture.
@@ -60,6 +63,8 @@ public static class A300TypedValues
     public const string BaroFirstOfficerKey = "A300_BARO_FO_SET";
     public const string BaroStandbyKey = "A300_BARO_STBY_SET";
     public const string MinimumsKey = "A300_MINIMUMS_SET";
+    public const string FlexTemperatureKey = "A300_FLEX_TEMPERATURE_SET";
+    public const string LandingElevationKey = "A300_LANDING_ELEVATION_SET";
 
     public static readonly IReadOnlyList<A300TypedValue> All = new[]
     {
@@ -80,6 +85,9 @@ public static class A300TypedValues
         new A300TypedValue(BaroFirstOfficerKey, "Altimeter setting", "First Officer Side"),
         new A300TypedValue(BaroStandbyKey, "Standby altimeter setting", "Standby Instruments"),
         new A300TypedValue(MinimumsKey, "Decision height", "EFIS Captain"),
+        // Named "... setting": the "Flex temperature" and "Landing elevation" status lines sit on the same panels ([VAR-1]).
+        new A300TypedValue(FlexTemperatureKey, "Flex temperature setting", "Thrust Rating Panel"),
+        new A300TypedValue(LandingElevationKey, "Landing elevation setting", "Landing Elevation"),
     };
 
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
@@ -107,27 +115,35 @@ public static class A300TypedValues
     /// feet", which held a refused 5.</summary>
     public const string MinimumsError = "0, or 10 to 2500 feet";
 
+    /// <summary>The flex temperature knob's own travel, 0 to 72 (<c>INI_flex_temp_up/dn_handler</c>, [A300-21]).</summary>
+    public const string FlexTemperatureError = "0 to 72 degrees";
+
+    /// <summary>The landing elevation's range: a judgment (the knob's own limits were not measured); the box says where
+    /// the knob stopped if it stops short (<see cref="A300SteppedKnobs"/>).</summary>
+    public const string LandingElevationError = "-2000 to 14000 feet";
+
     /// <summary>
-    /// Whether a typed altitude, vertical speed or decision height is a whole number. Both ways of typing a value
-    /// (a panel's box and the value boxes) turn a comma into a point, so "-1,500", the thousands separator the box's
-    /// own hint used to show, arrives as -1.5 and "1,200" as 1.2. Rounding them wrote a vertical speed of 0 and a
+    /// Whether a typed altitude, vertical speed, decision height or landing elevation is a whole number. Both ways of
+    /// typing a value (a panel's box and the value boxes) turn a comma into a point, so "-1,500", the thousands separator
+    /// the box's own hint used to show, arrives as -1.5 and "1,200" as 1.2. Rounding them wrote a vertical speed of 0 and a
     /// decision height of 1 foot, confirmed aloud; a fraction can only be that typo, so it is refused instead. A round
     /// thousand ("12,000") arrives whole, as 12: see <see cref="TextError"/> and <see cref="SeparatorThen"/>.
     /// </summary>
     private static bool IsWhole(double value) => value == Math.Round(value);
 
-    /// <summary>The values that must be typed as whole numbers (<see cref="IsWhole"/>): the altitude, the vertical speed
-    /// and the decision height.</summary>
-    private static bool WantsWholeNumber(string key) => key is AltitudeKey or VerticalSpeedKey or MinimumsKey;
+    /// <summary>The values that must be typed as whole numbers (<see cref="IsWhole"/>): the altitude, the vertical speed,
+    /// the decision height and the landing elevation, the values in feet.</summary>
+    private static bool WantsWholeNumber(string key) =>
+        key is AltitudeKey or VerticalSpeedKey or MinimumsKey or LandingElevationKey;
 
     /// <summary>
-    /// What a value box says about the TEXT typed for an altitude, a vertical speed or a decision height, before it is
-    /// read as a number: an integer grouped by a comma ("12,000", "-1,000") or by a space, a no-break space or a narrow
-    /// no-break space ("12 000", the grouping comma-decimal cultures write) is refused with <see cref="WholeNumberError"/>.
-    /// Read as a number the comma grouping is whole (12, -1), so the fraction rule let it through to a refusal by a range
-    /// that holds what was typed ("100 to 49000 feet" for "12,000"), and a decision height of "1,000" was written as 1
-    /// foot; the space grouping is no number, and was answered with that range too. Null for any other text, and for
-    /// every other key, where a comma is a decimal point ("121,500" is 121.5).
+    /// What a value box says about the TEXT typed for an altitude, a vertical speed, a decision height or a landing
+    /// elevation, before it is read as a number: an integer grouped by a comma ("12,000", "-1,000") or by a space, a
+    /// no-break space or a narrow no-break space ("12 000", the grouping comma-decimal cultures write) is refused with
+    /// <see cref="WholeNumberError"/>. Read as a number the comma grouping is whole (12, -1), so the fraction rule let it
+    /// through to a refusal by a range that holds what was typed ("100 to 49000 feet" for "12,000"), and a decision height
+    /// of "1,000" was written as 1 foot; the space grouping is no number, and was answered with that range too. Null for
+    /// any other text, and for every other key, where a comma is a decimal point ("121,500" is 121.5).
     /// </summary>
     public static string? TextError(string key, string text) =>
         WantsWholeNumber(key)
@@ -145,10 +161,10 @@ public static class A300TypedValues
     private static string SeparatorThen(string range) => $"{WholeNumberError}; {range}";
 
     /// <summary>
-    /// What a typed value that is no number is answered with: for an altitude, a vertical speed or a decision height the
-    /// separator, then the range (<see cref="SeparatorThen"/>), because "12 000" typed in a panel's box arrives as NaN and
-    /// its range alone holds the 12,000 typed; "abc" is answered the same way, the words fitting it as well. Every other
-    /// value is answered with its range (<see cref="ErrorFor"/>).
+    /// What a typed value that is no number is answered with: for an altitude, a vertical speed, a decision height or a
+    /// landing elevation the separator, then the range (<see cref="SeparatorThen"/>), because "12 000" typed in a panel's
+    /// box arrives as NaN and its range alone holds the 12,000 typed; "abc" is answered the same way, the words fitting it
+    /// as well. Every other value is answered with its range (<see cref="ErrorFor"/>).
     /// </summary>
     public static string NotANumberError(string key) => WantsWholeNumber(key) ? SeparatorThen(ErrorFor(key)) : ErrorFor(key);
 
@@ -194,6 +210,8 @@ public static class A300TypedValues
         Com1StandbyKey or Com2StandbyKey => ComError,
         SquawkKey => SquawkError,
         MinimumsKey => MinimumsError,
+        FlexTemperatureKey => FlexTemperatureError,
+        LandingElevationKey => LandingElevationError,
         _ => AltimeterError,
     };
 
@@ -355,6 +373,40 @@ public static class A300TypedValues
         string text = ft.ToString("0", Inv);
         return new($"{text} (>L:INI_MINIMUMS_PILOT) {text} (>L:INI_MINIMUMS_FO)",
             ft == 0 ? "Decision height not set" : $"Decision height {ft.ToString("#,0", Inv)} feet", null);
+    }
+
+    /// <summary>Whether a typed value turns its knob instead of being written: the flex temperature and the landing
+    /// elevation (<see cref="A300SteppedKnobs"/>, [A300-30]). <see cref="Plan"/> has no write for them; what they turn
+    /// the knob to is <see cref="KnobTarget"/>.</summary>
+    public static bool IsKnobTyped(string key) => key is FlexTemperatureKey or LandingElevationKey;
+
+    /// <summary>
+    /// What a typed flex temperature or landing elevation turns its knob to, or why it is refused. The range holds what
+    /// was typed: a value outside it is refused (73 or 72.4 degrees, 14001 feet), and one inside goes to the knob's
+    /// nearest click, a half click away from zero: the flex temperature to the whole degree (0 to 72, the knob's own
+    /// travel), the landing elevation to 50 feet (-2000 to 14000, a judgment). A landing elevation is whole feet, as an
+    /// altitude is: a fraction is refused (<see cref="WholeNumberError"/>), since "5,450" typed in a panel's box arrives
+    /// as 5.45, and no number ("5 450") names the separator, then the range (<see cref="NotANumberError"/>). A round
+    /// thousand typed with a comma ("5,000") arrives as 5, which nothing can tell from a field 5 feet up: it is taken,
+    /// and the read-back says the 0 feet the knob turned to.
+    /// </summary>
+    public static (double? Target, string? Error) KnobTarget(string key, double value)
+    {
+        if (!IsKnobTyped(key))
+            return (null, "cannot be set from this panel");
+        if (double.IsNaN(value) || double.IsInfinity(value))
+            return (null, NotANumberError(key));
+        if (key == FlexTemperatureKey)
+        {
+            if (value is < 0 or > 72)
+                return (null, FlexTemperatureError);
+            return (Math.Round(value, MidpointRounding.AwayFromZero), null);
+        }
+        if (!IsWhole(value))
+            return (null, WholeNumberError);
+        if (value is < -2000 or > 14000)
+            return (null, LandingElevationError);
+        return (Math.Round(value / 50, MidpointRounding.AwayFromZero) * 50, null);
     }
 
     /// <summary>Ctrl+B: one entry sets all three altimeters.</summary>

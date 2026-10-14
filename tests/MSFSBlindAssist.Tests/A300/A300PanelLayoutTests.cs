@@ -43,7 +43,7 @@ public class A300PanelLayoutTests
     {
         // Design decisions 2026-10-09 (docs/a300.md, "Panels"): sorted by system like the FBW A320 where the A300
         // has the same panel; A300-only panels keep the manual's name; window and probe heat and the landing
-        // elevation knob stay where the A300 has them.
+        // elevation stay where the A300 has them.
         Assert.Equal(new[]
         {
             "Electrical", "IRS", "APU", "Oxygen", "Fire", "Hydraulics", "Fuel", "Air Conditioning", "Bleed",
@@ -99,8 +99,6 @@ public class A300PanelLayoutTests
     [InlineData("A300_ANTI_SKID", "Autobrake")]
     [InlineData("A300_BRAKE_FAN", "Autobrake")]
     [InlineData("A300_TRP_CL", "Thrust Rating Panel")]
-    [InlineData("A300_FLEX_TEMP#INC", "Thrust Rating Panel")]
-    [InlineData("A300_LANDING_ELEV_SET#INC", "Landing Elevation")]
     [InlineData("A300_ADI_CAGE", "Standby Instruments")]
     [InlineData("A300_FO_SW_FD", "Source Switching")]
     [InlineData("A300_CPT_PFD_XFR", "Source Switching")]
@@ -172,8 +170,20 @@ public class A300PanelLayoutTests
     [InlineData(A300TypedValues.BaroStandbyKey, "Standby Instruments")]
     [InlineData(A300TypedValues.MinimumsKey, "EFIS Captain")]
     [InlineData(A300TypedValues.SquawkKey, "Transponder")]
+    [InlineData(A300TypedValues.FlexTemperatureKey, "Thrust Rating Panel")]
+    [InlineData(A300TypedValues.LandingElevationKey, "Landing Elevation")]
     public void Each_typed_box_sits_on_its_systems_panel(string key, string panel) =>
         Assert.Contains(Row(key), Placement.RowsByPanel[panel]);
+
+    [Fact]
+    public void The_landing_elevation_panel_is_its_typed_box_alone()
+    {
+        // Its knob left the panels (the box turns it, A300SteppedKnobs), so no control is placed there: the panel is made
+        // for its box, in the Instrument section, beside the "Landing elevation" status line the box confirms.
+        Assert.Equal(new[] { A300TypedValues.LandingElevationKey }, Placement.RowsByPanel["Landing Elevation"].Select(r => r.Key));
+        Assert.Equal(A300RowAction.Typed, Row(A300TypedValues.LandingElevationKey).Action);
+        Assert.Contains("Landing Elevation", Placement.Structure["Instrument"]);
+    }
 
     [Theory]
     [InlineData("A300_MASTER_WARNING_CPT", "Captain master warning")]
@@ -220,6 +230,9 @@ public class A300PanelLayoutTests
     [InlineData("A300_CPT_HF2_PUSH", "HF 2 transmit")]
     [InlineData("A300_STORMLIGHT", "Storm light")]
     [InlineData("A300_EXT_PWR", "External power")]
+    // Beside the "Flex temperature" and "Landing elevation" status lines of the same panels ([VAR-1]).
+    [InlineData(A300TypedValues.FlexTemperatureKey, "Flex temperature setting")]
+    [InlineData(A300TypedValues.LandingElevationKey, "Landing elevation setting")]
     public void Rows_carry_the_names_a_pilot_says(string key, string name) => Assert.Equal(name, Row(key).Name);
 
     [Fact]
@@ -460,11 +473,11 @@ public class A300PanelLayoutTests
     }
 
     /// <summary>
-    /// The 14 other knobs that already have a typed box, left out on purpose too (design decision, Robin, 2026-10-14), each
-    /// with the box that sets the same value: the FCU speed, heading, altitude and vertical speed knobs, the two decision
-    /// height knobs, the three altimeter knobs, the VOR 1, VOR 2 and ILS course knobs and the two transponder code knobs.
-    /// Each is an encoder, so 28 more increase and decrease rows beside a box that sets the value outright. The generated
-    /// map still holds them ([A300-2]).
+    /// The 16 other knobs that have a typed box, left out on purpose too (design decision, Robin, 2026-10-14), each with the
+    /// box that sets the same value: the FCU speed, heading, altitude and vertical speed knobs, the two decision height
+    /// knobs, the three altimeter knobs, the VOR 1, VOR 2 and ILS course knobs, the two transponder code knobs, and the flex
+    /// temperature and landing elevation knobs, whose boxes turn them (<see cref="A300SteppedKnobs"/>). Each is an encoder,
+    /// so 32 more increase and decrease rows beside a box that sets the value. The generated map still holds them ([A300-2]).
     /// </summary>
     private static readonly (string Id, string Box)[] LeftOutTypedBoxKnobs =
     {
@@ -482,6 +495,8 @@ public class A300PanelLayoutTests
         ("AIRLINER_ILS_CRS", A300TypedValues.IlsCourseKey),
         ("AIRLINER_TCAS_BIG", A300TypedValues.SquawkKey),
         ("AIRLINER_TCAS_SMALL", A300TypedValues.SquawkKey),
+        ("AIRLINER_FLEX_TEMP", A300TypedValues.FlexTemperatureKey),
+        ("AIRLINER_LANDING_ELEV_SET", A300TypedValues.LandingElevationKey),
     };
 
     public static IEnumerable<object[]> LeftOutTypedBoxKnobCases() => LeftOutTypedBoxKnobs.Select(k => new object[] { k.Id, k.Box });
@@ -500,12 +515,12 @@ public class A300PanelLayoutTests
     }
 
     [Fact]
-    public void Twenty_eight_more_rows_left_with_the_fourteen_typed_box_knobs()
+    public void Thirty_two_more_rows_left_with_the_sixteen_typed_box_knobs()
     {
-        Assert.Equal(14, LeftOutTypedBoxKnobs.Select(k => k.Id).Distinct().Count());
+        Assert.Equal(16, LeftOutTypedBoxKnobs.Select(k => k.Id).Distinct().Count());
         var left = LeftOutTypedBoxKnobs.Select(k => Map.Find(k.Id)!.Key)
             .SelectMany(key => new[] { key + "#INC", key + "#DEC" }).ToList();
-        Assert.Equal(28, left.Count);
+        Assert.Equal(32, left.Count);
         Assert.Empty(AllRows.Select(r => r.Key).Intersect(left));
     }
 
@@ -562,12 +577,12 @@ public class A300PanelLayoutTests
     }
 
     [Fact]
-    public void Only_the_adf_altitude_bug_flex_temperature_and_landing_elevation_knobs_still_step()
+    public void Only_the_adf_and_altitude_bug_knobs_still_step()
     {
         var expected = new[] { "CPT", "FO" }
             .SelectMany(side => new[] { 1, 2 }.SelectMany(window =>
                 new[] { "BIG", "MED", "SMALL" }.Select(digit => $"A300_{side}_ADF{window}_{digit}")))
-            .Concat(new[] { "A300_CPT_ALTI_BUG_SET", "A300_FO_ALTI_BUG_SET", A300Trp.FlexKnobKey, "A300_LANDING_ELEV_SET" })
+            .Concat(new[] { "A300_CPT_ALTI_BUG_SET", "A300_FO_ALTI_BUG_SET" })
             .Order(StringComparer.Ordinal);
         var stepping = AllRows.Where(r => r.Action is A300RowAction.Increase or A300RowAction.Decrease)
             .Select(r => r.Control!.Key).Distinct().Order(StringComparer.Ordinal);
@@ -581,6 +596,8 @@ public class A300PanelLayoutTests
     [InlineData("Standby Instruments")]
     [InlineData("Navigation Radios")]
     [InlineData("Transponder")]
+    [InlineData("Thrust Rating Panel")]
+    [InlineData("Landing Elevation")]
     public void A_panel_whose_values_are_typed_has_no_increase_or_decrease_row(string panel) =>
         Assert.DoesNotContain(Placement.RowsByPanel[panel], r => r.Name.EndsWith(" increase", StringComparison.Ordinal)
                                                                  || r.Name.EndsWith(" decrease", StringComparison.Ordinal));

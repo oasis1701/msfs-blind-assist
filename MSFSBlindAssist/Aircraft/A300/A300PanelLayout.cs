@@ -35,13 +35,16 @@ public sealed class A300Placement
 /// same L:vars, so one copy is enough; the IDC's own keypad comes with the IDC work), cosmetic parts
 /// (seats, armrests, visors, yoke bases, the oil-gauge pointer knobs, the tablet brightness buttons)
 /// and second buttons that fire the same event as the first (autothrottle disconnect 2, the second RAT
-/// button), and every knob that already has a typed box (<see cref="A300TypedValues"/>): the box sets the
-/// value outright, so the knob's increase and decrease rows only added rows to step through (design
-/// decision, Robin, 2026-10-14). Those are the 14 VHF and NAV frequency knobs, and the FCU speed, heading,
-/// altitude and vertical speed knobs, the two decision height knobs, the three altimeter knobs, the three
-/// course knobs and the two transponder code knobs, 56 rows in all. Every knob's push and pull stays. The ADF
-/// knobs and the altitude bug knobs (no typed box), the flex temperature and landing elevation knobs, the
-/// transfer buttons and the squelch switches stay too, and the generated map keeps every control ([A300-2]).
+/// button), and every knob that has a typed box (<see cref="A300TypedValues"/>): the box sets the value,
+/// so the knob's increase and decrease rows only added rows to step through (design decision, Robin,
+/// 2026-10-14). Those are the 14 VHF and NAV frequency knobs, and the FCU speed, heading, altitude and
+/// vertical speed knobs, the two decision height knobs, the three altimeter knobs, the three course knobs,
+/// the two transponder code knobs and the flex temperature and landing elevation knobs, 60 rows in all;
+/// the flex temperature and landing elevation boxes turn their knob (<see cref="A300SteppedKnobs"/>), the
+/// others write the value. The decision height knobs also stepped the flight path angle reference while DH
+/// is not selected ([A300-15]): MSFSBA no longer sets it (nothing in MSFSBA reads it). Every knob's push
+/// and pull stays. The ADF knobs and the altitude bug knobs (no typed box), the transfer buttons and the
+/// squelch switches stay too, and the generated map keeps every control ([A300-2]).
 /// The main cargo door switch is placed: the door moves only while it is held, so its row is a spring switch
 /// (<see cref="A300CargoDoor"/>), and the 70 and 145 degree buttons only pick how far the door opens.
 ///
@@ -125,7 +128,9 @@ public static partial class A300PanelLayout
         // The other knobs that have a typed box: the FCU windows' four, the decision height's two, the three altimeters',
         // the three courses' and the squawk's two. The $ keeps every knob's push and pull (SPEED_KNOB_PUSH is a row).
         @"SPEED_KNOB|HEADING_KNOB|ALT_KNOB|VS_KNOB|(CAPT|FO)_DH_SET|(CPT|FO|STBY)_ALTIMETER_KNOB|" +
-        @"VOR_CRS_(CAPT|FO)|ILS_CRS|TCAS_(BIG|SMALL))$",
+        @"VOR_CRS_(CAPT|FO)|ILS_CRS|TCAS_(BIG|SMALL)|" +
+        // The flex temperature and landing elevation knobs: their typed boxes turn them (A300SteppedKnobs).
+        @"FLEX_TEMP|LANDING_ELEV_SET)$",
         RegexOptions.CultureInvariant);
 
     private static readonly Regex Audio = new(
@@ -341,10 +346,15 @@ public static partial class A300PanelLayout
         foreach (var rows in placement.RowsByPanel.Values)
             MoveGuardsBeforeTheirSwitch(rows);
 
-        // Typed values end the panel they belong to (A300TypedValues).
+        // Typed values end the panel they belong to (A300TypedValues). A panel no control was placed on is made for its
+        // typed value in the section PanelSections gives it: Landing Elevation is its box alone, its knob being left out.
         foreach (var typed in A300TypedValues.All)
-            if (placement.RowsByPanel.TryGetValue(typed.Panel, out var rows))
-                rows.Add(new A300PlacedRow(typed.Key, typed.Name, A300RowAction.Typed, null, new Dictionary<double, string>()));
+        {
+            var rows = placement.RowsByPanel.TryGetValue(typed.Panel, out var placed) ? placed
+                : PanelSections.TryGetValue(typed.Panel, out var section) ? RowsFor(placement, section, typed.Panel)
+                : null;
+            rows?.Add(new A300PlacedRow(typed.Key, typed.Name, A300RowAction.Typed, null, new Dictionary<double, string>()));
+        }
 
         var levers = RowsFor(placement, "Pedestal", A300Levers.Panel);
         levers.Add(new A300PlacedRow(A300Levers.FlapsKey, A300Levers.Name(A300Levers.FlapsKey), A300RowAction.Custom, null, A300Levers.FlapPositions));

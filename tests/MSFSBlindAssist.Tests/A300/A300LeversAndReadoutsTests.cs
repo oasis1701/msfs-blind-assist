@@ -188,19 +188,23 @@ public class A300LeversAndReadoutsTests
     }
 
     [Fact]
-    public void The_knob_read_backs_are_the_knobs_that_are_rows()
+    public void The_values_the_typed_boxes_set_keep_their_status_lines()
     {
-        // Every knob with a typed box left the panels (design decision, Robin, 2026-10-14), and its box confirms the value
-        // (the FCU windows, the altimeters, the three courses, the squawk). What is left reads back the landing elevation
-        // and the flex temperature; the NAV frequency windows and the courses stay on the Navigation Radios status display.
-        var expected = new[] { "A300_LANDING_ELEV_SET", A300Trp.FlexKnobKey };
-        Assert.Equal(expected.Order(StringComparer.Ordinal), A300Readouts.KnobReadBacks.Keys.Order(StringComparer.Ordinal));
+        // Every knob with a typed box left the panels (design decision, Robin, 2026-10-14) and no knob step is read back:
+        // the box confirms the value (the flex temperature and landing elevation boxes once their knob has turned). The
+        // values stay on the status displays: the NAV frequency windows and the courses on Navigation Radios, the flex
+        // temperature on the Thrust Rating Panel, the landing elevation on its own panel.
         Assert.Contains(A300Readouts.All, r => r.Key == A300Readouts.NavVor1Key);
         Assert.Contains(A300Readouts.All, r => r.Key == A300Readouts.NavVor2Key);
         Assert.Contains(A300Readouts.All, r => r.Key == A300Readouts.NavIlsKey);
         Assert.Contains(A300Readouts.All, r => r.Key == A300Readouts.IlsCourseKey);
         Assert.Contains(A300Readouts.All, r => r.Key == "A300_RO_VOR1_COURSE");
         Assert.Contains(A300Readouts.All, r => r.Key == "A300_RO_VOR2_COURSE");
+        Assert.Equal(("Thrust Rating Panel", "INI_FLEX_TEMPERATURE"),
+            (Readout(A300Readouts.FlexTemperatureKey).Panel, Readout(A300Readouts.FlexTemperatureKey).Var));
+        Assert.Equal(("Landing Elevation", "INI_landing_elevation"),
+            (Readout("A300_RO_LANDING_ELEV").Panel, Readout("A300_RO_LANDING_ELEV").Var));
+        Assert.Equal("5450 feet", Readout("A300_RO_LANDING_ELEV").Format(5450));   // the typed box's confirmation reads it so
     }
 
     [Theory]

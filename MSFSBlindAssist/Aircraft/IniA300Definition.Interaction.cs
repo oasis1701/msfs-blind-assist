@@ -82,11 +82,9 @@ public partial class IniA300Definition
         bool stepped = row.Action is A300RowAction.Increase or A300RowAction.Decrease;
         if (stepped)
         {
-            // A knob that reads its value back once it lands ("Landing elevation 50 feet", "Flex temperature 46 degrees"):
-            // a numeric confirmation, as a typed value's is. The knobs that have a typed box are not rows.
-            if (A300Readouts.KnobReadBacks.TryGetValue(control.Key, out var readBack))
-                _ = ReadBackAsync(simConnect, announcer, readBack.Readout, readBack.Phrase);
-            // An ADF knob's window, named by its role now ("ADF 1 standby 990") (A300Radios); the VHF knobs are not rows.
+            // An ADF knob's window, named by its role now ("ADF 1 standby 990") (A300Radios): a numeric confirmation. The
+            // knobs that have a typed box are not rows (the flex temperature and landing elevation boxes turn theirs,
+            // SetByKnobAsync); the altitude bug knobs read nothing back.
             if (A300Radios.ByKnob.TryGetValue(control.Key, out var knob))
             {
                 string windowKey = knob.Window == 1 ? knob.Radio.Window1Key : knob.Radio.Window2Key;
