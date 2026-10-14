@@ -81,7 +81,7 @@ public partial class ElectronicFlightBagForm : Form
     private bool _airportSearchRunning;
     private int _airportInfoRequest;
     private ListBox airportLookupRunwaysListBox = null!;
-    private Button airportLookupLoadButton = null!;
+    private Button airportLookupSearchButton = null!;
     private TextBox airportInfoTextBox = null!;
     private TextBox runwayInfoTextBox = null!;
 
@@ -609,6 +609,16 @@ public partial class ElectronicFlightBagForm : Form
             AccessibleDescription = "Enter an airport ICAO code, or type part of a name or city and press Enter to search"
         };
 
+        // Search button: the same search as Enter in the field, next to it in the tab order
+        airportLookupSearchButton = new Button
+        {
+            Text = "Search",
+            Location = new Point(280, 43),
+            Size = new Size(100, 27),
+            AccessibleName = "Search Airports",
+            AccessibleDescription = "Search by ICAO code, name or city, the same as pressing Enter in the field"
+        };
+
         // Runway listbox
         var runwayLabel = new Label { Text = "Runways:", Location = new Point(20, 80), Width = 200 };
         airportLookupRunwaysListBox = new ListBox
@@ -617,16 +627,6 @@ public partial class ElectronicFlightBagForm : Form
             Size = new Size(200, 100),
             AccessibleName = "Airport Lookup Runways",
             AccessibleDescription = "Select runway for detailed information"
-        };
-
-        // Load button
-        airportLookupLoadButton = new Button
-        {
-            Text = "Load",
-            Location = new Point(20, 215),
-            Size = new Size(100, 30),
-            AccessibleName = "Load Airport and Runway Info",
-            AccessibleDescription = "Load detailed airport and runway information"
         };
 
         // Airport info textbox (left side)
@@ -658,9 +658,8 @@ public partial class ElectronicFlightBagForm : Form
         };
 
         panel.Controls.AddRange(new Control[] {
-            icaoLabel, airportLookupIcaoTextBox,
+            icaoLabel, airportLookupIcaoTextBox, airportLookupSearchButton,
             runwayLabel, airportLookupRunwaysListBox,
-            airportLookupLoadButton,
             airportInfoLabel, airportInfoTextBox,
             runwayInfoLabel, runwayInfoTextBox
         });
@@ -750,7 +749,7 @@ public partial class ElectronicFlightBagForm : Form
         airportLookupIcaoTextBox.TextChanged += AirportLookupIcaoTextBox_TextChanged;
         airportLookupIcaoTextBox.KeyDown += AirportLookupIcaoTextBox_KeyDown;
         airportLookupRunwaysListBox.SelectedIndexChanged += AirportLookupRunwaysListBox_SelectedIndexChanged;
-        airportLookupLoadButton.Click += AirportLookupLoadButton_Click;
+        airportLookupSearchButton.Click += async (s, e) => await SearchAirportsAsync();
 
         // Flight plan manager events
         _flightPlanManager.StatusChanged += (s, msg) => UpdateStatus(msg);
@@ -1906,17 +1905,27 @@ public partial class ElectronicFlightBagForm : Form
         }
     }
 
-    // Enter searches airports by ICAO, name or city (AirportNameSearch), plus the airports around a
-    // town of that name in the offline location data: one match loads at once, several open a list to
-    // pick from, none is announced. Each line gives the distance from the aircraft when connected.
     private async void AirportLookupIcaoTextBox_KeyDown(object? sender, KeyEventArgs e)
     {
         if (e.KeyCode != Keys.Enter) return;
         e.Handled = true;
         e.SuppressKeyPress = true;
+        await SearchAirportsAsync();
+    }
 
+    // Enter in the field and the Search button: searches airports by ICAO, name or city
+    // (AirportNameSearch), plus the airports around a town of that name in the offline location data.
+    // One match loads at once and is spoken, several open a list to pick from, none is spoken. Each
+    // line gives the distance from the aircraft when connected.
+    private async Task SearchAirportsAsync()
+    {
         string query = airportLookupIcaoTextBox.Text.Trim();
-        if (query.Length == 0 || _airportSearchRunning) return;
+        if (_airportSearchRunning) return;
+        if (query.Length == 0)
+        {
+            _announcer.Announce("Enter an airport ICAO code, name or city first");
+            return;
+        }
 
         string simulatorVersion = SettingsManager.Current.SimulatorVersion ?? "FS2020";
         string dbPath = DatabasePathResolver.ResolveExistingDatabasePath(simulatorVersion);
@@ -1965,10 +1974,12 @@ public partial class ElectronicFlightBagForm : Form
                 return;
             }
 
+            // Back to the field or the Search button, whichever started the search.
+            var returnFocusTo = ActiveControl ?? airportLookupIcaoTextBox;
             using var dialog = new AirportSearchResultsForm(query, results, aircraft);
             if (dialog.ShowDialog(this) == DialogResult.OK && dialog.SelectedAirport != null)
                 ShowAirportLookupResult(dialog.SelectedAirport.Airport);
-            airportLookupIcaoTextBox.Focus();
+            returnFocusTo.Focus();
         }
         finally
         {
@@ -2062,42 +2073,6 @@ public partial class ElectronicFlightBagForm : Form
         catch (Exception ex)
         {
             runwayInfoTextBox.Text = $"Error loading runway information: {ex.Message}";
-        }
-    }
-
-    private void AirportLookupLoadButton_Click(object? sender, EventArgs e)
-    {
-        try
-        {
-            string icao = airportLookupIcaoTextBox.Text.Trim();
-            var selectedRunway = airportLookupRunwaysListBox.SelectedItem as Runway;
-
-            if (string.IsNullOrEmpty(icao))
-            {
-                MessageBox.Show("Please enter an airport ICAO code", "Invalid Selection",
-                              MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            // Load airport information
-            ShowAirportInfo(icao);
-
-            // Load runway information if a runway is selected
-            if (selectedRunway != null)
-            {
-                runwayInfoTextBox.Text = GetRunwayDetailedInfo(icao, selectedRunway.RunwayID);
-            }
-            else
-            {
-                runwayInfoTextBox.Text = "No runway selected";
-            }
-
-            UpdateStatus($"Loaded information for {icao}");
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Error loading airport information: {ex.Message}", "Error",
-                          MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 

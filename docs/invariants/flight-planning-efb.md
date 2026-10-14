@@ -47,7 +47,7 @@ Corrected 2026-10-08: the one-line form now names the unknown-length exception t
 
 ## EFB-11
 
-- The EFB's Airport Lookup tab lists the airport's runways, and selecting one must repopulate the runway-info box with that runway's details: the list's `SelectedIndexChanged` is wired to `AirportLookupRunwaysListBox_SelectedIndexChanged`, which calls `GetRunwayDetailedInfo`. It is never Load-button-only, or a pilot arrowing down the list hears a new runway name while the info box still describes the first. Evidence: `ElectronicFlightBagForm.cs`, the wiring beside the Airport Lookup controls and the handler itself. → [architecture.md](../architecture.md)
+- The EFB's Airport Lookup tab lists the airport's runways, and selecting one must repopulate the runway-info box with that runway's details: the list's `SelectedIndexChanged` is wired to `AirportLookupRunwaysListBox_SelectedIndexChanged`, which calls `GetRunwayDetailedInfo`. It is never button-only, or a pilot arrowing down the list hears a new runway name while the info box still describes the first. Since 2026-10-14 nothing else fills it: the tab's Load button, which re-read the selected runway, became the Search button (the same search as Enter in the ICAO field). Evidence: `ElectronicFlightBagForm.cs`, the wiring beside the Airport Lookup controls and the handler itself. → [architecture.md](../architecture.md)
 
 Promoted 2026-10-08 from the Background below ("Airport Lookup"), which keeps its text.
 
