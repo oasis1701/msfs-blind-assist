@@ -67,6 +67,20 @@ public class IniA300RadioWatchTests
         _def.OnContinuousBatchDelivered(IniA300Definition.RadioWatchBatch);
     }
 
+    /// <summary>A reading delivered at the given time on the fake clock.</summary>
+    private void DeliverAt(long at, string key, double value)
+    {
+        _now = at;
+        Reading(key, value);
+    }
+
+    /// <summary>The end of the batch the watches run on, at the given time on the fake clock.</summary>
+    private void FlushAt(long at)
+    {
+        _now = at;
+        _def.OnContinuousBatchDelivered(IniA300Definition.RadioWatchBatch);
+    }
+
     /// <summary>Both VHF radios (122.800 in use, 124.805 standby) and the squawk (1200) read, then one batch end: the baselines.</summary>
     private void Baseline()
     {
@@ -335,6 +349,169 @@ public class IniA300RadioWatchTests
         BatchEnd();
         BatchEnd();
         Assert.Equal(new[] { "VHF 1 standby 121.500", "VHF 1 standby 118.000" }, _speech.All);
+    }
+
+    // The quiet window is judged at the change's DELIVERY, not at the batch end that finds it. The A300 takes up to about
+    // a second to mirror a stock set into its window, plus up to a second of delivery, and batch 1's end lags a window by
+    // 0 to 1 s (fixed for a session): a change delivered at 2.0 s can be found at 2.6 s. Judged by that flush it was an
+    // outside change, spoken after the hold, a repeat of the typed confirmation ([CORE-7]; found in review, 2026-10-14).
+
+    [Fact]
+    public void A_typed_standby_delivered_inside_the_window_is_quiet_though_the_batch_end_that_finds_it_comes_after_it()
+    {
+        Baseline();
+        long mark = _now;
+        Assert.True(Set(A300TypedValues.Com1StandbyKey, 121.5));
+        DeliverAt(mark + 2000, Vhf1.Window2Key, 121500);                // the mirror, 2.0 s after the send
+        FlushAt(mark + 2600);                                           // the first batch end after it
+        FlushAt(mark + 3600);                                           // the one a hold would speak at
+        FlushAt(mark + 4600);
+        Assert.Equal(new[] { "VHF 1 standby 121.500" }, _speech.All);   // the typed confirmation, once
+    }
+
+    [Fact]
+    public void A_change_delivered_at_the_end_of_the_window_is_still_quiet_and_just_after_it_is_spoken()
+    {
+        Baseline();
+        long mark = _now;
+        Set(A300TypedValues.Com1StandbyKey, 121.5);
+        DeliverAt(mark + A300CommandedState.HoldMs, Vhf1.Window2Key, 121500);   // exactly 2.5 s: inclusive, as the commanded state
+        FlushAt(mark + 2600);
+        FlushAt(mark + 3600);
+        Assert.Equal(new[] { "VHF 1 standby 121.500" }, _speech.All);
+        DeliverAt(mark + 4000, Vhf1.Window2Key, 118000);                         // after the window: an outside change
+        FlushAt(mark + 4500);
+        FlushAt(mark + 5500);
+        Assert.Equal(new[] { "VHF 1 standby 121.500", "VHF 1 standby 118.000" }, _speech.All);
+    }
+
+    [Fact]
+    public void A_change_delivered_a_moment_after_the_window_is_spoken()
+    {
+        Baseline();
+        long mark = _now;
+        Set(A300TypedValues.Com1StandbyKey, 121.5);
+        DeliverAt(mark + 2600, Vhf1.Window2Key, 118000);
+        FlushAt(mark + 3000);                                           // the hold
+        FlushAt(mark + 4000);
+        Assert.Equal(new[] { "VHF 1 standby 121.500", "VHF 1 standby 118.000" }, _speech.All);
+    }
+
+    [Fact]
+    public void A_transfer_delivered_inside_the_window_is_quiet_though_the_batch_end_that_finds_it_comes_after_it()
+    {
+        Baseline();
+        long mark = _now;
+        ReadFreshReturns(new() { [Vhf1.Window1Key] = W1, [Vhf1.Window2Key] = W2, [Vhf1.TransferKey] = 1 });
+        Assert.True(Set("A300_CPT_VHF_TFR", 1));
+        DeliverAt(mark + 2000, Vhf1.TransferKey, 1);
+        FlushAt(mark + 2600);
+        FlushAt(mark + 3600);
+        Assert.Equal(new[] { "VHF 1 active 124.805" }, _speech.All);   // the read-back, once
+    }
+
+    [Fact]
+    public void The_surroundings_tune_delivered_inside_the_window_is_quiet_though_the_batch_end_that_finds_it_comes_after_it()
+    {
+        Baseline();
+        long mark = _now;
+        _def.NoteOwnCom1Tune();
+        DeliverAt(mark + 2000, Vhf1.Window2Key, 118300);
+        FlushAt(mark + 2600);
+        FlushAt(mark + 3600);
+        Assert.Empty(_speech.All);
+    }
+
+    [Fact]
+    public void An_outside_change_delivered_after_an_own_one_is_judged_by_its_own_delivery()
+    {
+        Baseline();
+        long mark = _now;
+        Set(A300TypedValues.Com1StandbyKey, 121.5);
+        DeliverAt(mark + 1000, Vhf1.Window2Key, 121500);                // the own change
+        FlushAt(mark + 1500);
+        DeliverAt(mark + 2800, Vhf1.TransferKey, 1);                    // an outside transfer, 2.8 s after the send
+        FlushAt(mark + 3200);
+        FlushAt(mark + 4200);
+        Assert.Equal(new[] { "VHF 1 standby 121.500", "VHF 1 active 121.500, standby 122.800" }, _speech.All);
+    }
+
+    [Fact]
+    public void A_later_delivery_to_the_other_radio_does_not_move_a_radios_quiet_window()
+    {
+        Baseline();
+        long mark = _now;
+        Set(A300TypedValues.Com1StandbyKey, 121.5);
+        DeliverAt(mark + 1000, Vhf1.Window2Key, 121500);                // VHF 1's own change, inside its window
+        DeliverAt(mark + 3000, Vhf2.Window2Key, 118000);                // an outside change on VHF 2, with no mark
+        FlushAt(mark + 3500);
+        FlushAt(mark + 4500);
+        Assert.Equal(new[] { "VHF 1 standby 121.500", "VHF 2 standby 118.000" }, _speech.All);
+    }
+
+    [Fact]
+    public void A_typed_squawk_delivered_inside_the_window_is_quiet_though_the_batch_end_that_finds_it_comes_after_it()
+    {
+        Baseline();
+        long mark = _now;
+        Assert.True(Set(A300TypedValues.SquawkKey, 5473));
+        DeliverAt(mark + 2000, A300RadioWatches.SquawkKey, Code("5473"));
+        FlushAt(mark + 2600);
+        FlushAt(mark + 3600);
+        Assert.Equal(new[] { "Squawk 5473" }, _speech.All);             // the typed confirmation, once
+    }
+
+    [Fact]
+    public void A_code_knob_step_delivered_inside_the_window_is_quiet_though_the_batch_end_that_finds_it_comes_after_it()
+    {
+        Baseline();
+        long mark = _now;
+        ReadFreshReturns(new() { [A300Readouts.SquawkCodeKey] = Code("1201") });
+        Assert.True(Set("A300_TCAS_SMALL#INC", 1));
+        DeliverAt(mark + 2000, A300RadioWatches.SquawkKey, Code("1201"));
+        FlushAt(mark + 2600);
+        FlushAt(mark + 3600);
+        Assert.Equal(new[] { "Squawk 1201" }, _speech.All);             // the knob's read-back, once
+    }
+
+    [Fact]
+    public void A_squawk_delivered_after_the_window_is_spoken()
+    {
+        Baseline();
+        long mark = _now;
+        Set(A300TypedValues.SquawkKey, 5473);
+        DeliverAt(mark + 2600, A300RadioWatches.SquawkKey, Code("7700"));
+        FlushAt(mark + 3000);                                           // no hold for a single value
+        Assert.Equal(new[] { "Squawk 5473", "Squawk 7700" }, _speech.All);
+    }
+
+    [Fact]
+    public void A_squawk_delivered_at_the_end_of_the_window_is_still_quiet()
+    {
+        Baseline();
+        long mark = _now;
+        Set(A300TypedValues.SquawkKey, 5473);
+        DeliverAt(mark + A300CommandedState.HoldMs, A300RadioWatches.SquawkKey, Code("5473"));
+        FlushAt(mark + 2600);
+        FlushAt(mark + 3600);
+        Assert.Equal(new[] { "Squawk 5473" }, _speech.All);
+    }
+
+    [Fact]
+    public void A_mark_made_before_any_delivery_is_not_a_reason_to_swallow_what_comes_later()
+    {
+        // The cache filled before anything was delivered (the initial snapshot): a mark made then quiets only what is
+        // delivered inside its window.
+        _cache[Vhf1.Window1Key] = W1;
+        _cache[Vhf1.Window2Key] = W2;
+        _cache[Vhf1.TransferKey] = 0;
+        long mark = _now;
+        _def.NoteOwnCom1Tune();
+        FlushAt(mark + 500);                                            // the baseline, from the cache
+        DeliverAt(mark + 5000, Vhf1.Window2Key, 121500);
+        FlushAt(mark + 5500);
+        FlushAt(mark + 6500);
+        Assert.Equal(new[] { "VHF 1 standby 121.500" }, _speech.All);
     }
 
     [Fact]

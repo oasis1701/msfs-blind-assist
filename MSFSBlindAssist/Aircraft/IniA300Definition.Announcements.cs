@@ -103,12 +103,14 @@ public partial class IniA300Definition
 
         // The VHF radios' windows and transfer switches and the squawk code (A300RadioWatches): compared with their
         // baselines at a batch end (FlushRadioWatches), never spoken here, so a delivery only names the announcer that
-        // flush speaks through. The two transfer switches and the code carry a Ctrl+M row each, so the silent set below
-        // does not hold them; this branch consumes them before any later one, or MainForm's generic announce, could
-        // speak them ([A300-29]).
+        // flush speaks through, and records when it arrived: the quiet window after MSFSBA's own change is judged by the
+        // delivery, not by the batch end that finds it. The two transfer switches and the code carry a Ctrl+M row each,
+        // so the silent set below does not hold them; this branch consumes them before any later one, or MainForm's
+        // generic announce, could speak them ([A300-29]).
         if (A300RadioWatches.InputKeys.Contains(varName))
         {
             _radioAnnouncer = announcer;
+            _radioDeliveredAt[varName] = Clock();
             return true;
         }
 

@@ -5,8 +5,8 @@ namespace MSFSBlindAssist.Aircraft.A300;
 /// frequency into the standby window, a swap, a hardware transfer button. It reads what the cockpit shows, the
 /// aircraft's OWN two windows and its transfer switch (<see cref="A300Radio.Active"/> and
 /// <see cref="A300Radio.Standby"/>, [A300-26]), never the stock COM frequencies: the A300 mirrors the stock standby into
-/// its window and shows its own windows, so they are right whoever moved them. Pure: the caller passes the readings, the
-/// clock and whether a flight load is still settling.
+/// its window and shows its own windows, so they are right whoever moved them. Pure: the caller passes the readings,
+/// when the latest of them was delivered and whether a flight load is still settling.
 ///
 /// The pairs are compared as formatted text, never as raw doubles. A reading speaks ONE sentence for what changed,
 /// "VHF 1 standby 121.500", "VHF 1 active 124.805", or both after a swap, "VHF 1 active 124.805, standby 121.500", and
@@ -18,11 +18,16 @@ namespace MSFSBlindAssist.Aircraft.A300;
 /// the two windows' deliveries (each is read once a second, so the two arrive less than a second apart), and a pair
 /// that moves again is held again.
 ///
-/// MSFSBA's own change is quiet: from <see cref="MarkOwn"/>, for <see cref="A300CommandedState.HoldMs"/>, every
-/// flush only re-baselines, because the typed confirmation or the transfer read-back has already said it ([CORE-7]).
-/// The window is time alone, never a value compare: a rounding or an encoding difference could not make an own change
-/// speak twice. A radio has no baseline until all three inputs have been read, and none while a flight load is
-/// still settling or after <see cref="Reset"/>: the first complete reading is a baseline, never a change.
+/// MSFSBA's own change is quiet: a change that reaches the definition no later than
+/// <see cref="A300CommandedState.HoldMs"/> after <see cref="MarkOwn"/> is taken for its echo, and the flush only
+/// re-baselines, because the typed confirmation or the transfer read-back has already said it ([CORE-7]). What is
+/// judged is the DELIVERY (the latest among the radio's inputs, which the caller records), never the flush that finds
+/// it: batch 1's end lags a window by 0 to 1 s, and the A300 takes up to about a second to mirror a stock set into a
+/// window, plus up to a second to deliver it, so a change delivered at 2.0 s can be found at 2.6 s, outside the window
+/// by the flush's clock (found in review, 2026-10-14). Time alone, never a value compare: a rounding or an encoding
+/// difference could not make an own change speak twice. A radio has no baseline until all three inputs have been
+/// read, and none while a flight load is still settling or after <see cref="Reset"/>: the first complete reading is
+/// a baseline, never a change.
 /// </summary>
 public sealed class A300FrequencyWatch
 {
@@ -30,28 +35,30 @@ public sealed class A300FrequencyWatch
 
     private Pair? _baseline;
     private Pair? _seen;
-    private long _ownUntilMs = long.MinValue;
+    private long? _quietUntilMs;
 
     public A300FrequencyWatch(A300Radio radio) => Radio = radio;
 
     public A300Radio Radio { get; }
 
     /// <summary>MSFSBA is changing this radio now (the typed standby box, a transfer press, a tune of its own).</summary>
-    public void MarkOwn(long nowMs) => _ownUntilMs = nowMs + A300CommandedState.HoldMs;
+    public void MarkOwn(long nowMs) => _quietUntilMs = nowMs + A300CommandedState.HoldMs;
 
     /// <summary>A context reset: the next complete reading is a baseline, and a pending mark is gone.</summary>
     public void Reset()
     {
         _baseline = null;
         _seen = null;
-        _ownUntilMs = long.MinValue;
+        _quietUntilMs = null;
     }
 
     /// <summary>
-    /// A flush with the inputs' current readings (null for one never read). The sentence to speak, or null: no
-    /// baseline yet, an own change, a settling load, a pair not yet held for a flush, or nothing changed.
+    /// A flush with the inputs' current readings (null for one never read) and the time the latest of the three inputs'
+    /// changes reached the definition (<paramref name="deliveredAtMs"/>; null when none has on record, which is never
+    /// an echo of MSFSBA's own change). The sentence to speak, or null: no baseline yet, an own change, a settling
+    /// load, a pair not yet held for a flush, or nothing changed.
     /// </summary>
-    public string? Flush(double? window1, double? window2, double? transfer, long nowMs, bool settling)
+    public string? Flush(double? window1, double? window2, double? transfer, long? deliveredAtMs, bool settling)
     {
         if (window1 is not double w1 || window2 is not double w2 || transfer is not double t)
         {
@@ -60,7 +67,7 @@ public sealed class A300FrequencyWatch
             return null;
         }
         var now = new Pair(Radio.Active(w1, w2, t), Radio.Standby(w1, w2, t));
-        if (_baseline is not { } was || settling || nowMs <= _ownUntilMs)
+        if (_baseline is not { } was || settling || A300RadioWatches.IsOwnEcho(_quietUntilMs, deliveredAtMs))
         {
             _baseline = now;
             _seen = now;
@@ -83,25 +90,28 @@ public sealed class A300FrequencyWatch
 /// <summary>
 /// The squawk's call-out for a code MSFSBA did not set ([A300-29]): "Squawk 5473", the digits as one number, as a typed
 /// code's confirmation and a code knob's read-back say it. A single value, so there is nothing to hold: it speaks at the
-/// first flush that sees a different code, compared as the formatted digits. The same baseline, own-change and settling
-/// rules as <see cref="A300FrequencyWatch"/>. Pure.
+/// first flush that sees a different code, compared as the formatted digits. The same baseline, own-change (judged at
+/// the code's delivery, not at the flush) and settling rules as <see cref="A300FrequencyWatch"/>. Pure.
 /// </summary>
 public sealed class A300SquawkWatch
 {
     private string? _baseline;
-    private long _ownUntilMs = long.MinValue;
+    private long? _quietUntilMs;
 
     /// <summary>MSFSBA is changing the code now (the typed box, a code knob step).</summary>
-    public void MarkOwn(long nowMs) => _ownUntilMs = nowMs + A300CommandedState.HoldMs;
+    public void MarkOwn(long nowMs) => _quietUntilMs = nowMs + A300CommandedState.HoldMs;
 
     public void Reset()
     {
         _baseline = null;
-        _ownUntilMs = long.MinValue;
+        _quietUntilMs = null;
     }
 
-    /// <summary>A flush with the code's current reading (BCO16, null if never read): the sentence to speak, or null.</summary>
-    public string? Flush(double? code, long nowMs, bool settling)
+    /// <summary>
+    /// A flush with the code's current reading (BCO16, null if never read) and the time its latest change reached the
+    /// definition (<paramref name="deliveredAtMs"/>; null when none is on record): the sentence to speak, or null.
+    /// </summary>
+    public string? Flush(double? code, long? deliveredAtMs, bool settling)
     {
         if (code is not double bcd)
         {
@@ -109,7 +119,7 @@ public sealed class A300SquawkWatch
             return null;
         }
         string digits = A300Readouts.Squawk(bcd);
-        if (_baseline is null || settling || nowMs <= _ownUntilMs)
+        if (_baseline is null || settling || A300RadioWatches.IsOwnEcho(_quietUntilMs, deliveredAtMs))
         {
             _baseline = digits;
             return null;
@@ -140,6 +150,16 @@ public static class A300RadioWatches
     /// read back (<see cref="A300Readouts.KnobReadBacks"/>).</summary>
     public static readonly IReadOnlySet<string> CodeKnobKeys =
         new HashSet<string>(StringComparer.Ordinal) { "A300_TCAS_BIG", "A300_TCAS_SMALL" };
+
+    /// <summary>
+    /// Whether a change delivered at <paramref name="deliveredAtMs"/> is taken for the echo of MSFSBA's own change, which
+    /// was marked quiet until <paramref name="quietUntilMs"/> (the mark plus <see cref="A300CommandedState.HoldMs"/>):
+    /// it reached the definition no later than that, inclusive. Time alone. No mark, or no delivery on record, is
+    /// never an echo. A delivery made BEFORE the mark counts too (an outside change not yet flushed when MSFSBA acted
+    /// is swallowed with it, [A300-29]).
+    /// </summary>
+    internal static bool IsOwnEcho(long? quietUntilMs, long? deliveredAtMs) =>
+        quietUntilMs is long until && deliveredAtMs is long delivered && delivered <= until;
 
     public static bool Watches(A300Radio radio) => A300Radios.Vhf.Contains(radio);
 

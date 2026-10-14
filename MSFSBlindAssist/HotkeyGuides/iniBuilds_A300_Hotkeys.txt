@@ -604,12 +604,12 @@ vertical speed windows are not announced on their own, because the autopilot mov
 A VHF frequency or the squawk code changed by something other than MSFS Blind Assist is announced,
 for example when an ATC program tunes your radio or sets your squawk: "VHF 1 standby 121.500",
 "VHF 1 active 124.805", or after a swap "VHF 1 active 124.805, standby 121.500", and "Squawk
-5473". The VHF announcement comes a second or two after the change, because a swap moves both
+5473". The VHF announcement comes a few seconds after the change, because a swap moves both
 frequency windows and the radio is read until they agree. VHF 1 and VHF 2 are announced; the ADF
 radios are not. What you set with MSFS Blind Assist is not announced again, as your own screen
 reader or the confirmation says it: a typed VHF standby frequency, a transfer button, a typed
 squawk, a transponder code knob, or tuning COM 1 from the surroundings window. A change made by
-something else in the 2.5 seconds after one of yours is not announced either.
+something else in the 2.5 seconds after one of yours, or just before it, is not announced either.
 
 "Glideslope alive" and "Glideslope lost" follow NAV 3, the A300's ILS receiver: tune the ILS
 frequency on the Navigation Radios panel or with Ctrl+N. An ILS tuned on NAV 1 alone (the VOR 1

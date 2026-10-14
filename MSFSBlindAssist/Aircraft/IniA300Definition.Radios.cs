@@ -18,8 +18,9 @@ public partial class IniA300Definition
     /// <summary>
     /// The one batch whose end runs the watches. The A300 has two batches (305 batch-covered variables of 300 a
     /// batch), each delivered once a second, so a flush on every batch end would run twice a second and "the same at
-    /// two consecutive flushes" would be half a second, shorter than the subscription period the hold has to outlast
-    /// (<see cref="A300FrequencyWatch"/>). Batch 1 always exists when anything is batch-covered.
+    /// two consecutive flushes" would be less than a second apart (unmeasured on the A300), shorter than the
+    /// subscription period the hold has to outlast (<see cref="A300FrequencyWatch"/>). Batch 1 always exists when
+    /// anything is batch-covered.
     /// </summary>
     internal const int RadioWatchBatch = 1;
 
@@ -34,27 +35,46 @@ public partial class IniA300Definition
     private ScreenReaderAnnouncer? _radioAnnouncer;
 
     /// <summary>
+    /// When each watched input last reached the definition, on its clock (<see cref="Clock"/>), recorded by
+    /// <see cref="ProcessSimVarUpdate"/>. The quiet window after MSFSBA's own change is judged by the DELIVERY of a change,
+    /// never by the batch end that finds it, which comes 0 to 1 s after it ([A300-29]).
+    /// </summary>
+    private readonly Dictionary<string, long> _radioDeliveredAt = new(StringComparer.Ordinal);
+
+    /// <summary>The latest delivery among <paramref name="keys"/>, or null when none is on record.</summary>
+    private long? LatestRadioDelivery(params string[] keys)
+    {
+        long? latest = null;
+        foreach (var key in keys)
+            if (_radioDeliveredAt.TryGetValue(key, out long at) && (latest is null || at > latest))
+                latest = at;
+        return latest;
+    }
+
+    /// <summary>
     /// Compares each watch with the cache at the end of <see cref="RadioWatchBatch"/> and speaks what changed. Every
     /// reading re-baselines silently after construction, a context reset and while the post-load seed gate is armed
     /// (a load still settling), as the FMA treats it. A muted row is checked here: the baseline moves on either way, so
     /// what a muted row missed is never spoken on unmuting. Never after the definition is disposed, and the
-    /// baselines form from the cache whether or not a delivery has named an announcer yet.
+    /// baselines form from the cache whether or not a delivery has named an announcer yet. Each watch is handed the
+    /// latest delivery among ITS inputs, which is what its quiet window after an own change is judged by.
     /// </summary>
     private void FlushRadioWatches(int batchNum)
     {
         if (batchNum != RadioWatchBatch || _disposed || _sim is not { } sim)
             return;
-        long now = Clock();
         bool settling = _seedGate.Armed;
         foreach (var watch in _frequencyWatches.Values)
         {
             var radio = watch.Radio;
             string? sentence = watch.Flush(Cached(sim, radio.Window1Key), Cached(sim, radio.Window2Key),
-                Cached(sim, radio.TransferKey), now, settling);
+                Cached(sim, radio.TransferKey),
+                LatestRadioDelivery(radio.Window1Key, radio.Window2Key, radio.TransferKey), settling);
             if (sentence != null)
                 SayRadioChange(sentence, A300RadioWatches.RowKey(radio));
         }
-        string? squawk = _squawkWatch.Flush(Cached(sim, A300RadioWatches.SquawkKey), now, settling);
+        string? squawk = _squawkWatch.Flush(Cached(sim, A300RadioWatches.SquawkKey),
+            LatestRadioDelivery(A300RadioWatches.SquawkKey), settling);
         if (squawk != null)
             SayRadioChange(squawk, A300RadioWatches.SquawkKey);
     }
@@ -101,5 +121,6 @@ public partial class IniA300Definition
         foreach (var watch in _frequencyWatches.Values)
             watch.Reset();
         _squawkWatch.Reset();
+        _radioDeliveredAt.Clear();
     }
 }

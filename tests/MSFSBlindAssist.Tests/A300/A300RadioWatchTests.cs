@@ -8,8 +8,9 @@ namespace MSFSBlindAssist.Tests.A300;
 /// A VHF radio's outside-change call-out ([A300-29]), as a pure class: the aircraft's own two windows and its transfer
 /// switch, compared as formatted text. A change speaks only once its (active, standby) pair has read the same at two
 /// consecutive flushes (a swap changes BOTH windows, each on its own once-a-second subscription, so the two new values
-/// can arrive on opposite sides of a batch end: measured 2026-10-14); MSFSBA's own change is quiet for
-/// <see cref="A300CommandedState.HoldMs"/>, and a load that is still settling re-baselines.
+/// can arrive on opposite sides of a batch end: measured 2026-10-14); MSFSBA's own change is quiet when it is DELIVERED
+/// within <see cref="A300CommandedState.HoldMs"/> of the mark (the flush that finds it may come a second later), and a
+/// load that is still settling re-baselines.
 /// </summary>
 public class A300FrequencyWatchTests
 {
@@ -23,11 +24,13 @@ public class A300FrequencyWatchTests
     private readonly A300FrequencyWatch _watch = new(Vhf1);
     private long _now = 100_000;
 
-    /// <summary>One flush, a second after the last (the batch period), unless said otherwise.</summary>
-    private string? Flush(double? window1, double? window2, double? transfer = 0, bool settling = false, long advance = 1000)
+    /// <summary>One flush, a second after the last (the batch period), of readings delivered at the flush itself unless
+    /// <paramref name="deliveredAt"/> says when the latest of them arrived.</summary>
+    private string? Flush(double? window1, double? window2, double? transfer = 0, bool settling = false, long advance = 1000,
+        long? deliveredAt = null)
     {
         _now += advance;
-        return _watch.Flush(window1, window2, transfer, _now, settling);
+        return _watch.Flush(window1, window2, transfer, deliveredAt ?? _now, settling);
     }
 
     /// <summary>The first complete reading: 122.800 in use, 124.805 the standby.</summary>
@@ -148,14 +151,14 @@ public class A300FrequencyWatchTests
     }
 
     [Fact]
-    public void A_change_after_the_window_speaks()
+    public void A_change_delivered_after_the_window_speaks()
     {
         Baseline();
         long mark = _now;
         _watch.MarkOwn(mark);
-        Assert.Null(_watch.Flush(W1, 121500, 0, mark + A300CommandedState.HoldMs + 1, settling: false));
-        Assert.Equal("VHF 1 standby 121.500",
-            _watch.Flush(W1, 121500, 0, mark + A300CommandedState.HoldMs + 1001, settling: false));
+        long delivered = mark + A300CommandedState.HoldMs + 1;
+        Assert.Null(_watch.Flush(W1, 121500, 0, delivered, settling: false));
+        Assert.Equal("VHF 1 standby 121.500", _watch.Flush(W1, 121500, 0, delivered, settling: false));
     }
 
     [Fact]
@@ -165,12 +168,54 @@ public class A300FrequencyWatchTests
         long mark = _now;
         _watch.MarkOwn(mark);
         Assert.Equal(2500, A300CommandedState.HoldMs);
-        // Exactly at the hold it is still quiet (A300CommandedState keeps a commanded value through it) ...
+        // Delivered exactly at the hold it is still quiet (A300CommandedState keeps a commanded value through it), so the
+        // baseline moved and the same pair has nothing to hold at the next flush ...
         Assert.Null(_watch.Flush(W1, 121500, 0, mark + A300CommandedState.HoldMs, settling: false));
-        // ... and a flush a millisecond past it is a change to hold, not a quiet one.
-        Assert.Null(_watch.Flush(W1, 118000, 0, mark + A300CommandedState.HoldMs + 1, settling: false));
-        Assert.Equal("VHF 1 standby 118.000",
-            _watch.Flush(W1, 118000, 0, mark + A300CommandedState.HoldMs + 1001, settling: false));
+        Assert.Null(_watch.Flush(W1, 121500, 0, mark + A300CommandedState.HoldMs, settling: false));
+        // ... and one delivered a millisecond past it is a change to hold, not a quiet one.
+        long late = mark + A300CommandedState.HoldMs + 1;
+        Assert.Null(_watch.Flush(W1, 118000, 0, late, settling: false));
+        Assert.Equal("VHF 1 standby 118.000", _watch.Flush(W1, 118000, 0, late, settling: false));
+    }
+
+    [Fact]
+    public void A_change_is_judged_by_when_it_was_delivered_not_by_the_flush_that_finds_it()
+    {
+        // The watch has no clock of its own: the caller records when each input's change arrived. One delivered 2.0 s after
+        // the mark is quiet at every flush that finds it, the first and the ones after (the A300 mirrors a stock set in up to
+        // a second and batch 1's end lags by 0 to 1 s, so it can be found at 2.6 s); one delivered at 2.6 s is not.
+        Baseline();
+        long mark = _now;
+        _watch.MarkOwn(mark);
+        long inside = mark + 2000;
+        Assert.Null(_watch.Flush(W1, 121500, 0, inside, settling: false));
+        Assert.Null(_watch.Flush(W1, 121500, 0, inside, settling: false));
+        Assert.Null(_watch.Flush(W1, 121500, 0, inside, settling: false));
+        long outside = mark + 2600;
+        Assert.Null(_watch.Flush(W1, 118000, 0, outside, settling: false));
+        Assert.Equal("VHF 1 standby 118.000", _watch.Flush(W1, 118000, 0, outside, settling: false));
+    }
+
+    [Fact]
+    public void A_change_with_no_delivery_on_record_is_never_an_own_echo()
+    {
+        Baseline();
+        _watch.MarkOwn(_now);
+        Assert.Null(_watch.Flush(W1, 121500, 0, null, settling: false));
+        Assert.Equal("VHF 1 standby 121.500", _watch.Flush(W1, 121500, 0, null, settling: false));
+    }
+
+    [Fact]
+    public void A_pending_outside_change_is_swallowed_by_a_mark_made_before_the_flush_that_confirms_it()
+    {
+        // A known residual ([A300-29]): the change was delivered before MSFSBA acted and seen at one flush; the mark lands
+        // before the confirming flush, and a delivery before the mark is no later than the mark's window.
+        Baseline();
+        long before = _now - 500;
+        Assert.Null(_watch.Flush(W1, 121500, 0, before, settling: false));       // seen once: held
+        _watch.MarkOwn(_now);                                                    // MSFSBA acts
+        Assert.Null(_watch.Flush(W1, 121500, 0, before, settling: false));       // the confirming flush: re-baselined
+        Assert.Null(_watch.Flush(W1, 121500, 0, before, settling: false));
     }
 
     [Fact]
@@ -360,6 +405,25 @@ public class A300SquawkWatchTests
     }
 
     [Fact]
+    public void A_code_is_judged_by_when_it_was_delivered_not_by_the_flush_that_finds_it()
+    {
+        Flush(Code("1200"));
+        long mark = _now;
+        _watch.MarkOwn(mark);
+        Assert.Null(_watch.Flush(Code("5473"), mark + 2000, settling: false));   // found after the window, delivered inside it
+        Assert.Null(_watch.Flush(Code("5473"), mark + 2000, settling: false));
+        Assert.Equal("Squawk 7700", _watch.Flush(Code("7700"), mark + 2600, settling: false));
+    }
+
+    [Fact]
+    public void A_code_with_no_delivery_on_record_is_never_an_own_echo()
+    {
+        Flush(Code("1200"));
+        _watch.MarkOwn(_now);
+        Assert.Equal("Squawk 5473", _watch.Flush(Code("5473"), null, settling: false));
+    }
+
+    [Fact]
     public void A_load_that_is_settling_only_rebaselines()
     {
         Flush(Code("1200"));
@@ -411,6 +475,17 @@ public class A300SquawkWatchTests
 /// <summary>Which key carries what: the rows, the inputs and the actions of MSFSBA's own that quiet a watch.</summary>
 public class A300RadioWatchesTests
 {
+    [Theory]
+    [InlineData(1000L, 1000L, true)]       // delivered exactly at the window's end: inclusive
+    [InlineData(1000L, 999L, true)]
+    [InlineData(1000L, 0L, true)]          // before the mark too: an outside change not yet flushed when MSFSBA acted
+    [InlineData(1000L, 1001L, false)]
+    [InlineData(null, 500L, false)]        // no mark
+    [InlineData(1000L, null, false)]       // no delivery on record
+    [InlineData(null, null, false)]
+    public void A_change_is_an_own_echo_when_it_was_delivered_no_later_than_the_marks_window_ends(long? quietUntil, long? deliveredAt, bool echo) =>
+        Assert.Equal(echo, A300RadioWatches.IsOwnEcho(quietUntil, deliveredAt));
+
     [Fact]
     public void Only_the_vhf_radios_are_watched_the_adfs_are_not()
     {
