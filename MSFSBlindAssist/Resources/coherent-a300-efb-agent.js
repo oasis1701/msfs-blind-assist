@@ -219,6 +219,52 @@
     return 'Runway ' + m[1] + ': ' + A.thousands(+m[2]) + ' meters, ' + A.thousands(+m[3]) + ' feet' + (red ? ', marked short' : '');
   };
 
+  // Take Off's and Landing's RWY button opens the airport's runway list ABOVE the page, away from
+  // the button, so a screen reader heard nothing happen when it was pressed (PR #300 in-sim run,
+  // 2026-10-14). It is read as a choice instead: the list's runways in words, the value the runway
+  // the button names ("RWY 18L"). Each picker's own list, by its container: the tablet ids a runway
+  // button by the runway alone, so both pages can hold a "09".
+  A.RUNWAY_PICKERS = { show_runway_select: 'runway_opts', land_show_runway_select: 'land_runway_opts' };
+  // The first choice until a runway is picked (the button says SELECT): a list with nothing chosen
+  // would show its first runway as if it were.
+  A.NO_RUNWAY = 'None selected';
+  A.runwayButtons = function (picker) {
+    var box = A.byId(A.RUNWAY_PICKERS[picker.id]);
+    return box ? box.getElementsByTagName('button') : [];
+  };
+  // Emits the picker as a choice; false, leaving it the tablet's button, while no runway is listed.
+  A.runwayPicker = function (picker, emit) {
+    var m = /^RWY\s+(\S+)$/i.exec(A.clean(picker.value)), picked = m ? m[1] : '';
+    var btns = A.runwayButtons(picker), opts = [], value = '';
+    for (var i = 0; i < btns.length; i++) {
+      var label = A.runwayLabel(btns[i]);
+      if (!label) continue;
+      opts.push(label);
+      if (btns[i].id === picked) value = label;
+    }
+    if (!opts.length) return false;
+    if (!value) { opts.unshift(A.NO_RUNWAY); value = A.NO_RUNWAY; }
+    emit({ idx: A.stamp(picker), text: 'Runway', value: value, controlType: 'select', kind: 'static', clickable: false,
+      options: opts, key: 'runway:' + picker.id });
+    return true;
+  };
+  // A pick is what a finger does: RWY opens the list, then the runway's own button, whose handler
+  // (selectRunway) closes the list and fills TORA, HDG and RWY. False, pressing nothing, for a
+  // runway the list does not hold or for the placeholder.
+  A.pickRunway = function (picker, text) {
+    var btns = A.runwayButtons(picker);
+    for (var i = 0; i < btns.length; i++) {
+      if (A.runwayLabel(btns[i]) !== text) continue;
+      A.press(picker);
+      A.press(btns[i]);
+      return true;
+    }
+    return false;
+  };
+  // The tablet's message after a pick: the choice already says the new runway, and a message read
+  // as an alert would cut off the screen reader reading it.
+  A.QUIET_TOASTS = { 'Runway Updated': true };
+
   // A chart in the Charts list: its name (h1) and its kind (p), "CONDR 4 RNAV [ATC], STAR".
   // A chart named after its kind ("AFC", "AOI") says it once.
   A.chartName = function (row) {
@@ -556,6 +602,8 @@
         return;
       }
 
+      if (A.RUNWAY_PICKERS[el.id] && A.runwayPicker(el, emit)) return;
+
       if (A.isPress(el)) {
         var idxP = A.stamp(el);
         var label = A.pressLabel(el);
@@ -656,7 +704,7 @@
     for (var n = 0; n < toasts.length; n++) {
       if (!A.visible(toasts[n])) continue;
       var said = A.txt(toasts[n].querySelector('.notie-textbox-inner') || toasts[n]);
-      if (said) emit({ idx: 0, text: said, value: '', kind: 'alert', clickable: false });
+      if (said && !A.QUIET_TOASTS[said]) emit({ idx: 0, text: said, value: '', kind: 'alert', clickable: false });
     }
 
     var overlay = A.openOverlay();
@@ -879,6 +927,7 @@
   A.setValue = function (idx, text) {
     var el = A.find(idx);
     if (!el) return false;
+    if (A.RUNWAY_PICKERS[el.id]) return A.pickRunway(el, text);
     var group = el.getAttribute('data-a300-radio');
     if (group) {
       var radios = document.getElementsByName(group);

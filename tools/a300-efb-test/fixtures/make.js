@@ -119,10 +119,12 @@ function weights(p1Rect, p2Rect, forwardShown, unit, extra) {
 
 // Take Off's runway list (#runway_opts, built by the tablet from the airport's runways: red when
 // the runway is at or below its shortest table, 1,700 m) and its read-only results.
-function rwy(name, metres, red) {
-  return '<div class="col-sm-4 mt-3"><div class="input-group mb-3"><button class="form-control rwy-select" id="' + name + '">RWY ' + name +
+function rwy(name, metres, red, cls) {
+  return '<div class="col-sm-4 mt-3"><div class="input-group mb-3"><button class="form-control ' + (cls || 'rwy-select') + '" id="' + name + '">RWY ' + name +
     '<br><small style="padding-top: 10px; color: ' + (red ? 'rgb(255, 0, 0)' : 'rgb(153, 204, 255)') + '">[' + metres + 'm / ' + Math.round(metres * 3.28084) + 'ft]</small></button></div></div>';
 }
+// Landing's list: the same buttons, classed land-rwy-select (red at or below 1,300 m).
+function landRwy(name, metres, red) { return rwy(name, metres, red, 'land-rwy-select'); }
 function perfRow(label, input) {
   return '<div class="row mb-2"><div class="col-sm-4 text-end ini-input-label">' + label + '</div><div class="col-sm-8"><div class="input-group">' + input + '</div></div></div>';
 }
@@ -163,6 +165,17 @@ const files = {
     '<div id="performance"><h1>PERFORMANCE</h1>' +
     perfRow('FLEX', '<input type="text" id="output_flex" disabled value="45"><span class="input-group-text">°C</span>') +
     perfRow('V1', '<input type="number" id="output_v1" disabled value="">') + '</div></div>'),
+  // Landing as the tablet draws it once the arrival is known (live, 2026-10-14): the runway list
+  // closed and 22R picked. Take Off stays in the document behind it, and the tablet names each
+  // runway button by the runway alone, so both pages can hold a button with the same id (04R here).
+  'landing': tablet('<div id="landing-bg"></div><div id="landingPerfViewer">' +
+    '<div id="land_runwayPanel" data-display="none"><h1>SELECT RUNWAY</h1><input type="button" id="land_hide_runway_select" value="Cancel">' +
+    '<div id="land_runway_opts" class="row">' + landRwy('04R', 3090, false) + landRwy('22R', 2391, false) + landRwy('15L', 785, true) + '</div></div>' +
+    '<div id="land_conditions"><h1>CONDITIONS</h1>' +
+    perfRow('RWY', '<input type="button" id="land_show_runway_select" value="RWY 22R">') + '</div></div>').replace('</div></div><div class="paused-overlay',
+    '</div><div class="hiddenPage" data-display="none"><div id="takeOffPerfViewer"><div id="runwayPanel" data-display="none">' +
+    '<div id="runway_opts" class="row">' + rwy('04R', 2000, false) + '</div></div>' +
+    perfRow('RWY', '<input type="button" id="show_runway_select" value="RWY 04R">') + '</div></div></div><div class="paused-overlay'),
   'groundequip': tablet('<div id="equip"><button id="door1Larmed" class="door-arm" style="background-color: rgb(0, 128, 0)"></button>' +
     '<h1>Emergency Slides: Red - Armed // Green - Disarmed</h1></div>'),
   'maintenance': tablet('<div id="maintenance"><div class="row"><div class="col-sm-12"><h1 class="mb-2">AIRCRAFT MAINTENANCE</h1>' +
