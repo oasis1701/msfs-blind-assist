@@ -139,6 +139,23 @@ public partial class SynapticA220Definition
         UpdateFrequency = UpdateFrequency.Never
     };
 
+    /// <summary>A QNH entry: hPa (940-1090) or inches (27.00-32.00), garbage refused (NaN).
+    /// The prefill is the stock Kohlsman in hPa, which follows the CTP exactly (live 2026-10-12).</summary>
+    private static SimVarDefinition QnhEntry(string key, string display, string currentSource) => new()
+    {
+        Name = key, DisplayName = $"{display} (hPa or inches)",
+        Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.Never,
+        CurrentValueSourceKey = currentSource, UnparseableTextAsNaN = true
+    };
+
+    /// <summary>A minimums entry, 0-41000 ft, prefilled from the bus value.</summary>
+    private static SimVarDefinition MinimumsEntry(string key, string display, string currentSource) => new()
+    {
+        Name = key, DisplayName = display,
+        Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.Never,
+        CurrentValueSourceKey = currentSource, UnparseableTextAsNaN = true
+    };
+
     protected override Dictionary<string, SimVarDefinition> BuildVariables()
     {
         var v = GetBaseVariables();
@@ -422,10 +439,23 @@ public partial class SynapticA220Definition
         v["A22X_SPOILER_LEVER_POS"] = Status("A22X Spoiler Lever", "Speedbrake Lever", "number", "F2");
 
         // ==== Glareshield — CTP (per side) ===================================
-        // Baro STD / nav source / crosstune are momentary press flags the panel
-        // consumes; unit (hPa/inHg) is read for display.
-        v["A22X_L_BARO_STD"] = LMomentary("A22X L Altimeter STD", "Captain Baro STD");
-        v["A22X_R_BARO_STD"] = LMomentary("A22X R Altimeter STD", "First Officer Baro STD");
+        // Altimeter, STD and minimums are set through the CTP's own SetConfig call and read
+        // back from the CTP / ADS stores ([A220-33], Avionics partial). STD and the minimums
+        // mode are bus combos (their state exists only on the bus); the unit combo READS the
+        // WASM's HPA mirror and writes a SetConfig qnh in the other unit — never the mirror.
+        // Nav source and crosstune stay momentary press flags.
+        v["A22X_L_BARO_STD"] = BusCombo("Captain Baro STD", "Off", "On");
+        v["A22X_R_BARO_STD"] = BusCombo("First Officer Baro STD", "Off", "On");
+        v["A22X_L_BARO_UNIT"] = LSwitch("A22X L Altimeter HPA", "Captain Altimeter Unit", "Inches", "Hectopascals");
+        v["A22X_R_BARO_UNIT"] = LSwitch("A22X R Altimeter HPA", "First Officer Altimeter Unit", "Inches", "Hectopascals");
+        v["A22X_L_QNH_SET"] = QnhEntry("A22X_L_QNH_SET", "Captain QNH", "A22X_KOHLSMAN_MB");
+        v["A22X_R_QNH_SET"] = QnhEntry("A22X_R_QNH_SET", "First Officer QNH", "A22X_KOHLSMAN_MB_2");
+        v["A22X_L_MINIMUMS_MODE"] = BusCombo("Captain Minimums Mode", "Baro", "Radio");
+        v["A22X_R_MINIMUMS_MODE"] = BusCombo("First Officer Minimums Mode", "Baro", "Radio");
+        v["A22X_L_MINIMUMS"] = BusValue("Captain Minimums (bus)");
+        v["A22X_R_MINIMUMS"] = BusValue("First Officer Minimums (bus)");
+        v["A22X_L_MINIMUMS_SET"] = MinimumsEntry("A22X_L_MINIMUMS_SET", "Captain Minimums (feet)", "A22X_L_MINIMUMS");
+        v["A22X_R_MINIMUMS_SET"] = MinimumsEntry("A22X_R_MINIMUMS_SET", "First Officer Minimums (feet)", "A22X_R_MINIMUMS");
         v["A22X_L_NAV_SOURCE"] = LMomentary("A22X L Nav Source", "Captain Nav Source Cycle");
         v["A22X_R_NAV_SOURCE"] = LMomentary("A22X R Nav Source", "First Officer Nav Source Cycle");
         v["A22X_L_CROSSTUNE"] = LMomentary("A22X L CTP Crosstune", "Captain Crosstune");
@@ -532,6 +562,7 @@ public partial class SynapticA220Definition
         AddQuiet(v, "A22X_AP_MACH_MODE", "AUTOPILOT MANAGED SPEED IN MACH", "bool", SimVarType.SimVar);
         AddQuiet(v, "A22X_KOHLSMAN", "KOHLSMAN SETTING HG:1", "inHg", SimVarType.SimVar);
         AddQuiet(v, "A22X_KOHLSMAN_MB", "KOHLSMAN SETTING MB:1", "millibars", SimVarType.SimVar);
+        AddQuiet(v, "A22X_KOHLSMAN_MB_2", "KOHLSMAN SETTING MB:2", "millibars", SimVarType.SimVar);
         // EXEC prompt. This is the var that drives the PHYSICAL MKP EXEC key's light
         // (MKP.xml: the EXEC button's SEQ2_CODE is `(L:A22X Flight Plan Modified)`),
         // so it is exactly "a modification is pending and needs EXEC". It is

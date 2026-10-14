@@ -188,6 +188,7 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
         DisposeFmsEclForms();
         DisposeRadiosForm();
         DisposeFlightIdDialog();
+        DisposeAltimeterForm();
     }
 
     public override bool HandleHotkeyAction(HotkeyAction action, SimConnectManager simConnect,
@@ -215,8 +216,9 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
                 ShowVerticalDialog(simConnect, announcer, parentForm);
                 return true;
             case HotkeyAction.FCUSetBaro:
+                // "Altimeter and minimums": QNH, unit, STD and minimums, both CTPs or one.
                 hotkeyManager.ExitInputHotkeyMode();
-                ShowBaroDialog(simConnect, announcer, parentForm);
+                ShowAltimeterForm(announcer);
                 return true;
             case HotkeyAction.FCUSetAutopilot:
                 hotkeyManager.ExitInputHotkeyMode();
@@ -384,12 +386,13 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
             }
             case HotkeyAction.ReadAltimeter:
             {
-                double inHg = Cached(simConnect, "A22X_KOHLSMAN", 29.92);
-                double mb = Cached(simConnect, "A22X_KOHLSMAN_MB", 1013);
-                bool std = Math.Abs(inHg - 29.92) < 0.005;
-                bool hpa = Cached(simConnect, "A22X_L_BARO_HPA") > 0.5;
-                string primary = hpa ? $"{mb:F0} hectopascals" : $"{inHg:F2} inches";
-                announcer.AnnounceImmediate(std ? $"Altimeter standard, {primary}" : $"Altimeter {primary}");
+                // What each PFD shows (ADS store) — STD from the aircraft, never "29.92 means
+                // STD"; the first officer is named only when different. Link down: the stock
+                // Kohlsman, saying STD is not known.
+                var sys = LatestSystems;
+                string? text = A220Systems.FormatAltimeterReadout(sys?.lads, sys?.lctp, sys?.rads, sys?.rctp);
+                announcer.AnnounceImmediate(text ?? A220Systems.FormatAltimeterFallback(
+                    Cached(simConnect, "A22X_KOHLSMAN", 29.92), Cached(simConnect, "A22X_KOHLSMAN_MB", 1013)));
                 return true;
             }
             case HotkeyAction.ReadNavRadioInfo:

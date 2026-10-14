@@ -576,6 +576,491 @@ public class SynapticA220DefinitionTests
         Assert.Contains(("A22X_XPDR_MODE", 2.0), seen);             // released and forced: the truth
         Assert.Empty(speech.All);
     }
+
+    // ---- CTP altimeter, STD and minimums ([A220-33]) ------------------------------------------
+
+    [Fact]
+    public void CtpPanels_CarryTheAltimeterAndMinimumsControls()
+    {
+        Assert.Equal(new[]
+        {
+            "A22X_L_QNH_SET", "A22X_L_BARO_UNIT", "A22X_L_BARO_STD",
+            "A22X_L_MINIMUMS_MODE", "A22X_L_MINIMUMS_SET", "A22X_L_NAV_SOURCE", "A22X_L_CROSSTUNE"
+        }, Def.GetPanelControls()["CTP Captain"]);
+        Assert.Equal(new[]
+        {
+            "A22X_R_QNH_SET", "A22X_R_BARO_UNIT", "A22X_R_BARO_STD",
+            "A22X_R_MINIMUMS_MODE", "A22X_R_MINIMUMS_SET", "A22X_R_NAV_SOURCE", "A22X_R_CROSSTUNE"
+        }, Def.GetPanelControls()["CTP First Officer"]);
+
+        Assert.Equal(UpdateFrequency.Never, Vars["A22X_L_BARO_STD"].UpdateFrequency);   // a bus combo now, not a press flag
+        Assert.False(Vars["A22X_L_BARO_STD"].RenderAsButton);
+        // [VAR-7]: shares the batched HPA mirror's name, so it must itself stay off the batch.
+        Assert.Equal(UpdateFrequency.OnRequest, Vars["A22X_L_BARO_UNIT"].UpdateFrequency);
+        Assert.Equal("A22X L Altimeter HPA", Vars["A22X_L_BARO_UNIT"].Name);
+        Assert.Equal("A22X_KOHLSMAN_MB", Vars["A22X_L_QNH_SET"].CurrentValueSourceKey);
+        Assert.Equal("A22X_KOHLSMAN_MB_2", Vars["A22X_R_QNH_SET"].CurrentValueSourceKey);
+        Assert.Equal("KOHLSMAN SETTING MB:2", Vars["A22X_KOHLSMAN_MB_2"].Name);          // the entry's prefill source must exist
+        Assert.Equal("A22X_L_MINIMUMS", Vars["A22X_L_MINIMUMS_SET"].CurrentValueSourceKey);
+        Assert.True(Vars["A22X_L_QNH_SET"].UnparseableTextAsNaN);
+        Assert.True(Vars["A22X_R_MINIMUMS_SET"].UnparseableTextAsNaN);
+    }
+
+    [Fact]
+    public void Bridge_CarriesBaroStdFromTheAds_AndMinimumsFromTheCtp()
+    {
+        var def = new SynapticA220Definition();
+        var seen = new Dictionary<string, double>();
+        def.CommBusValueChanged += (k, v) => seen[k] = v;
+        var sys = FixtureSystems();
+        sys.lads = new A220Systems.AdsBlock { qnh_std = true, qnh_unit = 0, qnh_inhg = 29.92 };
+        def.ProcessSystems(sys);
+        Assert.Equal(1, seen["A22X_L_BARO_STD"]);
+        Assert.False(seen.ContainsKey("A22X_R_BARO_STD"));         // no R side in the capture: nothing claimed
+        Assert.Equal(0, seen["A22X_L_MINIMUMS_MODE"]);
+        Assert.Equal(1210, seen["A22X_L_MINIMUMS"]);
+    }
+
+    [Fact]
+    public void AltimeterDescriptions_ReadTheCtpTruth()
+    {
+        var def = new SynapticA220Definition();
+        def.ProcessSystems(FixtureSystems());
+        Assert.Equal("Captain: 30.13 inches; minimums baro 1210 feet\r\nFirst officer: "
+            + A220Systems.NotAvailable + "; minimums " + A220Systems.NotAvailable, def.DescribeAltimeters());
+        Assert.Equal(((bool?)null, (bool?)false, (int?)0), def.DescribeCtp(1));   // STD unknown, inches, baro
+        Assert.Equal("30.13", def.CurrentQnhEntry(1));
+    }
+
+    [Fact]
+    public void ReadAltimeter_SpeaksWhatThePfdShows_OrSaysStandardIsNotKnown()
+    {
+        var sim = new SimConnectManager(IntPtr.Zero);                  // never connected: nothing cached
+        var def = new SynapticA220Definition();
+        var speech = new SpeechCapture();
+        def.ProcessSystems(new A220Systems.SystemsBlocks
+        {
+            lads = new A220Systems.AdsBlock { qnh_std = true, qnh_unit = 0, qnh_inhg = 29.92 },
+            rads = new A220Systems.AdsBlock { qnh_std = false, qnh_unit = 0, qnh_inhg = 30.13 },
+        });
+        def.HandleHotkeyAction(HotkeyAction.ReadAltimeter, sim, speech, null!, null!);
+        Assert.Equal(new[] { "Altimeter standard, first officer 30.13 inches" }, speech.All);
+
+        var down = new SpeechCapture();
+        new SynapticA220Definition().HandleHotkeyAction(HotkeyAction.ReadAltimeter, sim, down, null!, null!);
+        Assert.Equal(new[]
+        {
+            "Altimeter 29.92 inches, 1013 hectopascals. Standard not known — the display link is not connected."
+        }, down.All);
+    }
+
+    // The write paths against a scripted display agent: write calls are recorded and answer SENT,
+    // sys() answers the scripted blocks.
+
+    private static string SysJson(params string[] stores) => "{" + string.Join(",", stores) + "}";
+    private static string CtpStore(string side, string fields) => $"\"{side}ctp\":{{{fields}}}";
+    private static string AdsStore(string side, string fields) => $"\"{side}ads\":{{{fields}}}";
+    private static string QnhFields(string type, string value) => $"\"qnh\":{{\"type\":\"{type}\",\"value\":{value}}}";
+
+    private static A220Systems.SystemsBlocks Blocks(params string[] stores) => A220Systems.ParseSystems(SysJson(stores))!;
+
+    private static SynapticA220Definition CtpDef(Func<string?> sys, List<string>? sent = null)
+    {
+        var def = new SynapticA220Definition { PollIntervalMs = 5, PollTimeoutCapMs = 150 };
+        def.AgentCallOverride = call =>
+        {
+            if (call == "sys()") return Task.FromResult(sys());
+            sent?.Add(call);
+            return Task.FromResult<string?>("SENT");
+        };
+        return def;
+    }
+
+    private static readonly IReadOnlyList<int> Cap = SynapticA220Definition.Captain;
+    private static readonly IReadOnlyList<int> Fo = SynapticA220Definition.FirstOfficer;
+    private static readonly IReadOnlyList<int> Both = SynapticA220Definition.BothSides;
+
+    [Fact]
+    public async Task Qnh_IsSentInEachSidesOwnUnit_AndTheReadBackIsSpoken()
+    {
+        var sent = new List<string>();
+        var speech = new SpeechCapture();
+        var def = CtpDef(() => SysJson(CtpStore("l", QnhFields("InHg", "30.12")), CtpStore("r", QnhFields("Hpa", "1020"))), sent);
+        def.ProcessSystems(Blocks(CtpStore("l", QnhFields("InHg", "29.92")), CtpStore("r", QnhFields("Hpa", "1013"))));
+
+        await def.SetQnhAsync(1020, Both, speech);
+
+        Assert.Equal(new[]
+        {
+            "ctpSet(1, {\"qnh\":{\"type\":\"InHg\",\"value\":30.12}})",
+            "ctpSet(2, {\"qnh\":{\"type\":\"Hpa\",\"value\":1020}})"
+        }, sent);
+        Assert.DoesNotContain(speech.All, line => line.Contains("did not take"));
+        Assert.Single(speech.All);
+    }
+
+    [Fact]
+    public async Task Qnh_ThatLands_IsConfirmed_AndOneThatDoesNot_NamesWhatTheAircraftReads()
+    {
+        var landed = new SpeechCapture();
+        var def = CtpDef(() => SysJson(CtpStore("l", QnhFields("InHg", "30.12"))));
+        def.ProcessSystems(Blocks(CtpStore("l", QnhFields("InHg", "29.92"))));
+        await def.SetQnhAsync(30.12, Cap, landed);
+        Assert.Equal(new[] { "Captain altimeter 30.12 inches" }, landed.All);
+
+        var stuck = new SpeechCapture();
+        var kept = CtpDef(() => SysJson(CtpStore("l", QnhFields("InHg", "29.92"))));
+        kept.ProcessSystems(Blocks(CtpStore("l", QnhFields("InHg", "29.92"))));
+        await kept.SetQnhAsync(30.12, Cap, stuck);
+        Assert.Equal(new[] { "Captain altimeter did not take the setting — reads 29.92 inches." }, stuck.All);
+    }
+
+    [Theory]
+    [InlineData(500.0)]
+    [InlineData(26.99)]
+    [InlineData(double.NaN)]
+    public async Task Qnh_OutOfRange_IsRefusedAloud_AndNothingIsSent(double input)
+    {
+        var sent = new List<string>();
+        var speech = new SpeechCapture();
+        await CtpDef(() => "{}", sent).SetQnhAsync(input, Cap, speech);
+        Assert.Equal(new[] { "QNH must be 940 to 1090 hectopascals or 27.00 to 32.00 inches." }, speech.All);
+        Assert.Empty(sent);
+    }
+
+    // CI runs en-US: only a comma-decimal culture catches a "30,13" in the payload or in speech.
+    [Fact]
+    public async Task Qnh_UnderAGermanCulture_StaysInvariant()
+    {
+        var saved = System.Globalization.CultureInfo.CurrentCulture;
+        System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("de-DE");
+        try
+        {
+            var sent = new List<string>();
+            var speech = new SpeechCapture();
+            var def = CtpDef(() => SysJson(CtpStore("l", QnhFields("InHg", "30.13"))), sent);
+            def.ProcessSystems(Blocks(CtpStore("l", QnhFields("InHg", "29.92"))));
+            await def.SetQnhAsync(30.13, Cap, speech);
+            Assert.Equal(new[] { "ctpSet(1, {\"qnh\":{\"type\":\"InHg\",\"value\":30.13}})" }, sent);
+            Assert.Equal(new[] { "Captain altimeter 30.13 inches" }, speech.All);
+        }
+        finally { System.Globalization.CultureInfo.CurrentCulture = saved; }
+    }
+
+    [Fact]
+    public async Task Unit_ReSendsTheCurrentSettingInTheOtherUnit_AndSpeaksTheConvertedValue()
+    {
+        var sent = new List<string>();
+        var speech = new SpeechCapture();
+        var def = CtpDef(() => SysJson(CtpStore("l", QnhFields("Hpa", "1020"))), sent);
+        def.ProcessSystems(Blocks(CtpStore("l", QnhFields("InHg", "30.13"))));
+
+        await def.SetBaroUnitAsync(true, Cap, speech);
+
+        Assert.Equal(new[] { "ctpSet(1, {\"qnh\":{\"type\":\"Hpa\",\"value\":1020}})" }, sent);
+        Assert.Equal(new[] { "Captain altimeter 1020 hectopascals" }, speech.All);
+    }
+
+    [Fact]
+    public async Task Unit_TheAircraftKeeps_IsSpoken_AndNoUnitIsGuessedWithoutCtpData()
+    {
+        var kept = new SpeechCapture();
+        var def = CtpDef(() => SysJson(CtpStore("l", QnhFields("InHg", "30.13"))));
+        def.ProcessSystems(Blocks(CtpStore("l", QnhFields("InHg", "30.13"))));
+        await def.SetBaroUnitAsync(true, Cap, kept);
+        Assert.Equal(new[] { "The A220 did not change the altimeter unit — still inches." }, kept.All);
+
+        var sent = new List<string>();
+        var none = new SpeechCapture();
+        await CtpDef(() => "{}", sent).SetBaroUnitAsync(true, Cap, none);   // no CTP block was ever read
+        Assert.Equal(new[] { "Altimeter unit not set: the A220 display link is not connected." }, none.All);
+        Assert.Empty(sent);
+    }
+
+    [Fact]
+    public async Task Std_FromAPanelCombo_IsSilentWhenItLands_AndSpokenWhenItDoesNot()
+    {
+        var sent = new List<string>();
+        var landed = new SpeechCapture();
+        await CtpDef(() => SysJson(AdsStore("l", "\"qnh_std\":true")), sent).SetStdAsync(true, Cap, landed, speakSuccess: false);
+        Assert.Equal(new[] { "ctpSet(1, {\"qnh_std\":true})" }, sent);
+        Assert.Empty(landed.All);
+
+        var stuck = new SpeechCapture();
+        await CtpDef(() => SysJson(AdsStore("l", "\"qnh_std\":false"))).SetStdAsync(true, Cap, stuck, speakSuccess: false);
+        Assert.Equal(new[] { "Captain baro did not change — still QNH." }, stuck.All);
+    }
+
+    [Fact]
+    public async Task Std_FromCtrlB_SpeaksWhatThePfdNowShows()
+    {
+        var on = new SpeechCapture();
+        await CtpDef(() => SysJson(AdsStore("l", "\"qnh_std\":true"), AdsStore("r", "\"qnh_std\":true"))).SetStdAsync(true, Both, on);
+        Assert.Equal(new[] { "Altimeter standard, both sides" }, on.All);
+
+        var off = new SpeechCapture();
+        await CtpDef(() => SysJson(AdsStore("l", "\"qnh_std\":false"), CtpStore("l", QnhFields("InHg", "30.13")))).SetStdAsync(false, Cap, off);
+        Assert.Equal(new[] { "Captain altimeter 30.13 inches" }, off.All);
+    }
+
+    [Fact]
+    public async Task ToggleStd_FlipsTheFirstChosenSidesState_OrSaysItIsNotKnown()
+    {
+        var sent = new List<string>();
+        var speech = new SpeechCapture();
+        var def = CtpDef(() => SysJson(AdsStore("l", "\"qnh_std\":true")), sent);
+        def.ProcessSystems(Blocks(AdsStore("l", "\"qnh_std\":false")));
+        await def.ToggleStdAsync(Cap, speech);
+        Assert.Equal(new[] { "ctpSet(1, {\"qnh_std\":true})" }, sent);
+        Assert.Equal(new[] { "Captain altimeter standard" }, speech.All);
+
+        var unknownSent = new List<string>();
+        var unknown = new SpeechCapture();
+        await CtpDef(() => "{}", unknownSent).ToggleStdAsync(Cap, unknown);
+        Assert.Equal(new[] { "Standard is not known: the A220 display link is not connected." }, unknown.All);
+        Assert.Empty(unknownSent);
+    }
+
+    [Fact]
+    public async Task MinimumsMode_IsSilentWhenItLands_AndNamesWhatItKeptWhenItDoesNot()
+    {
+        var sent = new List<string>();
+        var landed = new SpeechCapture();
+        await CtpDef(() => SysJson(CtpStore("l", "\"minimums_mode\":1,\"minimums\":200")), sent).SetMinimumsModeAsync(1, Cap, landed);
+        Assert.Equal(new[] { "ctpSet(1, {\"minimums_mode\":1})" }, sent);
+        Assert.Empty(landed.All);
+
+        var stuck = new SpeechCapture();
+        await CtpDef(() => SysJson(CtpStore("l", "\"minimums_mode\":0,\"minimums\":1210"))).SetMinimumsModeAsync(1, Cap, stuck);
+        Assert.Equal(new[] { "Minimums mode did not change — captain still baro 1210 feet." }, stuck.All);
+    }
+
+    [Fact]
+    public async Task Minimums_AreConfirmedFromTheReadBack_AndRefusedWhenOutOfRange()
+    {
+        var sent = new List<string>();
+        var landed = new SpeechCapture();
+        await CtpDef(() => SysJson(CtpStore("l", "\"minimums_mode\":0,\"minimums\":200")), sent).SetMinimumsAsync(200, Cap, landed);
+        Assert.Equal(new[] { "ctpSet(1, {\"minimums\":200})" }, sent);
+        Assert.Equal(new[] { "Captain minimums baro 200 feet" }, landed.All);
+
+        var both = new SpeechCapture();
+        await CtpDef(() => SysJson(CtpStore("l", "\"minimums\":200"), CtpStore("r", "\"minimums\":200"))).SetMinimumsAsync(200, Both, both);
+        Assert.Equal(new[] { "Minimums 200 feet, both sides" }, both.All);
+
+        var stuck = new SpeechCapture();
+        await CtpDef(() => SysJson(CtpStore("l", "\"minimums_mode\":0,\"minimums\":1210"))).SetMinimumsAsync(200, Cap, stuck);
+        Assert.Equal(new[] { "Captain minimums did not take 200 feet — reads baro 1210 feet." }, stuck.All);
+
+        var outOfRange = new SpeechCapture();
+        var none = new List<string>();
+        await CtpDef(() => "{}", none).SetMinimumsAsync(41001, Cap, outOfRange);
+        Assert.Equal(new[] { "Minimums must be 0 to 41000 feet." }, outOfRange.All);
+        Assert.Empty(none);
+    }
+
+    [Fact]
+    public async Task CtpWrites_AreRefusedAloud_WhenTheDisplayLinkCannotCarryThem()
+    {
+        var speech = new SpeechCapture();
+        var def = new SynapticA220Definition { PollIntervalMs = 5, PollTimeoutCapMs = 150 };
+        def.AgentCallOverride = _ => Task.FromResult<string?>("NO_BUS");
+        def.ProcessSystems(Blocks(CtpStore("l", QnhFields("InHg", "29.92"))));
+
+        await def.SetQnhAsync(1013, Cap, speech);
+        await def.SetBaroUnitAsync(true, Cap, speech);
+        await def.SetStdAsync(true, Cap, speech);
+        await def.SetMinimumsModeAsync(1, Cap, speech);
+        await def.SetMinimumsAsync(200, Cap, speech);
+
+        Assert.Equal(new[]
+        {
+            "Altimeter not set: the A220 display link is not connected.",
+            "Altimeter unit not set: the A220 display link is not connected.",
+            "Baro standard not set: the A220 display link is not connected.",
+            "Minimums mode not set: the A220 display link is not connected.",
+            "Minimums not set: the A220 display link is not connected."
+        }, speech.All);
+    }
+
+    [Theory]
+    [InlineData("A22X_L_QNH_SET", 1013.0, 1)]
+    [InlineData("A22X_R_QNH_SET", 1013.0, 2)]
+    [InlineData("A22X_L_BARO_UNIT", 1.0, 1)]
+    [InlineData("A22X_R_BARO_UNIT", 1.0, 2)]
+    [InlineData("A22X_L_BARO_STD", 1.0, 1)]
+    [InlineData("A22X_R_BARO_STD", 1.0, 2)]
+    [InlineData("A22X_L_MINIMUMS_MODE", 1.0, 1)]
+    [InlineData("A22X_R_MINIMUMS_MODE", 1.0, 2)]
+    [InlineData("A22X_L_MINIMUMS_SET", 200.0, 1)]
+    [InlineData("A22X_R_MINIMUMS_SET", 200.0, 2)]
+    public void PanelControls_AreClaimed_AndWrittenThroughTheirSidesCtp(string key, double value, int side)
+    {
+        var sent = new List<string>();
+        var def = CtpDef(() => "{}", sent);
+        def.ProcessSystems(Blocks(CtpStore("l", QnhFields("InHg", "30.13")), CtpStore("r", QnhFields("InHg", "30.13"))));
+
+        bool handled = def.HandleUIVariableSet(key, value, Vars[key], new SimConnectManager(IntPtr.Zero), new SpeechCapture());
+
+        Assert.True(handled);
+        Assert.StartsWith($"ctpSet({side}, ", Assert.Single(sent));   // the first write goes out synchronously
+    }
+
+    // ---- Latest write wins, per control and per side ------------------------------------------
+    // Arrowing through a DropDownList combo commits and writes on every press; a write the pilot has
+    // already moved past reads back a LATER pick and used to report a failure about a value nobody
+    // was asking for any more.
+
+    [Fact]
+    public async Task OverlappingStdWrites_OnlyTheLatestOneIsJudged()
+    {
+        var (def, speech) = (CtpDef(() => SysJson(AdsStore("l", "\"qnh_std\":false"))), new SpeechCapture());
+        await Task.WhenAll(def.SetStdAsync(true, Cap, speech, speakSuccess: false), def.SetStdAsync(false, Cap, speech, speakSuccess: false));
+        Assert.Empty(speech.All);                                 // the second pick landed; the first said nothing
+    }
+
+    [Fact]
+    public async Task OverlappingStdWrites_TheLatestStillReportsItsOwnFailure_Once()
+    {
+        var (def, speech) = (CtpDef(() => SysJson(AdsStore("l", "\"qnh_std\":false"))), new SpeechCapture());
+        await Task.WhenAll(def.SetStdAsync(true, Cap, speech, speakSuccess: false), def.SetStdAsync(true, Cap, speech, speakSuccess: false));
+        Assert.Equal(new[] { "Captain baro did not change — still QNH." }, speech.All);
+    }
+
+    [Fact]
+    public async Task OverlappingMinimumsModeWrites_OnlyTheLatestOneIsJudged()
+    {
+        var (def, speech) = (CtpDef(() => SysJson(CtpStore("l", "\"minimums_mode\":1,\"minimums\":200"))), new SpeechCapture());
+        await Task.WhenAll(def.SetMinimumsModeAsync(0, Cap, speech), def.SetMinimumsModeAsync(1, Cap, speech));
+        Assert.Empty(speech.All);
+    }
+
+    [Fact]
+    public async Task OverlappingMinimumsWrites_OnlyTheLatestOneIsConfirmed()
+    {
+        var (def, speech) = (CtpDef(() => SysJson(CtpStore("l", "\"minimums_mode\":0,\"minimums\":500"))), new SpeechCapture());
+        await Task.WhenAll(def.SetMinimumsAsync(300, Cap, speech), def.SetMinimumsAsync(500, Cap, speech));
+        Assert.Equal(new[] { "Captain minimums baro 500 feet" }, speech.All);
+    }
+
+    [Fact]
+    public async Task OverlappingQnhWrites_OnlyTheLatestOneIsConfirmed()
+    {
+        var (def, speech) = (CtpDef(() => SysJson(CtpStore("l", QnhFields("InHg", "30.12")))), new SpeechCapture());
+        def.ProcessSystems(Blocks(CtpStore("l", QnhFields("InHg", "29.92"))));
+        await Task.WhenAll(def.SetQnhAsync(29.92, Cap, speech), def.SetQnhAsync(30.12, Cap, speech));
+        Assert.Equal(new[] { "Captain altimeter 30.12 inches" }, speech.All);
+    }
+
+    [Fact]
+    public async Task OverlappingUnitWrites_OnlyTheLatestOneIsJudged()
+    {
+        var (def, speech) = (CtpDef(() => SysJson(CtpStore("l", QnhFields("Hpa", "1020")))), new SpeechCapture());
+        def.ProcessSystems(Blocks(CtpStore("l", QnhFields("InHg", "30.13"))));
+        await Task.WhenAll(def.SetBaroUnitAsync(false, Cap, speech), def.SetBaroUnitAsync(true, Cap, speech));
+        Assert.Equal(new[] { "Captain altimeter 1020 hectopascals" }, speech.All);
+    }
+
+    // The two sides are independent: a first-officer write does not silence a captain write that
+    // nobody has overridden.
+    [Fact]
+    public async Task WritesToDifferentSides_DoNotSupersedeEachOther()
+    {
+        var (def, speech) = (CtpDef(() => SysJson(AdsStore("l", "\"qnh_std\":false"), AdsStore("r", "\"qnh_std\":true"))), new SpeechCapture());
+        await Task.WhenAll(def.SetStdAsync(true, Cap, speech, speakSuccess: false), def.SetStdAsync(true, Fo, speech, speakSuccess: false));
+        Assert.Equal(new[] { "Captain baro did not change — still QNH." }, speech.All);   // only the captain's failed
+    }
+
+    // A both-sides write that a newer first-officer write overtakes loses only the first-officer
+    // side: it neither sends that side's stale value over the newer one nor judges it.
+    [Fact]
+    public async Task ABothSidesWrite_OvertakenOnOneSide_KeepsTheOtherSide_AndNeverSendsItsStaleValue()
+    {
+        var sent = new List<string>();
+        var gate = new TaskCompletionSource<string?>();
+        int writes = 0;
+        var def = new SynapticA220Definition { PollIntervalMs = 5, PollTimeoutCapMs = 150 };
+        def.AgentCallOverride = call =>
+        {
+            if (call == "sys()") return Task.FromResult<string?>(SysJson(AdsStore("l", "\"qnh_std\":true"), AdsStore("r", "\"qnh_std\":false")));
+            sent.Add(call);
+            return writes++ == 0 ? gate.Task : Task.FromResult<string?>("SENT");   // the first write is still in flight
+        };
+        var speech = new SpeechCapture();
+
+        var both = def.SetStdAsync(true, Both, speech, speakSuccess: false);        // captain write in flight
+        var fo = def.SetStdAsync(false, Fo, speech, speakSuccess: false);           // overtakes the first-officer side
+        gate.SetResult("SENT");
+        await Task.WhenAll(both, fo);
+
+        Assert.Equal(new[] { "ctpSet(1, {\"qnh_std\":true})", "ctpSet(2, {\"qnh_std\":false})" }, sent);
+        Assert.Empty(speech.All);                                                    // both landed; no false failure
+    }
+
+    // ---- The bridge holds a CTP control's key while its write is in flight ----------------------
+
+    [Fact]
+    public async Task StdWrite_HoldsItsBridgeKeyUntilJudged_ThenResendsTheTruth()
+    {
+        var def = new SynapticA220Definition { PollIntervalMs = 5, PollTimeoutCapMs = 150 };
+        var speech = new SpeechCapture();
+        var seen = new List<(string Key, double Value)>();
+        def.CommBusValueChanged += (k, v) => seen.Add((k, v));
+        def.AgentCallOverride = call =>
+        {
+            // Mid-write the pump delivers the old value: the held key must not reach the combo.
+            if (call == "sys()") def.EmitBridgeValue("A22X_L_BARO_STD", 0);
+            return Task.FromResult<string?>(call == "sys()" ? SysJson(AdsStore("l", "\"qnh_std\":true")) : "SENT");
+        };
+
+        await def.SetStdAsync(true, Cap, speech, speakSuccess: false);
+
+        Assert.DoesNotContain(seen, e => e.Key == "A22X_L_BARO_STD");
+        def.ProcessSystems(Blocks(AdsStore("l", "\"qnh_std\":true")));
+        Assert.Contains(("A22X_L_BARO_STD", 1.0), seen);              // released and forced: the truth
+        Assert.Empty(speech.All);
+    }
+
+    [Fact]
+    public async Task MinimumsModeWrite_HoldsItsBridgeKey_ThenResendsTheTruth()
+    {
+        var def = new SynapticA220Definition { PollIntervalMs = 5, PollTimeoutCapMs = 150 };
+        var speech = new SpeechCapture();
+        var seen = new List<(string Key, double Value)>();
+        def.CommBusValueChanged += (k, v) => seen.Add((k, v));
+        def.AgentCallOverride = call =>
+        {
+            if (call == "sys()") def.EmitBridgeValue("A22X_L_MINIMUMS_MODE", 0);   // the old mode, mid-write
+            return Task.FromResult<string?>(call == "sys()" ? SysJson(CtpStore("l", "\"minimums_mode\":1")) : "SENT");
+        };
+
+        await def.SetMinimumsModeAsync(1, Cap, speech);
+
+        Assert.DoesNotContain(seen, e => e.Key == "A22X_L_MINIMUMS_MODE");
+        def.ProcessSystems(Blocks(CtpStore("l", "\"minimums_mode\":1")));
+        Assert.Contains(("A22X_L_MINIMUMS_MODE", 1.0), seen);
+        Assert.Empty(speech.All);
+    }
+
+    [Fact]
+    public async Task MinimumsWrite_HoldsTheBusValueItPrefillsFrom_ThenResendsTheTruth()
+    {
+        var def = new SynapticA220Definition { PollIntervalMs = 5, PollTimeoutCapMs = 150 };
+        var speech = new SpeechCapture();
+        var seen = new List<(string Key, double Value)>();
+        def.CommBusValueChanged += (k, v) => seen.Add((k, v));
+        def.AgentCallOverride = call =>
+        {
+            if (call == "sys()") def.EmitBridgeValue("A22X_L_MINIMUMS", 1210);   // the old value, mid-write
+            return Task.FromResult<string?>(call == "sys()" ? SysJson(CtpStore("l", "\"minimums\":200")) : "SENT");
+        };
+
+        await def.SetMinimumsAsync(200, Cap, speech);
+
+        Assert.DoesNotContain(seen, e => e.Key == "A22X_L_MINIMUMS");
+        def.ProcessSystems(Blocks(CtpStore("l", "\"minimums\":200")));
+        Assert.Contains(("A22X_L_MINIMUMS", 200.0), seen);
+    }
 }
 
 [Collection("SettingsManagerGlobalState")]

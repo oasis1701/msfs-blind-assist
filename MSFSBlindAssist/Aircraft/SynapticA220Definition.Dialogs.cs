@@ -6,7 +6,7 @@ using System.Windows.Forms;
 namespace MSFSBlindAssist.Aircraft;
 
 /// <summary>
-/// FCP set dialogs (Ctrl+S/H/A/V/B, Ctrl+P, Ctrl+N). No direct-set FCP surface exists —
+/// FCP set dialogs (Ctrl+S/H/A/V, Ctrl+P, Ctrl+N; Ctrl+B is the Avionics partial's altimeter window). No direct-set FCP surface exists —
 /// re-proven 2026-08-10 against the live WASM and again 2026-09-21 (12000 written to
 /// AP_ALT_VAR_SET_ENGLISH, selector did not move): HEADING_BUG_SET / AP_SPD_VAR_SET /
 /// AP_ALT_VAR_SET_ENGLISH / AP_VS_VAR_SET_ENGLISH all leave the FCP untouched, the
@@ -1122,102 +1122,6 @@ public partial class SynapticA220Definition
                         liveRead: b => b.fcp?.vs_mode == 0 ? b.fcp?.vs_sel : null,
                         note: (_, _, _) => note);
                 }
-            }
-            catch { }
-        });
-    }
-
-    // ---- Baro (Ctrl+B) -------------------------------------------------------
-
-    private void ShowBaroDialog(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, Form parentForm)
-    {
-        var toggles = new List<ToggleButtonDef>
-        {
-            new("&Standard", () =>
-                Math.Abs(Cached(simConnect, "A22X_KOHLSMAN", 29.92) - 29.92) < 0.005 ? "STD" : "QNH",
-                () => PulseLVar(simConnect, "A22X L Altimeter STD")),
-            // READ-ONLY. This used to WRITE "A22X L Altimeter HPA" to flip the unit, and
-            // that was wrong twice over (measured live 2026-09-22):
-            //   1. It does nothing. The var is the WASM's OUTPUT mirror — Synaptic's own
-            //      simvars.mdx says "READS whether the CTP's ... setting is displayed in
-            //      hPa", while every neighbour (Altimeter Set/STD, Nav Source) says
-            //      "Read/write". Nothing consumes it: the displays take the unit from the
-            //      CTP CommBus store, and the aircraft exposes no JS->WASM baro channel
-            //      (the whole .call("A22X.…") surface is Display Tune / Refuel / Resync /
-            //      SSPC). B:CTP_BARO_MODE_1_Set and _Toggle were tried live and do nothing.
-            //   2. It CORRUPTED OUR OWN READOUT. The write sticks (the var held a written
-            //      1 for 13 s, unopposed — the WASM republishes only when ITS unit
-            //      changes), and HotkeyAction.ReadAltimeter picks its unit from this very
-            //      var. So one press made the altimeter read-out announce "hectopascals"
-            //      while the aircraft was displaying inches — a wrong unit on an altimeter.
-            // Never write it again without a PROVEN input. Left as a status line so the
-            // pilot can still hear which unit the CTP is in.
-            new("&Units (read-only)", () => Cached(simConnect, "A22X_L_BARO_HPA") > 0.5 ? "Hectopascals" : "Inches",
-                () => announcer.AnnounceImmediate(
-                    (Cached(simConnect, "A22X_L_BARO_HPA") > 0.5 ? "Hectopascals" : "Inches")
-                    + ". The A220 exposes no way to change the altimeter unit from outside the cockpit;"
-                    + " it is set in the aircraft's own options, not here.")),
-            new("First Officer S&TD", () => "",
-                () => PulseLVar(simConnect, "A22X R Altimeter STD")),
-        };
-
-        double mbNow = Cached(simConnect, "A22X_KOHLSMAN_MB", 1013);
-        var dialog = new ValueInputForm(
-            "Altimeter Setting", $"QNH (now {mbNow:F0} hPa)", "940-1090 hPa or 27.00-32.00 inches",
-            announcer,
-            input =>
-            {
-                if (!double.TryParse(input, System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out double q))
-                    return (false, "Enter a QNH in hPa or inches");
-                bool ok = (q >= 940 && q <= 1090) || (q >= 27 && q <= 32);
-                return ok ? (true, "") : (false, "QNH must be 940-1090 hPa or 27.00-32.00 inches");
-            },
-            toggles,
-            input =>
-            {
-                if (!double.TryParse(input, System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out double q)) return;
-                double mb = q >= 100 ? q : q * 33.8639;
-                SetBaroWithVerification(simConnect, announcer, mb);
-            });
-        dialog.ShowCancelButton = false;
-        dialog.Show(parentForm);
-    }
-
-    /// <summary>
-    /// KOHLSMAN_SET (mb × 16) first; if the custom CTP swallowed it, fall back to
-    /// walking the CTP's own knob-delta L:var, one seq-prefixed click per write.
-    /// The read-back announces the value that actually landed.
-    /// </summary>
-    private void SetBaroWithVerification(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, double targetMb)
-    {
-        _ = System.Threading.Tasks.Task.Run(async () =>
-        {
-            try
-            {
-                FireKeyEvent(simConnect, "KOHLSMAN_SET", (long)Math.Round(targetMb * 16));
-                await System.Threading.Tasks.Task.Delay(1300);
-                double mb = Cached(simConnect, "A22X_KOHLSMAN_MB", 0);
-                if (Math.Abs(mb - targetMb) <= 0.6)
-                {
-                    announcer.AnnounceImmediate($"Altimeter {mb:F0} hectopascals, {Cached(simConnect, "A22X_KOHLSMAN", 29.92):F2} inches");
-                    return;
-                }
-                // Fallback: CTP knob deltas (read/write increment applied per tick).
-                for (int round = 0; round < 30; round++)
-                {
-                    mb = Cached(simConnect, "A22X_KOHLSMAN_MB", 0);
-                    double delta = targetMb - mb;
-                    if (Math.Abs(delta) <= 0.6) break;
-                    WriteLVar(simConnect, "A22X L Altimeter Set", Math.Sign(delta), quiet: true);
-                    await System.Threading.Tasks.Task.Delay(150);
-                }
-                await System.Threading.Tasks.Task.Delay(1100);
-                mb = Cached(simConnect, "A22X_KOHLSMAN_MB", 0);
-                announcer.AnnounceImmediate(Math.Abs(mb - targetMb) <= 0.6
-                    ? $"Altimeter {mb:F0} hectopascals"
-                    : $"Altimeter did not take the setting — now {mb:F0} hectopascals. Use the Standard button or the cockpit knob.");
             }
             catch { }
         });

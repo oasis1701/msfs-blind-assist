@@ -69,11 +69,13 @@ public partial class SynapticA220Definition
         },
         ["CTP Captain"] = new List<string>
         {
-            "A22X_L_BARO_STD", "A22X_L_NAV_SOURCE", "A22X_L_CROSSTUNE"
+            "A22X_L_QNH_SET", "A22X_L_BARO_UNIT", "A22X_L_BARO_STD",
+            "A22X_L_MINIMUMS_MODE", "A22X_L_MINIMUMS_SET", "A22X_L_NAV_SOURCE", "A22X_L_CROSSTUNE"
         },
         ["CTP First Officer"] = new List<string>
         {
-            "A22X_R_BARO_STD", "A22X_R_NAV_SOURCE", "A22X_R_CROSSTUNE"
+            "A22X_R_QNH_SET", "A22X_R_BARO_UNIT", "A22X_R_BARO_STD",
+            "A22X_R_MINIMUMS_MODE", "A22X_R_MINIMUMS_SET", "A22X_R_NAV_SOURCE", "A22X_R_CROSSTUNE"
         },
         ["Warnings and Chrono"] = new List<string>
         {
