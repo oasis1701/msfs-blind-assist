@@ -12,8 +12,8 @@ namespace MSFSBlindAssist.Tests.A300;
 /// conversion) and INI_LOC_VALID; PFD::DrawPFD draws both scales only while that side's EFIS nav selector is
 /// on ILS (2), the localizer pointer while INI_LOC_VALID is 1 and the glideslope pointer while NAV HAS GLIDE
 /// SLOPE:3 is 1, each pointer clamped at 2.5 dots. A positive localizer value draws the pointer right of
-/// centre (the course is right: the aircraft is left of it); a positive glideslope value draws it below
-/// centre (the aircraft is above). Worded as the FBW A320 reads the glideslope ("dots above glideslope").
+/// center (the course is right: the aircraft is left of it); a positive glideslope value draws it below
+/// center (the aircraft is above). Worded as the FBW A320 reads the glideslope ("dots above glideslope").
 /// </summary>
 public class A300IlsDeviationTests
 {

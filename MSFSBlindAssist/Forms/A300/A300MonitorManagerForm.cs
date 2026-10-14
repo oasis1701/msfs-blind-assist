@@ -13,7 +13,7 @@ namespace MSFSBlindAssist.Forms.A300;
 /// every spoken light, the FMA columns, the take-off speeds, the altitude window, the autopilot and
 /// autothrottle call-outs and the shared base variables; the silently consumed switch positions are
 /// excluded because a checkbox there would mute nothing. Unticked keys go to UserSettings.A300DisabledMonitorVariables,
-/// honoured by MainForm (generic gate and the ProcessSimVarUpdate wrap). All behaviour lives in
+/// honored by MainForm (generic gate and the ProcessSimVarUpdate wrap). All behavior lives in
 /// <see cref="MonitorManagerFormBase"/>.
 /// </summary>
 public sealed class A300MonitorManagerForm : MonitorManagerFormBase

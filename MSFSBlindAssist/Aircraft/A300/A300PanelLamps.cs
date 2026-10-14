@@ -118,7 +118,7 @@ public static class A300PanelLamps
         new("GND_BLEED_VLVE_SEQ1_LIGHT", "Ground bleed valve light", "Bleed"),
 
         // Pressurization: the two system buttons pick one system or the other, so they are buttons
-        // (A300PanelLayout.ButtonRows) labelled by these lights; the lights speak a press and an automatic
+        // (A300PanelLayout.ButtonRows) labeled by these lights; the lights speak a press and an automatic
         // change. The regulator and outflow legends are positions; the fault lights are A300FaultLights.
         new("PRESS_SYS_1_SEQ1_LIGHT", "Pressurization system 1 light", "Pressurization"),
         new("PRESS_SYS_2_SEQ1_LIGHT", "Pressurization system 2 light", "Pressurization"),

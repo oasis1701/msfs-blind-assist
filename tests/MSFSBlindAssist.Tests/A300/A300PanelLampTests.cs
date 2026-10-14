@@ -216,7 +216,7 @@ public class A300PanelLampTests
 
     [Theory]
     // Each EFIS panel's map filter, FPA, decision height and ATC message buttons are lit while selected: as the
-    // pressurization system buttons, each is labelled by its own light, which also speaks a press.
+    // pressurization system buttons, each is labeled by its own light, which also speaks a press.
     [InlineData("EFIS_CSTR_CPT_SEQ1_LIGHT", "Captain constraints light", "EFIS Captain", "A300_EFIS_CSTR_CPT")]
     [InlineData("EFIS_WPT_CPT_SEQ1_LIGHT", "Captain waypoints light", "EFIS Captain", "A300_EFIS_WPT_CPT")]
     [InlineData("EFIS_VOR_CPT_SEQ1_LIGHT", "Captain VORs light", "EFIS Captain", "A300_EFIS_VOR_CPT")]

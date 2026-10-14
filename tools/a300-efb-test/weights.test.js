@@ -165,8 +165,8 @@ test('the results are read-outs in words, not fields', () => {
   const { A } = load('weights-loading', { simvars: KG });
   const r = scrape(A);
   const outs = [
-    'Zero fuel weight centre of gravity: 0.0 percent MAC',
-    'Gross weight centre of gravity: 24.95 percent MAC',
+    'Zero fuel weight center of gravity: 0.0 percent MAC',
+    'Gross weight center of gravity: 24.95 percent MAC',
     'Zero fuel weight: 0.0 tonnes',
     'Gross weight: 102.40 tonnes',
     'Payload: 31.0 tonnes',
@@ -200,10 +200,10 @@ test('a live line says what is on board, on both halves', () => {
   }
 });
 
-test('while the tablet is fuelling the line says so instead of a moving number', () => {
+test('while the tablet is fueling the line says so instead of a moving number', () => {
   const sim = Object.assign({}, KG, { 'L:INI_IS_REFUELING|number': 1 });
   const { A } = load('weights-loading', { simvars: sim });
-  assert.ok(find(scrape(A), 'On board: payload 31,000 kilograms, fuelling in progress'));
+  assert.ok(find(scrape(A), 'On board: payload 31,000 kilograms, fueling in progress'));
 });
 
 test('a tablet message is an alert the window speaks', () => {

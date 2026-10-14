@@ -7,7 +7,7 @@ namespace MSFSBlindAssist.Aircraft.A300;
 /// GMT digits (<c>INI_CLOCK_GMT_HOURS1</c> and so on, which follow the clock's own mode), the chrono (its
 /// button cycles reset 0, running 1, stopped 2; <c>INI_CHRONO_TIME</c> in seconds) and the elapsed time (its
 /// button toggles running 1 and stopped 2, restarting from zero; <c>INI_ET_TIME</c> in seconds). The chrono
-/// and elapsed time buttons are labelled by their state; the Clock box reads each clock's time, chrono and
+/// and elapsed time buttons are labeled by their state; the Clock box reads each clock's time, chrono and
 /// elapsed time. Every number is formatted with the invariant culture.
 /// </summary>
 public static class A300Clock

@@ -17,7 +17,7 @@ namespace MSFSBlindAssist.Aircraft;
 public partial class IniA300Definition
 {
     /// <summary>How long a toggle hotkey waits before reading the result back (one batch period, plus
-    /// the aircraft applying it). A judgement, not a measurement.</summary>
+    /// the aircraft applying it). A judgment, not a measurement.</summary>
     public const int ToggleReadBackMs = 1200;
 
     /// <summary>How long a readout key waits for a fresh value: batch-covered values answer on the
@@ -427,7 +427,7 @@ public partial class IniA300Definition
             BaroButtons(sim, announcer), sim, announcer);
 
     /// <summary>
-    /// Ctrl+B's one mode button, labelled from the REPORTED modes ("Altimeter mode: QNH", or each side
+    /// Ctrl+B's one mode button, labeled from the REPORTED modes ("Altimeter mode: QNH", or each side
     /// while they differ), as the FBW A320 window's Mode control reads. A press runs STD from both QNH,
     /// else QNH ([A300-22]); the sequence speaks its own read-back, so the box's echo is off.
     /// </summary>

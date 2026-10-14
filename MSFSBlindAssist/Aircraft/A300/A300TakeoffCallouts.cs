@@ -45,7 +45,7 @@ public static class A300TakeoffCallouts
     public static string V2(double vr, double fcuSpeed) =>
         PlausibleV2(vr, fcuSpeed) is > 0 and var v2 ? A300DisplayText.Speed(v2) : V2NotSet;
 
-    /// <summary>The widest V2 the FCU speed is taken for, above VR. A judgement: a real V2 is a few
+    /// <summary>The widest V2 the FCU speed is taken for, above VR. A judgment: a real V2 is a few
     /// knots above VR, never this far.</summary>
     public const double MaxV2AboveVr = 30;
 

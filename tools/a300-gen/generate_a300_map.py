@@ -1,6 +1,6 @@
 """Generates the iniBuilds A300-600 control map that MSFS Blind Assist embeds.
 
-Reads the aircraft's compiled cockpit behaviour XML and its en-US.locPak tooltip file, and writes
+Reads the aircraft's compiled cockpit behavior XML and its en-US.locPak tooltip file, and writes
 one JSON entry per cockpit input event: where it sits, what the aircraft calls it, how the app
 writes it (the A300's own B: Set event), which variable holds its position and what each position
 is called.

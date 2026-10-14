@@ -4,7 +4,7 @@ namespace MSFSBlindAssist.Aircraft.A300;
 
 /// <summary>
 /// The pedestal's trim readings (measured 2026-10-10): the rudder trim display, a direction code
-/// (<c>INI_RUDDER_TRIM_DISPLAY0</c>: 0 left, 1 centred, 2 right) then tens, units and tenths
+/// (<c>INI_RUDDER_TRIM_DISPLAY0</c>: 0 left, 1 centered, 2 right) then tens, units and tenths
 /// (<c>_DISPLAY1</c> to <c>_DISPLAY3</c>); and the pitch trim, the stabilizer angle in degrees, positive nose
 /// up (measured 2026-10-06). Every number is formatted with the invariant culture.
 /// </summary>
@@ -25,7 +25,7 @@ public static class A300Trim
 
     public static readonly IReadOnlyList<string> RudderDigitKeys = RudderDigits.Select(d => d.Key).ToArray();
 
-    /// <summary>"left 3.3", "right 7.2", "0.0" when centred.</summary>
+    /// <summary>"left 3.3", "right 7.2", "0.0" when centered.</summary>
     public static string Rudder(double code, double tens, double units, double tenths)
     {
         double value = Math.Round(tens) * 10 + Math.Round(units) + Math.Round(tenths) / 10;

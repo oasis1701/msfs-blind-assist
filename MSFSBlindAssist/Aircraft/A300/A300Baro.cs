@@ -51,7 +51,7 @@ public static class A300Baro
     public const double StandardMillibars = 1013.25;
 
     /// <summary>How long after a knob press its mode is read back: the aircraft takes the press on its
-    /// next update. A judgement; the read-back is what confirms it.</summary>
+    /// next update. A judgment; the read-back is what confirms it.</summary>
     public const int KnobSettleMs = 300;
 
     public const string UnavailableRefusal = "Altimeters unavailable";

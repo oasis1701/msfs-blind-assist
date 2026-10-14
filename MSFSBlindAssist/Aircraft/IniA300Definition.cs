@@ -11,7 +11,7 @@ namespace MSFSBlindAssist.Aircraft;
 /// HOW IT WORKS
 /// <list type="bullet">
 /// <item>Every clickable control comes from the generated map (<c>Resources/a300_control_map.json</c>,
-/// built by <c>tools/a300-gen</c> from the aircraft's own compiled cockpit behaviour and tooltips);
+/// built by <c>tools/a300-gen</c> from the aircraft's own compiled cockpit behavior and tooltips);
 /// <see cref="A300PanelLayout"/> places them on panels that follow the cockpit, with spoken names.
 /// Regenerate the map after an iniBuilds update; never hand-edit it.</item>
 /// <item>A write fires the control's OWN B: event, <c>value (&gt;B:AIRLINER_…_Set)</c>, the event its

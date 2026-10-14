@@ -1,7 +1,7 @@
 // iniBuilds A300 tablet in-page agent — installed at runtime into the tablet's Coherent GT view
 // ("VCockpit18 - iniEfbA300") as window.__MSFSBA_A300_EFB. The tablet is a Bootstrap-styled page
 // with a real DOM: buttons, inputs, Bootstrap radio groups (input.btn-check + label.btn), range
-// inputs, headings and text. States a sighted pilot reads from colour are put into words here:
+// inputs, headings and text. States a sighted pilot reads from color are put into words here:
 // a door's open/moving/closed (its classes: door-open, door-transit) and a slide's armed/disarmed
 // (its background: red armed, green disarmed, per the page's own legend).
 //
@@ -63,9 +63,9 @@
     APU_OIL: 'APU oil', ENG1_OIL: 'Engine 1 oil', ENG2_OIL: 'Engine 2 oil',
     HYD_BLU: 'Blue hydraulic reservoir', HYD_GRE: 'Green hydraulic reservoir', HYD_YEL: 'Yellow hydraulic reservoir'
   };
-  // And its wear, which the tablet shows only as coloured blocks on a drawing of the gear. The
-  // colours are five bands of each variable (its updateMaintIndicators, read 2026-10-04): a brake
-  // from 0 to 1, a tyre from 0 to 200, green under a fifth, then dark green, yellow, orange, and
+  // And its wear, which the tablet shows only as colored blocks on a drawing of the gear. The
+  // colors are five bands of each variable (its updateMaintIndicators, read 2026-10-04): a brake
+  // from 0 to 1, a tire from 0 to 200, green under a fifth, then dark green, yellow, orange, and
   // red up to the full scale; black beyond it.
   A.BRAKES = [
     ['L:INI_Brake_Wear_Indicator_LFI', 'left forward inner'], ['L:INI_Brake_Wear_Indicator_LFO', 'left forward outer'],
@@ -110,7 +110,7 @@
   A.CODE_SET = ', code set';
   // The results: read-only boxes, printed in thousands of the tablet's weight unit or in % MAC.
   A.READOUTS = {
-    output_maczfw: ['Zero fuel weight centre of gravity', 'mac'], output_maccg: ['Gross weight centre of gravity', 'mac'],
+    output_maczfw: ['Zero fuel weight center of gravity', 'mac'], output_maccg: ['Gross weight center of gravity', 'mac'],
     output_zfw: ['Zero fuel weight', 'weight'], output_tow: ['Gross weight', 'weight'],
     output_payload: ['Payload', 'weight'], output_blkfuel: ['Block fuel', 'weight']
   };
@@ -216,7 +216,7 @@
     if (!m) return '';
     var small = btn.querySelector('small');
     var red = !!small && /^rgb\(\s*255,\s*0,\s*0\s*\)$/.test(small.style.color || '');
-    return 'Runway ' + m[1] + ': ' + A.thousands(+m[2]) + ' metres, ' + A.thousands(+m[3]) + ' feet' + (red ? ', marked short' : '');
+    return 'Runway ' + m[1] + ': ' + A.thousands(+m[2]) + ' meters, ' + A.thousands(+m[3]) + ' feet' + (red ? ', marked short' : '');
   };
 
   // A chart in the Charts list: its name (h1) and its kind (p), "CONDR 4 RNAV [ATC], STAR".
@@ -307,7 +307,7 @@
   // What is on board now, from the simulator: the payload (stations 3 to 8; 1 and 2 are the
   // pilots) and the fuel to the nearest hundred, so an APU's burn does not change the line every
   // poll. While the tablet fuels the aircraft (L:INI_IS_REFUELING) the fuel says so instead of a
-  // number that moves every second; the line then changes once, when fuelling ends. '' when the
+  // number that moves every second; the line then changes once, when fueling ends. '' when the
   // simulator cannot be read.
   A.onBoardLine = function () {
     try {
@@ -318,7 +318,7 @@
       var fuelling = +SimVar.GetSimVarValue('L:INI_IS_REFUELING', 'number') >= 0.5;
       var fuel = +SimVar.GetSimVarValue('FUEL TOTAL QUANTITY WEIGHT', unit) || 0;
       return 'On board: payload ' + A.thousands(payload) + ' ' + unit + ', ' +
-        (fuelling ? 'fuelling in progress' : 'fuel ' + A.thousands(Math.round(fuel / 100) * 100) + ' ' + unit);
+        (fuelling ? 'fueling in progress' : 'fuel ' + A.thousands(Math.round(fuel / 100) * 100) + ' ' + unit);
     } catch (e) { return ''; }
   };
 
@@ -331,7 +331,7 @@
     return A.txt(spans[1]) + ': ' + A.thousands(A.num(m[1])) + ' kilograms, ' + A.thousands(A.num(m[2])) + ' pounds';
   };
 
-  // A door button's state from its classes; a slide button's from its colour.
+  // A door button's state from its classes; a slide button's from its color.
   A.doorState = function (btn) {
     if (A.hasClass(btn, 'door-transit')) return 'moving';
     if (A.hasClass(btn, 'door-open')) return 'open';
@@ -492,10 +492,10 @@
       // banner (the page name says it).
       if (A.hasClass(el, 'indicator') || A.hasClass(el, 'page-title')) return;
 
-      // Aircraft Maintenance's wear blocks and levels, in words (the blocks are only colours).
+      // Aircraft Maintenance's wear blocks and levels, in words (the blocks are only colors).
       if (A.hasClass(el, 'brake-wear-indicator') || A.hasClass(el, 'tire-wear-indicator')) {
         if (el.id === 'Brake_Wear_Indicator_LFI') {
-          var brakes = A.wearLine('Brake wear', A.BRAKES, 1), tyres = A.wearLine('Tyre wear', A.TYRES, 200);
+          var brakes = A.wearLine('Brake wear', A.BRAKES, 1), tyres = A.wearLine('Tire wear', A.TYRES, 200);
           if (brakes) emit({ idx: 0, text: brakes, value: '', kind: 'static', clickable: false, key: 'status:brakewear' });
           if (tyres) emit({ idx: 0, text: tyres, value: '', kind: 'static', clickable: false, key: 'status:tyrewear' });
         }
@@ -523,7 +523,7 @@
         return;
       }
 
-      // Radio groups: one choice control per group, labelled by the heading above it.
+      // Radio groups: one choice control per group, labeled by the heading above it.
       if (tag === 'INPUT' && el.type === 'radio') {
         if (doneGroups[el.name]) return;
         doneGroups[el.name] = true;
@@ -808,10 +808,10 @@
 
   A.find = function (idx) { return document.querySelector('[' + A.ATTR + '="' + idx + '"]'); };
 
-  // Where a finger on the control's centre would land. The tablet wires its controls with
+  // Where a finger on the control's center would land. The tablet wires its controls with
   // element.onclick, and the Unlock button and the header's gear hang it on the picture INSIDE the
   // control (measured 2026-10-04: a click dispatched on the Unlock box itself never unlocked). So
-  // the press goes to the topmost element under the centre when that lies inside the control; when
+  // the press goes to the topmost element under the center when that lies inside the control; when
   // something else covers it, to the first element inside the control that has an onclick of its
   // own; otherwise to the control. Events bubble, so a handler on the control still runs once.
   A.pressTarget = function (el) {

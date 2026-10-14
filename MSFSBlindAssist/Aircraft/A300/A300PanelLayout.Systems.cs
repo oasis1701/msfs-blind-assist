@@ -83,7 +83,7 @@ public static partial class A300PanelLayout
         ["GPWS_FLAP_SWITCH"] = "GPWS",
         ["GPWS_FLAPS_CONFIG"] = "GPWS",
 
-        // Main instrument panel, centre.
+        // Main instrument panel, center.
         ["GEAR_LEVER"] = "Gear",
         ["LDG_TEST"] = "Gear",
         ["LDG_POS_DET"] = "Gear",

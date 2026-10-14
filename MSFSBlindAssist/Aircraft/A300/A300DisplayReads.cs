@@ -14,7 +14,7 @@ namespace MSFSBlindAssist.Aircraft.A300;
 /// capturing the frame. The aircraft lists 42 instrument views (<c>CAMERA VIEW TYPE AND INDEX MAX:2</c>
 /// reads 42), the same count as <c>common/config/cameras.cfg</c>, and the four used here matched their file
 /// order; the presets are <c>[MODULAR_MERGE]</c> stubs, so one measurement covers all four variants. No
-/// view frames the warning display alone: the centre-panel view is the only one holding it whole.
+/// view frames the warning display alone: the center-panel view is the only one holding it whole.
 /// </para>
 /// </summary>
 public static class A300DisplayReads
@@ -24,7 +24,7 @@ public static class A300DisplayReads
     /// smaller.</summary>
     public const int CaptainPanelView = 3;
 
-    /// <summary>Index 17, titled "GAUGES": the centre panel, the warning display on the left, the engine
+    /// <summary>Index 17, titled "GAUGES": the center panel, the warning display on the left, the engine
     /// gauges in the middle, the system display on the right, and both MCDUs below.</summary>
     public const int CentrePanelView = 17;
 

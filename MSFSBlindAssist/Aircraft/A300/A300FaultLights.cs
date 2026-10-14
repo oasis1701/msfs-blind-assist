@@ -28,7 +28,7 @@ public static class A300FaultLights
     /// (measured on its test switch; the aircraft's other flashing code drives the PFD, not lamps). Sampled once a
     /// second that aliases to about 3 s on, 3 s off, so it streams every change and the off hold
     /// (<see cref="A300LampSpeech.OffHoldMs"/>) sees each dark phase as the short one it is. Declared before
-    /// <see cref="All"/>, which reads it as it initialises.</summary>
+    /// <see cref="All"/>, which reads it as it initializes.</summary>
     private static readonly HashSet<string> FlashingVars = new(StringComparer.Ordinal) { "INI_AUTOLAND_LIGHT" };
 
     public static readonly IReadOnlyList<A300Lamp> All = new (string Var, string Name, string Panel, A300LightPower Power)[]

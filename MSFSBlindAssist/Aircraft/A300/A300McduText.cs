@@ -28,8 +28,8 @@ public sealed class A300McduScreen
 /// <summary>
 /// Decodes the A300's MCDU export: the SimConnect client data areas <c>iniAirbusMCDU_1</c> (captain)
 /// and <c>iniAirbusMCDU_2</c> (first officer), 14 rows x 24 columns x 3 bytes = 1008 bytes. Each
-/// cell is the character (ASCII, 0 = empty), a colour code and a small-font flag. The A300-600's
-/// MCDU is monochrome, so the colour carries nothing and is not read.
+/// cell is the character (ASCII, 0 = empty), a color code and a small-font flag. The A300-600's
+/// MCDU is monochrome, so the color carries nothing and is not read.
 ///
 /// The characters are what the aircraft's own MCDU fonts (INI_CDUA / INI_CDUB) draw, and a few of
 /// those are symbols rather than letters — read from the font outlines (2026-10-03):

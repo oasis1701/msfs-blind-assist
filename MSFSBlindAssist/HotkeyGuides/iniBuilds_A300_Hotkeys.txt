@@ -306,7 +306,7 @@ an app. Home is the last item on every page. The apps that matter for a flight:
 
 Weight and Balance has two pages, and the window's title names the one you are on. Each page
 starts with a line saying what its buttons do, then a line saying what is on board now: the
-payload and the fuel, or "fuelling in progress" while the tablet fills the tanks. That line is
+payload and the fuel, or "fueling in progress" while the tablet fills the tanks. That line is
 spoken when it changes, so you hear the load arrive after Apply.
 
   Payload selection    The load buttons, each with its cargo and weight. A load fills in the
@@ -322,7 +322,7 @@ spoken when it changes, so you hear the load arrive after Apply.
                        in at the speed of Maintenance Mode in Settings: Disabled loads it at
                        once, Fast at about 15 tonnes a minute, and Realistic (the default) at
                        about 2 tonnes a minute, so a full load can take half an hour. Then the
-                       results: centre of gravity in percent MAC, zero fuel weight, gross
+                       results: center of gravity in percent MAC, zero fuel weight, gross
                        weight, payload and block fuel, in tonnes (or thousands of pounds). Back
                        to payload selection returns to the loads.
 

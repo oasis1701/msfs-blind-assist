@@ -10,8 +10,8 @@ namespace MSFSBlindAssist.Aircraft.A300;
 /// draws both scales only while that side's EFIS nav selector is on ILS (2), the localizer pointer while
 /// <c>INI_LOC_VALID</c> is 1 and the glideslope pointer while <c>NAV HAS GLIDE SLOPE:3</c> is 1, each clamped
 /// at <see cref="ScaleEnd"/> dots with an arrow at the scale's end. A positive localizer value draws the
-/// pointer right of centre (the course is right of the aircraft, which is left of it); a positive
-/// glideslope value draws it below centre (the aircraft is above). Worded as the FBW A320's PFD box reads
+/// pointer right of center (the course is right of the aircraft, which is left of it); a positive
+/// glideslope value draws it below center (the aircraft is above). Worded as the FBW A320's PFD box reads
 /// the glideslope ("0.8 dots above glideslope"). Pure.
 /// </summary>
 public static class A300IlsDeviation

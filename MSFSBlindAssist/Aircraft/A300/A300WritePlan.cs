@@ -45,7 +45,7 @@ public static class A300WritePlan
     /// reached the ECAM page keys every time in the live test (2026-10-03).</summary>
     public const int HoldMs = 250;
 
-    /// <summary>How long a spring switch is held off centre (one trim nudge).</summary>
+    /// <summary>How long a spring switch is held off center (one trim nudge).</summary>
     public const int SpringHoldMs = 1000;
 
     /// <summary>A spring switch that does its work only while held: the main cargo door moves while its switch

@@ -7,7 +7,7 @@ namespace MSFSBlindAssist.Tests.A300;
 
 /// <summary>
 /// The pedestal's trim and flap readings (measured 2026-10-10): the rudder trim display (a direction code,
-/// 0 left, 1 centred, 2 right, then tens, units and tenths), the pitch trim (the stabilizer angle, positive
+/// 0 left, 1 centered, 2 right, then tens, units and tenths), the pitch trim (the stabilizer angle, positive
 /// nose up, measured 2026-10-06) and the slat and flap angles the flap and slat indicator shows.
 /// </summary>
 public class A300TrimTests

@@ -36,9 +36,9 @@ test('a viewer on a page that is not showing is not open', () => {
 test('the runway list reads each runway in words, marking the ones shown in red', () => {
   const r = scrape(load('takeoff').A);
   assert.ok(find(r, 'Cancel runway selection'), 'the Cancel button says what it cancels');
-  const rwy = find(r, 'Runway 18L: 3,000 metres, 9,843 feet');
+  const rwy = find(r, 'Runway 18L: 3,000 meters, 9,843 feet');
   assert.ok(rwy && rwy.kind === 'button');
-  assert.ok(find(r, 'Runway 09: 1,500 metres, 4,921 feet, marked short'));
+  assert.ok(find(r, 'Runway 09: 1,500 meters, 4,921 feet, marked short'));
 });
 
 test('arrows are dropped from a button\'s words', () => {
@@ -57,7 +57,7 @@ test('the results are read-outs, not fields', () => {
 
 // ---- Ground Equipment ----------------------------------------------------------------------
 
-test('the slides\' colour legend is not read, the states being in words on the slide buttons', () => {
+test('the slides\' color legend is not read, the states being in words on the slide buttons', () => {
   // The legend sits after the slide buttons: read as a heading it would title what follows it.
   const r = scrape(load('groundequip').A);
   assert.ok(!r.elements.some(e => /Emergency slides|Red - Armed/i.test(e.text)));
@@ -89,10 +89,10 @@ for (let t = 0; t < 8; t++) WEAR['L:INI_TIRE' + t + '_WEAR|number'] = 6;
 WEAR['L:INI_TIRE0_NG_WEAR|number'] = 6;
 WEAR['L:INI_TIRE1_NG_WEAR|number'] = 6;
 
-test('wear is read from the tablet\'s indicators in words, one line each for brakes and tyres', () => {
+test('wear is read from the tablet\'s indicators in words, one line each for brakes and tires', () => {
   const r = scrape(load('maintenance', { simvars: WEAR }).A);
   assert.ok(find(r, 'Brake wear: all 8 under 20 percent'));
-  assert.ok(find(r, 'Tyre wear: all 10 under 20 percent'));
+  assert.ok(find(r, 'Tire wear: all 10 under 20 percent'));
 });
 
 test('uneven wear gives the most common band as a count and names the other wheels', () => {
@@ -102,7 +102,7 @@ test('uneven wear gives the most common band as a count and names the other whee
   });
   const r = scrape(load('maintenance', { simvars: sim }).A);
   assert.ok(find(r, 'Brake wear: 6 under 20 percent; left forward inner 20 to 40 percent; right rear outer 40 to 60 percent'));
-  assert.ok(find(r, 'Tyre wear: 8 under 20 percent; nose right 80 to 100 percent; left forward inner beyond the scale'));
+  assert.ok(find(r, 'Tire wear: 8 under 20 percent; nose right 80 to 100 percent; left forward inner beyond the scale'));
 });
 
 test('oil and hydraulic levels read as one line each', () => {

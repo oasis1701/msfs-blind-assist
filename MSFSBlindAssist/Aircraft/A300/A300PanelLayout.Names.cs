@@ -449,10 +449,10 @@ public static partial class A300PanelLayout
         PositionEvents.TryGetValue(Short(control.Id), out var events) && events.TryGetValue(position, out var ev) ? ev : null;
 
     /// <summary>Controls the map reads as switches that are push buttons in the cockpit, so they are buttons, not
-    /// On/Off rows, labelled by their light (<see cref="A300PanelLamps.ByButton"/>): the pressurization system
+    /// On/Off rows, labeled by their light (<see cref="A300PanelLamps.ByButton"/>): the pressurization system
     /// buttons pick one system or the other (a press of the picked one does nothing), the stop rudder input
     /// test switches reset themselves about 6 s after a press, and each clock's elapsed time button toggles
-    /// running and stopped (all measured 2026-10-10). The clock buttons are labelled by their state
+    /// running and stopped (all measured 2026-10-10). The clock buttons are labeled by their state
     /// (<see cref="A300Clock.ButtonStates"/>).</summary>
     public static readonly IReadOnlySet<string> ButtonRows = new HashSet<string>(StringComparer.Ordinal)
     {
