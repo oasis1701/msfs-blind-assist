@@ -220,7 +220,7 @@ public partial class FenixSpeedWindow : Form
         }
 
         // Convert Mach to internal representation (multiply by 100)
-        int targetSpeed = value < 1.0 ? (int)(value * 100) : (int)Math.Round(value);
+        int targetSpeed = value < 1.0 ? (int)Math.Round(value * 100) : (int)Math.Round(value);   // 0.58 * 100 is 57.99...
         _ = aircraft.SetFCUSpeed(targetSpeed, simConnect, announcer);
         speedTextBox.SelectAll();
         return System.Threading.Tasks.Task.CompletedTask;

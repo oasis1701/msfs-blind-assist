@@ -227,7 +227,8 @@ public partial class ColdTemperatureCorrectionForm : Form
 
     private void Calculate()
     {
-        if (!TryParseSigned(elevationTextBox.Text, out double fieldElevation))
+        // Typed numbers: either decimal separator, a thousands group ("1,500") refused, never guessed.
+        if (!Utils.NumberParsing.TryParseTyped(elevationTextBox.Text, out double fieldElevation))
         {
             ShowError("Enter a valid field elevation in feet.");
             elevationTextBox.Focus();
@@ -239,7 +240,7 @@ public partial class ColdTemperatureCorrectionForm : Form
             elevationTextBox.Focus();
             return;
         }
-        if (!TryParseSigned(temperatureTextBox.Text, out double temperatureC))
+        if (!Utils.NumberParsing.TryParseTyped(temperatureTextBox.Text, out double temperatureC))
         {
             ShowError("Enter a valid temperature in degrees Celsius.");
             temperatureTextBox.Focus();
@@ -262,7 +263,7 @@ public partial class ColdTemperatureCorrectionForm : Form
         {
             string line = raw.Trim();
             if (line.Length == 0) continue;
-            if (!TryParseSigned(line, out double publishedAlt))
+            if (!Utils.NumberParsing.TryParseTyped(line, out double publishedAlt))
             {
                 outputs.Add($"{line}: not a number");
                 continue;
@@ -306,15 +307,6 @@ public partial class ColdTemperatureCorrectionForm : Form
     {
         resultsTextBox.Text = message;
         _announcer.AnnounceImmediate(message);
-    }
-
-    // Accept a signed integer/decimal with either decimal separator; reject blanks,
-    // garbage and a thousands group ("1,500"), which is never guessed.
-    private static bool TryParseSigned(string text, out double value)
-    {
-        value = 0;
-        if (string.IsNullOrWhiteSpace(text)) return false;
-        return Utils.NumberParsing.TryParseTyped(text, out value);
     }
 
     private void CloseButton_Click(object? sender, EventArgs e)

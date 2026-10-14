@@ -511,6 +511,8 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 announcer.AnnounceImmediate($"{parameterType} set to {value}");
                 return true;
             }
+            // The validator accepted what TryParseTyped refuses: say so rather than send nothing silently.
+            announcer.AnnounceImmediate("Invalid number format");
         }
 
         return false;

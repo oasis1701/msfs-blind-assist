@@ -60,6 +60,8 @@ public class NumberParsingTests
     [InlineData("1" + Nbsp + "014,999")]
     [InlineData("1" + Nnbsp + "014,999")]
     [InlineData("12 5")]
+    [InlineData("NaN")]
+    [InlineData("Infinity")]
     public void TryParseExternal_refuses_non_numbers_and_grouping(string? raw)
     {
         foreach (var culture in new[] { "sv-SE", "de-DE", "en-US" })
@@ -80,6 +82,8 @@ public class NumberParsingTests
     [InlineData(" 1013 ", 1013.0)]
     [InlineData("1013,5", 1013.5)]
     [InlineData("10000", 10000.0)]
+    [InlineData("0.820", 0.82)]
+    [InlineData("1013,250", 1013.25)]   // four whole digits: no group
     public void TryParseTyped_accepts_either_decimal_separator(string raw, double expected)
     {
         foreach (var culture in new[] { "sv-SE", "de-DE", "en-US" })
@@ -98,6 +102,19 @@ public class NumberParsingTests
     [InlineData("1.013,5")]
     [InlineData("1,013.5")]
     [InlineData("1,2,3")]
+    // de-DE and sv-SE group with ".": the PC-culture parse the Fenix windows used read "1.500" as 1500,
+    // so reading it as 1.5 would set a 2 fpm V/S (or an FPA of 1.5 in the FBW windows).
+    [InlineData("1.500")]
+    [InlineData("10.000")]
+    [InlineData("-1.500")]
+    [InlineData("35.000")]
+    [InlineData("29.920")]
+    [InlineData("1.2.3")]
+    // NaN passes every "v < min || v > max" range check.
+    [InlineData("nan")]
+    [InlineData("NaN")]
+    [InlineData("Infinity")]
+    [InlineData("-Infinity")]
     [InlineData("")]
     [InlineData("   ")]
     [InlineData(null)]
@@ -106,5 +123,23 @@ public class NumberParsingTests
     {
         foreach (var culture in new[] { "sv-SE", "de-DE", "en-US" })
             Under(culture, () => Assert.False(NumberParsing.TryParseTyped(raw, out _), $"{raw} under {culture}"));
+    }
+
+    // The panel text boxes (MainForm.PanelBuilder) parse with TryParseTyped, COM and NAV
+    // frequencies included: a three-digit whole part is never a group (it would be 100,000 or
+    // more), so "118,275" reads while "10,000" is refused rather than sent as 10.
+    [Theory]
+    [InlineData("118,275", 118.275)]
+    [InlineData("118.275", 118.275)]
+    [InlineData("110,30", 110.3)]
+    [InlineData("136,975", 136.975)]
+    public void TryParseTyped_reads_a_typed_frequency(string raw, double expected)
+    {
+        foreach (var culture in new[] { "sv-SE", "de-DE", "en-US" })
+            Under(culture, () =>
+            {
+                Assert.True(NumberParsing.TryParseTyped(raw, out double d), $"{raw} under {culture}");
+                Assert.Equal(expected, d, 6);
+            });
     }
 }

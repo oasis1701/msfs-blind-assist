@@ -34,31 +34,39 @@ public static class NumberParsing
             t = t.Replace(',', '.');
         }
         if (t.Contains('\x2212')) t = t.Replace('\x2212', '-');   // U+2212 MINUS SIGN
-        return double.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+        // "NaN" and "Infinity" parse, and NaN passes every range check: refused, so the field reads as missing.
+        return double.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out value)
+            && double.IsFinite(value);
     }
 
     /// <summary>
     /// A number the pilot typed, on any Windows culture: "29.92" and "29,92" both read 29.92, a
-    /// leading sign is allowed. Input that could be a thousands group is REFUSED rather than guessed:
-    /// "10,000" or "1.013,5" fails, so the dialog says the entry is invalid instead of setting 10 or
-    /// a wrong value. Exactly three digits after a lone comma counts as a group unless the whole
-    /// part is 0 ("0,820" is a Mach).
+    /// leading sign is allowed. Input that could be a thousands group is REFUSED rather than guessed,
+    /// with either separator, since de-DE and sv-SE group with "." where en-US groups with ",":
+    /// "10,000", "1.500" or "1.013,5" fails, so the dialog says the entry is invalid instead of setting
+    /// 10 or 1.5. A group is a lone separator before exactly three digits after a whole part of one or
+    /// two digits. A whole part of 0 is no group ("0,820" is a Mach), nor is one of three digits:
+    /// as a group that would be 100,000 or more, which no typed field takes, and as a decimal it is a
+    /// frequency ("118,275"). "NaN" and "Infinity" are refused: NaN passes every range check.
     /// </summary>
     public static bool TryParseTyped(string? s, out double value)
     {
         value = 0;
         if (string.IsNullOrWhiteSpace(s)) return false;
         string t = s.Trim();
-        int comma = t.IndexOf(',');
-        if (comma >= 0)
+        int comma = t.IndexOf(','), dot = t.IndexOf('.');
+        if (comma >= 0 && dot >= 0) return false;
+        int sep = comma >= 0 ? comma : dot;
+        if (sep >= 0)
         {
-            if (t.IndexOf('.') >= 0 || t.IndexOf(',', comma + 1) >= 0) return false;
-            string whole = t[..comma].TrimStart('+', '-');
-            string frac = t[(comma + 1)..];
-            if (frac.Length == 3 && frac.All(char.IsDigit) && whole.Length > 0 && whole.TrimStart('0').Length > 0)
+            if (t.IndexOf(t[sep], sep + 1) >= 0) return false;
+            string whole = t[..sep].TrimStart('+', '-').TrimStart('0');
+            string frac = t[(sep + 1)..];
+            if (frac.Length == 3 && frac.All(char.IsAsciiDigit) && whole.Length is 1 or 2)
                 return false;
-            t = t.Replace(',', '.');
+            if (comma >= 0) t = t.Replace(',', '.');
         }
-        return double.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+        return double.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out value)
+            && double.IsFinite(value);
     }
 }

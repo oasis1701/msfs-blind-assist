@@ -7645,6 +7645,10 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                     }
                     else
                     {
+                        // 0 levels off; anything nearer 0 than the 50 fpm dial step is an FPA
+                        // typed in V/S mode ("-2,5"), which (int)val would send as -2 fpm.
+                        if (val != 0 && Math.Abs(val) < 50)
+                            return (false, "V/S must be 0 or at least 50 fpm; for an angle, switch the mode to FPA");
                         if (val >= -8000 && val <= 6000)
                             return (true, "");
                         return (false, "Enter V/S between -8000 and 6000 fpm");
