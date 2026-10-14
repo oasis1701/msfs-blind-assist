@@ -145,19 +145,19 @@ public partial class IniA300Definition
         {
             // Input mode: typed FCU values, the altimeters and the NAV radios.
             case HotkeyAction.FCUSetSpeed:
-                ShowValueDialog(A300TypedValues.SpeedKey, "FCU Speed", "Speed or Mach", "100 to 399 knots, or Mach 0.10 to 0.99",
+                ShowValueDialog(A300TypedValues.SpeedKey, "FCU Speed", "Speed or Mach",
                     ValueBoxButtons(A300AutoflightWindows.Speed, sim, announcer), sim, announcer, parentForm, hotkeyManager);
                 return true;
             case HotkeyAction.FCUSetHeading:
-                ShowValueDialog(A300TypedValues.HeadingKey, "FCU Heading", "Heading", "0 to 360 degrees",
+                ShowValueDialog(A300TypedValues.HeadingKey, "FCU Heading", "Heading",
                     ValueBoxButtons(A300AutoflightWindows.Heading, sim, announcer), sim, announcer, parentForm, hotkeyManager);
                 return true;
             case HotkeyAction.FCUSetAltitude:
-                ShowValueDialog(A300TypedValues.AltitudeKey, "FCU Altitude", "Altitude", "100 to 49000 feet",
+                ShowValueDialog(A300TypedValues.AltitudeKey, "FCU Altitude", "Altitude",
                     ValueBoxButtons(A300AutoflightWindows.Altitude, sim, announcer), sim, announcer, parentForm, hotkeyManager);
                 return true;
             case HotkeyAction.FCUSetVS:
-                ShowValueDialog(A300TypedValues.VerticalSpeedKey, "FCU Vertical Speed", "Vertical speed", "-6000 to 6000 feet per minute",
+                ShowValueDialog(A300TypedValues.VerticalSpeedKey, "FCU Vertical Speed", "Vertical speed",
                     ValueBoxButtons(A300AutoflightWindows.VerticalSpeed, sim, announcer), sim, announcer, parentForm, hotkeyManager);
                 return true;
             case HotkeyAction.FCUSetBaro:
@@ -250,6 +250,16 @@ public partial class IniA300Definition
 
     private const string AltimeterBoxTitle = "Altimeter Setting";
     private const string AltimeterBoxName = "Altimeters";
+    private const string AltimeterBoxHint =
+        "28.20 to 31.30 inches, or 955 to 1060 hectopascals; sets captain, first officer and standby";
+
+    /// <summary>
+    /// A value box's range, shown on the box and said for text that is no number: its plan's own range
+    /// (<see cref="A300TypedValues.ErrorFor"/>), so a box never offers what its plan refuses. The vertical speed box's
+    /// "-6000 to 6000 feet per minute" offered 1 to 99, which the plan refuses, and answered "abc" with it. Ctrl+B's
+    /// also says what it sets.
+    /// </summary>
+    private static string BoxHint(string key) => key == AllAltimetersKey ? AltimeterBoxHint : A300TypedValues.ErrorFor(key);
 
     private string Readout(string key, double value) =>
         _readouts.TryGetValue(key, out var readout) ? readout.Format(value) : value.ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -339,9 +349,9 @@ public partial class IniA300Definition
 
     /// <summary>The shared value box for one typed value and its buttons, tracked so an aircraft switch
     /// closes it.</summary>
-    private void ShowValueDialog(string key, string title, string name, string hint, List<ToggleButtonDef> buttons,
+    private void ShowValueDialog(string key, string title, string name, List<ToggleButtonDef> buttons,
         SimConnectManager sim, ScreenReaderAnnouncer announcer, Form parentForm, HotkeyManager hotkeyManager) =>
-        ShowValueBox(title, name, () => CreateValueBox(key, title, name, name.ToLowerInvariant(), hint, buttons, sim, announcer),
+        ShowValueBox(title, name, () => CreateValueBox(key, title, name, name.ToLowerInvariant(), buttons, sim, announcer),
             sim, announcer, parentForm, hotkeyManager);
 
     /// <summary>Shows a value box built by <paramref name="create"/>, replacing an open box with another
@@ -367,11 +377,12 @@ public partial class IniA300Definition
     }
 
     /// <summary>One value box: <paramref name="field"/> names the text box (the shared box reads it as
-    /// "{field} value"). Ctrl+B's typed value goes through <see cref="SetAltimetersAsync"/>.</summary>
-    private ValueInputForm CreateValueBox(string key, string title, string name, string field, string hint,
+    /// "{field} value"), and its range is <see cref="BoxHint"/>. Ctrl+B's typed value goes through
+    /// <see cref="SetAltimetersAsync"/>.</summary>
+    private ValueInputForm CreateValueBox(string key, string title, string name, string field,
         List<ToggleButtonDef> buttons, SimConnectManager sim, ScreenReaderAnnouncer announcer) =>
-        new(title, field, hint, announcer,
-            input => ValidateBoxInput(key, name, hint, input),
+        new(title, field, BoxHint(key), announcer,
+            input => ValidateBoxInput(key, name, input),
             buttons,
             input =>
             {
@@ -383,16 +394,20 @@ public partial class IniA300Definition
         };
 
     /// <summary>
-    /// The value box's check of what was typed: valid, or what to say. Text that is no number is answered with the
-    /// box's range (<paramref name="hint"/>). A number the plan refuses is answered with the plan's own words, the
-    /// ones a panel's box and <see cref="SubmitBoxValue"/> speak for it: a refusal that is not about the range
-    /// ("type a whole number, without a thousands separator" for "-1,500", which arrives as -1.5; a vertical speed
-    /// under 100) is never answered with a range the number is inside.
+    /// The value box's check of what was typed: valid, or what to say. An altitude, vertical speed or decision height
+    /// typed with a thousands separator ("12,000") is refused by name from its text (<see cref="A300TypedValues.TextError"/>),
+    /// before <see cref="Parse"/> turns it into 12. Text that is no number is answered with the box's range
+    /// (<see cref="BoxHint"/>). A number the plan refuses is answered with the plan's own words, the ones a panel's
+    /// box and <see cref="SubmitBoxValue"/> speak for it: a refusal that is not about the range ("type a whole number,
+    /// without a thousands separator" for "-1,500", which arrives as -1.5; a vertical speed under 100) is never
+    /// answered with a range the number is inside.
     /// </summary>
-    internal (bool Valid, string Message) ValidateBoxInput(string key, string name, string hint, string input)
+    internal (bool Valid, string Message) ValidateBoxInput(string key, string name, string input)
     {
+        if (A300TypedValues.TextError(key, input) is { } textError)
+            return (false, $"{name}: {textError}");
         if (Parse(input) is not double v)
-            return (false, $"{name}: {hint}");
+            return (false, $"{name}: {BoxHint(key)}");
         return PlanFor(key, v).Error is { } error ? (false, $"{name}: {error}") : (true, "");
     }
 
@@ -423,7 +438,6 @@ public partial class IniA300Definition
     /// (<see cref="A300Baro.FieldName"/>), and the one mode button.</summary>
     internal ValueInputForm CreateAltimeterBox(SimConnectManager sim, ScreenReaderAnnouncer announcer) =>
         CreateValueBox(AllAltimetersKey, AltimeterBoxTitle, AltimeterBoxName, A300Baro.FieldName,
-            "28.20 to 31.30 inches, or 955 to 1060 hectopascals; sets captain, first officer and standby",
             BaroButtons(sim, announcer), sim, announcer);
 
     /// <summary>

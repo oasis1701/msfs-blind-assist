@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace MSFSBlindAssist.Aircraft.A300;
 
@@ -107,9 +108,31 @@ public static class A300TypedValues
     /// Whether a typed altitude, vertical speed or decision height is a whole number. Both ways of typing a value
     /// (a panel's box and the value boxes) turn a comma into a point, so "-1,500", the thousands separator the box's
     /// own hint used to show, arrives as -1.5 and "1,200" as 1.2. Rounding them wrote a vertical speed of 0 and a
-    /// decision height of 1 foot, confirmed aloud; a fraction can only be that typo, so it is refused instead.
+    /// decision height of 1 foot, confirmed aloud; a fraction can only be that typo, so it is refused instead. A round
+    /// thousand ("12,000") arrives whole, as 12: see <see cref="TextError"/> and <see cref="SeparatorThen"/>.
     /// </summary>
     private static bool IsWhole(double value) => value == Math.Round(value);
+
+    /// <summary>
+    /// What a value box says about the TEXT typed for an altitude, a vertical speed or a decision height, before it is
+    /// read as a number: a comma-grouped integer ("12,000", "-1,000") is refused with <see cref="WholeNumberError"/>.
+    /// Read as a number it is whole (12, -1), so the fraction rule let it through to a refusal by a range that holds what
+    /// was typed ("100 to 49000 feet" for "12,000"), and a decision height of "1,000" was written as 1 foot. Null for any
+    /// other text, and for every other key, where a comma is a decimal point ("121,500" is 121.5).
+    /// </summary>
+    public static string? TextError(string key, string text) =>
+        key is AltitudeKey or VerticalSpeedKey or MinimumsKey
+        && Regex.IsMatch(text.Trim(), @"^\s*-?\d{1,3}(,\d{3})+\s*$", RegexOptions.CultureInvariant)
+            ? WholeNumberError
+            : null;
+
+    /// <summary>
+    /// The refusal of a whole number a comma-thousand could have made, for a path that has only the number (a panel's box
+    /// hands "12,000" over as 12): the separator first, then the range, which on its own holds what was typed. Callers
+    /// use it for the values such an entry gives inside the range: an altitude of 1 to 49, a vertical speed of 1 to 6
+    /// either way, a decision height of 1 to 9.
+    /// </summary>
+    private static string SeparatorThen(string range) => $"{WholeNumberError}; {range}";
 
     /// <summary>The plan for a typed value. <paramref name="isMach"/> is the FCU's current speed mode.</summary>
     public static A300TypedResult Plan(string key, double value, bool isMach)
@@ -187,14 +210,16 @@ public static class A300TypedValues
         return new($"{h.ToString("0", Inv)} (>L:INI_HEADING_DIAL)", $"Heading {h.ToString("000", Inv)}", null);
     }
 
-    /// <summary>Whole feet, 100 to 49000, to the nearest 100 (the knob's step); a fraction is refused (<see cref="IsWhole"/>).</summary>
+    /// <summary>Whole feet, 100 to 49000, to the nearest 100 (the knob's step); a fraction is refused (<see cref="IsWhole"/>).
+    /// A refused 1 to 49, what "1,000" to "49,000" typed in a panel's box arrive as, names the separator
+    /// (<see cref="SeparatorThen"/>).</summary>
     public static A300TypedResult Altitude(double value)
     {
         if (!IsWhole(value))
             return A300TypedResult.Fail(WholeNumberError);
         double a = Math.Round(value / 100) * 100;
         if (a < 100 || a > 49000)
-            return A300TypedResult.Fail(AltitudeError);
+            return A300TypedResult.Fail(value is >= 1 and <= 49 ? SeparatorThen(AltitudeError) : AltitudeError);
         return new($"{a.ToString("0", Inv)} (>L:INI_Altitude_Dial)", $"Altitude {a.ToString("#,0", Inv)} feet", null);
     }
 
@@ -202,14 +227,15 @@ public static class A300TypedValues
     /// Whole feet per minute, 0 or 100 to 6000 either way, to the nearest 100 (the knob's step). A fraction is
     /// refused (<see cref="IsWhole"/>), and so is a non-zero value under 100 in magnitude, as the MD-11 and the FBW
     /// A320 refuse it: it rounded to 0, and was written and confirmed as a level-off nobody asked for. 0 itself is
-    /// the one value under 100 that stays valid.
+    /// the one value under 100 that stays valid. A refused 1 to 6 either way, what "1,000" to "6,000" typed in a
+    /// panel's box arrive as, names the separator (<see cref="SeparatorThen"/>).
     /// </summary>
     public static A300TypedResult VerticalSpeed(double value)
     {
         if (!IsWhole(value))
             return A300TypedResult.Fail(WholeNumberError);
         if (value != 0 && Math.Abs(value) < 100)
-            return A300TypedResult.Fail(VerticalSpeedError);
+            return A300TypedResult.Fail(Math.Abs(value) <= 6 ? SeparatorThen(VerticalSpeedError) : VerticalSpeedError);
         double v = Math.Round(value / 100) * 100;
         if (v < -6000 || v > 6000)
             return A300TypedResult.Fail(VerticalSpeedError);
@@ -293,13 +319,18 @@ public static class A300TypedValues
     /// <c>INI_MINIMUMS_FO</c>): they are the stored values the PFD and the aircraft's "minimums"
     /// call-out read, and the DH knob moves them only while DH is selected on its EFIS panel (it steps
     /// the flight path angle otherwise). A direct write held, and nothing rewrote it (measured
-    /// 2026-10-04). Whole feet; 0 clears it; a fraction is refused (<see cref="IsWhole"/>).
+    /// 2026-10-04). Whole feet; 0 clears it; a fraction is refused (<see cref="IsWhole"/>). So is 1 to 9 feet,
+    /// naming the separator (<see cref="SeparatorThen"/>): no real decision height is that low, and "1,000" and
+    /// "2,000" typed in a panel's box arrive as 1 and 2, which were written and confirmed ("Decision height 1
+    /// feet"), and with 1 foot set the minimums call-out effectively never came.
     /// </summary>
     public static A300TypedResult Minimums(double value)
     {
         if (!IsWhole(value))
             return A300TypedResult.Fail(WholeNumberError);
         double ft = value;
+        if (ft is >= 1 and <= 9)
+            return A300TypedResult.Fail(SeparatorThen(MinimumsError));
         if (ft < 0 || ft > 2500)
             return A300TypedResult.Fail(MinimumsError);
         string text = ft.ToString("0", Inv);

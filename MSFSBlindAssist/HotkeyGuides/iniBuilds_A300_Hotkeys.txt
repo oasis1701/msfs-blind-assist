@@ -171,9 +171,10 @@ TYPED VALUES - type, then press Set or Enter
   switches SPD/MACH for you), Heading (0 to 360), Altitude (100 to 49000 feet, nearest 100),
   Vertical speed (0, or 100 to 6000 either way, nearest 100). You hear "Heading 270".
   Altitude, vertical speed and decision height take whole numbers, typed without a thousands
-  separator: "-1500", not "-1,500". A comma is read as a decimal point, so "-1,500" is refused
-  with "type a whole number, without a thousands separator"; a vertical speed of 1 to 99, up or
-  down, is refused too (0 is fine).
+  separator: "-1500", not "-1,500", and "12000", not "12,000". A comma is read as a decimal point,
+  so "-1,500" and "12,000" are refused with "type a whole number, without a thousands separator"
+  (a panel's box adds the range); a vertical speed of 1 to 99, up or down, is refused too (0 is
+  fine).
   Navigation Radios panel: VOR 1 and VOR 2 frequency (108.00 to 117.95) and course setting, ILS
   frequency (108.10 to 111.95) and course setting.
   VHF Radios panel: VHF 1 and VHF 2 standby frequency (118.000 to 136.990); the transfer buttons
@@ -181,7 +182,8 @@ TYPED VALUES - type, then press Set or Enter
   Transponder panel: Squawk, four digits each 0 to 7.
   Captain Side, First Officer Side and Standby Instruments panels: the altimeter settings, in
   inches (29.92) or hectopascals (1013). A side in STD is taken out of STD first, as Ctrl+B does.
-  EFIS Captain panel: Decision height, 0 to 2500 feet (0 clears it). It sets both pilots'
+  EFIS Captain panel: Decision height, 0 to 2500 feet (0 clears it; 1 to 9 is refused, as no real
+  decision height is that low and "1,000" would reach the box as 1). It sets both pilots'
   minimums, which the PFD box shows and the aircraft's "minimums" call-out uses. You hear
   "Decision height 200 feet".
 

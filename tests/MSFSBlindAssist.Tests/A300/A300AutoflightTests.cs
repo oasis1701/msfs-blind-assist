@@ -75,6 +75,51 @@ public class A300TypedValuesTests
         Assert.Equal(A300TypedValues.VerticalSpeedError, plan.Error);
     }
 
+    [Theory]
+    [InlineData(A300TypedValues.AltitudeKey, 1, "100 to 49000 feet")]
+    [InlineData(A300TypedValues.AltitudeKey, 12, "100 to 49000 feet")]
+    [InlineData(A300TypedValues.AltitudeKey, 35, "100 to 49000 feet")]
+    [InlineData(A300TypedValues.AltitudeKey, 49, "100 to 49000 feet")]
+    [InlineData(A300TypedValues.VerticalSpeedKey, 1, "0, or 100 to 6000 feet per minute either way")]
+    [InlineData(A300TypedValues.VerticalSpeedKey, -1, "0, or 100 to 6000 feet per minute either way")]
+    [InlineData(A300TypedValues.VerticalSpeedKey, 6, "0, or 100 to 6000 feet per minute either way")]
+    [InlineData(A300TypedValues.VerticalSpeedKey, -6, "0, or 100 to 6000 feet per minute either way")]
+    [InlineData(A300TypedValues.MinimumsKey, 1, "0 to 2500 feet")]
+    [InlineData(A300TypedValues.MinimumsKey, 2, "0 to 2500 feet")]
+    [InlineData(A300TypedValues.MinimumsKey, 9, "0 to 2500 feet")]
+    public void A_refused_whole_number_a_comma_thousand_could_have_made_names_the_separator(string key, double value, string range)
+    {
+        // A panel's box turns a comma into a point, so "12,000" arrives as 12, "-1,000" as -1 and "1,000" as 1. Refused
+        // with the range alone, the pilot heard a range that holds what he typed; the decision height took it as 1 foot.
+        var plan = Plan(key, value);
+        Assert.Null(plan.Rpn);
+        Assert.Null(plan.Confirmation);
+        Assert.Equal($"type a whole number, without a thousands separator; {range}", plan.Error);
+    }
+
+    [Theory]
+    [InlineData(A300TypedValues.AltitudeKey, 50)]       // "50,000" is above 49000: the range answers it
+    [InlineData(A300TypedValues.AltitudeKey, -12)]      // "-12,000" is below 100
+    [InlineData(A300TypedValues.VerticalSpeedKey, 7)]   // "7,000" is beyond 6000 either way
+    [InlineData(A300TypedValues.VerticalSpeedKey, -7)]
+    [InlineData(A300TypedValues.MinimumsKey, -1)]
+    [InlineData(A300TypedValues.MinimumsKey, 2600)]
+    public void A_refused_whole_number_whose_comma_thousand_is_outside_the_range_gets_the_range(string key, double value) =>
+        Assert.Equal(A300TypedValues.ErrorFor(key), Plan(key, value).Error);
+
+    [Fact]
+    public void No_decision_height_of_1_to_9_feet_is_written_or_confirmed()
+    {
+        // No real decision height is 1 to 9 feet, and inside 0 to 2500 a comma-thousand makes only 1 ("1,000") and 2
+        // ("2,000"): "Decision height 1 feet" wrote 1 foot to both minimums, and the call-out effectively never came.
+        for (int feet = 1; feet <= 9; feet++)
+        {
+            var plan = Plan(A300TypedValues.MinimumsKey, feet);
+            Assert.Null(plan.Rpn);
+            Assert.Null(plan.Confirmation);
+        }
+    }
+
     [Fact]
     public void The_typed_value_ranges_carry_no_thousands_separator()
     {
@@ -114,6 +159,7 @@ public class A300TypedValuesTests
 
     [Theory]
     [InlineData(200, "200 (>L:INI_MINIMUMS_PILOT) 200 (>L:INI_MINIMUMS_FO)", "Decision height 200 feet")]
+    [InlineData(10, "10 (>L:INI_MINIMUMS_PILOT) 10 (>L:INI_MINIMUMS_FO)", "Decision height 10 feet")]
     [InlineData(1200, "1200 (>L:INI_MINIMUMS_PILOT) 1200 (>L:INI_MINIMUMS_FO)", "Decision height 1,200 feet")]
     [InlineData(2500, "2500 (>L:INI_MINIMUMS_PILOT) 2500 (>L:INI_MINIMUMS_FO)", "Decision height 2,500 feet")]
     [InlineData(0, "0 (>L:INI_MINIMUMS_PILOT) 0 (>L:INI_MINIMUMS_FO)", "Decision height not set")]
@@ -277,16 +323,127 @@ public class IniA300AutoflightBehaviourTests
         Assert.Equal(new[] { $"{name}: type a whole number, without a thousands separator" }, _speech.All);
     }
 
+    private (bool Valid, string Message) Box(string key, string name, string typed) => _def.ValidateBoxInput(key, name, typed);
+
+    private const string AltitudeSeparator = "Altitude: type a whole number, without a thousands separator; 100 to 49000 feet";
+    private const string VerticalSpeedSeparator =
+        "Vertical speed: type a whole number, without a thousands separator; 0, or 100 to 6000 feet per minute either way";
+    private const string DecisionHeightSeparator = "Decision height: type a whole number, without a thousands separator; 0 to 2500 feet";
+
+    [Theory]
+    [InlineData(A300TypedValues.AltitudeKey, 12, AltitudeSeparator)]
+    [InlineData(A300TypedValues.AltitudeKey, 35, AltitudeSeparator)]
+    [InlineData(A300TypedValues.VerticalSpeedKey, -1, VerticalSpeedSeparator)]
+    [InlineData(A300TypedValues.VerticalSpeedKey, 2, VerticalSpeedSeparator)]
+    [InlineData(A300TypedValues.MinimumsKey, 1, DecisionHeightSeparator)]
+    [InlineData(A300TypedValues.MinimumsKey, 2, DecisionHeightSeparator)]
+    public void A_panel_box_number_a_thousands_separator_could_have_made_names_it_and_sends_nothing(string key, double value, string said)
+    {
+        // The panel's box hands "12,000" over as 12, "-1,000" as -1 and "1,000" as 1: only the number reaches the definition.
+        Assert.True(Set(key, value));
+        Assert.Empty(_sent);
+        Assert.Equal(new[] { said }, _speech.All);
+    }
+
+    [Theory]
+    [InlineData(A300TypedValues.AltitudeKey, 12000, "12000 (>L:INI_Altitude_Dial)", "Altitude 12,000 feet")]
+    [InlineData(A300TypedValues.VerticalSpeedKey, -1500, "-1500 (>L:INI_vvi_dial)", "Vertical speed -1,500 feet per minute")]
+    [InlineData(A300TypedValues.MinimumsKey, 0, "0 (>L:INI_MINIMUMS_PILOT) 0 (>L:INI_MINIMUMS_FO)", "Decision height not set")]
+    [InlineData(A300TypedValues.MinimumsKey, 200, "200 (>L:INI_MINIMUMS_PILOT) 200 (>L:INI_MINIMUMS_FO)", "Decision height 200 feet")]
+    public void A_panel_box_whole_number_typed_without_a_separator_is_still_sent_and_confirmed(string key, double value, string rpn, string said)
+    {
+        Assert.True(Set(key, value));
+        Assert.Equal(new[] { rpn }, _sent);
+        Assert.Equal(new[] { said }, _speech.All);
+    }
+
+    [Theory]
+    [InlineData(A300TypedValues.AltitudeKey, "Altitude", "12,000")]
+    [InlineData(A300TypedValues.AltitudeKey, "Altitude", "35,000")]
+    [InlineData(A300TypedValues.AltitudeKey, "Altitude", " 12,000 ")]
+    [InlineData(A300TypedValues.AltitudeKey, "Altitude", "1,000,000")]
+    [InlineData(A300TypedValues.VerticalSpeedKey, "Vertical speed", "-1,000")]
+    [InlineData(A300TypedValues.VerticalSpeedKey, "Vertical speed", "2,000")]
+    [InlineData(A300TypedValues.MinimumsKey, "Decision height", "1,000")]
+    [InlineData(A300TypedValues.MinimumsKey, "Decision height", "2,000")]
+    public void The_value_box_refuses_a_thousands_separator_by_name(string key, string name, string typed)
+    {
+        // The box turns a comma into a point, so "12,000" arrived as 12 and was answered "100 to 49000 feet", a range that
+        // holds the 12,000 typed, and "-1,000" as -1, answered with the vertical speed range. The text says what it was.
+        Assert.Equal((false, $"{name}: type a whole number, without a thousands separator"), Box(key, name, typed));
+    }
+
+    [Theory]
+    [InlineData(A300TypedValues.AltitudeKey, "Altitude", "12", AltitudeSeparator)]
+    [InlineData(A300TypedValues.AltitudeKey, "Altitude", "12.000", AltitudeSeparator)]   // a point as the separator
+    [InlineData(A300TypedValues.VerticalSpeedKey, "Vertical speed", "-1", VerticalSpeedSeparator)]
+    [InlineData(A300TypedValues.MinimumsKey, "Decision height", "1", DecisionHeightSeparator)]
+    public void The_value_box_answers_a_number_a_separator_could_have_made_as_the_panel_box_does(string key, string name, string typed,
+        string said) =>
+        Assert.Equal((false, said), Box(key, name, typed));
+
+    [Theory]
+    [InlineData(A300TypedValues.AltitudeKey, "Altitude", "12000")]
+    [InlineData(A300TypedValues.VerticalSpeedKey, "Vertical speed", "-1500")]
+    [InlineData(A300TypedValues.MinimumsKey, "Decision height", "0")]
+    [InlineData(A300TypedValues.MinimumsKey, "Decision height", "200")]
+    public void The_value_box_still_takes_a_whole_number_typed_without_a_separator(string key, string name, string typed) =>
+        Assert.Equal((true, ""), Box(key, name, typed));
+
+    [Theory]
+    [InlineData(A300TypedValues.SpeedKey, "Speed or Mach", "0,780")]
+    [InlineData(A300TypedValues.Com1StandbyKey, "VHF 1 standby frequency", "121,500")]
+    [InlineData(A300TypedValues.IlsFrequencyKey, "ILS frequency", "110,300")]
+    [InlineData(A300TypedValues.BaroStandbyKey, "Standby altimeter setting", "29,920")]
+    public void A_comma_in_a_value_that_is_not_a_whole_number_is_still_its_decimal_point(string key, string name, string typed) =>
+        // Only an altitude, a vertical speed or a decision height wants a whole number: elsewhere "121,500" is 121.5.
+        Assert.Equal((true, ""), Box(key, name, typed));
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void A_thousands_separator_is_refused_by_name_the_same_in_a_comma_decimal_culture(string culture)
+    {
+        var saved = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(culture);
+            // The value boxes, from the text.
+            Assert.Equal((false, "Altitude: type a whole number, without a thousands separator"),
+                Box(A300TypedValues.AltitudeKey, "Altitude", "12,000"));
+            Assert.Equal((false, "Vertical speed: type a whole number, without a thousands separator"),
+                Box(A300TypedValues.VerticalSpeedKey, "Vertical speed", "-1,000"));
+            Assert.Equal((false, "Decision height: type a whole number, without a thousands separator"),
+                Box(A300TypedValues.MinimumsKey, "Decision height", "1,000"));
+            // In these cultures "12.000" is twelve thousand, but the box reads every point as a decimal point.
+            Assert.Equal((false, AltitudeSeparator), Box(A300TypedValues.AltitudeKey, "Altitude", "12.000"));
+            Assert.Equal((false, VerticalSpeedSeparator), Box(A300TypedValues.VerticalSpeedKey, "Vertical speed", "-1"));
+            Assert.Equal((false, DecisionHeightSeparator), Box(A300TypedValues.MinimumsKey, "Decision height", "2"));
+            Assert.Equal((true, ""), Box(A300TypedValues.AltitudeKey, "Altitude", "12000"));
+            Assert.Equal((true, ""), Box(A300TypedValues.MinimumsKey, "Decision height", "200"));
+            // The panel's boxes, from the number.
+            Assert.True(Set(A300TypedValues.AltitudeKey, 12));
+            Assert.True(Set(A300TypedValues.VerticalSpeedKey, -1));
+            Assert.True(Set(A300TypedValues.MinimumsKey, 1));
+            Assert.Empty(_sent);
+            Assert.Equal(new[] { AltitudeSeparator, VerticalSpeedSeparator, DecisionHeightSeparator }, _speech.All);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = saved;
+        }
+    }
+
     [Theory]
     [InlineData("-1,500", "Vertical speed: type a whole number, without a thousands separator")]
     [InlineData("1.500", "Vertical speed: type a whole number, without a thousands separator")]
     [InlineData("50", "Vertical speed: 0, or 100 to 6000 feet per minute either way")]
     [InlineData("6100", "Vertical speed: 0, or 100 to 6000 feet per minute either way")]
-    [InlineData("abc", "Vertical speed: -6000 to 6000 feet per minute")]
+    [InlineData("abc", "Vertical speed: 0, or 100 to 6000 feet per minute either way")]
     public void The_value_box_says_why_it_refused_a_vertical_speed(string typed, string said)
     {
         // A refusal for a reason other than the range is not answered with a range the number is inside.
-        var (valid, message) = _def.ValidateBoxInput(A300TypedValues.VerticalSpeedKey, "Vertical speed", "-6000 to 6000 feet per minute", typed);
+        var (valid, message) = Box(A300TypedValues.VerticalSpeedKey, "Vertical speed", typed);
         Assert.False(valid);
         Assert.Equal(said, message);
     }
@@ -298,20 +455,34 @@ public class IniA300AutoflightBehaviourTests
     [InlineData("100")]
     [InlineData("6000")]
     public void The_value_box_takes_a_whole_vertical_speed(string typed) =>
-        Assert.Equal((true, ""), _def.ValidateBoxInput(A300TypedValues.VerticalSpeedKey, "Vertical speed", "-6000 to 6000 feet per minute", typed));
+        Assert.Equal((true, ""), Box(A300TypedValues.VerticalSpeedKey, "Vertical speed", typed));
 
     [Theory]
-    [InlineData(A300TypedValues.SpeedKey, "Speed or Mach", "100 to 399 knots, or Mach 0.10 to 0.99", "50")]
-    [InlineData(A300TypedValues.HeadingKey, "Heading", "0 to 360 degrees", "400")]
-    [InlineData(A300TypedValues.AltitudeKey, "Altitude", "100 to 49000 feet", "60000")]
-    [InlineData(IniA300Definition.AllAltimetersKey, "Altimeters", "28.20 to 31.30 inches, or 955 to 1060 hectopascals; sets captain, first officer and standby", "1200")]
-    public void The_value_box_answers_a_number_outside_the_range_with_the_range(string key, string name, string hint, string typed)
+    [InlineData(A300TypedValues.SpeedKey, "Speed or Mach", "50")]
+    [InlineData(A300TypedValues.HeadingKey, "Heading", "400")]
+    [InlineData(A300TypedValues.AltitudeKey, "Altitude", "60000")]
+    [InlineData(IniA300Definition.AllAltimetersKey, "Altimeters", "1200")]
+    public void The_value_box_answers_a_number_outside_the_range_with_the_range(string key, string name, string typed)
     {
         // The refusal's own words are the range, so the box says what the panel's box says. The altimeter box's hint
         // also notes what it sets (all three), which a refusal leaves out.
-        var (valid, message) = _def.ValidateBoxInput(key, name, hint, typed);
+        var (valid, message) = Box(key, name, typed);
         Assert.False(valid);
         Assert.Equal($"{name}: {A300TypedValues.ErrorFor(key)}", message);
+    }
+
+    [Theory]
+    [InlineData(A300TypedValues.SpeedKey, "Speed or Mach", "Speed or Mach: 100 to 399 knots, or Mach 0.10 to 0.99")]
+    [InlineData(A300TypedValues.HeadingKey, "Heading", "Heading: 0 to 360 degrees")]
+    [InlineData(A300TypedValues.AltitudeKey, "Altitude", "Altitude: 100 to 49000 feet")]
+    [InlineData(A300TypedValues.VerticalSpeedKey, "Vertical speed", "Vertical speed: 0, or 100 to 6000 feet per minute either way")]
+    [InlineData(IniA300Definition.AllAltimetersKey, "Altimeters",
+        "Altimeters: 28.20 to 31.30 inches, or 955 to 1060 hectopascals; sets captain, first officer and standby")]
+    public void A_value_box_answers_text_that_is_no_number_with_the_range_its_plan_takes(string key, string name, string said)
+    {
+        // The box's hint, shown on it and said here, is its plan's own range: the vertical speed box offered "-6000 to
+        // 6000 feet per minute", 1 to 99 among them, which the plan refuses, and said it for "abc" too.
+        Assert.Equal((false, said), Box(key, name, "abc"));
     }
 
     [Theory]
@@ -327,8 +498,8 @@ public class IniA300AutoflightBehaviourTests
             Assert.Empty(_sent);
             Assert.Equal(new[] { "Vertical speed: type a whole number, without a thousands separator" }, _speech.All);
             Assert.Equal((false, "Altitude: type a whole number, without a thousands separator"),
-                _def.ValidateBoxInput(A300TypedValues.AltitudeKey, "Altitude", "100 to 49000 feet", "12,5"));
-            Assert.Equal((true, ""), _def.ValidateBoxInput(A300TypedValues.AltitudeKey, "Altitude", "100 to 49000 feet", "12000"));
+                Box(A300TypedValues.AltitudeKey, "Altitude", "12,5"));
+            Assert.Equal((true, ""), Box(A300TypedValues.AltitudeKey, "Altitude", "12000"));
         }
         finally
         {

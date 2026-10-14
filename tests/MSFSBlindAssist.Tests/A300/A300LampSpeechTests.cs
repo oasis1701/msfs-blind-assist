@@ -93,8 +93,11 @@ public class A300LampSpeechTests
     }
 
     [Fact]
-    public void The_settle_window_covers_two_subscription_periods_and_the_gather_period_one() =>
-        Assert.Equal((true, true), (A300LampSpeech.SettleMs is >= 2000 and <= 3000, A300LampSpeech.GatherMs is >= 1000 and < 2000));
+    public void The_settle_window_covers_two_subscription_periods_and_the_gather_period_one()
+    {
+        Assert.InRange(A300LampSpeech.SettleMs, 2000, 3000);
+        Assert.InRange(A300LampSpeech.GatherMs, 1000, 1999);
+    }
 
     [Fact]
     public void A_light_going_off_is_spoken_only_once_it_has_stayed_off_for_the_hold()
@@ -168,7 +171,7 @@ public class A300LampSpeechTests
 
     [Fact]
     public void The_off_hold_outlasts_a_flash_and_two_subscription_periods() =>
-        Assert.True(A300LampSpeech.OffHoldMs is >= 2500 and <= 3500);
+        Assert.InRange(A300LampSpeech.OffHoldMs, 2500, 3500);
 
     [Fact]
     public void Forgetting_a_light_drops_its_held_off_and_its_pending_changes()
