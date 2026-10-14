@@ -120,6 +120,21 @@ public partial class SynapticA220Definition
         // The CommBus systems blocks, parsed on their own (see DisplaysSnap.sys).
         var sys = SystemsFrom(snap.sys);
 
+        // ---- A flight load (RequestSystemsRebaseline) ------------------------
+        // Every scrape-side baseline (FMA, trim, the EICAS CAS diff) is dropped BEFORE the diffs
+        // below run, so this poll records the loaded flight silently instead of diffing it against
+        // the old flight's. This runs before ProcessSystems too, so it honours the request itself
+        // rather than leave it to the monitors' reset below.
+        if (TakeRebaseline(ref _scrapeRebaselined))
+        {
+            _prevFma = null;
+            _fmaSignature = "";
+            _trimPrevPitch = null;
+            _trimSpokenPitch = null;
+            _prevCas = null;
+            _casSignature = "";
+        }
+
         // ---- AFDX CommBus blocks (FD state/commands, FCP selections, trim) --
         _afdxAutoflight = snap.af;
         _afdxFcp = snap.fcp;
@@ -166,13 +181,7 @@ public partial class SynapticA220Definition
         // The CAS Data store is the truth ([A220-36]); the scrape diff below speaks only while
         // the store is missing, and drops its baseline whenever the store takes over, so a
         // later fallback re-baselines silently instead of diffing against stale text. A flight
-        // load drops it too (RequestSystemsRebaseline): this block runs BEFORE ProcessSystems, so
-        // it honours the request itself rather than leave it to the monitors' reset below.
-        if (TakeRebaseline(ref _scrapeRebaselined))
-        {
-            _prevCas = null;
-            _casSignature = "";
-        }
+        // load drops it too (the rebaseline block at the top).
         if (sys?.cas != null)
         {
             _prevCas = null;

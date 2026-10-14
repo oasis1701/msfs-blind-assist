@@ -27,9 +27,10 @@ public partial class SynapticA220Definition
     private readonly A220Systems.DoorMonitor _doorMonitor = new();
 
     // A rebaseline request is a counter, not a flag, because two pump-thread consumers must each
-    // honour it once: the five monitors (ProcessSystems) and the EICAS-scrape CAS baseline (the
-    // pump's CAS block, which runs BEFORE ProcessSystems in the same poll). A single flag consumed
-    // by the first would starve the second. Each consumer keeps the count it last honoured.
+    // honour it once: the five monitors (ProcessSystems) and the scrape-side baselines (FMA, trim
+    // and the EICAS CAS diff, dropped at the top of the pump's poll, BEFORE ProcessSystems). A
+    // single flag consumed by the first would starve the second. Each consumer keeps the count it
+    // last honoured.
     private int _rebaselineRequests;     // bumped by RequestSystemsRebaseline, from any thread
     private int _monitorsRebaselined;    // pump thread: the count the monitors have honoured
     private int _scrapeRebaselined;      // pump thread: the count the scrape's CAS baseline has honoured
@@ -79,8 +80,8 @@ public partial class SynapticA220Definition
     internal void UseAnnouncer(ScreenReaderAnnouncer announcer) => _announcer = announcer;
 
     /// <summary>A flight load or reconnect: the next poll is a new baseline, so nothing of the
-    /// loaded state is announced as a change — not by the five monitors, and not by the EICAS
-    /// scrape's CAS diff either (the CAS summary is spoken once again).</summary>
+    /// loaded state is announced as a change — not by the five monitors, and not by the scrape's
+    /// FMA, trim or CAS diffs either (the CAS summary is spoken once again).</summary>
     internal void RequestSystemsRebaseline() => Interlocked.Increment(ref _rebaselineRequests);
 
     /// <summary>True once per <see cref="RequestSystemsRebaseline"/> for the consumer that owns
@@ -231,8 +232,8 @@ public partial class SynapticA220Definition
     }
 
     /// <summary>Every context reset (a flight load included) drops the roll's ARM (TKO-5) and
-    /// re-baselines the systems monitors and the scrape's CAS diff, so a loaded flight's state
-    /// is not announced.</summary>
+    /// re-baselines the systems monitors and the scrape's FMA, trim and CAS diffs, so a loaded
+    /// flight's state is not announced.</summary>
     public override void OnSimContextReset()
     {
         base.OnSimContextReset();

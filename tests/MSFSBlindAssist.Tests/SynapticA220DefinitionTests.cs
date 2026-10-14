@@ -1690,6 +1690,43 @@ public class SynapticA220SystemsSpeechTests : IDisposable
     private static string Gear(int icon) => "{\"gear\":{\"nose_icon\":" + icon + ",\"left_icon\":" + icon + ",\"right_icon\":" + icon
         + ",\"nose_color\":3,\"left_color\":3,\"right_color\":3}}";
 
+    // ---- ... nor the loaded FMA and trim against the old flight's ----
+
+    [Fact]
+    public void RebaselineRequest_DropsTheFmaBaseline_SoTheLoadedFlightsModesAreNotSpokenAsAChange()
+    {
+        static string Fma(string tokens) => "{\"ok\":true,\"fma\":" + tokens + "}";
+        const string spd = "[{\"t\":\"SPD\",\"c\":\"green\"}]";
+        const string flc = "[{\"t\":\"FLC\",\"c\":\"green\"}]";
+
+        var (def, speech) = Pump();
+        def.ProcessDisplaysSnapshot(Fma(spd));                        // the old flight's baseline
+        def.RequestSystemsRebaseline();                               // a flight load
+        def.ProcessDisplaysSnapshot(Fma(flc));                        // the loaded flight's modes
+        Assert.Empty(speech.All);                                     // a new baseline, not a change
+
+        def.ProcessDisplaysSnapshot(Fma(spd));                        // a real change after it still speaks
+        Assert.Equal(new[] { "SPD" }, speech.All);
+    }
+
+    [Fact]
+    public void RebaselineRequest_DropsTheTrimBaseline_SoTheLoadedFlightsTrimIsNotSpokenAsAChange()
+    {
+        static string Trim(double pitch) => FormattableString.Invariant($"{{\"ok\":true,\"fc\":{{\"pitch_trim\":{pitch}}}}}");
+
+        var (def, speech) = Pump();
+        def.ProcessDisplaysSnapshot(Trim(4.6));
+        def.ProcessDisplaysSnapshot(Trim(4.6));                       // the old flight's settled trim: the baseline
+        def.RequestSystemsRebaseline();                               // a flight load
+        def.ProcessDisplaysSnapshot(Trim(6.0));
+        def.ProcessDisplaysSnapshot(Trim(6.0));                       // the loaded flight's trim, settled
+        Assert.Empty(speech.All);
+
+        def.ProcessDisplaysSnapshot(Trim(7.0));
+        def.ProcessDisplaysSnapshot(Trim(7.0));                       // a real trim change after it still speaks
+        Assert.StartsWith("Stab trim", Assert.Single(speech.All));
+    }
+
     // ---- The silent readouts, from the store ----
 
     private static SpeechCapture Press(SynapticA220Definition def, HotkeyAction action)
