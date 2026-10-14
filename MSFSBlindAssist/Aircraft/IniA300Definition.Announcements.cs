@@ -16,7 +16,8 @@ namespace MSFSBlindAssist.Aircraft;
 /// and the UI echo, so the pilot's own lever pick is never spoken back. The fault lights are SPOKEN
 /// later, when the next continuous batch ends (one sentence for every light changed since), so each
 /// change is kept only when the announcer was not suppressed at the moment it was decided. Every other switch
-/// position is consumed silently: the panel combo follows it.
+/// position is consumed silently: the panel combo follows it. The VHF frequencies and the squawk speak at a batch
+/// end too, when MSFSBA did not change them (IniA300Definition.Radios).
 /// </summary>
 public partial class IniA300Definition
 {
@@ -100,12 +101,23 @@ public partial class IniA300Definition
         if (A300Trp.StateKeys.Contains(varName))
             return true;
 
+        // The VHF radios' windows and transfer switches and the squawk code (A300RadioWatches): compared with their
+        // baselines at a batch end (FlushRadioWatches), never spoken here, so a delivery only names the announcer that
+        // flush speaks through. The two transfer switches and the code carry a Ctrl+M row each, so the silent set below
+        // does not hold them; this branch consumes them before any later one, or MainForm's generic announce, could
+        // speak them ([A300-29]).
+        if (A300RadioWatches.InputKeys.Contains(varName))
+        {
+            _radioAnnouncer = announcer;
+            return true;
+        }
+
         // The subscriptions only a label, a box line or a refusal reads (the clocks' digits and button states, the
-        // rudder trim display, the radio windows, the cargo door, the memos, the MCDU lights, the IRS flags, the ILS
-        // inputs): composed from, never spoken. OwnSubscription adds each key as BuildVariables registers it, and an
-        // input that reads another key's cache (_inputAliases) is not registered. The set also holds the AC and DC light
-        // power flags, the panel lamps' shared inputs and the TRP's keys, which the light board and TRP branches above have
-        // already consumed: this check stays after them.
+        // rudder trim display, the ADF radios' windows and transfer switches, the cargo door, the memos, the MCDU
+        // lights, the IRS flags, the ILS inputs): composed from, never spoken. OwnSubscription adds each key as
+        // BuildVariables registers it, and an input that reads another key's cache (_inputAliases) is not registered.
+        // The set also holds the AC and DC light power flags, the panel lamps' shared inputs and the TRP's keys, which
+        // the light board and TRP branches above have already consumed: this check stays after them.
         if (SilentKeys.Contains(varName))
             return true;
 
@@ -145,6 +157,7 @@ public partial class IniA300Definition
     {
         base.OnContinuousBatchDelivered(batchNum);
         FlushLamps();
+        FlushRadioWatches(batchNum);   // before the seed gate below can release: the release's own flush is still settling
         var sim = _sim;
         if (!_seedGate.Armed || sim == null)
             return;
@@ -180,6 +193,7 @@ public partial class IniA300Definition
         _takeoffCallouts.Reset();
         _lampBoard.Reset();
         _lampSpeech.Clear();
+        ResetRadioWatches();
         _commanded.Clear();
         _pendingPicks.Clear();
         _memoTracker.Reset();

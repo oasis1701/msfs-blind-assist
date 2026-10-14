@@ -2079,10 +2079,12 @@ public partial class MainForm
             if (sim == null || !sim.IsConnected) { announcer.AnnounceImmediate("Not connected to the simulator."); return; }
             if (currentAircraft?.StockComTuningRefusal is { } refusal) { announcer.AnnounceImmediate(refusal); return; }
 
+            NoteA300OwnCom1Tune();   // the read-back below says it: the A300's outside-change call-out stays quiet ([A300-29])
             sim.SendEvent(MSFSBlindAssist.Services.Com1Tuning.StandbySetEvent, (uint)frequencyHz);
             if (active)
             {
                 await Task.Delay(MSFSBlindAssist.Services.Com1Tuning.SwapGapMs);
+                NoteA300OwnCom1Tune();
                 sim.SendEvent(MSFSBlindAssist.Services.Com1Tuning.SwapEvent);
             }
 

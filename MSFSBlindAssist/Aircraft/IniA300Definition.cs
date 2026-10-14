@@ -337,13 +337,23 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
         foreach (var (key, var) in A300Trim.RudderDigits)
             OwnSubscription(vars, key, var);
         // The VHF and ADF windows and transfer switches their lines and read-backs are composed from (A300Radios),
-        // and each ADF's signal, which gates its bearing line.
+        // and each ADF's signal, which gates its bearing line. A VHF radio's transfer switch also carries the radio's
+        // Ctrl+M row, "VHF 1 frequencies": the windows and the switch are what an outside frequency change is spoken
+        // from at a batch end (A300RadioWatches, [A300-29]), and the switch's key is not a silent one.
         foreach (var radio in A300Radios.All)
         {
+            bool watched = A300RadioWatches.Watches(radio);
             OwnSubscription(vars, radio.Window1Key, radio.Window1Var);
             OwnSubscription(vars, radio.Window2Key, radio.Window2Var);
-            OwnSubscription(vars, radio.TransferKey, radio.TransferVar);
+            OwnSubscription(vars, radio.TransferKey, radio.TransferVar, watched ? A300RadioWatches.RowName(radio) : null,
+                ctrlMRow: watched);
         }
+        // The squawk: its own subscription to the transponder code, which carries the "Squawk" row. Not the batch
+        // ([A300-9]), and no change tolerance, so every step of the code is a delivery ([SIM-7]).
+        var squawk = OwnSubscription(vars, A300RadioWatches.SquawkKey, A300RadioWatches.SquawkVar,
+            A300RadioWatches.SquawkRowName, ctrlMRow: true);
+        squawk.Type = SimVarType.SimVar;
+        squawk.Units = A300RadioWatches.SquawkUnits;
         // Each IRS's aligning and aligned flags, its alignment line is composed from (A300IrsAlignment). The aligning flag
         // is the IRS align light's variable, which the light's own key streams: the line reads that key's cache.
         foreach (var line in A300IrsAlignment.All)
@@ -477,7 +487,9 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
     /// once-a-second subscription, never the batch (a new batch name can split the FMA's sources, [A300-9]), consumed
     /// silently and with no Ctrl+M row, so the key joins <see cref="_silentKeys"/>. The autobrake lights, which the
     /// light board speaks, pass <paramref name="ctrlMRow"/>: the row mutes that speech and the board consumes the key,
-    /// so it is not silent. The display name is the key unless <paramref name="name"/> says otherwise.
+    /// so it is not silent. So do the VHF radios' transfer switches and the squawk code, whose rows mute the
+    /// outside-change call-outs spoken at a batch end (<see cref="FlushRadioWatches"/>); a branch of
+    /// ProcessSimVarUpdate consumes those keys. The display name is the key unless <paramref name="name"/> says otherwise.
     /// </summary>
     private SimVarDefinition OwnSubscription(Dictionary<string, SimVarDefinition> vars, string key, string varName,
         string? name = null, bool ctrlMRow = false)

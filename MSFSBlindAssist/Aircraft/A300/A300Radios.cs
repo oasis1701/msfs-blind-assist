@@ -53,6 +53,10 @@ public static class A300Radios
         new A300Radio("ADF 2", "ADF2", "ADF Radios", "INI_ADF2_FREQUENCY", "INI_ADF2_STBY_FREQUENCY", "INI_ADF2_TRANSFER_SWITCH", 1, 1, "0.#"),
     };
 
+    /// <summary>The VHF radios, the ones whose frequencies speak when something other than MSFSBA changes them
+    /// ([A300-29], <see cref="A300RadioWatches"/>); the ADFs are not watched.</summary>
+    public static readonly IReadOnlyList<A300Radio> Vhf = All.Where(r => r.Id.StartsWith("VHF", StringComparison.Ordinal)).ToArray();
+
     private static A300Radio Named(string name) => All.Single(r => r.Name == name);
 
     /// <summary>Each ADF frequency knob: the radio and the window (1 or 2) it tunes. The VHF knobs are not rows

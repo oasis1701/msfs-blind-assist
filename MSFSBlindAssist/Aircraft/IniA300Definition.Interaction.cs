@@ -70,14 +70,20 @@ public partial class IniA300Definition
             if (A300Autobrake.ByButton.TryGetValue(row.Key, out var autobrake))
                 _pressedLampUntil[autobrake.ArmedLampId] = Clock() + PressedLampMs;
             // A transfer's new frequency in use: the transfer switch picks a window, it does not swap them (A300Radios).
+            // Its read-back says it, so a VHF radio's outside-change call-out stays quiet for it ([A300-29]).
             if (A300Radios.ByTransfer.TryGetValue(control.Key, out var radio))
+            {
+                NoteOwnRadioChange(control.Key);
                 _ = ReadBackWhenSettledAsync(simConnect, announcer, radio.Name,
                     v => radio.TransferPhrase(v[0], v[1], v[2]), radio.Window1Key, radio.Window2Key, radio.TransferKey);
+            }
         }
 
         bool stepped = row.Action is A300RowAction.Increase or A300RowAction.Decrease;
         if (stepped)
         {
+            // A transponder code knob's step is read back below, so the squawk's outside-change call-out stays quiet for it.
+            NoteOwnRadioChange(control.Key);
             // An FCU knob step is read back once it lands ("Heading 271"): a numeric confirmation, as a
             // typed value's is. The altitude window's own call-out is told it is an echo.
             if (A300FcuWindows.ReadoutByKnob.TryGetValue(control.Key, out var readoutKey))

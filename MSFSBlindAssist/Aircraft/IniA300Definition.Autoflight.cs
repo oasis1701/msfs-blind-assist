@@ -127,6 +127,7 @@ public partial class IniA300Definition
             }
             if (key == A300TypedValues.AltitudeKey)
                 _altitudeWindow.SuppressEcho(Clock());   // the typed confirmation says it
+            NoteOwnRadioChange(key);                      // a typed VHF standby or squawk: the confirmation says it ([A300-29])
             Send(sim, plan.Rpn!);
             if (plan.Confirmation != null)
                 announcer.Announce(plan.Confirmation);

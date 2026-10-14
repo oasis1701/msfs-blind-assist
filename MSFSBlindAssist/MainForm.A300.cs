@@ -27,6 +27,13 @@ public partial class MainForm
         a300MonitorManagerForm.ShowForm();
     }
 
+    /// <summary>
+    /// The surroundings window's COM 1 tune (<c>TuneCom1FromSurroundings</c>) sends the stock standby-set and swap events,
+    /// which the A300 mirrors into VHF 1's windows. The window's own read-back says what COM 1 holds, so the A300's
+    /// call-out for a VHF change MSFSBA did not make stays quiet for the tune ([A300-29]). Nothing on any other aircraft.
+    /// </summary>
+    private void NoteA300OwnCom1Tune() => (currentAircraft as IniA300Definition)?.NoteOwnCom1Tune();
+
     /// <summary>The A300's two MCDUs (Shift+M). Guarded on the loaded aircraft like the monitor manager.</summary>
     public void ShowA300McduDialog()
     {

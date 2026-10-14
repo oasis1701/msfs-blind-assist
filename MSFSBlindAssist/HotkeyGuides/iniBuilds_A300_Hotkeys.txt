@@ -105,6 +105,7 @@ The Weather Radar panel's status display reads the antenna tilt in degrees ("Ant
 degrees down"); the tilt slider runs from 15 degrees down at 0 to 15 degrees up at 100. The
 Transponder panel's status display reads the squawk code, and each step of a code knob says the
 new code: "Squawk 7100". The large knob changes the first two digits, the small knob the last two.
+A code set by something other than MSFS Blind Assist is announced too (see Background Announcements).
 
 The VHF and ADF panels each have two windows and a transfer switch that picks which window is in
 use. It does not swap them, so after a transfer the ADF knobs called "standby" tune the frequency
@@ -600,6 +601,16 @@ Assist, for example with a hardware knob ("Altitude 12,000 feet"). The heading, 
 vertical speed windows are not announced on their own, because the autopilot moves them itself
 (heading sync, managed speed); read them with Shift+H, Shift+S and Shift+V in output mode.
 
+A VHF frequency or the squawk code changed by something other than MSFS Blind Assist is announced,
+for example when an ATC program tunes your radio or sets your squawk: "VHF 1 standby 121.500",
+"VHF 1 active 124.805", or after a swap "VHF 1 active 124.805, standby 121.500", and "Squawk
+5473". The VHF announcement comes a second or two after the change, because a swap moves both
+frequency windows and the radio is read until they agree. VHF 1 and VHF 2 are announced; the ADF
+radios are not. What you set with MSFS Blind Assist is not announced again, as your own screen
+reader or the confirmation says it: a typed VHF standby frequency, a transfer button, a typed
+squawk, a transponder code knob, or tuning COM 1 from the surroundings window. A change made by
+something else in the 2.5 seconds after one of yours is not announced either.
+
 "Glideslope alive" and "Glideslope lost" follow NAV 3, the A300's ILS receiver: tune the ILS
 frequency on the Navigation Radios panel or with Ctrl+N. An ILS tuned on NAV 1 alone (the VOR 1
 radio) gives no call-out.
@@ -611,8 +622,8 @@ goes for the pitch trim and yaw damper levers on the SAS Control panel, which th
 by itself when their system cannot hold them: "Pitch trim 1 off". Each has its own Ctrl+M row.
 
 Each of these has its own Ctrl+M row: every light, V1 call-out, Rotate call-out, V2 call-out,
-Autopilot engagement, Autothrottle engagement, Altitude window, and the flight mode annunciator's
-rows.
+Autopilot engagement, Autothrottle engagement, Altitude window, VHF 1 frequencies, VHF 2
+frequencies, Squawk, and the flight mode annunciator's rows.
 
 Ctrl+M opens the monitor manager: type in the search box to narrow the list, use the Show filter
 to see only the muted rows, and untick an item to stop it announcing. Your choices are

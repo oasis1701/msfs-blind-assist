@@ -124,7 +124,13 @@ public class A300RadiosTests
 
         var vars = def.GetVariables();
         Assert.Equal(vhf.TransferVar, vars[vhf.ActiveKey].Name);
-        foreach (var key in new[] { vhf.Window1Key, vhf.Window2Key, vhf.TransferKey })
+        // The VHF windows stream silently; its transfer switch also carries the radio's Ctrl+M row, the outside-change
+        // call-out's ([A300-29]; IniA300RadioWatchTests). The ADF radios are not watched: all three of each stay silent.
+        foreach (var key in new[] { vhf.Window1Key, vhf.Window2Key })
+            Assert.True(vars[key].ExcludeFromBatch && vars[key].ExcludeFromMonitorManager, key);
+        Assert.True(vars[vhf.TransferKey].ExcludeFromBatch && !vars[vhf.TransferKey].ExcludeFromMonitorManager);
+        var adf = Radio("ADF 1");
+        foreach (var key in new[] { adf.Window1Key, adf.Window2Key, adf.TransferKey })
             Assert.True(vars[key].ExcludeFromBatch && vars[key].ExcludeFromMonitorManager, key);
     }
 }

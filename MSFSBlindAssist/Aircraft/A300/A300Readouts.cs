@@ -200,8 +200,8 @@ public static class A300Readouts
             ["A300_LANDING_ELEV_SET"] = ("A300_RO_LANDING_ELEV", v => $"Landing elevation {Whole(v)} feet"),
             // The flex temperature knob steps the TRP's flex temperature ("Flex temperature 46 degrees", [A300-21]).
             [A300Trp.FlexKnobKey] = (FlexTemperatureKey, A300Trp.FlexPhrase),
-            ["A300_TCAS_BIG"] = (SquawkCodeKey, v => $"Squawk {Squawk(v)}"),
-            ["A300_TCAS_SMALL"] = (SquawkCodeKey, v => $"Squawk {Squawk(v)}"),
+            ["A300_TCAS_BIG"] = (SquawkCodeKey, SquawkPhrase),
+            ["A300_TCAS_SMALL"] = (SquawkCodeKey, SquawkPhrase),
             ["A300_VOR_CRS_CAPT"] = ("A300_RO_VOR1_COURSE", v => $"VOR 1 course {Heading(Math.Round(v))}"),
             ["A300_VOR_CRS_FO"] = ("A300_RO_VOR2_COURSE", v => $"VOR 2 course {Heading(Math.Round(v))}"),
             ["A300_ILS_CRS"] = (IlsCourseKey, v => $"ILS course {Heading(Math.Round(v))}"),
@@ -218,11 +218,15 @@ public static class A300Readouts
     }
 
     /// <summary>"7000": each BCO16 nibble a digit.</summary>
-    private static string Squawk(double bcd)
+    public static string Squawk(double bcd)
     {
         int word = (int)Math.Round(bcd);
         return $"{(word >> 12) & 0xF}{(word >> 8) & 0xF}{(word >> 4) & 0xF}{word & 0xF}";
     }
+
+    /// <summary>"Squawk 5473": the digits as one number, as a typed code's confirmation, a code knob's read-back and an
+    /// outside change (<see cref="A300SquawkWatch"/>) all say it.</summary>
+    public static string SquawkPhrase(double bcd) => $"Squawk {Squawk(bcd)}";
 
     /// <summary>The three speeds the tape shows only at some flap settings.</summary>
     public static readonly IReadOnlyDictionary<string, A300PfdSpeed> FlapSpeeds = new Dictionary<string, A300PfdSpeed>(StringComparer.Ordinal)
