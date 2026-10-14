@@ -52,6 +52,12 @@ public static class A220FcpKeys
     /// the Ctrl+S dialog's measured toggle writes). A TARGET, never a blind toggle.</summary>
     internal static int SpeedRingValue(Act act) => act == Act.SpeedFms ? 0 : 1;
 
+    /// <summary>True only when the ring's state is KNOWN and already equals the target. An
+    /// unknown ring (null) never refuses: "Already ..." is a claim about the panel, so it is
+    /// not made from a default, and the key presses and the read-back speaks the truth.</summary>
+    internal static bool SpeedAlready(bool? isFmsNow, bool wantFms)
+        => isFmsNow is bool fms && fms == wantFms;
+
     internal static string Name(Act act) => act switch
     {
         Act.SpeedFms => "FMS speed",

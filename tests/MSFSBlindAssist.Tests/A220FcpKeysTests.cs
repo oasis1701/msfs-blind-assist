@@ -61,6 +61,18 @@ public class A220FcpKeysTests
         Assert.Equal(1, A220FcpKeys.SpeedRingValue(A220FcpKeys.Act.SpeedManual));
     }
 
+    /// <summary>"Already ..." is a claim about the ring, so it is made only from a KNOWN state: an
+    /// unknown ring (no FCP block and the L:var not yet cached) must press, never refuse on a guess.</summary>
+    [Theory]
+    [InlineData(null, true, false)]
+    [InlineData(null, false, false)]
+    [InlineData(true, true, true)]
+    [InlineData(false, false, true)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    public void SpeedAlready_IsTrueOnlyWhenTheKnownRingEqualsTheTarget(bool? isFmsNow, bool wantFms, bool already)
+        => Assert.Equal(already, A220FcpKeys.SpeedAlready(isFmsNow, wantFms));
+
     [Theory]
     [InlineData(A220FcpKeys.Act.SpeedFms, "Already FMS speed.")]
     [InlineData(A220FcpKeys.Act.SpeedManual, "Already manual speed.")]

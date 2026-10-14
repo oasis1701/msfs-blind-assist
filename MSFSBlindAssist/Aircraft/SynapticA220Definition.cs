@@ -626,6 +626,16 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
     }
 
     /// <summary>
+    /// Whether the speed ring is in FMS speed, or null when nothing says: no FCP block with a
+    /// selected speed AND the ring's L:var not yet cached. <see cref="IsFmsSpeed"/> alone
+    /// defaults an uncached ring to manual, which is a guess; the push/pull key's "already"
+    /// check and its read-back both go through this, so neither speaks a state from a default.
+    /// </summary>
+    private bool? KnownFmsSpeed(SimConnectManager simConnect)
+        => LatestFcp?.spd_sel_ias != null || Cached(simConnect, "A22X_FG_SPEED_MODE", -1) >= 0
+            ? IsFmsSpeed(simConnect) : null;
+
+    /// <summary>
     /// One FCU push/pull key on the A220 FCP (A220FcpKeys). Mode buttons TOGGLE, so an
     /// engaged target is never pressed ("FLC already engaged."); every press is followed by
     /// speech — mode presses through AnnounceModeResult ([A220-6]), the speed ring and the
@@ -636,7 +646,7 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
         string? modeKey = A220FcpKeys.ModeKey(act);
         double? state = modeKey == null ? null : Cached(simConnect, modeKey, -1);
         bool speed = act is A220FcpKeys.Act.SpeedFms or A220FcpKeys.Act.SpeedManual;
-        if (speed && IsFmsSpeed(simConnect) == (act == A220FcpKeys.Act.SpeedFms)
+        if (speed && A220FcpKeys.SpeedAlready(KnownFmsSpeed(simConnect), act == A220FcpKeys.Act.SpeedFms)
             || !speed && !A220FcpKeys.ShouldPress(act, state))
         {
             announcer.AnnounceImmediate(A220FcpKeys.AlreadyText(act));
@@ -655,10 +665,8 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
                     {
                         await System.Threading.Tasks.Task.Delay(1300);
                         var fcp = LatestFcp;
-                        bool? isFms = fcp?.spd_sel_ias != null || Cached(simConnect, "A22X_FG_SPEED_MODE", -1) >= 0
-                            ? IsFmsSpeed(simConnect) : null;
                         announcer.AnnounceImmediate(A220FcpKeys.SpeedResult(
-                            wantFms, isFms, fcp?.spd_sel_ias, fcp?.spd_sel_mach, IsMachSpeed(simConnect)));
+                            wantFms, KnownFmsSpeed(simConnect), fcp?.spd_sel_ias, fcp?.spd_sel_mach, IsMachSpeed(simConnect)));
                     }
                     catch { }
                 });
