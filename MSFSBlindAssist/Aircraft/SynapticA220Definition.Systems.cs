@@ -313,16 +313,40 @@ public partial class SynapticA220Definition
     private volatile bool _bridgeResendPending;
 
     /// <summary>Raise <see cref="CommBusValueChanged"/> when the value differs from the last one
-    /// sent, or always with <paramref name="force"/>.</summary>
+    /// sent, or always with <paramref name="force"/>; never while the key is held
+    /// (<see cref="HoldBridge"/>).</summary>
     internal void EmitBridgeValue(string key, double value, bool force = false)
     {
         lock (_bridged)
         {
+            if (_bridgeHolds.ContainsKey(key)) return;   // a write for this control is in flight
             if (!force && _bridged.TryGetValue(key, out double last) && Math.Abs(last - value) < 1e-9) return;
             _bridged[key] = value;
         }
         try { CommBusValueChanged?.Invoke(key, value); }
         catch (Exception ex) { Utils.Logging.Log.Debug("A220", $"CommBus bridge {key}: {ex.Message}"); }
+    }
+
+    // A key's emissions are HELD while a write for its control is in flight: MainForm sets a
+    // snapshot value straight onto the combo (UpdateControlFromSimVar has no just-set or focus
+    // guard), so an emission between two arrow presses would snap the combo back to an
+    // intermediate value under the pilot's key. A count, not a flag: overlapping writes each hold
+    // the key, and it opens only when the last one is judged. Held values are not recorded as
+    // sent, and the write's own ResendBridge() sends the truth once the hold opens.
+    private readonly Dictionary<string, int> _bridgeHolds = new();
+
+    internal void HoldBridge(string key)
+    {
+        lock (_bridged) _bridgeHolds[key] = (_bridgeHolds.TryGetValue(key, out int n) ? n : 0) + 1;
+    }
+
+    internal void ReleaseBridge(string key)
+    {
+        lock (_bridged)
+        {
+            if (!_bridgeHolds.TryGetValue(key, out int n) || n <= 1) _bridgeHolds.Remove(key);
+            else _bridgeHolds[key] = n - 1;
+        }
     }
 
     /// <summary>After a write the aircraft refused (or a combo pick that may not have landed),
@@ -334,8 +358,8 @@ public partial class SynapticA220Definition
         bool force = _bridgeResendPending;
         _bridgeResendPending = false;
         void Emit(string key, double? value) { if (value is { } v) EmitBridgeValue(key, v, force); }
-        Emit("A22X_XPDR_MODE", sys.atc?.mode);
-        Emit("A22X_TCAS_ALT_LIMIT", sys.atc?.tss_limits_sel);
+        Emit(XpdrModeKey, sys.atc?.mode);
+        Emit(TcasLimitKey, sys.atc?.tss_limits_sel);
         Emit("A22X_XPDR_CODE_BUS", sys.atc?.code);
     }
 }

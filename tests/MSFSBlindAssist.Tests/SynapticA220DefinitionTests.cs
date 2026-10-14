@@ -407,6 +407,175 @@ public class SynapticA220DefinitionTests
         var atc = busCode is { } c ? new A220Systems.AtcBlock { code = c } : null;
         Assert.Equal(expected, SynapticA220Definition.SquawkReading(atc, stockWord));
     }
+
+    // ---- The write paths against a scripted display agent -----------------------------------
+    // The real link is a Coherent socket, so these drive the verdict logic through the definition's
+    // AgentCallOverride seam: write calls answer SENT, sys() answers the scripted ATC Data.
+
+    private sealed class ScriptedAgent
+    {
+        public Func<string?> Sys { get; init; } = () => "{}";
+        public Task<string?> Call(string call) => Task.FromResult(call == "sys()" ? Sys() : "SENT");
+    }
+
+    private static (SynapticA220Definition Def, SpeechCapture Speech) Scripted(string? sysJson)
+    {
+        var agent = new ScriptedAgent { Sys = () => sysJson };
+        var def = new SynapticA220Definition
+        {
+            AgentCallOverride = agent.Call,
+            PollIntervalMs = 5,
+            PollTimeoutCapMs = 150
+        };
+        return (def, new SpeechCapture());
+    }
+
+    private static string Atc(string fields) => "{\"atc\":{" + fields + "}}";
+
+    // A missing ATC block is "not confirmed", never a success and never a guess ("cleared",
+    // "reads empty"): FlightIdLanded("00000000", null) is true, so the poll and the verdict both
+    // have to insist on a block.
+    [Theory]
+    [InlineData("00000000", "{}")]            // a clear, the store is stale
+    [InlineData("BAW123", "{}")]              // a set, the store is stale
+    [InlineData("00000000", null)]            // a clear, the agent answers nothing at all
+    [InlineData("BAW123", null)]
+    public async Task FlightId_WithNoAtcBlock_IsNotConfirmed_NeverClearedOrReadAsEmpty(string id, string? sysJson)
+    {
+        var (def, speech) = Scripted(sysJson);
+        await def.SetFlightIdAsync(id, speech);
+        Assert.Equal(new[] { "Flight ID not confirmed: the A220 display link is not connected." }, speech.All);
+    }
+
+    [Fact]
+    public async Task FlightId_ReadBack_SpeaksWhatTheAircraftKept()
+    {
+        var set = Scripted(Atc("\"id\":\"BAW123\""));
+        await set.Def.SetFlightIdAsync("BAW123", set.Speech);
+        Assert.Equal(new[] { "Flight ID BAW123" }, set.Speech.All);
+
+        var cleared = Scripted(Atc("\"id\":\"00000000\""));
+        await cleared.Def.SetFlightIdAsync("00000000", cleared.Speech);
+        Assert.Equal(new[] { "Flight ID cleared" }, cleared.Speech.All);
+
+        var stuck = Scripted(Atc("\"id\":\"OLD1\""));
+        await stuck.Def.SetFlightIdAsync("00000000", stuck.Speech);
+        Assert.Equal(new[] { "Flight ID did not change — reads OLD1." }, stuck.Speech.All);
+
+        var blank = Scripted(Atc("\"mode\":2"));   // a block that carries no ID: the ID reads empty
+        await blank.Def.SetFlightIdAsync("BAW123", blank.Speech);
+        Assert.Equal(new[] { "Flight ID did not change — reads empty." }, blank.Speech.All);
+
+        var echoed = Scripted(Atc("\"id\":\"00000000\""));   // the cleared marker is empty too
+        await echoed.Def.SetFlightIdAsync("BAW123", echoed.Speech);
+        Assert.Equal(new[] { "Flight ID did not change — reads empty." }, echoed.Speech.All);
+    }
+
+    // ---- Latest write wins: arrowing through a combo starts overlapping writes ----------------
+    // Every arrow press commits and writes. A write the pilot has already moved past reads the
+    // aircraft, sees the LATER pick, and used to speak "did not change — still ..." about a value
+    // nobody was asking for any more.
+
+    [Fact]
+    public async Task OverlappingModeWrites_OnlyTheLatestOneIsJudged()
+    {
+        var (def, speech) = Scripted(Atc("\"mode\":2"));          // the second pick landed; STBY was never seen
+        var first = def.SetXpdrModeAsync(1, speech);              // AUTO -> STBY ...
+        var second = def.SetXpdrModeAsync(2, speech);             // ... on to TA/RA before the first is read back
+        await Task.WhenAll(first, second);
+        Assert.Empty(speech.All);                                 // success is silent; no false failure
+    }
+
+    [Fact]
+    public async Task OverlappingModeWrites_TheLatestStillReportsItsOwnFailure_Once()
+    {
+        var (def, speech) = Scripted(Atc("\"mode\":0"));          // the aircraft took neither
+        await Task.WhenAll(def.SetXpdrModeAsync(1, speech), def.SetXpdrModeAsync(2, speech));
+        Assert.Equal(new[] { "Transponder mode did not change — still AUTO." }, speech.All);
+    }
+
+    [Fact]
+    public async Task OverlappingAltitudeLimitWrites_OnlyTheLatestOneIsJudged()
+    {
+        var (def, speech) = Scripted(Atc("\"mode\":2,\"tss_limits_sel\":2"));
+        await Task.WhenAll(def.SetTcasAltLimitAsync(1, speech), def.SetTcasAltLimitAsync(2, speech));
+        Assert.Empty(speech.All);
+    }
+
+    [Fact]
+    public async Task OverlappingSquawkWrites_TheSupersededOneNeitherSpeaksNorFallsBackToTheStockEvent()
+    {
+        var (def, speech) = Scripted(Atc("\"code\":1200"));       // the second entry landed
+        var sim = new SimConnectManager(IntPtr.Zero);             // never connected: sends nothing
+        await Task.WhenAll(def.SetSquawkAsync(4321, sim, speech), def.SetSquawkAsync(1200, sim, speech));
+        Assert.Equal(new[] { "Squawk 1200" }, speech.All);        // exactly once; the first said nothing
+    }
+
+    [Fact]
+    public async Task OverlappingFlightIdWrites_OnlyTheLatestOneIsJudged()
+    {
+        var (def, speech) = Scripted(Atc("\"id\":\"BAW2\""));
+        await Task.WhenAll(def.SetFlightIdAsync("BAW1", speech), def.SetFlightIdAsync("BAW2", speech));
+        Assert.Equal(new[] { "Flight ID BAW2" }, speech.All);
+    }
+
+    // The squawk fallback end to end: the bus never shows the code, the stock event goes out, and
+    // the failure names what the transponder really reads.
+    [Fact]
+    public async Task Squawk_ThatNeverLands_NamesWhatTheTransponderReads()
+    {
+        var (def, speech) = Scripted(Atc("\"code\":1200"));
+        await def.SetSquawkAsync(4321, new SimConnectManager(IntPtr.Zero), speech);
+        Assert.Equal(new[] { "Squawk not set — the transponder reads 1200." }, speech.All);
+    }
+
+    // ---- The bridge holds a control's key while its write is in flight --------------------------
+    // MainForm sets a snapshot value straight onto the combo (UpdateControlFromSimVar has no
+    // just-set or focus guard), so an emission mid-write would snap the combo to an intermediate
+    // value under the pilot's arrow key.
+
+    [Fact]
+    public void Bridge_HoldsAKey_WhileItsWriteIsInFlight_AndOnlyThatKey()
+    {
+        var def = new SynapticA220Definition();
+        var seen = new List<(string Key, double Value)>();
+        def.CommBusValueChanged += (k, v) => seen.Add((k, v));
+
+        def.HoldBridge("A22X_XPDR_MODE");
+        def.EmitBridgeValue("A22X_XPDR_MODE", 1);
+        def.EmitBridgeValue("A22X_XPDR_MODE", 2, force: true);       // force does not pierce a hold
+        def.EmitBridgeValue("A22X_TCAS_ALT_LIMIT", 3);
+        Assert.Equal(new[] { ("A22X_TCAS_ALT_LIMIT", 3.0) }, seen);
+
+        def.HoldBridge("A22X_XPDR_MODE");                           // a second write overlaps the first
+        def.ReleaseBridge("A22X_XPDR_MODE");
+        def.EmitBridgeValue("A22X_XPDR_MODE", 2);
+        Assert.Single(seen);                                        // still held: one write is in flight
+
+        def.ReleaseBridge("A22X_XPDR_MODE");
+        def.EmitBridgeValue("A22X_XPDR_MODE", 2);
+        Assert.Equal(("A22X_XPDR_MODE", 2.0), seen[^1]);            // released: the truth goes out
+    }
+
+    [Fact]
+    public async Task ModeWrite_HoldsTheBridgeUntilItIsJudged_ThenResendsTheTruth()
+    {
+        var def = new SynapticA220Definition { PollIntervalMs = 5, PollTimeoutCapMs = 150 };
+        var speech = new SpeechCapture();
+        var seen = new List<(string Key, double Value)>();
+        def.CommBusValueChanged += (k, v) => seen.Add((k, v));
+        def.AgentCallOverride = call =>
+        {
+            // Mid-write the pump delivers an old value: the held key must not reach the combo.
+            if (call == "sys()") def.EmitBridgeValue("A22X_XPDR_MODE", 1);
+            return Task.FromResult<string?>(call == "sys()" ? Atc("\"mode\":2") : "SENT");
+        };
+        await def.SetXpdrModeAsync(2, speech);
+        Assert.DoesNotContain(seen, e => e.Key == "A22X_XPDR_MODE");
+        def.ProcessSystems(new A220Systems.SystemsBlocks { atc = new A220Systems.AtcBlock { mode = 2 } });
+        Assert.Contains(("A22X_XPDR_MODE", 2.0), seen);             // released and forced: the truth
+        Assert.Empty(speech.All);
+    }
 }
 
 [Collection("SettingsManagerGlobalState")]

@@ -24,8 +24,8 @@ public partial class SynapticA220Definition
     {
         switch (varKey)
         {
-            case "A22X_XPDR_MODE": _ = SetXpdrModeAsync((int)Math.Round(value), announcer); return true;
-            case "A22X_TCAS_ALT_LIMIT": _ = SetTcasAltLimitAsync((int)Math.Round(value), announcer); return true;
+            case XpdrModeKey: _ = SetXpdrModeAsync((int)Math.Round(value), announcer); return true;
+            case TcasLimitKey: _ = SetTcasAltLimitAsync((int)Math.Round(value), announcer); return true;
             case "A22X_XPDR_CODE_SET": _ = SetSquawkAsync(value, simConnect, announcer); return true;
             case "A22X_XPDR_IDENT": _ = IdentAsync(simConnect, announcer); return true;
             case "A22X_XPDR_FLIGHT_ID": ShowFlightIdDialog(announcer); return true;
@@ -35,26 +35,63 @@ public partial class SynapticA220Definition
 
     // ---- agent plumbing --------------------------------------------------------------
 
-    private async Task<bool> AgentSendAsync(string call) => await DisplaysAgentCallAsync(call) == "SENT";
+    // Test seams: the real display link is a Coherent socket, so the write paths' verdict logic
+    // is exercised against a scripted agent with a short poll (production leaves all three alone).
+    internal Func<string, Task<string?>>? AgentCallOverride;
+    internal int PollIntervalMs = 250;
+    internal int PollTimeoutCapMs = int.MaxValue;
 
-    private async Task<bool> AgentWriteAsync(string call, ScreenReaderAnnouncer announcer, string what)
+    private Task<string?> AgentCallAsync(string call)
+        => AgentCallOverride is { } over ? over(call) : DisplaysAgentCallAsync(call);
+
+    private async Task<bool> AgentSendAsync(string call) => await AgentCallAsync(call) == "SENT";
+
+    /// <summary>Send a write; a refusal is spoken unless the write has been
+    /// <paramref name="superseded"/> (a superseded write speaks nothing).</summary>
+    private async Task<bool> AgentWriteAsync(string call, ScreenReaderAnnouncer announcer, string what,
+        Func<bool>? superseded = null)
     {
         if (await AgentSendAsync(call)) return true;
-        announcer.AnnounceImmediate($"{what} not set: the A220 display link is not connected.");
+        if (superseded?.Invoke() != true)
+            announcer.AnnounceImmediate($"{what} not set: the A220 display link is not connected.");
         return false;
     }
 
+    /// <summary>
+    /// LATEST WRITE WINS, per control. A combo commits on every arrow press, so arrowing AUTO,
+    /// STBY, TA/RA starts overlapping writes. Each write takes a generation when it starts and
+    /// asks <see cref="IsCurrent"/> before it speaks or does anything else: a write the pilot has
+    /// already moved past reads back a LATER pick, so judging it would report a failure about a
+    /// value nobody is asking for any more (and a squawk's stock fallback would overwrite the
+    /// newer code). A superseded write drops its verdict silently.
+    /// </summary>
+    private sealed class LatestWrite
+    {
+        private int _generation;
+        public int Begin() => Interlocked.Increment(ref _generation);
+        public bool IsCurrent(int generation) => Volatile.Read(ref _generation) == generation;
+    }
+
+    private readonly LatestWrite _modeWrites = new(), _limitWrites = new(), _squawkWrites = new(), _flightIdWrites = new();
+
+    /// <summary>The bridge keys of the two bus combos (the keys are also their panel controls').</summary>
+    internal const string XpdrModeKey = "A22X_XPDR_MODE";
+    internal const string TcasLimitKey = "A22X_TCAS_ALT_LIMIT";
+
     /// <summary>Read the systems blocks straight off the agent every 250 ms until
-    /// <paramref name="done"/> holds or <paramref name="timeoutMs"/> passes; returns the last
-    /// blocks read (null if none). Each read also refreshes <see cref="LatestSystems"/>.</summary>
-    internal async Task<A220Systems.SystemsBlocks?> PollSystemsUntilAsync(Func<A220Systems.SystemsBlocks, bool> done, int timeoutMs = 2500)
+    /// <paramref name="done"/> holds, <paramref name="timeoutMs"/> passes or the write is
+    /// <paramref name="superseded"/>; returns the last blocks read (null if none). Each read also
+    /// refreshes <see cref="LatestSystems"/>.</summary>
+    internal async Task<A220Systems.SystemsBlocks?> PollSystemsUntilAsync(Func<A220Systems.SystemsBlocks, bool> done,
+        int timeoutMs = 2500, Func<bool>? superseded = null)
     {
         A220Systems.SystemsBlocks? last = null;
-        long until = Environment.TickCount64 + timeoutMs;
+        long until = Environment.TickCount64 + Math.Min(timeoutMs, PollTimeoutCapMs);
         while (true)
         {
-            await Task.Delay(250);
-            var read = A220Systems.ParseSystems(await DisplaysAgentCallAsync("sys()"));
+            await Task.Delay(PollIntervalMs);
+            if (superseded?.Invoke() == true) return last;
+            var read = A220Systems.ParseSystems(await AgentCallAsync("sys()"));
             if (read != null)
             {
                 last = read;
@@ -71,21 +108,27 @@ public partial class SynapticA220Definition
     /// the transponder kept and the combo is re-sent the truth.</summary>
     internal async Task SetXpdrModeAsync(int mode, ScreenReaderAnnouncer announcer)
     {
+        int generation = _modeWrites.Begin();
+        bool Superseded() => !_modeWrites.IsCurrent(generation);
+        HoldBridge(XpdrModeKey);   // the combo is not re-set under the pilot's arrow key while this is in flight
         try
         {
-            if (await AgentWriteAsync($"atcAction({A220Systems.AtcSetModeJson(mode)})", announcer, "Transponder mode"))
+            if (await AgentWriteAsync($"atcAction({A220Systems.AtcSetModeJson(mode)})", announcer, "Transponder mode", Superseded))
             {
-                var after = await PollSystemsUntilAsync(s => s.atc?.mode == mode);
-                if (A220Systems.XpdrModeFailure(mode, after?.atc) is { } fail) announcer.AnnounceImmediate(fail);
+                var after = await PollSystemsUntilAsync(s => s.atc?.mode == mode, superseded: Superseded);
+                if (!Superseded() && A220Systems.XpdrModeFailure(mode, after?.atc) is { } fail) announcer.AnnounceImmediate(fail);
             }
         }
         catch (Exception ex) { Utils.Logging.Log.Warn("A220", $"SetXpdrModeAsync: {ex.Message}"); }
-        finally { ResendBridge(); }
+        finally { ReleaseBridge(XpdrModeKey); ResendBridge(); }
     }
 
     /// <summary>ALT LIMIT combo: refused while the mode is AUTO, as the CNS dialog disables it.</summary>
     internal async Task SetTcasAltLimitAsync(int limits, ScreenReaderAnnouncer announcer)
     {
+        int generation = _limitWrites.Begin();
+        bool Superseded() => !_limitWrites.IsCurrent(generation);
+        HoldBridge(TcasLimitKey);
         try
         {
             if (LatestSystems?.atc?.mode == 0)
@@ -93,18 +136,20 @@ public partial class SynapticA220Definition
                 announcer.AnnounceImmediate("The TCAS altitude limit cannot be changed in AUTO. Select TA/RA or TA ONLY first.");
                 return;
             }
-            if (await AgentWriteAsync($"atcAction({A220Systems.AtcSetLimitsJson(limits)})", announcer, "TCAS altitude limit"))
+            if (await AgentWriteAsync($"atcAction({A220Systems.AtcSetLimitsJson(limits)})", announcer, "TCAS altitude limit", Superseded))
             {
-                var after = await PollSystemsUntilAsync(s => s.atc?.tss_limits_sel == limits);
-                if (A220Systems.AltLimitFailure(limits, after?.atc) is { } fail) announcer.AnnounceImmediate(fail);
+                var after = await PollSystemsUntilAsync(s => s.atc?.tss_limits_sel == limits, superseded: Superseded);
+                if (!Superseded() && A220Systems.AltLimitFailure(limits, after?.atc) is { } fail) announcer.AnnounceImmediate(fail);
             }
         }
         catch (Exception ex) { Utils.Logging.Log.Warn("A220", $"SetTcasAltLimitAsync: {ex.Message}"); }
-        finally { ResendBridge(); }
+        finally { ReleaseBridge(TcasLimitKey); ResendBridge(); }
     }
 
     /// <summary>Squawk entry: the bus SetCode first, verified on ATC Data; only if that does not
-    /// land, the stock XPNDR_SET (BCD16) as every other aircraft sets it, verified again.</summary>
+    /// land, the stock XPNDR_SET (BCD16) as every other aircraft sets it, verified again. A newer
+    /// entry supersedes this one at every step, and a superseded entry never fires the stock
+    /// fallback (it would overwrite the newer code).</summary>
     internal async Task SetSquawkAsync(double value, SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
         try
@@ -114,13 +159,18 @@ public partial class SynapticA220Definition
                 announcer.AnnounceImmediate("A squawk is four digits, each 0 to 7.");
                 return;
             }
+            int generation = _squawkWrites.Begin();
+            bool Superseded() => !_squawkWrites.IsCurrent(generation);
             if (await AgentSendAsync($"atcAction({A220Systems.AtcSetCodeJson(code)})"))
             {
-                var bus = await PollSystemsUntilAsync(s => s.atc?.code == code, 2000);
+                var bus = await PollSystemsUntilAsync(s => s.atc?.code == code, 2000, Superseded);
+                if (Superseded()) return;
                 if (bus?.atc?.code == code) { announcer.AnnounceImmediate($"Squawk {text}"); return; }
             }
+            if (Superseded()) return;
             FireKeyEvent(simConnect, "XPNDR_SET", A220Systems.SquawkToBcd16(code));
-            var stock = await PollSystemsUntilAsync(s => s.atc?.code == code, 2500);
+            var stock = await PollSystemsUntilAsync(s => s.atc?.code == code, 2500, Superseded);
+            if (Superseded()) return;
             double stockWord = Cached(simConnect, "A22X_XPDR_CODE", double.NaN);
             announcer.AnnounceImmediate(SquawkLanded(code, stock?.atc, stockWord)
                 ? $"Squawk {text}"
@@ -212,15 +262,28 @@ public partial class SynapticA220Definition
 
     internal async Task SetFlightIdAsync(string id, ScreenReaderAnnouncer announcer)
     {
+        int generation = _flightIdWrites.Begin();
+        bool Superseded() => !_flightIdWrites.IsCurrent(generation);
         try
         {
-            if (!await AgentWriteAsync($"atcAction({A220Systems.AtcSetIdJson(id)})", announcer, "Flight ID")) return;
-            var after = await PollSystemsUntilAsync(s => A220Systems.FlightIdLanded(id, s.atc?.id));
-            bool cleared = id == "00000000";
-            announcer.AnnounceImmediate(A220Systems.FlightIdLanded(id, after?.atc?.id)
-                ? (cleared ? "Flight ID cleared" : $"Flight ID {id}")
-                : $"Flight ID did not change — reads {(string.IsNullOrEmpty(after?.atc?.id) ? "empty" : after!.atc!.id)}.");
+            if (!await AgentWriteAsync($"atcAction({A220Systems.AtcSetIdJson(id)})", announcer, "Flight ID", Superseded)) return;
+            // A block is required: FlightIdLanded("00000000", null) is true (an absent ID reads as
+            // cleared), so without one a clear would "land" on a stale store.
+            var after = await PollSystemsUntilAsync(s => s.atc != null && A220Systems.FlightIdLanded(id, s.atc.id),
+                superseded: Superseded);
+            if (Superseded()) return;
+            announcer.AnnounceImmediate(FlightIdVerdict(id, after?.atc));
         }
         catch (Exception ex) { Utils.Logging.Log.Warn("A220", $"SetFlightIdAsync: {ex.Message}"); }
+    }
+
+    /// <summary>What a flight-ID write is reported as. No ATC block means nothing was read back:
+    /// "not confirmed", never "cleared" and never a guess at what the ID reads.</summary>
+    internal static string FlightIdVerdict(string id, A220Systems.AtcBlock? after)
+    {
+        if (after == null) return "Flight ID not confirmed: the A220 display link is not connected.";
+        if (A220Systems.FlightIdLanded(id, after.id)) return id == "00000000" ? "Flight ID cleared" : $"Flight ID {id}";
+        string reads = A220Systems.FlightIdLanded("00000000", after.id) ? "empty" : after.id!;
+        return $"Flight ID did not change — reads {reads}.";
     }
 }
