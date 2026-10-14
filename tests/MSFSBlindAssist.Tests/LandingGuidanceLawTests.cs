@@ -612,4 +612,20 @@ public class LandingGuidanceLawTests
             prev = now;
         }
     }
+
+    // The rollout's intercept crab (Takeoff Assist's law, the landing assist's shipped constants):
+    // nothing inside 8 ft, then 0.1° per foot toward the centerline, capped at 10°. An aircraft LEFT
+    // of the centerline (+ cross-track) is commanded a heading RIGHT of the runway (+ crab), so the
+    // pan steers it back; the mirror case steers left.
+    [Theory]
+    [InlineData(0.0, 0.0)]
+    [InlineData(8.0, 0.0)]
+    [InlineData(18.0, 1.0)]
+    [InlineData(-18.0, -1.0)]
+    [InlineData(200.0, 10.0)]
+    [InlineData(-200.0, -10.0)]
+    public void CenterlineInterceptCrab_HasADeadbandASlopeACapAndSteersBack(double crossTrackFeet, double expectedDeg)
+    {
+        Assert.Equal(expectedDeg, LandingGuidanceLaws.CenterlineInterceptCrabDeg(crossTrackFeet, 8.0, 0.1, 10.0), precision: 9);
+    }
 }
