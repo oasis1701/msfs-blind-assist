@@ -499,8 +499,10 @@ internal static partial class A220Systems
         return $"{lever}. Gear {FormatGear(g)}. Brake temperatures {FormatBrakeTemps(g)}.";
     }
 
-    /// <summary>Gear call-outs on a change of phase. Baseline-first, and an Unknown phase
-    /// (unpowered, "--") is a baseline too: powering up is not a gear movement.</summary>
+    /// <summary>Gear call-outs on a change of phase. Baseline-first, and an Unknown FIRST
+    /// observation (unpowered, "--") is a baseline too: powering up is not a gear movement.
+    /// Once a known phase is the baseline an Unknown poll (a "--" hiccup) never replaces it, so
+    /// Down, Unknown, Transit still speaks the change.</summary>
     internal sealed class GearMonitor
     {
         private GearPhase? _prev;
@@ -509,9 +511,14 @@ internal static partial class A220Systems
         {
             if (g == null) return null;
             var phase = Phase(g);
+            if (phase == GearPhase.Unknown)
+            {
+                _prev ??= phase;
+                return null;
+            }
             var prev = _prev;
             _prev = phase;
-            if (prev == null || prev == GearPhase.Unknown || prev == phase || phase == GearPhase.Unknown) return null;
+            if (prev == null || prev == GearPhase.Unknown || prev == phase) return null;
             string detail = FormatGear(g);
             return phase switch
             {
@@ -717,7 +724,9 @@ internal static partial class A220Systems
     };
 
     /// <summary>"IRS aligning" on entering alignment, "IRS aligned" when it completes.
-    /// Baseline-first; a poll with neither block (haveData false) changes nothing.</summary>
+    /// Baseline-first; a poll with neither block (haveData false) changes nothing, and neither
+    /// does an Unknown status once a baseline exists (one block missing reads Unknown), so
+    /// Aligning, Unknown, Aligned still speaks "IRS aligned".</summary>
     internal sealed class IrsMonitor
     {
         private IrsPhase? _prev;
@@ -725,6 +734,7 @@ internal static partial class A220Systems
         public string? Observe(IrsStatus s, bool haveData)
         {
             if (!haveData) return null;
+            if (s.Phase == IrsPhase.Unknown && _prev != null) return null;
             var prev = _prev;
             _prev = s.Phase;
             if (prev == null || prev == s.Phase) return null;

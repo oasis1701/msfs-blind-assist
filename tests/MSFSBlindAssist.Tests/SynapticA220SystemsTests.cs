@@ -228,6 +228,22 @@ public class SynapticA220SystemsTests
         Assert.Equal("Gear in transit", mon.Observe(Gear(0, 2, 2)));
     }
 
+    [Fact]
+    public void GearMonitor_AnUnknownPoll_NeverReplacesAKnownBaseline()
+    {
+        var mon = new GearMonitor();
+        Assert.Null(mon.Observe(Gear(2, 2, 2)));                  // baseline: down
+        Assert.Null(mon.Observe(Gear(null, null, null)));         // one "--" poll (data hiccup)
+        Assert.Equal("Gear in transit", mon.Observe(Gear(0, 2, 2)));   // the real change is still spoken
+        Assert.Null(mon.Observe(Gear(null, 0, 0)));
+        Assert.Equal("Gear up", mon.Observe(Gear(1, 1, 1, colour: 2)));
+
+        var same = new GearMonitor();
+        same.Observe(Gear(2, 2, 2));
+        same.Observe(Gear(null, null, null));
+        Assert.Null(same.Observe(Gear(2, 2, 2)));                 // back to the same phase: nothing moved
+    }
+
     // ---- Doors (Synoptic Door.tsx: 3 closed, 1 open/filled, 0/2 by colour) ---------
 
     [Fact]
@@ -368,26 +384,51 @@ public class SynapticA220SystemsTests
         Assert.Null(mon.Observe(unknown, haveData: true));
         Assert.Equal("IRS aligning", mon.Observe(aligning, true));
         Assert.Null(mon.Observe(aligning, true));
-        Assert.Equal("IRS aligned", mon.Observe(aligned, true));
-        Assert.Null(mon.Observe(aligned, false));                 // a missing block changes nothing
+        Assert.Null(mon.Observe(aligned, false));                 // a missing block changes nothing, even if the status differs
+        Assert.Equal("IRS aligned", mon.Observe(aligned, true));  // so the change is still there to speak
+    }
+
+    [Fact]
+    public void IrsMonitor_AnUnknownPoll_NeverReplacesAKnownBaseline()
+    {
+        // One block missing (e.g. fmspos stale, PFD align flag already clear): Irs() reads Unknown,
+        // and that must not stand in for the Aligning baseline.
+        var unknown = Irs(new PfdBlock { align = false }, null);
+        Assert.Equal(IrsPhase.Unknown, unknown.Phase);
+        var aligning = Irs(null, Pos((1, 4.0)));
+        var aligned = Irs(null, Pos((3, null)));
+
+        var mon = new IrsMonitor();
+        Assert.Null(mon.Observe(aligning, true));                 // baseline: already aligning
+        Assert.Null(mon.Observe(unknown, true));
+        Assert.Equal("IRS aligned", mon.Observe(aligned, true));  // the one call that matters
+
+        var again = new IrsMonitor();
+        again.Observe(aligning, true);
+        again.Observe(unknown, true);
+        Assert.Null(again.Observe(aligning, true));               // still aligning: no second "IRS aligning"
     }
 
     [Fact]
     public void Monitors_IgnoreAMissingBlock()
     {
+        // Each monitor is fed a CHANGED state after the null: a monitor that forgot its baseline
+        // on the null would see a first observation and stay silent.
         var gear = new GearMonitor();
         gear.Observe(Gear(2, 2, 2));
         Assert.Null(gear.Observe(null));
-        Assert.Null(gear.Observe(Gear(2, 2, 2)));
+        Assert.Equal("Gear in transit", gear.Observe(Gear(0, 2, 2)));
 
         var doors = new DoorMonitor();
         doors.Observe(Store<DoorsBlock>("A22X.Doors Data"));
         Assert.Empty(doors.Observe(null));
-        Assert.Empty(doors.Observe(Store<DoorsBlock>("A22X.Doors Data")));
+        var opened = Store<DoorsBlock>("A22X.Doors Data");
+        opened.fwd_pax = 1; opened.fwd_pax_armed = false;
+        Assert.Equal(new[] { "Forward passenger door open", "Forward passenger door disarmed" }, doors.Observe(opened));
 
         var eng = new EngineStartTracker();
         eng.Observe(Eng2(true, 2, 30));
         Assert.Empty(eng.Observe(null));
-        Assert.Empty(eng.Observe(Eng2(true, 2, 31)));
+        Assert.Equal(new[] { "Engine 2 start complete" }, eng.Observe(Eng2(false, 0, 64)));
     }
 }
