@@ -9,13 +9,18 @@ namespace MSFSBlindAssist.FirstOfficer;
 /// <item>never seen yet: fires at ≥ <see cref="FlyingMinAglFt"/> and ≥ <see cref="FlyingMinIasKt"/>;
 /// lower or slower waits (the window opened just after liftoff), on the ground it never fires;</item>
 /// <item>seen on the ground: fires only if, within <see cref="PutInAirWindow"/> of the first airborne
-/// sample, it reads ≥ <see cref="PutInAirMinAglFt"/> and ≥ <see cref="FlyingMinIasKt"/> — put into the
-/// air, not climbed there (the first airborne sample after a flight load can still carry the old
-/// ground AGL, hence a window, not one sample); after the window it was a takeoff;</item>
-/// <item>unknown AGL or IAS (NaN) changes nothing.</item>
+/// sample AT FLYING SPEED (AGL and IAS both known, IAS ≥ <see cref="FlyingMinIasKt"/>), it reads
+/// ≥ <see cref="PutInAirMinAglFt"/> and ≥ <see cref="FlyingMinIasKt"/> — put into the air, not climbed
+/// there (the first airborne sample after a flight load can still carry the old ground AGL, hence a
+/// window, not one sample); after the window it was a takeoff. Airborne samples that are unknown or
+/// slower than <see cref="FlyingMinIasKt"/> neither start nor advance the window: a flight load can
+/// deliver zeroed samples (not on the ground, ~0 ft, 0 kt) for longer than the window before the real
+/// data lands, and a real takeoff is at flying speed from liftoff, so it is unaffected;</item>
+/// <item>unknown AGL or IAS (NaN) never fires and never starts the window.</item>
 /// </list>
 /// Thresholds are judgements: an airliner is far below 500 ft 5 s after liftoff, and the main
-/// menu or a parked aircraft reads on the ground or 0 kt. Not thread-safe: one caller thread.
+/// menu or a parked aircraft reads on the ground or 0 kt. The window is wall-clock time, so at a
+/// raised sim rate a watched takeoff could climb 500 ft inside it. Not thread-safe: one caller thread.
 /// </summary>
 public sealed class InFlightStartDetector
 {
@@ -27,18 +32,15 @@ public sealed class InFlightStartDetector
     private enum Seen { Unknown, OnGround, LeftGround, Airborne }
 
     private Seen _seen = Seen.Unknown;
-    private DateTime _leftGroundUtc;
+    // Set by the first airborne sample at flying speed after the ground; null until then.
+    private DateTime? _windowStartUtc;
 
     /// <summary>One sample. True exactly when the departure checklists should be marked now.</summary>
     public bool Update(bool onGround, double aglFt, double iasKt, DateTime nowUtc)
     {
-        if (onGround) { _seen = Seen.OnGround; return false; }
+        if (onGround) { _seen = Seen.OnGround; _windowStartUtc = null; return false; }
 
-        if (_seen == Seen.OnGround)
-        {
-            _seen = Seen.LeftGround;
-            _leftGroundUtc = nowUtc;
-        }
+        if (_seen == Seen.OnGround) _seen = Seen.LeftGround;
 
         if (double.IsNaN(aglFt) || double.IsNaN(iasKt)) return false;
 
@@ -49,8 +51,11 @@ public sealed class InFlightStartDetector
                 return false;
 
             case Seen.LeftGround:
-                if (nowUtc - _leftGroundUtc > PutInAirWindow) { _seen = Seen.Airborne; return false; }
-                if (aglFt >= PutInAirMinAglFt && iasKt >= FlyingMinIasKt) { _seen = Seen.Airborne; return true; }
+                // Slower than flying speed: neither starts nor advances the window.
+                if (iasKt < FlyingMinIasKt) return false;
+                _windowStartUtc ??= nowUtc;
+                if (nowUtc - _windowStartUtc.Value > PutInAirWindow) { _seen = Seen.Airborne; return false; }
+                if (aglFt >= PutInAirMinAglFt) { _seen = Seen.Airborne; return true; }
                 return false;
 
             default:

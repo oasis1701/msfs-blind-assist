@@ -793,7 +793,7 @@ read-backs, on all eight profiles) is marked complete and latched, as a finished
 and the First Officer says "In flight: checklists through After Takeoff marked complete." once,
 queued. Descent onwards stay open (owner: "Through After Takeoff"). A takeoff the window watched
 changes nothing; Reset Section / Reset All still work. `InFlightStartDetector` decides (flying at
-first sight, or 500 ft and 50 kt within 5 s of leaving the ground), `FoDepartureGroups` holds the
+first sight, or 500 ft and 50 kt within 5 s of the first flying-speed sample after the ground), `FoDepartureGroups` holds the
 departure and arrival group ids, `FirstOfficerForm` wires them (FO-22).
 
 In-sim check (owner runs): load a flight in cruise and open the First Officer window; hear the
