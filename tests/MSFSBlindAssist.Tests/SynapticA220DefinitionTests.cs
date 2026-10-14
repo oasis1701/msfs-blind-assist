@@ -1304,6 +1304,31 @@ public class SynapticA220SystemsSpeechTests : IDisposable
         Assert.Equal(A220Systems.NotAvailable, gap);
     }
 
+    // ---- A burst of new CAS messages is ONE interrupting utterance ----
+    // Every AnnounceImmediate cancels the speech before it, so one call per message left only the
+    // last (the lowest caution) audible and cut the warning off (TKO-5's "V1" cut off by "Rotate").
+
+    [Fact]
+    public void CasBurst_FromTheStore_IsOneInterruptingUtterance_WarningFirst()
+    {
+        var (def, speech) = Pump();
+        def.ProcessDisplaysSnapshot(Snap("[]", StoreMsg()));
+        def.ProcessDisplaysSnapshot(Snap("[]", StoreMsg(0, 243, 526)));   // L ENG FIRE, FMS PERF DEP CONFIG, EMER LTS OFF
+        Assert.Equal(new[] { "Warning: L ENG FIRE. Caution: EMER LTS OFF. Caution: FMS PERF DEP CONFIG" }, speech.Interrupts);
+        Assert.Equal(speech.Interrupts, speech.All);
+    }
+
+    [Fact]
+    public void CasBurst_FromTheScrape_IsOneInterruptingUtterance_AndTheRestStaysQueued()
+    {
+        var (def, speech) = Pump();
+        def.ProcessDisplaysSnapshot(Snap("[]"));
+        def.ProcessDisplaysSnapshot(Snap("[{\"t\":\"L ENG FIRE\",\"c\":\"red\"},{\"t\":\"EMER LTS OFF\",\"c\":\"amber\"},"
+            + "{\"t\":\"EXT PWR AVAIL\",\"c\":\"cyan\"}]"));
+        Assert.Equal(new[] { "Warning: L ENG FIRE. Caution: EMER LTS OFF" }, speech.Interrupts);
+        Assert.Equal(new[] { "Warning: L ENG FIRE. Caution: EMER LTS OFF", "Advisory: EXT PWR AVAIL" }, speech.All);
+    }
+
     [Fact]
     public void CasScrape_NeverSpeaksStatusLines_AndEachSeverityHonoursItsRow()
     {

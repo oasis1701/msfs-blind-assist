@@ -278,15 +278,20 @@ public partial class SynapticA220Definition
         catch { return null; }
     }
 
+    /// <summary>The immediate lines go out as ONE interrupting utterance, then the queued ones.
+    /// Every AnnounceImmediate cancels the speech before it, so one call per line left only the
+    /// last line of a burst audible (warnings come first, so the warning was the one cut off).</summary>
     private void Speak(A220DisplayParsing.Announcements ann)
     {
         if (ann.Queued.Count == 0 && ann.Immediate.Count == 0) return;
         var announcer = _announcer;
         if (announcer == null) return;
+        string immediate = string.Join(". ", ann.Immediate);
+        var queued = ann.Queued.ToList();
         Marshal(() =>
         {
-            foreach (var msg in ann.Immediate) announcer.AnnounceImmediate(msg);
-            foreach (var msg in ann.Queued) announcer.Announce(msg);
+            if (immediate.Length > 0) announcer.AnnounceImmediate(immediate);
+            foreach (var msg in queued) announcer.Announce(msg);
         });
     }
 
