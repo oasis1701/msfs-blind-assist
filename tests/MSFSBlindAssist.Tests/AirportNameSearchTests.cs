@@ -262,6 +262,24 @@ public sealed class AirportNameSearchTests
     }
 
     [Fact]
+    public void FromAircraft_gives_great_circle_distance_and_compass_direction()
+    {
+        var saved = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("de-DE");
+            // Arlanda to Landvetter, and to Kiruna (ESNQ 67.8222 N, 20.3368 E) to the north.
+            Assert.Matches(@"^21\d nm southwest$", AirportNameSearch.FromAircraft((59.6519, 17.9186), 57.6628, 12.2798));
+            Assert.Matches(@"^49\d nm north$", AirportNameSearch.FromAircraft((59.6519, 17.9186), 67.8222, 20.3368));
+            Assert.Equal("under 1 nm away", AirportNameSearch.FromAircraft((59.6519, 17.9186), 59.655, 17.92));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = saved;
+        }
+    }
+
+    [Fact]
     public void ReadAirports_reads_the_navdata_airport_table()
     {
         string path = Path.Combine(Path.GetTempPath(), $"airport-search-{Guid.NewGuid():N}.sqlite");

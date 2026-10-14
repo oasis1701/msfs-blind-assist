@@ -79,6 +79,7 @@ public partial class ElectronicFlightBagForm : Form
     private TextBox airportLookupIcaoTextBox = null!;
     private bool _settingAirportLookupIdent;
     private bool _airportSearchRunning;
+    private int _airportInfoRequest;
     private ListBox airportLookupRunwaysListBox = null!;
     private Button airportLookupLoadButton = null!;
     private TextBox airportInfoTextBox = null!;
@@ -1898,6 +1899,7 @@ public partial class ElectronicFlightBagForm : Form
         }
         else
         {
+            _airportInfoRequest++; // a position answering late must not refill the cleared box
             airportLookupRunwaysListBox.Items.Clear();
             airportInfoTextBox.Clear();
             runwayInfoTextBox.Clear();
@@ -1991,12 +1993,36 @@ public partial class ElectronicFlightBagForm : Form
         LoadRunwaysForAirportLookup(airport.Ident);
     }
 
+    // Fills the Airport Information box at once, then again with the FROM AIRCRAFT distance when the
+    // simulator answers with the aircraft's position (not connected: it stays without). A newer
+    // airport loaded meanwhile wins.
+    private void ShowAirportInfo(string icao)
+    {
+        int request = ++_airportInfoRequest;
+        airportInfoTextBox.Text = GetAirportDetailedInfo(icao);
+        _ = AddAirportInfoDistanceAsync(icao, request);
+    }
+
+    private async Task AddAirportInfoDistanceAsync(string icao, int request)
+    {
+        try
+        {
+            var position = await ReadOwnPositionAsync();
+            if (position == null || request != _airportInfoRequest || IsDisposed) return;
+            airportInfoTextBox.Text = GetAirportDetailedInfo(icao, (position.Lat, position.Lon));
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("EFB", $"Airport info distance for {icao} failed: {ex.Message}");
+        }
+    }
+
     private void LoadRunwaysForAirportLookup(string icao)
     {
         try
         {
             // Show airport info as soon as a complete ICAO is entered.
-            airportInfoTextBox.Text = GetAirportDetailedInfo(icao);
+            ShowAirportInfo(icao);
 
             var runways = _flightPlanManager.GetRunways(icao);
             airportLookupRunwaysListBox.Items.Clear();
@@ -2054,7 +2080,7 @@ public partial class ElectronicFlightBagForm : Form
             }
 
             // Load airport information
-            airportInfoTextBox.Text = GetAirportDetailedInfo(icao);
+            ShowAirportInfo(icao);
 
             // Load runway information if a runway is selected
             if (selectedRunway != null)
@@ -2075,7 +2101,9 @@ public partial class ElectronicFlightBagForm : Form
         }
     }
 
-    private string GetAirportDetailedInfo(string icao)
+    /// <summary>The Airport Information text. With the aircraft's position it has a FROM AIRCRAFT
+    /// section: where the airport lies from it ("212 nm southwest").</summary>
+    private string GetAirportDetailedInfo(string icao, (double Lat, double Lon)? aircraft = null)
     {
         var settings = SettingsManager.Current;
         string simulatorVersion = settings.SimulatorVersion ?? "FS2020";
@@ -2122,6 +2150,13 @@ public partial class ElectronicFlightBagForm : Form
                         sb.AppendLine($"  FAA:          {reader["faa"]?.ToString() ?? "N/A"}");
                         sb.AppendLine($"  Local:        {reader["local"]?.ToString() ?? "N/A"}");
                         sb.AppendLine();
+
+                        if (aircraft is { } at && reader["laty"] is not DBNull && reader["lonx"] is not DBNull)
+                        {
+                            sb.AppendLine("FROM AIRCRAFT:");
+                            sb.AppendLine($"  Distance:     {AirportNameSearch.FromAircraft(at, Convert.ToDouble(reader["laty"], System.Globalization.CultureInfo.InvariantCulture), Convert.ToDouble(reader["lonx"], System.Globalization.CultureInfo.InvariantCulture))}");
+                            sb.AppendLine();
+                        }
 
                         // Location
                         sb.AppendLine("LOCATION:");

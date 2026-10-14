@@ -236,13 +236,18 @@ public static class AirportNameSearch
         }
 
         if (aircraft is { } at)
-        {
-            double nm = LocationGeometry.GreatCircleNm(at.Lat, at.Lon, airport.Lat, airport.Lon);
-            parts.Add(nm < 1
-                ? "under 1 nm away"
-                : $"{Nm(nm)} {LocationPhrases.Direction(LocationGeometry.BearingTrue(at.Lat, at.Lon, airport.Lat, airport.Lon))}");
-        }
+            parts.Add(FromAircraft(at, airport.Lat, airport.Lon));
         return string.Join(", ", parts);
+    }
+
+    /// <summary>Where a point lies from the aircraft, great-circle: "212 nm southwest", or "under
+    /// 1 nm away". The search list and the Airport Information box both say it this way.</summary>
+    public static string FromAircraft((double Lat, double Lon) aircraft, double lat, double lon)
+    {
+        double nm = LocationGeometry.GreatCircleNm(aircraft.Lat, aircraft.Lon, lat, lon);
+        return nm < 1
+            ? "under 1 nm away"
+            : $"{Nm(nm)} {LocationPhrases.Direction(LocationGeometry.BearingTrue(aircraft.Lat, aircraft.Lon, lat, lon))}";
     }
 
     private static void AddDistinct(List<string> parts, params string[] values)
