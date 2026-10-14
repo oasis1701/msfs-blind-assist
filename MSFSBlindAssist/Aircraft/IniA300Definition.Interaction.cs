@@ -52,45 +52,51 @@ public partial class IniA300Definition
             : control.Kind == A300Kinds.Spring ? control.StateForPosition(control.Rest ?? 1)
             : value;
         bool sent = Execute(row, plan, simConnect, announcer, commanded);
-        if (sent && commanded is double target && control.Kind is A300Kinds.Toggle or A300Kinds.Command or A300Kinds.Selector)
+        if (!sent)
+            return true;   // refused, already there or unavailable: nothing was written, so nothing to watch or read back
+
+        if (commanded is double target && control.Kind is A300Kinds.Toggle or A300Kinds.Command or A300Kinds.Selector)
             _ = CheckMovedAsync(row, target, simConnect, announcer, ++_pickSeq);
-        if (sent && row.Action == A300RowAction.Press && A300PanelLamps.ByButton.TryGetValue(row.Key, out var ownLamp))
-            _pressedLampUntil[ownLamp] = Clock() + PressedLampMs;
-        // An autobrake button's label says its own armed segment ([A300-20]), so that light is left to it; its DECEL
-        // light and another level's armed light going out are not the press's own, and still speak.
-        if (sent && row.Action == A300RowAction.Press && A300Autobrake.ByButton.TryGetValue(row.Key, out var autobrake))
-            _pressedLampUntil[autobrake.ArmedLampId] = Clock() + PressedLampMs;
-        if (sent && control.Kind == A300Kinds.Spring && row.Action == A300RowAction.Set)
+        if (control.Kind == A300Kinds.Spring && row.Action == A300RowAction.Set)
             _ = ReReadAfterSpringAsync(row, value, simConnect, announcer, ++_pickSeq);
 
-        // An FCU knob step is read back once it lands ("Heading 271"): a numeric confirmation, as a
-        // typed value's is. The altitude window's own call-out is told it is an echo.
-        if (sent && row.Action is A300RowAction.Increase or A300RowAction.Decrease
-            && A300FcuWindows.ReadoutByKnob.TryGetValue(control.Key, out var readoutKey))
+        if (row.Action == A300RowAction.Press)
         {
-            if (readoutKey == A300Readouts.AltitudeKey)
-                _altitudeWindow.SuppressEcho(Clock());
-            _ = ReadBackAsync(simConnect, announcer, readoutKey, v => A300FcuWindows.Phrase(readoutKey, v, IsMach()));
+            // A light-labeled button's own light is left to its label ([CORE-7]).
+            if (A300PanelLamps.ByButton.TryGetValue(row.Key, out var ownLamp))
+                _pressedLampUntil[ownLamp] = Clock() + PressedLampMs;
+            // An autobrake button's label says its own armed segment ([A300-20]), so that light is left to it; its DECEL
+            // light and another level's armed light going out are not the press's own, and still speak.
+            if (A300Autobrake.ByButton.TryGetValue(row.Key, out var autobrake))
+                _pressedLampUntil[autobrake.ArmedLampId] = Clock() + PressedLampMs;
+            // A transfer's new frequency in use: the transfer switch picks a window, it does not swap them (A300Radios).
+            if (A300Radios.ByTransfer.TryGetValue(control.Key, out var radio))
+                _ = ReadBackWhenSettledAsync(simConnect, announcer, radio.Name,
+                    v => radio.TransferPhrase(v[0], v[1], v[2]), radio.Window1Key, radio.Window2Key, radio.TransferKey);
         }
-        // A flex temperature knob step, the same way ("Flex temperature 46 degrees", [A300-21]).
-        if (sent && row.Action is A300RowAction.Increase or A300RowAction.Decrease && control.Key == A300Trp.FlexKnobKey)
-            _ = ReadBackAsync(simConnect, announcer, A300Readouts.FlexTemperatureKey, A300Trp.FlexPhrase);
-        // Any other knob that reads back ("Landing elevation 50 feet").
-        if (sent && row.Action is A300RowAction.Increase or A300RowAction.Decrease
-            && A300Readouts.KnobReadBacks.TryGetValue(control.Key, out var readBack))
-            _ = ReadBackAsync(simConnect, announcer, readBack.Readout, readBack.Phrase);
-        // A VHF or ADF knob's window, named by its role now ("VHF 1 standby 124.805"), and a transfer's new frequency
-        // in use: the transfer switch picks a window, it does not swap them (A300Radios).
-        if (sent && row.Action is A300RowAction.Increase or A300RowAction.Decrease
-            && A300Radios.ByKnob.TryGetValue(control.Key, out var knob))
+
+        bool stepped = row.Action is A300RowAction.Increase or A300RowAction.Decrease;
+        if (stepped)
         {
-            string windowKey = knob.Window == 1 ? knob.Radio.Window1Key : knob.Radio.Window2Key;
-            _ = ReadBackWhenSettledAsync(simConnect, announcer, knob.Radio.Name,
-                v => knob.Radio.KnobPhrase(knob.Window, v[0], v[1]), windowKey, knob.Radio.TransferKey);
+            // An FCU knob step is read back once it lands ("Heading 271"): a numeric confirmation, as a
+            // typed value's is. The altitude window's own call-out is told it is an echo.
+            if (A300FcuWindows.ReadoutByKnob.TryGetValue(control.Key, out var readoutKey))
+            {
+                if (readoutKey == A300Readouts.AltitudeKey)
+                    _altitudeWindow.SuppressEcho(Clock());
+                _ = ReadBackAsync(simConnect, announcer, readoutKey, v => A300FcuWindows.Phrase(readoutKey, v, IsMach()));
+            }
+            // Any other knob that reads back ("Landing elevation 50 feet", "Flex temperature 46 degrees").
+            if (A300Readouts.KnobReadBacks.TryGetValue(control.Key, out var readBack))
+                _ = ReadBackAsync(simConnect, announcer, readBack.Readout, readBack.Phrase);
+            // A VHF or ADF knob's window, named by its role now ("VHF 1 standby 124.805") (A300Radios).
+            if (A300Radios.ByKnob.TryGetValue(control.Key, out var knob))
+            {
+                string windowKey = knob.Window == 1 ? knob.Radio.Window1Key : knob.Radio.Window2Key;
+                _ = ReadBackWhenSettledAsync(simConnect, announcer, knob.Radio.Name,
+                    v => knob.Radio.KnobPhrase(knob.Window, v[0], v[1]), windowKey, knob.Radio.TransferKey);
+            }
         }
-        if (sent && row.Action == A300RowAction.Press && A300Radios.ByTransfer.TryGetValue(control.Key, out var radio))
-            _ = ReadBackWhenSettledAsync(simConnect, announcer, radio.Name,
-                v => radio.TransferPhrase(v[0], v[1], v[2]), radio.Window1Key, radio.Window2Key, radio.TransferKey);
         return true;
     }
 

@@ -239,18 +239,9 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
                 },
                 _ => BuildRowVariable(row),
             };
-            if (A300FcuState.ByButton.TryGetValue(row.Key, out var buttonLight))
-                def.StateVariables = new[] { buttonLight.Key };
-            else if (A300Autobrake.ByButton.TryGetValue(row.Key, out var autobrake))
-                def.StateVariables = new[] { A300Autobrake.LevelKey, autobrake.DecelKey, A300LampBoard.AcPowerKey };
-            else if (A300Trp.ModeByButton.ContainsKey(row.Key))
-                def.StateVariables = new[] { A300Trp.ModeKey };
-            else if (A300PanelLamps.ByButton.TryGetValue(row.Key, out var lampKey))
-                def.StateVariables = new[] { lampKey, A300LampBoard.AcPowerKey, A300LampBoard.DcPowerKey };
-            else if (A300Clock.ButtonStates.ContainsKey(row.Key))
-                def.StateVariables = new[] { A300Clock.StateKey(row.Key) };
-            else if (A300CargoDoor.AngleButtons.TryGetValue(row.Key, out var angle))
-                def.StateVariables = new[] { angle.Key };
+            // A light-labeled button repaints on every input its label reads, from the same table as the label.
+            if (TryButtonLabel(row.Key, out var labelKeys, out _))
+                def.StateVariables = labelKeys.ToArray();
             if (A300Announcements.AnnouncedKeys.Contains(row.Key))
                 def.ExcludeFromMonitorManager = false;   // it speaks, so Ctrl+M can mute it
             // A row whose variable another row already carries on the batch (an IDC copy, the crew oxygen

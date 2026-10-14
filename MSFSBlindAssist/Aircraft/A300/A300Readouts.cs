@@ -198,6 +198,8 @@ public static class A300Readouts
         new Dictionary<string, (string, Func<double, string>)>(StringComparer.Ordinal)
         {
             ["A300_LANDING_ELEV_SET"] = ("A300_RO_LANDING_ELEV", v => $"Landing elevation {Whole(v)} feet"),
+            // The flex temperature knob steps the TRP's flex temperature ("Flex temperature 46 degrees", [A300-21]).
+            [A300Trp.FlexKnobKey] = (FlexTemperatureKey, A300Trp.FlexPhrase),
             ["A300_TCAS_BIG"] = (SquawkCodeKey, v => $"Squawk {Squawk(v)}"),
             ["A300_TCAS_SMALL"] = (SquawkCodeKey, v => $"Squawk {Squawk(v)}"),
             ["A300_VOR100_CAPT"] = (NavVor1Key, v => $"VOR 1 {Tuned(v)}"),

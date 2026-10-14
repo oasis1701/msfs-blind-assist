@@ -87,9 +87,9 @@ public partial class IniA300Definition
         && lines.Any(key => _readouts.TryGetValue(key, out var line) && line.Key != readout.Key
                             && string.Equals(line.Var, readout.Var, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>An FCU, autobrake or TRP button's label state, from its lamp in the cache ("Heading
-    /// select: On", "Autobrake low: Armed", "TRP climb: On"), and a fault light's status box, as the
-    /// cockpit shows it: "On" only while its bus's light power is on too ([A300-23]).</summary>
+    /// <summary>A light-labeled button's label state, from its lamp in the cache ("Heading select: On",
+    /// "Autobrake low: Armed", "TRP climb: On"; <see cref="TryButtonLabel"/>), and a fault light's status box, as
+    /// the cockpit shows it: "On" only while its bus's light power is on too ([A300-23]).</summary>
     public override bool TryDescribeControlState(string varKey, out string stateText)
     {
         if (LampStatus(varKey) is string lampState)
@@ -97,56 +97,84 @@ public partial class IniA300Definition
             stateText = lampState;
             return true;
         }
-        if (A300FcuState.ByButton.TryGetValue(varKey, out var light)
-            && _sim is { } sim && Cached(sim, light.Key) is double value)
+        if (_sim is { } sim && TryButtonLabel(varKey, out _, out var describe)
+            && describe(key => Cached(sim, key)) is string label)
         {
-            stateText = A300FcuState.Describe(light, value);
-            return true;
-        }
-        if (A300Autobrake.ByButton.TryGetValue(varKey, out var autobrake) && _sim is { } abSim
-            && A300Autobrake.Describe(autobrake, Cached(abSim, A300Autobrake.LevelKey), Cached(abSim, autobrake.DecelKey),
-                Cached(abSim, A300LampBoard.AcPowerKey)) is string lamp)
-        {
-            stateText = lamp;
-            return true;
-        }
-        if (A300Trp.ModeByButton.TryGetValue(varKey, out var trpMode) && _sim is { } trpSim
-            && A300Trp.ButtonState(trpMode, Cached(trpSim, A300Trp.ModeKey)) is string trpLamp)
-        {
-            stateText = trpLamp;
-            return true;
-        }
-        if (A300PanelLamps.ByButton.TryGetValue(varKey, out var buttonLamp) && LampStatus(buttonLamp) is string selected)
-        {
-            stateText = selected;
-            return true;
-        }
-        if (A300Clock.ButtonStates.TryGetValue(varKey, out var clock) && _sim is { } clockSim
-            && Cached(clockSim, A300Clock.StateKey(varKey)) is double clockState
-            && clock.Words.TryGetValue(Math.Round(clockState), out var clockWord))
-        {
-            stateText = clockWord;
-            return true;
-        }
-        if (A300CargoDoor.AngleButtons.TryGetValue(varKey, out var angle) && _sim is { } doorSim
-            && Cached(doorSim, angle.Key) is double picked)
-        {
-            stateText = A300CargoDoor.AngleLabel(picked);
+            stateText = label;
             return true;
         }
         return base.TryDescribeControlState(varKey, out stateText);
     }
 
-    /// <summary>A readout's value as the status display shows it ("1013 hectopascals, 29.92 inches").
-    /// The speed window reads as Mach while SPD/MACH is in Mach.</summary>
+    /// <summary>
+    /// The one table of light-labeled buttons, an entry per kind (an FCU mode button, an autobrake button, a TRP button,
+    /// a button a cockpit light labels, a clock button, a cargo door angle button): the keys its label reads, and the
+    /// label composed from the same reads. The keys are the button's <c>StateVariables</c>, so the open panel repaints
+    /// the label on every key it reads and on no other, and <paramref name="describe"/> is the label itself (it answers
+    /// null while an input is unread): neither can drift from the other. A button a cockpit light labels takes the
+    /// board lamp's own inputs (<see cref="A300LampBoard"/>), whatever its rule reads; the ECAM page buttons read the
+    /// ECAM status as well as their light and its bus's power.
+    /// </summary>
+    private static bool TryButtonLabel(string rowKey, out IReadOnlyList<string> keys,
+        out Func<Func<string, double?>, string?> describe)
+    {
+        if (A300FcuState.ByButton.TryGetValue(rowKey, out var light))
+        {
+            keys = new[] { light.Key };
+            describe = read => read(light.Key) is double value ? A300FcuState.Describe(light, value) : null;
+            return true;
+        }
+        if (A300Autobrake.ByButton.TryGetValue(rowKey, out var autobrake))
+        {
+            keys = new[] { A300Autobrake.LevelKey, autobrake.DecelKey, A300LampBoard.AcPowerKey };
+            describe = read => A300Autobrake.Describe(autobrake, read(A300Autobrake.LevelKey), read(autobrake.DecelKey),
+                read(A300LampBoard.AcPowerKey));
+            return true;
+        }
+        if (A300Trp.ModeByButton.TryGetValue(rowKey, out var trpMode))
+        {
+            keys = new[] { A300Trp.ModeKey };
+            describe = read => A300Trp.ButtonState(trpMode, read(A300Trp.ModeKey));
+            return true;
+        }
+        if (A300PanelLamps.ByButton.TryGetValue(rowKey, out var lampKey) && A300LampBoard.ById.TryGetValue(lampKey, out var lamp))
+        {
+            keys = lamp.Inputs;
+            describe = read => LampWords(lamp, read);
+            return true;
+        }
+        if (A300Clock.ButtonStates.TryGetValue(rowKey, out var clock))
+        {
+            string stateKey = A300Clock.StateKey(rowKey);
+            keys = new[] { stateKey };
+            describe = read => read(stateKey) is double state && clock.Words.TryGetValue(Math.Round(state), out var word) ? word : null;
+            return true;
+        }
+        if (A300CargoDoor.AngleButtons.TryGetValue(rowKey, out var angle))
+        {
+            keys = new[] { angle.Key };
+            describe = read => read(angle.Key) is double picked ? A300CargoDoor.AngleLabel(picked) : null;
+            return true;
+        }
+        keys = Array.Empty<string>();
+        describe = _ => null;
+        return false;
+    }
+
     /// <summary>"On" or "Off" for a status box light as the cockpit shows it ([A300-23], [A300-25]), or null
     /// when it is not a light or an input is still unread.</summary>
     private string? LampStatus(string varKey) =>
         A300LampBoard.StatusLampKeys.Contains(varKey) && _sim is { } sim
-        && A300LampBoard.IsLit(A300LampBoard.ById[varKey], key => Cached(sim, key)) is bool lit
-            ? lit ? "On" : "Off"
+            ? LampWords(A300LampBoard.ById[varKey], key => Cached(sim, key))
             : null;
 
+    /// <summary>"On" or "Off" for a light as the cockpit shows it, from <paramref name="read"/>; null while an
+    /// input its rule needs is unread.</summary>
+    private static string? LampWords(A300BoardLamp lamp, Func<string, double?> read) =>
+        A300LampBoard.IsLit(lamp, read) is bool lit ? lit ? "On" : "Off" : null;
+
+    /// <summary>A readout's value as the status display shows it ("1013 hectopascals, 29.92 inches").
+    /// The speed window reads as Mach while SPD/MACH is in Mach.</summary>
     public override bool TryGetDisplayOverride(string varKey, double value, out string displayText)
     {
         // The status list composes its lines here (MainForm.UpdateDisplayText), so a light reads as the

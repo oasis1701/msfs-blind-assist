@@ -126,6 +126,64 @@ public class IniA300DisplayPanelTests
     }
 
     [Fact]
+    public void Every_light_labelled_button_relabels_on_every_input_its_label_reads()
+    {
+        // A button's label is its lamp as the cockpit lights it, decided by the board from every input the lamp's
+        // rule reads and its bus's light power (the ECAM page lights read the ECAM status too). The open panel
+        // repaints the label on each of them, no more and no fewer (A300LampBoard.ById is the one list).
+        var vars = _def.GetVariables();
+        var wrong = new List<string>();
+        foreach (var (button, lamp) in A300PanelLamps.ByButton)
+        {
+            var reads = A300LampBoard.ById[lamp].Inputs.OrderBy(k => k, StringComparer.Ordinal).ToList();
+            var relabelsOn = (vars[button].StateVariables ?? Array.Empty<string>()).OrderBy(k => k, StringComparer.Ordinal).ToList();
+            if (!reads.SequenceEqual(relabelsOn, StringComparer.Ordinal))
+                wrong.Add($"{button} relabels on [{string.Join(", ", relabelsOn)}] but its lamp reads [{string.Join(", ", reads)}]");
+        }
+        Assert.True(wrong.Count == 0, string.Join(Environment.NewLine, wrong));
+    }
+
+    /// <summary>Every kind of light-labeled button: the FCU, autobrake and TRP buttons, the buttons a cockpit light
+    /// labels, the clock buttons and the cargo door angle buttons.</summary>
+    private static readonly IReadOnlyList<string> LightLabeledButtons = A300FcuState.ByButton.Keys
+        .Concat(A300Autobrake.ByButton.Keys).Concat(A300Trp.ModeByButton.Keys).Concat(A300PanelLamps.ByButton.Keys)
+        .Concat(A300Clock.ButtonStates.Keys).Concat(A300CargoDoor.AngleButtons.Keys).ToList();
+
+    [Fact]
+    public void Every_input_a_light_labeled_button_relabels_on_is_a_registered_variable()
+    {
+        // A key nothing delivers never repaints a label, so a StateVariables entry must be one the aircraft streams.
+        var vars = _def.GetVariables();
+        var unregistered = new List<string>();
+        foreach (var button in LightLabeledButtons)
+        {
+            var relabelsOn = vars[button].StateVariables;
+            Assert.True(relabelsOn is { Count: > 0 }, $"{button} relabels on nothing");
+            unregistered.AddRange(relabelsOn!.Where(key => !vars.ContainsKey(key)).Select(key => $"{button} relabels on {key}"));
+        }
+        Assert.True(unregistered.Count == 0, string.Join(Environment.NewLine, unregistered));
+    }
+
+    [Fact]
+    public void A_light_labeled_buttons_label_reads_only_the_inputs_it_relabels_on()
+    {
+        // The keys and the label come from one table entry (TryButtonLabel): with every input read, whatever the label
+        // asks the cache for is a key the button repaints on, for every kind.
+        var asked = new HashSet<string>(StringComparer.Ordinal);
+        var def = new IniA300Definition { Cached = (_, key) => { asked.Add(key); return 1; } };
+        def.Attach(_sim);
+        var vars = def.GetVariables();
+        foreach (var button in LightLabeledButtons)
+        {
+            asked.Clear();
+            Assert.True(def.TryDescribeControlState(button, out _), $"{button} has no label");
+            Assert.NotEmpty(asked);
+            var extra = asked.Except(vars[button].StateVariables!).ToList();
+            Assert.True(extra.Count == 0, $"{button}'s label reads {string.Join(", ", extra)}, which it does not relabel on");
+        }
+    }
+
+    [Fact]
     public void The_pfd_box_reads_like_the_a320s()
     {
         Assert.Equal(new[]
