@@ -89,14 +89,35 @@
     //                 frequency, CDI and marker.
     //   L CTP Data    the captain CTP's own course setting and nav-source selection.
     //   Radio Data    vhf.nav_1 / nav_2 (the CNS NAV CONTROL windows).
+    // [store, key, group, staleMs]. Group 'afdx' = the blocks the knob walks read fast
+    // (A.afdx); 'sys' = the systems stores read once a second (A.sys, snapshot().sys —
+    // Plan A: CAS, gear, doors, engines, IRS, V-speeds, transponder, both CTPs and ADSs);
+    // 'fpln' = the FMS's active flight plan, read only by A.fplnProgress. The stores
+    // broadcast CHANGES and the DUs ask for a full copy after 3 s of quiet (afdx/index.ts
+    // `yt`: r.set(Lp, 3e3)), so a slow store can sit silent for ~3 s between messages:
+    // the systems stores go stale at 6 s, never 3. A.tapGaps() measures the real gaps.
     var CB_STORES = [
-      ['A22X.Autoflight Data', 'af'],
-      ['A22X.FCP Data', 'fcp'],
-      ['A22X.Flight Control Data', 'fc'],
-      ['A22X.L Nav Data', 'lnav'],
-      ['A22X.L CTP Data', 'lctp'],
-      ['A22X.Radio Data', 'radio']
+      ['A22X.Autoflight Data', 'af', 'afdx', 3000],
+      ['A22X.FCP Data', 'fcp', 'afdx', 3000],
+      ['A22X.Flight Control Data', 'fc', 'afdx', 3000],
+      ['A22X.L Nav Data', 'lnav', 'afdx', 3000],
+      ['A22X.L CTP Data', 'lctp', 'afdx', 3000],
+      ['A22X.Radio Data', 'radio', 'afdx', 3000],
+      ['A22X.L PFD Data', 'lpfd', 'sys', 6000],
+      ['A22X.ATC Data', 'atc', 'sys', 6000],
+      ['A22X.Gear Data', 'gear', 'sys', 6000],
+      ['A22X.Doors Data', 'doors', 'sys', 6000],
+      ['A22X.CAS Data', 'cas', 'sys', 6000],
+      ['A22X.Engine Data', 'eng', 'sys', 6000],
+      ['A22X.R CTP Data', 'rctp', 'sys', 6000],
+      ['A22X.L ADS Data', 'lads', 'sys', 6000],
+      ['A22X.R ADS Data', 'rads', 'sys', 6000],
+      ['A22X.Status Data', 'status', 'sys', 6000],
+      ['A220.FMS Position', 'fmspos', 'sys', 6000],
+      ['A220.Flight Plan Update', 'fpln', 'fpln', 10000]
     ];
+    var CB_STALE_MS = {};
+    for (var cbi = 0; cbi < CB_STORES.length; cbi++) CB_STALE_MS[CB_STORES[cbi][0]] = CB_STORES[cbi][3];
     // Survives a re-install: the agent is re-evaluated whenever the page reloads or the
     // socket reconnects, and registering a fresh view listener each time would leak one
     // per reconnect (the aircraft's own wrapper has an unregister(); we simply keep ours).
@@ -104,7 +125,9 @@
     // registered them, so a behaviour change in the handler (the deep merge, v2)
     // needs a FRESH listener and data object — the old one keeps writing into its
     // own, now-orphaned data. One listener leaks per upgrade, never per reconnect.
-    var CB_VERSION = 2;
+    // v3 (2026-10-12): the merge applies the aircraft's array-diff protocol (mergeObj /
+    // mergeArray below) — a handler change, so it needs a fresh listener.
+    var CB_VERSION = 3;
     var cbState = window.__a220CommBus;
     if (!cbState || cbState.v !== CB_VERSION) {
       cbState = { v: CB_VERSION, data: {}, stamp: {}, listener: null, ready: false, subs: 0, tries: 0, lastTry: 0, err: '' };
@@ -117,18 +140,49 @@
       return false;
     }
 
-    function deepMerge(cur, upd) {
+    // The aircraft's own store merge (src/avionics/lib/afdx/index.ts `rk`/`B$`, Synaptic
+    // A220 v1.0.10): a nested OBJECT merges key by key; an ARRAY is never sent whole in an
+    // update — it arrives as an object of index keys ("3": {...}) plus an optional "~" key
+    // holding one splice [start, deleteCount, items]. A plain deep merge turned every such
+    // array into an object (the flight plan's legs and paths) — [A220-38]. Returns true
+    // when a splice did not fit or an index update met a non-object element: the aircraft
+    // then asks for a resync, and so does the handler that called this.
+    var SPLICE_KEY = '~';
+    function isPlainObj(v) { return v !== null && typeof v === 'object' && !(v instanceof Array); }
+    function mergeArray(arr, upd) {
+      var bad = false, sp = upd[SPLICE_KEY];
+      if (sp instanceof Array) {
+        var start = sp[0], del = sp[1], items = sp[2] || [];
+        if (start + del > arr.length) return true;
+        Array.prototype.splice.apply(arr, [start, del].concat(items));
+      }
+      for (var k in upd) {
+        if (!Object.prototype.hasOwnProperty.call(upd, k) || k === SPLICE_KEY) continue;
+        var i = Number(k), v = upd[k], o = arr[i];
+        if (isPlainObj(v)) {
+          if (o instanceof Array) bad = mergeArray(o, v) || bad;
+          else if (isPlainObj(o)) bad = mergeObj(o, v) || bad;
+          else bad = true;
+        } else {
+          arr[i] = v;
+        }
+      }
+      return bad;
+    }
+    function mergeObj(cur, upd) {
+      var bad = false;
       for (var k in upd) {
         if (!Object.prototype.hasOwnProperty.call(upd, k)) continue;
-        var v = upd[k];
-        if (v && typeof v === 'object' && !(v instanceof Array) &&
-            cur[k] && typeof cur[k] === 'object' && !(cur[k] instanceof Array)) {
-          cur[k] = deepMerge(cur[k], v);
+        var v = upd[k], c = cur[k];
+        if (isPlainObj(v)) {
+          if (c instanceof Array) bad = mergeArray(c, v) || bad;
+          else if (isPlainObj(c)) bad = mergeObj(c, v) || bad;
+          else cur[k] = v;
         } else {
           cur[k] = v;
         }
       }
-      return cur;
+      return bad;
     }
 
     // The stores only broadcast CHANGES; the aircraft's own wrapper asks for a full
@@ -170,8 +224,17 @@
               // after a tuning change (live 2026-09-24) — a shallow merge replaced the
               // whole vhf object and lost every frequency.
               try {
-                cbData[name] = deepMerge(cbData[name] || {}, JSON.parse(json));
-                cbStamp[name] = Date.now();
+                var now = Date.now();
+                if (cbStamp[name]) {
+                  // Longest silence per store, for A.tapGaps(): the staleness windows in
+                  // CB_STORES are judged against it live, never assumed.
+                  var gap = now - cbStamp[name];
+                  if (!cbState.gap) cbState.gap = {};
+                  if (!cbState.gap[name] || gap > cbState.gap[name]) cbState.gap[name] = gap;
+                }
+                if (!cbData[name]) cbData[name] = {};
+                if (mergeObj(cbData[name], JSON.parse(json))) cbResync();
+                cbStamp[name] = now;
               } catch (e2) { }
             });
             cbState.subs++;
@@ -234,9 +297,37 @@
             'alt_sel_ft', 'alt_sel_m', 'alt_in_m', 'vs_sel', 'vs_mode'],
       fc: ['pitch_trim', 'pitch_trim_up', 'pitch_trim_dn', 'rudder_trim'],
       lnav: ['source', 'frequency', 'course', 'cdi', 'to', 'bc', 'marker',
-             'preview_source', 'preview_course', 'preview_frequency'],
-      lctp: ['nav_source', 'course', 'crosstune'],
-      radio: ['vhf', 'display_tune_inhib', 'l_ctp_inhib']
+             'preview_source', 'preview_course', 'preview_frequency', 'dtg', 'ttg'],
+      lctp: ['nav_source', 'course', 'crosstune', 'qnh', 'qnh_std', 'minimums_mode',
+             'minimums', 'ldg_elev', 'ldg_elev_mode'],
+      radio: ['vhf', 'display_tune_inhib', 'l_ctp_inhib'],
+      lpfd: ['v1', 'vr', 'v2', 'vref', 'vac', 'vt', 'vf0', 'vf1', 'vf2', 'vf3', 'vf4', 'vf5',
+             'minimums_mode', 'minimums', 'align', 'stationary_align'],
+      atc: ['xpdr1', 'xpdr2', 'selected', 'mode', 'id', 'code', 'ident', 'tss_mode',
+            'tss_limits_sel', 'tss_limits', 'tss_other_tfc', 'tss_alt_abs'],
+      gear: ['wow', 'nose_icon', 'nose_color', 'left_icon', 'left_color', 'right_icon',
+             'right_color', 'nose_l_tire_color', 'nose_r_tire_color', 'nose_l_tire_press',
+             'nose_r_tire_press', 'left_outb_tire_color', 'left_inbd_tire_color',
+             'left_outb_tire_press', 'left_inbd_tire_press', 'right_outb_tire_color',
+             'right_inbd_tire_color', 'right_outb_tire_press', 'right_inbd_tire_press',
+             'left_outb_brake_color', 'left_inbd_brake_color', 'right_outb_brake_color',
+             'right_inbd_brake_color', 'left_outb_brake_temp', 'left_inbd_brake_temp',
+             'right_outb_brake_temp', 'right_inbd_brake_temp'],
+      doors: ['fwd_pax', 'fwd_pax_armed', 'aft_pax', 'aft_pax_armed', 'fwd_srv',
+              'fwd_srv_armed', 'aft_srv', 'aft_srv_armed', 'l_owee', 'r_owee', 'fwd_cargo',
+              'aft_cargo', 'fwd_equip', 'mid_equip', 'aft_equip'],
+      cas: ['msg', 'info', 'ecl'],
+      eng: ['eng1_n1', 'eng1_n2', 'eng1_egt', 'eng1_fuel_flow', 'eng1_start', 'eng1_ign',
+            'eng2_n1', 'eng2_n2', 'eng2_egt', 'eng2_fuel_flow', 'eng2_start', 'eng2_ign',
+            'thrust_profile', 'to_n1'],
+      rctp: ['nav_source', 'course', 'crosstune', 'qnh', 'qnh_std', 'minimums_mode',
+             'minimums', 'ldg_elev', 'ldg_elev_mode'],
+      lads: ['qnh_unit', 'qnh_hpa', 'qnh_inhg', 'qnh_std', 'qnh_misconfig_set', 'qnh_misconfig_std'],
+      rads: ['qnh_unit', 'qnh_hpa', 'qnh_inhg', 'qnh_std', 'qnh_misconfig_set', 'qnh_misconfig_std'],
+      status: ['tat', 'sat', 'apu_rpm', 'apu_egt', 'apu_door', 'l_eng_oil_temp',
+               'l_eng_oil_press', 'l_eng_oil_qty', 'r_eng_oil_temp', 'r_eng_oil_press',
+               'r_eng_oil_qty'],
+      fmspos: ['irs_1', 'irs_2', 'irs_3']
     };
 
     // A store the WASM stopped broadcasting is STALE, not current: the aircraft's own
@@ -244,7 +335,8 @@
     // return null rather than a frozen value C# would read as truth.
     function cbBlock(key, name) {
       var raw = cbData[name];
-      if (!raw || !cbStamp[name] || (Date.now() - cbStamp[name]) > 3000) return null;
+      var maxAge = CB_STALE_MS[name] || 3000;
+      if (!raw || !cbStamp[name] || (Date.now() - cbStamp[name]) > maxAge) return null;
       var want = CB_FIELDS[key], out = {};
       for (var i = 0; i < want.length; i++) {
         var f = want[i];
@@ -274,7 +366,10 @@
     A.afdx = function () {
       ensureCommBus();
       var out = { ok: !!cbState.listener, diag: cbDiag() };
-      for (var i = 0; i < CB_STORES.length; i++) out[CB_STORES[i][1]] = cbBlock(CB_STORES[i][1], CB_STORES[i][0]);
+      for (var i = 0; i < CB_STORES.length; i++) {
+        if (CB_STORES[i][2] !== 'afdx') continue;   // the walks need only their own blocks
+        out[CB_STORES[i][1]] = cbBlock(CB_STORES[i][1], CB_STORES[i][0]);
+      }
       return JSON.stringify(out);
     };
 
@@ -317,6 +412,105 @@
     A.setNavAutotune = function (index, auto) {
       if (index !== 3 && index !== 4) return 'BAD_INDEX';
       return cbCall('A22X.Display Tune', { index: index, cmd: { type: 'ConfigNav', autotune: !!auto } });
+    };
+
+    // ---- Plan A systems: CAS, gear, doors, engines, IRS, V-speeds, XPDR, CTPs --------
+    // One object per 'sys' store (null while stale) plus the captain's CTP and nav blocks.
+    // Read-only; a store that has not delivered for 2.5 s triggers a (throttled) resync.
+    function sysBlocks() {
+      var out = {}, stale = false, now = Date.now();
+      for (var i = 0; i < CB_STORES.length; i++) {
+        var s = CB_STORES[i];
+        if (s[2] !== 'sys') continue;
+        out[s[1]] = cbBlock(s[1], s[0]);
+        if (!cbStamp[s[0]] || (now - cbStamp[s[0]]) > 2500) stale = true;
+      }
+      out.lctp = cbBlock('lctp', 'A22X.L CTP Data');
+      out.lnav = cbBlock('lnav', 'A22X.L Nav Data');
+      if (stale) cbResync();
+      return out;
+    }
+    A.sys = function () { ensureCommBus(); return JSON.stringify(sysBlocks()); };
+
+    /// Per store: ms since the last message and the longest silence seen (diagnostic for
+    /// the CB_STORES staleness windows — run it live, never assume them).
+    A.tapGaps = function () {
+      var out = {}, now = Date.now();
+      for (var i = 0; i < CB_STORES.length; i++) {
+        var n = CB_STORES[i][0];
+        out[n] = { ageMs: cbStamp[n] ? now - cbStamp[n] : -1, maxGapMs: (cbState.gap && cbState.gap[n]) || 0 };
+      }
+      return JSON.stringify(out);
+    };
+
+    // CTP settings, exactly the call the CTP's own settings window makes:
+    // wl(side, {...}) = "A22X.<L|R> CTP Action" {type: "SetConfig", ...} (afdx/ctp.ts).
+    // Live 2026-10-12: qnh {type:'InHg', value:30.13} set the CTP AND stock Kohlsman exactly;
+    // minimums_mode / minimums landed in CTP Data and PFD Data. Only the keys MSFSBA sets are
+    // accepted, so a malformed caller can never send an arbitrary configuration.
+    var CTP_KEYS = { qnh: 1, qnh_std: 1, minimums_mode: 1, minimums: 1 };
+    A.ctpSet = function (side, cfg) {
+      if (side !== 1 && side !== 2) return 'BAD_SIDE';
+      var payload = { type: 'SetConfig' }, n = 0;
+      for (var k in cfg) {
+        if (!Object.prototype.hasOwnProperty.call(cfg, k)) continue;
+        if (!CTP_KEYS[k]) return 'BAD_KEY:' + k;
+        payload[k] = cfg[k];
+        n++;
+      }
+      if (!n) return 'EMPTY';
+      return cbCall('A22X.' + (side === 2 ? 'R' : 'L') + ' CTP Action', payload);
+    };
+
+    // Transponder / TCAS, exactly the CNS XPDR/TCAS CONTROL dialog's call:
+    // Us(action) = "A22X.Display Tune" {index: 5, cmd: {type: 'ConfigAtc', action}}
+    // (afdx/atc.ts). Live 2026-10-12: SetMode 2 -> ATC Data.mode 2, back to 0.
+    var ATC_ACTIONS = { SetMode: 1, SetCode: 1, SetTssLimits: 1, Ident: 1, SetAtcId: 1 };
+    A.atcAction = function (action) {
+      if (!action || !ATC_ACTIONS[action.type]) return 'BAD_ACTION';
+      return cbCall('A22X.Display Tune', { index: 5, cmd: { type: 'ConfigAtc', action: action } });
+    };
+
+    // Destination distance/time and distance to top of descent from the ACTIVE flight plan
+    // the FMS broadcasts ("A220.Flight Plan Update"): arr.dtg (NM) and arr.ete (SECONDS)
+    // are what the FUEL page's DEST row prints (FUEL `iT`, `Fg` = h/3600); the TOD walk is
+    // the VSD's own: path distances before the first TopOfDescent vector, plus its
+    // local_distance (todFromStart, measured from the plan's first path). The paths include
+    // legs already flown, so the distance TO GO to the TOD is taken from the destination
+    // end: dtg - (total - todFromStart), which needs no active-leg index. Never shipped
+    // whole — the plan's legs/paths are large.
+    A.fplnProgress = function () {
+      ensureCommBus();
+      var name = 'A220.Flight Plan Update';
+      var raw = cbData[name], age = cbStamp[name] ? Date.now() - cbStamp[name] : -1;
+      if (!raw || !raw.active || age < 0 || age > CB_STALE_MS[name]) {
+        cbResync();
+        return JSON.stringify({ ok: false, ageMs: age });
+      }
+      var act = raw.active, arr = act.arr || null, paths = act.paths || [], todFromStart = null, acc = 0;
+      for (var i = 0; i < paths.length; i++) {
+        var p = paths[i];
+        if (!p) continue;
+        if (todFromStart === null) {
+          var vs = p.vectors || [];
+          for (var j = 0; j < vs.length; j++) {
+            if (vs[j] && vs[j].type === 'TopOfDescent' && typeof vs[j].local_distance === 'number') {
+              todFromStart = acc + vs[j].local_distance;
+              break;
+            }
+          }
+        }
+        if (typeof p.distance === 'number') acc += p.distance;
+      }
+      var dtg = arr && typeof arr.dtg === 'number' ? arr.dtg : null;
+      return JSON.stringify({
+        ok: true, ageMs: age,
+        dtg: dtg,
+        ete: arr && typeof arr.ete === 'number' ? arr.ete : null,
+        tod: (dtg !== null && todFromStart !== null) ? dtg - (acc - todFromStart) : null,
+        todFromStart: todFromStart, total: acc,
+        legs: (act.legs || []).length
+      });
     };
 
     ensureCommBus();   // start filling immediately; the first poll is ~1 s away
@@ -363,6 +557,7 @@
         af: cbBlock('af', 'A22X.Autoflight Data'),
         fcp: cbBlock('fcp', 'A22X.FCP Data'),
         fc: cbBlock('fc', 'A22X.Flight Control Data'),
+        sys: sysBlocks(),
         diag: cbDiag()
       });
     };
