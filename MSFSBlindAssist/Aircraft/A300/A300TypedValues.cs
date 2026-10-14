@@ -81,8 +81,6 @@ public static class A300TypedValues
         new A300TypedValue(MinimumsKey, "Decision height", "EFIS Captain"),
     };
 
-    public static readonly IReadOnlySet<string> Keys = All.Select(t => t.Key).ToHashSet(StringComparer.Ordinal);
-
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
     /// <summary>The pause between a SPD/MACH switch and the value written after it (50 ms measured enough).</summary>

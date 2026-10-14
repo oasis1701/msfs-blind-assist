@@ -35,10 +35,6 @@ public static class A300CargoDoor
             ["A300_A300_MAIN_CARGO_DOOR_145"] = ("A300_CARGO_DOOR_PICK_145", "A300_MAIN_CARGO_DOOR_145"),
         };
 
-    /// <summary>Every variable consumed silently: the line and the labels are composed from them.</summary>
-    public static readonly IReadOnlySet<string> SilentKeys =
-        Flags.Select(f => f.Key).Concat(AngleButtons.Values.Select(b => b.Key)).ToHashSet(StringComparer.Ordinal);
-
     /// <summary>"closed and locked", "open 70 degrees", "partly open, 44 percent".</summary>
     public static string Status(double travel, double closed, double locked, double at70, double at145)
     {

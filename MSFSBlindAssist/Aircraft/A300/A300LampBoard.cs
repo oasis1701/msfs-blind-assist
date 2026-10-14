@@ -39,7 +39,7 @@ public readonly record struct A300BoardChange(A300BoardLamp Lamp, bool On);
 /// <item>the annunciator test term is left out: the test lights every lamp at once, and the fleet's
 /// lamp speech does not read a light test lamp by lamp.</item>
 /// </list>
-/// The 58 fault lights (<see cref="A300FaultLights"/>, each with its bus) and the autobrake buttons'
+/// The 55 fault lights (<see cref="A300FaultLights"/>, each with its bus) and the autobrake buttons'
 /// lights (an armed segment while the level is its level and its DECEL light is dark, and the DECEL
 /// light; both on AC light power) are decided here, so a fault clearing on a dark panel says nothing,
 /// power coming on speaks only the lights that light, and power going off darkens the lit ones.

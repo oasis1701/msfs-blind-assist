@@ -37,11 +37,11 @@ public partial class IniA300Definition
     /// FMS's plain knots. Airspeed streams per SIM_FRAME on its own subscription: the 1 Hz batch would
     /// call "Rotate" up to a second late.
     /// </summary>
-    private static void RegisterTakeoffCallouts(Dictionary<string, SimVarDefinition> vars, HashSet<string> batchNames)
+    private static void RegisterTakeoffCallouts(Dictionary<string, SimVarDefinition> vars)
     {
         foreach (var (key, var, name) in A300TakeoffCallouts.Speeds)
         {
-            var def = new SimVarDefinition
+            vars[key] = new SimVarDefinition
             {
                 Name = var,
                 DisplayName = name,
@@ -49,8 +49,6 @@ public partial class IniA300Definition
                 UpdateFrequency = UpdateFrequency.Continuous,
                 IsAnnounced = true,
             };
-            batchNames.Add(ContinuousBatchLayout.FullName(def));
-            vars[key] = def;
         }
         vars[A300TakeoffCallouts.IasKey] = new SimVarDefinition
         {

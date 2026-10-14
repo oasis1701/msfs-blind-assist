@@ -518,4 +518,59 @@ public class IniA300BehaviourTests
         Assert.Equal("NAV HAS GLIDE SLOPE:3", _def.GetVariables()["MON_GlideSlopeAlive"].Name);
         Assert.Equal("NAV HAS GLIDE SLOPE:1", new FlyByWireA320Definition().GetVariables()["MON_GlideSlopeAlive"].Name);
     }
+
+    /// <summary>Reaches the protected base variables, whose keys the A300 does not own.</summary>
+    private sealed class BaseKeysProbe : IniA300Definition
+    {
+        public HashSet<string> BaseKeys() => GetBaseVariables().Keys.ToHashSet(StringComparer.Ordinal);
+    }
+
+    /// <summary>One key from each family of silent subscription: the clocks, the rudder trim display, the VHF and ADF
+    /// windows and the ADF signal, the cargo door's flags and angle button, the memo inputs and line, the MCDU lights,
+    /// the IRS flags and the ILS inputs.</summary>
+    private static string[] SilentFamilies() => new[]
+    {
+        A300Clock.Digits[0].Key, A300Trim.RudderDigitKeys[0], A300Radios.All[0].Window1Key,
+        A300Radios.BearingLines.Values.First().SignalKey, A300CargoDoor.Flags[0].Key,
+        A300CargoDoor.AngleButtons.Values.First().Key, A300EwdMemos.Inputs[0].Key, A300EwdMemos.LineKey,
+        A300McduLights.All.First().Key, A300IrsAlignment.All[0].AligningKey, A300IlsDeviation.NavSelectorKey,
+    };
+
+    [Fact]
+    public void Every_silent_subscription_is_consumed_without_a_word()
+    {
+        // The A300's own subscriptions with no Ctrl+M row (Continuous, announced, left out of the monitor manager) are
+        // read only for a label, a box line or a refusal: two deliveries, a baseline and then a change, are consumed in
+        // ProcessSimVarUpdate and say nothing. The base class's variables speak through MainForm by design, so only the
+        // keys the A300 adds are walked.
+        using var probe = new BaseKeysProbe();
+        var baseKeys = probe.BaseKeys();
+        var silent = _def.GetVariables()
+            .Where(kv => !baseKeys.Contains(kv.Key)
+                         && kv.Value is { UpdateFrequency: UpdateFrequency.Continuous, IsAnnounced: true, ExcludeFromMonitorManager: true })
+            .Select(kv => kv.Key)
+            .ToList();
+        Assert.All(SilentFamilies(), key => Assert.Contains(key, silent));   // the walk covers every family, not an empty filter
+        var unconsumed = new List<string>();
+        foreach (var key in silent)
+        {
+            bool baseline = _def.ProcessSimVarUpdate(key, 0, _speech);
+            bool change = _def.ProcessSimVarUpdate(key, 1, _speech);
+            if (!baseline || !change)
+                unconsumed.Add(key);
+        }
+        Assert.Empty(unconsumed);
+        Assert.Empty(_speech.All);
+    }
+
+    [Fact]
+    public void A_silent_subscription_is_consumed_when_its_delivery_is_the_first_thing_that_reaches_the_definition()
+    {
+        // A delivery can arrive before anything asked for the variables (several tests deliver first): the silent keys
+        // are known by building them, not by whoever happened to ask first.
+        var fresh = new IniA300Definition();
+        foreach (var key in SilentFamilies())
+            Assert.True(fresh.ProcessSimVarUpdate(key, 1, _speech), key);
+        Assert.Empty(_speech.All);
+    }
 }

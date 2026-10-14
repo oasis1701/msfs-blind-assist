@@ -58,10 +58,6 @@ public static class A300EwdMemos
         Memo(20, "TCAS STBY", "TCAS standby", AtMost("INI_tcas_mode_pedestal", 1)),
     };
 
-    /// <summary>Whether a variable key is a memo input or the memo line: consumed silently.</summary>
-    public static bool IsInputOrLine(string key) =>
-        key == LineKey || key.StartsWith("A300_MEMO_IN_", StringComparison.Ordinal);
-
     /// <summary>The status line: the memos shown, or "none". Memos are never spoken (design decision, 2026-10-11).</summary>
     public static string Line(IReadOnlyCollection<string> words) => words.Count == 0 ? "none" : string.Join(", ", words);
 

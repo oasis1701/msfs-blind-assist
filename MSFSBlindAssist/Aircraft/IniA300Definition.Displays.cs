@@ -25,13 +25,13 @@ public partial class IniA300Definition
     /// Registers every FMA source that is not already registered: batch-covered, consumed silently.
     /// The five that carry a column's Ctrl+M row are listed in the monitor manager under that name.
     /// </summary>
-    private void RegisterFmaSources(Dictionary<string, SimVarDefinition> vars, HashSet<string> batchNames)
+    private void RegisterFmaSources(Dictionary<string, SimVarDefinition> vars)
     {
         foreach (var source in A300FmaSources.All)
         {
             if (vars.ContainsKey(source.Key))
                 continue;   // a shared row or light
-            var def = new SimVarDefinition
+            vars[source.Key] = new SimVarDefinition
             {
                 Name = source.Var,
                 DisplayName = source.MuteName ?? source.Var,
@@ -40,8 +40,6 @@ public partial class IniA300Definition
                 IsAnnounced = true,
                 ExcludeFromMonitorManager = source.MuteName == null,
             };
-            batchNames.Add(ContinuousBatchLayout.FullName(def));
-            vars[source.Key] = def;
         }
     }
 

@@ -33,10 +33,11 @@ public sealed class A300Placement
 /// Left out on purpose: guard covers (they only move the 3D model; the switch under them works with
 /// the cover shut, measured from the click code), the IDC's copies of the classic radio panel (the
 /// same L:vars, so one copy is enough; the IDC's own keypad comes with the IDC work), cosmetic parts
-/// (seats, armrests, visors, yoke bases, the oil-gauge pointer knobs, the tablet brightness buttons),
-/// second buttons that fire the same event as the first (autothrottle disconnect 2, the second RAT
-/// button) and the main cargo door switch (it must be held for the whole door travel; the cargo door
-/// buttons drive the same door).
+/// (seats, armrests, visors, yoke bases, the oil-gauge pointer knobs, the tablet brightness buttons)
+/// and second buttons that fire the same event as the first (autothrottle disconnect 2, the second RAT
+/// button). The main cargo door switch is placed: the door moves only while it is held, so its row is a
+/// spring switch (<see cref="A300CargoDoor"/>), and the 70 and 145 degree buttons only pick how far the
+/// door opens.
 ///
 /// Names are what a pilot says: iniBuilds' tooltip titles share names across families ("BATTERY" ×3,
 /// "ENG GEN" ×2) and a few are wrong (the vertical speed knob is titled "ALTITUDE KNOB", the first

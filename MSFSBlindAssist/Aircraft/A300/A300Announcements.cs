@@ -7,10 +7,11 @@ public sealed record A300Lamp(string Key, string Var, string Name, string Panel,
     A300LightPower Power = A300LightPower.None, bool Flashes = false);
 
 /// <summary>
-/// What the A300 says on its own about its lights and levers: the two master lights when they come
-/// on, the fault and warning lights both ways (<see cref="A300FaultLights"/>), and the levers when
-/// something other than the pilot's own pick moves them (a hardware lever, the cockpit itself). Each
-/// phrase is composed here; <see cref="A300AnnouncementTracker"/> decides when.
+/// What the A300 says on its own about its master lights and levers: the two master lights when they
+/// come on, and the levers when something other than the pilot's own pick moves them (a hardware
+/// lever, the cockpit itself). Each phrase is composed here; <see cref="A300AnnouncementTracker"/>
+/// decides when. The fault and warning lights (<see cref="A300FaultLights"/>) speak both ways, but
+/// <see cref="A300LampBoard"/> decides them and <see cref="A300LampSpeech"/> speaks them, not this class.
 ///
 /// The master lights speak only as they COME ON. Pressing the light writes 0 to the very variable
 /// read here (the cockpit's own click code), so speaking the light going out would announce the
@@ -31,10 +32,11 @@ public static class A300Announcements
         new A300Lamp(MasterCautionKey, "INI_MASTER_CAUTION_ACTIVE", "Master caution", "Warnings"),
     };
 
-    /// <summary>Every light that speaks: the two master lights, then the fault and warning lights.</summary>
+    /// <summary>Every light the A300 registers: the two master lights, which this class speaks, then the fault and
+    /// warning lights, which the light board decides.</summary>
     public static readonly IReadOnlyList<A300Lamp> Lamps = Masters.Concat(A300FaultLights.All).ToArray();
 
-    private static readonly Dictionary<string, A300Lamp> LampByKey = Lamps.ToDictionary(l => l.Key, StringComparer.Ordinal);
+    private static readonly Dictionary<string, A300Lamp> MasterByKey = Masters.ToDictionary(l => l.Key, StringComparer.Ordinal);
 
     /// <summary>The SAS control panel's pitch trim and yaw damper levers, which the aircraft drops by itself
     /// (a pitch trim lever picked on with no hydraulics engaged, then dropped 2.1 s later, 2026-10-10).
@@ -47,8 +49,8 @@ public static class A300Announcements
         ["A300_YAW_DAMPER_2"] = "Yaw damper 2",
     };
 
-    /// <summary>Every key that speaks: the lights, the four levers and the SAS levers.</summary>
-    public static readonly IReadOnlySet<string> AnnouncedKeys = Lamps.Select(l => l.Key)
+    /// <summary>Every key this class speaks: the two master lights, the four levers and the SAS levers.</summary>
+    public static readonly IReadOnlySet<string> AnnouncedKeys = Masters.Select(l => l.Key)
         .Concat(new[] { A300Levers.FlapsKey, A300Levers.SpoilersArmKey, GearLeverKey, ParkingBrakeKey })
         .Concat(SasLevers.Keys)
         .ToHashSet(StringComparer.Ordinal);
@@ -57,8 +59,8 @@ public static class A300Announcements
     /// going out, a flap handle between detents).</summary>
     public static string? Phrase(string key, double value)
     {
-        if (LampByKey.TryGetValue(key, out var lamp))
-            return lamp.SpeaksOff ? $"{lamp.Name} {(value >= 0.5 ? "on" : "off")}" : value >= 0.5 ? lamp.Name : null;
+        if (MasterByKey.TryGetValue(key, out var master))
+            return value >= 0.5 ? master.Name : null;
         return LeverPhrase(key, value);
     }
 
@@ -98,8 +100,6 @@ public sealed class A300AnnouncementTracker
 
     /// <summary>Records a baseline only where none exists yet; true when one was added.</summary>
     public bool Seed(string key, double value) => _last.TryAdd(key, A300Announcements.Phrase(key, value));
-
-    public bool HasBaseline(string key) => _last.ContainsKey(key);
 
     public void Reset() => _last.Clear();
 }

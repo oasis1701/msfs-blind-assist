@@ -79,10 +79,6 @@ public static class A300Radios
             ["A300_RO_ADF2_BEARING"] = ("A300_RADIO_ADF2_SIGNAL", "ADF SIGNAL:2"),
         };
 
-    /// <summary>The variables lines and read-backs are composed from, consumed silently.</summary>
-    public static readonly IReadOnlySet<string> SilentKeys = All.SelectMany(r => new[] { r.Window1Key, r.Window2Key, r.TransferKey })
-        .Concat(BearingLines.Values.Select(b => b.SignalKey)).ToHashSet(StringComparer.Ordinal);
-
     /// <summary>"45 degrees right", "30 degrees left", "ahead", "behind", or "no signal".</summary>
     public static string Bearing(double signal, double radial)
     {

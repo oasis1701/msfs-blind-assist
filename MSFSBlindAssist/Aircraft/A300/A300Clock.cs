@@ -57,10 +57,6 @@ public static class A300Clock
     /// <summary>The key a clock button's state streams under.</summary>
     public static string StateKey(string button) => "A300_BS_" + button.Substring("A300_".Length);
 
-    /// <summary>Every key the clocks stream silently: the digits and the button states.</summary>
-    public static readonly IReadOnlySet<string> SilentKeys =
-        Digits.Select(d => d.Key).Concat(ButtonStates.Keys.Select(StateKey)).ToHashSet(StringComparer.Ordinal);
-
     /// <summary>"07:38 GMT".</summary>
     public static string Time(double h1, double h2, double m1, double m2) =>
         $"{Digit(h1)}{Digit(h2)}:{Digit(m1)}{Digit(m2)} GMT";

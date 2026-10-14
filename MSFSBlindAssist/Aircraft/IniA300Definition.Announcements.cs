@@ -40,7 +40,7 @@ public partial class IniA300Definition
     /// <summary>
     /// WHEN, after a context reset, the lights and levers a flight load left unchanged get their
     /// baselines from the cache (a load re-delivers only changed values): on the batch deliveries'
-    /// evidence, never a wall clock. The MD-11's gate, reused as it stands, as the L-1011 does.
+    /// evidence, never a wall clock. The MD-11's gate, reused as it stands.
     /// </summary>
     private readonly Md11SeedGate _seedGate = new();
 
@@ -100,12 +100,10 @@ public partial class IniA300Definition
         if (A300Trp.StateKeys.Contains(varName))
             return true;
 
-        // The clocks' digits and button states, the rudder trim display and the radio windows: box lines, labels
-        // and read-backs are composed from them, never spoken.
-        if (A300Clock.SilentKeys.Contains(varName) || A300Trim.RudderDigitKeys.Contains(varName) || A300Radios.SilentKeys.Contains(varName)
-            || A300CargoDoor.SilentKeys.Contains(varName) || A300EwdMemos.IsInputOrLine(varName)
-            || varName.StartsWith("A300_MCDU_LT_", StringComparison.Ordinal) || A300IrsAlignment.FlagKeys.Contains(varName)
-            || A300IlsDeviation.InputKeys.Contains(varName))
+        // The subscriptions only a label, a box line or a refusal reads (the clocks' digits and button states, the
+        // rudder trim display, the radio windows, the cargo door, the memos, the MCDU lights, the IRS flags, the ILS
+        // inputs): composed from, never spoken. OwnSubscription adds each key as BuildVariables registers it.
+        if (SilentKeys.Contains(varName))
             return true;
 
         // The two master lights, the four levers and the SAS levers (the fault lights went to the board

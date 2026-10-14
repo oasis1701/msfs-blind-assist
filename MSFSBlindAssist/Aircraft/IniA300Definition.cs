@@ -44,11 +44,26 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
     /// <summary>Variable key → the panel row it drives (every operable row).</summary>
     private readonly Dictionary<string, A300PlacedRow> _rows = new(StringComparer.Ordinal);
 
-    /// <summary>Lamp variable key → the light it announces.</summary>
-    private readonly Dictionary<string, A300Lamp> _lamps = new(StringComparer.Ordinal);
-
     /// <summary>Readout variable key → its value.</summary>
     private readonly Dictionary<string, A300Readout> _readouts = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The keys of the subscriptions only a label, a box line or a refusal reads: <see cref="OwnSubscription"/> adds a
+    /// key as <see cref="BuildVariables"/> registers it (unless the key carries a Ctrl+M row), and ProcessSimVarUpdate
+    /// consumes every one of them without a word. A subscription that is not registered is not in it.
+    /// </summary>
+    private readonly HashSet<string> _silentKeys = new(StringComparer.Ordinal);
+
+    /// <summary><see cref="_silentKeys"/> once the variables are built. A delivery can reach the definition before
+    /// anything asked for them (several tests deliver first), so asking for them here fills the set.</summary>
+    private IReadOnlySet<string> SilentKeys
+    {
+        get
+        {
+            _ = GetVariables();
+            return _silentKeys;
+        }
+    }
 
     private SimConnectManager? _sim;
     private bool _disposed;
@@ -84,8 +99,6 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
         foreach (var rows in _placement.RowsByPanel.Values)
             foreach (var row in rows)
                 _rows[row.Key] = row;
-        foreach (var lamp in A300Announcements.Lamps)
-            _lamps[lamp.Key] = lamp;
         foreach (var readout in A300Readouts.All.Concat(A300EcamPages.Readouts))
             _readouts[readout.Key] = readout;
     }
@@ -186,10 +199,9 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
         }
         foreach (var input in A300PanelLamps.SharedInputs)
         {
-            var shared = OwnSubscription(input.Name, input.Name);
+            var shared = OwnSubscription(vars, A300PanelLamps.InputKey(input), input.Name, input.Name);
             shared.Type = input.IsStock ? SimVarType.SimVar : SimVarType.LVar;
             shared.Units = input.IsStock ? input.Units : "number";
-            vars[A300PanelLamps.InputKey(input)] = shared;
         }
 
         // The FCU buttons' lamps: batch-covered, consumed silently, shown only on the buttons' labels.
@@ -249,8 +261,8 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
             vars[row.Key] = def;
         }
 
-        RegisterFmaSources(vars, batchNames);
-        RegisterTakeoffCallouts(vars, batchNames);
+        RegisterFmaSources(vars);
+        RegisterTakeoffCallouts(vars);
 
         // Ctrl+B's STD and QNH (A300Baro, [A300-16]): each side's STD flag streams on its own
         // once-a-second subscription, never the batch (a new batch name can split the FMA's sources,
@@ -278,100 +290,91 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
 
         // The two buses' light power ([A300-23]): every light is lit only while its bus's is on. Their own
         // subscriptions, never the batch ([A300-9]); consumed silently, no Ctrl+M row of their own.
-        vars[A300LampBoard.AcPowerKey] = OwnSubscription(A300LampBoard.AcPowerVar, "AC light power");
-        vars[A300LampBoard.DcPowerKey] = OwnSubscription(A300LampBoard.DcPowerVar, "DC light power");
+        OwnSubscription(vars, A300LampBoard.AcPowerKey, A300LampBoard.AcPowerVar, "AC light power");
+        OwnSubscription(vars, A300LampBoard.DcPowerKey, A300LampBoard.DcPowerVar, "DC light power");
 
         // The autobrake buttons' lamps ([A300-20]): the armed level and each button's DECEL light, on the
         // buttons' labels and spoken as they change (A300LampBoard), so each carries a Ctrl+M row: the
         // level's mutes the three armed lights it lights. Their own subscriptions, never the batch ([A300-9]).
-        vars[A300Autobrake.LevelKey] = OwnSubscription(A300Autobrake.LevelVar, "Autobrake armed lights");
-        vars[A300Autobrake.LevelKey].ExcludeFromMonitorManager = false;
+        OwnSubscription(vars, A300Autobrake.LevelKey, A300Autobrake.LevelVar, "Autobrake armed lights", ctrlMRow: true);
         foreach (var button in A300Autobrake.ByButton.Values)
-        {
-            vars[button.DecelKey] = OwnSubscription(button.DecelVar, button.Name + " decel light");
-            vars[button.DecelKey].ExcludeFromMonitorManager = false;
-        }
+            OwnSubscription(vars, button.DecelKey, button.DecelVar, button.Name + " decel light", ctrlMRow: true);
 
         // The thrust rating panel ([A300-21]): the mode lights the buttons and is the Thrust Rating Panel's
         // "TRP" line, which also reads AUTO's limit, the flex temperature (that panel's own readout)
         // and, on GE engines, the N1 limit. Their own subscriptions, never the batch ([A300-9]).
-        var trp = OwnSubscription(A300Trp.ModeVar, "TRP");
+        var trp = OwnSubscription(vars, A300Trp.ModeKey, A300Trp.ModeVar, "TRP");
         trp.RenderAsReadOnlyStatus = true;
         trp.StateVariables = new[]   // any part changing repaints the line; its own key too (consumed)
         {
             A300Trp.ModeKey, A300Trp.AutoModeKey, A300Readouts.FlexTemperatureKey, A300Trp.N1LimitKey, A300Trp.PwEnginesKey,
         };
-        vars[A300Trp.ModeKey] = trp;
-        vars[A300Trp.AutoModeKey] = OwnSubscription(A300Trp.AutoModeVar, "TRP auto limit");
-        vars[A300Trp.N1LimitKey] = OwnSubscription(A300Trp.N1LimitVar, "TRP N1 limit");
-        vars[A300Trp.PwEnginesKey] = OwnSubscription(A300Trp.PwEnginesVar, "PW engines");
+        OwnSubscription(vars, A300Trp.AutoModeKey, A300Trp.AutoModeVar, "TRP auto limit");
+        OwnSubscription(vars, A300Trp.N1LimitKey, A300Trp.N1LimitVar, "TRP N1 limit");
+        OwnSubscription(vars, A300Trp.PwEnginesKey, A300Trp.PwEnginesVar, "PW engines");
 
         // The clocks (A300Clock): the GMT digits a time line is composed from, and the chrono and elapsed time
         // buttons' states that label them. Their own subscriptions, never the batch ([A300-9]); consumed silently.
         foreach (var (key, var) in A300Clock.Digits)
-            vars[key] = OwnSubscription(var, key);
+            OwnSubscription(vars, key, var);
         foreach (var (button, state) in A300Clock.ButtonStates)
-            vars[A300Clock.StateKey(button)] = OwnSubscription(state.Var, A300Clock.StateKey(button));
+            OwnSubscription(vars, A300Clock.StateKey(button), state.Var);
         // The rudder trim display's direction and digits its line is composed from (A300Trim), the same way.
         foreach (var (key, var) in A300Trim.RudderDigits)
-            vars[key] = OwnSubscription(var, key);
+            OwnSubscription(vars, key, var);
         // The VHF and ADF windows and transfer switches their lines and read-backs are composed from (A300Radios),
         // and each ADF's signal, which gates its bearing line.
         foreach (var radio in A300Radios.All)
         {
-            vars[radio.Window1Key] = OwnSubscription(radio.Window1Var, radio.Window1Key);
-            vars[radio.Window2Key] = OwnSubscription(radio.Window2Var, radio.Window2Key);
-            vars[radio.TransferKey] = OwnSubscription(radio.TransferVar, radio.TransferKey);
+            OwnSubscription(vars, radio.Window1Key, radio.Window1Var);
+            OwnSubscription(vars, radio.Window2Key, radio.Window2Var);
+            OwnSubscription(vars, radio.TransferKey, radio.TransferVar);
         }
         // Each IRS's aligning and aligned flags, its alignment line is composed from (A300IrsAlignment).
         foreach (var line in A300IrsAlignment.All)
         {
-            vars[line.AligningKey] = OwnSubscription(line.AligningVar, line.AligningKey);
-            vars[line.AlignedKey] = OwnSubscription(line.AlignedVar, line.AlignedKey);
+            OwnSubscription(vars, line.AligningKey, line.AligningVar);
+            OwnSubscription(vars, line.AlignedKey, line.AlignedVar);
         }
         // The MCDUs' annunciators (A300McduLights): the MCDU window's status box and its call-out of a light coming on.
         foreach (var light in A300McduLights.All)
-            vars[light.Key] = OwnSubscription(light.Var, light.Key);
+            OwnSubscription(vars, light.Key, light.Var);
         // The E/WD memos' inputs (A300EwdMemos), and the ECAM Memos box's line. Memos are never spoken (design
         // decision, 2026-10-11), so the line has no Ctrl+M row ([VAR-9]).
         foreach (var input in A300EwdMemos.Inputs)
         {
-            var def = OwnSubscription(input.Var, input.Key);
+            var def = OwnSubscription(vars, input.Key, input.Var);
             if (input.IsStock)
             {
                 def.Type = SimVarType.SimVar;
                 def.Units = input.Units;
             }
-            vars[input.Key] = def;
         }
-        var memoLine = OwnSubscription(A300EwdMemos.Inputs[0].Var, "ECAM memos");
+        var memoLine = OwnSubscription(vars, A300EwdMemos.LineKey, A300EwdMemos.Inputs[0].Var, "ECAM memos");
         memoLine.RenderAsReadOnlyStatus = true;
-        vars[A300EwdMemos.LineKey] = memoLine;
         // The cargo door's flags its line is composed from, and which angle button is picked (A300CargoDoor).
         foreach (var (key, var) in A300CargoDoor.Flags.Concat(A300CargoDoor.AngleButtons.Values))
-            vars[key] = OwnSubscription(var, key);
+            OwnSubscription(vars, key, var);
         foreach (var (signalKey, signalVar) in A300Radios.BearingLines.Values)
         {
-            var signal = OwnSubscription(signalVar, signalKey);
+            var signal = OwnSubscription(vars, signalKey, signalVar);
             signal.Type = SimVarType.SimVar;
             signal.Units = "number";
-            vars[signalKey] = signal;
         }
         // Whether the captain's PFD draws its ILS deviation pointers (A300IlsDeviation): the EFIS nav selector,
         // the localizer's validity and the ILS receiver's glideslope, the same way.
-        vars[A300IlsDeviation.NavSelectorKey] = OwnSubscription(A300IlsDeviation.NavSelectorVar, A300IlsDeviation.NavSelectorKey);
-        vars[A300IlsDeviation.LocalizerValidKey] = OwnSubscription(A300IlsDeviation.LocalizerValidVar, A300IlsDeviation.LocalizerValidKey);
-        var glideslopeReceived = OwnSubscription(A300IlsDeviation.GlideslopeReceivedVar, A300IlsDeviation.GlideslopeReceivedKey);
+        OwnSubscription(vars, A300IlsDeviation.NavSelectorKey, A300IlsDeviation.NavSelectorVar);
+        OwnSubscription(vars, A300IlsDeviation.LocalizerValidKey, A300IlsDeviation.LocalizerValidVar);
+        var glideslopeReceived = OwnSubscription(vars, A300IlsDeviation.GlideslopeReceivedKey, A300IlsDeviation.GlideslopeReceivedVar);
         glideslopeReceived.Type = SimVarType.SimVar;
         glideslopeReceived.Units = "Bool";
-        vars[A300IlsDeviation.GlideslopeReceivedKey] = glideslopeReceived;
 
         foreach (var readout in _readouts.Values)
         {
             // The altitude window rides the batch: it speaks a change MSFSBA did not make
             // (A300FcuWindows), and its Ctrl+M row mutes that. Every other readout is read on request.
             bool announced = readout.Key == A300Readouts.AltitudeKey;
-            var def = new SimVarDefinition
+            vars[readout.Key] = new SimVarDefinition
             {
                 Name = readout.Var,
                 DisplayName = readout.Name,
@@ -381,9 +384,6 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
                 IsAnnounced = announced,
                 RenderAsReadOnlyStatus = true,
             };
-            if (announced)
-                batchNames.Add(ContinuousBatchLayout.FullName(def));
-            vars[readout.Key] = def;
         }
 
         // End-to-end MobiFlight probe target: every A300 write is a calculator-path string, and with
@@ -403,18 +403,31 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
         return vars;
     }
 
-    /// <summary>A state variable a label or a refusal reads: its own once-a-second subscription, never the
-    /// batch (a new batch name can split the FMA's sources, [A300-9]), consumed silently, no Ctrl+M row.</summary>
-    private static SimVarDefinition OwnSubscription(string var, string name) => new()
+    /// <summary>
+    /// Registers a state variable a label, a box line or a refusal reads under <paramref name="key"/>: its own
+    /// once-a-second subscription, never the batch (a new batch name can split the FMA's sources, [A300-9]), consumed
+    /// silently and with no Ctrl+M row, so the key joins <see cref="_silentKeys"/>. The autobrake lights, which the
+    /// light board speaks, pass <paramref name="ctrlMRow"/>: the row mutes that speech and the board consumes the key,
+    /// so it is not silent. The display name is the key unless <paramref name="name"/> says otherwise.
+    /// </summary>
+    private SimVarDefinition OwnSubscription(Dictionary<string, SimVarDefinition> vars, string key, string varName,
+        string? name = null, bool ctrlMRow = false)
     {
-        Name = var,
-        DisplayName = name,
-        Type = SimVarType.LVar,
-        UpdateFrequency = UpdateFrequency.Continuous,
-        IsAnnounced = true,
-        ExcludeFromBatch = true,
-        ExcludeFromMonitorManager = true,
-    };
+        var def = new SimVarDefinition
+        {
+            Name = varName,
+            DisplayName = name ?? key,
+            Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ExcludeFromBatch = true,
+            ExcludeFromMonitorManager = !ctrlMRow,
+        };
+        vars[key] = def;
+        if (!ctrlMRow)
+            _silentKeys.Add(key);
+        return def;
+    }
 
     /// <summary>A map control's row.</summary>
     private static SimVarDefinition BuildRowVariable(A300PlacedRow row)

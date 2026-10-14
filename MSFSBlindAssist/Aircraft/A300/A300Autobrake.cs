@@ -46,10 +46,6 @@ public static class A300Autobrake
             ["A300_AUTO_BRK_MAX"] = new(3, "Autobrake max", "A300_AUTOBRAKE_HI_DECEL", "INI_AUTOBRAKE_HI_DECEL"),
         };
 
-    /// <summary>Every state variable the lamps read: the level, then the three DECEL lights.</summary>
-    public static readonly IReadOnlySet<string> StateKeys =
-        ByButton.Values.Select(b => b.DecelKey).Prepend(LevelKey).ToHashSet(StringComparer.Ordinal);
-
     /// <summary>A button's lamp in words: "Decel", "Armed" or "Off" ("Off" on a dark AC bus, as the lamp
     /// is); null while the level or the AC light power is unread.</summary>
     public static string? Describe(A300AutobrakeButton button, double? level, double? decel, double? acPower)

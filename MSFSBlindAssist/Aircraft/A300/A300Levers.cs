@@ -24,11 +24,6 @@ public static class A300Levers
     /// <summary>The panel the three levers are placed on, the fleet's "flaps and speed brake" pedestal panel.</summary>
     public const string Panel = "Flaps and Speed Brake";
 
-    public static readonly IReadOnlySet<string> Keys = new HashSet<string>(StringComparer.Ordinal)
-    {
-        FlapsKey, SpoilersArmKey, SpeedBrakeKey,
-    };
-
     /// <summary>Flap handle detents, slats/flaps as the A300 marks them.</summary>
     public static readonly IReadOnlyDictionary<double, string> FlapPositions = new Dictionary<double, string>
     {

@@ -18,9 +18,6 @@ public static class A300IrsAlignment
         n, $"A300_RO_IRS{n}_ALIGN", $"INI_IRS{n}_TIME_REMAIN",
         $"A300_IRS{n}_ALIGNING", $"INI_IRS{n}_IS_ALIGNING", $"A300_IRS{n}_ALIGNED", $"INI_IRS{n}_ALIGNED")).ToArray();
 
-    public static readonly IReadOnlySet<string> FlagKeys =
-        All.SelectMany(l => new[] { l.AligningKey, l.AlignedKey }).ToHashSet(StringComparer.Ordinal);
-
     /// <summary>"aligning, 2 minutes 28 seconds left", "waiting for ALIGN IRS on the MCDU", "aligned", "off".</summary>
     public static string Status(double remain, double aligning, double aligned)
     {
