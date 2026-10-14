@@ -105,6 +105,9 @@
   };
   // The cargo field's label column says LOAD (CARGO on the passenger version).
   A.FIELD_TITLES = { LOAD: 'Total cargo', CARGO: 'Total cargo' };
+  // What a stored code adds to a password box's name ("Hoppie, code set"). It is the box's state, not
+  // part of the name that a heading above the box echoes (A.dropEchoHeadings).
+  A.CODE_SET = ', code set';
   // The results: read-only boxes, printed in thousands of the tablet's weight unit or in % MAC.
   A.READOUTS = {
     output_maczfw: ['Zero fuel weight centre of gravity', 'mac'], output_maccg: ['Gross weight centre of gravity', 'mac'],
@@ -588,7 +591,7 @@
         // whether a code is stored. setValue never writes an empty value to it, so Enter on the untouched
         // box leaves the stored code alone (a placeholder value here used to be written over the code).
         var secret = el.type === 'password';
-        if (secret && el.value) name += ', code set';
+        if (secret && el.value) name += A.CODE_SET;
         emit({ idx: idxI, text: name, value: secret ? '' : A.clean(el.value), controlType: 'text',
           kind: 'static', clickable: false, disabled: !!el.disabled || !!el.readOnly, key: 'field:' + (el.id || idxI) });
         return;
@@ -778,11 +781,18 @@
     return l === h || l.indexOf(h + ' (') === 0 || l.indexOf(h + ':') === 0;
   };
 
+  // The name of a field that a heading above it echoes: a password box's stored-code state ("Hoppie,
+  // code set") is not part of it, so the "Hoppie" heading goes whether or not a code is stored.
+  A.echoName = function (e) {
+    var t = e.text, n = A.CODE_SET.length;
+    return e.controlType === 'text' && t.length > n && t.slice(-n) === A.CODE_SET ? t.slice(0, -n) : t;
+  };
+
   A.dropEchoHeadings = function (els) {
     var out = [];
     for (var i = 0; i < els.length; i++) {
       var e = els[i], next = els[i + 1];
-      if (e.kind === 'heading' && next && next.kind !== 'heading' && next.idx && A.sameLabel(e.text, next.text)) continue;
+      if (e.kind === 'heading' && next && next.kind !== 'heading' && next.idx && A.sameLabel(e.text, A.echoName(next))) continue;
       out.push(e);
     }
     return out;
@@ -848,16 +858,16 @@
     el.dispatchEvent(ev);
   };
 
-  // A number the pilot typed → the number, or NaN when it is not one. A space before exactly three digits
-  // groups the thousands of the whole number ("20 000", "12 345,5"; A.clean makes a no-break, thin or
-  // narrow space a plain one), and so does a comma before exactly three digits in a well formed grouping
-  // ("20,000", "1,234,567"). Any other single comma is the decimal point ("12,5", "0,25"). So "0,500" is
-  // a half and "1234,567" a thousand and a fraction, never 500 or 1234567. What is still not a plain
-  // number ("abc", "15 kg", "1.234,5", "1,234 567") is NaN.
+  // A number the pilot typed → the number, or NaN when it is not one. A comma or a space groups thousands
+  // only in a well formed grouping: one to three leading digits, the first not 0, then groups of exactly
+  // three ("20,000", "1,234,567", "20 000", "12 345,5"; A.clean makes a no-break, thin or narrow space a
+  // plain one). Spaces group the whole number only. Any other single comma is the decimal point ("12,5",
+  // "0,25"), so "0,500" is a half and "1234,567" a thousand and a fraction. What is still not a plain
+  // number ("abc", "15 kg", "1e3", "+5", "1.234,5", "1,234 567", "1234 567", "0 500") is NaN.
   A.typedNumber = function (text) {
     var s = A.clean(text), cut = s.search(/[,.]/);
     if (cut < 0) cut = s.length;
-    s = s.slice(0, cut).replace(/(\d) (?=\d{3}(?!\d))/g, '$1') + s.slice(cut);
+    if (/^-?[1-9]\d{0,2}( \d{3})+$/.test(s.slice(0, cut))) s = s.slice(0, cut).replace(/ /g, '') + s.slice(cut);
     if (/^-?[1-9]\d{0,2}(,\d{3})+(\.\d+)?$/.test(s)) s = s.replace(/,/g, '');
     else if (/^-?\d*,\d+$/.test(s)) s = s.replace(',', '.');
     if (!/^-?(\d+\.?\d*|\.\d+)$/.test(s)) return NaN;

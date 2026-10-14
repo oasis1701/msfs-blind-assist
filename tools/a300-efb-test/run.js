@@ -105,4 +105,15 @@ function scrape(A) {
 const texts = r => r.elements.map(e => e.text);
 const find = (r, text) => r.elements.find(e => e.text === text);
 
-module.exports = { load, scrape, texts, find };
+// The events a typed entry fires on a field, in order: the tablet's own handlers run on them.
+const WRITE_EVENTS = ['input', 'change', 'keyup', 'blur'];
+
+// Starts recording the events fired on a field. The returned list fills as they fire; empty it
+// with seen.length = 0 between writes.
+function recordEvents(field) {
+  const seen = [];
+  for (const type of WRITE_EVENTS) field.addEventListener(type, () => seen.push(type));
+  return seen;
+}
+
+module.exports = { load, scrape, texts, find, recordEvents, WRITE_EVENTS };

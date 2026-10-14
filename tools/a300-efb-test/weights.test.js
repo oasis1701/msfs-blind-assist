@@ -5,7 +5,7 @@
 // goes on board until Apply Load to Aircraft (read from the tablet's own code, 2026-10-04).
 const test = require('node:test');
 const assert = require('node:assert');
-const { load, scrape, texts, find } = require('./run');
+const { load, scrape, texts, find, recordEvents, WRITE_EVENTS } = require('./run');
 
 // Payload stations 1 and 2 are the pilots; 3 to 8 are the holds and cabin zones.
 const KG = {
@@ -84,23 +84,23 @@ function fuelBox() {
   const { A, window } = load('weights-loading', { simvars: KG });
   const box = window.document.getElementById('weight_fuel');
   assert.strictEqual(box.type, 'number');
-  const seen = [];
-  for (const type of ['input', 'change', 'keyup', 'blur']) box.addEventListener(type, () => seen.push(type));
-  return { A, box, seen, idx: find(scrape(A), 'Total fuel (kg)').idx };
+  return { A, box, seen: recordEvents(box), idx: find(scrape(A), 'Total fuel (kg)').idx };
 }
 
 test('a number box takes the separators a pilot types', () => {
-  const { A, box, idx } = fuelBox();
+  const { A, box, seen, idx } = fuelBox();
   for (const [typed, stored] of [
     ['20,000', '20000'], ['20 000', '20000'], ['12,5', '12.5'],
   ]) {
+    seen.length = 0;
     assert.strictEqual(A.setValue(idx, typed), true, typed);
     assert.strictEqual(box.value, stored, typed);
+    assert.deepStrictEqual(seen, WRITE_EVENTS, typed + ' reaches the tablet like any typed entry');
   }
 });
 
 test('a number box reads grouped and comma-decimal numbers', () => {
-  const { A, box, idx } = fuelBox();
+  const { A, box, seen, idx } = fuelBox();
   for (const [typed, stored] of [
     ['1,234,567', '1234567'], ['1,234.5', '1234.5'], ['12 345,5', '12345.5'], ['1 234 567', '1234567'],
     ['12 345,678', '12345.678'], ['1 234 567,89', '1234567.89'], ['20 000.5', '20000.5'], ['-20 000', '-20000'],
@@ -109,8 +109,10 @@ test('a number box reads grouped and comma-decimal numbers', () => {
     // The spaces a screen reader or a pasted figure can bring: no-break, thin and narrow no-break.
     ['20' + NBSP + '000', '20000'], ['20' + THIN + '000', '20000'], ['20' + NARROW + '000', '20000'], ['20  000', '20000'],
   ]) {
+    seen.length = 0;
     assert.strictEqual(A.setValue(idx, typed), true, JSON.stringify(typed));
     assert.strictEqual(box.value, stored, JSON.stringify(typed));
+    assert.deepStrictEqual(seen, WRITE_EVENTS, JSON.stringify(typed) + ' reaches the tablet like any typed entry');
   }
 });
 
@@ -119,8 +121,8 @@ test('a number box refuses text that is not a number and is left as it was', () 
   assert.strictEqual(A.setValue(idx, '20,000'), true);
   seen.length = 0;
   for (const typed of [
-    'abc', '15 kg', '1.234,5', '20 0', '1,23,456', '1,234 567', '0x10', 'Infinity', '1e3', '+5', '--5', '1.2.3',
-    '9'.repeat(400),
+    'abc', '15 kg', '1.234,5', '20 0', '1,23,456', '1,234 567', '1234 567', '0 500', '0x10', 'Infinity', '1e3', '+5', '--5',
+    '1.2.3', '9'.repeat(400),
   ]) {
     assert.strictEqual(A.setValue(idx, typed), false, JSON.stringify(typed));
     assert.strictEqual(box.value, '20000', JSON.stringify(typed) + ' leaves the box alone');
@@ -138,7 +140,7 @@ test('an empty entry clears a number box, and the tablet is told like any typed 
     seen.length = 0;
     assert.strictEqual(A.setValue(idx, typed), true, JSON.stringify(typed));
     assert.strictEqual(box.value, '', JSON.stringify(typed) + ' clears the box');
-    assert.deepStrictEqual(seen, ['input', 'change', 'keyup', 'blur'], JSON.stringify(typed));
+    assert.deepStrictEqual(seen, WRITE_EVENTS, JSON.stringify(typed));
   }
 });
 
