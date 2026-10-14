@@ -90,6 +90,29 @@ public class A220AgentContractTests
     }
 
     [Fact]
+    public void SysBlocks_ShipsTheCaptainsCtpAndNav_OnTheSystemsWindow_WhileTheWalksKeepTheirFastOne()
+    {
+        // lctp and lnav live in the 'afdx' group, whose 3 s window the knob walks' fast read keeps;
+        // shipped as systems blocks they must go stale at the systems stores' 6 s, or a quiet captain
+        // CTP flickers to "not available" (Minimums row, Ctrl+B, the unit write's QNH read).
+        string js = Agent();
+        var stores = StoreEntry.Matches(js).ToDictionary(m => m.Groups[2].Value, m => (Group: m.Groups[3].Value, Ms: m.Groups[4].Value));
+        Assert.Equal(("afdx", "3000"), stores["lctp"]);
+        Assert.Equal(("afdx", "3000"), stores["lnav"]);
+
+        var sysMs = Regex.Match(js, @"var SYS_STALE_MS = (\d+);");
+        Assert.True(sysMs.Success, "SYS_STALE_MS not found");
+        foreach (var s in stores.Values.Where(s => s.Group == "sys")) Assert.Equal(sysMs.Groups[1].Value, s.Ms);
+
+        int start = js.IndexOf("function sysBlocks()", StringComparison.Ordinal);
+        Assert.True(start >= 0, "sysBlocks not found");
+        int end = js.IndexOf("A.sys = function", start, StringComparison.Ordinal);
+        string body = js.Substring(start, end - start);
+        Assert.Contains("cbBlock('lctp', 'A22X.L CTP Data', SYS_STALE_MS)", body);
+        Assert.Contains("cbBlock('lnav', 'A22X.L Nav Data', SYS_STALE_MS)", body);
+    }
+
+    [Fact]
     public void TheMergeHandlerVersion_WasBumpedForTheArrayDiffMerge()
     {
         string js = Agent();

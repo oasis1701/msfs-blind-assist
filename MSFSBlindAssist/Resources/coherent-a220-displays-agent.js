@@ -96,6 +96,9 @@
     // broadcast CHANGES and the DUs ask for a full copy after 3 s of quiet (afdx/index.ts
     // `yt`: r.set(Lp, 3e3)), so a slow store can sit silent for ~3 s between messages:
     // the systems stores go stale at 6 s, never 3. A.tapGaps() measures the real gaps.
+    // SYS_STALE_MS is that systems window, also applied to the two 'afdx' stores sysBlocks()
+    // ships (lctp, lnav); their own 3 s stays for the knob walks' fast read (A.afdx).
+    var SYS_STALE_MS = 6000;
     var CB_STORES = [
       ['A22X.Autoflight Data', 'af', 'afdx', 3000],
       ['A22X.FCP Data', 'fcp', 'afdx', 3000],
@@ -332,10 +335,11 @@
 
     // A store the WASM stopped broadcasting is STALE, not current: the aircraft's own
     // stores self-reset to defaults after 3 s of silence, so we mirror that window and
-    // return null rather than a frozen value C# would read as truth.
-    function cbBlock(key, name) {
+    // return null rather than a frozen value C# would read as truth. maxAgeMs, when given,
+    // replaces the store's own window (sysBlocks ships two 'afdx' stores on the sys one).
+    function cbBlock(key, name, maxAgeMs) {
       var raw = cbData[name];
-      var maxAge = CB_STALE_MS[name] || 3000;
+      var maxAge = maxAgeMs || CB_STALE_MS[name] || 3000;
       if (!raw || !cbStamp[name] || (Date.now() - cbStamp[name]) > maxAge) return null;
       var want = CB_FIELDS[key], out = {};
       for (var i = 0; i < want.length; i++) {
@@ -415,7 +419,9 @@
     };
 
     // ---- Plan A systems: CAS, gear, doors, engines, IRS, V-speeds, XPDR, CTPs --------
-    // One object per 'sys' store (null while stale) plus the captain's CTP and nav blocks.
+    // One object per 'sys' store (null while stale) plus the captain's CTP and nav blocks,
+    // those two judged on the systems window too (a quiet CTP sits ~3 s between messages, so
+    // their 'afdx' 3 s flickered the captain's rows to "not available").
     // Read-only; a store that has not delivered for 2.5 s triggers a (throttled) resync.
     function sysBlocks() {
       var out = {}, stale = false, now = Date.now();
@@ -425,8 +431,8 @@
         out[s[1]] = cbBlock(s[1], s[0]);
         if (!cbStamp[s[0]] || (now - cbStamp[s[0]]) > 2500) stale = true;
       }
-      out.lctp = cbBlock('lctp', 'A22X.L CTP Data');
-      out.lnav = cbBlock('lnav', 'A22X.L Nav Data');
+      out.lctp = cbBlock('lctp', 'A22X.L CTP Data', SYS_STALE_MS);
+      out.lnav = cbBlock('lnav', 'A22X.L Nav Data', SYS_STALE_MS);
       if (stale) cbResync();
       return out;
     }
