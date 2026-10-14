@@ -40,10 +40,10 @@ public class A300McduLightsTests
     }
 
     [Fact]
-    public void Each_light_streams_on_its_own_subscription_and_is_consumed_silently()
+    public void Every_light_but_the_captains_msg_streams_on_its_own_subscription_and_is_consumed_silently()
     {
         // The captain's MSG lamp is also the fault light "MCDU message light", whose own key streams the variable: that
-        // one is read from the fault light's key instead of a second subscription.
+        // one is read from the fault light's key instead of a second subscription (the next test).
         var def = new IniA300Definition();
         var speech = new SpeechCapture();
         var vars = def.GetVariables();

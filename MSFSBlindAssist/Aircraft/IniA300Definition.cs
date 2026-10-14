@@ -49,7 +49,7 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
 
     /// <summary>
     /// The keys <see cref="OwnSubscription"/> registered without a Ctrl+M row: the subscriptions only a label, a box line
-    /// or a refusal reads, which ProcessSimVarUpdate consumes without a word. The set also holds the two light power
+    /// or a refusal reads, which ProcessSimVarUpdate consumes without a word. The set also holds the AC and DC light power
     /// flags, the panel lamps' shared inputs and the TRP's four keys; the light board and TRP branches consume those first,
     /// so the check against this set stays after them. An input that reads another key's cache instead
     /// (<see cref="_inputAliases"/>) is never registered, so it is not in the set.
@@ -165,7 +165,8 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
             IsAnnounced = baseGlideslope.IsAnnounced,
         };
 
-        var batchNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Names compare exactly, as ContinuousBatchLayout.Order sorts them and VarNameCollisionTests groups them ([VAR-7]).
+        var batchNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var def in vars.Values)
             if (ContinuousBatchLayout.RidesBatch(def))
                 batchNames.Add(ContinuousBatchLayout.FullName(def));
@@ -430,13 +431,16 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
     /// <summary>
     /// Registers the subscription a composed line's input reads under <paramref name="key"/>, as
     /// <see cref="OwnSubscription"/> does, unless a key registered before it already streams the same variable (a
-    /// continuous, announced definition with the same name, type and, for a stock variable, unit). Then it registers
-    /// nothing, records the key in <see cref="_inputAliases"/> and returns null, and every reader asks
-    /// <see cref="ReadInput"/>. Only an input that is read from the cache comes through here. The key it reads instead
-    /// may be a light board input, a panel row or a key with a Ctrl+M row (every delivery fills the same cache); those
-    /// keys themselves are never passed in, because their own deliveries drive something.
+    /// continuous, announced definition with the same name, type and unit). Then it registers nothing, records the key in
+    /// <see cref="_inputAliases"/> and returns null, and every reader asks <see cref="ReadInput"/>. Only an input that is
+    /// read from the cache comes through here. The key it reads instead may be a light board input, a panel row or a key
+    /// with a Ctrl+M row (every delivery fills the same cache); those keys themselves are never passed in, because their
+    /// own deliveries drive something.
+    /// The name must match exactly: a name that differs only in case may be another variable, and an alias onto another
+    /// variable reads the wrong value in silence, where a missed alias costs one subscription. No such pair exists today.
+    /// The unit must match too, for a stock variable and an L:var alike.
     /// </summary>
-    private SimVarDefinition? InputSubscription(Dictionary<string, SimVarDefinition> vars, string key, string varName,
+    internal SimVarDefinition? InputSubscription(Dictionary<string, SimVarDefinition> vars, string key, string varName,
         bool isStock = false, string units = "number")
     {
         var type = isStock ? SimVarType.SimVar : SimVarType.LVar;
@@ -444,7 +448,7 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
         {
             if (streaming.UpdateFrequency == UpdateFrequency.Continuous && streaming.IsAnnounced && streaming.Type == type
                 && string.Equals(streaming.Name, varName, StringComparison.Ordinal)
-                && (!isStock || string.Equals(streaming.Units, units, StringComparison.OrdinalIgnoreCase)))
+                && string.Equals(streaming.Units, units, StringComparison.OrdinalIgnoreCase))
             {
                 _inputAliases[key] = streamingKey;
                 return null;

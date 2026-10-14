@@ -103,8 +103,8 @@ public partial class IniA300Definition
         // The subscriptions only a label, a box line or a refusal reads (the clocks' digits and button states, the
         // rudder trim display, the radio windows, the cargo door, the memos, the MCDU lights, the IRS flags, the ILS
         // inputs): composed from, never spoken. OwnSubscription adds each key as BuildVariables registers it, and an
-        // input that reads another key's cache (_inputAliases) is not registered. The set also holds the light power
-        // flags, the panel lamps' shared inputs and the TRP's keys, which the light board and TRP branches above have
+        // input that reads another key's cache (_inputAliases) is not registered. The set also holds the AC and DC light
+        // power flags, the panel lamps' shared inputs and the TRP's keys, which the light board and TRP branches above have
         // already consumed: this check stays after them.
         if (SilentKeys.Contains(varName))
             return true;

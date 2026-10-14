@@ -606,7 +606,7 @@ public class IniA300BehaviourTests
         var restreamed = registered
             .Select(key => (Key: key, Others: vars.Keys
                 .Where(other => other != key && vars[other].UpdateFrequency == UpdateFrequency.Continuous
-                                && string.Equals(FullName(other), FullName(key), StringComparison.OrdinalIgnoreCase))
+                                && string.Equals(FullName(other), FullName(key), StringComparison.Ordinal))   // as InputSubscription matches
                 .ToList()))
             .Where(x => x.Others.Count > 0)
             .Select(x => $"{x.Key} re-streams {FullName(x.Key)}, which {string.Join(", ", x.Others)} also stream")
@@ -630,8 +630,7 @@ public class IniA300BehaviourTests
             var def = vars[streaming];
             Assert.True(def.UpdateFrequency == UpdateFrequency.Continuous && def.IsAnnounced, $"{input.Key} reads {streaming}");
             Assert.Equal((input.IsStock ? SimVarType.SimVar : SimVarType.LVar, input.Var), (def.Type, def.Name));
-            if (input.IsStock)
-                Assert.Equal(input.Units, def.Units, ignoreCase: true);
+            Assert.Equal(input.Units, def.Units, ignoreCase: true);   // a stock variable's unit, and an L:var's "number"
         }
         // What keeps its own subscription: a light board input, a panel row and a key with a Ctrl+M row are never the input
         // that reads another key, and the memo line keeps its key (the first memo input reads it).
@@ -639,6 +638,72 @@ public class IniA300BehaviourTests
         Assert.DoesNotContain(aliased, i => A300LampBoard.InputKeys.Contains(i.Key) || rows.Contains(i.Key));
         Assert.Equal(A300EwdMemos.LineKey, _def.StreamingKey(A300EwdMemos.Inputs[0].Key));
         Assert.Contains(A300EwdMemos.LineKey, vars.Keys);
+    }
+
+    [Fact]
+    public void An_input_reads_another_key_only_when_it_streams_the_same_variable_in_the_same_unit()
+    {
+        // Name, type and unit all have to match, and the name exactly: a name that differs only in case may be another
+        // variable, and a variable streamed in another unit ("Bool", say) is not the value the input's readers expect. A
+        // definition that is not streamed (on request, or not announced) fills no cache of its own.
+        static SimVarDefinition Stream(string name, SimVarType type = SimVarType.LVar, string units = "number",
+            UpdateFrequency frequency = UpdateFrequency.Continuous, bool announced = true) => new()
+        {
+            Name = name, Type = type, Units = units, UpdateFrequency = frequency, IsAnnounced = announced,
+        };
+        using var def = new IniA300Definition();
+        var vars = new Dictionary<string, SimVarDefinition>
+        {
+            ["SAME"] = Stream("INI_X"),
+            ["OTHER_UNIT"] = Stream("INI_U", units: "Bool"),
+            ["OTHER_CASE"] = Stream("INI_c_lower"),
+            ["STOCK"] = Stream("EXTERNAL POWER ON:1", SimVarType.SimVar, "Bool"),
+            ["STOCK_OTHER_UNIT"] = Stream("SPOILERS HANDLE POSITION", SimVarType.SimVar, "Percent"),
+            ["ON_REQUEST"] = Stream("INI_R", frequency: UpdateFrequency.OnRequest),
+            ["NOT_ANNOUNCED"] = Stream("INI_N", announced: false),
+        };
+
+        Assert.Null(def.InputSubscription(vars, "IN_SAME", "INI_X"));
+        Assert.Null(def.InputSubscription(vars, "IN_STOCK", "EXTERNAL POWER ON:1", isStock: true, units: "bool"));   // a unit's case does not matter
+        Assert.NotNull(def.InputSubscription(vars, "IN_OTHER_UNIT", "INI_U"));
+        Assert.NotNull(def.InputSubscription(vars, "IN_OTHER_CASE", "INI_C_LOWER"));
+        Assert.NotNull(def.InputSubscription(vars, "IN_STOCK_OTHER_UNIT", "SPOILERS HANDLE POSITION", isStock: true, units: "Number"));
+        Assert.NotNull(def.InputSubscription(vars, "IN_ON_REQUEST", "INI_R"));
+        Assert.NotNull(def.InputSubscription(vars, "IN_NOT_ANNOUNCED", "INI_N"));
+        Assert.DoesNotContain("IN_SAME", vars.Keys);
+        Assert.DoesNotContain("IN_STOCK", vars.Keys);
+        Assert.All(new[] { "IN_OTHER_UNIT", "IN_OTHER_CASE", "IN_STOCK_OTHER_UNIT", "IN_ON_REQUEST", "IN_NOT_ANNOUNCED" },
+            key => Assert.Contains(key, vars.Keys));
+    }
+
+    [Fact]
+    public void Every_key_the_composed_lines_ask_the_cache_for_is_registered()
+    {
+        // A reader of an input that another key streams must go through ReadInput. Written as Cached(sim, irs.AligningKey),
+        // it would ask for a key nothing registers or delivers, and read null for good. So record every key the composed
+        // lines ask the cache for (a memo sample, each IRS and ILS line, both units' MCDU annunciators) and require each to
+        // be registered. Every question is answered with 1, so no reader stops at an unread input, and the AC light power
+        // reads on, so the annunciators ask for their lights.
+        var asked = new HashSet<string>(StringComparer.Ordinal);
+        _def.Cached = (_, key) =>
+        {
+            asked.Add(key);
+            return 1;
+        };
+        _def.Attach(_sim);
+        _def.OnDeferredFlushBatchDelivered(_speech);   // the memo sample; the FMA's sources, composed in the same call, are asked too
+        foreach (var irs in A300IrsAlignment.All)
+            _def.TryGetDisplayOverride(irs.LineKey, 0, out _);
+        _def.TryGetDisplayOverride(A300IlsDeviation.LocalizerKey, 0, out _);
+        _def.TryGetDisplayOverride(A300IlsDeviation.GlideslopeKey, 0, out _);
+        _def.McduAnnunciators(A300McduUnit.Captain);
+        _def.McduAnnunciators(A300McduUnit.FirstOfficer);
+
+        var vars = _def.GetVariables();
+        var unregistered = asked.Where(key => !vars.ContainsKey(key)).Order(StringComparer.Ordinal).ToList();
+        Assert.True(unregistered.Count == 0, "asked the cache for keys nothing registers: " + string.Join(", ", unregistered));
+        // The recording is not empty: every composed-line input was asked for, under the key that streams it.
+        Assert.All(ComposedLineInputs(), input => Assert.Contains(_def.StreamingKey(input.Key), asked));
     }
 
     [Fact]

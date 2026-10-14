@@ -202,10 +202,10 @@ public class IniA300MemoBehaviourTests
         _def.TryGetDisplayOverride(A300EwdMemos.LineKey, 0, out var text) ? text : "(no line)";
 
     [Fact]
-    public void Every_input_is_streamed_by_one_key_and_consumed_silently()
+    public void Every_input_is_read_from_one_registered_key()
     {
-        // An input nothing else streams has a subscription of its own, with no Ctrl+M row; one whose variable a panel row,
-        // a lamp or the memo line already streams has none, and its readers ask that key.
+        // An input nothing else streams has a subscription of its own, with no Ctrl+M row; one whose variable a panel row, a
+        // lamp, the light board's external power input or the memo line already streams has none, and its readers ask that key.
         var vars = _def.GetVariables();
         foreach (var input in A300EwdMemos.Inputs)
         {
@@ -218,19 +218,31 @@ public class IniA300MemoBehaviourTests
                 Assert.True(def.ExcludeFromBatch && def.ExcludeFromMonitorManager, input.Key);
             else
                 Assert.DoesNotContain(input.Key, vars.Keys);
-            Assert.True(_def.ProcessSimVarUpdate(streaming, 1, _speech), streaming);
         }
         // A tolerance belongs to the registered key, so the inputs that carry one keep a subscription of their own.
         Assert.All(A300EwdMemos.Inputs.Where(i => i.ChangeTolerance != null), i => Assert.Equal(i.Key, _def.StreamingKey(i.Key)));
+    }
+
+    [Fact]
+    public void A_memo_input_with_a_subscription_of_its_own_is_consumed_without_a_word()
+    {
+        // The keys that stream the other inputs are panel rows, lamps, the light board's input and the memo line; each is
+        // consumed by its own branch (a lamp speaks later, at a batch end). Only an input with a subscription of its own is
+        // the memos' to consume.
+        var own = A300EwdMemos.Inputs.Where(i => _def.StreamingKey(i.Key) == i.Key).ToList();
+        Assert.NotEmpty(own);
+        foreach (var input in own)
+            Assert.True(_def.ProcessSimVarUpdate(input.Key, 1, _speech), input.Key);
         Assert.Empty(_speech.All);
     }
 
     [Theory]
-    // A panel row, an IRS light, the memo line and a lamp stream these variables already.
+    // A panel row, a lamp, the light board's external power input and the memo line stream these variables already.
     [InlineData("INI_SEATBELTS_SWITCH", "A300_SEATBELT")]
     [InlineData("INI_ENG1_ANTI_ICE", "A300_ANTI_ICE_E1")]
     [InlineData("INI_tcas_mode_pedestal", "A300_TCAS_MODE")]
     [InlineData("INI_apu_available", "A300_LT_APU_AVAIL_SEQ1_LIGHT")]
+    [InlineData("EXTERNAL POWER ON:1", "A300_IN_A_EXTERNAL_POWER_ON_1_BOOL")]
     [InlineData("INI_IRS3_IS_ALIGNING", "A300_LT_IRS_2_009_LIGHT")]
     [InlineData("INI_CABIN_MAN_PRESS_ARROW", A300EwdMemos.LineKey)]
     public void An_input_another_key_streams_has_no_subscription_of_its_own(string var, string streaming)
