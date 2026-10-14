@@ -603,7 +603,8 @@ public class ActiveSkyClient
     }
 
     /// <summary>Parses /GetAtmosphere JSON ({"WeatherData":[{Altitude,WindDirection,
-    /// WindSpeed,Temperature,Pressure}]} — all values strings, invariant culture).
+    /// WindSpeed,Temperature,Pressure}]} — all values strings, usually invariant
+    /// culture but not always: see TryParseNumber).
     /// Null on malformed input; permissive per-field AND per-element like
     /// ParseConditionsJson — a stray non-object array entry is skipped rather than
     /// failing the whole parse.</summary>
@@ -705,23 +706,25 @@ public class ActiveSkyClient
     /// QNH "1014,999", AmbientTemperature "7,992481") come in the OS culture with a
     /// "," decimal. The old invariant NumberStyles.Any parse took that comma as a
     /// thousands separator and read 1014999 hPa and 7992481°C. ActiveSky never
-    /// groups thousands, so a lone "," is the decimal separator; with both present
-    /// the later one is the decimal and the other is grouping. Whitespace (the
-    /// sv-SE no-break-space group separator) is dropped.
+    /// groups thousands (the same capture sent CloudCeiling "6449", with no sv-SE
+    /// group space), so a lone "," is the decimal separator. A three-digit-group
+    /// check cannot stand in for that premise: QNH "1014,999" has three decimals.
+    /// What could only be grouping ("," and "." together, or whitespace inside the
+    /// number) is refused, so the field reads as missing, never guessed. The U+2212
+    /// minus sign .NET 5+ writes for sv-SE, nb-NO, fi-FI and other comma-decimal
+    /// cultures reads as "-".
     /// </summary>
     internal static bool TryParseNumber(string? s, out double value)
     {
         value = 0;
         if (string.IsNullOrWhiteSpace(s)) return false;
-        var sb = new System.Text.StringBuilder(s.Length);
-        foreach (char ch in s)
-            if (!char.IsWhiteSpace(ch)) sb.Append(ch);
-        string t = sb.ToString();
-        int comma = t.LastIndexOf(','), dot = t.LastIndexOf('.');
-        if (comma >= 0 && dot >= 0)
-            t = comma > dot ? t.Replace(".", "").Replace(',', '.') : t.Replace(",", "");
-        else if (comma >= 0)
+        string t = s.Trim();
+        if (t.Contains(','))
+        {
+            if (t.Contains('.')) return false;
             t = t.Replace(',', '.');
+        }
+        if (t.Contains('−')) t = t.Replace('−', '-');
         return double.TryParse(t, System.Globalization.NumberStyles.Float,
             System.Globalization.CultureInfo.InvariantCulture, out value);
     }
@@ -747,9 +750,14 @@ public class ActiveSkyClient
             return v.TryGetInt64(out long n) ? n : (long)v.GetDouble();
         if (v.ValueKind == JsonValueKind.String)
         {
-            if (long.TryParse(v.GetString(), System.Globalization.NumberStyles.Integer,
+            // Like the Number branch: exact when integral, else ReadDouble's
+            // culture-tolerant parse, truncated ("1760300000.0", "1760300000,5").
+            string? s = v.GetString();
+            if (long.TryParse(s, System.Globalization.NumberStyles.Integer,
                               System.Globalization.CultureInfo.InvariantCulture, out long n))
                 return n;
+            if (TryParseNumber(s, out double d))
+                return (long)d;
         }
         return 0;
     }
