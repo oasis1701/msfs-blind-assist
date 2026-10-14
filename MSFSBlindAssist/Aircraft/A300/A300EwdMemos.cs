@@ -2,8 +2,10 @@ using System.Text.RegularExpressions;
 
 namespace MSFSBlindAssist.Aircraft.A300;
 
-/// <summary>A variable a memo's condition reads: its own subscription's key, and its unit when stock.</summary>
-public sealed record A300MemoInput(string Key, string Var, bool IsStock, string Units);
+/// <summary>A variable a memo's condition reads: its key (its own subscription's, or the key that already streams the
+/// variable, which the definition reads instead), its unit when stock, and how far a sample must move to count as a
+/// change when the condition compares it with a threshold only (<see cref="A300EwdMemos.ThresholdTolerance"/>).</summary>
+public sealed record A300MemoInput(string Key, string Var, bool IsStock, string Units, double? ChangeTolerance = null);
 
 /// <summary>One E/WD memo: the aircraft's text, the words read out, and its condition (null while an input is
 /// unread).</summary>
@@ -29,6 +31,14 @@ public static class A300EwdMemos
     /// <summary>A memo is shown once active for longer than this (<c>EWD::UpdateMemo</c>).</summary>
     public const long ShowAfterMs = 2500;
 
+    /// <summary>
+    /// How far a sample of a threshold-only input must move to count as a change ([SIM-7]): the total air temperature,
+    /// which only memo 2 compares (with -15 and 5 Celsius), and an IRS's time remaining, which only memo 19 compares (with
+    /// zero). The memos read the cache, which takes every sample whatever this is, so it only keeps a wobble from
+    /// waking MainForm once a second.
+    /// </summary>
+    public const double ThresholdTolerance = 0.5;
+
     private static readonly List<A300MemoInput> InputList = new();
 
     public static IReadOnlyList<A300MemoInput> Inputs => InputList;
@@ -36,7 +46,8 @@ public static class A300EwdMemos
     public static readonly IReadOnlyList<A300Memo> All = new[]
     {
         Memo(1, "CAB PRESS MAN CTL", "Cabin pressure manual control", Eq("INI_CABIN_MAN_PRESS_ARROW", 1)),
-        Memo(2, "TAT IN ICING RANGE", "TAT in icing range", Between(Stock("TOTAL AIR TEMPERATURE", "Celsius"), -15, 5)),
+        Memo(2, "TAT IN ICING RANGE", "TAT in icing range",
+            Between(Stock("TOTAL AIR TEMPERATURE", "Celsius", ThresholdTolerance), -15, 5)),
         Memo(3, "APU RUNNING", "APU running", Eq("INI_apu_available", 1)),
         Memo(4, "CONTINUOUS RELIGHT ON", "Continuous relight on", Eq("INI_eng_ignition_switch", 4)),
         Memo(5, "FUEL X FEED", "Fuel crossfeed", Eq("INI_xfeed_transfer_on", 1)),
@@ -64,15 +75,16 @@ public static class A300EwdMemos
     private static A300Memo Memo(int number, string text, string words, Func<Func<string, double?>, bool?> condition) =>
         new(number, text, words, condition);
 
-    private static string Input(string var, bool isStock = false, string units = "number")
+    private static string Input(string var, bool isStock = false, string units = "number", double? changeTolerance = null)
     {
         string key = "A300_MEMO_IN_" + Regex.Replace(var.ToUpperInvariant(), "[^A-Z0-9]+", "_").Trim('_');
         if (!InputList.Any(i => i.Key == key))
-            InputList.Add(new A300MemoInput(key, var, isStock, units));
+            InputList.Add(new A300MemoInput(key, var, isStock, units, changeTolerance));
         return key;
     }
 
-    private static string Stock(string var, string units) => Input(var, isStock: true, units);
+    private static string Stock(string var, string units, double? changeTolerance = null) =>
+        Input(var, isStock: true, units, changeTolerance);
 
     /// <summary>A variable by its key; a bare name is an L:var.</summary>
     private static string KeyOf(string varOrKey) => varOrKey.StartsWith("A300_MEMO_IN_", StringComparison.Ordinal) ? varOrKey : Input(varOrKey);
@@ -99,7 +111,7 @@ public static class A300EwdMemos
     private static Func<Func<string, double?>, bool?> Aligning(int irs)
     {
         string aligning = Input($"INI_IRS{irs}_IS_ALIGNING");
-        string remain = Input($"INI_IRS{irs}_TIME_REMAIN");
+        string remain = Input($"INI_IRS{irs}_TIME_REMAIN", changeTolerance: ThresholdTolerance);   // only compared with zero
         return read => read(aligning) is double a && read(remain) is double t ? Math.Round(a) == 1 && t != 0 : null;
     }
 

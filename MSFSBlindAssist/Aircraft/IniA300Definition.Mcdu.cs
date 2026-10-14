@@ -96,7 +96,7 @@ public partial class IniA300Definition
     {
         if (_sim is not { } sim || Cached(sim, A300LampBoard.AcPowerKey) is not double power || power < 0.5)
             return Array.Empty<string>();
-        return A300McduLights.For(unit).Where(l => Cached(sim, l.Key) is double v && v >= 0.5).Select(l => l.Label).ToArray();
+        return A300McduLights.For(unit).Where(l => ReadInput(sim, l.Key) is double v && v >= 0.5).Select(l => l.Label).ToArray();
     }
 
     private async Task PumpMcduAsync(SimConnectManager sim)

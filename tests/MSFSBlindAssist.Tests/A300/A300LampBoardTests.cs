@@ -159,6 +159,24 @@ public class A300LampBoardTests
         Assert.Equal(A300LampBoard.Lamps.Count, A300LampBoard.Lamps.Select(l => l.Name).Distinct().Count());
 
     [Fact]
+    public void Every_rule_light_asks_only_for_the_inputs_it_lists()
+    {
+        // The board works each input's key out once for a lamp (a shared input's key is built with a regex), and the rule asks
+        // for them on every delivery: with every input read, the keys a rule light asks the cache for are exactly the inputs
+        // the board lists for it, its own key and its bus's light power among them.
+        foreach (var resolved in A300PanelLamps.Resolved)
+        {
+            var lamp = A300LampBoard.ById[resolved.Lamp.Key];
+            var asked = new HashSet<string>(StringComparer.Ordinal);
+            Assert.NotNull(A300LampBoard.IsLit(lamp, key => { asked.Add(key); return 1; }));
+            Assert.True(lamp.Inputs.ToHashSet(StringComparer.Ordinal).SetEquals(asked),
+                $"{lamp.Name} lists [{string.Join(", ", lamp.Inputs)}] but asks for [{string.Join(", ", asked)}]");
+            Assert.Contains(resolved.Lamp.Key, asked);
+            Assert.All(resolved.Rule.Inputs.Where(i => i.Id != resolved.Primary.Id), i => Assert.Contains(A300PanelLamps.InputKey(i), asked));
+        }
+    }
+
+    [Fact]
     public void A_seeded_value_is_a_silent_baseline_and_never_overwrites_one_already_read()
     {
         string gen = KeyOf("INI_elec_gen1_fault");

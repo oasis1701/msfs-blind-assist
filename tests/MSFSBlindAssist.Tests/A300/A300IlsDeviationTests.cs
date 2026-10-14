@@ -72,21 +72,26 @@ public class A300IlsDeviationTests
     }
 
     [Fact]
-    public void The_deviations_are_read_on_request_and_their_inputs_stream_silently_with_no_ctrl_m_row()
+    public void The_deviations_are_read_on_request_and_their_inputs_are_consumed_silently()
     {
         var def = new IniA300Definition();
         def.Attach(new SimConnectManager(IntPtr.Zero));
         var vars = def.GetVariables();
         Assert.Equal(("INI_LOC_DEV", UpdateFrequency.OnRequest), (vars[A300IlsDeviation.LocalizerKey].Name, vars[A300IlsDeviation.LocalizerKey].UpdateFrequency));
         Assert.Equal(("INI_GS_DEV", UpdateFrequency.OnRequest), (vars[A300IlsDeviation.GlideslopeKey].Name, vars[A300IlsDeviation.GlideslopeKey].UpdateFrequency));
+        // The EFIS nav selector is the captain's selector row's variable: that row streams it, so the lines read the row's cache.
+        string selector = def.StreamingKey(A300IlsDeviation.NavSelectorKey);
+        Assert.NotEqual(A300IlsDeviation.NavSelectorKey, selector);
+        Assert.DoesNotContain(A300IlsDeviation.NavSelectorKey, vars.Keys);
         Assert.Equal(("INI_efis_selected_nav_capt", "INI_LOC_VALID", "NAV HAS GLIDE SLOPE:3"),
-            (vars[A300IlsDeviation.NavSelectorKey].Name, vars[A300IlsDeviation.LocalizerValidKey].Name, vars[A300IlsDeviation.GlideslopeReceivedKey].Name));
+            (vars[selector].Name, vars[A300IlsDeviation.LocalizerValidKey].Name, vars[A300IlsDeviation.GlideslopeReceivedKey].Name));
         var speech = new SpeechCapture();
-        foreach (var key in A300IlsDeviation.InputKeys)
+        foreach (var key in A300IlsDeviation.InputKeys.Where(key => key != A300IlsDeviation.NavSelectorKey))
         {
             Assert.True(vars[key].ExcludeFromBatch && vars[key].ExcludeFromMonitorManager, key);
             Assert.True(def.ProcessSimVarUpdate(key, 1, speech), key);
         }
+        Assert.True(def.ProcessSimVarUpdate(selector, 1, speech));   // the selector row: consumed, its combo follows it
         Assert.Equal(SimVarType.SimVar, vars[A300IlsDeviation.GlideslopeReceivedKey].Type);
         Assert.Empty(speech.All);
     }
@@ -94,12 +99,13 @@ public class A300IlsDeviationTests
     [Fact]
     public void The_status_display_composes_each_line_from_the_cache()
     {
-        var cache = new Dictionary<string, double>
-        {
-            [A300IlsDeviation.NavSelectorKey] = Ils, [A300IlsDeviation.LocalizerValidKey] = 1, [A300IlsDeviation.GlideslopeReceivedKey] = 1,
-        };
+        var cache = new Dictionary<string, double>();
         var def = new IniA300Definition { Cached = (_, key) => cache.TryGetValue(key, out var v) ? v : null };
         def.Attach(new SimConnectManager(IntPtr.Zero));
+        // The nav selector arrives under the selector row's key; the other two under their own.
+        cache[def.StreamingKey(A300IlsDeviation.NavSelectorKey)] = Ils;
+        cache[A300IlsDeviation.LocalizerValidKey] = 1;
+        cache[A300IlsDeviation.GlideslopeReceivedKey] = 1;
         Assert.True(def.TryGetDisplayOverride(A300IlsDeviation.LocalizerKey, -0.5, out var localizer));
         Assert.True(def.TryGetDisplayOverride(A300IlsDeviation.GlideslopeKey, 0.8, out var glideslope));
         Assert.Equal(("0.5 dots right of localizer", "0.8 dots above glideslope"), (localizer, glideslope));

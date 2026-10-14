@@ -98,7 +98,7 @@ public partial class IniA300Definition
             return true;
         }
         if (_sim is { } sim && TryButtonLabel(varKey, out _, out var describe)
-            && describe(key => Cached(sim, key)) is string label)
+            && describe(key => ReadInput(sim, key)) is string label)
         {
             stateText = label;
             return true;
@@ -109,11 +109,14 @@ public partial class IniA300Definition
     /// <summary>
     /// The one table of light-labeled buttons, an entry per kind (an FCU mode button, an autobrake button, a TRP button,
     /// a button a cockpit light labels, a clock button, a cargo door angle button): the keys its label reads, and the
-    /// label composed from the same reads. The keys are the button's <c>StateVariables</c>, so the open panel repaints
-    /// the label on every key it reads and on no other, and <paramref name="describe"/> is the label itself (it answers
-    /// null while an input is unread): neither can drift from the other. A button a cockpit light labels takes the
-    /// board lamp's own inputs (<see cref="A300LampBoard"/>), whatever its rule reads; the ECAM page buttons read the
-    /// ECAM status as well as their light and its bus's power.
+    /// label composed from them. The keys are the button's <c>StateVariables</c>, so the open panel repaints the label on
+    /// every key listed, and <paramref name="describe"/> is the label itself (null while an input it needs is unread).
+    /// Keys and reads cannot drift apart by construction only for a button a cockpit light labels: both are the board
+    /// lamp's own inputs (<see cref="A300LampBoard"/>), whatever its rule reads, and the ECAM page buttons read the ECAM
+    /// status as well as their light and its bus's power. For the other kinds each entry states both, and
+    /// IniA300DisplayPanelTests pins them together: every key a label asks the cache for is one the button repaints on,
+    /// and every key it repaints on is registered. A key a label reads that another key streams is read from that key
+    /// (<see cref="ReadInput"/>) and listed as that key (<see cref="RepointStateVariables"/>).
     /// </summary>
     private static bool TryButtonLabel(string rowKey, out IReadOnlyList<string> keys,
         out Func<Func<string, double?>, string?> describe)
@@ -265,7 +268,7 @@ public partial class IniA300Definition
             return line.Active ? line.Radio.Active(w1, w2, value) : line.Radio.Standby(w1, w2, value);
         }
         if (A300IrsAlignment.All.FirstOrDefault(l => l.LineKey == key) is { } irs)
-            return _sim is { } irsSim && Cached(irsSim, irs.AligningKey) is double aligning && Cached(irsSim, irs.AlignedKey) is double aligned
+            return _sim is { } irsSim && ReadInput(irsSim, irs.AligningKey) is double aligning && ReadInput(irsSim, irs.AlignedKey) is double aligned
                 ? A300IrsAlignment.Status(value, aligning, aligned)
                 : null;
         if (key == A300EwdMemos.LineKey)
@@ -281,11 +284,11 @@ public partial class IniA300Definition
             return _sim is { } adfSim && Cached(adfSim, bearing.SignalKey) is double signal ? A300Radios.Bearing(signal, value) : null;
         if (key == A300IlsDeviation.LocalizerKey)
             return _sim is { } locSim
-                ? A300IlsDeviation.Localizer(Cached(locSim, A300IlsDeviation.NavSelectorKey), Cached(locSim, A300IlsDeviation.LocalizerValidKey), value)
+                ? A300IlsDeviation.Localizer(ReadInput(locSim, A300IlsDeviation.NavSelectorKey), ReadInput(locSim, A300IlsDeviation.LocalizerValidKey), value)
                 : null;
         if (key == A300IlsDeviation.GlideslopeKey)
             return _sim is { } gsSim
-                ? A300IlsDeviation.Glideslope(Cached(gsSim, A300IlsDeviation.NavSelectorKey), Cached(gsSim, A300IlsDeviation.GlideslopeReceivedKey), value)
+                ? A300IlsDeviation.Glideslope(ReadInput(gsSim, A300IlsDeviation.NavSelectorKey), ReadInput(gsSim, A300IlsDeviation.GlideslopeReceivedKey), value)
                 : null;
         if (key == A300Trim.RudderKey)
         {

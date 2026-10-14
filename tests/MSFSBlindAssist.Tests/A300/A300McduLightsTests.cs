@@ -42,16 +42,37 @@ public class A300McduLightsTests
     [Fact]
     public void Each_light_streams_on_its_own_subscription_and_is_consumed_silently()
     {
+        // The captain's MSG lamp is also the fault light "MCDU message light", whose own key streams the variable: that
+        // one is read from the fault light's key instead of a second subscription.
         var def = new IniA300Definition();
         var speech = new SpeechCapture();
         var vars = def.GetVariables();
-        foreach (var light in A300McduLights.For(A300McduUnit.Captain).Concat(A300McduLights.For(A300McduUnit.FirstOfficer)))
+        Assert.Equal(new[] { "INI_FMS1_message_light" },
+            A300McduLights.All.Where(light => def.StreamingKey(light.Key) != light.Key).Select(light => light.Var));
+        foreach (var light in A300McduLights.All.Where(light => def.StreamingKey(light.Key) == light.Key))
         {
             Assert.Equal(light.Var, vars[light.Key].Name);
             Assert.True(vars[light.Key].ExcludeFromBatch && vars[light.Key].ExcludeFromMonitorManager, light.Key);
             Assert.True(def.ProcessSimVarUpdate(light.Key, 1, speech), light.Key);
         }
         Assert.Empty(speech.All);
+    }
+
+    [Fact]
+    public void The_captains_msg_light_is_read_from_the_fault_light_that_streams_it()
+    {
+        var msg = A300McduLights.For(A300McduUnit.Captain).Single(l => l.Label == "MSG");
+        var cache = new Dictionary<string, double>();
+        var def = new IniA300Definition { Cached = (_, key) => cache.TryGetValue(key, out var v) ? v : null };
+        def.Attach(new SimConnectManager(IntPtr.Zero));
+        var fault = A300FaultLights.All.Single(l => l.Var == msg.Var);
+        Assert.Equal(fault.Key, def.StreamingKey(msg.Key));
+        Assert.DoesNotContain(msg.Key, def.GetVariables().Keys);
+        cache[A300LampBoard.AcPowerKey] = 1;
+        cache[fault.Key] = 1;
+        Assert.Equal(new[] { "MSG" }, def.McduAnnunciators(A300McduUnit.Captain));
+        cache[fault.Key] = 0;
+        Assert.Empty(def.McduAnnunciators(A300McduUnit.Captain));
     }
 
     [Theory]

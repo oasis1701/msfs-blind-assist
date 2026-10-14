@@ -55,13 +55,23 @@ public class A300IrsAlignmentTests
     public void The_line_is_composed_from_the_irs_flags()
     {
         var irs = A300IrsAlignment.All[1];
-        var cache = new Dictionary<string, double> { [irs.AligningKey] = 1, [irs.AlignedKey] = 0 };
+        var cache = new Dictionary<string, double>();
         var def = new IniA300Definition { Cached = (_, key) => cache.TryGetValue(key, out var v) ? v : null };
         def.Attach(new SimConnectManager(IntPtr.Zero));
+        // The aligning flag is the variable of the IRS align light, whose own key streams it: the line reads that key's cache.
+        string aligningStream = def.StreamingKey(irs.AligningKey);
+        Assert.Equal("A300_LT_IRS_3_012_LIGHT", aligningStream);
+        cache[aligningStream] = 1;
+        cache[irs.AlignedKey] = 0;
         Assert.True(def.TryGetDisplayOverride(irs.LineKey, 0, out var waiting));
         Assert.Equal("waiting for ALIGN IRS on the MCDU", waiting);
+        cache[aligningStream] = 0;
+        Assert.True(def.TryGetDisplayOverride(irs.LineKey, 0, out var off));
+        Assert.Equal("off", off);
         var vars = def.GetVariables();
-        Assert.True(vars[irs.AligningKey].ExcludeFromBatch && vars[irs.AlignedKey].ExcludeFromMonitorManager);
-        Assert.True(def.ProcessSimVarUpdate(irs.AligningKey, 1, new SpeechCapture()));
+        Assert.Equal(irs.AligningVar, vars[aligningStream].Name);
+        Assert.DoesNotContain(irs.AligningKey, vars.Keys);
+        Assert.True(vars[irs.AlignedKey].ExcludeFromBatch && vars[irs.AlignedKey].ExcludeFromMonitorManager);
+        Assert.True(def.ProcessSimVarUpdate(irs.AlignedKey, 1, new SpeechCapture()));
     }
 }

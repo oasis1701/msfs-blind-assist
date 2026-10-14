@@ -152,11 +152,14 @@ public sealed class A300LampBoard
         A300PanelLamps.Resolved.Select(lamp =>
         {
             string? power = PowerKeyFor(lamp.Power);
-            var inputs = lamp.Rule.Inputs.Select(lamp.KeyFor).Distinct().ToList();
+            // Each input's key is worked out once, here: the rule asks for it on every delivery of any input the lamp reads,
+            // and a shared input's key is built with a regex.
+            var keyOf = lamp.Rule.Inputs.ToDictionary(input => input, lamp.KeyFor);
+            var inputs = lamp.Rule.Inputs.Select(input => keyOf[input]).Distinct().ToList();
             if (power != null)
                 inputs.Add(power);
             return new A300BoardLamp(lamp.Lamp.Key, lamp.Lamp.Name, lamp.Lamp.Key, inputs, read =>
-                lamp.Rule.IsLit(input => read(lamp.KeyFor(input))) is not bool state ? null
+                lamp.Rule.IsLit(input => read(keyOf[input])) is not bool state ? null
                 : power == null ? state
                 : read(power) is double powered ? state && On(powered) : null);
         });

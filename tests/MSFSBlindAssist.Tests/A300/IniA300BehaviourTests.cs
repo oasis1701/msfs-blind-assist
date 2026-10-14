@@ -527,13 +527,16 @@ public class IniA300BehaviourTests
 
     /// <summary>One key from each family of silent subscription: the clocks, the rudder trim display, the VHF and ADF
     /// windows and the ADF signal, the cargo door's flags and angle button, the memo inputs and line, the MCDU lights,
-    /// the IRS flags and the ILS inputs.</summary>
+    /// the IRS flags and the ILS inputs. A composed-line input that reads another key's cache (the first memo input, the
+    /// captain's MSG light, the aligning flag, the nav selector) is not a subscription, so each of those families is
+    /// represented by an input nothing else streams.</summary>
     private static string[] SilentFamilies() => new[]
     {
         A300Clock.Digits[0].Key, A300Trim.RudderDigitKeys[0], A300Radios.All[0].Window1Key,
         A300Radios.BearingLines.Values.First().SignalKey, A300CargoDoor.Flags[0].Key,
-        A300CargoDoor.AngleButtons.Values.First().Key, A300EwdMemos.Inputs[0].Key, A300EwdMemos.LineKey,
-        A300McduLights.All.First().Key, A300IrsAlignment.All[0].AligningKey, A300IlsDeviation.NavSelectorKey,
+        A300CargoDoor.AngleButtons.Values.First().Key, A300EwdMemos.Inputs.Single(i => i.Var == "INI_PARKING_BRAKE_STATUS").Key,
+        A300EwdMemos.LineKey, A300McduLights.For(A300McduUnit.Captain).Single(l => l.Label == "FAIL").Key,
+        A300IrsAlignment.All[0].AlignedKey, A300IlsDeviation.LocalizerValidKey,
     };
 
     [Fact]
@@ -572,5 +575,150 @@ public class IniA300BehaviourTests
         foreach (var key in SilentFamilies())
             Assert.True(fresh.ProcessSimVarUpdate(key, 1, _speech), key);
         Assert.Empty(_speech.All);
+    }
+
+    /// <summary>A variable a composed line reads from the cache: its key, its variable and, for a stock one, its unit.</summary>
+    private readonly record struct ComposedInput(string Key, string Var, bool IsStock, string Units);
+
+    /// <summary>The inputs of the composed lines, read from the cache only: the E/WD memos' inputs, the IRS alignment
+    /// lines' flags, the ILS deviation lines' EFIS nav selector and the MCDU annunciators.</summary>
+    private static IEnumerable<ComposedInput> ComposedLineInputs() =>
+        A300EwdMemos.Inputs.Select(i => new ComposedInput(i.Key, i.Var, i.IsStock, i.Units))
+            .Concat(A300IrsAlignment.All.SelectMany(l => new[]
+            {
+                new ComposedInput(l.AligningKey, l.AligningVar, false, "number"),
+                new ComposedInput(l.AlignedKey, l.AlignedVar, false, "number"),
+            }))
+            .Append(new ComposedInput(A300IlsDeviation.NavSelectorKey, A300IlsDeviation.NavSelectorVar, false, "number"))
+            .Concat(A300McduLights.All.Select(l => new ComposedInput(l.Key, l.Var, false, "number")));
+
+    [Fact]
+    public void No_composed_line_input_restreams_a_variable_already_streamed()
+    {
+        // A memo, an IRS line, the ILS deviation line and an MCDU annunciator read the cache, so an input whose variable
+        // another key already streams reads that key's cache instead of a second subscription of its own. The light
+        // board's inputs, the panel rows and the keys that carry a Ctrl+M row keep theirs: their own deliveries drive
+        // something.
+        var vars = _def.GetVariables();
+        var registered = ComposedLineInputs().Select(i => i.Key).Where(vars.ContainsKey).ToList();
+        Assert.NotEmpty(registered);   // the inputs nothing else streams (the total air temperature, say) keep their own
+        string FullName(string key) => ContinuousBatchLayout.FullName(vars[key]);
+        var restreamed = registered
+            .Select(key => (Key: key, Others: vars.Keys
+                .Where(other => other != key && vars[other].UpdateFrequency == UpdateFrequency.Continuous
+                                && string.Equals(FullName(other), FullName(key), StringComparison.OrdinalIgnoreCase))
+                .ToList()))
+            .Where(x => x.Others.Count > 0)
+            .Select(x => $"{x.Key} re-streams {FullName(x.Key)}, which {string.Join(", ", x.Others)} also stream")
+            .ToList();
+        Assert.True(restreamed.Count == 0, string.Join(Environment.NewLine, restreamed));
+    }
+
+    [Fact]
+    public void An_input_that_reads_another_keys_cache_is_neither_registered_nor_silent()
+    {
+        // The key it reads streams the very same variable, once a second and into the same cache, and the input itself is
+        // registered nowhere, so it is not in the silent set either (an input that reads another key leaves the set by itself).
+        var vars = _def.GetVariables();
+        var aliased = ComposedLineInputs().Where(i => _def.StreamingKey(i.Key) != i.Key).ToList();
+        Assert.NotEmpty(aliased);   // the memos', the IRS and the nav selector inputs, and the captain's MSG light
+        foreach (var input in aliased)
+        {
+            string streaming = _def.StreamingKey(input.Key);
+            Assert.DoesNotContain(input.Key, vars.Keys);
+            Assert.DoesNotContain(input.Key, _def.SilentKeys);
+            var def = vars[streaming];
+            Assert.True(def.UpdateFrequency == UpdateFrequency.Continuous && def.IsAnnounced, $"{input.Key} reads {streaming}");
+            Assert.Equal((input.IsStock ? SimVarType.SimVar : SimVarType.LVar, input.Var), (def.Type, def.Name));
+            if (input.IsStock)
+                Assert.Equal(input.Units, def.Units, ignoreCase: true);
+        }
+        // What keeps its own subscription: a light board input, a panel row and a key with a Ctrl+M row are never the input
+        // that reads another key, and the memo line keeps its key (the first memo input reads it).
+        var rows = _def.GetPanelControls().Values.SelectMany(keys => keys).ToHashSet(StringComparer.Ordinal);
+        Assert.DoesNotContain(aliased, i => A300LampBoard.InputKeys.Contains(i.Key) || rows.Contains(i.Key));
+        Assert.Equal(A300EwdMemos.LineKey, _def.StreamingKey(A300EwdMemos.Inputs[0].Key));
+        Assert.Contains(A300EwdMemos.LineKey, vars.Keys);
+    }
+
+    [Fact]
+    public void Every_silent_key_is_still_registered_as_a_silent_subscription()
+    {
+        // The set holds exactly what OwnSubscription registered without a Ctrl+M row. A later registration over one of those
+        // keys (a row that speaks, say) would leave ProcessSimVarUpdate consuming it in silence.
+        var vars = _def.GetVariables();
+        Assert.NotEmpty(_def.SilentKeys);
+        foreach (var key in _def.SilentKeys)
+        {
+            Assert.True(vars.TryGetValue(key, out var def), $"{key} is in the silent set but not registered");
+            Assert.True(def!.UpdateFrequency == UpdateFrequency.Continuous && def.IsAnnounced && def.ExcludeFromBatch
+                        && def.ExcludeFromMonitorManager, $"{key} is in the silent set but is not a silent subscription");
+        }
+    }
+
+    [Fact]
+    public void A_state_list_that_names_an_aliased_key_names_the_key_that_streams_it()
+    {
+        // A label or status line that reads an input another key streams repaints when that key is delivered: the key the
+        // sim never delivers under is replaced, once, and a key that was not aliased stays.
+        var aliases = new Dictionary<string, string> { ["INPUT_A"] = "STREAMING_A", ["INPUT_B"] = "STREAMING_A" };
+        var lists = new[]
+        {
+            new SimVarDefinition { StateVariables = new[] { "OWN", "INPUT_A", "INPUT_B", "OTHER" } },
+            new SimVarDefinition { StateVariables = new[] { "OWN", "OTHER" } },
+            new SimVarDefinition(),
+        };
+        var untouched = lists[1].StateVariables;
+        IniA300Definition.RepointStateVariables(lists, aliases);
+        Assert.Equal(new[] { "OWN", "STREAMING_A", "OTHER" }, lists[0].StateVariables);
+        Assert.Same(untouched, lists[1].StateVariables);
+        Assert.Null(lists[2].StateVariables);
+    }
+
+    [Fact]
+    public void Readers_that_need_only_a_threshold_ignore_small_changes()
+    {
+        // [SIM-7]. Three variables are only ever compared with a threshold, by readers of the cache (which takes every
+        // sample whatever the tolerance): the memo for TAT in icing range (-15 to 5 Celsius), the memo for an IRS in
+        // align (its time remaining against zero) and the ADF bearing line (the signal against zero). A move inside half
+        // a unit is no change to them, so it does not wake MainForm once a second; a real step still does.
+        var vars = _def.GetVariables();
+        var thresholdKeys = new[] { A300EwdMemos.Inputs.Single(i => i.Var == "TOTAL AIR TEMPERATURE").Key }
+            .Concat(A300EwdMemos.Inputs.Where(i => i.Var.EndsWith("_TIME_REMAIN", StringComparison.Ordinal)).Select(i => i.Key))
+            .Concat(A300Radios.BearingLines.Values.Select(b => b.SignalKey))
+            .ToList();
+        Assert.Equal(6, thresholdKeys.Count);   // TAT, three IRS, two ADF
+        foreach (var key in thresholdKeys)
+        {
+            var def = vars[key];
+            Assert.Equal(0.5, def.ChangeTolerance);
+            Assert.False(SimConnectManager.IsValueChange(10.0, 10.4, def), key);
+            Assert.True(SimConnectManager.IsValueChange(10.0, 10.6, def), key);
+        }
+        // Widening another variable is a decision about its readers: make it here, deliberately.
+        using var probe = new BaseKeysProbe();
+        var baseKeys = probe.BaseKeys();
+        var widened = vars.Where(kv => kv.Value.ChangeTolerance != null && !baseKeys.Contains(kv.Key)).Select(kv => kv.Key);
+        Assert.Equal(thresholdKeys.Order(StringComparer.Ordinal), widened.Order(StringComparer.Ordinal));
+        // Md11SeedGate compares at the shared constant, so a key it counts never widens its own.
+        var counted = A300LampBoard.InputKeys.Concat(A300Announcements.AnnouncedKeys)
+            .Concat(new[] { A300Readouts.AltitudeKey, A300TakeoffCallouts.V1Key, A300TakeoffCallouts.VrKey, A300TakeoffCallouts.V2Key });
+        Assert.Empty(thresholdKeys.Intersect(counted));
+    }
+
+    [Fact]
+    public void An_adf_signal_inside_the_tolerance_is_still_a_signal()
+    {
+        // The bearing line compares the signal with zero only, from the cache: 0.3 is a signal whatever the tolerance does
+        // with a move that small, and a signal lost to exactly 0 reads "no signal".
+        var (signalKey, _) = A300Radios.BearingLines["A300_RO_ADF1_BEARING"];
+        _def.Attach(_sim);
+        Assert.False(SimConnectManager.IsValueChange(0, 0.3, _def.GetVariables()[signalKey]));
+        _cache[signalKey] = 0.3;
+        Assert.True(_def.TryGetDisplayOverride("A300_RO_ADF1_BEARING", 45, out var received));
+        Assert.Equal("45 degrees right", received);
+        _cache[signalKey] = 0;
+        Assert.True(_def.TryGetDisplayOverride("A300_RO_ADF1_BEARING", 45, out var lost));
+        Assert.Equal("no signal", lost);
     }
 }

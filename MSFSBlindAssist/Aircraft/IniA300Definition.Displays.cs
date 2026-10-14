@@ -86,7 +86,7 @@ public partial class IniA300Definition
     /// </summary>
     private void UpdateMemos(SimConnectManager sim, long now)
     {
-        var update = _memoTracker.Update(key => Cached(sim, key), now);
+        var update = _memoTracker.Update(key => ReadInput(sim, key), now);
         if (!_memoTracker.HasBaseline)
             return;   // an input is still unread
         _memoLine = A300EwdMemos.Line(update.Displayed.Select(m => m.Words).ToArray());

@@ -71,6 +71,11 @@ public static class A300Radios
         All.SelectMany(r => new[] { (r.ActiveKey, (r, true)), (r.StandbyKey, (r, false)) })
            .ToDictionary(x => x.Item1, x => x.Item2, StringComparer.Ordinal);
 
+    /// <summary>How far an ADF signal sample must move to count as a change ([SIM-7]): <see cref="Bearing"/> compares the
+    /// signal with zero only, from the cache, which takes every sample whatever this is. It only keeps a signal that
+    /// wanders as the aircraft flies from waking MainForm once a second.</summary>
+    public const double SignalChangeTolerance = 0.5;
+
     /// <summary>The ADF bearing lines: ADF RADIAL (the relative bearing), read only while ADF SIGNAL is not 0.</summary>
     public static readonly IReadOnlyDictionary<string, (string SignalKey, string SignalVar)> BearingLines =
         new Dictionary<string, (string, string)>(StringComparer.Ordinal)

@@ -48,15 +48,17 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
     private readonly Dictionary<string, A300Readout> _readouts = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// The keys of the subscriptions only a label, a box line or a refusal reads: <see cref="OwnSubscription"/> adds a
-    /// key as <see cref="BuildVariables"/> registers it (unless the key carries a Ctrl+M row), and ProcessSimVarUpdate
-    /// consumes every one of them without a word. A subscription that is not registered is not in it.
+    /// The keys <see cref="OwnSubscription"/> registered without a Ctrl+M row: the subscriptions only a label, a box line
+    /// or a refusal reads, which ProcessSimVarUpdate consumes without a word. The set also holds the two light power
+    /// flags, the panel lamps' shared inputs and the TRP's four keys; the light board and TRP branches consume those first,
+    /// so the check against this set stays after them. An input that reads another key's cache instead
+    /// (<see cref="_inputAliases"/>) is never registered, so it is not in the set.
     /// </summary>
     private readonly HashSet<string> _silentKeys = new(StringComparer.Ordinal);
 
     /// <summary><see cref="_silentKeys"/> once the variables are built. A delivery can reach the definition before
     /// anything asked for them (several tests deliver first), so asking for them here fills the set.</summary>
-    private IReadOnlySet<string> SilentKeys
+    internal IReadOnlySet<string> SilentKeys
     {
         get
         {
@@ -64,6 +66,26 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
             return _silentKeys;
         }
     }
+
+    /// <summary>
+    /// A composed line's input key → the key that already streams its variable (<see cref="InputSubscription"/>). The
+    /// input is registered nowhere, and every reader of it asks <see cref="ReadInput"/>, which answers from that key's
+    /// cache: the same variable, the same once-a-second sample. Only an input read from the cache is ever here (the E/WD
+    /// memos' inputs, the IRS flags, the EFIS nav selector, the MCDU annunciators); a light board input, a panel row and
+    /// a key that carries a Ctrl+M row keep their own subscription, because their own deliveries drive something.
+    /// </summary>
+    private readonly Dictionary<string, string> _inputAliases = new(StringComparer.Ordinal);
+
+    /// <summary>The key whose cache holds <paramref name="key"/>'s variable: the key itself, or the one it reads instead
+    /// (<see cref="_inputAliases"/>). Asking builds the variables first, as <see cref="SilentKeys"/> does.</summary>
+    internal string StreamingKey(string key)
+    {
+        _ = GetVariables();
+        return _inputAliases.GetValueOrDefault(key, key);
+    }
+
+    /// <summary>A composed line's input from the cache, through the key that streams it.</summary>
+    private double? ReadInput(SimConnectManager sim, string key) => Cached(sim, StreamingKey(key));
 
     private SimConnectManager? _sim;
     private bool _disposed;
@@ -321,28 +343,28 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
             OwnSubscription(vars, radio.Window2Key, radio.Window2Var);
             OwnSubscription(vars, radio.TransferKey, radio.TransferVar);
         }
-        // Each IRS's aligning and aligned flags, its alignment line is composed from (A300IrsAlignment).
+        // Each IRS's aligning and aligned flags, its alignment line is composed from (A300IrsAlignment). The aligning flag
+        // is the IRS align light's variable, which the light's own key streams: the line reads that key's cache.
         foreach (var line in A300IrsAlignment.All)
         {
-            OwnSubscription(vars, line.AligningKey, line.AligningVar);
-            OwnSubscription(vars, line.AlignedKey, line.AlignedVar);
+            InputSubscription(vars, line.AligningKey, line.AligningVar);
+            InputSubscription(vars, line.AlignedKey, line.AlignedVar);
         }
         // The MCDUs' annunciators (A300McduLights): the MCDU window's status box and its call-out of a light coming on.
+        // The captain's MSG lamp is also a fault light, whose key streams it.
         foreach (var light in A300McduLights.All)
-            OwnSubscription(vars, light.Key, light.Var);
-        // The E/WD memos' inputs (A300EwdMemos), and the ECAM Memos box's line. Memos are never spoken (design
+            InputSubscription(vars, light.Key, light.Var);
+        // The ECAM Memos box's line, then the E/WD memos' inputs (A300EwdMemos). The line needs a variable of its own to
+        // carry it, so it takes the first input's, and that input reads the line's cache. Memos are never spoken (design
         // decision, 2026-10-11), so the line has no Ctrl+M row ([VAR-9]).
-        foreach (var input in A300EwdMemos.Inputs)
-        {
-            var def = OwnSubscription(vars, input.Key, input.Var);
-            if (input.IsStock)
-            {
-                def.Type = SimVarType.SimVar;
-                def.Units = input.Units;
-            }
-        }
         var memoLine = OwnSubscription(vars, A300EwdMemos.LineKey, A300EwdMemos.Inputs[0].Var, "ECAM memos");
         memoLine.RenderAsReadOnlyStatus = true;
+        foreach (var input in A300EwdMemos.Inputs)
+        {
+            var def = InputSubscription(vars, input.Key, input.Var, input.IsStock, input.Units);
+            if (def != null)
+                def.ChangeTolerance = input.ChangeTolerance;
+        }
         // The cargo door's flags its line is composed from, and which angle button is picked (A300CargoDoor).
         foreach (var (key, var) in A300CargoDoor.Flags.Concat(A300CargoDoor.AngleButtons.Values))
             OwnSubscription(vars, key, var);
@@ -351,10 +373,11 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
             var signal = OwnSubscription(vars, signalKey, signalVar);
             signal.Type = SimVarType.SimVar;
             signal.Units = "number";
+            signal.ChangeTolerance = A300Radios.SignalChangeTolerance;   // compared with zero only
         }
-        // Whether the captain's PFD draws its ILS deviation pointers (A300IlsDeviation): the EFIS nav selector,
-        // the localizer's validity and the ILS receiver's glideslope, the same way.
-        OwnSubscription(vars, A300IlsDeviation.NavSelectorKey, A300IlsDeviation.NavSelectorVar);
+        // Whether the captain's PFD draws its ILS deviation pointers (A300IlsDeviation): the EFIS nav selector (the selector
+        // row's variable, so that row's cache), the localizer's validity and the ILS receiver's glideslope, the same way.
+        InputSubscription(vars, A300IlsDeviation.NavSelectorKey, A300IlsDeviation.NavSelectorVar);
         OwnSubscription(vars, A300IlsDeviation.LocalizerValidKey, A300IlsDeviation.LocalizerValidVar);
         var glideslopeReceived = OwnSubscription(vars, A300IlsDeviation.GlideslopeReceivedKey, A300IlsDeviation.GlideslopeReceivedVar);
         glideslopeReceived.Type = SimVarType.SimVar;
@@ -388,10 +411,61 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
             UpdateFrequency = UpdateFrequency.OnRequest,
         };
 
+        // A label or status line that reads an aliased key repaints when the key that streams it is delivered.
+        RepointStateVariables(vars.Values, _inputAliases);
+
+        // A later `vars[key] =` over a silent subscription would leave its key consumed in silence by a definition that
+        // may have a Ctrl+M row of its own.
+        foreach (var key in _silentKeys)
+            if (!vars.TryGetValue(key, out var registered) || !registered.ExcludeFromMonitorManager)
+                Log.Warn("A300", $"{key} is in the silent set but is no longer registered as a silent subscription.");
+
         int batched = vars.Values.Count(ContinuousBatchLayout.RidesBatch);
         int onRequest = vars.Values.Count(d => d.UpdateFrequency == UpdateFrequency.OnRequest);
-        Log.Info("A300", $"Built {vars.Count} variables: {batched} batch-covered, {onRequest} on request, {_rows.Count} panel rows.");
+        Log.Info("A300", $"Built {vars.Count} variables: {batched} batch-covered, {onRequest} on request, {_rows.Count} panel rows, " +
+                         $"{_inputAliases.Count} composed-line inputs read from the key that streams them.");
         return vars;
+    }
+
+    /// <summary>
+    /// Registers the subscription a composed line's input reads under <paramref name="key"/>, as
+    /// <see cref="OwnSubscription"/> does, unless a key registered before it already streams the same variable (a
+    /// continuous, announced definition with the same name, type and, for a stock variable, unit). Then it registers
+    /// nothing, records the key in <see cref="_inputAliases"/> and returns null, and every reader asks
+    /// <see cref="ReadInput"/>. Only an input that is read from the cache comes through here. The key it reads instead
+    /// may be a light board input, a panel row or a key with a Ctrl+M row (every delivery fills the same cache); those
+    /// keys themselves are never passed in, because their own deliveries drive something.
+    /// </summary>
+    private SimVarDefinition? InputSubscription(Dictionary<string, SimVarDefinition> vars, string key, string varName,
+        bool isStock = false, string units = "number")
+    {
+        var type = isStock ? SimVarType.SimVar : SimVarType.LVar;
+        foreach (var (streamingKey, streaming) in vars)
+        {
+            if (streaming.UpdateFrequency == UpdateFrequency.Continuous && streaming.IsAnnounced && streaming.Type == type
+                && string.Equals(streaming.Name, varName, StringComparison.Ordinal)
+                && (!isStock || string.Equals(streaming.Units, units, StringComparison.OrdinalIgnoreCase)))
+            {
+                _inputAliases[key] = streamingKey;
+                return null;
+            }
+        }
+        var own = OwnSubscription(vars, key, varName);
+        if (isStock)
+        {
+            own.Type = SimVarType.SimVar;
+            own.Units = units;
+        }
+        return own;
+    }
+
+    /// <summary>Makes every <see cref="SimVarDefinition.StateVariables"/> list that names an aliased key name the key that
+    /// streams it instead, once each.</summary>
+    internal static void RepointStateVariables(IEnumerable<SimVarDefinition> definitions, IReadOnlyDictionary<string, string> aliases)
+    {
+        foreach (var def in definitions)
+            if (def.StateVariables is { } listed && listed.Any(aliases.ContainsKey))
+                def.StateVariables = listed.Select(key => aliases.GetValueOrDefault(key, key)).Distinct().ToArray();
     }
 
     /// <summary>

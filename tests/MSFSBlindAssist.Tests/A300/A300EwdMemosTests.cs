@@ -156,8 +156,9 @@ public class A300EwdMemosTests
 
 }
 
-/// <summary>How the A300 definition carries the memos: their inputs on their own subscriptions, consumed silently,
-/// read at the end of each sample (where the FMA is composed) and shown on the ECAM Memos box, never spoken.</summary>
+/// <summary>How the A300 definition carries the memos: their inputs read from the cache, each on its own subscription
+/// (consumed silently) or, where another key already streams the variable, from that key; read at the end of each sample
+/// (where the FMA is composed) and shown on the ECAM Memos box, never spoken.</summary>
 public class IniA300MemoBehaviourTests
 {
     private long _now = 10_000;
@@ -177,7 +178,7 @@ public class IniA300MemoBehaviourTests
         };
         _def.Attach(new SimConnectManager(IntPtr.Zero));
         foreach (var input in A300EwdMemos.Inputs)
-            _cache[input.Key] = input.Var switch
+            _cache[_def.StreamingKey(input.Key)] = input.Var switch
             {
                 "INI_LANDING_LIGHT_L_SWITCH" or "INI_LANDING_LIGHT_R_SWITCH" or "INI_tcas_mode_pedestal" => 2,
                 "TOTAL AIR TEMPERATURE" => 20,
@@ -185,7 +186,9 @@ public class IniA300MemoBehaviourTests
             };
     }
 
-    private void Input(string var, double value) => _cache[A300EwdMemos.Inputs.Single(i => i.Var == var).Key] = value;
+    /// <summary>A memo input's value, in the cache under the key that streams its variable.</summary>
+    private void Input(string var, double value) =>
+        _cache[_def.StreamingKey(A300EwdMemos.Inputs.Single(i => i.Var == var).Key)] = value;
 
     private string[] Sample(long advanceMs = 1000)
     {
@@ -199,18 +202,84 @@ public class IniA300MemoBehaviourTests
         _def.TryGetDisplayOverride(A300EwdMemos.LineKey, 0, out var text) ? text : "(no line)";
 
     [Fact]
-    public void Every_input_streams_on_its_own_subscription_and_is_consumed_silently()
+    public void Every_input_is_streamed_by_one_key_and_consumed_silently()
     {
+        // An input nothing else streams has a subscription of its own, with no Ctrl+M row; one whose variable a panel row,
+        // a lamp or the memo line already streams has none, and its readers ask that key.
         var vars = _def.GetVariables();
         foreach (var input in A300EwdMemos.Inputs)
         {
-            var def = vars[input.Key];
+            string streaming = _def.StreamingKey(input.Key);
+            var def = vars[streaming];
             Assert.Equal(input.Var, def.Name);
-            Assert.True(def.ExcludeFromBatch && def.ExcludeFromMonitorManager, input.Key);
             Assert.Equal(input.IsStock ? SimVarType.SimVar : SimVarType.LVar, def.Type);
-            Assert.True(_def.ProcessSimVarUpdate(input.Key, 1, _speech), input.Key);
+            Assert.True(def.UpdateFrequency == UpdateFrequency.Continuous && def.IsAnnounced, input.Key);
+            if (streaming == input.Key)
+                Assert.True(def.ExcludeFromBatch && def.ExcludeFromMonitorManager, input.Key);
+            else
+                Assert.DoesNotContain(input.Key, vars.Keys);
+            Assert.True(_def.ProcessSimVarUpdate(streaming, 1, _speech), streaming);
         }
+        // A tolerance belongs to the registered key, so the inputs that carry one keep a subscription of their own.
+        Assert.All(A300EwdMemos.Inputs.Where(i => i.ChangeTolerance != null), i => Assert.Equal(i.Key, _def.StreamingKey(i.Key)));
         Assert.Empty(_speech.All);
+    }
+
+    [Theory]
+    // A panel row, an IRS light, the memo line and a lamp stream these variables already.
+    [InlineData("INI_SEATBELTS_SWITCH", "A300_SEATBELT")]
+    [InlineData("INI_ENG1_ANTI_ICE", "A300_ANTI_ICE_E1")]
+    [InlineData("INI_tcas_mode_pedestal", "A300_TCAS_MODE")]
+    [InlineData("INI_apu_available", "A300_LT_APU_AVAIL_SEQ1_LIGHT")]
+    [InlineData("INI_IRS3_IS_ALIGNING", "A300_LT_IRS_2_009_LIGHT")]
+    [InlineData("INI_CABIN_MAN_PRESS_ARROW", A300EwdMemos.LineKey)]
+    public void An_input_another_key_streams_has_no_subscription_of_its_own(string var, string streaming)
+    {
+        var input = A300EwdMemos.Inputs.Single(i => i.Var == var);
+        Assert.Equal(streaming, _def.StreamingKey(input.Key));
+        Assert.DoesNotContain(input.Key, _def.GetVariables().Keys);
+        Assert.Equal(var, _def.GetVariables()[streaming].Name);
+    }
+
+    [Fact]
+    public void A_memo_follows_the_cache_of_the_key_that_streams_its_input()
+    {
+        Assert.Empty(Sample());   // the baseline
+        _cache["A300_SEATBELT"] = 1;   // the panel row's key: the sim never delivers anything under the memo input's own
+        Assert.Empty(Sample());
+        Assert.Empty(Sample(3000));
+        Assert.Equal("Seat belts on", BoxLine());
+    }
+
+    [Fact]
+    public void A_threshold_crossed_inside_the_tolerance_still_moves_the_memo()
+    {
+        // [SIM-7]: a sample that moves by less than the tolerance fires no change, but the cache takes it, and the memo
+        // reads the cache at the end of the sample, so the top of the icing range (5 Celsius) is still crossed.
+        var tat = A300EwdMemos.Inputs.Single(i => i.Var == "TOTAL AIR TEMPERATURE");
+        Assert.False(SimConnectManager.IsValueChange(4.9, 5.2, _def.GetVariables()[tat.Key]));   // no change fires for this move
+        Assert.Empty(Sample());
+        Input(tat.Var, 4.9);
+        Sample();
+        Sample(3000);
+        Assert.Equal("TAT in icing range", BoxLine());
+        Input(tat.Var, 5.2);
+        Sample();
+        Assert.Equal("none", BoxLine());
+    }
+
+    [Fact]
+    public void An_irs_time_of_a_fraction_of_a_second_is_still_time_left()
+    {
+        // The time remaining is compared with zero only (memo 19): 0.3 s is not zero, whatever the tolerance does with it.
+        var remain = A300EwdMemos.Inputs.Single(i => i.Var == "INI_IRS1_TIME_REMAIN");
+        Assert.False(SimConnectManager.IsValueChange(0, 0.3, _def.GetVariables()[remain.Key]));
+        Assert.Empty(Sample());
+        Input("INI_IRS1_IS_ALIGNING", 1);
+        Input("INI_IRS1_TIME_REMAIN", 0.3);
+        Sample();
+        Sample(3000);
+        Assert.Equal("IRS in align", BoxLine());
     }
 
     [Fact]
