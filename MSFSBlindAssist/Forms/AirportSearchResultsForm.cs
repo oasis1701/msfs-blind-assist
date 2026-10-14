@@ -5,21 +5,23 @@ namespace MSFSBlindAssist.Forms;
 /// <summary>
 /// The list the EFB's Airport Lookup opens when a name or city search matches more than one
 /// airport: one line per airport ("ESGG, Landvetter, Goteborg"), best match first. Enter loads the
-/// selected airport, Escape closes without changing anything.
+/// selected airport, Escape closes without changing anything. With the aircraft's position each line
+/// ends with where the airport lies from it.
 /// </summary>
 public sealed class AirportSearchResultsForm : Form
 {
-    private readonly IReadOnlyList<AirportSearchEntry> _results;
+    private readonly IReadOnlyList<AirportSearchResult> _results;
     private readonly ListBox _resultsListBox;
 
-    public AirportSearchEntry? SelectedAirport { get; private set; }
+    public AirportSearchResult? SelectedAirport { get; private set; }
 
-    public AirportSearchResultsForm(string query, IReadOnlyList<AirportSearchEntry> results)
+    public AirportSearchResultsForm(string query, IReadOnlyList<AirportSearchResult> results,
+        (double Lat, double Lon)? aircraft)
     {
         _results = results;
 
         Text = $"{results.Count} airports match {query}";
-        Size = new Size(520, 360);
+        Size = new Size(720, 360);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -30,19 +32,19 @@ public sealed class AirportSearchResultsForm : Form
         _resultsListBox = new ListBox
         {
             Location = new Point(20, 40),
-            Size = new Size(460, 220),
+            Size = new Size(660, 220),
             AccessibleName = "Matching airports",
             AccessibleDescription = "Press Enter to load the selected airport"
         };
         foreach (var entry in results)
-            _resultsListBox.Items.Add(AirportNameSearch.Describe(entry));
+            _resultsListBox.Items.Add(AirportNameSearch.Describe(entry, aircraft));
         if (_resultsListBox.Items.Count > 0)
             _resultsListBox.SelectedIndex = 0;
 
         var loadButton = new Button
         {
             Text = "Load",
-            Location = new Point(320, 275),
+            Location = new Point(520, 275),
             Size = new Size(75, 30),
             AccessibleName = "Load Airport"
         };
@@ -51,7 +53,7 @@ public sealed class AirportSearchResultsForm : Form
         var cancelButton = new Button
         {
             Text = "Cancel",
-            Location = new Point(405, 275),
+            Location = new Point(605, 275),
             Size = new Size(75, 30),
             DialogResult = DialogResult.Cancel,
             AccessibleName = "Cancel"
