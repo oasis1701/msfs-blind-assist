@@ -1401,23 +1401,6 @@ public partial class TaxiGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// True while a landing-exit rollout is steering at an exit: <c>LandingRollout</c> outside the
-    /// runway-end countdown. Read by the manual-landing assist to decide whether an exit-steering
-    /// tone will take over from its rollout tone. The countdown pauses the taxi tone, so it must
-    /// not count, or the assist would stop its own tone at 55 kt with nothing taking over.
-    /// </summary>
-    public bool IsLandingExitRolloutGuidanceActive
-    {
-        get
-        {
-            lock (_stateLock)
-            {
-                return _state == TaxiGuidanceState.LandingRollout && !_rolloutNoExitMode;
-            }
-        }
-    }
-
-    /// <summary>
     /// True while a landing rollout runs: steering at an exit or the runway-end countdown. Read by the landing
     /// assist's rollout cue, which has no speed end during one (LandingFlareAssistManager.DecideRolloutEnd).
     /// </summary>

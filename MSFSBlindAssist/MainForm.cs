@@ -876,7 +876,10 @@ public partial class MainForm : Form
         flareAssistManager = new LandingFlareAssistManager(announcer,
             () => currentAircraft?.GetVisualGuidanceProfile()?.FlareAltitudeBiasFt ?? 12.0,
             () => visualGuidanceManager.IsActive,
-            () => taxiGuidanceManager.IsLandingExitRolloutGuidanceActive,
+            // The rollout cue and exit guidance share the tone: no speed end during a landing rollout, and
+            // silence while exit guidance owns the tone for the exit itself.
+            () => taxiGuidanceManager.IsLandingRollout,
+            () => taxiGuidanceManager.ExitGuidanceOwnsRolloutTone,
             () => taxiGuidanceManager.IsLandingExitTaxiSteering,
             // With a landing-exit plan pending, the planner leads its own touchdown sentence with
             // the runway correction and interrupts — so the assist leaves the telling to it rather
