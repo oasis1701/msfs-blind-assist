@@ -76,6 +76,7 @@ public partial class ElectronicFlightBagForm : Form
 
     // Airport Lookup tab controls
     private TextBox airportLookupIcaoTextBox = null!;
+    private bool _settingAirportLookupIdent;
     private ListBox airportLookupRunwaysListBox = null!;
     private Button airportLookupLoadButton = null!;
     private TextBox airportInfoTextBox = null!;
@@ -595,15 +596,14 @@ public partial class ElectronicFlightBagForm : Form
         var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(20) };
 
         // ICAO textbox
-        var icaoLabel = new Label { Text = "Airport ICAO:", Location = new Point(20, 20), Width = 200 };
+        var icaoLabel = new Label { Text = "Airport ICAO, name or city:", Location = new Point(20, 20), Width = 250 };
         airportLookupIcaoTextBox = new TextBox
         {
             Location = new Point(20, 45),
-            Width = 100,
+            Width = 250,
             CharacterCasing = CharacterCasing.Upper,
-            MaxLength = 4,
             AccessibleName = "Airport Lookup ICAO",
-            AccessibleDescription = "Enter airport ICAO code for lookup"
+            AccessibleDescription = "Enter an airport ICAO code, or type part of a name or city and press Enter to search"
         };
 
         // Runway listbox
@@ -745,6 +745,7 @@ public partial class ElectronicFlightBagForm : Form
 
         // Airport Lookup tab
         airportLookupIcaoTextBox.TextChanged += AirportLookupIcaoTextBox_TextChanged;
+        airportLookupIcaoTextBox.KeyDown += AirportLookupIcaoTextBox_KeyDown;
         airportLookupRunwaysListBox.SelectedIndexChanged += AirportLookupRunwaysListBox_SelectedIndexChanged;
         airportLookupLoadButton.Click += AirportLookupLoadButton_Click;
 
@@ -1886,6 +1887,8 @@ public partial class ElectronicFlightBagForm : Form
     // Airport Lookup tab handlers
     private void AirportLookupIcaoTextBox_TextChanged(object? sender, EventArgs e)
     {
+        if (_settingAirportLookupIdent) return;
+
         string icao = airportLookupIcaoTextBox.Text.Trim();
         if (icao.Length == 4)
         {
@@ -1897,6 +1900,73 @@ public partial class ElectronicFlightBagForm : Form
             airportInfoTextBox.Clear();
             runwayInfoTextBox.Clear();
         }
+    }
+
+    // Enter searches airports by ICAO, name or city (AirportNameSearch): one match loads at once,
+    // several open a list to pick from, none is announced.
+    private void AirportLookupIcaoTextBox_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode != Keys.Enter) return;
+        e.Handled = true;
+        e.SuppressKeyPress = true;
+
+        string query = airportLookupIcaoTextBox.Text.Trim();
+        if (query.Length == 0) return;
+
+        string simulatorVersion = SettingsManager.Current.SimulatorVersion ?? "FS2020";
+        string dbPath = DatabasePathResolver.ResolveExistingDatabasePath(simulatorVersion);
+        if (!File.Exists(dbPath))
+        {
+            _announcer.Announce("Airport database not found");
+            return;
+        }
+
+        List<AirportSearchEntry> results;
+        try
+        {
+            results = AirportNameSearch.Search(dbPath, query);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("EFB", $"Airport name search for '{query}' failed", ex);
+            _announcer.Announce("Airport search failed");
+            return;
+        }
+
+        if (results.Count == 0)
+        {
+            _announcer.Announce($"No airports match {query}");
+            return;
+        }
+
+        if (results.Count == 1)
+        {
+            ShowAirportLookupResult(results[0]);
+            _announcer.Announce(AirportNameSearch.Describe(results[0]));
+            return;
+        }
+
+        using var dialog = new AirportSearchResultsForm(query, results);
+        if (dialog.ShowDialog(this) == DialogResult.OK && dialog.SelectedAirport != null)
+            ShowAirportLookupResult(dialog.SelectedAirport);
+        airportLookupIcaoTextBox.Focus();
+    }
+
+    // Puts the found airport's ident in the field (the runway list reads it from there) and loads it
+    // without the field's 4-character auto-load, which would miss 3- and 5-character idents.
+    private void ShowAirportLookupResult(AirportSearchEntry airport)
+    {
+        _settingAirportLookupIdent = true;
+        try
+        {
+            airportLookupIcaoTextBox.Text = airport.Ident;
+        }
+        finally
+        {
+            _settingAirportLookupIdent = false;
+        }
+        airportLookupIcaoTextBox.SelectionStart = airportLookupIcaoTextBox.TextLength;
+        LoadRunwaysForAirportLookup(airport.Ident);
     }
 
     private void LoadRunwaysForAirportLookup(string icao)

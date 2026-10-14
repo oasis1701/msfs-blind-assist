@@ -14,6 +14,9 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*NavDataFixture*.cs"
   - "MSFSBlindAssist/Database/LittleNavMapProvider.cs"
   - "MSFSBlindAssist/Database/IAirportDataProvider.cs"
+  - "MSFSBlindAssist/Database/AirportNameSearch.cs"
+  - "MSFSBlindAssist/Forms/AirportSearchResultsForm.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*AirportNameSearch*.cs"
 ---
 # Flight-planning EFB and procedure data (Shift+E) rules
 
