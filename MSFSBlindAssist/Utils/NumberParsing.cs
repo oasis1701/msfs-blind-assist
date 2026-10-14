@@ -15,23 +15,25 @@ public static class NumberParsing
 {
     /// <summary>
     /// A number another program wrote (ActiveSky, the MobiFlight WASM). Usually invariant, but some
-    /// write in the OS culture. Such programs never group thousands, so a lone "," is the decimal
-    /// separator; with both present the later one is the decimal and the other grouping.
-    /// Whitespace (the sv-SE no-break-space group separator) is dropped.
+    /// write in the OS culture. Such programs never group thousands (ActiveSky's live ESGG capture
+    /// sent CloudCeiling "6449", with no sv-SE group space), so a lone "," is the decimal separator.
+    /// A three-digit-group check, as in <see cref="TryParseTyped"/>, cannot stand in for that
+    /// premise: ActiveSky's QNH "1014,999" has three decimals. What could only be grouping ("," and
+    /// "." together, or whitespace inside the number) is refused, so the field reads as missing,
+    /// never guessed. The U+2212 minus sign .NET 5+ writes for sv-SE, nb-NO, fi-FI and other
+    /// comma-decimal cultures reads as "-".
     /// </summary>
     public static bool TryParseExternal(string? s, out double value)
     {
         value = 0;
         if (string.IsNullOrWhiteSpace(s)) return false;
-        var sb = new System.Text.StringBuilder(s.Length);
-        foreach (char ch in s)
-            if (!char.IsWhiteSpace(ch)) sb.Append(ch);
-        string t = sb.ToString();
-        int comma = t.LastIndexOf(','), dot = t.LastIndexOf('.');
-        if (comma >= 0 && dot >= 0)
-            t = comma > dot ? t.Replace(".", "").Replace(',', '.') : t.Replace(",", "");
-        else if (comma >= 0)
+        string t = s.Trim();
+        if (t.Contains(','))
+        {
+            if (t.Contains('.')) return false;
             t = t.Replace(',', '.');
+        }
+        if (t.Contains('\x2212')) t = t.Replace('\x2212', '-');   // U+2212 MINUS SIGN
         return double.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
     }
 

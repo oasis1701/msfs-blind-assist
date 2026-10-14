@@ -23,17 +23,21 @@ public class NumberParsingTests
         }
     }
 
-    // External: live ActiveSky values at ESGG 2026-10-12 under Swedish Windows, plus grouping forms.
+    // Spelled as escapes: a screen reader cannot tell these from "-" and " ".
+    private const string Minus = "\U00002212";   // U+2212 MINUS SIGN, written by .NET 5+ for sv-SE
+    private const string Nbsp = "\U000000A0";    // no-break space, the sv-SE group separator
+    private const string Nnbsp = "\U0000202F";   // narrow no-break space, the fr-FR group separator
+
+    // External: live ActiveSky values at ESGG 2026-10-12 under Swedish Windows.
     [Theory]
     [InlineData("1014.999", 1014.999)]
     [InlineData("1014,999", 1014.999)]
     [InlineData("7,992481", 7.992481)]
     [InlineData("-12,5", -12.5)]
+    [InlineData(Minus + "12,5", -12.5)]
     [InlineData("8", 8.0)]
     [InlineData("6449", 6449.0)]
-    [InlineData("1.014,999", 1014.999)]
-    [InlineData("1,014.999", 1014.999)]
-    [InlineData("1 014,999", 1014.999)]
+    [InlineData(Nbsp + "7,5" + Nnbsp, 7.5)]   // surrounding spaces are trimmed
     [InlineData("1.000000", 1.0)]
     public void TryParseExternal_reads_invariant_and_comma_decimal_strings(string raw, double expected)
     {
@@ -49,8 +53,18 @@ public class NumberParsingTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("n/a")]
-    public void TryParseExternal_rejects_non_numbers(string? raw)
-        => Assert.False(NumberParsing.TryParseExternal(raw, out _));
+    // Such programs never group thousands, so anything that could only be grouping is refused.
+    [InlineData("1.014,999")]
+    [InlineData("1,014.999")]
+    [InlineData("1 014,999")]
+    [InlineData("1" + Nbsp + "014,999")]
+    [InlineData("1" + Nnbsp + "014,999")]
+    [InlineData("12 5")]
+    public void TryParseExternal_refuses_non_numbers_and_grouping(string? raw)
+    {
+        foreach (var culture in new[] { "sv-SE", "de-DE", "en-US" })
+            Under(culture, () => Assert.False(NumberParsing.TryParseExternal(raw, out _), $"{raw} under {culture}"));
+    }
 
     // Typed: what a pilot enters in a speed, V/S, altitude, heading or baro box.
     [Theory]

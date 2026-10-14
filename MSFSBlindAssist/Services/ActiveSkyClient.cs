@@ -604,7 +604,8 @@ public class ActiveSkyClient
     }
 
     /// <summary>Parses /GetAtmosphere JSON ({"WeatherData":[{Altitude,WindDirection,
-    /// WindSpeed,Temperature,Pressure}]} — all values strings, invariant culture).
+    /// WindSpeed,Temperature,Pressure}]} — all values strings, usually invariant
+    /// culture but not always: see NumberParsing.TryParseExternal).
     /// Null on malformed input; permissive per-field AND per-element like
     /// ParseConditionsJson — a stray non-object array entry is skipped rather than
     /// failing the whole parse.</summary>
@@ -723,9 +724,14 @@ public class ActiveSkyClient
             return v.TryGetInt64(out long n) ? n : (long)v.GetDouble();
         if (v.ValueKind == JsonValueKind.String)
         {
-            if (long.TryParse(v.GetString(), System.Globalization.NumberStyles.Integer,
+            // Like the Number branch: exact when integral, else ReadDouble's
+            // culture-tolerant parse, truncated ("1760300000.0", "1760300000,5").
+            string? s = v.GetString();
+            if (long.TryParse(s, System.Globalization.NumberStyles.Integer,
                               System.Globalization.CultureInfo.InvariantCulture, out long n))
                 return n;
+            if (NumberParsing.TryParseExternal(s, out double d))
+                return (long)d;
         }
         return 0;
     }
