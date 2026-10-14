@@ -473,7 +473,7 @@ Forms/
 ├── RunwayTeleportForm.cs           # Universal (all aircraft)
 ├── GateTeleportForm.cs             # Universal (all aircraft)
 ├── AnnouncementSettingsForm.cs     # Universal (all aircraft)
-├── FbwEwdWindow.cs                 # FBW E/WD pop-out window (A32NX + A380X)
+├── FbwEwdWindow.cs                 # FBW E/WD pop-out window (A32NX + A380X) and the A220 CAS window
 ├── WeatherRadarForm.cs             # Weather radar, SIGMETs, winds aloft
 └── TcasForm.cs                     # TCAS traffic display
 ```

@@ -2,16 +2,19 @@ using MSFSBlindAssist.Accessibility;
 
 namespace MSFSBlindAssist.Forms;
 
-// Shared FlyByWire E/WD (Engine/Warning Display) pop-out window for the A380X and
-// A32NX. Alt+E opens it instead of speaking the E/WD: a read-only, multiline,
-// screen-reader-friendly text view of the WHOLE E/WD (engine parameters + the live
-// ECAM memo / warning lines). It auto-refreshes on a timer and on F5; Escape closes.
+// Shared pop-out window for the FlyByWire E/WD (Engine/Warning Display) of the A380X and
+// A32NX, and the Synaptic A220's CAS window. Alt+E opens it instead of speaking the E/WD:
+// a read-only, multiline, screen-reader-friendly text view of the WHOLE E/WD (engine
+// parameters + the live ECAM memo / warning lines), or, on the A220, of every crew
+// alerting message. It auto-refreshes on a timer and on F5; Escape closes.
 //
 // The window is content-agnostic: each aircraft passes an async text builder (the
-// A380 decodes its SimVars, the A32NX scrapes its live EWD view), so this one form
-// serves both. Refreshes reconcile the list in place (via DisplayListBox, which
-// wraps DisplayList.UpdateInPlace), so the reader's selected row and scroll
-// position are preserved instead of being reset to the top on every auto-update.
+// A380 decodes its SimVars, the A32NX scrapes its live EWD view, the A220 decodes its CAS
+// bitset) and the message F5 speaks ("E W D refreshed" by default, "CAS refreshed" on the
+// A220), so this one form serves all three. Refreshes reconcile the list in place (via
+// DisplayListBox, which wraps DisplayList.UpdateInPlace), so the reader's selected row
+// and scroll position are preserved instead of being reset to the top on every
+// auto-update.
 public sealed class FbwEwdWindow : Form
 {
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
