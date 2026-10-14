@@ -25,7 +25,14 @@ public partial class SynapticA220Definition
     private readonly A220Systems.EngineStartTracker _engineTracker = new();
     private readonly A220Systems.IrsMonitor _irsMonitor = new();
     private readonly A220Systems.DoorMonitor _doorMonitor = new();
-    private volatile bool _systemsResetPending;
+
+    // A rebaseline request is a counter, not a flag, because two pump-thread consumers must each
+    // honour it once: the five monitors (ProcessSystems) and the EICAS-scrape CAS baseline (the
+    // pump's CAS block, which runs BEFORE ProcessSystems in the same poll). A single flag consumed
+    // by the first would starve the second. Each consumer keeps the count it last honoured.
+    private int _rebaselineRequests;     // bumped by RequestSystemsRebaseline, from any thread
+    private int _monitorsRebaselined;    // pump thread: the count the monitors have honoured
+    private int _scrapeRebaselined;      // pump thread: the count the scrape's CAS baseline has honoured
 
     /// <summary>The CommBus panel rows (text from <see cref="TryGetSystemsDisplay"/>), beside
     /// one row per door (<see cref="DoorKey"/>). Display names are short: rows read
@@ -70,17 +77,27 @@ public partial class SynapticA220Definition
     /// <summary>The entry points stash the announcer as they run; tests hand one in.</summary>
     internal void UseAnnouncer(ScreenReaderAnnouncer announcer) => _announcer = announcer;
 
-    /// <summary>A flight load or reconnect: the next block is a new baseline, so nothing of the
-    /// loaded state is announced as a change (the CAS summary is spoken once again).</summary>
-    internal void RequestSystemsRebaseline() => _systemsResetPending = true;
+    /// <summary>A flight load or reconnect: the next poll is a new baseline, so nothing of the
+    /// loaded state is announced as a change — not by the five monitors, and not by the EICAS
+    /// scrape's CAS diff either (the CAS summary is spoken once again).</summary>
+    internal void RequestSystemsRebaseline() => Interlocked.Increment(ref _rebaselineRequests);
+
+    /// <summary>True once per <see cref="RequestSystemsRebaseline"/> for the consumer that owns
+    /// <paramref name="honoured"/> (pump thread only).</summary>
+    private bool TakeRebaseline(ref int honoured)
+    {
+        int requests = Volatile.Read(ref _rebaselineRequests);
+        if (requests == honoured) return false;
+        honoured = requests;
+        return true;
+    }
 
     /// <summary>One poll's systems blocks (pump thread). Null = the tap is down: keep every
     /// baseline, speak nothing.</summary>
     internal void ProcessSystems(A220Systems.SystemsBlocks? sys)
     {
-        if (_systemsResetPending)
+        if (TakeRebaseline(ref _monitorsRebaselined))
         {
-            _systemsResetPending = false;
             _casMonitor.Reset();
             _gearMonitor.Reset();
             _engineTracker.Reset();
@@ -88,6 +105,7 @@ public partial class SynapticA220Definition
             _doorMonitor.Reset();
         }
         StoreSystems(sys);
+        FeedTakeoffSpeeds(sys?.lpfd);   // the scrape fallback feeds it too while the store is down
         if (sys == null) return;
 
         Speak(_casMonitor.Observe(sys.cas?.msg,
@@ -170,5 +188,96 @@ public partial class SynapticA220Definition
         bool on = A220MonitorRows.ToggleCas(Settings.SettingsManager.Current.A220DisabledMonitorVariables);
         Settings.SettingsManager.Save();
         return on ? "CAS call-outs on" : "CAS call-outs off";
+    }
+
+    // ---- Take-off roll: "Rotate" on the per-frame feed ([A220-37]) -------------------
+
+    internal const string TakeoffIasKey = "A22X_TAKEOFF_IAS";
+
+    /// <summary>The roll machine's Ctrl+M keys: only Rotate has a row. The aircraft calls V1
+    /// itself ([A220-2]) and has no V2 call, so V1/V2 are filtered out of every sentence and
+    /// their keys are empty (an empty key is never muted — TakeoffCalloutKeys).</summary>
+    private static readonly TakeoffCalloutKeys TakeoffKeys = new(TakeoffIasKey, "", A220MonitorRows.RotateKey, "");
+    private readonly TakeoffVSpeedCallouts _takeoffCallouts = new();
+    private readonly A220Systems.RollWithoutVrGate _rollWithoutVr = new();
+    private bool _calloutOnGround = true;   // last SIM_ON_GROUND; a ramp start is the norm
+    private bool _takeoffVrKnown;
+
+    /// <inheritdoc />
+    public override string? TakeoffCalloutFeedKey => TakeoffIasKey;
+    /// <inheritdoc />
+    public override bool TakeoffCalloutFeedNeeded => _takeoffCallouts.NeedsSamples(_calloutOnGround);
+
+    /// <summary>The feed speaks Rotate, whose row is the synthetic Rotate row, so MainForm's
+    /// wrap leaves it alone and the branch checks the row itself (as the A320 states it).</summary>
+    public override bool IsMuteWrapExempt(string varName) => varName == TakeoffIasKey;
+
+    /// <summary>A reconnect drops the roll's ARM, never the speeds (TKO-5).</summary>
+    public override void ResetAnnouncementBaselines()
+    {
+        base.ResetAnnouncementBaselines();
+        _takeoffCallouts.Reset();
+        _rollWithoutVr.Reset();
+    }
+
+    /// <summary>Every context reset (a flight load included) drops the roll's ARM (TKO-5) and
+    /// re-baselines the systems monitors and the scrape's CAS diff, so a loaded flight's state
+    /// is not announced.</summary>
+    public override void OnSimContextReset()
+    {
+        base.OnSimContextReset();
+        _takeoffCallouts.Reset();
+        _rollWithoutVr.Reset();
+        RequestSystemsRebaseline();
+    }
+
+    /// <summary>V1/VR/V2 from the PFD's own bugs (A22X.L PFD Data); the speed-tape scrape is the
+    /// fallback while the store is missing. Applied on the UI thread, where the samples run.</summary>
+    private void FeedTakeoffSpeeds(A220Systems.PfdBlock? pfd)
+    {
+        double v1 = pfd?.v1 ?? ScrapedVSpeed("V1");
+        double vr = pfd?.vr ?? ScrapedVSpeed("VR");
+        double v2 = pfd?.v2 ?? ScrapedVSpeed("V2");
+        Marshal(() =>
+        {
+            _takeoffCallouts.SetV1(v1);
+            _takeoffCallouts.SetVR(vr);
+            _takeoffCallouts.SetV2(v2);
+            _takeoffVrKnown = vr >= TakeoffVSpeedCallouts.ArmBelowKnots;
+        });
+    }
+
+    private double ScrapedVSpeed(string key) => _vSpeeds.TryGetValue(key, out int v) ? v : 0;
+
+    /// <summary>One per-frame airspeed sample: "Rotate" at VR on the ground (AnnounceImmediate —
+    /// its value IS the timing) and one "V-speeds not set" when a roll starts with no VR.</summary>
+    private void OnTakeoffIasSample(double ias, ScreenReaderAnnouncer announcer)
+    {
+        // A frame without a usable speed carries no information: skipping it keeps the last real
+        // sample, so a roll's 40-knot crossing is still seen across it (the gate has no NaN guard).
+        if (double.IsNaN(ias) || ias < 0) return;
+        var callouts = _takeoffCallouts.ProcessSample(ias, _calloutOnGround);
+        var muted = Settings.SettingsManager.Current.A220DisabledMonitorVariablesSet;
+        if (_rollWithoutVr.Observe(ias, _calloutOnGround, _takeoffVrKnown)
+            && !muted.Contains(A220MonitorRows.RotateKey) && !announcer.Suppressed)
+            announcer.AnnounceImmediate("V-speeds not set — no Rotate call");
+        if (callouts.Count == 0 || announcer.Suppressed) return;
+        string? sentence = TakeoffVSpeedCallouts.Compose(callouts,
+            callout => callout != "Rotate" || TakeoffKeys.IsMuted(callout, muted));
+        if (sentence != null) announcer.AnnounceImmediate(sentence);
+    }
+
+    // ---- D / Shift+D: the FMS's active flight plan ------------------------------------
+
+    private async Task AnnounceFlightPlanAsync(ScreenReaderAnnouncer announcer, bool tod)
+    {
+        A220Systems.FplnProgress? p = null;
+        try
+        {
+            string? raw = await DisplaysAgentCallAsync("fplnProgress()");
+            if (!string.IsNullOrEmpty(raw)) p = System.Text.Json.JsonSerializer.Deserialize<A220Systems.FplnProgress>(raw);
+        }
+        catch (System.Text.Json.JsonException) { }
+        announcer.AnnounceImmediate(tod ? A220Systems.FormatDistanceToTod(p) : A220Systems.FormatDistanceToDestination(p));
     }
 }

@@ -452,13 +452,48 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
                 announcer.AnnounceImmediate($"Next waypoint {dist:0.0} miles, bearing {brg:000}");
                 return true;
             }
+            // From the FMS's own active flight plan on the CommBus (agent fplnProgress()).
             case HotkeyAction.ReadDistanceToDest:
-                announcer.AnnounceImmediate(
-                    "Distance to destination is not readable on the A220 yet — use the destination runway distance hotkey or the FMS window.");
+                _ = AnnounceFlightPlanAsync(announcer, tod: false);
                 return true;
             case HotkeyAction.ReadDistanceToTOD:
-                announcer.AnnounceImmediate(
-                    "Distance to top of descent is not readable on the A220 — the pause-at-TOD option in Utilities can guard the descent.");
+                _ = AnnounceFlightPlanAsync(announcer, tod: true);
+                return true;
+
+            // ---- Speed bugs from the PFD store (Shift+1..6) ----------------------------
+            case HotkeyAction.ReadSpeedGD:
+                announcer.AnnounceImmediate(A220Systems.VSpeedReadout(LatestSystems?.lpfd, "V1"));
+                return true;
+            case HotkeyAction.ReadSpeedS:
+                announcer.AnnounceImmediate(A220Systems.VSpeedReadout(LatestSystems?.lpfd, "VR"));
+                return true;
+            case HotkeyAction.ReadSpeedF:
+                announcer.AnnounceImmediate(A220Systems.VSpeedReadout(LatestSystems?.lpfd, "V2"));
+                return true;
+            case HotkeyAction.ReadSpeedVLS:
+                announcer.AnnounceImmediate(A220Systems.VSpeedReadout(LatestSystems?.lpfd, "VREF"));
+                return true;
+            case HotkeyAction.ReadSpeedVS:
+                announcer.AnnounceImmediate(A220Systems.VSpeedReadout(LatestSystems?.lpfd, "VAC"));
+                return true;
+            case HotkeyAction.ReadSpeedVFE:
+                announcer.AnnounceImmediate(A220Systems.FormatFlapSpeeds(LatestSystems?.lpfd));
+                return true;
+
+            // ---- Ctrl+W: the captain's ND / HSI TO waypoint ------------------------------
+            case HotkeyAction.ReadNDWaypoint:
+                announcer.AnnounceImmediate(A220Systems.FormatNdWaypoint(LatestSystems?.lnav));
+                return true;
+
+            // ---- AI display reads the A220 does not offer: say where the data is -------
+            case HotkeyAction.ReadDisplayND:
+                announcer.AnnounceImmediate("The A220 navigation display is not read here. Ctrl+W reads the next waypoint, D the distance to destination and Shift+D the top of descent; the FMS window has the route.");
+                return true;
+            case HotkeyAction.ReadDisplayPFD:
+                announcer.AnnounceImmediate("The A220 PFD is not read here. Shift+H, Shift+S, Shift+A and Shift+V read the flight control panel, Alt+F the flight directors, Shift+1 to Shift+6 the speed bugs and B the altimeter.");
+                return true;
+            case HotkeyAction.ReadDisplayISIS:
+                announcer.AnnounceImmediate("The A220 standby instrument is not read here. B reads the altimeter; A, S and H read altitude, speed and heading.");
                 return true;
 
             // ---- CAS: Alt+E window, Ctrl+E call-outs ---------------------------------

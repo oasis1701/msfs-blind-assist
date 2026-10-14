@@ -7,7 +7,7 @@ namespace MSFSBlindAssist.Aircraft;
 /// <summary>
 /// P3 Coherent display pump: polls the DisplayUnits scrape (A220DisplaysClient +
 /// coherent-a220-displays-agent.js) once a second and announces FMA/ASA transitions,
-/// CAS changes, and the VR-crossing "Rotate" callout. All transition logic is pure
+/// and CAS changes (the CommBus systems ride the same poll — Systems partial). All transition logic is pure
 /// (A220DisplayParsing, pinned by SynapticA220DisplayParseTests); everything here is
 /// baseline-first (the first successful snapshot records silently) and
 /// exception-swallowing — a scrape hiccup must never crash the timer.
@@ -45,11 +45,6 @@ public partial class SynapticA220Definition
     private double? _trimPrevPitch;
     private double? _trimSpokenPitch;
 
-    // Rotate callout state (fed by the ProcessSimVarUpdate peeks, not the pump).
-    private bool _rotateLatched;
-    private double _prevIas = double.NaN;
-    private bool _dispOnGround;
-
     /// <summary>Set by StopDisplayPump so a late SimVar event for a DISCARDED def
     /// instance (aircraft-swap race: StopAllMotion runs before the reassignment) can't
     /// restart the pump and orphan the one-socket-per-page DisplayUnits connection.
@@ -67,15 +62,14 @@ public partial class SynapticA220Definition
 
     /// <summary>
     /// Called at the top of every ProcessSimVarUpdate: stashes the announcer, lazily
-    /// starts the pump, and peeks the IAS / on-ground samples the Rotate callout
-    /// needs (they ride the continuous batch; A22X_IAS is silent-swallowed later).
+    /// starts the pump, and peeks the on-ground sample the take-off roll machine needs
+    /// (Systems partial).
     /// </summary>
     private void ObserveForDisplays(string varName, double value, ScreenReaderAnnouncer announcer)
     {
         _announcer ??= announcer;
         EnsureDisplayPump();
-        if (varName == "SIM_ON_GROUND") _dispOnGround = value > 0.5;
-        else if (varName == "A22X_IAS") CheckRotate(value);
+        if (varName == "SIM_ON_GROUND") _calloutOnGround = value > 0.5;
     }
 
     private void EnsureDisplayPump()
@@ -171,7 +165,14 @@ public partial class SynapticA220Definition
         // ---- CAS -----------------------------------------------------------
         // The CAS Data store is the truth ([A220-36]); the scrape diff below speaks only while
         // the store is missing, and drops its baseline whenever the store takes over, so a
-        // later fallback re-baselines silently instead of diffing against stale text.
+        // later fallback re-baselines silently instead of diffing against stale text. A flight
+        // load drops it too (RequestSystemsRebaseline): this block runs BEFORE ProcessSystems, so
+        // it honours the request itself rather than leave it to the monitors' reset below.
+        if (TakeRebaseline(ref _scrapeRebaselined))
+        {
+            _prevCas = null;
+            _casSignature = "";
+        }
         if (sys?.cas != null)
         {
             _prevCas = null;
@@ -216,32 +217,6 @@ public partial class SynapticA220Definition
         }
         if (Muted(A220MonitorRows.CasAdvisoriesKey))
             ann.Queued.RemoveAll(m => m.StartsWith("Advisory: ", StringComparison.Ordinal));
-    }
-
-    /// <summary>
-    /// "Rotate" when IAS crosses the scraped VR on the ground — once, latched until
-    /// the speed falls back below 60 kt (so a rejected takeoff re-arms). If VR was
-    /// never scraped there is NO call — never guess a V-speed.
-    /// </summary>
-    private void CheckRotate(double ias)
-    {
-        double prev = _prevIas;
-        _prevIas = ias;
-        if (_rotateLatched)
-        {
-            if (ias < 60) _rotateLatched = false;
-            return;
-        }
-        if (!_vSpeeds.TryGetValue("VR", out int vr)) return;
-        double? cachedGround = _sim?.GetCachedVariableValue("SIM_ON_GROUND");
-        bool onGround = cachedGround.HasValue ? cachedGround.Value > 0.5 : _dispOnGround;
-        if (!onGround) return;
-        if (!double.IsNaN(prev) && prev < vr && ias >= vr)
-        {
-            _rotateLatched = true;
-            var ann = _announcer;
-            if (ann != null) Marshal(() => ann.AnnounceImmediate("Rotate"));
-        }
     }
 
     /// <summary>

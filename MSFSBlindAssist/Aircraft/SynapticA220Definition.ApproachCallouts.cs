@@ -135,9 +135,16 @@ public partial class SynapticA220Definition
         catch { /* callouts must never take down the update path */ }
     }
 
-    /// <summary>VAPP preferred, VREF fallback, from the PFD-scraped V-speed bugs — never guessed.</summary>
+    /// <summary>VREF from the PFD's own bugs (A22X.L PFD Data) first, then the scraped
+    /// VAPP/VREF bug — never guessed. (The tape labels its bugs REF and VAC; VAC is the
+    /// approach-climb speed, not an approach target, so it is never used here.)</summary>
     private bool TryGetApproachTargetSpeed(out int target)
     {
+        if (LatestSystems?.lpfd?.vref is { } vref && vref > 0)
+        {
+            target = (int)Math.Round(vref);
+            return true;
+        }
         var v = _vSpeeds;
         if (v.TryGetValue("VAPP", out target)) return true;
         if (v.TryGetValue("VREF", out target)) return true;

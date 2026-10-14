@@ -38,9 +38,16 @@ public partial class SynapticA220Definition
 
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
+        // Take-off roll airspeed, per SIM_FRAME: the hot path, so the very first branch.
+        if (varName == TakeoffIasKey)
+        {
+            OnTakeoffIasSample(value, announcer);
+            return true;
+        }
+
         // Display pump hooks (Displays partial): stash the announcer, lazily start the
-        // Coherent poll, and peek IAS / on-ground for the Rotate callout — must run
-        // BEFORE the base call and the silent-key swallow below.
+        // Coherent poll, and peek the on-ground sample the take-off roll machine needs —
+        // must run BEFORE the base call and the silent-key swallow below.
         ObserveForDisplays(varName, value, announcer);
 
         // Final-approach PM callouts (ApproachCallouts partial) — also fed by

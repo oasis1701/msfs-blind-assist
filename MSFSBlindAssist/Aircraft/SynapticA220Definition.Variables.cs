@@ -480,9 +480,21 @@ public partial class SynapticA220Definition
         AddQuiet(v, "A22X_FG_ALT_UNIT", "A22X FG Altitude Unit", "number");
         AddQuiet(v, "A22X_FG_ALT_FINE", "A22X FG Altitude Fine", "bool");
 
-        // Indicated airspeed for the display pump's VR-crossing "Rotate" callout
-        // (compared against the PFD-scraped VR; see SynapticA220Definition.Displays.cs).
+        // Indicated airspeed for the final-approach call-outs (1 Hz batch, cache only).
         AddQuiet(v, "A22X_IAS", "AIRSPEED INDICATED", "knots", SimVarType.SimVar);
+        // Take-off roll "Rotate" ([A220-37], Systems partial): the same airspeed per SIM_FRAME —
+        // the iFly / A320 / A380 / MD-11 pattern (the 1 Hz batch called Rotate up to ~5 kt late).
+        // ExcludeFromBatch + HighFrequency gives it its own subscription, so it may share the
+        // batched A22X_IAS's name ([VAR-7]); IsAnnounced to be delivered at all; hidden from
+        // Ctrl+M because Rotate is muted by its own synthetic row.
+        v[TakeoffIasKey] = new SimVarDefinition
+        {
+            Name = "AIRSPEED INDICATED", DisplayName = "Take-off callout airspeed",
+            Type = SimVarType.SimVar, Units = "knots",
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true, ExcludeFromBatch = true, HighFrequency = true,
+            ExcludeFromMonitorManager = true
+        };
 
         // Stock autoflight targets for readouts and dialog walks.
         AddQuiet(v, "A22X_AP_SPD", "AUTOPILOT AIRSPEED HOLD VAR", "knots", SimVarType.SimVar);

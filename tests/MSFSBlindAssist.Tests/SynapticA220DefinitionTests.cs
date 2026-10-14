@@ -1,5 +1,6 @@
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Aircraft.A220;
+using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.SimConnect;
 
@@ -280,6 +281,20 @@ public class SynapticA220DefinitionTests
         Assert.Equal("Advisory: EXT PWR AVAIL\nStatus: SEAT BELTS\nStatus: AUTOBRAKE RTO\nStatus: PARK BRAKE ON\nStatus: APU ON",
             def.CasWindowText());
     }
+
+    [Fact]
+    public void TakeoffFeed_IsAPerFrameAirspeed_HiddenFromCtrlM()
+    {
+        var v = Vars[SynapticA220Definition.TakeoffIasKey];
+        Assert.Equal("AIRSPEED INDICATED", v.Name);
+        Assert.Equal(UpdateFrequency.Continuous, v.UpdateFrequency);
+        Assert.True(v.IsAnnounced);
+        Assert.True(v.ExcludeFromBatch);
+        Assert.True(v.HighFrequency);
+        Assert.True(v.ExcludeFromMonitorManager);
+        Assert.Equal(SynapticA220Definition.TakeoffIasKey, Def.TakeoffCalloutFeedKey);
+        Assert.True(Def.IsMuteWrapExempt(SynapticA220Definition.TakeoffIasKey));
+    }
 }
 
 [Collection("SettingsManagerGlobalState")]
@@ -539,4 +554,219 @@ public class SynapticA220SystemsSpeechTests : IDisposable
         quiet.ProcessDisplaysSnapshot(Fma(retard));
         Assert.Empty(silent.All);
     }
+
+    // ---- Take-off roll: "Rotate" on the per-frame airspeed feed ([A220-37]) ----
+
+    private static A220Systems.SystemsBlocks WithVSpeeds(double? v1, double? vr, double? v2) => new()
+    {
+        lpfd = new A220Systems.PfdBlock { v1 = v1, vr = vr, v2 = v2 }
+    };
+
+    private static void Roll(SynapticA220Definition def, SpeechCapture speech, params double[] ias)
+    {
+        foreach (double sample in ias)
+            def.ProcessSimVarUpdate(SynapticA220Definition.TakeoffIasKey, sample, speech);
+    }
+
+    [Fact]
+    public void Rotate_FiresAtVrOnTheFeed_V1AndV2AreLeftToTheAircraft()
+    {
+        var def = new SynapticA220Definition();
+        var speech = new SpeechCapture();
+        def.ProcessSystems(new A220Systems.SystemsBlocks { lpfd = new A220Systems.PfdBlock { v1 = 131, vr = 135, v2 = 139 } });
+        foreach (double ias in new[] { 20.0, 60, 120, 132, 136, 140, 150 })
+            def.ProcessSimVarUpdate(SynapticA220Definition.TakeoffIasKey, ias, speech);
+        Assert.Equal(new[] { "Rotate" }, speech.All);
+    }
+
+    [Fact]
+    public void Rotate_IsMutedByItsRow()
+    {
+        SettingsManager.Current.A220DisabledMonitorVariables = new List<string> { A220MonitorRows.RotateKey };
+        SettingsManager.Current.RebuildDisabledMonitorVariableCaches();
+        var def = new SynapticA220Definition();
+        var speech = new SpeechCapture();
+        def.ProcessSystems(new A220Systems.SystemsBlocks { lpfd = new A220Systems.PfdBlock { v1 = 131, vr = 135, v2 = 139 } });
+        foreach (double ias in new[] { 20.0, 60, 136, 150 })
+            def.ProcessSimVarUpdate(SynapticA220Definition.TakeoffIasKey, ias, speech);
+        Assert.Empty(speech.All);
+    }
+
+    [Fact]
+    public void ARollWithoutVr_SaysSoOnce_NeverGuessesASpeed()
+    {
+        var def = new SynapticA220Definition();
+        var speech = new SpeechCapture();
+        def.ProcessSystems(new A220Systems.SystemsBlocks { lpfd = new A220Systems.PfdBlock() });
+        foreach (double ias in new[] { 20.0, 45, 80, 140 })
+            def.ProcessSimVarUpdate(SynapticA220Definition.TakeoffIasKey, ias, speech);
+        Assert.Equal(new[] { "V-speeds not set — no Rotate call" }, speech.All);
+    }
+
+    [Fact]
+    public void ARollWithoutVr_IsMutedByTheRotateRow_AndASkippedSampleDoesNotHideTheRoll()
+    {
+        var def = new SynapticA220Definition();
+        var speech = new SpeechCapture();
+        def.ProcessSystems(WithVSpeeds(null, null, null));
+        Roll(def, speech, 20, double.NaN, 45, 80);                   // a NaN frame between 20 and 45
+        Assert.Equal(new[] { "V-speeds not set — no Rotate call" }, speech.All);
+
+        Mute(A220MonitorRows.RotateKey);
+        var quiet = new SynapticA220Definition();
+        var silent = new SpeechCapture();
+        quiet.ProcessSystems(WithVSpeeds(null, null, null));
+        Roll(quiet, silent, 20, 45, 80);
+        Assert.Empty(silent.All);
+    }
+
+    [Fact]
+    public void Rotate_FallsBackToTheScrapedVSpeeds_WhileThePfdStoreIsMissing()
+    {
+        var def = new SynapticA220Definition();
+        var speech = new SpeechCapture();
+        def.ProcessDisplaysSnapshot("{\"ok\":true,\"spd\":[{\"t\":\"V1 131\",\"y\":340},{\"t\":\"VR 135\",\"y\":300}]}");
+        Roll(def, speech, 20, 100, 134, 136);
+        Assert.Equal(new[] { "Rotate" }, speech.All);
+    }
+
+    [Fact]
+    public void Rotate_TheStoreBeatsTheScrape_AndAStoreThatSaysUnsetIsNotOverruledByIt()
+    {
+        const string scrape = "\"spd\":[{\"t\":\"V1 131\",\"y\":340},{\"t\":\"VR 135\",\"y\":300}]";
+
+        var set = new SynapticA220Definition();
+        var heard = new SpeechCapture();
+        set.ProcessDisplaysSnapshot("{\"ok\":true," + scrape + ",\"sys\":{\"lpfd\":{\"v1\":138,\"vr\":142}}}");
+        Roll(set, heard, 20, 100, 136, 141);                          // past the scrape's VR 135 ...
+        Assert.Empty(heard.All);
+        Roll(set, heard, 143);                                        // ... Rotate waits for the store's VR 142
+        Assert.Equal(new[] { "Rotate" }, heard.All);
+
+        var unset = new SynapticA220Definition();
+        var silent = new SpeechCapture();
+        unset.ProcessDisplaysSnapshot("{\"ok\":true," + scrape + ",\"sys\":{\"lpfd\":{\"v1\":0,\"vr\":0}}}");
+        Roll(unset, silent, 20, 45, 136);                             // the store says unset: no guess from the tape
+        Assert.Equal(new[] { "V-speeds not set — no Rotate call" }, silent.All);
+    }
+
+    [Fact]
+    public void Rotate_NeedsAGroundSampleBelowTheArmSpeed_SoConnectingMidRollIsSilent()
+    {
+        var def = new SynapticA220Definition();
+        var speech = new SpeechCapture();
+        def.ProcessSystems(WithVSpeeds(131, 135, 139));
+        Roll(def, speech, 100, 134, 136, 150);                       // connected mid-roll: never armed
+        Assert.Empty(speech.All);
+    }
+
+    [Fact]
+    public void ResetAnnouncementBaselines_DropsTheRollsArm_ButKeepsTheSpeeds()
+    {
+        var def = new SynapticA220Definition();
+        var speech = new SpeechCapture();
+        def.ProcessSystems(WithVSpeeds(131, 135, 139));
+        Roll(def, speech, 20, 60);                                    // armed, rolling
+        def.ResetAnnouncementBaselines();                             // a reconnect
+        Roll(def, speech, 134, 136);                                  // the arm was dropped: no call
+        Assert.Empty(speech.All);
+
+        Roll(def, speech, 20, 60, 134, 136);                          // a fresh roll with the kept speeds
+        Assert.Equal(new[] { "Rotate" }, speech.All);
+    }
+
+    [Fact]
+    public void OnSimContextReset_DropsTheRollsArm_AndRebaselinesTheSystemsMonitors()
+    {
+        var def = new SynapticA220Definition();
+        var speech = new SpeechCapture();
+        def.UseAnnouncer(speech);
+        def.ProcessSystems(WithVSpeeds(131, 135, 139));
+        Roll(def, speech, 20, 60);
+        def.ProcessSystems(WithGear(2));
+        def.OnSimContextReset();                                      // a flight load
+        Roll(def, speech, 134, 136);
+        def.ProcessSystems(WithGear(1));                              // the loaded flight is airborne
+        Assert.Empty(speech.All);
+    }
+
+    // ---- A flight load must not diff the loaded CAS against the old flight's (review focus 4) ----
+
+    [Fact]
+    public void ContextReset_DropsTheEicasScrapeBaseline_SoTheFallbackRebaselinesSilently()
+    {
+        var (def, speech) = Pump();
+        def.ProcessDisplaysSnapshot(Snap("[]"));                      // the scrape baseline: no messages
+        def.OnSimContextReset();                                      // a flight load
+        def.ProcessDisplaysSnapshot(Snap(Caution));                   // the loaded flight already has a caution
+        Assert.Empty(speech.All);                                     // not a change: the new baseline
+
+        def.ProcessDisplaysSnapshot(Snap("[]"));                      // and a real change after it still speaks
+        Assert.Equal(new[] { "EMER LTS OFF cleared" }, speech.All);
+    }
+
+    [Fact]
+    public void RebaselineRequest_ReachesTheScrapeAndTheMonitors_OncePerRequest()
+    {
+        var (def, speech) = Pump();
+        def.ProcessDisplaysSnapshot(Snap("[]", Gear(2)));
+        def.RequestSystemsRebaseline();
+        def.ProcessDisplaysSnapshot(Snap(Caution, Gear(1)));          // both loaded values are the new baseline
+        Assert.Empty(speech.All);
+
+        def.ProcessDisplaysSnapshot(Snap("[]", Gear(0)));             // one request, one rebaseline: changes speak again
+        Assert.Equal(new[] { "EMER LTS OFF cleared", "Gear in transit" }, speech.All);
+    }
+
+    private static string Gear(int icon) => "{\"gear\":{\"nose_icon\":" + icon + ",\"left_icon\":" + icon + ",\"right_icon\":" + icon
+        + ",\"nose_color\":3,\"left_color\":3,\"right_color\":3}}";
+
+    // ---- The silent readouts, from the store ----
+
+    private static SpeechCapture Press(SynapticA220Definition def, HotkeyAction action)
+    {
+        var speech = new SpeechCapture();
+        Assert.True(def.HandleHotkeyAction(action, null!, speech, null!, null!));
+        return speech;
+    }
+
+    [Fact]
+    public void SpeedBugHotkeys_ReadThePfdStore()
+    {
+        var def = new SynapticA220Definition();
+        def.ProcessSystems(new A220Systems.SystemsBlocks
+        {
+            lpfd = new A220Systems.PfdBlock { v1 = 131, vr = 135, v2 = 139, vref = 128, vac = 150, vf1 = 168 }
+        });
+        Assert.Equal("V1 131 knots", Press(def, HotkeyAction.ReadSpeedGD).All.Single());
+        Assert.Equal("VR 135 knots", Press(def, HotkeyAction.ReadSpeedS).All.Single());
+        Assert.Equal("V2 139 knots", Press(def, HotkeyAction.ReadSpeedF).All.Single());
+        Assert.Equal("VREF 128 knots", Press(def, HotkeyAction.ReadSpeedVLS).All.Single());
+        Assert.Equal("VAC 150 knots", Press(def, HotkeyAction.ReadSpeedVS).All.Single());
+        Assert.Equal("Flap speeds F1 168 knots", Press(def, HotkeyAction.ReadSpeedVFE).All.Single());
+    }
+
+    [Fact]
+    public void SpeedBugHotkeys_SayNotAvailable_WithoutTheStore()
+    {
+        var def = new SynapticA220Definition();
+        Assert.Equal("V-speeds not available — display link not connected", Press(def, HotkeyAction.ReadSpeedGD).All.Single());
+        Assert.Equal("Flap speeds not available — display link not connected", Press(def, HotkeyAction.ReadSpeedVFE).All.Single());
+    }
+
+    [Fact]
+    public void NdWaypointHotkey_ReadsTheCaptainsToWaypoint()
+    {
+        var def = new SynapticA220Definition();
+        Assert.Equal("Next waypoint not available — display link not connected", Press(def, HotkeyAction.ReadNDWaypoint).All.Single());
+        def.ProcessDisplaysSnapshot("{\"ok\":true,\"sys\":{\"lnav\":{\"to\":\"WALET\",\"dtg\":12.34,\"source\":0}}}");
+        Assert.Equal("Next waypoint WALET, 12.3 miles", Press(def, HotkeyAction.ReadNDWaypoint).All.Single());
+    }
+
+    [Theory]
+    [InlineData(HotkeyAction.ReadDisplayND, "Ctrl+W")]
+    [InlineData(HotkeyAction.ReadDisplayPFD, "Shift+1 to Shift+6")]
+    [InlineData(HotkeyAction.ReadDisplayISIS, "B reads the altimeter")]
+    public void AiDisplayReads_PointAtWhereTheDataIs(HotkeyAction action, string pointer)
+        => Assert.Contains(pointer, Press(new SynapticA220Definition(), action).All.Single());
 }
