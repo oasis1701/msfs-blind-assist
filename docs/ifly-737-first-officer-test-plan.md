@@ -92,7 +92,7 @@ plan's Part B2 — this aircraft's flow *steps* are the same, only the underlyin
 | Landing | Start switches CONT; **the First Officer arms the speed brake** (verified, lever AND ARMED light; a deployed one is left alone — see B7); missed-altitude reminder; then confirms the gear is down via the gear lights (see B10) |
 | After Landing | Landing lights off; taxi light ON; strobes steady; anti-ice OFF; probe heat **AUTO**; APU ON; start switches OFF; autobrake OFF |
 | Shutdown | APU generators ON; start levers CUTOFF (no spool-down wait); signs/lights off; fuel pumps OFF; window heat OFF; transponder **ALT OFF** |
-| Secure | IRS OFF; emergency exit lights **OFF**; window heat OFF; packs OFF |
+| Secure | IRS OFF; emergency exit lights **OFF**; window heat OFF; packs OFF; APU OFF; ground power OFF; **waits a fixed 2 minutes if it switched the APU off** (no APU temperature in the SDK); **Battery OFF last** (left alone, with a spoken reason, while an engine turns or N2 is unread). **In-sim check:** run Secure after Shutdown with the APU running: hear the wait, then "Battery: OFF"; the aircraft goes dark and Electrical Power Down shows complete |
 
 Verify **Pause / Resume / Stop** mid-flow, and that **"Run Related Flow"** from a checklist
 group starts the matching flow — these are generic engine behaviors, unchanged from every other

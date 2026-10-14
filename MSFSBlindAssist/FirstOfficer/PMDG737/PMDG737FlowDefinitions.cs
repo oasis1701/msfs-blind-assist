@@ -550,8 +550,8 @@ public static class PMDG737FlowDefinitions
     private static Flow BuildSecure() => new()
     {
         Id = "SECURE", Name = "Secure",
-        Description = "IRS off, emergency exit off, window heat off, packs off.",
-        RelatedChecklistGroupIds = new[] { "SECURE" },
+        Description = "IRS off, emergency exit off, window heat off, packs off, APU and ground power off, battery off after the APU cool-down.",
+        RelatedChecklistGroupIds = new[] { "SECURE", "ELEC_POWER_DOWN" },
         Steps = new()
         {
             Also(Multi("SE_IRS_OFF", "IRS mode selectors: OFF", "SE_IRS", ("EVT_IRU_MSU_LEFT", 0), ("EVT_IRU_MSU_RIGHT", 0)), "SEC_IRS"),
@@ -566,8 +566,27 @@ public static class PMDG737FlowDefinitions
             SW("SE_APU_OFF", "APU: OFF", "EVT_OH_LIGHTS_APU_START", 0, checklistItemId: "SE_APU_OFF"),
             Skip(SW("SE_GND_PWR_OFF", "Ground power: OFF", "EVT_OH_ELEC_GRD_PWR_SWITCH", 0, checklistItemId: "SE_GND_PWR_OFF"),
                 s => !s.IsGpuOn()),
+            // Cold and dark (owner, 2026-10-14). 737 NG: the APU runs a 60 s cool-down after its
+            // switch goes OFF; the battery goes OFF only once the APU has stopped — 40 s after
+            // EGT is below 300 °C, for the inlet door and fuel valve to close (spec sources).
+            // The EGT wait is instant on a cold APU; the 40 s only follows an APU this run
+            // switched off.
+            WaitForField("SE_APU_EGT_WAIT", "APU to stop", "APU_EGTNeedle", v => v < 300, 180),
+            OnlyIfSent(Wait("SE_APU_WAIT", "APU inlet door to close", 40), "SE_APU_OFF"),
+            // Battery LAST, and never with an engine turning (both N2 read below 10 %).
+            // Completes Electrical Power Down's "Battery: OFF", which this flow now latches.
+            LeaveAlone(Skip(SW("SE_BAT_OFF", "Battery: OFF", "EVT_OH_ELEC_BATTERY_SWITCH", 0, checklistItemId: "EPD_BAT"),
+                    s => s.IsPosition("ELEC_BatSelector", 0)),
+                s => !EnginesStopped(s), "Engines running, so the battery stays on."),
         }
     };
+
+    // Both engines read and below 10 % N2 — the battery may go off (the MD-11's EngineStoppedN2).
+    internal static bool EnginesStopped(AircraftStateEvaluator s)
+    {
+        double n1 = s.GetValue("FO_ENG1_N2"), n2 = s.GetValue("FO_ENG2_N2");
+        return !double.IsNaN(n1) && !double.IsNaN(n2) && n1 < 10 && n2 < 10;
+    }
 
     // -----------------------------------------------------------------------
     // Step builder helpers
@@ -703,6 +722,14 @@ public static class PMDG737FlowDefinitions
     {
         step.RequiresStepId = requiredStepId;
         step.RequiresStepSkipText = skipText;
+        return step;
+    }
+
+    // A step that runs only when an EARLIER switch step of this run actually sent its write
+    // (FlowStep.RunOnlyIfStepSent): otherwise it passes silently as done.
+    private static Step OnlyIfSent(Step step, string sentStepId)
+    {
+        step.RunOnlyIfStepSent = sentStepId;
         return step;
     }
 

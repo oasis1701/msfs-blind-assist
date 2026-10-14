@@ -163,6 +163,13 @@ carries several LIVE-VERIFY items a code review flagged but could not settle sta
 that is expected to time out and abort today, the pressurization LED-window blank/minus padding,
 the ND range 0..10 scale, and the LNAV switch's value-3 composite edge case).
 
+**PMDG 737 and iFly 737 Secure end cold and dark (owner, 2026-10-14):** after "APU: OFF" and
+"Ground power: OFF" the flow waits out the APU cool-down (PMDG: APU EGT below 300 °C, then 40 s;
+iFly: a fixed 120 s, its SDK has no APU EGT), then sends "Battery: OFF", which ticks and latches the
+Electrical Power Down list as on the 777. The fixed waits run only after an APU this run switched
+off (`FlowStep.RunOnlyIfStepSent`), and the battery is left alone, said aloud, unless both engines
+read below 10 % N2. Sources and judgements: [FOB-22](invariants/first-officer-boeing.md#fob-22).
+
 **HeadwindSim A330-900neo First Officer (branch `feature/first-officer`):** a seventh
 profile, `FirstOfficer/HWA330/`, is a **duplicate** of the A32NX profile — not a
 shared-data variant and not a widened aircraft check. `HeadwindA330Definition` inherits

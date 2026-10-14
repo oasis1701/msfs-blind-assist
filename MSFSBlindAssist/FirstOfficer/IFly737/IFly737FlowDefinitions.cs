@@ -678,8 +678,8 @@ public static class IFly737FlowDefinitions
     private static Flow BuildSecure() => new()
     {
         Id = "SECURE", Name = "Secure",
-        Description = "IRS off, emergency exit off, window heat off, packs off.",
-        RelatedChecklistGroupIds = new[] { "SECURE" },
+        Description = "IRS off, emergency exit off, window heat off, packs off, APU and ground power off, battery off after the APU cool-down.",
+        RelatedChecklistGroupIds = new[] { "SECURE", "ELEC_POWER_DOWN" },
         Steps = new()
         {
             Also(Multi("SE_IRS_OFF", "IRS mode selectors: OFF", "SE_IRS",
@@ -700,8 +700,23 @@ public static class IFly737FlowDefinitions
             // No GPU-on readback exists to skip on (see class doc) — unconditional press,
             // matching the checklist's own action-only shape for this item.
             SW("SE_GND_PWR_OFF", "Ground power: OFF", "BTN_GRD_PWR_OFF", 1, isMomentary: true, checklistItemId: "SE_GND_PWR_OFF"),
+            // Cold and dark (owner, 2026-10-14). The iFly SDK has no APU EGT or speed field, so
+            // the 737 NG cool-down (60 s, then the inlet door) is a fixed 2 minutes — a
+            // judgement — and only after an APU this run switched off.
+            OnlyIfSent(Wait("SE_APU_WAIT", "APU to stop and its inlet door to close", 120), "SE_APU_OFF"),
+            // Battery_Switch_Mode 1 = OFF / 2 = ON. LAST, never with an engine turning.
+            LeaveAlone(Skip(SW("SE_BAT_OFF", "Battery: OFF", "Battery_Switch_Mode", 1, checklistItemId: "EPD_BAT"),
+                    s => s.IsPosition("Battery_Switch_Mode", 1)),
+                s => !EnginesStopped(s), "Engines running, so the battery stays on."),
         }
     };
+
+    // Both engines read and below 10 % N2. NaN (no sample yet) is NOT stopped.
+    internal static bool EnginesStopped(IFly737StateEvaluator s)
+    {
+        double n1 = s.GetValue("FO_ENG1_N2"), n2 = s.GetValue("FO_ENG2_N2");
+        return !double.IsNaN(n1) && !double.IsNaN(n2) && n1 < 10 && n2 < 10;
+    }
 
     // -----------------------------------------------------------------------
     // Step builder helpers
@@ -731,6 +746,14 @@ public static class IFly737FlowDefinitions
         CompletesChecklistItemId = checklistItemId,
         PostActionDelayMs = 400,
         FailurePolicy = FlowStepFailurePolicy.Skip,
+    };
+
+    private static Step Wait(string id, string label, int seconds) => new()
+    {
+        Id = id, Label = label,
+        ActionType = FlowStepActionType.WaitSeconds,
+        WaitSeconds = seconds,
+        PostActionDelayMs = 0,
     };
 
     private static Step WaitForField(string id, string label, string field, Func<double, bool> condition, int timeoutSec,
@@ -781,6 +804,14 @@ public static class IFly737FlowDefinitions
     {
         step.LeaveAloneWhen = when;
         step.LeaveAloneText = text;
+        return step;
+    }
+
+    // A step that runs only when an EARLIER switch step of this run actually sent its write
+    // (FlowStep.RunOnlyIfStepSent): otherwise it passes silently as done.
+    private static Step OnlyIfSent(Step step, string sentStepId)
+    {
+        step.RunOnlyIfStepSent = sentStepId;
         return step;
     }
 

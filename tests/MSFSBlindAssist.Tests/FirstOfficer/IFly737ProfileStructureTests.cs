@@ -238,7 +238,9 @@ public class IFly737ProfileStructureTests
         ("LANDING", new[] { "LANDING", "LANDING_CL" }),
         ("AFTER_LANDING", new[] { "AFTER_LANDING" }),
         ("SHUTDOWN", new[] { "SHUTDOWN" }),
-        ("SECURE", new[] { "SECURE" }),
+        // Secure also latches Electrical Power Down: it now ends with the battery OFF
+        // (owner, 2026-10-14; Boeing737SecurePowerOffTests), as the PMDG 737 does.
+        ("SECURE", new[] { "SECURE", "ELEC_POWER_DOWN" }),
     };
 
     [Fact]
