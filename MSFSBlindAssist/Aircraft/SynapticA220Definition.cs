@@ -461,6 +461,15 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
                     "Distance to top of descent is not readable on the A220 — the pause-at-TOD option in Utilities can guard the descent.");
                 return true;
 
+            // ---- CAS: Alt+E window, Ctrl+E call-outs ---------------------------------
+            case HotkeyAction.ReadDisplayUpperECAM:
+                hotkeyManager.ExitOutputHotkeyMode();
+                ShowCasWindow(announcer);
+                return true;
+            case HotkeyAction.ToggleECAMMonitoring:
+                announcer.AnnounceImmediate(ToggleCasCallouts());
+                return true;
+
             default:
                 return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
         }

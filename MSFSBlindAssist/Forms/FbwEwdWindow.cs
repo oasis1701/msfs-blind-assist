@@ -24,11 +24,18 @@ public sealed class FbwEwdWindow : Form
     private readonly IntPtr _previousWindow;
     private bool _busy;
 
-    public FbwEwdWindow(string title, Func<Task<string>> build, ScreenReaderAnnouncer announcer)
+    private readonly string _refreshedMessage;
+
+    /// <param name="description">The list's accessible description; the E/WD wording when null.</param>
+    /// <param name="refreshedMessage">Spoken after an F5 refresh.</param>
+    /// <param name="loadingText">The list's text before the first build returns.</param>
+    public FbwEwdWindow(string title, Func<Task<string>> build, ScreenReaderAnnouncer announcer,
+        string? description = null, string refreshedMessage = "E W D refreshed", string loadingText = "Loading E/WD...")
     {
         _previousWindow = GetForegroundWindow();
         _build = build;
         _announcer = announcer;
+        _refreshedMessage = refreshedMessage;
 
         Text = title;
         Size = new Size(760, 560);
@@ -43,9 +50,9 @@ public sealed class FbwEwdWindow : Form
             Font = new Font("Consolas", 11, FontStyle.Regular),
             TabIndex = 0,
             AccessibleName = title,
-            AccessibleDescription = "Engine and Warning Display. Read with the arrow keys. F5 refreshes; Escape closes. Auto-refreshes.",
+            AccessibleDescription = description ?? "Engine and Warning Display. Read with the arrow keys. F5 refreshes; Escape closes. Auto-refreshes.",
         };
-        _text.SetText("Loading E/WD...");
+        _text.SetText(loadingText);
 
         var bottom = new Panel { Dock = DockStyle.Bottom, Height = 44 };
         var refreshButton = new Button { Text = "&Refresh (F5)", Location = new Point(560, 8), Size = new Size(90, 30), TabIndex = 1, AccessibleName = "Refresh" };
@@ -82,7 +89,7 @@ public sealed class FbwEwdWindow : Form
             // Reconcile in place (no-ops when unchanged) so a refresh doesn't reset the
             // screen-reader review cursor to the top.
             _text.SetText(txt);
-            if (announce) _announcer.Announce("E W D refreshed");
+            if (announce) _announcer.Announce(_refreshedMessage);
         }
         catch { /* best-effort; keep the last good content */ }
         finally { _busy = false; }

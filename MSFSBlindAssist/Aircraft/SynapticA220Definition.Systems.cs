@@ -135,4 +135,40 @@ public partial class SynapticA220Definition
         text = "";
         return false;
     }
+
+    // ---- Alt+E: the CAS window; Ctrl+E: the CAS call-outs ----------------------------
+
+    /// <summary>Every active CAS message, warnings first, one row per message ("Caution: EMER
+    /// LTS OFF"). From the CAS store; while it is missing, from the EICAS scrape, saying so.</summary>
+    internal string CasWindowText()
+    {
+        if (_casMonitor.HasData && LatestSystems?.cas != null)
+            return A220Systems.FormatCasWindow(_casMonitor.Current);
+        var scraped = _prevCas;
+        if (scraped == null) return "CAS not available — the A220 display link is not connected.";
+        string note = "Read from the EICAS display; the data link is not connected.";
+        return scraped.Count == 0
+            ? $"No CAS messages. {note}"
+            : note + "\n" + string.Join("\n", scraped.Select(t => $"{A220DisplayParsing.SeverityFromColor(t.Color)}: {t.Text}"));
+    }
+
+    /// <summary>Alt+E, the FbwEwdWindow pattern the A380 and A32NX use (auto-refresh, F5,
+    /// Escape), as a tracked window so an aircraft switch disposes it.</summary>
+    private void ShowCasWindow(ScreenReaderAnnouncer announcer)
+        => ShowTrackedWindow(
+            () => new Forms.FbwEwdWindow("A220 CAS — crew alerting messages",
+                () => Task.FromResult(CasWindowText()), announcer,
+                description: "Every active crew alerting message, warnings first. Read with the arrow keys. F5 refreshes; Escape closes. Auto-refreshes.",
+                refreshedMessage: "CAS refreshed",
+                loadingText: "Loading CAS messages..."),
+            w => { w.Show(); w.BringToFront(); w.Activate(); });
+
+    /// <summary>Ctrl+E: both CAS rows (warnings/cautions, advisories) off or on together; the
+    /// same rows Ctrl+M shows, so the two never disagree.</summary>
+    private static string ToggleCasCallouts()
+    {
+        bool on = A220MonitorRows.ToggleCas(Settings.SettingsManager.Current.A220DisabledMonitorVariables);
+        Settings.SettingsManager.Save();
+        return on ? "CAS call-outs on" : "CAS call-outs off";
+    }
 }

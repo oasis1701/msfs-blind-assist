@@ -1,4 +1,5 @@
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Aircraft.A220;
 
 namespace MSFSBlindAssist.Aircraft;
 
@@ -53,6 +54,12 @@ public partial class SynapticA220Definition
             }
             if (_sim != null && Cached(_sim, "SIM_ON_GROUND") > 0.5) return;
 
+            // These run inside ProcessSimVarUpdate but on vars with no Ctrl+M row (A22X_RA and
+            // friends are AddQuiet), so the mute wrap cannot reach them: they answer to their
+            // own synthetic row. The latches still advance while muted, so un-muting mid-
+            // approach never replays an old call.
+            bool quiet = Muted(A220MonitorRows.ApproachKey);
+
             // ---- Localizer alive / within one dot (any altitude below 2500) -----
             // Stock CDI is ±127 full-scale (≈2.5 dots); "alive" = needle off the peg,
             // "one dot" ≈ 51. Gated on a tuned localizer so a no-signal 0 can't fake it.
@@ -62,12 +69,12 @@ public partial class SynapticA220Definition
                 if (!_locAliveCalled && cdi < 120 && cdi > 2)
                 {
                     _locAliveCalled = true;
-                    announcer.Announce("Localizer alive");
+                    if (!quiet) announcer.Announce("Localizer alive");
                 }
                 if (_locAliveCalled && !_locOneDotCalled && cdi <= 51)
                 {
                     _locOneDotCalled = true;
-                    announcer.Announce("Localizer within one dot");
+                    if (!quiet) announcer.Announce("Localizer within one dot");
                 }
             }
 
@@ -87,9 +94,10 @@ public partial class SynapticA220Definition
                     if (dev > 20) problems.Add("speed high");
                     else if (dev < -5) problems.Add("speed low");
                 }
-                announcer.AnnounceImmediate(problems.Count == 0
-                    ? "Stabilized"
-                    : "Not stabilized: " + string.Join(", ", problems));
+                if (!quiet)
+                    announcer.AnnounceImmediate(problems.Count == 0
+                        ? "Stabilized"
+                        : "Not stabilized: " + string.Join(", ", problems));
             }
 
             // ---- Continuous exceedances below 1000 ft (rate-limited) -------------
@@ -99,7 +107,7 @@ public partial class SynapticA220Definition
                 if (-_apprVsi > 1100 && now - _sinkCallTicks > 12000)
                 {
                     _sinkCallTicks = now;
-                    announcer.Announce("Sink rate");
+                    if (!quiet) announcer.Announce("Sink rate");
                 }
                 if (TryGetApproachTargetSpeed(out int tgt) && _apprIas > 0 && now - _speedCallTicks > 10000)
                 {
@@ -107,7 +115,7 @@ public partial class SynapticA220Definition
                     if (dev > 20 || dev < -5)
                     {
                         _speedCallTicks = now;
-                        announcer.Announce("Speed");
+                        if (!quiet) announcer.Announce("Speed");
                     }
                 }
             }
@@ -120,8 +128,8 @@ public partial class SynapticA220Definition
             if (ra < 65 && ra <= prevRa && now - _flareCallTicks > 5000)
             {
                 double noseUp = -_apprPitch;
-                if (Math.Abs(_apprBank) > 7) { _flareCallTicks = now; announcer.Announce("Bank"); }
-                else if (noseUp > 7.5 || noseUp < -1) { _flareCallTicks = now; announcer.Announce("Pitch"); }
+                if (Math.Abs(_apprBank) > 7) { _flareCallTicks = now; if (!quiet) announcer.Announce("Bank"); }
+                else if (noseUp > 7.5 || noseUp < -1) { _flareCallTicks = now; if (!quiet) announcer.Announce("Pitch"); }
             }
         }
         catch { /* callouts must never take down the update path */ }

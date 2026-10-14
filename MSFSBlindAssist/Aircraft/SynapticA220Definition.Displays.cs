@@ -158,7 +158,7 @@ public partial class SynapticA220Definition
             // never delivered (both come from the same page, so this is belt-and-braces,
             // not a second source of truth).
             if (snap.af != null) ann.Queued.RemoveAll(m => m == "Flight directors off");
-            Speak(ann);
+            if (!Muted(A220MonitorRows.FmaKey)) Speak(ann);   // a pump call-out: its own row ([A220-39])
         }
 
         // ---- V-speeds ------------------------------------------------------

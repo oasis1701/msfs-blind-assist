@@ -270,6 +270,16 @@ public class SynapticA220DefinitionTests
         Assert.True(def.TryGetDisplayOverride("A22X_GEAR_STATE", 0, out string text));
         Assert.Equal(A220Systems.NotAvailable, text);
     }
+
+    [Fact]
+    public void CasWindow_ListsEveryMessage_WarningsFirst_OrSaysWhyNot()
+    {
+        var def = new SynapticA220Definition();
+        Assert.Equal("CAS not available — the A220 display link is not connected.", def.CasWindowText());
+        def.ProcessSystems(FixtureSystems());
+        Assert.Equal("Advisory: EXT PWR AVAIL\nStatus: SEAT BELTS\nStatus: AUTOBRAKE RTO\nStatus: PARK BRAKE ON\nStatus: APU ON",
+            def.CasWindowText());
+    }
 }
 
 [Collection("SettingsManagerGlobalState")]
@@ -506,5 +516,27 @@ public class SynapticA220SystemsSpeechTests : IDisposable
         def.ProcessDisplaysSnapshot(Snap("[]", Gear(2)));
         def.ProcessDisplaysSnapshot(Snap("[]", Gear(0)));
         Assert.Equal(new[] { "Gear in transit" }, speech.All);
+    }
+
+    [Fact]
+    public void FmaCallouts_AreMutedByTheirRow_AndTheBaselineStillAdvances()
+    {
+        static string Fma(string tokens) => "{\"ok\":true,\"fma\":" + tokens + "}";
+        const string retard = "[{\"t\":\"RETARD\",\"c\":\"green\"}]";
+
+        var (loud, heard) = Pump();
+        loud.ProcessDisplaysSnapshot(Fma("[]"));                      // silent baseline
+        loud.ProcessDisplaysSnapshot(Fma(retard));
+        Assert.Equal(new[] { "Retard" }, heard.All);
+
+        Mute(A220MonitorRows.FmaKey);
+        var (quiet, silent) = Pump();
+        quiet.ProcessDisplaysSnapshot(Fma("[]"));
+        quiet.ProcessDisplaysSnapshot(Fma(retard));
+        Assert.Empty(silent.All);
+
+        Mute();                                                       // un-muted mid-flight: the old change is not replayed
+        quiet.ProcessDisplaysSnapshot(Fma(retard));
+        Assert.Empty(silent.All);
     }
 }
