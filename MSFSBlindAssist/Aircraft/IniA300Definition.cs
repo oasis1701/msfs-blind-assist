@@ -411,6 +411,13 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
             };
         }
 
+        // D and Shift+D (A300RouteDistances): the FMS's route distance to the destination and the aircraft's distance to the top
+        // of descent, read when a key asks. Registered here and not as readouts, which sit on a panel's status box: these are on
+        // no panel and never shown or spoken. On request and not announced, so they earn no Ctrl+M row ([VAR-9]) and never ride
+        // the batch ([A300-9]).
+        vars[A300RouteDistances.DestinationKey] = OnRequestLVar("Distance to destination", A300RouteDistances.DestinationVar);
+        vars[A300RouteDistances.TopOfDescentKey] = OnRequestLVar("Distance to top of descent", A300RouteDistances.TopOfDescentVar);
+
         // End-to-end MobiFlight probe target: every A300 write is a calculator-path string, and with
         // no WASM module installed each one is dropped with nothing to say so. Registering this var
         // opts the A300 into MainForm's probe and its spoken warning (CalcPathProbeOptInTests).
@@ -559,6 +566,16 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
                 };
         }
     }
+
+    /// <summary>An L:var read only when a key asks for it: not announced, on no panel and not on the batch.</summary>
+    private static SimVarDefinition OnRequestLVar(string name, string var) => new()
+    {
+        Name = var,
+        DisplayName = name,
+        Type = SimVarType.LVar,
+        Units = "number",
+        UpdateFrequency = UpdateFrequency.OnRequest,
+    };
 
     /// <summary>A hand-written lever (<see cref="A300Levers"/>).</summary>
     private static SimVarDefinition BuildLeverVariable(A300PlacedRow row) => row.Key switch

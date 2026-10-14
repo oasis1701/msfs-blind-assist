@@ -434,6 +434,16 @@ Time:
 Transponder:
   X          Read Squawk Code
 
+Distance:
+  D          Read the distance along the route to the destination and the time to go,
+             from the aircraft's own flight plan: "541 miles to destination: 01:16:44"
+  Shift+D    Read the distance to the top of descent and the time to go: "443 miles to
+             top of descent: 01:02:53". Once you have reached it you hear "Past top of
+             descent"; while the aircraft has none worked out, "Top of descent not yet
+             computed"
+  With no route loaded both say "not available", and the time is left out below 30
+  knots. Hand Fly mode's D reads the distance to the destination runway instead.
+
 Location:
   C          Read Nearest City
 

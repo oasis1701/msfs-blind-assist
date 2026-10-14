@@ -255,6 +255,19 @@ public partial class IniA300Definition
             case HotkeyAction.ReadGrossWeightKg:
                 sim.RequestSingleValue((int)SimConnectManager.DATA_DEFINITIONS.DEF_GROSS_WEIGHT_KG, "TOTAL WEIGHT", "pounds", "GROSS_WEIGHT_KG");
                 return true;
+
+            // D and Shift+D: the aircraft's own VNAV distances (A300RouteDistances; the stock GPS flight plan stays empty on this
+            // aircraft), read fresh together with the ground speed (the base variable, knots) that the time is worked out at.
+            case HotkeyAction.ReadDistanceToDest:
+                _ = SpeakAsync(sim, announcer, "Distance to destination",
+                    v => A300RouteDistances.Destination(v[0], v[1]),
+                    A300RouteDistances.DestinationKey, "GROUND_VELOCITY");
+                return true;
+            case HotkeyAction.ReadDistanceToTOD:
+                _ = SpeakAsync(sim, announcer, "Top of descent",
+                    v => A300RouteDistances.TopOfDescent(v[0], v[1], v[2]),
+                    A300RouteDistances.DestinationKey, A300RouteDistances.TopOfDescentKey, "GROUND_VELOCITY");
+                return true;
         }
         return false;
     }
