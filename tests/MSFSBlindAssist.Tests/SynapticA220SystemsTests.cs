@@ -431,4 +431,319 @@ public class SynapticA220SystemsTests
         Assert.Empty(eng.Observe(null));
         Assert.Equal(new[] { "Engine 2 start complete" }, eng.Observe(Eng2(false, 0, 64)));
     }
+
+    // ---- V-speeds (A22X.L PFD Data, proven live after SET VSPEEDS) -------------------
+
+    [Fact]
+    public void Fixture_VSpeeds_ReadAsTheBugsShowThem()
+    {
+        var p = Store<PfdBlock>("A22X.L PFD Data");
+        Assert.Equal("V1 131 knots", VSpeedReadout(p, "V1"));
+        Assert.Equal("VR 135 knots", VSpeedReadout(p, "VR"));
+        Assert.Equal("V2 139 knots", VSpeedReadout(p, "V2"));
+        Assert.Equal("VREF not set", VSpeedReadout(p, "VREF"));
+        Assert.Equal("VAC not set", VSpeedReadout(p, "VAC"));
+        Assert.Equal("Flap speeds F1 168 knots", FormatFlapSpeeds(p));
+        Assert.Equal("V-speeds not available — display link not connected", VSpeedReadout(null, "V1"));
+        Assert.Equal("No flap speed bugs set", FormatFlapSpeeds(new PfdBlock()));
+    }
+
+    [Fact]
+    public void RollWithoutVr_WarnsOncePerRoll_OnlyWithoutVr()
+    {
+        var gate = new RollWithoutVrGate();
+        Assert.False(gate.Observe(20, onGround: true, vrKnown: false));     // taxi
+        Assert.True(gate.Observe(41, true, false));                         // roll started, no VR
+        Assert.False(gate.Observe(60, true, false));                        // once per roll
+        Assert.False(gate.Observe(30, true, false));                        // rejected: re-arms
+        Assert.True(gate.Observe(45, true, false));
+        var withVr = new RollWithoutVrGate();
+        withVr.Observe(20, true, true);
+        Assert.False(withVr.Observe(41, true, true));
+        var airborne = new RollWithoutVrGate();
+        airborne.Observe(20, false, false);
+        Assert.False(airborne.Observe(41, false, false));                   // a landing never warns
+    }
+
+    // ---- Transponder (CNS TransponderControl.tsx) ------------------------------------
+
+    [Fact]
+    public void Fixture_Atc_ReadsSquawkAndMode()
+    {
+        var a = Store<AtcBlock>("A22X.ATC Data");
+        Assert.Equal("squawk 2000, AUTO", FormatAtc(a));
+        Assert.Equal("Squawk 2000, transponder AUTO", FormatSquawkReadout(a, SquawkToBcd16(1200)));   // the bus wins
+        Assert.Equal("Squawk 1200", FormatSquawkReadout(null, SquawkToBcd16(1200)));                   // stock word is BCD16
+        a.mode = 2; a.tss_limits_sel = 3; a.ident = true;
+        Assert.Equal("squawk 2000, TA/RA, altitude limit Above and Below, ident", FormatAtc(a));
+        Assert.Equal(NotAvailable, FormatAtc(null));
+    }
+
+    // The A220 registers TRANSPONDER CODE:1 with units "number"; every other add-on that reads
+    // that SimVar documents the raw BCD16 word (squawk 2000 reads 8192, FlyByWireA380Definition.cs:2405,
+    // MD-11 read 0x5473 live), so the stock fallback decodes nibbles instead of printing the word.
+    [Fact]
+    public void StockSquawk_IsTheBcd16Word_NeverTheDecimal()
+    {
+        Assert.Equal("Squawk 2000", FormatSquawkReadout(null, 8192));
+        Assert.Equal("Squawk 0400", FormatSquawkReadout(null, 0x0400));
+        Assert.Equal("Squawk 0000", FormatSquawkReadout(null, 0));
+        Assert.Equal("Squawk " + NotAvailable, FormatSquawkReadout(null, 2000));   // 0x7D0 is no octal word: no guess
+        Assert.Equal("Squawk " + NotAvailable, FormatSquawkReadout(null, double.NaN));
+        Assert.Equal("Squawk " + NotAvailable, FormatSquawkReadout(null, -1));
+        Assert.Equal(2000, Bcd16ToSquawk(8192));
+        Assert.Equal(7777, Bcd16ToSquawk(0x7777));
+        Assert.Null(Bcd16ToSquawk(0x7778));
+        Assert.Null(Bcd16ToSquawk(0x17000));
+        Assert.Null(Bcd16ToSquawk(8192.5));
+        // What a later XPNDR_SET read-back compares: the code we sent against the word the sim reports.
+        Assert.True(StockCodeLanded(1200, SquawkToBcd16(1200)));
+        Assert.False(StockCodeLanded(1200, SquawkToBcd16(7000)));
+        Assert.False(StockCodeLanded(1200, 1200));
+        Assert.False(StockCodeLanded(1200, double.NaN));
+    }
+
+    [Theory]
+    [InlineData(7000, true, "7000")]
+    [InlineData(400, true, "0400")]
+    [InlineData(1200, true, "1200")]
+    [InlineData(7800, false, "")]
+    [InlineData(1239, false, "")]
+    [InlineData(12.5, false, "")]
+    [InlineData(-1, false, "")]
+    public void Squawk_IsFourOctalDigits(double value, bool ok, string text)
+    {
+        Assert.Equal(ok, TryParseSquawk(value, out _, out string t));
+        Assert.Equal(text, t);
+        Assert.False(TryParseSquawk(double.NaN, out _, out _));
+    }
+
+    [Fact]
+    public void Squawk_Bcd16_And_Payloads_AreInvariant() => UnderCulture("de-DE", () =>
+    {
+        Assert.Equal(0x7000u, SquawkToBcd16(7000));
+        Assert.Equal(0x1234u, SquawkToBcd16(1234));
+        Assert.Equal("{\"type\":\"SetCode\",\"code\":7000}", AtcSetCodeJson(7000));
+        Assert.Equal("{\"type\":\"SetMode\",\"mode\":2}", AtcSetModeJson(2));
+        Assert.Equal("{\"type\":\"SetTssLimits\",\"limits\":1}", AtcSetLimitsJson(1));
+        Assert.Equal("{\"type\":\"Ident\"}", AtcIdentJson());
+        Assert.Equal("{\"type\":\"SetAtcId\",\"id\":\"DAL123\"}", AtcSetIdJson("DAL123"));
+    });
+
+    [Fact]
+    public void Transponder_Failures_NameTheStateTheAircraftKept()
+    {
+        var a = Store<AtcBlock>("A22X.ATC Data");
+        Assert.Null(XpdrModeFailure(0, a));
+        Assert.Equal("Transponder mode did not change — still AUTO.", XpdrModeFailure(2, a));
+        Assert.Equal("Transponder mode did not change — still unknown.", XpdrModeFailure(2, null));
+        Assert.Equal("TCAS altitude limit did not change — still Normal.", AltLimitFailure(1, a));
+    }
+
+    [Theory]
+    [InlineData("dal123", true, "DAL123")]
+    [InlineData("", true, "00000000")]
+    [InlineData("  ", true, "00000000")]
+    [InlineData("A", false, "")]
+    [InlineData("TOOLONG123", false, "")]
+    [InlineData("DAL-12", false, "")]
+    public void FlightId_IsTwoToEightLettersOrDigits_EmptyClears(string input, bool ok, string id)
+    {
+        Assert.Equal(ok, TryParseFlightId(input, out string got));
+        Assert.Equal(id, got);
+    }
+
+    [Fact]
+    public void FlightId_Cleared_AcceptsAnyEmptyReadBack()
+    {
+        Assert.True(FlightIdLanded("DAL123", "DAL123"));
+        Assert.True(FlightIdLanded("00000000", ""));
+        Assert.True(FlightIdLanded("00000000", null));
+        Assert.True(FlightIdLanded("00000000", "00000000"));
+        Assert.False(FlightIdLanded("DAL123", ""));
+    }
+
+    // ---- CTP altimeter and minimums ([A220-33]) -------------------------------------
+
+    [Theory]
+    [InlineData(30.13, true)]
+    [InlineData(1013, true)]
+    [InlineData(27.0, true)]
+    [InlineData(32.0, true)]
+    [InlineData(940, true)]
+    [InlineData(1090, true)]
+    [InlineData(26.99, false)]
+    [InlineData(939, false)]
+    [InlineData(500, false)]
+    public void QnhInput_AcceptsTheDialogRanges(double input, bool ok)
+        => Assert.Equal(ok, TryParseQnhInput(input, out _));
+
+    [Fact]
+    public void Qnh_IsSentInTheSidesOwnUnit_AndInvariant() => UnderCulture("de-DE", () =>
+    {
+        Assert.True(TryParseQnhInput(30.13, out double hpa));
+        Assert.Equal(new QnhSetting("InHg", 30.13), QnhFor(hpa, unitHpa: false));
+        Assert.Equal(new QnhSetting("Hpa", 1020), QnhFor(hpa, unitHpa: true));
+        Assert.True(TryParseQnhInput(1013, out double std));
+        Assert.Equal(new QnhSetting("InHg", 29.91), QnhFor(std, false));
+        Assert.Equal("{\"qnh\":{\"type\":\"InHg\",\"value\":30.13}}", CtpQnhJson(new QnhSetting("InHg", 30.13)));
+        Assert.Equal("{\"qnh_std\":true}", CtpStdJson(true));
+        Assert.Equal("{\"minimums_mode\":1}", CtpMinimumsModeJson(1));
+        Assert.Equal("{\"minimums\":1210}", CtpMinimumsJson(1210));
+    });
+
+    [Fact]
+    public void Fixture_Ctp_ReadBack_MatchesTheLiveSet() => UnderCulture("de-DE", () =>
+    {
+        var ctp = Store<CtpBlock>("A22X.L CTP Data");            // qnh InHg 30.130001 (live set of 30.13)
+        Assert.True(QnhLanded(ctp, new QnhSetting("InHg", 30.13)));
+        Assert.False(QnhLanded(ctp, new QnhSetting("InHg", 29.92)));
+        Assert.False(QnhLanded(ctp, new QnhSetting("Hpa", 1020)));
+        Assert.Equal("30.13 inches", FormatQnh(ctp.qnh));
+        Assert.Equal("30.13 inches", SideAltimeter(null, ctp));
+        Assert.Equal("baro 1210 feet", FormatMinimums(ctp));
+        Assert.Equal("30.13", QnhEntryText(ctp));
+        Assert.False(UnitIsHpa(ctp, null));
+        Assert.Equal(1020.32, CurrentHpa(ctp)!.Value, 1);
+    });
+
+    [Fact]
+    public void Altimeter_StdAndUnit_ComeFromThePfdsAdsBlock() => UnderCulture("de-DE", () =>
+    {
+        var ctp = Store<CtpBlock>("A22X.L CTP Data");
+        Assert.Equal("standard", SideAltimeter(new AdsBlock { qnh_std = true, qnh_unit = 0, qnh_inhg = 30.13 }, ctp));
+        Assert.Equal("1020 hectopascals", SideAltimeter(new AdsBlock { qnh_std = false, qnh_unit = 1, qnh_hpa = 1020.3 }, ctp));
+        Assert.Equal("29.92 inches", SideAltimeter(new AdsBlock { qnh_std = false, qnh_unit = 0, qnh_inhg = 29.92 }, null));
+        Assert.Null(SideAltimeter(null, null));
+        Assert.True(IsStd(null, new CtpBlock { qnh_std = true }));
+        Assert.False(IsStd(new AdsBlock { qnh_std = false }, new CtpBlock { qnh_std = true }));   // the PFD's truth wins
+        Assert.Null(IsStd(null, ctp));                                                             // fixture: absent
+    });
+
+    [Fact]
+    public void AltimeterReadout_NamesAFirstOfficerMismatch() => UnderCulture("de-DE", () =>
+    {
+        var l = new AdsBlock { qnh_unit = 0, qnh_inhg = 30.13, qnh_std = false };
+        var r = new AdsBlock { qnh_unit = 0, qnh_inhg = 29.92, qnh_std = false };
+        Assert.Equal("Altimeter 30.13 inches", FormatAltimeterReadout(l, null, l, null));
+        Assert.Equal("Altimeter 30.13 inches, first officer 29.92 inches", FormatAltimeterReadout(l, null, r, null));
+        Assert.Null(FormatAltimeterReadout(null, null, null, null));
+        Assert.Equal("Altimeter 29.92 inches, 1013 hectopascals. Standard not known — the display link is not connected.",
+            FormatAltimeterFallback(29.92, 1013.2));
+    });
+
+    [Fact]
+    public void Ctp_Results_SayWhatLandedOnEachSide() => UnderCulture("de-DE", () =>
+    {
+        var landed = new SystemsBlocks
+        {
+            lctp = new CtpBlock { qnh = new QnhValue { type = "InHg", value = 30.13 }, minimums_mode = 0, minimums = 1210 },
+            rctp = new CtpBlock { qnh = new QnhValue { type = "InHg", value = 29.92 }, minimums_mode = 0, minimums = 1210 },
+        };
+        var want = new QnhSetting("InHg", 30.13);
+        Assert.Equal("Captain altimeter 30.13 inches",
+            QnhResult(new Dictionary<int, QnhSetting> { [1] = want }, landed));
+        Assert.Equal("First officer altimeter did not take the setting — reads 29.92 inches.",
+            QnhResult(new Dictionary<int, QnhSetting> { [1] = want, [2] = want }, landed));
+        Assert.Equal("Minimums 1210 feet, both sides", MinimumsResult(new[] { 1, 2 }, 1210, landed));
+        Assert.Equal("Captain minimums baro 1210 feet", MinimumsResult(new[] { 1 }, 1210, landed));
+        Assert.Equal("First officer minimums did not take 200 feet — reads baro 1210 feet.",
+            MinimumsResult(new[] { 2 }, 200, landed));
+        Assert.Null(MinimumsModeFailure(new[] { 1, 2 }, 0, landed));
+        Assert.Equal("Minimums mode did not change — captain still baro 1210 feet.",
+            MinimumsModeFailure(new[] { 1 }, 1, landed));
+        Assert.Equal("Captain altimeter 30.13 inches", UnitResult(new[] { 1 }, wantHpa: false, landed));
+        Assert.Equal("The A220 did not change the altimeter unit — still inches.", UnitResult(new[] { 1 }, true, landed));
+    });
+
+    [Fact]
+    public void Ctp_StdResult_ReadsTheAdsTruth()
+    {
+        var std = new SystemsBlocks { lads = new AdsBlock { qnh_std = true }, rads = new AdsBlock { qnh_std = true } };
+        Assert.Equal("Altimeter standard, both sides", StdResult(new[] { 1, 2 }, true, std));
+        var qnh = new SystemsBlocks
+        {
+            lads = new AdsBlock { qnh_std = false },
+            lctp = new CtpBlock { qnh = new QnhValue { type = "InHg", value = 30.13 } }
+        };
+        Assert.Equal("Captain altimeter 30.13 inches", StdResult(new[] { 1 }, false, qnh));
+        Assert.Equal("Captain baro did not change — still QNH.", StdResult(new[] { 1 }, true, qnh));
+    }
+
+    [Theory]
+    [InlineData(0, true, 0)]
+    [InlineData(41000, true, 41000)]
+    [InlineData(1210.4, true, 1210)]
+    [InlineData(41001, false, 0)]
+    [InlineData(-5, false, 0)]
+    public void Minimums_AreZeroTo41000Feet(double v, bool ok, int feet)
+    {
+        Assert.Equal(ok, TryParseMinimums(v, out int got));
+        Assert.Equal(feet, got);
+    }
+
+    // ---- Autobrake ([A220-34]: 0 RTO, 1 OFF, 2 LO, 3 MED, 4 HI) -----------------------
+
+    [Fact]
+    public void Autobrake_StepsOneDetentAtATime()
+    {
+        Assert.Equal(new[] { "RTO", "OFF", "LO", "MED", "HI" }, AutobrakeLabels);
+        Assert.Equal("INCREASE_AUTOBRAKE_CONTROL", AutobrakeStepEvent(1, 3));
+        Assert.Equal("DECREASE_AUTOBRAKE_CONTROL", AutobrakeStepEvent(1, 0));
+        Assert.Null(AutobrakeStepEvent(2, 2));
+        Assert.Equal(2, AutobrakeNextStep(1, 4));
+        Assert.Equal(0, AutobrakeNextStep(1, 0));
+        Assert.Equal("Autobrake LO not available on the ground — still OFF", AutobrakeRefusal(1, 2, onGround: true));
+        Assert.Equal("Autobrake HI not available — still MED", AutobrakeRefusal(3, 4, onGround: false));
+    }
+
+    // ---- External power: one automatic retry ----------------------------------------
+
+    // ExtPowerVerdict is internal and a public test method cannot take it, so the
+    // expectation travels as its int value: 0 Done, 1 Retry, 2 Fail.
+    [Theory]
+    [InlineData(true, 1.0, true, false, 0)]
+    [InlineData(true, 0.0, true, false, 1)]
+    [InlineData(true, 0.0, true, true, 2)]
+    [InlineData(true, 0.0, false, false, 2)]   // no GPU: the reason, not a retry
+    [InlineData(false, 1.0, true, false, 1)]   // the live "first press lost"
+    [InlineData(false, 0.0, true, false, 0)]
+    [InlineData(true, -1.0, true, false, 0)]   // unreadable: nothing honest to add
+    public void ExtPower_RetriesOnce(bool wantOn, double state, bool gpu, bool retried, int expected)
+        => Assert.Equal((ExtPowerVerdict)expected, ExtPowerCheck(wantOn, state, gpu, retried));
+
+    // ---- Flight plan distances and the ND waypoint ------------------------------------
+
+    [Theory]
+    [InlineData(2460, "41 minutes")]
+    [InlineData(60, "1 minute")]
+    [InlineData(3600, "1 hour")]
+    [InlineData(3900, "1 hour 5 minutes")]
+    [InlineData(7260, "2 hours 1 minute")]
+    public void Durations_ReadAsWords(double seconds, string expected)
+        => Assert.Equal(expected, FormatDuration(seconds));
+
+    [Fact]
+    public void FlightPlanDistances_ReadOrSayWhyNot() => UnderCulture("de-DE", () =>
+    {
+        var p = new FplnProgress { ok = true, dtg = 245.4, ete = 2460, tod = 118.6, legs = 14 };
+        Assert.Equal("Destination 245 miles, 41 minutes", FormatDistanceToDestination(p));
+        Assert.Equal("Top of descent in 119 miles", FormatDistanceToTod(p));
+        Assert.Equal("No top of descent in the active flight plan", FormatDistanceToTod(new FplnProgress { ok = true, dtg = 30 }));
+        Assert.Equal("Top of descent passed", FormatDistanceToTod(new FplnProgress { ok = true, dtg = 80, tod = -3.2 }));
+        Assert.StartsWith("Distance to destination not available", FormatDistanceToDestination(new FplnProgress { ok = false }));
+        Assert.StartsWith("Distance to destination not available", FormatDistanceToDestination(null));
+        Assert.StartsWith("Distance to top of descent not available", FormatDistanceToTod(null));
+    });
+
+    [Fact]
+    public void NdWaypoint_ReadsTheFmsToWaypoint() => UnderCulture("de-DE", () =>
+    {
+        NavBlock Nav(string json) => JsonSerializer.Deserialize<NavBlock>(json)!;
+        Assert.Equal("Next waypoint WALET, 12.3 miles", FormatNdWaypoint(Nav("{\"to\":\"WALET\",\"dtg\":12.34,\"source\":0}")));
+        Assert.Equal("Next waypoint WALET", FormatNdWaypoint(Nav("{\"to\":\"WALET\",\"dtg\":null,\"source\":0}")));
+        Assert.Equal("No active waypoint", FormatNdWaypoint(Nav("{\"to\":null,\"source\":0}")));
+        Assert.Equal("The captain's navigation source is VOR 1 — no FMS waypoint", FormatNdWaypoint(Nav("{\"to\":true,\"source\":2}")));
+        Assert.Equal("Next waypoint not available — display link not connected", FormatNdWaypoint(null));
+    });
 }
