@@ -1,5 +1,6 @@
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.SimConnect;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Aircraft.DA40;
 
@@ -319,15 +320,34 @@ public partial class CowsDA40Definition
     /// it runs — a screen reader already announced the press — but where it ARRIVED is a
     /// number the pilot cannot otherwise get without opening the status display, and the
     /// whole point of the nudge is to place the trim.
+    ///
+    /// ⚠️ A FRESH READ, NEVER THE CACHE. The trim is on the 1 Hz batch, so at the end of a
+    /// one-second hold the cache was up to a second behind: a nose-up press said "3 percent"
+    /// where the trim reached about 10, and the nose-down press after it said "7 percent nose
+    /// UP" (XLS at VCBI, 2026-10-15). The read waits a moment for the release to land, then
+    /// asks the sim; the cache answers only if that read times out.
     /// </summary>
-    private static void AnnounceTrimAfterNudge(SimConnectManager simConnect,
+    private static async void AnnounceTrimAfterNudge(SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)
     {
-        double? pct = simConnect.GetCachedVariableValue("DA40_TRIM_SET");
-        if (pct is null) return;
+        try
+        {
+            await Task.Delay(TrimReadBackSettleMs);
+            double? pct = await simConnect.ReadFreshAsync("DA40_TRIM_SET", 1500)
+                ?? simConnect.GetCachedVariableValue("DA40_TRIM_SET");
+            if (pct is null) return;
 
-        announcer.AnnounceImmediate($"Trim {DescribeTrim(pct.Value)}");
+            announcer.AnnounceImmediate($"Trim {DescribeTrim(pct.Value)}");
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("DA40", $"Trim read-back failed: {ex.Message}");
+        }
     }
+
+    /// <summary>After a nudge's release, how long before the trim is read back: the axis
+    /// stops on the frame the release lands.</summary>
+    private const int TrimReadBackSettleMs = 150;
 
     /// <summary>
     /// A trim setting in words and numbers. The sign alone is ambiguous to hear, so the
