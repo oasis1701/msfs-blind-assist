@@ -258,7 +258,7 @@ public class SynapticA220SystemsTests
     }
 
     [Fact]
-    public void Doors_ValuesTheBundleDoesNotName_AreSpokenByColour()
+    public void Doors_TwoIsOpen_AndTheUnseenValueIsSpokenByColour()
     {
         var d = Store<DoorsBlock>("A22X.Doors Data");
         d.fwd_pax = 1; d.fwd_pax_armed = false;
@@ -266,7 +266,7 @@ public class SynapticA220SystemsTests
         d.fwd_cargo = 0;
         d.mid_equip = null;
         Assert.Equal("open, disarmed", FormatDoor(d, "fwd_pax"));
-        Assert.Equal("not closed (white)", FormatDoor(d, "aft_srv"));     // ARMED hidden at 2
+        Assert.Equal("open", FormatDoor(d, "aft_srv"));     // ARMED hidden at 2 (live 2026-10-15: 2 = open, from first movement until shut)
         Assert.Equal("not closed (red)", FormatDoor(d, "fwd_cargo"));
         Assert.Equal("unknown", FormatDoor(d, "mid_equip"));
         Assert.Equal("4 not closed: forward passenger door, aft service door, forward cargo door, mid equipment bay door",
@@ -284,6 +284,26 @@ public class SynapticA220SystemsTests
         opened.fwd_pax = 1; opened.fwd_pax_armed = false;
         Assert.Equal(new[] { "Forward passenger door open", "Forward passenger door disarmed" }, mon.Observe(opened));
         Assert.Equal(new[] { "Forward passenger door closed", "Forward passenger door armed" }, mon.Observe(d));
+    }
+
+    // The sequence measured live 2026-10-15 at the gate (engines off, TOGGLE_AIRCRAFT_EXIT): 3 armed,
+    // then 2 and disarmed together as the door starts to move, 2 all the while it is open and while
+    // it closes, 3 once shut, and the slide re-armed seconds later.
+    [Fact]
+    public void DoorMonitor_LiveGateSequence_SaysOpenThenClosed()
+    {
+        var mon = new DoorMonitor();
+        DoorsBlock At(int v, bool armed)
+        {
+            var d = Store<DoorsBlock>("A22X.Doors Data");
+            d.fwd_pax = v; d.fwd_pax_armed = armed;
+            return d;
+        }
+        Assert.Empty(mon.Observe(At(3, true)));
+        Assert.Equal(new[] { "Forward passenger door open", "Forward passenger door disarmed" }, mon.Observe(At(2, false)));
+        Assert.Empty(mon.Observe(At(2, false)));                                  // standing open, then closing
+        Assert.Equal(new[] { "Forward passenger door closed" }, mon.Observe(At(3, false)));
+        Assert.Equal(new[] { "Forward passenger door armed" }, mon.Observe(At(3, true)));
     }
 
     // ---- Engine start (EICAS Engines: START box; IGN 1 white, 2 green) --------------
@@ -479,9 +499,9 @@ public class SynapticA220SystemsTests
         Assert.Equal(NotAvailable, FormatAtc(null));
     }
 
-    // The A220 registers TRANSPONDER CODE:1 with units "number"; every other add-on that reads
-    // that SimVar documents the raw BCD16 word (squawk 2000 reads 8192, FlyByWireA380Definition.cs:2405,
-    // MD-11 read 0x5473 live), so the stock fallback decodes nibbles instead of printing the word.
+    // The A220 registers TRANSPONDER CODE:1 with units "Bco16", which live 2026-10-15 read the BCD16
+    // word (squawk 2000 as 8192, 2345 as 9029, 1234 as 4660), so the stock fallback decodes nibbles
+    // instead of printing the word. (Units "number" read the digits as a decimal there: 2000.)
     [Fact]
     public void StockSquawk_IsTheBcd16Word_NeverTheDecimal()
     {
@@ -492,6 +512,9 @@ public class SynapticA220SystemsTests
         Assert.Equal("Squawk " + NotAvailable, FormatSquawkReadout(null, double.NaN));
         Assert.Equal("Squawk " + NotAvailable, FormatSquawkReadout(null, -1));
         Assert.Equal(2000, Bcd16ToSquawk(8192));
+        Assert.Equal(2345, Bcd16ToSquawk(9029));   // the live Bco16 reads
+        Assert.Equal(1234, Bcd16ToSquawk(4660));
+        Assert.Null(Bcd16ToSquawk(2345));          // what units "number" gave for 2345: no guess
         Assert.Equal(7777, Bcd16ToSquawk(0x7777));
         Assert.Null(Bcd16ToSquawk(0x7778));
         Assert.Null(Bcd16ToSquawk(0x17000));

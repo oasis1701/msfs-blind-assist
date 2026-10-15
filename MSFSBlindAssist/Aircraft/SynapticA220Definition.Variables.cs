@@ -630,7 +630,11 @@ public partial class SynapticA220Definition
         AddQuiet(v, "A22X_NAV1_STANDBY", "NAV STANDBY FREQUENCY:1", "MHz", SimVarType.SimVar);
         AddQuiet(v, "A22X_NAV2_ACTIVE", "NAV ACTIVE FREQUENCY:2", "MHz", SimVarType.SimVar);
         AddQuiet(v, "A22X_NAV2_STANDBY", "NAV STANDBY FREQUENCY:2", "MHz", SimVarType.SimVar);
-        AddQuiet(v, "A22X_XPDR_CODE", "TRANSPONDER CODE:1", "number", SimVarType.SimVar);
+        // "Bco16", as every other aircraft here reads it: live 2026-10-15 (MSFS 2024, A220 v1.0.10)
+        // "number" gave the squawk's digits as a decimal (2000, 2345, 1234), which
+        // A220Systems.Bcd16ToSquawk rejects, while "Bco16" gave the BCD16 word it decodes
+        // (8192, 9029, 4660).
+        AddQuiet(v, "A22X_XPDR_CODE", "TRANSPONDER CODE:1", "Bco16", SimVarType.SimVar);
 
         v["A22X_COM1_STBY_SET"] = new SimVarDefinition
         {

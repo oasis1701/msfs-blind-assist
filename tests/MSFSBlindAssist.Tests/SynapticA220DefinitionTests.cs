@@ -367,6 +367,17 @@ public class SynapticA220DefinitionTests
         Assert.True(Vars.ContainsKey("A22X_XPDR_CODE_BUS"));      // the entry's prefill source must exist
     }
 
+    // The stock word the X key and the squawk fallback decode as BCD16 (A220Systems.Bcd16ToSquawk).
+    // Live 2026-10-15 on this aircraft, units "number" read squawk 2345 as 2345 (which that decode
+    // rejects) and units "Bco16" read it as 9029 = 0x2345, so the registration must ask for Bco16.
+    [Fact]
+    public void StockTransponderCode_IsReadInBco16_TheUnitThatGivesTheBcdWord()
+    {
+        var code = Vars["A22X_XPDR_CODE"];
+        Assert.Equal("TRANSPONDER CODE:1", code.Name);
+        Assert.Equal("Bco16", code.Units);
+    }
+
     [Fact]
     public async Task TcasAltitudeLimit_IsRefusedAloudInAuto_AndTheCombosAreResentTheTruth()
     {

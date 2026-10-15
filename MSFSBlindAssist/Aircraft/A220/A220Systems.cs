@@ -601,12 +601,13 @@ internal static partial class A220Systems
     };
 
     /// <summary>3 = closed (the synoptic hides the label: the normal state); 1 = open (the only
-    /// value that FILLS the symbol); 0 and 2 the bundle draws as red/white outlines without
-    /// naming them, so they are spoken by colour (what they mean live: docs/a220.md "Pending live
-    /// verification").</summary>
+    /// value that FILLS the symbol); 2 = open as well: live 2026-10-15 at the gate, engines off,
+    /// the forward passenger door read 2 from its first movement, all the while it stood open,
+    /// and while closing, then 3 once shut (docs/a220.md "Systems over the CommBus"). 0, drawn
+    /// as a red outline and not yet seen live, is spoken by its colour.</summary>
     internal static string DoorStateWord(int? v) => v switch
     {
-        3 => "closed", 1 => "open", 0 => "not closed (red)", 2 => "not closed (white)", _ => "unknown"
+        3 => "closed", 1 => "open", 0 => "not closed (red)", 2 => "open", _ => "unknown"
     };
 
     internal static string FormatDoor(DoorsBlock? d, string id)

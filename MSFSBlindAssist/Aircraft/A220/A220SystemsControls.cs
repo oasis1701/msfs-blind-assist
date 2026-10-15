@@ -99,11 +99,10 @@ internal static partial class A220Systems
     /// The inverse of <see cref="SquawkToBcd16"/>: the squawk (digits read as a decimal integer,
     /// like <c>AtcBlock.code</c>) in a raw <c>TRANSPONDER CODE:1</c> word, or null when the word
     /// is no four-nibble octal code (NaN, fractional, a nibble above 7). The A220 registers that
-    /// SimVar with units "number" (SynapticA220Definition.Variables.cs, A22X_XPDR_CODE), which
-    /// every other add-on documents as the raw BCD16 word: squawk 2000 reads 8192 (the comment at
-    /// FlyByWireA380Definition.cs "reading it as number gave the raw BCD integer", the MD-11's
-    /// live 0x5473), so a plain decimal like 2000 (0x7D0) is NOT a squawk here and reads as null,
-    /// never guessed. The first live A220 read settles it (docs/a220.md "Pending live verification").
+    /// SimVar with units "Bco16" (SynapticA220Definition.Variables.cs, A22X_XPDR_CODE), which
+    /// live 2026-10-15 read the BCD16 word: squawk 2000 as 8192, 2345 as 9029, 1234 as 4660.
+    /// (Units "number" read the digits as a decimal, 2000, on this aircraft.) A plain decimal
+    /// like 2000 (0x7D0) is therefore NOT a squawk here and reads as null, never guessed.
     /// </summary>
     internal static int? Bcd16ToSquawk(double word)
     {
