@@ -805,7 +805,7 @@ public class SynapticA220DefinitionTests
         var sent = new List<string>();
         var speech = new SpeechCapture();
         var def = CtpDef(() => SysJson(CtpStore("l", QnhFields("Hpa", "1020"))), sent);
-        def.ProcessSystems(Blocks(CtpStore("l", QnhFields("InHg", "30.13"))));
+        def.ProcessSystems(Blocks(Ads("l", false, 0), CtpStore("l", QnhFields("InHg", "30.13"))));
 
         await def.SetBaroUnitAsync(true, Cap, speech);
 
@@ -814,11 +814,23 @@ public class SynapticA220DefinitionTests
     }
 
     [Fact]
+    public async Task Unit_FromTheAircraftsDefault2992_IsNeverSentAsTheExactStandard()
+    {
+        // 29.921253 inches (the A220's own default) converts to exactly 1013 hPa, which the CTP
+        // would take as STD (live 2026-10-15): it goes out as 1013.25, shown as 1013.
+        var sent = new List<string>();
+        var def = CtpDef(() => SysJson(CtpStore("l", QnhFields("Hpa", "1013"))), sent);
+        def.ProcessSystems(Blocks(Ads("l", false, 0), CtpStore("l", QnhFields("InHg", "29.921253"))));
+        await def.SetBaroUnitAsync(true, Cap, new SpeechCapture());
+        Assert.Equal(new[] { CtpQnhCall(1, "Hpa", "1013.25") }, sent);
+    }
+
+    [Fact]
     public async Task Unit_TheAircraftKeeps_IsSpoken_AndNoUnitIsGuessedWithoutCtpData()
     {
         var kept = new SpeechCapture();
         var def = CtpDef(() => SysJson(CtpStore("l", QnhFields("InHg", "30.13"))));
-        def.ProcessSystems(Blocks(CtpStore("l", QnhFields("InHg", "30.13"))));
+        def.ProcessSystems(Blocks(Ads("l", false, 0), CtpStore("l", QnhFields("InHg", "30.13"))));
         await def.SetBaroUnitAsync(true, Cap, kept);
         Assert.Equal(new[] { "The A220 did not change the altimeter unit — still inches." }, kept.All);
 
@@ -827,6 +839,13 @@ public class SynapticA220DefinitionTests
         await CtpDef(() => "{}", sent).SetBaroUnitAsync(true, Cap, none);   // no CTP block was ever read
         Assert.Equal(new[] { "Altimeter unit not set: the A220 display link is not connected." }, none.All);
         Assert.Empty(sent);
+
+        // STD unknown (no ADS block): a plain QNH could take a side that is in STD out of it, so nothing is sent.
+        var unknownStd = new List<string>();
+        var def3 = CtpDef(() => "{}", unknownStd);
+        def3.ProcessSystems(Blocks(CtpStore("l", QnhFields("InHg", "30.13"))));
+        await def3.SetBaroUnitAsync(true, Cap, new SpeechCapture());
+        Assert.Empty(unknownStd);
     }
 
     // STD is a QNH SetConfig too (live 2026-10-15): qnh_std moves nothing, but EXACTLY 29.92 in /
@@ -1051,7 +1070,8 @@ public class SynapticA220DefinitionTests
     {
         var sent = new List<string>();
         var def = CtpDef(() => "{}", sent);
-        def.ProcessSystems(Blocks(CtpStore("l", QnhFields("InHg", "30.13")), CtpStore("r", QnhFields("InHg", "30.13"))));
+        def.ProcessSystems(Blocks(Ads("l", false, 0), Ads("r", false, 0),
+            CtpStore("l", QnhFields("InHg", "30.13")), CtpStore("r", QnhFields("InHg", "30.13"))));
 
         bool handled = def.HandleUIVariableSet(key, value, Vars[key], new SimConnectManager(IntPtr.Zero), new SpeechCapture());
 
@@ -1111,7 +1131,7 @@ public class SynapticA220DefinitionTests
     public async Task OverlappingUnitWrites_OnlyTheLatestOneIsJudged()
     {
         var (def, speech) = (CtpDef(() => SysJson(CtpStore("l", QnhFields("Hpa", "1020")))), new SpeechCapture());
-        def.ProcessSystems(Blocks(CtpStore("l", QnhFields("InHg", "30.13"))));
+        def.ProcessSystems(Blocks(Ads("l", false, 0), CtpStore("l", QnhFields("InHg", "30.13"))));
         await Task.WhenAll(def.SetBaroUnitAsync(false, Cap, speech), def.SetBaroUnitAsync(true, Cap, speech));
         Assert.Equal(new[] { "Captain altimeter 1020 hectopascals" }, speech.All);
     }

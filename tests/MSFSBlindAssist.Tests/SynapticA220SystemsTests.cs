@@ -565,8 +565,9 @@ public class SynapticA220SystemsTests
 
     // ---- A read-back that never arrived claims no state ----------------------------------
     // A missing block, or a block without the field the verdict reads, is "not confirmed", never
-    // "did not change — still ...": at transition altitude a lost STD read-back said "still QNH",
-    // the pilot pressed again, and the toggle turned STD back off.
+    // "did not change — still ...". The risk (identified in review, not seen live): at transition
+    // altitude a lost STD read-back saying "still QNH" would send the pilot to press again, and the
+    // toggle would turn STD back off.
 
     private const string NotReported = "not confirmed: the A220 display link did not report it";
 

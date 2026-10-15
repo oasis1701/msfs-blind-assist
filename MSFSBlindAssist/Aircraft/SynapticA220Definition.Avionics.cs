@@ -8,7 +8,7 @@ namespace MSFSBlindAssist.Aircraft;
 /// The A220's CommBus control writes, each read back from the aircraft's own store:
 /// transponder and TCAS through "A22X.Display Tune" index 5 ConfigAtc ([A220-35], the CNS
 /// XPDR/TCAS CONTROL dialog's own call), the CTP altimeter and minimums through
-/// "A22X.L/R CTP Action" SetConfig, and STD by the CTP's STD push ([A220-33]). Every payload is built by A220Systems
+/// "A22X.L/R CTP Action" SetConfig, STD by a SetConfig QNH of exactly 29.92 in / 1013 hPa ([A220-33]). Every payload is built by A220Systems
 /// (System.Text.Json, invariant); the agent accepts only the keys and action types MSFSBA sets.
 /// A write the display link cannot carry is refused aloud; a value the aircraft did not take is
 /// spoken as what it kept, a read-back that never arrived as "not confirmed" (never as a kept
@@ -435,13 +435,15 @@ public partial class SynapticA220Definition
                 if (!claim.Owns(side)) continue;
                 var (ctp, ads) = A220Systems.SideBlocks(LatestSystems, side);
                 A220Systems.QnhSetting want;
-                if (A220Systems.IsStd(ads) == true) want = A220Systems.StandardQnh(hpa);
-                else if (A220Systems.CurrentHpa(ctp) is { } nowHpa) want = A220Systems.AvoidStandard(A220Systems.QnhFor(nowHpa, hpa));
-                else
+                // STD must be known: a plain QNH would take a side that IS in STD out of it.
+                if (A220Systems.IsStd(ads) is not { } inStd || (!inStd && A220Systems.CurrentHpa(ctp) == null))
                 {
                     if (!claim.Superseded) announcer.AnnounceImmediate("Altimeter unit not set: the A220 display link is not connected.");
                     return;
                 }
+                want = inStd
+                    ? A220Systems.StandardQnh(hpa)
+                    : A220Systems.AvoidStandard(A220Systems.QnhFor(A220Systems.CurrentHpa(ctp)!.Value, hpa));
                 if (!await AgentWriteAsync($"ctpSet({side}, {A220Systems.CtpQnhJson(want)})", announcer, "Altimeter unit",
                         () => claim.Superseded)) return;
             }
