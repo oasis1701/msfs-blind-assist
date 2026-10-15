@@ -20,6 +20,7 @@ internal static class A220MonitorRows
     internal const string IrsKey = "A220_IRS_CALLOUTS";
     internal const string DoorsKey = "A220_DOOR_CALLOUTS";
     internal const string RotateKey = "A220_ROTATE_CALLOUT";
+    internal const string V2Key = "A220_V2_CALLOUT";
     internal const string ApproachKey = "A220_APPROACH_CALLOUTS";
 
     internal static readonly IReadOnlyList<MonitorRow> Synthetic = new MonitorRow[]
@@ -32,6 +33,7 @@ internal static class A220MonitorRows
         new(IrsKey, "IRS alignment"),
         new(DoorsKey, "Door call-outs"),
         new(RotateKey, "Rotate call-out"),
+        new(V2Key, "V2 call-out"),
         new(ApproachKey, "Final approach call-outs"),
     };
 

@@ -1560,7 +1560,7 @@ public class SynapticA220SystemsSpeechTests : IDisposable
         Assert.Empty(silent.All);
     }
 
-    // ---- Take-off roll: "Rotate" on the per-frame airspeed feed ([A220-37]) ----
+    // ---- Take-off roll: "Rotate" and "V2" on the per-frame airspeed feed ([A220-37]) ----
 
     private static A220Systems.SystemsBlocks WithVSpeeds(double? v1, double? vr, double? v2) => new()
     {
@@ -1574,26 +1574,54 @@ public class SynapticA220SystemsSpeechTests : IDisposable
     }
 
     [Fact]
-    public void Rotate_FiresAtVrOnTheFeed_V1AndV2AreLeftToTheAircraft()
+    public void RotateAndV2_FireOnTheFeed_V1IsLeftToTheAircraft()
     {
+        // The aircraft's own aural set calls V1 and has no Rotate and no V2 ([A220-2]).
         var def = new SynapticA220Definition();
         var speech = new SpeechCapture();
         def.ProcessSystems(new A220Systems.SystemsBlocks { lpfd = new A220Systems.PfdBlock { v1 = 131, vr = 135, v2 = 139 } });
         foreach (double ias in new[] { 20.0, 60, 120, 132, 136, 140, 150 })
             def.ProcessSimVarUpdate(SynapticA220Definition.TakeoffIasKey, ias, speech);
-        Assert.Equal(new[] { "Rotate" }, speech.All);
+        Assert.Equal(new[] { "Rotate", "V2" }, speech.All);
     }
 
     [Fact]
-    public void Rotate_IsMutedByItsRow()
+    public void V2_FiresJustAfterLiftoffToo()
     {
-        SettingsManager.Current.A220DisabledMonitorVariables = new List<string> { A220MonitorRows.RotateKey };
+        var def = new SynapticA220Definition();
+        def.StopDisplayMonitoring(null!);                             // retired: the ground flag must not start a real Coherent poll
+        var speech = new SpeechCapture();
+        def.ProcessSystems(WithVSpeeds(131, 135, 139));
+        Roll(def, speech, 20, 60, 136);
+        def.ProcessSimVarUpdate("SIM_ON_GROUND", 0, speech);          // airborne before V2
+        Roll(def, speech, 141);
+        Assert.Equal(new[] { "Rotate", "V2" }, speech.All);
+    }
+
+    [Theory]
+    [InlineData(A220MonitorRows.RotateKey, "V2")]
+    [InlineData(A220MonitorRows.V2Key, "Rotate")]
+    public void RotateAndV2_AreEachMutedByTheirOwnRow(string mutedRow, string stillHeard)
+    {
+        SettingsManager.Current.A220DisabledMonitorVariables = new List<string> { mutedRow };
         SettingsManager.Current.RebuildDisabledMonitorVariableCaches();
         var def = new SynapticA220Definition();
         var speech = new SpeechCapture();
         def.ProcessSystems(new A220Systems.SystemsBlocks { lpfd = new A220Systems.PfdBlock { v1 = 131, vr = 135, v2 = 139 } });
         foreach (double ias in new[] { 20.0, 60, 136, 150 })
             def.ProcessSimVarUpdate(SynapticA220Definition.TakeoffIasKey, ias, speech);
+        Assert.Equal(new[] { stillHeard }, speech.All);
+    }
+
+    [Fact]
+    public void RotateAndV2_BothMuted_SayNothing()
+    {
+        SettingsManager.Current.A220DisabledMonitorVariables = new List<string> { A220MonitorRows.RotateKey, A220MonitorRows.V2Key };
+        SettingsManager.Current.RebuildDisabledMonitorVariableCaches();
+        var def = new SynapticA220Definition();
+        var speech = new SpeechCapture();
+        def.ProcessSystems(WithVSpeeds(131, 135, 139));
+        Roll(def, speech, 20, 60, 136, 150);
         Assert.Empty(speech.All);
     }
 
@@ -1667,7 +1695,7 @@ public class SynapticA220SystemsSpeechTests : IDisposable
         def.ProcessSystems(null);                                     // the tap hiccups: no store, no tape bugs
         def.ProcessSystems(WithGear(2));                              // the store is back but this block has no PFD
         Roll(def, speech, 120, 132, 136, 150);
-        Assert.Equal(new[] { "Rotate" }, speech.All);
+        Assert.Equal(new[] { "Rotate", "V2" }, speech.All);
     }
 
     [Fact]
@@ -1692,8 +1720,8 @@ public class SynapticA220SystemsSpeechTests : IDisposable
         def.ProcessDisplaysSnapshot("{\"ok\":true,\"spd\":[{\"t\":\"VR 140\",\"y\":300}]}");
         Roll(def, speech, 20, 60, 136);                               // V1 and V2 held, VR from the tape
         Assert.Empty(speech.All);
-        Roll(def, speech, 141);
-        Assert.Equal(new[] { "Rotate" }, speech.All);
+        Roll(def, speech, 141);                                       // VR 140 and the held V2 139 in one sample
+        Assert.Equal(new[] { "Rotate, V2" }, speech.All);
     }
 
     [Fact]

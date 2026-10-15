@@ -51,8 +51,9 @@ open"), each with its own Ctrl+M checkbox. The gear readout (Shift+G) adds the b
 temperatures, and the Utilities section gains Doors and IRS panels.
 
 Shift+1 to Shift+6 read V1, VR, V2, VREF, VAC and the flap speeds from the PFD, and
-"Rotate" is now called on time at VR (the aircraft calls V1 itself). Starting a take-off
-roll with V1 or VR not set tells you so once, and Rotate is not called.
+"Rotate" is now called on time at VR and "V2" at V2, as on the other airliners (the
+aircraft calls V1 itself); each has its own row in Ctrl+M. Starting a take-off roll with V1
+or VR not set tells you so once, and Rotate is not called.
 
 Ctrl+B is now "Altimeter and minimums": QNH in hectopascals or inches, the unit, Standard,
 and the BARO or RADIO minimums, for both sides or one, each read back from the aircraft.

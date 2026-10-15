@@ -44,7 +44,7 @@ public class A220MonitorRowsTests
         {
             "A220_CAS_WARNINGS", "A220_CAS_ADVISORIES", "A220_FMA_CALLOUTS", "A220_GEAR_CALLOUTS",
             "A220_ENGINE_START_CALLOUTS", "A220_IRS_CALLOUTS", "A220_DOOR_CALLOUTS",
-            "A220_ROTATE_CALLOUT", "A220_APPROACH_CALLOUTS"
+            "A220_ROTATE_CALLOUT", "A220_V2_CALLOUT", "A220_APPROACH_CALLOUTS"
         }, A220MonitorRows.Synthetic.Select(r => r.Key));
     }
 

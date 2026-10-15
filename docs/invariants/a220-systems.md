@@ -51,12 +51,12 @@ Written 2026-10-12 from that day's live session at KATL (Synaptic A220 v1.0.10, 
 
 ## A220-37
 
-- The take-off "Rotate" call is the only call MSFSBA makes on the roll: the aircraft calls V1 itself, and adding a second V1 doubles the audio ([A220-2]). VR comes from `A22X.L PFD Data.vr` (the PFD's own bug, present once the FMS V-speeds are set; live 2026-10-12: `v1 131, vr 135, v2 139`).
+- On the roll MSFSBA calls "Rotate" at VR and "V2" at V2 (on the ground or just after liftoff), never V1: the aircraft calls V1 itself, and adding a second V1 doubles the audio ([A220-2]). Its aural set has V1 but no Rotate and no V2 call, so those two are MSFSBA's, as on every other airframe that rides `TakeoffVSpeedCallouts` (FBW A320/A330, FBW A380, iFly 737, MD-11; V2 added on the A220 2026-10-15). VR and V2 come from `A22X.L PFD Data.vr`/`v2` (the PFD's own bugs, present once the FMS V-speeds are set; live 2026-10-12: `v1 131, vr 135, v2 139`). Calls that one sample crosses together are one sentence ("Rotate, V2").
 - The speed is the per-frame `A22X_TAKEOFF_IAS` feed (ExcludeFromBatch + HighFrequency, the iFly pattern through `TakeoffVSpeedCallouts`), never the 1 Hz batch: at 4 kt/s of take-off acceleration the batch was up to 4 kt late, and the old 1 Hz "Rotate" in the display pump is removed.
 - Where the speeds come from is decided per BLOCK (`FeedTakeoffSpeeds`). With the PFD block present, each of V1, VR and V2 is the store's value, else the tape's bug, else 0: the store reports an unset speed as null, so a wiped FMS, a flight load or a fly-again clears the previous flight's speeds. With NO PFD block (the tap down, a poll without it) nothing is known: a speed takes the tape's bug when the tape shows it, otherwise the machine keeps the value it holds. That is absence of evidence, not "unset": treating it as unset disarmed a roll in progress (a roll re-arms only on the ground below 40 kt), and the next poll restored the speeds too late. A one-poll store gap mid-roll never disarms Rotate.
 - A take-off roll (on the ground, accelerating through 40 kt) with V1 or VR unset says "V-speeds not set — no Rotate call" ONCE (`A220Systems.RollWithoutVrGate`; the machine arms only with both set), and the Rotate row mutes it; a landing roll never trips it (airspeed decreasing).
 - Both are reset on reconnect and on a sim context reset (flight load) — the TKO-5 rule for every aircraft — so a new flight never inherits a spent latch.
-- The Rotate call has its own Ctrl+M row.
+- Rotate and V2 each have their own Ctrl+M row ("Rotate call-out", "V2 call-out").
 
 ## A220-38
 

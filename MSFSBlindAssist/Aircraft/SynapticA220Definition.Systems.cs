@@ -194,14 +194,15 @@ public partial class SynapticA220Definition
         return on ? "CAS call-outs on" : "CAS call-outs off";
     }
 
-    // ---- Take-off roll: "Rotate" on the per-frame feed ([A220-37]) -------------------
+    // ---- Take-off roll: "Rotate" and "V2" on the per-frame feed ([A220-37]) ----------
 
     internal const string TakeoffIasKey = "A22X_TAKEOFF_IAS";
 
-    /// <summary>The roll machine's Ctrl+M keys: only Rotate has a row. The aircraft calls V1
-    /// itself ([A220-2]) and has no V2 call, so V1/V2 are filtered out of every sentence and
-    /// their keys are empty (an empty key is never muted — TakeoffCalloutKeys).</summary>
-    private static readonly TakeoffCalloutKeys TakeoffKeys = new(TakeoffIasKey, "", A220MonitorRows.RotateKey, "");
+    /// <summary>The roll machine's Ctrl+M keys: Rotate and V2 each have a row. The aircraft
+    /// calls V1 itself ([A220-2]) — its aural set has V1 but no Rotate and no V2 — so V1 is
+    /// filtered out of every sentence and its key is empty (an empty key is never muted —
+    /// TakeoffCalloutKeys); Rotate and V2 are MSFSBA's, as on every other airframe.</summary>
+    private static readonly TakeoffCalloutKeys TakeoffKeys = new(TakeoffIasKey, "", A220MonitorRows.RotateKey, A220MonitorRows.V2Key);
     private readonly TakeoffVSpeedCallouts _takeoffCallouts = new();
     private readonly A220Systems.RollWithoutVrGate _rollWithoutVr = new();
     private bool _calloutOnGround = true;   // last SIM_ON_GROUND; a ramp start is the norm
@@ -219,8 +220,8 @@ public partial class SynapticA220Definition
     /// <inheritdoc />
     public override bool TakeoffCalloutFeedNeeded => _takeoffCallouts.NeedsSamples(_calloutOnGround);
 
-    /// <summary>The feed speaks Rotate, whose row is the synthetic Rotate row, so MainForm's
-    /// wrap leaves it alone and the branch checks the row itself (as the A320 states it).</summary>
+    /// <summary>The feed speaks Rotate and V2, whose rows are synthetic rows, so MainForm's
+    /// wrap leaves it alone and the branch checks each row itself (as the A320 states it).</summary>
     public override bool IsMuteWrapExempt(string varName) => varName == TakeoffIasKey;
 
     /// <summary>A reconnect drops the roll's ARM, never the speeds (TKO-5).</summary>
@@ -268,8 +269,9 @@ public partial class SynapticA220Definition
 
     private double? ScrapedVSpeed(string key) => _vSpeeds.TryGetValue(key, out int v) ? v : null;
 
-    /// <summary>One per-frame airspeed sample: "Rotate" at VR on the ground (AnnounceImmediate —
-    /// its value IS the timing) and one "V-speeds not set" when a roll starts with no VR.</summary>
+    /// <summary>One per-frame airspeed sample: "Rotate" at VR on the ground and "V2" at V2 (on the
+    /// ground or just after liftoff), one AnnounceImmediate per sample — its value IS the timing —
+    /// and one "V-speeds not set" when a roll starts with no V1 or VR.</summary>
     private void OnTakeoffIasSample(double ias, ScreenReaderAnnouncer announcer)
     {
         // A frame without a usable speed carries no information: skipping it keeps the last real
@@ -281,8 +283,9 @@ public partial class SynapticA220Definition
             && !muted.Contains(A220MonitorRows.RotateKey) && !announcer.Suppressed)
             announcer.AnnounceImmediate("V-speeds not set — no Rotate call");
         if (callouts.Count == 0 || announcer.Suppressed) return;
+        // V1 is the aircraft's own call ([A220-2]); Rotate and V2 answer to their rows.
         string? sentence = TakeoffVSpeedCallouts.Compose(callouts,
-            callout => callout != "Rotate" || TakeoffKeys.IsMuted(callout, muted));
+            callout => callout == "V1" || TakeoffKeys.IsMuted(callout, muted));
         if (sentence != null) announcer.AnnounceImmediate(sentence);
     }
 

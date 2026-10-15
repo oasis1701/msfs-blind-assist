@@ -129,7 +129,7 @@ Background Announcements:
   Ctrl+M     A220 Monitor Manager - every announcement the A220 makes on its own, each
              with a checkbox: CAS warnings and cautions, CAS advisories, flight mode
              annunciations, gear position, engine start progress, IRS alignment, door
-             call-outs, the Rotate call-out, the final approach call-outs, the autopilot
+             call-outs, the Rotate and V2 call-outs, the final approach call-outs, the autopilot
              and flight guidance modes, and the annunciator lights. Untick any you do
              not want spoken; the choice is saved. Type in the search box to narrow it.
   Shift+T    Turn the trim announcements on or off
@@ -263,6 +263,6 @@ Utilities: Doors lists every door and slide; IRS shows alignment and the
 time to navigation. Doors, gear, IRS alignment and engine starts are also
 announced as they change (each muted in Ctrl+M).
 
-Take-off: "Rotate" is called at VR from the PFD's own speed bugs. The
-aircraft calls V1 itself. If you start a take-off roll with V1 or VR not
-set you hear "V-speeds not set" once, and Rotate is not called.
+Take-off: "Rotate" is called at VR and "V2" at V2 from the PFD's own speed
+bugs. The aircraft calls V1 itself. If you start a take-off roll with V1 or
+VR not set you hear "V-speeds not set" once, and Rotate is not called.
