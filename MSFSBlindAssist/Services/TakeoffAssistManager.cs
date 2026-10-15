@@ -115,9 +115,10 @@ public class TakeoffAssistManager : IDisposable
     // Here the "desired" heading is biased back toward the centerline by an
     // intercept angle proportional to cross-track, so nulling the tone means
     // converging on centerline rather than merely pointing straight.
-    private const double CROSSTRACK_INTERCEPT_DEADBAND_FEET = 8.0;   // on centerline → hold heading, no crab
-    private const double CROSSTRACK_INTERCEPT_DEG_PER_FOOT = 0.1;    // crab angle commanded per foot off
-    private const double CROSSTRACK_MAX_INTERCEPT_DEG = 10.0;        // cap the commanded crab (gentle on the roll)
+    // Internal: the landing assist's rollout cue steers by this same law and these same constants.
+    internal const double CROSSTRACK_INTERCEPT_DEADBAND_FEET = 8.0;   // on centerline → hold heading, no crab
+    internal const double CROSSTRACK_INTERCEPT_DEG_PER_FOOT = 0.1;    // crab angle commanded per foot off
+    internal const double CROSSTRACK_MAX_INTERCEPT_DEG = 10.0;        // cap the commanded crab (gentle on the roll)
 
     // Configuration constants - legacy mode
     private const double HEADING_TOLERANCE_DEGREES = 1.0; // Within ±1 degree is "center"
@@ -408,12 +409,10 @@ public class TakeoffAssistManager : IDisposable
             // on centerline, not merely on runway heading — so a pilot pointed
             // straight but drifting off-CL still gets a steer cue. Within the
             // deadband we command no crab so a dead-on-centerline roll stays steady.
-            // Crab command: 0 inside the deadband (the negative pre-clamp value
-            // falls out of the 0 lower bound), then linear per foot, capped.
-            double desiredCrabDeg = Math.Clamp(
-                (Math.Abs(crossTrackFeet) - CROSSTRACK_INTERCEPT_DEADBAND_FEET)
-                    * CROSSTRACK_INTERCEPT_DEG_PER_FOOT,
-                0.0, CROSSTRACK_MAX_INTERCEPT_DEG) * Math.Sign(crossTrackFeet);
+            // Crab command: 0 inside the deadband, then linear per foot, capped
+            // (LandingGuidanceLaws.CenterlineInterceptCrabDeg, shared with the landing rollout cue).
+            double desiredCrabDeg = LandingGuidanceLaws.CenterlineInterceptCrabDeg(crossTrackFeet,
+                CROSSTRACK_INTERCEPT_DEADBAND_FEET, CROSSTRACK_INTERCEPT_DEG_PER_FOOT, CROSSTRACK_MAX_INTERCEPT_DEG);
 
             // steerError > 0 = steer RIGHT to reach the intercept heading; < 0 =
             // steer LEFT. Matches the taxi steering-tone convention: the tone pans
