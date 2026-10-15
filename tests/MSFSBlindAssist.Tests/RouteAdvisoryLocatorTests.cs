@@ -107,23 +107,54 @@ public class RouteAdvisoryLocatorTests
         Assert.True(fact.HasGeometry);
         Assert.False(fact.Inside);
         Assert.False(fact.Behind);
-        Assert.Equal("1,800 nm ahead", RouteAdvisoryLocator.ComposePhrase(fact, spoken: false));
+        // A range, not the phrase: the flat frame NearestEdge measures in overstates a distance
+        // this long (about 1,570 nm on the great circle to the corridor's edge).
+        Assert.InRange(fact.DistanceNm!.Value, 1500, 1800);
     }
 
     // Aircraft due south of the square's south edge (N1000, E02000-E02100): in the locator's flat
-    // frame the nearest boundary point is straight north, nmSouth away.
+    // frame the nearest boundary point is straight north, nmSouth away. A key already Inside keeps
+    // the match out to the margin plus the band.
     [Theory]
-    [InlineData(RouteAdvisoryLocator.ProbeTrustMarginNm - 1, true)]
-    [InlineData(RouteAdvisoryLocator.ProbeTrustMarginNm + 1, false)]
-    public void BuildFact_trusts_a_probe_match_only_within_the_margin(double nmSouth, bool inside)
+    [InlineData(RouteAdvisoryLocator.ProbeTrustMarginNm - 1, false, true)]
+    [InlineData(RouteAdvisoryLocator.ProbeTrustMarginNm + 1, false, false)]
+    [InlineData(RouteAdvisoryLocator.ProbeTrustMarginNm + 1, true, true)]
+    [InlineData(RouteAdvisoryLocator.ProbeTrustMarginNm + RouteAdvisoryLocator.ProbeTrustBandNm + 1, true, false)]
+    public void BuildFact_trusts_a_probe_match_only_within_the_margin(double nmSouth, bool wasInside, bool inside)
     {
         var vertices = AdvisoryGeometry.ParseWiPolygon(SquareWiBody, out bool wholeShape);
         var fact = RouteAdvisoryLocator.BuildFact(vertices, wholeShape, probeMatched: true,
-            10.0 - nmSouth / 60.0, 20.5, trueHeadingDeg: 0);
+            10.0 - nmSouth / 60.0, 20.5, trueHeadingDeg: 0, wasInside);
 
         Assert.True(fact.HasGeometry);
         Assert.Equal(inside, fact.Inside);
         if (!inside) Assert.Equal(nmSouth, fact.DistanceNm!.Value, 3);
+    }
+
+    [Theory]
+    [InlineData(179.0)]
+    [InlineData(-179.0)]
+    public void BuildFact_trusts_a_probe_match_on_a_ring_across_180(double lon)
+    {
+        // Plain lat/lon math reads this Nadi FIR ring as a 340° band: about 500 nm from an
+        // aircraft that is inside it.
+        var vertices = AdvisoryGeometry.ParseWiPolygon(
+            "NFFN NADI FIR EMBD TS OBS WI S1500 E17000 - S1500 W17000 - S2000 W17000 - S2000 E17000 TOP FL500 NC=",
+            out bool wholeShape);
+        Assert.True(wholeShape);
+        Assert.Equal(new LocationFact(true, true, 0, false), RouteAdvisoryLocator.BuildFact(
+            vertices, wholeShape, probeMatched: true, -17.5, lon, trueHeadingDeg: 90));
+    }
+
+    [Fact]
+    public void BuildFact_reads_inside_a_wide_corridor_without_a_probe_match()
+    {
+        // 180 nm north of a 400 nm wide corridor's line: inside it.
+        var vertices = AdvisoryGeometry.ParseWiPolygon(
+            "SEV TURB FCST WI 400NM WID LINE BTN N5000 W10000 - N5000 W09000 - N5010 W08000 FL250/350",
+            out bool wholeShape);
+        Assert.Equal(new LocationFact(true, true, 0, false), RouteAdvisoryLocator.BuildFact(
+            vertices, wholeShape, probeMatched: false, 53.0, -95.0, trueHeadingDeg: 90));
     }
 
     [Fact]
@@ -170,5 +201,60 @@ public class RouteAdvisoryLocatorTests
         Assert.True(fact.HasGeometry);
         Assert.False(fact.Inside);
         Assert.True(fact.DistanceNm > 0, $"expected a positive distance, got {fact.DistanceNm}");
+    }
+
+    // ComputeFactsAsync through its probe seam: each test's probe answers with a recorded block.
+    // Every advisory below carries its own WI shape, so tier 2 (live HTTP) is never reached.
+    private static string Block(string header, string body) => $"{header}\r\nValid until: 2359z\r\n{body}";
+
+    private static readonly MSFSBlindAssist.SimConnect.SimConnectManager.AircraftPosition Wisconsin =
+        new() { Latitude = 43.843412, Longitude = -88.738517 };
+
+    [Fact]
+    public async Task ComputeFactsAsync_ignores_the_live_far_probe_match()
+    {
+        string czvr = Block("CZVR SIGMET N2 SEV MTW", CzvrN2Body);
+        var advisories = ActiveSkyFormatting.ParseRouteAdvisories(
+            czvr + "\r\n" + Block("CZEG SIGMET M2 SEV MTW", CzvrN2Body.Replace("CZVR VANCOUVER", "CZEG EDMONTON")));
+        Assert.Equal(2, advisories.Count);
+
+        var facts = await RouteAdvisoryLocator.ComputeFactsAsync(
+            (_, _) => Task.FromResult<string?>(czvr), advisories, Wisconsin);
+
+        Assert.Equal(2, facts.Count);
+        Assert.All(facts.Values, f => Assert.False(f.Inside));
+    }
+
+    [Fact]
+    public async Task ComputeFactsAsync_keeps_a_far_probe_match_on_a_partial_ring()
+    {
+        // A VA forecast ring follows the observed one, so the probe may know an area the parsed
+        // ring leaves out.
+        string va = Block("WAAF SIGMET V1 VA ERUPTION", "WAAF UJUNG PANDANG FIR VA CLD OBS AT 1150Z "
+            + "WI S0820 E12333 - S0850 E12400 - S0900 E12320 FCST AT 1750Z VA CLD WI S0830 E12320 - S0860 E12420 - S0910 E12340");
+        var advisories = ActiveSkyFormatting.ParseRouteAdvisories(va);
+
+        var facts = await RouteAdvisoryLocator.ComputeFactsAsync(
+            (_, _) => Task.FromResult<string?>(va), advisories, Wisconsin);
+
+        Assert.True(Assert.Single(facts).Value.Inside);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public async Task ComputeFactsAsync_widens_the_margin_for_a_key_already_inside(bool wasInside, bool inside)
+    {
+        string square = Block("TEST SIGMET P3 EMBD TS", SquareWiBody);
+        var advisories = ActiveSkyFormatting.ParseRouteAdvisories(square);
+        var pos = new MSFSBlindAssist.SimConnect.SimConnectManager.AircraftPosition
+        {
+            Latitude = 10.0 - (RouteAdvisoryLocator.ProbeTrustMarginNm + 5) / 60.0, Longitude = 20.5,
+        };
+
+        var facts = await RouteAdvisoryLocator.ComputeFactsAsync(
+            (_, _) => Task.FromResult<string?>(square), advisories, pos, _ => wasInside);
+
+        Assert.Equal(inside, Assert.Single(facts).Value.Inside);
     }
 }

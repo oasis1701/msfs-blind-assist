@@ -238,6 +238,12 @@ internal sealed class RouteAdvisoryProximityTracker
         return events;
     }
 
+    /// <summary>True while <paramref name="key"/> is in the Inside zone (entered, Leave not yet
+    /// confirmed). RouteAdvisoryLocator.ComputeFactsAsync widens its probe-trust margin for such a
+    /// key (ProbeTrustBandNm), so a probe match hovering at the margin cannot alternate Enter and
+    /// Leave.</summary>
+    public bool IsInside(string key) => _states.TryGetValue(key, out var st) && st.Zone == Zone.Inside;
+
     /// <summary>Forget every key's zone/latches — re-baselines on connect / aircraft switch.</summary>
     public void Reset() => _states.Clear();
 }

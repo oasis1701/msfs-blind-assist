@@ -328,4 +328,19 @@ public class RouteAdvisoryProximityTrackerTests
         AssertEvents(new[] { Ev(RouteAdvisoryEvent.Approach, 45.0) },
             Obs(t, F(Fact(true, false, 45, false)), 50));     // Far→Near: Approach again
     }
+
+    [Fact]
+    public void IsInside_holds_until_the_leave_is_confirmed()
+    {
+        // The locator widens its probe-trust margin while this is true (ProbeTrustBandNm).
+        var t = new RouteAdvisoryProximityTracker();
+        Assert.False(t.IsInside(K));
+        AssertEvents(new[] { Ev(RouteAdvisoryEvent.AtPosition, 0.0) }, Obs(t, F(Fact(true, true, 0, false))));
+        Assert.True(t.IsInside(K));
+        AssertEvents(Array.Empty<(string, RouteAdvisoryEvent, double?)>(),
+            Obs(t, F(Fact(true, false, 5, false))));          // one outside tick: not yet a Leave
+        Assert.True(t.IsInside(K));
+        AssertEvents(new[] { Ev(RouteAdvisoryEvent.Leave, 6.0) }, Obs(t, F(Fact(true, false, 6, false))));
+        Assert.False(t.IsInside(K));
+    }
 }

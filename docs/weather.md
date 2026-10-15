@@ -1014,12 +1014,14 @@ invariant-culture lat/lon — at the aircraft's own position, then resolves each
   ParseWiPolygon` extracts the `[NS]ddmm [EW]dddmm` vertex pairs following the `WI` token; fewer
   than 3 parsed vertices (or no `WI` token at all) → no tier-1 geometry. `WI … NM OF CENTRE`
   circle shapes and `ENTIRE FIR` bodies are out of scope for v1 — they fall through to tier 2, or
-  render with no Location line, by design. A `WI nnNM WID LINE BTN A - B - C` corridor parses as
-  its line points (a triangle for three), not as the corridor, so its real area reaches up to half
-  its width beyond the parsed shape. The `ParseWiPolygon(body, out wholeShape)` overload also says
-  whether the ring is the body's WHOLE shape: false when any coordinate pair follows the ring (a
-  VA/TC forecast group, a TC centre position, a second area), which only the probe guard below
-  reads.
+  render with no Location line, by design. A `WI nnNM WID LINE BTN A - B - C` corridor (NM or KM)
+  parses as the corridor's outline (`AdvisoryGeometry.CorridorOutline`, since 2026-10-15): the line
+  buffered by half the stated width, square-capped, mitered at each bend, never the line points
+  closed into a polygon (which both missed the corridor's width and took in the space inside a
+  bend). A line still needs 3 points, as before. The `ParseWiPolygon(body, out wholeShape)`
+  overload also says whether the ring is the body's WHOLE shape: false when any position follows
+  the ring, degrees-only ones included (a VA/TC forecast group, a TC center position, a second
+  area), which only the probe guard below reads.
 - **Tier 2 — aviationweather.gov cross-match** (US convective bodies, whose AS text has its
   location line stripped — §13): `ComputeFactsAsync` calls `WeatherService.
   RefreshAndGetSigmetFeedsAsync()` — which refreshes the SAME TTL-cached `airsigmet`/`isigmet`
@@ -1039,7 +1041,10 @@ invariant-culture lat/lon — at the aircraft's own position, then resolves each
   `WeatherService.TryGetAdvisoryPolygonAsync(identityPhrase)` thin per-call wrapper this tier
   originally routed through was dead code once the locator started calling the refresh
   directly, and was deleted on 2026-07-13 — there is no other tier-2 entry point, and no other
-  caller to keep it alive for.
+  caller to keep it alive for. Since 2026-10-15 tier 2 also runs for a probe-matched key, so its
+  polygon can overrule a far-off probe match (below); `FindAdvisoryPolygonInGeoJson(…, out
+  wholeShape)` reports a `MultiPolygon` of more than one polygon as partial, since only its first
+  ring is returned.
 - **The positional probe is the authoritative inside-check**, independent of whether geometry
   resolved. Per the §13 bundling finding, `ComputeFactsAsync` treats ONLY the first advisory
   parsed from the probe response (`ParseRouteAdvisories(probeRaw)[0]`) as position-matched —
@@ -1050,14 +1055,18 @@ invariant-culture lat/lon — at the aircraft's own position, then resolves each
   no-geometry key — so a route advisory whose own text carries no geometry at all can still render
   "at your position"/`Inside` purely from the probe.
   **One exception (2026-10-15, WX-14): a probe match far outside the advisory's own whole shape is
-  ignored.** When the tier-1 ring is the whole shape (`wholeShape`, above) and the aircraft is more
-  than `RouteAdvisoryLocator.ProbeTrustMarginNm` (150 nm) outside it, the fact reads the edge
-  distance instead, and the locator logs `Route-advisory probe match ignored`. The live trigger is
-  recorded in §13 below: ActiveSky's probe put CZVR SIGMET N2 (British Columbia) over Wisconsin,
-  and the app announced "Entering advisory area" about 1,600 nm from it. The margin is wide on
-  purpose: it covers the corridor half-width a `WID LINE` body loses in parsing, and the probe is
-  otherwise exact (strict containment, §13). A partial ring and tier-2 geometry never overrule
-  the probe: tier 2 is fetched only when the probe did not match. This is also
+  ignored.** When the tier-1 ring or the single tier-2 polygon is the whole shape (`wholeShape`,
+  above) and the aircraft is more than `RouteAdvisoryLocator.ProbeTrustMarginNm` (150 nm) outside
+  it, the fact reads the edge distance instead, and the locator logs `Route-advisory probe match
+  ignored`. The live trigger is recorded in §13 below: ActiveSky's probe put CZVR SIGMET N2
+  (British Columbia) over Wisconsin, and the app announced "Entering advisory area" about 1,600 nm
+  from it. The margin is wide on purpose: it only has to catch a gross misfire, and the probe is
+  otherwise exact (strict containment, §13). A key the tracker already holds Inside
+  (`RouteAdvisoryProximityTracker.IsInside`, passed by the announcer) keeps its match out to the
+  margin plus `ProbeTrustBandNm` (10 nm), so a match hovering at the margin cannot alternate Enter
+  and Leave; the radar box passes no tracker and reads each refresh as it is. A partial ring never
+  overrules the probe, and neither does a ring across 180° (`AdvisoryGeometry.CrossesAntimeridian`),
+  which the plain lat/lon math cannot measure. This is also
   the probe-strengthens-never-weakens rule §12(d) leans on: `ComposePhrase`/the zone tracker check
   `fact.Inside` (which folds in the probe) before geometry-derived distance, never the reverse — a
   probe match that goes away on a later tick does NOT flip `Inside` back to false (another
@@ -1071,13 +1080,15 @@ singular/rounding/separator cases and the 2026-07-14 box-wording pins),
 `RouteAdvisoryLocator.ComposePhrase` (`RouteAdvisoryLocatorTests.cs` — inside-wins-over-distance,
 no-geometry yields no line, no-geometry-but-probe-inside still reads Inside, outside uses
 distance+behindness), `RouteAdvisoryLocator.BuildFact` (the 2026-10-15 CZVR N2 capture, the
-`ProbeTrustMarginNm` margin both ways, a partial ring and no geometry keep the probe) and its
-`ComputeFactsAsync` zero-position guard
-(`ComputeFactsAsync_zero_position_yields_empty`), and `WeatherService.FindAdvisoryPolygonInGeoJson`
+`ProbeTrustMarginNm` margin both ways with and without the band, a partial ring, a ring across
+180° and no geometry keep the probe), its `ComputeFactsAsync` zero-position guard
+(`ComputeFactsAsync_zero_position_yields_empty`) and, through `ComputeFactsAsync`'s
+positional-probe seam, the probe answer's wiring into `BuildFact` (the live CZVR N2 answer, a
+partial VA ring, the band), and `WeatherService.FindAdvisoryPolygonInGeoJson`
 (a trimmed real `airsigmet` fixture, the live 54E feature). The proximity zone tracker itself is
 pure and exhaustively pinned — `RouteAdvisoryProximityTrackerTests.cs` asserts the FULL event list
 of every `Observe` call against the §12(d) zone table, row by row (see §12(d)). What remains
-deliberately NOT unit-tested is `ComputeFactsAsync`'s live HTTP/tier-2 orchestration itself and
+deliberately NOT unit-tested is `ComputeFactsAsync`'s live HTTP and tier-2 fetch and
 `ActiveSkyClient.GetPositionalAdvisoriesTextAsync` — the thin HTTP shells this doc's testing
 philosophy (§12(f), and the sim-facing-paths rule in CLAUDE.md [CORE-5]) reserves for the in-sim test plan,
 matching every other AS network call in this doc.
