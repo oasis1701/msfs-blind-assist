@@ -24,13 +24,16 @@ standing still.
 ## VOL-3
 
 Volanta runs one copy at a time, so the debugging switch only takes effect on a fresh launch: a second launch
-just brings the first copy forward. Volanta's close button (and a WM_CLOSE to its window) does not quit it: it
-hides it in the notification area, still running, its window no longer visible (measured 2026-10-15), so its map
-stops polling ([VOL-2]). Volanta quits on Alt+F4, which its page handles by calling its own quit function.
-`VolantaLauncher.QuitAsync` therefore runs that same quit over the debugging port when Volanta has access
-(`VolantaLink.RunVolantaQuitAsync`); without access it can only ask the window to close, and when Volanta is
-still running at the deadline the pilot is told to open Volanta and press Alt+F4. It always asks the pilot first,
-and never kills Volanta's process.
+just brings the first copy forward. With Volanta's "show in tray" setting on, its close button (and a WM_CLOSE
+to its window) does not quit it: it hides it in the notification area, still running, its window no longer
+visible (measured 2026-10-15), so its map stops polling ([VOL-2]). Whether Alt+F4 quits also depends on that
+setting (the owner's report), so it is never the advice. The one sure quit is the Quit item of Volanta's
+notification-area menu ("Show Volanta", "Reset Window Position", "Quit"). Volanta's page has a quit function that
+does the same (it stops Volanta's sim plugins, then sends the main process the message the menu's Quit runs), so
+`VolantaLauncher.QuitAsync` runs it over the debugging port when Volanta has access
+(`VolantaLink.RunVolantaQuitAsync`). Without access it can only ask the window to close, which quits a Volanta
+with the setting off; when Volanta is still running at the deadline the pilot is told to choose Quit from its
+notification-area menu. It always asks the pilot first, and never kills Volanta's process.
 
 ## VOL-4
 

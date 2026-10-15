@@ -62,8 +62,10 @@ Volanta (it then looks for Volanta's page every 150 ms). Volanta's hub then repo
 each friend's status. A saved copy of ids and names (`%APPDATA%\MSFSBlindAssist\volanta\friends.json`) covers a
 Volanta started another way. Who is flying always comes from the live flight file, by user id.
 
-Quitting: Volanta's close button hides it in the notification area rather than quitting. Alt+F4 in its window
-quits it; with access, the launcher runs that same quit over the debugging port.
+Quitting: with Volanta's "show in tray" setting on, its close button (and Alt+F4) hide it in the notification
+area rather than quitting it. The sure way is Quit in Volanta's notification-area menu; with access, the launcher
+runs that same quit over the debugging port, and without it tells the pilot to choose Quit there (Windows+B, find
+Volanta, Applications key, Quit).
 
 ## Measured (Volanta 1.19.2, Electron 40, 2026-10-15)
 

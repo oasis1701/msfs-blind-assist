@@ -19,10 +19,11 @@ public enum VolantaAccessState
 /// <summary>
 /// Starts Volanta with live map access: a local-only Chromium debugging port (<see cref="VolantaLink.DebugPort"/>).
 /// Volanta runs one copy at a time, so a running Volanta must be quit first; the switch on a second launch
-/// would only bring the first one forward. Volanta's close button only hides it in the notification area
-/// (measured 2026-10-15), so quitting is Volanta's own quit, the one its Alt+F4 runs (<see cref="QuitAsync"/>),
-/// reached over the debugging port when Volanta has access. Without access the window is asked to close and,
-/// when Volanta stays running, the pilot is told to quit it with Alt+F4. Volanta's process is never killed.
+/// would only bring the first one forward. With Volanta's "show in tray" setting on, its close button (and
+/// Alt+F4) only hide it in the notification area (measured 2026-10-15), so quitting is Volanta's own quit, the
+/// same as Quit in its notification-area menu (<see cref="QuitAsync"/>), reached over the debugging port when
+/// Volanta has access. Without access the window is asked to close and, when Volanta stays running, the pilot is
+/// told to choose Quit from its notification-area menu. Volanta's process is never killed.
 /// </summary>
 public static class VolantaLauncher
 {
@@ -109,10 +110,10 @@ public static class VolantaLauncher
     }
 
     /// <summary>
-    /// Quits Volanta and waits for it to exit. With live map access this runs Volanta's own quit (what Alt+F4
-    /// does in Volanta's window); without, it asks Volanta's window to close, which quits only a Volanta not set
-    /// to keep running in the notification area. False when Volanta is still running at the deadline: the pilot
-    /// must quit it (open it, press Alt+F4).
+    /// Quits Volanta and waits for it to exit. With live map access this runs Volanta's own quit (the same as
+    /// Quit in its notification-area menu); without, it asks Volanta's window to close, which quits only a Volanta
+    /// whose "show in tray" setting is off. False when Volanta is still running at the deadline: the pilot must
+    /// quit it from its notification-area menu.
     /// </summary>
     public static async Task<bool> QuitAsync(TimeSpan timeout, CancellationToken ct = default)
     {

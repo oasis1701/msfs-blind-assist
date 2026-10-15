@@ -385,8 +385,9 @@ public sealed class VolantaLink : IDisposable
     }
 
     /// <summary>
-    /// Runs Volanta's own quit, the one Alt+F4 does in Volanta's window, over the debugging port. Volanta's close
-    /// button only hides it in the notification area, so this is the one way to quit it from here. False when
+    /// Runs Volanta's own quit over the debugging port: its page's quit function, which does what Quit in its
+    /// notification-area menu does (stops its sim plugins, then quits), whatever its "show in tray" setting.
+    /// With that setting on, the close button only hides Volanta, so this is the one way to quit it from here. False when
     /// Volanta has no live map access (or did not answer): the caller falls back to asking the pilot.
     /// </summary>
     public static async Task<bool> RunVolantaQuitAsync(CancellationToken ct = default)

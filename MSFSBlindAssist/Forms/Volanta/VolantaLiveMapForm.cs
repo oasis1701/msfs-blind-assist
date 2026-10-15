@@ -821,7 +821,7 @@ public sealed class VolantaLiveMapForm : Form
                     _announcer.Announce("Restarting Volanta.");
                     if (!await VolantaLauncher.QuitAsync(TimeSpan.FromSeconds(15)))
                     {
-                        _announcer.Announce("Volanta did not quit. Open Volanta and press Alt+F4 to quit it, then press this button again.");
+                        _announcer.Announce(QuitFromNotificationAreaHint);
                         return;
                     }
                     break;
@@ -831,8 +831,7 @@ public sealed class VolantaLiveMapForm : Form
                     _announcer.Announce("Closing Volanta.");
                     if (!await VolantaLauncher.QuitAsync(TimeSpan.FromSeconds(15)))
                     {
-                        _announcer.Announce("Volanta did not quit; it may have gone to the notification area. Open Volanta "
-                            + "from there and press Alt+F4, which quits it, then press this button again.");
+                        _announcer.Announce(QuitFromNotificationAreaHint);
                         return;
                     }
                     break;
@@ -852,6 +851,12 @@ public sealed class VolantaLiveMapForm : Form
             RefreshConnectionStatus();
         }
     }
+
+    /// <summary>What to do when Volanta did not quit: its close button and Alt+F4 only hide it when Volanta's
+    /// "show in tray" setting is on, so the one sure way is the Quit item of its notification-area menu.</summary>
+    private const string QuitFromNotificationAreaHint =
+        "Volanta did not quit. Quit it from the notification area: press Windows+B, find Volanta, open its menu "
+        + "with the Applications key, and choose Quit. Then press this button again.";
 
     private bool Confirm(string question)
         => MessageBox.Show(this, question, "Restart Volanta", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
