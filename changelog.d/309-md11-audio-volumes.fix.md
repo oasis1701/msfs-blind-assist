@@ -1,0 +1,1 @@
+MD-11: the audio panel volume knobs can now be set from 0% to 100%, and each one has a Receiver button beside it that switches that radio or navaid on or off. Before, every volume showed only a read-only 0 or 1.
