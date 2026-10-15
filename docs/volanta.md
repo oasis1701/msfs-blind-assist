@@ -15,11 +15,12 @@ ATC.
 - **Friends tab** (after Traffic): the pilot's Volanta friends. Flying friends first, nearest first, with the
   same placing as a traffic line; then friends online in Volanta, with their status in words ("cruising over
   United States", "taxiing to gate B12 at KGRB"); then offline. The details list adds everything about a flying
-  friend's flight. A button restarts Volanta to load the list again ([VOL-6]).
+  friend's flight. Restarting Volanta from the Connection tab loads the list again ([VOL-6]).
 - **ATC tab**: online VATSIM and IVAO stations, nearest first, with frequency; the details box adds the
   controller, the airport, when they came online and the ATIS text.
-- **Connection tab**: whether Volanta has live map access, what has been received and when, and the button that
-  starts or restarts Volanta with access.
+- **Connection tab**: whether Volanta has live map access, what has been received and when, and the window's one
+  button that starts or restarts Volanta with access. It restarts Volanta even when it already has access (after
+  asking), since that is also how the friends list is reloaded.
 
 In each list tab the list comes first in the tab order, then the selected item's details, then the status and
 the filters. The tabs use `AccessibleTabControl`, as the EFB does, so NVDA names only the tab.

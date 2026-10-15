@@ -163,23 +163,14 @@ public sealed class VolantaLiveMapForm : Form
         _friendsStatus = ReadOnlyBox("Friends status");
         _friendsStatus.Text = "Waiting for Volanta.";
 
-        var reload = new Button
-        {
-            Text = "Restart Volanta to &reload your friends",
-            AutoSize = true,
-            AccessibleName = "Restart Volanta to reload your friends",
-        };
-        reload.Click += async (_, _) => await StartVolantaAsync(reloadFriends: true);
-
-        var layout = NewColumn(4);
+        // No restart button of its own: the Connection tab's one button restarts Volanta, which reloads the list.
+        var layout = NewColumn(3);
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
-        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.Controls.Add(_friendsList, 0, 0);
         layout.Controls.Add(_friendsDetails, 0, 1);
         layout.Controls.Add(_friendsStatus, 0, 2);
-        layout.Controls.Add(reload, 0, 3);
         page.Controls.Add(layout);
         return page;
     }
@@ -311,7 +302,7 @@ public sealed class VolantaLiveMapForm : Form
             AutoSize = true,
             AccessibleName = "Start or restart Volanta with live map access",
         };
-        _startButton.Click += async (_, _) => await StartVolantaAsync(reloadFriends: false);
+        _startButton.Click += async (_, _) => await StartVolantaAsync();
 
         var help = new TextBox
         {
@@ -330,7 +321,7 @@ public sealed class VolantaLiveMapForm : Form
                 "",
                 "Everything here updates every 5 seconds, and the line you are on re-reads when it changes. While you are in a list, its order holds, so the down arrow always reaches the next aircraft; new ones join at the end. F5 re-sorts the lists at once.",
                 "",
-                "Friends: Volanta sends your friends list once, when it starts, so this app reads it when it starts Volanta, and keeps a copy of your friends' names for next time. Who is flying, and where, is always live. If your list looks out of date, use the Friends tab's restart button.",
+                "Friends: Volanta sends your friends list once, when it starts, so this app reads it when it starts Volanta, and keeps a copy of your friends' names for next time. Who is flying, and where, is always live. If your list looks out of date, restart Volanta with the button above.",
                 "",
                 "Volanta's positions can be up to two minutes old, so this window estimates where each aircraft is now. Use it for awareness, not to avoid traffic.",
                 "",
@@ -493,7 +484,7 @@ public sealed class VolantaLiveMapForm : Form
             Reconcile(_friendsList, Array.Empty<Row>(), hold: false);
             ShowFriendDetails();
             DisplayText.SetPreserveCaret(_friendsStatus, "Your friends list has not been read yet. Volanta sends it "
-                + "only when it starts: press Restart Volanta to reload your friends.");
+                + "only when it starts: restart Volanta from the Connection tab to load it.");
             return;
         }
 
@@ -525,7 +516,7 @@ public sealed class VolantaLiveMapForm : Form
             status += " The list is from Volanta and stays current while it runs.";
         else if (snap.FriendsSavedAt is DateTimeOffset saved)
             status += $" The list is your saved copy from {saved.ToLocalTime().ToString("d MMMM", Inv)}. Who is flying is live; "
-                + "other statuses show once Volanta reports a change. To load the latest list, press Restart Volanta to reload your friends.";
+                + "other statuses show once Volanta reports a change. To load the latest list, restart Volanta from the Connection tab.";
         if (snap.VolantaFlights == null) status += " Waiting for Volanta's flights to see who is flying.";
         DisplayText.SetPreserveCaret(_friendsStatus, status);
     }
@@ -799,9 +790,9 @@ public sealed class VolantaLiveMapForm : Form
 
     // ── Start / restart ───────────────────────────────────────────────────────
 
-    /// <param name="reloadFriends">The Friends tab's button: restart Volanta even when it has access, since
-    /// Volanta sends the friends list only when it starts.</param>
-    private async Task StartVolantaAsync(bool reloadFriends)
+    /// <summary>The Connection tab's one button: start Volanta with access, or restart it, even when it already
+    /// has access, since that is also how the friends list is reloaded (Volanta sends it only when it starts).</summary>
+    private async Task StartVolantaAsync()
     {
         if (_starting) return;
         _starting = true;
@@ -812,12 +803,9 @@ public sealed class VolantaLiveMapForm : Form
                 case VolantaAccessState.NotInstalled:
                     _announcer.Announce("Volanta is not installed for this Windows user.");
                     return;
-                case VolantaAccessState.RunningWithAccess when !reloadFriends:
-                    _announcer.Announce("Volanta already has live map access.");
-                    return;
                 case VolantaAccessState.RunningWithAccess:
-                    if (!Confirm("Restart Volanta to load your friends list? Volanta is force-closed and started "
-                            + "again, and keeps tracking your flight.")) return;
+                    if (!Confirm("Volanta already has live map access. Restart it anyway? That also reloads your "
+                            + "friends list. Volanta is force-closed and started again, and keeps tracking your flight.")) return;
                     if (!await ForceCloseVolantaAsync()) return;
                     break;
                 case VolantaAccessState.RunningWithoutAccess:

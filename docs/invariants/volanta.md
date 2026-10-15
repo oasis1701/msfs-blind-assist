@@ -74,4 +74,5 @@ each friend's status (the pilot's own status comes the same way and is ignored).
 list's ids and names, never a status, so a Volanta started some other way still shows who the friends are, with
 their status "not known yet" until Volanta reports a change. Whether a friend is flying, and where, never comes
 from the list: it is their entry in Volanta's flight file, matched by user id, so it is live whichever way the
-list arrived. The Friends tab's restart button restarts Volanta only to catch the list again.
+list arrived. The window's one restart button (Connection tab) restarts Volanta even when it already has access,
+after asking, because that is also how the list is caught again; the Friends tab points there.
