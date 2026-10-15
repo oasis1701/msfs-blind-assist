@@ -105,13 +105,83 @@ class StrayPercentTests(unittest.TestCase):
 
     def test_a_triple_percent_before_a_directive_is_untouched(self):
         # '%%%{else}': a literal '%%' straight before a directive — the audio volume knobs.
-        # Neither '%' before the '{' is a stray sign, and the knob still yields NO positions
-        # (its state is a live number).
+        # Neither '%' before the '{' is a stray sign, and the tooltip still yields NO positions
+        # (its level is a live number); split_volume_knob gives the knob its positions
+        # (VolumeKnobTests).
         label, _, value_map = g.parse_tooltip(
             "Captain VHF1 Volume (%((L:MD11_PED_CPT_AUDIO_PNL_VHF1_VOL_BT))%{if}"
             "%((L:MD11_PED_CPT_AUDIO_PNL_VHF1_VOL_KB) 10 *)%!d!%%%{else}Disabled%{end})")
         self.assertEqual("Captain VHF1 Volume", label)
         self.assertEqual({}, value_map)
+
+
+class VolumeKnobTests(unittest.TestCase):
+    """An audio-panel volume knob is two controls on one node: the wheel turns the level (the knob's
+    own var, 0-10, TFDi's tooltip prints it times ten as a percentage) and the click pushes the
+    receiver on or off (ANIM_NAME_PUSH). The tooltip reads the push first, so the knob used to read
+    the push with no positions: MSFSBA showed a read-only 0 or 1 and nothing could turn it."""
+
+    P = "MD11_PED_CPT_AUDIO_PNL"
+    TOOLTIP = ("Captain {r} Volume (%((L:{p}_{r}_VOL_BT))%{{if}}%((L:{p}_{r}_VOL_KB) 10 *)%!d!%%"
+               "%{{else}}Disabled%{{end}})")
+
+    def knob(self, r="VHF2", tooltip=None, push=True, click="69717"):
+        fields = {"TOOLTIPID": tooltip or self.TOOLTIP.format(p=self.P, r=r),
+                  "NODE_ID": f"{self.P}_{r}_VOL_KB"}
+        if push:
+            fields["ANIM_NAME_PUSH"] = f"{self.P}_{r}_VOL_BT"
+        fields.update(NUM_STATES="2", WHEEL_UP="69715", WHEEL_DOWN="69716")
+        if click:
+            fields["LEFT_BUTTON_DOWN"] = click
+        return use_template("TFDi_Design_MD11_Volume_Knob", **fields)
+
+    def lamp(self, r="VHF2"):
+        return use_template("TFDi_Design_MD11_Annunciator", NODE_ID=f"{self.P}_{r}_VOL_LT")
+
+    def build(self, xml):
+        with tempfile.TemporaryDirectory() as tmp:
+            pkg, _ = write_package(tmp, {"FlightDeck/AftFootPedestal.xml": xml})
+            controls, _ = g.collect(pkg)
+        return {c["node_id"]: c for c in g.apply_state(g.finalize_controls(controls))}
+
+    def test_the_knob_turns_its_own_level_from_0_to_100_percent(self):
+        knob = self.build(self.knob() + self.lamp())[f"{self.P}_VHF2_VOL_KB"]
+        self.assertEqual("knob", knob["kind"])
+        self.assertEqual("Captain VHF2 Volume", knob["label"])
+        self.assertEqual(f"{self.P}_VHF2_VOL_KB", knob["state_var"])
+        self.assertEqual({str(n): f"{n * 10}%" for n in range(11)}, knob["value_map"])
+        # The wheel only: the click is the receiver's.
+        self.assertEqual({"WHEEL_UP": 69715, "WHEEL_DOWN": 69716}, knob["events"])
+
+    def test_the_push_is_a_receiver_button_with_its_vol_light_and_latch(self):
+        out = self.build(self.knob() + self.lamp())
+        rx = out[f"{self.P}_VHF2_VOL_BT"]
+        self.assertEqual("button", rx["kind"])
+        self.assertEqual("Captain VHF2 Receiver", rx["label"])
+        self.assertEqual({"LEFT_BUTTON_DOWN": 69717}, rx["events"])
+        self.assertEqual([{"var": f"{self.P}_VHF2_VOL_LT", "legend": "VOL", "lit": "On"}], rx["state"]["lamps"])
+        self.assertEqual({"var": f"{self.P}_VHF2_VOL_BT", "on": "On", "off": "Off"}, rx["state"]["latch"])
+        self.assertEqual("Off", rx["state"]["dark"])
+        self.assertEqual("Captain VHF2 Receiver VOL light", out[f"{self.P}_VHF2_VOL_LT"]["label"])
+
+    def test_a_receiver_with_no_light_reads_its_latch(self):
+        # The Captain's and First Officer's SAT knobs have no VOL lamp in the package.
+        rx = self.build(self.knob("SAT"))[f"{self.P}_SAT_VOL_BT"]
+        self.assertEqual([], rx["state"]["lamps"])
+        self.assertEqual({"var": f"{self.P}_SAT_VOL_BT", "on": "On", "off": "Off"}, rx["state"]["latch"])
+
+    def test_a_volume_knob_of_another_shape_stops_the_generator(self):
+        bad = {
+            "no push var": self.knob(push=False),
+            "no click": self.knob(click=None),
+            "another scale": self.knob(tooltip=self.TOOLTIP.format(p=self.P, r="VHF2").replace(" 10 *", " 100 *")),
+            "the level read first": self.knob(tooltip=f"Captain VHF2 Volume (%((L:{self.P}_VHF2_VOL_KB) 10 *)%!d!%%)"),
+        }
+        for why, xml in bad.items():
+            with self.subTest(why), self.assertRaises(ValueError) as cm:
+                self.build(xml)
+            self.assertIn("AftFootPedestal.xml", str(cm.exception))
+            self.assertIn(f"{self.P}_VHF2_VOL_KB", str(cm.exception))
 
 
 class CompanionVarTests(unittest.TestCase):

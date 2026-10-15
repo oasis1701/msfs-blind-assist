@@ -200,6 +200,62 @@ def temperature_positions(count):
     return out
 
 
+# The audio panels' receiver volume knobs (48: Captain, First Officer and Observer, 16 each) are TWO
+# controls on one node, and the template says so: TFDi_Design_MD11_Volume_Knob animates the knob's
+# ROTATION on its own node id and its PUSH on a second var (ANIM_NAME_PUSH, '..._VOL_BT'). The
+# wheel turns the level; the click pushes the receiver on or off. The tooltip reads both:
+#     Captain VHF2 Volume (%((L:..._VHF2_VOL_BT))%{if}%((L:..._VHF2_VOL_KB) 10 *)%!d!%%%{else}Disabled%{end})
+# so parse_tooltip's first-var rule handed the knob the PUSH as its state and found no positions:
+# MSFSBA showed every volume as a read-only 0 or 1 (the receiver on/off) with no way to turn it.
+# split_volume_knob makes the knob a level control on its own var and adds the push as a button.
+#
+# MEASURED on a live MD-11 (2026-10-15, cruise): each paced WHEEL_UP on the Captain VHF2 knob
+# moved MD11_PED_CPT_AUDIO_PNL_VHF2_VOL_KB up one unit, 0 -> 1 -> 2 ... 10, and clicks past 10
+# left it there; WHEEL_DOWN took it to 9. (Four clicks sent in one burst moved it two: the
+# CEVENT slot drops a burst, which is why Md11EventBus paces them.) Its LEFT_BUTTON_DOWN toggled
+# ..._VHF2_VOL_BT 0 -> 1 -> 0, and with it the sim's COM RECEIVE:2 (0 -> 1 -> 0), the
+# ..._VHF2_VOL_LT lamp, and COM VOLUME:2 = 90 percent at level 9: the tooltip's "level x 10
+# percent" is the receiver's real volume. The template's ANIM_LENGTH_KNOB is 10, the same range.
+VOLUME_KNOB_TEMPLATE = "TFDi_Design_MD11_Volume_Knob"
+VOLUME_KNOB_STEPS = 10
+
+
+def volume_positions():
+    """Value map for a receiver volume knob: raw 0..10 -> "0%" ... "100%", TFDi's own tooltip words."""
+    return {str(raw): f"{raw * 10}%" for raw in range(VOLUME_KNOB_STEPS + 1)}
+
+
+def split_volume_knob(knob, push_var, tooltip, source):
+    """A receiver volume knob as (level knob, receiver button). Pure.
+
+    `knob` is the control collect() built from the block (state_var: the PUSH, the tooltip's first
+    var), `push_var` the block's ANIM_NAME_PUSH and `tooltip` its TOOLTIPID. The knob keeps its node
+    id and its wheel and becomes a level control: its own var, positions 0% ... 100%. The receiver is
+    a button keyed on the push var with the knob's click, a latch over that var (TFDi's tooltip reads
+    it: a proven latch, MD11-3) and the name "<seat> <source> Receiver"; its VOL lamp pairs to it by
+    the stem rule. Raises a ValueError naming `source` and the node when the tooltip is not the shape
+    this rule was measured on, rather than ship a level map over a var it does not describe.
+    """
+    nid = knob["node_id"]
+    flat = re.sub(r"\s+", " ", tooltip or "")
+    label = knob["label"] or ""
+    if (not push_var or knob["state_var"] != push_var or f"(L:{nid}) 10 *" not in flat
+            or not label.endswith(" Volume") or "LEFT_BUTTON_DOWN" not in knob["events"]):
+        raise ValueError(
+            f"{source}: {nid} is a {VOLUME_KNOB_TEMPLATE} whose tooltip, push var or events are not "
+            f"the measured shape (push var first, '(L:{nid}) 10 *' as the level, a label ending in "
+            f"' Volume', a click) -- teach split_volume_knob the new shape before regenerating")
+    events = dict(knob["events"])
+    click = events.pop("LEFT_BUTTON_DOWN")
+    level = dict(knob, state_var=nid, value_map=volume_positions(),
+                 num_states=VOLUME_KNOB_STEPS + 1, events=events)
+    receiver = dict(knob, node_id=push_var, kind="button",
+                    label=label[: -len(" Volume")] + " Receiver", label_source="curated",
+                    state_var=push_var, value_map={"1": "On", "0": "Off"}, num_states=2,
+                    events={"LEFT_BUTTON_DOWN": click})
+    return level, receiver
+
+
 CURATED = {
     "MD11_FLAP_LATCH": {
         "label": "Flaps/Slats",
@@ -386,6 +442,12 @@ LAMP_LEGEND_OVERRIDES = {
     **{f"{p}_{r}_MIC_LT": "MIC" for p in ("MD11_PED_CPT_AUDIO_PNL", "MD11_PED_FO_AUDIO_PNL", "MD11_OBS_AUDIO_PNL")
        for r in ("VHF1", "VHF2", "VHF3", "HF1", "HF2", "SAT", "INT", "CAB")},
     **{f"{p}_IDENT_LT": "IDENT" for p in ("MD11_PED_CPT_AUDIO_PNL", "MD11_PED_FO_AUDIO_PNL", "MD11_OBS_AUDIO_PNL")},
+    # ...and the receiver lights "VOL": bare "<stem>_LT" lamps of the receiver buttons
+    # split_volume_knob adds. Every panel has these sixteen sources, but only the Observer's has a
+    # SAT one; a lamp the package lacks is never looked up.
+    **{f"{p}_{r}_VOL_LT": "VOL" for p in ("MD11_PED_CPT_AUDIO_PNL", "MD11_PED_FO_AUDIO_PNL", "MD11_OBS_AUDIO_PNL")
+       for r in ("VHF1", "VHF2", "VHF3", "HF1", "HF2", "SAT", "INT", "CAB", "PA",
+                 "ILS1", "ILS2", "VOR1", "VOR2", "ADF1", "ADF2", "MKR")},
 }
 # Spoken word for the overriding legends above that LEGEND_MEANINGS does not carry.
 LEGEND_MEANINGS.update({"UP": "Up", "STOW": "Stowed", "WARN": "Warning", "CAUT": "Caution", "A": "Selected",
@@ -507,7 +569,7 @@ STANDALONE_LAMPS = {
     "MD11_EXT_DOOR_CRG_MAIN_PWR_LT": ("Main Cargo Door PWR light", "On", "Off"),
     **{f"MD11_EXT_DOOR_PAXC_{d}_DISARM_LT": (f"Door {d} DISARM light", "On", "Off") for d in ("1L", "1R")},
     **{f"MD11_LTS_MAP_{n}": (f"Map Light {n}", "On", "Off") for n in (1, 2, 3)},
-    # Audio panel call lights (the MIC/VOL lights belong to their button/knob; these do not).
+    # Audio panel call lights (the MIC and VOL lights belong to their buttons; these do not).
     **{f"{p}_{r}_CALL_LT": (f"{seat} {r} CALL light", "On", "Off")
        for p, seat in (("MD11_PED_CPT_AUDIO_PNL", "Captain"), ("MD11_PED_FO_AUDIO_PNL", "First Officer"), ("MD11_OBS_AUDIO_PNL", "Observer"))
        for r in ("VHF1", "VHF2", "VHF3", "HF1", "HF2", "CAB")},
@@ -1843,7 +1905,7 @@ def collect(pkg_dir):
                     stats["curated"] += 1
 
                 num_states = fields.get("NUM_STATES")
-                controls.append(
+                control = (
                     {
                         "node_id": node_id,
                         "kind": kind,
@@ -1876,6 +1938,15 @@ def collect(pkg_dir):
                         "source": source,
                     }
                 )
+                if tmpl == VOLUME_KNOB_TEMPLATE:
+                    # Two controls on one node: the level knob and the receiver push (see
+                    # split_volume_knob). The receiver is a button, counted as one.
+                    level, receiver = split_volume_knob(
+                        control, fields.get("ANIM_NAME_PUSH"), fields.get("TOOLTIPID"), source)
+                    controls.extend([level, receiver])
+                    stats["kind:button"] += 1
+                else:
+                    controls.append(control)
                 stats["kind:" + kind] += 1
 
     return controls, stats
