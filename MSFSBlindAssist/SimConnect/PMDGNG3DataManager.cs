@@ -315,6 +315,11 @@ public class PMDGNG3DataManager : IPMDGDataManager
     ///                       NOT ELEC_annunGEN_BUS_OFF[X], the GEN OFF BUS
     ///                       light; never read the raw ELEC_GenSw bool.
     ///   - ENG_StartLever_X ⟵ FUEL_annunENG_VALVE_CLOSED[X] (see the body).
+    ///   - Each ACP VHF receiver button's key (Aircraft.Pmdg737AcpReceivers) ⟵
+    ///                       its bit in COMM_ReceiverSwitches[seat]. Not an
+    ///                       override: the bitmask keeps its own events. The
+    ///                       button names its key as its StateVariable, so its
+    ///                       label reads On or Off.
     /// </summary>
     private void RaiseDerivedFieldOverrides(PMDGNG3DataStruct newData, bool isFirstSnapshot)
     {
@@ -339,6 +344,10 @@ public class PMDGNG3DataManager : IPMDGDataManager
         bool lever1Run = fuelValveClosed.Length > 1 && fuelValveClosed[1] == 0;
         RaiseDerivedIfChanged("ENG_StartLever_0", lever0Run, isFirstSnapshot);
         RaiseDerivedIfChanged("ENG_StartLever_1", lever1Run, isFirstSnapshot);
+
+        foreach (var receiver in Aircraft.Pmdg737AcpReceivers.All)
+            RaiseDerivedIfChanged(receiver.Key,
+                Aircraft.Pmdg737AcpReceivers.IsOn(receiver, newData.COMM_ReceiverSwitches), isFirstSnapshot);
     }
 
     private void RaiseDerivedIfChanged(string fieldName, bool newVal, bool isFirstSnapshot)
