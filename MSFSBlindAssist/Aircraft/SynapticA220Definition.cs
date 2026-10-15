@@ -636,8 +636,8 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
             ? IsFmsSpeed(simConnect) : null;
 
     /// <summary>
-    /// One FCU push/pull key on the A220 FCP (A220FcpKeys). Mode buttons TOGGLE, so an
-    /// engaged target is never pressed ("FLC already engaged."); every press is followed by
+    /// One FCU push/pull key on the A220 FCP (A220FcpKeys). VNAV toggles, so an engaged
+    /// target is never pressed ("FLC already engaged."; A220FcpKeys.ShouldPress); every press is followed by
     /// speech — mode presses through AnnounceModeResult ([A220-6]), the speed ring and the
     /// heading sync through their own deferred read-back.
     /// </summary>

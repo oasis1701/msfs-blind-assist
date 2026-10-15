@@ -42,9 +42,11 @@ public static class A220FcpKeys
         _ => null
     };
 
-    /// <summary>The A220 mode buttons TOGGLE — pressing an engaged mode turns it off. A key
-    /// names a target, so it presses only when the target is not engaged. An unknown state
-    /// (null or a negative "no cache" value) presses, and the read-back speaks the truth.</summary>
+    /// <summary>A key names a target, so it presses only when the target is not engaged: VNAV
+    /// TOGGLES (a second press turns it off), while on v1.0.10 a second HDG, ALT or V/S press
+    /// was a no-op (live 2026-10-15, on the ground), so for those the guard only saves a press.
+    /// An unknown state (null or a negative "no cache" value) presses, and the read-back speaks
+    /// the truth.</summary>
     internal static bool ShouldPress(Act act, double? modeState)
         => ModeKey(act) == null || !(modeState is double s && s > 0.5);
 
