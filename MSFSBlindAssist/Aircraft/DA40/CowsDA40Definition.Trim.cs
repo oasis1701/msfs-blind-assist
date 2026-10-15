@@ -332,7 +332,7 @@ public partial class CowsDA40Definition
     {
         try
         {
-            await Task.Delay(TrimReadBackSettleMs);
+            await Task.Delay(TrimReadBackDelayMs);
             double? pct = await simConnect.ReadFreshAsync("DA40_TRIM_SET", 1500)
                 ?? simConnect.GetCachedVariableValue("DA40_TRIM_SET");
             if (pct is null) return;
@@ -346,8 +346,10 @@ public partial class CowsDA40Definition
     }
 
     /// <summary>After a nudge's release, how long before the trim is read back: the axis
-    /// stops on the frame the release lands.</summary>
-    private const int TrimReadBackSettleMs = 150;
+    /// stops on the frame the release lands. Not a settle (DA40S-2): the read that follows is
+    /// a fresh <c>ReadFreshAsync</c>, never a batch delivery, so one frame plus margin is the
+    /// whole wait.</summary>
+    private const int TrimReadBackDelayMs = 150;
 
     /// <summary>
     /// A trim setting in words and numbers. The sign alone is ambiguous to hear, so the

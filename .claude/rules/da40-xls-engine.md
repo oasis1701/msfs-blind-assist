@@ -27,3 +27,6 @@ Loaded with the XLS Lycoming code. Background: docs/da40-xls-variables.md. Full 
 - [DA40X-5] The XLS performance-variation set (Simulation > Engine Variation) is the only channel for an engine that will not start with everything set correctly; an all-zero spread is zero fuel, and `ENG_MAG_FOUL_PWR` 0 is a clean plug. Full: docs/invariants/da40-xls-engine.md#da40x-5
 - [DA40X-6] Where the XLS gauge's arc and the AFM disagree, the GAUGE wins (oil temperature); the one exception is oil pressure, where `DA40InstrumentBands` takes the AFM's 97 over a `panel.xml` typo. Full: docs/invariants/da40-xls-engine.md#da40x-6
 - [DA40X-7] Indication failures are per airframe: the XLS has eleven of its own (tach, MAP, flow, fuel pressure, CHT and EGT per cylinder) and none of the NG's gearbox, coolant or fuel-temperature ones. Full: docs/invariants/da40-xls-engine.md#da40x-7
+
+Mirrored from da40-avionics.md (it governs `FahrenheitDifferenceText` in CowsDA40Definition.Units.cs, called from the Xls mixture rows; change it there and here together):
+- [DA40A-23] A temperature DIFFERENCE (the lean-assist drop below a peak, the EGT spread) renders through `FahrenheitDifferenceText`, scaled by 5/9 and never offset by 32; `TryUnitText` converts absolute readings only. Full: docs/invariants/da40-avionics.md#da40a-23

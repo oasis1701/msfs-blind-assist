@@ -98,3 +98,7 @@ The text is verbatim from the CLAUDE.md invariants PR #242 added; where two bull
 ## DA40A-22
 
 - **The GFC 700 mode rows are SILENT; the FMA speaks the modes.** Every mode change was said twice - the mode button's own row ("Altitude Hold: Off") and the CAS watcher's FMA sentence ("Autopilot AP, ROL, GPS armed, FLC, ALTS armed") - measured in flight 2026-10-12. `ApModeIsSpokenByFma` consumes HDG, NAV, APR, BC, ALT, VS and FLC always, and the master and flight director when they come ON; their OFF is still spoken, because the FMA deliberately says nothing for "off". The combos refresh through `RefreshControlWhenDefHandled` (combos write only on `SelectionChangeCommitted`, so a refresh sends nothing). Modes without AP are the flight director's (DA40G-30). → [da40.md](../da40.md)
+
+## DA40A-23
+
+- **A temperature difference is scaled, never offset.** The XLS lean assist reports how far each cylinder is below its peak (`DISP_LEAN_DELTA:n`, Fahrenheit degrees), and the EGT spread is the hottest minus the coolest. Both went through the ABSOLUTE conversion in `TryUnitText`, (F − 32) × 5/9, so with the G1000 in celsius (its factory default) a 32 F drop was spoken "0 degrees celsius below its peak" and every drop read 18 C short. Measured on the cruise lean at VCBI, 2026-10-15. `FahrenheitDifferenceText` scales by 5/9 only; pinned by `ATemperatureDifferenceIsScaledNeverOffset`. → [da40.md](../da40.md)

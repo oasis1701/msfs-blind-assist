@@ -18,8 +18,10 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 ///    softkey went on (<c>DISP_LEAN_PEAK:n</c>) and how far below it the cylinder is now
 ///    (<c>DISP_LEAN_DELTA:n</c>). Measured: peaks of 1484 F at 14.5-15.5 to 1, and past
 ///    that two cylinders dropped 350-500 F as the engine went rough. The POH's method is
-///    "lean until the FIRST EGT peaks", so the first cylinder to fall <see cref="PeakedAtF"/>
-///    below its peak is CALLED, once per assist session; after that the row carries all four.
+///    "lean until the FIRST EGT peaks": each cylinder that falls <see cref="PeakedAtF"/>
+///    below its peak is CALLED once per assist session, the first call being the POH's cue
+///    (all four came within eight seconds at VCBI), and the row carries all four. Its deltas
+///    are DIFFERENCES (<see cref="FahrenheitDifferenceText"/>), never absolute temperatures.
 ///  • The red box (<see cref="DA40RedBox"/>) is recomputed from each cylinder's heat and
 ///    air/fuel ratio, never read from <c>DAMAGE_REDBOX_ITS:n</c>, which holds its last value
 ///    when the box closes. At run-up power (30.8 kW) it cannot open; at full throttle
@@ -522,7 +524,7 @@ public partial class CowsDA40Definition
 
             case "DA40_XLS_EGT_SPREAD":
                 double max = _egt.Max(), min = _egt.Min();
-                displayText = max <= 0 ? "Not available yet" : $"{Fahrenheit(max - min)} between the hottest and coolest";
+                displayText = max <= 0 ? "Not available yet" : $"{FahrenheitDifferenceText(max - min)} between the hottest and coolest";
                 return true;
 
             case "DA40_XLS_RED_BOX":
@@ -606,7 +608,7 @@ public partial class CowsDA40Definition
             if (_leanPeak[i] <= 0) continue;
             parts.Add(_leanDelta[i] < PeakedAtF
                 ? $"cylinder {i + 1} at peak {Fahrenheit(_leanPeak[i])}"
-                : $"cylinder {i + 1} {Fahrenheit(_leanDelta[i])} below its peak of {Fahrenheit(_leanPeak[i])}");
+                : $"cylinder {i + 1} {FahrenheitDifferenceText(_leanDelta[i])} below its peak of {Fahrenheit(_leanPeak[i])}");
         }
         return parts.Count == 0 ? "On, waiting for a peak" : "On: " + string.Join("; ", parts);
     }

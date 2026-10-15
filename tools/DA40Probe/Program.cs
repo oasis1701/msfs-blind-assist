@@ -481,6 +481,15 @@ internal sealed class ProbeForm : Form
                             foreach (var k in arg.Split(',', StringSplitOptions.RemoveEmptyEntries))
                                 _watch.WriteLine($"{t}\tREAD\t{k.Trim()}={Fmt(await Read(k.Trim()))}");
                             break;
+                        case "disp":
+                            // What the panel row shows: a fresh read through the def's own override.
+                            foreach (var k in arg.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                            {
+                                double? dv = await Read(k.Trim());
+                                string shown = dv is double x && def.TryGetDisplayOverride(k.Trim(), x, out var txt) ? txt : Fmt(dv);
+                                _watch.WriteLine($"{t}\tDISP\t{k.Trim()}={shown}");
+                            }
+                            break;
                         case "hotkey":
                         {
                             var action = Enum.Parse<MSFSBlindAssist.Hotkeys.HotkeyAction>(arg);
