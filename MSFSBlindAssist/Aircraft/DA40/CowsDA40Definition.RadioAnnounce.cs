@@ -148,7 +148,7 @@ public partial class CowsDA40Definition
     /// like somebody else's change: each setter confirmed itself and then the settle said
     /// "Selected altitude 10000. Heading bug 164" again (live, LOWG climb-out 2026-10-12).
     /// </summary>
-    private void MarkRadioSetByUs(params string[] varKeys)
+    internal void MarkRadioSetByUs(params string[] varKeys)
     {
         _radioOwnWriteAt = DateTime.UtcNow;
         foreach (var key in varKeys) _radioOwnWrites[key] = _radioOwnWriteAt;
@@ -158,9 +158,59 @@ public partial class CowsDA40Definition
     private readonly Dictionary<string, DateTime> _radioOwnWrites = new(StringComparer.Ordinal);
 
     /// <summary>Whether <paramref name="key"/> was written by MSFSBA inside the grace.</summary>
-    private bool WrittenByUs(string key, DateTime now) =>
+    internal bool WrittenByUs(string key, DateTime now) =>
         _radioOwnWrites.TryGetValue(key, out var at) &&
         (now - at).TotalMilliseconds < RadioOwnWriteGraceMs;
+
+    /// <summary>
+    /// The selected value a GFC 700 mode OVERWRITES as it engages: VS syncs its reference to
+    /// the current vertical speed, FLC to the current airspeed. Null for every other mode.
+    /// </summary>
+    internal static string? ApTargetSyncedBy(string modeKey, bool on) => !on ? null : modeKey switch
+    {
+        "DA40_AP_VS" => "DA40_AP_VS_SET",
+        "DA40_AP_FLC" => "DA40_AP_IAS_SET",
+        _ => null
+    };
+
+    /// <summary>
+    /// MSFSBA pressed a mode button. ⚠️ A mode that syncs its target makes that target
+    /// somebody else's news, even if MSFSBA typed it a moment ago: at VCBI (2026-10-15)
+    /// "Selected vertical speed 500 feet per minute up" was followed by VS, the GFC 700
+    /// synced the reference to the current 0, and the 0 settled inside the 500's own-write
+    /// grace and was dropped as our echo - before the mode-sync naming below was ever asked -
+    /// so the aeroplane sat level on a climb the pilot had heard set.
+    /// </summary>
+    internal void NoteOwnApModePress(string modeKey, bool on)
+    {
+        if (on) ForgetSyncedTarget(modeKey);
+    }
+
+    /// <summary>
+    /// A GFC 700 mode row arrived (per frame). Stamps the mode change, and on the OFF-to-ON
+    /// edge only does what <see cref="NoteOwnApModePress"/> does, so VS or FLC engaged from
+    /// the bezel speaks its sync too. Never on a repeat: in VS already, a rate typed now is
+    /// our own echo.
+    /// </summary>
+    internal void NoteApModeRow(string modeKey, double value)
+    {
+        bool on = value >= 0.5;
+        bool was = _apModeOn.TryGetValue(modeKey, out bool w) && w;
+        _apModeOn[modeKey] = on;
+        _apModeChangedAt = DateTime.UtcNow;
+        if (on && !was) ForgetSyncedTarget(modeKey);
+    }
+
+    private readonly Dictionary<string, bool> _apModeOn = new(StringComparer.Ordinal);
+
+    private void ForgetSyncedTarget(string modeKey)
+    {
+        string? synced = ApTargetSyncedBy(modeKey, on: true);
+        if (synced == null) return;
+        _radioOwnWrites.Remove(synced);
+        // Names kept on the sync's read-back ("Selected vertical speed 0"), as for any sync.
+        _apModeChangedAt = DateTime.UtcNow;
+    }
 
     /// <summary>
     /// The display window tuned a radio and has already spoken the result.

@@ -637,6 +637,7 @@ public partial class CowsDA40Definition
 
         if (onOff != null)
         {
+            NoteOwnApModePress(varKey, on);
             // Unique, because a mode selected twice running is the same string twice and
             // MobiFlight coalesces byte-identical consecutive commands.
             simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"1 (>K:{onOff})"));
