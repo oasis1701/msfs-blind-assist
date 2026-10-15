@@ -6,7 +6,7 @@ public enum A220EclExclusion
     /// <summary>Mapped — actuate via the def control key + target value.</summary>
     None,
     /// <summary>Hardware axis / physical lever or stick input MSFSBA must not fight
-    /// (thrust levers, sidestick, intermediate speedbrake detents, TOGA paddles).</summary>
+    /// (thrust levers, sidestick, TOGA paddles).</summary>
     HardwareAxis,
     /// <summary>Guarded destructive/irreversible action (fire pushes, extinguisher
     /// bottles, IDG disconnect, RAT deploy, pax oxygen deploy, EDM) — the pilot
@@ -15,8 +15,7 @@ public enum A220EclExclusion
     /// <summary>"As required" judgment item — present-and-confirm only.</summary>
     Judgment,
     /// <summary>No MSFSBA control exists for this system yet (doors, cockpit door
-    /// panel, reversion panel, avionics cooling, CVR, composite multi-switch
-    /// states…).</summary>
+    /// panel, reversion panel, composite multi-switch states…).</summary>
     NotYetMapped,
 }
 
@@ -65,12 +64,12 @@ public static class A220EclActionMap
         Map("PFCC1_OFF", "A22X_PFCC_1_OFF", 1);
         Map("PFCC2_OFF", "A22X_PFCC_2_OFF", 1);
         Map("PFCC3_OFF", "A22X_PFCC_3_OFF", 1);
-        Excl("CVR_TEST", A220EclExclusion.NotYetMapped);   // no CVR panel control in the def
-        Excl("CVR_ERASE", A220EclExclusion.NotYetMapped);
+        Map("CVR_TEST", "A22X_CVR_TEST", 1);                 // momentary pulse (LMomentary)
+        Map("CVR_ERASE", "A22X_CVR_ERASE", 1);
         Map("ANNUN_DIM", "A22X_ANNUN_LIGHTS", 0);
         Map("ANNUN_BRT", "A22X_ANNUN_LIGHTS", 1);
         Map("ANNUN_STORM", "A22X_ANNUN_LIGHTS", 2);
-        Excl("SERV_INT_ON", A220EclExclusion.NotYetMapped); // service interphone not modeled as a control
+        Map("SERV_INT_ON", "A22X_SERVICE_INTERCOM", 1);
         Map("AURAL_WARN_INHIB", "A22X_AURAL_INHIBIT", 1);
 
         // ---- Hydraulics -----------------------------------------------------
@@ -176,11 +175,11 @@ public static class A220EclActionMap
         Excl("AFT_CARGO_FIRE_PRESSED", A220EclExclusion.GuardedDestructive);
         Excl("CARGO_FIRE_BTL_PRESSED", A220EclExclusion.GuardedDestructive);
 
-        // ---- Avionics cooling (no def controls yet) -------------------------
-        Excl("INLET_OFF", A220EclExclusion.NotYetMapped);
-        Excl("EXHAUST_VLV_ONLY", A220EclExclusion.NotYetMapped);
-        Excl("EXHAUST_AUTO", A220EclExclusion.NotYetMapped);
-        Excl("EXHAUST_ON", A220EclExclusion.NotYetMapped);
+        // ---- Equipment cooling (inlet 1 = AUTO per the aircraft's own checklist) --
+        Map("INLET_OFF", "A22X_COOLING_INLET", 0);
+        Map("EXHAUST_VLV_ONLY", "A22X_COOLING_EXHAUST", 0);
+        Map("EXHAUST_AUTO", "A22X_COOLING_EXHAUST", 1);
+        Map("EXHAUST_ON", "A22X_COOLING_EXHAUST", 2);
 
         // ---- Pressurization / emergency ------------------------------------
         Map("EMER_DEPRESS_ON", "A22X_EMER_DEPRESS", 1);
@@ -251,14 +250,9 @@ public static class A220EclActionMap
         Excl("THRUST_LEVERS_MAX", A220EclExclusion.HardwareAxis);
         Excl("THRUST_LEVERS_REV", A220EclExclusion.HardwareAxis);
 
-        // ---- Speedbrake lever (0 = retracted, 5 = full: the two stock-event
-        // endpoints; intermediate detents need the hardware axis) --------------
-        Map("SPOILER_LEVER_0", "A22X_SPOILERS_RETRACT", 1);
-        Excl("SPOILER_LEVER_1", A220EclExclusion.HardwareAxis);
-        Excl("SPOILER_LEVER_2", A220EclExclusion.HardwareAxis);
-        Excl("SPOILER_LEVER_3", A220EclExclusion.HardwareAxis);
-        Excl("SPOILER_LEVER_4", A220EclExclusion.HardwareAxis);
-        Map("SPOILER_LEVER_5", "A22X_SPOILERS_DEPLOY", 1);
+        // ---- Speedbrake lever: RET, 1/4, 1/2, 3/4, FULL, MAX through the lever's own
+        // SPOILERS_SET scaling ([A220-40]) -----------------------------------------
+        for (int n = 0; n <= 5; n++) Map($"SPOILER_LEVER_{n}", "A22X_SPOILER_LEVER", n);
 
         // ---- Flaps / gear lever / autobrake ---------------------------------
         Map("SLAT_FLAP_LEVER_0", "A22X_FLAP_LEVER", 0);

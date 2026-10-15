@@ -115,4 +115,52 @@ public class A220EclActionMapTests
             Assert.Equal(value, a.Value);
         }
     }
+
+    /// <summary>Plan B's panel controls are reachable from the ECL "do it for me".</summary>
+    [Fact]
+    public void PlanBPanelControls_AreMapped()
+    {
+        static void Is(string ecl, string key, double value)
+        {
+            Assert.True(A220EclActionMap.TryGet(ecl, out var a), ecl);
+            Assert.True(a.IsMapped, $"{ecl} is excluded ({a.Exclusion})");
+            Assert.Equal(key, a.ControlKey);
+            Assert.Equal(value, a.Value);
+        }
+        Is("INLET_OFF", "A22X_COOLING_INLET", 0);           // 1 = AUTO, 0 = OFF
+        Is("EXHAUST_VLV_ONLY", "A22X_COOLING_EXHAUST", 0);
+        Is("EXHAUST_AUTO", "A22X_COOLING_EXHAUST", 1);
+        Is("EXHAUST_ON", "A22X_COOLING_EXHAUST", 2);
+        Is("CVR_TEST", "A22X_CVR_TEST", 1);
+        Is("CVR_ERASE", "A22X_CVR_ERASE", 1);
+        Is("SERV_INT_ON", "A22X_SERVICE_INTERCOM", 1);
+        Is("PROBE_HEAT_ON", "A22X_PROBE_HEAT", 1);           // the ground-test press
+        for (int n = 0; n <= 5; n++) Is($"SPOILER_LEVER_{n}", "A22X_SPOILER_LEVER", n);
+        // Plan A's autobrake scale: RTO 0, OFF 1, LO 2, MED 3, HI 4.
+        Is("AUTOBRAKE_RTO", "A22X_AUTOBRAKE", 0);
+        Is("AUTOBRAKE_OFF", "A22X_AUTOBRAKE", 1);
+        Is("AUTOBRAKE_LO", "A22X_AUTOBRAKE", 2);
+        Is("AUTOBRAKE_MED", "A22X_AUTOBRAKE", 3);
+        Is("AUTOBRAKE_HI", "A22X_AUTOBRAKE", 4);
+    }
+
+    /// <summary>Spec decision 6 / [A220-23]: every fire push and bottle is panel-only.</summary>
+    [Theory]
+    [InlineData("L_ENG_FIRE_PRESSED")]
+    [InlineData("R_ENG_FIRE_PRESSED")]
+    [InlineData("APU_FIRE_PRESSED")]
+    [InlineData("FWD_CARGO_FIRE_PRESSED")]
+    [InlineData("AFT_CARGO_FIRE_PRESSED")]
+    [InlineData("CARGO_FIRE_BTL_PRESSED")]
+    [InlineData("APU_BTL_SW_PRESSED")]
+    [InlineData("L_ENG_BTL_1_SW_PRESSED")]
+    [InlineData("L_ENG_BTL_2_SW_PRESSED")]
+    [InlineData("R_ENG_BTL_1_SW_PRESSED")]
+    [InlineData("R_ENG_BTL_2_SW_PRESSED")]
+    public void EveryFireControl_StaysPanelOnly(string ecl)
+    {
+        Assert.True(A220EclActionMap.TryGet(ecl, out var a), ecl);
+        Assert.Equal(A220EclExclusion.GuardedDestructive, a.Exclusion);
+        Assert.Null(a.ControlKey);
+    }
 }
