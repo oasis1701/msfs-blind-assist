@@ -197,7 +197,12 @@ public partial class SimConnectManager
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)4);
         sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "GROUND VELOCITY", "knots",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)5);
-        sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "VERTICAL SPEED", "feet per minute",
+        // TRUE vertical velocity, never VERTICAL SPEED: that is the INDICATED figure, filtered
+        // like a VSI. Measured on the COWS DA40 (2026-10-12) it lagged the aeroplane by about two
+        // seconds and read -300 fpm through a level balloon. Visual guidance's glidepath law and the
+        // waypoint FD's projected crossing altitude both steer on it, so a lagged figure made them
+        // chase descents that had already changed.
+        sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "VELOCITY WORLD Y", "feet per minute",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)6);
         sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "PLANE ALT ABOVE GROUND", "feet",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)7);
@@ -215,6 +220,12 @@ public partial class SimConnectManager
         // nominal converges on the actual stabilized-approach pitch automatically.
         sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "INCIDENCE ALPHA", "radians",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)11);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "AUTOPILOT MASTER", "Bool",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)12);
+        // AIRSPEED INDICATED — last def line, matching the last struct field. The FD compares it
+        // against a leg's ARINC speed restriction (which is coded in knots IAS).
+        sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "AIRSPEED INDICATED", "knots",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)13);
         sc.RegisterDataDefineStruct<VisualGuidanceData>(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA);
 
         // Register takeoff assist data (consolidated position + pitch + heading + airspeed)
@@ -435,9 +446,14 @@ public partial class SimConnectManager
                 // set up a per-var continuous subscription right here. Same data def, but
                 // SIMCONNECT_PERIOD.SECOND instead of one-shot ONCE — gives us auto-announce
                 // without any batch-struct position drift.
+                // DeferredSubscription vars are registered above but NOT subscribed here — the
+                // feature that consumes them turns the stream on via
+                // StartDeferredVariableMonitoring. ReassertDeferredSubscriptions (below, once the
+                // whole loop has run) restores any that were already wanted.
                 if (varDef.UpdateFrequency == UpdateFrequency.Continuous &&
                     varDef.IsAnnounced &&
-                    varDef.ExcludeFromBatch)
+                    varDef.ExcludeFromBatch &&
+                    !varDef.DeferredSubscription)
                 {
                     sc.RequestDataOnSimObject(
                         (DATA_REQUESTS)dataDefId,
@@ -478,6 +494,12 @@ public partial class SimConnectManager
             Log.Debug("SimConnect", $"⚠️ {cappedCount} vars exceeded the individual-def cap and are not on-demand-readable (degraded gracefully).");
         try { _registrationLog.Info(regSummary); }
         catch { }
+
+        // Re-assert any DeferredSubscription var whose feature is currently switched on. The
+        // definitions were just rebuilt (fresh ids), so a subscription taken before this call — the
+        // pilot toggled the feature on before connecting, or switched aircraft with it running —
+        // would otherwise be silently lost.
+        ReassertDeferredSubscriptions();
     }
 
     /// <summary>

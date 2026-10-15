@@ -672,6 +672,9 @@ public partial class SimConnectManager
                     HeadingMagnetic = vgData.HeadingMagnetic,
                     MagneticVariation = vgData.MagneticVariation,
                     GroundSpeedKnots = vgData.GroundSpeedKnots,
+                    // The TRUE vertical velocity (VELOCITY WORLD Y, WFD-16), where AIRCRAFT_POSITION
+                    // carries the indicated VERTICAL SPEED. Nothing reads vertical speed from
+                    // lastKnownPosition; the 506/507 mirrors only carry it forward.
                     VerticalSpeedFPM = vgData.VerticalSpeedFPM,
                     // Carried forward, never defaulted — see the surface note on the mirrors below.
                     SurfaceType = lastKnownPosition?.SurfaceType ?? 0,
@@ -725,6 +728,24 @@ public partial class SimConnectManager
                 {
                     VarName = "VISUAL_GUIDANCE_AOA",
                     Value = vgData.AlphaRadians,
+                    Description = ""
+                });
+
+                // Autopilot master (0/1) — consumed only by the Waypoint Flight Director's
+                // optional AP auto-mute. Emitted before AGL so it's applied for this frame.
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "VISUAL_GUIDANCE_AP_MASTER",
+                    Value = vgData.AutopilotMaster,
+                    Description = ""
+                });
+
+                // Indicated airspeed — consumed only by the FD's speed-restriction cue. Emitted
+                // before AGL so it is applied for this frame.
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "VISUAL_GUIDANCE_IAS",
+                    Value = vgData.IndicatedAirspeedKnots,
                     Description = ""
                 });
 

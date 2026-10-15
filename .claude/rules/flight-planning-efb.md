@@ -36,3 +36,6 @@ Mirrored from taxi-augmentation.md (it governs `FlightPlan.CopyFrom`; change it 
 
 Mirrored from route-briefing.md (it governs the aircraft class `ElectronicFlightBagForm.BuildTaxiRoutesBlockAsync` hands the briefing; change it there and here together):
 - [BRF-7] The briefing's aircraft class comes from the SimBrief OFP ALONE (`AircraftSizeClass.Resolve` in `ElectronicFlightBagForm.BuildTaxiRoutesBlockAsync`), never the loaded aircraft or the sim's `WING SPAN`; navdata taxiway widths stay advisory notes (`TaxiBriefingPlanner.NarrowTaxiways`), never a routing constraint. Full: docs/invariants/route-briefing.md#brf-7
+
+Mirrored from waypoint-flight-director.md (it governs the EFB's Track Slot handler; change it there and here together):
+- [WFD-13] The EFB "Track Slot N" handler REJECTS a position-less fix (0,0), which would steer the FD at null island, unless `WaypointConstraintMapper.FromFix` gives it BOTH a course and a terminating altitude: a CA/FA/VA to-altitude leg is flown as a course hold ended by altitude (`ProcessToAltitudeLeg`). Full: docs/invariants/waypoint-flight-director.md#wfd-13
