@@ -84,8 +84,8 @@ public partial class CowsDA40Definition
         XlsFail(v, "DA40_XLS_FAIL_CHT_BAFFLE", "FAILURES_CHT_BAFFLE", "Cooling Baffle");
         XlsFail(v, "DA40_XLS_FAIL_PROP_PUMP", "FAILURES_PROP_PUMP",
             "Propeller Governor Pump");
-        XlsFail(v, "DA40_XLS_FAIL_ALT_OVERVOLT", "FAILURES_ALT_OVERVOLT",
-            "Alternator Overvoltage");
+        // No Alternator Overvoltage row: FAILURES_ALT_OVERVOLT is read, but both branches of
+        // the regulator set the same 28.4 V, so it does nothing (CowsDA40FailureCoverageTests).
 
         // ---------- Fuel ----------
         XlsFail(v, "DA40_XLS_FAIL_FUEL_PUMP", "FAILURES_FUEL_PUMP", "Electric Fuel Pump");
@@ -188,8 +188,7 @@ public partial class CowsDA40Definition
             "DA40_XLS_FAIL_MIX_LEVER",
             "DA40_XLS_FAIL_OIL", "DA40_XLS_FAIL_BYPASS",
             "DA40_XLS_FAIL_THERMOSTAT", "DA40_XLS_FAIL_CHT_BAFFLE",
-            "DA40_XLS_FAIL_PROP_PUMP",
-            "DA40_XLS_FAIL_ALT_OVERVOLT"
+            "DA40_XLS_FAIL_PROP_PUMP"
         });
         return l;
     }

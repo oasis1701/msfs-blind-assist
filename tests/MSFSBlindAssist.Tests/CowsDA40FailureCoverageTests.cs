@@ -44,6 +44,11 @@ public class CowsDA40FailureCoverageTests
         ["FAILURES_BLOCK"] = "inert on the XLS since COWS 1.2.0 removed block damage",
         ["FAILURES_VACC_LEAK"] = "inert on the XLS",
         ["FAILURES_FUEL_LEAK"] = "inert on the XLS (the per-tank leaks are the live ones)",
+        // ⚠️ READ, AND STILL INERT: the electrical logic does read it, but both of its
+        // branches set ELEC_ALT_VOLT_TARGET to the same 28.4 V, so NoFailureRowIsInert's
+        // read count passes it. Injected in flight at VCBI (2026-10-15): the bus held 28.3 V
+        // and nothing changed. A row would announce a failure the aeroplane does not have.
+        ["FAILURES_ALT_OVERVOLT"] = "inert on the XLS: COWS 1.2.0 regulates to 28.4 V with it set or not",
     };
 
     private static readonly Regex PickBlock = new(@"\(L:FAILURES_RNG\)\s+(\d+)\s+==");
