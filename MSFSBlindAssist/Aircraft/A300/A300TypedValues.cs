@@ -152,11 +152,12 @@ public static class A300TypedValues
             : null;
 
     /// <summary>
-    /// The refusal of an altitude, vertical speed or decision height a thousands separator could have made, for a path
-    /// that has only the number: the separator first, then the range, which on its own holds what was typed. A panel's box
-    /// hands "12,000" over as 12, so callers use it for the values such an entry gives inside the range (an altitude of
-    /// 1 to 49, a vertical speed of 1 to 6 either way, a decision height of 1 to 9), and "12 000" as NaN, so
-    /// <see cref="NotANumberError"/> uses it for a value that is no number.
+    /// The refusal of an altitude, vertical speed, decision height or landing elevation a thousands separator could have
+    /// made, for a path that has only the number: the separator first, then the range, which on its own holds what was
+    /// typed. A panel's box hands "12,000" over as 12, so callers use it for the values such an entry gives inside the
+    /// range (an altitude of 1 to 49, a vertical speed of 1 to 6 either way, a decision height of 1 to 9), and "12 000" as
+    /// NaN, so <see cref="NotANumberError"/> uses it for a value that is no number, the landing elevation's included (its
+    /// "5,450" arrives as the fraction 5.45, which <see cref="WholeNumberError"/> refuses alone).
     /// </summary>
     private static string SeparatorThen(string range) => $"{WholeNumberError}; {range}";
 

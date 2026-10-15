@@ -257,16 +257,19 @@ public partial class IniA300Definition
                 return true;
 
             // D and Shift+D: the aircraft's own VNAV distances (A300RouteDistances; the stock GPS flight plan stays empty on this
-            // aircraft), read fresh together with the ground speed (the base variable, knots) that the time is worked out at.
+            // aircraft), the only values read fresh, together. The time is worked out at the ground speed (the base variable,
+            // knots) from the cache when the key speaks: it rides the 1 Hz batch, so a fresh read would hold the distance up to
+            // a second, and a speed that did not answer would say "unavailable" over a distance that was read. An unread speed
+            // is 0, which leaves the time out (FormatEtaFromDistance) and still says the miles.
             case HotkeyAction.ReadDistanceToDest:
                 _ = SpeakAsync(sim, announcer, "Distance to destination",
-                    v => A300RouteDistances.Destination(v[0], v[1]),
-                    A300RouteDistances.DestinationKey, "GROUND_VELOCITY");
+                    v => A300RouteDistances.Destination(v[0], Cached(sim, "GROUND_VELOCITY") ?? 0),
+                    A300RouteDistances.DestinationKey);
                 return true;
             case HotkeyAction.ReadDistanceToTOD:
                 _ = SpeakAsync(sim, announcer, "Top of descent",
-                    v => A300RouteDistances.TopOfDescent(v[0], v[1], v[2]),
-                    A300RouteDistances.DestinationKey, A300RouteDistances.TopOfDescentKey, "GROUND_VELOCITY");
+                    v => A300RouteDistances.TopOfDescent(v[0], v[1], Cached(sim, "GROUND_VELOCITY") ?? 0),
+                    A300RouteDistances.DestinationKey, A300RouteDistances.TopOfDescentKey);
                 return true;
         }
         return false;

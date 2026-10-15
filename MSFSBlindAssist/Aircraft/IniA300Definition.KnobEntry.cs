@@ -32,7 +32,8 @@ public partial class IniA300Definition
     /// (<see cref="A300TypedValues.KnobTarget"/>), or the knob turned to it. A round reads the knob fresh, then: within
     /// half a click of the value, it is confirmed (<see cref="A300SteppedKnob.Phrase"/>, a numeric confirmation,
     /// [CORE-7]); not moved since the last round (unpowered, at a limit), or after <see cref="KnobRounds"/> rounds of
-    /// clicks, it says where the knob stopped; otherwise the clicks to the value go out one string at a time,
+    /// clicks, it says where the knob stopped; otherwise the clicks to the value (never more than the knob's whole travel,
+    /// whatever the read says: <see cref="A300SteppedKnobs.ClicksFor"/>) go out one string at a time,
     /// <see cref="KnobSendSpacingMs"/> apart, and after <see cref="KnobSettleMs"/> the next round reads it again. A read
     /// that does not answer says the box is unavailable. A newer entry for the same knob, or the definition going away,
     /// ends a run with nothing more sent or said; a refused entry starts nothing and ends nothing. The awaits resume on
@@ -84,7 +85,7 @@ public partial class IniA300Definition
                     return;
                 }
                 last = now;
-                int clicks = A300SteppedKnobs.ClicksFor(now, goal, knob.Step);
+                int clicks = A300SteppedKnobs.ClicksFor(now, goal, knob.Step, knob.MaxClicks);
                 var sends = A300SteppedKnobs.Sends(control, clicks, knob.ClicksPerSend);
                 for (int i = 0; i < sends.Count; i++)
                 {

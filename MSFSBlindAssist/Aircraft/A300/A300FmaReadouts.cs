@@ -14,8 +14,9 @@ public static class A300FmaReadouts
 {
     /// <summary>
     /// The armed words on the lateral axis: the ones <see cref="A300Fma"/> decodes from
-    /// <c>INI_ROLL_MODE_ARM</c>. Every other armed word is vertical. A300FmaReadoutsTests reads every value of
-    /// every armed slot through the decoder, so a word the decoder gains fails there until it is placed.
+    /// <c>INI_ROLL_MODE_ARM</c>. Every other armed word is vertical, so a vertical word the decoder gains needs nothing
+    /// here. A300FmaReadoutsTests reads every value of every armed slot through the decoder, so a lateral word the decoder
+    /// gains fails there until it is added here.
     /// </summary>
     private static readonly HashSet<string> LateralArmed = new(StringComparer.Ordinal)
     {

@@ -65,11 +65,20 @@ public class A300RouteDistancesTests
         double groundSpeed) =>
         Assert.Equal("Top of descent not available", A300RouteDistances.TopOfDescent(destinationNm, toTopOfDescentNm, groundSpeed));
 
+    /// <summary>Why Shift+D reads INI_TD_DIST_TOTAL: said by the assertions that pin it, so a later "fix" to the variable that
+    /// looks like the right one fails with the reason.</summary>
+    internal const string TopOfDescentTrap =
+        "Shift+D must read INI_TD_DIST_TOTAL, the distance from the aircraft to the top of descent, and NOT INI_TD_DIST. " +
+        "INI_TD_DIST looks like that distance but is a figure within a leg (measured in one flight on 2026-10-14: 97.7, then " +
+        "13.2, then 1.2, while INI_TD_DIST_TOTAL fell 443, 239, 118 and went to -81.2 past the top of descent).";
+
     [Fact]
     public void The_variables_are_the_aircrafts_own_vnav_distances()
     {
         Assert.Equal(("A300_RO_DIST_DEST", "FG_VNAV_DIST_DEST"), (A300RouteDistances.DestinationKey, A300RouteDistances.DestinationVar));
-        Assert.Equal(("A300_RO_DIST_TD", "INI_TD_DIST_TOTAL"), (A300RouteDistances.TopOfDescentKey, A300RouteDistances.TopOfDescentVar));
+        Assert.Equal("A300_RO_DIST_TD", A300RouteDistances.TopOfDescentKey);
+        Assert.True(A300RouteDistances.TopOfDescentVar == "INI_TD_DIST_TOTAL",
+            $"Shift+D's key is set to read {A300RouteDistances.TopOfDescentVar}. {TopOfDescentTrap}");
     }
 
     [Theory]

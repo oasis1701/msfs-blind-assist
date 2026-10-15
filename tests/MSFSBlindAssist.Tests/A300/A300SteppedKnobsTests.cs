@@ -29,7 +29,43 @@ public class A300SteppedKnobsTests
     [InlineData(475, 450, 50, -1)]     // half a click: away from zero
     [InlineData(13, 450, 50, 9)]       // a value between clicks (463 is the nearest the knob reaches)
     public void Clicks_are_the_signed_steps_to_the_nearest_click(double current, double target, double step, int clicks) =>
-        Assert.Equal(clicks, A300SteppedKnobs.ClicksFor(current, target, step));
+        Assert.Equal(clicks, A300SteppedKnobs.ClicksFor(current, target, step, 1000));
+
+    [Theory]
+    [InlineData(0, 1e12, 1, 72, 72)]                                    // a reading far below the value: the whole travel up
+    [InlineData(1e12, 45, 1, 72, -72)]                                  // far above it: the whole travel down
+    [InlineData(-1e12, 5450, 50, 320, 320)]
+    [InlineData(1e12, 5450, 50, 320, -320)]
+    [InlineData(double.NegativeInfinity, 45, 1, 72, 72)]
+    [InlineData(double.PositiveInfinity, 5450, 50, 320, -320)]
+    [InlineData(double.MaxValue, -double.MaxValue, 1, 72, -72)]         // the difference itself overflows
+    [InlineData(450, 5450, 50, 100, 100)]                               // a distance inside the bound is left alone
+    [InlineData(450, 5450, 50, 99, 99)]                                 // at the bound it is the bound
+    public void A_round_never_turns_the_knob_further_than_its_travel(double current, double target, double step, int max,
+        int clicks) =>
+        Assert.Equal(clicks, A300SteppedKnobs.ClicksFor(current, target, step, max));
+
+    [Fact]
+    public void A_knobs_travel_is_the_distance_between_the_ends_of_its_typed_range()
+    {
+        // From one end of the range to the other is the most a round ever needs. Tied to the typed range itself, so a range
+        // that grows cannot leave a knob that stops a round short of its end.
+        foreach (var (knob, low, high) in new[]
+                 {
+                     (A300SteppedKnobs.Flex, 0.0, 72.0),
+                     (A300SteppedKnobs.LandingElevation, -2000.0, 14000.0),
+                 })
+        {
+            double lowest = A300TypedValues.KnobTarget(knob.TypedKey, low).Target!.Value;
+            double highest = A300TypedValues.KnobTarget(knob.TypedKey, high).Target!.Value;
+            Assert.Null(A300TypedValues.KnobTarget(knob.TypedKey, low - knob.Step).Target);    // one click beyond either end
+            Assert.Null(A300TypedValues.KnobTarget(knob.TypedKey, high + knob.Step).Target);   // is refused
+            Assert.Equal(knob.MaxClicks, A300SteppedKnobs.ClicksFor(lowest, highest, knob.Step, int.MaxValue));
+            Assert.Equal(knob.MaxClicks, A300SteppedKnobs.ClicksFor(lowest, highest, knob.Step, knob.MaxClicks));
+            Assert.Equal(-knob.MaxClicks, A300SteppedKnobs.ClicksFor(highest, lowest, knob.Step, knob.MaxClicks));
+        }
+        Assert.Equal((72, 320), (A300SteppedKnobs.Flex.MaxClicks, A300SteppedKnobs.LandingElevation.MaxClicks));
+    }
 
     [Fact]
     public void A_flex_click_is_a_send_of_its_own() =>
@@ -55,11 +91,12 @@ public class A300SteppedKnobsTests
     public void Each_knob_turns_its_map_encoder_and_reads_back_the_status_line_beside_its_box()
     {
         var flex = A300SteppedKnobs.Flex;
-        Assert.Equal((A300TypedValues.FlexTemperatureKey, A300Trp.FlexKnobKey, A300Readouts.FlexTemperatureKey, 1.0, 1),
-            (flex.TypedKey, flex.ControlKey, flex.ReadoutKey, flex.Step, flex.ClicksPerSend));
+        Assert.Equal((A300TypedValues.FlexTemperatureKey, A300Trp.FlexKnobKey, A300Readouts.FlexTemperatureKey, 1.0, 1, 72),
+            (flex.TypedKey, flex.ControlKey, flex.ReadoutKey, flex.Step, flex.ClicksPerSend, flex.MaxClicks));
         var elevation = A300SteppedKnobs.LandingElevation;
-        Assert.Equal((A300TypedValues.LandingElevationKey, "A300_LANDING_ELEV_SET", "A300_RO_LANDING_ELEV", 50.0, 5),
-            (elevation.TypedKey, elevation.ControlKey, elevation.ReadoutKey, elevation.Step, elevation.ClicksPerSend));
+        Assert.Equal((A300TypedValues.LandingElevationKey, "A300_LANDING_ELEV_SET", "A300_RO_LANDING_ELEV", 50.0, 5, 320),
+            (elevation.TypedKey, elevation.ControlKey, elevation.ReadoutKey, elevation.Step, elevation.ClicksPerSend,
+                elevation.MaxClicks));
         foreach (var knob in new[] { flex, elevation })
         {
             Assert.Equal(A300Kinds.Encoder, Control(knob).Kind);

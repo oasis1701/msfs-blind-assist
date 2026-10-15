@@ -8,9 +8,10 @@ using MSFSBlindAssist.SimConnect;
 namespace MSFSBlindAssist.Tests.A300;
 
 /// <summary>
-/// D and Shift+D in output mode: each reads the A300's own VNAV distances fresh, together with the ground speed, and says the
-/// route distance to the destination, or to the top of descent. The words are A300RouteDistancesTests'; this pins the wiring:
-/// which variables each key asks for, that they are registered on request only, and what a read that does not answer says.
+/// D and Shift+D in output mode: each reads the A300's own VNAV distances fresh, together, and says the route distance to the
+/// destination, or to the top of descent, with the time at the ground speed the cache holds. The words are
+/// A300RouteDistancesTests'; this pins the wiring: which variables each key asks for fresh, where the ground speed comes
+/// from, that the reads are registered on request only, and what a read that does not answer says.
 /// </summary>
 public class IniA300RouteDistanceKeysTests
 {
@@ -19,7 +20,8 @@ public class IniA300RouteDistanceKeysTests
     private readonly IniA300Definition _def;
     private readonly SpeechCapture _speech = new();
     private readonly SimConnectManager _sim = new(IntPtr.Zero);   // never connected
-    private readonly Dictionary<string, double> _fresh = new();
+    private readonly Dictionary<string, double> _fresh = new();   // what a fresh read answers
+    private readonly Dictionary<string, double> _cache = new();   // what the 1 Hz cache holds
     private readonly List<string> _asked = new();
 
     public IniA300RouteDistanceKeysTests()
@@ -32,16 +34,18 @@ public class IniA300RouteDistanceKeysTests
                 _asked.Add(key);
                 return Task.FromResult(_fresh.TryGetValue(key, out var v) ? v : (double?)null);
             },
+            Cached = (_, key) => _cache.TryGetValue(key, out var v) ? v : null,
         };
         _def.Attach(_sim);
     }
 
-    /// <summary>The route as the sim reports it in cruise (measured 2026-10-14): 541 miles to go, 443.3 to the top of descent.</summary>
+    /// <summary>The route as the sim reports it in cruise (measured 2026-10-14): 541 miles to go, 443.3 to the top of
+    /// descent, at a ground speed of 423 knots (the cache's: the batch carries it).</summary>
     private void Cruise()
     {
         _fresh[A300RouteDistances.DestinationKey] = 541;
         _fresh[A300RouteDistances.TopOfDescentKey] = 443.3;
-        _fresh[GroundSpeedKey] = 423;
+        _cache[GroundSpeedKey] = 423;
     }
 
     private string[] Press(HotkeyAction action)
@@ -67,13 +71,46 @@ public class IniA300RouteDistanceKeysTests
     }
 
     [Fact]
-    public void Each_key_reads_its_variables_fresh_together_with_the_ground_speed()
+    public void Each_key_reads_only_the_route_l_vars_fresh_together_and_never_asks_for_the_ground_speed()
     {
+        // The ground speed rides the 1 Hz batch: a fresh read of it would hold the distance up to a second, and a speed that
+        // did not answer would say "unavailable" over a distance that was read.
         Cruise();
         Press(HotkeyAction.ReadDistanceToDest);
-        Assert.Equal(new[] { A300RouteDistances.DestinationKey, GroundSpeedKey }, _asked);
+        Assert.Equal(new[] { A300RouteDistances.DestinationKey }, _asked);
         Press(HotkeyAction.ReadDistanceToTOD);
-        Assert.Equal(new[] { A300RouteDistances.DestinationKey, A300RouteDistances.TopOfDescentKey, GroundSpeedKey }, _asked);
+        Assert.Equal(new[] { A300RouteDistances.DestinationKey, A300RouteDistances.TopOfDescentKey }, _asked);
+    }
+
+    [Fact]
+    public void The_time_is_worked_out_at_the_cached_ground_speed()
+    {
+        Cruise();
+        _cache[GroundSpeedKey] = 250;     // not the 423 knots of the cruise
+        _fresh[GroundSpeedKey] = 999;     // a fresh read of it would answer this: it is never asked for
+        Assert.Equal(new[] { "541 miles to destination: 02:09:50" }, Press(HotkeyAction.ReadDistanceToDest));
+        Assert.DoesNotContain(GroundSpeedKey, _asked);
+        Assert.Equal(new[] { "443 miles to top of descent: 01:46:24" }, Press(HotkeyAction.ReadDistanceToTOD));
+        Assert.DoesNotContain(GroundSpeedKey, _asked);
+    }
+
+    [Fact]
+    public void The_ground_speed_the_time_uses_rides_the_batch_so_the_cache_holds_it()
+    {
+        // The base variable, in knots: the A300 carries it once a second for the ground speed call-outs and its status boxes.
+        var speed = _def.GetVariables()[GroundSpeedKey];
+        Assert.Equal(("GROUND VELOCITY", "knots"), (speed.Name, speed.Units));
+        Assert.True(ContinuousBatchLayout.RidesBatch(speed));
+    }
+
+    [Fact]
+    public void An_unread_ground_speed_speaks_the_miles_without_a_time()
+    {
+        // Nothing cached yet (just connected, or the batch has not delivered): the distance was read, so it is said.
+        Cruise();
+        _cache.Remove(GroundSpeedKey);
+        Assert.Equal(new[] { "541 miles to destination" }, Press(HotkeyAction.ReadDistanceToDest));
+        Assert.Equal(new[] { "443 miles to top of descent" }, Press(HotkeyAction.ReadDistanceToTOD));
     }
 
     [Fact]
@@ -81,7 +118,7 @@ public class IniA300RouteDistanceKeysTests
     {
         _fresh[A300RouteDistances.DestinationKey] = 24.6;
         _fresh[A300RouteDistances.TopOfDescentKey] = -81.2;
-        _fresh[GroundSpeedKey] = 250;
+        _cache[GroundSpeedKey] = 250;
         Assert.Equal(new[] { "Past top of descent" }, Press(HotkeyAction.ReadDistanceToTOD));
         Assert.Equal(new[] { "25 miles to destination: 00:05:54" }, Press(HotkeyAction.ReadDistanceToDest));
     }
@@ -102,7 +139,7 @@ public class IniA300RouteDistanceKeysTests
     {
         _fresh[A300RouteDistances.DestinationKey] = 0;
         _fresh[A300RouteDistances.TopOfDescentKey] = 0;
-        _fresh[GroundSpeedKey] = groundSpeed;
+        _cache[GroundSpeedKey] = groundSpeed;
         Assert.Equal(new[] { "Distance to destination not available" }, Press(HotkeyAction.ReadDistanceToDest));
         Assert.Equal(new[] { "Top of descent not available" }, Press(HotkeyAction.ReadDistanceToTOD));
     }
@@ -119,11 +156,6 @@ public class IniA300RouteDistanceKeysTests
         _fresh.Remove(A300RouteDistances.TopOfDescentKey);
         Assert.Equal(new[] { "Top of descent unavailable" }, Press(HotkeyAction.ReadDistanceToTOD));
         Assert.Equal(new[] { "541 miles to destination: 01:16:44" }, Press(HotkeyAction.ReadDistanceToDest));   // D does not ask for it
-
-        Cruise();
-        _fresh.Remove(GroundSpeedKey);
-        Assert.Equal(new[] { "Distance to destination unavailable" }, Press(HotkeyAction.ReadDistanceToDest));
-        Assert.Equal(new[] { "Top of descent unavailable" }, Press(HotkeyAction.ReadDistanceToTOD));
     }
 
     [Theory]
@@ -147,6 +179,8 @@ public class IniA300RouteDistanceKeysTests
         var topOfDescent = vars[A300RouteDistances.TopOfDescentKey];
         Assert.Equal(("FG_VNAV_DIST_DEST", SimVarType.LVar, "number", UpdateFrequency.OnRequest, false),
             (destination.Name, destination.Type, destination.Units, destination.UpdateFrequency, destination.IsAnnounced));
+        Assert.True(topOfDescent.Name == "INI_TD_DIST_TOTAL",
+            $"Shift+D's key is registered to read {topOfDescent.Name}. {A300RouteDistancesTests.TopOfDescentTrap}");
         Assert.Equal(("INI_TD_DIST_TOTAL", SimVarType.LVar, "number", UpdateFrequency.OnRequest, false),
             (topOfDescent.Name, topOfDescent.Type, topOfDescent.Units, topOfDescent.UpdateFrequency, topOfDescent.IsAnnounced));
 
@@ -181,6 +215,9 @@ public class IniA300RouteDistanceKeysTests
             _fresh[A300RouteDistances.DestinationKey] = 541.4;
             Assert.Equal(new[] { "541 miles to destination: 01:16:48" }, Press(HotkeyAction.ReadDistanceToDest));
             Assert.Equal(new[] { "443 miles to top of descent: 01:02:53" }, Press(HotkeyAction.ReadDistanceToTOD));
+            _cache.Remove(GroundSpeedKey);   // an unread ground speed: the miles alone
+            Assert.Equal(new[] { "541 miles to destination" }, Press(HotkeyAction.ReadDistanceToDest));
+            Assert.Equal(new[] { "443 miles to top of descent" }, Press(HotkeyAction.ReadDistanceToTOD));
             _fresh[A300RouteDistances.TopOfDescentKey] = -81.2;
             Assert.Equal(new[] { "Past top of descent" }, Press(HotkeyAction.ReadDistanceToTOD));
         }

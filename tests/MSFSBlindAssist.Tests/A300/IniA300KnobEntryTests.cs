@@ -20,6 +20,7 @@ public class IniA300KnobEntryTests
     private const string FlexDown = "-1 (>B:AIRLINER_FLEX_TEMP_Set)";
     private const string FlexUp = "1 (>B:AIRLINER_FLEX_TEMP_Set)";
     private const string ElevationUp = "1 (>B:AIRLINER_LANDING_ELEV_SET_Set)";
+    private const string ElevationDown = "-1 (>B:AIRLINER_LANDING_ELEV_SET_Set)";
 
     private readonly IniA300Definition _def;
     private readonly SpeechCapture _speech = new();
@@ -94,7 +95,7 @@ public class IniA300KnobEntryTests
     [Fact]
     public void A_knob_that_does_not_move_says_where_it_stopped_after_one_round()
     {
-        // Unpowered, or at a limit: a read that has not moved since the last round ends it, so nothing is sent for ever.
+        // Unpowered, or at a limit: a read that has not moved since the last round ends it, so nothing is sent forever.
         Reads(FlexReadout, 58, 58);
         Assert.True(Type(Flex, 45));
         Assert.Equal(Enumerable.Repeat(FlexDown, 13), _sent);
@@ -128,6 +129,46 @@ public class IniA300KnobEntryTests
         Assert.True(Type(Flex, 45));
         Assert.Equal(13 + 12 + 11 + 10, _sent.Count);
         Assert.Equal(new[] { "Flex temperature stopped at 54 degrees" }, _speech.All);
+    }
+
+    // A reading that is absurd (an unwritten or garbled status line) must not build a list of sends as long as the reading is,
+    // on the UI thread: above about 1e10 the click count saturates its cast and the send throws, logged and silent. A round
+    // sends the knob's whole travel at most, and the next read, which has not moved, says where the knob stopped.
+
+    [Fact]
+    public void A_flex_reading_far_above_the_range_turns_the_knob_down_no_further_than_its_travel()
+    {
+        Reads(FlexReadout, 1e12, 1e12);
+        Assert.True(Type(Flex, 45));
+        Assert.Equal(Enumerable.Repeat(FlexDown, 72), _sent);
+        Assert.Equal(new[] { "Flex temperature stopped at 1000000000000 degrees" }, _speech.All);
+    }
+
+    [Fact]
+    public void A_flex_reading_far_below_the_range_turns_the_knob_up_no_further_than_its_travel()
+    {
+        Reads(FlexReadout, -1e12, -1e12);
+        Assert.True(Type(Flex, 45));
+        Assert.Equal(Enumerable.Repeat(FlexUp, 72), _sent);
+        Assert.Equal(new[] { "Flex temperature stopped at -1000000000000 degrees" }, _speech.All);
+    }
+
+    [Fact]
+    public void A_landing_elevation_reading_far_above_the_range_turns_the_knob_down_no_further_than_its_travel()
+    {
+        Reads(ElevationReadout, 1e12, 1e12);
+        Assert.True(Type(Elevation, 5450));
+        Assert.Equal(Enumerable.Repeat(Clicks(ElevationDown, 5), 64), _sent);   // 320 clicks, five to a send
+        Assert.Equal(new[] { "Landing elevation stopped at 1000000000000 feet" }, _speech.All);
+    }
+
+    [Fact]
+    public void A_landing_elevation_reading_far_below_the_range_turns_the_knob_up_no_further_than_its_travel()
+    {
+        Reads(ElevationReadout, -1e12, -1e12);
+        Assert.True(Type(Elevation, 5450));
+        Assert.Equal(Enumerable.Repeat(Clicks(ElevationUp, 5), 64), _sent);
+        Assert.Equal(new[] { "Landing elevation stopped at -1000000000000 feet" }, _speech.All);
     }
 
     [Fact]
