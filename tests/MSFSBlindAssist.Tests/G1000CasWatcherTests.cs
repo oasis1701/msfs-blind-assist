@@ -70,8 +70,15 @@ public class G1000CasWatcherTests
     public void A_message_that_clears_on_a_lit_screen_is_still_said()
     {
         var (watcher, said) = Armed();
+        var now = new DateTime(2026, 10, 18, 12, 0, 0, DateTimeKind.Utc);
+        watcher.Now = () => now;
 
         watcher.ProcessRows(Powered("WARNING: LOW VOLTS", "WARNING: OIL PRESSURE"));
+        watcher.ProcessRows(Powered("WARNING: LOW VOLTS"));
+        // Gone, but not yet for the clear hold (DA40G-32): a flicker would be back by now.
+        Assert.Empty(said.All);
+
+        now = now.AddMilliseconds(G1000CasWatcher.CasClearDebounce.ClearSettleMs);
         watcher.ProcessRows(Powered("WARNING: LOW VOLTS"));
 
         Assert.Equal(new[] { "OIL PRESSURE cleared" }, said.All);
