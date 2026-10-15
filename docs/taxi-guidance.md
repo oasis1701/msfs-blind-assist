@@ -3024,12 +3024,19 @@ Before touchdown (during cruise or descent), the pilot picks a runway-exit taxiw
   bounce stops the cue silently until the next touchdown and keeps a held sentence. A database
   switch disarms it and says "Rollout centerline tone off" ("Manual landing assist off" for
   the checkbox arming); closing Database Settings with nothing changed is not a switch
-  ([EXIT-11]), so the arming and the exit plan survive it.
+  ([EXIT-11]), so the arming and the exit plan survive it. An arming change made outside the
+  destination dialog that takes the manual landing assist's flare tones away or brings them
+  back is spoken ([ROL-34]): "Manual landing assist off" when an exit plan for another airport,
+  set after the checkbox, wins as the latest choice, and "Manual landing assist armed for KSEA
+  runway 16R" when clearing that plan brings them back.
 - **Sharing the tone** ([ROL-32]): exit guidance's `Centerline` mode yields the runway to the
   cue; the cue mutes while exit guidance owns the tone for the exit itself
   (`ExitGuidanceOwnsRolloutTone`) and comes back after a downfield retarget; until exit
   guidance's first tone frame after entry or a retarget the cue keeps the tone
-  (`RolloutExitGate.ToneModeAtRolloutEntry`). During a landing
+  (`RolloutExitGate.ToneModeAtRolloutEntry`). Visual guidance, still on for up to a second
+  after touchdown because it switches itself off on the 1 Hz `SIM_ON_GROUND` edge, holds the
+  tone and "Rollout guidance" the same way ([ROL-33]): the cue starts after "Visual guidance
+  off". During a landing
   rollout only a stop (silently) or exit guidance's takeover ends it, so the old 55 kt
   handover, and the 55-50 kt silence and heading-only cue it left, are gone for the manual
   landing assist too. With no landing rollout it ends below 40 kt or once laterally clear of
@@ -3038,7 +3045,8 @@ Before touchdown (during cruise or descent), the pilot picks a runway-exit taxiw
 - **Diagnostics.** `landing_assist.log`: a header per rollout engagement
   (`=== Rollout icao=… rwy=… armed=… flare=… exitPlan=… exitGuidanceHere=… ===`), then
   `lat,lon,gsKt,hdgOffRwyDeg,crossTrackFt,crabDeg,steerDeg,pan,sounding,owner` at most every
-  100 ms while moving, and on every change of sounding or owner; an event line says why the cue
+  100 ms while moving, and on every change of sounding or owner (`cue`, `exit` or `vg`); an
+  event line says why the cue
   ended (`=== Rollout end: stopped gs=… ===`, taxi guidance took over, below 40 kt, clear of the
   runway, airborne again), why a touchdown did not engage it (`=== Touchdown not engaged: … ===`),
   and what became of a held "Rollout guidance" (`=== Rollout guidance spoken gs=… ===` or

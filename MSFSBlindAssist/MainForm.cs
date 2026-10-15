@@ -1207,7 +1207,9 @@ public partial class MainForm : Form
     /// Re-decides the landing assist's arming from the destination choice, the exit plan and the setting
     /// (RolloutCueArming.Decide) and applies it only when it changed, because arming stops a cue in progress;
     /// <paramref name="force"/> re-applies a destination the pilot just chose even when unchanged, as the
-    /// destination dialog always did.
+    /// destination dialog always did, and leaves the speaking to the dialog. Any other change that takes the
+    /// checkbox's flare tones away or brings them back says so (RolloutCueArming.ManualLandingChange), queued
+    /// behind the planner's own "Landing exit planned" or "Landing exit plan cleared".
     /// </summary>
     private void RefreshRolloutCueArming(bool force = false)
     {
@@ -1219,6 +1221,7 @@ public partial class MainForm : Form
             SettingsManager.Current.RolloutCenterlineToneEnabled, _rolloutCueDestination, plan, _rolloutCueLatest);
         if (!force && MSFSBlindAssist.Navigation.RolloutCueArming.SameArming(decision, _rolloutCueApplied)) return;
 
+        var before = _rolloutCueApplied;
         var airport = decision == null ? null
             : decision.Source == MSFSBlindAssist.Navigation.RolloutCueSource.Destination && _rolloutCueDestinationAirport != null
                 ? _rolloutCueDestinationAirport
@@ -1229,11 +1232,19 @@ public partial class MainForm : Form
                 Log.Warn("LandingFlareAssist", $"Rollout cue not armed: airport {decision.Icao} not found in the database");
             _rolloutCueApplied = null;
             flareAssistManager.Disarm();
-            return;
+        }
+        else
+        {
+            _rolloutCueApplied = decision;
+            flareAssistManager.Arm(decision.Runway, airport, decision.Runways, decision.IncludeFlare);
         }
 
-        _rolloutCueApplied = decision;
-        flareAssistManager.Arm(decision.Runway, airport, decision.Runways, decision.IncludeFlare);
+        if (!force)
+        {
+            string? change = MSFSBlindAssist.Navigation.RolloutCueArming.ManualLandingChange(before, _rolloutCueApplied);
+            if (change != null)
+                announcer.Announce(change);
+        }
     }
 
     // The flare assist only wants its SIM_FRAME feed while it is armed and on approach —

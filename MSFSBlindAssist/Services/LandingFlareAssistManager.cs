@@ -42,7 +42,9 @@ namespace MSFSBlindAssist.Services;
 ///    runway (exit guidance's Centerline mode, which pauses its own tone) and stays
 ///    engaged at volume 0 while exit guidance owns the tone for the exit itself
 ///    (ExitGuidanceOwnsRolloutTone), so the two never sound together and the cue
-///    comes back when exit guidance retargets downfield.
+///    comes back when exit guidance retargets downfield. Visual guidance, still on
+///    for up to a second after touchdown, holds the tone and the "Rollout guidance"
+///    sentence the same way until it switches itself off (DecideRolloutToneOwner).
 ///  • HANDOFF: during a landing rollout in taxi guidance the tone stops only at a
 ///    stop (silently) or by the takeover below; with none running it stops below
 ///    taxi-ish speed or once laterally clear of the runway — "Rollout guidance
@@ -86,8 +88,10 @@ public class LandingFlareAssistManager : IDisposable
     // Per-aircraft datum→gear height correction (VisualGuidanceProfile.FlareAltitudeBiasFt).
     private readonly Func<double> getFlareAglBiasFt;
     // True while visual guidance's dual tones are running — if so, VG owns the approach
-    // audio and the flare phase stays silent (VG has its own flare cue); the rollout
-    // pan tone still runs because VG auto-deactivates at touchdown.
+    // audio and the flare phase stays silent (VG has its own flare cue). VG switches itself
+    // off on the touchdown edge of the 1 Hz SIM_ON_GROUND sample, up to a second after the
+    // rollout's first ground frame, so the rollout tone and its sentence wait for that too
+    // (DecideRolloutToneOwner, DecideRolloutGuidanceSpeech).
     private readonly Func<bool> isVisualGuidanceActive;
     // True while taxi guidance runs a landing rollout (an exit or the runway-end countdown). The rollout then
     // has no speed end (DecideRolloutEnd): it shares the tone with exit guidance by ownership instead.
@@ -160,7 +164,7 @@ public class LandingFlareAssistManager : IDisposable
     private DateTime lastTraceUtc = DateTime.MinValue;
     private bool traceLineWritten;
     private bool lastTraceSounding;
-    private bool lastTraceExitOwnsTone;
+    private RolloutToneOwner lastTraceOwner;
     // Ground speed of the last rollout frame, for the takeover's trace event (which has no frame of its own).
     private double lastRolloutGsKts;
     // A "Rollout guidance" sentence held at touchdown (RolloutGuidanceSpeech.Deferred), with whether it carries
@@ -615,8 +619,8 @@ public class LandingFlareAssistManager : IDisposable
         rolloutAnnounced = false;
         crossTrackRateInitialized = false;   // fresh differentiator per engagement
         // Visual guidance active = it owns the approach audio (its own flare cue included).
-        // Stay silent through the flare; the rollout pan tone still runs after touchdown
-        // because VG auto-deactivates on the touchdown edge.
+        // Stay silent through the flare; the rollout pan tone takes over after touchdown, once
+        // VG has switched itself off on the touchdown edge (DecideRolloutToneOwner).
         silentFlare = isVisualGuidanceActive();
 
         // Lined up with a different runway from the armed one (a runway change after arming)? The
@@ -749,12 +753,13 @@ public class LandingFlareAssistManager : IDisposable
 
         // Will exit guidance start at THIS touchdown and speak its own sentence, runway correction included?
         // Already running (the planner got there first), or predicted for a fresh plan for this airport. The
-        // flare mode's immediate sentence leaves the correction to the planner then. The rollout-only cue with
-        // a plan holds its sentence until the planner has had the touchdown (RolloutGuidanceSpeech.Deferred)
-        // and speaks it only if exit guidance did NOT start, so that sentence always carries the correction.
+        // flare mode's immediate sentence leaves the correction to the planner then. A held sentence
+        // (RolloutGuidanceSpeech.Deferred: the rollout-only cue with a plan, or visual guidance still on) waits
+        // until the planner has had the touchdown and visual guidance is off, and is spoken only if exit
+        // guidance did NOT start, so that sentence always carries the correction.
         bool exitGuidanceStartsHere = isLandingRollout()
             || (armedAirport != null && landingExitPlanStartsAt(armedAirport.ICAO));
-        var speech = DecideRolloutGuidanceSpeech(flareEnabled, hasLandingExitPlan());
+        var speech = DecideRolloutGuidanceSpeech(flareEnabled, hasLandingExitPlan(), isVisualGuidanceActive());
 
         // Confirm the runway on the ground: switch if the aircraft touched down on a different runway
         // from the active one, and say so once when that is not the armed runway.
@@ -817,10 +822,10 @@ public class LandingFlareAssistManager : IDisposable
     /// </summary>
     private void TraceRolloutFrame(MSFSBlindAssist.SimConnect.SimConnectManager.FlareAssistData d,
         double headingOffRunwayDeg, double crossTrackFeet, double crabDeg, double steerDeg,
-        bool sounding, bool exitOwnsTone)
+        bool sounding, RolloutToneOwner owner)
     {
         DateTime nowUtc = DateTime.UtcNow;
-        bool changed = !traceLineWritten || sounding != lastTraceSounding || exitOwnsTone != lastTraceExitOwnsTone;
+        bool changed = !traceLineWritten || sounding != lastTraceSounding || owner != lastTraceOwner;
         bool due = d.GroundSpeedKnots > TRACE_MOVING_MIN_GS_KTS
                    && (nowUtc - lastTraceUtc).TotalMilliseconds >= TRACE_MIN_INTERVAL_MS;
         if (!changed && !due) return;
@@ -828,11 +833,11 @@ public class LandingFlareAssistManager : IDisposable
         traceLineWritten = true;
         lastTraceUtc = nowUtc;
         lastTraceSounding = sounding;
-        lastTraceExitOwnsTone = exitOwnsTone;
+        lastTraceOwner = owner;
         try
         {
             _traceLog.Info(FormatTraceLine(d.Latitude, d.Longitude, d.GroundSpeedKnots, headingOffRunwayDeg,
-                crossTrackFeet, crabDeg, steerDeg, PanFor(steerDeg, SettingsManager.Current), sounding, exitOwnsTone));
+                crossTrackFeet, crabDeg, steerDeg, PanFor(steerDeg, SettingsManager.Current), sounding, owner));
         }
         catch { /* diagnostic only */ }
     }
@@ -858,26 +863,28 @@ public class LandingFlareAssistManager : IDisposable
             CROSSTRACK_INTERCEPT_DEADBAND_FEET, CROSSTRACK_INTERCEPT_DEG_PER_FOOT, CROSSTRACK_MAX_INTERCEPT_DEG);
 
         // > 0 = steer right. Pan in the steer direction (steer toward the tone), matching
-        // takeoff assist and the taxi steering tone; the same user settings apply. While exit guidance
-        // owns the tone (the exit itself), this one stays engaged at volume 0 and comes back when it yields.
+        // takeoff assist and the taxi steering tone; the same user settings apply. While visual guidance is
+        // still on after touchdown, or exit guidance owns the tone (the exit itself), this one stays engaged at
+        // volume 0 and comes back when the other lets go.
         double steerDeg = desiredCrabDeg - headingDiff;
         lastRolloutGsKts = d.GroundSpeedKnots;
-        bool exitOwns = exitGuidanceOwnsTone();
-        bool sounding = ApplyPan(steerDeg, muted: exitOwns);
-        TraceRolloutFrame(d, headingDiff, crossTrackFeet, desiredCrabDeg, steerDeg, sounding, exitOwns);
+        var owner = DecideRolloutToneOwner(isVisualGuidanceActive(), exitGuidanceOwnsTone());
+        bool sounding = ApplyPan(steerDeg, muted: owner != RolloutToneOwner.Cue);
+        TraceRolloutFrame(d, headingDiff, crossTrackFeet, desiredCrabDeg, steerDeg, sounding, owner);
         ServiceDeferredRolloutGuidance();
     }
 
     /// <summary>
-    /// Speaks or drops a held "Rollout guidance" sentence once the planner has had the touchdown
-    /// (<see cref="ResolveDeferredRolloutGuidance"/>). Spoken without interrupting, so a planner sentence still
-    /// being read ("Runway not identified…") finishes first.
+    /// Speaks or drops a held "Rollout guidance" sentence once the planner has had the touchdown and visual
+    /// guidance is off (<see cref="ResolveDeferredRolloutGuidance"/>). Spoken without interrupting, so a
+    /// sentence still being read ("Runway not identified…", "Visual guidance off") finishes first.
     /// </summary>
     private void ServiceDeferredRolloutGuidance()
     {
         if (deferredRolloutGuidance == null) return;
         var outcome = ResolveDeferredRolloutGuidance(clock.Elapsed.TotalSeconds - deferredRolloutGuidanceSinceSec,
-            exitGuidanceRunning: isLandingRollout() || isLandingExitTaxiSteering());
+            exitGuidanceRunning: isLandingRollout() || isLandingExitTaxiSteering(),
+            visualGuidanceActive: isVisualGuidanceActive());
         if (outcome == DeferredSpeech.Wait) return;
 
         if (outcome == DeferredSpeech.Speak)
@@ -900,7 +907,8 @@ public class LandingFlareAssistManager : IDisposable
     /// rollout's contract (its command IS a heading error, the quantity that setting describes).
     /// The flare passes its own band instead — see <see cref="LATERAL_DEADBAND_DEG"/>.
     /// </param>
-    /// <param name="muted">Exit guidance owns the tone this frame: volume 0 whatever the command.</param>
+    /// <param name="muted">Visual guidance or exit guidance holds the tone this frame (<see cref="DecideRolloutToneOwner"/>):
+    /// volume 0 whatever the command.</param>
     /// <returns>Whether the tone sounds this frame.</returns>
     private bool ApplyPan(double steerCommandDeg, double? silenceBelowDeg = null, bool muted = false)
     {
@@ -1049,25 +1057,55 @@ public class LandingFlareAssistManager : IDisposable
     internal static bool ArmsRolloutOnlyTouchdown(bool onGround, double gearAglFt)
         => !onGround && gearAglFt > ROLLOUT_ONLY_ARM_GEAR_AGL_FT;
 
+    /// <summary>Who holds the rollout's pan tone on a frame (<see cref="DecideRolloutToneOwner"/>).</summary>
+    internal enum RolloutToneOwner
+    {
+        /// <summary>This cue: it sounds.</summary>
+        Cue,
+        /// <summary>Exit guidance, for the exit itself ([ROL-32]): the cue is muted.</summary>
+        ExitGuidance,
+        /// <summary>Visual guidance, still on after touchdown: the cue is muted.</summary>
+        VisualGuidance,
+    }
+
+    /// <summary>
+    /// Who holds the rollout's pan tone on this frame. Visual guidance first, while it is still on: it switches
+    /// itself off only on the touchdown edge of the 1 Hz SIM_ON_GROUND sample, up to a second after this cue's
+    /// first ground frame, and until then its two tones keep tracking the centerline. Then exit guidance while
+    /// it owns the tone for the exit (RolloutExitGate.ExitGuidanceOwnsTone), and this cue everywhere else. The
+    /// cue sounds only while it holds the tone, so no two guidance tones play together. Pure —
+    /// <c>LandingFlareRolloutOnlyTests</c>.
+    /// </summary>
+    internal static RolloutToneOwner DecideRolloutToneOwner(bool visualGuidanceActive, bool exitGuidanceOwnsTone)
+        => visualGuidanceActive ? RolloutToneOwner.VisualGuidance
+           : exitGuidanceOwnsTone ? RolloutToneOwner.ExitGuidance
+           : RolloutToneOwner.Cue;
+
     /// <summary>How the "Rollout guidance" sentence is spoken at touchdown.</summary>
     internal enum RolloutGuidanceSpeech
     {
         /// <summary>At once, interrupting.</summary>
         Immediate,
-        /// <summary>Held until the planner has had the touchdown (<see cref="ResolveDeferredRolloutGuidance"/>).</summary>
+        /// <summary>Held until the planner has had the touchdown and visual guidance is off
+        /// (<see cref="ResolveDeferredRolloutGuidance"/>).</summary>
         Deferred,
     }
 
     /// <summary>
-    /// How the "Rollout guidance" sentence is spoken at touchdown. Flare mode, and the rollout-only cue with no
-    /// exit plan: at once, as the manual landing assist always did. The rollout-only cue with an exit plan:
-    /// deferred, because the planner hears the touchdown up to about a second later (the 1 Hz SIM_ON_GROUND
-    /// sample plus a position read) and may then speak — its touchdown sentence, which says guidance has
-    /// started, or "Runway not identified" for a plan made for another airport — and an immediate sentence of
-    /// ours would be cut off by it. Pure — <c>LandingFlareRolloutOnlyTests</c>.
+    /// How the "Rollout guidance" sentence is spoken at touchdown. With visual guidance off: flare mode, and the
+    /// rollout-only cue with no exit plan, at once, as the manual landing assist always did; the rollout-only cue
+    /// with an exit plan deferred, because the planner hears the touchdown up to about a second later (the 1 Hz
+    /// SIM_ON_GROUND sample plus a position read) and may then speak — its touchdown sentence, which says
+    /// guidance has started, or "Runway not identified" for a plan made for another airport — and an immediate
+    /// sentence of ours would be cut off by it. With visual guidance still on, deferred in every mode: it would
+    /// cut off visual guidance's "Touchdown", and it belongs after "Visual guidance off". Pure —
+    /// <c>LandingFlareRolloutOnlyTests</c>.
     /// </summary>
-    internal static RolloutGuidanceSpeech DecideRolloutGuidanceSpeech(bool flareEnabled, bool exitPlanExists)
-        => !flareEnabled && exitPlanExists ? RolloutGuidanceSpeech.Deferred : RolloutGuidanceSpeech.Immediate;
+    internal static RolloutGuidanceSpeech DecideRolloutGuidanceSpeech(bool flareEnabled, bool exitPlanExists,
+        bool visualGuidanceActive)
+        => visualGuidanceActive || (!flareEnabled && exitPlanExists)
+            ? RolloutGuidanceSpeech.Deferred
+            : RolloutGuidanceSpeech.Immediate;
 
     /// <summary>What happens to a deferred "Rollout guidance" sentence on this rollout frame.</summary>
     internal enum DeferredSpeech
@@ -1082,13 +1120,15 @@ public class LandingFlareAssistManager : IDisposable
 
     /// <summary>
     /// A deferred "Rollout guidance" sentence waits ROLLOUT_GUIDANCE_DEFER_SEC from the touchdown, longer than
-    /// the planner can take to hear it. Then it is dropped when exit guidance is running (the planner's
-    /// touchdown sentence said guidance had started), and spoken otherwise: a plan made for another airport, a
-    /// plan already used this session, or a touchdown the planner did not take (a slow light-aircraft
-    /// touchdown its own 40 kt check missed). Pure — <c>LandingFlareRolloutOnlyTests</c>.
+    /// the planner can take to hear it, and for as long as visual guidance is still on. Then it is dropped when
+    /// exit guidance is running (the planner's touchdown sentence said guidance had started), and spoken
+    /// otherwise: no plan, a plan made for another airport, a plan already used this session, or a touchdown
+    /// the planner did not take (a slow light-aircraft touchdown its own 40 kt check missed). Pure —
+    /// <c>LandingFlareRolloutOnlyTests</c>.
     /// </summary>
-    internal static DeferredSpeech ResolveDeferredRolloutGuidance(double secondsSinceTouchdown, bool exitGuidanceRunning)
-        => secondsSinceTouchdown < ROLLOUT_GUIDANCE_DEFER_SEC ? DeferredSpeech.Wait
+    internal static DeferredSpeech ResolveDeferredRolloutGuidance(double secondsSinceTouchdown, bool exitGuidanceRunning,
+        bool visualGuidanceActive)
+        => visualGuidanceActive || secondsSinceTouchdown < ROLLOUT_GUIDANCE_DEFER_SEC ? DeferredSpeech.Wait
            : exitGuidanceRunning ? DeferredSpeech.Drop
            : DeferredSpeech.Speak;
 
@@ -1105,14 +1145,21 @@ public class LandingFlareAssistManager : IDisposable
     /// <summary>
     /// One <c>landing_assist.log</c> trace line, in the invariant culture whatever the pilot's Windows
     /// culture: <c>lat,lon,gsKt,hdgOffRwyDeg,crossTrackFt,crabDeg,steerDeg,pan,sounding,owner</c>. Owner is
-    /// <c>exit</c> while exit guidance owns the tone (the cue is muted), <c>cue</c> otherwise. Pure —
-    /// <c>LandingFlareRolloutOnlyTests</c>.
+    /// <c>vg</c> while visual guidance is still on and <c>exit</c> while exit guidance owns the tone (the cue is
+    /// muted for both), <c>cue</c> otherwise. Pure — <c>LandingFlareRolloutOnlyTests</c>.
     /// </summary>
     internal static string FormatTraceLine(double lat, double lon, double groundSpeedKts, double headingOffRunwayDeg,
-        double crossTrackFeet, double crabDeg, double steerDeg, float pan, bool sounding, bool exitGuidanceOwnsTone)
+        double crossTrackFeet, double crabDeg, double steerDeg, float pan, bool sounding, RolloutToneOwner owner)
         => InvariantLogLine.Format(
             $"{lat:F6},{lon:F6},{groundSpeedKts:F1},{headingOffRunwayDeg:F2},{crossTrackFeet:F1},{crabDeg:F2}," +
-            $"{steerDeg:F2},{pan:F2},{(sounding ? 1 : 0)},{(exitGuidanceOwnsTone ? "exit" : "cue")}");
+            $"{steerDeg:F2},{pan:F2},{(sounding ? 1 : 0)},{TraceOwnerLabel(owner)}");
+
+    private static string TraceOwnerLabel(RolloutToneOwner owner) => owner switch
+    {
+        RolloutToneOwner.VisualGuidance => "vg",
+        RolloutToneOwner.ExitGuidance => "exit",
+        _ => "cue",
+    };
 
     /// <summary>
     /// One taxi-guidance state change, classified for the manual landing assist. Pure —

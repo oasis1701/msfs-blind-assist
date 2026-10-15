@@ -162,4 +162,40 @@ public class RolloutCueArmingTests
         Assert.False(RolloutCueArming.SameArming(baseline, Decision(Ksea16C(), "KSEA", false)));
         Assert.False(RolloutCueArming.SameArming(baseline, Decision(Kbfi14R(), "KBFI", false)));
     }
+
+    // ---- ManualLandingChange: a plan or setting change that moves the checkbox's flare tones is spoken ----
+
+    // An exit plan for another airport, set after the checkbox, wins as the latest choice and takes the flare
+    // tones away. In flare mode silence means "on profile", so losing them unheard is never acceptable.
+    [Fact]
+    public void ManualLandingChange_AnExitPlanElsewhereReplacingTheCheckbox_SaysOff()
+        => Assert.Equal("Manual landing assist off", RolloutCueArming.ManualLandingChange(
+            Decision(Ksea16R(), "KSEA", true),
+            Decision(Kbfi14R(), "KBFI", false, RolloutCueSource.ExitPlan)));
+
+    [Fact]
+    public void ManualLandingChange_TheCheckboxArmingDisarmed_SaysOff()
+        => Assert.Equal("Manual landing assist off",
+            RolloutCueArming.ManualLandingChange(Decision(Ksea16R(), "KSEA", true), null));
+
+    // Clearing that plan brings the checkbox's arming back, named with its runway so it is never a surprise.
+    [Fact]
+    public void ManualLandingChange_TheCheckboxArmingBack_SaysArmedWithItsRunway()
+        => Assert.Equal("Manual landing assist armed for KSEA runway 16R", RolloutCueArming.ManualLandingChange(
+            Decision(Kbfi14R(), "KBFI", false, RolloutCueSource.ExitPlan),
+            Decision(Ksea16R(), "KSEA", true)));
+
+    [Fact]
+    public void ManualLandingChange_NoChangeToTheFlareTones_SaysNothing()
+    {
+        Assert.Null(RolloutCueArming.ManualLandingChange(null, null));
+        Assert.Null(RolloutCueArming.ManualLandingChange(null, Decision(Ksea16R(), "KSEA", false)));
+        Assert.Null(RolloutCueArming.ManualLandingChange(Decision(Ksea16R(), "KSEA", false), null));
+        Assert.Null(RolloutCueArming.ManualLandingChange(
+            Decision(Ksea16R(), "KSEA", false),
+            Decision(Kbfi14R(), "KBFI", false, RolloutCueSource.ExitPlan)));
+        Assert.Null(RolloutCueArming.ManualLandingChange(
+            Decision(Ksea16R(), "KSEA", true),
+            Decision(Ksea16R(), "KSEA", true)));
+    }
 }

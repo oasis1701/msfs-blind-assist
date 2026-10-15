@@ -69,6 +69,24 @@ public static class RolloutCueArming
                && a.IncludeFlare == b.IncludeFlare;
     }
 
+    /// <summary>
+    /// What to say when an arming change the destination dialog did not make (a landing exit plan set or
+    /// cleared, or the setting switched) moves the manual landing assist's flare tones: "Manual landing assist
+    /// off" when they go, typically to an exit plan for another airport chosen after the checkbox, and "Manual
+    /// landing assist armed for {ICAO} runway {id}" when they come back; nothing otherwise. In flare mode
+    /// silence means "on profile", so a pilot who ticked the box must never lose the flare tones unheard, nor
+    /// get them back unannounced. The dialog speaks its own confirmation. Pure — <c>RolloutCueArmingTests</c>.
+    /// </summary>
+    public static string? ManualLandingChange(RolloutCueArmingDecision? before, RolloutCueArmingDecision? after)
+    {
+        bool had = before?.IncludeFlare == true;
+        bool has = after?.IncludeFlare == true;
+        if (had == has) return null;
+        return has
+            ? $"Manual landing assist armed for {after!.Icao} runway {after.Runway.RunwayID}"
+            : "Manual landing assist off";
+    }
+
     private static RolloutCueArmingDecision FromDestination(RolloutCueDestination d)
         => new(RolloutCueSource.Destination, d.Runway, d.Icao, d.Runways, d.ManualLanding);
 
