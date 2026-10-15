@@ -15,6 +15,10 @@ public partial class SynapticA220Definition
     private int _apuHoldTicks;
     private System.Threading.CancellationTokenSource? _walkCancel;
 
+    /// <summary>True while the ECL form actuates a control (ActuateControl): that form says
+    /// what it is doing, so a press does not also say "pressed" (CORE-7: confirm once).</summary>
+    private bool _eclActuating;
+
     /// <summary>Highest flap detent, and the divisor the cockpit lever's own VAR_WRITE
     /// uses to scale a detent onto FLAPS_SET's 0-16383 range. Six positions, 0-5 —
     /// matching the lever's <c>n 5 / 16383 *</c> and the ECL's SLAT_FLAP_LEVER_0..5.
@@ -98,6 +102,16 @@ public partial class SynapticA220Definition
             case "A22X_FLAP_LEVER":
                 SetFlapDetent(simConnect, (int)Math.Round(value));
                 return true;
+            case "A22X_SPOILER_LEVER":
+                // [A220-40] The cockpit lever's own write — never SPOILERS_ON/OFF.
+                simConnect.ExecuteCalculatorCode(SeqPrefix() + A220.A220Panels.SpeedbrakeCalc((int)Math.Round(value)));
+                return true;
+            case "A22X_ACP_VHF1_TX":
+            case "A22X_ACP_VHF2_TX":
+            case "A22X_ACP_VHF3_TX":
+                PulseLVar(simConnect, varDef.Name);
+                AnnounceTxChannelAfterPress(simConnect, announcer);
+                return true;
 
             // ---- master warning/caution acknowledge -----------------------------
             case "A22X_MASTER_CW_CANCEL":
@@ -129,12 +143,19 @@ public partial class SynapticA220Definition
                 return true;
         }
 
-        // Momentary L:var pushbuttons (chrono, baro STD, nav source, crosstune,
-        // gear-aural cancel): press-release pulse as two separate calc calls —
-        // a same-frame "1 ... 0" string is invisible to the aircraft's sampler.
+        // Cockpit pushbuttons ([A220-42]). A plain momentary or held push (chrono, nav source,
+        // crosstune, FD, gear-aural cancel, CVR, mech call) is a press-release pulse as two
+        // separate calc calls — a same-frame "1 ... 0" string is invisible to the aircraft's
+        // sampler. A latch-free korry (probe heat ground test, engine fire pushes) is written 1
+        // and cleared by the aircraft, exactly as the cockpit's SET_STATE_EXTERNAL does.
         if (varDef.RenderAsButton && varDef.Type == SimVarType.LVar)
         {
-            PulseLVar(simConnect, varDef.Name);
+            if (varDef.IsMomentary) PulseLVar(simConnect, varDef.Name);
+            else WriteLVar(simConnect, varDef.Name, 1);
+            // CORE-7: a press with no readable state and no lamp confirms itself, once; the
+            // ECL form announces its own actuation.
+            if (!_eclActuating && A220.A220Panels.PressConfirmKeys.Contains(varKey))
+                announcer.Announce(A220.A220Panels.PressedText(varDef.DisplayName));
             return true;
         }
 
@@ -168,6 +189,26 @@ public partial class SynapticA220Definition
         {
             await System.Threading.Tasks.Task.Delay(200);
             WriteLVar(simConnect, bareName, 0);
+        });
+    }
+
+    /// <summary>
+    /// Transmit select reads the WASM's selected transmitter back once (CORE-7: the screen
+    /// reader cannot know which radio took it). The press is a 200 ms pulse the WASM samples
+    /// on its next tick, so wait past both before forcing a fresh read.
+    /// </summary>
+    private void AnnounceTxChannelAfterPress(SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            try
+            {
+                await System.Threading.Tasks.Task.Delay(600);
+                simConnect.RequestVariable("A22X_TX_CHANNEL", forceUpdate: true);
+                await System.Threading.Tasks.Task.Delay(350);
+                announcer.Announce(A220.A220Panels.TxChannelText(Cached(simConnect, "A22X_TX_CHANNEL", -1)));
+            }
+            catch { /* read-back only */ }
         });
     }
 

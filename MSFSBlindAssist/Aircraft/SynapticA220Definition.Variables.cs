@@ -39,7 +39,10 @@ public partial class SynapticA220Definition
         ValueDescriptions = Labels(labels)
     };
 
-    /// <summary>Momentary L:var pushbutton (pulse 1 then release) — chrono, nav source, crosstune…</summary>
+    /// <summary>Momentary L:var pushbutton (A220_ButtonMomentary or IS_HELD: pulse 1 then
+    /// release) — chrono, nav source, crosstune, FD, gear-aural cancel, CVR, mech call,
+    /// transmit select. <see cref="SimVarDefinition.IsMomentary"/> tells the write path to
+    /// pulse ([A220-42]).</summary>
     private static SimVarDefinition LMomentary(string name, string display) => new()
     {
         Name = name,
@@ -48,8 +51,24 @@ public partial class SynapticA220Definition
         Units = "number",
         UpdateFrequency = UpdateFrequency.OnRequest,
         RenderAsButton = true,
+        IsMomentary = true,
         SuppressRestingButtonState = true,
         ValueDescriptions = Labels("Released", "Pressed")
+    };
+
+    /// <summary>
+    /// Latch-free cockpit korry (A220_ButtonPBA without IS_LATCHED — probe heat, engine fire):
+    /// the cockpit writes 1 and the aircraft clears it, so MSFSBA writes 1 alone ([A220-42]).
+    /// Write-only, no read registered: the var reads 0 again a tick later.
+    /// </summary>
+    private static SimVarDefinition LPress(string name, string display) => new()
+    {
+        Name = name,
+        DisplayName = display,
+        Type = SimVarType.LVar,
+        Units = "number",
+        UpdateFrequency = UpdateFrequency.Never,
+        RenderAsButton = true
     };
 
     /// <summary>Annunciator lamp: Continuous+IsAnnounced batch var (0 individual defs, MD-11 pattern).</summary>
@@ -207,7 +226,7 @@ public partial class SynapticA220Definition
         v["A22X_L_GEN_OFF"] = LSwitch("A22X L Gen Off", "Left Generator", "On", "Off");
         v["A22X_R_GEN_OFF"] = LSwitch("A22X R Gen Off", "Right Generator", "On", "Off");
         v["A22X_APU_GEN_OFF"] = LSwitch("A22X APU Gen Off", "APU Generator", "On", "Off");
-        v["A22X_CABIN_POWER_OFF"] = LSwitch("A22X Cabin Power Off", "Cabin Power", "On", "Off");
+        v["A22X_CABIN_POWER_OFF"] = LSwitch("A22X Cabin Power Off", "Cabin Power (guarded)", "On", "Off");
         v["A22X_BUS_ISOLATION"] = LSwitch("A22X Bus Isolation Mode", "Bus Isolation", "Main", "Auto", "Ess");
         v["A22X_RAT_GEN"] = LSwitch("A22X RAT Gen", "RAT Generator (guarded)", "Stowed", "Deployed");
         v["A22X_L_GEN_DISC"] = LSwitch("A22X L Gen Disc", "Left Generator Disconnect (guarded)", "Normal", "Disconnected");
@@ -231,14 +250,14 @@ public partial class SynapticA220Definition
         v["A22X_ACMP_2B"] = LSwitch("A22X ACMP 2B", "AC Motor Pump 2B", "Off", "Auto", "On");
         v["A22X_ACMP_3A"] = LSwitch("A22X ACMP 3A", "AC Motor Pump 3A", "Off", "Auto", "On");
         v["A22X_ACMP_3B"] = LSwitch("A22X ACMP 3B", "AC Motor Pump 3B", "Off", "Auto", "On");
-        v["A22X_HYD_1_SOV"] = LSwitch("A22X Hyd 1 SOV", "Hydraulic 1 Shutoff Valve", "Closed", "Open");
-        v["A22X_HYD_2_SOV"] = LSwitch("A22X Hyd 2 SOV", "Hydraulic 2 Shutoff Valve", "Closed", "Open");
+        v["A22X_HYD_1_SOV"] = LSwitch("A22X Hyd 1 SOV", "Hydraulic 1 Shutoff Valve (guarded)", "Closed", "Open");
+        v["A22X_HYD_2_SOV"] = LSwitch("A22X Hyd 2 SOV", "Hydraulic 2 Shutoff Valve (guarded)", "Closed", "Open");
 
         // ==== Overhead — Fuel =================================================
         v["A22X_L_BOOST_PUMP"] = LSwitch("A22X L Boost Pump", "Left Boost Pump", "Off", "Auto", "On");
         v["A22X_R_BOOST_PUMP"] = LSwitch("A22X R Boost Pump", "Right Boost Pump", "Off", "Auto", "On");
         v["A22X_MANUAL_TRANSFER"] = LSwitch("A22X Manual Transfer", "Manual Fuel Transfer", "Off", "Right", "Center", "Left");
-        v["A22X_GRAVITY_TRANSFER"] = LSwitch("A22X Gravity Transfer", "Gravity Transfer (guarded)", "Off", "On");
+        v["A22X_GRAVITY_TRANSFER"] = LSwitch("A22X Gravity Transfer", "Gravity Transfer", "Off", "On");
 
         // ==== Overhead — Air / Bleed =========================================
         v["A22X_L_BLEED_OFF"] = LSwitch("A22X L Bleed Off", "Left Engine Bleed", "On", "Off");
@@ -273,11 +292,24 @@ public partial class SynapticA220Definition
         v["A22X_FWD_CARGO_AIR"] = LSwitch("A22X Fwd Cargo Air", "Forward Cargo Air", "Off", "Vent", "Lo Heat", "Hi Heat");
         v["A22X_AFT_CARGO_AIR"] = LSwitch("A22X Aft Cargo Air", "Aft Cargo Air", "Off", "Vent");
 
+        // ==== Overhead — Equipment cooling (right outboard) ===================
+        // INLET is a latched korry: 1 = AUTO, 0 = OFF. The aircraft's own checklist tests
+        // (L:A22X Cooling Inlet) true for "EQUIP COOLING, INLET: select auto" (POWER ON) and
+        // false for "…: OFF" (POWER OFF); it defaults to OFF from cold and dark.
+        v["A22X_COOLING_INLET"] = LSwitch("A22X Cooling Inlet", "Equipment Cooling Inlet", "Off", "Auto");
+        // EXHAUST is a 3-position knob (A220_KnobSmall3State). Value order from the ECL's sensed
+        // names, which list VLV ONLY, AUTO, ON at consecutive bits the way every other 3-way
+        // knob lists its 0, 1, 2 — confirmed against those bits live (docs/a220.md, Panels).
+        v["A22X_COOLING_EXHAUST"] = LSwitch("A22X Cooling Exhaust", "Equipment Cooling Exhaust", "Valve Only", "Auto", "On");
+
         // ==== Overhead — Anti-ice / Heat =====================================
         v["A22X_L_COWL_AI"] = LSwitch("A22X L Cowl Anti Ice", "Left Cowl Anti-Ice", "Off", "Auto", "On");
         v["A22X_R_COWL_AI"] = LSwitch("A22X R Cowl Anti Ice", "Right Cowl Anti-Ice", "Off", "Auto", "On");
         v["A22X_WING_AI"] = LSwitch("A22X Wing Anti Ice", "Wing Anti-Ice", "Off", "Auto", "On");
-        v["A22X_PROBE_HEAT"] = LSwitch("A22X Probe Heat", "Probe Heat", "Auto", "On");
+        // PROBE HEAT is the ground-test korry (A220_ButtonPBA, no IS_LATCHED): the cockpit
+        // writes 1 and the ICCP clears it each tick (simvars.mdx) — a press, not an Auto/On
+        // switch ([A220-42]). Its batch-monitored lamp is the confirmation.
+        v["A22X_PROBE_HEAT"] = LPress("A22X Probe Heat", "Probe Heat Ground Test");
         v["A22X_L_WINDOW_HEAT_OFF"] = LSwitch("A22X L Side Window Heat Off", "Left Side Window Heat", "On", "Off");
         v["A22X_R_WINDOW_HEAT_OFF"] = LSwitch("A22X R Side Window Heat Off", "Right Side Window Heat", "On", "Off");
         v["A22X_L_WSHLD_HEAT_OFF"] = LSwitch("A22X L Windshield Heat Off", "Left Windshield Heat", "On", "Off");
@@ -295,21 +327,49 @@ public partial class SynapticA220Definition
         v["A22X_DITCHING"] = LSwitch("A22X Ditching", "Ditching (guarded)", "Normal", "On");
         v["A22X_PAX_OXYGEN"] = LSwitch("A22X Passenger Oxygen", "Passenger Oxygen (guarded)", "Normal", "Deployed");
 
-        // ==== Overhead — Fire / Evac / ELT ===================================
-        v["A22X_L_ENG_FIRE"] = LSwitch("A22X L Eng Fire", "Left Engine Fire Push (guarded)", "Normal", "Pushed");
-        v["A22X_R_ENG_FIRE"] = LSwitch("A22X R Eng Fire", "Right Engine Fire Push (guarded)", "Normal", "Pushed");
+        // ==== Overhead — Fire protection / ELT / Evac ([A220-41], [A220-42]) ==
+        // The engine fire pushes are latch-free korrys (A220_ButtonPBA, no IS_LATCHED): the
+        // cockpit writes 1 and the WASM clears it — one-way buttons, never Normal/Pushed
+        // combos. The APU and cargo fire pushes and all five bottles ARE latched (each press
+        // toggles the L:var), so they are combos. Every fire control stays out of the ECL's
+        // "do it for me" (A220EclActionMap: GuardedDestructive). Guards per the cockpit XML:
+        // the five fire pushes are guarded, the bottles are not.
+        v["A22X_L_ENG_FIRE"] = LPress("A22X L Eng Fire", "Left Engine Fire (guarded)");
+        v["A22X_R_ENG_FIRE"] = LPress("A22X R Eng Fire", "Right Engine Fire (guarded)");
+        v["A22X_APU_FIRE"] = LSwitch("A22X APU Fire", "APU Fire (guarded)", "Normal", "Pushed");
+        v["A22X_CARGO_FWD_FIRE"] = LSwitch("A22X Cargo Fwd Fire", "Forward Cargo Fire (guarded)", "Normal", "Pushed");
+        v["A22X_CARGO_AFT_FIRE"] = LSwitch("A22X Cargo Aft Fire", "Aft Cargo Fire (guarded)", "Normal", "Pushed");
+        v["A22X_L_ENG_FIRE_BOTTLE_1"] = LSwitch("A22X L Eng Fire Bottle 1", "Left Engine Bottle 1", "Normal", "Pushed");
+        v["A22X_L_ENG_FIRE_BOTTLE_2"] = LSwitch("A22X L Eng Fire Bottle 2", "Left Engine Bottle 2", "Normal", "Pushed");
+        v["A22X_APU_BOTTLE_1"] = LSwitch("A22X APU Bottle 1", "APU Bottle", "Normal", "Pushed");
+        v["A22X_R_ENG_FIRE_BOTTLE_1"] = LSwitch("A22X R Eng Fire Bottle 1", "Right Engine Bottle 1", "Normal", "Pushed");
+        v["A22X_R_ENG_FIRE_BOTTLE_2"] = LSwitch("A22X R Eng Fire Bottle 2", "Right Engine Bottle 2", "Normal", "Pushed");
+        v["A22X_CARGO_FIRE_BOTTLE"] = LSwitch("A22X Cargo Fire Bottle", "Cargo Fire Bottle", "Normal", "Pushed");
         v["A22X_ELT"] = LSwitch("A22X Emer Transmitter", "Emergency Locator Transmitter", "Test", "Arm", "On");
-        v["A22X_EVAC"] = LSwitch("A22X Evac", "Evacuation Command", "Normal", "Evac");
+        v["A22X_EVAC"] = LSwitch("A22X Evac", "Evacuation Command (guarded)", "Normal", "Evac");
 
         // ==== Overhead — Flight controls / misc ==============================
-        v["A22X_PFCC_1_OFF"] = LSwitch("A22X PFCC 1 Off", "PFCC 1", "On", "Off");
-        v["A22X_PFCC_2_OFF"] = LSwitch("A22X PFCC 2 Off", "PFCC 2", "On", "Off");
-        v["A22X_PFCC_3_OFF"] = LSwitch("A22X PFCC 3 Off", "PFCC 3", "On", "Off");
-        v["A22X_AURAL_INHIBIT"] = LSwitch("A22X Aural Warn Inhibit", "Aural Warning Inhibit", "Normal", "Inhibited");
-        v["A22X_TAWS_GEAR_INHIBIT"] = LSwitch("A22X TAWS Gear Inhibit", "TAWS Gear Inhibit", "Normal", "Inhibited");
-        v["A22X_TAWS_TERRAIN_INHIBIT"] = LSwitch("A22X TAWS Terrain Inhibit", "TAWS Terrain Inhibit", "Normal", "Inhibited");
-        v["A22X_TAWS_FLAPS_INHIBIT"] = LSwitch("A22X TAWS Flaps Inhibit", "TAWS Flaps Inhibit", "Normal", "Inhibited");
+        v["A22X_PFCC_1_OFF"] = LSwitch("A22X PFCC 1 Off", "PFCC 1 (guarded)", "On", "Off");
+        v["A22X_PFCC_2_OFF"] = LSwitch("A22X PFCC 2 Off", "PFCC 2 (guarded)", "On", "Off");
+        v["A22X_PFCC_3_OFF"] = LSwitch("A22X PFCC 3 Off", "PFCC 3 (guarded)", "On", "Off");
+        v["A22X_AURAL_INHIBIT"] = LSwitch("A22X Aural Warn Inhibit", "Aural Warning Inhibit (guarded)", "Normal", "Inhibited");
+        v["A22X_TAWS_GEAR_INHIBIT"] = LSwitch("A22X TAWS Gear Inhibit", "TAWS Gear Inhibit (guarded)", "Normal", "Inhibited");
+        v["A22X_TAWS_TERRAIN_INHIBIT"] = LSwitch("A22X TAWS Terrain Inhibit", "TAWS Terrain Inhibit (guarded)", "Normal", "Inhibited");
+        v["A22X_TAWS_FLAPS_INHIBIT"] = LSwitch("A22X TAWS Flaps Inhibit", "TAWS Flaps Inhibit (guarded)", "Normal", "Inhibited");
         v["A22X_TAWS_GS_INHIBIT"] = LSwitch("A22X TAWS GS Inhibit", "TAWS Glideslope Inhibit", "Normal", "Inhibited");
+
+        // ==== Overhead — recorder, calls, wipers (outboard columns) ===========
+        // CVR TEST/ERASE and MECH CALL are A220_ButtonMomentaryClicky (pulse); SERV INT is a
+        // latched korry (combo).
+        v["A22X_CVR_TEST"] = LMomentary("A22X CVR Test", "CVR Test");
+        v["A22X_CVR_ERASE"] = LMomentary("A22X CVR Erase", "CVR Erase");
+        v["A22X_SERVICE_INTERCOM"] = LSwitch("A22X Service Intercom", "Service Interphone", "Off", "On");
+        v["A22X_MECH_CALL"] = LMomentary("A22X Mech Call", "Mechanic Call");
+        // Wiper knobs (A220_KnobLarge4State). Underscore names, still L:vars on the calc path
+        // ([A220-1]). Overhead/Wipers.xml runs 1 on a timer (intermittent), 2 at half speed and
+        // 3 at full speed: the FCOM's OFF, INT, SLOW, FAST.
+        v["A22X_WIPER_L"] = LSwitch("A22X_WIPER_L", "Left Wiper", "Off", "Intermittent", "Slow", "Fast");
+        v["A22X_WIPER_R"] = LSwitch("A22X_WIPER_R", "Right Wiper", "Off", "Intermittent", "Slow", "Fast");
 
         // ==== Eyebrow — Lights & signs =======================================
         v["A22X_NAV_LIGHTS"] = LSwitch("A22X Nav Lights", "Navigation Lights", "Off", "On");
@@ -333,13 +393,13 @@ public partial class SynapticA220Definition
         // state read back from the write-only animation L:var.
         v["A22X_ENG_MASTER_1"] = new SimVarDefinition
         {
-            Name = "A22X Engine 1 Master", DisplayName = "Engine 1 Master",
+            Name = "A22X Engine 1 Master", DisplayName = "Left Engine Run",
             Type = SimVarType.LVar, Units = "bool", UpdateFrequency = UpdateFrequency.OnRequest,
             ValueDescriptions = Labels("Off", "On")
         };
         v["A22X_ENG_MASTER_2"] = new SimVarDefinition
         {
-            Name = "A22X Engine 2 Master", DisplayName = "Engine 2 Master",
+            Name = "A22X Engine 2 Master", DisplayName = "Right Engine Run",
             Type = SimVarType.LVar, Units = "bool", UpdateFrequency = UpdateFrequency.OnRequest,
             ValueDescriptions = Labels("Off", "On")
         };
@@ -402,8 +462,8 @@ public partial class SynapticA220Definition
         // A220Systems.AutobrakeLabels, the same array the walk's spoken results read.
         v["A22X_AUTOBRAKE"] = LSwitch("A22X Autobrake", "Autobrake", A220.A220Systems.AutobrakeLabels);
         v["A22X_NOSE_STEER_OFF"] = LSwitch("A22X Nose Steer Off", "Nose Wheel Steering", "On", "Off");
-        v["A22X_ALTERNATE_BRAKE"] = LSwitch("A22X Alternate Brake", "Alternate Brakes", "Normal", "Alternate");
-        v["A22X_GEAR_AURAL_CANCEL"] = LMomentary("A22X Gear Aural", "Gear Aural Warning Cancel");
+        v["A22X_ALTERNATE_BRAKE"] = LSwitch("A22X Alternate Brake", "Alternate Brakes (guarded)", "Normal", "Alternate");
+        v["A22X_GEAR_AURAL_CANCEL"] = LMomentary("A22X Gear Aural", "Gear Aural Warning Cancel (guarded)");
 
         // ==== Flaps / Spoilers ===============================================
         // The flap lever is the STOCK handle index, not an L:var. The cockpit lever
@@ -427,7 +487,7 @@ public partial class SynapticA220Definition
             IsAnnounced = true,
             ValueDescriptions = Labels("0", "1", "2", "3", "4", "5 (Full)")
         };
-        v["A22X_ALTERNATE_FLAP"] = LSwitch("A22X Alternate Flap", "Alternate Flap Mode", "Normal", "Alternate");
+        v["A22X_ALTERNATE_FLAP"] = LSwitch("A22X Alternate Flap", "Alternate Flap Mode (guarded)", "Normal", "Alternate");
         v["A22X_SPOILERS_RETRACT"] = new SimVarDefinition
         {
             Name = "SPOILERS_OFF", DisplayName = "Speedbrake Retract",
@@ -439,6 +499,17 @@ public partial class SynapticA220Definition
             Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.OnRequest, RenderAsButton = true
         };
         v["A22X_SPOILER_LEVER_POS"] = Status("A22X Spoiler Lever", "Speedbrake Lever", "number", "F2");
+        // The speedbrake LEVER ([A220-40]): six detents RET, 1/4, 1/2, 3/4, FULL, MAX — the ECL's
+        // SPOILER_LEVER_0..5. Reads the lever travel (0-1) and shows the nearest detent; written
+        // with the cockpit lever's own SPOILERS_SET scaling in HandleUIVariableSet. Shares its
+        // Name with the status row above until Task 5 retires that row (both OnRequest: [VAR-7]).
+        v["A22X_SPOILER_LEVER"] = new SimVarDefinition
+        {
+            Name = "A22X Spoiler Lever", DisplayName = "Speedbrake Lever",
+            Type = SimVarType.LVar, Units = "number", UpdateFrequency = UpdateFrequency.OnRequest,
+            ValueDescriptions = Labels(A220.A220Panels.SpeedbrakeDetentLabels.ToArray()),
+            ValueToDescriptionKey = A220.A220Panels.SpeedbrakeDetentForTravel
+        };
 
         // ==== Glareshield — CTP (per side) ===================================
         // Altimeter, STD and minimums are set through the CTP's own SetConfig call and read
@@ -695,6 +766,22 @@ public partial class SynapticA220Definition
         {
             Name = "A22X_XPDR_FLIGHT_ID", DisplayName = "Set Flight ID",
             Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.OnRequest, RenderAsButton = true
+        };
+
+        // ==== Pedestal — audio control panel: transmit select ==================
+        // A220_ButtonMomentary pushes. The cockpit XML (the input authority, [A220-19]) writes
+        // "A22X ACP VHFn Tx"; simvars.mdx documents "A22X ACP VHFn" — the XML name confirmed
+        // live (docs/a220.md, Panels). "A22X Tx Channel" is the WASM's selected transmitter
+        // (1-3 = VHF 1-3, 0 = none), read back after a press.
+        v["A22X_ACP_VHF1_TX"] = LMomentary("A22X ACP VHF1 Tx", "VHF 1 Transmit");
+        v["A22X_ACP_VHF2_TX"] = LMomentary("A22X ACP VHF2 Tx", "VHF 2 Transmit");
+        v["A22X_ACP_VHF3_TX"] = LMomentary("A22X ACP VHF3 Tx", "VHF 3 Transmit");
+        v["A22X_TX_CHANNEL"] = new SimVarDefinition
+        {
+            Name = "A22X Tx Channel", DisplayName = "Transmit Radio",
+            Type = SimVarType.LVar, Units = "number", UpdateFrequency = UpdateFrequency.OnRequest,
+            RenderAsReadOnlyStatus = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "None", [1] = "VHF 1", [2] = "VHF 2", [3] = "VHF 3" }
         };
 
         // ==== TOD pause (plain writable L:vars — cheap win) ==================

@@ -263,6 +263,8 @@ public partial class SynapticA220Definition
             error = $"Unknown control {controlKey}.";
             return false;
         }
-        return HandleUIVariableSet(controlKey, value, varDef, sim, announcer);
+        _eclActuating = true;
+        try { return HandleUIVariableSet(controlKey, value, varDef, sim, announcer); }
+        finally { _eclActuating = false; }
     }
 }
