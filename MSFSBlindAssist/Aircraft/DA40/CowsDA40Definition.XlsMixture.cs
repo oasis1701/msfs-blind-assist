@@ -493,11 +493,20 @@ public partial class CowsDA40Definition
     {
         string state = DA40CylinderState.DescribeShockCooling(_cooling);
         bool shocking = state != "None";
-        if (shocking == _shockSpoken) return;
+        if (shocking == _shockSpoken && state == _shockState) return;
         _shockSpoken = shocking;
-        if (!shocking || Muted("DA40_XLS_SHOCK_COOLING")) return;
+        _shockState = state;
+        var now = DateTime.UtcNow;
+        if (!DA40CylinderState.ShouldSpeakShockCooling(state, _shockSaid, _shockSaidAt, now)) return;
+        _shockSaid = state;
+        _shockSaidAt = now;
+        if (Muted("DA40_XLS_SHOCK_COOLING")) return;
         announcer.AnnounceImmediate(state);
     }
+
+    private string? _shockState;
+    private string? _shockSaid;
+    private DateTime _shockSaidAt = DateTime.MinValue;
 
     /// <summary>A fall of five points on a cylinder - damage happens during something.</summary>
     private void NoteDamage(int i, ScreenReaderAnnouncer announcer)
@@ -624,7 +633,7 @@ public partial class CowsDA40Definition
         _damageEnabled = null;
         _redBoxSpoken = null;
         _foulWorstSpoken = -1;
-        _shockSpoken = false;
+        _shockSpoken = false; _shockState = null; _shockSaid = null; _shockSaidAt = DateTime.MinValue;
         Array.Clear(_damageSpoken);
         Array.Clear(_plugSeen);
         _redBoxInputs.Reset();

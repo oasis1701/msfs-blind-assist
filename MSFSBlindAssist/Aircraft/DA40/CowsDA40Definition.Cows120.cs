@@ -165,6 +165,7 @@ public partial class CowsDA40Definition
     {
         foreach (string panel in FailurePanels(IsNG).Keys)
             AddRows(d, panel, new List<string> { "DA40_SIM_FAILURES_ACTIVE" });
+        if (!IsNG) AddRows(d, SimEnginePanel, new List<string> { "DA40_XLS_DAMAGE_GATED_FAILURES" });
 
         AddRows(d, IcePitotPanel, new List<string> { "DA40_PITOT_POWER" });
         if (!IsNG) AddRows(d, IcePitotPanel, FsCopilotIcePitotRows);

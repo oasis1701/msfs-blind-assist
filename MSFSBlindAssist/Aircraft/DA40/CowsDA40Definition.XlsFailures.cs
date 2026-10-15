@@ -32,9 +32,39 @@ public partial class CowsDA40Definition
         [1] = "FAILED"
     };
 
+    /// <summary>
+    /// The XLS failures read ONLY inside the model's Damage template, which runs only with
+    /// Engine Damage Modelling on (<c>L:DAMAGE_ENABLED</c>): with it off they set, read back
+    /// as set, and do nothing. Measured in flight at VCBI (2026-10-15): Oil System failed for
+    /// 30 s at 2390 RPM with damage off, oil pressure held 80 psi and health 1.000. The set is
+    /// pinned against the package by CowsDA40FailureCoverageTests.
+    /// </summary>
+    public static readonly string[] XlsDamageGatedFailures =
+    {
+        "FAILURES_CYL:1", "FAILURES_CYL:2", "FAILURES_CYL:3", "FAILURES_CYL:4", "FAILURES_OIL"
+    };
+
     private static Dictionary<string, SimVarDefinition> BuildXlsFailureVariables()
     {
         var v = new Dictionary<string, SimVarDefinition>();
+
+        // ---------- Which of these are live: the damage gate ----------
+        // Reported like Failures Active, never enforced: the option is the pilot's.
+        v["DA40_XLS_DAMAGE_GATED_FAILURES"] = new SimVarDefinition
+        {
+            Name = "DAMAGE_ENABLED",
+            DisplayName = "Oil and Cylinder Failures Active",
+            Type = SimVarType.LVar,
+            Units = "number",
+            UpdateFrequency = UpdateFrequency.OnRequest,
+            IsAnnounced = false,
+            RenderAsReadOnlyStatus = true,
+            ValueDescriptions = new Dictionary<double, string>
+            {
+                [0] = "No, Engine Damage Modelling is off",
+                [1] = "Yes, with Failures Active"
+            }
+        };
 
         // ---------- Per-cylinder ----------
         for (int c = 1; c <= 4; c++)

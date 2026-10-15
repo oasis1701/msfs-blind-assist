@@ -103,6 +103,21 @@ public static class DA40CylinderState
         return hit.Count == 0 ? "None" : "Shock cooling, " + Cylinders(hit);
     }
 
+    /// <summary>How long the same shock-cooling cylinders stay said before they may be said again.</summary>
+    public const int ShockCoolingRepeatHoldMs = 60000;
+
+    /// <summary>
+    /// Whether a shock-cooling state is news. ⚠️ The model's line has no hysteresis, and a
+    /// cooling rate hovering on it said "Shock cooling, cylinder 3" twice in four seconds
+    /// (VCBI, 2026-10-15). The same cylinders inside <see cref="ShockCoolingRepeatHoldMs"/>
+    /// of the last call are the same news; a different set speaks at once.
+    /// </summary>
+    public static bool ShouldSpeakShockCooling(string state, string? lastSpoken, DateTime lastSpokenAt, DateTime now)
+    {
+        if (state == "None") return false;
+        return state != lastSpoken || (now - lastSpokenAt).TotalMilliseconds > ShockCoolingRepeatHoldMs;
+    }
+
     public static string DescribeHealth(double[] damage)
     {
         var parts = new List<string>();
