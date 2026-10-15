@@ -17,7 +17,7 @@
 (function () {
     var A = {};
 
-    A.VERSION = 28;
+    A.VERSION = 29;
 
     function visible(el) {
         if (!el) return false;
@@ -3497,6 +3497,26 @@
         // which took the whole readback down with it: on the checklist page the GROUP and
         // CHECKLIST selectors read "nothing under the cursor" while the cursor sat on them.
         if (!el2 || el2.nodeType !== 1) return "";
+
+        // A FLIGHT-PLAN LEG IS READ THE WAY THE PAGE READS IT. The knob answered
+        // "MTL 127°91.7NM blank, blank" for the leg the page's own rows give as "MTL, 127°,
+        // 91.7 NM, blank" (VCBI gate, 2026-10-15): text() welds the leg's cells together.
+        // Same reader as flightPlanRows, so the two can never disagree.
+        var leg = el2.closest ? el2.closest(".fix-container") : null;
+        if (leg) {
+            var legLine = A.fieldsOf(leg);
+            if (legLine && legLine.replace(/blank|[\s,_]/g, "")) return legLine;
+        }
+
+        // THE BLANK ROW AT THE END OF A SEGMENT. With the cursor there the focused element is
+        // the whole SEGMENT, and reading its cells welded every leg into one line ("Enroute,
+        // MTL 127°91.7NM 2500FT, blank"). What the screen shows under the cursor is the
+        // segment's dashed row, so that is what is said.
+        var hdr = el2.querySelector ? el2.querySelector(".header-name") : null;
+        if (hdr && el2.querySelector(".fix-container")) {
+            var segName = spacedText(hdr);
+            if (segName) return segName + ", blank row";
+        }
 
         var kids = el2.children;
         if (kids && kids.length > 1) {
