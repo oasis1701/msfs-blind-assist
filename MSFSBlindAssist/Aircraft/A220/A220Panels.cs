@@ -83,4 +83,64 @@ public static class A220Panels
             _ => "Transmit channel " + channel.ToString(CultureInfo.InvariantCulture)
         };
     }
+
+    // ---- Audio control panel: VHF receive and volume ([A220-44]) ----------------------
+
+    /// <summary>
+    /// The ACP volume knob's scale: <c>A220_KnobPotentiometer</c> has 29 detents and the
+    /// multiplier 1/28 (Lib/Knob.xml), so <c>L:A22X ACP VHFn Volume</c> holds detent/28, 0 to 1.
+    /// The aircraft's systems WASM turns it into COMn_VOLUME_SET.
+    /// </summary>
+    public const int AcpVolumeSteps = 28;
+
+    /// <summary>The volume combo's labels, index = detent: the level in whole percent.</summary>
+    public static readonly IReadOnlyList<string> AcpVolumeLabels = Enumerable.Range(0, AcpVolumeSteps + 1)
+        .Select(step => Math.Round(step * 100.0 / AcpVolumeSteps, MidpointRounding.AwayFromZero)
+            .ToString("0", CultureInfo.InvariantCulture) + "%")
+        .ToArray();
+
+    /// <summary>
+    /// The detent nearest a read-back level — the volume combo's ValueToDescriptionKey. A level
+    /// outside 0-1 clamps; NaN reads as 0 (an L:var always reads a number; NaN is defensive).
+    /// </summary>
+    public static double AcpVolumeStepFor(double raw)
+        => double.IsNaN(raw) ? 0 : Math.Clamp(Math.Round(raw * AcpVolumeSteps, MidpointRounding.AwayFromZero), 0, AcpVolumeSteps);
+
+    /// <summary>
+    /// The calculator string (without MSFSBA's seq prefix) that sets VHF <paramref name="vhf"/>'s
+    /// volume to <paramref name="step"/> on the knob's own scale, <c>step 28 /</c>: the sim
+    /// computes the exact level, so the cockpit knob lands on its detent (WriteLVar's four
+    /// decimals would leave it a hair off). Never the combo's step index itself: the L:var is
+    /// 0 to 1, and 14 would be off its scale. Integers only, so no culture can reach it.
+    /// </summary>
+    public static string AcpVolumeCalc(int vhf, int step)
+    {
+        int s = Math.Clamp(step, 0, AcpVolumeSteps);
+        return FormattableString.Invariant($"{s} {AcpVolumeSteps} / (>L:A22X ACP VHF{vhf} Volume)");
+    }
+
+    /// <summary>
+    /// A receiver write's read-back (CORE-7): null when the aircraft took it (the screen reader
+    /// already read the pick), else the state the aircraft kept, or "not confirmed" when nothing
+    /// came back — never a claimed state. 1 = receiving (the knob pulled out; Task 6 measures it
+    /// against COM RECEIVE:n).
+    /// </summary>
+    public static string? AcpReceiverReadBack(int vhf, bool wantOn, double? now)
+    {
+        if (now is not { } v || double.IsNaN(v))
+            return FormattableString.Invariant($"VHF {vhf} receiver not confirmed: the A220 did not report it.");
+        bool on = v >= 0.5;
+        return on == wantOn ? null : FormattableString.Invariant($"VHF {vhf} receiver did not change — still {(on ? "on" : "off")}.");
+    }
+
+    /// <summary>A volume write's read-back, the same way: null when the level landed.</summary>
+    public static string? AcpVolumeReadBack(int vhf, int wantStep, double? nowRaw)
+    {
+        if (nowRaw is not { } v || double.IsNaN(v))
+            return FormattableString.Invariant($"VHF {vhf} volume not confirmed: the A220 did not report it.");
+        int now = (int)AcpVolumeStepFor(v);
+        return now == Math.Clamp(wantStep, 0, AcpVolumeSteps)
+            ? null
+            : FormattableString.Invariant($"VHF {vhf} volume did not change — reads {AcpVolumeLabels[now]}.");
+    }
 }

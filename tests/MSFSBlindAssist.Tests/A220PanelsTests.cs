@@ -83,4 +83,80 @@ public class A220PanelsTests
         => Assert.Equal(
             new[] { "A22X_CVR_ERASE", "A22X_CVR_TEST", "A22X_L_ENG_FIRE", "A22X_MECH_CALL", "A22X_R_ENG_FIRE" },
             A220Panels.PressConfirmKeys.OrderBy(k => k, StringComparer.Ordinal));
+
+    // ---- Audio control panel: VHF receive and volume ([A220-44]) ------------------------
+
+    [Fact]
+    public void AcpVolume_HasTheKnobsTwentyNineDetents_InPercent()
+    {
+        Assert.Equal(28, A220Panels.AcpVolumeSteps);
+        Assert.Equal(29, A220Panels.AcpVolumeLabels.Count);
+        Assert.Equal("0%", A220Panels.AcpVolumeLabels[0]);
+        Assert.Equal("4%", A220Panels.AcpVolumeLabels[1]);
+        Assert.Equal("50%", A220Panels.AcpVolumeLabels[14]);
+        Assert.Equal("100%", A220Panels.AcpVolumeLabels[28]);
+        Assert.Equal(29, A220Panels.AcpVolumeLabels.Distinct().Count());   // every detent says something different
+    }
+
+    [Theory]
+    [InlineData(0.0, 0)]
+    [InlineData(0.5, 14)]
+    [InlineData(1.0, 28)]
+    [InlineData(0.0357, 1)]     // 1/28 to four decimals still reads as detent 1
+    [InlineData(0.99, 28)]
+    [InlineData(-0.1, 0)]
+    [InlineData(1.2, 28)]
+    public void AcpVolumeStepFor_PicksTheNearestDetent(double raw, double step)
+        => Assert.Equal(step, A220Panels.AcpVolumeStepFor(raw));
+
+    [Fact]
+    public void AcpVolumeStepFor_TreatsNaNAsZero()
+        => Assert.Equal(0, A220Panels.AcpVolumeStepFor(double.NaN));
+
+    [Theory]
+    [InlineData(1, 0, "0 28 / (>L:A22X ACP VHF1 Volume)")]
+    [InlineData(2, 14, "14 28 / (>L:A22X ACP VHF2 Volume)")]
+    [InlineData(3, 28, "28 28 / (>L:A22X ACP VHF3 Volume)")]
+    [InlineData(2, 40, "28 28 / (>L:A22X ACP VHF2 Volume)")]
+    [InlineData(2, -3, "0 28 / (>L:A22X ACP VHF2 Volume)")]
+    public void AcpVolumeCalc_IsTheKnobsOwnScale_NeverTheStepIndex(int vhf, int step, string expected)
+        => Assert.Equal(expected, A220Panels.AcpVolumeCalc(vhf, step));
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void AcpVolume_IsCultureInvariant(string culture)
+    {
+        var previous = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(culture);
+            Assert.Equal("14 28 / (>L:A22X ACP VHF2 Volume)", A220Panels.AcpVolumeCalc(2, 14));
+            Assert.Equal("VHF 2 volume did not change — reads 25%.", A220Panels.AcpVolumeReadBack(2, 14, 0.25));
+        }
+        finally { CultureInfo.CurrentCulture = previous; }
+    }
+
+    [Theory]
+    [InlineData(2, true, 1.0, null)]
+    [InlineData(2, false, 0.0, null)]
+    [InlineData(2, true, 0.0, "VHF 2 receiver did not change — still off.")]
+    [InlineData(1, false, 1.0, "VHF 1 receiver did not change — still on.")]
+    public void AcpReceiverReadBack_SpeaksOnlyWhenTheAircraftKeptAnotherState(int vhf, bool wantOn, double now, string? expected)
+        => Assert.Equal(expected, A220Panels.AcpReceiverReadBack(vhf, wantOn, now));
+
+    [Theory]
+    [InlineData(2, 14, 0.5, null)]
+    [InlineData(2, 28, 1.0, null)]
+    [InlineData(2, 14, 0.25, "VHF 2 volume did not change — reads 25%.")]
+    public void AcpVolumeReadBack_SpeaksOnlyWhenTheAircraftKeptAnotherLevel(int vhf, int step, double now, string? expected)
+        => Assert.Equal(expected, A220Panels.AcpVolumeReadBack(vhf, step, now));
+
+    [Fact]
+    public void AcpReadBacks_WithNothingReadBack_AreNotConfirmed_NeverAClaimedState()
+    {
+        Assert.Equal("VHF 2 receiver not confirmed: the A220 did not report it.", A220Panels.AcpReceiverReadBack(2, true, null));
+        Assert.Equal("VHF 3 volume not confirmed: the A220 did not report it.", A220Panels.AcpVolumeReadBack(3, 14, null));
+        Assert.Equal("VHF 3 volume not confirmed: the A220 did not report it.", A220Panels.AcpVolumeReadBack(3, 14, double.NaN));
+    }
 }

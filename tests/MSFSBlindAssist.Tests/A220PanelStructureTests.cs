@@ -195,4 +195,27 @@ public class A220PanelStructureTests
     [InlineData("A22X_EVAC", "Evacuation Command (guarded)")]
     public void RelabelledControls_SayWhatTheCockpitSays(string key, string label)
         => Assert.Equal(label, Vars[key].DisplayName);
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void AcpReceiveAndVolume_AreTheKnobsOwnVars(int n)
+    {
+        var rx = Vars[$"A22X_ACP_VHF{n}_RX"];
+        Assert.Equal($"A22X ACP VHF{n} Rx", rx.Name);
+        Assert.Equal($"VHF {n} Receiver", rx.DisplayName);
+        Assert.Equal(new[] { "Off", "On" }, rx.ValueDescriptions.OrderBy(kv => kv.Key).Select(kv => kv.Value));
+        Assert.Equal(UpdateFrequency.OnRequest, rx.UpdateFrequency);
+
+        var vol = Vars[$"A22X_ACP_VHF{n}_VOLUME"];
+        Assert.Equal($"A22X ACP VHF{n} Volume", vol.Name);
+        Assert.Equal($"VHF {n} Volume", vol.DisplayName);
+        Assert.Equal(SimVarType.LVar, vol.Type);
+        Assert.Equal(UpdateFrequency.OnRequest, vol.UpdateFrequency);
+        Assert.Equal(29, vol.ValueDescriptions.Count);
+        Assert.NotNull(vol.ValueToDescriptionKey);
+        Assert.Equal("50%", vol.ValueDescriptions[vol.DescriptionKeyFor(0.5)]);       // the L:var's 0-1 level, shown as its detent
+        Assert.Equal("100%", vol.ValueDescriptions[vol.DescriptionKeyFor(1.0)]);
+    }
 }

@@ -39,6 +39,18 @@ public partial class SynapticA220Definition
         ValueDescriptions = Labels(labels)
     };
 
+    /// <summary>A VHF volume knob ([A220-44]): the L:var's 0-1 level shown as its 29 detents.</summary>
+    private static SimVarDefinition AcpVolume(int vhf) => new()
+    {
+        Name = $"A22X ACP VHF{vhf} Volume",
+        DisplayName = $"VHF {vhf} Volume",
+        Type = SimVarType.LVar,
+        Units = "number",
+        UpdateFrequency = UpdateFrequency.OnRequest,
+        ValueDescriptions = Labels(A220.A220Panels.AcpVolumeLabels.ToArray()),
+        ValueToDescriptionKey = A220.A220Panels.AcpVolumeStepFor
+    };
+
     /// <summary>Momentary L:var pushbutton (A220_ButtonMomentary or IS_HELD: pulse 1 then
     /// release) — chrono, nav source, crosstune, FD, gear-aural cancel, CVR, mech call,
     /// transmit select. <see cref="SimVarDefinition.IsMomentary"/> tells the write path to
@@ -783,6 +795,20 @@ public partial class SynapticA220Definition
             RenderAsReadOnlyStatus = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "None", [1] = "VHF 1", [2] = "VHF 2", [3] = "VHF 3" }
         };
+
+        // ==== Pedestal — audio control panel: VHF receive and volume ([A220-44]) ==============
+        // Each VHF volume knob (A220_ACP_Knob, Pedestal/ACP.xml) writes "A22X ACP VHFn Volume" =
+        // detent/28 and its push toggles "A22X ACP VHFn Rx" 0/1 (drawn as the knob pulled out);
+        // the aircraft's systems WASM maps them to COMn_VOLUME_SET and COMn_RECEIVE_SELECT.
+        // MSFSBA writes the TARGET receiver state (never the toggle) and the volume on the
+        // knob's own scale (A220Panels.AcpVolumeCalc). The HF/SAT/CAB/INT/PA/SPKR/NAV/DME keys
+        // and knobs have no variable (animation only).
+        v["A22X_ACP_VHF1_VOLUME"] = AcpVolume(1);
+        v["A22X_ACP_VHF1_RX"] = LSwitch("A22X ACP VHF1 Rx", "VHF 1 Receiver", "Off", "On");
+        v["A22X_ACP_VHF2_VOLUME"] = AcpVolume(2);
+        v["A22X_ACP_VHF2_RX"] = LSwitch("A22X ACP VHF2 Rx", "VHF 2 Receiver", "Off", "On");
+        v["A22X_ACP_VHF3_VOLUME"] = AcpVolume(3);
+        v["A22X_ACP_VHF3_RX"] = LSwitch("A22X ACP VHF3 Rx", "VHF 3 Receiver", "Off", "On");
 
         // ==== TOD pause (plain writable L:vars — cheap win) ==================
         v["A22X_TOD_PAUSE"] = new SimVarDefinition

@@ -112,6 +112,29 @@ public partial class SynapticA220Definition
                 PulseLVar(simConnect, varDef.Name);
                 AnnounceTxChannelAfterPress(simConnect, announcer);
                 return true;
+            case "A22X_ACP_VHF1_VOLUME":
+            case "A22X_ACP_VHF2_VOLUME":
+            case "A22X_ACP_VHF3_VOLUME":
+            {
+                // [A220-44] The knob's own scale (step/28, computed by the sim), never the step index.
+                int vhf = varKey["A22X_ACP_VHF".Length] - '0';
+                int step = (int)Math.Round(value);
+                simConnect.ExecuteCalculatorCode(SeqPrefix() + A220.A220Panels.AcpVolumeCalc(vhf, step));
+                VerifyAcpAfterSettle(simConnect, announcer, varKey, now => A220.A220Panels.AcpVolumeReadBack(vhf, step, now));
+                return true;
+            }
+            case "A22X_ACP_VHF1_RX":
+            case "A22X_ACP_VHF2_RX":
+            case "A22X_ACP_VHF3_RX":
+            {
+                // [A220-44] The target state: the cockpit push toggles, so a toggle could undo a
+                // repeated pick (main's PMDG 737 receivers, #307, learned the same).
+                int vhf = varKey["A22X_ACP_VHF".Length] - '0';
+                bool on = value >= 0.5;
+                WriteLVar(simConnect, varDef.Name, on ? 1 : 0);
+                VerifyAcpAfterSettle(simConnect, announcer, varKey, now => A220.A220Panels.AcpReceiverReadBack(vhf, on, now));
+                return true;
+            }
 
             // ---- master warning/caution acknowledge -----------------------------
             case "A22X_MASTER_CW_CANCEL":
@@ -209,6 +232,35 @@ public partial class SynapticA220Definition
                 await System.Threading.Tasks.Task.Delay(600);
                 double? now = await simConnect.ReadFreshAsync("A22X_TX_CHANNEL", 1500);
                 announcer.Announce(A220.A220Panels.TxChannelText(now ?? -1));
+            }
+            catch { /* read-back only */ }
+        });
+    }
+
+    /// <summary>Per ACP key, the latest write's generation: a write the pilot has arrowed past is
+    /// never read back (no false "did not change", no fresh read snapping the combo mid-arrow).</summary>
+    private readonly Dictionary<string, int> _acpWriteGeneration = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// ACP receive/volume read-back ([A220-44], CORE-7): once the pilot has stopped on a value
+    /// (700 ms with no newer write to that control), one fresh read of the L:var; silent when it
+    /// landed, spoken when the aircraft kept another value or never answered.
+    /// </summary>
+    private void VerifyAcpAfterSettle(SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
+        string varKey, Func<double?, string?> verdict)
+    {
+        int generation;
+        lock (_acpWriteGeneration)
+            generation = _acpWriteGeneration[varKey] = _acpWriteGeneration.GetValueOrDefault(varKey) + 1;
+        bool Latest() { lock (_acpWriteGeneration) return _acpWriteGeneration[varKey] == generation; }
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            try
+            {
+                await System.Threading.Tasks.Task.Delay(700);
+                if (!Latest()) return;
+                double? now = await simConnect.ReadFreshAsync(varKey, 1500);
+                if (Latest() && verdict(now) is { } failure) announcer.AnnounceImmediate(failure);
             }
             catch { /* read-back only */ }
         });
