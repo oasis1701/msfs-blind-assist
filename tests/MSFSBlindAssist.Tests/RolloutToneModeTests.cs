@@ -194,4 +194,12 @@ public class RolloutToneModeTests
     {
         Assert.Equal(expected, RolloutExitGate.ExitGuidanceOwnsTone(inLandingRollout, noExitMode, lastToneMode));
     }
+
+    // Before exit guidance's first tone frame — rollout entry or a retarget — the cue keeps the tone: the
+    // ownership rule fails toward the cue sounding, never toward both tones silent.
+    [Fact]
+    public void AtRolloutEntry_TheCueOwnsTheToneUntilExitGuidanceChooses()
+    {
+        Assert.False(RolloutExitGate.ExitGuidanceOwnsTone(true, false, RolloutExitGate.ToneModeAtRolloutEntry));
+    }
 }

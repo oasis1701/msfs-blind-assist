@@ -3007,23 +3007,30 @@ Before touchdown (during cruise or descent), the pilot picks a runway-exit taxiw
   `Navigation.RolloutCueArming` decides which runway arms it (MainForm's
   `RefreshRolloutCueArming`, on the dialog's OK, the planner's `PlanChanged` and Settings
   OK): the destination at the same airport, the latest choice across airports. The cue
-  engages on the first ground frame after flying, at 40 kt or more, on a runway of the
+  engages on the first ground frame after flying above 80 ft (`ArmsRolloutOnlyTouchdown`,
+  so a settle-back right after liftoff never starts it), at 40 kt or more, on a runway of the
   armed airport (`ShouldEngageRolloutOnly`), switches to the runway actually landed on, and
   plays Takeoff Assist's intercept-crab law with the Takeoff Assist tone settings, the
   "Play steering tone" threshold included, so at the default 1° it is silent while the
-  autopilot tracks. With an exit plan it says nothing at touchdown (the planner's sentence
-  is the one utterance); without one it says "Rollout guidance". A bounce stops it silently
-  until the next touchdown.
+  autopilot tracks. At touchdown (`DecideRolloutGuidanceSpeech`) it says nothing when the
+  exit plan starts exit guidance there (`LandingExitPlanner.WillStartGuidanceAt`: the
+  planner's sentence is the one utterance); it queues "Rollout guidance" behind any planner
+  sentence when a plan exists that will not start there (another airport, or a plan already
+  used this session); with no plan it says it at once. A bounce stops it silently until the
+  next touchdown. A database switch disarms it and says "Rollout centerline tone off"
+  ("Manual landing assist off" for the checkbox arming).
 - **Sharing the tone** ([ROL-32]): exit guidance's `Centerline` mode yields the runway to the
   cue; the cue mutes while exit guidance owns the tone for the exit itself
-  (`ExitGuidanceOwnsRolloutTone`) and comes back after a downfield retarget. During a landing
+  (`ExitGuidanceOwnsRolloutTone`) and comes back after a downfield retarget; until exit
+  guidance's first tone frame after entry or a retarget the cue keeps the tone
+  (`RolloutExitGate.ToneModeAtRolloutEntry`). During a landing
   rollout only a stop (silently) or exit guidance's takeover ends it, so the old 55 kt
   handover, and the 55-50 kt silence and heading-only cue it left, are gone for the manual
   landing assist too. With no landing rollout it ends below 40 kt or once laterally clear of
   the runway. The 20° heading turn-off end is retired: it would have ended the cue, saying
   "Rollout guidance complete", seconds into the KSEA veer.
 - **Diagnostics.** `landing_assist.log`: a header per rollout engagement
-  (`=== Rollout icao=… rwy=… armed=… flare=… exitPlan=… ===`), then
+  (`=== Rollout icao=… rwy=… armed=… flare=… exitPlan=… exitGuidanceHere=… ===`), then
   `lat,lon,gsKt,hdgOffRwyDeg,crossTrackFt,crabDeg,steerDeg,pan,sounding,owner` at most every
   100 ms while moving, and on every change of sounding or owner; an event line says why the cue
   ended (`=== Rollout end: stopped gs=… ===`, taxi guidance took over, below 40 kt, clear of the

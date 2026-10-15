@@ -23,7 +23,9 @@ public partial class TaxiGuidanceManager
         _rolloutTurnNowAnnounced = false;
         _rolloutTooFastNoExit = false;
         _rolloutCountdownStatusOwed = false;
-        _rolloutToneMode = Navigation.RolloutToneMode.Silent;
+        // Not Silent: until this rollout's first tone frame the landing assist's centerline cue keeps the tone
+        // (RolloutExitGate.ToneModeAtRolloutEntry), so ownership never fails toward both tones silent.
+        _rolloutToneMode = Navigation.RolloutExitGate.ToneModeAtRolloutEntry;
         _rolloutToneLogMode = null;
         _rolloutToneLogExit = null;
         _rolloutToneLogUtc = DateTime.MinValue;

@@ -435,6 +435,15 @@ public static class RolloutExitGate
         => inLandingRollout && !noExitMode && lastToneMode != RolloutToneMode.Centerline;
 
     /// <summary>
+    /// The tone mode a landing rollout holds from its entry (and from every retarget) until its first tone
+    /// frame: <see cref="RolloutToneMode.Centerline"/>, so <see cref="ExitGuidanceOwnsTone"/> grants exit
+    /// guidance the tone only once it has actually chosen a mode of its own. The landing assist's cue then
+    /// fails toward sounding, never toward both tones silent — even should exit guidance's frames stop.
+    /// Without the cue nothing reads this, and the first frame's own mode replaces it.
+    /// </summary>
+    public const RolloutToneMode ToneModeAtRolloutEntry = RolloutToneMode.Centerline;
+
+    /// <summary>
     /// Does the exit have a knowable side, per the same <see cref="ExitSideMinBearingDeg"/>
     /// floor <see cref="IsTurnTowardExit"/> degrades on? False for the
     /// <c>ExitBearingTrue == 0.0</c> "unknown" sentinel (which

@@ -996,7 +996,7 @@ public partial class TaxiGuidanceManager : IDisposable
     // exit-bearing pan, and vice versa. Replaces the old _rolloutExitToneArmed latch,
     // which reset the smoother on exit-tone entry only — the drift tone needs the same
     // treatment in both directions.
-    private Navigation.RolloutToneMode _rolloutToneMode = Navigation.RolloutToneMode.Silent;
+    private Navigation.RolloutToneMode _rolloutToneMode = Navigation.RolloutExitGate.ToneModeAtRolloutEntry;
     // The exit whose turn window RolloutExitTurnWindowFeet last logged, so landing_exit.log records each
     // targeted exit's window once. Logging only: the window itself is computed where it is read.
     private Navigation.LandingExit? _rolloutTurnWindowLoggedExit;

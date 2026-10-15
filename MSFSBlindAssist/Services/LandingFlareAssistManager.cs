@@ -33,8 +33,8 @@ namespace MSFSBlindAssist.Services;
 ///  • ROLLOUT ONLY: armed with no flare phase (Arm's includeFlare false) when a
 ///    destination runway or landing exit is set without the checkbox
 ///    (Navigation.RolloutCueArming), so an AUTOLAND gets the same rollout cue: no
-///    tones on the approach, and the rollout engages at touchdown on a runway of the
-///    armed airport (ShouldEngageRolloutOnly). KSEA 16R 2026-10-15: an A300 autoland
+///    tones on the approach, and the rollout engages at touchdown after flying above
+///    80 ft, on a runway of the armed airport (ShouldEngageRolloutOnly). KSEA 16R 2026-10-15: an A300 autoland
 ///    held the centerline to 96 kt, then yawed off the runway with no cue at all,
 ///    because the cue existed only behind the checkbox.
 ///  • SHARING: while taxi guidance's landing rollout steers at an exit, the two
@@ -105,11 +105,15 @@ public class LandingFlareAssistManager : IDisposable
     // taxi guidance already steers (a bounce).
     private readonly Func<bool> isLandingExitTaxiSteering;
 
-    // True while the landing-exit planner holds a plan, so it will lead its own touchdown sentence
-    // with the runway correction. Both features notice a runway change and both say so, a few
-    // hundredths of a second apart at touchdown, and the planner interrupts 2014 so this assist leaves
-    // the telling to it (LandingAssistRunwaySwitch.AtTouchdown) and only re-points its tones.
+    // True while the landing-exit planner holds a plan (used or not, for any airport).
     private readonly Func<bool> hasLandingExitPlan;
+    // True when that plan will start exit guidance at the next touchdown at the given airport
+    // (LandingExitPlanner.WillStartGuidanceAt), so the planner will lead its own touchdown sentence with the
+    // runway correction. Both features notice a runway change and both say so, a few hundredths of a second
+    // apart at touchdown, and the planner interrupts, so this assist leaves the telling to it
+    // (LandingAssistRunwaySwitch.AtTouchdown) and only re-points its tones. A plan for another airport, or one
+    // already used, says nothing at this touchdown, so this assist speaks for itself then.
+    private readonly Func<string, bool> landingExitPlanStartsAt;
 
     // LATERAL / pan tone — the user's chosen waveform. Runs from flare engage all the way to
     // the landing-exit handoff; only the law feeding it changes at touchdown.
@@ -144,7 +148,8 @@ public class LandingFlareAssistManager : IDisposable
     // The arming includes the flare phase (the destination dialog's checkbox). False: the rollout-only cue
     // (RolloutCueArming) — no approach tones, the rollout engages at touchdown (ProcessRolloutOnlyArmed).
     private bool flareEnabled = true;
-    // Rollout-only: an airborne frame has armed the touchdown decision, which the first ground frame makes.
+    // Rollout-only: flying above ROLLOUT_ONLY_ARM_GEAR_AGL_FT (or a bounce after engagement) has armed the
+    // touchdown decision, which the first ground frame makes.
     private bool rolloutOnlyWasAirborne;
 
     // landing_assist.log: one header per rollout engagement, then a throttled per-frame trace of the cue
@@ -245,6 +250,10 @@ public class LandingFlareAssistManager : IDisposable
     // The rollout-only cue's real-landing floor: LandingExitPlanner's LANDING_MIN_GS_KNOTS. Below it, a
     // teleport or a taxi onto the ground, not a touchdown.
     private const double ROLLOUT_ONLY_MIN_TOUCHDOWN_GS_KTS = 40.0;
+    // The rollout-only cue's touchdown decision is armed only by flying above this gear height
+    // (ArmsRolloutOnlyTouchdown): the flare band's own latch, which every approach passes and a settle-back
+    // after liftoff does not.
+    private const double ROLLOUT_ONLY_ARM_GEAR_AGL_FT = FLARE_LATCH_GEAR_AGL_FT;
 
     public bool IsArmed => armed;
     public bool IsEngaged => armed && phase != Phase.Armed;
@@ -266,7 +275,8 @@ public class LandingFlareAssistManager : IDisposable
         Func<bool> landingRolloutCheck,
         Func<bool> exitGuidanceOwnsToneCheck,
         Func<bool> landingExitTaxiSteeringCheck,
-        Func<bool> landingExitPlanPendingCheck)
+        Func<bool> landingExitPlanPendingCheck,
+        Func<string, bool> landingExitPlanStartsAtCheck)
     {
         announcer = screenReaderAnnouncer;
         getFlareAglBiasFt = flareAglBiasFtProvider;
@@ -275,6 +285,7 @@ public class LandingFlareAssistManager : IDisposable
         exitGuidanceOwnsTone = exitGuidanceOwnsToneCheck;
         isLandingExitTaxiSteering = landingExitTaxiSteeringCheck;
         hasLandingExitPlan = landingExitPlanPendingCheck;
+        landingExitPlanStartsAt = landingExitPlanStartsAtCheck;
     }
 
     /// <summary>
@@ -336,13 +347,13 @@ public class LandingFlareAssistManager : IDisposable
 
     /// <summary>
     /// Disarms completely (no destination or exit plan arms it any more, or reset). With
-    /// <paramref name="announce"/>, says "Manual landing assist off" only when the pilot had armed the
-    /// manual landing assist itself (the checkbox): the rollout-only cue is armed by the app, and a
-    /// pilot who never ticked the box must not be told an assist they never chose was switched off.
+    /// <paramref name="announce"/> (a database switch) it says what it switched off
+    /// (<see cref="DisarmAnnouncement"/>): "Manual landing assist off" only for the checkbox arming, so a
+    /// pilot who never ticked the box is never told an assist they never chose was switched off.
     /// </summary>
     public void Disarm(bool announce = false)
     {
-        bool wasManualLandingArmed = armed && flareEnabled;
+        string? announcement = DisarmAnnouncement(armed, flareEnabled);
         StopEngagement(raiseEvents: true);
         armed = false;
         flareEnabled = true;
@@ -353,8 +364,8 @@ public class LandingFlareAssistManager : IDisposable
         airportRunways = Array.Empty<Runway>();
         SetMonitoringRequested(false);
 
-        if (announce && wasManualLandingArmed)
-            announcer.AnnounceImmediate("Manual landing assist off");
+        if (announce && announcement != null)
+            announcer.AnnounceImmediate(announcement);
         Log.Debug("LandingFlareAssist", "Disarmed");
     }
 
@@ -510,8 +521,9 @@ public class LandingFlareAssistManager : IDisposable
     }
 
     /// <summary>
-    /// Rollout-only arming waiting for its touchdown. An airborne frame arms the decision (and, above
-    /// go-around height, re-arms the "Rollout guidance" sentence for the next approach); the first ground
+    /// Rollout-only arming waiting for its touchdown. An airborne frame above the arming height
+    /// (<see cref="ArmsRolloutOnlyTouchdown"/>) arms the decision (and, above go-around height, re-arms the
+    /// "Rollout guidance" sentence for the next approach); the first ground
     /// frame after it makes ONE decision (<see cref="ShouldEngageRolloutOnly"/>), so a refused touchdown
     /// (another airport, too slow) is not re-evaluated on every ground frame that follows.
     /// </summary>
@@ -520,7 +532,7 @@ public class LandingFlareAssistManager : IDisposable
     {
         if (!onGround)
         {
-            rolloutOnlyWasAirborne = true;
+            if (ArmsRolloutOnlyTouchdown(onGround, gearAgl)) rolloutOnlyWasAirborne = true;
             if (gearAgl > GO_AROUND_GEAR_AGL_FT) rolloutAnnounced = false;
             return;
         }
@@ -715,6 +727,12 @@ public class LandingFlareAssistManager : IDisposable
         StartLateralToneIfNeeded();
         tone.UpdatePitch(0);           // pan mode: park the frequency at centre, meaning is the pan
 
+        // Will exit guidance start at THIS touchdown and speak its own sentence? Already running (the planner
+        // got there first), or about to (a fresh plan for this airport). A plan for another airport, or one
+        // already used, says nothing here.
+        bool exitGuidanceStartsHere = isLandingRollout()
+            || (armedAirport != null && landingExitPlanStartsAt(armedAirport.ICAO));
+
         // Confirm the runway on the ground: switch if the aircraft touched down on a different runway
         // from the active one, and say so once when that is not the armed runway.
         bool speakCorrection = false;
@@ -723,7 +741,7 @@ public class LandingFlareAssistManager : IDisposable
             var verdict = LandingRunwayMatch.Evaluate(
                 d.Latitude, d.Longitude, d.HeadingMagnetic + d.MagneticVariation, runway, airportRunways);
             var decision = LandingAssistRunwaySwitch.AtTouchdown(verdict, runway, armedRunway, runwayCorrectionSpoken,
-                exitPlanWillSayIt: hasLandingExitPlan());
+                exitPlanWillSayIt: exitGuidanceStartsHere);
             if (decision.SwitchTo != null)
             {
                 ApplyActiveRunway(decision.SwitchTo);
@@ -736,28 +754,32 @@ public class LandingFlareAssistManager : IDisposable
         if (!rolloutAnnounced)
         {
             rolloutAnnounced = true;
-            // The rollout-only cue with an exit plan says nothing: the planner's touchdown sentence is the one
-            // utterance at touchdown, and it already says guidance has started.
-            if (flareEnabled || !hasLandingExitPlan())
+            var speech = DecideRolloutGuidanceSpeech(flareEnabled, exitGuidanceStartsHere, hasLandingExitPlan());
+            if (speech != RolloutGuidanceSpeech.None)
             {
-                announcer.AnnounceImmediate(LandingAssistRunwaySwitch.RolloutGuidancePhrase(
-                    runwayLabel, armedRunway?.RunwayID ?? runwayLabel, speakCorrection));
+                string phrase = LandingAssistRunwaySwitch.RolloutGuidancePhrase(
+                    runwayLabel, armedRunway?.RunwayID ?? runwayLabel, speakCorrection);
+                if (speech == RolloutGuidanceSpeech.Immediate)
+                    announcer.AnnounceImmediate(phrase);
+                else
+                    announcer.AnnounceWithQueue(phrase);   // after any planner sentence, never cut off by it
                 if (speakCorrection) runwayCorrectionSpoken = true;
             }
         }
-        BeginRolloutTrace();
+        BeginRolloutTrace(exitGuidanceStartsHere);
         Log.Debug("LandingFlareAssist", $"Rollout engaged (flare={flareEnabled})");
     }
 
     /// <summary>The landing_assist.log header for this rollout, and a fresh trace throttle.</summary>
-    private void BeginRolloutTrace()
+    private void BeginRolloutTrace(bool exitGuidanceStartsHere)
     {
         traceLineWritten = false;
         lastTraceUtc = DateTime.MinValue;
         try
         {
             _traceLog.Info($"=== Rollout icao={armedAirport?.ICAO ?? "-"} rwy={runwayLabel} " +
-                $"armed={armedRunway?.RunwayID ?? "-"} flare={flareEnabled} exitPlan={hasLandingExitPlan()} ===");
+                $"armed={armedRunway?.RunwayID ?? "-"} flare={flareEnabled} exitPlan={hasLandingExitPlan()} " +
+                $"exitGuidanceHere={exitGuidanceStartsHere} ===");
             _traceLog.Info("lat,lon,gsKt,hdgOffRwyDeg,crossTrackFt,crabDeg,steerDeg,pan,sounding,owner");
         }
         catch { /* diagnostic only */ }
@@ -966,6 +988,52 @@ public class LandingFlareAssistManager : IDisposable
         => wasAirborne
            && groundSpeedKts >= ROLLOUT_ONLY_MIN_TOUCHDOWN_GS_KTS
            && verdict != LandingRunwayVerdict.Unknown;
+
+    /// <summary>
+    /// Does this frame arm the rollout-only cue's touchdown decision? Only airborne above
+    /// ROLLOUT_ONLY_ARM_GEAR_AGL_FT, the flare band's own latch height, which every approach passes:
+    /// settling back onto the runway right after liftoff never climbed through it, so it never starts the
+    /// cue on the takeoff roll. A bounce after engagement re-arms on its own path. Pure —
+    /// <c>LandingFlareRolloutOnlyTests</c>.
+    /// </summary>
+    internal static bool ArmsRolloutOnlyTouchdown(bool onGround, double gearAglFt)
+        => !onGround && gearAglFt > ROLLOUT_ONLY_ARM_GEAR_AGL_FT;
+
+    /// <summary>How the "Rollout guidance" sentence is spoken at touchdown.</summary>
+    internal enum RolloutGuidanceSpeech
+    {
+        /// <summary>Not at all: the planner's touchdown sentence is the one utterance.</summary>
+        None,
+        /// <summary>At once, interrupting.</summary>
+        Immediate,
+        /// <summary>On the announcer's queue, after any planner sentence instead of under it.</summary>
+        Queued,
+    }
+
+    /// <summary>
+    /// How the "Rollout guidance" sentence is spoken at touchdown. Flare mode: at once, as it always was. The
+    /// rollout-only cue: not at all when exit guidance starts at this touchdown (<paramref name="exitGuidanceStartsHere"/>:
+    /// the planner's sentence already says guidance has started); queued when a plan exists that will not start
+    /// here — another airport, whose planner may say "Runway not identified", or a plan already used this
+    /// session, which says nothing — so the pilot still learns the cue is running; at once with no plan. Pure —
+    /// <c>LandingFlareRolloutOnlyTests</c>.
+    /// </summary>
+    internal static RolloutGuidanceSpeech DecideRolloutGuidanceSpeech(bool flareEnabled, bool exitGuidanceStartsHere,
+        bool exitPlanExists)
+        => flareEnabled ? RolloutGuidanceSpeech.Immediate
+           : exitGuidanceStartsHere ? RolloutGuidanceSpeech.None
+           : exitPlanExists ? RolloutGuidanceSpeech.Queued
+           : RolloutGuidanceSpeech.Immediate;
+
+    /// <summary>
+    /// What a database switch's disarm says: "Manual landing assist off" for the checkbox arming, as always,
+    /// and "Rollout centerline tone off" for the rollout-only cue, so its silence at the next touchdown is never
+    /// mistaken for an on-track cue; nothing when nothing was armed. Pure — <c>LandingFlareRolloutOnlyTests</c>.
+    /// </summary>
+    internal static string? DisarmAnnouncement(bool wasArmed, bool flareEnabled)
+        => !wasArmed ? null
+           : flareEnabled ? "Manual landing assist off"
+           : "Rollout centerline tone off";
 
     /// <summary>
     /// One <c>landing_assist.log</c> trace line, in the invariant culture whatever the pilot's Windows

@@ -47,6 +47,44 @@ public class LandingFlareRolloutOnlyTests
             0, 0, 0, 0, 0, 0, 0, 0f, false, true)));
     }
 
+    // The "Rollout guidance" sentence at touchdown: the manual landing assist's flare mode speaks it at once
+    // as before; the rollout-only cue stays silent when the planner starts exit guidance at this touchdown
+    // (its sentence is the one utterance), queues it after any planner sentence when a plan exists that will
+    // not start here (another airport, or a plan already used this session), and speaks it at once otherwise.
+    [Fact]
+    public void The_rollout_guidance_sentence_follows_what_the_planner_will_say()
+    {
+        var immediate = LandingFlareAssistManager.RolloutGuidanceSpeech.Immediate;
+        var queued = LandingFlareAssistManager.RolloutGuidanceSpeech.Queued;
+        var none = LandingFlareAssistManager.RolloutGuidanceSpeech.None;
+        Assert.Equal(immediate, LandingFlareAssistManager.DecideRolloutGuidanceSpeech(true, false, false));
+        Assert.Equal(immediate, LandingFlareAssistManager.DecideRolloutGuidanceSpeech(true, true, true));
+        Assert.Equal(none, LandingFlareAssistManager.DecideRolloutGuidanceSpeech(false, true, true));
+        Assert.Equal(queued, LandingFlareAssistManager.DecideRolloutGuidanceSpeech(false, false, true));
+        Assert.Equal(immediate, LandingFlareAssistManager.DecideRolloutGuidanceSpeech(false, false, false));
+    }
+
+    // A database switch disarms whatever was armed and says which: the checkbox arming as before, and the
+    // rollout-only cue too, so its silence at the next touchdown is never mistaken for an on-track cue.
+    [Fact]
+    public void A_database_switch_names_what_it_switched_off()
+    {
+        Assert.Equal("Manual landing assist off", LandingFlareAssistManager.DisarmAnnouncement(true, true));
+        Assert.Equal("Rollout centerline tone off", LandingFlareAssistManager.DisarmAnnouncement(true, false));
+        Assert.Null(LandingFlareAssistManager.DisarmAnnouncement(false, true));
+        Assert.Null(LandingFlareAssistManager.DisarmAnnouncement(false, false));
+    }
+
+    // Only flying above 80 ft (the flare band's own latch height) arms the touchdown decision, so settling
+    // back onto the runway right after liftoff never starts the cue on the takeoff roll.
+    [Theory]
+    [InlineData(false, 80.1, true)]
+    [InlineData(false, 80.0, false)]
+    [InlineData(false, 30.0, false)]
+    [InlineData(true, 200.0, false)]
+    public void Only_flying_above_80_ft_arms_the_touchdown(bool onGround, double gearAglFt, bool expected)
+        => Assert.Equal(expected, LandingFlareAssistManager.ArmsRolloutOnlyTouchdown(onGround, gearAglFt));
+
     // Why the cue ended, or why a touchdown did not engage it, goes to landing_assist.log beside the trace:
     // debug.log rotates within minutes, and the in-sim test plan reads this file.
     [Theory]

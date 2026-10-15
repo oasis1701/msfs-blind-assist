@@ -884,10 +884,12 @@ public partial class MainForm : Form
             () => taxiGuidanceManager.IsLandingRollout,
             () => taxiGuidanceManager.ExitGuidanceOwnsRolloutTone,
             () => taxiGuidanceManager.IsLandingExitTaxiSteering,
-            // With a landing-exit plan pending, the planner leads its own touchdown sentence with
-            // the runway correction and interrupts — so the assist leaves the telling to it rather
-            // than having its own sentence cut off mid-word.
-            () => landingExitPlanner.HasPendingExit);
+            // A landing-exit plan pending, and whether it will start exit guidance at the touchdown at a
+            // given airport: then the planner leads its own touchdown sentence with the runway correction
+            // and interrupts, so the assist leaves the telling to it rather than having its own sentence
+            // cut off mid-word; a plan for elsewhere, or one already used, says nothing there.
+            () => landingExitPlanner.HasPendingExit,
+            icao => landingExitPlanner.WillStartGuidanceAt(icao));
         flareAssistManager.MonitoringRequestChanged += OnFlareAssistMonitoringRequestChanged;
         flareAssistManager.EngagedChanged += OnFlareAssistEngagedChanged;
         simConnectManager.FlareAssistDataReceived += (s, d) => flareAssistManager.ProcessFrame(d);

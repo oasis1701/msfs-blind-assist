@@ -86,6 +86,22 @@ public class LandingExitPlanner
     public IReadOnlyList<Runway> PendingAirportRunways => _airportRunways;
 
     /// <summary>
+    /// Will this plan start exit guidance, and speak its touchdown sentence, at the next touchdown at
+    /// <paramref name="icao"/>? The landing assist's rollout cue stays silent at touchdown only then.
+    /// </summary>
+    public bool WillStartGuidanceAt(string icao)
+        => WillStartGuidance(HasPendingExit, _activatedThisLanding, _icao, icao);
+
+    /// <summary>
+    /// A plan starts guidance at a touchdown when it exists, has not already started it (a plan starts
+    /// guidance once; only a go-around re-arms it) and names that airport. Pure —
+    /// <c>LandingExitPlannerStartsGuidanceTests</c>.
+    /// </summary>
+    internal static bool WillStartGuidance(bool hasPendingExit, bool activatedThisLanding, string? planIcao, string icao)
+        => hasPendingExit && !activatedThisLanding
+           && string.Equals(planIcao, icao, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Raised after <see cref="SetExit"/> and <see cref="Clear"/> change the plan, never by
     /// <see cref="RearmAfterGoAround"/>, which keeps it. MainForm re-decides the landing assist's rollout
     /// centerline cue from it (Navigation.RolloutCueArming): a plan arms the cue on its runway.

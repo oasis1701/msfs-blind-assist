@@ -1428,8 +1428,10 @@ public partial class MainForm
         // landing at all, or names a runway this database no longer has.
         //
         // Both tell the pilot, because both are things they deliberately set up and would
-        // otherwise expect to still be armed on the approach (the assist says so only when its
-        // manual-landing checkbox armed it; the rollout-only cue is the app's own arming).
+        // otherwise expect to still be armed on the approach. The assist says which it switched off
+        // (LandingFlareAssistManager.DisarmAnnouncement): "Manual landing assist off" for the checkbox
+        // arming, "Rollout centerline tone off" for the rollout-only cue, so that cue's silence at the
+        // next touchdown is never mistaken for an on-track tone.
         //
         // Order matters: the destination's arming record is forgotten and the assist disarmed BEFORE
         // the plan is cleared, because clearing raises PlanChanged, whose re-arm would otherwise find
