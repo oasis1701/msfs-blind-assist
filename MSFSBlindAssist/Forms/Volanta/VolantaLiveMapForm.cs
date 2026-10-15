@@ -84,7 +84,7 @@ public sealed class VolantaLiveMapForm : Form
     private DateTimeOffset? _connectedAt;
     private DateTimeOffset? _spokenFriendsReceived;
     private bool? _spokenPaused;
-    private bool _trafficFilled, _starting;
+    private bool _trafficFilled, _starting, _reconciling;
 
     /// <summary>A list row: its key (flight or station id) and its text. Value equality, so an unchanged row is
     /// never rewritten.</summary>
@@ -154,7 +154,7 @@ public sealed class VolantaLiveMapForm : Form
             AccessibleName = "Friends",
             AccessibleDescription = "Friends flying first, nearest first, then online, then offline. Updated every 5 seconds. F5 re-sorts.",
         };
-        _friendsList.SelectedIndexChanged += (_, _) => ShowFriendDetails();
+        _friendsList.SelectedIndexChanged += (_, _) => { if (!_reconciling) ShowFriendDetails(); };
         _friendsList.Enter += (_, _) => SelectFirstIfNone(_friendsList);
 
         _friendsDetails = NewDetailsList("Selected friend details",
@@ -192,7 +192,7 @@ public sealed class VolantaLiveMapForm : Form
             AccessibleDescription = "Aircraft around you, nearest first, updated every 5 seconds. While you are in "
                 + "the list its order holds, and the line you are on re-reads when it changes. F5 re-sorts.",
         };
-        _trafficList.SelectedIndexChanged += (_, _) => ShowTrafficDetails();
+        _trafficList.SelectedIndexChanged += (_, _) => { if (!_reconciling) ShowTrafficDetails(); };
         _trafficList.Enter += (_, _) => SelectFirstIfNone(_trafficList);
 
         _trafficDetails = NewDetailsList("Selected aircraft details",
@@ -256,7 +256,7 @@ public sealed class VolantaLiveMapForm : Form
             AccessibleName = "Online ATC",
             AccessibleDescription = "Online controllers, nearest first, updated every 5 seconds. F5 re-sorts.",
         };
-        _atcList.SelectedIndexChanged += (_, _) => ShowAtcDetails();
+        _atcList.SelectedIndexChanged += (_, _) => { if (!_reconciling) ShowAtcDetails(); };
         _atcList.Enter += (_, _) => SelectFirstIfNone(_atcList);
         _atcDetails = NewDetailsList("Selected station details",
             "The selected station's frequency, controller and ATIS, one item per line.");
@@ -524,9 +524,9 @@ public sealed class VolantaLiveMapForm : Form
     private void ShowFriendDetails()
     {
         if (_friendsList.SelectedItem is Row row && _friendsByKey.TryGetValue(row.Key, out var e))
-            _friendsDetails.SetText(VolantaTrafficFormatter.FriendDetails(e));
+            SetDetails(_friendsDetails, VolantaTrafficFormatter.FriendDetails(e));
         else
-            _friendsDetails.SetText(_friendsList.Items.Count == 0 ? "No friends listed." : "No friend selected.");
+            SetDetails(_friendsDetails, _friendsList.Items.Count == 0 ? "No friends listed." : "No friend selected.");
     }
 
     // ── Traffic ───────────────────────────────────────────────────────────────
@@ -627,9 +627,9 @@ public sealed class VolantaLiveMapForm : Form
     private void ShowTrafficDetails()
     {
         if (_trafficList.SelectedItem is Row row && _trafficByKey.TryGetValue(row.Key, out var e))
-            _trafficDetails.SetText(VolantaTrafficFormatter.Details(e));
+            SetDetails(_trafficDetails, VolantaTrafficFormatter.Details(e));
         else
-            _trafficDetails.SetText(_trafficList.Items.Count == 0 ? "No aircraft listed." : "No aircraft selected.");
+            SetDetails(_trafficDetails, _trafficList.Items.Count == 0 ? "No aircraft listed." : "No aircraft selected.");
     }
 
     // ── ATC ───────────────────────────────────────────────────────────────────
@@ -674,9 +674,9 @@ public sealed class VolantaLiveMapForm : Form
     private void ShowAtcDetails()
     {
         if (_atcList.SelectedItem is Row row && _atcByKey.TryGetValue(row.Key, out var r))
-            _atcDetails.SetText(VolantaTrafficFormatter.ControllerDetails(r.Station, r.Nm));
+            SetDetails(_atcDetails, VolantaTrafficFormatter.ControllerDetails(r.Station, r.Nm));
         else
-            _atcDetails.SetText(_atcList.Items.Count == 0 ? "No stations listed." : "No station selected.");
+            SetDetails(_atcDetails, _atcList.Items.Count == 0 ? "No stations listed." : "No station selected.");
     }
 
     // ── List reconcile ────────────────────────────────────────────────────────
@@ -689,9 +689,20 @@ public sealed class VolantaLiveMapForm : Form
     /// owner's choice, 2026-10-15). With <paramref name="hold"/> (the pilot is in the list) the order holds
     /// (<see cref="VolantaListOrder"/>), so arrowing down always reaches the next row.
     /// </summary>
-    private static void Reconcile(ListBox list, IReadOnlyList<Row> sorted, bool hold)
+    private void Reconcile(ListBox list, IReadOnlyList<Row> sorted, bool hold)
     {
-        var shown = list.Items.Cast<object>().OfType<Row>().ToList();
+        // A row rewritten under the selection briefly selects whatever row lands there. The lists' selection
+        // handlers ignore that (_reconciling) and their details are shown once, after, for the final selection:
+        // showing another aircraft's details for that moment pulled the reader's place in them up (2026-10-15).
+        _reconciling = true;
+        try { ReconcileRows(list, sorted, hold); }
+        finally { _reconciling = false; }
+    }
+
+    private static void ReconcileRows(ListBox list, IReadOnlyList<Row> sorted, bool hold)
+    {
+        // A plain text item (a list's first placeholder) counts as a row with no key, so it is replaced.
+        var shown = list.Items.Cast<object>().Select(o => o as Row ?? new Row("\0" + o, o.ToString() ?? "")).ToList();
         string? selectedKey = (list.SelectedItem as Row)?.Key;
         int selectedIndex = list.SelectedIndex;
 
@@ -720,6 +731,16 @@ public sealed class VolantaLiveMapForm : Form
             if (newIndex >= 0 && newIndex != list.SelectedIndex) list.SelectedIndex = newIndex;
             if (top >= 0 && top < list.Items.Count) list.TopIndex = top;
         }
+    }
+
+    /// <summary>Shows a details text in a details list, one line per row, keyed by its field name
+    /// (<see cref="VolantaListOrder.DetailKeys"/>): the reader stays on the same field ("Ground speed") when a
+    /// line above it comes or goes, or when the list switches to another aircraft that has the field too.</summary>
+    private void SetDetails(ListBox list, string text)
+    {
+        var lines = text.Split(Environment.NewLine);
+        var keys = VolantaListOrder.DetailKeys(lines);
+        Reconcile(list, lines.Select((line, i) => new Row(keys[i], line)).ToList(), hold: false);
     }
 
     // ── Status text ───────────────────────────────────────────────────────────

@@ -29,4 +29,22 @@ public class VolantaListOrderTests
     [Fact]
     public void Holding_with_everything_gone_leaves_nothing()
         => Assert.Empty(Arrange(new[] { "a" }, Array.Empty<string>(), hold: true));
+
+    [Fact]
+    public void Detail_lines_are_keyed_by_their_field_so_the_reader_stays_on_it()
+    {
+        var levelled = VolantaListOrder.DetailKeys(new[] { "Altitude: 36,000 feet", "Ground speed: 442 knots" });
+        var climbing = VolantaListOrder.DetailKeys(new[] { "Altitude: 35,100 feet, climbing", "Vertical speed: 1500 feet per minute", "Ground speed: 440 knots" });
+        Assert.Equal(new[] { "Altitude", "Ground speed" }, levelled);
+        Assert.Equal(new[] { "Altitude", "Vertical speed", "Ground speed" }, climbing);   // a line above appeared: same key
+    }
+
+    [Fact]
+    public void Headings_and_free_text_lines_get_unique_keys_in_order()
+        => Assert.Equal(new[] { "Station", "ATIS:", "text", "text#2", "Info", "text#3" },
+            VolantaListOrder.DetailKeys(new[] { "Station: EDDP_GND", "ATIS:", "Leipzig Ground", "Briefing at example", "Info: Q", "No aircraft selected." }));
+
+    [Fact]
+    public void A_repeated_field_gets_its_occurrence()
+        => Assert.Equal(new[] { "Pilot", "Pilot#2" }, VolantaListOrder.DetailKeys(new[] { "Pilot: a", "Pilot: b" }));
 }

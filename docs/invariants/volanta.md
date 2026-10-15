@@ -76,3 +76,18 @@ their status "not known yet" until Volanta reports a change. Whether a friend is
 from the list: it is their entry in Volanta's flight file, matched by user id, so it is live whichever way the
 list arrived. The window's one restart button (Connection tab) restarts Volanta even when it already has access,
 after asking, because that is also how the list is caught again; the Friends tab points there.
+
+## VOL-7
+
+The reader's place in a details list (Selected aircraft, friend or station details) must survive the lists'
+5-second updates. Measured by the owner on 2026-10-15: NVDA was thrown up the details list on every update while
+aircraft moved. The cause: while a list reconciles, a row rewritten under the selection briefly selects
+whatever row lands there, and the selection handler showed THAT row's details; when they had fewer lines (an
+aircraft on the ground has no altitude or vertical speed, a network pilot no simulator), the details list's place
+was clamped up to its last line and stayed there when the right details came back.
+
+So a list's selection handler does nothing while the list reconciles; its details are shown once, after, for the
+final selection. And a details list keeps the reader on the same FIELD, not the same line number: each row is
+keyed by its field name (`VolantaListOrder.DetailKeys`: the text before ": ", repeated names numbered), so the
+reader stays on "Ground speed" when a line above it comes or goes. The owner chose these two fixes and declined a
+third, holding the traffic list's order while the reader is in its details.

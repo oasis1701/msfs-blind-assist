@@ -22,4 +22,25 @@ internal static class VolantaListOrder
             if (!shown.Contains(key(row))) arranged.Add(row);
         return arranged;
     }
+
+    /// <summary>
+    /// A key for each line of a details list, so the reader's place follows the FIELD, not the line number: the
+    /// field name before ": " ("Ground speed: 380 knots" is "Ground speed"), a heading line ending in ":" as itself
+    /// ("ATIS:"), any other line as "text". A repeated key gets its occurrence after it ("text#2", "text#3"), so
+    /// the lines of an ATIS keep their order and every key is unique.
+    /// </summary>
+    public static IReadOnlyList<string> DetailKeys(IReadOnlyList<string> lines)
+    {
+        var keys = new List<string>(lines.Count);
+        var seen = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (string line in lines)
+        {
+            int colon = line.IndexOf(": ", StringComparison.Ordinal);
+            string field = colon > 0 ? line[..colon] : line.EndsWith(':') ? line : "text";
+            int n = seen.TryGetValue(field, out int count) ? count + 1 : 1;
+            seen[field] = n;
+            keys.Add(n == 1 ? field : $"{field}#{n}");
+        }
+        return keys;
+    }
 }
