@@ -11,7 +11,7 @@ namespace MSFSBlindAssist.Tests;
 /// and the click pushes the RECEIVER on or off (a second var, <c>…_VOL_BT</c>). The knob used to read
 /// the push with no positions, so every volume showed as a read-only 0 or 1 that nothing could turn.
 /// </summary>
-public class Md11AudioVolumeTests : IDisposable
+public class Md11AudioVolumeTests
 {
     private static readonly Md11ControlMap Map = Md11ControlMap.Load();
     private static readonly TFDiMD11Definition Def = new();
@@ -27,21 +27,10 @@ public class Md11AudioVolumeTests : IDisposable
     private static IEnumerable<(string Knob, string Receiver, string Lamp)> All =>
         from p in Seats from r in Receivers select ($"{p}_{r}_VOL_KB", $"{p}_{r}_VOL_BT", $"{p}_{r}_VOL_LT");
 
+    // The walk below leaves the walker's process-wide polarity hooks alone: only Attach wires them
+    // to the settings file and no test calls it, while Md11SelectorWalkerCoreTests installs its own
+    // inside single tests, which a constructor here running in parallel would clobber.
     private static Md11Control Control(string id) => Map.Controls.Single(c => c.NodeId == id);
-
-    // A walk below goes through the walker's process-wide polarity hooks: pin them so nothing can
-    // persist a test id into the developer's settings (Md11SelectorWalkerCoreTests does the same).
-    public Md11AudioVolumeTests()
-    {
-        Md11SelectorWalker.LoadPolarity = _ => null;
-        Md11SelectorWalker.SavePolarity = (_, _) => { };
-    }
-
-    public void Dispose()
-    {
-        Md11SelectorWalker.LoadPolarity = null;
-        Md11SelectorWalker.SavePolarity = null;
-    }
 
     [Fact]
     public void EveryVolumeKnob_TurnsItsOwnLevel_FromZeroToHundredPercent()
@@ -147,8 +136,7 @@ public class Md11AudioVolumeTests : IDisposable
     /// <summary>
     /// The walk the combo starts: one WHEEL click per ten percent, in the direction measured live
     /// (WHEEL_UP raises the level), and nothing at all when the knob is already there. Run against a
-    /// fake knob with the real control's positions and events, under a test id so no polarity is
-    /// learned for the real node.
+    /// fake knob with the real control's positions and events (<see cref="Md11FakeKnob"/>).
     /// </summary>
     [Theory]
     [InlineData(0, 5, 5, "WHEEL_UP")]
@@ -157,33 +145,11 @@ public class Md11AudioVolumeTests : IDisposable
     public async Task AVolumeWalk_CostsOneWheelClickPerTenPercent(int from, int to, int clicks, string? wheel)
     {
         var real = Control("MD11_PED_CPT_AUDIO_PNL_VHF2_VOL_KB");
-        var knob = new Md11Control
-        {
-            NodeId = "TEST_" + Guid.NewGuid().ToString("N"),
-            Kind = real.Kind,
-            StateVar = real.StateVar,
-            ValueMap = real.ValueMap,
-            Events = real.Events,
-        };
-        int up = real.Events["WHEEL_UP"], down = real.Events["WHEEL_DOWN"];
-        int level = from;
-        long clock = 0;
-        var fired = new List<int>();
-        var io = new Md11WalkIo
-        {
-            ReadFresh = _ => Task.FromResult<double?>(level),
-            ReadCached = () => level,
-            RequestRead = () => { },
-            Fire = id => { fired.Add(id); level = Math.Clamp(level + (id == up ? 1 : id == down ? -1 : 0), 0, 10); },
-            Pending = () => 0,
-            Delay = (ms, _) => { clock += ms; return Task.CompletedTask; },
-            Now = () => clock,
-            FreshReads = true,
-        };
+        var knob = new Md11FakeKnob(real, level: from, step: 1, max: 10);
 
-        Assert.True(await Md11SelectorWalker.WalkCoreAsync(knob, to, io));
-        Assert.Equal(to, level);
-        Assert.Equal(clicks, fired.Count);
-        if (wheel != null) Assert.All(fired, id => Assert.Equal(real.Events[wheel], id));
+        Assert.True(await knob.WalkTo(to));
+        Assert.Equal(to, knob.Level);
+        Assert.Equal(clicks, knob.Fired.Count);
+        if (wheel != null) Assert.All(knob.Fired, id => Assert.Equal(real.Events[wheel], id));
     }
 }

@@ -33,4 +33,34 @@ public class Md11WalkFailureTests
     {
         Assert.Null(Md11WalkFailure.AfterThrow("Autobrake", disposed, cancelled));
     }
+
+    private static readonly Dictionary<double, string> Percent =
+        Enumerable.Range(0, 21).ToDictionary(i => i * 0.5, i => $"{i * 5}%");
+
+    private static string? Word(double key) => Percent.TryGetValue(key, out var w) ? w : null;
+
+    /// <summary>
+    /// After the read-back: a control that moved partway says where it stopped (a 20-click percent
+    /// walk with one dropped click), one that did not move keeps the sentence, and one found at its
+    /// target after all says nothing, as a landed walk does.
+    /// </summary>
+    [Theory]
+    [InlineData(0.0, 6.0, "Overhead Panel Lighting stopped at 60%, short of 100%.")]
+    [InlineData(0.0, 0.0, "Overhead Panel Lighting did not move. It may be guarded, unpowered, or inhibited.")]
+    [InlineData(0.0, 10.0, null)]
+    public void AfterReadBack_SaysWhereAPartialWalkStopped(double start, double end, string? expected)
+    {
+        Assert.Equal(expected, Md11WalkFailure.AfterReadBack("Overhead Panel Lighting", start, end, 10.0, Word));
+    }
+
+    /// <summary>With either end unknown, or a position with no word, it cannot say where: the plain sentence.</summary>
+    [Theory]
+    [InlineData(null, 6.0)]     // no reading before the walk
+    [InlineData(0.0, null)]     // nothing delivered after it
+    [InlineData(0.0, 6.2)]      // a raw value no row word describes
+    public void AfterReadBack_FallsBackToTheSentence_WhenItCannotSayWhere(double? start, double? end)
+    {
+        Assert.Equal(Md11WalkFailure.Sentence("Overhead Panel Lighting"),
+            Md11WalkFailure.AfterReadBack("Overhead Panel Lighting", start, end, 10.0, Word));
+    }
 }

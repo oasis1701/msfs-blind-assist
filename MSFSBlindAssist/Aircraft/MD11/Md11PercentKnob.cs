@@ -1,5 +1,3 @@
-using System.Text.RegularExpressions;
-
 namespace MSFSBlindAssist.Aircraft.MD11;
 
 /// <summary>
@@ -11,17 +9,17 @@ namespace MSFSBlindAssist.Aircraft.MD11;
 /// key space, and like the gear lever and the flap controls it gets a classifier: the nearest
 /// position, the walker's own reading (<see cref="Md11SelectorWalker.PositionIndex"/>). Looked up
 /// exactly, such a reading selected nothing, and the first Down-arrow then committed row 0 (0 %).
+/// Recognised by the generator's <see cref="Md11Control.Continuous"/> flag, never by its words: a
+/// detented knob whose words happen to be percentages is not one, and a percent knob whose words
+/// are later curated still is.
 /// </summary>
 public static class Md11PercentKnob
 {
-    private static readonly Regex PercentWord = new(@"^\d+%$", RegexOptions.Compiled);
-
-    /// <summary>True for a knob every one of whose positions is a percentage.</summary>
+    /// <summary>True for a knob whose positions the generator sampled from a continuous scale.</summary>
     public static bool Is(Md11Control c)
-        => c.Kind is Md11Kinds.Knob or Md11Kinds.KnobPush
+        => c.Continuous
            && c.Composite == null
-           && c.ValueMap.Count > 0
-           && c.ValueMap.Values.All(PercentWord.IsMatch);
+           && c.ValueMap.Count > 0;
 
     /// <summary>The classifier: a reading → the key of the nearest position.</summary>
     public static Func<double, double> NearestKey(Md11Control c)

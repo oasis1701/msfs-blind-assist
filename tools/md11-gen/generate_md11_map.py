@@ -220,6 +220,14 @@ def temperature_positions(count):
 VOLUME_KNOB_TEMPLATE = "TFDi_Design_MD11_Volume_Knob"
 VOLUME_KNOB_STEPS = 10
 
+# The three audio panels (node-id prefix, spoken seat) and the sixteen receivers each one has a
+# volume knob for, in panel order: the one copy every audio-panel rule below draws on.
+AUDIO_PANELS = (("MD11_PED_CPT_AUDIO_PNL", "Captain"), ("MD11_PED_FO_AUDIO_PNL", "First Officer"),
+                ("MD11_OBS_AUDIO_PNL", "Observer"))
+AUDIO_PANEL_PREFIXES = tuple(p for p, _ in AUDIO_PANELS)
+AUDIO_RECEIVERS = ("VHF1", "VHF2", "VHF3", "HF1", "HF2", "SAT", "INT", "CAB", "PA",
+                   "ILS1", "ILS2", "VOR1", "VOR2", "ADF1", "ADF2", "MKR")
+
 
 def volume_positions():
     """Value map for a receiver volume knob: raw 0..10 -> "0%" ... "100%", TFDi's own tooltip words."""
@@ -231,7 +239,8 @@ def split_volume_knob(knob, push_var, tooltip, source):
 
     `knob` is the control collect() built from the block (state_var: the PUSH, the tooltip's first
     var), `push_var` the block's ANIM_NAME_PUSH and `tooltip` its TOOLTIPID. The knob keeps its node
-    id and its wheel and becomes a level control: its own var, positions 0% ... 100%. The receiver is
+    id and its wheel and becomes a level control: its own var, positions 0% ... 100%, flagged
+    `continuous` (its positions are samples of the level, see percent_knob_positions). The receiver is
     a button keyed on the push var with the knob's click, a latch over that var (TFDi's tooltip reads
     it: a proven latch, MD11-3) and the name "<seat> <source> Receiver"; its VOL lamp pairs to it by
     the stem rule. Raises a ValueError naming `source` and the node when the tooltip is not the shape
@@ -249,7 +258,7 @@ def split_volume_knob(knob, push_var, tooltip, source):
     events = dict(knob["events"])
     click = events.pop("LEFT_BUTTON_DOWN")
     level = dict(knob, state_var=nid, value_map=volume_positions(),
-                 num_states=VOLUME_KNOB_STEPS + 1, events=events)
+                 num_states=VOLUME_KNOB_STEPS + 1, events=events, continuous=True)
     receiver = dict(knob, node_id=push_var, kind="button",
                     label=label[: -len(" Volume")] + " Receiver", label_source="curated",
                     state_var=push_var, value_map={"1": "On", "0": "Off"}, num_states=2,
@@ -271,6 +280,10 @@ def split_volume_knob(knob, push_var, tooltip, source):
 # scale is where the tooltip reads 100 %; it agrees with each template's ANIM_LENGTH, and the clamp
 # itself was measured on the volume knobs only. The volume knobs step 10 % and are
 # split_volume_knob's; a percent knob on another template is not measured, so it is left alone.
+# Both kinds carry "continuous": true in the map: their positions are SAMPLES of a continuous
+# scale, so a reading can sit between them (the weather radar brightness read 39.60001), and
+# MSFSBA classifies a reading onto the nearest position (Md11PercentKnob) and keeps them off the
+# walk's unmeasured direct-write fallback (Md11DirectSet). The flag, never the words, says so.
 PERCENT_KNOB_TEMPLATES = {"TFDi_Design_MD11_Knob_Template", "TFDi_Design_MD11_Knob_Push"}
 PERCENT_KNOB_STEP = 5
 PERCENT_TOOLTIP_RE = re.compile(r".+? \(%\(\(L:(?P<var>[A-Za-z0-9_]+)\) (?P<rpn>[0-9 ./*]+)\)%!d!%%\)")
@@ -532,15 +545,13 @@ LAMP_LEGEND_OVERRIDES = {
     "MD11_OVHD_IRS_1_LT": "NAV_OFF", "MD11_OVHD_IRS_2_LT": "NAV_OFF", "MD11_OVHD_IRS_3_LT": "NAV_OFF",
     "MD11_THR_L_FUEL_LT": "FIRE", "MD11_THR_C_FUEL_LT": "FIRE", "MD11_THR_R_FUEL_LT": "FIRE",
     # Audio panel MIC / IDENT buttons light "MIC" / "IDENT", not "ON".
-    **{f"{p}_{r}_MIC_LT": "MIC" for p in ("MD11_PED_CPT_AUDIO_PNL", "MD11_PED_FO_AUDIO_PNL", "MD11_OBS_AUDIO_PNL")
+    **{f"{p}_{r}_MIC_LT": "MIC" for p in AUDIO_PANEL_PREFIXES
        for r in ("VHF1", "VHF2", "VHF3", "HF1", "HF2", "SAT", "INT", "CAB")},
-    **{f"{p}_IDENT_LT": "IDENT" for p in ("MD11_PED_CPT_AUDIO_PNL", "MD11_PED_FO_AUDIO_PNL", "MD11_OBS_AUDIO_PNL")},
+    **{f"{p}_IDENT_LT": "IDENT" for p in AUDIO_PANEL_PREFIXES},
     # ...and the receiver lights "VOL": bare "<stem>_LT" lamps of the receiver buttons
     # split_volume_knob adds. Every panel has these sixteen sources, but only the Observer's has a
     # SAT one; a lamp the package lacks is never looked up.
-    **{f"{p}_{r}_VOL_LT": "VOL" for p in ("MD11_PED_CPT_AUDIO_PNL", "MD11_PED_FO_AUDIO_PNL", "MD11_OBS_AUDIO_PNL")
-       for r in ("VHF1", "VHF2", "VHF3", "HF1", "HF2", "SAT", "INT", "CAB", "PA",
-                 "ILS1", "ILS2", "VOR1", "VOR2", "ADF1", "ADF2", "MKR")},
+    **{f"{p}_{r}_VOL_LT": "VOL" for p in AUDIO_PANEL_PREFIXES for r in AUDIO_RECEIVERS},
 }
 # Spoken word for the overriding legends above that LEGEND_MEANINGS does not carry.
 LEGEND_MEANINGS.update({"UP": "Up", "STOW": "Stowed", "WARN": "Warning", "CAUT": "Caution", "A": "Selected",
@@ -664,10 +675,9 @@ STANDALONE_LAMPS = {
     **{f"MD11_LTS_MAP_{n}": (f"Map Light {n}", "On", "Off") for n in (1, 2, 3)},
     # Audio panel call lights (the MIC and VOL lights belong to their buttons; these do not).
     **{f"{p}_{r}_CALL_LT": (f"{seat} {r} CALL light", "On", "Off")
-       for p, seat in (("MD11_PED_CPT_AUDIO_PNL", "Captain"), ("MD11_PED_FO_AUDIO_PNL", "First Officer"), ("MD11_OBS_AUDIO_PNL", "Observer"))
+       for p, seat in AUDIO_PANELS
        for r in ("VHF1", "VHF2", "VHF3", "HF1", "HF2", "CAB")},
-    **{f"{p}_INT_MECH_LT": (f"{seat} MECH call light", "On", "Off")
-       for p, seat in (("MD11_PED_CPT_AUDIO_PNL", "Captain"), ("MD11_PED_FO_AUDIO_PNL", "First Officer"), ("MD11_OBS_AUDIO_PNL", "Observer"))},
+    **{f"{p}_INT_MECH_LT": (f"{seat} MECH call light", "On", "Off") for p, seat in AUDIO_PANELS},
     "MD11_PED_CPT_AUDIO_PNL_SAT_TEL_LT": ("Captain SAT TEL light", "On", "Off"),
     "MD11_PED_FO_AUDIO_PNL_SAT_TELL_LT": ("First Officer SAT TEL light", "On", "Off"),
     "MD11_OBS_AUDIO_PNL_SAT_TEL_LT": ("Observer SAT TEL light", "On", "Off"),
@@ -892,6 +902,7 @@ def finalize_controls(controls):
         curated_map = (CURATED.get(nid) or {}).get("value_map")
         if curated_map:
             c["value_map"] = dict(curated_map)
+            c["num_states"] = len(curated_map)   # the positions' count, as the percent knobs' is
         # ...and a curated state var, for the same reason: the parsed one is written over it.
         curated_var = (CURATED.get(nid) or {}).get("state_var")
         if curated_var:
@@ -2040,6 +2051,8 @@ def collect(pkg_dir):
                         # one field and cannot tell a curated link from a declared one.
                         "guard_id": fields.get("GUARD_ID") or CURATED_GUARDS.get(node_id),
                         "source": source,
+                        # Only on a percent knob: positions sampled from a continuous scale.
+                        **({"continuous": True} if percent else {}),
                     }
                 )
                 if tmpl == VOLUME_KNOB_TEMPLATE:

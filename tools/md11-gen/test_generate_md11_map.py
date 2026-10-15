@@ -152,11 +152,14 @@ class VolumeKnobTests(unittest.TestCase):
         self.assertEqual({str(n): f"{n * 10}%" for n in range(11)}, knob["value_map"])
         # The wheel only: the click is the receiver's.
         self.assertEqual({"WHEEL_UP": 69715, "WHEEL_DOWN": 69716}, knob["events"])
+        # Its positions sample a continuous level: the flag MSFSBA's nearest-position rule keys on.
+        self.assertIs(True, knob["continuous"])
 
     def test_the_push_is_a_receiver_button_with_its_vol_light_and_latch(self):
         out = self.build(self.knob() + self.lamp())
         rx = out[f"{self.P}_VHF2_VOL_BT"]
         self.assertEqual("button", rx["kind"])
+        self.assertNotIn("continuous", rx)
         self.assertEqual("Captain VHF2 Receiver", rx["label"])
         self.assertEqual({"LEFT_BUTTON_DOWN": 69717}, rx["events"])
         self.assertEqual([{"var": f"{self.P}_VHF2_VOL_LT", "legend": "VOL", "lit": "On"}], rx["state"]["lamps"])
@@ -227,6 +230,16 @@ class PercentKnobTests(unittest.TestCase):
         self.assertEqual("MD11_PED_DU1_BRT_KB", knob["state_var"])
         self.assertEqual(21, knob["num_states"])
         self.assertEqual("45%", knob["value_map"]["4.5"])
+        self.assertIs(True, knob["continuous"])
+
+    def test_a_knob_with_tooltip_positions_is_not_flagged_continuous(self):
+        # Detented words, even percentages, are TFDi's own positions: exact keys, no flag.
+        xml = use_template(self.KNOB, NODE_ID="MD11_TEST_KB", WHEEL_DOWN="1", WHEEL_UP="2",
+                           TOOLTIPID="Test (%((L:MD11_TEST_KB))%{case}%{:0}0%%%{:1}50%%%{:2}100%%%{end})")
+        with tempfile.TemporaryDirectory() as tmp:
+            pkg, _ = write_package(tmp, {"FlightDeck/AftFootPedestal.xml": xml})
+            controls, _ = g.collect(pkg)
+        self.assertNotIn("continuous", controls[0])
 
 
 class ThumbwheelTests(unittest.TestCase):
@@ -240,6 +253,7 @@ class ThumbwheelTests(unittest.TestCase):
              for n in (1, 2, 3, 4)])}
         for n in (1, 2, 3, 4):
             self.assertEqual({str(d): str(d) for d in range(10)}, out[f"MD11_CTR_FLTNO{n}_SW"]["value_map"])
+            self.assertEqual(10, out[f"MD11_CTR_FLTNO{n}_SW"]["num_states"])   # the curated positions' count
 
     def test_each_passenger_load_wheel_reads_its_own_digit(self):
         _, var, _ = g.parse_tooltip(

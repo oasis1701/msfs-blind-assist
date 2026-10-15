@@ -1,3 +1,4 @@
+using System.Globalization;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Aircraft.MD11;
 using MSFSBlindAssist.SimConnect;
@@ -11,7 +12,7 @@ namespace MSFSBlindAssist.Tests;
 /// (generator: <c>percent_knob_positions</c>); the flight-number digits step 0-9. A knob reading
 /// between positions selects the nearest one, never nothing.
 /// </summary>
-public class Md11KnobPositionsTests : IDisposable
+public class Md11KnobPositionsTests
 {
     private static readonly Md11ControlMap Map = Md11ControlMap.Load();
     private static readonly TFDiMD11Definition Def = new();
@@ -31,21 +32,10 @@ public class Md11KnobPositionsTests : IDisposable
         { "MD11_LMCDU_BRT_KB", 50 }, { "MD11_CMCDU_BRT_KB", 50 }, { "MD11_RMCDU_BRT_KB", 50 },
     };
 
+    // The walks below leave the walker's process-wide polarity hooks alone: only Attach wires them
+    // to the settings file and no test calls it, while Md11SelectorWalkerCoreTests installs its own
+    // inside single tests, which a constructor here running in parallel would clobber.
     private static Md11Control Control(string id) => Map.Controls.Single(c => c.NodeId == id);
-
-    // The walk below goes through the walker's process-wide polarity hooks: pin them so nothing can
-    // persist a test id into the developer's settings (Md11SelectorWalkerCoreTests does the same).
-    public Md11KnobPositionsTests()
-    {
-        Md11SelectorWalker.LoadPolarity = _ => null;
-        Md11SelectorWalker.SavePolarity = (_, _) => { };
-    }
-
-    public void Dispose()
-    {
-        Md11SelectorWalker.LoadPolarity = null;
-        Md11SelectorWalker.SavePolarity = null;
-    }
 
     [Theory]
     [MemberData(nameof(PercentKnobs))]
@@ -61,6 +51,63 @@ public class Md11KnobPositionsTests : IDisposable
             Assert.Equal(full * i / 20, ordered[i], 6);
             Assert.Equal($"{i * 5}%", words[ordered[i]]);
         }
+    }
+
+    /// <summary>
+    /// The same positions and words under a comma-decimal culture. These are the MD-11's first
+    /// fractional keys ("0.5", "2.5", "3.6", "39.6"); parsed by the PC's culture, de-DE would read
+    /// "4.5" as 45 and collapse the knob's 21 positions (CORE-17). CI runs under en-US, so only a test
+    /// that sets the culture can catch it. A fresh definition, so its parse runs under that culture.
+    /// </summary>
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void PercentKnobPositions_AreTheSameUnderACommaDecimalCulture(string culture)
+    {
+        var saved = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(culture);
+            var vars = new TFDiMD11Definition().GetVariables();
+            foreach (var (node, full) in new[] { ("MD11_PED_DU1_BRT_KB", 10.0), ("MD11_LECP_WXBRT_KB", 72.0), ("MD11_LMCDU_BRT_KB", 50.0) })
+            {
+                var ordered = Md11SelectorWalker.OrderedValues(Control(node));
+                var words = vars[node].ValueDescriptions!;
+                Assert.Equal(21, ordered.Count);
+                Assert.Equal(21, words.Count);
+                for (int i = 0; i <= 20; i++)
+                {
+                    Assert.Equal(full * i / 20, ordered[i], 6);
+                    Assert.Equal($"{i * 5}%", words[ordered[i]]);
+                }
+            }
+            Assert.Equal("55%", vars["MD11_LECP_WXBRT_KB"].ValueDescriptions![vars["MD11_LECP_WXBRT_KB"].DescriptionKeyFor(39.60001)]);
+            Assert.Equal("45%", vars["MD11_PED_DU1_BRT_KB"].ValueDescriptions![vars["MD11_PED_DU1_BRT_KB"].DescriptionKeyFor(4.4)]);
+        }
+        finally { CultureInfo.CurrentCulture = saved; }
+    }
+
+    /// <summary>
+    /// A percent knob is the generator's <c>continuous</c> flag, never its words: percentage words
+    /// without the flag (a detented knob) keep exact keys, and the flag survives curated words.
+    /// </summary>
+    [Fact]
+    public void APercentKnob_IsTheGeneratorsFlag_NotItsWords()
+    {
+        var detented = new Md11Control
+        {
+            NodeId = "TEST_DETENTED", Kind = Md11Kinds.Knob, StateVar = "TEST_DETENTED",
+            ValueMap = new Dictionary<string, string> { ["0"] = "0%", ["50"] = "50%", ["100"] = "100%" },
+        };
+        var curated = new Md11Control
+        {
+            NodeId = "TEST_CURATED", Kind = Md11Kinds.Knob, StateVar = "TEST_CURATED", Continuous = true,
+            ValueMap = new Dictionary<string, string> { ["0"] = "Off", ["5"] = "50%", ["10"] = "Max" },
+        };
+
+        Assert.False(Md11PercentKnob.Is(detented));
+        Assert.True(Md11PercentKnob.Is(curated));
+        Assert.Equal(68, Map.Controls.Count(c => c.Continuous));   // 48 volumes, 20 lighting and brightness
     }
 
     [Theory]
@@ -139,34 +186,48 @@ public class Md11KnobPositionsTests : IDisposable
     [Fact]
     public async Task ABrightnessWalk_CostsOneWheelClickPerFivePercent()
     {
-        var real = Control("MD11_PED_DU1_BRT_KB");
-        var knob = new Md11Control
-        {
-            NodeId = "TEST_" + Guid.NewGuid().ToString("N"),
-            Kind = real.Kind,
-            StateVar = real.StateVar,
-            ValueMap = real.ValueMap,
-            Events = real.Events,
-        };
-        int up = real.Events["WHEEL_UP"], down = real.Events["WHEEL_DOWN"];
-        double level = 4.0;      // 40 %, as DU1 was found
-        long clock = 0;
-        var fired = new List<int>();
-        var io = new Md11WalkIo
-        {
-            ReadFresh = _ => Task.FromResult<double?>(level),
-            ReadCached = () => level,
-            RequestRead = () => { },
-            Fire = id => { fired.Add(id); level = Math.Clamp(level + (id == up ? 0.5 : id == down ? -0.5 : 0), 0, 10); },
-            Pending = () => 0,
-            Delay = (ms, _) => { clock += ms; return Task.CompletedTask; },
-            Now = () => clock,
-            FreshReads = true,
-        };
+        var knob = new Md11FakeKnob(Control("MD11_PED_DU1_BRT_KB"), level: 4.0, step: 0.5, max: 10);   // 40 %, as DU1 was found
 
-        Assert.True(await Md11SelectorWalker.WalkCoreAsync(knob, 7.5, io));   // 75 %
-        Assert.Equal(7.5, level);
-        Assert.Equal(7, fired.Count);
-        Assert.All(fired, id => Assert.Equal(up, id));
+        Assert.True(await knob.WalkTo(7.5));   // 75 %
+        Assert.Equal(7.5, knob.Level);
+        Assert.Equal(7, knob.Fired.Count);
+        Assert.All(knob.Fired, id => Assert.Equal(knob.Up, id));
+    }
+
+    /// <summary>
+    /// A 0 → 100 % walk is twenty clicks, and one dropped click mid-range ends it where it stands —
+    /// the walker never probes away from an end stop. The knob MOVED, so the failure says where it
+    /// stopped, never "did not move" (SafeWalk, through Md11WalkFailure.AfterReadBack).
+    /// </summary>
+    [Fact]
+    public async Task ADroppedClickMidWalk_StopsPartway_AndSaysWhere()
+    {
+        var knob = new Md11FakeKnob(Control("MD11_PED_DU1_BRT_KB"), level: 0, step: 0.5, max: 10) { DropClick = 13 };
+
+        Assert.False(await knob.WalkTo(10));
+        Assert.Equal(6.0, knob.Level);        // twelve clicks landed: 60 %
+        Assert.Equal(13, knob.Fired.Count);   // and no retry after the dropped one
+
+        var d = Vars["MD11_PED_DU1_BRT_KB"];
+        Assert.Equal("DU1 Brightness stopped at 60%, short of 100%.",
+            Md11WalkFailure.AfterReadBack("DU1 Brightness", d.DescriptionKeyFor(0), d.DescriptionKeyFor(knob.Level),
+                d.DescriptionKeyFor(10), k => d.ValueDescriptions!.TryGetValue(k, out var w) ? w : null));
+    }
+
+    /// <summary>
+    /// The walk's step budget grows with the control: a full-range walk plus a re-learned polarity
+    /// and the landing read must fit with room to spare on every walkable control, the 21-position
+    /// percent knobs included (the fixed 24 left them two steps).
+    /// </summary>
+    [Fact]
+    public void EveryWalkableControl_HasAStepBudgetWellPastItsFullRange()
+    {
+        foreach (var c in Map.Controls.Where(c => Md11ExportBacked.IsPositional(c.Kind)))
+        {
+            var positions = Md11SelectorWalker.OrderedValues(c).Count;
+            Assert.True(Md11SelectorWalker.StepBudget(positions) >= 2 * positions, c.NodeId);
+        }
+        Assert.Equal(42, Md11SelectorWalker.StepBudget(21));
+        Assert.Equal(24, Md11SelectorWalker.StepBudget(3));      // a small control keeps the old budget
     }
 }

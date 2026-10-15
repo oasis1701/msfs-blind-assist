@@ -1809,7 +1809,8 @@
     "WHEEL_DOWN": 96312
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_ADF1_VOL_LT",
@@ -1895,7 +1896,8 @@
     "WHEEL_DOWN": 96315
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_ADF2_VOL_LT",
@@ -2055,7 +2057,8 @@
     "WHEEL_DOWN": 96294
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_CAB_VOL_LT",
@@ -2215,7 +2218,8 @@
     "WHEEL_DOWN": 96282
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_HF1_VOL_LT",
@@ -2375,7 +2379,8 @@
     "WHEEL_DOWN": 96285
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_HF2_VOL_LT",
@@ -2511,7 +2516,8 @@
     "WHEEL_DOWN": 96306
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_ILS1_VOL_LT",
@@ -2597,7 +2603,8 @@
     "WHEEL_DOWN": 96309
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_ILS2_VOL_LT",
@@ -2774,7 +2781,8 @@
     "WHEEL_DOWN": 96291
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_INT_VOL_LT",
@@ -2860,7 +2868,8 @@
     "WHEEL_DOWN": 96318
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_MKR_VOL_LT",
@@ -2946,7 +2955,8 @@
     "WHEEL_DOWN": 96297
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_PA_VOL_LT",
@@ -3106,7 +3116,8 @@
     "WHEEL_DOWN": 96288
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_SAT_VOL_LT",
@@ -3266,7 +3277,8 @@
     "WHEEL_DOWN": 96273
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_VHF1_VOL_LT",
@@ -3426,7 +3438,8 @@
     "WHEEL_DOWN": 96276
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_VHF2_VOL_LT",
@@ -3586,7 +3599,8 @@
     "WHEEL_DOWN": 96279
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_VHF3_VOL_LT",
@@ -3672,7 +3686,8 @@
     "WHEEL_DOWN": 96300
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_VOR1_VOL_LT",
@@ -3758,7 +3773,8 @@
     "WHEEL_DOWN": 96303
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_VOR2_VOL_LT",
@@ -3820,7 +3836,8 @@
     "WHEEL_DOWN": 98305
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverLowerMaintenance.xml"
+   "source": "FlightDeck/RObserverLowerMaintenance.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_CABIN_OXY_MASKS",
@@ -4305,7 +4322,8 @@
     "WHEEL_DOWN": 86055
    },
    "guard_id": null,
-   "source": "FlightDeck/Glareshield.xml"
+   "source": "FlightDeck/Glareshield.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_LSIDE_BRIEFCASE_KB",
@@ -4344,7 +4362,8 @@
     "WHEEL_DOWN": 94215
    },
    "guard_id": null,
-   "source": "FlightDeck/CaptainAux_Light.xml"
+   "source": "FlightDeck/CaptainAux_Light.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_LSIDE_FLOOR_SW",
@@ -5350,7 +5369,7 @@
     "9": "9"
    },
    "state_var": "MD11_CTR_FLTNO1_SW",
-   "num_states": 1,
+   "num_states": 10,
    "events": {
     "WHEEL_UP": 82213,
     "WHEEL_DOWN": 82214
@@ -5378,7 +5397,7 @@
     "9": "9"
    },
    "state_var": "MD11_CTR_FLTNO2_SW",
-   "num_states": 1,
+   "num_states": 10,
    "events": {
     "WHEEL_UP": 82215,
     "WHEEL_DOWN": 82216
@@ -5406,7 +5425,7 @@
     "9": "9"
    },
    "state_var": "MD11_CTR_FLTNO3_SW",
-   "num_states": 1,
+   "num_states": 10,
    "events": {
     "WHEEL_UP": 82217,
     "WHEEL_DOWN": 82218
@@ -5434,7 +5453,7 @@
     "9": "9"
    },
    "state_var": "MD11_CTR_FLTNO4_SW",
-   "num_states": 1,
+   "num_states": 10,
    "events": {
     "WHEEL_UP": 82219,
     "WHEEL_DOWN": 82220
@@ -9894,7 +9913,8 @@
     "WHEEL_DOWN": 86139
    },
    "guard_id": null,
-   "source": "FlightDeck/Glareshield.xml"
+   "source": "FlightDeck/Glareshield.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_RSIDE_BRIEFCASE_KB",
@@ -9933,7 +9953,8 @@
     "WHEEL_DOWN": 95495
    },
    "guard_id": null,
-   "source": "FlightDeck/FOAux_Light.xml"
+   "source": "FlightDeck/FOAux_Light.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_RSIDE_FLOOR_SW",
@@ -11403,7 +11424,8 @@
     "WHEEL_DOWN": 86123
    },
    "guard_id": null,
-   "source": "FlightDeck/Glareshield.xml"
+   "source": "FlightDeck/Glareshield.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_CGS_FMSSPD_BT",
@@ -11575,7 +11597,8 @@
     "WHEEL_DOWN": 86121
    },
    "guard_id": null,
-   "source": "FlightDeck/Glareshield.xml"
+   "source": "FlightDeck/Glareshield.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_CGS_PROF_BT",
@@ -11974,7 +11997,8 @@
     "WHEEL_DOWN": 70043
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_CMCDU_B_BT",
@@ -13282,7 +13306,8 @@
     "WHEEL_DOWN": 81949
    },
    "guard_id": null,
-   "source": "FlightDeck/FootPedestalUpper.xml"
+   "source": "FlightDeck/FootPedestalUpper.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_LMCDU_B_BT",
@@ -14590,7 +14615,8 @@
     "WHEEL_DOWN": 82091
    },
    "guard_id": null,
-   "source": "FlightDeck/FootPedestalUpper.xml"
+   "source": "FlightDeck/FootPedestalUpper.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_RMCDU_B_BT",
@@ -15854,7 +15880,7 @@
     "when_true": "Down",
     "when_false": "Up"
    },
-   "num_states": 1,
+   "num_states": 2,
    "events": {
     "LEFT_BUTTON_DOWN": 94976
    },
@@ -23783,7 +23809,8 @@
     "WHEEL_DOWN": 90253
    },
    "guard_id": null,
-   "source": "FlightDeck/Overhead.xml"
+   "source": "FlightDeck/Overhead.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OVHD_LTS_INNER_OVHD_PNL_FLOOD_KB",
@@ -23822,7 +23849,8 @@
     "WHEEL_DOWN": 90240
    },
    "guard_id": null,
-   "source": "FlightDeck/Overhead.xml"
+   "source": "FlightDeck/Overhead.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OVHD_LTS_LDG_L_SW",
@@ -24339,7 +24367,8 @@
     "WHEEL_DOWN": 90251
    },
    "guard_id": null,
-   "source": "FlightDeck/Overhead.xml"
+   "source": "FlightDeck/Overhead.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OVHD_LTS_OUTER_OVHD_PNL_FLOOD_KB",
@@ -24378,7 +24407,8 @@
     "WHEEL_DOWN": 90238
    },
    "guard_id": null,
-   "source": "FlightDeck/Overhead.xml"
+   "source": "FlightDeck/Overhead.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OVHD_LTS_OVW_ATTND_BT",
@@ -27104,7 +27134,8 @@
     "WHEEL_DOWN": 69752
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_ADF1_VOL_LT",
@@ -27190,7 +27221,8 @@
     "WHEEL_DOWN": 69755
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_ADF2_VOL_LT",
@@ -27350,7 +27382,8 @@
     "WHEEL_DOWN": 69734
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_CAB_VOL_LT",
@@ -27510,7 +27543,8 @@
     "WHEEL_DOWN": 69722
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_HF1_VOL_LT",
@@ -27670,7 +27704,8 @@
     "WHEEL_DOWN": 69725
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_HF2_VOL_LT",
@@ -27806,7 +27841,8 @@
     "WHEEL_DOWN": 69746
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_ILS1_VOL_LT",
@@ -27892,7 +27928,8 @@
     "WHEEL_DOWN": 69749
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_ILS2_VOL_LT",
@@ -28069,7 +28106,8 @@
     "WHEEL_DOWN": 69731
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_INT_VOL_LT",
@@ -28155,7 +28193,8 @@
     "WHEEL_DOWN": 69758
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_MKR_VOL_LT",
@@ -28241,7 +28280,8 @@
     "WHEEL_DOWN": 69737
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_PA_VOL_LT",
@@ -28394,7 +28434,8 @@
     "WHEEL_DOWN": 69728
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_VHF1_CALL_LT",
@@ -28531,7 +28572,8 @@
     "WHEEL_DOWN": 69713
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_VHF1_VOL_LT",
@@ -28691,7 +28733,8 @@
     "WHEEL_DOWN": 69716
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_VHF2_VOL_LT",
@@ -28851,7 +28894,8 @@
     "WHEEL_DOWN": 69719
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_VHF3_VOL_LT",
@@ -28937,7 +28981,8 @@
     "WHEEL_DOWN": 69740
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_VOR1_VOL_LT",
@@ -29023,7 +29068,8 @@
     "WHEEL_DOWN": 69743
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_VOR2_VOL_LT",
@@ -29386,7 +29432,8 @@
     "WHEEL_DOWN": 69816
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_DU2_BRT_KB",
@@ -29425,7 +29472,8 @@
     "WHEEL_DOWN": 69818
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_DU3_BRT_KB",
@@ -29464,7 +29512,8 @@
     "WHEEL_DOWN": 69820
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_DU4_BRT_KB",
@@ -29503,7 +29552,8 @@
     "WHEEL_DOWN": 69822
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_DU5_BRT_KB",
@@ -29542,7 +29592,8 @@
     "WHEEL_DOWN": 69824
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_DU6_BRT_KB",
@@ -29581,7 +29632,8 @@
     "WHEEL_DOWN": 69826
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_ADF1_VOL_BT",
@@ -29644,7 +29696,8 @@
     "WHEEL_DOWN": 69800
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_ADF1_VOL_LT",
@@ -29730,7 +29783,8 @@
     "WHEEL_DOWN": 69803
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_ADF2_VOL_LT",
@@ -29890,7 +29944,8 @@
     "WHEEL_DOWN": 69782
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_CAB_VOL_LT",
@@ -30050,7 +30105,8 @@
     "WHEEL_DOWN": 69770
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_HF1_VOL_LT",
@@ -30210,7 +30266,8 @@
     "WHEEL_DOWN": 69773
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_HF2_VOL_LT",
@@ -30346,7 +30403,8 @@
     "WHEEL_DOWN": 69794
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_ILS1_VOL_LT",
@@ -30432,7 +30490,8 @@
     "WHEEL_DOWN": 69797
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_ILS2_VOL_LT",
@@ -30609,7 +30668,8 @@
     "WHEEL_DOWN": 69779
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_INT_VOL_LT",
@@ -30695,7 +30755,8 @@
     "WHEEL_DOWN": 69806
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_MKR_VOL_LT",
@@ -30781,7 +30842,8 @@
     "WHEEL_DOWN": 69785
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_PA_VOL_LT",
@@ -30934,7 +30996,8 @@
     "WHEEL_DOWN": 69776
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_VHF1_CALL_LT",
@@ -31071,7 +31134,8 @@
     "WHEEL_DOWN": 69761
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_VHF1_VOL_LT",
@@ -31231,7 +31295,8 @@
     "WHEEL_DOWN": 69764
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_VHF2_VOL_LT",
@@ -31391,7 +31456,8 @@
     "WHEEL_DOWN": 69767
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_VHF3_VOL_LT",
@@ -31477,7 +31543,8 @@
     "WHEEL_DOWN": 69788
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_VOR1_VOL_LT",
@@ -31563,7 +31630,8 @@
     "WHEEL_DOWN": 69791
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_VOR2_VOL_LT",
