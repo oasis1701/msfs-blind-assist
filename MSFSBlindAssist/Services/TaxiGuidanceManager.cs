@@ -183,6 +183,14 @@ public partial class TaxiGuidanceManager : IDisposable
     /// </summary>
     public Func<bool?>? OnGroundProvider { get; set; }
 
+    /// <summary>
+    /// True while the landing assist's rollout centerline cue is engaged (LandingFlareAssistManager.IsRolloutEngaged),
+    /// read every rollout frame by the tone selection (RolloutExitGate.SelectToneMode's centerlineCueEngaged): exit
+    /// guidance then pauses its own tone on the runway and takes the tone only for the exit. MainForm wires it.
+    /// Unwired counts as not engaged, which is exactly the behaviour before the cue existed.
+    /// </summary>
+    public Func<bool>? CenterlineCueEngagedProvider { get; set; }
+
     // The rollout is held for an airborne sample (LandingExitGoAround.HoldsRollout); logged on each change only.
     private bool _rolloutAirborneHold;
 
@@ -988,7 +996,7 @@ public partial class TaxiGuidanceManager : IDisposable
     // exit-bearing pan, and vice versa. Replaces the old _rolloutExitToneArmed latch,
     // which reset the smoother on exit-tone entry only — the drift tone needs the same
     // treatment in both directions.
-    private Navigation.RolloutToneMode _rolloutToneMode = Navigation.RolloutToneMode.Silent;
+    private Navigation.RolloutToneMode _rolloutToneMode = Navigation.RolloutExitGate.ToneModeAtRolloutEntry;
     // The exit whose turn window RolloutExitTurnWindowFeet last logged, so landing_exit.log records each
     // targeted exit's window once. Logging only: the window itself is computed where it is read.
     private Navigation.LandingExit? _rolloutTurnWindowLoggedExit;
@@ -1393,20 +1401,41 @@ public partial class TaxiGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// True while a landing-exit rollout is steering at an exit: <c>LandingRollout</c> outside the
-    /// runway-end countdown. Read by the manual-landing assist to decide whether an exit-steering
-    /// tone will take over from its rollout tone. The countdown pauses the taxi tone, so it must
-    /// not count, or the assist would stop its own tone at 55 kt with nothing taking over.
+    /// Everything the landing assist's rollout cue reads from taxi guidance on a frame, taken under ONE lock:
+    /// LandingFlareAssistManager reads it once per rollout frame, at 30-60 Hz, and every acquisition can wait
+    /// behind a retarget's LoadRoute on the position thread.
     /// </summary>
-    public bool IsLandingExitRolloutGuidanceActive
+    public RolloutCueState RolloutCueSnapshot
     {
         get
         {
             lock (_stateLock)
             {
-                return _state == TaxiGuidanceState.LandingRollout && !_rolloutNoExitMode;
+                return new RolloutCueState(_state == TaxiGuidanceState.LandingRollout, _rolloutNoExitMode,
+                    _rolloutToneMode, _state == TaxiGuidanceState.Taxiing && _isLandingExitRoute);
             }
         }
+    }
+
+    /// <summary>
+    /// What the landing assist's rollout cue reads from taxi guidance on one frame (<see cref="RolloutCueSnapshot"/>):
+    /// whether a landing rollout runs (steering at an exit or the runway-end countdown: the cue then has no speed
+    /// end, LandingFlareAssistManager.DecideRolloutEnd), whether it is the countdown, exit guidance's last tone
+    /// mode, and whether the landing-exit route already steers (<see cref="IsLandingExitTaxiSteering"/>).
+    /// </summary>
+    public readonly record struct RolloutCueState(bool InLandingRollout, bool NoExitMode,
+        Navigation.RolloutToneMode ToneMode, bool LandingExitTaxiSteering)
+    {
+        /// <summary>A landing rollout steering at an exit, not the runway-end countdown.</summary>
+        public bool InExitRollout => InLandingRollout && !NoExitMode;
+
+        /// <summary>
+        /// True while exit guidance owns the rollout tone (Navigation.RolloutExitGate.ExitGuidanceOwnsTone): a landing
+        /// rollout with an exit whose last tone mode is not Centerline. The cue stays engaged but silent while this
+        /// is true, so the two tones never sound together.
+        /// </summary>
+        public bool ExitGuidanceOwnsRolloutTone
+            => Navigation.RolloutExitGate.ExitGuidanceOwnsTone(InLandingRollout, NoExitMode, ToneMode);
     }
 
     /// <summary>

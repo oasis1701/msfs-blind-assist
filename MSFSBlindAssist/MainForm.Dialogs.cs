@@ -242,20 +242,20 @@ public partial class MainForm
                 // approach (instead of waiting until ILS guidance or the landing-exit planner opens).
                 _airportWarmUp?.AtDestination(dialog.SelectedAirport.ICAO);
 
-                // Manual-landing checkbox: arm (or clear) the flare/rollout assist for this
-                // destination. A re-selection WITHOUT the checkbox must disarm — the pilot's
-                // latest choice wins.
+                // The destination arms the landing assist (RefreshRolloutCueArming): the manual-landing
+                // checkbox adds the flare tones, and with RolloutCenterlineToneEnabled the rollout
+                // centerline cue is armed even without it. A re-selection always re-applies — the
+                // pilot's latest choice wins.
+                _rolloutCueDestination = new MSFSBlindAssist.Navigation.RolloutCueDestination(
+                    dialog.SelectedRunway, dialog.SelectedAirport.ICAO,
+                    airportDataProvider.GetRunways(dialog.SelectedAirport.ICAO), dialog.ManualLandingAssist,
+                    dialog.SelectedAirport);
+                _rolloutCueLatest = MSFSBlindAssist.Navigation.RolloutCueSource.Destination;
+                RefreshRolloutCueArming(force: true);
                 if (dialog.ManualLandingAssist)
-                {
-                    flareAssistManager.Arm(dialog.SelectedRunway, dialog.SelectedAirport,
-                        airportDataProvider.GetRunways(dialog.SelectedAirport.ICAO));
                     announcer.AnnounceImmediate($"Destination runway set: {dialog.SelectedAirport.ICAO} Runway {dialog.SelectedRunway.RunwayID}. Manual landing assist armed.");
-                }
                 else
-                {
-                    flareAssistManager.Disarm();
                     announcer.AnnounceImmediate($"Destination runway set: {dialog.SelectedAirport.ICAO} Runway {dialog.SelectedRunway.RunwayID}");
-                }
             }
         }
     }
