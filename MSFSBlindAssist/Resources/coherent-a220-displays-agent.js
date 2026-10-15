@@ -130,7 +130,9 @@
     // own, now-orphaned data. One listener leaks per upgrade, never per reconnect.
     // v3 (2026-10-12): the merge applies the aircraft's array-diff protocol (mergeObj /
     // mergeArray below) — a handler change, so it needs a fresh listener.
-    var CB_VERSION = 3;
+    // v4 (2026-10-15): only the store's LATEST subscription merges (cbSubscribe's token) —
+    // a handler change, so it needs a fresh listener.
+    var CB_VERSION = 4;
     var cbState = window.__a220CommBus;
     if (!cbState || cbState.v !== CB_VERSION) {
       cbState = { v: CB_VERSION, data: {}, stamp: {}, listener: null, ready: false, subs: 0, tries: 0, lastTry: 0, err: '' };
@@ -192,11 +194,20 @@
     // copy with "A22X.Resync" (src/avionics/lib/afdx/index.ts). A store we have never
     // seen whole (the radios, first opened long after the page loaded) arrives as {}
     // until something asks — so ask, at most every 3 s.
+    // A NEW listener sees no store whole either: in steady state every store sends an empty
+    // {} heartbeat about once a second and nothing else (live 2026-10-15), so its stamps stay
+    // fresh while its data stays empty, and sysBlocks shipped all-null blocks that read as
+    // real states ("V1 not set", squawk ----) until something else asked. wholeAsked records
+    // a resync sent while this listener was delivering (a call before that can be dropped);
+    // sysBlocks keeps asking until there is one.
     function cbResync() {
       var now = Date.now();
       if (!cbState.listener || (now - (cbState.lastResync || 0)) < 3000) return;
       cbState.lastResync = now;
-      try { cbState.listener.call('COMM_BUS_WASM_CALLBACK', 'A22X.Resync', '{}'); } catch (e) { }
+      try {
+        cbState.listener.call('COMM_BUS_WASM_CALLBACK', 'A22X.Resync', '{}');
+        if (cbState.ready || cbEverDelivered()) cbState.wholeAsked = true;
+      } catch (e) { }
     }
 
     function cbSubscribe() {
@@ -205,12 +216,22 @@
       // in window.__a220CommBus), so a store added in a newer agent must still get
       // subscribed on an old listener — and an existing one never twice.
       if (!cbState.subscribed) cbState.subscribed = {};
+      // ONE merge per message. The ready callback re-subscribes every store (see
+      // ensureCommBus), and live 2026-10-15 BOTH subscriptions delivered: subs read 36 for 18
+      // stores and every message was merged twice. A splice is not idempotent, so the flight
+      // plan's segments, legs and paths came out doubled (12 segments / 56 legs for a plan of
+      // 7 / 29), and D / Shift+D read a corrupt plan. Each subscription takes a token and only
+      // the store's latest one merges; an older one, if it still fires, does nothing.
+      if (!cbState.subTok) cbState.subTok = {};
       for (var i = 0; i < CB_STORES.length; i++) {
         if (cbState.subscribed[CB_STORES[i][0]]) continue;
         cbState.subscribed[CB_STORES[i][0]] = true;
-        (function (name) {
+        var tok = (cbState.subTok[CB_STORES[i][0]] || 0) + 1;
+        cbState.subTok[CB_STORES[i][0]] = tok;
+        (function (name, tok) {
           try {
             cbState.listener.on(name, function (json) {
+              if (cbState.subTok[name] !== tok) return;   // a newer subscription merges this one
               // MERGE, never replace. These stores broadcast PARTIAL updates — the
               // aircraft's own wrapper (src/avionics/lib/afdx/index.ts) keeps itself
               // whole by calling "A22X.Resync" whenever a message changes something
@@ -242,7 +263,7 @@
             });
             cbState.subs++;
           } catch (e3) { cbState.err = 'on:' + (e3 && e3.message); }
-        })(CB_STORES[i][0]);
+        })(CB_STORES[i][0], tok);
       }
     }
 
@@ -251,8 +272,9 @@
     // The aircraft's own wrapper gets away with subscribing immediately only because its
     // listener is created at page load and its .on() calls happen much later, during
     // component construction. Ours is created and used in the same tick, so it must
-    // subscribe from the ready callback (we also subscribe immediately — harmless if that
-    // path works, and it covers a build where the callback never fires). Everything is
+    // subscribe from the ready callback (we also subscribe immediately, which covers a build
+    // where the callback never fires; when both deliver, cbSubscribe's token lets only the
+    // latest merge — live 2026-10-15 both did). Everything is
     // retried while NOTHING has ever arrived, because a silently-dead tap is exactly the
     // failure that cost a whole session of guessing (2026-07-31).
     function ensureCommBus() {
@@ -422,9 +444,10 @@
     // One object per 'sys' store (null while stale) plus the captain's CTP and nav blocks,
     // those two judged on the systems window too (a quiet CTP sits ~3 s between messages, so
     // their 'afdx' 3 s flickered the captain's rows to "not available").
-    // Read-only; a store that has not delivered for 2.5 s triggers a (throttled) resync.
+    // Read-only; a store that has not delivered for 2.5 s triggers a (throttled) resync, and so
+    // does a listener that has not yet asked for whole stores (cbResync's wholeAsked).
     function sysBlocks() {
-      var out = {}, stale = false, now = Date.now();
+      var out = {}, stale = !cbState.wholeAsked, now = Date.now();
       for (var i = 0; i < CB_STORES.length; i++) {
         var s = CB_STORES[i];
         if (s[2] !== 'sys') continue;

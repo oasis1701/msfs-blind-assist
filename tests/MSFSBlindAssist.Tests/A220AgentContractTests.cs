@@ -113,12 +113,49 @@ public class A220AgentContractTests
     }
 
     [Fact]
-    public void TheMergeHandlerVersion_WasBumpedForTheArrayDiffMerge()
+    public void TheMergeHandlerVersion_WasBumpedForTheArrayDiffMerge_AndTheOneMergeToken()
     {
         string js = Agent();
-        Assert.Contains("var CB_VERSION = 3;", js);
+        Assert.Contains("var CB_VERSION = 4;", js);
         Assert.Contains("function mergeArray(arr, upd)", js);
         Assert.DoesNotContain("function deepMerge(", js);
+    }
+
+    private static string Between(string js, string from, string to)
+    {
+        int start = js.IndexOf(from, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"'{from}' not found");
+        int end = js.IndexOf(to, start, StringComparison.Ordinal);
+        Assert.True(end > start, $"'{to}' not found after '{from}'");
+        return js.Substring(start, end - start);
+    }
+
+    [Fact]
+    public void EachMessage_IsMergedOnce_ByTheStoresLatestSubscription()
+    {
+        // Live 2026-10-15: the immediate subscription and the ready callback's both delivered (subs 36
+        // for 18 stores), so every message was merged twice; a splice applied twice doubled the flight
+        // plan's segments, legs and paths. The handler must bail unless it is the store's latest.
+        string body = Between(Agent(), "function cbSubscribe()", "function ensureCommBus()");
+        Assert.Contains("cbState.subTok[CB_STORES[i][0]] = tok;", body);
+        Assert.Contains("if (cbState.subTok[name] !== tok) return;", body);
+        Assert.True(body.IndexOf("if (cbState.subTok[name] !== tok) return;", StringComparison.Ordinal)
+                    < body.IndexOf("mergeObj(cbData[name]", StringComparison.Ordinal),
+            "the token check must come before the merge");
+    }
+
+    [Fact]
+    public void SysBlocks_AsksForWholeStores_UntilAResyncWasSentWhileDelivering()
+    {
+        // Live 2026-10-15: in steady state every store sends only an empty {} heartbeat about once a
+        // second, so a new listener's stamps stay fresh while its data stays empty, and the blocks went
+        // out all-null ("V1 not set", squawk ----) until something else asked for a resync.
+        string js = Agent();
+        string resync = Between(js, "function cbResync()", "function cbSubscribe()");
+        Assert.Contains("if (cbState.ready || cbEverDelivered()) cbState.wholeAsked = true;", resync);
+        string sys = Between(js, "function sysBlocks()", "A.sys = function");
+        Assert.Contains("stale = !cbState.wholeAsked", sys);
+        Assert.Contains("if (stale) cbResync();", sys);
     }
 
     [Fact]
