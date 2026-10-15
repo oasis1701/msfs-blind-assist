@@ -696,6 +696,11 @@ public partial class TFDiMD11Definition : BaseAircraftDefinition, IDisposable
                 else if (c.NodeId == Md11FlapSystem.DialKey) def.ValueToDescriptionKey = _flaps.NearestDialChoice;
                 else if (c.NodeId == Md11FlapSystem.LeverKey) def.ValueToDescriptionKey = _flaps.LeverDetentKey;
                 else if (c.NodeId == Md11SpeedbrakeSystem.LeverKey) def.ValueToDescriptionKey = Md11SpeedbrakeSystem.TravelDescriptionKey;
+                // So are the percent knobs (volumes, lighting, brightness): positions sampled from a
+                // continuous scale, so a reading can sit between them (the weather radar brightness
+                // reads 39.60001) and, looked up exactly, selected nothing — the same first-Down-arrow
+                // hazard, here a display brightness of 0 %. See Md11PercentKnob.
+                else if (Md11PercentKnob.Is(c)) def.ValueToDescriptionKey = Md11PercentKnob.NearestKey(c);
                 return def;
             }
 
