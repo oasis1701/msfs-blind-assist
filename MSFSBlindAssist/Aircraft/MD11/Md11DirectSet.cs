@@ -5,12 +5,17 @@ namespace MSFSBlindAssist.Aircraft.MD11;
 /// the one place this app writes a control's own L:var instead of a CEVENT, reached only after a
 /// closed-loop walk failed to move the control.
 ///
-/// Pure, so the rule is testable without a sim. The rule has two halves:
+/// Pure, so the rule is testable without a sim. The rule has three parts:
 ///   • the fallback may write ONLY the var the control's own registered definition reads back —
 ///     the write is confirmed by re-reading that definition, so a write to any other var is
-///     unverifiable by construction; and
+///     unverifiable by construction;
 ///   • it never writes a control in <see cref="FallbackNeverWrites"/>, whose state var is not its
-///     command encoding at all (an animation or travel value).
+///     command encoding at all (an animation or travel value); and
+///   • it never writes a percent knob (<see cref="Md11PercentKnob"/>: the audio volumes and the
+///     lighting and brightness knobs). A direct write of their own var has never been measured, and
+///     a var that only mirrors the knob would HOLD the write — read back as landed, silently — while
+///     the COM volume or the display brightness stayed put. Until an in-sim probe says the aircraft
+///     honours it, a failed walk on one ends in the spoken failure, never in that write.
 ///
 /// The speedbrake lever is the case that bit: its row reads the travel var MD11_SPDBRK_RNG, but the
 /// generated map's state var is MD11_SPDBRK_HANDLE, the 0/1/2 ground-spoiler pull. A dropped wheel
@@ -53,6 +58,10 @@ public static class Md11DirectSet
                 "its state var is the lever's 0-25 travel; the map's 0/1 is a different encoding and a write there moves the picture, not the gear",
         };
 
+    /// <summary>Why a percent knob is refused (see the class remarks).</summary>
+    public const string PercentKnobReason =
+        "a percent knob's direct write is unmeasured; a var that only mirrors the knob would hold the write while the volume or brightness stayed put";
+
     /// <summary>
     /// Why the fallback must not write this control, or null when it may.
     /// <paramref name="registeredVar"/> is the <c>Name</c> of the control's own SimVarDefinition
@@ -64,6 +73,7 @@ public static class Md11DirectSet
     {
         if (string.IsNullOrEmpty(control.StateVar)) return "no state var";
         if (FallbackNeverWrites.TryGetValue(control.NodeId, out var why)) return why;
+        if (Md11PercentKnob.Is(control)) return PercentKnobReason;
         if (registeredVar == null) return "nothing registered under its node id, so the write could not be confirmed";
         if (!string.Equals(registeredVar, control.StateVar, StringComparison.OrdinalIgnoreCase))
             return $"its row reads {registeredVar}, not its state var {control.StateVar}";
