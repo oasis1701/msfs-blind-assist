@@ -63,9 +63,13 @@ each friend's status. A saved copy of ids and names (`%APPDATA%\MSFSBlindAssist\
 Volanta started another way. Who is flying always comes from the live flight file, by user id.
 
 Quitting: with Volanta's "show in tray" setting on, its close button (and Alt+F4) hide it in the notification
-area rather than quitting it. The sure way is Quit in Volanta's notification-area menu; with access, the launcher
-runs that same quit over the debugging port, and without it tells the pilot to choose Quit there (Windows+B, find
-Volanta, Applications key, Quit).
+area rather than quitting it. A restart therefore escalates: Volanta's own quit over the debugging port (the
+same as Quit in its notification-area menu) when it has access, else its window asked to close; if Volanta is
+still running a few seconds later, its processes and sim plugins are force-closed ([VOL-3]). The confirmation
+says a force-close may happen, and the pilot hears when one did.
+
+The window is its own top-level window, never owned by the main window, so the pilot can Alt+Tab between the
+two (the TCAS window's pattern).
 
 ## Measured (Volanta 1.19.2, Electron 40, 2026-10-15)
 

@@ -391,21 +391,20 @@ public partial class MainForm
         simPerformanceForm.Show(this);
     }
 
-    // Extras > Volanta: one modeless window at a time, like Sim Performance. It opens whether or not
-    // the sim is connected (it can place traffic from Volanta's own position report) and owns its
-    // link to Volanta, which it closes with the window.
+    // Extras > Volanta: one modeless window at a time. It is its own top-level window, never owned by
+    // this one (the TCAS window's pattern), so the pilot can Alt+Tab between the two; a second click
+    // brings the open one forward. It opens whether or not the sim is connected (it can place traffic
+    // from Volanta's own position report) and owns its link to Volanta, which it closes with the window.
     private Forms.Volanta.VolantaLiveMapForm? volantaLiveMapForm;
 
     private void VolantaMenuItem_Click(object? sender, EventArgs e)
     {
-        if (volantaLiveMapForm is { IsDisposed: false })
+        if (volantaLiveMapForm is not { IsDisposed: false })
         {
-            volantaLiveMapForm.Activate();
-            return;
+            volantaLiveMapForm = new Forms.Volanta.VolantaLiveMapForm(simConnectManager, announcer);
+            volantaLiveMapForm.FormClosed += (_, _) => volantaLiveMapForm = null;
         }
-        volantaLiveMapForm = new Forms.Volanta.VolantaLiveMapForm(simConnectManager, announcer);
-        volantaLiveMapForm.FormClosed += (_, _) => volantaLiveMapForm = null;
-        volantaLiveMapForm.Show(this);
+        volantaLiveMapForm.ShowForm();
     }
 
     private void FMCSettingsMenuItem_Click(object? sender, EventArgs e)

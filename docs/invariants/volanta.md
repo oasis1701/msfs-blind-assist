@@ -32,8 +32,15 @@ notification-area menu ("Show Volanta", "Reset Window Position", "Quit"). Volant
 does the same (it stops Volanta's sim plugins, then sends the main process the message the menu's Quit runs), so
 `VolantaLauncher.QuitAsync` runs it over the debugging port when Volanta has access
 (`VolantaLink.RunVolantaQuitAsync`). Without access it can only ask the window to close, which quits a Volanta
-with the setting off; when Volanta is still running at the deadline the pilot is told to choose Quit from its
-notification-area menu. It always asks the pilot first, and never kills Volanta's process.
+with the setting off.
+
+When Volanta is still running after that (8 s after its own quit, 4 s after a window close), `QuitAsync` ends
+its processes and its sim plugins (`VolantaPlugin_x64`/`_x86`: Volanta's own quit stops them first, so a
+force-close must too, or a stale plugin stays connected to the sim beside the new one). The owner chose this on
+2026-10-15 because asking Volanta to quit was not reliable; it replaces the earlier "never kill" rule. The gentle
+steps always come first, the window asks the pilot before any of it and says a force-close may happen, and it
+says so when one did. Only if Windows refuses to end Volanta is the pilot sent to Quit in its notification-area
+menu. Volanta's restarts measured on 2026-10-15 kept tracking the same flight.
 
 ## VOL-4
 

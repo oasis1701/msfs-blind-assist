@@ -807,6 +807,7 @@ public sealed class VolantaLiveMapForm : Form
         _starting = true;
         try
         {
+            string forced = "";
             switch (await VolantaLauncher.DetectAsync())
             {
                 case VolantaAccessState.NotInstalled:
@@ -816,29 +817,21 @@ public sealed class VolantaLiveMapForm : Form
                     _announcer.Announce("Volanta already has live map access.");
                     return;
                 case VolantaAccessState.RunningWithAccess:
-                    if (!Confirm("Restart Volanta to load your friends list? Volanta quits and starts again, "
-                            + "and keeps tracking your flight.")) return;
+                    if (!Confirm("Restart Volanta to load your friends list? Volanta quits and starts again, and keeps "
+                            + "tracking your flight. If it does not quit within a few seconds, it is force-closed.")) return;
                     _announcer.Announce("Restarting Volanta.");
-                    if (!await VolantaLauncher.QuitAsync(TimeSpan.FromSeconds(15)))
-                    {
-                        _announcer.Announce(QuitFromNotificationAreaHint);
-                        return;
-                    }
+                    if (!TryQuitResult(await VolantaLauncher.QuitAsync(), out forced)) return;
                     break;
                 case VolantaAccessState.RunningWithoutAccess:
-                    if (!Confirm("Volanta is running without live map access. Restart it with access now? "
-                            + "Volanta keeps tracking your flight after the restart.")) return;
+                    if (!Confirm("Volanta is running without live map access. Restart it with access now? Volanta keeps "
+                            + "tracking your flight after the restart. If it does not quit within a few seconds, it is force-closed.")) return;
                     _announcer.Announce("Closing Volanta.");
-                    if (!await VolantaLauncher.QuitAsync(TimeSpan.FromSeconds(15)))
-                    {
-                        _announcer.Announce(QuitFromNotificationAreaHint);
-                        return;
-                    }
+                    if (!TryQuitResult(await VolantaLauncher.QuitAsync(), out forced)) return;
                     break;
             }
             _link.ExpectLaunch();
             string? error = VolantaLauncher.StartWithAccess();
-            _announcer.Announce(error ?? "Starting Volanta with live map access. It connects in a few seconds.");
+            _announcer.Announce(error ?? forced + "Starting Volanta with live map access. It connects in a few seconds.");
         }
         catch (Exception ex)
         {
@@ -852,11 +845,29 @@ public sealed class VolantaLiveMapForm : Form
         }
     }
 
-    /// <summary>What to do when Volanta did not quit: its close button and Alt+F4 only hide it when Volanta's
-    /// "show in tray" setting is on, so the one sure way is the Quit item of its notification-area menu.</summary>
-    private const string QuitFromNotificationAreaHint =
-        "Volanta did not quit. Quit it from the notification area: press Windows+B, find Volanta, open its menu "
-        + "with the Applications key, and choose Quit. Then press this button again.";
+    /// <summary>Whether the restart can go on after the quit, with what to say first when Volanta had to be
+    /// force-closed. Windows refusing to end Volanta leaves the pilot the Quit item of its notification-area
+    /// menu.</summary>
+    private bool TryQuitResult(VolantaQuitResult result, out string forcedNote)
+    {
+        forcedNote = result == VolantaQuitResult.ForceClosed ? "Volanta did not quit on its own, so it was force-closed. " : "";
+        if (result != VolantaQuitResult.StillRunning) return true;
+        _announcer.Announce("Volanta could not be closed. Quit it from the notification area: press Windows+B, find "
+            + "Volanta, open its menu with the Applications key, and choose Quit. Then press this button again.");
+        return false;
+    }
+
+    /// <summary>Shows the window as its own top-level window, never owned by the main window, so the pilot can
+    /// Alt+Tab between the two (the TCAS window's pattern); a brief TopMost brings it forward without pinning it.</summary>
+    public void ShowForm()
+    {
+        if (!Visible) Show();
+        if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+        TopMost = true;
+        TopMost = false;
+        Activate();
+        BringToFront();
+    }
 
     private bool Confirm(string question)
         => MessageBox.Show(this, question, "Restart Volanta", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
