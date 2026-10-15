@@ -188,7 +188,7 @@ public partial class FenixVSWindow : Form
             return System.Threading.Tasks.Task.CompletedTask;
         }
 
-        if (!double.TryParse(input, out double value))
+        if (!Utils.NumberParsing.TryParseTyped(input, out double value))
         {
             announcer.AnnounceImmediate("Invalid number format");
             vsTextBox.Focus();

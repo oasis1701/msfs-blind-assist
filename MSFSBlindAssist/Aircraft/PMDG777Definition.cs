@@ -4561,6 +4561,18 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true
             },
+            // Gross weight for the CALCULATED flap maneuvering speeds (Pmdg777FlapSpeeds;
+            // the bugs are exposed nowhere). OnRequest, never a stream, as
+            // PMDG737_FLAP_SPEEDS_GW: the Shift+1..5 readout reads it fresh per press
+            // (AnnounceFlapManeuverSpeed).
+            ["PMDG777_FLAP_SPEEDS_GW"] = new SimConnect.SimVarDefinition
+            {
+                Name = "TOTAL WEIGHT",
+                DisplayName = "Gross Weight (flap speeds)",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "pounds",
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            },
 
             // Altimeter setting — read from SimConnect for reliable STD detection
             ["ALTIMETER_SETTING"] = new SimConnect.SimVarDefinition
@@ -6918,6 +6930,23 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     /// </summary>
     protected override IReadOnlyList<AiDisplayRead> DisplayReads => Pmdg777DisplayReads.All;
 
+    /// <summary>Output-mode Shift+1..5 flap maneuver speed readout: a fresh
+    /// gross-weight read per press (PMDG777_FLAP_SPEEDS_GW is OnRequest), spoken
+    /// through FlapManeuverSpeeds.AnnounceAsync. The variant comes from the CDA
+    /// AircraftModel; before the first snapshot it is unknown and the readout says
+    /// unavailable.</summary>
+    private static void AnnounceFlapManeuverSpeed(int scheduleIndex,
+        SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        _ = FlapManeuverSpeeds.AnnounceAsync(simConnect, announcer, "PMDG777_FLAP_SPEEDS_GW", "PMDG", lbs =>
+        {
+            int model = GetAircraftModel(simConnect);
+            if (!Pmdg777FlapSpeeds.IsKnownModel(model))
+                Log.Info("PMDG", $"Flap speeds: unknown 777 AircraftModel {model}");
+            return Pmdg777FlapSpeeds.Describe(lbs, model, scheduleIndex);
+        });
+    }
+
 
     public override bool HandleHotkeyAction(
         HotkeyAction action,
@@ -7285,6 +7314,18 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 return true;
             }
 
+            // ------------------------------------------------------------------
+            // Flap maneuvering speeds — output-mode Shift+1..5 (the slots the
+            // PMDG 737 and iFly use). CALCULATED from live gross weight over this
+            // variant's measured VREF30 table (Pmdg777FlapSpeeds); the readout
+            // says "calculated" because nothing exposes the PFD bugs.
+            // ------------------------------------------------------------------
+            case HotkeyAction.ReadSpeedGD:  AnnounceFlapManeuverSpeed(0, simConnect, announcer); return true; // Shift+1: flaps up
+            case HotkeyAction.ReadSpeedS:   AnnounceFlapManeuverSpeed(1, simConnect, announcer); return true; // Shift+2: flaps 1
+            case HotkeyAction.ReadSpeedF:   AnnounceFlapManeuverSpeed(2, simConnect, announcer); return true; // Shift+3: flaps 5
+            case HotkeyAction.ReadSpeedVLS: AnnounceFlapManeuverSpeed(3, simConnect, announcer); return true; // Shift+4: flaps 15
+            case HotkeyAction.ReadSpeedVS:  AnnounceFlapManeuverSpeed(4, simConnect, announcer); return true; // Shift+5: flaps 20
+
             case HotkeyAction.MonitorManager:
                 // PMDG announcement monitor (Input + Ctrl+M). Hotkey arrives in
                 // Output mode through the global Ctrl+M handler; if the user
@@ -7500,8 +7541,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         bool hasMachPrefix = trimmed.StartsWith("M", StringComparison.OrdinalIgnoreCase);
         if (hasMachPrefix) trimmed = trimmed.Substring(1);
 
-        if (!double.TryParse(trimmed, System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture, out value))
+        if (!Utils.NumberParsing.TryParseTyped(trimmed, out value))
             return false;
 
         // Either explicit M prefix, or a value < 10 (interpreted as Mach).
@@ -7595,8 +7635,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             "MCP Vertical Speed", "V/S or FPA", "V/S: -8000 to 6000 fpm / FPA: -9.9 to 9.9", announcer,
             input =>
             {
-                if (double.TryParse(input, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out double val))
+                if (Utils.NumberParsing.TryParseTyped(input, out double val))
                 {
                     if (dm != null && (int)dm.GetFieldValue("MCP_VSDial_Mode") == 1)
                     {
@@ -7606,6 +7645,10 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                     }
                     else
                     {
+                        // 0 levels off; anything nearer 0 than the 50 fpm dial step is an FPA
+                        // typed in V/S mode ("-2,5"), which (int)val would send as -2 fpm.
+                        if (val != 0 && Math.Abs(val) < 50)
+                            return (false, "V/S must be 0 or at least 50 fpm; for an angle, switch the mode to FPA");
                         if (val >= -8000 && val <= 6000)
                             return (true, "");
                         return (false, "Enter V/S between -8000 and 6000 fpm");
@@ -7616,8 +7659,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             toggles,
             input =>
             {
-                if (!double.TryParse(input, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out double val))
+                if (!Utils.NumberParsing.TryParseTyped(input, out double val))
                     return;
 
                 bool isFPA = dm != null && (int)dm.GetFieldValue("MCP_VSDial_Mode") == 1;

@@ -291,77 +291,32 @@ public class PMDGNG3DataManager : IPMDGDataManager
     // varKey (e.g. "ELEC_GrdPwrSw"), value is the most recent derived bool.
     private readonly Dictionary<string, bool> _lastDerivedValues = new();
 
-    // Local-state tracking for switches where PMDG exposes no reliable
-    // per-switch signal (e.g. ELEC_APUGenSw_0/1 share a single annunciator
-    // so we can't tell them apart from PMDG data alone). Updated when the
-    // user dispatches, displayed as the effective state. Defaults to false
-    // (cold-and-dark assumption). Keyed by varKey.
-    private readonly Dictionary<string, bool> _localSwitchStates = new()
-    {
-        // APU GEN 1/2 removed — they're now two-button push pairs (no state
-        // displayed), so no local tracking is needed. Engine GEN 1/2 remain
-        // here as combos with local-state display.
-        ["ELEC_GenSw_0"]    = false,
-        ["ELEC_GenSw_1"]    = false,
-    };
-
-    /// <summary>
-    /// Records that the user just dispatched a switch to a new state. The
-    /// next snapshot's derived-override pass will publish the recorded state
-    /// (rather than guessing from PMDG's data, which lies for these
-    /// switches). Called from PMDG737Definition.HandleUIVariableSet right
-    /// after the dispatch is sent.
-    /// </summary>
-    public void NotifyLocalSwitchState(string varKey, bool newState)
-    {
-        if (!_localSwitchStates.ContainsKey(varKey)) return;
-        _localSwitchStates[varKey] = newState;
-        // Fire a synthetic event immediately so the UI updates without
-        // waiting for the next 1Hz snapshot.
-        RaiseDerivedIfChanged(varKey, newState, isFirstSnapshot: false);
-    }
-
     /// <summary>
     /// PMDG NG3 reports some switch-position bool fields (ELEC_GrdPwrSw,
     /// ELEC_GenSw, ELEC_APUGenSw) that don't reflect the actual bus
     /// connectivity — they read as "true" even when the source is not
     /// providing power. Verified against ELEC_BusPowered[] and the
     /// annunciator OFF lamps via the PMDGDispatchTester rig 2026-05-24.
-    /// For these specific fields we OVERRIDE the natural snapshot value with
-    /// a derived value computed from the truthful fields PMDG also exposes.
-    /// Synthetic events fire AFTER the natural foreach in DetectAndRaiseChanges
-    /// so they win in the per-frame cache.
+    /// For fields with a truthful source we OVERRIDE the natural snapshot
+    /// value with one derived from it. Synthetic events fire AFTER the natural
+    /// foreach in DetectAndRaiseChanges so they win in the per-frame cache.
     ///
-    /// Derivation rules (display the EFFECTIVE bus-connected state, not the
-    /// raw switch detent — PMDG doesn't reliably expose detent position):
-    ///   - ELEC_GrdPwrSw   ⟵ ELEC_BusPowered[9] OR [10] (AC GROUND SVC) —
-    ///                       these buses are only ever powered by GPU.
-    ///   - ELEC_APUGenSw_X ⟵ (APU_Selector >= 1) AND
-    ///                       (NOT ELEC_annunAPU_GEN_OFF_BUS).
-    ///                       The annunciator lights when APU is running but
-    ///                       gen is off-bus, so NOT-annun says "either APU
-    ///                       off OR gen on-bus" — gating on APU running
-    ///                       disambiguates to "gen on-bus". PMDG exposes a
-    ///                       single shared annunciator so both APU gens
-    ///                       display the same state.
-    ///   - ELEC_GenSw_X    ⟵ NOT ELEC_annunGEN_BUS_OFF[X] —
-    ///                       lamp lit ⟹ no gen on this bus ⟹ engine gen off.
-    ///                       Lamp off ⟹ some gen (engine or APU) is on bus;
-    ///                       if APU is the source the user will see APU GEN
-    ///                       shown ON too, so this gives the user enough info
-    ///                       to disambiguate by looking at both rows.
+    /// What is published now:
+    ///   - ELEC_GrdPwrSw, ELEC_GenSw_X, ELEC_APUGenSw_X: nothing. They are
+    ///                       stateless push-button pairs on the panel, and
+    ///                       no switch state is remembered any more (#295).
+    ///                       Whether engine gen X is on its bus is
+    ///                       NOT ELEC_annunGEN_BUS_OFF[X], the GEN OFF BUS
+    ///                       light; never read the raw ELEC_GenSw bool.
+    ///   - ENG_StartLever_X ⟵ FUEL_annunENG_VALVE_CLOSED[X] (see the body).
+    ///   - Each ACP VHF receiver button's key (Aircraft.Pmdg737AcpReceivers) ⟵
+    ///                       its bit in COMM_ReceiverSwitches[seat]. Not an
+    ///                       override: the bitmask keeps its own events. The
+    ///                       button names its key as its StateVariable, so its
+    ///                       label reads On or Off.
     /// </summary>
     private void RaiseDerivedFieldOverrides(PMDGNG3DataStruct newData, bool isFirstSnapshot)
     {
-        // Ground Power and APU GEN 1/2 no longer have derived state — they're
-        // exposed as stateless push-button pairs (e.g. "Ground Power On" /
-        // "Ground Power Off"), so nothing to publish here.
-        //
-        // Engine GEN 1/2 still use locally-tracked state with cold-and-dark
-        // default. Updated via NotifyLocalSwitchState from the dispatch path.
-        foreach (var kvp in _localSwitchStates)
-            RaiseDerivedIfChanged(kvp.Key, kvp.Value, isFirstSnapshot);
-
         // Engine fuel control levers (ENG_StartLever_0/1): derived from
         // FUEL_annunENG_VALVE_CLOSED[i]. The SDK header comment claims
         // "0: Closed  1: Open  2: In transit" but the FIELD'S ACTUAL
@@ -383,6 +338,10 @@ public class PMDGNG3DataManager : IPMDGDataManager
         bool lever1Run = fuelValveClosed.Length > 1 && fuelValveClosed[1] == 0;
         RaiseDerivedIfChanged("ENG_StartLever_0", lever0Run, isFirstSnapshot);
         RaiseDerivedIfChanged("ENG_StartLever_1", lever1Run, isFirstSnapshot);
+
+        foreach (var receiver in Aircraft.Pmdg737AcpReceivers.All)
+            RaiseDerivedIfChanged(receiver.Key,
+                Aircraft.Pmdg737AcpReceivers.IsOn(receiver, newData.COMM_ReceiverSwitches), isFirstSnapshot);
     }
 
     private void RaiseDerivedIfChanged(string fieldName, bool newVal, bool isFirstSnapshot)
@@ -465,7 +424,8 @@ public class PMDGNG3DataManager : IPMDGDataManager
     // round-trip).
     private static readonly HashSet<string> s_derivedOverrideFields = new();
 
-    // Array fields whose per-element events should be suppressed.
+    // Array fields whose per-element events should be suppressed: their raw
+    // bools read 1 at rest and no varKey shows them any more.
     private static readonly HashSet<string> s_derivedOverrideArrayFields = new()
     {
         "ELEC_GenSw",
