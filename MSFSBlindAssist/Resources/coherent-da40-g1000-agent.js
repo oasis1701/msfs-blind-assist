@@ -2868,6 +2868,21 @@
         // Longest first, or stripping "3000FT" out of "03000FT" leaves a stray zero.
         strip.sort(function (a, b) { return b.length - a.length; });
 
+        // ⚠️ A TWO-COLUMN DIALOG KEEPS THE LABEL IN THE VALUE'S LEFT-HAND SIBLING. Set Runway
+        // draws "Airport | VCBI" and "Runway | 22" as -left/-right divs in one container, so the
+        // climb below reached the container and welded all of it into one word: the runway
+        // field read "AirportVCBIRunway: 22" (VCBI gate, 2026-10-15). The left cell beside the
+        // value's own cell is the label, and only that.
+        var cell = host;
+        for (var up = 0; up < 3 && cell; up++) {
+            var left = cell.previousElementSibling;
+            if (left && hasClassContaining(left, "-left") && !left.querySelector(".highlight-select")) {
+                var lt = spacedText(left);
+                if (lt && lt.length <= 48 && /[A-Za-z]/.test(lt)) return lt;
+            }
+            cell = cell.parentElement;
+        }
+
         var e2 = host.parentElement;
         for (var d = 0; d < 6 && e2; d++) {
             // ⚠️ A LABEL LIVES IN THE FIELD'S OWN ROW, NEVER ABOVE THE LIST THE ROW IS IN.
@@ -3884,6 +3899,23 @@
     // The order is the order of what covers what on the screen: a list is drawn OVER the
     // page, a focused field is INSIDE the page, and the page title is what is left when
     // neither of those is true.
+    /// A dialog's own instruction line ("Press "ENT" to accept"), the FIRST time a view is
+    /// answered and never again inside it. ⚠️ Set Runway needs a second ENT after the runway
+    /// is chosen from its list, and nothing said so: the pilot heard "Runway: 22", the box
+    /// sat there, and the plan kept "RW blank" (VCBI gate, 2026-10-15). A sighted pilot reads
+    /// the line under the box; once per dialog is the same information without the repeat.
+    A.M.enterHint = function (key) {
+        if (A.M._hintKey === key) return "";
+        A.M._hintKey = key;
+        var all = document.querySelectorAll(".popout-dialog.open [class*='press-ent']");
+        for (var i = 0; i < all.length; i++) {
+            if (!visible(all[i])) continue;
+            var t = spacedText(all[i]).replace(/"/g, "");
+            if (t) return t;
+        }
+        return "";
+    };
+
     A.M.say = function () {
         var key = A.M.viewKey();
 
@@ -3999,6 +4031,8 @@
                     if (who) s += ", " + who;
                 }
             }
+            var hint = A.M.enterHint(A.M.viewKey());
+            if (hint) s += ", " + hint;
             return s;
         }
 
