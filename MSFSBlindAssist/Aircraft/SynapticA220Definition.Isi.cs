@@ -44,8 +44,10 @@ public partial class SynapticA220Definition
     /// <summary>
     /// Walk the ISI baro knob to a typed setting (hPa 940-1090 or inHg 27.00-32.00). AIMS, never
     /// hunts: the first click measures the step and the direction on THIS walk, every later
-    /// burst is round(|delta|/step) clicks, a straddle stops on the nearest selectable value,
-    /// and a missing read-back or a knob that does not move is said aloud.
+    /// burst is round(|delta|/step) clicks, a straddle ends on the NEARER of the two bracketing
+    /// values (one click back when the value before the last burst was nearer), and a missing
+    /// read-back or a knob that does not move is said aloud. The per-round decision is pure:
+    /// <c>A220Panels.IsiWalkDecision</c>.
     /// </summary>
     private void StartIsiBaroWalk(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, double entry)
     {
@@ -81,24 +83,22 @@ public partial class SynapticA220Definition
                 for (int round = 0; round < 8 && !token.IsCancellationRequested; round++)
                 {
                     double delta = target.Value - cur;
-                    double tolerance = step is { } s ? s / 2 : 0.2;
-                    if (Math.Abs(delta) <= tolerance)
+                    var move = A220.A220Panels.IsiWalkDecision(delta, prevDelta, step);
+                    if (move.Action == A220.A220Panels.IsiWalkAction.Done)
                     {
                         announcer.AnnounceImmediate(A220.A220Panels.FormatIsiBaro(cur, inHg));
                         return;
                     }
-                    if (step != null && A220.A220Afdx.WalkStraddled(delta, prevDelta))
+                    if (move.Action == A220.A220Panels.IsiWalkAction.NearestHere)
                     {
                         announcer.AnnounceImmediate(Nearest(cur));
                         return;
                     }
+                    // StepBack: the last burst overshot and the value before it was nearer, so ONE
+                    // click back towards the target; what lands is read and spoken below.
+                    bool stepBack = move.Action == A220.A220Panels.IsiWalkAction.StepBack;
                     prevDelta = delta;
-                    int clicks = step == null ? 1 : A220.A220Afdx.AimClicks(delta, step.Value);
-                    if (clicks == 0)
-                    {
-                        announcer.AnnounceImmediate(Nearest(cur));
-                        return;
-                    }
+                    int clicks = stepBack ? 1 : move.Clicks;
                     int sign = delta > 0 ? up : -up;
                     for (int i = 0; i < clicks && !token.IsCancellationRequested; i++)
                     {
@@ -118,6 +118,15 @@ public partial class SynapticA220Definition
                         if (!retried && step == null) { retried = true; continue; }
                         announcer.AnnounceImmediate(
                             A220.A220Panels.FormatIsiBaro(cur, inHg) + " — the standby altimeter knob is not responding.");
+                        return;
+                    }
+                    if (stepBack)
+                    {
+                        // The step and the direction are already measured; just say where it landed.
+                        cur = after.Value;
+                        announcer.AnnounceImmediate(A220.A220Panels.IsiWithinTolerance(target.Value - cur, step)
+                            ? A220.A220Panels.FormatIsiBaro(cur, inHg)
+                            : Nearest(cur));
                         return;
                     }
                     if (Math.Sign(moved) != Math.Sign(delta)) up = -up;

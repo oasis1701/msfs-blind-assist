@@ -233,4 +233,88 @@ public class A220PanelsTests
         Assert.Equal("Standby altimeter 1013 hectopascals", A220Panels.IsiReadbackText(1013.25));
         Assert.Equal("Standby altimeter reading not available", A220Panels.IsiReadbackText(null));
     }
+
+    // ---- Standby baro walk: the per-round decision ([A220-43]) ---------------------------
+
+    private static A220Panels.IsiWalkStep Decide(double delta, double prevDelta, double? step)
+        => A220Panels.IsiWalkDecision(delta, prevDelta, step);
+
+    private static A220Panels.IsiWalkStep Done => new(A220Panels.IsiWalkAction.Done);
+    private static A220Panels.IsiWalkStep NearestHere => new(A220Panels.IsiWalkAction.NearestHere);
+    private static A220Panels.IsiWalkStep StepBack => new(A220Panels.IsiWalkAction.StepBack);
+    private static A220Panels.IsiWalkStep Click(int n) => new(A220Panels.IsiWalkAction.Click, n);
+
+    [Fact]
+    public void IsiWalkDecision_BlindStage_OnTarget_IncludingTheFloatingPointEdge()
+    {
+        // 1013.2 typed against an ISI reading 1013: in floating point the gap is
+        // 0.20000000000004547, a hair over the 0.2 blind tolerance. It must still count as on target,
+        // or the probe click overshoots to 1014 (trigger B of the review finding).
+        double gap = 1013.2 - 1013.0;
+        Assert.True(gap > 0.2, "the premise: the raw gap is above 0.2");
+        Assert.Equal(Done, Decide(gap, double.NaN, null));
+        Assert.Equal(Done, Decide(0.0, double.NaN, null));
+        Assert.Equal(Done, Decide(0.2, double.NaN, null));
+        Assert.Equal(Done, Decide(-0.2, double.NaN, null));
+    }
+
+    [Theory]
+    [InlineData(0.21)]     // 29.92 inches (1013.21 hPa) against an ISI reading 1013: one probe click, not a guess
+    [InlineData(-0.21)]
+    [InlineData(5.0)]
+    [InlineData(-120.0)]   // far away: still ONE click, because the step is not measured yet
+    public void IsiWalkDecision_BlindStage_OffTarget_IsOneProbeClick(double delta)
+        => Assert.Equal(Click(1), Decide(delta, double.NaN, null));
+
+    [Fact]
+    public void IsiWalkDecision_OvershootWhereThePreviousValueWasNearer_StepsBackOneClick()
+    {
+        // Entry 29.92 = 1013.21 hPa, ISI at 1013 -> probe click -> 1014, step measured 1.
+        double target = A220Panels.IsiTargetHpa(29.92)!.Value;
+        double prevDelta = target - 1013.0;   //  0.21
+        double delta = target - 1014.0;       // -0.79
+        Assert.Equal(StepBack, Decide(delta, prevDelta, 1.0));
+        // ... and the mirror: from above, down to a value below the target.
+        Assert.Equal(StepBack, Decide(0.79, -0.21, 1.0));
+    }
+
+    [Theory]
+    [InlineData(-0.6, 1.7)]    // a two-click burst carried it from 1.7 above to 0.6 below: here is nearer
+    [InlineData(0.6, -1.7)]
+    [InlineData(-0.6, 0.6)]    // a tie stays where it is, never a click back
+    public void IsiWalkDecision_OvershootWhereTheCurrentValueIsNearer_StopsHere(double delta, double prevDelta)
+        => Assert.Equal(NearestHere, Decide(delta, prevDelta, 1.0));
+
+    [Theory]
+    [InlineData(0.5, 3.0)]     // exactly half a step: on target
+    [InlineData(-0.5, -3.0)]
+    [InlineData(0.0, 1.0)]
+    public void IsiWalkDecision_MeasuredStep_WithinHalfAStep_IsDone(double delta, double prevDelta)
+        => Assert.Equal(Done, Decide(delta, prevDelta, 1.0));
+
+    [Theory]
+    [InlineData(25.0, 30.0, 1.0, 25)]       // the same sign as before: an ordinary aimed burst
+    [InlineData(-25.0, -30.0, 1.0, 25)]
+    [InlineData(7.0, 7.0, 0.34, 21)]        // round(7 / 0.34)
+    [InlineData(0.6, 3.0, 1.0, 1)]          // just over half a step: one click, not zero
+    [InlineData(10.4, double.NaN, 1.0, 10)] // no previous delta: nothing to straddle
+    public void IsiWalkDecision_MeasuredStep_AimsRoundDeltaOverStep(double delta, double prevDelta, double step, int clicks)
+        => Assert.Equal(Click(clicks), Decide(delta, prevDelta, step));
+
+    [Fact]
+    public void IsiWalkDecision_AStepThatCannotAim_NeverFiresAZeroClickBurst()
+    {
+        // A measured step is always above zero; if one ever is not, the walk stops where it is.
+        Assert.Equal(NearestHere, Decide(0.4, double.NaN, 0.0));
+    }
+
+    [Theory]
+    [InlineData(0.2, null, true)]
+    [InlineData(1013.2 - 1013.0, null, true)]
+    [InlineData(0.25, null, false)]
+    [InlineData(0.5, 1.0, true)]
+    [InlineData(-0.5, 1.0, true)]
+    [InlineData(0.51, 1.0, false)]
+    public void IsiWithinTolerance_IsHalfAStepOrTheBlindTolerance(double delta, double? step, bool expected)
+        => Assert.Equal(expected, A220Panels.IsiWithinTolerance(delta, step));
 }

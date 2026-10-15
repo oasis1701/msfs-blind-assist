@@ -200,4 +200,58 @@ public static class A220Panels
     /// <summary>The read-back spoken after a standby STD press.</summary>
     public static string IsiReadbackText(double? hpa)
         => hpa is { } q ? FormatIsiBaro(q, inHg: false) : "Standby altimeter reading not available";
+
+    // ---- Standby baro walk: the per-round decision ([A220-43]) ----------------------------
+
+    /// <summary>The blind stage's tolerance, hPa: before a step is measured, a gap this small is
+    /// already on target (the typed value rounds to the ISI's own reading).</summary>
+    public const double IsiBlindToleranceHpa = 0.2;
+
+    /// <summary>Slack on every tolerance compare: 1013.2 - 1013.0 is 0.20000000000004547 in
+    /// floating point, a hair over 0.2, and must still count as on target.</summary>
+    private const double IsiToleranceEpsilon = 1e-9;
+
+    /// <summary>What the baro walk does next, from the remaining gap.</summary>
+    public enum IsiWalkAction
+    {
+        /// <summary>On target: announce the value.</summary>
+        Done,
+        /// <summary>Stop on the current value and announce it as the nearest selectable one.</summary>
+        NearestHere,
+        /// <summary>The last burst overshot and the value before it was nearer: one click back.</summary>
+        StepBack,
+        /// <summary>Fire <see cref="IsiWalkStep.Clicks"/> clicks towards the target.</summary>
+        Click
+    }
+
+    /// <summary>The walk's next move; <see cref="Clicks"/> is set only for <see cref="IsiWalkAction.Click"/>.</summary>
+    public readonly record struct IsiWalkStep(IsiWalkAction Action, int Clicks = 0);
+
+    /// <summary>Whether a remaining gap (hPa) is on target: half a measured step, or the blind
+    /// tolerance before a step is measured.</summary>
+    public static bool IsiWithinTolerance(double delta, double? step)
+        => Math.Abs(delta) <= (step is { } s ? s / 2 : IsiBlindToleranceHpa) + IsiToleranceEpsilon;
+
+    /// <summary>
+    /// One round of the standby baro walk, pure so the loop only does I/O. <paramref name="delta"/>
+    /// is target - current (hPa), <paramref name="prevDelta"/> the same before the last burst
+    /// (NaN on the first round), <paramref name="step"/> the hPa per click measured on THIS walk
+    /// (null before calibration). Within tolerance is Done. Before a step is known the answer is
+    /// one probe click. After it, a sign change in the gap is a straddle: the target sits between
+    /// two selectable values and the walk ends on the NEARER one. Once a step is known a straddle
+    /// is only reached with |delta| over half a step, so the value before the last burst is
+    /// nearer exactly when |prevDelta| &lt; |delta|, and then it takes one click back. Otherwise
+    /// round(|delta| / step) clicks; a step that cannot aim stops where it is.
+    /// </summary>
+    public static IsiWalkStep IsiWalkDecision(double delta, double prevDelta, double? step)
+    {
+        if (IsiWithinTolerance(delta, step)) return new IsiWalkStep(IsiWalkAction.Done);
+        if (step is not { } known) return new IsiWalkStep(IsiWalkAction.Click, 1);
+        if (A220Afdx.WalkStraddled(delta, prevDelta))
+            return new IsiWalkStep(Math.Abs(prevDelta) < Math.Abs(delta) ? IsiWalkAction.StepBack : IsiWalkAction.NearestHere);
+        int clicks = A220Afdx.AimClicks(delta, known);
+        return clicks == 0
+            ? new IsiWalkStep(IsiWalkAction.NearestHere)
+            : new IsiWalkStep(IsiWalkAction.Click, clicks);
+    }
 }
