@@ -47,6 +47,17 @@ public class LandingFlareRolloutOnlyTests
             0, 0, 0, 0, 0, 0, 0, 0f, false, true)));
     }
 
+    // Why the cue ended, or why a touchdown did not engage it, goes to landing_assist.log beside the trace:
+    // debug.log rotates within minutes, and the in-sim test plan reads this file.
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void A_trace_event_line_is_invariant_whatever_the_culture(string culture)
+    {
+        Assert.Equal("=== Rollout end: stopped gs=2.5 ===",
+            UnderCulture(culture, () => LandingFlareAssistManager.FormatTraceEvent("Rollout end: stopped", 2.5)));
+    }
+
     private static string UnderCulture(string name, Func<string> render)
     {
         var saved = CultureInfo.CurrentCulture;

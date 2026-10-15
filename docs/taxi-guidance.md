@@ -3016,13 +3016,18 @@ Before touchdown (during cruise or descent), the pilot picks a runway-exit taxiw
   until the next touchdown.
 - **Sharing the tone** ([ROL-32]): exit guidance's `Centerline` mode yields the runway to the
   cue; the cue mutes while exit guidance owns the tone for the exit itself
-  (`ExitGuidanceOwnsRolloutTone`) and comes back after a downfield retarget. There is no
-  speed end during a landing rollout, so the old 55 kt handover, and the 55-50 kt silence
-  and heading-only cue it left, are gone for the manual landing assist too.
+  (`ExitGuidanceOwnsRolloutTone`) and comes back after a downfield retarget. During a landing
+  rollout only a stop (silently) or exit guidance's takeover ends it, so the old 55 kt
+  handover, and the 55-50 kt silence and heading-only cue it left, are gone for the manual
+  landing assist too. With no landing rollout it ends below 40 kt or once laterally clear of
+  the runway. The 20° heading turn-off end is retired: it would have ended the cue, saying
+  "Rollout guidance complete", seconds into the KSEA veer.
 - **Diagnostics.** `landing_assist.log`: a header per rollout engagement
   (`=== Rollout icao=… rwy=… armed=… flare=… exitPlan=… ===`), then
   `lat,lon,gsKt,hdgOffRwyDeg,crossTrackFt,crabDeg,steerDeg,pan,sounding,owner` at most every
-  100 ms while moving, and on every change of sounding or owner.
+  100 ms while moving, and on every change of sounding or owner; an event line says why the cue
+  ended (`=== Rollout end: stopped gs=… ===`, taxi guidance took over, below 40 kt, clear of the
+  runway, airborne again) or why a touchdown did not engage it (`=== Touchdown not engaged: … ===`).
 
 ### Per-exit turn window and exit-bearing plausibility (KMEM 36L, 2026-09-26)
 

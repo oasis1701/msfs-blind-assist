@@ -181,14 +181,17 @@ public static class LandingGuidanceLaws
     /// holds the runway heading, then linear per foot, capped: a steep crab command at runway speed
     /// would be dangerous.
     /// </summary>
-    /// <param name="crossTrackFeet">Signed cross-track: + = LEFT of centerline.</param>
+    /// <param name="crossTrackFeet">Signed cross-track: + = LEFT of centerline. NaN commands no crab, as the
+    ///   rollout's original inline law did, rather than throwing on the per-frame audio path.</param>
     public static double CenterlineInterceptCrabDeg(
         double crossTrackFeet,
         double deadbandFeet,
         double degreesPerFoot,
         double maxCrabDeg)
-        => Math.Clamp((Math.Abs(crossTrackFeet) - deadbandFeet) * degreesPerFoot, 0.0, maxCrabDeg)
-           * Math.Sign(crossTrackFeet);
+        => double.IsNaN(crossTrackFeet)
+            ? 0.0
+            : Math.Clamp((Math.Abs(crossTrackFeet) - deadbandFeet) * degreesPerFoot, 0.0, maxCrabDeg)
+              * Math.Sign(crossTrackFeet);
 
     /// <summary>
     /// Maps a guidance command onto tone units, in the shared polarity used by BOTH vertical

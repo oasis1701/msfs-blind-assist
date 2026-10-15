@@ -628,4 +628,12 @@ public class LandingGuidanceLawTests
     {
         Assert.Equal(expectedDeg, LandingGuidanceLaws.CenterlineInterceptCrabDeg(crossTrackFeet, 8.0, 0.1, 10.0), precision: 9);
     }
+
+    // An invalid cross-track commands no crab, as the rollout's inline law always did, rather than
+    // throwing on the per-frame audio path (Math.Sign throws on NaN).
+    [Fact]
+    public void CenterlineInterceptCrab_IsZeroForAnInvalidCrossTrack()
+    {
+        Assert.Equal(0.0, LandingGuidanceLaws.CenterlineInterceptCrabDeg(double.NaN, 8.0, 0.1, 10.0));
+    }
 }
