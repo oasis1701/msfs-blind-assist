@@ -79,6 +79,40 @@ public class AdvisoryGeometryTests
     public void ParseWiPolygon_returns_null_when_unusable(string body)
         => Assert.Null(AdvisoryGeometry.ParseWiPolygon(body));
 
+    [Theory]
+    [InlineData(MhtgBody)]
+    [InlineData(YmmmBody)]
+    // Live 2026-10-15 corridor body (RouteAdvisoryLocatorTests.CzvrN2Body).
+    [InlineData("CZVR VANCOUVER FIR SEV MTW FCST WI 120NM WID LINE BTN N5443 W12731 - N6029 W13340 - N6050 W13610 SFC/FL140 STNR NC=")]
+    public void ParseWiPolygon_reports_a_lone_ring_as_the_whole_shape(string body)
+    {
+        Assert.NotNull(AdvisoryGeometry.ParseWiPolygon(body, out bool wholeShape));
+        Assert.True(wholeShape);
+    }
+
+    [Theory]
+    // A VA forecast ring after the observed one.
+    [InlineData("VA CLD OBS AT 1150Z WI S0820 E12333 - S0850 E12400 - S0900 E12320 "
+        + "FCST AT 1750Z VA CLD WI S0830 E12320 - S0860 E12420 - S0910 E12340")]
+    // A TC centre position after the ring.
+    [InlineData("TC GIL OBS WI N1000 W06000 - N1100 W06100 - N1200 W06000 - N1000 W06000 "
+        + "FCST AT 1800Z TC CENTRE PSN N1530 W07030")]
+    // A second area.
+    [InlineData("SEV TURB FCST WI N5000 W00500 - N5100 W00500 - N5100 W00400 "
+        + "AND WI N5500 W00500 - N5600 W00500 - N5600 W00400 FL250/350")]
+    public void ParseWiPolygon_reports_a_ring_with_a_trailing_coordinate_group_as_partial(string body)
+    {
+        Assert.NotNull(AdvisoryGeometry.ParseWiPolygon(body, out bool wholeShape));
+        Assert.False(wholeShape);
+    }
+
+    [Fact]
+    public void ParseWiPolygon_reports_no_whole_shape_when_unusable()
+    {
+        Assert.Null(AdvisoryGeometry.ParseWiPolygon("SEV TURB FCST WI S3640 E14800 - S3340 E15000", out bool wholeShape));
+        Assert.False(wholeShape);
+    }
+
     // 1°×1° square centred on (10.5, 20.5).
     private static readonly (double Lat, double Lon)[] Square =
         { (10, 20), (10, 21), (11, 21), (11, 20) };

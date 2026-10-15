@@ -19,6 +19,31 @@ internal readonly record struct LocationFact(bool HasGeometry, bool Inside, doub
 /// </summary>
 internal static class RouteAdvisoryLocator
 {
+    /// <summary>How far outside an advisory's own whole WI shape a positional-probe match is
+    /// still believed (nm). Live 2026-10-15: ActiveSky's probe answered with a British Columbia
+    /// SIGMET for an aircraft over Wisconsin, about 1,600 nm away, and answered no-hit on the
+    /// SIGMET's own line; trusting it announced "Entering advisory area". The margin is wide
+    /// on purpose: a "WI nnNM WID LINE" body parses as its line points, so the real area
+    /// reaches up to half its width beyond the parsed shape (60 nm in that capture).</summary>
+    internal const double ProbeTrustMarginNm = 150;
+
+    /// <summary>Pure: one advisory's LocationFact from its geometry and the probe verdict.
+    /// No geometry: the probe alone decides Inside. Inside the shape: Inside. Outside it: the
+    /// probe still makes it Inside (WX-14), unless <paramref name="wholeShape"/> (the vertices
+    /// are the advisory's own whole WI shape, AdvisoryGeometry.ParseWiPolygon) and the aircraft
+    /// is more than <see cref="ProbeTrustMarginNm"/> outside it: then the probe answer is wrong
+    /// and the fact reads the edge distance.</summary>
+    internal static LocationFact BuildFact(IReadOnlyList<(double Lat, double Lon)>? vertices, bool wholeShape,
+        bool probeMatched, double lat, double lon, double trueHeadingDeg)
+    {
+        if (vertices == null) return new LocationFact(false, probeMatched, null, false);
+        if (AdvisoryGeometry.IsInside(vertices, lat, lon)) return new LocationFact(true, true, 0, false);
+        var (dist, brg) = AdvisoryGeometry.NearestEdge(vertices, lat, lon);
+        if (probeMatched && !(wholeShape && dist > ProbeTrustMarginNm))
+            return new LocationFact(true, true, 0, false);
+        return new LocationFact(true, false, dist, AdvisoryGeometry.IsBehind(brg, trueHeadingDeg));
+    }
+
     /// <summary>Pure: LocationFact → §3 phrase (null = no line). Inside always wins
     /// over distance; a no-geometry, not-inside fact yields no line.</summary>
     internal static string? ComposePhrase(LocationFact fact, bool spoken)
@@ -40,7 +65,8 @@ internal static class RouteAdvisoryLocator
     /// distinguish "no facts computed this tick" from "computed, nothing to say".
     /// Probe match can only STRENGTHEN an inside verdict, never weaken one (probe-
     /// match loss ≠ outside — another overlapping advisory may simply have become
-    /// the response's first block). Never throws: every failure path (including an
+    /// the response's first block), except far outside a whole own shape (BuildFact,
+    /// WX-14). Never throws: every failure path (including an
     /// unexpected exception) yields whatever partial results were already computed,
     /// so an escaping exception can never fault a caller's Task.WhenAll or silently
     /// drop announcements.</summary>
@@ -74,7 +100,10 @@ internal static class RouteAdvisoryLocator
                     && string.Equals(a.Key, probeKey, StringComparison.OrdinalIgnoreCase);
 
                 // Tier 1: the advisory's own WI polygon (body = all lines after the header).
-                var vertices = AdvisoryGeometry.ParseWiPolygon(string.Join(" ", a.Lines.Skip(1)));
+                // Only a whole tier-1 shape can overrule a probe match (BuildFact); tier 2
+                // runs only without one, so its vertices never do.
+                var vertices = AdvisoryGeometry.ParseWiPolygon(
+                    string.Join(" ", a.Lines.Skip(1)), out bool wholeShape);
                 // Tier 2: cached aviationweather.gov geometry by identity (US convective).
                 if (vertices == null && !probeMatched && a.Identity != null)
                 {
@@ -87,15 +116,11 @@ internal static class RouteAdvisoryLocator
                             : null);
                 }
 
-                if (vertices == null)
-                {
-                    result[a.Key] = new LocationFact(false, probeMatched, null, false);
-                    continue;
-                }
-                bool inside = probeMatched || AdvisoryGeometry.IsInside(vertices, pos.Latitude, pos.Longitude);
-                if (inside) { result[a.Key] = new LocationFact(true, true, 0, false); continue; }
-                var (dist, brg) = AdvisoryGeometry.NearestEdge(vertices, pos.Latitude, pos.Longitude);
-                result[a.Key] = new LocationFact(true, false, dist, AdvisoryGeometry.IsBehind(brg, trueHeading));
+                var fact = BuildFact(vertices, wholeShape, probeMatched, pos.Latitude, pos.Longitude, trueHeading);
+                if (probeMatched && !fact.Inside)
+                    Log.Debug("Services", $"Route-advisory probe match ignored: \"{a.Key}\" is "
+                        + $"{(int)Math.Round(fact.DistanceNm ?? 0)} nm outside its own shape");
+                result[a.Key] = fact;
             }
         }
         catch (Exception ex)

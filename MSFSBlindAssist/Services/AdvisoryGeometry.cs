@@ -22,21 +22,33 @@ internal static class AdvisoryGeometry
     /// Null when there is no WI token or fewer than 3 vertices after dropping a duplicated
     /// closing vertex (polygon closure) — interior duplicate vertices are not deduped;
     /// harmless downstream (ray-cast and nearest-vertex math both tolerate a repeated point).</summary>
-    internal static List<(double Lat, double Lon)>? ParseWiPolygon(string body)
+    internal static List<(double Lat, double Lon)>? ParseWiPolygon(string body) => ParseWiPolygon(body, out _);
+
+    /// <summary><see cref="ParseWiPolygon(string)"/>, also saying whether the ring is the body's
+    /// WHOLE shape: true only when no coordinate pair follows it. A VA/TC forecast group, a TC
+    /// centre position or a second area ("AND WI …") after the ring means the advisory may cover
+    /// more than the ring, so a position outside the ring is not proof of being outside the
+    /// advisory (RouteAdvisoryLocator.BuildFact). False whenever the result is null.</summary>
+    internal static List<(double Lat, double Lon)>? ParseWiPolygon(string body, out bool wholeShape)
     {
+        wholeShape = false;
         if (string.IsNullOrEmpty(body)) return null;
         var wi = Regex.Match(body, @"\bWI\b");
         if (!wi.Success) return null;
 
         var verts = new List<(double Lat, double Lon)>();
         int prevEnd = -1;
+        bool trailingGroup = false;
         foreach (Match m in CoordPair.Matches(body, wi.Index))
         {
             // VA/TC bodies routinely carry a SECOND coordinate group after the polygon
             // ("FCST AT 1750Z … WI …", "TC CENTRE PSN …"). Pairs belong to THIS ring only
             // while chained by separators (whitespace/dashes); the first wordy gap ends it.
             if (prevEnd >= 0 && !Regex.IsMatch(body[prevEnd..m.Index], @"^[\s\-]*$"))
+            {
+                trailingGroup = true;
                 break;
+            }
             double lat = int.Parse(m.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture)
                 + int.Parse(m.Groups[3].Value, System.Globalization.CultureInfo.InvariantCulture) / 60.0;
             if (m.Groups[1].Value == "S") lat = -lat;
@@ -47,7 +59,9 @@ internal static class AdvisoryGeometry
             prevEnd = m.Index + m.Length;
         }
         if (verts.Count > 1 && verts[0] == verts[^1]) verts.RemoveAt(verts.Count - 1);
-        return verts.Count >= 3 ? verts : null;
+        if (verts.Count < 3) return null;
+        wholeShape = !trailingGroup;
+        return verts;
     }
 
     /// <summary>Ray-cast point-in-polygon on plain lat/lon (adequate at SIGMET
