@@ -61,6 +61,10 @@ public sealed class VolantaLiveMapForm : Form
     private ComboBox _distance = null!, _phase = null!, _altitude = null!;
     private CheckBox _srcVolanta = null!, _srcVatsim = null!, _srcIvao = null!, _srcPilotEdge = null!, _srcApoc = null!;
     private TextBox _search = null!;
+    // Friends
+    private ListBox _friendsList = null!;
+    private DisplayListBox _friendsDetails = null!;
+    private TextBox _friendsStatus = null!;
     // ATC
     private ListBox _atcList = null!;
     private DisplayListBox _atcDetails = null!;
@@ -73,10 +77,12 @@ public sealed class VolantaLiveMapForm : Form
 
     // The latest computed row behind each key, for the details list (the row shown may be held).
     private Dictionary<string, VolantaTrafficEntry> _trafficByKey = new(StringComparer.Ordinal);
+    private Dictionary<string, VolantaFriendEntry> _friendsByKey = new(StringComparer.Ordinal);
     private Dictionary<string, (VolantaController Station, double? Nm)> _atcByKey = new(StringComparer.Ordinal);
 
     private VolantaLinkStatus _spokenStatus = VolantaLinkStatus.Stopped;
     private DateTimeOffset? _connectedAt;
+    private DateTimeOffset? _spokenFriendsReceived;
     private bool? _spokenPaused;
     private bool _trafficFilled, _starting;
 
@@ -126,9 +132,56 @@ public sealed class VolantaLiveMapForm : Form
         // As in the EFB: NVDA names only the selected tab, never "tab control".
         _tabs = new AccessibleTabControl { Dock = DockStyle.Fill, AccessibleName = "" };
         _tabs.TabPages.Add(BuildTrafficTab());
+        _tabs.TabPages.Add(BuildFriendsTab());
         _tabs.TabPages.Add(BuildAtcTab());
         _tabs.TabPages.Add(BuildConnectionTab());
         Controls.Add(_tabs);
+    }
+
+    private TabPage BuildFriendsTab()
+    {
+        var page = new TabPage("Friends")
+        {
+            AccessibleName = "Friends",
+            AccessibleDescription = "Your Volanta friends: who is flying and where, who is online",
+        };
+
+        _friendsList = new ListBox
+        {
+            Dock = DockStyle.Fill,
+            HorizontalScrollbar = true,
+            IntegralHeight = false,
+            AccessibleName = "Friends",
+            AccessibleDescription = "Friends flying first, nearest first, then online, then offline. Updated every 5 seconds. F5 re-sorts.",
+        };
+        _friendsList.SelectedIndexChanged += (_, _) => ShowFriendDetails();
+        _friendsList.Enter += (_, _) => SelectFirstIfNone(_friendsList);
+
+        _friendsDetails = NewDetailsList("Selected friend details",
+            "The selected friend's status and, when they fly, everything known about their flight, one item per line.");
+
+        _friendsStatus = ReadOnlyBox("Friends status");
+        _friendsStatus.Text = "Waiting for Volanta.";
+
+        var reload = new Button
+        {
+            Text = "Restart Volanta to &reload your friends",
+            AutoSize = true,
+            AccessibleName = "Restart Volanta to reload your friends",
+        };
+        reload.Click += async (_, _) => await StartVolantaAsync(reloadFriends: true);
+
+        var layout = NewColumn(4);
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.Controls.Add(_friendsList, 0, 0);
+        layout.Controls.Add(_friendsDetails, 0, 1);
+        layout.Controls.Add(_friendsStatus, 0, 2);
+        layout.Controls.Add(reload, 0, 3);
+        page.Controls.Add(layout);
+        return page;
     }
 
     private TabPage BuildTrafficTab()
@@ -258,7 +311,7 @@ public sealed class VolantaLiveMapForm : Form
             AutoSize = true,
             AccessibleName = "Start or restart Volanta with live map access",
         };
-        _startButton.Click += async (_, _) => await StartVolantaAsync();
+        _startButton.Click += async (_, _) => await StartVolantaAsync(reloadFriends: false);
 
         var help = new TextBox
         {
@@ -276,6 +329,8 @@ public sealed class VolantaLiveMapForm : Form
                 "Keep Volanta open. It can stay behind the sim, but while it is minimized Volanta stops updating its map, so the traffic here stops too.",
                 "",
                 "Everything here updates every 5 seconds, and the line you are on re-reads when it changes. While you are in a list, its order holds, so the down arrow always reaches the next aircraft; new ones join at the end. F5 re-sorts the lists at once.",
+                "",
+                "Friends: Volanta sends your friends list once, when it starts, so this app reads it when it starts Volanta, and keeps a copy of your friends' names for next time. Who is flying, and where, is always live. If your list looks out of date, use the Friends tab's restart button.",
                 "",
                 "Volanta's positions can be up to two minutes old, so this window estimates where each aircraft is now. Use it for awareness, not to avoid traffic.",
                 "",
@@ -365,6 +420,7 @@ public sealed class VolantaLiveMapForm : Form
         AnnounceTransitions(snap);
         // The first data shows at once; after that the timer keeps everything current.
         if (!_trafficFilled) RefreshTraffic(hold: true);
+        if (_friendsList.Items.Count == 0 && snap.Friends is { Count: > 0 }) RefreshFriends(hold: true);
         if (_atcList.Items.Count == 0 && snap.Controllers != null) RefreshAtc(hold: true);
     }
 
@@ -375,9 +431,17 @@ public sealed class VolantaLiveMapForm : Form
             _connectedAt = snap.Status == VolantaLinkStatus.Connected ? DateTimeOffset.UtcNow : null;
             if (snap.Status == VolantaLinkStatus.Connected)
                 _announcer.AnnounceWithQueue("Connected to Volanta's live map.");
-            else if (_spokenStatus == VolantaLinkStatus.Connected && snap.Status != VolantaLinkStatus.Stopped)
+            else if (_spokenStatus == VolantaLinkStatus.Connected && snap.Status != VolantaLinkStatus.Stopped && !_starting)
+                // Not while this window restarts Volanta itself: the pilot asked for that, and hears "Connected".
                 _announcer.AnnounceWithQueue("Lost the connection to Volanta's live map.");
             _spokenStatus = snap.Status;
+        }
+        // Volanta's own friends download comes only when Volanta starts, which here is always the pilot's press.
+        if (snap.FriendsReceived != null && snap.FriendsReceived != _spokenFriendsReceived && snap.Friends is { } friends)
+        {
+            if (_spokenFriendsReceived != null || _starting || _connectedAt is DateTimeOffset c && (DateTimeOffset.UtcNow - c).TotalSeconds < 30)
+                _announcer.AnnounceWithQueue(friends.Count == 1 ? "Loaded your friends list: 1 friend." : $"Loaded your friends list: {friends.Count.ToString(Inv)} friends.");
+            _spokenFriendsReceived = snap.FriendsReceived;
         }
         if (snap.Status == VolantaLinkStatus.Connected && snap.VolantaPaused != _spokenPaused && snap.VolantaPaused != null)
         {
@@ -394,23 +458,84 @@ public sealed class VolantaLiveMapForm : Form
         // Keep the sim position fresh, as the TCAS window does: each update reads the cached one.
         _sim.RequestAircraftPosition();
         RefreshTraffic(hold: true);
+        RefreshFriends(hold: true);
         RefreshAtc(hold: true);
         RefreshConnectionStatus();
     }
 
-    /// <summary>F5 and the Re-sort button: re-sort both lists now, even while the pilot is in one, and read the
+    /// <summary>F5 and the Re-sort button: re-sort the lists now, even while the pilot is in one, and read the
     /// status of the tab in view.</summary>
     private void RefreshNow()
     {
         RefreshTraffic(hold: false);
+        RefreshFriends(hold: false);
         RefreshAtc(hold: false);
         RefreshConnectionStatus();
         _announcer.Announce(_tabs.SelectedIndex switch
         {
             0 => _trafficStatus.Text,
-            1 => _atcStatus.Text,
+            1 => _friendsStatus.Text,
+            2 => _atcStatus.Text,
             _ => string.Join(" ", _connectionStatus.Items.Cast<object>()),
         });
+    }
+
+    // ── Friends ───────────────────────────────────────────────────────────────
+
+    private void RefreshFriends(bool hold)
+    {
+        if (IsDisposed) return;
+        var snap = _link.Snapshot;
+        var now = DateTimeOffset.UtcNow;
+        if (snap.Friends is not { } friends)
+        {
+            _friendsByKey = new(StringComparer.Ordinal);
+            Reconcile(_friendsList, Array.Empty<Row>(), hold: false);
+            ShowFriendDetails();
+            DisplayText.SetPreserveCaret(_friendsStatus, "Your friends list has not been read yet. Volanta sends it "
+                + "only when it starts: press Restart Volanta to reload your friends.");
+            return;
+        }
+
+        var volantaFlights = snap.VolantaFlights?.Items ?? Array.Empty<VolantaFlight>();
+        var own = OwnPosition(snap, now, out _);
+        IReadOnlyList<VolantaTrafficEntry> placed = own is VolantaOwnPosition me
+            ? VolantaTrafficCalculator.Compute(volantaFlights, me, now, snap.OwnFlight?.FlightId, snap.OwnVolantaPosition, snap.OwnUserId)
+            : Array.Empty<VolantaTrafficEntry>();
+        var entries = VolantaFriends.Arrange(friends, volantaFlights, placed);
+        _friendsByKey = entries.GroupBy(e => e.Friend.FriendId).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+        Reconcile(_friendsList, entries.Select(e => new Row(e.Friend.FriendId, VolantaTrafficFormatter.FriendLine(e))).ToList(),
+            hold && _friendsList.Focused);
+        ShowFriendDetails();
+
+        string status;
+        if (friends.Count == 0)
+            status = "You have no Volanta friends yet.";
+        else
+        {
+            int flying = entries.Count(e => e.IsFlying);
+            int online = entries.Count(e => !e.IsFlying && e.Friend.Status is { IsOffline: false });
+            int offline = entries.Count(e => !e.IsFlying && e.Friend.Status is { IsOffline: true });
+            int unknown = entries.Count(e => !e.IsFlying && e.Friend.Status == null);
+            status = (friends.Count == 1 ? "1 friend: " : $"{friends.Count.ToString(Inv)} friends: ")
+                + $"{flying.ToString(Inv)} flying, {online.ToString(Inv)} online, {offline.ToString(Inv)} offline"
+                + (unknown > 0 ? $", {unknown.ToString(Inv)} not known yet." : ".");
+        }
+        if (snap.FriendsReceived != null)
+            status += " The list is from Volanta and stays current while it runs.";
+        else if (snap.FriendsSavedAt is DateTimeOffset saved)
+            status += $" The list is your saved copy from {saved.ToLocalTime().ToString("d MMMM", Inv)}. Who is flying is live; "
+                + "other statuses show once Volanta reports a change. To load the latest list, press Restart Volanta to reload your friends.";
+        if (snap.VolantaFlights == null) status += " Waiting for Volanta's flights to see who is flying.";
+        DisplayText.SetPreserveCaret(_friendsStatus, status);
+    }
+
+    private void ShowFriendDetails()
+    {
+        if (_friendsList.SelectedItem is Row row && _friendsByKey.TryGetValue(row.Key, out var e))
+            _friendsDetails.SetText(VolantaTrafficFormatter.FriendDetails(e));
+        else
+            _friendsDetails.SetText(_friendsList.Items.Count == 0 ? "No friends listed." : "No friend selected.");
     }
 
     // ── Traffic ───────────────────────────────────────────────────────────────
@@ -674,7 +799,9 @@ public sealed class VolantaLiveMapForm : Form
 
     // ── Start / restart ───────────────────────────────────────────────────────
 
-    private async Task StartVolantaAsync()
+    /// <param name="reloadFriends">The Friends tab's button: restart Volanta even when it has access, since
+    /// Volanta sends the friends list only when it starts.</param>
+    private async Task StartVolantaAsync(bool reloadFriends)
     {
         if (_starting) return;
         _starting = true;
@@ -685,23 +812,32 @@ public sealed class VolantaLiveMapForm : Form
                 case VolantaAccessState.NotInstalled:
                     _announcer.Announce("Volanta is not installed for this Windows user.");
                     return;
-                case VolantaAccessState.RunningWithAccess:
+                case VolantaAccessState.RunningWithAccess when !reloadFriends:
                     _announcer.Announce("Volanta already has live map access.");
                     return;
-                case VolantaAccessState.RunningWithoutAccess:
-                    var answer = MessageBox.Show(this,
-                        "Volanta is running without live map access. Close it and start it again with access now? "
-                        + "Volanta keeps tracking your flight after the restart.",
-                        "Restart Volanta", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-                    if (answer != DialogResult.Yes) return;
-                    _announcer.Announce("Closing Volanta.");
-                    if (!await VolantaLauncher.CloseAsync(TimeSpan.FromSeconds(15)))
+                case VolantaAccessState.RunningWithAccess:
+                    if (!Confirm("Restart Volanta to load your friends list? Volanta quits and starts again, "
+                            + "and keeps tracking your flight.")) return;
+                    _announcer.Announce("Restarting Volanta.");
+                    if (!await VolantaLauncher.QuitAsync(TimeSpan.FromSeconds(15)))
                     {
-                        _announcer.Announce("Volanta did not close. It may be in the notification area: close it from there, then press this button again.");
+                        _announcer.Announce("Volanta did not quit. Open Volanta and press Alt+F4 to quit it, then press this button again.");
+                        return;
+                    }
+                    break;
+                case VolantaAccessState.RunningWithoutAccess:
+                    if (!Confirm("Volanta is running without live map access. Restart it with access now? "
+                            + "Volanta keeps tracking your flight after the restart.")) return;
+                    _announcer.Announce("Closing Volanta.");
+                    if (!await VolantaLauncher.QuitAsync(TimeSpan.FromSeconds(15)))
+                    {
+                        _announcer.Announce("Volanta did not quit; it may have gone to the notification area. Open Volanta "
+                            + "from there and press Alt+F4, which quits it, then press this button again.");
                         return;
                     }
                     break;
             }
+            _link.ExpectLaunch();
             string? error = VolantaLauncher.StartWithAccess();
             _announcer.Announce(error ?? "Starting Volanta with live map access. It connects in a few seconds.");
         }
@@ -716,6 +852,9 @@ public sealed class VolantaLiveMapForm : Form
             RefreshConnectionStatus();
         }
     }
+
+    private bool Confirm(string question)
+        => MessageBox.Show(this, question, "Restart Volanta", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
 
     /// <summary>Marshal to the UI thread; BeginInvoke can still throw while the handle is being destroyed
     /// (A380C-6), so the check alone is not enough.</summary>

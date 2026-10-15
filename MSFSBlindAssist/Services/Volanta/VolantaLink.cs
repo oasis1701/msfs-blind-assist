@@ -38,23 +38,36 @@ public sealed record VolantaLinkSnapshot
     /// <summary>The logged-in Volanta user's id, which is the user id on the pilot's own entry in Volanta's
     /// flight file; null until read.</summary>
     public string? OwnUserId { get; init; }
+    /// <summary>The pilot's Volanta friends; null when neither Volanta's download nor a saved copy was seen.</summary>
+    public IReadOnlyList<VolantaFriend>? Friends { get; init; }
+    /// <summary>When Volanta's own friends download was caught; null while the list is the saved copy.</summary>
+    public DateTimeOffset? FriendsReceived { get; init; }
+    /// <summary>When the saved copy in use was saved; null once Volanta's download replaced it.</summary>
+    public DateTimeOffset? FriendsSavedAt { get; init; }
 }
 
 /// <summary>
 /// Reads Volanta's live map from Volanta itself. Volanta, started with live map access
 /// (<see cref="VolantaLauncher"/>), answers on a local Chromium debugging port; the link attaches to its main
-/// page, turns on network events, and, each time Volanta's map finishes downloading one of its traffic files,
-/// asks the page for that body. It also reads Volanta's hub messages for the pilot's own flight and position,
-/// and every few seconds asks Volanta whether its window is minimized. It never requests anything from
-/// Volanta's servers itself: they refuse every outside client (docs/volanta.md). Reconnects on its own while
-/// started.
+/// page, turns on network events, and, each time Volanta finishes downloading one of its traffic files or its
+/// friends list, asks the page for that body. It also reads Volanta's hub messages for the pilot's own flight
+/// and position and for friend changes, and every few seconds asks Volanta whether its window is minimized. It
+/// never requests anything from Volanta's servers itself: they refuse every outside client (docs/volanta.md).
+/// Reconnects on its own while started.
 /// </summary>
 public sealed class VolantaLink : IDisposable
 {
     public const int DebugPort = 9223;
     private const string PageHost = "127.0.0.1:17580";
     private const string FeedHost = "webassets.volanta.app";
+    private const string ApiHost = "api.volanta.app";
+    private const string FriendsPath = "/api/v1/Relationships/Friends";
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(3);
+    /// <summary>Right after this app starts Volanta, look for its page this often: Volanta downloads the friends
+    /// list once, about 0.6 s after its page appears (measured 2026-10-15), and only a link already attached
+    /// sees it.</summary>
+    private static readonly TimeSpan LaunchRetryDelay = TimeSpan.FromMilliseconds(150);
+    private static readonly TimeSpan LaunchWindow = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan WindowCheckInterval = TimeSpan.FromSeconds(5);
     /// <summary>Asks Volanta whether its window is minimized or hidden, and which user is logged in. The user id is
     /// read from the NAME of the storage key Volanta keeps per user for its "what's new" notice; no stored value,
@@ -70,12 +83,23 @@ public sealed class VolantaLink : IDisposable
 
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(2) };
 
-    internal enum FeedKind { VolantaFlights, NetworkFlights, Controllers }
+    internal enum FeedKind { VolantaFlights, NetworkFlights, Controllers, Friends }
 
     private readonly object _gate = new();
+    private readonly VolantaFriendsCache _friendsCache;
     private VolantaLinkSnapshot _snapshot = new();
     private CancellationTokenSource? _cts;
     private Task? _loop;
+    private long _launchUntilTicks;
+
+    public VolantaLink(VolantaFriendsCache? friendsCache = null) => _friendsCache = friendsCache ?? new VolantaFriendsCache();
+
+    /// <summary>This app is about to start Volanta: look for its page quickly for a while, so the link is
+    /// attached before Volanta downloads the friends list.</summary>
+    public void ExpectLaunch() => Interlocked.Exchange(ref _launchUntilTicks, (DateTime.UtcNow + LaunchWindow).Ticks);
+
+    private TimeSpan CurrentRetryDelay
+        => DateTime.UtcNow.Ticks < Interlocked.Read(ref _launchUntilTicks) ? LaunchRetryDelay : RetryDelay;
 
     /// <summary>Raised on a background thread after any change to <see cref="Snapshot"/>.</summary>
     public event EventHandler? Changed;
@@ -91,6 +115,9 @@ public sealed class VolantaLink : IDisposable
             var ct = _cts.Token;
             _loop = Task.Run(() => RunAsync(ct));
         }
+        // Until Volanta's own download is seen, the saved copy says who the friends are.
+        if (Snapshot.Friends == null && _friendsCache.Load() is { } saved)
+            Update(s => s.Friends != null ? s : s with { Friends = saved.Friends, FriendsSavedAt = saved.SavedAt });
     }
 
     public void Stop()
@@ -137,7 +164,7 @@ public sealed class VolantaLink : IDisposable
 
             if (ct.IsCancellationRequested) break;
             if (Snapshot.Status == VolantaLinkStatus.Connected) SetStatus(VolantaLinkStatus.WaitingForPage);
-            try { await Task.Delay(RetryDelay, ct).ConfigureAwait(false); }
+            try { await Task.Delay(CurrentRetryDelay, ct).ConfigureAwait(false); }
             catch (OperationCanceledException) { break; }
         }
     }
@@ -263,13 +290,8 @@ public sealed class VolantaLink : IDisposable
                             pendingRequests.Remove(failedId);
                         break;
                     case "Network.webSocketFrameReceived":
-                        if (p.TryGetProperty("response", out var frame) && frame.TryGetProperty("payloadData", out var data)
-                            && VolantaFeedParser.TryParseHubFrame(data.GetString() ?? "", out var position, out var flight))
-                            Update(s => s with
-                            {
-                                OwnVolantaPosition = position ?? s.OwnVolantaPosition,
-                                OwnFlight = flight ?? s.OwnFlight,
-                            });
+                        if (p.TryGetProperty("response", out var frame) && frame.TryGetProperty("payloadData", out var data))
+                            TakeHubFrame(data.GetString() ?? "");
                         break;
                 }
             }
@@ -290,12 +312,16 @@ public sealed class VolantaLink : IDisposable
         return FeedKindForUrl(url);
     }
 
-    /// <summary>The file a URL names, for Volanta's traffic host only. Volanta may switch between its full and
-    /// "slim" flight file by a feature flag; both are the Volanta users.</summary>
+    /// <summary>The file a URL names: one of the traffic files on Volanta's traffic host, or Volanta's friends
+    /// list on its API host (nothing else from there). Volanta may switch between its full and "slim" flight file
+    /// by a feature flag; both are the Volanta users.</summary>
     internal static FeedKind? FeedKindForUrl(string url)
     {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)
-            || !string.Equals(uri.Host, FeedHost, StringComparison.OrdinalIgnoreCase)) return null;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return null;
+        if (string.Equals(uri.Host, ApiHost, StringComparison.OrdinalIgnoreCase))
+            return string.Equals(uri.AbsolutePath.TrimEnd('/'), FriendsPath, StringComparison.OrdinalIgnoreCase)
+                ? FeedKind.Friends : null;
+        if (!string.Equals(uri.Host, FeedHost, StringComparison.OrdinalIgnoreCase)) return null;
         string file = uri.AbsolutePath.TrimStart('/');
         if (file.StartsWith("volanta-flight-positions", StringComparison.OrdinalIgnoreCase)) return FeedKind.VolantaFlights;
         if (file.StartsWith("network-flight-positions", StringComparison.OrdinalIgnoreCase)) return FeedKind.NetworkFlights;
@@ -327,6 +353,84 @@ public sealed class VolantaLink : IDisposable
                 if (VolantaFeedParser.ParseControllers(body) is { } cf)
                     Update(s => s with { Controllers = cf, ControllersReceived = now });
                 break;
+            case FeedKind.Friends:
+                // The browser's preflight for the same address has no body: it parses to null and is skipped.
+                if (VolantaFeedParser.ParseFriends(body) is { } friends)
+                {
+                    Log.Info("Volanta", $"Friends list caught: {friends.Count} friends");
+                    Update(s => s with { Friends = friends, FriendsReceived = now, FriendsSavedAt = null });
+                    _friendsCache.Save(friends, now);
+                }
+                break;
+        }
+    }
+
+    private void TakeHubFrame(string payload)
+    {
+        var update = VolantaFeedParser.ParseHubFrame(payload);
+        if (!update.Any) return;
+        IReadOnlyList<VolantaFriend>? friendsAfter = null;
+        Update(s =>
+        {
+            var friends = s.Friends == null ? null : VolantaFriends.Apply(s.Friends, update, s.OwnUserId);
+            friendsAfter = friends;
+            return s with
+            {
+                OwnVolantaPosition = update.Position ?? s.OwnVolantaPosition,
+                OwnFlight = update.Flight ?? s.OwnFlight,
+                Friends = friends,
+            };
+        });
+        if (friendsAfter != null && VolantaFriends.ChangesMembership(update)) _friendsCache.Save(friendsAfter, DateTimeOffset.UtcNow);
+    }
+
+    /// <summary>
+    /// Runs Volanta's own quit, the one Alt+F4 does in Volanta's window, over the debugging port. Volanta's close
+    /// button only hides it in the notification area, so this is the one way to quit it from here. False when
+    /// Volanta has no live map access (or did not answer): the caller falls back to asking the pilot.
+    /// </summary>
+    public static async Task<bool> RunVolantaQuitAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            string list = await Http.GetStringAsync($"http://127.0.0.1:{DebugPort}/json/list", ct).ConfigureAwait(false);
+            if (FindVolantaPage(list) is not { } wsUrl) return false;
+            using var ws = new ClientWebSocket();
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(4000);
+            await ws.ConnectAsync(new Uri(wsUrl), cts.Token).ConfigureAwait(false);
+            // A short delay inside the page lets the answer come back before Volanta goes.
+            byte[] msg = JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                id = 1,
+                method = "Runtime.evaluate",
+                @params = new
+                {
+                    expression = "(() => { if (!window.electron || !window.electron.forceQuit) return 'no'; "
+                        + "setTimeout(() => window.electron.forceQuit(), 150); return 'ok'; })()",
+                    returnByValue = true,
+                },
+            });
+            await ws.SendAsync(msg, WebSocketMessageType.Text, true, cts.Token).ConfigureAwait(false);
+            var buffer = new byte[16384];
+            for (int i = 0; i < 50; i++)
+            {
+                var res = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), cts.Token).ConfigureAwait(false);
+                if (res.MessageType == WebSocketMessageType.Close) return false;
+                string text = Encoding.UTF8.GetString(buffer, 0, res.Count);
+                if (text.Contains("\"id\":1", StringComparison.Ordinal))
+                {
+                    bool ok = text.Contains("\"value\":\"ok\"", StringComparison.Ordinal);
+                    Log.Info("Volanta", ok ? "Asked Volanta to quit (its own quit)" : "Volanta has no quit function");
+                    return ok;
+                }
+            }
+            return false;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException
+            or WebSocketException or JsonException)
+        {
+            return false;
         }
     }
 

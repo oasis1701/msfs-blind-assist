@@ -12,6 +12,10 @@ ATC.
   distance (10 nm to any), all / airborne / on the ground, altitude band, which sources (Volanta users, VATSIM,
   IVAO, PilotEdge, APOC) and a search over callsign, flight number, user, type, registration and airports. The
   details box below the list shows everything known about the selected aircraft.
+- **Friends tab** (after Traffic): the pilot's Volanta friends. Flying friends first, nearest first, with the
+  same placing as a traffic line; then friends online in Volanta, with their status in words ("cruising over
+  United States", "taxiing to gate B12 at KGRB"); then offline. The details list adds everything about a flying
+  friend's flight. A button restarts Volanta to load the list again ([VOL-6]).
 - **ATC tab**: online VATSIM and IVAO stations, nearest first, with frequency; the details box adds the
   controller, the airport, when they came online and the ATIS text.
 - **Connection tab**: whether Volanta has live map access, what has been received and when, and the button that
@@ -52,6 +56,14 @@ the window never asks them for anything. Instead:
    token), so the pilot's own flight is left out even while the sim is paused and Volanta reports nothing.
 
 Nothing extra reaches Volanta's servers: the link only reads what Volanta downloaded anyway.
+
+Friends: Volanta downloads the friends list once, at startup, so the link catches it only when this app started
+Volanta (it then looks for Volanta's page every 150 ms). Volanta's hub then reports friends added and removed and
+each friend's status. A saved copy of ids and names (`%APPDATA%\MSFSBlindAssist\volanta\friends.json`) covers a
+Volanta started another way. Who is flying always comes from the live flight file, by user id.
+
+Quitting: Volanta's close button hides it in the notification area rather than quitting. Alt+F4 in its window
+quits it; with access, the launcher runs that same quit over the debugging port.
 
 ## Measured (Volanta 1.19.2, Electron 40, 2026-10-15)
 

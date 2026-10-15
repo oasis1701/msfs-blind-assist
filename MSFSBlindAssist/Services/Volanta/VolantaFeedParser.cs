@@ -138,15 +138,19 @@ public static class VolantaFeedParser
     }
 
     /// <summary>
-    /// Reads one SignalR frame from Volanta's hub: Volanta's own position report ("position-update") and its
-    /// live status for the pilot's flight ("flight-live-status-update"). A frame may hold several messages, or
-    /// none of interest (keep-alives); the latest of each kind wins. Returns whether it found either.
+    /// Reads one SignalR frame from Volanta's hub: Volanta's own position report ("position-update"), its live
+    /// status for the pilot's flight ("flight-live-status-update"), and friend changes ("friend-added",
+    /// "friend-removed", "rich-status-update"). A frame may hold several messages, or none of interest
+    /// (keep-alives); the latest position and flight win, friend changes are kept in order.
     /// </summary>
-    public static bool TryParseHubFrame(string payload, out VolantaOwnPosition? position, out VolantaOwnFlight? flight)
+    public static VolantaHubUpdate ParseHubFrame(string payload)
     {
-        position = null;
-        flight = null;
-        if (string.IsNullOrEmpty(payload)) return false;
+        VolantaOwnPosition? position = null;
+        VolantaOwnFlight? flight = null;
+        var added = new List<VolantaFriend>();
+        var removed = new List<string>();
+        var statuses = new List<(string, VolantaFriendStatus)>();
+        if (string.IsNullOrEmpty(payload)) return new VolantaHubUpdate();
         foreach (string message in payload.Split(RecordSeparator, StringSplitOptions.RemoveEmptyEntries))
         {
             try
@@ -157,8 +161,16 @@ public static class VolantaFeedParser
                     || !root.TryGetProperty("arguments", out var args) || args.ValueKind != JsonValueKind.Array
                     || args.GetArrayLength() == 0) continue;
                 var arg = args[0];
+                string target = Str(root, "target");
+                if (target == "friend-removed")
+                {
+                    string gone = arg.ValueKind == JsonValueKind.String ? (arg.GetString() ?? "").Trim()
+                        : arg.ValueKind == JsonValueKind.Object ? Str(arg, "friendId") : "";
+                    if (gone.Length > 0) removed.Add(gone);
+                    continue;
+                }
                 if (arg.ValueKind != JsonValueKind.Object) continue;
-                switch (Str(root, "target"))
+                switch (target)
                 {
                     case "position-update":
                         double? lat = Num(arg, "latitude"), lon = Num(arg, "longitude");
@@ -173,11 +185,74 @@ public static class VolantaFeedParser
                         flight = new VolantaOwnFlight(id, Str(arg, "callsign"), Str(arg, "aircraftIcao"),
                             Str(arg, "originIcao"), Str(arg, "destinationIcao"));
                         break;
+                    case "friend-added":
+                        // Volanta's own handler stores the added friend as a full friend.
+                        if (ParseFriend(arg, requireFriendState: false) is { } friend) added.Add(friend);
+                        break;
+                    case "rich-status-update":
+                        string who = Str(arg, "friendId");
+                        if (who.Length > 0 && arg.TryGetProperty("richStatus", out var rs) && ParseFriendStatus(rs) is { } status)
+                            statuses.Add((who, status));
+                        break;
                 }
             }
-            catch (JsonException) { /* a keep-alive or a frame cut short: nothing to take from it */ }
+            catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+            {
+                /* a keep-alive or a frame cut short: nothing to take from it */
+            }
         }
-        return position != null || flight != null;
+        return new VolantaHubUpdate
+        {
+            Position = position, Flight = flight, FriendsAdded = added, FriendsRemoved = removed, FriendStatuses = statuses,
+        };
+    }
+
+    /// <summary>
+    /// Volanta's friends list, the answer to the request Volanta itself makes once when the pilot logs in.
+    /// Only accepted friendships are kept (Volanta's state "Friend"; a pending request or a block is not a
+    /// friend). Null when the text is not that list.
+    /// </summary>
+    public static IReadOnlyList<VolantaFriend>? ParseFriends(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return null;
+            var list = new List<VolantaFriend>();
+            foreach (var f in doc.RootElement.EnumerateArray())
+                if (ParseFriend(f, requireFriendState: true) is { } friend) list.Add(friend);
+            return list;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    private static VolantaFriend? ParseFriend(JsonElement f, bool requireFriendState)
+    {
+        if (f.ValueKind != JsonValueKind.Object) return null;
+        string id = Str(f, "friendId");
+        if (id.Length == 0) return null;
+        string state = Str(f, "state");
+        if (requireFriendState && !state.Equals("Friend", StringComparison.OrdinalIgnoreCase)) return null;
+        var status = f.TryGetProperty("richStatus", out var rs) ? ParseFriendStatus(rs) : null;
+        return new VolantaFriend(id, Str(f, "userName"), status);
+    }
+
+    private static VolantaFriendStatus? ParseFriendStatus(JsonElement rs)
+    {
+        if (rs.ValueKind != JsonValueKind.Object) return null;
+        return new VolantaFriendStatus
+        {
+            State = Str(rs, "state"),
+            Value = Str(rs, "value"),
+            CountryName = Str(rs, "countryName"),
+            OceanName = Str(rs, "oceanName"),
+            NearestAirport = Str(rs, "nearestAirport"),
+            DepartureAirport = Str(rs, "departureAirport"),
+            ArrivalAirport = Str(rs, "arrivalAirport"),
+            // Volanta sends false, not a name, when there is no gate.
+            GateName = Str(rs, "gateName"),
+            Altitude = Num(rs, "altitude") is double a && a > 0 ? a : null,
+        };
     }
 
     public static VolantaSource ParseSource(string network) => network.Trim().ToLowerInvariant() switch

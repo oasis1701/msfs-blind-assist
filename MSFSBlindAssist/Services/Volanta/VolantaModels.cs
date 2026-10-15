@@ -71,3 +71,39 @@ public readonly record struct VolantaOwnPosition(
 /// <summary>The pilot's own Volanta flight, from Volanta's live status message: its id is the id of the pilot's
 /// own entry in Volanta's flight file.</summary>
 public sealed record VolantaOwnFlight(string FlightId, string Callsign, string AircraftIcao, string Origin, string Destination);
+
+/// <summary>A friend's live status as Volanta keeps it ("rich status"). <see cref="State"/> is Volanta's word:
+/// Offline, Online, AtAirport, TaxiingToRunway, ClimbingToAltitude, CruisingOverCountry, Cruising, Descending,
+/// TaxiingToGate (measured 2026-10-15); <see cref="Value"/> is the place or level that goes with it.</summary>
+public sealed record VolantaFriendStatus
+{
+    public string State { get; init; } = "";
+    public string Value { get; init; } = "";
+    public string CountryName { get; init; } = "";
+    public string OceanName { get; init; } = "";
+    public string NearestAirport { get; init; } = "";
+    public string DepartureAirport { get; init; } = "";
+    public string ArrivalAirport { get; init; } = "";
+    public string GateName { get; init; } = "";
+    public double? Altitude { get; init; }
+    public bool IsOffline => State.Length == 0 || State.Equals("Offline", StringComparison.OrdinalIgnoreCase);
+}
+
+/// <summary>One of the pilot's Volanta friends. <see cref="FriendId"/> is the friend's Volanta user id, the user
+/// id on their entry in Volanta's flight file when they fly. <see cref="Status"/> is null when unknown: a friend
+/// from the saved copy whose status Volanta has not reported since.</summary>
+public sealed record VolantaFriend(string FriendId, string UserName, VolantaFriendStatus? Status);
+
+/// <summary>What one hub frame told: Volanta's own position report and live status, and friend changes.</summary>
+public sealed record VolantaHubUpdate
+{
+    public VolantaOwnPosition? Position { get; init; }
+    public VolantaOwnFlight? Flight { get; init; }
+    public IReadOnlyList<VolantaFriend> FriendsAdded { get; init; } = Array.Empty<VolantaFriend>();
+    public IReadOnlyList<string> FriendsRemoved { get; init; } = Array.Empty<string>();
+    /// <summary>Status changes by user id; the pilot's own id can be among them and is ignored by the list.</summary>
+    public IReadOnlyList<(string FriendId, VolantaFriendStatus Status)> FriendStatuses { get; init; }
+        = Array.Empty<(string, VolantaFriendStatus)>();
+    public bool Any => Position != null || Flight != null || FriendsAdded.Count > 0 || FriendsRemoved.Count > 0
+        || FriendStatuses.Count > 0;
+}

@@ -6,8 +6,11 @@ The one-line form of each rule is in `.claude/rules/volanta.md`. Background: doc
 
 Never request anything from Volanta's servers. `api.volanta.app` and `webassets.volanta.app` sit behind
 Cloudflare and refuse every client but Volanta itself (a 403 page, measured 2026-10-15), and getting past that
-is not ours to do. `VolantaLink` only reads, through the debugger's response bodies, the files Volanta's own map
-page has just downloaded; it adds no request of its own, so a pilot reading the window costs Volanta nothing.
+is not ours to do. `VolantaLink` only reads, through the debugger's response bodies, what Volanta's own page has
+just downloaded: its three traffic files and, from the API host, nothing but its friends list
+(`/api/v1/Relationships/Friends`). It adds no request of its own, so a pilot reading the window costs Volanta
+nothing. The owner chose this on 2026-10-15 over having Volanta's page fetch the friends list itself, which would
+have meant requests and using the login token inside Volanta.
 
 ## VOL-2
 
@@ -21,9 +24,13 @@ standing still.
 ## VOL-3
 
 Volanta runs one copy at a time, so the debugging switch only takes effect on a fresh launch: a second launch
-just brings the first copy forward. `VolantaLauncher` therefore asks the pilot, closes a running Volanta the way
-its close button does (`CloseAsync`), waits, and starts it again with the switch. It never force-quits Volanta:
-a Volanta hidden in the notification area has no window to close, and the pilot is told to close it there.
+just brings the first copy forward. Volanta's close button (and a WM_CLOSE to its window) does not quit it: it
+hides it in the notification area, still running, its window no longer visible (measured 2026-10-15), so its map
+stops polling ([VOL-2]). Volanta quits on Alt+F4, which its page handles by calling its own quit function.
+`VolantaLauncher.QuitAsync` therefore runs that same quit over the debugging port when Volanta has access
+(`VolantaLink.RunVolantaQuitAsync`); without access it can only ask the window to close, and when Volanta is
+still running at the deadline the pilot is told to open Volanta and press Alt+F4. It always asks the pilot first,
+and never kills Volanta's process.
 
 ## VOL-4
 
@@ -45,3 +52,18 @@ The network file gives every pilot `onGround: false`, a height above ground of 0
 parked or not (all 1,150 rows, measured). `VolantaFeedParser` infers on the ground below
 `VolantaFeedParser.NetworkGroundSpeedKt` and leaves height above ground and vertical speed unknown for network
 pilots; only a Volanta user's own flags are trusted.
+
+## VOL-6
+
+Volanta downloads the pilot's friends list once, when it logs in at startup (`GET /api/v1/Relationships/Friends`):
+measured 2026-10-15, its page appeared 1.9 s after launch and the friends request went out 0.6 s after that. A
+response body is readable only by a session that enabled network events before the request, so only a link
+already attached catches it. Every launch from this app therefore calls `VolantaLink.ExpectLaunch` first, which
+makes the link look for Volanta's page every 150 ms for a minute instead of every 3 s.
+
+After that, Volanta's hub keeps the list current: "friend-added", "friend-removed", and "rich-status-update" for
+each friend's status (the pilot's own status comes the same way and is ignored). `VolantaFriendsCache` saves the
+list's ids and names, never a status, so a Volanta started some other way still shows who the friends are, with
+their status "not known yet" until Volanta reports a change. Whether a friend is flying, and where, never comes
+from the list: it is their entry in Volanta's flight file, matched by user id, so it is live whichever way the
+list arrived. The Friends tab's restart button restarts Volanta only to catch the list again.

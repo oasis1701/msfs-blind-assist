@@ -75,7 +75,9 @@ public static class VolantaTrafficFormatter
     }
 
     /// <summary>One list line: name, where it is from the pilot, altitude, speed, type, pilot and route.</summary>
-    public static string ListLine(VolantaTrafficEntry e)
+    public static string ListLine(VolantaTrafficEntry e) => string.Join(", ", LineParts(e, includePilot: true));
+
+    private static List<string> LineParts(VolantaTrafficEntry e, bool includePilot)
     {
         var f = e.Flight;
         var parts = new List<string>
@@ -94,10 +96,85 @@ public static class VolantaTrafficFormatter
             parts.Add($"{Math.Round(f.GroundSpeedKt).ToString("0", Inv)} knots");
         }
         if (f.AircraftIcao.Length > 0) parts.Add(f.AircraftIcao);
-        parts.Add(Pilot(f));
+        if (includePilot) parts.Add(Pilot(f));
         string route = RouteText(f.Origin, f.Destination);
         if (route.Length > 0) parts.Add(route);
-        return string.Join(", ", parts);
+        return parts;
+    }
+
+    /// <summary>
+    /// A friend's status in words, from Volanta's rich status: "offline", "online in Volanta", "at KATL",
+    /// "taxiing to the runway at KATL", "climbing out of KATL", "cruising over the United States", "cruising over
+    /// the North Atlantic Ocean", "descending into KGRB", "taxiing to gate B12 at KGRB". Null is a friend from
+    /// the saved list whose status Volanta has not reported yet.
+    /// </summary>
+    public static string FriendStatusText(VolantaFriendStatus? s)
+    {
+        if (s == null) return "status not known yet";
+        string Place(params string[] candidates) => candidates.FirstOrDefault(c => c.Length > 0) ?? "";
+        string At(string place) => place.Length > 0 ? $" at {place}" : "";
+        switch (s.State.ToLowerInvariant())
+        {
+            case "":
+            case "offline": return "offline";
+            case "online": return "online in Volanta, not flying";
+            case "atairport":
+                string airport = Place(s.Value, s.NearestAirport, s.DepartureAirport, s.ArrivalAirport);
+                return airport.Length > 0 ? $"at {airport}" : "at an airport";
+            case "taxiingtorunway": return "taxiing to the runway" + At(Place(s.DepartureAirport, s.NearestAirport, s.Value));
+            case "climbingtoaltitude":
+                string from = Place(s.DepartureAirport, s.NearestAirport);
+                return "climbing" + (from.Length > 0 ? $" out of {from}" : "");
+            case "cruisingovercountry":
+                string country = Place(s.CountryName, s.Value);
+                return country.Length > 0 ? $"cruising over {country}" : "cruising";
+            case "cruising":
+                string over = Place(s.OceanName, s.CountryName, s.Value);
+                return over.Length > 0 ? $"cruising over {over}" : "cruising";
+            case "descending":
+                string into = Place(s.ArrivalAirport, s.NearestAirport);
+                return "descending" + (into.Length > 0 ? $" into {into}" : "");
+            case "taxiingtogate":
+                string gate = s.GateName.Length > 0 ? $"gate {s.GateName}" : "the gate";
+                return $"taxiing to {gate}" + At(Place(s.ArrivalAirport, s.NearestAirport, s.Value));
+            default:
+                return FacilityName(s.State).ToLowerInvariant() + (s.Value.Length > 0 ? $", {s.Value}" : "");
+        }
+    }
+
+    /// <summary>One Friends tab line: the friend's name, then where their flight is from the pilot when they fly,
+    /// else their status.</summary>
+    public static string FriendLine(VolantaFriendEntry e)
+    {
+        string name = e.Friend.UserName.Length > 0 ? e.Friend.UserName : "Unnamed friend";
+        if (e.Placed != null) return $"{name}, flying, " + string.Join(", ", LineParts(e.Placed, includePilot: false));
+        if (e.Flight is { } f)
+        {
+            var parts = new List<string> { $"{name}, flying {DisplayName(f)}" };
+            if (f.AircraftIcao.Length > 0) parts.Add(f.AircraftIcao);
+            string route = RouteText(f.Origin, f.Destination);
+            if (route.Length > 0) parts.Add(route);
+            return string.Join(", ", parts);
+        }
+        return $"{name}, {FriendStatusText(e.Friend.Status)}";
+    }
+
+    /// <summary>Everything known about one friend: name, status, and their flight's details when they fly.</summary>
+    public static string FriendDetails(VolantaFriendEntry e)
+    {
+        var lines = new List<string> { $"Friend: {(e.Friend.UserName.Length > 0 ? e.Friend.UserName : "unnamed")}" };
+        lines.Add($"Status: {FriendStatusText(e.Friend.Status)}");
+        if (e.Placed != null)
+            lines.AddRange(Details(e.Placed).Split(Environment.NewLine));
+        else if (e.Flight is { } f)
+        {
+            if (f.Callsign.Length > 0) lines.Add($"Callsign: {f.Callsign}");
+            if (f.AircraftIcao.Length > 0) lines.Add($"Aircraft: {f.AircraftIcao}");
+            string route = RouteText(f.Origin, f.Destination);
+            if (route.Length > 0) lines.Add($"Route: {route}");
+            lines.Add("Position: unknown until your own position is known");
+        }
+        return string.Join(Environment.NewLine, lines);
     }
 
     /// <summary>Everything known about one flight, one "Label: value" line each, for the details box.</summary>

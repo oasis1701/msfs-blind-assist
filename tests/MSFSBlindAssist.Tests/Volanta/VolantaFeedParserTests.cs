@@ -171,25 +171,81 @@ public class VolantaFeedParserTests
             + "\u001e"
             + """{"type":1,"target":"flight-live-status-update","arguments":[{"flightId":"f-1","callsign":"DAL1022","aircraftIcao":"B738","originIcao":"KATL","destinationIcao":"KGRB"}]}"""
             + "\u001e";
-        Assert.True(VolantaFeedParser.TryParseHubFrame(frame, out var position, out var flight));
-        Assert.Equal(38.92, position!.Value.Latitude);
-        Assert.Equal(327.28, position.Value.HeadingTrue);
-        Assert.Equal(new DateTimeOffset(2026, 10, 15, 21, 14, 46, 262, TimeSpan.Zero), position.Value.Time);
-        Assert.Equal(new VolantaOwnFlight("f-1", "DAL1022", "B738", "KATL", "KGRB"), flight);
+        var update = VolantaFeedParser.ParseHubFrame(frame);
+        Assert.True(update.Any);
+        var position = update.Position!.Value;
+        Assert.Equal(38.92, position.Latitude);
+        Assert.Equal(327.28, position.HeadingTrue);
+        Assert.Equal(new DateTimeOffset(2026, 10, 15, 21, 14, 46, 262, TimeSpan.Zero), position.Time);
+        Assert.Equal(new VolantaOwnFlight("f-1", "DAL1022", "B738", "KATL", "KGRB"), update.Flight);
+    }
+
+    private const string FriendsFile = """
+        [{"friendId":"a1","profileImage":"x.png","userName":"friend_one","state":"Friend","initiatedTime":"2026-01-01T00:00:00Z",
+          "acceptedTime":"2026-01-02T00:00:00Z","isOutbound":false,"currentStreak":3,"isPremium":false,"badge":null,
+          "richStatus":{"state":"CruisingOverCountry","value":"United States","taxiing":false,"gateName":false,"oceanName":"",
+            "countryName":"United States","nearestAirport":"KIND","altitude":35000.0,"sidIdentifier":"","climbing":false,
+            "starIdentifier":"","departureAirport":"KATL","arrivalAirport":"KGRB","online":false}},
+         {"friendId":"b2","userName":"pending_person","state":"FriendPending","richStatus":null},
+         {"friendId":"c3","userName":"friend_two","state":"Friend","richStatus":{"state":"Offline","value":"","online":false}},
+         {"userName":"no_id","state":"Friend"}]
+        """;
+
+    [Fact]
+    public void The_friends_list_keeps_accepted_friends_with_their_live_status()
+    {
+        var friends = VolantaFeedParser.ParseFriends(FriendsFile)!;
+        Assert.Equal(new[] { "a1", "c3" }, friends.Select(f => f.FriendId));
+        var one = friends[0];
+        Assert.Equal("friend_one", one.UserName);
+        Assert.Equal("CruisingOverCountry", one.Status!.State);
+        Assert.Equal("United States", one.Status.CountryName);
+        Assert.Equal("KATL", one.Status.DepartureAirport);
+        Assert.Equal("KGRB", one.Status.ArrivalAirport);
+        Assert.Equal("", one.Status.GateName);           // Volanta sends false for no gate
+        Assert.Equal(35000.0, one.Status.Altitude);
+        Assert.False(one.Status.IsOffline);
+        Assert.True(friends[1].Status!.IsOffline);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("{\"data\":[]}")]
+    [InlineData("not json")]
+    public void Anything_but_the_friends_array_parses_to_null(string json) => Assert.Null(VolantaFeedParser.ParseFriends(json));
+
+    [Fact]
+    public void Hub_friend_messages_carry_added_removed_and_status_changes_in_order()
+    {
+        string frame =
+            """{"type":1,"target":"friend-added","arguments":[{"friendId":"d4","userName":"new_friend","state":"Friend"}]}""" + "\u001e"
+            + """{"type":1,"target":"friend-removed","arguments":["c3"]}""" + "\u001e"
+            + """{"type":1,"target":"friend-removed","arguments":[{"friendId":"e5"}]}""" + "\u001e"
+            + """{"type":1,"target":"rich-status-update","arguments":[{"friendId":"a1","richStatus":{"state":"Descending","arrivalAirport":"KGRB"}}]}""" + "\u001e";
+        var update = VolantaFeedParser.ParseHubFrame(frame);
+        Assert.Equal(new[] { "d4" }, update.FriendsAdded.Select(f => f.FriendId));
+        Assert.Equal("new_friend", update.FriendsAdded[0].UserName);
+        Assert.Equal(new[] { "c3", "e5" }, update.FriendsRemoved);
+        Assert.Equal("a1", update.FriendStatuses.Single().FriendId);
+        Assert.Equal("Descending", update.FriendStatuses.Single().Status.State);
+        Assert.Null(update.Position);
     }
 
     [Theory]
     [InlineData("{\"type\":6}\u001e")]
     [InlineData("{\"type\":1,\"target\":\"rich-status-update\",\"arguments\":[{\"friendId\":\"x\"}]}\u001e")]
+    [InlineData("{\"type\":1,\"target\":\"friend-removed\",\"arguments\":[\"\"]}")]
+    [InlineData("{\"type\":1,\"target\":\"friend-added\",\"arguments\":[{\"userName\":\"no id\"}]}")]
     [InlineData("{\"type\":1,\"target\":\"flight-live-status-update\",\"arguments\":[{\"callsign\":\"NOID\"}]}")]
     [InlineData("{\"type\":1,\"target\":\"position-update\",\"arguments\":[{\"altitude\":100}]}")]
     [InlineData("{cut short")]
     [InlineData("")]
     public void Keep_alives_other_messages_and_incomplete_ones_yield_nothing(string frame)
     {
-        Assert.False(VolantaFeedParser.TryParseHubFrame(frame, out var position, out var flight));
-        Assert.Null(position);
-        Assert.Null(flight);
+        var update = VolantaFeedParser.ParseHubFrame(frame);
+        Assert.False(update.Any);
+        Assert.Null(update.Position);
+        Assert.Null(update.Flight);
     }
 
     [Fact]
@@ -220,6 +276,10 @@ public class VolantaFeedParserTests
     [InlineData("https://webassets.volanta.app/volanta-flight-positions.json", "VolantaFlights")]
     [InlineData("https://webassets.volanta.app/network-flight-positions.json", "NetworkFlights")]
     [InlineData("https://webassets.volanta.app/network-controllers.json", "Controllers")]
+    [InlineData("https://api.volanta.app/api/v1/Relationships/Friends", "Friends")]
+    [InlineData("https://api.volanta.app/api/v1/relationships/friends/", "Friends")]
+    [InlineData("https://api.volanta.app/api/v1/Relationships/Friends/abc", null)]
+    [InlineData("https://api.volanta.app/api/v1/Flights/Active", null)]
     [InlineData("https://cdn.volanta.app/notams/main.json", null)]
     [InlineData("https://example.com/volanta-flight-positions-slim.json", null)]
     [InlineData("not a url", null)]
