@@ -40,7 +40,9 @@ function page1(rect, forwardShown) {
 function page2(rect, unit) {
   return '<div id="page2" data-rect="' + rect + '">' +
     '<div id="switcher_page1"><img src="chevron-left.png"></div>' +
-    '<div class="row"><div class="col-sm-12"><h1 class="mb-2">WEIGHT AND BALANCE [' + unit + ']</h1>' +
+    // The heading holds the chosen load's name in a floated block of its own (live, 2026-10-15).
+    '<div class="row"><div class="col-sm-12"><h1 class="mb-2">WEIGHT AND BALANCE [' + unit + ']' +
+    '<div class="float-end" id="payload-name">Cargo Transport - Simbrief</div></h1>' +
     '<div class="card"><div class="card-body bg-dark">' +
     '<div class="weight-image"><div id="weight_freight_fwd_box"></div><div id="weight_freight_mid_box"></div><div id="weight_freight_aft_box"></div></div>' +
     '<div class="row pb-5"><div class="col-sm-8 offset-sm-2">' +
@@ -203,7 +205,17 @@ const files = {
     // Landing's weight box has no unit of its own; Take Off's says the tablet's.
     perfBox('WEIGHT', 'input_weight', 'number', '', 'kg') +
     perfRow('RWY', '<input type="button" id="show_runway_select" value="RWY 04R">') + '</div></div></div><div class="paused-overlay'),
-  'groundequip': tablet('<div id="equip"><button id="door1Larmed" class="door-arm" style="background-color: rgb(0, 128, 0)"></button>' +
+  // The door buttons as live on 2026-10-15: an open door's label is "Door Open" and a moving one's
+  // "Door Transit" (the tablet's own code), whichever door it is.
+  'groundequip': tablet('<div id="equip">' +
+    '<button id="doors_l1" class="btn btn-info door door-open"><img class="button-icon" src="queue.png">Door Open</button>' +
+    '<button id="doors_r1" class="btn btn-info door"><img class="button-icon" src="queue.png">Door 1R</button>' +
+    '<button id="doors_mainCargo" class="btn btn-info door"><img class="button-icon" src="queue.png">Main Cargo</button>' +
+    '<button id="doors_aftCargo" class="btn btn-info door door-transit"><img class="button-icon" src="queue.png">Door Transit</button>' +
+    '<button id="door1Larmed" class="door-arm" style="background-color: rgb(0, 128, 0)"></button>' +
+    '<div class="col-sm-6"><h1 class="mt-4 mb-2"><span id="lighting_title">CARGO</span> LIGHTING</h1><div class="card">' +
+    '<div class="card-body"><div class="py-5"><input type="range" class="ini-range" min="0" max="100" step="0.1" id="lights_cargo" value="75">' +
+    '</div></div></div></div>' +
     '<h1>Emergency Slides: Red - Armed // Green - Disarmed</h1></div>'),
   'maintenance': tablet('<div id="maintenance"><div class="row"><div class="col-sm-12"><h1 class="mb-2">AIRCRAFT MAINTENANCE</h1>' +
     '<div class="card m-2"><div class="card-body"><h2>MAINTENANCE PANELS</h2><div class="row mt-3">' +
