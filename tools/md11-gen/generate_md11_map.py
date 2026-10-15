@@ -36,6 +36,7 @@ import os
 import re
 import sys
 from collections import Counter, defaultdict
+from fractions import Fraction
 
 import md11_paths
 
@@ -256,6 +257,89 @@ def split_volume_knob(knob, push_var, tooltip, source):
     return level, receiver
 
 
+# Lighting and display-brightness knobs whose tooltip prints their OWN var scaled to a percentage
+# and nothing else -- 'DU1 Brightness (%((L:MD11_PED_DU1_BRT_KB) 10 *)%!d!%%)' -- so the tooltip
+# names no positions and MSFSBA showed a read-only raw number. Twenty of them: the panel, flood
+# and circuit-breaker lights and the six DU brightness knobs (x10), the two briefcase lights (x5),
+# the two weather radar display brightness knobs (x100/72) and the three MCDU brightness knobs (x2,
+# which are no panel rows: the MCDU window owns them). The scale is the tooltip's; the STEP is not
+# in it, and was MEASURED (2026-10-15, cruise): one paced wheel click moved the circuit-breaker
+# panel, FGS panel and DU1 knobs by 0.5 (x10: 5 %), the Captain's briefcase light by 1 (x5: 5 %),
+# the Captain's weather radar brightness by 3.6 (x100/72: 5 %) and the left MCDU's by 2.5 (x2:
+# 5 %), every one 5 % of its scale, each put back afterwards. So the positions are 0 % ... 100 % in 5 % steps, raw =
+# percent / scale (a key that is not a terminating decimal stops the generator). The top of each
+# scale is where the tooltip reads 100 %; it agrees with each template's ANIM_LENGTH, and the clamp
+# itself was measured on the volume knobs only. The volume knobs step 10 % and are
+# split_volume_knob's; a percent knob on another template is not measured, so it is left alone.
+PERCENT_KNOB_TEMPLATES = {"TFDi_Design_MD11_Knob_Template", "TFDi_Design_MD11_Knob_Push"}
+PERCENT_KNOB_STEP = 5
+PERCENT_TOOLTIP_RE = re.compile(r".+? \(%\(\(L:(?P<var>[A-Za-z0-9_]+)\) (?P<rpn>[0-9 ./*]+)\)%!d!%%\)")
+
+
+def _percent_scale(rpn):
+    """The constant a bare '(L:var) <rpn>' multiplies the var by, as a Fraction, or None.
+
+    Only the two shapes TFDi uses: 'k *' and 'a b / *'."""
+    stack = []
+    tokens = rpn.split()
+    for i, tok in enumerate(tokens):
+        if re.fullmatch(r"\d+(\.\d+)?", tok):
+            stack.append(Fraction(tok))
+        elif tok == "/" and len(stack) >= 2:
+            b, a = stack.pop(), stack.pop()
+            stack.append(a / b)
+        elif tok == "*" and len(stack) == 1 and i == len(tokens) - 1:
+            return stack[0] if stack[0] > 0 else None
+        else:
+            return None
+    return None
+
+
+def _decimal_key(value):
+    """A Fraction as the shortest exact decimal string ("0.5", "3.6", "10"), or None when it does
+    not terminate."""
+    value = Fraction(value)
+    if value.denominator == 1:
+        return str(value.numerator)
+    for places in range(1, 7):
+        scaled = value * 10 ** places
+        if scaled.denominator == 1:
+            text = f"{scaled.numerator / 10 ** places:.{places}f}"
+            return text.rstrip("0").rstrip(".")
+    return None
+
+
+def percent_knob_positions(node_id, tooltip, template):
+    """{raw key: "N%"} for a percent knob (see PERCENT_KNOB_TEMPLATES), or None when the control is
+    not one: another template, or a tooltip that is not exactly its own var scaled to a percentage."""
+    if template not in PERCENT_KNOB_TEMPLATES or not tooltip:
+        return None
+    m = PERCENT_TOOLTIP_RE.fullmatch(re.sub(r"\s+", " ", tooltip.strip()))
+    if not m or m.group("var") != node_id:
+        return None
+    scale = _percent_scale(m.group("rpn"))
+    if scale is None:
+        return None
+    positions = {}
+    for pct in range(0, 101, PERCENT_KNOB_STEP):
+        key = _decimal_key(pct / scale)
+        if key is None:
+            raise ValueError(
+                f"{node_id}: {pct}% is no terminating raw value on the scale x{scale} -- a combo "
+                f"key must be exact; teach percent_knob_positions this scale before regenerating")
+        positions[key] = f"{pct}%"
+    return positions
+
+
+# The four FLIGHT NUMBER thumbwheels on the centre instrument panel: no tooltip at all, so no
+# positions. Each is one digit. MEASURED (2026-10-15): one WHEEL_UP on digit 1 moved
+# MD11_CTR_FLTNO1_SW 0 -> 1, WHEEL_DOWN took it back, and a further WHEEL_DOWN left it at 0 (no
+# wrap). The top digit is 9: the template animates var x 1.111 over ANIM_LENGTH 10.
+def digit_positions():
+    """Value map for a single-digit thumbwheel: raw 0..9 -> "0" ... "9"."""
+    return {str(d): str(d) for d in range(10)}
+
+
 CURATED = {
     "MD11_FLAP_LATCH": {
         "label": "Flaps/Slats",
@@ -307,6 +391,15 @@ CURATED = {
     # until a reader consumes `threshold` generically -- at which point this entry and that class
     # go together.
     "MD11_MIP_GEAR_SW": {"value_map": {"0": "Up", "1": "Down"}},
+    # The flight number thumbwheels (digit_positions).
+    **{f"MD11_CTR_FLTNO{n}_SW": {"value_map": digit_positions()} for n in (1, 2, 3, 4)},
+    # The passenger-load thumbwheels share ONE tooltip that reads all three digits
+    # ('%((L:..._100_...) 100 * (L:..._10_...) 10 * + (L:..._1_...) +)%!d!'), so the first-var rule
+    # gave the Tens and Units wheels the HUNDREDS var: both rows read the hundreds digit. Each wheel
+    # animates its own node id (ANIM_NAME), so that is its state. No positions: neither click moved
+    # the Units wheel on a live MD-11F (2026-10-15) -- the selector is likely inert on the
+    # freighter -- so a combo could not be proven, and the row stays a read-only digit.
+    **{f"MD11_OVHD_{n}_PAX_LOAD_SW": {"state_var": f"MD11_OVHD_{n}_PAX_LOAD_SW"} for n in (1, 10)},
 }
 
 # Guard covers TFDi's own XML does not link to the control they cover. The generator never infers
@@ -799,6 +892,10 @@ def finalize_controls(controls):
         curated_map = (CURATED.get(nid) or {}).get("value_map")
         if curated_map:
             c["value_map"] = dict(curated_map)
+        # ...and a curated state var, for the same reason: the parsed one is written over it.
+        curated_var = (CURATED.get(nid) or {}).get("state_var")
+        if curated_var:
+            c["state_var"] = curated_var
         if c["label"]:
             c["label"] = speakable(c["label"])
 
@@ -1905,6 +2002,13 @@ def collect(pkg_dir):
                     stats["curated"] += 1
 
                 num_states = fields.get("NUM_STATES")
+                # A lighting or brightness knob whose tooltip is only its own var as a percentage
+                # gets measured 5 % positions (percent_knob_positions); TFDi's NUM_STATES says
+                # nothing about them, so the count is the positions'.
+                percent = None if value_map or composite else percent_knob_positions(
+                    node_id, fields.get("TOOLTIPID"), tmpl)
+                if percent:
+                    value_map, num_states = percent, str(len(percent))
                 control = (
                     {
                         "node_id": node_id,

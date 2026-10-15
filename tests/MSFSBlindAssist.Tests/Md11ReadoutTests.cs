@@ -104,7 +104,9 @@ public class Md11ReadoutTests
     /// gear lever's 0-25 travel against {0 Up, 1 Down}, the Dial-A-Flap wheel's continuous raw
     /// value against whole degrees, the flap handle's Dial-A-Flap BAND against the detent
     /// points, and the speedbrake lever's travel — streamed every frame, resting wherever the
-    /// lever stopped — against its four detents. Every other MD-11 combo keeps the raw value as
+    /// lever stopped — against its four detents, and the percent knobs' continuous scale against
+    /// their 5 % or 10 % positions (<see cref="Md11PercentKnob"/>: the weather radar brightness reads
+    /// 39.60001). Every other MD-11 combo keeps the raw value as
     /// its key. (This test once pinned the speedbrake as an exact-key combo; a lever resting at
     /// 26.4 then matched no key and the Spoilers combo opened blank, where the first Down-arrow
     /// commits "Retracted".)
@@ -117,8 +119,11 @@ public class Md11ReadoutTests
             .Select(kv => kv.Key)
             .OrderBy(k => k, StringComparer.Ordinal)
             .ToList();
+        var percentKnobs = Map.Controls.Where(Md11PercentKnob.Is).Select(c => c.NodeId).ToList();
+        Assert.Equal(48 + 20, percentKnobs.Count);   // the audio volumes; the lighting and brightness knobs
         Assert.Equal(
             new[] { Md11FlapSystem.DialKey, Md11FlapSystem.LeverKey, Md11GearLever.Key, Md11SpeedbrakeSystem.LeverKey }
+                .Concat(percentKnobs)
                 .OrderBy(k => k, StringComparer.Ordinal),
             classified);
 

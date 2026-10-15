@@ -184,6 +184,76 @@ class VolumeKnobTests(unittest.TestCase):
             self.assertIn(f"{self.P}_VHF2_VOL_KB", str(cm.exception))
 
 
+class PercentKnobTests(unittest.TestCase):
+    """A lighting or brightness knob whose tooltip is only its own var as a percentage has no
+    positions of TFDi's, so it was a read-only raw number. Every one measured live steps 5 % of its
+    scale per click, so the positions are 0 % ... 100 % in 5 % steps, raw = percent / scale."""
+
+    KNOB = "TFDi_Design_MD11_Knob_Template"
+
+    def positions(self, scale_rpn, node="MD11_PED_DU1_BRT_KB", template=KNOB, var=None):
+        tooltip = f"DU1 Brightness (%((L:{var or node}) {scale_rpn})%!d!%%)"
+        return g.percent_knob_positions(node, tooltip, template)
+
+    def test_each_measured_scale_steps_five_percent(self):
+        for rpn, keys in (("10 *", ["0", "0.5", "1", "9.5", "10"]),             # panel, flood, DU lights
+                          ("5 *", ["0", "1", "2", "19", "20"]),                 # briefcase lights
+                          ("100 72 / *", ["0", "3.6", "7.2", "68.4", "72"]),    # weather radar brightness
+                          ("2 *", ["0", "2.5", "5", "47.5", "50"])):            # MCDU brightness
+            with self.subTest(rpn):
+                p = self.positions(rpn)
+                self.assertEqual(21, len(p))
+                self.assertEqual(["0%", "5%", "10%", "95%", "100%"], [p[k] for k in keys])
+
+    def test_only_the_measured_templates_and_shape_qualify(self):
+        self.assertIsNone(self.positions("10 *", template="TFDi_Design_MD11_Infinite_Knob"))
+        self.assertIsNone(self.positions("10 *", var="MD11_PED_DU2_BRT_KB"))     # another var's value
+        self.assertIsNone(self.positions("10 * 1 +"))                            # not a bare scale
+        self.assertIsNone(g.percent_knob_positions(
+            "MD11_PED_DU1_BRT_KB", "DU1 Brightness (%((L:MD11_PED_DU1_BRT_KB) 10 *)%!d!)", self.KNOB))  # no percent
+
+    def test_a_scale_with_no_exact_keys_stops_the_generator(self):
+        with self.assertRaises(ValueError) as cm:
+            self.positions("3 *")        # 5 % would be raw 1.666...
+        self.assertIn("MD11_PED_DU1_BRT_KB", str(cm.exception))
+
+    def test_collect_gives_the_knob_its_positions(self):
+        xml = use_template(self.KNOB, TOOLTIPID="DU1 Brightness (%((L:MD11_PED_DU1_BRT_KB) 10 *)%!d!%%)",
+                           NODE_ID="MD11_PED_DU1_BRT_KB", NUM_STATES="3", WHEEL_DOWN="69816", WHEEL_UP="69817")
+        with tempfile.TemporaryDirectory() as tmp:
+            pkg, _ = write_package(tmp, {"FlightDeck/AftFootPedestal.xml": xml})
+            controls, _ = g.collect(pkg)
+        knob = controls[0]
+        self.assertEqual("MD11_PED_DU1_BRT_KB", knob["state_var"])
+        self.assertEqual(21, knob["num_states"])
+        self.assertEqual("45%", knob["value_map"]["4.5"])
+
+
+class ThumbwheelTests(unittest.TestCase):
+    """The centre panel's flight-number digits had no tooltip and so no positions; the passenger-load
+    thumbwheels share one tooltip reading all three digits, so the Tens and Units wheels read the
+    HUNDREDS var."""
+
+    def test_flight_number_digits_are_zero_to_nine(self):
+        out = {c["node_id"]: c for c in g.finalize_controls(
+            [ctl(f"MD11_CTR_FLTNO{n}_SW", kind="switch", events={"WHEEL_UP": 2 * n, "WHEEL_DOWN": 2 * n + 1})
+             for n in (1, 2, 3, 4)])}
+        for n in (1, 2, 3, 4):
+            self.assertEqual({str(d): str(d) for d in range(10)}, out[f"MD11_CTR_FLTNO{n}_SW"]["value_map"])
+
+    def test_each_passenger_load_wheel_reads_its_own_digit(self):
+        _, var, _ = g.parse_tooltip(
+            "Pax Load Selector (%((L:MD11_OVHD_100_PAX_LOAD_SW) 100 * (L:MD11_OVHD_10_PAX_LOAD_SW) 10 * + "
+            "(L:MD11_OVHD_1_PAX_LOAD_SW) +)%!d!)")
+        self.assertEqual("MD11_OVHD_100_PAX_LOAD_SW", var)    # the first-var rule, for all three
+        wheels = [ctl(f"MD11_OVHD_{n}_PAX_LOAD_SW", kind="switch", state_var=var,
+                      events={"LEFT_BUTTON_DOWN": n, "RIGHT_BUTTON_DOWN": n + 1}) for n in (1, 10, 100)]
+        out = {c["node_id"]: c for c in g.finalize_controls(wheels)}
+        for n in (1, 10, 100):
+            self.assertEqual(f"MD11_OVHD_{n}_PAX_LOAD_SW", out[f"MD11_OVHD_{n}_PAX_LOAD_SW"]["state_var"])
+            self.assertEqual({}, out[f"MD11_OVHD_{n}_PAX_LOAD_SW"]["value_map"])   # inert on the freighter: no positions
+
+
 class CompanionVarTests(unittest.TestCase):
     """A trailing if/else keyed on a SECOND L:var describes that var, not this control. The EFIS
     minimums caps read their own value and then the mode switch's var for the Baro/Radio word;
