@@ -27,20 +27,18 @@ Volanta runs one copy at a time, so the debugging switch only takes effect on a 
 just brings the first copy forward. With Volanta's "show in tray" setting on, its close button (and a WM_CLOSE
 to its window) does not quit it: it hides it in the notification area, still running, its window no longer
 visible (measured 2026-10-15), so its map stops polling ([VOL-2]). Whether Alt+F4 quits also depends on that
-setting (the owner's report), so it is never the advice. The one sure quit is the Quit item of Volanta's
-notification-area menu ("Show Volanta", "Reset Window Position", "Quit"). Volanta's page has a quit function that
-does the same (it stops Volanta's sim plugins, then sends the main process the message the menu's Quit runs), so
-`VolantaLauncher.QuitAsync` runs it over the debugging port when Volanta has access
-(`VolantaLink.RunVolantaQuitAsync`). Without access it can only ask the window to close, which quits a Volanta
-with the setting off.
+setting (the owner's report), so it is never the advice. The one sure quit by hand is the Quit item of Volanta's
+notification-area menu ("Show Volanta", "Reset Window Position", "Quit").
 
-When Volanta is still running after that (8 s after its own quit, 4 s after a window close), `QuitAsync` ends
-its processes and its sim plugins (`VolantaPlugin_x64`/`_x86`: Volanta's own quit stops them first, so a
-force-close must too, or a stale plugin stays connected to the sim beside the new one). The owner chose this on
-2026-10-15 because asking Volanta to quit was not reliable; it replaces the earlier "never kill" rule. The gentle
-steps always come first, the window asks the pilot before any of it and says a force-close may happen, and it
-says so when one did. Only if Windows refuses to end Volanta is the pilot sent to Quit in its notification-area
-menu. Volanta's restarts measured on 2026-10-15 kept tracking the same flight.
+A restart is therefore two steps: `VolantaLauncher.ForceCloseAsync` ends Volanta's processes and its sim plugins
+(`VolantaPlugin_x64`/`_x86`: Volanta's own quit stops them first, so a force-close must too, or a stale plugin
+stays connected to the sim beside the new one), then `VolantaLauncher.StartWithAccess` starts it with the switch.
+The owner chose this on 2026-10-15, replacing first an earlier "never kill" rule and then a version that asked
+Volanta to quit (its own quit over the port, else its window close) before force-closing: in the pilot's tests
+asking never quit Volanta, only the force-close did, so asking only added seconds. The window asks the pilot
+first and says Volanta will be force-closed. Only if Windows refuses to end Volanta is the pilot sent to Quit in
+its notification-area menu. Volanta's restarts measured on 2026-10-15, the force-closed ones included, kept
+tracking the same flight.
 
 ## VOL-4
 

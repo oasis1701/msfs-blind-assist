@@ -807,7 +807,6 @@ public sealed class VolantaLiveMapForm : Form
         _starting = true;
         try
         {
-            string forced = "";
             switch (await VolantaLauncher.DetectAsync())
             {
                 case VolantaAccessState.NotInstalled:
@@ -817,21 +816,20 @@ public sealed class VolantaLiveMapForm : Form
                     _announcer.Announce("Volanta already has live map access.");
                     return;
                 case VolantaAccessState.RunningWithAccess:
-                    if (!Confirm("Restart Volanta to load your friends list? Volanta quits and starts again, and keeps "
-                            + "tracking your flight. If it does not quit within a few seconds, it is force-closed.")) return;
-                    _announcer.Announce("Restarting Volanta.");
-                    if (!TryQuitResult(await VolantaLauncher.QuitAsync(), out forced)) return;
+                    if (!Confirm("Restart Volanta to load your friends list? Volanta is force-closed and started "
+                            + "again, and keeps tracking your flight.")) return;
+                    if (!await ForceCloseVolantaAsync()) return;
                     break;
                 case VolantaAccessState.RunningWithoutAccess:
-                    if (!Confirm("Volanta is running without live map access. Restart it with access now? Volanta keeps "
-                            + "tracking your flight after the restart. If it does not quit within a few seconds, it is force-closed.")) return;
-                    _announcer.Announce("Closing Volanta.");
-                    if (!TryQuitResult(await VolantaLauncher.QuitAsync(), out forced)) return;
+                    if (!Confirm("Volanta is running without live map access. Restart it with access now? Volanta is "
+                            + "force-closed and started again, and keeps tracking your flight.")) return;
+                    if (!await ForceCloseVolantaAsync()) return;
                     break;
             }
+            // Step two: start it with access, the link watching closely for its friends download.
             _link.ExpectLaunch();
             string? error = VolantaLauncher.StartWithAccess();
-            _announcer.Announce(error ?? forced + "Starting Volanta with live map access. It connects in a few seconds.");
+            _announcer.Announce(error ?? "Starting Volanta with live map access. It connects in a few seconds.");
         }
         catch (Exception ex)
         {
@@ -845,13 +843,13 @@ public sealed class VolantaLiveMapForm : Form
         }
     }
 
-    /// <summary>Whether the restart can go on after the quit, with what to say first when Volanta had to be
-    /// force-closed. Windows refusing to end Volanta leaves the pilot the Quit item of its notification-area
-    /// menu.</summary>
-    private bool TryQuitResult(VolantaQuitResult result, out string forcedNote)
+    /// <summary>Step one of a restart. Asking Volanta to quit was not reliable (its close button only hides it in
+    /// the notification area when its "show in tray" setting is on), so it is force-closed straight away. Windows
+    /// refusing to end it leaves the pilot the Quit item of its notification-area menu.</summary>
+    private async Task<bool> ForceCloseVolantaAsync()
     {
-        forcedNote = result == VolantaQuitResult.ForceClosed ? "Volanta did not quit on its own, so it was force-closed. " : "";
-        if (result != VolantaQuitResult.StillRunning) return true;
+        _announcer.Announce("Closing Volanta.");
+        if (await VolantaLauncher.ForceCloseAsync()) return true;
         _announcer.Announce("Volanta could not be closed. Quit it from the notification area: press Windows+B, find "
             + "Volanta, open its menu with the Applications key, and choose Quit. Then press this button again.");
         return false;

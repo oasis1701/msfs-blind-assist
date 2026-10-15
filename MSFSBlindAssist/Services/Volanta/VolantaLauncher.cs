@@ -16,31 +16,20 @@ public enum VolantaAccessState
     RunningWithAccess,
 }
 
-public enum VolantaQuitResult
-{
-    /// <summary>Volanta quit on its own: its own quit over the debugging port, or its window closing.</summary>
-    Quit,
-    /// <summary>Volanta did not quit when asked, so its processes and sim plugins were ended.</summary>
-    ForceClosed,
-    /// <summary>Volanta is still running: Windows refused to end it.</summary>
-    StillRunning,
-}
-
 /// <summary>
 /// Starts Volanta with live map access: a local-only Chromium debugging port (<see cref="VolantaLink.DebugPort"/>).
-/// Volanta runs one copy at a time, so a running Volanta must be quit first; the switch on a second launch
-/// would only bring the first one forward. With Volanta's "show in tray" setting on, its close button (and
-/// Alt+F4) only hide it in the notification area (measured 2026-10-15). <see cref="QuitAsync"/> therefore
-/// escalates: Volanta's own quit over the debugging port when it has access (the same as Quit in its
-/// notification-area menu), else its window asked to close; and when Volanta is still running after that, its
-/// processes and sim plugins are ended (the owner's choice, 2026-10-15: asking Volanta was not reliable). The
-/// window always asks the pilot first, and says the force-close may happen.
+/// Volanta runs one copy at a time, so a running Volanta must be gone first; the switch on a second launch would
+/// only bring the first one forward. A restart is two steps: <see cref="ForceCloseAsync"/>, then
+/// <see cref="StartWithAccess"/>. Asking Volanta to quit was not reliable: with its "show in tray" setting on, its
+/// close button (and Alt+F4) only hide it in the notification area (measured 2026-10-15), so the owner chose on
+/// 2026-10-15 to force-close it straight away. Volanta kept tracking the same flight across every restart. The
+/// window always asks the pilot first, and says Volanta will be force-closed.
 /// </summary>
 public static class VolantaLauncher
 {
     private const string ProcessName = "Volanta";
-    /// <summary>Volanta's sim plugins: its own quit stops them first, so a force-close ends them too, or a stale
-    /// one stays connected to the sim beside the plugin the new Volanta starts.</summary>
+    /// <summary>Volanta's sim plugins: Volanta's own quit stops them first, so a force-close ends them too, or a
+    /// stale one stays connected to the sim beside the plugin the new Volanta starts.</summary>
     private static readonly string[] PluginProcessNames = { "VolantaPlugin_x64", "VolantaPlugin_x86" };
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(2) };
 
@@ -124,34 +113,17 @@ public static class VolantaLauncher
     }
 
     /// <summary>
-    /// Quits Volanta and waits for it to exit. First the gentle way: with live map access, Volanta's own quit
-    /// (the same as Quit in its notification-area menu); without, its window asked to close, which quits only a
-    /// Volanta whose "show in tray" setting is off. When Volanta is still running after that (8 s after its own
-    /// quit, 4 s after a window close), its processes and its sim plugins are ended, and the wait goes on.
+    /// The first step of a restart: ends Volanta's processes and its sim plugins, and waits for them to go.
+    /// False when Volanta is still running after 10 s: Windows would not end it, and the pilot must quit it from
+    /// its notification-area menu.
     /// </summary>
-    public static async Task<VolantaQuitResult> QuitAsync(CancellationToken ct = default)
+    public static async Task<bool> ForceCloseAsync(CancellationToken ct = default)
     {
-        bool asked = await VolantaLink.RunVolantaQuitAsync(ct).ConfigureAwait(false);
-        if (!asked)
-        {
-            foreach (var p in Process.GetProcessesByName(ProcessName))
-            {
-                using (p)
-                {
-                    try { if (p.MainWindowHandle != IntPtr.Zero) p.CloseMainWindow(); }
-                    catch (InvalidOperationException) { /* already exited */ }
-                }
-            }
-        }
-        if (await WaitForExitAsync(TimeSpan.FromSeconds(asked ? 8 : 4), ct).ConfigureAwait(false))
-            return VolantaQuitResult.Quit;
-
-        Log.Warn("Volanta", $"Volanta did not quit when asked ({(asked ? "its own quit" : "window close")}); force-closing it");
+        Log.Info("Volanta", "Force-closing Volanta for a restart with live map access");
         ForceClose();
-        if (await WaitForExitAsync(TimeSpan.FromSeconds(10), ct).ConfigureAwait(false))
-            return VolantaQuitResult.ForceClosed;
+        if (await WaitForExitAsync(TimeSpan.FromSeconds(10), ct).ConfigureAwait(false)) return true;
         Log.Warn("Volanta", "Volanta is still running after the force-close");
-        return VolantaQuitResult.StillRunning;
+        return false;
     }
 
     private static async Task<bool> WaitForExitAsync(TimeSpan timeout, CancellationToken ct)

@@ -384,57 +384,6 @@ public sealed class VolantaLink : IDisposable
         if (friendsAfter != null && VolantaFriends.ChangesMembership(update)) _friendsCache.Save(friendsAfter, DateTimeOffset.UtcNow);
     }
 
-    /// <summary>
-    /// Runs Volanta's own quit over the debugging port: its page's quit function, which does what Quit in its
-    /// notification-area menu does (stops its sim plugins, then quits), whatever its "show in tray" setting.
-    /// With that setting on, the close button only hides Volanta, so this is the one way to quit it from here. False when
-    /// Volanta has no live map access (or did not answer): the caller falls back to asking the pilot.
-    /// </summary>
-    public static async Task<bool> RunVolantaQuitAsync(CancellationToken ct = default)
-    {
-        try
-        {
-            string list = await Http.GetStringAsync($"http://127.0.0.1:{DebugPort}/json/list", ct).ConfigureAwait(false);
-            if (FindVolantaPage(list) is not { } wsUrl) return false;
-            using var ws = new ClientWebSocket();
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(4000);
-            await ws.ConnectAsync(new Uri(wsUrl), cts.Token).ConfigureAwait(false);
-            // A short delay inside the page lets the answer come back before Volanta goes.
-            byte[] msg = JsonSerializer.SerializeToUtf8Bytes(new
-            {
-                id = 1,
-                method = "Runtime.evaluate",
-                @params = new
-                {
-                    expression = "(() => { if (!window.electron || !window.electron.forceQuit) return 'no'; "
-                        + "setTimeout(() => window.electron.forceQuit(), 150); return 'ok'; })()",
-                    returnByValue = true,
-                },
-            });
-            await ws.SendAsync(msg, WebSocketMessageType.Text, true, cts.Token).ConfigureAwait(false);
-            var buffer = new byte[16384];
-            for (int i = 0; i < 50; i++)
-            {
-                var res = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), cts.Token).ConfigureAwait(false);
-                if (res.MessageType == WebSocketMessageType.Close) return false;
-                string text = Encoding.UTF8.GetString(buffer, 0, res.Count);
-                if (text.Contains("\"id\":1", StringComparison.Ordinal))
-                {
-                    bool ok = text.Contains("\"value\":\"ok\"", StringComparison.Ordinal);
-                    Log.Info("Volanta", ok ? "Asked Volanta to quit (its own quit)" : "Volanta has no quit function");
-                    return ok;
-                }
-            }
-            return false;
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException
-            or WebSocketException or JsonException)
-        {
-            return false;
-        }
-    }
-
     private void TakeWindowState(JsonElement reply)
     {
         if (!reply.TryGetProperty("result", out var r) || !r.TryGetProperty("result", out var inner)
