@@ -44,6 +44,9 @@ public partial class MainForm : Form
     private HotkeyManager hotkeyManager = null!;
 
     private IAirportDataProvider? airportDataProvider;
+    // The database file as it was when airportDataProvider was loaded (DatabaseSelector.CurrentStamp):
+    // closing the Database Settings window reloads only when the file or the setting changed since.
+    private DatabaseStamp? _loadedDatabaseStamp;
 
     // Typed reference to the augmentation decorator so Phase 6 can call PrefetchAsync.
     private MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider? _augmentingProvider;
@@ -884,10 +887,11 @@ public partial class MainForm : Form
             () => taxiGuidanceManager.IsLandingRollout,
             () => taxiGuidanceManager.ExitGuidanceOwnsRolloutTone,
             () => taxiGuidanceManager.IsLandingExitTaxiSteering,
-            // A landing-exit plan pending, and whether it will start exit guidance at the touchdown at a
-            // given airport: then the planner leads its own touchdown sentence with the runway correction
-            // and interrupts, so the assist leaves the telling to it rather than having its own sentence
-            // cut off mid-word; a plan for elsewhere, or one already used, says nothing there.
+            // Whether the landing-exit planner holds a plan, and whether it will start exit guidance at the
+            // touchdown at a given airport: then the planner leads its own touchdown sentence with the runway
+            // correction and interrupts, so the assist leaves the telling to it rather than having its own
+            // sentence cut off mid-word. A plan for elsewhere starts nothing there (it says "Runway not
+            // identified" once), and one already used says nothing.
             () => landingExitPlanner.HasPendingExit,
             icao => landingExitPlanner.WillStartGuidanceAt(icao));
         flareAssistManager.MonitoringRequestChanged += OnFlareAssistMonitoringRequestChanged;
@@ -977,6 +981,7 @@ public partial class MainForm : Form
         // once below, through WithTaxiAugmentation — see its doc comment and ProviderWrapGuardTests.
         // (optional - navdata can be null if the database isn't built yet)
         var navdata = DatabaseSelector.SelectProvider();
+        _loadedDatabaseStamp = DatabaseSelector.CurrentStamp();
 
         // Built unconditionally: the buildings tier needs no base provider, so a database built
         // mid-session still gets it (a switch Clear()s the store, never rebuilds it).

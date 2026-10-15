@@ -109,10 +109,12 @@ public class LandingFlareAssistManager : IDisposable
     private readonly Func<bool> hasLandingExitPlan;
     // True when that plan will start exit guidance at the next touchdown at the given airport
     // (LandingExitPlanner.WillStartGuidanceAt), so the planner will lead its own touchdown sentence with the
-    // runway correction. Both features notice a runway change and both say so, a few hundredths of a second
-    // apart at touchdown, and the planner interrupts, so this assist leaves the telling to it
-    // (LandingAssistRunwaySwitch.AtTouchdown) and only re-points its tones. A plan for another airport, or one
-    // already used, says nothing at this touchdown, so this assist speaks for itself then.
+    // runway correction. Both features notice a runway change and both say so at touchdown, the planner up to
+    // about a second later (it hears the touchdown from the 1 Hz SIM_ON_GROUND sample, then reads a fresh
+    // position) and interrupting, so the flare mode's immediate sentence leaves the telling to it
+    // (LandingAssistRunwaySwitch.AtTouchdown) and only re-points its tones. A plan for another airport starts
+    // nothing here (it says "Runway not identified" once per plan) and one already used says nothing, so this
+    // assist speaks for itself then. The rollout-only cue does not predict: it defers (DecideRolloutGuidanceSpeech).
     private readonly Func<string, bool> landingExitPlanStartsAt;
 
     // LATERAL / pan tone — the user's chosen waveform. Runs from flare engage all the way to
@@ -161,6 +163,12 @@ public class LandingFlareAssistManager : IDisposable
     private bool lastTraceExitOwnsTone;
     // Ground speed of the last rollout frame, for the takeover's trace event (which has no frame of its own).
     private double lastRolloutGsKts;
+    // A "Rollout guidance" sentence held at touchdown (RolloutGuidanceSpeech.Deferred), with whether it carries
+    // the runway correction and when it was held (clock seconds). Kept across a bounce; dropped by a new arming
+    // and by the end of the rollout.
+    private string? deferredRolloutGuidance;
+    private bool deferredRolloutGuidanceHasCorrection;
+    private double deferredRolloutGuidanceSinceSec;
 
     private Phase phase = Phase.Armed;
     private bool monitoringRequested;
@@ -254,6 +262,10 @@ public class LandingFlareAssistManager : IDisposable
     // (ArmsRolloutOnlyTouchdown): the flare band's own latch, which every approach passes and a settle-back
     // after liftoff does not.
     private const double ROLLOUT_ONLY_ARM_GEAR_AGL_FT = FLARE_LATCH_GEAR_AGL_FT;
+    // How long the rollout-only cue holds its "Rollout guidance" sentence when an exit plan exists
+    // (ResolveDeferredRolloutGuidance): longer than the planner can take to hear the touchdown — the
+    // continuous-batch SIM_ON_GROUND samples at 1 Hz, then the planner asks for a fresh position.
+    private const double ROLLOUT_GUIDANCE_DEFER_SEC = 1.5;
 
     public bool IsArmed => armed;
     public bool IsEngaged => armed && phase != Phase.Armed;
@@ -314,6 +326,7 @@ public class LandingFlareAssistManager : IDisposable
         wasAboveFlareBand = false;
         rolloutOnlyWasAirborne = false;
         rolloutAnnounced = false;
+        deferredRolloutGuidance = null;
 
         Log.Debug("LandingFlareAssist",
             $"Armed: {destinationAirport.ICAO} rwy {runwayLabel}, flare={includeFlare}, " +
@@ -358,6 +371,7 @@ public class LandingFlareAssistManager : IDisposable
         armed = false;
         flareEnabled = true;
         rolloutOnlyWasAirborne = false;
+        deferredRolloutGuidance = null;
         runway = null;
         armedRunway = null;
         armedAirport = null;
@@ -533,7 +547,12 @@ public class LandingFlareAssistManager : IDisposable
         if (!onGround)
         {
             if (ArmsRolloutOnlyTouchdown(onGround, gearAgl)) rolloutOnlyWasAirborne = true;
-            if (gearAgl > GO_AROUND_GEAR_AGL_FT) rolloutAnnounced = false;
+            if (gearAgl > GO_AROUND_GEAR_AGL_FT)
+            {
+                // Climbed away: a new approach, whose touchdown gets its own sentence.
+                rolloutAnnounced = false;
+                deferredRolloutGuidance = null;
+            }
             return;
         }
 
@@ -585,6 +604,7 @@ public class LandingFlareAssistManager : IDisposable
         if (taxiInLandingRollout) return;
         if (phase != Phase.Rollout) return;
         TraceRolloutEvent("Rollout end: taxi guidance took over", lastRolloutGsKts);
+        deferredRolloutGuidance = null;   // exit guidance ran, so its touchdown sentence covered it
         StopEngagement(raiseEvents: true);
         Log.Debug("LandingFlareAssist", "Rollout handed over to taxi guidance");
     }
@@ -727,11 +747,14 @@ public class LandingFlareAssistManager : IDisposable
         StartLateralToneIfNeeded();
         tone.UpdatePitch(0);           // pan mode: park the frequency at centre, meaning is the pan
 
-        // Will exit guidance start at THIS touchdown and speak its own sentence? Already running (the planner
-        // got there first), or about to (a fresh plan for this airport). A plan for another airport, or one
-        // already used, says nothing here.
+        // Will exit guidance start at THIS touchdown and speak its own sentence, runway correction included?
+        // Already running (the planner got there first), or predicted for a fresh plan for this airport. The
+        // flare mode's immediate sentence leaves the correction to the planner then. The rollout-only cue with
+        // a plan holds its sentence until the planner has had the touchdown (RolloutGuidanceSpeech.Deferred)
+        // and speaks it only if exit guidance did NOT start, so that sentence always carries the correction.
         bool exitGuidanceStartsHere = isLandingRollout()
             || (armedAirport != null && landingExitPlanStartsAt(armedAirport.ICAO));
+        var speech = DecideRolloutGuidanceSpeech(flareEnabled, hasLandingExitPlan());
 
         // Confirm the runway on the ground: switch if the aircraft touched down on a different runway
         // from the active one, and say so once when that is not the armed runway.
@@ -741,7 +764,7 @@ public class LandingFlareAssistManager : IDisposable
             var verdict = LandingRunwayMatch.Evaluate(
                 d.Latitude, d.Longitude, d.HeadingMagnetic + d.MagneticVariation, runway, airportRunways);
             var decision = LandingAssistRunwaySwitch.AtTouchdown(verdict, runway, armedRunway, runwayCorrectionSpoken,
-                exitPlanWillSayIt: exitGuidanceStartsHere);
+                exitPlanWillSayIt: speech == RolloutGuidanceSpeech.Immediate && exitGuidanceStartsHere);
             if (decision.SwitchTo != null)
             {
                 ApplyActiveRunway(decision.SwitchTo);
@@ -754,16 +777,19 @@ public class LandingFlareAssistManager : IDisposable
         if (!rolloutAnnounced)
         {
             rolloutAnnounced = true;
-            var speech = DecideRolloutGuidanceSpeech(flareEnabled, exitGuidanceStartsHere, hasLandingExitPlan());
-            if (speech != RolloutGuidanceSpeech.None)
+            deferredRolloutGuidance = null;
+            string phrase = LandingAssistRunwaySwitch.RolloutGuidancePhrase(
+                runwayLabel, armedRunway?.RunwayID ?? runwayLabel, speakCorrection);
+            if (speech == RolloutGuidanceSpeech.Immediate)
             {
-                string phrase = LandingAssistRunwaySwitch.RolloutGuidancePhrase(
-                    runwayLabel, armedRunway?.RunwayID ?? runwayLabel, speakCorrection);
-                if (speech == RolloutGuidanceSpeech.Immediate)
-                    announcer.AnnounceImmediate(phrase);
-                else
-                    announcer.AnnounceWithQueue(phrase);   // after any planner sentence, never cut off by it
+                announcer.AnnounceImmediate(phrase);
                 if (speakCorrection) runwayCorrectionSpoken = true;
+            }
+            else
+            {
+                deferredRolloutGuidance = phrase;
+                deferredRolloutGuidanceHasCorrection = speakCorrection;
+                deferredRolloutGuidanceSinceSec = clock.Elapsed.TotalSeconds;
             }
         }
         BeginRolloutTrace(exitGuidanceStartsHere);
@@ -839,6 +865,29 @@ public class LandingFlareAssistManager : IDisposable
         bool exitOwns = exitGuidanceOwnsTone();
         bool sounding = ApplyPan(steerDeg, muted: exitOwns);
         TraceRolloutFrame(d, headingDiff, crossTrackFeet, desiredCrabDeg, steerDeg, sounding, exitOwns);
+        ServiceDeferredRolloutGuidance();
+    }
+
+    /// <summary>
+    /// Speaks or drops a held "Rollout guidance" sentence once the planner has had the touchdown
+    /// (<see cref="ResolveDeferredRolloutGuidance"/>). Spoken without interrupting, so a planner sentence still
+    /// being read ("Runway not identified…") finishes first.
+    /// </summary>
+    private void ServiceDeferredRolloutGuidance()
+    {
+        if (deferredRolloutGuidance == null) return;
+        var outcome = ResolveDeferredRolloutGuidance(clock.Elapsed.TotalSeconds - deferredRolloutGuidanceSinceSec,
+            exitGuidanceRunning: isLandingRollout() || isLandingExitTaxiSteering());
+        if (outcome == DeferredSpeech.Wait) return;
+
+        if (outcome == DeferredSpeech.Speak)
+        {
+            announcer.Announce(deferredRolloutGuidance);
+            if (deferredRolloutGuidanceHasCorrection) runwayCorrectionSpoken = true;
+        }
+        TraceRolloutEvent(outcome == DeferredSpeech.Speak
+            ? "Rollout guidance spoken" : "Rollout guidance left to exit guidance", lastRolloutGsKts);
+        deferredRolloutGuidance = null;
     }
 
     /// <summary>
@@ -904,6 +953,7 @@ public class LandingFlareAssistManager : IDisposable
             : clearOfRunway ? "clear of the runway"
             : "below 40 kt";
         TraceRolloutEvent($"Rollout end: {reason}", d.GroundSpeedKnots);
+        deferredRolloutGuidance = null;   // never "Rollout guidance" after the rollout has ended
         StopEngagement(raiseEvents: true);
         if (end == RolloutEnd.Interrupting)
             announcer.AnnounceImmediate("Rollout guidance complete");
@@ -1002,28 +1052,45 @@ public class LandingFlareAssistManager : IDisposable
     /// <summary>How the "Rollout guidance" sentence is spoken at touchdown.</summary>
     internal enum RolloutGuidanceSpeech
     {
-        /// <summary>Not at all: the planner's touchdown sentence is the one utterance.</summary>
-        None,
         /// <summary>At once, interrupting.</summary>
         Immediate,
-        /// <summary>On the announcer's queue, after any planner sentence instead of under it.</summary>
-        Queued,
+        /// <summary>Held until the planner has had the touchdown (<see cref="ResolveDeferredRolloutGuidance"/>).</summary>
+        Deferred,
     }
 
     /// <summary>
-    /// How the "Rollout guidance" sentence is spoken at touchdown. Flare mode: at once, as it always was. The
-    /// rollout-only cue: not at all when exit guidance starts at this touchdown (<paramref name="exitGuidanceStartsHere"/>:
-    /// the planner's sentence already says guidance has started); queued when a plan exists that will not start
-    /// here — another airport, whose planner may say "Runway not identified", or a plan already used this
-    /// session, which says nothing — so the pilot still learns the cue is running; at once with no plan. Pure —
-    /// <c>LandingFlareRolloutOnlyTests</c>.
+    /// How the "Rollout guidance" sentence is spoken at touchdown. Flare mode, and the rollout-only cue with no
+    /// exit plan: at once, as the manual landing assist always did. The rollout-only cue with an exit plan:
+    /// deferred, because the planner hears the touchdown up to about a second later (the 1 Hz SIM_ON_GROUND
+    /// sample plus a position read) and may then speak — its touchdown sentence, which says guidance has
+    /// started, or "Runway not identified" for a plan made for another airport — and an immediate sentence of
+    /// ours would be cut off by it. Pure — <c>LandingFlareRolloutOnlyTests</c>.
     /// </summary>
-    internal static RolloutGuidanceSpeech DecideRolloutGuidanceSpeech(bool flareEnabled, bool exitGuidanceStartsHere,
-        bool exitPlanExists)
-        => flareEnabled ? RolloutGuidanceSpeech.Immediate
-           : exitGuidanceStartsHere ? RolloutGuidanceSpeech.None
-           : exitPlanExists ? RolloutGuidanceSpeech.Queued
-           : RolloutGuidanceSpeech.Immediate;
+    internal static RolloutGuidanceSpeech DecideRolloutGuidanceSpeech(bool flareEnabled, bool exitPlanExists)
+        => !flareEnabled && exitPlanExists ? RolloutGuidanceSpeech.Deferred : RolloutGuidanceSpeech.Immediate;
+
+    /// <summary>What happens to a deferred "Rollout guidance" sentence on this rollout frame.</summary>
+    internal enum DeferredSpeech
+    {
+        /// <summary>Keep holding it.</summary>
+        Wait,
+        /// <summary>Speak it now, without interrupting.</summary>
+        Speak,
+        /// <summary>Drop it: exit guidance started, and its touchdown sentence said so.</summary>
+        Drop,
+    }
+
+    /// <summary>
+    /// A deferred "Rollout guidance" sentence waits ROLLOUT_GUIDANCE_DEFER_SEC from the touchdown, longer than
+    /// the planner can take to hear it. Then it is dropped when exit guidance is running (the planner's
+    /// touchdown sentence said guidance had started), and spoken otherwise: a plan made for another airport, a
+    /// plan already used this session, or a touchdown the planner did not take (a slow light-aircraft
+    /// touchdown its own 40 kt check missed). Pure — <c>LandingFlareRolloutOnlyTests</c>.
+    /// </summary>
+    internal static DeferredSpeech ResolveDeferredRolloutGuidance(double secondsSinceTouchdown, bool exitGuidanceRunning)
+        => secondsSinceTouchdown < ROLLOUT_GUIDANCE_DEFER_SEC ? DeferredSpeech.Wait
+           : exitGuidanceRunning ? DeferredSpeech.Drop
+           : DeferredSpeech.Speak;
 
     /// <summary>
     /// What a database switch's disarm says: "Manual landing assist off" for the checkbox arming, as always,

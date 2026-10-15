@@ -3012,13 +3012,19 @@ Before touchdown (during cruise or descent), the pilot picks a runway-exit taxiw
   armed airport (`ShouldEngageRolloutOnly`), switches to the runway actually landed on, and
   plays Takeoff Assist's intercept-crab law with the Takeoff Assist tone settings, the
   "Play steering tone" threshold included, so at the default 1° it is silent while the
-  autopilot tracks. At touchdown (`DecideRolloutGuidanceSpeech`) it says nothing when the
-  exit plan starts exit guidance there (`LandingExitPlanner.WillStartGuidanceAt`: the
-  planner's sentence is the one utterance); it queues "Rollout guidance" behind any planner
-  sentence when a plan exists that will not start there (another airport, or a plan already
-  used this session); with no plan it says it at once. A bounce stops it silently until the
-  next touchdown. A database switch disarms it and says "Rollout centerline tone off"
-  ("Manual landing assist off" for the checkbox arming).
+  autopilot tracks. At touchdown (`DecideRolloutGuidanceSpeech`) with no exit plan it says
+  "Rollout guidance" at once. With a plan it holds the sentence for 1.5 s
+  (`ResolveDeferredRolloutGuidance`), longer than the planner takes to hear the touchdown
+  (the 1 Hz `SIM_ON_GROUND` sample, then a fresh position read): if exit guidance has started
+  by then, the planner's touchdown sentence was the one utterance, runway correction included,
+  and the held sentence is dropped; otherwise (a plan for another airport, which says "Runway
+  not identified" once, a plan already used, or a touchdown the planner did not take) it is
+  spoken without interrupting, runway correction included. Deciding from what happened rather
+  than from a prediction means a wrong guess can neither double the sentence nor lose it. A
+  bounce stops the cue silently until the next touchdown and keeps a held sentence. A database
+  switch disarms it and says "Rollout centerline tone off" ("Manual landing assist off" for
+  the checkbox arming); closing Database Settings with nothing changed is not a switch
+  ([EXIT-11]), so the arming and the exit plan survive it.
 - **Sharing the tone** ([ROL-32]): exit guidance's `Centerline` mode yields the runway to the
   cue; the cue mutes while exit guidance owns the tone for the exit itself
   (`ExitGuidanceOwnsRolloutTone`) and comes back after a downfield retarget; until exit
@@ -3034,7 +3040,9 @@ Before touchdown (during cruise or descent), the pilot picks a runway-exit taxiw
   `lat,lon,gsKt,hdgOffRwyDeg,crossTrackFt,crabDeg,steerDeg,pan,sounding,owner` at most every
   100 ms while moving, and on every change of sounding or owner; an event line says why the cue
   ended (`=== Rollout end: stopped gs=… ===`, taxi guidance took over, below 40 kt, clear of the
-  runway, airborne again) or why a touchdown did not engage it (`=== Touchdown not engaged: … ===`).
+  runway, airborne again), why a touchdown did not engage it (`=== Touchdown not engaged: … ===`),
+  and what became of a held "Rollout guidance" (`=== Rollout guidance spoken gs=… ===` or
+  `=== Rollout guidance left to exit guidance gs=… ===`).
 
 ### Per-exit turn window and exit-bearing plausibility (KMEM 36L, 2026-09-26)
 

@@ -1341,6 +1341,7 @@ public partial class MainForm
         // in the same taxi-data augmentation every reader expects — see WithTaxiAugmentation's doc
         // comment for the bug a raw, never-rewrapped assignment here used to cause.
         airportDataProvider = WithTaxiAugmentation(DatabaseSelector.SelectProvider());
+        _loadedDatabaseStamp = DatabaseSelector.CurrentStamp();
 
         // Recreate flight plan manager with new navigation database path
         var settings = MSFSBlindAssist.Settings.SettingsManager.Current;

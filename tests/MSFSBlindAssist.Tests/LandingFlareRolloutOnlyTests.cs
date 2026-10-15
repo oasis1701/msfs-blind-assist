@@ -48,20 +48,33 @@ public class LandingFlareRolloutOnlyTests
     }
 
     // The "Rollout guidance" sentence at touchdown: the manual landing assist's flare mode speaks it at once
-    // as before; the rollout-only cue stays silent when the planner starts exit guidance at this touchdown
-    // (its sentence is the one utterance), queues it after any planner sentence when a plan exists that will
-    // not start here (another airport, or a plan already used this session), and speaks it at once otherwise.
+    // as before, and so does the rollout-only cue with no exit plan; with a plan the cue defers it, because the
+    // planner hears the touchdown up to a second later (the 1 Hz SIM_ON_GROUND sample plus a position read).
     [Fact]
-    public void The_rollout_guidance_sentence_follows_what_the_planner_will_say()
+    public void The_rollout_guidance_sentence_waits_for_the_planner_when_a_plan_exists()
     {
         var immediate = LandingFlareAssistManager.RolloutGuidanceSpeech.Immediate;
-        var queued = LandingFlareAssistManager.RolloutGuidanceSpeech.Queued;
-        var none = LandingFlareAssistManager.RolloutGuidanceSpeech.None;
-        Assert.Equal(immediate, LandingFlareAssistManager.DecideRolloutGuidanceSpeech(true, false, false));
-        Assert.Equal(immediate, LandingFlareAssistManager.DecideRolloutGuidanceSpeech(true, true, true));
-        Assert.Equal(none, LandingFlareAssistManager.DecideRolloutGuidanceSpeech(false, true, true));
-        Assert.Equal(queued, LandingFlareAssistManager.DecideRolloutGuidanceSpeech(false, false, true));
-        Assert.Equal(immediate, LandingFlareAssistManager.DecideRolloutGuidanceSpeech(false, false, false));
+        var deferred = LandingFlareAssistManager.RolloutGuidanceSpeech.Deferred;
+        Assert.Equal(immediate, LandingFlareAssistManager.DecideRolloutGuidanceSpeech(flareEnabled: true, exitPlanExists: false));
+        Assert.Equal(immediate, LandingFlareAssistManager.DecideRolloutGuidanceSpeech(flareEnabled: true, exitPlanExists: true));
+        Assert.Equal(immediate, LandingFlareAssistManager.DecideRolloutGuidanceSpeech(flareEnabled: false, exitPlanExists: false));
+        Assert.Equal(deferred, LandingFlareAssistManager.DecideRolloutGuidanceSpeech(flareEnabled: false, exitPlanExists: true));
+    }
+
+    // A deferred sentence waits 1.5 s. If exit guidance has started by then, the planner's touchdown sentence
+    // said guidance had started, so it is dropped; otherwise (a plan for another airport, a plan already used,
+    // a touchdown the planner did not take) it is spoken, without interrupting whatever is being said.
+    [Fact]
+    public void A_deferred_rollout_guidance_sentence_is_spoken_only_if_exit_guidance_did_not_start()
+    {
+        var wait = LandingFlareAssistManager.DeferredSpeech.Wait;
+        var speak = LandingFlareAssistManager.DeferredSpeech.Speak;
+        var drop = LandingFlareAssistManager.DeferredSpeech.Drop;
+        Assert.Equal(wait, LandingFlareAssistManager.ResolveDeferredRolloutGuidance(1.49, exitGuidanceRunning: false));
+        Assert.Equal(wait, LandingFlareAssistManager.ResolveDeferredRolloutGuidance(0.2, exitGuidanceRunning: true));
+        Assert.Equal(speak, LandingFlareAssistManager.ResolveDeferredRolloutGuidance(1.5, exitGuidanceRunning: false));
+        Assert.Equal(drop, LandingFlareAssistManager.ResolveDeferredRolloutGuidance(1.5, exitGuidanceRunning: true));
+        Assert.Equal(speak, LandingFlareAssistManager.ResolveDeferredRolloutGuidance(30.0, exitGuidanceRunning: false));
     }
 
     // A database switch disarms whatever was armed and says which: the checkbox arming as before, and the
