@@ -6,20 +6,26 @@ namespace MSFSBlindAssist.Navigation;
 public enum RolloutCueSource { Destination, ExitPlan }
 
 /// <summary>
-/// The destination runway dialog's choice: the runway, its airport's ICAO and runway ends, and whether the
-/// "Manual landing assist" checkbox was ticked (flare and rollout tones, rather than the rollout alone).
+/// The destination runway dialog's choice: the runway, its airport's ICAO and runway ends, whether the
+/// "Manual landing assist" checkbox was ticked (flare and rollout tones, rather than the rollout alone), and
+/// the dialog's own airport record.
 /// </summary>
-public sealed record RolloutCueDestination(Runway Runway, string Icao, IReadOnlyList<Runway> Runways, bool ManualLanding);
+public sealed record RolloutCueDestination(Runway Runway, string Icao, IReadOnlyList<Runway> Runways, bool ManualLanding,
+    Airport? Airport = null);
 
-/// <summary>The landing exit plan's runway, its airport's ICAO and runway ends.</summary>
-public sealed record RolloutCueExitPlan(Runway Runway, string Icao, IReadOnlyList<Runway> Runways);
+/// <summary>
+/// The landing exit plan's runway, its airport's ICAO and runway ends, and that airport's record, looked up once
+/// when the plan was set (null when the database has none).
+/// </summary>
+public sealed record RolloutCueExitPlan(Runway Runway, string Icao, IReadOnlyList<Runway> Runways, Airport? Airport = null);
 
 /// <summary>
 /// Arm the landing assist on <see cref="Runway"/> at <see cref="Icao"/>, with its flare phase when
-/// <see cref="IncludeFlare"/>, or for the rollout alone.
+/// <see cref="IncludeFlare"/>, or for the rollout alone; <see cref="Airport"/> is the chosen record's airport
+/// (null: not in the database, so nothing can be armed).
 /// </summary>
 public sealed record RolloutCueArmingDecision(RolloutCueSource Source, Runway Runway, string Icao,
-    IReadOnlyList<Runway> Runways, bool IncludeFlare);
+    IReadOnlyList<Runway> Runways, bool IncludeFlare, Airport? Airport = null);
 
 /// <summary>
 /// Which runway arms the landing assist's rollout centerline cue, and whether with its flare phase.
@@ -88,8 +94,8 @@ public static class RolloutCueArming
     }
 
     private static RolloutCueArmingDecision FromDestination(RolloutCueDestination d)
-        => new(RolloutCueSource.Destination, d.Runway, d.Icao, d.Runways, d.ManualLanding);
+        => new(RolloutCueSource.Destination, d.Runway, d.Icao, d.Runways, d.ManualLanding, d.Airport);
 
     private static RolloutCueArmingDecision FromExitPlan(RolloutCueExitPlan p)
-        => new(RolloutCueSource.ExitPlan, p.Runway, p.Icao, p.Runways, IncludeFlare: false);
+        => new(RolloutCueSource.ExitPlan, p.Runway, p.Icao, p.Runways, IncludeFlare: false, p.Airport);
 }

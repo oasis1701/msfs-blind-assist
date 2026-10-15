@@ -3006,21 +3006,32 @@ Before touchdown (during cruise or descent), the pilot picks a runway-exit taxiw
   is ticked; the destination dialog's checkbox still adds the flare tones, setting or not.
   `Navigation.RolloutCueArming` decides which runway arms it (MainForm's
   `RefreshRolloutCueArming`, on the dialog's OK, the planner's `PlanChanged` and Settings
-  OK): the destination at the same airport, the latest choice across airports. The cue
-  engages on the first ground frame after flying above 80 ft (`ArmsRolloutOnlyTouchdown`,
-  so a settle-back right after liftoff never starts it), at 40 kt or more, on a runway of the
-  armed airport (`ShouldEngageRolloutOnly`), switches to the runway actually landed on, and
-  plays Takeoff Assist's intercept-crab law with the Takeoff Assist tone settings, the
-  "Play steering tone" threshold included, so at the default 1° it is silent while the
-  autopilot tracks. At touchdown (`DecideRolloutGuidanceSpeech`) with no exit plan it says
-  "Rollout guidance" at once. With a plan it holds the sentence for 1.5 s
-  (`ResolveDeferredRolloutGuidance`), longer than the planner takes to hear the touchdown
-  (the 1 Hz `SIM_ON_GROUND` sample, then a fresh position read): if exit guidance has started
-  by then, the planner's touchdown sentence was the one utterance, runway correction included,
-  and the held sentence is dropped; otherwise (a plan for another airport, which says "Runway
-  not identified" once, a plan already used, or a touchdown the planner did not take) it is
-  spoken without interrupting, runway correction included. Deciding from what happened rather
-  than from a prediction means a wrong guess can neither double the sentence nor lose it. A
+  OK): the destination at the same airport, the latest choice across airports. Once the
+  aircraft has flown above 80 ft (`ArmsRolloutOnlyTouchdown`, so a settle-back right after
+  liftoff never starts it), the cue engages on a ground frame at 50 kt or more (the planner's
+  40 kt real-landing floor, and 10 kt above the cue's own 40 kt end, so a light aircraft
+  touching down at 44 kt never hears "Rollout guidance" and "Rollout guidance complete" a second
+  apart) on a runway of the armed airport (`ShouldEngageRolloutOnly`). The decision stays open
+  while the aircraft is still that fast, so one sample at the instant of touchdown (a ground-bit
+  flicker short of the pavement) cannot refuse the whole rollout; below it the decision is
+  settled and a refusal logged once. Below 50 ft on the approach the tone's device is opened,
+  silent, as the flare mode does, so the touchdown frame pays no audio-device open. It switches
+  to the runway actually landed on, and plays Takeoff Assist's intercept-crab law, the same
+  `LandingGuidanceLaws.CenterlineInterceptCrabDeg` and constants Takeoff Assist uses, with the
+  Takeoff Assist tone settings, the "Play steering tone" threshold included, so at the default 1°
+  it is silent while the autopilot tracks. At touchdown (`DecideRolloutGuidanceSpeech`) with no
+  exit plan it says "Rollout guidance" at once, as the flare mode does when the plan starts exit
+  guidance here. Otherwise with a plan (any plan for the rollout-only cue; for the flare mode one
+  for another airport or already used) it holds the sentence while the planner still has to
+  decide the touchdown (`LandingExitPlanner.IsAwaitingTouchdown`, read by
+  `ResolveDeferredRolloutGuidance`), however long its 1 Hz `SIM_ON_GROUND` sample, fresh
+  position read and route take, with 5 s as the backstop for a touchdown the planner never
+  takes: if exit guidance started, the planner's touchdown sentence was the one utterance, runway
+  correction included, and the held sentence is dropped; otherwise (a plan for another airport,
+  which says "Runway not identified" once, a plan already used, or a touchdown the planner did
+  not take) it is spoken without interrupting, runway correction included. Deciding from what
+  happened rather than from a prediction or a timer means a slow re-plan can neither double the
+  sentence nor lose it. A
   bounce stops the cue silently until the next touchdown and keeps a held sentence. A database
   switch disarms it and says "Rollout centerline tone off" ("Manual landing assist off" for
   the checkbox arming); closing Database Settings with nothing changed is not a switch
@@ -3041,11 +3052,17 @@ Before touchdown (during cruise or descent), the pilot picks a runway-exit taxiw
   handover, and the 55-50 kt silence and heading-only cue it left, are gone for the manual
   landing assist too. With no landing rollout it ends below 40 kt or once laterally clear of
   the runway. The 20° heading turn-off end is retired: it would have ended the cue, saying
-  "Rollout guidance complete", seconds into the KSEA veer.
+  "Rollout guidance complete", seconds into the KSEA veer. Where nothing else owns a turn off
+  the runway (no landing rollout, or the runway-end countdown) the cue MUTES instead, staying
+  engaged, while the heading is 15° or more off the runway at or below 60 kt, the fastest any
+  exit can be taken (`IsTurningOffRunway`): it never pans against a turn onto the end taxiway,
+  a turnaround or a rapid exit, and above 60 kt a heading swing is still a veer and still
+  steered. Exit guidance reads its rollout state for the cue in one lock per frame
+  (`TaxiGuidanceManager.RolloutCueSnapshot`).
 - **Diagnostics.** `landing_assist.log`: a header per rollout engagement
   (`=== Rollout icao=… rwy=… armed=… flare=… exitPlan=… exitGuidanceHere=… ===`), then
   `lat,lon,gsKt,hdgOffRwyDeg,crossTrackFt,crabDeg,steerDeg,pan,sounding,owner` at most every
-  100 ms while moving, and on every change of sounding or owner (`cue`, `exit` or `vg`); an
+  100 ms while moving, and on every change of sounding or owner (`cue`, `exit`, `vg` or `turn`); an
   event line says why the cue
   ended (`=== Rollout end: stopped gs=… ===`, taxi guidance took over, below 40 kt, clear of the
   runway, airborne again), why a touchdown did not engage it (`=== Touchdown not engaged: … ===`),

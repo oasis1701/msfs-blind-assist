@@ -61,6 +61,21 @@ public class RolloutCueArmingTests
     public void SettingOn_Neither_ArmsNothing()
         => Assert.Null(RolloutCueArming.Decide(true, null, null, RolloutCueSource.Destination));
 
+    // The arming carries the chosen record's own airport (the dialog's, or the plan's looked up once), so MainForm
+    // keeps no parallel airport field to pair with it; a plan whose airport the database lacks arms nothing there.
+    [Fact]
+    public void SettingOn_TheArmingCarriesTheChosenRecordsAirport()
+    {
+        var ksea = new Airport { ICAO = "KSEA" };
+        var kbfi = new Airport { ICAO = "KBFI" };
+        var destination = new RolloutCueDestination(Ksea16R(), "KSEA", KseaRunways, false, ksea);
+        var plan = new RolloutCueExitPlan(Kbfi14R(), "KBFI", KbfiRunways, kbfi);
+
+        Assert.Same(ksea, RolloutCueArming.Decide(true, destination, plan, RolloutCueSource.Destination)!.Airport);
+        Assert.Same(kbfi, RolloutCueArming.Decide(true, destination, plan, RolloutCueSource.ExitPlan)!.Airport);
+        Assert.Null(RolloutCueArming.Decide(true, null, KbfiPlan(), RolloutCueSource.ExitPlan)!.Airport);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

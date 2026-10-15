@@ -53,8 +53,9 @@ public class LandingExitPlanner
 
     // Minimum ground speed at on-ground transition for it to count as a real landing
     // rather than a teleport or taxi-onto-ground. Light aircraft touch down around
-    // 50 kt; below 40 kt is almost always a taxi start or teleport reload.
-    private const double LANDING_MIN_GS_KNOTS = 40.0;
+    // 50 kt; below 40 kt is almost always a taxi start or teleport reload. Internal: the
+    // landing assist's rollout-only cue never engages below it (LandingFlareAssistManager).
+    internal const double LANDING_MIN_GS_KNOTS = 40.0;
 
     // Diagnostic log so we can see why activation didn't fire when only the
     // "On ground" callout was heard at touchdown. Lives with every other MSFSBA
@@ -100,6 +101,18 @@ public class LandingExitPlanner
     internal static bool WillStartGuidance(bool hasPendingExit, bool activatedThisLanding, string? planIcao, string icao)
         => hasPendingExit && !activatedThisLanding
            && string.Equals(planIcao, icao, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// True while this plan still has to decide the coming touchdown: it exists, has not started guidance, and has
+    /// seen the aircraft airborne. <see cref="ProcessGroundState"/> settles it on the touchdown's ground sample,
+    /// once guidance has started or "Runway not identified" was decided (both clear the airborne edge). The landing
+    /// assist holds its own touchdown sentence while this is true, so the two never talk over each other.
+    /// </summary>
+    public bool IsAwaitingTouchdown => AwaitsTouchdown(HasPendingExit, _wasAirborne, _activatedThisLanding);
+
+    /// <summary>Pure — <c>LandingExitPlannerStartsGuidanceTests</c>.</summary>
+    internal static bool AwaitsTouchdown(bool hasPendingExit, bool wasAirborne, bool activatedThisLanding)
+        => hasPendingExit && wasAirborne && !activatedThisLanding;
 
     /// <summary>
     /// Raised after <see cref="SetExit"/> and <see cref="Clear"/> change the plan, never by

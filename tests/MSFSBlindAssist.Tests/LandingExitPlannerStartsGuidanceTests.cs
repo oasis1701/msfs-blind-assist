@@ -29,4 +29,16 @@ public class LandingExitPlannerStartsGuidanceTests
     [Fact]
     public void No_plan_does_not()
         => Assert.False(LandingExitPlanner.WillStartGuidance(false, false, null, "KSEA"));
+
+    // LandingExitPlanner.AwaitsTouchdown: the landing assist holds its touchdown sentence while the plan still
+    // has to decide the touchdown, and no longer: once guidance started, or the plan's touchdown was settled
+    // (the airborne edge cleared, as "Runway not identified" clears it).
+    [Fact]
+    public void A_plan_awaits_the_touchdown_only_until_it_has_decided_it()
+    {
+        Assert.True(LandingExitPlanner.AwaitsTouchdown(hasPendingExit: true, wasAirborne: true, activatedThisLanding: false));
+        Assert.False(LandingExitPlanner.AwaitsTouchdown(hasPendingExit: true, wasAirborne: true, activatedThisLanding: true));
+        Assert.False(LandingExitPlanner.AwaitsTouchdown(hasPendingExit: true, wasAirborne: false, activatedThisLanding: false));
+        Assert.False(LandingExitPlanner.AwaitsTouchdown(hasPendingExit: false, wasAirborne: true, activatedThisLanding: false));
+    }
 }

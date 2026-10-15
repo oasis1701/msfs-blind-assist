@@ -883,17 +883,17 @@ public partial class MainForm : Form
             () => currentAircraft?.GetVisualGuidanceProfile()?.FlareAltitudeBiasFt ?? 12.0,
             () => visualGuidanceManager.IsActive,
             // The rollout cue and exit guidance share the tone: no speed end during a landing rollout, and
-            // silence while exit guidance owns the tone for the exit itself.
-            () => taxiGuidanceManager.IsLandingRollout,
-            () => taxiGuidanceManager.ExitGuidanceOwnsRolloutTone,
-            () => taxiGuidanceManager.IsLandingExitTaxiSteering,
+            // silence while exit guidance owns the tone for the exit itself. One lock per frame.
+            () => taxiGuidanceManager.RolloutCueSnapshot,
             // Whether the landing-exit planner holds a plan, and whether it will start exit guidance at the
             // touchdown at a given airport: then the planner leads its own touchdown sentence with the runway
             // correction and interrupts, so the assist leaves the telling to it rather than having its own
             // sentence cut off mid-word. A plan for elsewhere starts nothing there (it says "Runway not
-            // identified" once), and one already used says nothing.
+            // identified" once), and one already used says nothing. A held sentence waits while the planner
+            // still has to decide the touchdown.
             () => landingExitPlanner.HasPendingExit,
-            icao => landingExitPlanner.WillStartGuidanceAt(icao));
+            icao => landingExitPlanner.WillStartGuidanceAt(icao),
+            () => landingExitPlanner.IsAwaitingTouchdown);
         flareAssistManager.MonitoringRequestChanged += OnFlareAssistMonitoringRequestChanged;
         flareAssistManager.EngagedChanged += OnFlareAssistEngagedChanged;
         simConnectManager.FlareAssistDataReceived += (s, d) => flareAssistManager.ProcessFrame(d);
@@ -1191,14 +1191,20 @@ public partial class MainForm : Form
     // runway dialog, whose manual-landing checkbox adds the flare tones, and the landing exit plan; with
     // RolloutCenterlineToneEnabled either one arms the rollout centerline cue. _rolloutCueLatest is the choice
     // made last, which wins when the two name different airports. _rolloutCueApplied is the arming in force.
+    // Each choice carries its own airport record: the dialog's, and the plan's, looked up once per plan.
     private MSFSBlindAssist.Navigation.RolloutCueDestination? _rolloutCueDestination;
-    private Airport? _rolloutCueDestinationAirport;   // the dialog's own Airport for that destination
+    private MSFSBlindAssist.Navigation.RolloutCueExitPlan? _rolloutCueExitPlan;
     private MSFSBlindAssist.Navigation.RolloutCueSource _rolloutCueLatest = MSFSBlindAssist.Navigation.RolloutCueSource.Destination;
     private MSFSBlindAssist.Navigation.RolloutCueArmingDecision? _rolloutCueApplied;
 
     private void OnLandingExitPlanChanged(object? sender, EventArgs e)
     {
-        if (landingExitPlanner.HasPendingExit)
+        _rolloutCueExitPlan = landingExitPlanner.HasPendingExit
+            ? new MSFSBlindAssist.Navigation.RolloutCueExitPlan(landingExitPlanner.PendingRunway!,
+                landingExitPlanner.PendingIcao!, landingExitPlanner.PendingAirportRunways,
+                airportDataProvider?.GetAirport(landingExitPlanner.PendingIcao!))
+            : null;
+        if (_rolloutCueExitPlan != null)
             _rolloutCueLatest = MSFSBlindAssist.Navigation.RolloutCueSource.ExitPlan;
         RefreshRolloutCueArming();
     }
@@ -1213,20 +1219,13 @@ public partial class MainForm : Form
     /// </summary>
     private void RefreshRolloutCueArming(bool force = false)
     {
-        var plan = landingExitPlanner.HasPendingExit
-            ? new MSFSBlindAssist.Navigation.RolloutCueExitPlan(landingExitPlanner.PendingRunway!,
-                landingExitPlanner.PendingIcao!, landingExitPlanner.PendingAirportRunways)
-            : null;
         var decision = MSFSBlindAssist.Navigation.RolloutCueArming.Decide(
-            SettingsManager.Current.RolloutCenterlineToneEnabled, _rolloutCueDestination, plan, _rolloutCueLatest);
+            SettingsManager.Current.RolloutCenterlineToneEnabled, _rolloutCueDestination, _rolloutCueExitPlan,
+            _rolloutCueLatest);
         if (!force && MSFSBlindAssist.Navigation.RolloutCueArming.SameArming(decision, _rolloutCueApplied)) return;
 
         var before = _rolloutCueApplied;
-        var airport = decision == null ? null
-            : decision.Source == MSFSBlindAssist.Navigation.RolloutCueSource.Destination && _rolloutCueDestinationAirport != null
-                ? _rolloutCueDestinationAirport
-                : airportDataProvider?.GetAirport(decision.Icao);
-        if (decision == null || airport == null)
+        if (decision?.Airport == null)
         {
             if (decision != null)
                 Log.Warn("LandingFlareAssist", $"Rollout cue not armed: airport {decision.Icao} not found in the database");
@@ -1236,7 +1235,7 @@ public partial class MainForm : Form
         else
         {
             _rolloutCueApplied = decision;
-            flareAssistManager.Arm(decision.Runway, airport, decision.Runways, decision.IncludeFlare);
+            flareAssistManager.Arm(decision.Runway, decision.Airport, decision.Runways, decision.IncludeFlare);
         }
 
         if (!force)

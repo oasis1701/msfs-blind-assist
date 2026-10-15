@@ -1438,7 +1438,6 @@ public partial class MainForm
         // the plan is cleared, because clearing raises PlanChanged, whose re-arm would otherwise find
         // the old database's destination runway for an instant (RefreshRolloutCueArming).
         _rolloutCueDestination = null;
-        _rolloutCueDestinationAirport = null;
         _rolloutCueApplied = null;
         flareAssistManager?.Disarm(announce: true);
         landingExitPlanner?.Clear();
