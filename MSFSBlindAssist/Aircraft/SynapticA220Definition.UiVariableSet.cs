@@ -195,7 +195,10 @@ public partial class SynapticA220Definition
     /// <summary>
     /// Transmit select reads the WASM's selected transmitter back once (CORE-7: the screen
     /// reader cannot know which radio took it). The press is a 200 ms pulse the WASM samples
-    /// on its next tick, so wait past both before forcing a fresh read.
+    /// on its next tick, so wait past both, then await a delivered read of the var
+    /// (<c>ReadFreshAsync</c>, as <c>VerifyExtPowerWithRetry</c> does) — never the cache, which
+    /// still holds the previous radio until a new delivery lands. A read that times out speaks
+    /// "Transmit radio not available" rather than a guess.
     /// </summary>
     private void AnnounceTxChannelAfterPress(SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
@@ -204,9 +207,8 @@ public partial class SynapticA220Definition
             try
             {
                 await System.Threading.Tasks.Task.Delay(600);
-                simConnect.RequestVariable("A22X_TX_CHANNEL", forceUpdate: true);
-                await System.Threading.Tasks.Task.Delay(350);
-                announcer.Announce(A220.A220Panels.TxChannelText(Cached(simConnect, "A22X_TX_CHANNEL", -1)));
+                double? now = await simConnect.ReadFreshAsync("A22X_TX_CHANNEL", 1500);
+                announcer.Announce(A220.A220Panels.TxChannelText(now ?? -1));
             }
             catch { /* read-back only */ }
         });
