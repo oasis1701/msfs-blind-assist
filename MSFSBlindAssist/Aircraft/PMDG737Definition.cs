@@ -86,7 +86,22 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     internal PmdgSpeedBrakeCallout SpeedBrakeCallout => _speedBrakeCallout;
 
     /// <inheritdoc />
-    public override void OnSwitchedAway() => _speedBrakeCallout.Dispose();
+    /// <remarks>Also drops the ACP receiver presses in flight, so none is settled over the next aircraft.</remarks>
+    public override void OnSwitchedAway()
+    {
+        _speedBrakeCallout.Dispose();
+        ForgetReceiverPresses();
+    }
+
+    /// <inheritdoc />
+    /// <remarks>A reconnect voids the ACP receiver presses in flight and the bits last seen: the first
+    /// snapshot after it is an initial one, which never reaches ProcessSimVarUpdate, so a press could
+    /// neither complete nor be compared against it.</remarks>
+    public override void ResetAnnouncementBaselines()
+    {
+        base.ResetAnnouncementBaselines();
+        ForgetReceiverPresses();
+    }
 
     // EFIS Minimums knob step sizes per click on the PMDG NG3 737. RADIO mode
     // (DH) clicks in 1-ft increments; BARO mode (DA) clicks in 20-ft increments.
@@ -1272,23 +1287,23 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["COMM_SelectedMic_1"] = Selector("COMM_SelectedMic_1", "First Officer Selected Mic",
             "VHF1", "VHF2", "VHF3", "HF1", "HF2", "FLT", "SVC", "PA");
         // SDK line 723: `uint[3] COMM_ReceiverSwitches` — bitmask of currently-selected
-        // receivers per ACP (ACP_SEL_RECV_* flags, SDK lines 610-623). Each receiver button
-        // is an independent momentary toggle (EVT_ACP_*_REC_X events), so the UI can't
-        // model this as a single-selection selector. Exposed as Display for status query
-        // (value rendered as bitmask decode in ProcessSimVarUpdate). Index 2 is the overhead
-        // ACP — surfaced because the overhead ACP DOES exist on the 737 (the observer one
-        // doesn't). TFM exposes all three.
+        // receivers per ACP (ACP_SEL_RECV_* flags, SDK lines 610-623). Each receiver is on or
+        // off independently of the others, so the UI can't model this as a single-selection
+        // selector. These rows are in no panel: they carry the background announce and the
+        // press read-back in ProcessSimVarUpdate. Index 2 is the overhead ACP — surfaced
+        // because the overhead ACP DOES exist on the 737 (the observer one doesn't). TFM
+        // exposes all three.
         d["COMM_ReceiverSwitches_0"] = Display("COMM_ReceiverSwitches_0", "Captain Receivers");
         d["COMM_ReceiverSwitches_1"] = Display("COMM_ReceiverSwitches_1", "First Officer Receivers");
         d["COMM_ReceiverSwitches_2"] = Display("COMM_ReceiverSwitches_2", "Overhead Receivers");
         // ACP VHF receiver on/off buttons (EVT_ACP_*_REC_VHFn). A radio is heard only
-        // while its receiver is on at that seat, so COM2 needs VHF 2 receive. Table, dispatch
-        // and read-back: Pmdg737AcpReceivers.
+        // while its receiver is on at that seat, so COM2 needs VHF 2 receive. The event's CDA
+        // parameter is the TARGET state, not a toggle (measured 2026-10-14). Each button is its
+        // own StateVariable: PMDGNG3DataManager publishes the receiver's bit under the button's
+        // key, so the label reads "Captain VHF2 Receiver: On". Table, dispatch and read-back:
+        // Pmdg737AcpReceivers.
         foreach (var r in Pmdg737AcpReceivers.All)
-        {
-            d[r.Key] = Momentary(r.Key, r.DisplayName);
-            d[r.Key].HelpText = $"Turns the {r.DisplayName.ToLowerInvariant()} on or off. A radio is heard only while its receiver is on.";
-        }
+            d[r.Key] = Momentary(r.Key, r.DisplayName, stateVar: r.Key);
 
         // Stab trim
         d["TRIM_StabTrimMainElecSw_NORMAL"] = Toggle("TRIM_StabTrimMainElecSw_NORMAL",
@@ -3624,9 +3639,23 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
     /// <summary>
     /// ACP receiver presses awaiting their read-back (Pmdg737AcpReceivers). UI thread only: the
-    /// button handler, the COMM_ReceiverSwitches_* announce and the timeout all run on it.
+    /// button handler, the COMM_ReceiverSwitches_* announce, the timeout and the switch/reconnect
+    /// resets all run on it.
     /// </summary>
     private readonly List<Pmdg737AcpReceivers.Press> _pendingReceiverPresses = new();
+
+    /// <summary>
+    /// Each COMM_ReceiverSwitches_* field's bits as last seen (its last update, or the snapshot at a
+    /// press when no update has come since a reset), so an update beside a press can tell a change
+    /// no press explains. Same thread as the presses; cleared with them.
+    /// </summary>
+    private readonly Dictionary<string, uint> _receiverBits = new();
+
+    private void ForgetReceiverPresses()
+    {
+        _pendingReceiverPresses.Clear();
+        _receiverBits.Clear();
+    }
 
     // Jumpseat/armrest combos: varKey = the PMDG-owned read-back L-var (combo
     // display, 0/100), value = the SDK event whose CDA parameter IS the position.
@@ -4539,8 +4568,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // 3a-2. ACP VHF receiver buttons — each press flips the receiver
         //       (CDA parameter = target state; Pmdg737AcpReceivers). Silent
         //       here: the COMM_ReceiverSwitches_* announce speaks
-        //       "<receiver> on/off" once the bit moves, and a press it never
-        //       moves is reported after the read-back window.
+        //       "<receiver> on/off" once the bit moves, and a press no update
+        //       completes is settled from the snapshot after the read-back window.
         // ------------------------------------------------------------------
         if (Pmdg737AcpReceivers.ByKey.TryGetValue(varKey, out var receiver) &&
             EventIds.TryGetValue(receiver.EventName, out int recEvId))
@@ -4551,12 +4580,13 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 announcer.AnnounceImmediate("Switch not ready, please try again in a moment.");
                 return true;
             }
-            bool turnOn = Pmdg737AcpReceivers.TargetFor(_pendingReceiverPresses, receiver,
-                (uint)dm.GetFieldValue(receiver.StateField));
-            var press = new Pmdg737AcpReceivers.Press(receiver, turnOn, Environment.TickCount64);
+            uint cachedBits = (uint)dm.GetFieldValue(receiver.StateField);
+            _receiverBits.TryAdd(receiver.StateField, cachedBits);
+            bool turnOn = Pmdg737AcpReceivers.TargetFor(_pendingReceiverPresses, receiver, cachedBits);
+            var press = new Pmdg737AcpReceivers.Press(receiver, turnOn);
             Pmdg737AcpReceivers.AddPress(_pendingReceiverPresses, press);
             simConnect.SendPMDGEvent(receiver.EventName, (uint)recEvId, turnOn ? 1 : 0);
-            _ = ReportUnchangedReceiverAsync(press, announcer);
+            _ = ReportUnchangedReceiverAsync(press, dm, announcer);
             return true;
         }
 
@@ -5304,15 +5334,19 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             case "COMM_ReceiverSwitches_2":
             {
                 uint bits = (uint)value;
+                uint? previousBits = _receiverBits.TryGetValue(varName, out uint lastBits) ? lastBits : null;
+                _receiverBits[varName] = bits;
                 // A receiver button's read-back names only the receiver it switched
-                // ("Captain VHF 2 Receiver on"): the list made the pilot work out
+                // ("Captain VHF2 Receiver on"): the list made the pilot work out
                 // what changed, and "none" read as silence while the mic radio is heard.
                 // This branch is mute-wrap exempt (IsMuteWrapExempt): a press always
                 // confirms, and only the background list below honours the Ctrl+M row.
+                // The list still speaks a change no press explains, even one that lands
+                // beside a read-back or while a press is pending.
                 var readbacks = Pmdg737AcpReceivers.CompleteReadbacks(
-                    _pendingReceiverPresses, varName, bits, out bool inFlight);
+                    _pendingReceiverPresses, varName, previousBits, bits, out bool otherChange);
                 foreach (var said in readbacks) announcer.Announce(said);
-                if (readbacks.Count > 0 || inFlight) return true;
+                if (!otherChange) return true;
                 if (bits == 0) return true;
                 if (Services.DefAnnounceMuteSets.IsMuted(AircraftCode, varName, Settings.SettingsManager.Current))
                     return true;
@@ -5322,7 +5356,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                     "COMM_ReceiverSwitches_1" => "First officer receivers",
                     _                         => "Overhead receivers"
                 };
-                announcer.Announce($"{acpLabel}: {DecodeReceiverBitmask(bits)}");
+                announcer.Announce($"{acpLabel}: {Pmdg737AcpReceivers.Describe(bits)}");
                 return true;
             }
 
@@ -5339,45 +5373,27 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         varName is "COMM_ReceiverSwitches_0" or "COMM_ReceiverSwitches_1" or "COMM_ReceiverSwitches_2";
 
     /// <summary>
-    /// Tells the pilot a receiver press changed nothing (PMDG ignored it, e.g. an unpowered ACP).
+    /// Settles a receiver press no update completed within the read-back window, from the snapshot
+    /// now: its read-back if the receiver is at the press's target after all (a quick double press
+    /// returns it there between two 1 Hz snapshots), else that the press changed nothing (PMDG
+    /// ignored it, e.g. an unpowered ACP). Silent when the press is gone: completed, superseded, or
+    /// dropped by an aircraft switch or reconnect (ForgetReceiverPresses).
     /// Resumes on the UI thread: called from the button handler, no ConfigureAwait(false).
     /// </summary>
-    private async Task ReportUnchangedReceiverAsync(Pmdg737AcpReceivers.Press press, ScreenReaderAnnouncer announcer)
+    private async Task ReportUnchangedReceiverAsync(Pmdg737AcpReceivers.Press press,
+        SimConnect.IPMDGDataManager dm, ScreenReaderAnnouncer announcer)
     {
         try
         {
-            await Task.Delay((int)Pmdg737AcpReceivers.ReadbackWindowMs);
+            await Task.Delay(Pmdg737AcpReceivers.ReadbackWindowMs);
             if (Pmdg737AcpReceivers.ExpireIfUnconfirmed(_pendingReceiverPresses, press))
-                announcer.Announce($"{press.Receiver.DisplayName} did not change");
+                announcer.Announce(Pmdg737AcpReceivers.ExpiryReadback(press,
+                    (uint)dm.GetFieldValue(press.Receiver.StateField)));
         }
         catch
         {
             // Fire-and-forget: never fault the task.
         }
-    }
-
-    // -------------------------------------------------------------------
-    // Decode `COMM_ReceiverSwitches` bitmask into a comma-separated list of
-    // selected-receiver labels. Bit definitions per SDK lines 610-623.
-    // -------------------------------------------------------------------
-    private static string DecodeReceiverBitmask(uint bits)
-    {
-        var labels = new List<string>();
-        if ((bits & 0x0001) != 0) labels.Add("VHF1");
-        if ((bits & 0x0002) != 0) labels.Add("VHF2");
-        if ((bits & 0x0004) != 0) labels.Add("VHF3");
-        if ((bits & 0x0008) != 0) labels.Add("HF1");
-        if ((bits & 0x0010) != 0) labels.Add("HF2");
-        if ((bits & 0x0020) != 0) labels.Add("FLT");
-        if ((bits & 0x0040) != 0) labels.Add("SVC");
-        if ((bits & 0x0080) != 0) labels.Add("PA");
-        if ((bits & 0x0100) != 0) labels.Add("NAV1");
-        if ((bits & 0x0200) != 0) labels.Add("NAV2");
-        if ((bits & 0x0400) != 0) labels.Add("ADF1");
-        if ((bits & 0x0800) != 0) labels.Add("ADF2");
-        if ((bits & 0x1000) != 0) labels.Add("MKR");
-        if ((bits & 0x2000) != 0) labels.Add("SPKR");
-        return labels.Count == 0 ? "none" : string.Join(", ", labels);
     }
     /// <summary>
     /// The camera is moved to the instrument view that frames the display, the capture is taken,
