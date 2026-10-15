@@ -548,6 +548,17 @@ public partial class SynapticA220Definition
         AddQuiet(v, "A22X_L_BARO_HPA", "A22X L Altimeter HPA", "bool");
         AddQuiet(v, "A22X_R_BARO_HPA", "A22X R Altimeter HPA", "bool");
 
+        // ==== Center panel — standby instrument (ISI) ([A220-43]) =============
+        // The ISI knob writes a per-click delta and the push a STD flag; neither echoes, so the
+        // baro entry is WALKED against the ISI's own "A22X.ISI Data" store (Isi partial).
+        v["A22X_ISI_BARO_SET"] = new SimVarDefinition
+        {
+            Name = "A22X_ISI_BARO_SET", DisplayName = "Standby Baro (hPa or inHg)",
+            Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.Never,
+            UnparseableTextAsNaN = true
+        };
+        v["A22X_ISI_BARO_STD"] = LMomentary("A22X ISI Altimeter STD", "Standby Baro STD");
+
         // ==== Glareshield — Warnings / chrono ================================
         v["A22X_MASTER_CW_CANCEL"] = new SimVarDefinition
         {

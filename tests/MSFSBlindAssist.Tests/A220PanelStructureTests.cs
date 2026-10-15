@@ -218,4 +218,18 @@ public class A220PanelStructureTests
         Assert.Equal("50%", vol.ValueDescriptions[vol.DescriptionKeyFor(0.5)]);       // the L:var's 0-1 level, shown as its detent
         Assert.Equal("100%", vol.ValueDescriptions[vol.DescriptionKeyFor(1.0)]);
     }
+
+    [Fact]
+    public void StandbyAltimeter_IsAWalkedEntryAndAStdPush()
+    {
+        var set = Vars["A22X_ISI_BARO_SET"];
+        Assert.Equal("Standby Baro (hPa or inHg)", set.DisplayName);
+        Assert.Equal(SimVarType.Event, set.Type);
+        Assert.Equal(UpdateFrequency.Never, set.UpdateFrequency);
+        Assert.True(set.UnparseableTextAsNaN);
+        var std = Vars["A22X_ISI_BARO_STD"];
+        Assert.Equal("A22X ISI Altimeter STD", std.Name);
+        Assert.Equal("Standby Baro STD", std.DisplayName);
+        Assert.True(std.RenderAsButton && std.IsMomentary);
+    }
 }

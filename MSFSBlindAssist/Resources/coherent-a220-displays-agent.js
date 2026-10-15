@@ -89,10 +89,12 @@
     //                 frequency, CDI and marker.
     //   L CTP Data    the captain CTP's own course setting and nav-source selection.
     //   Radio Data    vhf.nav_1 / nav_2 (the CNS NAV CONTROL windows).
+    //   ISI Data      the standby instrument's own qnh_hpa — the standby-baro walk's read-back.
     // [store, key, group, staleMs]. Group 'afdx' = the blocks the knob walks read fast
     // (A.afdx); 'sys' = the systems stores read once a second (A.sys, snapshot().sys —
     // CAS, gear, doors, engines, IRS, V-speeds, transponder, both CTPs and ADSs);
-    // 'fpln' = the FMS's active flight plan, read only by A.fplnProgress. The stores
+    // 'fpln' = the FMS's active flight plan, read only by A.fplnProgress; 'isi' = the
+    // standby instrument, read only by A.isi. The stores
     // broadcast CHANGES and the DUs ask for a full copy after 3 s of quiet (afdx/index.ts
     // `yt`: r.set(Lp, 3e3)), so a slow store can sit silent for ~3 s between messages:
     // the systems stores go stale at 6 s, never 3. A.tapGaps() measures the real gaps.
@@ -117,7 +119,8 @@
       ['A22X.R ADS Data', 'rads', 'sys', 6000],
       ['A22X.Status Data', 'status', 'sys', 6000],
       ['A220.FMS Position', 'fmspos', 'sys', 6000],
-      ['A220.Flight Plan Update', 'fpln', 'fpln', 10000]
+      ['A220.Flight Plan Update', 'fpln', 'fpln', 10000],
+      ['A22X.ISI Data', 'isi', 'isi', 6000]
     ];
     var CB_STALE_MS = {};
     for (var cbi = 0; cbi < CB_STORES.length; cbi++) CB_STALE_MS[CB_STORES[cbi][0]] = CB_STORES[cbi][3];
@@ -352,7 +355,8 @@
       status: ['tat', 'sat', 'apu_rpm', 'apu_egt', 'apu_door', 'l_eng_oil_temp',
                'l_eng_oil_press', 'l_eng_oil_qty', 'r_eng_oil_temp', 'r_eng_oil_press',
                'r_eng_oil_qty'],
-      fmspos: ['irs_1', 'irs_2', 'irs_3']
+      fmspos: ['irs_1', 'irs_2', 'irs_3'],
+      isi: ['powered', 'qnh_hpa']
     };
 
     // A store the WASM stopped broadcasting is STALE, not current: the aircraft's own
@@ -553,6 +557,15 @@
         todFromStart: todFromStart, total: acc,
         legs: (act.legs || []).length
       });
+    };
+
+    /// Standby altimeter read-back ([A220-43]): the ISI's own store. Its baro knob and STD
+    /// push are L:vars with no echo, so this is the only truth about what the ISI shows.
+    A.isi = function () {
+      ensureCommBus();
+      var b = cbBlock('isi', 'A22X.ISI Data');
+      if (!b || b.qnh_hpa === null) cbResync();
+      return JSON.stringify({ ok: !!cbState.listener, isi: b, diag: cbDiag() });
     };
 
     ensureCommBus();   // start filling immediately; the first poll is ~1 s away

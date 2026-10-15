@@ -102,6 +102,13 @@ public partial class SynapticA220Definition
             case "A22X_FLAP_LEVER":
                 SetFlapDetent(simConnect, (int)Math.Round(value));
                 return true;
+            case "A22X_ISI_BARO_SET":
+                StartIsiBaroWalk(simConnect, announcer, value);
+                return true;
+            case "A22X_ISI_BARO_STD":
+                PulseLVar(simConnect, varDef.Name);
+                AnnounceIsiAfterPress(announcer);
+                return true;
             case "A22X_SPOILER_LEVER":
                 // [A220-40] The cockpit lever's own write — never SPOILERS_ON/OFF.
                 simConnect.ExecuteCalculatorCode(SeqPrefix() + A220.A220Panels.SpeedbrakeCalc((int)Math.Round(value)));

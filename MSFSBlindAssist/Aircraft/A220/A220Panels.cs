@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 
 namespace MSFSBlindAssist.Aircraft.A220;
 
@@ -143,4 +144,60 @@ public static class A220Panels
             ? null
             : FormattableString.Invariant($"VHF {vhf} volume did not change — reads {AcpVolumeLabels[now]}.");
     }
+
+    // ---- Standby altimeter (ISI, [A220-43]) ----------------------------------------------
+
+    public const double HpaPerInHg = 33.8639;
+
+    /// <summary>Spoken when a standby-baro entry is out of range or not a number.</summary>
+    public const string IsiRangeText = "Enter 940 to 1090 hectopascals, or 27.00 to 32.00 inches.";
+
+    /// <summary>Whether a typed standby-baro entry is in inches of mercury (27.00-32.00).</summary>
+    public static bool IsInHgEntry(double entry) => entry >= 27.0 && entry <= 32.0;
+
+    /// <summary>
+    /// The hPa target for a typed standby-baro entry: 940-1090 is hectopascals, 27.00-32.00 is
+    /// inches (converted, rounded to 0.01 hPa). Anything else — "2992" typed without its point,
+    /// 0 from a blank box, NaN from an unparseable one — is null, so the walk refuses instead of
+    /// driving the knob towards its stop.
+    /// </summary>
+    public static double? IsiTargetHpa(double entry)
+    {
+        if (double.IsNaN(entry)) return null;
+        if (entry >= 940 && entry <= 1090) return entry;
+        if (IsInHgEntry(entry)) return Math.Round(entry * HpaPerInHg, 2);
+        return null;
+    }
+
+    /// <summary>
+    /// The ISI's QNH in hPa from the displays agent's isi() JSON —
+    /// {"ok":…,"isi":{"powered":…,"qnh_hpa":…},"diag":{…}}. Null when the link, the store,
+    /// the field or the instrument's power is missing: the walk refuses, never guesses.
+    /// </summary>
+    public static double? ParseIsiQnhHpa(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            using JsonDocument doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("isi", out JsonElement isi) || isi.ValueKind != JsonValueKind.Object)
+                return null;
+            if (isi.TryGetProperty("powered", out JsonElement powered) && powered.ValueKind == JsonValueKind.False)
+                return null;
+            if (!isi.TryGetProperty("qnh_hpa", out JsonElement qnh) || qnh.ValueKind != JsonValueKind.Number)
+                return null;
+            return qnh.GetDouble();
+        }
+        catch (JsonException) { return null; }
+    }
+
+    /// <summary>"Standby altimeter 1013 hectopascals", or for an inches entry
+    /// "Standby altimeter 29.92 inches". Culture-invariant: CI runs en-US, pilots may not.</summary>
+    public static string FormatIsiBaro(double hpa, bool inHg) => inHg
+        ? "Standby altimeter " + (hpa / HpaPerInHg).ToString("0.00", CultureInfo.InvariantCulture) + " inches"
+        : "Standby altimeter " + hpa.ToString("0", CultureInfo.InvariantCulture) + " hectopascals";
+
+    /// <summary>The read-back spoken after a standby STD press.</summary>
+    public static string IsiReadbackText(double? hpa)
+        => hpa is { } q ? FormatIsiBaro(q, inHg: false) : "Standby altimeter reading not available";
 }

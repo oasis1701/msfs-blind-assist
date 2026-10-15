@@ -159,4 +159,78 @@ public class A220PanelsTests
         Assert.Equal("VHF 3 volume not confirmed: the A220 did not report it.", A220Panels.AcpVolumeReadBack(3, 14, null));
         Assert.Equal("VHF 3 volume not confirmed: the A220 did not report it.", A220Panels.AcpVolumeReadBack(3, 14, double.NaN));
     }
+
+    // ---- Standby altimeter (ISI, [A220-43]) ----------------------------------------------
+
+    [Theory]
+    [InlineData(1013, 1013.0)]
+    [InlineData(1013.2, 1013.2)]
+    [InlineData(940, 940.0)]
+    [InlineData(1090, 1090.0)]
+    [InlineData(29.92, 1013.21)]
+    [InlineData(27.0, 914.33)]
+    [InlineData(32.0, 1083.64)]
+    public void IsiTargetHpa_AcceptsHectopascalsOrInches(double entry, double expectedHpa)
+        => Assert.Equal(expectedHpa, A220Panels.IsiTargetHpa(entry)!.Value, 2);
+
+    [Theory]
+    [InlineData(2992)]        // inches typed without the decimal point
+    [InlineData(33)]
+    [InlineData(26.99)]
+    [InlineData(939.9)]
+    [InlineData(1090.1)]
+    [InlineData(0)]           // a blank box reaches the handler as 0
+    [InlineData(double.NaN)]  // an unparseable box (UnparseableTextAsNaN)
+    public void IsiTargetHpa_RefusesEverythingElse(double entry)
+        => Assert.Null(A220Panels.IsiTargetHpa(entry));
+
+    [Theory]
+    [InlineData(29.92, true)]
+    [InlineData(27.0, true)]
+    [InlineData(1013, false)]
+    public void IsInHgEntry_TellsInchesFromHectopascals(double entry, bool inHg)
+        => Assert.Equal(inHg, A220Panels.IsInHgEntry(entry));
+
+    [Theory]
+    [InlineData("{\"ok\":true,\"isi\":{\"powered\":true,\"qnh_hpa\":1013.25},\"diag\":{}}", 1013.25)]
+    [InlineData("{\"ok\":true,\"isi\":{\"powered\":null,\"qnh_hpa\":1020},\"diag\":{}}", 1020.0)]
+    public void ParseIsiQnhHpa_ReadsTheIsiStore(string json, double expected)
+        => Assert.Equal(expected, A220Panels.ParseIsiQnhHpa(json)!.Value, 3);
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("not json")]
+    [InlineData("{\"ok\":false}")]
+    [InlineData("{\"ok\":true,\"isi\":null}")]
+    [InlineData("{\"ok\":true,\"isi\":{\"powered\":false,\"qnh_hpa\":1013}}")]
+    [InlineData("{\"ok\":true,\"isi\":{\"powered\":true,\"qnh_hpa\":null}}")]
+    public void ParseIsiQnhHpa_IsNullWhenTheIsiCannotBeRead(string? json)
+        => Assert.Null(A220Panels.ParseIsiQnhHpa(json));
+
+    [Theory]
+    [InlineData(1013.25, false, "Standby altimeter 1013 hectopascals")]
+    [InlineData(1013.21, true, "Standby altimeter 29.92 inches")]
+    public void FormatIsiBaro_SpeaksTheUnitThePilotTyped(double hpa, bool inHg, string expected)
+        => Assert.Equal(expected, A220Panels.FormatIsiBaro(hpa, inHg));
+
+    [Fact]
+    public void FormatIsiBaro_IsCultureInvariant()
+    {
+        var previous = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("sv-SE");
+            Assert.Equal("Standby altimeter 30.08 inches", A220Panels.FormatIsiBaro(1018.6, inHg: true));
+            Assert.Equal("Standby altimeter 1019 hectopascals", A220Panels.FormatIsiBaro(1018.6, inHg: false));
+        }
+        finally { CultureInfo.CurrentCulture = previous; }
+    }
+
+    [Fact]
+    public void IsiReadbackText_SaysWhenThereIsNoReading()
+    {
+        Assert.Equal("Standby altimeter 1013 hectopascals", A220Panels.IsiReadbackText(1013.25));
+        Assert.Equal("Standby altimeter reading not available", A220Panels.IsiReadbackText(null));
+    }
 }
