@@ -192,6 +192,14 @@ public sealed class Md11Control
     [JsonPropertyName("composite")]
     public Md11CompositeSpec? Composite { get; set; }
 
+    /// <summary>
+    /// True only where the generator SAMPLED the positions from a continuous scale — the audio volume
+    /// knobs (<c>split_volume_knob</c>) and the lighting and brightness knobs
+    /// (<c>percent_knob_positions</c>) — so a reading can sit between them. See <see cref="Md11PercentKnob"/>.
+    /// </summary>
+    [JsonPropertyName("continuous")]
+    public bool Continuous { get; set; }
+
     /// <summary>The spoken label, never null — falls back to the node id so a control is always identifiable.</summary>
     public string DisplayLabel => string.IsNullOrWhiteSpace(Label) ? NodeId : Label!;
 

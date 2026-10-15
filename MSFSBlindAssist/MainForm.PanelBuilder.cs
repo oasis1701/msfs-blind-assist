@@ -980,17 +980,13 @@ public partial class MainForm
                     // for a field that opted in (UnparseableTextAsNaN), where 0 is a real value
                     // (an A32NX FCU heading of 0 is north) and the handler refuses NaN. Every
                     // other field still receives the historical 0: their handlers were written
-                    // against it, and several would forward a NaN to the sim.
-                    if (!double.TryParse(
-                            textBox.Text.Replace(',', '.'),
-                            System.Globalization.NumberStyles.Float,
-                            System.Globalization.CultureInfo.InvariantCulture,
-                            out double parsedValue))
-                    {
-                        parsedValue = varDef.UnparseableTextAsNaN ? double.NaN : 0;
-                    }
+                    // against it, and several would forward a NaN to the sim. TryParseTyped takes
+                    // either decimal separator on any Windows culture and refuses a thousands group
+                    // ("1,500" must not become an FPA of 1.5); a COM frequency "118,275" still reads.
+                    bool parsed = Utils.NumberParsing.TryParseTyped(textBox.Text, out double value);
                     if (currentAircraft.HandleUIVariableSet(
-                            varKey, parsedValue, varDef, simConnectManager!, announcer))
+                            varKey, parsed ? value : varDef.UnparseableTextAsNaN ? double.NaN : 0,
+                            varDef, simConnectManager!, announcer))
                     {
                         return;
                     }
@@ -1018,14 +1014,9 @@ public partial class MainForm
                             announcer.Announce($"Squawk set to {squawkCode}");
                         }
                     }
-                    else if (double.TryParse(textBox.Text, out double value))
+                    // The aircraft declined the value above; the generic handling uses the same parse.
+                    else if (parsed)
                     {
-                        // Let aircraft handle special cases first (validation, conversion, multi-step logic)
-                        if (currentAircraft.HandleUIVariableSet(varKey, value, varDef, simConnectManager!, announcer))
-                        {
-                            return; // Aircraft handled it
-                        }
-
                         // Generic handling follows - COM frequencies, transponder, etc.
                         if (varKey.StartsWith("COM_") && varKey.Contains("FREQUENCY_SET"))
                         {
@@ -1112,6 +1103,11 @@ public partial class MainForm
                             simConnectManager?.SendEvent(varKey, (uint)value);
                             announcer.Announce($"{varDef.DisplayName} set to {value}");
                         }
+                    }
+                    else
+                    {
+                        // A validation error always speaks: "10,000" used to be sent as 10.
+                        announcer.Announce("Invalid number format");
                     }
                 };
                 

@@ -44,7 +44,7 @@ public class FBWA320AltitudeWindow : FBWA320FCUWindowBase
     private void HandleSet()
     {
         string input = altTextBox.Text.Trim();
-        if (!double.TryParse(input, System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out double v)) { announcer.AnnounceImmediate("Invalid number format"); altTextBox.SelectAll(); return; }
+        if (!Utils.NumberParsing.TryParseTyped(input, out double v)) { announcer.AnnounceImmediate("Invalid number format"); altTextBox.SelectAll(); return; }
         if (!FcuValueEntry.TryAltitude(v, out double feet, out string? error)) { announcer.AnnounceImmediate(error!); altTextBox.SelectAll(); return; }
         aircraft.SetFCUAltitudeValue(feet, simConnect, announcer);
         // SelectAll keeps the field populated and gives NVDA's "<value> selected" echo,
