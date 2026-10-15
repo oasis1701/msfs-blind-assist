@@ -25,19 +25,26 @@ public partial class MainForm
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
-                // Reload database provider with new settings
-                RefreshDatabaseProvider();
+                // The window changes no settings: it verifies, or builds a database and reopens the
+                // connections itself (ReopenDatabaseConnections). It returns OK from every exit, Escape
+                // included, so reload here only when the active database changed since it was loaded
+                // (DatabaseSelector.CurrentStamp): closing it with nothing changed must not run the
+                // database-switch reset, which clears the landing exit plan and disarms the landing
+                // assist, rollout centerline cue included ([EXIT-11]).
+                bool reloaded = DatabaseSelector.CurrentStamp() != _loadedDatabaseStamp;
+                if (reloaded)
+                    RefreshDatabaseProvider();
 
-                // Announce the change
+                // Announce the change. After a reload, queued behind the reset's own "… off" and "Landing
+                // exit plan cleared." lines instead of cutting them off.
                 var status = DatabaseSelector.GetDatabaseStatus();
-                if (status.hasDatabase)
-                {
-                    announcer.AnnounceImmediate($"Database settings saved. Using {status.message}");
-                }
+                string text = status.hasDatabase
+                    ? $"Database settings saved. Using {status.message}"
+                    : $"Database settings saved. {status.message}";
+                if (reloaded)
+                    announcer.Announce(text);
                 else
-                {
-                    announcer.AnnounceImmediate($"Database settings saved. {status.message}");
-                }
+                    announcer.AnnounceImmediate(text);
             }
         }
     }
@@ -282,6 +289,10 @@ public partial class MainForm
         var vatsimInstall = vatsimService?.ApplySettings(settings);
         if (vatsimInstall != null)
             AnnounceVatsimInstallOutcome(vatsimInstall, atStartup: false);
+
+        // The rollout centerline cue setting arms or disarms the landing assist's rollout-only cue for the
+        // destination or exit plan already set; unchanged armings are left alone (RefreshRolloutCueArming).
+        RefreshRolloutCueArming();
 
         // Guidance tone output device, LAST: the takeoff-assist recreate above disposes and
         // replaces its centerline tone, so requesting the sweep before that block paid a full

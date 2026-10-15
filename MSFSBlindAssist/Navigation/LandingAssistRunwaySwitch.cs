@@ -27,16 +27,18 @@ public static class LandingAssistRunwaySwitch
     }
 
     /// <param name="exitPlanWillSayIt">
-    /// True when the landing-exit planner has a plan pending and is about to lead its own touchdown
-    /// sentence with the runway correction.
+    /// True when the landing-exit planner will start exit guidance at this touchdown and lead its own
+    /// touchdown sentence with the runway correction (<c>LandingExitPlanner.WillStartGuidanceAt</c>).
     ///
-    /// <para>Both features notice a runway change, and at touchdown they speak a few hundredths of
-    /// a second apart: the assist runs on the simulator's frame rate and speaks as the wheels
-    /// touch, the planner asks for a fresh position first and then interrupts. The assist's
-    /// sentence was cut off mid-word — and on an approach flown with visual guidance, where the
-    /// assist stays silent through the flare, that cut-off sentence was the only time the pilot
-    /// would have been told before the planner's own. The planner's names the runway AND what to do
-    /// about it, so the assist leaves the telling to it and still re-points its tones.</para>
+    /// <para>Both features notice a runway change, and both speak at touchdown: the assist on the
+    /// simulator's frame rate as the wheels touch, the planner up to about a second later (it hears
+    /// the touchdown from a once-a-second SIM_ON_GROUND sample, then asks for a fresh position),
+    /// interrupting. The assist's sentence was cut off mid-word — and on an approach flown with
+    /// visual guidance, where the assist stays silent through the flare, that cut-off sentence was
+    /// the only time the pilot would have been told before the planner's own. The planner's names
+    /// the runway AND what to do about it, so the assist leaves the telling to it and still
+    /// re-points its tones. The rollout-only cue passes false whenever a plan exists: it holds its
+    /// sentence until the planner has had the touchdown, and drops it if exit guidance started.</para>
     /// </param>
     public static LandingAssistRunwayDecision AtTouchdown(
         LandingRunwayResult verdictAgainstActive, Runway active, Runway armed,
