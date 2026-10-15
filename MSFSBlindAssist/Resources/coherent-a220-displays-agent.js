@@ -323,7 +323,7 @@
       fc: ['pitch_trim', 'pitch_trim_up', 'pitch_trim_dn', 'rudder_trim'],
       lnav: ['source', 'frequency', 'course', 'cdi', 'to', 'bc', 'marker',
              'preview_source', 'preview_course', 'preview_frequency', 'dtg', 'ttg'],
-      lctp: ['nav_source', 'course', 'crosstune', 'qnh', 'qnh_std', 'minimums_mode',
+      lctp: ['nav_source', 'course', 'crosstune', 'qnh', 'minimums_mode',
              'minimums', 'ldg_elev', 'ldg_elev_mode'],
       radio: ['vhf', 'display_tune_inhib', 'l_ctp_inhib'],
       lpfd: ['v1', 'vr', 'v2', 'vref', 'vac', 'vt', 'vf0', 'vf1', 'vf2', 'vf3', 'vf4', 'vf5',
@@ -345,7 +345,7 @@
       eng: ['eng1_n1', 'eng1_n2', 'eng1_egt', 'eng1_fuel_flow', 'eng1_start', 'eng1_ign',
             'eng2_n1', 'eng2_n2', 'eng2_egt', 'eng2_fuel_flow', 'eng2_start', 'eng2_ign',
             'thrust_profile', 'to_n1'],
-      rctp: ['nav_source', 'course', 'crosstune', 'qnh', 'qnh_std', 'minimums_mode',
+      rctp: ['nav_source', 'course', 'crosstune', 'qnh', 'minimums_mode',
              'minimums', 'ldg_elev', 'ldg_elev_mode'],
       lads: ['qnh_unit', 'qnh_hpa', 'qnh_inhg', 'qnh_std', 'qnh_misconfig_set', 'qnh_misconfig_std'],
       rads: ['qnh_unit', 'qnh_hpa', 'qnh_inhg', 'qnh_std', 'qnh_misconfig_set', 'qnh_misconfig_std'],
@@ -476,8 +476,9 @@
     // wl(side, {...}) = "A22X.<L|R> CTP Action" {type: "SetConfig", ...} (afdx/ctp.ts).
     // Live 2026-10-12: qnh {type:'InHg', value:30.13} set the CTP AND stock Kohlsman exactly;
     // minimums_mode / minimums landed in CTP Data and PFD Data. Only the keys MSFSBA sets are
-    // accepted, so a malformed caller can never send an arbitrary configuration.
-    var CTP_KEYS = { qnh: 1, qnh_std: 1, minimums_mode: 1, minimums: 1 };
+    // accepted, so a malformed caller can never send an arbitrary configuration. No qnh_std:
+    // it moves nothing (live 2026-10-15); STD is a qnh of exactly 29.92 inches / 1013 hPa.
+    var CTP_KEYS = { qnh: 1, minimums_mode: 1, minimums: 1 };
     A.ctpSet = function (side, cfg) {
       if (side !== 1 && side !== 2) return 'BAD_SIDE';
       var payload = { type: 'SetConfig' }, n = 0;

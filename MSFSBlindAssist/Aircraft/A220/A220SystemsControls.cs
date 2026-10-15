@@ -209,11 +209,15 @@ internal static partial class A220Systems
             ? new QnhSetting("Hpa", Math.Round(hpa, MidpointRounding.AwayFromZero))
             : new QnhSetting("InHg", Math.Round(hpa / HpaPerInHg, 2, MidpointRounding.AwayFromZero));
 
-    internal static bool? UnitHpaOrNull(CtpBlock? ctp, AdsBlock? ads) => ctp?.qnh?.type switch
+    /// <summary>The unit the side's PFD draws: the ADS store's <c>qnh_unit</c> (0 inches, 1 hPa),
+    /// else the CTP's QNH type, else null. ADS first because in STD a unit change moves only the
+    /// ADS unit and leaves <c>CTP Data.qnh</c> as it was (live 2026-10-15); outside STD the two
+    /// always agreed.</summary>
+    internal static bool? UnitHpaOrNull(CtpBlock? ctp, AdsBlock? ads) => ads?.qnh_unit switch
     {
-        "Hpa" => true,
-        "InHg" => false,
-        _ => ads?.qnh_unit is { } u ? u == 1 : (bool?)null
+        1 => true,
+        0 => false,
+        _ => ctp?.qnh?.type switch { "Hpa" => true, "InHg" => false, _ => (bool?)null }
     };
 
     internal static bool UnitIsHpa(CtpBlock? ctp, AdsBlock? ads) => UnitHpaOrNull(ctp, ads) ?? false;
@@ -226,9 +230,42 @@ internal static partial class A220Systems
         => ctp?.qnh is { value: { } v } q && q.type == want.Type
            && Math.Abs(v - want.Value) <= (want.Type == "Hpa" ? 0.6 : 0.006);
 
-    /// <summary>STD as the PFD draws it (ADS <c>qnh_std</c>); the CTP's own flag only when the
-    /// ADS store is missing; null when neither says.</summary>
-    internal static bool? IsStd(AdsBlock? ads, CtpBlock? ctp) => ads?.qnh_std ?? ctp?.qnh_std;
+    /// <summary>STD as the PFD draws it: the ADS store's <c>qnh_std</c>, null without the store.
+    /// The only STD truth: <c>CTP Data</c> has no STD field (live 2026-10-15).</summary>
+    internal static bool? IsStd(AdsBlock? ads) => ads?.qnh_std;
+
+    /// <summary>Standard pressure in a unit's own terms, as a SetConfig QNH: the A220's STD switch.
+    /// The CTP takes a QNH SetConfig of EXACTLY this value as STD, on that side only (live
+    /// 2026-10-15): out of STD it selects STD, in STD it changes only the unit, and either way the
+    /// side's own QNH stays in <c>CTP Data.qnh</c> for STD off. Any other value is a QNH and takes
+    /// the side out of STD.</summary>
+    internal static QnhSetting StandardQnh(bool hpa) => hpa ? new QnhSetting("Hpa", 1013) : new QnhSetting("InHg", 29.92);
+
+    /// <summary>Whether a value is the exact standard the CTP takes as STD (1013 hPa, 29.92 inches).</summary>
+    internal static bool IsStandardQnh(QnhSetting q) => q.Type switch
+    {
+        "Hpa" => Math.Abs(q.Value - 1013) < 0.05,
+        "InHg" => Math.Abs(q.Value - 29.92) < 0.0005,
+        _ => false
+    };
+
+    /// <summary>A QNH the CTP will NOT take as STD: an exact standard value is sent as 1013.25 hPa
+    /// or 29.921253 inches (the aircraft's own default), which the PFD shows as 1013 and 29.92 and
+    /// the CTP keeps as a QNH (live 2026-10-15). Every QNH MSFSBA sends goes through this, so a QNH
+    /// of 1013 or 29.92 never switches the side to STD.</summary>
+    internal static QnhSetting AvoidStandard(QnhSetting q) => !IsStandardQnh(q) ? q
+        : q.Type == "Hpa" ? new QnhSetting("Hpa", 1013.25) : new QnhSetting("InHg", 29.921253);
+
+    /// <summary>The SetConfig QNH that switches one side's STD on or off, or null when the side has
+    /// not reported what it needs (its unit for STD on; its own QNH for STD off — never a guess).
+    /// ON is the exact standard value in the unit the side's PFD shows; OFF is the side's own QNH,
+    /// kept by the CTP through STD, in that unit.</summary>
+    internal static QnhSetting? StdWrite(bool std, CtpBlock? ctp, AdsBlock? ads)
+    {
+        if (UnitHpaOrNull(ctp, ads) is not { } hpa) return null;
+        if (std) return StandardQnh(hpa);
+        return CurrentHpa(ctp) is { } nowHpa ? AvoidStandard(QnhFor(nowHpa, hpa)) : null;
+    }
 
     internal static string FormatQnh(QnhValue? q) => q switch
     {
@@ -241,7 +278,7 @@ internal static partial class A220Systems
     /// "1020 hectopascals"; null when nothing is known.</summary>
     internal static string? SideAltimeter(AdsBlock? ads, CtpBlock? ctp)
     {
-        if (IsStd(ads, ctp) == true) return "standard";
+        if (IsStd(ads) == true) return "standard";
         if (ads?.qnh_unit == 1 && ads.qnh_hpa is { } h) return Inv($"{h:0} hectopascals");
         if (ads?.qnh_unit == 0 && ads.qnh_inhg is { } i) return Inv($"{i:0.00} inches");
         return ctp?.qnh != null ? FormatQnh(ctp.qnh) : null;
@@ -308,16 +345,18 @@ internal static partial class A220Systems
         if (Problems(problems) is { } failed) return failed;
         // What each side READ BACK, not the setting wanted: each side was sent its own unit.
         string text = QnhSidesText(sides, after);
-        bool stdStill = sides.Any(side => IsStd(SideBlocks(after, side).Ads, SideBlocks(after, side).Ctp) == true);
+        bool stdStill = sides.Any(side => IsStd(SideBlocks(after, side).Ads) == true);
         return stdStill ? text + " — standard is still selected" : text;
     }
 
+    /// <summary>STD's verdict for the <paramref name="sides"/> a write still owns, from the ADS
+    /// flags (the PFD's truth; <c>CTP Data</c> has no STD field).</summary>
     internal static string StdResult(IReadOnlyList<int> sides, bool wantStd, SystemsBlocks? after)
     {
         var problems = new List<string>();
         foreach (int side in sides)
         {
-            bool? now = IsStd(SideBlocks(after, side).Ads, SideBlocks(after, side).Ctp);
+            bool? now = IsStd(SideBlocks(after, side).Ads);
             if (now == null) problems.Add(NotConfirmed($"{SideWord(side)} baro"));
             else if (now != wantStd) problems.Add($"{SideWord(side)} baro did not change — still {(wantStd ? "QNH" : "standard")}");
         }
@@ -331,25 +370,38 @@ internal static partial class A220Systems
     /// side's own value, so they can differ (the file's <see cref="FormatAltimeterReadout"/>
     /// exists for the same reason), and then each side is named, captain first.</summary>
     private static string QnhSidesText(IReadOnlyList<int> sides, SystemsBlocks? after)
+        => SidesText(sides, side => FormatQnh(SideBlocks(after, side).Ctp?.qnh));
+
+    private static string SidesText(IReadOnlyList<int> sides, Func<int, string> reads)
     {
         var ordered = sides.OrderBy(side => side).ToList();
-        string Reads(int side) => FormatQnh(SideBlocks(after, side).Ctp?.qnh);
-        if (ordered.Count != 2) return $"{SideWord(ordered[0])} altimeter {Reads(ordered[0])}";
-        string a = Reads(ordered[0]), b = Reads(ordered[1]);
+        if (ordered.Count != 2) return $"{SideWord(ordered[0])} altimeter {reads(ordered[0])}";
+        string a = reads(ordered[0]), b = reads(ordered[1]);
         return a == b
             ? $"Altimeter {a}, both sides"
             : $"{SideWord(ordered[0])} altimeter {a}, {SideWord(ordered[1]).ToLowerInvariant()} {b}";
     }
 
+    internal static string UnitWord(bool hpa) => hpa ? "hectopascals" : "inches";
+
+    /// <summary>The unit's verdict, judged on the unit each side's PFD draws
+    /// (<see cref="UnitHpaOrNull"/>: the ADS unit, else the CTP type). A side in STD reads
+    /// "standard, unit hectopascals": in STD the unit change leaves <c>CTP Data.qnh</c> in the old
+    /// unit (live 2026-10-15), so a CTP-type verdict said "did not change" for a unit that had.</summary>
     internal static string UnitResult(IReadOnlyList<int> sides, bool wantHpa, SystemsBlocks? after)
     {
-        string wantType = wantHpa ? "Hpa" : "InHg";
+        bool? Unit(int side) => UnitHpaOrNull(SideBlocks(after, side).Ctp, SideBlocks(after, side).Ads);
         var problems = new List<string>();
-        if (sides.Any(side => QnhReadBack(SideBlocks(after, side).Ctp) && SideBlocks(after, side).Ctp!.qnh!.type != wantType))
-            problems.Add($"The A220 did not change the altimeter unit — still {(wantHpa ? "inches" : "hectopascals")}");
-        problems.AddRange(sides.Where(side => !QnhReadBack(SideBlocks(after, side).Ctp))
+        if (sides.Any(side => Unit(side) is { } hpa && hpa != wantHpa))
+            problems.Add($"The A220 did not change the altimeter unit — still {UnitWord(!wantHpa)}");
+        problems.AddRange(sides.Where(side => Unit(side) == null)
             .Select(side => NotConfirmed($"{SideWord(side)} altimeter unit")));
-        return Problems(problems) ?? QnhSidesText(sides, after);
+        if (Problems(problems) is { } failed) return failed;
+        return SidesText(sides, side =>
+        {
+            var (ctp, ads) = SideBlocks(after, side);
+            return IsStd(ads) == true ? $"standard, unit {UnitWord(wantHpa)}" : SideAltimeter(ads, ctp) ?? "unknown";
+        });
     }
 
     internal static string MinimumsResult(IReadOnlyList<int> sides, int feet, SystemsBlocks? after)
@@ -381,7 +433,6 @@ internal static partial class A220Systems
     }
 
     internal static string CtpQnhJson(QnhSetting q) => JsonSerializer.Serialize(new { qnh = new { type = q.Type, value = q.Value } });
-    internal static string CtpStdJson(bool std) => JsonSerializer.Serialize(new { qnh_std = std });
     internal static string CtpMinimumsModeJson(int mode) => JsonSerializer.Serialize(new { minimums_mode = mode });
     internal static string CtpMinimumsJson(int feet) => JsonSerializer.Serialize(new { minimums = feet });
 

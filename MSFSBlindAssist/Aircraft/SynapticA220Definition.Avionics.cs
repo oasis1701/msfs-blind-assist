@@ -7,8 +7,8 @@ namespace MSFSBlindAssist.Aircraft;
 /// <summary>
 /// The A220's CommBus control writes, each read back from the aircraft's own store:
 /// transponder and TCAS through "A22X.Display Tune" index 5 ConfigAtc ([A220-35], the CNS
-/// XPDR/TCAS CONTROL dialog's own call), and the CTP altimeter, STD and minimums through
-/// "A22X.L/R CTP Action" SetConfig ([A220-33]). Every payload is built by A220Systems
+/// XPDR/TCAS CONTROL dialog's own call), the CTP altimeter and minimums through
+/// "A22X.L/R CTP Action" SetConfig, and STD by the CTP's STD push ([A220-33]). Every payload is built by A220Systems
 /// (System.Text.Json, invariant); the agent accepts only the keys and action types MSFSBA sets.
 /// A write the display link cannot carry is refused aloud; a value the aircraft did not take is
 /// spoken as what it kept, a read-back that never arrived as "not confirmed" (never as a kept
@@ -303,8 +303,11 @@ public partial class SynapticA220Definition
     // ---- CTP altimeter, STD and minimums ([A220-33]) ---------------------------------
     // "A22X.<L|R> CTP Action" {type: "SetConfig", ...}: the CTP's own settings call. KOHLSMAN_SET
     // is ignored by this aircraft and the "A22X L Altimeter Set" knob walk hunts on a 1 Hz read-
-    // back (live 2026-10-12); SetConfig qnh lands exactly. Never write "A22X L Altimeter HPA":
-    // it is the WASM's output mirror (2026-09-22: writing it corrupted the unit readout).
+    // back (live 2026-10-12); SetConfig qnh lands exactly. STD is a QNH SetConfig too: qnh_std
+    // moves nothing, but EXACTLY 29.92 inches / 1013 hPa selects STD on that side, and the side's
+    // own QNH sent back takes it out (live 2026-10-15), so every other QNH goes through
+    // A220Systems.AvoidStandard. Never write "A22X L Altimeter HPA": it is the WASM's output
+    // mirror (2026-09-22: writing it corrupted the unit readout).
 
     /// <summary>
     /// <see cref="LatestWrite"/> for a control with one write per SIDE. A CTP call may write both
@@ -399,7 +402,8 @@ public partial class SynapticA220Definition
             {
                 if (!claim.Owns(side)) continue;   // a newer entry has this side: never send over it
                 var (ctp, ads) = A220Systems.SideBlocks(LatestSystems, side);
-                var want = A220Systems.QnhFor(hpa, A220Systems.UnitIsHpa(ctp, ads));
+                // Never the exact standard value: the CTP would take it as STD (A220Systems.AvoidStandard).
+                var want = A220Systems.AvoidStandard(A220Systems.QnhFor(hpa, A220Systems.UnitIsHpa(ctp, ads)));
                 if (!await AgentWriteAsync($"ctpSet({side}, {A220Systems.CtpQnhJson(want)})", announcer, "Altimeter",
                         () => claim.Superseded)) return;
                 wanted[side] = want;
@@ -415,9 +419,12 @@ public partial class SynapticA220Definition
     }
 
     /// <summary>The unit: the current setting re-sent in the other unit (the CTP takes its unit
-    /// from the qnh type). The converted value is what the reader cannot say, so it is spoken;
-    /// a refusal names the unit kept (whether the type switches the unit: docs/a220.md "Pending live
-    /// verification").</summary>
+    /// from the qnh type; live 2026-10-15 the CTP, ADS unit and HPA mirror followed within about
+    /// 150 ms). A side in STD is sent the STANDARD value in the new unit instead: the CTP takes it
+    /// as a unit change and stays in STD, where the side's own QNH re-sent in the other unit is a
+    /// new QNH that takes it out of STD (live 2026-10-15). Judged on the unit the PFD draws
+    /// (ADS first: in STD the CTP's QNH keeps its old unit). The converted value is what the
+    /// reader cannot say, so it is spoken; a refusal names the unit kept.</summary>
     internal async Task SetBaroUnitAsync(bool hpa, IReadOnlyList<int> sides, ScreenReaderAnnouncer announcer)
     {
         var claim = _unitWrites.Begin(sides);
@@ -426,19 +433,21 @@ public partial class SynapticA220Definition
             foreach (int side in sides)
             {
                 if (!claim.Owns(side)) continue;
-                var (ctp, _) = A220Systems.SideBlocks(LatestSystems, side);
-                if (A220Systems.CurrentHpa(ctp) is not { } nowHpa)
+                var (ctp, ads) = A220Systems.SideBlocks(LatestSystems, side);
+                A220Systems.QnhSetting want;
+                if (A220Systems.IsStd(ads) == true) want = A220Systems.StandardQnh(hpa);
+                else if (A220Systems.CurrentHpa(ctp) is { } nowHpa) want = A220Systems.AvoidStandard(A220Systems.QnhFor(nowHpa, hpa));
+                else
                 {
                     if (!claim.Superseded) announcer.AnnounceImmediate("Altimeter unit not set: the A220 display link is not connected.");
                     return;
                 }
-                var want = A220Systems.QnhFor(nowHpa, hpa);
                 if (!await AgentWriteAsync($"ctpSet({side}, {A220Systems.CtpQnhJson(want)})", announcer, "Altimeter unit",
                         () => claim.Superseded)) return;
             }
-            string type = hpa ? "Hpa" : "InHg";
             var after = await PollSystemsUntilAsync(
-                s => claim.Owned.All(side => A220Systems.SideBlocks(s, side).Ctp?.qnh?.type == type),
+                s => claim.Owned.All(side =>
+                    A220Systems.UnitHpaOrNull(A220Systems.SideBlocks(s, side).Ctp, A220Systems.SideBlocks(s, side).Ads) == hpa),
                 superseded: () => claim.Superseded);
             var owned = claim.Owned;
             if (owned.Count == 0) return;
@@ -453,27 +462,48 @@ public partial class SynapticA220Definition
         }
     }
 
-    /// <summary>STD on or off (SetConfig qnh_std), read back from the ADS store the PFD draws.
-    /// From a panel combo a success is silent (the reader read the pick); from Ctrl+B it is
-    /// spoken. A refusal is always spoken, and the combos re-sent the truth.</summary>
+    /// <summary>
+    /// STD on or off, per side, by the QNH SetConfig the CTP takes as its STD switch
+    /// (<see cref="A220Systems.StdWrite"/>: ON the exact standard value in the side's PFD unit,
+    /// OFF the side's own QNH, which the CTP keeps through STD), read back from the ADS store the
+    /// PFD draws (the only STD truth: CTP Data has no STD field, and SetConfig qnh_std moves
+    /// nothing, live 2026-10-15). A side that has not reported its unit or QNH is not sent a
+    /// guess. From a panel combo a success is silent (the reader read the pick); from Ctrl+B it is
+    /// spoken. A refusal is always spoken, and the combos re-sent the truth.
+    /// </summary>
     internal async Task SetStdAsync(bool std, IReadOnlyList<int> sides, ScreenReaderAnnouncer announcer, bool speakSuccess = true)
     {
         var claim = _stdWrites.Begin(sides);
         HoldBridgeKeys(sides, BaroStdKey);   // the combo is not re-set under the pilot's arrow key while this is in flight
         try
         {
+            var sent = new List<int>();
+            var unknown = new List<int>();
             foreach (int side in sides)
             {
                 if (!claim.Owns(side)) continue;
-                if (!await AgentWriteAsync($"ctpSet({side}, {A220Systems.CtpStdJson(std)})", announcer, "Baro standard",
+                var (ctp, ads) = A220Systems.SideBlocks(LatestSystems, side);
+                if (A220Systems.StdWrite(std, ctp, ads) is not { } want)
+                {
+                    unknown.Add(side);
+                    continue;
+                }
+                if (!await AgentWriteAsync($"ctpSet({side}, {A220Systems.CtpQnhJson(want)})", announcer, "Baro standard",
                         () => claim.Superseded)) return;
+                sent.Add(side);
             }
-            bool Landed(A220Systems.SystemsBlocks? s) => claim.Owned.All(side =>
-                A220Systems.IsStd(A220Systems.SideBlocks(s, side).Ads, A220Systems.SideBlocks(s, side).Ctp) == std);
-            var after = await PollSystemsUntilAsync(s => Landed(s), superseded: () => claim.Superseded);
-            var owned = claim.Owned;
-            if (owned.Count == 0) return;
-            if (!Landed(after) || speakSuccess) announcer.AnnounceImmediate(A220Systems.StdResult(owned, std, after));
+            List<int> Judged() => sent.Where(claim.Owns).ToList();
+            bool Landed(A220Systems.SystemsBlocks? s) => Judged().All(side => A220Systems.IsStd(A220Systems.SideBlocks(s, side).Ads) == std);
+            A220Systems.SystemsBlocks? after = null;
+            if (sent.Count > 0) after = await PollSystemsUntilAsync(s => Landed(s), superseded: () => claim.Superseded);
+            var judged = Judged();
+            var notSent = unknown.Where(claim.Owns).ToList();
+            var lines = new List<string>();
+            if (judged.Count > 0 && (!Landed(after) || speakSuccess || notSent.Count > 0))
+                lines.Add(A220Systems.StdResult(judged, std, after).TrimEnd('.'));
+            lines.AddRange(notSent.Select(side => $"{A220Systems.SideWord(side)} baro not set: the A220 display link has not reported that altimeter"));
+            if (lines.Count == 1 && notSent.Count == 0) announcer.AnnounceImmediate(A220Systems.StdResult(judged, std, after));
+            else if (lines.Count > 0) announcer.AnnounceImmediate(string.Join(". ", lines) + ".");
         }
         catch (Exception ex) { Utils.Logging.Log.Warn("A220", $"SetStdAsync: {ex.Message}"); }
         finally { ReleaseBridgeKeys(sides, BaroStdKey); ResendBridge(); }
@@ -482,8 +512,8 @@ public partial class SynapticA220Definition
     /// <summary>Ctrl+B's Standard button: the opposite of the first chosen side's state.</summary>
     internal Task ToggleStdAsync(IReadOnlyList<int> sides, ScreenReaderAnnouncer announcer)
     {
-        var (ctp, ads) = A220Systems.SideBlocks(LatestSystems, sides[0]);
-        if (A220Systems.IsStd(ads, ctp) is not { } now)
+        var (_, ads) = A220Systems.SideBlocks(LatestSystems, sides[0]);
+        if (A220Systems.IsStd(ads) is not { } now)
         {
             announcer.AnnounceImmediate("Standard is not known: the A220 display link is not connected.");
             return Task.CompletedTask;
@@ -549,7 +579,7 @@ public partial class SynapticA220Definition
     internal (bool? Std, bool? Hpa, int? MinimumsMode) DescribeCtp(int side)
     {
         var (ctp, ads) = A220Systems.SideBlocks(LatestSystems, side);
-        return (A220Systems.IsStd(ads, ctp), A220Systems.UnitHpaOrNull(ctp, ads), ctp?.minimums_mode);
+        return (A220Systems.IsStd(ads), A220Systems.UnitHpaOrNull(ctp, ads), ctp?.minimums_mode);
     }
 
     /// <summary>Ctrl+B's "Now" box: both sides, one line each.</summary>

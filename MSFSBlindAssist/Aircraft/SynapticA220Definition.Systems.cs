@@ -363,8 +363,8 @@ public partial class SynapticA220Definition
         Emit(XpdrModeKey, sys.atc?.mode);
         Emit(TcasLimitKey, sys.atc?.tss_limits_sel);
         Emit("A22X_XPDR_CODE_BUS", sys.atc?.code);
-        Emit("A22X_L_BARO_STD", StdValue(sys.lads, sys.lctp));
-        Emit("A22X_R_BARO_STD", StdValue(sys.rads, sys.rctp));
+        Emit("A22X_L_BARO_STD", StdValue(sys.lads));
+        Emit("A22X_R_BARO_STD", StdValue(sys.rads));
         Emit("A22X_L_MINIMUMS_MODE", sys.lctp?.minimums_mode);
         Emit("A22X_R_MINIMUMS_MODE", sys.rctp?.minimums_mode);
         Emit("A22X_L_MINIMUMS", sys.lctp?.minimums);
@@ -372,6 +372,6 @@ public partial class SynapticA220Definition
     }
 
     /// <summary>STD as the PFD draws it (1/0), or null — nothing is claimed for an unknown side.</summary>
-    private static double? StdValue(A220Systems.AdsBlock? ads, A220Systems.CtpBlock? ctp)
-        => A220Systems.IsStd(ads, ctp) is { } std ? (std ? 1.0 : 0.0) : (double?)null;
+    private static double? StdValue(A220Systems.AdsBlock? ads)
+        => A220Systems.IsStd(ads) is { } std ? (std ? 1.0 : 0.0) : (double?)null;
 }

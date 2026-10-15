@@ -199,11 +199,12 @@ internal static partial class A220Systems
         public double? to_n1 { get; set; }
     }
 
-    /// <summary>"A22X.L/R CTP Data" — the CTP's own settings: QNH, STD, minimums, nav source.</summary>
+    /// <summary>"A22X.L/R CTP Data" — the CTP's own settings: QNH, minimums, nav source. No STD:
+    /// the store carries no <c>qnh_std</c> field (live 2026-10-15, both sides, in and out of STD),
+    /// so STD is read from the ADS store alone (<see cref="IsStd"/>).</summary>
     internal sealed class CtpBlock
     {
         public QnhValue? qnh { get; set; }
-        public bool? qnh_std { get; set; }
         public int? minimums_mode { get; set; }
         public double? minimums { get; set; }
         public double? ldg_elev { get; set; }

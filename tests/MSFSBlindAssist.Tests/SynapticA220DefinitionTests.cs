@@ -719,11 +719,14 @@ public class SynapticA220DefinitionTests
         def.AgentCallOverride = call =>
         {
             if (call == "sys()") return Task.FromResult(sys());
-            sent?.Add(call);
+            lock (def) sent?.Add(call);
             return Task.FromResult<string?>("SENT");
         };
         return def;
     }
+
+    private static string CtpQnhCall(int side, string type, string value)
+        => $"ctpSet({side}, {{\"qnh\":{{\"type\":\"{type}\",\"value\":{value}}}}})";
 
     private static readonly IReadOnlyList<int> Cap = SynapticA220Definition.Captain;
     private static readonly IReadOnlyList<int> Fo = SynapticA220Definition.FirstOfficer;
@@ -826,30 +829,99 @@ public class SynapticA220DefinitionTests
         Assert.Empty(sent);
     }
 
+    // STD is a QNH SetConfig too (live 2026-10-15): qnh_std moves nothing, but EXACTLY 29.92 in /
+    // 1013 hPa selects STD on that side only, and the side's own QNH sent back takes it out.
+    private static string Ads(string side, bool std, int unit) => AdsStore(side, $"\"qnh_std\":{(std ? "true" : "false")},\"qnh_unit\":{unit}");
+
+    [Fact]
+    public async Task Std_On_IsTheExactStandardQnh_PerSide_InEachSidesPfdUnit()
+    {
+        var sent = new List<string>();
+        var speech = new SpeechCapture();
+        var def = CtpDef(() => SysJson(Ads("l", true, 0), Ads("r", true, 1)), sent);
+        def.ProcessSystems(Blocks(Ads("l", false, 0), Ads("r", false, 1)));
+        await def.SetStdAsync(true, Both, speech);
+        Assert.Equal(new[] { CtpQnhCall(1, "InHg", "29.92"), CtpQnhCall(2, "Hpa", "1013") }, sent);
+        Assert.Equal(new[] { "Altimeter standard, both sides" }, speech.All);
+    }
+
     [Fact]
     public async Task Std_FromAPanelCombo_IsSilentWhenItLands_AndSpokenWhenItDoesNot()
     {
         var sent = new List<string>();
         var landed = new SpeechCapture();
-        await CtpDef(() => SysJson(AdsStore("l", "\"qnh_std\":true")), sent).SetStdAsync(true, Cap, landed, speakSuccess: false);
-        Assert.Equal(new[] { "ctpSet(1, {\"qnh_std\":true})" }, sent);
+        var def = CtpDef(() => SysJson(Ads("l", true, 0)), sent);
+        def.ProcessSystems(Blocks(Ads("l", false, 0)));
+        await def.SetStdAsync(true, Cap, landed, speakSuccess: false);
+        Assert.Equal(new[] { CtpQnhCall(1, "InHg", "29.92") }, sent);
         Assert.Empty(landed.All);
 
         var stuck = new SpeechCapture();
-        await CtpDef(() => SysJson(AdsStore("l", "\"qnh_std\":false"))).SetStdAsync(true, Cap, stuck, speakSuccess: false);
+        var def2 = CtpDef(() => SysJson(Ads("l", false, 0)));
+        def2.ProcessSystems(Blocks(Ads("l", false, 0)));
+        await def2.SetStdAsync(true, Cap, stuck, speakSuccess: false);
         Assert.Equal(new[] { "Captain baro did not change — still QNH." }, stuck.All);
     }
 
     [Fact]
-    public async Task Std_FromCtrlB_SpeaksWhatThePfdNowShows()
+    public async Task Std_Off_ReSendsTheSidesOwnCtpQnh_AndNeverAGuess()
     {
-        var on = new SpeechCapture();
-        await CtpDef(() => SysJson(AdsStore("l", "\"qnh_std\":true"), AdsStore("r", "\"qnh_std\":true"))).SetStdAsync(true, Both, on);
-        Assert.Equal(new[] { "Altimeter standard, both sides" }, on.All);
-
+        var sent = new List<string>();
         var off = new SpeechCapture();
-        await CtpDef(() => SysJson(AdsStore("l", "\"qnh_std\":false"), CtpStore("l", QnhFields("InHg", "30.13")))).SetStdAsync(false, Cap, off);
+        var def = CtpDef(() => SysJson(Ads("l", false, 0), CtpStore("l", QnhFields("InHg", "30.13"))), sent);
+        def.ProcessSystems(Blocks(Ads("l", true, 0), CtpStore("l", QnhFields("InHg", "30.13"))));
+        await def.SetStdAsync(false, Cap, off);
+        Assert.Equal(new[] { CtpQnhCall(1, "InHg", "30.13") }, sent);
         Assert.Equal(new[] { "Captain altimeter 30.13 inches" }, off.All);
+
+        // A kept QNH that IS the standard value is sent as one the CTP will not take as STD.
+        var nudged = new List<string>();
+        var def3 = CtpDef(() => SysJson(Ads("r", false, 1), CtpStore("r", QnhFields("Hpa", "1013"))), nudged);
+        def3.ProcessSystems(Blocks(Ads("r", true, 1), CtpStore("r", QnhFields("Hpa", "1013"))));
+        await def3.SetStdAsync(false, Fo, new SpeechCapture());
+        Assert.Equal(new[] { CtpQnhCall(2, "Hpa", "1013.25") }, nudged);
+
+        // No CTP QNH reported for the side: nothing is sent, and it is said.
+        var none = new List<string>();
+        var unknown = new SpeechCapture();
+        var def2 = CtpDef(() => "{}", none);
+        def2.ProcessSystems(Blocks(Ads("l", true, 0)));
+        await def2.SetStdAsync(false, Cap, unknown);
+        Assert.Empty(none);
+        Assert.Equal(new[] { "Captain baro not set: the A220 display link has not reported that altimeter." }, unknown.All);
+    }
+
+    [Fact]
+    public async Task Qnh_OfExactlyTheStandardValue_IsSentAsAQnh_NeverAsStd()
+    {
+        // Live 2026-10-15: a SetConfig of exactly 1013 / 29.92 selects STD; the pilot typed a QNH.
+        var hpa = new List<string>();
+        var hpaSpeech = new SpeechCapture();
+        var def = CtpDef(() => SysJson(CtpStore("l", QnhFields("Hpa", "1013"))), hpa);   // the CTP stores 1013.25 as 1013
+        def.ProcessSystems(Blocks(Ads("l", false, 1)));
+        await def.SetQnhAsync(1013, Cap, hpaSpeech);
+        Assert.Equal(new[] { CtpQnhCall(1, "Hpa", "1013.25") }, hpa);
+        Assert.Equal(new[] { "Captain altimeter 1013 hectopascals" }, hpaSpeech.All);
+
+        var inches = new List<string>();
+        var def2 = CtpDef(() => SysJson(CtpStore("r", QnhFields("InHg", "29.921253"))), inches);
+        def2.ProcessSystems(Blocks(Ads("r", false, 0)));
+        await def2.SetQnhAsync(29.92, Fo, new SpeechCapture());
+        Assert.Equal(new[] { CtpQnhCall(2, "InHg", "29.921253") }, inches);
+    }
+
+    [Fact]
+    public async Task Unit_InStd_SendsTheStandardValueInTheNewUnit_AndReadsTheAdsUnit()
+    {
+        // Live 2026-10-15: in STD the CTP takes exactly 1013 / 29.92 as a unit change and stays standard;
+        // the side's own QNH re-sent would take it out of STD.
+        var sent = new List<string>();
+        var speech = new SpeechCapture();
+        var def = CtpDef(() => SysJson(AdsStore("l", "\"qnh_std\":true,\"qnh_unit\":1"), CtpStore("l", QnhFields("InHg", "30.13"))), sent);
+        def.ProcessSystems(Blocks(AdsStore("l", "\"qnh_std\":true,\"qnh_unit\":0"), CtpStore("l", QnhFields("InHg", "30.13"))));
+        await def.SetBaroUnitAsync(true, Cap, speech);
+        Assert.Equal(new[] { "ctpSet(1, {\"qnh\":{\"type\":\"Hpa\",\"value\":1013}})" }, sent);
+        Assert.Equal(new[] { "Captain altimeter standard, unit hectopascals" }, speech.All);
     }
 
     [Fact]
@@ -857,10 +929,10 @@ public class SynapticA220DefinitionTests
     {
         var sent = new List<string>();
         var speech = new SpeechCapture();
-        var def = CtpDef(() => SysJson(AdsStore("l", "\"qnh_std\":true")), sent);
-        def.ProcessSystems(Blocks(AdsStore("l", "\"qnh_std\":false")));
+        var def = CtpDef(() => SysJson(Ads("l", true, 0)), sent);
+        def.ProcessSystems(Blocks(Ads("l", false, 0)));
         await def.ToggleStdAsync(Cap, speech);
-        Assert.Equal(new[] { "ctpSet(1, {\"qnh_std\":true})" }, sent);
+        Assert.Equal(new[] { CtpQnhCall(1, "InHg", "29.92") }, sent);
         Assert.Equal(new[] { "Captain altimeter standard" }, speech.All);
 
         var unknownSent = new List<string>();
@@ -870,21 +942,22 @@ public class SynapticA220DefinitionTests
         Assert.Empty(unknownSent);
     }
 
-    // A lost read-back used to say "did not change — still QNH"; pressed again, the toggle then
-    // turned STD back off. Now nothing is claimed, and the toggle will not act on the unknown state.
+    // A lost read-back saying "did not change — still QNH" would invite a second press, which the
+    // toggle would turn back into STD off (a reviewer-identified risk). Nothing is claimed, and the
+    // toggle will not act on the unknown state.
     [Fact]
     public async Task Std_WithNoReadBack_IsNotConfirmed_AndTheToggleWillNotActOnIt()
     {
         var sent = new List<string>();
         var speech = new SpeechCapture();
         var def = CtpDef(() => "{}", sent);                         // the write goes out; no ADS/CTP store answers
-        def.ProcessSystems(Blocks(AdsStore("l", "\"qnh_std\":false")));
+        def.ProcessSystems(Blocks(Ads("l", false, 0)));
 
         await def.ToggleStdAsync(Cap, speech);
         Assert.Equal(new[] { "Captain baro not confirmed: the A220 display link did not report it." }, speech.All);
 
         await def.ToggleStdAsync(Cap, speech);                      // pressed again
-        Assert.Equal(new[] { "ctpSet(1, {\"qnh_std\":true})" }, sent);   // nothing sent from an unknown state
+        Assert.Equal(new[] { CtpQnhCall(1, "InHg", "29.92") }, sent);   // nothing sent from an unknown state
         Assert.Equal("Standard is not known: the A220 display link is not connected.", speech.All[^1]);
     }
 
@@ -994,7 +1067,8 @@ public class SynapticA220DefinitionTests
     [Fact]
     public async Task OverlappingStdWrites_OnlyTheLatestOneIsJudged()
     {
-        var (def, speech) = (CtpDef(() => SysJson(AdsStore("l", "\"qnh_std\":false"))), new SpeechCapture());
+        var (def, speech) = (CtpDef(() => SysJson(Ads("l", false, 0), CtpStore("l", QnhFields("InHg", "30.13")))), new SpeechCapture());
+        def.ProcessSystems(Blocks(Ads("l", false, 0), CtpStore("l", QnhFields("InHg", "30.13"))));
         await Task.WhenAll(def.SetStdAsync(true, Cap, speech, speakSuccess: false), def.SetStdAsync(false, Cap, speech, speakSuccess: false));
         Assert.Empty(speech.All);                                 // the second pick landed; the first said nothing
     }
@@ -1002,7 +1076,8 @@ public class SynapticA220DefinitionTests
     [Fact]
     public async Task OverlappingStdWrites_TheLatestStillReportsItsOwnFailure_Once()
     {
-        var (def, speech) = (CtpDef(() => SysJson(AdsStore("l", "\"qnh_std\":false"))), new SpeechCapture());
+        var (def, speech) = (CtpDef(() => SysJson(Ads("l", false, 0))), new SpeechCapture());
+        def.ProcessSystems(Blocks(Ads("l", false, 0)));
         await Task.WhenAll(def.SetStdAsync(true, Cap, speech, speakSuccess: false), def.SetStdAsync(true, Cap, speech, speakSuccess: false));
         Assert.Equal(new[] { "Captain baro did not change — still QNH." }, speech.All);
     }
@@ -1046,7 +1121,8 @@ public class SynapticA220DefinitionTests
     [Fact]
     public async Task WritesToDifferentSides_DoNotSupersedeEachOther()
     {
-        var (def, speech) = (CtpDef(() => SysJson(AdsStore("l", "\"qnh_std\":false"), AdsStore("r", "\"qnh_std\":true"))), new SpeechCapture());
+        var (def, speech) = (CtpDef(() => SysJson(Ads("l", false, 0), Ads("r", true, 0))), new SpeechCapture());
+        def.ProcessSystems(Blocks(Ads("l", false, 0), Ads("r", false, 0)));
         await Task.WhenAll(def.SetStdAsync(true, Cap, speech, speakSuccess: false), def.SetStdAsync(true, Fo, speech, speakSuccess: false));
         Assert.Equal(new[] { "Captain baro did not change — still QNH." }, speech.All);   // only the captain's failed
     }
@@ -1062,10 +1138,11 @@ public class SynapticA220DefinitionTests
         var def = new SynapticA220Definition { PollIntervalMs = 5, PollTimeoutCapMs = 150 };
         def.AgentCallOverride = call =>
         {
-            if (call == "sys()") return Task.FromResult<string?>(SysJson(AdsStore("l", "\"qnh_std\":true"), AdsStore("r", "\"qnh_std\":false")));
+            if (call == "sys()") return Task.FromResult<string?>(SysJson(Ads("l", true, 0), Ads("r", false, 0)));
             sent.Add(call);
             return writes++ == 0 ? gate.Task : Task.FromResult<string?>("SENT");   // the first write is still in flight
         };
+        def.ProcessSystems(Blocks(Ads("l", false, 0), Ads("r", true, 0), CtpStore("r", QnhFields("InHg", "30.13"))));
         var speech = new SpeechCapture();
 
         var both = def.SetStdAsync(true, Both, speech, speakSuccess: false);        // captain write in flight
@@ -1073,7 +1150,7 @@ public class SynapticA220DefinitionTests
         gate.SetResult("SENT");
         await Task.WhenAll(both, fo);
 
-        Assert.Equal(new[] { "ctpSet(1, {\"qnh_std\":true})", "ctpSet(2, {\"qnh_std\":false})" }, sent);
+        Assert.Equal(new[] { CtpQnhCall(1, "InHg", "29.92"), CtpQnhCall(2, "InHg", "30.13") }, sent);
         Assert.Empty(speech.All);                                                    // both landed; no false failure
     }
 
@@ -1084,19 +1161,20 @@ public class SynapticA220DefinitionTests
     {
         var def = new SynapticA220Definition { PollIntervalMs = 5, PollTimeoutCapMs = 150 };
         var speech = new SpeechCapture();
+        def.ProcessSystems(Blocks(Ads("l", false, 0)));             // the side's unit, before the bridge is watched
         var seen = new List<(string Key, double Value)>();
         def.CommBusValueChanged += (k, v) => seen.Add((k, v));
         def.AgentCallOverride = call =>
         {
             // Mid-write the pump delivers the old value: the held key must not reach the combo.
             if (call == "sys()") def.EmitBridgeValue("A22X_L_BARO_STD", 0);
-            return Task.FromResult<string?>(call == "sys()" ? SysJson(AdsStore("l", "\"qnh_std\":true")) : "SENT");
+            return Task.FromResult<string?>(call == "sys()" ? SysJson(Ads("l", true, 0)) : "SENT");
         };
 
         await def.SetStdAsync(true, Cap, speech, speakSuccess: false);
 
         Assert.DoesNotContain(seen, e => e.Key == "A22X_L_BARO_STD");
-        def.ProcessSystems(Blocks(AdsStore("l", "\"qnh_std\":true")));
+        def.ProcessSystems(Blocks(Ads("l", true, 0)));
         Assert.Contains(("A22X_L_BARO_STD", 1.0), seen);              // released and forced: the truth
         Assert.Empty(speech.All);
     }

@@ -576,7 +576,8 @@ public class SynapticA220SystemsTests
         var empty = new SystemsBlocks();
         var noField = new SystemsBlocks
         {
-            lads = new AdsBlock { qnh_unit = 0 }, lctp = new CtpBlock { course = 90 }   // blocks without the verdict's field
+            // blocks without the verdict's field (the ADS unit IS a unit verdict's field, so it is absent)
+            lads = new AdsBlock { qnh_hpa = 1013 }, lctp = new CtpBlock { course = 90 }
         };
         var cap = new[] { 1 };
         var qnh = new Dictionary<int, QnhSetting> { [1] = new("InHg", 30.13) };
@@ -683,7 +684,6 @@ public class SynapticA220SystemsTests
         Assert.True(TryParseQnhInput(1013, out double std));
         Assert.Equal(new QnhSetting("InHg", 29.91), QnhFor(std, false));
         Assert.Equal("{\"qnh\":{\"type\":\"InHg\",\"value\":30.13}}", CtpQnhJson(new QnhSetting("InHg", 30.13)));
-        Assert.Equal("{\"qnh_std\":true}", CtpStdJson(true));
         Assert.Equal("{\"minimums_mode\":1}", CtpMinimumsModeJson(1));
         Assert.Equal("{\"minimums\":1210}", CtpMinimumsJson(1210));
     });
@@ -711,9 +711,58 @@ public class SynapticA220SystemsTests
         Assert.Equal("1020 hectopascals", SideAltimeter(new AdsBlock { qnh_std = false, qnh_unit = 1, qnh_hpa = 1020.3 }, ctp));
         Assert.Equal("29.92 inches", SideAltimeter(new AdsBlock { qnh_std = false, qnh_unit = 0, qnh_inhg = 29.92 }, null));
         Assert.Null(SideAltimeter(null, null));
-        Assert.True(IsStd(null, new CtpBlock { qnh_std = true }));
-        Assert.False(IsStd(new AdsBlock { qnh_std = false }, new CtpBlock { qnh_std = true }));   // the PFD's truth wins
-        Assert.Null(IsStd(null, ctp));                                                             // fixture: absent
+        // STD is the ADS flag alone: CTP Data has no STD field (live 2026-10-15).
+        Assert.True(IsStd(new AdsBlock { qnh_std = true }));
+        Assert.False(IsStd(new AdsBlock { qnh_std = false }));
+        Assert.Null(IsStd(null));
+    });
+
+    [Fact]
+    public void Unit_IsTheOneThePfdDraws_AdsFirst()
+    {
+        // In STD a unit change moves the ADS unit and leaves CTP Data.qnh as it was (live 2026-10-15).
+        var inchesCtp = new CtpBlock { qnh = new QnhValue { type = "InHg", value = 29.92 } };
+        Assert.True(UnitHpaOrNull(inchesCtp, new AdsBlock { qnh_unit = 1 }));
+        Assert.False(UnitHpaOrNull(new CtpBlock { qnh = new QnhValue { type = "Hpa", value = 1013 } }, new AdsBlock { qnh_unit = 0 }));
+        Assert.False(UnitHpaOrNull(inchesCtp, null));      // no ADS block: the CTP's type
+        Assert.Null(UnitHpaOrNull(null, null));
+    }
+
+    [Fact]
+    public void StandardQnh_IsExactly2992Or1013_AndEveryOtherQnhAvoidsIt()
+    {
+        // Live 2026-10-15: the CTP takes a SetConfig of EXACTLY these as STD, on that side only;
+        // 29.921253 inches and 1013.25 hPa are QNHs the PFD shows as 29.92 and 1013.
+        Assert.Equal(new QnhSetting("InHg", 29.92), StandardQnh(false));
+        Assert.Equal(new QnhSetting("Hpa", 1013), StandardQnh(true));
+        Assert.True(IsStandardQnh(new QnhSetting("InHg", 29.92)));
+        Assert.True(IsStandardQnh(new QnhSetting("Hpa", 1013)));
+        Assert.False(IsStandardQnh(new QnhSetting("InHg", 29.921253)));
+        Assert.False(IsStandardQnh(new QnhSetting("Hpa", 1014)));
+
+        Assert.Equal(new QnhSetting("InHg", 29.921253), AvoidStandard(new QnhSetting("InHg", 29.92)));
+        Assert.Equal(new QnhSetting("Hpa", 1013.25), AvoidStandard(new QnhSetting("Hpa", 1013)));
+        Assert.Equal(new QnhSetting("InHg", 30.13), AvoidStandard(new QnhSetting("InHg", 30.13)));
+        Assert.Equal(new QnhSetting("Hpa", 1014), AvoidStandard(new QnhSetting("Hpa", 1014)));
+    }
+
+    [Fact]
+    public void StdWrite_IsTheStandardValueInThePfdsUnit_OrTheSidesOwnQnh_NeverAGuess() => UnderCulture("de-DE", () =>
+    {
+        var inches = new CtpBlock { qnh = new QnhValue { type = "InHg", value = 30.13 } };
+        // ON: the exact standard value, in the unit the PFD shows (ADS first).
+        Assert.Equal(new QnhSetting("InHg", 29.92), StdWrite(true, inches, new AdsBlock { qnh_unit = 0 }));
+        Assert.Equal(new QnhSetting("Hpa", 1013), StdWrite(true, inches, new AdsBlock { qnh_unit = 1 }));
+        // OFF: the QNH the CTP kept through STD, in the PFD's unit; a kept standard value avoids STD.
+        Assert.Equal(new QnhSetting("InHg", 30.13), StdWrite(false, inches, new AdsBlock { qnh_std = true, qnh_unit = 0 }));
+        Assert.Equal(new QnhSetting("Hpa", 1020), StdWrite(false, inches, new AdsBlock { qnh_std = true, qnh_unit = 1 }));
+        Assert.Equal(new QnhSetting("Hpa", 1013.25),
+            StdWrite(false, new CtpBlock { qnh = new QnhValue { type = "Hpa", value = 1013 } }, new AdsBlock { qnh_std = true, qnh_unit = 1 }));
+        Assert.Equal(new QnhSetting("InHg", 29.921253),
+            StdWrite(false, new CtpBlock { qnh = new QnhValue { type = "InHg", value = 29.921253 } }, new AdsBlock { qnh_std = true, qnh_unit = 0 }));
+        // Nothing reported: no write.
+        Assert.Null(StdWrite(true, null, null));
+        Assert.Null(StdWrite(false, null, new AdsBlock { qnh_std = true, qnh_unit = 0 }));
     });
 
     [Fact]
@@ -764,7 +813,22 @@ public class SynapticA220SystemsTests
         };
         Assert.Equal("Captain altimeter 30.13 inches", StdResult(new[] { 1 }, false, qnh));
         Assert.Equal("Captain baro did not change — still QNH.", StdResult(new[] { 1 }, true, qnh));
+        Assert.Equal("Captain baro not confirmed: the A220 display link did not report it.",
+            StdResult(new[] { 1 }, false, new SystemsBlocks()));
     }
+
+    [Fact]
+    public void UnitResult_InStd_ReadsTheAdsUnit_NotTheCtpQnh() => UnderCulture("de-DE", () =>
+    {
+        // Live 2026-10-15: in STD the unit change switched the ADS unit; CTP Data.qnh stayed in inches.
+        var inStd = new SystemsBlocks
+        {
+            lads = new AdsBlock { qnh_std = true, qnh_unit = 1 },
+            lctp = new CtpBlock { qnh = new QnhValue { type = "InHg", value = 29.92 } }
+        };
+        Assert.Equal("Captain altimeter standard, unit hectopascals", UnitResult(new[] { 1 }, wantHpa: true, inStd));
+        Assert.Equal("The A220 did not change the altimeter unit — still hectopascals.", UnitResult(new[] { 1 }, false, inStd));
+    });
 
     // Both sides are only "both sides" when they read alike: Ctrl+B Standard and the unit
     // switch work from each side's OWN value, so the two sides can differ afterwards.
