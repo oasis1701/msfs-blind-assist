@@ -65,7 +65,7 @@ public class FBWA320HeadingWindow : FBWA320FCUWindowBase
     private void HandleSet()
     {
         string input = headingTextBox.Text.Trim();
-        if (!double.TryParse(input, System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out double v)) { announcer.AnnounceImmediate("Invalid number format"); headingTextBox.SelectAll(); return; }
+        if (!Utils.NumberParsing.TryParseTyped(input, out double v)) { announcer.AnnounceImmediate("Invalid number format"); headingTextBox.SelectAll(); return; }
         if (!FcuValueEntry.TryHeading(v, out int heading, out string? error)) { announcer.AnnounceImmediate(error!); headingTextBox.SelectAll(); return; }
         aircraft.SetFCUHeadingValue(heading, simConnect, announcer);
         headingTextBox.SelectAll();
