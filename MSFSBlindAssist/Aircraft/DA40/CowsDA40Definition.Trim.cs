@@ -64,7 +64,22 @@ public partial class CowsDA40Definition
     /// about a tenth of full travel — small enough to place accurately, long enough to
     /// hear as one action rather than a stutter.
     /// </summary>
-    private const int TrimNudgeHoldMs = 1000;
+    internal const int TrimNudgeHoldMs = 1000;
+
+    /// <summary>
+    /// How long after MSFSBA moves the trim (a nudge, the centre button, a typed setting) the
+    /// shared trim announcer stays silent: the control confirms where the trim arrived itself,
+    /// and the shared one said the same movement again in other words ("Trim up 0.7" AND "Trim
+    /// 9 percent nose up, 0.7 degrees", XLS at VCBI, 2026-10-15). Outlasts the held nudge and
+    /// its read-back at the end of the hold.
+    /// </summary>
+    internal const int TrimOwnWriteGraceMs = 3000;
+    private DateTime _trimOwnWriteUntil = DateTime.MinValue;
+
+    /// <summary>Whether a trim movement is MSFSBA's or the autopilot's, so the shared trim
+    /// announcer only re-bases. Pure for the suite.</summary>
+    internal static bool TrimMoveIsOurs(bool apEngaged, DateTime now, DateTime ownTrimUntil)
+        => apEngaged || now < ownTrimUntil;
 
     /// <summary>The stick trim switch's input since COWS 1.2.0: +1 nose up, -1 nose down, 0
     /// released — and it is NOT reset by the model, so the release must write the 0.</summary>
@@ -254,6 +269,10 @@ public partial class CowsDA40Definition
     private bool HandleTrimSet(string varKey, double value, SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)
     {
+        if (varKey is "DA40_TRIM_SET" or "DA40_TRIM_NOSE_UP" or "DA40_TRIM_NOSE_DOWN" or "DA40_TRIM_CENTRE")
+            _trimOwnWriteUntil = DateTime.UtcNow.AddMilliseconds(
+                TrimOwnWriteGraceMs + (varKey is "DA40_TRIM_NOSE_UP" or "DA40_TRIM_NOSE_DOWN" ? TrimNudgeHoldMs : 0));
+
         switch (varKey)
         {
             case "DA40_TRIM_SET":

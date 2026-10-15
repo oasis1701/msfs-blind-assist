@@ -392,7 +392,7 @@ public partial class CowsDA40Definition
 
         // The AFCS's own health, which a power dip makes churn: settled, then said once.
         if (NoteAfcsStatus(varName, value, announcer)) return true;
-        if (varName == "MON_ElevatorTrim" && _apEngaged)
+        if (varName == "MON_ElevatorTrim" && TrimMoveIsOurs(_apEngaged, DateTime.UtcNow, _trimOwnWriteUntil))
         {
             RebaseTrimAnnouncement(value);
             return true;

@@ -82,8 +82,30 @@ public static class DA40Priming
         return total >= RequiredTotal(atomisation[0], evaporation) ? PrimeState.Primed : PrimeState.NotPrimed;
     }
 
+    /// <summary>The cylinders (1-based) over their flooded line, in order.</summary>
+    public static int[] FloodedCylinders(double[] cylinderGrams, double[] atomisation, double evaporation)
+    {
+        var over = new List<int>();
+        for (int i = 0; i < cylinderGrams.Length; i++)
+        {
+            double atom = i < atomisation.Length ? atomisation[i] : atomisation[0];
+            if (cylinderGrams[i] >= FloodedPerCylinder(atom, evaporation)) over.Add(i + 1);
+        }
+        return over.ToArray();
+    }
+
     /// <summary>Both numbers, always; the state first because it is the answer.</summary>
     public static string Describe(PrimeState state, double cylinderGrams, double requiredTotal)
+        => Describe(state, cylinderGrams, requiredTotal, Array.Empty<int>());
+
+    /// <summary>
+    /// As <see cref="Describe(PrimeState, double, double)"/>, and a flooded engine names the
+    /// cylinders over their line when not all four are: one over-full cylinder floods the engine
+    /// with less than the whole charge in it ("Flooded, 2.5 grams ..., 3.2 needed", VCBI
+    /// 2026-10-15), which read as a contradiction until it said which cylinder.
+    /// </summary>
+    public static string Describe(PrimeState state, double cylinderGrams, double requiredTotal,
+        IReadOnlyList<int> floodedCylinders)
     {
         string label = state switch
         {
@@ -91,6 +113,14 @@ public static class DA40Priming
             PrimeState.Primed => "Primed",
             _ => "Not primed"
         };
-        return $"{label}, {cylinderGrams:0.0} grams in the cylinders, {requiredTotal:0.0} needed";
+        string which = "";
+        if (state == PrimeState.Flooded && floodedCylinders.Count > 0 && floodedCylinders.Count < Cylinders)
+        {
+            which = floodedCylinders.Count == 1
+                ? $", cylinder {floodedCylinders[0]} over its line"
+                : $", cylinders {string.Join(", ", floodedCylinders.Take(floodedCylinders.Count - 1))} and {floodedCylinders[^1]} over their line";
+        }
+        return string.Create(System.Globalization.CultureInfo.InvariantCulture,
+            $"{label}{which}, {cylinderGrams:0.0} grams in the cylinders, {requiredTotal:0.0} needed");
     }
 }

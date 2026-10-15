@@ -70,4 +70,41 @@ public class DA40PrimingTests
     [InlineData(PrimeState.NotPrimed, 0.0, 1.543, "Not primed, 0.0 grams in the cylinders, 1.5 needed")]
     public void BothNumbersAreAlwaysSaid(PrimeState state, double cyl, double req, string expected)
         => Assert.Equal(expected, DA40Priming.Describe(state, cyl, req));
+
+    [Fact]
+    public void FloodedNamesTheCylindersOverTheirLine()
+    {
+        // VCBI, 2026-10-15, the AFM's cold-start priming: "Flooded, 2.5 grams in the cylinders,
+        // 3.2 needed" - flooded with LESS than the charge, because one cylinder was over its
+        // line (the model's OR). Saying which cylinder makes the sentence add up.
+        var cyl = new[] { 0.1, 0.1, 0.1, 0.5 };
+        Assert.Equal(new[] { 4 }, DA40Priming.FloodedCylinders(cyl, Atom, Evap));
+        Assert.Equal("Flooded, cylinder 4 over its line, 0.8 grams in the cylinders, 1.5 needed",
+            DA40Priming.Describe(PrimeState.Flooded, cyl.Sum(), 1.5426, DA40Priming.FloodedCylinders(cyl, Atom, Evap)));
+    }
+
+    [Fact]
+    public void SeveralOrAllFloodedCylindersAreSaidOnce()
+    {
+        Assert.Equal("Flooded, cylinders 2 and 3 over their line, 1.0 grams in the cylinders, 1.5 needed",
+            DA40Priming.Describe(PrimeState.Flooded, 1.0, 1.5426, new[] { 2, 3 }));
+        Assert.Equal("Flooded, cylinders 1, 2 and 4 over their line, 1.5 grams in the cylinders, 1.5 needed",
+            DA40Priming.Describe(PrimeState.Flooded, 1.5, 1.5426, new[] { 1, 2, 4 }));
+        // Every cylinder over is the ordinary flooded engine: no list to add.
+        Assert.Equal("Flooded, 4.8 grams in the cylinders, 1.5 needed",
+            DA40Priming.Describe(PrimeState.Flooded, 4.756, 1.507, new[] { 1, 2, 3, 4 }));
+    }
+
+    [Fact]
+    public void ACommaDecimalCultureStillSaysAPoint()
+    {
+        var was = System.Threading.Thread.CurrentThread.CurrentCulture;
+        System.Threading.Thread.CurrentThread.CurrentCulture = new System.Globalization.CultureInfo("de-DE");
+        try
+        {
+            Assert.Equal("Primed, 1.6 grams in the cylinders, 1.5 needed",
+                DA40Priming.Describe(PrimeState.Primed, 1.56, 1.543));
+        }
+        finally { System.Threading.Thread.CurrentThread.CurrentCulture = was; }
+    }
 }
