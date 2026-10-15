@@ -868,11 +868,14 @@ public partial class MainForm : Form
         // Landing exit planner — watches for touchdown and auto-activates taxi guidance
         // to the pre-selected exit taxiway. Opens via MainForm menu / hotkey.
         landingExitPlanner = new LandingExitPlanner(announcer, taxiGuidanceManager);
+        // A landing exit plan arms the landing assist's rollout centerline cue on its runway.
+        landingExitPlanner.PlanChanged += OnLandingExitPlanChanged;
 
         // Manual-landing flare + rollout assist. Armed from the destination-runway
-        // dialog's checkbox; sleeps until on approach (see ProcessSlowSample gate).
-        // Delegates read live state so aircraft swaps and guidance-mode changes after
-        // arming are always honored.
+        // dialog's checkbox, and for the rollout centerline cue alone from a destination
+        // or landing exit plan (RefreshRolloutCueArming); sleeps until on approach (see
+        // ProcessSlowSample gate). Delegates read live state so aircraft swaps and
+        // guidance-mode changes after arming are always honored.
         flareAssistManager = new LandingFlareAssistManager(announcer,
             () => currentAircraft?.GetVisualGuidanceProfile()?.FlareAltitudeBiasFt ?? 12.0,
             () => visualGuidanceManager.IsActive,
@@ -1177,6 +1180,55 @@ public partial class MainForm : Form
     // consumed-once (+ the generic one value-matched), so a wider window does not eat
     // genuine later changes.
     private const int UiSetEchoSuppressMs = 3000;
+    // The landing assist's arming comes from two pilot choices (Navigation.RolloutCueArming): the destination
+    // runway dialog, whose manual-landing checkbox adds the flare tones, and the landing exit plan; with
+    // RolloutCenterlineToneEnabled either one arms the rollout centerline cue. _rolloutCueLatest is the choice
+    // made last, which wins when the two name different airports. _rolloutCueApplied is the arming in force.
+    private MSFSBlindAssist.Navigation.RolloutCueDestination? _rolloutCueDestination;
+    private Airport? _rolloutCueDestinationAirport;   // the dialog's own Airport for that destination
+    private MSFSBlindAssist.Navigation.RolloutCueSource _rolloutCueLatest = MSFSBlindAssist.Navigation.RolloutCueSource.Destination;
+    private MSFSBlindAssist.Navigation.RolloutCueArmingDecision? _rolloutCueApplied;
+
+    private void OnLandingExitPlanChanged(object? sender, EventArgs e)
+    {
+        if (landingExitPlanner.HasPendingExit)
+            _rolloutCueLatest = MSFSBlindAssist.Navigation.RolloutCueSource.ExitPlan;
+        RefreshRolloutCueArming();
+    }
+
+    /// <summary>
+    /// Re-decides the landing assist's arming from the destination choice, the exit plan and the setting
+    /// (RolloutCueArming.Decide) and applies it only when it changed, because arming stops a cue in progress;
+    /// <paramref name="force"/> re-applies a destination the pilot just chose even when unchanged, as the
+    /// destination dialog always did.
+    /// </summary>
+    private void RefreshRolloutCueArming(bool force = false)
+    {
+        var plan = landingExitPlanner.HasPendingExit
+            ? new MSFSBlindAssist.Navigation.RolloutCueExitPlan(landingExitPlanner.PendingRunway!,
+                landingExitPlanner.PendingIcao!, landingExitPlanner.PendingAirportRunways)
+            : null;
+        var decision = MSFSBlindAssist.Navigation.RolloutCueArming.Decide(
+            SettingsManager.Current.RolloutCenterlineToneEnabled, _rolloutCueDestination, plan, _rolloutCueLatest);
+        if (!force && MSFSBlindAssist.Navigation.RolloutCueArming.SameArming(decision, _rolloutCueApplied)) return;
+
+        var airport = decision == null ? null
+            : decision.Source == MSFSBlindAssist.Navigation.RolloutCueSource.Destination && _rolloutCueDestinationAirport != null
+                ? _rolloutCueDestinationAirport
+                : airportDataProvider?.GetAirport(decision.Icao);
+        if (decision == null || airport == null)
+        {
+            if (decision != null)
+                Log.Warn("LandingFlareAssist", $"Rollout cue not armed: airport {decision.Icao} not found in the database");
+            _rolloutCueApplied = null;
+            flareAssistManager.Disarm();
+            return;
+        }
+
+        _rolloutCueApplied = decision;
+        flareAssistManager.Arm(decision.Runway, airport, decision.Runways, decision.IncludeFlare);
+    }
+
     // The flare assist only wants its SIM_FRAME feed while it is armed and on approach —
     // see LandingFlareAssistManager.ProcessSlowSample, which raises this at 1 Hz off
     // INDICATED_ALTITUDE. Running it for a whole flight would be pure waste.

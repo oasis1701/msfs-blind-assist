@@ -1428,9 +1428,17 @@ public partial class MainForm
         // landing at all, or names a runway this database no longer has.
         //
         // Both tell the pilot, because both are things they deliberately set up and would
-        // otherwise expect to still be armed on the approach.
-        landingExitPlanner?.Clear();
+        // otherwise expect to still be armed on the approach (the assist says so only when its
+        // manual-landing checkbox armed it; the rollout-only cue is the app's own arming).
+        //
+        // Order matters: the destination's arming record is forgotten and the assist disarmed BEFORE
+        // the plan is cleared, because clearing raises PlanChanged, whose re-arm would otherwise find
+        // the old database's destination runway for an instant (RefreshRolloutCueArming).
+        _rolloutCueDestination = null;
+        _rolloutCueDestinationAirport = null;
+        _rolloutCueApplied = null;
         flareAssistManager?.Disarm(announce: true);
+        landingExitPlanner?.Clear();
 
         // The ground-traffic runway watch caches an airport's runways too (the line-up wait needs them
         // after taxi guidance has stopped). Silent: the next route or takeoff-assist runway reloads them.

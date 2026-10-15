@@ -277,6 +277,10 @@ public partial class MainForm
         if (vatsimInstall != null)
             AnnounceVatsimInstallOutcome(vatsimInstall, atStartup: false);
 
+        // The rollout centerline cue setting arms or disarms the landing assist's rollout-only cue for the
+        // destination or exit plan already set; unchanged armings are left alone (RefreshRolloutCueArming).
+        RefreshRolloutCueArming();
+
         // Guidance tone output device, LAST: the takeoff-assist recreate above disposes and
         // replaces its centerline tone, so requesting the sweep before that block paid a full
         // WASAPI teardown and reopen for a generator that was destroyed moments later. The

@@ -82,6 +82,16 @@ public class LandingExitPlanner
     public Runway? PendingRunway => _runway;
     public LandingExit? PendingExit => _exit;
 
+    /// <summary>Every runway end at the planned airport, captured with the plan (empty with none).</summary>
+    public IReadOnlyList<Runway> PendingAirportRunways => _airportRunways;
+
+    /// <summary>
+    /// Raised after <see cref="SetExit"/> and <see cref="Clear"/> change the plan, never by
+    /// <see cref="RearmAfterGoAround"/>, which keeps it. MainForm re-decides the landing assist's rollout
+    /// centerline cue from it (Navigation.RolloutCueArming): a plan arms the cue on its runway.
+    /// </summary>
+    public event EventHandler? PlanChanged;
+
     /// <summary>
     /// Captures a landing-exit selection. Call when the pilot picks an exit in the form.
     /// Keeps a reference to the pre-built graph so activation doesn't have to rebuild it,
@@ -132,6 +142,7 @@ public class LandingExitPlanner
         _announcer.Announce(
             $"Landing exit planned: {name} at {icao} runway {runway.RunwayID}, " +
             $"{dist} from threshold. Guidance will auto-start on touchdown.");
+        PlanChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Clears any pending selection without activating.</summary>
@@ -151,6 +162,7 @@ public class LandingExitPlanner
         // the clear can't trick the next plan into firing on a stale ground bit.
         _wasAirborne = false;
         if (had) _announcer.Announce("Landing exit plan cleared.");
+        PlanChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>
