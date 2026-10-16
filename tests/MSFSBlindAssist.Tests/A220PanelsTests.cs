@@ -325,8 +325,14 @@ public class A220PanelsTests
         static A220Afdx.KnobWalkResult R(A220Afdx.KnobWalkEnd end, double v) => new(end, v, 0.34, 3);
         Assert.Equal("Standby altimeter 1020 hectopascals",
             A220Panels.IsiWalkResultText(R(A220Afdx.KnobWalkEnd.OnTarget, 1019.9375), 1020, inHg: false));
-        Assert.Equal("Standby altimeter 29.92 inches — nearest selectable",
-            A220Panels.IsiWalkResultText(R(A220Afdx.KnobWalkEnd.NearestSelectable, 1013.25), 1013.21, inHg: true));
+        Assert.Equal("Standby altimeter 29.93 inches — nearest selectable",
+            A220Panels.IsiWalkResultText(R(A220Afdx.KnobWalkEnd.NearestSelectable, 1013.5625), 1013.21, inHg: true));
+        // The nearest reading prints as what was typed, in the pilot's unit: said plainly (1010 lies
+        // 3/16 hPa from 1009.8125 and from 1010.1875, both beyond the 5/32 tolerance).
+        Assert.Equal("Standby altimeter 1010 hectopascals",
+            A220Panels.IsiWalkResultText(R(A220Afdx.KnobWalkEnd.NearestSelectable, 1010.1875), 1010, inHg: false));
+        Assert.Equal("Standby altimeter 29.92 inches",
+            A220Panels.IsiWalkResultText(R(A220Afdx.KnobWalkEnd.NearestSelectable, 1013.3125), 1013.21, inHg: true));
         Assert.Equal("Standby altimeter could not reach 1020 hectopascals, now 1009 hectopascals.",
             A220Panels.IsiWalkResultText(R(A220Afdx.KnobWalkEnd.RoundLimit, 1009.0), 1020, inHg: false));
         Assert.Equal("Standby altimeter 1013 hectopascals — the standby altimeter knob is not responding.",
@@ -504,6 +510,7 @@ public class A220PanelsTests
     [InlineData(0, 1020.0, "Standby altimeter 1020 hectopascals")]
     [InlineData(0, 1016.0, "Standby altimeter 1016 hectopascals")]
     [InlineData(0, 1013.0, "Standby altimeter 1013 hectopascals")]
+    [InlineData(0, 1010.0, "Standby altimeter 1010 hectopascals")]     // the nearest is 3/16 off: still prints 1010
     [InlineData(0, 1090.0, "Standby altimeter 1090 hectopascals")]
     [InlineData(0, 950.0, "Standby altimeter 950 hectopascals")]
     [InlineData(1, 1005.0, "Standby altimeter 1005 hectopascals")]

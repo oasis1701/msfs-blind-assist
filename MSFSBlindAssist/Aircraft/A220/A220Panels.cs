@@ -331,11 +331,15 @@ public static class A220Panels
 
     /// <summary>The standby baro walk's one spoken line for each way it ends, in the unit the pilot
     /// typed: the setting, "— nearest selectable", "could not reach", "not responding", or "reading
-    /// lost" (never a guessed setting).</summary>
+    /// lost" (never a guessed setting). The nearest reading is said plainly when it prints as what
+    /// was typed in that unit (1010 typed, 1010.1875 read: the ISI shows 1010), since there is then
+    /// nothing to explain (11 of the 151 whole-hPa entries on the model of altimeter 3).</summary>
     internal static string IsiWalkResultText(A220Afdx.KnobWalkResult r, double targetHpa, bool inHg) => r.End switch
     {
         A220Afdx.KnobWalkEnd.OnTarget => FormatIsiBaro(r.Value, inHg),
-        A220Afdx.KnobWalkEnd.NearestSelectable => IsiNearestText(r.Value, inHg),
+        A220Afdx.KnobWalkEnd.NearestSelectable => IsiBaroValue(r.Value, inHg) == IsiBaroValue(targetHpa, inHg)
+            ? FormatIsiBaro(r.Value, inHg)
+            : IsiNearestText(r.Value, inHg),
         A220Afdx.KnobWalkEnd.RoundLimit => IsiRoundLimitText(targetHpa, r.Value, inHg),
         A220Afdx.KnobWalkEnd.NotResponding => FormatIsiBaro(r.Value, inHg) + " — the standby altimeter knob is not responding.",
         _ => IsiReadLostText(IsiReadStatus.NoReading)
