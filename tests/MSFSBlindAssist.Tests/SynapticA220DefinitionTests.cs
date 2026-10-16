@@ -350,7 +350,7 @@ public class SynapticA220DefinitionTests
         var entry = Vars["A22X_XPDR_CODE_SET"];
         Assert.Equal("A22X_XPDR_CODE_BUS", entry.CurrentValueSourceKey);
         Assert.True(entry.UnparseableTextAsNaN);
-        Assert.Equal(new[] { "A22X_XPDR_MODE", "A22X_TCAS_ALT_LIMIT", "A22X_XPDR_CODE_SET", "A22X_XPDR_IDENT", "A22X_XPDR_FLIGHT_ID" },
+        Assert.Equal(new[] { "A22X_XPDR_CODE_SET", "A22X_XPDR_MODE", "A22X_XPDR_IDENT", "A22X_TCAS_ALT_LIMIT", "A22X_XPDR_FLIGHT_ID" },
             Def.GetPanelControls()["Transponder and TCAS"]);
         Assert.True(Vars["A22X_XPDR_FLIGHT_ID"].RenderAsButton);
         Assert.True(Vars.ContainsKey("A22X_XPDR_CODE_BUS"));      // the entry's prefill source must exist
@@ -600,7 +600,7 @@ public class SynapticA220DefinitionTests
     public void CtpPanels_CarryTheAltimeterAndMinimumsControls()
     {
         // Membership only: the panels' order (and the radios the captain's panel also carries) is
-        // pinned by A220PanelStructureTests.PanelControls_ReadInCockpitOrder.
+        // pinned by A220PanelStructureTests.PanelControls_ReadEverydayFirst.
         var captain = Def.GetPanelControls()["CTP Captain"];
         foreach (string k in new[]
         {
