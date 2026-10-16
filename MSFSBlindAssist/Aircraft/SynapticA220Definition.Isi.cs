@@ -154,20 +154,4 @@ public partial class SynapticA220Definition
             }
         });
     }
-
-    /// <summary>CORE-7: the STD push reads the ISI back once (the screen reader cannot see the
-    /// ISI), after the pulse and a WASM tick.</summary>
-    private void AnnounceIsiAfterPress(ScreenReaderAnnouncer announcer)
-    {
-        _ = System.Threading.Tasks.Task.Run(async () =>
-        {
-            try
-            {
-                await System.Threading.Tasks.Task.Delay(800);
-                var read = await ReadIsiAsync(System.Threading.CancellationToken.None);
-                announcer.Announce(A220.A220Panels.IsiReadbackText(read.QnhHpa));
-            }
-            catch { /* read-back only */ }
-        });
-    }
 }

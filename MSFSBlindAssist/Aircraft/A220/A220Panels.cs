@@ -59,10 +59,14 @@ public static class A220Panels
     /// Panel presses with no readable state and no lamp the batch monitor would speak: they
     /// confirm "&lt;name&gt; pressed" once. Never when the ECL actuates them (the checklist
     /// window says what it is doing). Probe heat is absent on purpose — its lamp speaks.
+    /// The standby STD push is here too (live 2026-10-16): it is a one-shot set to 29.92 inches,
+    /// not a mode, and the ISI store has no STD flag — its qnh_hpa then reads 1013, exactly as a
+    /// dialled 1013 does, so reading it back would sound like a plain QNH (CORE-7).
     /// </summary>
     public static readonly IReadOnlySet<string> PressConfirmKeys = new HashSet<string>(StringComparer.Ordinal)
     {
         "A22X_L_ENG_FIRE", "A22X_R_ENG_FIRE", "A22X_CVR_TEST", "A22X_CVR_ERASE", "A22X_MECH_CALL",
+        "A22X_ISI_BARO_STD",
     };
 
     /// <summary>"Left Engine Fire (guarded)" → "Left Engine Fire pressed".</summary>
@@ -244,10 +248,6 @@ public static class A220Panels
             ? IsiNearestText(currentHpa, inHg)
             : "Standby altimeter could not reach " + IsiBaroValue(targetHpa, inHg)
                 + ", now " + IsiBaroValue(currentHpa, inHg) + ".";
-
-    /// <summary>The read-back spoken after a standby STD press.</summary>
-    public static string IsiReadbackText(double? hpa)
-        => hpa is { } q ? FormatIsiBaro(q, inHg: false) : "Standby altimeter reading not available";
 
     // ---- Standby baro walk: the per-round decision ([A220-43]) ----------------------------
 

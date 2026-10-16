@@ -65,6 +65,7 @@ public class A220PanelsTests
     [InlineData("Left Engine Fire (guarded)", "Left Engine Fire pressed")]
     [InlineData("CVR Test", "CVR Test pressed")]
     [InlineData("Mechanic Call", "Mechanic Call pressed")]
+    [InlineData("Standby Baro STD", "Standby Baro STD pressed")]
     public void PressedText_DropsTheGuardNote(string displayName, string expected)
         => Assert.Equal(expected, A220Panels.PressedText(displayName));
 
@@ -81,8 +82,21 @@ public class A220PanelsTests
     [Fact]
     public void PressConfirmKeys_AreTheStatelessPresses()
         => Assert.Equal(
-            new[] { "A22X_CVR_ERASE", "A22X_CVR_TEST", "A22X_L_ENG_FIRE", "A22X_MECH_CALL", "A22X_R_ENG_FIRE" },
+            new[] { "A22X_CVR_ERASE", "A22X_CVR_TEST", "A22X_ISI_BARO_STD", "A22X_L_ENG_FIRE", "A22X_MECH_CALL", "A22X_R_ENG_FIRE" },
             A220Panels.PressConfirmKeys.OrderBy(k => k, StringComparer.Ordinal));
+
+    /// <summary>
+    /// Live 2026-10-16: the ISI's STD push is a one-shot set to 29.92 inches (a second press
+    /// stays there, the next knob click leaves it), and the "A22X.ISI Data" store has no STD
+    /// field — on STD its qnh_hpa reads 1013, the same as a dialled 1013. A QNH read-back would
+    /// sound like a plain setting (CORE-7), so the press confirms itself without claiming a state.
+    /// </summary>
+    [Fact]
+    public void StandbyStdPress_ConfirmsWithoutClaimingAQnh()
+    {
+        Assert.Contains("A22X_ISI_BARO_STD", A220Panels.PressConfirmKeys);
+        Assert.Equal("Standby Baro STD pressed", A220Panels.PressedText("Standby Baro STD"));
+    }
 
     // ---- Audio control panel: VHF receive and volume ([A220-44]) ------------------------
 
@@ -291,13 +305,6 @@ public class A220PanelsTests
             Assert.Equal("Standby altimeter 1019 hectopascals", A220Panels.FormatIsiBaro(1018.6, inHg: false));
         }
         finally { CultureInfo.CurrentCulture = previous; }
-    }
-
-    [Fact]
-    public void IsiReadbackText_SaysWhenThereIsNoReading()
-    {
-        Assert.Equal("Standby altimeter 1013 hectopascals", A220Panels.IsiReadbackText(1013.25));
-        Assert.Equal("Standby altimeter reading not available", A220Panels.IsiReadbackText(null));
     }
 
     // ---- Standby baro walk: the per-round decision ([A220-43]) ---------------------------
