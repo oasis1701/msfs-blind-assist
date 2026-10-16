@@ -10,14 +10,19 @@ namespace MSFSBlindAssist.Aircraft.A220;
 /// (`"sensed"` is the variable NAME string, e.g. "PARK_BRAKE_ON" — verified against
 /// the shipped pack 2026-07-29).
 ///
+/// The aircraft ships under TWO package names: `inibuilds-aircraft-a220` (Marketplace,
+/// Official\OneStore) and `synaptic-aircraft-a220` (direct sale, installed in Community with
+/// its stock pack in `Config\Default`). Both are searched, the Marketplace name first.
+///
 /// Search order (manual p.31): custom packs in
-/// `Community\inibuilds-aircraft-a220\Config\Synaptic\*.json` first, then the stock
-/// `Official\OneStore\inibuilds-aircraft-a220\Config\Default\checklists.json`,
-/// across every FS2020/FS2024 package root this PC has — the library path the sim's own
-/// UserCfg.opt names FIRST, then the four well-known default locations, so a package
-/// folder moved to another drive is found rather than silently missed. When the scrape
-/// shows the active pack's part number (window footer, e.g. ECL_BCS3_SYN_072826_KG), the matching
-/// pack wins.
+/// `Community\&lt;package&gt;\Config\Synaptic\*.json` first, then the stock
+/// `Config\Default\checklists.json` (`Official\OneStore\inibuilds-aircraft-a220`, then
+/// `Community\synaptic-aircraft-a220`, then `Official\OneStore\synaptic-aircraft-a220`; the exact
+/// list is <see cref="CandidatePaths"/>), across every FS2020/FS2024 package root this PC
+/// has — the library path the sim's own UserCfg.opt names FIRST, then the four well-known
+/// default locations, so a package folder moved to another drive is found rather than silently
+/// missed. When the scrape shows the active pack's part number (window footer, e.g.
+/// ECL_BCS3_SYN_072826_KG), the matching pack wins.
 /// </summary>
 public sealed class A220ChecklistPack
 {
@@ -165,23 +170,66 @@ public sealed class A220ChecklistPack
         return first;
     }
 
-    private static IEnumerable<string> CandidateFiles()
+    /// <summary>One place a pack can live: a folder of custom packs (every <c>*.json</c> in it)
+    /// or the stock <c>checklists.json</c> itself.</summary>
+    internal readonly record struct PackLocation(string Path, bool IsDirectory);
+
+    /// <summary>The Marketplace package name (Official\OneStore), looked for first so a Marketplace
+    /// install is found exactly as before.</summary>
+    private const string MarketplacePackage = "inibuilds-aircraft-a220";
+
+    /// <summary>The direct-sale package name: the stock pack sits in
+    /// Community\synaptic-aircraft-a220\Config\Default (verified on a direct-sale install, 2026-10-15).</summary>
+    private const string DirectSalePackage = "synaptic-aircraft-a220";
+
+    /// <summary>
+    /// Every place to look for packs under one package root, in priority order: custom packs
+    /// (<c>Community\&lt;package&gt;\Config\Synaptic\*.json</c>, manual p.31) under both package
+    /// names, then the stock <c>Config\Default\checklists.json</c> — the Marketplace copy first, then
+    /// the direct-sale one in Community (a Community package overrides an Official one in the sim)
+    /// and in Official\OneStore.
+    /// </summary>
+    internal static IReadOnlyList<PackLocation> CandidatePaths(string root)
     {
-        foreach (string root in PackageRoots())
+        static string Custom(string root, string package)
+            => Path.Combine(root, "Community", package, "Config", "Synaptic");
+        static string Stock(string root, string zone, string package)
+            => zone == "Community"
+                ? Path.Combine(root, "Community", package, "Config", "Default", "checklists.json")
+                : Path.Combine(root, "Official", "OneStore", package, "Config", "Default", "checklists.json");
+
+        return new[]
         {
-            // Custom packs first (manual p.31: Community\inibuilds-aircraft-a220\Config\Synaptic).
-            string custom = Path.Combine(root, "Community", "inibuilds-aircraft-a220", "Config", "Synaptic");
-            if (Directory.Exists(custom))
+            new PackLocation(Custom(root, MarketplacePackage), true),
+            new PackLocation(Custom(root, DirectSalePackage), true),
+            new PackLocation(Stock(root, "Official", MarketplacePackage), false),
+            new PackLocation(Stock(root, "Community", DirectSalePackage), false),
+            new PackLocation(Stock(root, "Official", DirectSalePackage), false),
+        };
+    }
+
+    /// <summary>The pack files that exist under one package root, in <see cref="CandidatePaths"/> order.</summary>
+    internal static IEnumerable<string> CandidateFilesIn(string root)
+    {
+        foreach (PackLocation location in CandidatePaths(root))
+        {
+            if (location.IsDirectory)
             {
+                if (!Directory.Exists(location.Path)) continue;
                 IEnumerable<string> files;
-                try { files = Directory.EnumerateFiles(custom, "*.json"); }
+                try { files = Directory.EnumerateFiles(location.Path, "*.json"); }
                 catch { files = Array.Empty<string>(); }
                 foreach (string f in files) yield return f;
             }
-            string stock = Path.Combine(root, "Official", "OneStore", "inibuilds-aircraft-a220",
-                "Config", "Default", "checklists.json");
-            if (File.Exists(stock)) yield return stock;
+            else if (File.Exists(location.Path)) yield return location.Path;
         }
+    }
+
+    private static IEnumerable<string> CandidateFiles()
+    {
+        foreach (string root in PackageRoots())
+            foreach (string file in CandidateFilesIn(root))
+                yield return file;
     }
 
     /// <summary>
