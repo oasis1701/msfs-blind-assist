@@ -26,9 +26,9 @@ namespace MSFSBlindAssist.Aircraft;
 /// that those two are not published — that is what used to strand link-less sessions on
 /// the degraded fallback walk. The stock AIRSPEED HOLD VAR is the exception: it does NOT
 /// follow this FCP (445 kt with 142 in the window, 2026-09-24), so the speed walk refuses
-/// without the block; so do the V/S and FPA walks (the FCP never writes the stock V/S var, and
-/// L:A22X Selected FPA was never shown to track) and the stab trim walk ([A220-13]);
-/// A220Afdx.KnobWalkMayUseStockVar is the one decision.
+/// without the block; so do the V/S and FPA walks, by the owner's R3 decision (neither the stock
+/// V/S var nor L:A22X Selected FPA was ever shown to track the wheel), and the stab trim walk
+/// ([A220-13]); A220Afdx.KnobWalkMayUseStockVar is the one decision.
 ///
 /// Every walk has its OWN cancellation per knob (speed, heading, altitude, the V/S-FPA wheel,
 /// stab trim): a new entry stops only the previous walk of the same knob, which then ends
@@ -1166,8 +1166,8 @@ public partial class SynapticA220Definition
     /// DEAD while neither VS nor FPA mode is engaged (proven live 2026-08-10: with no
     /// vertical mode, AP_VS_VAR_INC changes nothing and the FCP publishes vs_sel = null;
     /// after AP_VS_HOLD the very next click moves it). The old walk fired clicks at the
-    /// dead wheel, read null back, and fell through to the stock SimVar — which this FCP
-    /// never writes for VS — so "setting a VS" quietly did nothing. Same lesson as the
+    /// dead wheel, read null back, and fell through to the stock SimVar — which nothing has
+    /// shown this FCP writing for VS — so "setting a VS" quietly did nothing. Same lesson as the
     /// LVFR A330's engage-before-write rule. The engagement is spoken in the result and
     /// the FG monitor announces the mode transition itself.
     ///
@@ -1175,9 +1175,9 @@ public partial class SynapticA220Definition
     /// <c>vs_sel</c> in feet per minute in VS mode and in tenths of a degree in FPA mode
     /// (<see cref="A220.A220Afdx.SelectedVsFpm"/>, <see cref="A220.A220Afdx.SelectedFpaDegrees"/>).
     /// With the display link down it refuses, as the speed walk does
-    /// (<see cref="A220.A220Afdx.VerticalWheelRefusal"/>): it used to walk V/S on AUTOPILOT VERTICAL
-    /// HOLD VAR, which this FCP never writes, so the wheel moved and the walk said "not responding",
-    /// and FPA on L:A22X Selected FPA, which was never shown to track the wheel.
+    /// (<see cref="A220.A220Afdx.VerticalWheelRefusal"/>) — the owner's R3 decision: it used to walk
+    /// V/S on AUTOPILOT VERTICAL HOLD VAR and FPA on L:A22X Selected FPA, neither ever shown to track
+    /// the wheel (the one reading of the V/S var, 2026-09-21, was taken with the wheel dead).
     /// </summary>
     private void StartVerticalTargetSetAsync(SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
         double target, bool isFpa)

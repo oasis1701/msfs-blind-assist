@@ -326,10 +326,11 @@ internal static class A220Afdx
     /// (<c>A22X.FCP Data</c>, or <c>A22X.Flight Control Data</c> for the trim) gives no value
     /// ([A220-8], [A220-13]). Altitude and heading: yes, their stock AP vars track the knob click
     /// for click (2026-09-21, -24). Speed: no, the stock speed var read 445 kt with 142 in the
-    /// window (2026-09-24). Vertical: no (R3 of the 2026-10-16 walk review) — this FCP never writes
-    /// <c>AUTOPILOT VERTICAL HOLD VAR</c> for V/S (2026-09-21: unchanged at 0 while the wheel moved),
-    /// and nothing ever showed <c>L:A22X Selected FPA</c> tracking the wheel, while the FCP block
-    /// carries both (<see cref="SelectedVsFpm"/>, <see cref="SelectedFpaDegrees"/>). Stab trim: no,
+    /// window (2026-09-24). Vertical: no, by the owner's R3 decision of 2026-10-16 (the walk review):
+    /// neither <c>AUTOPILOT VERTICAL HOLD VAR</c> nor <c>L:A22X Selected FPA</c> was ever shown to
+    /// track the wheel (the 2026-09-21 reading of the V/S var, unchanged at 0, was taken with the
+    /// wheel dead before V/S engaged, so it settles nothing), while the FCP block carries both
+    /// (<see cref="SelectedVsFpm"/>, <see cref="SelectedFpaDegrees"/>). Stab trim: no,
     /// the only other read-back is the animation ratio, and the owner's decision of 2026-10-16 keeps
     /// [A220-13]: refuse.
     /// </summary>
