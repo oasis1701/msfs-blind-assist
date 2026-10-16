@@ -1,0 +1,160 @@
+A220 Normal Checklists — Synaptic Default - BCS3 (KG) (pack ECL_BCS3_SYN_072826_KG)
+Generated from the aircraft's own ECL pack by tools/a220-gen/generate_a220_checklist_txt.py.
+For the LIVE checklist with sensed states and item actuation use Ctrl+Shift+C.
+
+[Power-on]
+PARK BRAKE — ON
+BATT 1 — AUTO
+BATT 2 — AUTO
+ECL — DU 2
+PTU — AUTO
+HYD 3A — AUTO
+HYD 3B — AUTO
+HYD 2B — AUTO
+Landing gear lever — DN
+Thrust levers — IDLE
+L ENG RUN — OFF
+R ENG RUN — OFF
+APU or EXT PWR — As required
+EQUIP COOLING, INLET — Select auto
+
+[Preflight]
+First flight of the day:
+  If YES:
+    First flight of the day:
+    * Ice detector test — Complete
+    * Circuit breakers — Checked
+    * Rudder trim — Checked
+    * Oxygen masks — Checked
+    Airplane documents — On board and checked
+    Operations Engineering Bulletins (OEB) — Checked
+    Emergency equipment — Checked
+    Gear pins — On board
+    Overhead panel — Checked
+    Glareshield — Checked
+    Displays — Checked
+    EICAS and INFO — Checked
+    Altimeters — () Set and cross-checked
+    Center panel — Checked
+    Pedestal — Checked
+    Sidesticks — Checked
+  If NO:
+    Not the first flight of the day:
+    Airplane documents — On board and checked
+    Operations Engineering Bulletins (OEB) — Checked
+    Emergency equipment — Checked
+    Gear pins — On board
+    Overhead panel — Checked
+    Glareshield — Checked
+    Displays — Checked
+    EICAS and INFO — Checked
+    Altimeters — () Set and cross-checked
+    Center panel — Checked
+    Pedestal — Checked
+    Sidesticks — Checked
+
+[Before start]
+Departure briefing — Complete
+APU or EXT PWR — As required
+SEAT BELTS — ON
+Doors — Closed and locked
+BEACON — ON
+PARK BRAKE — As required
+
+[Before taxi]
+APU — As required
+ANTI-ICE, COWL — AUTO or ON
+ANTI-ICE, WING — AUTO or ON
+FLAP — () selected
+Flight controls — Checked
+NOSE STEER — Select on
+EICAS and INFO — Checked
+
+[Before takeoff]
+L ENG run — ON
+R ENG run — ON
+APU BLEED — As required
+FMS — Set
+Trims — Set
+FLAP — Set
+Anti-ice — Set
+AUTOBRAKE — As required
+EICAS and INFO — Checked
+Thrust — Checked
+Runway — () confirmed
+Cabin — Ready
+
+[After takeoff]
+Landing gear — UP
+FLAP — 0
+ANTI-ICE, L COWL — AUTO
+ANTI-ICE, WING — AUTO
+ANTI-ICE, R COWL — AUTO
+EICAS — Checked
+
+[High altitude climb check (when climbing above FL350)]
+ANTI-ICE, WING — OFF
+Avoid icing conditions.
+
+[Descent and approach]
+ANTI-ICE, WING (below FL350) — AUTO
+FMS — Set
+Minima — Set
+AUTOBRAKE — As required
+EICAS — Checked
+Arrival briefing — Complete
+
+[Before landing]
+Altimeters — () Set and cross-checked
+Landing gear — DN
+FLAP — () indicating
+Cabin — Ready
+
+[After landing]
+FLAP — 0
+
+[After go-around]
+Landing gear — UP
+FLAP — 0
+EICAS — Checked
+
+[Shutdown]
+PARK BRAKE — ON
+NOSE STEER — OFF
+L ENG run — OFF
+APU or EXT PWR — As required
+R ENG run — OFF
+SLIDES disarmed — Checked
+SEAT BELTS — OFF
+BEACON — OFF
+Flight control test required:
+  If YES:
+    Flight control test required:
+    HYD 2B — ON
+    HYD 3B — ON
+    PTU — ON
+    * Flight control test — Complete
+    PTU — AUTO
+    HYD 3B — AUTO
+    HYD 2B — AUTO
+
+[Power-off]
+ECL — DU 2
+EQUIP COOLING, INLET — OFF
+EMER LTS — OFF
+HYD 3A — OFF
+HYD 3B — OFF
+HYD 2B — OFF
+APU — OFF
+EXT PWR (if connected) — AVAIL
+DOME — OFF
+BATT 1 — OFF
+BATT 2 — OFF
+
+[Partial power-off]
+EMER LTS — OFF
+EXT PWR — IN USE
+APU — OFF
+DOME — OFF
+BATT 1 — OFF
+BATT 2 — OFF

@@ -194,6 +194,7 @@ public partial class MainForm : Form
     private Forms.MD11.Md11MonitorManagerForm? md11MonitorManagerForm;
 
     private Forms.IFly737.IFly737MonitorManagerForm? iflyMonitorManagerForm;
+    private Forms.A220.A220MonitorManagerForm? a220MonitorManagerForm;
 
     private TakeoffAssistManager takeoffAssistManager = null!;
 
@@ -551,6 +552,8 @@ public partial class MainForm : Form
         // it works whenever the sim + iFly plugin are running). Generic announcements
         // don't wait on SimConnect either — see StartIFlyAnnouncementGrace's call sites.
         StartIFlySdkBridge();
+        // The A220's CommBus bridge (MainForm.A220): bus-only panel states, silently.
+        StartA220CommBusBridge();
 
         // Don't set focus - let default tab order handle it for proper menu accessibility
     }

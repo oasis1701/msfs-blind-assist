@@ -25,6 +25,9 @@ namespace MSFSBlindAssist.Services;
 /// It was the one left out until 2026-09-25 and relied on each branch checking
 /// <c>A380DisabledMonitorVariablesSet</c> itself; the baro branches never did, so their rows muted
 /// nothing. The branches that check locally are unaffected.</item>
+/// <item>the Synaptic A220 — its FG mode, flight stage, APU, master caution/warning, reverser and
+/// EXEC-prompt call-outs (each branch also checks its row itself). Its display pump speaks from a
+/// timer, outside this wrap, so every pump call-out checks a synthetic row ([A220-39]).</item>
 /// </list>
 /// The Fenix announces on the generic path, where its own gate lives, so it is not wrapped. Anything
 /// a definition speaks from a TIMER or a batch hook runs outside this wrap and must still check its
@@ -46,6 +49,7 @@ public static class DefAnnounceMuteSets
         "IFLY_737MAX8" => settings.IFlyDisabledMonitorVariablesSet,
         "TFDI_MD11" => settings.Md11DisabledMonitorVariablesSet,
         "FBW_A380" => settings.A380DisabledMonitorVariablesSet,
+        "SYNAPTIC_A220" => settings.A220DisabledMonitorVariablesSet,
         _ when aircraftCode.StartsWith("PMDG_", StringComparison.Ordinal) => settings.PMDGDisabledMonitorVariablesSet,
         _ => null,
     };

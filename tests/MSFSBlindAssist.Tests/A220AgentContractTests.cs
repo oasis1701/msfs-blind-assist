@@ -1,0 +1,265 @@
+// The display agent and the C# DTOs that read it are two halves of one contract: a field the C#
+// side reads but the agent's CB_FIELDS does not ship arrives as null forever, silently ("not
+// available" on a perfectly healthy link). This pins the field lists against the DTOs, the
+// store keys against SystemsBlocks, and the ES5 rule Coherent GT (old Chromium) imposes.
+
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using MSFSBlindAssist.Aircraft.A220;
+
+namespace MSFSBlindAssist.Tests;
+
+public class A220AgentContractTests
+{
+    private static string RepoRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "MSFSBlindAssist.sln"))) dir = dir.Parent;
+        Assert.NotNull(dir);
+        return dir!.FullName;
+    }
+
+    private static string Agent() =>
+        File.ReadAllText(Path.Combine(RepoRoot(), "MSFSBlindAssist", "Resources", "coherent-a220-displays-agent.js"));
+
+    private static readonly Regex StoreEntry = new(@"\['([^']+)', '(\w+)', '(\w+)', (\d+)\]", RegexOptions.CultureInvariant);
+
+    private static Dictionary<string, HashSet<string>> CbFields(string js)
+    {
+        int start = js.IndexOf("var CB_FIELDS = {", StringComparison.Ordinal);
+        Assert.True(start >= 0, "CB_FIELDS not found");
+        int end = js.IndexOf("};", start, StringComparison.Ordinal);
+        string block = js.Substring(start, end - start);
+        var map = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        foreach (Match m in Regex.Matches(block, @"(\w+): \[([^\]]*)\]"))
+            map[m.Groups[1].Value] = Regex.Matches(m.Groups[2].Value, @"'(\w+)'")
+                .Select(x => x.Groups[1].Value).ToHashSet(StringComparer.Ordinal);
+        return map;
+    }
+
+    public static TheoryData<string, Type> BlockTypes() => new()
+    {
+        { "lpfd", typeof(A220Systems.PfdBlock) },
+        { "atc", typeof(A220Systems.AtcBlock) },
+        { "gear", typeof(A220Systems.GearBlock) },
+        { "doors", typeof(A220Systems.DoorsBlock) },
+        { "cas", typeof(A220Systems.CasBlock) },
+        { "eng", typeof(A220Systems.EngineBlock) },
+        { "lctp", typeof(A220Systems.CtpBlock) },
+        { "rctp", typeof(A220Systems.CtpBlock) },
+        { "lads", typeof(A220Systems.AdsBlock) },
+        { "rads", typeof(A220Systems.AdsBlock) },
+        { "fmspos", typeof(A220Systems.FmsPositionBlock) },
+        { "status", typeof(A220Systems.StatusBlock) },
+        { "lnav", typeof(A220Systems.NavBlock) },
+    };
+
+    [Theory, MemberData(nameof(BlockTypes))]
+    public void EveryDtoField_IsShippedByTheAgent(string key, Type dto)
+    {
+        var fields = CbFields(Agent());
+        Assert.True(fields.ContainsKey(key), $"CB_FIELDS has no '{key}' entry");
+        foreach (var p in dto.GetProperties())
+            Assert.True(fields[key].Contains(p.Name), $"{dto.Name}.{p.Name} is not in CB_FIELDS.{key}");
+    }
+
+    [Fact]
+    public void EverySystemsBlock_IsAStoreTheAgentSubscribes()
+    {
+        var stores = StoreEntry.Matches(Agent())
+            .Select(m => (Name: m.Groups[1].Value, Key: m.Groups[2].Value, Group: m.Groups[3].Value)).ToList();
+        foreach (var p in typeof(A220Systems.SystemsBlocks).GetProperties())
+        {
+            // lctp and lnav ride the 'afdx' group (the radios window and the knob walks read
+            // them fast) and sysBlocks() adds them by name.
+            if (p.Name is "lctp" or "lnav")
+                Assert.Contains(stores, s => s.Key == p.Name);
+            else
+                Assert.Contains(stores, s => s.Key == p.Name && s.Group == "sys");
+        }
+        Assert.Contains(stores, s => s.Name == "A220.Flight Plan Update" && s.Group == "fpln");
+    }
+
+    [Fact]
+    public void SystemsStores_GoStaleAtSixSeconds_NotThree()
+    {
+        // The DUs ask for a full copy only after 3 s of quiet, so a slow store can be silent ~3 s.
+        foreach (Match m in StoreEntry.Matches(Agent()))
+            if (m.Groups[3].Value == "sys")
+                Assert.Equal("6000", m.Groups[4].Value);
+    }
+
+    [Fact]
+    public void SysBlocks_ShipsTheCaptainsCtpAndNav_OnTheSystemsWindow_WhileTheWalksKeepTheirFastOne()
+    {
+        // lctp and lnav live in the 'afdx' group, whose 3 s window the knob walks' fast read keeps;
+        // shipped as systems blocks they must go stale at the systems stores' 6 s, or a quiet captain
+        // CTP flickers to "not available" (Minimums row, Ctrl+B, the unit write's QNH read).
+        string js = Agent();
+        var stores = StoreEntry.Matches(js).ToDictionary(m => m.Groups[2].Value, m => (Group: m.Groups[3].Value, Ms: m.Groups[4].Value));
+        Assert.Equal(("afdx", "3000"), stores["lctp"]);
+        Assert.Equal(("afdx", "3000"), stores["lnav"]);
+
+        var sysMs = Regex.Match(js, @"var SYS_STALE_MS = (\d+);");
+        Assert.True(sysMs.Success, "SYS_STALE_MS not found");
+        foreach (var s in stores.Values.Where(s => s.Group == "sys")) Assert.Equal(sysMs.Groups[1].Value, s.Ms);
+
+        int start = js.IndexOf("function sysBlocks()", StringComparison.Ordinal);
+        Assert.True(start >= 0, "sysBlocks not found");
+        int end = js.IndexOf("A.sys = function", start, StringComparison.Ordinal);
+        string body = js.Substring(start, end - start);
+        Assert.Contains("cbBlock('lctp', 'A22X.L CTP Data', SYS_STALE_MS)", body);
+        Assert.Contains("cbBlock('lnav', 'A22X.L Nav Data', SYS_STALE_MS)", body);
+    }
+
+    [Fact]
+    public void TheMergeHandlerVersion_WasBumpedForTheArrayDiffMerge_AndTheOneMergeToken()
+    {
+        string js = Agent();
+        Assert.Contains("var CB_VERSION = 4;", js);
+        Assert.Contains("function mergeArray(arr, upd)", js);
+        Assert.DoesNotContain("function deepMerge(", js);
+    }
+
+    private static string Between(string js, string from, string to)
+    {
+        int start = js.IndexOf(from, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"'{from}' not found");
+        int end = js.IndexOf(to, start, StringComparison.Ordinal);
+        Assert.True(end > start, $"'{to}' not found after '{from}'");
+        return js.Substring(start, end - start);
+    }
+
+    [Fact]
+    public void EachMessage_IsMergedOnce_ByTheStoresLatestSubscription()
+    {
+        // Live 2026-10-15: the immediate subscription and the ready callback's both delivered (subs 36
+        // for 18 stores), so every message was merged twice; a splice applied twice doubled the flight
+        // plan's segments, legs and paths. The handler must bail unless it is the store's latest.
+        string body = Between(Agent(), "function cbSubscribe()", "function ensureCommBus()");
+        Assert.Contains("cbState.subTok[CB_STORES[i][0]] = tok;", body);
+        Assert.Contains("if (cbState.subTok[name] !== tok) return;", body);
+        Assert.True(body.IndexOf("if (cbState.subTok[name] !== tok) return;", StringComparison.Ordinal)
+                    < body.IndexOf("mergeObj(cbData[name]", StringComparison.Ordinal),
+            "the token check must come before the merge");
+    }
+
+    [Fact]
+    public void SysBlocks_AsksForWholeStores_UntilAResyncWasSentWhileDelivering()
+    {
+        // Live 2026-10-15: in steady state every store sends only an empty {} heartbeat about once a
+        // second, so a new listener's stamps stay fresh while its data stays empty, and the blocks went
+        // out all-null ("V1 not set", squawk ----) until something else asked for a resync.
+        string js = Agent();
+        string resync = Between(js, "function cbResync()", "function cbSubscribe()");
+        Assert.Contains("if (cbState.ready || cbEverDelivered()) cbState.wholeAsked = true;", resync);
+        string sys = Between(js, "function sysBlocks()", "A.sys = function");
+        Assert.Contains("stale = !cbState.wholeAsked", sys);
+        Assert.Contains("if (stale) cbResync();", sys);
+    }
+
+    [Fact]
+    public void FplnProgress_StopsAtTheMissedApproachSegment()
+    {
+        // The active plan's paths run on into the missed approach, which arr.dtg (the FUEL page's
+        // DEST row) does not include: summing them made the distance to TOD come out short by
+        // the missed-approach length. The boundary is the segment type the aircraft's own LEGS
+        // page and ND split on (instrument.js: `$.typ === 6` = MISSED APPROACH).
+        string js = Agent();
+        int start = js.IndexOf("A.fplnProgress = function", StringComparison.Ordinal);
+        Assert.True(start >= 0, "A.fplnProgress not found");
+        int end = js.IndexOf("ensureCommBus();   // start filling", start, StringComparison.Ordinal);
+        Assert.True(end > start, "end of A.fplnProgress not found");
+        string body = js.Substring(start, end - start);
+        Assert.Contains("segs[q].typ === 6", body);
+        Assert.Contains("i < pathEnd", body);
+        Assert.DoesNotContain("i < paths.length", body);
+    }
+
+    [Fact]
+    public void Agent_IsEs5()
+    {
+        // Line comments go first: the agent's comments quote the aircraft's own ES2015 source.
+        string code = string.Join("\n", Agent().Split('\n')
+            .Select(l => Regex.Replace(l, @"(^|\s)//.*$", "")));
+        Assert.DoesNotContain("=>", code);
+        Assert.DoesNotMatch(new Regex(@"\blet\s"), code);
+        Assert.DoesNotMatch(new Regex(@"\bconst\s"), code);
+        Assert.DoesNotContain("`", code);
+    }
+
+    [Fact]
+    public void Fixture_DeserializesIntoTheDtos()
+    {
+        string path = Path.Combine(AppContext.BaseDirectory, "Fixtures", "a220-2026-10-12-commbus-stores-engines-running.json");
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        T Store<T>(string name) => JsonSerializer.Deserialize<T>(doc.RootElement.GetProperty(name).GetRawText())!;
+
+        Assert.Equal(135, Store<A220Systems.PfdBlock>("A22X.L PFD Data").vr);
+        Assert.Equal(2000, Store<A220Systems.AtcBlock>("A22X.ATC Data").code);
+        Assert.Equal(2, Store<A220Systems.GearBlock>("A22X.Gear Data").nose_icon);
+        Assert.Equal(3, Store<A220Systems.DoorsBlock>("A22X.Doors Data").fwd_pax);
+        Assert.Equal(18, Store<A220Systems.CasBlock>("A22X.CAS Data").msg!.Length);
+        Assert.Equal(3486581764L, Store<A220Systems.CasBlock>("A22X.CAS Data").ecl![5]);   // > int.MaxValue
+        Assert.Equal(18.5, Store<A220Systems.EngineBlock>("A22X.Engine Data").eng1_n1);
+        var ctp = Store<A220Systems.CtpBlock>("A22X.L CTP Data");
+        Assert.Equal("InHg", ctp.qnh!.type);
+        Assert.Equal(1210, ctp.minimums);
+    }
+
+    [Fact]
+    public void ParseSystems_ReturnsNullOnGarbage()
+    {
+        Assert.Null(A220Systems.ParseSystems(null));
+        Assert.Null(A220Systems.ParseSystems(""));
+        Assert.Null(A220Systems.ParseSystems("{not json"));
+        Assert.Null(A220Systems.ParseSystems("[1,2]"));
+        Assert.Null(A220Systems.ParseSystems("\"nope\""));
+        Assert.Null(A220Systems.ParseSystems("null"));
+        Assert.NotNull(A220Systems.ParseSystems("{\"lpfd\":null}"));
+    }
+
+    // Each store is parsed on its own: one field of an unexpected type (a fraction into an int,
+    // a number into a bool) costs only its own store, never every systems readout at once.
+    [Theory]
+    [InlineData("\"status\":{\"apu_door\":0.5}")]
+    [InlineData("\"gear\":{\"wow\":1}")]
+    [InlineData("\"atc\":{\"mode\":\"TA/RA\"}")]
+    [InlineData("\"cas\":{\"msg\":{\"0\":1}}")]
+    [InlineData("\"doors\":[3,3]")]
+    public void ParseSystems_AStoreWithAnOddField_LeavesOnlyThatStoreMissing(string oddStore)
+    {
+        string json = "{\"lpfd\":{\"vr\":135},\"lctp\":{\"minimums\":1210}," + oddStore + ",\"rads\":{\"qnh_std\":true}}";
+        var blocks = A220Systems.ParseSystems(json);
+        Assert.NotNull(blocks);
+        Assert.Equal(135, blocks!.lpfd?.vr);
+        Assert.Equal(1210, blocks.lctp?.minimums);
+        Assert.True(blocks.rads?.qnh_std);
+        Assert.Null(blocks.status);
+        Assert.Null(blocks.gear);
+        Assert.Null(blocks.atc);
+        Assert.Null(blocks.cas);
+        Assert.Null(blocks.doors);
+    }
+
+    [Fact]
+    public void ParseSystems_ReadsEveryFixtureStore_InTheAgentsShape()
+    {
+        // The capture is keyed by store name; the agent ships the same objects under its keys.
+        string path = Path.Combine(AppContext.BaseDirectory, "Fixtures", "a220-2026-10-12-commbus-stores-engines-running.json");
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        string Raw(string name) => doc.RootElement.GetProperty(name).GetRawText();
+        string json = "{\"lpfd\":" + Raw("A22X.L PFD Data") + ",\"atc\":" + Raw("A22X.ATC Data") + ",\"gear\":" + Raw("A22X.Gear Data")
+            + ",\"doors\":" + Raw("A22X.Doors Data") + ",\"cas\":" + Raw("A22X.CAS Data") + ",\"eng\":" + Raw("A22X.Engine Data")
+            + ",\"lctp\":" + Raw("A22X.L CTP Data") + ",\"status\":" + Raw("A22X.Status Data") + "}";
+        var blocks = A220Systems.ParseSystems(json)!;
+        Assert.Equal(135, blocks.lpfd?.vr);
+        Assert.Equal(2000, blocks.atc?.code);
+        Assert.Equal(2, blocks.gear?.nose_icon);
+        Assert.Equal(3, blocks.doors?.fwd_pax);
+        Assert.Equal(3486581764L, blocks.cas?.ecl?[5]);
+        Assert.Equal(18.5, blocks.eng?.eng1_n1);
+        Assert.Equal(1210, blocks.lctp?.minimums);
+        Assert.Equal(1, blocks.status?.apu_door);
+    }
+}

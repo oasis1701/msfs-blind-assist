@@ -2,16 +2,19 @@ using MSFSBlindAssist.Accessibility;
 
 namespace MSFSBlindAssist.Forms;
 
-// Shared FlyByWire E/WD (Engine/Warning Display) pop-out window for the A380X and
-// A32NX. Alt+E opens it instead of speaking the E/WD: a read-only, multiline,
-// screen-reader-friendly text view of the WHOLE E/WD (engine parameters + the live
-// ECAM memo / warning lines). It auto-refreshes on a timer and on F5; Escape closes.
+// Shared pop-out window for the FlyByWire E/WD (Engine/Warning Display) of the A380X and
+// A32NX, and the Synaptic A220's CAS window. Alt+E opens it instead of speaking the E/WD:
+// a read-only, multiline, screen-reader-friendly text view of the WHOLE E/WD (engine
+// parameters + the live ECAM memo / warning lines), or, on the A220, of every crew
+// alerting message. It auto-refreshes on a timer and on F5; Escape closes.
 //
 // The window is content-agnostic: each aircraft passes an async text builder (the
-// A380 decodes its SimVars, the A32NX scrapes its live EWD view), so this one form
-// serves both. Refreshes reconcile the list in place (via DisplayListBox, which
-// wraps DisplayList.UpdateInPlace), so the reader's selected row and scroll
-// position are preserved instead of being reset to the top on every auto-update.
+// A380 decodes its SimVars, the A32NX scrapes its live EWD view, the A220 decodes its CAS
+// bitset) and the message F5 speaks ("E W D refreshed" by default, "CAS refreshed" on the
+// A220), so this one form serves all three. Refreshes reconcile the list in place (via
+// DisplayListBox, which wraps DisplayList.UpdateInPlace), so the reader's selected row
+// and scroll position are preserved instead of being reset to the top on every
+// auto-update.
 public sealed class FbwEwdWindow : Form
 {
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
@@ -24,11 +27,18 @@ public sealed class FbwEwdWindow : Form
     private readonly IntPtr _previousWindow;
     private bool _busy;
 
-    public FbwEwdWindow(string title, Func<Task<string>> build, ScreenReaderAnnouncer announcer)
+    private readonly string _refreshedMessage;
+
+    /// <param name="description">The list's accessible description; the E/WD wording when null.</param>
+    /// <param name="refreshedMessage">Spoken after an F5 refresh.</param>
+    /// <param name="loadingText">The list's text before the first build returns.</param>
+    public FbwEwdWindow(string title, Func<Task<string>> build, ScreenReaderAnnouncer announcer,
+        string? description = null, string refreshedMessage = "E W D refreshed", string loadingText = "Loading E/WD...")
     {
         _previousWindow = GetForegroundWindow();
         _build = build;
         _announcer = announcer;
+        _refreshedMessage = refreshedMessage;
 
         Text = title;
         Size = new Size(760, 560);
@@ -43,9 +53,9 @@ public sealed class FbwEwdWindow : Form
             Font = new Font("Consolas", 11, FontStyle.Regular),
             TabIndex = 0,
             AccessibleName = title,
-            AccessibleDescription = "Engine and Warning Display. Read with the arrow keys. F5 refreshes; Escape closes. Auto-refreshes.",
+            AccessibleDescription = description ?? "Engine and Warning Display. Read with the arrow keys. F5 refreshes; Escape closes. Auto-refreshes.",
         };
-        _text.SetText("Loading E/WD...");
+        _text.SetText(loadingText);
 
         var bottom = new Panel { Dock = DockStyle.Bottom, Height = 44 };
         var refreshButton = new Button { Text = "&Refresh (F5)", Location = new Point(560, 8), Size = new Size(90, 30), TabIndex = 1, AccessibleName = "Refresh" };
@@ -82,7 +92,7 @@ public sealed class FbwEwdWindow : Form
             // Reconcile in place (no-ops when unchanged) so a refresh doesn't reset the
             // screen-reader review cursor to the top.
             _text.SetText(txt);
-            if (announce) _announcer.Announce("E W D refreshed");
+            if (announce) _announcer.Announce(_refreshedMessage);
         }
         catch { /* best-effort; keep the last good content */ }
         finally { _busy = false; }

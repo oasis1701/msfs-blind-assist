@@ -1,0 +1,901 @@
+using MSFSBlindAssist.SimConnect;
+
+namespace MSFSBlindAssist.Aircraft;
+
+/// <summary>
+/// Variable declarations for the Synaptic A220-300.
+///
+/// TRANSPORT RULE (recon-verified 2026-07-28, tools/a220-gen/reference/recon-2026-07-28.md):
+/// A220 L:var names contain SPACES ("A22X APU Switch"), which SetLVar's space/colon guard
+/// routes to the unreliable data-def write path — and CalcPathVerified never goes true for
+/// non-FBW defs anyway. So EVERY L:var write for this aircraft goes through
+/// ExecuteCalculatorCode directly in HandleUIVariableSet (the calc parser accepts spaces
+/// inside "(>L:...)" — proven live via the MobiFlight default channel). READS are fine:
+/// the L:var read path registers a data-def datum, which accepts spaces.
+///
+/// The aircraft plays its own aural callouts (V1, radio heights, TAWS, takeoff config) —
+/// the ~91 "L:A22X Aural *" flags are deliberately NOT registered (see
+/// SynapticA220SimVarData.AuralVars and the pin test).
+/// </summary>
+public partial class SynapticA220Definition
+{
+    // ---- declaration helpers -------------------------------------------------
+
+    private static Dictionary<double, string> Labels(params string[] labels)
+    {
+        var d = new Dictionary<double, string>();
+        for (int i = 0; i < labels.Length; i++) d[i] = labels[i];
+        return d;
+    }
+
+    /// <summary>Multi-position L:var switch rendered as a combo (labels verbatim from simvars.mdx).</summary>
+    private static SimVarDefinition LSwitch(string name, string display, params string[] labels) => new()
+    {
+        Name = name,
+        DisplayName = display,
+        Type = SimVarType.LVar,
+        Units = "number",
+        UpdateFrequency = UpdateFrequency.OnRequest,
+        ValueDescriptions = Labels(labels)
+    };
+
+    /// <summary>A VHF volume knob ([A220-44]): the L:var's 0-1 level shown as its 29 detents.</summary>
+    private static SimVarDefinition AcpVolume(int vhf) => new()
+    {
+        Name = $"A22X ACP VHF{vhf} Volume",
+        DisplayName = $"VHF {vhf} Volume",
+        Type = SimVarType.LVar,
+        Units = "number",
+        UpdateFrequency = UpdateFrequency.OnRequest,
+        ValueDescriptions = Labels(A220.A220Panels.AcpVolumeLabels.ToArray()),
+        ValueToDescriptionKey = A220.A220Panels.AcpVolumeStepFor
+    };
+
+    /// <summary>Momentary L:var pushbutton (A220_ButtonMomentary or IS_HELD: pulse 1 then
+    /// release) — chrono, nav source, crosstune, FD, gear-aural cancel, CVR, mech call,
+    /// transmit select. <see cref="SimVarDefinition.IsMomentary"/> tells the write path to
+    /// pulse ([A220-42]).</summary>
+    private static SimVarDefinition LMomentary(string name, string display) => new()
+    {
+        Name = name,
+        DisplayName = display,
+        Type = SimVarType.LVar,
+        Units = "number",
+        UpdateFrequency = UpdateFrequency.OnRequest,
+        RenderAsButton = true,
+        IsMomentary = true,
+        SuppressRestingButtonState = true,
+        ValueDescriptions = Labels("Released", "Pressed")
+    };
+
+    /// <summary>
+    /// Latch-free cockpit korry (A220_ButtonPBA without IS_LATCHED — probe heat, engine fire):
+    /// the cockpit writes 1 and nothing else, so MSFSBA writes 1 alone ([A220-42]). Write-only, no
+    /// read registered. Live 2026-10-16 the aircraft cleared probe heat's var again, but not an
+    /// engine fire push's: written 1 it stays 1 and pushed (one-way in v1.0.10).
+    /// </summary>
+    private static SimVarDefinition LPress(string name, string display) => new()
+    {
+        Name = name,
+        DisplayName = display,
+        Type = SimVarType.LVar,
+        Units = "number",
+        UpdateFrequency = UpdateFrequency.Never,
+        RenderAsButton = true
+    };
+
+    /// <summary>Annunciator lamp: Continuous+IsAnnounced batch var (0 individual defs, MD-11 pattern).</summary>
+    private static SimVarDefinition Lamp(string name, string display) => new()
+    {
+        Name = name,
+        DisplayName = display,
+        Type = SimVarType.LVar,
+        Units = "bool",
+        UpdateFrequency = UpdateFrequency.Continuous,
+        IsAnnounced = true,
+        ValueDescriptions = Labels("off", "illuminated")
+    };
+
+    /// <summary>
+    /// Keys whose updates are swallowed silently in ProcessSimVarUpdate (MD-11
+    /// _silentReadouts pattern): they ride the continuous batch so the cache stays
+    /// fresh at 1 Hz for readouts and dialog walks, but a spoken bare number would be
+    /// meaningless. NOTE: Continuous+IsAnnounced=false would get NO subscription at
+    /// all (stale cache) — batch coverage requires IsAnnounced=true.
+    /// </summary>
+    private readonly HashSet<string> _silentReadoutKeys = new();
+
+    /// <summary>Continuous silent var: cached for readouts/logic, never spoken.</summary>
+    private void AddQuiet(Dictionary<string, SimVarDefinition> v, string key, string name,
+        string units, SimVarType type = SimVarType.LVar)
+    {
+        v[key] = new SimVarDefinition
+        {
+            Name = name,
+            DisplayName = name,
+            Type = type,
+            Units = units,
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ExcludeFromMonitorManager = true
+        };
+        _silentReadoutKeys.Add(key);
+    }
+
+    /// <summary>Read-only numeric status row for a panel display box.</summary>
+    private static SimVarDefinition Status(string name, string display, string units, string format = "F0", SimVarType type = SimVarType.LVar) => new()
+    {
+        Name = name,
+        DisplayName = display,
+        Type = type,
+        Units = units,
+        UpdateFrequency = UpdateFrequency.OnRequest,
+        RenderAsReadOnlyStatus = true,
+        Format = format
+    };
+
+    /// <summary>
+    /// A panel row whose text comes from the CommBus through TryGetDisplayOverride (A380-16: a
+    /// readout-only row must sit in a panel display list or nothing ever requests it). The
+    /// SimVar is only a CARRIER — something MainForm can request so the row renders and
+    /// refreshes; its value is never shown. Every such row shares one cheap stock SimVar: they
+    /// are OnRequest, so the shared name breaks nothing ([VAR-7] concerns batched vars only).
+    /// </summary>
+    private static SimVarDefinition CommBusRow(string display)
+        => Status("ELECTRICAL MAIN BUS VOLTAGE", display, "volts", "F0", SimVarType.SimVar);
+
+    /// <summary>
+    /// A combo whose STATE exists only on the CommBus (transponder mode, TCAS altitude limit,
+    /// baro STD, minimums mode). Never read from the sim — UpdateFrequency.Never registers no
+    /// data definition — its value reaches the panel through CommBusValueChanged as a silent
+    /// snapshot update ([A220-39]), and every write is claimed by TryHandleAvionicsSet. The Name
+    /// is documentation only: no L:var of that name exists or is ever written.
+    /// </summary>
+    private static SimVarDefinition BusCombo(string display, params string[] labels) => new()
+    {
+        Name = "MSFSBA CommBus " + display,
+        DisplayName = display,
+        Type = SimVarType.LVar,
+        Units = "number",
+        UpdateFrequency = UpdateFrequency.Never,
+        ValueDescriptions = Labels(labels)
+    };
+
+    /// <summary>A bus value with no control of its own: an entry field's current-value source.</summary>
+    private static SimVarDefinition BusValue(string display) => new()
+    {
+        Name = "MSFSBA CommBus " + display,
+        DisplayName = display,
+        Type = SimVarType.LVar,
+        Units = "number",
+        UpdateFrequency = UpdateFrequency.Never
+    };
+
+    /// <summary>A QNH entry: hPa (940-1090) or inches (27.00-32.00), garbage refused (NaN).
+    /// The prefill is the stock Kohlsman in hPa, which follows the CTP exactly (live 2026-10-12).</summary>
+    private static SimVarDefinition QnhEntry(string key, string display, string currentSource) => new()
+    {
+        Name = key, DisplayName = $"{display} (hPa or inches)",
+        Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.Never,
+        CurrentValueSourceKey = currentSource, UnparseableTextAsNaN = true
+    };
+
+    /// <summary>A minimums entry, 0-41000 ft, prefilled from the bus value.</summary>
+    private static SimVarDefinition MinimumsEntry(string key, string display, string currentSource) => new()
+    {
+        Name = key, DisplayName = display,
+        Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.Never,
+        CurrentValueSourceKey = currentSource, UnparseableTextAsNaN = true
+    };
+
+    protected override Dictionary<string, SimVarDefinition> BuildVariables()
+    {
+        var v = GetBaseVariables();
+
+        // ==== Overhead — Electrical ==========================================
+        v["A22X_BATTERY_1"] = new SimVarDefinition
+        {
+            Name = "ELECTRICAL MASTER BATTERY:1", DisplayName = "Battery 1",
+            Type = SimVarType.SimVar, Units = "bool", UpdateFrequency = UpdateFrequency.OnRequest,
+            ValueDescriptions = Labels("Off", "On")
+        };
+        v["A22X_BATTERY_2"] = new SimVarDefinition
+        {
+            Name = "ELECTRICAL MASTER BATTERY:2", DisplayName = "Battery 2",
+            Type = SimVarType.SimVar, Units = "bool", UpdateFrequency = UpdateFrequency.OnRequest,
+            ValueDescriptions = Labels("Off", "On")
+        };
+        // simvars.mdx documents the stock "EXTERNAL POWER ON:1", but the Synaptic
+        // WASM never DRIVES it — measured live 2026-09-22 with ground power genuinely
+        // in use it still read 0, while the cockpit pb's own state var read 1. The
+        // documented name is the doc's, not the aircraft's; read what the lamp reads.
+        v["A22X_EXT_PWR"] = new SimVarDefinition
+        {
+            Name = "A22X External Power In Use", DisplayName = "External Power",
+            Type = SimVarType.LVar, Units = "bool", UpdateFrequency = UpdateFrequency.OnRequest,
+            ValueDescriptions = Labels("Off", "On")
+        };
+        // The EFB's Ground Equipment "Attach GPU" button writes exactly this L:var
+        // (efb-a220.js equipment table: GPU -> L:INI_GPU_AVAIL), so the panel can
+        // attach/remove the GPU itself. NOTE the EFB removes it again whenever the
+        // beacon is on and its "Auto GPU Disconnect" setting is enabled (the default)
+        // — live 2026-09-24 that read as "external power won't connect". The write
+        // path reads back and says so (HandleUIVariableSet).
+        v["A22X_GPU_AVAIL"] = new SimVarDefinition
+        {
+            Name = "INI_GPU_AVAIL", DisplayName = "Ground Power Unit (GPU)",
+            Type = SimVarType.LVar, Units = "bool", UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = Labels("Removed", "Attached")
+        };
+        // Stock beacon state: what the EFB's auto GPU disconnect actually tests
+        // (A:LIGHT BEACON ON), read only to explain a GPU removal.
+        AddQuiet(v, "A22X_BEACON_ON_SIM", "LIGHT BEACON ON", "bool", SimVarType.SimVar);
+        AddQuiet(v, "A22X_EXT_PWR_AVAILABLE", "A22X External Power Available", "bool");
+        // FMS nav database source: 0 = MSFS native, 1 = Navigraph (the aircraft's own
+        // downloaded DFD). Written by the MFW Data Load page and its FMS status radio.
+        AddQuiet(v, "A22X_NAV_DATA_SOURCE", "A220 Nav Data Source", "number");
+        // "Off" switches: 1 = selected OFF (the physical korry is pushed out).
+        v["A22X_L_GEN_OFF"] = LSwitch("A22X L Gen Off", "Left Generator", "On", "Off");
+        v["A22X_R_GEN_OFF"] = LSwitch("A22X R Gen Off", "Right Generator", "On", "Off");
+        v["A22X_APU_GEN_OFF"] = LSwitch("A22X APU Gen Off", "APU Generator", "On", "Off");
+        v["A22X_CABIN_POWER_OFF"] = LSwitch("A22X Cabin Power Off", "Cabin Power (guarded)", "On", "Off");
+        v["A22X_BUS_ISOLATION"] = LSwitch("A22X Bus Isolation Mode", "Bus Isolation", "Main", "Auto", "Ess");
+        v["A22X_RAT_GEN"] = LSwitch("A22X RAT Gen", "RAT Generator (guarded)", "Stowed", "Deployed");
+        v["A22X_L_GEN_DISC"] = LSwitch("A22X L Gen Disc", "Left Generator Disconnect (guarded)", "Normal", "Disconnected");
+        v["A22X_R_GEN_DISC"] = LSwitch("A22X R Gen Disc", "Right Generator Disconnect (guarded)", "Normal", "Disconnected");
+
+        // ==== Overhead — APU ==================================================
+        // Start is a HOLD-to-start: the combo's Start action sustains 2 for ~3 s then
+        // returns to 1 (Run) — implemented in HandleUIVariableSet, shared with the ECL.
+        v["A22X_APU_SWITCH"] = LSwitch("A22X APU Switch", "APU Master", "Off", "Run", "Start");
+        // Batch-covered, self-handled in ProcessSimVarUpdate (milestone announcements
+        // only — a generic per-percent announce would chatter through the whole start).
+        v["A22X_APU_RPM"] = new SimVarDefinition
+        {
+            Name = "A22X APU RPM", DisplayName = "APU RPM percent",
+            Type = SimVarType.LVar, Units = "number", UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true, ExcludeFromMonitorManager = true, Format = "F0"
+        };
+
+        // ==== Overhead — Hydraulics ==========================================
+        v["A22X_PTU"] = LSwitch("A22X PTU", "PTU Pump", "Off", "Auto", "On");
+        v["A22X_ACMP_2B"] = LSwitch("A22X ACMP 2B", "AC Motor Pump 2B", "Off", "Auto", "On");
+        v["A22X_ACMP_3A"] = LSwitch("A22X ACMP 3A", "AC Motor Pump 3A", "Off", "Auto", "On");
+        v["A22X_ACMP_3B"] = LSwitch("A22X ACMP 3B", "AC Motor Pump 3B", "Off", "Auto", "On");
+        v["A22X_HYD_1_SOV"] = LSwitch("A22X Hyd 1 SOV", "Hydraulic 1 Shutoff Valve (guarded)", "Closed", "Open");
+        v["A22X_HYD_2_SOV"] = LSwitch("A22X Hyd 2 SOV", "Hydraulic 2 Shutoff Valve (guarded)", "Closed", "Open");
+
+        // ==== Overhead — Fuel =================================================
+        v["A22X_L_BOOST_PUMP"] = LSwitch("A22X L Boost Pump", "Left Boost Pump", "Off", "Auto", "On");
+        v["A22X_R_BOOST_PUMP"] = LSwitch("A22X R Boost Pump", "Right Boost Pump", "Off", "Auto", "On");
+        v["A22X_MANUAL_TRANSFER"] = LSwitch("A22X Manual Transfer", "Manual Fuel Transfer", "Off", "Right", "Center", "Left");
+        v["A22X_GRAVITY_TRANSFER"] = LSwitch("A22X Gravity Transfer", "Gravity Transfer", "Off", "On");
+
+        // ==== Overhead — Air / Bleed =========================================
+        v["A22X_L_BLEED_OFF"] = LSwitch("A22X L Bleed Off", "Left Engine Bleed", "On", "Off");
+        v["A22X_R_BLEED_OFF"] = LSwitch("A22X R Bleed Off", "Right Engine Bleed", "On", "Off");
+        v["A22X_APU_BLEED_OFF"] = LSwitch("A22X APU Bleed Off", "APU Bleed", "On", "Off");
+        v["A22X_CROSSBLEED"] = LSwitch("A22X Crossbleed", "Crossbleed", "Closed", "Auto", "Open");
+        v["A22X_L_PACK_OFF"] = LSwitch("A22X L Pack Off", "Left Pack", "On", "Off");
+        v["A22X_R_PACK_OFF"] = LSwitch("A22X R Pack Off", "Right Pack", "On", "Off");
+        v["A22X_PACK_FLOW"] = LSwitch("A22X Pack Flow", "Pack Flow", "Normal", "High");
+        v["A22X_RAM_AIR"] = LSwitch("A22X Ram Air", "Ram Air (guarded)", "Closed", "Open");
+        v["A22X_TRIM_AIR_OFF"] = LSwitch("A22X Trim Air Off", "Trim Air", "On", "Off");
+        v["A22X_RECIRC_OFF"] = LSwitch("A22X Recirc Air Off", "Recirculation Fan", "On", "Off");
+        v["A22X_MANUAL_TEMP"] = LSwitch("A22X Manual Temperature", "Manual Temperature Control", "Auto", "Manual");
+        v["A22X_COCKPIT_AIR"] = new SimVarDefinition
+        {
+            Name = "A22X Cockpit Air", DisplayName = "Cockpit Temperature Knob",
+            Type = SimVarType.LVar, Units = "percent over 100", UpdateFrequency = UpdateFrequency.OnRequest,
+            RenderAsSlider = true, SliderMin = 0, SliderMax = 1
+        };
+        v["A22X_FWD_CABIN_AIR"] = new SimVarDefinition
+        {
+            Name = "A22X Fwd Cabin Air", DisplayName = "Forward Cabin Temperature Knob",
+            Type = SimVarType.LVar, Units = "percent over 100", UpdateFrequency = UpdateFrequency.OnRequest,
+            RenderAsSlider = true, SliderMin = 0, SliderMax = 1
+        };
+        v["A22X_AFT_CABIN_AIR"] = new SimVarDefinition
+        {
+            Name = "A22X Aft Cabin Air", DisplayName = "Aft Cabin Temperature Knob",
+            Type = SimVarType.LVar, Units = "percent over 100", UpdateFrequency = UpdateFrequency.OnRequest,
+            RenderAsSlider = true, SliderMin = 0, SliderMax = 1
+        };
+        v["A22X_FWD_CARGO_AIR"] = LSwitch("A22X Fwd Cargo Air", "Forward Cargo Air", "Off", "Vent", "Lo Heat", "Hi Heat");
+        v["A22X_AFT_CARGO_AIR"] = LSwitch("A22X Aft Cargo Air", "Aft Cargo Air", "Off", "Vent");
+
+        // ==== Overhead — Equipment cooling (right outboard) ===================
+        // INLET is a latched korry: 0 = AUTO, 1 = OFF (its OFF light). Measured live 2026-10-16:
+        // writing 1 lights L:A22X Cooling Inlet Lamp, raises the ECL's sensed INLET_OFF and the
+        // "INLET AIR OFF" status message; 0 clears all three. The aircraft's ECL pack agrees
+        // ("Select auto" is INLET_OFF inverted). The stock Asobo-format A220_Checklist.xml tests
+        // the var the other way round; it is wrong, never the reference.
+        v["A22X_COOLING_INLET"] = LSwitch("A22X Cooling Inlet", "Equipment Cooling Inlet", "Auto", "Off");
+        // EXHAUST is a 3-position knob (A220_KnobSmall3State): 0 VLV ONLY, 1 AUTO, 2 ON. Measured
+        // live 2026-10-16: each write lit the ECL's sensed EXHAUST_VLV_ONLY, EXHAUST_AUTO and
+        // EXHAUST_ON in that order, and the var kept the written value.
+        v["A22X_COOLING_EXHAUST"] = LSwitch("A22X Cooling Exhaust", "Equipment Cooling Exhaust", "Valve Only", "Auto", "On");
+
+        // ==== Overhead — Anti-ice / Heat =====================================
+        v["A22X_L_COWL_AI"] = LSwitch("A22X L Cowl Anti Ice", "Left Cowl Anti-Ice", "Off", "Auto", "On");
+        v["A22X_R_COWL_AI"] = LSwitch("A22X R Cowl Anti Ice", "Right Cowl Anti-Ice", "Off", "Auto", "On");
+        v["A22X_WING_AI"] = LSwitch("A22X Wing Anti Ice", "Wing Anti-Ice", "Off", "Auto", "On");
+        // PROBE HEAT is the ground-test korry (A220_ButtonPBA, no IS_LATCHED): the cockpit
+        // writes 1 and the aircraft clears it — a press, not an Auto/On switch ([A220-42]). Its
+        // batch-monitored lamp is the confirmation. Measured live 2026-10-16: the var read 0 again,
+        // L:A22X Probe Heat Lamp lit with the status message ADS PROBE HEAT GND ON, and the ECL's
+        // PROBE_HEAT_ON bit never lit (no item of the installed pack senses it).
+        v["A22X_PROBE_HEAT"] = LPress("A22X Probe Heat", "Probe Heat Ground Test");
+        v["A22X_L_WINDOW_HEAT_OFF"] = LSwitch("A22X L Side Window Heat Off", "Left Side Window Heat", "On", "Off");
+        v["A22X_R_WINDOW_HEAT_OFF"] = LSwitch("A22X R Side Window Heat Off", "Right Side Window Heat", "On", "Off");
+        v["A22X_L_WSHLD_HEAT_OFF"] = LSwitch("A22X L Windshield Heat Off", "Left Windshield Heat", "On", "Off");
+        v["A22X_R_WSHLD_HEAT_OFF"] = LSwitch("A22X R Windshield Heat Off", "Right Windshield Heat", "On", "Off");
+
+        // ==== Overhead — Pressurization ======================================
+        v["A22X_MAN_PRESS"] = LSwitch("A22X Man Press", "Manual Pressurization Mode", "Auto", "Manual");
+        v["A22X_MANUAL_RATE"] = new SimVarDefinition
+        {
+            Name = "A22X Manual Rate", DisplayName = "Manual Cabin Rate Knob",
+            Type = SimVarType.LVar, Units = "percent over 100", UpdateFrequency = UpdateFrequency.OnRequest,
+            RenderAsSlider = true, SliderMin = 0, SliderMax = 1
+        };
+        v["A22X_EMER_DEPRESS"] = LSwitch("A22X Emergency Depress", "Emergency Depressurization (guarded)", "Normal", "On");
+        v["A22X_DITCHING"] = LSwitch("A22X Ditching", "Ditching (guarded)", "Normal", "On");
+        v["A22X_PAX_OXYGEN"] = LSwitch("A22X Passenger Oxygen", "Passenger Oxygen (guarded)", "Normal", "Deployed");
+
+        // ==== Overhead — Fire protection / ELT / Evac ([A220-41], [A220-42]) ==
+        // The engine fire pushes are latch-free korrys (A220_ButtonPBA, no IS_LATCHED): the
+        // cockpit writes 1 — one-way buttons, never Normal/Pushed combos. Measured live 2026-10-16
+        // the aircraft does NOT clear them: written 1 the left push stayed 1 with
+        // L_ENG_FIRE_PRESSED, L ENG FUEL SOV CLSD and HYD 1 SOV CLSD, and a second press changed
+        // nothing (one-way in v1.0.10; a flight reload resets it). The APU and cargo fire pushes and
+        // all six bottles ARE latched (each press toggles the L:var), so they are combos; in v1.0.10
+        // the systems module never reads them: their sensed bits never light (the pack's items for
+        // them never complete) and no CAS follows (APU fire, forward cargo fire and APU bottle
+        // measured live, the rest by the module's strings). Every fire control stays out of the
+        // ECL's "do it for me" (A220EclActionMap: GuardedDestructive). Guards per the cockpit XML:
+        // the five fire pushes are guarded, the bottles are not.
+        v["A22X_L_ENG_FIRE"] = LPress("A22X L Eng Fire", "Left Engine Fire (guarded)");
+        v["A22X_R_ENG_FIRE"] = LPress("A22X R Eng Fire", "Right Engine Fire (guarded)");
+        v["A22X_APU_FIRE"] = LSwitch("A22X APU Fire", "APU Fire (guarded)", "Normal", "Pushed");
+        v["A22X_CARGO_FWD_FIRE"] = LSwitch("A22X Cargo Fwd Fire", "Forward Cargo Fire (guarded)", "Normal", "Pushed");
+        v["A22X_CARGO_AFT_FIRE"] = LSwitch("A22X Cargo Aft Fire", "Aft Cargo Fire (guarded)", "Normal", "Pushed");
+        v["A22X_L_ENG_FIRE_BOTTLE_1"] = LSwitch("A22X L Eng Fire Bottle 1", "Left Engine Bottle 1", "Normal", "Pushed");
+        v["A22X_L_ENG_FIRE_BOTTLE_2"] = LSwitch("A22X L Eng Fire Bottle 2", "Left Engine Bottle 2", "Normal", "Pushed");
+        v["A22X_APU_BOTTLE_1"] = LSwitch("A22X APU Bottle 1", "APU Bottle", "Normal", "Pushed");
+        v["A22X_R_ENG_FIRE_BOTTLE_1"] = LSwitch("A22X R Eng Fire Bottle 1", "Right Engine Bottle 1", "Normal", "Pushed");
+        v["A22X_R_ENG_FIRE_BOTTLE_2"] = LSwitch("A22X R Eng Fire Bottle 2", "Right Engine Bottle 2", "Normal", "Pushed");
+        v["A22X_CARGO_FIRE_BOTTLE"] = LSwitch("A22X Cargo Fire Bottle", "Cargo Fire Bottle", "Normal", "Pushed");
+        v["A22X_ELT"] = LSwitch("A22X Emer Transmitter", "Emergency Locator Transmitter", "Test", "Arm", "On");
+        v["A22X_EVAC"] = LSwitch("A22X Evac", "Evacuation Command (guarded)", "Normal", "Evac");
+
+        // ==== Overhead — Flight controls / misc ==============================
+        v["A22X_PFCC_1_OFF"] = LSwitch("A22X PFCC 1 Off", "PFCC 1 (guarded)", "On", "Off");
+        v["A22X_PFCC_2_OFF"] = LSwitch("A22X PFCC 2 Off", "PFCC 2 (guarded)", "On", "Off");
+        v["A22X_PFCC_3_OFF"] = LSwitch("A22X PFCC 3 Off", "PFCC 3 (guarded)", "On", "Off");
+        v["A22X_AURAL_INHIBIT"] = LSwitch("A22X Aural Warn Inhibit", "Aural Warning Inhibit (guarded)", "Normal", "Inhibited");
+        v["A22X_TAWS_GEAR_INHIBIT"] = LSwitch("A22X TAWS Gear Inhibit", "TAWS Gear Inhibit (guarded)", "Normal", "Inhibited");
+        v["A22X_TAWS_TERRAIN_INHIBIT"] = LSwitch("A22X TAWS Terrain Inhibit", "TAWS Terrain Inhibit (guarded)", "Normal", "Inhibited");
+        v["A22X_TAWS_FLAPS_INHIBIT"] = LSwitch("A22X TAWS Flaps Inhibit", "TAWS Flaps Inhibit (guarded)", "Normal", "Inhibited");
+        v["A22X_TAWS_GS_INHIBIT"] = LSwitch("A22X TAWS GS Inhibit", "TAWS Glideslope Inhibit", "Normal", "Inhibited");
+
+        // ==== Overhead — recorder, calls, wipers (outboard columns) ===========
+        // CVR TEST/ERASE and MECH CALL are A220_ButtonMomentaryClicky (pulse); SERV INT is a
+        // latched korry (combo). Measured live 2026-10-16: each write sticks, but in v1.0.10 the
+        // systems module never reads them — no sensed bit (CVR_TEST, CVR_ERASE, SERV_INT_ON) ever
+        // lit, held or pulsed, and no item of the installed checklist pack senses them.
+        v["A22X_CVR_TEST"] = LMomentary("A22X CVR Test", "CVR Test");
+        v["A22X_CVR_ERASE"] = LMomentary("A22X CVR Erase", "CVR Erase");
+        v["A22X_SERVICE_INTERCOM"] = LSwitch("A22X Service Intercom", "Service Interphone", "Off", "On");
+        v["A22X_MECH_CALL"] = LMomentary("A22X Mech Call", "Mechanic Call");
+        // Wiper knobs (A220_KnobLarge4State). Underscore names, still L:vars on the calc path
+        // ([A220-1]). Overhead/Wipers.xml runs 1 on a timer (intermittent), 2 at half speed and
+        // 3 at full speed: the FCOM's OFF, INT, SLOW, FAST.
+        v["A22X_WIPER_L"] = LSwitch("A22X_WIPER_L", "Left Wiper", "Off", "Intermittent", "Slow", "Fast");
+        v["A22X_WIPER_R"] = LSwitch("A22X_WIPER_R", "Right Wiper", "Off", "Intermittent", "Slow", "Fast");
+
+        // ==== Overhead — Exterior Lights, Signs, Interior Lighting ============
+        // (the emergency lights sit on the Overhead's Emergency panel)
+        v["A22X_NAV_LIGHTS"] = LSwitch("A22X Nav Lights", "Navigation Lights", "Off", "On");
+        v["A22X_BEACON_LIGHTS"] = LSwitch("A22X Beacon Lights", "Beacon Lights", "Off", "On");
+        v["A22X_STROBE_LIGHTS"] = LSwitch("A22X Strobe Lights", "Strobe Lights", "Off", "On");
+        v["A22X_LOGO_LIGHTS"] = LSwitch("A22X Logo Lights", "Logo Lights", "Off", "On");
+        v["A22X_WING_INSP_LIGHTS"] = LSwitch("A22X Wing Insp Lights", "Wing Inspection Lights", "Off", "On");
+        v["A22X_TAXI_LIGHTS"] = LSwitch("A22X Taxi Lights", "Taxi Lights", "Off", "Narrow", "Wide");
+        v["A22X_L_LANDING_LIGHTS"] = LSwitch("A22X L Landing Lights", "Left Landing Light", "Off", "On");
+        v["A22X_R_LANDING_LIGHTS"] = LSwitch("A22X R Landing Lights", "Right Landing Light", "Off", "On");
+        v["A22X_NOSE_LANDING_LIGHTS"] = LSwitch("A22X Nose Landing Lights", "Nose Landing Light", "Off", "On");
+        v["A22X_EMERGENCY_LIGHTS"] = LSwitch("A22X Emergency Lights", "Emergency Lights", "Off", "Arm", "On");
+        v["A22X_SEAT_BELT_LIGHTS"] = LSwitch("A22X Seat Belt Lights", "Seat Belt Signs", "Off", "Auto", "On");
+        v["A22X_NO_PED_LIGHTS"] = LSwitch("A22X No PED Lights", "No Device Signs", "Off", "Auto", "On");
+        v["A22X_DOME_LIGHTS"] = LSwitch("A22X Dome Lights", "Dome Light", "Off", "On");
+        v["A22X_ANNUN_LIGHTS"] = LSwitch("A22X Annun Lights", "Annunciator Brightness", "Dim", "Bright", "Storm");
+
+        // ==== Pedestal — Engine ==============================================
+        // Engine masters use the documented stock events (ENGINE_MASTER_{n}_SET);
+        // state read back from the write-only animation L:var.
+        v["A22X_ENG_MASTER_1"] = new SimVarDefinition
+        {
+            Name = "A22X Engine 1 Master", DisplayName = "Left Engine Run",
+            Type = SimVarType.LVar, Units = "bool", UpdateFrequency = UpdateFrequency.OnRequest,
+            ValueDescriptions = Labels("Off", "On")
+        };
+        v["A22X_ENG_MASTER_2"] = new SimVarDefinition
+        {
+            Name = "A22X Engine 2 Master", DisplayName = "Right Engine Run",
+            Type = SimVarType.LVar, Units = "bool", UpdateFrequency = UpdateFrequency.OnRequest,
+            ValueDescriptions = Labels("Off", "On")
+        };
+        v["A22X_ENG_START_MODE"] = LSwitch("A22X Eng Start Mode", "Engine Start Mode", "L Eng Crank", "Auto", "R Eng Crank");
+        v["A22X_CONT_IGNITION"] = LSwitch("A22X Continuous Ignition", "Continuous Ignition", "Off", "On");
+        // Continuous so a hardware/keyboard toggle announces ("Parking Brake: Set");
+        // panel-combo sets stay single-spoken via the global UI-echo suppression.
+        v["A22X_PARKING_BRAKE"] = new SimVarDefinition
+        {
+            Name = "A22X Parking Brake", DisplayName = "Parking Brake",
+            Type = SimVarType.LVar, Units = "bool", UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = Labels("Off", "Set")
+        };
+        v["RUDDER_TRIM_LEFT"] = new SimVarDefinition
+        {
+            Name = "RUDDER_TRIM_LEFT", DisplayName = "Rudder Trim Left",
+            Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.OnRequest, RenderAsButton = true
+        };
+        v["RUDDER_TRIM_RIGHT"] = new SimVarDefinition
+        {
+            Name = "RUDDER_TRIM_RIGHT", DisplayName = "Rudder Trim Right",
+            Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.OnRequest, RenderAsButton = true
+        };
+        // Trim READ-OUTS. Both are rendered by TryGetDisplayOverride from the aircraft's
+        // "A22X.Flight Control Data" CommBus block — the same source the EICAS trim block
+        // reads (efcs.pitch_trim / efcs.rudder_trim). Neither trim exists as a SimVar or
+        // L:var on this aircraft, so these two defs are CARRIERS: they exist to give the
+        // display rows a var that MainForm will refresh, and their own value is only the
+        // fallback shown when the Coherent link is down. "L:A22X Horizontal Stabilizer" is
+        // the trim ANIMATION ratio, not the units the cockpit prints — so this raw row is
+        // still not the trim setting. It IS convertible though: the ratio spans the same
+        // 0-17 travel the EICAS draws, so ratio * A220Afdx.StabTrimFullScaleUnits gives the
+        // printed units (measured 2026-09-22 — see that constant). StartStabTrimWalk does NOT
+        // walk on it: with the bus down it refuses ([A220-13], owner decision 2026-10-16).
+        v["A22X_STAB_TRIM"] = Status("A22X Horizontal Stabilizer", "Stabilizer Trim", "percent over 100", "F2");
+        // Numeric entry: type the EFB takeoff-performance figure (e.g. 4.6) and the walk
+        // drives ELEV_TRIM_UP/DN until efcs.pitch_trim reads it back. No CurrentValueSourceKey
+        // — the only var that could fill it is the carrier's animation ratio, and prefilling
+        // the box with a number that is not in these units would be worse than an empty box.
+        v["A22X_STAB_TRIM_SET"] = new SimVarDefinition
+        {
+            Name = "A22X_STAB_TRIM_SET", DisplayName = "Set Stabilizer Trim (units nose up)",
+            Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.Never
+        };
+        v["A22X_RUDDER_TRIM_POS"] = Status("RUDDER TRIM PCT", "Rudder Trim", "percent over 100", "F2", SimVarType.SimVar);
+
+        // ==== Center Panel — Gear and Brakes =================================
+        v["A22X_GEAR_LEVER"] = new SimVarDefinition
+        {
+            Name = "GEAR HANDLE POSITION", DisplayName = "Landing Gear Lever",
+            Type = SimVarType.SimVar, Units = "percent over 100", UpdateFrequency = UpdateFrequency.OnRequest,
+            ValueDescriptions = Labels("Up", "Down")
+        };
+        v["A22X_ALTERNATE_GEAR"] = LSwitch("A22X Alternate Gear", "Alternate Gear Extension (guarded)", "Normal", "Pulled");
+        // The selector's real scale (live 2026-10-12, sensed AUTOBRAKE_RTO/OFF; cockpit knob
+        // NUM_STATES 5): 0 RTO, 1 OFF, 2 LO, 3 MED, 4 HI. Written ONLY by the step walk over
+        // INCREASE/DECREASE_AUTOBRAKE_CONTROL ([A220-34], UiVariableSet partial). The labels are
+        // A220Systems.AutobrakeLabels, the same array the walk's spoken results read.
+        v["A22X_AUTOBRAKE"] = LSwitch("A22X Autobrake", "Autobrake", A220.A220Systems.AutobrakeLabels);
+        v["A22X_NOSE_STEER_OFF"] = LSwitch("A22X Nose Steer Off", "Nose Wheel Steering", "On", "Off");
+        v["A22X_ALTERNATE_BRAKE"] = LSwitch("A22X Alternate Brake", "Alternate Brakes (guarded)", "Normal", "Alternate");
+        v["A22X_GEAR_AURAL_CANCEL"] = LMomentary("A22X Gear Aural", "Gear Aural Warning Cancel (guarded)");
+
+        // ==== Flaps / Spoilers ===============================================
+        // The flap lever is the STOCK handle index, not an L:var. The cockpit lever
+        // (FCTL_FLAPS_LEVER, Pedestal/FlightControls.xml) reads
+        // `(A:FLAPS HANDLE INDEX, number)` and writes `<n> 5 / 16383 * (>K:FLAPS_SET)`,
+        // so that SimVar IS the lever position, 0-5.
+        //
+        // simvars.mdx DOES document "L:A22X Flap Lever" and this def used to read it —
+        // but it is dead, exactly like the documented-and-undriven "EXTERNAL POWER ON:1"
+        // beside it: measured live 2026-09-22 it read 0 with the flaps at FULL. That was
+        // not a cosmetic miss. It read 0 forever, so the old inc/dec walk saw "0" against
+        // a target of 2, fired FLAPS_INCR, re-read 0, and fired again for all ten rounds —
+        // driving the flaps to FULL and reporting "Flaps did not reach 2, lever at 0".
+        // The same dead 0 also made the approach callout's `< 4` landing-flap check
+        // permanently claim "flaps not landing flap".
+        // Continuous so detent changes announce ("Flaps: 3" — the PM flap callout).
+        v["A22X_FLAP_LEVER"] = new SimVarDefinition
+        {
+            Name = "FLAPS HANDLE INDEX", DisplayName = "Flaps",
+            Type = SimVarType.SimVar, Units = "number", UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = Labels("0", "1", "2", "3", "4", "5 (Full)")
+        };
+        v["A22X_ALTERNATE_FLAP"] = LSwitch("A22X Alternate Flap", "Alternate Flap Mode (guarded)", "Normal", "Alternate");
+        // The speedbrake LEVER ([A220-40]): six detents RET, 1/4, 1/2, 3/4, FULL, MAX — the ECL's
+        // SPOILER_LEVER_0..5. Reads the lever travel (0-1) and shows the nearest detent; written
+        // with the cockpit lever's own SPOILERS_SET scaling in HandleUIVariableSet.
+        v["A22X_SPOILER_LEVER"] = new SimVarDefinition
+        {
+            Name = "A22X Spoiler Lever", DisplayName = "Speedbrake Lever",
+            Type = SimVarType.LVar, Units = "number", UpdateFrequency = UpdateFrequency.OnRequest,
+            ValueDescriptions = Labels(A220.A220Panels.SpeedbrakeDetentLabels.ToArray()),
+            ValueToDescriptionKey = A220.A220Panels.SpeedbrakeDetentForTravel
+        };
+
+        // ==== Glareshield — CTP (per side) ===================================
+        // Altimeter, STD and minimums are set through the CTP's own SetConfig call and read
+        // back from the CTP / ADS stores ([A220-33], Avionics partial). STD and the minimums
+        // mode are bus combos (their state exists only on the bus); the unit combo READS the
+        // WASM's HPA mirror and writes a SetConfig qnh in the other unit — never the mirror.
+        // Nav source and crosstune stay momentary press flags.
+        v["A22X_L_BARO_STD"] = BusCombo("Captain Baro STD", "Off", "On");
+        v["A22X_R_BARO_STD"] = BusCombo("First Officer Baro STD", "Off", "On");
+        v["A22X_L_BARO_UNIT"] = LSwitch("A22X L Altimeter HPA", "Captain Altimeter Unit", "Inches", "Hectopascals");
+        v["A22X_R_BARO_UNIT"] = LSwitch("A22X R Altimeter HPA", "First Officer Altimeter Unit", "Inches", "Hectopascals");
+        v["A22X_L_QNH_SET"] = QnhEntry("A22X_L_QNH_SET", "Captain QNH", "A22X_KOHLSMAN_MB");
+        v["A22X_R_QNH_SET"] = QnhEntry("A22X_R_QNH_SET", "First Officer QNH", "A22X_KOHLSMAN_MB_2");
+        v["A22X_L_MINIMUMS_MODE"] = BusCombo("Captain Minimums Mode", "Baro", "Radio");
+        v["A22X_R_MINIMUMS_MODE"] = BusCombo("First Officer Minimums Mode", "Baro", "Radio");
+        v["A22X_L_MINIMUMS"] = BusValue("Captain Minimums (bus)");
+        v["A22X_R_MINIMUMS"] = BusValue("First Officer Minimums (bus)");
+        v["A22X_L_MINIMUMS_SET"] = MinimumsEntry("A22X_L_MINIMUMS_SET", "Captain Minimums (feet)", "A22X_L_MINIMUMS");
+        v["A22X_R_MINIMUMS_SET"] = MinimumsEntry("A22X_R_MINIMUMS_SET", "First Officer Minimums (feet)", "A22X_R_MINIMUMS");
+        v["A22X_L_NAV_SOURCE"] = LMomentary("A22X L Nav Source", "Captain Nav Source Cycle");
+        v["A22X_R_NAV_SOURCE"] = LMomentary("A22X R Nav Source", "First Officer Nav Source Cycle");
+        v["A22X_L_CROSSTUNE"] = LMomentary("A22X L CTP Crosstune", "Captain Crosstune");
+        v["A22X_R_CROSSTUNE"] = LMomentary("A22X R CTP Crosstune", "First Officer Crosstune");
+        AddQuiet(v, "A22X_L_BARO_HPA", "A22X L Altimeter HPA", "bool");
+        AddQuiet(v, "A22X_R_BARO_HPA", "A22X R Altimeter HPA", "bool");
+
+        // ==== Center panel — standby instrument (ISI) ([A220-43]) =============
+        // The ISI knob writes a per-click delta and the push a STD flag; neither echoes, so the
+        // baro entry is WALKED and both are read back from the stock altimeter 3, which the
+        // aircraft's systems keep for the ISI (Isi partial). Measured live 2026-10-16: MB:3 follows
+        // every click (one click is the ISI's 0.01-inch step, about 0.34 hPa, which MB:3 reports on
+        // a 1/16-hPa grid) and STD:3 reads 1 after an STD press, 0 after the next click; the ISI's
+        // own store has only a whole-number qnh_hpa and no STD field.
+        v["A22X_ISI_BARO_SET"] = new SimVarDefinition
+        {
+            Name = "A22X_ISI_BARO_SET", DisplayName = "Standby Baro (hPa or inches)",
+            Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.Never,
+            UnparseableTextAsNaN = true
+        };
+        v["A22X_ISI_BARO_STD"] = LMomentary("A22X ISI Altimeter STD", "Standby Baro STD");
+        // The two read-backs: stock SimVars ([VAR-2]), read only on demand by ReadFreshAsync —
+        // never announced, never a Ctrl+M row ([VAR-9]).
+        v[IsiKohlsmanMbKey] = new SimVarDefinition
+        {
+            Name = "KOHLSMAN SETTING MB:3", DisplayName = "Standby altimeter setting",
+            Type = SimVarType.SimVar, Units = "millibars", UpdateFrequency = UpdateFrequency.OnRequest,
+            ExcludeFromMonitorManager = true
+        };
+        v[IsiStdKey] = new SimVarDefinition
+        {
+            Name = "KOHLSMAN SETTING STD:3", DisplayName = "Standby altimeter STD",
+            Type = SimVarType.SimVar, Units = "bool", UpdateFrequency = UpdateFrequency.OnRequest,
+            ExcludeFromMonitorManager = true
+        };
+
+        // ==== Glareshield — Warnings / chrono ================================
+        v["A22X_MASTER_CW_CANCEL"] = new SimVarDefinition
+        {
+            // The glareshield button writes 1 (Interior/Glareshield/Panel.xml) — claimed in
+            // HandleUIVariableSet, which writes the same and checks the lamps afterwards.
+            Name = "A22X Master Caution Warning", DisplayName = "Master Warning/Caution Cancel",
+            Type = SimVarType.LVar, Units = "bool", UpdateFrequency = UpdateFrequency.OnRequest,
+            RenderAsButton = true, SuppressRestingButtonState = true,
+            ValueDescriptions = Labels("Clear", "Active")
+        };
+        v["A22X_L_CHRONO"] = LMomentary("A22X L Chrono", "Captain Chrono");
+        v["A22X_R_CHRONO"] = LMomentary("A22X R Chrono", "First Officer Chrono");
+        // Self-handled: "Master Caution"/"Master Warning" (+ clear) on the edge.
+        foreach (var (key, name) in new (string, string)[]
+        {
+            ("A22X_CAUTION_PBA", "A22X Caution PBA"),
+            ("A22X_WARNING_PBA", "A22X Warning PBA"),
+        })
+        {
+            v[key] = new SimVarDefinition
+            {
+                Name = name, DisplayName = name, Type = SimVarType.LVar, Units = "bool",
+                UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
+                ExcludeFromMonitorManager = true
+            };
+        }
+
+        // ==== FCP annunciators (the P1 stopgap mode monitor) =================
+        // Self-announced from ProcessSimVarUpdate with composed phrases — the real
+        // FMA vocabulary needs the PFD scrape (P3). IsAnnounced=true is required
+        // for the vars to be monitored at all.
+        foreach (var (key, name) in new (string, string)[]
+        {
+            ("A22X_AP_MASTER", "A22X AP Master"),
+            ("A22X_AT_MASTER", "A22X AT Master"),
+            ("A22X_FG_HEADING", "A22X FG Heading"),
+            ("A22X_FG_LNAV", "A22X FG LNAV"),
+            ("A22X_FG_APPROACH", "A22X FG Approach"),
+            ("A22X_FG_FLC", "A22X FG Flight Level"),
+            ("A22X_FG_ALT", "A22X FG Altitude"),
+            ("A22X_FG_VNAV", "A22X FG VNAV"),
+            ("A22X_FG_VS", "A22X FG Vertical Speed"),
+            ("A22X_FG_FPA", "A22X FG Flight Path Angle"),
+            ("A22X_FG_HALF_BANK", "A22X FG Half Bank"),
+            ("A22X_FG_EDM", "A22X FG EDM"),
+        })
+        {
+            v[key] = new SimVarDefinition
+            {
+                Name = name, DisplayName = name, Type = SimVarType.LVar, Units = "bool",
+                UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
+                ExcludeFromMonitorManager = false
+            };
+        }
+        // FD BUTTONS, not state combos. "A22X L/R Flight Director" is bound to
+        // A220_ButtonMomentary in Interior/Glareshield/Autopilot.xml — it is the button's
+        // PRESS pulse, so it reads 0 whatever the flight director is doing, and a level
+        // write to it ("set 1 = on") is meaningless. Pressing = a real press (the
+        // RenderAsButton catch-all in HandleUIVariableSet pulses 1 then 0); the STATE is
+        // read from the FG over the CommBus and shown by the two _STATE display rows.
+        v["A22X_L_FD"] = LMomentary("A22X L Flight Director", "Left Flight Director (press)");
+        v["A22X_R_FD"] = LMomentary("A22X R Flight Director", "Right Flight Director (press)");
+        // Display-only carriers. The value read here is only a fallback: the real state
+        // comes from "A22X.Autoflight Data" l_fd/r_fd via TryGetDisplayOverride. These
+        // stock SimVars are what the msfs-sdk layer in the aircraft's own bundle maps FD
+        // state to, so they are the best non-Coherent guess — UNVERIFIED in the sim, and
+        // deliberately rendered as "Unknown" rather than "Off" when the link is down.
+        v["A22X_L_FD_STATE"] = Status("AUTOPILOT FLIGHT DIRECTOR ACTIVE:1", "Left FD", "bool", "F0", SimVarType.SimVar);
+        v["A22X_R_FD_STATE"] = Status("AUTOPILOT FLIGHT DIRECTOR ACTIVE:2", "Right FD", "bool", "F0", SimVarType.SimVar);
+        AddQuiet(v, "A22X_SELECTED_FPA", "A22X Selected FPA", "degrees");
+        AddQuiet(v, "A22X_FG_SPEED_MODE", "A22X FG Speed Mode", "number");
+        AddQuiet(v, "A22X_FG_ALT_UNIT", "A22X FG Altitude Unit", "number");
+        AddQuiet(v, "A22X_FG_ALT_FINE", "A22X FG Altitude Fine", "bool");
+
+        // Indicated airspeed for the final-approach call-outs (1 Hz batch, cache only).
+        AddQuiet(v, "A22X_IAS", "AIRSPEED INDICATED", "knots", SimVarType.SimVar);
+        // Take-off roll "Rotate" ([A220-37], Systems partial): the same airspeed per SIM_FRAME —
+        // the iFly / A320 / A380 / MD-11 pattern (the 1 Hz batch called Rotate up to ~5 kt late).
+        // ExcludeFromBatch + HighFrequency gives it its own subscription, so it may share the
+        // batched A22X_IAS's name ([VAR-7]); IsAnnounced to be delivered at all; hidden from
+        // Ctrl+M because Rotate is muted by its own synthetic row.
+        v[TakeoffIasKey] = new SimVarDefinition
+        {
+            Name = "AIRSPEED INDICATED", DisplayName = "Take-off callout airspeed",
+            Type = SimVarType.SimVar, Units = "knots",
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true, ExcludeFromBatch = true, HighFrequency = true,
+            ExcludeFromMonitorManager = true
+        };
+
+        // Stock autoflight targets for readouts and dialog walks.
+        AddQuiet(v, "A22X_AP_SPD", "AUTOPILOT AIRSPEED HOLD VAR", "knots", SimVarType.SimVar);
+        AddQuiet(v, "A22X_AP_MACH", "AUTOPILOT MACH HOLD VAR", "number", SimVarType.SimVar);
+        AddQuiet(v, "A22X_AP_HDG", "AUTOPILOT HEADING LOCK DIR", "degrees", SimVarType.SimVar);
+        AddQuiet(v, "A22X_AP_ALT", "AUTOPILOT ALTITUDE LOCK VAR", "feet", SimVarType.SimVar);
+        AddQuiet(v, "A22X_AP_VS", "AUTOPILOT VERTICAL HOLD VAR", "feet per minute", SimVarType.SimVar);
+        AddQuiet(v, "A22X_AP_MACH_MODE", "AUTOPILOT MANAGED SPEED IN MACH", "bool", SimVarType.SimVar);
+        AddQuiet(v, "A22X_KOHLSMAN", "KOHLSMAN SETTING HG:1", "inHg", SimVarType.SimVar);
+        AddQuiet(v, "A22X_KOHLSMAN_MB", "KOHLSMAN SETTING MB:1", "millibars", SimVarType.SimVar);
+        AddQuiet(v, "A22X_KOHLSMAN_MB_2", "KOHLSMAN SETTING MB:2", "millibars", SimVarType.SimVar);
+        // EXEC prompt. This is the var that drives the PHYSICAL MKP EXEC key's light
+        // (MKP.xml: the EXEC button's SEQ2_CODE is `(L:A22X Flight Plan Modified)`),
+        // so it is exactly "a modification is pending and needs EXEC". It is
+        // ANNOUNCED, not AddQuiet: a pending mod that nobody tells you about is
+        // invisible to a blind pilot — there is no other cue, since the A220 shows
+        // it as a lamp on the keypad plus a MOD flag on the display, and the FMS
+        // form only polls while it is open. Self-announced on the rising edge in
+        // ProcessSimVarUpdate; left in the Ctrl+M monitor manager so it can be
+        // turned off (hence NO ExcludeFromMonitorManager).
+        v["A22X_FPLN_MODIFIED"] = new SimVarDefinition
+        {
+            Name = "A22X Flight Plan Modified",
+            DisplayName = "Flight plan modified (EXEC prompt)",
+            Type = SimVarType.LVar, Units = "bool",
+            UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true
+        };
+
+        // ==== Engines (readouts + reverse callout source) ====================
+        v["A22X_ENG1_N1"] = Status("A22X Engine 1 N1", "Engine 1 N1 percent", "number", "F1");
+        v["A22X_ENG2_N1"] = Status("A22X Engine 2 N1", "Engine 2 N1 percent", "number", "F1");
+        v["A22X_ENG1_N2"] = Status("A22X Engine 1 N2", "Engine 1 N2 percent", "number", "F1");
+        v["A22X_ENG2_N2"] = Status("A22X Engine 2 N2", "Engine 2 N2 percent", "number", "F1");
+        v["A22X_ENG1_EGT"] = Status("GENERAL ENG EXHAUST GAS TEMPERATURE:1", "Engine 1 EGT", "celsius", "F0", SimVarType.SimVar);
+        v["A22X_ENG2_EGT"] = Status("GENERAL ENG EXHAUST GAS TEMPERATURE:2", "Engine 2 EGT", "celsius", "F0", SimVarType.SimVar);
+        // Self-handled: "Reverse green"/"No reverse" rollout callouts (plan W4).
+        foreach (var (key, name) in new (string, string)[]
+        {
+            ("A22X_ENG1_REVERSER", "A22X Engine 1 Reverser"),
+            ("A22X_ENG2_REVERSER", "A22X Engine 2 Reverser"),
+        })
+        {
+            v[key] = new SimVarDefinition
+            {
+                Name = name, DisplayName = name, Type = SimVarType.LVar, Units = "percent over 100",
+                UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
+                ExcludeFromMonitorManager = true
+            };
+        }
+
+        // ==== Electrical bus voltages (display panel) ========================
+        v["A22X_AC_BUS_1_V"] = Status("A22X AC Bus 1 Voltage", "AC Bus 1", "volts", "F0");
+        v["A22X_AC_BUS_2_V"] = Status("A22X AC Bus 2 Voltage", "AC Bus 2", "volts", "F0");
+        v["A22X_AC_ESS_V"] = Status("A22X AC Ess Bus Voltage", "AC Ess Bus", "volts", "F0");
+        v["A22X_DC_BUS_1_V"] = Status("A22X DC Bus 1 Voltage", "DC Bus 1", "volts", "F0");
+        v["A22X_DC_BUS_2_V"] = Status("A22X DC Bus 2 Voltage", "DC Bus 2", "volts", "F0");
+        v["A22X_DC_EMER_V"] = Status("A22X DC Emer Bus Voltage", "DC Emergency Bus", "volts", "F0");
+
+        // ==== Flight stage (phase context; 0-based 0=Hangar…7=Final — the EFB's
+        // start-state buttons write 0-3 to this var; see CurrentFlightPhase) ====
+        v["A22X_FLIGHT_STAGE"] = new SimVarDefinition
+        {
+            Name = "A22X Flight Stage", DisplayName = "Flight Stage",
+            Type = SimVarType.LVar, Units = "number", UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true, ExcludeFromMonitorManager = false
+        };
+
+        // ==== Radios / transponder (W8) ======================================
+        AddQuiet(v, "A22X_COM1_ACTIVE", "COM ACTIVE FREQUENCY:1", "MHz", SimVarType.SimVar);
+        AddQuiet(v, "A22X_COM1_STANDBY", "COM STANDBY FREQUENCY:1", "MHz", SimVarType.SimVar);
+        AddQuiet(v, "A22X_COM2_ACTIVE", "COM ACTIVE FREQUENCY:2", "MHz", SimVarType.SimVar);
+        AddQuiet(v, "A22X_COM2_STANDBY", "COM STANDBY FREQUENCY:2", "MHz", SimVarType.SimVar);
+        AddQuiet(v, "A22X_NAV1_ACTIVE", "NAV ACTIVE FREQUENCY:1", "MHz", SimVarType.SimVar);
+        AddQuiet(v, "A22X_NAV1_STANDBY", "NAV STANDBY FREQUENCY:1", "MHz", SimVarType.SimVar);
+        AddQuiet(v, "A22X_NAV2_ACTIVE", "NAV ACTIVE FREQUENCY:2", "MHz", SimVarType.SimVar);
+        AddQuiet(v, "A22X_NAV2_STANDBY", "NAV STANDBY FREQUENCY:2", "MHz", SimVarType.SimVar);
+        // "Bco16", as every other aircraft here reads it: live 2026-10-15 (MSFS 2024, A220 v1.0.10)
+        // "number" gave the squawk's digits as a decimal (2000, 2345, 1234), which
+        // A220Systems.Bcd16ToSquawk rejects, while "Bco16" gave the BCD16 word it decodes
+        // (8192, 9029, 4660).
+        AddQuiet(v, "A22X_XPDR_CODE", "TRANSPONDER CODE:1", "Bco16", SimVarType.SimVar);
+
+        v["A22X_COM1_STBY_SET"] = new SimVarDefinition
+        {
+            Name = "A22X_COM1_STBY_SET", DisplayName = "COM 1 Standby Frequency",
+            Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.Never,
+            CurrentValueSourceKey = "A22X_COM1_STANDBY"
+        };
+        v["A22X_COM2_STBY_SET"] = new SimVarDefinition
+        {
+            Name = "A22X_COM2_STBY_SET", DisplayName = "COM 2 Standby Frequency",
+            Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.Never,
+            CurrentValueSourceKey = "A22X_COM2_STANDBY"
+        };
+        // NAV-to-NAV transfer protection (pilot guide / A220-FOT-22-30-012): the FMS
+        // autotunes approach frequencies; MSFSBA only ever sets NAV STANDBY, never
+        // active, and never auto-swaps NAV.
+        v["A22X_NAV1_STBY_SET"] = new SimVarDefinition
+        {
+            Name = "A22X_NAV1_STBY_SET", DisplayName = "NAV 1 Standby Frequency",
+            Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.Never,
+            CurrentValueSourceKey = "A22X_NAV1_STANDBY"
+        };
+        v["A22X_NAV2_STBY_SET"] = new SimVarDefinition
+        {
+            Name = "A22X_NAV2_STBY_SET", DisplayName = "NAV 2 Standby Frequency",
+            Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.Never,
+            CurrentValueSourceKey = "A22X_NAV2_STANDBY"
+        };
+        v["A22X_COM1_SWAP"] = new SimVarDefinition
+        {
+            Name = "COM_STBY_RADIO_SWAP", DisplayName = "COM 1 Swap",
+            Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.OnRequest, RenderAsButton = true
+        };
+        v["A22X_COM2_SWAP"] = new SimVarDefinition
+        {
+            Name = "COM2_RADIO_SWAP", DisplayName = "COM 2 Swap",
+            Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.OnRequest, RenderAsButton = true
+        };
+        // Transponder / TCAS: the CNS XPDR/TCAS CONTROL dialog's own ConfigAtc calls, read back
+        // from A22X.ATC Data ([A220-35], Avionics partial). Labels are the dialog's, in its order.
+        v["A22X_XPDR_MODE"] = BusCombo("Transponder Mode", A220.A220Systems.XpdrModeLabels);
+        v["A22X_TCAS_ALT_LIMIT"] = BusCombo("TCAS Altitude Limit", A220.A220Systems.AltLimitLabels);
+        v["A22X_XPDR_CODE_BUS"] = BusValue("Transponder Code (bus)");
+        v["A22X_XPDR_CODE_SET"] = new SimVarDefinition
+        {
+            // SetCode on the bus, verified; the stock XPNDR_SET only as the verified fallback.
+            Name = "A22X_XPDR_CODE_SET", DisplayName = "Transponder Code",
+            Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.Never,
+            CurrentValueSourceKey = "A22X_XPDR_CODE_BUS", UnparseableTextAsNaN = true
+        };
+        v["A22X_XPDR_IDENT"] = new SimVarDefinition
+        {
+            // The stock event first, then the dialog's Ident action, verified on ATC Data.
+            Name = "XPNDR_IDENT_ON", DisplayName = "Transponder Ident",
+            Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.OnRequest, RenderAsButton = true
+        };
+        v["A22X_XPDR_FLIGHT_ID"] = new SimVarDefinition
+        {
+            Name = "A22X_XPDR_FLIGHT_ID", DisplayName = "Set Flight ID",
+            Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.OnRequest, RenderAsButton = true
+        };
+
+        // ==== Pedestal — audio control panel: transmit select ==================
+        // A220_ButtonMomentary pushes. The cockpit XML (the input authority, [A220-19]) writes
+        // "A22X ACP VHFn Tx"; simvars.mdx documents "A22X ACP VHFn" — the XML name is the one that
+        // works: measured live 2026-10-16, a VHF2 Tx pulse (600 ms and about 264 ms) moved
+        // "A22X Tx Channel" 1 → 2 and COM TRANSMIT to COM 2, and VHF1 Tx moved both back.
+        // "A22X Tx Channel" is the WASM's selected transmitter (1-3 = VHF 1-3, 0 = none), read
+        // back after a press.
+        v["A22X_ACP_VHF1_TX"] = LMomentary("A22X ACP VHF1 Tx", "VHF 1 Transmit");
+        v["A22X_ACP_VHF2_TX"] = LMomentary("A22X ACP VHF2 Tx", "VHF 2 Transmit");
+        v["A22X_ACP_VHF3_TX"] = LMomentary("A22X ACP VHF3 Tx", "VHF 3 Transmit");
+        v["A22X_TX_CHANNEL"] = new SimVarDefinition
+        {
+            Name = "A22X Tx Channel", DisplayName = "Transmit Radio",
+            Type = SimVarType.LVar, Units = "number", UpdateFrequency = UpdateFrequency.OnRequest,
+            RenderAsReadOnlyStatus = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "None", [1] = "VHF 1", [2] = "VHF 2", [3] = "VHF 3" }
+        };
+
+        // ==== Pedestal — audio control panel: VHF receive and volume ([A220-44]) ==============
+        // Each VHF volume knob (A220_ACP_Knob, Pedestal/ACP.xml) writes "A22X ACP VHFn Volume" =
+        // detent/28 and its push toggles "A22X ACP VHFn Rx" 0/1 (drawn as the knob pulled out);
+        // the aircraft's systems WASM maps them to COMn_VOLUME_SET and COMn_RECEIVE_SELECT
+        // (measured live 2026-10-16 on VHF 2: Rx 1 = receiving, COM RECEIVE:2 followed; volume
+        // 14/28 and 28/28 gave COM VOLUME:2 50 % and 100 %, and the L:vars held). VHF 1's volume
+        // reads 100 in a fresh cold-and-dark flight, off the 0-1 scale (COM VOLUME:1 100 % once
+        // powered): the aircraft's start value, which the combo shows as 100%, not an error.
+        // MSFSBA writes the TARGET receiver state
+        // (never the toggle) and the volume on the knob's own scale (A220Panels.AcpVolumeCalc).
+        // The HF/SAT/CAB/INT/PA/SPKR/NAV/DME keys and knobs have no variable (animation only).
+        v["A22X_ACP_VHF1_VOLUME"] = AcpVolume(1);
+        v["A22X_ACP_VHF1_RX"] = LSwitch("A22X ACP VHF1 Rx", "VHF 1 Receiver", "Off", "On");
+        v["A22X_ACP_VHF2_VOLUME"] = AcpVolume(2);
+        v["A22X_ACP_VHF2_RX"] = LSwitch("A22X ACP VHF2 Rx", "VHF 2 Receiver", "Off", "On");
+        v["A22X_ACP_VHF3_VOLUME"] = AcpVolume(3);
+        v["A22X_ACP_VHF3_RX"] = LSwitch("A22X ACP VHF3 Rx", "VHF 3 Receiver", "Off", "On");
+
+        // ==== TOD pause (plain writable L:vars — cheap win) ==================
+        v["A22X_TOD_PAUSE"] = new SimVarDefinition
+        {
+            Name = "INI_PAUSE_AT_TOD_ENABLED", DisplayName = "Pause at Top of Descent",
+            Type = SimVarType.LVar, Units = "bool", UpdateFrequency = UpdateFrequency.OnRequest,
+            ValueDescriptions = Labels("Off", "On")
+        };
+        v["A22X_TOD_DISTANCE_SET"] = new SimVarDefinition
+        {
+            Name = "A22X_TOD_DISTANCE_SET", DisplayName = "Pause Distance Before TOD (nm)",
+            Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.Never,
+            CurrentValueSourceKey = "A22X_TOD_DISTANCE"
+        };
+        AddQuiet(v, "A22X_TOD_DISTANCE", "INI_PAUSE_AT_TOD_DISTANCE", "number");
+
+        // ==== Approach-callout + waypoint readout sources (W4) ================
+        AddQuiet(v, "A22X_RA", "RADIO HEIGHT", "feet", SimVarType.SimVar);
+        AddQuiet(v, "A22X_VSI", "VERTICAL SPEED", "feet per minute", SimVarType.SimVar);
+        AddQuiet(v, "A22X_PITCH", "PLANE PITCH DEGREES", "degrees", SimVarType.SimVar);
+        AddQuiet(v, "A22X_BANK", "PLANE BANK DEGREES", "degrees", SimVarType.SimVar);
+        AddQuiet(v, "A22X_NAV1_CDI", "NAV CDI:1", "number", SimVarType.SimVar);
+        AddQuiet(v, "A22X_NAV1_HAS_LOC", "NAV HAS LOCALIZER:1", "bool", SimVarType.SimVar);
+        AddQuiet(v, "A22X_GEAR_EXT", "GEAR TOTAL PCT EXTENDED", "percent over 100", SimVarType.SimVar);
+        AddQuiet(v, "A22X_GPS_WP_DIST", "GPS WP DISTANCE", "nautical miles", SimVarType.SimVar);
+        AddQuiet(v, "A22X_GPS_WP_BRG", "GPS WP BEARING", "degrees", SimVarType.SimVar);
+
+        // ==== CommBus systems rows (Systems partial: TryGetSystemsDisplay) =====
+        foreach (var (key, display) in SystemsRows) v[key] = CommBusRow(display);
+        foreach (var door in A220.A220Systems.Doors) v[DoorKey(door.Id)] = CommBusRow(door.Name);
+
+        // ==== Annunciator lamps: batch monitor (baseline-first, generic path) ==
+        foreach (var doc in A220.SynapticA220SimVarData.Vars)
+        {
+            if (!doc.IsLamp) continue;
+            string bare = doc.Name.StartsWith("L:") ? doc.Name.Substring(2) : doc.Name;
+            string key = "LAMP_" + bare.Replace("A22X ", "").Replace(' ', '_').ToUpperInvariant();
+            v[key] = Lamp(bare, FriendlyLampName(bare));
+        }
+
+        return v;
+    }
+
+    /// <summary>"A22X L Gen Fail Lamp" → "Left Generator Fail light".</summary>
+    private static string FriendlyLampName(string bare)
+    {
+        string s = bare.StartsWith("A22X ") ? bare.Substring(5) : bare;
+        if (s.EndsWith(" Lamp")) s = s.Substring(0, s.Length - 5);
+        s = s.Replace("L Gen", "Left Generator").Replace("R Gen", "Right Generator")
+             .Replace("L Bleed", "Left Bleed").Replace("R Bleed", "Right Bleed")
+             .Replace("L Pack", "Left Pack").Replace("R Pack", "Right Pack")
+             .Replace("L Side Window", "Left Side Window").Replace("R Side Window", "Right Side Window")
+             .Replace("L Windshield", "Left Windshield").Replace("R Windshield", "Right Windshield");
+        return s + " light";
+    }
+}

@@ -73,7 +73,7 @@ An action combo or button whose selected value is only "Activate" or "Reset" say
 
 Not a press at all:
 
-- `FbwEwdWindow` (`MSFSBlindAssist/Forms/FbwEwdWindow.cs`, shared by the A380 and the A32NX): F5 or the Refresh button speaks "E W D refreshed", because a refresh reconciles the text in place and changes nothing the reader would say. The first load and the 2 s timer refresh stay silent.
+- `FbwEwdWindow` (`MSFSBlindAssist/Forms/FbwEwdWindow.cs`, shared by the A380, the A32NX and the Synaptic A220's CAS window): F5 or the Refresh button speaks "E W D refreshed" ("CAS refreshed" on the A220), because a refresh reconciles the text in place and changes nothing the reader would say. The first load and the 2 s timer refresh stay silent.
 - The Suspend Hotkeys menu item (`SuspendHotkeysMenuItem_Click`, `MainForm.MenuHandlers.cs`) speaks "Hotkeys suspended" or "Hotkeys resumed", so the pilot knows every hotkey went quiet or came back. A failed re-registration is an error and speaks a warning.
 
 Counter-example. The thrust-lever detent press confirmations ("All thrust levers Idle", "Thrust lever 1 Climb") repeated the value of the combo the pilot had just set, which the screen reader had just read. They sat in the thrust-detent branch of `FlyByWireA320Definition.HandleUIVariableSet` (the Headwind A330 inherits it) and in `FlyByWireA380Definition.UiVariableSet.cs`, and were removed. The A380's background detent announcement in `FlyByWireA380Definition.SimVarUpdate.cs` stays: a combo pick only sends the axis command, so the announcement reads back that the levers actually reached the detent (a state read back after the press, which the reader cannot say), and it also covers a lever moved by other means (a sim key binding or a hardware throttle).

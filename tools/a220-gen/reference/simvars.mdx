@@ -1,0 +1,662 @@
+---
+title: SimVars
+description: |
+  Index of all simulator variables (L-Vars) that the A220 reads and writes, organized by system.
+  These can be used to read and modify the aircraft state's using external applications.
+---
+
+## Auxiliary Power Unit (APU)
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X APU RPM` | Number | Writes the APU's rotational speed as a percentage of maximum (0-100), used for cockpit indication and by other systems (e.g. bleed air, electrical) to gate on APU speed. |
+| `L:A22X APU Starter` | Bool | Writes whether the APU starter/starter-generator is currently engaged and cranking the APU. |
+| `L:A22X APU Door` | Percent over 100 | Writes the APU inlet/exhaust door position, from 0 (closed) to 1 (fully open), used to drive the door animation. |
+
+## Bleed Air System
+
+### Anti-Ice
+
+| Variable | Unit | Description |
+|---|---|---|
+| `STRUCTURAL ICE PCT` | Percent over 100 | Reads the simulator's structural ice accumulation on the airframe, used to drive the wing/structural ice detector state machine. |
+| `STRUCTURAL DEICE SWITCH` | Bool | Reads whether the simulator's structural (wing) anti-ice switch is currently on. |
+
+### Pressurization / Trim Air (Integrated Air System Controllers)
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X Cockpit Trim Air Flow` | Number | Writes the trim air mass flow being delivered into the cockpit by the trim air system. |
+| `L:A22X Fwd Cabin Trim Air Flow` | Number | Writes the trim air mass flow being delivered into the forward cabin. |
+| `L:A22X Aft Cabin Trim Air Flow` | Number | Writes the trim air mass flow being delivered into the aft cabin. |
+| `L:A22X Fwd Cargo Trim Air Flow` | Number | Writes the trim air mass flow being delivered into the forward cargo compartment. |
+| `L:A22X Left Pack Flow` | Number | Writes the air mass flow output of the left air conditioning pack. |
+| `L:A22X Right Pack Flow` | Number | Writes the air mass flow output of the right air conditioning pack. |
+
+Note: `L:A22X IASC {Cockpit,Fwd Cargo,Fwd Cabin,Aft Cabin} {P,I}` (the PID gains for each zone's duct temperature controller) are defined in code but their `#[var(...)]` attributes are currently commented out (`bleed/mod.rs:647-661`), so they are not presently registered with the simulator.
+
+### Ram Air & Recirculation
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X Ram Air` | Bool | Reads whether the ram air valve is commanded open (used for outflow/pressurization backup). |
+| `L:A22X Recirc Fan Speed` | Percent over 100 | Writes the commanded speed of the cabin air recirculation fan. |
+
+## Brakes
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X Alternate Brake` | Bool | Reads whether the alternate (backup/hydraulic) brake system is selected, read by the brake control panel logic. |
+| `WHEEL RPM:{index}` | Degree per second | Reads a wheel's rotational speed. `{index}` is 0 for the nose wheel, 1 for the left main wheel, 2 for the right main wheel. |
+
+Brake pedal / autobrake input (`BrakeVars`, feeds `BrakeControls`):
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X Parking Brake` | Number | Written each tick with the current parking brake state, used for the parking brake handle/indicator animation. |
+| `L:A22X Autobrake` | Number | Written each tick with the current autobrake selector setting, used for cockpit indication. |
+
+## Display Management Computer (DMC)
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X Master Caution Warning` | Bool | Whether the master caution/warning light on the glareshield is illuminated (also settable to acknowledge/re-trigger it). |
+| `L:A22X Caution PBA` | Bool | Whether the CAUTION push-button annunciator light is illuminated. |
+| `L:A22X Warning PBA` | Bool | Whether the WARNING push-button annunciator light is illuminated. |
+| `L:A22X L Chrono` | Bool | Whether the left-side chronograph start/stop pushbutton is pressed. |
+| `L:A22X R Chrono` | Bool | Whether the right-side chronograph start/stop pushbutton is pressed. |
+| `L:A22X Display Tune Inhibit` | Bool | Whether display-unit radio tuning input is being inhibited (read from and reflected back to the displays). |
+| `L:A22X Display Tune Inhibited` | Bool | Whether display-unit radio tuning input is currently inhibited, output for annunciation. |
+
+## Display Units (DU)
+
+The A220 has 5 display units; `{N}` is the DU number (1-5).
+
+| Variable | Unit | Description |
+|---|---|---|
+| `A22X DU{N} Data` | — | Sent to display unit `{N}`'s JS instrument bundle: its full rendered state (power state, brightness, reversion status). |
+| `L:A22X DU{N} Backlight` | Number | The backlight brightness commanded to display unit `{N}`. |
+| `L:A22X L Inboard Brightness` | Number | The brightness knob position for the left inboard display's backlighting. |
+| `L:A22X L Outboard Brightness` | Number | The brightness knob position for the left outboard display's backlighting. |
+| `L:A22X R Inboard Brightness` | Number | The brightness knob position for the right inboard display's backlighting. |
+| `L:A22X R Outboard Brightness` | Number | The brightness knob position for the right outboard display's backlighting. |
+| `L:A22X Lower Brightness` | Number | The brightness knob position for the lower (EICAS) display's backlighting. |
+
+## Multifunction Keyboard Panel (MKP) & Reversion Panel
+
+`{side}` is `L` or `R` for the left/right keyboard panel.
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X {side} MKP Brightness` | Number | The brightness setting of the `{side}` (L/R) multifunction keyboard panel's backlighting. |
+| `L:A22X {side} MKP Powered` | Bool | Whether the `{side}` (L/R) multifunction keyboard panel is powered. |
+| `L:A22X L ADS Reversion` | Bool | Whether the left air data source (ADS) reversion pushbutton has been pressed. |
+| `L:A22X R ADS Reversion` | Bool | Whether the right air data source (ADS) reversion pushbutton has been pressed. |
+| `L:A22X L IRS Reversion` | Bool | Whether the left inertial reference system (IRS) reversion pushbutton has been pressed. |
+| `L:A22X R IRS Reversion` | Bool | Whether the right inertial reference system (IRS) reversion pushbutton has been pressed. |
+| `L:A22X Reversion Mode` | Enum | The selected display reversion mode: Manual, Auto, or Swap. |
+
+## Doors
+
+`{N}` is the MSFS exit index for each door (0 = forward passenger, 1 = forward service, 2 = aft passenger, 3 = aft service, 4 = aft cargo, 5 = forward cargo, 6 = left overwing exit, 7 = right overwing exit, 10 = forward equipment bay, 11 = mid equipment bay, 12 = aft equipment bay).
+
+| Variable | Unit | Description |
+|---|---|---|
+| `INTERACTIVE POINT OPEN:{N}` | Percent over 100 | How far open the door/exit at interactive point `{N}` is. |
+| `L:A22X Cockpit Door Open` | Bool | Whether the cockpit door is open. |
+
+## Lights
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X Pedestal Integral Lights` | Number | The pedestal integral lighting knob position. |
+| `L:A22X Glareshield Integral Lights` | Number | The glareshield integral lighting knob position. |
+| `L:A22X Overhead Integral Lights` | Number | The overhead panel integral lighting knob position. |
+| `L:A22X CB Integral Lights` | Number | The circuit breaker panel integral lighting knob position. |
+| `L:A22X Flood Lights` | Number | The cockpit flood lighting knob position. |
+| `L:A22X Entrance Lights` | Number | The entrance (ceiling/floor) lighting knob position. |
+| `L:A22X L Reading Lights` | Number | The left-seat reading light knob position. |
+| `L:A22X R Reading Lights` | Number | The right-seat reading light knob position. |
+| `L:A22X L Console Lights` | Number | The left console lighting knob position. |
+| `L:A22X R Console Lights` | Number | The right console lighting knob position. |
+| `L:A22X L Map Lights` | Number | The left map light knob position. |
+| `L:A22X R Map Lights` | Number | The right map light knob position. |
+| `L:A22X L Foot Lights` | Bool | Whether the left footwell light switch is on. |
+| `L:A22X R Foot Lights` | Bool | Whether the right footwell light switch is on. |
+| `L:A22X L Bag Lights` | Bool | Whether the left flight bag light switch is on. |
+| `L:A22X R Bag Lights` | Bool | Whether the right flight bag light switch is on. |
+| `L:A22X Dome Lights Annunciator` | Bool | Whether the dome lights annunciator is powered/illuminated. |
+
+## Electronic Flight Control System (EFCS)
+
+### Sidestick & Pedal Animation
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X L Sidestick X` | Number | Lateral (roll) deflection of the left sidestick, driven for 3D model animation. |
+| `L:A22X L Sidestick Y` | Number | Longitudinal (pitch) deflection of the left sidestick, driven for 3D model animation. |
+| `L:A22X Rudder Pedals` | Number | Rudder pedal deflection, driven for 3D model animation. |
+
+### Motor Control Electronics (MCE) — Horizontal Stabilizer Trim
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X Horizontal Stabilizer` | Percent over 100 | Horizontal stabilizer trim animation position, as a ratio of the full trim travel range. |
+
+### Pitch/Roll/Rudder/Spoiler Inceptor Transformers (RVDT)
+
+`SpoilerTransformer` (spoiler/speedbrake lever):
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X Spoiler Lever` | Number | Current spoiler/speedbrake lever position (0–1), written for animation. |
+
+### Power Control Units (PCU) — Flight Model Feedback
+
+`FlightModel` writes the computed control-surface positions back into the sim so the default flight model and 3D animations follow the custom EFCS/PCU simulation.
+
+| Variable | Unit | Description |
+|---|---|---|
+| `FOLDING WING LEFT PERCENT` | Percent over 100 | Left wing-fold percentage, driven from the left ground-spoiler (GS) surface angle for the folding wingtip animation. |
+| `FOLDING WING RIGHT PERCENT` | Percent over 100 | Right wing-fold percentage, driven from the right ground-spoiler (GS) surface angle for the folding wingtip animation. |
+| `L:A22X L MFS 4` | Degree | Left multi-function spoiler panel 4 surface angle, for animation. |
+| `L:A22X L MFS 3` | Degree | Left multi-function spoiler panel 3 surface angle, for animation. |
+| `L:A22X L MFS 2` | Degree | Left multi-function spoiler panel 2 surface angle, for animation. |
+| `L:A22X L MFS 1` | Degree | Left multi-function spoiler panel 1 surface angle, for animation. |
+| `L:A22X L GS` | Degree | Left ground-spoiler surface angle, for animation. |
+| `L:A22X R GS` | Degree | Right ground-spoiler surface angle, for animation. |
+| `L:A22X R MFS 1` | Degree | Right multi-function spoiler panel 1 surface angle, for animation. |
+| `L:A22X R MFS 2` | Degree | Right multi-function spoiler panel 2 surface angle, for animation. |
+| `L:A22X R MFS 3` | Degree | Right multi-function spoiler panel 3 surface angle, for animation. |
+| `L:A22X R MFS 4` | Degree | Right multi-function spoiler panel 4 surface angle, for animation. |
+| `L:A22X L Aileron` | Degree | Left aileron surface angle, for animation. |
+| `L:A22X R Aileron` | Degree | Right aileron surface angle, for animation. |
+| `L:A22X L Elevator` | Degree | Left elevator surface angle, for animation. |
+| `L:A22X R Elevator` | Degree | Right elevator surface angle, for animation. |
+| `L:A22X Rudder` | Degree | Rudder surface angle, for animation. |
+
+## Flight Control Panel (FCP)
+
+The autopilot/flight-guidance control panel: physical panel state (brightness, backlight, knob/button inputs) plus flight guidance mode annunciations.
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X FCP Powered` | Bool | Whether the FCP is powered. |
+| `L:A22X FCP Brightness` | Number | FCP display brightness knob position, read from the panel. |
+| `L:A22X FCP Backlight` | Number | FCP backlight/integral lighting level, written for the panel's own lighting animation. |
+| `L:A22X AP Master` | Bool | Autopilot master engaged annunciator. |
+| `L:A22X AT Master` | Bool | Autothrottle master engaged annunciator. |
+| `L:A22X FG EDM` | Bool | Flight guidance "EDM" (Engage Disconnect Mode / expanded display mode) annunciator. |
+| `L:A22X FG Source` | Number | Flight guidance source annunciator (enum indicating which side's FG/FD is driving the displays). |
+| `L:A22X FG Half Bank` | Bool | Whether the half-bank (reduced max bank angle) mode is enabled. |
+| `L:A22X FG Heading` | Bool | HDG (heading select) mode engaged annunciator. |
+| `L:A22X FG LNAV` | Bool | LNAV (lateral navigation) mode engaged annunciator. |
+| `L:A22X FG Approach` | Bool | APPR (approach) mode engaged annunciator. |
+| `L:A22X FG Flight Level` | Bool | FLC (flight level change) mode engaged annunciator. |
+| `L:A22X FG Altitude` | Bool | Altitude hold mode engaged annunciator. |
+| `L:A22X FG VNAV` | Bool | VNAV (vertical navigation) mode engaged annunciator. |
+| `L:A22X FG Vertical Speed` | Bool | Vertical speed mode engaged annunciator. |
+| `L:A22X FG Flight Path Angle` | Bool | Flight path angle mode engaged annunciator. |
+| `AUTOPILOT HEADING LOCK DIR` | Degree | Selected heading bug value, written to the sim's default autopilot heading. |
+| `AUTOPILOT HEADING MANUALLY TUNABLE` | Bool | Whether the heading bug is manually tunable, written to the sim's default autopilot. |
+| `L:A22X Selected FPA` | Degree | Selected flight path angle target. |
+| `L:A22X EDM` | Bool | EDM mode state, read from and written to the panel/annunciator. |
+| `L:A22X FG Source Transfer` | Bool | FG source transfer switch/button state, read from and written to the panel. |
+| `L:A22X FG Speed Mode` | Number | Selected airspeed mode annunciation (enum, e.g. manual/managed/FMS speed). |
+| `L:A22X FG Altitude Unit` | Number | Selected altitude display unit (enum: feet or meters), read from the panel. |
+| `L:A22X FG Altitude Fine` | Bool | Whether the altitude selector is in fine (vs. coarse) increment mode, read from the panel. |
+| `L:A22X FG VNAV Toggle` | Bool | VNAV mode toggle button state, read from and written to the panel. |
+| `L:A22X L Flight Director` | Bool | Left flight director on/off state, read from and written to the panel. |
+| `L:A22X R Flight Director` | Bool | Right flight director on/off state, read from and written to the panel. |
+
+## Electrical System
+
+### Buses
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X {name} Voltage` | Volt | The output voltage of the named electrical bus. `{name}` is one of: AC Bus 1, DC Bus 1, DC Ess Bus 1, Batt Dir Bus 1, DC Emer Bus, AC Bus 2, DC Bus 2, DC Ess Bus 2, Batt Dir Bus 2, AC Ess Bus, DC Ess Bus 3. |
+
+### Circuit Breakers
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X Circuit Breaker {id}` | Bool | Whether the pilot-pullable circuit breaker `{id}` has been manually pulled out (only the two pilot-accessible CB panels expose pullable breakers; the rest are non-interactive and trip automatically on overcurrent). `{id}` on the left CB panel (LCbp) is one of: L A1, L A2, L A3, L A4, L A5, L B1, L B2, L B3, L B4, L B5, L C1, L C2, L C4, L D1, L D2, L D3, L D4, L D5, L E1, L E3, L E5, L F1, L F4, L F5, L G1, L G2, L H1, L H2, L H4, L I4. On the right CB panel (RCbp): R A1, R A2, R A3, R A4, R A5, R B1, R B2, R B4, R C1, R C2, R C3, R C4, R D1, R D2, R D3, R D4, R E1, R E2, R E3, R E4, R F1, R F2, R F3, R F4, R F5. |
+
+### Control Panel
+
+| Variable | Unit | Description |
+|---|---|---|
+| `ELECTRICAL MASTER BATTERY:{index}` | Bool | Whether battery master switch `{index}` (1 or 2) is on. |
+| `L:A22X RAT Gen` | Bool | Whether the RAM air turbine generator switch has been pushed/deployed. |
+| `L:A22X RAT Gen Lamp` | Bool | Whether the RAT generator switch's lamp is illuminated (lit once the RAT generator is producing usable voltage). |
+| `EXTERNAL POWER ON` | Bool | Whether the external power switch on the panel is selected on. |
+| `L:A22X APU Gen Off` | Bool | Whether the APU generator switch is selected off. |
+| `L:A22X L Gen Off` | Bool | Whether the left engine generator switch is selected off. |
+| `L:A22X R Gen Off` | Bool | Whether the right engine generator switch is selected off. |
+| `L:A22X L Eng Fire` | Bool | Whether the left engine fire pushbutton has been pressed (cuts power sources feeding the engine and arms extinguishing). |
+| `L:A22X R Eng Fire` | Bool | Whether the right engine fire pushbutton has been pressed. |
+| `L:A22X Hyd 1 SOV` | Bool | Whether the hydraulic system 1 electric-motor-pump shutoff valve switch is selected on. |
+| `L:A22X Hyd 2 SOV` | Bool | Whether the hydraulic system 2 electric-motor-pump shutoff valve switch is selected on. |
+| `L:A22X Bus Isolation Mode` | Enum | The position of the bus isolation selector: 0 = Main, 1 = Auto, 2 = Ess. |
+
+### External Power
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:INI_GPU_AVAIL` | Bool | Whether a ground power unit (GPU) is available to connect to the aircraft. |
+
+## Emergency Locator Transmitter (ELT)
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X Emer Transmitter` | Enum | The position of the ELT switch: 0 = Test, 1 = Arm (default), 2 = On. |
+| `L:A22X Emer Transmitter Test` | Bool | Whether the ELT is currently in its self-test state (switch held at Test). |
+
+## Integrated Cockpit Control Panel (ICCP)
+
+The ICCP aggregates the overhead panel, lighting/door panel, trim panel, engine panel, and landing gear panel switches and their annunciator lamps, and relays them to/from the Remote Data Concentrators (RDC) over an internal CAN bus.
+
+### Remote Data Concentrators
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X RDC Powered` | Bool | Whether the Remote Data Concentrators are powered (used to drive korry-light backlighting). |
+| `L:A22X Lamp Test` | Bool | Whether the annunciator lamp test is active. |
+| `L:A22X Annun Brightness` | Number | The brightness level commanded for the annunciator/korry lights. |
+
+### Overhead Panel
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X Emer Transmitter` | Enum | The position of the ELT switch as monitored by the overhead panel: 0 = Test, 1 = Arm, 2 = On. |
+| `L:A22X Evac` | Bool | Whether the cabin evacuation command switch has been activated. |
+| `L:A22X Evac Lamp` | Bool | Whether the evacuation command lamp is illuminated. |
+| `ELECTRICAL MASTER BATTERY:1` | Bool | Whether battery 1 master switch is on, as monitored by the overhead panel. |
+| `ELECTRICAL MASTER BATTERY:2` | Bool | Whether battery 2 master switch is on, as monitored by the overhead panel. |
+| `L:A22X L Gen Off` | Bool | Whether the left generator switch is selected off, as monitored by the overhead panel. |
+| `L:A22X L Gen Fail Lamp` | Bool | Whether the left generator FAIL lamp is illuminated. |
+| `L:A22X L Gen Off Lamp` | Bool | Whether the left generator OFF lamp is illuminated. |
+| `L:A22X R Gen Off` | Bool | Whether the right generator switch is selected off, as monitored by the overhead panel. |
+| `L:A22X R Gen Fail Lamp` | Bool | Whether the right generator FAIL lamp is illuminated. |
+| `L:A22X R Gen Off Lamp` | Bool | Whether the right generator OFF lamp is illuminated. |
+| `L:A22X L Gen Disc` | Bool | Whether the left generator disconnect switch/guard has been activated. |
+| `L:A22X L Gen Oil Lamp` | Bool | Whether the left generator disconnect OIL lamp is illuminated. |
+| `L:A22X L Gen Disc Lamp` | Bool | Whether the left generator DISC (disconnected) lamp is illuminated. |
+| `L:A22X R Gen Disc` | Bool | Whether the right generator disconnect switch/guard has been activated. |
+| `L:A22X R Gen Oil Lamp` | Bool | Whether the right generator disconnect OIL lamp is illuminated. |
+| `L:A22X R Gen Disc Lamp` | Bool | Whether the right generator DISC (disconnected) lamp is illuminated. |
+| `L:A22X APU Gen Off` | Bool | Whether the APU generator switch is selected off, as monitored by the overhead panel. |
+| `L:A22X APU Gen Fail Lamp` | Bool | Whether the APU generator FAIL lamp is illuminated. |
+| `L:A22X APU Gen Off Lamp` | Bool | Whether the APU generator OFF lamp is illuminated. |
+| `L:A22X Cabin Power Off` | Bool | Whether the cabin power switch is selected off. |
+| `L:A22X Cabin Power Off Lamp` | Bool | Whether the cabin power OFF lamp is illuminated. |
+| `EXTERNAL POWER ON:1` | Bool | Whether external ground power is currently connected and in use. |
+| `L:A22X Bus Isolation Mode` | Enum | The position of the bus isolation selector as monitored by the overhead panel: 0 = Main, 1 = Auto, 2 = Ess. |
+| `L:A22X L Boost Pump` | Enum | The position of the left fuel boost pump switch: 0 = Off, 1 = Auto, 2 = On. |
+| `L:A22X R Boost Pump` | Enum | The position of the right fuel boost pump switch: 0 = Off, 1 = Auto, 2 = On. |
+| `L:A22X Manual Transfer` | Enum | The position of the manual fuel transfer switch: 0 = Off, 1 = Right, 2 = Center, 3 = Left. |
+| `L:A22X Gravity Transfer` | Bool | Whether the gravity fuel transfer switch/guard has been activated. |
+| `L:A22X Gravity Transfer Lamp` | Bool | Whether the gravity transfer ON lamp is illuminated. |
+| `L:A22X L Bleed Off` | Bool | Whether the left engine bleed switch is selected off. |
+| `L:A22X L Bleed Fail Lamp` | Bool | Whether the left bleed FAIL lamp is illuminated. |
+| `L:A22X L Bleed Off Lamp` | Bool | Whether the left bleed OFF lamp is illuminated. |
+| `L:A22X APU Bleed Off` | Bool | Whether the APU bleed switch is selected off. |
+| `L:A22X APU Bleed Fail Lamp` | Bool | Whether the APU bleed FAIL lamp is illuminated. |
+| `L:A22X APU Bleed Off Lamp` | Bool | Whether the APU bleed OFF lamp is illuminated. |
+| `L:A22X Crossbleed` | Enum | The position of the crossbleed valve switch: 0 = Closed, 1 = Auto, 2 = Open. |
+| `L:A22X R Bleed Off` | Bool | Whether the right engine bleed switch is selected off. |
+| `L:A22X R Bleed Fail Lamp` | Bool | Whether the right bleed FAIL lamp is illuminated. |
+| `L:A22X R Bleed Off Lamp` | Bool | Whether the right bleed OFF lamp is illuminated. |
+| `L:A22X L Pack Off` | Bool | Whether the left air conditioning pack switch is selected off. |
+| `L:A22X L Pack Fail Lamp` | Bool | Whether the left pack FAIL lamp is illuminated. |
+| `L:A22X L Pack Off Lamp` | Bool | Whether the left pack OFF lamp is illuminated. |
+| `L:A22X R Pack Off` | Bool | Whether the right air conditioning pack switch is selected off. |
+| `L:A22X R Pack Fail Lamp` | Bool | Whether the right pack FAIL lamp is illuminated. |
+| `L:A22X R Pack Off Lamp` | Bool | Whether the right pack OFF lamp is illuminated. |
+| `L:A22X Pack Flow` | Bool | Whether the pack flow selector is set to the high-flow position. |
+| `L:A22X Pack Flow Lamp` | Bool | Whether the pack flow HI lamp is illuminated. |
+| `L:A22X Ram Air` | Bool | Whether the ram air switch/guard has been activated. |
+| `L:A22X Ram Air Lamp` | Bool | Whether the ram air OPEN lamp is illuminated. |
+| `L:A22X Trim Air Off` | Bool | Whether the trim air switch is selected off. |
+| `L:A22X Trim Air Off Lamp` | Bool | Whether the trim air OFF lamp is illuminated. |
+| `L:A22X Cockpit Air` | Percent over 100 | The commanded position of the cockpit air temperature knob. |
+| `L:A22X Fwd Cabin Air` | Percent over 100 | The commanded position of the forward cabin air temperature knob. |
+| `L:A22X Aft Cabin Air` | Percent over 100 | The commanded position of the aft cabin air temperature knob. |
+| `L:A22X Fwd Cargo Air` | Enum | The position of the forward cargo air switch: 0 = Off, 1 = Vent, 2 = Lo Heat, 3 = Hi Heat. |
+| `L:A22X Aft Cargo Air` | Enum | The position of the aft cargo air switch: 0 = Off, 1 = Vent. |
+| `L:A22X Manual Temperature` | Bool | Whether manual cabin temperature control mode has been selected. |
+| `L:A22X Manual Temperature Lamp` | Bool | Whether the manual temperature control ON lamp is illuminated. |
+| `L:A22X Recirc Air Off` | Bool | Whether the recirculation fan switch is selected off. |
+| `L:A22X Recirc Air Off Lamp` | Bool | Whether the recirculation air OFF lamp is illuminated. |
+| `L:A22X Emergency Depress` | Bool | Whether the emergency depressurization switch/guard has been activated. |
+| `L:A22X Emergency Depress Lamp` | Bool | Whether the emergency depressurization ON lamp is illuminated. |
+| `L:A22X Man Press` | Bool | Whether manual cabin pressurization control mode has been selected. |
+| `L:A22X Auto Press Fail Lamp` | Bool | Whether the automatic pressurization FAIL lamp is illuminated. |
+| `L:A22X Man Press Lamp` | Bool | Whether the manual pressurization mode lamp is illuminated. |
+| `L:A22X Ditching` | Bool | Whether the ditching mode switch/guard has been activated (seals cabin outflow/inflow valves for a water landing). |
+| `L:A22X Ditching Lamp` | Bool | Whether the ditching mode ON lamp is illuminated. |
+| `L:A22X Passenger Oxygen` | Bool | Whether the passenger oxygen masks have been manually deployed. |
+| `L:A22X Passenger Oxygen Lamp` | Bool | Whether the passenger oxygen deployed lamp is illuminated. |
+| `L:A22X Manual Rate` | Percent over 100 | The commanded position of the manual cabin pressurization rate knob. |
+| `L:A22X L Cowl Anti Ice` | Enum | The position of the left engine cowl anti-ice switch: 0 = Off, 1 = Auto, 2 = On. |
+| `L:A22X R Cowl Anti Ice` | Enum | The position of the right engine cowl anti-ice switch: 0 = Off, 1 = Auto, 2 = On. |
+| `L:A22X Wing Anti Ice` | Enum | The position of the wing anti-ice switch: 0 = Off, 1 = Auto, 2 = On. |
+| `L:A22X Probe Heat` | Bool | Read/write: whether the pitot/static probe heat switch is on; the ICCP also clears this back to off itself each tick (ground probe-heat test pulse). |
+| `L:A22X Probe Heat Lamp` | Bool | Whether the probe heat ground-test lamp is illuminated. |
+| `L:A22X L Side Window Heat Off` | Bool | Whether the left side window heat switch is selected off. |
+| `L:A22X L Side Window Heat Off Lamp` | Bool | Whether the left side window heat OFF lamp is illuminated. |
+| `L:A22X R Side Window Heat Off` | Bool | Whether the right side window heat switch is selected off. |
+| `L:A22X R Side Window Heat Off Lamp` | Bool | Whether the right side window heat OFF lamp is illuminated. |
+| `L:A22X L Windshield Heat Off` | Bool | Whether the left windshield heat switch is selected off. |
+| `L:A22X L Windshield Heat Off Lamp` | Bool | Whether the left windshield heat OFF lamp is illuminated. |
+| `L:A22X R Windshield Heat Off` | Bool | Whether the right windshield heat switch is selected off. |
+| `L:A22X R Windshield Heat Off Lamp` | Bool | Whether the right windshield heat OFF lamp is illuminated. |
+| `L:A22X APU Switch` | Enum | The position of the APU control switch: 0 = Off, 1 = Run, 2 = Start. |
+| `L:A22X PTU` | Enum | The position of the power transfer unit pump switch: 0 = Off, 1 = Auto, 2 = On. |
+| `L:A22X ACMP 2B` | Enum | The position of the AC motor pump 2B switch: 0 = Off, 1 = Auto, 2 = On. |
+| `L:A22X ACMP 3A` | Enum | The position of the AC motor pump 3A switch: 0 = Off, 1 = Auto, 2 = On. |
+| `L:A22X ACMP 3B` | Enum | The position of the AC motor pump 3B switch: 0 = Off, 1 = Auto, 2 = On. |
+| `L:A22X Hyd 1 SOV` | Bool | Whether the hydraulic system 1 shutoff valve switch is selected on, as monitored by the overhead panel. |
+| `L:A22X Hyd 1 SOV Lamp` | Bool | Whether the hydraulic 1 SOV CLOSED lamp is illuminated. |
+| `L:A22X Hyd 2 SOV` | Bool | Whether the hydraulic system 2 shutoff valve switch is selected on, as monitored by the overhead panel. |
+| `L:A22X Hyd 2 SOV Lamp` | Bool | Whether the hydraulic 2 SOV CLOSED lamp is illuminated. |
+| `L:A22X PFCC 1 Off` | Bool | Whether primary flight control computer 1's power switch is selected off. |
+| `L:A22X PFCC 1 Off Lamp` | Bool | Whether the PFCC 1 OFF lamp is illuminated. |
+| `L:A22X PFCC 2 Off` | Bool | Whether primary flight control computer 2's power switch is selected off. |
+| `L:A22X PFCC 2 Off Lamp` | Bool | Whether the PFCC 2 OFF lamp is illuminated. |
+| `L:A22X PFCC 3 Off` | Bool | Whether primary flight control computer 3's power switch is selected off. |
+| `L:A22X PFCC 3 Off Lamp` | Bool | Whether the PFCC 3 OFF lamp is illuminated. |
+| `L:A22X Dome Lights` | Bool | Whether the cockpit dome light switch is on. |
+| `L:A22X Annun Lights` | Enum | The position of the annunciator light brightness switch: 0 = Dim, 1 = Bright, 2 = Storm. |
+| `L:A22X Nav Lights` | Bool | Whether the navigation lights switch is on. |
+| `L:A22X Beacon Lights` | Bool | Whether the beacon lights switch is on. |
+| `L:A22X Strobe Lights` | Bool | Whether the strobe lights switch is on. |
+| `L:A22X Logo Lights` | Bool | Whether the logo lights switch is on. |
+| `L:A22X Wing Insp Lights` | Bool | Whether the wing inspection lights switch is on. |
+| `L:A22X Taxi Lights` | Enum | The position of the taxi light switch: 0 = Off, 1 = Narrow, 2 = Wide. |
+| `L:A22X L Landing Lights` | Bool | Whether the left landing light switch is on. |
+| `L:A22X R Landing Lights` | Bool | Whether the right landing light switch is on. |
+| `L:A22X Nose Landing Lights` | Bool | Whether the nose landing light switch is on. |
+| `L:A22X Emergency Lights` | Enum | The position of the emergency lights switch: 0 = Off, 1 = Arm, 2 = On. |
+| `L:A22X Seat Belt Lights` | Enum | The position of the seat belt sign switch: 0 = Off, 1 = Auto, 2 = On. |
+| `L:A22X No PED Lights` | Enum | The position of the no portable electronic devices sign switch: 0 = Off, 1 = Auto, 2 = On. |
+| `L:A22X Aural Warn Inhibit` | Bool | Whether the aural warning inhibit switch is active. |
+| `L:A22X Aural Warn Inhibit Lamp` | Bool | Whether the aural warning inhibit lamp is illuminated. |
+| `L:A22X TAWS Gear Inhibit` | Bool | Whether the TAWS gear warning inhibit switch is active. |
+| `L:A22X TAWS Gear Inhibit Lamp` | Bool | Whether the TAWS gear inhibit lamp is illuminated. |
+| `L:A22X TAWS Terrain Inhibit` | Bool | Whether the TAWS terrain warning inhibit switch is active. |
+| `L:A22X TAWS Terrain Inhibit Lamp` | Bool | Whether the TAWS terrain inhibit lamp is illuminated. |
+| `L:A22X TAWS Flaps Inhibit` | Bool | Whether the TAWS flaps warning inhibit switch is active. |
+| `L:A22X TAWS Flaps Inhibit Lamp` | Bool | Whether the TAWS flaps inhibit lamp is illuminated. |
+| `L:A22X TAWS GS Inhibit` | Bool | Whether the TAWS glideslope warning inhibit switch is active. |
+| `L:A22X TAWS GS Inhibit Lamp` | Bool | Whether the TAWS glideslope inhibit lamp is illuminated. |
+
+### Lighting/Door Panel
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X Parking Brake` | Bool | Whether the parking brake handle is set, as monitored by the lighting/door panel (used to enable ground-only functions like the cabin door lights). |
+
+### Trim Panel
+
+No panel-specific variables — the trim panel component only relays landing gear panel state over the internal CAN bus.
+
+### Engine Panel
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X Continuous Ignition` | Bool | Whether the continuous ignition switch is on. |
+| `L:A22X Continuous Ignition Lamp` | Bool | Whether the continuous ignition ON lamp is illuminated. |
+| `L:A22X Eng Start Mode` | Enum | The position of the engine start mode selector: 0 = L Eng Crank, 1 = Auto, 2 = R Eng Crank. |
+
+### Landing Gear Panel
+
+| Variable | Unit | Description |
+|---|---|---|
+| `GEAR HANDLE POSITION` | Percent over 100 | The position of the landing gear handle (>=50% is treated as gear-down commanded). |
+| `L:A22X Alternate Gear` | Bool | Whether the alternate (emergency) gear extension handle has been pulled. |
+| `L:A22X Gear Aural` | Bool | Read/write: whether the landing gear aural warning has sounded; also used to signal a cancel of the warning, and is cleared automatically at the end of each tick. |
+| `L:A22X Gear Aural Lamp` | Bool | Whether the gear aural warning cancel lamp is illuminated. |
+| `L:A22X Nose Steer Off` | Bool | Whether the nose wheel steering off switch is selected. |
+| `L:A22X Nose Steer Off Lamp` | Bool | Whether the nose steering OFF lamp is illuminated. |
+| `L:A22X Alternate Brake` | Bool | Whether the alternate brake system switch is selected. |
+| `L:A22X Alternate Brake Lamp` | Bool | Whether the alternate brake ON lamp is illuminated. |
+
+## Engine
+
+`{index}` is the engine number, 1 (left) or 2 (right), throughout this section.
+
+### Electronic Engine Control (EEC)
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X Engine {index} N1` | Number | The engine's N1 (fan speed) as a percentage. |
+| `L:A22X Engine {index} N2` | Number | The engine's N2 (core speed) as a percentage. |
+| `L:A22X Engine {index} Howl` | Number | A synthetic "engine howl" intensity value used to drive the startup whine sound effect. |
+| `TURB ENG CORRECTED N1:{index}` | Percent over 100 | The engine's N1 corrected for ambient temperature/pressure. |
+| `TURB ENG CORRECTED N2:{index}` | Percent over 100 | The engine's N2 corrected for ambient temperature/pressure. |
+| `GENERAL ENG THROTTLE LEVER POSITION:{index}` | Percent over 100 | The commanded throttle lever position sent to the base sim's engine model. |
+| `GENERAL ENG EXHAUST GAS TEMPERATURE:{index}` | Celsius | The engine's exhaust gas temperature. |
+| `L:A22X Engine {index} Master` | Bool | Write-only animation variable reflecting the state of the engine master switch. |
+| `L:A22X Engine {index} Ignition` | Bool | If the engine's ignition system is active. |
+| `L:A22X Engine {index} Starter` | Bool | If the engine's starter is engaged. |
+| `L:A22X Engine {index} Reverser` | Percent over 100 | The thrust reverser deployment position (0 = stowed, 1 = fully deployed). |
+
+### Throttle Quadrant Assembly (TQA)
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X Throttle 1 TLA` | Number | The animated position of throttle lever 1, mapped from the calibrated throttle command. |
+| `L:A22X Throttle 2 TLA` | Number | The animated position of throttle lever 2, mapped from the calibrated throttle command. |
+| `L:A22X Throttle Type` | Number | The throttle calibration mode: axis, axis with reverse button, or button-only. |
+| `L:A22X Throttle L Idle` | Number | The calibrated axis position of the left throttle's forward-idle detent. |
+| `L:A22X Throttle R Idle` | Number | The calibrated axis position of the right throttle's forward-idle detent. |
+| `L:A22X Throttle L Rev Idle` | Number | The calibrated axis position of the left throttle's reverse-idle detent. |
+| `L:A22X Throttle R Rev Idle` | Number | The calibrated axis position of the right throttle's reverse-idle detent. |
+| `L:A22X Throttle L Raw` | Number | The raw (uncalibrated) input position of the left throttle axis. |
+| `L:A22X Throttle R Raw` | Number | The raw (uncalibrated) input position of the right throttle axis. |
+
+## Flaps
+
+### Flap/Slat Control Panel
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X Flap Lever` | Number | The commanded position of the flap lever (0-5, one of the 6 detents). |
+| `L:A22X Alternate Flap` | Bool | If the alternate (electric/manual) flap extension mode is selected. |
+
+### Power Drive Unit (PDU)
+
+| Variable | Unit | Description |
+|---|---|---|
+| `LEADING EDGE FLAPS LEFT PERCENT` | Number | The left slat surface position, as a percentage of travel, written to the base sim's animation model. |
+| `LEADING EDGE FLAPS RIGHT PERCENT` | Number | The right slat surface position, as a percentage of travel, written to the base sim's animation model. |
+| `L:A22X L Slat Speed` | Number | The rate of motion of the left slat surface, as a percentage of max speed. |
+| `L:A22X R Slat Speed` | Number | The rate of motion of the right slat surface, as a percentage of max speed. |
+| `TRAILING EDGE FLAPS LEFT PERCENT` | Number | The left flap surface position, as a percentage of travel, written to the base sim's animation model. |
+| `TRAILING EDGE FLAPS RIGHT PERCENT` | Number | The right flap surface position, as a percentage of travel, written to the base sim's animation model. |
+| `L:A22X L Flap Speed` | Number | The rate of motion of the left flap surface, as a percentage of max speed. |
+| `L:A22X R Flap Speed` | Number | The rate of motion of the right flap surface, as a percentage of max speed. |
+
+## Fuel System
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X Gravity Transfer` | Bool | If gravity transfer between tanks is enabled (hardwired cockpit control, not a software setting). |
+| `FuelEvent` | — | Client data bus message received from the JS instruments containing a manual fuel-load request (`fuelAmountInKg`), e.g. from an EFB fuel-loading page. |
+| `L:A22X ZFW CG` | Percent over 100 | The zero fuel weight center of gravity, written for display. |
+| `FUEL TANK LEFT MAIN QUANTITY` | Number | The fuel volume in the left main tank, written to the base sim's fuel model. |
+| `FUEL TANK RIGHT MAIN QUANTITY` | Number | The fuel volume in the right main tank, written to the base sim's fuel model. |
+| `FUEL TANK CENTER QUANTITY` | Number | The fuel volume in the center tank, written to the base sim's fuel model. |
+
+## Hydraulic System
+
+| Variable | Unit | Description |
+|---|---|---|
+| `TURB ENG N2:1` | Percent over 100 | Engine 1's N2 (core speed), read by the hydraulic system 1 engine-driven pump (EDP 1A) to compute its output pressure. |
+| `TURB ENG N2:2` | Percent over 100 | Engine 2's N2 (core speed), read by the hydraulic system 2 engine-driven pump (EDP 2A) to compute its output pressure. |
+| `L:A22X ACMP 2B Load` | Number | The electrical load percentage of AC motor pump 2B (hydraulic system 2). |
+| `L:A22X ACMP 3A Load` | Number | The electrical load percentage of AC motor pump 3A (hydraulic system 3). |
+| `L:A22X ACMP 3B Load` | Number | The electrical load percentage of AC motor pump 3B (hydraulic system 3). |
+| `L:A22X PTU Running` | Bool | If the power transfer unit (PTU) between hydraulic systems 1 and 2 is running. |
+| `L:A22X PTU Load` | Number | The load percentage placed on the power transfer unit (PTU). |
+
+## Flight Management System (FMS)
+
+### Flight Plan Interface
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X Flight Plan Modified` | Bool | Set when the active flight plan has been modified and not yet executed (drives the EXEC prompt/light). |
+| `L:A22X Flight Plan Cancel` | Bool | Read/write flag used to cancel a pending (unexecuted) flight-plan modification. |
+| `L:A22X Flight Plan Execute` | Bool | Read/write flag used to execute a pending flight-plan modification. |
+
+### Guidance Manager
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:INI_PAUSE_AT_TOD_ENABLED` | Bool | If the "pause at top of descent" simulator option is enabled. |
+| `L:INI_PAUSE_AT_TOD_DISTANCE` | Number | The distance before top of descent, in nautical miles, at which the simulator should pause when that option is enabled. |
+| `L:A22X Paused at TOD` | Bool | Set once the simulator has paused for the top-of-descent pause feature, so it is only triggered once per approach to TOD. |
+
+## Integrated Standby Instrument (ISI)
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X ISI Brightness` | Number | The ISI display's backlight brightness (0.0-1.0), also used to compute its electrical power draw. |
+| `L:A22X ISI ADS Reversion` | Bool | Momentary read/write flag used to toggle which Air Data Smart Probe (ADSP 3 or 4) the ISI derives its air data from. |
+| `L:A22X ISI Altimeter Set` | Number | Read/write barostatic setting increment/decrement applied to the ISI's barometric altimeter setting each tick. |
+| `L:A22X ISI Altimeter STD` | Bool | Read/write flag that sets the ISI's altimeter to the standard (STD) 29.92"/1013 hPa setting. |
+
+## Landing Gear
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X L Tiller` | Bool | If the tiller steering handle is disconnected (e.g. for pedal-only steering). |
+| `L:A22X NLG Door` | Percent over 100 | Nose landing gear door position, driven to follow the nose gear's extension/retraction position. |
+
+## Control Tuning Panel (CTP)
+
+`{side}` is the panel instance identifier, `L` (captain's) or `R` (first officer's).
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X {side} Altimeter HPA` | Bool | Reads whether the CTP's barometric altimeter setting is displayed in hPa (true) or inHg (false). |
+| `L:A22X {side} Altimeter Set` | Number | Read/write knob delta used to increment/decrement the barometric altimeter setting. |
+| `L:A22X {side} Altimeter STD` | Bool | Read/write flag for pressing the STD (standard pressure) altimeter button. |
+| `L:A22X {side} Nav Source` | Bool | Read/write flag for pressing the button that cycles the selected navigation source (FMS/NAV). |
+| `L:A22X {side} CTP Crosstune` | Bool | Read/write flag for pressing the CTP crosstune (cross-side course sync) button. |
+| `L:A22X {side} CTP Brightness` | Number | Reads the CTP's commanded display brightness (0-1). |
+| `L:A22X {side} CTP Backlight` | Number | Writes the CTP's actual backlight brightness (0 when unpowered, else the commanded brightness). |
+
+## Radio Interface Unit (RIU)
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X Tx Channel` | Enum | Writes which radio channel (VHF1/2/3, HF1/2, SAT, CAB, or none) is currently selected for transmission. |
+| `L:A22X ACP VHF1` | Bool | Read/write flag for the audio control panel's VHF1 transmit-select button press. |
+| `L:A22X ACP VHF2` | Bool | Read/write flag for the audio control panel's VHF2 transmit-select button press. |
+| `L:A22X ACP VHF3` | Bool | Read/write flag for the audio control panel's VHF3 transmit-select button press. |
+| `L:A22X Aural Internal Test` | Bool | Reads whether the RIU's built-in aural warning self-test has been triggered. |
+| `L:A22X Aural Radio Alt` | Bool | Writes whether a radio-altitude callout aural is currently playing. |
+| `L:A22X Aural Decision Height` | Bool | Writes whether the "decision height" aural is currently playing. |
+| `L:A22X Aural Approaching Decision Height` | Bool | Writes whether the "approaching decision height" aural is currently playing. |
+| `L:A22X Aural Decide` | Bool | Writes whether the "decide" aural is currently playing. |
+| `L:A22X Aural Minimum` | Bool | Writes whether the "minimum" aural is currently playing. |
+| `L:A22X Aural Minimums` | Bool | Writes whether the "minimums" aural is currently playing. |
+| `L:A22X Aural Minimums Minimums` | Bool | Writes whether the "minimums, minimums" aural is currently playing. |
+| `L:A22X Aural Approaching Minimums` | Bool | Writes whether the "approaching minimums" aural is currently playing. |
+| `L:A22X Aural 2500` | Bool | Writes whether the radio-altitude "2500" callout aural is currently playing. |
+| `L:A22X Aural 1000` | Bool | Writes whether the radio-altitude "1000" callout aural is currently playing. |
+| `L:A22X Aural 500` | Bool | Writes whether the radio-altitude "500" callout aural is currently playing. |
+| `L:A22X Aural 400` | Bool | Writes whether the radio-altitude "400" callout aural is currently playing. |
+| `L:A22X Aural 300` | Bool | Writes whether the radio-altitude "300" callout aural is currently playing. |
+| `L:A22X Aural 200` | Bool | Writes whether the radio-altitude "200" callout aural is currently playing. |
+| `L:A22X Aural 100` | Bool | Writes whether the radio-altitude "100" callout aural is currently playing. |
+| `L:A22X Aural 80` | Bool | Writes whether the radio-altitude "80" callout aural is currently playing. |
+| `L:A22X Aural 60` | Bool | Writes whether the radio-altitude "60" callout aural is currently playing. |
+| `L:A22X Aural 50` | Bool | Writes whether the radio-altitude "50" callout aural is currently playing. |
+| `L:A22X Aural 40` | Bool | Writes whether the radio-altitude "40" callout aural is currently playing. |
+| `L:A22X Aural 35` | Bool | Writes whether the radio-altitude "35" callout aural is currently playing. |
+| `L:A22X Aural 30` | Bool | Writes whether the radio-altitude "30" callout aural is currently playing. |
+| `L:A22X Aural 20` | Bool | Writes whether the radio-altitude "20" callout aural is currently playing. |
+| `L:A22X Aural 10` | Bool | Writes whether the radio-altitude "10" callout aural is currently playing. |
+| `L:A22X Aural 5` | Bool | Writes whether the radio-altitude "5" callout aural is currently playing. |
+| `L:A22X Aural Above 100` | Bool | Writes whether the "above 100" TAWS aural is currently playing. |
+| `L:A22X Aural Above 50` | Bool | Writes whether the "above 50" TAWS aural is currently playing. |
+| `L:A22X Aural Sink Rate` | Bool | Writes whether the TAWS "sink rate" aural is currently playing. |
+| `L:A22X Aural Pull Up` | Bool | Writes whether the TAWS "pull up" aural is currently playing. |
+| `L:A22X Aural Terrain Terrain` | Bool | Writes whether the TAWS "terrain, terrain" aural is currently playing. |
+| `L:A22X Aural Dont Sink` | Bool | Writes whether the TAWS "don't sink" aural is currently playing. |
+| `L:A22X Aural Too Low Terrain` | Bool | Writes whether the TAWS "too low, terrain" aural is currently playing. |
+| `L:A22X Aural Too Low Gear` | Bool | Writes whether the TAWS "too low, gear" aural is currently playing. |
+| `L:A22X Aural Too Low Flap` | Bool | Writes whether the TAWS "too low, flaps" aural is currently playing. |
+| `L:A22X Aural Glideslope` | Bool | Writes whether the TAWS glideslope deviation aural is currently playing. |
+| `L:A22X Aural Bank Angle` | Bool | Writes whether the TAWS "bank angle" aural is currently playing. |
+| `L:A22X Aural Caution Terrain` | Bool | Reserved output for a TAWS caution-terrain aural (currently never set — see commented-out code). |
+| `L:A22X Aural Windshear` | Bool | Writes whether the "windshear" aural is currently playing. |
+| `L:A22X Aural Stall` | Bool | Writes whether the stall warning aural is currently playing. |
+| `L:A22X Aural Cockpit Door` | Bool | Writes whether the cockpit-door emergency-access aural is currently playing. |
+| `L:A22X Aural Emergency Descent` | Bool | Writes whether the emergency-descent aural is currently playing. |
+| `L:A22X Aural AP Disengage` | Bool | Writes whether the autopilot-disengage aural is currently playing. |
+| `L:A22X Aural Flare` | Bool | Writes whether the steep-approach "flare" aural is currently playing. |
+| `L:A22X Aural Standby` | Bool | Writes whether the steep-approach "standby" aural is currently playing. |
+| `L:A22X Aural Dual Input` | Bool | Writes whether the "dual input" (both sidesticks active) aural is currently playing. |
+| `L:A22X Aural Overspeed` | Bool | Writes whether the overspeed warning aural is currently playing. |
+| `L:A22X Aural Speed x3` | Bool | Writes whether the repeated ("x3") minimum-airspeed aural is currently playing. |
+| `L:A22X Aural Overspeed Pre Alert` | Bool | Writes whether the overspeed pre-alert aural is currently playing. |
+| `L:A22X Aural Speed` | Bool | Writes whether the minimum-airspeed pre-alert aural is currently playing. |
+| `L:A22X Aural Left Engine Fire` | Bool | Writes whether the left engine fire aural is currently playing. |
+| `L:A22X Aural Right Engine Fire` | Bool | Writes whether the right engine fire aural is currently playing. |
+| `L:A22X Aural APU Fire` | Bool | Writes whether the APU fire aural is currently playing. |
+| `L:A22X Aural Cargo Fire` | Bool | Writes whether the cargo-bay fire aural is currently playing. |
+| `L:A22X Aural Smoke` | Bool | Writes whether the smoke-warning aural is currently playing. |
+| `L:A22X Aural Gear Bay Overheat` | Bool | Writes whether the landing-gear-bay overheat aural is currently playing. |
+| `L:A22X Aural Cabin Pressure` | Bool | Writes whether the cabin differential-pressure aural is currently playing. |
+| `L:A22X Aural Cabin Altitude` | Bool | Writes whether the cabin-altitude warning aural is currently playing. |
+| `L:A22X Aural Warning` | Bool | Writes whether a generic master-warning attention-getter aural is currently playing. |
+| `L:A22X Aural Approach Degraded` | Bool | Writes whether the "ILS approach mode degraded" aural is currently playing. |
+| `L:A22X Aural Not A Runway` | Bool | Writes whether the "not a runway" surface-management aural is currently playing. |
+| `L:A22X Aural Short Runway` | Bool | Writes whether the "short runway" surface-management aural is currently playing. |
+| `L:A22X Aural Quadruple Tone x3` | Bool | Writes whether the repeated quadruple-tone datalink aural is currently playing. |
+| `L:A22X Aural Double Tone x3` | Bool | Writes whether the repeated double-tone datalink aural is currently playing. |
+| `L:A22X Aural Double Tone` | Bool | Writes whether the double-tone datalink aural is currently playing. |
+| `L:A22X Aural Altitude` | Bool | Writes whether the altitude-departure aural is currently playing. |
+| `L:A22X Aural Vertical Track` | Bool | Writes whether the "vertical track" aural is currently playing. |
+| `L:A22X Aural Altitude Capture` | Bool | Writes whether the altitude-capture aural is currently playing. |
+| `L:A22X Aural Caution` | Bool | Writes whether a generic master-caution attention-getter aural is currently playing. |
+| `L:A22X Aural Config Trim` | Bool | Writes whether the takeoff-config "trim" aural is currently playing. |
+| `L:A22X Aural Config Sidestick` | Bool | Writes whether the takeoff-config "sidestick" aural is currently playing. |
+| `L:A22X Aural Config Flaps` | Bool | Writes whether the takeoff-config "flaps" aural is currently playing. |
+| `L:A22X Aural Config Spoilers` | Bool | Writes whether the takeoff-config "spoilers" aural is currently playing. |
+| `L:A22X Aural Config Brakes` | Bool | Writes whether the takeoff-config "brakes" aural is currently playing. |
+| `L:A22X Aural Config Autopilot` | Bool | Writes whether the takeoff-config "autopilot" aural is currently playing. |
+| `L:A22X Aural Config Autothrottle` | Bool | Writes whether the takeoff-config "autothrottle" aural is currently playing. |
+| `L:A22X Aural Config Thrust Lever` | Bool | Writes whether the takeoff-config "thrust lever" aural is currently playing. |
+| `L:A22X Aural AT Disengage Auto` | Bool | Writes whether the automatic autothrottle-disengage aural is currently playing. |
+| `L:A22X Aural AT Disengage Manual` | Bool | Writes whether the manual autothrottle-disengage aural is currently playing. |
+| `L:A22X Aural Gear` | Bool | Writes whether the landing-gear configuration aural is currently playing. |
+| `L:A22X Aural Runway Disagree` | Bool | Writes whether the "runway disagree" surface-management aural is currently playing. |
+| `L:A22X Aural Emergency Evac` | Bool | Writes whether the emergency-evacuation aural is currently playing. |
+| `L:A22X Aural Priority Left` | Bool | Writes whether the "priority left" sidestick-priority aural is currently playing. |
+| `L:A22X Aural Priority Right` | Bool | Writes whether the "priority right" sidestick-priority aural is currently playing. |
+| `L:A22X Aural V1` | Bool | Writes whether the "V1" takeoff callout aural is currently playing. |
+| `L:A22X Aural Trim Timeout` | Bool | Writes whether the trim-timeout aural is currently playing. |
+| `L:A22X Aural Selcal` | Bool | Writes whether the SELCAL chime aural is currently playing. |
+| `L:A22X Aural Thrust Lever` | Bool | Writes whether the "thrust lever not at idle" aural is currently playing. |
+| `L:A22X Aural Warning Test 1` | Bool | Writes whether aural warning self-test tone 1 is currently playing. |
+| `L:A22X Aural Warning Test 2` | Bool | Writes whether aural warning self-test tone 2 is currently playing. |
+
+## Ram Air Turbine (RAT)
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X RAT Extension` | Percent over 100 | Writes how far the RAT has extended/deployed into the airstream (0 = stowed, 1 = fully deployed). |
+| `L:A22X RAT RPM` | Percent over 100 | Writes the RAT's turbine speed as a ratio of maximum RPM. |
+
+## Simulation / World Environment
+
+| Variable | Unit | Description |
+|---|---|---|
+| `L:A22X Flight Stage` | Enum | Reads the current/previous flight stage (Hangar/Taxi/Apron/Runway/Climb/Cruise/Approach/Final) used to drive initial-state and phase-dependent logic. |

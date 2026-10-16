@@ -45,6 +45,7 @@ public class HotkeyGuideSayIntentionsChordTests
         "HS787_Hotkeys.txt",
         "PMDG_737_Hotkeys.txt",
         "PMDG_777_Hotkeys.txt",
+        "Synaptic_A220_Hotkeys.txt",
         "iFly_737MAX8_Hotkeys.txt",
     };
 
