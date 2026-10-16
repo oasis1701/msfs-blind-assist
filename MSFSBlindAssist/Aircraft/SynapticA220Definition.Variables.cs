@@ -351,8 +351,9 @@ public partial class SynapticA220Definition
         // L_ENG_FIRE_PRESSED, L ENG FUEL SOV CLSD and HYD 1 SOV CLSD, and a second press changed
         // nothing (one-way in v1.0.10; a flight reload resets it). The APU and cargo fire pushes and
         // all six bottles ARE latched (each press toggles the L:var), so they are combos; in v1.0.10
-        // the systems module never reads them (no sensed bit, no CAS; APU fire, forward cargo fire
-        // and APU bottle measured live, the rest by its strings). Every fire control stays out of the
+        // the systems module never reads them: their sensed bits never light (the pack's items for
+        // them never complete) and no CAS follows (APU fire, forward cargo fire and APU bottle
+        // measured live, the rest by the module's strings). Every fire control stays out of the
         // ECL's "do it for me" (A220EclActionMap: GuardedDestructive). Guards per the cockpit XML:
         // the five fire pushes are guarded, the bottles are not.
         v["A22X_L_ENG_FIRE"] = LPress("A22X L Eng Fire", "Left Engine Fire (guarded)");

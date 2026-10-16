@@ -278,8 +278,8 @@ public static class A220Panels
     /// <summary>
     /// Most clicks one write of <c>L:A22X ISI Altimeter Set</c> carries. The knob var takes any
     /// whole-number delta in ONE write and applies it exactly (live 2026-10-16: 3 moved 29.92 to
-    /// 29.95 inches, -10 moved 29.95 to 29.85, 7 moved 29.85 back to 29.92, each read back within
-    /// about 150 ms) — unlike the FCP's K-events, where a batch of n is one click ([A220-10]). A
+    /// 29.95 inches, -10 moved 29.95 to 29.85, 7 moved 29.85 back to 29.92, each read back on the
+    /// next sample) — unlike the FCP's K-events, where a batch of n is one click ([A220-10]). A
     /// larger gap takes another round of the walk.
     /// </summary>
     public const int IsiMaxClicksPerWrite = 100;
