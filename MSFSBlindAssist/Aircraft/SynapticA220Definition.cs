@@ -93,19 +93,26 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
         }
     }
 
+    /// <summary>
+    /// Sections and panels in the cockpit's geography and the A220 flow (spec B1): the
+    /// overhead in power-on/preflight order, then the glareshield left to right, the center
+    /// panel, the pedestal and the utilities. Pinned by A220PanelStructureTests.
+    /// </summary>
     public override Dictionary<string, List<string>> GetPanelStructure() => new()
     {
         ["Overhead"] = new List<string>
         {
-            "Electrical", "APU", "Hydraulics", "Fuel",
-            "Air Conditioning and Bleed", "Anti-Ice and Heat", "Pressurization",
-            "Fire and Emergency", "Flight Controls and TAWS"
+            "Electrical", "Hydraulics", "APU", "Equipment Cooling", "Fire Protection", "Fuel",
+            "Air Conditioning", "Bleed and Packs", "Anti-Ice", "Pressurization", "Emergency",
+            "Window and Probe Heat", "Flight Controls and Recorder", "Calls", "TAWS", "Wipers",
+            "Interior Lighting", "Exterior Lights", "Signs"
         },
-        ["Eyebrow"] = new List<string> { "Exterior Lights", "Signs and Interior" },
-        ["Glareshield"] = new List<string> { "CTP Captain", "CTP First Officer", "Warnings and Chrono", "Flight Directors" },
-        ["Pedestal"] = new List<string> { "Engines and Ignition", "Trim" },
-        ["Main Panel"] = new List<string> { "Gear and Brakes", "Flaps and Speedbrake" },
-        ["Radios"] = new List<string> { "COM Radios", "NAV Radios", "Transponder" },
+        ["Glareshield"] = new List<string>
+        {
+            "Captain Side Panel", "CTP Captain", "Transponder and TCAS", "Flight Directors", "CTP First Officer"
+        },
+        ["Center Panel"] = new List<string> { "Standby Instrument", "Gear and Brakes" },
+        ["Pedestal"] = new List<string> { "Engines", "Flaps and Speedbrake", "Trim and Parking Brake", "Audio Control Panel" },
         ["Utilities"] = new List<string> { "Simulation Options", "Engine Data", "Doors", "IRS" }
     };
 
@@ -117,20 +124,20 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
             "A22X_DC_BUS_1_V", "A22X_DC_BUS_2_V", "A22X_DC_EMER_V"
         },
         ["APU"] = new List<string> { "A22X_APU_RPM" },
+        ["Captain Side Panel"] = new List<string> { "A22X_CAS_STATE" },
+        ["CTP Captain"] = new List<string> { "A22X_L_ALTIMETER_STATE", "A22X_L_MINIMUMS_STATE" },
+        ["Transponder and TCAS"] = new List<string> { "A22X_XPDR_STATE" },
+        ["Flight Directors"] = new List<string> { "A22X_L_FD_STATE", "A22X_R_FD_STATE" },
+        ["CTP First Officer"] = new List<string> { "A22X_R_ALTIMETER_STATE", "A22X_R_MINIMUMS_STATE" },
+        ["Gear and Brakes"] = new List<string> { "A22X_GEAR_STATE", "A22X_BRAKE_TEMPS" },
+        ["Trim and Parking Brake"] = new List<string> { "A22X_STAB_TRIM", "A22X_RUDDER_TRIM_POS" },
+        ["Audio Control Panel"] = new List<string> { "A22X_TX_CHANNEL" },
         ["Engine Data"] = new List<string>
         {
             "A22X_ENG1_STATE", "A22X_ENG2_STATE",
             "A22X_ENG1_N1", "A22X_ENG1_N2", "A22X_ENG1_EGT",
             "A22X_ENG2_N1", "A22X_ENG2_N2", "A22X_ENG2_EGT", "A22X_APU_RPM"
         },
-        ["Flight Directors"] = new List<string> { "A22X_L_FD_STATE", "A22X_R_FD_STATE" },
-        ["Trim"] = new List<string> { "A22X_STAB_TRIM", "A22X_RUDDER_TRIM_POS" },
-        ["Flaps and Speedbrake"] = new List<string> { "A22X_SPOILER_LEVER_POS" },
-        ["Gear and Brakes"] = new List<string> { "A22X_GEAR_STATE", "A22X_BRAKE_TEMPS" },
-        ["Warnings and Chrono"] = new List<string> { "A22X_CAS_STATE" },
-        ["Transponder"] = new List<string> { "A22X_XPDR_STATE" },
-        ["CTP Captain"] = new List<string> { "A22X_L_ALTIMETER_STATE", "A22X_L_MINIMUMS_STATE" },
-        ["CTP First Officer"] = new List<string> { "A22X_R_ALTIMETER_STATE", "A22X_R_MINIMUMS_STATE" },
         ["Doors"] = new List<string>(new[] { "A22X_DOORS_STATE" }.Concat(A220Systems.Doors.Select(d => DoorKey(d.Id)))),
         ["IRS"] = new List<string> { "A22X_IRS_STATE" }
     };

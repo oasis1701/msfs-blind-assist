@@ -93,17 +93,6 @@ public class SynapticA220DefinitionTests
                 Assert.True(Vars.ContainsKey(key), $"display '{panel}' references unknown key {key}");
     }
 
-    [Fact]
-    public void EveryStructurePanel_HasControlsOrDisplays()
-    {
-        var controls = Def.GetPanelControls();
-        var displays = Def.GetPanelDisplayVariables();
-        foreach (var (section, panels) in Def.GetPanelStructure())
-            foreach (var panel in panels)
-                Assert.True(controls.ContainsKey(panel) || displays.ContainsKey(panel),
-                    $"section '{section}' panel '{panel}' has no controls and no display entry");
-    }
-
     /// <summary>Combo labels must be the documented enum labels verbatim.</summary>
     [Theory]
     [InlineData("A22X_APU_SWITCH", "A22X APU Switch")]
@@ -342,7 +331,7 @@ public class SynapticA220DefinitionTests
         Assert.Equal(SimVarType.LVar, v.Type);
         Assert.Equal(UpdateFrequency.Never, v.UpdateFrequency);   // no data definition: the bridge owns its state
         Assert.Equal(positions, v.ValueDescriptions.Count);
-        Assert.Contains(key, Def.GetPanelControls()["Transponder"]);
+        Assert.Contains(key, Def.GetPanelControls()["Transponder and TCAS"]);
     }
 
     [Fact]
@@ -362,7 +351,7 @@ public class SynapticA220DefinitionTests
         Assert.Equal("A22X_XPDR_CODE_BUS", entry.CurrentValueSourceKey);
         Assert.True(entry.UnparseableTextAsNaN);
         Assert.Equal(new[] { "A22X_XPDR_MODE", "A22X_TCAS_ALT_LIMIT", "A22X_XPDR_CODE_SET", "A22X_XPDR_IDENT", "A22X_XPDR_FLIGHT_ID" },
-            Def.GetPanelControls()["Transponder"]);
+            Def.GetPanelControls()["Transponder and TCAS"]);
         Assert.True(Vars["A22X_XPDR_FLIGHT_ID"].RenderAsButton);
         Assert.True(Vars.ContainsKey("A22X_XPDR_CODE_BUS"));      // the entry's prefill source must exist
     }
@@ -610,16 +599,22 @@ public class SynapticA220DefinitionTests
     [Fact]
     public void CtpPanels_CarryTheAltimeterAndMinimumsControls()
     {
-        Assert.Equal(new[]
+        // Membership only: the panels' order (and the radios the captain's panel also carries) is
+        // pinned by A220PanelStructureTests.PanelControls_ReadInCockpitOrder.
+        var captain = Def.GetPanelControls()["CTP Captain"];
+        foreach (string k in new[]
         {
             "A22X_L_QNH_SET", "A22X_L_BARO_UNIT", "A22X_L_BARO_STD",
             "A22X_L_MINIMUMS_MODE", "A22X_L_MINIMUMS_SET", "A22X_L_NAV_SOURCE", "A22X_L_CROSSTUNE"
-        }, Def.GetPanelControls()["CTP Captain"]);
-        Assert.Equal(new[]
+        })
+            Assert.Contains(k, captain);
+        var firstOfficer = Def.GetPanelControls()["CTP First Officer"];
+        foreach (string k in new[]
         {
             "A22X_R_QNH_SET", "A22X_R_BARO_UNIT", "A22X_R_BARO_STD",
             "A22X_R_MINIMUMS_MODE", "A22X_R_MINIMUMS_SET", "A22X_R_NAV_SOURCE", "A22X_R_CROSSTUNE"
-        }, Def.GetPanelControls()["CTP First Officer"]);
+        })
+            Assert.Contains(k, firstOfficer);
 
         Assert.Equal(UpdateFrequency.Never, Vars["A22X_L_BARO_STD"].UpdateFrequency);   // a bus combo now, not a press flag
         Assert.False(Vars["A22X_L_BARO_STD"].RenderAsButton);

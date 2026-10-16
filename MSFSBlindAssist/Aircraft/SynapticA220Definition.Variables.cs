@@ -398,7 +398,6 @@ public partial class SynapticA220Definition
         v["A22X_NO_PED_LIGHTS"] = LSwitch("A22X No PED Lights", "No Device Signs", "Off", "Auto", "On");
         v["A22X_DOME_LIGHTS"] = LSwitch("A22X Dome Lights", "Dome Light", "Off", "On");
         v["A22X_ANNUN_LIGHTS"] = LSwitch("A22X Annun Lights", "Annunciator Brightness", "Dim", "Bright", "Storm");
-        v["A22X_LAMP_TEST"] = LSwitch("A22X Lamp Test", "Annunciator Lamp Test", "Off", "Test");
 
         // ==== Pedestal — Engine ==============================================
         // Engine masters use the documented stock events (ENGINE_MASTER_{n}_SET);
@@ -500,21 +499,9 @@ public partial class SynapticA220Definition
             ValueDescriptions = Labels("0", "1", "2", "3", "4", "5 (Full)")
         };
         v["A22X_ALTERNATE_FLAP"] = LSwitch("A22X Alternate Flap", "Alternate Flap Mode (guarded)", "Normal", "Alternate");
-        v["A22X_SPOILERS_RETRACT"] = new SimVarDefinition
-        {
-            Name = "SPOILERS_OFF", DisplayName = "Speedbrake Retract",
-            Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.OnRequest, RenderAsButton = true
-        };
-        v["A22X_SPOILERS_DEPLOY"] = new SimVarDefinition
-        {
-            Name = "SPOILERS_ON", DisplayName = "Speedbrake Full",
-            Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.OnRequest, RenderAsButton = true
-        };
-        v["A22X_SPOILER_LEVER_POS"] = Status("A22X Spoiler Lever", "Speedbrake Lever", "number", "F2");
         // The speedbrake LEVER ([A220-40]): six detents RET, 1/4, 1/2, 3/4, FULL, MAX — the ECL's
         // SPOILER_LEVER_0..5. Reads the lever travel (0-1) and shows the nearest detent; written
-        // with the cockpit lever's own SPOILERS_SET scaling in HandleUIVariableSet. Shares its
-        // Name with the status row above until Task 5 retires that row (both OnRequest: [VAR-7]).
+        // with the cockpit lever's own SPOILERS_SET scaling in HandleUIVariableSet.
         v["A22X_SPOILER_LEVER"] = new SimVarDefinition
         {
             Name = "A22X Spoiler Lever", DisplayName = "Speedbrake Lever",

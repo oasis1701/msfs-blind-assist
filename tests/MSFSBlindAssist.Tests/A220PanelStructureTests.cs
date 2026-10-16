@@ -232,4 +232,193 @@ public class A220PanelStructureTests
         Assert.Equal("Standby Baro STD", std.DisplayName);
         Assert.True(std.RenderAsButton && std.IsMomentary);
     }
+
+    // ---- Structure (B1) -------------------------------------------------------------------
+
+    /// <summary>Sections and panels in the A220 flow (spec B1).</summary>
+    private static readonly (string Section, string[] Panels)[] ExpectedStructure =
+    {
+        ("Overhead", new[]
+        {
+            "Electrical", "Hydraulics", "APU", "Equipment Cooling", "Fire Protection", "Fuel",
+            "Air Conditioning", "Bleed and Packs", "Anti-Ice", "Pressurization", "Emergency",
+            "Window and Probe Heat", "Flight Controls and Recorder", "Calls", "TAWS", "Wipers",
+            "Interior Lighting", "Exterior Lights", "Signs"
+        }),
+        ("Glareshield", new[] { "Captain Side Panel", "CTP Captain", "Transponder and TCAS", "Flight Directors", "CTP First Officer" }),
+        ("Center Panel", new[] { "Standby Instrument", "Gear and Brakes" }),
+        ("Pedestal", new[] { "Engines", "Flaps and Speedbrake", "Trim and Parking Brake", "Audio Control Panel" }),
+        ("Utilities", new[] { "Simulation Options", "Engine Data", "Doors", "IRS" }),
+    };
+
+    /// <summary>Each panel's controls in the order the panel is drawn: overhead aft to forward
+    /// then left to right, glareshield left to right, center panel and pedestal top to bottom
+    /// (tools/a220-gen/reference/cockpit-layout.txt).</summary>
+    public static TheoryData<string, string[]> ExpectedControls() => new()
+    {
+        { "Electrical", new[] { "A22X_BUS_ISOLATION", "A22X_CABIN_POWER_OFF", "A22X_RAT_GEN", "A22X_BATTERY_1", "A22X_BATTERY_2",
+            "A22X_L_GEN_OFF", "A22X_EXT_PWR", "A22X_GPU_AVAIL", "A22X_APU_GEN_OFF", "A22X_R_GEN_OFF", "A22X_L_GEN_DISC", "A22X_R_GEN_DISC" } },
+        { "Hydraulics", new[] { "A22X_HYD_1_SOV", "A22X_ACMP_3A", "A22X_HYD_2_SOV", "A22X_PTU", "A22X_ACMP_3B", "A22X_ACMP_2B" } },
+        { "APU", new[] { "A22X_APU_SWITCH" } },
+        { "Equipment Cooling", new[] { "A22X_COOLING_INLET", "A22X_COOLING_EXHAUST" } },
+        { "Fire Protection", new[] { "A22X_L_ENG_FIRE", "A22X_APU_FIRE", "A22X_R_ENG_FIRE",
+            "A22X_L_ENG_FIRE_BOTTLE_1", "A22X_L_ENG_FIRE_BOTTLE_2", "A22X_APU_BOTTLE_1", "A22X_R_ENG_FIRE_BOTTLE_1",
+            "A22X_R_ENG_FIRE_BOTTLE_2", "A22X_CARGO_FWD_FIRE", "A22X_CARGO_FIRE_BOTTLE", "A22X_CARGO_AFT_FIRE" } },
+        { "Fuel", new[] { "A22X_MANUAL_TRANSFER", "A22X_L_BOOST_PUMP", "A22X_GRAVITY_TRANSFER", "A22X_R_BOOST_PUMP" } },
+        { "Air Conditioning", new[] { "A22X_COCKPIT_AIR", "A22X_FWD_CABIN_AIR", "A22X_AFT_CABIN_AIR", "A22X_MANUAL_TEMP",
+            "A22X_FWD_CARGO_AIR", "A22X_AFT_CARGO_AIR", "A22X_TRIM_AIR_OFF", "A22X_PACK_FLOW", "A22X_RECIRC_OFF", "A22X_RAM_AIR" } },
+        { "Bleed and Packs", new[] { "A22X_L_PACK_OFF", "A22X_CROSSBLEED", "A22X_R_PACK_OFF",
+            "A22X_L_BLEED_OFF", "A22X_APU_BLEED_OFF", "A22X_R_BLEED_OFF" } },
+        { "Anti-Ice", new[] { "A22X_L_COWL_AI", "A22X_WING_AI", "A22X_R_COWL_AI" } },
+        { "Pressurization", new[] { "A22X_EMER_DEPRESS", "A22X_MAN_PRESS", "A22X_DITCHING", "A22X_MANUAL_RATE", "A22X_PAX_OXYGEN" } },
+        { "Emergency", new[] { "A22X_ELT", "A22X_EVAC", "A22X_EMERGENCY_LIGHTS" } },
+        { "Window and Probe Heat", new[] { "A22X_PROBE_HEAT", "A22X_L_WINDOW_HEAT_OFF", "A22X_L_WSHLD_HEAT_OFF",
+            "A22X_R_WSHLD_HEAT_OFF", "A22X_R_WINDOW_HEAT_OFF" } },
+        { "Flight Controls and Recorder", new[] { "A22X_PFCC_1_OFF", "A22X_PFCC_2_OFF", "A22X_PFCC_3_OFF", "A22X_CVR_TEST", "A22X_CVR_ERASE" } },
+        { "Calls", new[] { "A22X_SERVICE_INTERCOM", "A22X_MECH_CALL" } },
+        { "TAWS", new[] { "A22X_TAWS_GEAR_INHIBIT", "A22X_TAWS_TERRAIN_INHIBIT", "A22X_TAWS_FLAPS_INHIBIT",
+            "A22X_TAWS_GS_INHIBIT", "A22X_AURAL_INHIBIT" } },
+        { "Wipers", new[] { "A22X_WIPER_L", "A22X_WIPER_R" } },
+        { "Interior Lighting", new[] { "A22X_DOME_LIGHTS", "A22X_ANNUN_LIGHTS" } },
+        { "Exterior Lights", new[] { "A22X_NAV_LIGHTS", "A22X_BEACON_LIGHTS", "A22X_STROBE_LIGHTS", "A22X_LOGO_LIGHTS",
+            "A22X_WING_INSP_LIGHTS", "A22X_TAXI_LIGHTS", "A22X_L_LANDING_LIGHTS", "A22X_NOSE_LANDING_LIGHTS", "A22X_R_LANDING_LIGHTS" } },
+        { "Signs", new[] { "A22X_SEAT_BELT_LIGHTS", "A22X_NO_PED_LIGHTS" } },
+        { "Captain Side Panel", new[] { "A22X_L_CHRONO", "A22X_MASTER_CW_CANCEL" } },
+        { "CTP Captain", new[] { "A22X_L_NAV_SOURCE", "A22X_L_QNH_SET", "A22X_L_BARO_UNIT", "A22X_L_BARO_STD",
+            "A22X_L_MINIMUMS_MODE", "A22X_L_MINIMUMS_SET", "A22X_COM1_STBY_SET", "A22X_COM1_SWAP", "A22X_COM2_STBY_SET",
+            "A22X_COM2_SWAP", "A22X_NAV1_STBY_SET", "A22X_NAV2_STBY_SET", "A22X_L_CROSSTUNE" } },
+        { "Transponder and TCAS", new[] { "A22X_XPDR_MODE", "A22X_TCAS_ALT_LIMIT", "A22X_XPDR_CODE_SET", "A22X_XPDR_IDENT", "A22X_XPDR_FLIGHT_ID" } },
+        { "Flight Directors", new[] { "A22X_L_FD", "A22X_R_FD" } },
+        { "CTP First Officer", new[] { "A22X_R_NAV_SOURCE", "A22X_R_QNH_SET", "A22X_R_BARO_UNIT", "A22X_R_BARO_STD",
+            "A22X_R_MINIMUMS_MODE", "A22X_R_MINIMUMS_SET", "A22X_R_CROSSTUNE", "A22X_R_CHRONO" } },
+        { "Standby Instrument", new[] { "A22X_ISI_BARO_SET", "A22X_ISI_BARO_STD" } },
+        { "Gear and Brakes", new[] { "A22X_GEAR_LEVER", "A22X_GEAR_AURAL_CANCEL", "A22X_ALTERNATE_GEAR",
+            "A22X_NOSE_STEER_OFF", "A22X_AUTOBRAKE", "A22X_ALTERNATE_BRAKE" } },
+        { "Engines", new[] { "A22X_ENG_MASTER_1", "A22X_ENG_MASTER_2", "A22X_CONT_IGNITION", "A22X_ENG_START_MODE" } },
+        { "Flaps and Speedbrake", new[] { "A22X_FLAP_LEVER", "A22X_SPOILER_LEVER", "A22X_ALTERNATE_FLAP" } },
+        { "Trim and Parking Brake", new[] { "A22X_STAB_TRIM_SET", "RUDDER_TRIM_LEFT", "RUDDER_TRIM_RIGHT", "A22X_PARKING_BRAKE" } },
+        { "Audio Control Panel", new[] { "A22X_ACP_VHF1_TX", "A22X_ACP_VHF2_TX", "A22X_ACP_VHF3_TX",
+            "A22X_ACP_VHF1_VOLUME", "A22X_ACP_VHF1_RX", "A22X_ACP_VHF2_VOLUME", "A22X_ACP_VHF2_RX",
+            "A22X_ACP_VHF3_VOLUME", "A22X_ACP_VHF3_RX" } },   // the Tx row above the knobs; each volume, then its push (Task 2B)
+        { "Simulation Options", new[] { "A22X_TOD_PAUSE", "A22X_TOD_DISTANCE_SET" } },
+        { "Engine Data", Array.Empty<string>() },
+        { "Doors", Array.Empty<string>() },
+        { "IRS", Array.Empty<string>() },
+    };
+
+    [Fact]
+    public void Sections_AndPanels_FollowTheCockpitFlow()
+    {
+        var structure = Def.GetPanelStructure();
+        Assert.Equal(ExpectedStructure.Select(s => s.Section), structure.Keys);
+        foreach (var (section, panels) in ExpectedStructure)
+            Assert.Equal(panels, structure[section]);
+    }
+
+    [Theory]
+    [MemberData(nameof(ExpectedControls))]
+    public void PanelControls_ReadInCockpitOrder(string panel, string[] keys)
+        => Assert.Equal(keys, Def.GetPanelControls()[panel]);
+
+    [Fact]
+    public void ExpectedControls_CoverEveryPanel()
+    {
+        var pinned = ExpectedControls().Select(row => (string)row[0]).ToHashSet();
+        Assert.Equal(ExpectedStructure.SelectMany(s => s.Panels).OrderBy(p => p), pinned.OrderBy(p => p));
+    }
+
+    /// <summary>[HS-5] A display-only panel still needs a BuildPanelControls entry (even an empty
+    /// one), or MainForm's panel build early-returns and renders nothing.</summary>
+    [Fact]
+    public void EveryPanel_HasABuildPanelControlsEntry()
+    {
+        var controls = Def.GetPanelControls();
+        var missing = Def.GetPanelStructure().SelectMany(s => s.Value.Select(p => (s.Key, Panel: p)))
+            .Where(x => !controls.ContainsKey(x.Panel)).Select(x => $"{x.Key}/{x.Panel}").ToList();
+        Assert.True(missing.Count == 0, "no BuildPanelControls entry: " + string.Join(", ", missing));
+    }
+
+    /// <summary>[VAR-1] No two rows of one panel (controls and status rows) share a name.</summary>
+    [Fact]
+    public void NoPanel_RepeatsADisplayName()
+    {
+        var displays = Def.GetPanelDisplayVariables();
+        var problems = new List<string>();
+        foreach (var (panel, keys) in Def.GetPanelControls())
+        {
+            IEnumerable<string> rows = keys.Concat(displays.TryGetValue(panel, out var d) ? d : new List<string>());
+            foreach (var g in rows.GroupBy(k => Vars[k].DisplayName, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1))
+                problems.Add($"{panel}: \"{g.Key}\" on {string.Join(", ", g)}");
+        }
+        Assert.True(problems.Count == 0, string.Join("\n", problems));
+    }
+
+    [Fact]
+    public void NoControl_SitsOnTwoPanels()
+    {
+        var problems = Def.GetPanelControls().SelectMany(kv => kv.Value.Select(k => (Key: k, Panel: kv.Key)))
+            .GroupBy(x => x.Key).Where(g => g.Count() > 1)
+            .Select(g => $"{g.Key}: {string.Join(", ", g.Select(x => x.Panel))}").ToList();
+        Assert.True(problems.Count == 0, string.Join("\n", problems));
+    }
+
+    /// <summary>Plan A's controls, moved to where the cockpit has them.</summary>
+    [Theory]
+    [InlineData("A22X_AUTOBRAKE", "Gear and Brakes")]
+    [InlineData("A22X_XPDR_MODE", "Transponder and TCAS")]
+    [InlineData("A22X_TCAS_ALT_LIMIT", "Transponder and TCAS")]
+    [InlineData("A22X_XPDR_CODE_SET", "Transponder and TCAS")]
+    [InlineData("A22X_XPDR_IDENT", "Transponder and TCAS")]
+    [InlineData("A22X_XPDR_FLIGHT_ID", "Transponder and TCAS")]
+    [InlineData("A22X_L_QNH_SET", "CTP Captain")]
+    [InlineData("A22X_L_BARO_UNIT", "CTP Captain")]
+    [InlineData("A22X_L_BARO_STD", "CTP Captain")]
+    [InlineData("A22X_L_MINIMUMS_MODE", "CTP Captain")]
+    [InlineData("A22X_L_MINIMUMS_SET", "CTP Captain")]
+    [InlineData("A22X_R_QNH_SET", "CTP First Officer")]
+    [InlineData("A22X_R_BARO_UNIT", "CTP First Officer")]
+    [InlineData("A22X_R_BARO_STD", "CTP First Officer")]
+    [InlineData("A22X_R_MINIMUMS_MODE", "CTP First Officer")]
+    [InlineData("A22X_R_MINIMUMS_SET", "CTP First Officer")]
+    public void PlanAControls_SitWhereTheCockpitHasThem(string key, string panel)
+    {
+        Assert.True(Vars.ContainsKey(key), $"{key} is not defined (Plan A merged?)");
+        var holders = Def.GetPanelControls().Where(kv => kv.Value.Contains(key)).Select(kv => kv.Key).ToList();
+        Assert.Equal(new[] { panel }, holders);
+    }
+
+    [Fact]
+    public void StatusRows_SitOnTheirPanels()
+    {
+        var d = Def.GetPanelDisplayVariables();
+        // Plan A's systems rows, each on the panel the cockpit shows it on.
+        Assert.Equal(new[] { "A22X_CAS_STATE" }, d["Captain Side Panel"]);
+        Assert.Equal(new[] { "A22X_L_ALTIMETER_STATE", "A22X_L_MINIMUMS_STATE" }, d["CTP Captain"]);
+        Assert.Equal(new[] { "A22X_XPDR_STATE" }, d["Transponder and TCAS"]);
+        Assert.Equal(new[] { "A22X_R_ALTIMETER_STATE", "A22X_R_MINIMUMS_STATE" }, d["CTP First Officer"]);
+        Assert.Equal(new[] { "A22X_GEAR_STATE", "A22X_BRAKE_TEMPS" }, d["Gear and Brakes"]);
+        Assert.Equal(new[] { "A22X_IRS_STATE" }, d["IRS"]);
+        Assert.Equal(new[] { "A22X_STAB_TRIM", "A22X_RUDDER_TRIM_POS" }, d["Trim and Parking Brake"]);
+        Assert.Equal(new[] { "A22X_TX_CHANNEL" }, d["Audio Control Panel"]);
+        Assert.Equal("A22X_DOORS_STATE", d["Doors"][0]);
+        foreach (var door in MSFSBlindAssist.Aircraft.A220.A220Systems.Doors)
+            Assert.Contains(SynapticA220Definition.DoorKey(door.Id), d["Doors"]);
+        foreach (string k in new[] { "A22X_ENG1_STATE", "A22X_ENG2_STATE", "A22X_ENG1_N1", "A22X_ENG1_N2", "A22X_ENG1_EGT", "A22X_ENG2_N1", "A22X_ENG2_N2", "A22X_ENG2_EGT" })
+            Assert.Contains(k, d["Engine Data"]);
+        Assert.False(d.ContainsKey("Flaps and Speedbrake"), "the raw lever row is the speedbrake combo now");
+        var panels = Def.GetPanelStructure().Values.SelectMany(p => p).ToHashSet();
+        foreach (string panel in d.Keys) Assert.Contains(panel, panels);
+    }
+
+    [Theory]
+    [InlineData("A22X_LAMP_TEST")]
+    [InlineData("A22X_SPOILERS_RETRACT")]
+    [InlineData("A22X_SPOILERS_DEPLOY")]
+    [InlineData("A22X_SPOILER_LEVER_POS")]
+    public void RetiredControls_AreGone(string key) => Assert.False(Vars.ContainsKey(key), key);
+
+    /// <summary>B3: no cockpit control writes the lamp test, so no MSFSBA control does.</summary>
+    [Fact]
+    public void NoControl_WritesTheLampTest()
+        => Assert.DoesNotContain(Vars.Values, d => d.Name == "A22X Lamp Test");
 }
