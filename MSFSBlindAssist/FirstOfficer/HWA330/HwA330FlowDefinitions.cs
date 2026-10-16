@@ -1,3 +1,4 @@
+using MSFSBlindAssist.FirstOfficer.Airbus;
 using MSFSBlindAssist.FirstOfficer.FBWA320;
 using MSFSBlindAssist.FirstOfficer.Models;
 
@@ -7,9 +8,9 @@ using Flow = Models.FlowDefinition<HwA330StateEvaluator>;
 using Step = Models.FlowStep<HwA330StateEvaluator>;
 
 /// <summary>
-/// Data-driven HeadwindSim A330-900neo First-Officer flow definitions — the same 13
+/// Data-driven HeadwindSim A330-900neo First-Officer flow definitions — the same 14
 /// phases as <see cref="Fenix.FenixFlowDefinitions"/> (Electrical Power Up through
-/// Secure). ORIGINATES as a duplicate of <see cref="FBWA320.FbwA320FlowDefinitions"/>, and
+/// Secure, Landing since 2026-10-16). ORIGINATES as a duplicate of <see cref="FBWA320.FbwA320FlowDefinitions"/>, and
 /// the A339X is built on the A32NX systems, so most control keys keep their <c>A32NX_</c>
 /// names — but they are this airframe's, confirmed against
 /// <see cref="MSFSBlindAssist.Aircraft.HeadwindA330Definition.GetVariables"/> and carrying
@@ -28,7 +29,9 @@ using Step = Models.FlowStep<HwA330StateEvaluator>;
 /// - ENGINE_MODE_SELECTOR 0=Crank,1=Norm,2=Ign/Start.
 /// - ENGINE_1_MASTER / ENGINE_2_MASTER 0=Off,1=On (FUELSYSTEM VALVE SWITCH:n underneath).
 /// - SPOILERS_ARM_TOGGLE is a genuine TOGGLE event (no settable position) — Skip guards on
-///   the real state var A32NX_SPOILERS_ARMED so a re-run never double-fires it.
+///   the real state var A32NX_SPOILERS_ARMED so a re-run never double-fires it. After Start arms
+///   the ground spoilers, After Takeoff disarms them and the Landing flow arms them again, leaving
+///   an extended speed brake alone (FOA-11: the arm snaps the handle to retracted).
 /// - Nose light LIGHTING_LANDING_1: 0=T.O., 1=Taxi, 2=Off (NOTE: differs from the
 ///   executor's SetCockpitLighting-adjacent SetNoseLight doc-comment, which describes
 ///   0=On/1=Off/2=Retract — that comment looks stale/wrong; flows here use the
@@ -80,6 +83,7 @@ public static class HwA330FlowDefinitions
         BuildAfterTakeoff(),
         BuildDescent(),
         BuildApproach(),
+        BuildLanding(),
         BuildAfterLanding(),
         BuildShutdown(),
         BuildSecure(),
@@ -518,6 +522,36 @@ public static class HwA330FlowDefinitions
     };
 
     // -----------------------------------------------------------------------
+    // 10a. Landing (run on final once the gear is down, before the Landing checklist; FOA-11)
+    // -----------------------------------------------------------------------
+    private static Flow BuildLanding() => new()
+    {
+        Id = "LANDING", Name = "Landing",
+        Description = "Ground spoilers armed, then a check of the landing memo and the gear.",
+        RelatedChecklistGroupIds = new[] { "LANDING" },
+        Steps = new()
+        {
+            // After Takeoff disarmed the ground spoilers and nothing armed them again (the A32NX report,
+            // 2026-10-16). After Start's write, also the Landing Checklist's "Spoilers: ARMED" (FO-6).
+            // Left alone over an extended speed brake: the A339X is built on the A32NX systems, whose
+            // arm snaps the handle back to retracted (measured on the A32NX; unmeasured here).
+            LeaveAlone(Also(Done(Skip(SW("LD_SPOILERS_ARM", "Ground spoilers: ARMED", "SPOILERS_ARM_TOGGLE", 1),
+                    s => s.IsPosition("A32NX_SPOILERS_ARMED", 1)), "LD_SPOILERS_ARM"), "LDC_MEMO_SPLRS"),
+                s => AirbusGroundSpoilers.FbwSpeedBrakeExtended(s.GetValue("A32NX_SPOILERS_HANDLE_POSITION")),
+                AirbusGroundSpoilers.LeaveAloneText),
+            // The landing memo's seat belts and flaps (FO_LDG_MEMO_OK), read only, the Taxi memo check's
+            // shape: 5 s, skipped aloud on timeout, never writes.
+            Also(Done(Skip(WaitForField("LD_MEMO_CHECK", "Seat belts and flaps: set for landing", "FO_LDG_MEMO_OK",
+                    v => v > 0.5, 5, onTimeout: FlowStepFailurePolicy.Skip),
+                s => s.GetValue("FO_LDG_MEMO_OK") > 0.5), "LDC_MEMO_SIGNS"), "LDC_MEMO_FLAPS"),
+            // LAST (FO-13): the gear confirmed down (handle down, every leg out), read only. 20 s, then skip.
+            Done(Skip(WaitForField("LD_GEAR_DOWN_CHECK", "Landing gear: DOWN", FbwA320GearConfirmation.DownField,
+                    v => v > 0.5, 20, onTimeout: FlowStepFailurePolicy.Skip),
+                s => s.GetValue(FbwA320GearConfirmation.DownField) > 0.5), "LDC_MEMO_GEAR"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
     // 11. After Landing (pilot-triggered once clear of the runway)
     // -----------------------------------------------------------------------
     private static Flow BuildAfterLanding() => new()
@@ -767,6 +801,15 @@ public static class HwA330FlowDefinitions
     private static Step Also(Step step, params string[] alsoCompletes)
     {
         step.AlsoCompletesChecklistItemIds = alsoCompletes;
+        return step;
+    }
+
+    // The aircraft's state says the First Officer must not act (FlowStep.LeaveAloneWhen): nothing is
+    // sent, the text is spoken and the step's lines stay out of the latch.
+    private static Step LeaveAlone(Step step, Func<HwA330StateEvaluator, bool> when, string text)
+    {
+        step.LeaveAloneWhen = when;
+        step.LeaveAloneText = text;
         return step;
     }
 }

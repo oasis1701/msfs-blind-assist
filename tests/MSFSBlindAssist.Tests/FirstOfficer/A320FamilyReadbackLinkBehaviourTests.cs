@@ -40,6 +40,7 @@ public abstract class A320FamilyReadbackLinkBehaviourTests<TExec, TState>
             new[] { "TX_AUTOBRAKE", "TXC_MEMO_AUTOBRK", "TX_CABIN", "TXC_MEMO_CABIN", "TX_CONFIG", "TXC_MEMO_TOCFG" }),
         ("LINEUP", new[] { "LU_TCAS" }, new[] { "LU_TCAS", "LUC_TCAS" }),
         ("APPROACH", new[] { "AP_SEATBELTS" }, new[] { "AP_SEATBELTS", "APC_SEATBELTS" }),
+        ("LANDING", new[] { "LD_SPOILERS_ARM" }, new[] { "LD_SPOILERS_ARM", "LDC_MEMO_SPLRS" }),
         ("AFTER_LANDING", new[] { "AL_WXR_OFF", "AL_PWS_OFF" }, new[] { "AL_WXR_OFF", "AL_PWS_OFF" }),
     };
 

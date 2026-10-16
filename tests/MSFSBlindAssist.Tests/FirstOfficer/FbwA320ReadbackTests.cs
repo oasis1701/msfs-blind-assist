@@ -58,7 +58,7 @@ public class FbwA320ReadbackTests
         {
             "ELEC_POWER_UP", "PREFLIGHT", "COCKPIT_PREP_CL", "BEFORE_START", "BEFORE_START_CL",
             "ENGINE_START", "AFTER_START", "AFTER_START_CL", "TAXI", "TAXI_CL", "LINEUP", "LINEUP_CL",
-            "AFTER_TAKEOFF", "DESCENT", "APPROACH", "APPROACH_CL", "LANDING_CL", "AFTER_LANDING",
+            "AFTER_TAKEOFF", "DESCENT", "APPROACH", "APPROACH_CL", "LANDING", "LANDING_CL", "AFTER_LANDING",
             "AFTER_LANDING_CL", "SHUTDOWN", "PARKING_CL", "SECURE", "SECURING_CL",
         }, FbwA320ChecklistDefinitions.Build().Select(g => g.Id));
     }

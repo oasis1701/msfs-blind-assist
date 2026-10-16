@@ -53,6 +53,7 @@ public static class FbwA320ChecklistDefinitions
         BuildDescent(),
         BuildApproach(),
         BuildApproachCL(),
+        BuildLanding(),
         BuildLandingCL(),
         BuildAfterLanding(),
         BuildAfterLandingCL(),
@@ -404,6 +405,24 @@ public static class FbwA320ChecklistDefinitions
                 (e, _) => e.CabinCall()),
             Reminder("AP_MINIMUMS", "APPROACH", "Check minimums set on the MCDU approach page"),
             Reminder("AP_ENGMODE", "APPROACH", "Set engine mode selector as required"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 10a. Landing (FOA-11)
+    // -----------------------------------------------------------------------
+    private static Group BuildLanding() => new()
+    {
+        Id = "LANDING", Name = "Landing",
+        Items = new()
+        {
+            // After Start's arm; a tick over an extended speed brake is refused aloud, since the arm
+            // would snap the handle back to retracted.
+            LeaveAlone(Auto("LD_SPOILERS_ARM", "LANDING", "Ground spoilers: ARMED", "A32NX_SPOILERS_ARMED",
+                    v => v > 0.5, (e, s) => s.IsOn("A32NX_SPOILERS_ARMED")
+                        ? Task.CompletedTask : e.Set("SPOILERS_ARM_TOGGLE", 1)),
+                s => AirbusGroundSpoilers.FbwSpeedBrakeExtended(s.GetValue("A32NX_SPOILERS_HANDLE_POSITION")),
+                AirbusGroundSpoilers.LeaveAloneText),
         }
     };
 
@@ -783,4 +802,13 @@ public static class FbwA320ChecklistDefinitions
         ReminderText = text,
         LiveValue = live,
     };
+
+    // A tick ON the aircraft's state says the First Officer must not act on (ChecklistItem.LeaveAloneWhen):
+    // refused at once with the text, nothing run.
+    private static Item LeaveAlone(Item item, Func<FbwA320StateEvaluator, bool> when, string text)
+    {
+        item.LeaveAloneWhen = when;
+        item.LeaveAloneText = text;
+        return item;
+    }
 }

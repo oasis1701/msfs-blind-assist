@@ -39,6 +39,7 @@ public static class FenixChecklistDefinitions
         BuildDescent(),
         BuildApproach(),
         BuildApproachCL(),
+        BuildLanding(),
         BuildLandingCL(),
         BuildAfterLanding(),
         BuildAfterLandingCL(),
@@ -392,6 +393,23 @@ public static class FenixChecklistDefinitions
         }
     };
 
+    // -----------------------------------------------------------------------
+    // 10a. Landing (FOA-11)
+    // -----------------------------------------------------------------------
+    private static Group BuildLanding() => new()
+    {
+        Id = "LANDING", Name = "Landing",
+        Items = new()
+        {
+            // After Start's arm (A_FC_SPEEDBRAKE 0 = ARM); a tick over an extended speed brake is
+            // refused aloud, since the write would move the lever to ARM.
+            LeaveAlone(Auto("LD_SPOILERS_ARM", "LANDING", "Ground spoilers: ARMED",
+                    "A_FC_SPEEDBRAKE", v => v < 0.5, (e, _) => e.Set("A_FC_SPEEDBRAKE", 0)),
+                s => AirbusGroundSpoilers.FenixSpeedBrakeExtended(s.GetValue("A_FC_SPEEDBRAKE")),
+                AirbusGroundSpoilers.LeaveAloneText),
+        }
+    };
+
     private static Group BuildAfterLanding() => new()
     {
         Id = "AFTER_LANDING", Name = "After Landing",
@@ -661,8 +679,8 @@ public static class FenixChecklistDefinitions
             // "Landing gear: DOWN" is confirmed the way a crew confirms it — three green, no
             // red — through the FenixGearConfirmation synthetic (lever DOWN, each wheel's
             // lower legend lit, its upper legend and the red arrow out — the greens measured
-            // live 2026-09-25), never the lever alone (owner decision 2026-09-22). The Fenix
-            // has no Landing flow, so nothing latches this line: it ticks from its own state.
+            // live 2026-09-25), never the lever alone (owner decision 2026-09-22). The Landing
+            // flow's read-only gear check, its last step, completes it (FO-13, FOA-11).
             Auto("LDC_MEMO_GEAR", "LANDING_CL", "Landing gear: DOWN",
                 FenixGearConfirmation.DownField, v => v > 0.5, action: null),
             Auto("LDC_MEMO_SIGNS", "LANDING_CL", "Signs: ON",
@@ -773,4 +791,13 @@ public static class FenixChecklistDefinitions
         ReminderText = text,
         LiveValue = live,
     };
+
+    // A tick ON the aircraft's state says the First Officer must not act on (ChecklistItem.LeaveAloneWhen):
+    // refused at once with the text, nothing run.
+    private static Item LeaveAlone(Item item, Func<FenixStateEvaluator, bool> when, string text)
+    {
+        item.LeaveAloneWhen = when;
+        item.LeaveAloneText = text;
+        return item;
+    }
 }

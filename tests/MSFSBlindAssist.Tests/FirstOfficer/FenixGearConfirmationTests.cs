@@ -127,20 +127,31 @@ public class FenixGearConfirmationTests
         Assert.False(step.Condition!(double.NaN));
     }
 
-    // The Fenix profile has no Landing flow, so "Landing gear: DOWN"
-    // (LDC_MEMO_GEAR) is only ever ticked by its own state condition — FO_GEAR_DOWN, three
-    // green and no red. That premise is pinned here because FirstOfficerForm's
-    // RelatedGroupIdsFor latches `flow.Id + "_CL"` complete automatically whenever a checklist
-    // group of that id exists: a future Fenix "LANDING" flow would latch LDC_MEMO_GEAR the
-    // moment it completes, over gear that may still be up. If one is ever added, it needs a
-    // read-only gear-down check that completes LDC_MEMO_GEAR FIRST (the same shape as
-    // AT_GEAR_UP_CHECK above).
+    // The Landing flow (FOA-11) latches LANDING_CL: FirstOfficerForm latches `flow.Id + "_CL"`
+    // complete automatically whenever a checklist group of that id exists, so "Landing gear: DOWN"
+    // (LDC_MEMO_GEAR) would be latched the moment the flow completes, over gear that may still be up.
+    // This test pinned that, until 2026-10-16, no Fenix flow did; now it pins what the flow needed
+    // instead: a read-only gear-down check on FO_GEAR_DOWN (three green, no red), the flow's LAST
+    // step (FO-13, the shape of AT_GEAR_UP_CHECK above), is the only step completing the line, so a
+    // timed-out check keeps it out of the latch.
     [Fact]
-    public void No_Fenix_flow_latches_LANDING_CL()
+    public void The_Fenix_landing_flow_latches_LANDING_CL_only_behind_a_read_only_gear_down_check()
     {
         var flows = FenixFlowDefinitions.Build();
-        Assert.DoesNotContain(flows, f => f.Id == "LANDING");
-        Assert.DoesNotContain(flows, f => f.RelatedChecklistGroupIds.Contains("LANDING_CL"));
+        var landing = flows.Single(f => f.Id == "LANDING");
+        var groups = FenixChecklistDefinitions.Build().Select(g => g.Id).ToHashSet();
+        Assert.Contains("LANDING_CL", landing.CompletionGroupIds(groups.Contains));
+
+        var step = landing.Steps.Last();
+        Assert.Equal("LD_GEAR_DOWN_CHECK", step.Id);
+        Assert.Equal(FlowStepActionType.WaitForCondition, step.ActionType);
+        Assert.Equal(FenixGearConfirmation.DownField, step.ConditionFieldName);
+        Assert.Equal(FlowStepFailurePolicy.Skip, step.FailurePolicy);
+        Assert.Null(step.EventName);
+        Assert.Empty(step.MultiActions);
+        Assert.False(step.SkipCondition!(new FenixStateEvaluator())); // no data never reads "Already set"
+        Assert.Equal(new[] { "LD_GEAR_DOWN_CHECK" },
+            flows.SelectMany(f => f.Steps).Where(s => s.LinkedChecklistItemIds.Contains("LDC_MEMO_GEAR")).Select(s => s.Id));
     }
 
     // ---- DOWN: "three green" — every _L lit, every _U and the red arrow out ----

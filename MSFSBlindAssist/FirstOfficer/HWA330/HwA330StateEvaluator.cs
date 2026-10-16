@@ -203,6 +203,12 @@ public sealed class HwA330StateEvaluator : LVarStateEvaluator
                 value = Both(GetValue("A32NX_FLAPS_HANDLE_INDEX"), GetValue("A32NX_GPWS_FLAPS3"),
                     (flaps, conf3) => conf3 > 0.5 ? Math.Abs(flaps - 3) < 0.5 : Math.Abs(flaps - 4) < 0.5);
                 return true;
+            // The Landing flow's memo check (LD_MEMO_CHECK, FOA-11): the seat belts on and the flaps at
+            // the landing setting, the conditions of LDC_MEMO_SIGNS and LDC_MEMO_FLAPS.
+            case "FO_LDG_MEMO_OK":
+                value = Both(GetValue("CABIN SEATBELTS ALERT SWITCH"), GetValue("FO_LDG_FLAPS_SET"),
+                    (belts, flaps) => belts > 0.5 && flaps > 0.5);
+                return true;
             // FAC 1 rudder trim word: neutral when |trim| < 0.1°; no data → NaN.
             case "FO_RUDDER_TRIM_NEUTRAL":
                 value = DecodeRudderTrimNeutral(GetValue("A32NX_FAC_1_RUDDER_TRIM_POS"));

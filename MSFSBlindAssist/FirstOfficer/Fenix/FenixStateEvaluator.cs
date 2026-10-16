@@ -90,6 +90,12 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
             case "FO_LDG_FLAPS_SET":
                 value = Both(GetValue("S_FC_FLAPS"), GetValue("S_OH_GPWS_LDG_FLAP3"), LdgFlapsSet);
                 return true;
+            // The Landing flow's memo check (LD_MEMO_CHECK, FOA-11): the seat belts on and the flaps at
+            // the landing setting, the conditions of LDC_MEMO_SIGNS and LDC_MEMO_FLAPS.
+            case "FO_LDG_MEMO_OK":
+                value = Both(GetValue("S_OH_SIGNS"), GetValue("FO_LDG_FLAPS_SET"),
+                    (belts, flaps) => belts > 0.5 && flaps > 0.5);
+                return true;
             case "FO_ENG1_N2": value = Eng1N2; return true;
             case "FO_ENG2_N2": value = Eng2N2; return true;
             case "FO_ENGINES_OFF":

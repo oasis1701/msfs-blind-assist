@@ -1,3 +1,4 @@
+using MSFSBlindAssist.FirstOfficer.Airbus;
 using MSFSBlindAssist.FirstOfficer.Models;
 
 namespace MSFSBlindAssist.FirstOfficer.Fenix;
@@ -53,6 +54,7 @@ public static class FenixFlowDefinitions
         BuildAfterTakeoff(),
         BuildDescent(),
         BuildApproach(),
+        BuildLanding(),
         BuildAfterLanding(),
         BuildShutdown(),
         BuildSecure(),
@@ -482,6 +484,36 @@ public static class FenixFlowDefinitions
     };
 
     // -----------------------------------------------------------------------
+    // 10a. Landing (run on final once the gear is down, before the Landing checklist; FOA-11)
+    // -----------------------------------------------------------------------
+    private static Flow BuildLanding() => new()
+    {
+        Id = "LANDING", Name = "Landing",
+        Description = "Ground spoilers armed, then a check of the landing memo and the gear.",
+        RelatedChecklistGroupIds = new[] { "LANDING" },
+        Steps = new()
+        {
+            // After Takeoff disarmed the ground spoilers and nothing armed them again (the A32NX report,
+            // 2026-10-16). After Start's write (A_FC_SPEEDBRAKE 0 = ARM), also the Landing Checklist's
+            // "Spoilers: ARMED" (FO-6). Left alone over an extended speed brake (above 1, stowed), which
+            // the write would move to ARM: the line stays open until the pilot arms.
+            LeaveAlone(Also(Done(Skip(SW("LD_SPOILERS_ARM", "Ground spoilers: ARMED", "A_FC_SPEEDBRAKE", 0),
+                    s => s.IsPosition("A_FC_SPEEDBRAKE", 0)), "LD_SPOILERS_ARM"), "LDC_MEMO_SPLRS"),
+                s => AirbusGroundSpoilers.FenixSpeedBrakeExtended(s.GetValue("A_FC_SPEEDBRAKE")),
+                AirbusGroundSpoilers.LeaveAloneText),
+            // The landing memo's signs and flaps (FO_LDG_MEMO_OK), read only, the Taxi memo check's
+            // shape: 5 s, skipped aloud on timeout, never writes.
+            Also(Done(Skip(WaitForField("LD_MEMO_CHECK", "Seat belts and flaps: set for landing", "FO_LDG_MEMO_OK",
+                    v => v > 0.5, 5, onTimeout: FlowStepFailurePolicy.Skip),
+                s => s.GetValue("FO_LDG_MEMO_OK") > 0.5), "LDC_MEMO_SIGNS"), "LDC_MEMO_FLAPS"),
+            // LAST (FO-13): three green, no red (FenixGearConfirmation), read only. 20 s, then skip.
+            Done(Skip(WaitForField("LD_GEAR_DOWN_CHECK", "Landing gear: DOWN", FenixGearConfirmation.DownField,
+                    v => v > 0.5, 20, onTimeout: FlowStepFailurePolicy.Skip),
+                s => s.GetValue(FenixGearConfirmation.DownField) > 0.5), "LDC_MEMO_GEAR"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
     // 11. After Landing (pilot-triggered once clear of the runway)
     // -----------------------------------------------------------------------
     private static Flow BuildAfterLanding() => new()
@@ -739,6 +771,15 @@ public static class FenixFlowDefinitions
     private static Step OnlyIfSent(Step step, string sentStepId)
     {
         step.RunOnlyIfStepSent = sentStepId;
+        return step;
+    }
+
+    // The aircraft's state says the First Officer must not act (FlowStep.LeaveAloneWhen): nothing is
+    // sent, the text is spoken and the step's lines stay out of the latch.
+    private static Step LeaveAlone(Step step, Func<FenixStateEvaluator, bool> when, string text)
+    {
+        step.LeaveAloneWhen = when;
+        step.LeaveAloneText = text;
         return step;
     }
 }

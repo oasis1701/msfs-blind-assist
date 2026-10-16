@@ -27,6 +27,9 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 ///                  TX_CONFIG         -> TXC_MEMO_TOCFG    "T.O config: NORMAL"
 ///   Line-up        LU_TCAS           -> LUC_TCAS          "TCAS: TA/RA"
 ///   Approach       AP_SEATBELTS      -> APC_SEATBELTS     "Seat belts: ON"
+///   Landing        LD_SPOILERS_ARM   -> LDC_MEMO_SPLRS    "Spoilers: ARMED" (the arm sets it)
+///                  LD_MEMO_CHECK     -> LDC_MEMO_SIGNS, LDC_MEMO_FLAPS (A320FamilyLandingFlowTests)
+///                  LD_GEAR_DOWN_CHECK -> LDC_MEMO_GEAR    "Landing gear: DOWN" (FO-13, last)
 ///   After Landing  AL_WXR_PWS_CHECK  -> ALC_WXR           "Radar and predictive windshear: OFF"
 /// A line true only when two switches are both set (the radar lines) is completed by a read-only
 /// wait right after the two writes; a line that reads what an earlier flow set (the takeoff memo
@@ -78,6 +81,10 @@ public class A320FamilyReadbackLinkTests
             // The Approach flow's seat-belt write completes its own line and the Approach Checklist's
             // "Seat belts: ON" (usually "Already set" after Descent).
             yield return new object?[] { aircraft, "APPROACH", "AP_SEATBELTS", "AP_SEATBELTS", "APC_SEATBELTS" };
+            // Landing (FOA-11): the arm completes its own line and the Landing Checklist's "Spoilers:
+            // ARMED"; the gear check, last, completes "Landing gear: DOWN" only.
+            yield return new object?[] { aircraft, "LANDING", "LD_SPOILERS_ARM", "LD_SPOILERS_ARM", "LDC_MEMO_SPLRS" };
+            yield return new object?[] { aircraft, "LANDING", "LD_GEAR_DOWN_CHECK", null, "LDC_MEMO_GEAR" };
             // Taxi: every write names its own action line, and the three whose item the takeoff memo
             // reads name that read-back line too. Neither radar write names "Radar and predictive
             // windshear: ON and AUTO" (true only with both set): the read-only check after them does.
