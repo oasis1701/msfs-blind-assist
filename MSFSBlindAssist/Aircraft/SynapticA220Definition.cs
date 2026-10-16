@@ -182,7 +182,7 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
     public void StopAllMotion()
     {
         StopApuStartHold();
-        _walkCancel?.Cancel();
+        CancelAllKnobWalks();       // every FCP knob and stab trim walk, each on its own token (Dialogs partial)
         _isiWalkCancel?.Cancel();   // the standby baro walk has its own token (Isi partial)
         _autobrakeCancel?.Cancel();
         _autopilotWindow?.Dispose();

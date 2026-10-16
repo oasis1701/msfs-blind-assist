@@ -13,7 +13,6 @@ public partial class SynapticA220Definition
 {
     private System.Windows.Forms.Timer? _apuHoldTimer;
     private int _apuHoldTicks;
-    private System.Threading.CancellationTokenSource? _walkCancel;
 
     /// <summary>True while the ECL form actuates a control (ActuateControl): that form says
     /// what it is doing, so a press does not also say "pressed" (CORE-7: confirm once).</summary>
@@ -305,9 +304,7 @@ public partial class SynapticA220Definition
         _apuHoldTimer = null;
     }
 
-    // ---- Flap detent walk ----------------------------------------------------
-    // FLAPS_1/2/3 don't cover detent 4, so the combo walks FLAPS_INCR/DECR verified
-    // against the lever L:var (self-calibrating; never open-loop).
+    // ---- Flap detent ---------------------------------------------------------
     /// <summary>
     /// Select a flap detent (0-5) the way the cockpit lever does: ONE
     /// <c>FLAPS_SET</c> with the handle index scaled onto the event's 0-16383 range,
@@ -317,11 +314,11 @@ public partial class SynapticA220Definition
     /// documented but dead (see the A22X_FLAP_LEVER def), so the walk never saw the
     /// lever move: it read 0, fired FLAPS_INCR, read 0 again, and kept going for all
     /// ten rounds — which is how asking for flaps 2 left the aircraft at FULL. There is
-    /// nothing to walk here anyway; the lever takes a direct set.
+    /// nothing to walk here anyway; the lever takes a direct set, so a flap pick stops no
+    /// knob walk (it used to cancel the FCP walks' shared token, a leftover of that walk).
     /// </summary>
     private void SetFlapDetent(SimConnectManager simConnect, int detent)
     {
-        _walkCancel?.Cancel();   // a flap selection supersedes any FCP walk in flight (never the standby baro's)
         int index = Math.Clamp(detent, 0, FlapMaxDetent);
         simConnect.ExecuteCalculatorCode(
             $"{SeqPrefix()}{index} {FlapMaxDetent} / 16383 * (>K:FLAPS_SET)");

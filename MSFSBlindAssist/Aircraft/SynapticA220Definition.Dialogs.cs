@@ -17,13 +17,22 @@ namespace MSFSBlindAssist.Aircraft;
 /// everything else is the SELF-CALIBRATING measured walk (fire inc/dec, read the value
 /// back, adapt the step, stop on reach/overshoot).
 ///
-/// The READ-BACK prefers the 30 Hz "A22X.FCP Data" CommBus block and falls back to the
-/// 1 Hz SimConnect cache. Both are real sources: measured 2026-09-21, the stock
-/// AUTOPILOT ALTITUDE LOCK VAR / HEADING LOCK DIR / AIRSPEED HOLD VAR each track their
-/// knob click for click, so a session with no Coherent display link still gets the same
-/// walks, just with a slower settle. Do not re-introduce the belief that the stock vars
-/// are not published — that is what used to strand link-less sessions on the degraded
-/// fallback walk.
+/// The READ-BACK prefers the 30 Hz "A22X.FCP Data" CommBus block ([A220-8]). Without it,
+/// altitude and heading read their stock AUTOPILOT ALTITUDE LOCK VAR / HEADING LOCK DIR,
+/// which track the knob click for click (measured 2026-09-21), by a DELIVERED read
+/// (ReadFreshAsync), never a sleep and the cache; so a session with no Coherent display
+/// link still gets the same walks, just with a slower read. Do not re-introduce the belief
+/// that those two are not published — that is what used to strand link-less sessions on
+/// the degraded fallback walk. The stock AIRSPEED HOLD VAR is the exception: it does NOT
+/// follow this FCP (445 kt with 142 in the window, 2026-09-24), so the speed walk refuses
+/// without the block, and so does the stab trim walk ([A220-13]); A220Afdx.KnobWalkMayUseStockVar
+/// is the one decision.
+///
+/// Every walk has its OWN cancellation per knob (speed, heading, altitude, the V/S-FPA wheel,
+/// stab trim): a new entry stops only the previous walk of the same knob, which then ends
+/// silently because the newer one speaks; walks of different knobs run side by side. Every
+/// way out of a walk is spoken once (CORE-7): the result, a refusal, "not confirmed", or
+/// "walk stopped" after a logged failure.
 ///
 /// Dialog completeness rule (user ruling 2026-07-27): each dialog carries buttons for
 /// ALL functions of its physical control, and every mode press announces the RESULT.
@@ -74,6 +83,61 @@ public partial class SynapticA220Definition
         return delta;
     }
 
+    // ---- one walk per knob ---------------------------------------------------
+
+    /// <summary>Each knob's walk in flight, by its own cancellation (R1 of the 2026-10-16 walk
+    /// review). Locked: a walk starts from the UI thread or from another walk's pool thread.</summary>
+    private readonly Dictionary<A220.A220Afdx.FcpKnob, System.Threading.CancellationTokenSource> _knobWalks = new();
+
+    /// <summary>
+    /// Start a walk of <paramref name="knob"/>: cancels that knob's previous walk only (it ends
+    /// silently; this one speaks) and returns the new walk's token. A walk of another knob runs on
+    /// — the shared token this replaced let "heading 240, then altitude 5000" abandon the heading
+    /// partway with no word (the standby baro walk had the same bug, 6685f0df). The old walk is
+    /// cancelled outside the lock, since a cancelled await can resume inline on this thread.
+    /// </summary>
+    private System.Threading.CancellationToken BeginKnobWalk(A220.A220Afdx.FcpKnob knob)
+    {
+        var cts = new System.Threading.CancellationTokenSource();
+        System.Threading.CancellationTokenSource? previous;
+        lock (_knobWalks)
+        {
+            _knobWalks.TryGetValue(knob, out previous);
+            _knobWalks[knob] = cts;
+        }
+        previous?.Cancel();
+        return cts.Token;
+    }
+
+    /// <summary>Stops every knob walk (StopAllMotion, aircraft swap).</summary>
+    private void CancelAllKnobWalks()
+    {
+        List<System.Threading.CancellationTokenSource> all;
+        lock (_knobWalks)
+        {
+            all = _knobWalks.Values.ToList();
+            _knobWalks.Clear();
+        }
+        foreach (var cts in all) cts.Cancel();
+    }
+
+    /// <summary>
+    /// Refuses ALOUD, before any click, when the simulator connection cannot carry the walk's
+    /// clicks ([MD11-16]'s pattern): without it a dead connection said "knob is not responding",
+    /// the wrong cause. The clicks are calc-path writes (<see cref="FireKnobBurstAsync"/>), so this
+    /// asks <see cref="SimConnectManager.CanExecuteCalculatorCode"/>, the gate
+    /// <c>ExecuteCalculatorCode</c> itself uses. Not <c>CalcWriteCanLand</c>: the A220 registers no
+    /// bridge probe, so its verdict concludes unverified at once and would refuse every walk, while
+    /// every A220 write goes through the calculator unconditionally ([A220-1]).
+    /// </summary>
+    private bool KnobWalkCanSend(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, string name)
+    {
+        if (simConnect.CanExecuteCalculatorCode) return true;
+        FcpLog.Warn($"{name}: not connected, walk refused");
+        announcer.AnnounceImmediate(A220.A220Afdx.KnobWalkNotConnectedText(name));
+        return false;
+    }
+
     // ---- generic self-calibrating FCP knob walk ------------------------------
 
     /// <summary>
@@ -81,19 +145,29 @@ public partial class SynapticA220Definition
     /// (step = distance actually moved / clicks actually sent). Two reasons this is not
     /// a constant: the altitude knob's fine/coarse ring and feet/metres mode change it
     /// live, and the day-one measurement was a non-obvious 492 ft per click. Keeping it
-    /// across walks is what removes the old dedicated calibration round.
+    /// across walks is what removes the old dedicated calibration round. Concurrent:
+    /// walks of different knobs now run side by side on pool threads.
     /// </summary>
-    private readonly Dictionary<string, double> _fcpStepCache = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, double> _fcpStepCache = new();
 
-    /// <summary>How long a burst needs to settle before the read-back is trustworthy,
-    /// per SOURCE. The CommBus blocks publish at 20-30 Hz; the SimConnect cache only
-    /// refreshes at 1 Hz, so a read taken on the live budget but served from the cache
-    /// can predate — or fall inside — the burst it is supposed to be measuring. Any
-    /// walk that downgrades live-to-cache mid-read must top its wait up to the cache
-    /// figure before reading; see ReadAltAsync.</summary>
-    private const int LiveSettleMs = 300;
+    /// <summary>How long a burst needs to settle before the CommBus read-back (20-30 Hz) is
+    /// trustworthy. A stock-var fallback read needs no longer sleep: it is a DELIVERED read
+    /// (<see cref="SimConnectManager.ReadFreshAsync"/>), whose next 1 Hz batch sample is taken
+    /// after the burst. The fixed 1.3 s sleep and cache read it replaced could sample a value
+    /// older than the burst ([MD11-9]'s lesson).</summary>
     private const int FcpLiveSettleMs = 200;
-    private const int CacheSettleMs = 1300;
+
+    /// <summary>How long one delivered read of a stock var may take: the 1 Hz batch's next
+    /// sample, plus margin. Past it the read is "not confirmed", never a guess.</summary>
+    private const int KnobFreshReadTimeoutMs = 1500;
+
+    /// <summary>One delivered read of a stock var for a knob walk, or null when none came back.</summary>
+    private static async Task<double?> ReadKnobStockVarAsync(SimConnectManager simConnect, string key,
+        System.Threading.CancellationToken token)
+    {
+        double? value = await simConnect.ReadFreshAsync(key, KnobFreshReadTimeoutMs, token);
+        return value is { } v && !double.IsNaN(v) ? v : null;
+    }
 
     /// <summary>
     /// Self-calibrating FCP knob walk. No direct-set FCP events exist on this aircraft
@@ -107,16 +181,21 @@ public partial class SynapticA220Definition
     ///   * IMPRECISE — a round used to converge on whatever the 1 Hz batch happened to
     ///     hold, so a sample that had not refreshed yet was read as "the knob did not
     ///     move" and the step was re-measured from it.
-    /// The SimConnect cache remains the fallback for a session with no Coherent link, and
-    /// it is a SOUND one: measured live 2026-09-21, the stock AUTOPILOT ALTITUDE LOCK VAR,
-    /// HEADING LOCK DIR and AIRSPEED HOLD VAR each track their FCP knob exactly, click for
-    /// click. (An earlier note here claimed they were "NOT what the A220's FCP publishes";
-    /// that was wrong and it mattered — it is why a session with no display link used to
-    /// be pushed onto the inferior fallback walk.) Only the TIMING degrades there: the
-    /// cache refreshes at 1 Hz, so each round keeps the old 1.3 s settle rather than
-    /// converging on stale data. VERTICAL SPEED is the real exception — its knob is dead
-    /// until VS/FPA mode is engaged, so its walk engages the mode first.
+    /// Where the aircraft's own block gives no value, a knob whose stock var tracks it
+    /// (<see cref="A220.A220Afdx.KnobWalkMayUseStockVar"/>) reads that var instead —
+    /// measured live 2026-09-21, AUTOPILOT ALTITUDE LOCK VAR tracks its knob click for click.
+    /// (An earlier note here claimed the stock vars were "NOT what the A220's FCP publishes";
+    /// that was wrong for altitude and heading and it mattered — it is why a session with no
+    /// display link used to be pushed onto the inferior fallback walk.) That read is a
+    /// DELIVERED one (<see cref="SimConnectManager.ReadFreshAsync"/>), never a fixed sleep and
+    /// the cache: only the TIMING degrades, to the 1 Hz batch's next sample. The stab trim may
+    /// not fall back ([A220-13]): with the link down it refuses before any click, and a link
+    /// lost part-way stops the walk. VERTICAL SPEED's knob is dead until VS/FPA mode is
+    /// engaged, so its walk engages the mode first.
     /// </summary>
+    /// <param name="knob">Which knob: the fallback decision, and the refusal wording.</param>
+    /// <param name="token">This knob's walk (<see cref="BeginKnobWalk"/>): a newer entry for
+    /// the same knob cancels it, and a cancelled walk says nothing.</param>
     /// <param name="liveRead">Reads this knob's value out of a fresh AFDX block.</param>
     /// <param name="note">Optional extra clause appended to the final announcement, given
     /// the landed value, whether it hit the target exactly, and the MEASURED step. The
@@ -124,47 +203,43 @@ public partial class SynapticA220Definition
     /// is the whole explanation — and a readout that says only "nearest selectable" leaves
     /// a blind pilot (and the next person debugging this) with nothing to go on.</param>
     private void StartFcpWalk(SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
+        A220.A220Afdx.FcpKnob knob, System.Threading.CancellationToken token,
         string readKey, string incEvent, string decEvent, double target, double tolerance,
         double? assumedStep, string valueName, Func<double, string> fmt,
         Func<A220.A220Afdx.LiveBlocks, double?>? liveRead = null, bool headingWrap = false,
-        Func<double, bool, double, string>? note = null,
-        Func<double, double>? cacheScale = null, string? cacheNote = null)
+        Func<double, bool, double, string>? note = null)
     {
-        _walkCancel?.Cancel();
-        var cts = new System.Threading.CancellationTokenSource();
-        _walkCancel = cts;
+        if (!KnobWalkCanSend(simConnect, announcer, valueName)) return;
+        bool mayUseStockVar = A220.A220Afdx.KnobWalkMayUseStockVar(knob);
         _ = System.Threading.Tasks.Task.Run(async () =>
         {
+            // A walk superseded by a newer entry for this knob, or stopped by an aircraft swap,
+            // says nothing: the newer walk, or the next aircraft, speaks for itself.
+            void Say(string text)
+            {
+                if (!token.IsCancellationRequested) announcer.AnnounceImmediate(text);
+            }
             try
             {
                 bool live = liveRead != null;
 
-                // One read of the knob's value. Falls back to the SimConnect cache the
-                // moment the live path misses, and latches OFF live for the rest of the
-                // walk so the settle delay matches the source actually being read.
-                async Task<double> ReadAsync()
+                // One read of the knob's value, or null when nothing reports it (never a
+                // guess). The aircraft's block first; the moment it misses, live latches OFF
+                // for the rest of the walk and — where this knob may — the stock var is read
+                // by a delivered read.
+                async Task<double?> ReadAsync()
                 {
                     if (live && liveRead != null)
                     {
                         var blocks = await ReadAfdxLiveAsync();
                         if (blocks != null && liveRead(blocks) is { } v) return v;
                         live = false;
-                        // Same top-up as the altitude walk: the short live settle has
-                        // already elapsed, but the cache we are about to read only
-                        // refreshes at 1 Hz, so reading now can sample mid-burst and
-                        // feed the step estimator a value that is far too small.
-                        await System.Threading.Tasks.Task.Delay(CacheSettleMs - FcpLiveSettleMs, cts.Token);
                     }
-                    // The cache may hold the value in a DIFFERENT unit from the target
-                    // (the stabilizer carrier is a 0-1 animation ratio against a target in
-                    // EICAS units) — scale it, or the walk compares 0.25 to 4.3 and drives
-                    // the control to its stop. Identity for every knob that needs none.
-                    double raw = Cached(simConnect, readKey);
-                    return cacheScale != null ? cacheScale(raw) : raw;
+                    return mayUseStockVar ? await ReadKnobStockVarAsync(simConnect, readKey, token) : null;
                 }
 
-                Task SettleAsync() =>
-                    System.Threading.Tasks.Task.Delay(live ? FcpLiveSettleMs : CacheSettleMs, cts.Token);
+                // The fallback read waits for its own delivery, so one short settle serves both sources.
+                Task SettleAsync() => System.Threading.Tasks.Task.Delay(FcpLiveSettleMs, token);
 
                 double lastStep = 0;
                 void Finish(double value, bool exact)
@@ -172,11 +247,7 @@ public partial class SynapticA220Definition
                     string text = $"{valueName} {fmt(value)}";
                     if (!exact) text += $" — nearest selectable to {fmt(target)}";
                     if (note != null) text += note(value, exact, lastStep);
-                    // Say when the number came from the derived fallback rather than the
-                    // aircraft's own bus: the pilot is entitled to know the authoritative
-                    // readout is down, even though the walk still closed the loop.
-                    if (!live && cacheNote != null) text += cacheNote;
-                    announcer.AnnounceImmediate(text);
+                    Say(text);
                 }
 
                 _fcpStepCache.TryGetValue(readKey, out double cachedStep);
@@ -197,10 +268,16 @@ public partial class SynapticA220Definition
                 // "I set 270 and it stopped at 239" report. Never quit before trying.
                 bool measured = false;
                 double prevDelta = double.NaN;
-                bool calcFallback = false;
 
-                double cur = await ReadAsync();
-                for (int round = 0; round < 10 && !cts.IsCancellationRequested; round++)
+                // Nothing reports the value: refuse before any click, never walk on a guess.
+                if (await ReadAsync() is not { } first)
+                {
+                    FcpLog.Warn($"{valueName}: no read-back, walk refused (target {fmt(target)})");
+                    Say(A220.A220Afdx.KnobWalkRefusalText(knob, valueName));
+                    return;
+                }
+                double cur = first;
+                for (int round = 0; round < 10 && !token.IsCancellationRequested; round++)
                 {
                     double delta = target - cur;
                     if (headingWrap) delta = WrapHeadingDelta(delta);
@@ -248,26 +325,22 @@ public partial class SynapticA220Definition
                             return;
                         }
                     }
-                    await FireKnobBurstAsync(simConnect, delta > 0 ? upEvent : downEvent, clicks,
-                                             cts.Token, calcFallback);
+                    await FireKnobBurstAsync(simConnect, delta > 0 ? upEvent : downEvent, clicks, token);
                     await SettleAsync();
 
-                    double after = await ReadAsync();
+                    // The burst may have moved the knob: a missing read-back claims no value.
+                    if (await ReadAsync() is not { } after)
+                    {
+                        FcpLog.Warn($"{valueName}: read-back lost after {clicks} clicks from {fmt(cur)}");
+                        Say(A220.A220Afdx.KnobWalkNotConfirmedText(valueName));
+                        return;
+                    }
                     double signed = after - cur;
                     if (headingWrap) signed = WrapHeadingDelta(signed);
                     double moved = Math.Abs(signed);
                     if (moved < 1e-6)
                     {
-                        // Nothing moved. If that was the FIRST burst and it went out by
-                        // TransmitClientEvent, the direct path may not reach this aircraft on
-                        // this setup — drop to the calculator path (the transport every other
-                        // A220 control uses) and try the same burst again before giving up.
-                        if (!calcFallback && !measured)
-                        {
-                            calcFallback = true;
-                            continue;
-                        }
-                        announcer.AnnounceImmediate($"{valueName} knob is not responding — value unchanged at {fmt(cur)}.");
+                        Say($"{valueName} knob is not responding — value unchanged at {fmt(cur)}.");
                         return;
                     }
                     // Wrong way: swap the events and don't trust this round's step yet.
@@ -282,10 +355,15 @@ public partial class SynapticA220Definition
                     measured = true;
                     cur = after;
                 }
-                if (!cts.IsCancellationRequested) Finish(cur, exact: false);
+                Finish(cur, exact: false);
             }
             catch (OperationCanceledException) { }
-            catch { }
+            catch (Exception ex)
+            {
+                // A walk never throws into the UI, and never stops without saying so (CORE-15 log).
+                Utils.Logging.Log.Warn("A220", $"{valueName} walk: {ex.GetType().Name}: {ex.Message}");
+                Say(A220.A220Afdx.KnobWalkFailedText(valueName));
+            }
         });
     }
 
@@ -329,23 +407,32 @@ public partial class SynapticA220Definition
     ///     applied is never mistaken for a short one;
     ///   * lost clicks just cost another round; a knob that does not move at all, or
     ///     moves the wrong way, stops the walk and says so;
-    ///   * with no trustworthy read-back the walk REFUSES — it never clicks blind.
+    ///   * with no trustworthy read-back the walk REFUSES — it never clicks blind; a
+    ///     read-back lost part-way is "not confirmed", never the value before the burst.
     /// Every round is written to a220_fcp.log.
     /// </summary>
+    /// <param name="knob">Speed or heading: whether <paramref name="stockKey"/> may stand in
+    /// (<see cref="A220.A220Afdx.KnobWalkMayUseStockVar"/>).</param>
+    /// <param name="token">This knob's walk (<see cref="BeginKnobWalk"/>).</param>
     /// <param name="liveField">The value in the aircraft's FCP block.</param>
-    /// <param name="cacheKey">A stock var proven to track this knob click for click, used
-    /// only when the FCP block is unavailable (heading); null = no fallback (speed).</param>
+    /// <param name="stockKey">A stock var proven to track this knob click for click, read
+    /// (delivered, never the cache) only when the FCP block is unavailable (heading); null =
+    /// no fallback (speed).</param>
     private void StartExactKnobWalk(SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
+        A220.A220Afdx.FcpKnob knob, System.Threading.CancellationToken token,
         string name, string incEvent, string decEvent, int target, bool headingWrap,
-        Func<A220.A220Afdx.FcpBlock, double?> liveField, string? cacheKey,
+        Func<A220.A220Afdx.FcpBlock, double?> liveField, string? stockKey,
         Func<double, string> fmt, Func<double, string>? afterNote = null)
     {
-        _walkCancel?.Cancel();
-        var cts = new System.Threading.CancellationTokenSource();
-        _walkCancel = cts;
-        var token = cts.Token;
+        if (!KnobWalkCanSend(simConnect, announcer, name)) return;
+        string? cacheKey = A220.A220Afdx.KnobWalkMayUseStockVar(knob) ? stockKey : null;
         _ = System.Threading.Tasks.Task.Run(async () =>
         {
+            // A superseded or swapped-out walk says nothing (see StartFcpWalk).
+            void Say(string text)
+            {
+                if (!token.IsCancellationRequested) announcer.AnnounceImmediate(text);
+            }
             try
             {
                 bool live = true;
@@ -359,22 +446,20 @@ public partial class SynapticA220Definition
                         live = false;
                         FcpLog.Info($"{name}: FCP data unavailable, reading {cacheKey}");
                     }
-                    return Cached(simConnect, cacheKey!);
+                    return await ReadKnobStockVarAsync(simConnect, cacheKey!, token);
                 }
-                // Wait until the value stops changing (live), or for the 1 Hz cache to
-                // refresh twice over (fallback).
+                // Wait until the value stops changing (live). On the stock var, ONE delivered
+                // read: its next 1 Hz sample is taken after the burst, so it needs no
+                // stability loop and no fixed sleep.
                 async Task<double?> ReadSettledAsync()
                 {
-                    if (!live)
-                    {
-                        await System.Threading.Tasks.Task.Delay(CacheSettleMs, token);
-                        return await ReadOnceAsync();
-                    }
                     await System.Threading.Tasks.Task.Delay(250, token);
+                    if (!live) return await ReadOnceAsync();
                     double? last = await ReadOnceAsync();
                     int stable = 0;
                     var until = Environment.TickCount64 + 2500;
-                    while (stable < 2 && Environment.TickCount64 < until && !token.IsCancellationRequested)
+                    // A link lost mid-loop already gave a delivered read: stop there, as the altitude walk does.
+                    while (live && stable < 2 && Environment.TickCount64 < until && !token.IsCancellationRequested)
                     {
                         await System.Threading.Tasks.Task.Delay(120, token);
                         double? v = await ReadOnceAsync();
@@ -393,12 +478,12 @@ public partial class SynapticA220Definition
                 if (start == null)
                 {
                     FcpLog.Warn($"{name}: no read-back, walk refused (target {target})");
-                    announcer.AnnounceImmediate($"{name} not set: the aircraft is not reporting its selected {name.ToLowerInvariant()} right now. Try again in a moment.");
+                    Say(A220.A220Afdx.KnobWalkRefusalText(knob, name));
                     return;
                 }
                 double cur = start.Value;
                 string up = incEvent, down = decEvent;
-                bool swapped = false, calcFallback = false;
+                bool swapped = false;
                 // The aircraft takes about one knob event per sim frame; faster ones are
                 // dropped (live 2026-09-24 at 20 ms: speed 49 of 77 clicks landed, heading
                 // 21 of 58). Every round still re-aims from the read-back so a loss only
@@ -413,16 +498,21 @@ public partial class SynapticA220Definition
                     int clicks = A220.A220Afdx.ExactKnobClicks(delta);
                     if (clicks == 0) break;
                     string ev = delta > 0 ? up : down;
-                    await FireKnobBurstAsync(simConnect, ev, clicks, token, calcFallback, paceMs: paceMs);
+                    await FireKnobBurstAsync(simConnect, ev, clicks, token, paceMs: paceMs);
                     double? after = await ReadSettledAsync();
-                    if (after == null) break;
+                    if (after == null)
+                    {
+                        // The burst may have moved the knob: claim no value (R7).
+                        FcpLog.Warn($"{name}: read-back lost after {ev} x{clicks} from {fmt(cur)}");
+                        Say(A220.A220Afdx.KnobWalkNotConfirmedText(name));
+                        return;
+                    }
                     double moved = headingWrap ? WrapHeadingDelta(after.Value - cur) : after.Value - cur;
                     FcpLog.Info($"{name}: round {round} {ev} x{clicks} @{paceMs}ms: {fmt(cur)} -> {fmt(after.Value)}");
                     paceMs = A220.A220Afdx.NextKnobPaceMs(paceMs, clicks, Math.Abs(moved));
                     if (Math.Abs(moved) < 0.5)
                     {
-                        if (!calcFallback && round == 0) { calcFallback = true; continue; }
-                        announcer.AnnounceImmediate($"{name} knob is not responding — still {fmt(cur)}.");
+                        Say($"{name} knob is not responding — still {fmt(cur)}.");
                         return;
                     }
                     if (Math.Sign(moved) != Math.Sign(delta))
@@ -431,7 +521,7 @@ public partial class SynapticA220Definition
                         // read-back and the knob disagree, and clicking on would chase it.
                         if (swapped)
                         {
-                            announcer.AnnounceImmediate($"{name} stopped at {fmt(after.Value)} — the knob is not behaving as expected.");
+                            Say($"{name} stopped at {fmt(after.Value)} — the knob is not behaving as expected.");
                             return;
                         }
                         (up, down) = (down, up);
@@ -444,10 +534,16 @@ public partial class SynapticA220Definition
                 string text = exact ? $"{name} {fmt(cur)}" : $"{name} stopped at {fmt(cur)}, asked for {fmt(target)}";
                 if (afterNote != null) text += afterNote(cur);
                 FcpLog.Info($"{name}: done at {fmt(cur)} ({(exact ? "exact" : "NOT exact")})");
-                announcer.AnnounceImmediate(text);
+                Say(text);
             }
             catch (OperationCanceledException) { }
-            catch (Exception ex) { FcpLog.Warn($"{name}: walk failed: {ex.Message}"); }
+            catch (Exception ex)
+            {
+                // Logged (CORE-15) and said: a walk never ends in silence.
+                FcpLog.Warn($"{name}: walk failed: {ex.Message}");
+                Utils.Logging.Log.Warn("A220", $"{name} walk: {ex.GetType().Name}: {ex.Message}");
+                Say(A220.A220Afdx.KnobWalkFailedText(name));
+            }
         });
     }
 
@@ -460,80 +556,63 @@ public partial class SynapticA220Definition
     /// calibrated walk as the FCP knobs, reading `efcs.pitch_trim` back off the CommBus.
     /// Direction is calibrated on the first move, never assumed — driving a stabilizer
     /// confidently the wrong way is the one failure here that actually matters.
+    ///
+    /// With the display link down it REFUSES before any click ([A220-13];
+    /// <see cref="A220.A220Afdx.StabTrimLinkDownText"/>), and a link lost part-way stops the
+    /// walk as "not confirmed". From 2026-09-22 it walked on a second read-back instead:
+    /// "L:A22X Horizontal Stabilizer" is the trim animation ratio over the same 0-17 unit
+    /// travel the EICAS draws, and ratio × 17 tracked one 28-click burst monotonically
+    /// (<see cref="A220.A220Afdx.StabTrimFullScaleUnits"/>). That is one measurement of a
+    /// derived value, against a rule that said refuse; the owner kept the rule on 2026-10-16,
+    /// so the stabilizer is never driven on that estimate
+    /// (<see cref="A220.A220Afdx.KnobWalkMayUseStockVar"/> is false for it).
     /// </summary>
     internal void StartStabTrimWalk(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, double target)
     {
-        // This used to REFUSE outright whenever the CommBus block was missing, on the
-        // grounds that a stabilizer must never be driven open-loop. The premise was
-        // right; the conclusion was wrong, and it is the FCP lesson over again (see the
-        // note above about the cache being a SOUND fallback). There IS a second
-        // read-back that needs no bus: "L:A22X Horizontal Stabilizer" is the trim
-        // animation ratio over the SAME 0-17 unit travel the EICAS draws, so
-        // ratio * 17 is the number the EICAS prints. Measured live 2026-09-22 against
-        // the aircraft's own trim gauge, whose pointer is drawn with
-        // `translate(0 -pitch_trim * (108/17))` up a 108 px scale from the ND end: at
-        // rest the ratio read 0.2941176 = EXACTLY 5/17, and it tracked every burst of
-        // ELEV_TRIM_DN monotonically down to 0.25343 = 4.31/17.
-        //
-        // It is a DERIVED value, not the bus's own, so it is announced as such — and it
-        // is only ever the fallback: StartFcpWalk prefers `liveRead` whenever the bus is
-        // up. The takeoff-range clause below degrades by itself (pitch_trim_up/_dn exist
-        // only on the bus), so a fallback walk simply omits it rather than guessing it.
-        StartFcpWalk(simConnect, announcer, "A22X_STAB_TRIM", "ELEV_TRIM_UP", "ELEV_TRIM_DN",
-            target, 0.05, null, "Stabilizer trim", d => $"{d:0.0} units",
+        var knob = A220.A220Afdx.FcpKnob.StabTrim;
+        StartFcpWalk(simConnect, announcer, knob, BeginKnobWalk(knob),
+            "A22X_STAB_TRIM", "ELEV_TRIM_UP", "ELEV_TRIM_DN",
+            target, 0.05, null, "Stabilizer trim", A220.A220Afdx.StabTrimUnitsText,
             liveRead: b => b.fc?.pitch_trim,
-            cacheScale: r => r * A220.A220Afdx.StabTrimFullScaleUnits,
-            cacheNote: " — read from the stabilizer position, because the data bus is not reporting the trim",
-            note: (v, _, _) =>
-            {
-                var fc = LatestFlightControl;
-                if (fc?.pitch_trim_dn is not { } dn || fc.pitch_trim_up is not { } up || Math.Abs(up - dn) <= 0.01)
-                    return "";
-                return v >= dn && v <= up
-                    ? ", in takeoff range"
-                    : $", still OUTSIDE takeoff range {dn:0.0} to {up:0.0}";
-            });
+            note: (v, _, _) => A220.A220Afdx.StabTrimWalkBandNote(v, LatestFlightControl));
     }
 
+    /// <summary>The fastest a walk clicks: one calc string every 25 ms at most, the calc
+    /// path's pace since the walks began (the exact walk adapts from it, up to 120 ms).</summary>
+    private const int KnobClickMinPaceMs = 25;
+
     /// <summary>
-    /// Fire <paramref name="clicks"/> knob events, ONE PER CALL, paced.
+    /// Fire <paramref name="clicks"/> knob events, ONE PER CALC STRING, at least
+    /// <see cref="KnobClickMinPaceMs"/> apart.
     ///
-    /// Sent by TransmitClientEvent (<see cref="SimConnectManager.SendEvent"/>), NOT the
-    /// calculator path the rest of this definition uses, and measured on the live aircraft
-    /// on 2026-09-21 before the change: three HEADING_BUG_INC fired back to back moved the
-    /// bug 246 → 249, and six HEADING_BUG_DEC moved it 249 → 243. Every event landed. The
-    /// knob events are plain stock K: events, so they need no MobiFlight module, and the
-    /// direct path is better on both counts the walks care about:
+    /// Every click goes through <see cref="FireKeyEvent"/>: the calculator path, with the
+    /// <c>{seq} 0 *</c> prefix that keeps MobiFlight from dropping a repeat ([A220-3]). The
+    /// walks run on a pool thread, and <see cref="SimConnectManager.SendEvent"/> is safe on the
+    /// UI thread only ([SIM-20]: it maps each new event name into an unlocked dictionary); a
+    /// calc write is a client-data write, which pool-thread callers already make (the standby
+    /// baro walk, the MD-11's CEVENT pump), and it is the transport of every other A220 control.
     ///
-    ///   * RELIABILITY. The calc path writes each click as a command string into
-    ///     MobiFlight's single command area; a click written before the module has read the
-    ///     previous one is simply lost, which is a walk that "often stops before reaching"
-    ///     (2026-07-31). TransmitClientEvent has no such slot — SimConnect queues the
-    ///     events and the aircraft's handler runs once per event.
-    ///   * SPEED. No calc string to format, no seq prefix, no module round trip, so the
-    ///     pacing comes down from 25 ms to 8 ms: a 108° heading change goes from ~2.7 s of
-    ///     audible ticking to ~0.9 s.
+    /// Until 2026-10-16 the clicks went by TransmitClientEvent 8 ms apart, with this path as a
+    /// fallback when a first burst moved nothing. The 8 ms bought little: three and six
+    /// HEADING_BUG events back to back all landed (2026-09-21), but longer bursts did not —
+    /// the aircraft takes about one knob event per sim frame and drops faster ones (2026-09-24
+    /// at 20 ms: speed 49 of 77, heading 21 of 58), so the exact walk already paces itself from
+    /// 25 ms up. With one transport the fallback had nothing to fall back to, and went. The
+    /// walks are closed loops: a lost click costs a round, never a wrong claim.
     ///
-    /// STILL ONE EVENT PER SEND. Do NOT batch several "(&gt;K:EVENT)" statements into one
-    /// calc string: measured the same day, four <c>(&gt;K:AP_ALT_VAR_INC)</c> in ONE string
-    /// moved the selector by exactly ONE click (2100 → 2200), because a single RPN
-    /// evaluation latches the event once. That is a property of the STRING, not of the
-    /// rate — separate events fired simultaneously all land, as the bursts above show.
-    ///
-    /// The calc path stays as the FALLBACK, chosen per walk: if the first burst moved
-    /// nothing at all, every later burst in that walk goes back through
-    /// <see cref="FireKeyEvent"/>. A setup where TransmitClientEvent does not reach this
-    /// aircraft therefore degrades to exactly the old behaviour rather than to a dead knob.
+    /// STILL ONE EVENT PER STRING. Do NOT batch several "(&gt;K:EVENT)" statements into one
+    /// calc string ([A220-10]): measured 2026-09-21, four <c>(&gt;K:AP_ALT_VAR_INC)</c> in ONE
+    /// string moved the selector by exactly ONE click (2100 → 2200), because a single RPN
+    /// evaluation latches the event once.
     /// </summary>
     private async Task FireKnobBurstAsync(SimConnectManager simConnect, string eventName,
-        int clicks, System.Threading.CancellationToken token, bool useCalcPath = false, int paceMs = 8)
+        int clicks, System.Threading.CancellationToken token, int paceMs = KnobClickMinPaceMs)
     {
-        bool direct = !useCalcPath && simConnect.CanSendEvent;
+        int pace = Math.Max(KnobClickMinPaceMs, paceMs);
         for (int sent = 0; sent < clicks && !token.IsCancellationRequested; sent++)
         {
-            if (direct) simConnect.SendEvent(eventName);
-            else FireKeyEvent(simConnect, eventName);
-            await System.Threading.Tasks.Task.Delay(direct ? paceMs : Math.Max(25, paceMs), token);
+            FireKeyEvent(simConnect, eventName);
+            await System.Threading.Tasks.Task.Delay(pace, token);
         }
     }
 
@@ -601,13 +680,22 @@ public partial class SynapticA220Definition
     /// flying FMS speed, because a selected speed does nothing until Manual is selected.</summary>
     private async Task SetSpeedAsync(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, bool isMach, double val)
     {
+        // The speed knob's walk starts here, not at the knob: a newer speed entry also stops
+        // this one's knots/Mach switch.
+        var knob = A220.A220Afdx.FcpKnob.Speed;
+        var token = BeginKnobWalk(knob);
+        void Say(string text)
+        {
+            if (!token.IsCancellationRequested) announcer.AnnounceImmediate(text);
+        }
+        if (!KnobWalkCanSend(simConnect, announcer, "Speed")) return;
         try
         {
-            var fcp = await ReadFcpFieldAsync(f => f.spd_sel_ias, System.Threading.CancellationToken.None);
+            var fcp = await ReadFcpFieldAsync(f => f.spd_sel_ias, token);
             if (fcp == null)
             {
                 FcpLog.Warn("Speed: no FCP data, set refused");
-                announcer.AnnounceImmediate("Speed not set: the aircraft is not reporting its selected speed right now. Try again in a moment.");
+                Say(A220.A220Afdx.KnobWalkRefusalText(knob, "Speed"));
                 return;
             }
             if ((fcp.spd_in_mach == true) != isMach)
@@ -616,27 +704,35 @@ public partial class SynapticA220Definition
                 bool switched = false;
                 for (int i = 0; i < 12 && !switched; i++)
                 {
-                    await Task.Delay(150);
-                    var now = await ReadFcpFieldAsync(f => f.spd_sel_ias, System.Threading.CancellationToken.None);
+                    await Task.Delay(150, token);
+                    var now = await ReadFcpFieldAsync(f => f.spd_sel_ias, token);
                     switched = now != null && (now.spd_in_mach == true) == isMach;
                 }
                 if (!switched)
                 {
-                    announcer.AnnounceImmediate($"Speed not set: the FCP did not switch to {(isMach ? "Mach" : "knots")}.");
+                    Say($"Speed not set: the FCP did not switch to {(isMach ? "Mach" : "knots")}.");
                     return;
                 }
             }
+            if (token.IsCancellationRequested) return;
             Func<double, string> note = _ => IsFmsSpeed(simConnect)
                 ? ". FMS speed is still active — choose Manual to fly it" : "";
             if (isMach)
-                StartExactKnobWalk(simConnect, announcer, "Speed", "AP_SPD_VAR_INC", "AP_SPD_VAR_DEC",
+                StartExactKnobWalk(simConnect, announcer, knob, token, "Speed", "AP_SPD_VAR_INC", "AP_SPD_VAR_DEC",
                     (int)Math.Round(val * 100), false, f => f.spd_sel_mach is { } m ? Math.Round(m * 100) : null,
-                    null, d => $"Mach {d / 100:0.00}", note);
+                    null, A220.A220Afdx.MachHundredthsText, note);
             else
-                StartExactKnobWalk(simConnect, announcer, "Speed", "AP_SPD_VAR_INC", "AP_SPD_VAR_DEC",
+                StartExactKnobWalk(simConnect, announcer, knob, token, "Speed", "AP_SPD_VAR_INC", "AP_SPD_VAR_DEC",
                     (int)Math.Round(val), false, f => f.spd_sel_ias, null, d => $"{d:F0} knots", note);
         }
-        catch (Exception ex) { FcpLog.Warn($"Speed: {ex.Message}"); }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            // Logged (CORE-15) and said: a walk never ends in silence.
+            FcpLog.Warn($"Speed: {ex.Message}");
+            Utils.Logging.Log.Warn("A220", $"Speed walk: {ex.GetType().Name}: {ex.Message}");
+            Say(A220.A220Afdx.KnobWalkFailedText("Speed"));
+        }
     }
 
     private static bool TryParseSpeed(string input, out bool isMach, out double value)
@@ -690,7 +786,9 @@ public partial class SynapticA220Definition
                 if (!int.TryParse(input, out int hdg)) return;
                 // AUTOPILOT HEADING LOCK DIR tracks this bug exactly (178 = 178 live
                 // 2026-09-24), so it is a sound fallback here — unlike the speed vars.
-                StartExactKnobWalk(simConnect, announcer, "Heading", "HEADING_BUG_INC", "HEADING_BUG_DEC",
+                var knob = A220.A220Afdx.FcpKnob.Heading;
+                StartExactKnobWalk(simConnect, announcer, knob, BeginKnobWalk(knob),
+                    "Heading", "HEADING_BUG_INC", "HEADING_BUG_DEC",
                     hdg % 360, true, f => f.hdg_sel, "A22X_AP_HDG",
                     d => $"{(int)Math.Round(((d % 360) + 360) % 360 == 0 ? 360 : ((d % 360) + 360) % 360):000}");
             });
@@ -781,11 +879,13 @@ public partial class SynapticA220Definition
     ///      what the A220's FCP publishes") was wrong for altitude, and it cost every
     ///      session with no Coherent display link the whole grid walk: ReadAfdxLiveAsync()
     ///      returning null dropped straight to the inferior measured fallback. The
-    ///      read-back now PREFERS the 30 Hz CommBus and falls back to the 1 Hz SimConnect
-    ///      cache, so the grid walk is the path EVERYONE gets — the display agent only
-    ///      makes it faster. (Heading and speed track their stock vars too: 245→246 and
-    ///      80→81 per click. AP_ALT_VAR_SET_ENGLISH is still inert — 12000 written, the
-    ///      selector did not move — so the walk itself is still required.)
+    ///      read-back now PREFERS the 30 Hz CommBus and falls back to a delivered read of
+    ///      that stock var (ReadFreshAsync, since 2026-10-16; the 1 Hz cache before), so the
+    ///      grid walk is the path EVERYONE gets — the display agent only makes it faster.
+    ///      (Heading tracks its stock var too, 245→246 per click. Speed read 80→81 that day
+    ///      but 445 kt with 142 in the window on 2026-09-24, so it is never a fallback.
+    ///      AP_ALT_VAR_SET_ENGLISH is still inert — 12000 written, the selector did not
+    ///      move — so the walk itself is still required.)
     ///
     ///   2. L:A22X FG Altitude Fine is a LEVEL, not a pulse: writing 1 gives 100 ft
     ///      clicks, writing 0 gives 1000 ft clicks, and the value persists across clicks
@@ -813,20 +913,29 @@ public partial class SynapticA220Definition
     /// </summary>
     private void StartAltitudeSetAsync(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, int alt)
     {
-        _walkCancel?.Cancel();
-        var cts = new System.Threading.CancellationTokenSource();
-        _walkCancel = cts;
+        var knob = A220.A220Afdx.FcpKnob.Altitude;
+        var token = BeginKnobWalk(knob);
+        if (!KnobWalkCanSend(simConnect, announcer, "Altitude")) return;
         _ = System.Threading.Tasks.Task.Run(async () =>
         {
+            // A superseded or swapped-out walk says nothing (see StartFcpWalk).
+            void Say(string text)
+            {
+                if (!token.IsCancellationRequested) announcer.AnnounceImmediate(text);
+            }
             try
             {
                 string prep = "";
                 try { prep = await EnsureAltitudeUnitFeetAsync(simConnect); }
-                catch { /* best-effort; the walk still reports honestly */ }
+                catch (Exception ex)
+                {
+                    // Best-effort: the walk goes on, still reads alt_in_m below, and speaks its result.
+                    Utils.Logging.Log.Warn("A220", $"Altitude walk: feet check failed: {ex.GetType().Name}: {ex.Message}");
+                }
 
                 // Ask for a whole FCP copy if alt_sel_ft is missing (the stores broadcast
                 // only changes, so it can simply not be there yet).
-                var fcpStart = await ReadFcpFieldAsync(f => f.alt_sel_ft, cts.Token);
+                var fcpStart = await ReadFcpFieldAsync(f => f.alt_sel_ft, token);
                 var blocks = fcpStart != null ? new A220.A220Afdx.LiveBlocks { fcp = fcpStart } : null;
                 bool live = blocks?.fcp?.alt_sel_ft != null;
 
@@ -835,61 +944,62 @@ public partial class SynapticA220Definition
                 // nothing either way — it must never be read as "in metres".
                 if (blocks?.fcp?.alt_in_m == true)
                 {
-                    if (!cts.IsCancellationRequested)
-                        StartAltitudeFallbackWalk(simConnect, announcer, alt, prep);
+                    if (!token.IsCancellationRequested)
+                        StartAltitudeFallbackWalk(simConnect, announcer, token, alt, prep);
                     return;
                 }
-                if (cts.IsCancellationRequested) return;
+                if (token.IsCancellationRequested) return;
 
                 int target = (int)Math.Round(alt / 100.0) * 100;
                 if (target != alt)
                     prep += $" — {alt} is between selector steps, aiming for {target}";
 
-                // Read-back: the 30 Hz CommBus when the display agent is up, else the
-                // 1 Hz SimConnect cache of AUTOPILOT ALTITUDE LOCK VAR, which tracks the
-                // selector exactly (measured 2026-09-21). Latches OFF live on the first
-                // miss so the settle delay always matches the source being read.
-                async Task<double> ReadAltAsync()
+                // Read-back: the 30 Hz CommBus when the display agent is up, else a DELIVERED
+                // read of AUTOPILOT ALTITUDE LOCK VAR, which tracks the selector exactly
+                // (measured 2026-09-21). Null = no reading: "not confirmed", never a guess.
+                // Latches OFF live on the first miss. The delivered read needs no top-up
+                // sleep: the 1 Hz cache it replaced could be sampled MID-BURST after a
+                // downgrade (a 28000 -> 6000 walk read "12000", measured a bogus 727 ft per
+                // click from it and reported having stopped there, user report 2026-09-22),
+                // but the batch's next delivery is sampled after the burst.
+                async Task<double?> ReadAltAsync()
                 {
                     if (live)
                     {
-                        var b = await ReadFcpFieldAsync(f => f.alt_sel_ft, cts.Token);
+                        var b = await ReadFcpFieldAsync(f => f.alt_sel_ft, token);
                         if (b?.alt_sel_ft is { } v) return v;
                         live = false;
-                        // The caller budgeted the SHORT (live) settle before this read,
-                        // but we are now reading a 1 Hz cache — top the wait up to the
-                        // cache settle. Without this, the first read after a downgrade
-                        // lands only ~300 ms after a burst that itself takes ~180 ms, so
-                        // the 1 Hz sample can be from MID-BURST: a 28000 -> 6000 walk
-                        // read "12000", measured a bogus 727 ft per click from it and
-                        // reported having stopped there (user report 2026-09-22).
-                        await System.Threading.Tasks.Task.Delay(CacheSettleMs - LiveSettleMs, cts.Token);
                     }
-                    return Cached(simConnect, "A22X_AP_ALT");
+                    return await ReadKnobStockVarAsync(simConnect, "A22X_AP_ALT", token);
                 }
                 // Read back only once the selector has STOPPED moving. A fixed 300 ms after
                 // a big burst could read mid-burst: the walk then aimed from a partial value,
                 // mistook it for the wrong ring, and the pilot had to enter the altitude a
-                // second time (user report 2026-09-24).
-                async Task<double> ReadSettledAltAsync()
+                // second time (user report 2026-09-24). On the stock var, one delivered read.
+                async Task<double?> ReadSettledAltAsync()
                 {
-                    if (!live)
-                    {
-                        await System.Threading.Tasks.Task.Delay(CacheSettleMs, cts.Token);
-                        return await ReadAltAsync();
-                    }
-                    await System.Threading.Tasks.Task.Delay(250, cts.Token);
-                    double last = await ReadAltAsync();
+                    await System.Threading.Tasks.Task.Delay(250, token);
+                    if (!live) return await ReadAltAsync();
+                    double? last = await ReadAltAsync();
                     int stable = 0;
                     var until = Environment.TickCount64 + 2500;
                     while (live && stable < 2 && Environment.TickCount64 < until)
                     {
-                        await System.Threading.Tasks.Task.Delay(120, cts.Token);
-                        double v = await ReadAltAsync();
+                        await System.Threading.Tasks.Task.Delay(120, token);
+                        double? v = await ReadAltAsync();
                         stable = v == last ? stable + 1 : 0;
                         last = v;
                     }
                     return last;
+                }
+
+                // Where the selector starts: nothing reporting it means no walk, said
+                // before the ring or the knob is touched.
+                if ((blocks?.fcp?.alt_sel_ft ?? await ReadAltAsync()) is not { } startAlt)
+                {
+                    FcpLog.Warn($"Altitude: no read-back, walk refused (target {target})");
+                    Say(A220.A220Afdx.KnobWalkRefusalText(knob, "Altitude"));
+                    return;
                 }
 
                 // Ring bookkeeping: coarse for the thousands, fine for the hundreds, the
@@ -900,10 +1010,11 @@ public partial class SynapticA220Definition
                 {
                     WriteLVar(simConnect, "A22X FG Altitude Fine", fine ? 1 : 0, quiet: true);
                     ringNowFine = fine;
-                    await System.Threading.Tasks.Task.Delay(250, cts.Token);
+                    await System.Threading.Tasks.Task.Delay(250, token);
                 }
 
-                double cur = blocks?.fcp?.alt_sel_ft ?? Cached(simConnect, "A22X_AP_ALT");
+                double cur = startAlt;
+                bool readLost = false;
                 int t1000 = (int)Math.Round(target / 1000.0, MidpointRounding.AwayFromZero) * 1000;
 
                 // Walk one grid stage. `step` is what a click is EXPECTED to move; if a
@@ -916,16 +1027,22 @@ public partial class SynapticA220Definition
                     // left the value up to 499 ft out and then failed the 50 ft verdict
                     // (finding 3).
                     double reached = step * 0.05;
-                    for (int round = 0; round < 12 && !cts.IsCancellationRequested; round++)
+                    for (int round = 0; round < 12 && !token.IsCancellationRequested; round++)
                     {
                         if (Math.Abs(walkTarget - cur) <= reached) return true;
                         int clicks = A220.A220Afdx.GridClicks(cur, walkTarget, step);
                         if (clicks == 0) return Math.Abs(walkTarget - cur) <= reached;
                         bool up = walkTarget > cur;
                         await FireKnobBurstAsync(simConnect,
-                            up ? "AP_ALT_VAR_INC" : "AP_ALT_VAR_DEC", clicks, cts.Token, paceMs: 45);
+                            up ? "AP_ALT_VAR_INC" : "AP_ALT_VAR_DEC", clicks, token, paceMs: 45);
 
-                        double after = await ReadSettledAltAsync();
+                        if (await ReadSettledAltAsync() is not { } after)
+                        {
+                            // The burst may have moved the selector: claim no value (R7).
+                            FcpLog.Warn($"Altitude: read-back lost after {(up ? "INC" : "DEC")} x{clicks} from {cur:F0}");
+                            readLost = true;
+                            return false;
+                        }
                         FcpLog.Info($"Altitude: {(up ? "INC" : "DEC")} x{clicks} (step {step}): {cur:F0} -> {after:F0}");
                         double moved = Math.Abs(after - cur);
                         cur = after;
@@ -951,14 +1068,24 @@ public partial class SynapticA220Definition
                 if (ringNowFine != ringWasFine)
                     WriteLVar(simConnect, "A22X FG Altitude Fine", ringWasFine ? 1 : 0, quiet: true);
 
-                if (cts.IsCancellationRequested) return;
+                if (token.IsCancellationRequested) return;
+                if (readLost)
+                {
+                    Say(A220.A220Afdx.KnobWalkNotConfirmedText("Altitude"));
+                    return;
+                }
                 int landed = (int)Math.Round(cur);
-                announcer.AnnounceImmediate(ok && Math.Abs(landed - target) < 50
+                Say(ok && Math.Abs(landed - target) < 50
                     ? $"Altitude {landed} feet{prep}"
                     : $"Altitude did not reach {target} — selector reads {landed} feet{prep}");
             }
             catch (OperationCanceledException) { }
-            catch { }
+            catch (Exception ex)
+            {
+                // Logged (CORE-15) and said: a walk never ends in silence.
+                Utils.Logging.Log.Warn("A220", $"Altitude walk: {ex.GetType().Name}: {ex.Message}");
+                Say(A220.A220Afdx.KnobWalkFailedText("Altitude"));
+            }
         });
     }
 
@@ -970,10 +1097,11 @@ public partial class SynapticA220Definition
     /// knob will give, and names the step and the metres mode in the result instead of
     /// pretending. A session with merely no Coherent link no longer comes here: the
     /// stock SimVar is a real read-back (measured 2026-09-21), so it gets the grid walk
-    /// like everyone else, just with a slower settle.
+    /// like everyone else, just with a slower read. It continues the altitude walk that
+    /// called it, on the same <paramref name="token"/>.
     /// </summary>
     private void StartAltitudeFallbackWalk(SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
-        int alt, string prep)
+        System.Threading.CancellationToken token, int alt, string prep)
     {
         if (Cached(simConnect, "A22X_FG_ALT_FINE") < 0.5)
         {
@@ -981,7 +1109,8 @@ public partial class SynapticA220Definition
             prep += ", fine steps selected";
         }
         string note = prep;
-        StartFcpWalk(simConnect, announcer, "A22X_AP_ALT", "AP_ALT_VAR_INC", "AP_ALT_VAR_DEC",
+        StartFcpWalk(simConnect, announcer, A220.A220Afdx.FcpKnob.Altitude, token,
+            "A22X_AP_ALT", "AP_ALT_VAR_INC", "AP_ALT_VAR_DEC",
             alt, 55, null, "Altitude", d => $"{(int)Math.Round(d)} feet",
             liveRead: b => b.fcp?.alt_sel_ft,
             note: (v, exact, stepFt) =>
@@ -1080,8 +1209,19 @@ public partial class SynapticA220Definition
     private void StartVerticalTargetSetAsync(SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
         double target, bool isFpa)
     {
+        // V/S and FPA are one knob (the thumbwheel): a newer entry of either stops this one,
+        // engage wait included.
+        var knob = A220.A220Afdx.FcpKnob.Vertical;
+        var token = BeginKnobWalk(knob);
+        string name = isFpa ? "Flight path angle" : "Vertical speed";
+        if (!KnobWalkCanSend(simConnect, announcer, name)) return;
         _ = System.Threading.Tasks.Task.Run(async () =>
         {
+            // A superseded or swapped-out walk says nothing (see StartFcpWalk).
+            void Say(string text)
+            {
+                if (!token.IsCancellationRequested) announcer.AnnounceImmediate(text);
+            }
             try
             {
                 string engagedNote = "";
@@ -1090,7 +1230,7 @@ public partial class SynapticA220Definition
                 {
                     FireFcpEvent(simConnect, isFpa ? "AP_ATT_HOLD" : "AP_VS_HOLD");
                     engagedNote = isFpa ? ", FPA mode selected" : ", vertical speed mode selected";
-                    await System.Threading.Tasks.Task.Delay(900);
+                    await System.Threading.Tasks.Task.Delay(900, token);
                 }
 
                 // If the aircraft's own FCP block says the wheel STILL has no target, the
@@ -1099,11 +1239,11 @@ public partial class SynapticA220Definition
                 var blocks = await ReadAfdxLiveAsync();
                 if (!isFpa && blocks?.fcp != null && blocks.fcp.vs_sel == null)
                 {
-                    announcer.AnnounceImmediate(
-                        "The vertical speed wheel has no target — VS mode did not engage. " +
+                    Say("The vertical speed wheel has no target — VS mode did not engage. " +
                         "Check flight director or autopilot state, then try again.");
                     return;
                 }
+                if (token.IsCancellationRequested) return;
 
                 string note = engagedNote;
                 if (isFpa)
@@ -1111,19 +1251,27 @@ public partial class SynapticA220Definition
                     // FPA target — the thumbwheel drives FPA while FPA mode is engaged.
                     // (vs_sel's scale in FPA mode is unverified, so the read-back stays on
                     // the L:var until a live flight proves the CommBus value is degrees.)
-                    StartFcpWalk(simConnect, announcer, "A22X_SELECTED_FPA", "AP_VS_VAR_INC", "AP_VS_VAR_DEC",
-                        target, 0.06, 0.1, "Flight path angle", d => $"{d:0.0} degrees",
+                    StartFcpWalk(simConnect, announcer, knob, token,
+                        "A22X_SELECTED_FPA", "AP_VS_VAR_INC", "AP_VS_VAR_DEC",
+                        target, 0.06, 0.1, name, A220.A220Afdx.FpaDegreesText,
                         note: (_, _, _) => note);
                 }
                 else
                 {
-                    StartFcpWalk(simConnect, announcer, "A22X_AP_VS", "AP_VS_VAR_INC", "AP_VS_VAR_DEC",
-                        target, 55, 100, "Vertical speed", d => $"{(int)Math.Round(d)} feet per minute",
+                    StartFcpWalk(simConnect, announcer, knob, token,
+                        "A22X_AP_VS", "AP_VS_VAR_INC", "AP_VS_VAR_DEC",
+                        target, 55, 100, name, d => $"{(int)Math.Round(d)} feet per minute",
                         liveRead: b => b.fcp?.vs_mode == 0 ? b.fcp?.vs_sel : null,
                         note: (_, _, _) => note);
                 }
             }
-            catch { }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                // Logged (CORE-15) and said: a walk never ends in silence.
+                Utils.Logging.Log.Warn("A220", $"{name} walk: {ex.GetType().Name}: {ex.Message}");
+                Say(A220.A220Afdx.KnobWalkFailedText(name));
+            }
         });
     }
 

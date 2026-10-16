@@ -456,9 +456,8 @@ public partial class SynapticA220Definition
         // the trim ANIMATION ratio, not the units the cockpit prints — so this raw row is
         // still not the trim setting. It IS convertible though: the ratio spans the same
         // 0-17 travel the EICAS draws, so ratio * A220Afdx.StabTrimFullScaleUnits gives the
-        // printed units (measured 2026-09-22 — see that constant). StartStabTrimWalk uses
-        // exactly that as its bus-less read-back; converting this display row the same way
-        // is an obvious follow-up that has NOT been done yet.
+        // printed units (measured 2026-09-22 — see that constant). StartStabTrimWalk does NOT
+        // walk on it: with the bus down it refuses ([A220-13], owner decision 2026-10-16).
         v["A22X_STAB_TRIM"] = Status("A22X Horizontal Stabilizer", "Stabilizer Trim", "percent over 100", "F2");
         // Numeric entry: type the EFB takeoff-performance figure (e.g. 4.6) and the walk
         // drives ELEV_TRIM_UP/DN until efcs.pitch_trim reads it back. No CurrentValueSourceKey
