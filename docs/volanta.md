@@ -13,7 +13,8 @@ ATC.
   United States", or "Location: over Lake Michigan" over water, never C's distance or coast ([VOL-8]). Filters:
   distance (10 to 1,000 nm, then a warning row, then "All pilots across Volanta", about 3,000 rows; landing on
   the warning row keeps the distance chosen before), all / airborne / on the ground, which sources (Volanta
-  users, VATSIM, IVAO, PilotEdge, APOC) and a search over callsign, flight number, user, type, registration
+  users, VATSIM, IVAO, PilotEdge, APOC, and other networks for any network Volanta's file names that the
+  others do not) and a search over callsign, flight number, user, type, registration
   and airports. A search covers every distance, whatever the distance filter says (the owner's choice,
   2026-10-16); sources and airborne or on the ground still apply. The ATC tab keeps its own distances, 10 nm
   to any. The details box below the list shows everything known about the selected aircraft. Right after it,
@@ -39,7 +40,8 @@ ATC.
 In each list tab the list comes first in the tab order, then the selected item's details, the major-city
 checkbox (Traffic and Friends, the owner's choice, 2026-10-16), then the status and the filters. The tabs use `AccessibleTabControl`, as the EFB does, so NVDA names only the tab.
 
-Everything updates on its own every 5 seconds, in place, as the Sim Performance window does: only changed rows
+The tab in view updates on its own every 5 seconds (another tab is brought up to date when it is switched to,
+and F5 updates them all), in place, as the Sim Performance window does: only changed rows
 are rewritten and the selection follows its row by key, so the reader's cursor never jumps, and the row the
 pilot is on re-reads when it changes (the owner's choice: an earlier version kept that row's text until the
 pilot moved). While the pilot is in a list its order holds (new rows join at the end, `VolantaListOrder`), so
@@ -47,13 +49,15 @@ the down arrow always reaches the next row. A list the pilot is not in is rebuil
 list they are in only the rows within 150 of theirs are rewritten: rewriting every row of a big list blocked the
 window for seconds ([VOL-9]). The details list below, one field per row, is live. Every checkbox is drawn by
 Windows (FlatStyle.System), the only kind whose tick NVDA hears under .NET 10 ([VOL-10]). F5 (or Re-sort
-now) re-sorts at once and reads the tab's status; a filter change re-sorts too. Connected and lost are each
+now) re-sorts at once and reads the tab's status (a list of more than 300 rows is rebuilt in one go then, its
+selection kept); a filter change re-sorts too. Connected and lost are each
 spoken once, queued, as is a start from the Connection tab that has not connected after a minute (Volanta's
 updater can relaunch it without the switch), and nothing else is (the owner wants fewer announcements here).
 While Volanta's data cannot be pulled, each list instead has a line at its top saying why: Volanta minimized
 ("Connected to Volanta, but it is minimized, so this list is not updating"), nothing new for 30 seconds,
-nothing at all for 30 seconds since connecting (Volanta's login screen: the line says to log in), Volanta
-starting, another program on Volanta's port, or no access.
+nothing at all for 30 seconds since connecting (Volanta's login screen: the line says to log in; files from
+before a restart do not count), Volanta starting, another program on Volanta's port, or no access. The status
+boxes and the Connection tab give the same reason (`StandstillOf`).
 The rows last received stay below it, and it stays first while the pilot is in the list ([VOL-2]). The owner
 found Volanta minimized after Alt+Tabbing away from it just after it started (2026-10-16), before it sent
 anything, and the lists stood empty.
@@ -78,7 +82,8 @@ the window never asks them for anything. Instead:
    `InstallLocation`). With none found the pilot is told to start Volanta by hand and press the button again,
    which then reads the exe from the running copy.
 2. `VolantaLink` finds Volanta's main page on that port (the page Volanta serves itself from its own local web
-   server: `http://127.0.0.1:17580` in 1.19.2; any loopback page is taken), opens its debugger socket and turns
+   server: `http://127.0.0.1:17580` in 1.19.2, preferred; any other loopback page only when that port has
+   none), opens its debugger socket and turns
    on network events. If the port answers but the browser behind it is not Volanta (another program's debugging
    port on 9223, so Volanta could not open it), the link says so (`VolantaLinkStatus.PortTaken`) and the button
    refuses to restart Volanta until that program is closed.
@@ -86,14 +91,17 @@ the window never asks them for anything. Instead:
    response's body and parses it (`VolantaFeedParser`). It also reads Volanta's SignalR hub frames for the
    pilot's own flight id and Volanta's position report, and every 5 seconds asks Volanta whether its window is
    minimized or hidden, and which user is logged in (from the name of a per-user storage key, never the login
-   token), so the pilot's own flight is left out even while the sim is paused and Volanta reports nothing.
+   token, and only when there is exactly one such key: Volanta writes one per account used on the PC), so the
+   pilot's own flight is left out even while the sim is paused and Volanta reports nothing.
 
 Nothing extra reaches Volanta's servers: the link only reads what Volanta downloaded anyway.
 
 Friends: Volanta downloads the friends list once, at startup, so the link catches it only when this app started
-Volanta (it then looks for Volanta's page every 150 ms). Volanta's hub then reports friends added and removed and
-each friend's status. A saved copy of ids and names (`%APPDATA%\MSFSBlindAssist\volanta\friends.json`) covers a
-Volanta started another way. Who is flying always comes from the live flight file, by user id.
+Volanta (it then looks for Volanta's page every 150 ms, waking a slower wait already running). Volanta's hub then
+reports friends added and removed and each friend's status. A saved copy of ids and names
+(`%APPDATA%\MSFSBlindAssist\volanta\friends.json`, with the Volanta user it belongs to) covers a Volanta started
+another way; it is never shown to another Volanta account. Who is flying always comes from the live flight file,
+by user id.
 
 Restarting: with Volanta's "show in tray" setting on, its close button (and Alt+F4) hide it in the notification
 area rather than quitting it, and in the pilot's tests asking Volanta to quit never worked. A restart is

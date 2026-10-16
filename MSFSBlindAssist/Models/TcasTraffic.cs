@@ -40,14 +40,7 @@ public class TcasTraffic
     /// than a bare ahead/behind — it conveys side and angle in one word the way a real
     /// traffic call does ("traffic, two o'clock").
     /// </summary>
-    public int ClockPosition
-    {
-        get
-        {
-            int c = (int)Math.Round(((RelativeBearing + 360.0) % 360.0) / 30.0) % 12;
-            return c == 0 ? 12 : c;
-        }
-    }
+    public int ClockPosition => MSFSBlindAssist.Services.RelativeDirection.ClockPosition(RelativeBearing);
 
     private string FormatRelativePosition(bool includeAltitude)
     {

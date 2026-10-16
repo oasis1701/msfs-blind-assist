@@ -32,6 +32,14 @@ the spoken notice left an empty list behind. The pilot found Volanta minimized a
 just after it started, before its first traffic file, so every list stood empty. Volanta's own code does not
 minimize it for losing focus (docs/volanta.md): the cause is not known, so the line must cover it whatever it is.
 
+"Since connecting" means since the link attached to the page it reads now (`VolantaLinkSnapshot.ConnectedAt`,
+set by the link itself): the snapshot keeps the files of a page session before a restart, so counting any file
+ever received meant a Volanta restarted onto its login screen never got the log-in line (review of PR 311,
+2026-10-16). For the same reason "nothing new for 30 seconds" counts from connecting when that is later than the
+last file, so a restart is not called stale before anything is overdue. One reason, worked out once
+(`VolantaLiveMapForm.StandstillOf`), feeds the list's line, the status boxes and the Connection tab: worked out
+three times, the Traffic status box had lost the port message the list's line gave.
+
 ## VOL-3
 
 Volanta runs one copy at a time, so the debugging switch only takes effect on a fresh launch: a second launch
@@ -69,6 +77,12 @@ reads it from the NAME of the storage key Volanta keeps per user for its "what's
 (`last-read-whats-new-version:<id>`), checked to be a GUID. Never read Volanta's login token (its `authToken`
 storage value) for it, even though the token carries the id: that is the pilot's credential.
 
+Volanta writes that key for each user who dismisses the notice on this PC (read in 1.19.2's code, 2026-10-16),
+so after two accounts have used Volanta there are two, and Chromium returns them in key order, not by who is
+logged in. The check therefore reports every such key, and `VolantaLink.ParseWindowCheck` trusts an id only when
+there is exactly one; with none or several the own flight falls back to the flight id or the position report,
+and an id kept from an earlier check is dropped rather than kept as possibly another account's.
+
 ## VOL-5
 
 The network file gives every pilot `onGround: false`, a height above ground of 0 and a vertical speed of 0,
@@ -82,7 +96,14 @@ Volanta downloads the pilot's friends list once, when it logs in at startup (`GE
 measured 2026-10-15, its page appeared 1.9 s after launch and the friends request went out 0.6 s after that. A
 response body is readable only by a session that enabled network events before the request, so only a link
 already attached catches it. Every launch from this app therefore calls `VolantaLink.ExpectLaunch` first, which
-makes the link look for Volanta's page every 150 ms for a minute instead of every 3 s.
+makes the link look for Volanta's page every 150 ms for a minute instead of every 3 s, and cuts short a 3 s wait
+already running: the link starts one the moment a restart's force-close drops its page, and without the wake it
+could still be waiting when the page appeared 1.9 s after the start (review of PR 311, 2026-10-16).
+
+The saved copy also holds the Volanta user it belongs to (`VolantaFriendsCache.IsFor`): once the window check
+names a different logged-in user, the link drops a saved copy that is another account's rather than show it
+as the pilot's friends. A copy saved before the user id was read, or by the first version, has no owner and is
+shown as before; a list Volanta sent before the first user id is saved again with it.
 
 After that, Volanta's hub keeps the list current: "friend-added", "friend-removed", and "rich-status-update" for
 each friend's status (the pilot's own status comes the same way and is ignored). `VolantaFriendsCache` saves the
@@ -121,8 +142,11 @@ connection, the admin names loaded once) and skips the nearest-land search, whic
 only the 2 km shore band that tells an island or coastal airport from open sea is kept. `VolantaPlaceCache`
 keeps each flight's place until it has moved 2 nm (every 16 s at 450 knots, once for a parked aircraft), keeps
 a lookup that found nothing so it is not retried in place, and forgets flights that left the map. The window
-looks up the due rows nearest first, 40 per read, in bursts of at most 2 s, then refreshes the lists in place;
-until a row's place is known, its line simply has no "Location:".
+looks up the due rows nearest first, 40 per read, in bursts of at most 2 s, then refreshes the tab in view in
+place without starting another burst: the next one waits for the next 5-second update. Started from that
+refresh, bursts ran back to back, and with all pilots listed (about 3,000 moving aircraft, always some due) the
+list was rebuilt every 2 s (review of PR 311, 2026-10-16). Until a row's place is known, its line simply has
+no "Location:".
 
 **Major-city mode** (2026-10-15). The Traffic and Friends tabs each have "Report location to nearest major
 city", unticked at every opening and not saved (the owner's choice). Ticked, the line says how far and which
@@ -177,7 +201,13 @@ seconds. So the traffic, friends and ATC lists have a fixed width (`ListScrollWi
   rewrites only the rows within `InPlaceWindowRows` (150) of the reader's row. A row farther away keeps its last text, at most one update old once the reader
   comes within 150 rows of it; jumping to it (End, a first letter) reads it as it was, and it re-reads at the
   next update.
-- Re-sorting the list the reader is in (F5) and the short details lists still rewrite every row in place.
+- Re-sorting the list the reader is in (F5) rewrites every row in place only up to `RebuildAboveRows` (300)
+  rows; a bigger list is rebuilt in one go like a list nobody is in, its selection put back by key, since every
+  row moves anyway (in place, 3,000 rows took a second; review of PR 311, 2026-10-16). The short details lists
+  are rewritten in place.
+- Only the tab in view updates every 5 seconds; another tab is brought up to date when it is switched to, and
+  F5 updates them all. With all pilots listed, the Traffic list alone cost about 125 ms each update while the
+  pilot read another tab.
 
 Measured with these: 3,000 rows take about 220 ms either way, 800 rows 22 ms rebuilt and 132 ms held.
 

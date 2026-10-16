@@ -162,10 +162,7 @@ public static class VolantaTrafficCalculator
         return (phi2 * 180 / Math.PI, lon2);
     }
 
-    /// <summary>12 = ahead, 3 = right, 6 = behind, 9 = left, as the TCAS window says it.</summary>
-    public static int Clock(double relativeBearing)
-    {
-        int c = (int)Math.Round(RelativeDirection.Normalize360(relativeBearing) / 30.0) % 12;
-        return c == 0 ? 12 : c;
-    }
+    /// <summary>12 = ahead, 3 = right, 6 = behind, 9 = left: the TCAS window's own clock
+    /// (<see cref="RelativeDirection.ClockPosition"/>), so the two traffic windows agree.</summary>
+    public static int Clock(double relativeBearing) => RelativeDirection.ClockPosition(relativeBearing);
 }

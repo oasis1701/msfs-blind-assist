@@ -29,7 +29,12 @@ public class VolantaTrafficTests
     [InlineData(359, 12)]
     [InlineData(-90, 9)]
     public void Clock_positions_match_the_TCAS_window(double relativeBearing, int clock)
-        => Assert.Equal(clock, VolantaTrafficCalculator.Clock(relativeBearing));
+    {
+        Assert.Equal(clock, VolantaTrafficCalculator.Clock(relativeBearing));
+        // The TCAS window's bearings run -180..180: the same clock for the same angle.
+        double tcasBearing = relativeBearing > 180 ? relativeBearing - 360 : relativeBearing;
+        Assert.Equal(clock, new MSFSBlindAssist.Models.TcasTraffic { RelativeBearing = tcasBearing }.ClockPosition);
+    }
 
     [Fact]
     public void Projecting_sixty_nm_north_or_east_from_the_equator_moves_about_one_degree()

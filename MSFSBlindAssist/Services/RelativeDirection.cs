@@ -24,6 +24,18 @@ public static class RelativeDirection
         return "behind";
     }
 
+    /// <summary>
+    /// The clock position a traffic call says ("traffic, two o'clock"): 12 = ahead, 3 = right, 6 = behind,
+    /// 9 = left. The TCAS window (TcasTraffic.ClockPosition) and the Volanta live map
+    /// (VolantaTrafficCalculator.Clock) both use this one, so the two traffic windows agree.
+    /// </summary>
+    /// <param name="relBearingDeg">0 = dead ahead, 90 = hard right; any range.</param>
+    public static int ClockPosition(double relBearingDeg)
+    {
+        int c = (int)Math.Round(Normalize360(relBearingDeg) / 30.0) % 12;
+        return c == 0 ? 12 : c;
+    }
+
     /// <summary>Side only — the passing-callout form ("Passing Concourse B, on the left.").</summary>
     public static string Side(double relBearingDeg)
     {

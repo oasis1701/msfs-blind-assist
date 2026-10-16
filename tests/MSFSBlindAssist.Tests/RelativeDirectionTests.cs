@@ -41,6 +41,20 @@ public class RelativeDirectionTests
     }
 
     [Theory]
+    [InlineData(0, 12)]
+    [InlineData(14, 12)]
+    [InlineData(16, 1)]
+    [InlineData(90, 3)]
+    [InlineData(180, 6)]
+    [InlineData(-180, 6)]
+    [InlineData(-90, 9)]
+    [InlineData(330, 11)]
+    [InlineData(359, 12)]
+    [InlineData(725, 12)]
+    public void ClockPosition_is_the_traffic_call_clock(double rel, int expected)
+        => Assert.Equal(expected, RelativeDirection.ClockPosition(rel));
+
+    [Theory]
     [InlineData(-10.0, 350.0)]
     [InlineData(370.0, 10.0)]
     [InlineData(720.0, 0.0)]

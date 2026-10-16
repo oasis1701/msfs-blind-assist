@@ -287,14 +287,56 @@ public class VolantaFeedParserTests
         Assert.Equal(taken ? "ws://127.0.0.1:9223/devtools/page/X" : null, VolantaLink.FindVolantaPage(list));
     }
 
+    [Fact]
+    public void Volanta_s_own_page_server_is_preferred_to_another_loopback_page()
+    {
+        // Chromium lists the most recently active page first: another loopback window must not win.
+        string list = """
+            [{"type":"page","url":"http://127.0.0.1:5000/popout","webSocketDebuggerUrl":"ws://127.0.0.1:9223/devtools/page/P"},
+             {"type":"page","url":"http://127.0.0.1:17580/index.html#/map","webSocketDebuggerUrl":"ws://127.0.0.1:9223/devtools/page/M"}]
+            """;
+        Assert.Equal("ws://127.0.0.1:9223/devtools/page/M", VolantaLink.FindVolantaPage(list));
+    }
+
     [Theory]
-    [InlineData("""{"s":"paused","u":"73e6c47e-9b8d-416b-a257-b8e9dd32b6f9"}""", true, "73e6c47e-9b8d-416b-a257-b8e9dd32b6f9")]
-    [InlineData("""{"s":"live","u":""}""", false, null)]
-    [InlineData("""{"s":"","u":"not-a-user-id"}""", null, null)]
-    [InlineData("""{"s":42}""", null, null)]
-    [InlineData("", null, null)]
-    public void The_window_check_reads_paused_or_live_and_only_a_GUID_as_the_user_id(string value, bool? paused, string? userId)
-        => Assert.Equal((paused, userId), VolantaLink.ParseWindowCheck(value));
+    [InlineData("""{"s":"paused","u":"73e6c47e-9b8d-416b-a257-b8e9dd32b6f9"}""", true, true, "73e6c47e-9b8d-416b-a257-b8e9dd32b6f9")]
+    [InlineData("""{"s":"paused","u":["73e6c47e-9b8d-416b-a257-b8e9dd32b6f9"]}""", true, true, "73e6c47e-9b8d-416b-a257-b8e9dd32b6f9")]
+    [InlineData("""{"s":"live","u":[]}""", false, true, null)]
+    [InlineData("""{"s":"live","u":""}""", false, true, null)]
+    [InlineData("""{"s":"","u":["not-a-user-id"]}""", null, true, null)]
+    [InlineData("""{"s":"live"}""", false, false, null)]
+    [InlineData("""{"s":42}""", null, false, null)]
+    [InlineData("", null, false, null)]
+    public void The_window_check_reads_paused_or_live_and_only_a_GUID_as_the_user_id(string value, bool? paused,
+        bool usersRead, string? userId)
+        => Assert.Equal((paused, usersRead, userId), VolantaLink.ParseWindowCheck(value));
+
+    [Fact]
+    public void Two_Volanta_accounts_on_this_PC_leave_the_user_id_unknown()
+    {
+        // Volanta keeps the key per user who dismissed its notice: either could be the one logged in.
+        var (_, usersRead, userId) = VolantaLink.ParseWindowCheck(
+            """{"s":"live","u":["73e6c47e-9b8d-416b-a257-b8e9dd32b6f9","0f1d2c3b-4a59-6877-8695-a4b3c2d1e0f9"]}""");
+        Assert.True(usersRead);
+        Assert.Null(userId);
+        // The same key twice (case aside) is still one user.
+        Assert.Equal("73e6c47e-9b8d-416b-a257-b8e9dd32b6f9", VolantaLink.ParseWindowCheck(
+            """{"s":"live","u":["73e6c47e-9b8d-416b-a257-b8e9dd32b6f9","73E6C47E-9B8D-416B-A257-B8E9DD32B6F9"]}""").UserId);
+    }
+
+    [Fact]
+    public async Task ExpectLaunch_cuts_short_a_retry_wait_already_running()
+    {
+        // The link starts a 3 s wait when a restart's force-close drops its page; Volanta's page can appear and
+        // download the friends list before it ends (VOL-6).
+        var link = new VolantaLink(new VolantaFriendsCache(Path.Combine(Path.GetTempPath(), "msfsba-unused-" + Guid.NewGuid().ToString("N"), "friends.json")));
+        var wait = link.WaitBeforeRetryAsync(CancellationToken.None);
+        await Task.Delay(50);
+        Assert.False(wait.IsCompleted);
+        link.ExpectLaunch();
+        Assert.Same(wait, await Task.WhenAny(wait, Task.Delay(2500)));
+        await wait;
+    }
 
     [Theory]
     [InlineData("https://webassets.volanta.app/volanta-flight-positions-slim.json", "VolantaFlights")]
