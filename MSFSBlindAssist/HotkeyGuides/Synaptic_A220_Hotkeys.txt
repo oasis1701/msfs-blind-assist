@@ -247,11 +247,21 @@ General:
 
 THE PANELS - WHAT IS NEW FOR A FULL FLIGHT
 
-Transponder panel: Transponder Mode (AUTO, STBY, TA/RA, TA ONLY, ALT ON,
-ALT OFF), TCAS Altitude Limit (refused while the mode is AUTO, as the
-aircraft does), Transponder Code (type four digits, press Enter), Ident and
-Set Flight ID. Each change is read back from the transponder; a change it
-did not take is said.
+Glareshield > Transponder and TCAS: Transponder Mode (AUTO, STBY, TA/RA,
+TA ONLY, ALT ON, ALT OFF), TCAS Altitude Limit (refused while the mode is
+AUTO, as the aircraft does), Transponder Code (type four digits, press
+Enter), Ident and Set Flight ID. Each change is read back from the
+transponder; a change it did not take is said.
+
+Center Panel > Standby Instrument: Standby Baro takes hectopascals (like
+1013) or inches (like 29.92), then Enter, and says where the standby
+altimeter landed. Standby Baro STD is the knob's push.
+
+Pedestal > Audio Control Panel: each VHF 1 to 3 has a Receiver (Off, On) and
+a Volume (0% to 100%), so you can listen to more than one radio.
+
+Pedestal > Flaps and Speedbrake: the Speedbrake Lever moves to Retracted,
+Quarter, Half, Three quarters, Full or Max (emergency).
 
 Gear and Brakes: the Autobrake combo is the selector's real scale - RTO, OFF,
 LO, MED, HI. It is moved one detent at a time and checked after each; a

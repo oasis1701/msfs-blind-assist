@@ -82,8 +82,8 @@ fire bottles, both wipers, CVR test and erase, service interphone and mechanic c
 standby altimeter (type a setting in hectopascals or inches, or press STD), VHF 1 to 3
 transmit select, each VHF's receiver on or off and its volume (so you can listen to a second
 radio, such as COM 2 on SayIntentions), and the speedbrake lever in every position from
-retracted to max. Probe
-heat is now the ground-test button it is in the cockpit, the engine fire pushes are push
-buttons, every guarded switch says so (and only those), and the lamp-test switch that did
-nothing is gone. The electronic checklist can now set the equipment cooling, the speedbrake,
-the CVR test and the service interphone for you; the fire controls stay yours to press.
+retracted to max. Probe heat is now the ground-test button it is in the cockpit; the engine
+fire pushes are one-press buttons, as in the cockpit; every guarded switch says so (and only
+those); and the lamp-test switch that did nothing is gone. The electronic checklist can now
+set the equipment cooling, the speedbrake, the CVR test and the service interphone for you;
+the fire controls stay yours to press.
