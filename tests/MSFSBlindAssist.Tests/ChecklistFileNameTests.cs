@@ -18,6 +18,7 @@ public class ChecklistFileNameTests
         ["PMDG_777"] = null,
         ["HS_787"] = null,
         ["TFDI_MD11"] = null,
+        ["SKYWARD_C680"] = null,
     };
 
     [Theory]
