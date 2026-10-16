@@ -1082,7 +1082,10 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
                     "HEADING_BUG_SET", simConnect, announcer, parentForm,
                     input =>
                     {
-                        if (Utils.NumberParsing.TryParseTyped(input, out double val) && val >= 0 && val <= 359)
+                        // #242's ShowFCUInputDialog still parses with double.TryParse (NumberParsing
+                        // reached main a day after #242 branched), so these match it. Switch all four
+                        // to NumberParsing.TryParseTyped (CORE-17) once this branch takes main.
+                        if (double.TryParse(input, out double val) && val >= 0 && val <= 359)
                             return (true, string.Empty);
                         return (false, "Enter a heading between 0 and 359");
                     });
@@ -1094,7 +1097,7 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
                     "AP_ALT_VAR_SET_ENGLISH", simConnect, announcer, parentForm,
                     input =>
                     {
-                        if (Utils.NumberParsing.TryParseTyped(input, out double val) && val >= 0 && val <= 25000)
+                        if (double.TryParse(input, out double val) && val >= 0 && val <= 25000)
                             return (true, string.Empty);
                         return (false, "Enter an altitude between 0 and 25000 feet");
                     });
@@ -1106,7 +1109,7 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
                     "AP_VS_VAR_SET_ENGLISH", simConnect, announcer, parentForm,
                     input =>
                     {
-                        if (Utils.NumberParsing.TryParseTyped(input, out double val) && val >= -2000 && val <= 2000)
+                        if (double.TryParse(input, out double val) && val >= -2000 && val <= 2000)
                             return (true, string.Empty);
                         return (false, "Enter a vertical speed between -2000 and 2000 fpm");
                     },
@@ -1121,7 +1124,7 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
                     "KOHLSMAN_SET", simConnect, announcer, parentForm,
                     input =>
                     {
-                        if (Utils.NumberParsing.TryParseTyped(input, out double val) && val >= 28.00 && val <= 31.00)
+                        if (double.TryParse(input, out double val) && val >= 28.00 && val <= 31.00)
                             return (true, string.Empty);
                         return (false, "Enter barometric pressure between 28.00 and 31.00 inHg");
                     },

@@ -112,6 +112,14 @@ Displays and Windows:
   Shift+B    SimBrief Briefing
   Alt+D      Describe outside scene (AI)
 
+The G1000 windows (G1000 only):
+  Alt+P      G1000 PFD window
+  Alt+M      G1000 MFD window (Alt+N and input mode Shift+M open it too)
+  The windows read the G1000's screens live and press its bezel keys, the
+  same windows as the COWS DA40's. Read with the arrow keys; the window's own
+  description lists its keys. The CAS is listed in the PFD window but is not
+  announced by itself on the C172.
+
 Hand Fly Mode Hotkeys:
   A          Read MSL
   S          Read IAS

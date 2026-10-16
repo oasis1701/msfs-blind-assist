@@ -1,4 +1,5 @@
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Aircraft;
@@ -111,6 +112,46 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
         }
 
         return base.HandleUIVariableSet(varKey, value, varDef, simConnect, announcer);
+    }
+
+    /// <summary>
+    /// The G1000 windows, from the COWS DA40 (#242): <see cref="Forms.DA40.CowsDA40DisplayForm"/> reads the
+    /// stock Working Title G1000 over the Coherent debugger and presses its bezel keys, and the C172's
+    /// G1000 is the same instrument on the same views (<c>AS1000_PFD</c>, <c>AS1000_MFD</c>; Marshall
+    /// confirmed the MFD's title live on 2026-05-31). The keys are the DA40's: Alt+P opens the PFD;
+    /// Alt+M, Alt+N and input-mode Shift+M open the MFD (<c>OpensMfdWindow</c>). No owner is passed:
+    /// what the form hands its owner (CAS rows, display units, radio-tune notes) are DA40 callbacks
+    /// the C172 does not have, so the CAS is read in the window but not announced by itself.
+    /// The windows are tracked, so a second press focuses the open one and an aircraft switch
+    /// closes both (<c>DisposeTrackedWindows</c>).
+    /// </summary>
+    public override bool HandleHotkeyAction(HotkeyAction action, SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer, Form parentForm, HotkeyManager hotkeyManager)
+    {
+        if (action == HotkeyAction.ReadDisplayPFD)
+        {
+            hotkeyManager.ExitOutputHotkeyMode();
+            ShowTrackedWindow("C172_PFD",
+                () => new Forms.DA40.CowsDA40DisplayForm(
+                    "G1000 PFD", "AS1000_PFD", "PFD", simConnect, announcer),
+                w => w.Show());
+            return true;
+        }
+
+        if (DA40.CowsDA40Definition.OpensMfdWindow(action))
+        {
+            if (action == HotkeyAction.ShowFenixMCDU)
+                hotkeyManager.ExitInputHotkeyMode();
+            else
+                hotkeyManager.ExitOutputHotkeyMode();
+            ShowTrackedWindow("C172_MFD",
+                () => new Forms.DA40.CowsDA40DisplayForm(
+                    "G1000 MFD", "AS1000_MFD", "MFD", simConnect, announcer),
+                w => w.Show());
+            return true;
+        }
+
+        return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
     }
 
     /// <summary>
