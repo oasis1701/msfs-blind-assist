@@ -46,7 +46,10 @@ public readonly record struct A220EclTarget(double Value, string? Refusal)
 /// the panel) or carries an explicit exclusion. Coverage-pinned by
 /// A220EclActionMapTests — zero unaccounted entries.
 ///
-/// Scope rulings (2026-07-27): engine start + APU start ARE mapped; thrust levers,
+/// Scope rulings (2026-07-27): engine run on/off (and the start mode) and APU start ARE mapped.
+/// An inverted item ("ENG RUN — OFF") writes the opposite position of its two-position control,
+/// for the one item the pilot selects, and refuses aloud on a button or a 3+-position control
+/// (<see cref="ResolveTarget"/>, [A220-60]). Thrust levers,
 /// sidestick/flight-control checks and fire handles/bottles are excluded.
 /// MSFSBA never ticks a checklist box — it actuates the mapped control and lets the
 /// aircraft's own sensing confirm.

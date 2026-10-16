@@ -170,15 +170,17 @@ public static class A220Panels
         return null;
     }
 
-    /// <summary>Whether an isi() read carries a QNH, and if not, why.</summary>
+    /// <summary>Whether an isi() read carries a QNH, and if not, why. <see cref="NoReading"/> is
+    /// the zero value on purpose: a <c>default(IsiRead)</c> must read as "no reading", never as an
+    /// Ok with a null QNH. Nothing depends on the numeric values.</summary>
     public enum IsiReadStatus
     {
+        /// <summary>No link, no store, or no value in it.</summary>
+        NoReading,
         /// <summary>The ISI's QNH is in <see cref="IsiRead.QnhHpa"/>.</summary>
         Ok,
         /// <summary>The ISI's own store says <c>powered:false</c> (cold and dark).</summary>
-        Unpowered,
-        /// <summary>No link, no store, or no value in it.</summary>
-        NoReading
+        Unpowered
     }
 
     /// <summary>One isi() read: the QNH in hPa when <see cref="Status"/> is Ok, else null.</summary>

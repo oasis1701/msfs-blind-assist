@@ -221,6 +221,17 @@ public class A220PanelsTests
         Assert.Null(read.QnhHpa);
     }
 
+    /// <summary>The zero value of the status is NoReading, so an unset <c>IsiRead</c> is "no
+    /// reading", never an Ok that carries no QNH.</summary>
+    [Fact]
+    public void IsiRead_DefaultIsNoReading_NeverOk()
+    {
+        var unset = default(A220Panels.IsiRead);
+        Assert.Equal(A220Panels.IsiReadStatus.NoReading, unset.Status);
+        Assert.Null(unset.QnhHpa);
+        Assert.Equal(default(A220Panels.IsiReadStatus), A220Panels.IsiReadStatus.NoReading);
+    }
+
     [Fact]
     public void IsiUnavailableText_NamesTheReason_NeverAskingToSetItOnTheIsi()
     {
