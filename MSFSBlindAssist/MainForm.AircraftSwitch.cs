@@ -159,6 +159,8 @@ public partial class MainForm
             "COWS_DA40NG" => new Aircraft.DA40.CowsDA40Definition(Aircraft.DA40.DA40Variant.NG),
             "COWS_DA40XLS" => new Aircraft.DA40.CowsDA40Definition(Aircraft.DA40.DA40Variant.XLS),
             "TFDI_MD11" => new TFDiMD11Definition(),
+            "C172_CLASSIC" => new CessnaC172ClassicDefinition(),
+            "C172_G1000" => new CessnaC172G1000Definition(),
             // Future aircraft will be added here
             _ => new FlyByWireA320Definition() // Default to A320
         };
@@ -1316,6 +1318,8 @@ public partial class MainForm
         headwindA330MenuItem.Checked = false;
         ifly737MaxMenuItem.Checked = false;
         tfdiMd11MenuItem.Checked = false;
+        cessnaC172ClassicMenuItem.Checked = false;
+        cessnaC172G1000MenuItem.Checked = false;
 
         // Set the check on the current aircraft's menu item.
         // NOTE: HeadwindA330Definition derives from FlyByWireA320Definition, so it MUST
@@ -1355,6 +1359,14 @@ public partial class MainForm
         else if (currentAircraft is IFly737MAXDefinition)
         {
             ifly737MaxMenuItem.Checked = true;
+        }
+        else if (currentAircraft is CessnaC172ClassicDefinition)
+        {
+            cessnaC172ClassicMenuItem.Checked = true;
+        }
+        else if (currentAircraft is CessnaC172G1000Definition)
+        {
+            cessnaC172G1000MenuItem.Checked = true;
         }
     }
 
