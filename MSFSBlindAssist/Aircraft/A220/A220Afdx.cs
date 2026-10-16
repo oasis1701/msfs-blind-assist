@@ -163,9 +163,10 @@ internal static class A220Afdx
     /// <c>translate(0 -pitch_trim * (108/17))</c> up a 108 px scale whose bottom (ND,
     /// translate 0) is trim 0 — i.e. 108 px spans 17 units. That makes the trim
     /// ANIMATION ratio <c>L:A22X Horizontal Stabilizer</c> (0-1 over the same travel)
-    /// convertible: <c>units = ratio * 17</c>, which is the only trim read-back
-    /// available when the CommBus tap is down. Verified live 2026-09-22 — 0.2941176 =
-    /// exactly 5/17 at rest, tracking to 0.25343 = 4.31/17 across ~28 trim clicks.
+    /// convertible: <c>units = ratio * 17</c>. Verified live 2026-09-22 — 0.2941176 =
+    /// exactly 5/17 at rest, tracking to 0.25343 = 4.31/17 across ~28 trim clicks. The trim
+    /// WALK does not use it: with the CommBus tap down it refuses ([A220-13], owner decision
+    /// 2026-10-16), so the stabilizer is never driven on this estimate.
     /// </summary>
     internal const double StabTrimFullScaleUnits = 17.0;
 
@@ -311,6 +312,79 @@ internal static class A220Afdx
     internal static bool StepIsWrongRing(double perClick, double expectedStep)
         => expectedStep > 0 && perClick > 0
            && (perClick > expectedStep * 2 || perClick < expectedStep / 2);
+
+    // ---- Knob walks: which knob, its fallback, and what it says ------------------
+
+    /// <summary>The FCP knobs a walk turns, plus the stab trim switch. Each has its OWN walk
+    /// cancellation, so a new entry stops only the previous walk of the same knob; V/S and FPA are
+    /// one knob (the thumbwheel).</summary>
+    internal enum FcpKnob { Speed, Heading, Altitude, Vertical, StabTrim }
+
+    /// <summary>
+    /// Whether a walk of <paramref name="knob"/> may read a stock var when the aircraft's own block
+    /// (<c>A22X.FCP Data</c>, or <c>A22X.Flight Control Data</c> for the trim) gives no value
+    /// ([A220-8], [A220-13]). Altitude and heading: yes, their stock AP vars track the knob click
+    /// for click (2026-09-21, -24). Vertical: yes in today's code. Speed: no, the stock speed var
+    /// read 445 kt with 142 in the window (2026-09-24). Stab trim: no, the only other read-back is
+    /// the animation ratio, and the owner's decision of 2026-10-16 keeps [A220-13]: refuse.
+    /// </summary>
+    internal static bool KnobWalkMayUseStockVar(FcpKnob knob)
+        => knob is FcpKnob.Heading or FcpKnob.Altitude or FcpKnob.Vertical;
+
+    /// <summary>[A220-13]: the stab trim walk's refusal when the display link gives no trim.</summary>
+    internal const string StabTrimLinkDownText =
+        "Stabilizer trim not set — the display link is down, so the trim cannot be read back. Try again when the link is back.";
+
+    /// <summary>Spoken before any click when nothing reports the knob's value: the trim's own
+    /// refusal, otherwise <see cref="KnobWalkNoReadText"/>. Never a click on a guess.</summary>
+    internal static string KnobWalkRefusalText(FcpKnob knob, string name)
+        => knob == FcpKnob.StabTrim ? StabTrimLinkDownText : KnobWalkNoReadText(name);
+
+    /// <summary>"Heading not set: the aircraft is not reporting its selected heading right now. Try again in a moment."</summary>
+    internal static string KnobWalkNoReadText(string name)
+        => $"{name} not set: the aircraft is not reporting its selected {name.ToLowerInvariant()} right now. Try again in a moment.";
+
+    /// <summary>Spoken before any click when the simulator connection cannot carry the clicks (the
+    /// [MD11-16] pattern), instead of a "knob not responding" with the wrong cause.</summary>
+    internal static string KnobWalkNotConnectedText(string name)
+        => $"Not connected to the simulator — {name.ToLowerInvariant()} not changed.";
+
+    /// <summary>Spoken when the read-back stops part-way: the last burst may have moved the knob, so
+    /// no value is claimed.</summary>
+    internal static string KnobWalkNotConfirmedText(string name)
+        => $"{name} not confirmed — the aircraft stopped reporting it. Check the {name.ToLowerInvariant()}.";
+
+    /// <summary>Spoken when a walk throws (logged first), in the standby baro walk's pattern: a walk
+    /// never ends in silence.</summary>
+    internal static string KnobWalkFailedText(string name)
+        => $"{name} walk stopped — check the {name.ToLowerInvariant()}.";
+
+    /// <summary>The Mach walk's value: it counts the knob in hundredths, so 78 is "Mach 0.78".
+    /// Culture-invariant.</summary>
+    internal static string MachHundredthsText(double hundredths)
+        => "Mach " + (hundredths / 100).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>The FPA walk's value: "-3.0 degrees". Culture-invariant (sv-SE would write the
+    /// minus as U+2212).</summary>
+    internal static string FpaDegreesText(double degrees)
+        => degrees.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " degrees";
+
+    /// <summary>The trim walk's value, as the EICAS prints it ("4.6 units"). Culture-invariant.</summary>
+    internal static string StabTrimUnitsText(double units)
+        => units.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " units";
+
+    /// <summary>The trim walk's takeoff-band clause: ", in takeoff range", or ", still OUTSIDE takeoff
+    /// range 4.2 to 6.8"; empty when the aircraft publishes no band (the EICAS hides it when the two
+    /// limits are equal or absent). Culture-invariant.</summary>
+    internal static string StabTrimWalkBandNote(double units, FlightControlBlock? fc)
+    {
+        if (fc?.pitch_trim_dn is not { } dn || fc.pitch_trim_up is not { } up || Math.Abs(up - dn) <= 0.01)
+            return "";
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        return units >= dn && units <= up
+            ? ", in takeoff range"
+            : $", still OUTSIDE takeoff range {dn.ToString("0.0", inv)} to {up.ToString("0.0", inv)}";
+    }
 
     // ---- FMA phrases for the FCP readout hotkeys -----------------------------------
 
