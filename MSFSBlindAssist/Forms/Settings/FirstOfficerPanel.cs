@@ -4,7 +4,7 @@ namespace MSFSBlindAssist.Forms.Settings;
 
 /// <summary>First Officer section of the unified Settings dialog. Extracted from the retired
 /// standalone First Officer Settings dialog — the automation checkboxes (gear up/down, flaps,
-/// AP, 10k lights) and the same UserSettings bindings, but the old Save/Cancel buttons are
+/// AP, 10k lights, transition altimeters) and the same UserSettings bindings, but the old Save/Cancel buttons are
 /// gone (the dialog owns OK/Cancel)
 /// and there is no live tone/resource to tear down, so <see cref="OnLeaving"/> is a no-op.
 /// These are global preferences that only take effect when a supported First Officer window
@@ -19,6 +19,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
     private Label apAltitudeLabel = null!;
     private TextBox apAltitudeText = null!;
     private CheckBox autoLights10kCheck = null!;
+    private CheckBox autoAltimetersCheck = null!;
     private CheckBox autoCenterPumpsCheck = null!;
     private Label autoSeatbeltLabel = null!;
     private ComboBox autoSeatbeltCombo = null!;
@@ -107,17 +108,26 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
             AccessibleDescription = "Turn the landing lights (and nose light where fitted) off climbing through 10,000 feet and on descending through it"
         };
 
+        autoAltimetersCheck = new CheckBox
+        {
+            Text = "Automatically set altimeters at transition altitude and level",
+            Location = new Point(20, 265),
+            AutoSize = true,
+            AccessibleName = "Automatic altimeters at transition altitude and level",
+            AccessibleDescription = "Set the altimeters to standard climbing through the SimBrief transition altitude, and out of standard descending through the transition level. When off, the First Officer only reminds you at each crossing."
+        };
+
         autoSeatbeltLabel = new Label
         {
             Text = "Auto seat belt signs:",
-            Location = new Point(20, 265),
+            Location = new Point(20, 300),
             AutoSize = true,
             AccessibleName = "Auto seat belt signs label"
         };
 
         autoSeatbeltCombo = new ComboBox
         {
-            Location = new Point(200, 262),
+            Location = new Point(200, 297),
             Size = new Size(240, 23),
             DropDownStyle = ComboBoxStyle.DropDownList,
             AccessibleName = "Auto seat belt signs mode",
@@ -133,14 +143,14 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         gpwsTestLabel = new Label
         {
             Text = "GPWS test type (PMDG 737):",
-            Location = new Point(20, 300),
+            Location = new Point(20, 335),
             AutoSize = true,
             AccessibleName = "GPWS test type label"
         };
 
         gpwsTestCombo = new ComboBox
         {
-            Location = new Point(240, 297),
+            Location = new Point(240, 332),
             Size = new Size(200, 23),
             DropDownStyle = ComboBoxStyle.DropDownList,
             AccessibleName = "GPWS test type",
@@ -151,7 +161,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         autoCenterPumpsCheck = new CheckBox
         {
             Text = "Auto-manage center fuel pumps (PMDG 737/777 and iFly MAX8)",
-            Location = new Point(20, 335),
+            Location = new Point(20, 370),
             AutoSize = true,
             AccessibleName = "Automatic center fuel pump management",
             AccessibleDescription = "On the PMDG 737 and 777 and the iFly MAX8, turn the center tank fuel pumps on during ground setup when center fuel is loaded, and off when the center tank runs dry."
@@ -160,7 +170,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         Controls.AddRange(new Control[]
         {
             titleLabel, autoGearUpCheck, autoGearDownCheck, autoFlapsCheck, autoApCheck,
-            apAltitudeLabel, apAltitudeText, autoLights10kCheck,
+            apAltitudeLabel, apAltitudeText, autoLights10kCheck, autoAltimetersCheck,
             autoSeatbeltLabel, autoSeatbeltCombo, gpwsTestLabel, gpwsTestCombo,
             autoCenterPumpsCheck
         });
@@ -176,11 +186,12 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         apAltitudeLabel.TabIndex = 5;
         apAltitudeText.TabIndex = 6;
         autoLights10kCheck.TabIndex = 7;
-        autoSeatbeltLabel.TabIndex = 8;
-        autoSeatbeltCombo.TabIndex = 9;
-        gpwsTestLabel.TabIndex = 10;
-        gpwsTestCombo.TabIndex = 11;
-        autoCenterPumpsCheck.TabIndex = 12;
+        autoAltimetersCheck.TabIndex = 8;
+        autoSeatbeltLabel.TabIndex = 9;
+        autoSeatbeltCombo.TabIndex = 10;
+        gpwsTestLabel.TabIndex = 11;
+        gpwsTestCombo.TabIndex = 12;
+        autoCenterPumpsCheck.TabIndex = 13;
     }
 
     public void LoadFrom(UserSettings settings)
@@ -191,6 +202,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         autoApCheck.Checked = settings.FOAutoApEnabled;
         apAltitudeText.Text = settings.FOAutoApEngageAltitudeAgl.ToString();
         autoLights10kCheck.Checked = settings.FOAutoLights10kEnabled;
+        autoAltimetersCheck.Checked = settings.FOAutoAltimetersEnabled;
         autoCenterPumpsCheck.Checked = settings.FOAutoCenterPumpsEnabled;
         autoSeatbeltCombo.SelectedIndex = Math.Clamp(settings.FOAutoSeatbeltMode, 0, 2);
         gpwsTestCombo.SelectedIndex = settings.FOGpws737LongTest ? 1 : 0;
@@ -217,6 +229,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         settings.FOAutoApEnabled = autoApCheck.Checked;
         settings.FOAutoApEngageAltitudeAgl = int.Parse(apAltitudeText.Text);
         settings.FOAutoLights10kEnabled = autoLights10kCheck.Checked;
+        settings.FOAutoAltimetersEnabled = autoAltimetersCheck.Checked;
         settings.FOAutoCenterPumpsEnabled = autoCenterPumpsCheck.Checked;
         settings.FOAutoSeatbeltMode = autoSeatbeltCombo.SelectedIndex < 0 ? 0 : autoSeatbeltCombo.SelectedIndex;
         settings.FOGpws737LongTest = gpwsTestCombo.SelectedIndex == 1;

@@ -8,6 +8,12 @@ public interface IFoPhaseMonitor
     /// tracking while disabled so re-enabling mid-flight can't fire a stale crossing.</summary>
     bool AutoLights10kEnabled { get; set; }
 
+    /// <summary>Gates every altimeter write at the transition altitude and level (UserSettings
+    /// .FOAutoAltimetersEnabled, FO-23). Off, the crossing is spoken as a reminder
+    /// (<see cref="TransitionAltimeters"/>) and nothing else at the crossing is gated (the
+    /// MD-11 still sets Dial-A-Flap). The crossing detector keeps tracking while disabled.</summary>
+    bool AutoAltimetersEnabled { get; set; }
+
     /// <summary>Auto seat-belt-sign mode (Disabled / 10k / TOC-TOD). Actuated through the
     /// aircraft's own SetSeatbeltSign; the trigger logic lives in SeatbeltAutomation.</summary>
     FoSeatbeltMode AutoSeatbeltMode { get; set; }

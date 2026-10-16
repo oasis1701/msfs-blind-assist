@@ -84,7 +84,9 @@ off just before the battery.
 While the window is open, it also switches the landing lights at 10,000 feet, and you
 can turn that off in Settings. If SimBrief has supplied the transition altitude and
 level, it also sets the altimeters to standard at the transition altitude and back to QNH
-at the transition level. The rest of the automation is on the new First Officer tab in
+at the transition level. You can turn that off in Settings too; the First Officer then
+leaves the altimeters to you and reminds you at each crossing (on the MD-11 it still sets
+the Dial-A-Flap). The rest of the automation is on the new First Officer tab in
 Settings, and all of it is off until you turn it on:
 
 - Seat belt signs switch at 10,000 feet, or at top of climb and top of descent.

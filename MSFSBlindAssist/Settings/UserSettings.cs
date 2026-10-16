@@ -290,6 +290,11 @@ public class UserSettings
         // this toggle existed; a missing key in old settings files deserializes to it.
         public bool FOAutoLights10kEnabled { get; set; } = true;
 
+        // Phase-monitor altimeter automation: STD climbing through the transition altitude,
+        // out of STD descending through the transition level. Default ON — matches the
+        // behavior before this toggle existed. Off, the FO only reminds (FO-23).
+        public bool FOAutoAltimetersEnabled { get; set; } = true;
+
         // PMDG 737/777 center-tank fuel pump auto-management. Default OFF (F11): opt-in like
         // every other FO automation, it actuates a safety-relevant switch and speaks unprompted,
         // and it has a long defect history — it should not be on for users who never asked.

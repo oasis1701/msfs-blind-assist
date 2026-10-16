@@ -13,6 +13,8 @@ namespace MSFSBlindAssist.FirstOfficer.MD11;
 ///   Dial-A-Flap 15 ("Passing Transition Altitude: Altimeters STD, Dial-a-Flap: Set 15"). The
 ///   executor refuses the wheel in flight while the flap handle is in the Dial-A-Flap detent.
 ///   One sentence, spoken after both, says what was done and asks the Captain for the rest.
+///   With <see cref="AutoAltimetersEnabled"/> off (FO-23) the altimeters are left alone and only
+///   Dial-A-Flap is set ("Dial-A-Flap 15. Set standard altimeters.").
 ///
 ///   Passing the transition level descending: announce-only. The local QNH is unknowable here
 ///   and the MD-11's STD state is unreadable, so the First Officer never commands it.
@@ -45,6 +47,8 @@ public sealed class Md11FoFlightPhaseMonitor : IFoPhaseMonitor
     }
 
     public bool AutoLights10kEnabled { get; set; } = true;
+
+    public bool AutoAltimetersEnabled { get; set; } = true;
 
     public FoSeatbeltMode AutoSeatbeltMode
     {
@@ -93,7 +97,7 @@ public sealed class Md11FoFlightPhaseMonitor : IFoPhaseMonitor
             switch (_trans.Update(altitudeFt, climbing, descending))
             {
                 case TransitionCrossingDetector.Crossing.ClimbToStd:
-                    _ = TransitionAltitudeAsync();
+                    _ = TransitionAltitudeAsync(setAltimeters: AutoAltimetersEnabled);
                     break;
                 case TransitionCrossingDetector.Crossing.DescendToQnh:
                     _announcer.AnnounceImmediate(TransitionLevelSentence);
@@ -107,12 +111,13 @@ public sealed class Md11FoFlightPhaseMonitor : IFoPhaseMonitor
     }
 
     // Awaits WITHOUT ConfigureAwait(false): Update runs on the UI thread, so the sentence is
-    // spoken back there. Fire-and-forget, so every exception is caught here.
-    private async Task TransitionAltitudeAsync()
+    // spoken back there. Fire-and-forget, so every exception is caught here. With the altimeter
+    // setting off (FO-23) only Dial-A-Flap is set, and the sentence asks for standard.
+    private async Task TransitionAltitudeAsync(bool setAltimeters)
     {
         try
         {
-            bool std = await _executor.SetAltimetersStandardAsync();
+            bool std = setAltimeters && await _executor.SetAltimetersStandardAsync();
             bool daf = await _executor.SetDialAFlapDegrees(TransitionDialAFlapDeg);
             _announcer.AnnounceImmediate(TransitionAltitudeSentence(std, daf));
         }
@@ -137,8 +142,7 @@ public sealed class Md11FoFlightPhaseMonitor : IFoPhaseMonitor
         if (!_noTransReminderFired && climbing && alt > 18_000 + HysteresisFt)
         {
             _noTransReminderFired = true;
-            _announcer.AnnounceImmediate(
-                "Passing one eight thousand. No transition altitude loaded — set standard altimeters as required. Load SimBrief in the First Officer window for automatic altimeter changes.");
+            _announcer.AnnounceImmediate(TransitionAltimeters.NoTransitionLoadedReminder(AutoAltimetersEnabled));
         }
         else if (_noTransReminderFired && alt < 17_000)
         {

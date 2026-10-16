@@ -133,6 +133,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         _flowMgr     = new FlowManager<TExec, TState>(_stateEval, _actionExec, _checklistMgr, announcer);
         _flightPhaseMon = profile.CreatePhaseMonitor(_actionExec, _stateEval, announcer);
         _flightPhaseMon.AutoLights10kEnabled = settings.FOAutoLights10kEnabled;
+        _flightPhaseMon.AutoAltimetersEnabled = settings.FOAutoAltimetersEnabled;
         _flightPhaseMon.AutoSeatbeltMode = (FoSeatbeltMode)settings.FOAutoSeatbeltMode;
         _foAutoMgr   = profile.CreateAutoManager(_actionExec, _stateEval, announcer, settings);
 
@@ -241,6 +242,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     {
         _foAutoMgr.AutoFlapsEnabled    = _settings.FOAutoFlapsEnabled;
         _flightPhaseMon.AutoLights10kEnabled = _settings.FOAutoLights10kEnabled;
+        _flightPhaseMon.AutoAltimetersEnabled = _settings.FOAutoAltimetersEnabled;
         _flightPhaseMon.AutoSeatbeltMode = (FoSeatbeltMode)_settings.FOAutoSeatbeltMode;
     }
 

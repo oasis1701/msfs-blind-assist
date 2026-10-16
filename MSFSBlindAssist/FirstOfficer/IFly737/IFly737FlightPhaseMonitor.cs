@@ -150,8 +150,7 @@ public class IFly737FlightPhaseMonitor : IFoPhaseMonitor
         if (!_noTransReminderFired && climbing && alt > 18_000 + HysteresisFt)
         {
             _noTransReminderFired = true;
-            _announcer.AnnounceImmediate(
-                "Passing one eight thousand. No transition altitude loaded — set standard altimeters as required. Load SimBrief in the First Officer window for automatic altimeter changes.");
+            _announcer.AnnounceImmediate(TransitionAltimeters.NoTransitionLoadedReminder(AutoAltimetersEnabled));
         }
         else if (_noTransReminderFired && alt < 17_000)
         {
@@ -232,9 +231,19 @@ public class IFly737FlightPhaseMonitor : IFoPhaseMonitor
     // Transition altitude / level baro-STD logic
     // -----------------------------------------------------------------------
 
+    /// <inheritdoc/>
+    public bool AutoAltimetersEnabled { get; set; } = true;
+
     private void CheckTransitionCrossing(double alt, bool climbing, bool descending)
     {
-        switch (_trans.Update(alt, climbing, descending))
+        var crossing = _trans.Update(alt, climbing, descending);
+        if (TransitionAltimeters.ReminderInstead(crossing, AutoAltimetersEnabled) is { } reminder)
+        {
+            _announcer.AnnounceImmediate(reminder);
+            return;
+        }
+
+        switch (crossing)
         {
             case TransitionCrossingDetector.Crossing.ClimbToStd:
                 // Climbing through transition altitude — set standard pressure by value
