@@ -72,3 +72,18 @@ D and Shift+D read the distance and time to destination and the distance to top 
 descent from the FMS's active flight plan, Ctrl+W the next waypoint, and the Hotkey List
 shows the A220's own keys. The Ctrl+M monitor manager has a search box and a Show filter
 like the other aircraft.
+
+The panels now follow the A220 cockpit: the overhead in the order you work it (Electrical,
+Hydraulics, APU, Equipment Cooling, Fire Protection and on to the lights and signs), then the
+glareshield, a Center Panel section for the standby instrument and the gear and brakes, and
+the pedestal — each panel listing its switches in the order they sit in the cockpit. New on
+the panels: equipment cooling inlet and exhaust, the APU and cargo fire pushes and all five
+fire bottles, both wipers, CVR test and erase, service interphone and mechanic call, the
+standby altimeter (type a setting in hectopascals or inches, or press STD), VHF 1 to 3
+transmit select, each VHF's receiver on or off and its volume (so you can listen to a second
+radio, such as COM 2 on SayIntentions), and the speedbrake lever in every position from
+retracted to max. Probe
+heat is now the ground-test button it is in the cockpit, the engine fire pushes are push
+buttons, every guarded switch says so (and only those), and the lamp-test switch that did
+nothing is gone. The electronic checklist can now set the equipment cooling, the speedbrake,
+the CVR test and the service interphone for you; the fire controls stay yours to press.
