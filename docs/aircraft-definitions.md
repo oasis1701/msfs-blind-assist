@@ -95,7 +95,7 @@ protected override Dictionary<string, SimConnect.SimVarDefinition> BuildVariable
   (`HydPumpPrimEngL + HydFaultLightSuffix`), never typed twice — that is how
   "Isolation Valve Left" and "Isolation Valve L CLOSED Light" drifted apart. So far this
   is done for the PMDG 777's hydraulic pumps, outflow valves, isolation valves, fuel pumps,
-  jettison nozzles and cargo-fire compartments, and the Fenix ACP's 15 reception knobs
+  jettison nozzles and cargo-fire compartments, and the Fenix ACP's 14 reception knobs
   ("ACP VHF 2 Receive" / "ACP VHF 2 Receive Light"). The 777 file's remaining ~60 hand-typed
   `... Light` labels are a known residual, and several have already drifted from their
   switch: "Engine Bleed 1" vs "Engine 1 Bleed OFF Light", "Crossfeed Forward" vs

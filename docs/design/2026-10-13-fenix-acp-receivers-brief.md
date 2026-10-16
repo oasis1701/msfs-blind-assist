@@ -5,8 +5,12 @@ describe the code as it was then. Done in PR #305; what it settled is under "Out
 
 ## Outcome (PR #305)
 
-- All 15 reception latches are on the ACP panel, in the Fenix model's channel order, as are
-  the volume and transmit groups. Each latch is an OnRequest combo read when the panel opens.
+- 14 of the 15 reception latches are on the ACP panel, in the Fenix model's channel order, as
+  are the volume and transmit groups. Each latch is an OnRequest combo read when the panel
+  opens. MLS is left out: tested live on 2026-10-16, its latch moves but its light
+  `I_ASP_MLS_1_REC` never lights, even from the cockpit click, so the Fenix does not model MLS
+  reception. VHF 2, VHF 3, HF 2 and INT each moved their light both ways (docs/a32nx.md, "Fenix
+  ACP reception switches").
 - Steps 2 and 3 below: each latch names its light as `UiEchoVariable`, so MainForm's UI-set
   echo gate also swallows the light's change after a panel pick, and the pilot hears the pick
   once (CORE-7). The light still speaks when anything else changes it.
@@ -15,7 +19,7 @@ describe the code as it was then. Done in PR #305; what it settled is under "Out
 - The five new latches have no `HandleUIVariableSet` case: MainForm's generic L:var combo
   write covers a plain write (docs/architecture.md).
 - Also fixed on the same panel: HF 2 Transmit reads its light `I_ASP_HF_2_SEND`, the only
-  ACP1 transmit light that was not registered.
+  ACP1 transmit light that was not registered (it toggles with the key, measured live).
 
 ## What we're trying to achieve
 

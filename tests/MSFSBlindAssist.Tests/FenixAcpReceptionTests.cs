@@ -1,10 +1,11 @@
 // Pins the Fenix A320's Audio Control Panel (ACP) against the Fenix model
 // (Panel_ACP_{Original,Modern}_Behavior.xml, FNX32X_Interact_Knob_PushButton_ACP_Template):
 //
-// - all 15 reception latches sit on the panel, each naming its own light as UiEchoVariable, so
-//   MainForm's UI-set echo gate swallows the light's change after a panel pick (CORE-7). The
-//   light names are irregular (VOR 1/2 light as NAV_1/NAV_2, MLS as MLS_1), so they are listed
-//   here from the model, never derived by pattern;
+// - the 14 modelled reception latches sit on the panel, each naming its own light as
+//   UiEchoVariable, so MainForm's UI-set echo gate swallows the light's change after a panel
+//   pick (CORE-7). The light names are irregular (VOR 1/2 light as NAV_1/NAV_2), so they are
+//   listed here from the model, never derived by pattern;
+// - MLS has no reception switch: the Fenix does not model MLS reception (measured 2026-10-16);
 // - each latch and its light are labelled from one constant ([VAR-1]);
 // - every ACP1 transmit key reads its light (HF 2 was the one missing);
 // - the volume, transmit and receive groups list their channels in the model's order.
@@ -26,7 +27,15 @@ public class FenixAcpReceptionTests
     private static readonly Dictionary<string, SimVarDefinition> Vars = Fenix.GetVariables();
     private static readonly List<string> Panel = Fenix.GetPanelControls()[AcpPanel];
 
-    // The model's channel order, and each reception latch's light, from the ACP1 template.
+    // The model's channel order, from the ACP1 template.
+    private static readonly string[] ModelOrder =
+    {
+        "VHF_1", "VHF_2", "VHF_3", "HF_1", "HF_2", "INT", "CAB", "VOR_1", "VOR_2",
+        "MARKER", "ILS", "MLS", "ADF_1", "ADF_2", "PA",
+    };
+
+    // Each reception latch's light, from the same template. MLS is left out: see
+    // Mls_reception_is_left_out.
     private static readonly (string Channel, string Light)[] Channels =
     {
         ("VHF_1", "I_ASP_VHF_1_REC"),
@@ -40,7 +49,6 @@ public class FenixAcpReceptionTests
         ("VOR_2", "I_ASP_NAV_2_REC"),
         ("MARKER", "I_ASP_MARKER_REC"),
         ("ILS", "I_ASP_ILS_REC"),
-        ("MLS", "I_ASP_MLS_1_REC"),
         ("ADF_1", "I_ASP_ADF_1_REC"),
         ("ADF_2", "I_ASP_ADF_2_REC"),
         ("PA", "I_ASP_PA_REC"),
@@ -48,6 +56,16 @@ public class FenixAcpReceptionTests
 
     public static IEnumerable<object[]> ReceptionChannels()
         => Channels.Select(c => new object[] { c.Channel, c.Light });
+
+    [Fact]
+    public void Mls_reception_is_left_out()
+    {
+        const string Why = "the Fenix does not model MLS reception: the latch moves, but I_ASP_MLS_1_REC "
+            + "never lights, even from the cockpit's own click (measured 2026-10-16, PR #305). A pilot "
+            + "who switches it on hears nothing and cannot tell whether it worked, so do not re-add it.";
+        Assert.False(Vars.ContainsKey("S_ASP_MLS_REC_LATCH"), "S_ASP_MLS_REC_LATCH is registered, but " + Why);
+        Assert.False(Vars.ContainsKey("I_ASP_MLS_1_REC"), "I_ASP_MLS_1_REC is registered, but " + Why);
+    }
 
     [Theory, MemberData(nameof(ReceptionChannels))]
     public void Each_reception_latch_is_on_the_panel_and_names_its_light(string channel, string light)
@@ -77,16 +95,15 @@ public class FenixAcpReceptionTests
     [Fact]
     public void Every_group_lists_its_channels_in_the_model_order()
     {
-        var order = Channels.Select(c => c.Channel).ToList();
         List<string> ChannelsOf(string prefix, string suffix) => Panel
             .Where(k => k.StartsWith(prefix) && k.EndsWith(suffix))
             .Select(k => k[prefix.Length..^suffix.Length])
             .ToList();
 
-        Assert.Equal(order, ChannelsOf("A_ASP_", "_VOLUME"));
-        Assert.Equal(order, ChannelsOf("S_ASP_", "_REC_LATCH"));
+        Assert.Equal(ModelOrder, ChannelsOf("A_ASP_", "_VOLUME"));
+        Assert.Equal(ModelOrder.Where(c => c != "MLS"), ChannelsOf("S_ASP_", "_REC_LATCH"));
         var transmit = ChannelsOf("S_ASP_", "_SEND");
-        Assert.Equal(order.Where(transmit.Contains), transmit);
+        Assert.Equal(ModelOrder.Where(transmit.Contains), transmit);
     }
 
     [Theory]

@@ -108,7 +108,6 @@ public class FenixA320Definition : BaseAircraftDefinition
     private const string AcpVor2Receive = "ACP VOR 2 Receive";
     private const string AcpMarkerReceive = "ACP MARKER Receive";
     private const string AcpIlsReceive = "ACP ILS Receive";
-    private const string AcpMlsReceive = "ACP MLS Receive";
     private const string AcpAdf1Receive = "ACP ADF 1 Receive";
     private const string AcpAdf2Receive = "ACP ADF 2 Receive";
     private const string AcpPaReceive = "ACP PA Receive";
@@ -2370,7 +2369,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 RenderAsButton = true
             },
 
-            // ========== AUDIO CONTROL PANEL (ACP) (41 variables) ==========
+            // ========== AUDIO CONTROL PANEL (ACP) (40 variables) ==========
 
             // Volume Controls (15 knobs)
             ["A_ASP_VHF_1_VOLUME"] = new SimConnect.SimVarDefinition
@@ -2597,8 +2596,10 @@ public class FenixA320Definition : BaseAircraftDefinition
                 StateVariable = "I_ASP_VOICE"
             },
 
-            // Receive Toggle Controls (15 combo boxes). Each latch's light is its UiEchoVariable;
-            // the light names are irregular (VOR 1/2 light as NAV_1/NAV_2, MLS as MLS_1).
+            // Receive Toggle Controls (14 combo boxes). Each latch's light is its UiEchoVariable;
+            // VOR 1/2 light as NAV_1/NAV_2. No MLS: the model has the knob, but the Fenix does not
+            // model MLS reception, so its light I_ASP_MLS_1_REC never lights, even from the
+            // cockpit click (measured 2026-10-16). FenixAcpReceptionTests pins the omission.
             ["S_ASP_VHF_1_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_VHF_1_REC_LATCH",
@@ -2679,15 +2680,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = OffOn,
                 UiEchoVariable = "I_ASP_ILS_REC"
-            },
-            ["S_ASP_MLS_REC_LATCH"] = new SimConnect.SimVarDefinition
-            {
-                Name = "S_ASP_MLS_REC_LATCH",
-                DisplayName = AcpMlsReceive,
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn,
-                UiEchoVariable = "I_ASP_MLS_1_REC"
             },
             ["S_ASP_VOR_1_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
@@ -7851,15 +7843,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = OffOn
             },
-            ["I_ASP_MLS_1_REC"] = new SimConnect.SimVarDefinition
-            {
-                Name = "I_ASP_MLS_1_REC",
-                DisplayName = AcpMlsReceive + AcpLightSuffix,
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = OffOn
-            },
             ["I_ASP_ADF_1_REC"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_ADF_1_REC",
@@ -9091,7 +9074,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             {
                 // Every group lists its channels in the Fenix model's own order
                 // (Panel_ACP_*_Behavior.xml): VHF 1-3, HF 1-2, INT, CAB, VOR 1-2, MARKER,
-                // ILS, MLS, ADF 1-2, PA.
+                // ILS, MLS, ADF 1-2, PA (receive has no MLS: see its definitions).
 
                 // Volume Controls (15 knobs)
                 "A_ASP_VHF_1_VOLUME",
@@ -9127,7 +9110,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_ASP_RESET",
                 "S_ASP_VOICE",
 
-                // Receive Toggle Controls (15 combo boxes)
+                // Receive Toggle Controls (14 combo boxes)
                 "S_ASP_VHF_1_REC_LATCH",
                 "S_ASP_VHF_2_REC_LATCH",
                 "S_ASP_VHF_3_REC_LATCH",
@@ -9139,7 +9122,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_ASP_VOR_2_REC_LATCH",
                 "S_ASP_MARKER_REC_LATCH",
                 "S_ASP_ILS_REC_LATCH",
-                "S_ASP_MLS_REC_LATCH",
                 "S_ASP_ADF_1_REC_LATCH",
                 "S_ASP_ADF_2_REC_LATCH",
                 "S_ASP_PA_REC_LATCH"
@@ -11566,8 +11548,8 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // Receive Toggle Controls (use SetLVar). VHF 2, VHF 3, HF 2, INT and MLS have no case
-            // here: a plain L:var combo needs none, MainForm's generic combo write covers it
+            // Receive Toggle Controls (use SetLVar). VHF 2, VHF 3, HF 2 and INT have no case here:
+            // a plain L:var combo needs none, MainForm's generic combo write covers it
             // (docs/architecture.md, the catch-all verdict).
             if (varKey == "S_ASP_VHF_1_REC_LATCH")
             {

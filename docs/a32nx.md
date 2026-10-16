@@ -103,6 +103,16 @@ The Fenix MCDU window (`Forms/FenixA320/FenixMCDUForm.cs`, `Services/FenixMCDUSe
 
 Output-mode Shift+H/S/A/V and B each force-read two values. Their continuous originals (`N_FCU_*`, `I_FCU_*_MANAGED`, `B_FCU_VERTICALSPEED_DASHED`, `N_FCU_EFIS1_BARO_*`) stream on their own once-a-second subscriptions (ExcludeFromBatch since `f500915db`), and since `c5c624a84` a forced read of such a var waits for its next delivery instead of replacing the subscription: up to a second before the readout spoke. The readouts now read on-request twins, `<name>_READOUT` (`FcuReadoutVariables`), answered within a frame ([A320-41]). The originals keep their subscriptions, Ctrl+M rows and the FCU set windows' cache reads, and a readout no longer swallows one of their deliveries. The wording is unchanged, except that the altimeter inches are written invariant (29.92 on a German or Swedish Windows too, never 29,92), in the B readout and the Ctrl+B "Altimeter set" confirmation. The Ctrl+B set's ±1 verify waits for the next delivery (`ReadFreshAsync`) instead of reading the cache after a forced read, which on these vars is a no-op: a cache older than the counter write made the correction repeat the whole delta.
 
+### Fenix ACP reception switches — measured live (PR #305, 2026-10-16)
+
+The ACP panel offers the captain's 14 modelled reception knobs, `S_ASP_<ch>_REC_LATCH` (1 = on, the knob out), each with its light `I_ASP_<ch>_REC` as `UiEchoVariable`, so a panel pick is spoken once ([CORE-8]'s full text); VOR 1/2 light as `NAV_1`/`NAV_2`. Measured over SimConnect against the cockpit's own click (`1 (>B:FNX320_Input_Knob_PushPull_A_ASP_<ch>_VOLUME_Toggle_Set)`, each click string unique, [SIM-17]): the data-def write `SetLVar` makes for the Fenix behaves exactly like the click, and VHF 2, VHF 3, HF 2 and INT each move their light both ways within about a second.
+
+- **No MLS reception switch.** The model has the knob, but the Fenix does not model MLS reception: the latch moves and `I_ASP_MLS_1_REC` never lights, even from the click. `FenixAcpReceptionTests.Mls_reception_is_left_out` pins the omission; the MLS volume knob stays.
+- **Stock `COM RECEIVE:3` follows the VHF 2 latch, not VHF 3** (the click shows the same), so it is no read-back for VHF 3; whether COM 3 is heard needs an ear test. `COM RECEIVE:2` follows VHF 2 after a short lag.
+- **INT once refused** a write, a calculator write and a click for about a minute, then moved normally; the cause is unknown (no interphone call was lit).
+- **HF 2 Transmit** (`S_ASP_HF_2_SEND`, a press-release) toggles `I_ASP_HF_2_SEND`, now its `StateVariable`; VHF 1 Transmit's light stays on beside it.
+- The Fenix data service on port 8083 lists only the CAB and PA ACP datarefs, so read the other lights over SimConnect.
+
 ### Fenix MCDU selected-option marker — colour ALONE is not enough (2026-08)
 
 **Symptom:** the CONFIG > FAILURES page (Failures = LSK 2R) cycles FAILURE TYPE between NONE / MINOR / ALL, but the MCDU window rendered `1: ←NONE/MINOR/ALL  RANDOM*` — **no accessible indication of which option was active**, on any of the three settings. Same for FAILURE RATE (REALISTIC / HIGH).
