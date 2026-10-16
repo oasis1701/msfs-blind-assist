@@ -174,8 +174,10 @@ Autopilot:
   The GFC 700 panel (Autopilot section, G1000) has a button for every key:
   Autopilot, Flight Director, HDG Hold, NAV Mode, APR Mode, Back Course,
   ALT Hold, VS Mode, FLC Mode, VNAV, Nose Up and Nose Down. Nose Up and Nose
-  Down change the vertical speed target in VS mode (and the airspeed target
-  in FLC) and say the new target.
+  Down change the target of the vertical mode and say the new one: the
+  vertical speed in VS mode, the airspeed in FLC, and the pitch in pitch
+  hold (the mode the autopilot starts in). In ALT Hold they have no effect,
+  and say so.
   The KAP140 panel (Autopilot section, Classic) has a button for every mode:
   Autopilot, HDG Hold, ALT Hold, NAV Mode, APR Mode, Back Course and VS Mode.
 

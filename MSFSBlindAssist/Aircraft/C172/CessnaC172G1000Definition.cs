@@ -350,8 +350,9 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
 
     /// <summary>
     /// The target the nose wheel just moved: vertical speed in VS, airspeed in FLC (where nose up
-    /// slows the target), pitch in PIT, the mode the GFC 700 engages in. Read back after the key
-    /// lands, on the UI thread. In any other vertical mode the press is only confirmed.
+    /// slows the target), pitch in PIT, the mode the GFC 700 engages in; in ALT it moves nothing,
+    /// and says so. Read back after the key lands, on the UI thread. In any other vertical mode the
+    /// press is only confirmed.
     /// </summary>
     private static async Task AnnounceNoseWheelTargetAsync(string displayName, SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)
@@ -363,6 +364,10 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
             announcer.AnnounceImmediate(DescribeAirspeedTarget(kt));
         else if (vs && await simConnect.ReadFreshAsync("C172_AP_VS_VALUE", 1500) is double fpm)
             announcer.AnnounceImmediate(DescribeVerticalSpeedTarget(fpm));
+        else if (!flc && !vs && (simConnect.GetCachedVariableValue("C172_AP_ALT_STATE") ?? 0) > 0.5)
+            // Measured: two Nose Up presses in ALT left the FMA's "ALT, target 760 FT" and every
+            // altitude SimVar where they were. This sim's GFC 700 does not move the held altitude.
+            announcer.AnnounceImmediate($"{displayName}: no effect in altitude hold");
         else if (!flc && !vs && await simConnect.ReadFreshAsync("C172G_AP_PITCH_STATE", 1500) is > 0.5
                  && await simConnect.ReadFreshAsync("C172G_AP_PITCH_REF", 1500) is double pitch)
             announcer.AnnounceImmediate(DescribePitchTarget(pitch));
