@@ -5,7 +5,8 @@
 //   UiEchoVariable, so MainForm's UI-set echo gate swallows the light's change after a panel
 //   pick (CORE-7). The light names are irregular (VOR 1/2 light as NAV_1/NAV_2), so they are
 //   listed here from the model, never derived by pattern;
-// - MLS has no reception switch: the Fenix does not model MLS reception (measured 2026-10-16);
+// - MLS has no switch and no volume knob: the Fenix does not model MLS reception (measured
+//   2026-10-16);
 // - each latch and its light are labelled from one constant ([VAR-1]);
 // - every ACP1 transmit key reads its light (HF 2 was the one missing);
 // - the volume, transmit and receive groups list their channels in the model's order.
@@ -62,9 +63,10 @@ public class FenixAcpReceptionTests
     {
         const string Why = "the Fenix does not model MLS reception: the latch moves, but I_ASP_MLS_1_REC "
             + "never lights, even from the cockpit's own click (measured 2026-10-16, PR #305). A pilot "
-            + "who switches it on hears nothing and cannot tell whether it worked, so do not re-add it.";
-        Assert.False(Vars.ContainsKey("S_ASP_MLS_REC_LATCH"), "S_ASP_MLS_REC_LATCH is registered, but " + Why);
-        Assert.False(Vars.ContainsKey("I_ASP_MLS_1_REC"), "I_ASP_MLS_1_REC is registered, but " + Why);
+            + "who switches it on or turns it up hears nothing and cannot tell whether it worked, so do "
+            + "not re-add the switch, its light or its volume knob.";
+        foreach (var key in new[] { "S_ASP_MLS_REC_LATCH", "I_ASP_MLS_1_REC", "A_ASP_MLS_VOLUME" })
+            Assert.False(Vars.ContainsKey(key), $"{key} is registered, but " + Why);
     }
 
     [Theory, MemberData(nameof(ReceptionChannels))]
@@ -100,8 +102,9 @@ public class FenixAcpReceptionTests
             .Select(k => k[prefix.Length..^suffix.Length])
             .ToList();
 
-        Assert.Equal(ModelOrder, ChannelsOf("A_ASP_", "_VOLUME"));
-        Assert.Equal(ModelOrder.Where(c => c != "MLS"), ChannelsOf("S_ASP_", "_REC_LATCH"));
+        var offered = ModelOrder.Where(c => c != "MLS").ToList();
+        Assert.Equal(offered, ChannelsOf("A_ASP_", "_VOLUME"));
+        Assert.Equal(offered, ChannelsOf("S_ASP_", "_REC_LATCH"));
         var transmit = ChannelsOf("S_ASP_", "_SEND");
         Assert.Equal(ModelOrder.Where(transmit.Contains), transmit);
     }

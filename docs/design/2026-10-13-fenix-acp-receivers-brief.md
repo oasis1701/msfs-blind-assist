@@ -9,8 +9,8 @@ describe the code as it was then. Done in PR #305; what it settled is under "Out
   are the volume and transmit groups. Each latch is an OnRequest combo read when the panel
   opens. MLS is left out: tested live on 2026-10-16, its latch moves but its light
   `I_ASP_MLS_1_REC` never lights, even from the cockpit click, so the Fenix does not model MLS
-  reception. VHF 2, VHF 3, HF 2 and INT each moved their light both ways (docs/a32nx.md, "Fenix
-  ACP reception switches").
+  reception, and the MLS volume knob is removed too. VHF 2, VHF 3, HF 2 and INT each moved
+  their light both ways (docs/a32nx.md, "Fenix ACP reception switches").
 - Steps 2 and 3 below: each latch names its light as `UiEchoVariable`, so MainForm's UI-set
   echo gate also swallows the light's change after a panel pick, and the pilot hears the pick
   once (CORE-7). The light still speaks when anything else changes it.

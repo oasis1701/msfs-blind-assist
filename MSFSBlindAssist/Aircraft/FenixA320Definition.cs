@@ -2369,9 +2369,13 @@ public class FenixA320Definition : BaseAircraftDefinition
                 RenderAsButton = true
             },
 
-            // ========== AUDIO CONTROL PANEL (ACP) (40 variables) ==========
+            // ========== AUDIO CONTROL PANEL (ACP) (39 variables) ==========
+            // No MLS channel: the model has the MLS knob, but the Fenix does not model MLS
+            // reception, so its light I_ASP_MLS_1_REC never lights, even from the cockpit click
+            // (measured 2026-10-16), and its volume and switch would drive nothing.
+            // FenixAcpReceptionTests pins the omission.
 
-            // Volume Controls (15 knobs)
+            // Volume Controls (14 knobs)
             ["A_ASP_VHF_1_VOLUME"] = new SimConnect.SimVarDefinition
             {
                 Name = "A_ASP_VHF_1_VOLUME",
@@ -2440,14 +2444,6 @@ public class FenixA320Definition : BaseAircraftDefinition
             {
                 Name = "A_ASP_ILS_VOLUME",
                 DisplayName = "ACP ILS Volume",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = PercentSteps5
-            },
-            ["A_ASP_MLS_VOLUME"] = new SimConnect.SimVarDefinition
-            {
-                Name = "A_ASP_MLS_VOLUME",
-                DisplayName = "ACP MLS Volume",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = PercentSteps5
@@ -2597,9 +2593,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             },
 
             // Receive Toggle Controls (14 combo boxes). Each latch's light is its UiEchoVariable;
-            // VOR 1/2 light as NAV_1/NAV_2. No MLS: the model has the knob, but the Fenix does not
-            // model MLS reception, so its light I_ASP_MLS_1_REC never lights, even from the
-            // cockpit click (measured 2026-10-16). FenixAcpReceptionTests pins the omission.
+            // VOR 1/2 light as NAV_1/NAV_2.
             ["S_ASP_VHF_1_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_VHF_1_REC_LATCH",
@@ -9074,9 +9068,9 @@ public class FenixA320Definition : BaseAircraftDefinition
             {
                 // Every group lists its channels in the Fenix model's own order
                 // (Panel_ACP_*_Behavior.xml): VHF 1-3, HF 1-2, INT, CAB, VOR 1-2, MARKER,
-                // ILS, MLS, ADF 1-2, PA (receive has no MLS: see its definitions).
+                // ILS, (MLS, left out: see the ACP definitions), ADF 1-2, PA.
 
-                // Volume Controls (15 knobs)
+                // Volume Controls (14 knobs)
                 "A_ASP_VHF_1_VOLUME",
                 "A_ASP_VHF_2_VOLUME",
                 "A_ASP_VHF_3_VOLUME",
@@ -9088,7 +9082,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "A_ASP_VOR_2_VOLUME",
                 "A_ASP_MARKER_VOLUME",
                 "A_ASP_ILS_VOLUME",
-                "A_ASP_MLS_VOLUME",
                 "A_ASP_ADF_1_VOLUME",
                 "A_ASP_ADF_2_VOLUME",
                 "A_ASP_PA_VOLUME",
@@ -11438,12 +11431,6 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "A_ASP_ILS_VOLUME")
             {
                 simConnect.SetLVar("A_ASP_ILS_VOLUME", value);
-                return true;
-            }
-
-            if (varKey == "A_ASP_MLS_VOLUME")
-            {
-                simConnect.SetLVar("A_ASP_MLS_VOLUME", value);
                 return true;
             }
 
