@@ -13,7 +13,7 @@ namespace MSFSBlindAssist.Forms.Volanta;
 
 /// <summary>
 /// Extras, Volanta: Volanta's live map as text. Three tabs: Traffic (Volanta users and network pilots around the
-/// pilot, filtered by distance, network, phase, altitude and a search), ATC (online controllers by distance) and
+/// pilot, filtered by distance, network, phase and a search), ATC (online controllers by distance) and
 /// Connection (whether Volanta has live map access, and the button that gives it). In each list tab the list
 /// comes first, then the selected item's details, then the status and the filters.
 ///
@@ -25,14 +25,20 @@ namespace MSFSBlindAssist.Forms.Volanta;
 /// </summary>
 public sealed class VolantaLiveMapForm : Form
 {
-    private static readonly (string Text, double? Nm)[] DistanceChoices =
+    /// <summary>The Traffic tab's distances. The row before the last is a warning, not a distance (the owner's
+    /// choice, 2026-10-15): landing on it keeps the distance chosen before, so the pilot hears what the last row
+    /// does before choosing it.</summary>
+    private static readonly (string Text, double? Nm, bool Warning)[] TrafficDistanceChoices =
+    {
+        ("10 nm", 10, false), ("25 nm", 25, false), ("50 nm", 50, false), ("100 nm", 100, false), ("200 nm", 200, false),
+        ("500 nm", 500, false), ("1,000 nm", 1000, false),
+        ("Warning: the item below this will display all pilots across Volanta!", null, true),
+        ("All pilots across Volanta", null, false),
+    };
+    private const int DefaultTrafficDistance = 3;   // 100 nm
+    private static readonly (string Text, double? Nm)[] AtcDistanceChoices =
     {
         ("10 nm", 10), ("25 nm", 25), ("50 nm", 50), ("100 nm", 100), ("200 nm", 200), ("500 nm", 500), ("Any distance", null),
-    };
-    private static readonly (string Text, double? Ft)[] AltitudeChoices =
-    {
-        ("Any altitude", null), ("Within 1,000 feet", 1000), ("Within 2,000 feet", 2000),
-        ("Within 5,000 feet", 5000), ("Within 10,000 feet", 10000),
     };
     private static readonly (string Text, VolantaPhaseFilter Phase)[] PhaseChoices =
     {
@@ -55,6 +61,15 @@ public sealed class VolantaLiveMapForm : Form
     private const int PlaceBatchSize = 40;
     private const int PlaceBurstMs = 2000;
 
+    /// <summary>In the list the reader is in, rows are rewritten in place only this far on each side of their row
+    /// (VOL-9): a row rewritten in place costs about 0.35 ms, so all 3,000 rows of "All pilots across Volanta"
+    /// blocked the window for a second at every update. A row farther away is rewritten once the reader comes
+    /// within this many rows of it.</summary>
+    private const int InPlaceWindowRows = 150;
+    /// <summary>The main lists' fixed scrollable width in pixels (VOL-9): left to measure its own, a list
+    /// re-measured its text for every row rewritten, and 3,000 rows took 7.8 seconds.</summary>
+    private const int ListScrollWidthPx = 2500;
+
     private readonly SimConnectManager _sim;
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly OfflineLocationService _locations;
@@ -71,7 +86,8 @@ public sealed class VolantaLiveMapForm : Form
     private ListBox _trafficList = null!;
     private DisplayListBox _trafficDetails = null!;
     private TextBox _trafficStatus = null!;
-    private ComboBox _distance = null!, _phase = null!, _altitude = null!;
+    private ComboBox _distance = null!, _phase = null!;
+    private int _trafficDistance = DefaultTrafficDistance;   // the last distance chosen, never the warning row
     private CheckBox _srcVolanta = null!, _srcVatsim = null!, _srcIvao = null!, _srcPilotEdge = null!, _srcApoc = null!;
     private TextBox _search = null!;
     private CheckBox _trafficCities = null!;
@@ -167,6 +183,7 @@ public sealed class VolantaLiveMapForm : Form
         {
             Dock = DockStyle.Fill,
             HorizontalScrollbar = true,
+            HorizontalExtent = ListScrollWidthPx,
             IntegralHeight = false,
             AccessibleName = "Friends",
             AccessibleDescription = "Friends flying first, nearest first, then online, then offline. Updated every 5 seconds. F5 re-sorts.",
@@ -207,6 +224,7 @@ public sealed class VolantaLiveMapForm : Form
         {
             Dock = DockStyle.Fill,
             HorizontalScrollbar = true,
+            HorizontalExtent = ListScrollWidthPx,
             IntegralHeight = false,
             AccessibleName = "Traffic",
             AccessibleDescription = "Aircraft around you, nearest first, updated every 5 seconds. While you are in "
@@ -222,9 +240,9 @@ public sealed class VolantaLiveMapForm : Form
         _trafficStatus.Text = "Waiting for Volanta.";
 
         var filters = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true };
-        _distance = Choice("Distance", DistanceChoices.Select(c => c.Text), defaultIndex: 3);
+        _distance = Choice("Distance", TrafficDistanceChoices.Select(c => c.Text), defaultIndex: DefaultTrafficDistance);
+        _distance.DropDownWidth = 460;   // the warning row is long
         _phase = Choice("Show", PhaseChoices.Select(c => c.Text), defaultIndex: 0);
-        _altitude = Choice("Altitude", AltitudeChoices.Select(c => c.Text), defaultIndex: 0);
         _srcVolanta = Toggle("Volanta users");
         _srcVatsim = Toggle("VATSIM");
         _srcIvao = Toggle("IVAO");
@@ -234,15 +252,21 @@ public sealed class VolantaLiveMapForm : Form
         var refresh = new Button { Text = "&Re-sort now (F5)", AutoSize = true, AccessibleName = "Re-sort now" };
         refresh.Click += (_, _) => RefreshNow();
 
-        foreach (var c in new[] { _distance, _phase, _altitude })
-            c.SelectedIndexChanged += (_, _) => RefreshTraffic(hold: false);
+        _distance.SelectedIndexChanged += (_, _) =>
+        {
+            int i = _distance.SelectedIndex;
+            if (i < 0 || TrafficDistanceChoices[i].Warning) return;   // the warning row keeps the distance chosen before
+            _trafficDistance = i;
+            RefreshTraffic(hold: false);
+        };
+        _phase.SelectedIndexChanged += (_, _) => RefreshTraffic(hold: false);
         foreach (var c in new[] { _srcVolanta, _srcVatsim, _srcIvao, _srcPilotEdge, _srcApoc })
             c.CheckedChanged += (_, _) => RefreshTraffic(hold: false);
         _search.TextChanged += (_, _) => RefreshTraffic(hold: false);
 
         filters.Controls.AddRange(new Control[]
         {
-            Caption("Distance:"), _distance, Caption("Show:"), _phase, Caption("Altitude:"), _altitude,
+            Caption("Distance:"), _distance, Caption("Show:"), _phase,
             _srcVolanta, _srcVatsim, _srcIvao, _srcPilotEdge, _srcApoc, Caption("Search:"), _search, refresh,
         });
 
@@ -277,6 +301,7 @@ public sealed class VolantaLiveMapForm : Form
         {
             Dock = DockStyle.Fill,
             HorizontalScrollbar = true,
+            HorizontalExtent = ListScrollWidthPx,
             IntegralHeight = false,
             AccessibleName = "Online ATC",
             AccessibleDescription = "Online controllers, nearest first, updated every 5 seconds. F5 re-sorts.",
@@ -290,7 +315,7 @@ public sealed class VolantaLiveMapForm : Form
         _atcStatus.Text = "Waiting for Volanta.";
 
         var filters = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true };
-        _atcDistance = Choice("ATC distance", DistanceChoices.Select(c => c.Text), defaultIndex: 4);
+        _atcDistance = Choice("ATC distance", AtcDistanceChoices.Select(c => c.Text), defaultIndex: 4);
         _atcVatsim = Toggle("VATSIM");
         _atcIvao = Toggle("IVAO");
         _atcDistance.SelectedIndexChanged += (_, _) => RefreshAtc(hold: false);
@@ -383,8 +408,11 @@ public sealed class VolantaLiveMapForm : Form
         return box;
     }
 
+    /// <summary>A checkbox drawn by Windows (FlatStyle.System), so Windows itself tells the screen reader when it is
+    /// ticked (VOL-10): .NET 10's WinForms sends that notice for its own drawn checkboxes only behind a switch, and
+    /// NVDA said nothing on Space.</summary>
     private static CheckBox Toggle(string text)
-        => new() { Text = text, Checked = true, AutoSize = true, Margin = new Padding(6, 6, 0, 3) };
+        => new() { Text = text, Checked = true, AutoSize = true, FlatStyle = FlatStyle.System, Margin = new Padding(6, 6, 0, 3) };
 
     /// <summary>"Report location to nearest major city", one per list tab, each on its own, unticked at every
     /// opening (the owner's choice, 2026-10-15). Its text names the pilot's own GeoNames settings it follows
@@ -394,6 +422,7 @@ public sealed class VolantaLiveMapForm : Form
         var box = new CheckBox
         {
             AutoSize = true,
+            FlatStyle = FlatStyle.System,   // so ticking it is spoken (VOL-10), as Toggle's
             Margin = new Padding(6, 6, 0, 3),
             AccessibleDescription = "When ticked, each location says how far and which way the aircraft is from the "
                 + "nearest major city, instead of naming the nearest town. Set the population and range in Settings, "
@@ -615,9 +644,8 @@ public sealed class VolantaLiveMapForm : Form
         if (_srcApoc.Checked) sources.Add(VolantaSource.Apoc);
         return new VolantaTrafficFilter
         {
-            RadiusNm = DistanceChoices[Math.Max(0, _distance.SelectedIndex)].Nm,
+            RadiusNm = TrafficDistanceChoices[_trafficDistance].Nm,
             Phase = PhaseChoices[Math.Max(0, _phase.SelectedIndex)].Phase,
-            AltitudeWithinFt = AltitudeChoices[Math.Max(0, _altitude.SelectedIndex)].Ft,
             Sources = sources,
             Search = _search.Text,
         };
@@ -797,7 +825,7 @@ public sealed class VolantaLiveMapForm : Form
             return;
         }
         var own = OwnPosition(snap, now, out _);
-        double? radius = DistanceChoices[Math.Max(0, _atcDistance.SelectedIndex)].Nm;
+        double? radius = AtcDistanceChoices[Math.Max(0, _atcDistance.SelectedIndex)].Nm;
         var rows = new List<(VolantaController Station, double? Nm)>();
         foreach (var c in feed.Items)
         {
@@ -834,12 +862,13 @@ public sealed class VolantaLiveMapForm : Form
     // ── List reconcile ────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Brings a list to <paramref name="sorted"/> in place: only rows whose key or text changed are rewritten,
-    /// and the selection follows its row by key, so the reader's cursor never jumps (the Sim Performance
-    /// window's rule, by key instead of by text, since a traffic line's text changes every update). The row the
-    /// pilot is on is rewritten like any other, so it re-reads when it changes, as in Sim Performance (the
-    /// owner's choice, 2026-10-15). With <paramref name="hold"/> (the pilot is in the list) the order holds
-    /// (<see cref="VolantaListOrder"/>), so arrowing down always reaches the next row.
+    /// Brings a list to <paramref name="sorted"/>, the selection following its row by key, so the reader's cursor
+    /// never jumps (the Sim Performance window's rule, by key instead of by text, since a traffic line's text
+    /// changes every update). In the list the reader is in, only rows whose key or text changed are rewritten,
+    /// in place, and the row they are on re-reads when it changes, as in Sim Performance (the owner's choice,
+    /// 2026-10-15); with <paramref name="hold"/> its order holds (<see cref="VolantaListOrder"/>), so arrowing
+    /// down always reaches the next row, and only the rows near theirs are rewritten (VOL-9). A list nobody is in
+    /// is rebuilt in one go, which is ten times faster.
     /// </summary>
     private void Reconcile(ListBox list, IReadOnlyList<Row> sorted, bool hold)
     {
@@ -858,18 +887,43 @@ public sealed class VolantaLiveMapForm : Form
         string? selectedKey = (list.SelectedItem as Row)?.Key;
         int selectedIndex = list.SelectedIndex;
 
-        var arranged = VolantaListOrder.Arrange(shown.Select(r => r.Key).ToList(), sorted, r => r.Key, hold);
+        var shownKeys = shown.Select(r => r.Key).ToList();
+        var arranged = VolantaListOrder.Arrange(shownKeys, sorted, r => r.Key, hold);
         if (shown.Count == arranged.Count && shown.SequenceEqual(arranged)) return;
 
         int top = list.TopIndex;
         list.BeginUpdate();
         try
         {
-            while (list.Items.Count > arranged.Count) list.Items.RemoveAt(list.Items.Count - 1);
-            for (int i = 0; i < arranged.Count; i++)
+            // Never every row in place on the UI thread (VOL-9): at about 0.35 ms a row, 3,000 rows blocked the
+            // window for a second at every update.
+            var plan = hold && list.Focused
+                ? VolantaListOrder.PlanHeldUpdate(shownKeys, arranged.Select(r => r.Key).ToList(), selectedKey, selectedIndex, InPlaceWindowRows)
+                : null;
+            if (!list.Focused)
             {
-                if (i >= list.Items.Count) list.Items.Add(arranged[i]);
-                else if (!Equals(list.Items[i], arranged[i])) list.Items[i] = arranged[i];
+                // Nobody is reading it: rebuilt in one go, 125 ms for 3,000 rows.
+                list.Items.Clear();
+                list.Items.AddRange(arranged.Cast<object>().ToArray());
+            }
+            else if (plan != null)
+            {
+                // The reader is in it and its order holds: rows gone drop out, new ones join at the end, and only
+                // the rows near the reader's are rewritten.
+                foreach (int i in plan.Remove) list.Items.RemoveAt(i);
+                for (int i = list.Items.Count; i < arranged.Count; i++) list.Items.Add(arranged[i]);
+                for (int i = plan.RewriteFrom; i <= plan.RewriteTo; i++)
+                    if (!Equals(list.Items[i], arranged[i])) list.Items[i] = arranged[i];
+            }
+            else
+            {
+                // The reader is in it and it re-sorts (F5), or it is a short details list: every row in place.
+                while (list.Items.Count > arranged.Count) list.Items.RemoveAt(list.Items.Count - 1);
+                for (int i = 0; i < arranged.Count; i++)
+                {
+                    if (i >= list.Items.Count) list.Items.Add(arranged[i]);
+                    else if (!Equals(list.Items[i], arranged[i])) list.Items[i] = arranged[i];
+                }
             }
         }
         finally

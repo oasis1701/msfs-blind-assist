@@ -11,8 +11,10 @@ ATC.
   who flies it (a Volanta user, and the network they also fly on; or the network pilot), the route and, once
   looked up from the offline location data Output C reads, where it is: ". Location: Pike Lake, Wisconsin,
   United States", or "Location: over Lake Michigan" over water, never C's distance or coast ([VOL-8]). Filters:
-  distance (10 nm to any), all / airborne / on the ground, altitude band, which sources (Volanta users, VATSIM,
-  IVAO, PilotEdge, APOC) and a search over callsign, flight number, user, type, registration and airports. The
+  distance (10 to 1,000 nm, then a warning row, then "All pilots across Volanta", about 3,000 rows; landing on
+  the warning row keeps the distance chosen before), all / airborne / on the ground, which sources (Volanta
+  users, VATSIM, IVAO, PilotEdge, APOC) and a search over callsign, flight number, user, type, registration
+  and airports. The ATC tab keeps its own distances, 10 nm to any. The
   details box below the list shows everything known about the selected aircraft. Last, "Report location to
   nearest major city": ticked, the location says how far and which way the aircraft is from the nearest major
   city instead ("92 miles west of Wichita, Kansas, United States"), a major city being the pilot's own
@@ -36,7 +38,10 @@ Everything updates on its own every 5 seconds, in place, as the Sim Performance 
 are rewritten and the selection follows its row by key, so the reader's cursor never jumps, and the row the
 pilot is on re-reads when it changes (the owner's choice: an earlier version kept that row's text until the
 pilot moved). While the pilot is in a list its order holds (new rows join at the end, `VolantaListOrder`), so
-the down arrow always reaches the next row. The details list below, one field per row, is live. F5 (or Re-sort
+the down arrow always reaches the next row. A list the pilot is not in is rebuilt in one go instead, and in the
+list they are in only the rows within 150 of theirs are rewritten: rewriting every row of a big list blocked the
+window for seconds ([VOL-9]). The details list below, one field per row, is live. Every checkbox is drawn by
+Windows (FlatStyle.System), the only kind whose tick NVDA hears under .NET 10 ([VOL-10]). F5 (or Re-sort
 now) re-sorts at once and reads the tab's status; a filter change re-sorts too. Connected, lost, and Volanta
 minimized or updating again are each spoken once, queued.
 

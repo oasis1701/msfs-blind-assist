@@ -47,4 +47,42 @@ public class VolantaListOrderTests
     [Fact]
     public void A_repeated_field_gets_its_occurrence()
         => Assert.Equal(new[] { "Pilot", "Pilot#2" }, VolantaListOrder.DetailKeys(new[] { "Pilot: a", "Pilot: b" }));
+
+    // VOL-9: the list the reader is in never has every row rewritten; rows gone are removed, new ones join at the
+    // end, and only the rows near the reader's are rewritten.
+
+    private static string[] Keys(int count, int from = 0) => Enumerable.Range(from, count).Select(i => "k" + i).ToArray();
+
+    [Fact]
+    public void A_held_update_removes_gone_rows_highest_first_and_rewrites_only_near_the_reader()
+    {
+        var shown = Keys(1000);
+        var arranged = VolantaListOrder.Arrange(shown, shown.Where(k => k != "k10" && k != "k900").Concat(new[] { "new" }).ToArray(), k => k, hold: true);
+        var plan = VolantaListOrder.PlanHeldUpdate(shown, arranged, "k500", 500, window: 150)!;
+        Assert.Equal(new[] { 900, 10 }, plan.Remove);
+        Assert.Equal(499 - 150, plan.RewriteFrom);   // k500 is row 499 once k10 is gone
+        Assert.Equal(499 + 150, plan.RewriteTo);
+    }
+
+    [Fact]
+    public void A_held_update_keeps_its_window_inside_the_list()
+    {
+        var plan = VolantaListOrder.PlanHeldUpdate(Keys(20), Keys(20), "k3", 3, window: 150)!;
+        Assert.Equal((0, 19), (plan.RewriteFrom, plan.RewriteTo));
+        Assert.Empty(plan.Remove);
+    }
+
+    [Fact]
+    public void Without_a_selected_row_the_window_is_the_old_row_number_else_the_top()
+    {
+        Assert.Equal(40, VolantaListOrder.PlanHeldUpdate(Keys(500), Keys(500), "gone", 50, window: 10)!.RewriteFrom);
+        Assert.Equal(0, VolantaListOrder.PlanHeldUpdate(Keys(500), Keys(500), null, -1, window: 10)!.RewriteFrom);
+        var emptied = VolantaListOrder.PlanHeldUpdate(Keys(3), Array.Empty<string>(), "k1", 1, window: 10)!;
+        Assert.Equal(new[] { 2, 1, 0 }, emptied.Remove);
+        Assert.True(emptied.RewriteTo < emptied.RewriteFrom);
+    }
+
+    [Fact]
+    public void Rows_not_in_a_held_order_have_no_plan_so_every_row_is_rewritten()
+        => Assert.Null(VolantaListOrder.PlanHeldUpdate(new[] { "a", "b", "c" }, new[] { "c", "a", "b" }, "a", 0, window: 10));
 }

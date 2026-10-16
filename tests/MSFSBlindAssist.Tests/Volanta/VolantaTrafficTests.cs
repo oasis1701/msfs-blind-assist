@@ -157,7 +157,7 @@ public class VolantaTrafficTests
         => Assert.Equal(4, new VolantaTrafficFilter { RadiusNm = null }.Apply(Sample()).Count);
 
     [Fact]
-    public void Sources_phase_altitude_and_search_each_narrow_the_list()
+    public void Sources_phase_and_search_each_narrow_the_list()
     {
         var all = Sample();
         Assert.Equal(new[] { "near-high" },
@@ -166,8 +166,6 @@ public class VolantaTrafficTests
             new VolantaTrafficFilter { Phase = VolantaPhaseFilter.OnGround }.Apply(all).Select(e => e.Flight.Id));
         Assert.Equal(new[] { "near-high", "ivao" },
             new VolantaTrafficFilter { Phase = VolantaPhaseFilter.Airborne }.Apply(all).Select(e => e.Flight.Id));
-        Assert.Equal(new[] { "near-high" },
-            new VolantaTrafficFilter { AltitudeWithinFt = 2000 }.Apply(all).Select(e => e.Flight.Id));
         Assert.Equal(new[] { "ivao" },
             new VolantaTrafficFilter { Search = " ual " }.Apply(all).Select(e => e.Flight.Id));
         Assert.Equal(new[] { "near-high" },

@@ -17,7 +17,7 @@ public sealed record VolantaTrafficEntry(
     double? PositionAgeSeconds)
 {
     /// <summary>Where the aircraft is, as the location data names it ("Pike Lake, Wisconsin, United States",
-    /// "over Lake Michigan"); null until looked up (<see cref="VolantaPlaceCache"/>) or with no location data.</summary>
+    /// "over Lake Michigan"); null until looked up (<see cref="VolantaPlaceCache{TPlace}"/>) or with no location data.</summary>
     public string? Location { get; init; }
 }
 
@@ -33,9 +33,6 @@ public sealed record VolantaTrafficFilter
     public double? RadiusNm { get; init; } = 100;
     public IReadOnlySet<VolantaSource> Sources { get; init; } = AllSources;
     public VolantaPhaseFilter Phase { get; init; } = VolantaPhaseFilter.All;
-    /// <summary>Only aircraft within this many feet of the pilot's altitude; null means any altitude. Aircraft on
-    /// the ground pass it only when the pilot is also within it of their altitude.</summary>
-    public double? AltitudeWithinFt { get; init; }
     /// <summary>Matched, case-insensitively, against callsign, flight number, user, aircraft type, registration
     /// and both airports.</summary>
     public string Search { get; init; } = "";
@@ -47,7 +44,6 @@ public sealed record VolantaTrafficFilter
         if (!Sources.Contains(f.Source)) return false;
         if (Phase == VolantaPhaseFilter.Airborne && f.OnGround) return false;
         if (Phase == VolantaPhaseFilter.OnGround && !f.OnGround) return false;
-        if (AltitudeWithinFt is double band && Math.Abs(e.AltitudeDiffFt) > band) return false;
         string q = Search.Trim();
         if (q.Length > 0)
         {

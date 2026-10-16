@@ -1,5 +1,9 @@
 namespace MSFSBlindAssist.Forms.Volanta;
 
+/// <summary>A plan from <see cref="VolantaListOrder.PlanHeldUpdate"/>: the row indices to remove, highest first,
+/// then the range of rows to rewrite in place (empty when <see cref="RewriteTo"/> is below <see cref="RewriteFrom"/>).</summary>
+internal sealed record HeldUpdate(IReadOnlyList<int> Remove, int RewriteFrom, int RewriteTo);
+
 /// <summary>
 /// The order the Volanta window's lists show their rows in. Pure, so the rule is tested. Normally the rows are
 /// in the order given (nearest first). While the pilot is in a list (<c>hold</c>), the rows already shown keep
@@ -21,6 +25,37 @@ internal static class VolantaListOrder
         foreach (var row in sorted)
             if (!shown.Contains(key(row))) arranged.Add(row);
         return arranged;
+    }
+
+    /// <summary>
+    /// How the list the reader is in reaches <paramref name="arrangedKeys"/> (<see cref="Arrange"/> with hold)
+    /// without rewriting every row (VOL-9): the rows gone are removed, highest index first so each index still
+    /// holds; the new rows join at the end; and only the rows within <paramref name="window"/> of the reader's row
+    /// are rewritten (<see cref="HeldUpdate.RewriteFrom"/> to <see cref="HeldUpdate.RewriteTo"/>, inclusive). The
+    /// reader's row is where <paramref name="selectedKey"/> ends up, else their old row number, else the top.
+    /// Null when the rows shown are not a held arrangement of these keys: then every row is rewritten.
+    /// </summary>
+    public static HeldUpdate? PlanHeldUpdate(IReadOnlyList<string> shownKeys, IReadOnlyList<string> arrangedKeys,
+        string? selectedKey, int selectedIndex, int window)
+    {
+        var wanted = new HashSet<string>(arrangedKeys, StringComparer.Ordinal);
+        var remove = new List<int>();
+        int kept = 0;
+        for (int i = shownKeys.Count - 1; i >= 0; i--)
+            if (!wanted.Contains(shownKeys[i])) remove.Add(i);
+        foreach (string k in shownKeys)
+        {
+            if (!wanted.Contains(k)) continue;
+            if (kept >= arrangedKeys.Count || arrangedKeys[kept] != k) return null;
+            kept++;
+        }
+        if (arrangedKeys.Count == 0) return new HeldUpdate(remove, 0, -1);
+        int center = -1;
+        if (selectedKey != null)
+            for (int i = 0; i < arrangedKeys.Count && center < 0; i++)
+                if (arrangedKeys[i] == selectedKey) center = i;
+        if (center < 0) center = Math.Clamp(selectedIndex, 0, arrangedKeys.Count - 1);
+        return new HeldUpdate(remove, Math.Max(0, center - window), Math.Min(arrangedKeys.Count - 1, center + window));
     }
 
     /// <summary>
