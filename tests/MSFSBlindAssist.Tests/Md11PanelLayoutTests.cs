@@ -357,6 +357,27 @@ public class Md11PanelLayoutTests
     }
 
     /// <summary>
+    /// Each audio panel's sixteen volume knobs are two rows apiece, the level combo and then its
+    /// receiver button, in the panel's own order (Robin's choice, 2026-10-15). The VOL lights are no
+    /// Status Display rows: like the MIC lights they are read as their button's state.
+    /// </summary>
+    [Theory]
+    [InlineData("Audio Panel Captain", "MD11_PED_CPT_AUDIO_PNL")]
+    [InlineData("Audio Panel First Officer", "MD11_PED_FO_AUDIO_PNL")]
+    [InlineData("Audio Panel Observer", "MD11_OBS_AUDIO_PNL")]
+    public void AudioPanels_PutEachReceiverRightAfterItsVolumeKnob(string panel, string p)
+    {
+        var receivers = new[] { "VHF1", "VHF2", "VHF3", "HF1", "HF2", "SAT", "INT", "CAB", "PA",
+                                "ILS1", "ILS2", "VOR1", "VOR2", "ADF1", "ADF2", "MKR" };
+        var expected = receivers.SelectMany(r => new[] { $"{p}_{r}_VOL_KB", $"{p}_{r}_VOL_BT" }).ToArray();
+        var keys = P.Controls[panel];
+        int first = keys.IndexOf(expected[0]);
+        Assert.True(first >= 0, $"{expected[0]} missing from {panel}");
+        Assert.Equal(expected, keys.Skip(first).Take(expected.Length).ToArray());
+        Assert.DoesNotContain(P.Displays[panel], k => k.EndsWith("_VOL_LT", StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// The owner's ruling (2026-09-06): group the quadrant by ENGINE — starter then fuel for each
     /// engine in turn — then the go-around, autothrust and brake items; the lights in the same
     /// engine order. The old table went starters ×3, fuels ×3, which reads as two unrelated rows

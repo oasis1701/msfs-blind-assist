@@ -53,8 +53,9 @@ public class LandingExitPlanner
 
     // Minimum ground speed at on-ground transition for it to count as a real landing
     // rather than a teleport or taxi-onto-ground. Light aircraft touch down around
-    // 50 kt; below 40 kt is almost always a taxi start or teleport reload.
-    private const double LANDING_MIN_GS_KNOTS = 40.0;
+    // 50 kt; below 40 kt is almost always a taxi start or teleport reload. Internal: the
+    // landing assist's rollout-only cue never engages below it (LandingFlareAssistManager).
+    internal const double LANDING_MIN_GS_KNOTS = 40.0;
 
     // Diagnostic log so we can see why activation didn't fire when only the
     // "On ground" callout was heard at touchdown. Lives with every other MSFSBA
@@ -81,6 +82,44 @@ public class LandingExitPlanner
     public string? PendingIcao => _icao;
     public Runway? PendingRunway => _runway;
     public LandingExit? PendingExit => _exit;
+
+    /// <summary>Every runway end at the planned airport, captured with the plan (empty with none).</summary>
+    public IReadOnlyList<Runway> PendingAirportRunways => _airportRunways;
+
+    /// <summary>
+    /// Will this plan start exit guidance, and speak its touchdown sentence, at the next touchdown at
+    /// <paramref name="icao"/>? The landing assist's rollout cue stays silent at touchdown only then.
+    /// </summary>
+    public bool WillStartGuidanceAt(string icao)
+        => WillStartGuidance(HasPendingExit, _activatedThisLanding, _icao, icao);
+
+    /// <summary>
+    /// A plan starts guidance at a touchdown when it exists, has not already started it (a plan starts
+    /// guidance once; only a go-around re-arms it) and names that airport. Pure —
+    /// <c>LandingExitPlannerStartsGuidanceTests</c>.
+    /// </summary>
+    internal static bool WillStartGuidance(bool hasPendingExit, bool activatedThisLanding, string? planIcao, string icao)
+        => hasPendingExit && !activatedThisLanding
+           && string.Equals(planIcao, icao, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// True while this plan still has to decide the coming touchdown: it exists, has not started guidance, and has
+    /// seen the aircraft airborne. <see cref="ProcessGroundState"/> settles it on the touchdown's ground sample,
+    /// once guidance has started or "Runway not identified" was decided (both clear the airborne edge). The landing
+    /// assist holds its own touchdown sentence while this is true, so the two never talk over each other.
+    /// </summary>
+    public bool IsAwaitingTouchdown => AwaitsTouchdown(HasPendingExit, _wasAirborne, _activatedThisLanding);
+
+    /// <summary>Pure — <c>LandingExitPlannerStartsGuidanceTests</c>.</summary>
+    internal static bool AwaitsTouchdown(bool hasPendingExit, bool wasAirborne, bool activatedThisLanding)
+        => hasPendingExit && wasAirborne && !activatedThisLanding;
+
+    /// <summary>
+    /// Raised after <see cref="SetExit"/> and <see cref="Clear"/> change the plan, never by
+    /// <see cref="RearmAfterGoAround"/>, which keeps it. MainForm re-decides the landing assist's rollout
+    /// centerline cue from it (Navigation.RolloutCueArming): a plan arms the cue on its runway.
+    /// </summary>
+    public event EventHandler? PlanChanged;
 
     /// <summary>
     /// Captures a landing-exit selection. Call when the pilot picks an exit in the form.
@@ -132,6 +171,7 @@ public class LandingExitPlanner
         _announcer.Announce(
             $"Landing exit planned: {name} at {icao} runway {runway.RunwayID}, " +
             $"{dist} from threshold. Guidance will auto-start on touchdown.");
+        PlanChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Clears any pending selection without activating.</summary>
@@ -151,6 +191,7 @@ public class LandingExitPlanner
         // the clear can't trick the next plan into firing on a stale ground bit.
         _wasAirborne = false;
         if (had) _announcer.Announce("Landing exit plan cleared.");
+        PlanChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>

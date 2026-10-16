@@ -147,6 +147,15 @@ public class UserSettings
         public bool TakeoffAssistEnableCallouts { get; set; } = true; // Enable speed callouts (80kt, 100kt, V1, rotate)
 
         /// <summary>
+        /// When true (default), a destination runway or a landing exit plan arms the landing assist's
+        /// rollout centerline cue on its own: Takeoff Assist's centerline tone and settings from touchdown
+        /// until exit guidance needs the tone for the exit, autolands included. The destination dialog's
+        /// manual-landing checkbox is independent of this and adds the flare tones. Added after an A300
+        /// autoland yawed off KSEA 16R at 90-70 kt with no cue (2026-10-15).
+        /// </summary>
+        public bool RolloutCenterlineToneEnabled { get; set; } = true;
+
+        /// <summary>
         /// When true (default), taxi guidance will automatically activate
         /// Takeoff Assist when the aircraft becomes lined up on the destination
         /// runway (lineup hysteresis met: heading less than 1 degree off,

@@ -823,11 +823,14 @@ public partial class TFDiMD11Definition
     /// and re-announcing the landed value would double-speak every set — the global _uiSetEcho
     /// rule. But a walk that does NOT reach its target must say so, because on this aircraft the
     /// pilot has no gauge to check: a silently-failed selection would look identical to a
-    /// successful one.
+    /// successful one. What it says comes from a delivered read-back (<see cref="FailureSentenceAsync"/>):
+    /// a control that moved partway says where it stopped, never "did not move".
     /// </summary>
     private async Task SafeWalk(Func<Task<bool>> walk, Md11Control control, double target,
         SimConnectManager sim, ScreenReaderAnnouncer announcer, CancellationToken ct = default)
     {
+        // Where the control was before the walk, for the failure's "did not move" vs "stopped at".
+        var before = sim.GetCachedVariableValue(control.NodeId);
         try
         {
             var ok = await walk().ConfigureAwait(false);
@@ -847,7 +850,9 @@ public partial class TFDiMD11Definition
             if (!ok)
             {
                 Log.Debug("MD11", $"{control.NodeId}: failed to reach {target} (walk and direct write).");
-                OnUiThread(() => announcer.Announce(Md11WalkFailure.Sentence(control.DisplayLabel)));
+                var sentence = await FailureSentenceAsync(control, target, before, sim).ConfigureAwait(false);
+                if (ct.IsCancellationRequested) return;
+                if (sentence != null) OnUiThread(() => announcer.Announce(sentence));
             }
         }
         catch (OperationCanceledException)
@@ -868,6 +873,26 @@ public partial class TFDiMD11Definition
     }
 
     /// <summary>
+    /// The failed walk's words, decided on a DELIVERED read of where the control is now
+    /// (<see cref="Md11WalkFailure.AfterReadBack"/>): nothing at the target, "stopped at …" when it
+    /// moved partway from <paramref name="before"/>, else "did not move". With no delivery, or no
+    /// position words to compare, the sentence is the plain "did not move" it always was.
+    /// </summary>
+    private async Task<string?> FailureSentenceAsync(Md11Control control, double target, double? before,
+        SimConnectManager sim)
+    {
+        var label = control.DisplayLabel;
+        if (!GetVariables().TryGetValue(control.NodeId, out var def) || def.ValueDescriptions is not { } words)
+            return Md11WalkFailure.Sentence(label);
+        var after = await sim.ReadFreshAsync(control.NodeId, Md11SelectorWalker.FreshReadTimeoutMs).ConfigureAwait(false);
+        return Md11WalkFailure.AfterReadBack(label,
+            before is { } b ? def.DescriptionKeyFor(b) : null,
+            after is { } a ? def.DescriptionKeyFor(a) : null,
+            def.DescriptionKeyFor(target),
+            k => words.TryGetValue(k, out var w) ? w : null);
+    }
+
+    /// <summary>
     /// Sets a detented control by writing its state L:var directly through the calc path, then
     /// reading it back to confirm the write held. Returns true only if the value actually landed on
     /// the target detent — a wasm-owned output that reverts the write returns false, so the caller
@@ -878,8 +903,9 @@ public partial class TFDiMD11Definition
     /// <see cref="Md11DirectSet.FallbackNeverWrites"/> — the speedbrake lever's row reads the
     /// travel var while its map state var is the ground-spoiler pull (a detent written there
     /// blanked the Ground spoilers row), and the flap and gear levers' state vars are travel or
-    /// animation values, not command encodings. A refused control returns false and the caller
-    /// speaks the same "did not move" as always.
+    /// animation values, not command encodings — nor to a percent knob, whose direct write is
+    /// unmeasured (<see cref="Md11PercentKnob"/>). A refused control returns false and the caller
+    /// speaks its failure as always.
     /// </summary>
     private async Task<bool> TryDirectSetAsync(Md11Control control, double target, SimConnectManager sim)
     {
