@@ -29,15 +29,15 @@ public partial class SynapticA220Definition
     private const int IsiReadTimeoutMs = 1500;
 
     /// <summary>Settle before a read-back: the write's calc string, then a WASM tick (live
-    /// 2026-10-16, MB:3 showed a write within about 150 ms).</summary>
+    /// 2026-10-16, MB:3 showed a single click within about 150 ms).</summary>
     private const int IsiSettleMs = 350;
 
     /// <summary>Wait before the STD push's read-back: the 200 ms press pulse, then a WASM tick.</summary>
     private const int IsiStdReadBackDelayMs = 800;
 
     /// <summary>The standby baro walk's OWN cancellation: the ISI knob is a separate instrument,
-    /// so an FCP walk or a flap pick (which share <c>_walkCancel</c>) never stops it, and it never
-    /// stops theirs. Cancelled by a newer standby baro entry, the STD push and StopAllMotion.</summary>
+    /// so no FCP knob walk (each has its own, Dialogs partial) or flap pick ever stops it, and it
+    /// never stops theirs. Cancelled by a newer standby baro entry, the STD push and StopAllMotion.</summary>
     private System.Threading.CancellationTokenSource? _isiWalkCancel;
 
     /// <summary>
@@ -143,6 +143,9 @@ public partial class SynapticA220Definition
                     int write = A220.A220Panels.IsiKnobWriteDelta(stepBack ? 1 : move.Clicks, delta > 0 ? up : -up);
                     int clicks = Math.Abs(write);
                     lastClicks = clicks;
+                    // A newer entry or the STD push may have cancelled this walk since the round
+                    // began: a write now would move the knob off the setting the pilot just chose.
+                    if (token.IsCancellationRequested) return;
                     WriteLVar(simConnect, IsiKnobVar, write, quiet: true);
                     await System.Threading.Tasks.Task.Delay(IsiSettleMs, token);
                     if (await ReadIsiHpaAsync(simConnect, token) is not { } now)
