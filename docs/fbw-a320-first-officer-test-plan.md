@@ -81,12 +81,12 @@ system is also silently wrong:
 
 ---
 
-## Part B — Flows (cold-and-dark → shutdown, all 13 in order)
+## Part B — Flows (cold-and-dark → shutdown, all 14 in order)
 
-Start cold-and-dark at a gate, MSFSBA connected, A32NX FO window open. Run the 13 flows in order:
+Start cold-and-dark at a gate, MSFSBA connected, A32NX FO window open. Run the 14 flows in order:
 **Electrical Power Up → Preflight → Before Start → Engine Start → After Start → Taxi → Line-up →
-After Takeoff → Descent → Approach → After Landing → Shutdown / Parking → Securing** (Landing has a
-checklist and no flow, item 10). For
+After Takeoff → Descent → Approach → Landing → After Landing → Shutdown / Parking → Securing** (the
+Landing flow, added 2026-10-16, is Part I). For
 each step, confirm the corresponding overhead/glareshield/pedestal control physically moves —
 read back via the panel controls (screen-reader focus/announce) or the panel display fields, not
 just the FO's own narration.
@@ -143,9 +143,9 @@ just the FO's own narration.
    "Already set" after Descent; it also completes the Approach Checklist's "Seat belts: ON"),
    **cabin notify: notify cabin for landing**. Captain: minimums, engine mode, ECAM page as
    required (reminder).
-10. **Landing**: readback-only (`LANDING_CL`) — the landing memo's five lines, with the gear line
-    read from the legs (all three over 95 % and the handle down) and spoilers ARMED confirmed
-    via real state (no dedicated Landing flow, matching the A320-family convention).
+10. **Landing** (Part I): on final with the gear down, the flow arms the ground spoilers, checks
+    the seat belts and landing flaps, then the gear (the legs all over 95 % and the handle down),
+    and the Landing Checklist (`LANDING_CL`, the landing memo's five lines) reads complete.
 11. **After Landing**: spoilers disarm, flaps up, weather
     radar/predictive windshear OFF, strobes AUTO, landing lights OFF, nose light → TAXI, APU
     start for the gate (waits for AVAIL; the AVAIL wait, not the master write, ticks "APU: ON
@@ -440,6 +440,24 @@ step delivered it ([FOA-8](invariants/first-officer-airbus.md#foa-8)). One run a
 In the same flight, listen for two small changes: Electrical Power Up says "Already set: Gear
 lever: DOWN" (a read, no longer a Captain reminder), and Approach sets the seat belts (normally
 "Already set" after Descent).
+
+---
+
+## Part I — Landing flow: ground spoilers armed for landing (2026-10-16)
+
+After Takeoff disarms the ground spoilers; the new Landing flow, between Approach and After
+Landing, arms them again ([FOA-11](invariants/first-officer-airbus.md#foa-11)). One approach:
+
+1. **Normal.** On final with the gear down, flaps FULL and the speed brake retracted, run the
+   Landing flow. Listen for "Ground spoilers: ARMED", "Already set: Seat belts and flaps: set for
+   landing", "Already set: Landing gear: DOWN", then "Landing flow complete". The ECAM landing memo
+   shows SPLRS ARM in green, and the Landing group and Landing Checklist are fully ticked. At
+   touchdown the ground spoilers deploy and the autobrake engages.
+2. **Speed brake out (once, earlier on the approach).** With the speed brake at half, run the
+   Landing flow. Listen for "Speed brake extended, ground spoilers not armed. Left as it is.": the
+   speed brake stays out, and "Ground spoilers: ARMED" and "Spoilers: ARMED" stay unticked. Retract
+   the speed brake and tick "Ground spoilers: ARMED" in the Landing group: the spoilers arm and both
+   lines tick.
 
 ---
 

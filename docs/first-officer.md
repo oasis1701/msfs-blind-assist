@@ -96,7 +96,15 @@ reads wrong unticked and following the aircraft, while the lines only the pilot 
 ticked by the flow. `A320FamilyReadbackLinkTests` audits it. Sources, the owner's 13 choices on the
 points the evidence could not settle and the live-value rule:
 [FOA-8](invariants/first-officer-airbus.md#foa-8). In-sim checks: the three per-aircraft test
-plans.
+plans. **Landing (2026-10-16):** After Takeoff disarms the ground spoilers and nothing armed them
+again, so a pilot landed with them disarmed while After Start's line stayed ticked as the record of
+the departure. A **Landing** flow, between Approach and After Landing and run on final once the
+gear is down (FlyByWire's order, as on the A380), arms them with After Start's own write, then
+checks the landing memo's seat belts and flaps (`FO_LDG_MEMO_OK`) and the gear, read only, and
+latches its one-line Landing group and the Landing Checklist. Over an extended speed brake the arm
+is left alone and says "Speed brake extended, ground spoilers not armed. Left as it is.": on the
+FlyByWire jets the arm snaps the handle back to retracted (measured), and the Fenix's moves its
+lever to ARM. [FOA-11](invariants/first-officer-airbus.md#foa-11).
 
 **iFly 737 MAX8 First Officer (branch `feature/first-officer`):** a sixth profile,
 `FirstOfficer/IFly737/`, is a step-for-step port of the **PMDG 737 NG3** profile — same 13 flow

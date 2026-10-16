@@ -50,7 +50,10 @@ Taxi and Line-up are two separate flows, and Run Related Flow starts each one fr
 checklist. Taxi, run while you taxi, arms the autobrake, sets the weather radar and transponder,
 calls the cabin, checks that the spoilers, flaps and seat belts are set and ends with the takeoff
 config test. Line-up, run when you are cleared onto the runway, sets TCAS and the takeoff lights.
-Shutdown has a "TCAS: STANDBY" line and Securing an "External power: OFF" line. Securing switches
+A new Landing flow, run on final once the gear is down, arms the ground spoilers again (After
+Takeoff disarms them), checks the seat belts and the landing flaps and, last, that the gear is down,
+and completes the Landing Checklist. If the speed brake is out, it leaves the ground spoilers alone
+and tells you, because arming them would retract the speed brake. Shutdown has a "TCAS: STANDBY" line and Securing an "External power: OFF" line. Securing switches
 the APU master off, waits for the APU flap to close (on the FlyByWire A32NX and Headwind A330 until
 the aircraft shows it closed, at most 2.5 minutes; on the Fenix 2 minutes; no wait when the APU was
 already off) and only then switches external power and the batteries off, in FlyByWire's own

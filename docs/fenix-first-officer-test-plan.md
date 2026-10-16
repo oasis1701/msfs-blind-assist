@@ -223,10 +223,16 @@ aircraft again. No flow completes the other four read-backs.
 
 ## Part F — Landing / After landing / Shutdown / Secure
 
-1. Run flows **11–13**: After Landing → Shutdown → Secure (flow 10 is Approach, already
+1. Run flows **11–14**: Landing → After Landing → Shutdown → Secure (flow 10 is Approach, already
    covered by the phase-monitor/checklist behavior above — include it here if not already
    exercised in Part C; it also sets the seat belts, normally "Already set" after Descent, which
    completes the Approach Checklist's "Seat belts: ON").
+   **Landing** (2026-10-16, [FOA-11](invariants/first-officer-airbus.md#foa-11)), on final with
+   the gear down and flaps FULL: "Ground spoilers: ARMED" (After Takeoff disarmed them; the speed
+   brake lever moves to ARM), "Seat belts and flaps: set for landing", "Landing gear: DOWN", then
+   "Landing flow complete", and the Landing Checklist reads complete. Once, with the speed brake
+   out at half: "Speed brake extended, ground spoilers not armed. Left as it is.", the lever does
+   not move, and both spoiler lines stay unticked until you retract it and arm.
 2. **After Landing**: landing lights retract to OFF, spoilers disarm, APU master ON (started
    for ground power handoff), weather radar OFF, predictive windshear OFF, transponder
    STANDBY, strobes AUTO, nose light TAXI, engine/wing anti-ice OFF as applicable. The After

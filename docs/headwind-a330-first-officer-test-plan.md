@@ -150,3 +150,12 @@ takeoff flaps, "Flaps setting: SET" stays unticked until you tick it, and "Spoil
 that Line-up's "Landing lights: ON" turns the single ganged landing-light switch on and its line
 ticks (`LU_LANDING_LT` reads `LIGHT LANDING:2`, L5 above), and that Electrical Power Up says
 "Already set: Gear lever: DOWN".
+
+## Part E — Landing flow (2026-10-16)
+
+The A330 has the A32NX's new Landing flow ([FOA-11](invariants/first-officer-airbus.md#foa-11)):
+run Part I of [docs/fbw-a320-first-officer-test-plan.md](fbw-a320-first-officer-test-plan.md). On
+this airframe the arm and the speed-brake handle are assumed to behave as the A32NX's (the A339X is
+built on its systems) but were not measured, so check both: the normal run arms the spoilers and the
+ECAM landing memo shows them armed, and with the speed brake out at half the arm is left alone and
+the speed brake does not retract.
