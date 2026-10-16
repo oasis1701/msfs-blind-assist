@@ -423,9 +423,26 @@ public class A220PanelsTests
             Assert.Equal(MeasuredAltimeter3[n + 1], Altimeter3(n), 3);
     }
 
-    /// <summary>The walk's loop (StartIsiBaroWalk) on the model, the I/O replaced by it: returns the
-    /// value it lands on and what it says.</summary>
-    private static (double Landed, string Said) WalkOnAltimeter3(int startClicks, double entry)
+    /// <summary>
+    /// Live 2026-10-16 the knob var applies any whole-number delta in one write (3, -10 and 7 moved
+    /// the ISI by exactly that many 0.01-inch clicks), so a burst is ONE write of the signed count,
+    /// never more than <see cref="A220Panels.IsiMaxClicksPerWrite"/> clicks and never none.
+    /// </summary>
+    [Theory]
+    [InlineData(5, 1, 5)]
+    [InlineData(5, -1, -5)]
+    [InlineData(1, -1, -1)]
+    [InlineData(100, 1, 100)]
+    [InlineData(220, 1, 100)]     // AimClicks' own cap is 220: one write still carries at most 100
+    [InlineData(220, -1, -100)]
+    [InlineData(0, 1, 1)]         // never a write of 0
+    public void IsiKnobWriteDelta_IsOneSignedWrite_Capped(int clicks, int sign, int expected)
+        => Assert.Equal(expected, A220Panels.IsiKnobWriteDelta(clicks, sign));
+
+    /// <summary>The walk's loop (StartIsiBaroWalk) on the model, the I/O replaced by it: each move
+    /// is one write of n clicks (applied exactly, as measured); returns the value it lands on, what
+    /// it says, and the rounds it took.</summary>
+    private static (double Landed, string Said, int Rounds) WalkOnAltimeter3(int startClicks, double entry)
     {
         double target = A220Panels.IsiTargetHpa(entry)!.Value;
         bool inHg = A220Panels.IsInHgEntry(entry);
@@ -437,21 +454,22 @@ public class A220PanelsTests
         {
             double delta = target - cur;
             var move = Decide(delta, prevDelta, step, lastClicks);
-            if (move.Action == A220Panels.IsiWalkAction.Done) return (cur, A220Panels.FormatIsiBaro(cur, inHg));
-            if (move.Action == A220Panels.IsiWalkAction.NearestHere) return (cur, A220Panels.IsiNearestText(cur, inHg));
+            if (move.Action == A220Panels.IsiWalkAction.Done) return (cur, A220Panels.FormatIsiBaro(cur, inHg), round);
+            if (move.Action == A220Panels.IsiWalkAction.NearestHere) return (cur, A220Panels.IsiNearestText(cur, inHg), round);
             bool stepBack = move.Action == A220Panels.IsiWalkAction.StepBack;
             prevDelta = delta;
-            int clicks = stepBack ? 1 : move.Clicks;
+            int write = A220Panels.IsiKnobWriteDelta(stepBack ? 1 : move.Clicks, delta > 0 ? 1 : -1);   // +1 raises (measured)
+            int clicks = Math.Abs(write);
             lastClicks = clicks;
-            pos += delta > 0 ? clicks : -clicks;          // +1 raises (measured)
+            pos += write;
             double now = Altimeter3(pos), moved = now - cur;
             cur = now;
             if (stepBack)
                 return (cur, A220Panels.IsiWithinTolerance(target - cur, step)
-                    ? A220Panels.FormatIsiBaro(cur, inHg) : A220Panels.IsiNearestText(cur, inHg));
+                    ? A220Panels.FormatIsiBaro(cur, inHg) : A220Panels.IsiNearestText(cur, inHg), round + 1);
             step = Math.Abs(moved) / clicks;
         }
-        return (cur, A220Panels.IsiRoundLimitText(target, cur, step, inHg));
+        return (cur, A220Panels.IsiRoundLimitText(target, cur, step, inHg), 8);
     }
 
     /// <summary>From STD (or a click either side of it), every entry lands on the selectable value
@@ -470,9 +488,12 @@ public class A220PanelsTests
     [InlineData(0, 30.00, "Standby altimeter 30.00 inches")]
     [InlineData(1, 30.12, "Standby altimeter 30.12 inches")]
     [InlineData(0, 29.50, "Standby altimeter 29.50 inches")]
+    [InlineData(-200, 1090.0, "Standby altimeter 1090 hectopascals")]   // 945.5 to the top of the range: capped writes
+    [InlineData(200, 940.0, "Standby altimeter 940 hectopascals")]      // 1081 to the bottom
     public void IsiWalk_OnAltimeter3sMeasuredGrid_LandsOnTheNearestValue(int startClicks, double entry, string said)
     {
-        var (landed, spoken) = WalkOnAltimeter3(startClicks, entry);
+        var (landed, spoken, rounds) = WalkOnAltimeter3(startClicks, entry);
+        Assert.True(rounds < 8, $"took {rounds} rounds: the 8-round cap must leave room");
         double target = A220Panels.IsiTargetHpa(entry)!.Value;
         double nearest = Enumerable.Range(-400, 800).Select(Altimeter3).MinBy(v => Math.Abs(v - target));
         Assert.Equal(nearest, landed);

@@ -275,6 +275,21 @@ public static class A220Panels
 
     // ---- Standby baro walk: the per-round decision ([A220-43]) ----------------------------
 
+    /// <summary>
+    /// Most clicks one write of <c>L:A22X ISI Altimeter Set</c> carries. The knob var takes any
+    /// whole-number delta in ONE write and applies it exactly (live 2026-10-16: 3 moved 29.92 to
+    /// 29.95 inches, -10 moved 29.95 to 29.85, 7 moved 29.85 back to 29.92, each read back within
+    /// about 150 ms) — unlike the FCP's K-events, where a batch of n is one click ([A220-10]). A
+    /// larger gap takes another round of the walk.
+    /// </summary>
+    public const int IsiMaxClicksPerWrite = 100;
+
+    /// <summary>The signed delta ONE knob write carries for a move of <paramref name="clicks"/>
+    /// clicks in the direction of <paramref name="sign"/>: at least one click, at most
+    /// <see cref="IsiMaxClicksPerWrite"/>.</summary>
+    public static int IsiKnobWriteDelta(int clicks, int sign)
+        => (sign < 0 ? -1 : 1) * Math.Clamp(clicks, 1, IsiMaxClicksPerWrite);
+
     /// <summary>The blind stage's tolerance, hPa: before a step is measured, a gap this small is
     /// already on target (29.92 inches is 1013.21 hPa; altimeter 3 reads 1013.25 on it).</summary>
     public const double IsiBlindToleranceHpa = 0.2;

@@ -6,7 +6,8 @@ namespace MSFSBlindAssist.Aircraft;
 /// <summary>
 /// Standby altimeter (ISI) controls ([A220-43]). The ISI has no set event and no CommBus
 /// action: its baro knob (A220_KnobContinuous) writes a per-click delta to
-/// "L:A22X ISI Altimeter Set" (±1, which the WASM applies and clears) and its push writes
+/// "L:A22X ISI Altimeter Set" (±1, which the WASM applies and clears; it applies any whole-number
+/// delta written there just as exactly, so MSFSBA sends a burst as one write) and its push writes
 /// "L:A22X ISI Altimeter STD". Both are read back from the stock altimeter 3, which the
 /// aircraft's systems keep for the ISI: KOHLSMAN SETTING MB:3 follows every click and STD:3 says
 /// STD (live 2026-10-16). The ISI's own "A22X.ISI Data" store, exposed by the displays agent as
@@ -27,11 +28,8 @@ public partial class SynapticA220Definition
     /// <summary>How long one fresh read of altimeter 3 may take before it counts as no reading.</summary>
     private const int IsiReadTimeoutMs = 1500;
 
-    /// <summary>Gap between two knob writes, so two never land in one WASM tick and the second
-    /// overwrites the first before it is applied ([A220-10]'s batching lesson).</summary>
-    private const int IsiClickPaceMs = 60;
-
-    /// <summary>Settle before a read-back: the last click's calc string, then a WASM tick.</summary>
+    /// <summary>Settle before a read-back: the write's calc string, then a WASM tick (live
+    /// 2026-10-16, MB:3 showed a write within about 150 ms).</summary>
     private const int IsiSettleMs = 350;
 
     /// <summary>Wait before the STD push's read-back: the 200 ms press pulse, then a WASM tick.</summary>
@@ -74,9 +72,11 @@ public partial class SynapticA220Definition
     /// <summary>
     /// Walk the ISI baro knob to a typed setting (hPa 940-1090 or inHg 27.00-32.00). AIMS, never
     /// hunts: the first click measures the step and the direction on THIS walk, every later
-    /// burst is round(|delta|/step) clicks, a burst that overshoots aims back, a straddle after one
-    /// click ends on the NEARER of the two bracketing values (one click back when the value before
-    /// that click was nearer), and a missing read-back or a knob that does not move is said aloud.
+    /// burst is round(|delta|/step) clicks sent as ONE write of the signed count (the knob var
+    /// applies any whole-number delta exactly, live 2026-10-16), a burst that overshoots aims back,
+    /// a straddle after one click ends on the NEARER of the two bracketing values (one click back
+    /// when the value before that click was nearer), and a missing read-back or a knob that does
+    /// not move is said aloud.
     /// The per-round decision is pure: <c>A220Panels.IsiWalkDecision</c>. A walk superseded by a
     /// newer entry or the STD push, or stopped by an aircraft swap, ends silently: every
     /// announcement checks its own token first.
@@ -138,14 +138,12 @@ public partial class SynapticA220Definition
                     // click back towards the target; what lands is read and spoken below.
                     bool stepBack = move.Action == A220.A220Panels.IsiWalkAction.StepBack;
                     prevDelta = delta;
-                    int clicks = stepBack ? 1 : move.Clicks;
+                    // The whole move is ONE write of the signed click count (at most
+                    // IsiMaxClicksPerWrite; a larger gap takes another round): no per-click pacing.
+                    int write = A220.A220Panels.IsiKnobWriteDelta(stepBack ? 1 : move.Clicks, delta > 0 ? up : -up);
+                    int clicks = Math.Abs(write);
                     lastClicks = clicks;
-                    int sign = delta > 0 ? up : -up;
-                    for (int i = 0; i < clicks && !token.IsCancellationRequested; i++)
-                    {
-                        WriteLVar(simConnect, IsiKnobVar, sign, quiet: true);
-                        await System.Threading.Tasks.Task.Delay(IsiClickPaceMs, token);
-                    }
+                    WriteLVar(simConnect, IsiKnobVar, write, quiet: true);
                     await System.Threading.Tasks.Task.Delay(IsiSettleMs, token);
                     if (await ReadIsiHpaAsync(simConnect, token) is not { } now)
                     {
