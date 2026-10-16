@@ -268,15 +268,16 @@ public partial class SynapticA220Definition
     /// knob walks need this: reading a target back from the 1 Hz SimConnect batch is what
     /// forced a ~1.3 s settle per round (slow), and the stock AUTOPILOT * VAR SimVars are
     /// not what the A220's FCP actually publishes (imprecise). Returns null if the link is
-    /// down, and every caller must fall back rather than assume.
+    /// down or gives no answer within <paramref name="timeoutMs"/>, and every caller must fall
+    /// back rather than assume. Throws when <paramref name="token"/> is cancelled, so a
+    /// superseded walk stops at once instead of reading on as if the link were down.
     /// </summary>
-    internal async Task<A220Afdx.LiveBlocks?> ReadAfdxLiveAsync()
+    internal async Task<A220Afdx.LiveBlocks?> ReadAfdxLiveAsync(CancellationToken token = default,
+        int timeoutMs = Timeout.Infinite)
     {
         try
         {
-            var client = _displaysClient;
-            if (client == null) return null;
-            string? raw = await client.CallAgentAsync("afdx()");
+            string? raw = await CallAgentWithinAsync("afdx()", timeoutMs, token);
             if (string.IsNullOrEmpty(raw)) return null;
             var snap = System.Text.Json.JsonSerializer.Deserialize<DisplaysSnap>(raw);
             if (snap == null) return null;
@@ -284,7 +285,27 @@ public partial class SynapticA220Definition
             if (snap.fc != null) _afdxFlightControl = snap.fc;
             return new A220Afdx.LiveBlocks { fcp = snap.fcp, fc = snap.fc };
         }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
         catch { return null; }
+    }
+
+    /// <summary>
+    /// An agent call a knob walk waits for at most <paramref name="timeoutMs"/>, and not at all
+    /// once <paramref name="token"/> is cancelled (that throws): null on no answer in time. The
+    /// call itself is left to finish or time out in the client (its 5 s eval limit), never
+    /// cancelled mid-send, since aborting a send would abort the view's one inspector socket
+    /// ([A220-18]); its late answer is simply dropped.
+    /// </summary>
+    private async Task<string?> CallAgentWithinAsync(string call, int timeoutMs, CancellationToken token)
+    {
+        var client = _displaysClient;
+        if (client == null) return null;
+        try
+        {
+            return await client.CallAgentAsync(call).WaitAsync(
+                timeoutMs == Timeout.Infinite ? Timeout.InfiniteTimeSpan : TimeSpan.FromMilliseconds(timeoutMs), token);
+        }
+        catch (TimeoutException) { return null; }
     }
 
     /// <summary>The immediate lines go out as ONE interrupting utterance, then the queued ones.

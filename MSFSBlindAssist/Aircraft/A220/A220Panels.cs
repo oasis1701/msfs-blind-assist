@@ -263,15 +263,14 @@ public static class A220Panels
     public static string IsiNearestText(double hpa, bool inHg) => FormatIsiBaro(hpa, inHg) + " — nearest selectable";
 
     /// <summary>
-    /// Spoken when the walk runs out of rounds. "Nearest selectable" only when the ISI is within
-    /// one measured step of the target (no selectable value lies between them); otherwise it says
-    /// what it could not reach and where the ISI is now, both in the unit the pilot typed.
+    /// Spoken when the walk runs out of rounds: what it could not reach and where the ISI is now,
+    /// both in the unit the pilot typed. Never "nearest selectable": the walk judges its last landing
+    /// first (<see cref="A220Afdx.RunKnobWalkAsync"/>), so a landing on the target or on the nearest
+    /// value is said as such, and the limit is reached only when a nearer value was still to go.
     /// </summary>
-    public static string IsiRoundLimitText(double targetHpa, double currentHpa, double? step, bool inHg)
-        => step is { } s && Math.Abs(targetHpa - currentHpa) <= s + IsiToleranceEpsilon
-            ? IsiNearestText(currentHpa, inHg)
-            : "Standby altimeter could not reach " + IsiBaroValue(targetHpa, inHg)
-                + ", now " + IsiBaroValue(currentHpa, inHg) + ".";
+    public static string IsiRoundLimitText(double targetHpa, double currentHpa, bool inHg)
+        => "Standby altimeter could not reach " + IsiBaroValue(targetHpa, inHg)
+            + ", now " + IsiBaroValue(currentHpa, inHg) + ".";
 
     // ---- Standby baro walk: the per-round decision ([A220-43]) ----------------------------
 
@@ -290,61 +289,55 @@ public static class A220Panels
     public static int IsiKnobWriteDelta(int clicks, int sign)
         => (sign < 0 ? -1 : 1) * Math.Clamp(clicks, 1, IsiMaxClicksPerWrite);
 
-    /// <summary>The blind stage's tolerance, hPa: before a step is measured, a gap this small is
-    /// already on target (29.92 inches is 1013.21 hPa; altimeter 3 reads 1013.25 on it).</summary>
-    public const double IsiBlindToleranceHpa = 0.2;
+    /// <summary>One click of the ISI knob: its 0.01-inch step, in hPa (live 2026-10-16).</summary>
+    public const double IsiClickHpa = 0.01 * HpaPerInHg;
 
-    /// <summary>Slack on every tolerance compare: 1013.2 - 1013.0 is 0.20000000000004547 in
-    /// floating point, a hair over 0.2, and must still count as on target.</summary>
-    private const double IsiToleranceEpsilon = 1e-9;
-
-    /// <summary>What the baro walk does next, from the remaining gap.</summary>
-    public enum IsiWalkAction
-    {
-        /// <summary>On target: announce the value.</summary>
-        Done,
-        /// <summary>Stop on the current value and announce it as the nearest selectable one.</summary>
-        NearestHere,
-        /// <summary>The last burst overshot and the value before it was nearer: one click back.</summary>
-        StepBack,
-        /// <summary>Fire <see cref="IsiWalkStep.Clicks"/> clicks towards the target.</summary>
-        Click
-    }
-
-    /// <summary>The walk's next move; <see cref="Clicks"/> is set only for <see cref="IsiWalkAction.Click"/>.</summary>
-    public readonly record struct IsiWalkStep(IsiWalkAction Action, int Clicks = 0);
-
-    /// <summary>Whether a remaining gap (hPa) is on target: half a measured step, or the blind
-    /// tolerance before a step is measured.</summary>
-    public static bool IsiWithinTolerance(double delta, double? step)
-        => Math.Abs(delta) <= (step is { } s ? s / 2 : IsiBlindToleranceHpa) + IsiToleranceEpsilon;
+    /// <summary>The grid altimeter 3 reports the setting on: 1/16 hPa (live 2026-10-16).</summary>
+    public const double IsiReadGridHpa = 1.0 / 16;
 
     /// <summary>
-    /// One round of the standby baro walk, pure so the loop only does I/O. <paramref name="delta"/>
-    /// is target - current (hPa), <paramref name="prevDelta"/> the same before the last move
-    /// (NaN on the first round), <paramref name="step"/> the hPa per click measured on THIS walk
-    /// (null before calibration), <paramref name="lastClicks"/> the clicks the last move fired.
-    /// Within tolerance is Done. Before a step is known the answer is one probe click. After it, a
-    /// sign change in the gap after ONE click is a straddle: the target sits between that click's
-    /// two values and the walk ends on the NEARER one. Once a step is known a straddle is only
-    /// reached with |delta| over half a step, so the value before the click is nearer exactly when
-    /// |prevDelta| &lt; |delta|, and then it takes one click back. A sign change after a burst of
-    /// several clicks is an overshoot, never a straddle: the value before the burst is several
-    /// clicks away, and a step measured on one click is not exact (live 2026-10-16, one click is the
-    /// ISI's 0.01-inch step, about 0.34 hPa, but altimeter 3 reports it on a 1/16-hPa grid, so
-    /// successive clicks read 0.3125 or 0.375 hPa apart), so a burst aimed with it can land clicks
-    /// past the target. It aims back. Otherwise round(|delta| / step) clicks; a step that cannot
-    /// aim stops where it is.
+    /// The walk's tolerance, hPa: a gap this small is on target, before and after the step is
+    /// measured. Half the smallest gap between two of altimeter 3's readings one click apart: a click
+    /// (<see cref="IsiClickHpa"/>, 0.3386 hPa) read on the <see cref="IsiReadGridHpa"/> grid shows as
+    /// 5/16 or 6/16 hPa, so a reading within 5/32 hPa of the target has no nearer neighbour (29.92
+    /// inches is 1013.21 hPa; altimeter 3 reads 1013.25 on it). The walk used to take half its
+    /// measured step after the probe — 3/16 when the probe read 6/16 — and 0.2 before it, which came
+    /// from the ISI's whole-hPa store: both stopped a few simulated walks on a reading with a nearer
+    /// neighbour (the 0.2 one, 18 of 113,448 in the review of Task 7b2). <c>A220PanelsTests</c>
+    /// derives it from the model of the grid and walks every entry from 40 starts on it.
     /// </summary>
-    public static IsiWalkStep IsiWalkDecision(double delta, double prevDelta, double? step, int lastClicks)
+    public const double IsiToleranceHpa = 5.0 / 32;
+
+    /// <summary>
+    /// The standby baro walk on the shared knob walk (<see cref="A220Afdx.RunKnobWalkAsync"/>, ruling
+    /// R41's decision, [A220-43]): 8 moves; each move ONE write of up to <see cref="IsiMaxClicksPerWrite"/>
+    /// clicks, which lands whole (live 2026-10-16), so every move re-measures the step — one click is
+    /// 0.3125 or 0.375 hPa on altimeter 3's grid, a long burst measures it finer; a sign change after a
+    /// burst aims back. On target within <see cref="IsiToleranceHpa"/>; the readings are uneven, so a
+    /// value beyond it is called the nearest only after a look one click across. A move under 0.01 hPa
+    /// did not move it, and a probe that did not is sent once more (the ISI drops its first clicks
+    /// after power-up).
+    /// </summary>
+    internal static readonly A220Afdx.KnobWalkPolicy IsiWalkPolicy = new()
     {
-        if (IsiWithinTolerance(delta, step)) return new IsiWalkStep(IsiWalkAction.Done);
-        if (step is not { } known) return new IsiWalkStep(IsiWalkAction.Click, 1);
-        if (lastClicks <= 1 && A220Afdx.WalkStraddled(delta, prevDelta))
-            return new IsiWalkStep(Math.Abs(prevDelta) < Math.Abs(delta) ? IsiWalkAction.StepBack : IsiWalkAction.NearestHere);
-        int clicks = A220Afdx.AimClicks(delta, known);
-        return clicks == 0
-            ? new IsiWalkStep(IsiWalkAction.NearestHere)
-            : new IsiWalkStep(IsiWalkAction.Click, clicks);
-    }
+        Tolerance = _ => IsiToleranceHpa,
+        MaxRounds = 8,
+        MaxClicksPerMove = IsiMaxClicksPerWrite,
+        BurstsLandWhole = true,
+        NotMovedBelow = 0.01,
+        DeadProbeRetries = 1,
+        EvenSteps = false,
+    };
+
+    /// <summary>The standby baro walk's one spoken line for each way it ends, in the unit the pilot
+    /// typed: the setting, "— nearest selectable", "could not reach", "not responding", or "reading
+    /// lost" (never a guessed setting).</summary>
+    internal static string IsiWalkResultText(A220Afdx.KnobWalkResult r, double targetHpa, bool inHg) => r.End switch
+    {
+        A220Afdx.KnobWalkEnd.OnTarget => FormatIsiBaro(r.Value, inHg),
+        A220Afdx.KnobWalkEnd.NearestSelectable => IsiNearestText(r.Value, inHg),
+        A220Afdx.KnobWalkEnd.RoundLimit => IsiRoundLimitText(targetHpa, r.Value, inHg),
+        A220Afdx.KnobWalkEnd.NotResponding => FormatIsiBaro(r.Value, inHg) + " — the standby altimeter knob is not responding.",
+        _ => IsiReadLostText(IsiReadStatus.NoReading)
+    };
 }

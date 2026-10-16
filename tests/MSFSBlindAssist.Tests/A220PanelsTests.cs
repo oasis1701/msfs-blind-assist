@@ -290,15 +290,17 @@ public class A220PanelsTests
         Assert.Equal("Standby altimeter reading lost — check the ISI.", A220Panels.IsiReadLostText(A220Panels.IsiReadStatus.NoReading));
     }
 
+    /// <summary>The walk judges its last landing before it calls the round limit (a landing on the
+    /// target, or on the nearest value, is said as such), so the limit is reached only when the
+    /// decision still wanted to move: a nearer value exists, and the text never calls this one the
+    /// nearest selectable, even a step away (the old wording did, Task 7b2's deferred minor).</summary>
     [Theory]
-    [InlineData(1020.0, 1019.0, 1.0, false, "Standby altimeter 1019 hectopascals — nearest selectable")]  // one step short
-    [InlineData(1020.0, 1021.0, 1.0, false, "Standby altimeter 1021 hectopascals — nearest selectable")]  // one step over
-    [InlineData(1013.21, 1014.0, 1.0, true, "Standby altimeter 29.94 inches — nearest selectable")]
-    [InlineData(1020.0, 1009.0, 1.0, false, "Standby altimeter could not reach 1020 hectopascals, now 1009 hectopascals.")]
-    [InlineData(1013.21, 1003.0, 1.0, true, "Standby altimeter could not reach 29.92 inches, now 29.62 inches.")]
-    [InlineData(1020.0, 1019.0, null, false, "Standby altimeter could not reach 1020 hectopascals, now 1019 hectopascals.")] // no step measured
-    public void IsiRoundLimitText_IsNearestOnlyWithinOneStep(double target, double current, double? step, bool inHg, string expected)
-        => Assert.Equal(expected, A220Panels.IsiRoundLimitText(target, current, step, inHg));
+    [InlineData(1020.0, 1019.0, false, "Standby altimeter could not reach 1020 hectopascals, now 1019 hectopascals.")]
+    [InlineData(1020.0, 1009.0, false, "Standby altimeter could not reach 1020 hectopascals, now 1009 hectopascals.")]
+    [InlineData(1013.21, 1003.0, true, "Standby altimeter could not reach 29.92 inches, now 29.62 inches.")]
+    [InlineData(1013.21, 1014.0, true, "Standby altimeter could not reach 29.92 inches, now 29.94 inches.")]
+    public void IsiRoundLimitText_SaysWhatItCouldNotReachAndWhereItIs(double target, double current, bool inHg, string expected)
+        => Assert.Equal(expected, A220Panels.IsiRoundLimitText(target, current, inHg));
 
     [Theory]
     [InlineData("de-DE")]
@@ -310,10 +312,27 @@ public class A220PanelsTests
         {
             CultureInfo.CurrentCulture = new CultureInfo(culture);
             Assert.Equal("Standby altimeter could not reach 29.92 inches, now 29.62 inches.",
-                A220Panels.IsiRoundLimitText(1013.21, 1003.0, 1.0, inHg: true));
+                A220Panels.IsiRoundLimitText(1013.21, 1003.0, inHg: true));
             Assert.Equal("Standby altimeter 30.08 inches — nearest selectable", A220Panels.IsiNearestText(1018.6, inHg: true));
         }
         finally { CultureInfo.CurrentCulture = previous; }
+    }
+
+    /// <summary>Every way the shared walk ends, in the standby baro's words (CORE-7: one line).</summary>
+    [Fact]
+    public void IsiWalkResultText_SpeaksEveryEnd()
+    {
+        static A220Afdx.KnobWalkResult R(A220Afdx.KnobWalkEnd end, double v) => new(end, v, 0.34, 3);
+        Assert.Equal("Standby altimeter 1020 hectopascals",
+            A220Panels.IsiWalkResultText(R(A220Afdx.KnobWalkEnd.OnTarget, 1019.9375), 1020, inHg: false));
+        Assert.Equal("Standby altimeter 29.92 inches — nearest selectable",
+            A220Panels.IsiWalkResultText(R(A220Afdx.KnobWalkEnd.NearestSelectable, 1013.25), 1013.21, inHg: true));
+        Assert.Equal("Standby altimeter could not reach 1020 hectopascals, now 1009 hectopascals.",
+            A220Panels.IsiWalkResultText(R(A220Afdx.KnobWalkEnd.RoundLimit, 1009.0), 1020, inHg: false));
+        Assert.Equal("Standby altimeter 1013 hectopascals — the standby altimeter knob is not responding.",
+            A220Panels.IsiWalkResultText(R(A220Afdx.KnobWalkEnd.NotResponding, 1013.25), 1020, inHg: false));
+        Assert.Equal("Standby altimeter reading lost — check the ISI.",
+            A220Panels.IsiWalkResultText(R(A220Afdx.KnobWalkEnd.ReadLost, 1013.25), 1020, inHg: false));
     }
 
     [Theory]
@@ -335,34 +354,52 @@ public class A220PanelsTests
         finally { CultureInfo.CurrentCulture = previous; }
     }
 
-    // ---- Standby baro walk: the per-round decision ([A220-43]) ---------------------------
+    // ---- Standby baro walk: the shared per-round decision ([A220-43]) --------------------
 
-    /// <summary>One round, the last move one click unless a test says otherwise.</summary>
-    private static A220Panels.IsiWalkStep Decide(double delta, double prevDelta, double? step, int lastClicks = 1)
-        => A220Panels.IsiWalkDecision(delta, prevDelta, step, lastClicks);
+    /// <summary>One round of the shared decision (A220Afdx.KnobWalkDecision) on the ISI's policy,
+    /// the last move one click unless a test says otherwise.</summary>
+    private static A220Afdx.KnobWalkStep Decide(double delta, double prevDelta, double? step, int lastClicks = 1)
+        => A220Afdx.KnobWalkDecision(delta, prevDelta, step, lastClicks,
+            A220Panels.IsiWalkPolicy.Tolerance(step), A220Panels.IsiWalkPolicy.EvenSteps);
 
-    private static A220Panels.IsiWalkStep Done => new(A220Panels.IsiWalkAction.Done);
-    private static A220Panels.IsiWalkStep NearestHere => new(A220Panels.IsiWalkAction.NearestHere);
-    private static A220Panels.IsiWalkStep StepBack => new(A220Panels.IsiWalkAction.StepBack);
-    private static A220Panels.IsiWalkStep Click(int n) => new(A220Panels.IsiWalkAction.Click, n);
+    private static A220Afdx.KnobWalkStep Done => new(A220Afdx.KnobWalkAction.Done);
+    private static A220Afdx.KnobWalkStep NearestHere => new(A220Afdx.KnobWalkAction.NearestHere);
+    private static A220Afdx.KnobWalkStep StepBack => new(A220Afdx.KnobWalkAction.StepBack);
+    private static A220Afdx.KnobWalkStep Click(int n) => new(A220Afdx.KnobWalkAction.Click, n);
+
+    /// <summary>
+    /// "On target" is half the smallest gap between two of altimeter 3's readings one click apart,
+    /// before and after the step is measured: a click is 0.01 inch (0.3386 hPa) read on a 1/16-hPa
+    /// grid, so neighbours read 5/16 or 6/16 hPa apart, and a reading within 5/32 hPa of the target has
+    /// no nearer neighbour. The old 0.2 came from the ISI's whole-hPa store; half a probe-measured
+    /// step could be 3/16.
+    /// </summary>
+    [Fact]
+    public void IsiTolerance_IsHalfTheSmallestGapOnAltimeter3sGrid_WhateverTheStep()
+    {
+        double smallestGap = Enumerable.Range(-300, 600).Min(n => Altimeter3(n + 1) - Altimeter3(n));
+        Assert.Equal(5.0 / 16, smallestGap);
+        Assert.Equal(A220Panels.IsiToleranceHpa, smallestGap / 2);
+        Assert.Equal(A220Panels.IsiToleranceHpa, A220Panels.IsiWalkPolicy.Tolerance(null));
+        Assert.Equal(A220Panels.IsiToleranceHpa, A220Panels.IsiWalkPolicy.Tolerance(0.375));
+        Assert.False(A220Panels.IsiWalkPolicy.EvenSteps);
+    }
 
     [Fact]
-    public void IsiWalkDecision_BlindStage_OnTarget_IncludingTheFloatingPointEdge()
+    public void IsiWalkDecision_BlindStage_OnTarget_UpToHalfTheGridsSmallestGap()
     {
-        // 1013.2 typed against an ISI reading 1013: in floating point the gap is
-        // 0.20000000000004547, a hair over the 0.2 blind tolerance. It must still count as on target,
-        // or the probe click overshoots to 1014 (trigger B of the review finding).
-        double gap = 1013.2 - 1013.0;
-        Assert.True(gap > 0.2, "the premise: the raw gap is above 0.2");
-        Assert.Equal(Done, Decide(gap, double.NaN, null));
         Assert.Equal(Done, Decide(0.0, double.NaN, null));
-        Assert.Equal(Done, Decide(0.2, double.NaN, null));
-        Assert.Equal(Done, Decide(-0.2, double.NaN, null));
+        Assert.Equal(Done, Decide(5.0 / 32, double.NaN, null));
+        Assert.Equal(Done, Decide(-5.0 / 32, double.NaN, null));
+        Assert.Equal(Done, Decide(1013.21 - 1013.25, double.NaN, null));   // 29.92 inches on STD
+        // 0.1875 off was "on target" under the old 0.2, though the reading a click up is 0.125 off.
+        Assert.Equal(Click(1), Decide(0.1875, double.NaN, null));
     }
 
     [Theory]
     [InlineData(0.21)]     // 29.92 inches (1013.21 hPa) against an ISI reading 1013: one probe click, not a guess
     [InlineData(-0.21)]
+    [InlineData(1013.2 - 1013.0)]   // the old 0.2 tolerance's floating-point edge: now a probe click
     [InlineData(5.0)]
     [InlineData(-120.0)]   // far away: still ONE click, because the step is not measured yet
     public void IsiWalkDecision_BlindStage_OffTarget_IsOneProbeClick(double delta)
@@ -439,37 +476,24 @@ public class A220PanelsTests
     public void IsiKnobWriteDelta_IsOneSignedWrite_Capped(int clicks, int sign, int expected)
         => Assert.Equal(expected, A220Panels.IsiKnobWriteDelta(clicks, sign));
 
-    /// <summary>The walk's loop (StartIsiBaroWalk) on the model, the I/O replaced by it: each move
-    /// is one write of n clicks (applied exactly, as measured); returns the value it lands on, what
-    /// it says, and the rounds it took.</summary>
-    private static (double Landed, string Said, int Rounds) WalkOnAltimeter3(int startClicks, double entry)
+    /// <summary>The production walk (the shared loop on the ISI's policy, and its words) on the
+    /// model, the I/O replaced by it: each move is one write of n clicks (applied exactly, as
+    /// measured), clamped and signed as StartIsiBaroWalk writes it; +1 raises (measured). Returns
+    /// the value it lands on, what it says, the rounds it took and the writes it sent.</summary>
+    private static async Task<(double Landed, string Said, int Rounds, List<int> Writes)> WalkOnAltimeter3(int startClicks, double entry)
     {
         double target = A220Panels.IsiTargetHpa(entry)!.Value;
         bool inHg = A220Panels.IsInHgEntry(entry);
         int pos = startClicks;
-        double cur = Altimeter3(pos), prevDelta = double.NaN;
-        double? step = null;
-        int lastClicks = 0;
-        for (int round = 0; round < 8; round++)
+        var writes = new List<int>();
+        var result = await A220Afdx.RunKnobWalkAsync(target, Altimeter3(pos), A220Panels.IsiWalkPolicy, m =>
         {
-            double delta = target - cur;
-            var move = Decide(delta, prevDelta, step, lastClicks);
-            if (move.Action == A220Panels.IsiWalkAction.Done) return (cur, A220Panels.FormatIsiBaro(cur, inHg), round);
-            if (move.Action == A220Panels.IsiWalkAction.NearestHere) return (cur, A220Panels.IsiNearestText(cur, inHg), round);
-            bool stepBack = move.Action == A220Panels.IsiWalkAction.StepBack;
-            prevDelta = delta;
-            int write = A220Panels.IsiKnobWriteDelta(stepBack ? 1 : move.Clicks, delta > 0 ? 1 : -1);   // +1 raises (measured)
-            int clicks = Math.Abs(write);
-            lastClicks = clicks;
+            int write = A220Panels.IsiKnobWriteDelta(m.Clicks, m.Direction);
+            writes.Add(write);
             pos += write;
-            double now = Altimeter3(pos), moved = now - cur;
-            cur = now;
-            if (stepBack)
-                return (cur, A220Panels.IsiWithinTolerance(target - cur, step)
-                    ? A220Panels.FormatIsiBaro(cur, inHg) : A220Panels.IsiNearestText(cur, inHg), round + 1);
-            step = Math.Abs(moved) / clicks;
-        }
-        return (cur, A220Panels.IsiRoundLimitText(target, cur, step, inHg), 8);
+            return Task.FromResult<double?>(Altimeter3(pos));
+        });
+        return (result.Value, A220Panels.IsiWalkResultText(result, target, inHg), result.Rounds, writes);
     }
 
     /// <summary>From STD (or a click either side of it), every entry lands on the selectable value
@@ -490,22 +514,65 @@ public class A220PanelsTests
     [InlineData(0, 29.50, "Standby altimeter 29.50 inches")]
     [InlineData(-200, 1090.0, "Standby altimeter 1090 hectopascals")]   // 945.5 to the top of the range: capped writes
     [InlineData(200, 940.0, "Standby altimeter 940 hectopascals")]      // 1081 to the bottom
-    public void IsiWalk_OnAltimeter3sMeasuredGrid_LandsOnTheNearestValue(int startClicks, double entry, string said)
+    public async Task IsiWalk_OnAltimeter3sMeasuredGrid_LandsOnTheNearestValue(int startClicks, double entry, string said)
     {
-        var (landed, spoken, rounds) = WalkOnAltimeter3(startClicks, entry);
+        var (landed, spoken, rounds, writes) = await WalkOnAltimeter3(startClicks, entry);
         Assert.True(rounds < 8, $"took {rounds} rounds: the 8-round cap must leave room");
         double target = A220Panels.IsiTargetHpa(entry)!.Value;
         double nearest = Enumerable.Range(-400, 800).Select(Altimeter3).MinBy(v => Math.Abs(v - target));
         Assert.Equal(nearest, landed);
         Assert.Equal(said, spoken);
+        if (writes.Count > 0) Assert.Equal(1, Math.Abs(writes[0]));          // the probe is one click
+        Assert.All(writes, w => Assert.InRange(Math.Abs(w), 1, A220Panels.IsiMaxClicksPerWrite));
+    }
+
+    /// <summary>
+    /// The production walk from 40 starts across the ISI's range to every whole hectopascal and every
+    /// hundredth of an inch it takes (26,080 walks): each lands on a reading no farther from the target
+    /// than the nearest one altimeter 3 can show, within the 8 rounds, and never says "could not
+    /// reach". Under the old 0.2 hPa blind tolerance some stopped 0.0625 hPa farther (review of Task 7b2).
+    /// </summary>
+    [Fact]
+    public async Task IsiWalk_FromAnyStart_ToAnyEntry_LandsOnTheNearestReading()
+    {
+        var readings = Enumerable.Range(-260, 520).Select(Altimeter3).ToArray();
+        var entries = Enumerable.Range(940, 151).Select(h => (double)h)
+            .Concat(Enumerable.Range(2700, 501).Select(c => c / 100.0)).ToArray();
+        var misses = new List<string>();
+        for (int start = -240; start <= 230; start += 12)
+            foreach (double entry in entries)
+            {
+                double target = A220Panels.IsiTargetHpa(entry)!.Value;
+                var (landed, spoken, rounds, _) = await WalkOnAltimeter3(start, entry);
+                double best = readings.Min(v => Math.Abs(v - target));
+                if (Math.Abs(landed - target) > best + 1e-9 || rounds >= 8 || spoken.Contains("could not reach"))
+                    misses.Add(FormattableString.Invariant($"start {start}, entry {entry}: landed {landed}, best {best:0.####}, {rounds} rounds, \"{spoken}\""));
+            }
+        Assert.True(misses.Count == 0, $"{misses.Count} walks missed, e.g.\n" + string.Join("\n", misses.Take(10)));
     }
 
     [Theory]
-    [InlineData(0.5, 3.0)]     // exactly half a step: on target
-    [InlineData(-0.5, -3.0)]
+    [InlineData(0.15625, 3.0)]   // the grid tolerance, whatever the measured step
+    [InlineData(-0.15625, -3.0)]
     [InlineData(0.0, 1.0)]
-    public void IsiWalkDecision_MeasuredStep_WithinHalfAStep_IsDone(double delta, double prevDelta)
-        => Assert.Equal(Done, Decide(delta, prevDelta, 1.0));
+    public void IsiWalkDecision_MeasuredStep_WithinTheGridTolerance_IsDone(double delta, double prevDelta)
+        => Assert.Equal(Done, Decide(delta, prevDelta, 0.375));
+
+    /// <summary>
+    /// Within half a step but beyond the grid tolerance, the ISI's readings are uneven, so the value
+    /// can have a nearer neighbour: the walk looks one click across, and the straddle rule keeps the
+    /// nearer. The simulated case: from 964.4375 to 965, the probe click read 964.8125 (a step of
+    /// 0.375) and the walk stopped there, "Standby altimeter 965 hectopascals", with 965.125 a click
+    /// up — 0.125 off where 964.8125 is 0.1875.
+    /// </summary>
+    [Fact]
+    public void IsiWalkDecision_BeyondTheGridTolerance_LooksOneClickAcross()
+    {
+        Assert.Equal(Click(1), Decide(965 - 964.8125, 965 - 964.4375, 0.375));
+        Assert.Equal(Click(1), Decide(-0.16, -0.5, 0.34, lastClicks: 3));
+        // On an even knob the same gap is the nearest value: no look across (the FCP walks).
+        Assert.Equal(NearestHere, A220Afdx.KnobWalkDecision(965 - 964.8125, 965 - 964.4375, 0.375, 1, 0.15625, evenSteps: true));
+    }
 
     [Theory]
     [InlineData(25.0, 30.0, 1.0, 25)]       // the same sign as before: an ordinary aimed burst
@@ -524,12 +591,20 @@ public class A220PanelsTests
     }
 
     [Theory]
-    [InlineData(0.2, null, true)]
-    [InlineData(1013.2 - 1013.0, null, true)]
-    [InlineData(0.25, null, false)]
-    [InlineData(0.5, 1.0, true)]
-    [InlineData(-0.5, 1.0, true)]
-    [InlineData(0.51, 1.0, false)]
-    public void IsiWithinTolerance_IsHalfAStepOrTheBlindTolerance(double delta, double? step, bool expected)
-        => Assert.Equal(expected, A220Panels.IsiWithinTolerance(delta, step));
+    [InlineData(0.15625, null, true)]
+    [InlineData(-0.15625, 0.375, true)]
+    [InlineData(0.2, null, false)]       // the old blind tolerance: a nearer reading can exist
+    [InlineData(0.1875, 0.375, false)]   // the old half-a-probe-step: likewise
+    public void IsiTolerance_IsTheGridsWhateverTheStep(double delta, double? step, bool expected)
+        => Assert.Equal(expected, A220Afdx.KnobWalkOnTarget(delta, A220Panels.IsiWalkPolicy.Tolerance(step)));
+
+    /// <summary>Slack on the tolerance compare: a gap a hair over it in floating point is on target.</summary>
+    [Fact]
+    public void KnobWalkOnTarget_ForgivesFloatingPointNoise()
+    {
+        double gap = 1013.2 - 1013.0;     // 0.20000000000004547
+        Assert.True(gap > 0.2, "the premise: the raw gap is above 0.2");
+        Assert.True(A220Afdx.KnobWalkOnTarget(gap, 0.2));
+        Assert.False(A220Afdx.KnobWalkOnTarget(0.2001, 0.2));
+    }
 }

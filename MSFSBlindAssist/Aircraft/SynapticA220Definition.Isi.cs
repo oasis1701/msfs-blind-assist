@@ -48,16 +48,18 @@ public partial class SynapticA220Definition
     /// </summary>
     private async Task<bool> IsiReportsUnpoweredAsync(System.Threading.CancellationToken token)
     {
-        for (int attempt = 0; attempt < 3 && !token.IsCancellationRequested; attempt++)
+        // The same wall-clock limit as the FCP walks' reads: a hung-but-open view answers no eval
+        // for 5 s, and this check must not keep the walk silent for tens of seconds.
+        long deadline = Environment.TickCount64 + A220.A220Afdx.AfdxReadDeadlineMs;
+        int Left() => (int)Math.Max(0, deadline - Environment.TickCount64);
+        for (int attempt = 0; attempt < 3 && Left() > 0; attempt++)
         {
-            var client = _displaysClient;
-            if (client == null) return false;
-            string? json = await client.CallAgentAsync("isi()");
-            if (json == null) return false;   // no display link: no power state to read
+            string? json = await CallAgentWithinAsync("isi()", Left(), token);
+            if (json == null) return false;   // no display link (or no answer in time): no power state to read
             var status = A220.A220Panels.ParseIsiRead(json).Status;
             if (status != A220.A220Panels.IsiReadStatus.NoReading) return status == A220.A220Panels.IsiReadStatus.Unpowered;
-            if (attempt == 0) await client.CallAgentAsync("afdxResync()");   // the stores broadcast only changes
-            await System.Threading.Tasks.Task.Delay(150, token);
+            if (attempt == 0 && Left() > 0) await CallAgentWithinAsync("afdxResync()", Left(), token);   // the stores broadcast only changes
+            await System.Threading.Tasks.Task.Delay(Math.Min(150, Left()), token);
         }
         return false;
     }
@@ -77,9 +79,10 @@ public partial class SynapticA220Definition
     /// a straddle after one click ends on the NEARER of the two bracketing values (one click back
     /// when the value before that click was nearer), and a missing read-back or a knob that does
     /// not move is said aloud.
-    /// The per-round decision is pure: <c>A220Panels.IsiWalkDecision</c>. A walk superseded by a
-    /// newer entry or the STD push, or stopped by an aircraft swap, ends silently: every
-    /// announcement checks its own token first.
+    /// The walk is the shared one, <c>A220Afdx.RunKnobWalkAsync</c> on <c>A220Panels.IsiWalkPolicy</c>
+    /// (the FCP walks run it too); this method is its I/O. A walk superseded by a newer entry or the
+    /// STD push, or stopped by an aircraft swap, ends silently: every announcement checks its own
+    /// token first, and its result does not cut off another knob's (<see cref="KnobWalkVoice"/>).
     /// </summary>
     private void StartIsiBaroWalk(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, double entry)
     {
@@ -94,93 +97,42 @@ public partial class SynapticA220Definition
         var cts = new System.Threading.CancellationTokenSource();
         _isiWalkCancel = cts;
         var token = cts.Token;
+        // A cancelled walk says nothing: the newer entry, or the next aircraft, speaks for itself.
+        var say = KnobWalkVoice(announcer, token);
         _ = System.Threading.Tasks.Task.Run(async () =>
         {
-            // A cancelled walk says nothing: the newer entry, or the next aircraft, speaks for itself.
-            void Say(string text)
-            {
-                if (!token.IsCancellationRequested) announcer.AnnounceImmediate(text);
-            }
             try
             {
                 if (await IsiReportsUnpoweredAsync(token))
                 {
-                    Say(A220.A220Panels.IsiUnavailableText(A220.A220Panels.IsiReadStatus.Unpowered));
+                    say(A220.A220Panels.IsiUnavailableText(A220.A220Panels.IsiReadStatus.Unpowered));
                     return;
                 }
                 if (await ReadIsiHpaAsync(simConnect, token) is not { } start)
                 {
-                    Say(A220.A220Panels.IsiUnavailableText(A220.A220Panels.IsiReadStatus.NoReading));
+                    say(A220.A220Panels.IsiUnavailableText(A220.A220Panels.IsiReadStatus.NoReading));
                     return;
                 }
-                double cur = start;
-                int up = 1;               // the delta sign that RAISES the setting — calibrated on the first move
-                double? step = null;      // hPa per click, measured on this walk only
-                double prevDelta = double.NaN;
-                int lastClicks = 0;       // the clicks the last move fired: a straddle is judged only after one
-                bool retried = false;
-
-                for (int round = 0; round < 8 && !token.IsCancellationRequested; round++)
-                {
-                    double delta = target.Value - cur;
-                    var move = A220.A220Panels.IsiWalkDecision(delta, prevDelta, step, lastClicks);
-                    if (move.Action == A220.A220Panels.IsiWalkAction.Done)
+                var result = await A220.A220Afdx.RunKnobWalkAsync(target.Value, start, A220.A220Panels.IsiWalkPolicy,
+                    async move =>
                     {
-                        Say(A220.A220Panels.FormatIsiBaro(cur, inHg));
-                        return;
-                    }
-                    if (move.Action == A220.A220Panels.IsiWalkAction.NearestHere)
-                    {
-                        Say(A220.A220Panels.IsiNearestText(cur, inHg));
-                        return;
-                    }
-                    // StepBack: the last click overshot and the value before it was nearer, so ONE
-                    // click back towards the target; what lands is read and spoken below.
-                    bool stepBack = move.Action == A220.A220Panels.IsiWalkAction.StepBack;
-                    prevDelta = delta;
-                    // The whole move is ONE write of the signed click count (at most
-                    // IsiMaxClicksPerWrite; a larger gap takes another round): no per-click pacing.
-                    int write = A220.A220Panels.IsiKnobWriteDelta(stepBack ? 1 : move.Clicks, delta > 0 ? up : -up);
-                    int clicks = Math.Abs(write);
-                    lastClicks = clicks;
-                    // A newer entry or the STD push may have cancelled this walk since the round
-                    // began: a write now would move the knob off the setting the pilot just chose.
-                    if (token.IsCancellationRequested) return;
-                    WriteLVar(simConnect, IsiKnobVar, write, quiet: true);
-                    await System.Threading.Tasks.Task.Delay(IsiSettleMs, token);
-                    if (await ReadIsiHpaAsync(simConnect, token) is not { } now)
-                    {
-                        Say(A220.A220Panels.IsiReadLostText(A220.A220Panels.IsiReadStatus.NoReading));
-                        return;
-                    }
-                    double moved = now - cur;
-                    if (Math.Abs(moved) < 0.01)
-                    {
-                        if (!retried && step == null) { retried = true; continue; }
-                        Say(A220.A220Panels.FormatIsiBaro(cur, inHg) + " — the standby altimeter knob is not responding.");
-                        return;
-                    }
-                    if (stepBack)
-                    {
-                        // The step and the direction are already measured; just say where it landed.
-                        cur = now;
-                        Say(A220.A220Panels.IsiWithinTolerance(target.Value - cur, step)
-                            ? A220.A220Panels.FormatIsiBaro(cur, inHg)
-                            : A220.A220Panels.IsiNearestText(cur, inHg));
-                        return;
-                    }
-                    if (Math.Sign(moved) != Math.Sign(delta)) up = -up;
-                    step = Math.Abs(moved) / clicks;
-                    cur = now;
-                }
-                Say(A220.A220Panels.IsiRoundLimitText(target.Value, cur, step, inHg));
+                        // A newer entry or the STD push may have cancelled this walk since the round
+                        // began: a write now would move the knob off the setting the pilot just chose.
+                        token.ThrowIfCancellationRequested();
+                        // The whole move is ONE write of the signed click count (at most
+                        // IsiMaxClicksPerWrite; a larger gap takes another round): no per-click pacing.
+                        WriteLVar(simConnect, IsiKnobVar, A220.A220Panels.IsiKnobWriteDelta(move.Clicks, move.Direction), quiet: true);
+                        await System.Threading.Tasks.Task.Delay(IsiSettleMs, token);
+                        return await ReadIsiHpaAsync(simConnect, token);
+                    }, token);
+                say(A220.A220Panels.IsiWalkResultText(result, target.Value, inHg));
             }
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
                 // A walk never throws into the UI, and never stops without saying so (CORE-15 log).
                 Utils.Logging.Log.Warn("A220", $"Standby baro walk: {ex.Message}");
-                Say("Standby altimeter walk stopped — check the standby baro.");
+                say("Standby altimeter walk stopped — check the standby baro.");
             }
         });
     }

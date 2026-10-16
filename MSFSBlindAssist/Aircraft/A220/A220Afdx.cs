@@ -325,12 +325,16 @@ internal static class A220Afdx
     /// Whether a walk of <paramref name="knob"/> may read a stock var when the aircraft's own block
     /// (<c>A22X.FCP Data</c>, or <c>A22X.Flight Control Data</c> for the trim) gives no value
     /// ([A220-8], [A220-13]). Altitude and heading: yes, their stock AP vars track the knob click
-    /// for click (2026-09-21, -24). Vertical: yes in today's code. Speed: no, the stock speed var
-    /// read 445 kt with 142 in the window (2026-09-24). Stab trim: no, the only other read-back is
-    /// the animation ratio, and the owner's decision of 2026-10-16 keeps [A220-13]: refuse.
+    /// for click (2026-09-21, -24). Speed: no, the stock speed var read 445 kt with 142 in the
+    /// window (2026-09-24). Vertical: no (R3 of the 2026-10-16 walk review) — this FCP never writes
+    /// <c>AUTOPILOT VERTICAL HOLD VAR</c> for V/S (2026-09-21: unchanged at 0 while the wheel moved),
+    /// and nothing ever showed <c>L:A22X Selected FPA</c> tracking the wheel, while the FCP block
+    /// carries both (<see cref="SelectedVsFpm"/>, <see cref="SelectedFpaDegrees"/>). Stab trim: no,
+    /// the only other read-back is the animation ratio, and the owner's decision of 2026-10-16 keeps
+    /// [A220-13]: refuse.
     /// </summary>
     internal static bool KnobWalkMayUseStockVar(FcpKnob knob)
-        => knob is FcpKnob.Heading or FcpKnob.Altitude or FcpKnob.Vertical;
+        => knob is FcpKnob.Heading or FcpKnob.Altitude;
 
     /// <summary>How many times a walk reads a field of its AFDX block before calling it missing
     /// (150 ms apart). A missing field is not a down link: the WASM broadcasts only CHANGES and the
@@ -338,6 +342,12 @@ internal static class A220Afdx
     /// until a resync (live 2026-09-24), the flight-control store with the trim at rest — reads as
     /// missing while the link is up.</summary>
     internal const int AfdxReadAttempts = 8;
+
+    /// <summary>The wall-clock limit on one such read, every attempt and resync included. A
+    /// hung-but-open Coherent view answers no eval for its 5 s timeout, so without it 8 attempts and
+    /// 2 resyncs could keep a walk silent for most of a minute; with it the walk speaks within
+    /// about 3 s. The attempts and their 150 ms pauses fit well inside it when the view answers.</summary>
+    internal const int AfdxReadDeadlineMs = 3000;
 
     /// <summary>Whether the read asks the WASM for a whole copy of every store (<c>afdxResync()</c>)
     /// after missing on <paramref name="attempt"/>: at the first miss and once more halfway, so the
@@ -385,6 +395,299 @@ internal static class A220Afdx
     /// <summary>The trim walk's value, as the EICAS prints it ("4.6 units"). Culture-invariant.</summary>
     internal static string StabTrimUnitsText(double units)
         => units.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " units";
+
+    /// <summary>The V/S walk's value: "-700 feet per minute". Culture-invariant (sv-SE would write the
+    /// minus as U+2212).</summary>
+    internal static string VerticalSpeedText(double fpm) => WholeText(fpm) + " feet per minute";
+
+    /// <summary>A whole number, culture-invariant, never "-0" (.NET writes negative zero with its sign).</summary>
+    private static string WholeText(double value)
+        => (Math.Round(value) + 0.0).ToString("0", System.Globalization.CultureInfo.InvariantCulture);
+
+    // ---- The V/S-FPA thumbwheel in the FCP block (R3) ------------------------------------------
+
+    /// <summary>
+    /// The wheel's selected vertical speed in feet per minute, or null when the FCP block does not
+    /// show one. The FCP draws its V/S/FPA window from <c>vs_sel</c> and <c>vs_mode</c>
+    /// (FCP/Components/Vertical.tsx, and the PFD's FMA the same way): mode 0 is V/S in feet per
+    /// minute, mode 1 is FPA, and a null selection is a wheel with no target (no vertical mode).
+    /// </summary>
+    internal static double? SelectedVsFpm(FcpBlock? fcp)
+        => fcp?.vs_mode == 0 ? fcp.vs_sel : null;
+
+    /// <summary>
+    /// The wheel's selected flight path angle in degrees, or null when the FCP block does not show
+    /// one. In FPA mode (<c>vs_mode</c> 1) <c>vs_sel</c> counts TENTHS of a degree: the FCP prints
+    /// <c>Math.abs(t / 10).toFixed(1)</c> after the sign, and so does the PFD's FMA. The old readout
+    /// took it as degrees whenever it was within ±9.9, so −0.5° read "−5.0 degrees".
+    /// </summary>
+    internal static double? SelectedFpaDegrees(FcpBlock? fcp)
+        => fcp?.vs_mode == 1 && fcp.vs_sel is { } tenths ? tenths / 10 : null;
+
+    /// <summary>Whether a delivered FCP block carries anything at all: the FCP store sits at {} until a
+    /// resync (live 2026-09-24), which says nothing about the wheel.</summary>
+    private static bool FcpBlockHasData(FcpBlock fcp)
+        => fcp.spd_sel_ias != null || fcp.spd_sel_mach != null || fcp.hdg_sel != null || fcp.alt_sel_ft != null
+           || fcp.alt_sel_m != null || fcp.vs_sel != null || fcp.vs_mode != null;
+
+    /// <summary>
+    /// The V/S-FPA walk's check after its engage write: null when the FCP block shows the wheel with a
+    /// target in the mode asked for, else the one spoken line (R3). No block, or an empty one, is no
+    /// read-back: refused as the speed walk refuses, never walked on a stock var. A wheel with no target
+    /// means the mode did not engage (the wheel is dead outside VS/FPA, [A220-7]); a wheel in the other
+    /// mode would walk the wrong value.
+    /// </summary>
+    internal static string? VerticalWheelRefusal(FcpBlock? fcp, bool isFpa)
+    {
+        string name = isFpa ? "Flight path angle" : "Vertical speed";
+        string wanted = isFpa ? "FPA" : "VS";
+        const string check = "Check flight director or autopilot state, then try again.";
+        if (fcp == null || !FcpBlockHasData(fcp)) return KnobWalkRefusalText(FcpKnob.Vertical, name);
+        if (fcp.vs_sel == null) return $"The vertical speed wheel has no target — {wanted} mode did not engage. {check}";
+        if (fcp.vs_mode == (isFpa ? 1 : 0)) return null;
+        string actual = fcp.vs_mode switch { 0 => "in VS mode", 1 => "in FPA mode", _ => "in neither VS nor FPA mode" };
+        return $"{name} not set: {wanted} mode did not engage — the wheel is {actual}. {check}";
+    }
+
+    // ---- The dialogs' "now" clauses (item 12: culture-invariant) -------------------------------
+
+    /// <summary>The Ctrl+S prompt's current speed, from the FCP block: "Mach 0.78", "250 knots", or
+    /// "unknown" (the stock speed vars do not follow this FCP, [A220-8]).</summary>
+    internal static string SpeedPromptNow(FcpBlock? fcp, bool isMach)
+        => isMach
+            ? (fcp?.spd_sel_mach is { } m ? "Mach " + m.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) : "unknown")
+            : (fcp?.spd_sel_ias is { } k ? KnotsText(k) : "unknown");
+
+    /// <summary>The speed walk's value: "250 knots". Culture-invariant.</summary>
+    internal static string KnotsText(double knots) => WholeText(knots) + " knots";
+
+    /// <summary>
+    /// The Ctrl+V prompt's current wheel value: the FCP block's own selection when it shows one
+    /// ("VS now -700 fpm", "FPA now -3.0°", "wheel inactive"), else, with no block, the dialog's
+    /// old stock reads — which the walk itself never trusts (R3). Culture-invariant.
+    /// </summary>
+    internal static string VerticalPromptNow(FcpBlock? fcp, double stockVsFpm, double stockFpaDegrees)
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        if (SelectedVsFpm(fcp) is { } vs) return "VS now " + WholeText(vs) + " fpm";
+        if (SelectedFpaDegrees(fcp) is { } fpa) return "FPA now " + fpa.ToString("0.0", inv) + "°";
+        if (fcp != null && FcpBlockHasData(fcp)) return "wheel inactive";
+        return "VS now " + WholeText(stockVsFpm) + " fpm, FPA " + stockFpaDegrees.ToString("0.0", inv) + "°";
+    }
+
+    // ---- Knob walks: the shared step decision and loop (R2 of the 2026-10-16 review) ----------
+
+    /// <summary>What a measured knob walk does next, from the remaining gap.</summary>
+    internal enum KnobWalkAction
+    {
+        /// <summary>On target: say the value.</summary>
+        Done,
+        /// <summary>Stop on the current value and say it is the nearest selectable one.</summary>
+        NearestHere,
+        /// <summary>The last click straddled the target and the value before it was nearer: one click back.</summary>
+        StepBack,
+        /// <summary>Move <see cref="KnobWalkStep.Clicks"/> clicks towards the target.</summary>
+        Click
+    }
+
+    /// <summary>The walk's next move; <see cref="Clicks"/> is set only for <see cref="KnobWalkAction.Click"/>.</summary>
+    internal readonly record struct KnobWalkStep(KnobWalkAction Action, int Clicks = 0);
+
+    /// <summary>Slack on every tolerance compare: 1013.2 - 1013.0 is 0.20000000000004547 in floating
+    /// point, a hair over 0.2, and must still count as on target.</summary>
+    private const double KnobWalkToleranceEpsilon = 1e-9;
+
+    /// <summary>Whether a remaining gap is on target, within <paramref name="tolerance"/>.</summary>
+    internal static bool KnobWalkOnTarget(double delta, double tolerance)
+        => Math.Abs(delta) <= tolerance + KnobWalkToleranceEpsilon;
+
+    /// <summary>
+    /// One round of a measured knob walk — the standby baro walk's decision ([A220-43], ruling R41),
+    /// generalised so the FCP walks share it. <paramref name="delta"/> is target - current,
+    /// <paramref name="prevDelta"/> the same before the last move (NaN on the first round),
+    /// <paramref name="step"/> the value per click measured on THIS walk (null before the probe click),
+    /// <paramref name="lastClicks"/> the clicks the last move fired, <paramref name="tolerance"/> the
+    /// gap that counts as on target. Within tolerance is Done. Before a step is known the answer is one
+    /// probe click ([A220-10]: "nothing closer" needs a step measured on this walk). After it, a sign
+    /// change in the gap after ONE click is a straddle: the target sits between that click's two values
+    /// and the walk ends on the NEARER one (one click back when the value before it was nearer). A sign
+    /// change after a burst of several clicks is an overshoot, never a straddle: the value before the
+    /// burst is several clicks away, so the walk aims back. That is the bug the standby walk fixed
+    /// (d8d9921b) and the FCP walk still had: its V/S walk could stop at 1600 as "nearest selectable to
+    /// 1500" after a 4-click burst (the walk-reliability report's model). Otherwise round(|delta| /
+    /// step) clicks ([A220-9]). Zero clicks — within half a step — is the nearest value on a knob
+    /// whose clicks are <paramref name="evenSteps"/>, so it stops there. On one whose values are
+    /// uneven (the standby altimeter, read on altimeter 3's 1/16-hPa grid: one click shows as 5/16 or
+    /// 6/16 hPa) a value outside the tolerance can still have a nearer neighbour, so it takes one
+    /// click across and the straddle rule keeps the nearer of the two. A step that cannot aim stops
+    /// where it is.
+    /// </summary>
+    internal static KnobWalkStep KnobWalkDecision(double delta, double prevDelta, double? step, int lastClicks,
+        double tolerance, bool evenSteps = true)
+    {
+        if (KnobWalkOnTarget(delta, tolerance)) return new KnobWalkStep(KnobWalkAction.Done);
+        if (step is not { } known) return new KnobWalkStep(KnobWalkAction.Click, 1);
+        if (lastClicks <= 1 && WalkStraddled(delta, prevDelta))
+            return new KnobWalkStep(Math.Abs(prevDelta) < Math.Abs(delta) ? KnobWalkAction.StepBack : KnobWalkAction.NearestHere);
+        int clicks = AimClicks(delta, known);
+        if (clicks > 0) return new KnobWalkStep(KnobWalkAction.Click, clicks);
+        return evenSteps || known <= 0
+            ? new KnobWalkStep(KnobWalkAction.NearestHere)
+            : new KnobWalkStep(KnobWalkAction.Click, 1);
+    }
+
+    /// <summary>How one knob's walk runs on <see cref="RunKnobWalkAsync"/>.</summary>
+    internal sealed record KnobWalkPolicy
+    {
+        /// <summary>The gap that counts as on target, given the step measured so far (null before the probe).</summary>
+        public required Func<double?, double> Tolerance { get; init; }
+
+        /// <summary>The most moves a walk makes; its last landing is still judged.</summary>
+        public required int MaxRounds { get; init; }
+
+        /// <summary>The most clicks one move fires; a larger gap takes another round.</summary>
+        public required int MaxClicksPerMove { get; init; }
+
+        /// <summary>
+        /// True when a move of n clicks always lands whole (the standby baro knob takes the count as ONE
+        /// write), so every move re-measures the step, which a long one measures finest. False for paced
+        /// K-event clicks, which the aircraft drops when two reach one frame: a burst then reads LOW, and
+        /// a step re-derived from it is what made the old FCP walk aim too many clicks and overshoot. So
+        /// only a single click sets the step; a burst can only RAISE it (clicks are lost, never added, so
+        /// one that moved more per click than the step proves the step short — the probe click of a
+        /// selector left off its grid only snaps, a fraction of a step).
+        /// </summary>
+        public required bool BurstsLandWhole { get; init; }
+
+        /// <summary>A move smaller than this did not move the knob.</summary>
+        public required double NotMovedBelow { get; init; }
+
+        /// <summary>True when every click moves the read-back the same amount, so a value within half a
+        /// step is the nearest (<see cref="KnobWalkDecision"/>); false when the read-back quantises the
+        /// clicks unevenly, so the walk looks across one click before calling a value the nearest.</summary>
+        public bool EvenSteps { get; init; } = true;
+
+        /// <summary>How many times a probe click that moved nothing is sent again before the knob is "not
+        /// responding" (the standby altimeter drops its first clicks while it powers up).</summary>
+        public int DeadProbeRetries { get; init; }
+    }
+
+    /// <summary>The FCP walks' policy (V/S, FPA, stab trim, metres altitude): ten moves of at most 120
+    /// paced clicks (the exact walk's cap), the step measured on single clicks, a dead first click said
+    /// at once (9a: it is no longer resent on a second transport).</summary>
+    internal static KnobWalkPolicy FcpWalkPolicy(double tolerance) => new()
+    {
+        Tolerance = _ => tolerance,
+        MaxRounds = 10,
+        MaxClicksPerMove = 120,
+        BurstsLandWhole = false,
+        NotMovedBelow = 1e-6,
+    };
+
+    /// <summary>One move the walk asks for: <see cref="Clicks"/> clicks, <see cref="Direction"/> +1 for
+    /// the knob's "increase" input and -1 for its "decrease" one (the walk has already calibrated which
+    /// raises the value), from <see cref="From"/>, with the step measured so far.</summary>
+    internal readonly record struct KnobMove(int Clicks, int Direction, double From, double? Step);
+
+    /// <summary>How a knob walk ended.</summary>
+    internal enum KnobWalkEnd
+    {
+        /// <summary>On the target, within tolerance.</summary>
+        OnTarget,
+        /// <summary>On the nearest value the knob can select; the target is between two.</summary>
+        NearestSelectable,
+        /// <summary>Out of moves with a nearer value still to go.</summary>
+        RoundLimit,
+        /// <summary>A move left the value where it was.</summary>
+        NotResponding,
+        /// <summary>No read-back after a move: the knob may have moved, so no value is claimed.</summary>
+        ReadLost
+    }
+
+    /// <summary>A walk's end, the value it ended on (the last one read back), the step it measured, and
+    /// the rounds it took.</summary>
+    internal readonly record struct KnobWalkResult(KnobWalkEnd End, double Value, double? Step, int Rounds);
+
+    /// <summary>
+    /// A measured knob walk from <paramref name="start"/> to <paramref name="target"/>, the I/O in
+    /// <paramref name="move"/> (fire the clicks, wait, read back; null = no reading). Each round asks
+    /// <see cref="KnobWalkDecision"/>; the first move is one probe click, which measures the step and
+    /// calibrates the direction (a move the wrong way swaps the inputs); a step-back click ends the walk
+    /// where it lands. The last landing is judged like every other, so a walk out of rounds that landed
+    /// on the target says so. Pure apart from <paramref name="move"/>: the standby baro walk and the FCP
+    /// walk both run it, and the tests drive it on models of the knobs. Cancellation throws, so a
+    /// superseded walk ends in silence.
+    /// </summary>
+    internal static async Task<KnobWalkResult> RunKnobWalkAsync(double target, double start, KnobWalkPolicy policy,
+        Func<KnobMove, Task<double?>> move, System.Threading.CancellationToken token = default)
+    {
+        double cur = start;
+        int up = 1;                 // the Direction that raises the value: calibrated on the first move
+        double? step = null;        // value per click, measured on this walk only
+        double prevDelta = double.NaN;
+        int lastClicks = 0;
+        int deadProbes = 0;
+        for (int round = 0; round < policy.MaxRounds; round++)
+        {
+            token.ThrowIfCancellationRequested();
+            double delta = target - cur;
+            var next = KnobWalkDecision(delta, prevDelta, step, lastClicks, policy.Tolerance(step), policy.EvenSteps);
+            if (next.Action == KnobWalkAction.Done) return new KnobWalkResult(KnobWalkEnd.OnTarget, cur, step, round);
+            if (next.Action == KnobWalkAction.NearestHere) return new KnobWalkResult(KnobWalkEnd.NearestSelectable, cur, step, round);
+            bool stepBack = next.Action == KnobWalkAction.StepBack;
+            int clicks = Math.Clamp(stepBack ? 1 : next.Clicks, 1, policy.MaxClicksPerMove);
+            prevDelta = delta;
+            lastClicks = clicks;
+            if (await move(new KnobMove(clicks, delta > 0 ? up : -up, cur, step)) is not { } after)
+                return new KnobWalkResult(KnobWalkEnd.ReadLost, cur, step, round + 1);
+            double moved = after - cur;
+            if (Math.Abs(moved) < policy.NotMovedBelow)
+            {
+                if (step == null && deadProbes < policy.DeadProbeRetries) { deadProbes++; continue; }
+                return new KnobWalkResult(KnobWalkEnd.NotResponding, cur, step, round + 1);
+            }
+            if (stepBack)
+            {
+                // The step and the direction are measured already: say where the click back landed.
+                return new KnobWalkResult(KnobWalkOnTarget(target - after, policy.Tolerance(step))
+                    ? KnobWalkEnd.OnTarget : KnobWalkEnd.NearestSelectable, after, step, round + 1);
+            }
+            if (Math.Sign(moved) != Math.Sign(delta)) up = -up;
+            double perClick = Math.Abs(moved) / clicks;
+            step = policy.BurstsLandWhole || clicks == 1 ? perClick : Math.Max(step ?? perClick, perClick);
+            cur = after;
+        }
+        var last = KnobWalkDecision(target - cur, prevDelta, step, lastClicks, policy.Tolerance(step), policy.EvenSteps);
+        var end = last.Action switch
+        {
+            KnobWalkAction.Done => KnobWalkEnd.OnTarget,
+            KnobWalkAction.NearestHere => KnobWalkEnd.NearestSelectable,
+            _ => KnobWalkEnd.RoundLimit
+        };
+        return new KnobWalkResult(end, cur, step, policy.MaxRounds);
+    }
+
+    /// <summary>What a burst moved, in clicks of the measured step, for the adaptive pace
+    /// (<see cref="NextKnobPaceMs"/>); before a step is known, the clicks sent.</summary>
+    internal static double KnobWalkMovedClicks(double moved, double? step, int clicks)
+        => step is { } s && s > 0 ? Math.Abs(moved) / s : clicks;
+
+    /// <summary>
+    /// The FCP walk's one spoken line before its knob's own note: the value on target; "— nearest
+    /// selectable to …" on the nearest value; out of rounds, "could not reach …, now …" (never
+    /// "nearest selectable": the last landing was judged and a nearer value was still to go); "not
+    /// responding"; or "not confirmed" when the read-back stopped. Culture-invariant when
+    /// <paramref name="fmt"/> is.
+    /// </summary>
+    internal static string FcpWalkResultText(KnobWalkResult r, string name, double target, Func<double, string> fmt)
+        => r.End switch
+        {
+            KnobWalkEnd.OnTarget => $"{name} {fmt(r.Value)}",
+            KnobWalkEnd.NearestSelectable => $"{name} {fmt(r.Value)} — nearest selectable to {fmt(target)}",
+            KnobWalkEnd.RoundLimit => $"{name} could not reach {fmt(target)}, now {fmt(r.Value)}",
+            KnobWalkEnd.NotResponding => $"{name} knob is not responding — value unchanged at {fmt(r.Value)}.",
+            _ => KnobWalkNotConfirmedText(name)
+        };
 
     /// <summary>The trim walk's takeoff-band clause: ", in takeoff range", or ", still OUTSIDE takeoff
     /// range 4.2 to 6.8"; empty when the aircraft publishes no band (the EICAS hides it when the two
