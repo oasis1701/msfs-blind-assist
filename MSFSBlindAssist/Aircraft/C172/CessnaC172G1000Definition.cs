@@ -162,6 +162,25 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
             Units = "knots",
             UpdateFrequency = UpdateFrequency.OnRequest
         };
+        // Read only by the nose wheel's read-back: whether the GFC 700 is in PIT, and the pitch it holds
+        // (measured: -3.7 in PIT with the aeroplane 2.7 nose up after two Nose Up presses; MSFS signs it
+        // negative for nose up, like the flight director's pitch).
+        v["C172G_AP_PITCH_STATE"] = new SimVarDefinition
+        {
+            Name = "AUTOPILOT PITCH HOLD",
+            DisplayName = "Pitch Hold",
+            Type = SimVarType.SimVar,
+            Units = "Bool",
+            UpdateFrequency = UpdateFrequency.OnRequest
+        };
+        v["C172G_AP_PITCH_REF"] = new SimVarDefinition
+        {
+            Name = "AUTOPILOT PITCH HOLD REF",
+            DisplayName = "Pitch Reference",
+            Type = SimVarType.SimVar,
+            Units = "degrees",
+            UpdateFrequency = UpdateFrequency.OnRequest
+        };
 
         return v;
     }
@@ -330,8 +349,9 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
     }
 
     /// <summary>
-    /// The target the nose wheel just moved: vertical speed in VS mode, airspeed in FLC (where nose up
-    /// slows the target). Read back after the key lands, on the UI thread.
+    /// The target the nose wheel just moved: vertical speed in VS, airspeed in FLC (where nose up
+    /// slows the target), pitch in PIT, the mode the GFC 700 engages in. Read back after the key
+    /// lands, on the UI thread. In any other vertical mode the press is only confirmed.
     /// </summary>
     private static async Task AnnounceNoseWheelTargetAsync(string displayName, SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)
@@ -340,11 +360,42 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
         bool flc = (simConnect.GetCachedVariableValue("C172G_AP_FLC_STATE") ?? 0) > 0.5;
         bool vs = (simConnect.GetCachedVariableValue("C172_AP_VS_STATE") ?? 0) > 0.5;
         if (flc && await simConnect.ReadFreshAsync("C172G_AP_IAS_VALUE", 1500) is double kt)
-            announcer.AnnounceImmediate($"Airspeed {kt:F0} knots");
+            announcer.AnnounceImmediate(DescribeAirspeedTarget(kt));
         else if (vs && await simConnect.ReadFreshAsync("C172_AP_VS_VALUE", 1500) is double fpm)
-            announcer.AnnounceImmediate($"Vertical speed {fpm:F0} feet per minute");
+            announcer.AnnounceImmediate(DescribeVerticalSpeedTarget(fpm));
+        else if (!flc && !vs && await simConnect.ReadFreshAsync("C172G_AP_PITCH_STATE", 1500) is > 0.5
+                 && await simConnect.ReadFreshAsync("C172G_AP_PITCH_REF", 1500) is double pitch)
+            announcer.AnnounceImmediate(DescribePitchTarget(pitch));
         else
             announcer.Announce($"{displayName} pressed");
+    }
+
+    /// <summary>The FLC airspeed target as spoken. Pure so the suite can pin it.</summary>
+    internal static string DescribeAirspeedTarget(double knots) =>
+        string.Create(CultureInfo.InvariantCulture, $"Airspeed {Math.Round(knots):F0} knots");
+
+    /// <summary>
+    /// The VS target as spoken: a direction word, never a sign (a minus reads oddly, and some cultures
+    /// write it as U+2212). Pure so the suite can pin it.
+    /// </summary>
+    internal static string DescribeVerticalSpeedTarget(double fpm)
+    {
+        double rounded = Math.Round(fpm);
+        if (rounded == 0) return "Vertical speed level";
+        return string.Create(CultureInfo.InvariantCulture,
+            $"Vertical speed {Math.Abs(rounded):F0} feet per minute {(rounded > 0 ? "up" : "down")}");
+    }
+
+    /// <summary>
+    /// The pitch PIT holds, from `AUTOPILOT PITCH HOLD REF`, which MSFS signs negative for nose up.
+    /// Tenths with a dot, as the trim announcer writes them. Pure so the suite can pin it.
+    /// </summary>
+    internal static string DescribePitchTarget(double pitchHoldRefDegrees)
+    {
+        double noseUp = Math.Round(-pitchHoldRefDegrees, 1);
+        if (noseUp == 0) return "Pitch level";
+        return string.Create(CultureInfo.InvariantCulture,
+            $"Pitch {(noseUp > 0 ? "up" : "down")} {Math.Abs(noseUp):F1} degrees");
     }
 
     /// <summary>

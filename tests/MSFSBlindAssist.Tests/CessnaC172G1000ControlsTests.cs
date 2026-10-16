@@ -174,6 +174,33 @@ public class CessnaC172G1000ControlsTests
         Assert.Equal("Off", positions[1]);
     }
 
+    // The nose wheel's read-back. PIT is the mode the GFC 700 engages in, and AUTOPILOT PITCH HOLD REF
+    // is negative for nose up (measured -3.7 at 3.7 nose up). Tenths keep a dot under a comma-decimal
+    // culture, as the trim announcer writes them, and a descent is a word, never a minus sign.
+    [Theory]
+    [InlineData("en-US")]
+    [InlineData("de-DE")]
+    public void The_nose_wheel_targets_read_the_same_in_every_culture(string culture)
+    {
+        var saved = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo(culture);
+
+            Assert.Equal("Pitch up 3.7 degrees", CessnaC172G1000Definition.DescribePitchTarget(-3.7));
+            Assert.Equal("Pitch down 1.5 degrees", CessnaC172G1000Definition.DescribePitchTarget(1.5));
+            Assert.Equal("Pitch level", CessnaC172G1000Definition.DescribePitchTarget(0.04));
+            Assert.Equal("Vertical speed 200 feet per minute up", CessnaC172G1000Definition.DescribeVerticalSpeedTarget(200));
+            Assert.Equal("Vertical speed 500 feet per minute down", CessnaC172G1000Definition.DescribeVerticalSpeedTarget(-500));
+            Assert.Equal("Vertical speed level", CessnaC172G1000Definition.DescribeVerticalSpeedTarget(0));
+            Assert.Equal("Airspeed 85 knots", CessnaC172G1000Definition.DescribeAirspeedTarget(84.6));
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = saved;
+        }
+    }
+
     [Fact]
     public void The_autopilot_is_the_gfc_700_and_the_kap140_panel_is_gone()
     {
