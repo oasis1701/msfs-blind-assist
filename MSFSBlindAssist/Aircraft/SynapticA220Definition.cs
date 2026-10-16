@@ -381,13 +381,14 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
                 }
                 if (fcp?.vs_mode == 1 || (fcp == null && fpaMode))
                 {
-                    double fpa = fcp?.vs_mode == 1 && fcp.vs_sel is { } sel && Math.Abs(sel) <= 9.9
-                        ? sel : Cached(simConnect, "A22X_SELECTED_FPA");
-                    announcer.AnnounceImmediate(FormattableString.Invariant($"Flight path angle {fpa:0.0} degrees{tail}"));
+                    // In FPA mode vs_sel counts TENTHS of a degree, as the FCP and the PFD draw it
+                    // (A220Afdx.SelectedFpaDegrees): the old "within ±9.9 = degrees" read −0.5° as −5.0.
+                    double fpa = A220Afdx.SelectedFpaDegrees(fcp) ?? Cached(simConnect, "A22X_SELECTED_FPA");
+                    announcer.AnnounceImmediate("Flight path angle " + A220Afdx.FpaDegreesText(fpa) + tail);
                     return true;
                 }
-                int vs = (int)Math.Round(fcp?.vs_sel ?? Cached(simConnect, "A22X_AP_VS"));
-                announcer.AnnounceImmediate($"Vertical speed {vs} feet per minute{tail}");
+                double vs = fcp?.vs_sel ?? Cached(simConnect, "A22X_AP_VS");
+                announcer.AnnounceImmediate("Vertical speed " + A220Afdx.VerticalSpeedText(vs) + tail);
                 return true;
             }
             case HotkeyAction.ReadFlightDirector:

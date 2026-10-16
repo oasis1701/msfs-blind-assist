@@ -678,15 +678,19 @@ public class SynapticA220DefinitionTests
     }
 
     // VAR-5: the older readouts in the hotkey switch speak invariant numbers. CI runs en-US, so only
-    // a comma-decimal culture catches a "Mach 0,78" or "-3,0 degrees".
+    // a comma-decimal culture catches a "Mach 0,78" or "-3,0 degrees", and sv-SE's U+2212 minus.
+    // In FPA mode vs_sel counts tenths of a degree, as the FCP and the PFD draw it (Vertical.tsx:
+    // "Math.abs(t / 10).toFixed(1)"): -30 is -3.0 degrees, and -5 is -0.5, never -5.0.
     [Theory]
-    [InlineData(HotkeyAction.ReadSpeed, "{\"spd_in_mach\":true,\"spd_sel_mach\":0.78,\"spd_sel_ias\":250,\"spd_fms\":false}",
+    [InlineData("de-DE", HotkeyAction.ReadSpeed, "{\"spd_in_mach\":true,\"spd_sel_mach\":0.78,\"spd_sel_ias\":250,\"spd_fms\":false}",
         "Manual speed Mach 0.78")]
-    [InlineData(HotkeyAction.ReadFCUVerticalSpeedFPA, "{\"vs_mode\":1,\"vs_sel\":-3.0}", "Flight path angle -3.0 degrees")]
-    public void FcpReadouts_SpeakInvariantNumbers_UnderAGermanCulture(HotkeyAction action, string fcpJson, string expected)
+    [InlineData("de-DE", HotkeyAction.ReadFCUVerticalSpeedFPA, "{\"vs_mode\":1,\"vs_sel\":-30}", "Flight path angle -3.0 degrees")]
+    [InlineData("sv-SE", HotkeyAction.ReadFCUVerticalSpeedFPA, "{\"vs_mode\":1,\"vs_sel\":-5}", "Flight path angle -0.5 degrees")]
+    [InlineData("sv-SE", HotkeyAction.ReadFCUVerticalSpeedFPA, "{\"vs_mode\":0,\"vs_sel\":-700}", "Vertical speed -700 feet per minute")]
+    public void FcpReadouts_SpeakInvariantNumbers_UnderACommaCulture(string culture, HotkeyAction action, string fcpJson, string expected)
     {
         var saved = System.Globalization.CultureInfo.CurrentCulture;
-        System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("de-DE");
+        System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo(culture);
         try
         {
             var def = new SynapticA220Definition();
