@@ -223,7 +223,7 @@ public class A220PanelStructureTests
     public void StandbyAltimeter_IsAWalkedEntryAndAStdPush()
     {
         var set = Vars["A22X_ISI_BARO_SET"];
-        Assert.Equal("Standby Baro (hPa or inHg)", set.DisplayName);
+        Assert.Equal("Standby Baro (hPa or inches)", set.DisplayName);
         Assert.Equal(SimVarType.Event, set.Type);
         Assert.Equal(UpdateFrequency.Never, set.UpdateFrequency);
         Assert.True(set.UnparseableTextAsNaN);

@@ -14,8 +14,9 @@ public static class A220Panels
 
     /// <summary>
     /// Lever travel of each detent as the cockpit lever reads it from L:A22X Spoiler Lever
-    /// (0-1): RET, 1/4, 1/2, 3/4, FULL, MAX — the ECL's sensed SPOILER_LEVER_0..5. Confirmed
-    /// live against those sensed bits (docs/a220.md, Panels); change only from a new measurement.
+    /// (0-1): RET, 1/4, 1/2, 3/4, FULL, MAX — the ECL's sensed SPOILER_LEVER_0..5. These travels
+    /// are pending live verification (Plan B live task): a sweep against those sensed bits
+    /// (docs/a220.md, Panels); change them only from such a sweep.
     /// </summary>
     public static readonly IReadOnlyList<double> SpeedbrakeDetentTravel = new[] { 0.0, 0.2, 0.4, 0.6, 0.8, 1.0 };
 

@@ -189,7 +189,7 @@ public partial class SynapticA220Definition
             return true;
         }
 
-        // K:-event pushbuttons (rudder trim, spoilers, swaps, ident).
+        // K:-event pushbuttons (rudder trim, swaps, ident).
         if (varDef.RenderAsButton && varDef.Type == SimVarType.Event)
         {
             FireKeyEvent(simConnect, varDef.Name, varDef.EventParam > 0 ? varDef.EventParam : null);

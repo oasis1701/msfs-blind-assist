@@ -311,7 +311,8 @@ public partial class SynapticA220Definition
         v["A22X_COOLING_INLET"] = LSwitch("A22X Cooling Inlet", "Equipment Cooling Inlet", "Off", "Auto");
         // EXHAUST is a 3-position knob (A220_KnobSmall3State). Value order from the ECL's sensed
         // names, which list VLV ONLY, AUTO, ON at consecutive bits the way every other 3-way
-        // knob lists its 0, 1, 2 — confirmed against those bits live (docs/a220.md, Panels).
+        // knob lists its 0, 1, 2 — pending live verification (Plan B live task) against those bits
+        // (docs/a220.md, Panels).
         v["A22X_COOLING_EXHAUST"] = LSwitch("A22X Cooling Exhaust", "Equipment Cooling Exhaust", "Valve Only", "Auto", "On");
 
         // ==== Overhead — Anti-ice / Heat =====================================
@@ -342,7 +343,7 @@ public partial class SynapticA220Definition
         // ==== Overhead — Fire protection / ELT / Evac ([A220-41], [A220-42]) ==
         // The engine fire pushes are latch-free korrys (A220_ButtonPBA, no IS_LATCHED): the
         // cockpit writes 1 and the WASM clears it — one-way buttons, never Normal/Pushed
-        // combos. The APU and cargo fire pushes and all five bottles ARE latched (each press
+        // combos. The APU and cargo fire pushes and all six bottles ARE latched (each press
         // toggles the L:var), so they are combos. Every fire control stays out of the ECL's
         // "do it for me" (A220EclActionMap: GuardedDestructive). Guards per the cockpit XML:
         // the five fire pushes are guarded, the bottles are not.
@@ -383,7 +384,8 @@ public partial class SynapticA220Definition
         v["A22X_WIPER_L"] = LSwitch("A22X_WIPER_L", "Left Wiper", "Off", "Intermittent", "Slow", "Fast");
         v["A22X_WIPER_R"] = LSwitch("A22X_WIPER_R", "Right Wiper", "Off", "Intermittent", "Slow", "Fast");
 
-        // ==== Eyebrow — Lights & signs =======================================
+        // ==== Overhead — Exterior Lights, Signs, Interior Lighting ============
+        // (the emergency lights sit on the Overhead's Emergency panel)
         v["A22X_NAV_LIGHTS"] = LSwitch("A22X Nav Lights", "Navigation Lights", "Off", "On");
         v["A22X_BEACON_LIGHTS"] = LSwitch("A22X Beacon Lights", "Beacon Lights", "Off", "On");
         v["A22X_STROBE_LIGHTS"] = LSwitch("A22X Strobe Lights", "Strobe Lights", "Off", "On");
@@ -459,7 +461,7 @@ public partial class SynapticA220Definition
         };
         v["A22X_RUDDER_TRIM_POS"] = Status("RUDDER TRIM PCT", "Rudder Trim", "percent over 100", "F2", SimVarType.SimVar);
 
-        // ==== Main panel — Gear / Brakes =====================================
+        // ==== Center Panel — Gear and Brakes =================================
         v["A22X_GEAR_LEVER"] = new SimVarDefinition
         {
             Name = "GEAR HANDLE POSITION", DisplayName = "Landing Gear Lever",
@@ -540,7 +542,7 @@ public partial class SynapticA220Definition
         // baro entry is WALKED against the ISI's own "A22X.ISI Data" store (Isi partial).
         v["A22X_ISI_BARO_SET"] = new SimVarDefinition
         {
-            Name = "A22X_ISI_BARO_SET", DisplayName = "Standby Baro (hPa or inHg)",
+            Name = "A22X_ISI_BARO_SET", DisplayName = "Standby Baro (hPa or inches)",
             Type = SimVarType.Event, UpdateFrequency = UpdateFrequency.Never,
             UnparseableTextAsNaN = true
         };
@@ -780,9 +782,9 @@ public partial class SynapticA220Definition
 
         // ==== Pedestal — audio control panel: transmit select ==================
         // A220_ButtonMomentary pushes. The cockpit XML (the input authority, [A220-19]) writes
-        // "A22X ACP VHFn Tx"; simvars.mdx documents "A22X ACP VHFn" — the XML name confirmed
-        // live (docs/a220.md, Panels). "A22X Tx Channel" is the WASM's selected transmitter
-        // (1-3 = VHF 1-3, 0 = none), read back after a press.
+        // "A22X ACP VHFn Tx"; simvars.mdx documents "A22X ACP VHFn" — the XML name, pending live
+        // verification (Plan B live task; docs/a220.md, Panels). "A22X Tx Channel" is the WASM's
+        // selected transmitter (1-3 = VHF 1-3, 0 = none), read back after a press.
         v["A22X_ACP_VHF1_TX"] = LMomentary("A22X ACP VHF1 Tx", "VHF 1 Transmit");
         v["A22X_ACP_VHF2_TX"] = LMomentary("A22X ACP VHF2 Tx", "VHF 2 Transmit");
         v["A22X_ACP_VHF3_TX"] = LMomentary("A22X ACP VHF3 Tx", "VHF 3 Transmit");
