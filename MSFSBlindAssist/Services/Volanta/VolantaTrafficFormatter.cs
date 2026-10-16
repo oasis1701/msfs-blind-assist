@@ -74,8 +74,13 @@ public static class VolantaTrafficFormatter
         return "";
     }
 
-    /// <summary>One list line: name, where it is from the pilot, altitude, speed, type, pilot and route.</summary>
-    public static string ListLine(VolantaTrafficEntry e) => string.Join(", ", LineParts(e, includePilot: true));
+    /// <summary>One list line: name, where it is from the pilot, altitude, speed, type, pilot and route, then,
+    /// once looked up, where it is: "…, CYYZ to KORD. Location: Pike Lake, Wisconsin, United States".</summary>
+    public static string ListLine(VolantaTrafficEntry e) => string.Join(", ", LineParts(e, includePilot: true)) + LocationSuffix(e);
+
+    /// <summary>". Location: …" when the entry's place is known, else nothing.</summary>
+    private static string LocationSuffix(VolantaTrafficEntry e)
+        => string.IsNullOrEmpty(e.Location) ? "" : $". Location: {e.Location}";
 
     private static List<string> LineParts(VolantaTrafficEntry e, bool includePilot)
     {
@@ -147,7 +152,8 @@ public static class VolantaTrafficFormatter
     public static string FriendLine(VolantaFriendEntry e)
     {
         string name = e.Friend.UserName.Length > 0 ? e.Friend.UserName : "Unnamed friend";
-        if (e.Placed != null) return $"{name}, flying, " + string.Join(", ", LineParts(e.Placed, includePilot: false));
+        if (e.Placed != null)
+            return $"{name}, flying, " + string.Join(", ", LineParts(e.Placed, includePilot: false)) + LocationSuffix(e.Placed);
         if (e.Flight is { } f)
         {
             var parts = new List<string> { $"{name}, flying {DisplayName(f)}" };
@@ -194,6 +200,7 @@ public static class VolantaTrafficFormatter
         Add("Route", f.Route);
         Add("Simulator", SimulatorName(f.Simulator));
         Add("Position", $"{e.ClockPosition.ToString(Inv)} o'clock, {Distance(e.DistanceNm)}, bearing {Heading(e.BearingTrue)} true");
+        Add("Location", e.Location ?? "");
         if (f.OnGround)
             Add("Altitude", "on the ground");
         else

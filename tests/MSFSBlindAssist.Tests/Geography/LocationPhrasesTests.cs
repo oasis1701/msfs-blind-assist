@@ -218,4 +218,83 @@ public class LocationPhrasesTests
     {
         Assert.Equal(expected, LocationPhrases.TidyName(raw));
     }
+
+    // The Volanta traffic list's "Location:" (owner, 2026-10-15): the place C names, never its distance,
+    // direction, coast or nearest land.
+
+    private static readonly PlaceHit PikeLake = new("Pike Lake", "Wisconsin", "United States", Nm(1.0), 180);
+
+    [Fact]
+    public void A_traffic_place_over_land_is_the_nearest_town_with_its_state_and_country()
+        => Assert.Equal("Pike Lake, Wisconsin, United States",
+            LocationPhrases.TrafficPlace(new WhereYouAre { State = "Wisconsin", Country = "United States", EdgeNm = Nm(3) }, PikeLake));
+
+    [Fact]
+    public void With_no_town_in_range_a_traffic_place_over_land_is_the_state_and_country()
+        => Assert.Equal("Wisconsin, United States",
+            LocationPhrases.TrafficPlace(new WhereYouAre { State = "Wisconsin", Country = "United States" }, null));
+
+    [Fact]
+    public void Over_water_a_traffic_place_names_the_water_then_the_nearest_town_when_one_is_in_range()
+    {
+        Assert.Equal("over Chesapeake Bay, near Dares Beach, Maryland, United States",
+            LocationPhrases.TrafficPlace(OverChesapeake, DaresBeach));
+        Assert.Equal("over North Atlantic Ocean",
+            LocationPhrases.TrafficPlace(new WhereYouAre { Water = WaterKind.Sea, WaterName = "North Atlantic Ocean", EdgeNm = Nm(400) }, null));
+        Assert.Equal("over Lake Michigan",
+            LocationPhrases.TrafficPlace(new WhereYouAre { Water = WaterKind.Lake, WaterName = "Lake Michigan" }, null));
+    }
+
+    [Fact]
+    public void A_traffic_place_skips_empty_parts_and_is_null_with_nothing_known()
+    {
+        Assert.Equal("Vaduz, Liechtenstein", LocationPhrases.TrafficPlace(new WhereYouAre(), new PlaceHit("Vaduz", "", "Liechtenstein", 1, 0)));
+        Assert.Null(LocationPhrases.TrafficPlace(new WhereYouAre(), null));
+    }
+
+    // "Report location to nearest major city" (owner, 2026-10-15): the distance and direction from the city, since
+    // the nearest major city can be far. A PlaceHit's bearing is from the aircraft to the city.
+
+    private static PlaceHit Wichita(double miles, double bearingToCity) => new("Wichita", "Kansas", "United States", Nm(miles), bearingToCity);
+    private static readonly WhereYouAre InKansas = new() { State = "Kansas", Country = "United States" };
+    private static readonly WhereYouAre OverLakeMichigan = new() { Water = WaterKind.Lake, WaterName = "Lake Michigan" };
+
+    [Fact]
+    public void A_major_city_place_over_land_says_how_far_and_which_way_the_aircraft_is_from_the_city()
+    {
+        Assert.Equal("92 miles west of Wichita, Kansas, United States", LocationPhrases.TrafficCityPlace(InKansas, Wichita(92, 90), false));
+        Assert.Equal("3.4 miles south of Wichita, Kansas, United States", LocationPhrases.TrafficCityPlace(InKansas, Wichita(3.44, 0), false));
+        Assert.Equal("148 kilometers northeast of Wichita, Kansas, United States",
+            LocationPhrases.TrafficCityPlace(InKansas, Wichita(92, 225), true));
+    }
+
+    [Fact]
+    public void Within_a_mile_of_a_major_city_the_city_alone_is_said()
+    {
+        Assert.Equal("Wichita, Kansas, United States", LocationPhrases.TrafficCityPlace(InKansas, Wichita(0.6, 90), false));
+        Assert.Equal("1.0 miles west of Wichita, Kansas, United States", LocationPhrases.TrafficCityPlace(InKansas, Wichita(1.0, 90), false));
+    }
+
+    [Fact]
+    public void Over_water_a_major_city_place_names_the_water_first()
+    {
+        var milwaukee = new PlaceHit("Milwaukee", "Wisconsin", "United States", Nm(23), 270);
+        Assert.Equal("over Lake Michigan, 23 miles east of Milwaukee, Wisconsin, United States",
+            LocationPhrases.TrafficCityPlace(OverLakeMichigan, milwaukee, false));
+        Assert.Equal("over Lake Michigan, near Milwaukee, Wisconsin, United States",
+            LocationPhrases.TrafficCityPlace(OverLakeMichigan, milwaukee with { DistanceNm = Nm(0.5) }, false));
+    }
+
+    [Fact]
+    public void With_no_major_city_in_range_the_place_is_the_area_or_the_water()
+    {
+        Assert.Equal("Kansas, United States", LocationPhrases.TrafficCityPlace(InKansas, null, false));
+        Assert.Equal("over Lake Michigan", LocationPhrases.TrafficCityPlace(OverLakeMichigan, null, false));
+        Assert.Null(LocationPhrases.TrafficCityPlace(new WhereYouAre(), null, false));
+    }
+
+    [Fact]
+    public void A_major_city_place_is_invariant_under_a_comma_decimal_culture()
+        => UnderCulture("de-DE", () => Assert.Equal("3.4 miles south of Wichita, Kansas, United States",
+            LocationPhrases.TrafficCityPlace(InKansas, Wichita(3.44, 0), false)));
 }

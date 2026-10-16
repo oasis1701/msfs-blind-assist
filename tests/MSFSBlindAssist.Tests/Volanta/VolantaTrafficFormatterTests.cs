@@ -58,6 +58,30 @@ public sealed class VolantaTrafficFormatterTests : IDisposable
             VolantaTrafficFormatter.ListLine(Entry(Airbus, distanceNm: 4.3, altitudeDiff: -15320, clock: 5)));
 
     [Fact]
+    public void Once_looked_up_the_location_closes_the_line_after_a_full_stop()
+    {
+        var united = new VolantaFlight
+        {
+            Id = "n-7", Source = VolantaSource.Vatsim, Callsign = "UAL763", UserName = "Ryan Burke KDEN", AircraftIcao = "A320",
+            Origin = "CYYZ", Destination = "KORD", AltitudeFt = 13300, GroundSpeedKt = 190,
+        };
+        var entry = Entry(united, distanceNm: 75, altitudeDiff: -22700, clock: 7) with { Location = "Pike Lake, Wisconsin, United States" };
+        Assert.Equal("UAL 763, 7 o'clock, 75 nm, 22,700 feet below, 190 knots, A320, VATSIM, Ryan Burke KDEN, CYYZ to KORD. "
+            + "Location: Pike Lake, Wisconsin, United States", VolantaTrafficFormatter.ListLine(entry));
+        Assert.Equal("UAL 763, 7 o'clock, 75 nm, 22,700 feet below, 190 knots, A320, VATSIM, Ryan Burke KDEN, CYYZ to KORD. "
+            + "Location: over Lake Michigan", VolantaTrafficFormatter.ListLine(entry with { Location = "over Lake Michigan" }));
+        Assert.Contains("Position: 7 o'clock, 75 nm, bearing 005 true" + Environment.NewLine + "Location: Pike Lake, Wisconsin, United States",
+            VolantaTrafficFormatter.Details(entry));
+    }
+
+    [Fact]
+    public void Before_the_lookup_the_line_and_details_have_no_location()
+    {
+        Assert.DoesNotContain("Location", VolantaTrafficFormatter.ListLine(Entry(Learjet)));
+        Assert.DoesNotContain("Location", VolantaTrafficFormatter.Details(Entry(Learjet)));
+    }
+
+    [Fact]
     public void Traffic_on_the_ground_says_so_instead_of_altitude_and_speed()
     {
         var parked = Learjet with { OnGround = true, GroundSpeedKt = 3 };

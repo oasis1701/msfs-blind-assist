@@ -395,13 +395,14 @@ public partial class MainForm
     // this one (the TCAS window's pattern), so the pilot can Alt+Tab between the two; a second click
     // brings the open one forward. It opens whether or not the sim is connected (it can place traffic
     // from Volanta's own position report) and owns its link to Volanta, which it closes with the window.
+    // It names where each aircraft is from the same offline location data Output C reads.
     private Forms.Volanta.VolantaLiveMapForm? volantaLiveMapForm;
 
     private void VolantaMenuItem_Click(object? sender, EventArgs e)
     {
         if (volantaLiveMapForm is not { IsDisposed: false })
         {
-            volantaLiveMapForm = new Forms.Volanta.VolantaLiveMapForm(simConnectManager, announcer);
+            volantaLiveMapForm = new Forms.Volanta.VolantaLiveMapForm(simConnectManager, announcer, offlineLocationService);
             volantaLiveMapForm.FormClosed += (_, _) => volantaLiveMapForm = null;
         }
         volantaLiveMapForm.ShowForm();

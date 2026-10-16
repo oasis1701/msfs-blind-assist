@@ -1,8 +1,10 @@
 using System.Globalization;
+using System.Threading;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Controls;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Services;
+using MSFSBlindAssist.Services.Geography;
 using MSFSBlindAssist.Services.Volanta;
 using MSFSBlindAssist.SimConnect;
 using MSFSBlindAssist.Utils.Logging;
@@ -48,10 +50,21 @@ public sealed class VolantaLiveMapForm : Form
 
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
+    /// <summary>At most this many place lookups in one read of the location data, and one burst of lookups runs
+    /// at most <see cref="PlaceBurstMs"/> before the lists show what it found.</summary>
+    private const int PlaceBatchSize = 40;
+    private const int PlaceBurstMs = 2000;
+
     private readonly SimConnectManager _sim;
     private readonly ScreenReaderAnnouncer _announcer;
+    private readonly OfflineLocationService _locations;
     private readonly VolantaLink _link = new();
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = RefreshIntervalMs };
+    // Each flight's place, one cache per kind (nearest town, nearest major city). Replaced, never cleared, when the
+    // GeoNames tab's settings change, so a burst still running under the old settings fills only the old cache.
+    private VolantaPlaceCache<string> _townPlaces = new();
+    private VolantaPlaceCache<TrafficCityReport> _cityPlaces = new();
+    private LocationQuerySettings? _placeSettings;
 
     private AccessibleTabControl _tabs = null!;
     // Traffic
@@ -61,10 +74,12 @@ public sealed class VolantaLiveMapForm : Form
     private ComboBox _distance = null!, _phase = null!, _altitude = null!;
     private CheckBox _srcVolanta = null!, _srcVatsim = null!, _srcIvao = null!, _srcPilotEdge = null!, _srcApoc = null!;
     private TextBox _search = null!;
+    private CheckBox _trafficCities = null!;
     // Friends
     private ListBox _friendsList = null!;
     private DisplayListBox _friendsDetails = null!;
     private TextBox _friendsStatus = null!;
+    private CheckBox _friendsCities = null!;
     // ATC
     private ListBox _atcList = null!;
     private DisplayListBox _atcDetails = null!;
@@ -93,11 +108,13 @@ public sealed class VolantaLiveMapForm : Form
         public override string ToString() => Text;
     }
 
-    public VolantaLiveMapForm(SimConnectManager sim, ScreenReaderAnnouncer announcer)
+    internal VolantaLiveMapForm(SimConnectManager sim, ScreenReaderAnnouncer announcer, OfflineLocationService locations)
     {
         _sim = sim;
         _announcer = announcer;
+        _locations = locations;
         BuildUI();
+        CurrentPlaceSettings();   // names the GeoNames tab's values in the major-city checkboxes
 
         _link.Changed += OnLinkChanged;
         _timer.Tick += (_, _) => OnTimer();
@@ -162,15 +179,18 @@ public sealed class VolantaLiveMapForm : Form
 
         _friendsStatus = ReadOnlyBox("Friends status");
         _friendsStatus.Text = "Waiting for Volanta.";
+        _friendsCities = CityToggle(() => RefreshFriends(hold: false));
 
         // No restart button of its own: the Connection tab's one button restarts Volanta, which reloads the list.
-        var layout = NewColumn(3);
+        var layout = NewColumn(4);
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.Controls.Add(_friendsList, 0, 0);
         layout.Controls.Add(_friendsDetails, 0, 1);
         layout.Controls.Add(_friendsStatus, 0, 2);
+        layout.Controls.Add(_friendsCities, 0, 3);
         page.Controls.Add(layout);
         return page;
     }
@@ -226,16 +246,21 @@ public sealed class VolantaLiveMapForm : Form
             _srcVolanta, _srcVatsim, _srcIvao, _srcPilotEdge, _srcApoc, Caption("Search:"), _search, refresh,
         });
 
-        // The list first, then its details, then the status and the filters: the order the pilot tabs through.
-        var layout = NewColumn(4);
+        _trafficCities = CityToggle(() => RefreshTraffic(hold: false));
+
+        // The list first, then its details, then the status, the filters and the location choice: the order the
+        // pilot tabs through.
+        var layout = NewColumn(5);
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.Controls.Add(_trafficList, 0, 0);
         layout.Controls.Add(_trafficDetails, 0, 1);
         layout.Controls.Add(_trafficStatus, 0, 2);
         layout.Controls.Add(filters, 0, 3);
+        layout.Controls.Add(_trafficCities, 0, 4);
         page.Controls.Add(layout);
         return page;
     }
@@ -323,6 +348,8 @@ public sealed class VolantaLiveMapForm : Form
                 "",
                 "Friends: Volanta sends your friends list once, when it starts, so this app reads it when it starts Volanta, and keeps a copy of your friends' names for next time. Who is flying, and where, is always live. If your list looks out of date, restart Volanta with the button above.",
                 "",
+                "Each aircraft's Location names the nearest town, from the location data of Settings, GeoNames tab. Tick \"Report location to nearest major city\" on the Traffic or Friends tab to hear how far and which way it is from the nearest major city instead. A major city follows your own Minimum Population for Major Cities and Major Cities Range on the GeoNames tab.",
+                "",
                 "Volanta's positions can be up to two minutes old, so this window estimates where each aircraft is now. Use it for awareness, not to avoid traffic.",
                 "",
                 "While Volanta runs with live map access, programs on this PC can control Volanta. The access ends when Volanta is next started normally.",
@@ -358,6 +385,27 @@ public sealed class VolantaLiveMapForm : Form
 
     private static CheckBox Toggle(string text)
         => new() { Text = text, Checked = true, AutoSize = true, Margin = new Padding(6, 6, 0, 3) };
+
+    /// <summary>"Report location to nearest major city", one per list tab, each on its own, unticked at every
+    /// opening (the owner's choice, 2026-10-15). Its text names the pilot's own GeoNames settings it follows
+    /// (<see cref="CityToggleText"/>), set by <see cref="CurrentPlaceSettings"/>.</summary>
+    private static CheckBox CityToggle(Action changed)
+    {
+        var box = new CheckBox
+        {
+            AutoSize = true,
+            Margin = new Padding(6, 6, 0, 3),
+            AccessibleDescription = "When ticked, each location says how far and which way the aircraft is from the "
+                + "nearest major city, instead of naming the nearest town. Set the population and range in Settings, "
+                + "GeoNames tab: Minimum Population for Major Cities, and Major Cities Range.",
+        };
+        box.CheckedChanged += (_, _) => changed();
+        return box;
+    }
+
+    private static string CityToggleText(LocationQuerySettings s)
+        => $"Report location to nearest major city (your GeoNames settings: population {s.MajorPopulation.ToString("N0", Inv)} "
+            + $"or more, within {s.MajorRange.ToString(Inv)} {LocationPhrases.UnitWord(s.Kilometres)})";
 
     /// <summary>One status line: a read-only text box, never a label, since a label is not in the tab order
     /// (VAT-13). Updated in place, so a reader inside it keeps their position.</summary>
@@ -448,6 +496,7 @@ public sealed class VolantaLiveMapForm : Form
     {
         // Keep the sim position fresh, as the TCAS window does: each update reads the cached one.
         _sim.RequestAircraftPosition();
+        CurrentPlaceSettings();   // the checkbox text follows the GeoNames tab even while no traffic shows
         RefreshTraffic(hold: true);
         RefreshFriends(hold: true);
         RefreshAtc(hold: true);
@@ -493,7 +542,12 @@ public sealed class VolantaLiveMapForm : Form
         IReadOnlyList<VolantaTrafficEntry> placed = own is VolantaOwnPosition me
             ? VolantaTrafficCalculator.Compute(volantaFlights, me, now, snap.OwnFlight?.FlightId, snap.OwnVolantaPosition, snap.OwnUserId)
             : Array.Empty<VolantaTrafficEntry>();
-        var entries = VolantaFriends.Arrange(friends, volantaFlights, placed);
+        CurrentPlaceSettings();
+        bool cities = _friendsCities.Checked;
+        var entries = VolantaFriends.Arrange(friends, volantaFlights, placed)
+            .Select(e => e.Placed is { } p ? e with { Placed = WithPlaces(new[] { p }, cities)[0] } : e)
+            .ToList();
+        LookUpPlaces(entries.Where(e => e.Placed != null).Select(e => e.Placed!).ToList(), cities);
         _friendsByKey = entries.GroupBy(e => e.Friend.FriendId).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
         Reconcile(_friendsList, entries.Select(e => new Row(e.Friend.FriendId, VolantaTrafficFormatter.FriendLine(e))).ToList(),
             hold && _friendsList.Focused);
@@ -608,7 +662,13 @@ public sealed class VolantaLiveMapForm : Form
 
         var entries = VolantaTrafficCalculator.Compute(flights, me, now, snap.OwnFlight?.FlightId, snap.OwnVolantaPosition,
             snap.OwnUserId);
-        var shown = CurrentFilter().Apply(entries);
+        CurrentPlaceSettings();
+        var flightIds = flights.Select(f => f.Id).ToList();
+        _townPlaces.KeepOnly(flightIds);
+        _cityPlaces.KeepOnly(flightIds);
+        bool cities = _trafficCities.Checked;
+        var shown = WithPlaces(CurrentFilter().Apply(entries), cities);
+        LookUpPlaces(shown, cities);
         _trafficByKey = shown.GroupBy(e => e.Flight.Id).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
         Reconcile(_trafficList, shown.Select(e => new Row(e.Flight.Id, VolantaTrafficFormatter.ListLine(e))).ToList(),
             hold && _trafficList.Focused);
@@ -620,8 +680,100 @@ public sealed class VolantaLiveMapForm : Form
         string status = shown.Count == 0 ? "No aircraft match the filters." : $"{shown.Count.ToString("N0", Inv)} aircraft shown.";
         status += $" Online: {volantaUsers.ToString("N0", Inv)} Volanta users, {networkPilots.ToString("N0", Inv)} network pilots."
             + $" Your position from {source}. {DataAge("Traffic", snap.VolantaFlightsReceived, now)}";
+        if (!_locations.IsAvailable) status += " Locations need the location data: Settings, GeoNames tab.";
         string warning = PausedWarning(snap, now);
         DisplayText.SetPreserveCaret(_trafficStatus, warning.Length > 0 ? warning + " " + status : status);
+    }
+
+    // ── Places ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The GeoNames tab's settings the lookups follow, read at every update so a change there applies here
+    /// without reopening the window. When they change, both caches start over (what they hold was found under
+    /// the old population, range or units) and the major-city checkboxes name the new values.
+    /// </summary>
+    private LocationQuerySettings CurrentPlaceSettings()
+    {
+        var settings = LocationQuerySettings.From(MSFSBlindAssist.Settings.SettingsManager.Current);
+        if (settings == _placeSettings) return settings;
+        if (_placeSettings != null)
+        {
+            _townPlaces = new();
+            _cityPlaces = new();
+        }
+        _placeSettings = settings;
+        string text = CityToggleText(settings);
+        foreach (var box in new[] { _trafficCities, _friendsCities })
+            if (box.Text != text) box.Text = text;
+        return settings;
+    }
+
+    /// <summary>The entries with the place each one was last looked up at, where known: the nearest town's
+    /// words, or with <paramref name="cities"/> the distance and direction from the nearest major city, worked
+    /// out from where the aircraft is now.</summary>
+    private List<VolantaTrafficEntry> WithPlaces(IEnumerable<VolantaTrafficEntry> entries, bool cities)
+    {
+        bool kilometres = _placeSettings?.Kilometres ?? false;
+        return entries.Select(e =>
+        {
+            string? place = cities
+                ? _cityPlaces.PlaceOf(e.Flight.Id)?.TextAt(e.Latitude, e.Longitude, kilometres)
+                : _townPlaces.PlaceOf(e.Flight.Id);
+            return place is null ? e : e with { Location = place };
+        }).ToList();
+    }
+
+    /// <summary>Looks up the places of the given entries (nearest first): the nearest town, or with
+    /// <paramref name="cities"/> the nearest major city, each kind into its own cache.</summary>
+    private void LookUpPlaces(IReadOnlyList<VolantaTrafficEntry> wanted, bool cities)
+    {
+        if (wanted.Count == 0 || !_locations.IsAvailable || _placeSettings is not { } settings) return;
+        if (cities)
+            LookUpPlaces(_cityPlaces, wanted, positions => _locations.GetMajorCities(positions, settings));
+        else
+            LookUpPlaces(_townPlaces, wanted, positions => _locations.GetPlaces(positions, settings)?
+                .Select(r => LocationPhrases.TrafficPlace(r.Where, r.Nearest)).ToList());
+    }
+
+    /// <summary>
+    /// Looks up, in the background, the places of the given entries (nearest first) that have none yet or
+    /// have moved since, from the offline location data Output C reads; one burst at a time per cache, in batches
+    /// of <see cref="PlaceBatchSize"/>, for at most <see cref="PlaceBurstMs"/>, then the lists update in place to
+    /// show what it found, and the next update starts the next burst. Never on the UI thread: each lookup reads
+    /// the location database.
+    /// </summary>
+    private void LookUpPlaces<TPlace>(VolantaPlaceCache<TPlace> cache, IReadOnlyList<VolantaTrafficEntry> wanted,
+        Func<IReadOnlyList<(double Lat, double Lon)>, IReadOnlyList<TPlace?>?> find) where TPlace : class
+    {
+        if (cache.Due(wanted, 1).Count == 0 || !cache.TryBeginLookup()) return;
+        var candidates = wanted.ToList();
+        _ = Task.Run(() =>
+        {
+            int found = 0;
+            try
+            {
+                var clock = Stopwatch.StartNew();
+                while (clock.ElapsedMilliseconds < PlaceBurstMs && !IsDisposed)
+                {
+                    var batch = cache.Due(candidates, PlaceBatchSize);
+                    if (batch.Count == 0) break;
+                    var places = find(batch.Select(e => (e.Latitude, e.Longitude)).ToList());
+                    if (places == null || places.Count != batch.Count) break;
+                    for (int i = 0; i < batch.Count; i++)
+                        cache.Store(batch[i].Flight.Id, batch[i].Latitude, batch[i].Longitude, places[i]);
+                    found += batch.Count;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("Volanta", $"Traffic place lookup failed: {ex.Message}");
+            }
+            finally
+            {
+                cache.EndLookup();
+                if (found > 0) SafeBeginInvoke(() => { RefreshTraffic(hold: true); RefreshFriends(hold: true); });
+            }
+        });
     }
 
     private void ShowTrafficDetails()

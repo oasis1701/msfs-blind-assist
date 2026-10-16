@@ -96,6 +96,9 @@ public sealed class VolantaFriendsTests : IDisposable
         var friend = new VolantaFriend("a1", "pilot_three", Status("Descending"));
         Assert.Equal("pilot_three, flying, AAL 6336, 5 o'clock, 43 nm, 15,300 feet below, descending, 380 knots, A319, KORD to KLEX",
             VolantaTrafficFormatter.FriendLine(new VolantaFriendEntry(friend, flight, placed)));
+        Assert.Equal("pilot_three, flying, AAL 6336, 5 o'clock, 43 nm, 15,300 feet below, descending, 380 knots, A319, KORD to KLEX. "
+            + "Location: Lexington, Kentucky, United States",
+            VolantaTrafficFormatter.FriendLine(new VolantaFriendEntry(friend, flight, placed with { Location = "Lexington, Kentucky, United States" })));
         Assert.Equal("pilot_three, flying AAL 6336, A319, KORD to KLEX",
             VolantaTrafficFormatter.FriendLine(new VolantaFriendEntry(friend, flight, null)));
         Assert.Equal("pilot_three, online in Volanta, not flying",

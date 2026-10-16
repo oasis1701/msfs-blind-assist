@@ -14,7 +14,12 @@ public sealed record VolantaTrafficEntry(
     double RelativeBearing,
     int ClockPosition,
     double AltitudeDiffFt,
-    double? PositionAgeSeconds);
+    double? PositionAgeSeconds)
+{
+    /// <summary>Where the aircraft is, as the location data names it ("Pike Lake, Wisconsin, United States",
+    /// "over Lake Michigan"); null until looked up (<see cref="VolantaPlaceCache"/>) or with no location data.</summary>
+    public string? Location { get; init; }
+}
 
 public enum VolantaPhaseFilter { All, Airborne, OnGround }
 

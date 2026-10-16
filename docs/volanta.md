@@ -8,22 +8,29 @@ ATC.
 
 - **Traffic tab**: every aircraft on Volanta's map around the pilot, nearest first, one line each: callsign,
   clock position, distance, altitude above or below (or "on the ground"), climbing or descending, speed, type,
-  who flies it (a Volanta user, and the network they also fly on; or the network pilot) and the route. Filters:
+  who flies it (a Volanta user, and the network they also fly on; or the network pilot), the route and, once
+  looked up from the offline location data Output C reads, where it is: ". Location: Pike Lake, Wisconsin,
+  United States", or "Location: over Lake Michigan" over water, never C's distance or coast ([VOL-8]). Filters:
   distance (10 nm to any), all / airborne / on the ground, altitude band, which sources (Volanta users, VATSIM,
   IVAO, PilotEdge, APOC) and a search over callsign, flight number, user, type, registration and airports. The
-  details box below the list shows everything known about the selected aircraft.
+  details box below the list shows everything known about the selected aircraft. Last, "Report location to
+  nearest major city": ticked, the location says how far and which way the aircraft is from the nearest major
+  city instead ("92 miles west of Wichita, Kansas, United States"), a major city being the pilot's own
+  Minimum Population for Major Cities within their Major Cities Range (GeoNames tab), never a district of a city.
+  The checkbox text names both values. Unticked at every opening.
 - **Friends tab** (after Traffic): the pilot's Volanta friends. Flying friends first, nearest first, with the
   same placing as a traffic line; then friends online in Volanta, with their status in words ("cruising over
   United States", "taxiing to gate B12 at KGRB"); then offline. The details list adds everything about a flying
-  friend's flight. Restarting Volanta from the Connection tab loads the list again ([VOL-6]).
+  friend's flight. Its own "Report location to nearest major city" checkbox, after the status, works as the
+  Traffic tab's, independently. Restarting Volanta from the Connection tab loads the list again ([VOL-6]).
 - **ATC tab**: online VATSIM and IVAO stations, nearest first, with frequency; the details box adds the
   controller, the airport, when they came online and the ATIS text.
 - **Connection tab**: whether Volanta has live map access, what has been received and when, and the window's one
   button that starts or restarts Volanta with access. It restarts Volanta even when it already has access (after
   asking), since that is also how the friends list is reloaded.
 
-In each list tab the list comes first in the tab order, then the selected item's details, then the status and
-the filters. The tabs use `AccessibleTabControl`, as the EFB does, so NVDA names only the tab.
+In each list tab the list comes first in the tab order, then the selected item's details, then the status, the
+filters and the major-city checkbox. The tabs use `AccessibleTabControl`, as the EFB does, so NVDA names only the tab.
 
 Everything updates on its own every 5 seconds, in place, as the Sim Performance window does: only changed rows
 are rewritten and the selection follows its row by key, so the reader's cursor never jumps, and the row the
