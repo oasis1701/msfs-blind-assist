@@ -425,10 +425,11 @@ internal static class A220Afdx
         => fcp?.vs_mode == 1 && fcp.vs_sel is { } tenths ? tenths / 10 : null;
 
     /// <summary>Whether a delivered FCP block carries anything at all: the FCP store sits at {} until a
-    /// resync (live 2026-09-24), which says nothing about the wheel.</summary>
-    private static bool FcpBlockHasData(FcpBlock fcp)
-        => fcp.spd_sel_ias != null || fcp.spd_sel_mach != null || fcp.hdg_sel != null || fcp.alt_sel_ft != null
-           || fcp.alt_sel_m != null || fcp.vs_sel != null || fcp.vs_mode != null;
+    /// resync (live 2026-09-24), which says nothing about the wheel. The V/S-FPA walk asks this before
+    /// its engage write, so a down link refuses before any write.</summary>
+    internal static bool FcpBlockHasData(FcpBlock? fcp)
+        => fcp != null && (fcp.spd_sel_ias != null || fcp.spd_sel_mach != null || fcp.hdg_sel != null
+           || fcp.alt_sel_ft != null || fcp.alt_sel_m != null || fcp.vs_sel != null || fcp.vs_mode != null);
 
     /// <summary>
     /// The V/S-FPA walk's check after its engage write: null when the FCP block shows the wheel with a
@@ -471,7 +472,7 @@ internal static class A220Afdx
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         if (SelectedVsFpm(fcp) is { } vs) return "VS now " + WholeText(vs) + " fpm";
         if (SelectedFpaDegrees(fcp) is { } fpa) return "FPA now " + fpa.ToString("0.0", inv) + "°";
-        if (fcp != null && FcpBlockHasData(fcp)) return "wheel inactive";
+        if (FcpBlockHasData(fcp)) return "wheel inactive";
         return "VS now " + WholeText(stockVsFpm) + " fpm, FPA " + stockFpaDegrees.ToString("0.0", inv) + "°";
     }
 

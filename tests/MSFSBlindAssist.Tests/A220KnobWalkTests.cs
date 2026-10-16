@@ -78,6 +78,10 @@ public class A220KnobWalkTests
         var vs = new FcpBlock { vs_mode = 0, vs_sel = 0, alt_sel_ft = 5000 };
         var fpa = new FcpBlock { vs_mode = 1, vs_sel = 0, alt_sel_ft = 5000 };
         var dead = new FcpBlock { alt_sel_ft = 5000 };
+        // Before the engage write: a block with anything in it is a link up; none, or the store at {}, refuses.
+        Assert.True(FcpBlockHasData(dead));
+        Assert.False(FcpBlockHasData(new FcpBlock()));
+        Assert.False(FcpBlockHasData(null));
         Assert.Null(VerticalWheelRefusal(vs, isFpa: false));
         Assert.Null(VerticalWheelRefusal(fpa, isFpa: true));
         // No block, or an FCP store still at {} before a resync: the link gives no read-back, so refuse as speed does.

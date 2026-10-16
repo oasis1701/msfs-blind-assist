@@ -1188,6 +1188,15 @@ public partial class SynapticA220Definition
             {
                 // Before the engage write, the walk's first write.
                 if (!KnobWalkCanSend(simConnect, name, say)) return;
+                // The wheel is read back only from the FCP block (R3): with no block, refuse before
+                // the engage write, as the speed walk refuses before its knots/Mach switch — the
+                // walk must not leave the aircraft in a mode it then cannot set.
+                if (await ReadFcpFieldAsync(f => A220.A220Afdx.FcpBlockHasData(f) ? 1 : null, token) == null)
+                {
+                    FcpLog.Warn($"{name}: no FCP data, walk refused before engaging (target {target})");
+                    say(A220.A220Afdx.KnobWalkRefusalText(knob, name));
+                    return;
+                }
                 string engagedNote = "";
                 string modeKey = isFpa ? "A22X_FG_FPA" : "A22X_FG_VS";
                 if (Cached(simConnect, modeKey) < 0.5)
