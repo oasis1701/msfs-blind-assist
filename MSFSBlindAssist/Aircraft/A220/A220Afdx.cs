@@ -554,11 +554,19 @@ internal static class A220Afdx
         /// write), so every move re-measures the step, which a long one measures finest. False for paced
         /// K-event clicks, which the aircraft drops when two reach one frame: a burst then reads LOW, and
         /// a step re-derived from it is what made the old FCP walk aim too many clicks and overshoot. So
-        /// only a single click sets the step; a burst can only RAISE it (clicks are lost, never added, so
-        /// one that moved more per click than the step proves the step short — the probe click of a
-        /// selector left off its grid only snaps, a fraction of a step).
+        /// the step is the LARGEST any move has shown per click: a lost click or a snap reads low, nothing
+        /// reads high (clicks are lost, never added), and the walk errs short, never long.
         /// </summary>
         public required bool BurstsLandWhole { get; init; }
+
+        /// <summary>
+        /// True when the probe click may be a SNAP: a knob left off its grid moves only to the next grid
+        /// value on its first click, a fraction of a step (the metres selector 2 m off its 50 m grid, a
+        /// V/S wheel synced to 1837 fpm moving to 1900). A burst aimed on that fraction runs to the
+        /// 120-click cap, far past the target — on a live autopilot in the V/S case. So before its first
+        /// burst the walk sends a SECOND single click, which moves a whole step, and aims on the larger.
+        /// </summary>
+        public bool ConfirmProbe { get; init; }
 
         /// <summary>A move smaller than this did not move the knob.</summary>
         public required double NotMovedBelow { get; init; }
@@ -574,14 +582,16 @@ internal static class A220Afdx
     }
 
     /// <summary>The FCP walks' policy (V/S, FPA, stab trim, metres altitude): ten moves of at most 120
-    /// paced clicks (the exact walk's cap), the step measured on single clicks, a dead first click said
-    /// at once (9a: it is no longer resent on a second transport).</summary>
+    /// paced clicks (the exact walk's cap), the step confirmed by two single clicks before any burst and
+    /// never shrunk by one, a dead first click said at once (9a: it is no longer resent on a second
+    /// transport).</summary>
     internal static KnobWalkPolicy FcpWalkPolicy(double tolerance) => new()
     {
         Tolerance = _ => tolerance,
         MaxRounds = 10,
         MaxClicksPerMove = 120,
         BurstsLandWhole = false,
+        ConfirmProbe = true,
         NotMovedBelow = 1e-6,
     };
 
@@ -613,7 +623,9 @@ internal static class A220Afdx
     /// A measured knob walk from <paramref name="start"/> to <paramref name="target"/>, the I/O in
     /// <paramref name="move"/> (fire the clicks, wait, read back; null = no reading). Each round asks
     /// <see cref="KnobWalkDecision"/>; the first move is one probe click, which measures the step and
-    /// calibrates the direction (a move the wrong way swaps the inputs); a step-back click ends the walk
+    /// calibrates the direction (a move the wrong way swaps the inputs); with
+    /// <see cref="KnobWalkPolicy.ConfirmProbe"/> a second single click confirms the step before any
+    /// burst, so the walk never goes more than a step past the target; a step-back click ends the walk
     /// where it lands. The last landing is judged like every other, so a walk out of rounds that landed
     /// on the target says so. Pure apart from <paramref name="move"/>: the standby baro walk and the FCP
     /// walk both run it, and the tests drive it on models of the knobs. Cancellation throws, so a
@@ -628,6 +640,7 @@ internal static class A220Afdx
         double prevDelta = double.NaN;
         int lastClicks = 0;
         int deadProbes = 0;
+        int singleClicks = 0;       // single clicks that moved: a burst waits for two with ConfirmProbe
         for (int round = 0; round < policy.MaxRounds; round++)
         {
             token.ThrowIfCancellationRequested();
@@ -637,6 +650,9 @@ internal static class A220Afdx
             if (next.Action == KnobWalkAction.NearestHere) return new KnobWalkResult(KnobWalkEnd.NearestSelectable, cur, step, round);
             bool stepBack = next.Action == KnobWalkAction.StepBack;
             int clicks = Math.Clamp(stepBack ? 1 : next.Clicks, 1, policy.MaxClicksPerMove);
+            // The probe may have been a snap, a fraction of a step: confirm the step on a second single
+            // click before the first burst, never aim a burst on the probe alone.
+            if (policy.ConfirmProbe && singleClicks < 2) clicks = 1;
             prevDelta = delta;
             lastClicks = clicks;
             if (await move(new KnobMove(clicks, delta > 0 ? up : -up, cur, step)) is not { } after)
@@ -655,7 +671,8 @@ internal static class A220Afdx
             }
             if (Math.Sign(moved) != Math.Sign(delta)) up = -up;
             double perClick = Math.Abs(moved) / clicks;
-            step = policy.BurstsLandWhole || clicks == 1 ? perClick : Math.Max(step ?? perClick, perClick);
+            step = policy.BurstsLandWhole ? perClick : Math.Max(step ?? perClick, perClick);
+            if (clicks == 1) singleClicks++;
             cur = after;
         }
         var last = KnobWalkDecision(target - cur, prevDelta, step, lastClicks, policy.Tolerance(step), policy.EvenSteps);

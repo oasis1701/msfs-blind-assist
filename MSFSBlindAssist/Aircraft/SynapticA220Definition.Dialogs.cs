@@ -227,7 +227,8 @@ public partial class SynapticA220Definition
     /// The walk is <see cref="A220.A220Afdx.RunKnobWalkAsync"/> on
     /// <see cref="A220.A220Afdx.FcpWalkPolicy"/>, the decision the standby baro walk runs too, and
     /// this method is its I/O. Repaired on 2026-10-16 (R2 of the walk review) against the weakest walk
-    /// the review found: the step is measured on THIS walk by one probe click and never kept across
+    /// the review found: the step is measured on THIS walk by a probe click, confirmed by a second
+    /// single click before the first burst (a probe from off the grid only snaps), and never kept across
     /// walks or shrunk by a lossy burst; a straddle is judged only after one click and ends on the
     /// nearer value; an overshoot after a burst aims back (the old walk stopped there as "nearest
     /// selectable"); out of rounds it says "could not reach … now …"; the pace adapts from 60 ms

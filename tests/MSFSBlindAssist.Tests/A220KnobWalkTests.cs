@@ -139,6 +139,7 @@ public class A220KnobWalkTests
         public bool IncLowers { get; init; }
         public int Moves { get; private set; }
         public double Highest { get; private set; } = double.MinValue;
+        public double Lowest { get; private set; } = double.MaxValue;
         public double Value => start + _pos * step;
 
         public Task<double?> Move(KnobMove m)
@@ -147,6 +148,7 @@ public class A220KnobWalkTests
             int landed = m.Clicks == 1 ? 1 : Math.Max(1, (int)Math.Round(m.Clicks * BurstDelivery));
             _pos += (IncLowers ? -m.Direction : m.Direction) * landed;
             Highest = Math.Max(Highest, Value);
+            Lowest = Math.Min(Lowest, Value);
             return Task.FromResult<double?>(Value);
         }
     }
@@ -167,13 +169,14 @@ public class A220KnobWalkTests
     [Theory]
     [InlineData(1500.0)]
     [InlineData(-700.0)]
-    public async Task VsWalk_WithEveryClickLanding_IsAProbeThenOneBurst(double target)
+    public async Task VsWalk_WithEveryClickLanding_IsTwoSingleClicksThenOneBurst(double target)
     {
+        // The probe, a second single click that confirms the step (a probe can be a snap), one burst.
         var wheel = new Wheel(0, 100);
         var r = await RunKnobWalkAsync(target, wheel.Value, FcpWalkPolicy(55), wheel.Move);
         Assert.Equal(KnobWalkEnd.OnTarget, r.End);
         Assert.Equal(target, r.Value);
-        Assert.Equal(2, wheel.Moves);
+        Assert.Equal(3, wheel.Moves);
     }
 
     [Fact]
@@ -193,7 +196,8 @@ public class A220KnobWalkTests
         var r = await RunKnobWalkAsync(5.0, wheel.Value, FcpWalkPolicy(0.05), wheel.Move);
         Assert.Equal(KnobWalkEnd.OnTarget, r.End);
         Assert.Equal(5.0, r.Value, 9);
-        Assert.Equal(2, wheel.Moves);
+        Assert.Equal(3, wheel.Moves);
+        Assert.True(wheel.Lowest >= 3.0 - 1e-9, "one click the wrong way, never a burst");
     }
 
     private const double FeetPerMetre = 1 / 0.3048;
@@ -208,31 +212,58 @@ public class A220KnobWalkTests
         Assert.Equal(1850 * FeetPerMetre, r.Value, 6);
     }
 
-    /// <summary>A metres selector left OFF its grid (1524 m): the first click only snaps up to the next
-    /// 50 m, so the probe measures 85 ft where a click is 164 ft.</summary>
-    private sealed class SnappingSelector(double startMetres)
+    /// <summary>A knob left OFF its grid: the first click only snaps to the next multiple of
+    /// <paramref name="grid"/> in its direction, every later one moves a whole step. The metres
+    /// selector (50 m, read in feet), or a V/S wheel that synced to the current climb (1837 fpm from
+    /// FLC) on engaging and snaps to its 100 grid. Tracks the extremes the knob reached.</summary>
+    private sealed class SnappingKnob(double start, double grid, double readScale)
     {
-        private double _m = startMetres;
-        public double Feet => _m * FeetPerMetre;
+        private double _v = start;
+        public double Read => _v * readScale;
+        public double Highest { get; private set; } = double.MinValue;
+        public double Lowest { get; private set; } = double.MaxValue;
+        public int Moves { get; private set; }
 
         public Task<double?> Move(KnobMove m)
         {
+            Moves++;
             for (int i = 0; i < m.Clicks; i++)
-                _m = m.Direction > 0 ? Math.Floor(_m / 50 + 1e-9) * 50 + 50 : Math.Ceiling(_m / 50 - 1e-9) * 50 - 50;
-            return Task.FromResult<double?>(Feet);
+            {
+                _v = m.Direction > 0 ? Math.Floor(_v / grid + 1e-9) * grid + grid : Math.Ceiling(_v / grid - 1e-9) * grid - grid;
+                Highest = Math.Max(Highest, Read);
+                Lowest = Math.Min(Lowest, Read);
+            }
+            return Task.FromResult<double?>(Read);
         }
     }
 
-    [Fact]
-    public async Task AProbeThatOnlySnapped_IsCorrectedByTheNextBurst_NoShuttling()
+    /// <summary>
+    /// A probe click that only SNAPS measures a fraction of a step: 10,000 ft switched to metres is
+    /// 3048 m, 2 m off the grid, so the probe moves 2 m (6.6 ft), and a burst aimed on that fired the
+    /// 120-click cap, 9050 m (29,692 ft) for 12,000. A V/S wheel synced to 1837 fpm snaps 63 or 37 fpm,
+    /// which on a live autopilot would swing the commanded V/S far past the target. So before its first
+    /// burst the FCP walk confirms the step with a second single click, and the step is the largest a
+    /// click has moved: the walk never goes more than a step past the target, and lands on the nearest.
+    /// </summary>
+    [Theory]
+    [InlineData(1524.0, 50.0, FeetPerMetre, 6000.0)]    // 5000 ft in metres: 26 m off the grid
+    [InlineData(3048.0, 50.0, FeetPerMetre, 12000.0)]   // 10,000 ft in metres: the probe snaps 2 m
+    [InlineData(3048.0, 50.0, FeetPerMetre, 30000.0)]
+    [InlineData(3048.0, 50.0, FeetPerMetre, 5000.0)]    // down: the probe snaps 48 m
+    [InlineData(1837.0, 100.0, 1.0, 3000.0)]            // V/S synced to an FLC climb's 1837 fpm
+    [InlineData(1837.0, 100.0, 1.0, 1500.0)]
+    [InlineData(1837.0, 100.0, 1.0, -700.0)]
+    [InlineData(1837.0, 100.0, 1.0, 1900.0)]
+    public async Task AProbeThatOnlySnaps_NeverCarriesTheWalkMoreThanAStepPastTheTarget(
+        double start, double grid, double readScale, double target)
     {
-        // A burst can lose clicks but never add any, so one that moved MORE per click than the probe
-        // raises the step to what it showed; aiming on the probe's half step would shuttle across 6000.
-        var selector = new SnappingSelector(1524);
-        var r = await RunKnobWalkAsync(6000, selector.Feet, FcpWalkPolicy(55), selector.Move);
-        Assert.Equal(KnobWalkEnd.NearestSelectable, r.End);
-        Assert.Equal(1850 * FeetPerMetre, r.Value, 6);
-        Assert.True(r.Rounds <= 4, $"took {r.Rounds} rounds");
+        var knob = new SnappingKnob(start, grid, readScale);
+        double from = knob.Read, step = grid * readScale;
+        var r = await RunKnobWalkAsync(target, from, FcpWalkPolicy(55), knob.Move);
+        double past = target > from ? knob.Highest - target : target - knob.Lowest;
+        Assert.True(past <= step + 1e-6, $"went {past:0} past {target} (a step is {step:0})");
+        Assert.True(r.End is KnobWalkEnd.OnTarget or KnobWalkEnd.NearestSelectable, $"ended {r.End} at {r.Value:0}");
+        Assert.True(Math.Abs(r.Value - target) <= step / 2 + 1e-6, $"landed {r.Value:0}, not the nearest to {target}");
     }
 
     [Fact]
