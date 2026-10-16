@@ -761,7 +761,7 @@ public class ClaudeContextBudgetTests
             + "without it"] = new[]
         {
             "A320-7 SetLVar", "A320-23 SetLVar", "DBG-2 SetLVar", "IFLY-2 SetLVar", "MD11-1 SetLVar", "VAR-2 SetLVar",
-            "A220-1 ExecuteCalculatorCode",
+            "A220-1 ExecuteCalculatorCode", "A220-8 ReadFreshAsync",
             "A380-25 SendEvent", "A380C-24 StopAllMotion", "A320-39 AircraftLoaded",
             "PEFB-6 AnnounceImmediate", "ROL-25 AnnounceImmediate", "TKO-5 AnnounceImmediate", "VAT-3 AnnounceImmediate",
             "VAT-3 AnnounceWithQueue", "VAT-4 QueuedAnnouncementCount", "EXIT-10 AnnounceInstruction",
