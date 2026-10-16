@@ -167,8 +167,11 @@ public partial class SynapticA220Definition
                 try { if (!token.IsCancellationRequested) announcer.Announce(text); }
                 catch (Exception ex) { Utils.Logging.Log.Warn("A220", $"Knob walk speech: {ex.Message}"); }
             }
-            if (ui != null) ui.Post(_ => Speak(), null);
-            else Speak();
+            if (ui == null) { Speak(); return; }
+            // A post refused at shutdown (the UI thread's handle gone, [A380C-6]'s race) is dropped:
+            // nothing is listening, and it must not escape the walk's fire-and-forget task.
+            try { ui.Post(_ => Speak(), null); }
+            catch (InvalidOperationException) { }
         };
     }
 
@@ -987,7 +990,6 @@ public partial class SynapticA220Definition
                         double moved = Math.Abs(after - cur);
                         cur = after;
                         if (moved < 1e-6) return false;   // knob not responding
-                        paceMs = A220.A220Afdx.NextKnobPaceMs(paceMs, clicks, moved / step);
 
                         double perClick = moved / clicks;
                         if (!ringRetried && A220.A220Afdx.StepIsWrongRing(perClick, step))
@@ -995,6 +997,10 @@ public partial class SynapticA220Definition
                             ringRetried = true;
                             await SelectRingAsync(wantFine);
                         }
+                        // A burst on the wrong ring is not lost clicks (on the fine ring a coarse burst
+                        // reads as 90 % lost): only a burst on the ring the walk trusts sets the pace.
+                        else
+                            paceMs = A220.A220Afdx.NextKnobPaceMs(paceMs, clicks, moved / step);
                     }
                     return Math.Abs(walkTarget - cur) <= reached;
                 }
@@ -1210,9 +1216,11 @@ public partial class SynapticA220Definition
                 // The wheel must show a target in the mode asked for, in the aircraft's own FCP
                 // block (read with a resync and retries: the store at {} is not a down link). No
                 // block refuses; no target means the mode did not engage; the other mode would
-                // walk the wrong value. Say which, before any click.
+                // walk the wrong value. Say which, before any click. The read waits for the wheel in
+                // the mode asked for, so its retries also cover a mode switch slower than 900 ms.
+                int wantedMode = isFpa ? 1 : 0;
                 A220.A220Afdx.FcpBlock? lastSeen = null;
-                var ready = await ReadFcpFieldAsync(f => f.vs_sel, token, b => lastSeen = b);
+                var ready = await ReadFcpFieldAsync(f => f.vs_mode == wantedMode ? f.vs_sel : null, token, b => lastSeen = b);
                 if (A220.A220Afdx.VerticalWheelRefusal(ready ?? lastSeen, isFpa) is { } refusal)
                 {
                     FcpLog.Warn($"{name}: walk refused (target {target}): {refusal}");
