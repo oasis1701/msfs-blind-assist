@@ -1,3 +1,5 @@
+using MSFSBlindAssist.SimConnect;
+
 namespace MSFSBlindAssist.Aircraft.A220;
 
 /// <summary>Why an ECL sensed variable is deliberately NOT auto-actuatable.</summary>
@@ -28,6 +30,14 @@ public readonly record struct A220EclAction(string? ControlKey, double Value, A2
     public static A220EclAction Excluded(A220EclExclusion reason) => new(null, 0, reason);
 }
 
+/// <summary>What "do this item for me" writes for one checklist item: a value, or a spoken
+/// refusal (<see cref="A220EclActionMap.ResolveTarget"/>).</summary>
+public readonly record struct A220EclTarget(double Value, string? Refusal)
+{
+    public static A220EclTarget Write(double value) => new(value, null);
+    public static A220EclTarget Refuse(string reason) => new(0, reason);
+}
+
 /// <summary>
 /// ECL "first officer" actuation map (docs/a220-plan.md W6): every one of the 215
 /// <see cref="SynapticA220EclData.EclVariableNames"/> either maps to a
@@ -45,6 +55,27 @@ public static class A220EclActionMap
 {
     public static bool TryGet(string eclVariableName, out A220EclAction action)
         => Actions.TryGetValue(eclVariableName, out action);
+
+    /// <summary>Spoken when an inverted item's control has no single "other" position to write.</summary>
+    public const string InvertedRefusal = "This item asks for the opposite of its sensed state — set it from the panel.";
+
+    /// <summary>
+    /// The value "do this item for me" writes ([A220-60]). The map targets the value that makes
+    /// the sensed bit TRUE, but a pack item marked <c>"inverted": true</c> is complete when that
+    /// bit is FALSE ("BEACON — OFF" is sensed BEACON_LTS_ON, inverted): writing the mapped value
+    /// would re-assert the state that keeps it open. So: not inverted, the mapped value; inverted
+    /// on a two-position combo (not a button, exactly two positions, the mapped value one of them),
+    /// the OTHER position; inverted on anything else (a button, a 3+-position control, a key the
+    /// def lacks), a refusal — "not the mapped position" names no single position to write.
+    /// </summary>
+    public static A220EclTarget ResolveTarget(A220EclAction action, bool inverted, SimVarDefinition? def)
+    {
+        if (!inverted) return A220EclTarget.Write(action.Value);
+        if (def is { RenderAsButton: false, ValueDescriptions: { Count: 2 } positions }
+            && positions.ContainsKey(action.Value))
+            return A220EclTarget.Write(positions.Keys.First(k => k != action.Value));
+        return A220EclTarget.Refuse(InvertedRefusal);
+    }
 
     public static readonly IReadOnlyDictionary<string, A220EclAction> Actions = Build();
 

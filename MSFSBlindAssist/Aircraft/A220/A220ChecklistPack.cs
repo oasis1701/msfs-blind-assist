@@ -41,6 +41,10 @@ public sealed class A220ChecklistPack
         public string Response = "";
         /// <summary>ECL sensed-variable NAME (index into SynapticA220EclData by name), or null.</summary>
         public string? Sensed;
+        /// <summary>The pack's <c>"inverted": true</c>: the item is complete when the sensed bit
+        /// is FALSE ("BEACON — OFF" is sensed BEACON_LTS_ON, inverted). Absent = false. The
+        /// actuation resolves it through <see cref="A220EclActionMap.ResolveTarget"/> ([A220-60]).</summary>
+        public bool Inverted;
         /// <summary>Conditional branch label this item lives under ("YES"/"NO"), or null.</summary>
         public string? Path;
         /// <summary>Uppercased, whitespace-collapsed challenge for scrape matching.</summary>
@@ -114,6 +118,7 @@ public sealed class A220ChecklistPack
             Challenge = challenge,
             Response = it.TryGetProperty("response", out var r) ? r.GetString() ?? "" : "",
             Sensed = it.TryGetProperty("sensed", out var s) && s.ValueKind == JsonValueKind.String ? s.GetString() : null,
+            Inverted = it.TryGetProperty("inverted", out var inv) && inv.ValueKind == JsonValueKind.True,
             Path = path,
             NormalizedChallenge = Normalize(challenge)
         });

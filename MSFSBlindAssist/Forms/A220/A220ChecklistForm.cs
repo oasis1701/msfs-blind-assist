@@ -13,7 +13,8 @@ namespace MSFSBlindAssist.Forms.A220;
 /// activate via in-window clicks.
 ///
 /// "Do this item for me" maps the item's sensed ECL variable (checklists.json
-/// `sensed` name → <see cref="A220EclActionMap"/>) to the def control write —
+/// `sensed` name → <see cref="A220EclActionMap"/>; an `inverted` item resolved by
+/// <see cref="A220EclActionMap.ResolveTarget"/>) to the def control write —
 /// through HandleUIVariableSet, so the APU hold-to-start and the flap detent walk
 /// are shared with the panel — then polls the scraped checkbox for ~3 s and
 /// announces "sensed complete" or not. MSFSBA NEVER ticks a checklist box itself;
@@ -312,11 +313,21 @@ public sealed class A220ChecklistForm : Form
             });
             return;
         }
+        // [A220-60] An "inverted" item is complete when its sensed bit is FALSE: write the other
+        // position of a two-position control, or refuse — never the mapped value, which would
+        // re-assert the state that keeps the item open.
+        var target = A220EclActionMap.ResolveTarget(action, packItem.Inverted,
+            _def.GetVariables().GetValueOrDefault(action.ControlKey!));
+        if (target.Refusal is { } refusal)
+        {
+            _announcer.AnnounceImmediate(refusal);
+            return;
+        }
 
         _busy = true;
         try
         {
-            if (!_def.ActuateControl(action.ControlKey!, action.Value, out string error))
+            if (!_def.ActuateControl(action.ControlKey!, target.Value, out string error))
             {
                 _announcer.AnnounceImmediate($"Could not actuate: {error}");
                 return;
