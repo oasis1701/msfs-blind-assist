@@ -1,16 +1,29 @@
 # Fenix A320: the missing ACP reception switches (brief)
 
-2026-10-13. Branch `fix/fenix-acp-receivers`, from `upstream/main` 44a53741. Worktree
-`MSFSBA-fenix-acp`. `Navdatareader-win-1.2.4/` (git-ignored) is already copied in, so the
-build puts `navdatareader\` next to the exe and the app runs.
+2026-10-13, written before the work, against main at 44a53741: the sections after "Outcome"
+describe the code as it was then. Done in PR #305; what it settled is under "Outcome".
+
+## Outcome (PR #305)
+
+- All 15 reception latches are on the ACP panel, in the Fenix model's channel order, as are
+  the volume and transmit groups. Each latch is an OnRequest combo read when the panel opens.
+- Steps 2 and 3 below: each latch names its light as `UiEchoVariable`, so MainForm's UI-set
+  echo gate also swallows the light's change after a panel pick, and the pilot hears the pick
+  once (CORE-7). The light still speaks when anything else changes it.
+- Each latch and its light are labelled from one constant ([VAR-1]): "ACP VHF 2 Receive" and
+  "ACP VHF 2 Receive Light".
+- The five new latches have no `HandleUIVariableSet` case: MainForm's generic L:var combo
+  write covers a plain write (docs/architecture.md).
+- Also fixed on the same panel: HF 2 Transmit reads its light `I_ASP_HF_2_SEND`, the only
+  ACP1 transmit light that was not registered.
 
 ## What we're trying to achieve
 
 A pilot flying the Fenix must be able to listen to any radio from MSFSBA. On the A320, a
 radio is heard only when its reception knob on the audio control panel (ACP) is switched on
-(the knob latches out) and its volume is up. MSFSBA's Fenix ACP panel has all 15 volume knobs
-but only 10 of the 15 reception switches, so VHF 2, VHF 3, HF 2, INT and MLS cannot be heard
-unless the knob happens to be on already.
+(the knob latches out) and its volume is up. MSFSBA's Fenix ACP panel had all 15 volume knobs
+but only 10 of the 15 reception switches, so VHF 2, VHF 3, HF 2, INT and MLS could not be
+heard unless the knob happened to be on already.
 
 Done means: every Fenix ACP reception switch is on the ACP panel, shows its real state, and
 switching it changes what the pilot hears in the sim.
@@ -20,7 +33,7 @@ switching it changes what the pilot hears in the sim.
 2026-10-13 at ESGG, Fenix A320 CEO. The pilot tuned COM 2 to 118.380 (ESGG ATIS, the same
 frequency SayIntentions shows), transferred it to active on RMP 2, and heard nothing.
 debug.log shows the tune and the transfer went out (19:47:32 `COM2_STBY_RADIO_SET_HZ
-118380000`, 19:47:34 `RMP2 Transfer` press and release). MSFSBA has no way to switch VHF 2
+118380000`, 19:47:34 `RMP2 Transfer` press and release). MSFSBA had no way to switch VHF 2
 reception on.
 
 Not confirmed: the actual value of `S_ASP_VHF_2_REC_LATCH` during that attempt (MSFSBA never
@@ -36,7 +49,7 @@ three variables:
 - `VAR_NAME_BUTTON`: the reception latch, `S_ASP_<ch>_REC_LATCH`
 - `VAR_NAME_LIGHT`: the reception light, `I_ASP_<ch>_REC`
 
-| Channel | Latch (`S_ASP_…_REC_LATCH`) | Light (`I_ASP_…_REC`) | In MSFSBA today |
+| Channel | Latch (`S_ASP_…_REC_LATCH`) | Light (`I_ASP_…_REC`) | In MSFSBA before #305 |
 | --- | --- | --- | --- |
 | VHF 1 | `VHF_1` | `VHF_1` | latch and light |
 | **VHF 2** | `VHF_2` | `VHF_2` | **light only** |
@@ -57,7 +70,8 @@ three variables:
 Note the irregular light names: VOR 1/2 light as `NAV_1`/`NAV_2`, MLS as `MLS_1`. Take every
 name from the XML, never by pattern.
 
-**MSFSBA** (`MSFSBlindAssist/Aircraft/FenixA320Definition.cs`, line numbers from 44a53741):
+**MSFSBA before #305** (`MSFSBlindAssist/Aircraft/FenixA320Definition.cs`, line numbers from
+44a53741):
 
 - Volume knobs: `A_ASP_*_VOLUME`, ~2353-2480, all 15.
 - Reception latches: `S_ASP_*_REC_LATCH`, ~2579-2659, 10 entries. Each is an OnRequest LVar
@@ -109,5 +123,3 @@ same gap, name it in the PR as "also seen on" and leave it for its own PR.
   a pilot: "On the Fenix A320, the audio control panel now has reception switches for VHF 2,
   VHF 3, HF 2, INT and MLS, so you can listen to the second radio." The PR number is READ from
   `gh pr create`, never guessed, and no PR is opened without the owner's go-ahead.
-- Move the entry "Fenix ACP has no VHF 2 reception switch" in `..\BUGS-AND-FEATURES.md` to
-  Closed.

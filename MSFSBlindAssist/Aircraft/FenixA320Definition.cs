@@ -93,6 +93,26 @@ public class FenixA320Definition : BaseAircraftDefinition
         BaroHpaReadout, BaroInchReadout,
     };
 
+    // ACP reception knobs ([VAR-1]): each knob's latch and its light are labelled from ONE
+    // constant, the light with AcpLightSuffix, so the two never drift apart. Each latch also
+    // names its light as UiEchoVariable: the light follows the pick the screen reader just spoke.
+    private const string AcpLightSuffix = " Light";
+    private const string AcpVhf1Receive = "ACP VHF 1 Receive";
+    private const string AcpVhf2Receive = "ACP VHF 2 Receive";
+    private const string AcpVhf3Receive = "ACP VHF 3 Receive";
+    private const string AcpHf1Receive = "ACP HF 1 Receive";
+    private const string AcpHf2Receive = "ACP HF 2 Receive";
+    private const string AcpIntReceive = "ACP INT Receive";
+    private const string AcpCabReceive = "ACP CAB Receive";
+    private const string AcpVor1Receive = "ACP VOR 1 Receive";
+    private const string AcpVor2Receive = "ACP VOR 2 Receive";
+    private const string AcpMarkerReceive = "ACP MARKER Receive";
+    private const string AcpIlsReceive = "ACP ILS Receive";
+    private const string AcpMlsReceive = "ACP MLS Receive";
+    private const string AcpAdf1Receive = "ACP ADF 1 Receive";
+    private const string AcpAdf2Receive = "ACP ADF 2 Receive";
+    private const string AcpPaReceive = "ACP PA Receive";
+
     // Shared ValueDescriptions dictionaries for the two exactly-identical patterns that
     // recur hundreds of times across this aircraft's ~500 switch/knob definitions below.
     // Safe to share a single instance: nothing in the codebase mutates a SimVarDefinition's
@@ -2350,7 +2370,7 @@ public class FenixA320Definition : BaseAircraftDefinition
                 RenderAsButton = true
             },
 
-            // ========== AUDIO CONTROL PANEL (ACP) (36 variables) ==========
+            // ========== AUDIO CONTROL PANEL (ACP) (41 variables) ==========
 
             // Volume Controls (15 knobs)
             ["A_ASP_VHF_1_VOLUME"] = new SimConnect.SimVarDefinition
@@ -2527,7 +2547,8 @@ public class FenixA320Definition : BaseAircraftDefinition
                 DisplayName = "ACP HF 2 Transmit",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                RenderAsButton = true
+                RenderAsButton = true,
+                StateVariable = "I_ASP_HF_2_SEND"
             },
             ["S_ASP_CAB_SEND"] = new SimConnect.SimVarDefinition
             {
@@ -2576,126 +2597,142 @@ public class FenixA320Definition : BaseAircraftDefinition
                 StateVariable = "I_ASP_VOICE"
             },
 
-            // Receive Toggle Controls (15 combo boxes)
+            // Receive Toggle Controls (15 combo boxes). Each latch's light is its UiEchoVariable;
+            // the light names are irregular (VOR 1/2 light as NAV_1/NAV_2, MLS as MLS_1).
             ["S_ASP_VHF_1_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_VHF_1_REC_LATCH",
-                DisplayName = "ACP VHF 1 Receive",
+                DisplayName = AcpVhf1Receive,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffOn,
+                UiEchoVariable = "I_ASP_VHF_1_REC"
             },
             ["S_ASP_VHF_2_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_VHF_2_REC_LATCH",
-                DisplayName = "ACP VHF 2 Receive",
+                DisplayName = AcpVhf2Receive,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffOn,
+                UiEchoVariable = "I_ASP_VHF_2_REC"
             },
             ["S_ASP_VHF_3_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_VHF_3_REC_LATCH",
-                DisplayName = "ACP VHF 3 Receive",
+                DisplayName = AcpVhf3Receive,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffOn,
+                UiEchoVariable = "I_ASP_VHF_3_REC"
             },
             ["S_ASP_HF_1_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_HF_1_REC_LATCH",
-                DisplayName = "ACP HF 1 Receive",
+                DisplayName = AcpHf1Receive,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffOn,
+                UiEchoVariable = "I_ASP_HF_1_REC"
             },
             ["S_ASP_HF_2_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_HF_2_REC_LATCH",
-                DisplayName = "ACP HF 2 Receive",
+                DisplayName = AcpHf2Receive,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffOn,
+                UiEchoVariable = "I_ASP_HF_2_REC"
             },
             ["S_ASP_INT_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_INT_REC_LATCH",
-                DisplayName = "ACP INT Receive",
+                DisplayName = AcpIntReceive,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffOn,
+                UiEchoVariable = "I_ASP_INT_REC"
             },
             ["S_ASP_CAB_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_CAB_REC_LATCH",
-                DisplayName = "ACP CAB Receive",
+                DisplayName = AcpCabReceive,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffOn,
+                UiEchoVariable = "I_ASP_CAB_REC"
             },
             ["S_ASP_PA_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_PA_REC_LATCH",
-                DisplayName = "ACP PA Receive",
+                DisplayName = AcpPaReceive,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffOn,
+                UiEchoVariable = "I_ASP_PA_REC"
             },
             ["S_ASP_ILS_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_ILS_REC_LATCH",
-                DisplayName = "ACP ILS Receive",
+                DisplayName = AcpIlsReceive,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffOn,
+                UiEchoVariable = "I_ASP_ILS_REC"
             },
             ["S_ASP_MLS_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_MLS_REC_LATCH",
-                DisplayName = "ACP MLS Receive",
+                DisplayName = AcpMlsReceive,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffOn,
+                UiEchoVariable = "I_ASP_MLS_1_REC"
             },
             ["S_ASP_VOR_1_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_VOR_1_REC_LATCH",
-                DisplayName = "ACP VOR 1 Receive",
+                DisplayName = AcpVor1Receive,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffOn,
+                UiEchoVariable = "I_ASP_NAV_1_REC"
             },
             ["S_ASP_VOR_2_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_VOR_2_REC_LATCH",
-                DisplayName = "ACP VOR 2 Receive",
+                DisplayName = AcpVor2Receive,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffOn,
+                UiEchoVariable = "I_ASP_NAV_2_REC"
             },
             ["S_ASP_MARKER_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_MARKER_REC_LATCH",
-                DisplayName = "ACP MARKER Receive",
+                DisplayName = AcpMarkerReceive,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffOn,
+                UiEchoVariable = "I_ASP_MARKER_REC"
             },
             ["S_ASP_ADF_1_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_ADF_1_REC_LATCH",
-                DisplayName = "ACP ADF 1 Receive",
+                DisplayName = AcpAdf1Receive,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffOn,
+                UiEchoVariable = "I_ASP_ADF_1_REC"
             },
             ["S_ASP_ADF_2_REC_LATCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_ASP_ADF_2_REC_LATCH",
-                DisplayName = "ACP ADF 2 Receive",
+                DisplayName = AcpAdf2Receive,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffOn,
+                UiEchoVariable = "I_ASP_ADF_2_REC"
             },
 
             // ========== EFIS LEFT (16 variables) ==========
@@ -7203,6 +7240,15 @@ public class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = OffOn
             },
+            ["I_ASP_HF_2_SEND"] = new SimConnect.SimVarDefinition
+            {
+                Name = "I_ASP_HF_2_SEND",
+                DisplayName = "ACP1 HF 2 Send",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = OffOn
+            },
             ["I_ASP_HF_2_CALL"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_HF_2_CALL",
@@ -7700,7 +7746,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_VHF_1_REC"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_VHF_1_REC",
-                DisplayName = "ACP1 VHF1 Receive",
+                DisplayName = AcpVhf1Receive + AcpLightSuffix,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7709,7 +7755,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_VHF_2_REC"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_VHF_2_REC",
-                DisplayName = "ACP1 VHF2 Receive",
+                DisplayName = AcpVhf2Receive + AcpLightSuffix,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7718,7 +7764,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_VHF_3_REC"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_VHF_3_REC",
-                DisplayName = "ACP1 VHF3 Receive",
+                DisplayName = AcpVhf3Receive + AcpLightSuffix,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7727,7 +7773,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_HF_1_REC"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_HF_1_REC",
-                DisplayName = "ACP1 HF1 Receive",
+                DisplayName = AcpHf1Receive + AcpLightSuffix,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7736,7 +7782,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_HF_2_REC"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_HF_2_REC",
-                DisplayName = "ACP1 HF2 Receive",
+                DisplayName = AcpHf2Receive + AcpLightSuffix,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7745,7 +7791,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_INT_REC"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_INT_REC",
-                DisplayName = "ACP1 INT Receive",
+                DisplayName = AcpIntReceive + AcpLightSuffix,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7754,7 +7800,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_CAB_REC"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_CAB_REC",
-                DisplayName = "ACP1 CAB Receive",
+                DisplayName = AcpCabReceive + AcpLightSuffix,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7763,7 +7809,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_PA_REC"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_PA_REC",
-                DisplayName = "ACP1 PA Receive",
+                DisplayName = AcpPaReceive + AcpLightSuffix,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7772,7 +7818,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_NAV_1_REC"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_NAV_1_REC",
-                DisplayName = "ACP1 VOR1 Receive",
+                DisplayName = AcpVor1Receive + AcpLightSuffix,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7781,7 +7827,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_NAV_2_REC"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_NAV_2_REC",
-                DisplayName = "ACP1 VOR2 Receive",
+                DisplayName = AcpVor2Receive + AcpLightSuffix,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7790,7 +7836,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_MARKER_REC"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_MARKER_REC",
-                DisplayName = "ACP1 MKR Receive",
+                DisplayName = AcpMarkerReceive + AcpLightSuffix,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7799,7 +7845,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_ILS_REC"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_ILS_REC",
-                DisplayName = "ACP1 ILS Receive",
+                DisplayName = AcpIlsReceive + AcpLightSuffix,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7808,7 +7854,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_MLS_1_REC"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_MLS_1_REC",
-                DisplayName = "ACP1 MLS Receive",
+                DisplayName = AcpMlsReceive + AcpLightSuffix,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7817,7 +7863,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_ADF_1_REC"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_ADF_1_REC",
-                DisplayName = "ACP1 ADF1 Receive",
+                DisplayName = AcpAdf1Receive + AcpLightSuffix,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -7826,7 +7872,7 @@ public class FenixA320Definition : BaseAircraftDefinition
             ["I_ASP_ADF_2_REC"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_ASP_ADF_2_REC",
-                DisplayName = "ACP1 ADF2 Receive",
+                DisplayName = AcpAdf2Receive + AcpLightSuffix,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -9043,22 +9089,26 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             ["Audio Control Panel (ACP)"] = new List<string>
             {
+                // Every group lists its channels in the Fenix model's own order
+                // (Panel_ACP_*_Behavior.xml): VHF 1-3, HF 1-2, INT, CAB, VOR 1-2, MARKER,
+                // ILS, MLS, ADF 1-2, PA.
+
                 // Volume Controls (15 knobs)
                 "A_ASP_VHF_1_VOLUME",
                 "A_ASP_VHF_2_VOLUME",
                 "A_ASP_VHF_3_VOLUME",
                 "A_ASP_HF_1_VOLUME",
                 "A_ASP_HF_2_VOLUME",
-                "A_ASP_CAB_VOLUME",
-                "A_ASP_PA_VOLUME",
                 "A_ASP_INT_VOLUME",
+                "A_ASP_CAB_VOLUME",
+                "A_ASP_VOR_1_VOLUME",
+                "A_ASP_VOR_2_VOLUME",
+                "A_ASP_MARKER_VOLUME",
                 "A_ASP_ILS_VOLUME",
                 "A_ASP_MLS_VOLUME",
                 "A_ASP_ADF_1_VOLUME",
                 "A_ASP_ADF_2_VOLUME",
-                "A_ASP_MARKER_VOLUME",
-                "A_ASP_VOR_1_VOLUME",
-                "A_ASP_VOR_2_VOLUME",
+                "A_ASP_PA_VOLUME",
 
                 // INTRAD Switch
                 "S_ASP_INTRAD",
@@ -9069,8 +9119,8 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_ASP_VHF_3_SEND",
                 "S_ASP_HF_1_SEND",
                 "S_ASP_HF_2_SEND",
-                "S_ASP_CAB_SEND",
                 "S_ASP_INT_SEND",
+                "S_ASP_CAB_SEND",
                 "S_ASP_PA_SEND",
 
                 // Additional Buttons (2 buttons)
@@ -9085,14 +9135,14 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_ASP_HF_2_REC_LATCH",
                 "S_ASP_INT_REC_LATCH",
                 "S_ASP_CAB_REC_LATCH",
-                "S_ASP_PA_REC_LATCH",
-                "S_ASP_ILS_REC_LATCH",
-                "S_ASP_MLS_REC_LATCH",
                 "S_ASP_VOR_1_REC_LATCH",
                 "S_ASP_VOR_2_REC_LATCH",
                 "S_ASP_MARKER_REC_LATCH",
+                "S_ASP_ILS_REC_LATCH",
+                "S_ASP_MLS_REC_LATCH",
                 "S_ASP_ADF_1_REC_LATCH",
-                "S_ASP_ADF_2_REC_LATCH"
+                "S_ASP_ADF_2_REC_LATCH",
+                "S_ASP_PA_REC_LATCH"
             },
 
             // ========== GLARESHIELD ==========
@@ -11516,40 +11566,18 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // Receive Toggle Controls (15 combo boxes - use SetLVar)
+            // Receive Toggle Controls (use SetLVar). VHF 2, VHF 3, HF 2, INT and MLS have no case
+            // here: a plain L:var combo needs none, MainForm's generic combo write covers it
+            // (docs/architecture.md, the catch-all verdict).
             if (varKey == "S_ASP_VHF_1_REC_LATCH")
             {
                 simConnect.SetLVar("S_ASP_VHF_1_REC_LATCH", value);
                 return true;
             }
 
-            if (varKey == "S_ASP_VHF_2_REC_LATCH")
-            {
-                simConnect.SetLVar("S_ASP_VHF_2_REC_LATCH", value);
-                return true;
-            }
-
-            if (varKey == "S_ASP_VHF_3_REC_LATCH")
-            {
-                simConnect.SetLVar("S_ASP_VHF_3_REC_LATCH", value);
-                return true;
-            }
-
             if (varKey == "S_ASP_HF_1_REC_LATCH")
             {
                 simConnect.SetLVar("S_ASP_HF_1_REC_LATCH", value);
-                return true;
-            }
-
-            if (varKey == "S_ASP_HF_2_REC_LATCH")
-            {
-                simConnect.SetLVar("S_ASP_HF_2_REC_LATCH", value);
-                return true;
-            }
-
-            if (varKey == "S_ASP_INT_REC_LATCH")
-            {
-                simConnect.SetLVar("S_ASP_INT_REC_LATCH", value);
                 return true;
             }
 
@@ -11568,12 +11596,6 @@ public class FenixA320Definition : BaseAircraftDefinition
             if (varKey == "S_ASP_ILS_REC_LATCH")
             {
                 simConnect.SetLVar("S_ASP_ILS_REC_LATCH", value);
-                return true;
-            }
-
-            if (varKey == "S_ASP_MLS_REC_LATCH")
-            {
-                simConnect.SetLVar("S_ASP_MLS_REC_LATCH", value);
                 return true;
             }
 

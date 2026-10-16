@@ -1195,7 +1195,14 @@ public partial class MainForm : Form
 
     private void MarkUiSet(string? varName, double value)
     {
-        if (!string.IsNullOrEmpty(varName)) _uiSetEcho[varName] = (value, Environment.TickCount64);
+        if (string.IsNullOrEmpty(varName)) return;
+        long now = Environment.TickCount64;
+        _uiSetEcho[varName] = (value, now);
+        // A switch whose state comes back on a separate light (SimVarDefinition.UiEchoVariable)
+        // marks that light too: its change is the same echo the screen reader already spoke.
+        if (currentAircraft.GetVariables().TryGetValue(varName, out var def)
+            && !string.IsNullOrEmpty(def.UiEchoVariable))
+            _uiSetEcho[def.UiEchoVariable] = (value, now);
     }
 
     /// <summary>
