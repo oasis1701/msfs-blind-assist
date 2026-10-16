@@ -2016,45 +2016,41 @@ public partial class ElectronicFlightBagForm : Form
                 {
                     if (reader.Read())
                     {
-                        sb.AppendLine("═══════════════════════════════════════════════════");
-                        sb.AppendLine($"  AIRPORT INFORMATION - {reader["ident"]?.ToString() ?? icao}");
-                        sb.AppendLine("═══════════════════════════════════════════════════");
+                        sb.AppendLine($"AIRPORT INFORMATION - {FormatAirportText(reader["ident"])}");
                         sb.AppendLine();
 
                         // Basic Information
                         sb.AppendLine("BASIC INFORMATION:");
-                        sb.AppendLine($"  ICAO:         {reader["icao"]?.ToString() ?? "N/A"}");
-                        sb.AppendLine($"  Ident:        {reader["ident"]?.ToString() ?? "N/A"}");
-                        sb.AppendLine($"  Name:         {reader["name"]?.ToString() ?? "N/A"}");
-                        sb.AppendLine($"  IATA:         {reader["iata"]?.ToString() ?? "N/A"}");
-                        sb.AppendLine($"  FAA:          {reader["faa"]?.ToString() ?? "N/A"}");
-                        sb.AppendLine($"  Local:        {reader["local"]?.ToString() ?? "N/A"}");
+                        // Navdata leaves the code and place columns empty for almost every
+                        // airport (the ident IS the ICAO code there); an empty one is left
+                        // out rather than read as "N/A", which sounded like "no ICAO code".
+                        AppendAirportTextIfPresent(sb, "  ICAO:         ", reader["icao"]);
+                        sb.AppendLine($"  Ident:        {FormatAirportText(reader["ident"])}");
+                        sb.AppendLine($"  Name:         {FormatAirportText(reader["name"])}");
+                        AppendAirportTextIfPresent(sb, "  IATA:         ", reader["iata"]);
+                        AppendAirportTextIfPresent(sb, "  FAA:          ", reader["faa"]);
+                        AppendAirportTextIfPresent(sb, "  Local:        ", reader["local"]);
                         sb.AppendLine();
 
                         // Location
                         sb.AppendLine("LOCATION:");
-                        sb.AppendLine($"  City:         {reader["city"]?.ToString() ?? "N/A"}");
-                        sb.AppendLine($"  State:        {reader["state"]?.ToString() ?? "N/A"}");
-                        sb.AppendLine($"  Country:      {reader["country"]?.ToString() ?? "N/A"}");
-                        sb.AppendLine($"  Region:       {reader["region"]?.ToString() ?? "N/A"}");
-                        sb.AppendLine($"  Latitude:     {reader["laty"]}");
-                        sb.AppendLine($"  Longitude:    {reader["lonx"]}");
+                        AppendAirportTextIfPresent(sb, "  City:         ", reader["city"]);
+                        AppendAirportTextIfPresent(sb, "  State:        ", reader["state"]);
+                        AppendAirportTextIfPresent(sb, "  Country:      ", reader["country"]);
+                        AppendAirportTextIfPresent(sb, "  ICAO Region:  ", reader["region"]);
+                        sb.AppendLine($"  Latitude:     {FormatAirportCoordinate(reader["laty"], 'N', 'S')}");
+                        sb.AppendLine($"  Longitude:    {FormatAirportCoordinate(reader["lonx"], 'E', 'W')}");
                         sb.AppendLine($"  Altitude:     {reader["altitude"]} ft");
-                        sb.AppendLine($"  Mag Var:      {reader["mag_var"]}°");
+                        sb.AppendLine($"  Mag Var:      {FormatAirportMagVar(reader["mag_var"])}");
                         sb.AppendLine();
 
                         // Frequencies
                         sb.AppendLine("FREQUENCIES:");
-                        var towerFreq = reader["tower_frequency"];
-                        sb.AppendLine($"  Tower:        {(towerFreq != DBNull.Value && Convert.ToInt32(towerFreq) > 0 ? $"{Convert.ToDouble(towerFreq) / 1000000.0:F3} MHz" : "N/A")}");
-                        var atisFreq = reader["atis_frequency"];
-                        sb.AppendLine($"  ATIS:         {(atisFreq != DBNull.Value && Convert.ToInt32(atisFreq) > 0 ? $"{Convert.ToDouble(atisFreq) / 1000000.0:F3} MHz" : "N/A")}");
-                        var awosFreq = reader["awos_frequency"];
-                        sb.AppendLine($"  AWOS:         {(awosFreq != DBNull.Value && Convert.ToInt32(awosFreq) > 0 ? $"{Convert.ToDouble(awosFreq) / 1000000.0:F3} MHz" : "N/A")}");
-                        var asosFreq = reader["asos_frequency"];
-                        sb.AppendLine($"  ASOS:         {(asosFreq != DBNull.Value && Convert.ToInt32(asosFreq) > 0 ? $"{Convert.ToDouble(asosFreq) / 1000000.0:F3} MHz" : "N/A")}");
-                        var unicomFreq = reader["unicom_frequency"];
-                        sb.AppendLine($"  UNICOM:       {(unicomFreq != DBNull.Value && Convert.ToInt32(unicomFreq) > 0 ? $"{Convert.ToDouble(unicomFreq) / 1000000.0:F3} MHz" : "N/A")}");
+                        sb.AppendLine($"  Tower:        {FormatAirportFrequency(reader["tower_frequency"])}");
+                        sb.AppendLine($"  ATIS:         {FormatAirportFrequency(reader["atis_frequency"])}");
+                        sb.AppendLine($"  AWOS:         {FormatAirportFrequency(reader["awos_frequency"])}");
+                        sb.AppendLine($"  ASOS:         {FormatAirportFrequency(reader["asos_frequency"])}");
+                        sb.AppendLine($"  UNICOM:       {FormatAirportFrequency(reader["unicom_frequency"])}");
                         sb.AppendLine();
 
                         // Status
@@ -2101,14 +2097,14 @@ public partial class ElectronicFlightBagForm : Form
                         sb.AppendLine($"  Total Runways:          {reader["num_runways"]}");
                         sb.AppendLine($"  Longest Runway Length:  {reader["longest_runway_length"]} ft");
                         sb.AppendLine($"  Longest Runway Width:   {reader["longest_runway_width"]} ft");
-                        sb.AppendLine($"  Longest Runway Heading: {reader["longest_runway_heading"]}°");
-                        sb.AppendLine($"  Longest Runway Surface: {reader["longest_runway_surface"]?.ToString() ?? "N/A"}");
+                        sb.AppendLine($"  Longest Runway Heading: {FormatAirportHeading(reader["longest_runway_heading"])}");
+                        sb.AppendLine($"  Longest Runway Surface: {FormatAirportText(reader["longest_runway_surface"])}");
                         sb.AppendLine();
 
                         // Parking Info
                         sb.AppendLine("PARKING:");
-                        sb.AppendLine($"  Largest Ramp:           {reader["largest_parking_ramp"]?.ToString() ?? "N/A"}");
-                        sb.AppendLine($"  Largest Gate:           {reader["largest_parking_gate"]?.ToString() ?? "N/A"}");
+                        sb.AppendLine($"  Largest Ramp:           {FormatAirportText(reader["largest_parking_ramp"])}");
+                        sb.AppendLine($"  Largest Gate:           {FormatAirportText(reader["largest_parking_gate"])}");
                         sb.AppendLine();
 
                         // Tower
@@ -2119,8 +2115,8 @@ public partial class ElectronicFlightBagForm : Form
                         {
                             sb.AppendLine("TOWER:");
                             sb.AppendLine($"  Altitude:     {(towerAlt != DBNull.Value ? $"{towerAlt} ft" : "N/A")}");
-                            sb.AppendLine($"  Longitude:    {(towerLonx != DBNull.Value ? towerLonx.ToString() : "N/A")}");
-                            sb.AppendLine($"  Latitude:     {(towerLaty != DBNull.Value ? towerLaty.ToString() : "N/A")}");
+                            sb.AppendLine($"  Longitude:    {FormatAirportCoordinate(towerLonx, 'E', 'W')}");
+                            sb.AppendLine($"  Latitude:     {FormatAirportCoordinate(towerLaty, 'N', 'S')}");
                             sb.AppendLine($"  Has Tower Object: {(Convert.ToInt32(reader["has_tower_object"]) == 1 ? "Yes" : "No")}");
                             sb.AppendLine();
                         }
@@ -2173,13 +2169,14 @@ public partial class ElectronicFlightBagForm : Form
         var sb = new StringBuilder();
 
         sb.AppendLine("HEADINGS:");
-        sb.AppendLine($"  True Heading:         {endHeadingTrue:F1}°");
-        sb.AppendLine($"  Magnetic Heading:     {(endHeadingTrue - magVar):F1}°");
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        sb.AppendLine($"  True Heading:         {endHeadingTrue.ToString("F1", inv)}°");
+        sb.AppendLine($"  Magnetic Heading:     {(endHeadingTrue - magVar).ToString("F1", inv)}°");
         sb.AppendLine();
 
         sb.AppendLine("COORDINATES:");
-        sb.AppendLine($"  Longitude:            {endLonx}");
-        sb.AppendLine($"  Latitude:             {endLaty}");
+        sb.AppendLine($"  Longitude:            {FormatAirportCoordinate(endLonx, 'E', 'W')}");
+        sb.AppendLine($"  Latitude:             {FormatAirportCoordinate(endLaty, 'N', 'S')}");
         sb.AppendLine();
 
         return sb.ToString();
@@ -2203,6 +2200,65 @@ public partial class ElectronicFlightBagForm : Form
         sb.AppendLine();
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// One airport-row frequency (<c>tower_frequency</c>, <c>atis_frequency</c> and the rest), which
+    /// navdata stores in kHz: 118605 → "118.605 MHz". Always a dot, as on the radio panel, whatever
+    /// the Windows number format. "N/A" for a missing or zero value. It used to divide by 1,000,000
+    /// and read "0,119 MHz".
+    /// </summary>
+    internal static string FormatAirportFrequency(object? khz)
+    {
+        if (khz == null || khz == DBNull.Value) return "N/A";
+        double value = Convert.ToDouble(khz, System.Globalization.CultureInfo.InvariantCulture);
+        if (value <= 0) return "N/A";
+        return (value / 1000.0).ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) + " MHz";
+    }
+
+    /// <summary>A text column of the airport row; "N/A" when empty. A database NULL arrives as
+    /// DBNull, whose ToString() is "", so the old <c>?.ToString() ?? "N/A"</c> printed a blank line
+    /// (navdata leaves country, ICAO, IATA, FAA and local empty for almost every airport).</summary>
+    internal static string FormatAirportText(object? value)
+    {
+        string s = value == null || value == DBNull.Value ? "" : value.ToString()!.Trim();
+        return s.Length == 0 ? "N/A" : s;
+    }
+
+    /// <summary>Appends "<paramref name="label"/><value>" only when the column holds text.</summary>
+    internal static void AppendAirportTextIfPresent(StringBuilder sb, string label, object? value)
+    {
+        string text = FormatAirportText(value);
+        if (text != "N/A") sb.AppendLine(label + text);
+    }
+
+    /// <summary>A latitude or longitude in degrees, to 4 decimals (about 10 m) with its hemisphere:
+    /// 57.6600 N, 54.5682 W. Navdata stores these as 32-bit floats, so the raw double printed
+    /// float noise ("57,65998458862305").</summary>
+    internal static string FormatAirportCoordinate(object? degrees, char positive, char negative)
+    {
+        if (degrees == null || degrees == DBNull.Value) return "N/A";
+        double d = Convert.ToDouble(degrees, System.Globalization.CultureInfo.InvariantCulture);
+        return Math.Abs(d).ToString("0.0000", System.Globalization.CultureInfo.InvariantCulture)
+            + " " + (d < 0 ? negative : positive);
+    }
+
+    /// <summary>Magnetic variation to one decimal with its direction: navdata's mag_var is east
+    /// positive (ESGG 5.15 → "5.2° E", CYQX -17.33 → "17.3° W").</summary>
+    internal static string FormatAirportMagVar(object? degrees)
+    {
+        if (degrees == null || degrees == DBNull.Value) return "N/A";
+        double d = Math.Round(Convert.ToDouble(degrees, System.Globalization.CultureInfo.InvariantCulture), 1);
+        string value = Math.Abs(d).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "°";
+        return d == 0 ? value : value + (d < 0 ? " W" : " E");
+    }
+
+    /// <summary>A true heading in whole degrees: 206.0055694580078 → "206°".</summary>
+    internal static string FormatAirportHeading(object? degrees)
+    {
+        if (degrees == null || degrees == DBNull.Value) return "N/A";
+        double d = Convert.ToDouble(degrees, System.Globalization.CultureInfo.InvariantCulture);
+        return Math.Round(d).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + "°";
     }
 
     private string GetRunwayDetailedInfo(string icao, string runwayId)
@@ -2288,9 +2344,7 @@ public partial class ElectronicFlightBagForm : Form
                 {
                     if (reader.Read())
                     {
-                        sb.AppendLine("═══════════════════════════════════════════════════");
-                        sb.AppendLine($"  RUNWAY INFORMATION - {runwayId}");
-                        sb.AppendLine("═══════════════════════════════════════════════════");
+                        sb.AppendLine($"RUNWAY INFORMATION - {runwayId}");
                         sb.AppendLine();
 
                         sb.AppendLine($"Runway ID:        {reader["name"]?.ToString() ?? runwayId}");
