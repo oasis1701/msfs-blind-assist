@@ -135,6 +135,12 @@ public partial class SimConnectManager
         }
     }
 
+    /// <summary>
+    /// True once this aircraft's input-event catalog has arrived, so a name missing from it is not in
+    /// this cockpit (a different variant or a renamed event) rather than not loaded yet.
+    /// </summary>
+    public bool InputEventCatalogReady => inputEventHashes.Count > 0;
+
     /// <summary>True when <paramref name="varKey"/> is an input-event variable this aircraft's catalog can answer.</summary>
     private bool IsReadableInputEvent(string varKey)
     {

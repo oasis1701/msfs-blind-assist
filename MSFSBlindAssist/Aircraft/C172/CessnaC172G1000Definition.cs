@@ -276,7 +276,7 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
 
         if (CoverInputEvents.TryGetValue(varKey, out string? coverEvent))
         {
-            _ = SetCoverAsync(coverEvent, value >= 0.5, varDef, simConnect, announcer);
+            _ = SetCoverAsync(varKey, coverEvent, value >= 0.5, varDef, simConnect, announcer);
             return true;
         }
 
@@ -298,13 +298,17 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
     /// <summary>
     /// Sets a cockpit input event, or says why not. The catalog arrives a few seconds after the
     /// aircraft loads; before it does no write can land, and the base class's events are the ones
-    /// measured not to reach this cockpit, so the pilot hears a refusal rather than nothing.
+    /// measured not to reach this cockpit, so the pilot hears a refusal rather than nothing. Once the
+    /// catalog is in, a missing name means the event is not in this cockpit (another variant loaded
+    /// under this profile, or an event renamed by a sim update), which waiting will not fix.
     /// </summary>
     private static bool SetInputEvent(string inputEvent, double value, SimVarDefinition varDef,
         SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
         if (simConnect.HasInputEvent(inputEvent) && simConnect.TrySetInputEvent(inputEvent, value)) return true;
-        announcer.AnnounceImmediate($"{varDef.DisplayName} is not available yet. Try again in a few seconds.");
+        announcer.AnnounceImmediate(simConnect.InputEventCatalogReady
+            ? $"{varDef.DisplayName} is not in this aircraft's cockpit."
+            : $"{varDef.DisplayName} is not available yet. Try again in a few seconds.");
         return false;
     }
 
@@ -313,10 +317,9 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
     /// already where the pilot asked: a press against a stale state would put it the other way.
     /// Awaited on the UI thread.
     /// </summary>
-    private static async Task SetCoverAsync(string inputEvent, bool install, SimVarDefinition varDef,
+    private static async Task SetCoverAsync(string varKey, string inputEvent, bool install, SimVarDefinition varDef,
         SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
-        string varKey = CoverInputEvents.First(p => p.Value == inputEvent).Key;
         if (await simConnect.ReadFreshAsync(varKey, 1500) is not double current)
         {
             announcer.AnnounceImmediate($"{varDef.DisplayName} could not be read. Try again.");
