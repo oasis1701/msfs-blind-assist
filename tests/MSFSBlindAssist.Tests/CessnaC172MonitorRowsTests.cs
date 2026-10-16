@@ -51,4 +51,21 @@ public class CessnaC172MonitorRowsTests
             Assert.Contains(key, keys);
         }
     }
+
+    // The G1000's GFC 700 adds the flight director and FLC to the spoken modes, and its walkaround
+    // covers are spoken when they move; the Classic has none of them.
+    [Fact]
+    public void The_g1000_only_spoken_variables_have_rows_on_the_g1000_alone()
+    {
+        string[] g1000Only =
+        {
+            "C172G_AP_FD_STATE", "C172G_AP_FLC_STATE",
+            "C172G_COVER_ENGINE", "C172G_COVER_PITOT", "C172G_COVER_STATIC",
+        };
+        var g1000 = RowKeys("C172_G1000");
+        var classic = RowKeys("C172_CLASSIC");
+
+        Assert.All(g1000Only, key => Assert.Contains(key, g1000));
+        Assert.All(g1000Only, key => Assert.DoesNotContain(key, classic));
+    }
 }

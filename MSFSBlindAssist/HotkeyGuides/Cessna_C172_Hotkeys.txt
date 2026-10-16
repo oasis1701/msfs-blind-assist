@@ -1,9 +1,14 @@
 CESSNA 172 SKYHAWK HOTKEY REFERENCE
 
-Covers the Cessna 172 Skyhawk Classic (steam gauges) and the Cessna 172
-Skyhawk G1000. Both fly with a Bendix/King KAP140 autopilot. The C172 has no
-autothrottle, no airliner FCU and no MCDU, so those sections of the airliner
-guides do not apply here.
+Covers the Cessna 172 Skyhawk Classic (steam gauges), which flies with a
+Bendix/King KAP140 autopilot, and the Cessna 172 Skyhawk G1000, which flies
+with the Garmin GFC 700 built into the G1000. The C172 has no autothrottle,
+no airliner FCU and no MCDU, so those sections of the airliner guides do not
+apply here.
+
+Before the first flight of a session (G1000): MSFS can park the aircraft with
+its engine, pitot and static-port covers on, and the engine will not start
+with its cover in. Remove them on the Covers panel (Walkaround section).
 
 Application Navigation:
   Ctrl+1     Focus Sections List
@@ -32,7 +37,7 @@ Navigation:
   N          Read NAV 1 and NAV 2 radio info (frequency, ident, localizer, glideslope, DME)
 
 Autopilot:
-  Shift+V    Read the KAP140's selected vertical speed
+  Shift+V    Read the autopilot's selected vertical speed
 
 Fuel:
   F          Read fuel per tank and total, in gallons
@@ -153,14 +158,25 @@ Flight Planning:
   Shift+F    Fix/Waypoint Tracking Window
   Shift+D    Select Destination Runway
 
-Autopilot (KAP140):
+Autopilot:
   Shift+A    Autopilot on or off
   Shift+1    Heading mode on or off
   Shift+P    Approach mode on or off
+  Shift+3    Flight level change (FLC) on or off (G1000 only)
   Ctrl+H     Set the heading bug (0 to 359)
-  Ctrl+A     Set the autopilot altitude (0 to 25000 feet)
+  Ctrl+A     Set the autopilot altitude (0 to 25000 feet). On the G1000 this
+             is the selected altitude, which FLC climbs or descends to; FLC
+             is refused until an altitude has been selected.
   Ctrl+V     Set the autopilot vertical speed (-2000 to 2000 feet per minute)
-  The KAP140 panel (Autopilot section) has a button for every mode:
+  On the G1000 these press the GFC 700's own keys, so each behaves as in the
+  cockpit: the first AP press engages the autopilot and flight director in
+  roll and pitch hold, and pressing a mode key again turns that mode off.
+  The GFC 700 panel (Autopilot section, G1000) has a button for every key:
+  Autopilot, Flight Director, HDG Hold, NAV Mode, APR Mode, Back Course,
+  ALT Hold, VS Mode, FLC Mode, VNAV, Nose Up and Nose Down. Nose Up and Nose
+  Down change the vertical speed target in VS mode (and the airspeed target
+  in FLC) and say the new target.
+  The KAP140 panel (Autopilot section, Classic) has a button for every mode:
   Autopilot, HDG Hold, ALT Hold, NAV Mode, APR Mode, Back Course and VS Mode.
 
 Altimeter:
@@ -189,5 +205,10 @@ Automatic Announcements:
   - Engine RPM above 2700
   - Stall warning, on and off
   - Each autopilot mode as it engages and disengages
+  - A walkaround cover installed or removed (G1000)
+  - Pressing Starter with the engine cover still installed says so (G1000)
   Each warning speaks once and re-arms when the value recovers.
   Mute any of these from the Monitor Manager (Ctrl+M).
+  The trim announcement (Shift+T) stays quiet while the autopilot is flying,
+  because the autopilot trims all the time; your own trim is spoken again
+  once it disconnects.

@@ -16,6 +16,7 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
     private bool _lowOilPressureWarned = false;
     private bool _lowVacuumWarned = false;
     private bool _rpmRedlineWarned = false;
+    private bool _autopilotEngaged = false;
 
     // FCU control types — KAP140 uses direct value entry
     public override FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
@@ -1158,6 +1159,18 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
 
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
+        // The autopilot's own trimming is not spoken. The shared Shift+T announcer reads every 0.1
+        // degree, and the GFC 700 trims all the time it flies: on the ground in PIT it said "Trim up
+        // 4.1", "4.5", "4.8" a second apart (2026-10-16). The position is re-based while the autopilot
+        // is engaged, so the first pilot trim after a disconnect speaks only what the pilot moved.
+        // The master's own "Autopilot: ON/Off" still speaks (no return here).
+        if (varName == "C172_AP_MASTER_STATE") _autopilotEngaged = value >= 0.5;
+        if (varName == "MON_ElevatorTrim" && _autopilotEngaged)
+        {
+            RebaseTrimAnnouncement(value);
+            return true;
+        }
+
         // Low fuel warnings (debounced)
         if (varName == "C172_FUEL_LEFT_QTY")
         {
@@ -1293,6 +1306,16 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
             uint scaledValue = (uint)(value * 16383.0 / 100.0);
             simConnect.SendEvent("MIXTURE1_SET", scaledValue);
             announcer.Announce($"Mixture set to {value:F0} percent");
+            return true;
+        }
+
+        // Flaps position combo (0 Up to 3 Full). It had no write path at all, so a choice fell through
+        // to MainForm's L:var write and moved nothing. FLAPS_SET takes 0-16383 across the handle's
+        // travel (measured on the G1000: 10922 set notch 2); the cockpit's HANDLING_FLAPS input event
+        // ignored direct values.
+        if (varKey == "C172_FLAPS")
+        {
+            simConnect.SendEvent("FLAPS_SET", (uint)Math.Round(value * 16383.0 / 3.0));
             return true;
         }
 

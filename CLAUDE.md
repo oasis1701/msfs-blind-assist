@@ -150,7 +150,7 @@ Each area's rules load automatically when Claude reads its code; their full text
 | [md11.md](docs/md11.md) | TFDi MD-11: CEVENT transport, control state, layout, the control-map generator | md11, md11-controls |
 | [da40.md](docs/da40.md) | COWS Diamond DA40 NG and XLS: panels, gauge arcs, the FADEC power lever, the G1000 display window; XLS variables in [da40-xls-variables.md](docs/da40-xls-variables.md) | da40, da40-airframe, da40-ng-engine, da40-xls-engine, da40-g1000, da40-avionics, da40-shared-code |
 | [checklists.md](docs/checklists.md) | The checklist window (Shift+C): the aircraft's own checklist read out of its package, the bundled files, the order between them | checklists |
-| [c172.md](docs/c172.md) | Cessna 172 Skyhawk, Classic and G1000: stock SimVars and K: events, panels, background warnings, the KAP140 | c172 |
+| [c172.md](docs/c172.md) | Cessna 172 Skyhawk, Classic and G1000: the G1000's input-event switches, GFC 700 and walkaround covers (audited live), the Classic's stock events and KAP140, panels, background warnings | c172 |
 | [gemini.md](docs/gemini.md) | AI providers (Gemini or Claude): display reads, scene and route description, route briefing | ai-display, route-briefing |
 | [location-data.md](docs/location-data.md) | Output C and Location Info (Shift+L): the offline GeoNames + Natural Earth download, its database and lookups | location-data |
 
