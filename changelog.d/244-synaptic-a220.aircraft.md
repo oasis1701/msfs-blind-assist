@@ -76,7 +76,9 @@ like the other aircraft.
 The panels now follow the A220 cockpit: the overhead in the order you work it (Electrical,
 Hydraulics, APU, Equipment Cooling, Fire Protection and on to the lights and signs), then the
 glareshield, a Center Panel section for the standby instrument and the gear and brakes, and
-the pedestal — each panel listing its switches in the order they sit in the cockpit. New on
+the pedestal — each panel starting with the switches you use every flight, in the order you
+use them (batteries first in Electrical, the parking brake first in Trim, the guarded switches
+last). New on
 the panels: equipment cooling inlet and exhaust, the APU and cargo fire pushes and all six
 fire bottles, both wipers, CVR test and erase, service interphone and mechanic call, the
 standby altimeter (type a setting in hectopascals or inches, or press STD), VHF 1 to 3
