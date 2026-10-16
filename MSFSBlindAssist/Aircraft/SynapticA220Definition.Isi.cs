@@ -22,23 +22,30 @@ public partial class SynapticA220Definition
     /// <summary>Settle before a read-back: the store broadcasts at 20-30 Hz.</summary>
     private const int IsiSettleMs = 350;
 
+    /// <summary>The standby baro walk's OWN cancellation: the ISI knob is a separate instrument,
+    /// so an FCP walk or a flap pick (which share <c>_walkCancel</c>) never stops it, and it never
+    /// stops theirs. Cancelled by a newer standby baro entry and by StopAllMotion.</summary>
+    private System.Threading.CancellationTokenSource? _isiWalkCancel;
+
     /// <summary>
     /// The ISI's QNH (hPa) straight from its CommBus store, asking the WASM for a whole copy
-    /// when the store has not arrived yet (the stores broadcast only changes); null when the
-    /// display link is down or the ISI is unpowered.
+    /// when the store has not arrived yet (the stores broadcast only changes). With no QNH the
+    /// read says why: the ISI reports itself unpowered (returned at once — a resync will not
+    /// power it), or there is no link, store or value.
     /// </summary>
-    private async Task<double?> ReadIsiQnhAsync(System.Threading.CancellationToken token)
+    private async Task<A220.A220Panels.IsiRead> ReadIsiAsync(System.Threading.CancellationToken token)
     {
+        var read = new A220.A220Panels.IsiRead(A220.A220Panels.IsiReadStatus.NoReading, null);
         for (int attempt = 0; attempt < 6 && !token.IsCancellationRequested; attempt++)
         {
             var client = _displaysClient;
-            if (client == null) return null;
-            double? qnh = A220.A220Panels.ParseIsiQnhHpa(await client.CallAgentAsync("isi()"));
-            if (qnh != null) return qnh;
+            if (client == null) return read;
+            read = A220.A220Panels.ParseIsiRead(await client.CallAgentAsync("isi()"));
+            if (read.Status != A220.A220Panels.IsiReadStatus.NoReading) return read;
             if (attempt == 0 || attempt == 3) await client.CallAgentAsync("afdxResync()");
             await System.Threading.Tasks.Task.Delay(150, token);
         }
-        return null;
+        return read;
     }
 
     /// <summary>
@@ -47,7 +54,8 @@ public partial class SynapticA220Definition
     /// burst is round(|delta|/step) clicks, a straddle ends on the NEARER of the two bracketing
     /// values (one click back when the value before the last burst was nearer), and a missing
     /// read-back or a knob that does not move is said aloud. The per-round decision is pure:
-    /// <c>A220Panels.IsiWalkDecision</c>.
+    /// <c>A220Panels.IsiWalkDecision</c>. A walk superseded by a newer entry, or stopped by an
+    /// aircraft swap, ends silently: every announcement checks its own token first.
     /// </summary>
     private void StartIsiBaroWalk(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, double entry)
     {
@@ -58,27 +66,30 @@ public partial class SynapticA220Definition
             return;
         }
         bool inHg = A220.A220Panels.IsInHgEntry(entry);
-        _walkCancel?.Cancel();
+        _isiWalkCancel?.Cancel();
         var cts = new System.Threading.CancellationTokenSource();
-        _walkCancel = cts;
+        _isiWalkCancel = cts;
         var token = cts.Token;
         _ = System.Threading.Tasks.Task.Run(async () =>
         {
+            // A cancelled walk says nothing: the newer entry, or the next aircraft, speaks for itself.
+            void Say(string text)
+            {
+                if (!token.IsCancellationRequested) announcer.AnnounceImmediate(text);
+            }
             try
             {
-                double? first = await ReadIsiQnhAsync(token);
-                if (first == null)
+                var first = await ReadIsiAsync(token);
+                if (first.QnhHpa is not { } start)
                 {
-                    announcer.AnnounceImmediate(
-                        "Standby altimeter reading not available — the display link is down. Set it on the ISI.");
+                    Say(A220.A220Panels.IsiUnavailableText(first.Status));
                     return;
                 }
-                double cur = first.Value;
+                double cur = start;
                 int up = 1;               // the delta sign that RAISES the setting — calibrated on the first move
                 double? step = null;      // hPa per click, measured on this walk only
                 double prevDelta = double.NaN;
                 bool retried = false;
-                string Nearest(double v) => A220.A220Panels.FormatIsiBaro(v, inHg) + " — nearest selectable";
 
                 for (int round = 0; round < 8 && !token.IsCancellationRequested; round++)
                 {
@@ -86,12 +97,12 @@ public partial class SynapticA220Definition
                     var move = A220.A220Panels.IsiWalkDecision(delta, prevDelta, step);
                     if (move.Action == A220.A220Panels.IsiWalkAction.Done)
                     {
-                        announcer.AnnounceImmediate(A220.A220Panels.FormatIsiBaro(cur, inHg));
+                        Say(A220.A220Panels.FormatIsiBaro(cur, inHg));
                         return;
                     }
                     if (move.Action == A220.A220Panels.IsiWalkAction.NearestHere)
                     {
-                        announcer.AnnounceImmediate(Nearest(cur));
+                        Say(A220.A220Panels.IsiNearestText(cur, inHg));
                         return;
                     }
                     // StepBack: the last burst overshot and the value before it was nearer, so ONE
@@ -106,37 +117,41 @@ public partial class SynapticA220Definition
                         await System.Threading.Tasks.Task.Delay(IsiClickPaceMs, token);
                     }
                     await System.Threading.Tasks.Task.Delay(IsiSettleMs, token);
-                    double? after = await ReadIsiQnhAsync(token);
-                    if (after == null)
+                    var after = await ReadIsiAsync(token);
+                    if (after.QnhHpa is not { } now)
                     {
-                        announcer.AnnounceImmediate("Standby altimeter reading lost — check the ISI.");
+                        Say(A220.A220Panels.IsiReadLostText(after.Status));
                         return;
                     }
-                    double moved = after.Value - cur;
+                    double moved = now - cur;
                     if (Math.Abs(moved) < 0.01)
                     {
                         if (!retried && step == null) { retried = true; continue; }
-                        announcer.AnnounceImmediate(
-                            A220.A220Panels.FormatIsiBaro(cur, inHg) + " — the standby altimeter knob is not responding.");
+                        Say(A220.A220Panels.FormatIsiBaro(cur, inHg) + " — the standby altimeter knob is not responding.");
                         return;
                     }
                     if (stepBack)
                     {
                         // The step and the direction are already measured; just say where it landed.
-                        cur = after.Value;
-                        announcer.AnnounceImmediate(A220.A220Panels.IsiWithinTolerance(target.Value - cur, step)
+                        cur = now;
+                        Say(A220.A220Panels.IsiWithinTolerance(target.Value - cur, step)
                             ? A220.A220Panels.FormatIsiBaro(cur, inHg)
-                            : Nearest(cur));
+                            : A220.A220Panels.IsiNearestText(cur, inHg));
                         return;
                     }
                     if (Math.Sign(moved) != Math.Sign(delta)) up = -up;
                     step = Math.Abs(moved) / clicks;
-                    cur = after.Value;
+                    cur = now;
                 }
-                if (!token.IsCancellationRequested) announcer.AnnounceImmediate(Nearest(cur));
+                Say(A220.A220Panels.IsiRoundLimitText(target.Value, cur, step, inHg));
             }
             catch (OperationCanceledException) { }
-            catch { /* a walk never throws into the UI */ }
+            catch (Exception ex)
+            {
+                // A walk never throws into the UI, and never stops without saying so (CORE-15 log).
+                Utils.Logging.Log.Warn("A220", $"Standby baro walk: {ex.Message}");
+                Say("Standby altimeter walk stopped — check the standby baro.");
+            }
         });
     }
 
@@ -149,8 +164,8 @@ public partial class SynapticA220Definition
             try
             {
                 await System.Threading.Tasks.Task.Delay(800);
-                double? qnh = await ReadIsiQnhAsync(System.Threading.CancellationToken.None);
-                announcer.Announce(A220.A220Panels.IsiReadbackText(qnh));
+                var read = await ReadIsiAsync(System.Threading.CancellationToken.None);
+                announcer.Announce(A220.A220Panels.IsiReadbackText(read.QnhHpa));
             }
             catch { /* read-back only */ }
         });

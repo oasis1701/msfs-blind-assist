@@ -319,7 +319,7 @@ public partial class SynapticA220Definition
     /// </summary>
     private void SetFlapDetent(SimConnectManager simConnect, int detent)
     {
-        _walkCancel?.Cancel();   // a flap selection supersedes any walk in flight
+        _walkCancel?.Cancel();   // a flap selection supersedes any FCP walk in flight (never the standby baro's)
         int index = Math.Clamp(detent, 0, FlapMaxDetent);
         simConnect.ExecuteCalculatorCode(
             $"{SeqPrefix()}{index} {FlapMaxDetent} / 16383 * (>K:FLAPS_SET)");

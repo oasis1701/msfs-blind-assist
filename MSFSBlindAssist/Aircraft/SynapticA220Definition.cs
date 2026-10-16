@@ -183,6 +183,7 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
     {
         StopApuStartHold();
         _walkCancel?.Cancel();
+        _isiWalkCancel?.Cancel();   // the standby baro walk has its own token (Isi partial)
         _autobrakeCancel?.Cancel();
         _autopilotWindow?.Dispose();
         _autopilotWindow = null;

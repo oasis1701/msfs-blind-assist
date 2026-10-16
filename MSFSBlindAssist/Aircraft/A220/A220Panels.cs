@@ -169,33 +169,78 @@ public static class A220Panels
         return null;
     }
 
+    /// <summary>Whether an isi() read carries a QNH, and if not, why.</summary>
+    public enum IsiReadStatus
+    {
+        /// <summary>The ISI's QNH is in <see cref="IsiRead.QnhHpa"/>.</summary>
+        Ok,
+        /// <summary>The ISI's own store says <c>powered:false</c> (cold and dark).</summary>
+        Unpowered,
+        /// <summary>No link, no store, or no value in it.</summary>
+        NoReading
+    }
+
+    /// <summary>One isi() read: the QNH in hPa when <see cref="Status"/> is Ok, else null.</summary>
+    public readonly record struct IsiRead(IsiReadStatus Status, double? QnhHpa);
+
+    private static readonly IsiRead NoIsiReading = new(IsiReadStatus.NoReading, null);
+
     /// <summary>
     /// The ISI's QNH in hPa from the displays agent's isi() JSON —
-    /// {"ok":…,"isi":{"powered":…,"qnh_hpa":…},"diag":{…}}. Null when the link, the store,
-    /// the field or the instrument's power is missing: the walk refuses, never guesses.
+    /// {"ok":…,"isi":{"powered":…,"qnh_hpa":…},"diag":{…}} — or why there is none: Unpowered
+    /// when the store says <c>powered:false</c>, NoReading when the link, the store or the field
+    /// is missing. The walk refuses, never guesses, and says which.
     /// </summary>
-    public static double? ParseIsiQnhHpa(string? json)
+    public static IsiRead ParseIsiRead(string? json)
     {
-        if (string.IsNullOrWhiteSpace(json)) return null;
+        if (string.IsNullOrWhiteSpace(json)) return NoIsiReading;
         try
         {
             using JsonDocument doc = JsonDocument.Parse(json);
             if (!doc.RootElement.TryGetProperty("isi", out JsonElement isi) || isi.ValueKind != JsonValueKind.Object)
-                return null;
+                return NoIsiReading;
             if (isi.TryGetProperty("powered", out JsonElement powered) && powered.ValueKind == JsonValueKind.False)
-                return null;
+                return new IsiRead(IsiReadStatus.Unpowered, null);
             if (!isi.TryGetProperty("qnh_hpa", out JsonElement qnh) || qnh.ValueKind != JsonValueKind.Number)
-                return null;
-            return qnh.GetDouble();
+                return NoIsiReading;
+            return new IsiRead(IsiReadStatus.Ok, qnh.GetDouble());
         }
-        catch (JsonException) { return null; }
+        catch (JsonException) { return NoIsiReading; }
     }
 
+    /// <summary>Spoken when the walk cannot start because the ISI gives no reading.</summary>
+    public static string IsiUnavailableText(IsiReadStatus status) => status == IsiReadStatus.Unpowered
+        ? "Standby altimeter not powered."
+        : "Standby altimeter reading not available — the display link is down.";
+
+    /// <summary>Spoken when the ISI stops giving a reading part-way through a walk.</summary>
+    public static string IsiReadLostText(IsiReadStatus status) => status == IsiReadStatus.Unpowered
+        ? "Standby altimeter not powered."
+        : "Standby altimeter reading lost — check the ISI.";
+
+    /// <summary>"1013 hectopascals", or for an inches entry "29.92 inches". Culture-invariant:
+    /// CI runs en-US, pilots may not.</summary>
+    public static string IsiBaroValue(double hpa, bool inHg) => inHg
+        ? (hpa / HpaPerInHg).ToString("0.00", CultureInfo.InvariantCulture) + " inches"
+        : hpa.ToString("0", CultureInfo.InvariantCulture) + " hectopascals";
+
     /// <summary>"Standby altimeter 1013 hectopascals", or for an inches entry
-    /// "Standby altimeter 29.92 inches". Culture-invariant: CI runs en-US, pilots may not.</summary>
-    public static string FormatIsiBaro(double hpa, bool inHg) => inHg
-        ? "Standby altimeter " + (hpa / HpaPerInHg).ToString("0.00", CultureInfo.InvariantCulture) + " inches"
-        : "Standby altimeter " + hpa.ToString("0", CultureInfo.InvariantCulture) + " hectopascals";
+    /// "Standby altimeter 29.92 inches".</summary>
+    public static string FormatIsiBaro(double hpa, bool inHg) => "Standby altimeter " + IsiBaroValue(hpa, inHg);
+
+    /// <summary>"Standby altimeter 1014 hectopascals — nearest selectable".</summary>
+    public static string IsiNearestText(double hpa, bool inHg) => FormatIsiBaro(hpa, inHg) + " — nearest selectable";
+
+    /// <summary>
+    /// Spoken when the walk runs out of rounds. "Nearest selectable" only when the ISI is within
+    /// one measured step of the target (no selectable value lies between them); otherwise it says
+    /// what it could not reach and where the ISI is now, both in the unit the pilot typed.
+    /// </summary>
+    public static string IsiRoundLimitText(double targetHpa, double currentHpa, double? step, bool inHg)
+        => step is { } s && Math.Abs(targetHpa - currentHpa) <= s + IsiToleranceEpsilon
+            ? IsiNearestText(currentHpa, inHg)
+            : "Standby altimeter could not reach " + IsiBaroValue(targetHpa, inHg)
+                + ", now " + IsiBaroValue(currentHpa, inHg) + ".";
 
     /// <summary>The read-back spoken after a standby STD press.</summary>
     public static string IsiReadbackText(double? hpa)

@@ -194,19 +194,74 @@ public class A220PanelsTests
     [Theory]
     [InlineData("{\"ok\":true,\"isi\":{\"powered\":true,\"qnh_hpa\":1013.25},\"diag\":{}}", 1013.25)]
     [InlineData("{\"ok\":true,\"isi\":{\"powered\":null,\"qnh_hpa\":1020},\"diag\":{}}", 1020.0)]
-    public void ParseIsiQnhHpa_ReadsTheIsiStore(string json, double expected)
-        => Assert.Equal(expected, A220Panels.ParseIsiQnhHpa(json)!.Value, 3);
+    public void ParseIsiRead_ReadsTheIsiStore(string json, double expected)
+    {
+        var read = A220Panels.ParseIsiRead(json);
+        Assert.Equal(A220Panels.IsiReadStatus.Ok, read.Status);
+        Assert.Equal(expected, read.QnhHpa!.Value, 3);
+    }
+
+    /// <summary>No QNH, and why: the ISI's own store saying it is unpowered is told apart from a
+    /// missing link, store or value, so the walk can say "not powered" in a cold cockpit.</summary>
+    [Theory]
+    [InlineData(null, A220Panels.IsiReadStatus.NoReading)]
+    [InlineData("", A220Panels.IsiReadStatus.NoReading)]
+    [InlineData("not json", A220Panels.IsiReadStatus.NoReading)]
+    [InlineData("{\"ok\":false}", A220Panels.IsiReadStatus.NoReading)]
+    [InlineData("{\"ok\":false,\"isi\":null,\"diag\":{}}", A220Panels.IsiReadStatus.NoReading)]
+    [InlineData("{\"ok\":true,\"isi\":null}", A220Panels.IsiReadStatus.NoReading)]
+    [InlineData("{\"ok\":true,\"isi\":{\"powered\":true,\"qnh_hpa\":null}}", A220Panels.IsiReadStatus.NoReading)]
+    [InlineData("{\"ok\":true,\"isi\":{\"powered\":null,\"qnh_hpa\":null}}", A220Panels.IsiReadStatus.NoReading)]
+    [InlineData("{\"ok\":true,\"isi\":{\"powered\":false,\"qnh_hpa\":1013}}", A220Panels.IsiReadStatus.Unpowered)]
+    [InlineData("{\"ok\":true,\"isi\":{\"powered\":false,\"qnh_hpa\":null}}", A220Panels.IsiReadStatus.Unpowered)]
+    public void ParseIsiRead_SaysWhyThereIsNoValue(string? json, A220Panels.IsiReadStatus status)
+    {
+        var read = A220Panels.ParseIsiRead(json);
+        Assert.Equal(status, read.Status);
+        Assert.Null(read.QnhHpa);
+    }
+
+    [Fact]
+    public void IsiUnavailableText_NamesTheReason_NeverAskingToSetItOnTheIsi()
+    {
+        Assert.Equal("Standby altimeter not powered.", A220Panels.IsiUnavailableText(A220Panels.IsiReadStatus.Unpowered));
+        Assert.Equal("Standby altimeter reading not available — the display link is down.",
+            A220Panels.IsiUnavailableText(A220Panels.IsiReadStatus.NoReading));
+        Assert.DoesNotContain("Set it on the ISI", A220Panels.IsiUnavailableText(A220Panels.IsiReadStatus.NoReading));
+    }
+
+    [Fact]
+    public void IsiReadLostText_SaysNotPoweredWhenTheIsiSaysSo()
+    {
+        Assert.Equal("Standby altimeter not powered.", A220Panels.IsiReadLostText(A220Panels.IsiReadStatus.Unpowered));
+        Assert.Equal("Standby altimeter reading lost — check the ISI.", A220Panels.IsiReadLostText(A220Panels.IsiReadStatus.NoReading));
+    }
 
     [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("not json")]
-    [InlineData("{\"ok\":false}")]
-    [InlineData("{\"ok\":true,\"isi\":null}")]
-    [InlineData("{\"ok\":true,\"isi\":{\"powered\":false,\"qnh_hpa\":1013}}")]
-    [InlineData("{\"ok\":true,\"isi\":{\"powered\":true,\"qnh_hpa\":null}}")]
-    public void ParseIsiQnhHpa_IsNullWhenTheIsiCannotBeRead(string? json)
-        => Assert.Null(A220Panels.ParseIsiQnhHpa(json));
+    [InlineData(1020.0, 1019.0, 1.0, false, "Standby altimeter 1019 hectopascals — nearest selectable")]  // one step short
+    [InlineData(1020.0, 1021.0, 1.0, false, "Standby altimeter 1021 hectopascals — nearest selectable")]  // one step over
+    [InlineData(1013.21, 1014.0, 1.0, true, "Standby altimeter 29.94 inches — nearest selectable")]
+    [InlineData(1020.0, 1009.0, 1.0, false, "Standby altimeter could not reach 1020 hectopascals, now 1009 hectopascals.")]
+    [InlineData(1013.21, 1003.0, 1.0, true, "Standby altimeter could not reach 29.92 inches, now 29.62 inches.")]
+    [InlineData(1020.0, 1019.0, null, false, "Standby altimeter could not reach 1020 hectopascals, now 1019 hectopascals.")] // no step measured
+    public void IsiRoundLimitText_IsNearestOnlyWithinOneStep(double target, double current, double? step, bool inHg, string expected)
+        => Assert.Equal(expected, A220Panels.IsiRoundLimitText(target, current, step, inHg));
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void IsiRoundLimitText_IsCultureInvariant(string culture)
+    {
+        var previous = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(culture);
+            Assert.Equal("Standby altimeter could not reach 29.92 inches, now 29.62 inches.",
+                A220Panels.IsiRoundLimitText(1013.21, 1003.0, 1.0, inHg: true));
+            Assert.Equal("Standby altimeter 30.08 inches — nearest selectable", A220Panels.IsiNearestText(1018.6, inHg: true));
+        }
+        finally { CultureInfo.CurrentCulture = previous; }
+    }
 
     [Theory]
     [InlineData(1013.25, false, "Standby altimeter 1013 hectopascals")]
