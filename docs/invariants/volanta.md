@@ -21,6 +21,15 @@ link asks Volanta's window object (`VolantaLinkSnapshot.VolantaPaused`), and the
 without a new file as stale. Never present the last snapshot as current while either holds: say why it is
 standing still.
 
+Where that is said (the owner's choice, 2026-10-16): in a line at the top of each list, Traffic, Friends and
+ATC, above the rows last received ("Connected to Volanta, but it is minimized, so this list is not updating.
+Restore Volanta's window."), and the same while Volanta is starting or the link has no access. Its key starts
+with `VolantaListOrder.StatusKeyPrefix`, so it stays first even while the reader is in the list ([VOL-9]). It
+replaced a spoken "Volanta is minimized" and "updating again": the owner wants fewer announcements here, and
+the spoken notice left an empty list behind. The pilot found Volanta minimized after Alt+Tabbing away from it
+just after it started, before its first traffic file, so every list stood empty. Volanta's own code does not
+minimize it for losing focus (docs/volanta.md): the cause is not known, so the line must cover it whatever it is.
+
 ## VOL-3
 
 Volanta runs one copy at a time, so the debugging switch only takes effect on a fresh launch: a second launch
@@ -158,8 +167,8 @@ seconds. So the traffic, friends and ATC lists have a fixed width (`ListScrollWi
 - A list nobody is in (the reader is on a checkbox, a filter, the details, or in the sim) is rebuilt in one
   go: `Items.Clear` and `AddRange`, the selection put back by key. Nobody hears it.
 - In the list the reader is in, while its order holds, `VolantaListOrder.PlanHeldUpdate` removes the rows gone
-  (highest index first), adds the new ones at the end, and rewrites only the rows within `InPlaceWindowRows`
-  (150) of the reader's row. A row farther away keeps its last text, at most one update old once the reader
+  (highest index first), inserts a new status line ([VOL-2]) at the top, adds the other new rows at the end, and
+  rewrites only the rows within `InPlaceWindowRows` (150) of the reader's row. A row farther away keeps its last text, at most one update old once the reader
   comes within 150 rows of it; jumping to it (End, a first letter) reads it as it was, and it re-reads at the
   next update.
 - Re-sorting the list the reader is in (F5) and the short details lists still rewrite every row in place.

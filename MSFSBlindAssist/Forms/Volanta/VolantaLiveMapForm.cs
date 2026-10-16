@@ -15,13 +15,15 @@ namespace MSFSBlindAssist.Forms.Volanta;
 /// Extras, Volanta: Volanta's live map as text. Three tabs: Traffic (Volanta users and network pilots around the
 /// pilot, filtered by distance, network, phase and a search), ATC (online controllers by distance) and
 /// Connection (whether Volanta has live map access, and the button that gives it). In each list tab the list
-/// comes first, then the selected item's details, then the status and the filters.
+/// comes first, then the selected item's details, the major-city checkbox where there is one, then the status
+/// and the filters.
 ///
 /// Screen-reader strategy: everything updates on its own every <see cref="RefreshIntervalMs"/>, in place, the
 /// way the Sim Performance window does: only changed rows are rewritten, so the reader's cursor never jumps, and
 /// the row the pilot is on re-reads when it changes. While the pilot is in a list its order holds (new rows join
 /// at the end), so arrowing down always reaches the next row. F5 re-sorts at once and speaks the status.
-/// Background changes (connected, lost, paused) are spoken once each, queued.
+/// Background changes (connected, lost) are spoken once each, queued. While Volanta's data cannot be pulled
+/// (minimized, starting, not connected), each list says why in a line at its top instead (<see cref="NotUpdatingRow"/>).
 /// </summary>
 public sealed class VolantaLiveMapForm : Form
 {
@@ -102,6 +104,7 @@ public sealed class VolantaLiveMapForm : Form
     private TextBox _atcStatus = null!;
     private ComboBox _atcDistance = null!;
     private CheckBox _atcVatsim = null!, _atcIvao = null!;
+    private TextBox _atcSearch = null!;
     // Connection
     private DisplayListBox _connectionStatus = null!;
     private Button _startButton = null!;
@@ -114,7 +117,6 @@ public sealed class VolantaLiveMapForm : Form
     private VolantaLinkStatus _spokenStatus = VolantaLinkStatus.Stopped;
     private DateTimeOffset? _connectedAt;
     private DateTimeOffset? _spokenFriendsReceived;
-    private bool? _spokenPaused;
     private bool _trafficFilled, _starting, _reconciling;
 
     /// <summary>A list row: its key (flight or station id) and its text. Value equality, so an unchanged row is
@@ -199,6 +201,7 @@ public sealed class VolantaLiveMapForm : Form
         _friendsCities = CityToggle(() => RefreshFriends(hold: false));
 
         // No restart button of its own: the Connection tab's one button restarts Volanta, which reloads the list.
+        // The location choice right after the details, as on the Traffic tab.
         var layout = NewColumn(4);
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
@@ -206,8 +209,8 @@ public sealed class VolantaLiveMapForm : Form
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.Controls.Add(_friendsList, 0, 0);
         layout.Controls.Add(_friendsDetails, 0, 1);
-        layout.Controls.Add(_friendsStatus, 0, 2);
-        layout.Controls.Add(_friendsCities, 0, 3);
+        layout.Controls.Add(_friendsCities, 0, 2);
+        layout.Controls.Add(_friendsStatus, 0, 3);
         page.Controls.Add(layout);
         return page;
     }
@@ -248,7 +251,12 @@ public sealed class VolantaLiveMapForm : Form
         _srcIvao = Toggle("IVAO");
         _srcPilotEdge = Toggle("PilotEdge");
         _srcApoc = Toggle("APOC");
-        _search = new TextBox { Width = 200, AccessibleName = "Search callsign, user, aircraft or airport" };
+        _search = new TextBox
+        {
+            Width = 200,
+            AccessibleName = "Search callsign, user, aircraft or airport",
+            AccessibleDescription = "Searches every distance, whatever the Distance box says.",
+        };
         var refresh = new Button { Text = "&Re-sort now (F5)", AutoSize = true, AccessibleName = "Re-sort now" };
         refresh.Click += (_, _) => RefreshNow();
 
@@ -272,8 +280,8 @@ public sealed class VolantaLiveMapForm : Form
 
         _trafficCities = CityToggle(() => RefreshTraffic(hold: false));
 
-        // The list first, then its details, then the status, the filters and the location choice: the order the
-        // pilot tabs through.
+        // The list first, then its details, the location choice, the status and the filters: the order the pilot
+        // tabs through (the owner's choice, 2026-10-16: the location choice right after the details).
         var layout = NewColumn(5);
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
@@ -282,9 +290,9 @@ public sealed class VolantaLiveMapForm : Form
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.Controls.Add(_trafficList, 0, 0);
         layout.Controls.Add(_trafficDetails, 0, 1);
-        layout.Controls.Add(_trafficStatus, 0, 2);
-        layout.Controls.Add(filters, 0, 3);
-        layout.Controls.Add(_trafficCities, 0, 4);
+        layout.Controls.Add(_trafficCities, 0, 2);
+        layout.Controls.Add(_trafficStatus, 0, 3);
+        layout.Controls.Add(filters, 0, 4);
         page.Controls.Add(layout);
         return page;
     }
@@ -318,10 +326,21 @@ public sealed class VolantaLiveMapForm : Form
         _atcDistance = Choice("ATC distance", AtcDistanceChoices.Select(c => c.Text), defaultIndex: 4);
         _atcVatsim = Toggle("VATSIM");
         _atcIvao = Toggle("IVAO");
+        // Look up an airport's ATC wherever it is (the owner's request, 2026-10-16): "KATL", "EGLL".
+        _atcSearch = new TextBox
+        {
+            Width = 200,
+            AccessibleName = "Search airport, callsign, controller or frequency",
+            AccessibleDescription = "Searches every distance, whatever the Distance box says. Type an airport code, such as KATL or EGLL, to hear its ATC.",
+        };
         _atcDistance.SelectedIndexChanged += (_, _) => RefreshAtc(hold: false);
         _atcVatsim.CheckedChanged += (_, _) => RefreshAtc(hold: false);
         _atcIvao.CheckedChanged += (_, _) => RefreshAtc(hold: false);
-        filters.Controls.AddRange(new Control[] { Caption("Distance:"), _atcDistance, _atcVatsim, _atcIvao });
+        _atcSearch.TextChanged += (_, _) => RefreshAtc(hold: false);
+        filters.Controls.AddRange(new Control[]
+        {
+            Caption("Distance:"), _atcDistance, _atcVatsim, _atcIvao, Caption("Search:"), _atcSearch,
+        });
 
         var layout = NewColumn(4);
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
@@ -488,8 +507,8 @@ public sealed class VolantaLiveMapForm : Form
         AnnounceTransitions(snap);
         // The first data shows at once; after that the timer keeps everything current.
         if (!_trafficFilled) RefreshTraffic(hold: true);
-        if (_friendsList.Items.Count == 0 && snap.Friends is { Count: > 0 }) RefreshFriends(hold: true);
-        if (_atcList.Items.Count == 0 && snap.Controllers != null) RefreshAtc(hold: true);
+        if (!ListsItems(_friendsList) && snap.Friends is { Count: > 0 }) RefreshFriends(hold: true);
+        if (!ListsItems(_atcList) && snap.Controllers != null) RefreshAtc(hold: true);
     }
 
     private void AnnounceTransitions(VolantaLinkSnapshot snap)
@@ -510,14 +529,6 @@ public sealed class VolantaLiveMapForm : Form
             if (_spokenFriendsReceived != null || _starting || _connectedAt is DateTimeOffset c && (DateTimeOffset.UtcNow - c).TotalSeconds < 30)
                 _announcer.AnnounceWithQueue(friends.Count == 1 ? "Loaded your friends list: 1 friend." : $"Loaded your friends list: {friends.Count.ToString(Inv)} friends.");
             _spokenFriendsReceived = snap.FriendsReceived;
-        }
-        if (snap.Status == VolantaLinkStatus.Connected && snap.VolantaPaused != _spokenPaused && snap.VolantaPaused != null)
-        {
-            if (snap.VolantaPaused == true)
-                _announcer.AnnounceWithQueue("Volanta is minimized, so its traffic has stopped updating.");
-            else if (_spokenPaused == true)
-                _announcer.AnnounceWithQueue("Volanta traffic is updating again.");
-            _spokenPaused = snap.VolantaPaused;
         }
     }
 
@@ -556,10 +567,11 @@ public sealed class VolantaLiveMapForm : Form
         if (IsDisposed) return;
         var snap = _link.Snapshot;
         var now = DateTimeOffset.UtcNow;
+        var why = NotUpdatingRow(snap, now);
         if (snap.Friends is not { } friends)
         {
             _friendsByKey = new(StringComparer.Ordinal);
-            Reconcile(_friendsList, Array.Empty<Row>(), hold: false);
+            ReconcileList(_friendsList, why, Array.Empty<Row>(), hold: false);
             ShowFriendDetails();
             DisplayText.SetPreserveCaret(_friendsStatus, "Your friends list has not been read yet. Volanta sends it "
                 + "only when it starts: restart Volanta from the Connection tab to load it.");
@@ -578,7 +590,7 @@ public sealed class VolantaLiveMapForm : Form
             .ToList();
         LookUpPlaces(entries.Where(e => e.Placed != null).Select(e => e.Placed!).ToList(), cities);
         _friendsByKey = entries.GroupBy(e => e.Friend.FriendId).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
-        Reconcile(_friendsList, entries.Select(e => new Row(e.Friend.FriendId, VolantaTrafficFormatter.FriendLine(e))).ToList(),
+        ReconcileList(_friendsList, why, entries.Select(e => new Row(e.Friend.FriendId, VolantaTrafficFormatter.FriendLine(e))),
             hold && _friendsList.Focused);
         ShowFriendDetails();
 
@@ -608,8 +620,10 @@ public sealed class VolantaLiveMapForm : Form
     {
         if (_friendsList.SelectedItem is Row row && _friendsByKey.TryGetValue(row.Key, out var e))
             SetDetails(_friendsDetails, VolantaTrafficFormatter.FriendDetails(e));
+        else if (_friendsList.SelectedItem is Row status && VolantaListOrder.IsStatusKey(status.Key))
+            SetDetails(_friendsDetails, status.Text);
         else
-            SetDetails(_friendsDetails, _friendsList.Items.Count == 0 ? "No friends listed." : "No friend selected.");
+            SetDetails(_friendsDetails, _friendsByKey.Count == 0 ? "No friends listed." : "No friend selected.");
     }
 
     // ── Traffic ───────────────────────────────────────────────────────────────
@@ -658,11 +672,13 @@ public sealed class VolantaLiveMapForm : Form
         if (IsDisposed) return;
         var snap = _link.Snapshot;
         var now = DateTimeOffset.UtcNow;
+        var why = NotUpdatingRow(snap, now);
         var flights = (snap.VolantaFlights?.Items ?? Array.Empty<VolantaFlight>())
             .Concat(snap.NetworkFlights?.Items ?? Array.Empty<VolantaFlight>())
             .ToList();
         if (flights.Count == 0)
         {
+            ShowNoTraffic(why);
             DisplayText.SetPreserveCaret(_trafficStatus, NoDataText(snap));
             return;
         }
@@ -672,6 +688,7 @@ public sealed class VolantaLiveMapForm : Form
             || (_connectedAt is DateTimeOffset c && (now - c).TotalSeconds >= OwnFlightGraceSeconds);
         if (!_trafficFilled && !ownKnown)
         {
+            ShowNoTraffic(why);
             DisplayText.SetPreserveCaret(_trafficStatus, "Connected to Volanta. Finding your own flight.");
             return;
         }
@@ -679,9 +696,7 @@ public sealed class VolantaLiveMapForm : Form
         var own = OwnPosition(snap, now, out string source);
         if (own is not VolantaOwnPosition me)
         {
-            _trafficByKey = new(StringComparer.Ordinal);
-            Reconcile(_trafficList, Array.Empty<Row>(), hold: false);
-            ShowTrafficDetails();
+            ShowNoTraffic(why);
             DisplayText.SetPreserveCaret(_trafficStatus, $"{flights.Count.ToString("N0", Inv)} aircraft online, "
                 + "but your position is unknown: connect the simulator, or wait for Volanta to report your position.");
             _trafficFilled = true;
@@ -698,7 +713,7 @@ public sealed class VolantaLiveMapForm : Form
         var shown = WithPlaces(CurrentFilter().Apply(entries), cities);
         LookUpPlaces(shown, cities);
         _trafficByKey = shown.GroupBy(e => e.Flight.Id).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
-        Reconcile(_trafficList, shown.Select(e => new Row(e.Flight.Id, VolantaTrafficFormatter.ListLine(e))).ToList(),
+        ReconcileList(_trafficList, why, shown.Select(e => new Row(e.Flight.Id, VolantaTrafficFormatter.ListLine(e))),
             hold && _trafficList.Focused);
         ShowTrafficDetails();
         _trafficFilled = true;
@@ -706,6 +721,7 @@ public sealed class VolantaLiveMapForm : Form
         int volantaUsers = snap.VolantaFlights?.Items.Count ?? 0;
         int networkPilots = snap.NetworkFlights?.Items.Count ?? 0;
         string status = shown.Count == 0 ? "No aircraft match the filters." : $"{shown.Count.ToString("N0", Inv)} aircraft shown.";
+        if (_search.Text.Trim().Length > 0) status += " The search covers every distance.";
         status += $" Online: {volantaUsers.ToString("N0", Inv)} Volanta users, {networkPilots.ToString("N0", Inv)} network pilots."
             + $" Your position from {source}. {DataAge("Traffic", snap.VolantaFlightsReceived, now)}";
         if (!_locations.IsAvailable) status += " Locations need the location data: Settings, GeoNames tab.";
@@ -804,12 +820,22 @@ public sealed class VolantaLiveMapForm : Form
         });
     }
 
+    /// <summary>The Traffic list with no traffic to list: only the line saying why, while there is one.</summary>
+    private void ShowNoTraffic(Row? why)
+    {
+        _trafficByKey = new(StringComparer.Ordinal);
+        ReconcileList(_trafficList, why, Array.Empty<Row>(), hold: false);
+        ShowTrafficDetails();
+    }
+
     private void ShowTrafficDetails()
     {
         if (_trafficList.SelectedItem is Row row && _trafficByKey.TryGetValue(row.Key, out var e))
             SetDetails(_trafficDetails, VolantaTrafficFormatter.Details(e));
+        else if (_trafficList.SelectedItem is Row status && VolantaListOrder.IsStatusKey(status.Key))
+            SetDetails(_trafficDetails, status.Text);
         else
-            SetDetails(_trafficDetails, _trafficList.Items.Count == 0 ? "No aircraft listed." : "No aircraft selected.");
+            SetDetails(_trafficDetails, _trafficByKey.Count == 0 ? "No aircraft listed." : "No aircraft selected.");
     }
 
     // ── ATC ───────────────────────────────────────────────────────────────────
@@ -819,18 +845,25 @@ public sealed class VolantaLiveMapForm : Form
         if (IsDisposed) return;
         var snap = _link.Snapshot;
         var now = DateTimeOffset.UtcNow;
+        var why = NotUpdatingRow(snap, now);
         if (snap.Controllers is not { } feed)
         {
+            _atcByKey = new(StringComparer.Ordinal);
+            ReconcileList(_atcList, why, Array.Empty<Row>(), hold: false);
+            ShowAtcDetails();
             DisplayText.SetPreserveCaret(_atcStatus, NoDataText(snap));
             return;
         }
         var own = OwnPosition(snap, now, out _);
-        double? radius = AtcDistanceChoices[Math.Max(0, _atcDistance.SelectedIndex)].Nm;
+        // A search covers every distance, as on the Traffic tab.
+        bool searching = _atcSearch.Text.Trim().Length > 0;
+        double? radius = searching ? null : AtcDistanceChoices[Math.Max(0, _atcDistance.SelectedIndex)].Nm;
         var rows = new List<(VolantaController Station, double? Nm)>();
         foreach (var c in feed.Items)
         {
             if (c.Network == VolantaSource.Vatsim && !_atcVatsim.Checked) continue;
             if (c.Network == VolantaSource.Ivao && !_atcIvao.Checked) continue;
+            if (!VolantaAtcSearch.Matches(c, _atcSearch.Text)) continue;
             double? nm = own is VolantaOwnPosition me && c.Latitude is double lat && c.Longitude is double lon
                 ? NavigationCalculator.CalculateDistance(me.Latitude, me.Longitude, lat, lon)
                 : null;
@@ -840,11 +873,14 @@ public sealed class VolantaLiveMapForm : Form
         var ordered = rows.OrderBy(r => r.Nm ?? double.MaxValue)
             .ThenBy(r => r.Station.Callsign, StringComparer.OrdinalIgnoreCase).ToList();
         _atcByKey = ordered.GroupBy(r => r.Station.Id).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
-        Reconcile(_atcList, ordered.Select(r => new Row(r.Station.Id, VolantaTrafficFormatter.ControllerLine(r.Station, r.Nm))).ToList(),
+        ReconcileList(_atcList, why, ordered.Select(r => new Row(r.Station.Id, VolantaTrafficFormatter.ControllerLine(r.Station, r.Nm))),
             hold && _atcList.Focused);
         ShowAtcDetails();
 
-        string status = ordered.Count == 0 ? "No ATC online within the filters." : $"{ordered.Count.ToString("N0", Inv)} ATC stations shown.";
+        string status = ordered.Count == 0
+            ? (searching ? "No ATC online matches the search." : "No ATC online within the filters.")
+            : $"{ordered.Count.ToString("N0", Inv)} ATC stations shown.";
+        if (searching) status += " The search covers every distance.";
         status += $" Online: {feed.Items.Count.ToString("N0", Inv)} stations.";
         if (own == null) status += " Your position is unknown, so stations are in name order and not filtered by distance.";
         status += " " + DataAge("ATC", snap.ControllersReceived, now);
@@ -855,11 +891,47 @@ public sealed class VolantaLiveMapForm : Form
     {
         if (_atcList.SelectedItem is Row row && _atcByKey.TryGetValue(row.Key, out var r))
             SetDetails(_atcDetails, VolantaTrafficFormatter.ControllerDetails(r.Station, r.Nm));
+        else if (_atcList.SelectedItem is Row status && VolantaListOrder.IsStatusKey(status.Key))
+            SetDetails(_atcDetails, status.Text);
         else
-            SetDetails(_atcDetails, _atcList.Items.Count == 0 ? "No stations listed." : "No station selected.");
+            SetDetails(_atcDetails, _atcByKey.Count == 0 ? "No stations listed." : "No station selected.");
     }
 
     // ── List reconcile ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The line at the top of each list while Volanta's data cannot be pulled, saying why, or null while it
+    /// updates. The owner's choice (2026-10-16), replacing a spoken "Volanta is minimized": the pilot found Volanta
+    /// minimized just after it started, which sends nothing (VOL-2), and the lists stood empty. Rows already
+    /// received stay below the line. Keyed by its text, so a new reason replaces it at the top.
+    /// </summary>
+    private static Row? NotUpdatingRow(VolantaLinkSnapshot snap, DateTimeOffset now)
+    {
+        string? text = snap.Status switch
+        {
+            VolantaLinkStatus.Connected when IsMinimized(snap)
+                => "Connected to Volanta, but it is minimized, so this list is not updating. Restore Volanta's window.",
+            VolantaLinkStatus.Connected when snap.VolantaFlightsReceived is DateTimeOffset t && (now - t).TotalSeconds > StaleSeconds
+                => "Volanta has not sent anything new for a while, so this list is not updating. Keep Volanta open on its map, not minimized.",
+            VolantaLinkStatus.Connected => null,
+            VolantaLinkStatus.WaitingForPage => "Volanta is starting, or is between pages, so this list is not updating. Waiting for its map.",
+            VolantaLinkStatus.NoAccess => "Not connected to Volanta's live map, so this list is not updating. Open the Connection tab to start Volanta with live map access.",
+            _ => null,   // the link not started yet, or stopping with the window
+        };
+        return text is null ? null : new Row(VolantaListOrder.StatusKeyPrefix + text, text);
+    }
+
+    /// <summary>Brings a list to its rows with <paramref name="why"/>, when there is one, first. A pilot already in
+    /// the list with nothing selected has the line selected, so it is read the moment it appears.</summary>
+    private void ReconcileList(ListBox list, Row? why, IEnumerable<Row> rows, bool hold)
+    {
+        Reconcile(list, why is null ? rows.ToList() : rows.Prepend(why).ToList(), hold);
+        if (why != null && list.Focused) SelectFirstIfNone(list);
+    }
+
+    /// <summary>Whether a list shows any item, its status line not counted.</summary>
+    private static bool ListsItems(ListBox list)
+        => list.Items.Count > (list.Items.Count > 0 && list.Items[0] is Row r && VolantaListOrder.IsStatusKey(r.Key) ? 1 : 0);
 
     /// <summary>
     /// Brings a list to <paramref name="sorted"/>, the selection following its row by key, so the reader's cursor
@@ -908,9 +980,10 @@ public sealed class VolantaLiveMapForm : Form
             }
             else if (plan != null)
             {
-                // The reader is in it and its order holds: rows gone drop out, new ones join at the end, and only
-                // the rows near the reader's are rewritten.
+                // The reader is in it and its order holds: rows gone drop out, a new status line goes in at the
+                // top, other new rows join at the end, and only the rows near the reader's are rewritten.
                 foreach (int i in plan.Remove) list.Items.RemoveAt(i);
+                for (int i = 0; i < plan.InsertTop; i++) list.Items.Insert(i, arranged[i]);
                 for (int i = list.Items.Count; i < arranged.Count; i++) list.Items.Add(arranged[i]);
                 for (int i = plan.RewriteFrom; i <= plan.RewriteTo; i++)
                     if (!Equals(list.Items[i], arranged[i])) list.Items[i] = arranged[i];
@@ -968,8 +1041,13 @@ public sealed class VolantaLiveMapForm : Form
         return "";
     }
 
+    /// <summary>Connected, and Volanta's window is minimized or hidden, so it sends nothing (VOL-2).</summary>
+    private static bool IsMinimized(VolantaLinkSnapshot snap)
+        => snap.Status == VolantaLinkStatus.Connected && snap.VolantaPaused == true;
+
     private static string NoDataText(VolantaLinkSnapshot snap) => snap.Status switch
     {
+        VolantaLinkStatus.Connected when IsMinimized(snap) => "Connected to Volanta, but it is minimized, so it sends nothing: restore Volanta's window. It can stay behind the sim.",
         VolantaLinkStatus.Connected => "Connected to Volanta. Waiting for its first update; it comes every few seconds while Volanta's map is open.",
         VolantaLinkStatus.WaitingForPage => "Volanta is starting. Waiting for its map.",
         _ => "No access to Volanta's live map. Open the Connection tab to start Volanta with live map access.",

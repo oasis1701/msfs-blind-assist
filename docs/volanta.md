@@ -14,25 +14,30 @@ ATC.
   distance (10 to 1,000 nm, then a warning row, then "All pilots across Volanta", about 3,000 rows; landing on
   the warning row keeps the distance chosen before), all / airborne / on the ground, which sources (Volanta
   users, VATSIM, IVAO, PilotEdge, APOC) and a search over callsign, flight number, user, type, registration
-  and airports. The ATC tab keeps its own distances, 10 nm to any. The
-  details box below the list shows everything known about the selected aircraft. Last, "Report location to
-  nearest major city": ticked, the location says how far and which way the aircraft is from the nearest major
-  city instead ("92 miles west of Wichita, Kansas, United States"), a major city being the pilot's own
-  Minimum Population for Major Cities within their Major Cities Range (GeoNames tab), never a district of a city.
-  The checkbox text names both values. Unticked at every opening.
+  and airports. A search covers every distance, whatever the distance filter says (the owner's choice,
+  2026-10-16); sources and airborne or on the ground still apply. The ATC tab keeps its own distances, 10 nm
+  to any. The details box below the list shows everything known about the selected aircraft. Right after it,
+  "Report location to nearest major city": ticked, the location says how far and which way the aircraft is
+  from the nearest major city instead ("92 miles west of Wichita, Kansas, United States"), a major city being
+  the pilot's own Minimum Population for Major Cities within their Major Cities Range (GeoNames tab), never a
+  district of a city. The checkbox text names both values. Unticked at every opening.
 - **Friends tab** (after Traffic): the pilot's Volanta friends. Flying friends first, nearest first, with the
   same placing as a traffic line; then friends online in Volanta, with their status in words ("cruising over
   United States", "taxiing to gate B12 at KGRB"); then offline. The details list adds everything about a flying
-  friend's flight. Its own "Report location to nearest major city" checkbox, after the status, works as the
+  friend's flight. Its own "Report location to nearest major city" checkbox, after the details, works as the
   Traffic tab's, independently. Restarting Volanta from the Connection tab loads the list again ([VOL-6]).
 - **ATC tab**: online VATSIM and IVAO stations, nearest first, with frequency; the details box adds the
-  controller, the airport, when they came online and the ATIS text.
+  controller, the airport, when they came online and the ATIS text. Its search (the owner's request,
+  2026-10-16) looks up an airport's ATC wherever it is: it matches the callsign, the airport Volanta gives the
+  station (a center too, LFFF_CTR at LFPG), the controller and the frequency, at any distance
+  (`VolantaAtcSearch`). A US code also finds the stations VATSIM names without its K: "KATL" finds ATL_TWR.
+  A station covering the airport from above under another airport's code is not found.
 - **Connection tab**: whether Volanta has live map access, what has been received and when, and the window's one
   button that starts or restarts Volanta with access. It restarts Volanta even when it already has access (after
   asking), since that is also how the friends list is reloaded.
 
-In each list tab the list comes first in the tab order, then the selected item's details, then the status, the
-filters and the major-city checkbox. The tabs use `AccessibleTabControl`, as the EFB does, so NVDA names only the tab.
+In each list tab the list comes first in the tab order, then the selected item's details, the major-city
+checkbox (Traffic and Friends, the owner's choice, 2026-10-16), then the status and the filters. The tabs use `AccessibleTabControl`, as the EFB does, so NVDA names only the tab.
 
 Everything updates on its own every 5 seconds, in place, as the Sim Performance window does: only changed rows
 are rewritten and the selection follows its row by key, so the reader's cursor never jumps, and the row the
@@ -42,8 +47,13 @@ the down arrow always reaches the next row. A list the pilot is not in is rebuil
 list they are in only the rows within 150 of theirs are rewritten: rewriting every row of a big list blocked the
 window for seconds ([VOL-9]). The details list below, one field per row, is live. Every checkbox is drawn by
 Windows (FlatStyle.System), the only kind whose tick NVDA hears under .NET 10 ([VOL-10]). F5 (or Re-sort
-now) re-sorts at once and reads the tab's status; a filter change re-sorts too. Connected, lost, and Volanta
-minimized or updating again are each spoken once, queued.
+now) re-sorts at once and reads the tab's status; a filter change re-sorts too. Connected and lost are each
+spoken once, queued, and nothing else is (the owner wants fewer announcements here). While Volanta's data
+cannot be pulled, each list instead has a line at its top saying why: Volanta minimized ("Connected to Volanta,
+but it is minimized, so this list is not updating"), nothing new for 30 seconds, Volanta starting, or no access.
+The rows last received stay below it, and it stays first while the pilot is in the list ([VOL-2]). The owner
+found Volanta minimized after Alt+Tabbing away from it just after it started (2026-10-16), before it sent
+anything, and the lists stood empty.
 
 ## Requirements
 
@@ -100,6 +110,13 @@ two (the TCAS window's pattern).
   minimizing tears its map down entirely. Chromium's `document.visibilityState` stays "visible" throughout, so
   the link asks Volanta's own window object instead. The window also calls traffic stale after 30 seconds
   without a new file, which covers the causes not measured (another Volanta page, Performance mode).
+- **Volanta never minimizes itself for losing focus.** Read in Volanta 1.19.2's own code (2026-10-16): no blur,
+  idle or Alt+Tab handler minimizes or hides its window. It minimizes itself only when started with
+  `--minimized` (its "Launch on login" entry), which this app's launch never passes; it hides itself on close
+  with "Minimise Volanta to tray on close" on, and on minimize with Performance mode on. Its "real-time tracking
+  off when lost focus" setting pauses only its own smoothing of positions, not the downloads. So behind the sim
+  is safe. The pilot did find Volanta minimized after Alt+Tabbing away from it just after it started, and its log
+  shows a minimize 6 s after a start: something outside Volanta's code minimized it, cause not yet known.
 - **Positions are old.** At a snapshot, half of the airborne positions were under 11 s old, one in ten over
   100 s, the oldest 18 minutes. The pilot's own entry was 113 s old, so it read as traffic 15 nm behind at
   443 kt. `VolantaTrafficCalculator` moves airborne traffic on along heading and ground speed for at most 3

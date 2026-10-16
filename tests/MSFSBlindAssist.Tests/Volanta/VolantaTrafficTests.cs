@@ -173,4 +173,16 @@ public class VolantaTrafficTests
         Assert.Equal(new[] { "ground" },
             new VolantaTrafficFilter { Search = "a339" }.Apply(all).Select(e => e.Flight.Id));
     }
+
+    [Fact]
+    public void A_search_finds_aircraft_beyond_the_distance()
+    {
+        var all = Sample();
+        Assert.Equal(new[] { "far" }, new VolantaTrafficFilter { RadiusNm = 10, Search = "a320" }.Apply(all).Select(e => e.Flight.Id));
+        // Sources and phase still narrow a search.
+        Assert.Empty(new VolantaTrafficFilter { RadiusNm = 10, Search = "a320", Phase = VolantaPhaseFilter.OnGround }.Apply(all));
+        Assert.Empty(new VolantaTrafficFilter { Search = "a320", Sources = new HashSet<VolantaSource> { VolantaSource.Vatsim } }.Apply(all));
+        // A search of only spaces is no search: the distance holds.
+        Assert.DoesNotContain("far", new VolantaTrafficFilter { Search = "  " }.Apply(all).Select(e => e.Flight.Id));
+    }
 }

@@ -29,22 +29,23 @@ public sealed record VolantaTrafficFilter
 {
     public static readonly IReadOnlySet<VolantaSource> AllSources = new HashSet<VolantaSource>(Enum.GetValues<VolantaSource>());
 
-    /// <summary>Null means no limit.</summary>
+    /// <summary>Null means no limit. Not applied while <see cref="Search"/> has text.</summary>
     public double? RadiusNm { get; init; } = 100;
     public IReadOnlySet<VolantaSource> Sources { get; init; } = AllSources;
     public VolantaPhaseFilter Phase { get; init; } = VolantaPhaseFilter.All;
     /// <summary>Matched, case-insensitively, against callsign, flight number, user, aircraft type, registration
-    /// and both airports.</summary>
+    /// and both airports, at any distance (the owner's choice, 2026-10-16): a pilot searching for a callsign wants
+    /// that aircraft wherever it is. Sources and phase still apply.</summary>
     public string Search { get; init; } = "";
 
     public bool Matches(VolantaTrafficEntry e)
     {
         var f = e.Flight;
-        if (RadiusNm is double r && e.DistanceNm > r) return false;
+        string q = Search.Trim();
+        if (q.Length == 0 && RadiusNm is double r && e.DistanceNm > r) return false;
         if (!Sources.Contains(f.Source)) return false;
         if (Phase == VolantaPhaseFilter.Airborne && f.OnGround) return false;
         if (Phase == VolantaPhaseFilter.OnGround && !f.OnGround) return false;
-        string q = Search.Trim();
         if (q.Length > 0)
         {
             bool hit = Contains(f.Callsign, q) || Contains(f.FlightNumber, q) || Contains(f.UserName, q)
@@ -57,6 +58,26 @@ public sealed record VolantaTrafficFilter
 
     public IReadOnlyList<VolantaTrafficEntry> Apply(IEnumerable<VolantaTrafficEntry> entries)
         => entries.Where(Matches).OrderBy(e => e.DistanceNm).ToList();
+
+    private static bool Contains(string field, string q) => field.Contains(q, StringComparison.OrdinalIgnoreCase);
+}
+
+/// <summary>The ATC tab's search, so the pilot can look up an airport's ATC wherever it is ("KATL", "EGLL"): the
+/// window lists every station it matches at any distance, as the Traffic tab's search does.</summary>
+public static class VolantaAtcSearch
+{
+    /// <summary>Whether a station matches <paramref name="search"/> (blank matches every one): case-insensitively
+    /// in its callsign, airport, controller or frequency. A US airport's code also finds the stations VATSIM names
+    /// without its K ("KATL" finds ATL_TWR and ATL_APP, as well as KATL_ATIS).</summary>
+    public static bool Matches(VolantaController c, string search)
+    {
+        string q = search.Trim();
+        if (q.Length == 0) return true;
+        if (Contains(c.Callsign, q) || Contains(c.AirportIcao, q) || Contains(c.UserName, q) || Contains(c.Frequency, q))
+            return true;
+        return q.Length == 4 && (q[0] is 'K' or 'k') && q.All(char.IsAsciiLetterOrDigit)
+            && c.Callsign.StartsWith(q[1..] + "_", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static bool Contains(string field, string q) => field.Contains(q, StringComparison.OrdinalIgnoreCase);
 }

@@ -85,4 +85,54 @@ public class VolantaListOrderTests
     [Fact]
     public void Rows_not_in_a_held_order_have_no_plan_so_every_row_is_rewritten()
         => Assert.Null(VolantaListOrder.PlanHeldUpdate(new[] { "a", "b", "c" }, new[] { "c", "a", "b" }, "a", 0, window: 10));
+
+    // A status line ("Connected to Volanta, but it is minimized") is always the first row, held or not, and goes in
+    // at the top without rewriting the rows below it.
+
+    private const string Minimized = VolantaListOrder.StatusKeyPrefix + "minimized";
+    private const string Lost = VolantaListOrder.StatusKeyPrefix + "lost";
+
+    [Fact]
+    public void Holding_puts_a_new_status_line_first_and_keeps_the_other_rows_in_place()
+        => Assert.Equal(new[] { Minimized, "a", "b", "c", "d" },
+            Arrange(new[] { "a", "b", "c" }, new[] { Minimized, "c", "a", "d", "b" }, hold: true));
+
+    [Fact]
+    public void Holding_keeps_a_shown_status_line_first()
+        => Assert.Equal(new[] { Minimized, "a", "b" }, Arrange(new[] { Minimized, "a", "b" }, new[] { Minimized, "b", "a" }, hold: true));
+
+    [Fact]
+    public void Holding_drops_a_status_line_that_is_gone()
+        => Assert.Equal(new[] { "a", "b" }, Arrange(new[] { Minimized, "a", "b" }, new[] { "b", "a" }, hold: true));
+
+    [Fact]
+    public void A_held_update_inserts_a_new_status_line_at_the_top_and_rewrites_only_near_the_reader()
+    {
+        var shown = Keys(1000);
+        var arranged = VolantaListOrder.Arrange(shown, new[] { Minimized }.Concat(shown).ToArray(), k => k, hold: true);
+        var plan = VolantaListOrder.PlanHeldUpdate(shown, arranged, "k500", 500, window: 150)!;
+        Assert.Empty(plan.Remove);
+        Assert.Equal(1, plan.InsertTop);
+        Assert.Equal((501 - 150, 501 + 150), (plan.RewriteFrom, plan.RewriteTo));   // k500 is row 501 below the line
+    }
+
+    [Fact]
+    public void A_held_update_removes_a_status_line_that_is_gone_and_inserts_none()
+    {
+        var plan = VolantaListOrder.PlanHeldUpdate(new[] { Minimized, "a", "b" }, new[] { "a", "b" }, "a", 1, window: 10)!;
+        Assert.Equal(new[] { 0 }, plan.Remove);
+        Assert.Equal(0, plan.InsertTop);
+    }
+
+    [Fact]
+    public void A_held_update_replaces_a_status_line_whose_reason_changed()
+    {
+        var plan = VolantaListOrder.PlanHeldUpdate(new[] { Minimized, "a", "b" }, new[] { Lost, "a", "b" }, "a", 1, window: 10)!;
+        Assert.Equal(new[] { 0 }, plan.Remove);
+        Assert.Equal(1, plan.InsertTop);
+    }
+
+    [Fact]
+    public void A_held_update_with_a_shown_status_line_inserts_nothing()
+        => Assert.Equal(0, VolantaListOrder.PlanHeldUpdate(new[] { Minimized, "a" }, new[] { Minimized, "a", "b" }, "a", 1, window: 10)!.InsertTop);
 }
