@@ -541,7 +541,11 @@ public partial class SynapticA220Definition
 
         // ==== Center panel — standby instrument (ISI) ([A220-43]) =============
         // The ISI knob writes a per-click delta and the push a STD flag; neither echoes, so the
-        // baro entry is WALKED against the ISI's own "A22X.ISI Data" store (Isi partial).
+        // baro entry is WALKED and both are read back from the stock altimeter 3, which the
+        // aircraft's systems keep for the ISI (Isi partial). Measured live 2026-10-16: MB:3 follows
+        // every click (one click is the ISI's 0.01-inch step, about 0.34 hPa, which MB:3 reports on
+        // a 1/16-hPa grid) and STD:3 reads 1 after an STD press, 0 after the next click; the ISI's
+        // own store has only a whole-number qnh_hpa and no STD field.
         v["A22X_ISI_BARO_SET"] = new SimVarDefinition
         {
             Name = "A22X_ISI_BARO_SET", DisplayName = "Standby Baro (hPa or inches)",
@@ -549,6 +553,20 @@ public partial class SynapticA220Definition
             UnparseableTextAsNaN = true
         };
         v["A22X_ISI_BARO_STD"] = LMomentary("A22X ISI Altimeter STD", "Standby Baro STD");
+        // The two read-backs: stock SimVars ([VAR-2]), read only on demand by ReadFreshAsync —
+        // never announced, never a Ctrl+M row ([VAR-9]).
+        v[IsiKohlsmanMbKey] = new SimVarDefinition
+        {
+            Name = "KOHLSMAN SETTING MB:3", DisplayName = "Standby altimeter setting",
+            Type = SimVarType.SimVar, Units = "millibars", UpdateFrequency = UpdateFrequency.OnRequest,
+            ExcludeFromMonitorManager = true
+        };
+        v[IsiStdKey] = new SimVarDefinition
+        {
+            Name = "KOHLSMAN SETTING STD:3", DisplayName = "Standby altimeter STD",
+            Type = SimVarType.SimVar, Units = "bool", UpdateFrequency = UpdateFrequency.OnRequest,
+            ExcludeFromMonitorManager = true
+        };
 
         // ==== Glareshield — Warnings / chrono ================================
         v["A22X_MASTER_CW_CANCEL"] = new SimVarDefinition

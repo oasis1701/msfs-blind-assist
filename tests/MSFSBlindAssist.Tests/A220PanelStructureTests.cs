@@ -233,6 +233,38 @@ public class A220PanelStructureTests
         Assert.True(std.RenderAsButton && std.IsMomentary);
     }
 
+    /// <summary>[A220-43]: both read back from the stock altimeter 3 the aircraft keeps for the ISI
+    /// (live 2026-10-16) — stock SimVars, never L:vars ([VAR-2]), read on demand, never spoken by the
+    /// generic path and never a Ctrl+M row ([VAR-9]).</summary>
+    [Theory]
+    [InlineData("A22X_ISI_KOHLSMAN_MB", "KOHLSMAN SETTING MB:3", "millibars")]
+    [InlineData("A22X_ISI_STD", "KOHLSMAN SETTING STD:3", "bool")]
+    public void StandbyAltimeter_ReadsBackTheStockAltimeter3(string key, string name, string units)
+    {
+        var def = Vars[key];
+        Assert.Equal(name, def.Name);
+        Assert.Equal(units, def.Units);
+        Assert.Equal(SimVarType.SimVar, def.Type);
+        Assert.Equal(UpdateFrequency.OnRequest, def.UpdateFrequency);
+        Assert.False(def.IsAnnounced);
+        Assert.True(def.ExcludeFromMonitorManager);
+    }
+
+    /// <summary>CORE-7: the STD push reads altimeter 3 back once and never says "pressed"; with no
+    /// delivered read (this manager never connects) it says so once, never silence and never a
+    /// claimed state.</summary>
+    [Fact]
+    public void StandbyStdPush_SpeaksOneReadBack_NeverPressed()
+    {
+        var def = new SynapticA220Definition();
+        var speech = new SpeechCapture();
+        var mgr = new SimConnectManager(IntPtr.Zero);       // never connected: no read is delivered
+        Assert.True(def.HandleUIVariableSet("A22X_ISI_BARO_STD", 1, Vars["A22X_ISI_BARO_STD"], mgr, speech));
+        Assert.True(SpinWait.SpinUntil(() => speech.All.Count > 0, 5000), "the STD push never spoke");
+        Thread.Sleep(300);                                   // nothing else follows
+        Assert.Equal(new[] { A220Panels.IsiNoReadingText }, speech.All);
+    }
+
     // ---- Structure (B1) -------------------------------------------------------------------
 
     /// <summary>Sections and panels in the A220 flow (spec B1).</summary>

@@ -56,17 +56,15 @@ public static class A220Panels
     // ---- Press confirmations (CORE-7) ---------------------------------------------------
 
     /// <summary>
-    /// Panel presses with no readable state and no lamp the batch monitor would speak: they
+    /// Panel presses with no state MSFSBA reads and no lamp the batch monitor would speak: they
     /// confirm "&lt;name&gt; pressed" once. Never when the ECL actuates them (the checklist
-    /// window says what it is doing). Probe heat is absent on purpose — its lamp speaks.
-    /// The standby STD push is here too (live 2026-10-16): it is a one-shot set to 29.92 inches,
-    /// not a mode, and the ISI store has no STD flag — its qnh_hpa then reads 1013, exactly as a
-    /// dialled 1013 does, so reading it back would sound like a plain QNH (CORE-7).
+    /// window says what it is doing). Probe heat is absent on purpose — its lamp speaks — and so
+    /// is the standby STD push, which reads the stock altimeter 3 back instead
+    /// (<see cref="IsiStdReadBackText"/>).
     /// </summary>
     public static readonly IReadOnlySet<string> PressConfirmKeys = new HashSet<string>(StringComparer.Ordinal)
     {
         "A22X_L_ENG_FIRE", "A22X_R_ENG_FIRE", "A22X_CVR_TEST", "A22X_CVR_ERASE", "A22X_MECH_CALL",
-        "A22X_ISI_BARO_STD",
     };
 
     /// <summary>"Left Engine Fire (guarded)" → "Left Engine Fire pressed".</summary>
@@ -176,7 +174,8 @@ public static class A220Panels
 
     /// <summary>Whether an isi() read carries a QNH, and if not, why. <see cref="NoReading"/> is
     /// the zero value on purpose: a <c>default(IsiRead)</c> must read as "no reading", never as an
-    /// Ok with a null QNH. Nothing depends on the numeric values.</summary>
+    /// Ok with a null QNH. Nothing depends on the numeric values. The walk asks the store only
+    /// whether the ISI is powered: its value comes from the stock altimeter 3 ([A220-43]).</summary>
     public enum IsiReadStatus
     {
         /// <summary>No link, no store, or no value in it.</summary>
@@ -196,7 +195,8 @@ public static class A220Panels
     /// The ISI's QNH in hPa from the displays agent's isi() JSON —
     /// {"ok":…,"isi":{"powered":…,"qnh_hpa":…},"diag":{…}} — or why there is none: Unpowered
     /// when the store says <c>powered:false</c>, NoReading when the link, the store or the field
-    /// is missing. The walk refuses, never guesses, and says which.
+    /// is missing. The walk uses it only as its powered check: live 2026-10-16 <c>qnh_hpa</c> is a
+    /// whole number (the ISI prints it with no decimals), so it cannot see one 0.01-inch click.
     /// </summary>
     public static IsiRead ParseIsiRead(string? json)
     {
@@ -215,10 +215,31 @@ public static class A220Panels
         catch (JsonException) { return NoIsiReading; }
     }
 
-    /// <summary>Spoken when the walk cannot start because the ISI gives no reading.</summary>
+    /// <summary>Spoken when the stock altimeter 3 gives no reading (a read that timed out, or no
+    /// SimConnect link): never a guessed setting.</summary>
+    public const string IsiNoReadingText = "Standby altimeter reading not available";
+
+    /// <summary>Spoken when the walk cannot start: the ISI's own store says it is unpowered, or the
+    /// stock altimeter 3 gives no reading.</summary>
     public static string IsiUnavailableText(IsiReadStatus status) => status == IsiReadStatus.Unpowered
         ? "Standby altimeter not powered."
-        : "Standby altimeter reading not available — the display link is down.";
+        : IsiNoReadingText + ".";
+
+    /// <summary>
+    /// The standby STD push's one read-back (CORE-7), from the stock altimeter 3 the aircraft keeps
+    /// for the ISI ([A220-43]). Live 2026-10-16: <c>KOHLSMAN SETTING STD:3</c> reads 1 after an STD
+    /// press (MB:3 then 1013.25) and 0 after the next knob click, and a second press leaves it 1 —
+    /// STD is a one-shot set to 29.92 inches, not a toggle. So: STD:3 set, "Standby altimeter STD";
+    /// clear (the press did not land), the setting from MB:3 in hectopascals, as the ISI shows it;
+    /// a read missing, <see cref="IsiNoReadingText"/> — never a claimed state.
+    /// </summary>
+    public static string IsiStdReadBackText(double? std, double? mbHpa)
+    {
+        if (std is not { } s || double.IsNaN(s)) return IsiNoReadingText;
+        if (s >= 0.5) return "Standby altimeter STD";
+        if (mbHpa is not { } mb || double.IsNaN(mb)) return IsiNoReadingText;
+        return FormatIsiBaro(mb, inHg: false);
+    }
 
     /// <summary>Spoken when the ISI stops giving a reading part-way through a walk.</summary>
     public static string IsiReadLostText(IsiReadStatus status) => status == IsiReadStatus.Unpowered
@@ -252,7 +273,7 @@ public static class A220Panels
     // ---- Standby baro walk: the per-round decision ([A220-43]) ----------------------------
 
     /// <summary>The blind stage's tolerance, hPa: before a step is measured, a gap this small is
-    /// already on target (the typed value rounds to the ISI's own reading).</summary>
+    /// already on target (29.92 inches is 1013.21 hPa; altimeter 3 reads 1013.25 on it).</summary>
     public const double IsiBlindToleranceHpa = 0.2;
 
     /// <summary>Slack on every tolerance compare: 1013.2 - 1013.0 is 0.20000000000004547 in
@@ -282,20 +303,26 @@ public static class A220Panels
 
     /// <summary>
     /// One round of the standby baro walk, pure so the loop only does I/O. <paramref name="delta"/>
-    /// is target - current (hPa), <paramref name="prevDelta"/> the same before the last burst
+    /// is target - current (hPa), <paramref name="prevDelta"/> the same before the last move
     /// (NaN on the first round), <paramref name="step"/> the hPa per click measured on THIS walk
-    /// (null before calibration). Within tolerance is Done. Before a step is known the answer is
-    /// one probe click. After it, a sign change in the gap is a straddle: the target sits between
-    /// two selectable values and the walk ends on the NEARER one. Once a step is known a straddle
-    /// is only reached with |delta| over half a step, so the value before the last burst is
-    /// nearer exactly when |prevDelta| &lt; |delta|, and then it takes one click back. Otherwise
-    /// round(|delta| / step) clicks; a step that cannot aim stops where it is.
+    /// (null before calibration), <paramref name="lastClicks"/> the clicks the last move fired.
+    /// Within tolerance is Done. Before a step is known the answer is one probe click. After it, a
+    /// sign change in the gap after ONE click is a straddle: the target sits between that click's
+    /// two values and the walk ends on the NEARER one. Once a step is known a straddle is only
+    /// reached with |delta| over half a step, so the value before the click is nearer exactly when
+    /// |prevDelta| &lt; |delta|, and then it takes one click back. A sign change after a burst of
+    /// several clicks is an overshoot, never a straddle: the value before the burst is several
+    /// clicks away, and a step measured on one click is not exact (live 2026-10-16, one click is the
+    /// ISI's 0.01-inch step, about 0.34 hPa, but altimeter 3 reports it on a 1/16-hPa grid, so
+    /// successive clicks read 0.3125 or 0.375 hPa apart), so a burst aimed with it can land clicks
+    /// past the target. It aims back. Otherwise round(|delta| / step) clicks; a step that cannot
+    /// aim stops where it is.
     /// </summary>
-    public static IsiWalkStep IsiWalkDecision(double delta, double prevDelta, double? step)
+    public static IsiWalkStep IsiWalkDecision(double delta, double prevDelta, double? step, int lastClicks)
     {
         if (IsiWithinTolerance(delta, step)) return new IsiWalkStep(IsiWalkAction.Done);
         if (step is not { } known) return new IsiWalkStep(IsiWalkAction.Click, 1);
-        if (A220Afdx.WalkStraddled(delta, prevDelta))
+        if (lastClicks <= 1 && A220Afdx.WalkStraddled(delta, prevDelta))
             return new IsiWalkStep(Math.Abs(prevDelta) < Math.Abs(delta) ? IsiWalkAction.StepBack : IsiWalkAction.NearestHere);
         int clicks = A220Afdx.AimClicks(delta, known);
         return clicks == 0

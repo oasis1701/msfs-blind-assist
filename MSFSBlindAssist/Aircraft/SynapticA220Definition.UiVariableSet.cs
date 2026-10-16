@@ -105,8 +105,11 @@ public partial class SynapticA220Definition
             case "A22X_ISI_BARO_SET":
                 StartIsiBaroWalk(simConnect, announcer, value);
                 return true;
-            // A22X_ISI_BARO_STD is a plain momentary push (the catch-all below): it confirms
-            // "pressed" (A220Panels.PressConfirmKeys), never a QNH read-back.
+            case "A22X_ISI_BARO_STD":
+                // Pulsed, then read back once from the stock altimeter 3: STD, or the setting the
+                // ISI kept (Isi partial, [A220-43]).
+                PressIsiStd(simConnect, announcer, varDef.Name);
+                return true;
             case "A22X_SPOILER_LEVER":
                 // [A220-40] The cockpit lever's own write — never SPOILERS_ON/OFF.
                 simConnect.ExecuteCalculatorCode(SeqPrefix() + A220.A220Panels.SpeedbrakeCalc((int)Math.Round(value)));

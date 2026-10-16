@@ -65,7 +65,6 @@ public class A220PanelsTests
     [InlineData("Left Engine Fire (guarded)", "Left Engine Fire pressed")]
     [InlineData("CVR Test", "CVR Test pressed")]
     [InlineData("Mechanic Call", "Mechanic Call pressed")]
-    [InlineData("Standby Baro STD", "Standby Baro STD pressed")]
     public void PressedText_DropsTheGuardNote(string displayName, string expected)
         => Assert.Equal(expected, A220Panels.PressedText(displayName));
 
@@ -82,20 +81,46 @@ public class A220PanelsTests
     [Fact]
     public void PressConfirmKeys_AreTheStatelessPresses()
         => Assert.Equal(
-            new[] { "A22X_CVR_ERASE", "A22X_CVR_TEST", "A22X_ISI_BARO_STD", "A22X_L_ENG_FIRE", "A22X_MECH_CALL", "A22X_R_ENG_FIRE" },
+            new[] { "A22X_CVR_ERASE", "A22X_CVR_TEST", "A22X_L_ENG_FIRE", "A22X_MECH_CALL", "A22X_R_ENG_FIRE" },
             A220Panels.PressConfirmKeys.OrderBy(k => k, StringComparer.Ordinal));
 
     /// <summary>
-    /// Live 2026-10-16: the ISI's STD push is a one-shot set to 29.92 inches (a second press
-    /// stays there, the next knob click leaves it), and the "A22X.ISI Data" store has no STD
-    /// field — on STD its qnh_hpa reads 1013, the same as a dialled 1013. A QNH read-back would
-    /// sound like a plain setting (CORE-7), so the press confirms itself without claiming a state.
+    /// Live 2026-10-16: the stock altimeter 3 the aircraft keeps for the ISI has a real STD flag —
+    /// <c>KOHLSMAN SETTING STD:3</c> reads 1 after an STD press (MB:3 then 1013.25), 0 after the
+    /// next knob click, and stays 1 on a second press (STD is a one-shot set, not a toggle). So the
+    /// STD push reads it back instead of saying "pressed": STD when set, the setting the ISI kept
+    /// when clear (the press did not land), and "not available" when nothing came back (CORE-7).
     /// </summary>
+    [Theory]
+    [InlineData(1.0, null, "Standby altimeter STD")]
+    [InlineData(1.0, 1013.2504272460938, "Standby altimeter STD")]
+    [InlineData(0.0, 1013.5625, "Standby altimeter 1014 hectopascals")]   // one click off STD, as the ISI shows it
+    [InlineData(0.0, 1020.0, "Standby altimeter 1020 hectopascals")]
+    [InlineData(0.0, 1012.875, "Standby altimeter 1013 hectopascals")]
+    [InlineData(null, 1013.25, "Standby altimeter reading not available")] // no STD read: a 1013 is not claimed as STD or QNH
+    [InlineData(0.0, null, "Standby altimeter reading not available")]
+    [InlineData(double.NaN, 1013.25, "Standby altimeter reading not available")]
+    [InlineData(0.0, double.NaN, "Standby altimeter reading not available")]
+    public void IsiStdReadBackText_SaysStdOrTheSetting_NeverAGuess(double? std, double? mb, string expected)
+        => Assert.Equal(expected, A220Panels.IsiStdReadBackText(std, mb));
+
     [Fact]
-    public void StandbyStdPress_ConfirmsWithoutClaimingAQnh()
+    public void StandbyStdPush_IsReadBack_NotAPressConfirmation()
+        => Assert.DoesNotContain("A22X_ISI_BARO_STD", A220Panels.PressConfirmKeys);
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void IsiStdReadBackText_IsCultureInvariant(string culture)
     {
-        Assert.Contains("A22X_ISI_BARO_STD", A220Panels.PressConfirmKeys);
-        Assert.Equal("Standby Baro STD pressed", A220Panels.PressedText("Standby Baro STD"));
+        var previous = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(culture);
+            Assert.Equal("Standby altimeter 1014 hectopascals", A220Panels.IsiStdReadBackText(0.0, 1013.5625));
+            Assert.Equal("Standby altimeter 1017 hectopascals", A220Panels.IsiStdReadBackText(0.0, 1016.625));
+        }
+        finally { CultureInfo.CurrentCulture = previous; }
     }
 
     // ---- Audio control panel: VHF receive and volume ([A220-44]) ------------------------
@@ -246,13 +271,16 @@ public class A220PanelsTests
         Assert.Equal(default(A220Panels.IsiReadStatus), A220Panels.IsiReadStatus.NoReading);
     }
 
+    /// <summary>The walk reads its value from the stock altimeter 3 over SimConnect, so a missing
+    /// reading no longer blames the display link (which the walk asks only whether the ISI is powered).</summary>
     [Fact]
     public void IsiUnavailableText_NamesTheReason_NeverAskingToSetItOnTheIsi()
     {
         Assert.Equal("Standby altimeter not powered.", A220Panels.IsiUnavailableText(A220Panels.IsiReadStatus.Unpowered));
-        Assert.Equal("Standby altimeter reading not available — the display link is down.",
+        Assert.Equal("Standby altimeter reading not available.",
             A220Panels.IsiUnavailableText(A220Panels.IsiReadStatus.NoReading));
         Assert.DoesNotContain("Set it on the ISI", A220Panels.IsiUnavailableText(A220Panels.IsiReadStatus.NoReading));
+        Assert.DoesNotContain("display link", A220Panels.IsiUnavailableText(A220Panels.IsiReadStatus.NoReading));
     }
 
     [Fact]
@@ -309,8 +337,9 @@ public class A220PanelsTests
 
     // ---- Standby baro walk: the per-round decision ([A220-43]) ---------------------------
 
-    private static A220Panels.IsiWalkStep Decide(double delta, double prevDelta, double? step)
-        => A220Panels.IsiWalkDecision(delta, prevDelta, step);
+    /// <summary>One round, the last move one click unless a test says otherwise.</summary>
+    private static A220Panels.IsiWalkStep Decide(double delta, double prevDelta, double? step, int lastClicks = 1)
+        => A220Panels.IsiWalkDecision(delta, prevDelta, step, lastClicks);
 
     private static A220Panels.IsiWalkStep Done => new(A220Panels.IsiWalkAction.Done);
     private static A220Panels.IsiWalkStep NearestHere => new(A220Panels.IsiWalkAction.NearestHere);
@@ -352,11 +381,103 @@ public class A220PanelsTests
     }
 
     [Theory]
-    [InlineData(-0.6, 1.7)]    // a two-click burst carried it from 1.7 above to 0.6 below: here is nearer
+    [InlineData(-0.6, 1.7)]    // the last click carried it from 1.7 above to 0.6 below: here is nearer
     [InlineData(0.6, -1.7)]
     [InlineData(-0.6, 0.6)]    // a tie stays where it is, never a click back
     public void IsiWalkDecision_OvershootWhereTheCurrentValueIsNearer_StopsHere(double delta, double prevDelta)
         => Assert.Equal(NearestHere, Decide(delta, prevDelta, 1.0));
+
+    /// <summary>
+    /// A burst of several clicks that lands past the target is an overshoot, never a straddle: the
+    /// value before the burst is several clicks away. Live 2026-10-16 one click is the ISI's
+    /// 0.01-inch step (about 0.34 hPa), which altimeter 3 reports on a 1/16-hPa grid, so successive
+    /// clicks read 0.3125 or 0.375 hPa apart: a step measured on the probe click can be 8 % short and
+    /// a long burst lands clicks past the target. Walking 1013.25 to 1030: the probe reads 1013.5625,
+    /// then 53 clicks land on 1031.5 — it must aim back, not stop there as "nearest selectable".
+    /// </summary>
+    [Theory]
+    [InlineData(-1.5, 16.4375, 0.33844, 53, 4)]
+    [InlineData(1.5, -16.4375, 0.33844, 53, 4)]
+    [InlineData(-0.33, 2.3575, 0.33594, 8, 1)]   // 30.00 inches: 8 clicks land on 30.01, one back is 30.00
+    public void IsiWalkDecision_OvershootAfterABurst_AimsBack(double delta, double prevDelta, double step, int lastClicks, int clicks)
+        => Assert.Equal(Click(clicks), Decide(delta, prevDelta, step, lastClicks));
+
+    // ---- The walk on altimeter 3's measured grid ----------------------------------------------
+
+    /// <summary>KOHLSMAN SETTING MB:3 measured live 2026-10-16, one click below STD up to ten above.</summary>
+    private static readonly double[] MeasuredAltimeter3 =
+    {
+        1012.875, 1013.2504272460938, 1013.5625, 1013.875, 1014.25, 1014.5625, 1014.9375, 1015.25,
+        1015.5625, 1015.9375, 1016.25, 1016.625,
+    };
+
+    /// <summary>A model of altimeter 3 that fits every measured click: 0.01 inch per click from STD,
+    /// floored to the sim's 1/16 hPa.</summary>
+    private static double Altimeter3(int clicksFromStd)
+        => Math.Floor((1013.25 + clicksFromStd * 0.01 * A220Panels.HpaPerInHg) * 16) / 16;
+
+    [Fact]
+    public void Altimeter3Model_FitsEveryMeasuredClick()
+    {
+        for (int n = -1; n <= 10; n++)
+            Assert.Equal(MeasuredAltimeter3[n + 1], Altimeter3(n), 3);
+    }
+
+    /// <summary>The walk's loop (StartIsiBaroWalk) on the model, the I/O replaced by it: returns the
+    /// value it lands on and what it says.</summary>
+    private static (double Landed, string Said) WalkOnAltimeter3(int startClicks, double entry)
+    {
+        double target = A220Panels.IsiTargetHpa(entry)!.Value;
+        bool inHg = A220Panels.IsInHgEntry(entry);
+        int pos = startClicks;
+        double cur = Altimeter3(pos), prevDelta = double.NaN;
+        double? step = null;
+        int lastClicks = 0;
+        for (int round = 0; round < 8; round++)
+        {
+            double delta = target - cur;
+            var move = Decide(delta, prevDelta, step, lastClicks);
+            if (move.Action == A220Panels.IsiWalkAction.Done) return (cur, A220Panels.FormatIsiBaro(cur, inHg));
+            if (move.Action == A220Panels.IsiWalkAction.NearestHere) return (cur, A220Panels.IsiNearestText(cur, inHg));
+            bool stepBack = move.Action == A220Panels.IsiWalkAction.StepBack;
+            prevDelta = delta;
+            int clicks = stepBack ? 1 : move.Clicks;
+            lastClicks = clicks;
+            pos += delta > 0 ? clicks : -clicks;          // +1 raises (measured)
+            double now = Altimeter3(pos), moved = now - cur;
+            cur = now;
+            if (stepBack)
+                return (cur, A220Panels.IsiWithinTolerance(target - cur, step)
+                    ? A220Panels.FormatIsiBaro(cur, inHg) : A220Panels.IsiNearestText(cur, inHg));
+            step = Math.Abs(moved) / clicks;
+        }
+        return (cur, A220Panels.IsiRoundLimitText(target, cur, step, inHg));
+    }
+
+    /// <summary>From STD (or a click either side of it), every entry lands on the selectable value
+    /// nearest the target and says it plainly — including the long walks a probe-click step
+    /// measured short used to stop a hectopascal or more past.</summary>
+    [Theory]
+    [InlineData(0, 1030.0, "Standby altimeter 1030 hectopascals")]
+    [InlineData(0, 1020.0, "Standby altimeter 1020 hectopascals")]
+    [InlineData(0, 1016.0, "Standby altimeter 1016 hectopascals")]
+    [InlineData(0, 1013.0, "Standby altimeter 1013 hectopascals")]
+    [InlineData(0, 1090.0, "Standby altimeter 1090 hectopascals")]
+    [InlineData(0, 950.0, "Standby altimeter 950 hectopascals")]
+    [InlineData(1, 1005.0, "Standby altimeter 1005 hectopascals")]
+    [InlineData(-1, 1040.0, "Standby altimeter 1040 hectopascals")]
+    [InlineData(0, 29.92, "Standby altimeter 29.92 inches")]
+    [InlineData(0, 30.00, "Standby altimeter 30.00 inches")]
+    [InlineData(1, 30.12, "Standby altimeter 30.12 inches")]
+    [InlineData(0, 29.50, "Standby altimeter 29.50 inches")]
+    public void IsiWalk_OnAltimeter3sMeasuredGrid_LandsOnTheNearestValue(int startClicks, double entry, string said)
+    {
+        var (landed, spoken) = WalkOnAltimeter3(startClicks, entry);
+        double target = A220Panels.IsiTargetHpa(entry)!.Value;
+        double nearest = Enumerable.Range(-400, 800).Select(Altimeter3).MinBy(v => Math.Abs(v - target));
+        Assert.Equal(nearest, landed);
+        Assert.Equal(said, spoken);
+    }
 
     [Theory]
     [InlineData(0.5, 3.0)]     // exactly half a step: on target
