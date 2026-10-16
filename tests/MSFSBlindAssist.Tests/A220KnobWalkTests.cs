@@ -27,6 +27,18 @@ public class A220KnobWalkTests
     public void EveryKnobHasAFallbackDecision()
         => Assert.Equal(5, Enum.GetValues<FcpKnob>().Length);
 
+    // A store that has been quiet for 3 s reads as missing while the link is UP (the agent calls it
+    // stale; the WASM broadcasts only changes): the trim at rest on the ground. So a missing field is
+    // never "the link is down" until the read has asked for a whole copy and tried again.
+    [Fact]
+    public void AQuietStoreIsResyncedBeforeAReadGivesUp()
+    {
+        var resyncs = Enumerable.Range(0, AfdxReadAttempts).Where(AfdxResyncAfterMiss).ToList();
+        Assert.True(AfdxResyncAfterMiss(0));                 // the first miss asks for a whole copy
+        Assert.Equal(new[] { 0, 4 }, resyncs);                // and once more halfway
+        Assert.True(resyncs[^1] < AfdxReadAttempts - 1);     // with attempts left to see the copy land
+    }
+
     [Fact]
     public void StabTrim_RefusesWithTheLinkDown_SayingWhyAndWhatToDo()
     {

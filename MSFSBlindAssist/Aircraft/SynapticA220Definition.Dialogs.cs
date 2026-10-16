@@ -86,7 +86,10 @@ public partial class SynapticA220Definition
     // ---- one walk per knob ---------------------------------------------------
 
     /// <summary>Each knob's walk in flight, by its own cancellation (R1 of the 2026-10-16 walk
-    /// review). Locked: a walk starts from the UI thread or from another walk's pool thread.</summary>
+    /// review). Every caller of <see cref="BeginKnobWalk"/> and <see cref="CancelAllKnobWalks"/> is
+    /// on the UI thread (a dialog's entry, HandleUIVariableSet, the ECL form's actuation,
+    /// StopAllMotion); the walks that continue on a pool thread take the token they were handed
+    /// and never begin one. The lock is cheap insurance, not a known need.</summary>
     private readonly Dictionary<A220.A220Afdx.FcpKnob, System.Threading.CancellationTokenSource> _knobWalks = new();
 
     /// <summary>
@@ -128,13 +131,15 @@ public partial class SynapticA220Definition
     /// asks <see cref="SimConnectManager.CanExecuteCalculatorCode"/>, the gate
     /// <c>ExecuteCalculatorCode</c> itself uses. Not <c>CalcWriteCanLand</c>: the A220 registers no
     /// bridge probe, so its verdict concludes unverified at once and would refuse every walk, while
-    /// every A220 write goes through the calculator unconditionally ([A220-1]).
+    /// every A220 write goes through the calculator unconditionally ([A220-1]). The refusal is said
+    /// through the walk's own token-checked <paramref name="say"/>, so a walk superseded meanwhile
+    /// (one continued on a pool thread, such as V/S after its engage wait) stays silent.
     /// </summary>
-    private bool KnobWalkCanSend(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, string name)
+    private static bool KnobWalkCanSend(SimConnectManager simConnect, string name, Action<string> say)
     {
         if (simConnect.CanExecuteCalculatorCode) return true;
         FcpLog.Warn($"{name}: not connected, walk refused");
-        announcer.AnnounceImmediate(A220.A220Afdx.KnobWalkNotConnectedText(name));
+        say(A220.A220Afdx.KnobWalkNotConnectedText(name));
         return false;
     }
 
@@ -189,9 +194,10 @@ public partial class SynapticA220Definition
     /// display link used to be pushed onto the inferior fallback walk.) That read is a
     /// DELIVERED one (<see cref="SimConnectManager.ReadFreshAsync"/>), never a fixed sleep and
     /// the cache: only the TIMING degrades, to the 1 Hz batch's next sample. The stab trim may
-    /// not fall back ([A220-13]): with the link down it refuses before any click, and a link
-    /// lost part-way stops the walk. VERTICAL SPEED's knob is dead until VS/FPA mode is
-    /// engaged, so its walk engages the mode first.
+    /// not fall back ([A220-13]): its block is read with a resync and retries, and only when
+    /// those run out does it refuse before any click (or stop part-way, "not confirmed").
+    /// VERTICAL SPEED's knob is dead until VS/FPA mode is engaged, so its walk engages the
+    /// mode first.
     /// </summary>
     /// <param name="knob">Which knob: the fallback decision, and the refusal wording.</param>
     /// <param name="token">This knob's walk (<see cref="BeginKnobWalk"/>): a newer entry for
@@ -209,7 +215,6 @@ public partial class SynapticA220Definition
         Func<A220.A220Afdx.LiveBlocks, double?>? liveRead = null, bool headingWrap = false,
         Func<double, bool, double, string>? note = null)
     {
-        if (!KnobWalkCanSend(simConnect, announcer, valueName)) return;
         bool mayUseStockVar = A220.A220Afdx.KnobWalkMayUseStockVar(knob);
         _ = System.Threading.Tasks.Task.Run(async () =>
         {
@@ -221,16 +226,21 @@ public partial class SynapticA220Definition
             }
             try
             {
+                if (!KnobWalkCanSend(simConnect, valueName, Say)) return;
                 bool live = liveRead != null;
 
                 // One read of the knob's value, or null when nothing reports it (never a
-                // guess). The aircraft's block first; the moment it misses, live latches OFF
-                // for the rest of the walk and — where this knob may — the stock var is read
-                // by a delivered read.
+                // guess). The aircraft's block first. A knob with a stock var: the moment the
+                // block misses, live latches OFF for the rest of the walk and the stock var is
+                // read by a delivered read. A knob with none (the stab trim, [A220-13]): every
+                // read resyncs and retries the block (ReadAfdxFieldAsync) and never latches off,
+                // since a quiet store is not a down link; null only once the retries run out.
                 async Task<double?> ReadAsync()
                 {
                     if (live && liveRead != null)
                     {
+                        if (!mayUseStockVar)
+                            return await ReadAfdxFieldAsync(liveRead, token) is { } read ? liveRead(read) : null;
                         var blocks = await ReadAfdxLiveAsync();
                         if (blocks != null && liveRead(blocks) is { } v) return v;
                         live = false;
@@ -370,20 +380,23 @@ public partial class SynapticA220Definition
     private static readonly Utils.Logging.LogChannel FcpLog = Utils.Logging.Log.Channel("a220_fcp");
 
     /// <summary>
-    /// Read the FCP block straight from the aircraft, asking for a whole copy when the
-    /// field we need is missing. The AFDX stores broadcast only CHANGES, so the FCP store
-    /// can sit at {} until something requests a resync (measured live 2026-09-24) — and
-    /// a missing field is what used to drop the speed walk onto the stock var, which on
-    /// this aircraft reads nothing like the knob (445 kt with 142 in the window).
+    /// Read the AFDX blocks straight from the aircraft until <paramref name="field"/> has a
+    /// value, asking for a whole copy when it is missing (<see cref="A220.A220Afdx.AfdxReadAttempts"/>,
+    /// <see cref="A220.A220Afdx.AfdxResyncAfterMiss"/>). The AFDX stores broadcast only CHANGES and
+    /// the agent calls a store quiet for 3 s stale, so a missing field is often a quiet store,
+    /// not a down link: the FCP store sat at {} until a resync (measured live 2026-09-24), and
+    /// the flight-control store goes quiet with the trim at rest. A missing field is what used to
+    /// drop the speed walk onto the stock var (445 kt with 142 in the window), and what would
+    /// make the trim walk say the link is down while it is up. Null only when every attempt missed.
     /// </summary>
-    private async Task<A220.A220Afdx.FcpBlock?> ReadFcpFieldAsync(
-        Func<A220.A220Afdx.FcpBlock, double?> field, System.Threading.CancellationToken token)
+    private async Task<A220.A220Afdx.LiveBlocks?> ReadAfdxFieldAsync(
+        Func<A220.A220Afdx.LiveBlocks, double?> field, System.Threading.CancellationToken token)
     {
-        for (int attempt = 0; attempt < 8 && !token.IsCancellationRequested; attempt++)
+        for (int attempt = 0; attempt < A220.A220Afdx.AfdxReadAttempts && !token.IsCancellationRequested; attempt++)
         {
             var blocks = await ReadAfdxLiveAsync();
-            if (blocks?.fcp is { } fcp && field(fcp) != null) return fcp;
-            if (attempt == 0 || attempt == 4)
+            if (blocks != null && field(blocks) != null) return blocks;
+            if (A220.A220Afdx.AfdxResyncAfterMiss(attempt))
             {
                 var client = _displaysClient;
                 if (client != null) await client.CallAgentAsync("afdxResync()");
@@ -392,6 +405,11 @@ public partial class SynapticA220Definition
         }
         return null;
     }
+
+    /// <summary>The FCP block once <paramref name="field"/> has a value (<see cref="ReadAfdxFieldAsync"/>).</summary>
+    private async Task<A220.A220Afdx.FcpBlock?> ReadFcpFieldAsync(
+        Func<A220.A220Afdx.FcpBlock, double?> field, System.Threading.CancellationToken token)
+        => (await ReadAfdxFieldAsync(b => b.fcp is { } fcp ? field(fcp) : null, token))?.fcp;
 
     /// <summary>
     /// Set a ONE-UNIT-PER-CLICK FCP knob (selected IAS: 1 kt, heading bug: 1°) to an
@@ -424,7 +442,6 @@ public partial class SynapticA220Definition
         Func<A220.A220Afdx.FcpBlock, double?> liveField, string? stockKey,
         Func<double, string> fmt, Func<double, string>? afterNote = null)
     {
-        if (!KnobWalkCanSend(simConnect, announcer, name)) return;
         string? cacheKey = A220.A220Afdx.KnobWalkMayUseStockVar(knob) ? stockKey : null;
         _ = System.Threading.Tasks.Task.Run(async () =>
         {
@@ -435,6 +452,7 @@ public partial class SynapticA220Definition
             }
             try
             {
+                if (!KnobWalkCanSend(simConnect, name, Say)) return;
                 bool live = true;
                 async Task<double?> ReadOnceAsync()
                 {
@@ -559,7 +577,11 @@ public partial class SynapticA220Definition
     ///
     /// With the display link down it REFUSES before any click ([A220-13];
     /// <see cref="A220.A220Afdx.StabTrimLinkDownText"/>), and a link lost part-way stops the
-    /// walk as "not confirmed". From 2026-09-22 it walked on a second read-back instead:
+    /// walk as "not confirmed" — but only once the resync-and-retry read
+    /// (<see cref="ReadAfdxFieldAsync"/>, about 1.5 s and two whole-copy requests) still finds no
+    /// <c>pitch_trim</c>: with the trim at rest the flight-control store goes quiet, and the agent
+    /// calls a store quiet for 3 s stale, so one missed read is not a down link.
+    /// From 2026-09-22 it walked on a second read-back instead:
     /// "L:A22X Horizontal Stabilizer" is the trim animation ratio over the same 0-17 unit
     /// travel the EICAS draws, and ratio × 17 tracked one 28-click burst monotonically
     /// (<see cref="A220.A220Afdx.StabTrimFullScaleUnits"/>). That is one measurement of a
@@ -688,7 +710,7 @@ public partial class SynapticA220Definition
         {
             if (!token.IsCancellationRequested) announcer.AnnounceImmediate(text);
         }
-        if (!KnobWalkCanSend(simConnect, announcer, "Speed")) return;
+        if (!KnobWalkCanSend(simConnect, "Speed", Say)) return;
         try
         {
             var fcp = await ReadFcpFieldAsync(f => f.spd_sel_ias, token);
@@ -915,7 +937,6 @@ public partial class SynapticA220Definition
     {
         var knob = A220.A220Afdx.FcpKnob.Altitude;
         var token = BeginKnobWalk(knob);
-        if (!KnobWalkCanSend(simConnect, announcer, "Altitude")) return;
         _ = System.Threading.Tasks.Task.Run(async () =>
         {
             // A superseded or swapped-out walk says nothing (see StartFcpWalk).
@@ -925,6 +946,7 @@ public partial class SynapticA220Definition
             }
             try
             {
+                if (!KnobWalkCanSend(simConnect, "Altitude", Say)) return;
                 string prep = "";
                 try { prep = await EnsureAltitudeUnitFeetAsync(simConnect); }
                 catch (Exception ex)
@@ -1214,7 +1236,6 @@ public partial class SynapticA220Definition
         var knob = A220.A220Afdx.FcpKnob.Vertical;
         var token = BeginKnobWalk(knob);
         string name = isFpa ? "Flight path angle" : "Vertical speed";
-        if (!KnobWalkCanSend(simConnect, announcer, name)) return;
         _ = System.Threading.Tasks.Task.Run(async () =>
         {
             // A superseded or swapped-out walk says nothing (see StartFcpWalk).
@@ -1224,6 +1245,8 @@ public partial class SynapticA220Definition
             }
             try
             {
+                // Before the engage write, the walk's first write.
+                if (!KnobWalkCanSend(simConnect, name, Say)) return;
                 string engagedNote = "";
                 string modeKey = isFpa ? "A22X_FG_FPA" : "A22X_FG_VS";
                 if (Cached(simConnect, modeKey) < 0.5)

@@ -331,6 +331,18 @@ internal static class A220Afdx
     internal static bool KnobWalkMayUseStockVar(FcpKnob knob)
         => knob is FcpKnob.Heading or FcpKnob.Altitude or FcpKnob.Vertical;
 
+    /// <summary>How many times a walk reads a field of its AFDX block before calling it missing
+    /// (150 ms apart). A missing field is not a down link: the WASM broadcasts only CHANGES and the
+    /// agent calls a store with no message for 3 s stale, so a quiet store — the FCP store at {}
+    /// until a resync (live 2026-09-24), the flight-control store with the trim at rest — reads as
+    /// missing while the link is up.</summary>
+    internal const int AfdxReadAttempts = 8;
+
+    /// <summary>Whether the read asks the WASM for a whole copy of every store (<c>afdxResync()</c>)
+    /// after missing on <paramref name="attempt"/>: at the first miss and once more halfway, so the
+    /// copy has attempts left to land in. The agent throttles the request to one per 500 ms.</summary>
+    internal static bool AfdxResyncAfterMiss(int attempt) => attempt == 0 || attempt == AfdxReadAttempts / 2;
+
     /// <summary>[A220-13]: the stab trim walk's refusal when the display link gives no trim.</summary>
     internal const string StabTrimLinkDownText =
         "Stabilizer trim not set — the display link is down, so the trim cannot be read back. Try again when the link is back.";
