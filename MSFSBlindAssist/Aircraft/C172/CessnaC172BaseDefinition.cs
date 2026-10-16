@@ -1110,7 +1110,9 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
                             return (true, string.Empty);
                         return (false, "Enter a vertical speed between -2000 and 2000 fpm");
                     },
-                    value => value >= 0 ? (uint)value : (uint)(65536 + value));
+                    // A negative rate is the 32-bit two's complement, as the HS787 sends it; the
+                    // 16-bit form (65536 + value) arrived as a large climb.
+                    value => unchecked((uint)(int)Math.Round(value)));
 
             case HotkeyAction.FCUSetBaro:
                 hotkeyManager.ExitInputHotkeyMode();
@@ -1123,7 +1125,9 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
                             return (true, string.Empty);
                         return (false, "Enter barometric pressure between 28.00 and 31.00 inHg");
                     },
-                    value => (uint)(value * 16));
+                    // KOHLSMAN_SET takes millibars x 16 whatever unit the pilot typed (verified live
+                    // on the A380: 16320 -> 1020 hPa), so the inches are converted first.
+                    value => (uint)Math.Round(value * 33.8639 * 16.0));
         }
 
         return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
