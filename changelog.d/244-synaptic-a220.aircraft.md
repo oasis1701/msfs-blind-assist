@@ -87,5 +87,8 @@ radio, such as COM 2 on SayIntentions), and the speedbrake lever in every positi
 retracted to max. Probe heat is now the ground-test button it is in the cockpit; the engine
 fire pushes are one-press buttons, as in the cockpit; every guarded switch says so (and only
 those); and the lamp-test switch that did nothing is gone. The electronic checklist can now
-set the equipment cooling, the speedbrake, the CVR test and the service interphone for you;
-the fire controls stay yours to press.
+set the equipment cooling and the speedbrake for you; the fire controls stay yours to press.
+The standby altimeter's STD button tells you when it is on STD. In this version of the
+aircraft the APU and cargo fire pushes, the fire bottles, CVR, service interphone and
+mechanic call do not do anything yet, and an engine fire push stays pushed until you reload
+the flight.

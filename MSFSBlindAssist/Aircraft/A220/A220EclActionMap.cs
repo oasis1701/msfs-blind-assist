@@ -47,12 +47,17 @@ public readonly record struct A220EclTarget(double Value, string? Refusal)
 /// A220EclActionMapTests — zero unaccounted entries.
 ///
 /// Scope rulings (2026-07-27): engine run on/off (and the start mode) and APU start ARE mapped.
-/// An inverted item ("ENG RUN — OFF") writes the opposite position of its two-position control,
-/// for the one item the pilot selects, and refuses aloud on a button or a 3+-position control
-/// (<see cref="ResolveTarget"/>, [A220-60]). Thrust levers,
-/// sidestick/flight-control checks and fire handles/bottles are excluded.
+/// Thrust levers, sidestick/flight-control checks and fire handles/bottles are excluded.
 /// MSFSBA never ticks a checklist box — it actuates the mapped control and lets the
 /// aircraft's own sensing confirm.
+///
+/// Inverted items ([A220-60]): an inverted item ("ENG RUN — OFF") writes the opposite position
+/// of its two-position control, for the one item the pilot selects, and refuses aloud on a
+/// button or a 3+-position control (<see cref="ResolveTarget"/>).
+///
+/// Mapped but never sensed in v1.0.10 (live 2026-10-16): PROBE_HEAT_ON, CVR_TEST, CVR_ERASE and
+/// SERV_INT_ON never lit, and no item of the installed checklist pack senses them, so their
+/// mappings wait for a pack or aircraft version that does.
 /// </summary>
 public static class A220EclActionMap
 {

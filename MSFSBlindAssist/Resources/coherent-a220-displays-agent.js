@@ -89,7 +89,7 @@
     //                 frequency, CDI and marker.
     //   L CTP Data    the captain CTP's own course setting and nav-source selection.
     //   Radio Data    vhf.nav_1 / nav_2 (the CNS NAV CONTROL windows).
-    //   ISI Data      the standby instrument's own qnh_hpa — the standby-baro walk's read-back.
+    //   ISI Data      the standby instrument's own power state — the standby-baro walk's powered check.
     // [store, key, group, staleMs]. Group 'afdx' = the blocks the knob walks read fast
     // (A.afdx); 'sys' = the systems stores read once a second (A.sys, snapshot().sys —
     // CAS, gear, doors, engines, IRS, V-speeds, transponder, both CTPs and ADSs);
@@ -559,8 +559,10 @@
       });
     };
 
-    /// Standby altimeter read-back ([A220-43]): the ISI's own store. Its baro knob and STD
-    /// push are L:vars with no echo, so this is the only truth about what the ISI shows.
+    /// Standby altimeter store ([A220-43]): the ISI's own. The walk asks it only whether the ISI
+    /// is powered: live 2026-10-16 its qnh_hpa is a whole number (one 0.01-inch click is invisible
+    /// two times in three) and it has no STD field, so MSFSBA reads the setting and STD from the
+    /// stock altimeter 3 (KOHLSMAN SETTING MB:3 / STD:3) over SimConnect instead.
     A.isi = function () {
       ensureCommBus();
       var b = cbBlock('isi', 'A22X.ISI Data');

@@ -255,7 +255,8 @@ transponder; a change it did not take is said.
 
 Center Panel > Standby Instrument: Standby Baro takes hectopascals (like
 1013) or inches (like 29.92), then Enter, and says where the standby
-altimeter landed. Standby Baro STD is the knob's push.
+altimeter landed. Standby Baro STD is the knob's push: it sets 29.92 inches
+and says "Standby altimeter STD"; the next knob turn leaves STD.
 
 Pedestal > Audio Control Panel: each VHF 1 to 3 has a Receiver (Off, On) and
 a Volume (0% to 100%), so you can listen to more than one radio.

@@ -177,13 +177,14 @@ public partial class SynapticA220Definition
         // Cockpit pushbuttons ([A220-42]). A plain momentary or held push (chrono, nav source,
         // crosstune, FD, gear-aural cancel, CVR, mech call) is a press-release pulse as two
         // separate calc calls — a same-frame "1 ... 0" string is invisible to the aircraft's
-        // sampler. A latch-free korry (probe heat ground test, engine fire pushes) is written 1
-        // and cleared by the aircraft, exactly as the cockpit's SET_STATE_EXTERNAL does.
+        // sampler. A latch-free korry (probe heat ground test, engine fire pushes) is written 1,
+        // exactly as the cockpit's SET_STATE_EXTERNAL does: live 2026-10-16 the aircraft cleared
+        // probe heat again, but an engine fire push stays 1 and pushed (one-way in v1.0.10).
         if (varDef.RenderAsButton && varDef.Type == SimVarType.LVar)
         {
             if (varDef.IsMomentary) PulseLVar(simConnect, varDef.Name);
             else WriteLVar(simConnect, varDef.Name, 1);
-            // CORE-7: a press with no readable state and no lamp confirms itself, once; the
+            // CORE-7: a press with no state MSFSBA reads and no lamp confirms itself, once; the
             // ECL form announces its own actuation.
             if (!_eclActuating && A220.A220Panels.PressConfirmKeys.Contains(varKey))
                 announcer.Announce(A220.A220Panels.PressedText(varDef.DisplayName));

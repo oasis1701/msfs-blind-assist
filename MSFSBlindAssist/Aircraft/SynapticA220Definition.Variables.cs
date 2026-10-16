@@ -70,8 +70,9 @@ public partial class SynapticA220Definition
 
     /// <summary>
     /// Latch-free cockpit korry (A220_ButtonPBA without IS_LATCHED — probe heat, engine fire):
-    /// the cockpit writes 1 and the aircraft clears it, so MSFSBA writes 1 alone ([A220-42]).
-    /// Write-only, no read registered: the var reads 0 again a tick later.
+    /// the cockpit writes 1 and nothing else, so MSFSBA writes 1 alone ([A220-42]). Write-only, no
+    /// read registered. Live 2026-10-16 the aircraft cleared probe heat's var again, but not an
+    /// engine fire push's: written 1 it stays 1 and pushed (one-way in v1.0.10).
     /// </summary>
     private static SimVarDefinition LPress(string name, string display) => new()
     {
@@ -311,10 +312,9 @@ public partial class SynapticA220Definition
         // ("Select auto" is INLET_OFF inverted). The stock Asobo-format A220_Checklist.xml tests
         // the var the other way round; it is wrong, never the reference.
         v["A22X_COOLING_INLET"] = LSwitch("A22X Cooling Inlet", "Equipment Cooling Inlet", "Auto", "Off");
-        // EXHAUST is a 3-position knob (A220_KnobSmall3State). Value order from the ECL's sensed
-        // names, which list VLV ONLY, AUTO, ON at consecutive bits the way every other 3-way
-        // knob lists its 0, 1, 2 — pending live verification (Plan B live task) against those bits
-        // (docs/a220.md, Panels).
+        // EXHAUST is a 3-position knob (A220_KnobSmall3State): 0 VLV ONLY, 1 AUTO, 2 ON. Measured
+        // live 2026-10-16: each write lit the ECL's sensed EXHAUST_VLV_ONLY, EXHAUST_AUTO and
+        // EXHAUST_ON in that order, and the var kept the written value.
         v["A22X_COOLING_EXHAUST"] = LSwitch("A22X Cooling Exhaust", "Equipment Cooling Exhaust", "Valve Only", "Auto", "On");
 
         // ==== Overhead — Anti-ice / Heat =====================================
@@ -322,8 +322,10 @@ public partial class SynapticA220Definition
         v["A22X_R_COWL_AI"] = LSwitch("A22X R Cowl Anti Ice", "Right Cowl Anti-Ice", "Off", "Auto", "On");
         v["A22X_WING_AI"] = LSwitch("A22X Wing Anti Ice", "Wing Anti-Ice", "Off", "Auto", "On");
         // PROBE HEAT is the ground-test korry (A220_ButtonPBA, no IS_LATCHED): the cockpit
-        // writes 1 and the ICCP clears it each tick (simvars.mdx) — a press, not an Auto/On
-        // switch ([A220-42]). Its batch-monitored lamp is the confirmation.
+        // writes 1 and the aircraft clears it — a press, not an Auto/On switch ([A220-42]). Its
+        // batch-monitored lamp is the confirmation. Measured live 2026-10-16: the var read 0 again,
+        // L:A22X Probe Heat Lamp lit with the status message ADS PROBE HEAT GND ON, and the ECL's
+        // PROBE_HEAT_ON bit never lit (no item of the installed pack senses it).
         v["A22X_PROBE_HEAT"] = LPress("A22X Probe Heat", "Probe Heat Ground Test");
         v["A22X_L_WINDOW_HEAT_OFF"] = LSwitch("A22X L Side Window Heat Off", "Left Side Window Heat", "On", "Off");
         v["A22X_R_WINDOW_HEAT_OFF"] = LSwitch("A22X R Side Window Heat Off", "Right Side Window Heat", "On", "Off");
@@ -344,10 +346,14 @@ public partial class SynapticA220Definition
 
         // ==== Overhead — Fire protection / ELT / Evac ([A220-41], [A220-42]) ==
         // The engine fire pushes are latch-free korrys (A220_ButtonPBA, no IS_LATCHED): the
-        // cockpit writes 1 and the WASM clears it — one-way buttons, never Normal/Pushed
-        // combos. The APU and cargo fire pushes and all six bottles ARE latched (each press
-        // toggles the L:var), so they are combos. Every fire control stays out of the ECL's
-        // "do it for me" (A220EclActionMap: GuardedDestructive). Guards per the cockpit XML:
+        // cockpit writes 1 — one-way buttons, never Normal/Pushed combos. Measured live 2026-10-16
+        // the aircraft does NOT clear them: written 1 the left push stayed 1 with
+        // L_ENG_FIRE_PRESSED, L ENG FUEL SOV CLSD and HYD 1 SOV CLSD, and a second press changed
+        // nothing (one-way in v1.0.10; a flight reload resets it). The APU and cargo fire pushes and
+        // all six bottles ARE latched (each press toggles the L:var), so they are combos; in v1.0.10
+        // the systems module never reads them (no sensed bit, no CAS; APU fire, forward cargo fire
+        // and APU bottle measured live, the rest by its strings). Every fire control stays out of the
+        // ECL's "do it for me" (A220EclActionMap: GuardedDestructive). Guards per the cockpit XML:
         // the five fire pushes are guarded, the bottles are not.
         v["A22X_L_ENG_FIRE"] = LPress("A22X L Eng Fire", "Left Engine Fire (guarded)");
         v["A22X_R_ENG_FIRE"] = LPress("A22X R Eng Fire", "Right Engine Fire (guarded)");
@@ -375,7 +381,9 @@ public partial class SynapticA220Definition
 
         // ==== Overhead — recorder, calls, wipers (outboard columns) ===========
         // CVR TEST/ERASE and MECH CALL are A220_ButtonMomentaryClicky (pulse); SERV INT is a
-        // latched korry (combo).
+        // latched korry (combo). Measured live 2026-10-16: each write sticks, but in v1.0.10 the
+        // systems module never reads them — no sensed bit (CVR_TEST, CVR_ERASE, SERV_INT_ON) ever
+        // lit, held or pulsed, and no item of the installed checklist pack senses them.
         v["A22X_CVR_TEST"] = LMomentary("A22X CVR Test", "CVR Test");
         v["A22X_CVR_ERASE"] = LMomentary("A22X CVR Erase", "CVR Erase");
         v["A22X_SERVICE_INTERCOM"] = LSwitch("A22X Service Intercom", "Service Interphone", "Off", "On");
@@ -802,9 +810,11 @@ public partial class SynapticA220Definition
 
         // ==== Pedestal — audio control panel: transmit select ==================
         // A220_ButtonMomentary pushes. The cockpit XML (the input authority, [A220-19]) writes
-        // "A22X ACP VHFn Tx"; simvars.mdx documents "A22X ACP VHFn" — the XML name, pending live
-        // verification (Plan B live task; docs/a220.md, Panels). "A22X Tx Channel" is the WASM's
-        // selected transmitter (1-3 = VHF 1-3, 0 = none), read back after a press.
+        // "A22X ACP VHFn Tx"; simvars.mdx documents "A22X ACP VHFn" — the XML name is the one that
+        // works: measured live 2026-10-16, a VHF2 Tx pulse (600 ms and about 264 ms) moved
+        // "A22X Tx Channel" 1 → 2 and COM TRANSMIT to COM 2, and VHF1 Tx moved both back.
+        // "A22X Tx Channel" is the WASM's selected transmitter (1-3 = VHF 1-3, 0 = none), read
+        // back after a press.
         v["A22X_ACP_VHF1_TX"] = LMomentary("A22X ACP VHF1 Tx", "VHF 1 Transmit");
         v["A22X_ACP_VHF2_TX"] = LMomentary("A22X ACP VHF2 Tx", "VHF 2 Transmit");
         v["A22X_ACP_VHF3_TX"] = LMomentary("A22X ACP VHF3 Tx", "VHF 3 Transmit");
@@ -819,10 +829,14 @@ public partial class SynapticA220Definition
         // ==== Pedestal — audio control panel: VHF receive and volume ([A220-44]) ==============
         // Each VHF volume knob (A220_ACP_Knob, Pedestal/ACP.xml) writes "A22X ACP VHFn Volume" =
         // detent/28 and its push toggles "A22X ACP VHFn Rx" 0/1 (drawn as the knob pulled out);
-        // the aircraft's systems WASM maps them to COMn_VOLUME_SET and COMn_RECEIVE_SELECT.
-        // MSFSBA writes the TARGET receiver state (never the toggle) and the volume on the
-        // knob's own scale (A220Panels.AcpVolumeCalc). The HF/SAT/CAB/INT/PA/SPKR/NAV/DME keys
-        // and knobs have no variable (animation only).
+        // the aircraft's systems WASM maps them to COMn_VOLUME_SET and COMn_RECEIVE_SELECT
+        // (measured live 2026-10-16 on VHF 2: Rx 1 = receiving, COM RECEIVE:2 followed; volume
+        // 14/28 and 28/28 gave COM VOLUME:2 50 % and 100 %, and the L:vars held). VHF 1's volume
+        // reads 100 in a fresh cold-and-dark flight, off the 0-1 scale (COM VOLUME:1 100 % once
+        // powered): the aircraft's start value, which the combo shows as 100%, not an error.
+        // MSFSBA writes the TARGET receiver state
+        // (never the toggle) and the volume on the knob's own scale (A220Panels.AcpVolumeCalc).
+        // The HF/SAT/CAB/INT/PA/SPKR/NAV/DME keys and knobs have no variable (animation only).
         v["A22X_ACP_VHF1_VOLUME"] = AcpVolume(1);
         v["A22X_ACP_VHF1_RX"] = LSwitch("A22X ACP VHF1 Rx", "VHF 1 Receiver", "Off", "On");
         v["A22X_ACP_VHF2_VOLUME"] = AcpVolume(2);

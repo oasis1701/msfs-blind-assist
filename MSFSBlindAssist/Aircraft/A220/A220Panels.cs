@@ -14,9 +14,11 @@ public static class A220Panels
 
     /// <summary>
     /// Lever travel of each detent as the cockpit lever reads it from L:A22X Spoiler Lever
-    /// (0-1): RET, 1/4, 1/2, 3/4, FULL, MAX — the ECL's sensed SPOILER_LEVER_0..5. These travels
-    /// are pending live verification (Plan B live task): a sweep against those sensed bits
-    /// (docs/a220.md, Panels); change them only from such a sweep.
+    /// (0-1): RET, 1/4, 1/2, 3/4, FULL, MAX — the ECL's sensed SPOILER_LEVER_0..5. Confirmed live
+    /// 2026-10-16 by a 0.1-step sweep against those sensed bits: each travel lights its own bit,
+    /// no odd tenth lights any, and the read-back equals the write. A finer sweep found each bit lit
+    /// within about ±0.04 of its detent (edges refined for RET, 1/4, FULL and MAX), and
+    /// SPOILER_LEVER_5 only at 0.965-1.0: MAX travel, never FULL. Change them only from such a sweep.
     /// </summary>
     public static readonly IReadOnlyList<double> SpeedbrakeDetentTravel = new[] { 0.0, 0.2, 0.4, 0.6, 0.8, 1.0 };
 
@@ -93,7 +95,8 @@ public static class A220Panels
     /// <summary>
     /// The ACP volume knob's scale: <c>A220_KnobPotentiometer</c> has 29 detents and the
     /// multiplier 1/28 (Lib/Knob.xml), so <c>L:A22X ACP VHFn Volume</c> holds detent/28, 0 to 1.
-    /// The aircraft's systems WASM turns it into COMn_VOLUME_SET.
+    /// The aircraft's systems WASM turns it into COMn_VOLUME_SET: measured live 2026-10-16, 14/28
+    /// gave COM VOLUME:2 50 % and 28/28 100 %, and the L:var kept the written level.
     /// </summary>
     public const int AcpVolumeSteps = 28;
 
@@ -126,8 +129,8 @@ public static class A220Panels
     /// <summary>
     /// A receiver write's read-back (CORE-7): null when the aircraft took it (the screen reader
     /// already read the pick), else the state the aircraft kept, or "not confirmed" when nothing
-    /// came back — never a claimed state. 1 = receiving (the knob pulled out; Task 6 measures it
-    /// against COM RECEIVE:n).
+    /// came back — never a claimed state. 1 = receiving (the knob pulled out): measured live
+    /// 2026-10-16, COM RECEIVE:2 read 1 with the L:var at 1 and 0 with it at 0.
     /// </summary>
     public static string? AcpReceiverReadBack(int vhf, bool wantOn, double? now)
     {
