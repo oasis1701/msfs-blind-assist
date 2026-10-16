@@ -209,8 +209,8 @@ public static class A220EclActionMap
         Excl("AFT_CARGO_FIRE_PRESSED", A220EclExclusion.GuardedDestructive);
         Excl("CARGO_FIRE_BTL_PRESSED", A220EclExclusion.GuardedDestructive);
 
-        // ---- Equipment cooling (inlet 1 = AUTO per the aircraft's own checklist) --
-        Map("INLET_OFF", "A22X_COOLING_INLET", 0);
+        // ---- Equipment cooling (inlet 1 = OFF, 0 = AUTO: measured live 2026-10-16) --
+        Map("INLET_OFF", "A22X_COOLING_INLET", 1);
         Map("EXHAUST_VLV_ONLY", "A22X_COOLING_EXHAUST", 0);
         Map("EXHAUST_AUTO", "A22X_COOLING_EXHAUST", 1);
         Map("EXHAUST_ON", "A22X_COOLING_EXHAUST", 2);

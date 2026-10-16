@@ -108,7 +108,7 @@ public class A220PanelStructureTests
     }
 
     [Theory]
-    [InlineData("A22X_COOLING_INLET", "A22X Cooling Inlet", "Off|Auto")]
+    [InlineData("A22X_COOLING_INLET", "A22X Cooling Inlet", "Auto|Off")]          // 1 = OFF, measured live 2026-10-16
     [InlineData("A22X_COOLING_EXHAUST", "A22X Cooling Exhaust", "Valve Only|Auto|On")]
     [InlineData("A22X_APU_FIRE", "A22X APU Fire", "Normal|Pushed")]
     [InlineData("A22X_CARGO_FWD_FIRE", "A22X Cargo Fwd Fire", "Normal|Pushed")]

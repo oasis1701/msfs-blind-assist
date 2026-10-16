@@ -127,7 +127,7 @@ public class A220EclActionMapTests
             Assert.Equal(key, a.ControlKey);
             Assert.Equal(value, a.Value);
         }
-        Is("INLET_OFF", "A22X_COOLING_INLET", 0);           // 1 = AUTO, 0 = OFF
+        Is("INLET_OFF", "A22X_COOLING_INLET", 1);           // 0 = AUTO, 1 = OFF (measured live: 1 lights the OFF lamp and INLET_OFF)
         Is("EXHAUST_VLV_ONLY", "A22X_COOLING_EXHAUST", 0);
         Is("EXHAUST_AUTO", "A22X_COOLING_EXHAUST", 1);
         Is("EXHAUST_ON", "A22X_COOLING_EXHAUST", 2);
@@ -232,7 +232,7 @@ public class A220EclActionMapTests
     }
 
     [Theory]
-    [InlineData("EQUIP COOLING, INLET", "A22X_COOLING_INLET", 1.0)]   // mapped OFF (0) -> AUTO
+    [InlineData("EQUIP COOLING, INLET", "A22X_COOLING_INLET", 0.0)]   // mapped OFF (1) -> AUTO
     [InlineData("NOSE STEER", "A22X_NOSE_STEER_OFF", 0.0)]            // mapped Off (1) -> On
     [InlineData("L ENG RUN", "A22X_ENG_MASTER_1", 0.0)]               // mapped On (1) -> Off
     [InlineData("HYD 1 SOV", "A22X_HYD_1_SOV", 1.0)]                  // mapped Closed (0) -> Open
@@ -311,7 +311,7 @@ public class A220EclActionMapTests
     [InlineData("GRAV_XFR_ON", "A22X_GRAVITY_TRANSFER", 0.0)]
     [InlineData("HYD_1_SOV_CLSD", "A22X_HYD_1_SOV", 1.0)]
     [InlineData("HYD_2_SOV_CLSD", "A22X_HYD_2_SOV", 1.0)]
-    [InlineData("INLET_OFF", "A22X_COOLING_INLET", 1.0)]
+    [InlineData("INLET_OFF", "A22X_COOLING_INLET", 0.0)]
     [InlineData("L_BLEED_OFF", "A22X_L_BLEED_OFF", 0.0)]
     [InlineData("L_ENG_RUN_ON", "A22X_ENG_MASTER_1", 0.0)]
     [InlineData("L_PACK_OFF", "A22X_L_PACK_OFF", 0.0)]

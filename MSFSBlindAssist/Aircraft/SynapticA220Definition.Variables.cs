@@ -305,10 +305,12 @@ public partial class SynapticA220Definition
         v["A22X_AFT_CARGO_AIR"] = LSwitch("A22X Aft Cargo Air", "Aft Cargo Air", "Off", "Vent");
 
         // ==== Overhead — Equipment cooling (right outboard) ===================
-        // INLET is a latched korry: 1 = AUTO, 0 = OFF. The aircraft's own checklist tests
-        // (L:A22X Cooling Inlet) true for "EQUIP COOLING, INLET: select auto" (POWER ON) and
-        // false for "…: OFF" (POWER OFF); it defaults to OFF from cold and dark.
-        v["A22X_COOLING_INLET"] = LSwitch("A22X Cooling Inlet", "Equipment Cooling Inlet", "Off", "Auto");
+        // INLET is a latched korry: 0 = AUTO, 1 = OFF (its OFF light). Measured live 2026-10-16:
+        // writing 1 lights L:A22X Cooling Inlet Lamp, raises the ECL's sensed INLET_OFF and the
+        // "INLET AIR OFF" status message; 0 clears all three. The aircraft's ECL pack agrees
+        // ("Select auto" is INLET_OFF inverted). The stock Asobo-format A220_Checklist.xml tests
+        // the var the other way round; it is wrong, never the reference.
+        v["A22X_COOLING_INLET"] = LSwitch("A22X Cooling Inlet", "Equipment Cooling Inlet", "Auto", "Off");
         // EXHAUST is a 3-position knob (A220_KnobSmall3State). Value order from the ECL's sensed
         // names, which list VLV ONLY, AUTO, ON at consecutive bits the way every other 3-way
         // knob lists its 0, 1, 2 — pending live verification (Plan B live task) against those bits
