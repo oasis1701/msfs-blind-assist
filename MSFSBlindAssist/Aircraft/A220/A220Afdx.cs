@@ -208,17 +208,18 @@ internal static class A220Afdx
         if (!left && !right)
             return string.Join(". ", parts) + ". No command bars — turn a flight director on.";
 
+        // Culture-invariant: under de-DE "{x:0.0}" spoke "15,0 degrees".
         var cmds = new List<string>();
         if (af.cmd_lateral is { } bank)
             cmds.Add(Math.Abs(bank) < 0.5
                 ? "wings level"
-                : $"{Math.Abs(bank):0} degrees bank {(bank > 0 ? "right" : "left")}");
+                : FormattableString.Invariant($"{Math.Abs(bank):0} degrees bank {(bank > 0 ? "right" : "left")}"));
         if (af.cmd_vertical_pitch is { } pitch)
-            cmds.Add($"pitch target {Math.Abs(pitch):0.0} degrees nose {(pitch >= 0 ? "up" : "down")}");
+            cmds.Add(FormattableString.Invariant($"pitch target {Math.Abs(pitch):0.0} degrees nose {(pitch >= 0 ? "up" : "down")}"));
         if (af.cmd_vertical_fpa is { } fpa)
             cmds.Add(Math.Abs(fpa) < 0.1
                 ? "flight path level"
-                : $"flight path {Math.Abs(fpa):0.0} degrees {(fpa > 0 ? "up" : "down")}");
+                : FormattableString.Invariant($"flight path {Math.Abs(fpa):0.0} degrees {(fpa > 0 ? "up" : "down")}"));
 
         parts.Add(cmds.Count == 0 ? "No command bars shown" : "Commanding " + string.Join(", ", cmds));
         return string.Join(". ", parts) + ".";
@@ -463,11 +464,12 @@ internal static class A220Afdx
     {
         if (fc?.pitch_trim is not { } v)
             return "Not available — display link not connected";
-        string text = $"{v:0.0} units";
+        // Culture-invariant: the panel row and the trim announcer spoke "5,4 units" under de-DE.
+        string text = StabTrimUnitsText(v);
         if (fc.pitch_trim_dn is { } dn && fc.pitch_trim_up is { } up && Math.Abs(up - dn) > 0.01)
             text += v >= dn && v <= up
                 ? ", in takeoff range"
-                : $", OUTSIDE takeoff range {dn:0.0} to {up:0.0}";
+                : FormattableString.Invariant($", OUTSIDE takeoff range {dn:0.0} to {up:0.0}");
         return text;
     }
 
@@ -482,7 +484,7 @@ internal static class A220Afdx
             return "Not available — display link not connected";
         return Math.Abs(v) < 0.005
             ? "Centred"
-            : $"{Math.Abs(v) * 100:0} percent nose {(v > 0 ? "right" : "left")}";
+            : FormattableString.Invariant($"{Math.Abs(v) * 100:0} percent nose {(v > 0 ? "right" : "left")}");
     }
 
     /// <summary>

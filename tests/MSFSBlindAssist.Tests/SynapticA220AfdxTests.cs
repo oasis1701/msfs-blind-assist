@@ -417,4 +417,27 @@ public class SynapticA220AfdxTests
     [Fact]
     public void TrimSettled_FirstEverValueSpeaksOnceSettled()
         => Assert.True(TrimSettled(spoken: null, previous: 5.0, current: 5.0));
+
+    // ---- culture: CI runs en-US, so only a comma-decimal culture catches "5,4 units" ----------
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void TrimAndFlightDirectorSpeech_IsCultureInvariant(string culture)
+    {
+        var previous = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo(culture);
+            Assert.Equal("5.4 units, in takeoff range", FormatStabTrim(Fc(trim: 5.4, dn: 4.2, up: 6.8)));
+            Assert.Equal("3.1 units, OUTSIDE takeoff range 4.2 to 6.8", FormatStabTrim(Fc(trim: 3.1, dn: 4.2, up: 6.8)));
+            Assert.Equal("Stab trim 5.4 units, rudder trim 40 percent nose left",
+                TrimAnnouncement(Fc(trim: 5.4, rud: -0.4)));
+            string fd = FormatFlightDirector(Af(true, false, bank: -12, fpa: -3, pitch: 15));
+            Assert.Contains("12 degrees bank left", fd);
+            Assert.Contains("pitch target 15.0 degrees nose up", fd);
+            Assert.Contains("flight path 3.0 degrees down", fd);
+        }
+        finally { System.Globalization.CultureInfo.CurrentCulture = previous; }
+    }
 }
