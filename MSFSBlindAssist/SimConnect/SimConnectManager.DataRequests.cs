@@ -175,7 +175,8 @@ public partial class SimConnectManager
     public Task<double?> ReadFreshAsync(string varKey, int timeoutMs, CancellationToken ct = default)
     {
         if (!IsConnected || simConnect == null) return Task.FromResult<double?>(null);
-        bool deliverable = variableDataDefinitions.ContainsKey(varKey) || continuousVariableIndexMap.ContainsKey(varKey);
+        bool deliverable = variableDataDefinitions.ContainsKey(varKey) || continuousVariableIndexMap.ContainsKey(varKey)
+                           || IsReadableInputEvent(varKey);
         if (!deliverable) return Task.FromResult<double?>(null);
         var freshDef = DefinitionOf(varKey);
         if (FreshReadPolicy.CacheIsFresh(freshDef))
@@ -269,6 +270,10 @@ public partial class SimConnectManager
         // registers its waiter before it calls in, and the id mapping below is written by the
         // posted run itself, before the request it names can be answered.
         if (_uiGate.PostIfOffThread(() => RequestVariable(varKey, forceUpdate, freshRequestId))) return;
+
+        // An input-event variable has no data definition: it is read with GetInputEvent, and a
+        // fresh read is answered by that read (or a subscription change) like a periodic sample.
+        if (TryRequestInputEventVariable(varKey, forceUpdate)) return;
 
         // Record the force flag BEFORE the individual-def check below. Batch-covered vars
         // (Continuous+IsAnnounced, no ExcludeFromBatch) have NO individual data def, so they take

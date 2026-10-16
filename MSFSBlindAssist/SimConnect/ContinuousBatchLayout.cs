@@ -14,13 +14,15 @@ internal static class ContinuousBatchLayout
     public const int BatchSize = 300;
 
     /// <summary>
-    /// Continuous + IsAnnounced, not PMDG (read from the PMDG client data area) and not
-    /// ExcludeFromBatch (streams on its own per-var subscription).
+    /// Continuous + IsAnnounced, not PMDG (read from the PMDG client data area), not an input
+    /// event (subscribed by hash, SimConnectManager.InputEventReads.cs: a B: name in a data
+    /// definition reads 0) and not ExcludeFromBatch (streams on its own per-var subscription).
     /// </summary>
     public static bool RidesBatch(SimVarDefinition def) =>
         def.UpdateFrequency == UpdateFrequency.Continuous
         && def.IsAnnounced
         && def.Type != SimVarType.PMDGVar
+        && def.Type != SimVarType.InputEvent
         && !def.ExcludeFromBatch;
 
     /// <summary>The name registered with SimConnect: an L:var carries its "L:" prefix.</summary>

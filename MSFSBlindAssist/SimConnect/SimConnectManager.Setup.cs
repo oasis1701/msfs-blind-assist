@@ -458,8 +458,10 @@ public partial class SimConnectManager
         {
             var varDef = kvp.Value;
 
-            // Skip write-only variables (Never frequency), H-variables, AND PMDG variables (handled by IPMDGDataManager)
-            if (varDef.UpdateFrequency == UpdateFrequency.Never || varDef.Type == SimVarType.HVar || varDef.Type == SimVarType.PMDGVar)
+            // Skip write-only variables (Never frequency), H-variables, PMDG variables (handled by
+            // IPMDGDataManager) AND input events (subscribed by hash: SimConnectManager.InputEventReads.cs)
+            if (varDef.UpdateFrequency == UpdateFrequency.Never || varDef.Type == SimVarType.HVar
+                || varDef.Type == SimVarType.PMDGVar || varDef.Type == SimVarType.InputEvent)
                 continue;
 
             // Batch-covered: Continuous + IsAnnounced + not ExcludeFromBatch. These are monitored
@@ -884,6 +886,8 @@ public partial class SimConnectManager
         // Re-register all variables for new aircraft
         RegisterAllVariables();
         SeedSimFrameSubscriptions();   // the handler is attached on this path, so the seeds answer at once
+        // A profile switch keeps the sim's catalog but brings a new variable set.
+        SubscribeAircraftInputEvents();
     }
 
     private void SetupEvents()
@@ -896,6 +900,8 @@ public partial class SimConnectManager
         sc.OnRecvClientData += SimConnect_OnRecvClientData;
         sc.OnRecvException += SimConnect_OnRecvException;
         sc.OnRecvEnumerateInputEvents += SimConnect_OnRecvEnumerateInputEvents;
+        sc.OnRecvSubscribeInputEvent += SimConnect_OnRecvSubscribeInputEvent;
+        sc.OnRecvGetInputEvent += SimConnect_OnRecvGetInputEvent;
         // AircraftLoaded fires when the user changes aircraft in-sim (or reloads).
         // The handler re-reads ATC MODEL / ICAO so AircraftIcaoTypeDetected re-fires
         // and the door-offset map is re-queried for the new aircraft.
@@ -918,6 +924,8 @@ public partial class SimConnectManager
         if (!IsConnected || simConnect == null) return;
         try
         {
+            // The hashes are per aircraft load: drop the subscriptions made with the old ones.
+            UnsubscribeAircraftInputEvents();
             inputEventHashes.Clear();
             simConnect.EnumerateInputEvents(DATA_REQUESTS.REQUEST_ENUMERATE_INPUT_EVENTS);
             Log.Debug("SimConnect", "Requested InputEvent enumeration");
@@ -949,9 +957,10 @@ public partial class SimConnectManager
             // EnumerateInputEvents pages results. The "complete" signal is dwEntryNumber+1 == dwOutOf.
             if (data.dwEntryNumber + 1 >= data.dwOutOf)
             {
-                Log.Debug("SimConnect", 
+                Log.Debug("SimConnect",
                     $"InputEvent enumeration complete: {inputEventHashes.Count} events");
                 DumpInputEventCatalog();
+                SubscribeAircraftInputEvents();
             }
         }
         catch (Exception ex)

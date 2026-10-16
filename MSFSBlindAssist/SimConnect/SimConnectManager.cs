@@ -1474,6 +1474,9 @@ public partial class SimConnectManager
         eventIds.Clear();
         // The Frame subscription died with the handle; the consumer count survives so a reconnect re-arms it.
         _frameEventSubscribed = false;
+        // So did the input-event subscriptions; the next connection's catalog re-subscribes.
+        _inputEventSubscriptions.Clear();
+        _inputEventReadRequests.Clear();
         lock (forceUpdateVariables) { forceUpdateVariables.Clear(); }
         _freshReads.FailAll();
         FailCameraViewRead();
