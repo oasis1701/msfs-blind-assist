@@ -13,6 +13,10 @@ public enum VolantaLinkStatus
     /// <summary>Nothing answers on <see cref="VolantaLink.DebugPort"/>: Volanta is closed, or was started
     /// without live map access.</summary>
     NoAccess,
+    /// <summary>The port answers, but the browser behind it is not Volanta: another program's debugging port
+    /// holds the number, so a Volanta started with the switch could not open it, and a restart would not help
+    /// until that program is closed.</summary>
+    PortTaken,
     /// <summary>The port answers but Volanta's main page is not there yet (Volanta still starting).</summary>
     WaitingForPage,
     Connected,
@@ -58,7 +62,6 @@ public sealed record VolantaLinkSnapshot
 public sealed class VolantaLink : IDisposable
 {
     public const int DebugPort = 9223;
-    private const string PageHost = "127.0.0.1:17580";
     private const string FeedHost = "webassets.volanta.app";
     private const string ApiHost = "api.volanta.app";
     private const string FriendsPath = "/api/v1/Relationships/Friends";
@@ -67,7 +70,10 @@ public sealed class VolantaLink : IDisposable
     /// list once, about 0.6 s after its page appears (measured 2026-10-15), and only a link already attached
     /// sees it.</summary>
     private static readonly TimeSpan LaunchRetryDelay = TimeSpan.FromMilliseconds(150);
-    private static readonly TimeSpan LaunchWindow = TimeSpan.FromSeconds(60);
+    /// <summary>How long after this app starts Volanta the link looks for its page quickly; the window also
+    /// speaks once if Volanta has not connected by then (it may have updated and restarted itself without the
+    /// switch, or the port may be taken).</summary>
+    public static readonly TimeSpan LaunchWindow = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan WindowCheckInterval = TimeSpan.FromSeconds(5);
     /// <summary>Asks Volanta whether its window is minimized or hidden, and which user is logged in. The user id is
     /// read from the NAME of the storage key Volanta keeps per user for its "what's new" notice; no stored value,
@@ -169,6 +175,20 @@ public sealed class VolantaLink : IDisposable
         }
     }
 
+    /// <summary>Whether the browser answering on <see cref="DebugPort"/> is Volanta: null when nothing answers,
+    /// false when another program's debugging port holds the number (<see cref="VolantaLinkStatus.PortTaken"/>),
+    /// so it is never mistaken for Volanta. Chromium names the app in the user agent it reports there
+    /// ("Volanta/1.19.2").</summary>
+    public static async Task<bool?> IsVolantaOnPortAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            string version = await Http.GetStringAsync($"http://127.0.0.1:{DebugPort}/json/version", ct).ConfigureAwait(false);
+            return version.Contains("Volanta/", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException) { return null; }
+    }
+
     /// <summary>The debugger socket of Volanta's main page, or null (with the status saying why).</summary>
     private async Task<string?> FindPageAsync(CancellationToken ct)
     {
@@ -180,12 +200,18 @@ public sealed class VolantaLink : IDisposable
             return null;
         }
         string? url = FindVolantaPage(list);
-        if (url == null) SetStatus(VolantaLinkStatus.WaitingForPage);
+        if (url == null)
+        {
+            // No Volanta page: Volanta still starting, or not Volanta at all on the port.
+            bool? volanta = await IsVolantaOnPortAsync(ct).ConfigureAwait(false);
+            SetStatus(volanta == false ? VolantaLinkStatus.PortTaken : VolantaLinkStatus.WaitingForPage);
+        }
         return url;
     }
 
     /// <summary>The main page's debugger socket URL from a /json/list answer: the page Volanta serves from its
-    /// own local web server, whichever Volanta screen it shows.</summary>
+    /// own local web server (on 127.0.0.1, port 17580 in 1.19.2; any loopback page is taken, so a port change
+    /// never leaves the link waiting), whichever Volanta screen it shows.</summary>
     internal static string? FindVolantaPage(string listJson)
     {
         try
@@ -196,13 +222,17 @@ public sealed class VolantaLink : IDisposable
             {
                 if (t.ValueKind != JsonValueKind.Object) continue;
                 if (!t.TryGetProperty("type", out var type) || type.GetString() != "page") continue;
-                if (!t.TryGetProperty("url", out var url) || !(url.GetString() ?? "").Contains(PageHost, StringComparison.Ordinal)) continue;
+                if (!t.TryGetProperty("url", out var url) || !IsVolantaPageUrl(url.GetString())) continue;
                 if (t.TryGetProperty("webSocketDebuggerUrl", out var ws) && ws.GetString() is { Length: > 0 } s) return s;
             }
         }
         catch (JsonException) { }
         return null;
     }
+
+    private static bool IsVolantaPageUrl(string? url)
+        => Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps) && uri.IsLoopback;
 
     private async Task ReadPageAsync(string wsUrl, CancellationToken ct)
     {

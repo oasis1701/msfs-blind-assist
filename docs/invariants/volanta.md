@@ -23,7 +23,9 @@ standing still.
 
 Where that is said (the owner's choice, 2026-10-16): in a line at the top of each list, Traffic, Friends and
 ATC, above the rows last received ("Connected to Volanta, but it is minimized, so this list is not updating.
-Restore Volanta's window."), and the same while Volanta is starting or the link has no access. Its key starts
+Restore Volanta's window."), and the same while Volanta is starting, the link has no access, another program
+holds the port, or Volanta has sent nothing at all for 30 seconds since connecting (its login screen serves the
+same page, so the link connects and nothing ever comes: the line says to log in). Its key starts
 with `VolantaListOrder.StatusKeyPrefix`, so it stays first even while the reader is in the list ([VOL-9]). It
 replaced a spoken "Volanta is minimized" and "updating again": the owner wants fewer announcements here, and
 the spoken notice left an empty list behind. The pilot found Volanta minimized after Alt+Tabbing away from it
@@ -47,7 +49,11 @@ Volanta to quit (its own quit over the port, else its window close) before force
 asking never quit Volanta, only the force-close did, so asking only added seconds. The window asks the pilot
 first and says Volanta will be force-closed. Only if Windows refuses to end Volanta is the pilot sent to Quit in
 its notification-area menu. Volanta's restarts measured on 2026-10-15, the force-closed ones included, kept
-tracking the same flight.
+tracking the same flight. The exe to start again is read from the running copy (`VolantaLauncher.FindExePath`)
+BEFORE the force-close: afterwards only the installer's folder and Windows' uninstall keys remain, and a Volanta
+installed elsewhere would be closed and not restarted. If Volanta has not connected a minute after the start
+(`VolantaLink.LaunchWindow`), the window speaks once: Volanta may have updated and restarted itself without the
+switch, or another program may hold the port.
 
 ## VOL-4
 

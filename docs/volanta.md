@@ -48,9 +48,12 @@ list they are in only the rows within 150 of theirs are rewritten: rewriting eve
 window for seconds ([VOL-9]). The details list below, one field per row, is live. Every checkbox is drawn by
 Windows (FlatStyle.System), the only kind whose tick NVDA hears under .NET 10 ([VOL-10]). F5 (or Re-sort
 now) re-sorts at once and reads the tab's status; a filter change re-sorts too. Connected and lost are each
-spoken once, queued, and nothing else is (the owner wants fewer announcements here). While Volanta's data
-cannot be pulled, each list instead has a line at its top saying why: Volanta minimized ("Connected to Volanta,
-but it is minimized, so this list is not updating"), nothing new for 30 seconds, Volanta starting, or no access.
+spoken once, queued, as is a start from the Connection tab that has not connected after a minute (Volanta's
+updater can relaunch it without the switch), and nothing else is (the owner wants fewer announcements here).
+While Volanta's data cannot be pulled, each list instead has a line at its top saying why: Volanta minimized
+("Connected to Volanta, but it is minimized, so this list is not updating"), nothing new for 30 seconds,
+nothing at all for 30 seconds since connecting (Volanta's login screen: the line says to log in), Volanta
+starting, another program on Volanta's port, or no access.
 The rows last received stay below it, and it stays first while the pilot is in the list ([VOL-2]). The owner
 found Volanta minimized after Alt+Tabbing away from it just after it started (2026-10-16), before it sent
 anything, and the lists stood empty.
@@ -68,10 +71,17 @@ the window never asks them for anything. Instead:
 
 1. `VolantaLauncher` starts Volanta with `--remote-debugging-port=9223 --remote-debugging-address=127.0.0.1`.
    Nothing in Volanta blocks the switch (no check for it in its code; its Electron fuses do not cover it).
-   Volanta runs one copy at a time, so a running Volanta is first asked to close, as its close button does,
-   and is never force-quit.
-2. `VolantaLink` finds Volanta's main page on that port (the page Volanta serves itself from
-   `http://127.0.0.1:17580`), opens its debugger socket and turns on network events.
+   Volanta runs one copy at a time, so a running Volanta is force-closed first, after the pilot confirms
+   ([VOL-3], "Restarting" below). The exe is the running copy's own, read before it is closed; else the
+   installer's per-user folder (`%LOCALAPPDATA%\Programs\Volanta`); else the install Windows' uninstall keys
+   register (an all-users or moved install: its `DisplayIcon`, since Volanta's installer writes no
+   `InstallLocation`). With none found the pilot is told to start Volanta by hand and press the button again,
+   which then reads the exe from the running copy.
+2. `VolantaLink` finds Volanta's main page on that port (the page Volanta serves itself from its own local web
+   server: `http://127.0.0.1:17580` in 1.19.2; any loopback page is taken), opens its debugger socket and turns
+   on network events. If the port answers but the browser behind it is not Volanta (another program's debugging
+   port on 9223, so Volanta could not open it), the link says so (`VolantaLinkStatus.PortTaken`) and the button
+   refuses to restart Volanta until that program is closed.
 3. Each time Volanta's map finishes downloading one of its traffic files, the link asks the page for that
    response's body and parses it (`VolantaFeedParser`). It also reads Volanta's SignalR hub frames for the
    pilot's own flight id and Volanta's position report, and every 5 seconds asks Volanta whether its window is

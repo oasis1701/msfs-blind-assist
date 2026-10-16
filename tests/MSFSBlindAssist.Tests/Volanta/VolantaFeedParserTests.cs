@@ -131,13 +131,24 @@ public class VolantaFeedParserTests
         {
             CultureInfo.CurrentCulture = new CultureInfo("de-DE");
             var feed = VolantaFeedParser.ParseVolantaFlights(
-                """{"time":1,"data":[{"id":"a","position":{"latitude":"51.5","longitude":"-0.25","altitude":"1234.5"}}]}""")!;
+                """{"time":1,"data":[{"id":"a","position":{"latitude":"51.5","longitude":"-0.25","altitude":"1234.5","groundSpeed":"442,6"}}]}""")!;
             var f = feed.Items.Single();
             Assert.Equal(51.5, f.Latitude);
             Assert.Equal(-0.25, f.Longitude);
             Assert.Equal(1234.5, f.AltitudeFt);
+            Assert.Equal(442.6, f.GroundSpeedKt);   // a lone comma is a decimal separator (CORE-17's external parse)
         }
         finally { CultureInfo.CurrentCulture = saved; }
+    }
+
+    [Theory]
+    [InlineData("1792098879000")]    // milliseconds: past the range FromUnixTimeSeconds takes
+    [InlineData("-99999999999999")]
+    public void A_feed_time_outside_the_unix_seconds_range_reads_as_now_instead_of_throwing(string stamp)
+    {
+        var feed = VolantaFeedParser.ParseVolantaFlights($$"""{"time":{{stamp}},"data":[]}""")!;
+        Assert.Empty(feed.Items);
+        Assert.InRange((DateTimeOffset.UtcNow - feed.Time).TotalSeconds, -1, 60);
     }
 
     [Fact]
@@ -260,6 +271,20 @@ public class VolantaFeedParserTests
         Assert.Equal("ws://127.0.0.1:9223/devtools/page/C", VolantaLink.FindVolantaPage(list));
         Assert.Null(VolantaLink.FindVolantaPage("""[{"type":"page","url":"https://example.com"}]"""));
         Assert.Null(VolantaLink.FindVolantaPage("not json"));
+    }
+
+    [Theory]
+    [InlineData("http://localhost:17581/index.html#/map", true)]   // Volanta's local server on another port, or name
+    [InlineData("http://[::1]:17580/", true)]
+    [InlineData("https://127.0.0.1:17580/index.html", true)]
+    [InlineData("devtools://devtools/bundled/inspector.html", false)]
+    [InlineData("file:///C:/Volanta/index.html", false)]
+    [InlineData("http://192.168.1.20:17580/index.html", false)]
+    [InlineData("", false)]
+    public void Any_loopback_page_is_Volanta_s_so_a_local_port_change_never_leaves_the_link_waiting(string url, bool taken)
+    {
+        string list = $$"""[{"type":"page","url":"{{url}}","webSocketDebuggerUrl":"ws://127.0.0.1:9223/devtools/page/X"}]""";
+        Assert.Equal(taken ? "ws://127.0.0.1:9223/devtools/page/X" : null, VolantaLink.FindVolantaPage(list));
     }
 
     [Theory]

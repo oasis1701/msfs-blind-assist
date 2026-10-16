@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using MSFSBlindAssist.Utils;
 
 namespace MSFSBlindAssist.Services.Volanta;
 
@@ -265,13 +266,20 @@ public static class VolantaFeedParser
         _ => VolantaSource.Other,
     };
 
+    /// <summary>The range <see cref="DateTimeOffset.FromUnixTimeSeconds"/> accepts: a stamp outside it (one in
+    /// milliseconds, say) would throw past the parser's JSON catch and drop the link's page session on every
+    /// file, so it is left as "now" instead.</summary>
+    private static readonly long MinUnixSeconds = DateTimeOffset.MinValue.ToUnixTimeSeconds();
+    private static readonly long MaxUnixSeconds = DateTimeOffset.MaxValue.ToUnixTimeSeconds();
+
     private static bool TryGetFeedArray(JsonElement root, out DateTimeOffset time, out JsonElement data)
     {
         time = DateTimeOffset.UtcNow;
         data = default;
         if (root.ValueKind != JsonValueKind.Object
             || !root.TryGetProperty("data", out data) || data.ValueKind != JsonValueKind.Array) return false;
-        if (root.TryGetProperty("time", out var t) && t.ValueKind == JsonValueKind.Number && t.TryGetInt64(out long unix))
+        if (root.TryGetProperty("time", out var t) && t.ValueKind == JsonValueKind.Number && t.TryGetInt64(out long unix)
+            && unix >= MinUnixSeconds && unix <= MaxUnixSeconds)
             time = DateTimeOffset.FromUnixTimeSeconds(unix);
         return true;
     }
@@ -291,10 +299,8 @@ public static class VolantaFeedParser
     {
         if (!e.TryGetProperty(name, out var v)) return null;
         if (v.ValueKind == JsonValueKind.Number && v.TryGetDouble(out double d) && double.IsFinite(d)) return d;
-        // A number Volanta sent as text: another program's output, so the invariant culture.
-        if (v.ValueKind == JsonValueKind.String
-            && double.TryParse(v.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out d) && double.IsFinite(d))
-            return d;
+        // A number Volanta sent as text: another program's output (CORE-17), never the PC's culture.
+        if (v.ValueKind == JsonValueKind.String && NumberParsing.TryParseExternal(v.GetString(), out d)) return d;
         return null;
     }
 
