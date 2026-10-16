@@ -696,7 +696,9 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "Fahrenheit",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                // Read silently for the status display (ProcessSimVarUpdate swallows it): VAR-9.
+                ExcludeFromMonitorManager = true
             },
             ["C172_EGT"] = new SimConnect.SimVarDefinition
             {
@@ -705,7 +707,8 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "Fahrenheit",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ExcludeFromMonitorManager = true
             },
             ["C172_FUEL_FLOW"] = new SimConnect.SimVarDefinition
             {
@@ -714,7 +717,8 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "gallons per hour",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ExcludeFromMonitorManager = true
             },
             ["C172_FUEL_LEFT_QTY"] = new SimConnect.SimVarDefinition
             {
@@ -750,7 +754,8 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "volts",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ExcludeFromMonitorManager = true
             },
             ["C172_STALL_WARNING"] = new SimConnect.SimVarDefinition
             {
@@ -1063,6 +1068,11 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
             // Output+W — read waypoint info (handled by MainForm, but return false to pass through)
             // ReadWaypointInfo is handled by MainForm universally
 
+            // Ctrl+M — mute individual background announcements
+            case HotkeyAction.MonitorManager:
+                (parentForm as MainForm)?.ShowC172MonitorManagerDialog();
+                return true;
+
             // ===== INPUT MODE ACTIONS =====
 
             case HotkeyAction.FCUSetHeading:
@@ -1072,7 +1082,7 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
                     "HEADING_BUG_SET", simConnect, announcer, parentForm,
                     input =>
                     {
-                        if (double.TryParse(input, out double val) && val >= 0 && val <= 359)
+                        if (Utils.NumberParsing.TryParseTyped(input, out double val) && val >= 0 && val <= 359)
                             return (true, string.Empty);
                         return (false, "Enter a heading between 0 and 359");
                     });
@@ -1084,7 +1094,7 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
                     "AP_ALT_VAR_SET_ENGLISH", simConnect, announcer, parentForm,
                     input =>
                     {
-                        if (double.TryParse(input, out double val) && val >= 0 && val <= 25000)
+                        if (Utils.NumberParsing.TryParseTyped(input, out double val) && val >= 0 && val <= 25000)
                             return (true, string.Empty);
                         return (false, "Enter an altitude between 0 and 25000 feet");
                     });
@@ -1096,7 +1106,7 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
                     "AP_VS_VAR_SET_ENGLISH", simConnect, announcer, parentForm,
                     input =>
                     {
-                        if (double.TryParse(input, out double val) && val >= -2000 && val <= 2000)
+                        if (Utils.NumberParsing.TryParseTyped(input, out double val) && val >= -2000 && val <= 2000)
                             return (true, string.Empty);
                         return (false, "Enter a vertical speed between -2000 and 2000 fpm");
                     },
@@ -1109,7 +1119,7 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
                     "KOHLSMAN_SET", simConnect, announcer, parentForm,
                     input =>
                     {
-                        if (double.TryParse(input, out double val) && val >= 28.00 && val <= 31.00)
+                        if (Utils.NumberParsing.TryParseTyped(input, out double val) && val >= 28.00 && val <= 31.00)
                             return (true, string.Empty);
                         return (false, "Enter barometric pressure between 28.00 and 31.00 inHg");
                     },

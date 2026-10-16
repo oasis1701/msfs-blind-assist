@@ -357,6 +357,14 @@ public partial class MainForm
                     return; // Skip announcement for disabled variable
                 }
 
+                // Check if disabled in the Cessna 172 Monitor Manager. The Classic and the
+                // G1000 ("C172_CLASSIC", "C172_G1000") share one list.
+                if (currentAircraft.AircraftCode.StartsWith("C172_", StringComparison.Ordinal) &&
+                    Settings.SettingsManager.Current.C172DisabledMonitorVariablesSet.Contains(e.VarName))
+                {
+                    return; // Skip announcement for disabled variable
+                }
+
                 // Check if disabled in the A32NX Monitor Manager. The Headwind A330
                 // is an A32NX fork that reuses the same monitor-manager form and the
                 // same A32NXDisabledMonitorVariables setting.

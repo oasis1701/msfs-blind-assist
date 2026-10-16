@@ -386,6 +386,20 @@ public partial class MainForm
         cowsDA40MonitorManagerForm.ShowForm();
     }
 
+    /// <summary>
+    /// The Cessna 172's monitor manager (Ctrl+M), for both variants. Called from the definition, so
+    /// it carries the MD-11's aircraft guard: a call that lands after SwitchAircraft has replaced the
+    /// C172 would otherwise build a "Cessna 172" window over the new aircraft's variables.
+    /// </summary>
+    public void ShowC172MonitorManagerDialog()
+    {
+        if (currentAircraft is not CessnaC172BaseDefinition c172) return;
+        hotkeyManager.ExitOutputHotkeyMode();
+        if (c172MonitorManagerForm == null || c172MonitorManagerForm.IsDisposed)
+            c172MonitorManagerForm = new Forms.C172.CessnaC172MonitorManagerForm(c172.GetVariables());
+        c172MonitorManagerForm.ShowForm();
+    }
+
     public void ShowPMDGAnnouncementMonitorDialog()
     {
         // Deactivate output hotkey mode before showing dialog

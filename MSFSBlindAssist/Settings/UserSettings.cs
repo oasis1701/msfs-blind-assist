@@ -346,6 +346,16 @@ public class UserSettings
         [JsonIgnore]
         public HashSet<string> Md11DisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
 
+        // Monitor Manager (Ctrl+M, CessnaC172MonitorManagerForm), one list for both C172 variants.
+        // Consulted in MainForm.OnSimVarUpdated when AircraftCode starts with "C172_" — at the
+        // generic gate AND via the Suppressed wrap, because the C172 speaks its fuel, oil, vacuum
+        // and RPM warnings from INSIDE ProcessSimVarUpdate. Persisted across sessions.
+        public List<string> C172DisabledMonitorVariables { get; set; } = new List<string>();
+
+        /// <summary>Runtime-only HashSet sidecar of <see cref="C172DisabledMonitorVariables"/>. See <see cref="FenixDisabledMonitorVariablesSet"/>.</summary>
+        [JsonIgnore]
+        public HashSet<string> C172DisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
+
         // The MD-11 walker's learned step polarity (docs/md11.md §3): node ids whose step events run
         // INVERTED relative to the walker's conventional guess (left click / wheel up = increase).
         // Absent = conventional. Written the moment a wrong-way step teaches the walker, read on the
@@ -578,8 +588,8 @@ public class UserSettings
         }
 
     /// <summary>
-    /// Rebuilds the seven *DisabledMonitorVariables HashSet sidecars from their backing Lists.
-    /// Every known mutation of those lists (the Fenix/PMDG/A380/HS787/A32NX/iFly/MD-11 monitor-manager
+    /// Rebuilds the eight *DisabledMonitorVariables HashSet sidecars from their backing Lists.
+    /// Every known mutation of those lists (the Fenix/PMDG/A380/HS787/A32NX/iFly/MD-11/C172 monitor-manager
     /// forms' ItemCheck handlers, FlyByWireA380Definition's ToggleECAMMonitoring hotkey, and
     /// SettingsManager.SeedFenixMonitorDefaults) is immediately followed by SettingsManager.Save,
     /// which calls this — so a mutation is never visible to the List without also being visible
@@ -596,6 +606,7 @@ public class UserSettings
         IFlyDisabledMonitorVariablesSet = new HashSet<string>(IFlyDisabledMonitorVariables);
         DA40DisabledMonitorVariablesSet = new HashSet<string>(DA40DisabledMonitorVariables);
         Md11DisabledMonitorVariablesSet = new HashSet<string>(Md11DisabledMonitorVariables);
+        C172DisabledMonitorVariablesSet = new HashSet<string>(C172DisabledMonitorVariables);
     }
 
     /// <summary>

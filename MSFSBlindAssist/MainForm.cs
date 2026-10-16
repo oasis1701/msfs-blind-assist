@@ -193,6 +193,9 @@ public partial class MainForm : Form
 
     private Forms.IFly737.IFly737MonitorManagerForm? iflyMonitorManagerForm;
 
+    // Cessna 172 monitor manager (Ctrl+M), one window for the Classic and the G1000.
+    private Forms.C172.CessnaC172MonitorManagerForm? c172MonitorManagerForm;
+
     private TakeoffAssistManager takeoffAssistManager = null!;
 
     // Manual-landing flare + rollout tone assist. Armed by the "Manual landing assist"
@@ -1392,6 +1395,10 @@ public partial class MainForm : Form
         if (md11MonitorManagerForm != null && !md11MonitorManagerForm.IsDisposed) md11MonitorManagerForm.Dispose();
         md11MonitorManagerForm = null;
         coherentMd11Efb?.Dispose();
+
+        // The Cessna 172 monitor manager, disposed on exit as on a swap (MainForm.AircraftSwitch.cs).
+        if (c172MonitorManagerForm != null && !c172MonitorManagerForm.IsDisposed) c172MonitorManagerForm.Dispose();
+        c172MonitorManagerForm = null;
 
         // Clean up 787 forms + the IRS / CAS Coherent clients
         hs787FMCForm?.Dispose();

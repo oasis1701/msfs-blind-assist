@@ -26,6 +26,7 @@ namespace MSFSBlindAssist.Services;
 /// It was the one left out until 2026-09-25 and relied on each branch checking
 /// <c>A380DisabledMonitorVariablesSet</c> itself; the baro branches never did, so their rows muted
 /// nothing. The branches that check locally are unaffected.</item>
+/// <item>the Cessna 172 (Classic and G1000) — its low fuel, oil pressure, vacuum and RPM warnings.</item>
 /// </list>
 /// The Fenix announces on the generic path, where its own gate lives, so it is not wrapped. Anything
 /// a definition speaks from a TIMER or a batch hook runs outside this wrap and must still check its
@@ -49,6 +50,7 @@ public static class DefAnnounceMuteSets
         "FBW_A380" => settings.A380DisabledMonitorVariablesSet,
         _ when aircraftCode.StartsWith("PMDG_", StringComparison.Ordinal) => settings.PMDGDisabledMonitorVariablesSet,
         _ when aircraftCode.StartsWith("COWS_DA40", StringComparison.Ordinal) => settings.DA40DisabledMonitorVariablesSet,
+        _ when aircraftCode.StartsWith("C172_", StringComparison.Ordinal) => settings.C172DisabledMonitorVariablesSet,
         _ => null,
     };
 

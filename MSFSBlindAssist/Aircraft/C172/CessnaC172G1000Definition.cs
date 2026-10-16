@@ -96,17 +96,9 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
 
             if (hdgOn)
             {
-                // Turn off HDG first
+                // Turn off HDG first, then NAV after a brief delay — fire and forget
                 simConnect.SendEvent("AP_PANEL_HEADING_HOLD");
-                // Brief async delay then NAV on — fire and forget
-                System.Threading.Tasks.Task.Run(async () =>
-                {
-                    await System.Threading.Tasks.Task.Delay(500);
-                    simConnect.SendEvent("AP_NAV1_HOLD");
-                    await System.Threading.Tasks.Task.Delay(400);
-                    bool navOn = (simConnect.GetCachedVariableValue("C172_AP_NAV_STATE") ?? 0) > 0.5;
-                    announcer.Announce($"NAV mode: {(navOn ? "ON" : "OFF — try again")}");
-                });
+                _ = EngageNavAfterHeadingOffAsync(simConnect, announcer);
                 announcer.AnnounceImmediate("Turning off HDG then engaging NAV…");
             }
             else
@@ -119,5 +111,19 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
         }
 
         return base.HandleUIVariableSet(varKey, value, varDef, simConnect, announcer);
+    }
+
+    /// <summary>
+    /// Sends <c>AP_NAV1_HOLD</c> half a second after heading hold was turned off, then reads the NAV
+    /// state back. Started from the panel on the UI thread and awaited there (no <c>Task.Run</c>, no
+    /// <c>ConfigureAwait(false)</c>), so the send stays on the UI thread as SIM-20 requires.
+    /// </summary>
+    private static async Task EngageNavAfterHeadingOffAsync(SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        await Task.Delay(500);
+        simConnect.SendEvent("AP_NAV1_HOLD");
+        await Task.Delay(400);
+        bool navOn = (simConnect.GetCachedVariableValue("C172_AP_NAV_STATE") ?? 0) > 0.5;
+        announcer.Announce($"NAV mode: {(navOn ? "ON" : "OFF — try again")}");
     }
 }
