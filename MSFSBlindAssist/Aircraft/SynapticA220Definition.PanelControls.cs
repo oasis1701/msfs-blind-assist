@@ -18,7 +18,7 @@ public partial class SynapticA220Definition
         ["Electrical"] = new List<string>
         {
             "A22X_BATTERY_1", "A22X_BATTERY_2",
-            // GPU (EFB ground equipment, no cockpit node) first, then the EXT PWR korry it feeds.
+            // GPU (EFB ground equipment, no cockpit node) sits before the EXT PWR korry it feeds.
             "A22X_GPU_AVAIL", "A22X_EXT_PWR", "A22X_APU_GEN_OFF", "A22X_L_GEN_OFF", "A22X_R_GEN_OFF",
             "A22X_BUS_ISOLATION", "A22X_CABIN_POWER_OFF", "A22X_RAT_GEN",
             "A22X_L_GEN_DISC", "A22X_R_GEN_DISC"
@@ -73,8 +73,8 @@ public partial class SynapticA220Definition
             "A22X_CVR_TEST", "A22X_CVR_ERASE", "A22X_PFCC_1_OFF", "A22X_PFCC_2_OFF", "A22X_PFCC_3_OFF"
         },
         ["Calls"] = new List<string> { "A22X_SERVICE_INTERCOM", "A22X_MECH_CALL" },
-        // The inhibit panel; Aural Warning Inhibit (left outboard, beside probe heat) joins it
-        // and, as the one unguarded switch, comes first.
+        // The inhibit panel; Aural Warning Inhibit (left outboard, beside probe heat) joins it,
+        // last; the Glideslope Inhibit is the one unguarded switch, so it comes first.
         ["TAWS"] = new List<string>
         {
             "A22X_TAWS_GS_INHIBIT", "A22X_TAWS_GEAR_INHIBIT", "A22X_TAWS_TERRAIN_INHIBIT",
