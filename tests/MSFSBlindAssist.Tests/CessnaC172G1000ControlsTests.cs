@@ -43,6 +43,8 @@ public class CessnaC172G1000ControlsTests
         "ELECTRICAL_BREAKER_BTN_BREAKER_PANELS_LTS", "ELECTRICAL_BREAKER_BTN_BREAKER_PITOT_HEAT",
         "ELECTRICAL_BREAKER_BTN_BREAKER_RECOG", "ELECTRICAL_BREAKER_BTN_BREAKER_STROBE_LTS",
         "ELECTRICAL_BREAKER_BTN_BREAKER_WARN", "ELECTRICAL_BREAKER_BTN_BREAKER_XPNDR",
+        "PNEUMATICS_IE_PNEUMATICS_LEVER_VALVE_HOTAIRVALVE", "PNEUMATICS_IE_PNEUMATICS_LEVER_VALVE_COCKPITVALVE",
+        "SAFETY_ELT_1", "AIRCRAFT_DOOR_WINDOW_PILOT", "AIRCRAFT_DOOR_WINDOW",
     };
 
     private static readonly CessnaC172G1000Definition Def = new();
@@ -289,6 +291,104 @@ public class CessnaC172G1000ControlsTests
             var names = Def.GetPanelControls()[panel].Select(k => Def.GetVariables()[k].DisplayName).ToList();
             Assert.Equal(names.Count, names.Distinct().Count());
         }
+    }
+
+    // A breaker that pops by itself is spoken; the first reading after a load is where it stands.
+    [Theory]
+    [InlineData("C172G_CB_FUELPUMP", true, "Fuel Pump breaker popped")]
+    [InlineData("C172G_CB_FUELPUMP", false, "Fuel Pump breaker in")]
+    [InlineData("C172G_CB_ESS_PFD", true, "Essential Bus PFD breaker popped")]
+    [InlineData("C172G_CB_AVN1_PFD", true, "Avionics Bus 1 PFD breaker popped")]
+    [InlineData("C172G_CB_AVN1_NAV1", false, "Avionics Bus 1 Nav 1 breaker in")]
+    [InlineData("C172G_CB_RECOG", true, "Taxi Light breaker popped")]
+    public void A_breaker_change_is_spoken_by_name_and_bus_where_names_repeat(string key, bool pulled, string spoken)
+    {
+        Assert.Equal(spoken, CessnaC172G1000Definition.DescribeBreaker(key, pulled));
+    }
+
+    [Fact]
+    public void Only_a_change_after_the_first_reading_is_spoken_and_the_combo_still_refreshes()
+    {
+        var def = new CessnaC172G1000Definition();
+        var speech = new GatedSpeechCapture();
+
+        Assert.False(def.ProcessSimVarUpdate("C172G_CB_XPNDR", 0, speech));   // false: MainForm refreshes the combo
+        Assert.False(def.ProcessSimVarUpdate("C172G_CB_XPNDR", 0, speech));
+        Assert.Empty(speech.All);
+
+        def.ProcessSimVarUpdate("C172G_CB_XPNDR", 1, speech);
+        def.ProcessSimVarUpdate("C172G_CB_XPNDR", 1, speech);
+        def.ProcessSimVarUpdate("C172G_CB_XPNDR", 0, speech);
+        Assert.Equal(new[] { "Transponder breaker popped", "Transponder breaker in" }, speech.All);
+
+        def.OnSimContextReset();
+        def.ProcessSimVarUpdate("C172G_CB_XPNDR", 1, speech);   // a new flight's first reading
+        Assert.Equal(2, speech.All.Count);
+    }
+
+    [Fact]
+    public void The_pilots_own_pull_is_silent_and_a_later_pop_still_speaks()
+    {
+        var def = new CessnaC172G1000Definition();
+        var speech = new GatedSpeechCapture();
+        def.ProcessSimVarUpdate("C172G_CB_FLAP", 0, speech);
+
+        speech.Suppressed = true;   // as MainForm sets it while the pilot's combo set echoes back (CORE-8)
+        def.ProcessSimVarUpdate("C172G_CB_FLAP", 1, speech);
+        speech.Suppressed = false;
+        def.ProcessSimVarUpdate("C172G_CB_FLAP", 0, speech);
+
+        Assert.Equal(new[] { "Flaps breaker in" }, speech.All);
+    }
+
+    // C172-9: the cabin levers are written and delivered by SimConnect in percent (live: 50 sent,
+    // 50 delivered). Keyed on the 0-1 fraction the Coherent B: read shows, every delivery read as
+    // past fully open and the combo snapped back to Open after each pick.
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(50, 50)]       // what SimConnect delivered after a Half open pick
+    [InlineData(75, 75)]
+    [InlineData(30, 25)]       // a lever left between steps reads its nearest step
+    [InlineData(90, 100)]
+    [InlineData(120, 100)]
+    public void A_cabin_lever_reads_in_percent_to_the_nearest_quarter(double percent, double position)
+    {
+        Assert.Equal(position, CessnaC172G1000Definition.LeverPosition(percent));
+        Assert.Equal(position, Def.GetVariables()["C172G_CABIN_HEAT"].DescriptionKeyFor(percent));
+    }
+
+    [Fact]
+    public void A_cabin_lever_step_is_written_as_the_percent_it_reads_back()
+    {
+        var heat = Def.GetVariables()["C172G_CABIN_HEAT"];
+        Assert.Equal(new double[] { 0, 25, 50, 75, 100 }, heat.ValueDescriptions.Keys.Order());
+        Assert.All(heat.ValueDescriptions.Keys, step => Assert.Equal(step, heat.DescriptionKeyFor(step)));
+        Assert.Equal("PNEUMATICS_IE_PNEUMATICS_LEVER_VALVE_HOTAIRVALVE",
+            CessnaC172G1000Definition.SwitchInputEvents["C172G_CABIN_HEAT"]);
+    }
+
+    [Fact]
+    public void The_windows_read_where_they_are_and_the_elt_offers_on_and_arm()
+    {
+        var vars = Def.GetVariables();
+        Assert.Equal("INTERACTIVE POINT OPEN:4", vars["C172G_PILOT_WINDOW"].Name);
+        Assert.Equal(SimVarType.SimVar, vars["C172G_PILOT_WINDOW"].Type);
+        Assert.Equal(1, vars["C172G_PASSENGER_WINDOW"].DescriptionKeyFor(0.98));
+        Assert.Equal(0, vars["C172G_PASSENGER_WINDOW"].DescriptionKeyFor(0.04));
+        Assert.Equal(new[] { "On", "Arm" }, vars["C172G_ELT"].ValueDescriptions.OrderBy(p => p.Key).Select(p => p.Value));
+    }
+
+    // C172-8: writing the cabin door or its handle put the pilot outside the aircraft.
+    [Fact]
+    public void The_cabin_door_and_its_handle_are_never_written()
+    {
+        var written = CessnaC172G1000Definition.SwitchInputEvents.Values
+            .Concat(CessnaC172G1000Definition.CoverInputEvents.Values)
+            .Concat(CessnaC172G1000Definition.BreakerInputEvents.Values)
+            .Concat(Def.GetVariables().Values.Select(v => v.Name));
+
+        Assert.DoesNotContain("INSTRUMENT_DOOR_LEFT", written);
+        Assert.DoesNotContain("UNKNOWN_DOOR_HANDLE_1", written);
     }
 
     [Fact]

@@ -61,6 +61,11 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
         ["C172_PITOT_HEAT_STATE"] = "DEICE_PITOT_1",
         ["C172_PARKING_BRAKE_STATE"] = "LANDING_GEAR_PARKINGBRAKE",
         ["C172G_ALT_STATIC_STATE"] = "SAFETY_ALTERNATE_STATIC_AIR",
+        ["C172G_ELT"] = "SAFETY_ELT_1",
+        ["C172G_PILOT_WINDOW"] = "AIRCRAFT_DOOR_WINDOW_PILOT",
+        ["C172G_PASSENGER_WINDOW"] = "AIRCRAFT_DOOR_WINDOW",
+        ["C172G_CABIN_HEAT"] = "PNEUMATICS_IE_PNEUMATICS_LEVER_VALVE_HOTAIRVALVE",
+        ["C172G_CABIN_AIR"] = "PNEUMATICS_IE_PNEUMATICS_LEVER_VALVE_COCKPITVALVE",
     };
 
     /// <summary>GFC 700 panel buttons and the bezel key each one presses.</summary>
@@ -142,6 +147,12 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
         string name, string panel) =>
         ($"C172G_CB_{catalogName}", $"ELECTRICAL_BREAKER_BTN_BREAKER_{catalogName}", name, panel);
 
+    private const string CabinPanel = "Cabin Controls";
+    private const string EltPanel = "ELT";
+
+    /// <summary>Each breaker's last reading, so a change can be told from the first one. UI thread only.</summary>
+    private readonly Dictionary<string, bool> _breakerPulled = new();
+
     /// <summary>The autopilot hotkeys and the key each presses (the base class sends untested K: events).</summary>
     private static readonly IReadOnlyDictionary<HotkeyAction, string> AutopilotHotkeys = new Dictionary<HotkeyAction, string>
     {
@@ -217,6 +228,20 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
         foreach (var b in Breakers)
             v[b.Key] = InputEventState(b.InputEvent, b.Name, new() { [0] = "In", [1] = "Pulled" });
 
+        // ---------- Cabin ----------
+        // The windows swing open over about a second (measured); read where each one is, the pilot's
+        // `INTERACTIVE POINT OPEN:4`, the other 5. The cabin door is never here (C172-8).
+        v["C172G_CABIN_HEAT"] = Lever(SwitchInputEvents["C172G_CABIN_HEAT"], "Cabin Heat");
+        v["C172G_CABIN_AIR"] = Lever(SwitchInputEvents["C172G_CABIN_AIR"], "Cabin Air");
+        v["C172G_PILOT_WINDOW"] = Window("INTERACTIVE POINT OPEN:4", "Pilot Window");
+        v["C172G_PASSENGER_WINDOW"] = Window("INTERACTIVE POINT OPEN:5", "Passenger Window");
+
+        // ---------- ELT ----------
+        // 0 ON transmits (`ELT ACTIVATED` 1), 1 ARM is where it rests and stops a transmission, the
+        // real reset. The switch also holds a 2 that stopped a transmission too; its name is not known,
+        // so it is not offered.
+        v["C172G_ELT"] = InputEventState("SAFETY_ELT_1", "ELT", new() { [0] = "On", [1] = "Arm" });
+
         // ---------- GFC 700 ----------
         // The modes the base class already reads (AP, HDG, ALT, NAV, APR, BC, VS) keep their keys and
         // SimVars; the GFC 700 adds the flight director, FLC, VNV and the nose wheel.
@@ -276,6 +301,36 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
         ValueDescriptions = positions
     };
 
+    /// <summary>
+    /// A push-pull cabin lever in quarter steps. Its input event takes and SimConnect reads back the
+    /// opening in PERCENT (live: 50 written, 50 delivered). The Coherent debugger's `B:` read shows the
+    /// same lever as a fraction (0.5); a combo keyed on that fraction read every SimConnect delivery as
+    /// past fully open and snapped back to Open after each pick (C172-9).
+    /// </summary>
+    private static SimVarDefinition Lever(string inputEvent, string displayName)
+    {
+        var lever = InputEventState(inputEvent, displayName, new()
+        {
+            [0] = "Closed", [25] = "Quarter open", [50] = "Half open", [75] = "Three quarters open", [100] = "Open"
+        });
+        lever.ValueToDescriptionKey = LeverPosition;
+        return lever;
+    }
+
+    /// <summary>The nearest quarter step of a lever's opening in percent. Pure so the suite can pin it.</summary>
+    internal static double LeverPosition(double percent) => Math.Round(Math.Clamp(percent, 0, 100) / 25) * 25;
+
+    private static SimVarDefinition Window(string simVar, string displayName) => new()
+    {
+        Name = simVar,
+        DisplayName = displayName,
+        Type = SimVarType.SimVar,
+        Units = "percent over 100",
+        UpdateFrequency = UpdateFrequency.OnRequest,
+        ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" },
+        ValueToDescriptionKey = open => open >= 0.5 ? 1 : 0
+    };
+
     private static SimVarDefinition AutopilotMode(string simVar, string displayName) => new()
     {
         Name = simVar,
@@ -313,7 +368,9 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
     {
         var structure = base.GetPanelStructure();
         structure["Electrical"].Add("Standby Battery");
+        structure["Safety"].Add(EltPanel);
         structure["Autopilot"] = new List<string> { AutopilotPanel };
+        structure["Cabin"] = new List<string> { CabinPanel };
         structure[BreakersSection] = new List<string>
             { EssentialBreakers, Avionics1Breakers, Avionics2Breakers, SystemBreakers };
         structure["Walkaround"] = new List<string> { "Covers" };
@@ -339,6 +396,9 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
         controls["Covers"] = new List<string> { "C172G_COVER_ENGINE", "C172G_COVER_PITOT", "C172G_COVER_STATIC" };
         foreach (var panel in new[] { EssentialBreakers, Avionics1Breakers, Avionics2Breakers, SystemBreakers })
             controls[panel] = Breakers.Where(b => b.Panel == panel).Select(b => b.Key).ToList();
+        controls[CabinPanel] = new List<string>
+            { "C172G_CABIN_HEAT", "C172G_CABIN_AIR", "C172G_PILOT_WINDOW", "C172G_PASSENGER_WINDOW" };
+        controls[EltPanel] = new List<string> { "C172G_ELT" };
         return controls;
     }
 
@@ -410,6 +470,61 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
             ? $"{varDef.DisplayName} is not in this aircraft's cockpit."
             : $"{varDef.DisplayName} is not available yet. Try again in a few seconds.");
         return false;
+    }
+
+    /// <summary>
+    /// A breaker that pops (or goes back in) by itself is spoken; the panel's own pulls are not, since
+    /// MainForm suppresses the announcer around this call while the pilot's combo set is echoing back
+    /// (the time-only echo window, CORE-8/9; its entry simply ages out, as nothing else consumes it for
+    /// a variable that is not announced). Returns false, never true: true would skip the generic path's
+    /// refresh of the breaker's combo, which would then keep saying "In" for a popped breaker, and the
+    /// generic path speaks nothing for a breaker, which is neither announced nor continuous.
+    /// </summary>
+    public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
+    {
+        if (BreakerInputEvents.ContainsKey(varName))
+        {
+            bool pulled = value >= 0.5;
+            bool known = _breakerPulled.TryGetValue(varName, out bool was);
+            _breakerPulled[varName] = pulled;
+            if (known && was != pulled) announcer.Announce(DescribeBreaker(varName, pulled));
+            return false;
+        }
+        return base.ProcessSimVarUpdate(varName, value, announcer);
+    }
+
+    /// <summary>
+    /// "Fuel Pump breaker popped", "... breaker in". The three names on two buses (PFD, ADC, Nav 1) say
+    /// which bus. Pure so the suite can pin it.
+    /// </summary>
+    internal static string DescribeBreaker(string key, bool pulled)
+    {
+        var breaker = Breakers.First(b => b.Key == key);
+        string name = Breakers.Count(b => b.Name == breaker.Name) > 1
+            ? $"{breaker.Panel[..^" Breakers".Length]} {breaker.Name}"
+            : breaker.Name;
+        return $"{name} breaker {(pulled ? "popped" : "in")}";
+    }
+
+    /// <summary>A new flight's first breaker readings are where they stand, not changes.</summary>
+    public override void ResetAnnouncementBaselines()
+    {
+        base.ResetAnnouncementBaselines();
+        _breakerPulled.Clear();
+    }
+
+    /// <summary>A flight loaded or reset re-reads every breaker; nothing standing is a change.</summary>
+    public override void OnSimContextReset()
+    {
+        base.OnSimContextReset();
+        _breakerPulled.Clear();
+    }
+
+    /// <summary>Coming back to this aircraft later, its first breaker readings are not changes either.</summary>
+    public override void OnSwitchedAway()
+    {
+        base.OnSwitchedAway();
+        _breakerPulled.Clear();
     }
 
     /// <summary>
