@@ -201,6 +201,35 @@ public class CessnaC172G1000ControlsTests
         }
     }
 
+    // The Starter is one turn of the magneto key to START (4), which springs back by itself: nothing
+    // reachable holds it there (C172-6), so it is a button, never a hold.
+    [Fact]
+    public void The_starter_is_a_button_that_turns_the_key_to_start()
+    {
+        var d = Def.GetVariables()["C172_STARTER_SET"];
+        Assert.Equal(SimVarType.InputEvent, d.Type);
+        Assert.Equal("ENGINE_MAGNETO_1", d.Name);
+        Assert.True(d.RenderAsButton);
+        Assert.False(SimConnectManager.IsInputEventRead(d));
+    }
+
+    [Fact]
+    public void The_backup_start_lands_after_the_bounce_and_before_the_spring_back()
+    {
+        // Measured: a single START sometimes bounced to BOTH 150-180 ms in; START springs back 3.0-3.6 s in.
+        Assert.InRange(CessnaC172G1000Definition.StarterBackupMs, 181, 2999);
+    }
+
+    [Fact]
+    public void A_start_before_the_catalog_arrives_is_refused_aloud()
+    {
+        var speech = new GatedSpeechCapture();
+
+        Assert.True(Def.HandleUIVariableSet("C172_STARTER_SET", 1, Def.GetVariables()["C172_STARTER_SET"],
+            new SimConnectManager(IntPtr.Zero), speech));
+        Assert.Contains("Starter is not available yet. Try again in a few seconds.", speech.All);
+    }
+
     [Fact]
     public void The_autopilot_is_the_gfc_700_and_the_kap140_panel_is_gone()
     {

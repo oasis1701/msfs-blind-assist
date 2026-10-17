@@ -32,6 +32,16 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
 
     private const string AutopilotPanel = "GFC 700";
 
+    /// <summary>The magneto key, which the Starter turns to START (4).</summary>
+    private const string StarterInputEvent = "ENGINE_MAGNETO_1";
+    private const double KeyStart = 4;
+
+    /// <summary>
+    /// The Starter's second START, this long after the first (C172-6): after a single set has bounced
+    /// back to BOTH, which it sometimes does 150-180 ms in, and long before the 3 s spring-back.
+    /// </summary>
+    internal const int StarterBackupMs = 250;
+
     /// <summary>Panel switches and the cockpit input event each one sets, with the combo's value.</summary>
     internal static readonly IReadOnlyDictionary<string, string> SwitchInputEvents = new Dictionary<string, string>
     {
@@ -103,6 +113,8 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
         // ---------- Engine and fuel ----------
         v["C172_MAGNETO"] = InputEventState("ENGINE_MAGNETO_1", "Magneto",
             new() { [0] = "Off", [1] = "Right", [2] = "Left", [3] = "Both" });
+        // The Starter turns that key to START, which springs back by itself (C172-6).
+        v["C172_STARTER_SET"] = KeyPress(StarterInputEvent, "Starter");
         v["C172_FUEL_PUMP_STATE"].Name = "FUELSYSTEM PUMP SWITCH:1";
         v["C172_FUEL_VALVE_STATE"].Name = "FUELSYSTEM VALVE SWITCH:1";
         v["C172_FUEL_SELECTOR"] = new SimVarDefinition
@@ -285,11 +297,11 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
 
         if (varKey == "C172_STARTER_SET")
         {
-            // START on the key. The cockpit springs it back to BOTH by itself after about 2 s, which
-            // started the engine first time once the covers were off (measured).
+            // START on the key, which cranks for about 3 s and springs back to BOTH by itself (C172-6).
             if ((simConnect.GetCachedVariableValue("C172G_COVER_ENGINE") ?? 0) > 0.5)
                 announcer.AnnounceImmediate("Engine cover installed");
-            SetInputEvent("ENGINE_MAGNETO_1", 4, varDef, simConnect, announcer);
+            if (SetInputEvent(StarterInputEvent, KeyStart, varDef, simConnect, announcer))
+                _ = SetStartAgainAsync(simConnect);
             return true;
         }
 
@@ -329,6 +341,17 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
             ? $"{varDef.DisplayName} is not in this aircraft's cockpit."
             : $"{varDef.DisplayName} is not available yet. Try again in a few seconds.");
         return false;
+    }
+
+    /// <summary>
+    /// The Starter's backup START, <see cref="StarterBackupMs"/> after the first, on the UI thread. It
+    /// puts back a key that bounced to BOTH; on a key still at START it changes nothing (a same-value set
+    /// neither shortens nor lengthens the crank, measured).
+    /// </summary>
+    private static async Task SetStartAgainAsync(SimConnectManager simConnect)
+    {
+        await Task.Delay(StarterBackupMs);
+        simConnect.TrySetInputEvent(StarterInputEvent, KeyStart);
     }
 
     /// <summary>
