@@ -32,7 +32,8 @@ Build: 28 September 2026 or later (the file version ends in `c4c09aae` or a late
 
 ### The window
 
-1. **Settle:** the File menu item is there only while the MD-11 is the selected aircraft.
+1. **Settle:** the File → First Officer item is read as "TFDi MD-11 First Officer" while the
+   MD-11 is the selected aircraft, and Shift+C (output mode) opens the same window.
 2. **Listen:** SimBrief loads by itself when the window opens. You should hear the transition
    altitude and level, "Takeoff flaps", the pressurization plan, then "SimBrief flight plan
    loaded". Each of those interrupts the one before it, so you may hear only the last. Note which

@@ -6,8 +6,8 @@ The pure logic has an xUnit suite (`tests/MSFSBlindAssist.Tests`, run by CI), bu
 SimConnect/UI paths cannot be unit-tested, so the repo owner verifies the two halves below
 against a live sim (MSFS 2020 or 2024).
 
-Open the window from **File → "PMDG 737 First Officer"** (above the 777 item) while the
-PMDG 737-800 is loaded. The window has two tabs: **Flows** and **Checklists**.
+Open the window with **Shift+C** in output mode (`]` then Shift+C), or from **File → First Officer**
+(read as "PMDG 737 First Officer"), while the PMDG 737-800 is loaded. The window has two tabs: **Flows** and **Checklists**.
 
 ---
 
@@ -172,11 +172,12 @@ read-back instrument only.
 ## Part D — FO coverage + menu visibility (2026-06-28)
 
 ### D1. Menu visibility (all aircraft)
-Each PMDG First Officer menu item is now gated to its own aircraft.
-- Load the PMDG 777 → Tools shows **"PMDG 777 First Officer"**, NOT "PMDG 737 First Officer".
-- Load the PMDG 737 → Tools shows **"PMDG 737 First Officer"**, NOT the 777 item.
-- Load an aircraft with no FO support (A320 FBW / HS787) → **no** FO item appears (the Fenix
-  and A380 show only their own items).
+The one File → First Officer item is read with the loaded aircraft's name (2026-10-17; until
+then each aircraft had its own item).
+- Load the PMDG 777 → the item is read as **"PMDG 777 First Officer"**, NOT "PMDG 737 First Officer".
+- Load the PMDG 737 → the item is read as **"PMDG 737 First Officer"**, NOT the 777's name.
+- Load an aircraft with no FO support (HS787) → **no** First Officer item appears, and Shift+C
+  says "No checklist for this aircraft." (every other aircraft reads its own name).
 - First Officer automation settings are a tab in **File → Settings…** and are visible for
   EVERY aircraft (the old aircraft-gated "First Officer Settings" menu item is retired).
 

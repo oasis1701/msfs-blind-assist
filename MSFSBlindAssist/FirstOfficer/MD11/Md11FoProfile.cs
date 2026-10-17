@@ -9,7 +9,7 @@ namespace MSFSBlindAssist.FirstOfficer.MD11;
 /// <summary>
 /// TFDi MD-11 First Officer profile. The executor owns its own switch logic (TFDi's decoded
 /// handler semantics, <see cref="Md11FoControls"/>) and sends through the live definition's ONE
-/// CEVENT bus, so the definition is passed in by the caller (<c>MainForm.ShowTfdiMd11FirstOfficerDialog</c>),
+/// CEVENT bus, so the definition is passed in by the caller (<c>Forms.FirstOfficer.FirstOfficerWindows.Create</c>),
 /// exactly as the A330 and iFly profiles take theirs.
 ///
 /// The evaluator is created ONCE and is also the executor's flight state (engine N2, on-ground):

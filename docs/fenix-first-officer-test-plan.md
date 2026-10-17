@@ -6,7 +6,8 @@ top of it as the first non-PMDG profile. There is no automated test project (Sim
 app), so the repo owner verifies the sections below against a live sim (MSFS 2020 or 2024)
 with the Fenix A320 loaded.
 
-Open the window from **File → "Fenix A320 First Officer"**. The window has two tabs:
+Open the window with **Shift+C** in output mode (`]` then Shift+C), or from **File → First Officer**
+(read as "Fenix A320 First Officer"). The window has two tabs:
 **Flows** and **Checklists** — same shared `FirstOfficerForm<TExec,TState>` UI as the PMDG
 777/737 windows.
 
@@ -380,10 +381,10 @@ PMDG 777/737 First Officers. Confirm nothing regressed in the shared form:
    present, Flows/Checklists behave as before (spot-check one flow, one checklist tick).
 2. Load the PMDG 777, open **"PMDG 777 First Officer"** — same spot-check.
 3. Switch between aircraft (PMDG 737 → Fenix → PMDG 777, etc.) and confirm each FO window
-   disposes/re-creates cleanly, and the File menu shows only the FO item(s) matching the
-   currently loaded aircraft (Fenix shows only "Fenix A320 First Officer"; PMDG 737 shows
-   only "PMDG 737 First Officer"; PMDG 777 shows only "PMDG 777 First Officer"; any other
-   aircraft — A320 FBW, HS787 — shows none; the A380 shows only its own). First Officer
+   disposes/re-creates cleanly, and the one File → First Officer item is read with the
+   currently loaded aircraft's name (Fenix "Fenix A320 First Officer", PMDG 737 "PMDG 737
+   First Officer", PMDG 777 "PMDG 777 First Officer", the A380 and A32NX their own), and is
+   absent on the HS787; Shift+C opens that aircraft's window. First Officer
    automation settings live in the always-visible **File → Settings… → First Officer** tab
    (no aircraft gating — the old standalone menu item is retired).
 

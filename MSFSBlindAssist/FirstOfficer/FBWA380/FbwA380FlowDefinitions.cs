@@ -576,7 +576,8 @@ public static class FbwA380FlowDefinitions
     // The power-down phase. PARKING deliberately leaves the aircraft POWERED (it selects
     // the APU generators and APU bleed on for the gate); this is where the jet actually
     // goes cold and dark. The content comes from the aircraft's own shipped reference text,
-    // Checklists/FBW_A380_Checklist.txt "[Securing the Aircraft]". The ORDER of the last four
+    // Checklists/FBW_A380_Checklist.txt "[Securing the Aircraft]" (retired 2026-10-17 with the text
+    // checklist window, FO-24; it is in git history). The ORDER of the last four
     // steps does not: that text lists external power BEFORE the APU master, while FlyByWire's A32NX
     // guide switches the APU master off, waits for the APU flap to close ("requires either APU or
     // external power"), then drops external power and the batteries. The owner chose that order

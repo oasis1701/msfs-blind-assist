@@ -17,7 +17,8 @@ public class FoA380SecureFlowTests
 {
     // The APU master goes off before external power, with the APU flap wait between them: FlyByWire's
     // own order, chosen by the owner for every Airbus on 2026-10-14 (FOA-10). The A380's shipped
-    // reference text (Checklists/FBW_A380_Checklist.txt) lists external power first; this was the
+    // reference text (Checklists/FBW_A380_Checklist.txt, retired 2026-10-17, in git history) lists
+    // external power first; this was the
     // order until then (SC_EXTPWR_OFF, SC_APU_OFF).
     private static readonly string[] ExpectedSecureIds =
     {

@@ -13,7 +13,8 @@ the STD button is possible) (see `docs/first-officer.md` for why). There is
 no automated test project for SimConnect/UI behavior, so the repo owner verifies this against a
 live sim (MSFS 2020 or 2024) with the iFly 737 MAX8 loaded.
 
-Open the window from **File → "iFly 737 MAX8 First Officer"**. The window has two tabs:
+Open the window with **Shift+C** in output mode (`]` then Shift+C), or from **File → First Officer**
+(read as "iFly 737 MAX8 First Officer"). The window has two tabs:
 **Flows** and **Checklists**, identical in layout to every other First Officer window.
 
 **This test plan carries LIVE-VERIFY items called out inline — each one is a place where the
@@ -60,15 +61,16 @@ still open is whether that one write reaches BOTH altimeters — see D4.
 
 ## Part A — Window lifecycle
 
-1. Load the iFly 737 MAX8. Open **File → "iFly 737 MAX8 First Officer"** — title reads
+1. Load the iFly 737 MAX8. Press Shift+C (or **File → First Officer**, read as "iFly 737 MAX8
+   First Officer") — title reads
    **"First Officer — iFly 737 MAX8"**.
 2. Switch to another aircraft and back → the window disposes and re-creates cleanly (same as
    every other FO window).
 3. With the window open, disconnect/reconnect SimConnect (or restart the iFly plugin) →
    the window re-wires; flows/checklists keep driving switches once the SDK shared-memory
    client reports ready again.
-4. Confirm no other aircraft's File menu shows the iFly item, and the iFly's File menu shows
-   only its own First Officer item (not PMDG 737/777, Fenix, or A380).
+4. Confirm no other aircraft's First Officer item is read as "iFly 737 MAX8 First Officer", and
+   the iFly's item is read with its own name (not PMDG 737/777, Fenix, or A380).
 
 ---
 

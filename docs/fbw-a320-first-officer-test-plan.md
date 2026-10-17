@@ -11,7 +11,8 @@ suppressed-announcer guard so the FO's own step narration stays the single voice
 automated test project (SimConnect/UI app), so the repo owner verifies the sections below against
 a live sim (MSFS 2020 or 2024) with the FlyByWire A32NX loaded.
 
-Open the window from **File → "FlyByWire A32NX First Officer"**. The window has two tabs:
+Open the window with **Shift+C** in output mode (`]` then Shift+C), or from **File → First Officer**
+(read as "FlyByWire A32NX First Officer"). The window has two tabs:
 **Flows** and **Checklists** — the same shared `FirstOfficerForm<TExec,TState>` UI as the PMDG
 777/737, Fenix, and A380 windows.
 
@@ -69,15 +70,15 @@ system is also silently wrong:
 
 ## Part A — Window & gating
 
-1. Load the FlyByWire A32NX. Confirm **File → "FlyByWire A32NX First Officer"** appears. (First
-   Officer automation settings live in **File → Settings… → First Officer**, a tab visible for
-   every aircraft.)
-2. Open the window — confirm it has exactly two tabs, **Flows** and **Checklists**, matching the
-   other FO windows' layout.
+1. Load the FlyByWire A32NX. Confirm **File → First Officer** appears, read as "FlyByWire A32NX
+   First Officer". (First Officer automation settings live in **File → Settings… → First
+   Officer**, a tab visible for every aircraft.)
+2. Open the window with Shift+C — confirm it has exactly two tabs, **Flows** and **Checklists**,
+   matching the other FO windows' layout. Escape returns focus to the sim.
 3. Switch to each of the other aircraft in turn (Fenix A320, FBW A380, PMDG 737, PMDG 777, any
-   other loaded aircraft e.g. HS787) and confirm **"FlyByWire A32NX First Officer" is NOT
-   visible** on any of them — only its own aircraft-specific FO item(s) show.
-4. Switch back to the A32NX — confirm the menu item reappears.
+   other loaded aircraft e.g. HS787) and confirm the First Officer item is read with THAT
+   aircraft's name, never "FlyByWire A32NX First Officer", and is absent on the HS787.
+4. Switch back to the A32NX — confirm the item is read as "FlyByWire A32NX First Officer" again.
 
 ---
 

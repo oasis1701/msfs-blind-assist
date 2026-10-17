@@ -12,7 +12,7 @@ namespace MSFSBlindAssist.FirstOfficer.FBWA320;
 /// the FBW A320 concretes. Unlike the Fenix/PMDG profiles, the executor also needs the live
 /// <see cref="FlyByWireA320Definition"/> instance (its writes delegate to the def's verified
 /// <c>ApplyUIVariable</c> panel path), so it is passed into this profile's constructor by the
-/// caller (<c>MainForm.ShowFbwA320FirstOfficerDialog</c>) rather than resolved here — the
+/// caller (<c>Forms.FirstOfficer.FirstOfficerWindows.Create</c>) rather than resolved here — the
 /// <see cref="IFoProfile{TExec,TState}"/> contract only ever hands us a
 /// <see cref="SimConnectManager"/>.
 /// </summary>
