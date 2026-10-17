@@ -52,6 +52,24 @@ internal sealed record LocationQuerySettings(
 /// Location Info window) the full lists.</summary>
 internal sealed record LocationReport(WhereYouAre Where, PlaceHit? Nearest, LocationData? Details);
 
+/// <summary>A city and where it is.</summary>
+internal sealed record CityPoint(string Name, string State, string Country, double Lat, double Lon);
+
+/// <summary>
+/// For the Volanta traffic list's major-city mode: the water or land at a position, and the nearest major
+/// city (null when none is in range). The city's position is kept, so a moving aircraft's distance and
+/// direction from it are worked out again at every update (<see cref="TextAt"/>) without another lookup.
+/// </summary>
+internal sealed record TrafficCityReport(WhereYouAre Where, CityPoint? City)
+{
+    /// <summary>The "Location:" for an aircraft now at the given position (<see cref="LocationPhrases.TrafficCityPlace"/>).</summary>
+    internal string? TextAt(double lat, double lon, bool kilometres) =>
+        LocationPhrases.TrafficCityPlace(Where, City is { } c
+            ? new PlaceHit(c.Name, c.State, c.Country, LocationGeometry.GreatCircleNm(lat, lon, c.Lat, c.Lon),
+                LocationGeometry.BearingTrue(lat, lon, c.Lat, c.Lon))
+            : null, kilometres);
+}
+
 /// <summary>
 /// Answers Output C and Location Info from the local database: no network at lookup time. A
 /// position is classified lake first (Natural Earth's states cover the Great Lakes), then land
@@ -95,6 +113,151 @@ internal sealed class OfflineLocationService
     internal LocationReport? GetLocationInfo(double lat, double lon, LocationQuerySettings settings) =>
         _store.IsAvailable ? _store.Read(c => Report(c, lat, lon, settings, details: true)) : null;
 
+    /// <summary>
+    /// For the Volanta traffic list: where each of many positions is, in one read of the store (one
+    /// connection, the admin names loaded once). Only what <see cref="LocationPhrases.TrafficPlace"/> says:
+    /// the water or the land, the nearest town within the Nearby range, the state and country. No nearest-land
+    /// or coast search (at sea that one reaches 3,000 km), only the shore band's 2 km that tells an island or
+    /// coastal airport from open sea. One report per position, in order; null when no usable database is
+    /// installed.
+    /// </summary>
+    internal IReadOnlyList<LocationReport>? GetPlaces(IReadOnlyList<(double Lat, double Lon)> positions, LocationQuerySettings settings) =>
+        _store.IsAvailable
+            ? _store.Read(c =>
+            {
+                var admins = AdminNames.Load(c);
+                return (IReadOnlyList<LocationReport>)positions.Select(p => PlaceReport(c, admins, p.Lat, p.Lon, settings)).ToList();
+            })
+            : null;
+
+    private static LocationReport PlaceReport(SqliteConnection c, AdminNames admins, double lat, double lon, LocationQuerySettings s)
+    {
+        lon = LocationGrid.NormalizeLon(lon);
+        var hits = ShapesAt(c, lat, lon);
+        var (lake, land, sea) = TrafficSurface(c, hits, lat, lon);
+
+        var nearby = Places(c, lat, lon, s.Km(s.NearbyRange), LocationCategory.Town, LocationCategory.Village)
+            .OrderBy(p => p.DistanceNm).ToList();
+        var nearest = nearby.FirstOrDefault();
+        var (state, country) = AreaOf(hits, land, nearby, nearest, admins);
+        var where = new WhereYouAre
+        {
+            Water = lake ? WaterKind.Lake : sea ? WaterKind.Sea : WaterKind.None,
+            WaterName = lake ? hits.Lake!.Name : sea ? hits.Marine!.Name : null,
+            State = state,
+            Country = country,
+        };
+        return new LocationReport(where, nearest is null ? null : ToHit(nearest, admins), null);
+    }
+
+    /// <summary>Lake, land or sea for a traffic line, as <see cref="Report"/> decides it, the shore band
+    /// included, but without its nearest-land or coast search.</summary>
+    private static (bool Lake, bool Land, bool Sea) TrafficSurface(SqliteConnection c, ShapeHits hits, double lat, double lon)
+    {
+        bool lake = hits.Lake is not null;
+        bool land = !lake && hits.State is not null;
+        bool sea = !lake && !land && hits.Marine is not null;
+        // Within the shore band a "sea" position is ashore, as in Report.
+        if (sea && NearestCoast(c, lat, lon, ShoreBandKm) is not null) sea = false;
+        return (lake, land, sea);
+    }
+
+    /// <summary>
+    /// For the Volanta traffic list's major-city mode: the nearest major city to each of many positions, in one
+    /// read of the store. A major city is what the GeoNames tab says: at least its Minimum Population for Major
+    /// Cities, within its Major Cities Range. GeoNames' sections of a city (PPLX: East Village in Manhattan,
+    /// South Ozone Park at JFK) have their own populations and are never one (the owner's choice, 2026-10-15).
+    /// One report per position, in order; null when no usable database is installed.
+    /// </summary>
+    internal IReadOnlyList<TrafficCityReport>? GetMajorCities(IReadOnlyList<(double Lat, double Lon)> positions, LocationQuerySettings settings) =>
+        _store.IsAvailable
+            ? _store.Read(c =>
+            {
+                var admins = AdminNames.Load(c);
+                var sections = FeatureCodeIds(c, CitySectionCode);
+                return (IReadOnlyList<TrafficCityReport>)positions
+                    .Select(p => MajorCityReport(c, admins, sections, p.Lat, p.Lon, settings)).ToList();
+            })
+            : null;
+
+    /// <summary>GeoNames' feature code for a section of a populated place: a district or neighbourhood.</summary>
+    private const string CitySectionCode = "PPLX";
+
+    /// <summary>The major-city search widens through these radii and stops at the first that holds a city: the
+    /// nearest within a radius is the nearest of all. Where cities are dense the first step finds one, and
+    /// where they are sparse each wider step reads few rows.</summary>
+    private static readonly double[] CitySearchStepsKm = { 25, 50, 100, 200 };
+
+    private static TrafficCityReport MajorCityReport(SqliteConnection c, AdminNames admins, HashSet<int> sections,
+        double lat, double lon, LocationQuerySettings s)
+    {
+        lon = LocationGrid.NormalizeLon(lon);
+        var hits = ShapesAt(c, lat, lon);
+        var (lake, land, sea) = TrafficSurface(c, hits, lat, lon);
+
+        FoundPlace? city = null;
+        double rangeKm = s.Km(s.MajorRange);
+        foreach (double km in CitySearchStepsKm.Where(k => k < rangeKm).Append(rangeKm))
+        {
+            city = Places(c, lat, lon, km, s.MajorPopulation, LocationCategory.Town)
+                .Where(p => !sections.Contains(p.Code)).MinBy(p => p.DistanceNm);
+            if (city is not null) break;
+        }
+
+        // The state and country are said only when no city is in range: the city has its own.
+        string? state = null, country = null;
+        if (city is null)
+        {
+            var nearby = Places(c, lat, lon, s.Km(s.NearbyRange), LocationCategory.Town, LocationCategory.Village)
+                .OrderBy(p => p.DistanceNm).ToList();
+            (state, country) = AreaOf(hits, land, nearby, nearby.FirstOrDefault(), admins);
+        }
+        var where = new WhereYouAre
+        {
+            Water = lake ? WaterKind.Lake : sea ? WaterKind.Sea : WaterKind.None,
+            WaterName = lake ? hits.Lake!.Name : sea ? hits.Marine!.Name : null,
+            State = state,
+            Country = country,
+        };
+        CityPoint? point = null;
+        if (city is not null)
+        {
+            var (cityState, cityCountry) = admins.Of(city.AdminId);
+            point = new CityPoint(city.Name, cityState, cityCountry, city.Lat, city.Lon);
+        }
+        return new TrafficCityReport(where, point);
+    }
+
+    /// <summary>The ids the database gives a GeoNames feature code (the <c>feature_code</c> table).</summary>
+    private static HashSet<int> FeatureCodeIds(SqliteConnection c, string code)
+    {
+        var ids = new HashSet<int>();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT id FROM feature_code WHERE code = $code";
+        cmd.Parameters.AddWithValue("$code", code);
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) ids.Add(r.GetInt32(0));
+        return ids;
+    }
+
+    /// <summary>The area in GeoNames' spelling, as C names places: over land the nearest town inside the same
+    /// state outline, else the outline's own name; over water the nearest town. Never Natural Earth's
+    /// gn_a1_code: its French department numbers collide with GeoNames' region numbers (LOC-9).</summary>
+    private static (string? State, string? Country) AreaOf(ShapeHits hits, bool land, List<FoundPlace> nearby,
+        FoundPlace? nearest, AdminNames admins)
+    {
+        var areaSource = land
+            ? nearby.FirstOrDefault(p => LocationGeometry.InPolygon(hits.State!.Rings, p.Lat, p.Lon))
+            : nearest;
+        if (areaSource is not null)
+        {
+            var (s1, c1) = admins.Of(areaSource.AdminId);
+            return (s1.Length > 0 ? s1 : null, c1.Length > 0 ? c1 : null);
+        }
+        // No town inside this state outline within range (a remote area): the outline's own name.
+        return land ? admins.ForStatePolygon(hits.State!.Name, hits.State.Extra) : (null, null);
+    }
+
     private static LocationReport Report(SqliteConnection c, double lat, double lon, LocationQuerySettings s, bool details)
     {
         lon = LocationGrid.NormalizeLon(lon);
@@ -125,24 +288,7 @@ internal sealed class OfflineLocationService
             .OrderBy(p => p.DistanceNm).ToList();
         var nearest = nearby.FirstOrDefault();
         PlaceHit? place = nearest is null ? null : ToHit(nearest, admins);
-
-        // The area in GeoNames' spelling, as C names places. Never Natural Earth's gn_a1_code:
-        // its French department numbers collide with GeoNames' region numbers (LOC-9).
-        string? state = null, country = null;
-        var areaSource = land
-            ? nearby.FirstOrDefault(p => LocationGeometry.InPolygon(hits.State!.Rings, p.Lat, p.Lon))
-            : nearest;
-        if (areaSource is not null)
-        {
-            var (s1, c1) = admins.Of(areaSource.AdminId);
-            state = s1.Length > 0 ? s1 : null;
-            country = c1.Length > 0 ? c1 : null;
-        }
-        else if (land)
-        {
-            // No town inside this state outline within range (a remote area): the outline's own name.
-            (state, country) = admins.ForStatePolygon(hits.State!.Name, hits.State.Extra);
-        }
+        var (state, country) = AreaOf(hits, land, nearby, nearest, admins);
 
         var where = new WhereYouAre
         {
@@ -245,7 +391,8 @@ internal sealed class OfflineLocationService
 
     // ---- places ----
 
-    private sealed record FoundPlace(string Name, double Lat, double Lon, int Population, int AdminId, double DistanceNm, double BearingTrue);
+    private sealed record FoundPlace(string Name, double Lat, double Lon, int Population, int AdminId, double DistanceNm, double BearingTrue,
+        int Code);
 
     private static List<FoundPlace> Places(SqliteConnection c, double lat, double lon, double radiusKm, params LocationCategory[] categories) =>
         Places(c, lat, lon, radiusKm, 0, categories);
@@ -256,7 +403,7 @@ internal sealed class OfflineLocationService
         var found = new List<FoundPlace>();
         if (radiusKm <= 0) return found;
         using var cmd = c.CreateCommand();
-        cmd.CommandText = "SELECT cell, lat_off, lon_off, pop, admin, name FROM place WHERE cat = $cat AND cell BETWEEN $from AND $to AND pop >= $min";
+        cmd.CommandText = "SELECT cell, lat_off, lon_off, pop, admin, name, code FROM place WHERE cat = $cat AND cell BETWEEN $from AND $to AND pop >= $min";
         var pCat = cmd.Parameters.Add("$cat", SqliteType.Integer);
         var pFrom = cmd.Parameters.Add("$from", SqliteType.Integer);
         var pTo = cmd.Parameters.Add("$to", SqliteType.Integer);
@@ -274,7 +421,7 @@ internal sealed class OfflineLocationService
                 double nm = LocationGeometry.GreatCircleNm(lat, lon, pLat, pLon);
                 if (nm > radiusNm) continue;
                 found.Add(new FoundPlace(r.GetString(5), pLat, pLon, r.GetInt32(3), r.GetInt32(4), nm,
-                    LocationGeometry.BearingTrue(lat, lon, pLat, pLon)));
+                    LocationGeometry.BearingTrue(lat, lon, pLat, pLon), r.GetInt32(6)));
             }
         }
         return found;

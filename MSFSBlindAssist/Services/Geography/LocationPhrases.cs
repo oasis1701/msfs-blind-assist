@@ -79,7 +79,7 @@ internal static class LocationPhrases
     internal static string PlaceDistance(double nm, bool kilometres) =>
         Inv($"{ToUnit(nm, kilometres):0.0} {UnitWord(kilometres)}");
 
-    /// <summary>A nearest-land or coast distance: one decimal under 10, whole numbers above ("368 miles").</summary>
+    /// <summary>A nearest-land, coast or major-city distance: one decimal under 10, whole numbers above ("368 miles").</summary>
     internal static string EdgeDistance(double nm, bool kilometres)
     {
         double v = ToUnit(nm, kilometres);
@@ -134,6 +134,46 @@ internal static class LocationPhrases
         string? area = StateAndCountry(where);
         if (area is not null) s += ", " + area;
         return s + coast;
+    }
+
+    /// <summary>
+    /// The Volanta traffic list's "Location:", where another aircraft is: the place C would name, without
+    /// C's distance, direction or coast (the owner's choice, 2026-10-15). Over land the nearest town with its
+    /// state and country ("Pike Lake, Wisconsin, United States"), or the state and country alone with no town
+    /// in range; over water the water, with the nearest town when one is in range ("over Lake Michigan, near
+    /// Milwaukee, Wisconsin, United States"). Null when nothing is known.
+    /// </summary>
+    internal static string? TrafficPlace(WhereYouAre where, PlaceHit? place)
+    {
+        string? town = place is null ? null : JoinNonEmpty(place.Name, place.State, place.Country);
+        if (IsOverWater(where)) return "over " + where.WaterName + (town is null ? "" : ", near " + town);
+        return town ?? StateAndCountry(where);
+    }
+
+    /// <summary>
+    /// The Volanta traffic list's "Location:" with "Report location to nearest major city" ticked: how far and
+    /// which way the aircraft is from the nearest major city, since that city can be far ("92 miles west of
+    /// Wichita, Kansas, United States"; the owner's choice, 2026-10-15), or the city alone within a mile or
+    /// kilometre of it. Over water the water first ("over Lake Michigan, 23 miles east of Milwaukee, …"). With
+    /// no major city in range, as <see cref="TrafficPlace"/> with no town. <paramref name="city"/>'s distance
+    /// and bearing are from the aircraft to the city, as in every <see cref="PlaceHit"/>: the direction said is
+    /// the reverse, from the city.
+    /// </summary>
+    internal static string? TrafficCityPlace(WhereYouAre where, PlaceHit? city, bool kilometres)
+    {
+        string? named = city is null ? null : JoinNonEmpty(city.Name, city.State, city.Country);
+        bool atCity = city is not null && ToUnit(city.DistanceNm, kilometres) < 1.0;
+        string? fromCity = named is null || atCity ? named
+            : EdgeDistance(city!.DistanceNm, kilometres) + " " + Direction(city.BearingTrue + 180.0) + " of " + named;
+        if (IsOverWater(where))
+            return "over " + where.WaterName + (fromCity is null ? "" : ", " + (atCity ? "near " : "") + fromCity);
+        return fromCity ?? StateAndCountry(where);
+    }
+
+    private static string? JoinNonEmpty(params string?[] parts)
+    {
+        var kept = parts.Where(p => !string.IsNullOrEmpty(p)).ToList();
+        return kept.Count == 0 ? null : string.Join(", ", kept);
     }
 
     /// <summary>The "Where you are" box of the Location Info window, one fact per line. Over water:

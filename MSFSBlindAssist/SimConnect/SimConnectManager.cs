@@ -435,6 +435,8 @@ public partial class SimConnectManager
     private string currentAircraftTitle = "";    // TITLE simvar value (aircraft.cfg [FLTSIM.N] title)
     /// <summary>The loaded aircraft's TITLE (e.g. "737-700 PAX BW SC"). Empty until aircraft detection completes.</summary>
     public string CurrentAircraftTitle => currentAircraftTitle;
+    /// <summary>The user aircraft's ATC ID (its tail number or callsign in the sim). Empty until read.</summary>
+    public string CurrentAircraftAtcId => currentAircraftAtcId;
     /// <summary>Extracted ICAO type designator for the current aircraft (e.g. "B77W"). Empty if not yet known.</summary>
     public string CurrentAircraftIcaoType { get; private set; } = "";
 
