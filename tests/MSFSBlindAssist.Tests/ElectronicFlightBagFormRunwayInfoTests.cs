@@ -25,12 +25,27 @@
 // WaypointTracker) turned out not to need any of those dependencies, since the method only used
 // `this` for the two lines now left behind in the public wrapper.
 
+using System.Globalization;
 using MSFSBlindAssist.Forms;
 
 namespace MSFSBlindAssist.Tests;
 
 public class ElectronicFlightBagFormRunwayInfoTests
 {
+    private static void UnderCulture(string cultureName, Action assertions)
+    {
+        var previous = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(cultureName);
+            assertions();
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
+    }
+
     // --- FormatRunwayHeadingsAndCoordinates ---------------------------------------------
 
     [Fact]
@@ -57,6 +72,14 @@ public class ElectronicFlightBagFormRunwayInfoTests
             "Magnetic Heading:     253.5°",
             ElectronicFlightBagForm.FormatRunwayHeadingsAndCoordinates(240.0, -13.5, 0.0, 0.0));
 
+    [Theory]
+    [InlineData(0.5, 7.3, "353.2°")]      // KDEN 34R: read "-6.8°"
+    [InlineData(358.0, -12.6, "10.6°")]   // west variation past north: read "370.6°"
+    public void Magnetic_heading_wraps_into_0_to_360(double trueHeading, double magVar, string expected)
+        => Assert.Contains(
+            "Magnetic Heading:     " + expected,
+            ElectronicFlightBagForm.FormatRunwayHeadingsAndCoordinates(trueHeading, magVar, 0.0, 0.0));
+
     [Fact]
     public void Coordinates_use_the_selected_ends_own_longitude_and_latitude()
     {
@@ -81,22 +104,13 @@ public class ElectronicFlightBagFormRunwayInfoTests
     }
 
     [Fact]
-    public void Headings_and_coordinates_use_a_dot_under_a_comma_culture()
+    public void Headings_and_coordinates_use_a_dot_under_a_comma_culture() => UnderCulture("sv-SE", () =>
     {
-        var saved = System.Globalization.CultureInfo.CurrentCulture;
-        try
-        {
-            System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("sv-SE");
-            string result = ElectronicFlightBagForm.FormatRunwayHeadingsAndCoordinates(240.0, -13.5, -122.375, 37.618);
-            Assert.Contains("True Heading:         240.0°", result);
-            Assert.Contains("Magnetic Heading:     253.5°", result);
-            Assert.Contains("Longitude:            122.3750 W", result);
-        }
-        finally
-        {
-            System.Globalization.CultureInfo.CurrentCulture = saved;
-        }
-    }
+        string result = ElectronicFlightBagForm.FormatRunwayHeadingsAndCoordinates(240.0, -13.5, -122.375, 37.618);
+        Assert.Contains("True Heading:         240.0°", result);
+        Assert.Contains("Magnetic Heading:     253.5°", result);
+        Assert.Contains("Longitude:            122.3750 W", result);
+    });
 
     [Fact]
     public void Headings_and_coordinates_sections_are_both_present_with_correct_headers()
@@ -130,10 +144,19 @@ public class ElectronicFlightBagFormRunwayInfoTests
     }
 
     [Fact]
-    public void Missing_altitude_values_render_as_blank_not_a_crash()
+    public void Missing_altitude_values_render_as_not_available_not_a_crash()
     {
+        // They used to read "Pattern Altitude:      ft", a blank before the unit.
         string result = ElectronicFlightBagForm.FormatRunwayPatternAltitude(DBNull.Value, DBNull.Value);
-        Assert.Contains("Pattern Altitude:      ft", result);
-        Assert.Contains("Altitude (MSL):        ft", result);
+        Assert.Contains("Pattern Altitude:     N/A\r\n", result);
+        Assert.Contains("Altitude (MSL):       N/A\r\n", result);
     }
+
+    [Fact]
+    public void Msl_altitude_reads_whole_feet_with_no_float_noise() => UnderCulture("sv-SE", () =>
+    {
+        // ESGG 21's end altitude, a 32-bit float: it read "510,045959472656 ft" under sv-SE.
+        string result = ElectronicFlightBagForm.FormatRunwayPatternAltitude(1000, 510.045959472656);
+        Assert.Contains("Altitude (MSL):       510 ft", result);
+    });
 }

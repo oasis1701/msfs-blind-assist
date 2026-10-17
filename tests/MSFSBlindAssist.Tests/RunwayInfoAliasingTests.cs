@@ -19,6 +19,7 @@
 // (unchanged) and delegates here — zero SQL or formatting change from the pre-extraction
 // method body.
 
+using System.Globalization;
 using MSFSBlindAssist.Forms;
 
 namespace MSFSBlindAssist.Tests;
@@ -26,6 +27,20 @@ namespace MSFSBlindAssist.Tests;
 public class RunwayInfoAliasingTests
 {
     private const string Icao = "KTST";
+
+    private static void UnderCulture(string cultureName, Action assertions)
+    {
+        var previous = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(cultureName);
+            assertions();
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
+    }
 
     // Primary end 06R: true heading 64.0°, own coordinates/altitude.
     // The runway row's OWN heading/altitude/lonx/laty columns are set to these same primary
@@ -116,5 +131,39 @@ public class RunwayInfoAliasingTests
 
         Assert.Contains("True Heading:         64.0°", result);
         Assert.DoesNotContain("True Heading:         244.0°", result);
+    }
+
+    [Fact]
+    public void The_whole_runway_page_reads_every_number_with_a_dot_under_a_comma_culture()
+    {
+        // 32-bit-float values as navdata stores them (fs2024 ESGG 21). Every number on the page,
+        // the ILS block included, must read with a dot and without float noise on a comma-decimal
+        // Windows; the fixture's names hold no comma, so any comma in the output is a number.
+        using var fixture = new RunwayFixtureDb();
+        fixture.InsertAirport(airportId: 1, icao: Icao, ident: Icao, magVar: 5.44113683700562);
+        fixture.InsertRunwayEnd(runwayEndId: 1, name: "03", ilsIdent: "SGG",
+            heading: 25.9843444824219, altitude: 510.045959472656, lonx: 12.2942123413086, laty: 57.678596496582);
+        fixture.InsertRunwayEnd(runwayEndId: 2, name: "21", ilsIdent: "NGG",
+            heading: 206.004821777344, altitude: 510.045959472656, lonx: 12.2654523849487, laty: 57.6470985412598);
+        fixture.InsertRunway(runwayId: 1, airportId: 1, primaryEndId: 1, secondaryEndId: 2,
+            heading: 25.9843444824219, altitude: 510.045959472656, length: 10802.5, width: 155.0);
+        fixture.InsertIls(ident: "NGG", locAirportIdent: Icao, locRunwayName: "21",
+            locHeading: 206.004821777344, frequency: 108500, locWidth: 3.40000009536743);
+        fixture.InsertIls(ident: "SGG", locAirportIdent: Icao, locRunwayName: "03",
+            locHeading: 25.9843444824219, frequency: 110300, locWidth: 3.40000009536743);
+        fixture.Seal();
+
+        UnderCulture("sv-SE", () =>
+        {
+            string result = ElectronicFlightBagForm.GetRunwayDetailedInfoCore(fixture.DbPath, "FS2020", Icao, "21");
+
+            Assert.Contains("ILS Frequency:        108.50 MHz", result);
+            Assert.Contains("Loc Heading:          206.0°", result);
+            Assert.Contains("Loc Width:            3.4°", result);
+            Assert.Contains("Magnetic Heading:     200.6°", result);
+            Assert.Contains("Length:               10803 ft", result);
+            Assert.Contains("Altitude (MSL):       510 ft", result);
+            Assert.DoesNotContain(",", result);
+        });
     }
 }

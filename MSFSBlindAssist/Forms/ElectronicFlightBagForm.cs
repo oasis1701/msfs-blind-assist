@@ -2040,7 +2040,7 @@ public partial class ElectronicFlightBagForm : Form
                         AppendAirportTextIfPresent(sb, "  ICAO Region:  ", reader["region"]);
                         sb.AppendLine($"  Latitude:     {FormatAirportCoordinate(reader["laty"], 'N', 'S')}");
                         sb.AppendLine($"  Longitude:    {FormatAirportCoordinate(reader["lonx"], 'E', 'W')}");
-                        sb.AppendLine($"  Altitude:     {reader["altitude"]} ft");
+                        sb.AppendLine($"  Altitude:     {FormatAirportFeet(reader["altitude"])}");
                         sb.AppendLine($"  Mag Var:      {FormatAirportMagVar(reader["mag_var"])}");
                         sb.AppendLine();
 
@@ -2095,8 +2095,8 @@ public partial class ElectronicFlightBagForm : Form
                         // Runway Info
                         sb.AppendLine("RUNWAY SUMMARY:");
                         sb.AppendLine($"  Total Runways:          {reader["num_runways"]}");
-                        sb.AppendLine($"  Longest Runway Length:  {reader["longest_runway_length"]} ft");
-                        sb.AppendLine($"  Longest Runway Width:   {reader["longest_runway_width"]} ft");
+                        sb.AppendLine($"  Longest Runway Length:  {FormatAirportFeet(reader["longest_runway_length"])}");
+                        sb.AppendLine($"  Longest Runway Width:   {FormatAirportFeet(reader["longest_runway_width"])}");
                         sb.AppendLine($"  Longest Runway Heading: {FormatAirportHeading(reader["longest_runway_heading"])}");
                         sb.AppendLine($"  Longest Runway Surface: {FormatAirportText(reader["longest_runway_surface"])}");
                         sb.AppendLine();
@@ -2114,28 +2114,30 @@ public partial class ElectronicFlightBagForm : Form
                         if (towerAlt != DBNull.Value || towerLonx != DBNull.Value || towerLaty != DBNull.Value)
                         {
                             sb.AppendLine("TOWER:");
-                            sb.AppendLine($"  Altitude:     {(towerAlt != DBNull.Value ? $"{towerAlt} ft" : "N/A")}");
+                            sb.AppendLine($"  Altitude:     {FormatAirportFeet(towerAlt)}");
                             sb.AppendLine($"  Longitude:    {FormatAirportCoordinate(towerLonx, 'E', 'W')}");
                             sb.AppendLine($"  Latitude:     {FormatAirportCoordinate(towerLaty, 'N', 'S')}");
                             sb.AppendLine($"  Has Tower Object: {(Convert.ToInt32(reader["has_tower_object"]) == 1 ? "Yes" : "No")}");
                             sb.AppendLine();
                         }
 
-                        // Transitions
+                        // Transitions. Navdata writes 0, not NULL, where it has none (most
+                        // airports), so a 0 counts as missing and the block is left out.
                         var transAlt = reader["transition_altitude"];
                         var transLevel = reader["transition_level"];
-                        if (transAlt != DBNull.Value || transLevel != DBNull.Value)
+                        bool hasTransAlt = IsPositiveNumber(transAlt);
+                        if (hasTransAlt || IsPositiveNumber(transLevel))
                         {
                             sb.AppendLine("TRANSITIONS:");
-                            sb.AppendLine($"  Transition Altitude:    {(transAlt != DBNull.Value ? $"{transAlt} ft" : "N/A")}");
-                            sb.AppendLine($"  Transition Level:       {(transLevel != DBNull.Value ? $"FL{transLevel}" : "N/A")}");
+                            sb.AppendLine($"  Transition Altitude:    {(hasTransAlt ? FormatAirportFeet(transAlt) : "N/A")}");
+                            sb.AppendLine($"  Transition Level:       {FormatTransitionLevel(transLevel)}");
                             sb.AppendLine();
                         }
 
                         // Scenery
                         sb.AppendLine("SCENERY:");
-                        sb.AppendLine($"  Local Path:   {reader["scenery_local_path"]?.ToString() ?? "N/A"}");
-                        sb.AppendLine($"  BGL File:     {reader["bgl_filename"]?.ToString() ?? "N/A"}");
+                        sb.AppendLine($"  Local Path:   {FormatAirportText(reader["scenery_local_path"])}");
+                        sb.AppendLine($"  BGL File:     {FormatAirportText(reader["bgl_filename"])}");
                     }
                     else
                     {
@@ -2171,7 +2173,8 @@ public partial class ElectronicFlightBagForm : Form
         sb.AppendLine("HEADINGS:");
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         sb.AppendLine($"  True Heading:         {endHeadingTrue.ToString("F1", inv)}°");
-        sb.AppendLine($"  Magnetic Heading:     {(endHeadingTrue - magVar).ToString("F1", inv)}°");
+        // Wrapped into 0-360: a north-aligned end (KDEN 34R, true 0.5, var 7.3 E) read "-6.8°".
+        sb.AppendLine($"  Magnetic Heading:     {RelativeDirection.Normalize360(endHeadingTrue - magVar).ToString("F1", inv)}°");
         sb.AppendLine();
 
         sb.AppendLine("COORDINATES:");
@@ -2195,25 +2198,30 @@ public partial class ElectronicFlightBagForm : Form
         var sb = new StringBuilder();
 
         sb.AppendLine("PATTERN:");
-        sb.AppendLine($"  Pattern Altitude:     {patternAltitude} ft");
-        sb.AppendLine($"  Altitude (MSL):       {endAltitudeMsl} ft");
+        sb.AppendLine($"  Pattern Altitude:     {FormatAirportFeet(patternAltitude)}");
+        sb.AppendLine($"  Altitude (MSL):       {FormatAirportFeet(endAltitudeMsl)}");
         sb.AppendLine();
 
         return sb.ToString();
     }
 
     /// <summary>
-    /// One airport-row frequency (<c>tower_frequency</c>, <c>atis_frequency</c> and the rest), which
-    /// navdata stores in kHz: 118605 → "118.605 MHz". Always a dot, as on the radio panel, whatever
-    /// the Windows number format. "N/A" for a missing or zero value. It used to divide by 1,000,000
-    /// and read "0,119 MHz".
+    /// One airport-row frequency (<c>tower_frequency</c>, <c>atis_frequency</c> and the rest) as
+    /// "118.605 MHz". The unit depends on the build: MSFS 2024 builds store Hz (ESGG tower
+    /// 118605000 in Navdatareader 1.2.3 and 1.2.4 builds), an MSFS 2020 build stored kHz (118605,
+    /// checked in the sim against ESGG's ATIS, 118.380). The airband in kHz (108000-137000) and in
+    /// Hz (108000000-137000000) never overlap, so the size tells them apart: dividing by 1,000,000
+    /// alone read "0.119 MHz" on MSFS 2020, by 1000 alone "118605.000 MHz" on MSFS 2024. Always a
+    /// dot, as on the radio panel, whatever the Windows number format. "N/A" for a missing or zero
+    /// value.
     /// </summary>
-    internal static string FormatAirportFrequency(object? khz)
+    internal static string FormatAirportFrequency(object? frequency)
     {
-        if (khz == null || khz == DBNull.Value) return "N/A";
-        double value = Convert.ToDouble(khz, System.Globalization.CultureInfo.InvariantCulture);
+        if (frequency == null || frequency == DBNull.Value) return "N/A";
+        double value = Convert.ToDouble(frequency, System.Globalization.CultureInfo.InvariantCulture);
         if (value <= 0) return "N/A";
-        return (value / 1000.0).ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) + " MHz";
+        double mhz = value >= 1_000_000 ? value / 1_000_000.0 : value / 1000.0;
+        return mhz.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) + " MHz";
     }
 
     /// <summary>A text column of the airport row; "N/A" when empty. A database NULL arrives as
@@ -2228,17 +2236,19 @@ public partial class ElectronicFlightBagForm : Form
     /// <summary>Appends "<paramref name="label"/><value>" only when the column holds text.</summary>
     internal static void AppendAirportTextIfPresent(StringBuilder sb, string label, object? value)
     {
-        string text = FormatAirportText(value);
-        if (text != "N/A") sb.AppendLine(label + text);
+        string? text = value == null || value == DBNull.Value ? null : value.ToString()?.Trim();
+        if (!string.IsNullOrEmpty(text)) sb.AppendLine(label + text);
     }
 
     /// <summary>A latitude or longitude in degrees, to 4 decimals (about 10 m) with its hemisphere:
     /// 57.6600 N, 54.5682 W. Navdata stores these as 32-bit floats, so the raw double printed
-    /// float noise ("57,65998458862305").</summary>
+    /// float noise ("57,65998458862305"). The hemisphere comes from the ROUNDED value, so
+    /// -0.00003 reads "0.0000 E", not "0.0000 W".</summary>
     internal static string FormatAirportCoordinate(object? degrees, char positive, char negative)
     {
         if (degrees == null || degrees == DBNull.Value) return "N/A";
-        double d = Convert.ToDouble(degrees, System.Globalization.CultureInfo.InvariantCulture);
+        double d = Math.Round(Convert.ToDouble(degrees, System.Globalization.CultureInfo.InvariantCulture),
+            4, MidpointRounding.AwayFromZero);
         return Math.Abs(d).ToString("0.0000", System.Globalization.CultureInfo.InvariantCulture)
             + " " + (d < 0 ? negative : positive);
     }
@@ -2248,18 +2258,51 @@ public partial class ElectronicFlightBagForm : Form
     internal static string FormatAirportMagVar(object? degrees)
     {
         if (degrees == null || degrees == DBNull.Value) return "N/A";
-        double d = Math.Round(Convert.ToDouble(degrees, System.Globalization.CultureInfo.InvariantCulture), 1);
+        double d = Math.Round(Convert.ToDouble(degrees, System.Globalization.CultureInfo.InvariantCulture),
+            1, MidpointRounding.AwayFromZero);
         string value = Math.Abs(d).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "°";
         return d == 0 ? value : value + (d < 0 ? " W" : " E");
     }
 
-    /// <summary>A true heading in whole degrees: 206.0055694580078 → "206°".</summary>
+    /// <summary>A true heading in whole degrees, said to be true: 206.0055694580078 → "206° true".
+    /// A bare "121°" at KJFK sounds magnetic, and the magnetic heading there is 13° away.</summary>
     internal static string FormatAirportHeading(object? degrees)
     {
         if (degrees == null || degrees == DBNull.Value) return "N/A";
         double d = Convert.ToDouble(degrees, System.Globalization.CultureInfo.InvariantCulture);
-        return Math.Round(d).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + "°";
+        return Math.Round(d, MidpointRounding.AwayFromZero).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + "° true";
     }
+
+    /// <summary>A height or length in whole feet: 510.045959472656 → "510 ft". Navdata stores
+    /// these as 32-bit floats, even in columns declared INTEGER. "N/A" when missing.</summary>
+    internal static string FormatAirportFeet(object? feet)
+    {
+        if (feet == null || feet == DBNull.Value) return "N/A";
+        double d = Convert.ToDouble(feet, System.Globalization.CultureInfo.InvariantCulture);
+        return Math.Round(d, MidpointRounding.AwayFromZero).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " ft";
+    }
+
+    /// <summary>An ILS or VASI angle to one decimal: loc width 3.40000009536743 → "3.4°", loc
+    /// heading 206.004821777344 → "206.0°". "N/A" when missing.</summary>
+    internal static string FormatAirportDegrees(object? degrees)
+    {
+        if (degrees == null || degrees == DBNull.Value) return "N/A";
+        double d = Convert.ToDouble(degrees, System.Globalization.CultureInfo.InvariantCulture);
+        return d.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "°";
+    }
+
+    /// <summary>The transition level, which navdata stores in feet: 18000 → "FL180" (it read
+    /// "FL18000"). Navdata writes 0 where it has none, so 0 reads "N/A", not "FL0".</summary>
+    internal static string FormatTransitionLevel(object? feet)
+    {
+        if (!IsPositiveNumber(feet)) return "N/A";
+        double fl = Convert.ToDouble(feet, System.Globalization.CultureInfo.InvariantCulture) / 100.0;
+        return "FL" + Math.Round(fl, MidpointRounding.AwayFromZero).ToString("0", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    internal static bool IsPositiveNumber(object? value)
+        => value != null && value != DBNull.Value
+           && Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture) > 0;
 
     private string GetRunwayDetailedInfo(string icao, string runwayId)
     {
@@ -2347,7 +2390,11 @@ public partial class ElectronicFlightBagForm : Form
                         sb.AppendLine($"RUNWAY INFORMATION - {runwayId}");
                         sb.AppendLine();
 
-                        sb.AppendLine($"Runway ID:        {reader["name"]?.ToString() ?? runwayId}");
+                        // Every number on this page reads with a dot whatever the Windows number
+                        // format, as on the airport page and the cockpit displays.
+                        var inv = System.Globalization.CultureInfo.InvariantCulture;
+                        var endName = reader["name"] as string;
+                        sb.AppendLine($"Runway ID:        {(string.IsNullOrWhiteSpace(endName) ? runwayId : endName)}");
                         sb.AppendLine();
 
                         // ILS INFORMATION (placed at top as requested)
@@ -2388,26 +2435,27 @@ public partial class ElectronicFlightBagForm : Form
                                     {
                                         sb.AppendLine($"  ILS Ident:            {ilsIdent}");
                                         var freq = ilsReader["frequency"];
-                                        sb.AppendLine($"  ILS Frequency:        {(freq != DBNull.Value ? $"{Convert.ToDouble(freq) / 1000.0:F2} MHz" : "N/A")}");
-                                        sb.AppendLine($"  ILS Name:             {ilsReader["name"]?.ToString() ?? "N/A"}");
-                                        sb.AppendLine($"  ILS Region:           {ilsReader["region"]?.ToString() ?? "N/A"}");
-                                        sb.AppendLine($"  ILS Type:             {ilsReader["type"]?.ToString() ?? "N/A"}");
-                                        sb.AppendLine($"  Loc Heading:          {ilsReader["loc_heading"]}°");
-                                        sb.AppendLine($"  Loc Width:            {ilsReader["loc_width"]}°");
+                                        // ils.frequency is kHz in both the MSFS 2020 and 2024 builds.
+                                        sb.AppendLine($"  ILS Frequency:        {(freq != DBNull.Value ? (Convert.ToDouble(freq, inv) / 1000.0).ToString("F2", inv) + " MHz" : "N/A")}");
+                                        sb.AppendLine($"  ILS Name:             {FormatAirportText(ilsReader["name"])}");
+                                        sb.AppendLine($"  ILS Region:           {FormatAirportText(ilsReader["region"])}");
+                                        sb.AppendLine($"  ILS Type:             {FormatAirportText(ilsReader["type"])}");
+                                        sb.AppendLine($"  Loc Heading:          {FormatAirportDegrees(ilsReader["loc_heading"])}");
+                                        sb.AppendLine($"  Loc Width:            {FormatAirportDegrees(ilsReader["loc_width"])}");
                                         sb.AppendLine($"  Range:                {ilsReader["range"]} NM");
                                         sb.AppendLine($"  Has Backcourse:       {(Convert.ToInt32(ilsReader["has_backcourse"] ?? 0) == 1 ? "Yes" : "No")}");
-                                        sb.AppendLine($"  Performance Indicator:{ilsReader["perf_indicator"]?.ToString() ?? "N/A"}");
-                                        sb.AppendLine($"  Provider:             {ilsReader["provider"]?.ToString() ?? "N/A"}");
-                                        sb.AppendLine($"  Mag Var:              {ilsReader["mag_var"]}°");
+                                        sb.AppendLine($"  Performance Indicator:{FormatAirportText(ilsReader["perf_indicator"])}");
+                                        sb.AppendLine($"  Provider:             {FormatAirportText(ilsReader["provider"])}");
+                                        sb.AppendLine($"  Mag Var:              {FormatAirportMagVar(ilsReader["mag_var"])}");
 
                                         // DME Information
                                         var dmeRange = ilsReader["dme_range"];
                                         if (dmeRange != DBNull.Value && Convert.ToInt32(dmeRange) > 0)
                                         {
                                             sb.AppendLine($"  DME Range:            {dmeRange} NM");
-                                            sb.AppendLine($"  DME Altitude:         {ilsReader["dme_altitude"]} ft");
-                                            sb.AppendLine($"  DME Longitude:        {ilsReader["dme_lonx"]}");
-                                            sb.AppendLine($"  DME Latitude:         {ilsReader["dme_laty"]}");
+                                            sb.AppendLine($"  DME Altitude:         {FormatAirportFeet(ilsReader["dme_altitude"])}");
+                                            sb.AppendLine($"  DME Longitude:        {FormatAirportCoordinate(ilsReader["dme_lonx"], 'E', 'W')}");
+                                            sb.AppendLine($"  DME Latitude:         {FormatAirportCoordinate(ilsReader["dme_laty"], 'N', 'S')}");
                                         }
 
                                         // Glideslope Information
@@ -2415,16 +2463,16 @@ public partial class ElectronicFlightBagForm : Form
                                         if (gsRange != DBNull.Value && Convert.ToInt32(gsRange) > 0)
                                         {
                                             sb.AppendLine($"  GS Range:             {gsRange} NM");
-                                            sb.AppendLine($"  GS Pitch:             {ilsReader["gs_pitch"]}°");
-                                            sb.AppendLine($"  GS Altitude:          {ilsReader["gs_altitude"]} ft");
-                                            sb.AppendLine($"  GS Longitude:         {ilsReader["gs_lonx"]}");
-                                            sb.AppendLine($"  GS Latitude:          {ilsReader["gs_laty"]}");
+                                            sb.AppendLine($"  GS Pitch:             {FormatAirportDegrees(ilsReader["gs_pitch"])}");
+                                            sb.AppendLine($"  GS Altitude:          {FormatAirportFeet(ilsReader["gs_altitude"])}");
+                                            sb.AppendLine($"  GS Longitude:         {FormatAirportCoordinate(ilsReader["gs_lonx"], 'E', 'W')}");
+                                            sb.AppendLine($"  GS Latitude:          {FormatAirportCoordinate(ilsReader["gs_laty"], 'N', 'S')}");
                                         }
 
                                         // Localizer coordinates
-                                        sb.AppendLine($"  Localizer Altitude:   {ilsReader["altitude"]} ft");
-                                        sb.AppendLine($"  Localizer Longitude:  {ilsReader["lonx"]}");
-                                        sb.AppendLine($"  Localizer Latitude:   {ilsReader["laty"]}");
+                                        sb.AppendLine($"  Localizer Altitude:   {FormatAirportFeet(ilsReader["altitude"])}");
+                                        sb.AppendLine($"  Localizer Longitude:  {FormatAirportCoordinate(ilsReader["lonx"], 'E', 'W')}");
+                                        sb.AppendLine($"  Localizer Latitude:   {FormatAirportCoordinate(ilsReader["laty"], 'N', 'S')}");
                                         ilsRendered = true;
                                     }
                                 }
@@ -2444,15 +2492,15 @@ public partial class ElectronicFlightBagForm : Form
                             if (recoveredIls != null)
                             {
                                 sb.AppendLine($"  ILS Ident:            {recoveredIls.Ident}");
-                                sb.AppendLine($"  ILS Frequency:        {recoveredIls.Frequency:F2} MHz");
-                                sb.AppendLine($"  Loc Heading:          {recoveredIls.LocalizerHeading:F1}°");
-                                sb.AppendLine($"  Loc Width:            {recoveredIls.LocalizerWidth:F1}°");
+                                sb.AppendLine($"  ILS Frequency:        {recoveredIls.Frequency.ToString("F2", inv)} MHz");
+                                sb.AppendLine($"  Loc Heading:          {recoveredIls.LocalizerHeading.ToString("F1", inv)}°");
+                                sb.AppendLine($"  Loc Width:            {recoveredIls.LocalizerWidth.ToString("F1", inv)}°");
                                 if (recoveredIls.Range > 0)
                                     sb.AppendLine($"  Range:                {recoveredIls.Range} NM");
                                 if (recoveredIls.GlideslopeRange > 0)
                                 {
                                     sb.AppendLine($"  GS Range:             {recoveredIls.GlideslopeRange} NM");
-                                    sb.AppendLine($"  GS Pitch:             {recoveredIls.GlideslopePitch:F1}°");
+                                    sb.AppendLine($"  GS Pitch:             {recoveredIls.GlideslopePitch.ToString("F1", inv)}°");
                                 }
                                 ilsRendered = true;
                             }
@@ -2465,16 +2513,16 @@ public partial class ElectronicFlightBagForm : Form
 
                         // DIMENSIONS
                         sb.AppendLine("DIMENSIONS:");
-                        sb.AppendLine($"  Length:               {reader["length"]} ft");
-                        sb.AppendLine($"  Width:                {reader["width"]} ft");
+                        sb.AppendLine($"  Length:               {FormatAirportFeet(reader["length"])}");
+                        sb.AppendLine($"  Width:                {FormatAirportFeet(reader["width"])}");
                         sb.AppendLine();
 
                         // SURFACE
                         sb.AppendLine("SURFACE:");
-                        sb.AppendLine($"  Surface:              {reader["surface"]?.ToString() ?? "N/A"}");
+                        sb.AppendLine($"  Surface:              {FormatAirportText(reader["surface"])}");
                         var smoothness = reader["smoothness"];
-                        sb.AppendLine($"  Smoothness:           {(smoothness != DBNull.Value ? smoothness.ToString() : "N/A")}");
-                        sb.AppendLine($"  Shoulder:             {reader["shoulder"]?.ToString() ?? "N/A"}");
+                        sb.AppendLine($"  Smoothness:           {(smoothness != DBNull.Value ? Convert.ToDouble(smoothness, inv).ToString("0.00", inv) : "N/A")}");
+                        sb.AppendLine($"  Shoulder:             {FormatAirportText(reader["shoulder"])}");
                         sb.AppendLine();
 
                         // HEADINGS (use the selected runway END's heading, not the runway-center value)
@@ -2486,9 +2534,9 @@ public partial class ElectronicFlightBagForm : Form
 
                         // THRESHOLD DATA
                         sb.AppendLine("THRESHOLD DATA:");
-                        sb.AppendLine($"  Offset Threshold:     {reader["offset_threshold"]} ft");
-                        sb.AppendLine($"  Blast Pad:            {reader["blast_pad"]} ft");
-                        sb.AppendLine($"  Overrun:              {reader["overrun"]} ft");
+                        sb.AppendLine($"  Offset Threshold:     {FormatAirportFeet(reader["offset_threshold"])}");
+                        sb.AppendLine($"  Blast Pad:            {FormatAirportFeet(reader["blast_pad"])}");
+                        sb.AppendLine($"  Overrun:              {FormatAirportFeet(reader["overrun"])}");
                         sb.AppendLine();
 
                         // PATTERN ALTITUDE — Altitude (MSL) uses the aliased runway-END altitude.
@@ -2496,10 +2544,10 @@ public partial class ElectronicFlightBagForm : Form
 
                         // LIGHTING
                         sb.AppendLine("LIGHTING:");
-                        sb.AppendLine($"  Edge Light:           {reader["edge_light"]?.ToString() ?? "N/A"}");
-                        sb.AppendLine($"  Center Light:         {reader["center_light"]?.ToString() ?? "N/A"}");
+                        sb.AppendLine($"  Edge Light:           {FormatAirportText(reader["edge_light"])}");
+                        sb.AppendLine($"  Center Light:         {FormatAirportText(reader["center_light"])}");
                         sb.AppendLine($"  Has Center Red:       {(Convert.ToInt32(reader["has_center_red"] ?? 0) == 1 ? "Yes" : "No")}");
-                        sb.AppendLine($"  Approach Light System:{reader["app_light_system_type"]?.ToString() ?? "N/A"}");
+                        sb.AppendLine($"  Approach Light System:{FormatAirportText(reader["app_light_system_type"])}");
                         sb.AppendLine($"  Has End Lights:       {(Convert.ToInt32(reader["has_end_lights"] ?? 0) == 1 ? "Yes" : "No")}");
                         sb.AppendLine($"  Has REILS:            {(Convert.ToInt32(reader["has_reils"] ?? 0) == 1 ? "Yes" : "No")}");
                         sb.AppendLine($"  Has Touchdown Lights: {(Convert.ToInt32(reader["has_touchdown_lights"] ?? 0) == 1 ? "Yes" : "No")}");
@@ -2518,8 +2566,8 @@ public partial class ElectronicFlightBagForm : Form
                         sb.AppendLine("OPERATIONS:");
                         sb.AppendLine($"  Is Takeoff:           {(Convert.ToInt32(reader["is_takeoff"] ?? 0) == 1 ? "Yes" : "No")}");
                         sb.AppendLine($"  Is Landing:           {(Convert.ToInt32(reader["is_landing"] ?? 0) == 1 ? "Yes" : "No")}");
-                        sb.AppendLine($"  Is Pattern:           {reader["is_pattern"]?.ToString() ?? "N/A"}");
-                        sb.AppendLine($"  End Type:             {reader["end_type"]?.ToString() ?? "N/A"}");
+                        sb.AppendLine($"  Is Pattern:           {FormatAirportText(reader["is_pattern"])}");
+                        sb.AppendLine($"  End Type:             {FormatAirportText(reader["end_type"])}");
                         sb.AppendLine();
 
                         // VASI
@@ -2529,8 +2577,7 @@ public partial class ElectronicFlightBagForm : Form
                         if (!string.IsNullOrEmpty(leftVasiType))
                         {
                             sb.AppendLine($"  Left VASI Type:       {leftVasiType}");
-                            var leftPitch = reader["left_vasi_pitch"];
-                            sb.AppendLine($"  Left VASI Pitch:      {(leftPitch != DBNull.Value ? $"{leftPitch}°" : "N/A")}");
+                            sb.AppendLine($"  Left VASI Pitch:      {FormatAirportDegrees(reader["left_vasi_pitch"])}");
                         }
                         else
                         {
@@ -2540,8 +2587,7 @@ public partial class ElectronicFlightBagForm : Form
                         if (!string.IsNullOrEmpty(rightVasiType))
                         {
                             sb.AppendLine($"  Right VASI Type:      {rightVasiType}");
-                            var rightPitch = reader["right_vasi_pitch"];
-                            sb.AppendLine($"  Right VASI Pitch:     {(rightPitch != DBNull.Value ? $"{rightPitch}°" : "N/A")}");
+                            sb.AppendLine($"  Right VASI Pitch:     {FormatAirportDegrees(reader["right_vasi_pitch"])}");
                         }
                         else
                         {
