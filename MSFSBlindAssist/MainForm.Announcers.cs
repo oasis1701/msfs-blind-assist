@@ -95,9 +95,7 @@ public partial class MainForm
     /// </summary>
     private void OnSimStateChanged(object? sender, SimStateChange change)
     {
-        var settings = SettingsManager.Current;
-        string? text = SimPauseSlewTracker.Describe(change,
-            settings.AnnounceSimPauseEnabled, settings.AnnounceActivePauseEnabled, settings.AnnounceSlewEnabled);
+        string? text = SimPauseSlewTracker.Describe(change);
         if (text != null) announcer.AnnounceImmediate(text);
     }
 

@@ -146,17 +146,12 @@ public class SimPauseSlewTrackerTests
     [InlineData(SimStateChange.Paused | SimStateChange.ActivePauseOff, "Sim paused. Active pause off")]
     public void Describe_words_each_change(SimStateChange change, string expected)
     {
-        Assert.Equal(expected, SimPauseSlewTracker.Describe(change, true, true, true));
+        Assert.Equal(expected, SimPauseSlewTracker.Describe(change));
     }
 
     [Fact]
-    public void Describe_keeps_only_the_kinds_switched_on()
+    public void Describe_says_nothing_when_nothing_changed()
     {
-        var both = SimStateChange.Paused | SimStateChange.ActivePauseOff;
-
-        Assert.Equal("Active pause off", SimPauseSlewTracker.Describe(both, false, true, true));
-        Assert.Equal("Sim paused", SimPauseSlewTracker.Describe(both, true, false, true));
-        Assert.Null(SimPauseSlewTracker.Describe(SimStateChange.SlewOn, true, true, false));
-        Assert.Null(SimPauseSlewTracker.Describe(SimStateChange.None, true, true, true));
+        Assert.Null(SimPauseSlewTracker.Describe(SimStateChange.None));
     }
 }

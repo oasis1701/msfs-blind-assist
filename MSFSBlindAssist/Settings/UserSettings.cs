@@ -353,12 +353,6 @@ public class UserSettings
         // Announce each 1,000-foot crossing while airborne ("5,000 feet", …). Default on.
         public bool AltitudeCalloutsEnabled { get; set; } = true;
 
-        // Announce the sim's pause states and slew as they change ("Sim paused", "Active pause on",
-        // "Slew on", …; SimPauseSlewTracker). One switch each, all default on.
-        public bool AnnounceSimPauseEnabled { get; set; } = true;
-        public bool AnnounceActivePauseEnabled { get; set; } = true;
-        public bool AnnounceSlewEnabled { get; set; } = true;
-
         // FMC settings — meaningful when a PMDG aircraft or the Fenix A320 is
         // loaded; the FMC Settings menu item is gated on
         // AircraftCode.StartsWith("PMDG_") || AircraftCode.StartsWith("FENIX_").

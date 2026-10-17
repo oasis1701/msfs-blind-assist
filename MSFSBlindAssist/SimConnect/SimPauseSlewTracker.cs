@@ -91,16 +91,16 @@ public sealed class SimPauseSlewTracker
         return _simRunning ? change : SimStateChange.None;
     }
 
-    /// <summary>The words for <paramref name="change"/>, keeping only the kinds switched on; null when none is.</summary>
-    public static string? Describe(SimStateChange change, bool announcePause, bool announceActivePause, bool announceSlew)
+    /// <summary>The words for <paramref name="change"/>; null when nothing changed.</summary>
+    public static string? Describe(SimStateChange change)
     {
         var parts = new List<string>(2);
-        if (announcePause && change.HasFlag(SimStateChange.Paused)) parts.Add("Sim paused");
-        if (announcePause && change.HasFlag(SimStateChange.Unpaused)) parts.Add("Sim unpaused");
-        if (announceActivePause && change.HasFlag(SimStateChange.ActivePauseOn)) parts.Add("Active pause on");
-        if (announceActivePause && change.HasFlag(SimStateChange.ActivePauseOff)) parts.Add("Active pause off");
-        if (announceSlew && change.HasFlag(SimStateChange.SlewOn)) parts.Add("Slew on");
-        if (announceSlew && change.HasFlag(SimStateChange.SlewOff)) parts.Add("Slew off");
+        if (change.HasFlag(SimStateChange.Paused)) parts.Add("Sim paused");
+        if (change.HasFlag(SimStateChange.Unpaused)) parts.Add("Sim unpaused");
+        if (change.HasFlag(SimStateChange.ActivePauseOn)) parts.Add("Active pause on");
+        if (change.HasFlag(SimStateChange.ActivePauseOff)) parts.Add("Active pause off");
+        if (change.HasFlag(SimStateChange.SlewOn)) parts.Add("Slew on");
+        if (change.HasFlag(SimStateChange.SlewOff)) parts.Add("Slew off");
         return parts.Count == 0 ? null : string.Join(". ", parts);
     }
 }
