@@ -279,10 +279,10 @@ public partial class MainForm
         _appliedSceneryIndexEnabled = settings.SceneryIndexEnabled;
         _appliedTaxiAugmentEnabled = settings.TaxiAugmentEnabled;
 
-        // First Officer automation toggles — push the saved settings into any open First
-        // Officer window so a change takes effect without reopening it (moved from the
+        // First Officer automation toggles — push the saved settings into the First Officer
+        // window, if one is open, so a change takes effect without reopening it (moved from the
         // retired FOSettingsMenuItem_Click).
-        foreach (var foForm in OpenFirstOfficerForms())
+        if (firstOfficerForm is { IsDisposed: false } foForm)
             foForm.ApplySettings();
 
         // VATSIM: install or refresh the vPilot plugin and start/stop the pipe server.
