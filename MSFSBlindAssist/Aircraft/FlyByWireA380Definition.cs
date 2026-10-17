@@ -40,7 +40,6 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
 {
     public override string AircraftName => "FlyByWire A380X";
     public override string AircraftCode => "FBW_A380";
-    public override string? ChecklistFileName => "FBW_A380_Checklist.txt";
 
     /// <summary>The autothrust instinctive disconnect (see its Evt registration).</summary>
     public const string AutothrustDisconnectEvent = "AUTO_THROTTLE_DISCONNECT";

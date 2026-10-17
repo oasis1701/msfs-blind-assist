@@ -726,7 +726,7 @@ public class ClaudeContextBudgetTests
         ["generic dialogs and display controls that no feature's rules apply to"] = new[]
         {
             "MSFSBlindAssist/Forms/AboutForm.cs", "MSFSBlindAssist/Forms/ValueInputForm.cs",
-            "MSFSBlindAssist/Forms/HotkeyListForm.cs", "MSFSBlindAssist/Forms/ChecklistForm.cs",
+            "MSFSBlindAssist/Forms/HotkeyListForm.cs",
             "MSFSBlindAssist/Forms/DisplayList.cs", "MSFSBlindAssist/Forms/DisplayListBox.cs", "MSFSBlindAssist/Forms/DisplayText.cs",
         },
         ["shared by several aircraft or areas, and no rule names it"] = new[]

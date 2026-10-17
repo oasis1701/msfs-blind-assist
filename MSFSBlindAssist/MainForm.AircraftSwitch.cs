@@ -936,13 +936,6 @@ public partial class MainForm
         panelsListBox.Items.Clear();
         controlsContainer.Controls.Clear();
 
-        // Dispose checklistForm so it reloads for new aircraft
-        if (checklistForm != null && !checklistForm.IsDisposed)
-        {
-            checklistForm.Dispose();
-            checklistForm = null;
-        }
-
         // Dispose A380 monitor manager when switching aircraft
         if (fbwA380MonitorManagerForm != null && !fbwA380MonitorManagerForm.IsDisposed)
         {

@@ -40,7 +40,7 @@ public partial class FenixHeadingWindow : Form
     }
 
     /// <summary>
-    /// Shows the form and ensures it gets focus (like ChecklistForm pattern).
+    /// Shows the form and ensures it gets focus (the shared non-modal ShowForm pattern).
     /// </summary>
     public void ShowForm()
     {
