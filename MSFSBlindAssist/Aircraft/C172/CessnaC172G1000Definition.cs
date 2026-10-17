@@ -66,6 +66,8 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
         ["C172G_PASSENGER_WINDOW"] = "AIRCRAFT_DOOR_WINDOW",
         ["C172G_CABIN_HEAT"] = "PNEUMATICS_IE_PNEUMATICS_LEVER_VALVE_HOTAIRVALVE",
         ["C172G_CABIN_AIR"] = "PNEUMATICS_IE_PNEUMATICS_LEVER_VALVE_COCKPITVALVE",
+        ["C172G_PANEL_LIGHTS_1"] = "LIGHTING_PANEL_1",
+        ["C172G_PANEL_LIGHTS_2"] = "LIGHTING_PANEL_2",
     };
 
     /// <summary>GFC 700 panel buttons and the bezel key each one presses.</summary>
@@ -149,6 +151,11 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
 
     private const string CabinPanel = "Cabin Controls";
     private const string EltPanel = "ELT";
+    private const string InteriorLightsPanel = "Interior Lights";
+    private const string OilCheckPanel = "Oil Check";
+
+    /// <summary>The C172S sump's capacity and the least the POH allows for flight, in US quarts.</summary>
+    internal const double OilSumpQuarts = 8, OilMinimumQuarts = 5;
 
     /// <summary>Each breaker's last reading, so a change can be told from the first one. UI thread only.</summary>
     private readonly Dictionary<string, bool> _breakerPulled = new();
@@ -236,6 +243,25 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
         v["C172G_PILOT_WINDOW"] = Window("INTERACTIVE POINT OPEN:4", "Pilot Window");
         v["C172G_PASSENGER_WINDOW"] = Window("INTERACTIVE POINT OPEN:5", "Passenger Window");
 
+        // ---------- Oil check ----------
+        // The dipstick check of the walkaround: no cockpit instrument shows the oil quantity, only its
+        // pressure and temperature. The sim gives a percentage of full (100 on a fresh flight; the
+        // quarts unit reads nonsense, 1056), shown as quarts of the 8-quart sump (`DescribeOilQuantity`).
+        v["C172G_OIL_QUANTITY"] = new SimVarDefinition
+        {
+            Name = "ENG OIL QUANTITY:1",
+            DisplayName = "Oil Quantity",
+            Type = SimVarType.SimVar,
+            Units = "percent",
+            UpdateFrequency = UpdateFrequency.OnRequest
+        };
+
+        // ---------- Interior lights ----------
+        // Each dimmer lights its own circuit (22, 23) from 1 percent up; which placard each one is
+        // was not found, so they are numbered as the cockpit numbers them.
+        v["C172G_PANEL_LIGHTS_1"] = Dimmer(SwitchInputEvents["C172G_PANEL_LIGHTS_1"], "Panel Lights 1");
+        v["C172G_PANEL_LIGHTS_2"] = Dimmer(SwitchInputEvents["C172G_PANEL_LIGHTS_2"], "Panel Lights 2");
+
         // ---------- ELT ----------
         // 0 ON transmits (`ELT ACTIVATED` 1), 1 ARM is where it rests and stops a transmission, the
         // real reset. The switch also holds a 2 that stopped a transmission too; its name is not known,
@@ -313,12 +339,27 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
         {
             [0] = "Closed", [25] = "Quarter open", [50] = "Half open", [75] = "Three quarters open", [100] = "Open"
         });
-        lever.ValueToDescriptionKey = LeverPosition;
+        lever.ValueToDescriptionKey = QuarterStep;
         return lever;
     }
 
-    /// <summary>The nearest quarter step of a lever's opening in percent. Pure so the suite can pin it.</summary>
-    internal static double LeverPosition(double percent) => Math.Round(Math.Clamp(percent, 0, 100) / 25) * 25;
+    /// <summary>
+    /// A panel light dimmer in quarter steps, 0 off. Percent both ways over SimConnect (measured: 50
+    /// written, 50 read). Read from the knob itself, not `LIGHT POTENTIOMETER:n`, which kept its last
+    /// brightness (10, 100) while the light was off.
+    /// </summary>
+    private static SimVarDefinition Dimmer(string inputEvent, string displayName)
+    {
+        var dimmer = InputEventState(inputEvent, displayName, new()
+        {
+            [0] = "Off", [25] = "25 percent", [50] = "50 percent", [75] = "75 percent", [100] = "Full"
+        });
+        dimmer.ValueToDescriptionKey = QuarterStep;
+        return dimmer;
+    }
+
+    /// <summary>The nearest quarter step of a 0-100 percent knob or lever. Pure so the suite can pin it.</summary>
+    internal static double QuarterStep(double percent) => Math.Round(Math.Clamp(percent, 0, 100) / 25) * 25;
 
     private static SimVarDefinition Window(string simVar, string displayName) => new()
     {
@@ -369,11 +410,12 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
         var structure = base.GetPanelStructure();
         structure["Electrical"].Add("Standby Battery");
         structure["Safety"].Add(EltPanel);
+        structure["Lights"].Add(InteriorLightsPanel);
         structure["Autopilot"] = new List<string> { AutopilotPanel };
         structure["Cabin"] = new List<string> { CabinPanel };
         structure[BreakersSection] = new List<string>
             { EssentialBreakers, Avionics1Breakers, Avionics2Breakers, SystemBreakers };
-        structure["Walkaround"] = new List<string> { "Covers" };
+        structure["Walkaround"] = new List<string> { "Covers", OilCheckPanel };
         return structure;
     }
 
@@ -399,7 +441,41 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
         controls[CabinPanel] = new List<string>
             { "C172G_CABIN_HEAT", "C172G_CABIN_AIR", "C172G_PILOT_WINDOW", "C172G_PASSENGER_WINDOW" };
         controls[EltPanel] = new List<string> { "C172G_ELT" };
+        controls[InteriorLightsPanel] = new List<string> { "C172G_PANEL_LIGHTS_1", "C172G_PANEL_LIGHTS_2" };
+        // A readout-only panel still needs an entry, or MainForm builds nothing for it.
+        controls[OilCheckPanel] = new List<string>();
         return controls;
+    }
+
+    public override Dictionary<string, List<string>> GetPanelDisplayVariables()
+    {
+        var display = base.GetPanelDisplayVariables();
+        display[OilCheckPanel] = new List<string> { "C172G_OIL_QUANTITY" };
+        return display;
+    }
+
+    public override bool TryGetDisplayOverride(string varKey, double value, out string displayText)
+    {
+        if (varKey == "C172G_OIL_QUANTITY")
+        {
+            displayText = DescribeOilQuantity(value);
+            return true;
+        }
+        return base.TryGetDisplayOverride(varKey, value, out displayText);
+    }
+
+    /// <summary>
+    /// The oil quantity as the dipstick reads it: the sim's percentage of full as quarts of the 8-quart
+    /// sump, to the nearest half quart, with the POH's 5-quart minimum named when it is below.
+    /// Invariant digits, as the trim announcer writes them. Pure so the suite can pin it.
+    /// </summary>
+    internal static string DescribeOilQuantity(double percent)
+    {
+        double quarts = Math.Round(Math.Clamp(percent, 0, 100) / 100 * OilSumpQuarts * 2) / 2;
+        string text = string.Create(CultureInfo.InvariantCulture, $"{quarts:0.#} quarts");
+        return quarts < OilMinimumQuarts
+            ? string.Create(CultureInfo.InvariantCulture, $"{text}, below the {OilMinimumQuarts:0} quart minimum")
+            : text;
     }
 
     public override bool HandleUIVariableSet(string varKey, double value,

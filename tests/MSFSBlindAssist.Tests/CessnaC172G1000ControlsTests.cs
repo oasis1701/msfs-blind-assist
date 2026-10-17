@@ -45,6 +45,7 @@ public class CessnaC172G1000ControlsTests
         "ELECTRICAL_BREAKER_BTN_BREAKER_WARN", "ELECTRICAL_BREAKER_BTN_BREAKER_XPNDR",
         "PNEUMATICS_IE_PNEUMATICS_LEVER_VALVE_HOTAIRVALVE", "PNEUMATICS_IE_PNEUMATICS_LEVER_VALVE_COCKPITVALVE",
         "SAFETY_ELT_1", "AIRCRAFT_DOOR_WINDOW_PILOT", "AIRCRAFT_DOOR_WINDOW",
+        "LIGHTING_PANEL_1", "LIGHTING_PANEL_2",
     };
 
     private static readonly CessnaC172G1000Definition Def = new();
@@ -353,7 +354,7 @@ public class CessnaC172G1000ControlsTests
     [InlineData(120, 100)]
     public void A_cabin_lever_reads_in_percent_to_the_nearest_quarter(double percent, double position)
     {
-        Assert.Equal(position, CessnaC172G1000Definition.LeverPosition(percent));
+        Assert.Equal(position, CessnaC172G1000Definition.QuarterStep(percent));
         Assert.Equal(position, Def.GetVariables()["C172G_CABIN_HEAT"].DescriptionKeyFor(percent));
     }
 
@@ -365,6 +366,54 @@ public class CessnaC172G1000ControlsTests
         Assert.All(heat.ValueDescriptions.Keys, step => Assert.Equal(step, heat.DescriptionKeyFor(step)));
         Assert.Equal("PNEUMATICS_IE_PNEUMATICS_LEVER_VALVE_HOTAIRVALVE",
             CessnaC172G1000Definition.SwitchInputEvents["C172G_CABIN_HEAT"]);
+    }
+
+    [Theory]
+    [InlineData("C172G_PANEL_LIGHTS_1", "LIGHTING_PANEL_1")]
+    [InlineData("C172G_PANEL_LIGHTS_2", "LIGHTING_PANEL_2")]
+    public void A_panel_light_dimmer_steps_in_percent_from_off_to_full(string key, string inputEvent)
+    {
+        var dimmer = Def.GetVariables()[key];
+        Assert.Equal(inputEvent, CessnaC172G1000Definition.SwitchInputEvents[key]);
+        Assert.True(SimConnectManager.IsInputEventRead(dimmer));
+        Assert.Equal(new[] { "Off", "25 percent", "50 percent", "75 percent", "Full" },
+            dimmer.ValueDescriptions.OrderBy(p => p.Key).Select(p => p.Value));
+        Assert.Equal(50, dimmer.DescriptionKeyFor(50));   // SimConnect read 50 after a write of 50
+        Assert.Equal(0, dimmer.DescriptionKeyFor(1));     // 1 percent already lit the light; it reads as Off's step
+        Assert.Contains(key, Def.GetPanelControls()["Interior Lights"]);
+    }
+
+    // The walkaround's dipstick check: the sim's percentage of full as quarts of the 8-quart sump.
+    [Theory]
+    [InlineData("en-US")]
+    [InlineData("de-DE")]
+    public void The_oil_quantity_reads_as_the_dipstick_in_every_culture(string culture)
+    {
+        var saved = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo(culture);
+            Assert.Equal("8 quarts", CessnaC172G1000Definition.DescribeOilQuantity(100));
+            Assert.Equal("7.5 quarts", CessnaC172G1000Definition.DescribeOilQuantity(93.75));
+            Assert.Equal("5 quarts", CessnaC172G1000Definition.DescribeOilQuantity(62.5));
+            Assert.Equal("4.5 quarts, below the 5 quart minimum", CessnaC172G1000Definition.DescribeOilQuantity(56.25));
+            Assert.Equal("0 quarts, below the 5 quart minimum", CessnaC172G1000Definition.DescribeOilQuantity(-3));
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = saved;
+        }
+    }
+
+    [Fact]
+    public void The_oil_check_panel_shows_the_quantity_in_its_status_list()
+    {
+        Assert.Contains("Oil Check", Def.GetPanelStructure()["Walkaround"]);
+        Assert.Empty(Def.GetPanelControls()["Oil Check"]);
+        Assert.Equal(new[] { "C172G_OIL_QUANTITY" }, Def.GetPanelDisplayVariables()["Oil Check"]);
+        Assert.Equal("ENG OIL QUANTITY:1", Def.GetVariables()["C172G_OIL_QUANTITY"].Name);
+        Assert.True(Def.TryGetDisplayOverride("C172G_OIL_QUANTITY", 100, out string text));
+        Assert.Equal("8 quarts", text);
     }
 
     [Fact]
