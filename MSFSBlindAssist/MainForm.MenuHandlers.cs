@@ -402,6 +402,28 @@ public partial class MainForm
         simPerformanceForm.Show(this);
     }
 
+    // Extras > Volanta, or Shift+O in output mode: one modeless window at a time. It is its own
+    // top-level window, never owned by this one (the TCAS window's pattern), so the pilot can Alt+Tab
+    // between the two; a second click or press brings the open one forward. It opens whether or not the
+    // sim is connected (it can place traffic from Volanta's own position report) and owns the browser that
+    // reads Volanta's public web map, which it closes with the window. It names where each aircraft is from
+    // the same offline location data Output C reads.
+    private Forms.Volanta.VolantaLiveMapForm? volantaLiveMapForm;
+
+    private void VolantaMenuItem_Click(object? sender, EventArgs e) => OpenVolantaWindow();
+
+    private void OpenVolantaWindow()
+    {
+        if (volantaLiveMapForm is not { IsDisposed: false })
+        {
+            // vPilot's callsign, so the pilot's own VATSIM entry is never listed as traffic.
+            volantaLiveMapForm = new Forms.Volanta.VolantaLiveMapForm(simConnectManager, announcer, offlineLocationService,
+                () => vatsimService?.ConnectedCallsign);
+            volantaLiveMapForm.FormClosed += (_, _) => volantaLiveMapForm = null;
+        }
+        volantaLiveMapForm.ShowForm();
+    }
+
     private void FMCSettingsMenuItem_Click(object? sender, EventArgs e)
     {
         var s = SettingsManager.Current;
