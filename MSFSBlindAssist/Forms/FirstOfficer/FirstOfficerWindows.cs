@@ -17,45 +17,50 @@ namespace MSFSBlindAssist.Forms.FirstOfficer;
 /// </summary>
 public static class FirstOfficerWindows
 {
-    private delegate IFirstOfficerWindow? Builder(
-        IAircraftDefinition aircraft, SimConnectManager simConnect, ScreenReaderAnnouncer announcer, UserSettings settings);
+    private delegate IFirstOfficerWindow Builder<in TDef>(
+        TDef aircraft, SimConnectManager simConnect, ScreenReaderAnnouncer announcer, UserSettings settings);
 
-    private sealed record Row(string Name, Builder Build);
+    // A row accepts only its own definition type as well as its code, and NameFor asks the same
+    // question Create does, so the two never disagree: an aircraft is named (Shift+C opens, the
+    // menu item shows) exactly when its window can be built.
+    private sealed record Row(string Name, Func<IAircraftDefinition, bool> Accepts,
+        Func<IAircraftDefinition, SimConnectManager, ScreenReaderAnnouncer, UserSettings, IFirstOfficerWindow> Build);
+
+    private static Row Of<TDef>(string name, Builder<TDef> build) where TDef : IAircraftDefinition =>
+        new(name, aircraft => aircraft is TDef, (aircraft, sc, a, s) => build((TDef)aircraft, sc, a, s));
 
     private static readonly Dictionary<string, Row> Rows = new(StringComparer.Ordinal)
     {
-        ["PMDG_777"] = new("PMDG 777 First Officer",
+        ["PMDG_777"] = Of<PMDG777Definition>("PMDG 777 First Officer",
             (_, sc, a, s) => Window(new Fo.Pmdg777FoProfile(), sc, a, s)),
-        ["PMDG_737"] = new("PMDG 737 First Officer",
+        ["PMDG_737"] = Of<PMDG737Definition>("PMDG 737 First Officer",
             (_, sc, a, s) => Window(new Fo.PMDG737.Pmdg737FoProfile(), sc, a, s)),
-        ["FENIX_A320CEO"] = new("Fenix A320 First Officer",
+        ["FENIX_A320CEO"] = Of<FenixA320Definition>("Fenix A320 First Officer",
             (_, sc, a, s) => Window(new Fo.Fenix.FenixFoProfile(a), sc, a, s)),
-        ["FBW_A380"] = new("FlyByWire A380 First Officer",
-            (def, sc, a, s) => def is FlyByWireA380Definition a380
-                ? Window(new Fo.FBWA380.FbwA380FoProfile(a380, a), sc, a, s) : null),
-        ["A320"] = new("FlyByWire A32NX First Officer",
-            (def, sc, a, s) => def is FlyByWireA320Definition a320
-                ? Window(new Fo.FBWA320.FbwA320FoProfile(a320, a), sc, a, s) : null),
-        ["HW_A330"] = new("Headwind A330 First Officer",
-            (def, sc, a, s) => def is HeadwindA330Definition a330
-                ? Window(new Fo.HWA330.HwA330FoProfile(a330, a), sc, a, s) : null),
-        ["IFLY_737MAX8"] = new("iFly 737 MAX8 First Officer",
-            (def, sc, a, s) => def is IFly737MAXDefinition ifly
-                ? Window(new Fo.IFly737.IFly737FoProfile(ifly, a), sc, a, s) : null),
-        ["TFDI_MD11"] = new("TFDi MD-11 First Officer",
-            (def, sc, a, s) => def is TFDiMD11Definition md11
-                ? Window(new Fo.MD11.Md11FoProfile(md11), sc, a, s) : null),
+        ["FBW_A380"] = Of<FlyByWireA380Definition>("FlyByWire A380 First Officer",
+            (a380, sc, a, s) => Window(new Fo.FBWA380.FbwA380FoProfile(a380, a), sc, a, s)),
+        ["A320"] = Of<FlyByWireA320Definition>("FlyByWire A32NX First Officer",
+            (a320, sc, a, s) => Window(new Fo.FBWA320.FbwA320FoProfile(a320, a), sc, a, s)),
+        ["HW_A330"] = Of<HeadwindA330Definition>("Headwind A330 First Officer",
+            (a330, sc, a, s) => Window(new Fo.HWA330.HwA330FoProfile(a330, a), sc, a, s)),
+        ["IFLY_737MAX8"] = Of<IFly737MAXDefinition>("iFly 737 MAX8 First Officer",
+            (ifly, sc, a, s) => Window(new Fo.IFly737.IFly737FoProfile(ifly, a), sc, a, s)),
+        ["TFDI_MD11"] = Of<TFDiMD11Definition>("TFDi MD-11 First Officer",
+            (md11, sc, a, s) => Window(new Fo.MD11.Md11FoProfile(md11), sc, a, s)),
     };
+
+    private static Row? RowFor(IAircraftDefinition? aircraft) =>
+        aircraft != null && Rows.TryGetValue(aircraft.AircraftCode, out Row? row) && row.Accepts(aircraft) ? row : null;
 
     /// <summary>The spoken name of this aircraft's First Officer window (the File menu item's
     /// accessible name), or null when the aircraft has none or no aircraft is loaded.</summary>
-    public static string? NameFor(IAircraftDefinition? aircraft) =>
-        aircraft != null && Rows.TryGetValue(aircraft.AircraftCode, out Row? row) ? row.Name : null;
+    public static string? NameFor(IAircraftDefinition? aircraft) => RowFor(aircraft)?.Name;
 
-    /// <summary>Builds this aircraft's First Officer window, or null when it has none.</summary>
+    /// <summary>Builds this aircraft's First Officer window, or null exactly when
+    /// <see cref="NameFor"/> is null.</summary>
     public static IFirstOfficerWindow? Create(
         IAircraftDefinition aircraft, SimConnectManager simConnect, ScreenReaderAnnouncer announcer, UserSettings settings) =>
-        Rows.TryGetValue(aircraft.AircraftCode, out Row? row) ? row.Build(aircraft, simConnect, announcer, settings) : null;
+        RowFor(aircraft)?.Build(aircraft, simConnect, announcer, settings);
 
     private static IFirstOfficerWindow Window<TExec, TState>(
         Fo.IFoProfile<TExec, TState> profile, SimConnectManager simConnect, ScreenReaderAnnouncer announcer, UserSettings settings)

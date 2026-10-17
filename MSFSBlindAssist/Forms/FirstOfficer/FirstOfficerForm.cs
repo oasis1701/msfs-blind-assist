@@ -110,6 +110,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     // The window that had the foreground when ShowForm ran (the simulator after Shift+C,
     // MainForm after the File menu); Escape and a user close hand focus back to it.
     private IntPtr _previousWindow;
+    private bool _shownBefore;
 
     // ------------------------------------------------------------------
     // Constructor
@@ -229,7 +230,15 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         Show();
         BringToFront();
         Activate();
-        _tabs.Focus();
+        TopMost = true;
+        TopMost = false; // Flash to the front of the simulator, as the other ShowForm windows do
+
+        // The first show starts on the tab strip; a re-show (Shift+C again) returns the pilot to
+        // the control they left, such as the checklist item they were on, as the retired text
+        // checklist did, instead of the tab strip every time.
+        if (!_shownBefore || ActiveControl == null) _tabs.Focus();
+        else ActiveControl.Focus();
+        _shownBefore = true;
         // Belt-and-braces: re-register group headers now the handle exists. Without
         // TVS_CHECKBOXES nothing stamps state images on them at handle creation, but this
         // keeps the interceptor armed from the first moment the tree is visible.

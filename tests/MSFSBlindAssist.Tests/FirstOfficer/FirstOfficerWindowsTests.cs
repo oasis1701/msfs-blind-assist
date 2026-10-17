@@ -41,4 +41,17 @@ public class FirstOfficerWindowsTests
 
     [Fact]
     public void No_aircraft_has_no_first_officer() => Assert.Null(FirstOfficerWindows.NameFor(null));
+
+    // A definition that reports a First Officer aircraft's code without being that aircraft's
+    // definition type (a copied or renamed definition) cannot have its window built, so it must
+    // not be named either: Shift+C then says "No checklist for this aircraft." instead of
+    // silently opening nothing, and the File menu item stays hidden.
+    [Fact]
+    public void A_code_without_its_definition_type_has_no_first_officer()
+        => Assert.Null(FirstOfficerWindows.NameFor(new ImpostorA380Definition()));
+
+    private sealed class ImpostorA380Definition : YourAircraftDefinition
+    {
+        public override string AircraftCode => "FBW_A380";
+    }
 }
