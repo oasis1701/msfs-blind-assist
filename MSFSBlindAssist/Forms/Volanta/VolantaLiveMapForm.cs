@@ -12,11 +12,12 @@ using MSFSBlindAssist.Utils.Logging;
 namespace MSFSBlindAssist.Forms.Volanta;
 
 /// <summary>
-/// Extras, Volanta: Volanta's live map as text. Three tabs: Traffic (Volanta users and network pilots around the
-/// pilot, filtered by distance, network, phase and a search), ATC (online controllers by distance) and
-/// Connection (whether Volanta has live map access, and the button that gives it). In each list tab the list
-/// comes first, then the selected item's details, the major-city checkbox where there is one, then the status
-/// and the filters.
+/// Extras, Volanta: Volanta's live map as text, read from Volanta's public web map in a browser the pilot never sees
+/// (<see cref="VolantaWebMap"/>). Four tabs: Traffic (Volanta users and network pilots around the pilot, filtered by
+/// distance, network, phase and a search), Friends, ATC (online controllers by distance) and Connection (the web
+/// map's state, what it downloads, and the button that logs in to Volanta or out). In each list tab the list comes
+/// first, then the selected item's details, the major-city checkbox where there is one, then the status and the
+/// filters.
 ///
 /// Screen-reader strategy: the tab in view updates on its own every <see cref="RefreshIntervalMs"/> (another
 /// tab is brought up to date when it is switched to), in place, the way the Sim Performance window does: only
@@ -24,7 +25,8 @@ namespace MSFSBlindAssist.Forms.Volanta;
 /// the row the pilot is on re-reads when it changes. While the pilot is in a list its order holds (new rows join
 /// at the end), so arrowing down always reaches the next row. F5 re-sorts at once and speaks the status.
 /// Background changes (connected, lost) are spoken once each, queued. While Volanta's data cannot be pulled
-/// (minimized, starting, not connected), each list says why in a line at its top instead (<see cref="NotUpdatingRow"/>).
+/// (loading, nothing new, the web map could not start), each list says why in a line at its top instead
+/// (<see cref="NotUpdatingRow"/>). The web map downloads only while this window is in the foreground (VOL-12).
 /// </summary>
 public sealed class VolantaLiveMapForm : Form
 {
@@ -112,7 +114,7 @@ public sealed class VolantaLiveMapForm : Form
     private TextBox _atcSearch = null!;
     // Connection
     private DisplayListBox _connectionStatus = null!;
-    private Button _startButton = null!;
+    private Button _loginButton = null!;
 
     // The latest computed row behind each key, for the details list (the row shown may be held).
     private Dictionary<string, VolantaTrafficEntry> _trafficByKey = new(StringComparer.Ordinal);
@@ -120,26 +122,16 @@ public sealed class VolantaLiveMapForm : Form
     private Dictionary<string, (VolantaController Station, double? Nm)> _atcByKey = new(StringComparer.Ordinal);
 
     private VolantaLinkStatus _spokenStatus = VolantaLinkStatus.Stopped;
-    /// <summary>The Connection tab's line for a Volanta without live map access ("not running", "running
-    /// without access", "not found"), worked out off the UI thread: it enumerates processes and can scan Windows'
-    /// uninstall keys. Null until the first check answers.</summary>
-    private string? _accessLine;
-    private int _accessCheckRunning;
-    /// <summary>When this window last started Volanta; null once it connected, or once the one notice that it
-    /// did not connect within <see cref="VolantaLink.LaunchWindow"/> has been spoken.</summary>
-    private DateTimeOffset? _launchedAt;
-    private DateTimeOffset? _spokenFriendsReceived;
-    private bool _trafficFilled, _starting, _reconciling;
+    private bool _trafficFilled, _reconciling;
 
-    /// <summary>Another program's debugging port holds Volanta's live map port, so Volanta cannot open it: said in
-    /// each list, the status boxes, the Connection tab, and by the button, which then refuses a restart.</summary>
-    private static readonly string PortTakenText =
-        $"Another program is using port {VolantaLink.DebugPort.ToString(CultureInfo.InvariantCulture)}, Volanta's live map port, "
-        + "so Volanta cannot open it. Close that program, then restart Volanta from the Connection tab.";
-    /// <summary>Connected, but nothing has come for <see cref="StaleSeconds"/> since connecting: Volanta's login
-    /// screen serves the same page, so the link connects and nothing ever arrives.</summary>
+    /// <summary>The page is up, but nothing has come for <see cref="StaleSeconds"/> since it came up or was last live
+    /// again: Volanta's site may be down, or asking a human check the hidden page cannot show.</summary>
     private const string SilentText =
-        "Connected to Volanta, but it has sent nothing for 30 seconds. Make sure you are logged in to Volanta and it shows its map.";
+        "Volanta's web map has sent nothing for 30 seconds. Volanta's site may be busy; if this lasts, press Log in to "
+        + "Volanta on the Connection tab to see whether Volanta asks you anything.";
+    /// <summary>The web map could not start (no WebView2 runtime, or its browser profile could not be used).</summary>
+    private const string NoAccessText =
+        "Volanta's web map could not start. The Connection tab says why; the Microsoft Edge WebView2 runtime may need installing.";
 
     /// <summary>A list row: its key (flight or station id) and its text. Value equality, so an unchanged row is
     /// never rewritten.</summary>
@@ -147,6 +139,14 @@ public sealed class VolantaLiveMapForm : Form
     {
         public override string ToString() => Text;
     }
+
+    /// <summary>Volanta's public web map in a browser the pilot never sees; created when the window is shown,
+    /// disposed with it.</summary>
+    private VolantaWebMap? _webMap;
+    /// <summary>How long the window may be in the background before the web map pauses: an Alt+Tab to the sim
+    /// and straight back costs no catch-up download.</summary>
+    private static readonly TimeSpan WebMapPauseAfter = TimeSpan.FromSeconds(5);
+    private readonly System.Windows.Forms.Timer _webMapPauseTimer = new() { Interval = (int)WebMapPauseAfter.TotalMilliseconds };
 
     internal VolantaLiveMapForm(SimConnectManager sim, ScreenReaderAnnouncer announcer, OfflineLocationService locations)
     {
@@ -162,13 +162,43 @@ public sealed class VolantaLiveMapForm : Form
         {
             _sim.RequestAircraftPosition();
             _link.Start();
+            _webMap = new VolantaWebMap(_link);
+            _webMap.StateChanged += (_, _) =>
+            {
+                UpdateLoginButton();
+                RefreshConnectionStatus();
+            };
+            _webMap.LoginCompleted += (_, _) =>
+            {
+                // The login window closed itself: bring this window back and say so once, since the window
+                // closing is not something the pilot pressed.
+                ShowForm();
+                _announcer.AnnounceWithQueue("Logged in to Volanta.");
+            };
+            _ = _webMap.StartAsync();
             _timer.Start();
             RefreshConnectionStatus();
+        };
+        // The web map downloads only while this window is in the foreground (VOL-12): live at once when it comes
+        // forward, paused a few seconds after it goes back.
+        Activated += (_, _) =>
+        {
+            _webMapPauseTimer.Stop();
+            _webMap?.SetActive(true);
+        };
+        Deactivate += (_, _) => { if (_webMap != null) _webMapPauseTimer.Start(); };
+        _webMapPauseTimer.Tick += (_, _) =>
+        {
+            _webMapPauseTimer.Stop();
+            if (ActiveForm != this) _webMap?.SetActive(false);
         };
         FormClosed += (_, _) =>
         {
             _timer.Stop();
             _timer.Dispose();
+            _webMapPauseTimer.Stop();
+            _webMapPauseTimer.Dispose();
+            _webMap?.Dispose();
             _link.Changed -= OnLinkChanged;
             _link.Dispose();
         };
@@ -386,18 +416,27 @@ public sealed class VolantaLiveMapForm : Form
         var page = new TabPage("Connection")
         {
             AccessibleName = "Connection",
-            AccessibleDescription = "Volanta's live map access and what has been received",
+            AccessibleDescription = "Volanta's web map: whether it is up, your Volanta login, and what it downloads",
         };
 
-        _connectionStatus = NewDetailsList("Connection status", "Volanta's live map access and what has been received, updated live.");
-        _connectionStatus.SetText("Checking Volanta.");
-        _startButton = new Button
+        _connectionStatus = NewDetailsList("Connection status", "Volanta's web map, your login and what has been received, updated live.");
+        _connectionStatus.SetText("Opening Volanta's web map.");
+        _loginButton = new Button
         {
-            Text = "&Start or restart Volanta with live map access",
+            Text = LogInText,
             AutoSize = true,
-            AccessibleName = "Start or restart Volanta with live map access",
+            AccessibleName = LogInText.Replace("&", ""),
         };
-        _startButton.Click += async (_, _) => await StartVolantaAsync();
+        _loginButton.Click += async (_, _) =>
+        {
+            if (_webMap?.LoggedIn == true)
+            {
+                await _webMap.LogOutAsync();
+                // The button's new name is not spoken by itself (.NET 10 sends no name-change notice, VOL-10).
+                if (_webMap?.LoggedIn == false) _announcer.Announce("Logged out of Volanta.");
+            }
+            else _webMap?.ShowLogin();
+        };
 
         var help = new TextBox
         {
@@ -408,21 +447,19 @@ public sealed class VolantaLiveMapForm : Form
             AccessibleName = "About the Volanta live map",
             Text = string.Join(Environment.NewLine, new[]
             {
-                "This window reads the live map of Volanta, the flight tracker: the Volanta users and online network pilots around you, and online ATC.",
+                "This window reads the live map of Volanta, the flight tracker: the Volanta users and online network pilots around you, your Volanta friends, and online ATC. It reads Volanta's public web map (fly.volanta.app) in a browser you do not see, so the Volanta app does not need to be running; it can stay in the notification area logging your flights.",
                 "",
-                "What it needs: Volanta installed, you logged in, and Volanta started with the button above, which gives this app access to Volanta's map. Volanta started any other way (with Windows, with the sim, after an update) has no access until it is restarted with the button.",
+                "Without logging in you get the traffic and ATC, but your own flight may be listed as traffic and there is no friends list. To log in, press Log in to Volanta above: Volanta's login page opens in a window of its own. Log in there; the window closes by itself once you are logged in (Escape closes it sooner), and the map reloads with your login, which is kept for next time. The same button then logs you out.",
                 "",
-                "Keep Volanta open. It can stay behind the sim, but while it is minimized Volanta stops updating its map, so the traffic here stops too.",
+                "The web map downloads only while this window is in the foreground. Five seconds after you switch away it pauses, and when you come back it catches up within a few seconds. While it runs it downloads about 415 megabytes an hour; the Connection tab shows what it downloaded in the last minute. The page's ad and analytics services are blocked.",
                 "",
                 "Everything here updates every 5 seconds, and the line you are on re-reads when it changes. While you are in a list, its order holds, so the down arrow always reaches the next aircraft; new ones join at the end. F5 re-sorts the lists at once.",
                 "",
-                "Friends: Volanta sends your friends list once, when it starts, so this app reads it when it starts Volanta, and keeps a copy of your friends' names for next time. Who is flying, and where, is always live. If your list looks out of date, restart Volanta with the button above.",
+                "Friends: who is flying, and where, is always live; the others' statuses update as Volanta reports them.",
                 "",
                 "Each aircraft's Location names the nearest town, from the location data of Settings, GeoNames tab. Tick \"Report location to nearest major city\" on the Traffic or Friends tab to hear how far and which way it is from the nearest major city instead. A major city follows your own Minimum Population for Major Cities and Major Cities Range on the GeoNames tab.",
                 "",
                 "Volanta's positions can be up to two minutes old, so this window estimates where each aircraft is now. Use it for awareness, not to avoid traffic.",
-                "",
-                "While Volanta runs with live map access, programs on this PC can control Volanta. The access ends when Volanta is next started normally.",
                 "",
                 "Keys: F5 re-sorts the lists and reads the status, Ctrl+Tab moves between tabs, Escape closes the window.",
             }),
@@ -433,10 +470,24 @@ public sealed class VolantaLiveMapForm : Form
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
         layout.Controls.Add(_connectionStatus, 0, 0);
-        layout.Controls.Add(_startButton, 0, 1);
+        layout.Controls.Add(_loginButton, 0, 1);
         layout.Controls.Add(help, 0, 2);
         page.Controls.Add(layout);
         return page;
+    }
+
+    private const string LogInText = "&Log in to Volanta";
+    private const string LogOutText = "&Log out of Volanta";
+
+    /// <summary>The Connection tab's one button logs in, or once logged in, logs out (the owner's request,
+    /// 2026-10-17). Text and accessible name change together.</summary>
+    private void UpdateLoginButton()
+    {
+        if (IsDisposed) return;
+        string text = _webMap?.LoggedIn == true ? LogOutText : LogInText;
+        if (_loginButton.Text == text) return;
+        _loginButton.Text = text;
+        _loginButton.AccessibleName = text.Replace("&", "");
     }
 
     private static TableLayoutPanel NewColumn(int rows)
@@ -539,25 +590,14 @@ public sealed class VolantaLiveMapForm : Form
 
     private void AnnounceTransitions(VolantaLinkSnapshot snap)
     {
-        if (snap.Status != _spokenStatus)
-        {
-            if (snap.Status == VolantaLinkStatus.Connected)
-            {
-                _launchedAt = null;   // the start this window made has connected
-                _announcer.AnnounceWithQueue("Connected to Volanta's live map.");
-            }
-            else if (_spokenStatus == VolantaLinkStatus.Connected && snap.Status != VolantaLinkStatus.Stopped && !_starting)
-                // Not while this window restarts Volanta itself: the pilot asked for that, and hears "Connected".
-                _announcer.AnnounceWithQueue("Lost the connection to Volanta's live map.");
-            _spokenStatus = snap.Status;
-        }
-        // Volanta's own friends download comes only when Volanta starts, which here is always the pilot's press.
-        if (snap.FriendsReceived != null && snap.FriendsReceived != _spokenFriendsReceived && snap.Friends is { } friends)
-        {
-            if (_spokenFriendsReceived != null || _starting || snap.ConnectedAt is DateTimeOffset c && (DateTimeOffset.UtcNow - c).TotalSeconds < 30)
-                _announcer.AnnounceWithQueue(friends.Count == 1 ? "Loaded your friends list: 1 friend." : $"Loaded your friends list: {friends.Count.ToString(Inv)} friends.");
-            _spokenFriendsReceived = snap.FriendsReceived;
-        }
+        // The friends list comes with every logged-in page load, so it is not announced: "Logged in to Volanta" says
+        // it is coming.
+        if (snap.Status == _spokenStatus) return;
+        if (snap.Status == VolantaLinkStatus.Connected)
+            _announcer.AnnounceWithQueue("Connected to Volanta's live map.");
+        else if (_spokenStatus == VolantaLinkStatus.Connected && snap.Status != VolantaLinkStatus.Stopped)
+            _announcer.AnnounceWithQueue("Lost the connection to Volanta's live map.");
+        _spokenStatus = snap.Status;
     }
 
     private void OnTimer()
@@ -566,7 +606,6 @@ public sealed class VolantaLiveMapForm : Form
         _sim.RequestAircraftPosition();
         CurrentPlaceSettings();   // the checkbox text follows the GeoNames tab even while no traffic shows
         RefreshVisibleTab(hold: true);
-        AnnounceLaunchNotConnected();
     }
 
     /// <summary>Updates the tab in view only: nobody reads the others, and with all pilots listed the Traffic
@@ -581,26 +620,6 @@ public sealed class VolantaLiveMapForm : Form
             case 2: RefreshAtc(hold); break;
             default: RefreshConnectionStatus(); break;
         }
-    }
-
-    /// <summary>A start made from this window that has not connected within <see cref="VolantaLink.LaunchWindow"/>
-    /// is said once: the pilot heard "it connects in a few seconds" and would otherwise hear nothing more.
-    /// Volanta's updater can install and relaunch it without the switch, it can crash, or another program can
-    /// hold the port; the lists' top line shows the state, but the pilot may be in the sim.</summary>
-    private void AnnounceLaunchNotConnected()
-    {
-        if (_launchedAt is not DateTimeOffset launched || DateTimeOffset.UtcNow - launched < VolantaLink.LaunchWindow) return;
-        _launchedAt = null;
-        var status = _link.Snapshot.Status;
-        if (status == VolantaLinkStatus.Connected) return;
-        _announcer.AnnounceWithQueue(status switch
-        {
-            VolantaLinkStatus.PortTaken => "Volanta started a minute ago, but has no live map access. " + PortTakenText,
-            VolantaLinkStatus.WaitingForPage => "Volanta started a minute ago, but its map page has not appeared. If Volanta shows an "
-                + "error or an update, deal with it, then restart Volanta from the Connection tab.",
-            _ => "Volanta started a minute ago, but has not given live map access. It may have updated and restarted itself: "
-                + "restart it from the Connection tab.",
-        });
     }
 
     /// <summary>F5 and the Re-sort button: re-sort the lists now, even while the pilot is in one, and read the
@@ -633,8 +652,9 @@ public sealed class VolantaLiveMapForm : Form
             _friendsByKey = new(StringComparer.Ordinal);
             ReconcileList(_friendsList, why, Array.Empty<Row>(), hold: false);
             ShowFriendDetails();
-            DisplayText.SetPreserveCaret(_friendsStatus, "Your friends list has not been read yet. Volanta sends it "
-                + "only when it starts: restart Volanta from the Connection tab to load it.");
+            DisplayText.SetPreserveCaret(_friendsStatus, _webMap?.LoggedIn == true
+                ? "Logged in to Volanta: your friends list comes with the web map's next download."
+                : "Your friends list comes when you are logged in to Volanta: press Log in to Volanta on the Connection tab.");
             return;
         }
 
@@ -671,11 +691,7 @@ public sealed class VolantaLiveMapForm : Form
                 + $"{flying.ToString(Inv)} flying, {online.ToString(Inv)} online, {offline.ToString(Inv)} offline"
                 + (unknown > 0 ? $", {unknown.ToString(Inv)} not known yet." : ".");
         }
-        if (snap.FriendsReceived != null)
-            status += " The list is from Volanta and stays current while it runs.";
-        else if (snap.FriendsSavedAt is DateTimeOffset saved)
-            status += $" The list is your saved copy from {saved.ToLocalTime().ToString("d MMMM", Inv)}. Who is flying is live; "
-                + "other statuses show once Volanta reports a change. To load the latest list, restart Volanta from the Connection tab.";
+        status += " The list is from Volanta and stays current while you are logged in.";
         if (snap.VolantaFlights == null) status += " Waiting for Volanta's flights to see who is flying.";
         DisplayText.SetPreserveCaret(_friendsStatus, status);
     }
@@ -970,9 +986,8 @@ public sealed class VolantaLiveMapForm : Form
 
     /// <summary>
     /// The line at the top of each list while Volanta's data cannot be pulled, saying why, or null while it
-    /// updates. The owner's choice (2026-10-16), replacing a spoken "Volanta is minimized": the pilot found Volanta
-    /// minimized just after it started, which sends nothing (VOL-2), and the lists stood empty. Rows already
-    /// received stay below the line. Keyed by its text, so a new reason replaces it at the top.
+    /// updates (VOL-2; the owner's choice, 2026-10-16, over a spoken notice that left an empty list behind). Rows
+    /// already received stay below the line. Keyed by its text, so a new reason replaces it at the top.
     /// </summary>
     private static Row? NotUpdatingRow(VolantaLinkSnapshot snap, DateTimeOffset now)
     {
@@ -989,27 +1004,24 @@ public sealed class VolantaLiveMapForm : Form
         None,
         /// <summary>The link is not started yet, or is stopping with the window.</summary>
         NotStarted,
-        /// <summary>Volanta's window is minimized or hidden, so it sends nothing.</summary>
-        Minimized,
-        /// <summary>Connected for <see cref="StaleSeconds"/> and nothing has come since connecting: Volanta's login
-        /// screen serves the same page.</summary>
+        /// <summary>The page has been up for <see cref="StaleSeconds"/> and nothing has come since it came up or was
+        /// last live again.</summary>
         Silent,
-        /// <summary>No new Volanta flights file for <see cref="StaleSeconds"/> since the last one or since
-        /// connecting, whichever is later.</summary>
+        /// <summary>No new Volanta flights file for <see cref="StaleSeconds"/> since the last one or since the page
+        /// came up or was last live again, whichever is later.</summary>
         Stale,
+        /// <summary>The web map's page is loading, or is being loaded again after it failed.</summary>
         Starting,
-        PortTaken,
+        /// <summary>The web map could not start.</summary>
         NoAccess,
     }
 
     internal static Standstill StandstillOf(VolantaLinkSnapshot snap, DateTimeOffset now) => snap.Status switch
     {
-        VolantaLinkStatus.Connected when snap.VolantaPaused == true => Standstill.Minimized,
         VolantaLinkStatus.Connected when SilentSinceConnect(snap, now) => Standstill.Silent,
         VolantaLinkStatus.Connected when IsStale(snap, now) => Standstill.Stale,
         VolantaLinkStatus.Connected => Standstill.None,
         VolantaLinkStatus.WaitingForPage => Standstill.Starting,
-        VolantaLinkStatus.PortTaken => Standstill.PortTaken,
         VolantaLinkStatus.NoAccess => Standstill.NoAccess,
         _ => Standstill.NotStarted,
     };
@@ -1017,15 +1029,12 @@ public sealed class VolantaLiveMapForm : Form
     /// <summary>The line at the top of each list saying why it stands still, or null while it updates.</summary>
     internal static string? NotUpdatingText(VolantaLinkSnapshot snap, DateTimeOffset now) => StandstillOf(snap, now) switch
     {
-        Standstill.Minimized
-            => "Connected to Volanta, but it is minimized, so this list is not updating. Restore Volanta's window.",
         Standstill.Silent
-            => "Connected to Volanta, but it has sent nothing since connecting, so this list is not updating. Make sure you are logged in to Volanta and it shows its map.",
+            => "Volanta's web map has sent nothing since it opened, so this list is not updating. Volanta's site may be busy; the Connection tab says more.",
         Standstill.Stale
-            => "Volanta has not sent anything new for a while, so this list is not updating. Keep Volanta open on its map, not minimized.",
-        Standstill.Starting => "Volanta is starting, or is between pages, so this list is not updating. Waiting for its map.",
-        Standstill.PortTaken => "This list is not updating. " + PortTakenText,
-        Standstill.NoAccess => "Not connected to Volanta's live map, so this list is not updating. Open the Connection tab to start Volanta with live map access.",
+            => "Volanta's web map has not sent anything new for a while, so this list is not updating.",
+        Standstill.Starting => "Volanta's web map is loading, so this list is not updating yet.",
+        Standstill.NoAccess => "This list is not updating. " + NoAccessText,
         _ => null,
     };
 
@@ -1033,30 +1042,26 @@ public sealed class VolantaLiveMapForm : Form
     /// empty while Volanta's data updates.</summary>
     internal static string StatusWarning(VolantaLinkSnapshot snap, DateTimeOffset now) => StandstillOf(snap, now) switch
     {
-        Standstill.Minimized
-            => "Volanta is minimized, so its traffic has stopped updating: restore Volanta's window. It can stay behind the sim.",
         Standstill.Silent => SilentText,
-        Standstill.Stale => "Volanta has not sent new traffic for a while: keep Volanta open on its map, not minimized.",
-        Standstill.Starting => "Volanta is starting, or is between pages, so this traffic is not updating.",
-        Standstill.PortTaken => PortTakenText,
-        Standstill.NoAccess => "Not connected to Volanta, so this traffic is not updating.",
+        Standstill.Stale => "Volanta's web map has not sent new traffic for a while.",
+        Standstill.Starting => "Volanta's web map is loading, so this traffic is not updating yet.",
+        Standstill.NoAccess => NoAccessText,
         _ => "",
     };
 
     /// <summary>A status box's text while its list has nothing to show.</summary>
     internal static string NoDataText(VolantaLinkSnapshot snap, DateTimeOffset now) => StandstillOf(snap, now) switch
     {
-        Standstill.Minimized => "Connected to Volanta, but it is minimized, so it sends nothing: restore Volanta's window. It can stay behind the sim.",
         Standstill.Silent => SilentText,
-        Standstill.None or Standstill.Stale => "Connected to Volanta. Waiting for its first update; it comes every few seconds while Volanta's map is open.",
-        Standstill.Starting => "Volanta is starting. Waiting for its map.",
-        Standstill.PortTaken => PortTakenText,
-        _ => "No access to Volanta's live map. Open the Connection tab to start Volanta with live map access.",
+        Standstill.None or Standstill.Stale => "Connected to Volanta's web map. Waiting for its first update; it comes within a few seconds.",
+        Standstill.Starting => "Opening Volanta's web map.",
+        Standstill.NoAccess => NoAccessText,
+        _ => "Opening Volanta's web map.",
     };
 
-    /// <summary>Connected for more than <see cref="StaleSeconds"/> and no file of any kind since connecting.
-    /// Files from before a restart do not count: the snapshot keeps them, and Volanta started again on its login
-    /// screen sends nothing.</summary>
+    /// <summary>Connected for more than <see cref="StaleSeconds"/> and no file of any kind since the page came up or
+    /// was last live again (<see cref="VolantaLinkSnapshot.ConnectedAt"/>). Files from before do not count: the
+    /// snapshot keeps them through a pause or a reload.</summary>
     private static bool SilentSinceConnect(VolantaLinkSnapshot snap, DateTimeOffset now)
         => snap.ConnectedAt is DateTimeOffset c && (now - c).TotalSeconds > StaleSeconds
             && !ReceivedSince(snap.VolantaFlightsReceived, c) && !ReceivedSince(snap.NetworkFlightsReceived, c)
@@ -1064,8 +1069,8 @@ public sealed class VolantaLiveMapForm : Form
 
     private static bool ReceivedSince(DateTimeOffset? received, DateTimeOffset since) => received is DateTimeOffset r && r >= since;
 
-    /// <summary>No new Volanta flights file for <see cref="StaleSeconds"/>, counted from connecting when that is
-    /// later: just after a restart the last file is old, but nothing is overdue yet.</summary>
+    /// <summary>No new Volanta flights file for <see cref="StaleSeconds"/>, counted from <see cref="VolantaLinkSnapshot.ConnectedAt"/>
+    /// when that is later: just after a pause the last file is old, but nothing is overdue yet.</summary>
     private static bool IsStale(VolantaLinkSnapshot snap, DateTimeOffset now)
     {
         if (snap.VolantaFlightsReceived is not DateTimeOffset t) return false;
@@ -1187,27 +1192,26 @@ public sealed class VolantaLiveMapForm : Form
         if (IsDisposed) return;
         var snap = _link.Snapshot;
         var now = DateTimeOffset.UtcNow;
-        var lines = new List<string>();
-        switch (snap.Status)
+        var lines = new List<string>
         {
-            case VolantaLinkStatus.Connected:
-                lines.Add("Connected to Volanta's live map.");
-                string warning = StatusWarning(snap, now);
-                if (warning.Length > 0) lines.Add(warning);
-                lines.Add("Volanta users: " + FeedLine(snap.VolantaFlights?.Items.Count, snap.VolantaFlightsReceived, now));
-                lines.Add("Network pilots: " + FeedLine(snap.NetworkFlights?.Items.Count, snap.NetworkFlightsReceived, now));
-                lines.Add("ATC stations: " + FeedLine(snap.Controllers?.Items.Count, snap.ControllersReceived, now));
-                break;
-            case VolantaLinkStatus.WaitingForPage:
-                lines.Add("Volanta is starting, or is between pages. Waiting for its map.");
-                break;
-            case VolantaLinkStatus.PortTaken:
-                lines.Add(PortTakenText);
-                break;
-            default:
-                CheckAccessInBackground();
-                lines.Add(_accessLine ?? "Checking Volanta.");
-                break;
+            // The web map's own state, the login, what it downloads, then what has been received.
+            _webMap?.Problem ?? (snap.Status == VolantaLinkStatus.Connected
+                ? "Connected to Volanta's web map." : "Opening Volanta's web map."),
+            _webMap?.LoggedIn switch
+            {
+                true => "Logged in to Volanta.",
+                false => "Not logged in to Volanta: press the button below to log in, for your own flight and your friends.",
+                _ => "Login not checked yet.",
+            },
+        };
+        if (_webMap != null) lines.Add("Downloads: " + _webMap.Stats.Summary(now));
+        if (snap.Status == VolantaLinkStatus.Connected)
+        {
+            string warning = StatusWarning(snap, now);
+            if (warning.Length > 0) lines.Add(warning);
+            lines.Add("Volanta users: " + FeedLine(snap.VolantaFlights?.Items.Count, snap.VolantaFlightsReceived, now));
+            lines.Add("Network pilots: " + FeedLine(snap.NetworkFlights?.Items.Count, snap.NetworkFlightsReceived, now));
+            lines.Add("ATC stations: " + FeedLine(snap.Controllers?.Items.Count, snap.ControllersReceived, now));
         }
         if (snap.OwnFlight is { } f)
             lines.Add($"Your Volanta flight: {(f.Callsign.Length > 0 ? f.Callsign : "no callsign")}"
@@ -1217,117 +1221,12 @@ public sealed class VolantaLiveMapForm : Form
         _connectionStatus.SetLines(lines);
     }
 
-    /// <summary>Works out <see cref="_accessLine"/> off the UI thread, one check at a time, and updates the
-    /// Connection tab when it changes: finding Volanta enumerates processes and can scan Windows' uninstall
-    /// keys, too slow for every update on the UI thread.</summary>
-    private void CheckAccessInBackground()
-    {
-        if (Interlocked.CompareExchange(ref _accessCheckRunning, 1, 0) != 0) return;
-        _ = Task.Run(() =>
-        {
-            string line;
-            try
-            {
-                line = VolantaLauncher.IsRunning()
-                    ? "Volanta is running without live map access. Press the button below to restart it with access."
-                    : VolantaLauncher.FindExePath() == null
-                        ? VolantaLauncher.NotFoundMessage + " If it is not installed, install Volanta and log in first."
-                        : "Volanta is not running. Press the button below to start it with live map access.";
-            }
-            catch (Exception ex)
-            {
-                Log.Debug("Volanta", $"Could not check for Volanta: {ex.Message}");
-                line = "Volanta could not be checked. Press the button below to start or restart it with live map access.";
-            }
-            finally { Interlocked.Exchange(ref _accessCheckRunning, 0); }
-            SafeBeginInvoke(() =>
-            {
-                if (line == _accessLine) return;
-                _accessLine = line;
-                RefreshConnectionStatus();
-            });
-        });
-    }
-
     private static string FeedLine(int? count, DateTimeOffset? received, DateTimeOffset now)
         => count is int n && received is DateTimeOffset t
             ? $"{n.ToString("N0", Inv)}, updated {VolantaTrafficFormatter.Age((now - t).TotalSeconds)}."
             : "nothing received yet.";
 
-    // ── Start / restart ───────────────────────────────────────────────────────
-
-    /// <summary>The Connection tab's one button: start Volanta with access, or restart it, even when it already
-    /// has access, since that is also how the friends list is reloaded (Volanta sends it only when it starts).</summary>
-    private async Task StartVolantaAsync()
-    {
-        if (_starting) return;
-        _starting = true;
-        try
-        {
-            if (_link.Snapshot.Status == VolantaLinkStatus.PortTaken)
-            {
-                // Started again, Volanta would fail to open the port again.
-                _announcer.Announce(PortTakenText);
-                return;
-            }
-            // Off the UI thread: both enumerate processes, and finding the exe can scan Windows' uninstall keys.
-            var state = await Task.Run(() => VolantaLauncher.DetectAsync());
-            if (IsDisposed) return;   // the window closed while Volanta was being looked for: nothing was changed
-            // Volanta's exe, read while it still runs: after a force-close only its installer's folder and
-            // Windows' uninstall keys remain, and a Volanta installed elsewhere would be closed and not restarted.
-            string? exe = await Task.Run(VolantaLauncher.FindExePath);
-            if (IsDisposed) return;
-            switch (state)
-            {
-                case VolantaAccessState.NotInstalled:
-                    _announcer.Announce(VolantaLauncher.NotFoundMessage);
-                    return;
-                case VolantaAccessState.RunningWithAccess:
-                case VolantaAccessState.RunningWithoutAccess:
-                    if (exe == null)
-                    {
-                        _announcer.Announce("Volanta is running, but where it runs from could not be read, so it cannot be "
-                            + "restarted from here. Quit Volanta from its notification-area menu, then press this button again.");
-                        return;
-                    }
-                    if (!Confirm(state == VolantaAccessState.RunningWithAccess
-                            ? "Volanta already has live map access. Restart it anyway? That also reloads your friends list. "
-                                + "Volanta is force-closed and started again, and keeps tracking your flight."
-                            : "Volanta is running without live map access. Restart it with access now? Volanta is "
-                                + "force-closed and started again, and keeps tracking your flight.")) return;
-                    // Not cut short if the window closes during the wait: Volanta is being closed, so it is started again.
-                    if (!await ForceCloseVolantaAsync()) return;
-                    break;
-            }
-            // Step two: start it with access, the link watching closely for its friends download.
-            _link.ExpectLaunch();
-            string? error = VolantaLauncher.StartWithAccess(exe);
-            if (error == null) _launchedAt = DateTimeOffset.UtcNow;
-            _announcer.Announce(error ?? "Starting Volanta with live map access. It connects in a few seconds.");
-        }
-        catch (Exception ex)
-        {
-            Log.Warn("Volanta", $"Start or restart failed: {ex.Message}");
-            _announcer.Announce($"Could not start Volanta: {ex.Message}");
-        }
-        finally
-        {
-            _starting = false;
-            RefreshConnectionStatus();
-        }
-    }
-
-    /// <summary>Step one of a restart. Asking Volanta to quit was not reliable (its close button only hides it in
-    /// the notification area when its "show in tray" setting is on), so it is force-closed straight away. Windows
-    /// refusing to end it leaves the pilot the Quit item of its notification-area menu.</summary>
-    private async Task<bool> ForceCloseVolantaAsync()
-    {
-        _announcer.Announce("Closing Volanta.");
-        if (await VolantaLauncher.ForceCloseAsync()) return true;
-        _announcer.Announce("Volanta could not be closed. Quit it from the notification area: press Windows+B, find "
-            + "Volanta, open its menu with the Applications key, and choose Quit. Then press this button again.");
-        return false;
-    }
+    // ── Showing the window ────────────────────────────────────────────────────
 
     /// <summary>Shows the window as its own top-level window, never owned by the main window, so the pilot can
     /// Alt+Tab between the two (the TCAS window's pattern); a brief TopMost brings it forward without pinning it.</summary>
@@ -1340,9 +1239,6 @@ public sealed class VolantaLiveMapForm : Form
         Activate();
         BringToFront();
     }
-
-    private bool Confirm(string question)
-        => MessageBox.Show(this, question, "Restart Volanta", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
 
     /// <summary>Marshal to the UI thread; BeginInvoke can still throw while the handle is being destroyed
     /// (A380C-6), so the check alone is not enough.</summary>

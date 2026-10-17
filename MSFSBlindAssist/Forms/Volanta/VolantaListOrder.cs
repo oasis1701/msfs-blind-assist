@@ -14,8 +14,9 @@ internal sealed record HeldUpdate(IReadOnlyList<int> Remove, int InsertTop, int 
 /// </summary>
 internal static class VolantaListOrder
 {
-    /// <summary>A row whose key starts with this is a status line, not an item ("Connected to Volanta, but it is
-    /// minimized"): given first, it stays first, held or not, so the reader meets it at the top of the list.</summary>
+    /// <summary>A row whose key starts with this is a status line, not an item ("Volanta's web map is loading, so this
+    /// list is not updating yet"): given first, it stays first, held or not, so the reader meets it at the top of the
+    /// list.</summary>
     public const string StatusKeyPrefix = "\0status:";
 
     public static bool IsStatusKey(string key) => key.StartsWith(StatusKeyPrefix, StringComparison.Ordinal);

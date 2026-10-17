@@ -227,6 +227,30 @@ public static class VolantaFeedParser
         catch (JsonException) { return null; }
     }
 
+    /// <summary>
+    /// The logged-in pilot's active flight, the answer to the request Volanta's page makes as soon as it is logged in
+    /// (<c>/api/v1/Flights/Active</c>): the flight object itself, whose <c>id</c> Volanta logs as "Found active
+    /// flight {id}" and is the id of the pilot's entry in the flight file. Only the id is needed (VOL-4); the
+    /// callsign, aircraft and airports are taken when named as in Volanta's other files. Null when the text is not
+    /// a flight (no active flight).
+    /// </summary>
+    public static VolantaOwnFlight? ParseActiveFlight(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return null;
+            string id = Str(root, "id");
+            if (id.Length == 0) id = Str(root, "flightId");
+            if (id.Length == 0) return null;
+            return new VolantaOwnFlight(id, Str(root, "callsign"), Str(root, "aircraftIcao"),
+                Str(root, "originIcao"), Str(root, "destinationIcao"));
+        }
+        catch (JsonException) { return null; }
+    }
+
     private static VolantaFriend? ParseFriend(JsonElement f, bool requireFriendState)
     {
         if (f.ValueKind != JsonValueKind.Object) return null;

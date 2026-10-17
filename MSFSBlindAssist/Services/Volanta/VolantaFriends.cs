@@ -9,9 +9,9 @@ public sealed record VolantaFriendEntry(VolantaFriend Friend, VolantaFlight? Fli
 
 /// <summary>
 /// The pilot's Volanta friends: keeping the list current from Volanta's hub, and ordering it for the Friends tab.
-/// Pure. Volanta sends the list once, when the pilot logs in; after that its hub reports friends added and
-/// removed and each friend's status changes. Whether a friend flies, and where, comes from Volanta's flight file
-/// instead, matched by user id, so it is always current even when the list itself came from the saved copy.
+/// Pure. Volanta's web map downloads the list at each logged-in page load; after that its hub reports friends
+/// added and removed and each friend's status changes. Whether a friend flies, and where, comes from Volanta's
+/// flight file instead, matched by user id, so it is always current.
 /// </summary>
 public static class VolantaFriends
 {
@@ -37,9 +37,6 @@ public static class VolantaFriends
         }
         return list;
     }
-
-    /// <summary>Whether the frame added or removed a friend, so the saved copy needs writing again.</summary>
-    public static bool ChangesMembership(VolantaHubUpdate update) => update.FriendsAdded.Count > 0 || update.FriendsRemoved.Count > 0;
 
     /// <summary>
     /// The Friends tab's rows: friends flying first, nearest first (those not placeable last), then friends

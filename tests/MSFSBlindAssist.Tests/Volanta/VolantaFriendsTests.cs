@@ -3,15 +3,14 @@ using MSFSBlindAssist.Services.Volanta;
 
 namespace MSFSBlindAssist.Tests.Volanta;
 
-// Characterization tests for Services/Volanta/VolantaFriends (keeping the list current, the Friends tab's order),
-// the friend wording in VolantaTrafficFormatter (under de-DE) and the saved copy in VolantaFriendsCache.
+// Characterization tests for Services/Volanta/VolantaFriends (keeping the list current, the Friends tab's order)
+// and the friend wording in VolantaTrafficFormatter (under de-DE).
 public sealed class VolantaFriendsTests : IDisposable
 {
     private readonly CultureInfo _previousCulture = CultureInfo.CurrentCulture;
     public VolantaFriendsTests() => CultureInfo.CurrentCulture = new CultureInfo("de-DE");
     public void Dispose() => CultureInfo.CurrentCulture = _previousCulture;
 
-    private static readonly DateTimeOffset Now = new(2026, 10, 15, 22, 0, 0, TimeSpan.Zero);
     private static VolantaFriendStatus Status(string state, string value = "") => new() { State = state, Value = value };
 
     private static readonly IReadOnlyList<VolantaFriend> Friends = new[]
@@ -35,8 +34,6 @@ public sealed class VolantaFriendsTests : IDisposable
         Assert.Equal(new[] { "a1", "c3", "e5", "b2" }, after.Select(f => f.FriendId));
         Assert.Equal("Cruising", after.Single(f => f.FriendId == "a1").Status!.State);
         Assert.Equal("alpha_renamed", after.Single(f => f.FriendId == "b2").UserName);
-        Assert.True(VolantaFriends.ChangesMembership(update));
-        Assert.False(VolantaFriends.ChangesMembership(new VolantaHubUpdate { FriendStatuses = update.FriendStatuses }));
         Assert.Same(Friends, VolantaFriends.Apply(Friends, new VolantaHubUpdate(), null));
     }
 
@@ -119,53 +116,4 @@ public sealed class VolantaFriendsTests : IDisposable
             "Position: unknown until your own position is known",
         }, details);
     }
-
-    [Fact]
-    public void The_saved_copy_keeps_ids_and_names_only()
-    {
-        string dir = Path.Combine(Path.GetTempPath(), "msfsba-volanta-tests-" + Guid.NewGuid().ToString("N"));
-        try
-        {
-            var cache = new VolantaFriendsCache(Path.Combine(dir, "friends.json"));
-            Assert.Null(cache.Load());
-            cache.Save(Friends, Now);
-            var (friends, savedAt, owner) = cache.Load()!.Value;
-            Assert.Equal(Now, savedAt);
-            Assert.Null(owner);   // saved before the user id was read
-            Assert.Equal(Friends.Select(f => (f.FriendId, f.UserName)), friends.Select(f => (f.FriendId, f.UserName)));
-            Assert.All(friends, f => Assert.Null(f.Status));   // a saved status would read later as current
-            File.WriteAllText(Path.Combine(dir, "friends.json"), "not json");
-            Assert.Null(cache.Load());
-        }
-        finally { try { Directory.Delete(dir, recursive: true); } catch { } }
-    }
-
-    [Fact]
-    public void The_saved_copy_remembers_whose_friends_they_are()
-    {
-        string dir = Path.Combine(Path.GetTempPath(), "msfsba-volanta-tests-" + Guid.NewGuid().ToString("N"));
-        try
-        {
-            var cache = new VolantaFriendsCache(Path.Combine(dir, "friends.json"));
-            cache.Save(Friends, Now, "73e6c47e-9b8d-416b-a257-b8e9dd32b6f9");
-            Assert.Equal("73e6c47e-9b8d-416b-a257-b8e9dd32b6f9", cache.Load()!.Value.UserId);
-
-            // A copy written by the first version has no owner, and still loads.
-            File.WriteAllText(Path.Combine(dir, "friends.json"),
-                """{"SavedAt":"2026-10-15T12:00:00+00:00","Friends":[{"FriendId":"a1","UserName":"pilot_one"}]}""");
-            var old = cache.Load()!.Value;
-            Assert.Null(old.UserId);
-            Assert.Single(old.Friends);
-        }
-        finally { try { Directory.Delete(dir, recursive: true); } catch { } }
-    }
-
-    [Theory]
-    [InlineData(null, null, true)]
-    [InlineData(null, "73e6c47e-9b8d-416b-a257-b8e9dd32b6f9", true)]   // whose copy is not known: shown
-    [InlineData("73e6c47e-9b8d-416b-a257-b8e9dd32b6f9", null, true)]   // who is logged in is not known yet: shown
-    [InlineData("73e6c47e-9b8d-416b-a257-b8e9dd32b6f9", "73E6C47E-9B8D-416B-A257-B8E9DD32B6F9", true)]
-    [InlineData("73e6c47e-9b8d-416b-a257-b8e9dd32b6f9", "0f1d2c3b-4a59-6877-8695-a4b3c2d1e0f9", false)]
-    public void A_saved_copy_is_never_shown_to_another_Volanta_account(string? savedFor, string? ownUserId, bool shown)
-        => Assert.Equal(shown, VolantaFriendsCache.IsFor(savedFor, ownUserId));
 }

@@ -1,8 +1,10 @@
 # Volanta live map
 
 Extras, Volanta opens the **Volanta Live Map** window: Volanta's live map as text. A pilot who cannot see
-Volanta's map hears the same traffic: the Volanta users and online network pilots around them, and the online
-ATC.
+Volanta's map hears the same traffic: the Volanta users and online network pilots around them, their Volanta
+friends, and the online ATC. The window reads Volanta's public web map (`https://fly.volanta.app/map`) in a browser
+the pilot never sees, so the Volanta app need not run: most blind pilots keep it in the notification area to log
+their flights, where its own map downloads nothing.
 
 ## What the pilot gets
 
@@ -22,20 +24,20 @@ ATC.
   from the nearest major city instead ("92 miles west of Wichita, Kansas, United States"), a major city being
   the pilot's own Minimum Population for Major Cities within their Major Cities Range (GeoNames tab), never a
   district of a city. The checkbox text names both values. Unticked at every opening.
-- **Friends tab** (after Traffic): the pilot's Volanta friends. Flying friends first, nearest first, with the
-  same placing as a traffic line; then friends online in Volanta, with their status in words ("cruising over
-  United States", "taxiing to gate B12 at KGRB"); then offline. The details list adds everything about a flying
-  friend's flight. Its own "Report location to nearest major city" checkbox, after the details, works as the
-  Traffic tab's, independently. Restarting Volanta from the Connection tab loads the list again ([VOL-6]).
+- **Friends tab** (after Traffic, logged in): the pilot's Volanta friends. Flying friends first, nearest first,
+  with the same placing as a traffic line; then friends online in Volanta, with their status in words ("cruising
+  over United States", "taxiing to gate B12 at KGRB"); then offline. The details list adds everything about a
+  flying friend's flight. Its own "Report location to nearest major city" checkbox, after the details, works as
+  the Traffic tab's, independently ([VOL-6]).
 - **ATC tab**: online VATSIM and IVAO stations, nearest first, with frequency; the details box adds the
   controller, the airport, when they came online and the ATIS text. Its search (the owner's request,
   2026-10-16) looks up an airport's ATC wherever it is: it matches the callsign, the airport Volanta gives the
   station (a center too, LFFF_CTR at LFPG), the controller and the frequency, at any distance
   (`VolantaAtcSearch`). A US code also finds the stations VATSIM names without its K: "KATL" finds ATL_TWR.
   A station covering the airport from above under another airport's code is not found.
-- **Connection tab**: whether Volanta has live map access, what has been received and when, and the window's one
-  button that starts or restarts Volanta with access. It restarts Volanta even when it already has access (after
-  asking), since that is also how the friends list is reloaded.
+- **Connection tab**: whether the web map is up, whether the pilot is logged in to Volanta, what it downloaded in
+  the last minute, what has been received and when, and one button: "Log in to Volanta", or once logged in, "Log
+  out of Volanta" (the owner's request, 2026-10-17).
 
 In each list tab the list comes first in the tab order, then the selected item's details, the major-city
 checkbox (Traffic and Friends, the owner's choice, 2026-10-16), then the status and the filters. The tabs use `AccessibleTabControl`, as the EFB does, so NVDA names only the tab.
@@ -50,96 +52,70 @@ list they are in only the rows within 150 of theirs are rewritten: rewriting eve
 window for seconds ([VOL-9]). The details list below, one field per row, is live. Every checkbox is drawn by
 Windows (FlatStyle.System), the only kind whose tick NVDA hears under .NET 10 ([VOL-10]). F5 (or Re-sort
 now) re-sorts at once and reads the tab's status (a list of more than 300 rows is rebuilt in one go then, its
-selection kept); a filter change re-sorts too. Connected and lost are each
-spoken once, queued, as is a start from the Connection tab that has not connected after a minute (Volanta's
-updater can relaunch it without the switch), and nothing else is (the owner wants fewer announcements here).
-While Volanta's data cannot be pulled, each list instead has a line at its top saying why: Volanta minimized
-("Connected to Volanta, but it is minimized, so this list is not updating"), nothing new for 30 seconds,
-nothing at all for 30 seconds since connecting (Volanta's login screen: the line says to log in; files from
-before a restart do not count), Volanta starting, another program on Volanta's port, or no access. The status
-boxes and the Connection tab give the same reason (`StandstillOf`).
-The rows last received stay below it, and it stays first while the pilot is in the list ([VOL-2]). The owner
-found Volanta minimized after Alt+Tabbing away from it just after it started (2026-10-16), before it sent
-anything, and the lists stood empty.
+selection kept); a filter change re-sorts too. Connected and lost are each spoken once, queued, as are
+"Logged in to Volanta." when the login window closes itself and "Logged out of Volanta." (the button's new name
+is not heard by itself, [VOL-10]); nothing else is (the owner wants fewer announcements here).
+While Volanta's data cannot be pulled, each list instead has a line at its top saying why: the web map loading,
+or unable to start, nothing at all for 30 seconds since it came up or was last live again, or nothing new for 30
+seconds. The rows last received stay below it, and it stays first while the pilot is in the list ([VOL-2]). The
+status boxes and the Connection tab give the same reason (`StandstillOf`).
 
 ## Requirements
 
-Volanta installed, the pilot logged in, and Volanta **started by MSFSBA** (the Connection tab's button), and
-kept **open, not minimized**. Behind the sim is fine.
+The Microsoft Edge WebView2 runtime (part of Windows 11; the EFB windows use it too) and an internet connection.
+Logging in to Volanta is optional: logged out, the window has the traffic and ATC; logged in, also the friends
+list and the pilot's own flight, which is then never listed as traffic ([VOL-4]).
 
 ## How it works
 
-Volanta is an Electron app (Chromium inside). Its servers refuse every client but Volanta itself:
-`api.volanta.app/api/v1/cdn/*` and `webassets.volanta.app/*` answer a plain request with a Cloudflare 403. So
-the window never asks them for anything. Instead:
-
-1. `VolantaLauncher` starts Volanta with `--remote-debugging-port=9223 --remote-debugging-address=127.0.0.1`.
-   Nothing in Volanta blocks the switch (no check for it in its code; its Electron fuses do not cover it).
-   Volanta runs one copy at a time, so a running Volanta is force-closed first, after the pilot confirms
-   ([VOL-3], "Restarting" below). The exe is the running copy's own, read before it is closed; else the
-   installer's per-user folder (`%LOCALAPPDATA%\Programs\Volanta`); else the install Windows' uninstall keys
-   register (an all-users or moved install: its `DisplayIcon`, since Volanta's installer writes no
-   `InstallLocation`). With none found the pilot is told to start Volanta by hand and press the button again,
-   which then reads the exe from the running copy.
-2. `VolantaLink` finds Volanta's main page on that port (the page Volanta serves itself from its own local web
-   server: `http://127.0.0.1:17580` in 1.19.2, preferred; any other loopback page only when that port has
-   none), opens its debugger socket and turns
-   on network events. If the port answers but the browser behind it is not Volanta (another program's debugging
-   port on 9223, so Volanta could not open it), the link says so (`VolantaLinkStatus.PortTaken`) and the button
-   refuses to restart Volanta until that program is closed.
-3. Each time Volanta's map finishes downloading one of its traffic files, the link asks the page for that
-   response's body and parses it (`VolantaFeedParser`). It also reads Volanta's SignalR hub frames for the
-   pilot's own flight id and Volanta's position report, and every 5 seconds asks Volanta whether its window is
-   minimized or hidden, and which user is logged in (from the name of a per-user storage key, never the login
-   token, and only when there is exactly one such key: Volanta writes one per account used on the PC), so the
-   pilot's own flight is left out even while the sim is paused and Volanta reports nothing.
-
-Nothing extra reaches Volanta's servers: the link only reads what Volanta downloaded anyway.
-
-Friends: Volanta downloads the friends list once, at startup, so the link catches it only when this app started
-Volanta (it then looks for Volanta's page every 150 ms, waking a slower wait already running). Volanta's hub then
-reports friends added and removed and each friend's status. A saved copy of ids and names
-(`%APPDATA%\MSFSBlindAssist\volanta\friends.json`, with the Volanta user it belongs to) covers a Volanta started
-another way; it is never shown to another Volanta account. Who is flying always comes from the live flight file,
-by user id.
-
-Restarting: with Volanta's "show in tray" setting on, its close button (and Alt+F4) hide it in the notification
-area rather than quitting it, and in the pilot's tests asking Volanta to quit never worked. A restart is
-therefore two steps: force-close Volanta and its sim plugins, then start it with access ([VOL-3]). The
-confirmation says Volanta will be force-closed. By hand, the sure quit is Quit in Volanta's notification-area
-menu.
+1. `VolantaWebMap` opens `https://fly.volanta.app/map` in a `CoreWebView2Controller` hosted in a window that is
+   never shown, on its own browser profile (`%LOCALAPPDATA%\MSFSBlindAssist\VolantaWebMap`, which keeps the login).
+   The page's ad, analytics and session-recording services (Facebook, Google Ads, Reddit, Klaviyo, PostHog,
+   Sentry, Mapbox's telemetry) are blocked (`VolantaWebMap.IsTracker`); blocking them changed nothing the map
+   downloads.
+2. Through WebView2's own DevTools access it watches the page's network: each time the page finishes downloading
+   one of Volanta's traffic files, its friends list or the pilot's active flight (`VolantaLink.FeedKindForUrl`),
+   it asks the page for that response's body and hands it to `VolantaLink`, which parses it (`VolantaFeedParser`).
+   It also hands over the page's SignalR hub frames (the pilot's own flight and position, friend changes) and,
+   every 5 seconds, a storage check that reads key NAMES only: who is logged in and whether a login is stored
+   ([VOL-13]). The page asks for the Volanta users' file twice in a row, the second from its cache; that copy is
+   parsed once ([VOL-14]).
+3. **Only in the foreground** ([VOL-12]): the browser runs only while the window is open, and is live only while
+   the window is in the foreground; 5 seconds after the pilot switches away it pauses, and it is live again the
+   moment the window comes back. Pausing sets the browser's own visibility, which Volanta's page follows: it polls
+   only while "visible" ([VOL-11]). On resume it catches up within about 3 seconds.
+4. **Login**: "Log in to Volanta" opens Volanta's login page (`https://fly.volanta.app/auth/login`) in a window of
+   its own (`VolantaWebMapLoginForm`) on the same profile. The pilot logs in on Volanta's page; the window checks
+   every second for Volanta's stored login (its key's NAME only) and closes itself once it is there, the Volanta
+   window comes back and says "Logged in to Volanta.", and the map page reloads with the login. "Log out of
+   Volanta" does what Volanta's own logout does: clears the profile's site storage and cookies, with no request
+   ([VOL-13]).
 
 The window is its own top-level window, never owned by the main window, so the pilot can Alt+Tab between the
 two (the TCAS window's pattern).
 
-## Measured (Volanta 1.19.2, Electron 40, 2026-10-15)
+The first version (2026-10-15 to 17) read the Volanta app's own map instead, over a Chromium debugging port it
+started Volanta with, force-closing a running Volanta first. It was replaced, with the PR author, because that map
+downloads nothing while Volanta sits in the notification area or is minimized, and because the port let any
+program on the PC control Volanta ([VOL-1], [VOL-3], both retired).
 
-| File | What | Every | Size |
-| --- | --- | --- | --- |
-| `volanta-flight-positions-slim.json` | Every Volanta user on the map (about 1,800) | 6 s | 1.7 MB |
-| `network-flight-positions.json` | VATSIM, IVAO, PilotEdge and APOC pilots merged (about 1,150) | 16 s | 1.1 MB |
-| `network-controllers.json` | Online VATSIM and IVAO ATC (about 200) | 60 s (requested twice) | 150 KB |
+## Measured (2026-10-15 to 17)
 
+| File | What | Every | Over the network | Unpacked |
+| --- | --- | --- | --- | --- |
+| `volanta-flight-positions-slim.json` | Every Volanta user on the map (about 1,800) | 6 s | about 790 KB | about 3 MB |
+| `network-flight-positions.json` | VATSIM, IVAO, PilotEdge and APOC pilots merged (about 1,150) | 16 s | about 240 KB | about 1.7 MB |
+| `network-controllers.json` | Online VATSIM and IVAO ATC (about 200) | 60 s | about 50 KB | about 250 KB |
+
+- The web map, live: about 415 MB an hour, plus about 15 MB to load the page; about 20 % of one CPU core and
+  1 GB of memory across its browser processes. Paused: nothing downloaded, 1 to 5 % of a core. Logged out and
+  logged in poll at the same pace.
 - A Volanta user who also flies on a network is in the Volanta file, with `multiplayerNetwork`, and is left out
   of the network file, so each pilot is drawn once.
-- **Minimized stops it.** Volanta's map only downloads while `currentWindow.isVisible() && !isMinimized()`
-  (its `shouldPoll`). Measured: downloads stopped the moment the window was minimized and did not resume for 11
-  minutes; behind the sim, not focused, the cadence held for 9 minutes. With Volanta's own Performance mode on,
-  minimizing tears its map down entirely. Chromium's `document.visibilityState` stays "visible" throughout, so
-  the link asks Volanta's own window object instead. The window also calls traffic stale after 30 seconds
-  without a new file, which covers the causes not measured (another Volanta page, Performance mode).
-- **Volanta never minimizes itself for losing focus.** Read in Volanta 1.19.2's own code (2026-10-16): no blur,
-  idle or Alt+Tab handler minimizes or hides its window. It minimizes itself only when started with
-  `--minimized` (its "Launch on login" entry), which this app's launch never passes; it hides itself on close
-  with "Minimise Volanta to tray on close" on, and on minimize with Performance mode on. Its "real-time tracking
-  off when lost focus" setting pauses only its own smoothing of positions, not the downloads. So behind the sim
-  is safe. The pilot did find Volanta minimized after Alt+Tabbing away from it just after it started, and its log
-  shows a minimize 6 s after a start: something outside Volanta's code minimized it, cause not yet known.
 - **Positions are old.** At a snapshot, half of the airborne positions were under 11 s old, one in ten over
   100 s, the oldest 18 minutes. The pilot's own entry was 113 s old, so it read as traffic 15 nm behind at
   443 kt. `VolantaTrafficCalculator` moves airborne traffic on along heading and ground speed for at most 3
-  minutes, and leaves the pilot's own flight out by its id (the `flightId` of Volanta's
-  "flight-live-status-update" message is the `id` of the pilot's entry in the Volanta file).
+  minutes, and leaves the pilot's own flight out by its id ([VOL-4]).
 - **The network file has no ground state.** All 1,150 rows said `onGround: false`, `altitudeAgl: 0`,
   `verticalSpeed: 0` and `transponder: null`, parked or not. On the ground is inferred below 40 kt; vertical
   speed and height above ground are left unknown.
@@ -147,6 +123,6 @@ two (the TCAS window's pattern).
 
 ## Testing
 
-Pure logic (parser, calculator, filter, formatter, the link's page and file matching) has characterization tests
-in `tests/MSFSBlindAssist.Tests/Volanta/`, the formatter under de-DE. The link and launcher need Volanta
-running: the PR's test plan covers them.
+Pure logic (parser, calculator, filter, formatter, the link's file matching and storage check, the web map's
+tracker blocking and download summary) has characterization tests in `tests/MSFSBlindAssist.Tests/Volanta/`, the
+formatter under de-DE. The web map itself needs a browser and Volanta's site: the PR's test plan covers it.

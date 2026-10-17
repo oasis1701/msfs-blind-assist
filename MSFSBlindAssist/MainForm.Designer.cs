@@ -299,7 +299,7 @@
             // volantaMenuItem
             //
             this.volantaMenuItem.AccessibleName = "Volanta";
-            this.volantaMenuItem.AccessibleDescription = "Volanta's live map as text: Volanta users and network pilots around you, and online ATC";
+            this.volantaMenuItem.AccessibleDescription = "Volanta's live map as text: Volanta users and network pilots around you, your friends, and online ATC";
             this.volantaMenuItem.Name = "volantaMenuItem";
             this.volantaMenuItem.Size = new System.Drawing.Size(220, 26);
             this.volantaMenuItem.Text = "&Volanta…";

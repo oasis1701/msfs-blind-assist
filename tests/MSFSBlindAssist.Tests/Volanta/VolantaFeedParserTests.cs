@@ -259,83 +259,31 @@ public class VolantaFeedParserTests
         Assert.Null(update.Flight);
     }
 
-    [Fact]
-    public void The_link_attaches_only_to_the_page_Volanta_serves_itself()
-    {
-        string list = """
-            [{"type":"iframe","url":"https://pay.google.com/x","webSocketDebuggerUrl":"ws://127.0.0.1:9223/devtools/page/A"},
-             {"type":"page","url":"","webSocketDebuggerUrl":"ws://127.0.0.1:9223/devtools/page/B"},
-             {"type":"page","url":"http://127.0.0.1:17580/index.html#/flights","webSocketDebuggerUrl":"ws://127.0.0.1:9223/devtools/page/C"},
-             {"type":"worker","url":"","webSocketDebuggerUrl":"ws://127.0.0.1:9223/devtools/page/D"}]
-            """;
-        Assert.Equal("ws://127.0.0.1:9223/devtools/page/C", VolantaLink.FindVolantaPage(list));
-        Assert.Null(VolantaLink.FindVolantaPage("""[{"type":"page","url":"https://example.com"}]"""));
-        Assert.Null(VolantaLink.FindVolantaPage("not json"));
-    }
-
     [Theory]
-    [InlineData("http://localhost:17581/index.html#/map", true)]   // Volanta's local server on another port, or name
-    [InlineData("http://[::1]:17580/", true)]
-    [InlineData("https://127.0.0.1:17580/index.html", true)]
-    [InlineData("devtools://devtools/bundled/inspector.html", false)]
-    [InlineData("file:///C:/Volanta/index.html", false)]
-    [InlineData("http://192.168.1.20:17580/index.html", false)]
-    [InlineData("", false)]
-    public void Any_loopback_page_is_Volanta_s_so_a_local_port_change_never_leaves_the_link_waiting(string url, bool taken)
-    {
-        string list = $$"""[{"type":"page","url":"{{url}}","webSocketDebuggerUrl":"ws://127.0.0.1:9223/devtools/page/X"}]""";
-        Assert.Equal(taken ? "ws://127.0.0.1:9223/devtools/page/X" : null, VolantaLink.FindVolantaPage(list));
-    }
+    [InlineData("""{"u":"73e6c47e-9b8d-416b-a257-b8e9dd32b6f9"}""", true, "73e6c47e-9b8d-416b-a257-b8e9dd32b6f9", null)]
+    [InlineData("""{"u":["73e6c47e-9b8d-416b-a257-b8e9dd32b6f9"],"a":true}""", true, "73e6c47e-9b8d-416b-a257-b8e9dd32b6f9", true)]
+    [InlineData("""{"u":[],"a":false}""", true, null, false)]
+    [InlineData("""{"u":"","a":true}""", true, null, true)]
+    [InlineData("""{"u":["not-a-user-id"]}""", true, null, null)]
+    [InlineData("""{"a":true}""", false, null, true)]
+    [InlineData("""{"a":"yes"}""", false, null, null)]
+    [InlineData("[]", false, null, null)]
+    [InlineData("", false, null, null)]
+    public void The_storage_check_reads_only_a_GUID_as_the_user_id_and_whether_a_login_is_stored(string value,
+        bool usersRead, string? userId, bool? loggedIn)
+        => Assert.Equal((usersRead, userId, loggedIn), VolantaLink.ParseStorageCheck(value));
 
     [Fact]
-    public void Volanta_s_own_page_server_is_preferred_to_another_loopback_page()
-    {
-        // Chromium lists the most recently active page first: another loopback window must not win.
-        string list = """
-            [{"type":"page","url":"http://127.0.0.1:5000/popout","webSocketDebuggerUrl":"ws://127.0.0.1:9223/devtools/page/P"},
-             {"type":"page","url":"http://127.0.0.1:17580/index.html#/map","webSocketDebuggerUrl":"ws://127.0.0.1:9223/devtools/page/M"}]
-            """;
-        Assert.Equal("ws://127.0.0.1:9223/devtools/page/M", VolantaLink.FindVolantaPage(list));
-    }
-
-    [Theory]
-    [InlineData("""{"s":"paused","u":"73e6c47e-9b8d-416b-a257-b8e9dd32b6f9"}""", true, true, "73e6c47e-9b8d-416b-a257-b8e9dd32b6f9")]
-    [InlineData("""{"s":"paused","u":["73e6c47e-9b8d-416b-a257-b8e9dd32b6f9"]}""", true, true, "73e6c47e-9b8d-416b-a257-b8e9dd32b6f9")]
-    [InlineData("""{"s":"live","u":[]}""", false, true, null)]
-    [InlineData("""{"s":"live","u":""}""", false, true, null)]
-    [InlineData("""{"s":"","u":["not-a-user-id"]}""", null, true, null)]
-    [InlineData("""{"s":"live"}""", false, false, null)]
-    [InlineData("""{"s":42}""", null, false, null)]
-    [InlineData("", null, false, null)]
-    public void The_window_check_reads_paused_or_live_and_only_a_GUID_as_the_user_id(string value, bool? paused,
-        bool usersRead, string? userId)
-        => Assert.Equal((paused, usersRead, userId), VolantaLink.ParseWindowCheck(value));
-
-    [Fact]
-    public void Two_Volanta_accounts_on_this_PC_leave_the_user_id_unknown()
+    public void Two_Volanta_accounts_in_the_browser_leave_the_user_id_unknown()
     {
         // Volanta keeps the key per user who dismissed its notice: either could be the one logged in.
-        var (_, usersRead, userId) = VolantaLink.ParseWindowCheck(
-            """{"s":"live","u":["73e6c47e-9b8d-416b-a257-b8e9dd32b6f9","0f1d2c3b-4a59-6877-8695-a4b3c2d1e0f9"]}""");
+        var (usersRead, userId, _) = VolantaLink.ParseStorageCheck(
+            """{"u":["73e6c47e-9b8d-416b-a257-b8e9dd32b6f9","0f1d2c3b-4a59-6877-8695-a4b3c2d1e0f9"]}""");
         Assert.True(usersRead);
         Assert.Null(userId);
         // The same key twice (case aside) is still one user.
-        Assert.Equal("73e6c47e-9b8d-416b-a257-b8e9dd32b6f9", VolantaLink.ParseWindowCheck(
-            """{"s":"live","u":["73e6c47e-9b8d-416b-a257-b8e9dd32b6f9","73E6C47E-9B8D-416B-A257-B8E9DD32B6F9"]}""").UserId);
-    }
-
-    [Fact]
-    public async Task ExpectLaunch_cuts_short_a_retry_wait_already_running()
-    {
-        // The link starts a 3 s wait when a restart's force-close drops its page; Volanta's page can appear and
-        // download the friends list before it ends (VOL-6).
-        var link = new VolantaLink(new VolantaFriendsCache(Path.Combine(Path.GetTempPath(), "msfsba-unused-" + Guid.NewGuid().ToString("N"), "friends.json")));
-        var wait = link.WaitBeforeRetryAsync(CancellationToken.None);
-        await Task.Delay(50);
-        Assert.False(wait.IsCompleted);
-        link.ExpectLaunch();
-        Assert.Same(wait, await Task.WhenAny(wait, Task.Delay(2500)));
-        await wait;
+        Assert.Equal("73e6c47e-9b8d-416b-a257-b8e9dd32b6f9", VolantaLink.ParseStorageCheck(
+            """{"u":["73e6c47e-9b8d-416b-a257-b8e9dd32b6f9","73E6C47E-9B8D-416B-A257-B8E9DD32B6F9"]}""").UserId);
     }
 
     [Theory]
@@ -346,10 +294,38 @@ public class VolantaFeedParserTests
     [InlineData("https://api.volanta.app/api/v1/Relationships/Friends", "Friends")]
     [InlineData("https://api.volanta.app/api/v1/relationships/friends/", "Friends")]
     [InlineData("https://api.volanta.app/api/v1/Relationships/Friends/abc", null)]
-    [InlineData("https://api.volanta.app/api/v1/Flights/Active", null)]
+    [InlineData("https://api.volanta.app/api/v1/Flights/Active", "ActiveFlight")]
+    [InlineData("https://api.volanta.app/api/v1/flights/active/", "ActiveFlight")]
+    [InlineData("https://api.volanta.app/api/v1/Flights/Active/positions", null)]
+    [InlineData("https://api.volanta.app/api/v1/Flights/Feeds", null)]
     [InlineData("https://cdn.volanta.app/notams/main.json", null)]
     [InlineData("https://example.com/volanta-flight-positions-slim.json", null)]
+    [InlineData("https://example.com/api/v1/Flights/Active", null)]
     [InlineData("not a url", null)]
-    public void Only_Volanta_s_three_traffic_files_are_read(string url, string? expected)
+    public void Only_Volanta_s_traffic_files_friends_list_and_active_flight_are_read(string url, string? expected)
         => Assert.Equal(expected, VolantaLink.FeedKindForUrl(url)?.ToString());
+
+    [Fact]
+    public void The_active_flight_names_the_pilot_s_own_flight()
+    {
+        var flight = VolantaFeedParser.ParseActiveFlight(
+            """{"id":"7f3c2e10-5b8a-4c1d-9e2f-0a1b2c3d4e5f","state":"InFlight","callsign":"DLH4LP","aircraftIcao":"A20N","originIcao":"EDDF","destinationIcao":"LEPA","events":[]}""")!;
+        Assert.Equal("7f3c2e10-5b8a-4c1d-9e2f-0a1b2c3d4e5f", flight.FlightId);
+        Assert.Equal("DLH4LP", flight.Callsign);
+        Assert.Equal("A20N", flight.AircraftIcao);
+        Assert.Equal("EDDF", flight.Origin);
+        Assert.Equal("LEPA", flight.Destination);
+        // Only the id is needed: a flight named otherwise still counts.
+        Assert.Equal("f-9", VolantaFeedParser.ParseActiveFlight("""{"id":"f-9","origin":{"icao":"EDDF"}}""")!.FlightId);
+        Assert.Equal("42", VolantaFeedParser.ParseActiveFlight("""{"id":42}""")!.FlightId);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("""{"id":""}""")]
+    [InlineData("[]")]
+    [InlineData("not json")]
+    public void No_active_flight_is_no_flight(string json) => Assert.Null(VolantaFeedParser.ParseActiveFlight(json));
 }

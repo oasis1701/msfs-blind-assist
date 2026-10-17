@@ -2,86 +2,64 @@
 
 The one-line form of each rule is in `.claude/rules/volanta.md`. Background: docs/volanta.md.
 
-## VOL-1
+## VOL-1 (retired: the window now reads Volanta's public web map, which downloads from Volanta's servers)
 
-Never request anything from Volanta's servers. `api.volanta.app` and `webassets.volanta.app` sit behind
-Cloudflare and refuse every client but Volanta itself (a 403 page, measured 2026-10-15), and getting past that
-is not ours to do. `VolantaLink` only reads, through the debugger's response bodies, what Volanta's own page has
-just downloaded: its three traffic files and, from the API host, nothing but its friends list
-(`/api/v1/Relationships/Friends`). It adds no request of its own, so a pilot reading the window costs Volanta
-nothing. The owner chose this on 2026-10-15 over having Volanta's page fetch the friends list itself, which would
-have meant requests and using the login token inside Volanta.
+Retired 2026-10-17, when the window moved from a debugging port on the pilot's Volanta app to Volanta's public web
+map (the owner's and the PR author's choice). The rule said never to request anything from Volanta's servers
+(`api.volanta.app` and `webassets.volanta.app` refuse plain clients with a Cloudflare 403) and to read only what
+the Volanta app's own page had downloaded. The web map is Volanta's own page in a real browser engine, logged out
+or logged in, so its requests are a browser's and nothing is worked around; but they are requests the app now
+causes, about 415 MB an hour while the window is in the foreground ([VOL-12]).
 
 ## VOL-2
 
-Volanta's map stops downloading while its window is minimized or hidden (its own check is "visible and not
-minimized"); with its Performance mode on, minimizing removes the map. Measured: no download for 11 minutes
-while minimized, full cadence for 9 minutes behind the sim. Chromium still reports the page "visible", so the
-link asks Volanta's window object (`VolantaLinkSnapshot.VolantaPaused`), and the window also treats 30 seconds
-without a new file as stale. Never present the last snapshot as current while either holds: say why it is
-standing still.
+Never present the last snapshot as current while Volanta's data is standing still: say why. Where (the owner's
+choice, 2026-10-16): in a line at the top of each list, Traffic, Friends and ATC, above the rows last received,
+while the web map's page is loading or loading again, while it could not start (no WebView2 runtime), when nothing
+at all has come for 30 seconds since the page came up or was last live again (Volanta's site busy, or a check the
+hidden page cannot show), and when no new Volanta users' file has come for 30 seconds. Its key starts with
+`VolantaListOrder.StatusKeyPrefix`, so it stays first even while the reader is in the list ([VOL-9]). It replaced
+a spoken notice: the owner wants fewer announcements here, and the spoken notice left an empty list behind.
 
-Where that is said (the owner's choice, 2026-10-16): in a line at the top of each list, Traffic, Friends and
-ATC, above the rows last received ("Connected to Volanta, but it is minimized, so this list is not updating.
-Restore Volanta's window."), and the same while Volanta is starting, the link has no access, another program
-holds the port, or Volanta has sent nothing at all for 30 seconds since connecting (its login screen serves the
-same page, so the link connects and nothing ever comes: the line says to log in). Its key starts
-with `VolantaListOrder.StatusKeyPrefix`, so it stays first even while the reader is in the list ([VOL-9]). It
-replaced a spoken "Volanta is minimized" and "updating again": the owner wants fewer announcements here, and
-the spoken notice left an empty list behind. The pilot found Volanta minimized after Alt+Tabbing away from it
-just after it started, before its first traffic file, so every list stood empty. Volanta's own code does not
-minimize it for losing focus (docs/volanta.md): the cause is not known, so the line must cover it whatever it is.
+"Since" counts from `VolantaLinkSnapshot.ConnectedAt`: when the page came up, or was last live again after a
+pause ([VOL-12]). The snapshot keeps the files of before a pause or a reload, so counting any file ever received
+would never call a silent page silent, and "nothing new for 30 seconds" counts from `ConnectedAt` when that is
+later than the last file, so a pause is not called stale before anything is overdue (review of PR 311,
+2026-10-16). One reason, worked out once (`VolantaLiveMapForm.StandstillOf`), feeds the list's line, the status
+boxes and the Connection tab: worked out three times, they had drifted apart.
 
-"Since connecting" means since the link attached to the page it reads now (`VolantaLinkSnapshot.ConnectedAt`,
-set by the link itself): the snapshot keeps the files of a page session before a restart, so counting any file
-ever received meant a Volanta restarted onto its login screen never got the log-in line (review of PR 311,
-2026-10-16). For the same reason "nothing new for 30 seconds" counts from connecting when that is later than the
-last file, so a restart is not called stale before anything is overdue. One reason, worked out once
-(`VolantaLiveMapForm.StandstillOf`), feeds the list's line, the status boxes and the Connection tab: worked out
-three times, the Traffic status box had lost the port message the list's line gave.
+The first version read the Volanta app's own map, which stops downloading while its window is minimized or
+hidden (measured: no download for 11 minutes while minimized), so its line also said "minimized"; the web map
+has no such state.
 
-## VOL-3
+## VOL-3 (retired: the Volanta app is no longer started, restarted or closed)
 
-Volanta runs one copy at a time, so the debugging switch only takes effect on a fresh launch: a second launch
-just brings the first copy forward. With Volanta's "show in tray" setting on, its close button (and a WM_CLOSE
-to its window) does not quit it: it hides it in the notification area, still running, its window no longer
-visible (measured 2026-10-15), so its map stops polling ([VOL-2]). Whether Alt+F4 quits also depends on that
-setting (the owner's report), so it is never the advice. The one sure quit by hand is the Quit item of Volanta's
-notification-area menu ("Show Volanta", "Reset Window Position", "Quit").
-
-A restart is therefore two steps: `VolantaLauncher.ForceCloseAsync` ends Volanta's processes and its sim plugins
-(`VolantaPlugin_x64`/`_x86`: Volanta's own quit stops them first, so a force-close must too, or a stale plugin
-stays connected to the sim beside the new one), then `VolantaLauncher.StartWithAccess` starts it with the switch.
-The owner chose this on 2026-10-15, replacing first an earlier "never kill" rule and then a version that asked
-Volanta to quit (its own quit over the port, else its window close) before force-closing: in the pilot's tests
-asking never quit Volanta, only the force-close did, so asking only added seconds. The window asks the pilot
-first and says Volanta will be force-closed. Only if Windows refuses to end Volanta is the pilot sent to Quit in
-its notification-area menu. Volanta's restarts measured on 2026-10-15, the force-closed ones included, kept
-tracking the same flight. The exe to start again is read from the running copy (`VolantaLauncher.FindExePath`)
-BEFORE the force-close: afterwards only the installer's folder and Windows' uninstall keys remain, and a Volanta
-installed elsewhere would be closed and not restarted. If Volanta has not connected a minute after the start
-(`VolantaLink.LaunchWindow`), the window speaks once: Volanta may have updated and restarted itself without the
-switch, or another program may hold the port.
+Retired 2026-10-17 with the debugging port ([VOL-1]). The rule made a restart of the Volanta app two steps (a
+force-close of Volanta and its sim plugins, then a start with the debugging switch), asked first, because Volanta
+runs one copy at a time and its "show in tray" setting makes its close button only hide it. The web map needs
+neither the Volanta app nor a restart.
 
 ## VOL-4
 
 The pilot's own flight is in Volanta's file, with a position as old as anyone's (113 s at a measured snapshot,
 which read as traffic 15 nm behind at 443 kt). `VolantaTrafficCalculator.IsOwnFlight` leaves it out by the
 logged-in Volanta user's id (the user id on the pilot's own entry; a user has one live flight), or by Volanta's
-flight id, which the live status message names; before either is known, by the entry whose position time and
-place match Volanta's own last position report. Never by distance alone: a real aircraft can be that close.
+flight id; before either is known, by the entry whose position time and place match Volanta's own last position
+report. Never by distance alone: a real aircraft can be that close.
 
-The user id matters because Volanta sends no position report and no live status while the sim is paused
-(measured 2026-10-15: nothing in 30 s), so without it the pilot's own flight would be listed as traffic. The link
-reads it from the NAME of the storage key Volanta keeps per user for its "what's new" notice
-(`last-read-whats-new-version:<id>`), checked to be a GUID. Never read Volanta's login token (its `authToken`
-storage value) for it, even though the token carries the id: that is the pilot's credential.
+The flight id comes first from the request Volanta's page makes as soon as it is logged in, `GET
+/api/v1/Flights/Active` (read in 1.19.2's code, 2026-10-17: it logs "Found active flight {id}" and resumes that
+flight), whose `id` is the id of the pilot's entry in the flight file and which carries no login token
+(`VolantaFeedParser.ParseActiveFlight`); then from the hub's live status message. Without the active flight, the
+pilot's own flight was listed until the hub named it (the owner's test, 2026-10-17). Logged out there is neither,
+and the pilot's flight can be listed: the Connection tab says to log in for it.
 
-Volanta writes that key for each user who dismisses the notice on this PC (read in 1.19.2's code, 2026-10-16),
-so after two accounts have used Volanta there are two, and Chromium returns them in key order, not by who is
-logged in. The check therefore reports every such key, and `VolantaLink.ParseWindowCheck` trusts an id only when
-there is exactly one; with none or several the own flight falls back to the flight id or the position report,
-and an id kept from an earlier check is dropped rather than kept as possibly another account's.
+The user id is read from the NAME of the storage key Volanta keeps per user for its "what's new" notice
+(`last-read-whats-new-version:<id>`), checked to be a GUID; never from the login token ([VOL-13]), though the
+token carries it. Volanta writes that key for each user who dismisses the notice in that browser, which in a
+hidden page is rare, and with two accounts there are two, returned in key order: `VolantaLink.ParseStorageCheck`
+trusts an id only when there is exactly one, and an id kept from an earlier check is dropped rather than kept as
+possibly another account's.
 
 ## VOL-5
 
@@ -92,26 +70,15 @@ pilots; only a Volanta user's own flags are trusted.
 
 ## VOL-6
 
-Volanta downloads the pilot's friends list once, when it logs in at startup (`GET /api/v1/Relationships/Friends`):
-measured 2026-10-15, its page appeared 1.9 s after launch and the friends request went out 0.6 s after that. A
-response body is readable only by a session that enabled network events before the request, so only a link
-already attached catches it. Every launch from this app therefore calls `VolantaLink.ExpectLaunch` first, which
-makes the link look for Volanta's page every 150 ms for a minute instead of every 3 s, and cuts short a 3 s wait
-already running: the link starts one the moment a restart's force-close drops its page, and without the wake it
-could still be waiting when the page appeared 1.9 s after the start (review of PR 311, 2026-10-16).
+The friends list comes from Volanta's own request, `GET /api/v1/Relationships/Friends`, which the web map's page
+makes at every logged-in load (the window's opening, the reload after a login): measured 2026-10-17, "Friends
+list caught" at each. After that, Volanta's hub keeps the list current: "friend-added", "friend-removed", and
+"rich-status-update" for each friend's status (the pilot's own status comes the same way and is ignored). The
+list is the logged-in user's: `VolantaLink.LoggedOut` drops it with the login, and no copy is kept on disk (the
+first version kept one, because the Volanta app downloaded the list only once per start).
 
-The saved copy also holds the Volanta user it belongs to (`VolantaFriendsCache.IsFor`): once the window check
-names a different logged-in user, the link drops a saved copy that is another account's rather than show it
-as the pilot's friends. A copy saved before the user id was read, or by the first version, has no owner and is
-shown as before; a list Volanta sent before the first user id is saved again with it.
-
-After that, Volanta's hub keeps the list current: "friend-added", "friend-removed", and "rich-status-update" for
-each friend's status (the pilot's own status comes the same way and is ignored). `VolantaFriendsCache` saves the
-list's ids and names, never a status, so a Volanta started some other way still shows who the friends are, with
-their status "not known yet" until Volanta reports a change. Whether a friend is flying, and where, never comes
-from the list: it is their entry in Volanta's flight file, matched by user id, so it is live whichever way the
-list arrived. The window's one restart button (Connection tab) restarts Volanta even when it already has access,
-after asking, because that is also how the list is caught again; the Friends tab points there.
+Whether a friend is flying, and where, never comes from the list: it is their entry in Volanta's flight file,
+matched by user id, so it is live whichever way the list arrived.
 
 ## VOL-7
 
@@ -239,4 +206,52 @@ checkbox the day the check is fixed, so it is never used. Once WinForms sends it
 sends two; NVDA speaks a state change only when the state differs from what it last read, so it still speaks once.
 
 The same bug affects every standard-style CheckBox and RadioButton in the app (Settings panels, the EFB, the
-FMC and GSX settings, Taxi Assist, the weather radar): also seen there, not changed here.
+FMC and GSX settings, Taxi Assist, the weather radar): also seen there, not changed here. The same .NET 10 bug is
+why the Connection tab's login button is not heard changing its name, so logging in and out are said aloud.
+
+## VOL-11
+
+Volanta's page polls its files only while it is "visible": in a browser, its map service sets `isTabVisible` from
+`visibilitychange` events alone, starting from true (read in 1.19.2's code). Two traps, both measured with a probe
+on 2026-10-17:
+
+- The visibility must be the browser's own: the web map is a `CoreWebView2Controller` in a window that is never
+  shown, and `VolantaWebMap.SetActive` sets its `IsVisible`. The WinForms WebView2 control passes its visibility on
+  only on some changes: hidden under a hidden window it left the page "visible" and polling; shown again later it
+  hid the page. The only browser switch is `--disable-features=CalculateNativeWinOcclusion`, so Windows' occlusion
+  check never judges the never-shown window hidden; hidden pages are otherwise throttled as usual.
+- A page loaded while hidden (a reload after the login window or a log out, a retry) is told nothing, starts out
+  believing it is visible, and polled every 6 s until a `visibilitychange` was dispatched. So while paused the
+  web map dispatches one after every load and every 5 seconds (`VolantaWebMap.HiddenNudgeScript`).
+
+Paused, the page went "hidden" at once and downloaded nothing; resumed, it fetched the Volanta users within
+0.3 s, the network pilots within 1.1 s and ATC within 3 s. About 20 % of one CPU core live, 1 to 5 % paused.
+
+## VOL-12
+
+The web map downloads only while the Volanta window is in the foreground (the owner's choice, 2026-10-17): it runs
+only while the window is open, is live the moment the window is activated, and pauses 5 seconds after the window
+loses the foreground (`WebMapPauseAfter`, so an Alt+Tab to the sim and straight back costs no catch-up). Live, it
+downloads about 415 MB an hour (the Volanta users' file, about 790 KB over the network, every 6 s), plus about
+15 MB to load the page. On resume, `VolantaLink.Resumed` moves `VolantaLinkSnapshot.ConnectedAt` to now, so the
+last file, old by the length of the pause, is not called stale ([VOL-2]).
+
+## VOL-13
+
+The pilot's Volanta login lives in the web map's browser profile (`%LOCALAPPDATA%\MSFSBlindAssist\VolantaWebMap`).
+The app reads storage key NAMES only: which per-user "what's new" keys exist ([VOL-4]), and whether Volanta's
+`authToken` key exists (logged in, and the login window's check that closes it). Never a stored value, and never
+the login token, which is the pilot's credential; nor a response that carries it (Volanta's session refresh).
+
+Logging out does what Volanta's own logout does (read in 1.19.2's code: it clears its stored session in the
+browser and sends no request): `VolantaWebMap.LogOutAsync` clears the profile's site storage and cookies, the
+link forgets the friends list and the pilot's own flight (`VolantaLink.LoggedOut`), and the map reloads logged
+out.
+
+## VOL-14
+
+The page asks for the Volanta users' file twice in a row, the second straight from its cache, so the web map skips
+a file whose key matches the last one taken (`VolantaWebMap.BodyKey`: its length and its first and last 256
+characters), to parse 3 MB once. The keys kept are forgotten at every page load and log out: measured 2026-10-17,
+after a log out and a new login the friends list came again, identical, and was thrown away as the cached second
+copy, so the Friends tab stayed empty.

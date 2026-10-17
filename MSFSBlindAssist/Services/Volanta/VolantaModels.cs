@@ -91,7 +91,7 @@ public sealed record VolantaFriendStatus
 
 /// <summary>One of the pilot's Volanta friends. <see cref="FriendId"/> is the friend's Volanta user id, the user
 /// id on their entry in Volanta's flight file when they fly. <see cref="Status"/> is null when unknown: a friend
-/// from the saved copy whose status Volanta has not reported since.</summary>
+/// Volanta listed with no status, and has not reported one for since.</summary>
 public sealed record VolantaFriend(string FriendId, string UserName, VolantaFriendStatus? Status);
 
 /// <summary>What one hub frame told: Volanta's own position report and live status, and friend changes.</summary>
