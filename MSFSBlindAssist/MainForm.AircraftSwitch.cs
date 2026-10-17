@@ -157,6 +157,7 @@ public partial class MainForm
             "HW_A330" => new HeadwindA330Definition(),
             "IFLY_737MAX8" => new IFly737MAXDefinition(),
             "TFDI_MD11" => new TFDiMD11Definition(),
+            IniA300Definition.Code => new IniA300Definition(),
             // Future aircraft will be added here
             _ => new FlyByWireA320Definition() // Default to A320
         };
@@ -318,6 +319,13 @@ public partial class MainForm
                 // registers the MD11MCDU manager); without this call the manager is never created
                 // and all three CDUs stay blank. No PMDGDataManager/PROG-monitor wiring here —
                 // those are PMDG-only and InitializePMDG leaves PMDGDataManager null for the MD-11.
+                simConnectManager.InitializePMDG(currentAircraft);
+            }
+
+            else if (currentAircraft?.AircraftCode == IniA300Definition.Code)
+            {
+                // The A300 reads its two MCDU screens from client data areas too; the same hook
+                // registers its manager.
                 simConnectManager.InitializePMDG(currentAircraft);
             }
 
@@ -803,6 +811,11 @@ public partial class MainForm
         if (oldAircraft is TFDiMD11Definition oldMd11 && !ReferenceEquals(oldAircraft, newAircraft))
             oldMd11.Dispose();
 
+        // The A300's definition lets go of any button it is still holding (a hold button's press,
+        // a spring switch's nudge) and stops writing before the next aircraft takes over.
+        if (oldAircraft is IniA300Definition oldA300 && !ReferenceEquals(oldAircraft, newAircraft))
+            oldA300.Dispose();
+
         // An armed liftoff → Hand Fly handoff must not survive the switch — its
         // confirm could otherwise fire against the new aircraft in the middle of
         // the re-registration churn below (same hygiene as the disconnect path
@@ -829,10 +842,13 @@ public partial class MainForm
         // every button shows a bare label (Attach used to run only from a press or a hotkey).
         if (newAircraft is TFDiMD11Definition newMd11)
             newMd11.Attach(simConnectManager);
+        if (newAircraft is IniA300Definition newA300)
+            newA300.Attach(simConnectManager);
 
         taxiGuidanceManager.TurnLeadSeconds = newAircraft.TaxiTurnLeadSeconds;
 
-        // Refresh aircraft-conditional menu items (FMC Settings is PMDG-only).
+        // Refresh aircraft-conditional menu items (FMC Settings shows only for the
+        // aircraft UpdateAircraftSpecificMenuItems names).
         UpdateAircraftSpecificMenuItems();
 
         // Dispose the old PROG-page monitor — it references the previous
@@ -1006,6 +1022,9 @@ public partial class MainForm
             md11MonitorManagerForm = null;
         }
 
+        // The A300's monitor manager, for the same stale-snapshot reason.
+        DisposeA300Windows();
+
         // The MD-11 EFB client holds the ONE inspector socket Coherent allows for that view —
         // leaving it open would block the page for the rest of the process, so the next aircraft
         // (or a re-loaded MD-11) could never connect to its EFB again.
@@ -1115,7 +1134,8 @@ public partial class MainForm
         // Not `newAircraft?.` — every caller passes a freshly constructed definition and this method
         // dereferences the parameter unconditionally hundreds of lines earlier. The null-conditional
         // told the compiler otherwise, which is what put a CS8602 on the plain dereference below it.
-        if ((newAircraft is IPMDGAircraft || newAircraft.AircraftCode == "TFDI_MD11")
+        if ((newAircraft is IPMDGAircraft || newAircraft.AircraftCode == "TFDI_MD11"
+                || newAircraft.AircraftCode == IniA300Definition.Code)
             && simConnectManager.IsConnected)
         {
             simConnectManager.InitializePMDG(newAircraft);
@@ -1234,10 +1254,9 @@ public partial class MainForm
     /// <summary>
     /// Toggles visibility of menu items that are only meaningful for specific
     /// aircraft. Called whenever the loaded aircraft changes (and at initial
-    /// MainForm_Load). Gates the FMC Settings item — it's hidden for any
-    /// aircraft that doesn't have an MCDU/CDU the dialog applies to (PMDG
-    /// or Fenix), so the screen reader doesn't surface a settings option
-    /// the user can't act on.
+    /// MainForm_Load). Gates the FMC Settings item — it's shown only for the
+    /// aircraft this method names, so the screen reader doesn't surface a
+    /// settings option the user can't act on.
     /// </summary>
     private void UpdateAircraftSpecificMenuItems()
     {
@@ -1247,7 +1266,7 @@ public partial class MainForm
                        currentAircraft.AircraftCode.StartsWith("FENIX_", StringComparison.Ordinal);
         bool isHs787 = currentAircraft != null &&
                        currentAircraft.AircraftCode.StartsWith("HS_", StringComparison.Ordinal);
-        fmcSettingsMenuItem.Visible = isPmdg || isFenix || isHs787;
+        fmcSettingsMenuItem.Visible = isPmdg || isFenix || isHs787 || currentAircraft is IniA300Definition;
     }
 
     /// <summary>
@@ -1265,6 +1284,7 @@ public partial class MainForm
         headwindA330MenuItem.Checked = false;
         ifly737MaxMenuItem.Checked = false;
         tfdiMd11MenuItem.Checked = false;
+        iniA300MenuItem.Checked = false;
 
         // Set the check on the current aircraft's menu item.
         // NOTE: HeadwindA330Definition derives from FlyByWireA320Definition, so it MUST
@@ -1304,6 +1324,10 @@ public partial class MainForm
         else if (currentAircraft is IFly737MAXDefinition)
         {
             ifly737MaxMenuItem.Checked = true;
+        }
+        else if (currentAircraft is IniA300Definition)
+        {
+            iniA300MenuItem.Checked = true;
         }
     }
 

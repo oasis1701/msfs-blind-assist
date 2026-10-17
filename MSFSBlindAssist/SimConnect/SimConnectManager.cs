@@ -322,6 +322,9 @@ public partial class SimConnectManager
     // Disconnect with the handle, or the drop path in Connect's catch.
     private MD11.Md11McduDataManager? md11McduDataManager;
     public MD11.Md11McduDataManager? Md11McduDataManager => md11McduDataManager;
+    private A300.A300McduDataManager? a300McduDataManager;
+    /// <summary>The iniBuilds A300's MCDU feed: one per connection, like the MD-11's.</summary>
+    public A300.A300McduDataManager? A300McduDataManager => a300McduDataManager;
 
     // ECAM data collection via MobiFlight
     private Dictionary<string, string> ecamStringData = new Dictionary<string, string>();
@@ -963,6 +966,8 @@ public partial class SimConnectManager
             // InitializePMDG builds a new one.
             md11McduDataManager?.Dispose();
             md11McduDataManager = null;
+            a300McduDataManager?.Dispose();
+            a300McduDataManager = null;
 
             _ownAircraft.Reset();
 
@@ -1210,6 +1215,23 @@ public partial class SimConnectManager
             md11McduDataManager.Register();     // a no-op once complete on this connection; resumes a partial one
             md11McduDataManager.RequestAll();   // same ids = a replacement of the subscriptions, plus a fresh ONCE snapshot
         }
+
+        if (aircraft.AircraftCode == Aircraft.IniA300Definition.Code)
+        {
+            // The A300's MCDU feed follows the MD-11's rules: one manager per connection, reused
+            // (its pages forgotten) when the A300 is loaded again, and a fresh snapshot each load.
+            if (a300McduDataManager == null || !a300McduDataManager.IsBoundTo(simConnect))
+            {
+                a300McduDataManager?.Dispose();
+                a300McduDataManager = new A300.A300McduDataManager(simConnect);
+            }
+            else
+            {
+                a300McduDataManager.Reset();
+            }
+            a300McduDataManager.Register();
+            a300McduDataManager.RequestAll();
+        }
     }
 
     public void DisposePMDG()
@@ -1363,6 +1385,8 @@ public partial class SimConnectManager
         // once-per-connection — see InitializePMDG); the next connection gets a new one.
         md11McduDataManager?.Dispose();
         md11McduDataManager = null;
+        a300McduDataManager?.Dispose();
+        a300McduDataManager = null;
 
         // Clear all internal state dictionaries to ensure clean reconnection
         variableDataDefinitions.Clear();

@@ -23,6 +23,7 @@
         private System.Windows.Forms.ToolStripMenuItem headwindA330MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem ifly737MaxMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem tfdiMd11MenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem iniA300MenuItem = null!;
         private System.Windows.Forms.ListBox sectionsListBox = null!;
         private System.Windows.Forms.ListBox panelsListBox = null!;
         private System.Windows.Forms.Panel controlsContainer = null!;
@@ -59,6 +60,7 @@
             this.headwindA330MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.ifly737MaxMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.tfdiMd11MenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.iniA300MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.sectionsListBox = new System.Windows.Forms.ListBox();
             this.panelsListBox = new System.Windows.Forms.ListBox();
             this.controlsContainer = new System.Windows.Forms.Panel();
@@ -115,12 +117,12 @@
             //
             // fmcSettingsMenuItem
             //
-            // Shown when AircraftCode starts with "PMDG_" or "FENIX_". Visibility
-            // is toggled in MainForm.UpdateAircraftSpecificMenuItems() each time
-            // the loaded aircraft changes; the item is invisible (and so
-            // unreachable by the screen reader) when another aircraft is loaded.
+            // Shown only for the aircraft MainForm.UpdateAircraftSpecificMenuItems()
+            // names. Visibility is toggled there each time the loaded aircraft
+            // changes; the item is invisible (and so unreachable by the screen
+            // reader) when another aircraft is loaded.
             this.fmcSettingsMenuItem.AccessibleName = "FMC Settings";
-            this.fmcSettingsMenuItem.AccessibleDescription = "FMC settings: alternate line select keys (PMDG and Fenix) and enhanced distance announcements (PMDG only)";
+            this.fmcSettingsMenuItem.AccessibleDescription = "FMC settings: alternate line select keys, and enhanced distance announcements (PMDG only)";
             this.fmcSettingsMenuItem.Name = "fmcSettingsMenuItem";
             this.fmcSettingsMenuItem.Size = new System.Drawing.Size(280, 26);
             this.fmcSettingsMenuItem.Text = "F&MC Settings";
@@ -186,7 +188,8 @@
             this.pmdg777MenuItem,
             this.horizonSim787MenuItem,
             this.ifly737MaxMenuItem,
-            this.tfdiMd11MenuItem});
+            this.tfdiMd11MenuItem,
+            this.iniA300MenuItem});
             this.aircraftMenuItem.Name = "aircraftMenuItem";
             this.aircraftMenuItem.Size = new System.Drawing.Size(75, 24);
             this.aircraftMenuItem.Text = "&Aircraft";
@@ -280,6 +283,16 @@
             this.tfdiMd11MenuItem.Text = "TFDi Design &MD-11";
             this.tfdiMd11MenuItem.Checked = false;
             this.tfdiMd11MenuItem.Click += new System.EventHandler(this.TFDiMD11MenuItem_Click);
+            //
+            // iniA300MenuItem
+            //
+            this.iniA300MenuItem.AccessibleName = "iniBuilds Airbus A300-600";
+            this.iniA300MenuItem.AccessibleDescription = "Switch to the iniBuilds Airbus A300-600";
+            this.iniA300MenuItem.Name = "iniA300MenuItem";
+            this.iniA300MenuItem.Size = new System.Drawing.Size(240, 26);
+            this.iniA300MenuItem.Text = "ini&Builds Airbus A300-600";
+            this.iniA300MenuItem.Checked = false;
+            this.iniA300MenuItem.Click += new System.EventHandler(this.IniA300MenuItem_Click);
             //
             // sectionsListBox
             // 
