@@ -820,6 +820,34 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         return false;
     }
 
+    /// <summary>
+    /// Default autopilot engage: the stock <c>AUTOPILOT_ON</c> event (idempotent in the stock
+    /// autopilot). Aircraft whose own autopilot ignores it override this: the PMDG jets press
+    /// their MCP engage switch, the FlyByWire family presses AP 1 (FO-21).
+    /// </summary>
+    public virtual void EngageAutopilot(SimConnect.SimConnectManager simConnect)
+        => simConnect.SendEvent("AUTOPILOT_ON");
+
+    /// <summary>
+    /// Default: no engage floor. Aircraft whose autopilot REFUSES to engage below a height
+    /// override this (the PMDG 737 inhibits CMD below 400 ft RA after takeoff).
+    /// </summary>
+    public virtual int MinimumAutopilotEngageAltitudeAgl => 0;
+
+    /// <summary>
+    /// Default: no readable engaged state, so the auto-engage can't be verified. Aircraft
+    /// with an engage annunciator override this (the PMDG jets read theirs from the CDA).
+    /// </summary>
+    public virtual bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect) => null;
+
+    /// <summary>Default: retry every tick (FO-18's bounded retry, as on the PMDG jets, the iFly
+    /// and the MD-11). The FlyByWire family overrides it (FO-21).</summary>
+    public virtual int AutopilotEngageRetryIntervalMs => 0;
+
+    /// <summary>Default false: a null reading takes the open-loop press-and-announce. The
+    /// FlyByWire family overrides it, so its engage waits for a definite reading (FO-21).</summary>
+    public virtual bool AutopilotEngageWaitsForState => false;
+
     // Display Monitoring Methods - Default implementations (do nothing)
     // Aircraft with ECAM/EICAS/etc. should override these methods
 

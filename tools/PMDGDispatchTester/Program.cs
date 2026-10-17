@@ -373,6 +373,19 @@ class Program
         "ENG_annunENGINE_CONTROL",
         // Fuel
         "FUEL_annunENG_VALVE_CLOSED", // 2-element byte[]: 0=closed (CUTOFF), 1=open (RUN), 2=in transit
+        // Fuel pumps + low-press annunciators + tank quantities (center-pump automation probe).
+        // Center pump events: EVT_OH_FUEL_PUMP_L_CENTER = 69677, R_CENTER = 69678.
+        // Wing: 1_FORWARD = 69670, 2_FORWARD = 69671, 1_AFT = 69669, 2_AFT = 69672.
+        "FUEL_PumpCtrSw",             // 2-element bool[]: [0]=ctr left, [1]=ctr right
+        "FUEL_annunLOWPRESS_Ctr",     // 2-element bool[]: pairs 1:1 with FUEL_PumpCtrSw (live-verified)
+        "FUEL_PumpFwdSw",             // 2-element bool[]
+        "FUEL_PumpAftSw",             // 2-element bool[]
+        "FUEL_annunLOWPRESS_Fwd",     // 2-element bool[]
+        "FUEL_annunLOWPRESS_Aft",     // 2-element bool[]
+        "FUEL_CrossFeedSw",
+        "FUEL_QtyCenter",             // float, LBS
+        "FUEL_QtyLeft",
+        "FUEL_QtyRight",
         // APU
         "APU_Selector",
         "APU_EGTNeedle",
@@ -382,6 +395,15 @@ class Program
         "COMM_annunCALL",
         // Airstair door state (interior-controls probe)
         "DOOR_annunAIRSTAIR",
+        // Fire panel OVHT/FIRE detection test (FO fire-test probe)
+        "FIRE_DetTestSw",             // byte: 0=FAULT/INOP?  1=neutral  2=OVHT/FIRE?
+        "WARN_annunFIRE_WARN",        // 2-element bool[]: master FIRE WARN lights
+        "WARN_annunOVHT_DET",
+        "FIRE_HandleIlluminated",     // 3-element bool[]: Eng1, APU, Eng2 handle lights
+        "FIRE_annunFAULT",
+        "FIRE_annunAPU_DET_INOP",
+        "FIRE_annunENG_OVERHEAT",     // 2-element bool[]
+        "WARN_annunMASTER_CAUTION",   // 2-element bool[]
     };
 
     static (string, double)[] ExtractFields(MSFSBlindAssist.SimConnect.PMDGNG3DataStruct data)

@@ -108,6 +108,31 @@ public partial class MainForm : Form
     private MSFSBlindAssist.Services.FlyByWireMCDUService? flyByWireMCDUService;
 
     private System.Windows.Forms.Form? pmdgCDUForm;
+    private Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.AircraftActionExecutor, FirstOfficer.AircraftStateEvaluator>? pmdg777FirstOfficerForm;
+    private Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.PMDG737.AircraftActionExecutor, FirstOfficer.PMDG737.AircraftStateEvaluator>? pmdg737FirstOfficerForm;
+    private Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.Fenix.FenixActionExecutor, FirstOfficer.Fenix.FenixStateEvaluator>? fenixFirstOfficerForm;
+    private Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.FBWA380.FbwA380ActionExecutor, FirstOfficer.FBWA380.FbwA380StateEvaluator>? fbwA380FirstOfficerForm;
+    private Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.FBWA320.FbwA320ActionExecutor, FirstOfficer.FBWA320.FbwA320StateEvaluator>? fbwA320FirstOfficerForm;
+    private Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.IFly737.IFly737ActionExecutor, FirstOfficer.IFly737.IFly737StateEvaluator>? ifly737FirstOfficerForm;
+    private Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.HWA330.HwA330ActionExecutor, FirstOfficer.HWA330.HwA330StateEvaluator>? hwA330FirstOfficerForm;
+    private Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.MD11.Md11FoActionExecutor, FirstOfficer.MD11.Md11FoStateEvaluator>? tfdiMd11FirstOfficerForm;
+
+    /// <summary>The ONE enumeration of the per-aircraft First Officer form fields, as their
+    /// shared non-generic view. Yields only live (created, not disposed) windows. Every
+    /// cross-form walk (settings push, SimConnect re-wire) goes through here — when adding
+    /// a First Officer for a new aircraft, extend THIS method, not the call sites.
+    /// (SwitchAircraft's dispose cleanup stays per-field: it must null the typed fields.)</summary>
+    private IEnumerable<Forms.FirstOfficer.IFirstOfficerWindow> OpenFirstOfficerForms()
+    {
+        if (pmdg777FirstOfficerForm is { IsDisposed: false }) yield return pmdg777FirstOfficerForm;
+        if (pmdg737FirstOfficerForm is { IsDisposed: false }) yield return pmdg737FirstOfficerForm;
+        if (fenixFirstOfficerForm is { IsDisposed: false }) yield return fenixFirstOfficerForm;
+        if (fbwA380FirstOfficerForm is { IsDisposed: false }) yield return fbwA380FirstOfficerForm;
+        if (fbwA320FirstOfficerForm is { IsDisposed: false }) yield return fbwA320FirstOfficerForm;
+        if (ifly737FirstOfficerForm is { IsDisposed: false }) yield return ifly737FirstOfficerForm;
+        if (hwA330FirstOfficerForm is { IsDisposed: false }) yield return hwA330FirstOfficerForm;
+        if (tfdiMd11FirstOfficerForm is { IsDisposed: false }) yield return tfdiMd11FirstOfficerForm;
+    }
 
     private Forms.FBWA380.FBWA380MCDUForm? fbwA380MCDUForm;
 
@@ -719,6 +744,9 @@ public partial class MainForm : Form
         simConnectManager.SimulatorVersionDetected += OnSimulatorVersionDetected;
         simConnectManager.SimVarUpdated += OnSimVarUpdated;
         simConnectManager.ContinuousBatchDelivered += OnContinuousBatchDelivered;
+
+        // The universal (all-aircraft) auto-gear/AP service and its 1 Hz feed: MainForm.UniversalAutomation.cs.
+        InitializeUniversalAutomation();
         simConnectManager.QueuedEventDispatched += OnQueuedEventDispatched;
         simConnectManager.TakeoffRunwayReferenceSet += OnTakeoffRunwayReferenceSet;
         simConnectManager.AircraftIcaoTypeDetected += OnAircraftIcaoTypeDetected;
@@ -1370,6 +1398,8 @@ public partial class MainForm : Form
 
         _warmUpAfterLoadTimer?.Stop();
         _warmUpAfterLoadTimer?.Dispose();
+
+        DisposeUniversalAutomation();
 
         // Clean up taxi guidance, docking guidance, and ground traffic monitor
         taxiGuidanceManager?.Dispose();

@@ -175,7 +175,8 @@ public partial class TFDiMD11Definition
         if (string.Equals(text, _lastSpoilerSpoken, StringComparison.Ordinal)) return;
         bool first = _lastSpoilerSpoken.Length == 0;
         _lastSpoilerSpoken = text;
-        if (!first) announcer.Announce(text);
+        // A First Officer stow runs the lever 50 -> 0 through every detent; its flow already said so.
+        if (!first && !_gate.IsQuietFor(Md11SpeedbrakeSystem.LeverKey, Environment.TickCount64)) announcer.Announce(text);
     }
 
     /// <summary>The pull var: armed / disarmed / extended, baseline-first, spoken on a real change.</summary>
@@ -185,6 +186,8 @@ public partial class TFDiMD11Definition
         bool changed = !first && (int)Math.Round(handle) != (int)Math.Round(_spdbrkHandle);
         _spdbrkHandle = handle;
         if (first || !changed) return;
+        // Quiet after a First Officer click: its stow passes through 1 ("armed") on its way to 0.
+        if (_gate.IsQuietFor(Md11SpeedbrakeSystem.LeverKey, Environment.TickCount64)) return;
         var text = Md11SpeedbrakeSystem.DescribeArm(handle);
         if (text != null) announcer.Announce(text);
     }

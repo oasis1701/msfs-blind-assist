@@ -130,6 +130,8 @@ public partial class MainForm
         // Step 1: ALWAYS store the value first (needed by all consumers)
         currentSimVarValues[e.VarName] = e.Value;
 
+        if (e.VarName == "FO_ALTITUDE_AGL") _universalLatestAgl = e.Value;
+
         // Composed-state controls (MD-11): relabel every dependent of this key, on EVERY path
         // below — initial snapshot, def-handled (ProcessSimVarUpdate returns true and exits
         // early) and generic. The SimConnect cache already holds the new value here, which is

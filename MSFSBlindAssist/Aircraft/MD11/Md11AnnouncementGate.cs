@@ -26,8 +26,46 @@ public sealed class Md11AnnouncementGate
     /// <summary>The press's own lamp echoes land within the 1 Hz batch plus settle; anything inside this window after a press, and before its feedback speaks, is the echo.</summary>
     public const int EchoWindowMs = 2500;
 
+    /// <summary>
+    /// How long a First Officer actuation keeps its control's own lamp speech quiet. Longer than
+    /// <see cref="EchoWindowMs"/> on purpose: an FO press has no press-feedback sentence to close
+    /// the window, and a lamp going DARK speaks only after the 1.5 s dark settle on top of the
+    /// 1 Hz batch — 5 s covers the lit edge, the dark edge and a bus backlog.
+    /// </summary>
+    public const int FoQuietWindowMs = 5000;
+
     private readonly Dictionary<string, string> _lastSpoken = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _pressedAt = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> _quietUntil = new(StringComparer.Ordinal);
+    private long _mutedUntil;
+
+    /// <summary>
+    /// The First Officer is about to actuate <paramref name="owner"/> and its own flow narration
+    /// already says so. Inside the window the owner's lamp changes are RECORDED as spoken but not
+    /// spoken, so the dark edge of the same change (re-composed to the same text) is deduped too.
+    /// </summary>
+    public void NoteQuietActuation(string owner, long nowMs, int windowMs)
+        => _quietUntil[owner] = nowMs + windowMs;
+
+    /// <summary>
+    /// Silences EVERY background lamp sentence until the deadline and records nothing — the
+    /// annunciator light test lights ~488 lamps at once. Recording nothing is the point: when the
+    /// lamps return to normal, the re-composed text equals the pre-test record and dedups silent.
+    /// Never shortens a mute already running.
+    /// </summary>
+    public void MuteAll(long nowMs, int windowMs)
+        => _mutedUntil = Math.Max(_mutedUntil, nowMs + windowMs);
+
+    public bool IsMuted(long nowMs) => nowMs < _mutedUntil;
+
+    /// <summary>
+    /// Whether <paramref name="owner"/> is inside an FO quiet window — for the read-outs that
+    /// speak through their own baseline logic rather than <see cref="ShouldSpeakBackground"/>
+    /// (the spoiler lever's travel and ground-spoiler sentences). They keep recording their
+    /// state and only skip the speech.
+    /// </summary>
+    public bool IsQuietFor(string owner, long nowMs)
+        => _quietUntil.TryGetValue(owner, out var until) && nowMs < until;
 
     public void NotePress(string owner, long nowMs) => _pressedAt[owner] = nowMs;
 
@@ -61,9 +99,12 @@ public sealed class Md11AnnouncementGate
     /// </summary>
     public bool ShouldSpeakBackground(string owner, string text, long nowMs)
     {
+        if (IsMuted(nowMs)) return false;                   // global mute: say nothing, record nothing
         if (IsInEchoWindow(owner, nowMs)) return false;
         if (_lastSpoken.TryGetValue(owner, out var prev) && prev == text) return false;
         _lastSpoken[owner] = text;
+        // An FO actuation: the new state is now the baseline, but the FO's narration said it.
+        if (_quietUntil.TryGetValue(owner, out var until) && nowMs < until) return false;
         return true;
     }
 
@@ -103,5 +144,7 @@ public sealed class Md11AnnouncementGate
     {
         _lastSpoken.Clear();
         _pressedAt.Clear();
+        _quietUntil.Clear();
+        _mutedUntil = 0;
     }
 }
