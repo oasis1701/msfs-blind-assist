@@ -338,7 +338,8 @@ Then wire it into the code every aircraft shares (search for an existing aircraf
 - `UpdateAircraftMenuItems()` in the same file: clear and set its menu item's `Checked`, or the screen reader reads it as not checked.
 - Ctrl+M: a `MonitorManagerFormBase` subclass in `Forms/<Aircraft>/` (MON-1), its `<Aircraft>DisabledMonitorVariables` list in `UserSettings` and its line in `UserSettings.RebuildDisabledMonitorVariableCaches()`, which builds the `<Aircraft>DisabledMonitorVariablesSet` from it, a `Show…MonitorManagerDialog()` in MainForm that the definition's `HandleHotkeyAction` calls, a check of that set in MainForm's generic mute gate (`MainForm.Announcers.cs`), and, if the definition announces from `ProcessSimVarUpdate`, its row in `Services/DefAnnounceMuteSets` (VAR-8).
 - Shift+M and the EFB key: a branch in `MainForm.Hotkeys.cs`; with none, Shift+M opens the Fenix MCDU dialog.
-- The hotkey list: `HotkeyGuides/<file>.txt` with its `<None Update=…>` entry in the csproj, and a row in `HotkeyListForm`'s file map (otherwise it shows the A320's); a text checklist the same way through `ChecklistFileName`.
+- The hotkey list: `HotkeyGuides/<file>.txt` with its `<None Update=…>` entry in the csproj, and a row in `HotkeyListForm`'s file map (otherwise it shows the A320's).
+- A First Officer: a row in `FirstOfficerWindows` (Shift+C and the File → First Officer item follow from it, FO-24) and one in `FirstOfficerWindowsTests`; every new aircraft needs a `FirstOfficerWindowsTests` row, null when it has no First Officer.
 
 **Step 5:** Test - build, launch, select aircraft from menu
 

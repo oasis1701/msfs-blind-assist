@@ -4,7 +4,7 @@ Screen-reader First Officer (flows + checklists) for the PMDG 777, PMDG 737 NG3,
 
 ## Overview
 
-**Feature (branch `feature/777-first-officer`):** a screen-reader First Officer that runs procedural **flows** (sequenced switch actions) and tracks **checklists** for the PMDG 777 and PMDG 737 NG3. One shared, aircraft-agnostic window `Forms/FirstOfficer/FirstOfficerForm.cs` (`FirstOfficerForm<TExec,TState>`) with two tabs — **Checklists** (a `NativeAccessibleTreeView`) and **Flows** (ListBoxes). Opened from a per-aircraft File menu item; **each PMDG FO menu item is gated to its own aircraft** (the 777 item never shows on the 737 and vice-versa; neither shows on A320/A380/HS787). The First Officer automation settings live in the unified Settings dialog (File → Settings… → **First Officer** tab, `Forms/Settings/FirstOfficerPanel.cs`, 2026-07 — the standalone "First Officer Settings" menu item and `FirstOfficerSettingsForm` are retired) and the tab is visible for every aircraft. In-sim test plan (the project's verification model — no automated tests): [docs/pmdg-737-first-officer-test-plan.md](pmdg-737-first-officer-test-plan.md), Parts A–F.
+**Feature (branch `feature/777-first-officer`):** a screen-reader First Officer that runs procedural **flows** (sequenced switch actions) and tracks **checklists** for the PMDG 777 and PMDG 737 NG3. One shared, aircraft-agnostic window `Forms/FirstOfficer/FirstOfficerForm.cs` (`FirstOfficerForm<TExec,TState>`) with two tabs — **Checklists** (a `NativeAccessibleTreeView`) and **Flows** (ListBoxes). Opened with **Shift+C** in output mode or the one **File → First Officer** item, which shows only on an aircraft that has a First Officer and is read with that aircraft's name; `FirstOfficerWindows` decides both (FO-24, 2026-10-17; until then each aircraft had its own File menu item). See "Opening the window: Shift+C" below. The First Officer automation settings live in the unified Settings dialog (File → Settings… → **First Officer** tab, `Forms/Settings/FirstOfficerPanel.cs`, 2026-07 — the standalone "First Officer Settings" menu item and `FirstOfficerSettingsForm` are retired) and the tab is visible for every aircraft. In-sim test plan (the project's verification model — no automated tests): [docs/pmdg-737-first-officer-test-plan.md](pmdg-737-first-officer-test-plan.md), Parts A–F.
 
 **Fenix A320 First Officer (branch `feature/fenix-first-officer`):** a third profile, `FirstOfficer/Fenix/`, rides a new aircraft-agnostic **`FirstOfficer/Generic/`** L:var layer built for this and future FBW reuse — `LVarActionExecutor` (a per-key dispatch table of `LVarDispatchKind`s: held write, momentary pulse, K-event, H-event, all serialized through one gate) and `LVarStateEvaluator` (cache-read that returns NaN until a field is seen, plus `OnRequestPollFields` polled onto the cache by the FO window's 1 s timer, since most Fenix `S_`/`A_` controls are OnRequest-only). Fenix-specific gotchas baked into `FenixActionExecutor`/`FenixFlowDefinitions`/`FenixChecklistDefinitions`: momentary buttons are `SetLVar 0 → ~200 ms → SetLVar 1` pulses (the panel's proven `ExecuteButtonTransition` convention); fire tests are HELD switches (1 → 3 s → 0), not pulses, with the fire bell as the blind-pilot verification cue; FCU managed pushes go through the atomic single-string calculator RPN `{seq} 0 * (L:S_FCU_SPEED) 1 - (>L:S_FCU_SPEED)` — never a second app-side counter, because the panel's own push/pull handler (`FenixA320Definition.HandleUIVariableSet`) writes the same L:var independently and two absolute counters would desync (the panel's altitude push joined the same atomic write on 2026-10-06, so for speed, heading and altitude alike the panel, the hotkeys and the First Officer share one mechanism); ground spoilers ARM is `A_FC_SPEEDBRAKE == 0`; landing lights OFF is value **1** (0 is Retract, 2 is On); there is deliberately **no auto-flaps** (the Fenix exposes no V1/VR/V2/VAPP L:var outside the MCDU display, so `FenixFOAutoManager.AutoFlapsEnabled` is stored from settings but never acted on; that is the speed-based flap schedule, and the takeoff flap setting itself is still set from SimBrief in the After Start flow, with a Captain reminder when no plan is loaded); and EFIS baro STD is a direct per-side state write (`S_FCU_EFIS1_BARO_STD`/`S_FCU_EFIS2_BARO_STD` = 1/0), simpler than the 737's blind toggle push since the Fenix var is directly readable. In-sim test plan: [docs/fenix-first-officer-test-plan.md](fenix-first-officer-test-plan.md).
 
@@ -806,3 +806,24 @@ departure and arrival group ids, `FirstOfficerForm` wires them (FO-22).
 
 In-sim check (owner runs): load a flight in cruise and open the First Officer window; hear the
 announcement, find the lists through After Takeoff complete and Descent and later open.
+
+## Opening the window: Shift+C (2026-10-17)
+
+Shift+C (output mode) opens the current aircraft's First Officer window, as does File → First
+Officer; on an aircraft without one (today the HorizonSim 787) Shift+C says "No checklist for this
+aircraft." and the menu item is hidden. `Forms/FirstOfficer/FirstOfficerWindows.cs` holds one row
+per First Officer aircraft, keyed on the exact aircraft code (FO-24): `NameFor` gates Shift+C and
+the menu item and names it, `Create` builds the window, and MainForm keeps one
+`IFirstOfficerWindow`, disposed on every aircraft swap. Shift+C works before the sim connects; the
+window re-wires on connect.
+
+Shift+C used to open a plain text checklist (`ChecklistForm`, `Checklists\*.txt`, chosen by
+`IAircraftDefinition.ChecklistFileName`). Every aircraft that had one also had a First Officer, so
+the owner retired that window, its five files and the property on 2026-10-17.
+
+The first open, by either route, starts the First Officer for the rest of the aircraft session:
+its phase and auto managers run whether the window is visible or hidden (Escape hides it), so the
+10,000 ft lights and transition altimeters (both on by default) and the in-flight catch-up (FO-22)
+apply from then on. Escape or closing the window gives focus back to the window it was opened
+from, usually the simulator (`NativeForeground`, which exists because the CLR refuses a P/Invoke in
+a generic type).

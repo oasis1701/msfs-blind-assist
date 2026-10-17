@@ -1,7 +1,10 @@
 A First Officer for the PMDG 777, PMDG 737, iFly 737 MAX8, Fenix A320, FlyByWire A32NX,
-FlyByWire A380, HeadwindSim A330-900neo and TFDi MD-11. Open it from the File menu: the item is named
-for the aircraft you are flying ("PMDG 777 First Officer", "Fenix A320 First Officer" and
-so on) and only shows up when you are flying that aircraft. The window has two tabs. On
+FlyByWire A380, HeadwindSim A330-900neo and TFDi MD-11. Press Shift+C in output mode to open it,
+or choose First Officer in the File menu, which only shows up when you are flying one of these
+aircraft. On the A32NX, A330, Fenix A320, A380 and iFly MAX8, Shift+C used to open a plain text
+checklist; that window is gone, and the First Officer's checklists replace it. Opening the
+First Officer, either way, starts it for the rest of the flight: the automation below keeps
+running when you close the window with Escape. The window has two tabs. On
 the Flows tab, pick a phase's flow and press Start Flow. The First Officer works through
 the procedure and speaks each step, from power-up to securing the aircraft, and you can
 pause, resume or stop it. Things that are the Captain's job, such as the landing
@@ -75,13 +78,13 @@ Securing on the A380 follows the same order as on the A320 family: the APU flap 
 external power and the batteries go off.
 
 On the TFDi MD-11, the Checklists tab follows TFDi's normal checklist from Cockpit Entry to
-Shutdown. It leaves out the 10,000 feet, transition and cruise pages: while the window is open,
-the First Officer switches the landing lights at 10,000 feet (unless you turn that off), sets the
+Shutdown. It leaves out the 10,000 feet, transition and cruise pages: once the window has been
+opened, the First Officer switches the landing lights at 10,000 feet (unless you turn that off), sets the
 altimeters to standard and the Dial-A-Flap to 15 at the transition altitude, and reminds you to
 set local QNH at the transition level. If you used ground power, Shutdown switches external power
 off just before the battery.
 
-While the window is open, it also switches the landing lights at 10,000 feet, and you
+Once the window has been opened, it also switches the landing lights at 10,000 feet, and you
 can turn that off in Settings. If SimBrief has supplied the transition altitude and
 level, it also sets the altimeters to standard at the transition altitude and back to QNH
 at the transition level. You can turn that off in Settings too; the First Officer then

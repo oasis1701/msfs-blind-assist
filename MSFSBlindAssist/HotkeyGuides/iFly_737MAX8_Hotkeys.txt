@@ -116,7 +116,7 @@ AI Display Reading (needs an AI provider configured in Settings > AI tab):
   does nothing.
 
 Checklists and EFB:
-  Shift+C    Open text checklist window (iFly 737 MAX8 normal procedures)
+  Shift+C    First Officer window (checklists and flows)
   Shift+E    Open Flight Planning EFB
 
 Monitoring:

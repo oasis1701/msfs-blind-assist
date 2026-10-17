@@ -158,7 +158,7 @@ Displays and Windows:
   Shift+M    Show METAR Report (VATSIM, plus ActiveSky METAR if AS detected)
   Ctrl+Shift+T  Cold Temperature Altitude Correction (offline calculator: field elevation + temperature + published altitudes -> corrected altitudes)
   Shift+B    SimBrief Briefing
-  Shift+C    Show Checklist (static text, cold-and-dark to shutdown)
+  Shift+C    First Officer window (checklists and flows)
 
 Hand Fly Mode Hotkeys:
   A          Read MSL
