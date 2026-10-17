@@ -1,6 +1,7 @@
 # Volanta live map
 
-Extras, Volanta opens the **Volanta Live Map** window: Volanta's live map as text. A pilot who cannot see
+Extras, Volanta (or `]` then Shift+O, `HotkeyAction.ShowVolanta`, which works with the sim not connected) opens
+the **Volanta Live Map** window: Volanta's live map as text. A pilot who cannot see
 Volanta's map hears the same traffic: the Volanta users and online network pilots around them, their Volanta
 friends, and the online ATC. The window reads Volanta's public web map (`https://fly.volanta.app/map`) in a browser
 the pilot never sees, so the Volanta app need not run: most blind pilots keep it in the notification area to log

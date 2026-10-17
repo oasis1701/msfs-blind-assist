@@ -402,15 +402,17 @@ public partial class MainForm
         simPerformanceForm.Show(this);
     }
 
-    // Extras > Volanta: one modeless window at a time. It is its own top-level window, never owned by
-    // this one (the TCAS window's pattern), so the pilot can Alt+Tab between the two; a second click
-    // brings the open one forward. It opens whether or not the sim is connected (it can place traffic
-    // from Volanta's own position report) and owns the browser that reads Volanta's public web map, which
-    // it closes with the window. It names where each aircraft is from the same offline location data
-    // Output C reads.
+    // Extras > Volanta, or Shift+O in output mode: one modeless window at a time. It is its own
+    // top-level window, never owned by this one (the TCAS window's pattern), so the pilot can Alt+Tab
+    // between the two; a second click or press brings the open one forward. It opens whether or not the
+    // sim is connected (it can place traffic from Volanta's own position report) and owns the browser that
+    // reads Volanta's public web map, which it closes with the window. It names where each aircraft is from
+    // the same offline location data Output C reads.
     private Forms.Volanta.VolantaLiveMapForm? volantaLiveMapForm;
 
-    private void VolantaMenuItem_Click(object? sender, EventArgs e)
+    private void VolantaMenuItem_Click(object? sender, EventArgs e) => OpenVolantaWindow();
+
+    private void OpenVolantaWindow()
     {
         if (volantaLiveMapForm is not { IsDisposed: false })
         {
