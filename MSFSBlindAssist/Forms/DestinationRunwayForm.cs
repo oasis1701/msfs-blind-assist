@@ -1,6 +1,7 @@
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Navigation;
 
 namespace MSFSBlindAssist.Forms;
 public partial class DestinationRunwayForm : Form
@@ -21,6 +22,7 @@ public partial class DestinationRunwayForm : Form
 
     private readonly IAirportDataProvider _database;
     private readonly IntPtr previousWindow;
+    private readonly DestinationPrefill _prefill;
 
     public Runway? SelectedRunway { get; private set; }
     public Airport? SelectedAirport { get; private set; }
@@ -32,8 +34,12 @@ public partial class DestinationRunwayForm : Form
     /// </summary>
     public bool ManualLandingAssist => manualLandingCheckBox.Checked;
 
-    public DestinationRunwayForm(IAirportDataProvider database, ScreenReaderAnnouncer announcer)
+    /// <param name="prefill">Airport (and optionally runway) the app already knows, so the
+    /// ICAO box opens filled in. Null opens it empty.</param>
+    public DestinationRunwayForm(IAirportDataProvider database, ScreenReaderAnnouncer announcer,
+        DestinationPrefill? prefill = null)
     {
+        _prefill = prefill ?? DestinationPrefill.None;
         // Capture the current foreground window (likely the simulator)
         previousWindow = GetForegroundWindow();
 
@@ -163,6 +169,16 @@ public partial class DestinationRunwayForm : Form
             Activate();
             TopMost = true;
             TopMost = false; // Flash to bring to front
+
+            // Fill in the destination airport the app already knows (flight plan arrival,
+            // or the destination set earlier). Setting the text loads the runway list.
+            // The text is selected so typing a different ICAO replaces it, and the screen
+            // reader speaks the filled-in value when the box takes focus.
+            if (_prefill.Icao != null && string.IsNullOrEmpty(icaoTextBox.Text))
+            {
+                icaoTextBox.Text = _prefill.Icao;
+                icaoTextBox.SelectAll();
+            }
             icaoTextBox.Focus();
         };
     }
@@ -188,10 +204,24 @@ public partial class DestinationRunwayForm : Form
             runwayListBox.Focus();
             if (runwayListBox.Items.Count > 0)
             {
-                runwayListBox.SelectedIndex = 0;
+                runwayListBox.SelectedIndex = PrefillRunwayIndex();
             }
             e.Handled = true;
         }
+    }
+
+    /// <summary>Index of the prefilled runway in the list, or 0 when it isn't there.</summary>
+    private int PrefillRunwayIndex()
+    {
+        // Only when the box still holds the prefilled airport; a typed one starts at the top.
+        if (!string.Equals(icaoTextBox.Text.Trim(), _prefill.Icao, StringComparison.OrdinalIgnoreCase))
+            return 0;
+        for (int i = 0; i < runwayListBox.Items.Count; i++)
+        {
+            if (runwayListBox.Items[i] is Runway r && _prefill.MatchesRunway(r.RunwayID))
+                return i;
+        }
+        return 0;
     }
 
     private void LoadRunways(string icao)

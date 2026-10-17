@@ -231,7 +231,14 @@ public partial class MainForm
         if (!ValidateDatabaseSimulatorMatch())
             return;
 
-        var dialog = new DestinationRunwayForm(airportDataProvider, announcer);
+        // Open with the destination airport already filled in when the app knows it.
+        var plan = flightPlanManager?.CurrentFlightPlan;
+        var prefill = MSFSBlindAssist.Navigation.DestinationPrefill.Choose(
+            plan?.ArrivalICAO, plan?.ArrivalRunway,
+            simConnectManager.GetDestinationAirport()?.ICAO,
+            simConnectManager.GetDestinationRunway()?.RunwayID);
+
+        var dialog = new DestinationRunwayForm(airportDataProvider, announcer, prefill);
         if (dialog.ShowDialog(this) == DialogResult.OK)
         {
             if (dialog.SelectedRunway != null && dialog.SelectedAirport != null)
