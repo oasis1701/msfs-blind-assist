@@ -84,6 +84,8 @@ Changed 2026-10-09: the closed list ruled on 2026-10-08 missed four kinds of cas
 
 - Combo double-announce suppression must be GLOBAL, never aircraft-gated: `_uiSetEcho`/`MarkUiSet` plus a wrap that sets `announcer.Suppressed` around `ProcessSimVarUpdate` for any var inside the echo window — gating the wrap to one aircraft (the old HS787-only gate) causes double-announces on every other def that self-announces from inside `ProcessSimVarUpdate`. → CLAUDE.md
 
+A switch whose state comes back on a SEPARATE light names that light in `SimVarDefinition.UiEchoVariable`, and `MarkUiSet` marks it with the picked value too, so the light's change is the same echo, swallowed once (first users: the Fenix ACP reception latches, 2026-10). The light must read back the value the switch was set to: its entry goes through the value-matched generic gate. The A380 ND filter and the HS787 ground power predate it and keep their own echo windows: their read-back is a derived selection, not a copy of the picked value.
+
 ## CORE-9
 
 - The echo-window suppression in the wrap around `ProcessSimVarUpdate` (CORE-8) must match on TIME only, never on value — a combo set can write a different encoding than the SDK reads back, so a value-compare silently misses the duplicate. The generic `_uiSetEcho` gate on the monitor path stays value-matched on purpose: it drops only a value matching what the user set inside the window, so a change from another source inside the window still speaks, and a definition whose read-back legitimately lands on a sibling encoding opts a variable out with `SimVarDefinition.UiEchoMatchesAnyValue` (PR #163). → CLAUDE.md
