@@ -18,6 +18,9 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
     private CheckBox _timeWithSecondsCheck = null!;
     private CheckBox _gsxBackgroundMonitoring = null!;
     private CheckBox _altitudeCalloutsCheck = null!;
+    private CheckBox _simPauseCheck = null!;
+    private CheckBox _activePauseCheck = null!;
+    private CheckBox _slewCheck = null!;
 
     public string TabTitle => "Announcements";
 
@@ -42,7 +45,7 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
         {
             Text = "General",
             Location = new System.Drawing.Point(12, 12),
-            Size = new System.Drawing.Size(460, 300),
+            Size = new System.Drawing.Size(460, 390),
             AccessibleName = "General",
             AccessibleDescription = "Announcement mode and location announcement settings",
         };
@@ -142,13 +145,44 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
             AccessibleDescription = "When checked, each thousand feet crossed in a climb or descent is spoken. Default is on."
         };
 
+        // The sim's own pause and slew states, spoken as they change (SimPauseSlewTracker).
+        _simPauseCheck = new CheckBox
+        {
+            Text = "Announce when the sim is paused or unpaused (Esc menu)",
+            Location = new System.Drawing.Point(12, 295),
+            Size = new System.Drawing.Size(440, 25),
+            AccessibleName = "Announce when the sim is paused or unpaused",
+            AccessibleDescription = "When checked, opening and closing the simulator's pause menu is spoken. Default is on."
+        };
+
+        _activePauseCheck = new CheckBox
+        {
+            Text = "Announce when active pause turns on or off",
+            Location = new System.Drawing.Point(12, 323),
+            Size = new System.Drawing.Size(440, 25),
+            AccessibleName = "Announce when active pause turns on or off",
+            AccessibleDescription = "When checked, active pause turning on or off is spoken. Default is on."
+        };
+
+        _slewCheck = new CheckBox
+        {
+            Text = "Announce when slew mode turns on or off",
+            Location = new System.Drawing.Point(12, 351),
+            Size = new System.Drawing.Size(440, 25),
+            AccessibleName = "Announce when slew mode turns on or off",
+            AccessibleDescription = "When checked, slew mode turning on or off is spoken. Default is on."
+        };
+
         group.Controls.AddRange(new Control[]
         {
             modeLabel, _screenReaderRadio, _sapiRadio, _statusLabel,
             intervalLabel, _nearestCityIntervalCombo,
             _timeWithSecondsCheck,
             _gsxBackgroundMonitoring,
-            _altitudeCalloutsCheck
+            _altitudeCalloutsCheck,
+            _simPauseCheck,
+            _activePauseCheck,
+            _slewCheck
         });
 
         return group;
@@ -222,6 +256,9 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
         _timeWithSecondsCheck.Checked = settings.AnnounceTimeWithSeconds;
         _gsxBackgroundMonitoring.Checked = settings.GsxBackgroundMonitoring;
         _altitudeCalloutsCheck.Checked = settings.AltitudeCalloutsEnabled;
+        _simPauseCheck.Checked = settings.AnnounceSimPauseEnabled;
+        _activePauseCheck.Checked = settings.AnnounceActivePauseEnabled;
+        _slewCheck.Checked = settings.AnnounceSlewEnabled;
     }
 
     public bool Validate(out string error, out Control? focus)
@@ -240,6 +277,9 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
         settings.AnnounceTimeWithSeconds = _timeWithSecondsCheck.Checked;
         settings.GsxBackgroundMonitoring = _gsxBackgroundMonitoring.Checked;
         settings.AltitudeCalloutsEnabled = _altitudeCalloutsCheck.Checked;
+        settings.AnnounceSimPauseEnabled = _simPauseCheck.Checked;
+        settings.AnnounceActivePauseEnabled = _activePauseCheck.Checked;
+        settings.AnnounceSlewEnabled = _slewCheck.Checked;
     }
 
     public void OnLeaving()

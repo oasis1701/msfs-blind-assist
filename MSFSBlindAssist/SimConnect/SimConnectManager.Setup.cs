@@ -830,6 +830,7 @@ public partial class SimConnectManager
         // here, the subscription only while the Sim Performance window holds a request.
         sc.OnRecvEventFrame += SimConnect_OnRecvEventFrame;
         RearmFrameEventForNewConnection();
+        SetupSimStateMonitoring();
     }
 
     /// <summary>

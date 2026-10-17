@@ -511,6 +511,8 @@ public partial class SimConnectManager
         // COM 1 active + standby, one-shot (RequestCom1Radio). 349: the first id past the
         // camera's rotating 341-348.
         REQUEST_COM1_RADIO = 349,
+        // IS SLEW ACTIVE, SIM_FRAME + CHANGED (SimConnectManager.SimState.cs).
+        REQUEST_SLEW_STATE = 350,
         REQUEST_AI_TRAFFIC = 500,
         // The ground-traffic monitor's own by-type sweeps (same DEF_AI_TRAFFIC definition, a small
         // radius), on their OWN ids so a completion can never be confused with a TCAS or other
@@ -594,6 +596,7 @@ public partial class SimConnectManager
         // mis-cast. Pinned by CameraReadWaitersTests.
         DEF_CAMERA_VIEW = 341,
         DEF_COM1_RADIO = 349,
+        DEF_SLEW_STATE = 350,
         DEF_AI_TRAFFIC = 500,
         // KEEP 600-607 FREE: the ground-traffic sweeps' rotating request ids (DATA_REQUESTS
         // .REQUEST_GROUND_TRAFFIC), and this enum is a request-id namespace too.
@@ -612,7 +615,10 @@ public partial class SimConnectManager
         AircraftLoaded = 9000,
         // "Frame": once per rendered frame, subscribed only while the Sim Performance window is open
         // (SimConnectManager.FrameRate.cs).
-        Frame = 9001
+        Frame = 9001,
+        // Pause and flight-running state, always subscribed (SimConnectManager.SimState.cs).
+        PauseEx1 = 9002,
+        Sim = 9003
     }
 
 
