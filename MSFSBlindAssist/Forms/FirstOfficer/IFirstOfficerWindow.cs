@@ -1,14 +1,12 @@
 namespace MSFSBlindAssist.Forms.FirstOfficer;
 
 /// <summary>
-/// Non-generic view of <see cref="FirstOfficerForm{TExec,TState}"/> for MainForm code that
-/// walks every open First Officer window without knowing the closed generic types
-/// (each aircraft's FO form field is a distinct FirstOfficerForm&lt;TExec,TState&gt;).
-/// Cross-form operations belong here, and MainForm.OpenFirstOfficerForms() is the ONE
-/// place that enumerates the per-aircraft form fields — adding a new FO aircraft means
-/// extending that enumerator, not every call site.
+/// Non-generic view of <see cref="FirstOfficerForm{TExec,TState}"/>, so MainForm can hold the
+/// current aircraft's First Officer window without knowing its closed generic type. MainForm
+/// holds the ONE window <see cref="FirstOfficerWindows.Create"/> built (FO-24); cross-form
+/// operations belong here.
 /// </summary>
-public interface IFirstOfficerWindow
+public interface IFirstOfficerWindow : IDisposable
 {
     /// <summary>Re-reads the FO automation toggles from UserSettings (called after the
     /// Settings dialog's First Officer panel saves).</summary>
@@ -16,4 +14,10 @@ public interface IFirstOfficerWindow
 
     /// <summary>Re-wires data-manager references after a SimConnect connect/reconnect.</summary>
     void OnSimConnectChanged();
+
+    /// <summary>Shows the window (or brings it to the front) with its tab and selection as they were.</summary>
+    void ShowForm();
+
+    /// <summary>True once the window has been disposed (an aircraft swap disposes it).</summary>
+    bool IsDisposed { get; }
 }
