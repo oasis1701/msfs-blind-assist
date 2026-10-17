@@ -25,9 +25,10 @@ public partial class DestinationRunwayForm : Form
     public Runway? SelectedRunway { get; private set; }
     public Airport? SelectedAirport { get; private set; }
     /// <summary>
-    /// True when the pilot checked "Manual landing assist" — arms the flare +
-    /// rollout tone guidance (LandingFlareAssistManager) for this destination.
-    /// Unchecked by default: ILS-flown approaches keep today's behavior.
+    /// True when the pilot checked "Manual landing assist" — arms the flare tones as well as the
+    /// rollout centerline tone (LandingFlareAssistManager) for this destination. Unchecked by default,
+    /// the choice for ILS-flown approaches: the destination then arms the rollout centerline tone alone
+    /// while the Hand Fly setting RolloutCenterlineToneEnabled is on (MainForm.RefreshRolloutCueArming).
     /// </summary>
     public bool ManualLandingAssist => manualLandingCheckBox.Checked;
 
@@ -91,17 +92,17 @@ public partial class DestinationRunwayForm : Form
         runwayListBox.SelectedIndexChanged += RunwayListBox_SelectedIndexChanged;
         runwayListBox.KeyDown += RunwayListBox_KeyDown;
 
-        // Manual landing assist checkbox (unchecked by default). When checked, the
-        // flare/rollout tone assist arms for this runway; unchecked = today's behavior
-        // (the normal choice for ILS-flown approaches).
+        // Manual landing assist checkbox (unchecked by default). When checked, the flare tones
+        // arm as well as the rollout centerline tone; unchecked (the normal choice for ILS-flown
+        // approaches) the rollout centerline tone alone follows the Hand Fly setting.
         manualLandingCheckBox = new CheckBox
         {
-            Text = "Manual landing assist (flare and rollout tones)",
+            Text = "Manual landing assist (adds flare tones)",
             Location = new Point(20, 262),
             Size = new Size(350, 22),
             Checked = false,
             AccessibleName = "Manual landing assist",
-            AccessibleDescription = "When checked, a flare guidance tone plays from 50 feet and centerline steering tones guide the rollout. Leave unchecked for ILS approaches."
+            AccessibleDescription = "When checked, a flare guidance tone plays from 50 feet, then the centerline tone guides the rollout. Leave unchecked for ILS approaches: the rollout centerline tone still plays after touchdown while it is switched on in the Hand Fly settings, which it is by default."
         };
 
         // Status Label

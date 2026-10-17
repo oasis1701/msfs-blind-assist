@@ -137,8 +137,7 @@ public partial class HorizonSim787Definition
             "MCP Speed", "speed", "IAS: 100-399 knots / Mach: 0.40-0.99", announcer,
             input =>
             {
-                if (double.TryParse(input, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out double val))
+                if (Utils.NumberParsing.TryParseTyped(input, out double val))
                 {
                     if (val >= 100 && val <= 399) return (true, "");
                     if (val >= 0.4 && val < 1.0)  return (true, "");
@@ -148,8 +147,7 @@ public partial class HorizonSim787Definition
             toggles,
             input =>
             {
-                if (!double.TryParse(input, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out double spd))
+                if (!Utils.NumberParsing.TryParseTyped(input, out double spd))
                     return;
 
                 if (spd < 10.0)
@@ -277,8 +275,7 @@ public partial class HorizonSim787Definition
             announcer,
             input =>
             {
-                if (double.TryParse(input, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out double val))
+                if (Utils.NumberParsing.TryParseTyped(input, out double val))
                 {
                     bool isFPA = (simConnect.GetCachedVariableValue("HS787_FPAMode") ?? 0) > 0;
                     if (isFPA)
@@ -288,6 +285,10 @@ public partial class HorizonSim787Definition
                     }
                     else
                     {
+                        // 0 levels off; anything nearer 0 than the 50 fpm dial step is an FPA
+                        // typed in V/S mode ("-2,5"), which (int)val would send as -2 fpm.
+                        if (val != 0 && Math.Abs(val) < 50)
+                            return (false, "V/S must be 0 or at least 50 fpm; for an angle, switch the mode to FPA");
                         if (val >= -6000 && val <= 6000) return (true, "");
                         return (false, "Enter V/S between -6000 and 6000 fpm");
                     }
@@ -297,8 +298,7 @@ public partial class HorizonSim787Definition
             toggles,
             input =>
             {
-                if (!double.TryParse(input, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out double val))
+                if (!Utils.NumberParsing.TryParseTyped(input, out double val))
                     return;
 
                 bool isFPA = (simConnect.GetCachedVariableValue("HS787_FPAMode") ?? 0) > 0;

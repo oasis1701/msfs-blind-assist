@@ -95,8 +95,25 @@ public class Md11DirectSetTests
     }
 
     /// <summary>
+    /// The percent knobs (the audio volumes, the lighting and brightness knobs) are refused whatever
+    /// the name gate says: a direct write of their own var is unmeasured, and a var that only mirrors
+    /// the knob would hold it — a silent "landed" while the volume or brightness stayed put.
+    /// </summary>
+    [Theory]
+    [InlineData("MD11_PED_CPT_AUDIO_PNL_VHF2_VOL_KB")]
+    [InlineData("MD11_PED_DU1_BRT_KB")]
+    [InlineData("MD11_LECP_WXBRT_KB")]
+    public void APercentKnob_IsRefused(string nodeId)
+    {
+        var c = Find(nodeId);
+
+        Assert.Equal(Md11DirectSet.PercentKnobReason, Md11DirectSet.Refuse(c, RegisteredVar(nodeId)));
+        Assert.Equal(Md11DirectSet.PercentKnobReason, Md11DirectSet.Refuse(c, c.StateVar));
+    }
+
+    /// <summary>
     /// The gate must not silently disable the fallback for the switches it exists to keep: against
-    /// the shipped map and definition, the refused set is the list and nothing else.
+    /// the shipped map and definition, the refused set is the list and the percent knobs, nothing else.
     /// </summary>
     [Fact]
     public void EveryOtherWalkableControl_KeepsItsFallback()
@@ -110,7 +127,9 @@ public class Md11DirectSetTests
             .Select(c => c.NodeId)
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToList();
-        var expected = Md11DirectSet.FallbackNeverWrites.Keys.OrderBy(n => n, StringComparer.Ordinal).ToList();
+        var expected = Md11DirectSet.FallbackNeverWrites.Keys
+            .Concat(walkable.Where(Md11PercentKnob.Is).Select(c => c.NodeId))
+            .OrderBy(n => n, StringComparer.Ordinal).ToList();
 
         Assert.Equal(expected, refused);
         Assert.True(walkable.Count > expected.Count + 100,

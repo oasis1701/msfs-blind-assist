@@ -61,18 +61,28 @@ namespace MSFSBlindAssist.Aircraft.MD11;
 /// cannot satisfy (it falls to the direct write as before). The click is decided only on a
 /// DELIVERED read — no delivery, no click — and is stamped at the bus's expected write time.
 ///
-/// The walk is bounded and always terminates: <see cref="MaxSteps"/> caps the step count, and a
+/// The walk is bounded and always terminates: <see cref="StepBudget"/> caps the step count, and a
 /// control that will not move breaks out rather than hammering CEVENT — which TFDi explicitly asks
 /// us not to overuse.
 /// </summary>
 public static class Md11SelectorWalker
 {
     /// <summary>
-    /// Step budget. The widest control in the map is well under a dozen detents, so this is
-    /// generous headroom; it exists to guarantee termination when a control refuses to move
-    /// (unpowered bus, guarded switch, hydraulics off), never as a normal operating limit.
+    /// The step budget's floor. A fixed 24 was generous while the widest control had about a dozen
+    /// detents; the percent knobs have 21 positions (0-100 % in 5 % steps), so the budget is now
+    /// sized per walk (<see cref="StepBudget"/>) and this floor keeps every smaller control's budget
+    /// as it was. It exists to guarantee termination when a control refuses to move (unpowered bus,
+    /// guarded switch, hydraulics off), never as a normal operating limit.
     /// </summary>
-    private const int MaxSteps = 24;
+    private const int MinStepBudget = 24;
+
+    /// <summary>
+    /// One walk's step budget: twice the control's position count, never below
+    /// <see cref="MinStepBudget"/>. A full-range walk costs positions − 1 steps and a wrong polarity
+    /// re-learned on the way one or two more, so twice the count keeps the headroom a 12-position
+    /// control had under the fixed 24 — 42 for a percent knob, whose full range is 20.
+    /// </summary>
+    internal static int StepBudget(int positions) => Math.Max(MinStepBudget, 2 * positions);
 
     /// <summary>Legacy protocol: how long to wait after a step before the first cache poll.</summary>
     private const int SettleMs = 90;
@@ -167,10 +177,11 @@ public static class Md11SelectorWalker
         var node = control.NodeId;
         var targetIdx = PositionIndex(control, ordered, targetValue);
         var noMovement = 0;
+        var budget = StepBudget(ordered.Count);
 
         await SettleAfterRecentClickAsync(node, io, ct).ConfigureAwait(false);
 
-        for (var step = 0; step < MaxSteps; step++)
+        for (var step = 0; step < budget; step++)
         {
             // Superseded by a newer selection (the user arrowed on in the combo) — stop now rather
             // than keep force-requesting the state var. Throws so SafeWalk swallows it silently: a
@@ -261,7 +272,7 @@ public static class Md11SelectorWalker
             }
         }
 
-        Log.Debug("MD11", $"{node}: walk to {targetValue} exhausted {MaxSteps} steps.");
+        Log.Debug("MD11", $"{node}: walk to {targetValue} exhausted {budget} steps.");
         return false;
     }
 

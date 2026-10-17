@@ -144,7 +144,7 @@ public class YourAircraftDefinition : BaseAircraftDefinition
                 "YOUR_ALT_SET_EVENT", simConnect, announcer, parentForm,
                 validator: (input) =>
                 {
-                    if (double.TryParse(input, out double val) && val >= 100 && val <= 49000)
+                    if (Utils.NumberParsing.TryParseTyped(input, out double val) && val >= 100 && val <= 49000)
                         return (true, "");
                     return (false, "Altitude must be 100-49000");
                 },

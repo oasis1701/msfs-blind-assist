@@ -444,34 +444,34 @@ public static class Md11PanelLayout
         "MD11_PED_WXR_STAB_BT", "MD11_PED_WXR_SYS_BT", "MD11_PED_WXR_IDNT_BT", "MD11_PED_WXR_GAIN_KB", "MD11_PED_WXR_TILT_KB",
     };
 
+    /// <summary>The sixteen receivers every audio panel has a volume knob for, in panel order.</summary>
+    private static readonly string[] AudioReceivers =
+    {
+        "VHF1", "VHF2", "VHF3", "HF1", "HF2", "SAT", "INT", "CAB", "PA",
+        "ILS1", "ILS2", "VOR1", "VOR2", "ADF1", "ADF2", "MKR",
+    };
+
     /// <summary>
     /// One audio panel. <paramref name="p"/> is the node prefix; the F/O's SAT TEL lamp is spelled
-    /// TELL in TFDi's XML. <paramref name="satVolLamp"/> is a second, independent asymmetry: only
-    /// the Observer panel has a SAT Volume ON lamp — Captain and First Officer have the SAT volume
-    /// knob but no lamp for it (verified against the control map: no
-    /// <c>{p}_SAT_VOL_LT</c> node exists for either pilot position). Omitted (default null) for
-    /// those two; passed for Observer.
+    /// TELL in TFDi's XML. Each receiver's volume knob is two rows: the knob itself, now a level
+    /// combo over its own var (<c>{p}_{r}_VOL_KB</c>, 0% … 100%), and right after it the receiver
+    /// button the generator splits off the knob's push (<c>{p}_{r}_VOL_BT</c>, On/Off). The VOL lamps
+    /// are no Status Display rows: like the MIC lamps they pair to their button and are read as its
+    /// state (which is also why the Observer's SAT VOL lamp — the only SAT one — needs no row).
     /// </summary>
-    private static string[] AudioPanel(string p, string telLamp, string? satVolLamp = null)
+    private static string[] AudioPanel(string p, string telLamp)
     {
         var keys = new List<string>
         {
             $"{p}_VHF1_MIC_BT", $"{p}_VHF2_MIC_BT", $"{p}_VHF3_MIC_BT", $"{p}_HF1_MIC_BT", $"{p}_HF2_MIC_BT",
             $"{p}_SAT_MIC_BT", $"{p}_INT_MIC_BT", $"{p}_CAB_MIC_BT", $"{p}_IDENT_BT", $"{p}_INT_RADIO_SW",
-            $"{p}_VHF1_VOL_KB", $"{p}_VHF2_VOL_KB", $"{p}_VHF3_VOL_KB", $"{p}_HF1_VOL_KB", $"{p}_HF2_VOL_KB",
-            $"{p}_SAT_VOL_KB", $"{p}_INT_VOL_KB", $"{p}_CAB_VOL_KB", $"{p}_PA_VOL_KB",
-            $"{p}_ILS1_VOL_KB", $"{p}_ILS2_VOL_KB", $"{p}_VOR1_VOL_KB", $"{p}_VOR2_VOL_KB",
-            $"{p}_ADF1_VOL_KB", $"{p}_ADF2_VOL_KB", $"{p}_MKR_VOL_KB",
-            $"{p}_VHF1_CALL_LT", $"{p}_VHF2_CALL_LT", $"{p}_VHF3_CALL_LT", $"{p}_HF1_CALL_LT", $"{p}_HF2_CALL_LT",
-            $"{p}_CAB_CALL_LT", $"{p}_INT_MECH_LT", telLamp,
-            $"{p}_VHF1_VOL_LT", $"{p}_VHF2_VOL_LT", $"{p}_VHF3_VOL_LT", $"{p}_HF1_VOL_LT", $"{p}_HF2_VOL_LT",
         };
-        if (satVolLamp != null) keys.Add(satVolLamp);
+        foreach (var r in AudioReceivers)
+            keys.AddRange(new[] { $"{p}_{r}_VOL_KB", $"{p}_{r}_VOL_BT" });
         keys.AddRange(new[]
         {
-            $"{p}_INT_VOL_LT", $"{p}_CAB_VOL_LT", $"{p}_PA_VOL_LT",
-            $"{p}_ILS1_VOL_LT", $"{p}_ILS2_VOL_LT", $"{p}_VOR1_VOL_LT", $"{p}_VOR2_VOL_LT",
-            $"{p}_ADF1_VOL_LT", $"{p}_ADF2_VOL_LT", $"{p}_MKR_VOL_LT",
+            $"{p}_VHF1_CALL_LT", $"{p}_VHF2_CALL_LT", $"{p}_VHF3_CALL_LT", $"{p}_HF1_CALL_LT", $"{p}_HF2_CALL_LT",
+            $"{p}_CAB_CALL_LT", $"{p}_INT_MECH_LT", telLamp,
         });
         return keys.ToArray();
     }
@@ -557,7 +557,7 @@ public static class Md11PanelLayout
             new Md11LayoutPanel("Transponder", Transponder), new Md11LayoutPanel("Weather Radar", WeatherRadar),
             new Md11LayoutPanel("Audio Panel Captain", AudioPanel("MD11_PED_CPT_AUDIO_PNL", "MD11_PED_CPT_AUDIO_PNL_SAT_TEL_LT")),
             new Md11LayoutPanel("Audio Panel First Officer", AudioPanel("MD11_PED_FO_AUDIO_PNL", "MD11_PED_FO_AUDIO_PNL_SAT_TELL_LT")),
-            new Md11LayoutPanel("Audio Panel Observer", AudioPanel("MD11_OBS_AUDIO_PNL", "MD11_OBS_AUDIO_PNL_SAT_TEL_LT", "MD11_OBS_AUDIO_PNL_SAT_VOL_LT")),
+            new Md11LayoutPanel("Audio Panel Observer", AudioPanel("MD11_OBS_AUDIO_PNL", "MD11_OBS_AUDIO_PNL_SAT_TEL_LT")),
             new Md11LayoutPanel("Cockpit Door", CockpitDoor), new Md11LayoutPanel("Emergency Controls", EmergencyControls),
         }),
         new Md11LayoutSection("Ground and Exterior", new[]

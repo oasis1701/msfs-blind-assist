@@ -2890,7 +2890,7 @@ public partial class MainForm
             Dictionary<string, MSFSBlindAssist.Services.LocationFact> facts = new();
             if (simConnectManager.LastKnownPosition is { } locPos)
                 facts = await MSFSBlindAssist.Services.RouteAdvisoryLocator.ComputeFactsAsync(
-                    weatherActiveSky, advisories, locPos);
+                    weatherActiveSky, advisories, locPos, _routeAdvisoryProximity.IsInside);
             if (facts.Count != advisories.Count) return;
 
             if (!IsHandleCreated || IsDisposed) return;
