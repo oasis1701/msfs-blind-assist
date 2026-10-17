@@ -1,16 +1,18 @@
-// The pause and slew signals as MSFS 2024 delivered them live (probe, 2026-10-17): Esc reports
-// Pause_EX1 = 8, active pause 4, closing the menu 0; the sim's own full-pause blips report 1; a flight
-// load runs Sim 0, flags 0, Sim 1. Each test replays one measured sequence.
+// The pause, slew and sim-rate signals as MSFS 2024 delivered them live (probe, 2026-10-17): Esc
+// reports Pause_EX1 = 8, active pause 4, closing the menu 0; the sim's own full-pause blips report 1; a
+// flight load runs Sim 0, flags 0, Sim 1; SIMULATION RATE steps 0.25, 0.5, 1, 2, 4. Each test replays
+// one measured sequence.
 
+using System.Globalization;
 using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Tests;
 
-public class SimPauseSlewTrackerTests
+public class SimStateTrackerTests
 {
-    private static SimPauseSlewTracker Seeded(uint flags = 0, bool slew = false)
+    private static SimStateTracker Seeded(uint flags = 0, bool slew = false)
     {
-        var tracker = new SimPauseSlewTracker();
+        var tracker = new SimStateTracker();
         tracker.OnSimRunning(true);
         tracker.OnPauseFlags(flags);
         tracker.OnSlew(slew);
@@ -20,10 +22,10 @@ public class SimPauseSlewTrackerTests
     [Fact]
     public void The_first_delivery_of_each_signal_only_seeds()
     {
-        var tracker = new SimPauseSlewTracker();
+        var tracker = new SimStateTracker();
         tracker.OnSimRunning(true);
 
-        Assert.Equal(SimStateChange.None, tracker.OnPauseFlags(SimPauseSlewTracker.SimPauseFlag));
+        Assert.Equal(SimStateChange.None, tracker.OnPauseFlags(SimStateTracker.SimPauseFlag));
         Assert.Equal(SimStateChange.None, tracker.OnSlew(true));
     }
 
@@ -60,7 +62,7 @@ public class SimPauseSlewTrackerTests
     {
         var tracker = Seeded();
 
-        Assert.Equal(SimStateChange.None, tracker.OnPauseFlags(SimPauseSlewTracker.FullPauseFlag));
+        Assert.Equal(SimStateChange.None, tracker.OnPauseFlags(SimStateTracker.FullPauseFlag));
         Assert.Equal(SimStateChange.None, tracker.OnPauseFlags(0));
     }
 
@@ -130,7 +132,7 @@ public class SimPauseSlewTrackerTests
     [Fact]
     public void Before_any_sim_delivery_a_flight_counts_as_running()
     {
-        var tracker = new SimPauseSlewTracker();
+        var tracker = new SimStateTracker();
         tracker.OnPauseFlags(0);
 
         Assert.Equal(SimStateChange.Paused, tracker.OnPauseFlags(8));
@@ -146,12 +148,102 @@ public class SimPauseSlewTrackerTests
     [InlineData(SimStateChange.Paused | SimStateChange.ActivePauseOff, "Sim paused. Active pause off")]
     public void Describe_words_each_change(SimStateChange change, string expected)
     {
-        Assert.Equal(expected, SimPauseSlewTracker.Describe(change));
+        Assert.Equal(expected, SimStateTracker.Describe(change));
     }
 
     [Fact]
     public void Describe_says_nothing_when_nothing_changed()
     {
-        Assert.Null(SimPauseSlewTracker.Describe(SimStateChange.None));
+        Assert.Null(SimStateTracker.Describe(SimStateChange.None));
+    }
+
+    [Fact]
+    public void The_first_sim_rate_only_seeds()
+    {
+        var tracker = new SimStateTracker();
+
+        Assert.Null(tracker.OnSimRate(4));
+    }
+
+    [Fact]
+    public void Each_sim_rate_step_is_reported()
+    {
+        // Live: 1 -> 0.5 -> 1 -> 0.5 -> 0.25 -> 0.5 -> 1 -> 2 -> 4.
+        var tracker = new SimStateTracker();
+        tracker.OnSimRate(1);
+
+        Assert.Equal(0.5, tracker.OnSimRate(0.5));
+        Assert.Equal(0.25, tracker.OnSimRate(0.25));
+        Assert.Equal(1, tracker.OnSimRate(1));
+        Assert.Equal(2, tracker.OnSimRate(2));
+        Assert.Equal(4, tracker.OnSimRate(4));
+    }
+
+    [Fact]
+    public void The_same_sim_rate_again_is_silent()
+    {
+        var tracker = new SimStateTracker();
+        tracker.OnSimRate(2);
+
+        Assert.Null(tracker.OnSimRate(2));
+        Assert.Null(tracker.OnSimRate(2.0000001));
+    }
+
+    [Fact]
+    public void A_sim_rate_of_zero_is_ignored()
+    {
+        var tracker = new SimStateTracker();
+        tracker.OnSimRate(1);
+
+        Assert.Null(tracker.OnSimRate(0));
+        Assert.Null(tracker.OnSimRate(1));
+    }
+
+    [Fact]
+    public void Sim_rate_changes_while_no_flight_runs_are_silent()
+    {
+        var tracker = new SimStateTracker();
+        tracker.OnSimRate(4);
+        tracker.OnSimRunning(false);
+
+        Assert.Null(tracker.OnSimRate(1));
+        tracker.OnSimRunning(true);
+        Assert.Equal(2, tracker.OnSimRate(2));
+    }
+
+    [Fact]
+    public void Reset_makes_the_next_sim_rate_seed_again()
+    {
+        var tracker = new SimStateTracker();
+        tracker.OnSimRate(1);
+
+        tracker.Reset();
+
+        Assert.Null(tracker.OnSimRate(4));
+    }
+
+    [Theory]
+    [InlineData(4, "Sim rate 4x")]
+    [InlineData(1, "Sim rate 1x")]
+    [InlineData(0.5, "Sim rate 0.5x")]
+    [InlineData(0.25, "Sim rate 0.25x")]
+    public void DescribeSimRate_uses_the_sim_performance_wording(double rate, string expected)
+    {
+        Assert.Equal(expected, SimStateTracker.DescribeSimRate(rate));
+    }
+
+    [Fact]
+    public void DescribeSimRate_keeps_a_point_under_a_comma_decimal_culture()
+    {
+        var previous = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("de-DE");
+            Assert.Equal("Sim rate 0.5x", SimStateTracker.DescribeSimRate(0.5));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
     }
 }

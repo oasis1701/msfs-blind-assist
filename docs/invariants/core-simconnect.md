@@ -31,7 +31,7 @@ Corrected 2026-10-09: the writers of `eventIds` are `RegisterClientEvents` (`Sim
 
 ## SIM-21
 
-- The pause and slew announcements (`SimPauseSlewTracker`, fed by `SimConnectManager.SimState.cs`) read the "Pause_EX1" system event's flags one bit at a time: `SimPauseFlag` (8) is the Esc menu pause, `ActivePauseFlag` (4) is active pause. `FullPauseFlag` (1) is never spoken, the "Sim" system event gates speech (a change while it reports 0 is tracked silently), and the first delivery of each signal on a connection only seeds it.
+- The pause, slew and sim-rate announcements (`SimStateTracker`, fed by `SimConnectManager.SimState.cs`) read the "Pause_EX1" system event's flags one bit at a time: `SimPauseFlag` (8) is the Esc menu pause, `ActivePauseFlag` (4) is active pause. `FullPauseFlag` (1) is never spoken, the "Sim" system event gates speech (a change while it reports 0 is tracked silently), and the first delivery of each signal on a connection only seeds it.
 
 Measured live on 2026-10-17 with a throwaway SimConnect probe on MSFS 2024 (build 282174, the FS2020 key layout), a parked aircraft:
 
@@ -41,6 +41,7 @@ Measured live on 2026-10-17 with a throwaway SimConnect probe on MSFS 2024 (buil
 - The full-pause bit came only from the sim: two 13 ms 1-then-0 blips while a flight loaded, and a 1 about a second after entering the cockpit from the walkaround, held until the next Esc while the sim clock kept running. Esc on top of it went 0, 9, 8, then 0. Speaking bit 1 would have said "Sim paused" with the sim running; reading the whole value instead of bits would have mis-read the 9.
 - Leaving for the main menu sends nothing beyond the Esc that got there (the menu pause stays 8, "Sim" stays 1). The next load sends `SimStop` ("Sim" 0), `PositionChanged`, the 8-to-0 unpause, then `SimStart` ("Sim" 1), all within one second, then the full-pause blips; "Ready to fly" sends nothing. The "Sim" gate is what keeps that unpause silent.
 - Slew: `SLEW_TOGGLE` fires and `IS SLEW ACTIVE` flips 0/1 within 3 ms on every toggle; the sim clock stops while slewing. SIM_FRAME requests kept delivering through the Esc pause, active pause and slew.
-- Each subscription (`Pause_EX1`, `Sim`, and the CHANGED slew request) delivers its current state at once, which is why the first delivery only seeds: connecting to an already-paused sim stays silent.
+- Sim rate: the FS2020 layout's select key fires `SIM_RATE` alone (auto-repeating while held) and changes nothing; the + or − after it fires `SIM_RATE_INCR`/`SIM_RATE_DECR` (through `OnRecvEventEx1`, not `OnRecvEvent`) and `SIMULATION RATE` moves within 3 ms, in steps 0.25, 0.5, 1, 2, 4. So the announcement keys on the simvar's value, never on the key events. The rate did not change through any pause.
+- Each subscription (`Pause_EX1`, `Sim`, and the CHANGED slew and rate requests) delivers its current state at once, which is why the first delivery only seeds: connecting to an already-paused sim stays silent.
 
-Not measured: MSFS 2020, where a pause may report only bit 1 and so go unspoken; re-measure there before widening the bits spoken.
+Not measured: MSFS 2020, where a pause may report only bit 1 and so go unspoken; re-measure there before widening the bits spoken. Replay (MSFS 2024): no signal found yet; `Replay`, `ReplayStart`, `ReplayStop`, `REPLAY_PLAY`/`PAUSE`/`TOGGLE`, `TOGGLE_REPLAY` and the simvars `IS IN REPLAY`, `IS REPLAY ACTIVE`, `REPLAY STATE`, `IS REPLAY`, `SIM REPLAY`, `REPLAY` are all unrecognized, and replay could not be started on a parked aircraft with nothing recorded.

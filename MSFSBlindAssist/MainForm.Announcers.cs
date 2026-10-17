@@ -89,15 +89,20 @@ public partial class MainForm
     }
 
     /// <summary>
-    /// The sim paused or unpaused, or active pause or slew turned on or off (SimPauseSlewTracker).
+    /// The sim paused or unpaused, or active pause or slew turned on or off (SimStateTracker).
     /// Interrupting, like a step read-back: the pilot pressed a key the sim says nothing about, and a
     /// quick on-off should end on the state it left.
     /// </summary>
     private void OnSimStateChanged(object? sender, SimStateChange change)
     {
-        string? text = SimPauseSlewTracker.Describe(change);
+        string? text = SimStateTracker.Describe(change);
         if (text != null) announcer.AnnounceImmediate(text);
     }
+
+    /// <summary>The sim rate changed. Interrupting for the same reason: stepping through rates should
+    /// end on the rate reached.</summary>
+    private void OnSimRateChanged(object? sender, double rate)
+        => announcer.AnnounceImmediate(SimStateTracker.DescribeSimRate(rate));
 
     /// <summary>
     /// Pause the take-off callouts' per-frame airspeed feed while the aircraft does not need it

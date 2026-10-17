@@ -5,22 +5,27 @@ using MSFSBlindAssist.Utils.Logging;
 namespace MSFSBlindAssist.SimConnect;
 
 /// <summary>
-/// Pause, active pause and slew: the "Pause_EX1" and "Sim" system events and the IS SLEW ACTIVE
-/// simvar, read into <see cref="SimPauseSlewTracker"/> (which holds what was measured about them).
-/// All three deliver only on a change, so they stay subscribed for the whole connection.
+/// Pause, active pause, slew and sim rate: the "Pause_EX1" and "Sim" system events and the
+/// IS SLEW ACTIVE and SIMULATION RATE simvars, read into <see cref="SimStateTracker"/> (which holds
+/// what was measured about them). All of them deliver only on a change, so they stay subscribed for
+/// the whole connection.
 /// </summary>
 public partial class SimConnectManager
 {
-    private readonly SimPauseSlewTracker _simState = new();
+    private readonly SimStateTracker _simState = new();
 
     /// <summary>A pause or slew change worth speaking, raised on the UI thread. Never raised for the
     /// state found at connect.</summary>
     public event EventHandler<SimStateChange>? SimStateChanged;
 
+    /// <summary>The sim rate changed to the value given, raised on the UI thread. Never raised for the
+    /// rate found at connect.</summary>
+    public event EventHandler<double>? SimRateChanged;
+
     /// <summary>
     /// Called from SetupEvents on every new connection, after OnRecvSimobjectData is attached: the
-    /// slew request's first delivery is its current value, and one drained before the handler
-    /// existed would leave the state unseeded, so the first real toggle would only seed it.
+    /// slew and rate requests' first deliveries are their current values, and one drained before the
+    /// handler existed would leave its state unseeded, so the first real change would only seed it.
     /// </summary>
     private void SetupSimStateMonitoring()
     {
@@ -33,15 +38,20 @@ public partial class SimConnectManager
             sc.SubscribeToSystemEvent(SYSTEM_EVENT_ID.Sim, "Sim");
             sc.SubscribeToSystemEvent(SYSTEM_EVENT_ID.PauseEx1, "Pause_EX1");
 
-            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_SLEW_STATE, "IS SLEW ACTIVE", "bool",
-                SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-            sc.RegisterDataDefineStruct<SingleValue>(DATA_DEFINITIONS.DEF_SLEW_STATE);
-            sc.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_SLEW_STATE, DATA_DEFINITIONS.DEF_SLEW_STATE,
-                SIMCONNECT_OBJECT_ID_USER, SIMCONNECT_PERIOD.SIM_FRAME, SIMCONNECT_DATA_REQUEST_FLAG.CHANGED, 0, 0, 0);
+            RequestOnChange(DATA_DEFINITIONS.DEF_SLEW_STATE, DATA_REQUESTS.REQUEST_SLEW_STATE, "IS SLEW ACTIVE", "bool");
+            RequestOnChange(DATA_DEFINITIONS.DEF_SIM_RATE, DATA_REQUESTS.REQUEST_SIM_RATE, "SIMULATION RATE", "number");
         }
         catch (Exception ex)
         {
-            Log.Debug("SimConnect", $"Pause/slew monitoring setup failed (no pause or slew announcements this session): {ex.Message}");
+            Log.Debug("SimConnect", $"Sim state monitoring setup failed (no pause, slew or sim rate announcements this session): {ex.Message}");
+        }
+
+        void RequestOnChange(DATA_DEFINITIONS def, DATA_REQUESTS request, string simVar, string unit)
+        {
+            sc.AddToDataDefinition(def, simVar, unit, SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.RegisterDataDefineStruct<SingleValue>(def);
+            sc.RequestDataOnSimObject(request, def, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.SIM_FRAME, SIMCONNECT_DATA_REQUEST_FLAG.CHANGED, 0, 0, 0);
         }
     }
 
@@ -54,7 +64,7 @@ public partial class SimConnectManager
                 _simState.OnSimRunning(data.dwData != 0);
                 break;
             case SYSTEM_EVENT_ID.PauseEx1:
-                // Raw flags logged: the FS2020 values are unmeasured (SimPauseSlewTracker).
+                // Raw flags logged: the FS2020 values are unmeasured (SimStateTracker).
                 Log.Debug("SimConnect", $"Pause_EX1 flags: {data.dwData}");
                 RaiseSimStateChanged(_simState.OnPauseFlags(data.dwData));
                 break;
@@ -62,6 +72,12 @@ public partial class SimConnectManager
     }
 
     private void ProcessSlewState(double value) => RaiseSimStateChanged(_simState.OnSlew(value != 0));
+
+    private void ProcessSimRate(double rate)
+    {
+        if (_simState.OnSimRate(rate) is double changed)
+            SimRateChanged?.Invoke(this, changed);
+    }
 
     private void RaiseSimStateChanged(SimStateChange change)
     {

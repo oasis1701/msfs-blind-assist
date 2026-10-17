@@ -1,6 +1,8 @@
+using MSFSBlindAssist.Services.SimPerformance;
+
 namespace MSFSBlindAssist.SimConnect;
 
-/// <summary>What a <see cref="SimPauseSlewTracker"/> delivery changed. Two can arrive together: opening
+/// <summary>What a <see cref="SimStateTracker"/> delivery changed. Two can arrive together: opening
 /// the Esc menu during active pause ends active pause and starts the menu pause in one delivery.</summary>
 [Flags]
 public enum SimStateChange
@@ -15,8 +17,9 @@ public enum SimStateChange
 }
 
 /// <summary>
-/// Turns the sim's pause and slew signals into the changes worth speaking: the "Pause_EX1" system
-/// event's flags, the "Sim" system event (flight running or not) and the <c>IS SLEW ACTIVE</c> simvar.
+/// Turns the sim's pause, slew and sim-rate signals into the changes worth speaking: the "Pause_EX1"
+/// system event's flags, the "Sim" system event (flight running or not), and the <c>IS SLEW ACTIVE</c>
+/// and <c>SIMULATION RATE</c> simvars.
 ///
 /// <para>Measured live on MSFS 2024 (SU build 282174, 2026-10-17, FS2020 key layout):</para>
 /// <list type="bullet">
@@ -29,13 +32,15 @@ public enum SimStateChange
 /// <item>The flags combine (9 = full | sim pause), so each kind is read as its own bit.</item>
 /// <item>A flight load starts with "Sim" 0, then flags 0 (the menu pause the pilot left through ends),
 /// then "Sim" 1: nothing changes aloud while "Sim" is 0.</item>
+/// <item>SIMULATION RATE moves in steps (0.25, 0.5, 1, 2, 4) only when the rate really changes: the
+/// sim-rate select key alone, or a step past the limit, delivers nothing.</item>
 /// </list>
 ///
 /// <para>Each subscription delivers the current state at once; the first delivery of each signal after
-/// <see cref="Reset"/> only seeds it, so connecting to a paused sim is silent. Not measured on FS2020,
-/// where a pause may report only the full-pause bit and so go unspoken.</para>
+/// <see cref="Reset"/> only seeds it, so connecting to a paused or sped-up sim is silent. Not measured on
+/// FS2020, where a pause may report only the full-pause bit and so go unspoken.</para>
 /// </summary>
-public sealed class SimPauseSlewTracker
+public sealed class SimStateTracker
 {
     /// <summary>Pause_EX1 PAUSE_STATE_FLAG_PAUSE: a "full" pause. In MSFS 2024 only the sim's own (ignored).</summary>
     public const uint FullPauseFlag = 1;
@@ -44,9 +49,13 @@ public sealed class SimPauseSlewTracker
     /// <summary>Pause_EX1 PAUSE_STATE_FLAG_SIM_PAUSE: the Esc menu pause.</summary>
     public const uint SimPauseFlag = 8;
 
+    // Rates are powers of two; anything closer than this is the same rate.
+    private const double SameRate = 0.001;
+
     private bool? _paused;
     private bool? _activePause;
     private bool? _slew;
+    private double? _simRate;
     // Assumed running until "Sim" says otherwise, so a missing "Sim" delivery can never mute the
     // announcements for a whole session.
     private bool _simRunning = true;
@@ -57,6 +66,7 @@ public sealed class SimPauseSlewTracker
         _paused = null;
         _activePause = null;
         _slew = null;
+        _simRate = null;
         _simRunning = true;
     }
 
@@ -91,6 +101,16 @@ public sealed class SimPauseSlewTracker
         return _simRunning ? change : SimStateChange.None;
     }
 
+    /// <summary>A <c>SIMULATION RATE</c> delivery. Returns the new rate when it changed aloud, else null.
+    /// A rate of zero or less is not a rate and is ignored.</summary>
+    public double? OnSimRate(double rate)
+    {
+        if (rate <= 0) return null;
+        bool changed = _simRate is double was && Math.Abs(was - rate) >= SameRate;
+        _simRate = rate;
+        return changed && _simRunning ? rate : null;
+    }
+
     /// <summary>The words for <paramref name="change"/>; null when nothing changed.</summary>
     public static string? Describe(SimStateChange change)
     {
@@ -103,4 +123,7 @@ public sealed class SimPauseSlewTracker
         if (change.HasFlag(SimStateChange.SlewOff)) parts.Add("Slew off");
         return parts.Count == 0 ? null : string.Join(". ", parts);
     }
+
+    /// <summary>"Sim rate 4x", "Sim rate 0.5x": the Sim Performance window's wording for the rate.</summary>
+    public static string DescribeSimRate(double rate) => $"Sim rate {SimPerformanceFormatter.SimRateText((float)rate)}";
 }
