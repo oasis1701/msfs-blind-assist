@@ -88,6 +88,60 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
         ["C172G_COVER_STATIC"] = "UNKNOWN_COVER_STATIC_PORT",
     };
 
+    private const string BreakersSection = "Circuit Breakers";
+    private const string EssentialBreakers = "Essential Bus Breakers";
+    private const string Avionics1Breakers = "Avionics Bus 1 Breakers";
+    private const string Avionics2Breakers = "Avionics Bus 2 Breakers";
+    private const string SystemBreakers = "Systems and Lights Breakers";
+
+    /// <summary>
+    /// The circuit breakers, one row per breaker: variable key, the input event that sets it (1 Pulled,
+    /// 0 In, C172-7), the name it is spoken by and its panel, grouped by the bus each one was measured on.
+    /// `RECOG` cut the taxi light's circuit, so it is spoken as the taxi light; `AVN2_MDF` is the
+    /// catalog's spelling of the MFD.
+    /// </summary>
+    private static readonly (string Key, string InputEvent, string Name, string Panel)[] Breakers =
+    {
+        Breaker("ESS_PFD", "PFD", EssentialBreakers),
+        Breaker("ESS_ADC", "ADC", EssentialBreakers),
+        Breaker("ESS_NAV1", "Nav 1", EssentialBreakers),
+        Breaker("ESS_COMM1", "Com 1", EssentialBreakers),
+        Breaker("ESS_STBY_IND", "Standby Indicator", EssentialBreakers),
+        Breaker("ESS_STBY_BATT", "Standby Battery", EssentialBreakers),
+        Breaker("AVN1", "Avionics Bus 1", Avionics1Breakers),
+        Breaker("AVN1_PFD", "PFD", Avionics1Breakers),
+        Breaker("AVN1_ADC", "ADC", Avionics1Breakers),
+        Breaker("AVN1_NAV1", "Nav 1", Avionics1Breakers),
+        Breaker("AVN1_FIS", "FIS", Avionics1Breakers),
+        Breaker("AVN2", "Avionics Bus 2", Avionics2Breakers),
+        Breaker("AVN2_MDF", "MFD", Avionics2Breakers),
+        Breaker("AVN2_NAV2", "Nav 2", Avionics2Breakers),
+        Breaker("AVN2_COMM2", "Com 2", Avionics2Breakers),
+        Breaker("AVN2_AUDIO", "Audio Panel", Avionics2Breakers),
+        Breaker("AVN2_AUTOPILOT", "Autopilot", Avionics2Breakers),
+        Breaker("XPNDR", "Transponder", Avionics2Breakers),
+        Breaker("ALT_FLD", "Alternator Field", SystemBreakers),
+        Breaker("WARN", "Warning", SystemBreakers),
+        Breaker("FLAP", "Flaps", SystemBreakers),
+        Breaker("FUELPUMP", "Fuel Pump", SystemBreakers),
+        Breaker("PITOT_HEAT", "Pitot Heat", SystemBreakers),
+        Breaker("LTS_PWR", "Lights Power", SystemBreakers),
+        Breaker("PANELS_LTS", "Panel Lights", SystemBreakers),
+        Breaker("NAV_LTS", "Nav Lights", SystemBreakers),
+        Breaker("BCN_LT", "Beacon", SystemBreakers),
+        Breaker("LAND_LT", "Landing Light", SystemBreakers),
+        Breaker("RECOG", "Taxi Light", SystemBreakers),
+        Breaker("STROBE_LTS", "Strobe Lights", SystemBreakers),
+    };
+
+    /// <summary>Breaker variables and the input event each one sets.</summary>
+    internal static readonly IReadOnlyDictionary<string, string> BreakerInputEvents =
+        Breakers.ToDictionary(b => b.Key, b => b.InputEvent);
+
+    private static (string Key, string InputEvent, string Name, string Panel) Breaker(string catalogName,
+        string name, string panel) =>
+        ($"C172G_CB_{catalogName}", $"ELECTRICAL_BREAKER_BTN_BREAKER_{catalogName}", name, panel);
+
     /// <summary>The autopilot hotkeys and the key each presses (the base class sends untested K: events).</summary>
     private static readonly IReadOnlyDictionary<HotkeyAction, string> AutopilotHotkeys = new Dictionary<HotkeyAction, string>
     {
@@ -157,6 +211,11 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
         v["C172G_COVER_ENGINE"] = Cover("COVER ON:1", "Engine Cover");
         v["C172G_COVER_PITOT"] = Cover("COVER ON:2", "Pitot Cover");
         v["C172G_COVER_STATIC"] = Cover("COVER ON:3", "Static Port Cover");
+
+        // ---------- Circuit breakers ----------
+        // Read from the breaker's own input event, which a pulled breaker sets to 1 (C172-7).
+        foreach (var b in Breakers)
+            v[b.Key] = InputEventState(b.InputEvent, b.Name, new() { [0] = "In", [1] = "Pulled" });
 
         // ---------- GFC 700 ----------
         // The modes the base class already reads (AP, HDG, ALT, NAV, APR, BC, VS) keep their keys and
@@ -255,6 +314,8 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
         var structure = base.GetPanelStructure();
         structure["Electrical"].Add("Standby Battery");
         structure["Autopilot"] = new List<string> { AutopilotPanel };
+        structure[BreakersSection] = new List<string>
+            { EssentialBreakers, Avionics1Breakers, Avionics2Breakers, SystemBreakers };
         structure["Walkaround"] = new List<string> { "Covers" };
         return structure;
     }
@@ -276,6 +337,8 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
 
         controls["Anti-Ice"] = new List<string> { "C172_PITOT_HEAT_STATE", "C172G_ALT_STATIC_STATE" };
         controls["Covers"] = new List<string> { "C172G_COVER_ENGINE", "C172G_COVER_PITOT", "C172G_COVER_STATIC" };
+        foreach (var panel in new[] { EssentialBreakers, Avionics1Breakers, Avionics2Breakers, SystemBreakers })
+            controls[panel] = Breakers.Where(b => b.Panel == panel).Select(b => b.Key).ToList();
         return controls;
     }
 
@@ -285,6 +348,12 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
         if (SwitchInputEvents.TryGetValue(varKey, out string? switchEvent))
         {
             SetInputEvent(switchEvent, value, varDef, simConnect, announcer);
+            return true;
+        }
+
+        if (BreakerInputEvents.TryGetValue(varKey, out string? breakerEvent))
+        {
+            SetInputEvent(breakerEvent, value, varDef, simConnect, announcer);
             return true;
         }
 

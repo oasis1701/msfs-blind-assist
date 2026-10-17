@@ -28,6 +28,21 @@ public class CessnaC172G1000ControlsTests
         "AS1000_AUTOPILOT_BACKCOURSE_PFD", "AS1000_AUTOPILOT_VERTICALSPEED_PFD",
         "AS1000_AUTOPILOT_FLIGHTLEVELCHANGE_PFD", "AS1000_AUTOPILOT_VERTICALSPEED_UP_PFD",
         "AS1000_AUTOPILOT_VERTICALSPEED_DOWN_PFD",
+        "ELECTRICAL_BREAKER_BTN_BREAKER_ALT_FLD", "ELECTRICAL_BREAKER_BTN_BREAKER_AVN1",
+        "ELECTRICAL_BREAKER_BTN_BREAKER_AVN1_ADC", "ELECTRICAL_BREAKER_BTN_BREAKER_AVN1_FIS",
+        "ELECTRICAL_BREAKER_BTN_BREAKER_AVN1_NAV1", "ELECTRICAL_BREAKER_BTN_BREAKER_AVN1_PFD",
+        "ELECTRICAL_BREAKER_BTN_BREAKER_AVN2", "ELECTRICAL_BREAKER_BTN_BREAKER_AVN2_AUDIO",
+        "ELECTRICAL_BREAKER_BTN_BREAKER_AVN2_AUTOPILOT", "ELECTRICAL_BREAKER_BTN_BREAKER_AVN2_COMM2",
+        "ELECTRICAL_BREAKER_BTN_BREAKER_AVN2_MDF", "ELECTRICAL_BREAKER_BTN_BREAKER_AVN2_NAV2",
+        "ELECTRICAL_BREAKER_BTN_BREAKER_BCN_LT", "ELECTRICAL_BREAKER_BTN_BREAKER_ESS_ADC",
+        "ELECTRICAL_BREAKER_BTN_BREAKER_ESS_COMM1", "ELECTRICAL_BREAKER_BTN_BREAKER_ESS_NAV1",
+        "ELECTRICAL_BREAKER_BTN_BREAKER_ESS_PFD", "ELECTRICAL_BREAKER_BTN_BREAKER_ESS_STBY_BATT",
+        "ELECTRICAL_BREAKER_BTN_BREAKER_ESS_STBY_IND", "ELECTRICAL_BREAKER_BTN_BREAKER_FLAP",
+        "ELECTRICAL_BREAKER_BTN_BREAKER_FUELPUMP", "ELECTRICAL_BREAKER_BTN_BREAKER_LAND_LT",
+        "ELECTRICAL_BREAKER_BTN_BREAKER_LTS_PWR", "ELECTRICAL_BREAKER_BTN_BREAKER_NAV_LTS",
+        "ELECTRICAL_BREAKER_BTN_BREAKER_PANELS_LTS", "ELECTRICAL_BREAKER_BTN_BREAKER_PITOT_HEAT",
+        "ELECTRICAL_BREAKER_BTN_BREAKER_RECOG", "ELECTRICAL_BREAKER_BTN_BREAKER_STROBE_LTS",
+        "ELECTRICAL_BREAKER_BTN_BREAKER_WARN", "ELECTRICAL_BREAKER_BTN_BREAKER_XPNDR",
     };
 
     private static readonly CessnaC172G1000Definition Def = new();
@@ -40,6 +55,7 @@ public class CessnaC172G1000ControlsTests
         var used = CessnaC172G1000Definition.SwitchInputEvents.Values
             .Concat(CessnaC172G1000Definition.AutopilotKeys.Values)
             .Concat(CessnaC172G1000Definition.CoverInputEvents.Values)
+            .Concat(CessnaC172G1000Definition.BreakerInputEvents.Values)
             .Concat(Def.GetVariables().Values.Where(v => v.Type == SimVarType.InputEvent).Select(v => v.Name))
             .Distinct();
 
@@ -52,7 +68,8 @@ public class CessnaC172G1000ControlsTests
         var onPanels = PanelKeys().ToHashSet();
         var mapped = CessnaC172G1000Definition.SwitchInputEvents.Keys
             .Concat(CessnaC172G1000Definition.AutopilotKeys.Keys)
-            .Concat(CessnaC172G1000Definition.CoverInputEvents.Keys);
+            .Concat(CessnaC172G1000Definition.CoverInputEvents.Keys)
+            .Concat(CessnaC172G1000Definition.BreakerInputEvents.Keys);
 
         Assert.All(mapped, key =>
         {
@@ -228,6 +245,50 @@ public class CessnaC172G1000ControlsTests
         Assert.True(Def.HandleUIVariableSet("C172_STARTER_SET", 1, Def.GetVariables()["C172_STARTER_SET"],
             new SimConnectManager(IntPtr.Zero), speech));
         Assert.Contains("Starter is not available yet. Try again in a few seconds.", speech.All);
+    }
+
+    // The 30 circuit breakers of the measured catalog: each a direct set, 1 Pulled and 0 In, read from
+    // its own input event (C172-7), on four panels laid out by bus.
+    [Fact]
+    public void Every_breaker_in_the_catalog_is_an_in_or_pulled_combo_read_from_the_breaker()
+    {
+        var catalogBreakers = MeasuredCatalog.Where(n => n.StartsWith("ELECTRICAL_BREAKER_", StringComparison.Ordinal));
+        Assert.Equal(catalogBreakers.Order(), CessnaC172G1000Definition.BreakerInputEvents.Values.Order());
+        Assert.Equal(30, CessnaC172G1000Definition.BreakerInputEvents.Count);
+
+        foreach (var (key, inputEvent) in CessnaC172G1000Definition.BreakerInputEvents)
+        {
+            var d = Def.GetVariables()[key];
+            Assert.Equal(inputEvent, d.Name);
+            Assert.True(SimConnectManager.IsInputEventRead(d), key);
+            Assert.False(d.RenderAsButton, key);
+            Assert.Equal("In", d.ValueDescriptions[0]);
+            Assert.Equal("Pulled", d.ValueDescriptions[1]);
+        }
+    }
+
+    [Fact]
+    public void The_breaker_panels_list_every_breaker_once_by_bus()
+    {
+        var panels = Def.GetPanelStructure()["Circuit Breakers"];
+        Assert.Equal(new[] { "Essential Bus Breakers", "Avionics Bus 1 Breakers", "Avionics Bus 2 Breakers",
+            "Systems and Lights Breakers" }, panels);
+
+        var listed = panels.SelectMany(p => Def.GetPanelControls()[p]).ToList();
+        Assert.Equal(CessnaC172G1000Definition.BreakerInputEvents.Keys.Order(), listed.Order());
+        // Measured: the transponder's circuit is on avionics bus 2, and RECOG cuts the taxi light.
+        Assert.Contains("C172G_CB_XPNDR", Def.GetPanelControls()["Avionics Bus 2 Breakers"]);
+        Assert.Equal("Taxi Light", Def.GetVariables()["C172G_CB_RECOG"].DisplayName);
+    }
+
+    [Fact]
+    public void Breaker_names_are_unique_within_each_panel()
+    {
+        foreach (var panel in Def.GetPanelStructure()["Circuit Breakers"])
+        {
+            var names = Def.GetPanelControls()[panel].Select(k => Def.GetVariables()[k].DisplayName).ToList();
+            Assert.Equal(names.Count, names.Distinct().Count());
+        }
     }
 
     [Fact]
