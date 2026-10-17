@@ -152,14 +152,18 @@ text under `## FO-24` in `docs/invariants/first-officer.md`:
 
 The rule file's globs cover `Forms/FirstOfficer/**`, where `FirstOfficerWindows` is declared.
 The aircraft code is deliberately not backticked: the rule's code does not declare it. The
-rule's "never" guards MainForm (`MainForm.Dialogs.cs`, `MainForm.cs`, `MainForm.AircraftSwitch.cs`),
-so its line is mirrored word for word into `mainform-dialogs-call-sites.md` with a MIRRORS
-note, unless `ClaudeContextBudgetTests` reports that file already loads it or names another
-call-sites file.
+rule's "never" guards MainForm's Show method and menu gating, which live in
+`MainForm.Dialogs.cs` and `MainForm.AircraftSwitch.cs`, so its line is mirrored word for word
+into `mainform-switch-call-sites.md` (globs: exactly those two partials; its MIRRORS header
+already covers "the windows MainForm.Dialogs.cs builds").
+
+`ClaudeContextBudgetTests` lists `MSFSBlindAssist/Forms/ChecklistForm.cs` among the "generic
+dialogs" exemptions; that entry goes with the file.
 
 ## Tests
 
-`tests/MSFSBlindAssist.Tests/FirstOfficerWindowsTests.cs` replaces `ChecklistFileNameTests`,
+`tests/MSFSBlindAssist.Tests/FirstOfficer/FirstOfficerWindowsTests.cs` (in the folder the
+First Officer rules' globs cover) replaces `ChecklistFileNameTests`,
 with the same shape: a theory over `ComboLabelCollapseTests.AllAircraft` and an expected-name
 table with one row per aircraft code (the eight names above, `HS_787` null). A new aircraft in
 `AllAircraft` fails until it has a row, as before. A separate fact asserts that the Headwind A330
@@ -183,11 +187,28 @@ tests ([CORE-5]); the in-sim plan covers it.
 - `docs/troubleshooting-playbook.md`: the A380 Shift+C note gets a dated line saying the text
   checklist was retired and Shift+C opens the First Officer.
 - `README.md`: the "checklist viewer" bullet becomes the First Officer on Shift+C.
-- `changelog.d/160-shift-c-first-officer.improvement.md`, written for a pilot: Shift+C now
-  opens the First Officer (checklists and flows) on every aircraft that has one, including the
-  PMDG 737 and 777 and the MD-11, which had no checklist; the old text checklists are gone; the
-  File menu has one First Officer item; opening it starts the First Officer's automation as
-  the menu always did, each part switchable in Settings, First Officer.
+- Release note: #160's own fragment `changelog.d/160-first-officer.feature.md` is unreleased
+  and today says the window opens "from the File menu: the item is named for the aircraft".
+  Its opening paragraph is rewritten in place (the convention lets a long-running PR condense
+  its own fragments) rather than adding a second fragment that contradicts it: press Shift+C
+  in output mode, or choose First Officer in the File menu, shown only on an aircraft that has
+  one; on the A32NX, A330, Fenix, A380 and iFly MAX8 Shift+C used to open a plain text
+  checklist, and that window is gone, replaced by the First Officer's checklists; opening the
+  window, either way, starts its automation for the rest of the flight, each part switchable
+  in Settings, First Officer. Its later "While the window is open" sentences become "Once the
+  window has been opened", since the automation keeps running after Escape hides it.
+
+## Effect on open pull requests
+
+- **#300 (iniBuilds A300)** and **#244 (Synaptic A220)** each add a text checklist
+  (`Checklists/iniBuilds_A300_Checklist.txt`, `Checklists/A220_Checklist.txt`) with a
+  `ChecklistFileName` override and a `ChecklistFileNameTests` row, and neither aircraft has a
+  First Officer. On rebase they drop all three, and their aircraft get "No checklist for this
+  aircraft." on Shift+C (owner, 2026-10-17: remove the text checklist window anyway).
+- **#233 (Skyward C680)** adds a `ChecklistFileNameTests` row; on rebase it becomes a
+  `FirstOfficerWindowsTests` row with a null name.
+- Any other aircraft PR that adds itself to `ComboLabelCollapseTests.AllAircraft` needs a
+  `FirstOfficerWindowsTests` row, or the theory fails.
 
 ## In-sim test plan (owner runs)
 
