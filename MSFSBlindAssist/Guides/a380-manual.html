@@ -114,7 +114,7 @@
 <tr><td>flyPad / EFB</td><td>(INPUT) <kbd>Shift</kbd>+<kbd>T</kbd></td><td>The tablet — loading, fuel, ground services, charts, settings, checklists (<a href="#part6">Part 6</a>).</td></tr>
 <tr><td>Airport Map &amp; BTV (OANS)</td><td>(OUTPUT) <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd></td><td>Airport map data and Brake-To-Vacate exit selection (<a href="#part11">Part 11</a>).</td></tr>
 <tr><td>E/WD (Engine/Warning Display)</td><td>(OUTPUT) <kbd>Alt</kbd>+<kbd>E</kbd></td><td>Engine readouts, memos and active warnings (<a href="#part8">Part 8</a>).</td></tr>
-<tr><td>Live Checklist (ECL)</td><td>(OUTPUT) <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd></td><td>The real interactive electronic checklist; <kbd>Shift</kbd>+<kbd>C</kbd> is the static text checklist (<a href="#part7">Part 7</a>).</td></tr>
+<tr><td>Live Checklist (ECL)</td><td>(OUTPUT) <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd></td><td>The real interactive electronic checklist; <kbd>Shift</kbd>+<kbd>C</kbd> opens the First Officer window instead (<a href="#part7">Part 7</a>).</td></tr>
 <tr><td>Radio Management Panel (RMP)</td><td>(INPUT) <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd></td><td>Tune the VHF radios and set the squawk (<a href="#part10">Part 10</a>).</td></tr>
 <tr><td>Monitor Manager</td><td>(OUTPUT) <kbd>Ctrl</kbd>+<kbd>M</kbd></td><td>Tick/untick which variables auto-announce (<a href="#part9">Part 9</a>).</td></tr>
 </table>
@@ -279,7 +279,7 @@
 
 <p>The A380's real checklists live on the <strong>Electronic Checklist (ECL)</strong>, shown on the Engine/Warning Display and driven by the ECAM Control Panel. MSFSBA opens it as a fully interactive list that always matches the real cockpit, including any abnormal procedure that an ECAM alert raises.</p>
 
-<div class="note">There are <strong>two</strong> checklist keys (both in OUTPUT mode, press <kbd>]</kbd> first): <kbd>Shift</kbd>+<kbd>C</kbd> opens a simple <strong>static text checklist</strong> (cold-and-dark to shutdown), and <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> opens the <strong>live ECL</strong> described here.</div>
+<div class="note">There are <strong>two</strong> checklist keys (both in OUTPUT mode, press <kbd>]</kbd> first): <kbd>Shift</kbd>+<kbd>C</kbd> opens the <strong>First Officer</strong> window (its checklists tick themselves, and its flows set the aircraft up for you; opening it also starts the First Officer's automation, such as the landing lights at 10,000 feet, which you can turn off in Settings, First Officer), and <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> opens the <strong>live ECL</strong> described here.</div>
 
 <div class="step">
 <ol>
@@ -468,7 +468,7 @@
 <tr><th>Key</th><th>Action</th></tr>
 <tr><td><kbd>Ctrl</kbd>+<kbd>M</kbd> / <kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>Monitor Manager (choose what auto-announces) / Toggle ECAM E/WD call-outs</td></tr>
 <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd></td><td>Airport Map &amp; BTV (OANS) window</td></tr>
-<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> / <kbd>Shift</kbd>+<kbd>C</kbd></td><td>Live Electronic Checklist (ECL) window / static text checklist</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> / <kbd>Shift</kbd>+<kbd>C</kbd></td><td>Live Electronic Checklist (ECL) window / First Officer window (checklists and flows)</td></tr>
 <tr><td><kbd>Q</kbd> / <kbd>A</kbd></td><td>Altitude AGL / MSL (in metres when the FCU MTRS button is on — see <a href="#part9">Part 9</a>)</td></tr>
 <tr><td><kbd>S</kbd> / <kbd>T</kbd> / <kbd>G</kbd> / <kbd>M</kbd></td><td>IAS / TAS / Ground Speed / Mach</td></tr>
 <tr><td><kbd>H</kbd> / <kbd>U</kbd> / <kbd>V</kbd></td><td>Magnetic Heading / True Heading / Vertical Speed</td></tr>
