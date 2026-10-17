@@ -107,6 +107,9 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     // ------------------------------------------------------------------
     private System.Windows.Forms.Timer _autoDetectTimer = null!;
     private bool _suppressTreeEvents;
+    // The window that had the foreground when ShowForm ran (the simulator after Shift+C,
+    // MainForm after the File menu); Escape and a user close hand focus back to it.
+    private IntPtr _previousWindow;
 
     // ------------------------------------------------------------------
     // Constructor
@@ -217,6 +220,11 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
 
     public void ShowForm()
     {
+        // A re-press while this window is already in front must not record itself as the
+        // window to return to, or Escape would leave focus nowhere.
+        IntPtr foreground = NativeForeground.Current();
+        if (foreground != Handle) _previousWindow = foreground;
+
         UpdateServicesFromConnection();
         Show();
         BringToFront();
@@ -385,7 +393,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         // Keyboard shortcut: Escape to close
         KeyDown += (_, e) =>
         {
-            if (e.KeyCode == Keys.Escape) Hide();
+            if (e.KeyCode == Keys.Escape) HideAndReturnFocus();
         };
         KeyPreview = true;
     }
@@ -1139,13 +1147,21 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         if (e.CloseReason == CloseReason.UserClosing)
         {
             e.Cancel = true;
-            Hide();
+            HideAndReturnFocus();
             return;
         }
 
         _autoDetectTimer.Stop();
         _flowMgr.Cancel();
         base.OnFormClosing(e);
+    }
+
+    // Hide (the First Officer keeps running) and give focus back to the window the pilot came
+    // from, as the retired text checklist did: Shift+C, read, Escape lands back in the sim.
+    private void HideAndReturnFocus()
+    {
+        Hide();
+        NativeForeground.Restore(_previousWindow);
     }
 
     protected override void Dispose(bool disposing)
