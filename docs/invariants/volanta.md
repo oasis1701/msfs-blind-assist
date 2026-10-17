@@ -61,6 +61,12 @@ hidden page is rare, and with two accounts there are two, returned in key order:
 trusts an id only when there is exactly one, and an id kept from an earlier check is dropped rather than kept as
 possibly another account's.
 
+The network file holds the pilot too when they fly on VATSIM or IVAO and Volanta is not tracking their flight
+(Volanta drops a pilot from it only for a Volanta flight it links to the network; the window works with the
+Volanta app closed). So a network entry is the pilot's own when its callsign is the one vPilot says they connected
+with (`VatsimAnnouncementService.ConnectedCallsign`) or the sim's ATC ID: by callsign, never by distance (review of
+PR 311, 2026-10-17).
+
 ## VOL-5
 
 The network file gives every pilot `onGround: false`, a height above ground of 0 and a vertical speed of 0,
@@ -251,7 +257,8 @@ out.
 ## VOL-14
 
 The page asks for the Volanta users' file twice in a row, the second straight from its cache, so the web map skips
-a file whose key matches the last one taken (`VolantaWebMap.BodyKey`: its length and its first and last 256
-characters), to parse 3 MB once. The keys kept are forgotten at every page load and log out: measured 2026-10-17,
+a file whose key matches the last one taken (`VolantaWebMap.BodyKey`: the length and the first and last 256
+characters of the DevTools answer that carries the file, so the UI thread never reads the file itself), to parse
+3 MB once. The keys kept are forgotten at every page load and log out: measured 2026-10-17,
 after a log out and a new login the friends list came again, identical, and was thrown away as the cached second
 copy, so the Friends tab stayed empty.

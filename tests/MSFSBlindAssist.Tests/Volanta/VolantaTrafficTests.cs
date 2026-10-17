@@ -128,8 +128,24 @@ public class VolantaTrafficTests
     }
 
     [Fact]
-    public void A_network_pilot_is_never_taken_for_the_own_flight()
+    public void A_network_pilot_is_never_taken_for_the_own_flight_by_Volanta_s_ids()
         => Assert.False(VolantaTrafficCalculator.IsOwnFlight(Flight("x", 0, 0, source: VolantaSource.Vatsim), "x", null));
+
+    [Fact]
+    public void The_pilot_s_own_network_entry_is_left_out_by_their_callsign()
+    {
+        // Flying on VATSIM with the Volanta app closed: Volanta does not drop the pilot from its network file.
+        var flights = new[]
+        {
+            Flight("vatsim-1", 0, 0.01, source: VolantaSource.Vatsim, callsign: "DLH4LP"),
+            Flight("vatsim-2", 0, 0.02, source: VolantaSource.Vatsim, callsign: "BAW12"),
+            // A Volanta user under the same callsign is someone else: Volanta's own ids decide for them (VOL-4).
+            Flight("volanta-1", 0, 0.03, callsign: "DLH4LP"),
+        };
+        var ids = VolantaTrafficCalculator.Compute(flights, Me, Now, ownCallsigns: new[] { " dlh4lp " }).Select(e => e.Flight.Id);
+        Assert.Equal(new[] { "vatsim-2", "volanta-1" }, ids.OrderBy(i => i, StringComparer.Ordinal));
+        Assert.Equal(3, VolantaTrafficCalculator.Compute(flights, Me, Now).Count);   // no callsign known: all listed
+    }
 
     [Fact]
     public void Distance_bearing_clock_and_altitude_are_from_the_pilot()

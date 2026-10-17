@@ -110,8 +110,8 @@ public static class VolantaTrafficFormatter
     /// <summary>
     /// A friend's status in words, from Volanta's rich status: "offline", "online in Volanta", "at KATL",
     /// "taxiing to the runway at KATL", "climbing out of KATL", "cruising over the United States", "cruising over
-    /// the North Atlantic Ocean", "descending into KGRB", "taxiing to gate B12 at KGRB". Null is a friend from
-    /// the saved list whose status Volanta has not reported yet.
+    /// the North Atlantic Ocean", "descending into KGRB", "taxiing to gate B12 at KGRB". Null is a friend Volanta
+    /// listed with no status and has not reported one for since.
     /// </summary>
     public static string FriendStatusText(VolantaFriendStatus? s)
     {

@@ -37,6 +37,34 @@ public sealed class VolantaWebMapTests : IDisposable
     public void The_page_s_trackers_are_blocked_and_nothing_the_map_or_a_login_needs(string url, bool blocked)
         => Assert.Equal(blocked, VolantaWebMap.IsTracker(new Uri(url)));
 
+    [Theory]
+    [InlineData("https://connect.facebook.net/en_US/fbevents.js", true)]
+    [InlineData("https://www.facebook.com/tr/?id=1&ev=PageView", true)]
+    [InlineData("https://ad.doubleclick.net/ccm/s/collect", true)]
+    [InlineData("https://www.google.com/ccm/collect?en=page_view", true)]
+    [InlineData("https://www.google.de/ads/ga-audiences?v=1", true)]
+    [InlineData("https://www.googleadservices.com/pagead/conversion/1/", true)]
+    [InlineData("https://region1.analytics.google.com/g/collect", true)]
+    [InlineData("https://static.klaviyo.com/onsite/js/klaviyo.js", true)]
+    [InlineData("https://alb.reddit.com/rp?id=x", true)]
+    [InlineData("https://us.i.posthog.com/flags/", true)]
+    [InlineData("https://o1334761.ingest.sentry.io/api/6601689/envelope/", true)]
+    [InlineData("https://events.mapbox.com/events/v2", true)]
+    // The map's own files never wait for the UI thread.
+    [InlineData("https://webassets.volanta.app/volanta-flight-positions-slim.json", false)]
+    [InlineData("https://webassets.volanta.app/network-flight-positions.json", false)]
+    [InlineData("https://api.volanta.app/api/v1/Relationships/Friends", false)]
+    [InlineData("https://fly.volanta.app/map", false)]
+    [InlineData("https://api.mapbox.com/styles/v1/x", false)]
+    public void Only_addresses_that_can_be_a_tracker_s_reach_the_blocking_handler(string url, bool filtered)
+    {
+        // WebView2's request filter: "*" matches any run of characters, over the whole address.
+        bool Matches(string filter) => System.Text.RegularExpressions.Regex.IsMatch(url,
+            "^" + System.Text.RegularExpressions.Regex.Escape(filter).Replace(@"\*", ".*") + "$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        Assert.Equal(filtered, VolantaWebMap.TrackerFilters().Any(Matches));
+    }
+
     [Fact]
     public void The_cached_second_copy_of_a_file_is_recognized()
     {
@@ -59,6 +87,11 @@ public sealed class VolantaWebMapTests : IDisposable
         Assert.Equal("In the last minute: 10 Volanta users files, 6.6 MB; 1 network pilots file, 0.2 MB; 1 ATC file, "
             + "0.0 MB; everything else 0.1 MB. In all 7.0 MB, about 420 MB an hour.", stats.Summary(now));
         Assert.Equal("Nothing downloaded in the last minute.", new VolantaWebMapStats().Summary(now));
+
+        // Only files served from the browser's cache: nothing came over the network, and the sentence stays whole.
+        var cached = new VolantaWebMapStats();
+        cached.Add(now.AddSeconds(-3), VolantaWebMapStats.Other, 0);
+        Assert.Equal("Nothing downloaded in the last minute.", cached.Summary(now));
     }
 
     [Fact]

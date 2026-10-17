@@ -81,6 +81,8 @@ public sealed class VolantaLiveMapForm : Form
     private readonly SimConnectManager _sim;
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly OfflineLocationService _locations;
+    /// <summary>The callsign vPilot says the pilot connected to VATSIM with, or null.</summary>
+    private readonly Func<string?> _vatsimCallsign;
     private readonly VolantaLink _link = new();
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = RefreshIntervalMs };
     // Each flight's place, one cache per kind (nearest town, nearest major city). Replaced, never cleared, when the
@@ -122,7 +124,7 @@ public sealed class VolantaLiveMapForm : Form
     private Dictionary<string, (VolantaController Station, double? Nm)> _atcByKey = new(StringComparer.Ordinal);
 
     private VolantaLinkStatus _spokenStatus = VolantaLinkStatus.Stopped;
-    private bool _trafficFilled, _reconciling;
+    private bool _trafficFilled, _atcFilled, _reconciling;
 
     /// <summary>The page is up, but nothing has come for <see cref="StaleSeconds"/> since it came up or was last live
     /// again: Volanta's site may be down, or asking a human check the hidden page cannot show.</summary>
@@ -148,11 +150,13 @@ public sealed class VolantaLiveMapForm : Form
     private static readonly TimeSpan WebMapPauseAfter = TimeSpan.FromSeconds(5);
     private readonly System.Windows.Forms.Timer _webMapPauseTimer = new() { Interval = (int)WebMapPauseAfter.TotalMilliseconds };
 
-    internal VolantaLiveMapForm(SimConnectManager sim, ScreenReaderAnnouncer announcer, OfflineLocationService locations)
+    internal VolantaLiveMapForm(SimConnectManager sim, ScreenReaderAnnouncer announcer, OfflineLocationService locations,
+        Func<string?> vatsimCallsign)
     {
         _sim = sim;
         _announcer = announcer;
         _locations = locations;
+        _vatsimCallsign = vatsimCallsign;
         BuildUI();
         CurrentPlaceSettings();   // names the GeoNames tab's values in the major-city checkboxes
 
@@ -175,6 +179,9 @@ public sealed class VolantaLiveMapForm : Form
                 ShowForm();
                 _announcer.AnnounceWithQueue("Logged in to Volanta.");
             };
+            // Shown comes after ShowForm's activation: a window already in the background by now (focus went back to
+            // the sim, or it was never let forward) gets no Deactivate, so its pause starts here (VOL-12).
+            if (ActiveForm != this) _webMapPauseTimer.Start();
             _ = _webMap.StartAsync();
             _timer.Start();
             RefreshConnectionStatus();
@@ -184,9 +191,14 @@ public sealed class VolantaLiveMapForm : Form
         Activated += (_, _) =>
         {
             _webMapPauseTimer.Stop();
-            _webMap?.SetActive(true);
+            if (_webMap is not { Active: false } paused) return;
+            paused.SetActive(true);
+            // Nothing updated while paused (OnTimer): bring the tab in view up to date now, counted from the resume,
+            // so the pilot never meets a "not updating" line left from the pause.
+            RefreshVisibleTab(hold: true);
         };
-        Deactivate += (_, _) => { if (_webMap != null) _webMapPauseTimer.Start(); };
+        // Also before Shown creates the web map: the timer's tick pauses it once it exists.
+        Deactivate += (_, _) => _webMapPauseTimer.Start();
         _webMapPauseTimer.Tick += (_, _) =>
         {
             _webMapPauseTimer.Stop();
@@ -254,7 +266,7 @@ public sealed class VolantaLiveMapForm : Form
         _friendsStatus.Text = "Waiting for Volanta.";
         _friendsCities = CityToggle(() => RefreshFriends(hold: false));
 
-        // No restart button of its own: the Connection tab's one button restarts Volanta, which reloads the list.
+        // No login button of its own: the Connection tab's one button logs in, and the list comes with the login.
         // The location choice right after the details, as on the Traffic tab.
         var layout = NewColumn(4);
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
@@ -431,11 +443,13 @@ public sealed class VolantaLiveMapForm : Form
         {
             if (_webMap?.LoggedIn == true)
             {
-                await _webMap.LogOutAsync();
                 // The button's new name is not spoken by itself (.NET 10 sends no name-change notice, VOL-10).
-                if (_webMap?.LoggedIn == false) _announcer.Announce("Logged out of Volanta.");
+                _announcer.Announce(await _webMap.LogOutAsync()
+                    ? "Logged out of Volanta."
+                    : "Could not log out of Volanta. Try again.");
             }
-            else _webMap?.ShowLogin();
+            else if (_webMap?.ShowLogin() != true)
+                _announcer.Announce("Volanta's login page cannot open: the web map is not running. The status above says why.");
         };
 
         var help = new TextBox
@@ -585,7 +599,8 @@ public sealed class VolantaLiveMapForm : Form
         // The first data shows at once; after that the timer keeps everything current.
         if (!_trafficFilled) RefreshTraffic(hold: true);
         if (!ListsItems(_friendsList) && snap.Friends is { Count: > 0 }) RefreshFriends(hold: true);
-        if (!ListsItems(_atcList) && snap.Controllers != null) RefreshAtc(hold: true);
+        // Once, like the traffic: an ATC list the filters leave empty must not be redone at every hub frame.
+        if (!_atcFilled && snap.Controllers != null) RefreshAtc(hold: true);
     }
 
     private void AnnounceTransitions(VolantaLinkSnapshot snap)
@@ -602,6 +617,9 @@ public sealed class VolantaLiveMapForm : Form
 
     private void OnTimer()
     {
+        // Paused (VOL-12), Volanta's data stands still and nobody reads the window: no updates and no lookups until
+        // it comes back, when Activated brings the tab in view up to date.
+        if (_webMap is { Active: false }) return;
         // Keep the sim position fresh, as the TCAS window does: each update reads the cached one.
         _sim.RequestAircraftPosition();
         CurrentPlaceSettings();   // the checkbox text follows the GeoNames tab even while no traffic shows
@@ -728,6 +746,16 @@ public sealed class VolantaLiveMapForm : Form
         return null;
     }
 
+    /// <summary>The callsigns a network may list the pilot under: the one vPilot connected with, and the sim's ATC
+    /// ID. Volanta leaves the pilot out of its network file only while it tracks their flight (VOL-4).</summary>
+    private IReadOnlyCollection<string> OwnCallsigns()
+    {
+        var callsigns = new List<string>(2);
+        if (_vatsimCallsign() is { Length: > 0 } vatsim) callsigns.Add(vatsim);
+        if (_sim.IsConnected && _sim.CurrentAircraftAtcId is { Length: > 0 } atcId) callsigns.Add(atcId);
+        return callsigns;
+    }
+
     private VolantaTrafficFilter CurrentFilter()
     {
         var sources = new HashSet<VolantaSource>();
@@ -787,7 +815,7 @@ public sealed class VolantaLiveMapForm : Form
         }
 
         var entries = VolantaTrafficCalculator.Compute(flights, me, now, snap.OwnFlight?.FlightId, snap.OwnVolantaPosition,
-            snap.OwnUserId);
+            snap.OwnUserId, OwnCallsigns());
         CurrentPlaceSettings();
         var flightIds = flights.Select(f => f.Id).ToList();
         _townPlaces.KeepOnly(flightIds);
@@ -939,6 +967,7 @@ public sealed class VolantaLiveMapForm : Form
             DisplayText.SetPreserveCaret(_atcStatus, NoDataText(snap, now));
             return;
         }
+        _atcFilled = true;
         var own = OwnPosition(snap, now, out _);
         // A search covers every distance, as on the Traffic tab.
         bool searching = _atcSearch.Text.Trim().Length > 0;

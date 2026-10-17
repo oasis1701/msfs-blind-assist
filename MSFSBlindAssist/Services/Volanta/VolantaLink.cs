@@ -104,8 +104,8 @@ public sealed class VolantaLink : IDisposable
     }
 
     /// <summary>The web map was paused (it downloads only while the Volanta window is in the foreground, VOL-12)
-    /// and is live again: "since connecting" counts from now, so the last file, old by the length of the pause, is
-    /// not called stale before anything is overdue.</summary>
+    /// and is live again, or its page loaded again: "since connecting" counts from now, so the last file, old by the
+    /// length of the pause, is not called stale before anything is overdue.</summary>
     internal void Resumed()
     {
         if (!Started) return;

@@ -56,6 +56,8 @@ public sealed class VolantaWebMapStats
         }
         long other = recent.Where(r => r.Kind == Other).Sum(r => r.Bytes);
         if (other > 0) parts.Add($"{Other} {Megabytes(other)}");
+        // Only other files with no bytes (served from the browser's cache): nothing to name.
+        if (parts.Count == 0) return "Nothing downloaded in the last minute.";
         long total = recent.Sum(r => r.Bytes);
         double perHour = total * (TimeSpan.FromHours(1) / Window) / 1048576.0;
         return $"In the last minute: {string.Join("; ", parts)}. In all {Megabytes(total)}, about "

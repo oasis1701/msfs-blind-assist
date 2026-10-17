@@ -416,7 +416,9 @@ public partial class MainForm
     {
         if (volantaLiveMapForm is not { IsDisposed: false })
         {
-            volantaLiveMapForm = new Forms.Volanta.VolantaLiveMapForm(simConnectManager, announcer, offlineLocationService);
+            // vPilot's callsign, so the pilot's own VATSIM entry is never listed as traffic.
+            volantaLiveMapForm = new Forms.Volanta.VolantaLiveMapForm(simConnectManager, announcer, offlineLocationService,
+                () => vatsimService?.ConnectedCallsign);
             volantaLiveMapForm.FormClosed += (_, _) => volantaLiveMapForm = null;
         }
         volantaLiveMapForm.ShowForm();

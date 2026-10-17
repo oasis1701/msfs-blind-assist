@@ -73,7 +73,7 @@ internal sealed class VolantaWebMap : IDisposable
     private CoreWebView2Controller? _controller;
     private VolantaWebMapLoginForm? _login;
     private int _checks;
-    private bool _pageUp, _disposed, _active = true;
+    private bool _pageUp, _disposed, _active = true, _retryPending;
 
     public VolantaWebMapStats Stats { get; } = new();
     /// <summary>Whether the page has a login stored; null until first checked.</summary>
@@ -101,6 +101,8 @@ internal sealed class VolantaWebMap : IDisposable
             _hostGone = true;
             _checkTimer.Stop();
         };
+        // Here, not in StartAsync: a browser started again after its process died must not add a second check.
+        _checkTimer.Tick += async (_, _) => await CheckStorageAsync();
     }
 
     private bool Usable => !_disposed && !_hostGone && _controller != null;
@@ -113,7 +115,7 @@ internal sealed class VolantaWebMap : IDisposable
             Directory.CreateDirectory(ProfileFolder);
             _env = await CoreWebView2Environment.CreateAsync(null, ProfileFolder, new CoreWebView2EnvironmentOptions(BrowserArguments));
             _controller = await _env.CreateCoreWebView2ControllerAsync(_host.Handle);
-            if (_disposed) { _controller.Close(); return; }
+            if (_disposed || _hostGone) { _controller.Close(); return; }
             _controller.Bounds = new Rectangle(0, 0, 1280, 800);
             _controller.IsVisible = _active;
             var core = _controller.CoreWebView2;
@@ -125,12 +127,7 @@ internal sealed class VolantaWebMap : IDisposable
             // cached second copy, so the Friends tab stayed empty.
             core.NavigationStarting += (_, _) => _lastBody.Clear();
             core.NavigationCompleted += OnNavigationCompleted;
-            core.ProcessFailed += (_, e) =>
-            {
-                Log.Warn("VolantaWebMap", $"Browser process failed: {e.ProcessFailedKind}");
-                SetProblem("The web map's browser stopped. Restarting it.");
-                _ = RetryAsync();
-            };
+            core.ProcessFailed += (_, e) => OnProcessFailed(e.ProcessFailedKind);
             await core.CallDevToolsProtocolMethodAsync("Network.enable",
                 "{\"maxTotalBufferSize\":20000000,\"maxResourceBufferSize\":8000000}");
             core.GetDevToolsProtocolEventReceiver("Network.responseReceived").DevToolsProtocolEventReceived += OnResponseReceived;
@@ -139,7 +136,6 @@ internal sealed class VolantaWebMap : IDisposable
             core.GetDevToolsProtocolEventReceiver("Network.webSocketFrameReceived").DevToolsProtocolEventReceived += OnHubFrame;
             Log.Info("VolantaWebMap", $"Opening {MapUrl} (profile {ProfileFolder})");
             core.Navigate(MapUrl);
-            _checkTimer.Tick += async (_, _) => await CheckStorageAsync();
             _checkTimer.Start();
         }
         catch (Exception ex) when (ex is WebView2RuntimeNotFoundException or InvalidOperationException or COMException
@@ -173,14 +169,15 @@ internal sealed class VolantaWebMap : IDisposable
 
     /// <summary>Opens Volanta's login page in a window of its own on the same profile. The window closes itself as
     /// soon as the login is stored (<see cref="VolantaWebMapLoginForm.ClosedOnLogin"/>), raising
-    /// <see cref="LoginCompleted"/>; closed either way, the map page reloads to pick up the login.</summary>
-    public void ShowLogin()
+    /// <see cref="LoginCompleted"/>; closed either way, the map page reloads to pick up the login. False when it
+    /// cannot open: the web map is not running.</summary>
+    public bool ShowLogin()
     {
-        if (_env == null || !Usable) return;
+        if (_env == null || !Usable) return false;
         if (_login is { IsDisposed: false })
         {
             _login.ShowAndFocus();
-            return;
+            return true;
         }
         var login = new VolantaWebMapLoginForm(_env, LoginUrl, BlockTrackers);
         _login = login;
@@ -196,14 +193,16 @@ internal sealed class VolantaWebMap : IDisposable
             LoginCompleted?.Invoke(this, EventArgs.Empty);
         };
         login.ShowAndFocus();
+        return true;
     }
 
     /// <summary>Logs out of Volanta in the web map, as Volanta's own logout does (read in 1.19.2's code: it only
     /// clears its stored session in the browser, no request): the profile's site storage and cookies are cleared,
-    /// the link forgets the friends list and the pilot's own flight, and the map reloads logged out.</summary>
-    public async Task LogOutAsync()
+    /// the link forgets the friends list and the pilot's own flight, and the map reloads logged out. False when
+    /// it could not.</summary>
+    public async Task<bool> LogOutAsync()
     {
-        if (!Usable || _controller?.CoreWebView2 is not { } core) return;
+        if (!Usable || _controller?.CoreWebView2 is not { } core) return false;
         try
         {
             await core.Profile.ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds.AllDomStorage | CoreWebView2BrowsingDataKinds.Cookies);
@@ -211,20 +210,27 @@ internal sealed class VolantaWebMap : IDisposable
         catch (Exception ex) when (ex is InvalidOperationException or COMException)
         {
             Log.Warn("VolantaWebMap", $"Log out failed: {ex.Message}");
-            return;
+            return false;
         }
         Log.Info("VolantaWebMap", "Logged out: site storage and cookies cleared, reloading the map");
         _link.LoggedOut();
         _lastBody.Clear();   // the next login's files must all be taken (see NavigationStarting)
         SetLoggedIn(false);
         Reload();
+        return true;
     }
 
     private void Reload()
     {
         if (!Usable) return;
+        // Down until the reload completes, so one that fails is tried again (OnNavigationCompleted).
+        _pageUp = false;
         try { _controller!.CoreWebView2.Reload(); }
-        catch (Exception ex) when (ex is InvalidOperationException or COMException) { Log.Warn("VolantaWebMap", $"Reload failed: {ex.Message}"); }
+        catch (Exception ex) when (ex is InvalidOperationException or COMException)
+        {
+            Log.Warn("VolantaWebMap", $"Reload failed: {ex.Message}");
+            _ = RetryAsync();
+        }
     }
 
     private void SetLoggedIn(bool? loggedIn)
@@ -237,7 +243,10 @@ internal sealed class VolantaWebMap : IDisposable
 
     private static void BlockTrackers(CoreWebView2 core, CoreWebView2Environment env)
     {
-        core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
+        // Only addresses that can be a tracker's wait for this handler on the UI thread: a filter of "*" held every
+        // request the page makes, the 3 MB traffic files among them, until the UI thread was free.
+        foreach (string filter in TrackerFilters())
+            core.AddWebResourceRequestedFilter(filter, CoreWebView2WebResourceContext.All);
         core.WebResourceRequested += (_, e) =>
         {
             if (Uri.TryCreate(e.Request.Uri, UriKind.Absolute, out var uri) && IsTracker(uri))
@@ -262,8 +271,27 @@ internal sealed class VolantaWebMap : IDisposable
             || path.StartsWith("/pagead/", StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>The request filters that hand a request to <see cref="IsTracker"/>: every address that can be one of
+    /// its trackers, and a few more (a filter's "*" is looser than its checks), so IsTracker still decides.</summary>
+    internal static IEnumerable<string> TrackerFilters()
+    {
+        foreach (string h in TrackerHosts)
+        {
+            yield return $"*://{h}/*";
+            yield return $"*://*.{h}/*";
+        }
+        yield return "*://facebook.com/tr*";
+        yield return "*://www.facebook.com/tr*";
+        foreach (string path in new[] { "/ccm/", "/ads/", "/pagead/" })
+        {
+            yield return $"*://google.*{path}*";
+            yield return $"*://www.google.*{path}*";
+        }
+    }
+
     /// <summary>A key that tells two downloads of a file apart cheaply: the page asks for the Volanta users' file
-    /// twice in a row, the second straight from its cache, and parsing 3 MB twice is wasted. The keys kept are
+    /// twice in a row, the second straight from its cache, and parsing 3 MB twice is wasted. Taken from the DevTools
+    /// answer that carries the file, so it is worked out on the UI thread without reading the file. The keys kept are
     /// forgotten at every page load and log out, so a new load's first copy is always taken.</summary>
     internal static string BodyKey(string body)
         => body.Length <= 512 ? body : string.Concat(body.Length.ToString(System.Globalization.CultureInfo.InvariantCulture), ":", body.AsSpan(0, 256), body.AsSpan(body.Length - 256));
@@ -276,13 +304,53 @@ internal sealed class VolantaWebMap : IDisposable
             _pageUp = true;
             SetProblem(null);
             _link.SetSourceStatus(VolantaLinkStatus.Connected);
+            // A page that came up again (a reload after the login window or a log out) counts from now (VOL-2): the
+            // files kept from before it are not new.
+            _link.Resumed();
             if (!_active) _ = NudgeHiddenAsync();
         }
-        else if (!_pageUp)
+        // A cancelled load gave way to a newer one, whose own completion decides.
+        else if (!_pageUp && e.WebErrorStatus != CoreWebView2WebErrorStatus.OperationCanceled)
         {
             SetProblem($"Volanta's web map did not load ({e.WebErrorStatus}). Trying again in 15 seconds.");
             _ = RetryAsync();
         }
+    }
+
+    /// <summary>A browser process failed. The browser itself gone, the controller went with it: a new one is started.
+    /// The page's renderer gone or hung: the page is loaded again. Any other (the GPU, a utility, an iframe's
+    /// renderer) WebView2 restarts by itself, and the page carries on.</summary>
+    private void OnProcessFailed(CoreWebView2ProcessFailedKind kind)
+    {
+        Log.Warn("VolantaWebMap", $"Browser process failed: {kind}");
+        if (_disposed || _hostGone) return;
+        switch (kind)
+        {
+            case CoreWebView2ProcessFailedKind.BrowserProcessExited:
+                SetProblem("The web map's browser stopped. Restarting it.");
+                _ = RestartBrowserAsync();
+                break;
+            case CoreWebView2ProcessFailedKind.RenderProcessExited:
+            case CoreWebView2ProcessFailedKind.RenderProcessUnresponsive:
+                SetProblem("The web map's page stopped. Loading it again.");
+                _ = RetryAsync();
+                break;
+        }
+    }
+
+    /// <summary>Starts a new browser after the old one's process died: its controller cannot load anything again.</summary>
+    private async Task RestartBrowserAsync()
+    {
+        _pageUp = false;
+        _link.SetSourceStatus(VolantaLinkStatus.WaitingForPage);
+        var dead = _controller;
+        _controller = null;
+        _requests.Clear();
+        try { dead?.Close(); }
+        catch (Exception ex) when (ex is InvalidOperationException or COMException) { }
+        await Task.Delay(RetryAfter);
+        if (_disposed || _hostGone) return;
+        await StartAsync();
     }
 
     /// <summary>A page that finished loading while paused is told at once that it is hidden (<see cref="HiddenNudgeScript"/>).</summary>
@@ -298,12 +366,17 @@ internal sealed class VolantaWebMap : IDisposable
         }
     }
 
+    /// <summary>Loads the map again in <see cref="RetryAfter"/>: one wait at a time, and none once the page came up
+    /// meanwhile (another load succeeded).</summary>
     private async Task RetryAsync()
     {
         _pageUp = false;
         _link.SetSourceStatus(VolantaLinkStatus.WaitingForPage);
-        await Task.Delay(RetryAfter);
-        if (_disposed) return;
+        if (_retryPending) return;
+        _retryPending = true;
+        try { await Task.Delay(RetryAfter); }
+        finally { _retryPending = false; }
+        if (_disposed || _hostGone || _pageUp) return;
         try { _controller?.CoreWebView2.Navigate(MapUrl); }
         catch (Exception ex) when (ex is InvalidOperationException or COMException)
         {
@@ -358,28 +431,32 @@ internal sealed class VolantaWebMap : IDisposable
         Stats.Add(DateTimeOffset.UtcNow, VolantaWebMapStats.KindOf(request.Kind), bytes);
         if (request.Kind is not VolantaLink.FeedKind kind || _controller?.CoreWebView2 is not { } core) return;
 
-        string? body;
+        string result;
         try
         {
-            string result = await core.CallDevToolsProtocolMethodAsync("Network.getResponseBody",
+            result = await core.CallDevToolsProtocolMethodAsync("Network.getResponseBody",
                 JsonSerializer.Serialize(new { requestId }));
-            using var doc = JsonDocument.Parse(result);
-            body = VolantaLink.BodyFromResult(doc.RootElement);
         }
         catch (Exception ex)   // an async void handler: nothing may escape it
         {
             Log.Debug("VolantaWebMap", $"{kind} body not readable: {ex.Message}");
             return;
         }
-        if (body == null) return;
-        string key = BodyKey(body);
+        // The answer carries the file whole, so its key tells the cached second copy too, without reading it here.
+        string key = BodyKey(result);
         if (_lastBody.TryGetValue(kind, out var last) && last == key) return;   // the cached second copy
         _lastBody[kind] = key;
-        Log.Debug("VolantaWebMap", $"{kind}: {bytes / 1024} KB over the network, {body.Length / 1024} KB of text");
-        // Parsing 3 MB takes tens of milliseconds: off the UI thread.
+        // Reading the answer and parsing the file (3 MB) takes tens of milliseconds: off the UI thread.
         _ = Task.Run(() =>
         {
-            try { _link.IngestBody(kind, body); }
+            try
+            {
+                string? body;
+                using (var doc = JsonDocument.Parse(result)) body = VolantaLink.BodyFromResult(doc.RootElement);
+                if (body == null) return;
+                Log.Debug("VolantaWebMap", $"{kind}: {bytes / 1024} KB over the network, {body.Length / 1024} KB of text");
+                _link.IngestBody(kind, body);
+            }
             catch (Exception ex) { Log.Warn("VolantaWebMap", $"{kind} not taken: {ex.Message}"); }
         });
     }

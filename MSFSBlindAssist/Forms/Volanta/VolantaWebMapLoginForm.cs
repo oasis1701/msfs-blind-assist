@@ -90,7 +90,8 @@ internal sealed class VolantaWebMapLoginForm : Form
         try
         {
             await _web.EnsureCoreWebView2Async(_env);
-            var core = _web.CoreWebView2;
+            // Escape works from the first moment: the window may have closed while the browser started.
+            if (IsDisposed || _web.CoreWebView2 is not { } core) return;
             core.Settings.AreDevToolsEnabled = false;
             _blockTrackers(core, _env);
             // Escape inside the page never reaches this window's KeyDown (the browser owns that focus), so a small
@@ -99,14 +100,15 @@ internal sealed class VolantaWebMapLoginForm : Form
             await core.AddScriptToExecuteOnDocumentCreatedAsync(
                 "window.addEventListener('keydown',function(e){if(e.key==='Escape'){window.chrome.webview.postMessage('"
                 + CloseMessage + "');}},true);");
+            if (IsDisposed) return;
             core.Navigate(_url);
             _web.Focus();
             _loginCheck.Start();
         }
-        catch (Exception ex) when (ex is InvalidOperationException or COMException or ArgumentException)
+        catch (Exception ex) when (ex is InvalidOperationException or COMException or ArgumentException or ObjectDisposedException)
         {
             Log.Warn("VolantaWebMap", $"Login window could not start: {ex.Message}");
-            Close();
+            if (!IsDisposed) Close();
         }
     }
 }

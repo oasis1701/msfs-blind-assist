@@ -99,12 +99,13 @@ public static class VolantaTrafficCalculator
 
     public static IReadOnlyList<VolantaTrafficEntry> Compute(
         IEnumerable<VolantaFlight> flights, VolantaOwnPosition own, DateTimeOffset now,
-        string? ownFlightId = null, VolantaOwnPosition? ownVolantaReport = null, string? ownUserId = null)
+        string? ownFlightId = null, VolantaOwnPosition? ownVolantaReport = null, string? ownUserId = null,
+        IReadOnlyCollection<string>? ownCallsigns = null)
     {
         var list = new List<VolantaTrafficEntry>();
         foreach (var f in flights)
         {
-            if (IsOwnFlight(f, ownFlightId, ownVolantaReport, ownUserId)) continue;
+            if (IsOwnFlight(f, ownFlightId, ownVolantaReport, ownUserId, ownCallsigns)) continue;
             var (lat, lon) = Extrapolate(f, now);
             double dist = NavigationCalculator.CalculateDistance(own.Latitude, own.Longitude, lat, lon);
             double brg = NavigationCalculator.CalculateBearing(own.Latitude, own.Longitude, lat, lon);
@@ -117,11 +118,15 @@ public static class VolantaTrafficCalculator
 
     /// <summary>The pilot's own entry: Volanta's flight id for it, or the logged-in Volanta user's id (a user has
     /// one live flight), else (neither known yet) the entry whose position is the one Volanta itself last
-    /// reported for the pilot.</summary>
+    /// reported for the pilot. A network pilot's entry is the pilot's own when it has one of
+    /// <paramref name="ownCallsigns"/>: Volanta leaves the pilot out of its network file only while it tracks their
+    /// flight, so without Volanta tracking, their own VATSIM or IVAO entry is there.</summary>
     public static bool IsOwnFlight(VolantaFlight f, string? ownFlightId, VolantaOwnPosition? ownVolantaReport,
-        string? ownUserId = null)
+        string? ownUserId = null, IReadOnlyCollection<string>? ownCallsigns = null)
     {
-        if (f.Source != VolantaSource.Volanta) return false;
+        if (f.Source != VolantaSource.Volanta)
+            return ownCallsigns != null && f.Callsign.Length > 0
+                && ownCallsigns.Any(c => string.Equals(c.Trim(), f.Callsign, StringComparison.OrdinalIgnoreCase));
         if (!string.IsNullOrEmpty(ownUserId) && string.Equals(f.UserId, ownUserId, StringComparison.OrdinalIgnoreCase))
             return true;
         if (!string.IsNullOrEmpty(ownFlightId)) return string.Equals(f.Id, ownFlightId, StringComparison.OrdinalIgnoreCase);
