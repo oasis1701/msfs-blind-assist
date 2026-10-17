@@ -130,7 +130,7 @@ public class FBWA320BaroWindow : FBWA320FCUWindowBase
     {
         if (!setButton.Enabled) return;
         string input = valueTextBox.Text.Trim();
-        if (!double.TryParse(input, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double v))
+        if (!Utils.NumberParsing.TryParseTyped(input, out double v))
         { announcer.AnnounceImmediate("Invalid number format"); valueTextBox.SelectAll(); return; }
         bool inHg = unitCombo.SelectedIndex == 1;
         double hpa = inHg ? v * 33.8639 : v;

@@ -64,6 +64,12 @@ public sealed class VatsimAnnouncementService : IDisposable
     public bool IsEnabled => _enabled;
     public bool IsMuted => _muted;
 
+    /// <summary>The callsign vPilot last said the pilot connected with, or null while not connected, nothing heard
+    /// yet, or vPilot gone. The Volanta window leaves this callsign's VATSIM entry out of its traffic. Written on
+    /// the pipe thread, read on the UI thread: volatile, as the flags above.</summary>
+    public string? ConnectedCallsign => _server.IsClientConnected ? _connectedCallsign : null;
+    private volatile string? _connectedCallsign;
+
     /// <summary>
     /// Brings the feature into line with the saved settings: installs or refreshes the
     /// plugin when enabled, and starts or stops the pipe server. Returns the install
@@ -92,6 +98,7 @@ public sealed class VatsimAnnouncementService : IDisposable
         if (!_enabled)
         {
             _server.Stop();
+            _connectedCallsign = null;   // nothing will say when vPilot disconnects
             return null;
         }
 
@@ -135,6 +142,12 @@ public sealed class VatsimAnnouncementService : IDisposable
         // use.
         try
         {
+            // Before the mute: who the pilot is on the network is not chatter.
+            if (type == "connected")
+                _connectedCallsign = string.IsNullOrWhiteSpace(from) ? null : from.Trim();
+            else if (type == "disconnected")
+                _connectedCallsign = null;
+
             if (!_enabled || _muted)
                 return;
 

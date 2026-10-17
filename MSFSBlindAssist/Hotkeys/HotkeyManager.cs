@@ -56,6 +56,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_SHOW_RMP = 9242;         // Ctrl+Shift+R (A380 Radio Management Panel) — input mode
         private const int HOTKEY_SHOW_DCDU = 9251;        // Ctrl+Shift+D (A32NX DCDU / CPDLC window) — input mode
         private const int HOTKEY_VATSIM_MUTE = 9252;      // Alt+V (Toggle VATSIM announcements) — output mode
+        private const int HOTKEY_VOLANTA = 9253;          // Shift+O (Volanta live map window) — output mode
         private const int HOTKEY_ND_WAYPOINT = 9243;      // Ctrl+W (FBW ND TO-waypoint: name/distance/bearing) — output mode
 
         // FCU push/pull hotkey IDs
@@ -202,6 +203,12 @@ public class HotkeyManager : IDisposable
         internal const uint SHOW_SURROUNDINGS_KEY = 0x4C; // L
         // Consumed by the guide test — see HotkeyGuideSurroundingsChordTests.
         internal const string SurroundingsWindowChordText = "Ctrl+Shift+L";
+
+        // Shift+O (output), the Volanta window: the same pattern again.
+        internal const uint VOLANTA_MODIFIERS = MOD_SHIFT;
+        internal const uint VOLANTA_KEY = 0x4F; // O
+        // Consumed by the guide test — see HotkeyGuideVolantaChordTests.
+        internal const string VolantaChordText = "Shift+O";
 
         private IntPtr windowHandle;
         private bool visualGuidanceHotkeysActive = false;
@@ -511,6 +518,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_WEATHER_RADAR:
                             TriggerHotkey(HotkeyAction.ShowWeatherRadar);
                             break;
+                        case HOTKEY_VOLANTA:
+                            TriggerHotkey(HotkeyAction.ShowVolanta);
+                            break;
                         case HOTKEY_OUTSIDE_TEMP:
                             TriggerHotkey(HotkeyAction.ReadOutsideTemperature);
                             break;
@@ -792,6 +802,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_TCAS_ANNOUNCE, MOD_NONE, 0x52);            // R (Announce Tracked TCAS Traffic)
             RegisterHotKey(windowHandle, HOTKEY_TCAS_WINDOW, MOD_CONTROL, 0x52);           // Ctrl+R (TCAS Traffic Window)
             RegisterHotKey(windowHandle, HOTKEY_WEATHER_RADAR, MOD_SHIFT, 0x52);           // Shift+R (Weather Radar Window)
+            RegisterHotKey(windowHandle, HOTKEY_VOLANTA, VOLANTA_MODIFIERS, VOLANTA_KEY);  // Shift+O (Volanta window)
             RegisterHotKey(windowHandle, HOTKEY_OUTSIDE_TEMP, MOD_NONE, 0x4F);             // O (Outside Temperature)
             RegisterHotKey(windowHandle, HOTKEY_SQUAWK_CODE, MOD_NONE, 0x58);             // X (Squawk Code)
 
@@ -906,6 +917,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_TCAS_ANNOUNCE);
             UnregisterHotKey(windowHandle, HOTKEY_TCAS_WINDOW);
             UnregisterHotKey(windowHandle, HOTKEY_WEATHER_RADAR);
+            UnregisterHotKey(windowHandle, HOTKEY_VOLANTA);
             UnregisterHotKey(windowHandle, HOTKEY_OUTSIDE_TEMP);
             UnregisterHotKey(windowHandle, HOTKEY_SQUAWK_CODE);
 
@@ -1382,6 +1394,7 @@ public class HotkeyManager : IDisposable
         AnnounceTcasTraffic,
         ShowTcasWindow,
         ShowWeatherRadar,
+        ShowVolanta,   // Shift+O (output) — the Volanta live map window, also Extras > Volanta
         ReadOutsideTemperature,
         ReadSquawkCode,
         TaxiAssistForm,

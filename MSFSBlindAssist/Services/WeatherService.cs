@@ -209,8 +209,16 @@ public static class WeatherService
     /// whitespace-normalized before matching (feed raws contain newlines). Pure;
     /// null on no match / no usable geometry / malformed JSON.</summary>
     internal static List<(double Lat, double Lon)>? FindAdvisoryPolygonInGeoJson(
-        string geojson, string identityPhrase)
+        string geojson, string identityPhrase) => FindAdvisoryPolygonInGeoJson(geojson, identityPhrase, out _);
+
+    /// <summary><see cref="FindAdvisoryPolygonInGeoJson(string, string)"/>, also saying whether the
+    /// ring is the feature's WHOLE shape: false for a MultiPolygon of more than one polygon, whose
+    /// first ring is only part of it (RouteAdvisoryLocator.BuildFact). False whenever the result is
+    /// null.</summary>
+    internal static List<(double Lat, double Lon)>? FindAdvisoryPolygonInGeoJson(
+        string geojson, string identityPhrase, out bool wholeShape)
     {
+        wholeShape = false;
         try
         {
             using var doc = JsonDocument.Parse(geojson);
@@ -233,13 +241,17 @@ public static class WeatherService
                     || !geom.TryGetProperty("type", out var gt)) continue;
 
                 List<(double Lat, double Lon)>? verts = null;
+                bool whole = true;
                 try
                 {
                     JsonElement ring;
                     switch (gt.GetString())
                     {
                         case "Polygon":      ring = geom.GetProperty("coordinates")[0]; break;
-                        case "MultiPolygon": ring = geom.GetProperty("coordinates")[0][0]; break;
+                        case "MultiPolygon":
+                            ring = geom.GetProperty("coordinates")[0][0];
+                            whole = geom.GetProperty("coordinates").GetArrayLength() == 1;
+                            break;
                         default: continue;
                     }
                     var v = new List<(double Lat, double Lon)>();
@@ -248,7 +260,7 @@ public static class WeatherService
                     if (v.Count >= 3) verts = v;
                 }
                 catch { /* unusable geometry — skip this feature */ }
-                if (verts != null) return verts;
+                if (verts != null) { wholeShape = whole; return verts; }
             }
             return null;
         }
