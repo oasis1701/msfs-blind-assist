@@ -310,6 +310,9 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         // ---------- Audio panel ----------
         AddAudioVariables(v);
 
+        // ---------- The FMA speaks the autopilot modes (CessnaC172G1000Definition.Cas.cs) ----------
+        QuietModesTheFmaSpeaks(v);
+
         return v;
     }
 
@@ -553,6 +556,7 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
     /// </summary>
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
+        _loadSettle.NoteChange();
         if (NoteAudioUpdate(varName, value, announcer)) return true;
 
         if (BreakerInputEvents.ContainsKey(varName))
@@ -587,12 +591,16 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         ClearAudioBaselines();
     }
 
-    /// <summary>A flight loaded or reset re-reads every breaker and audio key; nothing standing is a change.</summary>
+    /// <summary>
+    /// A flight loaded or reset re-reads every breaker and audio key; nothing standing is a change.
+    /// The G1000 restarts too, so the CAS watcher only records until the load settles.
+    /// </summary>
     public override void OnSimContextReset()
     {
         base.OnSimContextReset();
         _breakerPulled.Clear();
         ClearAudioBaselines();
+        _loadSettle.Begin();
     }
 
     /// <summary>Coming back to this aircraft later, its first readings are not changes either.</summary>
@@ -742,9 +750,9 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
     /// stock Working Title G1000 over the Coherent debugger and presses its bezel keys, and the C172's
     /// G1000 is the same instrument on the same views (<c>AS1000_PFD</c>, <c>AS1000_MFD</c>; Marshall
     /// confirmed the MFD's title live on 2026-05-31). The keys are the DA40's: Alt+P opens the PFD;
-    /// Alt+M, Alt+N and input-mode Shift+M open the MFD (<c>OpensMfdWindow</c>). No owner is passed:
-    /// what the form hands its owner (CAS rows, display units, radio-tune notes) are DA40 callbacks
-    /// the C172 does not have, so the CAS is read in the window but not announced by itself.
+    /// Alt+M, Alt+N and input-mode Shift+M open the MFD (<c>OpensMfdWindow</c>). The aircraft is the
+    /// windows' owner (<see cref="G1000.IG1000DisplayOwner"/>): the PFD window takes the CAS
+    /// watcher's socket while it is open and feeds it the rows it reads, so the CAS keeps speaking.
     /// The windows are tracked, so a second press focuses the open one and an aircraft switch
     /// closes both (<c>DisposeTrackedWindows</c>).
     /// </summary>
@@ -756,7 +764,7 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
             hotkeyManager.ExitOutputHotkeyMode();
             ShowTrackedWindow("C172_PFD",
                 () => new Forms.DA40.CowsDA40DisplayForm(
-                    "G1000 PFD", "AS1000_PFD", "PFD", simConnect, announcer),
+                    "G1000 PFD", "AS1000_PFD", "PFD", simConnect, announcer, this),
                 w => w.Show());
             return true;
         }
@@ -769,7 +777,7 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
                 hotkeyManager.ExitOutputHotkeyMode();
             ShowTrackedWindow("C172_MFD",
                 () => new Forms.DA40.CowsDA40DisplayForm(
-                    "G1000 MFD", "AS1000_MFD", "MFD", simConnect, announcer),
+                    "G1000 MFD", "AS1000_MFD", "MFD", simConnect, announcer, this),
                 w => w.Show());
             return true;
         }

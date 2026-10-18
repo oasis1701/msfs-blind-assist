@@ -106,10 +106,12 @@ Traffic and Weather:
   Alt+G      Announce nearest ground traffic
 
 Displays and Windows:
-  Ctrl+M     Cessna 172 Monitor Manager - a checklist of everything the C172
-             announces by itself (the warnings, the stall warning, the autopilot
-             modes, the covers, the audio panel keys). Untick any you don't want
-             spoken; the choice is saved. Readout hotkeys are unaffected.
+  Ctrl+M     Cessna 172 Monitor Manager - a checklist of what the C172
+             announces by itself through MSFS Blind Assist (the RPM redline, the
+             stall warning, the autopilot and flight director going off, the
+             covers, the audio panel keys). Untick any you don't want spoken; the
+             choice is saved. Readout hotkeys are unaffected. The G1000's own
+             warnings and autopilot modes are not in it (see below).
   Shift+E    Route viewer, procedure planner and airport lookup
   Shift+L    Location Info
   Shift+M    Show METAR Report
@@ -122,8 +124,12 @@ The G1000 windows:
   Alt+M      G1000 MFD window (Alt+N and input mode Shift+M open it too)
   The windows read the G1000's screens live and press its bezel keys, the
   same windows as the COWS DA40's. Read with the arrow keys; the window's own
-  description lists its keys. The CAS is listed in the PFD window but is not
-  announced by itself on the C172.
+  description lists its keys.
+  The G1000's warnings and cautions (OIL PRESSURE, LOW VOLTS, STBY BATT,
+  LOW VACUUM, LOW FUEL L and R) are spoken as they appear on the PFD and
+  when they clear, window open or not, and so is the autopilot status line
+  (the active and armed modes). When the master goes off nothing is
+  announced; when it comes back on, every warning the G1000 shows is spoken.
 
 Hand Fly Mode Hotkeys:
   A          Read MSL
@@ -200,18 +206,19 @@ General:
   Escape     Exit active hotkey mode
 
 Automatic Announcements:
-  - Left or right fuel below 5 gallons
-  - Oil pressure at or below 20 psi
-  - Vacuum below 3.5 inches
+  - The G1000's warnings and cautions as they appear and clear on the PFD:
+    OIL PRESSURE, LOW VOLTS, STBY BATT, LOW VACUUM, LOW FUEL L, LOW FUEL R
+  - The autopilot status line (the active and armed modes) as it changes,
+    and the autopilot or flight director going off
   - Engine RPM above 2700
   - Stall warning, on and off
-  - Each autopilot mode as it engages and disengages
   - A walkaround cover installed or removed
   - A circuit breaker that pops or goes back in by itself
   - An audio panel key changed outside MSFSBA (your own picks are not repeated)
   - Pressing Starter with the engine cover still installed says so
-  Each warning speaks once and re-arms when the value recovers.
-  Mute any of these from the Monitor Manager (Ctrl+M).
+  The RPM warning speaks once and re-arms when the RPM comes back down.
+  Mute any of these from the Monitor Manager (Ctrl+M), except the G1000's
+  warnings and the autopilot status line.
   The trim announcement (Shift+T) stays quiet while the autopilot is flying,
   because the autopilot trims all the time; your own trim is spoken again
   once it disconnects.

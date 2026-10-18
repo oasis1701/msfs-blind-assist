@@ -17,10 +17,6 @@ namespace MSFSBlindAssist.Aircraft;
 public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
 {
     // Warning debounce tracking
-    private bool _lowFuelLeftWarned = false;
-    private bool _lowFuelRightWarned = false;
-    private bool _lowOilPressureWarned = false;
-    private bool _lowVacuumWarned = false;
     private bool _rpmRedlineWarned = false;
     private bool _autopilotEngaged = false;
 
@@ -253,7 +249,8 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
             // ===== AUTOPILOT MODES =====
             // RenderAsButton + Continuous + IsAnnounced: each mode is a self-updating button that
             // presses the variant's key (the G1000's GFC 700, C172-3), and its label follows the live
-            // SimVar. A mode engaging or disengaging is spoken, "ON" / "Off".
+            // SimVar. IsAnnounced also keeps each in the cache the nose wheel's read-back reads. On
+            // the G1000 the FMA speaks the modes and the rows stay quiet (IsAutopilotModeSpokenElsewhere).
 
             ["C172_AP_MASTER_STATE"] = new SimConnect.SimVarDefinition
             {
@@ -361,6 +358,9 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
 
 
             // ===== CONTINUOUS MONITORING =====
+            // Read for the status displays and the hotkeys. The low oil pressure, vacuum and fuel
+            // warnings are the G1000's own CAS messages (C172-17), so these are never spoken by
+            // themselves and have no Ctrl+M row (VAR-9).
 
             ["C172_ENGINE_RPM"] = new SimConnect.SimVarDefinition
             {
@@ -369,12 +369,7 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "rpm",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                OnlyAnnounceValueDescriptionMatches = true,
-                ValueDescriptions = new Dictionary<double, string>
-                {
-                    [2700] = "RPM redline"
-                }
+                IsAnnounced = true
             },
             ["C172_OIL_PRESSURE"] = new SimConnect.SimVarDefinition
             {
@@ -383,7 +378,8 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "psi",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ExcludeFromMonitorManager = true
             },
             ["C172_OIL_TEMP"] = new SimConnect.SimVarDefinition
             {
@@ -423,7 +419,8 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "gallons",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ExcludeFromMonitorManager = true
             },
             ["C172_FUEL_RIGHT_QTY"] = new SimConnect.SimVarDefinition
             {
@@ -432,7 +429,8 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "gallons",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ExcludeFromMonitorManager = true
             },
             ["C172_VACUUM"] = new SimConnect.SimVarDefinition
             {
@@ -441,7 +439,8 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "inHg",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ExcludeFromMonitorManager = true
             },
             // Every bus voltage SimVar reads 0 on this aircraft (`ELECTRICAL MAIN BUS VOLTAGE`, `BUS
             // VOLTAGE:n`, measured 2026-10-18 with the engine running), so the main battery's own (C172-16).
@@ -899,64 +898,9 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
             return true;
         }
 
-        // Low fuel warnings (debounced)
-        if (varName == "C172_FUEL_LEFT_QTY")
-        {
-            if (value < 5.0 && !_lowFuelLeftWarned)
-            {
-                announcer.Announce($"Warning: Left fuel low, {value:F1} gallons");
-                _lowFuelLeftWarned = true;
-            }
-            else if (value >= 5.0)
-            {
-                _lowFuelLeftWarned = false;
-            }
-            return true; // Suppress default numeric announcement for continuous fuel updates
-        }
-
-        if (varName == "C172_FUEL_RIGHT_QTY")
-        {
-            if (value < 5.0 && !_lowFuelRightWarned)
-            {
-                announcer.Announce($"Warning: Right fuel low, {value:F1} gallons");
-                _lowFuelRightWarned = true;
-            }
-            else if (value >= 5.0)
-            {
-                _lowFuelRightWarned = false;
-            }
-            return true;
-        }
-
-        // Low oil pressure warning
-        if (varName == "C172_OIL_PRESSURE")
-        {
-            if (value > 0 && value <= 20 && !_lowOilPressureWarned)
-            {
-                announcer.Announce($"Warning: Oil pressure low, {value:F0} P S I");
-                _lowOilPressureWarned = true;
-            }
-            else if (value > 20)
-            {
-                _lowOilPressureWarned = false;
-            }
-            return true;
-        }
-
-        // Low vacuum warning
-        if (varName == "C172_VACUUM")
-        {
-            if (value > 0 && value < 3.5 && !_lowVacuumWarned)
-            {
-                announcer.Announce($"Warning: Vacuum low, {value:F1} inches");
-                _lowVacuumWarned = true;
-            }
-            else if (value >= 3.5)
-            {
-                _lowVacuumWarned = false;
-            }
-            return true;
-        }
+        // A mode the variant's own display speaks (the G1000's FMA). Handled, so the generic
+        // announcer does not say it a second time; after the master's tracking above.
+        if (IsAutopilotModeSpokenElsewhere(varName, value)) return true;
 
         // RPM redline warning
         if (varName == "C172_ENGINE_RPM")
@@ -973,15 +917,22 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
             return true;
         }
 
-        // Suppress noisy continuous updates for oil temp, EGT, fuel flow, battery voltage
-        if (varName == "C172_OIL_TEMP" || varName == "C172_EGT" ||
-            varName == "C172_FUEL_FLOW" || varName == "C172_BATTERY_VOLTAGE")
+        // The silent readouts: read for the status displays and the hotkeys, never spoken. The low
+        // fuel, oil pressure and vacuum warnings are the G1000's CAS messages (C172-17).
+        if (varName is "C172_OIL_TEMP" or "C172_EGT" or "C172_FUEL_FLOW" or "C172_BATTERY_VOLTAGE"
+            or "C172_OIL_PRESSURE" or "C172_VACUUM" or "C172_FUEL_LEFT_QTY" or "C172_FUEL_RIGHT_QTY")
         {
             return true;
         }
 
         return base.ProcessSimVarUpdate(varName, value, announcer);
     }
+
+    /// <summary>
+    /// Whether an autopilot mode change is spoken by the variant's own display rather than its
+    /// row: the G1000's FMA, read from the PFD by the CAS watcher. None here.
+    /// </summary>
+    protected virtual bool IsAutopilotModeSpokenElsewhere(string varName, double value) => false;
 
     public override bool HandleUIVariableSet(string varKey, double value, SimConnect.SimVarDefinition varDef,
         SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
