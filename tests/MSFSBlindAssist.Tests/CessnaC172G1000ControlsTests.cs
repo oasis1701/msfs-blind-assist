@@ -46,6 +46,11 @@ public class CessnaC172G1000ControlsTests
         "PNEUMATICS_IE_PNEUMATICS_LEVER_VALVE_HOTAIRVALVE", "PNEUMATICS_IE_PNEUMATICS_LEVER_VALVE_COCKPITVALVE",
         "SAFETY_ELT_1", "AIRCRAFT_DOOR_WINDOW_PILOT", "AIRCRAFT_DOOR_WINDOW",
         "LIGHTING_PANEL_1", "LIGHTING_PANEL_2",
+        "AS1000_HEADING_SYNC_PFD",
+        "AS1000_COM_1_MIC_MIDCOM", "AS1000_COM_2_MIC_MIDCOM", "AS1000_COM_1_MIDCOM", "AS1000_COM_2_MIDCOM",
+        "AS1000_NAV_1_MIDCOM", "AS1000_NAV_2_MIDCOM", "AS1000_DME_MIDCOM", "AS1000_ADF_MIDCOM",
+        "AS1000_MARKERMUTE_MIDCOM", "AS1000_MARKERSENSITIVITYHIGH_MIDCOM", "AS1000_SPEAKER_MIDCOM",
+        "AS1000_ISOLATEPILOT_MIDCOM", "AS1000_ISOLATECOPILOT_MIDCOM",
     };
 
     private static readonly CessnaC172G1000Definition Def = new();
@@ -59,6 +64,9 @@ public class CessnaC172G1000ControlsTests
             .Concat(CessnaC172G1000Definition.AutopilotKeys.Values)
             .Concat(CessnaC172G1000Definition.CoverInputEvents.Values)
             .Concat(CessnaC172G1000Definition.BreakerInputEvents.Values)
+            .Concat(CessnaC172G1000Definition.AudioKeyInputEvents.Values)
+            .Concat(CessnaC172G1000Definition.MicKeys.Values)
+            .Concat(CessnaC172G1000Definition.IntercomKeys.Values)
             .Concat(Def.GetVariables().Values.Where(v => v.Type == SimVarType.InputEvent).Select(v => v.Name))
             .Distinct();
 
@@ -72,7 +80,11 @@ public class CessnaC172G1000ControlsTests
         var mapped = CessnaC172G1000Definition.SwitchInputEvents.Keys
             .Concat(CessnaC172G1000Definition.AutopilotKeys.Keys)
             .Concat(CessnaC172G1000Definition.CoverInputEvents.Keys)
-            .Concat(CessnaC172G1000Definition.BreakerInputEvents.Keys);
+            .Concat(CessnaC172G1000Definition.BreakerInputEvents.Keys)
+            .Concat(CessnaC172G1000Definition.AudioKeyInputEvents.Keys)
+            .Concat(CessnaC172G1000Definition.IntercomKeys.Keys)
+            .Concat(CessnaC172G1000Definition.VolumeEvents.Keys)
+            .Append(CessnaC172G1000Definition.TransmitKey);
 
         Assert.All(mapped, key =>
         {

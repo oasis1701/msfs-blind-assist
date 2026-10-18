@@ -1078,14 +1078,15 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
 
             case HotkeyAction.FCUSetHeading:
                 hotkeyManager.ExitInputHotkeyMode();
-                return ShowFCUInputDialog(
+                return ShowEventValueDialog(
                     "Set Heading Bug", "Heading", "0 to 359",
                     "HEADING_BUG_SET", simConnect, announcer, parentForm,
                     input =>
                     {
-                        // #242's ShowFCUInputDialog still parses with double.TryParse (NumberParsing
-                        // reached main a day after #242 branched), so these match it. Switch all four
-                        // to NumberParsing.TryParseTyped (CORE-17) once this branch takes main.
+                        // #242's dialogs still parse with double.TryParse (NumberParsing reached main a
+                        // day after #242 branched), so these match them. Switch all four, and
+                        // ShowValueDialog's parse, to NumberParsing.TryParseTyped (CORE-17) once this
+                        // branch takes main.
                         if (double.TryParse(input, out double val) && val >= 0 && val <= 359)
                             return (true, string.Empty);
                         return (false, "Enter a heading between 0 and 359");
@@ -1093,7 +1094,7 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
 
             case HotkeyAction.FCUSetAltitude:
                 hotkeyManager.ExitInputHotkeyMode();
-                return ShowFCUInputDialog(
+                return ShowEventValueDialog(
                     "Set AP Altitude", "Altitude", "0 to 25000 feet",
                     "AP_ALT_VAR_SET_ENGLISH", simConnect, announcer, parentForm,
                     input =>
@@ -1105,7 +1106,7 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
 
             case HotkeyAction.FCUSetVS:
                 hotkeyManager.ExitInputHotkeyMode();
-                return ShowFCUInputDialog(
+                return ShowEventValueDialog(
                     "Set AP Vertical Speed", "Vertical Speed", "-2000 to 2000 fpm",
                     "AP_VS_VAR_SET_ENGLISH", simConnect, announcer, parentForm,
                     input =>
@@ -1120,7 +1121,7 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
 
             case HotkeyAction.FCUSetBaro:
                 hotkeyManager.ExitInputHotkeyMode();
-                return ShowFCUInputDialog(
+                return ShowEventValueDialog(
                     "Set Altimeter", "Barometric Pressure", "28.00 to 31.00 inHg",
                     "KOHLSMAN_SET", simConnect, announcer, parentForm,
                     input =>
@@ -1136,6 +1137,47 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
 
         return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
     }
+
+    /// <summary>
+    /// A typed value in a window that STAYS OPEN after Enter, so the next value can be typed straight
+    /// away, as every other aircraft's value dialogs do (the owner's test, 2026-10-17: the C172's alone
+    /// closed). `ValueInputForm`'s callback mode applies each Enter and keeps the window; Escape closes it.
+    /// Not modal. <paramref name="apply"/> runs on the UI thread with the parsed value.
+    /// </summary>
+    protected static bool ShowValueDialog(string title, string parameterType, string rangeText,
+        SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer, Form parentForm,
+        Func<string, (bool isValid, string message)> validator, Action<double> apply)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return false;
+        }
+
+        var dialog = new Forms.ValueInputForm(title, parameterType, rangeText, announcer, validator,
+            new List<Forms.ToggleButtonDef>(),
+            input =>
+            {
+                if (double.TryParse(input, out double value)) apply(value);
+            });
+        dialog.ShowCancelButton = false;
+        dialog.Show(parentForm);
+        return true;
+    }
+
+    /// <summary>
+    /// <see cref="ShowValueDialog"/> for a value one stock event sets: sends it (through
+    /// <paramref name="valueConverter"/>, else the whole number) and confirms it, as the base class's
+    /// closing dialog did.
+    /// </summary>
+    private static bool ShowEventValueDialog(string title, string parameterType, string rangeText, string eventName,
+        SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer, Form parentForm,
+        Func<string, (bool isValid, string message)> validator, Func<double, uint>? valueConverter = null)
+        => ShowValueDialog(title, parameterType, rangeText, simConnect, announcer, parentForm, validator, value =>
+        {
+            simConnect.SendEvent(eventName, valueConverter != null ? valueConverter(value) : (uint)value);
+            announcer.AnnounceImmediate($"{parameterType} set to {value}");
+        });
 
     public override void RequestFCUHeading(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {

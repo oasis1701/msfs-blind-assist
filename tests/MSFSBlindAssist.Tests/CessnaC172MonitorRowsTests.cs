@@ -52,8 +52,8 @@ public class CessnaC172MonitorRowsTests
         }
     }
 
-    // The G1000's GFC 700 adds the flight director and FLC to the spoken modes, and its walkaround
-    // covers are spoken when they move; the Classic has none of them.
+    // The G1000's GFC 700 adds the flight director and FLC to the spoken modes, its walkaround covers
+    // are spoken when they move, and so are its audio panel keys; the Classic has none of them.
     [Fact]
     public void The_g1000_only_spoken_variables_have_rows_on_the_g1000_alone()
     {
@@ -61,11 +61,24 @@ public class CessnaC172MonitorRowsTests
         {
             "C172G_AP_FD_STATE", "C172G_AP_FLC_STATE",
             "C172G_COVER_ENGINE", "C172G_COVER_PITOT", "C172G_COVER_STATIC",
+            "C172G_AUDIO_TRANSMIT", "C172G_AUDIO_COM1", "C172G_AUDIO_COM2", "C172G_AUDIO_NAV1",
+            "C172G_AUDIO_NAV2", "C172G_AUDIO_DME", "C172G_AUDIO_ADF", "C172G_AUDIO_MKR_MUTE",
+            "C172G_AUDIO_HI_SENS", "C172G_AUDIO_SPKR",
         };
         var g1000 = RowKeys("C172_G1000");
         var classic = RowKeys("C172_CLASSIC");
 
         Assert.All(g1000Only, key => Assert.Contains(key, g1000));
         Assert.All(g1000Only, key => Assert.DoesNotContain(key, classic));
+    }
+
+    // The intercom's two SimVars are cached for the audio panel's status list and never spoken.
+    [Fact]
+    public void The_intercom_simvars_have_no_row()
+    {
+        var g1000 = RowKeys("C172_G1000");
+
+        Assert.DoesNotContain(CessnaC172G1000Definition.IntercomActiveKey, g1000);
+        Assert.DoesNotContain(CessnaC172G1000Definition.IntercomModeKey, g1000);
     }
 }

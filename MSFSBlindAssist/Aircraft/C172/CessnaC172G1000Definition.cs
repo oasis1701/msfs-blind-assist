@@ -25,7 +25,7 @@ namespace MSFSBlindAssist.Aircraft;
 /// press of the bezel key, so every mode behaves as the real key does (AP engages in ROL and PIT, FD is
 /// refused while the AP flies, FLC is refused until an altitude has been selected).
 /// </summary>
-public class CessnaC172G1000Definition : CessnaC172BaseDefinition
+public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
 {
     public override string AircraftName => "Cessna 172 Skyhawk (G1000)";
     public override string AircraftCode => "C172_G1000";
@@ -85,6 +85,8 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
         ["C172G_AP_FLC_STATE"] = "AS1000_AUTOPILOT_FLIGHTLEVELCHANGE_PFD",
         ["C172G_AP_NOSE_UP"] = "AS1000_AUTOPILOT_VERTICALSPEED_UP_PFD",
         ["C172G_AP_NOSE_DN"] = "AS1000_AUTOPILOT_VERTICALSPEED_DOWN_PFD",
+        // The HDG knob's push, which syncs the bug to the current heading (measured: 0 to 039 at 039).
+        ["C172G_AP_HDG_SYNC"] = "AS1000_HEADING_SYNC_PFD",
     };
 
     /// <summary>Walkaround covers and the input event that toggles each one.</summary>
@@ -276,6 +278,38 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
         v["C172G_AP_VNV"] = KeyPress("AS1000_AUTOPILOT_VERTICAL_NAVIGATION_PFD", "VNAV");
         v["C172G_AP_NOSE_UP"] = KeyPress("AS1000_AUTOPILOT_VERTICALSPEED_UP_PFD", "Nose Up");
         v["C172G_AP_NOSE_DN"] = KeyPress("AS1000_AUTOPILOT_VERTICALSPEED_DOWN_PFD", "Nose Down");
+        v["C172G_AP_HDG_SYNC"] = KeyPress("AS1000_HEADING_SYNC_PFD", "Heading Sync");
+        // The CRS knob, typed. It sets the course of whatever the CDI is on (C172-11), so the write is
+        // chosen from the two reads below at the moment it goes out (`SetCourseAsync`). An L:var name
+        // nobody reads, never written: the definition handles every set, and a typo is NaN, not north.
+        v["C172G_AP_CRS_SET"] = new SimVarDefinition
+        {
+            Name = "C172G_AP_CRS_SET",
+            DisplayName = "Course",
+            Type = SimVarType.LVar,
+            Units = "number",
+            UpdateFrequency = UpdateFrequency.Never,
+            UnparseableTextAsNaN = true
+        };
+        // Which source the CDI is on: GPS DRIVES NAV1 is 1 on GPS, otherwise AUTOPILOT NAV SELECTED
+        // names the NAV radio (measured stepping the CDI softkey GPS, LOC1, LOC2: 1/1, 0/1, 0/2). Read
+        // only by the typed course.
+        v["C172G_CDI_GPS"] = new SimVarDefinition
+        {
+            Name = "GPS DRIVES NAV1",
+            DisplayName = "CDI on GPS",
+            Type = SimVarType.SimVar,
+            Units = "Bool",
+            UpdateFrequency = UpdateFrequency.OnRequest
+        };
+        v["C172G_CDI_NAV"] = new SimVarDefinition
+        {
+            Name = "AUTOPILOT NAV SELECTED",
+            DisplayName = "CDI NAV radio",
+            Type = SimVarType.SimVar,
+            Units = "number",
+            UpdateFrequency = UpdateFrequency.OnRequest
+        };
         v["C172G_AP_IAS_VALUE"] = new SimVarDefinition
         {
             Name = "AUTOPILOT AIRSPEED HOLD VAR",
@@ -303,6 +337,9 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
             Units = "degrees",
             UpdateFrequency = UpdateFrequency.OnRequest
         };
+
+        // ---------- Audio panel ----------
+        AddAudioVariables(v);
 
         return v;
     }
@@ -409,6 +446,7 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
     {
         var structure = base.GetPanelStructure();
         structure["Electrical"].Add("Standby Battery");
+        structure["Radios"].Add(AudioPanel);
         structure["Safety"].Add(EltPanel);
         structure["Lights"].Add(InteriorLightsPanel);
         structure["Autopilot"] = new List<string> { AutopilotPanel };
@@ -431,8 +469,10 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
             "C172_AP_HDG_STATE", "C172_AP_NAV_STATE", "C172_AP_APR_STATE", "C172_AP_BC_STATE",
             "C172_AP_ALT_STATE", "C172_AP_VS_STATE", "C172G_AP_FLC_STATE", "C172G_AP_VNV",
             "C172G_AP_NOSE_UP", "C172G_AP_NOSE_DN",
-            "C172_AP_HDG_VALUE", "C172_AP_ALT_VALUE", "C172_AP_VS_VALUE", "C172G_AP_IAS_VALUE"
+            "C172_AP_HDG_VALUE", "C172G_AP_HDG_SYNC", "C172G_AP_CRS_SET",
+            "C172_AP_ALT_VALUE", "C172_AP_VS_VALUE", "C172G_AP_IAS_VALUE"
         };
+        controls[AudioPanel] = new List<string>(AudioControls);
 
         controls["Anti-Ice"] = new List<string> { "C172_PITOT_HEAT_STATE", "C172G_ALT_STATIC_STATE" };
         controls["Covers"] = new List<string> { "C172G_COVER_ENGINE", "C172G_COVER_PITOT", "C172G_COVER_STATIC" };
@@ -451,6 +491,8 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
     {
         var display = base.GetPanelDisplayVariables();
         display[OilCheckPanel] = new List<string> { "C172G_OIL_QUANTITY" };
+        // The intercom lamps: "PILOT: Off", "COPLT: Off".
+        display[AudioPanel] = new List<string> { IntercomActiveKey, IntercomModeKey };
         return display;
     }
 
@@ -461,6 +503,7 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
             displayText = DescribeOilQuantity(value);
             return true;
         }
+        if (TryGetIntercomDisplay(varKey, value, out displayText)) return true;
         return base.TryGetDisplayOverride(varKey, value, out displayText);
     }
 
@@ -484,6 +527,18 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
         if (SwitchInputEvents.TryGetValue(varKey, out string? switchEvent))
         {
             SetInputEvent(switchEvent, value, varDef, simConnect, announcer);
+            return true;
+        }
+
+        if (HandleAudioSet(varKey, value, varDef, simConnect, announcer)) return true;
+
+        if (varKey == "C172G_AP_CRS_SET")
+        {
+            // Refused outside 0-360, never wrapped or clamped; 0 and 360 are north.
+            if (double.IsNaN(value) || value < 0 || value > 360)
+                announcer.AnnounceImmediate("Enter a course between 0 and 360");
+            else
+                _ = SetCourseAsync((int)Math.Round(value) % 360, simConnect, announcer);
             return true;
         }
 
@@ -519,12 +574,14 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
         if (AutopilotKeys.TryGetValue(varKey, out string? key))
         {
             if (!SetInputEvent(key, 1, varDef, simConnect, announcer)) return true;
-            // The nose wheel and VNV have no state to read back, so say what they did: the nose
-            // wheel's new target, VNV that it was pressed.
+            // The nose wheel, VNV and the heading sync have no state of their own to read back, so say
+            // what they did: the nose wheel's new target, VNV that it was pressed, the synced bug.
             if (varKey is "C172G_AP_NOSE_UP" or "C172G_AP_NOSE_DN")
                 _ = AnnounceNoseWheelTargetAsync(varDef.DisplayName, simConnect, announcer);
             else if (varKey == "C172G_AP_VNV")
                 announcer.Announce($"{varDef.DisplayName} pressed");
+            else if (varKey == "C172G_AP_HDG_SYNC")
+                _ = AnnounceHeadingBugAsync(varDef.DisplayName, simConnect, announcer);
             return true;
         }
 
@@ -558,6 +615,8 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
     /// </summary>
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
+        if (NoteAudioUpdate(varName, value, announcer)) return true;
+
         if (BreakerInputEvents.ContainsKey(varName))
         {
             bool pulled = value >= 0.5;
@@ -582,25 +641,28 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
         return $"{name} breaker {(pulled ? "popped" : "in")}";
     }
 
-    /// <summary>A new flight's first breaker readings are where they stand, not changes.</summary>
+    /// <summary>A new flight's first breaker and audio readings are where they stand, not changes.</summary>
     public override void ResetAnnouncementBaselines()
     {
         base.ResetAnnouncementBaselines();
         _breakerPulled.Clear();
+        ClearAudioBaselines();
     }
 
-    /// <summary>A flight loaded or reset re-reads every breaker; nothing standing is a change.</summary>
+    /// <summary>A flight loaded or reset re-reads every breaker and audio key; nothing standing is a change.</summary>
     public override void OnSimContextReset()
     {
         base.OnSimContextReset();
         _breakerPulled.Clear();
+        ClearAudioBaselines();
     }
 
-    /// <summary>Coming back to this aircraft later, its first breaker readings are not changes either.</summary>
+    /// <summary>Coming back to this aircraft later, its first readings are not changes either.</summary>
     public override void OnSwitchedAway()
     {
         base.OnSwitchedAway();
         _breakerPulled.Clear();
+        ClearAudioBaselines();
     }
 
     /// <summary>
@@ -687,6 +749,57 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
     }
 
     /// <summary>
+    /// The typed course, written to whatever the CDI is on, read at the moment of the write (C172-11): the
+    /// stock event for that receiver, each measured to land exactly (90 set 90). Never the CRS knob's own
+    /// input event, whose direction was unreliable (the same +1 raised NAV 1's course and lowered NAV 2's).
+    /// Over SimConnect, no calculator path. Awaited on the UI thread.
+    /// </summary>
+    private static async Task SetCourseAsync(int degrees, SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+        if (await simConnect.ReadFreshAsync("C172G_CDI_GPS", 1500) is not double onGps
+            || await simConnect.ReadFreshAsync("C172G_CDI_NAV", 1500) is not double navRadio)
+        {
+            announcer.AnnounceImmediate("The CDI source could not be read. Course not set.");
+            return;
+        }
+        simConnect.SendEvent(CourseEventFor(onGps >= 0.5, navRadio >= 1.5 ? 2 : 1), (uint)degrees);
+        announcer.AnnounceImmediate("Course " + HeadingDigits(degrees));
+    }
+
+    /// <summary>
+    /// The course event for the CDI's source, the receiver the CRS knob moves: GPS OBS on GPS (measured:
+    /// the knob moved `GPS OBS VALUE` there), otherwise the NAV radio's OBS. Pure so the suite can pin it.
+    /// </summary>
+    internal static string CourseEventFor(bool onGps, int navRadio) =>
+        onGps ? "GPS_OBS_SET" : navRadio == 2 ? "VOR2_SET" : "VOR1_SET";
+
+    /// <summary>
+    /// A heading or course as a pilot says it, three digits, north as 360: "039", "360". Pure so the suite
+    /// can pin it.
+    /// </summary>
+    internal static string HeadingDigits(double degrees)
+    {
+        int d = ((int)Math.Round(degrees) % 360 + 360) % 360;
+        return (d == 0 ? 360 : d).ToString("000", CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>The heading bug the sync moved it to, read back after the key lands, on the UI thread.</summary>
+    private static async Task AnnounceHeadingBugAsync(string displayName, SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer)
+    {
+        await Task.Delay(300);
+        if (await simConnect.ReadFreshAsync("C172_AP_HDG_VALUE", 1500) is double bug)
+            announcer.AnnounceImmediate("Heading bug " + HeadingDigits(bug));
+        else
+            announcer.Announce($"{displayName} pressed");
+    }
+
+    /// <summary>
     /// The G1000 windows, from the COWS DA40 (#242): <see cref="Forms.DA40.CowsDA40DisplayForm"/> reads the
     /// stock Working Title G1000 over the Coherent debugger and presses its bezel keys, and the C172's
     /// G1000 is the same instrument on the same views (<c>AS1000_PFD</c>, <c>AS1000_MFD</c>; Marshall
@@ -746,30 +859,22 @@ public class CessnaC172G1000Definition : CessnaC172BaseDefinition
     /// the GFC 700 refuses FLC until one is selected (DA40A-2), so one knob step goes first and the
     /// exact value is written after it lands. Both over SimConnect: no MobiFlight needed.
     /// </summary>
-    private bool ShowSelectedAltitudeDialog(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, Form parentForm)
+    private static bool ShowSelectedAltitudeDialog(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, Form parentForm)
     {
-        if (!simConnect.IsConnected)
-        {
-            announcer.AnnounceImmediate("Not connected to simulator.");
-            return false;
-        }
-
         // #242's dialogs still parse with double.TryParse (NumberParsing reached main a day after
         // #242 branched), so this matches them. Switch to NumberParsing.TryParseTyped (CORE-17) once
-        // this branch takes main.
-        var dialog = new Forms.ValueInputForm("Set Selected Altitude", "Altitude", "0 to 25000 feet", announcer,
+        // this branch takes main. The window stays open after Enter, as the other aircraft's do.
+        return ShowValueDialog("Set Selected Altitude", "Altitude", "0 to 25000 feet", simConnect, announcer, parentForm,
             input => double.TryParse(input, out double val) && val >= 0 && val <= 25000
                 ? (true, string.Empty)
-                : (false, "Enter an altitude between 0 and 25000 feet"));
-        if (dialog.ShowDialog(parentForm) != DialogResult.OK || !dialog.IsValidInput
-            || !double.TryParse(dialog.InputValue, out double typed))
-            return false;
-
-        int feet = (int)(Math.Round(typed / 100.0) * 100.0);
-        simConnect.SendEvent("AP_ALT_VAR_INC");
-        _ = WriteSelectedAltitudeAfterStepAsync(simConnect, feet);
-        announcer.AnnounceImmediate($"Selected altitude {feet.ToString(CultureInfo.CurrentCulture)} feet");
-        return true;
+                : (false, "Enter an altitude between 0 and 25000 feet"),
+            typed =>
+            {
+                int feet = (int)(Math.Round(typed / 100.0) * 100.0);
+                simConnect.SendEvent("AP_ALT_VAR_INC");
+                _ = WriteSelectedAltitudeAfterStepAsync(simConnect, feet);
+                announcer.AnnounceImmediate($"Selected altitude {feet.ToString(CultureInfo.CurrentCulture)} feet");
+            });
     }
 
     /// <summary>The exact altitude, half a second after the knob step, on the UI thread.</summary>
