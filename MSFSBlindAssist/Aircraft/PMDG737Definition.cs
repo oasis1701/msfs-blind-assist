@@ -4938,6 +4938,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // -------------------------------------------------------------
             case "ALTIMETER_SETTING":
             {
+                if (_baroCheckQuiet) return true;   // speaks where Ctrl+B's STD check lands, not its steps
                 if (double.IsNaN(_lastAnnouncedAltimeter))
                 {
                     _lastAnnouncedAltimeter = value;
@@ -6070,6 +6071,12 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     private Task? _baroKnobOp;
     private Task? _minsKnobOp;
 
+    // True while Ctrl+B's STD check (SetBaroFromStandardAsync) turns the knob: its check click and
+    // STD push each leave a reading the pilot did not ask for, so ProcessSimVarUpdate consumes
+    // ALTIMETER_SETTING silently until the turn has settled, and the next delivery speaks where it
+    // landed, once. UI thread only, like _baroKnobOp.
+    private bool _baroCheckQuiet;
+
     // Transponder-mode closed-loop walk re-entrancy guard (HandleUIVariableSet
     // 4b; the walk itself is PMDGNG3DataManager.WalkSelectorClosedLoop).
     private Task? _xpdrWalkOp;
@@ -6170,41 +6177,23 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 if (curInHg == null) { announcer.AnnounceImmediate("Altimeter not available"); return; }
                 if (!EventIds.TryGetValue("EVT_EFIS_CPT_BARO", out int baroEvId)) return;
 
-                // STD-mode lockout fix: when STD is active, ALTIMETER_SETTING reads
-                // ~29.92 and rotate-clicks fire behind the STD mask with no visible
-                // effect. Detect "STD likely active" via the 29.92 tolerance, and if
-                // the user's target value is meaningfully different from 29.92 inHg,
-                // disengage STD first via EVT_EFIS_CPT_BARO_STD, then re-read the
-                // baro to compute clicks against the post-STD value.
-                double targetInHg = value >= 100 ? value / 33.8639 : value;
-                bool likelyStdActive = Math.Abs(curInHg.Value - 29.92) < 0.005;
-                bool targetIsAtStd   = Math.Abs(targetInHg - 29.92) < 0.005;
-                if (likelyStdActive && !targetIsAtStd)
+                // STD lockout: with STD on, ALTIMETER_SETTING reads 29.92 and the clicks only move
+                // the preselect behind it. A local 29.92 reads the same and the NG3 has no STD
+                // flag, so from a reading of 29.92 the knob is asked first (Pmdg737Baro): pushing
+                // STD on a guess turned a local 29.92 INTO STD.
+                if (Pmdg737Baro.NeedsStdCheck(curInHg.Value, value)
+                    && EventIds.TryGetValue("EVT_EFIS_CPT_BARO_STD", out int stdEvId))
                 {
-                    if (EventIds.TryGetValue("EVT_EFIS_CPT_BARO_STD", out int stdEvId))
-                    {
-                        _baroKnobOp = DisengageStdThenRotateAsync(
-                            simConnect, (uint)stdEvId, (uint)baroEvId, targetInHg, announcer);
-                        return;
-                    }
+                    _baroKnobOp = SetBaroFromStandardAsync(
+                        new CaptainBaroKnob(simConnect, (uint)baroEvId, (uint)stdEvId),
+                        curInHg.Value, value, announcer);
+                    return;
                 }
 
                 var dm = simConnect.PMDGDataManager;
                 bool hpaMode = dm != null && (int)dm.GetFieldValue("EFIS_BaroSelHPA_0") == 1;
 
-                int clicks;
-                if (hpaMode)
-                {
-                    int curHpa = (int)Math.Round(curInHg.Value * 33.8639);
-                    int tgtHpa = (int)Math.Round(value >= 100 ? value : value * 33.8639);
-                    clicks = tgtHpa - curHpa;                                  // 1 hPa per click
-                }
-                else
-                {
-                    double tgtInHg = value >= 100 ? value / 33.8639 : value;
-                    clicks = (int)Math.Round((tgtInHg - curInHg.Value) / 0.01); // 0.01 inHg per click
-                }
-
+                int clicks = Pmdg737Baro.ClicksTo(curInHg.Value, value, hpaMode);
                 if (clicks == 0) return;
                 // RIGHTSINGLE (0x80000000) = up, LEFTSINGLE (0x20000000) = down.
                 uint flag = clicks > 0 ? 0x80000000u : 0x20000000u;
@@ -6229,40 +6218,56 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
     }
 
-    // STD-mode lockout fix: toggles STD off, awaits sim settle, re-reads the
-    // post-STD altimeter, then rotates the baro knob to the user's target.
-    // Called only when STD appeared active at submit time and the user's
-    // target value is meaningfully different from 29.92 inHg.
-    private static async Task DisengageStdThenRotateAsync(
-        SimConnect.SimConnectManager simConnect, uint stdEventId, uint baroEventId,
-        double targetInHg, ScreenReaderAnnouncer announcer)
+    // Ctrl+B from a reading of 29.92, which is STD or a local 29.92 (Pmdg737Baro): one click shows
+    // which, then the turn counts from a reading delivered after the click or the STD push. The
+    // altimeter callout stays quiet until the last click has settled (_baroCheckQuiet).
+    private async Task SetBaroFromStandardAsync(
+        IPmdg737BaroKnob knob, double currentInHg, double typed, ScreenReaderAnnouncer announcer)
     {
-        // Press EVT_EFIS_CPT_BARO_STD once to toggle STD off.
-        await simConnect.SendPMDGMomentaryToggle(stdEventId, 1);
-        await Task.Delay(200);
-
-        // Re-read the now post-STD altimeter setting.
-        double? curInHg = simConnect.GetCachedVariableValue("ALTIMETER_SETTING");
-        if (curInHg == null) { announcer.AnnounceImmediate("Altimeter not available"); return; }
-
-        var dm = simConnect.PMDGDataManager;
-        bool hpaMode = dm != null && (int)dm.GetFieldValue("EFIS_BaroSelHPA_0") == 1;
-
-        int clicks;
-        if (hpaMode)
+        _baroCheckQuiet = true;
+        try
         {
-            int curHpa = (int)Math.Round(curInHg.Value * 33.8639);
-            int tgtHpa = (int)Math.Round(targetInHg * 33.8639);
-            clicks = tgtHpa - curHpa;
+            if (!await Pmdg737Baro.SetFromStandardAsync(knob, currentInHg, typed))
+            {
+                announcer.AnnounceImmediate("Altimeter not available");
+                return;
+            }
+            await Task.Delay(Pmdg737Baro.SettleMs);
         }
-        else
+        finally
         {
-            clicks = (int)Math.Round((targetInHg - curInHg.Value) / 0.01);
+            _baroCheckQuiet = false;
+        }
+    }
+
+    // The captain's baro knob as Pmdg737Baro turns it. ALTIMETER_SETTING is batch-covered (1 Hz),
+    // so a read waits out the settle and then for the next delivery, never the cache, which can
+    // predate the click or the push by up to a second.
+    private sealed class CaptainBaroKnob(
+        SimConnect.SimConnectManager simConnect, uint baroEventId, uint stdEventId) : IPmdg737BaroKnob
+    {
+        public bool HpaDisplay =>
+            simConnect.PMDGDataManager is { } dm && (int)dm.GetFieldValue("EFIS_BaroSelHPA_0") == 1;
+
+        // RIGHTSINGLE (0x80000000) = up, LEFTSINGLE (0x20000000) = down.
+        public Task TurnAsync(int clicks) => RotateBaroKnobAsync(
+            simConnect, baroEventId, clicks > 0 ? 0x80000000u : 0x20000000u, Math.Min(Math.Abs(clicks), 200));
+
+        public Task PushStdAsync()
+        {
+            Log.Debug("PMDG737", "Ctrl+B STD check: the click left the reading at 29.92, so STD is on; pushing STD");
+            return simConnect.SendPMDGMomentaryToggle(stdEventId, 1);
         }
 
-        if (clicks == 0) return;
-        uint flag = clicks > 0 ? 0x80000000u : 0x20000000u;
-        await RotateBaroKnobAsync(simConnect, baroEventId, flag, Math.Min(Math.Abs(clicks), 200));
+        public async Task<double?> ReadSettledAsync()
+        {
+            await Task.Delay(Pmdg737Baro.SettleMs);
+            double? inHg = await simConnect.ReadFreshAsync("ALTIMETER_SETTING", Pmdg737Baro.ReadTimeoutMs);
+            Log.Debug("PMDG737", inHg is double v
+                ? FormattableString.Invariant($"Ctrl+B STD check read {v:0.000} inHg")
+                : "Ctrl+B STD check: nothing delivered");
+            return inHg;
+        }
     }
 
     // Stateless mins dispatch: zero the knob via RST, then rotate up by

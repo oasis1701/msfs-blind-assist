@@ -126,6 +126,25 @@ Implementation in PMDG737Definition.HandleHotkeyAction. MainForm has no generic
 fallback for these actions — every PMDG aircraft must implement them or the
 hotkey silently does nothing.
 
+**STD cannot be read; the knob says.** PMDG ignores absolute baro writes, so `Ctrl+B`
+turns the captain's baro knob. The NG3 SDK's EFIS block has no STD flag, and STD
+reads 29.92 inHg exactly as a local 29.92 does. With STD on, a click moves only
+the preselect shown under STD and the reading stays at 29.92. So from a reading
+of 29.92 the dialog asks the knob (`Pmdg737Baro.SetFromStandardAsync`): one click
+toward the target, then a settled read. A reading that moved means STD is off and
+the turn goes on from there; a reading still at 29.92 means STD is on, so STD is
+pushed off and the turn counts from the reading after the push. Until 2026-10
+the dialog pushed STD on any reading of 29.92, which turned a local 29.92 INTO
+STD. Every read after a click or a push waits out `Pmdg737Baro.SettleMs`, then
+for the next delivery (`ReadFreshAsync`): ALTIMETER_SETTING is batch-covered, so
+the cache can predate the action by up to a second, and the old 200 ms re-read
+counted the clicks from the 29.92 it had before the push. The altimeter callout
+stays quiet while the check runs and speaks where the knob landed, once. The B
+readout and the callout still say "Altimeter standard" for any reading of 29.92,
+a local one included. Unmeasured: whether PMDG drives the stock
+`KOHLSMAN SETTING STD:1`; a read across an STD push would show whether STD can be
+read after all.
+
 ## Guarded selector dispatch
 
 Two primitives on IPMDGDataManager:
