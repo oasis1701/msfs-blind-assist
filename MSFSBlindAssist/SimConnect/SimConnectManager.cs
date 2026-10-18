@@ -459,6 +459,8 @@ public partial class SimConnectManager
     private string currentAircraftTitle = "";    // TITLE simvar value (aircraft.cfg [FLTSIM.N] title)
     /// <summary>The loaded aircraft's TITLE (e.g. "737-700 PAX BW SC"). Empty until aircraft detection completes.</summary>
     public string CurrentAircraftTitle => currentAircraftTitle;
+    /// <summary>The user aircraft's ATC ID (its tail number or callsign in the sim). Empty until read.</summary>
+    public string CurrentAircraftAtcId => currentAircraftAtcId;
     /// <summary>Extracted ICAO type designator for the current aircraft (e.g. "B77W"). Empty if not yet known.</summary>
     public string CurrentAircraftIcaoType { get; private set; } = "";
 
@@ -530,11 +532,14 @@ public partial class SimConnectManager
         // The FIRST of CameraReadIdCount (8) ids, 341-348: each read goes out under its own id
         // (CameraReadWaiters), so keep 342-348 free (pinned by CameraReadWaitersTests).
         REQUEST_CAMERA_VIEW = 341,
-        REQUEST_GPS_WAYPOINT = 351,   // NOT 341-349: 341-348 are the camera read's rotating ids, 349 is COM 1
-        REQUEST_FLIGHT_ATTITUDE = 350,
         // COM 1 active + standby, one-shot (RequestCom1Radio). 349: the first id past the
         // camera's rotating 341-348.
         REQUEST_COM1_RADIO = 349,
+        // IS SLEW ACTIVE and SIMULATION RATE, SIM_FRAME + CHANGED (SimConnectManager.SimState.cs).
+        REQUEST_SLEW_STATE = 350,
+        REQUEST_SIM_RATE = 351,
+        REQUEST_GPS_WAYPOINT = 352,   // NOT 341-351: 341-348 are the camera read's rotating ids, 349 is COM 1, 350/351 the sim state
+        REQUEST_FLIGHT_ATTITUDE = 353,
         REQUEST_AI_TRAFFIC = 500,
         // The ground-traffic monitor's own by-type sweeps (same DEF_AI_TRAFFIC definition, a small
         // radius), on their OWN ids so a completion can never be confused with a TCAS or other
@@ -617,9 +622,11 @@ public partial class SimConnectManager
         // to CameraViewData, so a definition landing at 342 would have its SingleValue answer
         // mis-cast. Pinned by CameraReadWaitersTests.
         DEF_CAMERA_VIEW = 341,
-        DEF_GPS_WAYPOINT = 351,   // NOT 341-349: 341-348 are the camera read's rotating ids, 349 is COM 1
-        DEF_FLIGHT_ATTITUDE = 350,
         DEF_COM1_RADIO = 349,
+        DEF_SLEW_STATE = 350,
+        DEF_SIM_RATE = 351,
+        DEF_GPS_WAYPOINT = 352,   // NOT 341-351: 341-348 are the camera read's rotating ids, 349 is COM 1, 350/351 the sim state
+        DEF_FLIGHT_ATTITUDE = 353,
         DEF_AI_TRAFFIC = 500,
         // KEEP 600-607 FREE: the ground-traffic sweeps' rotating request ids (DATA_REQUESTS
         // .REQUEST_GROUND_TRAFFIC), and this enum is a request-id namespace too.
@@ -638,7 +645,10 @@ public partial class SimConnectManager
         AircraftLoaded = 9000,
         // "Frame": once per rendered frame, subscribed only while the Sim Performance window is open
         // (SimConnectManager.FrameRate.cs).
-        Frame = 9001
+        Frame = 9001,
+        // Pause and flight-running state, always subscribed (SimConnectManager.SimState.cs).
+        PauseEx1 = 9002,
+        Sim = 9003
     }
 
 
@@ -1439,6 +1449,7 @@ public partial class SimConnectManager
                 simConnect.OnRecvException -= SimConnect_OnRecvException;
                 simConnect.OnRecvEventFilename -= SimConnect_OnRecvEventFilename;
                 simConnect.OnRecvEventFrame -= SimConnect_OnRecvEventFrame;
+                simConnect.OnRecvEvent -= SimConnect_OnRecvEvent;
 
                 Log.Debug("SimConnect", "Event handlers unregistered, disposing SimConnect...");
             }

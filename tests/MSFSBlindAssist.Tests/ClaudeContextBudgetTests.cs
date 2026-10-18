@@ -701,13 +701,14 @@ public class ClaudeContextBudgetTests
     private static readonly Dictionary<string, string[]> CoverageExemptions = new(StringComparer.Ordinal)
     {
         ["CLAUDE.md always loads, and its rules for any file cover these: CORE-7 and CORE-8 (screen-reader output), "
-            + "CORE-12 (controls), CORE-13 (the database path and its dialogs), CORE-14 and CORE-15 (logging), and VAT-13 "
-            + "(settings panels; an area that owns a panel globs it as well)"] = new[]
+            + "CORE-12 (controls), CORE-13 (the database path and its dialogs), CORE-14 and CORE-15 (logging), CORE-17 "
+            + "(number parsing), and VAT-13 (settings panels; an area that owns a panel globs it as well)"] = new[]
         {
             "MSFSBlindAssist/Accessibility/", "MSFSBlindAssist/Controls/", "MSFSBlindAssist/Utils/Logging/",
             "MSFSBlindAssist/Utils/AppLogs.cs", "MSFSBlindAssist/Database/DatabasePathResolver.cs",
             "MSFSBlindAssist/Database/DatabaseSelector.cs", "MSFSBlindAssist/Forms/DatabaseSettingsForm.cs",
             "MSFSBlindAssist/Forms/DatabaseMismatchDialog.cs", "MSFSBlindAssist/Forms/Settings/",
+            "MSFSBlindAssist/Utils/NumberParsing.cs",
         },
         ["app scaffolding that no feature's rules apply to"] = new[]
         {
@@ -790,7 +791,7 @@ public class ClaudeContextBudgetTests
         {
             "ROL-10 ExitBearingTrue", "ROL-21 ExitBearingTrue", "ROL-28 DistanceFromThresholdFeet", "SI-7 ParkingSpot.Radius",
             "SI-13 TaxiPathStampUtc", "SIC-23 ClearanceText", "STR-6 TurnAngleDegrees", "STR-16 TurnDirection",
-            "SUR-12 TaxiNode.Type", "HLD-5 RunwayCenterline", "ROL-32 VisualGuidanceProfile", "ROL-32 FlareTriggerWheelHeightFt",
+            "SUR-12 TaxiNode.Type", "HLD-5 RunwayCenterline", "ROL-35 VisualGuidanceProfile", "ROL-35 FlareTriggerWheelHeightFt",
         },
         ["a setting the rule's code reads or writes"] = new[]
         {

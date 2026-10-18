@@ -78,7 +78,7 @@ Electric fuel pump off at a safe height (Fuel System)
 [Climb]
 Climb 73 KIAS, flaps UP
 Mixture full rich. Lean only with the cylinder heads in range (Mixture and Propeller)
-Cylinder head and oil temperatures in the green (output Shift+O)
+Cylinder head and oil temperatures in the green (output Shift+P)
 Landing light off when clear of the circuit
 
 [Cruise]

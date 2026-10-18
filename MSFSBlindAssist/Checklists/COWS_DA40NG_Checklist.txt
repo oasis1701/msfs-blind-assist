@@ -60,7 +60,7 @@ Flaps UP at a safe height (Flaps)
 [Climb]
 Climb 88 KIAS, flaps UP
 Load 92 percent or less once climbing. 100 percent is the take-off setting
-Engine temperatures in the green (output Shift+O). On a hot day coolant limits climb power
+Engine temperatures in the green (output Shift+P). On a hot day coolant limits climb power
 Landing light off when clear of the circuit
 
 [Cruise]

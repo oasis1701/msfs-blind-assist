@@ -540,10 +540,10 @@ public partial class CowsDA40Definition
                 return true;
             }
 
-            // ---------- Shift+O: the engine's temperatures ----------
+            // ---------- Shift+P: the engine's temperatures ----------
             //
-            // O reads the OUTSIDE air temperature; Shift+O reads the engine's own, which is
-            // the pair of questions a pilot actually asks about heat. The Austro is
+            // Beside P (RPM) and E (power); Shift+O until main gave it to the Volanta window.
+            // O still reads the OUTSIDE air temperature. The Austro is
             // liquid-cooled and geared, so it has coolant and gearbox temperatures that no
             // air-cooled Lycoming has - and on a diesel the coolant temperature is the one
             // that limits climb power on a hot day.

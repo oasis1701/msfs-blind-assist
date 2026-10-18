@@ -423,6 +423,11 @@ public partial class SimConnectManager
 
         RegisterFlightAttitudeDefinition();
 
+        // IS SLEW ACTIVE and SIMULATION RATE for the sim-state announcements: two fixed defs, here
+        // ahead of the bulk registration. Their requests go out in SetupEvents, once the handler
+        // is attached (SimConnectManager.SimState.cs).
+        RegisterSimStateDefinitions();
+
         // Bulk per-aircraft variable registration runs LAST — see the resilience note at the
         // top of this method. Everything above (detection, position, AI, VG, weather, nav) is
         // now guaranteed registered before the heavy var set can approach the SimConnect ceiling.
@@ -546,7 +551,8 @@ public partial class SimConnectManager
         // "fixed defs" bumped 20->33 (2026-07, SC-12): the 13 hotkey readout defs (altitude/
         // airspeed/VS/mach/bank/pitch/OAT/squawk/heading) are now registered ONCE and permanently,
         // instead of being ephemeral request-time-only defs that this rough total never counted.
-        int totalDefs = registeredCount + 5 /*continuous batches*/ + 33 /*fixed defs, approx*/;
+        // 33->35 (2026-10): the sim-state slew and sim rate defs (RegisterSimStateDefinitions).
+        int totalDefs = registeredCount + 5 /*continuous batches*/ + 35 /*fixed defs, approx*/;
         string regSummary = $"[Registration] aircraft={CurrentAircraft?.GetType().Name} individualDefs={registeredCount} batchCovered={batchCoveredCount} capped={cappedCount} approxTotalDefs~{totalDefs} (SimConnect ceiling ~1000)";
         Log.Debug("SimConnect", regSummary);
         if (cappedCount > 0)
@@ -905,6 +911,7 @@ public partial class SimConnectManager
         // here, the subscription only while the Sim Performance window holds a request.
         sc.OnRecvEventFrame += SimConnect_OnRecvEventFrame;
         RearmFrameEventForNewConnection();
+        SetupSimStateMonitoring();
     }
 
     /// <summary>

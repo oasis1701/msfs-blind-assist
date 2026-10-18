@@ -154,10 +154,18 @@ CREATE TABLE ils (
         => InsertIlsRow(ident, null, null, locHeading, frequency, 3.0, 18,
             name ?? $"ILS/GS {ident}", lonx, laty, gsPitch: 3.0);
 
+    /// <summary>
+    /// An airport-scoped ils row. The DME and glideslope blocks of the runway page show only
+    /// when <paramref name="dmeRange"/> or <paramref name="gsRange"/> is above 0; their
+    /// altitude and position then take <paramref name="altitude"/>, <paramref name="lonx"/> and
+    /// <paramref name="laty"/>, the localizer's own.
+    /// </summary>
     public void InsertIls(string ident, string locAirportIdent, string locRunwayName, double locHeading = 0,
-        double frequency = 111100, double locWidth = 3.0, double range = 18)
+        double frequency = 111100, double locWidth = 3.0, double range = 18,
+        double lonx = 0, double laty = 0, double altitude = 0, double gsPitch = 0,
+        double dmeRange = 0, double gsRange = 0)
         => InsertIlsRow(ident, locAirportIdent, locRunwayName, locHeading, frequency, locWidth, range,
-            $"ILS/GS {ident}", lonx: 0, laty: 0, gsPitch: 0);
+            $"ILS/GS {ident}", lonx, laty, gsPitch, altitude, dmeRange, gsRange);
 
     /// <summary>
     /// The single spelling of the `ils` column list. Both InsertIls and InsertOrphanIls go
@@ -167,13 +175,16 @@ CREATE TABLE ils (
     /// </summary>
     private void InsertIlsRow(string ident, string? locAirportIdent, string? locRunwayName,
         double locHeading, double frequency, double locWidth, double range,
-        string name, double lonx, double laty, double gsPitch)
+        string name, double lonx, double laty, double gsPitch,
+        double altitude = 0, double dmeRange = 0, double gsRange = 0)
         => Insert("ils",
             ("ident", ident), ("loc_airport_ident", locAirportIdent), ("loc_runway_name", locRunwayName),
             ("frequency", frequency), ("name", name), ("region", "K1"), ("type", "ILS"),
             ("loc_heading", locHeading), ("loc_width", locWidth), ("range", range),
             ("has_backcourse", 0), ("perf_indicator", "N/A"), ("provider", "N/A"), ("mag_var", 0),
-            ("dme_range", 0), ("dme_altitude", 0), ("dme_lonx", 0), ("dme_laty", 0),
-            ("gs_range", 0), ("gs_pitch", gsPitch), ("gs_altitude", 0), ("gs_lonx", 0), ("gs_laty", 0),
-            ("altitude", 0), ("lonx", lonx), ("laty", laty));
+            ("dme_range", dmeRange), ("dme_altitude", dmeRange > 0 ? altitude : 0),
+            ("dme_lonx", dmeRange > 0 ? lonx : 0), ("dme_laty", dmeRange > 0 ? laty : 0),
+            ("gs_range", gsRange), ("gs_pitch", gsPitch), ("gs_altitude", gsRange > 0 ? altitude : 0),
+            ("gs_lonx", gsRange > 0 ? lonx : 0), ("gs_laty", gsRange > 0 ? laty : 0),
+            ("altitude", altitude), ("lonx", lonx), ("laty", laty));
 }

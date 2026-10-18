@@ -268,4 +268,74 @@ public sealed class OfflineLocationServiceTests : IDisposable
         Assert.False(File.Exists(fresh.ReadyPath));
         Assert.False(File.Exists(fresh.StagingPath));
     }
+
+    [Fact]
+    public void Places_for_traffic_answer_many_positions_in_one_read_without_a_coast_search()
+    {
+        var reports = Built().GetPlaces(new[]
+        {
+            (38.55, -76.42),   // over the bay
+            (38.55, -76.59),   // 0.87 km off the coast, inside the bay's shape: ashore
+            (43.5, -87.0),     // over the lake, no town in range
+            (38.60, -76.70),   // at Hamlet, over land
+        }, Miles)!;
+        Assert.Equal(4, reports.Count);
+        Assert.All(reports, r => Assert.Null(r.Where.EdgeNm));   // no nearest land, shore or coast: the line never says it
+
+        Assert.Equal(WaterKind.Sea, reports[0].Where.Water);
+        Assert.Equal("over Test Bay, near Bayside, Maryland, United States", LocationPhrases.TrafficPlace(reports[0].Where, reports[0].Nearest));
+        Assert.Equal(WaterKind.None, reports[1].Where.Water);
+        Assert.Equal("Bayside, Maryland, United States", LocationPhrases.TrafficPlace(reports[1].Where, reports[1].Nearest));
+        Assert.Equal("over Test Lake", LocationPhrases.TrafficPlace(reports[2].Where, reports[2].Nearest));
+        Assert.Equal("Hamlet, Maryland, United States", LocationPhrases.TrafficPlace(reports[3].Where, reports[3].Nearest));
+    }
+
+    [Fact]
+    public void Places_for_traffic_need_the_database()
+        => Assert.Null(new OfflineLocationService(_store).GetPlaces(new[] { (38.55, -76.42) }, Miles));
+
+    // The traffic list's major-city mode (owner, 2026-10-15): the pilot's own Minimum Population for Major Cities
+    // and Major Cities Range, never a section of a city, the distance and direction from the city.
+
+    [Fact]
+    public void Major_cities_for_traffic_skip_city_sections_and_say_how_far_and_which_way_from_the_city()
+    {
+        var reports = Built().GetMajorCities(new[]
+        {
+            (38.60, -76.70),   // at Hamlet: Harbor District (a section of Bigtown, 90,000) is nearer than Bigtown
+            (38.55, -76.42),   // over the bay
+            (43.5, -87.0),     // over the lake, no city within 185 miles
+        }, Miles)!;
+        Assert.Equal(3, reports.Count);
+        Assert.Equal("Bigtown", reports[0].City!.Name);
+        Assert.Equal("48 miles south of Bigtown, Maryland, United States", reports[0].TextAt(38.60, -76.70, false));
+        Assert.Equal("over Test Bay, 52 miles south of Bigtown, Maryland, United States", reports[1].TextAt(38.55, -76.42, false));
+        Assert.Null(reports[2].City);
+        Assert.Equal("over Test Lake", reports[2].TextAt(43.5, -87.0, false));
+    }
+
+    [Fact]
+    public void Major_cities_for_traffic_follow_the_pilot_s_population_and_range()
+    {
+        var service = Built();
+        // At 1,000 people Bayside (1,238) is a major city; Bordertown (800) is not.
+        var small = service.GetMajorCities(new[] { (38.60, -76.70) }, Miles with { MajorPopulation = 1000 })!;
+        Assert.Equal("12 miles west of Bayside, Maryland, United States", small[0].TextAt(38.60, -76.70, false));
+        // Bigtown is 48 miles away: outside a 30-mile range, so only the state and country are said.
+        var near = service.GetMajorCities(new[] { (38.60, -76.70) }, Miles with { MajorRange = 30 })!;
+        Assert.Null(near[0].City);
+        Assert.Equal("Maryland, United States", near[0].TextAt(38.60, -76.70, false));
+    }
+
+    [Fact]
+    public void Major_cities_for_traffic_work_the_distance_out_again_where_the_aircraft_is_now()
+    {
+        var report = Built().GetMajorCities(new[] { (38.60, -76.70) }, Miles)![0];
+        Assert.Equal("Bigtown, Maryland, United States", report.TextAt(39.29, -76.61, false));   // over the city
+        Assert.Equal("77 kilometers south of Bigtown, Maryland, United States", report.TextAt(38.60, -76.70, true));
+    }
+
+    [Fact]
+    public void Major_cities_for_traffic_need_the_database()
+        => Assert.Null(new OfflineLocationService(_store).GetMajorCities(new[] { (38.55, -76.42) }, Miles));
 }

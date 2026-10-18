@@ -56,6 +56,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_SHOW_RMP = 9242;         // Ctrl+Shift+R (A380 Radio Management Panel) — input mode
         private const int HOTKEY_SHOW_DCDU = 9251;        // Ctrl+Shift+D (A32NX DCDU / CPDLC window) — input mode
         private const int HOTKEY_VATSIM_MUTE = 9252;      // Alt+V (Toggle VATSIM announcements) — output mode
+        private const int HOTKEY_VOLANTA = 9253;          // Shift+O (Volanta live map window) — output mode
         private const int HOTKEY_ND_WAYPOINT = 9243;      // Ctrl+W (FBW ND TO-waypoint: name/distance/bearing) — output mode
 
         // FCU push/pull hotkey IDs
@@ -119,7 +120,7 @@ public class HotkeyManager : IDisposable
         // so borrowing the ND key was the only thing available and never the obvious one -
         // reported from the cockpit as "Alt+M for the MFD doesn't work". Alt+N still opens
         // it, because that is what the docs have said and a working key is not taken away.
-        private const int HOTKEY_READ_DISPLAY_MFD = 9253;
+        private const int HOTKEY_READ_DISPLAY_MFD = 9254;   // not 9253: HOTKEY_VOLANTA's
         private const int HOTKEY_READ_DISPLAY_ISIS = 9073;
 
         // GENERAL-AVIATION ENGINE READOUTS. Deliberately NOT named for one aeroplane: a
@@ -218,6 +219,12 @@ public class HotkeyManager : IDisposable
         internal const uint SHOW_SURROUNDINGS_KEY = 0x4C; // L
         // Consumed by the guide test — see HotkeyGuideSurroundingsChordTests.
         internal const string SurroundingsWindowChordText = "Ctrl+Shift+L";
+
+        // Shift+O (output), the Volanta window: the same pattern again.
+        internal const uint VOLANTA_MODIFIERS = MOD_SHIFT;
+        internal const uint VOLANTA_KEY = 0x4F; // O
+        // Consumed by the guide test — see HotkeyGuideVolantaChordTests.
+        internal const string VolantaChordText = "Shift+O";
 
         private IntPtr windowHandle;
         private bool visualGuidanceHotkeysActive = false;
@@ -539,6 +546,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_WEATHER_RADAR:
                             TriggerHotkey(HotkeyAction.ShowWeatherRadar);
                             break;
+                        case HOTKEY_VOLANTA:
+                            TriggerHotkey(HotkeyAction.ShowVolanta);
+                            break;
                         case HOTKEY_OUTSIDE_TEMP:
                             TriggerHotkey(HotkeyAction.ReadOutsideTemperature);
                             break;
@@ -817,17 +827,19 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_PFD, MOD_ALT, 0x50);         // Alt+P (Read PFD)
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS, MOD_ALT, 0x49);        // Alt+I (Read ISIS)
 
-            // Output mode: P, E and Shift+O. All three were free on every modifier before
-            // this - checked against the whole registration table rather than assumed,
-            // because a silently lost registration is a key that does nothing with no error.
+            // Output mode: P, E and Shift+P. All three were free in output mode - checked
+            // against the whole registration table rather than assumed, because a silently
+            // lost registration is a key that does nothing with no error. The temperatures
+            // were Shift+O until main gave Shift+O to the Volanta window (2026-10-18).
             RegisterHotKey(windowHandle, HOTKEY_READ_ENGINE_RPM, MOD_NONE, 0x50);         // P (RPM / propeller)
             RegisterHotKey(windowHandle, HOTKEY_READ_ENGINE_POWER, MOD_NONE, 0x45);       // E (engine power)
-            RegisterHotKey(windowHandle, HOTKEY_READ_ENGINE_TEMPS, MOD_SHIFT, 0x4F);      // Shift+O (engine temperatures)
+            RegisterHotKey(windowHandle, HOTKEY_READ_ENGINE_TEMPS, MOD_SHIFT, 0x50);      // Shift+P (engine temperatures)
             RegisterHotKey(windowHandle, HOTKEY_DESCRIBE_SCENE, MOD_ALT, 0x44);           // Alt+D (Describe Scene)
             RegisterHotKey(windowHandle, HOTKEY_NEAREST_CITY, MOD_NONE, 0x43);             // C (Nearest City)
             RegisterHotKey(windowHandle, HOTKEY_TCAS_ANNOUNCE, MOD_NONE, 0x52);            // R (Announce Tracked TCAS Traffic)
             RegisterHotKey(windowHandle, HOTKEY_TCAS_WINDOW, MOD_CONTROL, 0x52);           // Ctrl+R (TCAS Traffic Window)
             RegisterHotKey(windowHandle, HOTKEY_WEATHER_RADAR, MOD_SHIFT, 0x52);           // Shift+R (Weather Radar Window)
+            RegisterHotKey(windowHandle, HOTKEY_VOLANTA, VOLANTA_MODIFIERS, VOLANTA_KEY);  // Shift+O (Volanta window)
             RegisterHotKey(windowHandle, HOTKEY_OUTSIDE_TEMP, MOD_NONE, 0x4F);             // O (Outside Temperature)
             RegisterHotKey(windowHandle, HOTKEY_SQUAWK_CODE, MOD_NONE, 0x58);             // X (Squawk Code)
 
@@ -944,7 +956,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS);
             UnregisterHotKey(windowHandle, HOTKEY_DESCRIBE_SCENE);
             // ⚠️ THESE THREE LEAKED, AND ONE BUG PRODUCED TWO SEPARATE COCKPIT SYMPTOMS.
-            // They are registered in ActivateOutputHotkeyMode as BARE P, BARE E and Shift+O,
+            // They are registered in ActivateOutputHotkeyMode as BARE P, BARE E and Shift+P,
             // and the matching releases were never added here. So one use of output mode held
             // P and E globally FOR THE REST OF THE SESSION: reported from the cockpit as
             // "Q and E don't work at all, I can't even type with them".
@@ -965,6 +977,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_TCAS_ANNOUNCE);
             UnregisterHotKey(windowHandle, HOTKEY_TCAS_WINDOW);
             UnregisterHotKey(windowHandle, HOTKEY_WEATHER_RADAR);
+            UnregisterHotKey(windowHandle, HOTKEY_VOLANTA);
             UnregisterHotKey(windowHandle, HOTKEY_OUTSIDE_TEMP);
             UnregisterHotKey(windowHandle, HOTKEY_SQUAWK_CODE);
 
@@ -1451,6 +1464,7 @@ public class HotkeyManager : IDisposable
         AnnounceTcasTraffic,
         ShowTcasWindow,
         ShowWeatherRadar,
+        ShowVolanta,   // Shift+O (output) — the Volanta live map window, also Extras > Volanta
         ReadOutsideTemperature,
         ReadSquawkCode,
         TaxiAssistForm,

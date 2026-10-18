@@ -73,7 +73,7 @@ The text is verbatim from the CLAUDE.md invariants PR #242 added; where two bull
 
 - `BaseAircraftDefinition` implements NO readout hotkeys — every aircraft answers its own, from the CACHE, immediately. → [da40.md](../da40.md)
 
-- **A new readout hotkey should be a GENERAL action, not an aircraft-specific one** - `ReadEngineRpm`, `ReadEnginePower`, `ReadEngineTemps` (output mode P, E, Shift+O) ask the same question on any propeller aeroplane and each definition answers it in its own terms: load percent and a single lever on a FADEC diesel, manifold pressure and mixture on a piston, torque and ITT on a turboprop. Same shape as the V-speed keys. ⚠️ Check a candidate letter against the WHOLE registration table before taking it - a global registration silently takes that letter from every other aircraft. → [da40.md](../da40.md)
+- **A new readout hotkey should be a GENERAL action, not an aircraft-specific one** - `ReadEngineRpm`, `ReadEnginePower`, `ReadEngineTemps` (output mode P, E, Shift+P; Shift+O until main gave it to the Volanta window, 2026-10-18) ask the same question on any propeller aeroplane and each definition answers it in its own terms: load percent and a single lever on a FADEC diesel, manifold pressure and mixture on a piston, torque and ITT on a turboprop. Same shape as the V-speed keys. ⚠️ Check a candidate letter against the WHOLE registration table before taking it - a global registration silently takes that letter from every other aircraft. → [da40.md](../da40.md)
 
 ## DA40A-17
 
