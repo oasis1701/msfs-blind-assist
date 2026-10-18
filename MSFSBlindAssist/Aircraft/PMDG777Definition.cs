@@ -6684,14 +6684,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 return true;
 
             _lastAnnouncedAltimeter = inHg;
-
-            if (Math.Abs(inHg - 29.92) < 0.005)
-                announcer.Announce("Altimeter standard");
-            else
-            {
-                int hpa = (int)Math.Round(inHg * 33.8639);
-                announcer.Announce($"Altimeter: {hpa}, {inHg:0.00}");
-            }
+            announcer.Announce(Pmdg777Altimeter.Sentence(inHg));
             return true;
         }
 
@@ -7099,18 +7092,9 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                     return true;
                 }
 
-                double inHg = inHgRaw.Value;
-
-                // Detect STD: 29.92 inHg (1013.25 hPa) is standard pressure
-                if (Math.Abs(inHg - 29.92) < 0.005)
-                {
-                    announcer.AnnounceImmediate("Altimeter standard");
-                    return true;
-                }
-
-                // Report in both units (hPa first, matching Fenix format)
-                int hpa = (int)Math.Round(inHg * 33.8639);
-                announcer.AnnounceImmediate($"Altimeter: {hpa}, {inHg:0.00}");
+                // "Altimeter standard" at 29.92 inHg (1013.25 hPa), otherwise both units, hPa
+                // first as on the Fenix, with a decimal point in any Windows culture.
+                announcer.AnnounceImmediate(Pmdg777Altimeter.Sentence(inHgRaw.Value));
                 return true;
             }
 
