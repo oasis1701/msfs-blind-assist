@@ -803,12 +803,8 @@ public partial class MainForm
                 // blank list. The refresh is silent; the screen reader reads the list itself.
                 // If it already has content (continuously-monitored vars / a prior refresh),
                 // leave it untouched so NVDA reads the current value immediately.
-                if (dispBox.Items.Count == 0 &&
-                    currentControls.TryGetValue("_REFRESH_", out var refreshOnJump) &&
-                    refreshOnJump is Button jumpRefreshBtn && jumpRefreshBtn.Enabled)
-                {
-                    jumpRefreshBtn.PerformClick();
-                }
+                if (dispBox.Items.Count == 0)
+                    _ = RefreshStatusDisplayAsync(dispBox);
             }
             else
             {
@@ -816,18 +812,13 @@ public partial class MainForm
             }
             return true;
         }
-        // F5 refreshes the current panel's Status Display without leaving the
-        // edit field/combo you're on (easier than tabbing to the Refresh button).
+        // F5 refreshes the current panel's Status Display at once, from the list or from the
+        // edit field/combo you're on, without moving focus. The list also updates itself live.
         else if (keyData == Keys.F5 &&
-                 currentControls.TryGetValue("_REFRESH_", out var refreshCtrl) &&
-                 refreshCtrl is Button refreshBtn && refreshBtn.Enabled)
+                 currentControls.TryGetValue("_DISPLAY_", out var refreshCtrl) &&
+                 refreshCtrl is ListBox refreshList)
         {
-            // F5 must not steal focus from the status box the user is reading. Capture the
-            // box as the focus-return target BEFORE PerformClick (the async refresh moves
-            // focus onto the Refresh button); refreshButton.Click restores it when done.
-            if (currentControls.TryGetValue("_DISPLAY_", out var dispCtrl) && dispCtrl is Control dispC && dispC.Focused)
-                _refreshFocusReturn = dispC;
-            refreshBtn.PerformClick();
+            _ = RefreshStatusDisplayAsync(refreshList);
             return true;
         }
 
