@@ -133,23 +133,64 @@ knob (`EVT_EFIS_CPT_BARO` transmit clicks, 1 hPa or 0.01 inHg per click). The Fi
 Officer's transition-altitude set is the same rotation, not a copy:
 `PMDG737Definition.RotateAltimetersToStandardAsync` turns both knobs to 29.92 inHg or
 1013 hPa (the STD push commits only intermittently on the NG3 and has no readback). One
-click count (`BaroKnobClicks`) and one guard (`BaroKnobBusy`) serve both: a `Ctrl+B` entry
-or a Standard press while either rotation runs says "Still setting altimeter, please wait.",
-and the First Officer's rotation waits out a dialog rotation already running before it
-reads the altimeter. Before, the two rotations could run together and step the knob twice.
+click count (`BaroKnobClicks`, which is `Pmdg737Baro.ClicksTo`) and one guard
+(`BaroKnobBusy`) serve both: a `Ctrl+B` entry or a Standard press while either rotation, or
+the dialog's STD check, runs says "Still setting altimeter, please wait.", and the First
+Officer's rotation waits out a dialog op already running before it reads the altimeter.
+Before, the two rotations could run together and step the knob twice.
 
-The NG3 has no STD flag, so the dialog infers STD from a 29.92 reading and presses STD to
-deselect it before rotating. A knob ROTATED to 29.92 reads the same with STD off, and the
-press then SELECTED STD: after the First Officer's rotation, the pilot's QNH entry at the
-transition level went in behind the STD mask, the altimeter stayed on standard and nothing
-was said (PR #160 second review). The definition now records that the app itself rotated
-the captain's knob to standard, and the dialog rotates straight to the QNH over that 29.92
-(`BaroSetPressesStdFirst`). The record holds until the knob is known to have left standard:
-a dialog rotation away from it, an STD press through the app, a reading away from standard
+A knob ROTATED to 29.92 reads the same as STD. The dialog used to press STD on any 29.92
+reading to deselect it, and after the First Officer's rotation that press SELECTED STD: the
+pilot's QNH entry at the transition level went in behind the STD mask, the altimeter stayed
+on standard and nothing was said (PR #160 second review). The definition records that the
+app itself rotated the captain's knob to standard, and the dialog turns straight to the QNH
+over that 29.92 (`BaroSetPressesStdFirst`). Any other 29.92 is asked of the knob (below,
+main's #313). The record holds until the knob is known to have left standard: a dialog
+rotation away from it, an STD press or check through the app, a reading away from standard
 once the app's rotation has settled (3 s; the knob moved in the cockpit), a new flight, a
 lost connection or another aircraft. An STD press made in the cockpit over a rotated 29.92
-cannot be seen; a 29.92 the app did not rotate to still reads as STD. A knob in hPa lands
-on 1013 hPa (29.914 inHg), which the dialog never took for STD.
+cannot be seen by the record; the Standard button asks the knob over it anyway. A knob in
+hPa lands on 1013 hPa (29.914 inHg), which the dialog never took for STD.
+
+**STD cannot be read; the knob says.** PMDG ignores absolute baro writes, so `Ctrl+B`
+turns the captain's baro knob. The NG3 SDK's EFIS block has no STD flag, and STD
+reads 29.92 inHg exactly as a local 29.92 does. With STD on, a click moves only
+the preselect shown under STD and the reading stays at 29.92. So from a reading
+of 29.92 the dialog asks the knob (`Pmdg737Baro.SetFromStandardAsync`): one click
+toward the target, then a settled read. A reading that moved means STD is off and
+the turn goes on from there; a reading still at 29.92 means STD is on, so STD is
+pushed off and the turn counts from the reading after the push. A reading still
+at 29.92 after the push is a preselect sitting at 29.92, or a check click PMDG
+dropped and a push that turned STD ON, so the knob is asked once more; that
+second push undoes a wrong first one, and 29.92 surviving both checks says
+"Altimeter not confirmed". Until 2026-10 the dialog pushed STD on any reading of
+29.92, which turned a local 29.92 INTO STD. Every read after a click or a push
+waits out `Pmdg737Baro.SettleMs` (a few frames), then for the next delivery
+(`ReadFreshAsync`): ALTIMETER_SETTING is batch-covered, so the cache can predate
+the action by up to a second, and the old 200 ms re-read counted the clicks from
+the 29.92 it had before the push. For the same reason every turn and STD push
+from the dialog, the Standard button's too, holds off the next one ("Still
+setting altimeter") until a delivery after it, so a quick re-submit counts from
+where the knob landed. The altimeter callout stays quiet while the check runs;
+the dialog then speaks the landed reading, delivered after the last click, as
+the value (never "standard": this path ends with STD off), and makes it the
+callout's baseline. A timed mute that let the callout speak it instead lost it
+whenever the batch fell inside the mute. A read that delivers nothing after the
+knob has moved says "Altimeter not confirmed" and re-fires the callout.
+
+The dialog's **Standard** button turns STD on. A reading off 29.92 is STD off,
+since STD reads 29.92, so one push does it. Until 2026-10 the button did nothing
+within 0.02 of 29.92 (29.90 to 29.94, or 1013 hPa), so as not to toggle STD off,
+yet still said "Standard". From a reading of 29.92 it now asks the knob
+(`Pmdg737Baro.EngageStdAsync`): a click up and a click back, each read once it
+has landed. If neither moved the reading, STD is already on and nothing is
+pushed; if either did, STD is off, so the setting is put back to the local 29.92
+(STD keeps it as the preselect) and STD is pushed. The click back doubles as the
+second check, so one dropped click still finds a local 29.92. The B
+readout and the callout still say "Altimeter standard" for any reading of 29.92,
+a local one included. Unmeasured: whether PMDG drives the stock
+`KOHLSMAN SETTING STD:1`; a read across an STD push would show whether STD can be
+read after all.
 
 ## Guarded selector dispatch
 
