@@ -246,8 +246,9 @@ quantity: SET, 12,400 kilograms: unchecked") re-opens the list.
      run.** Take off with "Engage autopilot" on and expect the aircraft's own **"Autopilot 1
      on"** call, then **"350 feet. Autopilot engaged."** (the configured number), **both heard
      in full** (the second must not cut the first off), with AP 1 flying and no second press.
-3. On approach/descent, confirm gear auto-lowers descending through roughly 2000 ft AGL (and
-   above 100 ft AGL, not already down) — **"Two thousand feet. Gear down."** announced.
+3. On approach/descent, confirm gear auto-lowers once you descend below 2000 ft AGL (at least
+   300 ft below the highest point since takeoff, above 100 ft AGL, not already down) —
+   **"Gear down."** announced.
 ### Auto-flaps
 
 `FbwA380FOAutoManager.CheckFlaps` drives the flap lever from the published speed-tape L:vars
@@ -445,3 +446,17 @@ acknowledge so the CRC cancels.
    note whether this is acceptably chatty; if not, a follow-up adds echo suppression.
 4. If 3 s proves too short for the full A380 test sequence, tune
    `FbwA380ActionExecutor.FireTestHoldMs`.
+
+## PR #160 review fixes (2026-10-18)
+
+None of these has run in the sim. The window, SimBrief and universal-automation checks shared by
+every aircraft are Part Z.1 of the PMDG 737 plan.
+
+1. **Spoilers are never armed over an extended speed brake.** On final with the speed brake half
+   out, run Landing: the spoiler step is left alone and says why, the speed brake stays out, and
+   "Ground spoilers: ARM" stays unticked. Same in After Start with the speed brake out on the ground.
+2. **No DH reads "No DH".** Enter NO in the MFD's DH field: the Landing read-back says "No DH",
+   never "radio 0 feet".
+3. **Line-up lights.** With the wing landing lights on and the nose light at TAXI, the Line-up line
+   "Landing lights: ON" is unticked, and ticking it sets the nose light to T.O.
+4. **Auto flaps arm only on a real descent**: run item 3 of the A32NX plan's Part J on the A380.

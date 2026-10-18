@@ -398,13 +398,20 @@ public class HeadwindA330Definition : FlyByWireA320Definition
         // LOGO_LIGHTS_SET / NAV_LIGHTS_SET at index 0 — a plain two-position switch.
         // Keep the KEY so the panel combo and the First Officer stay one control
         // app-wide; repoint its Name at the stock simvar the cockpit actually writes.
+        //
+        // Continuous + IsAnnounced like every other panel combo: the base's flip pass
+        // (FlyByWireA320Definition.BuildVariables) runs before this replacement, so this row and
+        // LIGHT LANDING:2 below were left OnRequest, never refreshed and never announced.
+        // ExcludeFromBatch as for the altimeter rows above (vars a subclass adds late).
         vars["A32NX_LIGHTS_NAV_LOGO"] = new SimConnect.SimVarDefinition
         {
             Name = "LIGHT NAV",
             DisplayName = "Nav and Logo Lights",
             Type = SimConnect.SimVarType.SimVar,
             Units = "Bool",
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ExcludeFromBatch = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         };
 
@@ -433,14 +440,18 @@ public class HeadwindA330Definition : FlyByWireA320Definition
         // for the two dead A32NX rows). Nothing writes "LIGHT LANDING:2" — the actuator
         // is the LANDING_LIGHTS_ON/OFF_THIRD_PARTY momentary pair already on that panel,
         // which the First Officer fires too — so rendering it as a settable combo would
-        // just replace two dead controls with a third.
+        // just replace two dead controls with a third. Continuous + IsAnnounced for the reason
+        // given on the nav and logo row above: an OnRequest row kept its first reading after
+        // "All Landing Lights On", and the change was never spoken.
         vars["LIGHT LANDING:2"] = new SimConnect.SimVarDefinition
         {
             Name = "LIGHT LANDING:2",
             DisplayName = "Landing Lights",
             Type = SimConnect.SimVarType.SimVar,
             Units = "Bool",
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ExcludeFromBatch = true,
             RenderAsReadOnlyStatus = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         };

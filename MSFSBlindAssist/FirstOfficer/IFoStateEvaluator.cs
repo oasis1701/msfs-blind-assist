@@ -7,7 +7,9 @@ public interface IFoStateEvaluator
     bool IsOn(string field);
     bool IsPosition(string field, int position);
 
-    /// <summary>Store the SimBrief planned takeoff flap setting (used by the Before Taxi flow).</summary>
+    /// <summary>Store the SimBrief planned takeoff flap setting (used by the Before Taxi flow).
+    /// 0 or less means the plan has none (or the plan was forgotten): the evaluator goes back to
+    /// what it does with no plan loaded.</summary>
     void SetTakeoffFlaps(int flaps);
 
     /// <summary>

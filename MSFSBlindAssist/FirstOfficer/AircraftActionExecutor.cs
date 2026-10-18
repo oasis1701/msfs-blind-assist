@@ -167,16 +167,20 @@ public class AircraftActionExecutor : IFoActionExecutor
             return true;
 
         await PaceAsync();
+        // Read again after the pacing wait: a closed First Officer window (an aircraft switch) or a
+        // disconnect detaches the executor meanwhile, and the write must not reach the next aircraft.
+        var sc = _simConnect;
+        if (sc == null) return false;
         try
         {
             if (usesMouseFlag)
-                _simConnect.SendPMDGEvent(eventName, eventId, MouseFlagLeftSingle);
+                sc.SendPMDGEvent(eventName, eventId, MouseFlagLeftSingle);
             else if (isMomentary)
-                _simConnect.SendPMDGEvent(eventName, eventId, 1);
+                sc.SendPMDGEvent(eventName, eventId, 1);
             else if (targetValue.HasValue)
-                _simConnect.SendPMDGEvent(eventName, eventId, targetValue.Value);
+                sc.SendPMDGEvent(eventName, eventId, targetValue.Value);
             else
-                _simConnect.SendPMDGEvent(eventName, eventId);
+                sc.SendPMDGEvent(eventName, eventId);
             return true;
         }
         finally { _lastWriteUtc = DateTime.UtcNow; }
@@ -617,30 +621,26 @@ public class AircraftActionExecutor : IFoActionExecutor
 
     // MCP — Flight Directors (require mouse flag)
     public bool SetFDLeft(int targetOn, AircraftStateEvaluator state)
-    {
-        int current = state.IsFDLeftOn() ? 1 : 0;
-        if (current == targetOn) return true;
-        return ExecuteSingle("EVT_MCP_FD_SWITCH_L", null, true, false);
-    }
+        => ToggleTo("MCP_FD_Sw_On_0", targetOn, state, "EVT_MCP_FD_SWITCH_L");
     public bool SetFDRight(int targetOn, AircraftStateEvaluator state)
-    {
-        int current = state.IsFDRightOn() ? 1 : 0;
-        if (current == targetOn) return true;
-        return ExecuteSingle("EVT_MCP_FD_SWITCH_R", null, true, false);
-    }
+        => ToggleTo("MCP_FD_Sw_On_1", targetOn, state, "EVT_MCP_FD_SWITCH_R");
 
     // MCP — AT Arm (require mouse flag)
     public bool SetATArmLeft(int targetOn, AircraftStateEvaluator state)
-    {
-        int current = state.IsATArmLeftOn() ? 1 : 0;
-        if (current == targetOn) return true;
-        return ExecuteSingle("EVT_MCP_AT_ARM_SWITCH_L", null, true, false);
-    }
+        => ToggleTo("MCP_ATArm_Sw_On_0", targetOn, state, "EVT_MCP_AT_ARM_SWITCH_L");
     public bool SetATArmRight(int targetOn, AircraftStateEvaluator state)
+        => ToggleTo("MCP_ATArm_Sw_On_1", targetOn, state, "EVT_MCP_AT_ARM_SWITCH_R");
+
+    // The FD and A/T ARM switches are mouse-flag TOGGLES: pressed only on a READ state that
+    // differs from the target. Unread (NaN, before the first CDA snapshot) once read as "off",
+    // so a tick pressed an FD that was already on, and switched it off. Unread does nothing and
+    // returns false; the checklist's grace then reports the line if the state never agrees.
+    private bool ToggleTo(string field, int targetOn, AircraftStateEvaluator state, string eventName)
     {
-        int current = state.IsATArmRightOn() ? 1 : 0;
-        if (current == targetOn) return true;
-        return ExecuteSingle("EVT_MCP_AT_ARM_SWITCH_R", null, true, false);
+        double v = state.GetValue(field);
+        if (double.IsNaN(v)) return false;
+        if ((v > 0.5 ? 1 : 0) == targetOn) return true;
+        return ExecuteSingle(eventName, null, true, false);
     }
 
     // MCP — LNAV/VNAV (momentary push)
@@ -657,7 +657,7 @@ public class AircraftActionExecutor : IFoActionExecutor
     public bool SetEFISRangeFO(int position)  => ExecuteSingle("EVT_EFIS_FO_RANGE", position, false, false);
 
     // EFIS Baro STD toggle (momentary push-button, toggles between STD and QNH)
-    // Check IsBaroSTDCapt()/IsBaroSTDFO() before calling to avoid toggling the wrong way.
+    // Check AircraftStateEvaluator.IsBaroStdCapt() before calling to avoid toggling the wrong way.
     public bool PushBaroSTDCapt() => ExecuteSingle("EVT_EFIS_CPT_BARO_STD", null, false, true);
     public bool PushBaroSTDFO()   => ExecuteSingle("EVT_EFIS_FO_BARO_STD",  null, false, true);
 
@@ -760,7 +760,8 @@ public class AircraftActionExecutor : IFoActionExecutor
         return ok;
     }
 
-    // Alternate flaps
+    // Alternate flaps selector — FCTL_AltnFlaps_Control_Sw: 0 RET, 1 OFF, 2 EXT (PMDG_777X_SDK.h).
+    public const int AltFlapsOff = 1;
     public bool SetAltFlaps(int position)
         => ExecuteSingle("EVT_ALTN_FLAPS_POS", position, false, false);
 

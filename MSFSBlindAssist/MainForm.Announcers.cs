@@ -147,6 +147,7 @@ public partial class MainForm
         currentSimVarValues[e.VarName] = e.Value;
 
         if (e.VarName == "FO_ALTITUDE_AGL") _universalLatestAgl = e.Value;
+        else if (e.VarName == "FO_GEAR_HANDLE") _universalLatestGearHandle = e.Value;
 
         // Composed-state controls (MD-11): relabel every dependent of this key, on EVERY path
         // below — initial snapshot, def-handled (ProcessSimVarUpdate returns true and exits

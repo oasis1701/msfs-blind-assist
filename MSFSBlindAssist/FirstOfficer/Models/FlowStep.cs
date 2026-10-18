@@ -31,9 +31,6 @@ public enum FlowStepFailurePolicy
 
     /// <summary>Log a warning and continue to the next step.</summary>
     Skip,
-
-    /// <summary>Retry the step up to <see cref="FlowStep{TState}.RetryCount"/> times before applying Stop.</summary>
-    RetryThenStop,
 }
 
 /// <summary>
@@ -153,8 +150,6 @@ public class FlowStep<TState> : IFlowStepDispatch
     // -----------------------------------------------------------------------
 
     public FlowStepFailurePolicy FailurePolicy { get; set; } = FlowStepFailurePolicy.Skip;
-
-    public int RetryCount { get; set; } = 1;
 
     // -----------------------------------------------------------------------
     // Checklist integration

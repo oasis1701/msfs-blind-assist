@@ -61,7 +61,8 @@ public abstract class LVarStateEvaluator : IFoStateEvaluator
         return !double.IsNaN(v) && Math.Abs(v - position) < 0.5;
     }
 
-    public void SetTakeoffFlaps(int flaps) => _takeoffFlaps = flaps;
+    // 0 or less (a plan without one, or a plan forgotten) is "not loaded".
+    public void SetTakeoffFlaps(int flaps) => _takeoffFlaps = flaps > 0 ? flaps : -1;
 
     /// <summary>SimBrief takeoff flaps (A320: 1..3), or -1 when not loaded.</summary>
     public int GetTakeoffFlaps() => _takeoffFlaps;

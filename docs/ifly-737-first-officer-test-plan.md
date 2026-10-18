@@ -451,3 +451,16 @@ This work only adds new files under `FirstOfficer/IFly737/` plus a menu item and
 registration; it does not touch the PMDG 777/737, Fenix, A380 or A32NX profiles. As a light
 regression check: open each of the other five First Officer windows once, confirm they still
 open with their own title and run one flow each without error.
+
+## Part G — PR #160 review fixes (2026-10-18)
+
+None of these has run in the sim. The window, SimBrief and universal-automation checks shared by
+every aircraft are Part Z.1 of the PMDG 737 plan.
+
+1. **A hung start stops the flow.** If a starter cutout wait times out, the flow stops there; the
+   next engine's starter is never engaged while the first one's still is.
+2. **LNAV/VNAV at 400 ft only on a climb it watched.** Open the window for the first time above
+   400 ft: no push and no "400 feet" call.
+3. **Autopilot presses 3 s apart and never blind.** With "Engage autopilot" on and the window
+   open, CMD A engages once and stays engaged; restart MSFSBA in a climb with CMD A on: nothing is
+   pressed.

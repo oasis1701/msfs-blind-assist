@@ -78,7 +78,10 @@ public class IFly737FlightPhaseMonitor : IFoPhaseMonitor
         _executor  = executor;
         _state     = state;
         _announcer = announcer;
-        _seatbelt  = new SeatbeltAutomation(on => { _ = _executor.SetSeatbeltSign(on); }, announcer.AnnounceImmediate);
+        // Every crossing call here is QUEUED (Announce): the 10,000 ft light call, the seat-belt
+        // automation's 10,000 ft call and a transition call can come from the same sample, and
+        // each interrupting call cut off the one before it.
+        _seatbelt  = new SeatbeltAutomation(on => { _ = _executor.SetSeatbeltSign(on); }, announcer.Announce);
     }
 
     // -----------------------------------------------------------------------
@@ -150,7 +153,7 @@ public class IFly737FlightPhaseMonitor : IFoPhaseMonitor
         if (!_noTransReminderFired && climbing && alt > 18_000 + HysteresisFt)
         {
             _noTransReminderFired = true;
-            _announcer.AnnounceImmediate(TransitionAltimeters.NoTransitionLoadedReminder(AutoAltimetersEnabled));
+            _announcer.Announce(TransitionAltimeters.NoTransitionLoadedReminder(AutoAltimetersEnabled));
         }
         else if (_noTransReminderFired && alt < 17_000)
         {
@@ -178,12 +181,12 @@ public class IFly737FlightPhaseMonitor : IFoPhaseMonitor
         {
             case LandingLightAction.TurnOff:
                 _ = _executor.SetLandingLights(IFly737ActionExecutor.LandingLightsOff);
-                _announcer.AnnounceImmediate("Above ten thousand. Landing lights off.");
+                _announcer.Announce("Above ten thousand. Landing lights off.");
                 break;
             case LandingLightAction.TurnOn:
                 // STATUS 2 = On (1 is FLASH — probe-verified, PR #196)
                 _ = _executor.SetLandingLights(IFly737ActionExecutor.LandingLightsOn);
-                _announcer.AnnounceImmediate("Below ten thousand. Landing lights on.");
+                _announcer.Announce("Below ten thousand. Landing lights on.");
                 break;
         }
 
@@ -239,7 +242,7 @@ public class IFly737FlightPhaseMonitor : IFoPhaseMonitor
         var crossing = _trans.Update(alt, climbing, descending);
         if (TransitionAltimeters.ReminderInstead(crossing, AutoAltimetersEnabled) is { } reminder)
         {
-            _announcer.AnnounceImmediate(reminder);
+            _announcer.Announce(reminder);
             return;
         }
 
@@ -249,12 +252,12 @@ public class IFly737FlightPhaseMonitor : IFoPhaseMonitor
                 // Climbing through transition altitude — set standard pressure by value
                 // (fire-and-forget; the executor guards, sends and verifies).
                 _ = _executor.SetAltimetersStandardAsync();
-                _announcer.AnnounceImmediate("Transition altitude. Altimeters set to standard.");
+                _announcer.Announce("Transition altitude. Altimeters set to standard.");
                 break;
             case TransitionCrossingDetector.Crossing.DescendToQnh:
                 // Descending through transition level — the local QNH is unknowable here,
                 // so this is announce-only; the pilot sets pressure via the Ctrl+B dialog.
-                _announcer.AnnounceImmediate("Transition level. Set local altimeter pressure now.");
+                _announcer.Announce("Transition level. Set local altimeter pressure now.");
                 break;
         }
     }

@@ -64,6 +64,7 @@ public class Pmdg777FlowChecklistLinkTests
         Id("EVT_OH_ADIRU_SWITCH", "ADIRU_Sw_On");
         Id("EMER_EXIT_LIGHTS", "LTS_EmerLightsSelector");   // guarded pseudo-key; target = selector position
         Id("EVT_OH_THRUST_ASYM_COMP", "FCTL_ThrustAsymComp_Sw_AUTO");
+        Id("EVT_ALTN_FLAPS_POS", "FCTL_AltnFlaps_Control_Sw");   // 0 RET, 1 OFF, 2 EXT
         Id("EVT_OH_ELEC_IFE", "ELEC_IFEPassSeatsSw");
         Id("EVT_OH_ELEC_CAB_UTIL", "ELEC_CabUtilSw");
         Id("EVT_OH_ELEC_APU_GEN_SWITCH", "ELEC_APUGen_Sw_ON");
@@ -156,7 +157,6 @@ public class Pmdg777FlowChecklistLinkTests
     private static readonly HashSet<string> NoStateEvents = new(StringComparer.Ordinal)
     {
         "EVT_OH_WIPER_LEFT_SWITCH", "EVT_OH_WIPER_RIGHT_SWITCH",     // no wiper field in the CDA struct
-        "EVT_ALTN_FLAPS_POS",                                       // no reliable alternate-flaps field
         "EVT_OH_CVR_TEST",                                          // momentary test
         "EVT_OH_LIGHTS_IND_LTS_SWITCH",                             // no indicator-lights-master field
         "EVT_OH_FUEL_JETTISON_NOZZLE_L", "EVT_OH_FUEL_JETTISON_NOZZLE_R", "EVT_OH_FUEL_JETTISON_ARM",
@@ -174,7 +174,6 @@ public class Pmdg777FlowChecklistLinkTests
     private static readonly Dictionary<string, (string Event, int Target)[][]> ActionItems = new(StringComparer.Ordinal)
     {
         ["EPU_WIPERS_OFF"] = new[] { W(("EVT_OH_WIPER_LEFT_SWITCH", 0)), W(("EVT_OH_WIPER_RIGHT_SWITCH", 0)) },
-        ["EPU_ALT_FLAPS_OFF"] = new[] { W(("EVT_ALTN_FLAPS_POS", 0)) },
         ["PF_OXY_TEST_CAPT"] = new[] { W(("OXY_TEST_CAPT", 1)) },
         ["PF_OXY_TEST_FO"] = new[] { W(("OXY_TEST_FO", 1)) },
         ["PF_FIRE_TEST"] = new[] { W(("FIRE_OVHT_TEST", 1)) },

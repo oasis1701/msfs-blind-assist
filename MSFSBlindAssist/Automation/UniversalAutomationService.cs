@@ -8,18 +8,30 @@ namespace MSFSBlindAssist.Automation;
 /// of the First Officer window. Driven from MainForm's 1 Hz position feed.
 ///
 /// Gear UP:   positive rate (VS > 200 fpm) AND AGL > 50 ft. Once per leg; reset on touchdown.
-/// Gear DOWN: descending (VS < -100 fpm) through 100..2000 ft AGL. Once per approach; re-arms
-///            above 3000 ft AGL (go-around).
+/// Gear DOWN: descending (VS < -100 fpm) between 100 and 2000 ft AGL, at least
+///            <see cref="GearDownDescentFt"/> below the highest point since the gear last came up
+///            (or the leg began): a descent, never a climb-out wobble. Once per approach; re-arms
+///            when the gear handle reads up again or the aircraft climbs above 3000 ft AGL.
 /// AP engage: climbing through <see cref="EffectiveApEngageAltitudeAgl"/>. Once per leg;
 ///            reset on touchdown.
 ///
-/// No gear state is read — the per-leg latch plus the climb/descent gates prevent
-/// redundant fires, and stock GEAR_UP/GEAR_DOWN are idempotent in the sim. AP engage is
+/// The TAKEOFF gates (gear up, AP engage) fire only on a takeoff the service watched: a ground
+/// sample arms them, and switching one of them on in flight leaves it disarmed until the next
+/// ground sample. They once fired on the first climbing sample wherever it came, so an app
+/// restart, an aircraft re-pick or a setting switched on during a climb at FL150 raised the gear
+/// and pressed the autopilot there. Gear down needs no takeoff: it follows any descent, an
+/// approach loaded in the air included. Ground is the sim's own SIM ON GROUND; an unknown AGL
+/// (not read yet, or stale since the features were off) acts on nothing.
+///
+/// The gear HANDLE is read where the aircraft reports it (<c>isGearHandleDown</c>): a gear the
+/// pilot already moved is left alone, silently, never "Gear down." over a gear already down. Where
+/// it is unknown the stock GEAR_UP/GEAR_DOWN are sent as before (idempotent in the sim). AP engage is
 /// routed through an injected delegate: the PMDG jets press their own MCP switch (CMD A on
-/// the 737, A/P L on the 777, each guarded against toggling an already-engaged AP, but only
-/// once the CDA snapshot exists: before it the guard reads 0.0, FO-18), the FlyByWire family
-/// presses AP 1 (FO-21: FBW captures the stock AUTOPILOT_ON into a flag nothing reads); every
-/// other aircraft falls back to the stock AUTOPILOT_ON. Actuation and announcements go
+/// the 737, A/P L on the 777, each guarded against toggling an already-engaged AP, and never on
+/// an unread CDA snapshot, FO-18), the FlyByWire family presses AP 1 (FO-21: FBW captures the
+/// stock AUTOPILOT_ON into a flag nothing reads), the iFly CMD A, the MD-11 AUTO FLIGHT and the
+/// Fenix its FCU AP1 button; every other aircraft falls back to the stock AUTOPILOT_ON.
+/// Actuation and announcements go
 /// through injected delegates so the logic is unit-testable. The success confirmation
 /// ("{height} feet. Autopilot engaged.") has a delegate of its own and must not interrupt: the
 /// aircraft announces its own engage call (the FlyByWire "Autopilot 1 on") with its 1 Hz batch and
@@ -36,12 +48,12 @@ namespace MSFSBlindAssist.Automation;
 ///   * the announcement fired unconditionally on the press and latched the leg, so a blind
 ///     pilot was told "Autopilot engaged" with the AP off and no retry ever came.
 /// On a null readback an aircraft that does not wait (<see cref="WaitForApState"/> off) takes the
-/// open-loop path: one press, announced on the press, with nothing to verify against. The null
-/// means either that the aircraft exposes no engaged state at all (the Fenix, the HS787) or that
-/// its data is not ready yet (the PMDG jets, the iFly, the MD-11), and the press is no safer for
-/// being open-loop: the PMDG engage switches are toggles (FO-18). The FlyByWire family sets
-/// <see cref="WaitForApState"/> (FO-21): there null only means "not read yet", and the press is a
-/// toggle, so the service never presses on it. It waits for a definite reading, and if none comes
+/// open-loop path: one press, announced on the press, with nothing to verify against. Only the
+/// stock AUTOPILOT_ON aircraft (the HS787, any aircraft without an engage of its own) take it: the
+/// event is idempotent. Every aircraft with a toggle engage sets <see cref="WaitForApState"/> and
+/// a 3 s <see cref="ApRetryIntervalMs"/> (the FlyByWire family, FO-21; the PMDG jets, the iFly, the
+/// MD-11 and the Fenix): there null only means "not read yet", and a press is a toggle, so the
+/// service never presses on it. It waits for a definite reading, and if none comes
 /// within <see cref="MaxApEngageAttempts"/> attempts it reports a Captain action ("state unknown"
 /// when it never pressed or the latest reading is unknown again, "did not engage" when it pressed
 /// and the autopilot reads off).
@@ -58,7 +70,8 @@ public sealed class UniversalAutomationService
     // a caller gives none.
     private readonly Action<string> _announceConfirmation;
     // AP engage is aircraft-routed: PMDG jets press their own MCP switch (CMD A / A/P L), the
-    // FlyByWire family AP 1, everything else fires the stock AUTOPILOT_ON. Null => stock fallback.
+    // FlyByWire family AP 1, the iFly CMD A, the MD-11 AUTO FLIGHT, the Fenix AP1; everything else
+    // fires the stock AUTOPILOT_ON. Null => stock fallback.
     private readonly Action? _engageAutopilot;
     // Engaged-readback: true/false when the aircraft knows, null when it has no readable
     // engaged state or its data feed isn't ready yet (never guess in that window). The service
@@ -67,17 +80,56 @@ public sealed class UniversalAutomationService
     private readonly Func<bool?>? _isAutopilotEngaged;
     // Milliseconds since an arbitrary start; injected so the retry spacing is testable.
     private readonly Func<long> _nowMs;
+    // The gear handle: true = down, false = up, null = not read (or not reported by the aircraft).
+    private readonly Func<bool?>? _isGearHandleDown;
+
+    /// <summary>Lowest AGL (ft) at which the gear comes up after liftoff.</summary>
+    public const double GearUpMinAglFt = 50;
+    /// <summary>The gear-down band, ft AGL: it comes down only between these two heights.</summary>
+    public const double GearDownBandTopFt = 2000, GearDownBandBottomFt = 100;
+    /// <summary>How far (ft) below the highest point since the gear last came up, or since the leg
+    /// began, the aircraft must be before the gear comes down. A single descending sample once
+    /// lowered it during the climb-out (a low level-off, turbulence), and a leg flown below 3000 ft
+    /// AGL (a circuit after a touch-and-go) never re-armed it at all after the service had raised
+    /// the gear. A judgement, not a measurement.</summary>
+    public const double GearDownDescentFt = 300;
+    /// <summary>Climbing above this (ft AGL) re-arms the gear down, for a go-around, where the gear
+    /// handle is not read.</summary>
+    public const double GearDownRearmAglFt = 3000;
 
     /// <summary>Attempts before giving up and handing the autopilot to the Captain. An attempt is
     /// a press or, on an aircraft that waits (<see cref="WaitForApState"/>), a wait for a definite
-    /// reading. Where <see cref="ApRetryIntervalMs"/> is 0 that is about 5 ticks of the ~1 Hz feed;
-    /// at the FlyByWire family's 3 s spacing it is 15 s. Long enough to ride out an engage inhibit
+    /// reading. Where <see cref="ApRetryIntervalMs"/> is 0 that is 5 position answers (a few seconds);
+    /// at the toggle aircraft's 3 s spacing it is 15 s. Long enough to ride out an engage inhibit
     /// releasing, short enough not to hammer a toggle switch in the cockpit.</summary>
     public const int MaxApEngageAttempts = 5;
 
-    public bool AutoGearUpEnabled   { get; set; }
+    /// <summary>Gear up after a takeoff the service watched. Switched on while not known to be on
+    /// the ground, it waits for the next takeoff.</summary>
+    public bool AutoGearUpEnabled
+    {
+        get => _autoGearUpEnabled;
+        set
+        {
+            if (value && !_autoGearUpEnabled && _lastOnGround != true) _gearUpArmed = false;
+            _autoGearUpEnabled = value;
+        }
+    }
+
     public bool AutoGearDownEnabled { get; set; }
-    public bool AutoApEnabled       { get; set; }
+
+    /// <summary>AP engage after a takeoff the service watched. Switched on while not known to be on
+    /// the ground, it waits for the next takeoff.</summary>
+    public bool AutoApEnabled
+    {
+        get => _autoApEnabled;
+        set
+        {
+            if (value && !_autoApEnabled && _lastOnGround != true) _apArmed = false;
+            _autoApEnabled = value;
+        }
+    }
+
     public int  AutoApEngageAltitudeAgl { get; set; } = 350;
 
     /// <summary>Per-aircraft hard floor (ft AGL) below which the aircraft's own autopilot
@@ -92,10 +144,12 @@ public sealed class UniversalAutomationService
 
     /// <summary>Minimum time (ms) between autopilot attempts, a press or a wait for a reading, and
     /// before giving up after the last one, pushed from the current aircraft definition
-    /// (<c>IAircraftDefinition.AutopilotEngageRetryIntervalMs</c>). 0 = every tick (the PMDG jets,
-    /// the iFly, the MD-11). The FlyByWire family sets 3000: its AP 1 push is a toggle and its
-    /// engaged state reaches the cache with the 1 Hz batch, so an earlier retry could land on an
-    /// autopilot the previous press already engaged — and switch it off (FO-21).</summary>
+    /// (<c>IAircraftDefinition.AutopilotEngageRetryIntervalMs</c>). 0 = every tick (the stock,
+    /// idempotent AUTOPILOT_ON). Every toggle engage sets 3000 (the FlyByWire family, FO-21; the PMDG
+    /// jets, the iFly, the MD-11, the Fenix): its engaged state reaches the cache about once a
+    /// second, and the position answers that drive Update come about twice a second once the First
+    /// Officer window exists, so an earlier retry read the state from before the press, pressed
+    /// again and switched the autopilot off.</summary>
     public int ApRetryIntervalMs { get; set; }
 
     /// <summary>True where the engage must never press while the engaged-readback is null, pushed
@@ -107,8 +161,11 @@ public sealed class UniversalAutomationService
     /// comes within <see cref="MaxApEngageAttempts"/> attempts the Captain call ends the leg, as
     /// "state unknown" when the service never pressed or the latest reading is unknown again. False
     /// (the default) takes the open-loop press on a null reading; the give-up of an aircraft that
-    /// does not wait never looks at the latest reading. The FlyByWire family sets it (FO-21).</summary>
+    /// does not wait never looks at the latest reading. Every toggle engage sets it (FO-21).</summary>
     public bool WaitForApState { get; set; }
+
+    private bool _autoGearUpEnabled;
+    private bool _autoApEnabled;
 
     private bool _gearRaisedThisLeg;
     private bool _gearLoweredThisLeg;
@@ -116,11 +173,19 @@ public sealed class UniversalAutomationService
     private int  _apAttempts;          // presses AND waiting attempts (WaitForApState): both use the interval and the budget
     private bool _apPressed;           // the service itself invoked the engage this leg; a waiting attempt presses nothing
     private long _lastPressMs;         // time of the last attempt: a press, or a wait for a reading
-    private bool _wasOnGround = true;
+    private bool? _lastOnGround;       // null = no sample since construction or Reset
+    // The takeoff gates: armed by a ground sample (a takeoff from here is watched), disarmed by
+    // Reset and by switching the gate on while not known to be on the ground.
+    private bool _gearUpArmed;
+    private bool _apArmed;
+    // The highest AGL since the gear last came up, or since the leg began (NaN = none yet).
+    private double _peakAglFt = double.NaN;
+    private bool? _lastGearHandleDown;
 
     public UniversalAutomationService(Action<string> sendStockEvent, Action<string> announce,
         Action? engageAutopilot = null, Func<bool?>? isAutopilotEngaged = null,
-        Func<long>? nowMs = null, Action<string>? announceConfirmation = null)
+        Func<long>? nowMs = null, Action<string>? announceConfirmation = null,
+        Func<bool?>? isGearHandleDown = null)
     {
         _sendStockEvent = sendStockEvent;
         _announce = announce;
@@ -128,10 +193,13 @@ public sealed class UniversalAutomationService
         _engageAutopilot = engageAutopilot;
         _isAutopilotEngaged = isAutopilotEngaged;
         _nowMs = nowMs ?? (() => Environment.TickCount64);
+        _isGearHandleDown = isGearHandleDown;
     }
 
     public bool AnyEnabled => AutoGearUpEnabled || AutoGearDownEnabled || AutoApEnabled;
 
+    /// <summary>Forgets everything (an aircraft switch, a flight loaded): the takeoff gates stay
+    /// disarmed until the next ground sample.</summary>
     public void Reset()
     {
         _gearRaisedThisLeg  = false;
@@ -140,44 +208,82 @@ public sealed class UniversalAutomationService
         _apAttempts         = 0;
         _apPressed          = false;
         _lastPressMs        = 0;
-        _wasOnGround        = true;
+        _lastOnGround       = null;
+        _gearUpArmed        = false;
+        _apArmed            = false;
+        _peakAglFt          = double.NaN;
+        _lastGearHandleDown = null;
     }
 
-    public void Update(double altitudeMsl, double verticalSpeedFpm, double altitudeAgl)
+    /// <summary>No position samples are coming (MainForm stops asking while every feature is off), so
+    /// the last ground state is not to be trusted: a gate switched on now waits for a ground sample
+    /// instead of taking a ground sample from before the takeoff for a watched takeoff.</summary>
+    public void MarkGroundStateUnknown() => _lastOnGround = null;
+
+    /// <param name="onGround">The sim's SIM ON GROUND for this sample.</param>
+    /// <param name="altitudeAgl">Feet above ground; NaN when unknown, which acts on nothing.</param>
+    public void Update(double altitudeMsl, double verticalSpeedFpm, double altitudeAgl, bool onGround)
     {
-        bool onGround = altitudeAgl < 20;
         if (onGround)
         {
-            if (!_wasOnGround)
+            if (_lastOnGround != true)
             {
-                _gearRaisedThisLeg = false;
-                _apResolvedThisLeg = false;
-                _apAttempts        = 0;
-                _apPressed         = false;
+                // Touchdown, or the first ground sample after the state was unknown: the next leg
+                // starts here either way.
+                _gearRaisedThisLeg  = false;
+                _gearLoweredThisLeg = false;
+                _apResolvedThisLeg  = false;
+                _apAttempts         = 0;
+                _apPressed          = false;
             }
-            _wasOnGround = true;
+            _peakAglFt    = double.NaN;
+            _gearUpArmed  = true;
+            _apArmed      = true;
+            _lastOnGround = true;
             return;
         }
-        _wasOnGround = false;
-
-        // Above 3000 ft AGL (go-around or cruise) — allow gear to be lowered again.
-        if (altitudeAgl > 3000)
-            _gearLoweredThisLeg = false;
+        _lastOnGround = false;
+        if (double.IsNaN(altitudeAgl)) return;
 
         bool climbing   = verticalSpeedFpm >  200;
         bool descending = verticalSpeedFpm < -100;
+        bool? gearDown  = _isGearHandleDown?.Invoke();
 
-        if (AutoGearUpEnabled && !_gearRaisedThisLeg && climbing && altitudeAgl > 50)
+        // The gear coming up (the pilot's or ours) starts a new descent to measure from, and
+        // re-arms the gear down, as climbing above the go-around height does.
+        if (gearDown == false && _lastGearHandleDown != false)
         {
-            _sendStockEvent("GEAR_UP");
-            _announce("Positive rate. Gear up.");
+            _peakAglFt = altitudeAgl;
+            _gearLoweredThisLeg = false;
+        }
+        _lastGearHandleDown = gearDown;
+        if (altitudeAgl > GearDownRearmAglFt)
+            _gearLoweredThisLeg = false;
+        if (double.IsNaN(_peakAglFt) || altitudeAgl > _peakAglFt)
+            _peakAglFt = altitudeAgl;
+
+        if (AutoGearUpEnabled && _gearUpArmed && !_gearRaisedThisLeg && climbing && altitudeAgl > GearUpMinAglFt)
+        {
+            // Already up (the pilot raised it): nothing to do, nothing to say.
+            if (gearDown != false)
+            {
+                _sendStockEvent("GEAR_UP");
+                _announce("Positive rate. Gear up.");
+            }
             _gearRaisedThisLeg = true;
         }
 
-        if (AutoGearDownEnabled && !_gearLoweredThisLeg && descending && altitudeAgl < 2000 && altitudeAgl > 100)
+        if (AutoGearDownEnabled && !_gearLoweredThisLeg && descending
+            && altitudeAgl < GearDownBandTopFt && altitudeAgl > GearDownBandBottomFt
+            && altitudeAgl <= _peakAglFt - GearDownDescentFt)
         {
-            _sendStockEvent("GEAR_DOWN");
-            _announce("Two thousand feet. Gear down.");
+            // Already down (the pilot lowered it): nothing to do, nothing to say. The call says only
+            // what was done: "Two thousand feet" was spoken wherever in the band it fired.
+            if (gearDown != true)
+            {
+                _sendStockEvent("GEAR_DOWN");
+                _announce("Gear down.");
+            }
             _gearLoweredThisLeg = true;
         }
 
@@ -208,8 +314,9 @@ public sealed class UniversalAutomationService
             return;
         }
 
-        // Nothing attempted yet (no press, no wait): wait for the climb through the engage height.
-        if (_apAttempts == 0 && !(climbing && altitudeAgl >= EffectiveApEngageAltitudeAgl))
+        // Nothing attempted yet (no press, no wait): wait for the climb through the engage height,
+        // after a takeoff this service watched (see the takeoff gates in the class doc).
+        if (_apAttempts == 0 && !(_apArmed && climbing && altitudeAgl >= EffectiveApEngageAltitudeAgl))
             return;
 
         // A press (or a wait for a reading) is still settling: give the aircraft ApRetryIntervalMs
@@ -250,9 +357,9 @@ public sealed class UniversalAutomationService
         }
 
         // engaged == false (definitively off), or null on an aircraft that does not wait
-        // (WaitForApState off): press. The null press is open-loop and not a safe one: the PMDG
-        // engage switches are toggles, and they read null until their data is ready (FO-18). It is
-        // not retried: the leg is resolved below.
+        // (WaitForApState off): press. The null press is open-loop, taken only by the stock
+        // AUTOPILOT_ON aircraft (idempotent; every toggle engage waits). It is not retried: the leg
+        // is resolved below.
         if (_engageAutopilot != null) _engageAutopilot();
         else _sendStockEvent("AUTOPILOT_ON");
         _apPressed = true;

@@ -76,7 +76,9 @@ public sealed class HwA330StateEvaluator : LVarStateEvaluator
         // permanently NaN and the CONF 3 landing cap could never engage (fixed 2026-08-30).
         "A32NX_SPEEDS_GD", "A32NX_SPEEDS_S", "A32NX_SPEEDS_F", "A32NX_SPEEDS_VFEN",
         "A32NX_SPEEDS_LANDING_CONF3",
-        "WIPER_LEFT", "WIPER_RIGHT",
+        // The wiper circuit switches the Power Up safety check reads (never the synthetic
+        // WIPER_LEFT/RIGHT combos, which nothing writes back).
+        "WIPER_L_SW", "WIPER_R_SW",
         "A32NX_RCDR_GROUND_CONTROL_ON",
         // Gear legs (FbwA320GearConfirmation)
         "A32NX_GEAR_CENTER_POSITION", "A32NX_GEAR_LEFT_POSITION", "A32NX_GEAR_RIGHT_POSITION",

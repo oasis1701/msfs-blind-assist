@@ -247,6 +247,20 @@ public partial class SimConnectManager
         => RequestVariable(varKey, forceUpdate, freshRequestId: null);
 
     /// <summary>
+    /// A read that only keeps the cache current: the First Officer window's 1 Hz poll of its
+    /// OnRequest fields, which its evaluator reads through <see cref="GetCachedVariableValue"/>.
+    /// The answer updates the cache like any other, but fires SimVarUpdated only when the value
+    /// CHANGED (or a force-read is pending): every unchanged answer once re-ran MainForm's whole
+    /// SimVarUpdated pipeline, 45 to 100 times a second for the rest of the session once the window
+    /// had been opened. UI thread only (the FO window's timer), like the maps it reads.
+    /// </summary>
+    public void RequestVariableForCache(string varKey)
+    {
+        if (variableDataDefinitions.ContainsKey(varKey)) _cacheOnlyPolls[varKey] = 0;
+        RequestVariable(varKey);
+    }
+
+    /// <summary>
     /// <paramref name="freshRequestId"/>: a <see cref="ReadFreshAsync"/> issues its PERIOD.ONCE
     /// under this id instead of the data-definition id, so its answer can be told from any other
     /// delivery of the var (see <see cref="FreshReadWaiters"/>). The id is recorded in
@@ -442,110 +456,51 @@ public partial class SimConnectManager
         }
     }
 
+    // The First Officer's and the universal automation's background reads. Each definition is
+    // registered once per connection (RegisterFoBackgroundDefinitions, SC-12), so a request is a
+    // bare ONCE against it — never the per-call clear / re-add / re-register these once did.
+    private void RequestFoBackground(DATA_REQUESTS request, DATA_DEFINITIONS definition, string what)
+    {
+        if (!IsConnected || simConnect == null) return;
+        try
+        {
+            simConnect.RequestDataOnSimObject(request, definition, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error requesting {what}: {ex.Message}");
+        }
+    }
+
     /// <summary>
     /// Request AGL altitude for the First Officer background timer.
     /// Fires SimVarUpdated with VarName "FO_ALTITUDE_AGL" — NOT announced by HandleSpecialAnnouncements.
     /// </summary>
-    public void RequestFOAltitudeAGL()
-    {
-        if (IsConnected && simConnect != null)
-        {
-            try
-            {
-                var tempDefId = DATA_DEFINITIONS.DEF_FO_ALTITUDE_AGL;
-                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "PLANE ALT ABOVE GROUND", "feet",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FO_ALTITUDE_AGL,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting FO altitude AGL: {ex.Message}");
-            }
-        }
-    }
+    public void RequestFOAltitudeAGL() =>
+        RequestFoBackground(DATA_REQUESTS.REQUEST_FO_ALTITUDE_AGL, DATA_DEFINITIONS.DEF_FO_ALTITUDE_AGL, "FO altitude AGL");
 
     /// <summary>
     /// Request indicated airspeed for the First Officer background timer.
     /// Fires SimVarUpdated with VarName "FO_AIRSPEED_IAS" — NOT announced by HandleSpecialAnnouncements.
     /// </summary>
-    public void RequestFOAirspeedIndicated()
-    {
-        if (IsConnected && simConnect != null)
-        {
-            try
-            {
-                var tempDefId = DATA_DEFINITIONS.DEF_FO_AIRSPEED_IAS;
-                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
-                simConnect.AddToDataDefinition(tempDefId,
-                    "AIRSPEED INDICATED", "knots",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FO_AIRSPEED_IAS,
-                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting FO airspeed IAS: {ex.Message}");
-            }
-        }
-    }
+    public void RequestFOAirspeedIndicated() =>
+        RequestFoBackground(DATA_REQUESTS.REQUEST_FO_AIRSPEED_IAS, DATA_DEFINITIONS.DEF_FO_AIRSPEED_IAS, "FO airspeed IAS");
 
     /// <summary>
     /// Request every engine's N2 (1–3) for the First Officer background timer. The PMDG NG3 data
     /// struct exposes no N1/N2, so the FO reads the stock TURB ENG N2 SimVars to reliably
     /// tell "engine running" from "cold/unpowered" (the fuel-valve byte alone can't).
     /// Fires SimVarUpdated with VarName "FO_ENG1_N2" / "FO_ENG2_N2" / "FO_ENG3_N2" (percent) — NOT announced.
+    /// Engine 3 (the TFDi MD-11's right-wing engine, the FIRST one TFDi starts) is requested for
+    /// every aircraft: a two-engine airframe answers 0, and the only consumer is an evaluator that
+    /// opts in through IFoEngine3N2Sink.
     /// </summary>
     public void RequestFOEngineN2()
     {
-        if (IsConnected && simConnect != null)
-        {
-            try
-            {
-                var def1 = DATA_DEFINITIONS.DEF_FO_ENG1_N2;
-                SafelyClearDataDefinition(def1, requestId: null, delayMs: 50);
-                simConnect.AddToDataDefinition(def1,
-                    "TURB ENG N2:1", "percent",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(def1);
-                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FO_ENG1_N2,
-                    def1, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-
-                var def2 = DATA_DEFINITIONS.DEF_FO_ENG2_N2;
-                SafelyClearDataDefinition(def2, requestId: null, delayMs: 50);
-                simConnect.AddToDataDefinition(def2,
-                    "TURB ENG N2:2", "percent",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(def2);
-                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FO_ENG2_N2,
-                    def2, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-
-                // Engine 3 (the TFDi MD-11's right-wing engine, the FIRST one TFDi starts).
-                // Requested for every aircraft: a two-engine airframe answers 0, and the only
-                // consumer is an evaluator that opts in through IFoEngine3N2Sink.
-                var def3 = DATA_DEFINITIONS.DEF_FO_ENG3_N2;
-                SafelyClearDataDefinition(def3, requestId: null, delayMs: 50);
-                simConnect.AddToDataDefinition(def3,
-                    "TURB ENG N2:3", "percent",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(def3);
-                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FO_ENG3_N2,
-                    def3, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting FO engine N2: {ex.Message}");
-            }
-        }
+        RequestFoBackground(DATA_REQUESTS.REQUEST_FO_ENG1_N2, DATA_DEFINITIONS.DEF_FO_ENG1_N2, "FO engine 1 N2");
+        RequestFoBackground(DATA_REQUESTS.REQUEST_FO_ENG2_N2, DATA_DEFINITIONS.DEF_FO_ENG2_N2, "FO engine 2 N2");
+        RequestFoBackground(DATA_REQUESTS.REQUEST_FO_ENG3_N2, DATA_DEFINITIONS.DEF_FO_ENG3_N2, "FO engine 3 N2");
     }
 
     /// <summary>
@@ -555,31 +510,8 @@ public partial class SimConnectManager
     /// FUEL TANK CENTER QUANTITY (gallons) + FUEL WEIGHT PER GALLON (pounds), multiplied at
     /// dispatch. Fires SimVarUpdated with VarName "FO_CENTER_FUEL_LBS" (pounds) — NOT announced.
     /// </summary>
-    public void RequestFOCenterFuelLbs()
-    {
-        if (IsConnected && simConnect != null)
-        {
-            try
-            {
-                var defId = DATA_DEFINITIONS.DEF_FO_CENTER_FUEL_LBS;
-                SafelyClearDataDefinition(defId, requestId: null, delayMs: 50);
-                simConnect.AddToDataDefinition(defId,
-                    "FUEL TANK CENTER QUANTITY", "gallons",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.AddToDataDefinition(defId,
-                    "FUEL WEIGHT PER GALLON", "pounds",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<DoubleValuePair>(defId);
-                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FO_CENTER_FUEL_LBS,
-                    defId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting FO center fuel: {ex.Message}");
-            }
-        }
-    }
+    public void RequestFOCenterFuelLbs() =>
+        RequestFoBackground(DATA_REQUESTS.REQUEST_FO_CENTER_FUEL_LBS, DATA_DEFINITIONS.DEF_FO_CENTER_FUEL_LBS, "FO center fuel");
 
     /// <summary>
     /// Request the three stock gear-leg positions for the PMDG 777 First Officer's gear
@@ -588,34 +520,16 @@ public partial class SimConnectManager
     /// reads them in). Fires SimVarUpdated three times, VarName "FO_GEAR_LEFT_POS" /
     /// "FO_GEAR_CENTER_POS" / "FO_GEAR_RIGHT_POS" (percent extended) — NOT announced.
     /// </summary>
-    public void RequestFOGearPositions()
-    {
-        if (IsConnected && simConnect != null)
-        {
-            try
-            {
-                var defId = DATA_DEFINITIONS.DEF_FO_GEAR_POSITIONS;
-                SafelyClearDataDefinition(defId, requestId: null, delayMs: 50);
-                simConnect.AddToDataDefinition(defId,
-                    "GEAR LEFT POSITION", "percent",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.AddToDataDefinition(defId,
-                    "GEAR CENTER POSITION", "percent",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.AddToDataDefinition(defId,
-                    "GEAR RIGHT POSITION", "percent",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<DoubleValueTriple>(defId);
-                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FO_GEAR_POSITIONS,
-                    defId, SIMCONNECT_OBJECT_ID_USER,
-                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error requesting FO gear positions: {ex.Message}");
-            }
-        }
-    }
+    public void RequestFOGearPositions() =>
+        RequestFoBackground(DATA_REQUESTS.REQUEST_FO_GEAR_POSITIONS, DATA_DEFINITIONS.DEF_FO_GEAR_POSITIONS, "FO gear positions");
+
+    /// <summary>
+    /// Request the stock GEAR HANDLE POSITION (1 = down) for the universal auto-gear, so it never
+    /// lowers or raises a gear the pilot already moved and never announces a gear call it did
+    /// not make. Fires SimVarUpdated with VarName "FO_GEAR_HANDLE" — NOT announced.
+    /// </summary>
+    public void RequestFOGearHandle() =>
+        RequestFoBackground(DATA_REQUESTS.REQUEST_FO_GEAR_HANDLE, DATA_DEFINITIONS.DEF_FO_GEAR_HANDLE, "FO gear handle");
 
     public void RequestAirspeedTrue()
     {

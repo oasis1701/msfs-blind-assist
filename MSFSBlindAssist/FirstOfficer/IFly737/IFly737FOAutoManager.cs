@@ -29,6 +29,9 @@ public class IFly737FOAutoManager : IFoAutoManager
     public bool AutoFlapsEnabled { get; set; }   // stored, never acted on (no 737 auto-flap schedule)
 
     private bool _lnavVnavEngagedThisLeg; // one-shot: LNAV/VNAV pushes at 400 ft AGL
+    // Armed only by a crossing this manager watched with the setting on (PMDG737.LnavVnavPushHeight
+    // .Armed): never a push at altitude after a window first opened or a mid-climb restart.
+    private bool _lnavVnavArmed;
     private bool _wasOnGround = true;
     private readonly CenterFuelPumpAutomation _centerPumps = new();
     private readonly CenterPumpDiagnostics    _centerPumpLog = new("IFLY737");
@@ -53,6 +56,7 @@ public class IFly737FOAutoManager : IFoAutoManager
     public void Reset()
     {
         _lnavVnavEngagedThisLeg = false;
+        _lnavVnavArmed          = false;
         _wasOnGround            = true;
         _centerPumps.Reset();
         _centerPumpsClockPrimed = false;
@@ -70,13 +74,16 @@ public class IFly737FOAutoManager : IFoAutoManager
             if (!_wasOnGround)
                 _lnavVnavEngagedThisLeg = false;   // touchdown: re-arm for the next takeoff
             _wasOnGround = true;
+            _lnavVnavArmed = true;
             return;
         }
         _wasOnGround = false;
 
         // LNAV/VNAV follows the AP-engage opt-in (the generic AP-engage itself is the
         // universal service's job; this is the 737-specific SOP mode selection on top).
-        if (SettingsManager.Current.FOAutoApEnabled)
+        bool enabled = SettingsManager.Current.FOAutoApEnabled;
+        _lnavVnavArmed = PMDG737.LnavVnavPushHeight.Armed(_lnavVnavArmed, altitudeAgl, enabled);
+        if (enabled)
             CheckLnavVnav(altitudeAgl, verticalSpeedFpm > 200);
     }
 
@@ -87,7 +94,7 @@ public class IFly737FOAutoManager : IFoAutoManager
     private void CheckLnavVnav(double agl, bool climbing)
     {
         if (double.IsNaN(agl)) return;   // no AGL response yet — NaN < 400 is false, but state this positively
-        if (_lnavVnavEngagedThisLeg || !climbing || agl < 400) return;
+        if (!_lnavVnavArmed || _lnavVnavEngagedThisLeg || !climbing || agl < PMDG737.LnavVnavPushHeight.Feet) return;
 
         double lnavRead = _state.GetValue("LNAV_Switch_Status");
         double vnavRead = _state.GetValue("VNAV_Switch_Status");
@@ -121,7 +128,7 @@ public class IFly737FOAutoManager : IFoAutoManager
     /// for the same construction reason as <see cref="ShouldPushMcpMode"/> — pure function of
     /// the tick's already-computed values, no instance needed.</summary>
     internal static bool ShouldBurnLnavVnavLatch(bool pushedLnav, bool pushedVnav, double lnavRead, double vnavRead) =>
-        pushedLnav || pushedVnav || (!double.IsNaN(lnavRead) && !double.IsNaN(vnavRead));
+        PMDG737.LnavVnavPushHeight.ShouldBurnLatch(pushedLnav, pushedVnav, lnavRead, vnavRead);
 
     /// <summary>Pure MCP-mode push guard: press only when the annunciator reads DEFINITIVELY
     /// unlit. NaN (no SDK snapshot yet / field unreadable) must SKIP the push, never be treated

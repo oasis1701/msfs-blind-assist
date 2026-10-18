@@ -1373,7 +1373,11 @@ public partial class TFDiMD11Definition
 
         var (speak, record) = Md11FlapSystem.ReadoutDecision(_lastFlapSpoken, text, complete);
         if (record) _lastFlapSpoken = text;
-        if (speak) announcer.Announce(text);
+        // A First Officer flap move walks the handle through every detent between, and its flow
+        // already says where it is going: recorded, never spoken, inside its quiet window (the
+        // spoilers' rule above). The window was opened and never read here, so After Landing's walk
+        // from FULL spoke every detent on its way to UP over the flow's own step.
+        if (speak && !_gate.IsQuietFor(Md11FlapSystem.LeverKey, Environment.TickCount64)) announcer.Announce(text);
     }
 
     /// <summary>The thumbwheel's last sample, or null before the first — never a stand-in 0, which is a real 10°.</summary>

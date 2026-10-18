@@ -15,6 +15,10 @@ public interface IFirstOfficerWindow : IDisposable
     /// <summary>Re-wires data-manager references after a SimConnect connect/reconnect.</summary>
     void OnSimConnectChanged();
 
+    /// <summary>A flight was loaded in the simulator: the last flight's SimBrief plan and
+    /// phase latches are forgotten, so the next flight never runs on them.</summary>
+    void OnFlightLoaded();
+
     /// <summary>Shows the window (or brings it to the front) with its tab and selection as they were.</summary>
     void ShowForm();
 

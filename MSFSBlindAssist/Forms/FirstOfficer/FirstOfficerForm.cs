@@ -6,6 +6,7 @@ using MSFSBlindAssist.Models;
 using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.SimConnect;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Forms.FirstOfficer;
 
@@ -73,6 +74,22 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     // _latestIas starts at 0 for the auto manager; the detector needs to know it was never read.
     private volatile bool _iasReceived;
 
+    // The SimBrief plan is for ONE flight, as SeatbeltAutomation's is: it is forgotten on the
+    // first ground sample after the aircraft has flown (set on the position thread, consumed by
+    // the UI timer) and on a new flight load (OnFlightLoaded), so the next flight never flies on
+    // the last one's transition altitude, takeoff flaps or pressurization. The next Shift+C
+    // loads the new plan.
+    private bool _airborneSeen;
+    private volatile bool _forgetPlanPending;
+    private bool _simBriefLoading;
+
+    // The Steps list's ✓ / → / ✗ marks belong to ONE run: the flow it ran and, per step index,
+    // the strongest mark it earned (✗ over → over ✓, so a Skip-policy failure, which raises
+    // StepFailed and then StepSkipped, reads ✗ and never "→ ✗"). Shown only while that flow is
+    // the one selected, so browsing another flow mid-run never marks its rows.
+    private FlowDefinition<TState>? _markedFlow;
+    private readonly Dictionary<int, char> _stepMarks = new();
+
     // ------------------------------------------------------------------
     // UI — core
     // ------------------------------------------------------------------
@@ -84,7 +101,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     // UI — Checklist tab
     // ------------------------------------------------------------------
     private NativeAccessibleTreeView _checklistTree = null!;
-    private Label _checklistStatusLabel = null!;
+    private TextBox _checklistStatusBox = null!;
     private Button _resetSectionBtn = null!;
     private Button _resetAllBtn = null!;
     private Button _runRelatedFlowBtn = null!;
@@ -95,8 +112,8 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     // ------------------------------------------------------------------
     private ListBox _flowListBox = null!;
     private ListBox _stepsListBox = null!;
-    private Label _flowStatusLabel = null!;
-    private Label _currentStepLabel = null!;
+    private TextBox _flowStatusBox = null!;
+    private TextBox _currentStepBox = null!;
     private Button _startFlowBtn = null!;
     private Button _pauseResumeBtn = null!;
     private Button _stopFlowBtn = null!;
@@ -179,6 +196,12 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
                     _announcer.Announce(FoDepartureGroups.Announcement);
             }
 
+            if (_forgetPlanPending)
+            {
+                _forgetPlanPending = false;
+                ForgetFlightPlan();
+            }
+
             _checklistMgr.EvaluateAutoDetection();
             if (_simConnect.IsConnected)
             {
@@ -201,11 +224,12 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
 
                 // LVar-based profiles (Fenix/FBW): poll OnRequest-registered control vars
                 // onto the cache so checklist auto-detection can read them. PMDG evaluators
-                // are not LVarStateEvaluator, so this is a no-op for them.
+                // are not LVarStateEvaluator, so this is a no-op for them. Cache-only: an
+                // unchanged answer no longer re-runs MainForm's SimVarUpdated pipeline.
                 if (_stateEval is MSFSBlindAssist.FirstOfficer.Generic.LVarStateEvaluator lvarEval)
                 {
                     foreach (string field in lvarEval.OnRequestPollFields)
-                        _simConnect.RequestVariable(field);
+                        _simConnect.RequestVariableForCache(field);
                 }
             }
         };
@@ -235,9 +259,12 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
 
         // The first show starts on the tab strip; a re-show (Shift+C again) returns the pilot to
         // the control they left, such as the checklist item they were on, as the retired text
-        // checklist did, instead of the tab strip every time.
-        if (!_shownBefore || ActiveControl == null) _tabs.Focus();
-        else ActiveControl.Focus();
+        // checklist did, instead of the tab strip every time. A flow that started or ended while
+        // the window was hidden can have disabled that control (Stop Flow after the flow ended),
+        // and a disabled control takes no focus: then the flow button that took over gets it.
+        Control? returnTo = _shownBefore ? ActiveControl : null;
+        if (returnTo is { Enabled: false }) returnTo = FlowButtonTakingOverFrom(returnTo);
+        (returnTo ?? _tabs).Focus();
         _shownBefore = true;
         // Belt-and-braces: re-register group headers now the handle exists. Without
         // TVS_CHECKBOXES nothing stamps state images on them at handle creation, but this
@@ -247,11 +274,23 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
 
         // Auto-load the SimBrief plan on open (mirrors the EFB's Shift+E behavior) so
         // transition altitudes/flaps/pressurization are set without pressing Load
-        // SimBrief. Only while no plan is loaded yet — reloads stay manual — and the
-        // button-enabled guard prevents a double fetch while one is already in flight.
+        // SimBrief. Only while no plan is loaded — reloads stay manual, and a plan is
+        // forgotten after a landing or a new flight load (ForgetFlightPlan), so the next
+        // flight's first Shift+C loads its own — and never over a fetch already in flight.
         if (_loadedOFP == null && !string.IsNullOrWhiteSpace(_settings.SimbriefUsername)
-            && _loadSimBriefBtn.Enabled)
+            && !_simBriefLoading)
             LoadSimBrief();
+    }
+
+    /// <summary>A flight was loaded in the simulator (MainForm's AircraftLoaded handler): the
+    /// last flight's plan and phase latches are forgotten, as after a landing.</summary>
+    public void OnFlightLoaded()
+    {
+        ForgetFlightPlan();
+        // The latches would otherwise carry the last flight over: a load from cruise to a gate
+        // read as a descent through 10,000 ft and switched the landing lights on at the gate.
+        _flightPhaseMon.Reset();
+        _foAutoMgr.Reset();
     }
 
     /// <summary>Apply updated automation settings (call after the Settings dialog's First Officer panel saves).</summary>
@@ -269,18 +308,15 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         UpdateServicesFromConnection();
     }
 
-    /// <summary>
-    /// Called from EFB form or other consumers when a SimBrief OFP is loaded.
-    /// Provides transition altitude/level to the flight phase monitor.
-    /// </summary>
-    public void SetFlightPlan(SimBriefOFP ofp)
+    // Applies a loaded SimBrief plan and returns what to say about it, ONE utterance the caller
+    // speaks: the four AnnounceImmediate calls this once made back to back each cancelled the one
+    // before, so the pilot heard only "SimBrief flight plan loaded." and never the values the FO
+    // acts on. A value the plan lacks clears the one an earlier plan set (no transition altitude,
+    // no takeoff flaps), so a plan without it never keeps the last flight's.
+    private string ApplyFlightPlan(SimBriefOFP ofp)
     {
-        _loadedOFP = ofp;
-        ApplyFlightPlanThresholds(ofp);
-    }
+        var spoken = new List<string> { "SimBrief flight plan loaded." };
 
-    private void ApplyFlightPlanThresholds(SimBriefOFP ofp)
-    {
         // Parse transition altitude (feet) and transition level (flight level → feet)
         int transAltFt = 0;
         if (int.TryParse(ofp.OriginTransAlt, out int ta) && ta > 0)
@@ -293,21 +329,17 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
             transLvlFt = tl > 1000 ? tl : tl * 100;
         }
 
+        int effectiveTl = transLvlFt > 0 ? transLvlFt : transAltFt;
+        _flightPhaseMon.SetThresholds(transAltFt, effectiveTl);
         if (transAltFt > 0 || transLvlFt > 0)
-        {
-            int effectiveTl = transLvlFt > 0 ? transLvlFt : transAltFt;
-            _flightPhaseMon.SetThresholds(transAltFt, effectiveTl);
-            _announcer.AnnounceImmediate(
-                $"Flight phase monitor: transition altitude {transAltFt} feet, transition level {effectiveTl} feet.");
-        }
+            spoken.Add($"Transition altitude {transAltFt} feet, transition level {effectiveTl} feet.");
 
         // Store takeoff flap setting for use by Before Taxi flow (interface method —
-        // works for any aircraft's evaluator, not just the 777).
-        if (int.TryParse(ofp.TakeoffFlaps, out int flaps) && flaps > 0)
-        {
-            _stateEval.SetTakeoffFlaps(flaps);
-            _announcer.AnnounceImmediate($"Takeoff flaps: {flaps}");
-        }
+        // works for any aircraft's evaluator, not just the 777). 0 = none in this plan.
+        int flaps = int.TryParse(ofp.TakeoffFlaps, out int f) && f > 0 ? f : 0;
+        _stateEval.SetTakeoffFlaps(flaps);
+        if (flaps > 0)
+            spoken.Add($"Takeoff flaps {flaps}.");
 
         // Pressurization plan: FLT ALT = SimBrief cruise, LAND ALT = destination field
         // elevation (interface method — the 737 evaluator stores it rounded to the panel
@@ -324,18 +356,37 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
             var pressParts = new List<string>();
             if (cruiseFt != null)   pressParts.Add($"flight altitude {cruiseFt} feet");
             if (destElevFt != null) pressParts.Add($"landing altitude {destElevFt} feet");
-            _announcer.AnnounceImmediate($"Pressurization plan: {string.Join(", ", pressParts)}.");
+            spoken.Add($"Pressurization plan: {string.Join(", ", pressParts)}.");
         }
+        return string.Join(" ", spoken);
+    }
+
+    // Forgets the loaded SimBrief plan and everything it set (see _airborneSeen). Silent: no
+    // aircraft state changes, and the next Shift+C speaks the new plan as it loads it.
+    private void ForgetFlightPlan()
+    {
+        if (_loadedOFP == null) return;
+        _loadedOFP = null;
+        _flightPhaseMon.SetThresholds(0, 0);
+        _stateEval.SetTakeoffFlaps(0);
+        _stateEval.SetPlannedPressurizationAltitudes(null, null);
+        _flightPhaseMon.SetPlannedCruiseAltitude(null);
+        Log.Info("FO", "SimBrief plan forgotten: the flight it was for has landed or another flight was loaded");
     }
 
     private void OnAircraftPositionReceived(object? sender, SimConnectManager.AircraftPosition pos)
     {
+        bool onGround = pos.SimOnGround >= 0.5;
         // Forward to both monitors (called on SimConnect message thread)
-        _flightPhaseMon.Update(pos.Altitude, pos.VerticalSpeedFPM, pos.SimOnGround >= 0.5);
-        _foAutoMgr.Update(pos.Altitude, pos.VerticalSpeedFPM, _latestAgl, _latestIas, pos.SimOnGround >= 0.5);
-        if (_inFlightStart.Update(pos.SimOnGround >= 0.5, _latestAgl,
+        _flightPhaseMon.Update(pos.Altitude, pos.VerticalSpeedFPM, onGround);
+        _foAutoMgr.Update(pos.Altitude, pos.VerticalSpeedFPM, _latestAgl, _latestIas, onGround);
+        if (_inFlightStart.Update(onGround, _latestAgl,
                 _iasReceived ? _latestIas : double.NaN, DateTime.UtcNow))
             _inFlightCatchUpPending = true;
+
+        // The first ground sample after the aircraft has flown ends the plan's flight.
+        if (!onGround) _airborneSeen = true;
+        else if (_airborneSeen) { _airborneSeen = false; _forgetPlanPending = true; }
     }
 
     private void OnSimVarUpdated(object? sender, SimConnect.SimVarUpdateEventArgs e)
@@ -445,16 +496,9 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
 
         layout.Controls.Add(_checklistTree, 0, 0);
 
-        // Status label
-        _checklistStatusLabel = new Label
-        {
-            Text = "Select a checklist group to view items.",
-            Dock = DockStyle.Fill,
-            AutoSize = false,
-            Height = 22,
-            AccessibleName = "Checklist status",
-        };
-        layout.Controls.Add(_checklistStatusLabel, 0, 1);
+        // Status readout (a line's live value and state, without ticking it)
+        _checklistStatusBox = MakeStatusBox("Checklist status", "Select a checklist group to view items.");
+        layout.Controls.Add(_checklistStatusBox, 0, 1);
 
         // Buttons panel
         var btnPanel = new FlowLayoutPanel
@@ -513,29 +557,15 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         };
         layout.Controls.Add(_stepsListBox, 1, 0);
 
-        // Current step label
-        _currentStepLabel = new Label
-        {
-            Text = "No flow running.",
-            Dock = DockStyle.Fill,
-            AutoSize = false,
-            Height = 22,
-            AccessibleName = "Current step",
-        };
-        layout.SetColumnSpan(_currentStepLabel, 2);
-        layout.Controls.Add(_currentStepLabel, 0, 1);
+        // Current step readout
+        _currentStepBox = MakeStatusBox("Current step", "No flow running.");
+        layout.SetColumnSpan(_currentStepBox, 2);
+        layout.Controls.Add(_currentStepBox, 0, 1);
 
-        // Flow status label
-        _flowStatusLabel = new Label
-        {
-            Text = "",
-            Dock = DockStyle.Fill,
-            AutoSize = false,
-            Height = 22,
-            AccessibleName = "Flow status",
-        };
-        layout.SetColumnSpan(_flowStatusLabel, 2);
-        layout.Controls.Add(_flowStatusLabel, 0, 2);
+        // Flow status readout
+        _flowStatusBox = MakeStatusBox("Flow status", "");
+        layout.SetColumnSpan(_flowStatusBox, 2);
+        layout.Controls.Add(_flowStatusBox, 0, 2);
 
         // Buttons
         var btnPanel = new FlowLayoutPanel
@@ -667,11 +697,12 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         else
         {
             e.Node.Checked = item.IsChecked;
-            // A tick the First Officer refused (ChecklistItem.LeaveAloneWhen) speaks its reason
-            // IN PLACE of the status line — one utterance, so the interrupting status line can
-            // never cut the reason off.
-            _announcer.AnnounceImmediate(leftAloneText
-                ?? ChecklistItemSpeech.TickText(item.Label, item.ReadLiveValue(_stateEval), item.IsChecked));
+            // NVDA itself speaks the tick ("checked" / "not checked"), so the First Officer adds
+            // only what it cannot say (CORE-7): why a tick was refused (ChecklistItem
+            // .LeaveAloneWhen), or else the line's live value. Queued, so NVDA's own word is
+            // never cut off; a line with neither says nothing more.
+            if ((leftAloneText ?? ChecklistItemSpeech.TickText(item.ReadLiveValue(_stateEval))) is { } speech)
+                _announcer.Announce(speech);
         }
         _suppressTreeEvents = false;
     }
@@ -807,18 +838,18 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     private void UpdateChecklistStatus()
     {
         var node = _checklistTree.SelectedNode;
-        if (node == null) { _checklistStatusLabel.Text = ""; return; }
+        if (node == null) { _checklistStatusBox.Text = ""; return; }
 
         if (node.Parent == null && node.Tag is string groupId)
         {
             var group = _checklistGroups.FirstOrDefault(g => g.Id == groupId);
-            _checklistStatusLabel.Text = group?.ProgressLabel ?? "";
+            _checklistStatusBox.Text = group?.ProgressLabel ?? "";
         }
         else if (node.Parent != null && node.Tag is string itemId &&
                  node.Parent.Tag is string parentGroupId)
         {
             var item = _checklistMgr.FindItem(parentGroupId, itemId);
-            _checklistStatusLabel.Text = item != null
+            _checklistStatusBox.Text = item != null
                 ? ChecklistItemSpeech.StatusText(item.Label, item.ReadLiveValue(_stateEval), item.IsChecked)
                 : "";
         }
@@ -916,18 +947,45 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
             return;
         }
 
-        var flow = _flows[index];
+        RenderSteps(_flows[index]);
+        UpdateFlowButtonStates();
+    }
+
+    // The Steps list for one flow, with the marks of its run when it is the flow that ran.
+    private void RenderSteps(FlowDefinition<TState> flow)
+    {
         _stepsListBox.BeginUpdate();
         _stepsListBox.Items.Clear();
         for (int i = 0; i < flow.Steps.Count; i++)
-        {
-            var step = flow.Steps[i];
-            string prefix = step.ActionType == FlowStepActionType.CaptainReminder ? "[CAPTAIN] " : "";
-            _stepsListBox.Items.Add($"{i + 1}. {prefix}{step.Label}");
-        }
+            _stepsListBox.Items.Add(StepRowText(flow, i));
         _stepsListBox.EndUpdate();
+    }
 
-        UpdateFlowButtonStates();
+    private string StepRowText(FlowDefinition<TState> flow, int index)
+    {
+        var step = flow.Steps[index];
+        string prefix = step.ActionType == FlowStepActionType.CaptainReminder ? "[CAPTAIN] " : "";
+        string row = $"{index + 1}. {prefix}{step.Label}";
+        return ReferenceEquals(flow, _markedFlow) && _stepMarks.TryGetValue(index, out char mark)
+            ? $"{mark} {row}" : row;
+    }
+
+    // True while the Steps list shows the flow the marks belong to.
+    private bool ShowsMarkedFlow =>
+        _markedFlow != null && _flowListBox.SelectedIndex >= 0 && _flowListBox.SelectedIndex < _flows.Count
+        && ReferenceEquals(_flows[_flowListBox.SelectedIndex], _markedFlow);
+
+    private static int MarkRank(char mark) => mark switch { '✗' => 3, '→' => 2, _ => 1 };
+
+    // Records a step's mark for the run of `flow` (a weaker mark never replaces a stronger one)
+    // and redraws its row when that flow is the one shown.
+    private void MarkStep(FlowDefinition<TState> flow, int index, char mark)
+    {
+        if (!ReferenceEquals(flow, _markedFlow)) return;
+        if (_stepMarks.TryGetValue(index, out char old) && MarkRank(old) >= MarkRank(mark)) return;
+        _stepMarks[index] = mark;
+        if (ShowsMarkedFlow && index < _stepsListBox.Items.Count)
+            _stepsListBox.Items[index] = StepRowText(flow, index);
     }
 
     // ------------------------------------------------------------------
@@ -970,18 +1028,24 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
 
     private async void LoadSimBrief()
     {
-        _loadSimBriefBtn.Enabled = false;
-        if (_loadSimBriefChecklistBtn != null) _loadSimBriefChecklistBtn.Enabled = false;
+        // One fetch at a time. The two Load SimBrief buttons stay enabled while it runs:
+        // disabling the one with focus moved focus on to the tab strip.
+        if (_simBriefLoading)
+        {
+            _announcer.AnnounceImmediate("SimBrief flight plan is still loading.");
+            return;
+        }
 
+        string username = _settings.SimbriefUsername;
+        if (string.IsNullOrWhiteSpace(username))
+        {
+            _announcer.AnnounceImmediate("SimBrief username not set. Configure it in Settings.");
+            return;
+        }
+
+        _simBriefLoading = true;
         try
         {
-            string username = _settings.SimbriefUsername;
-            if (string.IsNullOrWhiteSpace(username))
-            {
-                _announcer.AnnounceImmediate("SimBrief username not set. Configure it in Settings.");
-                return;
-            }
-
             _announcer.AnnounceImmediate("Loading SimBrief flight plan...");
 
             SimBriefOFP ofp;
@@ -991,23 +1055,22 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
             }
             catch (Exception ex)
             {
-                _announcer.AnnounceImmediate($"Failed to fetch SimBrief data: {ex.Message}");
+                if (!IsDisposed) _announcer.AnnounceImmediate($"Failed to fetch SimBrief data: {ex.Message}");
                 return;
             }
 
+            // The window was disposed during the fetch (an aircraft switch): the plan is not
+            // this aircraft's to apply, and "loaded" would be spoken over the new aircraft.
+            if (IsDisposed) return;
+
             _loadedOFP = ofp;
-            ApplyFlightPlanThresholds(ofp);
+            string spoken = ApplyFlightPlan(ofp);
             _flightPhaseMon.Reset();
-            _announcer.AnnounceImmediate("SimBrief flight plan loaded.");
+            _announcer.AnnounceImmediate(spoken);
         }
         finally
         {
-            if (IsHandleCreated && !IsDisposed)
-                BeginInvoke(() =>
-                {
-                    _loadSimBriefBtn.Enabled = true;
-                    if (_loadSimBriefChecklistBtn != null) _loadSimBriefChecklistBtn.Enabled = true;
-                });
+            _simBriefLoading = false;
         }
     }
 
@@ -1023,11 +1086,34 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         bool running = runningOverride ?? _flowMgr.IsRunning;
         bool paused  = running && _flowMgr.IsPaused;
 
+        // Disabling the FOCUSED button makes WinForms move focus to the next control in tab
+        // order: Start Flow disabled itself before Pause and Stop were enabled, so the pilot who
+        // pressed it landed on "Load SimBrief" (a second Space re-fetched the plan mid-flow), and
+        // a flow ending under Pause or Stop did the same. The button that takes over is enabled
+        // first and given focus, then the rest are set. Only while this window has focus: a
+        // Focus() call on a background window would activate it over the simulator.
+        if (running) { _pauseResumeBtn.Enabled = true; _stopFlowBtn.Enabled = true; }
+        else _startFlowBtn.Enabled = true;
+        if (ContainsFocus)
+        {
+            if (running && _startFlowBtn.Focused) _pauseResumeBtn.Focus();
+            else if (!running && (_pauseResumeBtn.Focused || _stopFlowBtn.Focused)) _startFlowBtn.Focus();
+        }
+
         _startFlowBtn.Enabled    = !running;
         _pauseResumeBtn.Enabled  = running;
         _pauseResumeBtn.Text     = paused ? "Resume" : "Pause";
         _pauseResumeBtn.AccessibleName = paused ? "Resume flow" : "Pause flow";
         _stopFlowBtn.Enabled     = running;
+    }
+
+    // The flow button that takes over from a disabled one: Start Flow once a flow has ended,
+    // Pause while one runs. Null for any other control (ShowForm's re-show focus).
+    private Control? FlowButtonTakingOverFrom(Control disabled)
+    {
+        if (disabled != _startFlowBtn && disabled != _pauseResumeBtn && disabled != _stopFlowBtn) return null;
+        if (_startFlowBtn.Enabled) return _startFlowBtn;
+        return _pauseResumeBtn.Enabled ? _pauseResumeBtn : null;
     }
 
     // ------------------------------------------------------------------
@@ -1037,15 +1123,19 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     private void OnFlowStarted(FlowDefinition<TState> flow)
     {
         if (InvokeRequired) { Invoke(() => OnFlowStarted(flow)); return; }
-        _flowStatusLabel.Text = $"Running: {flow.Name}";
+        _flowStatusBox.Text = $"Running: {flow.Name}";
+        // A new run starts with a clean Steps list: the last run's marks are dropped.
+        _markedFlow = flow;
+        _stepMarks.Clear();
+        if (ShowsMarkedFlow) RenderSteps(flow);
         UpdateFlowButtonStates();
     }
 
     private void OnFlowCompleted(FlowDefinition<TState> flow)
     {
         if (InvokeRequired) { Invoke(() => OnFlowCompleted(flow)); return; }
-        _flowStatusLabel.Text = $"Complete: {flow.Name}";
-        _currentStepLabel.Text = "Flow complete.";
+        _flowStatusBox.Text = $"Complete: {flow.Name}";
+        _currentStepBox.Text = "Flow complete.";
 
         // Mark the phase's checklist section(s) complete — running the flow is the FO
         // working that phase, so its checklist header should read "Complete" instead of a
@@ -1066,7 +1156,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     private void OnFlowCancelled(FlowDefinition<TState> flow)
     {
         if (InvokeRequired) { Invoke(() => OnFlowCancelled(flow)); return; }
-        _flowStatusLabel.Text = $"Cancelled: {flow.Name}";
+        _flowStatusBox.Text = $"Cancelled: {flow.Name}";
         // See the comment in OnFlowCompleted: fires while IsRunning is still true.
         UpdateFlowButtonStates(runningOverride: false);
     }
@@ -1074,7 +1164,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     private void OnFlowFailed(FlowDefinition<TState> flow, string reason)
     {
         if (InvokeRequired) { Invoke(() => OnFlowFailed(flow, reason)); return; }
-        _flowStatusLabel.Text = $"Failed: {flow.Name} — {reason}";
+        _flowStatusBox.Text = $"Failed: {flow.Name} — {reason}";
         // See the comment in OnFlowCompleted: fires while IsRunning is still true.
         UpdateFlowButtonStates(runningOverride: false);
     }
@@ -1082,62 +1172,49 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     private void OnFlowPaused(FlowDefinition<TState> flow)
     {
         if (InvokeRequired) { Invoke(() => OnFlowPaused(flow)); return; }
-        _flowStatusLabel.Text = $"Paused: {flow.Name}";
+        _flowStatusBox.Text = $"Paused: {flow.Name}";
         UpdateFlowButtonStates();
     }
 
     private void OnFlowResumed(FlowDefinition<TState> flow)
     {
         if (InvokeRequired) { Invoke(() => OnFlowResumed(flow)); return; }
-        _flowStatusLabel.Text = $"Resumed: {flow.Name}";
+        _flowStatusBox.Text = $"Resumed: {flow.Name}";
         UpdateFlowButtonStates();
     }
 
     private void OnStepStarted(FlowDefinition<TState> flow, FlowStep<TState> step, int index)
     {
         if (InvokeRequired) { Invoke(() => OnStepStarted(flow, step, index)); return; }
-        _currentStepLabel.Text = $"Step {index + 1}: {step.Label}";
-        HighlightFlowStep(index);
+        _currentStepBox.Text = $"Step {index + 1}: {step.Label}";
+        // Only the running flow's own rows: selecting row N of a flow the pilot is browsing
+        // would point at a step that is not running.
+        if (ReferenceEquals(flow, _markedFlow) && ShowsMarkedFlow)
+            HighlightFlowStep(index);
     }
 
     private void OnStepCompleted(FlowDefinition<TState> flow, FlowStep<TState> step, int index)
     {
         if (InvokeRequired) { Invoke(() => OnStepCompleted(flow, step, index)); return; }
-        // Mark step as completed in list (prefix ✓)
-        if (index < _stepsListBox.Items.Count)
-        {
-            string current = _stepsListBox.Items[index].ToString() ?? "";
-            if (!current.StartsWith("✓"))
-                _stepsListBox.Items[index] = "✓ " + current;
-        }
+        MarkStep(flow, index, '✓');
     }
 
     private void OnStepFailed(FlowDefinition<TState> flow, FlowStep<TState> step, int index, string reason)
     {
         if (InvokeRequired) { Invoke(() => OnStepFailed(flow, step, index, reason)); return; }
-        if (index < _stepsListBox.Items.Count)
-        {
-            string current = _stepsListBox.Items[index].ToString() ?? "";
-            if (!current.StartsWith("✗"))
-                _stepsListBox.Items[index] = "✗ " + current;
-        }
+        MarkStep(flow, index, '✗');
     }
 
     private void OnStepSkipped(FlowDefinition<TState> flow, FlowStep<TState> step, int index)
     {
         if (InvokeRequired) { Invoke(() => OnStepSkipped(flow, step, index)); return; }
-        if (index < _stepsListBox.Items.Count)
-        {
-            string current = _stepsListBox.Items[index].ToString() ?? "";
-            if (!current.StartsWith("→"))
-                _stepsListBox.Items[index] = "→ " + current;
-        }
+        MarkStep(flow, index, '→');
     }
 
     private void OnCaptainReminder(string text)
     {
         if (InvokeRequired) { Invoke(() => OnCaptainReminder(text)); return; }
-        _flowStatusLabel.Text = $"Captain action: {text}";
+        _flowStatusBox.Text = $"Captain action: {text}";
     }
 
     private void HighlightFlowStep(int index)
@@ -1180,7 +1257,25 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
             _simConnect.AircraftPositionReceived -= OnAircraftPositionReceived;
             _simConnect.SimVarUpdated            -= OnSimVarUpdated;
             _autoDetectTimer.Dispose();
+            // Unhooked before the cancel: the cancelled run still raises FlowCancelled (and
+            // speaks "flow cancelled" itself), which must not reach this disposed window.
+            _flowMgr.FlowStarted   -= OnFlowStarted;
+            _flowMgr.FlowCompleted -= OnFlowCompleted;
+            _flowMgr.FlowCancelled -= OnFlowCancelled;
+            _flowMgr.FlowFailed    -= OnFlowFailed;
+            _flowMgr.FlowPaused    -= OnFlowPaused;
+            _flowMgr.FlowResumed   -= OnFlowResumed;
+            _flowMgr.StepStarted   -= OnStepStarted;
+            _flowMgr.StepCompleted -= OnStepCompleted;
+            _flowMgr.StepFailed    -= OnStepFailed;
+            _flowMgr.StepSkipped   -= OnStepSkipped;
+            _flowMgr.CaptainReminderRequired -= OnCaptainReminder;
             _flowMgr.Cancel();
+            // Detach the executor, its disconnect path: the cancel stops the flow, not a write
+            // already queued on the executor's gate or pacing, and on an aircraft switch that
+            // write would land on the NEXT aircraft (a 777 window-heat event id is a 737 centre
+            // fuel pump). Each executor re-checks after its pacing wait and refuses.
+            _profile.SetExecutorSimConnect(_actionExec, null);
         }
         base.Dispose(disposing);
     }
@@ -1188,6 +1283,17 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     // ------------------------------------------------------------------
     // UI helper
     // ------------------------------------------------------------------
+
+    // A status readout is a read-only TextBox, never a Label (VAT-13): a Label is not in the tab
+    // order, and NVDA read only its fixed AccessibleName ("Flow status"), never the status in it.
+    // An edit control's name labels its value instead of replacing it.
+    private static TextBox MakeStatusBox(string accessibleName, string text) => new()
+    {
+        Text = text,
+        Dock = DockStyle.Fill,
+        ReadOnly = true,
+        AccessibleName = accessibleName,
+    };
 
     private static Button MakeButton(string text, string accessibleName, Action onClick)
     {

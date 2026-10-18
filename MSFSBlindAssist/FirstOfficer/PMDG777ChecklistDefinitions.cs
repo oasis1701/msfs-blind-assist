@@ -82,9 +82,12 @@ public static class PMDG777ChecklistDefinitions
             Auto("EPU_GEAR_DOWN", "ELEC_POWER_UP", "Landing gear lever: DOWN",
                 "GEAR_Lever", v => Math.Abs(v - 1) < 0.1,
                 action: (e, _) => e.SetGearLever(1)),
-            // No reliable alternate-flaps position field — action-only.
-            ActionManual("EPU_ALT_FLAPS_OFF", "ELEC_POWER_UP", "Alternate Flaps selector: OFF",
-                (e, _) => e.SetAltFlaps(0)),
+            // FCTL_AltnFlaps_Control_Sw is 0 RET, 1 OFF, 2 EXT (PMDG_777X_SDK.h). The line once
+            // ticked to SetAltFlaps(0), RETRACT, as an action-only line ("no reliable position
+            // field"); the field is the panel's own Continuous read-back, so the line follows it.
+            Auto("EPU_ALT_FLAPS_OFF", "ELEC_POWER_UP", "Alternate Flaps selector: OFF",
+                "FCTL_AltnFlaps_Control_Sw", v => Math.Abs(v - AircraftActionExecutor.AltFlapsOff) < 0.1,
+                action: (e, _) => e.SetAltFlaps(AircraftActionExecutor.AltFlapsOff)),
             Auto("EPU_BUS_TIES", "ELEC_POWER_UP", "Bus Tie switches: AUTO",
                 "ELEC_BusTie_Sw_AUTO_0", v => v > 0.5,
                 new[] { "ELEC_BusTie_Sw_AUTO_1" },
@@ -92,12 +95,15 @@ public static class PMDG777ChecklistDefinitions
             // GPU buttons are momentary TOGGLES — press only the side that is not yet on,
             // or a tick on an already-connected GPU would DISCONNECT it. Auto-ticks from
             // the FO_ANY_GPU_ON synthetic (either ext-power annunciator lit).
+            // Only a side READ as off is pressed (IsOff): an unread annunciator is NaN, which
+            // "!IsGpuPower1On" read as off, so a tick before the first CDA snapshot pressed a
+            // connected side and disconnected it.
             Auto("EPU_GND_PWR", "ELEC_POWER_UP", "External power: ON (if available)",
                 "FO_ANY_GPU_ON", v => v > 0.5,
                 action: (e, s) =>
                 {
-                    if (!s.IsGpuPower1On()) e.PushGroundPowerPrimary();
-                    if (!s.IsGpuPower2On()) e.PushGroundPowerSecondary();
+                    if (s.IsOff("ELEC_annunExtPowr_ON_0")) e.PushGroundPowerPrimary();
+                    if (s.IsOff("ELEC_annunExtPowr_ON_1")) e.PushGroundPowerSecondary();
                 }),
             Auto("EPU_PARK_BRAKE", "ELEC_POWER_UP", "Parking brake: SET",
                 "BRAKES_ParkingBrakeLeverOn", v => v > 0.5,
@@ -534,14 +540,15 @@ public static class PMDG777ChecklistDefinitions
             // the tick presses the button if the annunciator shows the mode unarmed,
             // because the 777 profile has no other LNAV/VNAV automation and an unarmed VNAV
             // on the runway is the failure this catches.
-            // The pushes are TOGGLES — press only when the annunciator shows unarmed, or a
-            // tick on an already-armed mode would disarm it (the FD-switch trap).
+            // The pushes are TOGGLES — press only when the annunciator READS unarmed (IsOff), or
+            // a tick on an already-armed mode would disarm it (the FD-switch trap); an unread
+            // annunciator (NaN) is not pressed either.
             Auto("BTKO_LNAV", "BEFORE_TAKEOFF", "LNAV: Verify armed",
                 "MCP_annunLNAV", v => v > 0.5,
-                action: (e, s) => { if (!s.IsOn("MCP_annunLNAV")) e.PushLNAV(); }),
+                action: (e, s) => { if (s.IsOff("MCP_annunLNAV")) e.PushLNAV(); }),
             Auto("BTKO_VNAV", "BEFORE_TAKEOFF", "VNAV: Verify armed",
                 "MCP_annunVNAV", v => v > 0.5,
-                action: (e, s) => { if (!s.IsOn("MCP_annunVNAV")) e.PushVNAV(); }),
+                action: (e, s) => { if (s.IsOff("MCP_annunVNAV")) e.PushVNAV(); }),
         }
     };
 

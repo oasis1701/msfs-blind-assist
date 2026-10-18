@@ -106,7 +106,7 @@ Enable Auto Gear / Auto AP in **File → Settings… → First Officer tab**, th
   gated on the same Auto AP checkbox.
 - Descending through 2000 ft AGL with gear up → **"Gear down"**.
 - **PMDG auto-flaps was REMOVED (2026-07-08, user decision)** — the "Auto-manage flaps
-  (FBW A380 only)" checkbox must have NO effect on the 737/777: with it enabled, verify flaps
+  (FBW A380, A32NX, Headwind A330)" checkbox must have NO effect on the 737/777: with it enabled, verify flaps
   never move on climbout/approach except by pilot input or an explicitly-run flow step.
 
 ### B5. Flight-phase + SimBrief
@@ -333,7 +333,12 @@ Load a SimBrief OFP with a transition altitude, then climb through it: the FO se
 to STD and announces "Transition altitude. Altimeters set to standard." (the STD push now commits via
 the momentary-toggle dispatch). Descending through the transition level → back to QNH + "set local
 pressure" callout. *Note:* the transition altitude still comes from SimBrief only (no default fallback,
-by design). The **777** is unchanged here (it already read STD state and committed correctly).
+by design). The **777** reads its STD state from the Captain's altimeter setting (KOHLSMAN at 29.92,
+the panel's own STD test), never `EFIS_BaroSTD_Sw_Pushed`, which the SDK declares a MOMENTARY push
+flag: until 2026-10-18 it read 0, so the 777 pushed nothing at the transition level while saying
+"Altimeters set to local QNH", and toggled a side already on STD back to QNH in the climb. On the 777,
+check both crossings: climbing, both sides end on STD (also with one side set to STD by hand first);
+descending, both end on QNH. With the setting unread it now only reminds you.
 
 ### H10. Speed brake: arm it, and leave a deployed one alone (Landing, 737 and 777)  *(verify in sim, 2026-09-30; 777 lines changed 2026-10-09)*
 Both jets judge the lever, not a light: "armed" is the lever exactly at ARM (737: and the
@@ -1017,3 +1022,69 @@ pumps on + center quantity above `ArmThresholdLbs` (1500 lb). Run this on BOTH t
    shape is now `qty= dt= ready= gnd= pumps= wing= belowMs= dryOffLatch= manualOffLatch=
    floor= pending= -> Action` (no more `dry=`/`cred=`/`dryMs=` — those were retired with the
    annunciator model).
+
+## Part Z — PR #160 review fixes (2026-10-18)
+
+None of these has run in the sim. Z.1 is shared by every aircraft's First Officer; the other
+aircraft's plans point here for it.
+
+### Z.1 Shared: the window, SimBrief and the universal automation
+
+1. **Focus stays where you are.** Tab to Start Flow and press Space: focus moves to Pause Flow,
+   never on to "Load SimBrief". When a flow ends or you press Stop, focus moves back to Start
+   Flow. Press Load SimBrief: focus stays on it, and pressing it again while it loads says
+   "SimBrief flight plan is still loading."
+2. **One SimBrief announcement**, heard in full: "SimBrief flight plan loaded.", then the
+   transition altitude and level, the takeoff flaps and (737) the pressurization plan.
+3. **The plan is the flight's.** Land, then load a new flight in MSFS without switching aircraft:
+   the old plan is forgotten (no altimeter change at the old transition altitude on the next
+   departure), and Shift+C loads the new one.
+4. **The status lines are reachable.** Tab through the window: the checklist status, the current
+   step and the flow status are read-only edit fields that NVDA reads with their text.
+5. **Steps list marks.** Run a flow, open a different flow on the Flows tab, and back: the marks
+   (✓, ✗, →) belong to the flow that ran, and a new run starts with none.
+6. **Gear and autopilot only after a takeoff they watched.** With "Auto-raise gear",
+   "Auto-lower gear" and "Engage autopilot" on, restart MSFSBA in a climb above the engage height:
+   nothing is pressed and nothing is said. Turn "Engage autopilot" on in the air: nothing until
+   the next takeoff.
+7. **Gear down on approach, again on a circuit.** Gear down comes once you descend below
+   2,000 ft AGL (at least 300 ft below the highest point since takeoff), "Gear down." A level-off
+   or a sink below 2,000 ft on the climb-out lowers nothing. Fly a touch-and-go: gear up again on
+   the climb-out, gear down again on the next approach.
+8. **Autopilot presses 3 s apart** on the PMDG 737 and 777, the iFly, the MD-11 and the Fenix:
+   with the First Officer window open, the autopilot engages once and stays engaged ("Autopilot
+   engaged."), never switched off by a second press. Engage CMD B yourself before the height on
+   the 737: nothing is pressed.
+
+### Z.2 PMDG 737
+
+1. **Guarded switches move the way the panel does.** Secure after Shutdown: "Battery: OFF" must
+   hold (`ELEC_BatSelector` reads OFF a minute later) and the aircraft goes dark. Emergency exit
+   lights and standby power likewise end where the step says.
+2. **A hung start stops the flow.** If a starter cutout wait times out, the flow stops there
+   ("Engine Start flow stopped. Unable to complete: …"); engine 1 is never put to GRD while
+   engine 2's starter is engaged.
+3. **LNAV/VNAV at 400 ft only on a climb it watched.** Open the window for the first time above
+   400 ft: no LNAV/VNAV push and no "400 feet" call.
+4. **After Landing waits for the flaps.** The flow's last step waits up to 90 s for the flap
+   needle at UP before it completes; ticking "Flaps: UP" by hand holds the tick until they are up.
+
+### Z.3 PMDG 777
+
+1. **Transition altimeters**, as H9 says: climbing both sides end on STD (also with one side set
+   to STD by hand first); descending both end on QNH; the Captain's altimeter is the STD read.
+2. **Verified writes are judged over 2.6 s.** Electrical Power Up from cold and dark: no
+   "Skipping: Battery: ON" (or any other "Skipping") over a switch that did move.
+3. **Engine Start stops on a failed start.** If a START selector fails, or an engine does not
+   reach running N2 within 2 minutes, the flow stops; the fuel control switch is never put to RUN
+   after a failed START step.
+4. **Before Start fuel pumps:** with wing pumps on, center pumps off and more than 1,000 lb in the
+   center tank, the step switches the center pumps on instead of "Already set".
+5. **Before Takeoff lights:** with only one landing light (or one turnoff light) on, the step
+   switches the rest on instead of "Already set".
+6. **Alternate flaps:** Power Up leaves the alternate flaps selector at OFF, never RET (read
+   `FCTL_AltnFlaps_Control_Sw` = 1).
+7. **Unread toggles are never pressed.** Run a flow just after a connect, before the first CDA
+   snapshot: a toggle step whose switch is unread says "Skipping: … The switch cannot be read
+   yet." (GPU, LNAV, VNAV and the mouse-flag switches), and the FD and A/T ARM steps skip rather
+   than press; none is pressed blind.

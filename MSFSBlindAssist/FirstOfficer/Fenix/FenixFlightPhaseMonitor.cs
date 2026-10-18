@@ -39,7 +39,10 @@ public sealed class FenixFlightPhaseMonitor : IFoPhaseMonitor
     {
         _executor = executor;
         _announcer = announcer;
-        _seatbelt = new SeatbeltAutomation(on => { _ = _executor.SetSeatbeltSign(on); }, announcer.AnnounceImmediate);
+        // Every crossing call here is QUEUED (Announce): the 10,000 ft light call, the seat-belt
+        // automation's 10,000 ft call and a transition call can come from the same sample, and
+        // each interrupting call cut off the one before it.
+        _seatbelt = new SeatbeltAutomation(on => { _ = _executor.SetSeatbeltSign(on); }, announcer.Announce);
     }
 
     public void SetThresholds(int transAltFt, int transLevelFt)
@@ -88,7 +91,7 @@ public sealed class FenixFlightPhaseMonitor : IFoPhaseMonitor
         if (!_noTransReminderFired && climbing && alt > 18_000 + HysteresisFt)
         {
             _noTransReminderFired = true;
-            _announcer.AnnounceImmediate(TransitionAltimeters.NoTransitionLoadedReminder(AutoAltimetersEnabled));
+            _announcer.Announce(TransitionAltimeters.NoTransitionLoadedReminder(AutoAltimetersEnabled));
         }
         else if (_noTransReminderFired && alt < 17_000)
         {
@@ -110,13 +113,13 @@ public sealed class FenixFlightPhaseMonitor : IFoPhaseMonitor
             {
                 _ = _executor.SetLandingLights(0);   // Retract
                 _ = _executor.SetNoseLight(0);       // Off
-                _announcer.AnnounceImmediate("Above ten thousand. Landing lights off.");
+                _announcer.Announce("Above ten thousand. Landing lights off.");
             }
             else if (!climbing && nowBelow && _prevAbove10k == true)
             {
                 _ = _executor.SetLandingLights(2);   // On
                 _ = _executor.SetNoseLight(2);       // T.O.
-                _announcer.AnnounceImmediate("Below ten thousand. Landing lights on.");
+                _announcer.Announce("Below ten thousand. Landing lights on.");
             }
         }
 
@@ -134,7 +137,7 @@ public sealed class FenixFlightPhaseMonitor : IFoPhaseMonitor
         var crossing = _trans.Update(alt, climbing, descending);
         if (TransitionAltimeters.ReminderInstead(crossing, AutoAltimetersEnabled) is { } reminder)
         {
-            _announcer.AnnounceImmediate(reminder);
+            _announcer.Announce(reminder);
             return;
         }
 
@@ -142,11 +145,11 @@ public sealed class FenixFlightPhaseMonitor : IFoPhaseMonitor
         {
             case TransitionCrossingDetector.Crossing.ClimbToStd:
                 _ = _executor.SetBaroStdBoth(true);
-                _announcer.AnnounceImmediate("Transition altitude. Altimeters set to standard.");
+                _announcer.Announce("Transition altitude. Altimeters set to standard.");
                 break;
             case TransitionCrossingDetector.Crossing.DescendToQnh:
                 _ = _executor.SetBaroStdBoth(false);
-                _announcer.AnnounceImmediate("Transition level. Altimeters set to QNH mode. Set local pressure now.");
+                _announcer.Announce("Transition level. Altimeters set to QNH mode. Set local pressure now.");
                 break;
         }
     }

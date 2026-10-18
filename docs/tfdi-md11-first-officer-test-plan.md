@@ -34,10 +34,10 @@ Build: 28 September 2026 or later (the file version ends in `c4c09aae` or a late
 
 1. **Settle:** the File → First Officer item is read as "TFDi MD-11 First Officer" while the
    MD-11 is the selected aircraft, and Shift+C (output mode) opens the same window.
-2. **Listen:** SimBrief loads by itself when the window opens. You should hear the transition
-   altitude and level, "Takeoff flaps", the pressurization plan, then "SimBrief flight plan
-   loaded". Each of those interrupts the one before it, so you may hear only the last. Note which
-   ones you actually heard. (This part is shared by every aircraft's First Officer.)
+2. **Listen:** SimBrief loads by itself when the window opens. You should hear ONE announcement,
+   in full: "SimBrief flight plan loaded.", the transition altitude and level, "Takeoff flaps"
+   and the pressurization plan. Until 2026-10-18 each part interrupted the one before it, so only
+   the last was heard. (This part is shared by every aircraft's First Officer.)
 3. At the end of a session: switching aircraft closes the window.
 
 ### Power Up
@@ -205,9 +205,15 @@ Settings, on the First Officer tab of File, Settings:
 Let the auto-lower fire first, then run Before Landing. Always run it: it is the backstop if the
 gear did not come down.
 
-1. **Settle:** after "Two thousand feet. Gear down", Before Landing says "Already set: Gear:
-   DOWN". If it lowers the gear itself instead, the stock gear-down event did not reach the MD-11.
+1. **Settle:** after "Gear down.", Before Landing says "Already set: Gear: DOWN". If it lowers
+   the gear itself instead, the stock gear-down event did not reach the MD-11.
 2. **Settle:** "Spoilers: ARM".
+3. **Measure, new 2026-10-18 (FO-13):** the flow's last step is the read-only gear check, the
+   lever AND the stock legs: "Already set: Gear: DOWN" with the gear down and locked, or up to 20 s
+   of "Waiting for: Gear: DOWN". Before relying on it, read `A:GEAR CENTER POSITION`,
+   `A:GEAR LEFT POSITION` and `A:GEAR RIGHT POSITION` (percent) on the MD-11 once with the gear up
+   and once down: they must read about 0 and about 100. If they do not move, the check cannot
+   confirm the MD-11's gear and the legs are the wrong source.
 
 ### Landing and After Landing
 
@@ -221,6 +227,33 @@ gear did not come down.
 The First Officer must never move the flap handle in flight, run an auto-flap schedule, set the
 landing autobrake, or touch thrust, trims, reversers or the FMS. If you hear it do any of these,
 stop and report it.
+
+## Review fixes, 18 October 2026
+
+What the PR #160 review changed on the MD-11. Each is **Settle**: none has run in the sim.
+
+1. **Read-back lines are delivered or left open.** Every read-back line a flow latches now has a
+   step behind it: a write completes its read-back line too, and new read-only checks ("Already
+   set: …", or a 5 s "Waiting for: …" then "Skipping: …") cover the lines no write sets. Listen for
+   the new checks: Power Up opens with the flap handle, gear handle, fuel dump, manifold drain and
+   emergency power selector (OFF, before the flow arms it); Preflight opens with battery, IRS NAV,
+   ignition off and start switches in, and checks EVAC and GPWS "armed/normal and guarded" after
+   their steps; Before Start checks "IRS: aligned"; Engine Start ends with "Engine start switches:
+   IN"; Before Takeoff checks the takeoff flaps and wing anti-ice; Parking checks "Exterior
+   lights: all off except nav". Then make one fail on purpose: open the EVAC guard by hand and
+   run Preflight. You must hear "Skipping: Evacuation switch: armed and guarded", and on the
+   Checklists tab "EVAC Switch: Armed and Guarded" must stay unticked after the flow completes.
+2. **After Takeoff waits for the flaps.** After gear up, spoilers and autobrake, the flow says
+   "Waiting for: Flaps and slats: up and retracted" and waits up to five minutes for the handle at
+   UP, then confirms the gear up (lever and legs) as its last step. "Flaps and Slats: Up and
+   Retracted" must not tick before you retract the flaps.
+3. **Engine start never fuels an engine without a starter.** Abort a start (push the START switch
+   in) while N2 is between 15 and 50 %, then run Engine Start again before N2 drops below 15 %: the
+   flow must stop at "Engine n start switch: PULL" and never put that fuel switch ON. Run it again
+   below 15 % and it starts normally.
+4. **Listen:** After Landing's flap step (FULL to UP) speaks the step, not every detent the handle
+   passes: the flap read-out stays quiet while the First Officer walks the handle.
+5. **Gear legs** are measured in Before Landing (item 3 there) and checked in After Takeoff.
 
 ## Reporting a problem
 

@@ -1,6 +1,6 @@
 using System;
-using System.Globalization;
 using MSFSBlindAssist.SimConnect.IFly;
+using MSFSBlindAssist.Utils;
 
 namespace MSFSBlindAssist.FirstOfficer.IFly737;
 
@@ -108,8 +108,10 @@ public static class IFly737FoComposition
     /// </summary>
     public static double CenterQuantityLbs(IFlySdkSnapshot snap)
     {
+        // Another program's text, so CORE-17's TryParseExternal: NumberStyles.Any with the invariant
+        // culture read a comma decimal as a thousands separator ("2,3" as 23).
         string text = snap.FuelQuantityText(2).Trim();
-        if (!double.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out double value))
+        if (!NumberParsing.TryParseExternal(text, out double value))
             return double.NaN;
 
         return snap.ByteAt(IFlySdkOffsets.UNITstyle) == 0 ? value * KgToLb : value;

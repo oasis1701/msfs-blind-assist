@@ -28,10 +28,10 @@ using CheckFn = System.Func<FbwA320ActionExecutor, FbwA320StateEvaluator, System
 /// borrowed from the A380 template: ANN/dome/standby-compass get their own Auto
 /// items (each independently settable), plus one ActionManual "Panel and integral
 /// brightness: SET" per phase that fires the full <see cref="FbwA320ActionExecutor.SetCockpitLighting"/>
-/// scene; ECAM page items are ActionManual (a direct SD page-index write, held-safe —
-/// see FbwA320ActionExecutor.FireEcamPageAsync — but still fired as a one-shot checklist
-/// action here rather than an auto-detected state, since auto-SD logic can override the
-/// manual index on the next event).
+/// scene; ECAM page items are ActionManual (the page's ECP key press, release always sent —
+/// see FbwA320ActionExecutor.FireEcamPageAsync — fired as a one-shot checklist action here
+/// rather than an auto-detected state, since the SD's automatic page logic can replace the
+/// page on the next event).
 /// </summary>
 public static class FbwA320ChecklistDefinitions
 {

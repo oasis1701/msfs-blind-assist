@@ -62,7 +62,10 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         _executor  = executor;
         _state     = state;
         _announcer = announcer;
-        _seatbelt  = new SeatbeltAutomation(on => _executor.SetSeatbeltSign(on), announcer.AnnounceImmediate);
+        // Every crossing call here is QUEUED (Announce): the 10,000 ft light call, the seat-belt
+        // automation's 10,000 ft call and a transition call can come from the same sample, and
+        // each interrupting call cut off the one before it.
+        _seatbelt  = new SeatbeltAutomation(on => _executor.SetSeatbeltSign(on), announcer.Announce);
     }
 
     // -----------------------------------------------------------------------
@@ -87,6 +90,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
     {
         _prevAbove10k = null;
         _trans.Reset();
+        _noTransReminderFired = false;
         _seatbelt.Reset();
     }
 
@@ -134,7 +138,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         if (!_noTransReminderFired && climbing && alt > 18_000 + HysteresisFt)
         {
             _noTransReminderFired = true;
-            _announcer.AnnounceImmediate(TransitionAltimeters.NoTransitionLoadedReminder(AutoAltimetersEnabled));
+            _announcer.Announce(TransitionAltimeters.NoTransitionLoadedReminder(AutoAltimetersEnabled));
         }
         else if (_noTransReminderFired && alt < 17_000)
         {
@@ -162,13 +166,13 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
             {
                 // Climbed through 10,000 ft — lights OFF
                 _executor.SetLandingLights(0);
-                _announcer.AnnounceImmediate("Above ten thousand. Landing lights off.");
+                _announcer.Announce("Above ten thousand. Landing lights off.");
             }
             else if (!climbing && nowBelow && _prevAbove10k == true)
             {
                 // Descended through 10,000 ft — lights ON
                 _executor.SetLandingLights(1);
-                _announcer.AnnounceImmediate("Below ten thousand. Landing lights on.");
+                _announcer.Announce("Below ten thousand. Landing lights on.");
             }
         }
 
@@ -186,26 +190,39 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         var crossing = _trans.Update(alt, climbing, descending);
         if (TransitionAltimeters.ReminderInstead(crossing, AutoAltimetersEnabled) is { } reminder)
         {
-            _announcer.AnnounceImmediate(reminder);
+            _announcer.Announce(reminder);
             return;
         }
 
+        // The STD pushes are toggles, so they go only on a READ altimeter (IsBaroStdCapt: the
+        // KOHLSMAN cache at 29.92). The FO side has no reading of its own and goes with the
+        // Captain's: both pushed or neither. Unread, nothing is pushed and the crossing is spoken
+        // as the same reminder the setting-off path uses, never as a change that was not made.
+        bool? captStd = _state.IsBaroStdCapt();
         switch (crossing)
         {
             case TransitionCrossingDetector.Crossing.ClimbToStd:
             {
                 // Climbing through transition altitude — set both altimeters to STD
-                if (!_state.IsBaroSTDCapt()) _executor.PushBaroSTDCapt();
-                if (!_state.IsBaroSTDFO())   _executor.PushBaroSTDFO();
-                _announcer.AnnounceImmediate("Transition altitude. Altimeters set to standard.");
+                if (captStd == null) { _announcer.Announce(TransitionAltimeters.AltitudeReminder); break; }
+                if (captStd == false)
+                {
+                    _executor.PushBaroSTDCapt();
+                    _executor.PushBaroSTDFO();
+                }
+                _announcer.Announce("Transition altitude. Altimeters set to standard.");
                 break;
             }
             case TransitionCrossingDetector.Crossing.DescendToQnh:
             {
                 // Descending through transition level — deselect STD, announce QNH
-                if (_state.IsBaroSTDCapt()) _executor.PushBaroSTDCapt();
-                if (_state.IsBaroSTDFO())   _executor.PushBaroSTDFO();
-                _announcer.AnnounceImmediate("Transition level. Altimeters set to local QNH. Set local pressure now.");
+                if (captStd == null) { _announcer.Announce(TransitionAltimeters.LevelReminder); break; }
+                if (captStd == true)
+                {
+                    _executor.PushBaroSTDCapt();
+                    _executor.PushBaroSTDFO();
+                }
+                _announcer.Announce("Transition level. Altimeters set to local QNH. Set local pressure now.");
                 break;
             }
         }

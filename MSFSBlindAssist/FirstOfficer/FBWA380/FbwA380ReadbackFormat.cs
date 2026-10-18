@@ -84,9 +84,11 @@ public static class FbwA380ReadbackFormat
         return AirbusReadbackFormat.Baro(0, inHg ? hpa / HpaPerInHg : hpa, inHg);
     }
 
-    /// <summary>The approach minimum: "baro 940 feet", "radio 200 feet", both when both are set,
-    /// "not set" when neither is; null when either is unread. Baro MDA is unset at 0 or below, radio DH
-    /// below 0 (a DH of 0 is a CAT III entry): <see cref="ApproachMinimums"/>.</summary>
+    /// <summary>The approach minimum: "baro 940 feet", "radio 200 feet", "No DH", both when both are
+    /// set, "not set" when neither is; null when either is unread. Baro MDA is unset at 0 or below,
+    /// radio DH below 0 (<see cref="ApproachMinimums"/>). A DH of 0 is the A380's NO DH, the MFD's own
+    /// entry for "NO" and what the PFD shows (<see cref="A380Minimums"/>): it was spoken "radio 0 feet",
+    /// which no A380 pilot types.</summary>
     public static string? Minimum(double baroMda, double radioDh)
     {
         if (double.IsNaN(baroMda) || double.IsNaN(radioDh)) return null;
@@ -94,7 +96,8 @@ public static class FbwA380ReadbackFormat
         int dh = ApproachMinimums.ToFeet(isDecisionHeight: true, radioDh);
         var parts = new List<string>();
         if (mda >= 0) parts.Add("baro " + mda.ToString(Inv) + " feet");
-        if (dh >= 0) parts.Add("radio " + dh.ToString(Inv) + " feet");
+        if (dh == 0) parts.Add(A380Minimums.NoDh);
+        else if (dh > 0) parts.Add("radio " + dh.ToString(Inv) + " feet");
         return parts.Count == 0 ? "not set" : string.Join(", ", parts);
     }
 }

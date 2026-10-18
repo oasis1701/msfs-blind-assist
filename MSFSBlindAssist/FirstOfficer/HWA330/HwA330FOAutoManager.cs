@@ -18,9 +18,30 @@ public sealed class HwA330FOAutoManager : IFoAutoManager
     private readonly HwA330StateEvaluator _state;
     private readonly ScreenReaderAnnouncer _announcer;
 
-    public bool AutoFlapsEnabled    { get; set; }
+    /// <summary>The flap schedule's switch. Switched on while not known to be on the ground, the
+    /// retraction waits for the next takeoff (or a go-around this manager detects).</summary>
+    public bool AutoFlapsEnabled
+    {
+        get => _autoFlapsEnabled;
+        set
+        {
+            if (value && !_autoFlapsEnabled && _lastOnGround != true) _retractionArmed = false;
+            _autoFlapsEnabled = value;
+        }
+    }
+    private bool _autoFlapsEnabled;
 
-    private bool _wasOnGround = true;
+    private bool? _lastOnGround;   // null = no sample since construction or Reset
+
+    // The retraction schedule runs only after a takeoff this manager watched (a ground sample) or a
+    // go-around it detected. A window first opened in flight, or Auto Flaps switched on there, once
+    // started retracting at once: an arrival's flaps 1 at S speed came up ("Flaps up.").
+    private bool _retractionArmed;
+
+    // The highest AGL since the leg began or the approach context was last left (NaN = none yet).
+    // The approach context arms only on a descent at least ApproachArmDescentFt below it.
+    private double _peakAgl = double.NaN;
+    private const double ApproachArmDescentFt = 300;
 
     // ---- Flap schedule state ----
     private const int FlapDwellSeconds = 4;      // min gap between automatic lever movements
@@ -29,14 +50,16 @@ public sealed class HwA330FOAutoManager : IFoAutoManager
     private const double GaClimbFpm = 500;       // go-around: sustained climb rate…
     private const double GaAglGainFt = 200;      // …plus AGL regained above the approach minimum
 
-    // Approach context: armed on the first DESCENDING sample below 5000 ft AGL,
-    // one-way until go-around or touchdown. Extension runs ONLY while armed, and
-    // retraction ONLY while disarmed — without this gate a departure level-off
-    // with takeoff flaps still out would read as "extension" (IAS < F is true by
-    // construction until retraction completes), extend flaps on climb-out, and
-    // block its own retraction schedule (final-review C1). Arming on descent also
-    // stops the FO retracting a configuration the PILOT extended manually on a
-    // level deceleration segment (I3).
+    // Approach context: armed by a DESCENDING sample below 5000 ft AGL at least ApproachArmDescentFt
+    // below the leg's highest point (_peakAgl), one-way until go-around or touchdown. Extension runs
+    // ONLY while armed, and retraction ONLY while disarmed — without this gate a departure level-off
+    // with takeoff flaps still out would read as "extension" (IAS < F is true by construction until
+    // retraction completes), extend flaps on climb-out, and block its own retraction schedule
+    // (final-review C1). Arming on descent also stops the FO retracting a configuration the PILOT
+    // extended manually on a level deceleration segment (I3). One descending sample once armed it,
+    // so an ALT* overshoot or a gust at a departure level-off extended flaps ("Speed checked. Flaps
+    // 2.") with the takeoff flaps still out, and between 3000 and 5000 ft the go-around fallback and
+    // the next such sample cycled the lever every dwell.
     private bool _extensionArmed;
     private double _minAglInApproach = double.MaxValue;
     private int _lastExtendCommand = -1;         // don't re-fight a pilot who pulled flaps back
@@ -55,7 +78,8 @@ public sealed class HwA330FOAutoManager : IFoAutoManager
 
     public void Reset()
     {
-        _wasOnGround = true;
+        _lastOnGround = null;
+        _retractionArmed = false;
         ResetFlapState();
     }
 
@@ -66,15 +90,17 @@ public sealed class HwA330FOAutoManager : IFoAutoManager
         _lastExtendCommand  = -1;
         _lastRetractCommand = 99;
         _lastFlapMoveUtc    = DateTime.MinValue;
+        _peakAgl            = double.NaN;
     }
 
     // Leave the approach context (go-around detected): extension disarms and a
-    // fresh extension ladder is armed for the next approach.
+    // fresh extension ladder is armed for the next approach, measured from a new peak.
     private void Disarm()
     {
         _extensionArmed    = false;
         _minAglInApproach  = double.MaxValue;
         _lastExtendCommand = -1;
+        _peakAgl           = double.NaN;
     }
 
     public void Update(double altitudeMsl, double verticalSpeedFpm, double altitudeAgl, double airspeedKts, bool onGround)
@@ -83,12 +109,15 @@ public sealed class HwA330FOAutoManager : IFoAutoManager
 
         if (onGround)
         {
-            if (!_wasOnGround)
+            if (_lastOnGround != true)
                 ResetFlapState();   // touchdown: after-landing flaps-up is a Captain item
-            _wasOnGround = true;
+            _lastOnGround = true;
+            _retractionArmed = true;   // a takeoff from here is watched
             return;
         }
-        _wasOnGround = false;
+        _lastOnGround = false;
+        if (!double.IsNaN(altitudeAgl) && (double.IsNaN(_peakAgl) || altitudeAgl > _peakAgl))
+            _peakAgl = altitudeAgl;
 
         bool climbing   = verticalSpeedFpm >  200;
         bool descending = verticalSpeedFpm < -100;
@@ -116,10 +145,10 @@ public sealed class HwA330FOAutoManager : IFoAutoManager
         double conf3Raw = _state.GetValue("A32NX_SPEEDS_LANDING_CONF3");
         bool conf3 = !double.IsNaN(conf3Raw) && conf3Raw > 0.5;
 
-        // Arm the approach context on the first descending sample below 5000 ft
-        // AGL (one-way until go-around or touchdown). See the _extensionArmed
-        // field comment for why extension must never run unarmed.
-        if (!_extensionArmed && descending && agl < 5000)
+        // Arm the approach context on a real descent below 5000 ft AGL (one-way until
+        // go-around or touchdown). See the _extensionArmed field comment for why extension
+        // must never run unarmed, and why one descending sample is not a descent.
+        if (!_extensionArmed && descending && agl < 5000 && agl <= _peakAgl - ApproachArmDescentFt)
             _extensionArmed = true;
 
         // Track the lowest AGL seen while in the approach context — the go-around
@@ -150,19 +179,22 @@ public sealed class HwA330FOAutoManager : IFoAutoManager
                 CommandFlaps(target, $"Go-around. Flaps {FlapName(target)}.");
                 _lastRetractCommand = target;
                 Disarm();
+                _retractionArmed = true;   // the climb-out after a go-around retracts too
                 return;   // one movement per tick
             }
             if (gaPrimary || gaFallback)
             {
                 Disarm();
                 _lastRetractCommand = 99;   // fresh retraction sequence for the climb-out
+                _retractionArmed = true;
             }
         }
 
         // ---- Retraction (climbing or level, NOT in the approach context) ----
         // Same rule for flaps-2 and flaps-3 takeoffs (Airbus SOP: at F speed select
-        // flaps 1, at S speed clean). Deliberately independent of CONF 3.
-        if (!_extensionArmed && !descending)
+        // flaps 1, at S speed clean). Deliberately independent of CONF 3. Only after a
+        // takeoff or go-around this manager watched (_retractionArmed).
+        if (_retractionArmed && !_extensionArmed && !descending)
         {
             double f = _state.GetValue("A32NX_SPEEDS_F");
             double s = _state.GetValue("A32NX_SPEEDS_S");

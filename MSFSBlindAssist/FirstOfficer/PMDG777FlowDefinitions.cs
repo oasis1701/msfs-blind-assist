@@ -63,7 +63,7 @@ public static class PMDG777FlowDefinitions
                checklistItemId: "EPU_STORM_OFF"),
             Skip(Multi("EPU_ELEC_PUMPS_OFF", "Electric pumps: OFF", "EPU_ELEC_PUMPS_OFF",
                 ("EVT_OH_HYD_ELEC1", 0), ("EVT_OH_HYD_ELEC2", 0)),
-                s => !s.IsElecPump1On() && !s.IsElecPump2On()),
+                s => s.IsOff("HYD_PrimaryElecPump_Sw_ON_0") && s.IsOff("HYD_PrimaryElecPump_Sw_ON_1")),
             Multi("EPU_DEMAND_OFF", "Demand pumps: OFF", "EPU_DEMAND_PUMPS_OFF",
                 ("EVT_OH_HYD_DEMAND_ELEC1", 0), ("EVT_OH_HYD_DEMAND_ELEC2", 0),
                 ("EVT_OH_HYD_AIR1", 0), ("EVT_OH_HYD_AIR2", 0)),
@@ -76,8 +76,11 @@ public static class PMDG777FlowDefinitions
             Skip(SW("EPU_GEAR_DOWN",   "Gear lever: DOWN",         "EVT_GEAR_LEVER",                     1,
                checklistItemId: "EPU_GEAR_DOWN"),
                 s => s.IsGearDown()),
-            SW("EPU_ALT_FLAPS",   "Alternate flaps: OFF",     "EVT_ALTN_FLAPS_POS",                 0,
-               checklistItemId: "EPU_ALT_FLAPS_OFF"),
+            // FCTL_AltnFlaps_Control_Sw is 0 RET, 1 OFF, 2 EXT (PMDG_777X_SDK.h; the panel's own
+            // value map): OFF is 1. This step wrote 0, RETRACT, under "Alternate flaps: OFF".
+            Skip(SW("EPU_ALT_FLAPS",   "Alternate flaps: OFF",     "EVT_ALTN_FLAPS_POS",                 AircraftActionExecutor.AltFlapsOff,
+               "FCTL_AltnFlaps_Control_Sw", v => Math.Abs(v - AircraftActionExecutor.AltFlapsOff) < 0.1, "EPU_ALT_FLAPS_OFF"),
+                s => s.IsPosition("FCTL_AltnFlaps_Control_Sw", AircraftActionExecutor.AltFlapsOff)),
             Skip(Multi("EPU_BUS_TIES", "Bus ties: AUTO", "EPU_BUS_TIES",
                 ("EVT_OH_ELEC_BUS_TIE1_SWITCH", 1), ("EVT_OH_ELEC_BUS_TIE2_SWITCH", 1)),
                 s => s.IsBusTie1Auto() && s.IsBusTie2Auto()),
@@ -88,12 +91,12 @@ public static class PMDG777FlowDefinitions
             // the secondary receptacle was never connected, and Secure then found only one
             // side to disconnect. See GroundPowerGate.
             // Both sides name the one "External power: ON" line (either receptacle satisfies it).
-            Skip(Momentary("EPU_GND_PWR_PRIM", "Ground power primary: PUSH",  GroundPowerGate.EventForAnnunciatorIndex(0),
+            Toggle(Momentary("EPU_GND_PWR_PRIM", "Ground power primary: PUSH",  GroundPowerGate.EventForAnnunciatorIndex(0),
                     "EPU_GND_PWR"),
-                s => GroundPowerGate.ShouldSkip(s.IsGpuPower1On(), wantOn: true)),
-            Skip(Momentary("EPU_GND_PWR_SEC",  "Ground power secondary: PUSH", GroundPowerGate.EventForAnnunciatorIndex(1),
+                s => GroundPowerGate.ShouldSkip(s.IsGpuPower1On(), wantOn: true), "ELEC_annunExtPowr_ON_0"),
+            Toggle(Momentary("EPU_GND_PWR_SEC",  "Ground power secondary: PUSH", GroundPowerGate.EventForAnnunciatorIndex(1),
                     "EPU_GND_PWR"),
-                s => GroundPowerGate.ShouldSkip(s.IsGpuPower2On(), wantOn: true)),
+                s => GroundPowerGate.ShouldSkip(s.IsGpuPower2On(), wantOn: true), "ELEC_annunExtPowr_ON_1"),
             Wait("EPU_WAIT_GPU", "Waiting for GPU power", 8),
             Skip(SW("EPU_PARK_BRAKE",  "Parking brake: SET",       "EVT_CONTROL_STAND_PARK_BRAKE_LEVER", 1,
                checklistItemId: "EPU_PARK_BRAKE"),
@@ -279,10 +282,10 @@ public static class PMDG777FlowDefinitions
             // MCP — FD ON and both A/T ARM switches armed, per the Boeing preflight
             // procedure (and matching the PREFLIGHT checklist's PF_FD_ON / PF_AT_ARM).
             // Physical MCP order left-to-right: L FD, L+R A/T ARM, R FD.
-            MouseFlag("CP_FD_L",    "Left flight director: ON",  "EVT_MCP_FD_SWITCH_L",     s => s.IsFDLeftOn(),    "PF_FD_ON"),
-            MouseFlag("CP_AT_ARM_L","Left autothrottle: ARM",    "EVT_MCP_AT_ARM_SWITCH_L", s => s.IsATArmLeftOn(),  "PF_AT_ARM"),
-            MouseFlag("CP_AT_ARM_R","Right autothrottle: ARM",   "EVT_MCP_AT_ARM_SWITCH_R", s => s.IsATArmRightOn(), "PF_AT_ARM"),
-            MouseFlag("CP_FD_R",    "Right flight director: ON", "EVT_MCP_FD_SWITCH_R",     s => s.IsFDRightOn(),   "PF_FD_ON"),
+            MouseFlag("CP_FD_L",    "Left flight director: ON",  "EVT_MCP_FD_SWITCH_L",     "MCP_FD_Sw_On_0",    wantOn: true, "PF_FD_ON"),
+            MouseFlag("CP_AT_ARM_L","Left autothrottle: ARM",    "EVT_MCP_AT_ARM_SWITCH_L", "MCP_ATArm_Sw_On_0", wantOn: true, "PF_AT_ARM"),
+            MouseFlag("CP_AT_ARM_R","Right autothrottle: ARM",   "EVT_MCP_AT_ARM_SWITCH_R", "MCP_ATArm_Sw_On_1", wantOn: true, "PF_AT_ARM"),
+            MouseFlag("CP_FD_R",    "Right flight director: ON", "EVT_MCP_FD_SWITCH_R",     "MCP_FD_Sw_On_1",    wantOn: true, "PF_FD_ON"),
             // Autobrake
             Skip(SW("CP_AUTOBRAKE",    "Autobrake: RTO",            "EVT_ABS_AUTOBRAKE_SELECTOR",         0,
                "BRAKES_AutobrakeSelector", v => Math.Abs(v) < 0.1, "PF_AUTOBRAKE_RTO"),
@@ -358,11 +361,18 @@ public static class PMDG777FlowDefinitions
             Multi("BS_DEMAND_AUTO","Demand pumps: AUTO", "BS_HYD_DEMAND",
                 ("EVT_OH_HYD_DEMAND_ELEC1", 1), ("EVT_OH_HYD_DEMAND_ELEC2", 1),
                 ("EVT_OH_HYD_AIR1", 1), ("EVT_OH_HYD_AIR2", 1)),
-            Skip(Multi("BS_FUEL_PUMPS", "Fuel pumps: ON", "BS_WING_PUMPS_ON",
+            // "Already set" and the verify both read the line's own condition (FO_FUEL_PUMPS_BS_OK:
+            // wing pumps on AND the centre pumps matching the centre fuel). The skip once read the
+            // wing pumps alone, so with them on it said "Already set" over centre pumps left off
+            // with fuel in the centre tank, and the line was latched. The centre ON writes still
+            // pass CenterPumpGate (FOB-10), so with a light centre tank the line is met with the
+            // centre pumps off.
+            Skip(Verify(Multi("BS_FUEL_PUMPS", "Fuel pumps: ON", "BS_WING_PUMPS_ON",
                 ("EVT_OH_FUEL_PUMP_1_FORWARD", 1), ("EVT_OH_FUEL_PUMP_2_FORWARD", 1),
                 ("EVT_OH_FUEL_PUMP_1_AFT", 1),     ("EVT_OH_FUEL_PUMP_2_AFT", 1),
                 ("EVT_OH_FUEL_PUMP_L_CENTER", 1),  ("EVT_OH_FUEL_PUMP_R_CENTER", 1)),
-                s => s.AreWingFuelPumpsOn()),
+                "FO_FUEL_PUMPS_BS_OK", v => v > 0.5),
+                s => s.AreBeforeStartFuelPumpsOk()),
             // Ticks its OWN group's item first. It once completed ONLY the read-back
             // BSCL_BEACON; the verified write achieves both "Beacon: ON" lines (same field,
             // same condition), so it names both — a failed write leaves neither latched.
@@ -371,12 +381,12 @@ public static class PMDG777FlowDefinitions
                 s => s.IsBeaconOn()), "BSCL_BEACON"),
             // Disconnect ground power only if it is actually connected (APU is now running).
             // Each GPU is checked independently — skip if it is already off.
-            Skip(Momentary("BS_GND_PWR_1", "Ground power primary: disconnect",
+            Toggle(Momentary("BS_GND_PWR_1", "Ground power primary: disconnect",
                 GroundPowerGate.EventForAnnunciatorIndex(0), "BS_EXT_PWR_OFF"),
-                s => GroundPowerGate.ShouldSkip(s.IsGpuPower1On(), wantOn: false)),
-            Skip(Momentary("BS_GND_PWR_2", "Ground power secondary: disconnect",
+                s => GroundPowerGate.ShouldSkip(s.IsGpuPower1On(), wantOn: false), "ELEC_annunExtPowr_ON_0"),
+            Toggle(Momentary("BS_GND_PWR_2", "Ground power secondary: disconnect",
                 GroundPowerGate.EventForAnnunciatorIndex(1), "BS_EXT_PWR_OFF"),
-                s => GroundPowerGate.ShouldSkip(s.IsGpuPower2On(), wantOn: false)),
+                s => GroundPowerGate.ShouldSkip(s.IsGpuPower2On(), wantOn: false), "ELEC_annunExtPowr_ON_1"),
             // Cancel/Recall and the transponder had NO step in this flow, yet both are
             // items of the BEFORE_START group — which a finished flow ticks and LATCHES
             // wholesale (ChecklistManager.MarkGroupComplete). "Transponder: XPNDR"
@@ -404,10 +414,18 @@ public static class PMDG777FlowDefinitions
     {
         Id = "ENGINE_START",
         Name = "Engine Start",
-        Description = "Starts both engines in sequence (Engine 2 first, then Engine 1). Waits for start valve to close before proceeding.",
+        Description = "Starts both engines in sequence (Engine 2 first, then Engine 1). Waits for each engine to run and its start valve to close before going on; a start that fails stops the flow.",
         RelatedChecklistGroupIds = new[] { "ENGINE_START" },
         Steps = new()
         {
+            // A failed or hung start STOPS the flow (every other aircraft's Engine Start has such
+            // a gate): a START selector that did not take, a fuel control that did not reach RUN,
+            // an engine that never reaches idle N2 and a start valve that never closes each end it
+            // with "Engine Start flow stopped. Unable to complete: …". Before, every step was Skip:
+            // fuel went to RUN about 5 s after "Skipping: … START", the valve-closed wait passed on a
+            // valve that never opened, engine 1 was started next, and "flow complete" latched the
+            // start lines over an engine at 0 % N2.
+            //
             // ---- Engine 2 ----
             // Start selector: send 0 = GND/START position.
             // Data mapping: ENG_Start_Selector [0]="Start", [1]="Norm"
@@ -415,9 +433,9 @@ public static class PMDG777FlowDefinitions
             // No checklist link: "Engine 2 Start/Ignition selector: START" is the ONE
             // sanctioned StayComplete line and latches off N2 (CLAUDE.md) — a START write is
             // not a completed start, and a link would tick it the moment the selector moved.
-            SW("ES_ENG2_START", "Engine 2 start selector: START",
+            StopOnFailure(SW("ES_ENG2_START", "Engine 2 start selector: START",
                "EVT_OH_ENGINE_R_START", 0,
-               "ENG_Start_Selector_1", v => v < 0.5),
+               "ENG_Start_Selector_1", v => v < 0.5)),
             Wait("ES_E2_WAIT1", "Cranking Engine 2", 3),
             // Fuel Control 2: RUN — PMDG inverted param: 0=RUN, 1=CUTOFF
             new FlowStep<AircraftStateEvaluator> { Id = "ES_FC2_RUN", Label = "Engine 2 fuel control: RUN",
@@ -427,12 +445,18 @@ public static class PMDG777FlowDefinitions
                 TargetValue = 0,  // 0 = RUN (inverted)
                 VerifyFieldName = "ENG_FuelControl_Sw_RUN_1", VerifyCondition = v => v > 0.5,
                 CompletesChecklistItemId = "ES_ENG2_FUEL_CTRL",
+                FailurePolicy = FlowStepFailurePolicy.Stop,
                 PostActionDelayMs = 500 },
             // Wait 30 s to ensure the start valve has had time to open before checking for close
             Wait("ES_E2_VALVE_WAIT", "Engine 2 light-off in progress", 30),
-            // Start valve closes when the engine reaches self-sustaining speed (~55% N2)
+            // The engine RUNNING first (N2 at idle, the start selector lines' own latch), so the
+            // valve-closed check below can no longer pass on a valve that never opened.
+            WaitForField("ES_ENG2_RUNNING", "Waiting for Engine 2 to reach idle", "FO_ENG2_N2",
+                v => v >= AircraftStateEvaluator.EngineRunningN2, 120, onTimeout: FlowStepFailurePolicy.Stop),
+            // Start valve closes when the engine reaches self-sustaining speed (~55% N2). One still
+            // open is a starter still engaged, so engine 1 is never started over it.
             WaitForField("ES_ENG2_STABLE", "Waiting for Engine 2 start valve to close",
-                "ENG_StartValve_1", v => v < 0.5, 120),
+                "ENG_StartValve_1", v => v < 0.5, 120, onTimeout: FlowStepFailurePolicy.Stop),
             Wait("ES_ENG2_SETTLE", "Engine 2 stabilising at idle", 30),
             // Return start selector to NORM
             SW("ES_ENG2_NORM", "Engine 2 start selector: NORM",
@@ -440,10 +464,10 @@ public static class PMDG777FlowDefinitions
                "ENG_Start_Selector_1", v => v > 0.5),
 
             // ---- Engine 1 ----
-            // No checklist link — see ES_ENG2_START.
-            SW("ES_ENG1_START", "Engine 1 start selector: START",
+            // No checklist link — see ES_ENG2_START. The same stop gates as engine 2.
+            StopOnFailure(SW("ES_ENG1_START", "Engine 1 start selector: START",
                "EVT_OH_ENGINE_L_START", 0,
-               "ENG_Start_Selector_0", v => v < 0.5),
+               "ENG_Start_Selector_0", v => v < 0.5)),
             Wait("ES_E1_WAIT1", "Cranking Engine 1", 3),
             new FlowStep<AircraftStateEvaluator> { Id = "ES_FC1_RUN", Label = "Engine 1 fuel control: RUN",
                 SpokenLabel = "Engine 1 fuel control run",
@@ -452,10 +476,13 @@ public static class PMDG777FlowDefinitions
                 TargetValue = 0,  // 0 = RUN (inverted)
                 VerifyFieldName = "ENG_FuelControl_Sw_RUN_0", VerifyCondition = v => v > 0.5,
                 CompletesChecklistItemId = "ES_ENG1_FUEL_CTRL",
+                FailurePolicy = FlowStepFailurePolicy.Stop,
                 PostActionDelayMs = 500 },
             Wait("ES_E1_VALVE_WAIT", "Engine 1 light-off in progress", 30),
+            WaitForField("ES_ENG1_RUNNING", "Waiting for Engine 1 to reach idle", "FO_ENG1_N2",
+                v => v >= AircraftStateEvaluator.EngineRunningN2, 120, onTimeout: FlowStepFailurePolicy.Stop),
             WaitForField("ES_ENG1_STABLE", "Waiting for Engine 1 start valve to close",
-                "ENG_StartValve_0", v => v < 0.5, 120),
+                "ENG_StartValve_0", v => v < 0.5, 120, onTimeout: FlowStepFailurePolicy.Stop),
             Wait("ES_ENG1_SETTLE", "Engine 1 stabilising at idle", 30),
             SW("ES_ENG1_NORM", "Engine 1 start selector: NORM",
                "EVT_OH_ENGINE_L_START", 1,
@@ -533,23 +560,25 @@ public static class PMDG777FlowDefinitions
         Steps = new()
         {
             // Individual per-switch events (panel-proven) — the ganged LANDING_LNR event
-            // was never live-verified.
+            // was never live-verified. "Already set" only when ALL three are on, as the line reads
+            // them: with ANY one on it skipped, and the line was latched over the two still off.
             Skip(Multi("BTKOF_LANDING_L", "Landing lights: ON", "BTKO_LANDING",
                 ("EVT_OH_LIGHTS_LANDING_L", 1), ("EVT_OH_LIGHTS_LANDING_NOSE", 1), ("EVT_OH_LIGHTS_LANDING_R", 1)),
-                s => s.AreLandingLightsOn()),
+                s => s.AreAllLandingLightsOn()),
+            // Both sides, as the line reads them (it skipped on either).
             Skip(SW("BTKOF_TURNOFF",   "Runway turnoff lights: ON",  "EVT_OH_LIGHTS_LR_TURNOFF",   1,
                checklistItemId: "BTKO_TURNOFF"),
-                s => s.IsRwyTurnoffLOn() || s.IsRwyTurnoffROn()),
+                s => s.AreBothRunwayTurnoffLightsOn()),
             Skip(SW("BTKOF_STROBE",    "Strobe lights: ON",          "EVT_OH_LIGHTS_STROBE",        1,
                checklistItemId: "BTKO_STROBE"),
                 s => s.IsStrobeOn()),
             SW("BTKOF_XPNDR",     "Transponder: TA/RA",
                // XPDR_ModeSel via EVT_TCAS_MODE: 0=Stby,1=AltRptgOff,2=Xpndr,3=TA Only,4=TA/RA
                "EVT_TCAS_MODE",                                4, checklistItemId: "BTKO_XPNDR"),
-            Skip(Momentary("BTKOF_LNAV", "LNAV: Verify armed", "EVT_MCP_LNAV_SWITCH", "BTKO_LNAV"),
-                s => s.IsOn("MCP_annunLNAV")),
-            Skip(Momentary("BTKOF_VNAV", "VNAV: Verify armed", "EVT_MCP_VNAV_SWITCH", "BTKO_VNAV"),
-                s => s.IsOn("MCP_annunVNAV")),
+            Toggle(Momentary("BTKOF_LNAV", "LNAV: Verify armed", "EVT_MCP_LNAV_SWITCH", "BTKO_LNAV"),
+                s => s.IsOn("MCP_annunLNAV"), "MCP_annunLNAV"),
+            Toggle(Momentary("BTKOF_VNAV", "VNAV: Verify armed", "EVT_MCP_VNAV_SWITCH", "BTKO_VNAV"),
+                s => s.IsOn("MCP_annunVNAV"), "MCP_annunVNAV"),
             Captain("BTKOF_FLAPS_CONFIRM", "Confirm flap setting for takeoff"),
             // Read-only: completes PMDG's one Before Takeoff Checklist line, "Flaps: Set for
             // takeoff" (BTKOF_FLAPS), once the LEVER is at a takeoff detent (the line's own range).
@@ -574,7 +603,7 @@ public static class PMDG777FlowDefinitions
         {
             Skip(SW("ATKOF_TURNOFF_OFF", "Runway turnoff: OFF", "EVT_OH_LIGHTS_LR_TURNOFF",  0,
                checklistItemId: "ATKO_TURNOFF_OFF"),
-                s => !s.IsRwyTurnoffLOn() && !s.IsRwyTurnoffROn()),
+                s => s.AreBothRunwayTurnoffLightsOff()),
             // No "Landing lights: OFF" step: PMDG's file has none, and the 10,000 ft automation
             // (FOAutoLights10kEnabled) switches them (removed 2026-10-09, FOB-4).
             Skip(SW("ATKOF_GEAR_UP",     "Gear: UP",            "EVT_GEAR_LEVER",             0,
@@ -670,7 +699,7 @@ public static class PMDG777FlowDefinitions
         {
             // Moved out of Approach Setup: too early there. The step goes through the verified
             // arm (AircraftActionExecutor.ArmSpeedbrakeAsync), which waits for the lever to
-            // reach ARM — the flow's own verify reads only 600 ms after dispatch and the lever
+            // reach ARM — the flow's own verify reads for only 2.6 s after dispatch and the lever
             // takes about five seconds from DOWN. An armed lever is "Already set"; a DEPLOYED
             // one is left alone with its reason, because clicking ARM over a lever the pilot
             // has raised retracts it. It completes the Landing section's arming line and links
@@ -728,15 +757,17 @@ public static class PMDG777FlowDefinitions
                 s => s.IsSpeedbrakeDown()),
             // Turnoff and landing lights are two steps under ONE line ("Landing and turnoff
             // lights: OFF"); both name it.
+            // The OFF steps' "Already set" reads each switch as READ and off (IsOff): "!IsOn" read
+            // a switch the CDA had not delivered yet as off.
             Skip(SW("AL_TURNOFF_OFF",  "Runway turnoff: OFF",    "EVT_OH_LIGHTS_LR_TURNOFF",    0,
                checklistItemId: "AL_EXT_LIGHTS"),
-                s => !s.IsRwyTurnoffLOn() && !s.IsRwyTurnoffROn()),
+                s => s.AreBothRunwayTurnoffLightsOff()),
             Skip(Multi("AL_LANDING_OFF",  "Landing lights: OFF", "AL_EXT_LIGHTS",
                 ("EVT_OH_LIGHTS_LANDING_L", 0), ("EVT_OH_LIGHTS_LANDING_NOSE", 0), ("EVT_OH_LIGHTS_LANDING_R", 0)),
-                s => !s.AreLandingLightsOn()),
+                s => s.AreAllLandingLightsOff()),
             Skip(SW("AL_STROBE_OFF",   "Strobe: OFF",            "EVT_OH_LIGHTS_STROBE",        0,
                checklistItemId: "AL_STROBE_OFF"),
-                s => !s.IsStrobeOn()),
+                s => s.IsOff("LTS_Strobe_Sw_ON")),
             Skip(SW("AL_AUTOBRAKE_OFF","Autobrake: OFF",         "EVT_ABS_AUTOBRAKE_SELECTOR",  1,
                "BRAKES_AutobrakeSelector", v => Math.Abs(v - 1) < 0.1, "AL_AUTOBRAKE_OFF"),
                 s => s.IsAutobrakeOff()),
@@ -815,11 +846,11 @@ public static class PMDG777FlowDefinitions
                 s => s.AreFlapsUp()),
             Skip(SW("SD_BEACON_OFF",  "Beacon: OFF",              "EVT_OH_LIGHTS_BEACON",       0,
                "LTS_Beacon_Sw_ON", v => v < 0.5, "SD_BEACON_OFF"),
-                s => !s.IsBeaconOn()),
+                s => s.IsOff("LTS_Beacon_Sw_ON")),
             SW("SD_TAXI_OFF",    "Taxi lights: OFF",         "EVT_OH_LIGHTS_TAXI",         0,
                checklistItemId: "SD_TAXI_OFF"),
-            MouseFlag("SD_FD_L", "Left FD: OFF",             "EVT_MCP_FD_SWITCH_L", s => !s.IsFDLeftOn(),  "SD_FD_OFF"),
-            MouseFlag("SD_FD_R", "Right FD: OFF",            "EVT_MCP_FD_SWITCH_R", s => !s.IsFDRightOn(), "SD_FD_OFF"),
+            MouseFlag("SD_FD_L", "Left FD: OFF",             "EVT_MCP_FD_SWITCH_L", "MCP_FD_Sw_On_0", wantOn: false, "SD_FD_OFF"),
+            MouseFlag("SD_FD_R", "Right FD: OFF",            "EVT_MCP_FD_SWITCH_R", "MCP_FD_Sw_On_1", wantOn: false, "SD_FD_OFF"),
             SW("SD_XPNDR_STBY",  "Transponder: STBY",        "EVT_TCAS_MODE",              0,
                checklistItemId: "SD_XPNDR_STBY"),
         }
@@ -838,7 +869,7 @@ public static class PMDG777FlowDefinitions
         {
             Also(Skip(SW("SEC_ADIRU_OFF", "ADIRU: OFF",           "EVT_OH_ADIRU_SWITCH",         0,
                "ADIRU_Sw_On", v => v < 0.5, "SEC_ADIRU"),
-                s => !s.IsADIRUOn()), "SECCL_ADIRU"),
+                s => s.IsOff("ADIRU_Sw_On")), "SECCL_ADIRU"),
             // OFF sits outside the guard — the guard must be lifted first, so this goes
             // through the guarded pseudo-key rather than a bare switch write (which over
             // CDA could never leave ARMED at all).
@@ -854,15 +885,15 @@ public static class PMDG777FlowDefinitions
             // re-run and a never-connected-GPU both no-op. Mirrors Before Start L243–246.
             // Each side names the Secure line and the Power Down group's "APU or Ground Power
             // switches: OFF" (which SEC_APU_OFF above also names).
-            Also(Skip(Momentary("SEC_GND_PWR_PRIM", "Ground power primary: PUSH",
+            Also(Toggle(Momentary("SEC_GND_PWR_PRIM", "Ground power primary: PUSH",
                 GroundPowerGate.EventForAnnunciatorIndex(0), "SEC_GND_PWR_OFF"),
-                s => GroundPowerGate.ShouldSkip(s.IsGpuPower1On(), wantOn: false)), "EPD_APU_GND_OFF"),
-            Also(Skip(Momentary("SEC_GND_PWR_SEC", "Ground power secondary: PUSH",
+                s => GroundPowerGate.ShouldSkip(s.IsGpuPower1On(), wantOn: false), "ELEC_annunExtPowr_ON_0"), "EPD_APU_GND_OFF"),
+            Also(Toggle(Momentary("SEC_GND_PWR_SEC", "Ground power secondary: PUSH",
                 GroundPowerGate.EventForAnnunciatorIndex(1), "SEC_GND_PWR_OFF"),
-                s => GroundPowerGate.ShouldSkip(s.IsGpuPower2On(), wantOn: false)), "EPD_APU_GND_OFF"),
+                s => GroundPowerGate.ShouldSkip(s.IsGpuPower2On(), wantOn: false), "ELEC_annunExtPowr_ON_1"), "EPD_APU_GND_OFF"),
             Skip(SW("SEC_BATTERY_OFF","Battery: OFF",         "EVT_OH_ELEC_BATTERY_SWITCH",  0,
                "ELEC_Battery_Sw_ON", v => v < 0.5, "EPD_BATTERY_OFF"),
-                s => !s.IsBatteryOn()),
+                s => s.IsOff("ELEC_Battery_Sw_ON")),
         }
     };
 
@@ -892,21 +923,20 @@ public static class PMDG777FlowDefinitions
         SW(id, label, eventName, target, verifyField, verifyCond, checklistItemId, isMomentary);
 
     // FD / AT Arm are mouse-flag TOGGLES (no absolute target), so firing one while the
-    // switch is already in the desired state flips it the wrong way. The skip predicate
-    // is required so the step is no-op'd when already correct — the same guard the panel
-    // (HandleUIVariableSet) and the checklists (SetFDLeft(target, state)) already apply.
+    // switch is already in the desired state flips it the wrong way. "Already set" when the
+    // switch reads the wanted state, and left alone (Toggle) while it is unread — the same guard
+    // the panel (HandleUIVariableSet) and the checklists (SetFDLeft(target, state)) apply.
     private static FlowStep<AircraftStateEvaluator> MouseFlag(string id, string label, string eventName,
-        Func<AircraftStateEvaluator, bool> skipWhen, string? checklistItemId = null) => new()
+        string field, bool wantOn, string? checklistItemId = null) => Toggle(new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.SetSwitch,
         EventName = eventName,
         UsesMouseFlag = true,
-        SkipCondition = skipWhen,
         CompletesChecklistItemId = checklistItemId,
         PostActionDelayMs = 350,
         FailurePolicy = FlowStepFailurePolicy.Skip,
-    };
+    }, s => wantOn ? s.IsOn(field) : s.IsOff(field), field);
 
     private static FlowStep<AircraftStateEvaluator> Momentary(string id, string label, string eventName,
         string? checklistItemId = null) => new()
@@ -975,8 +1005,30 @@ public static class PMDG777FlowDefinitions
         return step;
     }
 
-    // Reads a field back after the step's write: FlowManager waits 600 ms, then fails the step
-    // ("State verification failed": heard skipped, its lines out of the latch) unless `cond` holds.
+    // A TOGGLE (a mouse-flag switch, a momentary push whose press flips a state: ground power,
+    // LNAV, VNAV) is pressed only over a READ state. "Already set" needs every field read as
+    // well as `skipWhen`, and while any is unread (NaN, before the first CDA snapshot) the step
+    // is left alone aloud: IsOn read NaN as off, so the press flipped whatever the switch really
+    // was, and a disconnect's "Already set" ticked its line over a connected GPU.
+    private static FlowStep<AircraftStateEvaluator> Toggle(FlowStep<AircraftStateEvaluator> step,
+        Func<AircraftStateEvaluator, bool> skipWhen, params string[] fields)
+    {
+        step.SkipCondition = s => fields.All(s.IsRead) && skipWhen(s);
+        step.LeaveAloneWhen = s => !fields.All(s.IsRead);
+        step.LeaveAloneText = $"Skipping: {step.AnnounceText}. The switch cannot be read yet.";
+        return step;
+    }
+
+    // A step whose failure must end the flow (FlowStepFailurePolicy.Stop): the engine-start gates.
+    private static FlowStep<AircraftStateEvaluator> StopOnFailure(FlowStep<AircraftStateEvaluator> step)
+    {
+        step.FailurePolicy = FlowStepFailurePolicy.Stop;
+        return step;
+    }
+
+    // Reads a field back after the step's write: FlowManager reads it from 600 ms on, for up to
+    // 2.6 s (VerifyWindowMs), and fails the step ("State verification failed": heard skipped, its
+    // lines out of the latch) unless `cond` holds by then.
     // A Multi step is verified once, after its LAST write, so name the field of the last switch it
     // writes. (SW takes the same pair as arguments; SD_FC_CUTOFF sets them by hand.)
     private static FlowStep<AircraftStateEvaluator> Verify(FlowStep<AircraftStateEvaluator> step,

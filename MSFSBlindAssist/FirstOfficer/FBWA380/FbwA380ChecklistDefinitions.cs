@@ -360,8 +360,10 @@ public static class FbwA380ChecklistDefinitions
             Auto("AS_COCKPITLT", "AFTER_START", "Cockpit lights: annunciator dim", "A32NX_OVHD_INTLT_ANN",
                 v => Math.Abs(v - 2) < 0.5,
                 (e, _) => e.Set("A32NX_OVHD_INTLT_ANN", 2)),
-            Auto("AS_SPOILERS_ARM", "AFTER_START", "Spoilers: ARMED", "A32NX_SPOILERS_ARMED",
-                v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A380X_MSFSBA_SPOILERS_ARM", 1)),
+            // A tick over an extended speed brake is refused aloud: the arm would snap it in (FOA-11).
+            LeaveAlone(Auto("AS_SPOILERS_ARM", "AFTER_START", "Spoilers: ARMED", "A32NX_SPOILERS_ARMED",
+                    v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A380X_MSFSBA_SPOILERS_ARM", 1)),
+                FbwA380FlowDefinitions.SpeedBrakeExtended, AirbusGroundSpoilers.LeaveAloneText),
             ActionManual("AS_RUDDERTRIM", "AFTER_START", "Rudder trim: RESET",
                 (e, _) => e.Set("A32NX_RUDDER_TRIM_RESET", 1)),
             Reminder("AS_FLAPS", "AFTER_START", "Flaps: set for takeoff"),
@@ -411,10 +413,10 @@ public static class FbwA380ChecklistDefinitions
             Auto("LU_STROBE", "LINEUP", "Strobe lights: ON", "LIGHT_STROBE",
                 v => v > 0.5, (e, _) => e.Set("LIGHT_STROBE", 1)),
             // Landing lights = wing LDG LT (LIGHT_LANDING 0/1); the nose T.O. beam is the
-            // separate NOSE_LIGHT selector (0=T.O.). Detection keys on the wing landing
-            // lights (the additional-fields condition is shared, and NOSE_LIGHT's T.O.
-            // encoding is 0, so it can't share a v>0.5 test); the action drives both.
-            Auto("LU_LANDING", "LINEUP", "Landing and nose lights: ON", "LIGHT_LANDING",
+            // separate NOSE_LIGHT selector (0=T.O.). Detection reads BOTH through the evaluator's
+            // FO_LINEUP_LIGHTS synthetic, the flow step's own "Already set" (the two fields cannot
+            // share one condition: NOSE_LIGHT's T.O. is 0); the action drives both.
+            Auto("LU_LANDING", "LINEUP", "Landing and nose lights: ON", FbwA380StateEvaluator.LineupLightsField,
                 v => v > 0.5, async (e, _) =>
                 {
                     await e.Set("LIGHT_LANDING", 1);
@@ -478,8 +480,10 @@ public static class FbwA380ChecklistDefinitions
         Items = new()
         {
             Reminder("LD_MISSEDALT", "LANDING", "Set missed approach altitude"),
-            Auto("LD_SPOILERS_ARM", "LANDING", "Spoilers: ARMED", "A32NX_SPOILERS_ARMED",
-                v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A380X_MSFSBA_SPOILERS_ARM", 1)),
+            // A tick over an extended speed brake is refused aloud: the arm would snap it in (FOA-11).
+            LeaveAlone(Auto("LD_SPOILERS_ARM", "LANDING", "Spoilers: ARMED", "A32NX_SPOILERS_ARMED",
+                    v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A380X_MSFSBA_SPOILERS_ARM", 1)),
+                FbwA380FlowDefinitions.SpeedBrakeExtended, AirbusGroundSpoilers.LeaveAloneText),
         }
     };
 
@@ -888,4 +892,13 @@ public static class FbwA380ChecklistDefinitions
         ReminderText = text,
         LiveValue = live,
     };
+
+    // A tick ON the aircraft's state says the First Officer must not act on (ChecklistItem.LeaveAloneWhen):
+    // refused at once with the text, nothing run. The A32NX file's helper.
+    private static Item LeaveAlone(Item item, Func<FbwA380StateEvaluator, bool> when, string text)
+    {
+        item.LeaveAloneWhen = when;
+        item.LeaveAloneText = text;
+        return item;
+    }
 }

@@ -400,9 +400,11 @@ public static class IFly737FlowDefinitions
             SW("ES_E2_RUN", "Engine 2 start lever: IDLE", "Engine_Start_Lever_Status_1", StartLeverIdle, checklistItemId: "ES_E2_RUN"),
             // Starter cutout: the start switch springs back out of GRD as the starter
             // disengages. Wait on the switch itself, gating engine 1's GRD press so it's never
-            // set while engine 2's starter is still engaged (PMDG 737 parity).
+            // set while engine 2's starter is still engaged (PMDG 737 parity). Stop on a timeout,
+            // as the PMDG's does: carrying on put engine 1 on GRD over a starter still engaged.
             WaitForField("ES_E2_CUTOUT", "Engine 2 starting — waiting for the start switch to cut out",
-                "Engine_Start_Switch_Status_1", v => System.Math.Abs(v - IFly737ActionExecutor.EngStartOff) < 0.1, 120),
+                "Engine_Start_Switch_Status_1", v => System.Math.Abs(v - IFly737ActionExecutor.EngStartOff) < 0.1, 120,
+                onTimeout: FlowStepFailurePolicy.Stop),
             // --- Engine 1 ---
             SW("ES_E1_GRD", "Engine 1 start switch: GRD", "Engine_Start_Switch_Status_0",
                 IFly737ActionExecutor.EngStartGround),
@@ -410,7 +412,8 @@ public static class IFly737FlowDefinitions
                 "FO_ENG1_N2", v => v >= EngStartFuelN2, 60, onTimeout: FlowStepFailurePolicy.Stop),
             SW("ES_E1_RUN", "Engine 1 start lever: IDLE", "Engine_Start_Lever_Status_0", StartLeverIdle, checklistItemId: "ES_E1_RUN"),
             WaitForField("ES_E1_CUTOUT", "Engine 1 starting — waiting for the start switch to cut out",
-                "Engine_Start_Switch_Status_0", v => System.Math.Abs(v - IFly737ActionExecutor.EngStartOff) < 0.1, 120),
+                "Engine_Start_Switch_Status_0", v => System.Math.Abs(v - IFly737ActionExecutor.EngStartOff) < 0.1, 120,
+                onTimeout: FlowStepFailurePolicy.Stop),
         }
     };
 

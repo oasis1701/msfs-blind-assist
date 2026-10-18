@@ -182,11 +182,14 @@ public class IFly737LandingSpeedbrakeCheckTests
     [Fact]
     public void FlowManager_marks_and_excludes_every_linked_checklist_item()
     {
-        string source = File.ReadAllText(FirstOfficerSourcePath("FlowManager.cs")).Replace("\r\n", "\n");
+        // Whitespace collapsed, so the pin follows the code and not its indentation (the run loop
+        // moved into the single cancellation exit's try block on 2026-10-18).
+        string source = System.Text.RegularExpressions.Regex.Replace(
+            File.ReadAllText(FirstOfficerSourcePath("FlowManager.cs")), @"\s+", " ");
         Assert.Equal(3, CountOf(source,
-            "foreach (var itemId in step.LinkedChecklistItemIds)\n                    _checklist.MarkComplete(itemId);"));
+            "foreach (var itemId in step.LinkedChecklistItemIds) _checklist.MarkComplete(itemId);"));
         Assert.Contains(
-            "foreach (var itemId in step.LinkedChecklistItemIds)\n                            _unfinishedChecklistItemIds.Add(itemId);",
+            "foreach (var itemId in step.LinkedChecklistItemIds) _unfinishedChecklistItemIds.Add(itemId);",
             source);
         Assert.DoesNotContain("_checklist.MarkComplete(step.CompletesChecklistItemId)", source);
         Assert.DoesNotContain("_unfinishedChecklistItemIds.Add(step.CompletesChecklistItemId)", source);

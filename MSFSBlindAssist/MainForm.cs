@@ -1378,6 +1378,11 @@ public partial class MainForm : Form
         _warmUpAfterLoadTimer?.Stop();
         _warmUpAfterLoadTimer?.Dispose();
 
+        // The First Officer window: only an aircraft switch disposed it, so on exit its 1 s timer
+        // and a running flow kept going through Disconnect()'s DoEvents pump below, still able to
+        // speak and to send writes. Its Dispose cancels the flow and detaches the executor.
+        firstOfficerForm?.Dispose(); firstOfficerForm = null;
+
         DisposeUniversalAutomation();
 
         // Clean up taxi guidance, docking guidance, and ground traffic monitor
@@ -1470,6 +1475,12 @@ public partial class MainForm : Form
         (currentAircraft as FlyByWireA380Definition)?.StopAllMotion();
         (currentAircraft as FlyByWireA320Definition)?.StopAllMotion();
         currentAircraft?.CancelDeferredFlush();
+        // The swap path's two other def hooks, which a quit never ran: the def's own timers that can
+        // still speak (OnSwitchedAway: the PMDG speed-brake settle call-out), and a held 737 warning
+        // test (stick shaker or overspeed clacker), released while the sim is still connected, or it
+        // kept sounding after MSFSBA had closed ([P737-3]).
+        (currentAircraft as BaseAircraftDefinition)?.OnSwitchedAway();
+        (currentAircraft as PMDG737Definition)?.ReleaseEngagedWarningTests(simConnectManager);
 
         // The MD-11 def owns the CEVENT pump and, during a hold-to-test's 3 s, a button the sim
         // still has pressed. Dispose it here — BEFORE Disconnect() — so its Dispose (which queues

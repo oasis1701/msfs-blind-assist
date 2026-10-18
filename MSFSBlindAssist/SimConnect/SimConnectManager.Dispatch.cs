@@ -274,6 +274,16 @@ public partial class SimConnectManager
                 });
                 break;
 
+            case DATA_REQUESTS.REQUEST_FO_GEAR_HANDLE:
+                SingleValue foGearHandle = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "FO_GEAR_HANDLE",
+                    Value = foGearHandle.value,
+                    Description = $"{foGearHandle.value:0}"
+                });
+                break;
+
             case DATA_REQUESTS.REQUEST_FO_CENTER_FUEL_LBS:
                 // gallons x pounds-per-gallon -> pounds (see RequestFOCenterFuelLbs).
                 DoubleValuePair foCtrFuel = (DoubleValuePair)data.dwData[0];

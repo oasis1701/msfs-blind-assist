@@ -524,6 +524,8 @@ public partial class SimConnectManager
         REQUEST_FO_GEAR_POSITIONS  = 385,
         // Engine 3 N2 (RequestFOEngineN2): asked for every aircraft, read only by three-engine FO profiles (the MD-11).
         REQUEST_FO_ENG3_N2       = 386,
+        // The stock GEAR HANDLE POSITION for the universal auto-gear (RequestFOGearHandle).
+        REQUEST_FO_GEAR_HANDLE   = 387,
         REQUEST_AI_TRAFFIC = 500,
         // The ground-traffic monitor's own by-type sweeps (same DEF_AI_TRAFFIC definition, a small
         // radius), on their OWN ids so a completion can never be confused with a TCAS or other
@@ -617,6 +619,7 @@ public partial class SimConnectManager
         DEF_FO_CENTER_FUEL_LBS = 384,
         DEF_FO_GEAR_POSITIONS = 385,
         DEF_FO_ENG3_N2 = 386,
+        DEF_FO_GEAR_HANDLE = 387,
         DEF_AI_TRAFFIC = 500,
         // KEEP 600-607 FREE: the ground-traffic sweeps' rotating request ids (DATA_REQUESTS
         // .REQUEST_GROUND_TRAFFIC), and this enum is a request-id namespace too.

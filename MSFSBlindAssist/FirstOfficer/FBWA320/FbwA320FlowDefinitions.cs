@@ -15,7 +15,7 @@ using Step = Models.FlowStep<FbwA320StateEvaluator>;
 /// most writes to <see cref="MSFSBlindAssist.Aircraft.FlyByWireA320Definition.ApplyUIVariable"/>
 /// — the same verified panel-write path the FBW A320 panels use — plus the executor's
 /// pseudo-keys (FIRE_TEST_APU/ENG1/ENG2, CVR_TEST, TO_CONFIG_TEST, CABIN_CALL_ALL,
-/// ECAM_PAGE_* (direct SD page-index write), BARO_STD/QNH, FCU_PUSH_SPEED/HEADING/ALT,
+/// ECAM_PAGE_* (the page's ECP key press), BARO_STD/QNH, FCU_PUSH_SPEED/HEADING/ALT,
 /// AP1_ENGAGE) for non-combo actions.
 ///
 /// Value conventions (from <see cref="FbwA320StateEvaluator"/>, <see cref="FbwA320ActionExecutor"/>,
@@ -108,9 +108,13 @@ public static class FbwA320FlowDefinitions
             Done(Skip(WaitForField("EPU_CHK_GEAR", "Gear lever: DOWN", "GEAR_HANDLE_POSITION",
                     v => v > 0.5, 5, onTimeout: FlowStepFailurePolicy.Skip),
                 s => s.GetValue("GEAR_HANDLE_POSITION") > 0.5), "EPU_CHK_GEAR"),
+            // The write keys are the definition's synthetic wiper combos, which nothing writes back:
+            // the skip reads the wiper circuit switches (WIPER_L_SW / WIPER_R_SW, circuits 77 and
+            // 80; A320-28), because a skip on the combos always said "Already set" over running
+            // wipers. Off is the switch alone: the power setting stays 100% while off.
             Skip(Multi("EPU_CHK_WIPERS", "Wipers: OFF",
                     ("WIPER_LEFT", 0), ("WIPER_RIGHT", 0)),
-                s => s.IsPosition("WIPER_LEFT", 0) && s.IsPosition("WIPER_RIGHT", 0)),
+                s => s.IsPosition("WIPER_L_SW", 0) && s.IsPosition("WIPER_R_SW", 0)),
             Skip(SW("EPU_CHK_WXR", "Weather radar: OFF", "XMLVAR_A320_WeatherRadar_Sys", 1),
                 s => s.IsPosition("XMLVAR_A320_WeatherRadar_Sys", 1)),
             Skip(SW("EPU_CHK_PARK", "Parking brake: ON", "A32NX_PARK_BRAKE_LEVER_POS", 1),

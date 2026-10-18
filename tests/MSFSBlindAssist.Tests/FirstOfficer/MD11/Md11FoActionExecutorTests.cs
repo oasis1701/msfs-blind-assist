@@ -275,6 +275,20 @@ public class Md11FoActionExecutorTests : IDisposable
         Assert.Empty(_ac.Events);
     }
 
+    // D4: a switch that reads in over an engine still turning below the running line (a coast-down
+    // after an abort) cannot be pulled, and the light-up gate passes on N2 alone: a "done" here put
+    // the fuel on with no starter. Refused, with no click.
+    [Theory]
+    [InlineData(15.0)]
+    [InlineData(30.0)]
+    [InlineData(49.5)]
+    public async Task EngineStart_RefusesAnEngineTurningBelowTheRunningLine(double n2)
+    {
+        _ac.N2[3] = n2;
+        Assert.False(await _exec.Set(Md11FoActionExecutor.EngineStart3, 1));
+        Assert.Empty(_ac.Events);
+    }
+
     [Fact]
     public async Task EngineLightUp_ReturnsAtFifteenPercent_WithoutTouchingTheSwitch()
     {

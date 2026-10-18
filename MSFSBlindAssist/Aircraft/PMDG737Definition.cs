@@ -4027,8 +4027,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // clicking the switch. Click directions on this control are INVERTED
     // relative to the battery: ClkR moves position UP (toward AUTO=2), ClkL
     // moves DOWN (toward BAT=0). Source: TFM StandbyAuto sends 2x ClkR to
-    // reach position 2; StandbyBat sends 2x ClkL to reach position 0.
-    private static async Task DispatchStandbyPowerAsync(
+    // reach position 2; StandbyBat sends 2x ClkL to reach position 0. Internal: the First
+    // Officer's 737 executor drives the selector through this same sequence.
+    internal static async Task DispatchStandbyPowerAsync(
         SimConnect.SimConnectManager simConnect,
         uint guardEventId, uint switchEventId,
         int currentPosition, int targetPosition)
@@ -4056,16 +4057,23 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     /// <summary>
     /// Engage the autopilot via MCP CMD A — the NG3 momentary MCP push commits only via a
     /// LEFTSINGLE+LEFTRELEASE pair (<see cref="SimConnect.SimConnectManager.SendPMDGMomentaryToggle"/>);
-    /// the stock <c>AUTOPILOT_ON</c> engages the basic AFDS, not CMD. Guarded on the CMD A
-    /// annunciator so re-engaging (CMD A is a toggle) can't disconnect an already-engaged AP.
+    /// the stock <c>AUTOPILOT_ON</c> engages the basic AFDS, not CMD. Guarded on EVERY autopilot
+    /// engage annunciator (<see cref="AutopilotEngagedFields"/>), so the press can neither
+    /// disconnect an engaged CMD A (a toggle) nor take a CMD B or CWS autopilot the pilot
+    /// engaged over to CMD A. No press while the snapshot is unread.
     /// </summary>
     public override void EngageAutopilot(SimConnect.SimConnectManager simConnect)
     {
-        var dm = simConnect.PMDGDataManager;
-        if (dm != null && dm.GetFieldValue("MCP_annunCMD_A") > 0.5) return;   // already engaged
+        if (IsAutopilotEngaged(simConnect) != false) return;   // engaged, or not read yet
         if (EventIds.TryGetValue("EVT_MCP_CMD_A_SWITCH", out int id))
             _ = simConnect.SendPMDGMomentaryToggle((uint)id, 1);
     }
+
+    /// <summary>The MCP's autopilot engage annunciators: an autopilot is engaged when any is lit.
+    /// CMD A was once the only one read, so a CMD B the pilot engaged read "not engaged": the
+    /// service pressed CMD A over it and announced the engagement it made.</summary>
+    internal static readonly string[] AutopilotEngagedFields =
+        { "MCP_annunCMD_A", "MCP_annunCMD_B", "MCP_annunCWS_A", "MCP_annunCWS_B" };
 
     /// <summary>
     /// The AFDS INHIBITS CMD engagement below 400 ft RA after takeoff (Boeing 737 NG SDS
@@ -4077,17 +4085,25 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     public override int MinimumAutopilotEngageAltitudeAgl => 400;
 
     /// <summary>
-    /// CMD A engaged state for the universal auto-engage's verify/retry loop. NULL until the
-    /// first CDA snapshot — before that <c>GetFieldValue</c> returns the 0.0 "unknown" sentinel
-    /// for every field, and reporting that as "not engaged" would retry-press a toggle switch
-    /// over an already-engaged autopilot.
+    /// Autopilot engaged state (CMD A, CMD B or CWS, <see cref="AutopilotEngagedFields"/>) for
+    /// the universal auto-engage's verify/retry loop. NULL until the first CDA snapshot — before
+    /// that <c>GetFieldValue</c> returns the 0.0 "unknown" sentinel for every field, and
+    /// reporting that as "not engaged" would retry-press a toggle switch over an
+    /// already-engaged autopilot.
     /// </summary>
     public override bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect)
     {
         var dm = simConnect.PMDGDataManager;
         if (dm is not { IsReady: true }) return null;
-        return dm.GetFieldValue("MCP_annunCMD_A") > 0.5;
+        return AutopilotEngagedFields.Any(f => dm.GetFieldValue(f) > 0.5);
     }
+
+    /// <summary>CMD A is a toggle read back through the 1 Hz CDA snapshot: presses 3 s apart, so a retry
+    /// never reads the snapshot from before the press and switches the autopilot off again.</summary>
+    public override int AutopilotEngageRetryIntervalMs => ToggleAutopilotEngageRetryIntervalMs;
+
+    /// <summary>Never pressed on an unread snapshot (null): the service waits for a reading.</summary>
+    public override bool AutopilotEngageWaitsForState => true;
 
     // Per-detent flaps lever events. The base EVT_CONTROL_STAND_FLAPS_LEVER is a
     public override bool HandleUIVariableSet(

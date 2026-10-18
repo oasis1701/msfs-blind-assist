@@ -334,9 +334,10 @@ public interface IAircraftDefinition
     /// Engage the autopilot for the universal auto-AP-engage feature. The default fires the
     /// stock <c>AUTOPILOT_ON</c> event. Aircraft whose autopilot ignores or misreads that event
     /// override this to press their own engage switch: the PMDG jets (CMD A on the 737, A/P L on
-    /// the 777) and the FlyByWire family (AP 1 — FBW captures AUTOPILOT_ON into a flag nothing
-    /// reads, FO-21). Implementations should no-op if the autopilot is already engaged so a
-    /// toggle-style engage switch can't disconnect it.
+    /// the 777), the FlyByWire family (AP 1 — FBW captures AUTOPILOT_ON into a flag nothing
+    /// reads, FO-21), the iFly 737 (CMD A), the TFDi MD-11 (AUTO FLIGHT) and the Fenix (the FCU's
+    /// AP1 pushbutton). Implementations should no-op unless the autopilot reads definitely off,
+    /// so a toggle-style engage switch can't disconnect it.
     /// </summary>
     void EngageAutopilot(SimConnect.SimConnectManager simConnect);
 
@@ -359,24 +360,24 @@ public interface IAircraftDefinition
 
     /// <summary>
     /// Minimum time (ms) the universal auto-engage waits after an attempt, a press or a wait for a
-    /// reading, before trying again or giving up. 0 = retry every tick. An aircraft whose engage
-    /// is a TOGGLE and whose engaged state reaches the cache no faster than the 1 Hz feed sets
-    /// 3000 (the FlyByWire family, FO-21), so a retry never lands on an autopilot the previous
-    /// press already engaged.
+    /// reading, before trying again or giving up. 0 = retry every tick (the stock, idempotent
+    /// <c>AUTOPILOT_ON</c>). An aircraft whose engage is a TOGGLE and whose engaged state reaches the
+    /// cache no faster than the 1 Hz feed sets 3000 (the FlyByWire family, FO-21; the PMDG 737 and
+    /// 777, the iFly 737, the TFDi MD-11 and the Fenix), so a retry never lands on an autopilot the
+    /// previous press already engaged.
     /// </summary>
     int AutopilotEngageRetryIntervalMs { get; }
 
     /// <summary>
     /// True where the universal auto-engage must never press while <c>IsAutopilotEngaged</c> reads
     /// <c>null</c>. The service waits for a definite reading instead, and if none comes within its
-    /// attempts it gives the Captain call. The FlyByWire family sets it (FO-21): its engage is the
-    /// AP 1 push, a toggle, so a blind press could disconnect an autopilot that is already on, and
-    /// its <c>null</c> means "not read yet". False (the default) takes the open-loop
-    /// press-and-announce on a null reading. Only the Fenix and the HS787 expose no engaged state
-    /// at all (the base returns <c>null</c>). The PMDG 737 and 777, the iFly 737 and the TFDi MD-11
-    /// also return <c>null</c>, until their data is ready, and keep the open-loop path: the service
-    /// invokes the engage once and announces on it (the MD-11's own engage presses nothing on an
-    /// unread state). That is unchanged here and left for a separate change (FO-21, "Also seen on").
+    /// attempts it gives the Captain call. Every aircraft whose engage is a toggle sets it: the
+    /// FlyByWire family (FO-21, the AP 1 push), the PMDG 737 and 777 (CMD A, A/P L, null until the
+    /// first CDA snapshot), the iFly 737 (CMD A), the TFDi MD-11 (AUTO FLIGHT, whose own engage presses
+    /// nothing on an unread state) and the Fenix (AP1): a blind press could disconnect an autopilot
+    /// that is already on, and their <c>null</c> means "not read yet". False (the default) takes the
+    /// open-loop press-and-announce on a null reading, which only the stock <c>AUTOPILOT_ON</c>
+    /// aircraft keep (the HS787 and any aircraft without its own engage).
     /// </summary>
     bool AutopilotEngageWaitsForState { get; }
 

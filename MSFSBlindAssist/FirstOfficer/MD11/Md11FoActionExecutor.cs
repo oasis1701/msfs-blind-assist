@@ -748,7 +748,7 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
         }
         if (targetIndex is not (0 or 2)) return false;                     // UP/RET or the Dial-A-Flap detent only
         int extend = _flapExtendEvent;
-        bool flipped = false, flipUnproven = false, noted = false;
+        bool flipped = false, flipUnproven = false;
         for (int i = 0; i < 8; i++)
         {
             int? idx = await ReadAsync(io, Md11FlapSystem.LeverKey, ControlReadTimeoutMs).ConfigureAwait(false) is double r ? Md11FoSwitching.FlapDetentIndex(r) : null;
@@ -758,7 +758,9 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
                 return false;
             }
             if (idx == targetIndex) return true;
-            if (!noted) { io.NoteActuation(Md11FlapSystem.LeverKey); noted = true; }
+            // Every step, not once: a walk through several detents outlasts one quiet window, and the
+            // flap read-out stays silent only inside it (TFDiMD11Definition.AnnounceFlaps).
+            io.NoteActuation(Md11FlapSystem.LeverKey);
             int dir = Math.Sign(targetIndex - idx.Value);
             int retract = extend == FlapWheelDown ? FlapWheelUp : FlapWheelDown;
             int ev = dir > 0 ? extend : retract;
@@ -926,7 +928,10 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
             double n2 = _state?.EngineN2(engine) ?? double.NaN;
             bool? may = Md11FoSwitching.MayPullStarter(sw, n2);
             if (may is null) return false;                                 // unread N2: never click blind
-            if (may == false) return true;                                 // turning or running already
+            // Running: nothing to pull. Turning below the running line instead (a coast-down after an
+            // abort), which a pull cannot start: never success, because the light-up gate passes on
+            // N2 alone and a "done" here let the flow put the fuel on with no starter engaged.
+            if (may == false) return n2 >= Md11FoSwitching.EngineRunningN2;
         }
         else if (sw.Value < 0.5) return true;                              // already in
         io.NoteActuation(key);

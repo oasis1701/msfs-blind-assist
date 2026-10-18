@@ -43,14 +43,16 @@ system is also silently wrong:
    `A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION` (the real cockpit-button input) and that the write
    sticks — the `_SYSTEM_*` L:vars are Rust-owned per-frame outputs and any write to those reverts
    within ~2 s regardless of phase (a known A32NX gotcha, not specific to this feature).
-5. **ECAM SD page selection is now a direct, held-safe page-index write** (2026-07 fix):
-   `FireEcamPageAsync` writes `A32NX_ECAM_SD_CURRENT_PAGE_INDEX` directly (matching the
-   `SdPages` enum: ENG=0, BLEED=1, PRESS=2, ELEC=3, HYD=4, FUEL=5, APU=6, COND=7, DOOR=8,
-   WHEEL=9, FCTL=10, STS=12) instead of the earlier ECP press/release H-var pulse — no
-   held-button risk. Confirm each ★-marked ECAM page step (DOOR at Preflight/Parking, APU
-   at Before Start, ENG at Engine Start, STS at After Start) actually changes the visible
-   SD page. No flow step selects the F/CTL or WHEEL page (the executor's index map has both,
-   but nothing calls them); the takeoff-config test only fires the test.
+5. **ECAM SD page selection presses the page's ECP key** (2026-10-18): `FireEcamPageAsync`
+   sends `A32NX_ECP_<key>_PRESSED`, holds 250 ms and sends `_RELEASED` from a `finally`.
+   The 2026-07 direct write of `A32NX_ECAM_SD_CURRENT_PAGE_INDEX` lit the ECP key but never
+   moved the SD: since FBW #10700 the SD shows `A32NX_ECAM_SD_PAGE_TO_DISPLAY`, which the
+   DMC computes from the keys. Confirm each ★-marked ECAM page step (DOOR at Preflight/Parking,
+   APU at Before Start, ENG at Engine Start, STS at After Start) changes the page the SD shows:
+   read `L:A32NX_ECAM_SD_PAGE_TO_DISPLAY` after the step (DOOR 8, APU 6, ENG 0, STS 12). Then select the DOOR page yourself on the ECP and run a step for that page: the SD
+   must stay on DOOR (a second press would return it to automatic). No flow step selects the
+   F/CTL or WHEEL page (the executor's key map has both, but nothing calls them); the
+   takeoff-config test only fires the test.
 6. **`PUSH_OVHD_CALLS_ALL` / other `_IS_PRESSED` release pulses.** Cabin notify
    (`CABIN_CALL_ALL` → `PUSH_OVHD_CALLS_ALL`) and the fire-test PBs
    (`A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED`, `A32NX_FIRE_TEST_ENG1/ENG2/APU`) must each land as **two
@@ -263,10 +265,8 @@ an untick). No flow completes the other four read-backs.
    brightness: SET" is a manual-only action item with no auto-revert (the analog knobs have no
    readable target state).
 7. **ECAM page items.** Tick an ECAM-page checklist item by hand (e.g. "ECAM page: APU" in Before
-   Start) — confirm it writes the SD page index once and the SD actually shows that page; unlike
-   the old ECP pulse there is no button to get stuck, but confirm re-ticking the same page item
-   doesn't visibly disturb an already-displayed different page (auto-SD logic may have since
-   moved on, which is expected).
+   Start) — confirm the SD then shows that page (`L:A32NX_ECAM_SD_PAGE_TO_DISPLAY` reads 6) and
+   that re-ticking the same item leaves it there instead of returning the SD to automatic.
 8. **Spot-check a group with no matching STATE/ACTION group** (e.g. Descent, which is mostly
    reminders) — confirm it behaves as pure reminders with no auto-ticking.
 9. **Engine anti-ice / wing anti-ice readbacks.** Turn anti-ice ON by hand, confirm the After
@@ -289,8 +289,10 @@ an untick). No flow completes the other four read-backs.
      "Engage autopilot" on and expect the aircraft's own **"Autopilot 1 on"** call, then
      **"350 feet. Autopilot engaged."** (the configured number), **both heard in full** (the
      second must not cut the first off), with AP 1 flying and no second press.
-3. On approach/descent, confirm gear auto-lowers descending through roughly 2000 ft AGL (and
-   above 100 ft AGL, not already down) — **"Two thousand feet. Gear down."** announced.
+3. On approach/descent, confirm gear auto-lowers once you descend below 2000 ft AGL (at least
+   300 ft below the highest point since takeoff, above 100 ft AGL, not already down) —
+   **"Gear down."** announced. Then fly a circuit or a touch-and-go: gear up on the climb-out
+   and gear down again on the next approach, never during the climb-out.
 
 ### Auto-flaps (opt-in, reused near-verbatim from the A380)
 
@@ -300,7 +302,7 @@ it comes from the FAC's `V_FE_NEXT` ARINC429 word (FAC 1, else FAC 2) through th
 `FO_VFE_NEXT` synthetic field, because FBW #10890 stopped publishing `A32NX_SPEEDS_VFEN` — the
 rest of the schedule still reads the shared `A32NX_SPEEDS_*` L:vars by name. All checks below
 require **"Auto Flaps"** enabled in File → Settings… → First Officer, and the label there should
-now read **"Auto-manage flaps (FBW A380 and A32NX)."**
+now read **"Auto-manage flaps (FBW A380, A32NX, Headwind A330)."**
 
 4. **OFF = no movement (default).** Leave "Auto Flaps" disabled. Fly a full departure and
    approach and confirm the FO never moves the flap lever automatically.
@@ -493,7 +495,7 @@ legitimate state feedback, not a double-announce bug.
   sets the SimBrief takeoff flap lever (the Fenix's step), with the Captain reminder "Flaps: set
   for takeoff" when no plan is loaded; the opt-in auto-flaps schedule only handles climbout
   retraction, approach extension, VFE-next protection, and the SOP go-around step.
-- **No flow selects the ECAM F/CTL or WHEEL page** — the executor's page-index map has both, but
+- **No flow selects the ECAM F/CTL or WHEEL page** — the executor's page-key map has both, but
   the takeoff-config test only fires the test and no flow step opens either page.
 - **The six cockpit-lighting flood/integral knobs are `ActionManual`, not auto-detect** — analog
   potentiometers have no clean "target reached" readback, so the grouped "Panel and integral
@@ -501,3 +503,19 @@ legitimate state feedback, not a double-announce bug.
   auto-detect.
 - **Cockpit lighting values are sensible defaults, tunable in-sim** — the SOP for cockpit lighting
   is "as required," not a hard specification.
+
+## Part J — PR #160 review fixes (2026-10-18)
+
+None of these has run in the sim. The window, SimBrief and universal-automation checks shared by
+every aircraft are Part Z.1 of the PMDG 737 plan.
+
+1. **ECAM pages** press the ECP keys: run item 5 of "Highest-risk items to probe FIRST" and
+   Part C item 7 above.
+2. **Wipers.** Set the Captain's wiper to SLOW by hand, then run Electrical Power Up: the safety
+   check switches it off ("Wipers: OFF", not "Already set"), and `A:CIRCUIT SWITCH ON:77` reads 0.
+3. **Auto flaps arm only on a real descent.** With Auto-manage flaps on, depart with CONF 1+F and
+   level off at 3,000 ft before S speed: no "Speed checked. Flaps 2." and the lever never moves to
+   2. Open the window for the first time on an arrival with flaps 1 out, or switch Auto-manage
+   flaps on there: the flaps are not retracted.
+4. **Exterior light combos repeat.** Switch the beacon ON from the panel, OFF in the cockpit by
+   mouse, then ON from the panel again: `A:LIGHT BEACON` reads 1 (the repeat was dropped before).

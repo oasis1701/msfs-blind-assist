@@ -38,7 +38,10 @@ public sealed class FbwA380FlightPhaseMonitor : IFoPhaseMonitor
     {
         _executor = executor;
         _announcer = announcer;
-        _seatbelt = new SeatbeltAutomation(on => { _ = _executor.SetSeatbeltSign(on); }, announcer.AnnounceImmediate);
+        // Every crossing call here is QUEUED (Announce): the 10,000 ft light call, the seat-belt
+        // automation's 10,000 ft call and a transition call can come from the same sample, and
+        // each interrupting call cut off the one before it.
+        _seatbelt = new SeatbeltAutomation(on => { _ = _executor.SetSeatbeltSign(on); }, announcer.Announce);
     }
 
     public void SetThresholds(int transAltFt, int transLevelFt)
@@ -87,7 +90,7 @@ public sealed class FbwA380FlightPhaseMonitor : IFoPhaseMonitor
         if (!_noTransReminderFired && climbing && alt > 18_000 + HysteresisFt)
         {
             _noTransReminderFired = true;
-            _announcer.AnnounceImmediate(TransitionAltimeters.NoTransitionLoadedReminder(AutoAltimetersEnabled));
+            _announcer.Announce(TransitionAltimeters.NoTransitionLoadedReminder(AutoAltimetersEnabled));
         }
         else if (_noTransReminderFired && alt < 17_000)
         {
@@ -109,13 +112,13 @@ public sealed class FbwA380FlightPhaseMonitor : IFoPhaseMonitor
             {
                 _ = _executor.SetLandingLights(0);   // Wing landing lights off
                 _ = _executor.SetNoseLight(2);       // Nose selector: Off
-                _announcer.AnnounceImmediate("Above ten thousand. Landing lights off.");
+                _announcer.Announce("Above ten thousand. Landing lights off.");
             }
             else if (!climbing && nowBelow && _prevAbove10k == true)
             {
                 _ = _executor.SetLandingLights(1);   // Wing landing lights on
                 _ = _executor.SetNoseLight(0);       // Nose selector: T.O.
-                _announcer.AnnounceImmediate("Below ten thousand. Landing lights on.");
+                _announcer.Announce("Below ten thousand. Landing lights on.");
             }
         }
 
@@ -133,7 +136,7 @@ public sealed class FbwA380FlightPhaseMonitor : IFoPhaseMonitor
         var crossing = _trans.Update(alt, climbing, descending);
         if (TransitionAltimeters.ReminderInstead(crossing, AutoAltimetersEnabled) is { } reminder)
         {
-            _announcer.AnnounceImmediate(reminder);
+            _announcer.Announce(reminder);
             return;
         }
 
@@ -141,11 +144,11 @@ public sealed class FbwA380FlightPhaseMonitor : IFoPhaseMonitor
         {
             case TransitionCrossingDetector.Crossing.ClimbToStd:
                 _ = _executor.SetBaroStd(true);
-                _announcer.AnnounceImmediate("Transition altitude. Altimeters set to standard.");
+                _announcer.Announce("Transition altitude. Altimeters set to standard.");
                 break;
             case TransitionCrossingDetector.Crossing.DescendToQnh:
                 _ = _executor.SetBaroStd(false);
-                _announcer.AnnounceImmediate("Transition level. Altimeters set to QNH mode. Set local pressure now.");
+                _announcer.Announce("Transition level. Altimeters set to QNH mode. Set local pressure now.");
                 break;
         }
     }

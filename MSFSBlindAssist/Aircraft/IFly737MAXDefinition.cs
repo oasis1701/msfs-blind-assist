@@ -1914,12 +1914,20 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     }
 
     /// <summary>Universal auto-AP-engage entry point. No-ops if CMD is already
-    /// engaged so a toggle-style press can't disconnect it.</summary>
+    /// engaged, or not read yet, so a toggle-style press can't disconnect it.</summary>
     public override void EngageAutopilot(SimConnect.SimConnectManager simConnect)
     {
-        if (IsAutopilotEngaged(simConnect) == true) return; // never blind-click an engaged AP
+        if (IsAutopilotEngaged(simConnect) != false) return; // never blind-click an engaged or unread AP
         _ = EngageCmdAAsync(simConnect);
     }
+
+    /// <summary>The CMD A sequence itself takes up to about 0.85 s (the SDK click, its 700 ms check, the
+    /// clickspot fallback): presses 3 s apart, so a retry never lands while the last one is still in
+    /// progress and toggles CMD A back off.</summary>
+    public override int AutopilotEngageRetryIntervalMs => ToggleAutopilotEngageRetryIntervalMs;
+
+    /// <summary>Never pressed on an unread snapshot (null): the service waits for a reading.</summary>
+    public override bool AutopilotEngageWaitsForState => true;
 
     /// <summary>The autopilot window's verified CMD A engage mechanism (SDK click →
     /// ~700 ms verify → cockpit-clickspot trigger replay fallback, press 7 / release 8

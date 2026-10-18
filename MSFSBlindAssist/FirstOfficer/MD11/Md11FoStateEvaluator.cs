@@ -60,6 +60,8 @@ public sealed class Md11FoStateEvaluator : LVarStateEvaluator, IFoEngine3N2Sink,
         "MD11_PED_XPNDR_MODE_KB", "MD11_PED_XPNDR_ALT_RPTG_KB",
         "MD11_OVHD_FLTCTL_FLAPLIM_KB",
         TFDiMD11Definition.FoWxrOffReadKey,
+        // The gear legs the read-only gear checks read (Md11GearConfirmation, FO-13).
+        TFDiMD11Definition.FoGearLegKeys[0], TFDiMD11Definition.FoGearLegKeys[1], TFDiMD11Definition.FoGearLegKeys[2],
     };
 
     public override IReadOnlyList<string> OnRequestPollFields => PollFields;
@@ -171,6 +173,9 @@ public sealed class Md11FoStateEvaluator : LVarStateEvaluator, IFoEngine3N2Sink,
         ["FO_FLAPS_DAF"] = Vars(v => Md11FoSwitching.FlapDetentIndex(v[0]) == 2, "MD11_FLAP_LATCH"),
         ["FO_GEAR_DOWN"] = Vars(v => Md11GearLever.IsDown(v[0]), "MD11_MIP_GEAR_SW"),
         ["FO_GEAR_UP"] = Vars(v => v[0] < 5, "MD11_MIP_GEAR_SW"),
+        // The lever AND the legs (FO-13): what the read-only gear checks and the gear read-back lines read.
+        [Md11GearConfirmation.UpField] = new(Md11GearConfirmation.Inputs.ToArray(), r => Md11GearConfirmation.UpValue(r)),
+        [Md11GearConfirmation.DownField] = new(Md11GearConfirmation.Inputs.ToArray(), r => Md11GearConfirmation.DownValue(r)),
         ["FO_FUEL_DUMP_SAFE"] = Vars(v => Pos(v[0], 0) && Pos(v[1], 0) && !Lit(v[2]),
             "MD11_OVHD_FUEL_DUMP_GRD", "MD11_OVHD_FUEL_DUMP_BT", "MD11_OVHD_FUEL_DUMP_LT"),
         ["FO_MANF_DRAIN_SAFE"] = Vars(v => Pos(v[0], 0) && !Lit(v[1]), "MD11_OVHD_FUEL_MANF_DRAIN_GRD", "MANF_DRAIN_LT"),

@@ -1,4 +1,5 @@
 using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.FirstOfficer.Airbus;
 using MSFSBlindAssist.FirstOfficer.Models;
 
 namespace MSFSBlindAssist.FirstOfficer.FBWA380;
@@ -299,8 +300,12 @@ public static class FbwA380FlowDefinitions
             // (ANN LT has no true OFF; 2=Dim is the in-flight position).
             Done(Multi("AS_COCKPITLT", "Cockpit lights: annunciator dim",
                 ("A32NX_OVHD_INTLT_ANN", 2)), "AS_COCKPITLT"),
-            Done(Skip(SW("AS_SPOILERS_ARM", "Spoilers: ARMED", "A380X_MSFSBA_SPOILERS_ARM", 1),
-                s => s.IsPosition("A32NX_SPOILERS_ARMED", 1)), "AS_SPOILERS_ARM"),
+            // Left alone over an extended speed brake: FlyByWire's A380X SpoilersHandler handles the arm
+            // (K:SPOILERS_ARM_ON) by setting the handle to 0, so arming would snap it in (FOA-11, the
+            // A320 family's guard; AirbusGroundSpoilers).
+            LeaveAlone(Done(Skip(SW("AS_SPOILERS_ARM", "Spoilers: ARMED", "A380X_MSFSBA_SPOILERS_ARM", 1),
+                    s => s.IsPosition("A32NX_SPOILERS_ARMED", 1)), "AS_SPOILERS_ARM"),
+                SpeedBrakeExtended, AirbusGroundSpoilers.LeaveAloneText),
             // The reset completes its own line only. The After Start Checklist's "Rudder trim: NEUTRAL" reads
             // the SEC trim word, which the reset only commands: the trim gets there at its own rate, and only
             // if the SEC and the actuator respond. So the read-only check right after it completes that line
@@ -448,9 +453,12 @@ public static class FbwA380FlowDefinitions
         Steps = new()
         {
             Captain("LD_MISSEDALT", "Set missed approach altitude"),
-            // Completes the landing memo's "Ground spoilers: ARM" too (FO-6).
-            Also(Done(Skip(SW("LD_SPOILERS_ARM", "Spoilers: ARMED", "A380X_MSFSBA_SPOILERS_ARM", 1),
-                s => s.IsPosition("A32NX_SPOILERS_ARMED", 1)), "LD_SPOILERS_ARM"), "LDC_SPOILERS"),
+            // Completes the landing memo's "Ground spoilers: ARM" too (FO-6). Left alone over an extended
+            // speed brake, which the arm would snap back to retracted on final (FOA-11): both lines then
+            // stay open until the pilot arms.
+            LeaveAlone(Also(Done(Skip(SW("LD_SPOILERS_ARM", "Spoilers: ARMED", "A380X_MSFSBA_SPOILERS_ARM", 1),
+                    s => s.IsPosition("A32NX_SPOILERS_ARMED", 1)), "LD_SPOILERS_ARM"), "LDC_SPOILERS"),
+                SpeedBrakeExtended, AirbusGroundSpoilers.LeaveAloneText),
             // The landing memo the pilot set (seat belts, flaps at the landing setting: FULL, or 3 with CONF 3
             // selected): a read-only check (5 s, skipped aloud on timeout, never writes) completing the Landing
             // Checklist's two lines on the same fields (FOA-9). Flaps short of the landing setting time it out:
@@ -734,4 +742,18 @@ public static class FbwA380FlowDefinitions
         step.AlsoCompletesChecklistItemIds = alsoCompletes;
         return step;
     }
+
+    // A step the First Officer must not perform in the aircraft's current state
+    // (FlowStep.LeaveAloneWhen): nothing is sent, `text` is spoken, its lines stay open.
+    private static Step LeaveAlone(Step step, Func<FbwA380StateEvaluator, bool> when, string text)
+    {
+        step.LeaveAloneWhen = when;
+        step.LeaveAloneText = text;
+        return step;
+    }
+
+    /// <summary>The speed brake reads extended (the A380 handle, A32NX_SPOILERS_HANDLE_POSITION, the
+    /// A32NX's own): a spoiler arm is left alone (FOA-11).</summary>
+    internal static bool SpeedBrakeExtended(FbwA380StateEvaluator s) =>
+        AirbusGroundSpoilers.FbwSpeedBrakeExtended(s.GetValue("A32NX_SPOILERS_HANDLE_POSITION"));
 }

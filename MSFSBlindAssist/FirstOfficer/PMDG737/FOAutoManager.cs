@@ -25,6 +25,11 @@ public class FOAutoManager : IFoAutoManager
     public bool AutoFlapsEnabled { get; set; }   // stored, never acted on (PMDG auto-flaps removed 2026-07-08)
 
     private bool _lnavVnavEngagedThisLeg; // one-shot: LNAV/VNAV pushes at 400 ft AGL
+    // The one-shot fires only on a 400 ft crossing this manager WATCHED with the setting on: a
+    // sample below 400 ft AGL (on the ground or airborne) arms it, and passing above 400 ft with
+    // the setting off disarms it. A window first opened (Shift+C), the app restarted or the
+    // setting switched on during a climb at FL150 once pushed LNAV/VNAV there unasked.
+    private bool _lnavVnavArmed;
     private bool _wasOnGround = true;
     private readonly CenterFuelPumpAutomation _centerPumps = new();
     private readonly CenterPumpDiagnostics    _centerPumpLog = new("PMDG737");
@@ -49,6 +54,7 @@ public class FOAutoManager : IFoAutoManager
     public void Reset()
     {
         _lnavVnavEngagedThisLeg = false;
+        _lnavVnavArmed          = false;
         _wasOnGround            = true;
         _centerPumps.Reset();
         _centerPumpsClockPrimed = false;
@@ -66,13 +72,16 @@ public class FOAutoManager : IFoAutoManager
             if (!_wasOnGround)
                 _lnavVnavEngagedThisLeg = false;   // touchdown: re-arm for the next takeoff
             _wasOnGround = true;
+            _lnavVnavArmed = true;
             return;
         }
         _wasOnGround = false;
 
         // LNAV/VNAV follows the AP-engage opt-in (the generic AP-engage itself is now the
         // universal service's job; this is the 737-specific SOP mode selection on top).
-        if (SettingsManager.Current.FOAutoApEnabled)
+        bool enabled = SettingsManager.Current.FOAutoApEnabled;
+        _lnavVnavArmed = LnavVnavPushHeight.Armed(_lnavVnavArmed, altitudeAgl, enabled);
+        if (enabled)
             CheckLnavVnav(altitudeAgl, verticalSpeedFpm > 200);
     }
 
@@ -83,7 +92,7 @@ public class FOAutoManager : IFoAutoManager
     private void CheckLnavVnav(double agl, bool climbing)
     {
         if (double.IsNaN(agl)) return;   // no AGL response yet — NaN < 400 is false, but state this positively
-        if (_lnavVnavEngagedThisLeg || !climbing || agl < 400) return;
+        if (!_lnavVnavArmed || _lnavVnavEngagedThisLeg || !climbing || agl < LnavVnavPushHeight.Feet) return;
 
         double lnav = _state.GetValue("MCP_annunLNAV");
         double vnav = _state.GetValue("MCP_annunVNAV");
@@ -100,7 +109,11 @@ public class FOAutoManager : IFoAutoManager
                          :                       "VNAV";
             _announcer.AnnounceImmediate($"400 feet. {modes} engaged.");
         }
-        _lnavVnavEngagedThisLeg = true;
+        // The iFly's FOB-21 rule: spend the one-shot only on an informed decision. An unread
+        // snapshot (either annunciator NaN, nothing pushed) once burned the leg's only chance at
+        // LNAV/VNAV silently; it now retries on the next sample.
+        if (LnavVnavPushHeight.ShouldBurnLatch(pushLnav, pushVnav, lnav, vnav))
+            _lnavVnavEngagedThisLeg = true;
     }
 
     // Boeing SOP center-tank pump management (opt-in). Arms ON during ground setup with

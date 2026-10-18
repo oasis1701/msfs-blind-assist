@@ -314,7 +314,9 @@ public class IFly737StateEvaluator : IFoStateEvaluator
     // SimBrief takeoff flaps (set when an OFP is loaded; reminder text only — no closed-loop
     // flap-position readback exists on this airframe's SDK).
     // -----------------------------------------------------------------------
-    private int _takeoffFlaps = 5;
-    public void SetTakeoffFlaps(int flaps) => _takeoffFlaps = flaps;
+    private const int NoPlanTakeoffFlaps = 5;
+    private int _takeoffFlaps = NoPlanTakeoffFlaps;
+    // 0 or less (a plan without one, or a plan forgotten) restores the no-plan default.
+    public void SetTakeoffFlaps(int flaps) => _takeoffFlaps = flaps > 0 ? flaps : NoPlanTakeoffFlaps;
     public int GetTakeoffFlaps() => _takeoffFlaps;
 }

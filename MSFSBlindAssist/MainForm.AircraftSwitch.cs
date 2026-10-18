@@ -201,6 +201,12 @@ public partial class MainForm
         }
         _lastAircraftLoadedTick = Environment.TickCount64;
         currentAircraft?.OnSimContextReset();
+        // The First Officer window outlives a flight load (only an aircraft switch disposes it):
+        // the last flight's SimBrief plan and phase latches are dropped here, and so are the
+        // universal automation's legs (a flight loaded in the air is no takeoff it watched).
+        if (firstOfficerForm is { IsDisposed: false } foForm)
+            foForm.OnFlightLoaded();
+        ResetUniversalAutomation();
         ScheduleCurrentAirportWarmUp();
     }
 
@@ -772,6 +778,13 @@ public partial class MainForm
         // and `currentAircraft` already points at the new aircraft by the time the
         // cleanup block runs.
         var oldAircraft = currentAircraft;
+        // The First Officer window FIRST, before anything below tears the old definition down: its
+        // Dispose cancels a running flow and detaches the executor, so no flow step or queued write
+        // runs into the switch. Disposed late, a flow could still write the old aircraft's event ids
+        // into the new one, and say "flow complete" after the switch. Shift+C and the menu then
+        // build the new aircraft's window. Dispose() is idempotent, and unconditional nulling
+        // releases an already-disposed form a `!IsDisposed` guard would leave referenced.
+        firstOfficerForm?.Dispose(); firstOfficerForm = null;
         // Halt the old A380 def's seat-motor / slider-ramp timers — they keep firing
         // calc-path L:var writes at the new aircraft otherwise (sim stays connected).
         // Both FBW defs' StopAllMotion also disposes that def's TCAS RA compose timer.
@@ -877,11 +890,10 @@ public partial class MainForm
         simVarMonitor.Reset();
         simConnectManager.SuppressECAMAnnouncements = true;
 
-        universalAutomation?.Reset();
+        ResetUniversalAutomation();
         // The NEW aircraft's floor, press spacing and wait flag now (currentAircraft is already the new
         // definition), not at the next 1 s tick: an Update in between would act on the previous aircraft's.
         PushUniversalAircraftLimits();
-        _universalLatestAgl = 0;
 
         // Hazard announcers re-baseline on switch — stale category/ice baselines
         // from the previous airframe must not announce as "changes".
@@ -1058,10 +1070,7 @@ public partial class MainForm
         coherentPmdgEfbCaptain?.Dispose(); coherentPmdgEfbCaptain = null;
         coherentPmdgEfbFirstOfficer?.Dispose(); coherentPmdgEfbFirstOfficer = null;
 
-        // Dispose the First Officer window when switching aircraft, so Shift+C and the menu build
-        // the new aircraft's. Dispose() is idempotent, and unconditional nulling releases an
-        // already-disposed form a `!IsDisposed` guard would leave referenced.
-        firstOfficerForm?.Dispose(); firstOfficerForm = null;
+        // The First Officer window was disposed at the top of this method.
 
         if (coherentNDClient != null)
         {

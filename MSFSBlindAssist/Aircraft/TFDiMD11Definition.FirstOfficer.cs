@@ -103,6 +103,14 @@ public partial class TFDiMD11Definition
     public override bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect)
         => Md11AutopilotEngage.Engaged(simConnect.GetCachedVariableValue(Md11AutopilotEngage.ApStateKey));
 
+    /// <summary>AUTO FLIGHT pressed again over an engaged autopilot swaps AP1 and AP2, and its state is
+    /// read about once a second: presses 3 s apart, so a retry never lands on the last press.</summary>
+    public override int AutopilotEngageRetryIntervalMs => ToggleAutopilotEngageRetryIntervalMs;
+
+    /// <summary>The engage presses nothing on an unread state, so the service must wait for a reading
+    /// rather than take the open-loop path, which announced "Autopilot engaged" over no press at all.</summary>
+    public override bool AutopilotEngageWaitsForState => true;
+
     /// <summary>
     /// Universal auto-engage: press AUTO FLIGHT only when the autopilot reads definitely off.
     /// Never the stock AUTOPILOT_ON — the MD-11 disables the stock autopilot.
@@ -123,6 +131,15 @@ public partial class TFDiMD11Definition
     /// </summary>
     public const string FoWxrOffReadKey = "MD11_FO_WXR_OFF";
 
+    /// <summary>
+    /// The stock gear legs the First Officer's read-only gear checks read (FO-13,
+    /// <c>Md11GearConfirmation</c>): nose, left and right main, in percent extended. The MD-11 shows
+    /// its gear only on the system display, with no lamp to read. Stock simvars, so SimVar-typed
+    /// ([VAR-2]); OnRequest, polled by the First Officer window.
+    /// </summary>
+    public static readonly IReadOnlyList<string> FoGearLegKeys =
+        new[] { "MD11_FO_GEAR_NOSE", "MD11_FO_GEAR_LEFT", "MD11_FO_GEAR_RIGHT" };
+
     /// <summary>Adds the First Officer's own read-only variables. Called by BuildVariables.</summary>
     private static void AddFirstOfficerReadVariables(Dictionary<string, SimConnect.SimVarDefinition> vars)
     {
@@ -134,5 +151,20 @@ public partial class TFDiMD11Definition
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ExcludeFromMonitorManager = true,
         };
+        foreach (var (key, name, label) in new[]
+        {
+            (FoGearLegKeys[0], "GEAR CENTER POSITION", "Nose gear (First Officer read)"),
+            (FoGearLegKeys[1], "GEAR LEFT POSITION", "Left main gear (First Officer read)"),
+            (FoGearLegKeys[2], "GEAR RIGHT POSITION", "Right main gear (First Officer read)"),
+        })
+            vars[key] = new SimConnect.SimVarDefinition
+            {
+                Name = name,
+                DisplayName = label,
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "percent",
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ExcludeFromMonitorManager = true,
+            };
     }
 }

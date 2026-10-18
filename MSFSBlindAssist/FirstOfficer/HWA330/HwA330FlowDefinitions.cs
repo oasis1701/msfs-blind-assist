@@ -114,9 +114,13 @@ public static class HwA330FlowDefinitions
             Done(Skip(WaitForField("EPU_CHK_GEAR", "Gear lever: DOWN", "GEAR_HANDLE_POSITION",
                     v => v > 0.5, 5, onTimeout: FlowStepFailurePolicy.Skip),
                 s => s.GetValue("GEAR_HANDLE_POSITION") > 0.5), "EPU_CHK_GEAR"),
+            // The write keys are the inherited synthetic wiper combos, which nothing writes back:
+            // the skip reads the wiper circuit switches (WIPER_L_SW / WIPER_R_SW), because a skip on
+            // the combos always said "Already set" over running wipers. Off is the switch alone:
+            // the power setting stays 100% while off.
             Skip(Multi("EPU_CHK_WIPERS", "Wipers: OFF",
                     ("WIPER_LEFT", 0), ("WIPER_RIGHT", 0)),
-                s => s.IsPosition("WIPER_LEFT", 0) && s.IsPosition("WIPER_RIGHT", 0)),
+                s => s.IsPosition("WIPER_L_SW", 0) && s.IsPosition("WIPER_R_SW", 0)),
             Skip(SW("EPU_CHK_WXR", "Weather radar: OFF", "XMLVAR_A320_WeatherRadar_Sys", 1),
                 s => s.IsPosition("XMLVAR_A320_WeatherRadar_Sys", 1)),
             Skip(SW("EPU_CHK_PARK", "Parking brake: ON", "A32NX_PARK_BRAKE_LEVER_POS", 1),

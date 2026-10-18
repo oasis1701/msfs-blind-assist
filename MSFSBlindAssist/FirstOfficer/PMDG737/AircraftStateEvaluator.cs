@@ -325,8 +325,10 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     // -----------------------------------------------------------------------
     // SimBrief takeoff flaps (set when an OFP is loaded; used by the Before Taxi flow)
     // -----------------------------------------------------------------------
-    private int _takeoffFlaps = 5;
-    public void SetTakeoffFlaps(int flaps) => _takeoffFlaps = flaps;
+    private const int NoPlanTakeoffFlaps = 5;
+    private int _takeoffFlaps = NoPlanTakeoffFlaps;
+    // 0 or less (a plan without one, or a plan forgotten) restores the no-plan default.
+    public void SetTakeoffFlaps(int flaps) => _takeoffFlaps = flaps > 0 ? flaps : NoPlanTakeoffFlaps;
     public int  GetTakeoffFlaps() => _takeoffFlaps;
 
     // -----------------------------------------------------------------------

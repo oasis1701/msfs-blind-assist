@@ -10,21 +10,58 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 /// "Autopilot engaged" over an autopilot that never engaged. The engage is now the cockpit's
 /// AP 1 push — a TOGGLE — sent only once both autopilots read definitively off (never on an
 /// unknown state: the autopilot may already be on), verified on AP 1 / AP 2 active, and spaced
-/// 3 s apart. Every other aircraft keeps the every-tick retry and the open-loop press.
+/// 3 s apart. Since 2026-10-18 the other toggle engages (the PMDG 737 and 777, the iFly, the MD-11
+/// and the Fenix) are spaced and wait the same way: at 0 a PMDG retry pressed CMD A again before
+/// the 1 Hz snapshot showed the first press, and switched it off. Only an aircraft whose engage is
+/// the idempotent stock AUTOPILOT_ON keeps the every-tick retry and the open-loop press.
 /// </summary>
 public class FbwAutopilotEngageTests
 {
-    // The aircraft outside the FlyByWire family: one list for every pin that says they stay as
-    // they were.
-    public static TheoryData<Type> OtherAircraft => new()
+    // The other aircraft whose engage is a toggle of their own, outside the FlyByWire family.
+    public static TheoryData<Type> OtherToggleAircraft => new()
     {
         typeof(PMDG777Definition),
         typeof(PMDG737Definition),
         typeof(IFly737MAXDefinition),
         typeof(FenixA320Definition),
         typeof(TFDiMD11Definition),
+    };
+
+    // The aircraft that keep the stock AUTOPILOT_ON: no engaged state is read, so every pin says
+    // they stay as they were.
+    public static TheoryData<Type> OtherAircraft => new()
+    {
         typeof(HorizonSim787Definition),
     };
+
+    [Theory]
+    [MemberData(nameof(OtherToggleAircraft))]
+    public void Other_toggle_aircraft_press_three_seconds_apart_and_wait_for_a_reading(Type defType)
+    {
+        var def = (IAircraftDefinition)Activator.CreateInstance(defType)!;
+        try
+        {
+            Assert.Equal(3000, def.AutopilotEngageRetryIntervalMs);
+            Assert.True(def.AutopilotEngageWaitsForState);
+        }
+        finally { (def as IDisposable)?.Dispose(); }
+    }
+
+    // The Fenix's engage presses its FCU AP1 pushbutton and reads both FCU AP lights: it inherited
+    // the stock AUTOPILOT_ON and a null state until 2026-10-18, so "Autopilot engaged" was never read back.
+    [Fact]
+    public void Fenix_reads_both_fcu_ap_lights_and_unknown_until_both_are_read()
+    {
+        var def = new FenixA320Definition();
+        Assert.NotEqual(typeof(BaseAircraftDefinition),
+            typeof(FenixA320Definition).GetMethod(nameof(IAircraftDefinition.EngageAutopilot))!.DeclaringType);
+
+        Assert.Null(def.IsAutopilotEngaged(SeededSimConnectCache.With()));
+        Assert.Null(def.IsAutopilotEngaged(SeededSimConnectCache.With(("I_FCU_AP1", 0))));
+        Assert.True(def.IsAutopilotEngaged(SeededSimConnectCache.With(("I_FCU_AP1", 1))));
+        Assert.True(def.IsAutopilotEngaged(SeededSimConnectCache.With(("I_FCU_AP1", 0), ("I_FCU_AP2", 1))));
+        Assert.False(def.IsAutopilotEngaged(SeededSimConnectCache.With(("I_FCU_AP1", 0), ("I_FCU_AP2", 0))));
+    }
 
     // The FlyByWire family; the Headwind A330 inherits the A32NX's overrides.
     public static TheoryData<Type> FbwAircraft => new()
@@ -43,7 +80,7 @@ public class FbwAutopilotEngageTests
         finally { (def as IDisposable)?.Dispose(); }
     }
 
-    // A null readback keeps its open-loop press on every aircraft but the FlyByWire family.
+    // A null readback keeps its open-loop press only where the engage is the stock event.
     [Theory]
     [MemberData(nameof(OtherAircraft))]
     public void Other_aircraft_do_not_wait_for_a_definite_autopilot_state(Type defType)

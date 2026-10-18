@@ -43,7 +43,10 @@ public sealed class Md11FoFlightPhaseMonitor : IFoPhaseMonitor
     {
         _executor = executor;
         _announcer = announcer;
-        _seatbelt = new SeatbeltAutomation(on => { _ = _executor.SetSeatbeltSign(on); }, announcer.AnnounceImmediate);
+        // Every crossing call here is QUEUED (Announce): the 10,000 ft light call, the seat-belt
+        // automation's 10,000 ft call and a transition call can come from the same sample, and
+        // each interrupting call cut off the one before it.
+        _seatbelt = new SeatbeltAutomation(on => { _ = _executor.SetSeatbeltSign(on); }, announcer.Announce);
     }
 
     public bool AutoLights10kEnabled { get; set; } = true;
@@ -82,11 +85,11 @@ public sealed class Md11FoFlightPhaseMonitor : IFoPhaseMonitor
         {
             case LandingLightAction.TurnOff:
                 _ = _executor.SetLandingLights(LandingLightsRetracted);
-                _announcer.AnnounceImmediate("Above ten thousand. Landing lights off.");
+                _announcer.Announce("Above ten thousand. Landing lights off.");
                 break;
             case LandingLightAction.TurnOn:
                 _ = _executor.SetLandingLights(LandingLightsOn);
-                _announcer.AnnounceImmediate("Below ten thousand. Landing lights on.");
+                _announcer.Announce("Below ten thousand. Landing lights on.");
                 break;
         }
 
@@ -100,7 +103,7 @@ public sealed class Md11FoFlightPhaseMonitor : IFoPhaseMonitor
                     _ = TransitionAltitudeAsync(setAltimeters: AutoAltimetersEnabled);
                     break;
                 case TransitionCrossingDetector.Crossing.DescendToQnh:
-                    _announcer.AnnounceImmediate(TransitionLevelSentence);
+                    _announcer.Announce(TransitionLevelSentence);
                     break;
             }
         }
@@ -119,12 +122,12 @@ public sealed class Md11FoFlightPhaseMonitor : IFoPhaseMonitor
         {
             bool std = setAltimeters && await _executor.SetAltimetersStandardAsync();
             bool daf = await _executor.SetDialAFlapDegrees(TransitionDialAFlapDeg);
-            _announcer.AnnounceImmediate(TransitionAltitudeSentence(std, daf));
+            _announcer.Announce(TransitionAltitudeSentence(std, daf));
         }
         catch (Exception ex)
         {
             Log.Warn("MD11 FO", $"transition-altitude actions failed: {ex.Message}");
-            _announcer.AnnounceImmediate(TransitionAltitudeSentence(false, false));
+            _announcer.Announce(TransitionAltitudeSentence(false, false));
         }
     }
 
@@ -142,7 +145,7 @@ public sealed class Md11FoFlightPhaseMonitor : IFoPhaseMonitor
         if (!_noTransReminderFired && climbing && alt > 18_000 + HysteresisFt)
         {
             _noTransReminderFired = true;
-            _announcer.AnnounceImmediate(TransitionAltimeters.NoTransitionLoadedReminder(AutoAltimetersEnabled));
+            _announcer.Announce(TransitionAltimeters.NoTransitionLoadedReminder(AutoAltimetersEnabled));
         }
         else if (_noTransReminderFired && alt < 17_000)
         {

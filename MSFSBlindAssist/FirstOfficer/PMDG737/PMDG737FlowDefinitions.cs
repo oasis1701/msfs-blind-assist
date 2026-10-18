@@ -157,8 +157,8 @@ public static class PMDG737FlowDefinitions
                     "Set flight and landing altitudes on the pressurization panel."),
                 s => s.HasPressurizationPlan),
             SW("PF_LOGO", "Logo lights: ON", "EVT_OH_LIGHTS_LOGO", 1, checklistItemId: "PF_LOGO"),
-            MouseFlag("PF_FD1", "Flight director 1: ON", "EVT_MCP_FD_SWITCH_L", s => s.IsFDLeftOn(), checklistItemId: "PF_FD"),
-            MouseFlag("PF_FD2", "Flight director 2: ON", "EVT_MCP_FD_SWITCH_R", s => s.IsFDRightOn(), checklistItemId: "PF_FD"),
+            MouseFlag("PF_FD1", "Flight director 1: ON", "EVT_MCP_FD_SWITCH_L", "MCP_FDSw_0", checklistItemId: "PF_FD"),
+            MouseFlag("PF_FD2", "Flight director 2: ON", "EVT_MCP_FD_SWITCH_R", "MCP_FDSw_1", checklistItemId: "PF_FD"),
             Momentary("PF_FF", "Fuel flow: RESET", "EVT_MPM_FUEL_FLOW_SWITCH"),
             SW("PF_AB_RTO", "Autobrake: RTO", "EVT_MPM_AUTOBRAKE_SELECTOR", 0, checklistItemId: "PF_AB"),
             SW("PF_XPDR", "Transponder: ALT RPTG OFF", "EVT_TCAS_MODE", 1, checklistItemId: "PF_XPDR"),
@@ -298,9 +298,11 @@ public static class PMDG737FlowDefinitions
             // as the starter disengages. Wait on the START SWITCH itself — matching the
             // pilot-paced checklist and guaranteeing engine 1's GRD is never set while
             // engine 2's starter is still engaged (the old start-valve-byte wait released
-            // early — user report 2026-07-03).
+            // early — user report 2026-07-03). Stop on a timeout: a switch that never cuts out
+            // is a hung start or a starter still engaged, and the flow once carried on and put
+            // engine 1 on GRD over it, breaking the very guarantee above.
             WaitForField("ES_E2_CUTOUT", "Engine 2 starting — waiting for the start switch to cut out",
-                "ENG_StartSelector_1", v => Math.Abs(v - 1) < 0.1, 120),
+                "ENG_StartSelector_1", v => Math.Abs(v - 1) < 0.1, 120, onTimeout: FlowStepFailurePolicy.Stop),
             // --- Engine 1 ---
             SW("ES_E1_GRD", "Engine 1 start switch: GRD", "EVT_OH_LIGHTS_L_ENGINE_START", 0),
             WaitForField("ES_E1_VALVE", "Engine 1 start valve open",
@@ -308,7 +310,7 @@ public static class PMDG737FlowDefinitions
             Wait("ES_E1_MOTOR", "Engine 1 motoring before fuel", EngStartMotorSeconds),
             SW("ES_E1_RUN", "Engine 1 start lever: IDLE", "EVT_CONTROL_STAND_ENG1_START_LEVER", 1, checklistItemId: "ES_E1_RUN"),
             WaitForField("ES_E1_CUTOUT", "Engine 1 starting — waiting for the start switch to cut out",
-                "ENG_StartSelector_0", v => Math.Abs(v - 1) < 0.1, 120),
+                "ENG_StartSelector_0", v => Math.Abs(v - 1) < 0.1, 120, onTimeout: FlowStepFailurePolicy.Stop),
         }
     };
 
@@ -354,7 +356,7 @@ public static class PMDG737FlowDefinitions
                 ("EVT_OH_LIGHTS_L_RETRACT", 2), ("EVT_OH_LIGHTS_R_RETRACT", 2),
                 ("EVT_OH_LIGHTS_L_FIXED", 1), ("EVT_OH_LIGHTS_R_FIXED", 1)),
             SW("BTO_STROBE", "Position lights: STROBE & STEADY", "EVT_OH_LIGHTS_POS_STROBE", 2, checklistItemId: "BTKO_STROBE"),
-            MouseFlag("BTO_AT", "Autothrottle: ARM", "EVT_MCP_AT_ARM_SWITCH", s => s.IsATArmOn(), checklistItemId: "BTKO_AT"),
+            MouseFlag("BTO_AT", "Autothrottle: ARM", "EVT_MCP_AT_ARM_SWITCH", "MCP_ATArmSw", checklistItemId: "BTKO_AT"),
             SW("BTO_XPDR", "Transponder: TA/RA", "EVT_TCAS_MODE", 4, checklistItemId: "BTKO_XPDR"),
             // Advise the cabin crew for takeoff — the overhead ATTEND pushbutton (cabin chime).
             SW("BTKO_CABIN", "Advise the cabin crew for takeoff", "EVT_OH_ATTND_CALL_SWITCH", 1,
@@ -504,6 +506,16 @@ public static class PMDG737FlowDefinitions
             // The per-detent event routes through the executor's MouseFlag dispatch.
             Momentary("AL_FLAPS_UP", "Flaps: UP", "EVT_CONTROL_STAND_FLAPS_LEVER_0", checklistItemId: "AL_FLAPS"),
             SW("AL_AB_OFF", "Autobrake: OFF", "EVT_MPM_AUTOBRAKE_SELECTOR", 1, checklistItemId: "AL_AB"),
+            // Read-only: "Flaps: UP" (AL_FLAPS) reads the trailing-edge NEEDLE (the NG3 struct has
+            // no flap-lever field), and the flaps take tens of seconds to retract, so the lever
+            // write alone latched the line before the flaps were up. This check, LAST so the
+            // retraction holds nothing up, completes the same line once the needle reads up; a
+            // timeout is heard skipped and keeps the line out of the latch although the write
+            // ticked it (FO-8), so it keeps mirroring the flaps. Never writes. Its budget is the
+            // hand tick's (AircraftActionExecutor.FlapsUpTimeoutMs).
+            Skip(WaitForField("AL_FLAPS_UP_CHECK", "Flaps: retracted", "MAIN_TEFlapsNeedle_0", v => v < 0.5,
+                    AircraftActionExecutor.FlapsUpTimeoutMs / 1000, checklistItemId: "AL_FLAPS"),
+                s => s.GetValue("MAIN_TEFlapsNeedle_0") < 0.5),
         }
     };
 
@@ -634,17 +646,21 @@ public static class PMDG737FlowDefinitions
     };
 
     // FD / AT Arm are mouse-flag TOGGLES (no absolute target), so firing one while the
-    // switch is already in the desired state flips it the wrong way. The skip predicate
-    // is required so the step is no-op'd when already correct — the same guard the panel
-    // (HandleUIVariableSet) and the checklists (SetFDLeft(target, state)) already apply.
+    // switch is already in the desired state flips it the wrong way. Every one of these steps
+    // turns its switch ON: "Already set" when `field` reads on — the same guard the panel
+    // (HandleUIVariableSet) and the checklists (SetFDLeft(target, state)) apply — and left
+    // alone, aloud, while it is unread (NaN, before the first CDA snapshot), which IsOn read
+    // as off, so the press switched off an FD that was already on.
     private static Step MouseFlag(string id, string label, string eventName,
-        Func<AircraftStateEvaluator, bool> skipWhen, string? checklistItemId = null) => new()
+        string field, string? checklistItemId = null) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.SetSwitch,
         EventName = eventName,
         UsesMouseFlag = true,
-        SkipCondition = skipWhen,
+        SkipCondition = s => s.IsOn(field),
+        LeaveAloneWhen = s => double.IsNaN(s.GetValue(field)),
+        LeaveAloneText = $"Skipping: {label}. The switch cannot be read yet.",
         CompletesChecklistItemId = checklistItemId,
         PostActionDelayMs = 350,
         FailurePolicy = FlowStepFailurePolicy.Skip,

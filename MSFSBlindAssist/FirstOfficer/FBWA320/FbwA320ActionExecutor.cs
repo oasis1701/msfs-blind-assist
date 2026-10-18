@@ -122,6 +122,9 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
     {
         if (_sc is not { IsConnected: true } || _def == null || _announcer == null) return false;
         await PaceAsync();
+        // Again after the pacing wait: a closed First Officer window (an aircraft switch) or a
+        // disconnect detaches the executor meanwhile, and the write must not reach the next aircraft.
+        if (_sc is not { IsConnected: true }) return false;
         bool ok = name switch
         {
             "BARO_STD"          => FireBaro(std: true),   // A320: PULL = STD
@@ -216,22 +219,65 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
         }
     }
 
-    private static readonly Dictionary<string, int> EcamPageIndex = new()
+    /// <summary>The page the SD shows (FlyByWire's SdPages: -1 none, 0 ENG ... 10 F/CTL, 11 CRZ,
+    /// 12 STS): an OUTPUT of the DMC's page logic since FBW #10700 (DmcSdPageLogic.ts), computed
+    /// from the ECP keys, the FWC's request and the flight phase. The SD reads this, not
+    /// <c>A32NX_ECAM_SD_CURRENT_PAGE_INDEX</c>, which the DMC also writes and which the FO once
+    /// wrote directly: that lit the ECP key and left the SD on its page.</summary>
+    public const string SdPageShownVar = "A32NX_ECAM_SD_PAGE_TO_DISPLAY";
+
+    // ECAM page pseudo-key -> the ECP key that selects the page (FlyByWire's
+    // A32NX_ECP_<key>_PRESSED / _RELEASED H-events, Ecp.ts) and the page it selects.
+    internal static readonly IReadOnlyDictionary<string, (string Key, int Page)> EcamPageKeys =
+        new Dictionary<string, (string Key, int Page)>
     {
-        ["ECAM_PAGE_ENG"]=0, ["ECAM_PAGE_BLEED"]=1, ["ECAM_PAGE_PRESS"]=2,
-        ["ECAM_PAGE_ELEC"]=3, ["ECAM_PAGE_HYD"]=4, ["ECAM_PAGE_FUEL"]=5,
-        ["ECAM_PAGE_APU"]=6, ["ECAM_PAGE_COND"]=7, ["ECAM_PAGE_DOOR"]=8,
-        ["ECAM_PAGE_WHEEL"]=9, ["ECAM_PAGE_FCTL"]=10, ["ECAM_PAGE_STS"]=12,
+        ["ECAM_PAGE_ENG"]   = ("ENG", 0),    ["ECAM_PAGE_BLEED"] = ("BLEED", 1),  ["ECAM_PAGE_PRESS"] = ("PRESS", 2),
+        ["ECAM_PAGE_ELEC"]  = ("ELEC", 3),   ["ECAM_PAGE_HYD"]   = ("HYD", 4),    ["ECAM_PAGE_FUEL"]  = ("FUEL", 5),
+        ["ECAM_PAGE_APU"]   = ("APU", 6),    ["ECAM_PAGE_COND"]  = ("COND", 7),   ["ECAM_PAGE_DOOR"]  = ("DOOR", 8),
+        ["ECAM_PAGE_WHEEL"] = ("BRAKES", 9), ["ECAM_PAGE_FCTL"]  = ("FLT_CTL", 10), ["ECAM_PAGE_STS"] = ("STS", 12),
     };
 
-    // Direct SD page-index write — held-safe (the earlier ECP press/release pulse could
-    // leave a button stuck). PagesContainer reads A32NX_ECAM_SD_CURRENT_PAGE_INDEX as the
-    // displayed page; auto-SD logic overrides a manual index on the next auto event (fine
-    // for a checklist callout, same as the A380's real page-index write).
-    private Task<bool> FireEcamPageAsync(string pseudoKey)
+    private const int EcpKeyHoldMs = 250;      // the ECP itself holds a press on its bus for 8.5 frames
+    private const int EcpPageSettleMs = 400;   // the DMC picks the press up within a few frames
+    private const int SdPageReadTimeoutMs = 1000;
+
+    // Press the page's ECP key, as the pilot does. A second press of the key of a page the pilot
+    // already selected returns the SD to automatic page selection (DmcSdPageLogic), so a page the
+    // SD already shows is left alone. The release is in a finally, like the TO CONFIG test's: a
+    // lost release leaves the key held. True only when the SD shows the page afterwards, or when
+    // the read-back did not arrive (the press went out; the line still auto-ticks from nothing).
+    private async Task<bool> FireEcamPageAsync(string pseudoKey)
     {
-        if (!EcamPageIndex.TryGetValue(pseudoKey, out int idx)) return Task.FromResult(false);
-        return Task.FromResult(ApplySilent("A32NX_ECAM_SD_CURRENT_PAGE_INDEX", idx));
+        if (!EcamPageKeys.TryGetValue(pseudoKey, out var page)) return false;
+        var sc = _sc;   // one manager for the whole press: the release must follow its press
+        if (sc is not { IsConnected: true }) return false;
+        if (!sc.CanSendHVars)
+        {
+            Log.Warn("fo_a320", $"ECAM page {page.Key}: no MobiFlight channel for the ECP key; nothing pressed");
+            return false;
+        }
+        if (await SdShowsAsync(sc, page.Page) == true) return true;
+        if (_sc == null) return false;   // detached while reading (the window closed)
+
+        string key = "A32NX_ECP_" + page.Key;
+        try
+        {
+            sc.SendHVar(key + "_PRESSED");
+            await Task.Delay(EcpKeyHoldMs);
+        }
+        finally
+        {
+            if (sc.IsConnected) sc.SendHVar(key + "_RELEASED");
+        }
+        await Task.Delay(EcpPageSettleMs);
+        return await SdShowsAsync(sc, page.Page) != false;
+    }
+
+    // Whether the SD shows the page; null when the read-back did not arrive.
+    private static async Task<bool?> SdShowsAsync(SimConnectManager sc, int page)
+    {
+        double? shown = await sc.ReadFreshAsync(SdPageShownVar, SdPageReadTimeoutMs);
+        return shown is double v ? Math.Abs(v - page) < 0.5 : null;
     }
 
     public enum CockpitLightScene { DayPrep, DimFlight, ParkingBright, Off }
@@ -365,7 +411,7 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
 
     /// <summary>TO CONFIG test: fire the ECP TO_CONF_TEST press H-event, hold, release
     /// (FWC latches the test result at ≥1.5s held). No direct L:var exists for this
-    /// button — it is genuinely an ECP momentary, unlike the SD page keys above.</summary>
+    /// button: it is an ECP momentary like the SD page keys above, held longer.</summary>
     public async Task<bool> TakeoffConfigTestAsync()
     {
         await _gate.WaitAsync();

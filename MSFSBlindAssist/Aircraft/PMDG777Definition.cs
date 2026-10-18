@@ -6088,14 +6088,13 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
 
     /// <summary>
     /// Engage the autopilot via the MCP left A/P engage switch (A/P L). The 777 momentary
-    /// convention is <c>SendPMDGEvent(name, id, 1)</c>. Guarded on the A/P L engaged
-    /// annunciator (<c>MCP_annunAP_0</c>) so re-engaging (a toggle) can't disconnect an
-    /// already-engaged autopilot.
+    /// convention is <c>SendPMDGEvent(name, id, 1)</c>. Guarded on both A/P engaged annunciators
+    /// (<see cref="IsAutopilotEngaged"/>) so re-engaging (a toggle) can't disconnect an
+    /// already-engaged autopilot, and never pressed on an unread snapshot.
     /// </summary>
     public override void EngageAutopilot(SimConnect.SimConnectManager simConnect)
     {
-        var dm = simConnect.PMDGDataManager;
-        if (dm != null && dm.GetFieldValue("MCP_annunAP_0") > 0.5) return;   // already engaged
+        if (IsAutopilotEngaged(simConnect) != false) return;   // engaged, or not read yet
         if (EventIds.TryGetValue("EVT_MCP_AP_L_SWITCH", out int id))
             simConnect.SendPMDGEvent("EVT_MCP_AP_L_SWITCH", (uint)id, 1);
     }
@@ -6108,15 +6107,24 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     public override int MinimumAutopilotEngageAltitudeAgl => 200;
 
     /// <summary>
-    /// A/P L engaged state for the universal auto-engage's verify/retry loop. NULL until the
-    /// first CDA snapshot — see the 737's override for why "unknown" must not read as false.
+    /// A/P engaged state for the universal auto-engage's verify/retry loop: either A/P engage
+    /// annunciator (<c>MCP_annunAP[2]</c>) lit, so an autopilot engaged on A/P R reads engaged too.
+    /// NULL until the first CDA snapshot — see the 737's override for why "unknown" must not read
+    /// as false.
     /// </summary>
     public override bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect)
     {
         var dm = simConnect.PMDGDataManager;
         if (dm is not { IsReady: true }) return null;
-        return dm.GetFieldValue("MCP_annunAP_0") > 0.5;
+        return dm.GetFieldValue("MCP_annunAP_0") > 0.5 || dm.GetFieldValue("MCP_annunAP_1") > 0.5;
     }
+
+    /// <summary>A/P L is read back through the 1 Hz CDA snapshot: presses 3 s apart, as on the 737, so a
+    /// retry never reads the snapshot from before the press.</summary>
+    public override int AutopilotEngageRetryIntervalMs => ToggleAutopilotEngageRetryIntervalMs;
+
+    /// <summary>Never pressed on an unread snapshot (null): the service waits for a reading.</summary>
+    public override bool AutopilotEngageWaitsForState => true;
 
     // ----------------------------------------------------------------------
     // Serializes the emergency-exit light guard→switch sequence (see the

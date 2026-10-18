@@ -16,6 +16,10 @@ public sealed class FbwA380StateEvaluator : LVarStateEvaluator
     /// name; nothing in FlyByWire writes A32NX_SPEEDS_LANDING_CONF3 any more.</summary>
     internal const string LandingConf3Field = "A380X_FM_LANDING_CONF3";
 
+    /// <summary>Synthetic: the Lineup landing lights (LIGHT_LANDING on) AND the nose light at T.O.
+    /// (NOSE_LIGHT 0); NaN while either is unread.</summary>
+    internal const string LineupLightsField = "FO_LINEUP_LIGHTS";
+
     private static readonly string[] PollFields =
     {
         "A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO",
@@ -166,6 +170,14 @@ public sealed class FbwA380StateEvaluator : LVarStateEvaluator
             case "FO_LDG_MEMO_OK":
                 value = Both(GetValue("SEATBELT_SIGN_LIGHT"), GetValue("FO_LDG_FLAPS_SET"),
                     (belts, flaps) => belts > 0.5 && flaps > 0.5);
+                return true;
+            // Lineup "Landing and nose lights: ON": the wing landing lights on AND the nose selector at
+            // T.O. (0), the two the Lineup step sets and its "Already set" reads. The line read the wing
+            // lights alone, so with them on and the nose still at TAXI it ticked, and a tick then never
+            // ran its action (FO-12) and left the nose light at TAXI.
+            case LineupLightsField:
+                value = Both(GetValue("LIGHT_LANDING"), GetValue("NOSE_LIGHT"),
+                    (landing, nose) => landing > 0.5 && Math.Abs(nose) < 0.5);
                 return true;
             // The Line-up flow's packs check: both packs on.
             case "FO_PACKS_ON":

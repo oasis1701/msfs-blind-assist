@@ -302,6 +302,9 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
         }
 
         await PaceAsync();
+        // Again after the pacing wait: a closed First Officer window (an aircraft switch) or a
+        // disconnect detaches the executor meanwhile, and the write must not reach the next aircraft.
+        if (!IsAvailable) return false;
         bool ok = PseudoKeyHandlers.TryGetValue(name, out var handler)
             ? await handler(this)
             : ApplySilent(name, target ?? 1);

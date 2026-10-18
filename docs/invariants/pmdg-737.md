@@ -15,6 +15,8 @@ The text is verbatim from CLAUDE.md as of `1f37801a` (P737-3 and P737-4, the lat
 
 - The 737 manual warning-test panel toggles (stick shaker / overspeed clacker) actuate via transmit LEFTSINGLE (engage, holds open-ended) / LEFTRELEASE (release) — never a CDA write; state is app-tracked in the def (no SDK readback), the keys stay OUT of `_simpleEventMap`, and `SwitchAircraft` must release any engaged test so it can't leak into the next aircraft. → [pmdg-737.md](../pmdg-737.md)
 
+  **App exit too (2026-10-18).** `MainForm.OnFormClosing` releases an engaged test as well, before `Disconnect()`, while the sim can still receive the release; until then only the swap path did, so a test held when MSFSBA closed kept the stick shaker or clacker sounding in the sim. The exit path also runs the definition's `OnSwitchedAway`, the swap path's other teardown hook.
+
 ## P737-4
 
 - A third write transport exists for PMDG switches, the stock `K:ROTOR_BRAKE` event (66587) with `param = (pmdgEventId - 69632) * 100 + mouseCode` — this is NOT a new discovery: `PMDG777Definition.cs:6188-6209` already drives three 777 soundpack switches through it (crediting the FSCopilot 777 profile), including the same wheel codes (07/08). The 2026-08-25 737 session independently re-confirmed mouse code 01 = left-single live on the 737 speedbrake (679201/679101 arm/disarm) — check here before rediscovering it; it does NOT rescue the gear lever. → [pmdg-737.md](../pmdg-737.md)

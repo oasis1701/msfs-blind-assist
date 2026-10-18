@@ -159,3 +159,17 @@ this airframe the arm and the speed-brake handle are assumed to behave as the A3
 built on its systems) but were not measured, so check both: the normal run arms the spoilers and the
 ECAM landing memo shows them armed, and with the speed brake out at half the arm is left alone and
 the speed brake does not retract.
+
+## Part F — PR #160 review fixes (2026-10-18)
+
+None of these has run in the sim. The window, SimBrief and universal-automation checks shared by
+every aircraft are Part Z.1 of the PMDG 737 plan.
+
+1. **The nav and logo and landing-light rows follow the aircraft.** On the Exterior Lighting panel,
+   switch the nav and logo lights in the cockpit by mouse, then press "All Landing Lights On": both
+   rows change and the change is spoken once each (they used to keep their first reading).
+2. **Wipers** and **auto flaps**: run Part J items 2 and 3 of the A32NX plan on the A330. The A330's
+   wiper rows are the A32NX's (circuits 77 and 80), not measured on the A339X: if the Captain's
+   wiper does not stop, read `A:CIRCUIT SWITCH ON:77` with it running.
+3. **ECAM pages are unchanged on the A330**: its SD reads the page index the First Officer writes
+   (only the A32NX moved to the ECP keys); "ECAM page: door" still shows the door page.

@@ -840,12 +840,21 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// </summary>
     public virtual bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect) => null;
 
-    /// <summary>Default: retry every tick (FO-18's bounded retry, as on the PMDG jets, the iFly
-    /// and the MD-11). The FlyByWire family overrides it (FO-21).</summary>
+    /// <summary>Default: retry every tick (FO-18's bounded retry), for the stock <c>AUTOPILOT_ON</c>,
+    /// which is idempotent. Every aircraft whose engage is a TOGGLE read back no faster than about
+    /// once a second overrides it with <see cref="ToggleAutopilotEngageRetryIntervalMs"/> (the PMDG
+    /// jets, the iFly, the MD-11, the Fenix) or the FlyByWire family's own (FO-21).</summary>
     public virtual int AutopilotEngageRetryIntervalMs => 0;
 
-    /// <summary>Default false: a null reading takes the open-loop press-and-announce. The
-    /// FlyByWire family overrides it, so its engage waits for a definite reading (FO-21).</summary>
+    /// <summary>The press spacing for a toggle engage whose state is read about once a second (a PMDG
+    /// CDA snapshot, the iFly SDK snapshot, a 1 Hz L:var batch): with no spacing, a retry on the next
+    /// position answer (two a second once the First Officer window exists) read the snapshot from
+    /// before the press and pressed CMD A again, which switched it off. The FlyByWire family's 3 s.</summary>
+    protected const int ToggleAutopilotEngageRetryIntervalMs = 3000;
+
+    /// <summary>Default false: a null reading takes the open-loop press-and-announce, which only the
+    /// stock <c>AUTOPILOT_ON</c> aircraft keep. Every aircraft with a toggle engage overrides it, so its
+    /// engage waits for a definite reading (FO-21).</summary>
     public virtual bool AutopilotEngageWaitsForState => false;
 
     // Display Monitoring Methods - Default implementations (do nothing)

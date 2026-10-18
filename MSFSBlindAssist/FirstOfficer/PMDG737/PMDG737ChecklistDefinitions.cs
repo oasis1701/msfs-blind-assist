@@ -374,9 +374,11 @@ public static class PMDG737ChecklistDefinitions
                 new[] { "ENG_StartSelector_1" },
                 (e, _) => { e.SetEngStartSelector1(1); e.SetEngStartSelector2(1); }),
             // Detects off the TE-flap gauge needle (degrees) — the NG3 struct has no
-            // flap-lever field. <0.5° = fully up.
-            Auto("AL_FLAPS", "AFTER_LANDING", "Flaps: UP", "MAIN_TEFlapsNeedle_0", v => v < 0.5,
-                (e, _) => e.SetFlapsPosition(0)),
+            // flap-lever field. <0.5° = fully up. A SLOW condition, so the tick's action holds
+            // until the needle reads up (FO-11): the instant lever write was un-ticked by the
+            // 10 s grace with "Unable to complete" over flaps still retracting.
+            AutoAsync("AL_FLAPS", "AFTER_LANDING", "Flaps: UP", "MAIN_TEFlapsNeedle_0", v => v < 0.5,
+                (e, s) => e.RetractFlapsAsync(s)),
             Auto("AL_AB", "AFTER_LANDING", "Autobrake: OFF", "MAIN_AutobrakeSelector", v => v > 0.5 && v < 1.5,
                 (e, _) => e.SetAutobrake(1)),
         }

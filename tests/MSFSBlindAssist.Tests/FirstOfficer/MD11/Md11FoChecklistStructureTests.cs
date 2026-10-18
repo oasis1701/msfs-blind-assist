@@ -80,7 +80,10 @@ public class Md11FoChecklistStructureTests
     /// <summary>
     /// A finished flow ticks and LATCHES every item it did not explicitly fail, so an actionable
     /// item with no delivering step would read complete with its switch untouched — a silent false
-    /// completion a blind pilot cannot see (CLAUDE.md, the BS_TRANSPONDER lesson).
+    /// completion a blind pilot cannot see (CLAUDE.md, the BS_TRANSPONDER lesson). The one exception
+    /// is the start-switch lines: StayComplete on the engine RUNNING, they are never linked to the
+    /// pull (a pull marked them, a failed light-up then stopped the flow, and they stayed ticked over
+    /// an engine that never ran); they tick only from the engine running (Md11FoFlowChecklistLinkTests).
     /// </summary>
     [Fact]
     public void EveryActionableItemInAnActionGroup_HasADeliveringFlowStep()
@@ -90,7 +93,7 @@ public class Md11FoChecklistStructureTests
             var delivered = f.Steps.Select(s => s.CompletesChecklistItemId).Where(id => id != null).ToHashSet();
             var group = Groups.SingleOrDefault(g => g.Id == f.Id);
             if (group == null) continue;
-            foreach (var i in group.Items.Where(i => i.CheckAction != null))
+            foreach (var i in group.Items.Where(i => i.CheckAction != null && i.RevertBehavior != RevertBehavior.StayComplete))
                 Assert.True(delivered.Contains(i.Id), $"{group.Id}/{i.Id} has a CheckAction but no flow step delivers it");
         }
     }

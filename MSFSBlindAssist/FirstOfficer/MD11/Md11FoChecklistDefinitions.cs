@@ -476,7 +476,8 @@ public static class Md11FoChecklistDefinitions
             Id = G, Name = "After Takeoff Checklist",
             Items = new()
             {
-                Read("ATC_GEAR", G, "Gear: Up", "FO_GEAR_UP", On),
+                // The gear itself, lever AND legs (FO-13), confirmed by After Takeoff's last step.
+                Read("ATC_GEAR", G, "Gear: Up", Md11GearConfirmation.UpField, On),
                 Read("ATC_SPOILERS", G, "Spoilers: Disarmed", "FO_SPOILERS_DOWN", On),
                 Read("ATC_AUTOBRAKE", G, "Autobrake: Off", Autobrake, v => Is(v, 1)),
                 Read("ATC_FLAPS", G, "Flaps and Slats: Up and Retracted", "FO_FLAPS_UP", On),
@@ -490,7 +491,8 @@ public static class Md11FoChecklistDefinitions
         Id = "BEFORE_LANDING_CL", Name = "Before Landing Checklist",
         Items = new()
         {
-            Read("BLC_GEAR", "BEFORE_LANDING_CL", "Gear: Down", "FO_GEAR_DOWN", On),
+            // The gear itself, lever AND legs (FO-13), confirmed by Before Landing's last step.
+            Read("BLC_GEAR", "BEFORE_LANDING_CL", "Gear: Down", Md11GearConfirmation.DownField, On),
             Reminder("BLC_FLAPS", "BEFORE_LANDING_CL", "Flaps/Slats: As required"),
             Read("BLC_SPOILERS", "BEFORE_LANDING_CL", "Spoilers: Armed", "FO_SPOILERS_ARMED", On),
             Reminder("BLC_MISSED", "BEFORE_LANDING_CL", "Missed Approach Altitude: Set"),

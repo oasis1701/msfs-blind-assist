@@ -111,7 +111,9 @@ public class FbwA380ReadbackFormatTests
     {
         Assert.Equal("baro 940 feet", InCulture(culture, () => FbwA380ReadbackFormat.Minimum(940, -1)));
         Assert.Equal("radio 200 feet", InCulture(culture, () => FbwA380ReadbackFormat.Minimum(0, 200)));
-        Assert.Equal("radio 0 feet", InCulture(culture, () => FbwA380ReadbackFormat.Minimum(0, 0)));   // CAT III
+        // A DH of 0 is the A380's NO DH (the MFD's "NO" entry, A380Minimums), never "radio 0 feet".
+        Assert.Equal("No DH", InCulture(culture, () => FbwA380ReadbackFormat.Minimum(0, 0)));
+        Assert.Equal("baro 940 feet, No DH", InCulture(culture, () => FbwA380ReadbackFormat.Minimum(940, 0)));
         Assert.Equal("baro 1250 feet, radio 100 feet",
             InCulture(culture, () => FbwA380ReadbackFormat.Minimum(1250, 100)));
         Assert.Equal("not set", InCulture(culture, () => FbwA380ReadbackFormat.Minimum(0, -1)));

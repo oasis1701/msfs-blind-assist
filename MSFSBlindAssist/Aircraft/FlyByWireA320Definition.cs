@@ -3727,6 +3727,19 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
                 [8] = "Fuel", [9] = "Doors", [10] = "Engine", [11] = "Flight Controls"
             }
         },
+        // The page the real SD shows: the DMC's OUTPUT since FBW #10700 (DmcSdPageLogic.ts, from
+        // the ECP keys, the FWC's request and the flight phase), never written by MSFSBA. The First
+        // Officer's ECAM page press reads it (FbwA320ActionExecutor.SdPageShownVar) to leave a page
+        // the SD already shows alone and to confirm the press. OnRequest: only that fresh read asks.
+        ["A32NX_ECAM_SD_PAGE_TO_DISPLAY"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_ECAM_SD_PAGE_TO_DISPLAY",
+            DisplayName = "System Display Page Shown",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ExcludeFromMonitorManager = true,
+            Units = "number"
+        },
         // Approach minimums (CORRECTED 2026-07, mirrors the A380 fix): read the
         // PLAIN-feet L:vars the MCDU PERF APPR page writes directly
         // (A32NX_FMCMainDisplay.ts:5585/5591 — the same vars the ISIS reads), NOT the
@@ -9277,6 +9290,9 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         // exterior light (beacon/wing/nose/turn-off/strobe/all-landing) silently did nothing.
         // These branches must stay above the generic catch-all. (RPN "r" swaps the top two
         // stack entries → "<value> <index> r" is stack-equivalent to "<index> <value>".)
+        // Every write here is ExecuteCalculatorCodeUnique (SIM-17): a set repeated after the
+        // pilot moved the switch in the cockpit is byte-identical to the last string MSFSBA
+        // sent, and MobiFlight drops a repeat, so "Beacon: On" after a cockpit OFF did nothing.
 
         // Beacon + Wing: the cockpit switch (A320_NEO_INTERIOR.xml:1867-1878 / wing) fires the
         // stock BEACON_LIGHTS_SET / WING_LIGHTS_SET event and reads state from A:LIGHT BEACON /
@@ -9285,12 +9301,12 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         // flips A:LIGHT BEACON 0<->1; a SetLVar/native write does nothing.
         if (varKey == "LIGHT BEACON" || varKey == "BEACON_LIGHTS_SET")
         {
-            simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>K:BEACON_LIGHTS_SET)");
+            simConnect.ExecuteCalculatorCodeUnique($"{(value > 0.5 ? 1 : 0)} (>K:BEACON_LIGHTS_SET)");
             return true;
         }
         if (varKey == "LIGHT WING" || varKey == "WING_LIGHTS_SET")
         {
-            simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>K:WING_LIGHTS_SET)");
+            simConnect.ExecuteCalculatorCodeUnique($"{(value > 0.5 ? 1 : 0)} (>K:WING_LIGHTS_SET)");
             return true;
         }
         // Nose light (LIGHTING_LANDING_1): 0=T.O., 1=Taxi, 2=Off. The position L:var HOLDS the
@@ -9304,7 +9320,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             int takeoff = pos == 0 ? 1 : 0;
             int taxi = (pos == 0 || pos == 1) ? 1 : 0;
             simConnect.SetLVar("LIGHTING_LANDING_1", pos);
-            simConnect.ExecuteCalculatorCode(
+            simConnect.ExecuteCalculatorCodeUnique(
                 $"{takeoff} 1 r (>K:2:LANDING_LIGHTS_SET) {taxi} 1 r (>K:2:TAXI_LIGHTS_SET)");
             return true;
         }
@@ -9318,7 +9334,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             int on = value < 0.5 ? 1 : 0;          // value 0 = On
             int retr = value >= 1.5 ? 1 : 0;       // value 2 = Retract
             simConnect.SetLVar($"LANDING_{idx}_RETRACTED", retr);
-            simConnect.ExecuteCalculatorCode($"{on} {idx} r (>K:2:LANDING_LIGHTS_SET)");
+            simConnect.ExecuteCalculatorCodeUnique($"{on} {idx} r (>K:2:LANDING_LIGHTS_SET)");
             return true;
         }
         // "All Landing Lights" momentary buttons (Exterior Lighting panel + FO LU_LANDING_LT /
@@ -9335,7 +9351,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
                 int retr = on ? 0 : 1;
                 simConnect.SetLVar("LANDING_2_RETRACTED", retr);
                 simConnect.SetLVar("LANDING_3_RETRACTED", retr);
-                simConnect.ExecuteCalculatorCode(
+                simConnect.ExecuteCalculatorCodeUnique(
                     $"{ev} 2 r (>K:2:LANDING_LIGHTS_SET) {ev} 3 r (>K:2:LANDING_LIGHTS_SET)");
                 announcer.Announce(on ? "All landing lights on" : "All landing lights retracted");
             }
@@ -9347,7 +9363,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         if (varKey == "LIGHT TAXI:2")
         {
             int on = value > 0.5 ? 1 : 0;
-            simConnect.ExecuteCalculatorCode($"{on} 2 r (>K:2:TAXI_LIGHTS_SET) {on} 3 r (>K:2:TAXI_LIGHTS_SET)");
+            simConnect.ExecuteCalculatorCodeUnique($"{on} 2 r (>K:2:TAXI_LIGHTS_SET) {on} 3 r (>K:2:TAXI_LIGHTS_SET)");
             simConnect.RequestVariable("LIGHT TAXI:2", forceUpdate: true);
             simConnect.RequestVariable("LIGHT TAXI:3", forceUpdate: true);
             return true;
@@ -9363,8 +9379,8 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             int pos = (int)Math.Round(value);
             simConnect.SetLVar("LIGHTING_STROBE_0", pos);
-            if (pos == 2)      { simConnect.SetLVar("STROBE_0_AUTO", 0); simConnect.ExecuteCalculatorCode("0 (>K:STROBES_OFF)"); }
-            else if (pos == 0) { simConnect.SetLVar("STROBE_0_AUTO", 0); simConnect.ExecuteCalculatorCode("0 (>K:STROBES_ON)"); }
+            if (pos == 2)      { simConnect.SetLVar("STROBE_0_AUTO", 0); simConnect.ExecuteCalculatorCodeUnique("0 (>K:STROBES_OFF)"); }
+            else if (pos == 0) { simConnect.SetLVar("STROBE_0_AUTO", 0); simConnect.ExecuteCalculatorCodeUnique("0 (>K:STROBES_ON)"); }
             else               { simConnect.SetLVar("STROBE_0_AUTO", 1); }
             return true;
         }
@@ -9381,7 +9397,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             bool on = value >= 0.5;
             if (on)
             {
-                simConnect.ExecuteCalculatorCode(
+                simConnect.ExecuteCalculatorCodeUnique(
                     "1 (>A:LIGHT NAV) 1 (>A:LIGHT LOGO) 0 1 (>K:2:LOGO_LIGHTS_SET) " +
                     "1 0 (>K:2:NAV_LIGHTS_SET) 2 0 (>K:2:NAV_LIGHTS_SET) 3 0 (>K:2:NAV_LIGHTS_SET) " +
                     "4 1 (>K:2:NAV_LIGHTS_SET) 5 1 (>K:2:NAV_LIGHTS_SET) 6 1 (>K:2:NAV_LIGHTS_SET) " +
@@ -9389,7 +9405,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             }
             else
             {
-                simConnect.ExecuteCalculatorCode(
+                simConnect.ExecuteCalculatorCodeUnique(
                     "0 (>A:LIGHT NAV) 0 (>A:LIGHT LOGO) 0 0 (>K:2:NAV_LIGHTS_SET) " +
                     "0 0 (>K:2:LOGO_LIGHTS_SET) 0 (>L:A32NX_LIGHTS_NAV_LOGO)");
             }

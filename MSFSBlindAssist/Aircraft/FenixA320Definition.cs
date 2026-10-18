@@ -12626,8 +12626,43 @@ public class FenixA320Definition : BaseAircraftDefinition
     /// <param name="onHeld">Optional callback invoked while the button is still held at 1, just
     /// before the release — lets a caller read the resulting state (e.g. the master-warning outcome
     /// of the TO CONFIG test) before the button is released and the level-triggered effect clears.</param>
+    // =========================================================================
+    // Universal auto-AP engage (UniversalAutomationService)
+    // =========================================================================
+
+    /// <summary>
+    /// Engage autopilot 1 through the FCU's own AP1 pushbutton (<c>S_FCU_AP1</c>), the same press
+    /// pulse the panel button sends. The base stock <c>AUTOPILOT_ON</c> is not the Fenix's
+    /// autopilot, and the service once announced "Autopilot engaged" on it with nothing read back.
+    /// AP1 is a TOGGLE, so it is pressed only on a definite OFF (<see cref="AutopilotEngageWaitsForState"/>
+    /// keeps the service from pressing on an unread state, and this guard keeps a press off an
+    /// autopilot already on).
+    /// </summary>
+    public override void EngageAutopilot(SimConnect.SimConnectManager simConnect)
+    {
+        if (IsAutopilotEngaged(simConnect) != false) return;
+        ExecuteButtonTransition("S_FCU_AP1", "FCU AP1", simConnect, announcer: null);
+    }
+
+    /// <summary>Engaged when either FCU AP light (<c>I_FCU_AP1</c>, <c>I_FCU_AP2</c>, both Continuous)
+    /// is lit; off when both read dark; null until either has been read.</summary>
+    public override bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect)
+    {
+        double? ap1 = simConnect.GetCachedVariableValue("I_FCU_AP1");
+        double? ap2 = simConnect.GetCachedVariableValue("I_FCU_AP2");
+        if (ap1 > 0.5 || ap2 > 0.5) return true;
+        return ap1 != null && ap2 != null ? false : null;
+    }
+
+    /// <summary>The AP lights reach the cache with the 1 Hz batch: a retry sooner could land on an
+    /// autopilot the previous press already engaged, and the toggle would switch it off.</summary>
+    public override int AutopilotEngageRetryIntervalMs => ToggleAutopilotEngageRetryIntervalMs;
+
+    /// <summary>AP1 is a toggle: never pressed on an unread state (the service waits for a reading).</summary>
+    public override bool AutopilotEngageWaitsForState => true;
+
     private void ExecuteButtonTransition(string varName, string displayName,
-        SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer,
+        SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer? announcer,
         int pressHoldMs = ButtonPressHoldMs, Action? onHeld = null)
     {
         try
@@ -12697,7 +12732,7 @@ public class FenixA320Definition : BaseAircraftDefinition
         catch (Exception ex)
         {
             Log.Debug("Fenix", $"Error in {displayName} transition (first phase): {ex.Message}");
-            announcer.Announce($"Error pressing {displayName}");
+            announcer?.Announce($"Error pressing {displayName}");
         }
     }
 

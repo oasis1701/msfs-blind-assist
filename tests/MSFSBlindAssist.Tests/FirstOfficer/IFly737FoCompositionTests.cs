@@ -185,6 +185,30 @@ public class IFly737FoCompositionTests
         Assert.Equal(1000.0 * IFly737FoComposition.KgToLb, result, 3);
     }
 
+    // CORE-17: the gauge is another program's text. NumberStyles.Any with the invariant culture read
+    // a comma as a thousands separator; the external parser reads it as the decimal it is, and the
+    // PC's own culture (sv-SE here) never matters.
+    [Fact]
+    public void CenterQty_ReadsTheGaugeTheSameUnderACommaDecimalCulture()
+    {
+        var old = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("sv-SE");
+            var b = Buf();
+            int t2 = IFlySdkOffsets.Fuel_Quantity_Indicator_Status + 2 * IFlySdkOffsets.Fuel_Quantity_Indicator_Status_Stride0;
+            b[t2 + 0] = 2;
+            b[t2 + 1] = 3;
+            b[t2 + 2] = 0;
+            b[t2 + 3] = 0;
+            b[t2 + 4] = 10;
+            b[IFlySdkOffsets.UNITstyle] = 1;
+
+            Assert.Equal(2300.0, IFly737FoComposition.CenterQuantityLbs(Snap(b)));
+        }
+        finally { System.Globalization.CultureInfo.CurrentCulture = old; }
+    }
+
     [Fact]
     public void CenterQty_Blank_IsNaN()
     {

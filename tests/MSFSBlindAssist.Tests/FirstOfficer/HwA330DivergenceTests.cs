@@ -77,6 +77,20 @@ public class HwA330DivergenceTests
         Assert.Equal(SimVarType.SimVar, v.Type);
     }
 
+    // The base definition's pass that makes every readable panel combo monitored (Continuous +
+    // IsAnnounced) runs inside base.BuildVariables, before the A330 replaces these two rows, so
+    // until 2026-10-18 they stayed OnRequest: never refreshed and never announced.
+    [Theory]
+    [InlineData("A32NX_LIGHTS_NAV_LOGO")]
+    [InlineData("LIGHT LANDING:2")]
+    public void A330_repointed_light_rows_are_monitored_like_every_other_panel_combo(string key)
+    {
+        var v = new HeadwindA330Definition().GetVariables()[key];
+        Assert.Equal(UpdateFrequency.Continuous, v.UpdateFrequency);
+        Assert.True(v.IsAnnounced);
+        Assert.True(v.ExcludeFromBatch);   // added by the subclass, like the altimeter rows
+    }
+
     // Registering the read-back is only half of it: the First Officer was fixed to use it,
     // but the inherited Exterior Lighting PANEL still listed the two A32NX Retractable
     // positions, so a pilot driving the panel by hand could still do the exact harm the FO

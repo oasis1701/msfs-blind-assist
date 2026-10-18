@@ -122,6 +122,9 @@ public sealed class HwA330ActionExecutor : IFoActionExecutor
     {
         if (_sc is not { IsConnected: true } || _def == null || _announcer == null) return false;
         await PaceAsync();
+        // Again after the pacing wait: a closed First Officer window (an aircraft switch) or a
+        // disconnect detaches the executor meanwhile, and the write must not reach the next aircraft.
+        if (_sc is not { IsConnected: true }) return false;
         bool ok = name switch
         {
             "BARO_STD"          => FireBaro(std: true),   // A320: PULL = STD

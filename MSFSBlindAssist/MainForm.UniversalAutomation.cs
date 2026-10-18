@@ -5,14 +5,19 @@ namespace MSFSBlindAssist;
 /// <summary>
 /// The wiring of the universal auto-gear/auto-AP service (<c>Automation/UniversalAutomationService.cs</c>):
 /// its construction, its 1 Hz feed timer, the aircraft-position handler and the push of the current
-/// aircraft's own limits. Kept in its own partial so <c>.claude/rules/first-officer.md</c> loads for it
-/// (FO-16, FO-17, FO-18, FO-21) instead of being mirrored into every MainForm partial.
+/// aircraft's own limits. Kept in its own partial so <c>.claude/rules/first-officer-automation.md</c>
+/// loads for it (FO-16, FO-17, FO-18, FO-21) instead of being mirrored into every MainForm partial.
 /// </summary>
 public partial class MainForm
 {
     private MSFSBlindAssist.Automation.UniversalAutomationService universalAutomation = null!;
     private System.Windows.Forms.Timer _universalAutomationTimer = null!;
-    private double _universalLatestAgl;
+    // The latest FO_ALTITUDE_AGL and FO_GEAR_HANDLE answers (MainForm.Announcers.cs), NaN while not
+    // read. They are read only while an auto feature is on, so they are dropped (NaN) whenever none
+    // is: a value left from earlier in the flight once lowered the gear above its limit speed at
+    // FL150 the moment auto gear was switched back on.
+    private double _universalLatestAgl = double.NaN;
+    private double _universalLatestGearHandle = double.NaN;
 
     /// <summary>
     /// Builds the universal automation service and starts its 1 Hz feed. <c>simConnectManager</c> must
@@ -38,7 +43,9 @@ public partial class MainForm
             // aircraft says its own "Autopilot 1 on" with the 1 Hz batch, and the confirmation follows 0-1 s
             // later, so an interrupting one cut it off. The gear calls and the two Captain calls above keep
             // AnnounceImmediate. Announce, unlike it, honours announcer.Suppressed (the first-detect grace).
-            announceConfirmation: msg => announcer.Announce(msg));
+            announceConfirmation: msg => announcer.Announce(msg),
+            // The stock gear handle, so a gear the pilot already moved is left alone and unannounced.
+            isGearHandleDown: () => double.IsNaN(_universalLatestGearHandle) ? null : _universalLatestGearHandle > 0.5);
 
         simConnectManager.AircraftPositionReceived += OnUniversalAircraftPosition;
 
@@ -53,20 +60,44 @@ public partial class MainForm
             universalAutomation.AutoApEngageAltitudeAgl = s.FOAutoApEngageAltitudeAgl;
             // The current aircraft's own engage floor, press spacing and wait flag (also pushed on a switch).
             PushUniversalAircraftLimits();
-            if (!universalAutomation.AnyEnabled) return;   // zero SimConnect load when disabled
+            if (!universalAutomation.AnyEnabled)
+            {
+                // Zero SimConnect load when disabled, and nothing kept that would be stale on re-enable.
+                _universalLatestAgl = double.NaN;
+                _universalLatestGearHandle = double.NaN;
+                universalAutomation.MarkGroundStateUnknown();
+                return;
+            }
             simConnectManager.RequestAircraftPosition();
             simConnectManager.RequestFOAltitudeAGL();
+            simConnectManager.RequestFOGearHandle();
         };
         _universalAutomationTimer.Start();
     }
 
     /// <summary>
-    /// Stops and disposes the 1 Hz feed timer. Called from MainForm's shutdown, beside the other timers.
+    /// Stops and disposes the 1 Hz feed timer and drops the position subscription. Called from MainForm's
+    /// shutdown, beside the other timers: the subscription once outlived the form, so a position answer
+    /// during the exit's SimConnect drain still ran the service.
     /// </summary>
     private void DisposeUniversalAutomation()
     {
         _universalAutomationTimer?.Stop();
         _universalAutomationTimer?.Dispose();
+        if (universalAutomation != null)
+            simConnectManager.AircraftPositionReceived -= OnUniversalAircraftPosition;
+    }
+
+    /// <summary>
+    /// Forgets the universal service's legs and its latest readings: an aircraft switch, or a flight loaded
+    /// in the simulator. The takeoff gates then wait for a ground sample, and nothing acts on a reading from
+    /// before (the AGL and gear handle are read again within a second).
+    /// </summary>
+    private void ResetUniversalAutomation()
+    {
+        universalAutomation?.Reset();
+        _universalLatestAgl = double.NaN;
+        _universalLatestGearHandle = double.NaN;
     }
 
     /// <summary>
@@ -89,6 +120,6 @@ public partial class MainForm
     /// First Officer window. Gated inside the service by the per-feature settings.</summary>
     private void OnUniversalAircraftPosition(object? sender, SimConnect.SimConnectManager.AircraftPosition pos)
     {
-        universalAutomation.Update(pos.Altitude, pos.VerticalSpeedFPM, _universalLatestAgl);
+        universalAutomation.Update(pos.Altitude, pos.VerticalSpeedFPM, _universalLatestAgl, pos.SimOnGround >= 0.5);
     }
 }

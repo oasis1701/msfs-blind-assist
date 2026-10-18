@@ -17,7 +17,10 @@ public enum Dispatch
     /// multi-position selectors (EFIS/isolation/pressurization/IRS send the position as target),
     /// spring selectors (APU/fire-test) and momentary EFIS/MCP buttons (target = 1 press).</summary>
     Simple,
-    /// <summary>Guarded: <c>SendPMDGGuardedSet(guard, switch, target)</c>.</summary>
+    /// <summary>Guarded: the panel's own path — read the switch's position (the spec's
+    /// <c>StateField</c>), then click-walk it to the target (<c>WalkPMDGSelector</c>); PMDG
+    /// lifts and closes the guard itself on a click. The standby power selector keeps the
+    /// panel's guard-click sequence (<c>PMDG737Definition.DispatchStandbyPowerAsync</c>).</summary>
     Guarded,
     /// <summary>Mouse-flag direction from target sign: LEFTSINGLE = on, RIGHTSINGLE = off.
     /// GEN 1/2, GRD PWR, APU GEN 1/2 (PMDG NG3 ignores a bare 0/1 parameter on these).</summary>
@@ -152,10 +155,13 @@ public class AircraftActionExecutor : IFoActionExecutor
     private static readonly Dictionary<string, Spec> Table = new()
     {
         // --- Guarded (switch event -> guard event), from _guardedMap ---
-        ["EVT_OH_ELEC_BATTERY_SWITCH"]       = new(Dispatch.Guarded, "EVT_OH_ELEC_BATTERY_GUARD"),
+        // A guarded switch the First Officer writes names the CDA field of its position (the
+        // panel var's own Name), which the click-walk starts from. The rest name none and are
+        // refused (see Dispatch.Guarded in DispatchCoreAsync): no flow or checklist writes them.
+        ["EVT_OH_ELEC_BATTERY_SWITCH"]       = new(Dispatch.Guarded, "EVT_OH_ELEC_BATTERY_GUARD", "ELEC_BatSelector"),
         ["EVT_OH_ELEC_DISCONNECT_1_SWITCH"]  = new(Dispatch.Guarded, "EVT_OH_ELEC_DISCONNECT_1_GUARD"),
         ["EVT_OH_ELEC_DISCONNECT_2_SWITCH"]  = new(Dispatch.Guarded, "EVT_OH_ELEC_DISCONNECT_2_GUARD"),
-        ["EVT_OH_ELEC_STBY_PWR_SWITCH"]      = new(Dispatch.Guarded, "EVT_OH_ELEC_STBY_PWR_GUARD"),
+        ["EVT_OH_ELEC_STBY_PWR_SWITCH"]      = new(Dispatch.Guarded, "EVT_OH_ELEC_STBY_PWR_GUARD", "ELEC_StandbyPowerSelector"),
         ["EVT_OH_ELEC_BUS_TRANSFER_SWITCH"]  = new(Dispatch.Guarded, "EVT_OH_ELEC_BUS_TRANSFER_GUARD"),
         ["EVT_OH_FUEL_GND_XFR_SW"]           = new(Dispatch.Guarded, "EVT_OH_FUEL_GND_XFR_GUARD"),
         ["EVT_OH_FCTL_A_SWITCH"]             = new(Dispatch.Guarded, "EVT_OH_FCTL_A_GUARD"),
@@ -167,7 +173,7 @@ public class AircraftActionExecutor : IFoActionExecutor
         ["EVT_OH_EEC_R_SWITCH"]              = new(Dispatch.Guarded, "EVT_OH_EEC_R_GUARD"),
         ["EVT_OH_OXY_PASS_SWITCH"]           = new(Dispatch.Guarded, "EVT_OH_OXY_PASS_GUARD"),
         ["EVT_OH_FLTREC_SWITCH"]             = new(Dispatch.Guarded, "EVT_OH_FLTREC_GUARD"),
-        ["EVT_OH_EMER_EXIT_LIGHT_SWITCH"]    = new(Dispatch.Guarded, "EVT_OH_EMER_EXIT_LIGHT_GUARD"),
+        ["EVT_OH_EMER_EXIT_LIGHT_SWITCH"]    = new(Dispatch.Guarded, "EVT_OH_EMER_EXIT_LIGHT_GUARD", "LTS_EmerExitSelector"),
         ["EVT_GPWS_FLAP_INHIBIT_SWITCH"]     = new(Dispatch.Guarded, "EVT_GPWS_FLAP_INHIBIT_GUARD"),
         ["EVT_GPWS_GEAR_INHIBIT_SWITCH"]     = new(Dispatch.Guarded, "EVT_GPWS_GEAR_INHIBIT_GUARD"),
         ["EVT_GPWS_TERR_INHIBIT_SWITCH"]     = new(Dispatch.Guarded, "EVT_GPWS_TERR_INHIBIT_GUARD"),
@@ -341,6 +347,10 @@ public class AircraftActionExecutor : IFoActionExecutor
         // Frame-space EVERY write relative to the previous one (see _lastWriteUtc) —
         // callers no longer need their own inter-write delays.
         await PaceAsync();
+        // Read again after the pacing wait: a closed First Officer window (an aircraft switch) or a
+        // disconnect detaches the executor meanwhile, and the write must not reach the next aircraft.
+        // Every case below reads _sc before its own first await.
+        if (_sc == null) return false;
         try
         {
             switch (kind)
@@ -401,9 +411,33 @@ public class AircraftActionExecutor : IFoActionExecutor
                     return true;
 
                 case Dispatch.Guarded:
-                    if (spec?.Guard != null && PMDG737Definition.EventIds.TryGetValue(spec.Guard, out int gId))
-                        await _sc.SendPMDGGuardedSet(spec.Guard, (uint)gId, eventName, id, target ?? 0);
+                {
+                    // The panel's proven path for a guarded switch (PMDG737Definition
+                    // .HandleUIVariableSet, "Guarded switches"): read where the switch is, then
+                    // click-walk it there; PMDG lifts and closes the guard itself on a click. The
+                    // CDA guard-open / set / guard-close sequence (SendPMDGGuardedSet) sprang the
+                    // switch back to its prior detent when the guard closed (live-tested
+                    // 2026-05-22, commit aacd8173), so Secure said "Battery: OFF" over a battery
+                    // that stayed on. The standby power selector, whose guard PMDG does NOT lift
+                    // on a click, keeps the panel's own guard-click sequence. Unread, or a guarded
+                    // switch with no position field, is refused: never a write reported as done.
+                    var dm = _sc.PMDGDataManager;
+                    if (spec?.StateField == null || dm is not { IsReady: true }) return false;
+                    int current = (int)Math.Round(dm.GetFieldValue(spec.StateField));
+                    int want = target ?? 0;
+                    if (current == want) return true;
+                    if (eventName == "EVT_OH_ELEC_STBY_PWR_SWITCH")
+                    {
+                        if (spec.Guard == null || !PMDG737Definition.EventIds.TryGetValue(spec.Guard, out int gId))
+                            return false;
+                        await PMDG737Definition.DispatchStandbyPowerAsync(_sc, (uint)gId, id, current, want);
+                    }
+                    else
+                    {
+                        await _sc.WalkPMDGSelector(id, current, want);
+                    }
                     return true;
+                }
 
                 default:
                     _sc.SendPMDGEvent(eventName, id, target);
@@ -743,9 +777,18 @@ public class AircraftActionExecutor : IFoActionExecutor
     public async Task SetFlightDirectorsAsync(int targetOn, AircraftStateEvaluator state)
     {
         var presses = new List<(string ev, int? target)>();
-        if ((state.IsFDLeftOn()  ? 1 : 0) != targetOn) presses.Add(("EVT_MCP_FD_SWITCH_L", null));
-        if ((state.IsFDRightOn() ? 1 : 0) != targetOn) presses.Add(("EVT_MCP_FD_SWITCH_R", null));
+        if (TogglePressNeeded("MCP_FDSw_0", targetOn, state)) presses.Add(("EVT_MCP_FD_SWITCH_L", null));
+        if (TogglePressNeeded("MCP_FDSw_1", targetOn, state)) presses.Add(("EVT_MCP_FD_SWITCH_R", null));
         if (presses.Count > 0) await FireSpacedAsync(presses.ToArray());
+    }
+
+    // A mouse-flag TOGGLE (FD, A/T ARM) needs a press only when its switch READS the other state.
+    // Unread (NaN, before the first CDA snapshot) once read as "off", so a tick pressed a switch
+    // that was already on and switched it off; unread now presses nothing.
+    private static bool TogglePressNeeded(string field, int targetOn, AircraftStateEvaluator state)
+    {
+        double v = state.GetValue(field);
+        return !double.IsNaN(v) && (v > 0.5 ? 1 : 0) != targetOn;
     }
 
     // (The former StartEngineAsync monolithic checklist start was removed 2026-07-02:
@@ -844,6 +887,28 @@ public class AircraftActionExecutor : IFoActionExecutor
     public bool SetAltFlapsPos(int p)    => Fire("EVT_OH_ALT_FLAPS_POS_SWITCH", p);
     public bool SetSpeedbrakeDown()      => Fire("EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_DOWN", 1);
 
+    /// <summary>How long a flaps-up (the After Landing hand tick, the flow's read-only check)
+    /// waits for the trailing-edge needle to read up. A judgement covering a retraction from 40,
+    /// not a measurement.</summary>
+    public const int FlapsUpTimeoutMs = 90_000;
+    private const int FlapsUpPollMs = 500;
+
+    /// <summary>Flap lever UP, then held until the trailing-edge needle reads up — the After
+    /// Landing "Flaps: UP" line's own field — or <see cref="FlapsUpTimeoutMs"/>. The flaps take
+    /// far longer than the checklist's 10 s tick grace to retract, so the instant action left a
+    /// working retraction un-ticked with "Unable to complete: Flaps: UP" (FO-11). The gate is held
+    /// only for the lever write, so the wait never blocks other dispatch.</summary>
+    public async Task RetractFlapsAsync(AircraftStateEvaluator state)
+    {
+        SetFlapsPosition(0);
+        var deadline = DateTime.UtcNow.AddMilliseconds(FlapsUpTimeoutMs);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (state.GetValue("MAIN_TEFlapsNeedle_0") < 0.5) return;
+            await Task.Delay(FlapsUpPollMs);
+        }
+    }
+
     // Flap lever (per-detent momentary press): 0=UP,1,2,5,10,15,25,30,40
     public bool SetFlapsPosition(int detent)
     {
@@ -863,13 +928,20 @@ public class AircraftActionExecutor : IFoActionExecutor
         return ev != null && Fire(ev, 1);
     }
 
-    // MCP / EFIS (FD + AT Arm are toggles — press only if the target differs from current)
+    // MCP / EFIS (FD + AT Arm are toggles — press only if the switch READS the other state;
+    // an unread switch is not pressed and reports false: see TogglePressNeeded)
     public bool SetFDLeft(int targetOn, AircraftStateEvaluator state)
-        => (state.IsFDLeftOn() ? 1 : 0) == targetOn || Fire("EVT_MCP_FD_SWITCH_L", null);
+        => ToggleTo("MCP_FDSw_0", targetOn, state, "EVT_MCP_FD_SWITCH_L");
     public bool SetFDRight(int targetOn, AircraftStateEvaluator state)
-        => (state.IsFDRightOn() ? 1 : 0) == targetOn || Fire("EVT_MCP_FD_SWITCH_R", null);
+        => ToggleTo("MCP_FDSw_1", targetOn, state, "EVT_MCP_FD_SWITCH_R");
     public bool SetATArm(int targetOn, AircraftStateEvaluator state)
-        => (state.IsATArmOn() ? 1 : 0) == targetOn || Fire("EVT_MCP_AT_ARM_SWITCH", null);
+        => ToggleTo("MCP_ATArmSw", targetOn, state, "EVT_MCP_AT_ARM_SWITCH");
+
+    private bool ToggleTo(string field, int targetOn, AircraftStateEvaluator state, string eventName)
+    {
+        if (double.IsNaN(state.GetValue(field))) return false;
+        return !TogglePressNeeded(field, targetOn, state) || Fire(eventName, null);
+    }
     public bool PushAPCmd()              => FireMomentaryToggle("EVT_MCP_CMD_A_SWITCH");
     public bool PushLNAV()               => FireMomentaryToggle("EVT_MCP_LNAV_SWITCH");
     public bool PushVNAV()               => FireMomentaryToggle("EVT_MCP_VNAV_SWITCH");

@@ -67,7 +67,10 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         _executor  = executor;
         _state     = state;
         _announcer = announcer;
-        _seatbelt  = new SeatbeltAutomation(on => _executor.SetSeatbeltSign(on), announcer.AnnounceImmediate);
+        // Every crossing call here is QUEUED (Announce): the 10,000 ft light call, the seat-belt
+        // automation's 10,000 ft call and a transition call can come from the same sample, and
+        // each interrupting call cut off the one before it.
+        _seatbelt  = new SeatbeltAutomation(on => _executor.SetSeatbeltSign(on), announcer.Announce);
     }
 
     // -----------------------------------------------------------------------
@@ -91,6 +94,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
     {
         _prevAbove10k = null;
         _trans.Reset();
+        _noTransReminderFired = false;
         _seatbelt.Reset();
     }
 
@@ -139,7 +143,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         if (!_noTransReminderFired && climbing && alt > 18_000 + HysteresisFt)
         {
             _noTransReminderFired = true;
-            _announcer.AnnounceImmediate(TransitionAltimeters.NoTransitionLoadedReminder(AutoAltimetersEnabled));
+            _announcer.Announce(TransitionAltimeters.NoTransitionLoadedReminder(AutoAltimetersEnabled));
         }
         else if (_noTransReminderFired && alt < 17_000)
         {
@@ -166,14 +170,14 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
             if (!descending && nowAbove && _prevAbove10k == false)
             {
                 _executor.SetLandingLights(0);  // all four OFF (retractables RETRACT, fixed off)
-                _announcer.AnnounceImmediate("Above ten thousand. Landing lights off.");
+                _announcer.Announce("Above ten thousand. Landing lights off.");
             }
             else if (!climbing && nowBelow && _prevAbove10k == true)
             {
                 // 2 = ON for the retractables (1 was EXTEND — deployed but DARK, the old
                 // below-10k bug) and lights the fixed inboards via SetLandingLights.
                 _executor.SetLandingLights(2);
-                _announcer.AnnounceImmediate("Below ten thousand. Landing lights on.");
+                _announcer.Announce("Below ten thousand. Landing lights on.");
             }
         }
 
@@ -196,7 +200,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         var crossing = _trans.Update(alt, climbing, descending);
         if (TransitionAltimeters.ReminderInstead(crossing, AutoAltimetersEnabled) is { } reminder)
         {
-            _announcer.AnnounceImmediate(reminder);
+            _announcer.Announce(reminder);
             return;
         }
 
@@ -206,12 +210,12 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
                 // Climbing through transition altitude — rotate both EFIS baro knobs to
                 // standard (fire-and-forget; the executor sequences the two knobs itself).
                 _ = _executor.SetAltimetersStandardAsync();
-                _announcer.AnnounceImmediate("Transition altitude. Altimeters set to standard.");
+                _announcer.Announce("Transition altitude. Altimeters set to standard.");
                 break;
             case TransitionCrossingDetector.Crossing.DescendToQnh:
                 // Descending through transition level — the local QNH is unknowable here,
                 // so this is announce-only; the pilot sets pressure via the Ctrl+B dialog.
-                _announcer.AnnounceImmediate("Transition level. Set local altimeter pressure now.");
+                _announcer.Announce("Transition level. Set local altimeter pressure now.");
                 break;
         }
     }

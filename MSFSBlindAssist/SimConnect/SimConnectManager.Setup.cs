@@ -45,6 +45,57 @@ public partial class SimConnectManager
     };
 
     /// <summary>
+    /// The First Officer window's and the universal automation's 1 Hz background reads, registered
+    /// ONCE per connection like <see cref="HotkeyReadoutDefinitions"/> (SC-12). Their request
+    /// methods once cleared, re-added and re-registered the definition on every call: two timers
+    /// did that each second (one clearing AGL while the other's request was in flight, the race
+    /// SafelyClearDataDefinition warns about), each clear pumped DoEvents on the UI thread, and each
+    /// logged a line. (defId, simVar, unit) — one FLOAT64 each; defId doubles as the request id.
+    /// The centre-fuel pair and the gear-leg triple register beside them in
+    /// <see cref="RegisterFoBackgroundDefinitions"/>.
+    /// </summary>
+    private static readonly (int Id, string SimVar, string Unit)[] FoBackgroundDefinitions =
+    {
+        ((int)DATA_DEFINITIONS.DEF_FO_ALTITUDE_AGL, "PLANE ALT ABOVE GROUND", "feet"),
+        ((int)DATA_DEFINITIONS.DEF_FO_AIRSPEED_IAS, "AIRSPEED INDICATED",     "knots"),
+        ((int)DATA_DEFINITIONS.DEF_FO_ENG1_N2,      "TURB ENG N2:1",          "percent"),
+        ((int)DATA_DEFINITIONS.DEF_FO_ENG2_N2,      "TURB ENG N2:2",          "percent"),
+        ((int)DATA_DEFINITIONS.DEF_FO_ENG3_N2,      "TURB ENG N2:3",          "percent"),
+        ((int)DATA_DEFINITIONS.DEF_FO_GEAR_HANDLE,  "GEAR HANDLE POSITION",   "bool"),
+    };
+
+    /// <summary>Registers <see cref="FoBackgroundDefinitions"/>, the FO centre-fuel pair and the
+    /// FO gear-leg triple once per connection, with the other fixed definitions.</summary>
+    private void RegisterFoBackgroundDefinitions()
+    {
+        var sc = simConnect!;
+        foreach (var def in FoBackgroundDefinitions)
+        {
+            sc.AddToDataDefinition((DATA_DEFINITIONS)def.Id, def.SimVar, def.Unit,
+                SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.RegisterDataDefineStruct<SingleValue>((DATA_DEFINITIONS)def.Id);
+        }
+
+        // iFly MAX8 centre fuel: gallons x pounds per gallon, multiplied at dispatch.
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_FO_CENTER_FUEL_LBS, "FUEL TANK CENTER QUANTITY", "gallons",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_FO_CENTER_FUEL_LBS, "FUEL WEIGHT PER GALLON", "pounds",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.RegisterDataDefineStruct<DoubleValuePair>(DATA_DEFINITIONS.DEF_FO_CENTER_FUEL_LBS);
+
+        // PMDG 777 gear confirmation: the three stock gear-leg positions, percent extended.
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_FO_GEAR_POSITIONS, "GEAR LEFT POSITION", "percent",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_FO_GEAR_POSITIONS, "GEAR CENTER POSITION", "percent",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_FO_GEAR_POSITIONS, "GEAR RIGHT POSITION", "percent",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.RegisterDataDefineStruct<DoubleValueTriple>(DATA_DEFINITIONS.DEF_FO_GEAR_POSITIONS);
+
+        Log.Debug("SimConnect", $"Registered {FoBackgroundDefinitions.Length + 2} fixed First Officer background data definitions");
+    }
+
+    /// <summary>
     /// Registers every entry in <see cref="HotkeyReadoutDefinitions"/> once per connection.
     /// Called from SetupDataDefinitions, positioned with the other fixed/critical defs and
     /// BEFORE the bulk per-aircraft RegisterAllVariables() call — these are universal (not
@@ -334,6 +385,8 @@ public partial class SimConnectManager
         // SC-12, 2026-07): universal, non-aircraft-specific, so they register here with the rest
         // of the fixed/critical defs, still safely ahead of the per-aircraft bulk registration.
         RegisterHotkeyReadoutDefinitions();
+        // The First Officer's and the universal automation's background reads, the same kind.
+        RegisterFoBackgroundDefinitions();
 
         // GSX's L:FSDT_GSX_COUATL_STARTED — one fixed def, requested once per second
         // (never per frame). Universal, not aircraft-specific, so it registers here

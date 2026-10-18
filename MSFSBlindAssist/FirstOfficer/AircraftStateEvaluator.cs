@@ -135,6 +135,15 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     /// <summary>Returns true if the given field is non-zero.</summary>
     public bool IsOn(string fieldName) => GetValue(fieldName) > 0.5;
 
+    /// <summary>True only when the field has been READ and is 0. Use it for "already off",
+    /// never <c>!IsOn</c>: that reads an unread (NaN) switch as off, and an OFF step said
+    /// "Already set" and ticked its line before the first CDA snapshot.</summary>
+    public bool IsOff(string fieldName) => IsPosition(fieldName, 0);
+
+    /// <summary>True once the field has a reading (not NaN). A TOGGLE is never pressed on an
+    /// unread state: the press flips whatever the switch really is.</summary>
+    public bool IsRead(string fieldName) => !double.IsNaN(GetValue(fieldName));
+
     /// <summary>Returns true if all supplied fields are non-zero.</summary>
     public bool AllOn(params string[] fields) => fields.All(IsOn);
 
@@ -181,6 +190,10 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public bool AreWingFuelPumpsOn() =>
         IsFuelPump1FwdOn() && IsFuelPump2FwdOn() && IsFuelPump1AftOn() && IsFuelPump2AftOn();
     public bool IsEitherCenterPumpOn() => IsFuelPump1CtrOn() || IsFuelPump2CtrOn();
+    // Before Start "Fuel pumps: ON" exactly as its line reads it (FO_FUEL_PUMPS_BS_OK: wing on AND
+    // centre matching the centre fuel); false while unread. The flow's "Already set" uses this, never
+    // the wing pumps alone, which left the centre pumps off over a fuelled centre tank.
+    public bool AreBeforeStartFuelPumpsOk() => IsPosition("FO_FUEL_PUMPS_BS_OK", 1);
     // All six pump switches OFF. NaN-safe (IsPosition): "!IsOn" would read an unread switch as
     // OFF, and Cockpit Prep's pumps-off step would say "Already set" before the first CDA snapshot.
     public bool AreAllFuelPumpsOff() =>
@@ -340,15 +353,44 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     // EFIS / Baro
     // -----------------------------------------------------------------------
 
-    /// <summary>True when the Captain's altimeter is in STD (1013/29.92) mode.</summary>
-    public bool IsBaroSTDCapt() => IsOn("EFIS_BaroSTD_Sw_Pushed_0");
+    // The 777 SDK has no STD-mode field. EFIS_BaroSTD_Sw_Pushed[2] is listed under "EFIS
+    // MOMENTARY action" (PMDG_777X_SDK.h): it reads 0 at rest whatever the mode, so reading it
+    // as the mode made the descent push nothing while "set to local QNH" was spoken, and the
+    // climb push a blind toggle. STD is read as the panel's own altimeter readout reads it
+    // (commit 1be55388): the definition's KOHLSMAN SETTING HG cache, at 29.92 inHg. There is
+    // no FO-side reading, so the phase monitor pushes the FO's STD together with the Captain's.
+    public const string AltimeterSettingKey = "ALTIMETER_SETTING";
 
-    /// <summary>True when the FO's altimeter is in STD mode.</summary>
-    public bool IsBaroSTDFO()   => IsOn("EFIS_BaroSTD_Sw_Pushed_1");
+    /// <summary>True when the Captain's altimeter reads standard (29.92 inHg), false when it
+    /// reads anything else, null before the setting has been read.</summary>
+    public bool? IsBaroStdCapt() => BaroReadsStandard(_cachedValue?.Invoke(AltimeterSettingKey));
+
+    /// <summary>The STD test of <see cref="IsBaroStdCapt"/>: null for no reading, else whether
+    /// it is 29.92 inHg (the definition's own 0.005 tolerance).</summary>
+    public static bool? BaroReadsStandard(double? inHg) =>
+        inHg is double v && !double.IsNaN(v) ? Math.Abs(v - 29.92) < 0.005 : null;
 
     /// <summary>True when any landing light (L, N, or R) is on.</summary>
     public bool AreLandingLightsOn() =>
         IsLandingLightLOn() || IsLandingLightROn() || IsLandingLightNOn();
+
+    /// <summary>True when all three landing lights (L, N and R) are on: Before Takeoff's
+    /// "Landing lights: ON" line (BTKO_LANDING) reads all three, so its step is "Already set"
+    /// only then, never when one of them is.</summary>
+    public bool AreAllLandingLightsOn() =>
+        IsLandingLightLOn() && IsLandingLightROn() && IsLandingLightNOn();
+
+    /// <summary>True when every landing light has been READ as off (NaN-safe, see IsOff).</summary>
+    public bool AreAllLandingLightsOff() =>
+        IsOff("LTS_LandingLights_Sw_ON_0") && IsOff("LTS_LandingLights_Sw_ON_1") && IsOff("LTS_LandingLights_Sw_ON_2");
+
+    /// <summary>True when both runway turnoff lights are on: the Before Takeoff line
+    /// (BTKO_TURNOFF) reads both.</summary>
+    public bool AreBothRunwayTurnoffLightsOn() => IsRwyTurnoffLOn() && IsRwyTurnoffROn();
+
+    /// <summary>True when both runway turnoff lights have been READ as off (NaN-safe).</summary>
+    public bool AreBothRunwayTurnoffLightsOff() =>
+        IsOff("LTS_RunwayTurnoff_Sw_ON_0") && IsOff("LTS_RunwayTurnoff_Sw_ON_1");
 
     // -----------------------------------------------------------------------
     // FMC speeds — bytes (0 = not programmed / FMC not yet initialised)
@@ -363,10 +405,12 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     // SimBrief performance targets (set when an OFP is loaded)
     // -----------------------------------------------------------------------
 
-    private int _takeoffFlaps = 5; // default — common 777 takeoff setting
+    private const int NoPlanTakeoffFlaps = 5; // default — common 777 takeoff setting
+    private int _takeoffFlaps = NoPlanTakeoffFlaps;
 
-    /// <summary>Store the takeoff flap setting from SimBrief perf data.</summary>
-    public void SetTakeoffFlaps(int flaps) => _takeoffFlaps = flaps;
+    /// <summary>Store the takeoff flap setting from SimBrief perf data; 0 or less (a plan
+    /// without one, or a plan forgotten) restores the no-plan default.</summary>
+    public void SetTakeoffFlaps(int flaps) => _takeoffFlaps = flaps > 0 ? flaps : NoPlanTakeoffFlaps;
 
     /// <summary>
     /// Store both engines' N2, fed by the shared FirstOfficerForm timer for every profile.

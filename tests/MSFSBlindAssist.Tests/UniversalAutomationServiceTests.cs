@@ -14,13 +14,21 @@ public class UniversalAutomationServiceTests
     private UniversalAutomationService MakeSplit(Action? engage = null, Func<bool?>? engaged = null, Func<long>? now = null)
         => new(events.Add, spoken.Add, engage, engaged, now, confirmations.Add);
 
+    // One airborne or ground sample, the sim's SIM ON GROUND taken as below 20 ft AGL.
+    private static void Fly(UniversalAutomationService s, double altitudeMsl, double verticalSpeedFpm, double altitudeAgl)
+        => s.Update(altitudeMsl, verticalSpeedFpm, altitudeAgl, onGround: altitudeAgl < 20);
+
+    // A ground sample: what arms the takeoff gates (gear up, AP engage) for the takeoff that follows.
+    private static void OnGround(UniversalAutomationService s) => s.Update(0, 0, 0, onGround: true);
+
     [Fact]
     public void GearUp_FiresOnceOnPositiveRateAboveFiftyFeet()
     {
         var s = Make();
         s.AutoGearUpEnabled = true;
-        s.Update(altitudeMsl: 500, verticalSpeedFpm: 800, altitudeAgl: 100);
-        s.Update(altitudeMsl: 700, verticalSpeedFpm: 800, altitudeAgl: 300);
+        OnGround(s);
+        Fly(s, altitudeMsl: 500, verticalSpeedFpm: 800, altitudeAgl: 100);
+        Fly(s, altitudeMsl: 700, verticalSpeedFpm: 800, altitudeAgl: 300);
         Assert.Equal(new[] { "GEAR_UP" }, events);
     }
 
@@ -29,8 +37,9 @@ public class UniversalAutomationServiceTests
     {
         var s = Make();
         s.AutoGearUpEnabled = true;
-        s.Update(200, 800, 40);    // too low
-        s.Update(200, 0,   400);   // not climbing
+        OnGround(s);
+        Fly(s, 200, 800, 40);    // too low
+        Fly(s, 200, 0,   400);   // not climbing
         Assert.Empty(events);
     }
 
@@ -39,9 +48,9 @@ public class UniversalAutomationServiceTests
     {
         var s = Make();
         s.AutoGearDownEnabled = true;
-        s.Update(5000, 800, 5000);   // airborne, clear on-ground latch
-        s.Update(3000, -700, 1500);  // descending through the window
-        s.Update(2800, -700, 1200);
+        Fly(s, 5000, 800, 5000);   // airborne
+        Fly(s, 3000, -700, 1500);  // descending through the window
+        Fly(s, 2800, -700, 1200);
         Assert.Equal(new[] { "GEAR_DOWN" }, events);
     }
 
@@ -50,10 +59,10 @@ public class UniversalAutomationServiceTests
     {
         var s = Make();
         s.AutoGearDownEnabled = true;
-        s.Update(5000, 800, 5000);
-        s.Update(3000, -700, 1500);  // GEAR_DOWN #1
-        s.Update(6000, 1200, 3500);  // go-around: above 3000 AGL re-arms
-        s.Update(3000, -700, 1500);  // GEAR_DOWN #2
+        Fly(s, 5000, 800, 5000);
+        Fly(s, 3000, -700, 1500);  // GEAR_DOWN #1
+        Fly(s, 6000, 1200, 3500);  // go-around: above 3000 AGL re-arms
+        Fly(s, 3000, -700, 1500);  // GEAR_DOWN #2
         Assert.Equal(new[] { "GEAR_DOWN", "GEAR_DOWN" }, events);
     }
 
@@ -63,9 +72,10 @@ public class UniversalAutomationServiceTests
         var s = Make();
         s.AutoApEnabled = true;
         s.AutoApEngageAltitudeAgl = 350;
-        s.Update(300, 900, 300);   // below engage height
-        s.Update(500, 900, 400);   // through 350
-        s.Update(700, 900, 600);
+        OnGround(s);
+        Fly(s, 300, 900, 300);   // below engage height
+        Fly(s, 500, 900, 400);   // through 350
+        Fly(s, 700, 900, 600);
         Assert.Equal(new[] { "AUTOPILOT_ON" }, events);
         Assert.Contains("350 feet. Autopilot engaged.", spoken);
     }
@@ -79,9 +89,10 @@ public class UniversalAutomationServiceTests
         var s = new UniversalAutomationService(events.Add, spoken.Add, () => engaged++);
         s.AutoApEnabled = true;
         s.AutoApEngageAltitudeAgl = 350;
-        s.Update(300, 900, 300);
-        s.Update(500, 900, 400);   // through 350
-        s.Update(700, 900, 600);
+        OnGround(s);
+        Fly(s, 300, 900, 300);
+        Fly(s, 500, 900, 400);   // through 350
+        Fly(s, 700, 900, 600);
         Assert.Equal(1, engaged);
         Assert.DoesNotContain("AUTOPILOT_ON", events);   // stock event NOT used
         Assert.Contains("350 feet. Autopilot engaged.", spoken);
@@ -105,11 +116,12 @@ public class UniversalAutomationServiceTests
         s.AutoApEngageAltitudeAgl = 350;
         s.MinimumApEngageAltitudeAgl = 400;      // PMDG 737 floor
         Assert.Equal(400, s.EffectiveApEngageAltitudeAgl);
+        OnGround(s);
 
-        s.Update(500, 900, 380);   // through 350 but BELOW the aircraft floor — must not fire
+        Fly(s, 500, 900, 380);   // through 350 but BELOW the aircraft floor — must not fire
         Assert.Empty(events);
 
-        s.Update(700, 900, 420);   // through 400
+        Fly(s, 700, 900, 420);   // through 400
         Assert.Equal(new[] { "AUTOPILOT_ON" }, events);
         Assert.Contains("400 feet. Autopilot engaged.", spoken);
     }
@@ -122,7 +134,8 @@ public class UniversalAutomationServiceTests
         s.AutoApEngageAltitudeAgl = 1000;
         s.MinimumApEngageAltitudeAgl = 400;
         Assert.Equal(1000, s.EffectiveApEngageAltitudeAgl);
-        s.Update(900, 900, 500);
+        OnGround(s);
+        Fly(s, 900, 900, 500);
         Assert.Empty(events);
     }
 
@@ -135,17 +148,18 @@ public class UniversalAutomationServiceTests
             () => presses++, () => engaged);
         s.AutoApEnabled = true;
         s.AutoApEngageAltitudeAgl = 400;
+        OnGround(s);
 
-        s.Update(700, 900, 420);            // press #1 — readback still says not engaged
+        Fly(s, 700, 900, 420);            // press #1 — readback still says not engaged
         Assert.Equal(1, presses);
         Assert.Empty(spoken);               // must NOT claim engagement it can't see
 
         engaged = true;
-        s.Update(800, 900, 500);            // readback confirms
+        Fly(s, 800, 900, 500);            // readback confirms
         Assert.Equal(1, presses);
         Assert.Contains("400 feet. Autopilot engaged.", spoken);
 
-        s.Update(900, 900, 600);            // done — no repeat press or callout
+        Fly(s, 900, 900, 600);            // done — no repeat press or callout
         Assert.Equal(1, presses);
         Assert.Single(spoken);
     }
@@ -158,8 +172,9 @@ public class UniversalAutomationServiceTests
             () => presses++, () => false);   // never engages
         s.AutoApEnabled = true;
         s.AutoApEngageAltitudeAgl = 400;
+        OnGround(s);
 
-        for (int i = 0; i < 10; i++) s.Update(700 + i * 100, 900, 420 + i * 100);
+        for (int i = 0; i < 10; i++) Fly(s, 700 + i * 100, 900, 420 + i * 100);
 
         Assert.Equal(5, presses);            // bounded retry, not one-shot and not endless
         Assert.Contains(spoken, m => m.Contains("did not engage"));
@@ -178,10 +193,11 @@ public class UniversalAutomationServiceTests
             () => presses++, () => engaged);
         s.AutoApEnabled = true;
         s.AutoApEngageAltitudeAgl = 400;
+        OnGround(s);
 
-        s.Update(700, 900, 420);   // press while climbing
+        Fly(s, 700, 900, 420);   // press while climbing
         engaged = true;
-        s.Update(700, 0, 420);     // levelled off — verification must still complete
+        Fly(s, 700, 0, 420);     // levelled off — verification must still complete
         Assert.Contains("400 feet. Autopilot engaged.", spoken);
     }
 
@@ -193,9 +209,10 @@ public class UniversalAutomationServiceTests
             () => presses++, () => true);    // pilot engaged it before the trigger height
         s.AutoApEnabled = true;
         s.AutoApEngageAltitudeAgl = 400;
+        OnGround(s);
 
-        s.Update(700, 900, 420);
-        s.Update(800, 900, 500);
+        Fly(s, 700, 900, 420);
+        Fly(s, 800, 900, 500);
         Assert.Equal(0, presses);            // pressing a toggle would DISCONNECT it
         Assert.Empty(spoken);
     }
@@ -208,9 +225,10 @@ public class UniversalAutomationServiceTests
             () => presses++, () => null);    // a null readback, and the aircraft does not wait (WaitForApState off)
         s.AutoApEnabled = true;
         s.AutoApEngageAltitudeAgl = 400;
+        OnGround(s);
 
-        s.Update(700, 900, 420);
-        s.Update(800, 900, 500);
+        Fly(s, 700, 900, 420);
+        Fly(s, 800, 900, 500);
         Assert.Equal(1, presses);
         Assert.Equal(new[] { "400 feet. Autopilot engaged." }, spoken);
     }
@@ -224,13 +242,14 @@ public class UniversalAutomationServiceTests
             () => presses++, () => engaged);
         s.AutoApEnabled = true;
         s.AutoApEngageAltitudeAgl = 400;
+        OnGround(s);
 
-        s.Update(700, 900, 420);
+        Fly(s, 700, 900, 420);
         engaged = true;
-        s.Update(800, 900, 500);          // leg 1 confirmed
-        s.Update(0, 0, 5);                // touchdown
+        Fly(s, 800, 900, 500);          // leg 1 confirmed
+        Fly(s, 0, 0, 5);                // touchdown
         engaged = false;
-        s.Update(700, 900, 420);          // leg 2 presses again
+        Fly(s, 700, 900, 420);          // leg 2 presses again
         Assert.Equal(2, presses);
     }
 
@@ -239,9 +258,10 @@ public class UniversalAutomationServiceTests
     {
         var s = Make();
         s.AutoGearUpEnabled = true;
-        s.Update(500, 800, 400);   // GEAR_UP #1
-        s.Update(0, 0, 5);         // on ground (AGL<20) after being airborne -> reset
-        s.Update(500, 800, 400);   // GEAR_UP #2
+        OnGround(s);
+        Fly(s, 500, 800, 400);   // GEAR_UP #1
+        Fly(s, 0, 0, 5);         // on ground (AGL<20) after being airborne -> reset
+        Fly(s, 500, 800, 400);   // GEAR_UP #2
         Assert.Equal(new[] { "GEAR_UP", "GEAR_UP" }, events);
     }
 
@@ -249,9 +269,220 @@ public class UniversalAutomationServiceTests
     public void Disabled_NeverActuates()
     {
         var s = Make();
-        s.Update(500, 800, 400);
+        OnGround(s);
+        Fly(s, 500, 800, 400);
         Assert.Empty(events);
         Assert.False(s.AnyEnabled);
+    }
+
+    // ---------------------------------------------------------------------
+    // The takeoff gates (2026-10-18). Gear up and the AP engage fire only on a takeoff the service
+    // watched: a ground sample arms them. They once fired on the first climbing sample wherever it
+    // came, so an app restart, an aircraft re-pick or a setting switched on during a climb at FL150
+    // raised the gear and pressed the autopilot there.
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public void InFlightStart_NeitherRaisesTheGearNorPressesTheAutopilot()
+    {
+        int presses = 0;
+        var s = new UniversalAutomationService(events.Add, spoken.Add, () => presses++, () => false);
+        s.AutoGearUpEnabled = true;
+        s.AutoApEnabled = true;
+        s.AutoApEngageAltitudeAgl = 350;
+
+        Fly(s, 15000, 1500, 14000);    // an app restart in a climb at FL150: no ground sample yet
+        Fly(s, 15500, 1500, 14500);
+
+        Assert.Empty(events);
+        Assert.Equal(0, presses);
+        Assert.Empty(spoken);
+    }
+
+    [Fact]
+    public void GearUp_SwitchedOnInFlight_WaitsForTheNextTakeoff()
+    {
+        var s = Make();
+        OnGround(s);
+        Fly(s, 500, 800, 400);           // airborne with the setting off
+        s.AutoGearUpEnabled = true;       // switched on in the air
+        Fly(s, 1500, 800, 1400);
+        Assert.Empty(events);
+
+        Fly(s, 0, 0, 5);                  // the next landing ...
+        Fly(s, 500, 800, 400);            // ... and takeoff
+        Assert.Equal(new[] { "GEAR_UP" }, events);
+    }
+
+    [Fact]
+    public void Ap_SwitchedOnInFlight_WaitsForTheNextTakeoff()
+    {
+        int presses = 0;
+        var s = new UniversalAutomationService(events.Add, spoken.Add, () => presses++, () => false);
+        s.AutoApEngageAltitudeAgl = 350;
+        OnGround(s);
+        Fly(s, 300, 900, 200);
+        s.AutoApEnabled = true;           // switched on in the air, below the engage height
+        Fly(s, 700, 900, 600);            // the climb through 350 was not watched with it on
+        Assert.Equal(0, presses);
+
+        Fly(s, 0, 0, 5);
+        Fly(s, 700, 900, 600);
+        Assert.Equal(1, presses);
+    }
+
+    [Fact]
+    public void ASettingSwitchedOnWhileOnTheGround_KeepsTheTakeoffArmed()
+    {
+        var s = Make();
+        OnGround(s);
+        s.AutoGearUpEnabled = true;       // set at the gate: the takeoff from here is watched
+        Fly(s, 500, 800, 400);
+        Assert.Equal(new[] { "GEAR_UP" }, events);
+    }
+
+    // No position samples come while every feature is off, so the service cannot know whether the
+    // aircraft took off meanwhile: a gate switched on then waits for a ground sample.
+    [Fact]
+    public void MarkGroundStateUnknown_ASettingSwitchedOnAfterwardWaitsForAGroundSample()
+    {
+        var s = Make();
+        OnGround(s);
+        s.MarkGroundStateUnknown();       // features off: the samples stop
+        s.AutoGearUpEnabled = true;       // switched on later, in the air
+        Fly(s, 5000, 800, 4000);
+        Assert.Empty(events);
+    }
+
+    [Fact]
+    public void Reset_DisarmsTheTakeoffGatesUntilTheNextGroundSample()
+    {
+        var s = Make();
+        s.AutoGearUpEnabled = true;
+        OnGround(s);
+        s.Reset();                        // an aircraft switch or a flight loaded
+        Fly(s, 500, 800, 400);
+        Assert.Empty(events);
+        Fly(s, 0, 0, 5);
+        Fly(s, 500, 800, 400);
+        Assert.Equal(new[] { "GEAR_UP" }, events);
+    }
+
+    // ---------------------------------------------------------------------
+    // Gear down needs a descent (2026-10-18): between 100 and 2,000 ft AGL, at least GearDownDescentFt
+    // below the highest point since the gear last came up or the leg began. A single descending sample
+    // once lowered it during the climb-out, and a circuit flown below 3,000 ft after the service had
+    // lowered the gear never re-armed it.
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public void GearDown_ClimbOutWobble_NeverLowersTheGear()
+    {
+        var s = Make();
+        s.AutoGearUpEnabled = true;
+        s.AutoGearDownEnabled = true;
+        OnGround(s);
+        Fly(s, 500, 800, 400);            // gear up
+        Fly(s, 1600, 800, 1500);
+        Fly(s, 1450, -400, 1350);         // a sink at a low level-off: 150 ft below the peak
+        Fly(s, 1750, 0, 1650);
+        Fly(s, 1550, -300, 1450);         // turbulence: 200 ft below the new peak
+        Assert.Equal(new[] { "GEAR_UP" }, events);
+    }
+
+    [Fact]
+    public void GearDown_NeedsADescentOfThreeHundredFeetBelowThePeak()
+    {
+        var s = Make();
+        s.AutoGearDownEnabled = true;
+        Fly(s, 1900, 0, 1800);
+        Fly(s, 1600, -500, 1501);         // 299 ft below
+        Assert.Empty(events);
+        Fly(s, 1600, -500, 1500);         // 300 ft below
+        Assert.Equal(new[] { "GEAR_DOWN" }, events);
+    }
+
+    [Fact]
+    public void GearDown_NeverBelowTheBandBottom()
+    {
+        var s = Make();
+        s.AutoGearDownEnabled = true;
+        Fly(s, 1000, 0, 900);
+        Fly(s, 200, -700, 90);            // descending, far below the peak, but under 100 ft AGL
+        Assert.Empty(events);
+    }
+
+    [Fact]
+    public void GearDown_TouchAndGo_LowersTheGearAgainOnTheNextApproach()
+    {
+        var s = Make();
+        s.AutoGearUpEnabled = true;
+        s.AutoGearDownEnabled = true;
+        OnGround(s);
+        Fly(s, 500, 800, 400);            // gear up #1
+        Fly(s, 1600, 800, 1500);          // a circuit at 1,500 ft, never above 3,000
+        Fly(s, 1200, -600, 1100);         // gear down #1
+        Fly(s, 0, 0, 5);                  // touch-and-go
+        Fly(s, 500, 800, 400);            // gear up #2
+        Fly(s, 1600, 800, 1500);
+        Fly(s, 1200, -600, 1100);         // gear down #2
+        Assert.Equal(new[] { "GEAR_UP", "GEAR_DOWN", "GEAR_UP", "GEAR_DOWN" }, events);
+    }
+
+    // A low go-around with no touchdown: the gear handle coming up re-arms the gear down and starts a
+    // new descent to measure from, though the aircraft never climbs above 3,000 ft.
+    [Fact]
+    public void GearDown_LowGoAround_TheHandleComingUpRearmsIt()
+    {
+        bool? handleDown = true;
+        var s = new UniversalAutomationService(events.Add, spoken.Add, isGearHandleDown: () => handleDown);
+        s.AutoGearDownEnabled = true;
+        handleDown = false;
+        Fly(s, 1600, 0, 1500);
+        Fly(s, 1200, -600, 1100);         // gear down #1
+        handleDown = true;
+        Fly(s, 400, -600, 300);           // on final ...
+        Fly(s, 500, 1500, 400);           // ... go-around, gear still down
+        handleDown = false;               // the pilot raises the gear at 400 ft
+        Fly(s, 1600, 800, 1500);
+        Fly(s, 1200, -600, 1100);         // gear down #2
+        Assert.Equal(new[] { "GEAR_DOWN", "GEAR_DOWN" }, events);
+    }
+
+    [Fact]
+    public void GearDown_HandleAlreadyDown_StaysSilent()
+    {
+        var s = new UniversalAutomationService(events.Add, spoken.Add, isGearHandleDown: () => true);
+        s.AutoGearDownEnabled = true;
+        Fly(s, 1900, 0, 1800);
+        Fly(s, 1400, -700, 1300);
+        Assert.Empty(events);
+        Assert.Empty(spoken);             // never "Gear down." over a gear already down
+    }
+
+    [Fact]
+    public void GearUp_HandleAlreadyUp_StaysSilent()
+    {
+        var s = new UniversalAutomationService(events.Add, spoken.Add, isGearHandleDown: () => false);
+        s.AutoGearUpEnabled = true;
+        OnGround(s);
+        Fly(s, 500, 800, 400);
+        Assert.Empty(events);
+        Assert.Empty(spoken);
+    }
+
+    [Fact]
+    public void UnknownAgl_ActsOnNothing()
+    {
+        var s = Make();
+        s.AutoGearUpEnabled = true;
+        s.AutoGearDownEnabled = true;
+        s.AutoApEnabled = true;
+        OnGround(s);
+        s.Update(500, 800, double.NaN, onGround: false);
+        s.Update(3000, -700, double.NaN, onGround: false);
+        Assert.Empty(events);
+        Assert.Empty(spoken);
     }
 
     // ---------------------------------------------------------------------
@@ -271,13 +502,14 @@ public class UniversalAutomationServiceTests
         s.AutoApEnabled = true;
         s.AutoApEngageAltitudeAgl = 400;
         s.ApRetryIntervalMs = 3000;
+        OnGround(s);
 
-        s.Update(700, 900, 420);                 // press #1 at t = 0
-        now = 1000; s.Update(800, 900, 500);
-        now = 2999; s.Update(900, 900, 600);
+        Fly(s, 700, 900, 420);                 // press #1 at t = 0
+        now = 1000; Fly(s, 800, 900, 500);
+        now = 2999; Fly(s, 900, 900, 600);
         Assert.Equal(1, presses);                // still settling: a second press could switch it off
 
-        now = 3000; s.Update(1000, 900, 700);
+        now = 3000; Fly(s, 1000, 900, 700);
         Assert.Equal(2, presses);                // the interval has passed: retry
     }
 
@@ -292,10 +524,11 @@ public class UniversalAutomationServiceTests
         s.AutoApEnabled = true;
         s.AutoApEngageAltitudeAgl = 400;
         s.ApRetryIntervalMs = 3000;
+        OnGround(s);
 
-        s.Update(700, 900, 420);                 // press at t = 0
+        Fly(s, 700, 900, 420);                 // press at t = 0
         now = 1000; engaged = true;
-        s.Update(800, 900, 500);                 // the readback catches up inside the interval
+        Fly(s, 800, 900, 500);                 // the readback catches up inside the interval
         Assert.Equal(1, presses);
         Assert.Equal(new[] { "400 feet. Autopilot engaged." }, spoken);
     }
@@ -310,14 +543,15 @@ public class UniversalAutomationServiceTests
         s.AutoApEnabled = true;
         s.AutoApEngageAltitudeAgl = 400;
         s.ApRetryIntervalMs = 3000;
+        OnGround(s);
 
-        for (int i = 0; i < 5; i++) { now = i * 3000L; s.Update(700, 900, 420); }
+        for (int i = 0; i < 5; i++) { now = i * 3000L; Fly(s, 700, 900, 420); }
         Assert.Equal(5, presses);
 
-        now = 13000; s.Update(700, 900, 420);    // 1 s after the fifth press: still settling
+        now = 13000; Fly(s, 700, 900, 420);    // 1 s after the fifth press: still settling
         Assert.DoesNotContain(spoken, m => m.Contains("did not engage"));
 
-        now = 15000; s.Update(700, 900, 420);    // the interval has passed: report it
+        now = 15000; Fly(s, 700, 900, 420);    // the interval has passed: report it
         Assert.Equal(5, presses);
         Assert.Contains(spoken, m => m.Contains("did not engage"));
     }
@@ -345,8 +579,9 @@ public class UniversalAutomationServiceTests
     private const long GiveUpAfterMs = UniversalAutomationService.MaxApEngageAttempts * (long)WaitInterval;
 
     // The service as the FlyByWire family configures it (WaitForApState on, 3 s spacing, engage at
-    // 400 ft), wired to a clock, an engaged-readback and a press counter the test drives. The
-    // readback starts as "the AP vars are not read yet" (null) unless the test says otherwise.
+    // 400 ft), wired to a clock, an engaged-readback and a press counter the test drives, and given
+    // the ground sample of a takeoff it watched. The readback starts as "the AP vars are not read yet"
+    // (null) unless the test says otherwise.
     private sealed class WaitingRig
     {
         public long Now;
@@ -366,6 +601,7 @@ public class UniversalAutomationServiceTests
             ApRetryIntervalMs = WaitInterval,
             WaitForApState = true,
         };
+        OnGround(rig.Service);
         return rig;
     }
 
@@ -378,21 +614,21 @@ public class UniversalAutomationServiceTests
         for (int i = 0; i < UniversalAutomationService.MaxApEngageAttempts; i++)
         {
             rig.Now = i * (long)WaitInterval;
-            s.Update(700, 900, 420);             // climbing through the engage height, state unknown
+            Fly(s, 700, 900, 420);             // climbing through the engage height, state unknown
         }
         Assert.Equal(0, rig.Presses);            // never presses blind: the autopilot may already be on
         Assert.Empty(events);                    // ... not even the stock event
         Assert.Empty(spoken);                    // ... and says nothing while it waits
 
-        rig.Now = GiveUpAfterMs - 1; s.Update(700, 900, 420);   // 1 ms short of the interval after the last attempt
+        rig.Now = GiveUpAfterMs - 1; Fly(s, 700, 900, 420);   // 1 ms short of the interval after the last attempt
         Assert.Empty(spoken);
 
-        rig.Now = GiveUpAfterMs; s.Update(700, 900, 420);       // no definite reading within the attempts: the Captain call
+        rig.Now = GiveUpAfterMs; Fly(s, 700, 900, 420);       // no definite reading within the attempts: the Captain call
         Assert.Equal(new[] { StateUnknownCall }, spoken);       // nothing was pressed, so it cannot say a press failed
         Assert.DoesNotContain(spoken, m => m.Contains("did not engage"));
 
-        rig.Now = GiveUpAfterMs + WaitInterval; s.Update(700, 900, 420);       // the leg is resolved: said once
-        rig.Now = GiveUpAfterMs + 2 * WaitInterval; s.Update(700, 900, 420);
+        rig.Now = GiveUpAfterMs + WaitInterval; Fly(s, 700, 900, 420);       // the leg is resolved: said once
+        rig.Now = GiveUpAfterMs + 2 * WaitInterval; Fly(s, 700, 900, 420);
         Assert.Equal(new[] { StateUnknownCall }, spoken);
         Assert.Equal(0, rig.Presses);
         Assert.Empty(events);
@@ -407,26 +643,26 @@ public class UniversalAutomationServiceTests
         var rig = MakeWaiting();                 // the AP vars have not arrived yet
         var s = rig.Service;
 
-        s.Update(700, 900, 420);                 // t = 0: unknown - waits (attempt 1, nothing pressed)
+        Fly(s, 700, 900, 420);                 // t = 0: unknown - waits (attempt 1, nothing pressed)
         Assert.Equal(0, rig.Presses);
 
         rig.Engaged = false;                     // the batch arrives: both autopilots off, and they stay off
         for (int i = 1; i < UniversalAutomationService.MaxApEngageAttempts; i++)
         {
             rig.Now = i * (long)WaitInterval;
-            s.Update(700, 900, 420);             // a press at every interval, attempts 2 .. MaxApEngageAttempts
+            Fly(s, 700, 900, 420);             // a press at every interval, attempts 2 .. MaxApEngageAttempts
         }
         Assert.Equal(UniversalAutomationService.MaxApEngageAttempts - 1, rig.Presses);
         Assert.Empty(spoken);                    // nothing claimed, nothing reported yet
 
-        rig.Now = GiveUpAfterMs - 1; s.Update(700, 900, 420);   // 1 ms short of the interval after the last press
+        rig.Now = GiveUpAfterMs - 1; Fly(s, 700, 900, 420);   // 1 ms short of the interval after the last press
         Assert.Empty(spoken);
 
-        rig.Now = GiveUpAfterMs; s.Update(700, 900, 420);
+        rig.Now = GiveUpAfterMs; Fly(s, 700, 900, 420);
         Assert.Equal(new[] { DidNotEngageCall }, spoken);       // it pressed, so this is the existing line, unchanged
         Assert.DoesNotContain(spoken, m => m.Contains("state unknown"));
 
-        rig.Now = GiveUpAfterMs + WaitInterval; s.Update(700, 900, 420);       // the leg is resolved: said once, no more presses
+        rig.Now = GiveUpAfterMs + WaitInterval; Fly(s, 700, 900, 420);       // the leg is resolved: said once, no more presses
         Assert.Equal(new[] { DidNotEngageCall }, spoken);
         Assert.Equal(UniversalAutomationService.MaxApEngageAttempts - 1, rig.Presses);
     }
@@ -444,29 +680,29 @@ public class UniversalAutomationServiceTests
         var rig = MakeWaiting(engaged: false);   // the AP vars have arrived: both autopilots off
         var s = rig.Service;
 
-        s.Update(700, 900, 420);                 // t = 0: a definite OFF - presses (attempt 1)
+        Fly(s, 700, 900, 420);                 // t = 0: a definite OFF - presses (attempt 1)
         Assert.Equal(1, rig.Presses);
 
         rig.Engaged = null;                      // the cache is cleared: unknown again
         for (int i = 1; i < UniversalAutomationService.MaxApEngageAttempts; i++)
         {
             rig.Now = i * (long)WaitInterval;
-            s.Update(700, 900, 420);             // waits (attempts 2 .. MaxApEngageAttempts): never presses blind
+            Fly(s, 700, 900, 420);             // waits (attempts 2 .. MaxApEngageAttempts): never presses blind
         }
         Assert.Equal(1, rig.Presses);
         Assert.Empty(spoken);
 
         rig.Engaged = latest;                    // what the reading says when the service gives up
-        rig.Now = GiveUpAfterMs - 1; s.Update(700, 900, 420);   // 1 ms short of the interval after the last attempt
+        rig.Now = GiveUpAfterMs - 1; Fly(s, 700, 900, 420);   // 1 ms short of the interval after the last attempt
         Assert.Empty(spoken);
 
-        rig.Now = GiveUpAfterMs; s.Update(700, 900, 420);
+        rig.Now = GiveUpAfterMs; Fly(s, 700, 900, 420);
         Assert.Equal(new[] { expectedCall }, spoken);
         Assert.Equal(1, rig.Presses);            // the give-up presses nothing
     }
 
     // An aircraft that does not wait (WaitForApState off) keeps the give-up it always had: it follows
-    // whether the service pressed, not the latest reading. Only the FlyByWire family waits.
+    // whether the service pressed, not the latest reading. Every toggle engage waits.
     [Fact]
     public void Ap_NotWaiting_AGiveUpOnANullReadingStillSaysDidNotEngage()
     {
@@ -478,16 +714,17 @@ public class UniversalAutomationServiceTests
         s.AutoApEnabled = true;
         s.AutoApEngageAltitudeAgl = 400;
         s.ApRetryIntervalMs = WaitInterval;      // WaitForApState stays off
+        OnGround(s);
 
         for (int i = 0; i < UniversalAutomationService.MaxApEngageAttempts; i++)
         {
             now = i * (long)WaitInterval;
-            s.Update(700, 900, 420);             // five presses that never take
+            Fly(s, 700, 900, 420);             // five presses that never take
         }
         Assert.Equal(UniversalAutomationService.MaxApEngageAttempts, presses);
 
         engaged = null;                          // the readback is not ready when it gives up
-        now = GiveUpAfterMs; s.Update(700, 900, 420);
+        now = GiveUpAfterMs; Fly(s, 700, 900, 420);
         Assert.Equal(new[] { DidNotEngageCall }, spoken);
         Assert.Equal(UniversalAutomationService.MaxApEngageAttempts, presses);
     }
@@ -498,34 +735,34 @@ public class UniversalAutomationServiceTests
         var rig = MakeWaiting();                 // the AP vars have not arrived yet
         var s = rig.Service;
 
-        s.Update(700, 900, 420);                 // t = 0: unknown - waits
+        Fly(s, 700, 900, 420);                 // t = 0: unknown - waits
         Assert.Equal(0, rig.Presses);
         Assert.Empty(spoken);
 
         rig.Engaged = false;                     // the batch arrives: both autopilots off
-        rig.Now = WaitInterval; s.Update(800, 900, 500);     // the wait's interval has passed: now it presses
+        rig.Now = WaitInterval; Fly(s, 800, 900, 500);     // the wait's interval has passed: now it presses
         Assert.Equal(1, rig.Presses);
         Assert.Empty(spoken);                    // not claimed until the readback confirms
 
         rig.Engaged = true;
-        rig.Now = WaitInterval + 1000; s.Update(900, 900, 600);     // confirmed
+        rig.Now = WaitInterval + 1000; Fly(s, 900, 900, 600);     // confirmed
         Assert.Equal(1, rig.Presses);
         Assert.Equal(new[] { "400 feet. Autopilot engaged." }, spoken);
 
-        rig.Now = 2 * WaitInterval + 1000; s.Update(1000, 900, 700);
+        rig.Now = 2 * WaitInterval + 1000; Fly(s, 1000, 900, 700);
         Assert.Single(spoken);                   // once
     }
 
     [Fact]
     public void Ap_WaitingForState_AutopilotAlreadyOn_NeverPressesAndStaysSilent()
     {
-        var rig = MakeWaiting();                 // an app restart mid-climb: not read yet
+        var rig = MakeWaiting();                 // the state not read yet at the engage height
         var s = rig.Service;
 
-        s.Update(700, 900, 420);                 // t = 0: unknown - waits (an attempt, nothing pressed)
+        Fly(s, 700, 900, 420);                 // t = 0: unknown - waits (an attempt, nothing pressed)
         rig.Engaged = true;                      // the batch arrives: the autopilot was already on
-        rig.Now = 1000; s.Update(800, 900, 500);
-        rig.Now = WaitInterval + 1000; s.Update(900, 900, 600);
+        rig.Now = 1000; Fly(s, 800, 900, 500);
+        rig.Now = WaitInterval + 1000; Fly(s, 900, 900, 600);
 
         Assert.Equal(0, rig.Presses);            // pressing the toggle would DISCONNECT it
         Assert.Empty(events);
@@ -540,20 +777,20 @@ public class UniversalAutomationServiceTests
         var rig = MakeWaiting();
         var s = rig.Service;
 
-        s.Update(700, 900, 420);                 // leg 1: unknown - waits
+        Fly(s, 700, 900, 420);                 // leg 1: unknown - waits
         rig.Engaged = false;
-        rig.Now = WaitInterval; s.Update(800, 900, 500);     // presses
+        rig.Now = WaitInterval; Fly(s, 800, 900, 500);     // presses
         rig.Engaged = true;
-        rig.Now = WaitInterval + 1000; s.Update(900, 900, 600);     // confirmed and announced
+        rig.Now = WaitInterval + 1000; Fly(s, 900, 900, 600);     // confirmed and announced
         Assert.Equal(1, rig.Presses);
         Assert.Single(spoken);
 
-        s.Update(0, 0, 5);                       // touchdown
+        Fly(s, 0, 0, 5);                       // touchdown
 
         rig.Engaged = null;
-        rig.Now = 10000; s.Update(700, 900, 420);    // leg 2: unknown - waits (an attempt, nothing pressed)
+        rig.Now = 10000; Fly(s, 700, 900, 420);    // leg 2: unknown - waits (an attempt, nothing pressed)
         rig.Engaged = true;
-        rig.Now = 11000; s.Update(800, 900, 500);    // found already on
+        rig.Now = 11000; Fly(s, 800, 900, 500);    // found already on
         Assert.Equal(1, rig.Presses);            // leg 2 pressed nothing
         Assert.Single(spoken);                   // leg 1's call-out only: no second "engaged"
     }
@@ -564,17 +801,17 @@ public class UniversalAutomationServiceTests
         var rig = MakeWaiting();
         var s = rig.Service;
 
-        s.Update(700, 900, 420);                 // unknown - waits
+        Fly(s, 700, 900, 420);                 // unknown - waits
         rig.Engaged = false;
-        rig.Now = WaitInterval; s.Update(800, 900, 500);     // presses; not confirmed yet
+        rig.Now = WaitInterval; Fly(s, 800, 900, 500);     // presses; not confirmed yet
         Assert.Equal(1, rig.Presses);
 
-        s.Reset();                               // a fresh start, as on an aircraft switch
+        s.Reset();                               // a fresh start, as on an aircraft switch: the takeoff gate disarms
 
         rig.Engaged = null;
-        rig.Now = WaitInterval + 1000; s.Update(700, 900, 420);     // unknown again - waits (an attempt, nothing pressed)
+        rig.Now = WaitInterval + 1000; Fly(s, 700, 900, 420);     // nothing attempted: no takeoff watched since the reset
         rig.Engaged = true;
-        rig.Now = WaitInterval + 2000; s.Update(800, 900, 500);     // found already on
+        rig.Now = WaitInterval + 2000; Fly(s, 800, 900, 500);     // found already on
         Assert.Equal(1, rig.Presses);            // only the press from before the reset
         Assert.Empty(spoken);                    // and no "engaged" call-out for it
     }
@@ -595,10 +832,11 @@ public class UniversalAutomationServiceTests
         var s = MakeSplit(engage: () => { }, engaged: () => engaged);
         s.AutoApEnabled = true;
         s.AutoApEngageAltitudeAgl = 400;
+        OnGround(s);
 
-        s.Update(700, 900, 420);                 // press: the readback does not say engaged yet
+        Fly(s, 700, 900, 420);                 // press: the readback does not say engaged yet
         engaged = true;
-        s.Update(800, 900, 500);                 // confirmed
+        Fly(s, 800, 900, 500);                 // confirmed
 
         Assert.Equal(new[] { "400 feet. Autopilot engaged." }, confirmations);
         Assert.Empty(spoken);                    // nothing here interrupts the aircraft's own call
@@ -611,8 +849,9 @@ public class UniversalAutomationServiceTests
         var s = MakeSplit(engage: () => presses++, engaged: () => null);   // no readback, and the aircraft does not wait
         s.AutoApEnabled = true;
         s.AutoApEngageAltitudeAgl = 400;
+        OnGround(s);
 
-        s.Update(700, 900, 420);
+        Fly(s, 700, 900, 420);
 
         Assert.Equal(1, presses);
         Assert.Equal(new[] { "400 feet. Autopilot engaged." }, confirmations);
@@ -627,11 +866,12 @@ public class UniversalAutomationServiceTests
         s.AutoApEnabled = true;
         s.AutoApEngageAltitudeAgl = 400;
         s.ApRetryIntervalMs = WaitInterval;
+        OnGround(s);
 
         for (int i = 0; i <= UniversalAutomationService.MaxApEngageAttempts; i++)
         {
             now = i * (long)WaitInterval;
-            s.Update(700, 900, 420);             // five presses that never take, then the give-up
+            Fly(s, 700, 900, 420);             // five presses that never take, then the give-up
         }
 
         Assert.Equal(new[] { DidNotEngageCall }, spoken);
@@ -647,11 +887,12 @@ public class UniversalAutomationServiceTests
         s.AutoApEngageAltitudeAgl = 400;
         s.ApRetryIntervalMs = WaitInterval;
         s.WaitForApState = true;
+        OnGround(s);
 
         for (int i = 0; i <= UniversalAutomationService.MaxApEngageAttempts; i++)
         {
             now = i * (long)WaitInterval;
-            s.Update(700, 900, 420);             // five waits, then the give-up
+            Fly(s, 700, 900, 420);             // five waits, then the give-up
         }
 
         Assert.Equal(new[] { StateUnknownCall }, spoken);
@@ -664,11 +905,13 @@ public class UniversalAutomationServiceTests
         var s = MakeSplit();
         s.AutoGearUpEnabled = true;
         s.AutoGearDownEnabled = true;
+        OnGround(s);
 
-        s.Update(500, 800, 400);                 // positive rate: gear up
-        s.Update(3000, -700, 1500);              // descending through 2000 ft: gear down
+        Fly(s, 500, 800, 400);                 // positive rate: gear up
+        Fly(s, 3000, 800, 2500);
+        Fly(s, 2000, -700, 1500);              // descending below 2000 ft, 1,000 ft below the peak: gear down
 
-        Assert.Equal(new[] { "Positive rate. Gear up.", "Two thousand feet. Gear down." }, spoken);
+        Assert.Equal(new[] { "Positive rate. Gear up.", "Gear down." }, spoken);
         Assert.Empty(confirmations);
     }
 
@@ -678,8 +921,9 @@ public class UniversalAutomationServiceTests
         var s = new UniversalAutomationService(events.Add, spoken.Add, () => { }, () => null);   // the pre-existing shape
         s.AutoApEnabled = true;
         s.AutoApEngageAltitudeAgl = 400;
+        OnGround(s);
 
-        s.Update(700, 900, 420);
+        Fly(s, 700, 900, 420);
 
         Assert.Equal(new[] { "400 feet. Autopilot engaged." }, spoken);
     }

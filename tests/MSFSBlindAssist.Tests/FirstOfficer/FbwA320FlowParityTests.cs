@@ -68,6 +68,31 @@ public class FbwA320FlowParityTests
         Assert.False(s.SkipCondition!(e));
     }
 
+    // The wipers safety check writes the synthetic wiper combos, which nothing writes back, so its
+    // skip read them and always said "Already set" over running wipers. It reads the circuit
+    // switches (A320-28: OFF is the switch alone; the power stays 100 % while off). The Headwind A330
+    // inherits the A32NX's wiper rows and has the same step.
+    [Fact]
+    public void The_wipers_check_skips_only_when_both_wiper_circuits_read_off()
+    {
+        AssertWipersSkip(FbwA320FlowDefinitions.Build(), new FbwA320StateEvaluator());
+        AssertWipersSkip(MSFSBlindAssist.FirstOfficer.HWA330.HwA330FlowDefinitions.Build(),
+            new MSFSBlindAssist.FirstOfficer.HWA330.HwA330StateEvaluator());
+    }
+
+    private static void AssertWipersSkip<TState>(System.Collections.Generic.List<FlowDefinition<TState>> flows, TState e)
+        where TState : MSFSBlindAssist.FirstOfficer.Generic.LVarStateEvaluator
+    {
+        var s = flows.Single(f => f.Id == "ELECTRICAL_POWER_UP").Steps.Single(x => x.Id == "EPU_CHK_WIPERS");
+        Assert.False(s.SkipCondition!(e));                                   // unread: write OFF, never "Already set"
+        e.SetSimConnect(SeededSimConnectCache.With(("WIPER_L_SW", 0), ("WIPER_R_SW", 0), ("WIPER_L_PWR", 100)));
+        Assert.True(s.SkipCondition!(e));
+        e.SetSimConnect(SeededSimConnectCache.With(("WIPER_L_SW", 1), ("WIPER_R_SW", 0)));
+        Assert.False(s.SkipCondition!(e));                                   // the Captain's wiper running
+        e.SetSimConnect(SeededSimConnectCache.With(("WIPER_LEFT", 0), ("WIPER_RIGHT", 0), ("WIPER_L_SW", 1), ("WIPER_R_SW", 1)));
+        Assert.False(s.SkipCondition!(e));                                   // the combos' 0 is not the wipers
+    }
+
     [Fact]
     public void Engine_running_lines_are_action_free_detect_only_items()
     {

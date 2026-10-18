@@ -5,18 +5,20 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 
 public class ChecklistItemSpeechTests
 {
+    // CORE-7: NVDA speaks the tree's own "checked" / "not checked", so a tick never repeats
+    // the label or the state.
     [Fact]
-    public void Tick_without_a_value_is_unchanged()
+    public void Tick_without_a_value_adds_nothing_to_the_screen_readers_own_checked()
     {
-        Assert.Equal("Beacon: ON: checked", ChecklistItemSpeech.TickText("Beacon: ON", null, true));
-        Assert.Equal("Beacon: ON: unchecked", ChecklistItemSpeech.TickText("Beacon: ON", "", false));
+        Assert.Null(ChecklistItemSpeech.TickText(null));
+        Assert.Null(ChecklistItemSpeech.TickText(""));
+        Assert.Null(ChecklistItemSpeech.TickText("  "));
     }
 
     [Fact]
-    public void Tick_with_a_value_speaks_it_between_label_and_status()
+    public void Tick_with_a_value_speaks_only_the_value()
     {
-        Assert.Equal("Flaps setting: SET, flaps 1: checked",
-            ChecklistItemSpeech.TickText("Flaps setting: SET", "flaps 1", true));
+        Assert.Equal("flaps 1", ChecklistItemSpeech.TickText("flaps 1"));
     }
 
     [Fact]

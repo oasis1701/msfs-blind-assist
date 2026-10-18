@@ -129,10 +129,13 @@ electrical/pneumatic systems already configured for taxi).
    - Positive rate of climb above ~50 ft AGL with gear down → gear auto-raises, "Positive
      rate. Gear up." announced.
    - Climbing through the **configured AP altitude** (Settings → First Officer numeric
-     field, default **350 ft AGL**) → **AP1 engages**; the announcement speaks the
-     configured number (e.g. "350 feet. Autopilot one engaged.").
-3. On approach/descent, confirm gear auto-lowers between 2000 ft and 100 ft AGL while
-   descending (not already down), "Two thousand feet. Gear down." announced.
+     field, default **350 ft AGL**) → **AP1 engages** through the FCU AP 1 pushbutton
+     (`S_FCU_AP1`), confirmed on `L:I_FCU_AP1`; then "350 feet. Autopilot engaged." Until
+     2026-10-18 the Fenix sent the stock `AUTOPILOT_ON` and announced it unconfirmed: read
+     `L:I_FCU_AP1` = 1 after the call. With AP1 already on before the height, nothing is pressed.
+3. On approach/descent, confirm gear auto-lowers once you descend below 2000 ft AGL (at least
+   300 ft below the highest point since takeoff, above 100 ft, gear not already down):
+   "Gear down." announced. A circuit or touch-and-go gets gear down again on the next approach.
 4. **Confirm the Auto-manage flaps checkbox has NO effect on the Fenix.** Enable
    "Auto-manage flaps" in the Settings dialog's First Officer tab; fly a climb/descent and
    confirm flaps never move automatically —
@@ -483,3 +486,9 @@ One change: the Before Start "Waiting for APU available" wait now ABORTS the flo
    annunciator light switch (overhead, ANN LT) to **TEST** — the line must **un-tick** (the
    test lights every gear legend, which never counts as "three green"). Return the switch to
    BRT and confirm the line ticks again.
+
+## PR #160 review fixes (2026-10-18)
+
+None of these has run in the sim. The window, SimBrief and universal-automation checks shared by
+every aircraft are Part Z.1 of the PMDG 737 plan; the Fenix's own change is the closed-loop AP 1
+press in Part D item 2 above.
