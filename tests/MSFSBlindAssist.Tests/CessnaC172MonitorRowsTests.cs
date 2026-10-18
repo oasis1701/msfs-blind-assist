@@ -30,6 +30,10 @@ public class CessnaC172MonitorRowsTests
         Assert.DoesNotContain("C172_VACUUM", keys);
         Assert.DoesNotContain("C172_FUEL_LEFT_QTY", keys);
         Assert.DoesNotContain("C172_FUEL_RIGHT_QTY", keys);
+        Assert.DoesNotContain("C172_MAIN_BUS_VOLTS", keys);
+        Assert.DoesNotContain("C172_ESS_BUS_VOLTS", keys);
+        Assert.DoesNotContain("C172_CHT", keys);
+        Assert.DoesNotContain("C172_ENGINE_HOURS", keys);
     }
 
     [Fact]

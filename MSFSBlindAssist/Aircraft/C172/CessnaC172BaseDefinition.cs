@@ -18,6 +18,9 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
 {
     // Warning debounce tracking
     private bool _rpmRedlineWarned = false;
+
+    /// <summary>Where the tachometer's green arc tops out, following the indicated altitude (C172-18).</summary>
+    private CessnaC172Gauges.RpmArc _rpmArc = CessnaC172Gauges.RpmArc.LowAlt;
     private bool _autopilotEngaged = false;
 
     // FCU control types: the autopilot's values are typed, never stepped
@@ -442,8 +445,7 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ExcludeFromMonitorManager = true
             },
-            // Every bus voltage SimVar reads 0 on this aircraft (`ELECTRICAL MAIN BUS VOLTAGE`, `BUS
-            // VOLTAGE:n`, measured 2026-10-18 with the engine running), so the main battery's own (C172-16).
+            // The main battery's own voltage (index 2, C172-1), beside the two buses below.
             ["C172_BATTERY_VOLTAGE"] = new SimConnect.SimVarDefinition
             {
                 Name = "ELECTRICAL BATTERY VOLTAGE:2",
@@ -453,6 +455,24 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 ExcludeFromMonitorManager = true
+            },
+            // The two buses the G1000's engine page shows, by the names its panel.xml reads them
+            // through (C172-16): `ELECTRICAL MAIN BUS VOLTAGE` and `BUS VOLTAGE:n` read 0 here.
+            // Measured 28.0 V on the alternator, 24.4 on the battery alone. The engine page's
+            // battery amps are left out: the load reads positive charging and discharging alike.
+            ["C172_MAIN_BUS_VOLTS"] = SilentReadout("ELECTRICAL BUS VOLTAGE:'CROSS_FEED_BUS'_n", "Main Bus", "volts"),
+            ["C172_ESS_BUS_VOLTS"] = SilentReadout("ELECTRICAL BUS VOLTAGE:'ESSENTIAL_BUS'_n", "Essential Bus", "volts"),
+            // The lean page's cylinder head temperature, and the engine page's hour meter.
+            ["C172_CHT"] = SilentReadout("ENG CYLINDER HEAD TEMPERATURE:1", "CHT", "fahrenheit"),
+            ["C172_ENGINE_HOURS"] = SilentReadout("GENERAL ENG ELAPSED TIME:1", "Engine Hours", "hours"),
+            // Read fresh by Output+E only (0 at idle, measured).
+            ["C172_THROTTLE"] = new SimConnect.SimVarDefinition
+            {
+                Name = "GENERAL ENG THROTTLE LEVER POSITION:1",
+                DisplayName = "Throttle",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "percent",
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
             },
             ["C172_STALL_WARNING"] = new SimConnect.SimVarDefinition
             {
@@ -494,6 +514,30 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
         AddRadioVariables(v);
         return v;
     }
+
+    /// <summary>
+    /// A reading for the status displays and the hotkeys: in the batch (Continuous + IsAnnounced,
+    /// which is what puts it in the cache, DA40S-1), swallowed by ProcessSimVarUpdate and so with no
+    /// Ctrl+M row (VAR-9).
+    /// </summary>
+    private static SimConnect.SimVarDefinition SilentReadout(string simVar, string displayName, string units) => new()
+    {
+        Name = simVar,
+        DisplayName = displayName,
+        Type = SimConnect.SimVarType.SimVar,
+        Units = units,
+        UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+        IsAnnounced = true,
+        ExcludeFromMonitorManager = true
+    };
+
+    /// <summary>The readings swallowed silently (SilentReadout's, and the older ones built the same way).</summary>
+    private static readonly HashSet<string> SilentReadouts = new()
+    {
+        "C172_OIL_TEMP", "C172_EGT", "C172_FUEL_FLOW", "C172_BATTERY_VOLTAGE", "C172_OIL_PRESSURE",
+        "C172_VACUUM", "C172_FUEL_LEFT_QTY", "C172_FUEL_RIGHT_QTY",
+        "C172_MAIN_BUS_VOLTS", "C172_ESS_BUS_VOLTS", "C172_CHT", "C172_ENGINE_HOURS",
+    };
 
     /// <summary>A switch read from its own cockpit input event, for one no SimVar reports (SIM-24).</summary>
     protected static SimConnect.SimVarDefinition InputEventState(string inputEvent, string displayName,
@@ -595,9 +639,15 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
     {
         return new Dictionary<string, List<string>>
         {
-            ["Battery and Alternator"] = new List<string> { "C172_BATTERY_VOLTAGE" },
+            ["Battery and Alternator"] = new List<string> { "C172_MAIN_BUS_VOLTS", "C172_ESS_BUS_VOLTS", "C172_BATTERY_VOLTAGE" },
             ["Fuel"] = new List<string> { "C172_FUEL_LEFT_QTY", "C172_FUEL_RIGHT_QTY" },
-            ["Engine Controls"] = new List<string> { "C172_ENGINE_RPM", "C172_OIL_PRESSURE", "C172_EGT", "C172_FUEL_FLOW" },
+            // The engine page's order: RPM, fuel flow, oil pressure and temperature, EGT, then the
+            // lean page's CHT and the vacuum.
+            ["Engine Controls"] = new List<string>
+            {
+                "C172_ENGINE_RPM", "C172_FUEL_FLOW", "C172_OIL_PRESSURE", "C172_OIL_TEMP", "C172_EGT", "C172_CHT",
+                "C172_VACUUM"
+            },
             ["COM"] = new List<string>(RadioDisplay["COM"]),
             ["NAV"] = new List<string>(RadioDisplay["NAV"]),
             ["Transponder"] = new List<string>(RadioDisplay["Transponder"])
@@ -607,7 +657,58 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
     public override bool TryGetDisplayOverride(string varKey, double value, out string displayText)
     {
         if (TryGetRadioDisplay(varKey, value, out displayText)) return true;
+
+        // The engine page's readings with the zone each sits in (C172-18), one wording for the
+        // panels, the hotkeys and the Alt+S window.
+        string? reading = varKey switch
+        {
+            "C172_ENGINE_RPM" => CessnaC172Gauges.DescribeRpm(value, _rpmArc),
+            "C172_FUEL_FLOW" => CessnaC172Gauges.DescribeFuelFlow(value),
+            "C172_OIL_PRESSURE" => CessnaC172Gauges.DescribeOilPressure(value),
+            "C172_OIL_TEMP" => CessnaC172Gauges.DescribeOilTemperature(value),
+            "C172_EGT" or "C172_CHT" => CessnaC172Gauges.DescribeTemperature(value),
+            "C172_VACUUM" => CessnaC172Gauges.DescribeVacuum(value),
+            "C172_FUEL_LEFT_QTY" or "C172_FUEL_RIGHT_QTY" => CessnaC172Gauges.DescribeFuelQuantity(value),
+            "C172_MAIN_BUS_VOLTS" or "C172_ESS_BUS_VOLTS" or "C172_BATTERY_VOLTAGE" => CessnaC172Gauges.DescribeVolts(value),
+            "C172_ENGINE_HOURS" => CessnaC172Gauges.DescribeHours(value),
+            _ => null
+        };
+        if (reading != null)
+        {
+            displayText = reading;
+            return true;
+        }
         return base.TryGetDisplayOverride(varKey, value, out displayText);
+    }
+
+    /// <summary>
+    /// One cached reading as it is displayed, or null when the cache does not have it yet (never a
+    /// zero standing in for it).
+    /// </summary>
+    private string? CachedReading(SimConnect.SimConnectManager simConnect, string varKey) =>
+        simConnect.GetCachedVariableValue(varKey) is double v && TryGetDisplayOverride(varKey, v, out string text)
+            ? text
+            : null;
+
+    /// <summary>
+    /// The Alt+S window's rows, in the engine page's order (RPM, fuel flow, oil pressure and
+    /// temperature, EGT, the lean page's CHT, vacuum, the tanks, the hour meter, the buses). A
+    /// reading the cache does not have yet is left out.
+    /// </summary>
+    internal List<string> EngineGlanceRows(SimConnect.SimConnectManager simConnect)
+    {
+        var rows = new List<string>();
+        foreach (var (key, label) in new[]
+        {
+            ("C172_ENGINE_RPM", "RPM"), ("C172_FUEL_FLOW", "Fuel flow"), ("C172_OIL_PRESSURE", "Oil pressure"),
+            ("C172_OIL_TEMP", "Oil temperature"), ("C172_EGT", "EGT"), ("C172_CHT", "CHT"), ("C172_VACUUM", "Vacuum"),
+            ("C172_FUEL_LEFT_QTY", "Left fuel"), ("C172_FUEL_RIGHT_QTY", "Right fuel"), ("C172_ENGINE_HOURS", "Engine hours"),
+            ("C172_MAIN_BUS_VOLTS", "Main bus"), ("C172_ESS_BUS_VOLTS", "Essential bus"),
+        })
+        {
+            if (CachedReading(simConnect, key) is string text) rows.Add($"{label}: {text}");
+        }
+        return rows;
     }
 
     public override Dictionary<string, string> GetButtonStateMapping()
@@ -653,9 +754,7 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
                 double? right = simConnect.GetCachedVariableValue("C172_FUEL_RIGHT_QTY");
                 if (left.HasValue && right.HasValue)
                 {
-                    double total = left.Value + right.Value;
-                    announcer.AnnounceImmediate(
-                        $"Left {left.Value:F1}, Right {right.Value:F1}, Total {total:F1} gallons");
+                    announcer.AnnounceImmediate(CessnaC172Gauges.DescribeFuelQuantities(left.Value, right.Value));
                 }
                 else
                 {
@@ -666,29 +765,53 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
                 return true;
             }
 
-            // Output+Shift+F — fuel info (same as fuel quantity for C172)
+            // Output+Shift+F — the tanks, the flow and the endurance it gives
             case HotkeyAction.ReadFuelInfo:
             {
                 double? left = simConnect.GetCachedVariableValue("C172_FUEL_LEFT_QTY");
                 double? right = simConnect.GetCachedVariableValue("C172_FUEL_RIGHT_QTY");
                 double? flow = simConnect.GetCachedVariableValue("C172_FUEL_FLOW");
-                if (left.HasValue && right.HasValue)
-                {
-                    double total = left.Value + right.Value;
-                    string flowText = flow.HasValue ? $", Flow {flow.Value:F1} G P H" : "";
-                    double? endurance = (flow.HasValue && flow.Value > 0.1) ? total / flow.Value : null;
-                    string enduranceText = endurance.HasValue
-                        ? $", Endurance {endurance.Value:F1} hours"
-                        : "";
-                    announcer.AnnounceImmediate(
-                        $"Left {left.Value:F1}, Right {right.Value:F1}, Total {total:F1} gallons{flowText}{enduranceText}");
-                }
-                else
-                {
-                    announcer.AnnounceImmediate("Fuel data not available");
-                }
+                announcer.AnnounceImmediate(left.HasValue && right.HasValue
+                    ? CessnaC172Gauges.DescribeFuelInfo(left.Value, right.Value, flow)
+                    : "Fuel data not available");
                 return true;
             }
+
+            // Output+P — the tachometer, with the arc it sits in (C172-18)
+            case HotkeyAction.ReadEngineRpm:
+                announcer.AnnounceImmediate(CachedReading(simConnect, "C172_ENGINE_RPM") is string rpm
+                    ? rpm + "."
+                    : "RPM not available yet");
+                return true;
+
+            // Output+E — the power: RPM and fuel flow, and where the throttle and mixture are set.
+            // A fixed-pitch propeller has no manifold pressure gauge on this G1000.
+            case HotkeyAction.ReadEnginePower:
+                _ = AnnounceEnginePowerAsync(simConnect, announcer);
+                return true;
+
+            // Output+Shift+P — the engine's temperatures
+            case HotkeyAction.ReadEngineTemps:
+                announcer.AnnounceImmediate(ComposeReadings(new[]
+                {
+                    ("Oil", CachedReading(simConnect, "C172_OIL_TEMP")),
+                    ("EGT", CachedReading(simConnect, "C172_EGT")),
+                    ("CHT", CachedReading(simConnect, "C172_CHT")),
+                }) ?? "Engine temperatures not available yet");
+                return true;
+
+            // Output+Alt+S — the engine page, as a live window the pilot arrows through (the DA40's
+            // window, fed this aircraft's rows), not one long sentence.
+            case HotkeyAction.ReadDisplayLowerECAM:
+                hotkeyManager.ExitOutputHotkeyMode();
+                ShowTrackedWindow("C172_ENGINE",
+                    () => new Forms.DA40.CowsDA40EngineGlanceForm(() => EngineGlanceRows(simConnect)),
+                    w =>
+                    {
+                        if (w.Visible) w.Activate();
+                        else w.Show(parentForm);
+                    });
+                return true;
 
             // Output+L — read flaps position
             case HotkeyAction.ReadFlaps:
@@ -822,6 +945,39 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
     }
 
     /// <summary>
+    /// Labelled readings as one sentence ("Oil 180 degrees fahrenheit, green. EGT 1310 degrees
+    /// fahrenheit."), leaving out any the cache does not have; null when it has none of them. An
+    /// empty label is a reading that names itself ("622 rpm").
+    /// </summary>
+    internal static string? ComposeReadings(IEnumerable<(string Label, string? Reading)> readings)
+    {
+        var parts = readings.Where(r => r.Reading != null)
+            .Select(r => r.Label.Length == 0 ? r.Reading! : $"{r.Label} {r.Reading}").ToList();
+        return parts.Count == 0 ? null : string.Join(". ", parts) + ".";
+    }
+
+    /// <summary>
+    /// Output+E: RPM and fuel flow from the cache, the throttle and mixture read fresh (they are
+    /// panel reads, not batch members). On the UI thread.
+    /// </summary>
+    private async Task AnnounceEnginePowerAsync(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        string? rpm = CachedReading(simConnect, "C172_ENGINE_RPM");
+        string? flow = CachedReading(simConnect, "C172_FUEL_FLOW");
+        double? throttle = await simConnect.ReadFreshAsync("C172_THROTTLE", 1500);
+        double? mixture = await simConnect.ReadFreshAsync("C172_MIXTURE_STATE", 1500);
+        announcer.AnnounceImmediate(ComposeReadings(new[]
+        {
+            ("", rpm), ("Fuel flow", flow),
+            ("Throttle", throttle is double t ? Percent(t) : null),
+            ("Mixture", mixture is double m ? Percent(m) : null),
+        }) ?? "Engine power not available yet");
+    }
+
+    internal static string Percent(double value) =>
+        Math.Round(value).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " percent";
+
+    /// <summary>
     /// A typed value in a window that STAYS OPEN after Enter, so the next value can be typed straight
     /// away, as every other aircraft's value dialogs do (the owner's test, 2026-10-17: the C172's alone
     /// closed). `ValueInputForm`'s callback mode applies each Enter and keeps the window; Escape closes it.
@@ -919,11 +1075,11 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
 
         // The silent readouts: read for the status displays and the hotkeys, never spoken. The low
         // fuel, oil pressure and vacuum warnings are the G1000's CAS messages (C172-17).
-        if (varName is "C172_OIL_TEMP" or "C172_EGT" or "C172_FUEL_FLOW" or "C172_BATTERY_VOLTAGE"
-            or "C172_OIL_PRESSURE" or "C172_VACUUM" or "C172_FUEL_LEFT_QTY" or "C172_FUEL_RIGHT_QTY")
-        {
-            return true;
-        }
+        if (SilentReadouts.Contains(varName)) return true;
+
+        // The tachometer's green arc follows the altitude (C172-18); the base's own altitude
+        // handling still runs.
+        if (varName == "INDICATED_ALTITUDE") _rpmArc = CessnaC172Gauges.NextRpmArc(_rpmArc, value);
 
         return base.ProcessSimVarUpdate(varName, value, announcer);
     }

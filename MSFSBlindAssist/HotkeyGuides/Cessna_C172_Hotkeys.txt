@@ -37,6 +37,20 @@ Navigation:
 Autopilot:
   Shift+V    Read the autopilot's selected vertical speed
 
+Engine:
+  P          RPM, with the arc it sits in on the G1000's tachometer (the green
+             arc tops out at 2500, 2600 or 2700 rpm by altitude; red from 2700)
+  E          Power: RPM, fuel flow, throttle and mixture
+  Shift+P    Engine temperatures: oil, EGT and CHT
+  Alt+S      The engine page in a window that updates live: RPM, fuel flow,
+             oil pressure and temperature, EGT, CHT, vacuum, both tanks,
+             engine hours, and the main and essential bus volts. Arrow
+             through it; Escape closes it.
+  Each reading says the zone the G1000 draws it in ("66 psi, green"). Where
+  a reading is outside the green with a red or yellow arc further out,
+  it says "below the green arc" or "above the green arc"; otherwise just
+  the number (idle RPM, cold oil, a full tank).
+
 Fuel:
   F          Read fuel per tank and total, in gallons
   Shift+F    Read fuel per tank and total, fuel flow, and endurance at the

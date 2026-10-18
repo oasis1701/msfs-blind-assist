@@ -192,13 +192,19 @@ public class CessnaC172RadiosTests
         Assert.Equal(new[] { "The G1000 transponder has no Off key. Pick Standby, On, Altitude or Ground." }, speech.All);
     }
 
-    // C172-16: every bus voltage SimVar read 0 with the engine running; the main battery's voltage is real.
+    // C172-16: ELECTRICAL MAIN BUS VOLTAGE and BUS VOLTAGE:n read 0 on this aircraft; the buses are
+    // read as the G1000's engine page reads them, ELECTRICAL BUS VOLTAGE by its bus names, beside
+    // the main battery's own voltage.
     [Fact]
-    public void The_electrical_readout_is_the_main_batterys_voltage()
+    public void The_electrical_readouts_are_the_named_buses_and_the_main_battery()
     {
-        var d = Def.GetVariables()["C172_BATTERY_VOLTAGE"];
-        Assert.Equal("ELECTRICAL BATTERY VOLTAGE:2", d.Name);
-        Assert.Contains("C172_BATTERY_VOLTAGE", Def.GetPanelDisplayVariables()["Battery and Alternator"]);
-        Assert.DoesNotContain(Def.GetVariables().Values, v => v.Name.Contains("BUS VOLTAGE", StringComparison.Ordinal));
+        var vars = Def.GetVariables();
+        Assert.Equal("ELECTRICAL BATTERY VOLTAGE:2", vars["C172_BATTERY_VOLTAGE"].Name);
+        Assert.Equal("ELECTRICAL BUS VOLTAGE:'CROSS_FEED_BUS'_n", vars["C172_MAIN_BUS_VOLTS"].Name);
+        Assert.Equal("ELECTRICAL BUS VOLTAGE:'ESSENTIAL_BUS'_n", vars["C172_ESS_BUS_VOLTS"].Name);
+        Assert.Equal(new[] { "C172_MAIN_BUS_VOLTS", "C172_ESS_BUS_VOLTS", "C172_BATTERY_VOLTAGE" },
+            Def.GetPanelDisplayVariables()["Battery and Alternator"]);
+        Assert.DoesNotContain(vars.Values, v => v.Name.StartsWith("ELECTRICAL MAIN BUS VOLTAGE", StringComparison.Ordinal)
+                                                || v.Name.StartsWith("BUS VOLTAGE", StringComparison.Ordinal));
     }
 }
