@@ -1,5 +1,5 @@
 // The Cessna 172's Ctrl+M window lists exactly what the aircraft speaks in the background. Oil
-// temperature, EGT, fuel flow and bus voltage are Continuous + IsAnnounced so they ride the batch
+// temperature, EGT, fuel flow and battery voltage are Continuous + IsAnnounced so they ride the batch
 // for the status displays, but ProcessSimVarUpdate swallows every update, so a row for one would
 // mute nothing (VAR-9). The variables behind the warnings, the autopilot modes, the covers and the
 // audio panel keys are spoken, so each keeps its row. Both directions are pinned.
@@ -22,7 +22,7 @@ public class CessnaC172MonitorRowsTests
         Assert.DoesNotContain("C172_OIL_TEMP", keys);
         Assert.DoesNotContain("C172_EGT", keys);
         Assert.DoesNotContain("C172_FUEL_FLOW", keys);
-        Assert.DoesNotContain("C172_BUS_VOLTAGE", keys);
+        Assert.DoesNotContain("C172_BATTERY_VOLTAGE", keys);
     }
 
     [Fact]

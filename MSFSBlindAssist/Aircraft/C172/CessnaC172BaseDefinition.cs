@@ -14,7 +14,7 @@ namespace MSFSBlindAssist.Aircraft;
 /// FS2020 events it ran on; both were removed on 2026-10-18, unmeasured, and the Classic is to come back
 /// built from measurements like the G1000.
 /// </summary>
-public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
+public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
 {
     // Warning debounce tracking
     private bool _lowFuelLeftWarned = false;
@@ -44,7 +44,7 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
     /// </summary>
     protected virtual Dictionary<string, SimConnect.SimVarDefinition> GetC172Variables()
     {
-        return new Dictionary<string, SimConnect.SimVarDefinition>
+        var v = new Dictionary<string, SimConnect.SimVarDefinition>
         {
             // ===== ELECTRICAL =====
 
@@ -360,133 +360,6 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
             },
 
 
-            // ===== RADIOS =====
-
-            // COM1
-            ["C172_COM1_ACTIVE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "COM ACTIVE FREQUENCY:1",
-                DisplayName = "COM1 Active",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "MHz",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
-            },
-            ["C172_COM1_STANDBY"] = new SimConnect.SimVarDefinition
-            {
-                Name = "COM STANDBY FREQUENCY:1",
-                DisplayName = "COM1 Standby",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "MHz",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
-            },
-            ["C172_COM1_SWAP"] = new SimConnect.SimVarDefinition
-            {
-                Name = "COM_STBY_RADIO_SWAP",
-                DisplayName = "COM1 Swap",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never,
-                RenderAsButton = true
-            },
-            // COM2
-            ["C172_COM2_ACTIVE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "COM ACTIVE FREQUENCY:2",
-                DisplayName = "COM2 Active",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "MHz",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
-            },
-            ["C172_COM2_STANDBY"] = new SimConnect.SimVarDefinition
-            {
-                Name = "COM STANDBY FREQUENCY:2",
-                DisplayName = "COM2 Standby",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "MHz",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
-            },
-            ["C172_COM2_SWAP"] = new SimConnect.SimVarDefinition
-            {
-                Name = "COM2_RADIO_SWAP",
-                DisplayName = "COM2 Swap",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never,
-                RenderAsButton = true
-            },
-            // NAV1
-            ["C172_NAV1_ACTIVE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "NAV ACTIVE FREQUENCY:1",
-                DisplayName = "NAV1 Active",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "MHz",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
-            },
-            ["C172_NAV1_STANDBY"] = new SimConnect.SimVarDefinition
-            {
-                Name = "NAV STANDBY FREQUENCY:1",
-                DisplayName = "NAV1 Standby",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "MHz",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
-            },
-            ["C172_NAV1_SWAP"] = new SimConnect.SimVarDefinition
-            {
-                Name = "NAV1_RADIO_SWAP",
-                DisplayName = "NAV1 Swap",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never,
-                RenderAsButton = true
-            },
-            // NAV2
-            ["C172_NAV2_ACTIVE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "NAV ACTIVE FREQUENCY:2",
-                DisplayName = "NAV2 Active",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "MHz",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
-            },
-            ["C172_NAV2_STANDBY"] = new SimConnect.SimVarDefinition
-            {
-                Name = "NAV STANDBY FREQUENCY:2",
-                DisplayName = "NAV2 Standby",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "MHz",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
-            },
-            ["C172_NAV2_SWAP"] = new SimConnect.SimVarDefinition
-            {
-                Name = "NAV2_RADIO_SWAP",
-                DisplayName = "NAV2 Swap",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never,
-                RenderAsButton = true
-            },
-            // Transponder
-            ["C172_XPNDR_CODE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "TRANSPONDER CODE:1",
-                DisplayName = "Transponder Code",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "number",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
-            },
-            ["C172_XPNDR_SET"] = new SimConnect.SimVarDefinition
-            {
-                Name = "XPNDR_SET",
-                DisplayName = "Set Transponder",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never
-            },
-            ["C172_XPNDR_IDENT"] = new SimConnect.SimVarDefinition
-            {
-                Name = "XPNDR_IDENT_ON",
-                DisplayName = "Transponder Ident",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never,
-                RenderAsButton = true
-            },
-
             // ===== CONTINUOUS MONITORING =====
 
             ["C172_ENGINE_RPM"] = new SimConnect.SimVarDefinition
@@ -570,10 +443,12 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true
             },
-            ["C172_BUS_VOLTAGE"] = new SimConnect.SimVarDefinition
+            // Every bus voltage SimVar reads 0 on this aircraft (`ELECTRICAL MAIN BUS VOLTAGE`, `BUS
+            // VOLTAGE:n`, measured 2026-10-18 with the engine running), so the main battery's own (C172-16).
+            ["C172_BATTERY_VOLTAGE"] = new SimConnect.SimVarDefinition
             {
-                Name = "ELECTRICAL MAIN BUS VOLTAGE:3",
-                DisplayName = "Bus Voltage",
+                Name = "ELECTRICAL BATTERY VOLTAGE:2",
+                DisplayName = "Battery Voltage",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "volts",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -615,6 +490,10 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
             }
         };
+
+        // ===== RADIOS (CessnaC172BaseDefinition.Radios.cs) =====
+        AddRadioVariables(v);
+        return v;
     }
 
     /// <summary>A switch read from its own cockpit input event, for one no SimVar reports (SIM-23).</summary>
@@ -703,20 +582,9 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
                 "C172_FLAPS", "C172_FLAPS_INCR", "C172_FLAPS_DECR",
                 "C172_PARKING_BRAKE_STATE"
             },
-            ["COM"] = new List<string>
-            {
-                "C172_COM1_ACTIVE", "C172_COM1_STANDBY", "C172_COM1_SWAP",
-                "C172_COM2_ACTIVE", "C172_COM2_STANDBY", "C172_COM2_SWAP"
-            },
-            ["NAV"] = new List<string>
-            {
-                "C172_NAV1_ACTIVE", "C172_NAV1_STANDBY", "C172_NAV1_SWAP",
-                "C172_NAV2_ACTIVE", "C172_NAV2_STANDBY", "C172_NAV2_SWAP"
-            },
-            ["Transponder"] = new List<string>
-            {
-                "C172_XPNDR_CODE", "C172_XPNDR_SET", "C172_XPNDR_IDENT"
-            },
+            ["COM"] = new List<string>(RadioControls["COM"]),
+            ["NAV"] = new List<string>(RadioControls["NAV"]),
+            ["Transponder"] = new List<string>(RadioControls["Transponder"]),
             ["Anti-Ice"] = new List<string>
             {
                 "C172_PITOT_HEAT_STATE"
@@ -728,10 +596,19 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
     {
         return new Dictionary<string, List<string>>
         {
-            ["Battery and Alternator"] = new List<string> { "C172_BUS_VOLTAGE" },
+            ["Battery and Alternator"] = new List<string> { "C172_BATTERY_VOLTAGE" },
             ["Fuel"] = new List<string> { "C172_FUEL_LEFT_QTY", "C172_FUEL_RIGHT_QTY" },
-            ["Engine Controls"] = new List<string> { "C172_ENGINE_RPM", "C172_OIL_PRESSURE", "C172_EGT", "C172_FUEL_FLOW" }
+            ["Engine Controls"] = new List<string> { "C172_ENGINE_RPM", "C172_OIL_PRESSURE", "C172_EGT", "C172_FUEL_FLOW" },
+            ["COM"] = new List<string>(RadioDisplay["COM"]),
+            ["NAV"] = new List<string>(RadioDisplay["NAV"]),
+            ["Transponder"] = new List<string>(RadioDisplay["Transponder"])
         };
+    }
+
+    public override bool TryGetDisplayOverride(string varKey, double value, out string displayText)
+    {
+        if (TryGetRadioDisplay(varKey, value, out displayText)) return true;
+        return base.TryGetDisplayOverride(varKey, value, out displayText);
     }
 
     public override Dictionary<string, string> GetButtonStateMapping()
@@ -1008,6 +885,8 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
 
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
+        if (IsUnlistedTransponderMode(varName, value)) return true;
+
         // The autopilot's own trimming is not spoken. The shared Shift+T announcer reads every 0.1
         // degree, and the GFC 700 trims all the time it flies: on the ground in PIT it said "Trim up
         // 4.1", "4.5", "4.8" a second apart (2026-10-16). The position is re-based while the autopilot
@@ -1094,9 +973,9 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
             return true;
         }
 
-        // Suppress noisy continuous updates for oil temp, EGT, fuel flow, bus voltage
+        // Suppress noisy continuous updates for oil temp, EGT, fuel flow, battery voltage
         if (varName == "C172_OIL_TEMP" || varName == "C172_EGT" ||
-            varName == "C172_FUEL_FLOW" || varName == "C172_BUS_VOLTAGE")
+            varName == "C172_FUEL_FLOW" || varName == "C172_BATTERY_VOLTAGE")
         {
             return true;
         }
@@ -1107,6 +986,12 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
     public override bool HandleUIVariableSet(string varKey, double value, SimConnect.SimVarDefinition varDef,
         SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
+        // The squawk is MainForm's to write: its TRANSPONDER_CODE_SET path BCD16-encodes the code
+        // (C172-13), and the generic event path below would send it as a plain number.
+        if (varKey == SquawkSetKey) return false;
+
+        if (HandleRadioSet(varKey, value, simConnect, announcer)) return true;
+
         // Mixture set — convert percentage to 0-16383 range
         if (varKey == "C172_MIXTURE_SET")
         {
