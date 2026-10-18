@@ -141,25 +141,38 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // their own anticipation may relax as they learn to trust it.
     public override double TaxiTurnLeadSeconds => 0.4;
 
-    // Waypoint Flight Director: 737-class narrowbody — rolls about as briskly as an A320, so the
-    // baseline profile fits. Stated explicitly rather than inherited so the choice is visible
-    // (same reason the FBW A320 and Fenix defs spell theirs out); values equal
-    // BaseAircraftDefinition's defaults, so this is a no-op today. Unlike the 777 below it, this
-    // airframe needs no widebody softening.
-    //
-    // NOTE the measured taxi-turn lead above is NOT evidence for BankRateLeadSec — that figure is
-    // ground steering, dominated by the pilot's own rollout anticipation; the FD's lead models
-    // airframe roll rate in flight (the 777 runs taxi 0.3 s against FD lead 1.3 s). Best-effort
-    // default; calibrate in-sim.
-    // Bank cap from the type: the 737 AFDS commands up to 30° in LNAV above 200 ft AGL (8° below),
-    // and the FMC plans turns at ~25° to keep 5° spare for correction — so 30 is the real ceiling,
-    // not the Airbus-derived 25 this inherited from the baseline. Approach-AoA fallback 5.0 to match
-    // the figure this same airframe already uses in its Visual Guidance profile: it was 6.0 here and
-    // 5.0 there, two values for one physical quantity on one aircraft. Published 737 approach
-    // attitude is ~2.5° pitch on a 3° path ≈ 5-5.5° AoA. CLASS-1 figures; gain/lead still estimates.
+    // Waypoint Flight Director. NOTE the measured taxi-turn lead above is NOT evidence for
+    // BankRateLeadSec — that figure is ground steering, dominated by the pilot's own rollout
+    // anticipation; the FD's lead models the airframe's roll-out in flight (WFD-3).
+    // Approach-AoA fallback 5.0 to match the figure this same airframe already uses in its Visual
+    // Guidance profile: it was 6.0 here and 5.0 there, two values for one physical quantity on one
+    // aircraft. Published 737 approach attitude is ~2.5° pitch on a 3° path ≈ 5-5.5° AoA.
     public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new()
     {
-        MaxBankDeg            = 30.0,   // AFDS LNAV limit above 200 ft AGL
+        // MEASURED off the aeroplane, 2026-10-18 (five AP-flown HDG SEL turns, PMDG 737-800 at
+        // 4000 ft, CMD A, bank limit selector at 25: 90° right and left at 180 kt and at 280 kt,
+        // then a roll-in from wings level). Sampled bank + magnetic heading at 4 Hz over SimConnect.
+        //
+        // Unlike the 777, the 737 AFDS ANTICIPATES the roll-out. Bank came off the 25° cap 13.5° short
+        // of the target at 180 kt (turn rate 2.9°/s) and 12.2-12.4° short at 280 kt (1.7°/s). A pure
+        // proportional law would start at the same heading error at both speeds; this onset moves
+        // with turn rate, which is a lead in TIME. Solving onset = 25 / gain + lead × rate for both
+        // speeds gives gain 2.36 and lead 1.02 s — both positive, unlike the Fenix and A380, whose
+        // two speeds solve to a negative cap / gain. Left and right at 280 kt differ by 0.2° against
+        // a 1.2° speed effect; the 180 kt onset is one run (the other's sampling began after it).
+        // The previous 1.1 was a class guess that asked for under half the bank the aeroplane uses. Mid-rollout bank / error reads 2.1-2.6, above the fitted gain, because the aeroplane
+        // rolls out slower than the law commands; the last 2° creep in with ~1° of bank and no
+        // overshoot on any run.
+        KRollDegPerDegTrack   = 2.35,
+        BankRateLeadSec       = 1.0,
+        // Bank cap from the type: the 737 AFDS commands up to 30° in LNAV above 200 ft AGL (8°
+        // below). The measured 25.0-25.2° steady bank (at both speeds) was the bank limit selector,
+        // which HDG SEL obeys, so the turns do not test this cap.
+        MaxBankDeg            = 30.0,
+        // Measured roll-in 3.3°/s steady (peak 3.8) from wings level to ~17°, easing to 1-2°/s over
+        // the last few degrees into the cap. The 5.0 default let the tone move faster than the
+        // aeroplane can roll.
+        MaxBankRateDegPerSec  = 3.5,
         TypicalApproachAoaDeg = 5.0     // matches this airframe's VG profile
     };
 
