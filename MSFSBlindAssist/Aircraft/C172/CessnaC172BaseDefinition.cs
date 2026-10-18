@@ -4,9 +4,15 @@ using MSFSBlindAssist.Accessibility;
 namespace MSFSBlindAssist.Aircraft;
 
 /// <summary>
-/// Abstract base class for Cessna 172 Skyhawk variants.
-/// Contains all shared systems (electrical, engine, fuel, lights, autopilot, radios, flight controls).
-/// Subclasses provide variant-specific additions (G1000 standby battery, Classic steam gauge instruments).
+/// The Cessna 172 Skyhawk's systems as measured on MSFS 2024's stock C172 (docs/c172.md): electrical,
+/// engine, fuel, lights, flaps and brake, the autopilot's mode and value SimVars, radios, the background
+/// warnings and the readout hotkeys. Every SimVar here is the one the audit read the cockpit through
+/// (C172-1, C172-2, C172-5). How a switch is WRITTEN is the variant's: the G1000 sets each cockpit input
+/// event (`CessnaC172G1000Definition.SwitchInputEvents`), and this class has no write path for them.
+///
+/// Only the G1000 is built today. Marshall Fairbrother's port also carried a steam-gauge Classic and the
+/// FS2020 events it ran on; both were removed on 2026-10-18, unmeasured, and the Classic is to come back
+/// built from measurements like the G1000.
 /// </summary>
 public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
 {
@@ -18,7 +24,7 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
     private bool _rpmRedlineWarned = false;
     private bool _autopilotEngaged = false;
 
-    // FCU control types — KAP140 uses direct value entry
+    // FCU control types: the autopilot's values are typed, never stepped
     public override FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
     public override FCUControlType GetHeadingControlType() => FCUControlType.SetValue;
     public override FCUControlType GetSpeedControlType() => FCUControlType.SetValue;
@@ -42,21 +48,15 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
         {
             // ===== ELECTRICAL =====
 
+            // The MAIN battery is index 2; index 1 is the standby (C172-1).
             ["C172_BATTERY_STATE"] = new SimConnect.SimVarDefinition
             {
-                Name = "ELECTRICAL MASTER BATTERY:1",
+                Name = "ELECTRICAL MASTER BATTERY:2",
                 DisplayName = "Battery Master",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "Bool",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-            },
-            ["C172_BATTERY_TOGGLE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "TOGGLE_MASTER_BATTERY",
-                DisplayName = "Battery Master Toggle",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never
             },
             ["C172_ALTERNATOR_STATE"] = new SimConnect.SimVarDefinition
             {
@@ -67,78 +67,20 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
-            ["C172_ALTERNATOR_TOGGLE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "TOGGLE_ALTERNATOR1",
-                DisplayName = "Alternator Toggle",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never
-            },
-            ["C172_AVIONICS1_STATE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "AVIONICS MASTER SWITCH:1",
-                DisplayName = "Avionics Bus 1",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "Bool",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-            },
-            ["C172_AVIONICS1_SET"] = new SimConnect.SimVarDefinition
-            {
-                Name = "AVIONICS_MASTER_1_SET",
-                DisplayName = "Avionics Bus 1 Set",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never
-            },
-            ["C172_AVIONICS2_STATE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "AVIONICS MASTER SWITCH:2",
-                DisplayName = "Avionics Bus 2",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "Bool",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-            },
-            ["C172_AVIONICS2_SET"] = new SimConnect.SimVarDefinition
-            {
-                Name = "AVIONICS_MASTER_2_SET",
-                DisplayName = "Avionics Bus 2 Set",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never
-            },
+            // The avionics bus switches drive nothing a SimVar reports (`AVIONICS MASTER SWITCH:n` only
+            // follows `AVIONICS_MASTER_n_SET`, which the buses ignore), so they are read from the switch.
+            ["C172_AVIONICS1_STATE"] = InputEventState("ELECTRICAL_LINE_BUS_1_TO_AVIONICS_BUS_1", "Avionics Bus 1",
+                new() { [0] = "Off", [1] = "On" }),
+            ["C172_AVIONICS2_STATE"] = InputEventState("ELECTRICAL_LINE_BUS_2_TO_AVIONICS_BUS_2", "Avionics Bus 2",
+                new() { [0] = "Off", [1] = "On" }),
 
             // ===== ENGINE =====
 
-            ["C172_MAGNETO"] = new SimConnect.SimVarDefinition
-            {
-                Name = "RECIP ENG LEFT MAGNETO:1",
-                DisplayName = "Magneto",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "Bool",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string>
-                {
-                    [0] = "Off",
-                    [1] = "Right",
-                    [2] = "Left",
-                    [3] = "Both"
-                }
-            },
-            ["C172_MAGNETO_SET"] = new SimConnect.SimVarDefinition
-            {
-                Name = "MAGNETO1_SET",
-                DisplayName = "Magneto Set",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never
-            },
-            ["C172_STARTER_SET"] = new SimConnect.SimVarDefinition
-            {
-                Name = "SET_STARTER1_HELD",
-                DisplayName = "Starter",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never,
-                RenderAsButton = true
-            },
+            // The magneto key has no SimVar for its position: read from the key itself.
+            ["C172_MAGNETO"] = InputEventState("ENGINE_MAGNETO_1", "Magneto",
+                new() { [0] = "Off", [1] = "Right", [2] = "Left", [3] = "Both" }),
+            // The same key turned to START (4), which springs back by itself (C172-6).
+            ["C172_STARTER_SET"] = KeyPress("ENGINE_MAGNETO_1", "Starter"),
             ["C172_MIXTURE_STATE"] = new SimConnect.SimVarDefinition
             {
                 Name = "GENERAL ENG MIXTURE LEVER POSITION:1",
@@ -171,145 +113,86 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Never,
                 RenderAsButton = true
             },
+            // The fuel pump, valve and selector are the new fuel system's (C172-2, C172-5).
             ["C172_FUEL_PUMP_STATE"] = new SimConnect.SimVarDefinition
             {
-                Name = "GENERAL ENG FUEL PUMP SWITCH:1",
+                Name = "FUELSYSTEM PUMP SWITCH:1",
                 DisplayName = "Fuel Pump",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "Bool",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
-            ["C172_FUEL_PUMP_TOGGLE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "TOGGLE_ELECT_FUEL_PUMP1",
-                DisplayName = "Fuel Pump Toggle",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never
-            },
 
             // ===== FUEL =====
 
             ["C172_FUEL_SELECTOR"] = new SimConnect.SimVarDefinition
             {
-                Name = "FUEL TANK SELECTOR:1",
+                Name = "FUELSYSTEM JUNCTION SETTING:1",
                 DisplayName = "Fuel Selector",
                 Type = SimConnect.SimVarType.SimVar,
-                Units = "Enum",
+                Units = "number",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string>
-                {
-                    [0] = "Off",
-                    [1] = "Both",
-                    [2] = "Left",
-                    [3] = "Right"
-                }
-            },
-            ["C172_FUEL_SELECTOR_SET"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FUEL_SELECTOR_SET",
-                DisplayName = "Fuel Selector Set",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never
+                ValueDescriptions = FuelSelectorPositions()
             },
             ["C172_FUEL_VALVE_STATE"] = new SimConnect.SimVarDefinition
             {
-                Name = "GENERAL ENG FUEL VALVE:1",
+                Name = "FUELSYSTEM VALVE SWITCH:1",
                 DisplayName = "Fuel Shutoff Valve",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "Bool",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
             },
-            ["C172_FUEL_VALVE_TOGGLE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "TOGGLE_FUEL_VALVE_ENG1",
-                DisplayName = "Fuel Shutoff Valve Toggle",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never
-            },
 
             // ===== LIGHTS =====
+            // The SWITCH, not the lamp: `LIGHT NAV ON` is 1 only while the lamp is lit, so with the
+            // battery off a switched-on light read Off (measured); `LIGHT NAV` follows the switch.
 
             ["C172_NAV_LIGHT_STATE"] = new SimConnect.SimVarDefinition
             {
-                Name = "LIGHT NAV ON",
+                Name = "LIGHT NAV",
                 DisplayName = "Nav Lights",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "Bool",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
-            ["C172_NAV_LIGHT_TOGGLE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "TOGGLE_NAV_LIGHTS",
-                DisplayName = "Nav Lights Toggle",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never
-            },
             ["C172_BEACON_STATE"] = new SimConnect.SimVarDefinition
             {
-                Name = "LIGHT BEACON ON",
+                Name = "LIGHT BEACON",
                 DisplayName = "Beacon",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "Bool",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
-            ["C172_BEACON_TOGGLE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "TOGGLE_BEACON_LIGHTS",
-                DisplayName = "Beacon Toggle",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never
-            },
             ["C172_STROBE_STATE"] = new SimConnect.SimVarDefinition
             {
-                Name = "LIGHT STROBE ON",
+                Name = "LIGHT STROBE",
                 DisplayName = "Strobe Lights",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "Bool",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
-            ["C172_STROBE_TOGGLE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "STROBES_TOGGLE",
-                DisplayName = "Strobe Lights Toggle",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never
-            },
             ["C172_LANDING_LIGHT_STATE"] = new SimConnect.SimVarDefinition
             {
-                Name = "LIGHT LANDING ON",
+                Name = "LIGHT LANDING",
                 DisplayName = "Landing Light",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "Bool",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
-            ["C172_LANDING_LIGHT_TOGGLE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "LANDING_LIGHTS_TOGGLE",
-                DisplayName = "Landing Light Toggle",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never
-            },
             ["C172_TAXI_LIGHT_STATE"] = new SimConnect.SimVarDefinition
             {
-                Name = "LIGHT TAXI ON",
+                Name = "LIGHT TAXI",
                 DisplayName = "Taxi Light",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "Bool",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-            },
-            ["C172_TAXI_LIGHT_TOGGLE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "TOGGLE_TAXI_LIGHTS",
-                DisplayName = "Taxi Light Toggle",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never
             },
 
             // ===== FLIGHT CONTROLS =====
@@ -354,62 +237,23 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Set" }
             },
-            ["C172_PARKING_BRAKE_TOGGLE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "PARKING_BRAKES",
-                DisplayName = "Parking Brake Toggle",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never
-            },
 
-            // ===== ANTI-ICE / SAFETY =====
+            // ===== ANTI-ICE =====
 
             ["C172_PITOT_HEAT_STATE"] = new SimConnect.SimVarDefinition
             {
-                Name = "PITOT HEAT",
+                Name = "PITOT HEAT SWITCH:1",
                 DisplayName = "Pitot Heat",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "Bool",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
             },
-            ["C172_PITOT_HEAT_TOGGLE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "PITOT_HEAT_TOGGLE",
-                DisplayName = "Pitot Heat Toggle",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never
-            },
-            ["C172_ALT_STATIC_TOGGLE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "TOGGLE_ALTERNATE_STATIC",
-                DisplayName = "Alternate Static Air",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never,
-                RenderAsButton = true
-            },
-            ["C172_ANNUNCIATOR_TEST_ON"] = new SimConnect.SimVarDefinition
-            {
-                Name = "ANNUNCIATOR_SWITCH_ON",
-                DisplayName = "Annunciator Test On",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never,
-                RenderAsButton = true
-            },
-            ["C172_ANNUNCIATOR_TEST_OFF"] = new SimConnect.SimVarDefinition
-            {
-                Name = "ANNUNCIATOR_SWITCH_OFF",
-                DisplayName = "Annunciator Test Off",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never,
-                RenderAsButton = true
-            },
 
-            // ===== AUTOPILOT (KAP140) =====
-            // RenderAsButton + Continuous + IsAnnounced: each mode is a self-updating
-            // toggle button. Pressing it sends the K: event and the button label
-            // updates automatically from the live SimVar. Announces "ON" / "OFF"
-            // without any user action other than pressing the button.
+            // ===== AUTOPILOT MODES =====
+            // RenderAsButton + Continuous + IsAnnounced: each mode is a self-updating button that
+            // presses the variant's key (the G1000's GFC 700, C172-3), and its label follows the live
+            // SimVar. A mode engaging or disengaging is spoken, "ON" / "Off".
 
             ["C172_AP_MASTER_STATE"] = new SimConnect.SimVarDefinition
             {
@@ -515,28 +359,6 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
             },
 
-            // AP set events
-            ["C172_HEADING_BUG_SET"] = new SimConnect.SimVarDefinition
-            {
-                Name = "HEADING_BUG_SET",
-                DisplayName = "Set Heading Bug",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never
-            },
-            ["C172_AP_ALT_SET"] = new SimConnect.SimVarDefinition
-            {
-                Name = "AP_ALT_VAR_SET_ENGLISH",
-                DisplayName = "Set AP Altitude",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never
-            },
-            ["C172_AP_VS_SET"] = new SimConnect.SimVarDefinition
-            {
-                Name = "AP_VS_VAR_SET_ENGLISH",
-                DisplayName = "Set AP Vertical Speed",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never
-            },
 
             // ===== RADIOS =====
 
@@ -791,25 +613,40 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "knots",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
-            },
-            ["C172_HEADING"] = new SimConnect.SimVarDefinition
-            {
-                Name = "HEADING INDICATOR",
-                DisplayName = "Heading",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "degrees",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
-            },
-            ["C172_VERTICAL_SPEED"] = new SimConnect.SimVarDefinition
-            {
-                Name = "VERTICAL SPEED",
-                DisplayName = "Vertical Speed",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "feet per minute",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
             }
         };
     }
+
+    /// <summary>A switch read from its own cockpit input event, for one no SimVar reports (SIM-23).</summary>
+    protected static SimConnect.SimVarDefinition InputEventState(string inputEvent, string displayName,
+        Dictionary<double, string> positions) => new()
+    {
+        Name = inputEvent,
+        DisplayName = displayName,
+        Type = SimConnect.SimVarType.InputEvent,
+        Units = "number",
+        UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+        ValueDescriptions = positions
+    };
+
+    /// <summary>A key with no state of its own: never read, only pressed.</summary>
+    protected static SimConnect.SimVarDefinition KeyPress(string inputEvent, string displayName) => new()
+    {
+        Name = inputEvent,
+        DisplayName = displayName,
+        Type = SimConnect.SimVarType.InputEvent,
+        UpdateFrequency = SimConnect.UpdateFrequency.Never,
+        RenderAsButton = true
+    };
+
+    /// <summary>
+    /// The fuel selector's positions by `FUELSYSTEM JUNCTION SETTING:1`, which the selector's input
+    /// value 0, 1, 2 sets to 1, 2, 3. Measured with the engine running at 1,500 rpm, 40 s a setting:
+    /// on 1 only the left tank drained, on 2 both drained equally, on 3 only the right. The
+    /// cold-and-dark flight starts on 1, LEFT; the sim's own autostart moves it to BOTH (C172-5).
+    /// </summary>
+    internal static Dictionary<double, string> FuelSelectorPositions() =>
+        new() { [1] = "Left", [2] = "Both", [3] = "Right" };
 
     public override Dictionary<string, List<string>> GetPanelStructure()
     {
@@ -819,9 +656,10 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
             ["Engine"] = new List<string> { "Engine Controls", "Fuel" },
             ["Lights"] = new List<string> { "Exterior Lights" },
             ["Flight Controls"] = new List<string> { "Flaps and Brake" },
-            ["Autopilot"] = new List<string> { "KAP140" },
+            // The variant adds its autopilot's panel; the section is here so it keeps its place.
+            ["Autopilot"] = new List<string>(),
             ["Radios"] = new List<string> { "COM", "NAV", "Transponder" },
-            ["Safety"] = new List<string> { "Annunciators", "Anti-Ice" }
+            ["Safety"] = new List<string> { "Anti-Ice" }
         };
     }
 
@@ -865,21 +703,6 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
                 "C172_FLAPS", "C172_FLAPS_INCR", "C172_FLAPS_DECR",
                 "C172_PARKING_BRAKE_STATE"
             },
-            ["KAP140"] = new List<string>
-            {
-                // Toggle buttons — press to engage/disengage, announces state change automatically
-                "C172_AP_MASTER_STATE",   // Autopilot master
-                "C172_AP_HDG_STATE",      // HDG mode
-                "C172_AP_ALT_STATE",      // ALT hold
-                "C172_AP_NAV_STATE",      // NAV mode (follows GPS when GPS drives NAV1)
-                "C172_AP_APR_STATE",      // Approach mode
-                "C172_AP_BC_STATE",       // Back course
-                "C172_AP_VS_STATE",       // Vertical speed mode
-                // Readouts below
-                "C172_AP_HDG_VALUE",
-                "C172_AP_ALT_VALUE",
-                "C172_AP_VS_VALUE"
-            },
             ["COM"] = new List<string>
             {
                 "C172_COM1_ACTIVE", "C172_COM1_STANDBY", "C172_COM1_SWAP",
@@ -894,14 +717,9 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
             {
                 "C172_XPNDR_CODE", "C172_XPNDR_SET", "C172_XPNDR_IDENT"
             },
-            ["Annunciators"] = new List<string>
-            {
-                "C172_ANNUNCIATOR_TEST_ON", "C172_ANNUNCIATOR_TEST_OFF"
-            },
             ["Anti-Ice"] = new List<string>
             {
-                "C172_PITOT_HEAT_STATE",
-                "C172_ALT_STATIC_TOGGLE"
+                "C172_PITOT_HEAT_STATE"
             }
         };
     }
@@ -921,17 +739,6 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
         // Not needed for combo-box based controls — state is shown directly in the combo box.
         // Button state mapping is for RenderAsButton event variables that need a separate state readback.
         return new Dictionary<string, string>();
-    }
-
-    protected override Dictionary<HotkeyAction, string> GetHotkeyVariableMap()
-    {
-        return new Dictionary<HotkeyAction, string>
-        {
-            [HotkeyAction.ToggleAutopilot1] = "AP_MASTER",
-            [HotkeyAction.FCUHeadingPush] = "AP_PANEL_HEADING_HOLD",
-            [HotkeyAction.FCUSpeedPush] = "FLIGHT_LEVEL_CHANGE",
-            [HotkeyAction.ToggleApproachMode] = "AP_APR_HOLD"
-        };
     }
 
     public override bool HandleHotkeyAction(
@@ -1297,48 +1104,6 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
         return base.ProcessSimVarUpdate(varName, value, announcer);
     }
 
-    /// <summary>
-    /// Maps state variable keys to (event name, uses parameter).
-    /// When a combo box for a state SimVar is changed, we send the corresponding event.
-    /// Toggle events ignore the value parameter; set events pass it through.
-    /// </summary>
-    private static readonly Dictionary<string, (string EventName, bool IsToggle)> _stateToEventMap = new()
-    {
-        // Electrical — toggles (ignore parameter, just toggle)
-        ["C172_BATTERY_STATE"] = ("TOGGLE_MASTER_BATTERY", true),
-        ["C172_ALTERNATOR_STATE"] = ("TOGGLE_ALTERNATOR1", true),
-        ["C172_FUEL_PUMP_STATE"] = ("TOGGLE_ELECT_FUEL_PUMP1", true),
-        ["C172_FUEL_VALVE_STATE"] = ("TOGGLE_FUEL_VALVE_ENG1", true),
-        ["C172_PITOT_HEAT_STATE"] = ("PITOT_HEAT_TOGGLE", true),
-        ["C172_PARKING_BRAKE_STATE"] = ("PARKING_BRAKES", true),
-
-        // Lights — toggles
-        ["C172_NAV_LIGHT_STATE"] = ("TOGGLE_NAV_LIGHTS", true),
-        ["C172_BEACON_STATE"] = ("TOGGLE_BEACON_LIGHTS", true),
-        ["C172_STROBE_STATE"] = ("STROBES_TOGGLE", true),
-        ["C172_LANDING_LIGHT_STATE"] = ("LANDING_LIGHTS_TOGGLE", true),
-        ["C172_TAXI_LIGHT_STATE"] = ("TOGGLE_TAXI_LIGHTS", true),
-
-        // Autopilot — AP_PANEL_* variants simulate pressing the physical KAP140 buttons
-        ["C172_AP_MASTER_STATE"] = ("AP_MASTER", true),
-        ["C172_AP_HDG_STATE"] = ("AP_PANEL_HEADING_HOLD", true),
-        ["C172_AP_ALT_STATE"] = ("AP_PANEL_ALTITUDE_HOLD", true),
-        ["C172_AP_NAV_STATE"] = ("AP_NAV1_HOLD", true),   // confirmed working; AP_PANEL_NAV1_HOLD does NOT work
-        ["C172_AP_APR_STATE"] = ("AP_APR_HOLD", true),
-        ["C172_AP_BC_STATE"] = ("AP_BC_HOLD", true),
-        ["C172_AP_VS_STATE"] = ("AP_PANEL_VS_HOLD", true),
-
-        // Avionics — set events (pass 0 or 1)
-        ["C172_AVIONICS1_STATE"] = ("AVIONICS_MASTER_1_SET", false),
-        ["C172_AVIONICS2_STATE"] = ("AVIONICS_MASTER_2_SET", false),
-
-        // Magneto — set event (pass position 0-3)
-        ["C172_MAGNETO"] = ("MAGNETO1_SET", false),
-
-        // Fuel selector — set event (pass position)
-        ["C172_FUEL_SELECTOR"] = ("FUEL_SELECTOR_SET", false),
-    };
-
     public override bool HandleUIVariableSet(string varKey, double value, SimConnect.SimVarDefinition varDef,
         SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
@@ -1361,31 +1126,8 @@ public abstract class CessnaC172BaseDefinition : BaseAircraftDefinition
             return true;
         }
 
-        // Starter — hold the starter engaged
-        if (varKey == "C172_STARTER_SET")
-        {
-            simConnect.SendEvent("MAGNETO1_SET", 3);
-            simConnect.SendEvent("SET_STARTER1_HELD", 1);
-            return true;
-        }
-
-        // State combo box → event mapping
-        if (_stateToEventMap.TryGetValue(varKey, out var mapping))
-        {
-            if (mapping.IsToggle)
-            {
-                // Toggle events — just fire the event, ignore the combo value
-                simConnect.SendEvent(mapping.EventName);
-            }
-            else
-            {
-                // Set events — pass the selected value as the parameter
-                simConnect.SendEvent(mapping.EventName, (uint)value);
-            }
-            return true;
-        }
-
-        // Generic handler for remaining Event-type variables (buttons like flaps, annunciator test, etc.)
+        // Generic handler for the remaining Event-type variables (the flaps and mixture buttons, the
+        // radio swaps), each a stock event measured on this aircraft.
         if (varDef.Type == SimConnect.SimVarType.Event)
         {
             simConnect.SendEvent(varDef.Name, (uint)value);

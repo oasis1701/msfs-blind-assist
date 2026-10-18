@@ -1,8 +1,8 @@
 // The Cessna 172's Ctrl+M window lists exactly what the aircraft speaks in the background. Oil
 // temperature, EGT, fuel flow and bus voltage are Continuous + IsAnnounced so they ride the batch
 // for the status displays, but ProcessSimVarUpdate swallows every update, so a row for one would
-// mute nothing (VAR-9). The variables behind the warnings and the autopilot modes are spoken, so
-// each keeps its row. Both directions are pinned, on both variants.
+// mute nothing (VAR-9). The variables behind the warnings, the autopilot modes, the covers and the
+// audio panel keys are spoken, so each keeps its row. Both directions are pinned.
 
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Services;
@@ -11,22 +11,13 @@ namespace MSFSBlindAssist.Tests;
 
 public class CessnaC172MonitorRowsTests
 {
-    public static TheoryData<string> Variants => new() { "C172_CLASSIC", "C172_G1000" };
+    private static HashSet<string> RowKeys() =>
+        MonitorRowBuilder.Build(new CessnaC172G1000Definition().GetVariables()).Select(r => r.Key).ToHashSet();
 
-    private static CessnaC172BaseDefinition Create(string code) => code switch
+    [Fact]
+    public void Silent_readouts_have_no_row()
     {
-        "C172_CLASSIC" => new CessnaC172ClassicDefinition(),
-        _ => new CessnaC172G1000Definition(),
-    };
-
-    private static HashSet<string> RowKeys(string code) =>
-        MonitorRowBuilder.Build(Create(code).GetVariables()).Select(r => r.Key).ToHashSet();
-
-    [Theory]
-    [MemberData(nameof(Variants))]
-    public void Silent_readouts_have_no_row(string code)
-    {
-        var keys = RowKeys(code);
+        var keys = RowKeys();
 
         Assert.DoesNotContain("C172_OIL_TEMP", keys);
         Assert.DoesNotContain("C172_EGT", keys);
@@ -34,11 +25,10 @@ public class CessnaC172MonitorRowsTests
         Assert.DoesNotContain("C172_BUS_VOLTAGE", keys);
     }
 
-    [Theory]
-    [MemberData(nameof(Variants))]
-    public void Every_spoken_variable_keeps_its_row(string code)
+    [Fact]
+    public void Every_spoken_variable_keeps_its_row()
     {
-        var keys = RowKeys(code);
+        var keys = RowKeys();
 
         foreach (var key in new[]
         {
@@ -46,39 +36,24 @@ public class CessnaC172MonitorRowsTests
             "C172_ENGINE_RPM", "C172_STALL_WARNING",
             "C172_AP_MASTER_STATE", "C172_AP_HDG_STATE", "C172_AP_ALT_STATE", "C172_AP_NAV_STATE",
             "C172_AP_APR_STATE", "C172_AP_BC_STATE", "C172_AP_VS_STATE",
+            "C172G_AP_FD_STATE", "C172G_AP_FLC_STATE",
+            "C172G_COVER_ENGINE", "C172G_COVER_PITOT", "C172G_COVER_STATIC",
+            "C172G_AUDIO_TRANSMIT", "C172G_AUDIO_COM1", "C172G_AUDIO_COM2", "C172G_AUDIO_NAV1",
+            "C172G_AUDIO_NAV2", "C172G_AUDIO_DME", "C172G_AUDIO_ADF", "C172G_AUDIO_MKR_MUTE",
+            "C172G_AUDIO_HI_SENS", "C172G_AUDIO_SPKR",
         })
         {
             Assert.Contains(key, keys);
         }
     }
 
-    // The G1000's GFC 700 adds the flight director and FLC to the spoken modes, its walkaround covers
-    // are spoken when they move, and so are its audio panel keys; the Classic has none of them.
-    [Fact]
-    public void The_g1000_only_spoken_variables_have_rows_on_the_g1000_alone()
-    {
-        string[] g1000Only =
-        {
-            "C172G_AP_FD_STATE", "C172G_AP_FLC_STATE",
-            "C172G_COVER_ENGINE", "C172G_COVER_PITOT", "C172G_COVER_STATIC",
-            "C172G_AUDIO_TRANSMIT", "C172G_AUDIO_COM1", "C172G_AUDIO_COM2", "C172G_AUDIO_NAV1",
-            "C172G_AUDIO_NAV2", "C172G_AUDIO_DME", "C172G_AUDIO_ADF", "C172G_AUDIO_MKR_MUTE",
-            "C172G_AUDIO_HI_SENS", "C172G_AUDIO_SPKR",
-        };
-        var g1000 = RowKeys("C172_G1000");
-        var classic = RowKeys("C172_CLASSIC");
-
-        Assert.All(g1000Only, key => Assert.Contains(key, g1000));
-        Assert.All(g1000Only, key => Assert.DoesNotContain(key, classic));
-    }
-
     // The intercom's two SimVars are cached for the audio panel's status list and never spoken.
     [Fact]
     public void The_intercom_simvars_have_no_row()
     {
-        var g1000 = RowKeys("C172_G1000");
+        var keys = RowKeys();
 
-        Assert.DoesNotContain(CessnaC172G1000Definition.IntercomActiveKey, g1000);
-        Assert.DoesNotContain(CessnaC172G1000Definition.IntercomModeKey, g1000);
+        Assert.DoesNotContain(CessnaC172G1000Definition.IntercomActiveKey, keys);
+        Assert.DoesNotContain(CessnaC172G1000Definition.IntercomModeKey, keys);
     }
 }

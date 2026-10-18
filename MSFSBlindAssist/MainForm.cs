@@ -193,7 +193,7 @@ public partial class MainForm : Form
 
     private Forms.IFly737.IFly737MonitorManagerForm? iflyMonitorManagerForm;
 
-    // Cessna 172 monitor manager (Ctrl+M), one window for the Classic and the G1000.
+    // Cessna 172 monitor manager (Ctrl+M).
     private Forms.C172.CessnaC172MonitorManagerForm? c172MonitorManagerForm;
 
     private TakeoffAssistManager takeoffAssistManager = null!;

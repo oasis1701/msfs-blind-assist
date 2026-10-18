@@ -483,11 +483,6 @@ public partial class MainForm
         SwitchAircraft(new Aircraft.DA40.CowsDA40Definition(Aircraft.DA40.DA40Variant.XLS));
     }
 
-    private void CessnaC172ClassicMenuItem_Click(object? sender, EventArgs e)
-    {
-        SwitchAircraft(new CessnaC172ClassicDefinition());
-    }
-
     private void CessnaC172G1000MenuItem_Click(object? sender, EventArgs e)
     {
         SwitchAircraft(new CessnaC172G1000Definition());

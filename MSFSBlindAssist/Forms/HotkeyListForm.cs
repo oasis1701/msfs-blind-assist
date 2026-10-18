@@ -143,7 +143,6 @@ public partial class HotkeyListForm : Form
             { "COWS_DA40NG", "COWS_DA40_Hotkeys.txt" },
             { "COWS_DA40XLS", "COWS_DA40_Hotkeys.txt" },
             { "TFDI_MD11", "TFDi_MD11_Hotkeys.txt" },
-            { "C172_CLASSIC", "Cessna_C172_Hotkeys.txt" },
             { "C172_G1000", "Cessna_C172_Hotkeys.txt" }
         };
 

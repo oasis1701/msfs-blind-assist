@@ -5,7 +5,7 @@ using MSFSBlindAssist.SimConnect;
 namespace MSFSBlindAssist.Forms.C172;
 
 /// <summary>
-/// Per-variable background-announcement manager for the Cessna 172, Classic and G1000 (Ctrl+M).
+/// Per-variable background-announcement manager for the Cessna 172 G1000 (Ctrl+M).
 ///
 /// Rows come from <see cref="MonitorRowBuilder"/>: every Continuous + IsAnnounced variable minus
 /// those flagged ExcludeFromMonitorManager. On the C172 that is the autopilot modes, the stall

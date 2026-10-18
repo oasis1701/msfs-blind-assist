@@ -14,10 +14,9 @@ public class CessnaC172G1000AudioTests
     private static readonly CessnaC172G1000Definition Def = new();
 
     [Fact]
-    public void The_audio_panel_is_in_the_radios_section_of_the_g1000_alone()
+    public void The_audio_panel_is_in_the_radios_section()
     {
         Assert.Contains("Audio", Def.GetPanelStructure()["Radios"]);
-        Assert.DoesNotContain("Audio", new CessnaC172ClassicDefinition().GetPanelStructure()["Radios"]);
     }
 
     [Theory]

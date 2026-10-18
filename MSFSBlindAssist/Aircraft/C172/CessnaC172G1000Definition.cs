@@ -15,11 +15,12 @@ namespace MSFSBlindAssist.Aircraft;
 /// moves only `AVIONICS MASTER SWITCH:n` and leaves the avionics switches and buses where they were;
 /// `FUEL_SELECTOR_SET` does nothing. Setting the input event is what the cockpit switch itself does.
 ///
-/// THE READS ARE WHAT THE SWITCHES DRIVE: the main battery is index 2 (index 1 is the standby, the
-/// reverse of what the port assumed), the fuel pump, valve and selector are the new fuel system's
-/// (`FUELSYSTEM ...`), pitot heat is `PITOT HEAT SWITCH:1`. Three switches drive nothing a SimVar
-/// reports (the avionics buses and the standby battery), and the magneto key has no SimVar for its
-/// position, so those four are read from the input event itself (<see cref="SimVarType.InputEvent"/>).
+/// THE READS ARE WHAT THE SWITCHES DRIVE, and the base class holds them: the main battery is index 2
+/// (index 1 is the standby, the reverse of what the port assumed), the fuel pump, valve and selector
+/// are the new fuel system's (`FUELSYSTEM ...`), pitot heat is `PITOT HEAT SWITCH:1`. Three switches
+/// drive nothing a SimVar reports (the avionics buses and the standby battery), and the magneto key
+/// has no SimVar for its position, so those four are read from the input event itself
+/// (<see cref="SimVarType.InputEvent"/>).
 ///
 /// THE GFC 700 KEYS ARE PRESSED, NOT EMULATED: one set of `AS1000_AUTOPILOT_&lt;KEY&gt;_PFD` to 1 is one
 /// press of the bezel key, so every mode behaves as the real key does (AP engages in ROL and PIT, FD is
@@ -176,42 +177,10 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         var v = base.GetC172Variables();
 
         // ---------- Electrical ----------
-        v["C172_BATTERY_STATE"].Name = "ELECTRICAL MASTER BATTERY:2";
         v["C172G_STBY_BATTERY_STATE"] = InputEventState("ELECTRICAL_BATTERY_STBY_2", "Standby Battery",
             new() { [0] = "Arm", [1] = "Off" });
-        v["C172_AVIONICS1_STATE"] = InputEventState("ELECTRICAL_LINE_BUS_1_TO_AVIONICS_BUS_1", "Avionics Bus 1",
-            new() { [0] = "Off", [1] = "On" });
-        v["C172_AVIONICS2_STATE"] = InputEventState("ELECTRICAL_LINE_BUS_2_TO_AVIONICS_BUS_2", "Avionics Bus 2",
-            new() { [0] = "Off", [1] = "On" });
-
-        // ---------- Engine and fuel ----------
-        v["C172_MAGNETO"] = InputEventState("ENGINE_MAGNETO_1", "Magneto",
-            new() { [0] = "Off", [1] = "Right", [2] = "Left", [3] = "Both" });
-        // The Starter turns that key to START, which springs back by itself (C172-6).
-        v["C172_STARTER_SET"] = KeyPress(StarterInputEvent, "Starter");
-        v["C172_FUEL_PUMP_STATE"].Name = "FUELSYSTEM PUMP SWITCH:1";
-        v["C172_FUEL_VALVE_STATE"].Name = "FUELSYSTEM VALVE SWITCH:1";
-        v["C172_FUEL_SELECTOR"] = new SimVarDefinition
-        {
-            Name = "FUELSYSTEM JUNCTION SETTING:1",
-            DisplayName = "Fuel Selector",
-            Type = SimVarType.SimVar,
-            Units = "number",
-            UpdateFrequency = UpdateFrequency.OnRequest,
-            ValueDescriptions = FuelSelectorPositions()
-        };
-
-        // ---------- Lights ----------
-        // The SWITCH, not the lamp: `LIGHT NAV ON` is 1 only while the lamp is lit, so with the
-        // battery off a switched-on light read Off (measured); `LIGHT NAV` follows the switch.
-        v["C172_NAV_LIGHT_STATE"].Name = "LIGHT NAV";
-        v["C172_BEACON_STATE"].Name = "LIGHT BEACON";
-        v["C172_STROBE_STATE"].Name = "LIGHT STROBE";
-        v["C172_LANDING_LIGHT_STATE"].Name = "LIGHT LANDING";
-        v["C172_TAXI_LIGHT_STATE"].Name = "LIGHT TAXI";
 
         // ---------- Anti-ice and instruments ----------
-        v["C172_PITOT_HEAT_STATE"].Name = "PITOT HEAT SWITCH:1";
         v["C172G_ALT_STATIC_STATE"] = new SimVarDefinition
         {
             Name = "ALTERNATE STATIC SOURCE OPEN",
@@ -345,26 +314,6 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
     }
 
     /// <summary>
-    /// The fuel selector's positions by `FUELSYSTEM JUNCTION SETTING:1`, which the selector's input
-    /// value 0, 1, 2 sets to 1, 2, 3. Measured with the engine running at 1,500 rpm, 40 s a setting:
-    /// on 1 only the left tank drained, on 2 both drained equally, on 3 only the right. The
-    /// cold-and-dark flight starts on 1, LEFT; the sim's own autostart moves it to BOTH.
-    /// </summary>
-    internal static Dictionary<double, string> FuelSelectorPositions() =>
-        new() { [1] = "Left", [2] = "Both", [3] = "Right" };
-
-    private static SimVarDefinition InputEventState(string inputEvent, string displayName,
-        Dictionary<double, string> positions) => new()
-    {
-        Name = inputEvent,
-        DisplayName = displayName,
-        Type = SimVarType.InputEvent,
-        Units = "number",
-        UpdateFrequency = UpdateFrequency.OnRequest,
-        ValueDescriptions = positions
-    };
-
-    /// <summary>
     /// A push-pull cabin lever in quarter steps. Its input event takes and SimConnect reads back the
     /// opening in PERCENT (live: 50 written, 50 delivered). The Coherent debugger's `B:` read shows the
     /// same lever as a fraction (0.5); a combo keyed on that fraction read every SimConnect delivery as
@@ -432,16 +381,6 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         ValueDescriptions = new Dictionary<double, string> { [0] = "Removed", [1] = "Installed" }
     };
 
-    /// <summary>A bezel key with no state of its own: never read, only pressed.</summary>
-    private static SimVarDefinition KeyPress(string inputEvent, string displayName) => new()
-    {
-        Name = inputEvent,
-        DisplayName = displayName,
-        Type = SimVarType.InputEvent,
-        UpdateFrequency = UpdateFrequency.Never,
-        RenderAsButton = true
-    };
-
     public override Dictionary<string, List<string>> GetPanelStructure()
     {
         var structure = base.GetPanelStructure();
@@ -462,7 +401,6 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         var controls = base.BuildPanelControls();
         controls["Standby Battery"] = new List<string> { "C172G_STBY_BATTERY_STATE" };
 
-        controls.Remove("KAP140");
         controls[AutopilotPanel] = new List<string>
         {
             "C172_AP_MASTER_STATE", "C172G_AP_FD_STATE",

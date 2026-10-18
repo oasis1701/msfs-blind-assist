@@ -357,8 +357,8 @@ public partial class MainForm
                     return; // Skip announcement for disabled variable
                 }
 
-                // Check if disabled in the Cessna 172 Monitor Manager. The Classic and the
-                // G1000 ("C172_CLASSIC", "C172_G1000") share one list.
+                // Check if disabled in the Cessna 172 Monitor Manager ("C172_G1000"; any later
+                // C172 variant shares the one list).
                 if (currentAircraft.AircraftCode.StartsWith("C172_", StringComparison.Ordinal) &&
                     Settings.SettingsManager.Current.C172DisabledMonitorVariablesSet.Contains(e.VarName))
                 {
