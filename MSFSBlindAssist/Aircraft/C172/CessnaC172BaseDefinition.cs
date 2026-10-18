@@ -830,11 +830,8 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
                     "HEADING_BUG_SET", simConnect, announcer, parentForm,
                     input =>
                     {
-                        // #242's dialogs still parse with double.TryParse (NumberParsing reached main a
-                        // day after #242 branched), so these match them. Switch all four, and
-                        // ShowValueDialog's parse, to NumberParsing.TryParseTyped (CORE-17) once this
-                        // branch takes main.
-                        if (double.TryParse(input, out double val) && val >= 0 && val <= 359)
+                        // Parsed as the pilot types it, every C172 value window alike (CORE-17).
+                        if (Utils.NumberParsing.TryParseTyped(input, out double val) && val >= 0 && val <= 359)
                             return (true, string.Empty);
                         return (false, "Enter a heading between 0 and 359");
                     });
@@ -846,7 +843,7 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
                     "AP_ALT_VAR_SET_ENGLISH", simConnect, announcer, parentForm,
                     input =>
                     {
-                        if (double.TryParse(input, out double val) && val >= 0 && val <= 25000)
+                        if (Utils.NumberParsing.TryParseTyped(input, out double val) && val >= 0 && val <= 25000)
                             return (true, string.Empty);
                         return (false, "Enter an altitude between 0 and 25000 feet");
                     });
@@ -858,7 +855,7 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
                     "AP_VS_VAR_SET_ENGLISH", simConnect, announcer, parentForm,
                     input =>
                     {
-                        if (double.TryParse(input, out double val) && val >= -2000 && val <= 2000)
+                        if (Utils.NumberParsing.TryParseTyped(input, out double val) && val >= -2000 && val <= 2000)
                             return (true, string.Empty);
                         return (false, "Enter a vertical speed between -2000 and 2000 fpm");
                     },
@@ -873,7 +870,7 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
                     "KOHLSMAN_SET", simConnect, announcer, parentForm,
                     input =>
                     {
-                        if (double.TryParse(input, out double val) && val >= 28.00 && val <= 31.00)
+                        if (Utils.NumberParsing.TryParseTyped(input, out double val) && val >= 28.00 && val <= 31.00)
                             return (true, string.Empty);
                         return (false, "Enter barometric pressure between 28.00 and 31.00 inHg");
                     },
@@ -947,7 +944,9 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
     /// A typed value in a window that STAYS OPEN after Enter, so the next value can be typed straight
     /// away, as every other aircraft's value dialogs do (the owner's test, 2026-10-17: the C172's alone
     /// closed). `ValueInputForm`'s callback mode applies each Enter and keeps the window; Escape closes it.
-    /// Not modal. <paramref name="apply"/> runs on the UI thread with the parsed value.
+    /// Not modal. <paramref name="apply"/> runs on the UI thread with the parsed value, parsed as the
+    /// validator parses it (`NumberParsing.TryParseTyped`, CORE-17): with the PC's culture here, an
+    /// English PC read a typed "85,5" as 855 after the validator had read 85.5.
     /// </summary>
     protected static bool ShowValueDialog(string title, string parameterType, string rangeText,
         SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer, Form parentForm,
@@ -963,7 +962,7 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
             new List<Forms.ToggleButtonDef>(),
             input =>
             {
-                if (double.TryParse(input, out double value)) apply(value);
+                if (Utils.NumberParsing.TryParseTyped(input, out double value)) apply(value);
             });
         dialog.ShowCancelButton = false;
         dialog.Show(parentForm);
@@ -981,7 +980,9 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
         => ShowValueDialog(title, parameterType, rangeText, simConnect, announcer, parentForm, validator, value =>
         {
             simConnect.SendEvent(eventName, valueConverter != null ? valueConverter(value) : (uint)value);
-            announcer.AnnounceImmediate($"{parameterType} set to {value}");
+            // Invariant, so the confirmation says the dot the pilot typed on a comma-decimal PC too.
+            announcer.AnnounceImmediate(string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"{parameterType} set to {value}"));
         });
 
     public override void RequestFCUHeading(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)

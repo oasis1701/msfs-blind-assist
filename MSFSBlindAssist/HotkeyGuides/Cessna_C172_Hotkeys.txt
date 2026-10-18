@@ -190,6 +190,8 @@ Autopilot:
   Ctrl+H     Set the heading bug (0 to 359)
   Ctrl+A     Set the selected altitude (0 to 25000 feet), which FLC climbs or
              descends to; FLC is refused until an altitude has been selected.
+  Ctrl+S     Set the selected airspeed FLC flies (48 to 160 knots, the C172's
+             stall and never-exceed speeds)
   Ctrl+V     Set the autopilot vertical speed (-2000 to 2000 feet per minute)
   These value windows stay open after Enter, so you can type the next value
   straight away; Escape closes them.

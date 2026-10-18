@@ -841,6 +841,12 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
             return ShowSelectedAltitudeDialog(simConnect, announcer, parentForm);
         }
 
+        if (action == HotkeyAction.FCUSetSpeed)
+        {
+            hotkeyManager.ExitInputHotkeyMode();
+            return ShowSelectedAirspeedDialog(simConnect, announcer, parentForm);
+        }
+
         // Output+Shift+A, H, S and V: the GFC 700's SELECTED values, each read fresh (C172-19) and
         // followed by its mode when that mode is active (C172-21): "Heading bug 270, HDG active".
         if (SelectedValueKeys.TryGetValue(action, out var selected))
@@ -862,11 +868,10 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
     /// </summary>
     private static bool ShowSelectedAltitudeDialog(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, Form parentForm)
     {
-        // #242's dialogs still parse with double.TryParse (NumberParsing reached main a day after
-        // #242 branched), so this matches them. Switch to NumberParsing.TryParseTyped (CORE-17) once
-        // this branch takes main. The window stays open after Enter, as the other aircraft's do.
+        // Parsed as the pilot types it (CORE-17). The window stays open after Enter, as the other
+        // aircraft's do.
         return ShowValueDialog("Set Selected Altitude", "Altitude", "0 to 25000 feet", simConnect, announcer, parentForm,
-            input => double.TryParse(input, out double val) && val >= 0 && val <= 25000
+            input => Utils.NumberParsing.TryParseTyped(input, out double val) && val >= 0 && val <= 25000
                 ? (true, string.Empty)
                 : (false, "Enter an altitude between 0 and 25000 feet"),
             typed =>
@@ -877,6 +882,41 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
                 announcer.AnnounceImmediate($"Selected altitude {feet.ToString(CultureInfo.CurrentCulture)} feet");
             });
     }
+
+    /// <summary>
+    /// The aircraft's own speed limits for a typed FLC target (C172-22), read from the sim on
+    /// 2026-10-18: `DESIGN SPEED VS1` 48 knots (the clean stall) and `AIRSPEED BARBER POLE` 160
+    /// (never exceed). The GFC 700 itself took any number (300 and 20 both held), so outside these a
+    /// typed value is a typo, refused aloud, never clamped.
+    /// </summary>
+    internal const double FlcMinKnots = 48, FlcMaxKnots = 160;
+
+    /// <summary>
+    /// The FLC airspeed, typed: `AP_SPD_VAR_SET` in whole knots (measured: 90 set 90), the value the
+    /// FLC mode flies when engaged, which Output+Shift+S reads back. The window stays open after Enter.
+    /// </summary>
+    private static bool ShowSelectedAirspeedDialog(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, Form parentForm)
+    {
+        return ShowValueDialog("Set Selected Airspeed", "Airspeed",
+            string.Create(CultureInfo.InvariantCulture, $"{FlcMinKnots:0} to {FlcMaxKnots:0} knots"),
+            simConnect, announcer, parentForm,
+            input => ValidateSelectedAirspeed(input) is string refusal ? (false, refusal) : (true, string.Empty),
+            typed =>
+            {
+                int knots = (int)Math.Round(typed);
+                simConnect.SendEvent("AP_SPD_VAR_SET", (uint)knots);
+                announcer.AnnounceImmediate(DescribeSelectedAirspeed(knots));
+            });
+    }
+
+    /// <summary>
+    /// Why a typed FLC airspeed is refused, or null when it is taken. Parsed as the pilot types it
+    /// (CORE-17). Pure so the suite can pin it.
+    /// </summary>
+    internal static string? ValidateSelectedAirspeed(string input) =>
+        Utils.NumberParsing.TryParseTyped(input, out double knots) && knots >= FlcMinKnots && knots <= FlcMaxKnots
+            ? null
+            : string.Create(CultureInfo.InvariantCulture, $"Enter an airspeed between {FlcMinKnots:0} and {FlcMaxKnots:0} knots");
 
     /// <summary>The exact altitude, half a second after the knob step, on the UI thread.</summary>
     private static async Task WriteSelectedAltitudeAfterStepAsync(SimConnectManager simConnect, int feet)
