@@ -212,6 +212,7 @@ public class CessnaC172G1000ControlsTests
     [Theory]
     [InlineData("en-US")]
     [InlineData("de-DE")]
+    [InlineData("sv-SE")]   // writes its own minus as U+2212; the target keeps the ASCII one
     public void The_nose_wheel_targets_read_the_same_in_every_culture(string culture)
     {
         var saved = System.Globalization.CultureInfo.CurrentCulture;
@@ -222,9 +223,10 @@ public class CessnaC172G1000ControlsTests
             Assert.Equal("Pitch up 3.7 degrees", CessnaC172G1000Definition.DescribePitchTarget(-3.7));
             Assert.Equal("Pitch down 1.5 degrees", CessnaC172G1000Definition.DescribePitchTarget(1.5));
             Assert.Equal("Pitch level", CessnaC172G1000Definition.DescribePitchTarget(0.04));
-            Assert.Equal("Vertical speed 200 feet per minute up", CessnaC172G1000Definition.DescribeVerticalSpeedTarget(200));
-            Assert.Equal("Vertical speed 500 feet per minute down", CessnaC172G1000Definition.DescribeVerticalSpeedTarget(-500));
-            Assert.Equal("Vertical speed level", CessnaC172G1000Definition.DescribeVerticalSpeedTarget(0));
+            // Signed, as the A320's FCU and the iFly's MCP say theirs (the owner's choice, 2026-10-18).
+            Assert.Equal("Vertical speed +200 feet per minute", CessnaC172G1000Definition.DescribeVerticalSpeedTarget(200));
+            Assert.Equal("Vertical speed -500 feet per minute", CessnaC172G1000Definition.DescribeVerticalSpeedTarget(-500));
+            Assert.Equal("Vertical speed 0 feet per minute", CessnaC172G1000Definition.DescribeVerticalSpeedTarget(0));
             Assert.Equal("Airspeed 85 knots", CessnaC172G1000Definition.DescribeAirspeedTarget(84.6));
         }
         finally

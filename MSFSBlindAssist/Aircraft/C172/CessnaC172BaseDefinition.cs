@@ -46,38 +46,30 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
         var v = new Dictionary<string, SimConnect.SimVarDefinition>
         {
             // ===== ELECTRICAL =====
+            // Every settable switch is Continuous and announced, as on the other aircraft: one moved
+            // outside MSFSBA (hardware, the sim's own keys or checklist) is spoken, the panel's own
+            // pick once (CORE-8), and each has a Ctrl+M row (C172-20).
 
             // The MAIN battery is index 2; index 1 is the standby (C172-1).
-            ["C172_BATTERY_STATE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "ELECTRICAL MASTER BATTERY:2",
-                DisplayName = "Battery Master",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "Bool",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-            },
-            ["C172_ALTERNATOR_STATE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "GENERAL ENG MASTER ALTERNATOR:1",
-                DisplayName = "Alternator",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "Bool",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-            },
+            ["C172_BATTERY_STATE"] = AnnouncedSwitch("ELECTRICAL MASTER BATTERY:2", "Battery Master", "Bool",
+                new() { [0] = "Off", [1] = "On" }),
+            // Follows the switch, not the alternator's output (measured: 1 with the engine stopped).
+            ["C172_ALTERNATOR_STATE"] = AnnouncedSwitch("GENERAL ENG MASTER ALTERNATOR:1", "Alternator", "Bool",
+                new() { [0] = "Off", [1] = "On" }),
             // The avionics bus switches drive nothing a SimVar reports (`AVIONICS MASTER SWITCH:n` only
             // follows `AVIONICS_MASTER_n_SET`, which the buses ignore), so they are read from the switch.
             ["C172_AVIONICS1_STATE"] = InputEventState("ELECTRICAL_LINE_BUS_1_TO_AVIONICS_BUS_1", "Avionics Bus 1",
-                new() { [0] = "Off", [1] = "On" }),
+                new() { [0] = "Off", [1] = "On" }, announced: true),
             ["C172_AVIONICS2_STATE"] = InputEventState("ELECTRICAL_LINE_BUS_2_TO_AVIONICS_BUS_2", "Avionics Bus 2",
-                new() { [0] = "Off", [1] = "On" }),
+                new() { [0] = "Off", [1] = "On" }, announced: true),
 
             // ===== ENGINE =====
 
-            // The magneto key has no SimVar for its position: read from the key itself.
-            ["C172_MAGNETO"] = InputEventState("ENGINE_MAGNETO_1", "Magneto",
-                new() { [0] = "Off", [1] = "Right", [2] = "Left", [3] = "Both" }),
+            // The magneto key has no SimVar for its position: read from the key itself. Its START (4),
+            // the Starter's, is not listed: the turn there and the spring back to BOTH are the
+            // Starter's and stay quiet (`IsStarterTurnOfTheKey`), the combo still following the key.
+            ["C172_MAGNETO"] = WithRefresh(InputEventState("ENGINE_MAGNETO_1", "Magneto",
+                new() { [0] = "Off", [1] = "Right", [2] = "Left", [3] = "Both" }, announced: true), v => v < 3.5),
             // The same key turned to START (4), which springs back by itself (C172-6).
             ["C172_STARTER_SET"] = KeyPress("ENGINE_MAGNETO_1", "Starter"),
             ["C172_MIXTURE_STATE"] = new SimConnect.SimVarDefinition
@@ -113,96 +105,40 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
                 RenderAsButton = true
             },
             // The fuel pump, valve and selector are the new fuel system's (C172-2, C172-5).
-            ["C172_FUEL_PUMP_STATE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FUELSYSTEM PUMP SWITCH:1",
-                DisplayName = "Fuel Pump",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "Bool",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-            },
+            ["C172_FUEL_PUMP_STATE"] = AnnouncedSwitch("FUELSYSTEM PUMP SWITCH:1", "Fuel Pump", "Bool",
+                new() { [0] = "Off", [1] = "On" }),
 
             // ===== FUEL =====
 
-            ["C172_FUEL_SELECTOR"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FUELSYSTEM JUNCTION SETTING:1",
-                DisplayName = "Fuel Selector",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "number",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = FuelSelectorPositions()
-            },
-            ["C172_FUEL_VALVE_STATE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FUELSYSTEM VALVE SWITCH:1",
-                DisplayName = "Fuel Shutoff Valve",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "Bool",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
-            },
+            ["C172_FUEL_SELECTOR"] = AnnouncedSwitch("FUELSYSTEM JUNCTION SETTING:1", "Fuel Selector", "number",
+                FuelSelectorPositions()),
+            ["C172_FUEL_VALVE_STATE"] = AnnouncedSwitch("FUELSYSTEM VALVE SWITCH:1", "Fuel Shutoff Valve", "Bool",
+                new() { [0] = "Closed", [1] = "Open" }),
 
             // ===== LIGHTS =====
             // The SWITCH, not the lamp: `LIGHT NAV ON` is 1 only while the lamp is lit, so with the
             // battery off a switched-on light read Off (measured); `LIGHT NAV` follows the switch.
 
-            ["C172_NAV_LIGHT_STATE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "LIGHT NAV",
-                DisplayName = "Nav Lights",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "Bool",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-            },
-            ["C172_BEACON_STATE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "LIGHT BEACON",
-                DisplayName = "Beacon",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "Bool",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-            },
-            ["C172_STROBE_STATE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "LIGHT STROBE",
-                DisplayName = "Strobe Lights",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "Bool",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-            },
-            ["C172_LANDING_LIGHT_STATE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "LIGHT LANDING",
-                DisplayName = "Landing Light",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "Bool",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-            },
-            ["C172_TAXI_LIGHT_STATE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "LIGHT TAXI",
-                DisplayName = "Taxi Light",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "Bool",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-            },
+            ["C172_NAV_LIGHT_STATE"] = AnnouncedSwitch("LIGHT NAV", "Nav Lights", "Bool", new() { [0] = "Off", [1] = "On" }),
+            ["C172_BEACON_STATE"] = AnnouncedSwitch("LIGHT BEACON", "Beacon", "Bool", new() { [0] = "Off", [1] = "On" }),
+            ["C172_STROBE_STATE"] = AnnouncedSwitch("LIGHT STROBE", "Strobe Lights", "Bool", new() { [0] = "Off", [1] = "On" }),
+            ["C172_LANDING_LIGHT_STATE"] = AnnouncedSwitch("LIGHT LANDING", "Landing Light", "Bool",
+                new() { [0] = "Off", [1] = "On" }),
+            ["C172_TAXI_LIGHT_STATE"] = AnnouncedSwitch("LIGHT TAXI", "Taxi Light", "Bool", new() { [0] = "Off", [1] = "On" }),
 
             // ===== FLIGHT CONTROLS =====
 
+            // The flap lever's notch, measured against the flap angle (0, 10, 20, 30 degrees, C172-19).
+            // Continuous and announced, as the other aircraft's flap levers are: a move by any
+            // means is spoken ("Flaps: 10 degrees"), the panel's own pick once (CORE-8).
             ["C172_FLAPS"] = new SimConnect.SimVarDefinition
             {
                 Name = "FLAPS HANDLE INDEX:1",
                 DisplayName = "Flaps",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "number",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string>
                 {
                     [0] = "Up",
@@ -227,27 +163,23 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Never,
                 RenderAsButton = true
             },
+            // Set and released are spoken whoever moves it, as on the other aircraft.
             ["C172_PARKING_BRAKE_STATE"] = new SimConnect.SimVarDefinition
             {
                 Name = "BRAKE PARKING POSITION",
                 DisplayName = "Parking Brake",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "Bool",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Set" }
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                // "Released", as the DA40 (the other G1000 piston) and its checklist say it.
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Released", [1] = "Set" }
             },
 
             // ===== ANTI-ICE =====
 
-            ["C172_PITOT_HEAT_STATE"] = new SimConnect.SimVarDefinition
-            {
-                Name = "PITOT HEAT SWITCH:1",
-                DisplayName = "Pitot Heat",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "Bool",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-            },
+            ["C172_PITOT_HEAT_STATE"] = AnnouncedSwitch("PITOT HEAT SWITCH:1", "Pitot Heat", "Bool",
+                new() { [0] = "Off", [1] = "On" }),
 
             // ===== AUTOPILOT MODES =====
             // RenderAsButton + Continuous + IsAnnounced: each mode is a self-updating button that
@@ -507,6 +439,23 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "knots",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+            },
+            // Output+Shift+W, read fresh: 2078 and 2558 pounds measured on the stock aircraft.
+            ["C172_TOTAL_WEIGHT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "TOTAL WEIGHT",
+                DisplayName = "Gross Weight",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "pounds",
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+            },
+            ["C172_MAX_GROSS_WEIGHT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "MAX GROSS WEIGHT",
+                DisplayName = "Maximum Gross Weight",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "pounds",
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
             }
         };
 
@@ -539,17 +488,58 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
         "C172_MAIN_BUS_VOLTS", "C172_ESS_BUS_VOLTS", "C172_CHT", "C172_ENGINE_HOURS",
     };
 
-    /// <summary>A switch read from its own cockpit input event, for one no SimVar reports (SIM-24).</summary>
+    /// <summary>
+    /// A switch read from its own cockpit input event, for one no SimVar reports (SIM-24). An
+    /// <paramref name="announced"/> switch is spoken when it moves outside MSFSBA (C172-20); its
+    /// subscription keeps the cache current, and it never takes a batch slot.
+    /// </summary>
     protected static SimConnect.SimVarDefinition InputEventState(string inputEvent, string displayName,
-        Dictionary<double, string> positions) => new()
+        Dictionary<double, string> positions, bool announced = false) => new()
     {
         Name = inputEvent,
         DisplayName = displayName,
         Type = SimConnect.SimVarType.InputEvent,
         Units = "number",
-        UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+        UpdateFrequency = announced ? SimConnect.UpdateFrequency.Continuous : SimConnect.UpdateFrequency.OnRequest,
+        IsAnnounced = announced,
         ValueDescriptions = positions
     };
+
+    /// <summary>
+    /// A switch read through the SimVar it drives, Continuous and announced (C172-20): in the batch,
+    /// spoken when it moves outside MSFSBA, with a Ctrl+M row.
+    /// </summary>
+    protected static SimConnect.SimVarDefinition AnnouncedSwitch(string simVar, string displayName, string units,
+        Dictionary<double, string> positions) => new()
+    {
+        Name = simVar,
+        DisplayName = displayName,
+        Type = SimConnect.SimVarType.SimVar,
+        Units = units,
+        UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+        IsAnnounced = true,
+        ValueDescriptions = positions
+    };
+
+    /// <summary>
+    /// A switch whose update ProcessSimVarUpdate sometimes handles silently, still refreshing its combo
+    /// in an open panel for the values <paramref name="refreshFor"/> accepts.
+    /// </summary>
+    protected static SimConnect.SimVarDefinition WithRefresh(SimConnect.SimVarDefinition def, Func<double, bool> refreshFor)
+    {
+        def.RefreshControlWhenDefHandled = refreshFor;
+        return def;
+    }
+
+    /// <summary>
+    /// Whether a magneto reading is the Starter's own turn of the key: to START (4), or the spring
+    /// back from START to wherever it lands (BOTH, measured 3.0 to 3.6 s in, C172-6). Both are the
+    /// Starter's, not a magneto change, so neither is spoken. Pure so the suite can pin it.
+    /// </summary>
+    internal static bool IsStarterTurnOfTheKey(bool wasAtStart, double value) => wasAtStart || value >= 3.5;
+
+    /// <summary>The magneto key was last at START, so its next reading is the spring back. UI thread only.</summary>
+    private bool _magnetoAtStart;
 
     /// <summary>A key with no state of its own: never read, only pressed.</summary>
     protected static SimConnect.SimVarDefinition KeyPress(string inputEvent, string displayName) => new()
@@ -733,20 +723,6 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
             // ReadHeadingTrue, ReadBankAngle, ReadPitch are ALL handled universally by MainForm.
             // Do NOT intercept them here — let them fall through.
 
-            // Output+Shift+V — read AP vertical speed setting
-            case HotkeyAction.ReadFCUVerticalSpeedFPA:
-            {
-                double? vs = simConnect.GetCachedVariableValue("C172_AP_VS_VALUE");
-                if (vs.HasValue)
-                    announcer.AnnounceImmediate($"Vertical speed {vs.Value:F0} feet per minute");
-                else
-                {
-                    simConnect.RequestVariable("C172_AP_VS_VALUE");
-                    announcer.AnnounceImmediate("Requesting vertical speed");
-                }
-                return true;
-            }
-
             // Output+F — read fuel quantity
             case HotkeyAction.ReadFuelQuantity:
             {
@@ -813,64 +789,27 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
                     });
                 return true;
 
-            // Output+L — read flaps position
+            // Output+L — the flap handle's notch, read fresh (C172-19)
             case HotkeyAction.ReadFlaps:
-            {
-                double? flaps = simConnect.GetCachedVariableValue("C172_FLAPS");
-                if (flaps.HasValue)
-                {
-                    string position = (int)flaps.Value switch
-                    {
-                        0 => "Up",
-                        1 => "10 degrees",
-                        2 => "20 degrees",
-                        3 => "Full",
-                        _ => flaps.Value.ToString()
-                    };
-                    announcer.AnnounceImmediate($"Flaps {position}");
-                }
-                else
-                {
-                    simConnect.RequestVariable("C172_FLAPS");
-                    announcer.AnnounceImmediate("Requesting flaps");
-                }
+                _ = SayFreshAsync(simConnect, announcer, "C172_FLAPS", CessnaC172Gauges.DescribeFlaps,
+                    "Flap position not available");
                 return true;
-            }
 
             // Output+Shift+G — read gear
             case HotkeyAction.ReadGear:
                 announcer.AnnounceImmediate("Fixed landing gear");
                 return true;
 
-            // Output+B — read altimeter setting
+            // Output+B — the altimeter setting, read fresh (C172-19)
             case HotkeyAction.ReadAltimeter:
-            {
-                double? mb = simConnect.GetCachedVariableValue("C172_ALTIMETER");
-                if (mb.HasValue)
-                {
-                    double inHg = mb.Value * 0.02953;
-                    int hpa = (int)Math.Round(mb.Value);
-                    if (Math.Abs(inHg - 29.92) < 0.005)
-                        announcer.AnnounceImmediate("Altimeter standard");
-                    else
-                        announcer.AnnounceImmediate($"Altimeter: {hpa}, {inHg:F2}");
-                }
-                else
-                {
-                    simConnect.RequestVariable("C172_ALTIMETER");
-                    announcer.AnnounceImmediate("Requesting altimeter");
-                }
+                _ = SayFreshAsync(simConnect, announcer, "C172_ALTIMETER", CessnaC172Gauges.DescribeAltimeter,
+                    "Altimeter setting not available");
                 return true;
-            }
 
-            // Output+Shift+W — read gross weight
+            // Output+Shift+W — gross weight and the maximum, read fresh (C172-19)
             case HotkeyAction.ReadGrossWeightKg:
-            {
-                simConnect.RequestSingleValue(
-                    (int)SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_GROSS_WEIGHT_KG,
-                    "TOTAL WEIGHT", "pounds", "GROSS_WEIGHT_KG");
+                _ = AnnounceGrossWeightAsync(simConnect, announcer);
                 return true;
-            }
 
             // Output+W — read waypoint info (handled by MainForm, but return false to pass through)
             // ReadWaypointInfo is handled by MainForm universally
@@ -974,6 +913,31 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
         }) ?? "Engine power not available yet");
     }
 
+    /// <summary>
+    /// A readout of an on-request value, read fresh and spoken (C172-19). The cache holds such a
+    /// value's LAST fetch, however old, or nothing at all: from it, the keys answered "Requesting
+    /// flaps" and then nothing, or a flap position from before the flaps last moved. On the UI thread.
+    /// </summary>
+    protected static async Task SayFreshAsync(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
+        string varKey, Func<double, string> describe, string unavailable)
+    {
+        announcer.AnnounceImmediate(await simConnect.ReadFreshAsync(varKey, 1500) is double value
+            ? describe(value) + "."
+            : unavailable);
+    }
+
+    /// <summary>Output+Shift+W: the gross weight and the maximum, both read fresh. On the UI thread.</summary>
+    private static async Task AnnounceGrossWeightAsync(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        if (await simConnect.ReadFreshAsync("C172_TOTAL_WEIGHT", 1500) is not double pounds)
+        {
+            announcer.AnnounceImmediate("Gross weight not available");
+            return;
+        }
+        double? max = await simConnect.ReadFreshAsync("C172_MAX_GROSS_WEIGHT", 1500);
+        announcer.AnnounceImmediate(CessnaC172Gauges.DescribeGrossWeight(pounds, max) + ".");
+    }
+
     internal static string Percent(double value) =>
         Math.Round(value).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " percent";
 
@@ -1057,6 +1021,14 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
         // A mode the variant's own display speaks (the G1000's FMA). Handled, so the generic
         // announcer does not say it a second time; after the master's tracking above.
         if (IsAutopilotModeSpokenElsewhere(varName, value)) return true;
+
+        // The Starter's turn of the magneto key and its spring back are not magneto changes.
+        if (varName == "C172_MAGNETO")
+        {
+            bool starterTurn = IsStarterTurnOfTheKey(_magnetoAtStart, value);
+            _magnetoAtStart = value >= 3.5;
+            if (starterTurn) return true;
+        }
 
         // RPM redline warning
         if (varName == "C172_ENGINE_RPM")

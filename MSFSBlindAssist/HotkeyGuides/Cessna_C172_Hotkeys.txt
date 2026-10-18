@@ -57,16 +57,16 @@ Fuel:
              current flow
 
 Weight:
-  Shift+W    Read Gross Weight (kilograms)
+  Shift+W    Read Gross Weight in kilograms and pounds, and the maximum
 
 Flaps:
-  L          Read Flap Position (Up, 10 degrees, 20 degrees, Full)
+  L          Read Flap Position (Up, 10 degrees, 20 degrees, Full: 30 degrees)
 
 Landing Gear:
   Shift+G    Says the gear is fixed
 
 Altimeter:
-  B          Read Altimeter Setting (hPa and inHg, or Standard)
+  B          Read Altimeter Setting (inches, then hectopascals)
 
 Vertical:
   V          Read Vertical Speed
@@ -121,9 +121,9 @@ Traffic and Weather:
 
 Displays and Windows:
   Ctrl+M     Cessna 172 Monitor Manager - a checklist of what the C172
-             announces by itself through MSFS Blind Assist (the RPM redline, the
-             stall warning, the autopilot and flight director going off, the
-             covers, the audio panel keys). Untick any you don't want spoken; the
+             announces by itself through MSFS Blind Assist (the switches, the
+             RPM redline, the stall warning, the autopilot and flight director
+             going off, the covers, the audio panel keys). Untick any you don't want spoken; the
              choice is saved. Readout hotkeys are unaffected. The G1000's own
              warnings and autopilot modes are not in it (see below).
   Shift+E    Route viewer, procedure planner and airport lookup
@@ -225,6 +225,11 @@ Automatic Announcements:
   - The autopilot status line (the active and armed modes) as it changes,
     and the autopilot or flight director going off
   - Engine RPM above 2700
+  - Any switch moved outside MSFS Blind Assist (from hardware, the sim's own
+    keys or its checklist): battery, alternator, avionics, magneto, fuel
+    pump, selector and valve, lights, pitot heat, the parking brake (set and
+    released), the flap lever, the standby battery, alternate static air
+    and the ELT. Your own picks in the panels are not repeated.
   - Stall warning, on and off
   - A walkaround cover installed or removed
   - A circuit breaker that pops or goes back in by itself

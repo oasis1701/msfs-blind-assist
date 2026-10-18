@@ -177,19 +177,14 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         var v = base.GetC172Variables();
 
         // ---------- Electrical ----------
+        // Announced like every switch (C172-20). Its TEST (2) springs back to OFF by itself and is
+        // not listed, so it is never spoken (`IsUnlistedSwitchPosition`).
         v["C172G_STBY_BATTERY_STATE"] = InputEventState("ELECTRICAL_BATTERY_STBY_2", "Standby Battery",
-            new() { [0] = "Arm", [1] = "Off" });
+            new() { [0] = "Arm", [1] = "Off" }, announced: true);
 
         // ---------- Anti-ice and instruments ----------
-        v["C172G_ALT_STATIC_STATE"] = new SimVarDefinition
-        {
-            Name = "ALTERNATE STATIC SOURCE OPEN",
-            DisplayName = "Alternate Static Air",
-            Type = SimVarType.SimVar,
-            Units = "Bool",
-            UpdateFrequency = UpdateFrequency.OnRequest,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
-        };
+        v["C172G_ALT_STATIC_STATE"] = AnnouncedSwitch("ALTERNATE STATIC SOURCE OPEN", "Alternate Static Air", "Bool",
+            new() { [0] = "Closed", [1] = "Open" });
 
         // ---------- Covers ----------
         // MSFS 2024 can park the aeroplane with its walkaround covers on, and the engine does not
@@ -236,8 +231,8 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         // ---------- ELT ----------
         // 0 ON transmits (`ELT ACTIVATED` 1), 1 ARM is where it rests and stops a transmission, the
         // real reset. The switch also holds a 2 that stopped a transmission too; its name is not known,
-        // so it is not offered.
-        v["C172G_ELT"] = InputEventState("SAFETY_ELT_1", "ELT", new() { [0] = "On", [1] = "Arm" });
+        // so it is not offered, and never spoken (`IsUnlistedSwitchPosition`). Announced (C172-20).
+        v["C172G_ELT"] = InputEventState("SAFETY_ELT_1", "ELT", new() { [0] = "On", [1] = "Arm" }, announced: true);
 
         // ---------- GFC 700 ----------
         // The modes the base class already reads (AP, HDG, ALT, NAV, APR, BC, VS) keep their keys and
@@ -558,6 +553,7 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
     {
         _loadSettle.NoteChange();
         if (NoteAudioUpdate(varName, value, announcer)) return true;
+        if (IsUnlistedSwitchPosition(varName, value)) return true;
 
         if (BreakerInputEvents.ContainsKey(varName))
         {
@@ -569,6 +565,14 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         }
         return base.ProcessSimVarUpdate(varName, value, announcer);
     }
+
+    /// <summary>
+    /// A switch position the panel does not offer, never spoken as a bare number: the standby
+    /// battery's TEST (2), which springs back to OFF by itself, and the ELT's unnamed 2. Pure so
+    /// the suite can pin it.
+    /// </summary>
+    internal static bool IsUnlistedSwitchPosition(string varName, double value) =>
+        varName is "C172G_STBY_BATTERY_STATE" or "C172G_ELT" && value > 1.5;
 
     /// <summary>
     /// "Fuel Pump breaker popped", "... breaker in". The three names on two buses (PFD, ADC, Nav 1) say
@@ -671,16 +675,13 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         string.Create(CultureInfo.InvariantCulture, $"Airspeed {Math.Round(knots):F0} knots");
 
     /// <summary>
-    /// The VS target as spoken: a direction word, never a sign (a minus reads oddly, and some cultures
-    /// write it as U+2212). Pure so the suite can pin it.
+    /// The VS target as spoken, signed as the A320's FCU and the iFly's MCP say theirs ("+500",
+    /// "-500"), so the screen reader says plus and minus: the owner's choice (2026-10-18) over the
+    /// direction words this said first. Written invariant, so the minus is always the ASCII one, never
+    /// a culture's U+2212. Shift+V and the nose wheel's read-back both say it. Pure so the suite can pin it.
     /// </summary>
-    internal static string DescribeVerticalSpeedTarget(double fpm)
-    {
-        double rounded = Math.Round(fpm);
-        if (rounded == 0) return "Vertical speed level";
-        return string.Create(CultureInfo.InvariantCulture,
-            $"Vertical speed {Math.Abs(rounded):F0} feet per minute {(rounded > 0 ? "up" : "down")}");
-    }
+    internal static string DescribeVerticalSpeedTarget(double fpm) =>
+        string.Create(CultureInfo.InvariantCulture, $"Vertical speed {Math.Round(fpm):+0;-0;0} feet per minute");
 
     /// <summary>
     /// The pitch PIT holds, from `AUTOPILOT PITCH HOLD REF`, which MSFS signs negative for nose up.
@@ -793,6 +794,15 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         {
             hotkeyManager.ExitInputHotkeyMode();
             return ShowSelectedAltitudeDialog(simConnect, announcer, parentForm);
+        }
+
+        // Output+Shift+V: the GFC 700's vertical speed target, read fresh (C172-19) and worded as
+        // the nose wheel says it, a direction and never a sign.
+        if (action == HotkeyAction.ReadFCUVerticalSpeedFPA)
+        {
+            _ = SayFreshAsync(simConnect, announcer, "C172_AP_VS_VALUE", DescribeVerticalSpeedTarget,
+                "Vertical speed not available");
+            return true;
         }
 
         return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);

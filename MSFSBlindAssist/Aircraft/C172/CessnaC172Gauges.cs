@@ -134,6 +134,39 @@ internal static class CessnaC172Gauges
 
     internal static string DescribeHours(double hours) => Reading(N(hours, "0.0"), "hours", "");
 
+    /// <summary>
+    /// Output+L: the flap handle's notch, `FLAPS HANDLE INDEX:1`, measured against the flap angle
+    /// (2026-10-18): 0 Up, 1 10 degrees, 2 20 degrees, 3 Full (30 degrees). Worded as the Flaps combo is.
+    /// </summary>
+    internal static string DescribeFlaps(double index) => (int)Math.Round(index) switch
+    {
+        0 => "Flaps Up",
+        1 => "Flaps 10 degrees",
+        2 => "Flaps 20 degrees",
+        3 => "Flaps Full",
+        int other => $"Flaps {other.ToString(CultureInfo.InvariantCulture)}"
+    };
+
+    /// <summary>
+    /// Output+B, as the DA40 says it: inches first, the unit the C172's G1000 is set to ("Display
+    /// units: ... pressure inches", read off the PFD), then hectopascals. Never "standard": 29.92
+    /// typed as a local setting and the G1000's STD are the same number to the sim.
+    /// </summary>
+    internal static string DescribeAltimeter(double millibars) =>
+        $"Altimeter {N(millibars / 33.8639, "0.00")} inches, {N(millibars, "0")} hectopascals";
+
+    /// <summary>
+    /// Output+Shift+W, as the DA40 says it, in kilograms and the pounds this aircraft's G1000 and
+    /// POH work in, with the sim's maximum (`MAX GROSS WEIGHT`, 2558 pounds measured) when it is read.
+    /// </summary>
+    internal static string DescribeGrossWeight(double pounds, double? maxPounds)
+    {
+        string text = $"Gross weight {N(pounds * 0.45359237, "0")} kilograms, {N(pounds, "0")} pounds";
+        if (maxPounds is double max)
+            text += $". Maximum {N(max * 0.45359237, "0")} kilograms, {N(max, "0")} pounds";
+        return text;
+    }
+
     /// <summary>Output+F: each tank and the total.</summary>
     internal static string DescribeFuelQuantities(double left, double right) =>
         $"Left {N(left, "0.0")}, Right {N(right, "0.0")}, Total {N(left + right, "0.0")} gallons";

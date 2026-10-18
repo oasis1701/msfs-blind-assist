@@ -110,6 +110,67 @@ public class CessnaC172GaugesTests
         }
     }
 
+    [Theory]
+    [InlineData(0, "Flaps Up")]
+    [InlineData(1, "Flaps 10 degrees")]
+    [InlineData(2, "Flaps 20 degrees")]
+    [InlineData(3, "Flaps Full")]               // measured 30 degrees
+    public void The_flap_notches_are_the_measured_ones(double index, string said) =>
+        Assert.Equal(said, DescribeFlaps(index));
+
+    [Fact]
+    public void Altimeter_and_weight_read_as_the_da40_says_them_in_any_culture()
+    {
+        var saved = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("sv-SE");
+
+            // 29.92 is never "standard": a typed 29.92 and the G1000's STD are one number to the sim.
+            Assert.Equal("Altimeter 29.92 inches, 1013 hectopascals", DescribeAltimeter(1013.25));
+            Assert.Equal("Altimeter 30.12 inches, 1020 hectopascals", DescribeAltimeter(1020));
+            Assert.Equal("Gross weight 943 kilograms, 2078 pounds. Maximum 1160 kilograms, 2558 pounds",
+                DescribeGrossWeight(2078.17, 2558));
+            Assert.Equal("Gross weight 943 kilograms, 2078 pounds", DescribeGrossWeight(2078.17, null));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = saved;
+        }
+    }
+
+    // C172-19: the cache holds an on-request value's LAST fetch, however old, or nothing; a key that
+    // read flaps, the altimeter or the autopilot's vertical speed from it said "Requesting" and nothing
+    // more, or a value from before it last changed. Every literal cache lookup in the C172's code must
+    // name a variable the batch keeps current.
+    [Fact]
+    public void Every_cache_lookup_names_a_variable_the_batch_keeps_current()
+    {
+        string dir = Path.Combine(RepoRoot(), "MSFSBlindAssist", "Aircraft", "C172");
+        var vars = new CessnaC172G1000Definition().GetVariables();
+        var lookup = new System.Text.RegularExpressions.Regex(@"GetCachedVariableValue\(""([A-Z0-9_]+)""\)");
+        int checkedCount = 0;
+        foreach (string file in Directory.GetFiles(dir, "*.cs"))
+        {
+            foreach (System.Text.RegularExpressions.Match m in lookup.Matches(File.ReadAllText(file)))
+            {
+                string key = m.Groups[1].Value;
+                Assert.True(vars.TryGetValue(key, out var v), $"{Path.GetFileName(file)}: {key} is not a variable");
+                Assert.True(v!.UpdateFrequency == SimConnect.UpdateFrequency.Continuous && v.IsAnnounced,
+                    $"{Path.GetFileName(file)} reads {key} from the cache, but it is not Continuous and IsAnnounced: read it fresh");
+                checkedCount++;
+            }
+        }
+        Assert.True(checkedCount > 0);
+    }
+
+    private static string RepoRoot()
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
+            if (File.Exists(Path.Combine(dir.FullName, "MSFSBlindAssist.sln"))) return dir.FullName;
+        throw new InvalidOperationException("MSFSBlindAssist.sln not found");
+    }
+
     [Fact]
     public void A_stopped_engine_gives_no_endurance()
     {
