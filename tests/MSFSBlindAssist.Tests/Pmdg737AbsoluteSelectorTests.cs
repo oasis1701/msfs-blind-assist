@@ -30,6 +30,17 @@ public class Pmdg737AbsoluteSelectorTests
         Assert.True(PMDG737Definition.UsesAbsolutePositionDispatch(varKey));
     }
 
+    // Branch 4a needs the key's event in _simpleEventMap AND its id in EventIds;
+    // a key missing either falls through to the backwards click-walk unnoticed.
+    [Fact]
+    public void EveryAbsoluteSelectorResolvesToAnEventId()
+    {
+        Assert.NotEmpty(PMDG737Definition.AbsolutePositionSelectorKeys);
+        Assert.All(PMDG737Definition.AbsolutePositionSelectorKeys, varKey =>
+            Assert.True(PMDG737Definition.TryGetAbsolutePositionEvent(varKey, out int eventId) && eventId > 0,
+                $"{varKey} does not resolve to an event id"));
+    }
+
     [Theory]
     [InlineData("LTS_DomeWhiteSw")]
     [InlineData("COMM_FastenBeltsSelector")]

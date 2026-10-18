@@ -3895,7 +3895,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // ABSOLUTE position parameter (NOT click-walking with LEFTSINGLE/RIGHTSINGLE).
     // The generic WalkPMDGSelector path inverted the click direction for these
     // selectors, producing the well-known "step Normal to A lands at B" pattern.
-    // Same fix shape as ENG_StartSelector/ENG_IgnitionSelector at line ~3478.
+    // Same fix shape as the ENG_StartSelector/ENG_IgnitionSelector branch (2c)
+    // in HandleUIVariableSet.
     // Verified in user-reported reproductions for FIRE_OvhtDetSw, CARGO_DetSelect,
     // MAIN_*DUSel, and NAVDIS_*Selector; absolute-position dispatch confirmed
     // working at the SDK protocol level for these families.
@@ -3941,8 +3942,21 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     private static readonly HashSet<string> _reversedAbsolutePositionSet =
         new HashSet<string> { "LTS_PositionSw" };
 
+    internal static IReadOnlyCollection<string> AbsolutePositionSelectorKeys => _absolutePositionSelectorSet;
+
+    /// <summary>True when <paramref name="varKey"/> is an absolute-position
+    /// selector AND its event resolves to an id: branch 4a needs both, and a key
+    /// missing either would silently fall through to the backwards click-walk.</summary>
+    internal static bool TryGetAbsolutePositionEvent(string varKey, out int eventId)
+    {
+        eventId = 0;
+        return _absolutePositionSelectorSet.Contains(varKey) &&
+               _simpleEventMap.TryGetValue(varKey, out string? eventName) &&
+               EventIds.TryGetValue(eventName, out eventId);
+    }
+
     internal static bool UsesAbsolutePositionDispatch(string varKey) =>
-        _absolutePositionSelectorSet.Contains(varKey);
+        TryGetAbsolutePositionEvent(varKey, out _);
 
     /// <summary>The event parameter that lands an absolute-position selector on
     /// <paramref name="target"/>, or null when the target is outside its
@@ -4645,10 +4659,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             if (_simpleEventMap.TryGetValue(varKey, out string? irsEvent) &&
                 EventIds.TryGetValue(irsEvent, out int irsId))
             {
-                int target = (int)value;
-                var dm = simConnect.PMDGDataManager;
-                if (dm != null && (int)dm.GetFieldValue(varDef.Name) == target) return true;
-                simConnect.SendPMDGEvent(irsEvent, (uint)irsId, target);
+                // No "already at target" skip, as in 4a: the direct-position
+                // write is idempotent, and a lagging snapshot (or the 0.0 sentinel
+                // before the first one) would drop a pick of OFF.
+                simConnect.SendPMDGEvent(irsEvent, (uint)irsId, (int)value);
             }
             return true;
         }
@@ -4668,18 +4682,23 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         //     position as the parameter (vs. click-walking). See
         //     _absolutePositionSelectorSet for the list and rationale.
         // ------------------------------------------------------------------
-        if (_absolutePositionSelectorSet.Contains(varKey) &&
-            _simpleEventMap.TryGetValue(varKey, out string? absEventName) &&
-            EventIds.TryGetValue(absEventName, out int absEvId))
+        if (TryGetAbsolutePositionEvent(varKey, out int absEvId))
         {
             // No "already at target" skip: an absolute send is idempotent, and the
             // cached snapshot can lag a quick A→B→A pick (or read the 0.0 sentinel
             // before the first snapshot), which would drop the send and strand the
             // knob at B while the combo shows A.
-            int? parameter = AbsoluteSelectorParameter(
-                varKey, (int)value, varDef.ValueDescriptions?.Count ?? 0);
+            int positionCount = varDef.ValueDescriptions?.Count ?? 0;
+            int? parameter = AbsoluteSelectorParameter(varKey, (int)value, positionCount);
             if (parameter is int p)
+            {
                 simConnect.SendPMDGEventViaTransmitWithTarget((uint)absEvId, (uint)p);
+            }
+            else
+            {
+                Log.Warn("PMDG737", $"{varKey}: position {value} is outside its {positionCount} detents; nothing sent");
+                announcer.AnnounceImmediate($"Can't set {varDef.DisplayName} to that position.");
+            }
             return true;
         }
 

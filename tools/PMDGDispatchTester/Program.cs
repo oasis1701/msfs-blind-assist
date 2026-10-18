@@ -307,14 +307,24 @@ class Program
         var snapshot = ExtractFields(typed);
         bool firstTime = _lastValues.Count == 0;
         var changeList = new List<string>();
+        var newlyWatched = new List<string>();
         foreach (var (name, val) in snapshot)
         {
-            if (!_lastValues.TryGetValue(name, out var prev) || prev != val)
+            if (!_lastValues.TryGetValue(name, out var prev))
             {
-                if (!firstTime) changeList.Add($"{name}={val}");
+                // A field added by `watch` has no previous value: its first
+                // reading is a baseline, never a CHANGE a click caused.
+                if (!firstTime) newlyWatched.Add($"{name}={val}");
+                _lastValues[name] = val;
+            }
+            else if (prev != val)
+            {
+                changeList.Add($"{name}={val}");
                 _lastValues[name] = val;
             }
         }
+        if (newlyWatched.Count > 0)
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] WATCH baseline: " + string.Join(", ", newlyWatched));
         if (firstTime)
         {
             Console.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] Initial snapshot — values:");
@@ -473,8 +483,13 @@ class Program
                         Console.WriteLine($"[ERR] No field {parts[1]} in PMDGNG3DataStruct.");
                         break;
                     }
+                    if (Array.IndexOf(s_namedFieldsOfInterest, parts[1]) >= 0)
+                    {
+                        Console.WriteLine($"[WATCH] {parts[1]} is already watched.");
+                        break;
+                    }
                     s_namedFieldsOfInterest = [.. s_namedFieldsOfInterest, parts[1]];
-                    Console.WriteLine($"[WATCH] {parts[1]} added; its value prints on the next snapshot.");
+                    Console.WriteLine($"[WATCH] {parts[1]} added; its baseline prints on the next snapshot.");
                     break;
                 }
                 case "cda":
