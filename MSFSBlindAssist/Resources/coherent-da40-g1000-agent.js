@@ -17,7 +17,7 @@
 (function () {
     var A = {};
 
-    A.VERSION = 27;
+    A.VERSION = 28;
 
     function visible(el) {
         if (!el) return false;
@@ -4322,7 +4322,24 @@
         // the window's "first row that changed" announcement then names the option the
         // pilot just scrolled onto rather than something on the page behind it.
         var menu = A.contextMenuLines();
-        return menu.length ? menu.concat(rows) : rows;
+        rows = menu.length ? menu.concat(rows) : rows;
+
+        // ⚠️ A DARK SCREEN SAYS SO, FIRST. Unpowered, the instrument still answers - "CAS
+        // messages: none", "Autopilot: off" - which the CAS watcher took for every standing
+        // message clearing at once on each shutdown, and which the window read out as a quiet
+        // screen. The row is a CONTRACT with G1000CasWatcher.DisplayDarkRow (exact text, never
+        // indented). Powered, nothing is added.
+        if (!A.powered()) rows.unshift("Display power: off");
+        return rows;
+    };
+
+    // Whether the instrument has power: the VCockpit's #Electricity element, "off" while the
+    // master (or the screen's own breaker) leaves it dark - measured "off" on the C172's PFD
+    // cold and dark (2026-10-18). Anything but exactly "off" counts as powered, so a page
+    // without the element reads as before.
+    A.powered = function () {
+        var e = document.getElementById("Electricity");
+        return !e || e.getAttribute("state") !== "off";
     };
 
 
@@ -4590,7 +4607,7 @@
         // FUEL XFER") and the system messages live only there; a sighted pilot is told by the
         // Alerts softkey flashing, and nothing read them unless the window was opened. The
         // list stays in the DOM with the window shut (opacity 0), so it is read regardless.
-        // ⚠️ The row prefix is a CONTRACT with CowsDA40Definition.AlertsNotOnCas.
+        // ⚠️ The row prefix is a CONTRACT with G1000CasWatcher.AlertsNotOnCas.
         var alerts = A.alertMessages();
         if (alerts.length) {
             rows.push("Alert messages: " + alerts.length);

@@ -1,5 +1,5 @@
 using System;
-using MSFSBlindAssist.Aircraft.DA40;
+using MSFSBlindAssist.Aircraft.G1000;
 using Xunit;
 
 namespace MSFSBlindAssist.Tests;
@@ -14,7 +14,7 @@ public class CowsDA40CasSpeechTests
     [Fact]
     public void TwoNewMessagesAreOneUtteranceAndBothAreHeard()
     {
-        var (now, _) = CowsDA40Definition.ComposeCasSpeech(
+        var (now, _) = G1000CasWatcher.ComposeCasSpeech(
             new[] { "WARNING: ECU A FAIL", "Caution: PITOT HT OFF" }, Array.Empty<string>(), null);
 
         Assert.Equal("WARNING: ECU A FAIL. Caution: PITOT HT OFF.", now);
@@ -23,8 +23,8 @@ public class CowsDA40CasSpeechTests
     [Fact]
     public void AnAutopilotModeChangeJoinsTheSentenceInsteadOfCuttingItOff()
     {
-        var (now, _) = CowsDA40Definition.ComposeCasSpeech(new[] { "Caution: LOW FUEL" }, Array.Empty<string>(),
-            CowsDA40Definition.DescribeFmaChange("AP, GPS, ALT", "AP, HDG, ALT"));
+        var (now, _) = G1000CasWatcher.ComposeCasSpeech(new[] { "Caution: LOW FUEL" }, Array.Empty<string>(),
+            G1000CasWatcher.DescribeFmaChange("AP, GPS, ALT", "AP, HDG, ALT"));
 
         Assert.Equal("Caution: LOW FUEL. Autopilot HDG, ALT.", now);
     }
@@ -32,8 +32,8 @@ public class CowsDA40CasSpeechTests
     [Fact]
     public void AutopilotOffIsNotNews()
     {
-        Assert.Equal("", CowsDA40Definition.DescribeFmaChange("AP, GPS, ALT", "off"));
-        var (now, _) = CowsDA40Definition.ComposeCasSpeech(Array.Empty<string>(), Array.Empty<string>(), "");
+        Assert.Equal("", G1000CasWatcher.DescribeFmaChange("AP, GPS, ALT", "off"));
+        var (now, _) = G1000CasWatcher.ComposeCasSpeech(Array.Empty<string>(), Array.Empty<string>(), "");
         Assert.Equal("", now);
     }
 
@@ -44,12 +44,12 @@ public class CowsDA40CasSpeechTests
     [InlineData("ALT", "AP, YD, GPS, ALT", "Autopilot YD, GPS, ALT")]
     [InlineData("off", "AP", "Autopilot on")]
     public void ModesWithoutApAreTheFlightDirectors(string previous, string current, string said)
-        => Assert.Equal(said, CowsDA40Definition.DescribeFmaChange(previous, current));
+        => Assert.Equal(said, G1000CasWatcher.DescribeFmaChange(previous, current));
 
     [Fact]
     public void AClearedMessageIsQueuedBehindNotSpokenOverANewOne()
     {
-        var (now, queued) = CowsDA40Definition.ComposeCasSpeech(
+        var (now, queued) = G1000CasWatcher.ComposeCasSpeech(
             new[] { "Caution: LOW VOLTS" }, new[] { "Caution: PITOT HT OFF" }, null);
 
         Assert.Equal("Caution: LOW VOLTS.", now);
@@ -60,7 +60,7 @@ public class CowsDA40CasSpeechTests
     [InlineData("AP, GPS, VS, ALTS armed, target -500 FPM", "AP, GPS, VS, ALTS armed")]
     [InlineData("AP, HDG, ALT", "AP, HDG, ALT")]
     public void TheFmaIsComparedOnItsModesNotItsTarget(string row, string modes)
-        => Assert.Equal(modes, CowsDA40Definition.FmaModes(row));
+        => Assert.Equal(modes, G1000CasWatcher.FmaModes(row));
 
     [Fact]
     public void AnAlertThatIsAlreadyACasLineIsNotSaidTwice()
@@ -72,14 +72,14 @@ public class CowsDA40CasSpeechTests
             "Alert messages: 2", "  PITOT HT OFF - Pitot heat is off.", "  SCHEDULER 1 - FUEL XFER",
             "Autopilot: AP, GPS, FLC, ALTS armed, target 88 KT"
         };
-        var cas = CowsDA40Definition.ExtractCasMessages(rows);
-        Assert.Equal(new[] { "Alert: SCHEDULER 1 - FUEL XFER" }, CowsDA40Definition.AlertsNotOnCas(rows, cas));
+        var cas = G1000CasWatcher.ExtractCasMessages(rows);
+        Assert.Equal(new[] { "Alert: SCHEDULER 1 - FUEL XFER" }, G1000CasWatcher.AlertsNotOnCas(rows, cas));
     }
 
     [Fact]
     public void AClearedAlertIsSaidWithoutItsPrefix()
     {
-        var (_, queued) = CowsDA40Definition.ComposeCasSpeech(
+        var (_, queued) = G1000CasWatcher.ComposeCasSpeech(
             Array.Empty<string>(), new[] { "Alert: SCHEDULER 1 - FUEL XFER" }, null);
         Assert.Equal(new[] { "SCHEDULER 1 - FUEL XFER cleared" }, queued);
     }

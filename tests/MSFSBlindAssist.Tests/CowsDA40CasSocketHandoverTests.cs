@@ -1,6 +1,6 @@
 using System;
 using System.IO;
-using MSFSBlindAssist.Aircraft.DA40;
+using MSFSBlindAssist.Aircraft.G1000;
 using Xunit;
 
 namespace MSFSBlindAssist.Tests;
@@ -24,24 +24,24 @@ public class CowsDA40CasSocketHandoverTests
     [Fact]
     public void ActiveMonitorUsesItsOwnClient()
     {
-        Assert.Equal(CowsDA40Definition.CasInvokeRoute.Own,
-            CowsDA40Definition.RouteCasInvoke(suspended: false, hasOwnClient: true, hasLender: false));
+        Assert.Equal(G1000CasWatcher.CasInvokeRoute.Own,
+            G1000CasWatcher.RouteCasInvoke(suspended: false, hasOwnClient: true, hasLender: false));
     }
 
     [Fact]
     public void SuspendedMonitorNeverTouchesItsOwnClient()
     {
-        Assert.Equal(CowsDA40Definition.CasInvokeRoute.Lender,
-            CowsDA40Definition.RouteCasInvoke(suspended: true, hasOwnClient: true, hasLender: true));
-        Assert.Equal(CowsDA40Definition.CasInvokeRoute.None,
-            CowsDA40Definition.RouteCasInvoke(suspended: true, hasOwnClient: true, hasLender: false));
+        Assert.Equal(G1000CasWatcher.CasInvokeRoute.Lender,
+            G1000CasWatcher.RouteCasInvoke(suspended: true, hasOwnClient: true, hasLender: true));
+        Assert.Equal(G1000CasWatcher.CasInvokeRoute.None,
+            G1000CasWatcher.RouteCasInvoke(suspended: true, hasOwnClient: true, hasLender: false));
     }
 
     [Fact]
     public void NoClientMeansNothingIsSent()
     {
-        Assert.Equal(CowsDA40Definition.CasInvokeRoute.None,
-            CowsDA40Definition.RouteCasInvoke(suspended: false, hasOwnClient: false, hasLender: true));
+        Assert.Equal(G1000CasWatcher.CasInvokeRoute.None,
+            G1000CasWatcher.RouteCasInvoke(suspended: false, hasOwnClient: false, hasLender: true));
     }
 
     [Fact]
