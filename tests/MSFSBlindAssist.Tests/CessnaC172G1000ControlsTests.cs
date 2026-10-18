@@ -619,6 +619,50 @@ public class CessnaC172G1000ControlsTests
         Assert.Contains("Not connected to simulator.", speech.All);
     }
 
+    // Input Ctrl+P (owner, 2026-10-18): every GFC 700 button on the panel, in the panel's order and
+    // named as the panel names it, and none of the typed values, which have their own keys.
+    [Fact]
+    public void The_ctrl_p_window_has_every_gfc_700_button_and_no_typed_value()
+    {
+        var vars = Def.GetVariables();
+        var rows = Def.AutopilotWindowRows();
+        var buttons = Def.GetPanelControls()["GFC 700"].Where(k => vars[k].RenderAsButton).ToList();
+
+        Assert.Equal(buttons, rows.Select(r => r.Key));
+        Assert.Equal(13, rows.Count);
+        foreach (string typed in CessnaC172G1000Definition.TypedAutopilotValues.Keys.Append("C172G_AP_CRS_SET"))
+            Assert.DoesNotContain(typed, rows.Select(r => r.Key));
+        Assert.All(rows, r => Assert.Equal(vars[r.Key].DisplayName, r.Label));
+    }
+
+    [Fact]
+    public void Every_ctrl_p_button_has_its_own_alt_key_letter_from_its_name()
+    {
+        var rows = Def.AutopilotWindowRows();
+        Assert.All(rows, r => Assert.Contains(char.ToString(r.Mnemonic), r.Label, StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(rows.Count, rows.Select(r => char.ToUpperInvariant(r.Mnemonic)).Distinct().Count());
+    }
+
+    // A Ctrl+P button's state comes from the cache, which holds only what the batch keeps current
+    // (C172-19), and a mode not yet delivered shows no state rather than a guessed Off.
+    [Fact]
+    public void Every_ctrl_p_button_with_a_state_reads_one_the_cache_keeps_current()
+    {
+        var vars = Def.GetVariables();
+        var withState = Def.AutopilotWindowRows().Where(r => vars[r.Key].ValueDescriptions.Count > 0).ToList();
+
+        // AP, FD, HDG, NAV, APR, BC, ALT, VS and FLC; VNAV, the nose wheel and the sync have no state.
+        Assert.Equal(9, withState.Count);
+        Assert.All(withState, r => Assert.True(
+            vars[r.Key].UpdateFrequency == UpdateFrequency.Continuous && vars[r.Key].IsAnnounced, r.Key));
+
+        var master = vars["C172_AP_MASTER_STATE"];
+        Assert.Equal("ON", CessnaC172G1000Definition.AutopilotButtonState(master, 1));
+        Assert.Equal("Off", CessnaC172G1000Definition.AutopilotButtonState(master, 0));
+        Assert.Equal("", CessnaC172G1000Definition.AutopilotButtonState(master, null));
+        Assert.Equal("", CessnaC172G1000Definition.AutopilotButtonState(vars["C172G_AP_VNV"], null));
+    }
+
     [Fact]
     public void The_panels_are_grouped_as_the_cockpit_is()
     {

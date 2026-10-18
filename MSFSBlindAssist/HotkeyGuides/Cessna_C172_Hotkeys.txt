@@ -197,6 +197,13 @@ Autopilot:
   Ctrl+V     Set the autopilot vertical speed (-2000 to 2000 feet per minute)
   These value windows stay open after Enter, so you can type the next value
   straight away; Escape closes them.
+  Ctrl+P     GFC 700 window: every autopilot button in one small window, each
+             showing its state as the panel does: Autopilot, Flight Director,
+             HDG Hold, NAV Mode, APR Mode, Back Course, ALT Hold, VS Mode,
+             FLC Mode, VNAV, Nose Up, Nose Down and Heading Sync. Each has an
+             Alt key (Alt+A Autopilot, Alt+H HDG Hold, Alt+F FLC Mode and so
+             on). The values are not in it: they have their own keys above.
+             Escape closes it.
   The mode keys press the GFC 700's own keys, so each behaves as in the
   cockpit: the first AP press engages the autopilot and flight director in
   roll and pitch hold, and pressing a mode key again turns that mode off.

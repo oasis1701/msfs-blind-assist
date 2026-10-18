@@ -90,6 +90,20 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         ["C172G_AP_HDG_SYNC"] = "AS1000_HEADING_SYNC_PFD",
     };
 
+    /// <summary>
+    /// The input Ctrl+P window's Alt-key letter for each GFC 700 button, each a letter of its name. The
+    /// window lists the panel's buttons (<see cref="AutopilotWindowRows"/>), not this table, so a button
+    /// added to the panel appears there without a letter rather than not at all.
+    /// </summary>
+    internal static readonly IReadOnlyDictionary<string, char> AutopilotWindowMnemonics = new Dictionary<string, char>
+    {
+        ["C172_AP_MASTER_STATE"] = 'A', ["C172G_AP_FD_STATE"] = 'D', ["C172_AP_HDG_STATE"] = 'H',
+        ["C172_AP_NAV_STATE"] = 'N', ["C172_AP_APR_STATE"] = 'P', ["C172_AP_BC_STATE"] = 'B',
+        ["C172_AP_ALT_STATE"] = 'L', ["C172_AP_VS_STATE"] = 'S', ["C172G_AP_FLC_STATE"] = 'F',
+        ["C172G_AP_VNV"] = 'V', ["C172G_AP_NOSE_UP"] = 'U', ["C172G_AP_NOSE_DN"] = 'W',
+        ["C172G_AP_HDG_SYNC"] = 'Y',
+    };
+
     /// <summary>Walkaround covers and the input event that toggles each one.</summary>
     internal static readonly IReadOnlyDictionary<string, string> CoverInputEvents = new Dictionary<string, string>
     {
@@ -909,6 +923,12 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
             return ShowSelectedAirspeedDialog(simConnect, announcer, parentForm);
         }
 
+        if (action == HotkeyAction.FCUSetAutopilot)
+        {
+            hotkeyManager.ExitInputHotkeyMode();
+            return ShowAutopilotWindow(simConnect, announcer);
+        }
+
         // Output+Shift+A, H, S and V: the GFC 700's SELECTED values, each read fresh (C172-19) and
         // followed by its mode when that mode is active (C172-21): "Heading bug 270, HDG active".
         if (SelectedValueKeys.TryGetValue(action, out var selected))
@@ -920,6 +940,59 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
 
         return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
     }
+
+    /// <summary>
+    /// Input Ctrl+P: the GFC 700's buttons in one small window, in the shared window the PMDG aircraft
+    /// use for theirs. Each button shows the state its panel button shows, read from the cache (every
+    /// mode is batched), and presses exactly as the panel button does (`HandleUIVariableSet`), so the
+    /// nose wheel and the heading sync say what they moved and the FMA speaks the modes (C172-17). No
+    /// echo is marked, as the panel marks none, so the master's and flight director's OFF stay spoken.
+    /// Tracked, so a second press brings back the same window and an aircraft switch closes it.
+    /// </summary>
+    private bool ShowAutopilotWindow(SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return true;
+        }
+        ShowTrackedWindow("C172_AP", () =>
+        {
+            var vars = GetVariables();
+            var buttons = AutopilotWindowRows().Select(row =>
+            {
+                var varDef = vars[row.Key];
+                return new Forms.ToggleButtonDef(
+                    Forms.PMDG.PMDGAutopilotRowBinder.ApplyMnemonic(row.Label, row.Mnemonic),
+                    () => AutopilotButtonState(varDef, simConnect.GetCachedVariableValue(row.Key)),
+                    () => HandleUIVariableSet(row.Key, 1, varDef, simConnect, announcer));
+            }).ToList();
+            return new Forms.PMDG.PMDGAutopilotWindow("GFC 700 Autopilot", buttons,
+                Array.Empty<Forms.PMDG.SelectorRowDef>());
+        }, w => w.ShowForm());
+        return true;
+    }
+
+    /// <summary>
+    /// The Ctrl+P window's buttons: every GFC 700 panel button, in the panel's order, without the typed
+    /// values, which have their own keys (Ctrl+H, A, V, S). The key, its name and its Alt-key letter.
+    /// </summary>
+    internal IReadOnlyList<(string Key, string Label, char Mnemonic)> AutopilotWindowRows()
+    {
+        var vars = GetVariables();
+        return GetPanelControls()[AutopilotPanel]
+            .Where(AutopilotKeys.ContainsKey)
+            .Select(key => (key, vars[key].DisplayName, AutopilotWindowMnemonics.GetValueOrDefault(key)))
+            .ToList();
+    }
+
+    /// <summary>
+    /// A Ctrl+P button's state as its panel button shows it ("ON", "Off"); nothing for a key with no
+    /// state (VNAV, the nose wheel, the sync) or a mode not delivered yet, never a guessed Off (DA40S-1).
+    /// Pure so the suite can pin it.
+    /// </summary>
+    internal static string AutopilotButtonState(SimVarDefinition varDef, double? value) =>
+        value is double v && varDef.ValueDescriptions.TryGetValue(v >= 0.5 ? 1 : 0, out string? text) ? text : "";
 
     /// <summary>
     /// The selected altitude, typed. `AP_ALT_VAR_SET_ENGLISH` ignores its value on the G1000 (measured:
