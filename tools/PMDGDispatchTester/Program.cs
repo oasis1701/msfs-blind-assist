@@ -12,6 +12,8 @@
 //   cda <eventId> <p>   — SetClientData write {EventId, Parameter=p} on Control CDA
 //   evt <eventId> <p>   — TransmitClientEvent with eventId, parameter=p
 //   alias <eventId>     — pre-register a "#<eventId>" alias for evt
+//   watch <FieldName>   — also print a PMDGNG3DataStruct field (e.g. MCP_BankLimitSel) on change
+//   sleep <ms>          — wait, for scripted runs piped in on stdin
 //   help                — show this help
 //   q                   — quit
 //
@@ -182,10 +184,12 @@ class Program
             line = line.Trim();
             if (line.Length == 0) continue;
             if (line.StartsWith("#")) continue; // comment
-            if (line.StartsWith("sleep "))
+            if (line.StartsWith("sleep", StringComparison.OrdinalIgnoreCase))
             {
-                int ms = int.Parse(line.Substring(6));
-                Thread.Sleep(ms);
+                if (int.TryParse(line.Substring(5).Trim(), out int ms) && ms >= 0)
+                    Thread.Sleep(ms);
+                else
+                    Console.WriteLine("usage: sleep <milliseconds>");
                 continue;
             }
             HandleCommand(line);
@@ -359,7 +363,8 @@ class Program
         typeof(MSFSBlindAssist.SimConnect.PMDGNG3DataStruct)
             .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
 
-    static readonly string[] s_namedFieldsOfInterest = new[]
+    // Grown at runtime by the `watch` command (copy-on-write: the pump thread reads it).
+    static volatile string[] s_namedFieldsOfInterest = new[]
     {
         // Electrical (kept for cross-checks)
         "ELEC_BatSelector",
@@ -460,6 +465,18 @@ class Program
                         SIMCONNECT_CLIENT_DATA_REQUEST_FLAG.DEFAULT,
                         0, 0, 0);
                     break;
+                case "watch":
+                {
+                    if (parts.Length != 2) { Console.WriteLine("usage: watch <FieldName>"); break; }
+                    if (Array.Find(s_namedFields, f => f.Name == parts[1]) == null)
+                    {
+                        Console.WriteLine($"[ERR] No field {parts[1]} in PMDGNG3DataStruct.");
+                        break;
+                    }
+                    s_namedFieldsOfInterest = [.. s_namedFieldsOfInterest, parts[1]];
+                    Console.WriteLine($"[WATCH] {parts[1]} added; its value prints on the next snapshot.");
+                    break;
+                }
                 case "cda":
                 {
                     if (parts.Length != 3) { Console.WriteLine("usage: cda <eventId> <parameter>"); break; }
@@ -598,6 +615,8 @@ class Program
         Console.WriteLine("  read              Force a one-shot data refresh");
         Console.WriteLine("  cda E P           Send via CDA SetClientData (E=eventId, P=parameter)");
         Console.WriteLine("  evt E P           Send via TransmitClientEvent");
+        Console.WriteLine("  watch NAME        Also print struct field NAME (e.g. MCP_BankLimitSel) on change");
+        Console.WriteLine("  sleep MS          Wait MS milliseconds (scripted runs)");
         Console.WriteLine("  q                 Quit");
         Console.WriteLine();
         Console.WriteLine("Useful event IDs:");

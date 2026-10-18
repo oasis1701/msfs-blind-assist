@@ -3899,6 +3899,22 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // Verified in user-reported reproductions for FIRE_OvhtDetSw, CARGO_DetSelect,
     // MAIN_*DUSel, and NAVDIS_*Selector; absolute-position dispatch confirmed
     // working at the SDK protocol level for these families.
+    //
+    // Second batch, live-swept 2026-10-18 with tools/PMDGDispatchTester (one
+    // LEFTSINGLE then one RIGHTSINGLE per generic-walk selector, read back from
+    // the struct): on every knob below LEFTSINGLE stepped DOWN, so the generic
+    // walk drove each pick toward position 0 and pinned there (the Bank Limit
+    // "stuck at 10°" report). Each was then set by absolute target and read back
+    // across non-adjacent positions in one send. The selectors that stepped the
+    // right way stay on the walk: dome, no smoking, fasten belts, window heat
+    // test, packs, isolation valve, landing light retract, VOR/ADF pointers,
+    // disengage test, lights test, fuel flow.
+    //
+    // AIR_OutflowValveSwitch is spring-loaded in the real cockpit, but the NG3
+    // LATCHES it when set from outside: an absolute send and a CDA write of
+    // OPEN or CLOSE both held for 3+ s until Neutral was sent (2026-10-18), so the
+    // valve keeps driving until the pilot picks Neutral. Not in
+    // _springLoadedSelectorMap for that reason: nothing springs it back.
     private static readonly HashSet<string> _absolutePositionSelectorSet =
         new HashSet<string>
         {
@@ -3908,7 +3924,35 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             "MAIN_LowerDUSel_0", "MAIN_LowerDUSel_1",
             "NAVDIS_VHFNavSelector", "NAVDIS_IRSSelector", "NAVDIS_FMCSelector",
             "NAVDIS_SourceSelector", "NAVDIS_ControlPaneSelector",
+            "MCP_BankLimitSel",
+            "EFIS_ModeSel_0", "EFIS_ModeSel_1",
+            "EFIS_RangeSel_0", "EFIS_RangeSel_1",
+            "OH_WiperLSelector", "OH_WiperRSelector",
+            "AIR_PressurizationModeSelector", "AIR_OutflowValveSwitch",
+            "MAIN_N1SetSelector", "MAIN_SpdRefSelector",
+            "ELEC_DCMeterSelector", "ELEC_ACMeterSelector",
+            "LTS_PositionSw",
         };
+
+    // Absolute-position selectors whose event parameter counts from the OTHER
+    // end of the struct's range: parameter = top position − target. Live-proven
+    // 2026-10-18 on EVT_OH_LIGHTS_POS_STROBE: parameter 2 lands STEADY (struct 0),
+    // 1 lands OFF (1), 0 lands STROBE & STEADY (2).
+    private static readonly HashSet<string> _reversedAbsolutePositionSet =
+        new HashSet<string> { "LTS_PositionSw" };
+
+    internal static bool UsesAbsolutePositionDispatch(string varKey) =>
+        _absolutePositionSelectorSet.Contains(varKey);
+
+    /// <summary>The event parameter that lands an absolute-position selector on
+    /// <paramref name="target"/>, or null when the target is outside its
+    /// <paramref name="positionCount"/> detents (never cast a stray index into a
+    /// parameter PMDG would read as a mouse flag).</summary>
+    internal static int? AbsoluteSelectorParameter(string varKey, int target, int positionCount)
+    {
+        if (target < 0 || target >= positionCount) return null;
+        return _reversedAbsolutePositionSet.Contains(varKey) ? positionCount - 1 - target : target;
+    }
 
     // =========================================================================
     // Behavior overrides — scaffold (populated in Tasks C10–C12)
@@ -4628,10 +4672,14 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             _simpleEventMap.TryGetValue(varKey, out string? absEventName) &&
             EventIds.TryGetValue(absEventName, out int absEvId))
         {
-            int target = (int)value;
-            var dm = simConnect.PMDGDataManager;
-            if (dm != null && (int)dm.GetFieldValue(varDef.Name) == target) return true;
-            simConnect.SendPMDGEventViaTransmitWithTarget((uint)absEvId, (uint)target);
+            // No "already at target" skip: an absolute send is idempotent, and the
+            // cached snapshot can lag a quick A→B→A pick (or read the 0.0 sentinel
+            // before the first snapshot), which would drop the send and strand the
+            // knob at B while the combo shows A.
+            int? parameter = AbsoluteSelectorParameter(
+                varKey, (int)value, varDef.ValueDescriptions?.Count ?? 0);
+            if (parameter is int p)
+                simConnect.SendPMDGEventViaTransmitWithTarget((uint)absEvId, (uint)p);
             return true;
         }
 
@@ -4817,13 +4865,15 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             }
 
             // 3+ position selector — walk through detents one click at a time
-            // via TransmitClientEvent LEFTSINGLE/RIGHTSINGLE. Stable-detent
-            // selectors (IRS_ModeSelector, ENG_StartSelector, LTS_DomeWhiteSw,
-            // EFIS_VORADFSel*, EFIS_ModeSel, EFIS_RangeSel, AIR_OutflowValve,
-            // AIR_PressurizationModeSelector, etc.) work with this pattern in
-            // user testing — each click advances one detent and the new
-            // position latches normally. Spring-loaded selectors are
-            // intercepted earlier by the _springLoadedSelectorMap branch.
+            // via TransmitClientEvent, LEFTSINGLE = up. That direction holds only
+            // for some NG3 knobs (LTS_DomeWhiteSw, EFIS_VORADFSel*, the packs and
+            // the rest of the right-way list in the comment above
+            // _absolutePositionSelectorSet, swept live 2026-10-18); EFIS mode/range,
+            // outflow and pressurization mode once listed here step the OTHER way
+            // and are now IN that set, dispatched by absolute target.
+            // A new 3+ position selector must be swept before it relies on this
+            // walk. Spring-loaded selectors are intercepted earlier by the
+            // _springLoadedSelectorMap branch.
             if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count >= 3)
             {
                 var dm = simConnect.PMDGDataManager;
