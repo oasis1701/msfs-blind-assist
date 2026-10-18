@@ -5488,6 +5488,29 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     // Altimeter announcement suppression (initial value)
     private double _lastAnnouncedAltimeter = double.NaN;
 
+    // After a flight load or a dropped connection (OnSimContextReset) the setting the sim settles
+    // on is the loaded aircraft's, not a change: altimeter deliveries go into the baseline, unspoken,
+    // until this many batch-1 deliveries pass without one (the FCU callouts' settle rule,
+    // FcuValueAnnouncer.SettleQuietDeliveries). The baseline is KEPT, never emptied: a load
+    // re-delivers only a CHANGED setting, so an emptied one would make the pilot's first real
+    // change a silent baseline whenever the load left the setting as it was.
+    private const int AltimeterSettleQuietDeliveries = FcuValueAnnouncer.SettleQuietDeliveries;
+    private int _altimeterSettleDeliveriesLeft;
+
+    /// <inheritdoc />
+    public override void OnSimContextReset()
+    {
+        base.OnSimContextReset();
+        _altimeterSettleDeliveriesLeft = AltimeterSettleQuietDeliveries;
+    }
+
+    /// <inheritdoc />
+    public override void OnContinuousBatchDelivered(int batchNum)
+    {
+        base.OnContinuousBatchDelivered(batchNum);
+        if (batchNum == 1 && _altimeterSettleDeliveriesLeft > 0) _altimeterSettleDeliveriesLeft--;
+    }
+
     // Headphone-simulation (switch_622_a / LOCALVAR_A20) announce tracker.
     // -1 = unseen (first poll suppressed). Declared 2-state (0 / 100), but
     // PMDG can transiently land on a mid-detent during a ROTOR_BRAKE click —
@@ -6672,10 +6695,12 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         {
             double inHg = value;
 
-            // First update: store silently
-            if (double.IsNaN(_lastAnnouncedAltimeter))
+            // First update, or one inside the settle after a context reset: store silently
+            if (double.IsNaN(_lastAnnouncedAltimeter) || _altimeterSettleDeliveriesLeft > 0)
             {
                 _lastAnnouncedAltimeter = inHg;
+                if (_altimeterSettleDeliveriesLeft > 0)
+                    _altimeterSettleDeliveriesLeft = AltimeterSettleQuietDeliveries; // still publishing
                 return true;
             }
 
@@ -6684,7 +6709,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 return true;
 
             _lastAnnouncedAltimeter = inHg;
-            announcer.Announce(Pmdg777Altimeter.Sentence(inHg));
+            announcer.Announce(AltimeterPhrase.Sentence(inHg));
             return true;
         }
 
@@ -7081,9 +7106,6 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
 
             case HotkeyAction.ReadAltimeter:
             {
-                var dm = simConnect.PMDGDataManager;
-                if (dm == null) return false;
-
                 // Read actual altimeter setting from cached SimConnect variable
                 double? inHgRaw = simConnect.GetCachedVariableValue("ALTIMETER_SETTING");
                 if (inHgRaw == null)
@@ -7094,7 +7116,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
 
                 // "Altimeter standard" at 29.92 inHg (1013.25 hPa), otherwise both units, hPa
                 // first as on the Fenix, with a decimal point in any Windows culture.
-                announcer.AnnounceImmediate(Pmdg777Altimeter.Sentence(inHgRaw.Value));
+                announcer.AnnounceImmediate(AltimeterPhrase.Sentence(inHgRaw.Value));
                 return true;
             }
 
