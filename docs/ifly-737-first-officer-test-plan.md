@@ -521,9 +521,18 @@ offline ticks, seat belts) are Part AA.1 of the PMDG 737 plan.
    stopped". If BRM never engages, note it: the item stays open. On a normal start the steps
    now read "Engine 2 motoring — waiting for N2 before introducing fuel" (no "Waiting for:"
    before it). Once, press **Stop** during that wait: "Stopping after the current step…" is
-   followed at once by "Engine Start flow cancelled". The engine 2 start switch stays at GRD, as
-   it always did after a Stop there, so set it OFF yourself (Overhead → Engines and APU).
+   followed at once by "Engine Start flow cancelled", and the engine 2 start switch is back at
+   OFF (Overhead → Engines and APU: Engine 2 Start Switch reads Off): no fuel was introduced, so
+   the First Officer aborts the start, as the MD-11's does.
 8. **Ctrl+B still sets the altimeter.** Press Ctrl+B and enter 30.12: you hear "Altimeter: 1020"
    and the inches. Enter 1013: you hear "Altimeter: 1013" and the inches. Enter 29.92: you hear
    "Altimeter standard". The First Officer's climb through the transition altitude still sets
    standard (Part D4).
+9. **Pause holds an engine-start wait.** Run **Engine Start** and press **Pause** during "Engine 2
+   motoring — waiting for N2 before introducing fuel". Wait well over a minute, then press
+   **Resume**: the flow carries on ("Engine 2 start lever: IDLE" once N2 is up), never "Engine
+   Start flow stopped" while it was paused. The same for the starter cutout wait after the lever.
+10. **A start that never reaches the fuel point is aborted.** With no start air (APU bleed OFF and
+    no ground air), run **Engine Start**: after about a minute, "Engine Start flow stopped. Unable to
+    complete: Engine 2 motoring — waiting for N2 before introducing fuel", and the Engine 2 Start
+    Switch reads Off, not GRD: the starter is not left engaged. The start lever stays at CUTOFF.

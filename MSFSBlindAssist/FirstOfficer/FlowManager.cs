@@ -134,6 +134,8 @@ public class FlowManager<TExec, TState>
         _executor  = executor;
         _checklist = checklist;
         _announcer = announcer;
+        // A step that waits inside the executor holds on the flow's Pause too.
+        _executor.AttachFlowPause(WaitWhilePausedAsync);
     }
 
     // -----------------------------------------------------------------------

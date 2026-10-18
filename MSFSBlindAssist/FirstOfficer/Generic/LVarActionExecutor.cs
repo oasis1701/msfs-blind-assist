@@ -36,7 +36,9 @@ public enum LVarDispatchKind
 /// (<see cref="StillAttached"/>): the First Officer window detaches it when it closes (an aircraft
 /// switch, app exit) and relies on each executor refusing from then on. Read once before the pacing
 /// wait, a write queued there still went out after the detach. The release of a press already made
-/// still goes out, through the manager that pressed: a test is never left held.
+/// still goes out, through the manager that pressed: a test is never left held. The window's close
+/// sends it at once (<see cref="ReleaseHeldPresses"/>), so on app exit it goes out before MainForm
+/// disconnects.
 /// </summary>
 public abstract class LVarActionExecutor : IFoActionExecutor
 {
@@ -51,6 +53,9 @@ public abstract class LVarActionExecutor : IFoActionExecutor
     private readonly SemaphoreSlim _gate = new(1, 1);
     private DateTime _lastWriteUtc = DateTime.MinValue;
     private SimConnectManager? _sc;
+    // The presses held right now (a held fire test, a pulse's hold), released at once when the
+    // window closes (ReleaseHeldPresses).
+    private readonly HeldPresses _held = new();
 
     protected SimConnectManager? Sc => _sc;
 
@@ -58,6 +63,10 @@ public abstract class LVarActionExecutor : IFoActionExecutor
     protected abstract IReadOnlyDictionary<string, LVarDispatchKind> DispatchTable { get; }
 
     public void SetSimConnect(SimConnectManager? sc) => _sc = sc;
+
+    /// <summary>The window is closing: every held test and pulse is released now, while the sim
+    /// still listens (on app exit MainForm disconnects right after).</summary>
+    public void ReleaseHeldPresses() => _held.ReleaseAll();
 
     public bool IsAvailable => _sc is { IsConnected: true };
 
@@ -154,12 +163,20 @@ public abstract class LVarActionExecutor : IFoActionExecutor
             if (sc is not { IsConnected: true }) return false;
             await PaceAsync();
             if (!StillAttached(sc)) return false;
-            sc.SetLVar(name, 1);
-            _lastWriteUtc = DateTime.UtcNow;
-            await Task.Delay(holdMs);
-            sc.SetLVar(name, 0);
-            _lastWriteUtc = DateTime.UtcNow;
-            return true;
+            // Released through the manager that pressed, at once if the window closes first (_held).
+            long hold = _held.Begin(() => { if (sc.IsConnected) sc.SetLVar(name, 0); });
+            try
+            {
+                sc.SetLVar(name, 1);
+                _lastWriteUtc = DateTime.UtcNow;
+                await Task.Delay(holdMs);
+                return true;
+            }
+            finally
+            {
+                _held.End(hold);
+                _lastWriteUtc = DateTime.UtcNow;
+            }
         }
         finally { _gate.Release(); }
     }
@@ -211,21 +228,31 @@ public abstract class LVarActionExecutor : IFoActionExecutor
         sc.SetLVar(name, 0);
         _lastWriteUtc = DateTime.UtcNow;
         await Task.Delay(PulseGapMs);
-        sc.SetLVar(name, 1);
-        _lastWriteUtc = DateTime.UtcNow;
-        await Task.Delay(pressHoldMs > 0 ? pressHoldMs : 1);
-        // Read the resulting state while the button is still held (e.g. TO CONFIG result),
-        // through the manager that pressed. Not after a disconnect mid-hold, and not once the
-        // window has detached the executor (an aircraft switch, app exit): a result spoken then
-        // belongs to no window, and a read through the detached executor once found no manager and
-        // said "Takeoff config normal." off nothing.
-        if (sc.IsConnected && StillAttached(sc)) onHeld?.Invoke(sc);
-        // RELEASE back to 0 — a Fenix pushbutton latches its effect on the 0→1 rising
-        // edge, so the release loses no state; leaving it held at 1 was the stuck TO
-        // CONFIG bug (spurious CONFIG + master warning after landing).
-        sc.SetLVar(name, 0);
-        _lastWriteUtc = DateTime.UtcNow;
-        return true;
+        // Again before the press: the window can close in the gap, and nothing is pressed then.
+        if (!StillAttached(sc)) return false;
+        // RELEASE back to 0 — a Fenix pushbutton latches its effect on the 0→1 rising edge, so
+        // the release loses no state; leaving it held at 1 was the stuck TO CONFIG bug (spurious
+        // CONFIG + master warning after landing). Through the manager that pressed, and at once
+        // if the window closes during the hold (_held).
+        long hold = _held.Begin(() => { if (sc.IsConnected) sc.SetLVar(name, 0); });
+        try
+        {
+            sc.SetLVar(name, 1);
+            _lastWriteUtc = DateTime.UtcNow;
+            await Task.Delay(pressHoldMs > 0 ? pressHoldMs : 1);
+            // Read the resulting state while the button is still held (e.g. TO CONFIG result),
+            // through the manager that pressed. Not after a disconnect mid-hold, and not once the
+            // window has detached the executor (an aircraft switch, app exit): a result spoken then
+            // belongs to no window, and a read through the detached executor once found no manager
+            // and said "Takeoff config normal." off nothing.
+            if (sc.IsConnected && StillAttached(sc)) onHeld?.Invoke(sc);
+            return true;
+        }
+        finally
+        {
+            _held.End(hold);
+            _lastWriteUtc = DateTime.UtcNow;
+        }
     }
 
     /// <summary>Still attached to the manager this write began with (see the class doc).</summary>

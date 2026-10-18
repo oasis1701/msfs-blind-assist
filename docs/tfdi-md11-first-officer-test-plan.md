@@ -322,6 +322,22 @@ pushes back a START switch the flow pulled while the fuel reads OFF, as a Stop d
    the flow waits while the APU is running and its power was requested in After Landing, TFDi does
    not show APU power as on while the engines run: report it, since the guard then needs another
    reading.
+10. **APU still starting from the Aft Overhead when Before Start runs.** Cold and dark with ground
+    power connected and on, press APU Start on the Aft Overhead's APU panel and run Before Start at
+    once, while the APU is still starting. You hear "Already set: APU: start" and "Waiting for: APU
+    running". Once it runs: after "Seat belt signs: ON" you hear "APU power: ON" (the First Officer
+    presses APU Power once; the Electrical panel's APU Power reads On), then the wait for APU power
+    passes at once and "External power: OFF" follows. Until now the flow waited 60 s for APU power
+    and stopped. In a normal Before Start (the First Officer starts the APU with APU Power) you hear
+    "Already set: APU power: ON" there instead, and nothing is pressed. Modelled, not measured, as
+    item 6.
+11. **After Landing requests power for an APU running without it.** In flight or on the landing
+    roll, start the APU from the Aft Overhead (APU Start) and wait until APU Power reads Available.
+    Run After Landing: "APU: start" is spoken (not "Already set"), APU Power reads On afterwards, and
+    Parking then finds "Already set: APU or external power on". Modelled, not measured.
+12. **A press the bus dropped never leaves a button held.** Not testable on purpose (it needs the
+    event queue full): the unit tests cover it. Check nothing changed: every held Preflight test still
+    ends, and its light goes out.
 
 ## Reporting a problem
 

@@ -270,6 +270,21 @@ public class IFly737SecondReviewTests
             IFly737ActionExecutor.JudgeStartWait(done, sinceStart, sinceStartOrBrm, baseSeconds));
     }
 
+    // An N2 wait that ends without the fuel point (timed out, or the flow stopped) puts the start switch
+    // back to OFF, as the MD-11's light-up watch pushes START in: left at GRD, the starter went on
+    // motoring a dry engine. Only over a lever read at CUTOFF and a switch read at GRD.
+    [Theory]
+    [InlineData(0.0, 0.0, true)]               // CUTOFF, GRD: abort
+    [InlineData(2.0, 0.0, true)]               // CUTOFF with its fire light (the 0-5 composite's 0-2)
+    [InlineData(3.0, 0.0, false)]              // IDLE: the fuel is on, the start runs on
+    [InlineData(5.0, 0.0, false)]
+    [InlineData(0.0, 1.0, false)]              // the switch already OFF
+    [InlineData(double.NaN, 0.0, false)]       // lever unread
+    [InlineData(0.0, double.NaN, false)]       // switch unread
+    public void A_start_that_never_reached_the_fuel_point_is_aborted_only_without_fuel(
+        double lever, double startSwitch, bool abort)
+        => Assert.Equal(abort, IFly737ActionExecutor.ShouldAbortDryStart(lever, startSwitch));
+
     [Fact]
     public void The_engine_start_waits_are_the_executors_and_stop_the_flow()
     {

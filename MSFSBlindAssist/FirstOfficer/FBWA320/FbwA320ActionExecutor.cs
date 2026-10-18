@@ -47,8 +47,14 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
     private FlyByWireA320Definition? _def;
     private ScreenReaderAnnouncer? _announcer;
     private DateTime _lastWriteUtc = DateTime.MinValue;
+    // The presses held right now, released at once when the window closes (ReleaseHeldPresses).
+    private readonly HeldPresses _held = new();
 
     public void SetSimConnect(SimConnectManager? sc) => _sc = sc;
+
+    /// <summary>The window is closing: every held test and the cabin call are released now, while
+    /// the sim still listens (on app exit MainForm disconnects right after).</summary>
+    public void ReleaseHeldPresses() => _held.ReleaseAll();
     public void SetDefinition(FlyByWireA320Definition def) => _def = def;
     // The REAL app announcer (ScreenReaderAnnouncer is heavyweight — inits NVDA/Tolk —
     // and has no parameterless ctor; NEVER construct a second instance). Writes wrap
@@ -210,11 +216,12 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
     // (exception during the delay) can NEVER leave the call horn latched on, and it goes
     // through the manager the press went through: the window's close (an Aircraft-menu
     // switch, the sim keeping the aircraft) nulls _sc mid-hold, and re-reading the field
-    // skipped the release.
+    // skipped the release. The window's close releases it at once (_held), app exit included.
     private async Task<bool> FireCabinCallAsync()
     {
         var sc = _sc;   // one manager for the whole press: the release must follow its press
         if (sc is not { IsConnected: true }) return false;
+        long hold = _held.Begin(() => { if (sc.IsConnected) ApplySilent("PUSH_OVHD_CALLS_ALL", 0, sc); });
         try
         {
             ApplySilent("PUSH_OVHD_CALLS_ALL", 1, sc);
@@ -223,7 +230,7 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
         }
         finally
         {
-            if (sc.IsConnected) ApplySilent("PUSH_OVHD_CALLS_ALL", 0, sc);
+            _held.End(hold);
         }
     }
 
@@ -268,6 +275,7 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
         if (_sc == null) return false;   // detached while reading (the window closed)
 
         string key = "A32NX_ECP_" + page.Key;
+        long hold = _held.Begin(() => { if (sc.IsConnected) sc.SendHVar(key + "_RELEASED"); });
         try
         {
             sc.SendHVar(key + "_PRESSED");
@@ -275,7 +283,7 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
         }
         finally
         {
-            if (sc.IsConnected) sc.SendHVar(key + "_RELEASED");
+            _held.End(hold);
         }
         await Task.Delay(EcpPageSettleMs);
         return await SdShowsAsync(sc, page.Page) != false;
@@ -368,6 +376,10 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
             // executor presses nothing. The release then goes through this same manager.
             var sc = _sc;
             if (sc is not { IsConnected: true }) return false;
+            // ALWAYS release the held fire-test PB, even on an interrupted hold or a window closed
+            // mid-hold (then at once, _held) — a stuck 1 leaves the fire test active (continuous
+            // test bell). Guarded for a dropped sim.
+            long hold = _held.Begin(() => { if (sc.IsConnected) ApplySilent(varKey, 0, sc); });
             try
             {
                 ApplySilent(varKey, 1, sc);
@@ -377,10 +389,7 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
             }
             finally
             {
-                // ALWAYS release the held fire-test PB, even on an interrupted hold or a window
-                // closed mid-hold — a stuck 1 leaves the fire test active (continuous test bell).
-                // Guarded for a dropped sim.
-                if (sc.IsConnected) ApplySilent(varKey, 0, sc);
+                _held.End(hold);
                 _lastWriteUtc = DateTime.UtcNow;
             }
         }
@@ -402,6 +411,10 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
             await PaceAsync();
             var sc = _sc;   // after the pacing wait: a detached executor presses nothing (FireTestAsync)
             if (sc is not { IsConnected: true }) return false;
+            // ALWAYS release the held CVR test button, through the manager the press went through,
+            // even on an interrupted hold or a window closed mid-hold (then at once, _held). Guarded
+            // for a dropped sim.
+            long hold = _held.Begin(() => { if (sc.IsConnected) ApplySilent("A32NX_RCDR_TEST", 0, sc); });
             try
             {
                 ApplySilent("A32NX_RCDR_TEST", 1, sc);
@@ -411,10 +424,7 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
             }
             finally
             {
-                // ALWAYS release the held CVR test button, through the manager the press went
-                // through, even on an interrupted hold or a window closed mid-hold. Guarded for a
-                // dropped sim.
-                if (sc.IsConnected) ApplySilent("A32NX_RCDR_TEST", 0, sc);
+                _held.End(hold);
                 _lastWriteUtc = DateTime.UtcNow;
             }
         }
@@ -437,6 +447,10 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
             await PaceAsync();
             var sc = _sc;   // after the pacing wait: a detached executor presses nothing (FireTestAsync)
             if (sc is not { IsConnected: true }) return false;
+            // ALWAYS send the release H-event, through the manager the press went through, even on
+            // an interrupted hold or a window closed mid-hold (then at once, _held) — a missed
+            // release leaves the ECP TO CONFIG button held down. Guarded for a dropped sim.
+            long hold = _held.Begin(() => { if (sc.IsConnected) sc.SendHVar("A32NX_ECP_TO_CONF_TEST_RELEASED"); });
             try
             {
                 sc.SendHVar("A32NX_ECP_TO_CONF_TEST_PRESSED");
@@ -446,10 +460,7 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
             }
             finally
             {
-                // ALWAYS send the release H-event, through the manager the press went through, even
-                // on an interrupted hold or a window closed mid-hold — a missed release leaves the
-                // ECP TO CONFIG button held down. Guarded for a dropped sim.
-                if (sc.IsConnected) sc.SendHVar("A32NX_ECP_TO_CONF_TEST_RELEASED");
+                _held.End(hold);
                 _lastWriteUtc = DateTime.UtcNow;
             }
         }

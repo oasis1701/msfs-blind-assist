@@ -642,10 +642,12 @@ public static class PMDG777FlowDefinitions
             // The flap lever WRITE completes its OWN group's "Flaps: UP" (ATKO_FLAPS_UP) — the
             // gear's shape. It used to complete the checklist's line (ATKOF_FLAPS) instead,
             // which left ATKO_FLAPS_UP with no step behind it, so MarkGroupComplete latched it
-            // complete over a failed write.
-            Skip(SW("ATKOF_FLAPS_UP",    "Flaps: UP",           "EVT_CONTROL_STAND_FLAPS_LEVER_0", null,
+            // complete over a failed write. Only when SIM ON GROUND reads airborne, as the gear
+            // above: run on the ground by mistake, it retracted the takeoff flaps on the runway.
+            LeaveAlone(Skip(SW("ATKOF_FLAPS_UP",    "Flaps: UP",           "EVT_CONTROL_STAND_FLAPS_LEVER_0", null,
                true, "FCTL_Flaps_Lever", v => v < 0.5, "ATKO_FLAPS_UP"),
                 s => s.AreFlapsUp()),
+                s => !s.IsDefinitelyAirborne(), AircraftStateEvaluator.FlapsUpLeaveAloneText),
             // Read-only: completes the After Takeoff Checklist's "Flaps: UP" (ATKOF_FLAPS) once
             // the LEVER reads UP — the checklist line's own condition. Not the physical flap
             // angle: a retraction from takeoff flap outlasts any sensible wait, so it would
@@ -935,12 +937,22 @@ public static class PMDG777FlowDefinitions
             // passes at once over one that never ran. Up to 3 minutes; a timeout is heard skipped and
             // the battery then stays on.
             WaitForField("SEC_APU_STOPPED", "APU to stop", "APURunning", v => v < 0.5, 180),
-            Requires(Skip(SW("SEC_BATTERY_OFF","Battery: OFF",         "EVT_OH_ELEC_BATTERY_SWITCH",  0,
+            // Never with an engine turning (the 737's and the iFly's rule, FOB-22): left alone, said
+            // aloud, unless both N2 read below 10 %; unread is not stopped.
+            Requires(LeaveAlone(Skip(SW("SEC_BATTERY_OFF","Battery: OFF",         "EVT_OH_ELEC_BATTERY_SWITCH",  0,
                "ELEC_Battery_Sw_ON", v => v < 0.5, "EPD_BATTERY_OFF"),
                 s => s.IsOff("ELEC_Battery_Sw_ON")),
+                s => !EnginesStopped(s), "Engines running, so the battery stays on."),
                 "SEC_APU_STOPPED", "APU still running, so the battery stays on."),
         }
     };
+
+    // Both engines read and below 10 % N2 — the battery may go off (the 737's EnginesStopped).
+    internal static bool EnginesStopped(AircraftStateEvaluator s)
+    {
+        double eng1 = s.GetValue("FO_ENG1_N2"), eng2 = s.GetValue("FO_ENG2_N2");
+        return !double.IsNaN(eng1) && !double.IsNaN(eng2) && eng1 < 10 && eng2 < 10;
+    }
 
     // -----------------------------------------------------------------------
     // Step builder helpers

@@ -60,11 +60,8 @@ public static class Md11FoFlowDefinitions
         BuildShutdown(),
     };
 
-    private static bool ApuStartingOrRunning(Md11FoStateEvaluator s)
-        => s.GetValue("MD11_APU_STATE") is var v && v > 0.5 && v < 2.5;
-
     /// <summary>
-    /// Before Start's "Already set" for the APU: starting, or running WITH its power on. Running
+    /// Before Start's and After Landing's "Already set" for the APU: starting, or running WITH its power on. Running
     /// with its power off (started from the aft-overhead APU START button, or external power
     /// connected over it) is the executor's to finish: it requests APU power, or the flow would
     /// wait for APU power and stop.
@@ -207,6 +204,12 @@ public static class Md11FoFlowDefinitions
                 onTimeout: FlowStepFailurePolicy.Stop), "BSC_APU"),
             Also(Done(Skip(SW("BS_SEAT_BELTS", "Seat belt signs: ON", SeatBelts, 2), s => s.IsPosition(SeatBelts, 2)), "BS_SEAT_BELTS"),
                 "BSC_SEAT_BELTS"),
+            // An APU started from the aft-overhead APU START button runs with its power off (AVAIL
+            // lit, APU PWR ON dark): still starting when BS_APU read it, it was "Already set", and the
+            // wait below stopped the flow after 60 s. Its power is requested now that it runs; a
+            // request already made (APU PWR started it) lights ON within the settle and nothing is
+            // pressed (X.ApuPower).
+            Skip(SW("BS_APU_PWR", "APU power: ON", X.ApuPower, 1), s => s.IsOn("FO_APU_POWER_ON")),
             // Never pull external power before the APU is powering the busses.
             WaitForField("BS_APU_POWER", "APU power on", "FO_APU_POWER_ON", v => v > 0.5, 60,
                 onTimeout: FlowStepFailurePolicy.Stop),
@@ -411,7 +414,10 @@ public static class Md11FoFlowDefinitions
                 s => s.GetValue("FO_STROBES_ON") < 0.5), "AL_STROBES"), "ALC_STROBES"),
             Also(Done(Skip(SW("AL_WXR", "Weather radar: OFF", X.WeatherRadarOff, 1), s => s.IsOn("FO_WXR_OFF")), "AL_WXR"),
                 "ALC_WXR"),
-            Also(Done(Skip(SW("AL_APU", "APU: start", X.ApuStart, 1), ApuStartingOrRunning), "AL_APU"), "ALC_APU"),
+            // "Already set" only starting, or running with its power on: running with its power off,
+            // the step requests APU power (X.ApuStart), or Parking would wait for a power source and
+            // stop with the engines running.
+            Also(Done(Skip(SW("AL_APU", "APU: start", X.ApuStart, 1), ApuStartingOrPowering), "AL_APU"), "ALC_APU"),
             Captain("AL_REVERSERS", "Confirm the reversers are stowed"),
             Captain("AL_STAB_TRIM", "Set the stabilizer trim to 3 degrees nose up"),
         }

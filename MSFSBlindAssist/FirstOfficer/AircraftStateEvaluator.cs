@@ -376,6 +376,10 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     /// <summary>Spoken when the gear-up step or line leaves the lever alone.</summary>
     public const string GearUpLeaveAloneText = "Not airborne, so the gear stays down.";
 
+    /// <summary>Spoken when After Takeoff's flaps-up step or line leaves the lever alone on the ground
+    /// (After Landing's flaps up is a ground step and is never refused).</summary>
+    public const string FlapsUpLeaveAloneText = "Not airborne, so the flaps stay where they are.";
+
     // Gear CONFIRMED from the lever AND the physical leg positions (Pmdg777GearConfirmation);
     // false (never true) while any reading is unknown.
     public bool IsGearConfirmedUp()      => IsPosition(Pmdg777GearConfirmation.UpField, 1);

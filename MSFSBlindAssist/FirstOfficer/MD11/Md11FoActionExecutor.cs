@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Aircraft.MD11;
 using MSFSBlindAssist.FirstOfficer.Models;
@@ -36,6 +37,13 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
     /// </summary>
     public const string ExtPowerShutdown = "FO_EXT_POWER_SHUTDOWN";
     public const string ApuStart = "FO_APU_START";
+    /// <summary>
+    /// APU power ON for an APU that already runs: requested (one APU PWR press) only on a dark ON
+    /// lamp with AVAIL lit, read twice <see cref="ApuPowerSettleMs"/> apart. Before Start's step for an
+    /// APU started from the aft-overhead APU START button, still starting when its "APU: start" step
+    /// read it. Not running: nothing pressed, not done.
+    /// </summary>
+    public const string ApuPower = "FO_APU_POWER";
     public const string ApuShutdown = "FO_APU_SHUTDOWN";
     public const string Ignition = "FO_IGNITION";
     public const string PacksOff = "FO_PACKS_OFF";
@@ -100,6 +108,7 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
         [ExtPower] = (_, io, t) => ExtPowerAsync(io, t),
         [ExtPowerShutdown] = (e, io, _) => e.ExtPowerShutdownAsync(io),
         [ApuStart] = (_, io, _) => ApuStartAsync(io),
+        [ApuPower] = (_, io, _) => ApuPowerWhenRunningAsync(io),
         [ApuShutdown] = (_, io, _) => ApuShutdownAsync(io),
         [Ignition] = (_, io, t) => IgnitionAsync(io, t),
         [PacksOff] = (_, io, _) => PacksOffAsync(io),
@@ -586,6 +595,18 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
         io.NoteActuation(c.Key);
         if (!io.Press(c.Down, c.Up)) return false;                         // starts the APU and requests its power
         return await WaitForAsync(io, "MD11_APU_STATE", v => v >= 0.5, LampVerifyTimeoutMs, LampReadTimeoutMs).ConfigureAwait(false);
+    }
+
+    // ApuPower: only an APU that runs has power to request; starting, stopping, off or unread: not done.
+    private static async Task<bool> ApuPowerWhenRunningAsync(IMd11FoTransport io)
+    {
+        var state = await ReadAsync(io, "MD11_APU_STATE", LampReadTimeoutMs).ConfigureAwait(false);
+        if (state is not (>= 1.5 and < 2.5))
+        {
+            Log.Info("MD11 FO", $"APU power not requested: the APU does not run (state {state?.ToString(CultureInfo.InvariantCulture) ?? "unread"})");
+            return false;
+        }
+        return await ApuPowerOnAsync(io).ConfigureAwait(false);
     }
 
     private const string ApuPowerAvailLamp = "MD11_OVHD_ELEC_APU_PWR_AVAIL_LT";

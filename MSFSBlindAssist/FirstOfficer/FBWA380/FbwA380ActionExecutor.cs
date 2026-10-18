@@ -40,8 +40,14 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
     private FlyByWireA380Definition? _def;
     private ScreenReaderAnnouncer? _announcer;
     private DateTime _lastWriteUtc = DateTime.MinValue;
+    // The presses held right now, released at once when the window closes (ReleaseHeldPresses).
+    private readonly HeldPresses _held = new();
 
     public void SetSimConnect(SimConnectManager? sc) => _sc = sc;
+
+    /// <summary>The window is closing: the fire test and the T.O CONFIG test are released now if
+    /// held, while the sim still listens (on app exit MainForm disconnects right after).</summary>
+    public void ReleaseHeldPresses() => _held.ReleaseAll();
     public void SetDefinition(FlyByWireA380Definition def) => _def = def;
     // The REAL app announcer (ScreenReaderAnnouncer is heavyweight — inits NVDA/Tolk —
     // and has no parameterless ctor; NEVER construct a second instance). Writes wrap
@@ -195,6 +201,10 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
             // executor presses nothing. The release then goes through this same manager.
             var sc = _sc;
             if (sc is not { IsConnected: true }) return false;
+            // ALWAYS release the held fire-test PB, even on an interrupted hold or a window closed
+            // mid-hold (then at once, _held) — a stuck 1 leaves the fire test active (continuous
+            // test bell). Guarded for a dropped sim.
+            long hold = _held.Begin(() => { if (sc.IsConnected) ApplySilent("A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", 0, sc); });
             try
             {
                 ApplySilent("A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", 1, sc);
@@ -204,10 +214,7 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
             }
             finally
             {
-                // ALWAYS release the held fire-test PB, even on an interrupted hold or a window
-                // closed mid-hold — a stuck 1 leaves the fire test active (continuous test bell).
-                // Guarded for a dropped sim.
-                if (sc.IsConnected) ApplySilent("A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", 0, sc);
+                _held.End(hold);
                 _lastWriteUtc = DateTime.UtcNow;
             }
         }
@@ -242,6 +249,15 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
                 // the next ECP press wait out a hold that never came.
                 if (_sc is not { IsConnected: true }) return false;
             }
+            // ALWAYS release the momentary button, through the manager the press went through, even
+            // if the hold was interrupted by an exception or the window closed mid-hold (then at
+            // once, _held) — a stuck 1 leaves the ECP button held down (the Fenix stuck-TO-CONFIG
+            // lesson). Guarded so a release attempt after a dropped sim is a harmless no-op.
+            long hold = _held.Begin(() =>
+            {
+                if (sc.IsConnected) sc.ExecuteCalculatorCode("0 (>L:A32NX_BTN_TOCONFIG)");
+                A380EcpKeyPulse.Shared.MarkReleased(Environment.TickCount64);
+            });
             try
             {
                 sc.ExecuteCalculatorCode("1 (>L:A32NX_BTN_TOCONFIG)");
@@ -251,12 +267,7 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
             }
             finally
             {
-                // ALWAYS release the momentary button, through the manager the press went through,
-                // even if the hold was interrupted by an exception or the window closed mid-hold —
-                // a stuck 1 leaves the ECP button held down (the Fenix stuck-TO-CONFIG lesson).
-                // Guarded so a release attempt after a dropped sim is a harmless no-op.
-                if (sc.IsConnected) sc.ExecuteCalculatorCode("0 (>L:A32NX_BTN_TOCONFIG)");
-                A380EcpKeyPulse.Shared.MarkReleased(Environment.TickCount64);
+                _held.End(hold);
                 _lastWriteUtc = DateTime.UtcNow;
             }
         }

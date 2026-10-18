@@ -598,11 +598,14 @@ public class Pmdg777SecondReviewTests
     }
 
     // No sim: the APU switch-off cannot be sent, so its cool-down passes silently (no 30 s wait: the
-    // harness fails a run over 20 s), and the APU never reads stopped, so the battery stays on.
+    // harness fails a run over 20 s), and the APU never reads stopped, so the battery stays on. The
+    // engines read stopped, so the battery's own engine guard is not what keeps it on.
     [Fact]
     public async Task Secure_runs_no_cool_down_it_did_not_cause_and_keeps_the_battery_on_over_a_running_APU()
     {
-        var run = await Pmdg777FlowRunTests.RunAsync(Available(), "SECURE",
+        var eval = Available();
+        eval.SetEngineN2(0, 0);
+        var run = await Pmdg777FlowRunTests.RunAsync(eval, "SECURE",
             "SEC_APU_OFF", "SEC_APU_WAIT", "SEC_APU_STOPPED", "SEC_BATTERY_OFF");
 
         Assert.DoesNotContain(run.Speech, s => s.Contains("APU cooling down", StringComparison.Ordinal));
@@ -610,6 +613,68 @@ public class Pmdg777SecondReviewTests
         Assert.Contains("APU still running, so the battery stays on.", run.Speech);
         Assert.Contains("EPD_BATTERY_OFF", run.Unfinished);
         Assert.False(run.Line("ELEC_POWER_DOWN", "EPD_BATTERY_OFF").IsChecked);
+    }
+
+    // The 737's and the iFly's rule (FOB-22), which the 777's Secure lacked: never the battery OFF
+    // with an engine turning; both N2 read and below 10 %, or it is left alone, said aloud.
+    [Theory]
+    [InlineData(0.0, 0.0, false)]
+    [InlineData(9.9, 0.0, false)]
+    [InlineData(25.0, 0.0, true)]              // one engine still turning
+    [InlineData(0.0, 60.0, true)]
+    [InlineData(double.NaN, 0.0, true)]        // unread is not stopped
+    [InlineData(0.0, double.NaN, true)]
+    public void Secure_leaves_the_battery_on_while_an_engine_turns(double eng1N2, double eng2N2, bool leftAlone)
+    {
+        var bat = Step("SECURE", "SEC_BATTERY_OFF");
+        var eval = Available();
+        eval.SetEngineN2(eng1N2, eng2N2);
+        Assert.Equal(leftAlone, bat.LeaveAloneWhen!(eval));
+        Assert.Equal("Engines running, so the battery stays on.", bat.LeaveAloneText);
+    }
+
+    // After Takeoff run on the ground by mistake retracted the takeoff flaps on the runway: its
+    // flaps-up step and line act only when SIM ON GROUND reads airborne, as its gear-up step does.
+    [Fact]
+    public void The_after_takeoff_flaps_up_step_and_line_leave_the_lever_alone_unless_airborne()
+    {
+        var step = Step("AFTER_TAKEOFF", "ATKOF_FLAPS_UP");
+        var line = Line("AFTER_TAKEOFF", "ATKO_FLAPS_UP");
+        Assert.Equal(AircraftStateEvaluator.FlapsUpLeaveAloneText, step.LeaveAloneText);
+        Assert.Equal(AircraftStateEvaluator.FlapsUpLeaveAloneText, line.LeaveAloneText);
+        foreach (var (eval, leftAlone) in new[]
+        {
+            (Available((AircraftStateEvaluator.OnGroundKey, 1)), true),
+            (Available(), true),
+            (Available((AircraftStateEvaluator.OnGroundKey, 0)), false),
+        })
+        {
+            Assert.Equal(leftAlone, step.LeaveAloneWhen!(eval));
+            Assert.Equal(leftAlone, line.LeaveAloneWhen!(eval));
+        }
+    }
+
+    [Fact]
+    public async Task On_the_ground_the_after_takeoff_flow_leaves_the_flaps_where_they_are()
+    {
+        var run = await Pmdg777FlowRunTests.RunAsync(Available((AircraftStateEvaluator.OnGroundKey, 1)),
+            "AFTER_TAKEOFF", "ATKOF_FLAPS_UP");
+
+        Assert.Equal(new[]
+        {
+            "After Takeoff flow started",
+            "Not airborne, so the flaps stay where they are.",
+            "After Takeoff flow complete",
+        }, run.Speech);
+        Assert.Equal(new[] { "ATKO_FLAPS_UP" }, run.Unfinished);
+    }
+
+    // After Landing's flaps up is a ground step: never refused there.
+    [Fact]
+    public void After_landing_flaps_up_is_never_left_alone_on_the_ground()
+    {
+        foreach (var step in PMDG777FlowDefinitions.Build().Single(f => f.Id == "AFTER_LANDING").Steps)
+            Assert.True(step.LeaveAloneText != AircraftStateEvaluator.FlapsUpLeaveAloneText, step.Id);
     }
 
     // ==================================================================================

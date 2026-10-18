@@ -70,7 +70,11 @@ public class FlowManagerCancelAndVerifyTests
         // OnFlowStoppedAsync counts its calls and runs OnStopped.
         public Action? OnStopped;
         public int StopCalls;
+        // The flow's pause gate, as the FlowManager hands it over.
+        public Func<CancellationToken, Task>? PauseGate;
         public bool IsAvailable => true;
+
+        public void AttachFlowPause(Func<CancellationToken, Task> waitWhilePaused) => PauseGate = waitWhilePaused;
 
         public Task<bool> ExecuteStepAsync(IFlowStepDispatch step, CancellationToken stop)
         {
@@ -442,6 +446,31 @@ public class FlowManagerCancelAndVerifyTests
         h.Flows.Resume();
         await h.WaitUntilStoppedAsync();
         Assert.Contains("Timed out waiting for: W", h.Speech.All);
+    }
+
+    // An executor whose step waits (the iFly's engine-start waits) holds on the flow's Pause: the
+    // FlowManager hands it its pause gate, which lets go at once unless a Pause is in force. Without
+    // it a Pause longer than such a wait's limit timed the wait out, and the flow stopped, under "Paused".
+    [Fact]
+    public async Task The_executor_is_handed_the_flows_pause_gate()
+    {
+        var h = new Harness();
+        var gate = h.Executor.PauseGate;
+        Assert.NotNull(gate);
+        Assert.True(gate!(CancellationToken.None).IsCompleted);           // no Pause: at once
+
+        h.Executor.Hold = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        h.Start(Flow(Write("A")));
+        await h.Executor.WriteStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        h.Flows.Pause();
+        var held = gate(h.Executor.StopToken);
+        await Task.Delay(100);
+        Assert.False(held.IsCompleted);                                    // paused: an executor wait holds
+        h.Flows.Resume();
+        await held.WaitAsync(TimeSpan.FromSeconds(5));                     // resumed: it lets go
+
+        h.Executor.Hold.SetResult(true);
+        await h.WaitUntilStoppedAsync();
     }
 
     private static async Task RunAsync(Harness h, FlowDefinition<FakeState> flow)

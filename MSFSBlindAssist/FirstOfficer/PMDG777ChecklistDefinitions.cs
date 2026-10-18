@@ -592,9 +592,12 @@ public static class PMDG777ChecklistDefinitions
                 "GEAR_Lever", v => v < 0.5,
                 action: (e, _) => e.SetGearLever(0)),
                 s => !s.IsDefinitelyAirborne(), AircraftStateEvaluator.GearUpLeaveAloneText),
-            Auto("ATKO_FLAPS_UP", "AFTER_TAKEOFF", "Flaps: UP",
+            // Flaps UP only when airborne, as the gear above: a tick on the ground is refused with its
+            // reason (After Landing's flaps-up line is a ground line and is not guarded).
+            LeaveAlone(Auto("ATKO_FLAPS_UP", "AFTER_TAKEOFF", "Flaps: UP",
                 "FCTL_Flaps_Lever", v => v < 0.5,
                 action: (e, _) => e.SetFlapsPosition(0)),
+                s => !s.IsDefinitelyAirborne(), AircraftStateEvaluator.FlapsUpLeaveAloneText),
         }
     };
 

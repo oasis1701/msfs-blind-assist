@@ -42,6 +42,13 @@ public class AircraftActionExecutor : IFoActionExecutor
 
     public bool IsAvailable => _simConnect is { IsConnected: true };
 
+    // The presses held right now (HeldTransmitTestAsync), released at once when the window closes.
+    private readonly HeldPresses _held = new();
+
+    /// <summary>The window is closing: a held test is released now, while the sim still listens
+    /// (on app exit MainForm disconnects right after).</summary>
+    public void ReleaseHeldPresses() => _held.ReleaseAll();
+
     // -----------------------------------------------------------------------
     // Core dispatch — serialized + frame-paced (see class doc)
     // -----------------------------------------------------------------------
@@ -262,12 +269,24 @@ public class AircraftActionExecutor : IFoActionExecutor
             // out on this same reference, so a press is never left held.
             var sc = _simConnect;
             if (sc == null) return false;
-            sc.SendPMDGEventViaTransmitWithTarget((uint)evId, MouseFlagLeftSingleU);
-            _lastWriteUtc = DateTime.UtcNow;
-            await Task.Delay(holdMs);
-            sc.SendPMDGEventViaTransmitWithTarget((uint)evId, MouseFlagLeftReleaseU);
-            _lastWriteUtc = DateTime.UtcNow;
-            return true;
+            // The release goes out at once if the window closes during the hold (_held): on app
+            // exit MainForm disconnects right after, and a release on the hold's timer went nowhere.
+            long hold = _held.Begin(() =>
+            {
+                if (sc.IsConnected) sc.SendPMDGEventViaTransmitWithTarget((uint)evId, MouseFlagLeftReleaseU);
+            });
+            try
+            {
+                sc.SendPMDGEventViaTransmitWithTarget((uint)evId, MouseFlagLeftSingleU);
+                _lastWriteUtc = DateTime.UtcNow;
+                await Task.Delay(holdMs);
+                return true;
+            }
+            finally
+            {
+                _held.End(hold);
+                _lastWriteUtc = DateTime.UtcNow;
+            }
         }
         finally { _dispatchGate.Release(); }
     }

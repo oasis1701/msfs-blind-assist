@@ -493,3 +493,8 @@ ticks, seat belts) are Part AA.1 of the PMDG 737 plan.
    nav and logo lights off, the Securing line "Exterior lights: OFF" stays unticked. Run Securing:
    "Exterior lights: OFF" is spoken as a step, not "Already set", and the Exterior Lighting panel's
    Runway Turnoff Lights then read Off.
+6. **The same light switched twice still moves.** On the Exterior Lighting panel set Runway Turnoff
+   Lights to Off, then On, then Off again, and the same for Landing Lights and the Nose light: each
+   pick moves the light (the panel reads it back). The nose, turn-off and landing light writes are
+   now numbered per call, so a repeat of the same state is never dropped; the shared check that a
+   held test is released when MSFSBA quits is Part AA.1 item 11 of the PMDG 737 plan.

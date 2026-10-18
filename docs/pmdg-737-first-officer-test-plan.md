@@ -1159,6 +1159,12 @@ aircraft's plans point here for it.
     feet. Autopilot engaged." once, after the aircraft's own call. Engage it yourself below the
     height: nothing is pressed and nothing is said. If it never engages, about 15 s later:
     "Autopilot did not engage. Captain action required: engage the autopilot."
+11. **Quitting during a held test releases it.** On the FlyByWire A32NX (or the A330), start
+    Preflight and, while the fire test's continuous chime sounds, quit MSFSBA: the chime stops at
+    once and does not come back. Restart MSFSBA: the master warning is not lit, and the next fire
+    test chimes and stops as usual. Repeat once on the A380 (its fire test), on the Fenix (its fire
+    test bell) and on the PMDG 777 (Cockpit Preparation's "Fire and overheat test"): the bell stops
+    when MSFSBA closes. Before this fix it rang on after MSFSBA had closed.
 
 A Pause in the last second of a wait (it once timed the wait out under "Paused") and the stop
 clean-up on a Stop or a failed step are pinned by unit tests; they need no step of their own here.
@@ -1274,12 +1280,22 @@ None of these has run in the sim. B reads the altimeter, L the flap lever, Shift
    "Timed out waiting for: APU to stop", "Skipping: APU to stop", "APU still running, so the battery
    stays on."
 10. **Nothing pressed after the window closes.** Start Cockpit Prep and, during "Fire and overheat
-    test — listen for the fire bell", switch MSFSBA to another aircraft: the bell stops when its
-    hold ends, and the 777 flow presses nothing more. Separately, while Secure says "Emer exit
-    lights: OFF", arrow the Overhead panel's Emergency Lights combo to Armed: the switch ends at
-    Armed, the last pick, and the combo agrees with it.
+    test — listen for the fire bell", switch MSFSBA to another aircraft: the bell stops at once
+    (the window's close releases the held test), and the 777 flow presses nothing more.
+    Separately, while Secure says "Emer exit lights: OFF", arrow the Overhead panel's Emergency
+    Lights combo to Armed: the switch ends at Armed, the last pick, and the combo agrees with it.
 11. **One weather radar test at a time.** Press the panel's Weather Radar Test button, then press
     it again within 20 s: "Weather radar test still running, please wait." The windshear callout
     plays once and the radar ends in WX mode with the overlay off, as before. About 30 s after the
     first press a new press runs the test again. TCAS Test still gives "TCAS TEST" then "TCAS TEST
     PASS".
+12. **Secure keeps the battery on while an engine turns.** At the gate with one engine still
+    running (or spooling down above 10 % N2), run Secure: after its APU and ground power steps you
+    hear "Engines running, so the battery stays on.", and the battery switch stays ON (the Overhead
+    Electrical panel's Battery reads On). With both engines stopped, Secure ends with "Battery: OFF"
+    as in item 9.
+13. **After Takeoff leaves the flaps alone on the ground.** At the gate or on the runway with
+    flaps 5 set (L says "Flaps 5"), run After Takeoff: at the flap step you hear "Not airborne, so
+    the flaps stay where they are." and L still says "Flaps 5"; the After Takeoff "Flaps: UP" line
+    stays unticked, and ticking it says the same sentence. In the air after takeoff the flaps go up
+    as before. After Landing still moves the flaps up on the ground.

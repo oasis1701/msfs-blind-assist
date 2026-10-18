@@ -144,20 +144,27 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     private const int StartWaitPollMs = 1000;
 
     // One start wait: the engine whose BRM flag can hold it, the field it reads and when that is
-    // done, and how long it may take with no BRM. Declared before PseudoKeyHandlers, which names
-    // them, so they are initialized first.
-    private sealed record StartWait(int Engine, string Field, Func<double, bool> Done, int Seconds);
+    // done, and how long it may take with no BRM. BeforeFuel: the wait before the start lever goes
+    // to IDLE, which aborts the start when it ends without its condition (AbortDryStartAsync).
+    // Declared before PseudoKeyHandlers, which names them, so they are initialized first.
+    private sealed record StartWait(int Engine, string Field, Func<double, bool> Done, int Seconds, bool BeforeFuel);
 
     private static bool StarterCutOut(double startSwitch) => Math.Abs(startSwitch - EngStartOff) < 0.1;
 
     private static readonly IReadOnlyDictionary<string, StartWait> StartWaits =
         new Dictionary<string, StartWait>(StringComparer.Ordinal)
         {
-            [KeyEng1FuelN2] = new(1, "FO_ENG1_N2", v => v >= IFly737StateEvaluator.EngStartFuelN2, FuelN2WaitSeconds),
-            [KeyEng2FuelN2] = new(2, "FO_ENG2_N2", v => v >= IFly737StateEvaluator.EngStartFuelN2, FuelN2WaitSeconds),
-            [KeyEng1StarterCutout] = new(1, "Engine_Start_Switch_Status_0", StarterCutOut, StarterCutoutWaitSeconds),
-            [KeyEng2StarterCutout] = new(2, "Engine_Start_Switch_Status_1", StarterCutOut, StarterCutoutWaitSeconds),
+            [KeyEng1FuelN2] = new(1, "FO_ENG1_N2", v => v >= IFly737StateEvaluator.EngStartFuelN2, FuelN2WaitSeconds, BeforeFuel: true),
+            [KeyEng2FuelN2] = new(2, "FO_ENG2_N2", v => v >= IFly737StateEvaluator.EngStartFuelN2, FuelN2WaitSeconds, BeforeFuel: true),
+            [KeyEng1StarterCutout] = new(1, "Engine_Start_Switch_Status_0", StarterCutOut, StarterCutoutWaitSeconds, BeforeFuel: false),
+            [KeyEng2StarterCutout] = new(2, "Engine_Start_Switch_Status_1", StarterCutOut, StarterCutoutWaitSeconds, BeforeFuel: false),
         };
+
+    // The running flow's Pause (FlowManager hands it over, AttachFlowPause): a start wait holds
+    // while paused and does not count the time.
+    private Func<CancellationToken, Task> _waitWhilePaused = _ => Task.CompletedTask;
+
+    public void AttachFlowPause(Func<CancellationToken, Task> waitWhilePaused) => _waitWhilePaused = waitWhilePaused;
 
     /// <summary>THE one place a pseudo-key is wired to its handler. <see cref="PseudoKeys"/>
     /// and <see cref="IsPseudoKey"/> are both DERIVED from this map's keys rather than
@@ -671,21 +678,29 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     /// <see cref="BrmAllowanceSeconds"/> past its own limit, and the pilot hears once that the
     /// First Officer is waiting for it. With no BRM it gives up at its own limit exactly as before
     /// (the hung-start protection), and the flow step's Stop policy ends the flow. A Stop, or a
-    /// lost SimConnect connection, ends it at once.
+    /// lost SimConnect connection, ends it at once. A Pause holds it, and the time paused is not
+    /// counted: a Pause longer than the limit timed the wait out and stopped the flow under
+    /// "Paused". A wait before the fuel (the N2 waits) that ends without its condition, timed out
+    /// or stopped, aborts the start: the start switch goes back to OFF (AbortDryStartAsync), as the
+    /// MD-11's light-up watch pushes START in. It was left at GRD, the starter motoring a dry engine.
     /// </summary>
     private async Task<bool> StartWaitAsync(StartWait wait, CancellationToken stop)
     {
         var state = _state;
         if (state == null) return false;
         var clock = Stopwatch.StartNew();
-        double brmSeenAt = 0;   // seconds into the wait; 0 is its start
+        double pausedSeconds = 0;
+        double brmSeenAt = 0;   // seconds into the wait, paused time left out; 0 is its start
         bool brmSpoken = false;
         try
         {
             while (true)
             {
+                var paused = Stopwatch.StartNew();
+                await _waitWhilePaused(stop);
+                pausedSeconds += paused.Elapsed.TotalSeconds;
                 if (_sc is not { IsConnected: true }) return false;
-                double t = clock.Elapsed.TotalSeconds;
+                double t = clock.Elapsed.TotalSeconds - pausedSeconds;
                 if (state.IsBowedRotorMotoring(wait.Engine))
                 {
                     brmSeenAt = t;
@@ -695,22 +710,52 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
                         AnnounceQueuedOnUi(BrmWaitText(wait.Engine));
                     }
                 }
-                switch (JudgeStartWait(wait.Done(state.GetValue(wait.Field)), t, t - brmSeenAt, wait.Seconds))
+                var verdict = JudgeStartWait(wait.Done(state.GetValue(wait.Field)), t, t - brmSeenAt, wait.Seconds);
+                if (verdict == StartWaitVerdict.Done) return true;
+                if (verdict == StartWaitVerdict.TimedOut)
                 {
-                    case StartWaitVerdict.Done:
-                        return true;
-                    case StartWaitVerdict.TimedOut:
-                        Log.Warn("ifly_fo", $"engine {wait.Engine} start wait on {wait.Field} timed out after {t:F0} s");
-                        return false;
+                    Log.Warn("ifly_fo", $"engine {wait.Engine} start wait on {wait.Field} timed out after {t:F0} s");
+                    break;
                 }
                 await Task.Delay(StartWaitPollMs, stop);
             }
         }
-        catch (OperationCanceledException) when (stop.IsCancellationRequested)
+        // Unfiltered: a Stop during a Pause ends the pause gate itself (Cancel cancels the pause
+        // before the run token), and on the CancellationToken.None path the token never is.
+        catch (OperationCanceledException)
         {
-            return false;
+            Log.Info("ifly_fo", $"engine {wait.Engine} start wait on {wait.Field} ended by the flow's Stop");
         }
+        if (wait.BeforeFuel) await AbortDryStartAsync(wait.Engine);
+        return false;
     }
+
+    /// <summary>
+    /// An engine start that never reached the fuel point: its start switch back to OFF, so the
+    /// starter does not go on motoring a dry engine. Only while that engine's start lever reads
+    /// CUTOFF (no fuel) and its switch reads GRD (<see cref="ShouldAbortDryStart"/>); with the fuel
+    /// on, or either unread, nothing is written. Through the gate, so a detached executor writes
+    /// nothing. Silent: the flow says why it stopped.
+    /// </summary>
+    private async Task AbortDryStartAsync(int engine)
+    {
+        var state = _state;
+        if (state == null) return;
+        string switchKey = $"Engine_Start_Switch_Status_{engine - 1}";
+        if (!ShouldAbortDryStart(state.GetValue($"Engine_Start_Lever_Status_{engine - 1}"), state.GetValue(switchKey)))
+        {
+            Log.Info("ifly_fo", $"engine {engine}: start not aborted (fuel on, switch not at GRD, or unread)");
+            return;
+        }
+        bool ok = await DispatchAsync(switchKey, EngStartOff);
+        Log.Info("ifly_fo", $"engine {engine}: no start before fuel; start switch to OFF {(ok ? "sent" : "refused")}");
+    }
+
+    /// <summary>The start is aborted only over a start lever read at CUTOFF (the 0-5 composite's
+    /// 0-2: no fuel) and a start switch read at GRD.</summary>
+    internal static bool ShouldAbortDryStart(double startLever, double startSwitch) =>
+        !double.IsNaN(startLever) && startLever < StartLeverIdle
+        && !double.IsNaN(startSwitch) && Math.Abs(startSwitch - EngStartGround) < 0.1;
 
     internal enum StartWaitVerdict { Done, Waiting, TimedOut }
 

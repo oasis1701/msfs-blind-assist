@@ -1361,6 +1361,10 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
             _flowMgr.StepSkipped   -= OnStepSkipped;
             _flowMgr.CaptainReminderRequired -= OnCaptainReminder;
             _flowMgr.Cancel();
+            // A test the executor still holds (a fire test, T.O CONFIG) is released now, while the
+            // sim still listens: on app exit MainForm disconnects right after this, and the hold's
+            // own release then went nowhere, leaving the test held in the sim.
+            _actionExec.ReleaseHeldPresses();
             // Detach the executor, its disconnect path: the cancel stops the flow, not a write
             // already queued on the executor's gate or pacing, and on an aircraft switch that
             // write would land on the NEXT aircraft (a 777 window-heat event id is a 737 centre
