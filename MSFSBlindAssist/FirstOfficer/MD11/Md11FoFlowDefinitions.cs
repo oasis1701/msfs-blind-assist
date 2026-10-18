@@ -64,10 +64,17 @@ public static class Md11FoFlowDefinitions
     /// Before Start's and After Landing's "Already set" for the APU: starting, or running WITH its power on. Running
     /// with its power off (started from the aft-overhead APU START button, or external power
     /// connected over it) is the executor's to finish: it requests APU power, or the flow would
-    /// wait for APU power and stop.
+    /// wait for APU power and stop. A start from that button still running when the step reads
+    /// it gets its power from a later step once it runs: Before Start's BS_APU_PWR, Parking's
+    /// PK_APU_PWR.
     /// </summary>
     private static bool ApuStartingOrPowering(Md11FoStateEvaluator s)
         => s.GetValue("MD11_APU_STATE") is var v && (v > 0.5 && v < 1.5 || v >= 1.5 && v < 2.5 && s.IsOn("FO_APU_POWER_ON"));
+
+    /// <summary>Parking's APU power step runs (else it is silent, FO-20): no power source reads on
+    /// yet, and the APU is starting or running.</summary>
+    internal static bool ApuOwedItsPower(Md11FoStateEvaluator s)
+        => !s.IsOn("FO_APU_OR_EXT_POWER_ON") && s.GetValue("MD11_APU_STATE") is var v && v > 0.5 && v < 2.5;
 
     // ------------------------------------------------------------------ Power Up (TFDi Cockpit Entry + quick-start power-up)
     private static Flow BuildPowerUp() => new()
@@ -433,6 +440,14 @@ public static class Md11FoFlowDefinitions
         {
             WaitForField("PK_STOPPED", "Aircraft stopped", "GROUND_VELOCITY", v => v < 1, 120, onTimeout: FlowStepFailurePolicy.Stop),
             Also(Done(Skip(SW("PK_PARK", "Parking brake: SET", Park, 1), s => s.IsOn(Park)), "PK_PARK"), "PKC_PARK"),
+            // After Landing's "APU: start" is "Already set" over an APU still starting: started from
+            // the aft-overhead APU START button, it then ran with its power off, and the guard below
+            // waited for a power source and stopped the flow with the engines running. With no power
+            // source on and the APU starting or running, its power is requested once it runs
+            // (X.ApuPower waits out the start; a request already made lights ON within the settle and
+            // nothing is pressed). Otherwise silent (FO-20).
+            // Spoken before the wait, so it says the wait.
+            Provider("PK_APU_PWR", "APU power: ON once the APU runs", X.ApuPower, s => ApuOwedItsPower(s) ? 1 : null),
             // The fuel cut takes the engine generators off the busses: APU power or external power
             // must be on first, or the aircraft drops to its battery (After Landing's APU start is a
             // press with no wait). Before Start guards the reverse. Read only; up to two minutes for

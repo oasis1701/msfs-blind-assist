@@ -532,7 +532,16 @@ offline ticks, seat belts) are Part AA.1 of the PMDG 737 plan.
    motoring — waiting for N2 before introducing fuel". Wait well over a minute, then press
    **Resume**: the flow carries on ("Engine 2 start lever: IDLE" once N2 is up), never "Engine
    Start flow stopped" while it was paused. The same for the starter cutout wait after the lever.
-10. **A start that never reaches the fuel point is aborted.** With no start air (APU bleed OFF and
-    no ground air), run **Engine Start**: after about a minute, "Engine Start flow stopped. Unable to
-    complete: Engine 2 motoring — waiting for N2 before introducing fuel", and the Engine 2 Start
-    Switch reads Off, not GRD: the starter is not left engaged. The start lever stays at CUTOFF.
+10. **A start that never reaches the fuel point is aborted.** With no start air (the APU not
+    running and no ground air cart; the flow's own "APU bleed air: ON" then gives none), run
+    **Engine Start**: after about a minute, "Engine Start flow stopped. Unable to complete: Engine 2
+    motoring — waiting for N2 before introducing fuel", and the Engine 2 Start Switch reads Off, not
+    GRD: the starter is not left engaged. The start lever stays at CUTOFF.
+11. **Closing the window during a start aborts it.** Run **Engine Start** and, during "Engine 2
+    motoring — waiting for N2 before introducing fuel", close the First Officer window. On the
+    Overhead → Engines and APU panel the Engine 2 Start Switch reads Off, and the Engine 2 start
+    lever stays at CUTOFF. debug.log: "engine 2: window closing before the fuel; start switch to
+    OFF sent". Do it once more with File → Exit during the same wait: after restarting MSFSBA, the
+    switch reads Off. Until now the switch stayed at GRD, the starter motoring a dry engine. A Stop
+    in the 2 seconds between that wait passing and "Engine 2 start lever: IDLE" is handled the same
+    way (the switch back to OFF), but there is no cue to time it by ear, so it has no step here.

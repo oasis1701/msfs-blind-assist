@@ -36,7 +36,12 @@ CVR and T.O CONFIG tests, the cabin call) releases through the SimConnect manage
 through, and the window's close releases it at once (`IFoActionExecutor.ReleaseHeldPresses`,
 `HeldPresses`), before MainForm disconnects on app exit (2026-10-18; on the A380 and the A330 too,
 and the same for the Fenix's held tests and pulses and the PMDG 777's held transmit tests). Until
-then an exit inside a hold left the test held in the sim after MSFSBA had closed.
+then an exit inside a hold left the test held in the sim after MSFSBA had closed. The same close
+puts a running PMDG weather radar test back (777 and 737: WX mode, then the overlay off, owed from
+the overlay press on; at most about 0.65 s on the UI thread), since every press after the detach
+is refused and the radar stayed in TEST with its overlay on; and it aborts an engine start a
+stopped flow left short of its fuel (the MD-11's START switch pushed in, claimed once against the
+light-up watch since the switch toggles; the iFly's start switch to OFF).
 The A32NX also gets a **richer cockpit-lighting scene** than the A380's single ANN knob — ANN
 (Test/Bright/Dim), dome, standby-compass light, and six analog flood/integral knobs
 (`BRIGHT_{PEDESTAL,MAINPANEL,GLARESHIELD_CAPT,GLARESHIELD_FO,GLARESHIELD_INTEG,OVERHEAD_INTEG}_SET`),
@@ -177,7 +182,10 @@ motoring reads active, up to 300 s more, said once, ended at once by Stop, and h
 the time paused not counted; a fixed FlowManager wait stopped a start held in BRM mid-way. An N2
 wait that ends without the fuel point, timed out or stopped, puts the start switch back to OFF
 when the start lever reads CUTOFF and the switch GRD, as the MD-11's light-up watch does; it was
-left at GRD, the starter motoring a dry engine); and **APU availability comes from the
+left at GRD, the starter motoring a dry engine. A start a flow began, its start switch to GRD, is
+recorded with the run until the lever goes to IDLE, so a Stop in the 2 s before the lever step
+(`OnFlowStoppedAsync`) and the window's close (`ReleaseHeldPresses`, before the detach) abort it
+the same way; a checklist tick's or the pilot's GRD is never aborted); and **APU availability comes from the
 `APU_GEN_OFF_BUS_Light_Status` annunciator, because there is no EGT field** to fall back on the way
 the PMDG NG3's `AircraftStateEvaluator.ApuRunningEgt` does. Since the PR #160 second review the
 gear lever goes UP only when SIM ON GROUND reads airborne (step, line and executor), and Shutdown
@@ -438,7 +446,10 @@ MD-11 step that takes the flow's Stop, `ExecuteStepAsync(step, stop)`); a Stop, 
 failure, after it and before that engine's fuel is on is undone by `OnFlowStoppedAsync`: the
 START switch the flow pulled goes back in when the fuel switch reads OFF — never with the fuel
 on, never a pull the pilot or a checklist tick made, never on an unread value; detached or
-unable to reach the aircraft, it only logs (2026-10-18).
+unable to reach the aircraft, it only logs (2026-10-18). Detached means the window closed, and its
+close already pushed the switch in (`ReleaseHeldPresses`, from the cache, before the detach): each
+pull is taken out first by whichever of the three gets it, the close, the light-up watch or
+`OnFlowStoppedAsync`, so it is pushed once; a second push would pull it again.
 
 **Other rules the executor keeps**, each from TFDi's code or a live measurement. External power is
 decided by its ON lamp, read fresh and first: connect only with AVAIL lit or on the battery alone,
@@ -465,7 +476,12 @@ one press after two matching readings 3 s apart — instead of the flow waiting 
 (2026-10-18; modelled, not measured). An aft-overhead start still in progress when "APU: start"
 reads it gets the same request once it runs, from Before Start's "APU power: ON" step (`BS_APU_PWR`,
 `ApuPower`, "Already set" when APU PWR ON is lit), and After Landing's "APU: start" is no longer
-"Already set" over an APU running with its power off. Engine, wing and tail anti-ice are left alone in AUTO —
+"Already set" over an APU running with its power off. After Landing still says "Already set" over
+one that is starting, so Parking requests its power before its power-source guard ("APU power: ON
+once the APU runs", `PK_APU_PWR`): silent (FO-20) unless no power source reads on and the APU is
+starting or running; in a flow `ApuPower` first waits out a start (`ApuStartToFinishAsync`, read
+only, outside the gate, up to 180 s, held by Pause, ended by Stop). Until then Parking's guard
+waited two minutes and stopped with the engines running. Engine, wing and tail anti-ice are left alone in AUTO —
 TFDi toggles them only in MANUAL, and this install reads AUTO. The autobrake goes to T.O. or OFF
 only; a landing setting is refused as the Captain's. The gear lever is clicked only at rest at one
 end (two matching readings: a click while it travels reverses the pilot's own command), and up

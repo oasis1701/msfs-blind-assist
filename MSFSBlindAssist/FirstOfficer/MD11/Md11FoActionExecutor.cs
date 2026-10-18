@@ -41,7 +41,8 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
     /// APU power ON for an APU that already runs: requested (one APU PWR press) only on a dark ON
     /// lamp with AVAIL lit, read twice <see cref="ApuPowerSettleMs"/> apart. Before Start's step for an
     /// APU started from the aft-overhead APU START button, still starting when its "APU: start" step
-    /// read it. Not running: nothing pressed, not done.
+    /// read it, and Parking's (a flow step waits out a start first, <see cref="ApuStartToFinishAsync"/>).
+    /// Not running: nothing pressed, not done.
     /// </summary>
     public const string ApuPower = "FO_APU_POWER";
     public const string ApuShutdown = "FO_APU_SHUTDOWN";
@@ -92,6 +93,7 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
     internal const int GearRestTimeoutMs = 4000;          // a travelling gear lever must come to rest by then
     internal const int HydTestWaitMs = 120_000;           // the flow's own budget for the ~100 s hydraulic test
     internal const int ApuPowerSettleMs = 3000;           // two 1 Hz lamp batches: a request already made lights ON by then
+    internal const int ApuRunWaitMs = 180_000;            // Before Start's own budget for the APU to run (BS_APU_RUNNING)
 
     // The flap handle's wheel direction is not in TFDi's mechanical table (system-handled); this
     // default is learned-and-corrected on the ground. LIVE-VERIFY.
@@ -191,7 +193,11 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
         switch (step.ActionType)
         {
             case FlowStepActionType.SetSwitch:
-                return step.EventName != null && await SetCoreAsync(step.EventName, step.TargetValue ?? 1, stop).ConfigureAwait(false);
+                if (step.EventName == null) return false;
+                // APU power for an APU still starting (Parking after a short taxi): its start is
+                // waited out first, read only and outside the gate, on the flow's Pause and Stop.
+                if (step.EventName == ApuPower && !await ApuStartToFinishAsync(stop).ConfigureAwait(false)) return false;
+                return await SetCoreAsync(step.EventName, step.TargetValue ?? 1, stop).ConfigureAwait(false);
             case FlowStepActionType.SetSwitchMultiple:
                 if (step.MultiActions.Count == 0) return false;
                 bool ok = true;
@@ -211,7 +217,8 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
     /// on (its start runs on, and the switch pops in by itself at cutout), never a pull the pilot
     /// or a checklist tick made, never on an unread value. Nothing is spoken: the flow says "flow
     /// cancelled" or "flow stopped". Detached (the window closed), there is no aircraft to write
-    /// to; unable to reach the aircraft, it refuses (MD11-16) and logs.
+    /// to, and the window's close already pushed it in (<see cref="ReleaseHeldPresses"/>); unable
+    /// to reach the aircraft, it refuses (MD11-16) and logs.
     /// </summary>
     public async Task OnFlowStoppedAsync()
     {
@@ -248,6 +255,83 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
         finally
         {
             _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// The First Officer window is closing (an aircraft switch, app exit). The flow was cancelled
+    /// just before, and <see cref="OnFlowStoppedAsync"/> then runs after the detach, with no
+    /// aircraft to write to, so a START switch a stopped flow pulled is pushed back in now, while
+    /// the bus still takes writes: one click (a second click on a pulled switch aborts the start),
+    /// only over a fuel switch read OFF and a START switch read pulled, from the cache (the window
+    /// polls both each second), with no read-back. Each pull is taken out first, so it is pushed
+    /// once: by this, by <see cref="OnFlowStoppedAsync"/> or by the light-up watch, whichever takes
+    /// it (the switch TOGGLES: a second push would pull it again).
+    /// </summary>
+    public void ReleaseHeldPresses()
+    {
+        var io = _io;
+        foreach (var pull in _flowStarterPulls.Where(p => p.Value.IsCancellationRequested).OrderBy(p => p.Key).ToList())
+        {
+            if (!_flowStarterPulls.TryRemove(pull)) continue;
+            var (key, click) = StartSwitches[pull.Key];
+            if (io is not { Ready: true })
+            {
+                Log.Warn("MD11 FO", $"engine {pull.Key}: window closing with its START switch pulled; the aircraft cannot be reached, so it is left as it is");
+                continue;
+            }
+            if (!ShouldPushStartIn(io.ReadCached(FuelSwitches[pull.Key]), io.ReadCached(key)))
+            {
+                Log.Info("MD11 FO", $"engine {pull.Key}: window closing; START left as it is (fuel on, switch already in, or unread)");
+                continue;
+            }
+            io.NoteActuation(key);
+            bool sent = io.Fire(click);
+            Log.Info("MD11 FO", $"engine {pull.Key}: window closing with its START switch pulled and the fuel off; pushing it in {(sent ? "sent" : "refused")}");
+        }
+    }
+
+    /// <summary>The window's close pushes a pulled START switch back in only over a fuel switch read
+    /// OFF and a START switch read pulled.</summary>
+    internal static bool ShouldPushStartIn(double? fuelSwitch, double? startSwitch)
+        => fuelSwitch is double f && !double.IsNaN(f) && f < 0.5
+           && startSwitch is double s && !double.IsNaN(s) && s >= 0.5;
+
+    // The running flow's Pause (FlowManager hands it over, AttachFlowPause): Parking's wait for an
+    // APU still starting holds while paused and does not count the time.
+    private Func<CancellationToken, Task> _waitWhilePaused = _ => Task.CompletedTask;
+
+    public void AttachFlowPause(Func<CancellationToken, Task> waitWhilePaused) => _waitWhilePaused = waitWhilePaused;
+
+    /// <summary>
+    /// Before <see cref="ApuPower"/> in a flow: an APU still starting is waited for until it no
+    /// longer reads starting, up to <see cref="ApuRunWaitMs"/>, read only and outside the gate, a
+    /// Pause holding it (its time not counted) and a Stop ending it within a poll. Parking's
+    /// request after a short taxi: After Landing's "APU: start" found an APU started from the
+    /// aft-overhead APU START button still starting ("Already set"), and it then ran with its power
+    /// off. False on the Stop or the limit; anything but starting returns at once, and the request
+    /// decides.
+    /// </summary>
+    private async Task<bool> ApuStartToFinishAsync(CancellationToken stop)
+    {
+        var io = _io;
+        if (io is null) return false;
+        long deadline = io.NowMs + ApuRunWaitMs;
+        while (true)
+        {
+            long pausedAt = io.NowMs;
+            try { await _waitWhilePaused(stop).ConfigureAwait(false); }
+            catch (OperationCanceledException) { return false; }
+            deadline += io.NowMs - pausedAt;                                // a Pause is not counted
+            if (stop.IsCancellationRequested) return false;
+            var state = await ReadAsync(io, "MD11_APU_STATE", LampReadTimeoutMs).ConfigureAwait(false);
+            if (state is not (>= 0.5 and < 1.5)) return true;
+            if (io.NowMs >= deadline)
+            {
+                Log.Warn("MD11 FO", $"APU power not requested: the APU still reads starting after {ApuRunWaitMs / 1000} s");
+                return false;
+            }
+            await io.DelayAsync(PollMs).ConfigureAwait(false);
         }
     }
 
@@ -597,7 +681,8 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
         return await WaitForAsync(io, "MD11_APU_STATE", v => v >= 0.5, LampVerifyTimeoutMs, LampReadTimeoutMs).ConfigureAwait(false);
     }
 
-    // ApuPower: only an APU that runs has power to request; starting, stopping, off or unread: not done.
+    // ApuPower: only an APU that runs has power to request; starting, stopping, off or unread: not
+    // done. In a flow a start is waited out first (ApuStartToFinishAsync).
     private static async Task<bool> ApuPowerWhenRunningAsync(IMd11FoTransport io)
     {
         var state = await ReadAsync(io, "MD11_APU_STATE", LampReadTimeoutMs).ConfigureAwait(false);
@@ -1124,6 +1209,9 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
     /// </summary>
     private async Task<bool> EngineLightUpAsync(IMd11FoTransport io, int engine, CancellationToken stop)
     {
+        // This run's own pull, if it made one (not the pilot's or a checklist tick's): on a Stop it is
+        // pushed in only by whoever takes it out, this watch or the window's close.
+        bool ownPull = stop.CanBeCanceled && _flowStarterPulls.TryGetValue(engine, out var pulledFor) && pulledFor == stop;
         long deadline = io.NowMs + LightUpTimeoutMs;
         while (true)
         {
@@ -1140,6 +1228,14 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
                 break;
             }
             await io.DelayAsync(PollMs).ConfigureAwait(false);
+        }
+        // On a Stop the window's close may have pushed this run's pull in already (ReleaseHeldPresses):
+        // the switch toggles, so a second push would pull it again.
+        if (stop.IsCancellationRequested && ownPull
+            && !_flowStarterPulls.TryRemove(new KeyValuePair<int, CancellationToken>(engine, stop)))
+        {
+            Log.Info("MD11 FO", $"engine {engine}: START already pushed in for the stopped flow");
+            return false;
         }
         if (!await EngineStartAsync(io, engine, 0, CancellationToken.None).ConfigureAwait(false))
             Log.Warn("MD11 FO", $"engine {engine}: the START switch did not read back in — the starter may still be engaged");

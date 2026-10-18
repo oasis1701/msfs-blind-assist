@@ -1165,6 +1165,15 @@ aircraft's plans point here for it.
     test chimes and stops as usual. Repeat once on the A380 (its fire test), on the Fenix (its fire
     test bell) and on the PMDG 777 (Cockpit Preparation's "Fire and overheat test"): the bell stops
     when MSFSBA closes. Before this fix it rang on after MSFSBA had closed.
+12. **Closing the window during the weather radar test puts the radar back.** On the PMDG 777, start
+    Cockpit Preparation and, once you hear "Weather radar test — listen for the windshear callout",
+    close the First Officer window before the callout has finished. Open the window again and tick
+    Preflight's "Weather radar test" on the Checklists tab: the windshear callout plays as usual.
+    Had the radar been left in TEST with its overlay on, as it was before this fix, that second test
+    would stay silent (its first press turns the overlay off). Do the same once with File → Exit
+    during the test, restarting MSFSBA before the second test, and repeat both on the PMDG 737 with
+    Preflight's weather radar test. Closing the window during the test may hold MSFSBA for about
+    half a second while the radar is put back.
 
 A Pause in the last second of a wait (it once timed the wait out under "Paused") and the stop
 clean-up on a Stop or a failed step are pinned by unit tests; they need no step of their own here.

@@ -4,7 +4,8 @@ namespace MSFSBlindAssist.FirstOfficer;
 
 /// <summary>
 /// The presses an executor holds right now (a fire test, the T.O CONFIG test, a cabin call), each
-/// with the write that releases it. A hold ends on its own timer (<see cref="End"/>); when the
+/// with the write that releases it, and what a running test still owes the aircraft (the 777 weather
+/// radar test's WX mode and overlay off). A hold ends on its own timer (<see cref="End"/>); when the
 /// First Officer window closes first, <see cref="ReleaseAll"/> sends every release at once
 /// (<see cref="IFoActionExecutor.ReleaseHeldPresses"/>). On app exit MainForm disconnects right
 /// after closing the window, and a release left to the hold's own timer then went nowhere, leaving
@@ -40,13 +41,23 @@ public sealed class HeldPresses
         Run(release);
     }
 
-    /// <summary>Sends every outstanding release now, each once; returns how many.</summary>
+    /// <summary>The hold's owner sends the release itself (awaited and paced, the 777 weather radar
+    /// test's restore): drops it unsent. True when it was still owed, false when
+    /// <see cref="ReleaseAll"/> already sent it.</summary>
+    public bool TakeOver(long id)
+    {
+        lock (_lock) return _held.Remove(id);
+    }
+
+    /// <summary>Sends every outstanding release now, each once, the latest hold first (nested holds
+    /// unwind: a test button held inside the weather radar test is released before its restore);
+    /// returns how many.</summary>
     public int ReleaseAll()
     {
         Action[] releases;
         lock (_lock)
         {
-            releases = _held.Values.ToArray();
+            releases = _held.OrderByDescending(h => h.Key).Select(h => h.Value).ToArray();
             _held.Clear();
         }
         foreach (var release in releases) Run(release);

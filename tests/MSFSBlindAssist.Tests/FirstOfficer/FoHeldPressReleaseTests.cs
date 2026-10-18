@@ -60,6 +60,40 @@ public class FoHeldPressReleaseTests
         Assert.Equal(1, released);
     }
 
+    // Nested holds unwind: a test button held inside the weather radar test is released before the
+    // test's own restore, and that restore's WX mode before its overlay off.
+    [Fact]
+    public void Releasing_all_goes_latest_hold_first()
+    {
+        var held = new HeldPresses();
+        var order = new System.Collections.Generic.List<string>();
+        held.Begin(() => order.Add("overlay off"));
+        held.Begin(() => order.Add("WX mode"));
+        held.Begin(() => order.Add("TEST button up"));
+
+        held.ReleaseAll();
+
+        Assert.Equal(new[] { "TEST button up", "WX mode", "overlay off" }, order);
+    }
+
+    // The owner sends a release itself, awaited and paced (the weather radar test's restore), unless
+    // the window's close already sent it.
+    [Fact]
+    public void A_release_taken_over_is_never_sent_and_one_already_sent_cannot_be_taken_over()
+    {
+        var held = new HeldPresses();
+        int sent = 0;
+        long kept = held.Begin(() => sent++);
+        Assert.True(held.TakeOver(kept));
+        Assert.Equal(0, held.ReleaseAll());
+        Assert.Equal(0, sent);
+
+        long closed = held.Begin(() => sent++);
+        held.ReleaseAll();                                                   // the window closes first
+        Assert.False(held.TakeOver(closed));
+        Assert.Equal(1, sent);
+    }
+
     // The window's close (FirstOfficerForm.Dispose) calls ReleaseHeldPresses, then detaches the executor.
     [Fact]
     public async Task A32nx_fire_test_held_when_the_window_closes_is_released_at_once_and_once()

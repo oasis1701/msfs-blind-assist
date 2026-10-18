@@ -285,6 +285,29 @@ public class IFly737SecondReviewTests
         double lever, double startSwitch, bool abort)
         => Assert.Equal(abort, IFly737ActionExecutor.ShouldAbortDryStart(lever, startSwitch));
 
+    // A flow's start switch to GRD records the start with the run, so a Stop after the N2 wait passed
+    // (the 2 s before the start lever step) or the window's close can abort it; the executor
+    // can't be made available here, so the record's two rules are pinned as the pure functions it uses.
+    [Theory]
+    [InlineData("Engine_Start_Switch_Status_1", 0.0, 2)]   // engine 2 to GRD: recorded
+    [InlineData("Engine_Start_Switch_Status_0", 0.0, 1)]
+    [InlineData("Engine_Start_Switch_Status_1", 2.0, 0)]   // CONT: no start
+    [InlineData("Engine_Start_Lever_Status_1", 0.0, 0)]    // not a start switch
+    [InlineData("Engine_Start_Switch_Status_2", 0.0, 0)]   // no third engine
+    public void A_flows_start_switch_to_GRD_records_its_engine(string key, double target, int engine)
+        => Assert.Equal(engine, IFly737ActionExecutor.FlowStartedEngine(key, target));
+
+    [Theory]
+    [InlineData("Engine_Start_Lever_Status_1", 3.0, 2)]    // fuel on: the start runs on
+    [InlineData("Engine_Start_Lever_Status_0", 3.0, 1)]
+    [InlineData("Engine_Start_Lever_Status_1", 0.0, 0)]    // CUTOFF: still a dry start
+    [InlineData("Engine_Start_Switch_Status_1", 1.0, 2)]   // switch OFF (an abort, or the pilot's): nothing to abort
+    [InlineData("Engine_Start_Switch_Status_0", 2.0, 1)]   // CONT
+    [InlineData("Engine_Start_Switch_Status_1", 0.0, 0)]   // GRD again: still a start
+    [InlineData("Pack_Switch_Status_0", 1.0, 0)]
+    public void The_fuel_on_or_the_switch_off_GRD_forgets_a_flows_start(string key, double target, int engine)
+        => Assert.Equal(engine, IFly737ActionExecutor.StartSettledEngine(key, target));
+
     [Fact]
     public void The_engine_start_waits_are_the_executors_and_stop_the_flow()
     {

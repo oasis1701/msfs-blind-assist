@@ -406,6 +406,8 @@ internal sealed class FakeMd11Aircraft : IMd11FoTransport, IMd11FoFlightState
     public void StartApuRunningWithPower() { Set("MD11_APU_STATE", 2); _apuPowerRequested = true; RecomputeLamps(); }
     /// <summary>Started from the aft-overhead APU START button (or its power given up to external power): AVAIL lit, ON dark.</summary>
     public void StartApuRunningWithoutPower() { Set("MD11_APU_STATE", 2); _apuPowerRequested = false; RecomputeLamps(); }
+    /// <summary>The aft-overhead APU START button just pressed: starting, its power not requested; it runs 40 s later, AVAIL lit, ON dark.</summary>
+    public void StartApuFromAftOverhead() { Set("MD11_APU_STATE", 1); _apuStartedAt = Clock; _apuPowerRequested = false; RecomputeLamps(); }
     public void SelectIgnition(int bits) { _ignitionBits = bits; RecomputeLamps(); }
     /// <summary>The pilot's own click: the lever starts travelling toward <paramref name="down"/> on the next tick.</summary>
     public void PilotCommandsGear(bool down) => _gearCommanded = down ? 25 : 0;

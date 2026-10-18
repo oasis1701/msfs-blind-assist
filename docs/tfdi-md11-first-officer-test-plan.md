@@ -338,6 +338,22 @@ pushes back a START switch the flow pulled while the fuel reads OFF, as a Stop d
 12. **A press the bus dropped never leaves a button held.** Not testable on purpose (it needs the
     event queue full): the unit tests cover it. Check nothing changed: every held Preflight test still
     ends, and its light goes out.
+13. **Parking powers an APU After Landing found still starting.** On the landing roll or just after
+    vacating, press APU Start on the Aft Overhead's APU panel and run After Landing at once: you hear
+    "Already set: APU: start". Taxi to the gate briefly and run Parking straight away, within about a
+    minute of the APU start. After "Parking brake: SET" you hear "APU power: ON once the APU runs";
+    the flow then waits, silent, until the APU runs, and the Electrical panel's APU Power reads On.
+    Then "Already set: APU or external power on" and "Fuel switches: OFF". Until now the flow waited
+    two minutes for a power source and stopped with the engines running. With APU power already on,
+    or ground power connected, nothing is said at that point, as before. Modelled, not measured, as
+    item 6.
+14. **Closing the window during an engine start pushes START back in.** Run Engine Start, and during
+    "Engine 3 N2 fifteen percent", before the engine reaches 15 % N2, close the First Officer window.
+    On the Pedestal's Throttle Quadrant panel, Engine 3 Starter reads Disengaged and Engine 3 Fuel
+    reads Off. debug.log: "engine 3: window closing with its START switch pulled and the fuel off;
+    pushing it in sent", and no second push. Do it once more with File → Exit during the same wait:
+    after restarting MSFSBA, Engine 3 Starter reads Disengaged. Until now closing the window left the
+    starter turning a dry engine.
 
 ## Reporting a problem
 

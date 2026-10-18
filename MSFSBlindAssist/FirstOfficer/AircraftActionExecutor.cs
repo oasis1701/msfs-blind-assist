@@ -42,11 +42,13 @@ public class AircraftActionExecutor : IFoActionExecutor
 
     public bool IsAvailable => _simConnect is { IsConnected: true };
 
-    // The presses held right now (HeldTransmitTestAsync), released at once when the window closes.
+    // The presses held right now (HeldTransmitTestAsync) and the weather radar test's restore,
+    // sent at once when the window closes.
     private readonly HeldPresses _held = new();
 
-    /// <summary>The window is closing: a held test is released now, while the sim still listens
-    /// (on app exit MainForm disconnects right after).</summary>
+    /// <summary>The window is closing: a held test is released, and a running weather radar test
+    /// put back to WX with its overlay off, now, while the sim still listens (on app exit MainForm
+    /// disconnects right after).</summary>
     public void ReleaseHeldPresses() => _held.ReleaseAll();
 
     // -----------------------------------------------------------------------
@@ -319,12 +321,22 @@ public class AircraftActionExecutor : IFoActionExecutor
 
     /// <summary>WXR/PWS test — same managed sequence as the 737 (see that executor's doc):
     /// EFIS WXR overlay on (blind toggle, assumed OFF) → settle → TEST → callout wait →
-    /// WX mode (never leave TEST latched) → overlay off. Live-verified on the 777 2026-07-13.</summary>
+    /// WX mode (never leave TEST latched) → overlay off. Live-verified on the 777 2026-07-13.
+    /// The restore is owed from the overlay press on (<see cref="_held"/>): the window's close sends
+    /// it at once, before the detach (<see cref="ClickNow"/>). Left to this sequence it was skipped,
+    /// since every press after the detach is refused, and the radar stayed in TEST, overlay on.</summary>
     public async Task<bool> WxrTestAsync()
     {
+        // Read before the overlay press: a press that went out went out through this manager (a
+        // detach in between makes HeldTransmitTestAsync press nothing and return false).
+        var sc = _simConnect;
         // Overlay on first; if that fails (no SimConnect) nothing was touched — bail
         // before the try, no restore owed.
-        if (!await HeldTransmitTestAsync("EVT_EFIS_CPT_WXR", QuickTestHoldMs)) return false;
+        if (sc == null || !await HeldTransmitTestAsync("EVT_EFIS_CPT_WXR", QuickTestHoldMs)) return false;
+        // The overlay first: the window's close sends the latest hold first, so WX mode, then the
+        // overlay off, the sequence's own order.
+        long overlayOwed = _held.Begin(() => ClickNow(sc, "EVT_EFIS_CPT_WXR", pauseAfter: false));
+        long wxOwed = _held.Begin(() => ClickNow(sc, "EVT_WXR_L_WX", pauseAfter: true));
         try
         {
             await Task.Delay(WxrOverlaySettleMs);
@@ -334,10 +346,27 @@ public class AircraftActionExecutor : IFoActionExecutor
         finally
         {
             // Restore UNCONDITIONALLY once the overlay is on — never leave the radar
-            // latched in TEST or the overlay stuck on, even if the TEST press failed.
-            await HeldTransmitTestAsync("EVT_WXR_L_WX", QuickTestHoldMs);
-            await HeldTransmitTestAsync("EVT_EFIS_CPT_WXR", QuickTestHoldMs);
+            // latched in TEST or the overlay stuck on, even if the TEST press failed. Each part
+            // unless the window's close already sent it.
+            if (_held.TakeOver(wxOwed)) await HeldTransmitTestAsync("EVT_WXR_L_WX", QuickTestHoldMs);
+            if (_held.TakeOver(overlayOwed)) await HeldTransmitTestAsync("EVT_EFIS_CPT_WXR", QuickTestHoldMs);
         }
+    }
+
+    /// <summary>
+    /// One click sent now, its hold slept out on the calling thread: only for a restore the
+    /// window's close sends (<see cref="ReleaseHeldPresses"/>, the UI thread), where MainForm may
+    /// disconnect right after and an awaited click would go nowhere. <paramref name="pauseAfter"/>
+    /// spaces it from a click that follows, as the paced sequence does. At most about 0.65 s, and
+    /// only when the window closes during the weather radar test.
+    /// </summary>
+    private static void ClickNow(SimConnectManager sc, string eventName, bool pauseAfter)
+    {
+        if (!sc.IsConnected || !PMDG777Definition.EventIds.TryGetValue(eventName, out int evId)) return;
+        sc.SendPMDGEventViaTransmitWithTarget((uint)evId, MouseFlagLeftSingleU);
+        Thread.Sleep(QuickTestHoldMs);
+        sc.SendPMDGEventViaTransmitWithTarget((uint)evId, MouseFlagLeftReleaseU);
+        if (pauseAfter) Thread.Sleep(CdaWriteSpacingMs);
     }
 
     private static async Task<bool> DelayThenTrueAsync(int ms)

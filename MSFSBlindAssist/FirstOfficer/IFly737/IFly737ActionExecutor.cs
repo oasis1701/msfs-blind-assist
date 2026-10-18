@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -303,7 +304,12 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
                 // hold up a checklist tick or the centre-pump automation.
                 if (StartWaits.TryGetValue(step.EventName, out var wait))
                     return await StartWaitAsync(wait, stop);
-                return await DispatchAsync(step.EventName, step.TargetValue);
+                bool sent = await DispatchAsync(step.EventName, step.TargetValue);
+                // A start this flow begins (its start switch to GRD) is recorded with the run, for
+                // OnFlowStoppedAsync and the window's close; a checklist tick's has no Stop.
+                if (sent && stop.CanBeCanceled && FlowStartedEngine(step.EventName, step.TargetValue) is int engine and > 0)
+                    _flowStarts[engine] = stop;
+                return sent;
 
             case FlowStepActionType.SetSwitchMultiple:
                 return await MultiAsync(step.MultiActions);
@@ -380,6 +386,10 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
             ? await handler(this)
             : ApplySilent(name, target ?? 1);
         _lastWriteUtc = DateTime.UtcNow;
+        // From any path: the fuel on, or the start switch moved off GRD, and a flow's start no
+        // longer needs aborting.
+        if (ok && StartSettledEngine(name, target ?? 1) is int settled and > 0)
+            _flowStarts.TryRemove(settled, out _);
         return ok;
     }
 
@@ -726,8 +736,59 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
         {
             Log.Info("ifly_fo", $"engine {wait.Engine} start wait on {wait.Field} ended by the flow's Stop");
         }
-        if (wait.BeforeFuel) await AbortDryStartAsync(wait.Engine);
+        if (wait.BeforeFuel)
+        {
+            _flowStarts.TryRemove(wait.Engine, out _);
+            await AbortDryStartAsync(wait.Engine);
+        }
         return false;
+    }
+
+    /// <summary>
+    /// The engines whose start switch a FLOW set to GRD, with that run's Stop: the starts
+    /// <see cref="OnFlowStoppedAsync"/> and <see cref="ReleaseHeldPresses"/> abort. Forgotten once
+    /// the engine's start lever goes to IDLE (the fuel is on: the start runs on) or its start
+    /// switch is set anywhere but GRD, from any path, and once an abort was tried. A checklist
+    /// tick's GRD, or the pilot's own, is never here (the MD-11's START pulls, the same shape).
+    /// </summary>
+    private readonly ConcurrentDictionary<int, CancellationToken> _flowStarts = new();
+
+    /// <summary>
+    /// A flow was stopped part-way (FlowManager cancels the run's token first). An engine whose
+    /// start switch that flow set to GRD is never left motoring a dry engine: with its start lever
+    /// still at CUTOFF the switch goes back to OFF (<see cref="AbortDryStartAsync"/>). A Stop in
+    /// the 2 s between the N2 wait passing and the start lever step left it at GRD, since the N2
+    /// wait's own abort only covers a Stop during the wait. Silent: the flow says "flow
+    /// cancelled" or "flow stopped". Detached (the window closed), the write is refused: the
+    /// window's close already aborted it (<see cref="ReleaseHeldPresses"/>).
+    /// </summary>
+    public async Task OnFlowStoppedAsync()
+    {
+        foreach (var start in _flowStarts.Where(s => s.Value.IsCancellationRequested).OrderBy(s => s.Key).ToList())
+        {
+            // Only this run's start: a later run that set the same switch to GRD owns it now.
+            if (!_flowStarts.TryRemove(start)) continue;
+            await AbortDryStartAsync(start.Key);
+        }
+    }
+
+    /// <summary>
+    /// The First Officer window is closing (an aircraft switch, app exit): the flow was cancelled
+    /// just before, and its clean-up then runs after the detach, with every write refused, so a
+    /// start the flow left short of its fuel is aborted now, while the plugin still listens: one
+    /// write, start switch to OFF, on the same rule as <see cref="AbortDryStartAsync"/>, outside
+    /// the gate (the window is closing; a write queued there would be refused).
+    /// </summary>
+    public void ReleaseHeldPresses()
+    {
+        foreach (var start in _flowStarts.Where(s => s.Value.IsCancellationRequested).OrderBy(s => s.Key).ToList())
+        {
+            if (!_flowStarts.TryRemove(start)) continue;
+            int engine = start.Key;
+            if (!IsAvailable || DryStartSwitch(engine) is not string switchKey) continue;
+            bool ok = ApplySilent(switchKey, EngStartOff);
+            Log.Info("ifly_fo", $"engine {engine}: window closing before the fuel; start switch to OFF {(ok ? "sent" : "refused")}");
+        }
     }
 
     /// <summary>
@@ -739,16 +800,44 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     /// </summary>
     private async Task AbortDryStartAsync(int engine)
     {
-        var state = _state;
-        if (state == null) return;
-        string switchKey = $"Engine_Start_Switch_Status_{engine - 1}";
-        if (!ShouldAbortDryStart(state.GetValue($"Engine_Start_Lever_Status_{engine - 1}"), state.GetValue(switchKey)))
-        {
-            Log.Info("ifly_fo", $"engine {engine}: start not aborted (fuel on, switch not at GRD, or unread)");
-            return;
-        }
+        if (DryStartSwitch(engine) is not string switchKey) return;
         bool ok = await DispatchAsync(switchKey, EngStartOff);
         Log.Info("ifly_fo", $"engine {engine}: no start before fuel; start switch to OFF {(ok ? "sent" : "refused")}");
+    }
+
+    /// <summary>The start switch key to put back to OFF when engine <paramref name="engine"/>'s start
+    /// is a dry one (<see cref="ShouldAbortDryStart"/>), else null (logged).</summary>
+    private string? DryStartSwitch(int engine)
+    {
+        var state = _state;
+        if (state == null) return null;
+        string switchKey = StartSwitchKey(engine);
+        if (ShouldAbortDryStart(state.GetValue(StartLeverKey(engine)), state.GetValue(switchKey))) return switchKey;
+        Log.Info("ifly_fo", $"engine {engine}: start not aborted (fuel on, switch not at GRD, or unread)");
+        return null;
+    }
+
+    private const string StartSwitchPrefix = "Engine_Start_Switch_Status_";
+    private const string StartLeverPrefix = "Engine_Start_Lever_Status_";
+    private static string StartSwitchKey(int engine) => StartSwitchPrefix + (engine - 1);
+    private static string StartLeverKey(int engine) => StartLeverPrefix + (engine - 1);
+
+    /// <summary>The engine (1 or 2) a key of the form <paramref name="prefix"/>0 or 1 belongs to, else 0.</summary>
+    private static int EngineOf(string key, string prefix)
+        => key.Length == prefix.Length + 1 && key.StartsWith(prefix, StringComparison.Ordinal) && key[^1] is '0' or '1'
+            ? key[^1] - '0' + 1 : 0;
+
+    /// <summary>The engine whose start a flow begins with this write (its start switch to GRD), else 0.</summary>
+    internal static int FlowStartedEngine(string key, double? target)
+        => target is double t && Math.Abs(t - EngStartGround) < 0.1 ? EngineOf(key, StartSwitchPrefix) : 0;
+
+    /// <summary>The engine whose start no longer needs aborting after this write, else 0: its start
+    /// lever to IDLE (the fuel is on, the start runs on), or its start switch anywhere but GRD.</summary>
+    internal static int StartSettledEngine(string key, double target)
+    {
+        if (EngineOf(key, StartLeverPrefix) is int lever and > 0) return target >= StartLeverIdle ? lever : 0;
+        if (EngineOf(key, StartSwitchPrefix) is int sw and > 0) return Math.Abs(target - EngStartGround) >= 0.1 ? sw : 0;
+        return 0;
     }
 
     /// <summary>The start is aborted only over a start lever read at CUTOFF (the 0-5 composite's
