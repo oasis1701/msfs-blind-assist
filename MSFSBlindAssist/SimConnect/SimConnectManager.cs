@@ -511,6 +511,9 @@ public partial class SimConnectManager
         // COM 1 active + standby, one-shot (RequestCom1Radio). 349: the first id past the
         // camera's rotating 341-348.
         REQUEST_COM1_RADIO = 349,
+        // IS SLEW ACTIVE and SIMULATION RATE, SIM_FRAME + CHANGED (SimConnectManager.SimState.cs).
+        REQUEST_SLEW_STATE = 350,
+        REQUEST_SIM_RATE = 351,
         // FO background data requests — NOT announced by HandleSpecialAnnouncements
         REQUEST_FO_ALTITUDE_AGL  = 380,
         REQUEST_FO_AIRSPEED_IAS  = 381,
@@ -604,6 +607,8 @@ public partial class SimConnectManager
         // mis-cast. Pinned by CameraReadWaitersTests.
         DEF_CAMERA_VIEW = 341,
         DEF_COM1_RADIO = 349,
+        DEF_SLEW_STATE = 350,
+        DEF_SIM_RATE = 351,
         // FO background data definitions — paired with REQUEST_FO_* IDs, NOT announced
         DEF_FO_ALTITUDE_AGL = 380,
         DEF_FO_AIRSPEED_IAS = 381,
@@ -630,7 +635,10 @@ public partial class SimConnectManager
         AircraftLoaded = 9000,
         // "Frame": once per rendered frame, subscribed only while the Sim Performance window is open
         // (SimConnectManager.FrameRate.cs).
-        Frame = 9001
+        Frame = 9001,
+        // Pause and flight-running state, always subscribed (SimConnectManager.SimState.cs).
+        PauseEx1 = 9002,
+        Sim = 9003
     }
 
 
@@ -1385,6 +1393,7 @@ public partial class SimConnectManager
                 simConnect.OnRecvException -= SimConnect_OnRecvException;
                 simConnect.OnRecvEventFilename -= SimConnect_OnRecvEventFilename;
                 simConnect.OnRecvEventFrame -= SimConnect_OnRecvEventFrame;
+                simConnect.OnRecvEvent -= SimConnect_OnRecvEvent;
 
                 Log.Debug("SimConnect", "Event handlers unregistered, disposing SimConnect...");
             }
