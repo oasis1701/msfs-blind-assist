@@ -23,7 +23,6 @@ public class FBWA380BaroWindow : FBWA380FCUWindowBase
     private readonly ComboBox modeCombo;
     private readonly ComboBox unitCombo;
     private readonly TextBox valueTextBox;
-    private readonly Button setButton;
     private bool suppressUiEvents;
     private System.Windows.Forms.Timer? _modeTimer;
     // Set on every user-driven combo change. SeedFromSim skips re-seeding within
@@ -62,14 +61,13 @@ public class FBWA380BaroWindow : FBWA380FCUWindowBase
             Location = new Point(75, 67), Size = new Size(100, 25), TabIndex = 2,
             AccessibleName = "Altimeter value", AccessibleDescription = "Enter altimeter value, Enter to set"
         };
+        // Enter in the value box sets it. The Set button beside it was removed on 2026-10-18 (the
+        // owner's call): it did what Enter does and only added a Tab stop. Close stays.
         valueTextBox.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.Handled = true; e.SuppressKeyPress = true; HandleSet(); } };
-        setButton = new Button { Text = "Set", Location = new Point(190, 65), Size = new Size(90, 30), TabIndex = 3, AccessibleName = "Set Altimeter" };
-        setButton.Click += (s, e) => HandleSet();
         var closeButton = new Button { Text = "Close", Location = new Point(130, 130), Size = new Size(140, 35), TabIndex = 4, DialogResult = DialogResult.OK, AccessibleName = "Close" };
         closeButton.Click += (s, e) => Close();
 
-        Controls.AddRange(new Control[] { modeLabel, modeCombo, unitLabel, unitCombo, valueLabel, valueTextBox, setButton, closeButton });
-        AcceptButton = setButton;
+        Controls.AddRange(new Control[] { modeLabel, modeCombo, unitLabel, unitCombo, valueLabel, valueTextBox, closeButton });
         CancelButton = closeButton;
 
         SeedFromSim();
@@ -109,7 +107,6 @@ public class FBWA380BaroWindow : FBWA380FCUWindowBase
         bool std = modeCombo.SelectedIndex == 1;
         unitCombo.Enabled = !std;
         valueTextBox.Enabled = !std;
-        setButton.Enabled = !std;
     }
 
     private void ModeChanged(object? sender, EventArgs e)
@@ -142,7 +139,8 @@ public class FBWA380BaroWindow : FBWA380FCUWindowBase
 
     private void HandleSet()
     {
-        if (!setButton.Enabled) return;
+        // STD: the value box is disabled with the unit (UpdateControlState), so nothing is set.
+        if (!valueTextBox.Enabled) return;
         string input = valueTextBox.Text.Trim();
         if (!Utils.NumberParsing.TryParseTyped(input, out double v))
         { announcer.AnnounceImmediate("Invalid number format"); valueTextBox.SelectAll(); return; }

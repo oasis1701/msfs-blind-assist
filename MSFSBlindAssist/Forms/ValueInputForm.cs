@@ -42,7 +42,6 @@ public partial class ValueInputForm : Form
         private TextBox valueTextBox = null!;
         private Label titleLabel = null!;
         private Label rangeLabel = null!;
-        private Button okButton = null!;
         private Button cancelButton = null!;
 
         public string InputValue { get; private set; } = null!;
@@ -205,16 +204,9 @@ public partial class ValueInputForm : Form
                 toggleY += 35;
             }
 
-            okButton = new Button
-            {
-                Text = "Set",
-                Location = new Point(185, 105 + toggleOffset),
-                Size = new Size(60, 30),
-                AccessibleName = $"Set {parameterType}",
-                TabIndex = tabIdx++
-            };
-            okButton.Click += OkButton_Click;
-
+            // No Set button: Enter in the box sets the value (ValueTextBox_KeyDown), so the button only
+            // added a stop to the Tab order. Removed on 2026-10-18, the owner's call, with the panels'
+            // typed fields. Cancel stays.
             cancelButton = new Button
             {
                 Text = "Cancel",
@@ -230,10 +222,8 @@ public partial class ValueInputForm : Form
             foreach (var btn in _toggleButtons)
                 Controls.Add(btn);
             Controls.Add(valueTextBox);
-            Controls.Add(okButton);
             Controls.Add(cancelButton);
 
-            AcceptButton = okButton;
             CancelButton = cancelButton;
         }
 
@@ -252,7 +242,6 @@ public partial class ValueInputForm : Form
             if (_lastInputEnabledState == enabled) return;
             _lastInputEnabledState = enabled;
             valueTextBox.ReadOnly = !enabled;
-            okButton.Enabled = enabled;
             valueTextBox.AccessibleDescription = enabled
                 ? $"Enter {parameterType} value and press Enter to set"
                 : $"Engage mode first to enter a value";
@@ -316,7 +305,10 @@ public partial class ValueInputForm : Form
         {
             if (e.KeyCode == Keys.Enter)
             {
+                // With no Set button as the form's AcceptButton, Enter reaches the box itself;
+                // SuppressKeyPress stops the edit control's ding.
                 e.Handled = true;
+                e.SuppressKeyPress = true;
                 if (_inputEnabledCheck == null || _inputEnabledCheck())
                     SetValue();
             }
@@ -332,11 +324,6 @@ public partial class ValueInputForm : Form
                     SetForegroundWindow(previousWindow);
                 }
             }
-        }
-
-        private void OkButton_Click(object? sender, EventArgs e)
-        {
-            SetValue();
         }
 
         private void SetValue()

@@ -15,7 +15,6 @@ public partial class FenixHeadingWindow : Form
 
     private Label headingLabel = null!;
     private TextBox headingTextBox = null!;
-    private Button setButton = null!;
     private Button hdgPushButton = null!;
     private Button hdgPullButton = null!;
     private Button hdgVsTrkFpaButton = null!;
@@ -83,19 +82,9 @@ public partial class FenixHeadingWindow : Form
             AccessibleDescription = "Enter heading value between 0 and 360 degrees",
             TabIndex = 0
         };
+        // Enter sets the value. The Set button beside it was removed on 2026-10-18 (the owner's call):
+        // it did what Enter does and only added a Tab stop. Close stays.
         headingTextBox.KeyDown += HeadingTextBox_KeyDown;
-
-        // Set Button
-        setButton = new Button
-        {
-            Text = "Set",
-            Location = new Point(260, 20),
-            Size = new Size(100, 30),
-            AccessibleName = "Set Heading",
-            AccessibleDescription = "Set the entered heading value",
-            TabIndex = 1
-        };
-        setButton.Click += async (s, e) => await HandleSetClick();
 
         // Heading Push Button
         hdgPushButton = new Button
@@ -149,12 +138,11 @@ public partial class FenixHeadingWindow : Form
         // Add controls to form
         Controls.AddRange(new Control[]
         {
-            headingLabel, headingTextBox, setButton, hdgPushButton, hdgPullButton,
+            headingLabel, headingTextBox, hdgPushButton, hdgPullButton,
             hdgVsTrkFpaButton, closeButton
         });
 
         CancelButton = closeButton;
-        AcceptButton = setButton;
     }
 
     private void SetupAccessibility()

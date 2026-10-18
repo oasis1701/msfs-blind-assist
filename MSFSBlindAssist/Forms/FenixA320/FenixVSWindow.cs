@@ -15,7 +15,6 @@ public partial class FenixVSWindow : Form
 
     private Label vsLabel = null!;
     private TextBox vsTextBox = null!;
-    private Button setButton = null!;
     private Button vsPushButton = null!;
     private Button vsPullButton = null!;
     private Button closeButton = null!;
@@ -82,19 +81,9 @@ public partial class FenixVSWindow : Form
             AccessibleDescription = "Enter vertical speed value between -6000 and 6000 feet per minute",
             TabIndex = 0
         };
+        // Enter sets the value. The Set button beside it was removed on 2026-10-18 (the owner's call):
+        // it did what Enter does and only added a Tab stop. Close stays.
         vsTextBox.KeyDown += VsTextBox_KeyDown;
-
-        // Set Button
-        setButton = new Button
-        {
-            Text = "Set",
-            Location = new Point(270, 20),
-            Size = new Size(90, 30),
-            AccessibleName = "Set Vertical Speed",
-            AccessibleDescription = "Set the entered vertical speed value",
-            TabIndex = 1
-        };
-        setButton.Click += async (s, e) => await HandleSetClick();
 
         // V/S Push Button
         vsPushButton = new Button
@@ -136,11 +125,10 @@ public partial class FenixVSWindow : Form
         // Add controls to form
         Controls.AddRange(new Control[]
         {
-            vsLabel, vsTextBox, setButton, vsPushButton, vsPullButton, closeButton
+            vsLabel, vsTextBox, vsPushButton, vsPullButton, closeButton
         });
 
         CancelButton = closeButton;
-        AcceptButton = setButton;
     }
 
     private void SetupAccessibility()

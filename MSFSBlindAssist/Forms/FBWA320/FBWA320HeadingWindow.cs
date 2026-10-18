@@ -19,9 +19,9 @@ public class FBWA320HeadingWindow : FBWA320FCUWindowBase
 
         var label = new Label { Text = "Heading (0-360):", Location = new Point(20, 25), Size = new Size(140, 20), AccessibleName = "Heading Label" };
         headingTextBox = new TextBox { Location = new Point(195, 22), Size = new Size(75, 25), TabIndex = 0, AccessibleName = "Heading value", AccessibleDescription = "Enter 0 to 360 degrees" };
+        // Enter sets the value. The Set button beside it was removed on 2026-10-18 (the owner's call):
+        // it did what Enter does and only added a Tab stop. Close stays.
         headingTextBox.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.Handled = true; e.SuppressKeyPress = true; HandleSet(); } };
-        var setButton = new Button { Text = "Set", Location = new Point(280, 20), Size = new Size(80, 30), TabIndex = 1, AccessibleName = "Set Heading" };
-        setButton.Click += (s, e) => HandleSet();
         var pushButton = new Button { Text = "Heading Push (managed)", Location = new Point(20, 65), Size = new Size(165, 35), TabIndex = 2, AccessibleName = "Heading Push" };
         pushButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_HDG_PUSH", simConnect, announcer, readback: false);
         var pullButton = new Button { Text = "Heading Pull (selected)", Location = new Point(195, 65), Size = new Size(165, 35), TabIndex = 3, AccessibleName = "Heading Pull" };
@@ -31,8 +31,7 @@ public class FBWA320HeadingWindow : FBWA320FCUWindowBase
         var closeButton = new Button { Text = "Close", Location = new Point(130, 155), Size = new Size(140, 35), TabIndex = 5, DialogResult = DialogResult.OK, AccessibleName = "Close" };
         closeButton.Click += (s, e) => Close();
 
-        Controls.AddRange(new Control[] { label, headingTextBox, setButton, pushButton, pullButton, trkButton, closeButton });
-        AcceptButton = setButton;
+        Controls.AddRange(new Control[] { label, headingTextBox, pushButton, pullButton, trkButton, closeButton });
         CancelButton = closeButton;
 
         // Reflect the live HDG·V/S vs TRK·FPA mode in the toggle button label. A32NX_TRK_FPA_MODE_ACTIVE

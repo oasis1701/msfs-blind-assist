@@ -15,7 +15,6 @@ public partial class FenixAltitudeWindow : Form
 
     private Label altitudeLabel = null!;
     private TextBox altitudeTextBox = null!;
-    private Button setButton = null!;
     private Button altPushButton = null!;
     private Button altPullButton = null!;
     private Button closeButton = null!;
@@ -82,19 +81,9 @@ public partial class FenixAltitudeWindow : Form
             AccessibleDescription = "Enter altitude value between 100 and 49000 feet",
             TabIndex = 0
         };
+        // Enter sets the value. The Set button beside it was removed on 2026-10-18 (the owner's call):
+        // it did what Enter does and only added a Tab stop. Close stays.
         altitudeTextBox.KeyDown += AltitudeTextBox_KeyDown;
-
-        // Set Button
-        setButton = new Button
-        {
-            Text = "Set",
-            Location = new Point(270, 20),
-            Size = new Size(90, 30),
-            AccessibleName = "Set Altitude",
-            AccessibleDescription = "Set the entered altitude value",
-            TabIndex = 1
-        };
-        setButton.Click += async (s, e) => await HandleSetClick();
 
         // Altitude Push Button
         altPushButton = new Button
@@ -136,12 +125,11 @@ public partial class FenixAltitudeWindow : Form
         // Add controls to form
         Controls.AddRange(new Control[]
         {
-            altitudeLabel, altitudeTextBox, setButton, altPushButton, altPullButton,
+            altitudeLabel, altitudeTextBox, altPushButton, altPullButton,
             closeButton
         });
 
         CancelButton = closeButton;
-        AcceptButton = setButton;
     }
 
     private void SetupAccessibility()

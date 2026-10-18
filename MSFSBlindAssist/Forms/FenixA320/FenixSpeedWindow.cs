@@ -15,7 +15,6 @@ public partial class FenixSpeedWindow : Form
 
     private Label speedLabel = null!;
     private TextBox speedTextBox = null!;
-    private Button setButton = null!;
     private Button spdPushButton = null!;
     private Button spdPullButton = null!;
     private Button spdMachButton = null!;
@@ -83,19 +82,9 @@ public partial class FenixSpeedWindow : Form
             AccessibleDescription = "Enter speed value: 100-399 knots or 0.10-0.99 Mach",
             TabIndex = 0
         };
+        // Enter sets the value. The Set button beside it was removed on 2026-10-18 (the owner's call):
+        // it did what Enter does and only added a Tab stop. Close stays.
         speedTextBox.KeyDown += SpeedTextBox_KeyDown;
-
-        // Set Button
-        setButton = new Button
-        {
-            Text = "Set",
-            Location = new Point(280, 20),
-            Size = new Size(80, 30),
-            AccessibleName = "Set Speed",
-            AccessibleDescription = "Set the entered speed value",
-            TabIndex = 1
-        };
-        setButton.Click += async (s, e) => await HandleSetClick();
 
         // Speed Push Button
         spdPushButton = new Button
@@ -149,12 +138,11 @@ public partial class FenixSpeedWindow : Form
         // Add controls to form
         Controls.AddRange(new Control[]
         {
-            speedLabel, speedTextBox, setButton, spdPushButton, spdPullButton,
+            speedLabel, speedTextBox, spdPushButton, spdPullButton,
             spdMachButton, closeButton
         });
 
         CancelButton = closeButton;
-        AcceptButton = setButton;
     }
 
     private void SetupAccessibility()
