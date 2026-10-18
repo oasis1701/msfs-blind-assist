@@ -83,6 +83,8 @@ public class AirportLookupFormatTests
     [InlineData(492.000030517578, "492 ft")]      // ESGG tower altitude
     [InlineData(10802.0, "10802 ft")]
     [InlineData(5000.0, "5000 ft")]
+    [InlineData(-0.495, "0 ft")]                  // fs2024 CAU6: read "-0 ft", "minus zero feet"
+    [InlineData(-3.5, "-4 ft")]                   // below sea level stays negative
     public void Feet_read_whole_with_no_float_noise(double feet, string expected)
         => UnderCulture("sv-SE", () => Assert.Equal(expected, ElectronicFlightBagForm.FormatAirportFeet(feet)));
 
@@ -90,8 +92,21 @@ public class AirportLookupFormatTests
     [InlineData(3.40000009536743, "3.4°")]        // ESGG 21 loc width
     [InlineData(206.004821777344, "206.0°")]      // ESGG 21 loc heading
     [InlineData(3.0, "3.0°")]
+    [InlineData(206.25, "206.3°")]                // a half rounds away from zero, not to even
+    [InlineData(-0.04, "0.0°")]                   // no "-0.0°"
     public void Angles_read_one_decimal(double degrees, string expected)
         => UnderCulture("sv-SE", () => Assert.Equal(expected, ElectronicFlightBagForm.FormatAirportDegrees(degrees)));
+
+    [Fact]
+    public void A_localizer_heading_says_it_is_true()
+        // KDEN 34R's localizer: 0.5° true, about 353° magnetic.
+        => Assert.Equal("0.5° true", ElectronicFlightBagForm.FormatAirportDegrees(0.513641357421875, trueHeading: true));
+
+    [Theory]
+    [InlineData(108.5, "108.50 MHz")]
+    [InlineData(110.3, "110.30 MHz")]
+    public void Ils_frequency_reads_two_decimals_with_a_dot(double mhz, string expected)
+        => UnderCulture("sv-SE", () => Assert.Equal(expected, ElectronicFlightBagForm.FormatIlsFrequency(mhz)));
 
     [Theory]
     [InlineData(18000.0, "FL180")]                // CYQX, KJFK

@@ -81,6 +81,16 @@ public class ElectronicFlightBagFormRunwayInfoTests
             ElectronicFlightBagForm.FormatRunwayHeadingsAndCoordinates(trueHeading, magVar, 0.0, 0.0));
 
     [Fact]
+    public void Headings_round_halves_away_from_zero()
+    {
+        // "F1" rounds an exact half to even on .NET 10 (206.25 → "206.2"); every other number on
+        // the page rounds it away from zero.
+        string result = ElectronicFlightBagForm.FormatRunwayHeadingsAndCoordinates(206.25, 0.0, 0.0, 0.0);
+        Assert.Contains("True Heading:         206.3°", result);
+        Assert.Contains("Magnetic Heading:     206.3°", result);
+    }
+
+    [Fact]
     public void Coordinates_use_the_selected_ends_own_longitude_and_latitude()
     {
         string result = ElectronicFlightBagForm.FormatRunwayHeadingsAndCoordinates(

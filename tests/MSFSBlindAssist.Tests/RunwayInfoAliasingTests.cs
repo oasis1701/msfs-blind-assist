@@ -147,8 +147,11 @@ public class RunwayInfoAliasingTests
             heading: 206.004821777344, altitude: 510.045959472656, lonx: 12.2654523849487, laty: 57.6470985412598);
         fixture.InsertRunway(runwayId: 1, airportId: 1, primaryEndId: 1, secondaryEndId: 2,
             heading: 25.9843444824219, altitude: 510.045959472656, length: 10802.5, width: 155.0);
+        // NGG with a DME and a glideslope, so those blocks show and are checked too.
         fixture.InsertIls(ident: "NGG", locAirportIdent: Icao, locRunwayName: "21",
-            locHeading: 206.004821777344, frequency: 108500, locWidth: 3.40000009536743);
+            locHeading: 206.004821777344, frequency: 108500, locWidth: 3.40000009536743,
+            lonx: 12.2654523849487, laty: 57.6470985412598, altitude: 505.997406005859,
+            gsPitch: 3.0, dmeRange: 18, gsRange: 10);
         fixture.InsertIls(ident: "SGG", locAirportIdent: Icao, locRunwayName: "03",
             locHeading: 25.9843444824219, frequency: 110300, locWidth: 3.40000009536743);
         fixture.Seal();
@@ -158,11 +161,42 @@ public class RunwayInfoAliasingTests
             string result = ElectronicFlightBagForm.GetRunwayDetailedInfoCore(fixture.DbPath, "FS2020", Icao, "21");
 
             Assert.Contains("ILS Frequency:        108.50 MHz", result);
-            Assert.Contains("Loc Heading:          206.0°", result);
+            Assert.Contains("Loc Heading:          206.0° true", result);
             Assert.Contains("Loc Width:            3.4°", result);
+            Assert.Contains("DME Altitude:         506 ft", result);
+            Assert.Contains("DME Longitude:        12.2655 E", result);
+            Assert.Contains("GS Pitch:             3.0°", result);
+            Assert.Contains("GS Latitude:          57.6471 N", result);
+            Assert.Contains("Localizer Altitude:   506 ft", result);
             Assert.Contains("Magnetic Heading:     200.6°", result);
             Assert.Contains("Length:               10803 ft", result);
             Assert.Contains("Altitude (MSL):       510 ft", result);
+            Assert.DoesNotContain(",", result);
+        });
+    }
+
+    [Fact]
+    public void A_recovered_ILS_reads_with_a_dot_and_says_its_heading_is_true()
+    {
+        // 09L's runway_end has no ils_ident and its localizer is an fs2024 orphan, so the page
+        // takes the GetILSForRunway path (OrphanIlsRunwayLinkTests' geometry). That path
+        // formatted with "F2"/"F1" in the current culture: "110,30 MHz" under sv-SE.
+        using var fixture = new RunwayFixtureDb();
+        fixture.InsertAirport(1, Icao, Icao, lonx: 0.0, laty: 0.0);
+        fixture.InsertRunwayEnd(101, "09L", ilsIdent: "", heading: 90.0, lonx: 0.0, laty: 0.00135);
+        fixture.InsertRunwayEnd(102, "27R", ilsIdent: "", heading: 270.0, lonx: 0.0323, laty: 0.00135);
+        fixture.InsertRunway(1, 1, 101, 102, heading: 90.0);
+        fixture.InsertOrphanIls("ITST", 0.0323, 0.00135, 90.0048217773438, 110300, "ILS/GS CAT I RW09L");
+        fixture.Seal();
+
+        UnderCulture("sv-SE", () =>
+        {
+            string result = ElectronicFlightBagForm.GetRunwayDetailedInfoCore(fixture.DbPath, "FS2024", Icao, "09L");
+
+            Assert.Contains("ILS Ident:            ITST", result);
+            Assert.Contains("ILS Frequency:        110.30 MHz", result);
+            Assert.Contains("Loc Heading:          90.0° true", result);
+            Assert.Contains("Loc Width:            3.0°", result);
             Assert.DoesNotContain(",", result);
         });
     }
