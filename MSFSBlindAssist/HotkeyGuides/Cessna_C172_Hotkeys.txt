@@ -34,8 +34,12 @@ Heading:
 Navigation:
   N          Read NAV 1 and NAV 2 radio info (frequency, ident, localizer, glideslope, DME)
 
-Autopilot:
-  Shift+V    Read the autopilot's selected vertical speed
+Autopilot (the selected values, each followed by its mode when that mode is
+active, for example "Heading bug 270, HDG active"):
+  Shift+A    Selected altitude (and "ALT hold active")
+  Shift+H    Heading bug (and "HDG active")
+  Shift+S    Selected airspeed, the FLC target (and "FLC active")
+  Shift+V    Selected vertical speed, signed (and "VS active")
 
 Engine:
   P          RPM, with the arc it sits in on the G1000's tachometer (the green

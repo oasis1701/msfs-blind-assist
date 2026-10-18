@@ -670,6 +670,51 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
             announcer.Announce($"{displayName} pressed");
     }
 
+    /// <summary>
+    /// The output-mode keys for the GFC 700's selected values (C172-21): the value, read fresh; how
+    /// it is said; the mode that flies it, read from the cache (each mode is batched, C172-17); that
+    /// mode's FMA name. The DA40's keys say the value alone, the iFly's add the mode; the owner chose
+    /// the mode (2026-10-18), since the key is asked "what is the autopilot doing with this number".
+    /// </summary>
+    internal static readonly IReadOnlyDictionary<HotkeyAction,
+        (string ValueKey, Func<double, string> Describe, string ModeKey, string Mode, string Unavailable)> SelectedValueKeys =
+        new Dictionary<HotkeyAction, (string, Func<double, string>, string, string, string)>
+        {
+            [HotkeyAction.ReadAltitude] = ("C172_AP_ALT_VALUE", DescribeSelectedAltitude, "C172_AP_ALT_STATE", "ALT hold",
+                "Selected altitude not available"),
+            [HotkeyAction.ReadHeading] = ("C172_AP_HDG_VALUE", bug => "Heading bug " + HeadingDigits(bug), "C172_AP_HDG_STATE",
+                "HDG", "Heading bug not available"),
+            [HotkeyAction.ReadSpeed] = ("C172G_AP_IAS_VALUE", DescribeSelectedAirspeed, "C172G_AP_FLC_STATE", "FLC",
+                "Selected airspeed not available"),
+            [HotkeyAction.ReadFCUVerticalSpeedFPA] = ("C172_AP_VS_VALUE", DescribeVerticalSpeedTarget, "C172_AP_VS_STATE",
+                "VS", "Vertical speed not available"),
+        };
+
+    /// <summary>A selected value, read fresh, and its mode when that mode is active. On the UI thread.</summary>
+    private static async Task SaySelectedValueAsync(SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
+        string valueKey, Func<double, string> describe, string modeKey, string mode, string unavailable)
+    {
+        if (await simConnect.ReadFreshAsync(valueKey, 1500) is not double value)
+        {
+            announcer.AnnounceImmediate(unavailable);
+            return;
+        }
+        bool active = (simConnect.GetCachedVariableValue(modeKey) ?? 0) >= 0.5;
+        announcer.AnnounceImmediate(WithActiveMode(describe(value), active, mode) + ".");
+    }
+
+    /// <summary>"Heading bug 270, HDG active", or the reading alone. Pure so the suite can pin it.</summary>
+    internal static string WithActiveMode(string reading, bool active, string mode) =>
+        active ? $"{reading}, {mode} active" : reading;
+
+    /// <summary>Output+Shift+A's value, as the DA40 says it. Pure so the suite can pin it.</summary>
+    internal static string DescribeSelectedAltitude(double feet) =>
+        string.Create(CultureInfo.InvariantCulture, $"Selected altitude {Math.Round(feet):0} feet");
+
+    /// <summary>Output+Shift+S's value, the FLC target, as the DA40 says it. Pure so the suite can pin it.</summary>
+    internal static string DescribeSelectedAirspeed(double knots) =>
+        string.Create(CultureInfo.InvariantCulture, $"Selected airspeed {Math.Round(knots):0} knots");
+
     /// <summary>The FLC airspeed target as spoken. Pure so the suite can pin it.</summary>
     internal static string DescribeAirspeedTarget(double knots) =>
         string.Create(CultureInfo.InvariantCulture, $"Airspeed {Math.Round(knots):F0} knots");
@@ -796,12 +841,12 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
             return ShowSelectedAltitudeDialog(simConnect, announcer, parentForm);
         }
 
-        // Output+Shift+V: the GFC 700's vertical speed target, read fresh (C172-19) and worded as
-        // the nose wheel says it, a direction and never a sign.
-        if (action == HotkeyAction.ReadFCUVerticalSpeedFPA)
+        // Output+Shift+A, H, S and V: the GFC 700's SELECTED values, each read fresh (C172-19) and
+        // followed by its mode when that mode is active (C172-21): "Heading bug 270, HDG active".
+        if (SelectedValueKeys.TryGetValue(action, out var selected))
         {
-            _ = SayFreshAsync(simConnect, announcer, "C172_AP_VS_VALUE", DescribeVerticalSpeedTarget,
-                "Vertical speed not available");
+            _ = SaySelectedValueAsync(simConnect, announcer, selected.ValueKey, selected.Describe,
+                selected.ModeKey, selected.Mode, selected.Unavailable);
             return true;
         }
 

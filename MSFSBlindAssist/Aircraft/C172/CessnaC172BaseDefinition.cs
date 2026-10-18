@@ -718,10 +718,12 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
         switch (action)
         {
             // ===== READ ACTIONS (Output mode) =====
-            // Note: ReadHeading, ReadSpeed, ReadAltitude, ReadVerticalSpeed, ReadHeadingMagnetic,
-            // ReadAirspeedIndicated, ReadAltitudeMSL, ReadAltitudeAGL, ReadGroundSpeed, ReadMachSpeed,
-            // ReadHeadingTrue, ReadBankAngle, ReadPitch are ALL handled universally by MainForm.
-            // Do NOT intercept them here — let them fall through.
+            // ReadVerticalSpeed, ReadHeadingMagnetic, ReadAirspeedIndicated, ReadAltitudeMSL,
+            // ReadAltitudeAGL, ReadGroundSpeed, ReadMachSpeed, ReadHeadingTrue, ReadBankAngle and
+            // ReadPitch (the aircraft's CURRENT values) are handled by MainForm: let them fall through.
+            // ReadHeading, ReadSpeed and ReadAltitude are NOT: they are the autopilot's SELECTED
+            // values, which every aircraft answers itself; the G1000 does (C172-21). The port's note
+            // here said MainForm answered them, and Shift+A, Shift+S and Shift+H said nothing.
 
             // Output+F — read fuel quantity
             case HotkeyAction.ReadFuelQuantity:
