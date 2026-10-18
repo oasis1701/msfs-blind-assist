@@ -133,13 +133,24 @@ the preselect shown under STD and the reading stays at 29.92. So from a reading
 of 29.92 the dialog asks the knob (`Pmdg737Baro.SetFromStandardAsync`): one click
 toward the target, then a settled read. A reading that moved means STD is off and
 the turn goes on from there; a reading still at 29.92 means STD is on, so STD is
-pushed off and the turn counts from the reading after the push. Until 2026-10
-the dialog pushed STD on any reading of 29.92, which turned a local 29.92 INTO
-STD. Every read after a click or a push waits out `Pmdg737Baro.SettleMs`, then
-for the next delivery (`ReadFreshAsync`): ALTIMETER_SETTING is batch-covered, so
-the cache can predate the action by up to a second, and the old 200 ms re-read
-counted the clicks from the 29.92 it had before the push. The altimeter callout
-stays quiet while the check runs and speaks where the knob landed, once. The B
+pushed off and the turn counts from the reading after the push. A reading still
+at 29.92 after the push is a preselect sitting at 29.92, or a check click PMDG
+dropped and a push that turned STD ON, so the knob is asked once more; that
+second push undoes a wrong first one, and 29.92 surviving both checks says
+"Altimeter not confirmed". Until 2026-10 the dialog pushed STD on any reading of
+29.92, which turned a local 29.92 INTO STD. Every read after a click or a push
+waits out `Pmdg737Baro.SettleMs` (a few frames), then for the next delivery
+(`ReadFreshAsync`): ALTIMETER_SETTING is batch-covered, so the cache can predate
+the action by up to a second, and the old 200 ms re-read counted the clicks from
+the 29.92 it had before the push. For the same reason every turn and STD push
+from the dialog, the Standard button's too, holds off the next one ("Still
+setting altimeter") until a delivery after it, so a quick re-submit counts from
+where the knob landed. The altimeter callout stays quiet while the check runs;
+the dialog then speaks the landed reading, delivered after the last click, as
+the value (never "standard": this path ends with STD off), and makes it the
+callout's baseline. A timed mute that let the callout speak it instead lost it
+whenever the batch fell inside the mute. A read that delivers nothing after the
+knob has moved says "Altimeter not confirmed" and re-fires the callout. The B
 readout and the callout still say "Altimeter standard" for any reading of 29.92,
 a local one included. Unmeasured: whether PMDG drives the stock
 `KOHLSMAN SETTING STD:1`; a read across an STD push would show whether STD can be

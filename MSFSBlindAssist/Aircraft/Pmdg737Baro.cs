@@ -30,7 +30,7 @@ internal interface IPmdg737BaroKnob
 /// whether STD is on. The knob can: with STD off a click moves the reading, with STD on it moves
 /// only the preselect shown under STD and the reading stays at 29.92. Pushing STD then brings the
 /// preselect up. <see cref="SetFromStandardAsync"/> asks the knob instead of guessing, so a local
-/// 29.92 is never pushed into STD.
+/// 29.92 is not pushed into STD, and a push that did turn STD on is caught and undone.
 /// </summary>
 internal static class Pmdg737Baro
 {
@@ -39,9 +39,18 @@ internal static class Pmdg737Baro
 
     /// <summary>
     /// How long a click or an STD push gets to land before the read that judges it, so the
-    /// delivery that answers was sampled after PMDG applied it.
+    /// delivery that answers was sampled after PMDG applied it: a few frames. The read then waits
+    /// for the next 1 Hz delivery anyway, so a longer settle only adds delay, and a check click
+    /// that lands later than this is caught by <see cref="SetFromStandardAsync"/>'s second check.
     /// </summary>
-    public const int SettleMs = 500;
+    public const int SettleMs = 150;
+
+    /// <summary>
+    /// How many times <see cref="SetFromStandardAsync"/> asks the knob. A reading still at 29.92
+    /// after the STD push is the preselect sitting at 29.92, or a check click that never landed and
+    /// a push that turned STD ON; the second check tells them apart, and its push undoes a wrong first one.
+    /// </summary>
+    private const int MaxStdChecks = 2;
 
     /// <summary>
     /// The fresh read's deadline. ALTIMETER_SETTING is batch-covered, so it answers on the next
@@ -78,32 +87,40 @@ internal static class Pmdg737Baro
     }
 
     /// <summary>
-    /// Sets the altimeter from a reading of 29.92 (<see cref="NeedsStdCheck"/>). One click toward
-    /// the target, then a settled read: if the reading moved, STD is off and the click was the
-    /// first of the turn; if it still reads 29.92, STD is on and the click only moved the
-    /// preselect, so STD is pushed off and the reading read again. The rest of the turn counts
-    /// from that settled reading. Returns false when a read delivered nothing; nothing more is
-    /// sent after one.
+    /// Sets the altimeter from a reading of 29.92 (<see cref="NeedsStdCheck"/>) and returns where it
+    /// landed, with STD off: a reading delivered after the last click. One click toward the target,
+    /// then a settled read: if the reading moved, STD is off and the click was the first of the
+    /// turn; if it still reads 29.92, STD is pushed and the reading read again. A reading still at
+    /// 29.92 after the push asks the knob once more (<see cref="MaxStdChecks"/>). The rest of the
+    /// turn counts from the first settled reading off 29.92. Returns null when a read delivered
+    /// nothing, or when 29.92 survived every check; nothing more is sent after either, but the
+    /// knob may already have moved.
     /// </summary>
-    public static async Task<bool> SetFromStandardAsync(IPmdg737BaroKnob knob, double currentInHg, double typed)
+    public static async Task<double?> SetFromStandardAsync(IPmdg737BaroKnob knob, double currentInHg, double typed)
     {
         // A target no click away from 29.92 (1013 typed on an hPa display) still asks to leave STD:
         // check with a click up, which the rest of the turn takes back.
         int first = ClicksTo(currentInHg, typed, knob.HpaDisplay);
-        await knob.TurnAsync(first < 0 ? -1 : 1);
+        int check = first < 0 ? -1 : 1;
 
-        double? reading = await knob.ReadSettledAsync();
-        if (reading is null) return false;
-
-        if (ReadsStandard(reading.Value))
+        double? reading = null;
+        for (int attempt = 0; attempt < MaxStdChecks; attempt++)
         {
+            await knob.TurnAsync(check);
+            reading = await knob.ReadSettledAsync();
+            if (reading is null) return null;
+            if (!ReadsStandard(reading.Value)) break;   // the click moved it: STD is off
+
             await knob.PushStdAsync();
             reading = await knob.ReadSettledAsync();
-            if (reading is null) return false;
+            if (reading is null) return null;
+            if (!ReadsStandard(reading.Value)) break;   // STD came off over the preselect
         }
+        if (reading is not double settled || ReadsStandard(settled)) return null;
 
-        int rest = ClicksTo(reading.Value, typed, knob.HpaDisplay);
-        if (rest != 0) await knob.TurnAsync(rest);
-        return true;
+        int rest = ClicksTo(settled, typed, knob.HpaDisplay);
+        if (rest == 0) return settled;
+        await knob.TurnAsync(rest);
+        return await knob.ReadSettledAsync();
     }
 }

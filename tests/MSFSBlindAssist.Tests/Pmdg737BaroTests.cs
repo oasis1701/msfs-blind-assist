@@ -6,7 +6,8 @@
 // FakeBaro models the baro as the dialog meets it: with STD on the reading is 29.92 and a click
 // moves the preselect; pushing STD on keeps the setting as the preselect, pushing it off brings the
 // preselect up. A read answers what the aircraft shows after the last action, as a fresh delivery
-// does, never a value cached from before it.
+// does, never a value cached from before it. DropTurns makes PMDG drop the next turns, the
+// residual risk of telling STD by a click; Deliveries makes reads stop delivering after that many.
 
 namespace MSFSBlindAssist.Tests;
 
@@ -23,12 +24,14 @@ public class Pmdg737BaroTests
         public double Preselect { get; set; }    // inHg; shown under STD while it is on
         public bool HpaDisplay { get; init; }
         public int StdPushes { get; private set; }
-        public bool Delivers { get; init; } = true;
+        public int DropTurns { get; set; }                       // the next this many turns never land
+        public int Deliveries { get; set; } = int.MaxValue;      // reads that deliver, then null
 
         public double Reading => Std ? Pmdg737Baro.StandardInHg : Setting;
 
         public Task TurnAsync(int clicks)
         {
+            if (DropTurns > 0) { DropTurns--; return Task.CompletedTask; }
             double step = HpaDisplay ? Hpa : 0.01;
             if (Std) Preselect += clicks * step;
             else Setting += clicks * step;
@@ -43,7 +46,12 @@ public class Pmdg737BaroTests
             return Task.CompletedTask;
         }
 
-        public Task<double?> ReadSettledAsync() => Task.FromResult<double?>(Delivers ? Reading : null);
+        public Task<double?> ReadSettledAsync()
+        {
+            if (Deliveries <= 0) return Task.FromResult<double?>(null);
+            Deliveries--;
+            return Task.FromResult<double?>(Reading);
+        }
     }
 
     [Fact]
@@ -53,12 +61,54 @@ public class Pmdg737BaroTests
         // which turned it ON and hid every click after it behind STD.
         var baro = new FakeBaro { Std = false, Setting = 29.92 };
 
-        bool delivered = await Pmdg737Baro.SetFromStandardAsync(baro, baro.Reading, 30.05);
+        double? landed = await Pmdg737Baro.SetFromStandardAsync(baro, baro.Reading, 30.05);
 
-        Assert.True(delivered);
         Assert.False(baro.Std);
         Assert.Equal(0, baro.StdPushes);
         Assert.Equal(30.05, baro.Reading, 3);
+        Assert.Equal(30.05, landed!.Value, 3);   // the landed reading the dialog speaks
+    }
+
+    [Fact]
+    public async Task ADroppedCheckClick_PushesStdOn_AndTheSecondCheckBringsItOff()
+    {
+        // A local 29.92 whose check click PMDG drops reads like STD, so STD is pushed ON. The
+        // reading after the push is still 29.92, which asks the knob again: that click moves only
+        // the preselect, so the second push brings STD off over it and the turn goes on from there.
+        var baro = new FakeBaro { Std = false, Setting = 29.92, DropTurns = 1 };
+
+        double? landed = await Pmdg737Baro.SetFromStandardAsync(baro, baro.Reading, 30.05);
+
+        Assert.False(baro.Std);
+        Assert.Equal(2, baro.StdPushes);
+        Assert.Equal(30.05, landed!.Value, 3);
+    }
+
+    [Fact]
+    public async Task TwoDroppedCheckClicks_GiveUp_WithTheSecondPushUndoingTheFirst()
+    {
+        var baro = new FakeBaro { Std = false, Setting = 29.92, DropTurns = 2 };
+
+        double? landed = await Pmdg737Baro.SetFromStandardAsync(baro, baro.Reading, 30.05);
+
+        Assert.Null(landed);
+        Assert.False(baro.Std);
+        Assert.Equal(2, baro.StdPushes);
+        Assert.Equal(29.92, baro.Reading, 3);
+    }
+
+    [Fact]
+    public async Task StdOn_OverAPreselectOneClickFrom2992_IsNotTakenForADroppedClick()
+    {
+        // The check click takes the preselect to 29.92, so the reading after the push is 29.92 too.
+        // The second check's click moves the reading: STD is off, and nothing is pushed again.
+        var baro = new FakeBaro { Std = true, Setting = 29.93, Preselect = 29.93 };
+
+        double? landed = await Pmdg737Baro.SetFromStandardAsync(baro, baro.Reading, 29.85);
+
+        Assert.False(baro.Std);
+        Assert.Equal(1, baro.StdPushes);
+        Assert.Equal(29.85, landed!.Value, 3);
     }
 
     [Fact]
@@ -69,12 +119,12 @@ public class Pmdg737BaroTests
         // 13 clicks above the preselect, at 30.25.
         var baro = new FakeBaro { Std = true, Setting = 30.12, Preselect = 30.12 };
 
-        bool delivered = await Pmdg737Baro.SetFromStandardAsync(baro, baro.Reading, 30.05);
+        double? landed = await Pmdg737Baro.SetFromStandardAsync(baro, baro.Reading, 30.05);
 
-        Assert.True(delivered);
         Assert.False(baro.Std);
         Assert.Equal(1, baro.StdPushes);
         Assert.Equal(30.05, baro.Reading, 3);
+        Assert.Equal(30.05, landed!.Value, 3);
     }
 
     [Fact]
@@ -116,24 +166,41 @@ public class Pmdg737BaroTests
     public async Task ATargetZeroClicksAway_WithStdOff_EndsWhereItWas()
     {
         // The same 1013 with STD off over a local 29.92 (1013.2 hPa): the check's click up comes back.
+        // It still lands, so the dialog speaks it rather than leaving the pilot with nothing.
         var baro = new FakeBaro { HpaDisplay = true, Std = false, Setting = 29.92 };
 
-        await Pmdg737Baro.SetFromStandardAsync(baro, baro.Reading, 1013);
+        double? landed = await Pmdg737Baro.SetFromStandardAsync(baro, baro.Reading, 1013);
 
         Assert.False(baro.Std);
         Assert.Equal(0, baro.StdPushes);
         Assert.Equal(29.92, baro.Reading, 3);
+        Assert.Equal(29.92, landed!.Value, 3);
     }
 
     [Fact]
     public async Task NothingDelivered_GivesUpWithoutPushingStd()
     {
-        var baro = new FakeBaro { Std = false, Setting = 29.92, Delivers = false };
+        var baro = new FakeBaro { Std = false, Setting = 29.92, Deliveries = 0 };
 
-        bool delivered = await Pmdg737Baro.SetFromStandardAsync(baro, baro.Reading, 30.05);
+        double? landed = await Pmdg737Baro.SetFromStandardAsync(baro, baro.Reading, 30.05);
 
-        Assert.False(delivered);
+        Assert.Null(landed);
         Assert.Equal(0, baro.StdPushes);
+    }
+
+    [Fact]
+    public async Task NothingDeliveredAfterThePush_GivesUpWithNothingMoreSent()
+    {
+        // The check read delivers, the read after the STD push does not: STD is already off, so the
+        // dialog must not take this for "nothing changed".
+        var baro = new FakeBaro { Std = true, Setting = 30.12, Preselect = 30.12, Deliveries = 1 };
+
+        double? landed = await Pmdg737Baro.SetFromStandardAsync(baro, baro.Reading, 30.05);
+
+        Assert.Null(landed);
+        Assert.False(baro.Std);
+        Assert.Equal(1, baro.StdPushes);
+        Assert.Equal(30.13, baro.Reading, 3);   // the preselect after the check click, aimed up from 29.92
     }
 
     [Theory]
