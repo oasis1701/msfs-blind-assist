@@ -572,10 +572,12 @@ public partial class MainForm : Form
         //
         // The A380 and HS787 monitors two blocks up exist for exactly this reason. This is
         // the third, and the pattern is now: a background monitor must be started in BOTH
-        // places or it does not run for the aircraft the app opens with.
+        // places or it does not run for the aircraft the app opens with. Every G1000 aircraft
+        // has one (the DA40 and the Cessna 172, G1000CasWatcher).
+        if (currentAircraft is Aircraft.G1000.IG1000DisplayOwner g1000Cas)
+            g1000Cas.StartCasMonitor(announcer);
         if (currentAircraft is Aircraft.DA40.CowsDA40Definition da40Cas)
         {
-            da40Cas.StartCasMonitor(announcer);
             da40Cas.AttachLampWatch(simConnectManager);
             da40Cas.AttachWaypointSequencer(simConnectManager, announcer);
         }

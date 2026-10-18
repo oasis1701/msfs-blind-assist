@@ -24,7 +24,10 @@ public class CowsDA40TeardownTests
             "MSFSBlindAssist", "Aircraft", "DA40", "CowsDA40Definition.CasMonitor.cs"));
         int stop = src.IndexOf("public void StopCasMonitor()", StringComparison.Ordinal);
         Assert.True(stop >= 0);
-        int end = src.IndexOf("if (_casClient == null) return;", stop, StringComparison.Ordinal);
+        // Before the shared watcher stops (G1000CasWatcher), which is where the method used to
+        // return early when the watcher had never started.
+        int end = src.IndexOf("_casWatcher?.Stop();", stop, StringComparison.Ordinal);
+        Assert.True(end > stop);
         Assert.Contains("CloseEngineGlance();", src.Substring(stop, end - stop));
     }
 }

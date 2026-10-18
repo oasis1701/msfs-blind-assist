@@ -238,7 +238,7 @@ public class CowsDA40DisplayUnitsTests
     {
         // The field list every page now carries is indented exactly like a CAS message, so
         // an indentation-only rule announced "Weight: Pounds" as a caution.
-        var messages = CowsDA40Definition.ExtractCasMessages(new[]
+        var messages = MSFSBlindAssist.Aircraft.G1000.G1000CasWatcher.ExtractCasMessages(new[]
         {
             "CAS messages: 1",
             "  Caution: PITOT HT OFF",

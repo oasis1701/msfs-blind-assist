@@ -59,13 +59,17 @@ public sealed class CowsDA40DisplayForm : Form
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly string _side;
     private readonly System.Windows.Forms.Timer _connectWatchdog;
-    private readonly Aircraft.DA40.CowsDA40Definition? _owner;
+    /// <summary>
+    /// The aircraft the window reports to: the PFD's rows to its CAS watcher, the MFD's to its
+    /// display units, a radio the window tuned. The DA40 and the Cessna 172 both pass themselves.
+    /// </summary>
+    private readonly Aircraft.G1000.IG1000DisplayOwner? _owner;
     private bool _gotRows;
     private bool _disposed;
 
     public CowsDA40DisplayForm(string title, string coherentViewNeedle, string side,
         SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
-        Aircraft.DA40.CowsDA40Definition? owner = null)
+        Aircraft.G1000.IG1000DisplayOwner? owner = null)
     {
         _owner = owner;
         _simConnect = simConnect;

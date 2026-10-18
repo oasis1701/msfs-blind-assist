@@ -68,7 +68,7 @@ public class CowsDA40CasCoverageTests
     [Fact]
     public void EveryRealAnnunciationSurvivesTheExtractor()
     {
-        var got = CowsDA40Definition.ExtractCasMessages(AsScrapedRows().ToList());
+        var got = MSFSBlindAssist.Aircraft.G1000.G1000CasWatcher.ExtractCasMessages(AsScrapedRows().ToList());
 
         Assert.Equal(RealMessages.Length, got.Count);
         foreach (var (label, text) in RealMessages)
@@ -89,7 +89,7 @@ public class CowsDA40CasCoverageTests
             "  Weight: Pounds(LB)",
         };
 
-        var got = CowsDA40Definition.ExtractCasMessages(rows);
+        var got = MSFSBlindAssist.Aircraft.G1000.G1000CasWatcher.ExtractCasMessages(rows);
         Assert.Single(got);
         Assert.Equal("Caution: FUEL LOW", got[0]);
     }

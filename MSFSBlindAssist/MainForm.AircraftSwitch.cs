@@ -1134,7 +1134,7 @@ public partial class MainForm
         // Same trap the line above documents: by now currentAircraft is the NEW aircraft,
         // so the OUTGOING definition is the one that has to be told to let its Coherent
         // socket go.
-        (oldAircraft as Aircraft.DA40.CowsDA40Definition)?.StopCasMonitor();
+        (oldAircraft as Aircraft.G1000.IG1000DisplayOwner)?.StopCasMonitor();
 
         // Dispose HS 787 forms when switching aircraft
         if (hs787FMCForm != null && !hs787FMCForm.IsDisposed)
@@ -1189,14 +1189,16 @@ public partial class MainForm
             StartA380EWDMonitor();
         }
 
-        // The DA40's CAS/FMA watcher. It runs whether or not the PFD window is open,
-        // because a caution appearing is not something a pilot should have to be already
-        // watching for - and on this aeroplane the CAS window is the only place most
-        // failures are announced at all (there are four annunciator lamps and nothing
-        // else). The PFD window suspends it while open: one inspector socket per view.
+        // The G1000's CAS/FMA watcher (the DA40 and the Cessna 172, G1000CasWatcher). It runs
+        // whether or not the PFD window is open, because a caution appearing is not something
+        // a pilot should have to be already watching for - and on these aeroplanes the CAS
+        // window is the only place most failures are announced at all (the DA40 has four
+        // annunciator lamps, the C172 none). The PFD window suspends it while open: one
+        // inspector socket per view.
+        if (newAircraft is Aircraft.G1000.IG1000DisplayOwner g1000Cas)
+            g1000Cas.StartCasMonitor(announcer);
         if (newAircraft is Aircraft.DA40.CowsDA40Definition da40Cas)
         {
-            da40Cas.StartCasMonitor(announcer);
             da40Cas.AttachLampWatch(simConnectManager);
             da40Cas.AttachWaypointSequencer(simConnectManager, announcer);
         }

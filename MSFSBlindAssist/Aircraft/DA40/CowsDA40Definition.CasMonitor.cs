@@ -1,85 +1,29 @@
-using System.Linq;
 using MSFSBlindAssist.Accessibility;
-using MSFSBlindAssist.SimConnect;
-using MSFSBlindAssist.Utils.Logging;
+using MSFSBlindAssist.Aircraft.G1000;
 
 namespace MSFSBlindAssist.Aircraft.DA40;
 
 /// <summary>
-/// The always-on CAS and FMA watcher.
-///
-/// The PFD window is where a pilot READS the display; this is what tells them to look. It
-/// runs whether or not that window is open, because a caution appearing is not something
-/// you should have to be already watching for — and on this aeroplane the CAS window is
-/// the ONLY place most failures are announced at all. There are four physical annunciator
-/// lamps; everything else the AFM calls an annunciation is drawn on the G1000.
-///
-/// BASELINE-FIRST, like every other MSFSBA monitor. The first scrape after connecting is
-/// absorbed silently: reconnecting mid-flight must not re-read every message that was
-/// already standing, which is exactly what the A380 EWD monitor had to learn.
-///
-/// ONE INSPECTOR SOCKET PER VIEW, so this client and the PFD window cannot both hold
-/// AS1000_PFD. The window therefore takes the socket — but it FEEDS THIS DETECTOR with
-/// the rows it reads rather than silencing it.
-///
-/// The first version suspended the announcements outright, on the reasoning that a pilot
-/// who opened the display is already reading it. That was wrong, and it showed up
-/// immediately: four CAS messages raised by cycling the engine master appeared in the
-/// window and none of them spoke. Having the window open does not mean the pilot is
-/// looking at the CAS block at that moment, and a caution that arrives while they are
-/// reading something else is exactly the one they need told about. One detector, two
-/// sources, and the known-message set carries across the handover in both directions so
-/// nothing is announced twice.
+/// The DA40's side of the always-on CAS and FMA watcher, which lives in
+/// <see cref="G1000CasWatcher"/> and is shared with the Cessna 172's G1000. What stays here is
+/// the DA40's: its post-load quiet period (<see cref="DA40LoadSettle"/>), the display units the
+/// watcher hands it from every scrape, and everything else <see cref="StopCasMonitor"/> ties to
+/// the same lifetime.
 /// </summary>
-public partial class CowsDA40Definition
+public partial class CowsDA40Definition : IG1000DisplayOwner
 {
-    private CoherentDisplayClient? _casClient;
-    private ScreenReaderAnnouncer? _casAnnouncer;
+    private G1000CasWatcher? _casWatcher;
 
-    private System.Windows.Forms.Timer? _casWatchdog;
-    private bool _casSawRows;
-
-    private readonly HashSet<string> _knownCas = new(StringComparer.Ordinal);
-    private string _lastFma = "";
-    private bool _casBaselined;
+    private G1000CasWatcher Cas => _casWatcher ??=
+        new G1000CasWatcher("DA40", () => _loadSettle.Settling, rows => NoteDisplayUnits(rows));
 
     /// <summary>
     /// The PFD window's own rows, fed in while it holds the socket. Same detector, so a
     /// message seen through the window is not announced again when the monitor resumes.
     /// </summary>
-    public void ProcessCasRows(List<string> rows) => OnCasRows(rows);
+    public void ProcessCasRows(List<string> rows) => Cas.ProcessRows(rows);
 
-    public void StartCasMonitor(ScreenReaderAnnouncer announcer)
-    {
-        if (_casClient != null) return;
-
-        _casAnnouncer = announcer;
-        _casBaselined = false;
-        _knownCas.Clear();
-        _lastFma = "";
-
-        _casClient = new CoherentDisplayClient("AS1000_PFD", pollIntervalMs: 1500,
-            agentFileName: "coherent-da40-g1000-agent.js");
-        _casClient.RowsUpdated += OnCasRows;
-        _casClient.Error += msg => Log.Debug("DA40", $"CAS monitor error: {msg}");
-        _casClient.Start();
-        Log.Debug("DA40", "CAS monitor: started, waiting for AS1000_PFD");
-
-        // REPORT THE VERDICT. This monitor failed silently once already - it is the
-        // background half, so there is no window to show an error in, and "nothing was
-        // announced" is indistinguishable from "nothing happened". If no rows arrive it
-        // says so, once, with the two things that would explain it.
-        _casWatchdog = new System.Windows.Forms.Timer { Interval = 20000 };
-        _casWatchdog.Tick += (_, _) =>
-        {
-            _casWatchdog!.Stop();
-            if (_casSawRows) return;
-            Log.Warn("DA40", "CAS monitor: no rows after 20 s. Either the G1000 view was " +
-                             "not up yet, or something else holds the AS1000_PFD inspector " +
-                             "socket (only one per view is allowed).");
-        };
-        _casWatchdog.Start();
-    }
+    public void StartCasMonitor(ScreenReaderAnnouncer announcer) => Cas.Start(announcer);
 
     public void StopCasMonitor()
     {
@@ -105,261 +49,23 @@ public partial class CowsDA40Definition
         // whatever aircraft comes next.
         ReleaseAllHeldLVars();
 
-        if (_casClient == null) return;
-
-        _casClient.RowsUpdated -= OnCasRows;
-        try { _casWatchdog?.Stop(); _casWatchdog?.Dispose(); } catch { }
-        _casWatchdog = null;
-        try { _casClient.Stop(); _casClient.Dispose(); } catch { /* teardown must not throw */ }
-        _casClient = null;
-        _casAnnouncer = null;
+        _casWatcher?.Stop();
     }
 
     /// <summary>
-    /// Run one expression on the AS1000_PFD socket, or return empty.
-    ///
-    /// Shared rather than opening a second connection, because Coherent allows ONE inspector
-    /// socket per view - a second would be refused, which is the whole reason the PFD window
-    /// and this monitor hand the socket back and forth in the first place.
-    ///
-    /// ⚠️ WHILE THE PFD WINDOW HOLDS THE SOCKET, THE EXPRESSION RIDES THE WINDOW'S CLIENT.
-    /// <c>CoherentDisplayClient.InvokeAsync</c> reconnects whether or not the client is active,
-    /// so sending through the suspended monitor client pulled the socket back from the window
-    /// the pilot was reading on every waypoint poll. With no window client to borrow, nothing
-    /// is sent at all.
+    /// Run one expression on the AS1000_PFD socket, or return empty: the watcher's own client,
+    /// or the PFD window's while the window holds the socket (<see cref="G1000CasWatcher.InvokeAsync"/>).
     /// </summary>
-    internal async System.Threading.Tasks.Task<string> InvokeOnCasClientAsync(string expression)
-    {
-        var c = _casClient;
-        var lender = _casLender;
-        try
-        {
-            switch (RouteCasInvoke(_casSuspended, c != null, lender != null))
-            {
-                case CasInvokeRoute.Own: return await c!.InvokeAsync(expression);
-                case CasInvokeRoute.Lender: return await lender!(expression);
-                default: return "";
-            }
-        }
-        catch { return ""; }
-    }
-
-    internal enum CasInvokeRoute { None, Own, Lender }
-
-    /// <summary>Which socket a one-shot expression may use. Pure so the handover is pinned.</summary>
-    internal static CasInvokeRoute RouteCasInvoke(bool suspended, bool hasOwnClient, bool hasLender)
-    {
-        if (suspended) return hasLender ? CasInvokeRoute.Lender : CasInvokeRoute.None;
-        return hasOwnClient ? CasInvokeRoute.Own : CasInvokeRoute.None;
-    }
-
-    private volatile bool _casSuspended;
-    private Func<string, System.Threading.Tasks.Task<string>>? _casLender;
+    internal System.Threading.Tasks.Task<string> InvokeOnCasClientAsync(string expression) =>
+        Cas.InvokeAsync(expression);
 
     /// <summary>
-    /// The PFD window calls this while it is open, to hand over the SOCKET only. The
-    /// announcements do not stop - the window feeds <see cref="ProcessCasRows"/> instead -
-    /// and one-shot expressions go through <paramref name="invokeWhileSuspended"/>, the
-    /// window's own client.
+    /// The PFD window calls this while it is open, to hand over the SOCKET only; the
+    /// announcements carry on from the window's rows (<see cref="G1000CasWatcher.Suspend"/>).
     /// </summary>
     public void SuspendCasMonitor(bool suspended,
-        Func<string, System.Threading.Tasks.Task<string>>? invokeWhileSuspended = null)
-    {
-        // Only the SOCKET is handed over. The detector keeps running on the window's rows,
-        // so there is no gap in coverage and deliberately NO re-baseline: the known set is
-        // continuous across the handover, which is what stops a message that appeared
-        // while the window was open being re-announced when the monitor takes back over.
-        _casLender = suspended ? invokeWhileSuspended : null;
-        _casSuspended = suspended;
-        _casClient?.SetActive(!suspended);
-    }
+        Func<string, System.Threading.Tasks.Task<string>>? invokeWhileSuspended = null) =>
+        Cas.Suspend(suspended, invokeWhileSuspended);
 
-    /// <summary>
-    /// The CAS messages out of a scrape, and NOTHING ELSE.
-    ///
-    /// ⚠️ INDENTATION ALONE IS NOT THE TEST, and treating it as one was a real fault. The
-    /// scrape indents every nested list it emits — the PFD's popout panes, and now the
-    /// field list that every page carries — so an indentation-only rule announces
-    /// "Weight: Pounds" as a caution the moment a pilot opens a setup page. The block
-    /// starts at the "CAS messages:" header and ends at the first row that is not part
-    /// of it.
-    ///
-    /// Static and separate so the boundary can be tested without a live display.
-    /// </summary>
-    internal static List<string> ExtractCasMessages(IEnumerable<string> rows)
-    {
-        var cas = new List<string>();
-        bool inCas = false;
-
-        foreach (string row in rows)
-        {
-            if (row.StartsWith("CAS messages:", StringComparison.Ordinal)) { inCas = true; continue; }
-            if (!row.StartsWith("  ", StringComparison.Ordinal)) { inCas = false; continue; }
-            if (inCas) cas.Add(row.Trim());
-        }
-
-        return cas;
-    }
-
-    /// <summary>
-    /// The PFD Alerts window's messages that are not already a CAS line, as "Alert: ..." so
-    /// they ride the same appeared/cleared speech. A scheduler reminder ("SCHEDULER 1 - FUEL
-    /// XFER") exists only there, and a sighted pilot learns of it from the Alerts softkey
-    /// flashing; a CAS caution is listed there too, with its explanation ("PITOT HT OFF - Pitot
-    /// heat is off."), and is already spoken from the CAS block, so it is left out. Pure so the
-    /// suite can pin it.
-    /// </summary>
-    internal static List<string> AlertsNotOnCas(IEnumerable<string> rows, IEnumerable<string> cas)
-    {
-        var casTexts = new HashSet<string>(StringComparer.Ordinal);
-        foreach (string c in cas)
-        {
-            int colon = c.IndexOf(": ", StringComparison.Ordinal);
-            casTexts.Add(colon >= 0 ? c.Substring(colon + 2).Trim() : c.Trim());
-        }
-
-        var alerts = new List<string>();
-        bool inAlerts = false;
-        foreach (string row in rows)
-        {
-            if (row.StartsWith("Alert messages:", StringComparison.Ordinal)) { inAlerts = true; continue; }
-            if (!row.StartsWith("  ", StringComparison.Ordinal)) { inAlerts = false; continue; }
-            if (!inAlerts) continue;
-
-            string message = row.Trim();
-            int dash = message.IndexOf(" - ", StringComparison.Ordinal);
-            string head = dash >= 0 ? message.Substring(0, dash).Trim() : message;
-            if (casTexts.Contains(head)) continue;
-            alerts.Add("Alert: " + message);
-        }
-        return alerts;
-    }
-
-    private void OnCasRows(List<string> rows)
-    {
-        // BEFORE the announcer guard: the units are not an announcement, and they must
-        // still be picked up on a scrape that arrives before the monitor has one.
-        NoteDisplayUnits(rows);
-
-        if (_casAnnouncer == null) return;
-
-        if (!_casSawRows)
-        {
-            _casSawRows = true;
-            Log.Debug("DA40", $"CAS monitor: first rows in ({rows.Count} lines)");
-        }
-
-        List<string> cas;
-        string fma = "";
-
-        cas = ExtractCasMessages(rows);
-        cas.AddRange(AlertsNotOnCas(rows, cas));
-
-        foreach (string row in rows)
-        {
-            if (row.StartsWith("Autopilot: ", StringComparison.Ordinal)) fma = FmaModes(row.Substring(11));
-        }
-
-        // First pass after a connect is the baseline and is never spoken — and so is every
-        // pass in the quiet period after a flight load, when the G1000 restarts and raises its
-        // start-up messages (see DA40LoadSettle).
-        if (!_casBaselined || _loadSettle.Settling)
-        {
-            _casBaselined = true;
-            _knownCas.Clear();
-            foreach (string c in cas) _knownCas.Add(c);
-            _lastFma = fma;
-            return;
-        }
-
-        var appeared = new List<string>();
-        foreach (string message in cas)
-            if (_knownCas.Add(message)) appeared.Add(message);
-
-        var cleared = new List<string>();
-        _knownCas.RemoveWhere(known =>
-        {
-            if (cas.Contains(known)) return false;
-            cleared.Add(known);
-            return true;
-        });
-
-        string? fmaChange = null;
-        if (fma != _lastFma)
-        {
-            fmaChange = DescribeFmaChange(_lastFma, fma);
-            _lastFma = fma;
-        }
-
-        var (immediate, queued) = ComposeCasSpeech(appeared, cleared, fmaChange);
-        if (immediate.Length > 0) _casAnnouncer.AnnounceImmediate(immediate);
-        foreach (string line in queued) _casAnnouncer.Announce(line);
-    }
-
-    /// <summary>
-    /// What one CAS/FMA poll says.
-    ///
-    /// ⚠️ ONE INTERRUPTING UTTERANCE, NEVER ONE PER MESSAGE. Each new message used to be its
-    /// own <c>AnnounceImmediate</c>, and each one cuts off the one before it — so two
-    /// cautions appearing together (a failure usually raises more than one) were heard as
-    /// the LAST alone, and an autopilot mode change in the same poll cut all of them off.
-    /// New messages and the mode change are one sentence, in display order (warnings sit on
-    /// top); a message that CLEARED is queued behind it, because a caution going away is how a
-    /// pilot learns that what they just did worked, and it must not cut off a new one.
-    /// "off" is the autopilot's resting state and announcing it on every disconnect would be
-    /// noise; the modes themselves are the news. <paramref name="fmaChange"/> is already worded
-    /// (<see cref="DescribeFmaChange"/>), or null when the FMA did not change.
-    /// </summary>
-    internal static (string Immediate, List<string> Queued) ComposeCasSpeech(
-        IReadOnlyList<string> appeared, IReadOnlyList<string> cleared, string? fmaChange)
-    {
-        var parts = new List<string>(appeared);
-        if (!string.IsNullOrEmpty(fmaChange)) parts.Add(fmaChange);
-
-        var queued = new List<string>();
-        foreach (string known in cleared)
-            queued.Add(known.Replace("Caution: ", "").Replace("WARNING: ", "")
-                            .Replace("Advisory: ", "").Replace("Status: ", "")
-                            .Replace("Alert: ", "") + " cleared");
-
-        return (string.Join(". ", parts.Select(p => p.TrimEnd('.'))) is { Length: > 0 } t ? t + "." : "", queued);
-    }
-
-    /// <summary>
-    /// The FMA's MODES, without the vertical target the agent puts last ("AP, YD, GPS, FLC,
-    /// ALTS armed, target 88 KT" gives "AP, YD, GPS, FLC, ALTS armed"). A target change is
-    /// spoken once by the selected-value announcer; comparing it here re-read the whole strip
-    /// on every knob step. Pure so the suite can pin it.
-    /// </summary>
-    internal static string FmaModes(string fma)
-    {
-        int t = fma.LastIndexOf(", target ", StringComparison.Ordinal);
-        return t >= 0 ? fma.Substring(0, t) : fma;
-    }
-
-    /// <summary>
-    /// What an FMA change says, or "" for nothing. Pure so the suite can pin it.
-    ///
-    /// ⚠️ MODES WITHOUT "AP" ARE THE FLIGHT DIRECTOR'S. Pulling the AFCS breaker in flight
-    /// took the autopilot off and left the director in PIT with ALTS armed, and the change
-    /// was spoken "Autopilot PIT, ALTS armed" - telling the pilot the autopilot was flying
-    /// (2026-10-12). With "AP" the modes are the autopilot's; without it they are the flight
-    /// director's. Losing "AP" with the director still up names the director's modes alone:
-    /// the autopilot master row already says "Autopilot: Off" (DA40A-22), and "Autopilot off,
-    /// flight director ..." here said it twice. A plain disconnect to "off" stays silent: that
-    /// is the resting state, and the disconnect tone is the aeroplane's own.
-    /// </summary>
-    internal static string DescribeFmaChange(string previous, string current)
-    {
-        static bool HasAp(string f) =>
-            f == "AP" || f.StartsWith("AP, ", StringComparison.Ordinal);
-
-        if (current.Length == 0 || current == "off") return "";
-        if (HasAp(current))
-        {
-            string modes = current == "AP" ? "" : current.Substring(4).Trim();
-            return modes.Length > 0 ? "Autopilot " + modes : "Autopilot on";
-        }
-        return "Flight director " + current;
-    }
+    void IG1000DisplayOwner.MarkRadioTunedByWindow(string varKey) => MarkRadioTunedByWindow(varKey);
 }
