@@ -72,37 +72,24 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
                 new() { [0] = "Off", [1] = "Right", [2] = "Left", [3] = "Both" }, announced: true), v => v < 3.5),
             // The same key turned to START (4), which springs back by itself (C172-6).
             ["C172_STARTER_SET"] = KeyPress("ENGINE_MAGNETO_1", "Starter"),
-            ["C172_MIXTURE_STATE"] = new SimConnect.SimVarDefinition
+            // The red push-pull knob, one combo in whole percent from Idle cutoff (0, pulled fully out)
+            // through "1 percent" to "99 percent" to Full rich (100, pushed fully in), as the real knob
+            // travels (`MixturePositions`). It replaced four rows on 2026-10-18 (a "Mixture" button
+            // that did nothing, a typed field, Full Rich and Full Lean). A slider came first, and the
+            // owner chose this over it: the slider said "100" for its end, never the knob's name, and
+            // an accessible-object override to fix that left NVDA silent on the row. A lever, so read
+            // when the panel opens and never announced (C172-20); written by MIXTURE1_SET, measured
+            // right (docs/c172.md).
+            ["C172_MIXTURE"] = new SimConnect.SimVarDefinition
             {
                 Name = "GENERAL ENG MIXTURE LEVER POSITION:1",
                 DisplayName = "Mixture",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "percent",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
-            },
-            ["C172_MIXTURE_SET"] = new SimConnect.SimVarDefinition
-            {
-                Name = "MIXTURE1_SET",
-                DisplayName = "Mixture Set",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never,
-                HelpText = "Enter mixture percentage (0 = full lean, 100 = full rich)"
-            },
-            ["C172_MIXTURE_RICH"] = new SimConnect.SimVarDefinition
-            {
-                Name = "MIXTURE_RICH",
-                DisplayName = "Mixture Full Rich",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never,
-                RenderAsButton = true
-            },
-            ["C172_MIXTURE_LEAN"] = new SimConnect.SimVarDefinition
-            {
-                Name = "MIXTURE_LEAN",
-                DisplayName = "Mixture Full Lean",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never,
-                RenderAsButton = true
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = MixturePositions(),
+                // The lever reads any fraction (72.4); the combo shows its nearest whole percent.
+                ValueToDescriptionKey = percent => Math.Round(Math.Clamp(percent, 0, 100))
             },
             // The fuel pump, valve and selector are the new fuel system's (C172-2, C172-5).
             ["C172_FUEL_PUMP_STATE"] = AnnouncedSwitch("FUELSYSTEM PUMP SWITCH:1", "Fuel Pump", "Bool",
@@ -130,7 +117,9 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
 
             // The flap lever's notch, measured against the flap angle (0, 10, 20, 30 degrees, C172-19).
             // Continuous and announced, as the other aircraft's flap levers are: a move by any
-            // means is spoken ("Flaps: 10 degrees"), the panel's own pick once (CORE-8).
+            // means is spoken ("Flaps: 10 degrees"), the panel's own pick once (CORE-8). The combo is
+            // the whole lever: the Flaps Down and Flaps Up buttons beside it only repeated it, and were
+            // removed on 2026-10-18.
             ["C172_FLAPS"] = new SimConnect.SimVarDefinition
             {
                 Name = "FLAPS HANDLE INDEX:1",
@@ -146,22 +135,6 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
                     [2] = "20 degrees",
                     [3] = "Full"
                 }
-            },
-            ["C172_FLAPS_INCR"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FLAPS_INCR",
-                DisplayName = "Flaps Down",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never,
-                RenderAsButton = true
-            },
-            ["C172_FLAPS_DECR"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FLAPS_DECR",
-                DisplayName = "Flaps Up",
-                Type = SimConnect.SimVarType.Event,
-                UpdateFrequency = SimConnect.UpdateFrequency.Never,
-                RenderAsButton = true
             },
             // Set and released are spoken whoever moves it, as on the other aircraft.
             ["C172_PARKING_BRAKE_STATE"] = new SimConnect.SimVarDefinition
@@ -571,9 +544,15 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
             // The variant adds its autopilot's panel; the section is here so it keeps its place.
             ["Autopilot"] = new List<string>(),
             ["Radios"] = new List<string> { "COM", "NAV", "Transponder" },
-            ["Safety"] = new List<string> { "Anti-Ice" }
+            ["Safety"] = new List<string> { PitotStaticPanel }
         };
     }
+
+    /// <summary>
+    /// Pitot heat and the alternate static source: the POH's pitot-static system, and the DA40's Ice
+    /// and Pitot pairing. It was "Anti-Ice" until 2026-10-18, which the alternate static is not.
+    /// </summary>
+    protected const string PitotStaticPanel = "Pitot-Static";
 
     protected override Dictionary<string, List<string>> BuildPanelControls()
     {
@@ -593,12 +572,13 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
             {
                 "C172_MAGNETO",
                 "C172_STARTER_SET",
-                "C172_MIXTURE_STATE", "C172_MIXTURE_SET",
-                "C172_MIXTURE_RICH", "C172_MIXTURE_LEAN",
-                "C172_FUEL_PUMP_STATE"
+                "C172_MIXTURE"
             },
+            // The fuel pump is a fuel system switch, so it is here with the selector and the valve,
+            // first (the owner's pick, 2026-10-18).
             ["Fuel"] = new List<string>
             {
+                "C172_FUEL_PUMP_STATE",
                 "C172_FUEL_SELECTOR",
                 "C172_FUEL_VALVE_STATE"
             },
@@ -612,13 +592,13 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
             },
             ["Flaps and Brake"] = new List<string>
             {
-                "C172_FLAPS", "C172_FLAPS_INCR", "C172_FLAPS_DECR",
+                "C172_FLAPS",
                 "C172_PARKING_BRAKE_STATE"
             },
             ["COM"] = new List<string>(RadioControls["COM"]),
             ["NAV"] = new List<string>(RadioControls["NAV"]),
             ["Transponder"] = new List<string>(RadioControls["Transponder"]),
-            ["Anti-Ice"] = new List<string>
+            [PitotStaticPanel] = new List<string>
             {
                 "C172_PITOT_HEAT_STATE"
             }
@@ -823,18 +803,13 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
 
             // ===== INPUT MODE ACTIONS =====
 
+            // The heading bug and the VS target, typed here or on the GFC 700 panel's rows, one refusal
+            // and one write for both (`HeadingBugRefusal`, `SetHeadingBug`, and the VS pair).
             case HotkeyAction.FCUSetHeading:
                 hotkeyManager.ExitInputHotkeyMode();
-                return ShowEventValueDialog(
-                    "Set Heading Bug", "Heading", "0 to 359",
-                    "HEADING_BUG_SET", simConnect, announcer, parentForm,
-                    input =>
-                    {
-                        // Parsed as the pilot types it, every C172 value window alike (CORE-17).
-                        if (Utils.NumberParsing.TryParseTyped(input, out double val) && val >= 0 && val <= 359)
-                            return (true, string.Empty);
-                        return (false, "Enter a heading between 0 and 359");
-                    });
+                return ShowValueDialog("Set Heading Bug", "Heading", "0 to 359", simConnect, announcer, parentForm,
+                    input => TypedValidator(input, HeadingBugRefusal),
+                    value => SetHeadingBug(value, simConnect, announcer));
 
             case HotkeyAction.FCUSetAltitude:
                 hotkeyManager.ExitInputHotkeyMode();
@@ -850,18 +825,10 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
 
             case HotkeyAction.FCUSetVS:
                 hotkeyManager.ExitInputHotkeyMode();
-                return ShowEventValueDialog(
-                    "Set AP Vertical Speed", "Vertical Speed", "-2000 to 2000 fpm",
-                    "AP_VS_VAR_SET_ENGLISH", simConnect, announcer, parentForm,
-                    input =>
-                    {
-                        if (Utils.NumberParsing.TryParseTyped(input, out double val) && val >= -2000 && val <= 2000)
-                            return (true, string.Empty);
-                        return (false, "Enter a vertical speed between -2000 and 2000 fpm");
-                    },
-                    // A negative rate is the 32-bit two's complement, as the HS787 sends it; the
-                    // 16-bit form (65536 + value) arrived as a large climb.
-                    value => unchecked((uint)(int)Math.Round(value)));
+                return ShowValueDialog("Set AP Vertical Speed", "Vertical Speed", "-2000 to 2000 fpm",
+                    simConnect, announcer, parentForm,
+                    input => TypedValidator(input, VerticalSpeedRefusal),
+                    value => SetVerticalSpeed(value, simConnect, announcer));
 
             case HotkeyAction.FCUSetBaro:
                 hotkeyManager.ExitInputHotkeyMode();
@@ -903,13 +870,83 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
         string? rpm = CachedReading(simConnect, "C172_ENGINE_RPM");
         string? flow = CachedReading(simConnect, "C172_FUEL_FLOW");
         double? throttle = await simConnect.ReadFreshAsync("C172_THROTTLE", 1500);
-        double? mixture = await simConnect.ReadFreshAsync("C172_MIXTURE_STATE", 1500);
+        double? mixture = await simConnect.ReadFreshAsync("C172_MIXTURE", 1500);
         announcer.AnnounceImmediate(ComposeReadings(new[]
         {
             ("", rpm), ("Fuel flow", flow),
             ("Throttle", throttle is double t ? Percent(t) : null),
-            ("Mixture", mixture is double m ? Percent(m) : null),
+            ("Mixture", mixture is double m ? DescribeMixture(m) : null),
         }) ?? "Engine power not available yet");
+    }
+
+    /// <summary>
+    /// The mixture knob's two ends by the names the C172's checklists give them: pulled fully out is
+    /// IDLE CUTOFF, which shuts the engine down, pushed fully in FULL RICH; null in between. To the
+    /// whole percent, as the slider moves. Pure so the suite can pin it.
+    /// </summary>
+    internal static string? MixtureEndName(double percent) => Math.Round(percent) switch
+    {
+        <= 0 => MixtureIdleCutoff,
+        >= 100 => MixtureFullRich,
+        _ => null
+    };
+
+    internal const string MixtureIdleCutoff = "Idle cutoff", MixtureFullRich = "Full rich";
+
+    /// <summary>
+    /// The mixture combo's 101 positions, whole percent, its ends by name: "Idle cutoff", "1 percent"
+    /// to "99 percent", "Full rich". Listed in that order, so the cold-and-dark position is on top and
+    /// enriching works down the list. Pure so the suite can pin it.
+    /// </summary>
+    internal static Dictionary<double, string> MixturePositions()
+    {
+        var positions = new Dictionary<double, string>();
+        for (int percent = 0; percent <= 100; percent++)
+            positions[percent] = MixtureEndName(percent) ?? Percent(percent);
+        return positions;
+    }
+
+    /// <summary>Output+E's mixture: "full rich", "idle cutoff" or "65 percent". Pure so the suite can pin it.</summary>
+    internal static string DescribeMixture(double percent) =>
+        MixtureEndName(percent)?.ToLowerInvariant() ?? Percent(percent);
+
+    /// <summary>The mixture's 0-100 percent as `MIXTURE1_SET` takes it, 0-16383. Pure so the suite can pin it.</summary>
+    internal static uint MixtureEventValue(double percent) =>
+        (uint)Math.Round(Math.Clamp(percent, 0, 100) * 16383.0 / 100.0);
+
+    /// <summary>A value window's validator from a refusal: text that is not a number is refused as NaN (CORE-17).</summary>
+    protected static (bool isValid, string message) TypedValidator(string input, Func<double, string?> refusal) =>
+        refusal(Utils.NumberParsing.TryParseTyped(input, out double value) ? value : double.NaN) is string message
+            ? (false, message)
+            : (true, string.Empty);
+
+    /// <summary>Why a typed heading bug is refused, or null when it is taken. Pure so the suite can pin it.</summary>
+    internal static string? HeadingBugRefusal(double degrees) =>
+        degrees >= 0 && degrees <= 359 ? null : "Enter a heading between 0 and 359";
+
+    /// <summary>Why a typed VS target is refused, or null when it is taken. Pure so the suite can pin it.</summary>
+    internal static string? VerticalSpeedRefusal(double fpm) =>
+        fpm >= -2000 && fpm <= 2000 ? null : "Enter a vertical speed between -2000 and 2000 fpm";
+
+    /// <summary>The heading bug, `HEADING_BUG_SET` in whole degrees, confirmed. On the UI thread.</summary>
+    protected static void SetHeadingBug(double degrees, SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        simConnect.SendEvent("HEADING_BUG_SET", (uint)degrees);
+        // Invariant, so the confirmation says the dot the pilot typed on a comma-decimal PC too.
+        announcer.AnnounceImmediate(string.Create(System.Globalization.CultureInfo.InvariantCulture,
+            $"Heading set to {degrees}"));
+    }
+
+    /// <summary>
+    /// The VS target, `AP_VS_VAR_SET_ENGLISH`, confirmed. A negative rate is the 32-bit two's
+    /// complement, as the HS787 sends it; the 16-bit form (65536 + value) arrived as a large climb.
+    /// On the UI thread.
+    /// </summary>
+    protected static void SetVerticalSpeed(double fpm, SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        simConnect.SendEvent("AP_VS_VAR_SET_ENGLISH", unchecked((uint)(int)Math.Round(fpm)));
+        announcer.AnnounceImmediate(string.Create(System.Globalization.CultureInfo.InvariantCulture,
+            $"Vertical Speed set to {fpm}"));
     }
 
     /// <summary>
@@ -1074,12 +1111,11 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
 
         if (HandleRadioSet(varKey, value, simConnect, announcer)) return true;
 
-        // Mixture set — convert percentage to 0-16383 range
-        if (varKey == "C172_MIXTURE_SET")
+        // The mixture combo, silent: the screen reader reads the picked position, the two ends by
+        // name, so anything spoken here would repeat it (CORE-7).
+        if (varKey == "C172_MIXTURE")
         {
-            uint scaledValue = (uint)(value * 16383.0 / 100.0);
-            simConnect.SendEvent("MIXTURE1_SET", scaledValue);
-            announcer.Announce($"Mixture set to {value:F0} percent");
+            simConnect.SendEvent("MIXTURE1_SET", MixtureEventValue(value));
             return true;
         }
 
@@ -1093,8 +1129,8 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
             return true;
         }
 
-        // Generic handler for the remaining Event-type variables (the flaps and mixture buttons, the
-        // radio swaps), each a stock event measured on this aircraft.
+        // Generic handler for any remaining Event-type variable, each a stock event measured on this
+        // aircraft (the radios' are HandleRadioSet's, above).
         if (varDef.Type == SimConnect.SimVarType.Event)
         {
             simConnect.SendEvent(varDef.Name, (uint)value);

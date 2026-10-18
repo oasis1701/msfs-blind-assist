@@ -179,8 +179,8 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         // ---------- Electrical ----------
         // Announced like every switch (C172-20). Its TEST (2) springs back to OFF by itself and is
         // not listed, so it is never spoken (`IsUnlistedSwitchPosition`).
-        v["C172G_STBY_BATTERY_STATE"] = InputEventState("ELECTRICAL_BATTERY_STBY_2", "Standby Battery",
-            new() { [0] = "Arm", [1] = "Off" }, announced: true);
+        v["C172G_STBY_BATTERY_STATE"] = RestingPositionFirst(InputEventState("ELECTRICAL_BATTERY_STBY_2",
+            "Standby Battery", new() { [0] = "Arm", [1] = "Off" }, announced: true));
 
         // ---------- Anti-ice and instruments ----------
         v["C172G_ALT_STATIC_STATE"] = AnnouncedSwitch("ALTERNATE STATIC SOURCE OPEN", "Alternate Static Air", "Bool",
@@ -232,7 +232,8 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         // 0 ON transmits (`ELT ACTIVATED` 1), 1 ARM is where it rests and stops a transmission, the
         // real reset. The switch also holds a 2 that stopped a transmission too; its name is not known,
         // so it is not offered, and never spoken (`IsUnlistedSwitchPosition`). Announced (C172-20).
-        v["C172G_ELT"] = InputEventState("SAFETY_ELT_1", "ELT", new() { [0] = "On", [1] = "Arm" }, announced: true);
+        v["C172G_ELT"] = RestingPositionFirst(InputEventState("SAFETY_ELT_1", "ELT",
+            new() { [0] = "On", [1] = "Arm" }, announced: true));
 
         // ---------- GFC 700 ----------
         // The modes the base class already reads (AP, HDG, ALT, NAV, APR, BC, VS) keep their keys and
@@ -244,17 +245,16 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         v["C172G_AP_NOSE_DN"] = KeyPress("AS1000_AUTOPILOT_VERTICALSPEED_DOWN_PFD", "Nose Down");
         v["C172G_AP_HDG_SYNC"] = KeyPress("AS1000_HEADING_SYNC_PFD", "Heading Sync");
         // The CRS knob, typed. It sets the course of whatever the CDI is on (C172-11), so the write is
-        // chosen from the two reads below at the moment it goes out (`SetCourseAsync`). An L:var name
-        // nobody reads, never written: the definition handles every set, and a typo is NaN, not north.
-        v["C172G_AP_CRS_SET"] = new SimVarDefinition
-        {
-            Name = "C172G_AP_CRS_SET",
-            DisplayName = "Course",
-            Type = SimVarType.LVar,
-            Units = "number",
-            UpdateFrequency = UpdateFrequency.Never,
-            UnparseableTextAsNaN = true
-        };
+        // chosen from the two reads below at the moment it goes out (`SetCourseAsync`).
+        v["C172G_AP_CRS_SET"] = TypedValue("C172G_AP_CRS_SET", "Course");
+        // The selected values, typed, as the DA40's GFC 700 panel has them, each refused and written
+        // exactly as its input-mode window does (`TypedAutopilotValues`). They replaced four rows that
+        // were the value READS, which the panel drew as buttons that did nothing (2026-10-18); the
+        // reads stay, for output Shift+H, A, V and S and the nose wheel.
+        v[HeadingBugSetKey] = TypedValue(HeadingBugSetKey, "Heading Bug");
+        v[SelectedAltitudeSetKey] = TypedValue(SelectedAltitudeSetKey, "Selected Altitude");
+        v[SelectedVerticalSpeedSetKey] = TypedValue(SelectedVerticalSpeedSetKey, "Selected Vertical Speed");
+        v[SelectedAirspeedSetKey] = TypedValue(SelectedAirspeedSetKey, "Selected Airspeed");
         // Which source the CDI is on: GPS DRIVES NAV1 is 1 on GPS, otherwise AUTOPILOT NAV SELECTED
         // names the NAV radio (measured stepping the CDI softkey GPS, LOC1, LOC2: 1/1, 0/1, 0/2). Read
         // only by the typed course.
@@ -356,6 +356,37 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         ValueToDescriptionKey = open => open >= 0.5 ? 1 : 0
     };
 
+    /// <summary>
+    /// A typed GFC 700 value: an L:var name nobody reads, never written, so the definition handles
+    /// every set, and a typo arrives as NaN, not 0 (which is north, or the ground).
+    /// </summary>
+    private static SimVarDefinition TypedValue(string key, string displayName) => new()
+    {
+        Name = key,
+        DisplayName = displayName,
+        Type = SimVarType.LVar,
+        Units = "number",
+        UpdateFrequency = UpdateFrequency.Never,
+        UnparseableTextAsNaN = true
+    };
+
+    internal const string HeadingBugSetKey = "C172G_AP_HDG_SET", SelectedAltitudeSetKey = "C172G_AP_ALT_SET",
+        SelectedVerticalSpeedSetKey = "C172G_AP_VS_SET", SelectedAirspeedSetKey = "C172G_AP_IAS_SET";
+
+    /// <summary>
+    /// The GFC 700 panel's typed values and, for each, its refusal and its write: the same pair the
+    /// input-mode window for that value uses (Ctrl+H, A, V, S), so the panel and the key cannot drift.
+    /// </summary>
+    internal static readonly IReadOnlyDictionary<string,
+        (Func<double, string?> Refusal, Action<double, SimConnectManager, ScreenReaderAnnouncer> Apply)> TypedAutopilotValues =
+        new Dictionary<string, (Func<double, string?>, Action<double, SimConnectManager, ScreenReaderAnnouncer>)>
+        {
+            [HeadingBugSetKey] = (HeadingBugRefusal, SetHeadingBug),
+            [SelectedAltitudeSetKey] = (SelectedAltitudeRefusal, SetSelectedAltitude),
+            [SelectedVerticalSpeedSetKey] = (VerticalSpeedRefusal, SetVerticalSpeed),
+            [SelectedAirspeedSetKey] = (SelectedAirspeedRefusal, SetSelectedAirspeed),
+        };
+
     private static SimVarDefinition AutopilotMode(string simVar, string displayName) => new()
     {
         Name = simVar,
@@ -368,7 +399,8 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "ON" }
     };
 
-    private static SimVarDefinition Cover(string simVar, string displayName) => new()
+    /// <summary>A cover, Installed listed first: where it rests on a parked aeroplane (<see cref="RestingPositionFirst"/>).</summary>
+    private static SimVarDefinition Cover(string simVar, string displayName) => RestingPositionFirst(new()
     {
         Name = simVar,
         DisplayName = displayName,
@@ -377,12 +409,24 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         UpdateFrequency = UpdateFrequency.Continuous,
         IsAnnounced = true,
         ValueDescriptions = new Dictionary<double, string> { [0] = "Removed", [1] = "Installed" }
-    };
+    });
+
+    /// <summary>
+    /// A two-position control whose combo lists the position it rests in before flight first, so the
+    /// preflight works DOWN the list: the standby battery's OFF, the ELT's ARM, a cover's Installed.
+    /// The panel lists positions by the sim's number for each, which puts these the other way up (the
+    /// standby battery's input event is 0 ARM, 1 OFF), as the PMDG 737 and 777 found for their own
+    /// combos with Off numbered last.
+    /// </summary>
+    private static SimVarDefinition RestingPositionFirst(SimVarDefinition def)
+    {
+        def.ReverseDisplayOrder = true;
+        return def;
+    }
 
     public override Dictionary<string, List<string>> GetPanelStructure()
     {
         var structure = base.GetPanelStructure();
-        structure["Electrical"].Add("Standby Battery");
         structure["Radios"].Add(AudioPanel);
         structure["Safety"].Add(EltPanel);
         structure["Lights"].Add(InteriorLightsPanel);
@@ -397,7 +441,9 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
     protected override Dictionary<string, List<string>> BuildPanelControls()
     {
         var controls = base.BuildPanelControls();
-        controls["Standby Battery"] = new List<string> { "C172G_STBY_BATTERY_STATE" };
+        // The standby battery first, as the start checklist takes it (STBY BATT to ARM, then the
+        // master) and as the switch sits, left of the master. It had a panel of its own until 2026-10-18.
+        controls["Battery and Alternator"].Insert(0, "C172G_STBY_BATTERY_STATE");
 
         controls[AutopilotPanel] = new List<string>
         {
@@ -405,12 +451,12 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
             "C172_AP_HDG_STATE", "C172_AP_NAV_STATE", "C172_AP_APR_STATE", "C172_AP_BC_STATE",
             "C172_AP_ALT_STATE", "C172_AP_VS_STATE", "C172G_AP_FLC_STATE", "C172G_AP_VNV",
             "C172G_AP_NOSE_UP", "C172G_AP_NOSE_DN",
-            "C172_AP_HDG_VALUE", "C172G_AP_HDG_SYNC", "C172G_AP_CRS_SET",
-            "C172_AP_ALT_VALUE", "C172_AP_VS_VALUE", "C172G_AP_IAS_VALUE"
+            HeadingBugSetKey, "C172G_AP_HDG_SYNC", "C172G_AP_CRS_SET",
+            SelectedAltitudeSetKey, SelectedVerticalSpeedSetKey, SelectedAirspeedSetKey
         };
         controls[AudioPanel] = new List<string>(AudioControls);
 
-        controls["Anti-Ice"] = new List<string> { "C172_PITOT_HEAT_STATE", "C172G_ALT_STATIC_STATE" };
+        controls[PitotStaticPanel] = new List<string> { "C172_PITOT_HEAT_STATE", "C172G_ALT_STATIC_STATE" };
         controls["Covers"] = new List<string> { "C172G_COVER_ENGINE", "C172G_COVER_PITOT", "C172G_COVER_STATIC" };
         foreach (var panel in new[] { EssentialBreakers, Avionics1Breakers, Avionics2Breakers, SystemBreakers })
             controls[panel] = Breakers.Where(b => b.Panel == panel).Select(b => b.Key).ToList();
@@ -467,6 +513,14 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         }
 
         if (HandleAudioSet(varKey, value, varDef, simConnect, announcer)) return true;
+
+        if (TypedAutopilotValues.TryGetValue(varKey, out var typed))
+        {
+            if (!simConnect.IsConnected) announcer.AnnounceImmediate("Not connected to simulator.");
+            else if (typed.Refusal(value) is string refusal) announcer.AnnounceImmediate(refusal);
+            else typed.Apply(value, simConnect, announcer);
+            return true;
+        }
 
         if (varKey == "C172G_AP_CRS_SET")
         {
@@ -871,16 +925,24 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         // Parsed as the pilot types it (CORE-17). The window stays open after Enter, as the other
         // aircraft's do.
         return ShowValueDialog("Set Selected Altitude", "Altitude", "0 to 25000 feet", simConnect, announcer, parentForm,
-            input => Utils.NumberParsing.TryParseTyped(input, out double val) && val >= 0 && val <= 25000
-                ? (true, string.Empty)
-                : (false, "Enter an altitude between 0 and 25000 feet"),
-            typed =>
-            {
-                int feet = (int)(Math.Round(typed / 100.0) * 100.0);
-                simConnect.SendEvent("AP_ALT_VAR_INC");
-                _ = WriteSelectedAltitudeAfterStepAsync(simConnect, feet);
-                announcer.AnnounceImmediate($"Selected altitude {feet.ToString(CultureInfo.CurrentCulture)} feet");
-            });
+            input => TypedValidator(input, SelectedAltitudeRefusal),
+            typed => SetSelectedAltitude(typed, simConnect, announcer));
+    }
+
+    /// <summary>Why a typed selected altitude is refused, or null when it is taken. Pure so the suite can pin it.</summary>
+    internal static string? SelectedAltitudeRefusal(double feet) =>
+        feet >= 0 && feet <= 25000 ? null : "Enter an altitude between 0 and 25000 feet";
+
+    /// <summary>
+    /// The selected altitude to the nearest 100 ft: one knob step, then the exact value once it has
+    /// landed (C172-3), confirmed. On the UI thread.
+    /// </summary>
+    private static void SetSelectedAltitude(double typed, SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        int feet = (int)(Math.Round(typed / 100.0) * 100.0);
+        simConnect.SendEvent("AP_ALT_VAR_INC");
+        _ = WriteSelectedAltitudeAfterStepAsync(simConnect, feet);
+        announcer.AnnounceImmediate($"Selected altitude {feet.ToString(CultureInfo.CurrentCulture)} feet");
     }
 
     /// <summary>
@@ -900,13 +962,16 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         return ShowValueDialog("Set Selected Airspeed", "Airspeed",
             string.Create(CultureInfo.InvariantCulture, $"{FlcMinKnots:0} to {FlcMaxKnots:0} knots"),
             simConnect, announcer, parentForm,
-            input => ValidateSelectedAirspeed(input) is string refusal ? (false, refusal) : (true, string.Empty),
-            typed =>
-            {
-                int knots = (int)Math.Round(typed);
-                simConnect.SendEvent("AP_SPD_VAR_SET", (uint)knots);
-                announcer.AnnounceImmediate(DescribeSelectedAirspeed(knots));
-            });
+            input => TypedValidator(input, SelectedAirspeedRefusal),
+            typed => SetSelectedAirspeed(typed, simConnect, announcer));
+    }
+
+    /// <summary>The FLC airspeed in whole knots, confirmed. On the UI thread.</summary>
+    private static void SetSelectedAirspeed(double typed, SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        int knots = (int)Math.Round(typed);
+        simConnect.SendEvent("AP_SPD_VAR_SET", (uint)knots);
+        announcer.AnnounceImmediate(DescribeSelectedAirspeed(knots));
     }
 
     /// <summary>
@@ -914,7 +979,11 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
     /// (CORE-17). Pure so the suite can pin it.
     /// </summary>
     internal static string? ValidateSelectedAirspeed(string input) =>
-        Utils.NumberParsing.TryParseTyped(input, out double knots) && knots >= FlcMinKnots && knots <= FlcMaxKnots
+        SelectedAirspeedRefusal(Utils.NumberParsing.TryParseTyped(input, out double knots) ? knots : double.NaN);
+
+    /// <summary>Why an FLC airspeed is refused (NaN included), or null when it is taken. Pure so the suite can pin it.</summary>
+    internal static string? SelectedAirspeedRefusal(double knots) =>
+        knots >= FlcMinKnots && knots <= FlcMaxKnots
             ? null
             : string.Create(CultureInfo.InvariantCulture, $"Enter an airspeed between {FlcMinKnots:0} and {FlcMaxKnots:0} knots");
 

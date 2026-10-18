@@ -119,7 +119,7 @@ public class CessnaC172G1000ControlsTests
         foreach (string key in PanelKeys())
         {
             var d = vars[key];
-            bool settable = d.RenderAsButton || d.ValueDescriptions.Count > 1;
+            bool settable = d.RenderAsButton || d.ValueDescriptions.Count > 1 || d.RenderAsSlider;
             if (!settable) continue;
             double value = d.ValueDescriptions.Count > 0 ? d.ValueDescriptions.Keys.First() : 1;
             Assert.True(ReachesWritePath(key, value, d, unconnected, speech), $"{key} has no write path");
@@ -204,6 +204,25 @@ public class CessnaC172G1000ControlsTests
         var positions = Def.GetVariables()["C172G_STBY_BATTERY_STATE"].ValueDescriptions;
         Assert.Equal("Arm", positions[0]);
         Assert.Equal("Off", positions[1]);
+    }
+
+    // The combo lists the position the control rests in before flight first, so the preflight works
+    // down the list (the owner's test, 2026-10-18: "we have to go up to arm it"). The panel orders by
+    // key, reversed when ReverseDisplayOrder is set (MainForm.PanelBuilder), so this is that order.
+    [Theory]
+    [InlineData("C172G_STBY_BATTERY_STATE", "Off", "Arm")]
+    [InlineData("C172G_ELT", "Arm", "On")]
+    [InlineData("C172G_COVER_ENGINE", "Installed", "Removed")]
+    [InlineData("C172G_COVER_PITOT", "Installed", "Removed")]
+    [InlineData("C172G_COVER_STATIC", "Installed", "Removed")]
+    public void The_resting_position_is_the_combo_s_first_entry(string key, string first, string second)
+    {
+        var d = Def.GetVariables()[key];
+        var listed = (d.ReverseDisplayOrder
+                ? d.ValueDescriptions.OrderByDescending(p => p.Key)
+                : d.ValueDescriptions.OrderBy(p => p.Key))
+            .Select(p => p.Value);
+        Assert.Equal(new[] { first, second }, listed);
     }
 
     // The nose wheel's read-back. PIT is the mode the GFC 700 engages in, and AUTOPILOT PITCH HOLD REF
@@ -460,5 +479,162 @@ public class CessnaC172G1000ControlsTests
         Assert.Equal(new[] { "GFC 700" }, Def.GetPanelStructure()["Autopilot"]);
         Assert.False(Def.GetPanelControls().ContainsKey("KAP140"));
         Assert.Contains("C172G_AP_FLC_STATE", Def.GetPanelControls()["GFC 700"]);
+    }
+
+    // MainForm.PanelBuilder draws a row that is no slider, button, combo, status box or typed _SET field
+    // as a plain button, and its click does nothing for a SimVar or an input event. Five shipped that
+    // way (the owner's find, 2026-10-18): Mixture, and the GFC 700's Heading Bug, AP Altitude, AP
+    // Vertical Speed and FLC Airspeed, which were the value READS put on the panel.
+    [Fact]
+    public void No_panel_control_is_a_button_that_does_nothing()
+    {
+        var vars = Def.GetVariables();
+        var dead = PanelKeys().Where(key =>
+        {
+            var d = vars[key];
+            return d.Type is SimVarType.SimVar or SimVarType.InputEvent
+                   && !d.RenderAsSlider && !d.RenderAsButton && !d.RenderAsReadOnlyStatus
+                   && d.ValueDescriptions.Count <= 1
+                   && !(key.Contains("_SET") && !d.PreventTextInput);
+        });
+
+        Assert.Empty(dead);
+    }
+
+    // ---------- The controls cleanup (owner, 2026-10-18) ----------
+
+    [Fact]
+    public void The_mixture_is_one_combo_from_idle_cutoff_to_full_rich()
+    {
+        var mixture = Def.GetVariables()["C172_MIXTURE"];
+        Assert.False(mixture.RenderAsSlider);
+        Assert.Equal("GENERAL ENG MIXTURE LEVER POSITION:1", mixture.Name);
+        Assert.Equal("percent", mixture.Units);
+        // A lever: read when the panel opens, never announced (C172-20).
+        Assert.Equal(UpdateFrequency.OnRequest, mixture.UpdateFrequency);
+        Assert.False(mixture.IsAnnounced);
+        // Every whole percent, listed (by key) from the cold-and-dark position up, the ends by name.
+        var listed = mixture.ValueDescriptions.OrderBy(p => p.Key).Select(p => p.Value).ToList();
+        Assert.False(mixture.ReverseDisplayOrder);
+        Assert.Equal(101, listed.Count);
+        Assert.Equal("Idle cutoff", listed[0]);
+        Assert.Equal("1 percent", listed[1]);
+        Assert.Equal("99 percent", listed[99]);
+        Assert.Equal("Full rich", listed[100]);
+        // A lever between two percents shows the nearer one.
+        Assert.Equal(72, mixture.DescriptionKeyFor(72.4));
+        Assert.Equal(100, mixture.DescriptionKeyFor(99.6));
+        Assert.Equal(0, mixture.DescriptionKeyFor(0.3));
+        Assert.Equal(new[] { "C172_MAGNETO", "C172_STARTER_SET", "C172_MIXTURE" }, Def.GetPanelControls()["Engine Controls"]);
+        foreach (string gone in new[] { "C172_MIXTURE_STATE", "C172_MIXTURE_SET", "C172_MIXTURE_RICH", "C172_MIXTURE_LEAN" })
+            Assert.False(Def.GetVariables().ContainsKey(gone), gone);
+    }
+
+    [Theory]
+    [InlineData(0, "Idle cutoff")]
+    [InlineData(0.4, "Idle cutoff")]
+    [InlineData(100, "Full rich")]
+    [InlineData(99.6, "Full rich")]
+    [InlineData(1, null)]
+    [InlineData(50, null)]
+    [InlineData(99, null)]
+    public void The_mixture_ends_say_their_names(double percent, string? name)
+    {
+        Assert.Equal(name, CessnaC172BaseDefinition.MixtureEndName(percent));
+    }
+
+    [Theory]
+    [InlineData(100, "full rich")]
+    [InlineData(0, "idle cutoff")]
+    [InlineData(65.2, "65 percent")]
+    public void Output_e_says_the_mixture_ends_by_name(double percent, string spoken)
+    {
+        Assert.Equal(spoken, CessnaC172BaseDefinition.DescribeMixture(percent));
+    }
+
+    [Theory]
+    [InlineData(0, 0u)]
+    [InlineData(100, 16383u)]
+    [InlineData(50, 8192u)]
+    [InlineData(120, 16383u)]
+    public void The_mixture_percent_goes_out_on_mixture1_set_s_scale(double percent, uint sent)
+    {
+        Assert.Equal(sent, CessnaC172BaseDefinition.MixtureEventValue(percent));
+    }
+
+    [Fact]
+    public void The_gfc_700_types_its_selected_values_as_the_input_windows_do()
+    {
+        var panel = Def.GetPanelControls()["GFC 700"];
+        string[] typed =
+        {
+            CessnaC172G1000Definition.HeadingBugSetKey, CessnaC172G1000Definition.SelectedAltitudeSetKey,
+            CessnaC172G1000Definition.SelectedVerticalSpeedSetKey, CessnaC172G1000Definition.SelectedAirspeedSetKey,
+        };
+        foreach (string key in typed)
+        {
+            Assert.Contains(key, panel);
+            Assert.Contains("_SET", key);
+            var d = Def.GetVariables()[key];
+            Assert.True(d.UnparseableTextAsNaN, key);   // a typo is refused, never 0
+            Assert.Equal(UpdateFrequency.Never, d.UpdateFrequency);
+            Assert.True(CessnaC172G1000Definition.TypedAutopilotValues.ContainsKey(key), key);
+        }
+        // The reads stay for the output keys, off the panel.
+        foreach (string read in new[] { "C172_AP_HDG_VALUE", "C172_AP_ALT_VALUE", "C172_AP_VS_VALUE", "C172G_AP_IAS_VALUE" })
+        {
+            Assert.DoesNotContain(read, panel);
+            Assert.True(Def.GetVariables().ContainsKey(read), read);
+        }
+    }
+
+    // Each typed row refuses exactly what its input-mode window refuses, NaN (text that is not a
+    // number) included, and never clamps.
+    [Theory]
+    [InlineData("C172G_AP_HDG_SET", 0, true)]
+    [InlineData("C172G_AP_HDG_SET", 359, true)]
+    [InlineData("C172G_AP_HDG_SET", 360, false)]
+    [InlineData("C172G_AP_HDG_SET", double.NaN, false)]
+    [InlineData("C172G_AP_ALT_SET", 25000, true)]
+    [InlineData("C172G_AP_ALT_SET", 25001, false)]
+    [InlineData("C172G_AP_ALT_SET", -100, false)]
+    [InlineData("C172G_AP_VS_SET", -2000, true)]
+    [InlineData("C172G_AP_VS_SET", 2001, false)]
+    [InlineData("C172G_AP_IAS_SET", 48, true)]
+    [InlineData("C172G_AP_IAS_SET", 47, false)]
+    [InlineData("C172G_AP_IAS_SET", 161, false)]
+    [InlineData("C172G_AP_IAS_SET", double.NaN, false)]
+    public void A_typed_autopilot_value_is_refused_outside_its_range(string key, double value, bool taken)
+    {
+        Assert.Equal(taken, CessnaC172G1000Definition.TypedAutopilotValues[key].Refusal(value) is null);
+    }
+
+    [Fact]
+    public void A_typed_autopilot_value_with_no_sim_is_refused_aloud()
+    {
+        var speech = new GatedSpeechCapture();
+        string key = CessnaC172G1000Definition.HeadingBugSetKey;
+        Assert.True(Def.HandleUIVariableSet(key, 270, Def.GetVariables()[key], new SimConnectManager(IntPtr.Zero), speech));
+        Assert.Contains("Not connected to simulator.", speech.All);
+    }
+
+    [Fact]
+    public void The_panels_are_grouped_as_the_cockpit_is()
+    {
+        var structure = Def.GetPanelStructure();
+        var controls = Def.GetPanelControls();
+        // The standby battery with the master, first, as the start checklist takes it.
+        Assert.Equal(new[] { "Battery and Alternator", "Avionics" }, structure["Electrical"]);
+        Assert.Equal(new[] { "C172G_STBY_BATTERY_STATE", "C172_BATTERY_STATE", "C172_ALTERNATOR_STATE" },
+            controls["Battery and Alternator"]);
+        // The fuel pump with the fuel system, first.
+        Assert.Equal(new[] { "C172_FUEL_PUMP_STATE", "C172_FUEL_SELECTOR", "C172_FUEL_VALVE_STATE" }, controls["Fuel"]);
+        // The flap combo is the whole lever.
+        Assert.Equal(new[] { "C172_FLAPS", "C172_PARKING_BRAKE_STATE" }, controls["Flaps and Brake"]);
+        // Pitot heat and the alternate static source are the pitot-static system, not anti-ice.
+        Assert.Equal(new[] { "Pitot-Static", "ELT" }, structure["Safety"]);
+        Assert.Equal(new[] { "C172_PITOT_HEAT_STATE", "C172G_ALT_STATIC_STATE" }, controls["Pitot-Static"]);
+        Assert.False(controls.ContainsKey("Anti-Ice"));
+        Assert.False(controls.ContainsKey("Standby Battery"));
     }
 }
