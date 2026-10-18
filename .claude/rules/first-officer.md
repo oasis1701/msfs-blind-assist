@@ -2,19 +2,13 @@
 paths:
   - "MSFSBlindAssist/FirstOfficer/**"
   - "MSFSBlindAssist/Forms/FirstOfficer/**"
-  - "MSFSBlindAssist/Forms/Settings/FirstOfficerPanel.cs"
-  - "MSFSBlindAssist/Automation/UniversalAutomationService.cs"
-  - "MSFSBlindAssist/MainForm.UniversalAutomation.cs"
   - "MSFSBlindAssist/Aircraft/TFDiMD11Definition.FirstOfficer.cs"
-  - "MSFSBlindAssist/Aircraft/FbwAutopilotEngage.cs"
   - "tests/MSFSBlindAssist.Tests/FirstOfficer/**"
   - "tests/MSFSBlindAssist.Tests/Fo*.cs"
-  - "tests/MSFSBlindAssist.Tests/UniversalAutomationServiceTests.cs"
-  - "tests/MSFSBlindAssist.Tests/SeatbeltAutomationTests.cs"
 ---
 # First Officer rules
 
-Loaded when Claude reads matching code. Background: docs/first-officer.md. Full text of each rule: docs/invariants/first-officer.md. Per-family rules: first-officer-boeing.md, first-officer-airbus.md.
+Loaded when Claude reads matching code. Background: docs/first-officer.md. Full text of each rule: docs/invariants/first-officer.md. Per-family rules: first-officer-boeing.md, first-officer-airbus.md; the automation beside the flows (auto-flaps, auto-AP, 10k lights, altimeters): first-officer-automation.md.
 
 - [FO-1] One First Officer form for every aircraft via `IFoProfile<TExec,TState>`: the profile injects executor, evaluator and data. Full: docs/invariants/first-officer.md#fo-1
 - [FO-2] No FMC programming, ever (owner decision): keep checklist text, V-speed reads and SimBrief load-only; never reintroduce CDU-keystroke automation. Full: docs/invariants/first-officer.md#fo-2
@@ -30,13 +24,6 @@ Loaded when Claude reads matching code. Background: docs/first-officer.md. Full 
 - [FO-12] A hand-tick never re-does work the pilot already did: `ChecklistManager.ToggleItem` skips the `CheckAction` (and the `AwaitingActionConfirmation` mark) when the item's own state reads DEFINITELY true; NaN still runs it, and it is gated on `IsAutoDetectable`, so self-tests with no state field fire every tick. Full: docs/invariants/first-officer.md#fo-12
 - [FO-13] Each FO gear checklist line ("Landing gear: UP"/"DOWN") is backed by a READ-ONLY wait, the LAST step of the flow that latches it (20 s, Skip, never writes), reading lights or legs per aircraft (`GearLightRules`, `*GearConfirmation`); NaN when any input is unknown. Never add a gear WRITE to a check (more: see full). Full: docs/invariants/first-officer.md#fo-13
 - [FO-14] The landing autobrake is a CAPTAIN item on every aircraft: never automate it in a descent/approach flow or checklist action; the reminder names the panel location, with no suggested setting (RTO arm before takeoff and autobrake OFF after takeoff/landing stay automated). Full: docs/invariants/first-officer.md#fo-14
-- [FO-15] PMDG auto-flaps was REMOVED (2026-07-08, owner decision): never reintroduce a 737/777 flap schedule; the "Auto-manage flaps" setting acts on the FBW A380 and A32NX only (the Fenix and the PMDG managers store it and ignore it). Full: docs/invariants/first-officer.md#fo-15
-- [FO-16] The FO AP engagement height is the user setting `FOAutoApEngageAltitudeAgl` (default 350 ft AGL, one global value): never hardcode an engagement altitude in an `FOAutoManager`; the 737's LNAV/VNAV push height (400 ft AGL) is deliberately FIXED and each push is annunciator-guarded (NaN = skip). Full: docs/invariants/first-officer.md#fo-16
-- [FO-17] Auto-AP-engage is floored by `IAircraftDefinition.MinimumAutopilotEngageAltitudeAgl` (PMDG 737 = 400 ft, its AFDS inhibits CMD below 400 ft RA; 777 = 200): never let the user setting press below an aircraft's own limit, and never lower the 737's floor, or the press is silently rejected while success is announced. Full: docs/invariants/first-officer.md#fo-17
-- [FO-18] Auto-AP-engage is CLOSED-LOOP wherever `IAircraftDefinition.IsAutopilotEngaged` is non-null: announce only a CONFIRMED engagement, retry a rejected press (`MaxApEngageAttempts`), report a Captain action if it never takes. It returns null, never false, before the first CDA snapshot (PMDG engage switches toggle). Full: docs/invariants/first-officer.md#fo-18
-- [FO-19] The 10k landing-light switching is gated by `FOAutoLights10kEnabled` (default ON), and ONLY the light actions/announcements are; the crossing latch always runs. The checklist tree never uses `TreeView.CheckBoxes = true` (`CheckboxStateImages` + `ShowCheckBox`; never set `.Checked` on headers). Full: docs/invariants/first-officer.md#fo-19
 - [FO-20] `FlowManager` treats a `FlowStep.TargetValueProvider` returning null as a SILENT SKIP: nothing is sent or spoken (the paired Captain reminder speaks), its linked lines are not marked and stay out of the latch, and its id counts as skipped for `RequiresStepId`. Never a quiet success (more: see full). Full: docs/invariants/first-officer.md#fo-20
-- [FO-21] FlyByWire auto-AP (A32NX, A380, Headwind A330) presses `A32NX.FCU_AP_1_PUSH` via `FbwAutopilotEngage` only on a definite OFF (`AutopilotEngageWaitsForState`: the push toggles, so never blind) and never into the probe queue (`PressWouldWait`), 3 s apart, confirmed on `A32NX_AUTOPILOT_1/2_ACTIVE`; never stock `AUTOPILOT_ON`, which FBW ignores. Full: docs/invariants/first-officer.md#fo-21
 - [FO-22] A First Officer window that first sees the aircraft flying without a takeoff it watched (`InFlightStartDetector`) marks every departure group through After Takeoff complete and latched (`FoDepartureGroups.MarkComplete`), one queued announcement; never an arrival group; every profile group sits in exactly one set. Full: docs/invariants/first-officer.md#fo-22
-- [FO-23] `FOAutoAltimetersEnabled` (default ON) gates every transition altimeter write on every monitor; off, `TransitionAltimeters.ReminderInstead` speaks the crossing, the detector keeps tracking, the MD-11 still sets Dial-A-Flap. Full: docs/invariants/first-officer.md#fo-23
 - [FO-24] Only `FirstOfficerWindows` (exact aircraft code) says which aircraft has a First Officer window; never a per-aircraft field, Show method, menu item or type test in MainForm. Full: docs/invariants/first-officer.md#fo-24
