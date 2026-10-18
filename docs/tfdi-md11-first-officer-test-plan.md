@@ -255,6 +255,74 @@ What the PR #160 review changed on the MD-11. Each is **Settle**: none has run i
    passes: the flap read-out stays quiet while the First Officer walks the handle.
 5. **Gear legs** are measured in Before Landing (item 3 there) and checked in After Takeoff.
 
+## Second review fixes, 18 October 2026
+
+What the second PR #160 review changed on the MD-11. Each is **Settle**: none has run in the sim.
+Where a step needs a debug.log line, the category is `MD11 FO`. The checks shared by every aircraft
+(go-around altimeters, Stop, the plan after landing, a new flight load, gear down, offline ticks,
+seat belts) are Part AA.1 of the PMDG 737 plan. A Stop-policy failure in Engine Start now also
+pushes back a START switch the flow pulled while the fuel reads OFF, as a Stop does (debug.log:
+"flow stopped with the fuel off; pushing its START switch back in").
+
+1. **The Dial-A-Flap reminder follows the wheel, not the plan.** With your SimBrief plan loaded, run
+   Preflight. After "Dial-A-Flap: takeoff setting" you must hear "Already set: Dial-A-Flap takeoff
+   setting", never the Captain reminder. If "Dial-A-Flap: takeoff setting" ever says "Skipping"
+   with a plan loaded, the next words must be "Captain action required: Set the Dial-A-Flap to the
+   takeoff flap setting.", never "Already set" (until now the reminder was lost there). Without a
+   plan you hear the same reminder; it no longer says "Load SimBrief and I will set it".
+2. **Stop during the light-up wait.** Run Engine Start. Within a few seconds of "Engine 3 N2
+   fifteen percent", before the engine reaches 15 % N2, press Stop Flow. You hear "Stopping after
+   the current step: Engine 3 N2 fifteen percent", then within about a second "Engine Start flow
+   cancelled" (until now, only once N2 reached 15 %, or after a minute). On the Pedestal's Throttle
+   Quadrant panel, Engine 3 Starter reads Disengaged and Engine 3 Fuel reads Off. debug.log: "engine
+   3: flow stopped during the light-up watch; pushing START in".
+3. **Stop after the light-up, before the fuel.** Let engine 3 spool down below 15 % N2 first. Run
+   Engine Start, and right after "Engine 3 N2 fifteen percent" press Pause: the flow holds after the
+   light-up, before "Engine 3 fuel switch: ON". Wait about 40 seconds, then press Stop Flow. You
+   hear "Engine Start flow cancelled"; Engine 3 Starter reads Disengaged and Engine 3 Fuel reads Off,
+   so the starter is no longer turning a dry engine. debug.log: "engine 3: flow stopped with the
+   fuel off; pushing its START switch back in". If instead you hear "Engine Start flow
+   stopped. Unable to complete: Engine 3 N2 fifteen percent", the engine did not reach 15 % within
+   the minute: note it. A Stop after "Engine 3 fuel switch: ON" leaves the start running, as before.
+4. **External power ON on the battery alone.** Cold and dark, battery on, ground power NOT
+   connected on the EFB. On the Checklists tab, tick Power Up's "External power: ON". Within about
+   15 seconds you hear "Unable to complete: External power: ON" and the line unticks. Until now it
+   stayed ticked over nothing, and Power Up could latch it.
+5. **A flap walk that stops short says where.** On the ground, set the flap handle to Flap 35 or 50
+   (the Flaps panel), then run After Landing. Either the walk reaches UP and you hear only "Flap
+   handle: UP", no detent on the way (as before; the flaps key, L in output mode, then reads "Flap
+   Up / Slat Retracted"), or it stops short, at TFDi's gate at 28 for example: then you hear where
+   it stopped, "Flap 28", followed by "Skipping: Flap handle: UP". Never "Skipping" with no
+   position. Note which of the two you got.
+6. **APU running without its power.** Cold and dark with ground power connected and on, start the
+   APU from the Aft Overhead's APU panel (APU Start), and wait until the Electrical panel's APU
+   Power reads Available. Run Before Start. You hear "APU: start", not "Already set": the First
+   Officer presses APU Power once, about three seconds after reading it, and APU Power reads On. The
+   flow goes on through "Waiting for: APU power on" at once, then "External power: OFF". The APU
+   must keep running throughout. This is modelled, not measured: the test aircraft treats APU and
+   external power as independent sources. If you hear "Skipping: APU: start" with the APU running,
+   or the APU stops, note it. Also try it the other way round: APU power on, then connect ground
+   power over it, then run Before Start.
+7. **Weather radar OFF is read back.** Power Up's "Weather radar: OFF", Preflight's "Weather radar
+   test, then off" and After Landing's "Weather radar: OFF" are done only once the radar's OFF reads
+   back. Until now an unread OFF was reported done. If any of them says "Skipping" every time, the
+   First Officer's read of the OFF button never arrives: report it (debug.log: "FO_WXR_OFF -> 1: not
+   done").
+8. **A press the bus dropped is no longer reported done.** Not testable on purpose; the unit tests
+   cover it. Check nothing changed: every test and reset in Preflight still says done, not
+   Skipping.
+9. **Parking never cuts the fuel without APU or external power.** After landing, with the APU
+   started in After Landing, run Parking at the gate. After "Parking brake: SET" you hear "Already
+   set: APU or external power on", then "Fuel switches: OFF". The last reminder now says only
+   "Connect ground power on the EFB Services page if required", no longer "The APU is powering the
+   aircraft". Then once, with the APU off and no ground power, run Parking: you hear "Waiting for:
+   APU or external power on". Start the APU or connect ground power within two minutes and the flow
+   goes on; otherwise "Timed out waiting for: APU or external power on", then "Parking flow stopped.
+   Unable to complete: APU or external power on", with the fuel switches still ON. Important: if
+   the flow waits while the APU is running and its power was requested in After Landing, TFDi does
+   not show APU power as on while the engines run: report it, since the guard then needs another
+   reading.
+
 ## Reporting a problem
 
 For each one, note the clock time, the flow and step, the words you heard, and what you expected.

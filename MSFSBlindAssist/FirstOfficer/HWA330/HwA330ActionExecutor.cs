@@ -148,13 +148,17 @@ public sealed class HwA330ActionExecutor : IFoActionExecutor
 
     // ApplyUIVariable under a Suppressed wrap: the def's internal Announce() calls are
     // dropped; prior Suppressed state restored (don't clobber the startup grace period).
-    private bool ApplySilent(string varKey, double value)
+    private bool ApplySilent(string varKey, double value) => ApplySilent(varKey, value, _sc!);
+
+    // The same write through `sc`, the manager the caller holds: a held press's release goes
+    // through the manager its press went through, never the field, which the window's close nulls.
+    private bool ApplySilent(string varKey, double value, SimConnectManager sc)
     {
         bool prior = _announcer!.Suppressed;
         _announcer.Suppressed = true;
         try
         {
-            if (_def!.ApplyUIVariable(varKey, value, _sc!, _announcer)) return true;
+            if (_def!.ApplyUIVariable(varKey, value, sc, _announcer)) return true;
 
             // An EVENT-typed key the definition declined can NOT be rescued by the fallback
             // below: SetLVar prepends "L:" to the varKEY, so it would create a dead L:var
@@ -178,7 +182,7 @@ public sealed class HwA330ActionExecutor : IFoActionExecutor
             // claim (returns false) is written as a plain L:var via SetLVar (calc-path
             // routed when MobiFlight is connected). Without this, a key with no def
             // branch and no catch-all prefix would silently no-op through ApplyUIVariable alone.
-            _sc!.SetLVar(varKey, value);
+            sc.SetLVar(varKey, value);
             return true;
         }
         finally { _announcer.Suppressed = prior; }
@@ -202,19 +206,23 @@ public sealed class HwA330ActionExecutor : IFoActionExecutor
 
     // Cabin call: release pulse. A stuck 1 = endless horn; write 1, delay, write 0
     // as two separate writes. The release is in a finally so an interrupted hold
-    // (exception during the delay) can NEVER leave the call horn latched on.
+    // (exception during the delay) can NEVER leave the call horn latched on, and it goes
+    // through the manager the press went through: the window's close (an Aircraft-menu
+    // switch, the sim keeping the aircraft) nulls _sc mid-hold, and re-reading the field
+    // skipped the release.
     private async Task<bool> FireCabinCallAsync()
     {
+        var sc = _sc;   // one manager for the whole press: the release must follow its press
+        if (sc is not { IsConnected: true }) return false;
         try
         {
-            ApplySilent("PUSH_OVHD_CALLS_ALL", 1);
+            ApplySilent("PUSH_OVHD_CALLS_ALL", 1, sc);
             await Task.Delay(400);
             return true;
         }
         finally
         {
-            if (_sc is { IsConnected: true } && _def != null && _announcer != null)
-                ApplySilent("PUSH_OVHD_CALLS_ALL", 0);
+            if (sc.IsConnected) ApplySilent("PUSH_OVHD_CALLS_ALL", 0, sc);
         }
     }
 
@@ -360,18 +368,23 @@ public sealed class HwA330ActionExecutor : IFoActionExecutor
         {
             if (_sc is not { IsConnected: true } || _def == null || _announcer == null) return false;
             await PaceAsync();
+            // Taken AFTER the pacing wait, which the window's close can land in: a detached
+            // executor presses nothing. The release then goes through this same manager.
+            var sc = _sc;
+            if (sc is not { IsConnected: true }) return false;
             try
             {
-                ApplySilent(varKey, 1);
+                ApplySilent(varKey, 1, sc);
                 _lastWriteUtc = DateTime.UtcNow;
                 await Task.Delay(FireTestHoldMs);
                 return true;
             }
             finally
             {
-                // ALWAYS release the held fire-test PB, even on an interrupted hold — a stuck 1
-                // leaves the fire test active (continuous test bell). Guarded for a dropped sim.
-                if (_sc is { IsConnected: true } && _def != null && _announcer != null) ApplySilent(varKey, 0);
+                // ALWAYS release the held fire-test PB, even on an interrupted hold or a window
+                // closed mid-hold — a stuck 1 leaves the fire test active (continuous test bell).
+                // Guarded for a dropped sim.
+                if (sc.IsConnected) ApplySilent(varKey, 0, sc);
                 _lastWriteUtc = DateTime.UtcNow;
             }
         }
@@ -391,18 +404,21 @@ public sealed class HwA330ActionExecutor : IFoActionExecutor
         {
             if (_sc is not { IsConnected: true } || _def == null || _announcer == null) return false;
             await PaceAsync();
+            var sc = _sc;   // after the pacing wait: a detached executor presses nothing (FireTestAsync)
+            if (sc is not { IsConnected: true }) return false;
             try
             {
-                ApplySilent("A32NX_RCDR_TEST", 1);
+                ApplySilent("A32NX_RCDR_TEST", 1, sc);
                 _lastWriteUtc = DateTime.UtcNow;
                 await Task.Delay(CvrTestHoldMs);
                 return true;
             }
             finally
             {
-                // ALWAYS release the held CVR test button, even on an interrupted hold. Guarded
-                // for a dropped sim.
-                if (_sc is { IsConnected: true } && _def != null && _announcer != null) ApplySilent("A32NX_RCDR_TEST", 0);
+                // ALWAYS release the held CVR test button, through the manager the press went
+                // through, even on an interrupted hold or a window closed mid-hold. Guarded for a
+                // dropped sim.
+                if (sc.IsConnected) ApplySilent("A32NX_RCDR_TEST", 0, sc);
                 _lastWriteUtc = DateTime.UtcNow;
             }
         }
@@ -423,18 +439,21 @@ public sealed class HwA330ActionExecutor : IFoActionExecutor
         {
             if (_sc is not { IsConnected: true } || _def == null || _announcer == null) return false;
             await PaceAsync();
+            var sc = _sc;   // after the pacing wait: a detached executor presses nothing (FireTestAsync)
+            if (sc is not { IsConnected: true }) return false;
             try
             {
-                _sc.SendHVar("A32NX_ECP_TO_CONF_TEST_PRESSED");
+                sc.SendHVar("A32NX_ECP_TO_CONF_TEST_PRESSED");
                 _lastWriteUtc = DateTime.UtcNow;
                 await Task.Delay(ToConfigHoldMs);
                 return true;
             }
             finally
             {
-                // ALWAYS send the release H-event, even on an interrupted hold — a missed release
-                // leaves the ECP TO CONFIG button held down. Guarded for a dropped sim.
-                if (_sc is { IsConnected: true }) _sc.SendHVar("A32NX_ECP_TO_CONF_TEST_RELEASED");
+                // ALWAYS send the release H-event, through the manager the press went through, even
+                // on an interrupted hold or a window closed mid-hold — a missed release leaves the
+                // ECP TO CONFIG button held down. Guarded for a dropped sim.
+                if (sc.IsConnected) sc.SendHVar("A32NX_ECP_TO_CONF_TEST_RELEASED");
                 _lastWriteUtc = DateTime.UtcNow;
             }
         }

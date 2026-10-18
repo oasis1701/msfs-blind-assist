@@ -148,6 +148,7 @@ public partial class MainForm
 
         if (e.VarName == "FO_ALTITUDE_AGL") _universalLatestAgl = e.Value;
         else if (e.VarName == "FO_GEAR_HANDLE") _universalLatestGearHandle = e.Value;
+        else if (e.VarName == "FO_AIRSPEED_IAS") _universalLatestIas = e.Value;
 
         // Composed-state controls (MD-11): relabel every dependent of this key, on EVERY path
         // below — initial snapshot, def-handled (ProcessSimVarUpdate returns true and exits

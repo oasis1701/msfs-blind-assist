@@ -492,3 +492,19 @@ One change: the Before Start "Waiting for APU available" wait now ABORTS the flo
 None of these has run in the sim. The window, SimBrief and universal-automation checks shared by
 every aircraft are Part Z.1 of the PMDG 737 plan; the Fenix's own change is the closed-loop AP 1
 press in Part D item 2 above.
+
+## PR #160 second review fixes (2026-10-18)
+
+None of these has run in the sim. The checks shared by every aircraft (go-around altimeters, Stop,
+the plan after landing, a new flight load, gear down, offline ticks, seat belts) are Part AA.1 of
+the PMDG 737 plan.
+
+1. **TO CONFIG says what it found.** On the ground, tick "Takeoff config test" (or press the
+   panel's "ECAM TO CONFIG" button): with a good configuration, "Takeoff config normal."; with
+   flaps 0, the continuous chime and "Takeoff config: check configuration." Then make a fault that
+   is amber only, such as a cabin door left open: the single chime of the master caution and
+   "Takeoff config: caution. Check the ECAM." Which amber faults the Fenix models is not measured:
+   if you hear the single chime and the app says "normal", note the fault.
+2. **No verdict after the window has gone.** Tick "Takeoff config test" and, within a second,
+   switch to another aircraft in MSFSBA. No "Takeoff config normal." follows the switch, and any
+   chime the test raised stops within a couple of seconds: the button is still released.

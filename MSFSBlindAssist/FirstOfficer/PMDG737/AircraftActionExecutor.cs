@@ -59,15 +59,11 @@ public class AircraftActionExecutor : IFoActionExecutor
     // survives (documented PMDG gotcha). So every helper that fires more than one switch
     // (generators, probe heat, fuel pumps, window heat, …) must SPACE its writes, or the
     // first is silently lost (the "generators / probe heat didn't come on" bugs). Matches
-    // the flow's PostActionDelayMs and the 777 executor's CdaWriteSpacingMs.
+    // the 777 executor's CdaWriteSpacingMs.
     private const int CdaWriteSpacingMs = 350;
     // APU selector ON → START needs a dwell so the model registers ON before the momentary
     // START, otherwise the APU never spools up (same fix as the 777 StartApuAsync).
     private const int ApuOnToStartMs = 2000;
-    // Inter-click gap for the EFIS baro knob rotation — 40 ms is the Ctrl+B baro
-    // dialog's in-sim-verified rate (RotateBaroKnobAsync; the baro is a free encoder,
-    // not a detented selector, and accepts this rate reliably).
-    private const int BaroClickGapMs = 40;
 
     /// <summary>Held-test durations (user-tuned 2026-07-11): the OVHT/FIRE detection test
     /// switch is HELD at position 2 (fire bell + staggered annunciators, live-probed:
@@ -349,29 +345,31 @@ public class AircraftActionExecutor : IFoActionExecutor
         await PaceAsync();
         // Read again after the pacing wait: a closed First Officer window (an aircraft switch) or a
         // disconnect detaches the executor meanwhile, and the write must not reach the next aircraft.
-        // Every case below reads _sc before its own first await.
-        if (_sc == null) return false;
+        // Read once: every case below writes through this reading, so a detach between two of its
+        // lines cannot leave it holding a null.
+        var sc = _sc;
+        if (sc == null) return false;
         try
         {
             switch (kind)
             {
                 case Dispatch.Simple:
-                    _sc.SendPMDGEvent(eventName, id, target);
+                    sc.SendPMDGEvent(eventName, id, target);
                     return true;
 
                 case Dispatch.MouseFlag:
-                    _sc.SendPMDGEvent(eventName, id, MouseFlagLeftSingle);
+                    sc.SendPMDGEvent(eventName, id, MouseFlagLeftSingle);
                     return true;
 
                 case Dispatch.Directional:
-                    _sc.SendPMDGEvent(eventName, id, t > 0 ? MouseFlagLeftSingle : MouseFlagRightSingle);
+                    sc.SendPMDGEvent(eventName, id, t > 0 ? MouseFlagLeftSingle : MouseFlagRightSingle);
                     // Nothing to track: GPU, GEN and APU GEN are stateless push pairs, and the
                     // evaluator reads the engine generators from their GEN OFF BUS lights
                     // (FO_GEN1_ON_BUS / FO_GEN2_ON_BUS).
                     return true;
 
                 case Dispatch.AbsoluteSelector:
-                    _sc.SendPMDGEventViaTransmitWithTarget(id, (uint)(target ?? 0));
+                    sc.SendPMDGEventViaTransmitWithTarget(id, (uint)(target ?? 0));
                     return true;
 
                 case Dispatch.WalkedSelector:
@@ -391,13 +389,13 @@ public class AircraftActionExecutor : IFoActionExecutor
                     // (read in PMDG737Definition.ProcessSimVarUpdate's
                     // XPDR_ModeSel case); the flow announces its own step label,
                     // so nothing extra here.
-                    var dm = _sc.PMDGDataManager;
+                    var dm = sc.PMDGDataManager;
                     if (spec?.StateField == null || dm is not { IsReady: true } || target == null)
                         return false;
                     Interlocked.Increment(ref s_xpdrWalksInProgress);
                     try
                     {
-                        int? landed = await _sc.WalkPMDGSelectorClosedLoop(id, spec.StateField, target.Value);
+                        int? landed = await sc.WalkPMDGSelectorClosedLoop(id, spec.StateField, target.Value);
                         return landed == target.Value;
                     }
                     finally
@@ -407,7 +405,7 @@ public class AircraftActionExecutor : IFoActionExecutor
                 }
 
                 case Dispatch.FuelLever:
-                    _sc.SendPMDGEventViaTransmitWithTarget(id, (uint)(t != 0 ? MouseFlagLeftSingle : MouseFlagRightSingle));
+                    sc.SendPMDGEventViaTransmitWithTarget(id, (uint)(t != 0 ? MouseFlagLeftSingle : MouseFlagRightSingle));
                     return true;
 
                 case Dispatch.Guarded:
@@ -421,7 +419,7 @@ public class AircraftActionExecutor : IFoActionExecutor
                     // that stayed on. The standby power selector, whose guard PMDG does NOT lift
                     // on a click, keeps the panel's own guard-click sequence. Unread, or a guarded
                     // switch with no position field, is refused: never a write reported as done.
-                    var dm = _sc.PMDGDataManager;
+                    var dm = sc.PMDGDataManager;
                     if (spec?.StateField == null || dm is not { IsReady: true }) return false;
                     int current = (int)Math.Round(dm.GetFieldValue(spec.StateField));
                     int want = target ?? 0;
@@ -430,17 +428,17 @@ public class AircraftActionExecutor : IFoActionExecutor
                     {
                         if (spec.Guard == null || !PMDG737Definition.EventIds.TryGetValue(spec.Guard, out int gId))
                             return false;
-                        await PMDG737Definition.DispatchStandbyPowerAsync(_sc, (uint)gId, id, current, want);
+                        await PMDG737Definition.DispatchStandbyPowerAsync(sc, (uint)gId, id, current, want);
                     }
                     else
                     {
-                        await _sc.WalkPMDGSelector(id, current, want);
+                        await sc.WalkPMDGSelector(id, current, want);
                     }
                     return true;
                 }
 
                 default:
-                    _sc.SendPMDGEvent(eventName, id, target);
+                    sc.SendPMDGEvent(eventName, id, target);
                     return true;
             }
         }
@@ -490,18 +488,20 @@ public class AircraftActionExecutor : IFoActionExecutor
     // collide with a concurrent dispatch — and so back-to-back Capt+FO baro pushes serialize.
     private bool FireMomentaryToggle(string eventName)
     {
-        var sc = _sc;
-        if (sc != null && PMDG737Definition.EventIds.TryGetValue(eventName, out int evId))
-            _ = FireMomentaryToggleAsync(sc, (uint)evId);
+        if (_sc != null && PMDG737Definition.EventIds.TryGetValue(eventName, out int evId))
+            _ = FireMomentaryToggleAsync((uint)evId);
         return true;
     }
 
-    private async Task FireMomentaryToggleAsync(SimConnectManager sc, uint evId)
+    private async Task FireMomentaryToggleAsync(uint evId)
     {
         await _dispatchGate.WaitAsync();
         try
         {
             await PaceAsync();
+            // Read after the gate and the pacing, never before: a window closed meanwhile (an
+            // aircraft switch) detached the executor, and the press must not reach the next aircraft.
+            if (_sc is not { } sc) return;
             await sc.SendPMDGMomentaryToggle(evId, 1);
         }
         finally
@@ -517,18 +517,17 @@ public class AircraftActionExecutor : IFoActionExecutor
     /// 2026-07-11); the write-back is required — nothing auto-releases it.</summary>
     public async Task<bool> FireDetectionTestAsync()
     {
-        var sc = _sc;
-        if (sc == null || !PMDG737Definition.EventIds.TryGetValue("EVT_FIRE_DETECTION_TEST_SWITCH", out int evId))
+        const string ev = "EVT_FIRE_DETECTION_TEST_SWITCH";
+        if (_sc == null || !PMDG737Definition.EventIds.TryGetValue(ev, out int evId))
             return false;
         await _dispatchGate.WaitAsync();
         try
         {
             await PaceAsync();
-            sc.SendPMDGEvent("EVT_FIRE_DETECTION_TEST_SWITCH", (uint)evId, 2);
-            _lastWriteUtc = DateTime.UtcNow;
-            await Task.Delay(FireTestHoldMs);
-            sc.SendPMDGEvent("EVT_FIRE_DETECTION_TEST_SWITCH", (uint)evId, 1);
-            _lastWriteUtc = DateTime.UtcNow;
+            // Read after the gate and the pacing (see FireMomentaryToggleAsync).
+            if (_sc is not { } sc) return false;
+            sc.SendPMDGEvent(ev, (uint)evId, 2);
+            await HoldThenReleaseAsync(sc, FireTestHoldMs, s => s.SendPMDGEvent(ev, (uint)evId, 1));
             return true;
         }
         finally { _dispatchGate.Release(); }
@@ -539,21 +538,36 @@ public class AircraftActionExecutor : IFoActionExecutor
     /// field and no CDA-write actuation — transmit-only, sound-only feedback.</summary>
     public async Task<bool> WarningTestAsync(string eventName, int holdMs)
     {
-        var sc = _sc;
-        if (sc == null || !PMDG737Definition.EventIds.TryGetValue(eventName, out int evId))
+        if (_sc == null || !PMDG737Definition.EventIds.TryGetValue(eventName, out int evId))
             return false;
         await _dispatchGate.WaitAsync();
         try
         {
             await PaceAsync();
+            // Read after the gate and the pacing (see FireMomentaryToggleAsync).
+            if (_sc is not { } sc) return false;
             sc.SendPMDGEventViaTransmitWithTarget((uint)evId, MouseFlagLeftSingleU);
-            _lastWriteUtc = DateTime.UtcNow;
-            await Task.Delay(holdMs);
-            sc.SendPMDGEventViaTransmitWithTarget((uint)evId, MouseFlagLeftReleaseU);
-            _lastWriteUtc = DateTime.UtcNow;
+            await HoldThenReleaseAsync(sc, holdMs,
+                s => s.SendPMDGEventViaTransmitWithTarget((uint)evId, MouseFlagLeftReleaseU));
             return true;
         }
         finally { _dispatchGate.Release(); }
+    }
+
+    // Holds a test just pressed through sc, then releases it through the SAME sc, even when the
+    // window closed meanwhile and detached the executor: a test is never left held. The hold is
+    // recorded with the definition (PMDG737Definition.BeginHeldPress), so quitting MSFSBA or
+    // switching aircraft inside it releases it there, while the sim and this aircraft's data manager
+    // are still up ([P737-3]); a hold released that way is not released again here, when the data
+    // manager may already be the next aircraft's.
+    private async Task HoldThenReleaseAsync(SimConnectManager sc, int holdMs, Action<SimConnectManager> release)
+    {
+        _lastWriteUtc = DateTime.UtcNow;
+        var hold = PMDG737Definition.BeginHeldPress(release);
+        await Task.Delay(holdMs);
+        if (PMDG737Definition.EndHeldPress(hold))
+            release(sc);
+        _lastWriteUtc = DateTime.UtcNow;
     }
 
     /// <summary>
@@ -578,14 +592,16 @@ public class AircraftActionExecutor : IFoActionExecutor
     public async Task<bool> ArmSpeedbrakeAsync()
     {
         const string ev = "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM";
-        var sc = _sc;
-        if (sc == null || !PMDG737Definition.EventIds.TryGetValue(ev, out int evId))
+        if (_sc == null || !PMDG737Definition.EventIds.TryGetValue(ev, out int evId))
             return false;
         uint id = (uint)evId;
 
         await _dispatchGate.WaitAsync();
         try
         {
+            // Read after the gate, and again after each pacing wait below (see
+            // FireMomentaryToggleAsync): a detached executor clicks nothing.
+            if (_sc is not { } sc) return false;
             // An armed lever (at ARM, with the ARMED light) needs no click. A DEPLOYED lever
             // (auto-speedbrake fired on touchdown, or manually raised) or a lit EXTENDED light
             // is never clicked: the click would retract the spoilers, the ground spoilers on
@@ -606,6 +622,7 @@ public class AircraftActionExecutor : IFoActionExecutor
             for (int i = 0; i < SpeedbrakeArmLadder.Attempts.Count; i++)
             {
                 await PaceAsync();
+                if (_sc == null) return false;
                 switch (SpeedbrakeArmLadder.Attempts[i])
                 {
                     case SpeedbrakeArmTransport.CdaClick:
@@ -967,58 +984,22 @@ public class AircraftActionExecutor : IFoActionExecutor
     // simvar (continuously cached), step to 1013 / 29.92. If the pilot manually
     // engaged STD, the reading already shows ~29.92 → zero clicks → harmless no-op.
     //
-    // The stock KOHLSMAN indexes read as ONE ganged value on the NG3 (live-probed:
-    // the FO knob moved KOHLSMAN:1 and :2 together; there is no per-side readback).
-    // So: rotate the captain knob, wait for the fresh reading, then rotate the FO
-    // knob by whatever residual remains. Ganged topology → residual 0 after the
-    // captain pass (no double-apply); if a per-side topology ever surfaces, the
-    // captain's altimeter — the one every MSFSBA readout uses — still lands on
-    // standard under both.
+    // It is the DIALOG'S rotation, not a copy (PR #160 second review): the click math,
+    // the one-rotation-at-a-time guard (a Ctrl+B entry during it is refused, and it waits
+    // out one already running) and the ganged-baro handling (captain knob, settle, FO knob
+    // by the residual) live in PMDG737Definition.RotateAltimetersToStandardAsync. So does
+    // the record that the knob reads 29.92 with STD off: without it, the dialog took the
+    // rotated 29.92 for STD, and the pilot's QNH entry at the transition level selected
+    // STD instead of setting the QNH.
     // -----------------------------------------------------------------------
 
-    private const double StdInHg = 29.92;
-
-    public async Task SetAltimetersStandardAsync()
+    public Task SetAltimetersStandardAsync()
     {
         var sc = _sc;
-        if (sc == null) return;
-        if (!PMDG737Definition.EventIds.TryGetValue("EVT_EFIS_CPT_BARO", out int captEv) ||
-            !PMDG737Definition.EventIds.TryGetValue("EVT_EFIS_FO_BARO", out int foEv))
-            return;
-
-        await RotateBaroToStandardAsync(sc, (uint)captEv, "EFIS_BaroSelHPA_0");
-
-        // Let the knob clicks land and the continuous batch (1 Hz) deliver the fresh
-        // KOHLSMAN value before computing the FO side's residual — a stale read here
-        // would double-apply the clicks on the ganged baro.
-        await Task.Delay(1500);
-        await RotateBaroToStandardAsync(sc, (uint)foEv, "EFIS_BaroSelHPA_1");
-    }
-
-    private async Task RotateBaroToStandardAsync(SimConnectManager sc, uint knobEventId, string hpaModeField)
-    {
-        double? curInHg = sc.GetCachedVariableValue("ALTIMETER_SETTING");
-        if (curInHg == null) return;
-
-        // Click size follows the side's own hPa/inHg unit selector.
-        bool hpaMode = false;
-        if (sc.PMDGDataManager is { IsReady: true } dm)
-            hpaMode = (int)Math.Round(dm.GetFieldValue(hpaModeField)) == 1;
-
-        int clicks = hpaMode
-            ? (int)Math.Round(StdInHg * 33.8639) - (int)Math.Round(curInHg.Value * 33.8639) // 1 hPa per click
-            : (int)Math.Round((StdInHg - curInHg.Value) / 0.01);                            // 0.01 inHg per click
-        if (clicks == 0) return;
-
-        // RIGHTSINGLE (0x80000000) = up, LEFTSINGLE (0x20000000) = down — the dialog's
-        // verified convention. Cap matches the Ctrl+B dialog's safety cap.
-        uint flag = clicks > 0 ? 0x80000000u : 0x20000000u;
-        int count = Math.Min(Math.Abs(clicks), 200);
-        for (int i = 0; i < count; i++)
-        {
-            sc.SendPMDGEventViaTransmitWithTarget(knobEventId, flag);
-            if (i < count - 1) await Task.Delay(BaroClickGapMs);
-        }
+        if (sc == null) return Task.CompletedTask;
+        // Still this executor's SimConnect before each knob: a window closed meanwhile (an
+        // aircraft switch) detached it, and the next knob must not be turned.
+        return PMDG737Definition.RotateAltimetersToStandardAsync(sc, () => ReferenceEquals(_sc, sc));
     }
 
     // IRS / display / transponder

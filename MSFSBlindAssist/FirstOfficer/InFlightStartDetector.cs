@@ -35,6 +35,13 @@ public sealed class InFlightStartDetector
     // Set by the first airborne sample at flying speed after the ground; null until then.
     private DateTime? _windowStartUtc;
 
+    /// <summary>Forget what was seen (a new flight load): the next flying sample is judged afresh.</summary>
+    public void Reset()
+    {
+        _seen = Seen.Unknown;
+        _windowStartUtc = null;
+    }
+
     /// <summary>One sample. True exactly when the departure checklists should be marked now.</summary>
     public bool Update(bool onGround, double aglFt, double iasKt, DateTime nowUtc)
     {

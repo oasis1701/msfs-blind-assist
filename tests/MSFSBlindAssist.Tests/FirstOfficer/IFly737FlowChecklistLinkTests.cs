@@ -88,6 +88,9 @@ public class IFly737FlowChecklistLinkTests
         IFly737ActionExecutor.KeyFireTest, IFly737ActionExecutor.KeyStallTest1, IFly737ActionExecutor.KeyStallTest2,
         IFly737ActionExecutor.KeyOverspeedTest1, IFly737ActionExecutor.KeyOverspeedTest2,
         IFly737ActionExecutor.KeyTcasTest, IFly737ActionExecutor.KeyGpwsTest,
+        // The Engine Start waits the executor runs (StartWaitAsync): they read, and write nothing.
+        IFly737ActionExecutor.KeyEng1FuelN2, IFly737ActionExecutor.KeyEng2FuelN2,
+        IFly737ActionExecutor.KeyEng1StarterCutout, IFly737ActionExecutor.KeyEng2StarterCutout,
     };
 
     // Action-only lines (no auto-detect field) → the writes their CheckAction fires. A step

@@ -127,9 +127,11 @@ public class FoA380SecureFlowTests
         ("SC_NOSMOKE", FlowStepActionType.SetSwitch, "XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position", 2,
             Array.Empty<(string, int)>()),
 
+        // The runway turn-off lights too: Lineup switches them on and only After Takeoff off, a flow a
+        // pilot can skip, so "Exterior lights: OFF" was spoken over them (PR #160 second review).
         ("SC_EXTLT_OFF", FlowStepActionType.SetSwitchMultiple, null, null, new[]
         {
-            ("LIGHT_NAV", 0), ("LIGHT_LOGO", 0),
+            ("LIGHT_NAV", 0), ("LIGHT_LOGO", 0), ("LIGHT_RWY_TURNOFF", 0),
         }),
 
         ("SC_APUBLEED_OFF", FlowStepActionType.SetSwitch, "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 0,

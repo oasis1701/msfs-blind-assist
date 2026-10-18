@@ -47,6 +47,8 @@ internal sealed class FakeMd11Aircraft : IMd11FoTransport, IMd11FoFlightState
     public List<(int Down, int Up, int Ms)> Holds { get; } = new();
     public List<(string Var, double Value)> ExternalWrites { get; } = new();
     public List<string> Noted { get; } = new();
+    /// <summary>Every EndActuation: the control, and whether its actuation reached its target.</summary>
+    public List<(string NodeId, bool Reached)> Ended { get; } = new();
     public List<int> MuteRequests { get; } = new();
     public Dictionary<string, double> MaxSeen { get; } = new(StringComparer.Ordinal);
     public long Clock { get; private set; }
@@ -167,6 +169,7 @@ internal sealed class FakeMd11Aircraft : IMd11FoTransport, IMd11FoFlightState
     public double? ReadCached(string key) => Read(key);
 
     public void NoteActuation(string nodeId) => Noted.Add(nodeId);
+    public void EndActuation(string nodeId, bool reached) => Ended.Add((nodeId, reached));
     public void MuteLampSpeech(int ms) => MuteRequests.Add(ms);
 
     public Task DelayAsync(int ms)
@@ -389,6 +392,8 @@ internal sealed class FakeMd11Aircraft : IMd11FoTransport, IMd11FoFlightState
         Vars["MD11_OVHD_ELEC_EXT_PWR_ON_LT"] = _extConnected ? 1 : 0;
         Vars["MD11_OVHD_ELEC_EXT_PWR_AVAIL_LT"] = GpuAvailable && !_extConnected ? 1 : 0;
         Vars["MD11_OVHD_ELEC_APU_PWR_ON_LT"] = Get("MD11_APU_STATE") is 2 && _apuPowerRequested ? 1 : 0;
+        // AVAIL: running, its power not requested. Modelled, not measured, like the sources above.
+        Vars["MD11_OVHD_ELEC_APU_PWR_AVAIL_LT"] = Get("MD11_APU_STATE") is 2 && !_apuPowerRequested ? 1 : 0;
         Vars["MD11_OVHD_HYD_AUX_PUMP_1_ON_LT"] = _auxPump1 ? 1 : 0;
         Vars["MD11_OVHD_ENG_A_LT"] = (_ignitionBits & 1) != 0 ? 1 : 0;
         Vars["MD11_OVHD_ENG_B_LT"] = (_ignitionBits & 2) != 0 ? 2 : 0;
@@ -399,6 +404,8 @@ internal sealed class FakeMd11Aircraft : IMd11FoTransport, IMd11FoFlightState
     // Convenience for tests: put the hidden state somewhere.
     public void ConnectExternalPower() { _extConnected = true; Powered = true; RecomputeLamps(); }
     public void StartApuRunningWithPower() { Set("MD11_APU_STATE", 2); _apuPowerRequested = true; RecomputeLamps(); }
+    /// <summary>Started from the aft-overhead APU START button (or its power given up to external power): AVAIL lit, ON dark.</summary>
+    public void StartApuRunningWithoutPower() { Set("MD11_APU_STATE", 2); _apuPowerRequested = false; RecomputeLamps(); }
     public void SelectIgnition(int bits) { _ignitionBits = bits; RecomputeLamps(); }
     /// <summary>The pilot's own click: the lever starts travelling toward <paramref name="down"/> on the next tick.</summary>
     public void PilotCommandsGear(bool down) => _gearCommanded = down ? 25 : 0;

@@ -9,9 +9,11 @@ namespace MSFSBlindAssist.Automation;
 ///
 /// Gear UP:   positive rate (VS > 200 fpm) AND AGL > 50 ft. Once per leg; reset on touchdown.
 /// Gear DOWN: descending (VS < -100 fpm) between 100 and 2000 ft AGL, at least
-///            <see cref="GearDownDescentFt"/> below the highest point since the gear last came up
-///            (or the leg began): a descent, never a climb-out wobble. Once per approach; re-arms
-///            when the gear handle reads up again or the aircraft climbs above 3000 ft AGL.
+///            <see cref="GearDownDescentFt"/> below the highest ALTITUDE (MSL) since the gear last
+///            came up (or the leg began): a descent, never a climb-out wobble or rising ground under
+///            a level segment; and no faster than <see cref="GearDownMaxIasKts"/>. Once per approach;
+///            re-arms when the gear handle reads up again (on a descent, only at the next climb) or
+///            the aircraft climbs above 3000 ft AGL.
 /// AP engage: climbing through <see cref="EffectiveApEngageAltitudeAgl"/>. Once per leg;
 ///            reset on touchdown.
 ///
@@ -91,8 +93,16 @@ public sealed class UniversalAutomationService
     /// began, the aircraft must be before the gear comes down. A single descending sample once
     /// lowered it during the climb-out (a low level-off, turbulence), and a leg flown below 3000 ft
     /// AGL (a circuit after a touch-and-go) never re-armed it at all after the service had raised
-    /// the gear. A judgement, not a measurement.</summary>
+    /// the gear. A judgement, not a measurement. Measured in altitude (MSL), never height above
+    /// ground: ground rising 300 ft under a level departure segment once read as that descent, and
+    /// one VS dip then lowered the gear on the climb-out.</summary>
     public const double GearDownDescentFt = 300;
+    /// <summary>The gear does not come down above this indicated airspeed (kt): the lowest gear
+    /// extension limit (VLO) of the aircraft MSFSBA flies, the A320 family's and the A380's. A descent
+    /// over high ground reads under 2,000 ft AGL far from any runway, at descent speed (an Alpine
+    /// arrival at 280 kt over a 9,500 ft ridge). The gear comes down once the aircraft has slowed in
+    /// the band. An unread airspeed blocks nothing.</summary>
+    public const double GearDownMaxIasKts = 250;
     /// <summary>Climbing above this (ft AGL) re-arms the gear down, for a go-around, where the gear
     /// handle is not read.</summary>
     public const double GearDownRearmAglFt = 3000;
@@ -178,9 +188,12 @@ public sealed class UniversalAutomationService
     // Reset and by switching the gate on while not known to be on the ground.
     private bool _gearUpArmed;
     private bool _apArmed;
-    // The highest AGL since the gear last came up, or since the leg began (NaN = none yet).
-    private double _peakAglFt = double.NaN;
+    // The highest altitude (MSL) since the gear last came up, or since the leg began (NaN = none yet).
+    private double _peakMslFt = double.NaN;
     private bool? _lastGearHandleDown;
+    // The gear came up on a descent: the pilot taking back a gear the service lowered. The gear
+    // down re-arms at the next climb (a go-around), never on that descent.
+    private bool _gearDownRearmOnClimb;
 
     public UniversalAutomationService(Action<string> sendStockEvent, Action<string> announce,
         Action? engageAutopilot = null, Func<bool?>? isAutopilotEngaged = null,
@@ -211,8 +224,9 @@ public sealed class UniversalAutomationService
         _lastOnGround       = null;
         _gearUpArmed        = false;
         _apArmed            = false;
-        _peakAglFt          = double.NaN;
+        _peakMslFt          = double.NaN;
         _lastGearHandleDown = null;
+        _gearDownRearmOnClimb = false;
     }
 
     /// <summary>No position samples are coming (MainForm stops asking while every feature is off), so
@@ -222,7 +236,9 @@ public sealed class UniversalAutomationService
 
     /// <param name="onGround">The sim's SIM ON GROUND for this sample.</param>
     /// <param name="altitudeAgl">Feet above ground; NaN when unknown, which acts on nothing.</param>
-    public void Update(double altitudeMsl, double verticalSpeedFpm, double altitudeAgl, bool onGround)
+    /// <param name="airspeedKts">Indicated airspeed for the gear-down limit; NaN (unread) limits nothing.</param>
+    public void Update(double altitudeMsl, double verticalSpeedFpm, double altitudeAgl, bool onGround,
+        double airspeedKts = double.NaN)
     {
         if (onGround)
         {
@@ -236,7 +252,8 @@ public sealed class UniversalAutomationService
                 _apAttempts         = 0;
                 _apPressed          = false;
             }
-            _peakAglFt    = double.NaN;
+            _peakMslFt    = double.NaN;
+            _gearDownRearmOnClimb = false;
             _gearUpArmed  = true;
             _apArmed      = true;
             _lastOnGround = true;
@@ -250,17 +267,21 @@ public sealed class UniversalAutomationService
         bool? gearDown  = _isGearHandleDown?.Invoke();
 
         // The gear coming up (the pilot's or ours) starts a new descent to measure from, and
-        // re-arms the gear down, as climbing above the go-around height does.
+        // re-arms the gear down, as climbing above the go-around height does. Not on a descent:
+        // there it is the pilot taking back a gear the service lowered, and re-armed at once it came
+        // down again, "Gear down.", after every further 300 ft. It re-arms at the next climb.
         if (gearDown == false && _lastGearHandleDown != false)
         {
-            _peakAglFt = altitudeAgl;
-            _gearLoweredThisLeg = false;
+            if (descending) _gearDownRearmOnClimb = true;
+            else RearmGearDown(altitudeMsl);
         }
+        else if (_gearDownRearmOnClimb && climbing && gearDown == false)
+            RearmGearDown(altitudeMsl);
         _lastGearHandleDown = gearDown;
         if (altitudeAgl > GearDownRearmAglFt)
             _gearLoweredThisLeg = false;
-        if (double.IsNaN(_peakAglFt) || altitudeAgl > _peakAglFt)
-            _peakAglFt = altitudeAgl;
+        if (double.IsNaN(_peakMslFt) || altitudeMsl > _peakMslFt)
+            _peakMslFt = altitudeMsl;
 
         if (AutoGearUpEnabled && _gearUpArmed && !_gearRaisedThisLeg && climbing && altitudeAgl > GearUpMinAglFt)
         {
@@ -275,7 +296,8 @@ public sealed class UniversalAutomationService
 
         if (AutoGearDownEnabled && !_gearLoweredThisLeg && descending
             && altitudeAgl < GearDownBandTopFt && altitudeAgl > GearDownBandBottomFt
-            && altitudeAgl <= _peakAglFt - GearDownDescentFt)
+            && altitudeMsl <= _peakMslFt - GearDownDescentFt
+            && !(airspeedKts > GearDownMaxIasKts))
         {
             // Already down (the pilot lowered it): nothing to do, nothing to say. The call says only
             // what was done: "Two thousand feet" was spoken wherever in the band it fired.
@@ -289,6 +311,14 @@ public sealed class UniversalAutomationService
 
         if (AutoApEnabled && !_apResolvedThisLeg)
             UpdateAutopilotEngage(altitudeAgl, climbing);
+    }
+
+    // A new descent to measure the gear down from, starting here.
+    private void RearmGearDown(double altitudeMsl)
+    {
+        _peakMslFt = altitudeMsl;
+        _gearLoweredThisLeg = false;
+        _gearDownRearmOnClimb = false;
     }
 
     /// <summary>

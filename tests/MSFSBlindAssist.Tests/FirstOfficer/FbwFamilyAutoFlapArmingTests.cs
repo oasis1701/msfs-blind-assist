@@ -3,11 +3,12 @@
 // 2026-10-18 one descending sample below 5000 ft AGL armed extension, so an ALT* overshoot or a gust
 // at a departure level-off extended the flaps ("Speed checked. Flaps 2.") with the takeoff flaps
 // still out; and a manager first built in flight, or Auto Flaps switched on there, retracted an
-// arrival's flaps at once.
+// arrival's flaps at once. The second review (2026-10-18) measured the descent in MSL, not AGL
+// (terrain), and ended the retraction once the flaps read up in the air.
 //
-// The managers cannot be constructed in a unit test (see FbwA320VfeNextTests' header: they take a
-// ScreenReaderAnnouncer and an executor wired to a live definition), so the two gates are pinned on
-// the source text of all three, as FbwA320VfeNextTests pins the VFE-next source.
+// The two gates are pinned on the source text of all three, as FbwA320VfeNextTests pins the VFE-next
+// source; FbwFamilyAutoManagerSecondReviewTests flies the managers themselves (a recording
+// announcer, a seeded cache and an executor whose writes land on a recording definition).
 
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -25,7 +26,9 @@ public class FbwFamilyAutoFlapArmingTests
     {
         string source = Source(folder, fileName);
         Assert.Contains("private const double ApproachArmDescentFt = 300;", source);
-        Assert.Contains("agl <= _peakAgl - ApproachArmDescentFt", source);
+        // MSL, never AGL: AGL follows the terrain, so level over rising ground once "descended".
+        Assert.Contains("msl <= _peakMsl - ApproachArmDescentFt", source);
+        Assert.DoesNotContain("_peakAgl", source);
     }
 
     [Theory]
@@ -36,10 +39,13 @@ public class FbwFamilyAutoFlapArmingTests
     {
         string source = Source(folder, fileName);
         Assert.Contains("if (_retractionArmed && !_extensionArmed && !descending)", source);
-        // Armed by a ground sample and by both go-around branches; disarmed when Auto Flaps is
-        // switched on while not known to be on the ground, and by Reset.
+        // Armed by a ground sample and by both branches of the PRIMARY go-around signature (never by
+        // the high fallback, which only clears the approach latch); disarmed when Auto Flaps is
+        // switched on while not known to be on the ground, once the flaps read up in the air, and by
+        // Reset.
         Assert.Contains("_retractionArmed = true;   // a takeoff from here is watched", source);
         Assert.Contains("if (value && !_autoFlapsEnabled && _lastOnGround != true) _retractionArmed = false;", source);
+        Assert.Contains("if (flaps == 0) _retractionArmed = false;", source);
         Assert.Equal(3, Count(source, "_retractionArmed = true"));
     }
 

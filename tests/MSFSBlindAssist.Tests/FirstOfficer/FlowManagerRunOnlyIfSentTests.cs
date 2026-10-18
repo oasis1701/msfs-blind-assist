@@ -76,9 +76,7 @@ public class FlowManagerRunOnlyIfSentTests
     {
         Id = id, Label = $"{id}: OFF",
         ActionType = FlowStepActionType.SetSwitch,
-        EventName = id, TargetValue = 0,
-        PostActionDelayMs = 0,
-        FailurePolicy = FlowStepFailurePolicy.Skip,
+        EventName = id, TargetValue = 0,        FailurePolicy = FlowStepFailurePolicy.Skip,
         SkipCondition = alreadySet,
     };
 
@@ -86,9 +84,7 @@ public class FlowManagerRunOnlyIfSentTests
     {
         Id = id, Label = "APU flap to close",
         ActionType = FlowStepActionType.WaitSeconds,
-        WaitSeconds = 0,
-        PostActionDelayMs = 0,
-        RunOnlyIfStepSent = after,
+        WaitSeconds = 0,        RunOnlyIfStepSent = after,
     };
 
     private static FlowDefinition<FakeState> Flow(params FlowStep<FakeState>[] steps) => new()

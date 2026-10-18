@@ -390,13 +390,14 @@ public class UniversalAutomationServiceTests
         Assert.Equal(new[] { "GEAR_UP" }, events);
     }
 
+    // Measured in altitude (MSL), the ground under the aircraft flat here (100 ft).
     [Fact]
     public void GearDown_NeedsADescentOfThreeHundredFeetBelowThePeak()
     {
         var s = Make();
         s.AutoGearDownEnabled = true;
         Fly(s, 1900, 0, 1800);
-        Fly(s, 1600, -500, 1501);         // 299 ft below
+        Fly(s, 1601, -500, 1501);         // 299 ft below
         Assert.Empty(events);
         Fly(s, 1600, -500, 1500);         // 300 ft below
         Assert.Equal(new[] { "GEAR_DOWN" }, events);
@@ -458,6 +459,61 @@ public class UniversalAutomationServiceTests
         Fly(s, 1400, -700, 1300);
         Assert.Empty(events);
         Assert.Empty(spoken);             // never "Gear down." over a gear already down
+    }
+
+    // PR 160 second review: the descent is measured in altitude, never height above ground. A coastal
+    // departure levelled at 2,000 ft over ground rising to 350 ft read as a 340 ft "descent" in AGL,
+    // and one VS dip lowered the gear on the climb-out.
+    [Fact]
+    public void GearDown_LevelSegmentOverRisingGround_NeverLowersTheGear()
+    {
+        var s = Make();
+        s.AutoGearUpEnabled = true;
+        s.AutoGearDownEnabled = true;
+        OnGround(s);
+        Fly(s, 500, 800, 490);              // gear up over the coast
+        Fly(s, 2000, 0, 1990);              // level at 2,000 ft
+        Fly(s, 2000, 0, 1800);              // the ground rises under the level segment ...
+        Fly(s, 1980, -300, 1630);           // ... and one ALT-hold dip
+        Fly(s, 2000, 0, 1650);
+        Assert.Equal(new[] { "GEAR_UP" }, events);
+    }
+
+    // Faster than the lowest gear limit speed: the gear waits until the aircraft has slowed in the
+    // band (an arrival at descent speed low over high ground).
+    [Fact]
+    public void GearDown_AboveTheSpeedLimit_WaitsUntilSlowed()
+    {
+        var s = Make();
+        s.AutoGearDownEnabled = true;
+        s.Update(11000, -1500, 9000, onGround: false, airspeedKts: 280);
+        s.Update(10500, -1500, 1500, onGround: false, airspeedKts: 280);  // a ridge under the descent
+        Assert.Empty(events);
+        s.Update(3000, -800, 1400, onGround: false, airspeedKts: 240);
+        Assert.Equal(new[] { "GEAR_DOWN" }, events);
+    }
+
+    // The pilot raising a gear the service lowered, on a descent, is taking it back: it stays up
+    // for the rest of that descent, and comes down again after a go-around (the next climb).
+    [Fact]
+    public void GearDown_PilotRaisesItOnTheDescent_StaysUp_UntilTheNextClimb()
+    {
+        bool? handleDown = false;
+        var s = new UniversalAutomationService(events.Add, spoken.Add, isGearHandleDown: () => handleDown);
+        s.AutoGearDownEnabled = true;
+        Fly(s, 3000, 0, 2900);
+        Fly(s, 2000, -700, 1900);           // gear down #1
+        handleDown = true;
+        Fly(s, 1900, -700, 1800);
+        handleDown = false;                  // the pilot raises it, still descending
+        Fly(s, 1800, -700, 1700);
+        Fly(s, 1400, -700, 1300);           // 400 ft lower: left up
+        Fly(s, 1000, -700, 900);
+        Assert.Equal(new[] { "GEAR_DOWN" }, events);
+        Fly(s, 1300, 1200, 1200);           // go-around: climbing re-arms it
+        Fly(s, 1700, 0, 1600);
+        Fly(s, 1300, -700, 1200);           // gear down #2
+        Assert.Equal(new[] { "GEAR_DOWN", "GEAR_DOWN" }, events);
     }
 
     [Fact]

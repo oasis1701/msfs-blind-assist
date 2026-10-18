@@ -618,10 +618,15 @@ public static class FbwA380FlowDefinitions
             Done(Skip(SW("SC_NOSMOKE", "No smoking signs: OFF",
                     "XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position", 2),
                 s => s.IsPosition("XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position", 2)), "SC_NOSMOKE"),
-            // Only nav + logo are still burning by now: beacon / wing / nose went off in
-            // PARKING, landing + strobe in AFTER_LANDING.
-            Done(Skip(Multi("SC_EXTLT_OFF", "Exterior lights: OFF", ("LIGHT_NAV", 0), ("LIGHT_LOGO", 0)),
-                s => s.IsPosition("LIGHT_NAV", 0) && s.IsPosition("LIGHT_LOGO", 0)), "SC_EXTLT_OFF"),
+            // Nav + logo, and the runway turn-off lights: beacon / wing / nose went off in PARKING,
+            // landing + strobe in AFTER_LANDING, but the turn-off lights Lineup switched on go off only
+            // in AFTER_TAKEOFF, which a pilot can skip (or an in-flight start latches), and no arrival
+            // flow touches them; so they are switched off here too, or "Exterior lights: OFF" was
+            // spoken with them still on.
+            Done(Skip(Multi("SC_EXTLT_OFF", "Exterior lights: OFF",
+                    ("LIGHT_NAV", 0), ("LIGHT_LOGO", 0), ("LIGHT_RWY_TURNOFF", 0)),
+                s => s.IsPosition("LIGHT_NAV", 0) && s.IsPosition("LIGHT_LOGO", 0)
+                  && s.IsPosition("LIGHT_RWY_TURNOFF", 0)), "SC_EXTLT_OFF"),
             // IsPosition(..., 0), not !IsOn(...): both read false on an unread (NaN) variable,
             // but that means opposite things for a Skip condition on an OFF step — !IsOn(NaN)
             // is true (skips the write, leaving a switch that was never actually read as OFF
@@ -664,9 +669,7 @@ public static class FbwA380FlowDefinitions
         Id = id, Label = label,
         ActionType = FlowStepActionType.SetSwitch,
         EventName = eventName,
-        TargetValue = target,
-        PostActionDelayMs = 300,
-        FailurePolicy = FlowStepFailurePolicy.Skip,
+        TargetValue = target,        FailurePolicy = FlowStepFailurePolicy.Skip,
     };
 
     private static Step Provider(string id, string label, string eventName, Func<FbwA380StateEvaluator, int?> provider) => new()
@@ -674,18 +677,14 @@ public static class FbwA380FlowDefinitions
         Id = id, Label = label,
         ActionType = FlowStepActionType.SetSwitch,
         EventName = eventName,
-        TargetValueProvider = provider,
-        PostActionDelayMs = 300,
-        FailurePolicy = FlowStepFailurePolicy.Skip,
+        TargetValueProvider = provider,        FailurePolicy = FlowStepFailurePolicy.Skip,
     };
 
     private static Step Multi(string id, string label, params (string EventName, int? TargetValue)[] actions) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.SetSwitchMultiple,
-        MultiActions = actions.ToList(),
-        PostActionDelayMs = 400,
-        FailurePolicy = FlowStepFailurePolicy.Skip,
+        MultiActions = actions.ToList(),        FailurePolicy = FlowStepFailurePolicy.Skip,
     };
 
     // Every one of the 20 fuel pumps (8 feed, 12 transfer) to one target, in the order of
@@ -698,9 +697,7 @@ public static class FbwA380FlowDefinitions
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.WaitSeconds,
-        WaitSeconds = seconds,
-        PostActionDelayMs = 0,
-    };
+        WaitSeconds = seconds,    };
 
     private static Step WaitForField(string id, string label, string field, Func<double, bool> condition, int timeoutSec,
         FlowStepFailurePolicy onTimeout = FlowStepFailurePolicy.Skip) => new()
@@ -710,17 +707,13 @@ public static class FbwA380FlowDefinitions
         ConditionFieldName = field,
         Condition = condition,
         TimeoutSeconds = timeoutSec,
-        FailurePolicy = onTimeout,
-        PostActionDelayMs = 0,
-    };
+        FailurePolicy = onTimeout,    };
 
     private static Step Captain(string id, string label, string? reminderText = null) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.CaptainReminder,
-        ReminderText = reminderText ?? label,
-        PostActionDelayMs = 200,
-    };
+        ReminderText = reminderText ?? label,    };
 
     private static Step Skip(Step step, Func<FbwA380StateEvaluator, bool> cond)
     {

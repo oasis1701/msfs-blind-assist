@@ -10,10 +10,11 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 /// "Autopilot engaged" over an autopilot that never engaged. The engage is now the cockpit's
 /// AP 1 push — a TOGGLE — sent only once both autopilots read definitively off (never on an
 /// unknown state: the autopilot may already be on), verified on AP 1 / AP 2 active, and spaced
-/// 3 s apart. Since 2026-10-18 the other toggle engages (the PMDG 737 and 777, the iFly, the MD-11
-/// and the Fenix) are spaced and wait the same way: at 0 a PMDG retry pressed CMD A again before
-/// the 1 Hz snapshot showed the first press, and switched it off. Only an aircraft whose engage is
-/// the idempotent stock AUTOPILOT_ON keeps the every-tick retry and the open-loop press.
+/// 3 s apart. Since 2026-10-18 the other toggle engages (the PMDG 737 and 777, the iFly, the MD-11,
+/// the Fenix and the HS787) are spaced and wait the same way: at 0 a PMDG retry pressed CMD A again
+/// before the 1 Hz snapshot showed the first press, and switched it off. Only an aircraft whose engage
+/// is the idempotent stock AUTOPILOT_ON (none that MSFSBA flies today) keeps the base class's
+/// every-tick retry and the open-loop press.
 /// </summary>
 public class FbwAutopilotEngageTests
 {
@@ -25,14 +26,26 @@ public class FbwAutopilotEngageTests
         typeof(IFly737MAXDefinition),
         typeof(FenixA320Definition),
         typeof(TFDiMD11Definition),
-    };
-
-    // The aircraft that keep the stock AUTOPILOT_ON: no engaged state is read, so every pin says
-    // they stay as they were.
-    public static TheoryData<Type> OtherAircraft => new()
-    {
         typeof(HorizonSim787Definition),
     };
+
+    // The HS787 engages through its panel's AP_MASTER and reads AUTOPILOT MASTER: it inherited the
+    // stock AUTOPILOT_ON and a null state, so "Autopilot engaged" was said on a press never read back
+    // (PR 160 second review).
+    [Fact]
+    public void Hs787_reads_the_autopilot_master_and_unknown_until_read()
+    {
+        var def = new HorizonSim787Definition();
+        try
+        {
+            Assert.NotEqual(typeof(BaseAircraftDefinition),
+                typeof(HorizonSim787Definition).GetMethod(nameof(IAircraftDefinition.EngageAutopilot))!.DeclaringType);
+            Assert.Null(def.IsAutopilotEngaged(SeededSimConnectCache.With()));
+            Assert.True(def.IsAutopilotEngaged(SeededSimConnectCache.With(("HS787_APMaster", 1))));
+            Assert.False(def.IsAutopilotEngaged(SeededSimConnectCache.With(("HS787_APMaster", 0))));
+        }
+        finally { (def as IDisposable)?.Dispose(); }
+    }
 
     [Theory]
     [MemberData(nameof(OtherToggleAircraft))]
@@ -70,25 +83,6 @@ public class FbwAutopilotEngageTests
         typeof(FlyByWireA380Definition),
         typeof(HeadwindA330Definition),
     };
-
-    [Theory]
-    [MemberData(nameof(OtherAircraft))]
-    public void Other_aircraft_keep_the_every_tick_retry(Type defType)
-    {
-        var def = (IAircraftDefinition)Activator.CreateInstance(defType)!;
-        try { Assert.Equal(0, def.AutopilotEngageRetryIntervalMs); }
-        finally { (def as IDisposable)?.Dispose(); }
-    }
-
-    // A null readback keeps its open-loop press only where the engage is the stock event.
-    [Theory]
-    [MemberData(nameof(OtherAircraft))]
-    public void Other_aircraft_do_not_wait_for_a_definite_autopilot_state(Type defType)
-    {
-        var def = (IAircraftDefinition)Activator.CreateInstance(defType)!;
-        try { Assert.False(def.AutopilotEngageWaitsForState); }
-        finally { (def as IDisposable)?.Dispose(); }
-    }
 
     // On the FlyByWire family a null readback only means "not read yet" (the AP vars arrive with
     // the 1 Hz batch), and the AP 1 push is a toggle: the service waits for a definite reading

@@ -3,6 +3,7 @@ using System.Linq;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.FirstOfficer.IFly737;
 using MSFSBlindAssist.FirstOfficer.Models;
+using MSFSBlindAssist.SimConnect.IFly;
 using Xunit;
 
 // An alias, not `using MSFSBlindAssist.FirstOfficer;`: that namespace also holds the 777's
@@ -283,35 +284,29 @@ public class IFly737ProfileStructureTests
     {
         var steps = IFly737FlowDefinitions.Build().Single(f => f.Id == "ENGINE_START").Steps;
 
-        // Engine 2: the N2 wait (FO_ENG2_N2, Stop policy) must sit BEFORE the start-lever
-        // step that introduces fuel (Engine_Start_Lever_Status_1) — a starter that never
-        // spins up must abort the flow rather than move the lever.
-        int e2WaitIdx = steps.FindIndex(s => s.ActionType == FlowStepActionType.WaitForCondition
-            && s.ConditionFieldName == "FO_ENG2_N2");
+        // Engine 2: the N2 wait (the executor's ENG2_FUEL_N2, Stop policy) must sit BEFORE the
+        // start-lever step that introduces fuel (Engine_Start_Lever_Status_1) — a starter that
+        // never spins up must abort the flow rather than move the lever. Since the second review
+        // (2026-10-18) the executor runs the waits, aware of bowed rotor motoring; the N2 boundary
+        // itself is pinned in IFly737SecondReviewTests.
+        int e2WaitIdx = steps.FindIndex(s => s.ActionType == FlowStepActionType.SetSwitch
+            && s.EventName == IFly737ActionExecutor.KeyEng2FuelN2);
         int e2RunIdx = steps.FindIndex(s => s.ActionType == FlowStepActionType.SetSwitch
             && s.EventName == "Engine_Start_Lever_Status_1");
-        Assert.True(e2WaitIdx >= 0, "no FO_ENG2_N2 wait step found");
+        Assert.True(e2WaitIdx >= 0, "no engine 2 N2 wait step found");
         Assert.True(e2RunIdx >= 0, "no Engine_Start_Lever_Status_1 step found");
         Assert.True(e2WaitIdx < e2RunIdx, "the engine 2 N2 gate must precede the start-lever step");
         Assert.Equal(FlowStepFailurePolicy.Stop, steps[e2WaitIdx].FailurePolicy);
-        Assert.NotNull(steps[e2WaitIdx].Condition);
-        Assert.True(steps[e2WaitIdx].Condition!(IFly737StateEvaluator.EngStartFuelN2));
-        Assert.False(steps[e2WaitIdx].Condition!(IFly737StateEvaluator.EngStartFuelN2 - 1));
 
         // Engine 1: same shape, mirrored fields.
-        int e1WaitIdx = steps.FindIndex(s => s.ActionType == FlowStepActionType.WaitForCondition
-            && s.ConditionFieldName == "FO_ENG1_N2");
+        int e1WaitIdx = steps.FindIndex(s => s.ActionType == FlowStepActionType.SetSwitch
+            && s.EventName == IFly737ActionExecutor.KeyEng1FuelN2);
         int e1RunIdx = steps.FindIndex(s => s.ActionType == FlowStepActionType.SetSwitch
             && s.EventName == "Engine_Start_Lever_Status_0");
-        Assert.True(e1WaitIdx >= 0, "no FO_ENG1_N2 wait step found");
+        Assert.True(e1WaitIdx >= 0, "no engine 1 N2 wait step found");
         Assert.True(e1RunIdx >= 0, "no Engine_Start_Lever_Status_0 step found");
         Assert.True(e1WaitIdx < e1RunIdx, "the engine 1 N2 gate must precede the start-lever step");
         Assert.Equal(FlowStepFailurePolicy.Stop, steps[e1WaitIdx].FailurePolicy);
-        // Fix pass 1 (2026-08), Fix 8: pin the engine 1 Condition boundary too, symmetric
-        // with engine 2 above — only the policy/ordering was checked before.
-        Assert.NotNull(steps[e1WaitIdx].Condition);
-        Assert.True(steps[e1WaitIdx].Condition!(IFly737StateEvaluator.EngStartFuelN2));
-        Assert.False(steps[e1WaitIdx].Condition!(IFly737StateEvaluator.EngStartFuelN2 - 1));
 
         // Engine 2 is started before engine 1 (PMDG 737 convention).
         Assert.True(e2WaitIdx < e1WaitIdx);
@@ -468,15 +463,46 @@ public class IFly737ProfileStructureTests
         Assert.NotEqual("PRESS_FLT_ALT_SET", pressStep.EventName);
         Assert.NotEqual("PRESS_LDG_ALT_SET", pressStep.EventName);
 
-        // The Captain fallback survives for a pilot with no SimBrief plan loaded, and is
-        // skipped once a plan exists — unchanged behaviour from before this fix.
+        // The Captain fallback survives, and is skipped only once the windows READ the plan
+        // (FO_PRESS_ALTS_MATCH, the line's own test), never merely because a plan exists: keyed
+        // on the plan, a write that did not take was heard as "Skipping…" then a false "Already
+        // set", and the reminder was lost (second review, 2026-10-18; the A320 family's fe2360b6).
         Assert.Equal(FlowStepActionType.CaptainReminder, captainStep.ActionType);
         Assert.NotNull(captainStep.SkipCondition);
 
+        // No plan: the reminder speaks.
         var state = new IFly737StateEvaluator();
         Assert.False(captainStep.SkipCondition!(state));
 
+        // A plan, but no readable windows (no SDK here): still speaks — a plan is not a set panel.
         state.SetPlannedPressurizationAltitudes(35000, 500);
-        Assert.True(captainStep.SkipCondition!(state));
+        Assert.False(captainStep.SkipCondition!(state));
+
+        // A plan, and the windows read it: skipped. A plan the windows do not read: speaks.
+        Assert.True(captainStep.SkipCondition!(WithWindows(35000, 500, plannedFlt: 35000, plannedLand: 500)));
+        Assert.False(captainStep.SkipCondition!(WithWindows(8000, 500, plannedFlt: 35000, plannedLand: 500)));
+    }
+
+    // An evaluator reading pressurization windows at fltFt / landFt, with a plan loaded.
+    private static IFly737StateEvaluator WithWindows(int fltFt, int landFt, int plannedFlt, int plannedLand)
+    {
+        var b = new byte[IFlySdkOffsets.StructSize];
+        void Digits(int feet, params int[] offsets)
+        {
+            for (int i = 0, div = 10000; i < offsets.Length; i++, div /= 10)
+                b[offsets[i]] = (byte)(feet / div % 10);
+        }
+        Digits(fltFt,
+            IFlySdkOffsets.Flight_Altitude_Indicator_10000_Status, IFlySdkOffsets.Flight_Altitude_Indicator_1000_Status,
+            IFlySdkOffsets.Flight_Altitude_Indicator_100_Status, IFlySdkOffsets.Flight_Altitude_Indicator_10_Status,
+            IFlySdkOffsets.Flight_Altitude_Indicator_1_Status);
+        Digits(landFt,
+            IFlySdkOffsets.Landing_Altitude_Indicator_10000_Status, IFlySdkOffsets.Landing_Altitude_Indicator_1000_Status,
+            IFlySdkOffsets.Landing_Altitude_Indicator_100_Status, IFlySdkOffsets.Landing_Altitude_Indicator_10_Status,
+            IFlySdkOffsets.Landing_Altitude_Indicator_1_Status);
+        var snapshot = new IFlySdkSnapshot(b);
+        var state = new IFly737StateEvaluator { SnapshotSource = () => snapshot, ReadySource = () => true };
+        state.SetPlannedPressurizationAltitudes(plannedFlt, plannedLand);
+        return state;
     }
 }

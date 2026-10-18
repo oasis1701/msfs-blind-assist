@@ -111,6 +111,11 @@ public sealed class SeatbeltAutomation
             case FoSeatbeltMode.TocTod:      UpdateTocTod(altitudeFt, vsFpm, onGround); break;
             default: break; // Disabled
         }
+        // The 10k crossing latch follows the aircraft under every mode, as the 10,000 ft
+        // landing-light latch does (FO-19). Tracked only in 10k mode, a switch away and back across
+        // 10,000 ft acted on a crossing long past: "Above ten thousand. Seat belt signs off." in
+        // cruise, over signs the pilot had switched on.
+        if (Mode != FoSeatbeltMode.TenThousand) Track10k(altitudeFt);
     }
 
     private void Update10k(double alt, double vs)
@@ -131,8 +136,13 @@ public sealed class SeatbeltAutomation
             _announce("Below ten thousand. Seat belt signs on.");
         }
 
-        if (nowAbove)      _prevAbove10k = true;
-        else if (nowBelow) _prevAbove10k = false;
+        Track10k(alt);
+    }
+
+    private void Track10k(double alt)
+    {
+        if (alt > FloorFt + HysteresisFt)      _prevAbove10k = true;
+        else if (alt < FloorFt - HysteresisFt) _prevAbove10k = false;
     }
 
     private void UpdateTocTod(double alt, double vs, bool onGround)

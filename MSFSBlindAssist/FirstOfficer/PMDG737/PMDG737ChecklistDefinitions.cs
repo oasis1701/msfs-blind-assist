@@ -430,10 +430,12 @@ public static class PMDG737ChecklistDefinitions
                 new[] { "AIR_PackSwitch_1" }, (e, _) => e.SetPacks(0)),
             Auto("SE_APU_OFF", "SECURE", "APU: OFF", "APU_Selector", v => v < 0.5, (e, _) => e.SetApuSelector(0)),
             // Ground power OFF: no reliable stateless "GPU on bus" signal to auto-detect,
-            // so this is a manual-tick action guarded on IsGpuOn() — inverts the EPU_GPU
-            // "Ground power: ON" form (SetGroundPower(1)) and no-ops when no GPU is present.
+            // so this is a manual-tick action — inverts the EPU_GPU "Ground power: ON" form
+            // (SetGroundPower(1)) and no-ops when ground power DEFINITELY reads off the buses
+            // (IsGpuOff). An unread one is pressed off: "if IsGpuOn()" pressed nothing before
+            // the first CDA snapshot, and the tick stood over a connected GPU.
             ActionManual("SE_GND_PWR_OFF", "SECURE", "Ground power: OFF",
-                (e, s) => { if (s.IsGpuOn()) e.SetGroundPower(0); }),
+                (e, s) => { if (!s.IsGpuOff()) e.SetGroundPower(0); }),
         }
     };
 

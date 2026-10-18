@@ -1,4 +1,5 @@
 using MSFSBlindAssist.Aircraft.MD11;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Aircraft;
 
@@ -8,8 +9,10 @@ namespace MSFSBlindAssist.Aircraft;
 /// writes onto the one paced writer — a second writer would break the {seq} anti-coalescing
 /// prefix and the 60 ms pacing, and two writes landing in one frame lose one event.
 ///
-/// Nothing here speaks. Every method refuses (returns false) when the bus is absent or the
-/// calculator path cannot land a write (<see cref="CanDeliver"/>), exactly like PressControl.
+/// Nothing here speaks but <see cref="EndFoActuation"/>, for a flap walk that stopped short. Every
+/// write refuses (returns false) when the bus is absent or the calculator path cannot land a write
+/// (<see cref="CanDeliver"/>), exactly like PressControl, and when the bus did not take the event
+/// (closing, or its queue full): a press it dropped is never reported done.
 /// </summary>
 public partial class TFDiMD11Definition
 {
@@ -30,27 +33,29 @@ public partial class TFDiMD11Definition
     /// <summary>CEVENTs queued and not yet written (0 without a bus).</summary>
     internal int FoBusPending => _bus?.Pending ?? 0;
 
-    /// <summary>Queues one CEVENT id (a toggle click, a stepped switch's single step).</summary>
+    /// <summary>Queues one CEVENT id (a toggle click, a stepped switch's single step); false when the bus did not take it.</summary>
     internal bool FoFireEvent(int eventId)
     {
         var bus = _bus;                                   // read once: Dispose may null it
         if (bus == null || !CanDeliver || eventId <= 0) return false;
-        bus.Fire(eventId);
-        return true;
+        return bus.TryFire(eventId);
     }
 
-    /// <summary>Queues a DOWN then UP pair (a button press). Either id may be 0 for "none".</summary>
+    /// <summary>
+    /// Queues a DOWN then UP pair (a button press). Either id may be 0 for "none". False when the
+    /// bus did not take the pair: a one-shot press (a test, a reset, NAV) has no read-back, so a
+    /// dropped one reported done would tick its line.
+    /// </summary>
     internal bool FoPress(int downId, int upId)
     {
         var bus = _bus;
         if (bus == null || !CanDeliver || (downId <= 0 && upId <= 0)) return false;
-        bus.FirePressRelease(downId > 0 ? downId : null, upId > 0 ? upId : null);
-        return true;
+        return bus.TryFirePressRelease(downId > 0 ? downId : null, upId > 0 ? upId : null);
     }
 
     /// <summary>
     /// DOWN, hold, UP — a hold-to-test button. The bus owns the owed UP, so disposal releases it.
-    /// Completes when the UP has been queued.
+    /// Completes when the UP has been queued; false when the bus did not take the DOWN or the UP.
     /// </summary>
     internal async Task<bool> FoHoldAsync(int downId, int upId, int holdMs)
     {
@@ -62,8 +67,7 @@ public partial class TFDiMD11Definition
             Kind = Md11Kinds.Button,
             Events = new Dictionary<string, int> { ["LEFT_BUTTON_DOWN"] = downId, ["LEFT_BUTTON_UP"] = upId },
         };
-        await bus.PressAndHoldAsync(synthetic, holdMs).ConfigureAwait(false);
-        return true;
+        return await bus.TryPressAndHoldAsync(synthetic, holdMs).ConfigureAwait(false);
     }
 
     /// <summary>One direct write to an allow-listed var (<see cref="IsFoExternalWriteAllowed"/>).</summary>
@@ -85,6 +89,26 @@ public partial class TFDiMD11Definition
         long now = Environment.TickCount64;
         OnUiThread(() => _gate.NoteQuietActuation(nodeId, now, Md11AnnouncementGate.FoQuietWindowMs));
     }
+
+    /// <summary>
+    /// The FO's actuation of <paramref name="nodeId"/> is over. Reached: its window runs out by
+    /// itself, so the move's last deliveries stay quiet. Stopped short: the window closes now, and a
+    /// flap walk's resting detent is spoken (<see cref="EndFoFlapWalk"/>). On the UI thread, like
+    /// every gate write; a throw is logged, never left to take the message pump down.
+    /// </summary>
+    internal void EndFoActuation(string nodeId, bool reached)
+        => OnUiThread(() =>
+        {
+            try
+            {
+                if (!reached) _gate.EndQuietActuation(nodeId);
+                if (string.Equals(nodeId, Md11FlapSystem.LeverKey, StringComparison.Ordinal)) EndFoFlapWalk(reached);
+            }
+            catch (Exception ex)
+            {
+                Log.Debug("MD11", $"First Officer actuation end ({nodeId}) threw: {ex.Message}");
+            }
+        });
 
     /// <summary>Silences every background lamp sentence for <paramref name="ms"/> (the annunciator test).</summary>
     internal void MuteLampSpeechFor(int ms)

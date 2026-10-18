@@ -90,6 +90,14 @@ public class AircraftStateEvaluator : IFoStateEvaluator
             if (field == GeneratorBusState.OnBusFields[gen])
                 return !CdaReady ? double.NaN : (GeneratorBusState.IsOnBus(gen, RawValue) ? 1 : 0);
 
+        // Shutdown's power for the start levers (GeneratorBusState): the load off the engine
+        // generators, and another source ready to take it (the APU generator up, or a bus
+        // already carried without its engine generator).
+        if (field == GeneratorBusState.LoadOffEnginesField)
+            return !CdaReady ? double.NaN : (GeneratorBusState.IsLoadOffEngines(RawValue) ? 1 : 0);
+        if (field == GeneratorBusState.ShutdownPowerReadyField)
+            return !CdaReady ? double.NaN : (GeneratorBusState.IsShutdownPowerReady(RawValue) ? 1 : 0);
+
         // Merged Before-Start "Fuel pumps: ON" detection (§6): wing on AND center matches
         // fuel state. ONE synthetic (never a primary+additional split — the Auto() helper
         // applies the same condition to every field, which cannot express wing≠center logic).
@@ -140,6 +148,11 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public bool AllOn(params string[] fields) => fields.All(IsOn);
     public bool IsPosition(string field, int position) => Math.Abs(GetValue(field) - position) < 0.1;
 
+    /// <summary>True only when the field has been READ and is 0. Use it for "already off", never
+    /// <c>!IsOn</c>: that reads an unread (NaN) field as off, so an OFF step said "Already set" and
+    /// ticked its line before the first CDA snapshot (the 777's IsOff, PR #160).</summary>
+    public bool IsOff(string field) => IsPosition(field, 0);
+
     // -----------------------------------------------------------------------
     // Speed brake (lever: main's L:switch_679_73X, ARM exactly 100)
     // -----------------------------------------------------------------------
@@ -159,6 +172,10 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     // ELEC_GrdPwrSw struct bool, which reads TRUE even with no GPU at the stand (live-
     // verified 2026-07-02) and caused the power-up flow to skip ground power entirely.
     public bool IsGpuOn()          => IsOn("FO_GPU_ON");
+    // Ground power DEFINITELY not on the buses (FO_GPU_ON read, and 0) — the "already off" test of
+    // the Ground power: OFF steps. Unread is not off: before the first CDA snapshot !IsGpuOn() said
+    // "Already set: Ground power: OFF" and latched the line over a connected GPU.
+    public bool IsGpuOff()         => IsOff("FO_GPU_ON");
     public int  StandbyPower()     => (int)Math.Round(GetValue("ELEC_StandbyPowerSelector")); // 0=BAT,1=OFF,2=AUTO
     public int  ApuSelector()      => (int)Math.Round(GetValue("APU_Selector"));              // 0=OFF,1=ON,2=START
     // EGT-based "APU running": the selector position only proves where the switch is (it
@@ -310,9 +327,10 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public bool IsIrsAligned()     => IsOn("IRS_aligned");
 
     // NOTE: the 737 NG3 data struct exposes NO baro-STD state field (only EFIS_BaroSelHPA,
-    // the hPa/inHg unit). The altimeter STD/QNH push EVENTS exist, so the FlightPhaseMonitor
-    // can push STD at the transition altitude/level, but it must track its own STD intent
-    // rather than reading current state — there is intentionally no IsBaroSTD* accessor here.
+    // the hPa/inHg unit). So the FlightPhaseMonitor never pushes STD: at the transition
+    // altitude it ROTATES both baro knobs to standard (PMDG737Definition
+    // .RotateAltimetersToStandardAsync), and the descent is announce-only — there is
+    // intentionally no IsBaroSTD* accessor here.
 
     // -----------------------------------------------------------------------
     // FMC speeds (bytes; 0 = not yet programmed)

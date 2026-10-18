@@ -460,3 +460,36 @@ every aircraft are Part Z.1 of the PMDG 737 plan.
 3. **Line-up lights.** With the wing landing lights on and the nose light at TAXI, the Line-up line
    "Landing lights: ON" is unticked, and ticking it sets the nose light to T.O.
 4. **Auto flaps arm only on a real descent**: run item 3 of the A32NX plan's Part J on the A380.
+
+## PR #160 second review fixes (2026-10-18)
+
+None of these has run in the sim. Items 1 and 2 need Auto-manage flaps on. Read the flap lever with
+right bracket then L, and S speed with right bracket then Shift+2. The checks shared by every
+aircraft (go-around altimeters, Stop, the plan after landing, a new flight load, gear down, offline
+ticks, seat belts) are Part AA.1 of the PMDG 737 plan.
+
+1. **Auto flaps on a high final, an arrival and a hilly departure**: run items 1 to 4 of the A32NX
+   plan's Part K on the A380 (a brief climb on a high final moves nothing; a real climb there only
+   pauses the extension until 300 ft below its top; flaps you select on the arrival after cleaning up
+   the climb-out yourself stay out; a level departure over rising ground never says "Speed checked.
+   Flaps 2."). These make Part D checks 14 and 15 above hold on any terrain.
+2. **Flap calls wait their turn.** On final with flaps 3 and the gear down, slightly above F (right
+   bracket then Shift+3), run the Landing flow and slow below F as it starts: "Captain action
+   required: Set missed approach altitude" and "Speed checked. Flaps full." are each heard in full,
+   one after the other; the flap call no longer cuts the reminder off.
+3. **A held test always ends.** On the ground, start the Cockpit Preparation flow, then open
+   MSFSBA's Aircraft menu in the main window with another aircraft highlighted (the sim keeps the
+   A380). When you hear "Fire test — listen for the fire warning", press Enter: the First Officer
+   window closes during the 3 s hold, and the fire bell still stops and the master warning goes out
+   by itself. Switch back to the A380 and do the same at the Taxi flow's "Takeoff config test"; then
+   run that test once more normally: it still answers (a key left held would not take a new press).
+4. **The takeoff config test presses on the ECP clock.** Run the Taxi flow and, while "Takeoff
+   config test" holds the key (2 s), press the T.O Config button on MSFSBA's ECAM Control Panel. You
+   hear "ECAM T.O Config pressed" at once and the flow carries on as usual. Before this fix the
+   panel's press could fall inside the First Officer's held key and be lost; report anything that
+   sounds like a lost or doubled test.
+5. **Securing switches the runway turn-off lights off.** After landing, with the runway turn-off
+   lights still on (skip After Takeoff, or switch them on from the Exterior Lighting panel) and the
+   nav and logo lights off, the Securing line "Exterior lights: OFF" stays unticked. Run Securing:
+   "Exterior lights: OFF" is spoken as a step, not "Already set", and the Exterior Lighting panel's
+   Runway Turnoff Lights then read Off.

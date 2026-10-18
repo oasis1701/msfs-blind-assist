@@ -776,9 +776,15 @@ public static class FbwA380ChecklistDefinitions
             Auto("SC_NOSMOKE", "SECURE", "No smoking signs: OFF",
                 "XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position", v => Math.Abs(v - 2) < 0.5,
                 (e, _) => e.Set("XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position", 2)),
+            // Reads and writes the runway turn-off lights too (the flow's SC_EXTLT_OFF says why).
             Multi("SC_EXTLT_OFF", "SECURE", "Exterior lights: OFF", "LIGHT_NAV", v => v < 0.5,
-                new[] { "LIGHT_LOGO" },
-                async (e, _) => { await e.Set("LIGHT_NAV", 0); await e.Set("LIGHT_LOGO", 0); }),
+                new[] { "LIGHT_LOGO", "LIGHT_RWY_TURNOFF" },
+                async (e, _) =>
+                {
+                    await e.Set("LIGHT_NAV", 0);
+                    await e.Set("LIGHT_LOGO", 0);
+                    await e.Set("LIGHT_RWY_TURNOFF", 0);
+                }),
             Auto("SC_APUBLEED_OFF", "SECURE", "APU bleed: OFF", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
                 v => v < 0.5, (e, _) => e.Set("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 0)),
             // The APU master goes off before external power: the flow waits for the APU flap between

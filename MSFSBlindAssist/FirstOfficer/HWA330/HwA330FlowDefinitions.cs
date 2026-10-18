@@ -730,9 +730,7 @@ public static class HwA330FlowDefinitions
         Id = id, Label = label,
         ActionType = FlowStepActionType.SetSwitch,
         EventName = eventName,
-        TargetValue = target,
-        PostActionDelayMs = 300,
-        FailurePolicy = FlowStepFailurePolicy.Skip,
+        TargetValue = target,        FailurePolicy = FlowStepFailurePolicy.Skip,
     };
 
     // One lighting scene's pots, through the executor's COCKPIT_LIGHT_SCENE_* pseudo-key (the
@@ -745,27 +743,21 @@ public static class HwA330FlowDefinitions
         Id = id, Label = label,
         ActionType = FlowStepActionType.SetSwitch,
         EventName = eventName,
-        TargetValueProvider = provider,
-        PostActionDelayMs = 300,
-        FailurePolicy = FlowStepFailurePolicy.Skip,
+        TargetValueProvider = provider,        FailurePolicy = FlowStepFailurePolicy.Skip,
     };
 
     private static Step Multi(string id, string label, params (string EventName, int? TargetValue)[] actions) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.SetSwitchMultiple,
-        MultiActions = actions.ToList(),
-        PostActionDelayMs = 400,
-        FailurePolicy = FlowStepFailurePolicy.Skip,
+        MultiActions = actions.ToList(),        FailurePolicy = FlowStepFailurePolicy.Skip,
     };
 
     private static Step Wait(string id, string label, int seconds) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.WaitSeconds,
-        WaitSeconds = seconds,
-        PostActionDelayMs = 0,
-    };
+        WaitSeconds = seconds,    };
 
     private static Step WaitForField(string id, string label, string field, Func<double, bool> condition, int timeoutSec,
         FlowStepFailurePolicy onTimeout = FlowStepFailurePolicy.Skip) => new()
@@ -775,17 +767,13 @@ public static class HwA330FlowDefinitions
         ConditionFieldName = field,
         Condition = condition,
         TimeoutSeconds = timeoutSec,
-        FailurePolicy = onTimeout,
-        PostActionDelayMs = 0,
-    };
+        FailurePolicy = onTimeout,    };
 
     private static Step Captain(string id, string label, string? reminderText = null) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.CaptainReminder,
-        ReminderText = reminderText ?? label,
-        PostActionDelayMs = 200,
-    };
+        ReminderText = reminderText ?? label,    };
 
     private static Step Skip(Step step, Func<HwA330StateEvaluator, bool> cond)
     {

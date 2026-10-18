@@ -78,7 +78,10 @@ using Step = Models.FlowStep<IFly737StateEvaluator>;
 ///    start-valve field exists in this SDK. The N2 gate (Stop policy) is what remains as the
 ///    fuel-introduction gate; the starter-cutout wait (start switch springing back out of GRD)
 ///    stays in its ORIGINAL position, AFTER the start lever moves to Idle, gating the NEXT
-///    engine's GRD press — exactly like the PMDG's ES_E2_CUTOUT/ES_E1_CUTOUT.
+///    engine's GRD press — exactly like the PMDG's ES_E2_CUTOUT/ES_E1_CUTOUT. Both waits are
+///    run by the executor (IFly737ActionExecutor.StartWaitAsync, 2026-10-18), not FlowManager:
+///    the LEAP-1B's bowed rotor motoring can hold a start for minutes, and only there can a
+///    wait start its clock again while the BRM flag reads active.
 ///  - Fuel flow reset (PF_FF) DOES have an iFly equivalent (Fuel_Flow_Switch_Status, position
 ///    0=Reset, spring-loaded — Overhead.cs:553-555) — not a Captain reminder.
 ///  - Flight directors (PF_FD1/PF_FD2) and autothrottle arm (BTO_AT) are plain absolute SW
@@ -129,10 +132,6 @@ using Step = Models.FlowStep<IFly737StateEvaluator>;
 /// </summary>
 public static class IFly737FlowDefinitions
 {
-    // N2 (percent) the engine must reach while motoring before the start lever introduces
-    // fuel — shared with the checklist's Engine Start group (see the evaluator const).
-    private const double EngStartFuelN2 = IFly737StateEvaluator.EngStartFuelN2;
-
     // Engine_Start_Lever_Status_{0,1} combo positions (Overhead.cs:493-505). Duplicated from
     // IFly737ActionExecutor's PRIVATE StartLeverCutoff/StartLeverIdle consts — a flow step
     // dispatches the raw varKey+value directly (bypassing the executor's typed
@@ -266,7 +265,8 @@ public static class IFly737FlowDefinitions
             // this step's own "Flight and landing altitudes: set" narration mid-word every
             // run. PRESS_ALTS reads the plan straight off the wired state evaluator and sends
             // AIRSYSTEM_FLT_ALT_SET/AIRSYSTEM_LDG_ALT_SET directly (no announce) — a single
-            // step covers both altitudes. The Captain fallback below covers the no-plan case.
+            // step covers both altitudes. The Captain fallback below covers the no-plan case
+            // and a write that did not take.
             //
             // PLAN-GATED (2026-10-06): with no plan the pseudo-key is a quiet no-op that still
             // reports success, so the step used to say "Flight and landing altitudes: set" over
@@ -278,9 +278,15 @@ public static class IFly737FlowDefinitions
             // token (the pseudo-key reads the plan off the evaluator, not the step).
             Plan(SW("PF_PRESS_ALTS", "Flight and landing altitudes: set", IFly737ActionExecutor.KeyPressAlts, 1,
                 checklistItemId: "PF_PRESS")),
+            // The Captain is asked unless the windows READ the plan (FO_PRESS_ALTS_MATCH, the
+            // line's own test): with no plan the step above skips silently, and a write that did
+            // not take leaves the windows where they were. Keyed on the windows, never on the
+            // plan: keyed on the plan, a failed write was heard as "Skipping…" then a false
+            // "Already set", and the reminder was lost (the A320 family's flap fix, fe2360b6).
+            // Unread (NaN) is not set.
             Skip(Captain("PF_PRESS", "Flight and landing altitudes",
                     "Set flight and landing altitudes on the pressurization panel."),
-                s => s.HasPressurizationPlan),
+                s => s.GetValue("FO_PRESS_ALTS_MATCH") > 0.5),
             SW("PF_LOGO", "Logo lights: ON", "Logo_Light_Switch_Status", 1, checklistItemId: "PF_LOGO"),
             // Flight directors: absolute SETs, no toggle-guard skip predicate needed.
             SW("PF_FD1", "Flight director 1: ON", "FD_1_Switch_Status", 1, checklistItemId: "PF_FD"),
@@ -394,26 +400,27 @@ public static class IFly737FlowDefinitions
             // No start-valve field exists on this SDK (see class doc) — the early
             // starter-engaged confirmation the PMDG has is dropped; N2 is the only gate before
             // fuel introduction. On timeout (starter/bleed failure — N2 never builds) ABORT
-            // the flow rather than introduce fuel into an under-rotating engine.
-            WaitForField("ES_E2_N2", "Engine 2 motoring — waiting for N2 before introducing fuel",
-                "FO_ENG2_N2", v => v >= EngStartFuelN2, 60, onTimeout: FlowStepFailurePolicy.Stop),
+            // the flow rather than introduce fuel into an under-rotating engine. The executor
+            // runs the wait (StartWaitAsync): 60 s, restarted while the LEAP-1B's bowed rotor
+            // motoring reads active, which holds a hot engine at motoring speed for minutes.
+            StartWaitStep("ES_E2_N2", "Engine 2 motoring — waiting for N2 before introducing fuel",
+                IFly737ActionExecutor.KeyEng2FuelN2),
             SW("ES_E2_RUN", "Engine 2 start lever: IDLE", "Engine_Start_Lever_Status_1", StartLeverIdle, checklistItemId: "ES_E2_RUN"),
             // Starter cutout: the start switch springs back out of GRD as the starter
             // disengages. Wait on the switch itself, gating engine 1's GRD press so it's never
             // set while engine 2's starter is still engaged (PMDG 737 parity). Stop on a timeout,
             // as the PMDG's does: carrying on put engine 1 on GRD over a starter still engaged.
-            WaitForField("ES_E2_CUTOUT", "Engine 2 starting — waiting for the start switch to cut out",
-                "Engine_Start_Switch_Status_1", v => System.Math.Abs(v - IFly737ActionExecutor.EngStartOff) < 0.1, 120,
-                onTimeout: FlowStepFailurePolicy.Stop),
+            // 120 s, aware of bowed rotor motoring the same way.
+            StartWaitStep("ES_E2_CUTOUT", "Engine 2 starting — waiting for the start switch to cut out",
+                IFly737ActionExecutor.KeyEng2StarterCutout),
             // --- Engine 1 ---
             SW("ES_E1_GRD", "Engine 1 start switch: GRD", "Engine_Start_Switch_Status_0",
                 IFly737ActionExecutor.EngStartGround),
-            WaitForField("ES_E1_N2", "Engine 1 motoring — waiting for N2 before introducing fuel",
-                "FO_ENG1_N2", v => v >= EngStartFuelN2, 60, onTimeout: FlowStepFailurePolicy.Stop),
+            StartWaitStep("ES_E1_N2", "Engine 1 motoring — waiting for N2 before introducing fuel",
+                IFly737ActionExecutor.KeyEng1FuelN2),
             SW("ES_E1_RUN", "Engine 1 start lever: IDLE", "Engine_Start_Lever_Status_0", StartLeverIdle, checklistItemId: "ES_E1_RUN"),
-            WaitForField("ES_E1_CUTOUT", "Engine 1 starting — waiting for the start switch to cut out",
-                "Engine_Start_Switch_Status_0", v => System.Math.Abs(v - IFly737ActionExecutor.EngStartOff) < 0.1, 120,
-                onTimeout: FlowStepFailurePolicy.Stop),
+            StartWaitStep("ES_E1_CUTOUT", "Engine 1 starting — waiting for the start switch to cut out",
+                IFly737ActionExecutor.KeyEng1StarterCutout),
         }
     };
 
@@ -505,7 +512,13 @@ public static class IFly737FlowDefinitions
             // gear: UP" (ATC_GEAR), which the read-only AT_GEAR_UP_CHECK below completes — so a
             // failed write is skipped aloud and left live rather than latched complete anyway by
             // MarkGroupComplete's blanket sweep of the AFTER_TAKEOFF group.
-            SW("AT_GEAR_OFF", "Gear lever: UP", "Gear_Lever_Status", IFly737ActionExecutor.GearUp, "ATKO_GEAR_OFF"),
+            // UP only when DEFINITELY airborne (SIM_ON_GROUND reads 0): After Takeoff started on
+            // the runway by mistake, one Down Arrow below Before Takeoff, sent the lever UP on the
+            // ground, and an SDK SET can skip the cockpit logic (IFLY-3), so the ground lock may
+            // not stop it. On the ground, or unread, nothing is sent, the reason is spoken and the
+            // line stays open; the executor refuses the write as well (RefusesGearUp).
+            LeaveAlone(SW("AT_GEAR_OFF", "Gear lever: UP", "Gear_Lever_Status", IFly737ActionExecutor.GearUp, "ATKO_GEAR_OFF"),
+                s => !s.IsDefinitelyAirborne, IFly737ActionExecutor.GearUpLeaveAloneText),
             SW("AT_AB_OFF", "Autobrake: OFF", "Autobrake_Selector_Status",
                 IFly737ActionExecutor.AutobrakeOff, checklistItemId: "ATKO_AB_OFF"),
             // Read-only gear-up confirmation — it never moves the lever (AT_GEAR_OFF above
@@ -620,8 +633,8 @@ public static class IFly737FlowDefinitions
                 ("Probe_Heat_Switch_1_Status", IFly737ActionExecutor.ProbeHeatAuto),
                 ("Probe_Heat_Switch_2_Status", IFly737ActionExecutor.ProbeHeatAuto)),
             // APU START for gate power — same collapsed pseudo-key sequence as Before Start;
-            // no on-line wait (the aircraft is taxiing in, and the Shutdown flow's generator
-            // transfer happens minutes later, matching the PMDG template).
+            // no on-line wait (the aircraft is taxiing in, matching the PMDG template): the
+            // Shutdown flow waits for the APU generator before its transfer (SD_POWER_WAIT).
             SW("AL_APU", "APU: START", IFly737ActionExecutor.KeyApuStart, 1, isMomentary: true, checklistItemId: "AL_APU"),
             Multi("AL_START_OFF", "Engine start switches: OFF", "AL_START_OFF",
                 ("Engine_Start_Switch_Status_0", IFly737ActionExecutor.EngStartOff),
@@ -640,16 +653,36 @@ public static class IFly737FlowDefinitions
     private static Flow BuildShutdown() => new()
     {
         Id = "SHUTDOWN", Name = "Shutdown",
-        Description = "Engines cutoff, signs/lights off, fuel pumps off, anti-ice off, transponder ALT OFF.",
+        Description = "Once the APU generator or ground power can take the buses: engines cutoff, signs/lights off, fuel pumps off, anti-ice off, transponder ALT OFF.",
         RelatedChecklistGroupIds = new[] { "SHUTDOWN" },
         Steps = new()
         {
-            // BOTH APU generator transfer buttons.
-            Multi("SD_APUGEN", "APU generators: ON", "SD_APUGEN",
-                ("BTN_APU_GEN_1_ON", 1), ("BTN_APU_GEN_2_ON", 1)),
-            Also(Multi("SD_LEVERS", "Engine start levers: CUTOFF", "SD_LEVERS",
-                ("Engine_Start_Lever_Status_0", StartLeverCutoff),
-                ("Engine_Start_Lever_Status_1", StartLeverCutoff)), "SDC_LEVERS"),
+            // The levers take the engine generators off the buses, so something else must be able
+            // to carry them first; Before Start guards its reverse transfer the same way
+            // (BS_APU_WAIT, Stop). Passes on the APU generator waiting off the buses (the blue APU
+            // GEN OFF BUS light), on buses already off the engine generators (the APU or ground
+            // power carries them) or on levers already at CUTOFF (nothing left to protect); stops
+            // the flow on a timeout. Without it, an APU started in After Landing that was not yet
+            // on line, or never started, was followed by "APU generators: ON" and the cut, which
+            // left the aircraft on the battery.
+            WaitForField("SD_POWER_WAIT", "APU generator or ground power", IFly737StateEvaluator.ShutdownPowerField,
+                v => v > 0.5, 120, onTimeout: FlowStepFailurePolicy.Stop),
+            // BOTH APU generator transfer buttons, pressed only while the APU generator waits off
+            // the buses: otherwise there is nothing for them to transfer, and "APU generators: ON"
+            // would claim an APU that may not be running.
+            LeaveAlone(Multi("SD_APUGEN", "APU generators: ON", "SD_APUGEN",
+                    ("BTN_APU_GEN_1_ON", 1), ("BTN_APU_GEN_2_ON", 1)),
+                s => !s.IsOn("APU_GEN_OFF_BUS_Light_Status"),
+                "APU generators left as they are: no APU generator is waiting to take the buses."),
+            // Never cut while the engine generators still carry the buses (the APU generator press
+            // did not take): that leaves the aircraft on the battery. "Already set" when both levers
+            // already read CUTOFF.
+            LeaveAlone(Skip(Also(Multi("SD_LEVERS", "Engine start levers: CUTOFF", "SD_LEVERS",
+                    ("Engine_Start_Lever_Status_0", StartLeverCutoff),
+                    ("Engine_Start_Lever_Status_1", StartLeverCutoff)), "SDC_LEVERS"),
+                    s => s.AreStartLeversAtCutoff()),
+                s => !s.AreBusesOffEngineGenerators(),
+                "No APU generator or ground power on the buses, so the engines stay running."),
             SW("SD_BELTS", "Seatbelt signs: OFF", "Fasten_Belts_Switch_Status", IFly737ActionExecutor.SignOff, checklistItemId: "SD_BELTS"),
             Multi("SD_TURNOFF", "Runway turnoff lights: OFF", "SD_TURNOFF",
                 ("Runway_Turnoff_Light_1_Switch_Status", 0), ("Runway_Turnoff_Light_2_Switch_Status", 0)),
@@ -737,9 +770,7 @@ public static class IFly737FlowDefinitions
         EventName = eventName,
         TargetValue = target,
         IsMomentary = isMomentary || target == null,
-        CompletesChecklistItemId = checklistItemId,
-        PostActionDelayMs = 350,
-        FailurePolicy = FlowStepFailurePolicy.Skip,
+        CompletesChecklistItemId = checklistItemId,        FailurePolicy = FlowStepFailurePolicy.Skip,
     };
 
     // checklistItemId is REQUIRED (nullable) so no multi-switch write can be added without
@@ -750,18 +781,25 @@ public static class IFly737FlowDefinitions
         Id = id, Label = label,
         ActionType = FlowStepActionType.SetSwitchMultiple,
         MultiActions = actions.ToList(),
-        CompletesChecklistItemId = checklistItemId,
-        PostActionDelayMs = 400,
-        FailurePolicy = FlowStepFailurePolicy.Skip,
+        CompletesChecklistItemId = checklistItemId,        FailurePolicy = FlowStepFailurePolicy.Skip,
+    };
+
+    // An engine-start wait the executor runs (IFly737ActionExecutor.StartWaitAsync): read-only,
+    // aware of bowed rotor motoring, and its timeout stops the flow. A switch step only so that it
+    // reaches the executor; it writes nothing and names no checklist line.
+    private static Step StartWaitStep(string id, string label, string waitKey) => new()
+    {
+        Id = id, Label = label,
+        ActionType = FlowStepActionType.SetSwitch,
+        EventName = waitKey,
+        TargetValue = 1,        FailurePolicy = FlowStepFailurePolicy.Stop,
     };
 
     private static Step Wait(string id, string label, int seconds) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.WaitSeconds,
-        WaitSeconds = seconds,
-        PostActionDelayMs = 0,
-    };
+        WaitSeconds = seconds,    };
 
     private static Step WaitForField(string id, string label, string field, Func<double, bool> condition, int timeoutSec,
         FlowStepFailurePolicy onTimeout = FlowStepFailurePolicy.Skip, string? checklistItemId = null,
@@ -774,9 +812,7 @@ public static class IFly737FlowDefinitions
         TimeoutSeconds = timeoutSec,
         FailurePolicy = onTimeout,
         CompletesChecklistItemId = checklistItemId,
-        AlsoCompletesChecklistItemIds = alsoChecklistItemIds ?? Array.Empty<string>(),
-        PostActionDelayMs = 0,
-    };
+        AlsoCompletesChecklistItemIds = alsoChecklistItemIds ?? Array.Empty<string>(),    };
 
     // reminderText: what "Captain action required: …" speaks (defaults to label). A
     // separate short label matters when the step can be SKIPPED — the skip path reads
@@ -785,9 +821,7 @@ public static class IFly737FlowDefinitions
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.CaptainReminder,
-        ReminderText = reminderText ?? label,
-        PostActionDelayMs = 200,
-    };
+        ReminderText = reminderText ?? label,    };
 
     private static Step Skip(Step step, Func<IFly737StateEvaluator, bool> cond)
     {

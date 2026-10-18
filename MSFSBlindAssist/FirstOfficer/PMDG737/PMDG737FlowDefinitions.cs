@@ -153,9 +153,15 @@ public static class PMDG737FlowDefinitions
                 s => s.PlannedFltAltFt, skipWhen: s => s.FltAltMatches(), checklistItemId: "PF_PRESS"),
             DynSW("PF_LAND_ALT", "Landing altitude: set", "EVT_OH_PRESS_LAND_ALT_SET",
                 s => s.PlannedLandAltFt, skipWhen: s => s.LandAltMatches(), checklistItemId: "PF_PRESS"),
+            // The Captain is asked to set both windows unless the aircraft READS the planned flight
+            // AND landing altitude in them. Keyed on the windows, never on the plan (the A320
+            // family's takeoff-flaps fix, fe2360b6): keyed on the plan, a write that did not take was
+            // heard as "Skipping: …" and then a false "Already set: Flight and landing altitudes",
+            // and the reminder was lost. No plan, a plan with one value only, a window that does not
+            // match or one not read yet (before the first CDA snapshot): the reminder speaks.
             Skip(Captain("PF_PRESS", "Flight and landing altitudes",
                     "Set flight and landing altitudes on the pressurization panel."),
-                s => s.HasPressurizationPlan),
+                s => s.FltAltMatches() && s.LandAltMatches()),
             SW("PF_LOGO", "Logo lights: ON", "EVT_OH_LIGHTS_LOGO", 1, checklistItemId: "PF_LOGO"),
             MouseFlag("PF_FD1", "Flight director 1: ON", "EVT_MCP_FD_SWITCH_L", "MCP_FDSw_0", checklistItemId: "PF_FD"),
             MouseFlag("PF_FD2", "Flight director 2: ON", "EVT_MCP_FD_SWITCH_R", "MCP_FDSw_1", checklistItemId: "PF_FD"),
@@ -242,8 +248,10 @@ public static class PMDG737FlowDefinitions
                     ("EVT_OH_ELEC_APU_GEN1_SWITCH", 1), ("EVT_OH_ELEC_APU_GEN2_SWITCH", 1)),
                 "BS_APU_GEN_AVAIL",
                 "Skipping: APU generators: ON. The flow could not confirm the APU generator."),
+            // "Already set" only when ground power DEFINITELY reads off the buses (IsGpuOff): an
+            // unread one (before the first CDA snapshot) is sent, never taken for off.
             Requires(Skip(SW("BS_GPU_OFF", "Ground power: OFF", "EVT_OH_ELEC_GRD_PWR_SWITCH", 0),
-                    s => !s.IsGpuOn()),
+                    s => s.IsGpuOff()),
                 "BS_APU_GEN_AVAIL",
                 "Skipping: Ground power: OFF. The flow could not confirm the APU generator, so ground power stays connected."),
             Multi("BS_FUELON", "Fuel pumps: ON", "BS_FUEL",
@@ -525,14 +533,34 @@ public static class PMDG737FlowDefinitions
     private static Flow BuildShutdown() => new()
     {
         Id = "SHUTDOWN", Name = "Shutdown",
-        Description = "Engines cutoff, signs/lights off, fuel pumps off, anti-ice off, transponder STBY.",
+        Description = "Load to the APU generators (once the APU generator is up, or with ground power already on the buses), engines cutoff, signs/lights off, fuel pumps off, anti-ice off, transponder ALT RPTG OFF.",
         RelatedChecklistGroupIds = new[] { "SHUTDOWN" },
         Steps = new()
         {
-            // BOTH APU generator transfer buttons (the old single-event step left
-            // transfer bus 2 on its engine generator until the levers cut it off).
-            Multi("SD_APUGEN", "APU generators: ON", "SD_APUGEN",
-                ("EVT_OH_ELEC_APU_GEN1_SWITCH", 1), ("EVT_OH_ELEC_APU_GEN2_SWITCH", 1)),
+            // Power for the levers (PR #160 second review). Cutting the start levers takes the
+            // engine generators off the transfer buses, and nothing takes the buses by itself: the
+            // APU generators must be pressed on first, and only once the APU generator is up. The
+            // flow pressed them blind and cut the levers in the next step; After Landing starts the
+            // APU and waits for nothing, so a Shutdown soon after it (or after an APU start that
+            // never took) pressed APU GEN 1/2 to no effect, cut the levers, left the aircraft on
+            // battery and still said "Shutdown flow complete". Before Start guards its own transfer
+            // the same way (BS_APU_GEN_AVAIL); here a failure STOPS the flow, because the rest of
+            // Shutdown must not run with the engines still turning. Ground power the pilot already
+            // put on the buses counts as the source, and so does a re-run after a completed transfer
+            // (GeneratorBusState.IsShutdownPowerReady). 120 s: Before Start's measured budget for
+            // the APU generator.
+            WaitForField("SD_POWER_WAIT", "APU generator or ground power",
+                GeneratorBusState.ShutdownPowerReadyField, v => v > 0.5, 120, onTimeout: FlowStepFailurePolicy.Stop),
+            // BOTH APU generator transfer buttons (the old single-event step left transfer bus 2 on
+            // its engine generator until the levers cut it off), VERIFIED before the levers: both
+            // transfer buses powered with neither engine generator on them. A transfer that did not
+            // take stops the flow ("Unable to complete: APU generators: ON"). "Already set" when the
+            // load is already off the engines (a re-run, or ground power on the buses: the NG3 has
+            // no GPU-versus-APU signal, and the levers need only the load off the engines).
+            Skip(Verify(Multi("SD_APUGEN", "APU generators: ON", "SD_APUGEN",
+                    ("EVT_OH_ELEC_APU_GEN1_SWITCH", 1), ("EVT_OH_ELEC_APU_GEN2_SWITCH", 1)),
+                    GeneratorBusState.LoadOffEnginesField, v => v > 0.5, FlowStepFailurePolicy.Stop),
+                s => s.IsOn(GeneratorBusState.LoadOffEnginesField)),
             Also(Multi("SD_LEVERS", "Engine start levers: CUTOFF", "SD_LEVERS",
                 ("EVT_CONTROL_STAND_ENG1_START_LEVER", 0), ("EVT_CONTROL_STAND_ENG2_START_LEVER", 0)), "SDC_LEVERS"),
             // (No spool-down wait — mirrors the 777 shutdown: nothing downstream needs the
@@ -576,12 +604,13 @@ public static class PMDG737FlowDefinitions
             // selector that DEFINITELY reads OFF (an unread one is NaN, so it is still sent), so
             // the cool-down waits below, which follow only a switch-off this run sent, never run
             // for an APU that was not running (owner, 2026-10-14). Ground power OFF is a
-            // directional press, so it is skip-guarded on IsGpuOn() to no-op when no GPU is
-            // connected (mirrors the Before-Start BS_GPU_OFF drop).
+            // directional press, so it is "Already set" when ground power DEFINITELY reads off the
+            // buses (IsGpuOff; mirrors the Before-Start BS_GPU_OFF drop). Unread is sent: !IsGpuOn()
+            // took it for off and latched the line over a connected GPU before the first snapshot.
             Skip(SW("SE_APU_OFF", "APU: OFF", "EVT_OH_LIGHTS_APU_START", 0, checklistItemId: "SE_APU_OFF"),
                 s => s.IsPosition("APU_Selector", 0)),
             Skip(SW("SE_GND_PWR_OFF", "Ground power: OFF", "EVT_OH_ELEC_GRD_PWR_SWITCH", 0, checklistItemId: "SE_GND_PWR_OFF"),
-                s => !s.IsGpuOn()),
+                s => s.IsGpuOff()),
             // Cold and dark (owner, 2026-10-14). 737 NG: the APU runs a 60 s cool-down after its
             // switch goes OFF; the battery goes OFF only once the APU has stopped — 40 s after
             // EGT is below 300 °C, for the inlet door and fuel valve to close (spec sources).
@@ -622,9 +651,7 @@ public static class PMDG737FlowDefinitions
         IsMomentary = isMomentary || target == null,
         VerifyFieldName = verifyField,
         VerifyCondition = verifyCond,
-        CompletesChecklistItemId = checklistItemId,
-        PostActionDelayMs = 350,
-        FailurePolicy = FlowStepFailurePolicy.Skip,
+        CompletesChecklistItemId = checklistItemId,        FailurePolicy = FlowStepFailurePolicy.Skip,
     };
 
     // SetSwitch whose target resolves at DISPATCH time from evaluator state — for
@@ -640,9 +667,7 @@ public static class PMDG737FlowDefinitions
         EventName = eventName,
         TargetValueProvider = provider,
         SkipCondition = skipWhen,
-        CompletesChecklistItemId = checklistItemId,
-        PostActionDelayMs = 350,
-        FailurePolicy = FlowStepFailurePolicy.Skip,
+        CompletesChecklistItemId = checklistItemId,        FailurePolicy = FlowStepFailurePolicy.Skip,
     };
 
     // FD / AT Arm are mouse-flag TOGGLES (no absolute target), so firing one while the
@@ -661,9 +686,7 @@ public static class PMDG737FlowDefinitions
         SkipCondition = s => s.IsOn(field),
         LeaveAloneWhen = s => double.IsNaN(s.GetValue(field)),
         LeaveAloneText = $"Skipping: {label}. The switch cannot be read yet.",
-        CompletesChecklistItemId = checklistItemId,
-        PostActionDelayMs = 350,
-        FailurePolicy = FlowStepFailurePolicy.Skip,
+        CompletesChecklistItemId = checklistItemId,        FailurePolicy = FlowStepFailurePolicy.Skip,
     };
 
     private static Step Momentary(string id, string label, string eventName, string? checklistItemId = null) => new()
@@ -672,9 +695,7 @@ public static class PMDG737FlowDefinitions
         ActionType = FlowStepActionType.SetSwitch,
         EventName = eventName,
         IsMomentary = true,
-        CompletesChecklistItemId = checklistItemId,
-        PostActionDelayMs = 350,
-        FailurePolicy = FlowStepFailurePolicy.Skip,
+        CompletesChecklistItemId = checklistItemId,        FailurePolicy = FlowStepFailurePolicy.Skip,
     };
 
     // checklistItemId is REQUIRED (positional, ahead of the params list): every multi-switch
@@ -686,18 +707,14 @@ public static class PMDG737FlowDefinitions
         Id = id, Label = label,
         ActionType = FlowStepActionType.SetSwitchMultiple,
         MultiActions = actions.ToList(),
-        CompletesChecklistItemId = checklistItemId,
-        PostActionDelayMs = 400,
-        FailurePolicy = FlowStepFailurePolicy.Skip,
+        CompletesChecklistItemId = checklistItemId,        FailurePolicy = FlowStepFailurePolicy.Skip,
     };
 
     private static Step Wait(string id, string label, int seconds) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.WaitSeconds,
-        WaitSeconds = seconds,
-        PostActionDelayMs = 0,
-    };
+        WaitSeconds = seconds,    };
 
     private static Step WaitForField(string id, string label, string field, Func<double, bool> condition, int timeoutSec,
         FlowStepFailurePolicy onTimeout = FlowStepFailurePolicy.Skip, string? checklistItemId = null) => new()
@@ -708,9 +725,7 @@ public static class PMDG737FlowDefinitions
         Condition = condition,
         TimeoutSeconds = timeoutSec,
         FailurePolicy = onTimeout,
-        CompletesChecklistItemId = checklistItemId,
-        PostActionDelayMs = 0,
-    };
+        CompletesChecklistItemId = checklistItemId,    };
 
     // reminderText: what "Captain action required: …" speaks (defaults to label). A
     // separate short label matters when the step can be SKIPPED — the skip path reads
@@ -719,9 +734,7 @@ public static class PMDG737FlowDefinitions
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.CaptainReminder,
-        ReminderText = reminderText ?? label,
-        PostActionDelayMs = 200,
-    };
+        ReminderText = reminderText ?? label,    };
 
     private static Step Skip(Step step, Func<AircraftStateEvaluator, bool> cond)
     {
@@ -735,6 +748,17 @@ public static class PMDG737FlowDefinitions
     {
         step.LeaveAloneWhen = when;
         step.LeaveAloneText = text;
+        return step;
+    }
+
+    // A write judged by what it achieved (FlowStep.VerifyFieldName): FlowManager reads `field`
+    // against `condition` for a short window after the write, and a write that did not get there
+    // fails under `onFailure`.
+    private static Step Verify(Step step, string field, Func<double, bool> condition, FlowStepFailurePolicy onFailure)
+    {
+        step.VerifyFieldName = field;
+        step.VerifyCondition = condition;
+        step.FailurePolicy = onFailure;
         return step;
     }
 

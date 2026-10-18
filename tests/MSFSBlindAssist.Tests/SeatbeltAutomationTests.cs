@@ -68,6 +68,36 @@ public class SeatbeltAutomationTests
         Assert.Empty(signs);
     }
 
+    // PR 160 second review: the 10k latch follows the aircraft under every mode, as the 10,000 ft
+    // light latch does (FO-19). Switched away at the gate and back in cruise, it once acted on the
+    // climb through 10,000 ft long past: "Above ten thousand. Seat belt signs off." at FL350.
+    [Fact]
+    public void TenK_SwitchedAwayAndBackInCruise_ActsOnNoStaleCrossing()
+    {
+        var s = Make(FoSeatbeltMode.TenThousand);
+        Tick(s, 100, 0, onGround: true);       // at the gate: below
+        s.Mode = FoSeatbeltMode.Disabled;
+        ClimbTo(s, 1_000, 35_000);
+        Hold(s, 35_000, 0, 5);
+        s.Mode = FoSeatbeltMode.TenThousand;
+        Hold(s, 35_000, 0, 5);
+        Assert.Empty(signs);
+        Assert.Empty(spoken);
+    }
+
+    // ...and the mirror: switched away above 10,000 ft and back after the descent through it.
+    [Fact]
+    public void TenK_SwitchedAwayAndBackAfterTheDescent_ActsOnNoStaleCrossing()
+    {
+        var s = Make(FoSeatbeltMode.TenThousand);
+        Tick(s, 35_000, 0);                    // cruise: above
+        s.Mode = FoSeatbeltMode.TocTod;
+        DescendTo(s, 35_000, 3_000);
+        s.Mode = FoSeatbeltMode.TenThousand;
+        Hold(s, 3_000, 0, 5);
+        Assert.DoesNotContain("Below ten thousand. Seat belt signs on.", spoken);
+    }
+
     // ---- TOC/TOD mode, with the SimBrief cruise altitude known ----
     [Fact]
     public void TocTod_TocTurnsOffAfterSustainedLevelAtPlannedCruise()

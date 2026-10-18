@@ -12,12 +12,13 @@ public partial class MainForm
 {
     private MSFSBlindAssist.Automation.UniversalAutomationService universalAutomation = null!;
     private System.Windows.Forms.Timer _universalAutomationTimer = null!;
-    // The latest FO_ALTITUDE_AGL and FO_GEAR_HANDLE answers (MainForm.Announcers.cs), NaN while not
-    // read. They are read only while an auto feature is on, so they are dropped (NaN) whenever none
-    // is: a value left from earlier in the flight once lowered the gear above its limit speed at
-    // FL150 the moment auto gear was switched back on.
+    // The latest FO_ALTITUDE_AGL, FO_GEAR_HANDLE and FO_AIRSPEED_IAS answers (MainForm.Announcers.cs),
+    // NaN while not read. They are read only while an auto feature is on, so they are dropped (NaN)
+    // whenever none is: a value left from earlier in the flight once lowered the gear above its limit
+    // speed at FL150 the moment auto gear was switched back on.
     private double _universalLatestAgl = double.NaN;
     private double _universalLatestGearHandle = double.NaN;
+    private double _universalLatestIas = double.NaN;
 
     /// <summary>
     /// Builds the universal automation service and starts its 1 Hz feed. <c>simConnectManager</c> must
@@ -65,12 +66,15 @@ public partial class MainForm
                 // Zero SimConnect load when disabled, and nothing kept that would be stale on re-enable.
                 _universalLatestAgl = double.NaN;
                 _universalLatestGearHandle = double.NaN;
+                _universalLatestIas = double.NaN;
                 universalAutomation.MarkGroundStateUnknown();
                 return;
             }
             simConnectManager.RequestAircraftPosition();
             simConnectManager.RequestFOAltitudeAGL();
             simConnectManager.RequestFOGearHandle();
+            // The gear-down speed limit (GearDownMaxIasKts).
+            simConnectManager.RequestFOAirspeedIndicated();
         };
         _universalAutomationTimer.Start();
     }
@@ -98,6 +102,7 @@ public partial class MainForm
         universalAutomation?.Reset();
         _universalLatestAgl = double.NaN;
         _universalLatestGearHandle = double.NaN;
+        _universalLatestIas = double.NaN;
     }
 
     /// <summary>
@@ -120,6 +125,7 @@ public partial class MainForm
     /// First Officer window. Gated inside the service by the per-feature settings.</summary>
     private void OnUniversalAircraftPosition(object? sender, SimConnect.SimConnectManager.AircraftPosition pos)
     {
-        universalAutomation.Update(pos.Altitude, pos.VerticalSpeedFPM, _universalLatestAgl, pos.SimOnGround >= 0.5);
+        universalAutomation.Update(pos.Altitude, pos.VerticalSpeedFPM, _universalLatestAgl, pos.SimOnGround >= 0.5,
+            _universalLatestIas);
     }
 }

@@ -5573,12 +5573,15 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     private const uint MOUSE_FLAG_LEFTRELEASE_U = 0x00020000u;
 
     /// <summary>Held transmit press/release — for test buttons whose CDA param-1 press is
-    /// silent (TCAS TEST) or that need a managed sequence (WXR test).</summary>
+    /// silent (TCAS TEST) or that need a managed sequence (WXR test). No ConfigureAwait(false),
+    /// here or in the WXR sequence: started from HandleUIVariableSet on the UI thread, the awaits
+    /// resume there, so the release never goes out from a pool thread ([SIM-20], P777-13's reason
+    /// for the emergency-lights sequence).</summary>
     private static async Task HeldTransmitAsync(
         SimConnect.SimConnectManager simConnect, uint eventId, int holdMs)
     {
         simConnect.SendPMDGEventViaTransmitWithTarget(eventId, MOUSE_FLAG_LEFTSINGLE_U);
-        await Task.Delay(holdMs).ConfigureAwait(false);
+        await Task.Delay(holdMs);
         simConnect.SendPMDGEventViaTransmitWithTarget(eventId, MOUSE_FLAG_LEFTRELEASE_U);
     }
 
@@ -5592,14 +5595,28 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             !EventIds.TryGetValue("EVT_WXR_L_WX", out int wxEv))
             return;
         const int quick = MSFSBlindAssist.FirstOfficer.AircraftActionExecutor.QuickTestHoldMs;
-        await HeldTransmitAsync(simConnect, (uint)overlayEv, quick).ConfigureAwait(false);
-        await Task.Delay(MSFSBlindAssist.FirstOfficer.AircraftActionExecutor.WxrOverlaySettleMs).ConfigureAwait(false);
-        await HeldTransmitAsync(simConnect, (uint)testEv, quick).ConfigureAwait(false);
-        await Task.Delay(MSFSBlindAssist.FirstOfficer.AircraftActionExecutor.WxrTestWaitMs).ConfigureAwait(false);
-        await HeldTransmitAsync(simConnect, (uint)wxEv, quick).ConfigureAwait(false);
-        await Task.Delay(350).ConfigureAwait(false);
-        await HeldTransmitAsync(simConnect, (uint)overlayEv, quick).ConfigureAwait(false);
+        try
+        {
+            await HeldTransmitAsync(simConnect, (uint)overlayEv, quick);
+            await Task.Delay(MSFSBlindAssist.FirstOfficer.AircraftActionExecutor.WxrOverlaySettleMs);
+            await HeldTransmitAsync(simConnect, (uint)testEv, quick);
+            await Task.Delay(MSFSBlindAssist.FirstOfficer.AircraftActionExecutor.WxrTestWaitMs);
+            await HeldTransmitAsync(simConnect, (uint)wxEv, quick);
+            await Task.Delay(350);
+            await HeldTransmitAsync(simConnect, (uint)overlayEv, quick);
+        }
+        catch (Exception ex)
+        {
+            // Fire-and-forget: an escaped exception would vanish as an unobserved task fault.
+            Log.Debug("PMDG", $"Weather radar test failed: {ex.GetType().Name}: {ex.Message}");
+        }
     }
+
+    // The panel's weather radar test while it runs (about 25 s): a second press during it
+    // interleaved its overlay and TEST presses with the first sequence's, and the test stayed
+    // silent. UI-thread only (HandleUIVariableSet and the sequence's own continuations), like the
+    // 737's _baroKnobOp, so it needs no lock.
+    private Task? _wxrTestOp;
 
     // =========================================================================
     // Variable → event name mapping (simple toggle and momentary controls)
@@ -6146,6 +6163,13 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     private static readonly SemaphoreSlim _emerLightsGate = new(1, 1);
     private static int _emerLightsRequest;
 
+    /// <summary>The same gate, for the First Officer's own guarded sequence
+    /// (AircraftActionExecutor.SetEmerExitLightsAsync, whose Secure flow and checklist lines drive
+    /// this switch too): a combo pick then never lands between its guard and switch writes, nor the
+    /// reverse. It takes no part in the latest-selection collapse (<c>_emerLightsRequest</c>):
+    /// the gate's first-come order already lets the later of the two finish last.</summary>
+    internal static SemaphoreSlim EmerLightsSequenceGate => _emerLightsGate;
+
     public override bool HandleUIVariableSet(
         string varKey, double value,
         SimConnect.SimVarDefinition varDef,
@@ -6530,7 +6554,13 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         }
         if (varKey == "WXR_Test")
         {
-            _ = WxrTestSequenceAsync(simConnect);
+            // One at a time, refused aloud: see _wxrTestOp.
+            if (_wxrTestOp is { IsCompleted: false })
+            {
+                announcer.AnnounceImmediate("Weather radar test still running, please wait.");
+                return true;
+            }
+            _wxrTestOp = WxrTestSequenceAsync(simConnect);
             return true;
         }
 

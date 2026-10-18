@@ -113,6 +113,18 @@ public class AircraftStateEvaluator : IFoStateEvaluator
         // field, so it is NaN until the first snapshot.
         if (fieldName == Pmdg777PowerUpCheck.Field) return Pmdg777PowerUpCheck.Value(GetValue);
 
+        // Two-switch writes read back on BOTH switches (a Multi step verifies one field, after its
+        // last write, so a dropped first write passed): the runway turnoff lights and the fuel
+        // control switches, each as a count of the pair, NaN until both are read.
+        if (fieldName == RunwayTurnoffLightsOnField)
+            return CountOn(GetValue, "LTS_RunwayTurnoff_Sw_ON_0", "LTS_RunwayTurnoff_Sw_ON_1");
+        if (fieldName == FuelControlsAtRunField)
+            return CountOn(GetValue, "ENG_FuelControl_Sw_RUN_0", "ENG_FuelControl_Sw_RUN_1");
+
+        // The recirculation fans of the loaded variant (Pmdg777RecircFans): NaN until the CDA says
+        // which 777 this is.
+        if (fieldName == Pmdg777RecircFans.OnField) return Pmdg777RecircFans.OnValue(GetValue);
+
         if (!CdaReady) return double.NaN;
         try { return _dm?.GetFieldValue(fieldName) ?? double.NaN; }
         catch { return double.NaN; }
@@ -206,12 +218,46 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public bool IsEng2FuelControlRun()    => IsOn("ENG_FuelControl_Sw_RUN_1");
     public bool AreFuelControlsCutoff()   => !IsEng1FuelControlRun() && !IsEng2FuelControlRun();
 
+    /// <summary>Synthetic: how many fuel control switches are at RUN (0, 1 or 2), NaN until both are
+    /// read. The CUTOFF steps verify it at 0, so a dropped write to either switch is heard skipped.</summary>
+    public const string FuelControlsAtRunField = "FO_FUEL_CONTROLS_RUN";
+
+    /// <summary>How many of <paramref name="fields"/> read on (above 0.5); NaN while any is unread.</summary>
+    public static double CountOn(Func<string, double> read, params string[] fields)
+    {
+        int on = 0;
+        foreach (string field in fields)
+        {
+            double v = read(field);
+            if (double.IsNaN(v)) return double.NaN;
+            if (v > 0.5) on++;
+        }
+        return on;
+    }
+
     // -----------------------------------------------------------------------
     // Engines
     // -----------------------------------------------------------------------
 
     public int Eng1StartSelector() => (int)Math.Round(GetValue("ENG_Start_Selector_0"));
     public int Eng2StartSelector() => (int)Math.Round(GetValue("ENG_Start_Selector_1"));
+
+    /// <summary>The engine (1 or 2) is RUNNING: its N2 read at or above <see cref="EngineRunningN2"/>
+    /// AND its fuel control switch at RUN. Engine Start does not start such an engine again (a re-run
+    /// after a stop at engine 1, or an engine started by hand). An engine coasting down after a cutoff
+    /// still shows N2 but not RUN, so it is never taken for a running one.</summary>
+    public bool IsEngineRunning(int engine) => engine switch
+    {
+        1 => EngineRunning(GetValue("FO_ENG1_N2"), GetValue("ENG_FuelControl_Sw_RUN_0")),
+        2 => EngineRunning(GetValue("FO_ENG2_N2"), GetValue("ENG_FuelControl_Sw_RUN_1")),
+        _ => false,
+    };
+
+    /// <summary>The test of <see cref="IsEngineRunning"/>: N2 at or above <see cref="EngineRunningN2"/>
+    /// and the fuel control switch at RUN (1); false while either is unread (NaN).</summary>
+    public static bool EngineRunning(double n2, double fuelControlRun) =>
+        n2 >= EngineRunningN2 && fuelControlRun > 0.5;
+
     public bool IsEecMode1Norm()   => IsOn("ENG_EECMode_Sw_NORM_0");
     public bool IsEecMode2Norm()   => IsOn("ENG_EECMode_Sw_NORM_1");
     public bool IsAutoStartOn()    => IsOn("ENG_Autostart_Sw_ON");
@@ -258,6 +304,11 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public bool IsLandingLightNOn()  => IsOn("LTS_LandingLights_Sw_ON_2");
     public bool IsRwyTurnoffLOn()    => IsOn("LTS_RunwayTurnoff_Sw_ON_0");
     public bool IsRwyTurnoffROn()    => IsOn("LTS_RunwayTurnoff_Sw_ON_1");
+
+    /// <summary>Synthetic: how many runway turnoff lights are on (0, 1 or 2), NaN until both are read.
+    /// The turnoff steps write each side and read both back: 2 for ON, 0 for OFF.</summary>
+    public const string RunwayTurnoffLightsOnField = "FO_TURNOFF_LIGHTS_ON";
+
     public bool IsTaxiOn()           => IsOn("LTS_Taxi_Sw_ON");
     public bool IsStormOn()          => IsOn("LTS_Storm_Sw_ON");
     public bool IsLogoOn()           => IsOn("LTS_Logo_Sw_ON");
@@ -287,8 +338,10 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     // The read-back lines' own lever ranges — "Flaps: Set for takeoff" (BTKOF_FLAPS) and "Flaps:
     // Set for landing" (LDG_FLAPS) — shared with the flows' read-only lever checks and their
     // "Already set", so the three can never disagree. False for an unread lever (NaN). The takeoff
-    // range used to stop at 3 here, as the line once did (Pmdg777TakeoffFlapsTests).
-    public static bool IsTakeoffFlapLever(double lever) => lever >= 1 && lever <= 4;   // flaps 1, 5, 15 or 20
+    // range used to stop at 3 here, as the line once did (Pmdg777TakeoffFlapsTests), and to start
+    // at 1 until 2026-10-18: flaps 1 is not a 777 takeoff setting, so a lever left at 1 was
+    // confirmed "set for takeoff".
+    public static bool IsTakeoffFlapLever(double lever) => lever >= 2 && lever <= 4;   // flaps 5, 15 or 20
     public static bool IsLandingFlapLever(double lever) => lever >= 4;                 // flaps 20, 25 or 30
     public bool AreFlapsForTakeoff()      => IsTakeoffFlapLever(GetValue("FCTL_Flaps_Lever"));
     public bool AreFlapsForLanding()      => IsLandingFlapLever(GetValue("FCTL_Flaps_Lever"));
@@ -307,6 +360,21 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     // GearLever: 0=Up, 1=Down
     public bool IsGearDown()             => IsPosition("GEAR_Lever", 1);
     public bool IsGearUp()               => IsPosition("GEAR_Lever", 0);
+
+    // The CDA carries no air/ground field: SIM ON GROUND is the base definition's stock
+    // SIM_ON_GROUND (1 Hz batch), read from SimConnect's cache like the speed-brake lever.
+    public const string OnGroundKey = "SIM_ON_GROUND";
+
+    /// <summary>True on the ground, false airborne, null before SIM ON GROUND has been read.</summary>
+    public bool? IsOnGround() =>
+        _cachedValue?.Invoke(OnGroundKey) is double v && !double.IsNaN(v) ? v > 0.5 : null;
+
+    /// <summary>The gear lever goes UP only when this is true, SIM ON GROUND READ as airborne (the
+    /// MD-11's rule): on the ground, or unread, it stays where it is.</summary>
+    public bool IsDefinitelyAirborne() => IsOnGround() == false;
+
+    /// <summary>Spoken when the gear-up step or line leaves the lever alone.</summary>
+    public const string GearUpLeaveAloneText = "Not airborne, so the gear stays down.";
 
     // Gear CONFIRMED from the lever AND the physical leg positions (Pmdg777GearConfirmation);
     // false (never true) while any reading is unknown.
@@ -357,12 +425,14 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     // MOMENTARY action" (PMDG_777X_SDK.h): it reads 0 at rest whatever the mode, so reading it
     // as the mode made the descent push nothing while "set to local QNH" was spoken, and the
     // climb push a blind toggle. STD is read as the panel's own altimeter readout reads it
-    // (commit 1be55388): the definition's KOHLSMAN SETTING HG cache, at 29.92 inHg. There is
-    // no FO-side reading, so the phase monitor pushes the FO's STD together with the Captain's.
+    // (commit 1be55388): the definition's KOHLSMAN SETTING HG cache, at 29.92 inHg. That reading
+    // cannot tell STD from a QNH of 29.92 (the US standard day, the MSFS preset weather), so the
+    // phase monitor pushes STD only from a reading that is NOT 29.92 and takes back only its own
+    // push (Pmdg777TransitionStd). There is no FO-side reading: the FO's STD goes with the Captain's.
     public const string AltimeterSettingKey = "ALTIMETER_SETTING";
 
-    /// <summary>True when the Captain's altimeter reads standard (29.92 inHg), false when it
-    /// reads anything else, null before the setting has been read.</summary>
+    /// <summary>True when the Captain's altimeter reads 29.92 inHg (STD, or a QNH of 29.92: the two
+    /// cannot be told apart), false when it reads anything else, null before it has been read.</summary>
     public bool? IsBaroStdCapt() => BaroReadsStandard(_cachedValue?.Invoke(AltimeterSettingKey));
 
     /// <summary>The STD test of <see cref="IsBaroStdCapt"/>: null for no reading, else whether

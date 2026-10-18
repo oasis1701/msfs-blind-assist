@@ -35,10 +35,11 @@ public class Pmdg777TakeoffFlapsTests
 
     // FCTL_Flaps_Lever detents: 0 UP, 1 = 1, 2 = 5, 3 = 15, 4 = 20, 5 = 25, 6 = 30. The 777's
     // takeoff settings are 5, 15 and 20, so "Flaps: Set for takeoff" must accept lever 4 —
-    // it stopped at 3, so a flaps 20 takeoff never ticked the Before Takeoff line.
+    // it stopped at 3, so a flaps 20 takeoff never ticked the Before Takeoff line — and must
+    // refuse lever 1, which it accepted until 2026-10-18 and so confirmed flaps 1 for takeoff.
     [Theory]
     [InlineData(0, false)]
-    [InlineData(1, true)]
+    [InlineData(1, false)]
     [InlineData(2, true)]
     [InlineData(3, true)]
     [InlineData(4, true)]

@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.FirstOfficer;
+using MSFSBlindAssist.SimConnect;
 using MSFSBlindAssist.SimConnect.IFly;
 
 namespace MSFSBlindAssist.FirstOfficer.IFly737;
@@ -36,6 +37,39 @@ public class IFly737StateEvaluator : IFoStateEvaluator
 
     /// <summary>Update the aircraft-definition reference (called on connect/aircraft switch).</summary>
     public void SetDefinition(IFly737MAXDefinition? def) => _def = def;
+
+    // Values the SimConnect cache holds and the SDK snapshot does not: air/ground (the base
+    // SIM_ON_GROUND) and the engines' bowed-rotor-motoring L:vars, both on the 1 Hz continuous
+    // batch. Wired by IFly737FoProfile.SetExecutorSimConnect; null while disconnected, when they
+    // read NaN.
+    private volatile SimConnectManager? _sc;
+
+    /// <summary>Update the SimConnect reference (connect, reconnect, disconnect).</summary>
+    public void SetSimConnect(SimConnectManager? sc) => _sc = sc;
+
+    /// <summary>The stock air/ground flag, read from the SimConnect cache: 1 on the ground,
+    /// 0 airborne, NaN unread.</summary>
+    public const string OnGroundField = "SIM_ON_GROUND";
+
+    /// <summary>On the ground (true), airborne (false), or unread (null).</summary>
+    public bool? OnGround
+    {
+        get
+        {
+            double v = GetValue(OnGroundField);
+            return double.IsNaN(v) ? null : v > 0.5;
+        }
+    }
+
+    /// <summary>Airborne by a SimConnect reading; unread is NOT airborne. The gear goes up only
+    /// then (IFly737ActionExecutor.RefusesGearUp).</summary>
+    public bool IsDefinitelyAirborne => OnGround == false;
+
+    /// <summary>Engine <paramref name="engine"/>'s bowed rotor motoring reads active (the LEAP-1B
+    /// motoring a hot engine before fuel, which can hold a start for minutes). Unread is not
+    /// active.</summary>
+    public bool IsBowedRotorMotoring(int engine) =>
+        GetValue(engine == 1 ? IFly737MAXDefinition.Eng1BrmKey : IFly737MAXDefinition.Eng2BrmKey) > 0.5;
 
     // Testability seam: tests inject a constructed snapshot + fixed readiness without a live
     // SDK client/plugin. Defaults read the live definition's SDK client, so production code
@@ -90,6 +124,11 @@ public class IFly737StateEvaluator : IFoStateEvaluator
         if (field == SpeedbrakeLeverState.ArmedField)
             return SpeedbrakeLeverState.ArmedValue(SpeedbrakeLeverState.IFly737,
                 GetValue(IFly737SpeedBrakeLever.FieldName), GetValue(SpeedbrakeArmedLight));
+        if (field == ShutdownPowerField) return ShutdownPowerSynthetic();
+        // SimConnect values, not SDK fields (see _sc). Independent of the SDK's readiness, like
+        // the N2 cache: a stock SimVar and the WASM's L:vars.
+        if (field is OnGroundField or IFly737MAXDefinition.Eng1BrmKey or IFly737MAXDefinition.Eng2BrmKey)
+            return _sc?.GetCachedVariableValue(field) ?? double.NaN;
 
         // Raw SDK field: INDETERMINATE (NaN) until the SDK is ready (shared memory open AND the
         // plugin reports the MAX running) — before that there is no live snapshot to read at all.
@@ -111,6 +150,39 @@ public class IFly737StateEvaluator : IFoStateEvaluator
         SpeedbrakeLeverState.Classify(SpeedbrakeLeverState.IFly737, GetValue(IFly737SpeedBrakeLever.FieldName));
     public bool IsSpeedbrakeArmed()    => GetValue(SpeedbrakeLeverState.ArmedField) > 0.5;
     public bool IsSpeedbrakeDeployed() => SpeedbrakePosition() == SpeedbrakeLeverPosition.Deployed;
+
+    // -----------------------------------------------------------------------
+    // Shutdown: who carries the electrical buses when the engines are cut
+    // -----------------------------------------------------------------------
+
+    /// <summary>1 once the start levers can be cut without leaving the aircraft on the battery:
+    /// the APU generator waits off the buses to take them (the blue APU GEN OFF BUS light), the
+    /// buses are already off the engine generators (<see cref="AreBusesOffEngineGenerators"/>),
+    /// or both levers already read CUTOFF (nothing left to protect). NaN while the SDK is not
+    /// ready, 0 otherwise. The Shutdown flow's SD_POWER_WAIT reads it.</summary>
+    public const string ShutdownPowerField = "FO_SHUTDOWN_POWER";
+
+    private double ShutdownPowerSynthetic()
+    {
+        if (!ReadySource()) return double.NaN;
+        return IsOn("APU_GEN_OFF_BUS_Light_Status") || AreBusesOffEngineGenerators() || AreStartLeversAtCutoff()
+            ? 1 : 0;
+    }
+
+    /// <summary>Both transfer buses powered and neither engine generator on them, so the APU
+    /// generator or ground power carries them: both GEN OFF BUS lights lit (that generator is off
+    /// its bus) and both TRANSFER BUS OFF lights out (that bus is powered), the lights the
+    /// electrical click pairs were live-verified against (IFly737MAXDefinition.Overhead.cs).
+    /// False when unread.</summary>
+    public bool AreBusesOffEngineGenerators() =>
+        IsOn("ENG_GEN_OFF_BUS_Light_Status_0") && IsOn("ENG_GEN_OFF_BUS_Light_Status_1")
+        && GetValue("ENG_TRANSFER_BUS_OFF_Light_Status_0") < 0.5
+        && GetValue("ENG_TRANSFER_BUS_OFF_Light_Status_1") < 0.5;
+
+    /// <summary>Both start levers read CUTOFF (the 0-5 switch+fire-light composite's 0-2).
+    /// False when unread.</summary>
+    public bool AreStartLeversAtCutoff() =>
+        GetValue("Engine_Start_Lever_Status_0") < 3 && GetValue("Engine_Start_Lever_Status_1") < 3;
 
     // NOTE: there is deliberately no IsLit(field) helper here. GetValue(field) > 0.5-style
     // collapsing of NaN (unknown) to "not lit" is exactly the trap the auto-manager avoids —

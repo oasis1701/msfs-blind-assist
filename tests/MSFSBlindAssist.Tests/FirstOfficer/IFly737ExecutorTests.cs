@@ -32,6 +32,8 @@ public class IFly737ExecutorTests
     {
         "FIRE_TEST", "STALL_TEST_1", "STALL_TEST_2", "OVSPD_TEST_1", "OVSPD_TEST_2",
         "TCAS_TEST", "GPWS_TEST", "APU_START", "BARO_STD_BOTH", "PRESS_ALTS", "SPEEDBRAKE_ARM",
+        // The Engine Start flow's read-only, BRM-aware waits (second review, 2026-10-18).
+        "ENG1_FUEL_N2", "ENG2_FUEL_N2", "ENG1_STARTER_CUTOUT", "ENG2_STARTER_CUTOUT",
     };
 
     [Fact]

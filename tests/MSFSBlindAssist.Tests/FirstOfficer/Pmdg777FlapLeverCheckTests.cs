@@ -65,7 +65,7 @@ public class Pmdg777FlapLeverCheckTests
     // FCTL_Flaps_Lever detents: 0 UP, 1 = 1, 2 = 5, 3 = 15, 4 = 20, 5 = 25, 6 = 30.
     [Theory]
     [InlineData(0, false, false)]
-    [InlineData(1, true, false)]
+    [InlineData(1, false, false)]   // flaps 1: not a 777 takeoff setting (5, 15 and 20 are)
     [InlineData(2, true, false)]
     [InlineData(3, true, false)]
     [InlineData(4, true, true)]     // flaps 20: a takeoff and a landing setting

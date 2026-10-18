@@ -570,14 +570,17 @@ public class HeadwindA330Definition : FlyByWireA320Definition
     /// drives the per-light indexed NAV_LIGHTS_SET the A32NX's six-lamp switch needs.
     /// The A339X switch is a plain two-simvar toggle at index 0, so write the stock simvars
     /// the cockpit switch itself performs plus the indexed events at index 0 — see
-    /// <see cref="NavLogoRpn"/> for why the index operand is explicit.
+    /// <see cref="NavLogoRpn"/> for why the index operand is explicit. Unique per call, like
+    /// every inherited A32NX exterior-light write (SIM-17): the RPN is byte-identical per state,
+    /// and MobiFlight drops a repeat, so an ON after the switch was moved off in the cockpit
+    /// did nothing.
     /// </summary>
     public override bool HandleUIVariableSet(string varKey, double value, SimConnect.SimVarDefinition varDef,
         SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
     {
         if (varKey == "A32NX_LIGHTS_NAV_LOGO")
         {
-            simConnect.ExecuteCalculatorCode(NavLogoRpn(value >= 0.5));
+            simConnect.ExecuteCalculatorCodeUnique(NavLogoRpn(value >= 0.5));
             return true;
         }
 

@@ -71,6 +71,9 @@ public sealed class IFly737FoProfile : IFoProfile<IFly737ActionExecutor, IFly737
         // every call (including disconnect) because this is the one place the FO engine wires
         // the executor at all — there is no separate one-time construction hook for it.
         exec.SetStateEvaluator(_state);
+        // The evaluator's SimConnect reads (air/ground for the gear, the BRM flags for the
+        // engine-start waits) follow the same connection, so they read NaN while disconnected.
+        _state.SetSimConnect(sc);
     }
 
     public List<FlowDefinition<IFly737StateEvaluator>> BuildFlows()

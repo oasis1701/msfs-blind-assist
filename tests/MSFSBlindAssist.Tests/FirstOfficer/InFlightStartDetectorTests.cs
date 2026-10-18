@@ -154,6 +154,32 @@ public class InFlightStartDetectorTests
         Assert.True(d.Update(false, 12000, 250, T0.AddHours(1).AddMinutes(2))); // loaded in the air
     }
 
+    // A flight loaded in the air straight from another flight in the air sends no ground sample in
+    // between: the window resets the detector on the flight load, so it fires for the new flight
+    // (PR 160 second review). Without the reset it stayed "airborne" and never fired again.
+    [Fact]
+    public void A_reset_between_two_flights_loaded_in_the_air_fires_again()
+    {
+        var d = new InFlightStartDetector();
+        Assert.True(d.Update(false, 35000, 280, T0));
+        Assert.False(d.Update(false, 12000, 250, T0.AddMinutes(30)));            // no reset: one flight
+
+        d.Reset();
+        Assert.True(d.Update(false, 12000, 250, T0.AddMinutes(31)));
+    }
+
+    [Fact]
+    public void A_reset_then_a_flight_loaded_on_the_ground_and_a_takeoff_never_fires()
+    {
+        var d = new InFlightStartDetector();
+        Assert.True(d.Update(false, 35000, 280, T0));
+
+        d.Reset();
+        Assert.False(d.Update(true, 0, 0, T0.AddMinutes(1)));
+        Assert.False(d.Update(false, 10, 150, T0.AddMinutes(20)));               // liftoff
+        Assert.False(d.Update(false, 600, 170, T0.AddMinutes(20).AddSeconds(12)));
+    }
+
     [Fact]
     public void A_bounce_on_landing_never_fires()
     {

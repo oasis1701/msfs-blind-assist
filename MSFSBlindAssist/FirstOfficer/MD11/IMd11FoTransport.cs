@@ -28,6 +28,12 @@ public interface IMd11FoTransport
 
     /// <summary>Keep the aircraft's own lamp speech for this control quiet (the FO narration says it).</summary>
     void NoteActuation(string nodeId);
+    /// <summary>
+    /// The actuation <see cref="NoteActuation"/> announced is over. <paramref name="reached"/> false:
+    /// it stopped short of its target, so the quiet window closes now and the control's resting
+    /// position is spoken (the flow says only "Skipping"); true: the window runs out by itself.
+    /// </summary>
+    void EndActuation(string nodeId, bool reached);
     /// <summary>Silence all lamp speech for a while (the annunciator light test).</summary>
     void MuteLampSpeech(int ms);
 

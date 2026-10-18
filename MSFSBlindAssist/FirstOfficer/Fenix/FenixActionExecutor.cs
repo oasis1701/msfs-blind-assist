@@ -1,5 +1,6 @@
 using MSFSBlindAssist.FirstOfficer.Generic;
 using MSFSBlindAssist.FirstOfficer.Models;
+using MSFSBlindAssist.SimConnect;
 using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.FirstOfficer.Fenix;
@@ -222,21 +223,19 @@ public sealed class FenixActionExecutor : LVarActionExecutor
     public Task<bool> TakeoffConfigTest()
         => PulseAsync("S_ECAM_TO", TakeoffConfigTestHoldMs, AnnounceTakeoffConfigResult);
 
-    /// <summary>Reads the master-warning outcome of the TO CONFIG test (while the button is
-    /// still held) and announces it. Deliberately reads the SHARED master-warning latch —
-    /// live L-var search (2026-07) confirmed the Fenix exposes NO TO-CONFIG-only indicator.
-    /// Fail-safe direction: an already-active unrelated warning yields a conservative
-    /// "check configuration" (never harmful); disambiguating via a pre-press baseline delta
-    /// would mask a genuinely-bad config behind a pre-existing warning as a DANGEROUS false
-    /// "normal". Mirrors FenixA320Definition.AnnounceTakeoffConfigResult (panel path).</summary>
-    private void AnnounceTakeoffConfigResult()
+    /// <summary>Reads the outcome of the TO CONFIG test (while the button is still held) through
+    /// the manager that pressed it, and announces it in <see cref="FenixTakeoffConfigVerdict"/>'s
+    /// words, the same as the panel's TO CONFIG button (FenixA320Definition.AnnounceTakeoffConfigResult).
+    /// Fail-safe direction: an already-active unrelated warning or caution yields a conservative
+    /// "check" (never harmful); disambiguating via a pre-press baseline delta would mask a
+    /// genuinely-bad config behind a pre-existing warning as a DANGEROUS false "normal".</summary>
+    private void AnnounceTakeoffConfigResult(SimConnectManager sc)
     {
         try
         {
-            double masterWarning = Sc?.GetCachedVariableValue("I_MIP_MASTER_WARNING_CAPT") ?? 0.0;
-            _announcer?.AnnounceImmediate(masterWarning >= 0.5
-                ? "Takeoff config: check configuration."
-                : "Takeoff config normal.");
+            _announcer?.AnnounceImmediate(FenixTakeoffConfigVerdict.Text(
+                sc.GetCachedVariableValue(FenixTakeoffConfigVerdict.MasterWarningKey),
+                sc.GetCachedVariableValue(FenixTakeoffConfigVerdict.MasterCautionKey)));
         }
         catch (Exception ex)
         {
@@ -309,12 +308,16 @@ public sealed class FenixActionExecutor : LVarActionExecutor
     {
         var sc = Sc;
         if (sc is not { IsConnected: true }) return false;
+        bool sent = false;
         await RunGatedAsync(() =>
         {
+            // Detached while it waited for the gate (the window closed): never sent.
+            if (!StillAttached(sc)) return Task.CompletedTask;
             sc.ExecuteCalculatorCodeUnique($"(L:{knobLVar}) 1 - (>L:{knobLVar})");
+            sent = true;
             return Task.CompletedTask;
         });
-        return true;
+        return sent;
     }
 
     /// <summary>Push the FCU altitude knob (the Before Start "FCU altitude: pushed" line):

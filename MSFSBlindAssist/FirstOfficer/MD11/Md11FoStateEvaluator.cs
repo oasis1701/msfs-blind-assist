@@ -100,6 +100,28 @@ public sealed class Md11FoStateEvaluator : LVarStateEvaluator, IFoEngine3N2Sink,
 
     private static bool Pos(double v, double p) => Md11FoSwitching.AtPosition(v, p);
 
+    private const string ExtPowerOnLamp = "MD11_OVHD_ELEC_EXT_PWR_ON_LT";
+    private const string ApuPowerOnLamp = "MD11_OVHD_ELEC_APU_PWR_ON_LT";
+    private static readonly string[] ExtPowerInputs = new[] { ExtPowerOnLamp }.Concat(PowerInputs).ToArray();
+
+    /// <summary>
+    /// A power source (external or APU power) by its ON lamp: 1 lit, 0 dark or with nothing
+    /// powering the DC busses, NaN while the lamp or the gate is unread. A source that is on powers
+    /// the busses, so on the battery alone (DC1 OFF lit) or cold it cannot be on, where every lamp
+    /// field reads NaN. A LIT ON lamp is on whatever the gate says (the executor's rule: the gate
+    /// can lag its own lamp).
+    /// </summary>
+    private static double SourceOn(Func<string, double> r, string onLamp)
+    {
+        double on = r(onLamp);
+        if (Known(on) && Lit(on)) return 1;
+        if (!Known(r(TFDiMD11Definition.DcPowerKey), r(TFDiMD11Definition.Dc1BusOffKey))) return double.NaN;
+        if (!Powered(r)) return 0;
+        return Known(on) ? 0 : double.NaN;
+    }
+
+    private static double Not(double v) => double.IsNaN(v) ? double.NaN : 1 - v;
+
     private static readonly Dictionary<string, Synth> Synthetics = new(StringComparer.Ordinal)
     {
         ["FO_POWERED"] = new(PowerInputs, r => B(Powered(r))),
@@ -112,20 +134,20 @@ public sealed class Md11FoStateEvaluator : LVarStateEvaluator, IFoEngine3N2Sink,
         ["FO_RWY_TURNOFF_OFF"] = Lamps(v => !Lit(v[0]) && !Lit(v[1]),
             "MD11_OVHD_LTS_RWY_TURNOFF_L_LT", "MD11_OVHD_LTS_RWY_TURNOFF_R_LT"),
         ["FO_DOME_OFF"] = Lamps(v => !Lit(v[0]), "MD11_LTS_DOME"),
-        ["FO_EXT_POWER_ON"] = Lamps(v => Lit(v[0]), "MD11_OVHD_ELEC_EXT_PWR_ON_LT"),
-        // Off when the ON lamp is dark, or when nothing powers the DC busses: connected external
-        // power powers them, so on the battery alone (DC1 OFF lit) or cold it cannot be on. The
-        // Shutdown line must tick there, where every lamp field above reads NaN. A LIT ON lamp is
-        // connected whatever the gate says (the executor's rule: the gate can lag its own lamp).
-        ["FO_EXT_POWER_OFF"] = new(new[] { "MD11_OVHD_ELEC_EXT_PWR_ON_LT" }.Concat(PowerInputs).ToArray(), r =>
+        // ON and OFF are one fact (SourceOn). ON is a definite 0 on the battery alone or cold, never
+        // NaN: a Power Up tick of "External power: ON" with no GPU now reverts with "Unable to
+        // complete" instead of staying ticked over nothing (the checklist skips NaN).
+        ["FO_EXT_POWER_ON"] = new(ExtPowerInputs, r => SourceOn(r, ExtPowerOnLamp)),
+        // The Shutdown line must tick on the battery alone, where every lamp field reads NaN.
+        ["FO_EXT_POWER_OFF"] = new(ExtPowerInputs, r => Not(SourceOn(r, ExtPowerOnLamp))),
+        ["FO_APU_POWER_ON"] = Lamps(v => Lit(v[0]), ApuPowerOnLamp),
+        // Parking's guard before the fuel cut: APU power or external power carries the busses.
+        ["FO_APU_OR_EXT_POWER_ON"] = new(new[] { ExtPowerOnLamp, ApuPowerOnLamp }.Concat(PowerInputs).ToArray(), r =>
         {
-            double on = r("MD11_OVHD_ELEC_EXT_PWR_ON_LT");
-            if (Known(on) && Lit(on)) return 0;
-            if (!Known(r(TFDiMD11Definition.DcPowerKey), r(TFDiMD11Definition.Dc1BusOffKey))) return double.NaN;
-            if (!Powered(r)) return 1;
-            return Known(on) ? 1 : double.NaN;
+            double ext = SourceOn(r, ExtPowerOnLamp), apu = SourceOn(r, ApuPowerOnLamp);
+            if (ext > 0.5 || apu > 0.5) return 1;
+            return Known(ext, apu) ? 0 : double.NaN;
         }),
-        ["FO_APU_POWER_ON"] = Lamps(v => Lit(v[0]), "MD11_OVHD_ELEC_APU_PWR_ON_LT"),
         ["FO_AUX_PUMP_1_ON"] = Lamps(v => Lit(v[0]), "MD11_OVHD_HYD_AUX_PUMP_1_ON_LT"),
         ["FO_IGNITION_SELECTED"] = Lamps(v => Lit(v[0]) || Lit(v[1]), "MD11_OVHD_ENG_A_LT", "MD11_OVHD_ENG_B_LT"),
         ["FO_IGNITION_OFF"] = Lamps(v => Lit(v[0]), "MD11_OVHD_ENG_IGN_OFF_LT"),

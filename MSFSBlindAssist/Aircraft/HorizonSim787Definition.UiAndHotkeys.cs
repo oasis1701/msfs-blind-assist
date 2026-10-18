@@ -8,6 +8,28 @@ namespace MSFSBlindAssist.Aircraft;
 public partial class HorizonSim787Definition
 {
     // =========================================================================
+    // Universal auto-AP engage (UniversalAutomationService)
+    // =========================================================================
+
+    /// <summary>The A/P master's own state, AUTOPILOT MASTER (<c>HS787_APMaster</c>, Continuous and so
+    /// cached): what the panel's A/P row, the autopilot window and the "Autopilot 1 On" call read. Null
+    /// until read. The universal auto-engage once pressed the stock AUTOPILOT_ON blind here (the panel
+    /// engages through AP_MASTER) and said "Autopilot engaged" with nothing read back; read, it is
+    /// closed-loop as on every other aircraft (FO-18).</summary>
+    public override bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect)
+        => simConnect.GetCachedVariableValue("HS787_APMaster") is double v && !double.IsNaN(v) ? v > 0.5 : null;
+
+    /// <summary>The panel's own engage, AP_MASTER: a toggle, so pressed only on a definite OFF.</summary>
+    public override void EngageAutopilot(SimConnect.SimConnectManager simConnect)
+    {
+        if (IsAutopilotEngaged(simConnect) != false) return;
+        simConnect.SendEvent("AP_MASTER");
+    }
+
+    public override int AutopilotEngageRetryIntervalMs => ToggleAutopilotEngageRetryIntervalMs;
+    public override bool AutopilotEngageWaitsForState => true;
+
+    // =========================================================================
     // HandleUIVariableSet — panel control actions
     // =========================================================================
 

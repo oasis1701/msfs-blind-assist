@@ -10,10 +10,12 @@ namespace MSFSBlindAssist.FirstOfficer;
 /// - Descending through: Landing lights ON
 ///
 /// Transition altitude (from SimBrief OFP, origin):
-/// - Climbing through: Both altimeters set to STD (1013 / 29.92)
+/// - Climbing through: Both altimeters pushed to STD, from a Captain's altimeter that does not
+///   already read 29.92 (Pmdg777TransitionStd)
 ///
 /// Transition level (from SimBrief OFP, destination):
-/// - Descending through: Both altimeters deselect STD, announce to set QNH
+/// - Descending through: Both STD pushes taken back if this monitor made them, then announce to
+///   set QNH; otherwise only the reminder
 ///
 /// Both altimeter changes are gated by AutoAltimetersEnabled (FO-23): off, the
 /// crossing is only spoken as a reminder.
@@ -49,6 +51,9 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
     // the QNH call-out when the destination TL sat well above the origin TA (bands overlap;
     // see TransitionCrossingDetector).
     private readonly TransitionCrossingDetector _trans = new();
+
+    // This monitor's own STD push: what the descent may take back (see Pmdg777TransitionStd).
+    private readonly Pmdg777TransitionStd _std = new();
 
     // -----------------------------------------------------------------------
     // Constructor
@@ -90,6 +95,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
     {
         _prevAbove10k = null;
         _trans.Reset();
+        _std.Reset();
         _noTransReminderFired = false;
         _seatbelt.Reset();
     }
@@ -190,41 +196,28 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         var crossing = _trans.Update(alt, climbing, descending);
         if (TransitionAltimeters.ReminderInstead(crossing, AutoAltimetersEnabled) is { } reminder)
         {
+            // Nothing is pushed with the setting off, and a climb push is forgotten at the
+            // transition level all the same: the descent is the one place it is taken back.
+            if (crossing == TransitionCrossingDetector.Crossing.DescendToQnh) _std.Reset();
             _announcer.Announce(reminder);
             return;
         }
 
-        // The STD pushes are toggles, so they go only on a READ altimeter (IsBaroStdCapt: the
-        // KOHLSMAN cache at 29.92). The FO side has no reading of its own and goes with the
-        // Captain's: both pushed or neither. Unread, nothing is pushed and the crossing is spoken
-        // as the same reminder the setting-off path uses, never as a change that was not made.
-        bool? captStd = _state.IsBaroStdCapt();
-        switch (crossing)
+        // The STD pushes are toggles and 29.92 is no proof of STD (a QNH of 29.92 reads the same),
+        // so Pmdg777TransitionStd pushes only from a reading that is not 29.92 and takes back only
+        // its own push. The FO side has no reading of its own and goes with the Captain's.
+        var decision = crossing switch
         {
-            case TransitionCrossingDetector.Crossing.ClimbToStd:
-            {
-                // Climbing through transition altitude — set both altimeters to STD
-                if (captStd == null) { _announcer.Announce(TransitionAltimeters.AltitudeReminder); break; }
-                if (captStd == false)
-                {
-                    _executor.PushBaroSTDCapt();
-                    _executor.PushBaroSTDFO();
-                }
-                _announcer.Announce("Transition altitude. Altimeters set to standard.");
-                break;
-            }
-            case TransitionCrossingDetector.Crossing.DescendToQnh:
-            {
-                // Descending through transition level — deselect STD, announce QNH
-                if (captStd == null) { _announcer.Announce(TransitionAltimeters.LevelReminder); break; }
-                if (captStd == true)
-                {
-                    _executor.PushBaroSTDCapt();
-                    _executor.PushBaroSTDFO();
-                }
-                _announcer.Announce("Transition level. Altimeters set to local QNH. Set local pressure now.");
-                break;
-            }
+            TransitionCrossingDetector.Crossing.ClimbToStd   => _std.OnClimb(_state.IsBaroStdCapt()),
+            TransitionCrossingDetector.Crossing.DescendToQnh => _std.OnDescent(_state.IsBaroStdCapt()),
+            _ => (Pmdg777TransitionStd.Decision?)null,
+        };
+        if (decision is not { } d) return;
+        if (d.PushBoth)
+        {
+            _executor.PushBaroSTDCapt();
+            _executor.PushBaroSTDFO();
         }
+        _announcer.Announce(d.Speech);
     }
 }

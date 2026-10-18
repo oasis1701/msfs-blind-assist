@@ -104,6 +104,69 @@ public class TransitionCrossingDetectorTests
         Assert.Equal(X.DescendToQnh, d.Update(5000, false, true));   // QNH #2
     }
 
+    // REGRESSION (PR 160 second review): origin TA 3000 (EHAM), destination TL FL70 (EDDF). A
+    // go-around to 5,000 ft, above the origin altitude but below the destination level, is flown
+    // on QNH: it once set standard, and the second approach never re-armed the QNH crossing.
+    [Fact]
+    public void GoAround_BelowTheDestinationLevel_StaysOnQnh()
+    {
+        var d = Make(3000, 7000);
+        d.Update(0, climbing: false, descending: false);                       // on the ground: arms STD
+        Assert.Equal(X.ClimbToStd, d.Update(3500, climbing: true, descending: false));
+        d.Update(30000, climbing: true, descending: false);                    // cruise: arms QNH
+        Assert.Equal(X.DescendToQnh, d.Update(6500, climbing: false, descending: true));
+
+        var seen = new List<X>();
+        foreach (int alt in new[] { 4000, 2500, 1000, 500 })                  // the approach
+            seen.Add(d.Update(alt, climbing: false, descending: true));
+        foreach (int alt in new[] { 800, 2000, 3500, 4500, 5000 })            // the go-around
+            seen.Add(d.Update(alt, climbing: true, descending: false));
+        for (int i = 0; i < 5; i++)                                            // level at 5,000 ft
+            seen.Add(d.Update(5000, climbing: false, descending: false));
+        foreach (int alt in new[] { 4000, 2500, 1000, 200 })                  // the second approach
+            seen.Add(d.Update(alt, climbing: false, descending: true));
+
+        Assert.All(seen, c => Assert.Equal(X.None, c));
+    }
+
+    // A go-around (or a re-cleared climb) back above the destination transition level is in
+    // flight levels again: standard, and the QNH crossing re-arms for the next descent.
+    [Fact]
+    public void GoAround_AboveTheDestinationLevel_SetsStd_AndReArmsQnh()
+    {
+        var d = Make(3000, 7000);
+        d.Update(30000, climbing: false, descending: false);
+        d.Update(30000, climbing: false, descending: false);
+        Assert.Equal(X.DescendToQnh, d.Update(6500, climbing: false, descending: true));
+        Assert.Equal(X.None, d.Update(1000, climbing: false, descending: true));
+        Assert.Equal(X.None, d.Update(5000, climbing: true, descending: false));
+        Assert.Equal(X.ClimbToStd, d.Update(7500, climbing: true, descending: false));
+        Assert.Equal(X.DescendToQnh, d.Update(6500, climbing: false, descending: true));
+    }
+
+    // Dipping just below the level and straight back up still sets standard on the climb.
+    [Fact]
+    public void ClimbStraightBackAboveTheLevel_AfterTheQnhCrossing_SetsStd()
+    {
+        var d = Make(3000, 7000);
+        d.Update(30000, climbing: false, descending: false);
+        Assert.Equal(X.DescendToQnh, d.Update(6650, climbing: false, descending: true));
+        Assert.Equal(X.None, d.Update(6900, climbing: true, descending: false));
+        Assert.Equal(X.ClimbToStd, d.Update(7400, climbing: true, descending: false));
+    }
+
+    // Reset (a new flight or SimBrief load) puts the climb back on the transition ALTITUDE.
+    [Fact]
+    public void Reset_AfterArrival_ClimbsOnTheTransitionAltitudeAgain()
+    {
+        var d = Make(3000, 7000);
+        d.Update(30000, climbing: false, descending: false);
+        Assert.Equal(X.DescendToQnh, d.Update(6500, climbing: false, descending: true));
+        d.Reset();
+        d.Update(0, climbing: false, descending: false);
+        Assert.Equal(X.ClimbToStd, d.Update(3500, climbing: true, descending: false));
+    }
+
     private static X FirstDescendHit(TransitionCrossingDetector d)
     {
         for (int alt = 6300; alt >= 3000; alt -= 100)

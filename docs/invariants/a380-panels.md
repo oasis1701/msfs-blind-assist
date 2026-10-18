@@ -37,6 +37,8 @@ Moved 2026-10-10 from a380-systems.md (split for the rule budget).
 
 Moved 2026-10-10 from a380-systems.md (split for the rule budget).
 
+**The First Officer's T.O CONFIG test presses on the same clock (2026-10-18, PR #160 second review).** `FbwA380ActionExecutor.TakeoffConfigTestAsync` holds `A32NX_BTN_TOCONFIG` 2 s, FlyByWire's own preset hold. It reserves the whole hold with `PressClock.Reserve(now, holdMs)`, which refuses a hold shorter than `HoldMs`, waits out the last press's release, and marks its own release. Until then it wrote the key with no reservation, so a panel or checklist-window ECP press during the hold, or a re-tick within 250 ms of the release, could merge with it. The rule is mirrored to the executor in `a380-first-officer-call-sites.md`, since this file's globs leave the First Officer out. Pinned by `A380EcpKeyPulseTests` and `FbwFamilySecondReviewTests`.
+
 ## A380-16
 
 - A readout-only var (a decoder in `TryGetDisplayOverride`, no hotkey/window/auto-announce) must be listed in a panel display list or it is DEAD — never requested, decoder never runs, nothing logged. `FMA_CRUISE_ALT_MODE` shipped that way. Pinned by `FlyByWireA380DisplayReachabilityTests`. → [a380x.md](../a380x.md)

@@ -157,12 +157,14 @@ just the FO's own narration.
     Landing Checklist's "Radar and predictive windshear: OFF" ticks only after both the radar and
     the predictive windshear read OFF (the flow's "Radar and predictive windshear: OFF" check),
     never on the radar step alone.
-12. **Shutdown / Parking**: parking brake ON, APU bleed ON, engine masters OFF (confirm the flow
-    waits for `FO_ENGINES_OFF` before continuing), transponder STBY and **TCAS: STANDBY** (the
-    new line: tick it by hand with TCAS on TA/RA and confirm it moves to standby), seatbelt
-    signs OFF (confirm the sign actually extinguishes before the next step), beacon OFF, fuel
-    pumps OFF, nose/turn-off lights OFF, cockpit door UNLOCKED, **cockpit lighting SET
-    (parking/bright scene)** per §4.1, **ECAM page → DOOR**.
+12. **Shutdown / Parking**: parking brake ON, APU bleed ON, engine 1 and 2 masters OFF (the flow
+    switches them and moves straight on, with no wait for the engines to stop, as on the Fenix and
+    the A330; the Parking Checklist's "Engines: OFF" ticks itself once both engines read off),
+    transponder STBY and **TCAS: STANDBY** (the new line: tick it by hand with TCAS on TA/RA and
+    confirm it moves to standby), LS captain and first officer OFF, seatbelt signs OFF (the flow
+    does not wait for the sign either; once the flow is complete, the Signs panel's "Seat Belts Sign
+    State" reads Off), beacon OFF, fuel pumps OFF, nose/turn-off lights OFF, cockpit door UNLOCKED,
+    **cockpit lighting SET (parking/bright scene)** per §4.1, **ECAM page → DOOR**.
 13. **Securing** (FSFO 12 tail): IRS 1-3 OFF, crew oxygen OFF, emergency-exit lighting OFF,
     no-smoking OFF, APU bleed/master OFF, **"Waiting for: APU flap to close"** (FlyByWire's order:
     external power stays on until the flap reads closed, up to 150 s), **External power: OFF**
@@ -519,3 +521,40 @@ every aircraft are Part Z.1 of the PMDG 737 plan.
    flaps on there: the flaps are not retracted.
 4. **Exterior light combos repeat.** Switch the beacon ON from the panel, OFF in the cockpit by
    mouse, then ON from the panel again: `A:LIGHT BEACON` reads 1 (the repeat was dropped before).
+
+## Part K — PR #160 second review fixes (2026-10-18)
+
+None of these has run in the sim. Items 1 to 4 need Auto-manage flaps on. Read the flap lever with
+right bracket then L, and S speed with right bracket then Shift+2. The checks shared by every
+aircraft (go-around altimeters, Stop, the plan after landing, a new flight load, gear down, offline
+ticks, seat belts) are Part AA.1 of the PMDG 737 plan.
+
+1. **A moment of climb on a high final moves nothing.** On the arrival, descend below 5,000 ft AGL
+   and level off at about 4,000 ft AGL. Select flaps 1 yourself and fly at least 5 kt above S. Pull
+   up for two or three seconds, then level off again: no "Flaps up.", and the lever still reads
+   flaps 1. Then slow below S: "Speed checked. Flaps 2." (the approach context still stands).
+2. **A real climb on the arrival only pauses the extension.** Same start: level at about 4,000 ft
+   AGL, flaps 1, above S. Climb about 500 ft at 300 to 400 fpm (more than 10 seconds), level off and
+   slow below S: no flap call at any point, and the lever still reads flaps 1. Then descend: once
+   you are 300 ft below the top of that climb, "Speed checked. Flaps 2."
+3. **Flaps you select on the arrival stay out.** Take off with flaps 2; after "Flaps 1.", select
+   flaps up yourself before S speed. On the arrival, level at 7,000 ft AGL or higher, select flaps 1
+   at about 210 kt: no "Flaps up." for at least 10 seconds, and the lever still reads flaps 1.
+4. **Rising ground under the departure.** Depart toward higher ground (for example Denver, KDEN,
+   westbound toward the foothills) with CONF 1+F, and hand-fly a level-off below 5,000 ft AGL and
+   below S speed over the rising ground, with a few small corrections down (100 to 200 fpm): no
+   "Speed checked. Flaps 2."; the lever stays at 1 until you accelerate past S ("Flaps up.").
+5. **Flap calls wait their turn.** On the approach with flaps up, slightly above green dot (right
+   bracket then Shift+1), run the Approach flow and slow below green dot while it runs: both Captain
+   reminders and "Speed checked. Flaps 1." are heard in full, one after the other; the flap call no
+   longer cuts off the reminder before it.
+6. **A held test always ends.** On the ground, start the Preflight flow, then open MSFSBA's
+   Aircraft menu in the main window with another aircraft highlighted (the sim keeps the A32NX).
+   When you hear "CVR test: listen for the test tone", press Enter: the First Officer window closes
+   during the test's 3 s hold, and the test tone still stops by itself. Switch back to the A32NX
+   and do the same at "APU fire test": the fire bell stops and the master warning goes out within
+   2 s. Then the same at the Taxi flow's "Takeoff config test", and afterwards run that test once
+   more normally: it still answers (a key left held would not take a new press).
+7. **The Shutdown step reads as the flow runs.** Part B item 12 now says what the flow does: it
+   switches the engine masters and the seat belts off and moves on without waiting for either.
+   Run it once and confirm the wording matches what you hear.

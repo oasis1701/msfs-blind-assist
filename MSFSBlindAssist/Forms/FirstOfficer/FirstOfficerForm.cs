@@ -74,14 +74,21 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     // _latestIas starts at 0 for the auto manager; the detector needs to know it was never read.
     private volatile bool _iasReceived;
 
-    // The SimBrief plan is for ONE flight, as SeatbeltAutomation's is: it is forgotten on the
-    // first ground sample after the aircraft has flown (set on the position thread, consumed by
-    // the UI timer) and on a new flight load (OnFlightLoaded), so the next flight never flies on
-    // the last one's transition altitude, takeoff flaps or pressurization. The next Shift+C
-    // loads the new plan.
+    // The SimBrief plan is for ONE flight, as SeatbeltAutomation's is: it is forgotten once the
+    // aircraft has really flown (FlyingMinAglFt and FlyingMinIasKt, InFlightStartDetector's
+    // thresholds) and then slowed to taxi speed on the ground (set on the position thread,
+    // consumed by the UI timer), and on a new flight load (OnFlightLoaded), so the next flight
+    // never flies on the last one's transition altitude, takeoff flaps or pressurization. A GSX
+    // warp or a teleport delivers single not-on-ground samples at about 0 ft and 0 kt: counted as
+    // flying, each one forgot a plan just loaded for the flight about to be flown. A touch-and-go
+    // never slows to taxi speed, so it keeps the plan. The next Shift+C loads the new plan, but
+    // never the one just flown (_flownPlanId): SimBrief still serves it until the next one is
+    // generated, and re-applied after landing it set up the next leg on the last one's values.
     private bool _airborneSeen;
     private volatile bool _forgetPlanPending;
     private bool _simBriefLoading;
+    private string? _flownPlanId;
+    private const double LandedTaxiIasKt = 40;
 
     // The Steps list's ✓ / → / ✗ marks belong to ONE run: the flow it ran and, per step index,
     // the strongest mark it earned (✗ over → over ✓, so a Skip-policy failure, which raises
@@ -199,7 +206,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
             if (_forgetPlanPending)
             {
                 _forgetPlanPending = false;
-                ForgetFlightPlan();
+                ForgetFlightPlan(flown: true);
             }
 
             _checklistMgr.EvaluateAutoDetection();
@@ -279,18 +286,32 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         // flight's first Shift+C loads its own — and never over a fetch already in flight.
         if (_loadedOFP == null && !string.IsNullOrWhiteSpace(_settings.SimbriefUsername)
             && !_simBriefLoading)
-            LoadSimBrief();
+            FetchAndApplySimBrief(automatic: true);
     }
 
     /// <summary>A flight was loaded in the simulator (MainForm's AircraftLoaded handler): the
-    /// last flight's plan and phase latches are forgotten, as after a landing.</summary>
+    /// last flight's plan, phase latches and checklists are forgotten, and a flow still running
+    /// is stopped.</summary>
     public void OnFlightLoaded()
     {
-        ForgetFlightPlan();
+        // A flow started on the last flight must not go on writing into this one: a Secure flow
+        // in its APU cool-down sent Battery OFF to the newly loaded aircraft. An aircraft switch
+        // disposes the window for the same reason.
+        if (_flowMgr.IsRunning) _flowMgr.Cancel();
+        ForgetFlightPlan(flown: false);
+        _airborneSeen = false;
+        _forgetPlanPending = false;
         // The latches would otherwise carry the last flight over: a load from cruise to a gate
         // read as a descent through 10,000 ft and switched the landing lights on at the gate.
         _flightPhaseMon.Reset();
         _foAutoMgr.Reset();
+        // The checklists were the last flight's record: kept, its latched Landing checklist read
+        // "Landing gear: DOWN — Complete" on this flight's final with the gear up (a latched
+        // group never reverts). A load in the air is seen afresh by the in-flight start rule
+        // (FO-22), which marks this flight's departure groups again.
+        _inFlightStart.Reset();
+        _inFlightCatchUpPending = false;
+        ClearAllChecklists();
     }
 
     /// <summary>Apply updated automation settings (call after the Settings dialog's First Officer panel saves).</summary>
@@ -329,10 +350,15 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
             transLvlFt = tl > 1000 ? tl : tl * 100;
         }
 
+        // A plan that gives only one of the two uses it for both, either way round (exact for the
+        // US's 18,000 ft and FL180). With the level alone, a missing altitude once read "Transition
+        // altitude 0 feet" and left both crossings unarmed: no standard on the climb, no QNH on the
+        // descent, and at 18,000 ft "No transition altitude loaded … Load SimBrief".
+        int effectiveTa = transAltFt > 0 ? transAltFt : transLvlFt;
         int effectiveTl = transLvlFt > 0 ? transLvlFt : transAltFt;
-        _flightPhaseMon.SetThresholds(transAltFt, effectiveTl);
-        if (transAltFt > 0 || transLvlFt > 0)
-            spoken.Add($"Transition altitude {transAltFt} feet, transition level {effectiveTl} feet.");
+        _flightPhaseMon.SetThresholds(effectiveTa, effectiveTl);
+        if (effectiveTa > 0)
+            spoken.Add($"Transition altitude {effectiveTa} feet, transition level {effectiveTl} feet.");
 
         // Store takeoff flap setting for use by Before Taxi flow (interface method —
         // works for any aircraft's evaluator, not just the 777). 0 = none in this plan.
@@ -363,15 +389,19 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
 
     // Forgets the loaded SimBrief plan and everything it set (see _airborneSeen). Silent: no
     // aircraft state changes, and the next Shift+C speaks the new plan as it loads it.
-    private void ForgetFlightPlan()
+    // flown: the plan's flight has landed, so the next automatic load refuses this same plan.
+    private void ForgetFlightPlan(bool flown)
     {
         if (_loadedOFP == null) return;
+        if (flown) _flownPlanId = _loadedOFP.IdentityKey;
         _loadedOFP = null;
         _flightPhaseMon.SetThresholds(0, 0);
         _stateEval.SetTakeoffFlaps(0);
         _stateEval.SetPlannedPressurizationAltitudes(null, null);
         _flightPhaseMon.SetPlannedCruiseAltitude(null);
-        Log.Info("FO", "SimBrief plan forgotten: the flight it was for has landed or another flight was loaded");
+        Log.Info("FO", flown
+            ? "SimBrief plan forgotten: the flight it was for has landed"
+            : "SimBrief plan forgotten: another flight was loaded");
     }
 
     private void OnAircraftPositionReceived(object? sender, SimConnectManager.AircraftPosition pos)
@@ -384,9 +414,19 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
                 _iasReceived ? _latestIas : double.NaN, DateTime.UtcNow))
             _inFlightCatchUpPending = true;
 
-        // The first ground sample after the aircraft has flown ends the plan's flight.
-        if (!onGround) _airborneSeen = true;
-        else if (_airborneSeen) { _airborneSeen = false; _forgetPlanPending = true; }
+        // The plan's flight ends when the aircraft has really flown and then slows to taxi speed
+        // on the ground (see _airborneSeen). Unread AGL or IAS never counts as flying.
+        if (!onGround)
+        {
+            if (_latestAgl >= InFlightStartDetector.FlyingMinAglFt
+                && _iasReceived && _latestIas >= InFlightStartDetector.FlyingMinIasKt)
+                _airborneSeen = true;
+        }
+        else if (_airborneSeen && _iasReceived && _latestIas < LandedTaxiIasKt)
+        {
+            _airborneSeen = false;
+            _forgetPlanPending = true;
+        }
     }
 
     private void OnSimVarUpdated(object? sender, SimConnect.SimVarUpdateEventArgs e)
@@ -883,6 +923,13 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
 
     private void ResetAll()
     {
+        ClearAllChecklists();
+        _announcer.AnnounceImmediate("All checklists reset");
+    }
+
+    // Every group unticked, unlatched and without participation (Reset All, a new flight load).
+    private void ClearAllChecklists()
+    {
         _checklistMgr.ResetAll();
         // Same placeholder/hidden-checkbox care as ResetSection.
         _suppressTreeEvents = true;
@@ -891,7 +938,6 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
                 if (child.Tag is not "placeholder" && child.Checked)
                     child.Checked = false;
         _suppressTreeEvents = false;
-        _announcer.AnnounceImmediate("All checklists reset");
     }
 
     private void RunRelatedFlow()
@@ -1002,7 +1048,9 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         }
         if (_flowMgr.IsRunning)
         {
-            _announcer.AnnounceImmediate("A flow is already running. Stop it first.");
+            _announcer.AnnounceImmediate(_flowMgr.IsStopping
+                ? "The last flow is still stopping. Start again when it has stopped."
+                : "A flow is already running. Stop it first.");
             return;
         }
         _flowMgr.StartFlow(_flows[index]);
@@ -1012,6 +1060,11 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     private void PauseResumeFlow()
     {
         if (!_flowMgr.IsRunning) return;
+        if (_flowMgr.IsStopping)
+        {
+            _announcer.AnnounceImmediate(StoppingText());
+            return;
+        }
         if (_flowMgr.IsPaused)
             _flowMgr.Resume();
         else
@@ -1019,14 +1072,39 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         UpdateFlowButtonStates();
     }
 
+    // A Stop between steps is answered at once by "<flow> flow cancelled". The executor's step is
+    // atomic, so a Stop during it lands only when it returns: about 25 s into the PMDG weather radar
+    // test, which always restores the radar. Said at once, or the pilot heard nothing, Start said
+    // "Stop it first" and Pause said "paused" over a stopped flow. A second Stop repeats it.
     private void StopFlow()
     {
         if (!_flowMgr.IsRunning) return;
-        _flowMgr.Cancel();
+        if (!_flowMgr.IsStopping)
+        {
+            bool finishesStepFirst = _flowMgr.IsInExecutorStep;
+            _flowMgr.Cancel();
+            if (!finishesStepFirst) { UpdateFlowButtonStates(); return; }
+        }
+        _announcer.AnnounceImmediate(StoppingText());
         UpdateFlowButtonStates();
     }
 
-    private async void LoadSimBrief()
+    private string StoppingText()
+    {
+        var flow = _flowMgr.CurrentFlow;
+        int i = _flowMgr.CurrentStepIndex;
+        return flow != null && i >= 0 && i < flow.Steps.Count
+            ? $"Stopping after the current step: {flow.Steps[i].AnnounceText}"
+            : "Stopping after the current step";
+    }
+
+    // The Load SimBrief buttons: always fetches and applies, even the plan just flown (the pilot's
+    // choice, e.g. flying the same leg again).
+    private void LoadSimBrief() => FetchAndApplySimBrief(automatic: false);
+
+    // automatic: ShowForm's load on open, which never applies the plan whose flight just landed
+    // (_flownPlanId).
+    private async void FetchAndApplySimBrief(bool automatic)
     {
         // One fetch at a time. The two Load SimBrief buttons stay enabled while it runs:
         // disabling the one with focus moved focus on to the tab strip.
@@ -1063,6 +1141,18 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
             // this aircraft's to apply, and "loaded" would be spoken over the new aircraft.
             if (IsDisposed) return;
 
+            // SimBrief serves the latest plan, which after a landing is still the one just flown
+            // until the next is generated. Applied by the load on open, it set the next leg up on
+            // this leg's transition altitude, flaps and pressurization, and the next Shift+C no
+            // longer loaded the new plan.
+            if (automatic && _flownPlanId != null && ofp.IdentityKey == _flownPlanId)
+            {
+                _announcer.AnnounceImmediate(
+                    "SimBrief still has the flight just flown. Generate the next flight plan, then press Load SimBrief.");
+                return;
+            }
+
+            _flownPlanId = null;
             _loadedOFP = ofp;
             string spoken = ApplyFlightPlan(ofp);
             _flightPhaseMon.Reset();

@@ -571,6 +571,7 @@ public class Md11FoActionExecutorTests : IDisposable
 
         public double? ReadCached(string key) => _ac.ReadCached(key);
         public void NoteActuation(string nodeId) => _ac.NoteActuation(nodeId);
+        public void EndActuation(string nodeId, bool reached) => _ac.EndActuation(nodeId, reached);
         public void MuteLampSpeech(int ms) => _ac.MuteLampSpeech(ms);
     }
 

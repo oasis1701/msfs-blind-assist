@@ -92,6 +92,9 @@ public class AircraftActionExecutor : IFoActionExecutor
                 // a plain SetSwitch dispatch. See SetEmerExitLightsAsync.
                 case "EMER_EXIT_LIGHTS":
                     return SetEmerExitLightsAsync(step.TargetValue ?? EmerExitLightSequence.Armed);
+                // The loaded variant's own switches (Pmdg777RecircFans).
+                case Pmdg777RecircFans.PseudoKey:
+                    return SetRecircFansAsync(step.TargetValue ?? 1);
             }
         }
         return step.ActionType switch
@@ -158,6 +161,16 @@ public class AircraftActionExecutor : IFoActionExecutor
                 Log.Debug("FirstOfficer", $"777 speedbrake ARM not sent: {decision}.");
                 return false;
             }
+        }
+
+        // Never move the gear lever UP unless the aircraft is READ as airborne (the MD-11's rule):
+        // the After Takeoff flow run by mistake, or its "Gear: UP" line ticked, on the ground. The
+        // flow step and the line say why first (AircraftStateEvaluator.GearUpLeaveAloneText); this
+        // guards every caller.
+        if (eventName == GearLeverEvent && targetValue == 0 && !IsDefinitelyAirborneNow())
+        {
+            Log.Debug("FirstOfficer", "777 gear UP not sent: the aircraft is not read as airborne.");
+            return false;
         }
 
         // RULING A (§6): suppress a center-pump ON write on an empty tank — BEFORE PaceAsync,
@@ -237,13 +250,18 @@ public class AircraftActionExecutor : IFoActionExecutor
     /// (param 0 also registers as a press on the 777 — docs/pmdg-777.md).</summary>
     public async Task<bool> HeldTransmitTestAsync(string eventName, int holdMs)
     {
-        var sc = _simConnect;
-        if (sc == null || !PMDG777Definition.EventIds.TryGetValue(eventName, out int evId))
+        if (_simConnect == null || !PMDG777Definition.EventIds.TryGetValue(eventName, out int evId))
             return false;
         await _dispatchGate.WaitAsync();
         try
         {
             await PaceAsync();
+            // Read after the gate and the pacing wait, as DispatchCoreAsync does: a window closed
+            // meanwhile (an aircraft switch) detaches the executor, and a press queued behind the
+            // gate must not reach the next aircraft. The RELEASE of a press already sent still goes
+            // out on this same reference, so a press is never left held.
+            var sc = _simConnect;
+            if (sc == null) return false;
             sc.SendPMDGEventViaTransmitWithTarget((uint)evId, MouseFlagLeftSingleU);
             _lastWriteUtc = DateTime.UtcNow;
             await Task.Delay(holdMs);
@@ -491,7 +509,35 @@ public class AircraftActionExecutor : IFoActionExecutor
     // Equip cooling / Gasper / Recirc fans
     public bool SetEquipCooling(int position) => ExecuteSingle("EVT_OH_AIRCOND_EQUIP_COOLING_SWITCH", position, false, false);
     public bool SetGasper(int position)       => ExecuteSingle("EVT_OH_AIRCOND_GASPER_SWITCH", position, false, false);
-    public bool SetRecircFans(int position)   => ExecuteSingle("EVT_OH_AIRCOND_RECIRC_FANS_SWITCH", position, false, false);
+
+    // Recirculation fans through the loaded variant's own switches (Pmdg777RecircFans): UPPER and
+    // LOWER on a passenger 777, the single RECIRC FANS switch on the 777F. This wrote the freighter's
+    // switch on every variant. Before the CDA names the variant nothing is written (false).
+    public bool SetRecircFans(int position)
+    {
+        var writes = Pmdg777RecircFans.Writes(AircraftModel(), position);
+        if (writes.Count == 0) return false;
+        _ = MultiAsync(writes);
+        return true;
+    }
+
+    /// <summary>The flow's recirculation-fan step (<see cref="Pmdg777RecircFans.PseudoKey"/>): false,
+    /// nothing written, while the variant is not known.</summary>
+    public Task<bool> SetRecircFansAsync(int position)
+    {
+        var writes = Pmdg777RecircFans.Writes(AircraftModel(), position);
+        if (writes.Count == 0)
+        {
+            Log.Debug("FirstOfficer", "777 recirculation fans not set: the variant is not known yet.");
+            return Task.FromResult(false);
+        }
+        return MultiAsync(writes);
+    }
+
+    // The CDA's AircraftModel (1 -200 ... 5 777F, 6 -300ER); NaN before the first snapshot.
+    private double AircraftModel() =>
+        _simConnect?.PMDGDataManager is { IsReady: true } dm
+            ? dm.GetFieldValue(Pmdg777RecircFans.ModelField) : double.NaN;
 
     // Lights
     public bool SetBeacon(int position)         => ExecuteSingle("EVT_OH_LIGHTS_BEACON", position, false, false);
@@ -511,7 +557,15 @@ public class AircraftActionExecutor : IFoActionExecutor
         ok &= ExecuteSingle("EVT_OH_LIGHTS_LANDING_R", position, false, false);
         return ok;
     }
-    public bool SetRunwayTurnoff(int position)  => ExecuteSingle("EVT_OH_LIGHTS_LR_TURNOFF", position, false, false);
+    // Both runway turnoff lights through the per-side events the panel's proven controls use
+    // (EVT_OH_LIGHTS_L/R_TURNOFF), as the landing lights above: the ganged LR_TURNOFF (+1201) was
+    // never live-verified. Paced by the dispatch gate.
+    public bool SetRunwayTurnoff(int position)
+    {
+        bool ok = ExecuteSingle("EVT_OH_LIGHTS_L_TURNOFF", position, false, false);
+        ok &= ExecuteSingle("EVT_OH_LIGHTS_R_TURNOFF", position, false, false);
+        return ok;
+    }
     public bool SetMasterLights(int position)   => ExecuteSingle("EVT_OH_LIGHTS_IND_LTS_SWITCH", position, false, false);
 
     // Signs
@@ -541,57 +595,71 @@ public class AircraftActionExecutor : IFoActionExecutor
     //     is refused.
     //
     // The whole sequence is awaited INSIDE _dispatchGate so WaitForDispatchDrainAsync
-    // still covers it and ChecklistManager's revert grace cannot fire mid-gap.
+    // still covers it and ChecklistManager's revert grace cannot fire mid-gap. It also takes
+    // the panel's own sequence gate (PMDG777Definition.EmerLightsSequenceGate, P777-13), so a
+    // pick on the Emergency Lights combo never lands between this guard write and its switch
+    // write, nor this one inside the panel's. Order: _dispatchGate first, then the panel's;
+    // the panel never takes _dispatchGate, so the two cannot wait on each other.
     private const int EmerLightsGuardSettleMs = 80;
 
     /// <summary>Drive the guarded emergency-exit light switch to <paramref name="target"/>
     /// (0 = Off, 1 = Armed, 2 = On), guard included.</summary>
     public async Task<bool> SetEmerExitLightsAsync(int target)
     {
-        var sc = _simConnect;
-        if (sc == null) return false;
+        if (_simConnect == null) return false;
         if (!PMDG777Definition.EventIds.TryGetValue("EVT_OH_EMER_EXIT_LIGHT_SWITCH", out int switchEventId))
             return false;
-
-        // Reading the live position needs a ready CDA snapshot — before the first one
-        // GetFieldValue returns 0.0 for every field, which would read as "already Off"
-        // and silently skip a real write.
-        var dm = sc.PMDGDataManager;
-        if (dm == null || !dm.IsReady) return false;
-        int current = (int)Math.Round(dm.GetFieldValue("LTS_EmerLightsSelector"));
-
         bool haveGuard = PMDG777Definition.EventIds.TryGetValue("EVT_OH_EMER_EXIT_LIGHT_GUARD", out int guardEventId);
-        var steps = EmerExitLightSequence.Plan(current, target, haveGuard);
-        if (steps.Count == 0) return true;   // already there
 
         await _dispatchGate.WaitAsync();
         try
         {
-            await PaceAsync();
-            for (int i = 0; i < steps.Count; i++)
+            var panelGate = PMDG777Definition.EmerLightsSequenceGate;
+            await panelGate.WaitAsync();
+            try
             {
-                if (i > 0) await Task.Delay(EmerLightsGuardSettleMs);
-                var step = steps[i];
-                if (step.Kind == EmerExitStepKind.Guard)
-                    sc.SendPMDGEvent("EVT_OH_EMER_EXIT_LIGHT_GUARD", (uint)guardEventId, step.Value);
-                else
-                    sc.SendPMDGEventViaTransmitWithTarget((uint)switchEventId, (uint)step.Value);
+                await PaceAsync();
+                // Everything is read only now, inside both gates and after the pacing wait: a
+                // window closed meanwhile detaches the executor (nothing may reach the next
+                // aircraft), and the plan must start from the position left by any sequence that
+                // ran first, never from one read before the wait.
+                var sc = _simConnect;
+                if (sc == null) return false;
+
+                // Reading the live position needs a ready CDA snapshot — before the first one
+                // GetFieldValue returns 0.0 for every field, which would read as "already Off"
+                // and silently skip a real write.
+                var dm = sc.PMDGDataManager;
+                if (dm == null || !dm.IsReady) return false;
+                int current = (int)Math.Round(dm.GetFieldValue("LTS_EmerLightsSelector"));
+
+                var steps = EmerExitLightSequence.Plan(current, target, haveGuard);
+                for (int i = 0; i < steps.Count; i++)
+                {
+                    if (i > 0) await Task.Delay(EmerLightsGuardSettleMs);
+                    var step = steps[i];
+                    if (step.Kind == EmerExitStepKind.Guard)
+                        sc.SendPMDGEvent("EVT_OH_EMER_EXIT_LIGHT_GUARD", (uint)guardEventId, step.Value);
+                    else
+                        sc.SendPMDGEventViaTransmitWithTarget((uint)switchEventId, (uint)step.Value);
+                }
+                return true;
             }
-            return true;
+            catch (Exception ex)
+            {
+                // The synchronous entry below is fire-and-forget, so an escaped exception
+                // would vanish as an unobserved task fault with nothing in the log.
+                Log.Debug("PMDG", $"FO emergency exit lights set to {target} failed: " +
+                                  $"{ex.GetType().Name}: {ex.Message}");
+                return false;
+            }
+            finally
+            {
+                _lastWriteUtc = DateTime.UtcNow;
+                panelGate.Release();
+            }
         }
-        catch (Exception ex)
-        {
-            // The synchronous entry below is fire-and-forget, so an escaped exception
-            // would vanish as an unobserved task fault with nothing in the log.
-            Log.Debug("PMDG", $"FO emergency exit lights set to {target} failed: " +
-                              $"{ex.GetType().Name}: {ex.Message}");
-            return false;
-        }
-        finally
-        {
-            _lastWriteUtc = DateTime.UtcNow;
-            _dispatchGate.Release();
-        }
+        finally { _dispatchGate.Release(); }
     }
 
     /// <summary>Synchronous entry for checklist CheckAction lambdas (queues the
@@ -656,8 +724,8 @@ public class AircraftActionExecutor : IFoActionExecutor
     public bool SetEFISRangeCapt(int position) => ExecuteSingle("EVT_EFIS_CPT_RANGE", position, false, false);
     public bool SetEFISRangeFO(int position)  => ExecuteSingle("EVT_EFIS_FO_RANGE", position, false, false);
 
-    // EFIS Baro STD toggle (momentary push-button, toggles between STD and QNH)
-    // Check AircraftStateEvaluator.IsBaroStdCapt() before calling to avoid toggling the wrong way.
+    // EFIS Baro STD toggle (momentary push-button, toggles between STD and QNH). Pushed only through
+    // Pmdg777TransitionStd's decision: 29.92 alone cannot tell STD from a QNH of 29.92.
     public bool PushBaroSTDCapt() => ExecuteSingle("EVT_EFIS_CPT_BARO_STD", null, false, true);
     public bool PushBaroSTDFO()   => ExecuteSingle("EVT_EFIS_FO_BARO_STD",  null, false, true);
 
@@ -666,8 +734,15 @@ public class AircraftActionExecutor : IFoActionExecutor
     public bool SetAutobrake(int position) => ExecuteSingle("EVT_ABS_AUTOBRAKE_SELECTOR", position, false, false);
 
     // Gear lever
-    // 0=Up, 1=Down
-    public bool SetGearLever(int position) => ExecuteSingle("EVT_GEAR_LEVER", position, false, false);
+    // 0=Up, 1=Down. UP is sent only when airborne (DispatchCoreAsync).
+    public bool SetGearLever(int position) => ExecuteSingle(GearLeverEvent, position, false, false);
+
+    private const string GearLeverEvent = "EVT_GEAR_LEVER";
+
+    // SIM ON GROUND READ as airborne; unread (no cache yet) is not airborne.
+    private bool IsDefinitelyAirborneNow() =>
+        _simConnect?.GetCachedVariableValue(AircraftStateEvaluator.OnGroundKey) is double v
+        && !double.IsNaN(v) && v < 0.5;
 
     // Flap lever (use position-specific events). The per-detent
     // EVT_CONTROL_STAND_FLAPS_LEVER_<deg> events are SDK mouse-click events that

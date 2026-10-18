@@ -73,8 +73,8 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
                 // Held self-completing fire test (Fenix FIRE_TEST_* precedent) — must not
                 // reach the generic dispatch (its SetLVar fallback would write a bogus L:var).
                 if (step.EventName == "FIRE_TEST") return await FireTestAsync();
-                // Held T.O CONFIG TEST — the ECP button is a momentary PressSilent, so it needs
-                // a held press/release (a normal dispatch would pulse it too fast to latch).
+                // Held T.O CONFIG TEST: a normal dispatch presses the ECP key for the panel's
+                // 250 ms (the definition's PulseEcpKey); the test holds it 2 s (TakeoffConfigTestAsync).
                 if (step.EventName == "TO_CONFIG_TEST") return await TakeoffConfigTestAsync();
                 return await DispatchAsync(step.EventName, step.TargetValue);
 
@@ -125,19 +125,23 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
 
     // ApplyUIVariable under a Suppressed wrap: the def's internal Announce() calls are
     // dropped; prior Suppressed state restored (don't clobber the startup grace period).
-    private bool ApplySilent(string varKey, double value)
+    private bool ApplySilent(string varKey, double value) => ApplySilent(varKey, value, _sc!);
+
+    // The same write through `sc`, the manager the caller holds: a held press's release goes
+    // through the manager its press went through, never the field, which the window's close nulls.
+    private bool ApplySilent(string varKey, double value, SimConnectManager sc)
     {
         bool prior = _announcer!.Suppressed;
         _announcer.Suppressed = true;
         try
         {
-            if (_def!.ApplyUIVariable(varKey, value, _sc!, _announcer)) return true;
+            if (_def!.ApplyUIVariable(varKey, value, sc, _announcer)) return true;
             // Mirror MainForm's combo-set fallback: a key HandleUIVariableSet doesn't
             // claim (returns false) is written as a plain L:var via SetLVar (calc-path
             // routed when MobiFlight is connected). Without this, a key with no def
             // branch and no catch-all prefix — e.g. PUSH_OVHD_OXYGEN_CREW — would
             // silently no-op through ApplyUIVariable alone.
-            _sc!.SetLVar(varKey, value);
+            sc.SetLVar(varKey, value);
             return true;
         }
         finally { _announcer.Suppressed = prior; }
@@ -187,31 +191,39 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
         {
             if (_sc is not { IsConnected: true } || _def == null || _announcer == null) return false;
             await PaceAsync();
+            // Taken AFTER the pacing wait, which the window's close can land in: a detached
+            // executor presses nothing. The release then goes through this same manager.
+            var sc = _sc;
+            if (sc is not { IsConnected: true }) return false;
             try
             {
-                ApplySilent("A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", 1);
+                ApplySilent("A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", 1, sc);
                 _lastWriteUtc = DateTime.UtcNow;
                 await Task.Delay(FireTestHoldMs);
                 return true;
             }
             finally
             {
-                // ALWAYS release the held fire-test PB, even on an interrupted hold — a stuck 1
-                // leaves the fire test active (continuous test bell). Guarded for a dropped sim.
-                if (_sc is { IsConnected: true } && _def != null && _announcer != null)
-                    ApplySilent("A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", 0);
+                // ALWAYS release the held fire-test PB, even on an interrupted hold or a window
+                // closed mid-hold — a stuck 1 leaves the fire test active (continuous test bell).
+                // Guarded for a dropped sim.
+                if (sc.IsConnected) ApplySilent("A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", 0, sc);
                 _lastWriteUtc = DateTime.UtcNow;
             }
         }
         finally { _gate.Release(); }
     }
 
-    /// <summary>FWC latch hold for the ECP T.O CONFIG TEST button. The button (A32NX_BTN_TOCONFIG)
-    /// is a momentary PressSilent — actuating it via ApplyUIVariable would pulse it 1→0 too fast to
-    /// latch — so write the L:var DIRECTLY via the calc path: 1 → hold 2 s → 0, exactly mirroring
-    /// FBW's POWERUP/TAXI preset (1 (>L:A32NX_BTN_TOCONFIG) … 2000 ms … 0 (>L:…)) and the A32NX FO.
-    /// Live-verified 2026-07-13 on the A380: the L:var holds at 1 when written and releases at 0.
-    /// Holds the gate for the whole test so WaitForDispatchDrainAsync covers the checklist grace.</summary>
+    /// <summary>FWC latch hold for the ECP T.O CONFIG TEST button (A32NX_BTN_TOCONFIG): 1 → hold 2 s
+    /// → 0, exactly mirroring FBW's POWERUP/TAXI preset (1 (>L:A32NX_BTN_TOCONFIG) … 2000 ms …
+    /// 0 (>L:…)) and the A32NX FO. ApplyUIVariable presses every A32NX_BTN_* key for the panel's
+    /// <see cref="A380EcpKeyPulse.HoldMs"/> (the definition's PulseEcpKey), so the test writes the
+    /// L:var itself through the calc path, and like every ECP press it presses on the app's one ECP
+    /// press clock, <see cref="A380EcpKeyPulse.Shared"/> (A380-13): it reserves its slot for the
+    /// whole 2 s, so a panel or checklist-window ECP press waits for its release instead of merging
+    /// with it. Live-verified 2026-07-13 on the A380: the L:var holds at 1 when written and releases
+    /// at 0. Holds the gate for the whole test so WaitForDispatchDrainAsync covers the checklist
+    /// grace.</summary>
     public const int ToConfigHoldMs = 2000;
     public async Task<bool> TakeoffConfigTestAsync()
     {
@@ -220,19 +232,31 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
         {
             if (_sc is not { IsConnected: true } || _def == null || _announcer == null) return false;
             await PaceAsync();
+            var sc = _sc;   // after the pacing wait: a detached executor presses nothing (FireTestAsync)
+            if (sc is not { IsConnected: true }) return false;
+            int wait = A380EcpKeyPulse.Shared.Reserve(Environment.TickCount64, ToConfigHoldMs);
+            if (wait > 0)
+            {
+                await Task.Delay(wait);   // the last ECP press's release time (A380-13)
+                // Detached meanwhile: nothing is pressed. The slot stays reserved, which only makes
+                // the next ECP press wait out a hold that never came.
+                if (_sc is not { IsConnected: true }) return false;
+            }
             try
             {
-                _sc.ExecuteCalculatorCode("1 (>L:A32NX_BTN_TOCONFIG)");
+                sc.ExecuteCalculatorCode("1 (>L:A32NX_BTN_TOCONFIG)");
                 _lastWriteUtc = DateTime.UtcNow;
                 await Task.Delay(ToConfigHoldMs);
                 return true;
             }
             finally
             {
-                // ALWAYS release the momentary button, even if the hold was interrupted by an
-                // exception — a stuck 1 leaves the ECP button held down (the Fenix stuck-TO-CONFIG
-                // lesson). Guarded so a release attempt after a dropped sim is a harmless no-op.
-                if (_sc is { IsConnected: true }) _sc.ExecuteCalculatorCode("0 (>L:A32NX_BTN_TOCONFIG)");
+                // ALWAYS release the momentary button, through the manager the press went through,
+                // even if the hold was interrupted by an exception or the window closed mid-hold —
+                // a stuck 1 leaves the ECP button held down (the Fenix stuck-TO-CONFIG lesson).
+                // Guarded so a release attempt after a dropped sim is a harmless no-op.
+                if (sc.IsConnected) sc.ExecuteCalculatorCode("0 (>L:A32NX_BTN_TOCONFIG)");
+                A380EcpKeyPulse.Shared.MarkReleased(Environment.TickCount64);
                 _lastWriteUtc = DateTime.UtcNow;
             }
         }

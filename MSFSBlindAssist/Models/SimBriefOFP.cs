@@ -5,6 +5,17 @@ namespace MSFSBlindAssist.Models;
 /// </summary>
 public class SimBriefOFP
 {
+    // ── Identity ──────────────────────────────────────────────────────────────
+    /// <summary>SimBrief's id for this generated plan (params/request_id, else time_generated):
+    /// a regenerated plan, even for the same route, gets a new one. Empty when the OFP has neither.</summary>
+    public string PlanId            { get; set; } = "";
+
+    /// <summary>What tells two fetched plans apart: <see cref="PlanId"/>, or the route's
+    /// endpoints, flight number and cruise when the OFP carries no id.</summary>
+    public string IdentityKey => PlanId.Length > 0
+        ? PlanId
+        : $"{OriginIcao}|{DestIcao}|{FlightNumber}|{InitialAltitude}|{Route}";
+
     // ── General ───────────────────────────────────────────────────────────────
     public string AirlineIcao       { get; set; } = "";
     public string FlightNumber      { get; set; } = "";

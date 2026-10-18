@@ -47,6 +47,8 @@ Moved 2026-10-10 from md11.md (split for the rule budget).
 
 Moved 2026-10-10 from md11.md (split for the rule budget).
 
+**Whether the bus took the press (2026-10-18, PR #160 second review).** The First Officer's holds go through `TryPressAndHoldAsync`, false when the bus did not take the DOWN or the UP (closing, or the queue full), so a dropped test is never reported done; `PressAndHoldAsync` forwards to it unchanged. Residual: when the queue is full at the moment the UP is queued, the UP is lost and the button stays held; the step reports "not done", but nothing releases it. Pinned by `Md11FoSecondReviewTests`.
+
 ## MD11-15
 
 - `MD11_EXTCTL_{CAP,FO}_MIN` set the BARO minimums only and idle at -9999 (not -1); the export shows whichever mode the switch selects; the rows' mode word comes from the silent batch-covered mirror, never from the OnRequest switch — batch-covering the switch itself breaks its walk. → [md11.md](../md11.md)

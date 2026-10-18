@@ -114,9 +114,7 @@ public class FlowManagerTargetProviderTests
         Label = "Flaps: takeoff setting",
         ActionType = FlowStepActionType.SetSwitch,
         EventName = Flaps,
-        TargetValueProvider = s => s.PlannedFlaps >= 1 ? s.PlannedFlaps : null,
-        PostActionDelayMs = 300,
-        FailurePolicy = FlowStepFailurePolicy.Skip,
+        TargetValueProvider = s => s.PlannedFlaps >= 1 ? s.PlannedFlaps : null,        FailurePolicy = FlowStepFailurePolicy.Skip,
         CompletesChecklistItemId = FlapsLine,
         AlsoCompletesChecklistItemIds = new[] { FlapsReadback },
         RequiresStepId = requires,
@@ -127,9 +125,7 @@ public class FlowManagerTargetProviderTests
         Id = "FLAPS_CAPT",
         Label = Reminder,
         ActionType = FlowStepActionType.CaptainReminder,
-        ReminderText = Reminder,
-        PostActionDelayMs = 200,
-    };
+        ReminderText = Reminder,    };
 
     private static FlowStep<FakeState> SwitchStep(string id, string? requires = null) => new()
     {
@@ -137,9 +133,7 @@ public class FlowManagerTargetProviderTests
         Label = $"{id}: ON",
         ActionType = FlowStepActionType.SetSwitch,
         EventName = id,
-        TargetValue = 1,
-        PostActionDelayMs = 0,
-        FailurePolicy = FlowStepFailurePolicy.Skip,
+        TargetValue = 1,        FailurePolicy = FlowStepFailurePolicy.Skip,
         CompletesChecklistItemId = OtherLine,
         RequiresStepId = requires,
     };

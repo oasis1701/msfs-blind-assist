@@ -25,6 +25,14 @@ public partial class TFDiMD11Definition
     /// </summary>
     private string _lastFlapSpoken = string.Empty;
 
+    /// <summary>
+    /// What a First Officer flap walk's quiet window held back: the read-out recorded before it
+    /// first held one back (null while nothing is held), and the announcer that would have spoken
+    /// it. <see cref="EndFoFlapWalk"/> settles both when the walk ends.
+    /// </summary>
+    private string? _flapTextBeforeFoWalk;
+    private ScreenReaderAnnouncer? _flapFoWalkAnnouncer;
+
     // Speedbrake: the lever's travel (detents) and its pull (armed), see Md11SpeedbrakeSystem.
     private double _spdbrkRng = double.NaN;
     private double _spdbrkHandle = double.NaN;
@@ -1371,13 +1379,46 @@ public partial class TFDiMD11Definition
         // wheel too, whose first sample may land after the lever's.
         bool complete = dial != null || _flaps.DetentFor(_flapRng)?.Dial != true;
 
+        string before = _lastFlapSpoken;
         var (speak, record) = Md11FlapSystem.ReadoutDecision(_lastFlapSpoken, text, complete);
         if (record) _lastFlapSpoken = text;
+        if (!speak) return;
         // A First Officer flap move walks the handle through every detent between, and its flow
         // already says where it is going: recorded, never spoken, inside its quiet window (the
         // spoilers' rule above). The window was opened and never read here, so After Landing's walk
-        // from FULL spoke every detent on its way to UP over the flow's own step.
-        if (speak && !_gate.IsQuietFor(Md11FlapSystem.LeverKey, Environment.TickCount64)) announcer.Announce(text);
+        // from FULL spoke every detent on its way to UP over the flow's own step. Held back, not
+        // lost: a walk that stops short has its resting detent spoken when it ends (EndFoFlapWalk).
+        if (_gate.IsQuietFor(Md11FlapSystem.LeverKey, Environment.TickCount64))
+        {
+            _flapTextBeforeFoWalk ??= before;
+            _flapFoWalkAnnouncer = announcer;
+            return;
+        }
+        _flapTextBeforeFoWalk = null;
+        _flapFoWalkAnnouncer = null;
+        announcer.Announce(text);
+    }
+
+    /// <summary>
+    /// A First Officer flap walk is over (<see cref="EndFoActuation"/>). Reached, its flow step said
+    /// where the handle went: nothing is spoken. Stopped short — a lost wheel event, TFDi's gate at
+    /// 28 — the flow says only "Skipping", and every detent the walk passed was recorded quietly, so
+    /// the one the handle rests in would never be heard: it is spoken now, once, unless the handle is
+    /// back where the walk began, or still between detents (the delivery that lands it speaks, the
+    /// window being closed). Spoken outside ProcessSimVarUpdate, so it honours the Ctrl+M mute
+    /// itself (MD11-18).
+    /// </summary>
+    private void EndFoFlapWalk(bool reached)
+    {
+        var before = _flapTextBeforeFoWalk;
+        var announcer = _flapFoWalkAnnouncer;
+        _flapTextBeforeFoWalk = null;
+        _flapFoWalkAnnouncer = null;
+        if (reached || before == null || announcer == null || double.IsNaN(_flapRng)) return;
+        if (_flaps.DetentFor(_flapRng) == null) return;
+        if (string.Equals(_lastFlapSpoken, before, StringComparison.Ordinal)) return;
+        if (Settings.SettingsManager.Current.Md11DisabledMonitorVariablesSet.Contains(Md11FlapSystem.LeverKey)) return;
+        announcer.Announce(_lastFlapSpoken);
     }
 
     /// <summary>The thumbwheel's last sample, or null before the first — never a stand-in 0, which is a real 10°.</summary>

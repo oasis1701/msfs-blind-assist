@@ -139,13 +139,6 @@ public class FlowStep<TState> : IFlowStepDispatch
     public string? ReminderText { get; set; }
 
     // -----------------------------------------------------------------------
-    // Timing
-    // -----------------------------------------------------------------------
-
-    /// <summary>Milliseconds to pause between successive steps. Default 300ms.</summary>
-    public int PostActionDelayMs { get; set; } = 300;
-
-    // -----------------------------------------------------------------------
     // Failure behavior
     // -----------------------------------------------------------------------
 

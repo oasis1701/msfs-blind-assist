@@ -56,8 +56,9 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
     public const string EngineStart2 = "FO_ENGINE_START_2";
     public const string EngineStart3 = "FO_ENGINE_START_3";
     /// <summary>
-    /// Light-up watch: wait for N2 to reach 15 % (TFDi: fuel ON at 15 %). If it never does, push
-    /// the START switch back in and fail, so a stopped flow never leaves the starter engaged.
+    /// Light-up watch: wait for N2 to reach 15 % (TFDi: fuel ON at 15 %). If it never does, or the
+    /// flow is stopped first, push the START switch back in and fail, so a stopped flow never
+    /// leaves the starter engaged (a Stop after it, before the fuel is on: <see cref="OnFlowStoppedAsync"/>).
     /// </summary>
     public const string EngineLightUp1 = "FO_ENGINE_LIGHTUP_1";
     public const string EngineLightUp2 = "FO_ENGINE_LIGHTUP_2";
@@ -82,6 +83,7 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
     internal const int StepReadCeilingMs = 1500;          // design §3.3: a step's read ceiling once it is expected to land
     internal const int GearRestTimeoutMs = 4000;          // a travelling gear lever must come to rest by then
     internal const int HydTestWaitMs = 120_000;           // the flow's own budget for the ~100 s hydraulic test
+    internal const int ApuPowerSettleMs = 3000;           // two 1 Hz lamp batches: a request already made lights ON by then
 
     // The flap handle's wheel direction is not in TFDi's mechanical table (system-handled); this
     // default is learned-and-corrected on the ground. LIVE-VERIFY.
@@ -114,15 +116,25 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
         [AltimetersStandard] = (_, io, _) => AltimetersStandardAsync(io),
         [AntiIceOff] = (_, io, _) => AntiIceOffAsync(io),
         [AutoFlight] = (_, io, _) => AutoFlightAsync(io),
-        [EngineStart1] = (e, io, t) => e.EngineStartAsync(io, 1, t),
-        [EngineStart2] = (e, io, t) => e.EngineStartAsync(io, 2, t),
-        [EngineStart3] = (e, io, t) => e.EngineStartAsync(io, 3, t),
-        [EngineLightUp1] = (e, io, _) => e.EngineLightUpAsync(io, 1),
-        [EngineLightUp2] = (e, io, _) => e.EngineLightUpAsync(io, 2),
-        [EngineLightUp3] = (e, io, _) => e.EngineLightUpAsync(io, 3),
     };
 
-    public static bool IsPseudoKey(string key) => Pseudo.ContainsKey(key);
+    /// <summary>
+    /// The engine start's keys, the only ones that take the running flow's Stop (none for a
+    /// checklist tick): the light-up watch ends on it, and a pull is recorded with the run that
+    /// made it, so a run stopped before that engine's fuel is on has its START switch pushed back
+    /// in (<see cref="OnFlowStoppedAsync"/>). Every other key is atomic.
+    /// </summary>
+    private static readonly Dictionary<string, Func<Md11FoActionExecutor, IMd11FoTransport, int, CancellationToken, Task<bool>>> EngineStartKeys = new(StringComparer.Ordinal)
+    {
+        [EngineStart1] = (e, io, t, stop) => e.EngineStartAsync(io, 1, t, stop),
+        [EngineStart2] = (e, io, t, stop) => e.EngineStartAsync(io, 2, t, stop),
+        [EngineStart3] = (e, io, t, stop) => e.EngineStartAsync(io, 3, t, stop),
+        [EngineLightUp1] = (e, io, _, stop) => e.EngineLightUpAsync(io, 1, stop),
+        [EngineLightUp2] = (e, io, _, stop) => e.EngineLightUpAsync(io, 2, stop),
+        [EngineLightUp3] = (e, io, _, stop) => e.EngineLightUpAsync(io, 3, stop),
+    };
+
+    public static bool IsPseudoKey(string key) => Pseudo.ContainsKey(key) || EngineStartKeys.ContainsKey(key);
     public static bool IsKnownKey(string key) => IsPseudoKey(key) || Md11FoControls.TryGet(key, out _);
 
     // Session-learned step corrections: control key -> "the table's Raise actually lowers".
@@ -133,6 +145,14 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
     private readonly SemaphoreSlim _gate = new(1, 1);
     private IMd11FoTransport? _io;
     private IMd11FoFlightState? _state;
+
+    /// <summary>
+    /// The START switches a flow had this executor pull, by engine, with that run's Stop: the
+    /// pulls <see cref="OnFlowStoppedAsync"/> may undo. Written only under <see cref="_gate"/>;
+    /// a pull is forgotten once its engine's fuel is on or its switch is back in. A checklist
+    /// tick's pull, or the pilot's own, is never here.
+    /// </summary>
+    private readonly ConcurrentDictionary<int, CancellationToken> _flowStarterPulls = new();
 
     public void SetTransport(IMd11FoTransport? io) => _io = io;
     public void SetFlightState(IMd11FoFlightState? state) => _state = state;
@@ -148,21 +168,77 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
         _gate.Release();
     }
 
-    public async Task<bool> ExecuteStepAsync(IFlowStepDispatch step)
+    public Task<bool> ExecuteStepAsync(IFlowStepDispatch step) => ExecuteStepAsync(step, CancellationToken.None);
+
+    /// <summary>
+    /// The flow's entry point; <paramref name="stop"/> is the running flow's Stop. Every step is
+    /// atomic but the engine start's (<see cref="EngineStartKeys"/>): the light-up watch ends early
+    /// on the Stop with the START switch pushed back in, and a pull is recorded with its run, so a
+    /// Stop before that engine's fuel is on is put back by <see cref="OnFlowStoppedAsync"/>.
+    /// </summary>
+    public async Task<bool> ExecuteStepAsync(IFlowStepDispatch step, CancellationToken stop)
     {
         if (!IsAvailable) return false;
         switch (step.ActionType)
         {
             case FlowStepActionType.SetSwitch:
-                return step.EventName != null && await Set(step.EventName, step.TargetValue ?? 1).ConfigureAwait(false);
+                return step.EventName != null && await SetCoreAsync(step.EventName, step.TargetValue ?? 1, stop).ConfigureAwait(false);
             case FlowStepActionType.SetSwitchMultiple:
                 if (step.MultiActions.Count == 0) return false;
                 bool ok = true;
                 foreach (var (ev, tv) in step.MultiActions)
-                    ok &= await Set(ev, tv ?? 1).ConfigureAwait(false);
+                    ok &= await SetCoreAsync(ev, tv ?? 1, stop).ConfigureAwait(false);
                 return ok;
             default:
                 return false;
+        }
+    }
+
+    /// <summary>
+    /// A flow was stopped part-way, by a Stop or by a step whose failure stops it (FlowManager
+    /// cancels the run's token either way). An engine whose START switch that flow had pulled is
+    /// never left motoring a dry engine: with its fuel switch reading OFF, the switch is pushed
+    /// back in (a second click on a pulled switch aborts the start). Never an engine whose fuel is
+    /// on (its start runs on, and the switch pops in by itself at cutout), never a pull the pilot
+    /// or a checklist tick made, never on an unread value. Nothing is spoken: the flow says "flow
+    /// cancelled" or "flow stopped". Detached (the window closed), there is no aircraft to write
+    /// to; unable to reach the aircraft, it refuses (MD11-16) and logs.
+    /// </summary>
+    public async Task OnFlowStoppedAsync()
+    {
+        var stopped = _flowStarterPulls.Where(p => p.Value.IsCancellationRequested).OrderBy(p => p.Key).ToList();
+        if (stopped.Count == 0) return;                                    // nothing pulled for this run: no wait on the gate
+        await _gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            var io = _io;                                                  // read behind the gate: a window closing meanwhile detaches it
+            foreach (var pull in stopped)
+            {
+                // Only this run's pull: a later run that pulled the same switch owns it now.
+                if (!_flowStarterPulls.TryRemove(pull)) continue;
+                if (io is null)
+                {
+                    Log.Info("MD11 FO", $"engine {pull.Key}: flow stopped with its START switch pulled; the First Officer is detached");
+                    continue;
+                }
+                if (!io.Ready)
+                {
+                    Log.Warn("MD11 FO", $"engine {pull.Key}: flow stopped with its START switch pulled; the aircraft cannot be reached, so it is left as it is");
+                    continue;
+                }
+                try
+                {
+                    await AbortDryStartAsync(io, pull.Key).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warn("MD11 FO", $"engine {pull.Key}: flow stop clean-up threw: {ex.Message}");
+                }
+            }
+        }
+        finally
+        {
+            _gate.Release();
         }
     }
 
@@ -171,15 +247,20 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
     public Task<bool> SetAltimetersStandardAsync() => Set(AltimetersStandard, 1);
     public Task<bool> SetDialAFlapDegrees(int degrees) => Set(DialAFlap, degrees);
 
-    /// <summary>Serialized: one control at a time, like every FO executor.</summary>
-    public async Task<bool> Set(string key, int target)
+    /// <summary>Serialized: one control at a time, like every FO executor. A checklist tick: never cut short.</summary>
+    public Task<bool> Set(string key, int target) => SetCoreAsync(key, target, CancellationToken.None);
+
+    private async Task<bool> SetCoreAsync(string key, int target, CancellationToken stop)
     {
         var io = _io;
         if (io is not { Ready: true }) return false;
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
-            bool ok = await DispatchCoreAsync(io, key, target).ConfigureAwait(false);
+            bool ok = await DispatchCoreAsync(io, key, target, stop).ConfigureAwait(false);
+            // Fuel on: that engine's start runs on, and its START switch pops in by itself at cutout.
+            if (ok && target > 0 && Array.IndexOf(FuelSwitches, key) is int engine and > 0)
+                _flowStarterPulls.TryRemove(engine, out _);
             Log.Debug("MD11 FO", $"{key} -> {target}: {(ok ? "done" : "not done")}");
             return ok;
         }
@@ -194,8 +275,9 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
         }
     }
 
-    private Task<bool> DispatchCoreAsync(IMd11FoTransport io, string key, int target)
+    private Task<bool> DispatchCoreAsync(IMd11FoTransport io, string key, int target, CancellationToken stop)
     {
+        if (EngineStartKeys.TryGetValue(key, out var start)) return start(this, io, target, stop);
         if (Pseudo.TryGetValue(key, out var handler)) return handler(this, io, target);
         if (Md11FoControls.TryGet(key, out var c))
         {
@@ -497,12 +579,48 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
     {
         var state = await ReadAsync(io, "MD11_APU_STATE", LampReadTimeoutMs).ConfigureAwait(false);
         if (state is null) return false;
-        if (state is >= 0.5 and < 2.5) return true;                        // starting or running
+        if (state is >= 0.5 and < 1.5) return true;                        // starting
         if (state >= 2.5) return false;                                    // stopping: not now
+        if (state >= 1.5) return await ApuPowerOnAsync(io).ConfigureAwait(false);   // running: and its power?
         var c = Control("MD11_OVHD_ELEC_APU_PWR_BT");
         io.NoteActuation(c.Key);
         if (!io.Press(c.Down, c.Up)) return false;                         // starts the APU and requests its power
         return await WaitForAsync(io, "MD11_APU_STATE", v => v >= 0.5, LampVerifyTimeoutMs, LampReadTimeoutMs).ConfigureAwait(false);
+    }
+
+    private const string ApuPowerAvailLamp = "MD11_OVHD_ELEC_APU_PWR_AVAIL_LT";
+
+    /// <summary>
+    /// The APU runs, and its power may still be off: started from the aft-overhead APU START
+    /// button, or external power connected over it (AVAIL lit, ON dark), and Before Start would
+    /// then wait for APU power and stop. APU PWR toggles the request (a press with ON lit gives
+    /// APU power up, ApuShutdownAsync's rule), so it is pressed only on a dark ON lamp with AVAIL
+    /// lit, read fresh with power on (unpowered, the lamps say nothing), and twice
+    /// <see cref="ApuPowerSettleMs"/> apart: a request already made lights ON by then. One press,
+    /// read back on ON. A lit ON lamp is done whatever the gate says. LIVE-VERIFY: what a press
+    /// does here is decoded and modelled (the test fake), never measured.
+    /// </summary>
+    private static async Task<bool> ApuPowerOnAsync(IMd11FoTransport io)
+    {
+        var c = Control("MD11_OVHD_ELEC_APU_PWR_BT");
+        for (int read = 0; ; read++)
+        {
+            bool? on = Md11FoSwitching.LampState(await io.ReadFreshAsync(c.ReadKey!, LampReadTimeoutMs).ConfigureAwait(false), 1);
+            if (on == true) return true;
+            if (on is null || !io.IsPowered) return false;                 // never press blind
+            bool? avail = Md11FoSwitching.LampState(await io.ReadFreshAsync(ApuPowerAvailLamp, LampReadTimeoutMs).ConfigureAwait(false), 1);
+            if (avail != true)
+            {
+                Log.Info("MD11 FO", "APU power not requested: the APU runs, but its AVAIL lamp does not read lit");
+                return false;
+            }
+            if (read > 0) break;
+            await io.DelayAsync(ApuPowerSettleMs).ConfigureAwait(false);
+        }
+        io.NoteActuation(c.Key);
+        if (!io.Press(c.Down, c.Up)) return false;                         // requests APU power
+        return await WaitForAsync(io, c.ReadKey!, v => v > Md11ControlState.LitThreshold,
+            LampVerifyTimeoutMs, LampReadTimeoutMs).ConfigureAwait(false);
     }
 
     private static async Task<bool> ApuShutdownAsync(IMd11FoTransport io)
@@ -609,14 +727,18 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
         return await WeatherRadarOffAsync(io).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// OFF is a discrete mode button, so a press on an unread mode is safe (pressing OFF is
+    /// idempotent), but done is only a DELIVERED OFF read back after it: unread before and after,
+    /// the step is not done, and its lines stay out of the latch.
+    /// </summary>
     private static async Task<bool> WeatherRadarOffAsync(IMd11FoTransport io)
     {
         var off = Control("MD11_PED_WXR_OFF_BT");
         var now = await ReadAsync(io, TFDiMD11Definition.FoWxrOffReadKey, ControlReadTimeoutMs).ConfigureAwait(false);
         if (now is double v && v > 0.5) return true;
         io.NoteActuation(off.Key);
-        if (!io.Press(off.Down, off.Up)) return false;                     // a discrete mode button: pressing OFF is idempotent
-        if (now is null) return true;                                      // mode unreadable: nothing more to confirm
+        if (!io.Press(off.Down, off.Up)) return false;
         return await WaitForAsync(io, TFDiMD11Definition.FoWxrOffReadKey, x => x > 0.5, VerifyTimeoutMs, ControlReadTimeoutMs).ConfigureAwait(false);
     }
 
@@ -738,6 +860,9 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
     /// and remembered (that is evidence). A no-move at an end stop is ambiguous — a wrong
     /// direction, or a lost write — so the other direction is tried once and remembered only when
     /// it then moves the handle toward the target (the stepped walk's remember-on-proof rule).
+    /// The flap read-out stays quiet while the walk moves the handle; a walk that stops short —
+    /// a lost wheel event, TFDi's gate at 28 — ends its quiet window, so the detent the handle
+    /// rests in is spoken (the flow says only "Skipping"), through <see cref="IMd11FoTransport.EndActuation"/>.
     /// </summary>
     private async Task<bool> FlapHandleAsync(IMd11FoTransport io, int targetIndex)
     {
@@ -748,48 +873,61 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
         }
         if (targetIndex is not (0 or 2)) return false;                     // UP/RET or the Dial-A-Flap detent only
         int extend = _flapExtendEvent;
-        bool flipped = false, flipUnproven = false;
-        for (int i = 0; i < 8; i++)
+        bool flipped = false, flipUnproven = false, moving = false, reached = false;
+        try
         {
-            int? idx = await ReadAsync(io, Md11FlapSystem.LeverKey, ControlReadTimeoutMs).ConfigureAwait(false) is double r ? Md11FoSwitching.FlapDetentIndex(r) : null;
-            if (idx is null)
+            for (int i = 0; i < 8; i++)
             {
-                Log.Debug("MD11 FO", "flap handle refused: its position is unread");
-                return false;
+                int? idx = await ReadAsync(io, Md11FlapSystem.LeverKey, ControlReadTimeoutMs).ConfigureAwait(false) is double r ? Md11FoSwitching.FlapDetentIndex(r) : null;
+                if (idx is null)
+                {
+                    Log.Debug("MD11 FO", "flap handle refused: its position is unread");
+                    return false;
+                }
+                if (idx == targetIndex)
+                {
+                    reached = true;
+                    return true;
+                }
+                // Every step, not once: a walk through several detents outlasts one quiet window, and the
+                // flap read-out stays silent only inside it (TFDiMD11Definition.AnnounceFlaps).
+                io.NoteActuation(Md11FlapSystem.LeverKey);
+                moving = true;
+                int dir = Math.Sign(targetIndex - idx.Value);
+                int retract = extend == FlapWheelDown ? FlapWheelUp : FlapWheelDown;
+                int ev = dir > 0 ? extend : retract;
+                if (!io.Fire(ev)) return false;
+                int from = idx.Value;
+                await WaitForCachedAsync(io, Md11FlapSystem.LeverKey,
+                    v => Md11FoSwitching.FlapDetentIndex(v) != from, FlapStepTimeoutMs).ConfigureAwait(false);
+                int? now = io.ReadCached(Md11FlapSystem.LeverKey) is double r2 ? Md11FoSwitching.FlapDetentIndex(r2) : null;
+                if (now is null) return false;
+                if (now == from)
+                {
+                    if (!flipped && (from == 0 || from == 5)) { flipped = true; flipUnproven = true; extend = retract; continue; }
+                    Log.Debug("MD11 FO", $"flap handle stopped at detent {from}, short of {targetIndex}");
+                    return false;
+                }
+                if (Math.Sign(now.Value - from) != dir)
+                {
+                    if (!io.Fire(ev == extend ? retract : extend)) return false;   // undo the wrong-way detent
+                    await io.DelayAsync(ReadBackDelay(io)).ConfigureAwait(false);
+                    extend = retract;
+                    _flapExtendEvent = extend;                                    // a wrong-way detent is evidence
+                    flipUnproven = false;
+                }
+                else if (flipUnproven)
+                {
+                    _flapExtendEvent = extend;                                    // the flip moved it the right way: proven
+                    flipUnproven = false;
+                }
             }
-            if (idx == targetIndex) return true;
-            // Every step, not once: a walk through several detents outlasts one quiet window, and the
-            // flap read-out stays silent only inside it (TFDiMD11Definition.AnnounceFlaps).
-            io.NoteActuation(Md11FlapSystem.LeverKey);
-            int dir = Math.Sign(targetIndex - idx.Value);
-            int retract = extend == FlapWheelDown ? FlapWheelUp : FlapWheelDown;
-            int ev = dir > 0 ? extend : retract;
-            if (!io.Fire(ev)) return false;
-            int from = idx.Value;
-            await WaitForCachedAsync(io, Md11FlapSystem.LeverKey,
-                v => Md11FoSwitching.FlapDetentIndex(v) != from, FlapStepTimeoutMs).ConfigureAwait(false);
-            int? now = io.ReadCached(Md11FlapSystem.LeverKey) is double r2 ? Md11FoSwitching.FlapDetentIndex(r2) : null;
-            if (now is null) return false;
-            if (now == from)
-            {
-                if (!flipped && (from == 0 || from == 5)) { flipped = true; flipUnproven = true; extend = retract; continue; }
-                return false;
-            }
-            if (Math.Sign(now.Value - from) != dir)
-            {
-                if (!io.Fire(ev == extend ? retract : extend)) return false;   // undo the wrong-way detent
-                await io.DelayAsync(ReadBackDelay(io)).ConfigureAwait(false);
-                extend = retract;
-                _flapExtendEvent = extend;                                    // a wrong-way detent is evidence
-                flipUnproven = false;
-            }
-            else if (flipUnproven)
-            {
-                _flapExtendEvent = extend;                                    // the flip moved it the right way: proven
-                flipUnproven = false;
-            }
+            return false;
         }
-        return false;
+        finally
+        {
+            if (moving) io.EndActuation(Md11FlapSystem.LeverKey, reached);
+        }
     }
 
     private async Task<bool> DialAFlapAsync(IMd11FoTransport io, int degrees)
@@ -917,7 +1055,15 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
         ("MD11_THR_R_START_SW", 77839),   // engine 3 (right wing)
     };
 
-    private async Task<bool> EngineStartAsync(IMd11FoTransport io, int engine, int target)
+    /// <summary>Each engine's fuel switch, by engine number (index 0 unused).</summary>
+    private static readonly string[] FuelSwitches = { "", "MD11_THR_L_FUEL_SW", "MD11_THR_C_FUEL_SW", "MD11_THR_R_FUEL_SW" };
+
+    /// <summary>
+    /// Engine <paramref name="engine"/>'s START switch to <paramref name="target"/> (1 pulled, 0 in).
+    /// A pull made for a flow (<paramref name="stop"/> is its Stop) is recorded until that engine's
+    /// fuel is on or the switch is back in, for <see cref="OnFlowStoppedAsync"/>.
+    /// </summary>
+    private async Task<bool> EngineStartAsync(IMd11FoTransport io, int engine, int target, CancellationToken stop)
     {
         var (key, click) = StartSwitches[engine];
         var sw = await ReadAsync(io, key, ControlReadTimeoutMs).ConfigureAwait(false);
@@ -933,32 +1079,73 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
             // N2 alone and a "done" here let the flow put the fuel on with no starter engaged.
             if (may == false) return n2 >= Md11FoSwitching.EngineRunningN2;
         }
-        else if (sw.Value < 0.5) return true;                              // already in
+        else if (sw.Value < 0.5)                                           // already in
+        {
+            _flowStarterPulls.TryRemove(engine, out _);
+            return true;
+        }
         io.NoteActuation(key);
         if (!io.Fire(click)) return false;
+        // Recorded once the click is sent, before the read-back: a pull that lands late is still one to undo.
+        if (target > 0 && stop.CanBeCanceled) _flowStarterPulls[engine] = stop;
         int want = target > 0 ? 1 : 0;
-        return await WaitForAsync(io, key, v => Md11FoSwitching.AtPosition(v, want), VerifyTimeoutMs, ControlReadTimeoutMs).ConfigureAwait(false);
+        bool done = await WaitForAsync(io, key, v => Md11FoSwitching.AtPosition(v, want), VerifyTimeoutMs, ControlReadTimeoutMs).ConfigureAwait(false);
+        if (done && target == 0) _flowStarterPulls.TryRemove(engine, out _);
+        return done;
     }
 
     /// <summary>
     /// Waits for engine <paramref name="engine"/>'s N2 to reach 15 % (the fuel-on point). If it
-    /// does not within <see cref="LightUpTimeoutMs"/>, pushes the START switch back in (a second
-    /// click on a pulled switch aborts the start) and fails, so the flow stops with the starter
-    /// disengaged. Already at or above 15 % returns at once (a resumed flow).
+    /// does not within <see cref="LightUpTimeoutMs"/>, or the flow's <paramref name="stop"/> comes
+    /// first (noticed within a poll), pushes the START switch back in (a second click on a pulled
+    /// switch aborts the start) and fails, so the flow ends with the starter disengaged. Already at
+    /// or above 15 % returns at once (a resumed flow). A checklist tick passes no Stop.
     /// </summary>
-    private async Task<bool> EngineLightUpAsync(IMd11FoTransport io, int engine)
+    private async Task<bool> EngineLightUpAsync(IMd11FoTransport io, int engine, CancellationToken stop)
     {
         long deadline = io.NowMs + LightUpTimeoutMs;
         while (true)
         {
+            if (stop.IsCancellationRequested)
+            {
+                Log.Info("MD11 FO", $"engine {engine}: flow stopped during the light-up watch; pushing START in");
+                break;
+            }
             double n2 = _state?.EngineN2(engine) ?? double.NaN;
             if (!double.IsNaN(n2) && n2 >= Md11FoSwitching.StarterCutoffN2) return true;
-            if (io.NowMs >= deadline) break;
+            if (io.NowMs >= deadline)
+            {
+                Log.Warn("MD11 FO", $"engine {engine}: no light-up within {LightUpTimeoutMs / 1000} s; pushing START in");
+                break;
+            }
             await io.DelayAsync(PollMs).ConfigureAwait(false);
         }
-        Log.Warn("MD11 FO", $"engine {engine}: no light-up within {LightUpTimeoutMs / 1000} s; pushing START in");
-        if (!await EngineStartAsync(io, engine, 0).ConfigureAwait(false))
+        if (!await EngineStartAsync(io, engine, 0, CancellationToken.None).ConfigureAwait(false))
             Log.Warn("MD11 FO", $"engine {engine}: the START switch did not read back in — the starter may still be engaged");
         return false;
+    }
+
+    /// <summary>
+    /// A stopped flow left engine <paramref name="engine"/>'s START switch pulled: pushed back in
+    /// only when its fuel switch reads OFF, read fresh. With the fuel on the start runs on (the
+    /// switch pops in by itself at cutout); unread, nothing is clicked. The switch is read first
+    /// (<see cref="EngineStartAsync"/>): one already in is left alone.
+    /// </summary>
+    private async Task AbortDryStartAsync(IMd11FoTransport io, int engine)
+    {
+        var fuel = await ReadAsync(io, FuelSwitches[engine], ControlReadTimeoutMs).ConfigureAwait(false);
+        if (fuel is null)
+        {
+            Log.Warn("MD11 FO", $"engine {engine}: flow stopped with its START switch pulled; its fuel switch is unread, so it is left as it is");
+            return;
+        }
+        if (fuel.Value >= 0.5)
+        {
+            Log.Debug("MD11 FO", $"engine {engine}: flow stopped with the fuel on; the start runs on");
+            return;
+        }
+        Log.Info("MD11 FO", $"engine {engine}: flow stopped with the fuel off; pushing its START switch back in");
+        if (!await EngineStartAsync(io, engine, 0, CancellationToken.None).ConfigureAwait(false))
+            Log.Warn("MD11 FO", $"engine {engine}: the START switch did not read back in — the starter may still be engaged");
     }
 }

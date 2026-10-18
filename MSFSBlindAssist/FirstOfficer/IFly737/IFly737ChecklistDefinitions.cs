@@ -378,8 +378,11 @@ public static class IFly737ChecklistDefinitions
             // (RegisterLandingGear, IFly737MAXDefinition.ForwardPedestal.cs:24-25, positions
             // "Up"/"Down"), so this commands UP and is labelled "UP" rather than the PMDG's
             // "OFF", which names a position that does not exist here (Fix pass 1, 2026-08).
-            Auto("ATKO_GEAR_OFF", "AFTER_TAKEOFF", "Gear lever: UP", "Gear_Lever_Status", v => v < 0.5,
+            // A tick raises the lever only when the aircraft is DEFINITELY airborne: on the ground,
+            // or with air/ground unread, it is refused with its reason, as the flow step is.
+            LeaveAlone(Auto("ATKO_GEAR_OFF", "AFTER_TAKEOFF", "Gear lever: UP", "Gear_Lever_Status", v => v < 0.5,
                 (e, _) => e.SetGearLever(IFly737ActionExecutor.GearUp)),
+                s => !s.IsDefinitelyAirborne, IFly737ActionExecutor.GearUpLeaveAloneText),
             Auto("ATKO_AB_OFF", "AFTER_TAKEOFF", "Autobrake: OFF", "Autobrake_Selector_Status",
                 v => v > 0.5 && v < 1.5, (e, _) => e.SetAutobrake(IFly737ActionExecutor.AutobrakeOff)),
         }

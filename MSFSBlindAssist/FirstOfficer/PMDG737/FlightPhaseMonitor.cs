@@ -208,7 +208,9 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         {
             case TransitionCrossingDetector.Crossing.ClimbToStd:
                 // Climbing through transition altitude — rotate both EFIS baro knobs to
-                // standard (fire-and-forget; the executor sequences the two knobs itself).
+                // standard (fire-and-forget). The rotation is the Ctrl+B dialog's own, under its
+                // one-at-a-time guard, and it records that the knob reads 29.92 with STD off, so
+                // the pilot's QNH entry at the transition level rotates instead of selecting STD.
                 _ = _executor.SetAltimetersStandardAsync();
                 _announcer.Announce("Transition altitude. Altimeters set to standard.");
                 break;

@@ -12741,7 +12741,8 @@ public class FenixA320Definition : BaseAircraftDefinition
     /// and announces it, so a blind pilot gets the same feedback a sighted pilot reads as
     /// "TO CONFIG NORMAL". A good config is otherwise completely silent. On a bad config the
     /// master warning is also flagged by the generic annunciator monitor; this adds the takeoff-
-    /// config context. Reads the cached I_MIP_MASTER_WARNING_CAPT (Continuous + IsAnnounced).
+    /// config context. Reads the cached I_MIP_MASTER_WARNING_CAPT and I_MIP_MASTER_CAUTION_CAPT
+    /// (Continuous + IsAnnounced).
     /// </summary>
     private void AnnounceTakeoffConfigResult(SimConnect.SimConnectManager simConnect,
         Accessibility.ScreenReaderAnnouncer announcer)
@@ -12756,12 +12757,12 @@ public class FenixA320Definition : BaseAircraftDefinition
             // The fail-safe direction also matters: an already-active (unrelated) warning yields a
             // conservative "check configuration" (never harmful), whereas disambiguating via a
             // pre-press baseline delta would mask a genuinely-bad config behind a pre-existing
-            // warning as a DANGEROUS false "normal".
-            double masterWarning = simConnect?.GetCachedVariableValue("I_MIP_MASTER_WARNING_CAPT") ?? 0.0;
-            if (masterWarning >= 0.5)
-                announcer?.AnnounceImmediate("Takeoff config: check configuration.");
-            else
-                announcer?.AnnounceImmediate("Takeoff config normal.");
+            // warning as a DANGEROUS false "normal". The words (the master caution's amber faults,
+            // and never "normal" on an unread light) are the First Officer's too:
+            // FenixTakeoffConfigVerdict.
+            announcer?.AnnounceImmediate(MSFSBlindAssist.FirstOfficer.Fenix.FenixTakeoffConfigVerdict.Text(
+                simConnect?.GetCachedVariableValue(MSFSBlindAssist.FirstOfficer.Fenix.FenixTakeoffConfigVerdict.MasterWarningKey),
+                simConnect?.GetCachedVariableValue(MSFSBlindAssist.FirstOfficer.Fenix.FenixTakeoffConfigVerdict.MasterCautionKey)));
         }
         catch (Exception ex)
         {

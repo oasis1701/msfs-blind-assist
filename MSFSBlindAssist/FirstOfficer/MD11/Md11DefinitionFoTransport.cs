@@ -29,6 +29,7 @@ public sealed class Md11DefinitionFoTransport : IMd11FoTransport
     public double? ReadCached(string key) => _sim.GetCachedVariableValue(key);
 
     public void NoteActuation(string nodeId) => _def.NoteFoActuation(nodeId);
+    public void EndActuation(string nodeId, bool reached) => _def.EndFoActuation(nodeId, reached);
     public void MuteLampSpeech(int ms) => _def.MuteLampSpeechFor(ms);
 
     public Task DelayAsync(int ms) => Task.Delay(ms);

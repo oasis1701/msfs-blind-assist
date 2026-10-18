@@ -31,6 +31,12 @@ public enum LVarDispatchKind
 /// A single SemaphoreSlim gate + ~150 ms pacing serialize every dispatch (including
 /// SetSwitchMultiple bundles and subclass convenience methods), so two concurrent
 /// sequences can never interleave their writes.
+///
+/// Every write re-checks after its pacing wait that the executor is still attached
+/// (<see cref="StillAttached"/>): the First Officer window detaches it when it closes (an aircraft
+/// switch, app exit) and relies on each executor refusing from then on. Read once before the pacing
+/// wait, a write queued there still went out after the detach. The release of a press already made
+/// still goes out, through the manager that pressed: a test is never left held.
 /// </summary>
 public abstract class LVarActionExecutor : IFoActionExecutor
 {
@@ -114,6 +120,7 @@ public abstract class LVarActionExecutor : IFoActionExecutor
             var sc = _sc;
             if (sc is not { IsConnected: true }) return false;
             await PaceAsync();
+            if (!StillAttached(sc)) return false;
             sc.SetLVar(name, value);
             _lastWriteUtc = DateTime.UtcNow;
             return true;
@@ -127,9 +134,10 @@ public abstract class LVarActionExecutor : IFoActionExecutor
     /// (e.g. the Fenix TO CONFIG test).</param>
     /// <param name="onHeld">Optional callback invoked while the button is still held at 1,
     /// just before the release — lets a caller read the resulting state (e.g. the master-
-    /// warning outcome of the TO CONFIG test) before the level-triggered effect clears.</param>
+    /// warning outcome of the TO CONFIG test) before the level-triggered effect clears. It is
+    /// handed the manager that pressed, and is skipped once the executor is detached.</param>
     protected async Task<bool> PulseAsync(string name, int pressHoldMs = PulsePressHoldMs,
-        Action? onHeld = null)
+        Action<SimConnectManager>? onHeld = null)
     {
         await _gate.WaitAsync();
         try { return await PulseCoreAsync(name, pressHoldMs, onHeld); }
@@ -145,6 +153,7 @@ public abstract class LVarActionExecutor : IFoActionExecutor
             var sc = _sc;
             if (sc is not { IsConnected: true }) return false;
             await PaceAsync();
+            if (!StillAttached(sc)) return false;
             sc.SetLVar(name, 1);
             _lastWriteUtc = DateTime.UtcNow;
             await Task.Delay(holdMs);
@@ -178,12 +187,14 @@ public abstract class LVarActionExecutor : IFoActionExecutor
             case LVarDispatchKind.KEvent:
             case LVarDispatchKind.HEvent:
                 await PaceAsync();
+                if (!StillAttached(sc)) return false;
                 sc.SendEvent(name, (uint)(target ?? 0));
                 _lastWriteUtc = DateTime.UtcNow;
                 return true;
 
             default:
                 await PaceAsync();
+                if (!StillAttached(sc)) return false;
                 sc.SetLVar(name, target ?? 1);
                 _lastWriteUtc = DateTime.UtcNow;
                 return true;
@@ -191,21 +202,24 @@ public abstract class LVarActionExecutor : IFoActionExecutor
     }
 
     private async Task<bool> PulseCoreAsync(string name, int pressHoldMs = PulsePressHoldMs,
-        Action? onHeld = null)
+        Action<SimConnectManager>? onHeld = null)
     {
         var sc = _sc;
         if (sc is not { IsConnected: true }) return false;
         await PaceAsync();
+        if (!StillAttached(sc)) return false;
         sc.SetLVar(name, 0);
         _lastWriteUtc = DateTime.UtcNow;
         await Task.Delay(PulseGapMs);
         sc.SetLVar(name, 1);
         _lastWriteUtc = DateTime.UtcNow;
         await Task.Delay(pressHoldMs > 0 ? pressHoldMs : 1);
-        // Read the resulting state while the button is still held (e.g. TO CONFIG result).
-        // Gated on IsConnected so a disconnect mid-hold can't fire a reassuring
-        // "Takeoff config normal." off a stale/zero cache (main-branch fix parity).
-        if (sc.IsConnected) onHeld?.Invoke();
+        // Read the resulting state while the button is still held (e.g. TO CONFIG result),
+        // through the manager that pressed. Not after a disconnect mid-hold, and not once the
+        // window has detached the executor (an aircraft switch, app exit): a result spoken then
+        // belongs to no window, and a read through the detached executor once found no manager and
+        // said "Takeoff config normal." off nothing.
+        if (sc.IsConnected && StillAttached(sc)) onHeld?.Invoke(sc);
         // RELEASE back to 0 — a Fenix pushbutton latches its effect on the 0→1 rising
         // edge, so the release loses no state; leaving it held at 1 was the stuck TO
         // CONFIG bug (spurious CONFIG + master warning after landing).
@@ -213,6 +227,9 @@ public abstract class LVarActionExecutor : IFoActionExecutor
         _lastWriteUtc = DateTime.UtcNow;
         return true;
     }
+
+    /// <summary>Still attached to the manager this write began with (see the class doc).</summary>
+    protected bool StillAttached(SimConnectManager sc) => ReferenceEquals(_sc, sc);
 
     private async Task PaceAsync()
     {

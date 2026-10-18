@@ -48,6 +48,13 @@ public sealed class Md11AnnouncementGate
         => _quietUntil[owner] = nowMs + windowMs;
 
     /// <summary>
+    /// The First Officer's actuation of <paramref name="owner"/> stopped short of its target: its
+    /// quiet window closes now, so the owner's next change speaks at once rather than up to
+    /// <see cref="FoQuietWindowMs"/> later. What the window recorded stays recorded.
+    /// </summary>
+    public void EndQuietActuation(string owner) => _quietUntil.Remove(owner);
+
+    /// <summary>
     /// Silences EVERY background lamp sentence until the deadline and records nothing — the
     /// annunciator light test lights ~488 lamps at once. Recording nothing is the point: when the
     /// lamps return to normal, the re-composed text equals the pre-test record and dedups silent.

@@ -93,7 +93,7 @@ plan's Part B2 — this aircraft's flow *steps* are the same, only the underlyin
 | Approach | EFIS APP / range 20; altimeter reminder |
 | Landing | Start switches CONT; **the First Officer arms the speed brake** (verified, lever AND ARMED light; a deployed one is left alone — see B7); missed-altitude reminder; then confirms the gear is down via the gear lights (see B10) |
 | After Landing | Landing lights off; taxi light ON; strobes steady; anti-ice OFF; probe heat **AUTO**; APU ON; start switches OFF; autobrake OFF |
-| Shutdown | APU generators ON; start levers CUTOFF (no spool-down wait); signs/lights off; fuel pumps OFF; window heat OFF; transponder **ALT OFF** |
+| Shutdown | Waits for the APU generator or ground power (Part H, items 3 and 4); APU generators ON; start levers CUTOFF, never while the engine generators still carry the buses (no spool-down wait); signs/lights off; fuel pumps OFF; window heat OFF; transponder **ALT OFF** |
 | Secure | IRS OFF; emergency exit lights **OFF**; window heat OFF; packs OFF; APU OFF ("Already set" if it already reads OFF); ground power OFF; **waits a fixed 2 minutes if it switched the APU off, none when the APU was already off** (no APU temperature in the SDK); **Battery OFF last** (left alone, with a spoken reason, while an engine turns or N2 is unread). **In-sim check:** run Secure after Shutdown with the APU running: hear the wait, then "Battery: OFF"; the aircraft goes dark and Electrical Power Down shows complete |
 
 Verify **Pause / Resume / Stop** mid-flow, and that **"Run Related Flow"** from a checklist
@@ -464,3 +464,66 @@ every aircraft are Part Z.1 of the PMDG 737 plan.
 3. **Autopilot presses 3 s apart and never blind.** With "Engage autopilot" on and the window
    open, CMD A engages once and stays engaged; restart MSFSBA in a climb with CMD A on: nothing is
    pressed.
+
+## Part H — PR #160 second review fixes (2026-10-18)
+
+None of these has run in the sim. Turn OFF **Auto-raise gear on climb** (File → Settings… →
+First Officer tab) for item 2, so only the First Officer moves the gear lever. The checks shared by
+every aircraft (go-around altimeters, Stop, the plan after landing, a new flight load, gear down,
+offline ticks, seat belts) are Part AA.1 of the PMDG 737 plan.
+
+1. **A CWS autopilot is left as it is.** Turn on **Engage autopilot** and set its engage height
+   to 1500 ft (File → Settings… → First Officer tab). After takeoff, above 400 ft, engage **CWS A**
+   yourself (Glareshield → MCP → CWS A): you hear "CWS A engaged". Climb through 1500 ft. Expect
+   no "1500 feet. Autopilot engaged.", no "CMD A engaged" and no "Autopilot did not engage.
+   Captain action required." On the MCP panel the CWS A button still reads "CWS A: Engaged" and
+   CMD A reads "CMD A: Off". Repeat on another flight with CWS B. (Before, the service pressed
+   CMD A over the CWS autopilot.)
+2. **The gear lever stays down on the ground.** Parked at the gate, run the **After Takeoff**
+   flow. Where "Gear lever: UP" was, expect "Not confirmed airborne, so the gear lever stays
+   down." Shift+G (in output mode) still reads "Gear lever down; nose locked down, left locked
+   down, right locked down". In the Checklists tab, After Takeoff → "Gear lever: UP" is unticked;
+   tick it by hand: you hear the same sentence and it stays unticked. The flow also switches the
+   autobrake OFF and the start switches OFF, so set them back afterwards. Then, on the next
+   flight, run After Takeoff after liftoff with a positive climb: "Gear lever: UP" is spoken and
+   Shift+G reads the gear coming up, as before.
+3. **Shutdown waits for the APU generator.** After landing, run **After Landing** (it starts the
+   APU) and straight away **Shutdown**. Expect "Waiting for: APU generator or ground power", then
+   silence until the APU is on line (up to about a minute and a half), then "APU generators: ON",
+   "Generator 1 Off Bus light on" and "Generator 2 Off Bus light on" as the APU takes the buses,
+   and "Engine start levers: CUTOFF". You hear no "Transfer Bus 1 Off light on" or "Transfer Bus
+   2 Off light on" at any point (the aircraft never drops to the battery). If you hear "No APU
+   generator or ground power on the buses, so the engines stay running." after "APU generators:
+   ON", tell me which of those lights you heard: the guard reads them.
+4. **Shutdown with no APU and no ground power stops before the cut.** On another landing, leave
+   the APU OFF (skip After Landing, or set the APU switch OFF yourself) and run **Shutdown**.
+   Expect "Waiting for: APU generator or ground power", and after 2 minutes "Timed out waiting
+   for: APU generator or ground power" and "Shutdown flow stopped. Unable to complete: APU
+   generator or ground power". The engines keep running: in the Checklists tab, Shutdown →
+   "Engine start levers: CUTOFF" stays unticked. Then start the APU and run Shutdown again: it
+   now goes on to "APU generators: ON" and "Engine start levers: CUTOFF".
+5. **The pressurization reminder follows the windows.** With a SimBrief plan loaded, run
+   **Preflight**. After "Flight and landing altitudes: set" expect "Already set: Flight and
+   landing altitudes", not "Captain action required: Set flight and landing altitudes on the
+   pressurization panel." The Overhead → Pressurization panel's flight and landing altitude
+   windows read the plan's values. If the Captain reminder speaks after a set that worked, the
+   windows took longer than 2 seconds to show it: tell me. With no plan loaded you hear only the
+   Captain reminder, as before.
+6. **A fire test is released when the aircraft is switched during it.** Run **Preflight** and,
+   right after "Fire warning test — listen for the fire bell", choose another aircraft from the
+   Aircraft menu. Expect the fire bell to stop within about a second, not ring on. Switch back
+   to the iFly. Do the same once with File → Exit instead of the Aircraft menu.
+7. **An engine start in bowed rotor motoring is waited out.** BRM needs a hot engine: shut the
+   engines down after a flight and run **Engine Start** within a few minutes. If BRM engages you
+   hear "Engine 2 bowed rotor motoring", then "Waiting for engine 2 bowed rotor motoring to
+   finish."; the flow keeps waiting past a minute, then "Engine 2 bowed rotor motoring
+   complete", "Engine 2 start lever: IDLE" and the start completes without "Engine Start flow
+   stopped". If BRM never engages, note it: the item stays open. On a normal start the steps
+   now read "Engine 2 motoring — waiting for N2 before introducing fuel" (no "Waiting for:"
+   before it). Once, press **Stop** during that wait: "Stopping after the current step…" is
+   followed at once by "Engine Start flow cancelled". The engine 2 start switch stays at GRD, as
+   it always did after a Stop there, so set it OFF yourself (Overhead → Engines and APU).
+8. **Ctrl+B still sets the altimeter.** Press Ctrl+B and enter 30.12: you hear "Altimeter: 1020"
+   and the inches. Enter 1013: you hear "Altimeter: 1013" and the inches. Enter 29.92: you hear
+   "Altimeter standard". The First Officer's climb through the transition altitude still sets
+   standard (Part D4).

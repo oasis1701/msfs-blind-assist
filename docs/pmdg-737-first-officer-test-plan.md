@@ -112,8 +112,9 @@ Enable Auto Gear / Auto AP in **File → Settings… → First Officer tab**, th
 ### B5. Flight-phase + SimBrief
 - **Load SimBrief** (Flows tab) → confirm "Takeoff flaps: N" + transition alt/level announced.
 - Climb through 10,000 ft → landing lights OFF; descend through 10,000 ft → ON.
-- Climb through the SimBrief transition altitude → both altimeters pushed to STD (announced);
-  descend through the transition level → both pushed off STD with a "set local pressure" prompt.
+- Climb through the SimBrief transition altitude → both baro knobs ROTATED to 29.92 (1013 in
+  hPa), announced; descend through the transition level → announce only, "Transition level. Set
+  local altimeter pressure now.", and you set the QNH with Ctrl+B (737; see H9).
 
 ---
 
@@ -330,15 +331,23 @@ every leg fully extended (its "three green").
 
 ### H9. Altimeters auto-set to STANDARD above transition (requires SimBrief)
 Load a SimBrief OFP with a transition altitude, then climb through it: the FO sets **both** altimeters
-to STD and announces "Transition altitude. Altimeters set to standard." (the STD push now commits via
-the momentary-toggle dispatch). Descending through the transition level → back to QNH + "set local
-pressure" callout. *Note:* the transition altitude still comes from SimBrief only (no default fallback,
-by design). The **777** reads its STD state from the Captain's altimeter setting (KOHLSMAN at 29.92,
-the panel's own STD test), never `EFIS_BaroSTD_Sw_Pushed`, which the SDK declares a MOMENTARY push
-flag: until 2026-10-18 it read 0, so the 777 pushed nothing at the transition level while saying
-"Altimeters set to local QNH", and toggled a side already on STD back to QNH in the climb. On the 777,
-check both crossings: climbing, both sides end on STD (also with one side set to STD by hand first);
-descending, both end on QNH. With the setting unread it now only reminds you.
+to standard and announces "Transition altitude. Altimeters set to standard." On the **737** it ROTATES
+both baro knobs to 29.92 (1013 in hPa), the Ctrl+B dialog's own rotation, never the STD push (which
+commits only intermittently on the NG3); B then reads "Altimeter standard". Descending through the
+transition level is announce-only on the 737: "Transition level. Set local altimeter pressure now.",
+and the QNH you enter with Ctrl+B must SET (Part AA, AA.2 item 1). *Note:* the transition
+altitude still comes from SimBrief only (no default fallback,
+by design). The **777** reads the Captain's altimeter setting (KOHLSMAN at 29.92, the panel's own STD
+test), never `EFIS_BaroSTD_Sw_Pushed`, which the SDK declares a MOMENTARY push flag. 29.92 cannot tell
+STD from a QNH of 29.92, so since the second review (2026-10-18) the 777 pushes STD on the climb only
+from a setting that is NOT 29.92, and at the transition level takes back only its own push. Climbing
+from any other QNH, both sides end on STD ("Altimeters set to standard."); descending, both end back on
+QNH ("Altimeters set to local QNH. Set local pressure now."). Climbing at 29.92 it pushes nothing and
+says "The captain's altimeter already reads standard, nothing pushed."; descending without a push of
+its own it pushes nothing and says "Set local altimeter pressure now". The FO side has no reading: with
+only the FO side set to STD by hand first, the climb push takes it back to QNH, and with only the
+Captain's, nothing is pushed, so set the other side yourself. With the setting unread it only reminds
+you. Part AA.3 item 1 has the checks.
 
 ### H10. Speed brake: arm it, and leave a deployed one alone (Landing, 737 and 777)  *(verify in sim, 2026-09-30; 777 lines changed 2026-10-09)*
 Both jets judge the lever, not a light: "armed" is the lever exactly at ARM (737: and the
@@ -365,9 +374,10 @@ the Landing section's **"Speedbrake: ARM"** on the 777; on both jets the Landing
 ---
 
 ## Known limitations (by design / data availability)
-- **Baro-STD has no NG3 state field** — the STD push now COMMITS (momentary-toggle dispatch), but the
-  phase monitor still pushes STD/QNH at the transition alt/level using its own one-shot latch (it cannot
-  read whether STD is already selected). Manually toggling STD mid-flight can desync the latch.
+- **Baro-STD has no NG3 state field** — so the 737 FO never pushes STD: it rotates the baro knobs to
+  29.92 at the transition altitude and only announces the transition level. The Ctrl+B dialog reads a
+  29.92 it did not rotate to as STD; an STD press made in the cockpit over a 29.92 the app rotated to
+  cannot be seen (docs/pmdg-737.md, "The baro knob is rotated").
 - **Auto-STD needs a SimBrief transition altitude** — there is no default transition altitude; without a
   loaded OFP the altimeters are not auto-set (by design — issue 9 chose SimBrief-only sourcing).
 - **GEN / APU-GEN auto-detect read-back may lag** — the PMDG snapshot can lag; the switch still
@@ -642,7 +652,8 @@ Test (737):
    APU spools up. Previously it only reached ON and never started.
 4. **Shutdown** — the "APU generators: ON" step presses BOTH buttons; after the start
    levers go to CUTOFF, both transfer buses stay powered by the APU (no partial
-   power drop on bus 2).
+   power drop on bus 2). Since the second review the flow first waits for the APU
+   generator and confirms the transfer before the levers (Part AA, AA.2 item 2).
 
 ---
 
@@ -686,7 +697,8 @@ Test (737, at a gate with ground power available and the APU RUNNING):
    altimeters the wrong way on the 737, which has no STD readback).
    Test: load SimBrief in the FO window (expect the "Flight phase monitor: transition
    altitude ..." announce), fly a climb through the TA → "Transition altitude. Altimeters
-   set to standard." and both altimeters flip to STD. Then a flight WITHOUT loading
+   set to standard." and both altimeters go to standard (777: STD; 737: knobs rotated to
+   29.92, see H9). Then a flight WITHOUT loading
    SimBrief → the passing-18,000 reminder fires instead, no switch is touched.
 2. **737 after-landing flaps** — the flow never had a flaps-up step (its description
    claimed one) and the checklist group had no flaps item. Added: flow retracts flaps
@@ -1071,8 +1083,10 @@ aircraft's plans point here for it.
 
 ### Z.3 PMDG 777
 
-1. **Transition altimeters**, as H9 says: climbing both sides end on STD (also with one side set
-   to STD by hand first); descending both end on QNH; the Captain's altimeter is the STD read.
+1. **Transition altimeters**, as H9 says: climbing from a QNH other than 29.92, both sides
+   end on STD; descending, the FO takes back its own push and both end on QNH; the Captain's
+   altimeter is the only reading, so one side set to STD by hand first is not seen. The 29.92 cases
+   are AA.3 item 1.
 2. **Verified writes are judged over 2.6 s.** Electrical Power Up from cold and dark: no
    "Skipping: Battery: ON" (or any other "Skipping") over a switch that did move.
 3. **Engine Start stops on a failed start.** If a START selector fails, or an engine does not
@@ -1088,3 +1102,184 @@ aircraft's plans point here for it.
    snapshot: a toggle step whose switch is unread says "Skipping: … The switch cannot be read
    yet." (GPU, LNAV, VNAV and the mouse-flag switches), and the FD and A/T ARM steps skip rather
    than press; none is pressed blind.
+
+## Part AA — PR #160 second review fixes (2026-10-18)
+
+None of these has run in the sim. AA.1 is shared by every aircraft's First Officer; the other
+aircraft's plans point here for it.
+
+### AA.1 Shared: the window, SimBrief and the universal automation
+
+1. **A go-around stays on QNH.** Load a flight in the air above FL80 inbound to EDDF, then press
+   Load SimBrief with a plan EHAM to EDDF: the window says "Transition altitude 3000 feet,
+   transition level 7000 feet." (or the values SimBrief gives; the altitude must be well below the
+   level). Descend below FL70: the First Officer sets QNH. Go around and level off at 5,000 ft:
+   nothing is said and the altimeters stay on QNH (B reads your QNH). Climb above 7,300 ft:
+   standard is set; descend below FL70 again: QNH again.
+2. **Stop is answered at once.** On the PMDG 737 or 777, start Preflight (737) or Cockpit
+   Preparation (777) and press Stop during the weather radar test (about 25 s long): you hear
+   "Stopping after the current step: Weather radar test — listen for the windshear callout" at
+   once, and again on a second Stop. Start Flow and Pause say "The last flow is still stopping.
+   Start again when it has stopped." When the radar test ends, "… flow cancelled". A Stop between
+   two steps, on any aircraft, still says "… flow cancelled" at once.
+3. **The plan survives a warp, and is forgotten after a landing.** Load SimBrief at the gate, then
+   teleport to the runway (or use a GSX warp): the plan stays loaded; after takeoff the First
+   Officer sets standard at the transition altitude, and debug.log has no "SimBrief plan forgotten"
+   line. Fly a touch-and-go: the plan stays. Land and slow below 40 kt: debug.log says "SimBrief
+   plan forgotten: the flight it was for has landed". Bring the window up again with Shift+C:
+   "SimBrief still has the flight just flown. Generate the next flight plan, then press Load
+   SimBrief." Press Load SimBrief: that plan loads all the same ("SimBrief flight plan loaded. …").
+   Generate the next plan in SimBrief: the next Shift+C on a window with no plan loads it.
+4. **A new flight starts afresh.** Start a long flow (Before Start), then load a new flight in
+   MSFS: the flow stops ("… flow cancelled"), and on the Checklists tab no line is ticked unless the
+   aircraft's state ticks it. Load the next flight in the air: the departure checklists are marked
+   complete again, with their one announcement (FO-22).
+5. **Both transition values are spoken.** Every plan load says "Transition altitude N feet,
+   transition level M feet." with N above 0. A plan whose origin has no transition altitude (rare
+   in SimBrief) uses the level for both.
+6. **Gear down only on a real descent, slow enough, and once.** With "Auto-lower gear at 2000 ft
+   AGL (descent)" on: a level segment below 2,000 ft AGL with hills rising under the departure path
+   lowers nothing. On an arrival over high ground (an Alpine approach such as LOWI) still faster
+   than 250 kt as the height above ground drops under 2,000 ft: no "Gear down." until the speed is
+   250 kt or less, then "Gear down." once. On a normal approach, after "Gear down.", raise the gear
+   yourself while still descending: it stays up, nothing is said. Go around and climb: the next
+   approach gets "Gear down." again.
+7. **No tick over an action that cannot run (optional).** With the First Officer window open,
+   quit MSFS and leave MSFSBA running. Tick an action line such as "Beacon: ON": "Sim not connected
+   — cannot perform: Beacon: ON", and the line stays unticked. A line with no action still ticks.
+8. **Seat belts after a mode switch.** On the ground set "Auto seat belt signs" (Settings, First
+   Officer) to "At 10,000 feet", then to "Top of climb and top of descent" before takeoff. In cruise
+   switch back to "At 10,000 feet": nothing is said and the signs stay as they are. Below 10,000 ft
+   on the descent: "Below ten thousand. Seat belt signs on." as usual. Switch away and back again
+   after that descent: nothing is said.
+9. **Skips are paced.** Every "Skipping: …" is followed by the usual two-second pause before the
+   next step's words (for example Z.3 item 7's unread toggles just after a connect).
+10. **The HorizonSim 787 engages its autopilot once, closed-loop.** With "Auto-engage autopilot on
+    climbout" on, take off in the HS787: at the set height the autopilot engages and you hear "N
+    feet. Autopilot engaged." once, after the aircraft's own call. Engage it yourself below the
+    height: nothing is pressed and nothing is said. If it never engages, about 15 s later:
+    "Autopilot did not engage. Captain action required: engage the autopilot."
+
+A Pause in the last second of a wait (it once timed the wait out under "Paused") and the stop
+clean-up on a Stop or a failed step are pinned by unit tests; they need no step of their own here.
+
+### AA.2 PMDG 737
+
+1. **The QNH you enter at the transition level sets.** Captain baro in inHg (Forward Panel →
+   EFIS, Captain Baro Units). Load SimBrief, climb through the transition altitude: "Transition
+   altitude. Altimeters set to standard." and "Altimeter standard"; B reads "Altimeter standard".
+   Descend through the transition level: "Transition level. Set local altimeter pressure now."
+   Press Ctrl+B and enter a QNH other than standard (for example 30.05, or 1018): within a few
+   seconds you hear "Altimeter: 1018, 30.05" and B reads the same. Before this fix nothing was
+   spoken and B kept saying "Altimeter standard": the dialog had selected STD. Repeat once with the
+   baro in hPa (it lands on 1013; the QNH entry must set the same way).
+2. **One baro rotation at a time.** Before the climb reaches the transition altitude, open Ctrl+B
+   and type a value without pressing Enter; press Enter the moment "Transition altitude. Altimeters
+   set to standard." is spoken: "Still setting altimeter, please wait." (the First Officer turns
+   both knobs for about 3 seconds). Enter again a few seconds later: it sets once, and B reads
+   exactly the value you typed (never stepped twice). The Standard button pressed during that
+   rotation says the same and is not confirmed as "Standard".
+3. **Shutdown waits for the APU generator and confirms the transfer.**
+   - Normal: run After Landing, taxi to the gate, run Shutdown. Hear "Waiting for: APU generator or
+     ground power" (it passes at once when the APU generator is already up), "APU generators: ON",
+     the Generator 1 and 2 Off Bus lights announced on, then "Engine start levers: CUTOFF". No
+     Transfer Bus or Source Off light is announced after the levers: the buses stayed powered.
+   - APU not up yet: run After Landing, then Shutdown straight away. The flow waits at "Waiting
+     for: APU generator or ground power" until the APU Gen Off Bus light is announced on, then goes
+     on as above.
+   - No power: APU selector OFF, no ground power, engines running. Run Shutdown: after 2 minutes,
+     "Shutdown flow stopped. Unable to complete: APU generator or ground power." The engines keep
+     running and no other Shutdown step was performed (the Signs panel still reads the seat belt
+     sign as it was).
+   - Ground power on the buses: GPU connected, press Ground Power On (Electrical panel) with the
+     engines running, then run Shutdown: "Already set: APU generators: ON", then the levers; the
+     buses stay powered (no Transfer Bus or Source Off light announced).
+4. **The pressurization reminder follows the windows.** SimBrief loaded, run Preflight. When both
+   windows take the plan: "Already set: Flight and landing altitudes" (no reminder). Whenever
+   "Skipping: Flight altitude: set" or "Skipping: Landing altitude: set" is heard, the next is
+   "Captain action required: Set flight and landing altitudes on the pressurization panel.", never
+   "Already set". Without SimBrief the reminder speaks, as in Part I item 4.
+5. **A test the First Officer holds stops when you quit or switch.** Run Preflight. During "Stall
+   warning test 1 — listen for the stick shaker", quit MSFSBA: the shaker stops at once in the sim
+   (it is held 3.5 s otherwise; before this fix it kept sounding). Restart, run Preflight again and
+   during "Fire warning test — listen for the fire bell" switch aircraft (Aircraft menu, another
+   aircraft): the bell stops, and nothing is pressed on the new aircraft (no stray announcement,
+   no CDU key on a 777). Switch back to the 737.
+6. **Ground power OFF in Secure.** With a GPU connected: Secure says "Ground power: OFF" and the
+   GPU disconnects. With none at the stand: "Already set: Ground power: OFF". Ticking Secure's
+   "Ground power: OFF" by hand with a GPU connected disconnects it.
+7. **The panel's long tests run one at a time.** Pedestal → Weather Radar → Weather Radar Test,
+   then press it again within 20 seconds: "Still running the weather radar test, please wait.",
+   and the first run's "MONITOR RADAR DISPLAY … WINDSHEAR" still plays. When it has finished, a
+   new press plays the callout again (V.4). Forward Panel → GPWS → GPWS System Test (Long), then
+   again within 5 seconds: "Still running the GPWS test, please wait."
+
+### AA.3 PMDG 777
+
+None of these has run in the sim. B reads the altimeter, L the flap lever, Shift+G the gear lever.
+
+1. **Transition altimeters never push from 29.92.** Load a SimBrief plan with a transition
+   altitude and level.
+   - Departure QNH other than 29.92 (for example 1003 hPa, 29.62): climbing through the transition
+     altitude you hear "Transition altitude. Altimeters set to standard." and B says "Altimeter
+     standard". Descending through the transition level you hear "Transition level. Altimeters set
+     to local QNH. Set local pressure now." and B reads your earlier QNH again, not "standard".
+   - Both sides set to 29.92 before departure (MSFS's preset weather is 29.92): climbing you hear
+     "Transition altitude. The captain's altimeter already reads standard, nothing pushed.", and B
+     still says "Altimeter standard". Use the EFIS panel's Baro STD (Capt) and Baro STD (FO) buttons
+     yourself if you want STD shown. Descending you hear only "Transition level. Set local altimeter
+     pressure now." and B is unchanged: nothing was pushed INTO standard.
+   - After a climb from 1003, push Baro STD (Capt) yourself while still above the transition level
+     and set a QNH: at the transition level you hear only "Transition level. Set local altimeter
+     pressure now.", and B keeps your QNH (the FO did not push standard back on).
+2. **Flaps 1 is not set for takeoff.** Lever at 1 (L says "Flaps 1"), run Before Takeoff: "Waiting
+   for: Flap lever: takeoff", about 20 s later "Timed out waiting for: Flap lever: takeoff" and
+   "Skipping: Flap lever: takeoff", and the Before Takeoff Checklist's "Flaps: Set for takeoff"
+   stays unticked. Move the lever to 5 (L: "Flaps 5"): the line ticks by itself. Before Taxi's flap
+   lever check behaves the same.
+3. **LNAV and VNAV are read back.** With no route activated in the FMC, run Before Takeoff: "LNAV:
+   Verify armed", then about 3 s later "Skipping: LNAV: Verify armed"; the same for VNAV; after
+   "Before Takeoff flow complete" both "Verify armed" lines stay unticked. With a route and PERF
+   INIT complete there is no "Skipping" and both lines tick.
+4. **A running engine is not started again.** Start engine 2 yourself (or stop a run at engine 1),
+   then run Engine Start: "Already set: Engine 2 start selector: START", "Already set: Engine 2
+   fuel control run", the two engine 2 "Waiting for" calls pass at once, "Engine 2 start selector:
+   NORM", and engine 1 starts as usual. No "Cranking Engine 2", no 30 s engine 2 waits, and never
+   "Engine Start flow stopped. Unable to complete: Engine 2 start selector: START". With both engines
+   running the flow completes in under a minute.
+5. **Gear up only when airborne.** At the gate, run After Takeoff: at the gear step you hear "Not
+   airborne, so the gear stays down." and Shift+G still says "Gear down" (the flow's other steps run
+   as before, and its gear check times out after 20 s); the After Takeoff "Gear: UP" line stays
+   unticked, and ticking it says the same sentence and ticks nothing. In the air after takeoff the
+   gear goes up as before (Shift+G: "Gear up").
+6. **Fuel control CUTOFF reads both switches.** Shutdown with both engines running: "Fuel Control:
+   CUTOFF" with no "Skipping", both engines spool down, and both "Fuel Control switches: CUTOFF"
+   lines tick. Cockpit Prep's "Fuel Control: CUTOFF" is read back the same way now: no "Skipping"
+   with both switches at CUTOFF.
+7. **Recirculation fans by variant.** On a 777-300ER, -200ER or -200LR, set both Recirc Fan Upper
+   and Recirc Fan Lower to Off on the Air Conditioning panel and run Cockpit Prep: "Recirculation
+   fans: ON" with no "Skipping", both combos read On, and Preflight's "Recirculation fans: ON"
+   ticks. On the 777F run Cockpit Prep and listen at the same step: "Skipping: Recirculation fans:
+   ON" there, or a Preflight line that never ticks, means the freighter's single switch drives
+   neither reading; please report it, as that reading is the one unmeasured part.
+8. **Runway turnoff lights per side.** Lights panel: Runway Turnoff Left On, Right Off. Run Before
+   Takeoff: "Runway turnoff lights: ON" with no "Skipping", both turnoff combos read On, and the
+   "Runway turnoff lights: ON" line ticks. After Takeoff and After Landing: "Runway turnoff: OFF"
+   with no "Skipping", both combos Off.
+9. **Secure waits for the APU.** (a) On ground power with the APU never started: "Already set: APU:
+   OFF", no "Waiting 30 seconds: APU cooling down", "Waiting for: APU to stop" passes at once, then
+   "Battery: OFF". (b) With the APU running: "APU: OFF", "Waiting 30 seconds: APU cooling down", the
+   ground power steps, "Waiting for: APU to stop" until it has stopped (up to 3 minutes), then
+   "Battery: OFF". Please note how long that last wait takes. If the APU still runs after 3 minutes:
+   "Timed out waiting for: APU to stop", "Skipping: APU to stop", "APU still running, so the battery
+   stays on."
+10. **Nothing pressed after the window closes.** Start Cockpit Prep and, during "Fire and overheat
+    test — listen for the fire bell", switch MSFSBA to another aircraft: the bell stops when its
+    hold ends, and the 777 flow presses nothing more. Separately, while Secure says "Emer exit
+    lights: OFF", arrow the Overhead panel's Emergency Lights combo to Armed: the switch ends at
+    Armed, the last pick, and the combo agrees with it.
+11. **One weather radar test at a time.** Press the panel's Weather Radar Test button, then press
+    it again within 20 s: "Weather radar test still running, please wait." The windshear callout
+    plays once and the radar ends in WX mode with the overlay off, as before. About 30 s after the
+    first press a new press runs the test again. TCAS Test still gives "TCAS TEST" then "TCAS TEST
+    PASS".

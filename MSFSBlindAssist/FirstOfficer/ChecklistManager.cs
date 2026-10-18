@@ -53,9 +53,10 @@ public class ChecklistManager<TExec, TState>
     /// <c>false</c> (not <c>null</c>: the item stays unchecked), with the reason in
     /// <paramref name="leftAloneText"/>.
     /// </summary>
-    /// <param name="leftAloneText">Set when a tick ON was refused because the item's
-    /// <see cref="ChecklistItem{TExec,TState}.LeaveAloneWhen"/> holds: the item stays unchecked,
-    /// nothing ran, and this is what to say. Null otherwise.</param>
+    /// <param name="leftAloneText">Set when a tick ON was refused, because the item's
+    /// <see cref="ChecklistItem{TExec,TState}.LeaveAloneWhen"/> holds or because its action cannot
+    /// reach the aircraft (the executor unavailable): the item stays unchecked, nothing ran, and
+    /// this is what to say. Null otherwise.</param>
     public bool? ToggleItem(string groupId, string itemId, out string? leftAloneText)
     {
         leftAloneText = null;
@@ -70,6 +71,19 @@ public class ChecklistManager<TExec, TState>
         if (!item.IsChecked && item.LeaveAloneWhen != null && _state.IsAvailable && item.LeaveAloneWhen(_state))
         {
             leftAloneText = item.LeaveAloneText ?? $"Skipping: {item.Label}";
+            return false;
+        }
+
+        // A tick ON whose action the First Officer cannot perform right now (no aircraft to write
+        // to: the sim not connected, the iFly plugin not ready, the MD-11's calc path unverified) is
+        // refused the same way, in the flow's own words for the same write. Ticked anyway it ran
+        // nothing and said nothing, and over a state not read yet (the iFly before its plugin) the
+        // group latched "Complete" over switches that never moved. A line the aircraft already
+        // shows done still ticks: nothing is owed (FO-12).
+        if (!item.IsChecked && item.CheckAction != null && !_executor.IsAvailable
+            && !(item.IsAutoDetectable && EvaluateItemState(item) == true))
+        {
+            leftAloneText = $"Sim not connected — cannot perform: {item.Label}";
             return false;
         }
 
@@ -97,6 +111,7 @@ public class ChecklistManager<TExec, TState>
             // "indeterminate is not a failure" contract EvaluateAutoDetection applies.
             // Such an item is one EvaluateAutoDetection would tick unaided on its next
             // pass anyway, which is what makes running its action pure side-effect.
+            // (An unavailable executor was refused above, so an action here always runs.)
             if (item.CheckAction != null && _executor.IsAvailable
                 && !(item.IsAutoDetectable && EvaluateItemState(item) == true))
             {

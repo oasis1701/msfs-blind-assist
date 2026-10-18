@@ -119,6 +119,46 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     public const int SpeedbrakeArmVerifyMs = 3000;
     private const int SpeedbrakeArmPollMs = 100;
 
+    /// <summary>Engine Start: engine 1 / 2 N2 up to the fuel point
+    /// (<see cref="IFly737StateEvaluator.EngStartFuelN2"/>). A read-only wait, see
+    /// <see cref="StartWaitAsync"/>.</summary>
+    public const string KeyEng1FuelN2 = "ENG1_FUEL_N2";
+    public const string KeyEng2FuelN2 = "ENG2_FUEL_N2";
+    /// <summary>Engine Start: engine 1 / 2 start switch back out of GRD (the starter cut out).
+    /// A read-only wait, see <see cref="StartWaitAsync"/>.</summary>
+    public const string KeyEng1StarterCutout = "ENG1_STARTER_CUTOUT";
+    public const string KeyEng2StarterCutout = "ENG2_STARTER_CUTOUT";
+
+    /// <summary>How long N2 may take to reach the fuel point, and the start switch to cut out,
+    /// with no bowed rotor motoring: the hung-start protection (a starter or bleed that never
+    /// turns the engine stops the flow before fuel; engine 1's starter is never engaged while
+    /// engine 2's still is).</summary>
+    public const int FuelN2WaitSeconds = 60;
+    public const int StarterCutoutWaitSeconds = 120;
+
+    /// <summary>The LEAP-1B can hold a start in bowed rotor motoring for minutes, N2 at motoring
+    /// speed and the start switch at GRD. While its flag reads active a start wait's clock
+    /// starts again, so it can run this much past its own limit and no more (a judgement, not a
+    /// measurement: a flag stuck active must not hold the flow for ever).</summary>
+    public const int BrmAllowanceSeconds = 300;
+    private const int StartWaitPollMs = 1000;
+
+    // One start wait: the engine whose BRM flag can hold it, the field it reads and when that is
+    // done, and how long it may take with no BRM. Declared before PseudoKeyHandlers, which names
+    // them, so they are initialized first.
+    private sealed record StartWait(int Engine, string Field, Func<double, bool> Done, int Seconds);
+
+    private static bool StarterCutOut(double startSwitch) => Math.Abs(startSwitch - EngStartOff) < 0.1;
+
+    private static readonly IReadOnlyDictionary<string, StartWait> StartWaits =
+        new Dictionary<string, StartWait>(StringComparer.Ordinal)
+        {
+            [KeyEng1FuelN2] = new(1, "FO_ENG1_N2", v => v >= IFly737StateEvaluator.EngStartFuelN2, FuelN2WaitSeconds),
+            [KeyEng2FuelN2] = new(2, "FO_ENG2_N2", v => v >= IFly737StateEvaluator.EngStartFuelN2, FuelN2WaitSeconds),
+            [KeyEng1StarterCutout] = new(1, "Engine_Start_Switch_Status_0", StarterCutOut, StarterCutoutWaitSeconds),
+            [KeyEng2StarterCutout] = new(2, "Engine_Start_Switch_Status_1", StarterCutOut, StarterCutoutWaitSeconds),
+        };
+
     /// <summary>THE one place a pseudo-key is wired to its handler. <see cref="PseudoKeys"/>
     /// and <see cref="IsPseudoKey"/> are both DERIVED from this map's keys rather than
     /// spelled out separately, closing the gap a review found: PseudoKeys used to be a
@@ -144,6 +184,12 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
             [KeyBaroStdBoth] = e => e.SetAltimetersStandardCoreAsync(),
             [KeyPressAlts] = e => e.SetPressurizationAltitudesCoreAsync(e._state),
             [KeySpeedbrakeArm] = e => e.ArmSpeedbrakeCoreAsync(),
+            // The engine-start waits. A flow step reaches them through ExecuteStepAsync, which runs
+            // them outside the gate and on the flow's Stop; these entries keep them in PseudoKeys.
+            [KeyEng1FuelN2] = e => e.StartWaitAsync(StartWaits[KeyEng1FuelN2], CancellationToken.None),
+            [KeyEng2FuelN2] = e => e.StartWaitAsync(StartWaits[KeyEng2FuelN2], CancellationToken.None),
+            [KeyEng1StarterCutout] = e => e.StartWaitAsync(StartWaits[KeyEng1StarterCutout], CancellationToken.None),
+            [KeyEng2StarterCutout] = e => e.StartWaitAsync(StartWaits[KeyEng2StarterCutout], CancellationToken.None),
         };
 
     /// <summary>Every pseudo-key this executor handles — the keys of <see cref="PseudoKeyHandlers"/>.
@@ -231,7 +277,12 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     // Core dispatch
     // -----------------------------------------------------------------------
 
-    public async Task<bool> ExecuteStepAsync(IFlowStepDispatch step)
+    public Task<bool> ExecuteStepAsync(IFlowStepDispatch step) => ExecuteStepAsync(step, CancellationToken.None);
+
+    /// <summary>The flow's entry point. Every step is atomic except the engine-start waits
+    /// (<see cref="StartWaitAsync"/>), which only read, and which <paramref name="stop"/>, the
+    /// running flow's Stop, ends at once.</summary>
+    public async Task<bool> ExecuteStepAsync(IFlowStepDispatch step, CancellationToken stop)
     {
         // Availability first: a Multi over an EMPTY action list would otherwise report a
         // vacuous success, and a pseudo-key must never start a hold it cannot release.
@@ -241,6 +292,10 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
         {
             case FlowStepActionType.SetSwitch:
                 if (step.EventName == null) return false;
+                // A start wait writes nothing, so it takes no gate: minutes of motoring must not
+                // hold up a checklist tick or the centre-pump automation.
+                if (StartWaits.TryGetValue(step.EventName, out var wait))
+                    return await StartWaitAsync(wait, stop);
                 return await DispatchAsync(step.EventName, step.TargetValue);
 
             case FlowStepActionType.SetSwitchMultiple:
@@ -288,6 +343,15 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     private async Task<bool> DispatchCoreAsync(string name, double? target)
     {
         if (!IsAvailable) return false;
+
+        // Gear lever UP only when DEFINITELY airborne. The After Takeoff step and line refuse it
+        // first, saying why (their LeaveAloneWhen); this is the backstop for every path, because
+        // an SDK SET can skip the cockpit logic (IFLY-3), so the ground lock may not stop it.
+        if (RefusesGearUp(name, target, _state?.OnGround))
+        {
+            Log.Warn("ifly_fo", "gear lever UP refused: the aircraft is not confirmed airborne");
+            return false;
+        }
 
         // RULING A: suppress a centre-pump ON write on an empty tank — BEFORE PaceAsync, and
         // returning TRUE so the flow step / checklist item still completes (the wing half of
@@ -355,7 +419,12 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     /// not a registered iFly control, i.e. a mapping bug, and it is logged as one. A value
     /// outside the key's declared position set (see <see cref="IsDeclaredPosition"/>) is
     /// refused the same way, BEFORE anything reaches the SDK.</summary>
-    private bool ApplySilent(string varKey, double value)
+    private bool ApplySilent(string varKey, double value) => ApplySilent(_def!, _sc, _announcer!, varKey, value);
+
+    // The same write through references the caller holds: the fire test's release uses the ones
+    // captured at its press, which a detach in between does not take away.
+    private bool ApplySilent(IFly737MAXDefinition def, SimConnectManager? sc, ScreenReaderAnnouncer announcer,
+        string varKey, double value)
     {
         if (!IsDeclaredPosition(varKey, value))
         {
@@ -364,16 +433,16 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
             return false;
         }
 
-        bool prior = _announcer!.Suppressed;
-        _announcer.Suppressed = true;
+        bool prior = announcer.Suppressed;
+        announcer.Suppressed = true;
         try
         {
-            if (_def!.ApplyUIVariable(varKey, value, _sc!, _announcer)) return true;
+            if (def.ApplyUIVariable(varKey, value, sc!, announcer)) return true;
             Log.Warn("ifly_fo", $"no registered iFly control for key '{varKey}' (value {value}) — " +
                                 "flow/checklist mapping bug; nothing was written");
             return false;
         }
-        finally { _announcer.Suppressed = prior; }
+        finally { announcer.Suppressed = prior; }
     }
 
     private async Task PaceAsync()
@@ -431,6 +500,15 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
 
     private async Task<bool> FireTestCoreAsync()
     {
+        // The release goes through the definition and announcer of the PRESS: an aircraft switch
+        // or exit inside the hold detaches this executor (_sc null, IsAvailable false), and an
+        // IsAvailable-gated release was then skipped with the bell ringing. The definition notes
+        // the hold too, because its Shutdown, which the switch or exit runs at once, would close
+        // the SDK first: Shutdown releases the switch itself, and whichever comes first does it.
+        var def = _def!;
+        var announcer = _announcer!;
+        var sc = _sc;
+        def.NoteFireTestHeld();
         try
         {
             bool ok = ApplySilent("BTN_FIRE_TEST_OVHT", 1);
@@ -443,9 +521,9 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
         {
             // ALWAYS release the test switch to NEUTRAL, even if the hold was interrupted by
             // an exception — a switch left at OVHT/FIRE leaves the fire bell ringing
-            // continuously (the A380 FireTestAsync / Fenix stuck-button lesson). Guarded so a
-            // release attempt after a dropped sim is a harmless no-op.
-            if (IsAvailable) ApplySilent("BTN_FIRE_TEST_RELEASE", 1);
+            // continuously (the A380 FireTestAsync / Fenix stuck-button lesson) — unless the
+            // definition's Shutdown already released it.
+            if (def.TakeHeldFireTest()) ApplySilent(def, sc, announcer, "BTN_FIRE_TEST_RELEASE", 1);
             _lastWriteUtc = DateTime.UtcNow;
         }
     }
@@ -580,6 +658,92 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     }
 
     // -----------------------------------------------------------------------
+    // Engine start waits — read-only, and aware of bowed rotor motoring
+    // (the waits themselves are StartWaits, beside the pseudo-keys above)
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Waits for an engine-start condition the way FlowManager's own waits do (a read a second),
+    /// but aware of the LEAP-1B's bowed rotor motoring, which can hold a hot engine's start for
+    /// minutes with N2 at motoring speed and the start switch at GRD: a plain 60 s or 120 s wait
+    /// stopped such a start mid-way (engine 1 never started; in the N2 case the start switch was
+    /// left at GRD). While the engine's BRM flag reads active the wait's clock starts again, up to
+    /// <see cref="BrmAllowanceSeconds"/> past its own limit, and the pilot hears once that the
+    /// First Officer is waiting for it. With no BRM it gives up at its own limit exactly as before
+    /// (the hung-start protection), and the flow step's Stop policy ends the flow. A Stop, or a
+    /// lost SimConnect connection, ends it at once.
+    /// </summary>
+    private async Task<bool> StartWaitAsync(StartWait wait, CancellationToken stop)
+    {
+        var state = _state;
+        if (state == null) return false;
+        var clock = Stopwatch.StartNew();
+        double brmSeenAt = 0;   // seconds into the wait; 0 is its start
+        bool brmSpoken = false;
+        try
+        {
+            while (true)
+            {
+                if (_sc is not { IsConnected: true }) return false;
+                double t = clock.Elapsed.TotalSeconds;
+                if (state.IsBowedRotorMotoring(wait.Engine))
+                {
+                    brmSeenAt = t;
+                    if (!brmSpoken)
+                    {
+                        brmSpoken = true;
+                        AnnounceQueuedOnUi(BrmWaitText(wait.Engine));
+                    }
+                }
+                switch (JudgeStartWait(wait.Done(state.GetValue(wait.Field)), t, t - brmSeenAt, wait.Seconds))
+                {
+                    case StartWaitVerdict.Done:
+                        return true;
+                    case StartWaitVerdict.TimedOut:
+                        Log.Warn("ifly_fo", $"engine {wait.Engine} start wait on {wait.Field} timed out after {t:F0} s");
+                        return false;
+                }
+                await Task.Delay(StartWaitPollMs, stop);
+            }
+        }
+        catch (OperationCanceledException) when (stop.IsCancellationRequested)
+        {
+            return false;
+        }
+    }
+
+    internal enum StartWaitVerdict { Done, Waiting, TimedOut }
+
+    /// <summary>The field a start wait reads, and whether <paramref name="value"/> ends it (for
+    /// the tests that pin each wait's boundary).</summary>
+    internal static (string Field, bool Done) StartWaitReads(string key, double value) =>
+        (StartWaits[key].Field, StartWaits[key].Done(value));
+
+    /// <summary>One read of a start wait: done once its condition holds; otherwise timed out once
+    /// <paramref name="baseSeconds"/> have passed since the wait began or BRM last read active,
+    /// whichever is later (<paramref name="secondsSinceStartOrBrm"/>), or once BRM has stretched
+    /// it <see cref="BrmAllowanceSeconds"/> past that limit.</summary>
+    internal static StartWaitVerdict JudgeStartWait(bool done, double secondsSinceStart,
+        double secondsSinceStartOrBrm, int baseSeconds) =>
+        done ? StartWaitVerdict.Done
+        : secondsSinceStartOrBrm >= baseSeconds || secondsSinceStart >= baseSeconds + BrmAllowanceSeconds
+            ? StartWaitVerdict.TimedOut
+            : StartWaitVerdict.Waiting;
+
+    /// <summary>Said once per wait when bowed rotor motoring holds it.</summary>
+    internal static string BrmWaitText(int engine) => $"Waiting for engine {engine} bowed rotor motoring to finish.";
+
+    /// <summary>Queued, on the UI thread (see <see cref="AnnounceOnUi"/>): a note about the flow's
+    /// own wait, which must not cut off other speech the way a write that did not take may.</summary>
+    private void AnnounceQueuedOnUi(string message)
+    {
+        var def = _def;
+        var announcer = _announcer;
+        if (def == null || announcer == null) return;
+        def.Sdk.RunOnUi(() => announcer.Announce(message));
+    }
+
+    // -----------------------------------------------------------------------
     // Altimeters to STANDARD — set BY VALUE via the stock Kohlsman
     // (the SECOND sanctioned bypass of ApplyUIVariable — see the doc comment)
     // -----------------------------------------------------------------------
@@ -662,10 +826,11 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     /// 29.92 × 33.8639 = 1013.208 mb → 16211.</summary>
     internal static uint StandardKohlsmanParameter => KohlsmanParameterFor(StandardInHg);
 
-    /// <summary>Ctrl+B's parameter math, extracted so it is unit-testable and so the two
-    /// call sites cannot drift (IFly737MAXDefinition.ShowBaroDialog).</summary>
+    /// <summary>Ctrl+B's parameter math: the definition's own
+    /// <see cref="IFly737MAXDefinition.KohlsmanSetParameter"/>, which ShowBaroDialog calls too, so
+    /// the two call sites cannot drift.</summary>
     internal static uint KohlsmanParameterFor(double inHg) =>
-        (uint)Math.Round(inHg * 33.8639 * 16);
+        IFly737MAXDefinition.KohlsmanSetParameter(inHg);
 
     /// <summary>Is this cached ALTIMETER_SETTING (inches of mercury) already standard? A null
     /// or NaN reading is NOT standard — it is unreadable, and the caller sends anyway rather
@@ -1074,10 +1239,21 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     /// <summary>Landing gear lever (RegisterLandingGear, ForwardPedestal.cs:24). ⚠ The
     /// definition registers TWO positions — 0 Up / 1 Down — not the three-position
     /// UP/OFF/DOWN of the PMDG: GEAR_LEVER_SET's Value2 is 0 UP / 1 DN and the SDK exposes
-    /// no OFF detent.</summary>
-    public Task<bool> SetGearLever(int position) => Set("Gear_Lever_Status", position);
+    /// no OFF detent. UP is refused unless the aircraft is definitely airborne
+    /// (<see cref="RefusesGearUp"/>).</summary>
+    public Task<bool> SetGearLever(int position) => Set(GearLeverKey, position);
+    private const string GearLeverKey = "Gear_Lever_Status";
     public const int GearUp = 0;
     public const int GearDown = 1;
+
+    /// <summary>What the After Takeoff gear step and line say when they leave the lever down.</summary>
+    public const string GearUpLeaveAloneText = "Not confirmed airborne, so the gear lever stays down.";
+
+    /// <summary>A gear lever UP write while the aircraft is not definitely airborne: on the
+    /// ground, or air/ground unread (null). A null target writes 1, DOWN (see ApplySilent's
+    /// caller), so it is never refused.</summary>
+    internal static bool RefusesGearUp(string name, double? target, bool? onGround) =>
+        name == GearLeverKey && (target ?? GearDown) < 0.5 && onGround != false;
 
     /// <summary>Captain ND mode (RegisterEfisSide, ForwardPedestal.cs:199 — 0 Approach /
     /// 1 VOR / 2 Map / 3 Plan).</summary>

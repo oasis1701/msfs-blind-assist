@@ -63,6 +63,15 @@ public static class Md11FoFlowDefinitions
     private static bool ApuStartingOrRunning(Md11FoStateEvaluator s)
         => s.GetValue("MD11_APU_STATE") is var v && v > 0.5 && v < 2.5;
 
+    /// <summary>
+    /// Before Start's "Already set" for the APU: starting, or running WITH its power on. Running
+    /// with its power off (started from the aft-overhead APU START button, or external power
+    /// connected over it) is the executor's to finish: it requests APU power, or the flow would
+    /// wait for APU power and stop.
+    /// </summary>
+    private static bool ApuStartingOrPowering(Md11FoStateEvaluator s)
+        => s.GetValue("MD11_APU_STATE") is var v && (v > 0.5 && v < 1.5 || v >= 1.5 && v < 2.5 && s.IsOn("FO_APU_POWER_ON"));
+
     // ------------------------------------------------------------------ Power Up (TFDi Cockpit Entry + quick-start power-up)
     private static Flow BuildPowerUp() => new()
     {
@@ -161,9 +170,15 @@ public static class Md11FoFlowDefinitions
             // ("Skipping"), so the item is never falsely ticked, and the Captain step below speaks.
             Also(Done(Skip(Provider("PF_DAF", "Dial-A-Flap: takeoff setting", X.DialAFlap, s => s.TakeoffDialAFlap ?? 0),
                 s => s.IsOn("FO_DAF_TAKEOFF")), "PF_DAF"), "PFC_DAF"),
+            // The Captain is asked unless the wheel already reads the plan's takeoff setting: without
+            // a plan the step above fails, and a write that did not take leaves the wheel where it
+            // was. Keyed on the WHEEL, never on the plan (the A320 family's takeoff-flaps rule): keyed
+            // on the plan, a failed write was heard as "Skipping" then a false "Already set", and the
+            // reminder was lost. No plan to compare with, or an unread wheel (NaN), is not set. The
+            // words hold either way: they never say whether a plan is loaded.
             Skip(Captain("PF_DAF_CPT", "Dial-A-Flap takeoff setting",
-                    "Set the Dial-A-Flap to the takeoff flap setting. Load SimBrief and I will set it."),
-                s => s.TakeoffDialAFlap != null),
+                    "Set the Dial-A-Flap to the takeoff flap setting."),
+                s => s.IsOn("FO_DAF_TAKEOFF")),
             Done(SW("PF_WXR_TEST", "Weather radar test, then off", X.WeatherRadarTest, 1), "PF_WXR_TEST"),
             Done(SW("PF_OXY_CAPT", "Captain oxygen test", "MD11_LSIDE_OXY_TEST_BT", 1), "PF_OXY_CAPT"),
             Done(SW("PF_OXY_FO", "First officer oxygen test", "MD11_RSIDE_OXY_TEST_BT", 1), "PF_OXY_FO"),
@@ -187,7 +202,7 @@ public static class Md11FoFlowDefinitions
         RelatedChecklistGroupIds = new[] { "BEFORE_START", "BEFORE_START_CL" },
         Steps = new()
         {
-            Done(Skip(SW("BS_APU", "APU: start", X.ApuStart, 1), ApuStartingOrRunning), "BS_APU"),
+            Done(Skip(SW("BS_APU", "APU: start", X.ApuStart, 1), ApuStartingOrPowering), "BS_APU"),
             Done(WaitForField("BS_APU_RUNNING", "APU running", "MD11_APU_STATE", v => v > 1.5 && v < 2.5, 180,
                 onTimeout: FlowStepFailurePolicy.Stop), "BSC_APU"),
             Also(Done(Skip(SW("BS_SEAT_BELTS", "Seat belt signs: ON", SeatBelts, 2), s => s.IsPosition(SeatBelts, 2)), "BS_SEAT_BELTS"),
@@ -406,12 +421,18 @@ public static class Md11FoFlowDefinitions
     private static Flow BuildParking() => new()
     {
         Id = "PARKING", Name = "Parking",
-        Description = "Parking brake, fuel switches off, seat belts off, anti-ice and ignition off, exterior lights off except nav.",
+        Description = "Parking brake, fuel switches off once APU or external power is on, seat belts off, anti-ice and ignition off, exterior lights off except nav.",
         RelatedChecklistGroupIds = new[] { "PARKING", "PARKING_CL" },
         Steps = new()
         {
             WaitForField("PK_STOPPED", "Aircraft stopped", "GROUND_VELOCITY", v => v < 1, 120, onTimeout: FlowStepFailurePolicy.Stop),
             Also(Done(Skip(SW("PK_PARK", "Parking brake: SET", Park, 1), s => s.IsOn(Park)), "PK_PARK"), "PKC_PARK"),
+            // The fuel cut takes the engine generators off the busses: APU power or external power
+            // must be on first, or the aircraft drops to its battery (After Landing's APU start is a
+            // press with no wait). Before Start guards the reverse. Read only; up to two minutes for
+            // an APU still starting, then the flow stops with the engines running.
+            Skip(WaitForField("PK_POWER_SOURCE", "APU or external power on", "FO_APU_OR_EXT_POWER_ON", On, 120,
+                onTimeout: FlowStepFailurePolicy.Stop), s => s.IsOn("FO_APU_OR_EXT_POWER_ON")),
             Also(Done(Skip(Multi("PK_FUEL", "Fuel switches: OFF", (FuelL, 0), (FuelC, 0), (FuelR, 0)),
                 s => s.IsOn("FO_FUEL_SWITCHES_OFF")), "PK_FUEL"), "PKC_FUEL"),
             Also(Done(Skip(SW("PK_SEAT_BELTS", "Seat belt signs: OFF", SeatBelts, 0), s => s.IsPosition(SeatBelts, 0)), "PK_SEAT_BELTS"),
@@ -431,7 +452,8 @@ public static class Md11FoFlowDefinitions
                 s => s.IsOn("FO_RWY_TURNOFF_OFF")), "PK_TURNOFF"),
             // The sum of the light steps above, with the nav lights still on: read only.
             Check("PK_CHK_EXT_LIGHTS", "Exterior lights: all off except nav", "FO_EXTERIOR_PARKED", On, CheckSeconds, "PKC_EXT_LIGHTS"),
-            Captain("PK_EXT_PWR", "Connect ground power on the EFB Services page if required. The APU is powering the aircraft."),
+            // Never claims which source powers the aircraft: the guard above accepts either one.
+            Captain("PK_EXT_PWR", "Connect ground power on the EFB Services page if required"),
         }
     };
 
@@ -502,9 +524,7 @@ public static class Md11FoFlowDefinitions
         Id = id, Label = label,
         ActionType = FlowStepActionType.SetSwitch,
         EventName = eventName,
-        TargetValue = target,
-        PostActionDelayMs = 300,
-        FailurePolicy = FlowStepFailurePolicy.Skip,
+        TargetValue = target,        FailurePolicy = FlowStepFailurePolicy.Skip,
     };
 
     private static Step Provider(string id, string label, string eventName, Func<Md11FoStateEvaluator, int?> provider) => new()
@@ -512,18 +532,14 @@ public static class Md11FoFlowDefinitions
         Id = id, Label = label,
         ActionType = FlowStepActionType.SetSwitch,
         EventName = eventName,
-        TargetValueProvider = provider,
-        PostActionDelayMs = 300,
-        FailurePolicy = FlowStepFailurePolicy.Skip,
+        TargetValueProvider = provider,        FailurePolicy = FlowStepFailurePolicy.Skip,
     };
 
     private static Step Multi(string id, string label, params (string EventName, int? TargetValue)[] actions) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.SetSwitchMultiple,
-        MultiActions = actions.ToList(),
-        PostActionDelayMs = 400,
-        FailurePolicy = FlowStepFailurePolicy.Skip,
+        MultiActions = actions.ToList(),        FailurePolicy = FlowStepFailurePolicy.Skip,
     };
 
     private static Step WaitForField(string id, string label, string field, Func<double, bool> condition, int timeoutSec,
@@ -534,9 +550,7 @@ public static class Md11FoFlowDefinitions
         ConditionFieldName = field,
         Condition = condition,
         TimeoutSeconds = timeoutSec,
-        FailurePolicy = onTimeout,
-        PostActionDelayMs = 0,
-    };
+        FailurePolicy = onTimeout,    };
 
     /// <summary>
     /// Stops a cold-and-dark flow unless every engine reads stopped (N2 below 10 %). Engine N2 is
@@ -551,9 +565,7 @@ public static class Md11FoFlowDefinitions
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.CaptainReminder,
-        ReminderText = reminderText ?? label,
-        PostActionDelayMs = 200,
-    };
+        ReminderText = reminderText ?? label,    };
 
     private static Step Skip(Step step, Func<Md11FoStateEvaluator, bool> cond)
     {

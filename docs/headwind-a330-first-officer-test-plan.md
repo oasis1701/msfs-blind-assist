@@ -173,3 +173,23 @@ every aircraft are Part Z.1 of the PMDG 737 plan.
    wiper does not stop, read `A:CIRCUIT SWITCH ON:77` with it running.
 3. **ECAM pages are unchanged on the A330**: its SD reads the page index the First Officer writes
    (only the A32NX moved to the ECP keys); "ECAM page: door" still shows the door page.
+
+## Part G — PR #160 second review fixes (2026-10-18)
+
+None of these has run in the sim. The A330's First Officer duplicates the A32NX's, so these are the
+A32NX plan's Part K items on this airframe, plus its own nav and logo write. The checks shared by
+every aircraft are Part AA.1 of the PMDG 737 plan.
+
+1. **Auto flaps** (Auto-manage flaps on): run items 1 to 5 of the A32NX plan's Part K on the A330
+   (a brief climb on a high final moves nothing; a real climb there only pauses the extension; flaps
+   you select on the arrival after cleaning up the climb-out yourself stay out; a level departure
+   over rising ground never says "Speed checked. Flaps 2."; a flap call no longer cuts off the
+   Approach flow's Captain reminders). The A339X's speeds are its own (L6: F 172, S 203, green dot
+   250 kt at that weight): read them with right bracket then Shift+1, Shift+2 and Shift+3.
+2. **A held test always ends**: run item 6 of the A32NX plan's Part K on the A330 (the CVR test,
+   "APU fire test" and "Takeoff config test", each with the First Officer window closed by an
+   Aircraft-menu switch during its hold).
+3. **Nav and logo repeat.** Switch the nav and logo lights ON from MSFSBA's Exterior Lighting panel,
+   OFF in the cockpit by mouse, then ON from the panel again: the lights come on, and the row says so
+   once (before the fix the repeated ON was dropped: nothing happened, and a hand-tick of Electrical
+   Power Up's "Nav and logo lights: ON" said "Unable to complete").

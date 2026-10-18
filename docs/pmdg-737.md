@@ -126,6 +126,31 @@ Implementation in PMDG737Definition.HandleHotkeyAction. MainForm has no generic
 fallback for these actions — every PMDG aircraft must implement them or the
 hotkey silently does nothing.
 
+### The baro knob is rotated, one rotation at a time, and 29.92 is not always STD (2026-10-18)
+
+PMDG ignores absolute baro writes, so the `Ctrl+B` dialog ROTATES the captain's EFIS baro
+knob (`EVT_EFIS_CPT_BARO` transmit clicks, 1 hPa or 0.01 inHg per click). The First
+Officer's transition-altitude set is the same rotation, not a copy:
+`PMDG737Definition.RotateAltimetersToStandardAsync` turns both knobs to 29.92 inHg or
+1013 hPa (the STD push commits only intermittently on the NG3 and has no readback). One
+click count (`BaroKnobClicks`) and one guard (`BaroKnobBusy`) serve both: a `Ctrl+B` entry
+or a Standard press while either rotation runs says "Still setting altimeter, please wait.",
+and the First Officer's rotation waits out a dialog rotation already running before it
+reads the altimeter. Before, the two rotations could run together and step the knob twice.
+
+The NG3 has no STD flag, so the dialog infers STD from a 29.92 reading and presses STD to
+deselect it before rotating. A knob ROTATED to 29.92 reads the same with STD off, and the
+press then SELECTED STD: after the First Officer's rotation, the pilot's QNH entry at the
+transition level went in behind the STD mask, the altimeter stayed on standard and nothing
+was said (PR #160 second review). The definition now records that the app itself rotated
+the captain's knob to standard, and the dialog rotates straight to the QNH over that 29.92
+(`BaroSetPressesStdFirst`). The record holds until the knob is known to have left standard:
+a dialog rotation away from it, an STD press through the app, a reading away from standard
+once the app's rotation has settled (3 s; the knob moved in the cockpit), a new flight, a
+lost connection or another aircraft. An STD press made in the cockpit over a rotated 29.92
+cannot be seen; a 29.92 the app did not rotate to still reads as STD. A knob in hPa lands
+on 1013 hPa (29.914 inHg), which the dialog never took for STD.
+
 ## Guarded selector dispatch
 
 Two primitives on IPMDGDataManager:
@@ -314,8 +339,28 @@ button is a `RenderAsButton` toggle whose engaged/released state lives in the de
 switch so the shaker/clacker sounds continuously, live-verified open-ended) or **LEFTRELEASE**
 (release — stop), and the def announces the new state (the label is static). The keys are NOT
 in `_simpleEventMap` (the 4e branch in `HandleUIVariableSet` owns them). `SwitchAircraft`
-calls `ReleaseEngagedWarningTests` so a held test can't leak into the next aircraft. The FO
-preflight auto-timed stall/overspeed tests are unchanged.
+and app exit call `ReleaseEngagedWarningTests` so a held test can't leak into the next
+aircraft or outlive MSFSBA. The FO preflight auto-timed stall/overspeed tests are unchanged.
+
+**Held presses are released on exit and switch too (2026-10-18).** The First Officer's own
+held tests (the fire test, held 2 s at OVHT/FIRE; the stall, overspeed and long GPWS tests,
+transmit press, hold, release) and the panel's held system-test presses (`HeldTransmitAsync`:
+the long GPWS test, the weather radar sequence's presses) record each hold with the
+definition (`BeginHeldPress` / `EndHeldPress`). `ReleaseEngagedWarningTests` releases every
+hold still recorded, so quitting MSFSBA or switching aircraft inside one no longer leaves
+the fire bell, stick shaker or clacker sounding. Whoever ends a hold first sends its release
+and the other sends nothing, so the hold's own timer never sends a release after the switch,
+into the next aircraft's data manager. The First Officer executor reads its SimConnect only
+after its dispatch gate and pacing, and refuses once detached (the window closed on a
+switch), but a press it already sent is always released, through the SimConnect it pressed
+through.
+
+**One run at a time (2026-10-18).** The panel's **Weather Radar Test** (a ~25 s sequence) and
+**GPWS System Test (Long)** (a 5 s hold) refuse a second press while they run: "Still running
+the weather radar test, please wait." / "Still running the GPWS test, please wait." A second
+radar sequence started over the first toggled the blind WXR overlay off before TEST and the
+test was silent. Their continuations run on the UI thread (no `ConfigureAwait(false)`), and
+the radar sequence stops if the aircraft changes mid-run.
 
 ## First Officer: speedbrake ARM, and why the gear lever OFF is not attempted (live-probed 2026-08-25)
 
@@ -531,6 +576,30 @@ at 50 and ignores every input. Expect it NOT to fix this even where installed:
 produces 0, so the aircraft would likely enter standby while `XPDR_ModeSel` still reads 1 —
 a working STBY the verification field cannot see, which is worse than today. Measure before
 acting on it.
+
+## First Officer: Shutdown moves the load off the engines before the levers (2026-10-18)
+
+Cutting the start levers takes the engine generators off the AC transfer buses, and on the
+737 nothing takes the buses by itself: the APU generators must be pressed on first, and only
+once the APU generator is up (the blue APU GEN OFF BUS light). The Shutdown flow pressed
+APU GEN 1/2 blind and cut the levers in the next step; After Landing starts the APU and waits
+for nothing, so a Shutdown soon after it, or after an APU start that never took, left the
+aircraft on battery and still said "Shutdown flow complete" (PR #160 second review).
+
+Shutdown now opens with `SD_POWER_WAIT` ("Waiting for: APU generator or ground power",
+120 s, Before Start's measured budget), on the synthetic `FO_SHUTDOWN_POWER_READY`: the APU
+GEN OFF BUS light lit, or a transfer bus already powered with its own GEN OFF BUS light lit
+(carried by the APU generator or ground power). A timeout STOPS the flow, before anything
+else in Shutdown runs: "Shutdown flow stopped. Unable to complete: APU generator or ground
+power." `SD_APUGEN` then presses both APU generator buttons and is VERIFIED before the levers
+on `FO_LOAD_OFF_ENGINES`: both transfer buses powered and both GEN OFF BUS lights lit, so
+neither engine generator carries anything. A transfer that does not take stops the flow:
+"Unable to complete: APU generators: ON". When the load is already off the engines (ground
+power the pilot put on the buses, or a re-run) the press is "Already set"; the NG3 has no
+GPU-versus-APU discriminator, and the levers need only the load off the engines. Pure logic in
+`GeneratorBusState` (`IsLoadOffEngines`, `IsShutdownPowerReady`); pinned by
+`Pmdg737SecondReviewTests`. An engine generator that failed while the other carries both
+buses reads "ready" too; the transfer's own check then stops the flow before the levers.
 
 ## AI display reads (Alt+P / Alt+N / Alt+E / Alt+S / Alt+I)
 

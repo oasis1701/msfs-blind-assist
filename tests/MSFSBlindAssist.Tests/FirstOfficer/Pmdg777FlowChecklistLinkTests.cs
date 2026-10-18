@@ -88,13 +88,15 @@ public class Pmdg777FlowChecklistLinkTests
         Id("EVT_OH_LIGHTS_WING", "LTS_Wing_Sw_ON");
         Id("EVT_OH_LIGHTS_TAXI", "LTS_Taxi_Sw_ON");
         Id("EVT_OH_LIGHTS_STROBE", "LTS_Strobe_Sw_ON");
-        Id("EVT_OH_LIGHTS_LR_TURNOFF", "LTS_RunwayTurnoff_Sw_ON_0", "LTS_RunwayTurnoff_Sw_ON_1"); // ganged L+R
+        Id("EVT_OH_LIGHTS_L_TURNOFF", "LTS_RunwayTurnoff_Sw_ON_0");   // per side, as the panel (2026-10-18)
+        Id("EVT_OH_LIGHTS_R_TURNOFF", "LTS_RunwayTurnoff_Sw_ON_1");
         Id("EVT_OH_LIGHTS_LANDING_L", "LTS_LandingLights_Sw_ON_0");
         Id("EVT_OH_LIGHTS_LANDING_R", "LTS_LandingLights_Sw_ON_1");
         Id("EVT_OH_LIGHTS_LANDING_NOSE", "LTS_LandingLights_Sw_ON_2");
         Id("EVT_OH_AIRCOND_EQUIP_COOLING_SWITCH", "AIR_EquipCooling_Sw_AUTO");
         Id("EVT_OH_AIRCOND_GASPER_SWITCH", "AIR_Gasper_Sw_On");
-        Id("EVT_OH_AIRCOND_RECIRC_FANS_SWITCH", "AIR_RecircFan_Sw_On_0", "AIR_RecircFan_Sw_On_1"); // one switch, both fans
+        // The loaded variant's own switches (executor pseudo-key), read as their synthetic.
+        Id(Pmdg777RecircFans.PseudoKey, Pmdg777RecircFans.OnField);
         Id("EVT_OH_AIRCOND_PACK_SWITCH_L", "AIR_Pack_Sw_AUTO_0");
         Id("EVT_OH_AIRCOND_PACK_SWITCH_R", "AIR_Pack_Sw_AUTO_1");
         Id("EVT_OH_AIRCOND_TRIM_AIR_SWITCH_L", "AIR_TrimAir_Sw_On_0");
@@ -335,7 +337,7 @@ public class Pmdg777FlowChecklistLinkTests
         // table is keyed by DEGREES, so flaps 5 / 15 / 20 never moved; none may be missing.
         var pseudoKeys = new HashSet<string>(StringComparer.Ordinal)
         { "OXY_TEST_CAPT", "OXY_TEST_FO", "FIRE_OVHT_TEST", "TCAS_TEST", "WXR_TEST", "EMER_EXIT_LIGHTS",
-          SpeedbrakeLeverState.ArmPseudoKey };
+          SpeedbrakeLeverState.ArmPseudoKey, Pmdg777RecircFans.PseudoKey };
         var missing = PMDG777FlowDefinitions.Build()
             .SelectMany(f => f.Steps.Where(FlowChecklistLinkAudit.IsWrite).SelectMany(Writes))
             .Select(w => w.Event)

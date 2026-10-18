@@ -20,7 +20,13 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 ///   silent;
 /// - a step's verify gives the write a window (a first read at 600 ms, then every 200 ms, up to
 ///   2.6 s), so a write the PMDG 1 Hz snapshot shows late is still done. One read at 600 ms called
-///   about half the 777's verified writes "Skipping".
+///   about half the 777's verified writes "Skipping";
+/// - a Stop during the executor's step (atomic: the PMDG radar test runs about 25 s) is answered at
+///   once: the run reports it is stopping inside that step, the executor is handed the run's stop
+///   token, and a stopped run lets the executor put back what a flow must never be left between
+///   before "flow cancelled" is spoken (PR 160 second review);
+/// - a Skip-policy failure is paced like every other spoken step, and a wait's last read is at its
+///   timeout, after its own pause check (PR 160 second review).
 /// </summary>
 public class FlowManagerCancelAndVerifyTests
 {
@@ -29,9 +35,16 @@ public class FlowManagerCancelAndVerifyTests
         // The verify field reads 1 once ReadsOnAfterMs have passed since the write (Written), else 0.
         public readonly Stopwatch Written = new();
         public long ReadsOnAfterMs = long.MaxValue;
+        // The wait field reads 1 once SoonAfterMs have passed since the flow started (Started), else 0.
+        public readonly Stopwatch Started = new();
+        public long SoonAfterMs = long.MaxValue;
         public bool IsAvailable => true;
-        public double GetValue(string field)
-            => field == "VERIFY" && Written.IsRunning && Written.ElapsedMilliseconds >= ReadsOnAfterMs ? 1 : 0;
+        public double GetValue(string field) => field switch
+        {
+            "VERIFY" => Written.IsRunning && Written.ElapsedMilliseconds >= ReadsOnAfterMs ? 1 : 0,
+            "SOON" => Started.IsRunning && Started.ElapsedMilliseconds >= SoonAfterMs ? 1 : 0,
+            _ => 0,
+        };
         public bool IsOn(string field) => false;
         public bool IsPosition(string field, int position) => false;
         public void SetTakeoffFlaps(int flaps) { }
@@ -45,17 +58,41 @@ public class FlowManagerCancelAndVerifyTests
         public FakeExecutor(FakeState state) => _state = state;
 
         public ConcurrentQueue<string> Sent { get; } = new();
+        // When each event was written, on the state's Started clock.
+        public ConcurrentDictionary<string, long> SentAtMs { get; } = new();
+        // Events whose write fails (the executor returns false).
+        public readonly HashSet<string> Fails = new();
         // When set, a write blocks until the test releases it; WriteStarted completes when it begins.
         public TaskCompletionSource<bool>? Hold;
         public readonly TaskCompletionSource WriteStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        // The stop token the last write was handed.
+        public CancellationToken StopToken;
+        // OnFlowStoppedAsync counts its calls and runs OnStopped.
+        public Action? OnStopped;
+        public int StopCalls;
         public bool IsAvailable => true;
+
+        public Task<bool> ExecuteStepAsync(IFlowStepDispatch step, CancellationToken stop)
+        {
+            StopToken = stop;
+            return ExecuteStepAsync(step);
+        }
 
         public async Task<bool> ExecuteStepAsync(IFlowStepDispatch step)
         {
             Sent.Enqueue(step.EventName ?? "");
+            SentAtMs[step.EventName ?? ""] = _state.Started.ElapsedMilliseconds;
             _state.Written.Restart();
             WriteStarted.TrySetResult();
+            if (Fails.Contains(step.EventName ?? "")) return false;
             return Hold == null || await Hold.Task;
+        }
+
+        public Task OnFlowStoppedAsync()
+        {
+            Interlocked.Increment(ref StopCalls);
+            OnStopped?.Invoke();
+            return Task.CompletedTask;
         }
 
         public Task WaitForDispatchDrainAsync() => Task.CompletedTask;
@@ -67,7 +104,7 @@ public class FlowManagerCancelAndVerifyTests
         public FakeExecutor Executor { get; }
         public GatedSpeechCapture Speech { get; } = new();
         public FlowManager<FakeExecutor, FakeState> Flows { get; }
-        public int Completed, Cancelled;
+        public int Completed, Cancelled, Failed;
         public List<string> StepsCompleted { get; } = new();
         public List<string> StepsSkipped { get; } = new();
 
@@ -79,8 +116,15 @@ public class FlowManagerCancelAndVerifyTests
             Flows = new FlowManager<FakeExecutor, FakeState>(State, Executor, checklist, Speech);
             Flows.FlowCompleted += _ => Interlocked.Increment(ref Completed);
             Flows.FlowCancelled += _ => Interlocked.Increment(ref Cancelled);
+            Flows.FlowFailed += (_, _) => Interlocked.Increment(ref Failed);
             Flows.StepCompleted += (_, step, _) => { lock (StepsCompleted) StepsCompleted.Add(step.Id); };
             Flows.StepSkipped += (_, step, _) => { lock (StepsSkipped) StepsSkipped.Add(step.Id); };
+        }
+
+        public void Start(FlowDefinition<FakeState> flow)
+        {
+            State.Started.Restart();
+            Flows.StartFlow(flow);
         }
 
         public async Task WaitUntilStoppedAsync()
@@ -92,6 +136,16 @@ public class FlowManagerCancelAndVerifyTests
                 await Task.Delay(20);
             }
         }
+
+        public async Task WaitForSpeechAsync(string text)
+        {
+            var sw = Stopwatch.StartNew();
+            while (!Speech.All.Contains(text))
+            {
+                Assert.True(sw.Elapsed < TimeSpan.FromSeconds(10), $"never said \"{text}\"");
+                await Task.Delay(20);
+            }
+        }
     }
 
     private static FlowStep<FakeState> Write(string id, bool verify = false) => new()
@@ -100,22 +154,22 @@ public class FlowManagerCancelAndVerifyTests
         Label = $"{id}: ON",
         ActionType = FlowStepActionType.SetSwitch,
         EventName = id,
-        TargetValue = 1,
-        PostActionDelayMs = 0,
-        FailurePolicy = FlowStepFailurePolicy.Skip,
+        TargetValue = 1,        FailurePolicy = FlowStepFailurePolicy.Skip,
         CompletesChecklistItemId = "ITEM_" + id,
         VerifyFieldName = verify ? "VERIFY" : null,
         VerifyCondition = verify ? v => v > 0.5 : null,
     };
 
-    private static FlowStep<FakeState> WaitForever(string id) => new()
+    private static FlowStep<FakeState> WaitForever(string id) => WaitFor(id, "NEVER", timeoutSeconds: 30);
+
+    private static FlowStep<FakeState> WaitFor(string id, string field, int timeoutSeconds) => new()
     {
         Id = id,
         Label = id,
         ActionType = FlowStepActionType.WaitForCondition,
-        ConditionFieldName = "NEVER",
+        ConditionFieldName = field,
         Condition = v => v > 0.5,
-        TimeoutSeconds = 30,
+        TimeoutSeconds = timeoutSeconds,
         FailurePolicy = FlowStepFailurePolicy.Skip,
     };
 
@@ -223,9 +277,176 @@ public class FlowManagerCancelAndVerifyTests
         Assert.Equal(new[] { "A" }, h.StepsCompleted);
     }
 
+    // A Stop does not interrupt the executor's step, so the window answers it from these: "Stopping
+    // after the current step" on the press, and "still stopping" to a Start before the run unwinds.
+    [Fact]
+    public async Task A_stop_during_an_executor_step_reads_as_stopping_until_the_run_unwinds()
+    {
+        var h = new Harness();
+        h.Executor.Hold = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        h.Start(Flow(Write("A"), Write("B")));
+        await h.Executor.WriteStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.True(h.Flows.IsInExecutorStep);
+        Assert.False(h.Flows.IsStopping);
+
+        h.Flows.Cancel();
+        Assert.True(h.Flows.IsStopping);
+        Assert.True(h.Flows.IsInExecutorStep);
+
+        h.Executor.Hold.SetResult(true);
+        await h.WaitUntilStoppedAsync();
+        Assert.False(h.Flows.IsStopping);
+        Assert.False(h.Flows.IsInExecutorStep);
+        Assert.Equal(new[] { "A" }, h.Executor.Sent.ToArray());
+        Assert.Equal(1, h.Cancelled);
+    }
+
+    // The executor is handed the run's stop token, so a step that watches for long (the MD-11's
+    // engine light-up) can end on the Stop instead of holding the run for its whole watch.
+    [Fact]
+    public async Task The_executor_is_handed_the_runs_stop_token()
+    {
+        var h = new Harness();
+        h.Executor.Hold = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        h.Start(Flow(Write("A")));
+        await h.Executor.WriteStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.False(h.Executor.StopToken.IsCancellationRequested);
+        h.Flows.Cancel();
+        Assert.True(h.Executor.StopToken.IsCancellationRequested);
+
+        h.Executor.Hold.SetResult(true);
+        await h.WaitUntilStoppedAsync();
+    }
+
+    // A stopped run lets the executor put back what a flow must never be left between (the MD-11's
+    // START pulled with the fuel still off) before "flow cancelled" is spoken.
+    [Fact]
+    public async Task A_stop_runs_the_executors_clean_up_before_flow_cancelled()
+    {
+        var h = new Harness();
+        bool cancelledAlreadySpoken = true;
+        h.Executor.OnStopped = () => cancelledAlreadySpoken = h.Speech.All.Contains("Test flow cancelled");
+
+        h.Start(Flow(Write("A"), Write("B")));
+        await h.Executor.WriteStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        h.Flows.Cancel();
+        await h.WaitUntilStoppedAsync();
+
+        Assert.Equal(1, h.Executor.StopCalls);
+        Assert.False(cancelledAlreadySpoken);
+        Assert.Contains("Test flow cancelled", h.Speech.All);
+    }
+
+    [Fact]
+    public async Task A_completed_run_never_runs_the_stop_clean_up()
+    {
+        var h = new Harness();
+
+        await RunAsync(h, Flow(Write("A")));
+
+        Assert.Equal(1, h.Completed);
+        Assert.Equal(0, h.Executor.StopCalls);
+    }
+
+    // A Stop-policy failure ends the run part-way as a Stop does: the run's token is cancelled (how
+    // the MD-11 executor tells this run's START pulls from a later run's) and the clean-up runs
+    // before "flow stopped". A skipped fuel step and a timed-out wait after it once left the MD-11's
+    // START pulled with the fuel off.
+    [Fact]
+    public async Task A_stop_policy_failure_runs_the_clean_up_with_the_runs_token_cancelled()
+    {
+        var h = new Harness();
+        var failing = Write("A");
+        failing.FailurePolicy = FlowStepFailurePolicy.Stop;
+        h.Executor.Fails.Add("A");
+        bool tokenCancelled = false, stoppedAlreadySpoken = true;
+        h.Executor.OnStopped = () =>
+        {
+            tokenCancelled = h.Executor.StopToken.IsCancellationRequested;
+            stoppedAlreadySpoken = h.Speech.All.Any(m => m.StartsWith("Test flow stopped"));
+        };
+
+        await RunAsync(h, Flow(failing, Write("B")));
+
+        Assert.Equal(1, h.Executor.StopCalls);
+        Assert.True(tokenCancelled);
+        Assert.False(stoppedAlreadySpoken);
+        Assert.Contains("Test flow stopped. Unable to complete: A: ON", h.Speech.All);
+        Assert.Equal(1, h.Failed);
+        Assert.Equal(0, h.Cancelled);
+        Assert.Equal(new[] { "A" }, h.Executor.Sent.ToArray());   // B never ran
+    }
+
+    [Fact]
+    public async Task A_clean_up_that_throws_still_ends_the_run_cancelled()
+    {
+        var h = new Harness();
+        h.Executor.OnStopped = () => throw new InvalidOperationException("clean-up failed");
+
+        h.Start(Flow(Write("A"), Write("B")));
+        await h.Executor.WriteStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        h.Flows.Cancel();
+        await h.WaitUntilStoppedAsync();
+
+        Assert.Equal(1, h.Cancelled);
+        Assert.Contains("Test flow cancelled", h.Speech.All);
+    }
+
+    // "Skipping: …" is spoken, so a Skip-policy failure is paced like every other spoken step (FO-5):
+    // the next step's words and write once followed it at once.
+    [Fact]
+    public async Task A_failed_skip_step_pauses_before_the_next_step()
+    {
+        var h = new Harness();
+        h.Executor.Fails.Add("A");
+
+        await RunAsync(h, Flow(Write("A"), Write("B")));
+
+        Assert.Equal(new[] { "A" }, h.StepsSkipped);
+        long gap = h.Executor.SentAtMs["B"] - h.Executor.SentAtMs["A"];
+        Assert.True(gap >= 1900, $"B followed the skipped A after {gap} ms");
+    }
+
+    // The wait reads at 0, 1, … TimeoutSeconds, so its last read is AT the timeout. Ending on the
+    // count after the last delay, a condition that came true in the final second was "timed out".
+    [Fact]
+    public async Task A_condition_that_comes_true_in_the_last_second_is_done()
+    {
+        var h = new Harness();
+        h.State.SoonAfterMs = 500;
+
+        await RunAsync(h, Flow(WaitFor("W", "SOON", timeoutSeconds: 1)));
+
+        Assert.Equal(new[] { "W" }, h.StepsCompleted);
+        Assert.DoesNotContain("Timed out waiting for: W", h.Speech.All);
+    }
+
+    // A Pause in the wait's final second holds the wait: the last read comes after its own pause
+    // check. It once timed the wait out, and the flow went on, under "Paused".
+    [Fact]
+    public async Task A_pause_in_the_waits_last_second_holds_the_timeout()
+    {
+        var h = new Harness();
+
+        h.Start(Flow(WaitFor("W", "NEVER", timeoutSeconds: 1)));
+        await h.WaitForSpeechAsync("Waiting for: W");
+        await Task.Delay(300);
+        h.Flows.Pause();
+        await Task.Delay(1500);               // well past the timeout
+
+        Assert.DoesNotContain("Timed out waiting for: W", h.Speech.All);
+        Assert.True(h.Flows.IsRunning);
+
+        h.Flows.Resume();
+        await h.WaitUntilStoppedAsync();
+        Assert.Contains("Timed out waiting for: W", h.Speech.All);
+    }
+
     private static async Task RunAsync(Harness h, FlowDefinition<FakeState> flow)
     {
-        h.Flows.StartFlow(flow);
+        h.Start(flow);
         await h.WaitUntilStoppedAsync();
     }
 }

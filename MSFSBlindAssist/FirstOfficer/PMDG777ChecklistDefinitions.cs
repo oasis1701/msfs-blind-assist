@@ -253,10 +253,11 @@ public static class PMDG777ChecklistDefinitions
             Auto("PF_GASPER", "PREFLIGHT", "Gasper: ON",
                 "AIR_Gasper_Sw_On", v => v > 0.5,
                 action: (e, _) => e.SetGasper(1)),
+            // The loaded variant's own switches (Pmdg777RecircFans): UPPER and LOWER on the passenger
+            // 777s, the single RECIRC FANS switch on the 777F; unknown until the CDA names the variant.
             Auto("PF_RECIRC_FANS", "PREFLIGHT", "Recirculation fans: ON",
-                "AIR_RecircFan_Sw_On_0", v => v > 0.5,
-                new[] { "AIR_RecircFan_Sw_On_1" },
-                (e, _) => e.SetRecircFans(1)),
+                Pmdg777RecircFans.OnField, v => v > 0.5,
+                action: (e, _) => e.SetRecircFans(1)),
             Auto("PF_PACKS", "PREFLIGHT", "Pack switches: AUTO",
                 "AIR_Pack_Sw_AUTO_0", v => v > 0.5,
                 new[] { "AIR_Pack_Sw_AUTO_1" },
@@ -563,9 +564,9 @@ public static class PMDG777ChecklistDefinitions
             // PMDG's Before Takeoff Checklist is this one line ("Flaps .. Confirm Set for Takeoff",
             // FOB-4). "V speeds: Checked" and "Altitude: Set initial climb" came with the first
             // 777 commit, when the First Officer still programmed the FMC, and are on no PMDG page.
-            // Flap target depends on SimBrief perf data — no fixed action value. Lever 1-4 (flaps
-            // 1, 5, 15 or 20); the Before Takeoff flow's read-only check (BTKOF_FLAPS_CHECK) waits
-            // for the same range.
+            // Flap target depends on SimBrief perf data — no fixed action value. Lever 2-4 (flaps
+            // 5, 15 or 20; flaps 1 is not a 777 takeoff setting); the Before Takeoff flow's
+            // read-only check (BTKOF_FLAPS_CHECK) waits for the same range.
             Auto("BTKOF_FLAPS", "BEFORE_TKOF_CL", "Flaps: Set for takeoff",
                 "FCTL_Flaps_Lever", AircraftStateEvaluator.IsTakeoffFlapLever),
         }
@@ -585,9 +586,12 @@ public static class PMDG777ChecklistDefinitions
                 (e, _) => e.SetRunwayTurnoff(0)),
             // No "Landing lights: OFF": PMDG has no such step, and the 10,000 ft automation
             // switches them (removed with the flow's step, 2026-10-09, FOB-4).
-            Auto("ATKO_GEAR_UP", "AFTER_TAKEOFF", "Gear: UP",
+            // Gear UP only when SIM ON GROUND reads airborne: a tick on the ground is refused with
+            // its reason, as the flow step is (and the executor never sends it).
+            LeaveAlone(Auto("ATKO_GEAR_UP", "AFTER_TAKEOFF", "Gear: UP",
                 "GEAR_Lever", v => v < 0.5,
                 action: (e, _) => e.SetGearLever(0)),
+                s => !s.IsDefinitelyAirborne(), AircraftStateEvaluator.GearUpLeaveAloneText),
             Auto("ATKO_FLAPS_UP", "AFTER_TAKEOFF", "Flaps: UP",
                 "FCTL_Flaps_Lever", v => v < 0.5,
                 action: (e, _) => e.SetFlapsPosition(0)),

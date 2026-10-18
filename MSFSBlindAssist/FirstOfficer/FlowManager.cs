@@ -38,6 +38,12 @@ public class FlowManager<TExec, TState>
     private TaskCompletionSource<bool>? _pauseTcs;
     private volatile bool _paused;
 
+    // A Stop lands at the next token-aware wait, but the executor's step takes none (it is atomic:
+    // the PMDG weather radar test runs about 25 s and always restores the radar), so a Stop pressed
+    // during one lands only when it returns. These say so, for the window to answer the Stop at once.
+    private volatile bool _stopRequested;
+    private volatile bool _inExecutorStep;
+
     // -----------------------------------------------------------------------
     // Events (fired from background task — consumers must marshal to UI thread)
     // -----------------------------------------------------------------------
@@ -61,6 +67,10 @@ public class FlowManager<TExec, TState>
 
     public bool IsRunning  => _runTask is { IsCompleted: false };
     public bool IsPaused   => _paused;
+    /// <summary>A Stop was pressed and the run has not unwound yet (see <see cref="IsInExecutorStep"/>).</summary>
+    public bool IsStopping => _stopRequested && IsRunning;
+    /// <summary>The run is waiting on the executor's step, which a Stop does not interrupt.</summary>
+    public bool IsInExecutorStep => _inExecutorStep && IsRunning;
     public FlowDefinition<TState>? CurrentFlow { get; private set; }
     public int CurrentStepIndex { get; private set; }
 
@@ -136,8 +146,10 @@ public class FlowManager<TExec, TState>
         CurrentFlow = flow;
         CurrentStepIndex = 0;
         _paused = false;
+        _stopRequested = false;
+        _inExecutorStep = false;
         _cts = new CancellationTokenSource();
-        _runTask = RunFlowAsync(flow, _cts.Token);
+        _runTask = RunFlowAsync(flow, _cts);
     }
 
     public void Pause()
@@ -166,6 +178,7 @@ public class FlowManager<TExec, TState>
 
     public void Cancel()
     {
+        if (IsRunning) _stopRequested = true;
         _paused = false;
         _pauseTcs?.TrySetCanceled();
         _cts?.Cancel();
@@ -188,13 +201,13 @@ public class FlowManager<TExec, TState>
         return Task.CompletedTask;
     }
 
-    /// <summary>A step skipped WITHOUT sending anything (leave-alone rule, dependency gate, a
-    /// target provider with no value): keeps its linked checklist lines out of the completion
-    /// latch, records its id as skipped, raises StepSkipped, speaks <paramref name="spokenText"/>
-    /// (queued; null speaks nothing — the null-target skip is silent, FO-20), and pauses
-    /// <see cref="InterStepPauseMs"/> unless it is the last step. A cancellation during that pause
-    /// propagates to RunFlowAsync's cancellation exit.</summary>
-    private async Task SkipWithoutRunningAsync(
+    /// <summary>A skipped step (a Skip-policy failure, or one never run: leave-alone rule,
+    /// dependency gate, a target provider with no value): keeps its linked checklist lines out of
+    /// the completion latch, records its id as skipped, raises StepSkipped, speaks
+    /// <paramref name="spokenText"/> (queued; null speaks nothing — the null-target skip is silent,
+    /// FO-20), and pauses <see cref="InterStepPauseMs"/> unless it is the last step. A cancellation
+    /// during that pause propagates to RunFlowAsync's cancellation exit.</summary>
+    private async Task RecordSkipAsync(
         FlowDefinition<TState> flow, FlowStep<TState> step, int index, string? spokenText, CancellationToken ct)
     {
         foreach (var itemId in step.LinkedChecklistItemIds)
@@ -207,8 +220,18 @@ public class FlowManager<TExec, TState>
             await Task.Delay(InterStepPauseMs, ct);
     }
 
-    private async Task RunFlowAsync(FlowDefinition<TState> flow, CancellationToken ct)
+    // A run that ends part-way, by a Stop or by a Stop-policy failure, lets the executor put back
+    // what a flow must never be left between (the MD-11's START pulled, its fuel still OFF) before
+    // the run says how it ended. A clean-up that throws is logged; the run still ends.
+    private async Task CleanUpStoppedRunAsync(FlowDefinition<TState> flow)
     {
+        try { await _executor.OnFlowStoppedAsync(); }
+        catch (Exception ex) { Log.Warn("FO", $"{flow.Id}: stop clean-up threw: {ex.Message}"); }
+    }
+
+    private async Task RunFlowAsync(FlowDefinition<TState> flow, CancellationTokenSource run)
+    {
+        var ct = run.Token;
         _unfinishedChecklistItemIds.Clear();
         _skippedStepIds.Clear();
         _sentStepIds.Clear();
@@ -251,7 +274,7 @@ public class FlowManager<TExec, TState>
                 // the aircraft is already there.
                 if (step.LeaveAloneWhen != null && _state.IsAvailable && step.LeaveAloneWhen(_state))
                 {
-                    await SkipWithoutRunningAsync(flow, step, i,
+                    await RecordSkipAsync(flow, step, i,
                         step.LeaveAloneText ?? $"Skipping: {step.AnnounceText}", ct);
                     continue;
                 }
@@ -264,7 +287,7 @@ public class FlowManager<TExec, TState>
                 // there, and a skip text that says what stays as it is would be wrong then.
                 if (step.RequiresStepId != null && _skippedStepIds.Contains(step.RequiresStepId))
                 {
-                    await SkipWithoutRunningAsync(flow, step, i,
+                    await RecordSkipAsync(flow, step, i,
                         step.RequiresStepSkipText ?? $"Skipping: {step.AnnounceText}", ct);
                     continue;
                 }
@@ -287,9 +310,11 @@ public class FlowManager<TExec, TState>
 
                 StepOutcome outcome = await ExecuteStepAsync(flow, step, i, ct);
 
-                // A Stop while the executor was writing (its writes take no token) lands here:
-                // the step's outcome is not reported, its lines not marked, and the run goes to
-                // the cancellation exit instead of on to the next step or to "flow complete".
+                // A Stop while the executor was writing (its steps are atomic; only the MD-11's
+                // light-up watch and the iFly's engine-start waits end early on the Stop) lands
+                // here: the step's outcome is not
+                // reported, its lines not marked, and the run goes to the cancellation exit
+                // instead of on to the next step or to "flow complete".
                 ct.ThrowIfCancellationRequested();
 
                 // FO-20: a TargetValueProvider with no value (no SimBrief plan) is a SILENT SKIP,
@@ -302,7 +327,7 @@ public class FlowManager<TExec, TState>
                 if (outcome == StepOutcome.NoTarget)
                 {
                     Log.Debug("FO", $"{flow.Id}.{step.Id}: no target value, skipped silently");
-                    await SkipWithoutRunningAsync(flow, step, i, spokenText: null, ct);
+                    await RecordSkipAsync(flow, step, i, spokenText: null, ct);
                     continue;
                 }
 
@@ -311,6 +336,12 @@ public class FlowManager<TExec, TState>
                     if (step.FailurePolicy == FlowStepFailurePolicy.Stop)
                     {
                         Log.Debug("FO", $"{flow.Id}.{step.Id}: failed, flow stopped");
+                        // Ended part-way as after a Stop: the run's token is cancelled first, which
+                        // is how an executor tells this run's work from a later run's (the MD-11's
+                        // START pulls), and the executor puts back what it must. Without it a fuel
+                        // step skipped and a timed-out wait after it left START pulled, fuel OFF.
+                        run.Cancel();
+                        await CleanUpStoppedRunAsync(flow);
                         FlowFailed?.Invoke(flow, $"Step '{step.Label}' failed");
                         _announcer.AnnounceImmediate($"{flow.Name} flow stopped. Unable to complete: {step.AnnounceText}");
                         return;
@@ -318,13 +349,11 @@ public class FlowManager<TExec, TState>
 
                     // Skip policy. EVERY linked item, not just CompletesChecklistItemId — a step
                     // that delivers a line in both the action group and the read-back checklist
-                    // (AlsoCompletesChecklistItemIds) must keep both out of the latch.
-                    foreach (var itemId in step.LinkedChecklistItemIds)
-                        _unfinishedChecklistItemIds.Add(itemId);
-                    _skippedStepIds.Add(step.Id);
-                    StepSkipped?.Invoke(flow, step, i);
+                    // (AlsoCompletesChecklistItemIds) must keep both out of the latch. Spoken, so
+                    // paced like every other spoken step (FO-5): without the pause the next step's
+                    // words and write followed "Skipping" at once.
                     Log.Debug("FO", $"{flow.Id}.{step.Id}: failed, skipped");
-                    _announcer.Announce($"Skipping: {step.AnnounceText}");
+                    await RecordSkipAsync(flow, step, i, $"Skipping: {step.AnnounceText}", ct);
                 }
                 else
                 {
@@ -337,11 +366,9 @@ public class FlowManager<TExec, TState>
                     foreach (var itemId in step.LinkedChecklistItemIds)
                         _checklist.MarkComplete(itemId);
 
-                    // Delay between steps — at least InterStepPauseMs so flows read at
-                    // a human pace; a longer per-step PostActionDelayMs still wins.
-                    int pause = Math.Max(step.PostActionDelayMs, InterStepPauseMs);
-                    if (i < flow.Steps.Count - 1 && pause > 0)
-                        await Task.Delay(pause, ct);
+                    // The pause between steps, so flows read at a human pace (FO-5).
+                    if (i < flow.Steps.Count - 1)
+                        await Task.Delay(InterStepPauseMs, ct);
                 }
             }
 
@@ -358,6 +385,10 @@ public class FlowManager<TExec, TState>
         }
         catch (OperationCanceledException)
         {
+            // Before "flow cancelled": a flow stopped between two steps it must never be left
+            // between (the MD-11's START pulled, fuel still OFF) is put back first. A detached
+            // executor (the window disposed) has no aircraft to write to and does nothing.
+            await CleanUpStoppedRunAsync(flow);
             FlowCancelled?.Invoke(flow);
             // Queued, not interrupting: on an aircraft switch it follows the switch's own
             // speech instead of cutting it off, and after Stop Flow nothing else is speaking.
@@ -405,8 +436,11 @@ public class FlowManager<TExec, TState>
                         return StepOutcome.Done; // No condition defined — treat as complete
 
                     _announcer.Announce($"Waiting for: {step.AnnounceText}");
-                    int elapsed = 0;
-                    while (elapsed < step.TimeoutSeconds)
+                    // Read at 0, 1, … TimeoutSeconds: the last read is AT the timeout, after its own
+                    // pause check. Ending on the count after the last 1 s delay, a Pause pressed in
+                    // that second still timed the wait out under "Paused", and a condition that came
+                    // true in it was reported as timed out.
+                    for (int elapsed = 0; ; elapsed++)
                     {
                         ct.ThrowIfCancellationRequested();
                         // Pause check, before the condition is read: without this, Pause
@@ -420,8 +454,8 @@ public class FlowManager<TExec, TState>
                         await WaitWhilePausedAsync(ct);
                         double v = _state.GetValue(step.ConditionFieldName);
                         if (step.Condition(v)) return StepOutcome.Done;
+                        if (elapsed >= step.TimeoutSeconds) break;
                         await Task.Delay(1000, ct);
-                        elapsed++;
                     }
                     _announcer.Announce($"Timed out waiting for: {step.AnnounceText}");
                     StepFailed?.Invoke(flow, step, index, "Timed out");
@@ -448,7 +482,10 @@ public class FlowManager<TExec, TState>
                     }
 
                     _announcer.Announce(step.AnnounceText);
-                    bool sent = await _executor.ExecuteStepAsync(step);
+                    bool sent;
+                    _inExecutorStep = true;
+                    try { sent = await _executor.ExecuteStepAsync(step, ct); }
+                    finally { _inExecutorStep = false; }
                     if (!sent)
                     {
                         StepFailed?.Invoke(flow, step, index, "Event not sent");
