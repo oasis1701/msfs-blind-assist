@@ -123,4 +123,33 @@ internal static class Pmdg737Baro
         await knob.TurnAsync(rest);
         return await knob.ReadSettledAsync();
     }
+
+    /// <summary>
+    /// Turns STD on from a reading of 29.92 (the dialog's Standard button), which is STD already or
+    /// a local 29.92, and returns the reading delivered last, with STD on. A reading off 29.92 needs
+    /// no check: STD reads 29.92, so STD is off there and one push turns it on. Here, a click up
+    /// and a click back, each read once it has landed: if neither moved the reading, STD is on and
+    /// the clicks only moved the preselect and put it back, so nothing is pushed (a push would turn
+    /// STD OFF). If either moved it, STD is off: the setting is turned back to the local 29.92, so
+    /// STD keeps it as the preselect, and STD is pushed. The click back is the second check, so one
+    /// dropped click still finds a local 29.92. Returns null when a read delivered nothing or the
+    /// reading after the push is not 29.92; the knob may already have moved.
+    /// </summary>
+    public static async Task<double?> EngageStdAsync(IPmdg737BaroKnob knob)
+    {
+        await knob.TurnAsync(1);
+        double? up = await knob.ReadSettledAsync();
+        if (up is null) return null;
+
+        await knob.TurnAsync(-1);
+        double? back = await knob.ReadSettledAsync();
+        if (back is null) return null;
+        if (ReadsStandard(up.Value) && ReadsStandard(back.Value)) return back;   // STD is already on
+
+        int restore = ClicksTo(back.Value, StandardInHg, knob.HpaDisplay);
+        if (restore != 0) await knob.TurnAsync(restore);
+        await knob.PushStdAsync();
+        double? engaged = await knob.ReadSettledAsync();
+        return engaged is double e && ReadsStandard(e) ? e : null;
+    }
 }

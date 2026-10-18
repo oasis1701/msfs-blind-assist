@@ -203,6 +203,76 @@ public class Pmdg737BaroTests
         Assert.Equal(30.13, baro.Reading, 3);   // the preselect after the check click, aimed up from 29.92
     }
 
+    // The dialog's Standard button. A reading off 29.92 (29.91, 29.93, 1013 hPa: ReadsStandard below)
+    // is STD off and takes one push; EngageStdAsync is for a reading of 29.92, which the button used
+    // to leave alone within 0.02 so as not to toggle STD off, and so never turned a local 29.92 to STD.
+
+    [Fact]
+    public async Task StandardButton_FromALocal2992_TurnsStdOn_KeepingThe2992AsThePreselect()
+    {
+        var baro = new FakeBaro { Std = false, Setting = 29.92 };
+
+        double? engaged = await Pmdg737Baro.EngageStdAsync(baro);
+
+        Assert.True(baro.Std);
+        Assert.Equal(1, baro.StdPushes);
+        Assert.Equal(29.92, baro.Preselect, 3);
+        Assert.Equal(29.92, engaged!.Value, 3);
+    }
+
+    [Fact]
+    public async Task StandardButton_WithStdAlreadyOn_PushesNothing_AndPutsThePreselectBack()
+    {
+        var baro = new FakeBaro { Std = true, Setting = 30.12, Preselect = 30.12 };
+
+        double? engaged = await Pmdg737Baro.EngageStdAsync(baro);
+
+        Assert.True(baro.Std);
+        Assert.Equal(0, baro.StdPushes);
+        Assert.Equal(30.12, baro.Preselect, 3);
+        Assert.Equal(29.92, engaged!.Value, 3);
+    }
+
+    [Fact]
+    public async Task StandardButton_ADroppedClickUp_StillFindsTheLocal2992()
+    {
+        // The click up never lands, so its read says 29.92 as STD would; the click back lands and
+        // moves the reading to 29.91, which only STD off can do. It is turned back up before the push.
+        var baro = new FakeBaro { Std = false, Setting = 29.92, DropTurns = 1 };
+
+        double? engaged = await Pmdg737Baro.EngageStdAsync(baro);
+
+        Assert.True(baro.Std);
+        Assert.Equal(1, baro.StdPushes);
+        Assert.Equal(29.92, baro.Preselect, 3);
+        Assert.NotNull(engaged);
+    }
+
+    [Fact]
+    public async Task StandardButton_OnAnHpaDisplay_FromALocal2992_TurnsStdOn()
+    {
+        var baro = new FakeBaro { HpaDisplay = true, Std = false, Setting = 29.92 };
+
+        double? engaged = await Pmdg737Baro.EngageStdAsync(baro);
+
+        Assert.True(baro.Std);
+        Assert.Equal(1, baro.StdPushes);
+        Assert.Equal(29.92, baro.Preselect, 3);
+        Assert.NotNull(engaged);
+    }
+
+    [Fact]
+    public async Task StandardButton_NothingDelivered_GivesUpWithoutPushingStd()
+    {
+        var baro = new FakeBaro { Std = false, Setting = 29.92, Deliveries = 0 };
+
+        double? engaged = await Pmdg737Baro.EngageStdAsync(baro);
+
+        Assert.Null(engaged);
+        Assert.False(baro.Std);
+        Assert.Equal(0, baro.StdPushes);
+    }
+
     [Theory]
     [InlineData(29.92, true)]
     [InlineData(29.9213, true)]    // 1013.25 hPa, the standard pressure itself

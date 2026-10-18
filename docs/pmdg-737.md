@@ -150,7 +150,17 @@ the dialog then speaks the landed reading, delivered after the last click, as
 the value (never "standard": this path ends with STD off), and makes it the
 callout's baseline. A timed mute that let the callout speak it instead lost it
 whenever the batch fell inside the mute. A read that delivers nothing after the
-knob has moved says "Altimeter not confirmed" and re-fires the callout. The B
+knob has moved says "Altimeter not confirmed" and re-fires the callout.
+
+The dialog's **Standard** button turns STD on. A reading off 29.92 is STD off,
+since STD reads 29.92, so one push does it. Until 2026-10 the button did nothing
+within 0.02 of 29.92 (29.90 to 29.94, or 1013 hPa), so as not to toggle STD off,
+yet still said "Standard". From a reading of 29.92 it now asks the knob
+(`Pmdg737Baro.EngageStdAsync`): a click up and a click back, each read once it
+has landed. If neither moved the reading, STD is already on and nothing is
+pushed; if either did, STD is off, so the setting is put back to the local 29.92
+(STD keeps it as the preselect) and STD is pushed. The click back doubles as the
+second check, so one dropped click still finds a local 29.92. The B
 readout and the callout still say "Altimeter standard" for any reading of 29.92,
 a local one included. Unmeasured: whether PMDG drives the stock
 `KOHLSMAN SETTING STD:1`; a read across an STD push would show whether STD can be
