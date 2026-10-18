@@ -496,7 +496,7 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
         return v;
     }
 
-    /// <summary>A switch read from its own cockpit input event, for one no SimVar reports (SIM-23).</summary>
+    /// <summary>A switch read from its own cockpit input event, for one no SimVar reports (SIM-24).</summary>
     protected static SimConnect.SimVarDefinition InputEventState(string inputEvent, string displayName,
         Dictionary<double, string> positions) => new()
     {

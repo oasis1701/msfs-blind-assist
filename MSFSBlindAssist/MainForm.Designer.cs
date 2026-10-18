@@ -26,6 +26,8 @@
         private System.Windows.Forms.ToolStripMenuItem ifly737MaxMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem tfdiMd11MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem cessnaC172G1000MenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem extrasMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem volantaMenuItem = null!;
         private System.Windows.Forms.ListBox sectionsListBox = null!;
         private System.Windows.Forms.ListBox panelsListBox = null!;
         private System.Windows.Forms.Panel controlsContainer = null!;
@@ -65,6 +67,8 @@
             this.ifly737MaxMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.tfdiMd11MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.cessnaC172G1000MenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.extrasMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.volantaMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.sectionsListBox = new System.Windows.Forms.ListBox();
             this.panelsListBox = new System.Windows.Forms.ListBox();
             this.controlsContainer = new System.Windows.Forms.Panel();
@@ -78,7 +82,8 @@
             this.menuStrip.AccessibleDescription = "Main application menu";
             this.menuStrip.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.fileMenuItem,
-            this.aircraftMenuItem});
+            this.aircraftMenuItem,
+            this.extrasMenuItem});
             this.menuStrip.Location = new System.Drawing.Point(0, 0);
             this.menuStrip.Name = "menuStrip";
             this.menuStrip.Size = new System.Drawing.Size(870, 28);
@@ -319,6 +324,25 @@
             this.cessnaC172G1000MenuItem.Text = "Cessna 172 Skyhawk &G1000";
             this.cessnaC172G1000MenuItem.Checked = false;
             this.cessnaC172G1000MenuItem.Click += new System.EventHandler(this.CessnaC172G1000MenuItem_Click);
+            //
+            // extrasMenuItem
+            //
+            this.extrasMenuItem.AccessibleName = "Extras menu";
+            this.extrasMenuItem.AccessibleDescription = "Tools that work alongside the simulator";
+            this.extrasMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.volantaMenuItem});
+            this.extrasMenuItem.Name = "extrasMenuItem";
+            this.extrasMenuItem.Size = new System.Drawing.Size(65, 24);
+            this.extrasMenuItem.Text = "E&xtras";
+            //
+            // volantaMenuItem
+            //
+            this.volantaMenuItem.AccessibleName = "Volanta";
+            this.volantaMenuItem.AccessibleDescription = "Volanta's live map as text: Volanta users and network pilots around you, your friends, and online ATC";
+            this.volantaMenuItem.Name = "volantaMenuItem";
+            this.volantaMenuItem.Size = new System.Drawing.Size(220, 26);
+            this.volantaMenuItem.Text = "&Volanta…";
+            this.volantaMenuItem.Click += new System.EventHandler(this.VolantaMenuItem_Click);
             //
             // sectionsListBox
             // 

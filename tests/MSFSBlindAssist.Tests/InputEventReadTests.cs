@@ -1,4 +1,4 @@
-// Reading a B: input event (SIM-23). A SimVarType.InputEvent variable is subscribed by hash and read
+// Reading a B: input event (SIM-24). A SimVarType.InputEvent variable is subscribed by hash and read
 // once with GetInputEvent; it never gets a data definition or a batch slot, because a B: name in a
 // data definition reads 0 (measured on the MSFS 2024 C172 G1000, 2026-10-16). These pin the pure
 // parts: which variables are read that way, that the batch leaves them out, the reserved request-id

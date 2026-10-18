@@ -127,7 +127,7 @@ public class CowsDA40HotkeyCoverageTests
         // taken away from every other aircraft.
         string guide = Guide();
 
-        Assert.Contains("Shift+O", guide, StringComparison.Ordinal);
+        Assert.Contains("Shift+P    Engine temperatures", guide, StringComparison.Ordinal);
         Assert.Contains("Engine (single values", guide, StringComparison.Ordinal);
     }
 }

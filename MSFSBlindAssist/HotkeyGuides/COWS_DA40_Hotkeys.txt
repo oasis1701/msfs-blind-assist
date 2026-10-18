@@ -139,7 +139,7 @@ Engine (single values, for the questions you ask most often):
              target.
   E          Power: load percent, fuel flow, and the power lever position. The
              Austro has no manifold pressure gauge and no mixture - one lever.
-  Shift+O    Engine temperatures: oil, coolant and gearbox. A liquid-cooled,
+  Shift+P    Engine temperatures: oil, coolant and gearbox. A liquid-cooled,
              geared diesel has two the air-cooled Lycoming does not, and on a hot
              day the coolant temperature is what limits climb power.
   Alt+S      All of the above at once, plus oil pressure, volts and amps - the
@@ -152,7 +152,7 @@ torque and ITT.
 
 Weather:
   I          Wind Info
-  O          Read Outside Temperature (Celsius) - the OUTSIDE air. Shift+O is the
+  O          Read Outside Temperature (Celsius) - the OUTSIDE air. Shift+P is the
              engine's own temperatures.
 
 Time:
@@ -213,6 +213,8 @@ Tools:
   Ctrl+T     Activate/deactivate Takeoff Assistance
   Ctrl+D     Read Distance to Selected Runway
   Ctrl+I     Read ILS Guidance System Report
+  Shift+O    Open Volanta window (Volanta users and network pilots around you,
+             your Volanta friends and online ATC; also Extras > Volanta)
 
 Taxi Guidance (turn-by-turn taxi assistance with audio steering tone):
   Y          Taxi Status (current taxiway, next turn, distance to destination)

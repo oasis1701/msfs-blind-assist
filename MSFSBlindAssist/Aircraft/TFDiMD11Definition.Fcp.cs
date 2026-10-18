@@ -106,7 +106,7 @@ public partial class TFDiMD11Definition
             "FCP Speed", "speed", "100-365 knots, or a Mach number such as 0.82", announcer,
             input =>
             {
-                if (!double.TryParse(input, NumberStyles.Float, CultureInfo.InvariantCulture, out var v))
+                if (!Utils.NumberParsing.TryParseTyped(input, out var v))
                     return (false, "Enter a speed in knots, or a Mach number such as 0.82");
 
                 return LooksLikeMach(v)
@@ -120,7 +120,7 @@ public partial class TFDiMD11Definition
             Suppressing(toggles),
             input =>
             {
-                if (!double.TryParse(input, NumberStyles.Float, CultureInfo.InvariantCulture, out var v)) return;
+                if (!Utils.NumberParsing.TryParseTyped(input, out var v)) return;
 
                 var mach = LooksLikeMach(v);
                 if (!SetFcpValue(Md11Fcp.WriteSpeed, mach ? v : Math.Round(v), sim,
@@ -217,8 +217,7 @@ public partial class TFDiMD11Definition
             $"plus or minus up to {Md11Fcp.MaxVerticalSpeedFpm} feet per minute, or an FPA such as -3; 0 levels off in the current mode", announcer,
             input =>
             {
-                if (!double.TryParse(input, NumberStyles.Float | NumberStyles.AllowLeadingSign,
-                        CultureInfo.InvariantCulture, out var v))
+                if (!Utils.NumberParsing.TryParseTyped(input, out var v))
                     return (false, "Enter a vertical speed in feet per minute, or an FPA such as -3");
 
                 if (Md11Fcp.ResolveVerticalUnit(v, CurrentIsFpa()) != null) return (true, "");
@@ -229,8 +228,7 @@ public partial class TFDiMD11Definition
             Suppressing(toggles),
             input =>
             {
-                if (!double.TryParse(input, NumberStyles.Float | NumberStyles.AllowLeadingSign,
-                        CultureInfo.InvariantCulture, out var v)) return;
+                if (!Utils.NumberParsing.TryParseTyped(input, out var v)) return;
                 if (Md11Fcp.ResolveVerticalUnit(v, CurrentIsFpa()) is not Md11VerticalUnit unit) return;
 
                 bool fpa = unit == Md11VerticalUnit.Fpa;
@@ -272,7 +270,7 @@ public partial class TFDiMD11Definition
             "Altimeters", "altimeter", "hPa (900-1100) or inHg such as 29.92; sets captain, first officer and standby", announcer,
             input =>
             {
-                if (!double.TryParse(input, NumberStyles.Float, CultureInfo.InvariantCulture, out var v))
+                if (!Utils.NumberParsing.TryParseTyped(input, out var v))
                     return (false, "Enter hPa (900-1100) or inHg such as 29.92");
 
                 return Md11Fcp.LooksLikeHpa(v)
@@ -286,7 +284,7 @@ public partial class TFDiMD11Definition
             Suppressing(toggles),
             input =>
             {
-                if (!double.TryParse(input, NumberStyles.Float, CultureInfo.InvariantCulture, out var v)) return;
+                if (!Utils.NumberParsing.TryParseTyped(input, out var v)) return;
                 SetAllAltimeters(sim, announcer, v);
             });
 

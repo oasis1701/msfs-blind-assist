@@ -117,6 +117,15 @@ public class SimVarDefinition
     /// silently misses and the change the user just made re-announces.
     /// </summary>
     public bool UiEchoMatchesAnyValue { get; set; } = false;
+    /// <summary>
+    /// Key of a SEPARATE variable that reads this control's new state back, such as a switch's
+    /// own light (the Fenix ACP reception knobs: `S_ASP_VHF_2_REC_LATCH` lights
+    /// `I_ASP_VHF_2_REC`). A panel pick marks that key in MainForm's UI-set echo gate too, with
+    /// the same value, so the light's change is not spoken after the screen reader already said
+    /// the pick (CORE-7). The partner must read back the value the switch was set to; the gate
+    /// stays value-matched, so a different change to the light inside the window still speaks.
+    /// </summary>
+    public string? UiEchoVariable { get; set; }
     // Accessible SLIDER (WinForms TrackBar) for a continuous axis control (cockpit window/
     // sunshade/seat position, speedbrake handle, trims). The TrackBar is 0-100 and maps linearly
     // to [SliderMin, SliderMax]; on change MSFSBA writes the mapped value live (HandleUIVariableSet,
