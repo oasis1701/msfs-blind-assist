@@ -1356,6 +1356,7 @@ public partial class SimConnectManager
                 simConnect.OnRecvException -= SimConnect_OnRecvException;
                 simConnect.OnRecvEventFilename -= SimConnect_OnRecvEventFilename;
                 simConnect.OnRecvEventFrame -= SimConnect_OnRecvEventFrame;
+                simConnect.OnRecvEvent -= SimConnect_OnRecvEvent;
 
                 Log.Debug("SimConnect", "Event handlers unregistered, disposing SimConnect...");
             }

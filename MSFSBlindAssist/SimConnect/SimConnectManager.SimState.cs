@@ -23,9 +23,35 @@ public partial class SimConnectManager
     public event EventHandler<double>? SimRateChanged;
 
     /// <summary>
+    /// Registers the IS SLEW ACTIVE and SIMULATION RATE definitions. Called from SetupDataDefinitions
+    /// with the other fixed defs, ahead of the bulk per-aircraft registration, so a heavy aircraft
+    /// near the definition ceiling can never crowd these two out (SIM-2). Never throws.
+    /// </summary>
+    private void RegisterSimStateDefinitions()
+    {
+        var sc = simConnect!;
+        try
+        {
+            Register(DATA_DEFINITIONS.DEF_SLEW_STATE, "IS SLEW ACTIVE", "bool");
+            Register(DATA_DEFINITIONS.DEF_SIM_RATE, "SIMULATION RATE", "number");
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Sim state definitions failed to register (no slew or sim rate announcements this session): {ex.Message}");
+        }
+
+        void Register(DATA_DEFINITIONS def, string simVar, string unit)
+        {
+            sc.AddToDataDefinition(def, simVar, unit, SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.RegisterDataDefineStruct<SingleValue>(def);
+        }
+    }
+
+    /// <summary>
     /// Called from SetupEvents on every new connection, after OnRecvSimobjectData is attached: the
     /// slew and rate requests' first deliveries are their current values, and one drained before the
     /// handler existed would leave its state unseeded, so the first real change would only seed it.
+    /// Their definitions were registered earlier, in RegisterSimStateDefinitions.
     /// </summary>
     private void SetupSimStateMonitoring()
     {
@@ -38,21 +64,17 @@ public partial class SimConnectManager
             sc.SubscribeToSystemEvent(SYSTEM_EVENT_ID.Sim, "Sim");
             sc.SubscribeToSystemEvent(SYSTEM_EVENT_ID.PauseEx1, "Pause_EX1");
 
-            RequestOnChange(DATA_DEFINITIONS.DEF_SLEW_STATE, DATA_REQUESTS.REQUEST_SLEW_STATE, "IS SLEW ACTIVE", "bool");
-            RequestOnChange(DATA_DEFINITIONS.DEF_SIM_RATE, DATA_REQUESTS.REQUEST_SIM_RATE, "SIMULATION RATE", "number");
+            RequestOnChange(DATA_DEFINITIONS.DEF_SLEW_STATE, DATA_REQUESTS.REQUEST_SLEW_STATE);
+            RequestOnChange(DATA_DEFINITIONS.DEF_SIM_RATE, DATA_REQUESTS.REQUEST_SIM_RATE);
         }
         catch (Exception ex)
         {
             Log.Debug("SimConnect", $"Sim state monitoring setup failed (no pause, slew or sim rate announcements this session): {ex.Message}");
         }
 
-        void RequestOnChange(DATA_DEFINITIONS def, DATA_REQUESTS request, string simVar, string unit)
-        {
-            sc.AddToDataDefinition(def, simVar, unit, SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-            sc.RegisterDataDefineStruct<SingleValue>(def);
-            sc.RequestDataOnSimObject(request, def, SIMCONNECT_OBJECT_ID_USER,
+        void RequestOnChange(DATA_DEFINITIONS def, DATA_REQUESTS request)
+            => sc.RequestDataOnSimObject(request, def, SIMCONNECT_OBJECT_ID_USER,
                 SIMCONNECT_PERIOD.SIM_FRAME, SIMCONNECT_DATA_REQUEST_FLAG.CHANGED, 0, 0, 0);
-        }
     }
 
     private void SimConnect_OnRecvEvent(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV_EVENT data)
