@@ -1,0 +1,1 @@
+On the PMDG 737, setting the altimeter with Ctrl+B from a reading of 29.92 now lands on the value you typed, whether or not STD was on: a local 29.92 is no longer switched to STD, and coming out of STD no longer overshoots.
