@@ -254,7 +254,7 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         v[HeadingBugSetKey] = TypedValue(HeadingBugSetKey, "Heading Bug");
         v[SelectedAltitudeSetKey] = TypedValue(SelectedAltitudeSetKey, "Selected Altitude");
         v[SelectedVerticalSpeedSetKey] = TypedValue(SelectedVerticalSpeedSetKey, "Selected Vertical Speed");
-        v[SelectedAirspeedSetKey] = TypedValue(SelectedAirspeedSetKey, "Selected Airspeed");
+        v[SelectedAirspeedSetKey] = TypedValue(SelectedAirspeedSetKey, FlcSpeedName);
         // Which source the CDI is on: GPS DRIVES NAV1 is 1 on GPS, otherwise AUTOPILOT NAV SELECTED
         // names the NAV radio (measured stepping the CDI softkey GPS, LOC1, LOC2: 1/1, 0/1, 0/2). Read
         // only by the typed course.
@@ -277,7 +277,7 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         v["C172G_AP_IAS_VALUE"] = new SimVarDefinition
         {
             Name = "AUTOPILOT AIRSPEED HOLD VAR",
-            DisplayName = "FLC Airspeed",
+            DisplayName = FlcSpeedName,
             Type = SimVarType.SimVar,
             Units = "knots",
             UpdateFrequency = UpdateFrequency.OnRequest
@@ -710,7 +710,7 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         bool flc = (simConnect.GetCachedVariableValue("C172G_AP_FLC_STATE") ?? 0) > 0.5;
         bool vs = (simConnect.GetCachedVariableValue("C172_AP_VS_STATE") ?? 0) > 0.5;
         if (flc && await simConnect.ReadFreshAsync("C172G_AP_IAS_VALUE", 1500) is double kt)
-            announcer.AnnounceImmediate(DescribeAirspeedTarget(kt));
+            announcer.AnnounceImmediate(DescribeFlcSpeed(kt));
         else if (vs && await simConnect.ReadFreshAsync("C172_AP_VS_VALUE", 1500) is double fpm)
             announcer.AnnounceImmediate(DescribeVerticalSpeedTarget(fpm));
         else if (!flc && !vs && (simConnect.GetCachedVariableValue("C172_AP_ALT_STATE") ?? 0) > 0.5)
@@ -738,8 +738,9 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
                 "Selected altitude not available"),
             [HotkeyAction.ReadHeading] = ("C172_AP_HDG_VALUE", bug => "Heading bug " + HeadingDigits(bug), "C172_AP_HDG_STATE",
                 "HDG", "Heading bug not available"),
-            [HotkeyAction.ReadSpeed] = ("C172G_AP_IAS_VALUE", DescribeSelectedAirspeed, "C172G_AP_FLC_STATE", "FLC",
-                "Selected airspeed not available"),
+            // The reading already names FLC, so its mode is only "active" ("FLC speed 85 knots, active").
+            [HotkeyAction.ReadSpeed] = ("C172G_AP_IAS_VALUE", DescribeFlcSpeed, "C172G_AP_FLC_STATE", "",
+                "FLC speed not available"),
             [HotkeyAction.ReadFCUVerticalSpeedFPA] = ("C172_AP_VS_VALUE", DescribeVerticalSpeedTarget, "C172_AP_VS_STATE",
                 "VS", "Vertical speed not available"),
         };
@@ -757,21 +758,28 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         announcer.AnnounceImmediate(WithActiveMode(describe(value), active, mode) + ".");
     }
 
-    /// <summary>"Heading bug 270, HDG active", or the reading alone. Pure so the suite can pin it.</summary>
+    /// <summary>
+    /// "Heading bug 270, HDG active", or the reading alone; an empty mode, for a reading that already
+    /// names it, says "active" alone. Pure so the suite can pin it.
+    /// </summary>
     internal static string WithActiveMode(string reading, bool active, string mode) =>
-        active ? $"{reading}, {mode} active" : reading;
+        !active ? reading : mode.Length == 0 ? $"{reading}, active" : $"{reading}, {mode} active";
 
     /// <summary>Output+Shift+A's value, as the DA40 says it. Pure so the suite can pin it.</summary>
     internal static string DescribeSelectedAltitude(double feet) =>
         string.Create(CultureInfo.InvariantCulture, $"Selected altitude {Math.Round(feet):0} feet");
 
-    /// <summary>Output+Shift+S's value, the FLC target, as the DA40 says it. Pure so the suite can pin it.</summary>
-    internal static string DescribeSelectedAirspeed(double knots) =>
-        string.Create(CultureInfo.InvariantCulture, $"Selected airspeed {Math.Round(knots):0} knots");
+    /// <summary>
+    /// The speed FLC flies, named for the mode: the C172 has no autothrottle, so FLC holds it with pitch
+    /// and the throttle stays the pilot's. "Selected airspeed", the DA40's word, reads as a speed held
+    /// for you, and a bare "Airspeed" after a Nose Up press as the current one (the owner's call,
+    /// 2026-10-18). The panel row, the Ctrl+S window, Output+Shift+S and the nose wheel all say it.
+    /// </summary>
+    internal const string FlcSpeedName = "FLC Speed";
 
-    /// <summary>The FLC airspeed target as spoken. Pure so the suite can pin it.</summary>
-    internal static string DescribeAirspeedTarget(double knots) =>
-        string.Create(CultureInfo.InvariantCulture, $"Airspeed {Math.Round(knots):F0} knots");
+    /// <summary>"FLC speed 85 knots": Output+Shift+S, the Ctrl+S confirmation and the nose wheel. Pure so the suite can pin it.</summary>
+    internal static string DescribeFlcSpeed(double knots) =>
+        string.Create(CultureInfo.InvariantCulture, $"FLC speed {Math.Round(knots):0} knots");
 
     /// <summary>
     /// The VS target as spoken, signed as the A320's FCU and the iFly's MCP say theirs ("+500",
@@ -954,38 +962,38 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
     internal const double FlcMinKnots = 48, FlcMaxKnots = 160;
 
     /// <summary>
-    /// The FLC airspeed, typed: `AP_SPD_VAR_SET` in whole knots (measured: 90 set 90), the value the
+    /// The FLC speed, typed: `AP_SPD_VAR_SET` in whole knots (measured: 90 set 90), the value the
     /// FLC mode flies when engaged, which Output+Shift+S reads back. The window stays open after Enter.
     /// </summary>
     private static bool ShowSelectedAirspeedDialog(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, Form parentForm)
     {
-        return ShowValueDialog("Set Selected Airspeed", "Airspeed",
+        return ShowValueDialog("Set " + FlcSpeedName, FlcSpeedName,
             string.Create(CultureInfo.InvariantCulture, $"{FlcMinKnots:0} to {FlcMaxKnots:0} knots"),
             simConnect, announcer, parentForm,
             input => TypedValidator(input, SelectedAirspeedRefusal),
             typed => SetSelectedAirspeed(typed, simConnect, announcer));
     }
 
-    /// <summary>The FLC airspeed in whole knots, confirmed. On the UI thread.</summary>
+    /// <summary>The FLC speed in whole knots, confirmed. On the UI thread.</summary>
     private static void SetSelectedAirspeed(double typed, SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
         int knots = (int)Math.Round(typed);
         simConnect.SendEvent("AP_SPD_VAR_SET", (uint)knots);
-        announcer.AnnounceImmediate(DescribeSelectedAirspeed(knots));
+        announcer.AnnounceImmediate(DescribeFlcSpeed(knots));
     }
 
     /// <summary>
-    /// Why a typed FLC airspeed is refused, or null when it is taken. Parsed as the pilot types it
+    /// Why a typed FLC speed is refused, or null when it is taken. Parsed as the pilot types it
     /// (CORE-17). Pure so the suite can pin it.
     /// </summary>
     internal static string? ValidateSelectedAirspeed(string input) =>
         SelectedAirspeedRefusal(Utils.NumberParsing.TryParseTyped(input, out double knots) ? knots : double.NaN);
 
-    /// <summary>Why an FLC airspeed is refused (NaN included), or null when it is taken. Pure so the suite can pin it.</summary>
+    /// <summary>Why an FLC speed is refused (NaN included), or null when it is taken. Pure so the suite can pin it.</summary>
     internal static string? SelectedAirspeedRefusal(double knots) =>
         knots >= FlcMinKnots && knots <= FlcMaxKnots
             ? null
-            : string.Create(CultureInfo.InvariantCulture, $"Enter an airspeed between {FlcMinKnots:0} and {FlcMaxKnots:0} knots");
+            : string.Create(CultureInfo.InvariantCulture, $"Enter an FLC speed between {FlcMinKnots:0} and {FlcMaxKnots:0} knots");
 
     /// <summary>The exact altitude, half a second after the knob step, on the UI thread.</summary>
     private static async Task WriteSelectedAltitudeAfterStepAsync(SimConnectManager simConnect, int feet)

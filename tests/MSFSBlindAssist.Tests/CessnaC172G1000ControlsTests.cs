@@ -246,7 +246,8 @@ public class CessnaC172G1000ControlsTests
             Assert.Equal("Vertical speed +200 feet per minute", CessnaC172G1000Definition.DescribeVerticalSpeedTarget(200));
             Assert.Equal("Vertical speed -500 feet per minute", CessnaC172G1000Definition.DescribeVerticalSpeedTarget(-500));
             Assert.Equal("Vertical speed 0 feet per minute", CessnaC172G1000Definition.DescribeVerticalSpeedTarget(0));
-            Assert.Equal("Airspeed 85 knots", CessnaC172G1000Definition.DescribeAirspeedTarget(84.6));
+            // Named for the mode, so it is never heard as the current airspeed.
+            Assert.Equal("FLC speed 85 knots", CessnaC172G1000Definition.DescribeFlcSpeed(84.6));
         }
         finally
         {

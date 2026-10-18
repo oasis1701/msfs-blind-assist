@@ -38,7 +38,7 @@ Autopilot (the selected values, each followed by its mode when that mode is
 active, for example "Heading bug 270, HDG active"):
   Shift+A    Selected altitude (and "ALT hold active")
   Shift+H    Heading bug (and "HDG active")
-  Shift+S    Selected airspeed, the FLC target (and "FLC active")
+  Shift+S    FLC speed, the airspeed FLC flies (and "active" when FLC is)
   Shift+V    Selected vertical speed, signed (and "VS active")
 
 Engine:
@@ -190,8 +190,10 @@ Autopilot:
   Ctrl+H     Set the heading bug (0 to 359)
   Ctrl+A     Set the selected altitude (0 to 25000 feet), which FLC climbs or
              descends to; FLC is refused until an altitude has been selected.
-  Ctrl+S     Set the selected airspeed FLC flies (48 to 160 knots, the C172's
-             stall and never-exceed speeds)
+  Ctrl+S     Set the FLC speed (48 to 160 knots, the C172's stall and
+             never-exceed speeds). The C172 has no autothrottle: FLC holds
+             this speed by pitching up or down, and the throttle stays yours
+             (full power to climb, reduced power to descend).
   Ctrl+V     Set the autopilot vertical speed (-2000 to 2000 feet per minute)
   These value windows stay open after Enter, so you can type the next value
   straight away; Escape closes them.
@@ -202,7 +204,7 @@ Autopilot:
   Autopilot, Flight Director, HDG Hold, NAV Mode, APR Mode, Back Course,
   ALT Hold, VS Mode, FLC Mode, VNAV, Nose Up and Nose Down. Nose Up and Nose
   Down change the target of the vertical mode and say the new one: the
-  vertical speed in VS mode, the airspeed in FLC, and the pitch in pitch
+  vertical speed in VS mode, the FLC speed in FLC, and the pitch in pitch
   hold (the mode the autopilot starts in). In ALT Hold they have no effect,
   and say so. Heading Sync moves the bug to the current heading, and Course
   sets the course of whatever the CDI is on (GPS, NAV 1 or NAV 2).

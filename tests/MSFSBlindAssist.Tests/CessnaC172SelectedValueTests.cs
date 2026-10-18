@@ -22,7 +22,12 @@ public class CessnaC172SelectedValueTests
             CultureInfo.CurrentCulture = new CultureInfo(culture);
 
             Assert.Equal("Selected altitude 3500 feet", CessnaC172G1000Definition.DescribeSelectedAltitude(3500));
-            Assert.Equal("Selected airspeed 85 knots", CessnaC172G1000Definition.DescribeSelectedAirspeed(84.6));
+            // The FLC target is named for the mode, never "Selected airspeed": the C172 has no
+            // autothrottle, FLC flies it with pitch. The reading names FLC, so its mode says "active" alone.
+            Assert.Equal("FLC speed 85 knots", CessnaC172G1000Definition.DescribeFlcSpeed(84.6));
+            Assert.Equal("FLC speed 85 knots, active",
+                CessnaC172G1000Definition.WithActiveMode(CessnaC172G1000Definition.DescribeFlcSpeed(85), true,
+                    CessnaC172G1000Definition.SelectedValueKeys[HotkeyAction.ReadSpeed].Mode));
             Assert.Equal("Heading bug 270, HDG active",
                 CessnaC172G1000Definition.WithActiveMode("Heading bug 270", true, "HDG"));
             Assert.Equal("Vertical speed -500 feet per minute, VS active",
@@ -36,7 +41,7 @@ public class CessnaC172SelectedValueTests
         }
     }
 
-    // Input Ctrl+S, the FLC airspeed (C172-22): the GFC 700 took any number, so the aircraft's own
+    // Input Ctrl+S, the FLC speed (C172-22): the GFC 700 took any number, so the aircraft's own
     // stall (48) and never-exceed (160) speeds bound a typed value; parsed as typed (CORE-17), so a
     // comma or a dot is a decimal and a grouped "1,500" is refused, on any PC.
     [Theory]
@@ -60,7 +65,7 @@ public class CessnaC172SelectedValueTests
                 CultureInfo.CurrentCulture = new CultureInfo(culture);
                 string? refusal = CessnaC172G1000Definition.ValidateSelectedAirspeed(typed);
                 Assert.Equal(taken, refusal == null);
-                if (!taken) Assert.Equal("Enter an airspeed between 48 and 160 knots", refusal);
+                if (!taken) Assert.Equal("Enter an FLC speed between 48 and 160 knots", refusal);
             }
             finally
             {
