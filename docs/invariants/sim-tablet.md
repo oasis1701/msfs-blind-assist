@@ -44,6 +44,12 @@ Why. Every step is synchronous in the page once triggered (open the menu item, t
 
 Why. Measured live on 2026-10-19: "KFFC/31 DCT SOONE DCT NOKIE DCT KSAV/01" loaded exactly like the same route without the suffixes, with runway 10 at KSAV. Picking runway 01 on the arrival airport's dropdown worked, and the tablet then chose the approach "ILS 1 via Direct" by itself (TERBE, MIZLU, RW01, the missed approach to TILLS), which went to the avionics with the route. A pilot who never hears that would fly an approach nobody planned, so the summary names every departure, arrival and approach procedure the Route page shows.
 
+## STAB-9
+
+- The route box opens holding the Flight Planner's current route, and its SAVE stays DISABLED while the text is that same route (measured), so `route.enter` compares the two and closes the box as unchanged, and the import skips SAVE; never retry SAVE on an unchanged route as a failure. → [sim-tablet.md](../sim-tablet.md)
+
+Why. Measured live on 2026-10-19 with the KFFC-KSAV plan already loaded: the box opened holding "KFFC DCT SOONE DCT NOKIE DCT KSAV", and typing the same text left SAVE with `disabled=""` for good, while a different route enabled it within 600 ms and the same route disabled it again. A pilot pressing "Load latest SimBrief plan" twice, or after loading the plan another way, would otherwise hear "The sim tablet did not take the route" for a plan that is in fact loaded. The comparison ignores case and spacing; the import goes on to the runways and adds "The Flight Planner already had this route." to the summary. When SAVE never enables for a changed route, the import closes the box (`route.closeBox`) before failing, so no popup is left over the Route page.
+
 ## STAB-8
 
 - Shift+T opens the sim tablet only for an aircraft whose `UsesSimTablet` is true (default false), as the LAST branch of the tablet hotkey, so an aircraft with a tablet of its own never reaches it; on MSFS 2020 it says the tablet is MSFS 2024 only. → [sim-tablet.md](../sim-tablet.md)

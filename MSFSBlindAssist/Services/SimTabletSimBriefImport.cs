@@ -73,17 +73,31 @@ public sealed class SimTabletSimBriefImport
             ? "The sim tablet's flight plan is locked, so a route cannot be entered now."
             : "The sim tablet's route box could not be opened.");
 
-        // 3. SAVE, which the tablet enables once its box has taken the text.
-        bool saved = false;
-        for (int i = 0; i < SaveTries && !saved; i++)
+        // 3. SAVE, which the tablet enables once its box has taken the text. When the box already
+        //    held this route (the plan is loaded) SAVE never enables, so the reader closed the box
+        //    and said unchanged: there is nothing to save.
+        var notes = new List<string>();
+        if (entered.Unchanged)
         {
-            await _delay(PollMs, ct);
-            var r = await Call("route.save()");
-            if (r == null) return new Result(false, NotConnected);
-            if (r.Ok) saved = true;
-            else if (r.Error != "save-disabled") break;
+            notes.Add("The Flight Planner already had this route.");
         }
-        if (!saved) return new Result(false, "The sim tablet did not take the route.");
+        else
+        {
+            bool saved = false;
+            for (int i = 0; i < SaveTries && !saved; i++)
+            {
+                await _delay(PollMs, ct);
+                var r = await Call("route.save()");
+                if (r == null) return new Result(false, NotConnected);
+                if (r.Ok) saved = true;
+                else if (r.Error != "save-disabled") break;
+            }
+            if (!saved)
+            {
+                await Call("route.closeBox()");   // leave no popup open over the Route page
+                return new Result(false, "The sim tablet did not take the route.");
+            }
+        }
 
         // 4. Both airports loaded.
         SimTabletRoute.RouteState? st = null;
@@ -98,7 +112,6 @@ public sealed class SimTabletSimBriefImport
 
         // 5. The plan's runways. The tablet picks its own on loading, and may pick a procedure for
         //    the runway set here, which the summary then says.
-        var notes = new List<string>();
         st = await SetRunway(0, ofp.OriginRunway, origin, st, notes, ct) ?? st;
         st = await SetRunway(1, ofp.DestRunway, dest, st, notes, ct) ?? st;
 
@@ -145,7 +158,7 @@ public sealed class SimTabletSimBriefImport
     private async Task<SimTabletRoute.RouteState?> State() =>
         SimTabletRoute.ParseState(await _eval($"window.{AgentGlobal} ? {AgentGlobal}.route.state() : ''"));
 
-    private sealed record Step(bool Ok, bool Done, string Error);
+    private sealed record Step(bool Ok, bool Done, string Error, bool Unchanged);
 
     /// <summary>One reader call; null when the tablet did not answer at all.</summary>
     private async Task<Step?> Call(string member)
@@ -159,7 +172,8 @@ public sealed class SimTabletSimBriefImport
             bool ok = root.TryGetProperty("ok", out var o) && o.ValueKind == JsonValueKind.True;
             bool done = root.TryGetProperty("done", out var d) && d.ValueKind == JsonValueKind.True;
             string err = root.TryGetProperty("error", out var e) ? e.GetString() ?? "" : "";
-            return new Step(ok, done, err);
+            bool unchanged = root.TryGetProperty("unchanged", out var u) && u.ValueKind == JsonValueKind.True;
+            return new Step(ok, done, err, unchanged);
         }
         catch (JsonException) { return null; }
     }

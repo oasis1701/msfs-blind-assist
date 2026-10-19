@@ -36,7 +36,7 @@ The tablet has no SimBrief link of its own; Navigraph's SimBrief tablet app is a
 
 1. open the Flight Planner from the dock and its Route panel;
 2. open Import, "Enter route string", by its place in the menu, and type `ORIGIN route DESTINATION` (`SimTabletRoute.Build`), the shape measured to load;
-3. press SAVE once the tablet enables it;
+3. press SAVE once the tablet enables it, unless the box already held this route (the plan is loaded), when SAVE never enables and the box is closed instead (STAB-9);
 4. wait until both airports show;
 5. pick SimBrief's runways on the airports' runway dropdowns (a runway written into the route string is ignored, STAB-7);
 6. speak a summary: both ends with their runways, the number of waypoints, and every procedure the tablet chose, which it does by itself when a runway is set (arrival runway 01 at KSAV brought "ILS 1 via Direct").

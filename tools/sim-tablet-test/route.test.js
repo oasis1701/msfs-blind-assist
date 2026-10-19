@@ -74,6 +74,26 @@ test('route.enter opens ENTER ROUTE STRING by its position in the Import menu an
   assert.notEqual(document.activeElement, ta);
 });
 
+test('route.enter on a box already holding the route closes it and says unchanged (SAVE would never enable)', () => {
+  const { A, window, document } = load('atlas-route-string');
+  const ta = document.querySelector('.route-parsing-textarea');
+  ta.value = 'KFFC DCT SOONE DCT NOKIE DCT KSAV';          // the box opens holding the plan's route
+  let inputs = 0;
+  ta.addEventListener('input', () => inputs++);
+  assert.deepStrictEqual(JSON.parse(A.route.enter('kffc  dct soone dct nokie dct ksav')), { ok: true, unchanged: true });
+  assert.deepStrictEqual(window.__presses, ['click:ENTER ROUTE STRING', 'click:'], 'opened, then the header close');
+  assert.equal(inputs, 0, 'nothing typed');
+});
+
+test('route.closeBox presses the route box header close, and is done when no box is open', () => {
+  const { A, window } = load('atlas-route-string');
+  assert.deepStrictEqual(JSON.parse(A.route.closeBox()), { ok: true, done: true });
+  assert.deepStrictEqual(window.__presses, ['click:']);
+  const closed = load('atlas-route-loaded');
+  assert.deepStrictEqual(JSON.parse(closed.A.route.closeBox()), { ok: true, done: true });
+  assert.deepStrictEqual(closed.window.__presses, []);
+});
+
 test('route.enter refuses a locked plan instead of pressing a dead item', () => {
   const { A, window, document } = load('atlas-route-string');
   const menu = A.route.menu('Folder');

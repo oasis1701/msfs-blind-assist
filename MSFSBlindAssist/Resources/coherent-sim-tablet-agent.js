@@ -957,8 +957,13 @@
     return null;
   };
 
-  // Open "Enter route string" and type the route into it. Returns {ok} or {ok:false, error}:
-  // 'locked' when the tablet has the item disabled (its flight plan is locked).
+  // Open "Enter route string" and type the route into it. Returns {ok}, {ok, unchanged} or
+  // {ok:false, error}: 'locked' when the tablet has the item disabled (its flight plan is locked).
+  // The box opens holding the route the Flight Planner already has, and its SAVE stays DISABLED
+  // while the text is that same route (measured: re-entering the loaded KFFC-KSAV route left SAVE
+  // disabled for good). So when the plan is already in, the box is closed again and the answer is
+  // unchanged: there is nothing to save.
+  A.route.sameRoute = function (a, b) { return A.norm(a).toUpperCase() === A.norm(b).toUpperCase(); };
   A.route.enter = function (text) {
     try {
       var menu = A.route.menu('Folder');
@@ -969,6 +974,10 @@
       A.press(item);
       var ta = A.root().querySelector('.efb-view.AtlasApp .route-parsing-textarea');
       if (!ta) return JSON.stringify({ ok: false, error: 'no-route-box' });
+      if (A.route.sameRoute(ta.value, text)) {
+        A.route.closeBox();
+        return JSON.stringify({ ok: true, unchanged: true });
+      }
       ta.value = String(text);
       var ev;
       try { ev = new InputEvent('input'); } catch (e1) { ev = document.createEvent('Event'); ev.initEvent('input', true, true); }
@@ -986,6 +995,19 @@
       if (A.isDisabled(b)) return JSON.stringify({ ok: false, error: 'save-disabled' });
       A.press(b);
       return JSON.stringify({ ok: true });
+    } catch (e) { return JSON.stringify({ ok: false, error: String(e) }); }
+  };
+
+  // Close the route box without saving: its header's first button. Used when there is nothing to
+  // save, and by the app when SAVE never enabled, so a failed import leaves no popup open.
+  A.route.closeBox = function () {
+    try {
+      var popup = A.root().querySelector('.efb-view.AtlasApp .route-parsing-popup');
+      if (!popup || A.isHidden(popup)) return JSON.stringify({ ok: true, done: true });
+      var b = popup.querySelector('[class*="popup-header"] button');
+      if (!b) return JSON.stringify({ ok: false, error: 'no-close-button' });
+      A.press(b);
+      return JSON.stringify({ ok: true, done: true });
     } catch (e) { return JSON.stringify({ ok: false, error: String(e) }); }
   };
 

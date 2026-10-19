@@ -79,6 +79,37 @@ public class SimTabletSimBriefImportTests
     }
 
     [Fact]
+    public async Task APlanAlreadyInTheFlightPlanner_SkipsSave_AndSaysSo()
+    {
+        var tablet = new FakeTablet()
+            .On("route.open", "{\"ok\":true,\"done\":true}")
+            .On("route.enter", "{\"ok\":true,\"unchanged\":true}")
+            .On("route.state", State("01", "ILS 1 via Direct"));
+        var r = await new SimTabletSimBriefImport(tablet.Eval, NoWait).RunAsync(Ofp());
+
+        Assert.True(r.Success, r.Message);
+        Assert.DoesNotContain("route.save()", tablet.Calls);
+        Assert.Equal("SimBrief plan loaded: KFFC runway 31 to KSAV runway 01, 2 waypoints. Approach: ILS 1 via Direct. " +
+                     "The Flight Planner already had this route. Use Send to avionics when you are ready.", r.Message);
+    }
+
+    [Fact]
+    public async Task ASaveThatNeverEnables_ClosesTheRouteBox_AndFails()
+    {
+        var tablet = new FakeTablet()
+            .On("route.open", "{\"ok\":true,\"done\":true}")
+            .On("route.enter", Ok)
+            .On("route.save", "{\"ok\":false,\"error\":\"save-disabled\"}")
+            .On("route.closeBox", "{\"ok\":true,\"done\":true}");
+        var r = await new SimTabletSimBriefImport(tablet.Eval, NoWait).RunAsync(Ofp());
+
+        Assert.False(r.Success);
+        Assert.Equal("The sim tablet did not take the route.", r.Message);
+        Assert.Equal(SimTabletSimBriefImport.SaveTries, tablet.Calls.Count(c => c == "route.save()"));
+        Assert.Equal("route.closeBox()", tablet.Calls[^1]);
+    }
+
+    [Fact]
     public async Task ATabletThatDoesNotAnswer_IsNotConnected()
     {
         var r = await new SimTabletSimBriefImport(_ => Task.FromResult(""), NoWait).RunAsync(Ofp());
