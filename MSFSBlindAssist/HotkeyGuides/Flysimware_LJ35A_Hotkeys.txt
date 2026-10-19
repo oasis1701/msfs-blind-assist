@@ -91,6 +91,10 @@ ENGINE START, FROM THE PANELS
   then move the Left Starter Generator to Generator. Repeat on the right. The GPU disconnects
   itself when a generator comes on line.
 
+Volanta (app-wide):
+  Shift+O    Open Volanta window (Volanta users and network pilots around you,
+             your Volanta friends and online ATC; also Extras > Volanta)
+
 Airport surroundings (app-wide, named here so every guide carries its own chords):
   Alt+L      Look Around (where you are, the apron or concourse you are in, and the nearest buildings with direction and distance)
   Ctrl+Shift+L  Surroundings window (everything nearby as a list, with the airport's fuel and frequencies)
