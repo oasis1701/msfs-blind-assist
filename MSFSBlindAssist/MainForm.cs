@@ -337,10 +337,11 @@ public partial class MainForm : Form
     // Periodic auto-refresh for the currently-shown Status Display box. SD-page content
     // (FOB, engine N1/N2, fuel per-tank, etc.) is an OnRequest snapshot — without this it
     // freezes at whatever it read when the panel opened and never reflects live changes.
-    // While a panel with a "_REFRESH_" button is shown, this ticks every few seconds and
+    // While a panel with a "_DISPLAY_" status list is shown, this ticks every second and
     // (a) rebuilds any snapshot SD content via OnDisplayPanelShown and (b) re-pulls the
     // panel's OnRequest display vars — silently (the "Loading..." placeholder only shows on
-    // the first empty populate, so the box updates in place with no flash).
+    // the first empty populate, so the box updates in place with no flash). F5 runs the same
+    // refresh at once (RefreshDisplayNow).
     private System.Windows.Forms.Timer? _sdAutoRefreshTimer;
 
     // Liftoff → Hand Fly handoff guard. The handoff is ARMED on the on-ground→
@@ -470,13 +471,6 @@ public partial class MainForm : Form
     private bool _buildingPanel = false;
 
     private Dictionary<string, double> displayValues = new Dictionary<string, double>();  // Store display values
-
-    private Dictionary<string, TaskCompletionSource<bool>>? pendingDisplayRequests = null;  // Track pending display requests
-
-    // The control to return focus to after a status-box refresh (F5). The async refresh
-    // moves focus onto the Refresh button; the F5 handler captures the status box here so
-    // refreshButton.Click can restore it — otherwise the blind user "lands elsewhere".
-    private Control? _refreshFocusReturn = null;
 
     private ConcurrentDictionary<string, bool> pendingStateAnnouncements = new ConcurrentDictionary<string, bool>();  // Track state announcement requests
 
