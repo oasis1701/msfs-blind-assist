@@ -364,7 +364,10 @@ public static class PMDG737FlowDefinitions
             SW("BT_TAXI", "Taxi light: ON", "EVT_OH_LIGHTS_TAXI", 1, checklistItemId: "BT_TAXI"),
             Multi("BT_TURNOFF", "Runway turnoff lights: ON", "BT_TURNOFF", ("EVT_OH_LIGHTS_L_TURNOFF", 1), ("EVT_OH_LIGHTS_R_TURNOFF", 1)),
             Captain("BT_FLAPS", "Set the takeoff flaps."),
-            SW("BT_LOWERDU", "Lower display unit: SYS", "EVT_DSP_CPT_LOWER_DU_SELECTOR", 1, checklistItemId: "BT_LOWERDU"),
+            // The lower display unit SELECTOR to NORM (ENG PRI 0 / NORM 1 / ND 2). It read "Lower
+            // display unit: SYS", but the SYS page is a different button and never showed (owner
+            // audit, 2026-10-19); NORM is PMDG's Preflight position for the selector.
+            SW("BT_LOWERDU", "Lower display unit selector: NORM", "EVT_DSP_CPT_LOWER_DU_SELECTOR", 1, checklistItemId: "BT_LOWERDU"),
         }
     };
 
@@ -509,10 +512,20 @@ public static class PMDG737FlowDefinitions
     private static Flow BuildAfterLanding() => new()
     {
         Id = "AFTER_LANDING", Name = "After Landing",
-        Description = "Lights, anti-ice off, probe heat off, APU on, start switches off, autothrottle/FD off, flaps up.",
+        Description = "Speed brake down, lights, anti-ice off, probe heat off, APU on, start switches off, flaps up, autobrake off.",
         RelatedChecklistGroupIds = new[] { "AFTER_LANDING" },
         Steps = new()
         {
+            // PMDG's After Landing Procedure opens with "Speed Brake Lever: Down" (B738_Checklist.xml
+            // 18.1); after an auto-speedbrake landing the lever sits at UP and nothing stowed it
+            // (owner audit, 2026-10-19). The DOWN detent click is main's own (PmdgSpeedBrakeLever.Ng3,
+            // the executor's MouseFlag dispatch), verified on the lever. "Already set" only over a
+            // lever read DOWN; a lever nobody can read is never clicked.
+            LeaveAlone(Skip(SW("AL_SPDBRK_DOWN", "Speed brake lever: DOWN", "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_DOWN", 1,
+                    SpeedbrakeLeverState.LeverField, AircraftStateEvaluator.IsSpeedbrakeLeverDown, "AL_SPDBRK"),
+                s => s.SpeedbrakePosition() == SpeedbrakeLeverPosition.Down),
+                s => s.SpeedbrakePosition() == SpeedbrakeLeverPosition.Unknown,
+                "Skipping: Speed brake lever: DOWN. The lever cannot be read yet."),
             Multi("AL_LAND_OFF", "Landing lights: OFF", "AL_LAND_OFF",
                 ("EVT_OH_LIGHTS_L_RETRACT", 0), ("EVT_OH_LIGHTS_R_RETRACT", 0),
                 ("EVT_OH_LIGHTS_L_FIXED", 0), ("EVT_OH_LIGHTS_R_FIXED", 0)),
@@ -559,7 +572,7 @@ public static class PMDG737FlowDefinitions
     private static Flow BuildShutdown() => new()
     {
         Id = "SHUTDOWN", Name = "Shutdown",
-        Description = "Load to the APU generators (once the APU generator is up, or with ground power already on the buses), engines cutoff, signs/lights off, fuel pumps off, anti-ice off, transponder ALT RPTG OFF.",
+        Description = "Load to the APU generators (once the APU generator is up, or with ground power already on the buses), engines cutoff, signs/lights off, fuel pumps off, anti-ice off, flight directors off, transponder ALT RPTG OFF.",
         RelatedChecklistGroupIds = new[] { "SHUTDOWN" },
         Steps = new()
         {
@@ -595,6 +608,9 @@ public static class PMDG737FlowDefinitions
             // (No spool-down wait — mirrors the 777 shutdown: nothing downstream needs the
             // engines stopped, and the old start-valve wait was an instant no-op anyway.)
             SW("SD_BELTS", "Seatbelt signs: OFF", "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", 0, checklistItemId: "SD_BELTS"),
+            // PMDG's Shutdown Procedure: "ANTI COLLISION light switch: OFF" right after the belts
+            // (19.8). Before Start turned it ON and nothing turned it off (owner audit, 2026-10-19).
+            SW("SD_ANTICOL_OFF", "Anti-collision light: OFF", "EVT_OH_LIGHTS_ANT_COL", 0, checklistItemId: "SD_ANTICOL"),
             Multi("SD_TURNOFF", "Runway turnoff lights: OFF", "SD_TURNOFF", ("EVT_OH_LIGHTS_L_TURNOFF", 0), ("EVT_OH_LIGHTS_R_TURNOFF", 0)),
             SW("SD_TAXI_OFF", "Taxi light: OFF", "EVT_OH_LIGHTS_TAXI", 0, checklistItemId: "SD_TAXI"),
             SW("SD_LOGO_OFF", "Logo lights: OFF", "EVT_OH_LIGHTS_LOGO", 0, checklistItemId: "SD_LOGO"),
@@ -609,6 +625,11 @@ public static class PMDG737FlowDefinitions
             Multi("SD_WINHEAT_OFF", "Window heat: OFF", "SD_WINHEAT",
                 ("EVT_OH_ICE_WINDOW_HEAT_1", 0), ("EVT_OH_ICE_WINDOW_HEAT_2", 0),
                 ("EVT_OH_ICE_WINDOW_HEAT_3", 0), ("EVT_OH_ICE_WINDOW_HEAT_4", 0)),
+            // PMDG's Shutdown Procedure: "FLIGHT DIRECTOR switches: OFF" (19.21), then the transponder
+            // (19.22). Preflight turned them ON and nothing turned them off (owner audit, 2026-10-19).
+            // Mouse-flag TOGGLES: each pressed only over a switch READ on.
+            MouseFlag("SD_FD1", "Flight director 1: OFF", "EVT_MCP_FD_SWITCH_L", "MCP_FDSw_0", "SD_FD", wantOn: false),
+            MouseFlag("SD_FD2", "Flight director 2: OFF", "EVT_MCP_FD_SWITCH_R", "MCP_FDSw_1", "SD_FD", wantOn: false),
             SW("SD_XPDR", "Transponder: ALT RPTG OFF", "EVT_TCAS_MODE", 1, checklistItemId: "SD_XPDR"),
         }
     };
@@ -708,19 +729,20 @@ public static class PMDG737FlowDefinitions
     };
 
     // FD / AT Arm are mouse-flag TOGGLES (no absolute target), so firing one while the
-    // switch is already in the desired state flips it the wrong way. Every one of these steps
-    // turns its switch ON: "Already set" when `field` reads on — the same guard the panel
-    // (HandleUIVariableSet) and the checklists (SetFDLeft(target, state)) apply — and left
-    // alone, aloud, while it is unread (NaN, before the first CDA snapshot), which IsOn read
-    // as off, so the press switched off an FD that was already on.
+    // switch is already in the desired state flips it the wrong way. A step turns its switch ON
+    // (or OFF, `wantOn: false`, Shutdown's flight directors): "Already set" when `field` READS
+    // that state — the same guard the panel (HandleUIVariableSet) and the checklists
+    // (SetFDLeft(target, state)) apply — and left alone, aloud, while it is unread (NaN, before
+    // the first CDA snapshot), which IsOn read as off, so the press switched off an FD that was
+    // already on.
     private static Step MouseFlag(string id, string label, string eventName,
-        string field, string? checklistItemId = null) => new()
+        string field, string? checklistItemId = null, bool wantOn = true) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.SetSwitch,
         EventName = eventName,
         UsesMouseFlag = true,
-        SkipCondition = s => s.IsOn(field),
+        SkipCondition = s => wantOn ? s.IsOn(field) : s.IsOff(field),
         LeaveAloneWhen = s => double.IsNaN(s.GetValue(field)),
         LeaveAloneText = $"Skipping: {label}. The switch cannot be read yet.",
         CompletesChecklistItemId = checklistItemId,        FailurePolicy = FlowStepFailurePolicy.Skip,

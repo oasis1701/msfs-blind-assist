@@ -75,7 +75,7 @@ public class Pmdg737FlowChecklistLinkTests
         Id("EVT_OH_BLEED_ENG_2_SWITCH", "AIR_BleedAirSwitch_1");
         Id("EVT_OH_BLEED_APU_SWITCH", "AIR_APUBleedAirSwitch");
         Id("EVT_OH_LIGHTS_LOGO", "LTS_LogoSw");
-        Id("EVT_MCP_FD_SWITCH_L", "MCP_FDSw_0");       // mouse-flag toggle, fired only toward ON
+        Id("EVT_MCP_FD_SWITCH_L", "MCP_FDSw_0");       // mouse-flag toggle; Shutdown's OFF presses in StepWrites
         Id("EVT_MCP_FD_SWITCH_R", "MCP_FDSw_1");
         Id("EVT_MCP_AT_ARM_SWITCH", "MCP_ATArmSw");
         Id("EVT_MPM_AUTOBRAKE_SELECTOR", "MAIN_AutobrakeSelector");
@@ -110,6 +110,9 @@ public class Pmdg737FlowChecklistLinkTests
         // Per-detent flap lever event: flaps UP → TE flap needle 0 degrees.
         m["EVT_CONTROL_STAND_FLAPS_LEVER_0"] = new (string, Func<int, double>)[]
         { ("MAIN_TEFlapsNeedle_0", _ => 0) };
+        // The DOWN detent click → the lever at DOWN (0).
+        m["EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_DOWN"] = new (string, Func<int, double>)[]
+        { (SpeedbrakeLeverState.LeverField, _ => 0) };
         // Closed-loop verified arm (ArmSpeedbrakeAsync) → the lever at ARM with the ARMED light.
         m[SpeedbrakeArmLadder.PseudoKey] = new (string, Func<int, double>)[]
         { (SpeedbrakeLeverState.ArmedField, _ => 1) };
@@ -162,9 +165,34 @@ public class Pmdg737FlowChecklistLinkTests
         ["PF_GPWS_TEST"] = new[] { ("GPWS_TEST", 1) },
     };
 
+    // Target-less mouse-flag TOGGLES the flows press toward OFF (their skip guard reads the switch
+    // off first). Every other target-less write reads as 1.
+    private static readonly Dictionary<string, (string Event, int Target)[]> StepWrites = new(StringComparer.Ordinal)
+    {
+        ["SD_FD1"] = new[] { ("EVT_MCP_FD_SWITCH_L", 0) },
+        ["SD_FD2"] = new[] { ("EVT_MCP_FD_SWITCH_R", 0) },
+    };
+
+    private static List<(string Event, int Target)> Writes(FlowStep<AircraftStateEvaluator> step) =>
+        StepWrites.TryGetValue(step.Id, out var declared) ? declared.ToList() : FlowChecklistLinkAudit.Writes(step);
+
+    [Fact]
+    public void Toggle_steps_declared_toward_OFF_exist_and_carry_no_target()
+    {
+        var steps = PMDG737FlowDefinitions.Build().SelectMany(f => f.Steps).ToDictionary(s => s.Id);
+        foreach (var (id, writes) in StepWrites)
+        {
+            Assert.True(steps.ContainsKey(id), $"StepWrites names unknown step {id}");
+            var step = steps[id];
+            Assert.Null(step.TargetValue);
+            Assert.NotNull(step.SkipCondition);   // a toggle is only safe behind its skip guard
+            Assert.Equal(step.EventName, Assert.Single(writes).Event);
+        }
+    }
+
     private static bool Delivers(FlowStep<AircraftStateEvaluator> step,
         ChecklistItem<AircraftActionExecutor, AircraftStateEvaluator> item) =>
-        FlowChecklistLinkAudit.Delivers(FlowChecklistLinkAudit.Writes(step), item,
+        FlowChecklistLinkAudit.Delivers(Writes(step), item,
             ev => EventFields.TryGetValue(ev, out var f) ? f : null, ActionItems);
 
     // Every group a finishing flow latches — FlowDefinition.CompletionGroupIds, the SAME rule

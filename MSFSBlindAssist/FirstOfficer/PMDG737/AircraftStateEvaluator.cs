@@ -173,6 +173,11 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public bool IsSpeedbrakeArmed()    => GetValue(SpeedbrakeLeverState.ArmedField) > 0.5;
     public bool IsSpeedbrakeDeployed() => SpeedbrakePosition() == SpeedbrakeLeverPosition.Deployed;
 
+    /// <summary>A lever value (<see cref="SpeedbrakeLeverState.LeverField"/>) reads DOWN: anything
+    /// short of ARM. NaN is not down. The After Landing line and its flow step both judge by it.</summary>
+    public static bool IsSpeedbrakeLeverDown(double lever) =>
+        SpeedbrakeLeverState.Classify(SpeedbrakeLeverState.Pmdg737, lever) == SpeedbrakeLeverPosition.Down;
+
     // -----------------------------------------------------------------------
     // Electrical
     // -----------------------------------------------------------------------

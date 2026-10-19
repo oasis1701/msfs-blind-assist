@@ -212,8 +212,8 @@ These were changed from 2→1 based on the panel's `{0=Off,1=On}` map, but flagg
 ### E5. 737 battery ON (byte 1, was phantom byte 2)
 Cold-dark → run **Electrical Power Up** → confirm the battery turns ON (`ELEC_BatSelector` = **1**) and the **"Battery: ON"** checklist item auto-ticks. (Previously it commanded byte 2 — a non-existent detent — and never detected ON.)
 
-### E6. 737 Lower DU label — **deferred, needs in-sim name check**
-The flow step `BT_LOWERDU` sends value **1**, which the panel labels **"NORM"**, but the FO announces it as **"SYS"**. Left unchanged (the middle-detent name is itself marked "verify in sim" in the panel def). Tell me the real middle-position name on the 737 lower DU selector and I'll align the label (cosmetic — spoken label only, no functional effect).
+### E6. 737 Lower DU label — **resolved 2026-10-19**
+The flow step `BT_LOWERDU` sends value **1** to the lower display unit SELECTOR (ENG PRI / NORM / ND, the SDK's `MAIN_LowerDUSel` order), but the FO announced it as **"SYS"**, a page selected by a different button. Both the step and the line now read **"Lower display unit selector: NORM"**, PMDG's Preflight position for the selector (`B738_Checklist.xml` 5.20); the write is unchanged.
 
 ---
 

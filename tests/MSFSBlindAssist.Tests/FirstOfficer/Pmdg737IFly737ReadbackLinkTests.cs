@@ -139,6 +139,10 @@ public class Pmdg737IFly737ReadbackLinkTests
 
         Assert.Equal(new[]
         {
+            // PMDG's B738_Checklist.xml After Landing (18.1) and Shutdown (19.8, 19.21) lines the PMDG
+            // First Officer gained on 2026-10-19 (owner audit). The iFly lacks the same three; its
+            // fix is its own change, with its own in-sim test.
+            "PMDG 737 only: AFTER_LANDING/AL_SPDBRK",
             // iFly: the ND range cannot be commanded on its SDK; range steps removed (2026-08-18).
             "PMDG 737 only: APPROACH/APA_EFIS_RANGE",
             // iFly: no lower-DU page-select field, so "Lower display unit: SYS" is a Captain reminder.
@@ -149,6 +153,9 @@ public class Pmdg737IFly737ReadbackLinkTests
             "PMDG 737 only: PREFLIGHT/PF_OXY_TEST_FO",
             // iFly: the weather radar test was removed by the owner (2026-08-18).
             "PMDG 737 only: PREFLIGHT/PF_WXR_TEST",
+            // The Shutdown pair of the 2026-10-19 audit above (19.8, 19.21).
+            "PMDG 737 only: SHUTDOWN/SD_ANTICOL",
+            "PMDG 737 only: SHUTDOWN/SD_FD",
             // iFly: the gear lever has only Up/Down, and its After Takeoff flow commands UP; the
             // PMDG First Officer never touches the gear lever (FOB-5, its OFF detent never moved).
             "iFly 737 only: AFTER_TAKEOFF/ATKO_GEAR_OFF",
