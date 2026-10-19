@@ -570,11 +570,12 @@ public partial class CowsDA40Definition
                 string band = DA40InstrumentBands.Annotate(varKey, value, quantity);
 
                 // On the cap the gauge has stopped measuring. Saying so is the difference
-                // between "the tank holds 14" and "the tank holds at least 14, go and
-                // measure it", which is the AFM's own instruction.
+                // between "the tank holds 14" and "the tank holds at least 14". ⚠️ The fact,
+                // never the remedy (DA40-8): it said "measure the tank" until 2026-10-19; the
+                // AFM's dipstick instruction is in docs/da40.md.
                 if (value >= FuelIndicationCapGal - 0.05)
                 {
-                    band += ", at the indication limit — 14 or more, measure the tank";
+                    band += ", at the indication limit, 14 or more";
                 }
 
                 displayText = band;

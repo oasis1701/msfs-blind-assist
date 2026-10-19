@@ -42,7 +42,6 @@ public partial class ValueInputForm : Form
         private TextBox valueTextBox = null!;
         private Label titleLabel = null!;
         private Label rangeLabel = null!;
-        private Button okButton = null!;
         private Button cancelButton = null!;
 
         public string InputValue { get; private set; } = null!;
@@ -92,6 +91,7 @@ public partial class ValueInputForm : Form
         private readonly List<ExtraFieldDef> _extraDefs;
         private readonly List<Button> _extraButtons = new();
         private Button? mainSetButton;
+        private Button? okButton;
 
         /// <summary>
         /// Which field the pilot asked to write: -1 for all of them (the "Set all" button
@@ -328,18 +328,23 @@ public partial class ValueInputForm : Form
                 mainSetButton.Click += (_, _) => SetOneField(0);
             }
 
-            okButton = new Button
+            // No Set button on a one-field window: Enter in the box sets the value
+            // (ValueTextBox_KeyDown). ⚠️ A window with extra fields (the DA40's main and
+            // standby altimeters) keeps its per-field Set buttons and "Set all": they are the
+            // only way to set one field alone (#317's own note for #242).
+            if (_extraDefs.Count > 0)
             {
-                Text = _extraDefs.Count > 0 ? "Set all" : "Set",
-                Location = new Point(185, 105 + toggleOffset + extraOffset),
-                Size = new Size(_extraDefs.Count > 0 ? 80 : 60, 30),
-                // Naming it after the MAIN parameter was the defect: it writes every field.
-                AccessibleName = _extraDefs.Count > 0
-                    ? "Set all fields"
-                    : $"Set {parameterType}",
-                TabIndex = tabIdx++
-            };
-            okButton.Click += OkButton_Click;
+                okButton = new Button
+                {
+                    Text = "Set all",
+                    Location = new Point(185, 105 + toggleOffset + extraOffset),
+                    Size = new Size(80, 30),
+                    // Naming it after the MAIN parameter was the defect: it writes every field.
+                    AccessibleName = "Set all fields",
+                    TabIndex = tabIdx++
+                };
+                okButton.Click += OkButton_Click;
+            }
 
             cancelButton = new Button
             {
@@ -360,10 +365,9 @@ public partial class ValueInputForm : Form
             foreach (var l in _extraLabels) Controls.Add(l);
             foreach (var b in _extraBoxes) Controls.Add(b);
             foreach (var b in _extraButtons) Controls.Add(b);
-            Controls.Add(okButton);
+            if (okButton != null) Controls.Add(okButton);
             Controls.Add(cancelButton);
 
-            AcceptButton = okButton;
             CancelButton = cancelButton;
         }
 
@@ -382,7 +386,6 @@ public partial class ValueInputForm : Form
             if (_lastInputEnabledState == enabled) return;
             _lastInputEnabledState = enabled;
             valueTextBox.ReadOnly = !enabled;
-            okButton.Enabled = enabled;
             valueTextBox.AccessibleDescription = enabled
                 ? $"Enter {parameterType} value and press Enter to set"
                 : $"Engage mode first to enter a value";
@@ -451,7 +454,10 @@ public partial class ValueInputForm : Form
         {
             if (e.KeyCode == Keys.Enter)
             {
+                // With no Set button as the form's AcceptButton, Enter reaches the box itself;
+                // SuppressKeyPress stops the edit control's ding.
                 e.Handled = true;
+                e.SuppressKeyPress = true;
                 if (_inputEnabledCheck == null || _inputEnabledCheck())
                     SetValue();
             }

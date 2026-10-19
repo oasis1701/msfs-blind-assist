@@ -29,7 +29,7 @@ The text is verbatim from the CLAUDE.md invariants PR #242 added; where two bull
 
 ## DA40E-7
 
-- **The DA40's ECU test button has TWO functions on one control**, told apart by the engine master and the duration: 26 seconds with the master ON is the ECU test, 10 seconds with it OFF resets latched failures and charges the batteries. ⚠️ This is the ONE control on the aeroplane where a blocker is REFUSED rather than reported - with the master on, the same hold runs a different function entirely (and cycles the propeller), so doing it anyway would not be a degraded version of what the pilot asked for. → [da40.md](../da40.md)
+- **The DA40's ECU test button has TWO functions on one control**, told apart by the engine master and the duration: 26 seconds with the master ON is the ECU test, 10 seconds with it OFF resets latched failures and charges the batteries. ⚠️ This is the ONE control on the aeroplane where a blocker is REFUSED rather than reported - with the master on, the same hold runs a different function entirely (and cycles the propeller), so doing it anyway would not be a degraded version of what the pilot asked for. ⚠️ **Both directions** (2026-10-19): the ECU Test control pressed with the engine master OFF said "ECU test held. Not met: gearbox 0 degrees, needs 38" - the unpowered ECU's 0 read as a temperature - while the same hold ran the reset and charged the battery (25.4 V after). `EcuButtonRefusal` gives each control its own side: the test control refuses with the master off ("Engine master is off. This button resets latched failures and charges the batteries instead."), the reset control with it on; an undelivered master refuses nothing. Pinned by `CowsDA40EcuButtonTests`. → [da40.md](../da40.md)
 
 ## DA40E-8
 

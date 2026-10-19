@@ -189,6 +189,10 @@ public class CowsDA40DisplayUnitsTests
         def.NoteDisplayUnits(new[] { "Display units: fuel liters" });
         Assert.Contains("indication limit", Render(def, "DA40_FUEL_MAIN_IND", 14),
             StringComparison.Ordinal);
+
+        // ⚠️ The fact, never the remedy (DA40-8): "measure the tank" told the pilot what to do.
+        def.NoteDisplayUnits(new[] { "Display units: fuel gallons" });
+        Assert.DoesNotContain("measure", Render(def, "DA40_FUEL_MAIN_IND", 14), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

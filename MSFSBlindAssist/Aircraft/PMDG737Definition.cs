@@ -1700,8 +1700,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
         // Seat headrests + rudder-pedal adjust — drag positions 0–100 (50 = the
         // position PMDG initializes at spawn). Clamped in HandleUIVariableSet.
-        // The varKey carries a "_SET" suffix so MainForm renders a TextBox +
-        // Set button (the numeric-input control); without it, a no-
+        // The varKey carries a "_SET" suffix so MainForm renders a TextBox that
+        // Enter applies (the numeric-input control); without it, a no-
         // ValueDescriptions var falls through to the plain-button branch whose
         // click always dispatches value 1 — the position slammed to 1/100 on
         // every press and the control "only went to one position".

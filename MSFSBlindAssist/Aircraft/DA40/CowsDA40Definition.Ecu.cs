@@ -74,7 +74,27 @@ public partial class CowsDA40Definition
     /// the end is harmless, the stage stays at 10 until it is let go - with this as the
     /// ceiling for a test that never finishes.
     /// </summary>
-    private const int EcuTestHoldMs = 45000;
+    internal const int EcuTestHoldMs = 45000;
+
+    /// <summary>
+    /// ⚠️ AND 45 S WAS MEASURED ON A TEST THAT STARTED AT ONCE. At VCBI (2026-10-19) the spin-up
+    /// stage alone took 36 s, the test reached stage 5, and the hold let go at 45 s: the model reset
+    /// the test, and nothing was said. Every stage change now extends the hold by this much
+    /// (<see cref="EcuTestHoldUntil"/>), up to <see cref="EcuTestMaxHoldMs"/>; a hold that ends
+    /// short of Complete says so (<see cref="EcuTestStoppedText"/>).
+    /// </summary>
+    internal const int EcuTestStageGraceMs = 20000;
+    internal const int EcuTestMaxHoldMs = 120000;
+
+    /// <summary>Where the hold ends after a stage change at <paramref name="nowTicks"/>. Pure for the suite.</summary>
+    internal static long EcuTestHoldUntil(long startedTicks, long nowTicks, long currentUntil)
+        => Math.Min(startedTicks + EcuTestMaxHoldMs, Math.Max(currentUntil, nowTicks + EcuTestStageGraceMs));
+
+    internal static string EcuTestStoppedText(double seconds, string stage)
+        => FormattableString.Invariant($"ECU test released after {Math.Round(seconds):0} seconds, not complete: {stage}");
+
+    /// <summary>The last stage the model reported, for a release short of Complete.</summary>
+    private double _ecuLastStage = -1;
 
     /// <summary>How long the whole test takes, measured (above) - for the elapsed row.</summary>
     private const int EcuTestTypicalMs = 31000;
@@ -422,8 +442,20 @@ public partial class CowsDA40Definition
     private void NoteEcuTestStage(string varKey, double value,
         Accessibility.ScreenReaderAnnouncer announcer)
     {
-        if (varKey != "DA40_ECU_TEST_STEP" || value < EcuTestCompleteStage) return;
+        if (varKey != "DA40_ECU_TEST_STEP") return;
+        bool moved = Math.Abs(value - _ecuLastStage) > 0.01;
+        _ecuLastStage = value;
         if (!_holds.IsHeld("ECU_TEST:1")) return;
+        if (value < EcuTestCompleteStage)
+        {
+            // Still going: a stage change keeps the button down for the next one (above).
+            if (moved && value > 0)
+            {
+                long now = Environment.TickCount64;
+                _holds.ExtendTo("ECU_TEST:1", EcuTestHoldUntil(_ecuTestStartedTicks, now, 0));
+            }
+            return;
+        }
         ReleaseHeldLVar("ECU_TEST:1");
         // The press said "ECU test running"; the end is what a sighted pilot sees as the
         // CAS messages clearing and the engine settling at idle. A failed ECU latches its
@@ -476,6 +508,24 @@ public partial class CowsDA40Definition
         return blockers;
     }
 
+    /// <summary>
+    /// Why the ECU test button would do the OTHER of its two functions, or null (DA40E-7). The
+    /// engine master picks: on, the ECU test; off, the 10 s reset and charge. Each control refuses
+    /// the side that is not its own. ⚠️ The test control used not to: pressed with the master off
+    /// (VCBI, 2026-10-19) it said "ECU test held. Not met: gearbox 0 degrees" - the unpowered
+    /// ECU's 0 - while the aeroplane reset and charged. An undelivered master refuses nothing.
+    /// </summary>
+    internal static string? EcuButtonRefusal(bool testControl, double? engineMaster)
+    {
+        if (engineMaster is not double m) return null;
+        bool on = m > 0.5;
+        if (testControl && !on)
+            return "Engine master is off. This button resets latched failures and charges the batteries instead.";
+        if (!testControl && on)
+            return "Engine master is on. This button runs the ECU test instead.";
+        return null;
+    }
+
     private bool HandleEcuSet(string varKey, double value, SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)
     {
@@ -487,6 +537,10 @@ public partial class CowsDA40Definition
 
             case "DA40_ECU_TEST":
             {
+                string? wrongSide = EcuButtonRefusal(testControl: true,
+                    simConnect.GetCachedVariableValue("DA40_START_ENGINE_MASTER"));
+                if (wrongSide != null) { announcer.AnnounceImmediate(wrongSide); return true; }
+
                 // Say what is not met, then run it anyway — the pilot decides.
                 var blockers = EcuTestBlockers(simConnect);
                 announcer.AnnounceImmediate(blockers.Count == 0
@@ -497,7 +551,16 @@ public partial class CowsDA40Definition
 
                 _ecuTestStartedTicks = Environment.TickCount64;
                 _ecuTestEndedTicks = 0;
-                HoldLVar("ECU_TEST:1", EcuTestHoldMs, simConnect);
+                // The completion runs only when the TIME runs out - the model reaching Complete
+                // lets go first and says so - so this is the test ending short of it.
+                HoldLVar("ECU_TEST:1", EcuTestHoldMs, simConnect, () =>
+                {
+                    var vars = GetVariables();
+                    string stage = vars.TryGetValue("DA40_ECU_TEST_STEP", out var d) &&
+                                   d.ValueDescriptions.TryGetValue(_ecuLastStage, out var name) ? name : "not started";
+                    announcer.AnnounceImmediate(EcuTestStoppedText(
+                        (Environment.TickCount64 - _ecuTestStartedTicks) / 1000.0, stage));
+                });
                 return true;
             }
 
@@ -508,19 +571,14 @@ public partial class CowsDA40Definition
                 // and is not what the pilot asked for. Said and refused rather than done
                 // wrong - the one case on this aeroplane where a blocker is not merely
                 // reported, because the alternative is a different function entirely.
-                double? master = simConnect.GetCachedVariableValue("DA40_START_ENGINE_MASTER");
-                if (master is > 0.5)
-                {
-                    announcer.AnnounceImmediate(
-                        // ⚠️ THE CONDITION, NOT THE REMEDY. "Turn the engine master off
-                        // first" told the pilot what to do; a refusal owes them why it was
-                        // refused, which is the house pattern ("Will not open at 34 knots.
-                        // The limit is 30."). What the button WOULD do stays, because that
-                        // is the hazard rather than advice: the same hold runs a different
-                        // function entirely.
-                        "Engine master is on. This button runs the ECU test instead.");
-                    return true;
-                }
+                // ⚠️ THE CONDITION, NOT THE REMEDY. "Turn the engine master off first" told the
+                // pilot what to do; a refusal owes them why it was refused, which is the house
+                // pattern ("Will not open at 34 knots. The limit is 30."). What the button WOULD
+                // do stays, because that is the hazard rather than advice: the same hold runs a
+                // different function entirely.
+                string? wrongSide = EcuButtonRefusal(testControl: false,
+                    simConnect.GetCachedVariableValue("DA40_START_ENGINE_MASTER"));
+                if (wrongSide != null) { announcer.AnnounceImmediate(wrongSide); return true; }
 
                 announcer.AnnounceImmediate(
                     "Holding the ECU test button for 10 seconds. Resets latched failures " +

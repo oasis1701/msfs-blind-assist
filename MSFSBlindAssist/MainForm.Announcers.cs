@@ -243,17 +243,6 @@ public partial class MainForm
         }
         UpdateTakeoffCalloutFeed(e.VarName);
 
-        // Complete any pending display request for BOTH branches, before the def-handled early
-        // return below. A var whose ProcessSimVarUpdate returns true still ARRIVED, and the panel
-        // populate is waiting on exactly that — but so is every ordinary var, which reaches Step 3
-        // instead. The two are mutually exclusive (the def-handled branch returns), so this must
-        // sit above the split: completing in only one of them leaves the other's panels waiting
-        // out the full 2 s fallback on every open and Refresh.
-        if (pendingDisplayRequests != null && pendingDisplayRequests.ContainsKey(e.VarName))
-        {
-            pendingDisplayRequests[e.VarName].TrySetResult(true);
-        }
-
         // Step 3 (both branches): a status-display row moved, so repaint the list if one is up
         // (SIM-23). It sits above the split for the same reason as the completion above: a
         // def-handled row (every silent DA40 readout, every DA40 var during the load settle)

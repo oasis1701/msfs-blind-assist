@@ -18,8 +18,6 @@ public class FBWA380VSWindow : FBWA380FCUWindowBase
         var label = new Label { Text = "V/S (+-6000) or FPA (+-9.9):", Location = new Point(20, 25), Size = new Size(190, 20), AccessibleName = "Vertical Speed Label" };
         vsTextBox = new TextBox { Location = new Point(215, 22), Size = new Size(85, 25), TabIndex = 0, AccessibleName = "Vertical speed value", AccessibleDescription = "Enter -6000 to 6000 feet per minute or -9.9 to 9.9 degrees FPA" };
         vsTextBox.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.Handled = true; e.SuppressKeyPress = true; HandleSet(); } };
-        var setButton = new Button { Text = "Set", Location = new Point(310, 20), Size = new Size(80, 30), TabIndex = 1, AccessibleName = "Set Vertical Speed" };
-        setButton.Click += (s, e) => HandleSet();
         var pushButton = new Button { Text = "V/S Push (level off)", Location = new Point(20, 65), Size = new Size(180, 35), TabIndex = 2, AccessibleName = "Vertical Speed Push" };
         pushButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_VS_PUSH", simConnect, announcer, readback: false);
         var pullButton = new Button { Text = "V/S Pull (engage)", Location = new Point(210, 65), Size = new Size(180, 35), TabIndex = 3, AccessibleName = "Vertical Speed Pull" };
@@ -27,8 +25,7 @@ public class FBWA380VSWindow : FBWA380FCUWindowBase
         var closeButton = new Button { Text = "Close", Location = new Point(145, 110), Size = new Size(140, 35), TabIndex = 4, DialogResult = DialogResult.OK, AccessibleName = "Close" };
         closeButton.Click += (s, e) => Close();
 
-        Controls.AddRange(new Control[] { label, vsTextBox, setButton, pushButton, pullButton, closeButton });
-        AcceptButton = setButton;
+        Controls.AddRange(new Control[] { label, vsTextBox, pushButton, pullButton, closeButton });
         CancelButton = closeButton;
     }
 
