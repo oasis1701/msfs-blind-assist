@@ -34,4 +34,27 @@ public class CowsDA40TrimAnnounceTests
         // The axis moves for the whole hold and the nudge's own read-back comes at its end, so
         // the shared announcer must stay quiet past both.
         => Assert.True(CowsDA40Definition.TrimOwnWriteGraceMs > CowsDA40Definition.TrimNudgeHoldMs + 1000);
+
+    // ⚠️ THE AUTOPILOT'S LAST TRIMMING LEAKED OUT AT EVERY DISCONNECT. The trim rides the 1 Hz
+    // batch, so what the GFC 700 moved in its last second arrived after AP had dropped and was
+    // spoken as if the pilot had trimmed: "Trim down 2.5" at a go-around, "Trim down 1.7" at
+    // 400 ft, "Trim down 7.0" on the ground (MTL/VCRI, 2026-10-19). The disconnect starts the
+    // same quiet as MSFSBA's own write.
+    [Fact]
+    public void ADisconnectKeepsTheAutopilotsLastTrimSilent()
+    {
+        DateTime until = CowsDA40Definition.TrimQuietAfterApChange(wasEngaged: true, engaged: false, Now, DateTime.MinValue);
+        Assert.True(CowsDA40Definition.TrimMoveIsOurs(apEngaged: false, Now.AddMilliseconds(CowsDA40Definition.ApDisconnectTrimQuietMs - 1), until));
+        Assert.False(CowsDA40Definition.TrimMoveIsOurs(apEngaged: false, Now.AddMilliseconds(CowsDA40Definition.ApDisconnectTrimQuietMs + 1), until));
+        Assert.True(CowsDA40Definition.ApDisconnectTrimQuietMs > 1000);   // over one batch period
+    }
+
+    [Fact]
+    public void OnlyTheDisconnectEdgeStartsIt()
+    {
+        DateTime later = Now.AddSeconds(9);
+        Assert.Equal(later, CowsDA40Definition.TrimQuietAfterApChange(wasEngaged: false, engaged: true, Now, later));
+        Assert.Equal(later, CowsDA40Definition.TrimQuietAfterApChange(wasEngaged: true, engaged: true, Now, later));
+        Assert.Equal(later, CowsDA40Definition.TrimQuietAfterApChange(wasEngaged: true, engaged: false, Now, later));   // never shortened
+    }
 }

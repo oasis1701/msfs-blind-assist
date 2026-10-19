@@ -35,20 +35,27 @@ public class CowsDA40ApPressReadBackTests
 
     [Fact]
     public void AnUnchangedFmaOnFreshRowsIsSaid()
-        => Assert.True(CowsDA40Definition.ApPressUnanswered(4, 4, T0.AddSeconds(3), T0));
+        => Assert.True(CowsDA40Definition.ApPressUnanswered(4, 4, T0.AddSeconds(3), T0, rowMoved: false));
 
     [Fact]
     public void AnFmaThatMovedIsNot()
-        => Assert.False(CowsDA40Definition.ApPressUnanswered(4, 5, T0.AddSeconds(3), T0));
+        => Assert.False(CowsDA40Definition.ApPressUnanswered(4, 5, T0.AddSeconds(3), T0, rowMoved: false));
 
     [Fact]
     public void WithoutRowsSinceThePressNothingIsKnownAndNothingIsSaid()
     {
         // The watcher not reading (no G1000 page, socket elsewhere): silence is honest, a
         // "no change" would be invented.
-        Assert.False(CowsDA40Definition.ApPressUnanswered(4, 4, T0.AddMilliseconds(500), T0));
-        Assert.False(CowsDA40Definition.ApPressUnanswered(4, 4, System.DateTime.MinValue, T0));
+        Assert.False(CowsDA40Definition.ApPressUnanswered(4, 4, T0.AddMilliseconds(500), T0, rowMoved: false));
+        Assert.False(CowsDA40Definition.ApPressUnanswered(4, 4, System.DateTime.MinValue, T0, rowMoved: false));
     }
+
+    [Fact]
+    public void AModeRowThatMovedIsAnAnswerEvenWhileTheFmaHolds()
+        // AP OFF on the ground: the G1000 keeps "AP" flashing on the FMA for seconds after a
+        // disconnect, so the FMA had not moved at the check, and "Autopilot: no change" was said
+        // over an autopilot that had just let go (VCRI, 2026-10-19). The master row went 1 to 0.
+        => Assert.False(CowsDA40Definition.ApPressUnanswered(4, 4, T0.AddSeconds(3), T0, rowMoved: true));
 
     [Fact]
     public void TheWordingIsTheControlAndTheFact()

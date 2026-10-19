@@ -383,17 +383,41 @@ public partial class CowsDA40Definition
     /// (MTL/VCRI, 2026-10-19) - and the pilot heard nothing at all, the same as a press that
     /// worked and was still being drawn. Without fresh rows nothing is known, so nothing is said.
     /// </summary>
-    internal static bool ApPressUnanswered(int changesBefore, int changesNow, DateTime lastRowsAt, DateTime pressedAt)
-        => changesNow == changesBefore && lastRowsAt >= pressedAt.AddSeconds(1);
+    /// ⚠️ ITS OWN ROW MOVING IS AN ANSWER TOO: the G1000 keeps "AP" flashing on the FMA for
+    /// seconds after a disconnect, so AP OFF found the FMA unmoved and said "Autopilot: no
+    /// change" over an autopilot that had just let go (VCRI, 2026-10-19).
+    internal static bool ApPressUnanswered(int changesBefore, int changesNow, DateTime lastRowsAt,
+        DateTime pressedAt, bool rowMoved)
+        => !rowMoved && changesNow == changesBefore && lastRowsAt >= pressedAt.AddSeconds(1);
 
     internal static string ApPressNoChangeText(string control) => control + ": no change";
 
     private System.Windows.Forms.Timer? _apPressTimer;
 
+    /// <summary>Each GFC 700 mode row's last state and how often it has moved, for the press check.</summary>
+    private readonly Dictionary<string, bool> _apRowState = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int> _apRowMoves = new(StringComparer.Ordinal);
+
+    private static readonly HashSet<string> ApModeRows = new(StringComparer.Ordinal)
+    {
+        "DA40_AP_MASTER", "DA40_AP_HDG", "DA40_AP_NAV", "DA40_AP_APR", "DA40_AP_BC",
+        "DA40_AP_ALT", "DA40_AP_VS", "DA40_AP_FLC"
+    };
+
+    private void NoteApRowForPress(string varKey, double value)
+    {
+        if (!ApModeRows.Contains(varKey)) return;
+        bool on = value >= 0.5;
+        if (_apRowState.TryGetValue(varKey, out bool was) && was != on)
+            _apRowMoves[varKey] = _apRowMoves.GetValueOrDefault(varKey) + 1;
+        _apRowState[varKey] = on;
+    }
+
     private void WatchApPress(string varKey, ScreenReaderAnnouncer announcer)
     {
         if (!GetVariables().TryGetValue(varKey, out var def)) return;
         int before = Cas.FmaChanges;
+        int rowBefore = _apRowMoves.GetValueOrDefault(varKey);
         DateTime pressedAt = Cas.Now();
         _apPressTimer?.Stop();
         _apPressTimer?.Dispose();
@@ -401,7 +425,8 @@ public partial class CowsDA40Definition
         _apPressTimer.Tick += (_, _) =>
         {
             _apPressTimer?.Stop();
-            if (ApPressUnanswered(before, Cas.FmaChanges, Cas.LastRowsAt, pressedAt))
+            bool rowMoved = _apRowMoves.GetValueOrDefault(varKey) != rowBefore;
+            if (ApPressUnanswered(before, Cas.FmaChanges, Cas.LastRowsAt, pressedAt, rowMoved))
                 announcer.AnnounceImmediate(ApPressNoChangeText(def.DisplayName));
         };
         _apPressTimer.Start();

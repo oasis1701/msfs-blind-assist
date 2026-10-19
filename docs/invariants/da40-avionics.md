@@ -124,6 +124,8 @@ Each refusal left the FMA exactly as it was, and the pilot heard nothing at all,
 
 `WatchApPress` records `G1000CasWatcher.FmaChanges` at the press. `ApPressCheckMs` later (two of the watcher's 1.5 s polls), if the count has not moved and rows have arrived at least a second after the press, it says "<control>: no change" ("Approach Mode: no change"). That reports the aeroplane and decides nothing. Without fresh rows (no watcher, socket elsewhere) nothing is known and nothing is said. Only the last press in a quick run is checked.
 
+⚠️ The press's own mode row moving is an answer too. The G1000 keeps "AP" flashing on the FMA for seconds after a disconnect, so AP OFF on the ground found the FMA unmoved at the check and said "Autopilot: no change" over an autopilot that had just let go (VCRI, 2026-10-19). `NoteApRowForPress` counts each GFC 700 mode row's transitions, and a press whose row moved is answered whatever the FMA shows. The refused presses all left their rows where they were.
+
 ## DA40A-27
 
 **"Not started" is a power loss, not a result.** The AFCS self test (`AFCS_TEST`) and pre-flight test (`AFCS_PFT`) return to 0 only when the AFCS loses power or resets. At the VCRI shutdown (2026-10-19), switching the avionics master off said "Autopilot Self Test: not started. Autopilot Pre-flight Test: not started", which reads like two test outcomes over something the pilot had just done. `AfcsStatusIsNews` never speaks a move TO 0 for those two keys. The power-up's "running" and its outcome still speak (DA40A-5), and the Autopilot Failed flag keeps both edges.

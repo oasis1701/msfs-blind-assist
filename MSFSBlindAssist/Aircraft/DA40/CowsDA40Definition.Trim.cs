@@ -82,6 +82,22 @@ public partial class CowsDA40Definition
     internal static bool TrimMoveIsOurs(bool apEngaged, DateTime now, DateTime ownTrimUntil)
         => apEngaged || now < ownTrimUntil;
 
+    /// <summary>
+    /// How long after the autopilot lets go its last trimming is still its own. ⚠️ The trim
+    /// rides the 1 Hz batch, so what the GFC 700 moved in its last second arrived after AP had
+    /// dropped and was spoken as the pilot's: "Trim down 2.5" at a go-around, "Trim down 1.7" at
+    /// 400 ft, "Trim down 7.0" on the ground (MTL/VCRI, 2026-10-19). Over one batch period.
+    /// </summary>
+    internal const int ApDisconnectTrimQuietMs = 2500;
+
+    /// <summary>The quiet the disconnect edge starts (never shortening one already running).</summary>
+    internal static DateTime TrimQuietAfterApChange(bool wasEngaged, bool engaged, DateTime now, DateTime current)
+    {
+        if (!wasEngaged || engaged) return current;
+        DateTime quiet = now.AddMilliseconds(ApDisconnectTrimQuietMs);
+        return quiet > current ? quiet : current;
+    }
+
     /// <summary>The stick trim switch's input since COWS 1.2.0: +1 nose up, -1 nose down, 0
     /// released — and it is NOT reset by the model, so the release must write the 0.</summary>
     internal const string TrimSwitchInput = "INPUT_TRIM_SPAD";
