@@ -1,0 +1,78 @@
+name: User guide build
+
+# Builds a PR's guide the way the website does (docs/user-guide.md): checks guide/ with
+# GuideBuilder, drops it into a checkout of oasis1701/msfs-blind-assist-site as both the
+# released and the preview edition, builds the site with GitHub Pages' own Jekyll, checks
+# every link in the built guide, and uploads the result for a reviewer to read. The xUnit
+# suite already checks guide/ itself on every PR; this adds what only a real site build
+# shows (the site's Jekyll turning page.md links into page addresses).
+#
+# The paths filter means this check never runs on most PRs. Do not make it a REQUIRED
+# check while the filter is here: a required check that never starts blocks the merge.
+on:
+  pull_request:
+    paths:
+      - 'guide/**'
+      - 'tools/GuideBuilder/**'
+      - '.github/workflows/user-guide-build.yml'
+
+concurrency:
+  group: user-guide-build-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: User guide build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # Public repository: no token needed. Its layout and styles are what the guide is built with.
+      - name: Checkout the website
+        uses: actions/checkout@v5
+        with:
+          repository: oasis1701/msfs-blind-assist-site
+          path: _site-src
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Check the guide
+        shell: bash
+        run: |
+          dotnet build tools/GuideBuilder -c Release --nologo -v quiet
+          dotnet run --project tools/GuideBuilder -c Release --no-build -- check --guide guide
+
+      - name: Put this PR's guide into the website as both editions
+        shell: bash
+        run: |
+          rm -rf _site-src/guide
+          mkdir -p _site-src/guide/preview
+          cp -r guide/. _site-src/guide/
+          cp -r guide/. _site-src/guide/preview/
+          for edition in "" "preview/"; do
+            dotnet run --project tools/GuideBuilder -c Release --no-build -- \
+              one-page --guide guide --out "_site-src/guide/${edition}one-page.html" --edition local
+          done
+
+      - name: Build the website
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./_site-src
+          destination: ./_site-out
+
+      - name: Check every link in the built guide
+        shell: bash
+        run: dotnet run --project tools/GuideBuilder -c Release --no-build -- check-site --root _site-out --under guide
+
+      - name: Upload the built guide
+        uses: actions/upload-artifact@v4
+        with:
+          name: built-guide
+          path: _site-out/guide
