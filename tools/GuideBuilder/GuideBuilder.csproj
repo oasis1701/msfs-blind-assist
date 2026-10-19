@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>13</LangVersion>
+    <RootNamespace>GuideBuilder</RootNamespace>
+    <AssemblyName>GuideBuilder</AssemblyName>
+
+    <!-- BOTH platforms are required, as in ChangelogBuilder: the test project is built with
+         -p:Platform=x64 and propagates it to every ProjectReference, while "dotnet run" in
+         the workflows uses the default AnyCPU. -->
+    <Platforms>AnyCPU;x64</Platforms>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The same version the app uses, so the two never disagree about Markdown. -->
+    <PackageReference Include="Markdig" Version="1.3.2" />
+  </ItemGroup>
+
+</Project>
