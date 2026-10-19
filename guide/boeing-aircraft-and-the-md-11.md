@@ -20,7 +20,7 @@ Chapter 2 of 2 in [Part 7: Aircraft Guides](index.md#part-7-aircraft-guides) of 
 
 </nav>
 
-This chapter covers the PMDG 737 (NG3 family), the PMDG 777, the HorizonSim 787-9, the iFly 737 MAX8 and the TFDi Design MD-11, describing only what differs on each. The complete key list for every aircraft is in the [Hotkey Reference](hotkey-reference.md), and the shared autopilot window behaviour is in [Autopilot Windows](takeoff-climb-and-cruise.md#autopilot-windows). Of these five, only the iFly 737 MAX8 has a BA text checklist.
+This chapter covers the PMDG 737 (NG3 family), the PMDG 777, the HorizonSim 787-9, the iFly 737 MAX8 and the TFDi Design MD-11, describing only what differs on each. The complete key list for every aircraft is in the [Hotkey Reference](hotkey-reference.md), and the shared autopilot window behaviour is in [Autopilot Windows](takeoff-climb-and-cruise.md#autopilot-windows). All but the HorizonSim 787-9 have a [First Officer](planning-your-flight.md#checklists) on Output Shift+C.
 
 ## PMDG 737 (NG3) {#boeing-pmdg737}
 
@@ -364,7 +364,7 @@ If the tablet cannot be reached — the simulator is not running, the aircraft i
 - **Output D / Shift+D** read the distance to destination and to top of descent from the FMC PROG page, with time estimates. If neither CDU is showing PROG, BA switches the First Officer's CDU to it (and leaves it there); the Captain's CDU is never touched.
 - **Output Shift+1 to Shift+6** read the flap manoeuvring speeds (up, 1, 5, 10, 15, 25). The iFly does not publish its speed-tape flap bugs, so BA calculates these from your gross weight using Boeing's schedule; expect them within a few knots of the drawn bugs.
 - **Output Alt+P, Alt+N, Alt+I, Alt+E** describe the PFD, navigation display, standby and the engine and alert display by AI vision, moving the camera for you.
-- **Output Shift+C** opens the iFly 737 MAX8 normal-procedures checklist.
+- **Output Shift+C** opens the iFly 737 MAX8 First Officer, with its flows and normal-procedures checklists.
 - **Output Ctrl+M** opens the **iFly 737 Monitor Manager**.
 
 What BA says by itself:

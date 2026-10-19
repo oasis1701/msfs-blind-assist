@@ -32,4 +32,23 @@ public class ShippedGuidesShiftCTests
         string text = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, guide));
         Assert.DoesNotContain("text checklist", text, StringComparison.OrdinalIgnoreCase);
     }
+
+    // The pilot's guide moved into this repo (guide/, PR #319) after Shift+C changed, so it kept
+    // describing the retired window. Every chapter, enumerated so a new one cannot be forgotten.
+    public static TheoryData<string> AllGuideChapters()
+    {
+        var data = new TheoryData<string>();
+        string dir = Path.Combine(ClaudeContextBudgetTests.RepoRoot(), "guide");
+        foreach (var f in Directory.GetFiles(dir, "*.md").OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+            data.Add(Path.GetFileName(f));
+        return data;
+    }
+
+    [Theory, MemberData(nameof(AllGuideChapters))]
+    public void No_guide_chapter_promises_the_retired_text_checklist(string chapter)
+    {
+        string text = File.ReadAllText(Path.Combine(ClaudeContextBudgetTests.RepoRoot(), "guide", chapter));
+        Assert.DoesNotContain("text checklist", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("plain-text checklist", text, StringComparison.OrdinalIgnoreCase);
+    }
 }
