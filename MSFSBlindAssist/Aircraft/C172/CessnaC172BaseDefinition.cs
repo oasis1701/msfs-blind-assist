@@ -370,14 +370,21 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
             // The lean page's cylinder head temperature, and the engine page's hour meter.
             ["C172_CHT"] = SilentReadout("ENG CYLINDER HEAD TEMPERATURE:1", "CHT", "fahrenheit"),
             ["C172_ENGINE_HOURS"] = SilentReadout("GENERAL ENG ELAPSED TIME:1", "Engine Hours", "hours"),
-            // Read fresh by Output+E only (0 at idle, measured).
+            // The throttle, one combo in whole percent from Idle (0, pulled fully out) through "1 percent"
+            // to "99 percent" to Full (100, pushed fully in), as the mixture is beside it
+            // (`ThrottlePositions`). A lever, so read when the panel opens and by Output+E, and never
+            // announced (C172-20); written by THROTTLE1_SET, measured exact (2026-10-18: 1638 gave 10.0
+            // percent and the cockpit lever followed). Never the lever's input event ENGINE_THROTTLE_1,
+            // which takes a 0-1 fraction although it reads back in percent: 20 written was full power.
             ["C172_THROTTLE"] = new SimConnect.SimVarDefinition
             {
                 Name = "GENERAL ENG THROTTLE LEVER POSITION:1",
                 DisplayName = "Throttle",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "percent",
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = ThrottlePositions(),
+                ValueToDescriptionKey = percent => Math.Round(Math.Clamp(percent, 0, 100))
             },
             ["C172_STALL_WARNING"] = new SimConnect.SimVarDefinition
             {
@@ -568,11 +575,13 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
                 "C172_AVIONICS1_STATE",
                 "C172_AVIONICS2_STATE"
             },
+            // The throttle last, right before the status display (the owner's pick, 2026-10-18).
             ["Engine Controls"] = new List<string>
             {
                 "C172_MAGNETO",
                 "C172_STARTER_SET",
-                "C172_MIXTURE"
+                "C172_MIXTURE",
+                "C172_THROTTLE"
             },
             // The fuel pump is a fuel system switch, so it is here with the selector and the valve,
             // first (the owner's pick, 2026-10-18).
@@ -883,7 +892,7 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
         announcer.AnnounceImmediate(ComposeReadings(new[]
         {
             ("", rpm), ("Fuel flow", flow),
-            ("Throttle", throttle is double t ? Percent(t) : null),
+            ("Throttle", throttle is double t ? DescribeThrottle(t) : null),
             ("Mixture", mixture is double m ? DescribeMixture(m) : null),
         }) ?? "Engine power not available yet");
     }
@@ -921,6 +930,41 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
 
     /// <summary>The mixture's 0-100 percent as `MIXTURE1_SET` takes it, 0-16383. Pure so the suite can pin it.</summary>
     internal static uint MixtureEventValue(double percent) =>
+        (uint)Math.Round(Math.Clamp(percent, 0, 100) * 16383.0 / 100.0);
+
+    internal const string ThrottleIdle = "Idle", ThrottleFull = "Full";
+
+    /// <summary>
+    /// The throttle's two ends by the words the C172's checklists use, IDLE (pulled fully out) and FULL
+    /// (pushed fully in); null in between. To the whole percent, as the combo moves. Pure so the suite
+    /// can pin it.
+    /// </summary>
+    internal static string? ThrottleEndName(double percent) => Math.Round(percent) switch
+    {
+        <= 0 => ThrottleIdle,
+        >= 100 => ThrottleFull,
+        _ => null
+    };
+
+    /// <summary>
+    /// The throttle combo's 101 positions, whole percent, its ends by name: "Idle", "1 percent" to
+    /// "99 percent", "Full", in that order, so the parked position is on top and adding power works
+    /// down the list, as on the mixture. Pure so the suite can pin it.
+    /// </summary>
+    internal static Dictionary<double, string> ThrottlePositions()
+    {
+        var positions = new Dictionary<double, string>();
+        for (int percent = 0; percent <= 100; percent++)
+            positions[percent] = ThrottleEndName(percent) ?? Percent(percent);
+        return positions;
+    }
+
+    /// <summary>Output+E's throttle: "idle", "full" or "65 percent". Pure so the suite can pin it.</summary>
+    internal static string DescribeThrottle(double percent) =>
+        ThrottleEndName(percent)?.ToLowerInvariant() ?? Percent(percent);
+
+    /// <summary>The throttle's 0-100 percent as `THROTTLE1_SET` takes it, 0-16383. Pure so the suite can pin it.</summary>
+    internal static uint ThrottleEventValue(double percent) =>
         (uint)Math.Round(Math.Clamp(percent, 0, 100) * 16383.0 / 100.0);
 
     /// <summary>A value window's validator from a refusal: text that is not a number is refused as NaN (CORE-17).</summary>
@@ -1125,6 +1169,14 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
         if (varKey == "C172_MIXTURE")
         {
             simConnect.SendEvent("MIXTURE1_SET", MixtureEventValue(value));
+            return true;
+        }
+
+        // The throttle combo, silent for the same reason; a hardware throttle moves it again on its next
+        // movement.
+        if (varKey == "C172_THROTTLE")
+        {
+            simConnect.SendEvent("THROTTLE1_SET", ThrottleEventValue(value));
             return true;
         }
 

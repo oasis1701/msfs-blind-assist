@@ -51,6 +51,8 @@ public class CessnaC172G1000ControlsTests
         "AS1000_NAV_1_MIDCOM", "AS1000_NAV_2_MIDCOM", "AS1000_DME_MIDCOM", "AS1000_ADF_MIDCOM",
         "AS1000_MARKERMUTE_MIDCOM", "AS1000_MARKERSENSITIVITYHIGH_MIDCOM", "AS1000_SPEAKER_MIDCOM",
         "AS1000_ISOLATEPILOT_MIDCOM", "AS1000_ISOLATECOPILOT_MIDCOM",
+        // The trim disconnect, measured 2026-10-18 (C172F-2).
+        "HANDLING_TRIM_DISCONNECT",
     };
 
     private static readonly CessnaC172G1000Definition Def = new();
@@ -526,7 +528,9 @@ public class CessnaC172G1000ControlsTests
         Assert.Equal(72, mixture.DescriptionKeyFor(72.4));
         Assert.Equal(100, mixture.DescriptionKeyFor(99.6));
         Assert.Equal(0, mixture.DescriptionKeyFor(0.3));
-        Assert.Equal(new[] { "C172_MAGNETO", "C172_STARTER_SET", "C172_MIXTURE" }, Def.GetPanelControls()["Engine Controls"]);
+        // The throttle after it since 2026-10-18, right before the status display (the owner's pick).
+        Assert.Equal(new[] { "C172_MAGNETO", "C172_STARTER_SET", "C172_MIXTURE", "C172_THROTTLE" },
+            Def.GetPanelControls()["Engine Controls"]);
         foreach (string gone in new[] { "C172_MIXTURE_STATE", "C172_MIXTURE_SET", "C172_MIXTURE_RICH", "C172_MIXTURE_LEAN" })
             Assert.False(Def.GetVariables().ContainsKey(gone), gone);
     }

@@ -288,8 +288,9 @@ Automatic Announcements:
   - Any switch moved outside MSFS Blind Assist (from hardware, the sim's own
     keys or its checklist): battery, alternator, avionics, magneto, fuel
     pump, selector and valve, lights, pitot heat, the parking brake (set and
-    released), the flap lever, the standby battery, alternate static air
-    and the ELT. Your own picks in the panels are not repeated.
+    released), the flap lever, the standby battery, alternate static air,
+    the ELT and the trim disconnect. Your own picks in the panels are not
+    repeated.
   - Stall warning, on and off
   - A walkaround cover installed or removed
   - A circuit breaker that pops or goes back in by itself

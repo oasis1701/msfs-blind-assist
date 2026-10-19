@@ -58,6 +58,8 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         ["C172_BEACON_STATE"] = "LIGHTING_BEACON_1",
         ["C172_STROBE_STATE"] = "LIGHTING_STROBE_0",
         ["C172_LANDING_LIGHT_STATE"] = "LIGHTING_LANDING_1",
+        // A direct set, 1 Disconnected and 0 Connected (C172F-2); read from ELEVATOR TRIM DISABLED.
+        [TrimDisconnectKey] = "HANDLING_TRIM_DISCONNECT",
         ["C172_TAXI_LIGHT_STATE"] = "LIGHTING_TAXI_1",
         ["C172_PITOT_HEAT_STATE"] = "DEICE_PITOT_1",
         ["C172_PARKING_BRAKE_STATE"] = "LANDING_GEAR_PARKINGBRAKE",
@@ -241,6 +243,9 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         // was not found, so they are numbered as the cockpit numbers them.
         v["C172G_PANEL_LIGHTS_1"] = Dimmer(SwitchInputEvents["C172G_PANEL_LIGHTS_1"], "Panel Lights 1");
         v["C172G_PANEL_LIGHTS_2"] = Dimmer(SwitchInputEvents["C172G_PANEL_LIGHTS_2"], "Panel Lights 2");
+
+        // ---------- Elevator trim (CessnaC172G1000Definition.FlightControls.cs) ----------
+        AddFlightControlVariables(v);
 
         // ---------- Navigation and the standby instruments ----------
         // The waypoint-passing call's Ctrl+M row, the VNAV readouts for Shift+D, and what Alt+I reads
@@ -449,6 +454,7 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         structure["Radios"].Add(AudioPanel);
         structure["Safety"].Add(EltPanel);
         structure["Lights"].Add(InteriorLightsPanel);
+        structure["Flight Controls"].Add(TrimPanel);
         structure["Autopilot"] = new List<string> { AutopilotPanel };
         structure["Cabin"] = new List<string> { CabinPanel };
         structure[BreakersSection] = new List<string>
@@ -482,6 +488,7 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         controls[CabinPanel] = new List<string>
             { "C172G_CABIN_HEAT", "C172G_CABIN_AIR", "C172G_PILOT_WINDOW", "C172G_PASSENGER_WINDOW" };
         controls[EltPanel] = new List<string> { "C172G_ELT" };
+        controls[TrimPanel] = new List<string>(TrimControls);
         controls[InteriorLightsPanel] = new List<string> { "C172G_PANEL_LIGHTS_1", "C172G_PANEL_LIGHTS_2" };
         // A readout-only panel still needs an entry, or MainForm builds nothing for it.
         controls[OilCheckPanel] = new List<string>();
@@ -492,6 +499,7 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
     {
         var display = base.GetPanelDisplayVariables();
         display[OilCheckPanel] = new List<string> { "C172G_OIL_QUANTITY" };
+        display[TrimPanel] = new List<string>(TrimDisplay);
         // The intercom lamps: "PILOT: Off", "COPLT: Off".
         display[AudioPanel] = new List<string> { IntercomActiveKey, IntercomModeKey };
         return display;
@@ -502,6 +510,12 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         if (varKey == "C172G_OIL_QUANTITY")
         {
             displayText = DescribeOilQuantity(value);
+            return true;
+        }
+        // The trim row in tenths with its unit; the base Format would show whole degrees.
+        if (varKey == "MON_ElevatorTrim")
+        {
+            displayText = DescribeTrimPosition(value);
             return true;
         }
         if (TryGetIntercomDisplay(varKey, value, out displayText)) return true;
@@ -532,6 +546,7 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         }
 
         if (HandleAudioSet(varKey, value, varDef, simConnect, announcer)) return true;
+        if (HandleTrimSet(varKey, value, simConnect, announcer)) return true;
 
         if (TypedAutopilotValues.TryGetValue(varKey, out var typed))
         {
