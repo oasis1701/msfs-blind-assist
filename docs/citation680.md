@@ -160,7 +160,7 @@ right 28; …".
 ## Hotkeys
 
 `HotkeyGuides/Skyward_C680_Hotkeys.txt` is the full list. Beyond the house layout: P / E /
-Shift+O read N1 and N2 / power / temperatures (new actions on the output layout), Shift+1..6
+Shift+P read N1 and N2 / power / temperatures (new actions on the output layout), Shift+1..6
 the speed tables scaled by weight and flagged as estimates, B the crew seat's altimeter,
 Shift+G the gear with its three positions, D the FMS distance and time, Ctrl+B sets both
 altimeters (or `std`).

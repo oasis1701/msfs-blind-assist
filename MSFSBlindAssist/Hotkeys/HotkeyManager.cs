@@ -825,12 +825,13 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_PFD, MOD_ALT, 0x50);         // Alt+P (Read PFD)
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS, MOD_ALT, 0x49);        // Alt+I (Read ISIS)
 
-            // Output mode: P, E and Shift+O. All three were free on every modifier before
-            // this - checked against the whole registration table rather than assumed,
-            // because a silently lost registration is a key that does nothing with no error.
+            // Output mode: P, E and Shift+P. All three were free in output mode - checked
+            // against the whole registration table rather than assumed, because a silently
+            // lost registration is a key that does nothing with no error. The temperatures
+            // were Shift+O until main gave Shift+O to the Volanta window (2026-10-18).
             RegisterHotKey(windowHandle, HOTKEY_READ_ENGINE_RPM, MOD_NONE, 0x50);         // P (RPM / propeller)
             RegisterHotKey(windowHandle, HOTKEY_READ_ENGINE_POWER, MOD_NONE, 0x45);       // E (engine power)
-            RegisterHotKey(windowHandle, HOTKEY_READ_ENGINE_TEMPS, MOD_SHIFT, 0x4F);      // Shift+O (engine temperatures)
+            RegisterHotKey(windowHandle, HOTKEY_READ_ENGINE_TEMPS, MOD_SHIFT, 0x50);      // Shift+P (engine temperatures)
             RegisterHotKey(windowHandle, HOTKEY_DESCRIBE_SCENE, MOD_ALT, 0x44);           // Alt+D (Describe Scene)
             RegisterHotKey(windowHandle, HOTKEY_NEAREST_CITY, MOD_NONE, 0x43);             // C (Nearest City)
             RegisterHotKey(windowHandle, HOTKEY_TCAS_ANNOUNCE, MOD_NONE, 0x52);            // R (Announce Tracked TCAS Traffic)

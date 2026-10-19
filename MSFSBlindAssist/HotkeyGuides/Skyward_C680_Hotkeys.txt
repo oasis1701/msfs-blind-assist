@@ -85,7 +85,7 @@ Speeds:
 Engines:
   P          N1 and N2, both engines
   E          N1, fuel flow and thrust lever positions
-  Shift+O    ITT, oil pressure and oil temperature
+  Shift+P    ITT, oil pressure and oil temperature
 
 Aircraft:
   B          Altimeter setting for your seat's PFD (hPa and inches; "standard" at 1013)
