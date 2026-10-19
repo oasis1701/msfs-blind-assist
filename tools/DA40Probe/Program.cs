@@ -420,9 +420,11 @@ internal sealed class ProbeForm : Form
                             if (_pfd != null) break;
                             // StartCasMonitor would open its own PFD socket; the announcer it
                             // sets is what OnCasRows speaks through, so it is set directly.
-                            typeof(CowsDA40Definition).GetField("_casAnnouncer",
-                                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
-                                .SetValue(def, cap);
+                            // The watcher is the shared G1000CasWatcher now (Cas, private); Arm sets its
+                            // announcer and a fresh baseline without opening a socket of its own.
+                            var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+                            object watcher = typeof(CowsDA40Definition).GetProperty("Cas", flags)!.GetValue(def)!;
+                            watcher.GetType().GetMethod("Arm", flags)!.Invoke(watcher, new object[] { cap });
                             def.AttachLampWatch(_m);
                             def.AttachWaypointSequencer(_m, cap);
                             _pfd = new CoherentDisplayClient("AS1000_PFD", pollIntervalMs: 1500,
