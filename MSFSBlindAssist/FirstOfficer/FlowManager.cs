@@ -74,6 +74,18 @@ public class FlowManager<TExec, TState>
     public FlowDefinition<TState>? CurrentFlow { get; private set; }
     public int CurrentStepIndex { get; private set; }
 
+    // The "Speak flow progress" setting (UserSettings.FOSpeakFlowProgress). Off, only the
+    // step-by-step lines go quiet (AnnounceProgress): the step itself, "Already set", "Waiting
+    // for", "Waiting N seconds". A pilot reading something else heard one every 2 s and had it
+    // broken up. What needs the pilot still speaks: Captain actions, skips, timeouts, failures,
+    // and the flow's start and end. Read at each line, so a change applies mid-flow.
+    private volatile bool _speakProgress = true;
+    public bool SpeakProgress
+    {
+        get => _speakProgress;
+        set => _speakProgress = value;
+    }
+
     // Checklist items belonging to steps this run SKIPPED — a step that failed and whose
     // FailurePolicy let the flow continue, a step skipped by the dependency gate, a step left
     // alone by its LeaveAloneWhen rule, or a step whose TargetValueProvider had no value
@@ -136,6 +148,14 @@ public class FlowManager<TExec, TState>
         _announcer = announcer;
         // A step that waits inside the executor holds on the flow's Pause too.
         _executor.AttachFlowPause(WaitWhilePausedAsync);
+        // And a wait line it speaks itself is a step-by-step line too (the iFly's engine-start waits).
+        _executor.AttachFlowProgressSpeech(() => SpeakProgress);
+    }
+
+    // A step-by-step line: queued, and dropped while "Speak flow progress" is off.
+    private void AnnounceProgress(string text)
+    {
+        if (SpeakProgress) _announcer.Announce(text);
     }
 
     // -----------------------------------------------------------------------
@@ -258,7 +278,7 @@ public class FlowManager<TExec, TState>
                 // Check if step is already in the desired state — skip gracefully
                 if (step.SkipCondition != null && _state.IsAvailable && step.SkipCondition(_state))
                 {
-                    _announcer.Announce($"Already set: {step.AnnounceText}");
+                    AnnounceProgress($"Already set: {step.AnnounceText}");
                     Log.Debug("FO", $"{flow.Id}.{step.Id}: already set");
                     StepCompleted?.Invoke(flow, step, i);
                     foreach (var itemId in step.LinkedChecklistItemIds)
@@ -443,7 +463,7 @@ public class FlowManager<TExec, TState>
                 case FlowStepActionType.WaitSeconds:
                 {
                     int total = step.WaitSeconds;
-                    _announcer.Announce($"Waiting {total} seconds: {step.AnnounceText}");
+                    AnnounceProgress($"Waiting {total} seconds: {step.AnnounceText}");
                     await Task.Delay(TimeSpan.FromSeconds(total), ct);
                     return StepOutcome.Done;
                 }
@@ -453,7 +473,7 @@ public class FlowManager<TExec, TState>
                     if (step.ConditionFieldName == null || step.Condition == null)
                         return StepOutcome.Done; // No condition defined — treat as complete
 
-                    _announcer.Announce($"Waiting for: {step.AnnounceText}");
+                    AnnounceProgress($"Waiting for: {step.AnnounceText}");
                     // Read at 0, 1, … TimeoutSeconds: the last read is AT the timeout, after its own
                     // pause check. Ending on the count after the last 1 s delay, a Pause pressed in
                     // that second still timed the wait out under "Paused", and a condition that came
@@ -499,7 +519,7 @@ public class FlowManager<TExec, TState>
                         return StepOutcome.Failed;
                     }
 
-                    _announcer.Announce(step.AnnounceText);
+                    AnnounceProgress(step.AnnounceText);
                     bool sent;
                     _inExecutorStep = true;
                     try { sent = await _executor.ExecuteStepAsync(step, ct); }

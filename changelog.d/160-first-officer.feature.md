@@ -16,4 +16,6 @@ landing lights at 10,000 feet and sets the altimeters at the transition (both ca
 Settings). The new First Officer tab in Settings also offers, each off until you turn it on, the
 seat belt signs, the center fuel pumps on the PMDG jets and the iFly, the flaps on the FlyByWire
 jets and the A330, and, on every aircraft, gear up after takeoff, gear down on approach and the
-autopilot engaged at a height you choose.
+autopilot engaged at a height you choose. Untick "Speak flow progress" there for quieter flows:
+the step-by-step lines stop, while Captain actions, skipped or failed steps and "flow complete"
+are still spoken.

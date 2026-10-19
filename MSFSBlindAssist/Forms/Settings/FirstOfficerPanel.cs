@@ -21,6 +21,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
     private CheckBox autoLights10kCheck = null!;
     private CheckBox autoAltimetersCheck = null!;
     private CheckBox autoCenterPumpsCheck = null!;
+    private CheckBox speakFlowProgressCheck = null!;
     private Label autoSeatbeltLabel = null!;
     private ComboBox autoSeatbeltCombo = null!;
     private Label gpwsTestLabel = null!;
@@ -167,12 +168,21 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
             AccessibleDescription = "On the PMDG 737 and 777 and the iFly MAX8, turn the center tank fuel pumps on during ground setup when center fuel is loaded, and off when the center tank runs dry."
         };
 
+        speakFlowProgressCheck = new CheckBox
+        {
+            Text = "Speak flow progress",
+            Location = new Point(20, 405),
+            AutoSize = true,
+            AccessibleName = "Speak flow progress",
+            AccessibleDescription = "Speak each step as a flow runs. When off, a flow speaks only Captain actions, steps it skipped or could not complete, and when it starts and completes."
+        };
+
         Controls.AddRange(new Control[]
         {
             titleLabel, autoGearUpCheck, autoGearDownCheck, autoFlapsCheck, autoApCheck,
             apAltitudeLabel, apAltitudeText, autoLights10kCheck, autoAltimetersCheck,
             autoSeatbeltLabel, autoSeatbeltCombo, gpwsTestLabel, gpwsTestCombo,
-            autoCenterPumpsCheck
+            autoCenterPumpsCheck, speakFlowProgressCheck
         });
     }
 
@@ -192,6 +202,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         gpwsTestLabel.TabIndex = 11;
         gpwsTestCombo.TabIndex = 12;
         autoCenterPumpsCheck.TabIndex = 13;
+        speakFlowProgressCheck.TabIndex = 14;
     }
 
     public void LoadFrom(UserSettings settings)
@@ -204,6 +215,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         autoLights10kCheck.Checked = settings.FOAutoLights10kEnabled;
         autoAltimetersCheck.Checked = settings.FOAutoAltimetersEnabled;
         autoCenterPumpsCheck.Checked = settings.FOAutoCenterPumpsEnabled;
+        speakFlowProgressCheck.Checked = settings.FOSpeakFlowProgress;
         autoSeatbeltCombo.SelectedIndex = Math.Clamp(settings.FOAutoSeatbeltMode, 0, 2);
         gpwsTestCombo.SelectedIndex = settings.FOGpws737LongTest ? 1 : 0;
     }
@@ -231,6 +243,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
         settings.FOAutoLights10kEnabled = autoLights10kCheck.Checked;
         settings.FOAutoAltimetersEnabled = autoAltimetersCheck.Checked;
         settings.FOAutoCenterPumpsEnabled = autoCenterPumpsCheck.Checked;
+        settings.FOSpeakFlowProgress = speakFlowProgressCheck.Checked;
         settings.FOAutoSeatbeltMode = autoSeatbeltCombo.SelectedIndex < 0 ? 0 : autoSeatbeltCombo.SelectedIndex;
         settings.FOGpws737LongTest = gpwsTestCombo.SelectedIndex == 1;
     }

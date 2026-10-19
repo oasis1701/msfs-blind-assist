@@ -23,6 +23,15 @@ public interface IFoActionExecutor
     void AttachFlowPause(Func<CancellationToken, Task> waitWhilePaused) { }
 
     /// <summary>
+    /// The flow's "Speak flow progress" setting, handed over once by its FlowManager and read at
+    /// each line: false while the pilot has turned the step-by-step lines off. An executor that
+    /// speaks a step-by-step line of its own (the iFly's "Waiting for engine 1 bowed rotor
+    /// motoring to finish.") drops it while this reads false; a write that did not take, or a
+    /// result such as the Fenix T.O CONFIG verdict, always speaks. Default: ignored.
+    /// </summary>
+    void AttachFlowProgressSpeech(Func<bool> speaksProgress) { }
+
+    /// <summary>
     /// A flow was stopped part-way (Stop Flow, another flow started, the window closed, or a step
     /// whose failure stops the flow); the run's Stop token is cancelled by then. An executor
     /// whose flow can stop between two steps it must never be left between (an engine start

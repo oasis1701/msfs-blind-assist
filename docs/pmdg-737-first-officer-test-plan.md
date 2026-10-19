@@ -1175,6 +1175,15 @@ aircraft's plans point here for it.
     during the test, restarting MSFSBA before the second test, and repeat both on the PMDG 737 with
     Preflight's weather radar test. Closing the window during the test may hold MSFSBA for about
     half a second while the radar is put back.
+13. **"Speak flow progress" off keeps flows quiet but not silent (2026-10-19).** In Settings, First
+    Officer, untick "Speak flow progress" and press OK. On any aircraft, from cold and dark, start
+    the first flow with Enter on the flow list: you hear "… flow started", then no step lines, no
+    "Already set" and no "Waiting for" — only "Captain action required: …" lines, any "Skipping: …"
+    or "Timed out waiting for: …", and "… flow complete" at the end. Arrow into the Steps list
+    while a flow runs: the highlight stays where you put it, and NVDA reads nothing as the steps go
+    by, except perhaps the row you are on, once, when its step gets its mark. Tick the setting again mid-flow: the next step is spoken as before. On the iFly, an engine
+    start with bowed rotor motoring is quiet with it unticked, and says "Waiting for engine N bowed
+    rotor motoring to finish." with it ticked.
 
 A Pause in the last second of a wait (it once timed the wait out under "Paused") and the stop
 clean-up on a Stop or a failed step are pinned by unit tests; they need no step of their own here.

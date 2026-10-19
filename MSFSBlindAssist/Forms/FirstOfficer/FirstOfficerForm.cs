@@ -160,6 +160,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         _flows       = profile.BuildFlows();
         _checklistMgr = new ChecklistManager<TExec, TState>(_stateEval, _actionExec, _checklistGroups);
         _flowMgr     = new FlowManager<TExec, TState>(_stateEval, _actionExec, _checklistMgr, announcer);
+        _flowMgr.SpeakProgress = settings.FOSpeakFlowProgress;
         _flightPhaseMon = profile.CreatePhaseMonitor(_actionExec, _stateEval, announcer);
         _flightPhaseMon.AutoLights10kEnabled = settings.FOAutoLights10kEnabled;
         _flightPhaseMon.AutoAltimetersEnabled = settings.FOAutoAltimetersEnabled;
@@ -319,6 +320,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     public void ApplySettings()
     {
         _foAutoMgr.AutoFlapsEnabled    = _settings.FOAutoFlapsEnabled;
+        _flowMgr.SpeakProgress         = _settings.FOSpeakFlowProgress;
         _flightPhaseMon.AutoLights10kEnabled = _settings.FOAutoLights10kEnabled;
         _flightPhaseMon.AutoAltimetersEnabled = _settings.FOAutoAltimetersEnabled;
         _flightPhaseMon.AutoSeatbeltMode = (FoSeatbeltMode)_settings.FOAutoSeatbeltMode;
@@ -635,8 +637,8 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         _stopFlowBtn     = MakeButton("Stop Flow",     "Stop and cancel the running flow", StopFlow);
         _loadSimBriefBtn = MakeButton("Load SimBrief", "Load SimBrief flight plan and set transition altitudes", LoadSimBrief);
 
-        // A "Speak flow progress" checkbox sat here until 2026-09: nothing ever read it,
-        // so unticking it silenced nothing. Removed rather than wired up (owner decision).
+        // "Speak flow progress" lives in Settings > First Officer (FOSpeakFlowProgress), not here:
+        // the unwired checkbox that sat here until 2026-09 silenced nothing.
         btnPanel.Controls.AddRange(new Control[] {
             _startFlowBtn, _pauseResumeBtn, _stopFlowBtn, _loadSimBriefBtn });
         layout.Controls.Add(btnPanel, 0, 3);
@@ -1299,8 +1301,10 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         if (InvokeRequired) { Invoke(() => OnStepStarted(flow, step, index)); return; }
         _currentStepBox.Text = $"Step {index + 1}: {step.Label}";
         // Only the running flow's own rows: selecting row N of a flow the pilot is browsing
-        // would point at a step that is not running.
-        if (ReferenceEquals(flow, _markedFlow) && ShowsMarkedFlow)
+        // would point at a step that is not running. Not while flow progress is silenced: with
+        // focus in the Steps list, the moved selection is read out, every step, cutting off
+        // whatever the screen reader was saying.
+        if (ReferenceEquals(flow, _markedFlow) && ShowsMarkedFlow && _flowMgr.SpeakProgress)
             HighlightFlowStep(index);
     }
 

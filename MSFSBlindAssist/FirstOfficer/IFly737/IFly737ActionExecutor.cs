@@ -167,6 +167,14 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
 
     public void AttachFlowPause(Func<CancellationToken, Task> waitWhilePaused) => _waitWhilePaused = waitWhilePaused;
 
+    // The flow's "Speak flow progress" setting (AttachFlowProgressSpeech): a start wait's bowed
+    // rotor line is a step-by-step line, dropped while it reads false.
+    private Func<bool> _speaksFlowProgress = () => true;
+
+    public void AttachFlowProgressSpeech(Func<bool> speaksProgress) => _speaksFlowProgress = speaksProgress;
+
+    internal bool SpeaksFlowProgress => _speaksFlowProgress();
+
     /// <summary>THE one place a pseudo-key is wired to its handler. <see cref="PseudoKeys"/>
     /// and <see cref="IsPseudoKey"/> are both DERIVED from this map's keys rather than
     /// spelled out separately, closing the gap a review found: PseudoKeys used to be a
@@ -717,7 +725,7 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
                     if (!brmSpoken)
                     {
                         brmSpoken = true;
-                        AnnounceQueuedOnUi(BrmWaitText(wait.Engine));
+                        if (SpeaksFlowProgress) AnnounceQueuedOnUi(BrmWaitText(wait.Engine));
                     }
                 }
                 var verdict = JudgeStartWait(StartWaitDone(wait, state.GetValue(wait.Field), state.IsBowedRotorMotoring(wait.Engine)),

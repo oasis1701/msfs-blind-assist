@@ -295,6 +295,11 @@ public class UserSettings
         // behavior before this toggle existed. Off, the FO only reminds (FO-23).
         public bool FOAutoAltimetersEnabled { get; set; } = true;
 
+        // "Speak flow progress": a flow speaks each step as it goes. Default ON — the behavior
+        // before this toggle existed. Off, only the step-by-step lines go quiet; Captain actions,
+        // skips, timeouts, failures and "flow complete" still speak (FlowManager.SpeakProgress).
+        public bool FOSpeakFlowProgress { get; set; } = true;
+
         // PMDG 737/777 center-tank fuel pump auto-management. Default OFF (F11): opt-in like
         // every other FO automation, it actuates a safety-relevant switch and speaks unprompted,
         // and it has a long defect history — it should not be on for users who never asked.
