@@ -131,6 +131,8 @@ What each one includes (per tank, centre of gravity) depends on the aircraft; se
 - **Output Ctrl+H** — Turn [Hand Fly Mode](takeoff-climb-and-cruise.md#hand-fly) on or off.
 - **Output Ctrl+V** — Turn [Visual Guidance](approach-and-landing.md#visual-guidance) on or off. It needs a destination runway, but not Hand Fly mode.
 - **Output Ctrl+T** — Turn [Takeoff Assist](takeoff-climb-and-cruise.md#takeoff-assist) on or off.
+- **Output Ctrl+F** — Turn the [Waypoint Flight Director](takeoff-climb-and-cruise.md#waypoint-fd) on or off.
+- **Output Ctrl+K** — Turn the rudder coordination cue on or off.
 
 ### Output: windows and planning {#output-windows-and-planning}
 

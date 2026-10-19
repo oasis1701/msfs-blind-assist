@@ -532,13 +532,14 @@ From the **Track Fix Window**:
 1. Press Input Shift+F. The Track Fix Window opens with the focus in **Waypoint Name**.
 2. Type the waypoint's name, for example DET.
 3. Tab to **Tracking Slot** and choose Slot 1 to Slot 5.
-4. Tab to **Track** and press Space.
+4. If you will fly to it with the [Waypoint Flight Director](takeoff-climb-and-cruise.md#waypoint-fd), the next fields are for it, and all are optional: **Crossing Altitude (feet MSL)**, **Altitude Constraint** (None, At, At or above, At or below, Between), **Upper Altitude** (only for Between), **Course to track through fix (magnetic)** and **Speed restriction (knots indicated)**.
+5. Tab to **Track** and press Space.
 
 If there is only one waypoint with that name, BA says *"Waypoint DET tracked in slot 1"* and the window closes. Many waypoint names are used more than once around the world. If there are several, BA says, for example, *"3 waypoints found for DET, select one"*, and shows a list titled *"Multiple waypoints found. Select one:"*. Each entry gives the name, region and distance from you, for example "DET - Region EG - 23.4 NM", with the nearest first. Arrow to the right one and press Enter (or press **Select**).
 
 If the name is not in the database, BA says *"Waypoint DET not found"*. Press Escape to close the window without tracking anything. The window searches the navigation database's named waypoints; to track a waypoint on your route, the Route Viewer method below is often easier.
 
-From the **Route Viewer** in the Flight Planning window: arrow to the waypoint, press the Applications key (or Shift+F10), and choose a Track Slot.
+From the **Route Viewer** in the Flight Planning window: arrow to the waypoint, press the Applications key (or Shift+F10), and choose a Track Slot. The Track Fix Window then opens filled with the waypoint, the slot and the restriction and course from the navigation data, for you to check and Track.
 
 ### Hearing a tracked waypoint {#hearing-a-tracked-waypoint}
 
