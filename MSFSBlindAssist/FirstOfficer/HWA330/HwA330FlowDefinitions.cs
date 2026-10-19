@@ -390,7 +390,7 @@ public static class HwA330FlowDefinitions
     private static Flow BuildTaxi() => new()
     {
         Id = "TAXI", Name = "Taxi",
-        Description = "Autobrake MAX, weather radar and predictive windshear, transponder AUTO, cabin call, a check of the takeoff memo items, then the takeoff config test.",
+        Description = "Autobrake MAX, weather radar and predictive windshear, transponder AUTO, a check of the takeoff memo items, then the takeoff config test.",
         RelatedChecklistGroupIds = new[] { "TAXI" },
         Steps = new()
         {
@@ -410,11 +410,6 @@ public static class HwA330FlowDefinitions
                 s => s.GetValue("FO_WXR_ON_AUTO") > 0.5), "TXC_WXR"),
             Done(Skip(SW("TX_XPDRAUTO", "Transponder: AUTO", "A32NX_TRANSPONDER_MODE", 1),
                 s => s.IsPosition("A32NX_TRANSPONDER_MODE", 1)), "TX_XPDRAUTO"),
-            // ★ Cabin call for takeoff (spec §4): the ONE call (owner, 2026-10-09), which makes
-            // FlyByWire's memo show CABIN READY. Also the memo's "Cabin: READY", a line the pilot
-            // confirms: a call that could not be sent keeps it open.
-            Also(Done(SW("TX_CABIN", "Advise the cabin crew for takeoff (call all)", "CABIN_CALL_ALL", 1), "TX_CABIN"),
-                "TXC_MEMO_CABIN"),
             // Read-only check of the takeoff memo items set earlier (FO_TAXI_MEMO_OK): the ground
             // spoilers armed and a takeoff flap handle (After Start sets both) and the memo's seat
             // belts on (Before Start's seat belts, Preflight's no smoking). 5 s, skipped aloud on
@@ -440,10 +435,16 @@ public static class HwA330FlowDefinitions
     private static Flow BuildLineup() => new()
     {
         Id = "LINEUP", Name = "Line-up",
-        Description = "TCAS TA/RA, strobes, runway turn-off, nose and landing lights, then the takeoff clearance reminder.",
+        Description = "Cabin call, TCAS TA/RA, strobes, runway turn-off, nose and landing lights, then the takeoff clearance reminder.",
         RelatedChecklistGroupIds = new[] { "LINEUP" },
         Steps = new()
         {
+            // ★ Cabin call for takeoff (spec §4): the ONE call, here at line-up since 2026-10-19
+            // (owner; in Taxi from 2026-10-09), which makes FlyByWire's memo show CABIN READY. Also
+            // the Line-up Checklist's "Cabin: READY", a line the pilot confirms: a call that could
+            // not be sent keeps it open.
+            Also(Done(SW("LU_CABIN", "Advise the cabin crew for takeoff (call all)", "CABIN_CALL_ALL", 1), "LU_CABIN"),
+                "LUC_CABIN"),
             // Also the Line-up Checklist's "TCAS: TA/RA" (FO-6).
             Also(Done(Skip(SW("LU_TCAS", "TCAS: TA/RA", "A32NX_SWITCH_TCAS_POSITION", 2),
                 s => s.IsPosition("A32NX_SWITCH_TCAS_POSITION", 2)), "LU_TCAS"), "LUC_TCAS"),

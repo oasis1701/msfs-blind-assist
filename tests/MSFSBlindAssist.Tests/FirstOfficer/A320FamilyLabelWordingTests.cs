@@ -46,7 +46,7 @@ public class A320FamilyLabelWordingTests
         {
             ["TXC_MEMO_AUTOBRK"] = "Autobrake: MAX",
             ["TXC_MEMO_SIGNS"] = signs,
-            ["TXC_MEMO_CABIN"] = "Cabin: READY",
+            ["LUC_CABIN"] = "Cabin: READY",   // the takeoff memo's cabin line, in Line-up since 2026-10-19
             ["TXC_MEMO_SPLRS"] = "Spoilers: ARMED",
             ["TXC_MEMO_FLAPS"] = "Flaps: T.O",
             ["TXC_MEMO_TOCFG"] = "T.O config: NORMAL",

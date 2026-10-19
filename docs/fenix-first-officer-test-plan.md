@@ -60,12 +60,12 @@ Start cold-and-dark at a gate, MSFSBA connected, Fenix FO window open.
    still shows done (the write is not verified).
 7. **Taxi, then Line-up** (two flows since 2026-10-09; Part H). **Taxi**: autobrake MAX, weather
    radar → SYSTEM 1, predictive windshear AUTO, the read-only check "Radar and predictive
-   windshear: ON and AUTO", transponder AUTO, the cabin call, the read-only check "Spoilers,
+   windshear: ON and AUTO", transponder AUTO, the read-only check "Spoilers,
    flaps and seat belts: set for takeoff", then the **takeoff config test**, last (`S_ECAM_TO` — a
    press-HOLD-release: held ~1.5 s, then the result is spoken — "Takeoff config normal." on a good
    config / "Takeoff config: check configuration." on a bad one — then the button RELEASES back to
-   0; see the momentary press-release regression section below). **Line-up**: TCAS TA/RA, strobes
-   ON, runway turnoff lights ON, nose light TAKEOFF, **landing lights ON (both)**, then the Captain
+   0; see the momentary press-release regression section below). **Line-up**: the cabin call (in
+   Taxi until 2026-10-19), TCAS TA/RA, strobes ON, runway turnoff lights ON, nose light TAKEOFF, **landing lights ON (both)**, then the Captain
    reminder "Obtain takeoff clearance".
 8. Confirm checklist items **auto-tick** as each flow step lands — open the Checklists tab
    alongside the Flows tab (or check it immediately after each flow) and verify the matching
@@ -163,10 +163,9 @@ speaks the value the First Officer reads when you tick it:
   Rudder trim: NEUTRAL (a line you confirm: the Fenix rudder-trim var has never been measured).
 - **Taxi Checklist**: Flight controls: CHECKED. Flaps setting: SET (live). Radar
   and predictive windshear: ON and AUTO. Engine mode selector: SET (live). Then the takeoff memo,
-  one line each: autobrake: MAX, signs: ON, cabin: READY, spoilers: ARMED, flaps: T.O, T.O
-  config: NORMAL.
-- **Line-up Checklist**: Takeoff runway: CONFIRMED. TCAS: TA/RA (live). Packs 1 and 2:
-  SET (live).
+  one line each: autobrake: MAX, signs: ON, spoilers: ARMED, flaps: T.O, T.O config: NORMAL.
+- **Line-up Checklist**: Takeoff runway: CONFIRMED. Cabin: READY (the takeoff memo's cabin
+  line, here with the cabin call since 2026-10-19). TCAS: TA/RA (live). Packs 1 and 2: SET (live).
 - **Approach Checklist**: Baro reference: SET (live). Seat belts: ON. Minimum: SET.
   Autobrake: SET (live, read only — you set it). Engine mode selector: SET (live).
 - **Landing Checklist**: the landing memo, one line each: landing gear: DOWN, signs: ON,
@@ -321,15 +320,16 @@ step delivered it ([FOA-8](invariants/first-officer-airbus.md#foa-8)). One run a
 1. **Taxi (do first).** With the takeoff flaps set (a SimBrief plan loaded before After Start, or
    the lever at 1 to 3), start it with Run Related Flow from the Taxi Checklist. Listen for, in
    order: autobrake MAX, weather radar SYSTEM 1, predictive windshear AUTO, "Radar and predictive
-   windshear: ON and AUTO", transponder AUTO, the cabin call, "Spoilers, flaps and seat belts: set
-   for takeoff", and the takeoff config test as the last step before "Taxi flow complete". Strobes,
-   landing lights and TCAS must not change. Then read the Taxi Checklist: every line is ticked.
-   **Observation to report:** what the Fenix's own ECAM takeoff memo shows on its cabin line after
-   the call; it has never been measured.
+   windshear: ON and AUTO", transponder AUTO, "Spoilers, flaps and seat belts: set for takeoff",
+   and the takeoff config test as the last step before "Taxi flow complete". No cabin chime;
+   strobes, landing lights and TCAS must not change. Then read the Taxi Checklist: every line is
+   ticked, and it has no cabin line.
 2. **Line-up.** When cleared onto the runway, start it with Run Related Flow from the Line-up
-   Checklist: TCAS TA/RA, strobes ON, runway turnoff lights ON, nose light TAKEOFF, landing lights
-   ON (both), then "Captain action required: Obtain takeoff clearance". Read the Line-up
-   Checklist: every line is ticked.
+   Checklist: the cabin call first (the chime sounds; since 2026-10-19), then TCAS TA/RA, strobes
+   ON, runway turnoff lights ON, nose light TAKEOFF, landing lights ON (both), then "Captain
+   action required: Obtain takeoff clearance". Read the Line-up Checklist: every line is ticked,
+   "Cabin: READY" among them. **Observation to report:** what the Fenix's own ECAM takeoff memo
+   shows on its cabin line before and after the call; it has never been measured.
 3. **Abnormal config (once).** Put the flaps back to 0. Starting a flow does not reset a
    checklist, so on the Checklists tab select the Taxi Checklist and press Reset Section (it
    un-ticks the whole list; within a second the lines that read right, such as "Spoilers: ARMED" and

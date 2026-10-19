@@ -36,9 +36,9 @@ public abstract class A320FamilyReadbackLinkBehaviourTests<TExec, TState>
     {
         ("BEFORE_START", new[] { "BS_BEACON" }, new[] { "BS_BEACON", "BSC_BEACON" }),
         ("AFTER_START", new[] { "AS_RUDDERTRIM" }, new[] { "AS_RUDDERTRIM", "ASC_RUDDER" }),
-        ("TAXI", new[] { "TX_AUTOBRAKE", "TX_CABIN", "TX_CONFIG" },
-            new[] { "TX_AUTOBRAKE", "TXC_MEMO_AUTOBRK", "TX_CABIN", "TXC_MEMO_CABIN", "TX_CONFIG", "TXC_MEMO_TOCFG" }),
-        ("LINEUP", new[] { "LU_TCAS" }, new[] { "LU_TCAS", "LUC_TCAS" }),
+        ("TAXI", new[] { "TX_AUTOBRAKE", "TX_CONFIG" },
+            new[] { "TX_AUTOBRAKE", "TXC_MEMO_AUTOBRK", "TX_CONFIG", "TXC_MEMO_TOCFG" }),
+        ("LINEUP", new[] { "LU_CABIN", "LU_TCAS" }, new[] { "LU_CABIN", "LUC_CABIN", "LU_TCAS", "LUC_TCAS" }),
         ("APPROACH", new[] { "AP_SEATBELTS" }, new[] { "AP_SEATBELTS", "APC_SEATBELTS" }),
         ("LANDING", new[] { "LD_SPOILERS_ARM" }, new[] { "LD_SPOILERS_ARM", "LDC_MEMO_SPLRS" }),
         ("AFTER_LANDING", new[] { "AL_WXR_OFF", "AL_PWS_OFF" }, new[] { "AL_WXR_OFF", "AL_PWS_OFF" }),
@@ -406,7 +406,7 @@ public abstract class A320FamilyReadbackLinkBehaviourTests<TExec, TState>
 
     /// <summary>The Line-up flow's TCAS step with TCAS already at TA/RA: it ticks the Line-up
     /// Checklist's "TCAS: TA/RA" itself, and the finished flow ticks and latches the rest of that list
-    /// ("Takeoff runway: CONFIRMED", "Packs 1 and 2: SET", lines the pilot confirms).</summary>
+    /// ("Takeoff runway: CONFIRMED", "Cabin: READY", "Packs 1 and 2: SET", lines the pilot confirms).</summary>
     [Fact]
     public async Task A_line_up_run_ticks_TCAS_from_its_step_and_latches_the_line_up_checklist()
     {

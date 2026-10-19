@@ -27,8 +27,9 @@ public class FbwA320ReadbackTests
         ("BEFORE_START_CL", new[] { "BSC_PARKBRK", "BSC_TOSPEEDS", "BSC_WINDOWS", "BSC_BEACON", "BSC_ACARS" }),
         ("AFTER_START_CL", new[] { "ASC_ANTIICE", "ASC_ECAMSTS", "ASC_PITCH", "ASC_RUDDER" }),
         ("TAXI_CL", new[] { "TXC_FCTEST", "TXC_FLAPS", "TXC_WXR", "TXC_ENGMODE", "TXC_MEMO_AUTOBRK",
-                            "TXC_MEMO_SIGNS", "TXC_MEMO_CABIN", "TXC_MEMO_SPLRS", "TXC_MEMO_FLAPS", "TXC_MEMO_TOCFG" }),
-        ("LINEUP_CL", new[] { "LUC_RUNWAY", "LUC_TCAS", "LUC_PACKS" }),
+                            "TXC_MEMO_SIGNS", "TXC_MEMO_SPLRS", "TXC_MEMO_FLAPS", "TXC_MEMO_TOCFG" }),
+        // LUC_CABIN, the memo's "Cabin: READY", moved here from Taxi with the cabin call (owner, 2026-10-19).
+        ("LINEUP_CL", new[] { "LUC_RUNWAY", "LUC_CABIN", "LUC_TCAS", "LUC_PACKS" }),
         ("APPROACH_CL", new[] { "APC_BARO", "APC_SEATBELTS", "APC_MINIMUM", "APC_AUTOBRAKE", "APC_ENGMODE" }),
         ("LANDING_CL", new[] { "LDC_MEMO_GEAR", "LDC_MEMO_SIGNS", "LDC_MEMO_CABIN", "LDC_MEMO_SPLRS", "LDC_MEMO_FLAPS" }),
         ("AFTER_LANDING_CL", new[] { "ALC_WXR" }),
@@ -93,7 +94,7 @@ public class FbwA320ReadbackTests
                                    "APC_ENGMODE", "LDC_MEMO_FLAPS", "PKC_PARKBRK" })
             Assert.NotNull(items[id].LiveValue);
         foreach (var id in new[] { "CPC_PINS", "BSC_WINDOWS", "ASC_ECAMSTS", "ASC_PITCH", "TXC_FCTEST",
-                                   "TXC_MEMO_CABIN", "TXC_MEMO_TOCFG", "LUC_RUNWAY", "APC_MINIMUM",
+                                   "LUC_CABIN", "TXC_MEMO_TOCFG", "LUC_RUNWAY", "APC_MINIMUM",
                                    "LDC_MEMO_CABIN", "SCC_EFBS" })
             Assert.False(items[id].IsAutoDetectable, id);
     }

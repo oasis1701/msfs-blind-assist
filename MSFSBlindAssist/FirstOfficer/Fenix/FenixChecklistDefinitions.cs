@@ -299,9 +299,6 @@ public static class FenixChecklistDefinitions
                 "S_WR_PRED_WS", v => v > 0.5, (e, _) => e.Set("S_WR_PRED_WS", 1)),     // [RADAR]
             Auto("TX_XPDRAUTO", "TAXI", "Transponder: AUTO",
                 "S_XPDR_OPERATION", v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("S_XPDR_OPERATION", 1)),
-            // Advise the cabin crew: hit CALL ALL and release (momentary chime).
-            ActionManual("TX_CABIN", "TAXI", "Advise the cabin crew for takeoff (call all)",
-                (e, _) => e.CabinCall("S_OH_CALLS_ALL")),
             // Level-triggered test: TakeoffConfigTest holds 1.5 s, announces the result
             // ("Takeoff config normal." / "check configuration."), then RELEASES — a plain
             // pulse left the button stuck at 1 and re-fired the config check after landing.
@@ -315,6 +312,10 @@ public static class FenixChecklistDefinitions
         Id = "LINEUP", Name = "Line-up",
         Items = new()
         {
+            // Advise the cabin crew: hit CALL ALL and release (momentary chime). At line-up since
+            // 2026-10-19 (owner; in Taxi from 2026-10-09).
+            ActionManual("LU_CABIN", "LINEUP", "Advise the cabin crew for takeoff (call all)",
+                (e, _) => e.CabinCall("S_OH_CALLS_ALL")),
             Auto("LU_TCAS", "LINEUP", "TCAS: TA/RA",
                 "S_XPDR_MODE", v => Math.Abs(v - 2) < 0.5, (e, _) => e.Set("S_XPDR_MODE", 2)),
             Auto("LU_STROBE", "LINEUP", "Strobes: ON",
@@ -636,7 +637,6 @@ public static class FenixChecklistDefinitions
             // switch at Auto or On). S_OH_SIGNS_SMOKING is 0 Off / 1 Auto / 2 On.
             Auto("TXC_MEMO_SIGNS", "TAXI_CL", "Signs: ON",
                 "S_OH_SIGNS", v => v > 0.5, new[] { "S_OH_SIGNS_SMOKING" }, action: null),
-            Reminder("TXC_MEMO_CABIN", "TAXI_CL", "Cabin: READY"),
             // A_FC_SPEEDBRAKE: 0 = ARMED.
             Auto("TXC_MEMO_SPLRS", "TAXI_CL", "Spoilers: ARMED",
                 "A_FC_SPEEDBRAKE", v => Math.Abs(v) < 0.5, action: null),
@@ -652,6 +652,9 @@ public static class FenixChecklistDefinitions
         Items = new()
         {
             Reminder("LUC_RUNWAY", "LINEUP_CL", "Takeoff runway: CONFIRMED"),
+            // The takeoff memo's cabin line, here since the cabin call moved to the Line-up flow
+            // (owner, 2026-10-19; FOA-8).
+            Reminder("LUC_CABIN", "LINEUP_CL", "Cabin: READY"),
             Auto("LUC_TCAS", "LINEUP_CL", "TCAS: TA/RA",
                 "S_XPDR_MODE", v => Math.Abs(v - 2) < 0.5, action: null,
                 live: s => AirbusReadbackFormat.Tcas(s.GetValue("S_XPDR_MODE"))),

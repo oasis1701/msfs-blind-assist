@@ -16,7 +16,8 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 /// (docs/invariants/first-officer-airbus.md#foa-8). Its action group sat between the Taxi and
 /// Line-up checklists, so the Taxi checklist asked for the radar, the autobrake, the config test
 /// and the cabin before the flow that sets them, and running that flow first lit the strobes and
-/// the landing lights while taxiing. Each flow now sits just above its own checklist, and a
+/// the landing lights while taxiing. The cabin call and its "Cabin: READY" line moved on from Taxi
+/// to Line-up on 2026-10-19 (owner). Each flow now sits just above its own checklist, and a
 /// finished run latches that checklist (FlowDefinition.CompletionGroupIds). The links are pinned by
 /// A320FamilyReadbackLinkTests, the runs by A320FamilyReadbackLinkBehaviourTests. The file name says
 /// "RunwayEntry" for the Line-up flow on purpose: the taxi-steering rules load for the glob
@@ -29,24 +30,23 @@ public class A320FamilyTaxiAndRunwayEntryFlowTests
 
     private static readonly string[] TaxiSteps =
     {
-        "TX_AUTOBRAKE", "TX_WXR", "TX_PWS", "TX_WXR_PWS_CHECK", "TX_XPDRAUTO", "TX_CABIN", "TX_MEMO_CHECK", "TX_CONFIG",
+        "TX_AUTOBRAKE", "TX_WXR", "TX_PWS", "TX_WXR_PWS_CHECK", "TX_XPDRAUTO", "TX_MEMO_CHECK", "TX_CONFIG",
     };
 
     private static readonly string[] TaxiLabels =
     {
         "Autobrake: MAX", "Weather radar: SYSTEM 1", "Predictive windshear: AUTO",
         "Radar and predictive windshear: ON and AUTO", "Transponder: AUTO",
-        "Advise the cabin crew for takeoff (call all)", "Spoilers, flaps and seat belts: set for takeoff",
-        "Takeoff config test",
+        "Spoilers, flaps and seat belts: set for takeoff", "Takeoff config test",
     };
 
     private static readonly string[] LineupSteps =
-        { "LU_TCAS", "LU_STROBE", "LU_TURNOFF", "LU_NOSE_TO", "LU_LANDING_LT", "LU_CLEARANCE" };
+        { "LU_CABIN", "LU_TCAS", "LU_STROBE", "LU_TURNOFF", "LU_NOSE_TO", "LU_LANDING_LT", "LU_CLEARANCE" };
 
     private static readonly string[] LineupLabels =
     {
-        "TCAS: TA/RA", "Strobes: ON", "Runway turn-off lights: ON", "Nose light: TAKEOFF",
-        "Landing lights: ON", "Obtain takeoff clearance",
+        "Advise the cabin crew for takeoff (call all)", "TCAS: TA/RA", "Strobes: ON",
+        "Runway turn-off lights: ON", "Nose light: TAKEOFF", "Landing lights: ON", "Obtain takeoff clearance",
     };
 
     private sealed record FlowView(string Id, string Name, string[] Related, string[] Latches,
@@ -127,16 +127,25 @@ public class A320FamilyTaxiAndRunwayEntryFlowTests
         Assert.Equal(new[] { "LINEUP", "LINEUP_CL" }, lineup.Latches);
     }
 
-    // One cabin call, in Taxi (owner, 2026-10-09: on FlyByWire it makes the memo show CABIN READY),
-    // and no flight-controls prompt in either flow: the Taxi checklist's line is enough.
+    // One cabin call, the first step of Line-up (owner, 2026-10-19; in Taxi from 2026-10-09: on
+    // FlyByWire it makes the memo show CABIN READY), with the "Cabin: READY" line in the Line-up
+    // checklist, not the Taxi one; and no flight-controls prompt in either flow: the Taxi checklist's
+    // line is enough.
     [Theory]
     [MemberData(nameof(Aircraft))]
-    public void One_cabin_call_and_no_flight_controls_prompt(string aircraft)
+    public void One_cabin_call_at_line_up_and_no_flight_controls_prompt(string aircraft)
     {
-        var labels = Profile(aircraft).Flows.Where(f => f.Id is "TAXI" or "LINEUP")
-            .SelectMany(f => f.Labels).ToList();
+        var (flows, groups) = Profile(aircraft);
+        var labels = flows.Where(f => f.Id is "TAXI" or "LINEUP").SelectMany(f => f.Labels).ToList();
         Assert.Single(labels, l => l.Contains("cabin", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(flows.Single(f => f.Id == "TAXI").Labels,
+            l => l.Contains("cabin", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("LU_CABIN", flows.Single(f => f.Id == "LINEUP").Steps[0]);
         Assert.DoesNotContain(labels, l => l.Contains("flight control", StringComparison.OrdinalIgnoreCase));
+
+        var items = groups.ToDictionary(g => g.Id, g => g.Items);
+        Assert.DoesNotContain(items["TAXI_CL"], id => id.Contains("CABIN", StringComparison.Ordinal));
+        Assert.Contains("LUC_CABIN", items["LINEUP_CL"]);
     }
 
     // The action groups hold one line per step that acts, completed by that step (its own id).
@@ -145,7 +154,7 @@ public class A320FamilyTaxiAndRunwayEntryFlowTests
     public void The_action_groups_hold_a_line_for_each_step_that_acts(string aircraft)
     {
         var groups = Profile(aircraft).Groups.ToDictionary(g => g.Id, g => g.Items);
-        Assert.Equal(new[] { "TX_AUTOBRAKE", "TX_WXR", "TX_PWS", "TX_XPDRAUTO", "TX_CABIN", "TX_CONFIG" }, groups["TAXI"]);
+        Assert.Equal(new[] { "TX_AUTOBRAKE", "TX_WXR", "TX_PWS", "TX_XPDRAUTO", "TX_CONFIG" }, groups["TAXI"]);
         Assert.Equal(LineupSteps, groups["LINEUP"]);
     }
 }

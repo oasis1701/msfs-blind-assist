@@ -129,11 +129,11 @@ just the FO's own narration.
 6. **Taxi, then Line-up** (two flows since 2026-10-09; Part H). **Taxi**, while taxiing: autobrake
    MAX (confirm it actually arms — see risk item 3 above), weather radar SYSTEM 1, predictive
    windshear AUTO, the read-only check "Radar and predictive windshear: ON and AUTO", transponder
-   AUTO, **cabin notify: advise cabin for takeoff** (`CABIN_CALL_ALL` — confirm the chime sounds
-   once and stops, see risk item 6), the read-only check "Spoilers, flaps and seat belts: set for
+   AUTO, the read-only check "Spoilers, flaps and seat belts: set for
    takeoff", then the takeoff-config test, last (held ~2 s ECP button — confirm the FWC actually
    reports the test result, not just that the button was pressed). **Line-up**, when cleared onto
-   the runway: TCAS TA/RA, strobes ON, runway turn-off lights ON, nose light → T.O., landing
+   the runway: **cabin notify: advise cabin for takeoff** (`CABIN_CALL_ALL`, in Taxi until
+   2026-10-19 — confirm the chime sounds once and stops, see risk item 6), TCAS TA/RA, strobes ON, runway turn-off lights ON, nose light → T.O., landing
    lights ON. Captain: takeoff clearance.
 7. **After Takeoff**: ground spoilers DISARM, packs ON, turn-off lights OFF, then a read-only
    "Landing gear: UP" wait (up to 20 s, never writes) that passes only when the handle is up AND
@@ -209,10 +209,10 @@ speaks the value the First Officer reads when you tick it.
   trim: NEUTRAL (ticks itself from the FAC rudder trim, under 0.1 degree).
 - **Taxi Checklist**: Flight controls: CHECKED. Flaps setting: SET (live). Radar
   and predictive windshear: ON and AUTO (radar system 1 or 2). Engine mode selector: SET (live).
-  Then the takeoff memo, one line each: autobrake: MAX, seat belts: ON, cabin: READY, spoilers:
-  ARMED, flaps: T.O, T.O config: NORMAL.
-- **Line-up Checklist**: Takeoff runway: CONFIRMED. TCAS: TA/RA (live). Packs 1 and 2:
-  SET (live).
+  Then the takeoff memo, one line each: autobrake: MAX, seat belts: ON, spoilers: ARMED, flaps:
+  T.O, T.O config: NORMAL.
+- **Line-up Checklist**: Takeoff runway: CONFIRMED. Cabin: READY (the takeoff memo's cabin
+  line, here with the cabin call since 2026-10-19). TCAS: TA/RA (live). Packs 1 and 2: SET (live).
 - **Approach Checklist**: Baro reference: SET (live). Seat belts: ON. Minimum: SET.
   Autobrake: SET (live, read only — you set it). Engine mode selector: SET (live).
 - **Landing Checklist**: the landing memo, one line each: landing gear: DOWN (from the legs),
@@ -226,7 +226,7 @@ speaks the value the First Officer reads when you tick it.
 There is no Before Takeoff, After Takeoff or Departure Change checklist. The cabin lines are
 lines you confirm: the A32NX never reads them from the aircraft (FlyByWire's CABIN READY needs a
 CALLS press and resets at every flight-phase change), so a line ticks only when you tick it or,
-in the Taxi Checklist, when the Taxi flow has made the cabin call.
+in the Line-up Checklist, when the Line-up flow has made the cabin call.
 
 **Expected, not a defect: flows complete their read-back** (owner decision 2026-10-06, made
 honest 2026-10-09, FOA-8). Six read-backs show complete as soon as their flow finishes: the
@@ -425,14 +425,15 @@ step delivered it ([FOA-8](invariants/first-officer-airbus.md#foa-8)). One run a
 1. **Taxi (do first).** With the takeoff flaps set (a SimBrief plan loaded before After Start, or
    the lever at 1 to 3), start it with Run Related Flow from the Taxi Checklist. Listen for, in
    order: autobrake MAX, weather radar SYSTEM 1, predictive windshear AUTO, "Radar and predictive
-   windshear: ON and AUTO", transponder AUTO, the cabin call, "Spoilers, flaps and seat belts: set
-   for takeoff", and the takeoff config test as the last step before "Taxi flow complete". Strobes,
-   landing lights and TCAS must not change. Then read the Taxi Checklist: every line is ticked, and
-   the ECAM memo shows CABIN READY.
+   windshear: ON and AUTO", transponder AUTO, "Spoilers, flaps and seat belts: set for takeoff",
+   and the takeoff config test as the last step before "Taxi flow complete". No cabin chime;
+   strobes, landing lights and TCAS must not change. Then read the Taxi Checklist: every line is
+   ticked, and it has no cabin line. The ECAM takeoff memo's CABIN line is expected not ready yet.
 2. **Line-up.** When cleared onto the runway, start it with Run Related Flow from the Line-up
-   Checklist: TCAS TA/RA, strobes ON, runway turn-off lights ON, nose light T.O., landing lights ON,
-   then "Captain action required: Obtain takeoff clearance". Read the Line-up Checklist: every line
-   is ticked.
+   Checklist: the cabin call first (the chime sounds; since 2026-10-19), then TCAS TA/RA, strobes
+   ON, runway turn-off lights ON, nose light T.O., landing lights ON, then "Captain action
+   required: Obtain takeoff clearance". Read the Line-up Checklist: every line is ticked, "Cabin:
+   READY" among them, and the ECAM memo shows CABIN READY.
 3. **Abnormal config (once).** Put the flaps back to 0. Starting a flow does not reset a
    checklist, so on the Checklists tab select the Taxi Checklist and press Reset Section (it
    un-ticks the whole list; within a second the lines that read right, such as "Spoilers: ARMED" and

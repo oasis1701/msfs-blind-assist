@@ -22,10 +22,11 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 ///   After Start    AS_RUDDERTRIM     -> ASC_RUDDER        "Rudder trim: NEUTRAL" (the write sets it)
 ///   Taxi           TX_AUTOBRAKE      -> TXC_MEMO_AUTOBRK  "Autobrake: MAX"
 ///                  TX_WXR_PWS_CHECK  -> TXC_WXR           "Radar and predictive windshear: ON and AUTO"
-///                  TX_CABIN          -> TXC_MEMO_CABIN    "Cabin: READY" (a line the pilot confirms)
 ///                  TX_MEMO_CHECK     -> TXC_MEMO_SPLRS, TXC_MEMO_FLAPS, TXC_FLAPS, TXC_MEMO_SIGNS
 ///                  TX_CONFIG         -> TXC_MEMO_TOCFG    "T.O config: NORMAL"
-///   Line-up        LU_TCAS           -> LUC_TCAS          "TCAS: TA/RA"
+///   Line-up        LU_CABIN          -> LUC_CABIN         "Cabin: READY" (a line the pilot confirms;
+///                                                         in Taxi until 2026-10-19)
+///                  LU_TCAS           -> LUC_TCAS          "TCAS: TA/RA"
 ///   Approach       AP_SEATBELTS      -> APC_SEATBELTS     "Seat belts: ON"
 ///   Landing        LD_SPOILERS_ARM   -> LDC_MEMO_SPLRS    "Spoilers: ARMED" (the arm sets it)
 ///                  LD_MEMO_CHECK     -> LDC_MEMO_SIGNS, LDC_MEMO_FLAPS (A320FamilyLandingFlowTests)
@@ -85,7 +86,7 @@ public class A320FamilyReadbackLinkTests
             // ARMED"; the gear check, last, completes "Landing gear: DOWN" only.
             yield return new object?[] { aircraft, "LANDING", "LD_SPOILERS_ARM", "LD_SPOILERS_ARM", "LDC_MEMO_SPLRS" };
             yield return new object?[] { aircraft, "LANDING", "LD_GEAR_DOWN_CHECK", null, "LDC_MEMO_GEAR" };
-            // Taxi: every write names its own action line, and the three whose item the takeoff memo
+            // Taxi: every write names its own action line, and the two whose item the takeoff memo
             // reads name that read-back line too. Neither radar write names "Radar and predictive
             // windshear: ON and AUTO" (true only with both set): the read-only check after them does.
             yield return new object?[] { aircraft, "TAXI", "TX_AUTOBRAKE", "TX_AUTOBRAKE", "TXC_MEMO_AUTOBRK" };
@@ -93,9 +94,10 @@ public class A320FamilyReadbackLinkTests
             yield return new object?[] { aircraft, "TAXI", "TX_PWS", "TX_PWS", null };
             yield return new object?[] { aircraft, "TAXI", WxrOnCheck, null, WxrOnLine };
             yield return new object?[] { aircraft, "TAXI", "TX_XPDRAUTO", "TX_XPDRAUTO", null };
-            yield return new object?[] { aircraft, "TAXI", "TX_CABIN", "TX_CABIN", "TXC_MEMO_CABIN" };
             yield return new object?[] { aircraft, "TAXI", "TX_CONFIG", "TX_CONFIG", "TXC_MEMO_TOCFG" };
-            // Line-up: TCAS also names the read-back's "TCAS: TA/RA"; the lights name their own lines.
+            // Line-up: the cabin call (in Taxi until 2026-10-19) also names the read-back's "Cabin:
+            // READY" and TCAS its "TCAS: TA/RA"; the lights name their own lines.
+            yield return new object?[] { aircraft, "LINEUP", "LU_CABIN", "LU_CABIN", "LUC_CABIN" };
             yield return new object?[] { aircraft, "LINEUP", "LU_TCAS", "LU_TCAS", "LUC_TCAS" };
             yield return new object?[] { aircraft, "LINEUP", "LU_STROBE", "LU_STROBE", null };
             yield return new object?[] { aircraft, "LINEUP", "LU_TURNOFF", "LU_TURNOFF", null };

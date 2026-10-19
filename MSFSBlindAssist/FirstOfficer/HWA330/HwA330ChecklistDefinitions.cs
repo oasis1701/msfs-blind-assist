@@ -310,9 +310,6 @@ public static class HwA330ChecklistDefinitions
                 v => System.Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A32NX_SWITCH_RADAR_PWS_POSITION", 1)),
             Auto("TX_XPDRAUTO", "TAXI", "Transponder: AUTO", "A32NX_TRANSPONDER_MODE",
                 v => System.Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A32NX_TRANSPONDER_MODE", 1)),
-            // ★ Cabin call for takeoff.
-            ActionManual("TX_CABIN", "TAXI", "Advise the cabin crew for takeoff (call all)",
-                (e, _) => e.CabinCall()),
             // Takeoff config test — sim + source verified held ECP button (2026-07).
             ActionManual("TX_CONFIG", "TAXI", "Takeoff config test", (e, _) => e.TakeoffConfigTest()),
         }
@@ -326,6 +323,9 @@ public static class HwA330ChecklistDefinitions
         Id = "LINEUP", Name = "Line-up",
         Items = new()
         {
+            // ★ Cabin call for takeoff, at line-up since 2026-10-19 (owner; in Taxi from 2026-10-09).
+            ActionManual("LU_CABIN", "LINEUP", "Advise the cabin crew for takeoff (call all)",
+                (e, _) => e.CabinCall()),
             Auto("LU_TCAS", "LINEUP", "TCAS: TA/RA", "A32NX_SWITCH_TCAS_POSITION",
                 v => System.Math.Abs(v - 2) < 0.5, (e, _) => e.Set("A32NX_SWITCH_TCAS_POSITION", 2)),
             Auto("LU_STROBE", "LINEUP", "Strobes: ON", "LIGHTING_STROBE_0",
@@ -654,7 +654,6 @@ public static class HwA330ChecklistDefinitions
                 v => System.Math.Abs(v - 3) < 0.5, action: null),
             Auto("TXC_MEMO_SIGNS", "TAXI_CL", "Seat belts: ON", "FO_SIGNS_ON",
                 v => v > 0.5, action: null),
-            Reminder("TXC_MEMO_CABIN", "TAXI_CL", "Cabin: READY"),
             Auto("TXC_MEMO_SPLRS", "TAXI_CL", "Spoilers: ARMED", "A32NX_SPOILERS_ARMED",
                 v => v > 0.5, action: null),
             Auto("TXC_MEMO_FLAPS", "TAXI_CL", "Flaps: T.O", "A32NX_FLAPS_HANDLE_INDEX",
@@ -669,6 +668,9 @@ public static class HwA330ChecklistDefinitions
         Items = new()
         {
             Reminder("LUC_RUNWAY", "LINEUP_CL", "Takeoff runway: CONFIRMED"),
+            // The takeoff memo's cabin line, here since the cabin call moved to the Line-up flow
+            // (owner, 2026-10-19; FOA-8).
+            Reminder("LUC_CABIN", "LINEUP_CL", "Cabin: READY"),
             Auto("LUC_TCAS", "LINEUP_CL", "TCAS: TA/RA", "A32NX_SWITCH_TCAS_POSITION",
                 v => System.Math.Abs(v - 2) < 0.5, action: null,
                 live: s => AirbusReadbackFormat.Tcas(s.GetValue("A32NX_SWITCH_TCAS_POSITION"))),
