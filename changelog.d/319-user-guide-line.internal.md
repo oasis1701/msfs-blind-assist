@@ -1,0 +1,1 @@
+Pull requests now say what they mean for the pilot's guide at msfsblindassist.com/guide/, and an advisory check asks for that line on feature, aircraft and improvement PRs, so the guide keeps up with the app.
