@@ -384,7 +384,13 @@ public partial class CowsDA40Definition
         // inside three seconds (2026-10-12). This aeroplane's rule is that the autopilot's
         // own trimming stays silent; the position is re-based while it flies, so the first
         // pilot trim after a disconnect speaks only what the pilot moved.
-        if (varName == "DA40_AP_MASTER") _apEngaged = value >= 0.5;
+        if (varName == "DA40_AP_MASTER")
+        {
+            // The disconnect edge keeps the autopilot's last batch of trimming silent too.
+            _trimOwnWriteUntil = TrimQuietAfterApChange(_apEngaged, value >= 0.5, DateTime.UtcNow, _trimOwnWriteUntil);
+            _apEngaged = value >= 0.5;
+        }
+        NoteApRowForPress(varName, value);
 
         // A GFC 700 mode the FMA already says (ApModeIsSpokenByFma). Handled so the generic
         // announcer stays out; the combo still refreshes (RefreshControlWhenDefHandled).

@@ -108,3 +108,24 @@ The text is verbatim from the CLAUDE.md invariants PR #242 added; where two bull
 ## DA40A-24
 
 - **A mode that syncs its target makes that target somebody else's news.** VCBI climb, 2026-10-15: the pilot typed a vertical speed of 500 ("Selected vertical speed 500 feet per minute up") and then pressed VS. The GFC 700 synced its reference to the current vertical speed, 0, and the aeroplane stayed level. The 0 settled inside the 500's own-write grace (`RadioOwnWriteGraceMs`) and was dropped as MSFSBA's own echo, so the pilot had heard 500 and nothing else. The FMA shows the reference, but its spoken form leaves the target out, because the target is the selected-value announcer's job. The existing mode-sync naming never got the chance: `FlushRadioSettle` drops a key written by us BEFORE it asks whether a mode just changed. Now MSFSBA's own press of VS or FLC (`NoteOwnApModePress`), and the mode row's OFF-to-ON edge for a press on the bezel (`NoteApModeRow`; the rows are per-frame, so they land before the 300 ms target settle flushes), clear that one key's mark, and the sync is said with its name ("Selected vertical speed 0", verified live). Only the edge: a row re-delivering ON while in VS must not clear a rate typed now, or that rate is spoken twice. Pinned by `CowsDA40RadioOwnWriteScopeTests`. → [da40.md](../da40.md)
+
+## DA40A-25
+
+**What the pilot last heard is what MSFSBA's own setter said.** MTL climb, 2026-10-19: FLC pressed, 76 typed ("Selected airspeed 76 knots"), and the GFC 700 synced its reference to the current 70 as FLC engaged. The settle compared the 70 with the last SETTLED value, which was 70 from before, dropped it as noise, and spoke the queued 76 echo instead: "Selected airspeed 76" over a target of 70. The setters (altitude, vertical speed, airspeed, heading, course) now call `MarkApTargetSpoken`, which marks the key as ours (the grace, as before) and records the spoken value as the baseline. The sync back to 70 is then a change, the mode's OFF-to-ON edge has cleared the own-write mark (DA40A-24), and "Selected airspeed 70" is said. `StageRadioValue` also drops a queued value when the value returns to what the pilot last heard: a knob turned away and back has nothing new to say, and the queued value is stale. Pinned by `CowsDA40RadioOwnWriteScopeTests`.
+
+## DA40A-26
+
+**The GFC 700 refuses presses silently.** On 2026-10-19 the autopilot refused:
+- APR pressed from HDG after a go-around, four times;
+- NAV and APR pressed in a quick run after a reposition;
+- AP pressed while the vertical mode was GA.
+
+Each refusal left the FMA exactly as it was, and the pilot heard nothing at all, the same silence as a press that worked and had not been drawn yet. `AUTOPILOT APPROACH HOLD` cannot stand in: it dropped 1→0 within 230 ms while LOC was captured and GS armed. Only the FMA tells.
+
+`WatchApPress` records `G1000CasWatcher.FmaChanges` at the press. `ApPressCheckMs` later (two of the watcher's 1.5 s polls), if the count has not moved and rows have arrived at least a second after the press, it says "<control>: no change" ("Approach Mode: no change"). That reports the aeroplane and decides nothing. Without fresh rows (no watcher, socket elsewhere) nothing is known and nothing is said. Only the last press in a quick run is checked.
+
+⚠️ The press's own mode row moving is an answer too. The G1000 keeps "AP" flashing on the FMA for seconds after a disconnect, so AP OFF on the ground found the FMA unmoved at the check and said "Autopilot: no change" over an autopilot that had just let go (VCRI, 2026-10-19). `NoteApRowForPress` counts each GFC 700 mode row's transitions, and a press whose row moved is answered whatever the FMA shows. The refused presses all left their rows where they were.
+
+## DA40A-27
+
+**"Not started" is a power loss, not a result.** The AFCS self test (`AFCS_TEST`) and pre-flight test (`AFCS_PFT`) return to 0 only when the AFCS loses power or resets. At the VCRI shutdown (2026-10-19), switching the avionics master off said "Autopilot Self Test: not started. Autopilot Pre-flight Test: not started", which reads like two test outcomes over something the pilot had just done. `AfcsStatusIsNews` never speaks a move TO 0 for those two keys. The power-up's "running" and its outcome still speak (DA40A-5), and the Autopilot Failed flag keeps both edges.

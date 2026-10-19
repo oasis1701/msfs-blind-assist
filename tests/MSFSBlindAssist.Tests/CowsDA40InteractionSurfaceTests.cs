@@ -302,4 +302,16 @@ public class CowsDA40InteractionSurfaceTests
         Assert.True(CowsDA40Definition.LampReadsLit(0.21));
         Assert.True(CowsDA40Definition.LampReadsLit(1));
     }
+
+    // ⚠️ THE MASTER OFF IS NOT A LAMP FAULT. VCRI shutdown, 2026-10-19: taxi and position lights
+    // left on, master switched off, and the watch said "Taxi light not lit / Position lights not
+    // lit" - every lamp is dark without power, and the pilot has just taken it away. With the
+    // master ON a dark lamp still speaks, a dead bus included: that is a real electrical symptom.
+    [Theory]
+    [InlineData(1, 0, true, true)]
+    [InlineData(1, 0, false, false)]
+    [InlineData(1, 1, true, false)]
+    [InlineData(0, 0, true, false)]
+    public void ALampIsFaultedOnlyWithTheMasterOn(double sw, double circuit, bool masterOn, bool faulted)
+        => Assert.Equal(faulted, CowsDA40Definition.LampFaulted(sw, circuit, masterOn));
 }

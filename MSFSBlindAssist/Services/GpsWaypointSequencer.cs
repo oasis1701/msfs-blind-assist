@@ -247,9 +247,12 @@ public static class GpsWaypointSequencer
     /// controller. "SOXOM" run together through a speech synthesiser is a noise; S O X O M is a
     /// fix. Only for the ident-shaped ones — an airport or a named leg the navigator generated
     /// ("HDG 071") is prose and stays prose.
+    /// ⚠️ THE NAVIGATOR'S OWN LEG WORDS ARE WORDS. The G1000 names a hold it built "HOLD", which
+    /// is ident-shaped and was spelt "H O L D" in the passing call (MTL hold, 2026-10-19).
     /// </summary>
     private static string Spell(string ident)
     {
+        if (ident == "HOLD") return "hold";
         if (ident.Length == 0 || ident.Length > 5) return ident;
         foreach (char c in ident)
             if (!char.IsLetterOrDigit(c)) return ident;

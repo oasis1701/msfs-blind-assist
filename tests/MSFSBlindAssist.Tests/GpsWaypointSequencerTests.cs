@@ -156,6 +156,15 @@ public class GpsWaypointSequencerTests
     }
 
     [Fact]
+    public void TheHoldLegIsAWordNotAnIdent()
+    {
+        // MTL hold, 2026-10-19: the G1000 names the hold it built "HOLD", four letters that
+        // passed for an ident and were spelt: "Passing M T L. Next H O L D, 0.4 miles."
+        var r = GpsWaypointSequencer.Read(Frame("HOLD", "MTL", distanceMetres: 741), previousNextId: "MTL");
+        Assert.Equal("Passing M T L. Next hold, 0.4 miles.", GpsWaypointSequencer.ComposePassing(r));
+    }
+
+    [Fact]
     public void AnUncomputedLegNamesTheFixAndRefusesToInventTheNumbers()
     {
         // ⚠️ FOUND BY PRESSING THE KEY, NOT BY READING THE CODE. On the ground at VCBI with the

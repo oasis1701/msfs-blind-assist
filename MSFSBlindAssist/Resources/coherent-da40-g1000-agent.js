@@ -17,7 +17,7 @@
 (function () {
     var A = {};
 
-    A.VERSION = 29;
+    A.VERSION = 33;
 
     function visible(el) {
         if (!el) return false;
@@ -367,7 +367,15 @@
             }
             var value = text(host.querySelector(".verticalModeValue"));
             var units = text(host.querySelector(".verticalModeUnits"));
-            if (value) parts.push("target " + value + (units ? " " + units : ""));
+            // ⚠️ THE SIGN IS AN ARROW. VS draws its target unsigned beside an SVG arrow,
+            // rotated 180 for down and hidden when there is none, so "target 500 FPM" was read
+            // over a 500 fpm DESCENT (MTL, 2026-10-19).
+            var dir = "";
+            var arrow = host.querySelector(".verticalModeArrow path");
+            if (arrow && classList(arrow).indexOf("hide-element") < 0) {
+                dir = /rotate\(\s*180/.test(arrow.getAttribute("transform") || "") ? " down" : " up";
+            }
+            if (value) parts.push("target " + value + (units ? " " + units : "") + dir);
             return parts.join(", ");
         }
 
@@ -1255,7 +1263,11 @@
             for (var b = 0; b < bars.length; b++) {
                 if (x >= bars[b].left && x < bars[b].right) { colour = bars[b].colour; break; }
             }
-            if (!colour) colour = (x < scaleLeft) ? "below the scale" : "above the scale";
+            // ⚠️ A GAP IN THE SCALE IS NOT THE END OF IT. The XLS fuel gauge colours 0-1 red, 1-15
+            // and 19-25 green and leaves 15-19 bare (panel.xml), and a 17.4 gal tank read "above the
+            // scale, 64 percent along" (VCBI, 2026-10-19). Inside the scale with no band is unmarked.
+            if (!colour) colour = (x < scaleLeft) ? "below the scale"
+                                : (x >= scaleRight) ? "above the scale" : "unmarked";
 
             out.push({
                 colour: colour,
@@ -2823,6 +2835,45 @@
         return "";
     };
 
+    /// ⚠️ ONE DIGIT OF A NUMBER IS NOT A NUMBER. The hold dialog's leg time "1:00" is three
+    /// controls, one per digit, drawn as sibling cells with the colon a cell of its own, so
+    /// each read on its own: "1", then "0" and "0" - and the label climb, stripping a lone
+    /// "0" out of the row, welded the rest into "Leg Time1" (MTL hold, 2026-10-19). A cell
+    /// whose row is single characters spelling a number reads as the whole number and the
+    /// place the cursor is on: "1:00, minutes". Returns null for anything else.
+    A.M.digitOf = function (c) {
+        var host = A.M.hostOf(c);
+        if (!host) return null;
+        var cell = host;
+        for (var up = 0; up < 2 && cell && cell.parentElement; up++) {
+            var row = cell.parentElement;
+            var kids = row.children;
+            if (kids && kids.length >= 3) {
+                var whole = "", digits = [], ok = true;
+                for (var i = 0; i < kids.length; i++) {
+                    var ch = text(kids[i]).replace(/\s+/g, "");
+                    if (!/^[0-9:.]$/.test(ch)) { ok = false; break; }
+                    whole += ch;
+                    if (/\d/.test(ch)) digits.push(kids[i]);
+                }
+                if (ok && /^\d+[:.]\d+$/.test(whole)) {
+                    var at = digits.indexOf(cell);
+                    if (at < 0) return null;
+                    var place = "digit " + (at + 1) + " of " + digits.length;
+                    var colon = whole.indexOf(":");
+                    if (colon >= 0) {
+                        var before = colon, after = whole.length - colon - 1;
+                        if (at < before) place = "minutes";
+                        else if (after === 2) place = (at === before) ? "tens of seconds" : "seconds";
+                    }
+                    return { whole: whole, place: place };
+                }
+            }
+            cell = row;
+        }
+        return null;
+    };
+
     /// The label is whatever the row says once the VALUE is taken off the end of it -
     /// "Time FormatUTC" minus "UTC". The climb is capped and a suspiciously long answer is
     /// thrown away, because the ancestor chain ends at the whole page and a "label" of four
@@ -2910,6 +2961,16 @@
             // label. The PFD backlight window did exactly that and answered
             // "Auto100.00%Auto100.00: PFD Display" - four neighbouring values welded into
             // a name. A real label has words, no percent sign and no long runs of digits.
+            // ⚠️ A NEIGHBOUR'S EMPTY VALUE IS NOT A NAME, AND NEITHER IS A UNIT. The approach
+            // page's Minimums box is a BARO toggle beside an empty altitude: the toggle took
+            // "_ _ _ _ _FT" as its label and the altitude took "FT", read "blank: BARO" and
+            // "FT: blank" (MTL hold, 2026-10-19). Placeholder glyphs mean the climb reached
+            // another field, so it is no label and the climb goes on (every level above carries
+            // the same glyphs, so it never lands on one; the Aux page's Time Offset, whose own
+            // empty rendering is "--:--", still climbs to its name). A bare unit is the field's
+            // own unit (A.M.walk puts it back on the value), never its name.
+            if (/_|[–—]{2,}|-{2,}/.test(cut)) { e2 = e2.parentElement; continue; }
+            if (/^(FT|M|NM|KT|MIN|IN|HPA|MB)$/i.test(cut)) return "@unit:" + cut;
             var looksLikeValues = cut.indexOf("%") >= 0 || /\d{2,}/.test(cut);
             if (cut.length > 0 && cut.length <= 48 && cut !== whole &&
                 /[A-Za-z]/.test(cut) && !looksLikeValues) {
@@ -2988,8 +3049,11 @@
             // A field named the same as its box says the name once: the procedure pages' boxes
             // are "Departure", "Runway", "Transition" and so are their fields, which read
             // "Runway, Runway: 16C" and, in the rows, the box heading over "Runway: 16C".
+            // A box that names its fields says the last one too: the hold dialog's box is
+            // "Direction, Course" over "Course: 000°", read "Direction, Course, Course: 000°".
             for (var dn = 0; dn < out.length; dn++) {
-                if (out[dn].label && out[dn].label === out[dn].group) out[dn].label = "";
+                var lb = out[dn].label, gp = out[dn].group || "";
+                if (lb && (lb === gp || gp.split(/,\s*/).pop() === lb)) out[dn].label = "";
             }
         } finally {
             A.M._tc = null;
@@ -3096,18 +3160,28 @@
             return /[A-Za-z]/.test(String(f.value || ""));
         };
 
-        var firstOfRow = {};
+        var firstOfRow = {}, groupOfRow = {};
         for (var m = 0; m < fields.length; m++) {
             // A list entry is a whole item of its own, never a row's subject or its field.
             if (fields[m].entry) continue;
             var r = rowOf(fields[m].p);
             if (!r) continue;
-            if (!(r in firstOfRow)) { firstOfRow[r] = canName(fields[m]) ? fields[m].value : ""; continue; }
+            if (!(r in firstOfRow)) {
+                firstOfRow[r] = canName(fields[m]) ? fields[m].value : "";
+                groupOfRow[r] = fields[m].group || "";
+                continue;
+            }
             // Not the first of its row, and carrying no label of its own.
             // A BUTTON is never named after its row: the procedure page's Load button sat in
             // the airport's row and read "LOWG: Load?".
+            // ⚠️ NOR A FIELD IN A BOX OF ITS OWN: the procedure page's Minimums sit in the
+            // airport's row too, and read "VCRI: BARO" (MTL hold, 2026-10-19). A field with no
+            // box, or the row's own box, is still named after it.
+            var ownBox = fields[m].group || "";
             if (!fields[m].label && firstOfRow[r] && !selfNamed(fields[m]) &&
-                fields[m].kind !== "button") fields[m].label = firstOfRow[r];
+                fields[m].kind !== "button" && (ownBox === "" || ownBox === groupOfRow[r])) {
+                fields[m].label = firstOfRow[r];
+            }
         }
     };
 
@@ -3190,7 +3264,10 @@
                 try { active = !!A.M.get(c.control.isEditing); } catch (e5) { }
             }
 
-            var label = kind === "button" ? "" : A.M.labelOf(c, value);
+            var digit = kind === "field" ? A.M.digitOf(c) : null;
+            if (digit) value = digit.whole + ", " + digit.place;
+            var label = kind === "button" ? "" : A.M.labelOf(c, digit ? digit.whole : value);
+            if (label.indexOf("@unit:") === 0) { value = value + " " + label.substring(6); label = ""; }
             // A BUTTON is boxed only by a real groupbox. The second, title-hunting pass named
             // the Direct-To dialog's "Activate?" after the neighbouring field title, "BRG"
             // (2026-10-12).
@@ -3927,11 +4004,29 @@
     A.M.enterHint = function (key) {
         if (A.M._hintKey === key) return "";
         A.M._hintKey = key;
-        var all = document.querySelectorAll(".popout-dialog.open [class*='press-ent']");
+        // By the TEXT, never a class: each dialog names its line differently
+        // (mfd-setrunway-press-ent, mfd-wptinfo-bottom-prompt, mfd-wpt-dup-prompt).
+        var all = document.querySelectorAll(".popout-dialog.open *");
+        for (var i = 0; i < all.length; i++) {
+            if (all[i].children.length || !visible(all[i])) continue;
+            var t = spacedText(all[i]).replace(/"/g, "");
+            if (/^Press /.test(t)) return t;
+        }
+        return "";
+    };
+
+    /// The hold dialog's heading, "Hold South of MTL": which side of the fix the hold is on.
+    /// It is text, not a control, so the field walk never met it, and it is the one thing
+    /// the course and its Inbound/Outbound toggle change: course 000 inbound holds south,
+    /// 180 holds north (MTL hold, 2026-10-19). Found by its words, "" anywhere else.
+    A.M.holdSubject = function () {
+        var all = document.querySelectorAll(".popout-dialog.open div");
         for (var i = 0; i < all.length; i++) {
             if (!visible(all[i])) continue;
-            var t = spacedText(all[i]).replace(/"/g, "");
-            if (t) return t;
+            var t = spacedText(all[i]);
+            if (!/^Hold [A-Za-z]+ of$/.test(t)) continue;
+            var fix = all[i].nextElementSibling ? spacedText(all[i].nextElementSibling) : "";
+            return fix ? t + " " + fix : t;
         }
         return "";
     };
@@ -4050,6 +4145,12 @@
                     var who = text(firstVisible(".wpt-entry-name"));
                     if (who) s += ", " + who;
                 }
+            }
+            // The course box is what moves the hold to the other side of the fix, so its
+            // fields say where the hold now is.
+            if (/^Direction\b/.test(f.group || "")) {
+                var side = A.M.holdSubject();
+                if (side) s += ", " + side;
             }
             var hint = A.M.enterHint(A.M.viewKey());
             if (hint) s += ", " + hint;
@@ -4776,6 +4877,9 @@
 
         var on = null;
         try { on = A.M.cursor(); } catch (e) { on = null; }
+        var side = "";
+        try { if (A.M.viewKey() === "HoldAt") side = A.M.holdSubject(); } catch (e2) { side = ""; }
+        if (side) rows.push(side);
         rows.push("Fields (" + n + "), cursor " +
             (on === null ? "unknown" : on ? "on" : "off") + ":");
         for (var i = 0; i < fields.length; i++) rows.push("  " + fields[i]);

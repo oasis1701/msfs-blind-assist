@@ -42,19 +42,43 @@ public class DA40CylinderStateTests
     }
 
     [Fact]
-    public void AShockCoolingRateHoveringOnTheLineIsSaidOnce()
+    public void AShockCoolingEpisodeIsNamedOnceAndOnlyNewCylindersAfter()
     {
-        // VCBI cruise, 2026-10-15: "Shock cooling, cylinder 3" twice, four seconds apart, as the
-        // rate hovered across the model's -0.15. The same cylinders again inside the hold are
-        // the same news; a different set is new news at once; after the hold it may speak.
-        var t0 = new System.DateTime(2026, 10, 15, 18, 10, 38, System.DateTimeKind.Utc);
-        const string c3 = "Shock cooling, cylinder 3";
-        Assert.True(DA40CylinderState.ShouldSpeakShockCooling(c3, null, System.DateTime.MinValue, t0));
-        Assert.False(DA40CylinderState.ShouldSpeakShockCooling(c3, c3, t0, t0.AddSeconds(4)));
-        Assert.True(DA40CylinderState.ShouldSpeakShockCooling("Shock cooling, cylinders 3 and 4", c3, t0, t0.AddSeconds(4)));
-        Assert.True(DA40CylinderState.ShouldSpeakShockCooling(c3, c3, t0,
-            t0.AddMilliseconds(DA40CylinderState.ShockCoolingRepeatHoldMs + 1)));
-        Assert.False(DA40CylinderState.ShouldSpeakShockCooling("None", c3, t0, t0.AddMinutes(5)));
+        // VCBI climb-out, 2026-10-19, a power cut from full to 37 percent: cylinder 1, then 1-2,
+        // 1-3 and 1-4 inside a second, then 1-3, 2-3 and 3 as they recovered - seven calls in
+        // nine seconds. The episode is gathered for GatherMs and named once; a cylinder joining
+        // later is named alone; one leaving is never said.
+        var t0 = new System.DateTime(2026, 10, 19, 10, 16, 59, 633, System.DateTimeKind.Utc);
+        var c = new ShockCoolingCallout();
+        string?[] said =
+        {
+            c.Step(new[] { 1 }, t0),
+            c.Step(new[] { 1, 2 }, t0.AddMilliseconds(6)),
+            c.Step(new[] { 1, 2, 3 }, t0.AddMilliseconds(6)),
+            c.Step(new[] { 1, 2, 3, 4 }, t0.AddMilliseconds(1000)),
+            c.Step(new[] { 1, 2, 3, 4 }, t0.AddMilliseconds(ShockCoolingCallout.GatherMs)),
+            c.Step(new[] { 1, 2, 3 }, t0.AddSeconds(8)),
+            c.Step(new[] { 2, 3 }, t0.AddSeconds(9)),
+            c.Step(new[] { 3 }, t0.AddSeconds(9)),
+        };
+        Assert.Equal(new string?[] { null, null, null, null, "Shock cooling, cylinders 1, 2, 3 and 4", null, null, null }, said);
+    }
+
+    [Fact]
+    public void ACylinderJoiningLaterIsNamedAloneAndAClearedEpisodeCanSpeakAgain()
+    {
+        var t0 = new System.DateTime(2026, 10, 19, 12, 0, 0, System.DateTimeKind.Utc);
+        var c = new ShockCoolingCallout();
+        c.Step(new[] { 3 }, t0);
+        Assert.Equal("Shock cooling, cylinder 3", c.Step(new[] { 3 }, t0.AddMilliseconds(ShockCoolingCallout.GatherMs)));
+        Assert.Null(c.Step(new int[0], t0.AddSeconds(4)));          // gone: never said
+        Assert.Null(c.Step(new[] { 3 }, t0.AddSeconds(6)));          // back on the line: same episode
+        c.Step(new[] { 3, 4 }, t0.AddSeconds(10));
+        Assert.Equal("Shock cooling, cylinder 4", c.Step(new[] { 3, 4 }, t0.AddSeconds(13)));
+        // A minute clear ends the episode; the next onset is news again.
+        Assert.Null(c.Step(new int[0], t0.AddSeconds(13 + ShockCoolingCallout.EpisodeEndMs / 1000.0)));
+        c.Step(new[] { 3 }, t0.AddMinutes(5));
+        Assert.Equal("Shock cooling, cylinder 3", c.Step(new[] { 3 }, t0.AddMinutes(5).AddMilliseconds(ShockCoolingCallout.GatherMs)));
     }
 
     // ---- damage: DAMAGE_CYL:n 0-100, dead over 99 ----

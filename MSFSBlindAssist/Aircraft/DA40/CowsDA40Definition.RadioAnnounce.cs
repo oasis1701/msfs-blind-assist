@@ -236,25 +236,61 @@ public partial class CowsDA40Definition
         => key.StartsWith("DA40_RADIO_", StringComparison.Ordinal)
            && key.EndsWith("_SET", StringComparison.Ordinal);
 
+    /// <summary>
+    /// An autopilot setter just SPOKE <paramref name="value"/>: that is now what the pilot last
+    /// heard, so the settle measures the next change from it.
+    ///
+    /// ⚠️ WITHOUT THIS A SYNC BACK TO THE OLD VALUE WAS LOST AND THE ECHO SPOKEN INSTEAD. MTL
+    /// climb, 2026-10-19: FLC pressed, 76 typed ("Selected airspeed 76 knots"), and the GFC 700
+    /// synced the reference back to the current 70. The 70 matched the last SETTLED value and
+    /// was dropped as noise, while the 76 echo still sat queued - "Selected airspeed 76" over a
+    /// target of 70.
+    /// </summary>
+    internal void MarkApTargetSpoken(string varKey, double value)
+    {
+        MarkRadioSetByUs(varKey);
+        _radioSpoken[varKey] = value;
+    }
+
+    /// <summary>A value queued for the settle, for the suite.</summary>
+    internal double? PendingRadioValue(string varKey) =>
+        _radioPending.TryGetValue(varKey, out double v) ? v : null;
+
+    /// <summary>
+    /// Queues a delivered value for the settle; false when there is nothing to say. Pure of the
+    /// timer so the suite can drive it.
+    /// </summary>
+    internal bool StageRadioValue(string varKey, double value)
+    {
+        // A first reading is not a change. Without this, the first batch after a connect
+        // reads all eight frequencies at a pilot who has touched nothing.
+        if (!_radioSpoken.ContainsKey(varKey))
+        {
+            _radioSpoken[varKey] = value;
+            return false;
+        }
+
+        // Below half a COM channel there is nothing to say - that is float noise on the
+        // wire, not a tuning step. A value BACK where the pilot last heard it also takes any
+        // queued value with it: a knob turned away and back, or a target synced back to the
+        // value its setter had replaced, leaves nothing new, and the queued one is stale.
+        if (Math.Abs(value - _radioSpoken[varKey]) < 0.005)
+        {
+            _radioPending.Remove(varKey);
+            return false;
+        }
+
+        _radioPending[varKey] = value;
+        return true;
+    }
+
     private bool NoteRadioChange(string varKey, double value, ScreenReaderAnnouncer announcer)
     {
         if (!RadioLabels.ContainsKey(varKey)) return false;
 
         _radioAnnouncer = announcer;
 
-        // A first reading is not a change. Without this, the first batch after a connect
-        // reads all eight frequencies at a pilot who has touched nothing.
-        if (!_radioSpoken.ContainsKey(varKey))
-        {
-            _radioSpoken[varKey] = value;
-            return true;
-        }
-
-        // Below half a COM channel there is nothing to say - that is float noise on the
-        // wire, not a tuning step.
-        if (Math.Abs(value - _radioSpoken[varKey]) < 0.005) return true;
-
-        _radioPending[varKey] = value;
+        if (!StageRadioValue(varKey, value)) return true;
 
         // The autopilot's selected values settle on their own, shorter timer: their feed is
         // per-frame, the radios' is 1 Hz (see ApSettleMs and RadioSettleMs).

@@ -98,4 +98,37 @@ public class CowsDA40RadioOwnWriteScopeTests
         def.NoteApModeRow("DA40_AP_VS", 1);
         Assert.True(def.WrittenByUs("DA40_AP_VS_SET", System.DateTime.UtcNow));
     }
+
+    // ⚠️ WHAT THE PILOT LAST HEARD IS WHAT A SETTER SAID. MTL climb, 2026-10-19: FLC pressed,
+    // 76 typed ("Selected airspeed 76 knots"), and the GFC 700 synced the reference back to the
+    // current 70. The 70 matched the last SETTLED value, so it was dropped as noise, and the
+    // queued echo 76 was spoken instead - "Selected airspeed 76" over a target of 70.
+    [Fact]
+    public void AFlcSyncBackToTheOldSpeedIsSpokenAsTheSpeedItReallyIs()
+    {
+        var def = new CowsDA40Definition(DA40Variant.XLS);
+        def.StageRadioValue("DA40_AP_IAS_SET", 70);            // first reading: the baseline
+        def.NoteApModeRow("DA40_AP_FLC", 0);
+
+        def.NoteOwnApModePress("DA40_AP_FLC", on: true);
+        def.MarkApTargetSpoken("DA40_AP_IAS_SET", 76);         // the setter said 76
+        def.StageRadioValue("DA40_AP_IAS_SET", 76);            // its echo: nothing new
+        Assert.False(def.PendingRadioValue("DA40_AP_IAS_SET").HasValue);
+
+        def.NoteApModeRow("DA40_AP_FLC", 1);                   // FLC engages, syncing to 70
+        def.StageRadioValue("DA40_AP_IAS_SET", 70);
+        Assert.Equal(70, def.PendingRadioValue("DA40_AP_IAS_SET"));
+        Assert.False(def.WrittenByUs("DA40_AP_IAS_SET", System.DateTime.UtcNow));
+    }
+
+    [Fact]
+    public void AValueBackWhereThePilotLastHeardItHasNothingQueued()
+    {
+        var def = new CowsDA40Definition(DA40Variant.XLS);
+        def.StageRadioValue("DA40_AP_HDG_SET", 110);
+        def.StageRadioValue("DA40_AP_HDG_SET", 115);
+        Assert.Equal(115, def.PendingRadioValue("DA40_AP_HDG_SET"));
+        def.StageRadioValue("DA40_AP_HDG_SET", 110);
+        Assert.False(def.PendingRadioValue("DA40_AP_HDG_SET").HasValue);
+    }
 }

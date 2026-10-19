@@ -84,6 +84,49 @@ public class G1000CasWatcherTests
         Assert.Equal(new[] { "OIL PRESSURE cleared" }, said.All);
     }
 
+    // ⚠️ A REFUSED MODE PRESS IS SILENT ON THE FMA, so the aircraft asks the watcher whether the
+    // FMA moved (MTL/VCRI, 2026-10-19: APR, NAV and AP presses refused by the GFC 700 said
+    // nothing at all). The count moves only on a real change after the baseline, and the rows'
+    // arrival time says whether the answer is fresh.
+    [Fact]
+    public void The_fma_change_count_moves_only_when_the_modes_do()
+    {
+        var (watcher, _) = Armed();
+        var now = new DateTime(2026, 10, 19, 15, 0, 0, DateTimeKind.Utc);
+        watcher.Now = () => now;
+
+        static List<string> Fma(string modes) => new() { "CAS messages: none", "Autopilot: " + modes };
+
+        watcher.ProcessRows(Fma("AP, HDG, ALT, target 1800 FT"));             // the baseline
+        Assert.Equal(0, watcher.FmaChanges);
+        Assert.Equal(now, watcher.LastRowsAt);
+
+        now = now.AddSeconds(1.5);
+        watcher.ProcessRows(Fma("AP, HDG, ALT, target 1800 FT"));
+        Assert.Equal(0, watcher.FmaChanges);
+        Assert.Equal(now, watcher.LastRowsAt);
+
+        watcher.ProcessRows(Fma("AP, HDG, LOC armed, ALT, target 1800 FT"));
+        Assert.Equal(1, watcher.FmaChanges);
+    }
+
+    [Fact]
+    public void An_fma_change_in_the_quiet_period_still_counts()
+    {
+        // Unspoken while a flight load settles, but a mode pressed then must not read as refused.
+        bool quiet = false;
+        var said = new GatedSpeechCapture();
+        var watcher = new G1000CasWatcher("test", () => quiet);
+        watcher.Arm(said);
+
+        watcher.ProcessRows(new() { "CAS messages: none", "Autopilot: AP, ROL, PIT" });   // the baseline
+        quiet = true;
+        watcher.ProcessRows(new() { "CAS messages: none", "Autopilot: AP, HDG, PIT" });
+
+        Assert.Equal(1, watcher.FmaChanges);
+        Assert.Empty(said.All);
+    }
+
     [Fact]
     public void A_shutdown_and_restart_speaks_the_power_up_again()
     {
