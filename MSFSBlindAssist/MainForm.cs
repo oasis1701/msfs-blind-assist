@@ -83,8 +83,6 @@ public partial class MainForm : Form
     private readonly Services.Geography.OfflineLocationService offlineLocationService =
         new(Services.Geography.LocationDataStore.Default);
 
-    private ChecklistForm? checklistForm;
-
     private FenixMonitorManagerForm? fenixMonitorManagerForm;
 
     private Forms.FBWA380.FBWA380MonitorManagerForm? fbwA380MonitorManagerForm;
@@ -109,6 +107,10 @@ public partial class MainForm : Form
     private MSFSBlindAssist.Services.FlyByWireMCDUService? flyByWireMCDUService;
 
     private System.Windows.Forms.Form? pmdgCDUForm;
+    /// <summary>The current aircraft's First Officer window (Shift+C, File → First Officer).
+    /// Built only by <see cref="Forms.FirstOfficer.FirstOfficerWindows.Create"/> (FO-24) and
+    /// disposed on every aircraft swap, so it always belongs to the loaded aircraft.</summary>
+    private Forms.FirstOfficer.IFirstOfficerWindow? firstOfficerForm;
 
     private Forms.FBWA380.FBWA380MCDUForm? fbwA380MCDUForm;
 
@@ -751,6 +753,9 @@ public partial class MainForm : Form
         simConnectManager.SimVarUpdated += OnSimVarUpdated;
         simConnectManager.FlightAttitudeReceived += OnFlightAttitude;
         simConnectManager.ContinuousBatchDelivered += OnContinuousBatchDelivered;
+
+        // The universal (all-aircraft) auto-gear/AP service and its 1 Hz feed: MainForm.UniversalAutomation.cs.
+        InitializeUniversalAutomation();
         simConnectManager.QueuedEventDispatched += OnQueuedEventDispatched;
         simConnectManager.TakeoffRunwayReferenceSet += OnTakeoffRunwayReferenceSet;
         simConnectManager.AircraftIcaoTypeDetected += OnAircraftIcaoTypeDetected;
@@ -1405,6 +1410,13 @@ public partial class MainForm : Form
         _warmUpAfterLoadTimer?.Stop();
         _warmUpAfterLoadTimer?.Dispose();
 
+        // The First Officer window: only an aircraft switch disposed it, so on exit its 1 s timer
+        // and a running flow kept going through Disconnect()'s DoEvents pump below, still able to
+        // speak and to send writes. Its Dispose cancels the flow and detaches the executor.
+        firstOfficerForm?.Dispose(); firstOfficerForm = null;
+
+        DisposeUniversalAutomation();
+
         // Clean up taxi guidance, docking guidance, and ground traffic monitor
         taxiGuidanceManager?.Dispose();
         dockingGuidanceManager?.Dispose();
@@ -1495,6 +1507,12 @@ public partial class MainForm : Form
         (currentAircraft as FlyByWireA380Definition)?.StopAllMotion();
         (currentAircraft as FlyByWireA320Definition)?.StopAllMotion();
         currentAircraft?.CancelDeferredFlush();
+        // The swap path's two other def hooks, which a quit never ran: the def's own timers that can
+        // still speak (OnSwitchedAway: the PMDG speed-brake settle call-out), and a held 737 warning
+        // test (stick shaker or overspeed clacker), released while the sim is still connected, or it
+        // kept sounding after MSFSBA had closed ([P737-6]).
+        (currentAircraft as BaseAircraftDefinition)?.OnSwitchedAway();
+        (currentAircraft as PMDG737Definition)?.ReleaseEngagedWarningTests(simConnectManager);
 
         // The MD-11 def owns the CEVENT pump and, during a hold-to-test's 3 s, a button the sim
         // still has pressed. Dispose it here — BEFORE Disconnect() — so its Dispose (which queues

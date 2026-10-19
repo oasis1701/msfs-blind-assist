@@ -1,0 +1,1151 @@
+using MSFSBlindAssist.FirstOfficer.Models;
+
+namespace MSFSBlindAssist.FirstOfficer;
+
+/// <summary>
+/// Data-driven PMDG 777 flow definitions.
+///
+/// Source: Proprietary FO addon flow data translated to BA Assist action model.
+/// Each flow executes a sequence of PMDG switch actions with waits and condition checks.
+///
+/// Captain-only and briefing items are CaptainReminder steps — announced but not automated.
+/// Timed waits are WaitSeconds steps.
+///
+/// PMDG event values:
+/// - Transponder mode: 0=STBY, 1=ALT-OFF, 2=ON, 3=TA, 4=TA/RA
+/// - Autobrake (PMDG_777X_SDK.h line 272): 0=RTO, 1=Off, 2=Disarm, 3="1", 4="2",
+///   5="3", 6="4", 7=Max Auto. The DISARM detent was missing from an earlier copy of
+///   this map, so every entry from 2 up was one step ahead of reality. Only RTO and Off
+///   are ever driven here — the numbered landing detents are a Captain item.
+/// - Packs: 0=OFF, 1=Auto (single pack), 2=AUTO (both packs auto)
+///   (PMDG pack switch: 0=OFF, 1=Auto — two separate events for L and R)
+/// - Flaps lever position: 0=UP, 1=1, 2=5, 3=15, 4=20, 5=25, 6=30
+/// - EFIS mode: 0=APP, 1=VOR, 2=MAP, 3=NAV, 4=PLN
+/// - EFIS range: 0=10, 1=20, 2=40, 3=80, 4=160, 5=320, 6=640
+/// - Bus tie: 0=ISLN, 1=AUTO
+/// - Seat belts: 0=Off, 1=Auto, 2=On
+/// </summary>
+public static class PMDG777FlowDefinitions
+{
+    public static List<FlowDefinition<AircraftStateEvaluator>> Build() => new()
+    {
+        BuildElectricalPowerUp(),
+        BuildCockpitPrep(),
+        BuildBeforeStart(),
+        BuildEngineStart(),
+        BuildBeforeTaxi(),
+        BuildBeforeTakeoff(),
+        BuildAfterTakeoff(),
+        BuildDescentSetup(),
+        BuildApproachSetup(),
+        BuildLanding(),
+        BuildAfterLanding(),
+        BuildShutdown(),
+        BuildSecure(),
+    };
+
+    // -----------------------------------------------------------------------
+    // Flow 1: Electrical Power Up (Cold & Dark)
+    // -----------------------------------------------------------------------
+    private static FlowDefinition<AircraftStateEvaluator> BuildElectricalPowerUp() => new()
+    {
+        Id = "ELECTRICAL_POWER_UP",
+        Name = "Electrical Power Up",
+        Description = "Powers up the aircraft from cold and dark. Sets all overhead switches to correct initial positions.",
+        RelatedChecklistGroupIds = new[] { "ELEC_POWER_UP" },
+        Steps = new()
+        {
+            // A cold-and-dark flow: started with an engine turning (an engines-running start, or
+            // the wrong flow picked in flight), EPU_GEAR_DOWN would lower the gear. Stop instead
+            // (the MD-11's PU_ENGINES_STOPPED).
+            EnginesStoppedGuard("EPU_ENGINES_STOPPED"),
+            // CompletesChecklistItemId must be the ITEM id ("EPU_BATTERY") — the old
+            // "ELEC_POWER_UP_BATTERY" matched nothing and MarkComplete silently no-op'd.
+            Skip(SW("EPU_BATTERY",     "Battery: ON",             "EVT_OH_ELEC_BATTERY_SWITCH",         1, "ELEC_Battery_Sw_ON",       v => v > 0.5, "EPU_BATTERY"),
+                s => s.IsBatteryOn()),
+            SW("EPU_STORM_OFF",   "Storm lights: OFF",        "EVT_OH_LIGHTS_STORM",                0,
+               checklistItemId: "EPU_STORM_OFF"),
+            Skip(Multi("EPU_ELEC_PUMPS_OFF", "Electric pumps: OFF", "EPU_ELEC_PUMPS_OFF",
+                ("EVT_OH_HYD_ELEC1", 0), ("EVT_OH_HYD_ELEC2", 0)),
+                s => s.IsOff("HYD_PrimaryElecPump_Sw_ON_0") && s.IsOff("HYD_PrimaryElecPump_Sw_ON_1")),
+            Multi("EPU_DEMAND_OFF", "Demand pumps: OFF", "EPU_DEMAND_PUMPS_OFF",
+                ("EVT_OH_HYD_DEMAND_ELEC1", 0), ("EVT_OH_HYD_DEMAND_ELEC2", 0),
+                ("EVT_OH_HYD_AIR1", 0), ("EVT_OH_HYD_AIR2", 0)),
+            // One line ("Wiper selectors: OFF") for both sides: each side's step names it, so
+            // either write failing keeps it out of the latch.
+            SW("EPU_WIPERS_L",    "Left wiper: OFF",          "EVT_OH_WIPER_LEFT_SWITCH",           0,
+               checklistItemId: "EPU_WIPERS_OFF"),
+            SW("EPU_WIPERS_R",    "Right wiper: OFF",         "EVT_OH_WIPER_RIGHT_SWITCH",          0,
+               checklistItemId: "EPU_WIPERS_OFF"),
+            Skip(SW("EPU_GEAR_DOWN",   "Gear lever: DOWN",         "EVT_GEAR_LEVER",                     1,
+               checklistItemId: "EPU_GEAR_DOWN"),
+                s => s.IsGearDown()),
+            // FCTL_AltnFlaps_Control_Sw is 0 RET, 1 OFF, 2 EXT (PMDG_777X_SDK.h; the panel's own
+            // value map): OFF is 1. This step wrote 0, RETRACT, under "Alternate flaps: OFF".
+            Skip(SW("EPU_ALT_FLAPS",   "Alternate flaps: OFF",     "EVT_ALTN_FLAPS_POS",                 AircraftActionExecutor.AltFlapsOff,
+               "FCTL_AltnFlaps_Control_Sw", v => Math.Abs(v - AircraftActionExecutor.AltFlapsOff) < 0.1, "EPU_ALT_FLAPS_OFF"),
+                s => s.IsPosition("FCTL_AltnFlaps_Control_Sw", AircraftActionExecutor.AltFlapsOff)),
+            Skip(Multi("EPU_BUS_TIES", "Bus ties: AUTO", "EPU_BUS_TIES",
+                ("EVT_OH_ELEC_BUS_TIE1_SWITCH", 1), ("EVT_OH_ELEC_BUS_TIE2_SWITCH", 1)),
+                s => s.IsBusTie1Auto() && s.IsBusTie2Auto()),
+            // Try GPU — push both buttons and wait to see if power comes on.
+            // APU is never started here; it is always started during Before Start.
+            // PER SIDE, never "is ANY GPU on": both steps once shared that predicate, so
+            // connecting the primary made it true and the SECONDARY step skipped itself —
+            // the secondary receptacle was never connected, and Secure then found only one
+            // side to disconnect. See GroundPowerGate.
+            // Both sides name the one "External power: ON" line (either receptacle satisfies it).
+            Toggle(Momentary("EPU_GND_PWR_PRIM", "Ground power primary: PUSH",  GroundPowerGate.EventForAnnunciatorIndex(0),
+                    "EPU_GND_PWR"),
+                s => GroundPowerGate.ShouldSkip(s.IsGpuPower1On(), wantOn: true), "ELEC_annunExtPowr_ON_0"),
+            Toggle(Momentary("EPU_GND_PWR_SEC",  "Ground power secondary: PUSH", GroundPowerGate.EventForAnnunciatorIndex(1),
+                    "EPU_GND_PWR"),
+                s => GroundPowerGate.ShouldSkip(s.IsGpuPower2On(), wantOn: true), "ELEC_annunExtPowr_ON_1"),
+            Wait("EPU_WAIT_GPU", "Waiting for GPU power", 8),
+            Skip(SW("EPU_PARK_BRAKE",  "Parking brake: SET",       "EVT_CONTROL_STAND_PARK_BRAKE_LEVER", 1,
+               checklistItemId: "EPU_PARK_BRAKE"),
+                s => s.IsParkingBrakeSet()),
+            Skip(SW("EPU_NAV_LIGHTS",  "Nav lights: ON",            "EVT_OH_LIGHTS_NAV",                  1, "LTS_NAV_Sw_ON", v => v > 0.5,
+               "EPU_NAV_LIGHTS"),
+                s => s.IsNavOn()),
+            Skip(SW("EPU_LOGO_LIGHTS", "Logo lights: ON",           "EVT_OH_LIGHTS_LOGO",                 1,
+               checklistItemId: "EPU_LOGO_LIGHTS"),
+                s => s.IsLogoOn()),
+            Momentary("EPU_CVR",  "CVR test",                  "EVT_OH_CVR_TEST"),
+            Skip(SW("EPU_ADIRU",       "ADIRU: ON",                 "EVT_OH_ADIRU_SWITCH",                1, "ADIRU_Sw_On", v => v > 0.5,
+               "EPU_ADIRU"),
+                s => s.IsADIRUOn()),
+            Wait("EPU_WAIT_ADIRU", "ADIRU aligning — 30 seconds", 30),
+            // ARMED is the guard-CLOSED position, so "guard closed" IS "lights armed" —
+            // reaching it means moving the switch to ARMED and letting the guard shut over
+            // it, which is what the pseudo-key sequence does. (This step used to write the
+            // guard event directly with 1, which OPENS the guard, under a label saying
+            // "closed", and left it standing open over ARMED.)
+            Skip(SW("EPU_EMER_EXIT_LIGHTS", "Emer exit lights: ARMED", "EMER_EXIT_LIGHTS",
+                    EmerExitLightSequence.Armed),
+                s => s.EmerLightsSelector() == EmerExitLightSequence.Armed),
+            Skip(SW("EPU_THRUST_ASYM", "Thrust asym comp: AUTO",    "EVT_OH_THRUST_ASYM_COMP",            1,
+               checklistItemId: "EPU_THRUST_ASYM"),
+                s => s.IsThrustAsymCompAuto()),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // Flow 2: Cockpit Preparation
+    // -----------------------------------------------------------------------
+    private static FlowDefinition<AircraftStateEvaluator> BuildCockpitPrep() => new()
+    {
+        Id = "COCKPIT_PREP",
+        Name = "Cockpit Preparation",
+        Description = "Checks the power-up state, then sets all overhead systems to preflight state. Run after electrical power is established.",
+        RelatedChecklistGroupIds = new[] { "PREFLIGHT" },
+        Steps = new()
+        {
+            // A cold-and-dark flow: started with an engine turning (an engines-running start, or
+            // the wrong flow picked in flight), CP_FUEL_CTRL below cut both fuel controls and shut
+            // the engines down. Stop instead (the MD-11's PU_ENGINES_STOPPED). Links no line.
+            EnginesStoppedGuard("CP_ENGINES_STOPPED"),
+            // Read-only, never writes: the five Preflight lines the Electrical Power Up flow set
+            // (battery, ADIRU, demand pumps OFF, nav lights, gear lever DOWN) had no step here, so
+            // a finished run latched them over whatever the switches read (FO-7). One check on
+            // Pmdg777PowerUpCheck's synthetic (1 only when all five lines' own conditions hold,
+            // NaN while any input is unread) delivers all five; a timeout is heard skipped and each
+            // line then follows its own switch. It goes first: PMDG's preflight opens with the
+            // battery, and the Preflight group's first two lines are the battery and the ADIRU.
+            Also(Skip(WaitForField("CP_POWER_UP_CHECK", "Battery, ADIRU, demand pumps, nav lights and gear: checked",
+                    Pmdg777PowerUpCheck.Field, v => v > 0.5, 20, checklistItemId: "PF_BATTERY"),
+                s => s.IsPowerUpConfirmed()),
+                "PF_ADIRU", "PF_DEMAND_PUMPS_OFF", "PF_NAV_LIGHTS", "PF_GEAR_DOWN"),
+            Skip(SW("CP_IFE",          "IFE/Pass Seats: ON",        "EVT_OH_ELEC_IFE",                    1,
+               checklistItemId: "PF_IFE"),
+                s => s.IsIFEPassSeatsOn()),
+            SW("CP_CABIN_UTIL",   "Cabin/Utility: ON",         "EVT_OH_ELEC_CAB_UTIL",               1,
+               checklistItemId: "PF_CABIN_UTIL"),
+            Skip(SW("CP_APU_GEN",      "APU Generator: ON",         "EVT_OH_ELEC_APU_GEN_SWITCH",         1,
+               checklistItemId: "PF_APU_GEN"),
+                s => s.IsApuGenOn()),
+            Skip(Multi("CP_BUS_TIES",  "Bus ties: AUTO", "PF_BUS_TIES",
+                ("EVT_OH_ELEC_BUS_TIE1_SWITCH", 1), ("EVT_OH_ELEC_BUS_TIE2_SWITCH", 1)),
+                s => s.IsBusTie1Auto() && s.IsBusTie2Auto()),
+            // Skip reads the MAIN generator switches (ELEC_Gen_Sw_ON) — the old predicate
+            // checked the BACKUP generator fields, so this step wrongly skipped whenever
+            // the backup gens happened to be on while the mains were off.
+            Skip(Multi("CP_GENERATORS","Generators: ON", "PF_GENERATORS",
+                ("EVT_OH_ELEC_GEN1_SWITCH", 1), ("EVT_OH_ELEC_GEN2_SWITCH", 1)),
+                s => s.IsGen1On() && s.IsGen2On()),
+            Multi("CP_BACKUP_GENS","Backup generators: ON", "PF_BACKUP_GENS",
+                ("EVT_OH_ELEC_BACKUP_GEN1_SWITCH", 1), ("EVT_OH_ELEC_BACKUP_GEN2_SWITCH", 1)),
+            // Crew oxygen tests — quick momentary press per side (transmit
+            // press/release); the audible oxygen-flow sound is the verification.
+            // Before the fire test so the flow sound never sits under the fire bell.
+            // One step per side, each ticking its OWN Preflight item (the crew's single
+            // "Oxygen: Tested 100%" readback line lives in PREFLIGHT_CL).
+            SW("CP_OXY_TEST_CAPT", "Captain oxygen test — listen for the oxygen flow",
+                "OXY_TEST_CAPT", 1, checklistItemId: "PF_OXY_TEST_CAPT"),
+            SW("CP_OXY_TEST_FO", "First officer oxygen test — listen for the oxygen flow",
+                "OXY_TEST_FO", 1, checklistItemId: "PF_OXY_TEST_FO"),
+            // Held FIRE/OVHT test (executor pseudo-key; fire bell audible while held).
+            SW("CP_FIRE_TEST", "Fire and overheat test — listen for the fire bell",
+                "FIRE_OVHT_TEST", 1, checklistItemId: "PF_FIRE_TEST"),
+            // TCAS test stays with the fire test (executor pseudo-key — transmit press/release;
+            // the 777 CDA param-1 momentary is SILENT for TCAS TEST, live-verified 2026-07-13).
+            // Its "TEST PASS" callout plays ~8 s later; the WXR test is moved to the END of
+            // the flow so the two test audios never overlap.
+            SW("CP_TCAS_TEST", "TCAS test — listen for TCAS test pass",
+                "TCAS_TEST", 1, checklistItemId: "PF_TCAS_TEST"),
+            SW("CP_WINDOW_HEAT_1","Window heat 1: ON",         "EVT_OH_ICE_WINDOW_HEAT_1",           1,
+               checklistItemId: "PF_WINDOW_HEAT"),
+            SW("CP_WINDOW_HEAT_2","Window heat 2: ON",         "EVT_OH_ICE_WINDOW_HEAT_2",           1,
+               checklistItemId: "PF_WINDOW_HEAT"),
+            SW("CP_WINDOW_HEAT_3","Window heat 3: ON",         "EVT_OH_ICE_WINDOW_HEAT_3",           1,
+               checklistItemId: "PF_WINDOW_HEAT"),
+            SW("CP_WINDOW_HEAT_4","Window heat 4: ON",         "EVT_OH_ICE_WINDOW_HEAT_4",           1,
+               checklistItemId: "PF_WINDOW_HEAT"),
+            Skip(Multi("CP_ENG_PUMPS", "Engine pumps: ON", "PF_ENG_PUMPS",
+                ("EVT_OH_HYD_ENG1", 1), ("EVT_OH_HYD_ENG2", 1)),
+                s => s.IsEngPump1On() && s.IsEngPump2On()),
+            // OFF, as PMDG's Preflight Procedure reads ("SEAT BELTS selector .. OFF"; owner,
+            // 2026-10-09). The sign goes ON in Before Start (BS_SEAT_BELTS): the owner's "ON,
+            // not the vendor's AUTO" ruling (2026-08-29) is PMDG's Before Start position, and
+            // this step applied it here too, as ON, until 2026-10-09. "Already set" only when the
+            // selector reads OFF (AreSeatBeltsOff, NaN-safe). Verified, as Shutdown's SD_SEAT_BELTS
+            // and Before Start's BS_SEAT_BELTS are: a write that does not take is heard skipped and
+            // PF_SEAT_BELTS stays out of the latch.
+            Skip(SW("CP_SEAT_BELTS",   "Seat belts: OFF",           "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH",   0,
+               "SIGNS_SeatBeltsSelector", v => v < 0.5, "PF_SEAT_BELTS"),
+                s => s.AreSeatBeltsOff()),
+            SW("CP_NO_SMOKING",   "No smoking: ON",            "EVT_OH_NO_SMOKING_LIGHT_SWITCH",     2,
+               checklistItemId: "PF_NO_SMOKING"),
+            SW("CP_LIGHTS_MASTER","Lights master: ON",         "EVT_OH_LIGHTS_IND_LTS_SWITCH",       1,
+               checklistItemId: "PF_MASTER_LIGHTS"),
+            SW("CP_CARGO_FIRE_FWD","Cargo fire arm fwd: OFF",  "EVT_OH_FIRE_CARGO_ARM_FWD",          0,
+               checklistItemId: "PF_CARGO_FIRE"),
+            SW("CP_CARGO_FIRE_AFT","Cargo fire arm aft: OFF",  "EVT_OH_FIRE_CARGO_ARM_AFT",          0,
+               checklistItemId: "PF_CARGO_FIRE"),
+            Multi("CP_EEC_MODE",  "EEC mode: NORM", "PF_EEC_MODE",
+                ("EVT_OH_EEC_L_SWITCH", 1), ("EVT_OH_EEC_R_SWITCH", 1)),
+            SW("CP_AUTOSTART",    "Autostart: ON",             "EVT_OH_ENGINE_AUTOSTART",            1,
+               checklistItemId: "PF_AUTOSTART"),
+            // Nozzles and arm are two steps under ONE line ("Fuel jettison nozzles and arm:
+            // OFF"); both name it.
+            Multi("CP_JETT_OFF",  "Fuel jettison: OFF", "PF_JETTISON_OFF",
+                ("EVT_OH_FUEL_JETTISON_NOZZLE_L", 0), ("EVT_OH_FUEL_JETTISON_NOZZLE_R", 0)),
+            SW("CP_JETT_ARM_OFF", "Jettison arm: OFF",         "EVT_OH_FUEL_JETTISON_ARM",           0,
+               checklistItemId: "PF_JETTISON_OFF"),
+            Multi("CP_XFEED_OFF", "Crossfeed: OFF", "PF_CROSSFEED_OFF",
+                ("EVT_OH_FUEL_CROSSFEED_FORWARD", 0), ("EVT_OH_FUEL_CROSSFEED_AFT", 0)),
+            // PMDG's Preflight runs "CROSSFEED switches — OFF", then "FUEL PUMP switches — OFF"
+            // (FOB-4); the flow had no step for the pumps, so "Fuel pumps: OFF" was latched over
+            // pumps nobody checked. Shutdown's six-pump write, wing pumps before centre pumps
+            // (FOB-12: the centre falling edge must see the wing pumps already off). Verified on
+            // the LAST pump written, the right centre pump (FUEL_PumpCtr_Sw_1): a Multi step reads
+            // its field once, after its last write, so a sequence cut short or a last write that did
+            // not take is heard skipped and PF_FUEL_PUMPS_OFF stays out of the latch. The first five
+            // pumps are not read back.
+            Skip(Verify(Multi("CP_FUEL_PUMPS_OFF", "Fuel pumps: OFF", "PF_FUEL_PUMPS_OFF",
+                ("EVT_OH_FUEL_PUMP_1_FORWARD", 0), ("EVT_OH_FUEL_PUMP_2_FORWARD", 0),
+                ("EVT_OH_FUEL_PUMP_1_AFT", 0),     ("EVT_OH_FUEL_PUMP_2_AFT", 0),
+                ("EVT_OH_FUEL_PUMP_L_CENTER", 0),  ("EVT_OH_FUEL_PUMP_R_CENTER", 0)),
+                "FUEL_PumpCtr_Sw_1", v => v < 0.5),
+                s => s.AreAllFuelPumpsOff()),
+            SW("CP_WING_ANTI_ICE","Wing anti-ice: AUTO",       "EVT_OH_ICE_WING_ANTIICE",            1,
+               checklistItemId: "PF_WING_ANTI_ICE"),
+            Multi("CP_ENG_ANTI_ICE","Engine anti-ice: AUTO", "PF_ENG_ANTI_ICE",
+                ("EVT_OH_ICE_ENGINE_ANTIICE_1", 1), ("EVT_OH_ICE_ENGINE_ANTIICE_2", 1)),
+            SW("CP_BEACON_OFF",   "Beacon: OFF",               "EVT_OH_LIGHTS_BEACON",               0,
+               checklistItemId: "PF_BEACON_OFF"),
+            SW("CP_WING_LIGHTS",  "Wing lights: ON",           "EVT_OH_LIGHTS_WING",                 1,
+               checklistItemId: "PF_WING_LIGHTS"),
+            SW("CP_EQUIP_COOL",   "Equipment cooling: AUTO",   "EVT_OH_AIRCOND_EQUIP_COOLING_SWITCH",1,
+               checklistItemId: "PF_EQUIP_COOL"),
+            SW("CP_GASPER",       "Gasper: ON",                "EVT_OH_AIRCOND_GASPER_SWITCH",       1,
+               checklistItemId: "PF_GASPER"),
+            // The loaded variant's own switches, read back (Pmdg777RecircFans): UPPER and LOWER on the
+            // passenger 777s, the single RECIRC FANS switch on the 777F. This wrote the 777F's switch on
+            // every variant, unverified, and latched the line over fans it never moved.
+            SW("CP_RECIRC_FANS",  "Recirculation fans: ON",    Pmdg777RecircFans.PseudoKey,          1,
+               Pmdg777RecircFans.OnField, v => v > 0.5, "PF_RECIRC_FANS"),
+            Skip(Multi("CP_PACKS",     "Packs: AUTO", "PF_PACKS",
+                ("EVT_OH_AIRCOND_PACK_SWITCH_L", 1), ("EVT_OH_AIRCOND_PACK_SWITCH_R", 1)),
+                s => s.IsPack1Auto() && s.IsPack2Auto()),
+            Skip(Multi("CP_TRIM_AIR",  "Trim air: ON", "PF_TRIM_AIR",
+                ("EVT_OH_AIRCOND_TRIM_AIR_SWITCH_L", 1), ("EVT_OH_AIRCOND_TRIM_AIR_SWITCH_R", 1)),
+                s => s.IsTrimAir1On() && s.IsTrimAir2On()),
+            Skip(Multi("CP_ENG_BLEEDS","Engine bleeds: ON", "PF_ENG_BLEED",
+                ("EVT_OH_BLEED_ENG_1_SWITCH", 1), ("EVT_OH_BLEED_ENG_2_SWITCH", 1)),
+                s => s.IsEngBleed1On() && s.IsEngBleed2On()),
+            Skip(SW("CP_APU_BLEED",    "APU bleed: AUTO",           "EVT_OH_BLEED_APU_SWITCH",            1,
+               checklistItemId: "PF_APU_BLEED"),
+                s => s.IsApuBleedOn()),
+            Multi("CP_OUTFLOW",   "Outflow valves: AUTO", "PF_OUTFLOW_VALVES",
+                ("EVT_OH_PRESS_VALVE_SWITCH_1", 1), ("EVT_OH_PRESS_VALVE_SWITCH_2", 1)),
+            // EFIS setup — four steps under ONE line ("EFIS: Mode MAP, range 40nm"); all name it.
+            // Captain side
+            SW("CP_EFIS_MODE_C",  "EFIS mode: MAP",            "EVT_EFIS_CPT_MODE",                  2,
+               checklistItemId: "PF_EFIS_SET"),
+            SW("CP_EFIS_RANGE_C", "EFIS range: 40",            "EVT_EFIS_CPT_RANGE",                 2,
+               checklistItemId: "PF_EFIS_SET"),
+            // FO side EFIS
+            SW("CP_EFIS_MODE_FO", "FO EFIS mode: MAP",         "EVT_EFIS_FO_MODE",                   2,
+               checklistItemId: "PF_EFIS_SET"),
+            SW("CP_EFIS_RANGE_FO","FO EFIS range: 40",         "EVT_EFIS_FO_RANGE",                  2,
+               checklistItemId: "PF_EFIS_SET"),
+            // MCP — FD ON and both A/T ARM switches armed, per the Boeing preflight
+            // procedure (and matching the PREFLIGHT checklist's PF_FD_ON / PF_AT_ARM).
+            // Physical MCP order left-to-right: L FD, L+R A/T ARM, R FD.
+            MouseFlag("CP_FD_L",    "Left flight director: ON",  "EVT_MCP_FD_SWITCH_L",     "MCP_FD_Sw_On_0",    wantOn: true, "PF_FD_ON"),
+            MouseFlag("CP_AT_ARM_L","Left autothrottle: ARM",    "EVT_MCP_AT_ARM_SWITCH_L", "MCP_ATArm_Sw_On_0", wantOn: true, "PF_AT_ARM"),
+            MouseFlag("CP_AT_ARM_R","Right autothrottle: ARM",   "EVT_MCP_AT_ARM_SWITCH_R", "MCP_ATArm_Sw_On_1", wantOn: true, "PF_AT_ARM"),
+            MouseFlag("CP_FD_R",    "Right flight director: ON", "EVT_MCP_FD_SWITCH_R",     "MCP_FD_Sw_On_1",    wantOn: true, "PF_FD_ON"),
+            // Autobrake
+            Skip(SW("CP_AUTOBRAKE",    "Autobrake: RTO",            "EVT_ABS_AUTOBRAKE_SELECTOR",         0,
+               "BRAKES_AutobrakeSelector", v => Math.Abs(v) < 0.1, "PF_AUTOBRAKE_RTO"),
+                s => s.IsAutobrakRTO()),
+            // Fuel control — CUTOFF
+            // Note: PMDG lever parameter is inverted: 1=CUTOFF, 0=RUN
+            // Read back on BOTH switches, as Shutdown's SD_FC_CUTOFF (FuelControlsAtRunField at 0).
+            new FlowStep<AircraftStateEvaluator> { Id = "CP_FUEL_CTRL", Label = "Fuel Control: CUTOFF",
+                ActionType = FlowStepActionType.SetSwitchMultiple,
+                MultiActions = new() {
+                    ("EVT_CONTROL_STAND_ENG1_START_LEVER", 1),
+                    ("EVT_CONTROL_STAND_ENG2_START_LEVER", 1) },
+                VerifyFieldName = AircraftStateEvaluator.FuelControlsAtRunField, VerifyCondition = v => v < 0.5,
+                CompletesChecklistItemId = "PF_FUEL_CONTROL" },
+            Captain("CP_RESET_CL",   "Reset checklists and obtain IFR clearance"),
+            Captain("CP_ATIS",       "Obtain ATIS"),
+            // Weather-radar test runs LAST so its windshear callout never overlaps TCAS's
+            // "TEST PASS" (above). Managed sequence: overlay on → TEST → callout → WX mode →
+            // overlay off (~30 s). Concludes the flow.
+            SW("CP_WXR_TEST", "Weather radar test — listen for the windshear callout",
+                "WXR_TEST", 1, checklistItemId: "PF_WXR_TEST"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // Flow 3: Before Start
+    // -----------------------------------------------------------------------
+    private static FlowDefinition<AircraftStateEvaluator> BuildBeforeStart() => new()
+    {
+        Id = "BEFORE_START",
+        Name = "Before Start",
+        Description = "Prepares the aircraft for engine start. Passenger signs on, APU started here always, hydraulics pressurised, fuel pumps on.",
+        RelatedChecklistGroupIds = new[] { "BEFORE_START", "BEFORE_START_CL" },
+        Steps = new()
+        {
+            Captain("BS_MCP_SPEEDS",  "Set MCP: speed, heading and altitude"),
+            // PMDG's Before Start "SEAT BELTS selector" line, ON rather than the vendor's AUTO
+            // (owner ruling 2026-08-29, FOB-4). Cockpit Prep leaves the selector OFF, as PMDG's
+            // Preflight reads, so this is where the sign goes ON; until 2026-10-09 nothing here
+            // set or checked it, so "Seat Belts selector: ON" and the read-back's "Passenger
+            // Signs: Set" were latched over whatever it read. Verified as Shutdown's seat-belt
+            // write is; "Already set" when the selector reads ON.
+            Also(Skip(SW("BS_SEAT_BELTS", "Passenger signs: ON", "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", 2,
+               "SIGNS_SeatBeltsSelector", v => v > 1.5, "BS_SEAT_BELTS"),
+                s => s.SeatBeltsSelector() == 2), "BSCL_SIGNS"),
+            // Trim is NOT briefed here any more — it moved to the end of this flow, where
+            // PMDG's own Before Start Procedure puts it (after the transponder) and where
+            // the hydraulic pumps that move the surfaces are actually running. It used to
+            // be step 3 of 17: ahead of the entire APU start and of every pump.
+            // APU Start — always done here regardless of GPU status.
+            // Selector: OFF → ON (1) → START (2, spring-loads back to ON internally).
+            // Gate on the SDK's APURunning bool — the same field the System Display reads.
+            // (ELEC_APU_Selector returns to 1 immediately after the ON command and is not
+            // a reliable "APU running" indicator, and the old fixed 90 s wait disconnected
+            // ground power even when the APU never started.) Stop policy: a timeout aborts
+            // the flow BEFORE the ground-power disconnect steps below. Re-run safe:
+            // APURunning already 1 makes the wait pass instantly.
+            SW("BS_APU_ON",    "APU selector: ON",    "EVT_OH_ELEC_APU_SEL_SWITCH", 1),
+            Wait("BS_APU_ON_WAIT", "Waiting before APU start", 2),
+            SW("BS_APU_START", "APU selector: START",  "EVT_OH_ELEC_APU_SEL_SWITCH", 2),
+            WaitForField("BS_APU_WAIT", "Waiting for the APU to start", "APURunning",
+                v => v > 0.5, 120, onTimeout: FlowStepFailurePolicy.Stop),
+            // Short settle so the (preflight-armed) APU generator breaker has closed
+            // before the load leaves ground power.
+            Wait("BS_APU_SETTLE", "APU stabilising", 5),
+            // Electric and engine pumps are two steps under ONE line ("Engine and Electric
+            // primary hydraulic pumps: ON"); both name it.
+            Skip(Multi("BS_HYD_ELEC",   "Hydraulic electric pumps: ON", "BS_HYD_PUMPS_ON",
+                ("EVT_OH_HYD_ELEC1", 1), ("EVT_OH_HYD_ELEC2", 1)),
+                s => s.IsElecPump1On() && s.IsElecPump2On()),
+            Skip(Multi("BS_HYD_ENG",    "Engine pumps: ON", "BS_HYD_PUMPS_ON",
+                ("EVT_OH_HYD_ENG1", 1), ("EVT_OH_HYD_ENG2", 1)),
+                s => s.IsEngPump1On() && s.IsEngPump2On()),
+            Multi("BS_DEMAND_AUTO","Demand pumps: AUTO", "BS_HYD_DEMAND",
+                ("EVT_OH_HYD_DEMAND_ELEC1", 1), ("EVT_OH_HYD_DEMAND_ELEC2", 1),
+                ("EVT_OH_HYD_AIR1", 1), ("EVT_OH_HYD_AIR2", 1)),
+            // "Already set" and the verify both read the line's own condition (FO_FUEL_PUMPS_BS_OK:
+            // wing pumps on AND the centre pumps matching the centre fuel). The skip once read the
+            // wing pumps alone, so with them on it said "Already set" over centre pumps left off
+            // with fuel in the centre tank, and the line was latched. The centre ON writes still
+            // pass CenterPumpGate (FOB-10), so with a light centre tank the line is met with the
+            // centre pumps off.
+            Skip(Verify(Multi("BS_FUEL_PUMPS", "Fuel pumps: ON", "BS_WING_PUMPS_ON",
+                ("EVT_OH_FUEL_PUMP_1_FORWARD", 1), ("EVT_OH_FUEL_PUMP_2_FORWARD", 1),
+                ("EVT_OH_FUEL_PUMP_1_AFT", 1),     ("EVT_OH_FUEL_PUMP_2_AFT", 1),
+                ("EVT_OH_FUEL_PUMP_L_CENTER", 1),  ("EVT_OH_FUEL_PUMP_R_CENTER", 1)),
+                "FO_FUEL_PUMPS_BS_OK", v => v > 0.5),
+                s => s.AreBeforeStartFuelPumpsOk()),
+            // Ticks its OWN group's item first. It once completed ONLY the read-back
+            // BSCL_BEACON; the verified write achieves both "Beacon: ON" lines (same field,
+            // same condition), so it names both — a failed write leaves neither latched.
+            Also(Skip(SW("BS_BEACON",    "Beacon: ON",  "EVT_OH_LIGHTS_BEACON", 1,
+               "LTS_Beacon_Sw_ON", v => v > 0.5, "BS_BEACON_ON"),
+                s => s.IsBeaconOn()), "BSCL_BEACON"),
+            // Disconnect ground power only if it is actually connected (APU is now running).
+            // Each GPU is checked independently — skip if it is already off.
+            Toggle(Momentary("BS_GND_PWR_1", "Ground power primary: disconnect",
+                GroundPowerGate.EventForAnnunciatorIndex(0), "BS_EXT_PWR_OFF"),
+                s => GroundPowerGate.ShouldSkip(s.IsGpuPower1On(), wantOn: false), "ELEC_annunExtPowr_ON_0"),
+            Toggle(Momentary("BS_GND_PWR_2", "Ground power secondary: disconnect",
+                GroundPowerGate.EventForAnnunciatorIndex(1), "BS_EXT_PWR_OFF"),
+                s => GroundPowerGate.ShouldSkip(s.IsGpuPower2On(), wantOn: false), "ELEC_annunExtPowr_ON_1"),
+            // Cancel/Recall and the transponder had NO step in this flow, yet both are
+            // items of the BEFORE_START group — which a finished flow ticks and LATCHES
+            // wholesale (ChecklistManager.MarkGroupComplete). "Transponder: XPNDR"
+            // therefore read complete with the selector untouched, which a blind pilot
+            // has no way to catch. The vendor pushes CANCEL/RECALL twice (verify the
+            // expected alerts, then verify they cancel); one press is enough to satisfy
+            // the single checklist line, and the pilot reads the messages between.
+            Momentary("BS_CANCEL_RECALL", "Cancel/Recall: PUSH", "EVT_DSP_CANC_RCL_SWITCH",
+                "BS_CANCEL_RECALL"),
+            Skip(SW("BS_XPNDR", "Transponder: XPNDR", "EVT_TCAS_MODE", 2,
+               "XPDR_ModeSel", v => v > 1.5 && v < 2.5, "BS_TRANSPONDER"),
+                s => s.IsPosition("XPDR_ModeSel", 2)),
+            // Trim, last operational block — vendor order, and the hydraulics are running.
+            // Stabiliser trim is SET; aileron and rudder trim are VERIFIED at zero.
+            Captain("BS_TRIM_SET", "Set stabiliser trim for takeoff; verify aileron and rudder trim zero"),
+            Captain("BS_START_ACARS", "Start ACARS"),
+            Captain("BS_TAXI_CLR", "Obtain pushback and start clearance"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // Flow 4: Engine Start
+    // -----------------------------------------------------------------------
+    private static FlowDefinition<AircraftStateEvaluator> BuildEngineStart() => new()
+    {
+        Id = "ENGINE_START",
+        Name = "Engine Start",
+        Description = "Starts both engines in sequence (Engine 2 first, then Engine 1). Waits for each engine to run and its start valve to close before going on; a start that fails stops the flow, and an engine already running is not started again.",
+        RelatedChecklistGroupIds = new[] { "ENGINE_START" },
+        Steps = new()
+        {
+            // A failed or hung start STOPS the flow (every other aircraft's Engine Start has such
+            // a gate): a START selector that did not take, a fuel control that did not reach RUN,
+            // an engine that never reaches idle N2 and a start valve that never closes each end it
+            // with "Engine Start flow stopped. Unable to complete: …". Before, every step was Skip:
+            // fuel went to RUN about 5 s after "Skipping: … START", the valve-closed wait passed on a
+            // valve that never opened, engine 1 was started next, and "flow complete" latched the
+            // start lines over an engine at 0 % N2.
+            //
+            // An engine already RUNNING (IsEngineRunning: N2 at idle AND its fuel control at RUN) is
+            // not started again, as on the MD-11. A re-run with engine 2 running (started by hand, or
+            // a run that stopped at engine 1) sent its START, the selector sprang back to NORM above
+            // cutout, the verify failed and the flow stopped before engine 1. Its START step is now
+            // "Already set", its fuel control "Already set" at RUN, its fixed waits pass silently
+            // (they follow only a START this run sent: RunOnlyIfStepSent), and the running and
+            // start-valve waits read the engine and pass at once. An engine coasting down after a
+            // cutoff shows N2 without RUN, so it is not "running" and gets the ordinary start steps.
+            //
+            // ---- Engine 2 ----
+            // Start selector: send 0 = GND/START position.
+            // Data mapping: ENG_Start_Selector [0]="Start", [1]="Norm"
+            // So position index 0 is the start/GND position.
+            // No checklist link: "Engine 2 Start/Ignition selector: START" is the ONE
+            // sanctioned StayComplete line and latches off N2 (CLAUDE.md) — a START write is
+            // not a completed start, and a link would tick it the moment the selector moved.
+            StopOnFailure(Skip(SW("ES_ENG2_START", "Engine 2 start selector: START",
+               "EVT_OH_ENGINE_R_START", 0,
+               "ENG_Start_Selector_1", v => v < 0.5),
+                s => s.IsEngineRunning(2))),
+            OnlyIfSent(Wait("ES_E2_WAIT1", "Cranking Engine 2", 3), "ES_ENG2_START"),
+            // Fuel Control 2: RUN — PMDG inverted param: 0=RUN, 1=CUTOFF
+            Skip(new FlowStep<AircraftStateEvaluator> { Id = "ES_FC2_RUN", Label = "Engine 2 fuel control: RUN",
+                SpokenLabel = "Engine 2 fuel control run",
+                ActionType = FlowStepActionType.SetSwitch,
+                EventName = "EVT_CONTROL_STAND_ENG2_START_LEVER",
+                TargetValue = 0,  // 0 = RUN (inverted)
+                VerifyFieldName = "ENG_FuelControl_Sw_RUN_1", VerifyCondition = v => v > 0.5,
+                CompletesChecklistItemId = "ES_ENG2_FUEL_CTRL",
+                FailurePolicy = FlowStepFailurePolicy.Stop },
+                s => s.IsEng2FuelControlRun()),
+            // Wait 30 s to ensure the start valve has had time to open before checking for close
+            OnlyIfSent(Wait("ES_E2_VALVE_WAIT", "Engine 2 light-off in progress", 30), "ES_ENG2_START"),
+            // The engine RUNNING first (N2 at idle, the start selector lines' own latch), so the
+            // valve-closed check below can no longer pass on a valve that never opened.
+            WaitForField("ES_ENG2_RUNNING", "Waiting for Engine 2 to reach idle", "FO_ENG2_N2",
+                v => v >= AircraftStateEvaluator.EngineRunningN2, 120, onTimeout: FlowStepFailurePolicy.Stop),
+            // Start valve closes when the engine reaches self-sustaining speed (~55% N2). One still
+            // open is a starter still engaged, so engine 1 is never started over it.
+            WaitForField("ES_ENG2_STABLE", "Waiting for Engine 2 start valve to close",
+                "ENG_StartValve_1", v => v < 0.5, 120, onTimeout: FlowStepFailurePolicy.Stop),
+            OnlyIfSent(Wait("ES_ENG2_SETTLE", "Engine 2 stabilising at idle", 30), "ES_ENG2_START"),
+            // Return start selector to NORM
+            SW("ES_ENG2_NORM", "Engine 2 start selector: NORM",
+               "EVT_OH_ENGINE_R_START", 1,
+               "ENG_Start_Selector_1", v => v > 0.5),
+
+            // ---- Engine 1 ----
+            // No checklist link — see ES_ENG2_START. The same stop gates, and the same running-engine
+            // skips, as engine 2.
+            StopOnFailure(Skip(SW("ES_ENG1_START", "Engine 1 start selector: START",
+               "EVT_OH_ENGINE_L_START", 0,
+               "ENG_Start_Selector_0", v => v < 0.5),
+                s => s.IsEngineRunning(1))),
+            OnlyIfSent(Wait("ES_E1_WAIT1", "Cranking Engine 1", 3), "ES_ENG1_START"),
+            Skip(new FlowStep<AircraftStateEvaluator> { Id = "ES_FC1_RUN", Label = "Engine 1 fuel control: RUN",
+                SpokenLabel = "Engine 1 fuel control run",
+                ActionType = FlowStepActionType.SetSwitch,
+                EventName = "EVT_CONTROL_STAND_ENG1_START_LEVER",
+                TargetValue = 0,  // 0 = RUN (inverted)
+                VerifyFieldName = "ENG_FuelControl_Sw_RUN_0", VerifyCondition = v => v > 0.5,
+                CompletesChecklistItemId = "ES_ENG1_FUEL_CTRL",
+                FailurePolicy = FlowStepFailurePolicy.Stop },
+                s => s.IsEng1FuelControlRun()),
+            OnlyIfSent(Wait("ES_E1_VALVE_WAIT", "Engine 1 light-off in progress", 30), "ES_ENG1_START"),
+            WaitForField("ES_ENG1_RUNNING", "Waiting for Engine 1 to reach idle", "FO_ENG1_N2",
+                v => v >= AircraftStateEvaluator.EngineRunningN2, 120, onTimeout: FlowStepFailurePolicy.Stop),
+            WaitForField("ES_ENG1_STABLE", "Waiting for Engine 1 start valve to close",
+                "ENG_StartValve_0", v => v < 0.5, 120, onTimeout: FlowStepFailurePolicy.Stop),
+            OnlyIfSent(Wait("ES_ENG1_SETTLE", "Engine 1 stabilising at idle", 30), "ES_ENG1_START"),
+            SW("ES_ENG1_NORM", "Engine 1 start selector: NORM",
+               "EVT_OH_ENGINE_L_START", 1,
+               "ENG_Start_Selector_0", v => v > 0.5),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // Flow 5: Before Taxi
+    // -----------------------------------------------------------------------
+    private static FlowDefinition<AircraftStateEvaluator> BuildBeforeTaxi() => new()
+    {
+        Id = "BEFORE_TAXI",
+        Name = "Before Taxi",
+        Description = "Shuts down APU, sets taxi lighting, takeoff flaps (then confirms the lever), both packs to AUTO and autobrake RTO, and pushes RECALL.",
+        RelatedChecklistGroupIds = new[] { "BEFORE_TAXI", "BEFORE_TAXI_CL" },
+        Steps = new()
+        {
+            SW("BT_APU_OFF",    "APU: OFF",       "EVT_OH_ELEC_APU_SEL_SWITCH", 0,
+               checklistItemId: "BT_APU_OFF"),
+            Skip(SW("BT_TAXI_LIGHTS","Taxi lights: ON", "EVT_OH_LIGHTS_TAXI",   1,
+               checklistItemId: "BT_TAXI_LIGHTS"),
+                s => s.IsTaxiOn()),
+            SW("BT_STORM_OFF",  "Storm lights: OFF", "EVT_OH_LIGHTS_STORM",     0,
+               checklistItemId: "BT_STORM_OFF"),
+            // Takeoff flaps — set from SimBrief perf data (defaults to flaps 5 if not loaded).
+            // Only the step matching the planned setting runs; the others are skipped.
+            // The 777's flap-lever events are named by DEGREES (_0/_1/_5/_15/_20/_25/_30), not
+            // the 737's detent indices — see AircraftActionExecutor.SetFlapsPosition and
+            // Pmdg777TakeoffFlapsTests.
+            Skip(Momentary("BT_FLAPS_1",  "Flaps: 1",  "EVT_CONTROL_STAND_FLAPS_LEVER_1"), s => s.GetTakeoffFlaps() != 1),
+            Skip(Momentary("BT_FLAPS_5",  "Flaps: 5",  "EVT_CONTROL_STAND_FLAPS_LEVER_5"), s => s.GetTakeoffFlaps() != 5),
+            Skip(Momentary("BT_FLAPS_15", "Flaps: 15", "EVT_CONTROL_STAND_FLAPS_LEVER_15"), s => s.GetTakeoffFlaps() != 15),
+            Skip(Momentary("BT_FLAPS_20", "Flaps: 20", "EVT_CONTROL_STAND_FLAPS_LEVER_20"), s => s.GetTakeoffFlaps() != 20),
+            Skip(Momentary("BT_FLAPS_25", "Flaps: 25", "EVT_CONTROL_STAND_FLAPS_LEVER_25"), s => s.GetTakeoffFlaps() != 25),
+            // Read-only: completes "Flap lever: Set for takeoff" (BT_FLAPS) once the LEVER is at a
+            // takeoff detent — the Before Takeoff Checklist line's own range, flaps 5, 15 or 20.
+            // The plan-gated steps above cannot carry the link: the four not planned skip as
+            // "Already set", which would tick the line whatever the planned one did (FO-6). Never
+            // writes; up to 20 s, then skipped aloud, and the line stays open until the lever agrees.
+            Skip(WaitForField("BT_FLAPS_CHECK", "Flap lever: takeoff", "FCTL_Flaps_Lever",
+                    AircraftStateEvaluator.IsTakeoffFlapLever, 20, checklistItemId: "BT_FLAPS"),
+                s => s.AreFlapsForTakeoff()),
+            // Packs: both to AUTO for departure (skip each if already AUTO)
+            Skip(SW("BT_PACK_L_AUTO", "Pack left: AUTO",  "EVT_OH_AIRCOND_PACK_SWITCH_L", 1, checklistItemId: "BT_PACKS"),
+                s => s.IsPack1Auto()),
+            Skip(SW("BT_PACK_R_AUTO", "Pack right: AUTO", "EVT_OH_AIRCOND_PACK_SWITCH_R", 1, checklistItemId: "BT_PACKS"),
+                s => s.IsPack2Auto()),
+            // PMDG's Before Taxi Checklist reads "Auto Brake: RTO". The selector was set in Cockpit
+            // Prep and nothing here checked it, so the read-back latched over whatever it read.
+            // Cockpit Prep's RTO write; "Already set" when it reads RTO. The Before Taxi group has
+            // no autobrake line, so it completes the read-back's (BTCL_AUTOBRAKE).
+            Skip(SW("BT_AUTOBRAKE_RTO", "Autobrake: RTO", "EVT_ABS_AUTOBRAKE_SELECTOR", 0,
+               "BRAKES_AutobrakeSelector", v => Math.Abs(v) < 0.1, "BTCL_AUTOBRAKE"),
+                s => s.IsAutobrakRTO()),
+            Captain("BT_FCTL_CHECK",   "Check flight controls — confirm free and correct"),
+            // No trim reminder here — see the matching note on the Before Taxi checklist
+            // group; trim is set at the end of Before Start and read back on BSCL_TRIM.
+            // PMDG's last Before Taxi step: "Recall — Check. Verify that only expected alert
+            // messages are shown". The First Officer pushes RECALL (the same press as the "Recall:
+            // Check" line's own action, PushCancelRecall) and you read the messages.
+            Momentary("BT_RECALL", "Recall: push", "EVT_DSP_CANC_RCL_SWITCH", "BT_RECALL"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // Flow 6: Before Takeoff
+    // -----------------------------------------------------------------------
+    private static FlowDefinition<AircraftStateEvaluator> BuildBeforeTakeoff() => new()
+    {
+        Id = "BEFORE_TAKEOFF",
+        Name = "Before Takeoff",
+        Description = "Arms lights, transponder, LNAV/VNAV, and FO instruments for runway lineup, then confirms the takeoff flap lever.",
+        RelatedChecklistGroupIds = new[] { "BEFORE_TAKEOFF", "BEFORE_TKOF_CL" },
+        Steps = new()
+        {
+            // Individual per-switch events (panel-proven) — the ganged LANDING_LNR event
+            // was never live-verified. "Already set" only when ALL three are on, as the line reads
+            // them: with ANY one on it skipped, and the line was latched over the two still off.
+            Skip(Multi("BTKOF_LANDING_L", "Landing lights: ON", "BTKO_LANDING",
+                ("EVT_OH_LIGHTS_LANDING_L", 1), ("EVT_OH_LIGHTS_LANDING_NOSE", 1), ("EVT_OH_LIGHTS_LANDING_R", 1)),
+                s => s.AreAllLandingLightsOn()),
+            // Both sides, as the line reads them (it skipped on either), through the per-side events
+            // the panel's proven controls use, read back on both (RunwayTurnoffLightsOnField): the
+            // ganged LR_TURNOFF event was never live-verified, and the strict "Already set" sent it
+            // with one light already on, the state a ganged click is least likely to handle.
+            Skip(Verify(Multi("BTKOF_TURNOFF", "Runway turnoff lights: ON", "BTKO_TURNOFF",
+                ("EVT_OH_LIGHTS_L_TURNOFF", 1), ("EVT_OH_LIGHTS_R_TURNOFF", 1)),
+                AircraftStateEvaluator.RunwayTurnoffLightsOnField, v => v > 1.5),
+                s => s.AreBothRunwayTurnoffLightsOn()),
+            Skip(SW("BTKOF_STROBE",    "Strobe lights: ON",          "EVT_OH_LIGHTS_STROBE",        1,
+               checklistItemId: "BTKO_STROBE"),
+                s => s.IsStrobeOn()),
+            SW("BTKOF_XPNDR",     "Transponder: TA/RA",
+               // XPDR_ModeSel via EVT_TCAS_MODE: 0=Stby,1=AltRptgOff,2=Xpndr,3=TA Only,4=TA/RA
+               "EVT_TCAS_MODE",                                4, checklistItemId: "BTKO_XPNDR"),
+            // The press is read back on the annunciator its line reads: a press the FMC rejects (no
+            // active route, PERF INIT incomplete) leaves the light out, so it is heard skipped and the
+            // line stays out of the latch. Unverified, the flow said "LNAV: Verify armed" and latched
+            // "armed" over a mode that never armed.
+            Verify(Toggle(Momentary("BTKOF_LNAV", "LNAV: Verify armed", "EVT_MCP_LNAV_SWITCH", "BTKO_LNAV"),
+                s => s.IsOn("MCP_annunLNAV"), "MCP_annunLNAV"), "MCP_annunLNAV", v => v > 0.5),
+            Verify(Toggle(Momentary("BTKOF_VNAV", "VNAV: Verify armed", "EVT_MCP_VNAV_SWITCH", "BTKO_VNAV"),
+                s => s.IsOn("MCP_annunVNAV"), "MCP_annunVNAV"), "MCP_annunVNAV", v => v > 0.5),
+            Captain("BTKOF_FLAPS_CONFIRM", "Confirm flap setting for takeoff"),
+            // Read-only: completes PMDG's one Before Takeoff Checklist line, "Flaps: Set for
+            // takeoff" (BTKOF_FLAPS), once the LEVER is at a takeoff detent (the line's own range).
+            // Never writes — the Captain sets the flaps. Up to 20 s after the reminder above, then
+            // skipped aloud, and the line stays open until the lever agrees.
+            Skip(WaitForField("BTKOF_FLAPS_CHECK", "Flap lever: takeoff", "FCTL_Flaps_Lever",
+                    AircraftStateEvaluator.IsTakeoffFlapLever, 20, checklistItemId: "BTKOF_FLAPS"),
+                s => s.AreFlapsForTakeoff()),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // Flow 7: After Takeoff
+    // -----------------------------------------------------------------------
+    private static FlowDefinition<AircraftStateEvaluator> BuildAfterTakeoff() => new()
+    {
+        Id = "AFTER_TAKEOFF",
+        Name = "After Takeoff",
+        Description = "Cleans up lights and retracts gear/flaps after positive rate of climb, then confirms the flap lever is up and the gear is up.",
+        RelatedChecklistGroupIds = new[] { "AFTER_TAKEOFF", "AFTER_TKOF_CL" },
+        Steps = new()
+        {
+            // Per side, read back on both — see BTKOF_TURNOFF.
+            Skip(Verify(Multi("ATKOF_TURNOFF_OFF", "Runway turnoff: OFF", "ATKO_TURNOFF_OFF",
+                ("EVT_OH_LIGHTS_L_TURNOFF", 0), ("EVT_OH_LIGHTS_R_TURNOFF", 0)),
+                AircraftStateEvaluator.RunwayTurnoffLightsOnField, v => v < 0.5),
+                s => s.AreBothRunwayTurnoffLightsOff()),
+            // No "Landing lights: OFF" step: PMDG's file has none, and the 10,000 ft automation
+            // (FOAutoLights10kEnabled) switches them (removed 2026-10-09, FOB-4).
+            // Gear UP only when SIM ON GROUND reads airborne (the MD-11's rule): run on the ground by
+            // mistake, this flow moved the gear lever up there. Left alone with its reason, and the
+            // executor refuses the write too (DispatchCoreAsync), so no caller can send it.
+            LeaveAlone(Skip(SW("ATKOF_GEAR_UP",     "Gear: UP",            "EVT_GEAR_LEVER",             0,
+               "GEAR_Lever", v => v < 0.5, "ATKO_GEAR_UP"),
+                s => s.IsGearUp()),
+                s => !s.IsDefinitelyAirborne(), AircraftStateEvaluator.GearUpLeaveAloneText),
+            // The flap lever WRITE completes its OWN group's "Flaps: UP" (ATKO_FLAPS_UP) — the
+            // gear's shape. It used to complete the checklist's line (ATKOF_FLAPS) instead,
+            // which left ATKO_FLAPS_UP with no step behind it, so MarkGroupComplete latched it
+            // complete over a failed write. Only when SIM ON GROUND reads airborne, as the gear
+            // above: run on the ground by mistake, it retracted the takeoff flaps on the runway.
+            LeaveAlone(Skip(SW("ATKOF_FLAPS_UP",    "Flaps: UP",           "EVT_CONTROL_STAND_FLAPS_LEVER_0", null,
+               true, "FCTL_Flaps_Lever", v => v < 0.5, "ATKO_FLAPS_UP"),
+                s => s.AreFlapsUp()),
+                s => !s.IsDefinitelyAirborne(), AircraftStateEvaluator.FlapsUpLeaveAloneText),
+            // Read-only: completes the After Takeoff Checklist's "Flaps: UP" (ATKOF_FLAPS) once
+            // the LEVER reads UP — the checklist line's own condition. Not the physical flap
+            // angle: a retraction from takeoff flap outlasts any sensible wait, so it would
+            // routinely time out. Passes at once after a good write; after a failed one it
+            // gives the pilot 20 s to move the lever, then skips aloud and leaves the line live.
+            // Labelled for the LEVER it reads, never "Flaps: UP": that is the write's label, and a
+            // failed write followed by a timed-out check spoke "Skipping: Flaps: UP" twice.
+            Skip(WaitForField("ATKOF_FLAPS_UP_CHECK", "Flap lever: UP", "FCTL_Flaps_Lever", v => v < 0.5, 20,
+                    checklistItemId: "ATKOF_FLAPS"),
+                s => s.AreFlapsUp()),
+            // Read-only: completes the After Takeoff Checklist's "Landing Gear: UP" (ATKOF_GEAR)
+            // once the gear is CONFIRMED up — lever UP and all three legs fully retracted
+            // (Pmdg777GearConfirmation: the 777 SDK exposes no gear lights, so the physical
+            // position comes from the stock GEAR x POSITION SimVars). The lever WRITE above
+            // completes its own group's "Gear: UP" (ATKO_GEAR_UP), so a failed write is skipped
+            // aloud and leaves both lines live rather than latched. LAST, 20 s — it starts
+            // several seconds after the lever write (the flaps steps and 2 s pacing sit between).
+            Skip(WaitForField("ATKOF_GEAR_UP_CHECK", "Landing Gear: UP", Pmdg777GearConfirmation.UpField,
+                    v => v > 0.5, 20, checklistItemId: "ATKOF_GEAR"),
+                s => s.IsGearConfirmedUp()),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // Flow 8: Descent Setup
+    // -----------------------------------------------------------------------
+    private static FlowDefinition<AircraftStateEvaluator> BuildDescentSetup() => new()
+    {
+        Id = "DESCENT_SETUP",
+        Name = "Descent Setup",
+        Description = "Prepares FO instruments for descent and approach and pushes RECALL; landing autobrake is a Captain item.",
+        RelatedChecklistGroupIds = new[] { "DESCENT", "DESCENT_CL" },
+        Steps = new()
+        {
+            Captain("DSC_LNDG_DATA",  "Set landing data in FMC — VREF and minimums"),
+            Captain("DSC_AUTOBRAKE",  "Set the landing autobrake — Forward Panel, Brakes, Autobrake Selector"),
+            SW("DSC_EFIS_FO_MODE",    "FO EFIS: APP mode",        "EVT_EFIS_FO_MODE",           0,
+               checklistItemId: "DSCA_EFIS_FO_MODE"),
+            SW("DSC_EFIS_FO_RANGE",   "FO EFIS: 20nm range",      "EVT_EFIS_FO_RANGE",          1,
+               checklistItemId: "DSCA_EFIS_FO_RANGE"),
+            // PMDG's Descent Checklist opens "Recall .. Checked". The First Officer pushes RECALL
+            // (the same press as the Descent line's own action, PushCancelRecall) and you read the
+            // messages. It was a Captain reminder, which delivers nothing, so "Recall: Check no
+            // unexpected messages" (DSCA_RECALL) was latched over a press nobody made.
+            Momentary("DSC_RECALL",   "Recall: Check no unexpected messages", "EVT_DSP_CANC_RCL_SWITCH", "DSCA_RECALL"),
+            Captain("DSC_APPROACH_BRIEF", "Approach briefing: Complete"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // Flow 9: Approach Setup
+    // -----------------------------------------------------------------------
+    private static FlowDefinition<AircraftStateEvaluator> BuildApproachSetup() => new()
+    {
+        Id = "APPROACH_SETUP",
+        Name = "Approach Setup",
+        Description = "Sets altimeters for approach.",
+        RelatedChecklistGroupIds = new[] { "APPROACH", "APPROACH_CL" },
+        Steps = new()
+        {
+            // The speedbrake is NOT armed here. Approach Setup runs at the
+            // descent/approach transition, well before the landing configuration is
+            // established — arming there is too early. It moved to the Landing flow,
+            // which is where its own CompletesChecklistItemId ("LDG_SPEEDBRAKE", an item
+            // in LANDING_CL) always said it belonged; since 2026-10-09 it completes the
+            // Landing section's LDA_SPEEDBRAKE and links LDG_SPEEDBRAKE.
+            Captain("APP_ALTIMETERS",   "Altimeters: Set local QNH / transition"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // Flow 10: Landing
+    // -----------------------------------------------------------------------
+    private static FlowDefinition<AircraftStateEvaluator> BuildLanding() => new()
+    {
+        Id = "LANDING",
+        Name = "Landing",
+        Description = "Speedbrake armed and missed approach altitude set for landing, then confirms the landing flap lever and the gear down.",
+        RelatedChecklistGroupIds = new[] { "LANDING", "LANDING_CL" },
+        Steps = new()
+        {
+            // Moved out of Approach Setup: too early there. The step goes through the verified
+            // arm (AircraftActionExecutor.ArmSpeedbrakeAsync), which waits for the lever to
+            // reach ARM — the flow's own verify reads for only 2.6 s after dispatch and the lever
+            // takes about five seconds from DOWN. An armed lever is "Already set"; a DEPLOYED
+            // one is left alone with its reason, because clicking ARM over a lever the pilot
+            // has raised retracts it. It completes the Landing section's arming line and links
+            // the Landing Checklist's read-only "Speedbrake: ARMED" (same lever, same condition),
+            // so a skipped arm keeps both out of the latch (FO-6) — the PMDG 737's shape.
+            LeaveAlone(Also(Skip(SW("LD_SPEEDBRAKE_ARM", "Speedbrake: ARM", SpeedbrakeLeverState.ArmPseudoKey, null,
+               true, Pmdg777SpeedbrakeLever.LeverField, Pmdg777SpeedbrakeLever.IsArmed, "LDA_SPEEDBRAKE"),
+                s => s.IsSpeedbrakeArmed()), "LDG_SPEEDBRAKE"),
+                s => s.IsSpeedbrakeDeployed(), SpeedbrakeLeverState.LeaveAloneText),
+            // The 737's "Engine start switches: CONT" is deliberately NOT mirrored here —
+            // 777 ignition is automatic and needs no CONT selection for landing.
+
+            // Delivers the Landing section's "Set the missed approach altitude" (LDA_MISSED), as
+            // the PMDG 737's LD_MISSED does: a Captain reminder is its line's step, and the
+            // finished flow ticks the line.
+            Captain("LD_MISSED",      "Set the missed approach altitude"),
+            // Read-only: completes "Flaps: Set for landing" (LDG_FLAPS) once the LEVER is at 20 or
+            // more (the line's own range). Never writes — the Captain sets the flaps. Before the
+            // gear check, which stays LAST (FO-13), so the Landing Checklist ticks its flaps line
+            // before its gear line (the exception Pmdg777FlowOrderingTests names).
+            Skip(WaitForField("LD_FLAPS_CHECK", "Flap lever: landing", "FCTL_Flaps_Lever",
+                    AircraftStateEvaluator.IsLandingFlapLever, 20, checklistItemId: "LDG_FLAPS"),
+                s => s.AreFlapsForLanding()),
+            // Read-only gear-down confirmation — it never moves the lever. The 777 SDK exposes
+            // no gear-indication lights, so the crew's "three green" is composed from the lever
+            // DOWN and all three legs fully extended per the stock GEAR x POSITION SimVars
+            // (Pmdg777GearConfirmation, on the shared GearLightRules). LAST step of the flow,
+            // so the steps above are not held up; waits up to 20 s. If the gear is not
+            // confirmed down within that window the step is announced as skipped and
+            // FlowManager keeps LDG_GEAR out of MarkGroupComplete's latch, so the line keeps
+            // mirroring the real gear instead of reading complete over gear that is still up.
+            Skip(WaitForField("LD_GEAR_DOWN_CHECK", "Landing Gear: DOWN", Pmdg777GearConfirmation.DownField,
+                    v => v > 0.5, 20, checklistItemId: "LDG_GEAR"),
+                s => s.IsGearConfirmedDown()),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // Flow 11: After Landing
+    // -----------------------------------------------------------------------
+    private static FlowDefinition<AircraftStateEvaluator> BuildAfterLanding() => new()
+    {
+        Id = "AFTER_LANDING",
+        Name = "After Landing",
+        Description = "Post-touchdown cleanup: lights, speedbrake, autobrake, transponder, APU start.",
+        RelatedChecklistGroupIds = new[] { "AFTER_LANDING" },
+        Steps = new()
+        {
+            // Speed brake FIRST — it is the vendor's first After Landing checkpoint
+            // ("Speed Brake Lever — Down") and it is the first thing a crew does once the
+            // aircraft is slowing. It used to run fifth, after the autobrake and flaps,
+            // which put it out of order against its own checklist group (where it is item
+            // 1) — so running the flow ticked the group's boxes out of sequence.
+            Skip(Momentary("AL_SPEEDBRAKE_DN", "Speedbrake: DOWN", "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_DOWN", "AL_SPEEDBRAKE"),
+                s => s.IsSpeedbrakeDown()),
+            // Turnoff and landing lights are two steps under ONE line ("Landing and turnoff
+            // lights: OFF"); both name it.
+            // The OFF steps' "Already set" reads each switch as READ and off (IsOff): "!IsOn" read
+            // a switch the CDA had not delivered yet as off.
+            // Per side, read back on both — see the Before Takeoff flow's BTKOF_TURNOFF.
+            Skip(Verify(Multi("AL_TURNOFF_OFF", "Runway turnoff: OFF", "AL_EXT_LIGHTS",
+                ("EVT_OH_LIGHTS_L_TURNOFF", 0), ("EVT_OH_LIGHTS_R_TURNOFF", 0)),
+                AircraftStateEvaluator.RunwayTurnoffLightsOnField, v => v < 0.5),
+                s => s.AreBothRunwayTurnoffLightsOff()),
+            Skip(Multi("AL_LANDING_OFF",  "Landing lights: OFF", "AL_EXT_LIGHTS",
+                ("EVT_OH_LIGHTS_LANDING_L", 0), ("EVT_OH_LIGHTS_LANDING_NOSE", 0), ("EVT_OH_LIGHTS_LANDING_R", 0)),
+                s => s.AreAllLandingLightsOff()),
+            Skip(SW("AL_STROBE_OFF",   "Strobe: OFF",            "EVT_OH_LIGHTS_STROBE",        0,
+               checklistItemId: "AL_STROBE_OFF"),
+                s => s.IsOff("LTS_Strobe_Sw_ON")),
+            Skip(SW("AL_AUTOBRAKE_OFF","Autobrake: OFF",         "EVT_ABS_AUTOBRAKE_SELECTOR",  1,
+               "BRAKES_AutobrakeSelector", v => Math.Abs(v - 1) < 0.1, "AL_AUTOBRAKE_OFF"),
+                s => s.IsAutobrakeOff()),
+            Skip(SW("AL_FLAPS_UP",     "Flaps: UP",              "EVT_CONTROL_STAND_FLAPS_LEVER_0", null,
+               true, "FCTL_Flaps_Lever", v => v < 0.5, "AL_FLAPS_UP"),
+                s => s.AreFlapsUp()),
+            // Transponder → STBY moved to the Shutdown flow (SD_XPNDR_STBY); after landing
+            // it must stay active so ground/tower still see the aircraft.
+            // APU Start sequence for on-ground power. Skip policy (not Stop): engines are
+            // running, so an APU failure here is announced but must not abort the
+            // remaining cleanup. ELEC_APU_Selector was the old wait field — it reads 1
+            // immediately after the ON command, so it proved nothing; APURunning is real.
+            SW("AL_APU_ON",       "APU selector: ON",       "EVT_OH_ELEC_APU_SEL_SWITCH",  1),
+            Wait("AL_APU_WAIT",   "Waiting for APU selector", 2),
+            SW("AL_APU_START",    "APU selector: START",    "EVT_OH_ELEC_APU_SEL_SWITCH",  2),
+            // Read-only: completes "APU: START (for gate power)" once the APU is RUNNING — the
+            // selector writes above prove nothing on their own. A timeout skips aloud and keeps
+            // the line out of the latch instead of latching it over an APU that never started.
+            WaitForField("AL_APU_RUNNING", "Waiting for the APU to start",
+                "APURunning", v => v > 0.5, 120, checklistItemId: "AL_APU"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // Flow 12: Shutdown
+    // -----------------------------------------------------------------------
+    private static FlowDefinition<AircraftStateEvaluator> BuildShutdown() => new()
+    {
+        Id = "SHUTDOWN",
+        Name = "Shutdown",
+        Description = "Shuts down engines, powers down hydraulic and fuel systems, sets parking configuration.",
+        RelatedChecklistGroupIds = new[] { "SHUTDOWN", "SHUTDOWN_CL" },
+        Steps = new()
+        {
+            // Started by mistake in flight, SD_FC_CUTOFF below shut both engines down: never
+            // airborne (the MD-11's SD_ON_GROUND).
+            OnGroundGuard("SD_ON_GROUND"),
+            // No "Storm lights: ON" step: PMDG's Shutdown Procedure has none (removed 2026-10-09,
+            // FOB-4).
+
+            // Sets the brake and completes the Shutdown group's "Parking Brake/Chocks: SET". It no
+            // longer names the read-back's line: that is PMDG's "Parking Brake: As required", a
+            // Manual line the pilot confirms (SDCL_PARK_BRAKE).
+            Skip(SW("SD_PARK_BRAKE",  "Parking brake: SET",       "EVT_CONTROL_STAND_PARK_BRAKE_LEVER", 1,
+               "BRAKES_ParkingBrakeLeverOn", v => v > 0.5, "SD_PARK_BRAKE"),
+                s => s.IsParkingBrakeSet()),
+            // Fuel control: CUTOFF — PMDG inverted: 1=CUTOFF. Read back on BOTH switches
+            // (FuelControlsAtRunField at 0): verified on engine 1's alone, a dropped engine 2 write
+            // was reported done and both CUTOFF lines were latched with engine 2 still at RUN.
+            new FlowStep<AircraftStateEvaluator> { Id = "SD_FC_CUTOFF", Label = "Fuel Control: CUTOFF",
+                ActionType = FlowStepActionType.SetSwitchMultiple,
+                MultiActions = new() {
+                    ("EVT_CONTROL_STAND_ENG1_START_LEVER", 1),
+                    ("EVT_CONTROL_STAND_ENG2_START_LEVER", 1) },
+                VerifyFieldName = AircraftStateEvaluator.FuelControlsAtRunField, VerifyCondition = v => v < 0.5,
+                CompletesChecklistItemId = "SD_FUEL_CTRL",
+                AlsoCompletesChecklistItemIds = new[] { "SDCL_FUEL_CTRL" } },
+            // (No spool-down wait — the engines wind down on their own and nothing in the
+            // remaining steps needs them stopped; the old fixed 60 s pause just stalled
+            // the flow after cutoff. Removed 2026-07-02, user request.)
+            SW("SD_SEAT_BELTS",  "Seat belts: OFF",          "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", 0,
+               "SIGNS_SeatBeltsSelector", v => v < 0.5, "SD_SEAT_BELTS_OFF"),
+            Multi("SD_ENG_PUMPS","Engine pumps: OFF", "SD_ENG_PUMPS_OFF",
+                ("EVT_OH_HYD_ENG1", 0), ("EVT_OH_HYD_ENG2", 0)),
+            Multi("SD_ELEC_PUMPS","Electric pumps: OFF", "SD_ELEC_PUMPS_OFF",
+                ("EVT_OH_HYD_ELEC1", 0), ("EVT_OH_HYD_ELEC2", 0)),
+            Multi("SD_DEMAND",   "Demand pumps: OFF", "SD_DEMAND_OFF",
+                ("EVT_OH_HYD_DEMAND_ELEC1", 0), ("EVT_OH_HYD_DEMAND_ELEC2", 0),
+                ("EVT_OH_HYD_AIR1", 0), ("EVT_OH_HYD_AIR2", 0)),
+            Also(Multi("SD_FUEL_PUMPS","Fuel pumps: OFF", "SD_FUEL_PUMPS",
+                ("EVT_OH_FUEL_PUMP_1_FORWARD", 0), ("EVT_OH_FUEL_PUMP_2_FORWARD", 0),
+                ("EVT_OH_FUEL_PUMP_1_AFT", 0),     ("EVT_OH_FUEL_PUMP_2_AFT", 0),
+                ("EVT_OH_FUEL_PUMP_L_CENTER", 0),  ("EVT_OH_FUEL_PUMP_R_CENTER", 0)), "SDCL_FUEL_PUMPS"),
+            // Read-only: completes the Shutdown Checklist's "Flaps: UP" (SDCL_FLAPS_UP) once the
+            // LEVER reads UP — the line's own condition, the After Takeoff check's shape. The flaps
+            // came up in After Landing; this never writes, waits up to 20 s, and a timeout keeps
+            // the line out of the latch. After the fuel pumps, as the Shutdown Checklist reads.
+            Skip(WaitForField("SD_FLAPS_UP_CHECK", "Flap lever: UP", "FCTL_Flaps_Lever", v => v < 0.5, 20,
+                    checklistItemId: "SDCL_FLAPS_UP"),
+                s => s.AreFlapsUp()),
+            Skip(SW("SD_BEACON_OFF",  "Beacon: OFF",              "EVT_OH_LIGHTS_BEACON",       0,
+               "LTS_Beacon_Sw_ON", v => v < 0.5, "SD_BEACON_OFF"),
+                s => s.IsOff("LTS_Beacon_Sw_ON")),
+            SW("SD_TAXI_OFF",    "Taxi lights: OFF",         "EVT_OH_LIGHTS_TAXI",         0,
+               checklistItemId: "SD_TAXI_OFF"),
+            MouseFlag("SD_FD_L", "Left FD: OFF",             "EVT_MCP_FD_SWITCH_L", "MCP_FD_Sw_On_0", wantOn: false, "SD_FD_OFF"),
+            MouseFlag("SD_FD_R", "Right FD: OFF",            "EVT_MCP_FD_SWITCH_R", "MCP_FD_Sw_On_1", wantOn: false, "SD_FD_OFF"),
+            SW("SD_XPNDR_STBY",  "Transponder: STBY",        "EVT_TCAS_MODE",              0,
+               checklistItemId: "SD_XPNDR_STBY"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // Flow 13: Secure
+    // -----------------------------------------------------------------------
+    private static FlowDefinition<AircraftStateEvaluator> BuildSecure() => new()
+    {
+        Id = "SECURE",
+        Name = "Secure Aircraft",
+        Description = "Shuts down remaining systems: ADIRU, emergency lights, packs, APU and ground power, then the battery once the APU has stopped.",
+        RelatedChecklistGroupIds = new[] { "SECURE", "SECURE_CL", "ELEC_POWER_DOWN" },
+        Steps = new()
+        {
+            // The ADIRU and the battery go off below: never airborne (the MD-11's SD_ON_GROUND).
+            OnGroundGuard("SEC_ON_GROUND"),
+            Also(Skip(SW("SEC_ADIRU_OFF", "ADIRU: OFF",           "EVT_OH_ADIRU_SWITCH",         0,
+               "ADIRU_Sw_On", v => v < 0.5, "SEC_ADIRU"),
+                s => s.IsOff("ADIRU_Sw_On")), "SECCL_ADIRU"),
+            // OFF sits outside the guard — the guard must be lifted first, so this goes
+            // through the guarded pseudo-key rather than a bare switch write (which over
+            // CDA could never leave ARMED at all).
+            Also(SW("SEC_EMER_LIGHTS", "Emer exit lights: OFF", "EMER_EXIT_LIGHTS",
+                EmerExitLightSequence.Off, checklistItemId: "SEC_EMER_EXIT_OFF"), "SECCL_EMER_LIGHTS"),
+            Also(Multi("SEC_PACKS",   "Packs: OFF", "SEC_PACKS_OFF",
+                ("EVT_OH_AIRCOND_PACK_SWITCH_L", 0), ("EVT_OH_AIRCOND_PACK_SWITCH_R", 0)), "SECCL_PACKS"),
+            // PMDG's Electrical Power Down: "APU or Ground Power Switches: OFF", then the battery
+            // (FOB-4). "Already set" when the selector DEFINITELY reads OFF (an unread one is NaN, so
+            // the switch-off is still sent), and the cool-down follows only a switch-off this run
+            // sent (RunOnlyIfStepSent, the 737's FOB-22 shape): an APU that never ran costs no wait.
+            Skip(SW("SEC_APU_OFF",    "APU: OFF",             "EVT_OH_ELEC_APU_SEL_SWITCH",  0,
+               checklistItemId: "EPD_APU_GND_OFF"),
+                s => s.IsPosition("ELEC_APU_Selector", 0)),
+            OnlyIfSent(Wait("SEC_APU_WAIT", "APU cooling down", 30), "SEC_APU_OFF"),
+            // Disconnect ground power (APU is now off, but the aircraft is being secured on
+            // battery). Each GPU is checked independently — skip if it is already off, so a
+            // re-run and a never-connected-GPU both no-op. Mirrors Before Start L243–246.
+            // Each side names the Secure line and the Power Down group's "APU or Ground Power
+            // switches: OFF" (which SEC_APU_OFF above also names).
+            Also(Toggle(Momentary("SEC_GND_PWR_PRIM", "Ground power primary: PUSH",
+                GroundPowerGate.EventForAnnunciatorIndex(0), "SEC_GND_PWR_OFF"),
+                s => GroundPowerGate.ShouldSkip(s.IsGpuPower1On(), wantOn: false), "ELEC_annunExtPowr_ON_0"), "EPD_APU_GND_OFF"),
+            Also(Toggle(Momentary("SEC_GND_PWR_SEC", "Ground power secondary: PUSH",
+                GroundPowerGate.EventForAnnunciatorIndex(1), "SEC_GND_PWR_OFF"),
+                s => GroundPowerGate.ShouldSkip(s.IsGpuPower2On(), wantOn: false), "ELEC_annunExtPowr_ON_1"), "EPD_APU_GND_OFF"),
+            // The battery goes OFF only once the APU has STOPPED (APURunning, the field Before Start's
+            // APU wait reads), never on the fixed wait alone, which confirmed nothing. Read, so not
+            // gated on the switch-off: it also covers an APU switched off just before the flow, and
+            // passes at once over one that never ran. Up to 3 minutes; a timeout is heard skipped and
+            // the battery then stays on.
+            WaitForField("SEC_APU_STOPPED", "APU to stop", "APURunning", v => v < 0.5, 180),
+            // Never with an engine turning (the 737's and the iFly's rule, FOB-22): left alone, said
+            // aloud, unless both N2 read below 10 %; unread is not stopped.
+            Requires(LeaveAlone(Skip(SW("SEC_BATTERY_OFF","Battery: OFF",         "EVT_OH_ELEC_BATTERY_SWITCH",  0,
+               "ELEC_Battery_Sw_ON", v => v < 0.5, "EPD_BATTERY_OFF"),
+                s => s.IsOff("ELEC_Battery_Sw_ON")),
+                s => !EnginesStopped(s), "Engines running, so the battery stays on."),
+                "SEC_APU_STOPPED", "APU still running, so the battery stays on."),
+        }
+    };
+
+    // Both engines read and below 10 % N2 — the battery may go off (the 737's EnginesStopped).
+    internal static bool EnginesStopped(AircraftStateEvaluator s)
+    {
+        double eng1 = s.GetValue("FO_ENG1_N2"), eng2 = s.GetValue("FO_ENG2_N2");
+        return !double.IsNaN(eng1) && !double.IsNaN(eng2) && eng1 < 10 && eng2 < 10;
+    }
+
+    // Stops a cold-and-dark flow unless both engines read stopped (the same test, through the
+    // evaluator's FO_ENGINES_STOPPED; unread fails the guard): the MD-11's EnginesStoppedGuard.
+    private static FlowStep<AircraftStateEvaluator> EnginesStoppedGuard(string id) =>
+        WaitForField(id, "Engines stopped", AircraftStateEvaluator.EnginesStoppedField, v => v > 0.5, 5,
+            onTimeout: FlowStepFailurePolicy.Stop);
+
+    // Stops a flow that cuts the engines or switches the ADIRU and battery off unless the aircraft
+    // reads on the ground (SIM ON GROUND; unread fails the guard).
+    private static FlowStep<AircraftStateEvaluator> OnGroundGuard(string id) =>
+        WaitForField(id, "On the ground", AircraftStateEvaluator.OnGroundField, v => v > 0.5, 5,
+            onTimeout: FlowStepFailurePolicy.Stop);
+
+    // -----------------------------------------------------------------------
+    // Step builder helpers
+    // -----------------------------------------------------------------------
+
+    private static FlowStep<AircraftStateEvaluator> SW(string id, string label, string eventName, int? target,
+        string? verifyField = null, Func<double, bool>? verifyCond = null,
+        string? checklistItemId = null, bool isMomentary = false) => new()
+    {
+        Id = id, Label = label,
+        ActionType = FlowStepActionType.SetSwitch,
+        EventName = eventName,
+        TargetValue = target,
+        IsMomentary = isMomentary || target == null,
+        VerifyFieldName = verifyField,
+        VerifyCondition = verifyCond,
+        CompletesChecklistItemId = checklistItemId,        FailurePolicy = FlowStepFailurePolicy.Skip,
+    };
+
+    private static FlowStep<AircraftStateEvaluator> SW(string id, string label, string eventName, int? target,
+        bool isMomentary, string? verifyField = null, Func<double, bool>? verifyCond = null,
+        string? checklistItemId = null) =>
+        SW(id, label, eventName, target, verifyField, verifyCond, checklistItemId, isMomentary);
+
+    // FD / AT Arm are mouse-flag TOGGLES (no absolute target), so firing one while the
+    // switch is already in the desired state flips it the wrong way. "Already set" when the
+    // switch reads the wanted state, and left alone (Toggle) while it is unread — the same guard
+    // the panel (HandleUIVariableSet) and the checklists (SetFDLeft(target, state)) apply.
+    private static FlowStep<AircraftStateEvaluator> MouseFlag(string id, string label, string eventName,
+        string field, bool wantOn, string? checklistItemId = null) => Toggle(new()
+    {
+        Id = id, Label = label,
+        ActionType = FlowStepActionType.SetSwitch,
+        EventName = eventName,
+        UsesMouseFlag = true,
+        CompletesChecklistItemId = checklistItemId,        FailurePolicy = FlowStepFailurePolicy.Skip,
+    }, s => wantOn ? s.IsOn(field) : s.IsOff(field), field);
+
+    private static FlowStep<AircraftStateEvaluator> Momentary(string id, string label, string eventName,
+        string? checklistItemId = null) => new()
+    {
+        Id = id, Label = label,
+        ActionType = FlowStepActionType.SetSwitch,
+        EventName = eventName,
+        IsMomentary = true,
+        CompletesChecklistItemId = checklistItemId,        FailurePolicy = FlowStepFailurePolicy.Skip,
+    };
+
+    // checklistItemId is REQUIRED (positional, ahead of the params list): every multi-switch
+    // step sets a checklist line, and an unlinked write step has its line latched complete by
+    // MarkGroupComplete even when the write failed (Pmdg777FlowChecklistLinkTests).
+    private static FlowStep<AircraftStateEvaluator> Multi(string id, string label, string? checklistItemId,
+        params (string EventName, int? TargetValue)[] actions) => new()
+    {
+        Id = id, Label = label,
+        ActionType = FlowStepActionType.SetSwitchMultiple,
+        MultiActions = actions.ToList(),
+        CompletesChecklistItemId = checklistItemId,        FailurePolicy = FlowStepFailurePolicy.Skip,
+    };
+
+    private static FlowStep<AircraftStateEvaluator> Wait(string id, string label, int seconds) => new()
+    {
+        Id = id, Label = label,
+        ActionType = FlowStepActionType.WaitSeconds,
+        WaitSeconds = seconds,    };
+
+    private static FlowStep<AircraftStateEvaluator> WaitForField(string id, string label, string field,
+        Func<double, bool> condition, int timeoutSec,
+        FlowStepFailurePolicy onTimeout = FlowStepFailurePolicy.Skip, string? checklistItemId = null) => new()
+    {
+        Id = id, Label = label,
+        ActionType = FlowStepActionType.WaitForCondition,
+        ConditionFieldName = field,
+        Condition = condition,
+        TimeoutSeconds = timeoutSec,
+        FailurePolicy = onTimeout,
+        CompletesChecklistItemId = checklistItemId,    };
+
+    private static FlowStep<AircraftStateEvaluator> Captain(string id, string label) => new()
+    {
+        Id = id, Label = label,
+        ActionType = FlowStepActionType.CaptainReminder,
+        ReminderText = label,    };
+
+    /// <summary>
+    /// Attach a skip condition to a step and return it.
+    /// When the condition returns true, the flow engine skips the step
+    /// because the aircraft is already in the desired state.
+    /// </summary>
+    private static FlowStep<AircraftStateEvaluator> Skip(FlowStep<AircraftStateEvaluator> step, Func<AircraftStateEvaluator, bool> cond)
+    {
+        step.SkipCondition = cond;
+        return step;
+    }
+
+    // A TOGGLE (a mouse-flag switch, a momentary push whose press flips a state: ground power,
+    // LNAV, VNAV) is pressed only over a READ state. "Already set" needs every field read as
+    // well as `skipWhen`, and while any is unread (NaN, before the first CDA snapshot) the step
+    // is left alone aloud: IsOn read NaN as off, so the press flipped whatever the switch really
+    // was, and a disconnect's "Already set" ticked its line over a connected GPU.
+    private static FlowStep<AircraftStateEvaluator> Toggle(FlowStep<AircraftStateEvaluator> step,
+        Func<AircraftStateEvaluator, bool> skipWhen, params string[] fields)
+    {
+        step.SkipCondition = s => fields.All(s.IsRead) && skipWhen(s);
+        step.LeaveAloneWhen = s => !fields.All(s.IsRead);
+        step.LeaveAloneText = $"Skipping: {step.AnnounceText}. The switch cannot be read yet.";
+        return step;
+    }
+
+    // A step whose failure must end the flow (FlowStepFailurePolicy.Stop): the engine-start gates.
+    private static FlowStep<AircraftStateEvaluator> StopOnFailure(FlowStep<AircraftStateEvaluator> step)
+    {
+        step.FailurePolicy = FlowStepFailurePolicy.Stop;
+        return step;
+    }
+
+    // Reads a field back after the step's write: FlowManager reads it from 600 ms on, for up to
+    // 2.6 s (VerifyWindowMs), and fails the step ("State verification failed": heard skipped, its
+    // lines out of the latch) unless `cond` holds by then.
+    // A Multi step is verified once, after its LAST write, so name the field of the last switch it
+    // writes, or a synthetic that reads every switch it writes (the turnoff lights, the fuel
+    // controls: a dropped FIRST write passes a read of the last switch alone). (SW takes the same
+    // pair as arguments; CP_FUEL_CTRL and SD_FC_CUTOFF set them by hand.)
+    private static FlowStep<AircraftStateEvaluator> Verify(FlowStep<AircraftStateEvaluator> step,
+        string field, Func<double, bool> cond)
+    {
+        step.VerifyFieldName = field;
+        step.VerifyCondition = cond;
+        return step;
+    }
+
+    // A step the First Officer must not perform in the aircraft's current state
+    // (FlowStep.LeaveAloneWhen): nothing is sent, `text` is spoken, its lines stay open.
+    private static FlowStep<AircraftStateEvaluator> LeaveAlone(FlowStep<AircraftStateEvaluator> step,
+        Func<AircraftStateEvaluator, bool> when, string text)
+    {
+        step.LeaveAloneWhen = when;
+        step.LeaveAloneText = text;
+        return step;
+    }
+
+    // A step that must not run when an EARLIER step of the same run was skipped (failed or timed
+    // out under Skip policy) — see FlowStep.RequiresStepId. `skipText` says what stays as it is.
+    private static FlowStep<AircraftStateEvaluator> Requires(FlowStep<AircraftStateEvaluator> step,
+        string requiredStepId, string skipText)
+    {
+        step.RequiresStepId = requiredStepId;
+        step.RequiresStepSkipText = skipText;
+        return step;
+    }
+
+    // A step that runs only when an EARLIER switch step of this run actually sent its write
+    // (FlowStep.RunOnlyIfStepSent): otherwise it passes silently as done.
+    private static FlowStep<AircraftStateEvaluator> OnlyIfSent(FlowStep<AircraftStateEvaluator> step, string sentStepId)
+    {
+        step.RunOnlyIfStepSent = sentStepId;
+        return step;
+    }
+
+    // Extra lines one step delivers besides its CompletesChecklistItemId: either a write whose
+    // line appears in BOTH its own action group and the phase's read-back (*_CL) checklist and
+    // which achieves both (same field, same condition), or a read-only check that confirms
+    // several lines of one group at once (Cockpit Prep's power-up check). The extra lines are
+    // delivered, and on a skipped step kept out of the latch, alongside CompletesChecklistItemId
+    // (FlowStep.AlsoCompletesChecklistItemIds).
+    private static FlowStep<AircraftStateEvaluator> Also(FlowStep<AircraftStateEvaluator> step, params string[] alsoCompletes)
+    {
+        step.AlsoCompletesChecklistItemIds = alsoCompletes;
+        return step;
+    }
+}

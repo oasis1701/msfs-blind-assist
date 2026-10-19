@@ -1,0 +1,589 @@
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.FirstOfficer.Models;
+using MSFSBlindAssist.SimConnect;
+using MSFSBlindAssist.Utils.Logging;
+
+namespace MSFSBlindAssist.FirstOfficer.FBWA320;
+
+/// <summary>
+/// Drives FlyByWire A320 controls for the First Officer by delegating to
+/// <see cref="FlyByWireA320Definition.ApplyUIVariable"/> — the panels' verified
+/// write path — plus a small set of pseudo-keys for non-combo actions (FCU
+/// managed pushes, baro STD/QNH, AP engage, cabin call, ECAM page select). A
+/// suppressed announcer keeps the FO's own step callouts the single voice.
+/// </summary>
+public sealed class FbwA320ActionExecutor : IFoActionExecutor
+{
+    private const int WriteSpacingMs = 200;
+
+    // Dotted FBW input events this executor fires through FireFCUButton. The definition's
+    // registration is what maps a dotted name onto a transport, so an event the definition
+    // does not register cannot reach the aircraft by any path — the sim swallows it silently.
+    // These are constants rather than inline literals so FiredEventNames cannot drift out of
+    // sync with the dispatch switch below. Pinned by FoFbwEventContractTests.
+    private const string EvtSpdPush = "A32NX.FCU_SPD_PUSH";
+    private const string EvtHdgPush = "A32NX.FCU_HDG_PUSH";
+    private const string EvtAltPush = "A32NX.FCU_ALT_PUSH";
+    private const string EvtAp1Push = "A32NX.FCU_AP_1_PUSH";
+    private const string EvtBaroLPull = "A32NX.FCU_EFIS_L_BARO_PULL";
+    private const string EvtBaroLPush = "A32NX.FCU_EFIS_L_BARO_PUSH";
+    private const string EvtBaroRPull = "A32NX.FCU_EFIS_R_BARO_PULL";
+    private const string EvtBaroRPush = "A32NX.FCU_EFIS_R_BARO_PUSH";
+
+    /// <summary>Every dotted FBW input event this executor can fire.</summary>
+    public static readonly string[] FiredEventNames =
+    {
+        EvtSpdPush, EvtHdgPush, EvtAltPush, EvtAp1Push,
+        EvtBaroLPull, EvtBaroLPush, EvtBaroRPull, EvtBaroRPush,
+    };
+
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private SimConnectManager? _sc;
+    private FlyByWireA320Definition? _def;
+    private ScreenReaderAnnouncer? _announcer;
+    private DateTime _lastWriteUtc = DateTime.MinValue;
+    // The presses held right now, released at once when the window closes (ReleaseHeldPresses).
+    private readonly HeldPresses _held = new();
+
+    public void SetSimConnect(SimConnectManager? sc) => _sc = sc;
+
+    /// <summary>The window is closing: every held test and the cabin call are released now, while
+    /// the sim still listens (on app exit MainForm disconnects right after).</summary>
+    public void ReleaseHeldPresses() => _held.ReleaseAll();
+    public void SetDefinition(FlyByWireA320Definition def) => _def = def;
+    // The REAL app announcer (ScreenReaderAnnouncer is heavyweight — inits NVDA/Tolk —
+    // and has no parameterless ctor; NEVER construct a second instance). Writes wrap
+    // ApplyUIVariable in a Suppressed toggle (the HS787/monitor pattern) so any
+    // set-path Announce() the def makes is dropped and the FO's step callouts stay
+    // the single voice.
+    public void SetAnnouncer(ScreenReaderAnnouncer a) => _announcer = a;
+
+    public bool IsAvailable => _sc is { IsConnected: true } && _def != null && _announcer != null;
+
+    /// <summary>
+    /// IFoActionExecutor — acquire+release the serialize gate. SemaphoreSlim async
+    /// waiters queue FIFO, so by the time this acquires, every dispatch queued before
+    /// the call has fully completed (ChecklistManager's post-tick grace re-stamp).
+    /// </summary>
+    public async Task WaitForDispatchDrainAsync()
+    {
+        await _gate.WaitAsync();
+        _gate.Release();
+    }
+
+    public async Task<bool> ExecuteStepAsync(IFlowStepDispatch step)
+    {
+        switch (step.ActionType)
+        {
+            case FlowStepActionType.SetSwitch:
+                if (step.EventName == null) return false;
+                // Held self-completing fire tests (Fenix/A380 FIRE_TEST_* precedent) — must not
+                // reach the generic dispatch (its SetLVar fallback would write a bogus L:var).
+                if (step.EventName == "FIRE_TEST_APU" || step.EventName == "FIRE_TEST_ENG1"
+                    || step.EventName == "FIRE_TEST_ENG2")
+                    return await FireTestAsync(step.EventName);
+                // Held self-completing recorder/config tests — same rationale as the fire
+                // tests above (must not fall through to the generic SetLVar dispatch).
+                if (step.EventName == "CVR_TEST") return await CvrTestAsync();
+                if (step.EventName == "TO_CONFIG_TEST") return await TakeoffConfigTestAsync();
+                // COCKPIT_LIGHT_SCENE_<NAME>: one lighting scene (the Fenix's pseudo-key, spelled the
+                // same). Not a control the definition knows, so it is intercepted HERE, before the
+                // generic dispatch: HandleUIVariableSet claims no such key, so DispatchAsync would
+                // refuse it (FOA-4), and SetCockpitLighting writes each knob through DispatchAsync
+                // itself, so it must run outside the gate rather than from DispatchCoreAsync.
+                if (TryGetCockpitLightScene(step.EventName, out var lightScene))
+                    return await SetCockpitLighting(lightScene);
+                return await DispatchAsync(step.EventName, step.TargetValue);
+
+            case FlowStepActionType.SetSwitchMultiple:
+                await _gate.WaitAsync();
+                try
+                {
+                    bool ok = true;
+                    foreach (var (ev, tv) in step.MultiActions)
+                        ok &= await DispatchCoreAsync(ev, tv);
+                    return ok;
+                }
+                finally { _gate.Release(); }
+
+            default:
+                return false;
+        }
+    }
+
+    private async Task<bool> DispatchAsync(string name, int? target)
+    {
+        await _gate.WaitAsync();
+        try { return await DispatchCoreAsync(name, target); }
+        finally { _gate.Release(); }
+    }
+
+    // Must be called inside _gate.
+    private async Task<bool> DispatchCoreAsync(string name, int? target)
+    {
+        if (_sc is not { IsConnected: true } || _def == null || _announcer == null) return false;
+        await PaceAsync();
+        // Again after the pacing wait: a closed First Officer window (an aircraft switch) or a
+        // disconnect detaches the executor meanwhile, and the write must not reach the next aircraft.
+        if (_sc is not { IsConnected: true }) return false;
+        bool ok = name switch
+        {
+            "BARO_STD"          => FireBaro(std: true),   // A320: PULL = STD
+            "BARO_QNH"          => FireBaro(std: false),  // A320: PUSH = QNH
+            "FCU_PUSH_SPEED"    => FireFcu(EvtSpdPush),
+            "FCU_PUSH_HEADING"  => FireFcu(EvtHdgPush),
+            "FCU_PUSH_ALT"      => FireFcu(EvtAltPush),
+            "AP1_ENGAGE"        => FireFcu(EvtAp1Push),
+            "CABIN_CALL_ALL"    => await FireCabinCallAsync(),
+            // Seat-belt sign. A pseudo-key, NOT the stock CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE
+            // event the flows and checklist actions once wrote: that key has no
+            // HandleUIVariableSet branch, so ApplySilent refused it and the step was skipped
+            // with the sign untouched (found by FoFbwUnclaimedEventKeyTests). 1 = ON, 0 = OFF.
+            SeatbeltSignKey     => SetSeatbeltSignCore((target ?? 1) != 0),
+            _ when name.StartsWith("ECAM_PAGE_") => await FireEcamPageAsync(name),
+            _                   => ApplySilent(name, target ?? 1),
+        };
+        _lastWriteUtc = DateTime.UtcNow;
+        return ok;
+    }
+
+    // ApplyUIVariable under a Suppressed wrap: the def's internal Announce() calls are
+    // dropped; prior Suppressed state restored (don't clobber the startup grace period).
+    private bool ApplySilent(string varKey, double value) => ApplySilent(varKey, value, _sc!);
+
+    // The same write through `sc`, the manager the caller holds: a held press's release goes
+    // through the manager its press went through, never the field, which the window's close nulls.
+    private bool ApplySilent(string varKey, double value, SimConnectManager sc)
+    {
+        bool prior = _announcer!.Suppressed;
+        _announcer.Suppressed = true;
+        try
+        {
+            if (_def!.ApplyUIVariable(varKey, value, sc, _announcer)) return true;
+
+            // An EVENT-typed key the definition declined can NOT be rescued by the fallback
+            // below: SetLVar prepends "L:" to the varKEY, so it would create a dead L:var
+            // named after the event and this method would report SUCCESS — the flow step
+            // announces done and the checklist item ticks with the control untouched. Four
+            // keys shipped exactly that way. Refuse instead, so the pilot hears the step
+            // fail; FoUnclaimedKeyPolicy says why an unregistered or L:var key still falls
+            // through. Same stance IFly737ActionExecutor.ApplySilent already takes for every
+            // unrecognised key: a key ApplyUIVariable does not recognise is a MAPPING BUG,
+            // not a control that needs another path.
+            if (!FoUnclaimedKeyPolicy.AllowsLVarFallback(_def.GetVariables(), varKey))
+            {
+                Log.Warn("fo_a320", $"refused write: '{varKey}' is registered as an EVENT and "
+                    + $"FlyByWireA320Definition.HandleUIVariableSet does not claim it, so there "
+                    + $"is no way to fire it (value {value}); nothing was written. "
+                    + "Flow/checklist mapping bug — the key needs a definition branch or an "
+                    + "executor dispatch arm.");
+                return false;
+            }
+
+            // Mirror MainForm's combo-set fallback: a key HandleUIVariableSet doesn't
+            // claim (returns false) is written as a plain L:var via SetLVar (calc-path
+            // routed when MobiFlight is connected). Without this, a key with no def
+            // branch and no catch-all prefix would silently no-op through ApplyUIVariable alone.
+            sc.SetLVar(varKey, value);
+            return true;
+        }
+        finally { _announcer.Suppressed = prior; }
+    }
+
+    private bool FireBaro(bool std)
+    {
+        // A320 PULL = STD, PUSH = QNH (opposite the A380). The _EIS_BARO_IS_STD L:vars are dead.
+        string l = std ? EvtBaroLPull : EvtBaroLPush;
+        string r = std ? EvtBaroRPull : EvtBaroRPush;
+        _def!.FireFCUButton(l, _sc!, _announcer!, readback: false);
+        _def!.FireFCUButton(r, _sc!, _announcer!, readback: false);
+        return true;
+    }
+
+    private bool FireFcu(string evt)
+    {
+        _def!.FireFCUButton(evt, _sc!, _announcer!, readback: false);
+        return true;
+    }
+
+    // Cabin call: release pulse. A stuck 1 = endless horn; write 1, delay, write 0
+    // as two separate writes. The release is in a finally so an interrupted hold
+    // (exception during the delay) can NEVER leave the call horn latched on, and it goes
+    // through the manager the press went through: the window's close (an Aircraft-menu
+    // switch, the sim keeping the aircraft) nulls _sc mid-hold, and re-reading the field
+    // skipped the release. The window's close releases it at once (_held), app exit included.
+    private async Task<bool> FireCabinCallAsync()
+    {
+        var sc = _sc;   // one manager for the whole press: the release must follow its press
+        if (sc is not { IsConnected: true }) return false;
+        long hold = _held.Begin(() => { if (sc.IsConnected) ApplySilent("PUSH_OVHD_CALLS_ALL", 0, sc); });
+        try
+        {
+            ApplySilent("PUSH_OVHD_CALLS_ALL", 1, sc);
+            await Task.Delay(400);
+            return true;
+        }
+        finally
+        {
+            _held.End(hold);
+        }
+    }
+
+    /// <summary>The page the SD shows (FlyByWire's SdPages: -1 none, 0 ENG ... 10 F/CTL, 11 CRZ,
+    /// 12 STS): an OUTPUT of the DMC's page logic since FBW #10700 (DmcSdPageLogic.ts), computed
+    /// from the ECP keys, the FWC's request and the flight phase. The SD reads this, not
+    /// <c>A32NX_ECAM_SD_CURRENT_PAGE_INDEX</c>, which the DMC also writes and which the FO once
+    /// wrote directly: that lit the ECP key and left the SD on its page.</summary>
+    public const string SdPageShownVar = "A32NX_ECAM_SD_PAGE_TO_DISPLAY";
+
+    // ECAM page pseudo-key -> the ECP key that selects the page (FlyByWire's
+    // A32NX_ECP_<key>_PRESSED / _RELEASED H-events, Ecp.ts) and the page it selects.
+    internal static readonly IReadOnlyDictionary<string, (string Key, int Page)> EcamPageKeys =
+        new Dictionary<string, (string Key, int Page)>
+    {
+        ["ECAM_PAGE_ENG"]   = ("ENG", 0),    ["ECAM_PAGE_BLEED"] = ("BLEED", 1),  ["ECAM_PAGE_PRESS"] = ("PRESS", 2),
+        ["ECAM_PAGE_ELEC"]  = ("ELEC", 3),   ["ECAM_PAGE_HYD"]   = ("HYD", 4),    ["ECAM_PAGE_FUEL"]  = ("FUEL", 5),
+        ["ECAM_PAGE_APU"]   = ("APU", 6),    ["ECAM_PAGE_COND"]  = ("COND", 7),   ["ECAM_PAGE_DOOR"]  = ("DOOR", 8),
+        ["ECAM_PAGE_WHEEL"] = ("BRAKES", 9), ["ECAM_PAGE_FCTL"]  = ("FLT_CTL", 10), ["ECAM_PAGE_STS"] = ("STS", 12),
+    };
+
+    private const int EcpKeyHoldMs = 250;      // the ECP itself holds a press on its bus for 8.5 frames
+    private const int EcpPageSettleMs = 400;   // the DMC picks the press up within a few frames
+    private const int SdPageReadTimeoutMs = 1000;
+
+    // Press the page's ECP key, as the pilot does. A second press of the key of a page the pilot
+    // already selected returns the SD to automatic page selection (DmcSdPageLogic), so a page the
+    // SD already shows is left alone. The release is in a finally, like the TO CONFIG test's: a
+    // lost release leaves the key held. True only when the SD shows the page afterwards, or when
+    // the read-back did not arrive (the press went out; the line still auto-ticks from nothing).
+    private async Task<bool> FireEcamPageAsync(string pseudoKey)
+    {
+        if (!EcamPageKeys.TryGetValue(pseudoKey, out var page)) return false;
+        var sc = _sc;   // one manager for the whole press: the release must follow its press
+        if (sc is not { IsConnected: true }) return false;
+        if (!sc.CanSendHVars)
+        {
+            Log.Warn("fo_a320", $"ECAM page {page.Key}: no MobiFlight channel for the ECP key; nothing pressed");
+            return false;
+        }
+        if (await SdShowsAsync(sc, page.Page) == true) return true;
+        if (_sc == null) return false;   // detached while reading (the window closed)
+
+        string key = "A32NX_ECP_" + page.Key;
+        long hold = _held.Begin(() => { if (sc.IsConnected) sc.SendHVar(key + "_RELEASED"); });
+        try
+        {
+            sc.SendHVar(key + "_PRESSED");
+            await Task.Delay(EcpKeyHoldMs);
+        }
+        finally
+        {
+            _held.End(hold);
+        }
+        await Task.Delay(EcpPageSettleMs);
+        return await SdShowsAsync(sc, page.Page) != false;
+    }
+
+    // Whether the SD shows the page; null when the read-back did not arrive.
+    private static async Task<bool?> SdShowsAsync(SimConnectManager sc, int page)
+    {
+        double? shown = await sc.ReadFreshAsync(SdPageShownVar, SdPageReadTimeoutMs);
+        return shown is double v ? Math.Abs(v - page) < 0.5 : null;
+    }
+
+    public enum CockpitLightScene { DayPrep, DimFlight, ParkingBright, Off }
+
+    private const string CockpitLightScenePrefix = "COCKPIT_LIGHT_SCENE_";
+
+    /// <summary>The flow-step pseudo-key for <paramref name="scene"/>, e.g.
+    /// <c>COCKPIT_LIGHT_SCENE_DAYPREP</c> — the Fenix's spelling for the same scene name, so the
+    /// A320-family flows read alike; intercepted in <see cref="ExecuteStepAsync"/>.</summary>
+    public static string CockpitLightSceneKey(CockpitLightScene scene) =>
+        CockpitLightScenePrefix + scene.ToString().ToUpperInvariant();
+
+    private static readonly Dictionary<string, CockpitLightScene> SceneByKey =
+        Enum.GetValues<CockpitLightScene>().ToDictionary(CockpitLightSceneKey, s => s);
+
+    /// <summary>True when <paramref name="key"/> is one of the scene pseudo-keys.</summary>
+    public static bool TryGetCockpitLightScene(string key, out CockpitLightScene scene) =>
+        SceneByKey.TryGetValue(key, out scene);
+
+    /// <summary>Batched, spaced cockpit-lighting scene write (per spec §4.1). Values tunable
+    /// in-sim. Uses the def's brightness-knob keys (ann/dome/compass/integ/flood). True only
+    /// when every write went out, so a flow step that delivers the scene never reports success
+    /// over knobs it did not move.</summary>
+    public async Task<bool> SetCockpitLighting(CockpitLightScene scene)
+    {
+        (int ann, int dome, int compass, int integ, int flood) = scene switch
+        {
+            CockpitLightScene.DayPrep       => (1, 100, 1, 100, 50),
+            CockpitLightScene.DimFlight     => (2, 20,  1, 50,  30),
+            CockpitLightScene.ParkingBright => (1, 100, 1, 100, 50),
+            CockpitLightScene.Off           => (1, 0,   0, 0,   0),
+            _                               => (1, 100, 1, 100, 50),
+        };
+        bool ok = await Set("A32NX_OVHD_INTLT_ANN", ann);
+        ok &= await Set("A32NX_OVHD_INTLT_DOME", dome);
+        ok &= await Set("A32NX_STBY_COMPASS_LIGHT_TOGGLE", compass);
+        ok &= await Set("BRIGHT_GLARESHIELD_INTEG_SET", integ);
+        ok &= await Set("BRIGHT_OVERHEAD_INTEG_SET", integ);
+        ok &= await Set("BRIGHT_MAINPANEL_SET", flood);
+        ok &= await Set("BRIGHT_PEDESTAL_SET", flood);
+        ok &= await Set("BRIGHT_GLARESHIELD_CAPT_SET", flood);
+        ok &= await Set("BRIGHT_GLARESHIELD_FO_SET", flood);
+        return ok;
+    }
+
+    private async Task PaceAsync()
+    {
+        var since = DateTime.UtcNow - _lastWriteUtc;
+        var gap = TimeSpan.FromMilliseconds(WriteSpacingMs);
+        if (since < gap) await Task.Delay(gap - since);
+    }
+
+    // ---- Public write used by checklist CheckActions + convenience methods ----
+    /// <summary>Write one control by its A320 varKey (checklist CheckAction path).</summary>
+    public Task<bool> Set(string varKey, int value) => DispatchAsync(varKey, value);
+
+    /// <summary>Hold time for the per-source fire TEST L:vars (user-set 1.5 s).</summary>
+    public const int FireTestHoldMs = 1500;
+
+    /// <summary>Held fire test: write the per-source A32NX_FIRE_TEST_{APU,ENG1,ENG2} L:var
+    /// 1 → hold → 0 through the def's dedicated branch (UiVariableSet.cs), which on the
+    /// 0-write also pulses the MASTERAWARN acknowledge so the continuous repetitive chime
+    /// cancels. Master warning + CRC while held are the blind-pilot verification. Holds the
+    /// gate for the whole test so WaitForDispatchDrainAsync covers the checklist grace.</summary>
+    public async Task<bool> FireTestAsync(string source)
+    {
+        string varKey = source switch
+        {
+            "FIRE_TEST_APU"  => "A32NX_FIRE_TEST_APU",
+            "FIRE_TEST_ENG1" => "A32NX_FIRE_TEST_ENG1",
+            "FIRE_TEST_ENG2" => "A32NX_FIRE_TEST_ENG2",
+            _                => source,
+        };
+        await _gate.WaitAsync();
+        try
+        {
+            if (_sc is not { IsConnected: true } || _def == null || _announcer == null) return false;
+            await PaceAsync();
+            // Taken AFTER the pacing wait, which the window's close can land in: a detached
+            // executor presses nothing. The release then goes through this same manager.
+            var sc = _sc;
+            if (sc is not { IsConnected: true }) return false;
+            // ALWAYS release the held fire-test PB, even on an interrupted hold or a window closed
+            // mid-hold (then at once, _held) — a stuck 1 leaves the fire test active (continuous
+            // test bell). Guarded for a dropped sim.
+            long hold = _held.Begin(() => { if (sc.IsConnected) ApplySilent(varKey, 0, sc); });
+            try
+            {
+                ApplySilent(varKey, 1, sc);
+                _lastWriteUtc = DateTime.UtcNow;
+                await Task.Delay(FireTestHoldMs);
+                return true;
+            }
+            finally
+            {
+                _held.End(hold);
+                _lastWriteUtc = DateTime.UtcNow;
+            }
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>Fenix/A380-parity hold for the CVR test button.</summary>
+    public const int CvrTestHoldMs = 3000;
+
+    /// <summary>Held CVR test: A32NX_RCDR_TEST 1 → hold → 0 (needs
+    /// A32NX_RCDR_GROUND_CONTROL_ON on to actually sound the test tone). Holds the gate
+    /// for the whole test so WaitForDispatchDrainAsync covers the checklist grace.</summary>
+    public async Task<bool> CvrTestAsync()
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            if (_sc is not { IsConnected: true } || _def == null || _announcer == null) return false;
+            await PaceAsync();
+            var sc = _sc;   // after the pacing wait: a detached executor presses nothing (FireTestAsync)
+            if (sc is not { IsConnected: true }) return false;
+            // ALWAYS release the held CVR test button, through the manager the press went through,
+            // even on an interrupted hold or a window closed mid-hold (then at once, _held). Guarded
+            // for a dropped sim.
+            long hold = _held.Begin(() => { if (sc.IsConnected) ApplySilent("A32NX_RCDR_TEST", 0, sc); });
+            try
+            {
+                ApplySilent("A32NX_RCDR_TEST", 1, sc);
+                _lastWriteUtc = DateTime.UtcNow;
+                await Task.Delay(CvrTestHoldMs);
+                return true;
+            }
+            finally
+            {
+                _held.End(hold);
+                _lastWriteUtc = DateTime.UtcNow;
+            }
+        }
+        finally { _gate.Release(); }
+    }
+    public Task<bool> CvrTest() => CvrTestAsync();
+
+    /// <summary>FWC latch hold for the ECP TO CONFIG TEST button.</summary>
+    public const int ToConfigHoldMs = 2000;
+
+    /// <summary>TO CONFIG test: fire the ECP TO_CONF_TEST press H-event, hold, release
+    /// (FWC latches the test result at ≥1.5s held). No direct L:var exists for this
+    /// button: it is an ECP momentary like the SD page keys above, held longer.</summary>
+    public async Task<bool> TakeoffConfigTestAsync()
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            if (_sc is not { IsConnected: true } || _def == null || _announcer == null) return false;
+            await PaceAsync();
+            var sc = _sc;   // after the pacing wait: a detached executor presses nothing (FireTestAsync)
+            if (sc is not { IsConnected: true }) return false;
+            // ALWAYS send the release H-event, through the manager the press went through, even on
+            // an interrupted hold or a window closed mid-hold (then at once, _held) — a missed
+            // release leaves the ECP TO CONFIG button held down. Guarded for a dropped sim.
+            long hold = _held.Begin(() => { if (sc.IsConnected) sc.SendHVar("A32NX_ECP_TO_CONF_TEST_RELEASED"); });
+            try
+            {
+                sc.SendHVar("A32NX_ECP_TO_CONF_TEST_PRESSED");
+                _lastWriteUtc = DateTime.UtcNow;
+                await Task.Delay(ToConfigHoldMs);
+                return true;
+            }
+            finally
+            {
+                _held.End(hold);
+                _lastWriteUtc = DateTime.UtcNow;
+            }
+        }
+        finally { _gate.Release(); }
+    }
+    public Task<bool> TakeoffConfigTest() => TakeoffConfigTestAsync();
+
+    // ---- APU start (BS_APU / AL_APU checklist lines) ----
+
+    /// <summary>The APU START pushbutton's AVAIL lamp: lit for as long as the APU runs. The
+    /// flows' own wait steps and the BS_APU / AL_APU checklist lines read this same key.</summary>
+    public const string ApuAvailField = "A32NX_OVHD_APU_START_PB_IS_AVAILABLE";
+
+    /// <summary>How long <see cref="StartApuAsync"/> waits for AVAIL. Matches the Before Start
+    /// flow's own WaitForField budget (BS_APU_AVAIL) so the two paths give up at the same point.</summary>
+    public const int ApuAvailTimeoutMs = 180_000;
+
+    /// <summary>AVAIL poll cadence — the FlowManager's WaitForCondition uses the same 1 s.</summary>
+    private const int ApuAvailPollMs = 1000;
+
+    /// <summary>Pause between the master going on and the START press (the flow's own dwell).</summary>
+    private const int ApuMasterToStartMs = 3000;
+
+    /// <summary>The AVAIL-lamp test. The BS_APU / AL_APU checklist conditions use this method
+    /// itself (not a copy of the comparison), and so do the start and the wait below, so the
+    /// line and the action can never disagree about what "available" means. An unread (NaN)
+    /// lamp is not lit.</summary>
+    public static bool IsApuAvailable(double lamp) => lamp > 0.5;
+
+    /// <summary>
+    /// APU start block for the checklist tick: master ON, dwell, START press, then WAIT for the
+    /// AVAIL lamp (FO-11). BS_APU / AL_APU detect on that lamp, which lights ~45 s after START;
+    /// the ChecklistManager's revert grace is only ~10 s past the action, so returning at the
+    /// START press would revert the line and say "Unable to complete" over a healthy start.
+    /// Holding the action open for the spool-up is what makes the action settling cover it
+    /// (<c>FenixActionExecutor.StartApuAsync</c> is the same shape). A genuine failure still
+    /// surfaces: on timeout this returns and the line reverts, now truthfully. The dispatch
+    /// gate is released between writes, so the wait never blocks WaitForDispatchDrainAsync.
+    /// </summary>
+    public async Task<bool> StartApuAsync(FbwA320StateEvaluator s)
+    {
+        bool ok = await Set("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 1);
+        if (!IsApuAvailable(s.GetValue(ApuAvailField)))
+        {
+            await Task.Delay(ApuMasterToStartMs);
+            ok &= await Set("A32NX_OVHD_APU_START_PB_IS_ON", 1);
+        }
+        return ok && await WaitForApuAvailableAsync(s);
+    }
+
+    /// <summary>Poll the AVAIL lamp until it lights or <see cref="ApuAvailTimeoutMs"/> elapses.
+    /// A NaN (unread) lamp keeps waiting — "indeterminate is not a failure", the same contract
+    /// the ChecklistManager applies to state evaluation.</summary>
+    private static async Task<bool> WaitForApuAvailableAsync(FbwA320StateEvaluator s)
+    {
+        for (int waited = 0; waited < ApuAvailTimeoutMs; waited += ApuAvailPollMs)
+        {
+            if (IsApuAvailable(s.GetValue(ApuAvailField))) return true;
+            await Task.Delay(ApuAvailPollMs);
+        }
+        return IsApuAvailable(s.GetValue(ApuAvailField));
+    }
+
+    // ---- Convenience methods for the auto-manager / phase monitor ----
+    // GEAR_HANDLE_POSITION is a read-only stock SimVar (no HandleUIVariableSet write branch) —
+    // set the gear via the stock GEAR_SET K-event instead (0=up, 1=down), the same pattern
+    // HorizonSim787Definition.UiAndHotkeys.cs uses. Bypasses the dispatch gate/ApplySilent
+    // (whose SetLVar fallback would write a nonexistent L:var and silently no-op).
+    public Task<bool> SetGear(bool down)
+    {
+        _sc?.SendEvent("GEAR_SET", (uint)(down ? 1 : 0));
+        return Task.FromResult(true);
+    }
+    public Task<bool> EngageAp1()              => DispatchAsync("AP1_ENGAGE", 1);
+    public Task<bool> SetBaroStd(bool std)     => DispatchAsync(std ? "BARO_STD" : "BARO_QNH", 1);
+    /// <summary>All-landing-lights buttons: On extends+illuminates both LAND lights, Off
+    /// retracts them (LANDING_LIGHTS_ON_THIRD_PARTY/OFF_THIRD_PARTY are RenderAsButton events —
+    /// any nonzero value fires the press; the nose light is independent, see SetNoseLight).</summary>
+    public Task<bool> SetLandingLights(int on) =>
+        DispatchAsync(on != 0 ? "LANDING_LIGHTS_ON_THIRD_PARTY" : "LANDING_LIGHTS_OFF_THIRD_PARTY", 1);
+    /// <summary>Nose light (LIGHTING_LANDING_1): 0=T.O., 1=Taxi, 2=Off.</summary>
+    public Task<bool> SetNoseLight(int pos)    => DispatchAsync("LIGHTING_LANDING_1", pos);
+    public Task<bool> CabinCall()              => DispatchAsync("CABIN_CALL_ALL", 1);
+
+    /// <summary>
+    /// The pseudo-key the flow steps dispatch for the seat-belt sign (target 1 = ON, 0 = OFF).
+    /// The Headwind A330 uses the same key name, so the two profiles' seat-belt flow steps
+    /// write the same thing (HwA330ParityTests).
+    /// </summary>
+    public const string SeatbeltSignKey = "SEATBELT_SIGN";
+
+    /// <summary>
+    /// Seat-belt sign (2-position, no AUTO — unlike the A380 and the A339X). The A320 sign is
+    /// a stock TOGGLE (CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE) with state simvar
+    /// CABIN SEATBELTS ALERT SWITCH (0=Off/1=On). The flow steps, the checklist actions and
+    /// the phase monitor all converge here, and through <see cref="DispatchAsync"/>, so the
+    /// write is serialized and paced like every other First Officer write.
+    /// </summary>
+    public Task<bool> SetSeatbeltSign(bool on) => DispatchAsync(SeatbeltSignKey, on ? 1 : 0);
+
+    /// <summary>
+    /// Whether the stock toggle must fire to put the sign at <paramref name="on"/>: true when the
+    /// cached state differs, false when the sign is already in place (a toggle fired over it would
+    /// switch it the WRONG way — the flows mean 1 = ON and 0 = OFF), and null when the state is
+    /// unknown (no cached reading yet, or NaN). Unknown is REFUSED, never toggled: the toggle could
+    /// as well switch a sign that is already on OFF while the flow says "Seatbelt signs: ON", the
+    /// rule every other First Officer toggle keeps (the FD pushes, the AP engage).
+    /// </summary>
+    public static bool? SeatbeltToggleNeeded(double? currentSwitch, bool on)
+    {
+        if (currentSwitch is not double v || double.IsNaN(v)) return null;
+        return (v > 0.5) != on;
+    }
+
+    // Must be called inside _gate (dispatched from DispatchCoreAsync's SeatbeltSignKey arm,
+    // so the checklist action, the flow step and the phase monitor share one path). An unread
+    // sign is refused (false): the step is skipped aloud and the line stays open.
+    private bool SetSeatbeltSignCore(bool on)
+    {
+        if (_sc == null) return false;
+        if (SeatbeltToggleNeeded(_sc.GetCachedVariableValue("CABIN SEATBELTS ALERT SWITCH"), on) is not bool needed)
+            return false;
+        if (needed) _sc.SendEvent("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE");
+        return true;
+    }
+}

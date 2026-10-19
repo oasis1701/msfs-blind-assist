@@ -149,7 +149,7 @@ control+m, Fenix Monitor Manager
   Ctrl+Shift+T, Cold Temperature Altitude Correction (offline calculator: field elevation + temperature + published altitudes -> corrected altitudes)
   Shift+T,    Toggle Trim Announcements
   Shift+B,    SimBrief Briefing
-  Shift+C,    Show Checklist
+  Shift+C,    First Officer window (checklists and flows)
 
 Hand fly mode hotkeys:
 A, read MSL
