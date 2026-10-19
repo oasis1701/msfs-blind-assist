@@ -33,6 +33,13 @@ Heading:
 
 Navigation:
   N          Read NAV 1 and NAV 2 radio info (frequency, ident, localizer, glideslope, DME)
+  Ctrl+W     The waypoint you are flying to, from the G1000's flight plan:
+             ident (spelt out), distance, magnetic bearing and time to run.
+             When the flight plan moves on to the next waypoint, MSFS Blind
+             Assist says so by itself: "Passing SOXOM. Next VEKIN, 14 miles."
+             It tells you the waypoint went by; any report to ATC is yours.
+             Untick "Waypoint Passing Call" in Ctrl+M to stop the automatic
+             call; Ctrl+W keeps working.
 
 Autopilot (the selected values, each followed by its mode when that mode is
 active, for example "Heading bug 270, HDG active"):
@@ -105,6 +112,13 @@ Time:
 Transponder:
   X          Read Squawk Code
 
+Distance:
+  D          Distance and time to the destination of the G1000's flight plan.
+             The aircraft has to be moving: stopped, it says "not computed".
+  Shift+D    Distance to top of descent, from the G1000's own vertical
+             navigation. With no descent planned it says "no vertical path
+             computed".
+
 Location:
   C          Read Nearest City
 
@@ -144,7 +158,8 @@ Displays and Windows:
   Ctrl+M     Cessna 172 Monitor Manager - a checklist of what the C172
              announces by itself through MSFS Blind Assist (the switches, the
              RPM redline, the stall warning, the autopilot and flight director
-             going off, the covers, the audio panel keys). Untick any you don't want spoken; the
+             going off, the covers, the audio panel keys, the waypoint passing
+             call). Untick any you don't want spoken; the
              choice is saved. Readout hotkeys are unaffected. The G1000's own
              warnings and autopilot modes are not in it (see below).
   Shift+E    Route viewer, procedure planner and airport lookup
@@ -157,6 +172,11 @@ Displays and Windows:
 The G1000 windows:
   Alt+P      G1000 PFD window
   Alt+M      G1000 MFD window (Alt+N and input mode Shift+M open it too)
+  Alt+E      The CAS messages on the PFD now: how many, then each one
+             ("3 CAS messages. WARNING: LOW VOLTS. ..."), "No CAS messages",
+             or "The PFD is off"
+  Alt+I      The standby instruments: airspeed, altitude, compass and the
+             standby attitude indicator, with the vacuum it runs on
   The windows read the G1000's screens live and press its bezel keys, the
   same windows as the COWS DA40's. Read with the arrow keys; the window's own
   description lists its keys.
@@ -236,6 +256,14 @@ Autopilot:
 Altimeter:
   Ctrl+B     Set the altimeter (28.00 to 31.00 inches)
 
+Radios:
+  Ctrl+N     Set both NAV standby frequencies in one window: NAV 1 standby,
+             then NAV 2 standby (108.00 to 117.95), each filled in with what
+             the radio holds now. Enter sets both and the window stays open;
+             each field's own Set button sets that radio alone and closes
+             the window. Escape closes it. The COM and NAV radios are also on
+             the Radios panel.
+
 Taxi Guidance:
   Shift+Y    Open Taxi Assist Form (enter ATC taxi clearance, start guidance)
   Y          Continue past current hold-short point
@@ -267,6 +295,8 @@ Automatic Announcements:
   - A circuit breaker that pops or goes back in by itself
   - An audio panel key changed outside MSFSBA (your own picks are not repeated)
   - Pressing Starter with the engine cover still installed says so
+  - Passing a waypoint of the G1000's flight plan, with the next one
+    (see Ctrl+W)
   The RPM warning speaks once and re-arms when the RPM comes back down.
   Mute any of these from the Monitor Manager (Ctrl+M), except the G1000's
   warnings and the autopilot status line.

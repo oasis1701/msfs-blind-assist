@@ -242,6 +242,11 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         v["C172G_PANEL_LIGHTS_1"] = Dimmer(SwitchInputEvents["C172G_PANEL_LIGHTS_1"], "Panel Lights 1");
         v["C172G_PANEL_LIGHTS_2"] = Dimmer(SwitchInputEvents["C172G_PANEL_LIGHTS_2"], "Panel Lights 2");
 
+        // ---------- Navigation and the standby instruments ----------
+        // The waypoint-passing call's Ctrl+M row, the VNAV readouts for Shift+D, and what Alt+I reads
+        // (CessnaC172G1000Definition.Navigation.cs).
+        AddNavigationVariables(v);
+
         // ---------- ELT ----------
         // 0 ON transmits (`ELT ACTIVATED` 1), 1 ARM is where it rests and stops a transmission, the
         // real reset. The switch also holds a 2 that stopped a transmission too; its name is not known,
@@ -622,6 +627,7 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         _loadSettle.NoteChange();
         if (NoteAudioUpdate(varName, value, announcer)) return true;
         if (IsUnlistedSwitchPosition(varName, value)) return true;
+        if (IsNavigationReadout(varName)) return true;
 
         if (BreakerInputEvents.ContainsKey(varName))
         {
@@ -928,6 +934,9 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
             hotkeyManager.ExitInputHotkeyMode();
             return ShowAutopilotWindow(simConnect, announcer);
         }
+
+        // Ctrl+W, D, Shift+D, Alt+E and Alt+I (CessnaC172G1000Definition.Navigation.cs).
+        if (HandleNavigationHotkey(action, simConnect, announcer)) return true;
 
         // Output+Shift+A, H, S and V: the GFC 700's SELECTED values, each read fresh (C172-19) and
         // followed by its mode when that mode is active (C172-21): "Heading bug 270, HDG active".

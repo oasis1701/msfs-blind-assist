@@ -577,13 +577,14 @@ public partial class MainForm : Form
         // the third, and the pattern is now: a background monitor must be started in BOTH
         // places or it does not run for the aircraft the app opens with. Every G1000 aircraft
         // has one (the DA40 and the Cessna 172, G1000CasWatcher).
+        // The waypoint-passing call too (G1000Waypoints), which every G1000 aircraft has.
         if (currentAircraft is Aircraft.G1000.IG1000DisplayOwner g1000Cas)
-            g1000Cas.StartCasMonitor(announcer);
-        if (currentAircraft is Aircraft.DA40.CowsDA40Definition da40Cas)
         {
-            da40Cas.AttachLampWatch(simConnectManager);
-            da40Cas.AttachWaypointSequencer(simConnectManager, announcer);
+            g1000Cas.StartCasMonitor(announcer);
+            g1000Cas.AttachWaypointSequencer(simConnectManager, announcer);
         }
+        if (currentAircraft is Aircraft.DA40.CowsDA40Definition da40Cas)
+            da40Cas.AttachLampWatch(simConnectManager);
 
         // The roll speed calls for the aircraft the app opens with (Vr on the DA40, 80 and
         // 100 knots elsewhere) — SwitchAircraft and the Settings rebuild apply the same rule.

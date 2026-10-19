@@ -32,7 +32,12 @@ public partial class CessnaC172G1000Definition : IG1000DisplayOwner
 
     public void StartCasMonitor(ScreenReaderAnnouncer announcer) => Cas.Start(announcer);
 
-    public void StopCasMonitor() => _casWatcher?.Stop();
+    /// <summary>The watcher, and the waypoint-passing call started beside it (<see cref="AttachWaypointSequencer"/>).</summary>
+    public void StopCasMonitor()
+    {
+        _waypoints?.Stop();
+        _casWatcher?.Stop();
+    }
 
     public void ProcessCasRows(List<string> rows) => Cas.ProcessRows(rows);
 

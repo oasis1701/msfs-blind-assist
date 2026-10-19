@@ -1203,13 +1203,14 @@ public partial class MainForm
         // window is the only place most failures are announced at all (the DA40 has four
         // annunciator lamps, the C172 none). The PFD window suspends it while open: one
         // inspector socket per view.
+        // The waypoint-passing call starts beside it (G1000Waypoints), as in MainForm_Load (DA40S-7).
         if (newAircraft is Aircraft.G1000.IG1000DisplayOwner g1000Cas)
-            g1000Cas.StartCasMonitor(announcer);
-        if (newAircraft is Aircraft.DA40.CowsDA40Definition da40Cas)
         {
-            da40Cas.AttachLampWatch(simConnectManager);
-            da40Cas.AttachWaypointSequencer(simConnectManager, announcer);
+            g1000Cas.StartCasMonitor(announcer);
+            g1000Cas.AttachWaypointSequencer(simConnectManager, announcer);
         }
+        if (newAircraft is Aircraft.DA40.CowsDA40Definition da40Cas)
+            da40Cas.AttachLampWatch(simConnectManager);
 
         // Every switch, not only onto the DA40: its single "Rotate" call must be taken back
         // when the next aircraft is loaded, or that aircraft has no 80 and 100 knot calls.

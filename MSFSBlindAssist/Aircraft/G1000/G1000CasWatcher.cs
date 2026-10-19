@@ -19,6 +19,12 @@ public interface IG1000DisplayOwner
     /// <summary>Stops it, and anything else the aircraft ties to the same lifetime.</summary>
     void StopCasMonitor();
 
+    /// <summary>
+    /// Starts the waypoint-passing call on the GPS waypoint frame (<see cref="G1000Waypoints"/>);
+    /// <see cref="StopCasMonitor"/> stops it. Started beside the CAS watcher, in both places (DA40S-7).
+    /// </summary>
+    void AttachWaypointSequencer(SimConnectManager simConnect, ScreenReaderAnnouncer announcer);
+
     /// <summary>The PFD window's rows, fed in while the window holds the AS1000_PFD socket.</summary>
     void ProcessCasRows(List<string> rows);
 

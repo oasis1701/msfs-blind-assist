@@ -211,6 +211,13 @@ public abstract partial class CessnaC172BaseDefinition
     internal static string DescribeStandby(Radio r, double mhz) =>
         $"{r.Label} standby {mhz.ToString(r.Format, CultureInfo.InvariantCulture)}";
 
+    /// <summary>A standby in the band, sent and its row re-read; the caller confirms. On the UI thread.</summary>
+    private static void SendStandby(Radio r, double mhz, SimConnectManager simConnect)
+    {
+        simConnect.SendEvent(r.SetEvent, StandbyHz(mhz));
+        _ = RefreshRowsAsync(simConnect, r.StandbyKey);
+    }
+
     /// <summary>The radio panels' writes; false for any other control, and for the squawk, which MainForm writes.</summary>
     private static bool HandleRadioSet(string varKey, double value, SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)
@@ -224,9 +231,8 @@ public abstract partial class CessnaC172BaseDefinition
                     announcer.AnnounceImmediate(refusal);
                     return true;
                 }
-                simConnect.SendEvent(r.SetEvent, StandbyHz(value));
+                SendStandby(r, value, simConnect);
                 announcer.AnnounceImmediate(DescribeStandby(r, value));
-                _ = RefreshRowsAsync(simConnect, r.StandbyKey);
                 return true;
             }
             if (varKey == r.SwapKey)
@@ -267,6 +273,101 @@ public abstract partial class CessnaC172BaseDefinition
         }
 
         return false;
+    }
+
+    /// <summary>NAV 1 and NAV 2, the two radios input Ctrl+N sets.</summary>
+    internal static readonly Radio[] NavRadios = Radios.Where(r => r.Kind == "NAV").ToArray();
+
+    /// <summary>
+    /// Input Ctrl+N: both NAV standbys in ONE window with two fields (the owner's choice, 2026-10-18,
+    /// over one window per radio), each pre-filled with what its radio holds now and selected, so
+    /// overtyping replaces it. Enter sets both, one confirmation for the two ("NAV 1 standby 110.50,
+    /// NAV 2 standby 113.90"), and the window stays open for the next pair, as the C172's other value
+    /// windows do; Escape closes it. A field's own Set button sets that radio alone and closes the
+    /// window, the two-field window's way (the DA40's two altimeters). Each field is checked against
+    /// its band and parsed as typed (CORE-17), and written as the Radios panel writes it (C172-14).
+    /// </summary>
+    private static async Task ShowNavStandbyWindowAsync(SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
+        Form parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return;
+        }
+
+        var seeds = new List<string>();
+        foreach (var r in NavRadios)
+            seeds.Add(await simConnect.ReadFreshAsync(r.StandbyKey, 1500) is double mhz
+                ? mhz.ToString(r.Format, CultureInfo.InvariantCulture)
+                : "");
+
+        Forms.ValueInputForm? dialog = null;
+        dialog = new Forms.ValueInputForm("Set NAV Standby", $"{NavRadios[0].Label} standby",
+            "108.00 to 117.95 megahertz", announcer, input => NavStandbyValidator(NavRadios[0], input),
+            new List<Forms.ToggleButtonDef>(),
+            main => SetNavStandbys(new[] { main, dialog!.ExtraValues.Count > 0 ? dialog.ExtraValues[0] : "" },
+                simConnect, announcer),
+            null,
+            new List<Forms.ValueInputForm.ExtraFieldDef>
+            {
+                new()
+                {
+                    Label = $"{NavRadios[1].Label} standby",
+                    InitialValue = seeds[1],
+                    Validator = input => NavStandbyValidator(NavRadios[1], input)
+                }
+            })
+        {
+            InitialValue = seeds[0],
+            ShowCancelButton = false
+        };
+
+        // A field's own Set button closes the window without the callback: apply that one radio. Keyed
+        // on SetFieldIndex, which only that button sets (Enter and Escape leave it at -1), not on
+        // DialogResult, which a window shown with Show() does not promise to keep.
+        dialog.FormClosed += (_, _) =>
+        {
+            if (dialog.SetFieldIndex < 0 || !dialog.IsValidInput) return;
+            var typed = new[] { "", "" };
+            typed[dialog.SetFieldIndex] = dialog.SetFieldIndex == 0
+                ? dialog.InputValue
+                : dialog.ExtraValues[dialog.SetFieldIndex - 1];
+            SetNavStandbys(typed, simConnect, announcer);
+        };
+        dialog.Show(parentForm);
+    }
+
+    /// <summary>A Ctrl+N field's check: its radio's band, parsed as typed (CORE-17). Pure so the suite can pin it.</summary>
+    internal static (bool isValid, string message) NavStandbyValidator(Radio r, string input) =>
+        TypedValidator(input, mhz => StandbyRefusal(r, mhz));
+
+    /// <summary>
+    /// Sets each NAV standby whose field holds a frequency in its band (an empty field is left alone)
+    /// and confirms them in one sentence. On the UI thread.
+    /// </summary>
+    private static void SetNavStandbys(IReadOnlyList<string> typed, SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer)
+    {
+        var set = PlanNavStandbys(typed);
+        foreach (var (r, mhz) in set) SendStandby(r, mhz, simConnect);
+        if (set.Count > 0) announcer.AnnounceImmediate(string.Join(", ", set.Select(s => DescribeStandby(s.Radio, s.Mhz))));
+    }
+
+    /// <summary>
+    /// Which NAV standbys a Ctrl+N entry sets, NAV 1 first: each field that parses as typed and lies in
+    /// its band; an empty or refused field sets nothing. Pure so the suite can pin it.
+    /// </summary>
+    internal static List<(Radio Radio, double Mhz)> PlanNavStandbys(IReadOnlyList<string> typed)
+    {
+        var set = new List<(Radio, double)>();
+        for (int i = 0; i < NavRadios.Length && i < typed.Count; i++)
+        {
+            if (!Utils.NumberParsing.TryParseTyped(typed[i], out double mhz)) continue;
+            if (StandbyRefusal(NavRadios[i], mhz) != null) continue;
+            set.Add((NavRadios[i], mhz));
+        }
+        return set;
     }
 
     /// <summary>Re-reads rows a write moved, once the sim has applied it, so the status list repaints. UI thread.</summary>

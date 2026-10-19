@@ -826,6 +826,12 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
                         return (false, "Enter an altitude between 0 and 25000 feet");
                     });
 
+            // Input Ctrl+N: both NAV standbys, one window, two fields (CessnaC172BaseDefinition.Radios.cs).
+            case HotkeyAction.SetNavRadios:
+                hotkeyManager.ExitInputHotkeyMode();
+                _ = ShowNavStandbyWindowAsync(simConnect, announcer, parentForm);
+                return true;
+
             case HotkeyAction.FCUSetVS:
                 hotkeyManager.ExitInputHotkeyMode();
                 return ShowValueDialog("Set AP Vertical Speed", "Vertical Speed", "-2000 to 2000 fpm",
