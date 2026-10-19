@@ -17,7 +17,7 @@
 (function () {
     var A = {};
 
-    A.VERSION = 30;
+    A.VERSION = 31;
 
     function visible(el) {
         if (!el) return false;
@@ -2827,6 +2827,45 @@
         return "";
     };
 
+    /// ⚠️ ONE DIGIT OF A NUMBER IS NOT A NUMBER. The hold dialog's leg time "1:00" is three
+    /// controls, one per digit, drawn as sibling cells with the colon a cell of its own, so
+    /// each read on its own: "1", then "0" and "0" - and the label climb, stripping a lone
+    /// "0" out of the row, welded the rest into "Leg Time1" (MTL hold, 2026-10-19). A cell
+    /// whose row is single characters spelling a number reads as the whole number and the
+    /// place the cursor is on: "1:00, minutes". Returns null for anything else.
+    A.M.digitOf = function (c) {
+        var host = A.M.hostOf(c);
+        if (!host) return null;
+        var cell = host;
+        for (var up = 0; up < 2 && cell && cell.parentElement; up++) {
+            var row = cell.parentElement;
+            var kids = row.children;
+            if (kids && kids.length >= 3) {
+                var whole = "", digits = [], ok = true;
+                for (var i = 0; i < kids.length; i++) {
+                    var ch = text(kids[i]).replace(/\s+/g, "");
+                    if (!/^[0-9:.]$/.test(ch)) { ok = false; break; }
+                    whole += ch;
+                    if (/\d/.test(ch)) digits.push(kids[i]);
+                }
+                if (ok && /^\d+[:.]\d+$/.test(whole)) {
+                    var at = digits.indexOf(cell);
+                    if (at < 0) return null;
+                    var place = "digit " + (at + 1) + " of " + digits.length;
+                    var colon = whole.indexOf(":");
+                    if (colon >= 0) {
+                        var before = colon, after = whole.length - colon - 1;
+                        if (at < before) place = "minutes";
+                        else if (after === 2) place = (at === before) ? "tens of seconds" : "seconds";
+                    }
+                    return { whole: whole, place: place };
+                }
+            }
+            cell = row;
+        }
+        return null;
+    };
+
     /// The label is whatever the row says once the VALUE is taken off the end of it -
     /// "Time FormatUTC" minus "UTC". The climb is capped and a suspiciously long answer is
     /// thrown away, because the ancestor chain ends at the whole page and a "label" of four
@@ -2992,8 +3031,11 @@
             // A field named the same as its box says the name once: the procedure pages' boxes
             // are "Departure", "Runway", "Transition" and so are their fields, which read
             // "Runway, Runway: 16C" and, in the rows, the box heading over "Runway: 16C".
+            // A box that names its fields says the last one too: the hold dialog's box is
+            // "Direction, Course" over "Course: 000°", read "Direction, Course, Course: 000°".
             for (var dn = 0; dn < out.length; dn++) {
-                if (out[dn].label && out[dn].label === out[dn].group) out[dn].label = "";
+                var lb = out[dn].label, gp = out[dn].group || "";
+                if (lb && (lb === gp || gp.split(/,\s*/).pop() === lb)) out[dn].label = "";
             }
         } finally {
             A.M._tc = null;
@@ -3194,7 +3236,9 @@
                 try { active = !!A.M.get(c.control.isEditing); } catch (e5) { }
             }
 
-            var label = kind === "button" ? "" : A.M.labelOf(c, value);
+            var digit = kind === "field" ? A.M.digitOf(c) : null;
+            if (digit) value = digit.whole + ", " + digit.place;
+            var label = kind === "button" ? "" : A.M.labelOf(c, digit ? digit.whole : value);
             // A BUTTON is boxed only by a real groupbox. The second, title-hunting pass named
             // the Direct-To dialog's "Activate?" after the neighbouring field title, "BRG"
             // (2026-10-12).
