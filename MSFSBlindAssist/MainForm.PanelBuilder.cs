@@ -1225,7 +1225,7 @@ public partial class MainForm
             displayLabel.Size = new Size(140, 25);
             layout.Controls.Add(displayLabel, 0, displayRow);
 
-            // Panel to hold the status list + refresh button
+            // Panel to hold the status list
             Panel displayPanel = new Panel();
             displayPanel.Size = new Size(240, 150);
 
@@ -1236,131 +1236,36 @@ public partial class MainForm
             // in-place edit has to move the selection to replace text, and NVDA follows
             // those caret events, throwing the review cursor around.) Arrow up/down reads
             // each row; only a row whose value actually changes re-announces while focused.
+            //
+            // No Refresh button: the list updates itself every second (SdAutoRefreshTimer_Tick),
+            // and the button and the "(F5 to refresh now)" in this name were from before it did.
+            // F5 still refreshes at once from anywhere in the panel, the list included
+            // (ProcessCmdKey -> RefreshDisplayNow), and the hotkey guides list it.
             ListBox displayList = new ListBox();
-            displayList.Size = new Size(240, 120);
+            // The panel this list shows: currentPanel moves as soon as the panel selection does,
+            // while the debounced load still shows this list (RefreshDisplayNow checks it).
+            displayList.Tag = currentPanel;
+            displayList.Size = new Size(240, 150);
             displayList.Location = new Point(0, 0);
             displayList.IntegralHeight = false;
             displayList.SelectionMode = SelectionMode.One;
             displayList.HorizontalScrollbar = true;
             displayList.TabStop = true;
-            displayList.AccessibleName = "Status display, updates live (F5 to refresh now)";
-
-            // Refresh button
-            Button refreshButton = new Button();
-            refreshButton.Text = "Refresh";
-            refreshButton.Size = new Size(80, 23);
-            refreshButton.Location = new Point(0, 122);
-            refreshButton.AccessibleName = "Refresh status";
-
-            // F5 on the list triggers the same refresh action as the button — convenient
-            // for blind users who don't want to tab to the button.
-            displayList.KeyDown += (s2, e2) =>
-            {
-                if (e2.KeyCode == Keys.F5)
-                {
-                    e2.SuppressKeyPress = true;
-                    refreshButton.PerformClick();
-                }
-            };
+            displayList.AccessibleName = "Status display, updates live";
 
             // When the user moves focus TO the list, pull current content. The live auto-refresh
             // timer keeps it current while focused too (updating only the changed rows, so the
             // cursor stays put), but it skips while a SELECTOR COMBO is focused so it can't fight
             // the combo's announcement — so this GotFocus pull is what brings the list current the
             // instant the user moves from the page combo onto it to read.
-            displayList.GotFocus += (s2, e2) =>
-            {
-                try { currentAircraft?.OnDisplayPanelShown(currentPanel, simConnectManager!); }
-                catch (Exception ex)
-                {
-                    // A throw here silently leaves the SD-page snapshot stale with no clue why —
-                    // a known confusing-bug shape for this codebase (values that "never move").
-                    Log.Debug("MainForm", $"OnDisplayPanelShown (GotFocus) failed for panel '{currentPanel}': {ex.Message}");
-                }
-            };
-
-            refreshButton.Click += async (s2, e2) =>
-            {
-                // Where to return focus when the refresh finishes (set by the F5 handler
-                // before PerformClick moves focus onto this button). Fall back to the list
-                // if it's somehow still focused here.
-                Control? focusReturn = _refreshFocusReturn ?? (displayList.Focused ? displayList : null);
-                _refreshFocusReturn = null;
-
-                // First populate only (empty list): show a Loading placeholder so it isn't silent.
-                if (displayList.Items.Count == 0)
-                    displayList.Items.Add("Loading...");
-                displayValues.Clear();  // Clear old values for this panel
-
-                // Get the display variables for this panel
-                var displayVars = GetPanelDisplayVarsCached()[currentPanel];
-
-                // Create a task completion source for each variable
-                var pendingValues = new Dictionary<string, TaskCompletionSource<bool>>();
-                foreach (var varKey in displayVars)
-                {
-                    pendingValues[varKey] = new TaskCompletionSource<bool>();
-                }
-
-                // Store the pending values temporarily
-                pendingDisplayRequests = pendingValues;
-
-                // Rebuild any aircraft-managed SNAPSHOT content (the A380/A32NX/PMDG SD-page
-                // box). That content lives in the aircraft def's _sdPageContent and is ONLY
-                // regenerated by OnDisplayPanelShown -> RefreshSdPageDisplayAsync, which
-                // re-reads the underlying SimVars (FOB, engine N1-N3, per-tank fuel, …).
-                // The display-var re-request below renders that string but never rebuilds
-                // it, so WITHOUT this call a manual F5 / Refresh re-printed the SAME stale
-                // snapshot and values like "FOB 13400 KG" never moved. Fire-and-forget: it
-                // pushes its own UpdateDisplayText when the fresh read completes (~0.6s).
-                try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager!); }
-                catch (Exception ex)
-                {
-                    // A throw here silently leaves the SD-page snapshot stale with no clue why —
-                    // a known confusing-bug shape for this codebase (values that "never move").
-                    Log.Debug("MainForm", $"OnDisplayPanelShown (Refresh) failed for panel '{currentPanel}': {ex.Message}");
-                }
-
-                // Request all values. forceUpdate=true bypasses the
-                // ProcessIndividualVariableResponse suppression that drops
-                // SimVarUpdated for unchanged announced variables — without it,
-                // a Refresh on a stable announced var (e.g. IRS state held at
-                // Aligning for minutes) silently no-ops and the display falls
-                // through to "--" after the 2-second timeout.
-                foreach (var varKey in displayVars)
-                {
-                    if (currentAircraft.GetVariables().ContainsKey(varKey))
-                    {
-                        simConnectManager?.RequestVariable(varKey, forceUpdate: true);
-                    }
-                }
-
-                // Wait for all responses or timeout after 2 seconds
-                var allTasks = pendingValues.Values.Select(tcs => tcs.Task).ToArray();
-                var timeoutTask = Task.Delay(2000);
-                await Task.WhenAny(Task.WhenAll(allTasks), timeoutTask);
-
-                // Clear pending requests
-                pendingDisplayRequests = null;
-
-                // Update display - NO announcement, user will read with NVDA
-                UpdateDisplayText(displayList);
-
-                // Restore focus to the status list if the refresh moved it (onto the Refresh
-                // button). Only refocuses when it actually left — a deliberate click on the
-                // Refresh button won't bounce focus back to the list.
-                if (focusReturn != null && focusReturn.IsHandleCreated && focusReturn.CanFocus && !focusReturn.Focused)
-                    focusReturn.Focus();
-            };
+            displayList.GotFocus += (s2, e2) => RebuildDisplaySnapshot("GotFocus");
 
             displayPanel.Controls.Add(displayList);
-            displayPanel.Controls.Add(refreshButton);
             layout.Controls.Add(displayPanel, 1, displayRow);
 
-            // Store reference to display list + refresh button (F5 in ProcessCmdKey
-            // performs the refresh from anywhere in the panel).
+            // Store reference to the display list: the live auto-refresh runs while it exists, and
+            // F5 in ProcessCmdKey refreshes it from anywhere in the panel.
             currentControls["_DISPLAY_"] = displayList;
-            currentControls["_REFRESH_"] = refreshButton;
         }
 
             RebuildStateDependents();
@@ -1374,16 +1279,10 @@ public partial class MainForm
             // Auto-populate a multi-page status box (e.g. the SD-page combo) with the
             // combo's CURRENT page, so the user doesn't have to cycle it to get content
             // on first display. No-op for panels without such a box.
-            try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager!); }
-            catch (Exception ex)
-            {
-                // A throw here silently leaves the SD-page snapshot stale with no clue why —
-                // a known confusing-bug shape for this codebase (values that "never move").
-                Log.Debug("MainForm", $"OnDisplayPanelShown (initial show) failed for panel '{currentPanel}': {ex.Message}");
-            }
+            RebuildDisplaySnapshot("initial show");
 
             // Start (or stop) the live status-box auto-refresh for THIS panel. Only panels
-            // that actually built a status display (have a "_REFRESH_" button) get the timer;
+            // that actually built a status display (have a "_DISPLAY_" list) get the timer;
             // everything else stops it so we don't poll in the background on a static panel.
             StartOrStopSdAutoRefresh();
 
@@ -1430,11 +1329,70 @@ public partial class MainForm
         })); // End BeginInvoke - deferred control creation
     } // End PanelLoadTimer_Tick
 
+    /// <summary>
+    /// Rebuilds any aircraft-managed SNAPSHOT content of the shown panel (the A380/A32NX/PMDG
+    /// SD-page box). That content lives in the definition and is ONLY regenerated by
+    /// OnDisplayPanelShown, which re-reads the underlying SimVars (FOB, engine N1-N3, per-tank
+    /// fuel, …); the display-var reads render it but never rebuild it, so without this a refresh
+    /// re-printed the SAME stale snapshot. Fire-and-forget: the definition pushes its own repaint
+    /// when its fresh read completes. A throw is logged: it would otherwise leave the snapshot
+    /// stale with no clue why, a known confusing-bug shape here (values that "never move").
+    /// </summary>
+    private void RebuildDisplaySnapshot(string reason)
+    {
+        if (currentAircraft == null || simConnectManager == null) return;
+        try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager); }
+        catch (Exception ex)
+        {
+            Log.Debug("MainForm", $"OnDisplayPanelShown ({reason}) failed for panel '{currentPanel}': {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Brings the shown panel's status display current: rebuilds any SD-page snapshot
+    /// (unless <paramref name="rebuildSnapshot"/> is false because the caller just did),
+    /// force-reads the panel's display vars and schedules ONE coalesced repaint. The 1 s tick
+    /// runs it (<see cref="SdAutoRefreshTimer_Tick"/>), and so do F5 anywhere in the panel and
+    /// Ctrl+3 onto a list that is still empty. It never clears <c>displayValues</c>: the repaint
+    /// reads the cache first ([SIM-15]), and for a row the cache never holds (the iFly's
+    /// SDK-fed rows) the stored value is the only one there is. Focus never moves. Returns false,
+    /// doing nothing, while <paramref name="displayList"/> is not the shown panel's list yet.
+    /// On the UI thread.
+    /// </summary>
+    private bool RefreshDisplayNow(ListBox displayList, string reason, bool rebuildSnapshot = true)
+    {
+        // The panel selection moves currentPanel at once; the debounced load still shows the
+        // previous panel's list, which must not be filled with the next panel's rows.
+        if (!Equals(displayList.Tag, currentPanel)) return false;
+
+        // First populate only (empty list): show a Loading placeholder so it isn't silent.
+        if (displayList.Items.Count == 0)
+            displayList.Items.Add("Loading...");
+
+        if (rebuildSnapshot) RebuildDisplaySnapshot(reason);
+
+        // Force-read the panel's own display vars so the cache is fresh (covers the non-override
+        // panels whose display vars ARE the content). forceUpdate=true bypasses the suppression
+        // that drops SimVarUpdated for an unchanged announced var. Each response pushes through
+        // OnSimVarUpdated, which schedules a COALESCED repaint, so the burst collapses into ONE
+        // list rebuild; scheduling once here repaints even when no value changed.
+        if (simConnectManager != null && GetPanelDisplayVarsCached().TryGetValue(currentPanel, out var displayVars))
+        {
+            var allVars = currentAircraft.GetVariables();
+            foreach (var varKey in displayVars)
+                if (allVars.ContainsKey(varKey))
+                    simConnectManager.RequestVariable(varKey, forceUpdate: true);
+        }
+
+        ScheduleDisplayRepaint();
+        return true;
+    }
+
     // Starts the live status-box auto-refresh when the currently-shown panel has a status
-    // display ("_REFRESH_" button); stops it otherwise. Called every time a panel is shown.
+    // display ("_DISPLAY_" list); stops it otherwise. Called every time a panel is shown.
     private void StartOrStopSdAutoRefresh()
     {
-        bool hasDisplay = currentControls != null && currentControls.ContainsKey("_REFRESH_");
+        bool hasDisplay = currentControls != null && currentControls.ContainsKey("_DISPLAY_");
         if (!hasDisplay)
         {
             _sdAutoRefreshTimer?.Stop();
@@ -1459,7 +1417,8 @@ public partial class MainForm
         {
             // Panel changed out from under us (or app tearing down) → stop polling.
             if (currentAircraft == null || string.IsNullOrEmpty(currentPanel) ||
-                currentControls == null || !currentControls.ContainsKey("_REFRESH_"))
+                currentControls == null || !currentControls.TryGetValue("_DISPLAY_", out var dc) ||
+                dc is not ListBox displayList)
             {
                 _sdAutoRefreshTimer?.Stop();
                 return;
@@ -1481,29 +1440,10 @@ public partial class MainForm
                 if (kv.Value is ComboBox cb && cb.IsHandleCreated && cb.Focused)
                     return;
 
-            // (a) Rebuild any snapshot SD-page content (FOB, engine, fuel, control surfaces, …) —
-            //     silent; OnDisplayPanelShown force-reads the row vars and re-pushes the page var,
-            //     which drives UpdateDisplayText -> the list updates its changed rows in place.
-            try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager); }
-            catch (Exception ex)
-            {
-                // A throw here silently leaves the SD-page snapshot stale with no clue why —
-                // a known confusing-bug shape for this codebase (values that "never move").
-                Log.Debug("MainForm", $"OnDisplayPanelShown (auto-refresh) failed for panel '{currentPanel}': {ex.Message}");
-            }
-
-            // (b) Force-read the panel's own display vars so the cache is fresh (covers the
-            //     non-override panels whose display vars ARE the content). Each force-read response
-            //     pushes through OnSimVarUpdated, which schedules a COALESCED repaint — so the whole
-            //     burst of responses collapses into ONE list rebuild (instead of one per var), and a
-            //     changed row appears within ~one read round-trip. We also schedule once here so the
-            //     list still repaints when no value changed (e.g. the very first populate).
-            if (GetPanelDisplayVarsCached().TryGetValue(currentPanel, out var liveVars))
-                foreach (var vk in liveVars)
-                    if (currentAircraft.GetVariables().ContainsKey(vk))
-                        simConnectManager.RequestVariable(vk, forceUpdate: true);
-
-            ScheduleDisplayRepaint();
+            // Rebuild any snapshot SD-page content (FOB, engine, fuel, control surfaces, …) and
+            // force-read the panel's display vars, all silent: the list updates its changed rows
+            // in place within ~one read round-trip.
+            RefreshDisplayNow(displayList, "auto-refresh");
         }
         catch { /* best-effort live refresh; never let a tick crash the UI */ }
     }
