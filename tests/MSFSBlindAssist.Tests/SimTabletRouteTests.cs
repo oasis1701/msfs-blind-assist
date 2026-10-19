@@ -70,6 +70,75 @@ public class SimTabletRouteTests
         Assert.Equal("KFFC DCT SOONE DCT NOKIE DCT KSAV", built);
     }
 
+    // The cruise altitude rides a speed and level group with the level in BOTH fields: the tablet's
+    // parser takes the level from the speed digits (measured: N0030F030 set FL030, from FL112).
+    [Theory]
+    [InlineData("3000", "N0030F030")]
+    [InlineData("37000", "N0370F370")]
+    [InlineData("1500", "N0015F015")]
+    [InlineData("4550", "N0046F046")]
+    [InlineData("", null)]
+    [InlineData("50", null)]
+    [InlineData("100000", null)]
+    [InlineData("high", null)]
+    public void TheCruiseGroupCarriesTheFlightLevelInBothFields(string feet, string? group)
+    {
+        Assert.Equal(group, SimTabletRoute.CruiseGroup(feet));
+        Assert.Equal(group, TestCulture.Run("de-DE", () => SimTabletRoute.CruiseGroup(feet)));
+    }
+
+    [Fact]
+    public void TheCruiseGroupGoesRightAfterTheOrigin_BeforeTheSid()
+    {
+        var ofp = Ofp("KATL", "PRMMM Q64 ONDRE", "KSAV");
+        ofp.SidIdent = "PRMMM3";
+        ofp.StarIdent = "ONDRE1";
+        ofp.InitialAltitude = "35000";
+        Assert.Equal("KATL N0350F350 PRMMM3 PRMMM Q64 ONDRE ONDRE1 KSAV", SimTabletRoute.Build(ofp));
+    }
+
+    [Fact]
+    public void SimBriefsOwnGroupIsReplacedByTheOneTheTabletReadsRight()
+    {
+        var ofp = Ofp(route: "N0112F030 DCT SOONE DCT NOKIE DCT");
+        ofp.InitialAltitude = "3000";
+        Assert.Equal("KFFC N0030F030 DCT SOONE DCT NOKIE DCT KSAV", SimTabletRoute.Build(ofp));
+    }
+
+    [Theory]
+    [InlineData("30", "FL", "Cruise altitude: flight level 030, 3000 feet.")]
+    [InlineData("370", "FL", "Cruise altitude: flight level 370, 37000 feet.")]
+    [InlineData("4500", "FT", "Cruise altitude: 4500 feet.")]
+    [InlineData("0", "FL", null)]
+    [InlineData("", "FL", null)]
+    public void TheCruisePhraseSaysTheTabletsReading(string value, string unit, string? phrase)
+    {
+        Assert.Equal(phrase, SimTabletRoute.CruisePhrase(value, unit));
+        Assert.Equal(phrase, TestCulture.Run("sv-SE", () => SimTabletRoute.CruisePhrase(value, unit)));
+    }
+
+    [Fact]
+    public void TheSummarySaysTheCruiseAltitudeAndAnyTabletWarning()
+    {
+        var st = SimTabletRoute.ParseState(LiveState)!;
+        st.cruise = "30";
+        st.cruiseUnit = "FL";
+        st.cruiseWarnings = new List<string> { "The selected cruise altitude is below the departure or destination altitude." };
+        Assert.Equal(
+            "SimBrief plan loaded: KFFC runway 31 to KSAV runway 01, 2 waypoints. Cruise altitude: flight level 030, 3000 feet. " +
+            "The tablet warns: The selected cruise altitude is below the departure or destination altitude. " +
+            "Approach: ILS 1 via Direct. Use Send to avionics when you are ready.",
+            SimTabletRoute.Summary(st, null, 3000));
+    }
+
+    [Fact]
+    public void WithNoCruiseReadingTheSummarySaysTheOneSent()
+    {
+        var st = SimTabletRoute.ParseState(LiveState)!;
+        Assert.Contains("2 waypoints. Cruise altitude sent: 3000 feet. Approach:", SimTabletRoute.Summary(st, null, 3000));
+        Assert.DoesNotContain("Cruise", SimTabletRoute.Summary(st));
+    }
+
     [Fact]
     public void TheSidAndStarAreReadFromGeneral_WhereSimBriefWritesThem()
     {

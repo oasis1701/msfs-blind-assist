@@ -43,6 +43,27 @@ test('route.state: the import reads the loaded plan back by structure', () => {
   assert.deepStrictEqual(st.procedures, ['None', 'None', 'ILS 1 via Direct']);
 });
 
+test('route.state reads the plan\'s cruise altitude from the Performance panel, with its shown warnings only', () => {
+  const { A, document } = load('atlas-route-loaded');
+  assert.equal(JSON.parse(A.route.state()).cruise, undefined, 'no Performance panel built yet: no reading');
+  // The Performance panel's cruise row, as captured live (the fixture elides hidden panels).
+  const stack = document.querySelector('.efb-view.AtlasApp .view.Route').parentElement;
+  const perf = document.createElement('div');
+  perf.className = 'view hidden Performance';
+  perf.innerHTML = '<div class="atlas-data-table-row multi-row"><div class="atlas-data-table-row">' +
+    '<div class="atlas-data-table-row-title"><span>Cruise altitude</span></div>' +
+    '<div class="atlas-data-table-row-dropdown"><div class="dropdown-button"><button class="dropdown-button-selector"><span class="text bold-text">FL</span></button></div></div>' +
+    '<div class="atlas-data-table-row-value"><div class="unitbox"><div class="textbox"><input type="number" value="30"></div></div></div></div>' +
+    '<div class="cruise-altitude-ceiling"><div class="value">FL 140</div></div>' +
+    '<div class="warning hidden"><span>The selected cruise altitude is higher than the ceiling of the aircraft.</span></div>' +
+    '<div class="warning"><span>The selected cruise altitude is below the departure or destination altitude.</span></div></div>';
+  stack.appendChild(perf);
+  const st = JSON.parse(A.route.state());
+  assert.equal(st.cruise, '30');
+  assert.equal(st.cruiseUnit, 'FL');
+  assert.deepStrictEqual(st.cruiseWarnings, ['The selected cruise altitude is below the departure or destination altitude.']);
+});
+
 test('route.state off the Flight Planner says so and lists nothing', () => {
   const { A } = load('home');
   const st = JSON.parse(A.route.state());

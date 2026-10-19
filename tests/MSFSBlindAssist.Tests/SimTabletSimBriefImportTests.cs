@@ -79,6 +79,24 @@ public class SimTabletSimBriefImportTests
     }
 
     [Fact]
+    public async Task TheCruiseAltitudeIsSentInTheRoute_AndTheTabletsReadingIsSaid()
+    {
+        var ofp = Ofp();
+        ofp.InitialAltitude = "3000";
+        string loaded = State("01", "ILS 1 via Direct").Replace("\"waypoints\"", "\"cruise\":\"30\",\"cruiseUnit\":\"FL\",\"waypoints\"");
+        var tablet = new FakeTablet()
+            .On("route.open", "{\"ok\":true,\"done\":true}")
+            .On("route.enter", Ok)
+            .On("route.save", Ok)
+            .On("route.state", loaded);
+        var r = await new SimTabletSimBriefImport(tablet.Eval, NoWait).RunAsync(ofp);
+
+        Assert.True(r.Success, r.Message);
+        Assert.Contains("route.enter(\"KFFC N0030F030 DCT SOONE DCT NOKIE DCT KSAV\")", tablet.Calls);
+        Assert.Contains("2 waypoints. Cruise altitude: flight level 030, 3000 feet. Approach: ILS 1 via Direct.", r.Message);
+    }
+
+    [Fact]
     public async Task APlanAlreadyInTheFlightPlanner_SkipsSave_AndSaysSo()
     {
         var tablet = new FakeTablet()

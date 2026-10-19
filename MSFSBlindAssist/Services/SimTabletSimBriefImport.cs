@@ -116,7 +116,7 @@ public sealed class SimTabletSimBriefImport
         st = await SetRunway(1, ofp.DestRunway, dest, st, notes, ct) ?? st;
 
         var final = await State() ?? st;
-        return new Result(true, SimTabletRoute.Summary(final, notes));
+        return new Result(true, SimTabletRoute.Summary(final, notes, SimTabletRoute.CruiseFeet(ofp.InitialAltitude)));
     }
 
     private async Task<SimTabletRoute.RouteState?> SetRunway(int which, string planned, string icao,

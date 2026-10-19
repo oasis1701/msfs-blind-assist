@@ -1065,8 +1065,32 @@
       }
       var popup = A.root().querySelector('.efb-view.AtlasApp .route-parsing-popup');
       st.routeBoxOpen = !!popup && !A.isHidden(popup);
+      var c = A.route.cruise();
+      if (c) { st.cruise = c.value; st.cruiseUnit = c.unit; st.cruiseWarnings = c.warnings; }
       return JSON.stringify(st);
     } catch (e) { return JSON.stringify({ ok: false, error: String(e) }); }
+  };
+
+  // The plan's cruise altitude as the Flight Planner's Performance panel shows it: that box is bound
+  // to the plan itself (it read FL112, then FL030, as the route set it), unlike the Route page's
+  // copy, which only shows what was typed into it. The row is the one beside the aircraft's ceiling;
+  // its unit is the FL/FT dropdown, and the tablet's cruise warnings ("higher than the ceiling of the
+  // aircraft") sit with it. Null until the panel has been built (the Flight Planner builds a panel
+  // the first time it opens).
+  A.route.cruise = function () {
+    var ceiling = A.root().querySelector('.efb-view.AtlasApp .view.Performance .cruise-altitude-ceiling');
+    var row = ceiling ? ceiling.parentElement : null;
+    if (!row) return null;
+    var inp = row.querySelector('.atlas-data-table-row-value input');
+    if (!inp) return null;
+    var unitEl = row.querySelector('.atlas-data-table-row-dropdown .dropdown-button-selector .text');
+    var warnings = [], ws = row.querySelectorAll('.warning');
+    for (var i = 0; i < ws.length; i++) {
+      if (A.hasClass(ws[i], 'hidden')) continue;
+      var t = A.modelText(ws[i].querySelector('span') || ws[i]);
+      if (t) warnings.push(t);
+    }
+    return { value: A.norm(inp.value), unit: unitEl ? A.norm(unitEl.textContent).toUpperCase() : '', warnings: warnings };
   };
 
   // Pick a runway on the departure (0) or arrival (1) airport. The tablet then picks a procedure

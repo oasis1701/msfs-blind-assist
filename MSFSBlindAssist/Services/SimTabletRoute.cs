@@ -20,21 +20,24 @@ namespace MSFSBlindAssist.Services;
 /// after the departure airport is matched against that airport's departure procedures and the word
 /// right before the destination against its arrivals, so a SID and a STAR are taken by name in
 /// exactly those two places (their transitions and the approach are not: the approach is the one the
-/// tablet picks for the arrival runway). A speed and level group after the departure airport
-/// ("N0112F030") is parsed, but WRONG: its tryParseStepClimb takes the level from the SPEED digits
-/// (measured: N0112F030 set the cruise box to FL112), so none is ever written. A jet OFP has not been
-/// through the box live yet.
+/// tablet picks for the arrival runway). A speed and level group right after the departure airport
+/// sets the plan's cruise altitude, but its tryParseStepClimb takes the level from the SPEED digits
+/// and drops the speed (measured: N0112F030 set FL112). So the group is written with the cruise level
+/// in BOTH fields, "N0030F030", which gives FL030 from this parser and would from a fixed one too
+/// (measured: FL112 back to FL030); a group SimBrief wrote into its route is dropped. A jet OFP has
+/// not been through the box live yet.
 /// </summary>
 public static class SimTabletRoute
 {
-    // The tablet's own STEP_CLIMB_REGEX: a speed and level group, never written (see above).
+    // The tablet's own STEP_CLIMB_REGEX: a speed and level group (see above).
     private static readonly Regex SpeedLevelGroup = new(@"^[KNM]\d{3,4}[FSAM]\d{3,4}$", RegexOptions.CultureInvariant);
 
     /// <summary>
-    /// "ORIGIN [SID] route [STAR] DESTINATION", or null when the plan names no origin or destination.
+    /// "ORIGIN [N0030F030] [SID] route [STAR] DESTINATION", or null when the plan names no origin or
+    /// destination. The group carries SimBrief's initial cruise altitude (<see cref="CruiseGroup"/>);
     /// SimBrief's SID and STAR (<see cref="SimBriefOFP.SidIdent"/>, <see cref="SimBriefOFP.StarIdent"/>)
     /// are put where the tablet looks for them when the route does not already start or end with them;
-    /// any speed and level group is dropped.
+    /// any other speed and level group is dropped.
     /// </summary>
     public static string? Build(SimBriefOFP ofp)
     {
@@ -51,8 +54,25 @@ public static class SimTabletRoute
             words.Insert(0, sid);
         if (star.Length > 0 && (words.Count == 0 || !words[^1].Equals(star, StringComparison.OrdinalIgnoreCase)))
             words.Add(star);
+        string? cruise = CruiseGroup(ofp.InitialAltitude);
+        if (cruise != null) words.Insert(0, cruise);
 
         return words.Count == 0 ? $"{origin} {dest}" : $"{origin} {string.Join(' ', words)} {dest}";
+    }
+
+    /// <summary>
+    /// SimBrief's initial altitude in feet ("3000") as the group that sets the tablet's cruise level:
+    /// the flight level in both fields, "N0030F030". Null when there is no altitude, or it is under
+    /// 100 ft or above FL999.
+    /// </summary>
+    public static string? CruiseGroup(string? initialAltitudeFeet)
+    {
+        if (!Utils.NumberParsing.TryParseExternal(initialAltitudeFeet, out double feet)) return null;   // CORE-17
+        if (feet < 100) return null;
+        int fl = (int)Math.Round(feet / 100.0, MidpointRounding.AwayFromZero);
+        if (fl > 999) return null;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        return "N" + fl.ToString("0000", inv) + "F" + fl.ToString("000", inv);
     }
 
     /// <summary>
@@ -91,13 +111,20 @@ public static class SimTabletRoute
     /// fixes, and every procedure the tablet chose, because it picks one by itself when a runway is
     /// set (arrival runway 01 at KSAV brought "ILS 1 via Direct"). <paramref name="notes"/> are the
     /// import's own remarks (a runway SimBrief planned that the tablet does not list), spoken last.
+    /// The cruise altitude is the one the tablet's plan holds, with any warning the tablet gives for
+    /// it; when the tablet does not show it yet, the one sent (<paramref name="sentCruiseFeet"/>).
     /// </summary>
-    public static string Summary(RouteState st, IReadOnlyList<string>? notes = null)
+    public static string Summary(RouteState st, IReadOnlyList<string>? notes = null, int? sentCruiseFeet = null)
     {
         var sb = new StringBuilder("SimBrief plan loaded: ");
         sb.Append(End(st, 0)).Append(" to ").Append(End(st, 1));
         int n = st.waypoints.Count;
         sb.Append(", ").Append(n == 1 ? "1 waypoint" : $"{n} waypoints").Append('.');
+        string? cruise = CruisePhrase(st.cruise, st.cruiseUnit);
+        if (cruise != null) sb.Append(' ').Append(cruise);
+        else if (sentCruiseFeet is int sent)
+            sb.Append(" Cruise altitude sent: ").Append(sent.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(" feet.");
+        foreach (var w in st.cruiseWarnings) sb.Append(" The tablet warns: ").Append(w.TrimEnd('.')).Append('.');
         string[] names = { "Departure", "Arrival", "Approach" };
         for (int i = 0; i < names.Length && i < st.procedures.Count; i++)
         {
@@ -108,6 +135,29 @@ public static class SimTabletRoute
         if (notes != null) foreach (var note in notes) sb.Append(' ').Append(note);
         sb.Append(" Use Send to avionics when you are ready.");
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// "Cruise altitude: flight level 030, 3000 feet." for the tablet's FL reading, "Cruise altitude:
+    /// 3000 feet." for FT; null when there is none. Numbers in the invariant culture, as spoken.
+    /// </summary>
+    internal static string? CruisePhrase(string? value, string? unit)
+    {
+        if (!Utils.NumberParsing.TryParseExternal(value, out double v) || v <= 0) return null;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        if (string.Equals(unit, "FL", StringComparison.OrdinalIgnoreCase))
+        {
+            int fl = (int)Math.Round(v, MidpointRounding.AwayFromZero);
+            return $"Cruise altitude: flight level {fl.ToString("000", inv)}, {(fl * 100).ToString(inv)} feet.";
+        }
+        return $"Cruise altitude: {((int)Math.Round(v, MidpointRounding.AwayFromZero)).ToString(inv)} feet.";
+    }
+
+    /// <summary>SimBrief's initial altitude in whole feet, or null (the same reading <see cref="CruiseGroup"/> makes).</summary>
+    public static int? CruiseFeet(string? initialAltitudeFeet)
+    {
+        string? group = CruiseGroup(initialAltitudeFeet);
+        return group == null ? null : int.Parse(group.Substring(group.Length - 3), System.Globalization.CultureInfo.InvariantCulture) * 100;
     }
 
     private static string End(RouteState st, int i)
@@ -136,6 +186,9 @@ public static class SimTabletRoute
         public List<Airport> airports { get; set; } = new();
         public List<string> procedures { get; set; } = new();
         public List<string> waypoints { get; set; } = new();
+        public string cruise { get; set; } = "";
+        public string cruiseUnit { get; set; } = "";
+        public List<string> cruiseWarnings { get; set; } = new();
     }
 
     public sealed class Airport

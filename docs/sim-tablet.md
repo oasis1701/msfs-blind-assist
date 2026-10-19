@@ -35,11 +35,11 @@ Measured live and read from `efb_os.js` (STAB-1 to STAB-3):
 The tablet has no SimBrief link of its own; Navigraph's SimBrief tablet app is an add-on this does not need. Pressing the button runs `MainForm.LoadSimBriefIntoSimTabletAsync`: it fetches the pilot's latest OFP with the SimBrief username from Settings (`SimBriefService.FetchFullOFPAsync`), then `Services/SimTabletSimBriefImport.cs` drives the reader's `A.route.*` steps:
 
 1. open the Flight Planner from the dock and its Route panel;
-2. open Import, "Enter route string", by its place in the menu, and type `ORIGIN [SID] route [STAR] DESTINATION` (`SimTabletRoute.Build`), the shape measured to load: the tablet's parser takes a SID right after the departure airport and a STAR right before the destination, by name, never their transitions or an approach, and a speed and level group is never written, as the parser misreads it (STAB-10);
+2. open Import, "Enter route string", by its place in the menu, and type `ORIGIN N0030F030 [SID] route [STAR] DESTINATION` (`SimTabletRoute.Build`), the shape measured to load: the group sets the plan's cruise altitude from SimBrief's initial altitude, written with the level in both fields because the tablet's parser takes the level from the speed digits; the parser takes a SID right after the departure airport and a STAR right before the destination, by name, never their transitions or an approach (STAB-10);
 3. press SAVE once the tablet enables it, unless the box already held this route (the plan is loaded), when SAVE never enables and the box is closed instead (STAB-9);
 4. wait until both airports show;
 5. pick SimBrief's runways on the airports' runway dropdowns (a runway written into the route string is ignored, STAB-7);
-6. speak a summary: both ends with their runways, the number of waypoints, and every procedure the tablet chose, which it does by itself when a runway is set (arrival runway 01 at KSAV brought "ILS 1 via Direct").
+6. speak a summary: both ends with their runways, the number of waypoints, the cruise altitude the plan holds (with any cruise warning the tablet shows), and every procedure the tablet chose, which it does by itself when a runway is set (arrival runway 01 at KSAV brought "ILS 1 via Direct").
 
 Sending stays the pilot's press (STAB-5): Send, then "Send to avionics" (or ATC, or both) on the Route page. Measured: after a send, the C172's G1000 flight plan held KFFC RW31, SOONE, NOKIE, KSAV RW01 and the approach. The stock `GPS FLIGHT PLAN WP COUNT` SimVar stays 0 on the WT G1000, so its own planner is the check (`wtg1000-mfd`'s `planner`), which aircraft code may use and the tablet code does not, as it serves every aircraft.
 
