@@ -923,14 +923,14 @@ public partial class MainForm
             }
             else if (varKey.Contains("_SET") && !varDef.PreventTextInput)
             {
-                // Panel for TextBox and Button (unless aircraft prevents text input)
-                Panel inputPanel = new Panel();
-                inputPanel.Size = new Size(240, 25);
-                
+                // A typed field, applied by Enter (unless aircraft prevents text input). It had a Set
+                // button beside it until 2026-10-18; Enter already did the same, so the button only
+                // added a stop to the Tab order (the owner's call), and it was removed.
                 TextBox textBox = new TextBox();
-                textBox.Location = new Point(0, 0);
-                textBox.Size = new Size(100, 25);
+                textBox.Size = new Size(240, 25);
                 textBox.AccessibleName = $"{varDef.DisplayName} value";
+                // With no Set button after the field, this is the reader's only cue that Enter applies it.
+                textBox.AccessibleDescription = "Type a value and press Enter to set";
 
                 // If this _SET field declares a current-value source, pre-fill it
                 // from the cached value on creation AND on focus-in, then select
@@ -953,26 +953,19 @@ public partial class MainForm
                     textBox.GotFocus += (s3, e3) => seedFromCurrent();
                 }
 
-                Button button = new Button();
-                button.Text = "Set";
-                button.Location = new Point(110, 0);
-                button.Size = new Size(60, 23);
-                button.AccessibleName = $"Set {varDef.DisplayName}";
-
-                // Enter in the box presses Set, as the guides say ("press Set or Enter") and as
-                // every dedicated dialog already does through AcceptButton. A bare TextBox swallows
-                // Enter, so a blind pilot who typed a squawk and pressed Enter heard nothing at all
-                // and flew on the old code (found in review 2026-09-07). SuppressKeyPress stops the
-                // WinForms ding; the click path is the same one the button takes.
+                // Enter in the box applies the value, as every dedicated dialog does through
+                // AcceptButton. A bare TextBox swallows Enter, so a blind pilot who typed a squawk and
+                // pressed Enter heard nothing at all and flew on the old code (found in review
+                // 2026-09-07). SuppressKeyPress stops the WinForms ding.
                 textBox.KeyDown += (s4, e4) =>
                 {
                     if (e4.KeyCode != Keys.Enter) return;
                     e4.SuppressKeyPress = true;
                     e4.Handled = true;
-                    button.PerformClick();
+                    ApplyTyped();
                 };
 
-                button.Click += (s2, e2) =>
+                void ApplyTyped()
                 {
                     // Aircraft delegation: let the loaded aircraft claim _SET keys
                     // (e.g., PMDG 737's EFIS_MinsValueFt_*_SET vars need RST-then-rotate
@@ -1109,11 +1102,9 @@ public partial class MainForm
                         // A validation error always speaks: "10,000" used to be sent as 10.
                         announcer.Announce("Invalid number format");
                     }
-                };
-                
-                inputPanel.Controls.Add(textBox);
-                inputPanel.Controls.Add(button);
-                layout.Controls.Add(inputPanel, 1, rowIndex);
+                }
+
+                layout.Controls.Add(textBox, 1, rowIndex);
                 currentControls[varKey] = textBox;
             }
             else

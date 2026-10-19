@@ -3162,12 +3162,12 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
             // =====================================================================
             // Batch 6 — Radio panel (COM1 / COM2) + transponder squawk.
             // Layout mimics PMDG 777: each radio row has Active (display button),
-            // Standby (TextBox + Set), Swap (button). Each SimVar is continuously
+            // Standby (TextBox, Enter applies), Swap (button). Each SimVar is continuously
             // monitored — when the value changes (post-swap, post-set, or via VR
             // hand), ProcessSimVarUpdate announces the new frequency.
             //
-            // MainForm rendering: keys with "_SET" + COM_ prefix render as TextBox
-            // + Set button. PreventTextInput on the Active key forces a button
+            // MainForm rendering: keys with "_SET" + COM_ prefix render as a TextBox
+            // that Enter applies. PreventTextInput on the Active key forces a button
             // render. K-event firing for SET / SWAP goes through MainForm's existing
             // generic handling (COM_STBY_RADIO_SET_HZ, COM_STBY_RADIO_SWAP, etc.).
             // =====================================================================
