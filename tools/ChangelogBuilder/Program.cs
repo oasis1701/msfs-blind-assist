@@ -14,15 +14,6 @@ using ChangelogBuilder;
 //
 // An empty input is NOT an error: a release with no fragments publishes with GitHub's
 // generated notes alone.
-//
-//   ChangelogBuilder guide-check --body <file> --added <list> --changed <list>
-//
-// is a separate mode: the advisory "User guide:" line check (CORE-19), in UserGuideCheck.cs.
-
-if (args.Length > 0 && args[0] == "guide-check")
-{
-    return UserGuideCheck.Run(args[1..]);
-}
 
 var outPath = (string?)null;
 var listPath = (string?)null;

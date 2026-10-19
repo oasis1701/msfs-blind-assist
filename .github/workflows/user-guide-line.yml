@@ -1,10 +1,10 @@
-name: User guide
+name: User guide line
 
 # Advisory, not a required check (CORE-19). When a PR adds a feature, aircraft or
-# improvement fragment, or changes MSFSBlindAssist/HotkeyGuides/, its description needs
-# a filled-in "User guide:" line: the site PR that updates the guide, "needed: <where>",
-# or "none, because <reason>". The logic is ChangelogBuilder's guide-check mode
-# (tools/ChangelogBuilder/UserGuideCheck.cs), covered by UserGuideLineTests.
+# improvement fragment, or changes MSFSBlindAssist/HotkeyGuides/, it should update the
+# pilot's guide in guide/; if it does not, its description says why on a "User guide:"
+# line: "needed: <chapter>" or "none, because <reason>". The logic is GuideBuilder's
+# check-pr command (tools/GuideBuilder/PullRequestCheck.cs), covered by UserGuideLineTests.
 #
 # `edited` is load-bearing: filling in the line edits the description, and without it
 # this check stays red until someone pushes an unrelated commit to re-run it.
@@ -13,7 +13,7 @@ on:
     types: [opened, edited, synchronize, reopened]
 
 concurrency:
-  group: user-guide-${{ github.head_ref || github.ref }}
+  group: user-guide-line-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -45,7 +45,7 @@ jobs:
           # added.txt: only an ADDED fragment is a new entry; editing an older PR's
           # fragment does not make this PR owe the guide anything.
           # changed.txt: every path, with renames split into delete + add, so moving a
-          # hotkey guide counts too.
+          # hotkey guide or a guide page counts too.
           git diff --name-only --diff-filter=A "origin/$GITHUB_BASE_REF...HEAD" > added.txt
           git diff --name-only --no-renames "origin/$GITHUB_BASE_REF...HEAD" > changed.txt
 
@@ -58,12 +58,12 @@ jobs:
         run: |
           printf '%s' "$PR_BODY" > body.md
           # Build first so `dotnet run --no-build` prints only the check's own message.
-          dotnet build tools/ChangelogBuilder -c Release --nologo -v quiet
+          dotnet build tools/GuideBuilder -c Release --nologo -v quiet
           status=0
-          dotnet run --project tools/ChangelogBuilder -c Release --no-build -- \
-            guide-check --body body.md --added added.txt --changed changed.txt > result.txt || status=$?
+          dotnet run --project tools/GuideBuilder -c Release --no-build -- \
+            check-pr --body body.md --added added.txt --changed changed.txt > result.txt || status=$?
           cat result.txt
-          # A code block: as Markdown, the message's <n> and <reason> would vanish as tags.
+          # A code block: as Markdown, the message's <chapter> and <reason> would vanish as tags.
           {
             echo "### User guide line"
             echo

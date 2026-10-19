@@ -18,16 +18,15 @@ See changelog.d/README.md.
 ## User guide
 
 <!--
-The pilot's guide is msfsblindassist.com/guide/; its source is the guide/ folder of
-the oasis1701/msfs-blind-assist-site repo. Does this PR change what a pilot presses,
-sees or hears (a hotkey, window, setting, spoken text, tone or aircraft)? Fill in the
-line below with ONE of these:
-  User guide: https://github.com/oasis1701/msfs-blind-assist-site/pull/<n>   (the site PR that updates the guide)
+The pilot's guide is guide/ in this repo: the website (msfsblindassist.com/guide/) and
+Help, User Guide in the app are built from it. Does this PR change what a pilot presses,
+sees or hears (a hotkey, window, setting, spoken text, tone or aircraft)? Then update
+guide/ in this PR (docs/user-guide.md says how) and leave the line below empty.
+Otherwise fill it in with ONE of these:
   User guide: needed: <chapter and section>   (the guide still has to be updated there)
   User guide: none, because <why the guide is still right>
-A feature only in the preview build is marked "in the preview build" in the guide.
-CI asks for this line when the PR adds a feature, aircraft or improvement fragment or
-changes MSFSBlindAssist/HotkeyGuides/. See CORE-19 in docs/invariants/core.md.
+CI asks when the PR adds a feature, aircraft or improvement fragment or changes
+MSFSBlindAssist/HotkeyGuides/. See CORE-19 in docs/invariants/core.md.
 -->
 
 User guide:

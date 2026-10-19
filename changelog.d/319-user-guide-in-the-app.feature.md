@@ -1,0 +1,1 @@
+The user guide now comes with the app: Help, User Guide opens the whole guide on one page, matching your version and working offline, and Help, Project Website opens msfsblindassist.com. The online guide also gets an edition for the preview build.

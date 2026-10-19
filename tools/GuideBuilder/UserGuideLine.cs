@@ -1,15 +1,12 @@
 using System.Text.RegularExpressions;
 
-namespace ChangelogBuilder;
+namespace GuideBuilder;
 
-/// <summary>Which of the accepted answers a PR description's "User guide:" line gives (CORE-19).</summary>
+/// <summary>Which answer a PR description's "User guide:" line gives (CORE-19).</summary>
 public enum UserGuideAnswer
 {
     /// <summary>No "User guide:" line, or only empty ones (the template's own line left blank).</summary>
     Missing,
-
-    /// <summary>Links the msfs-blind-assist-site pull request that updates the guide.</summary>
-    SitePullRequest,
 
     /// <summary>"needed: &lt;chapter&gt;": the guide still has to be updated, and where.</summary>
     Needed,
@@ -17,7 +14,7 @@ public enum UserGuideAnswer
     /// <summary>"none, because &lt;reason&gt;": the guide is still right.</summary>
     None,
 
-    /// <summary>A line is there but is none of the forms above; <see cref="UserGuideLineResult.Error"/> says why.</summary>
+    /// <summary>A line is there but is neither form; <see cref="UserGuideLineResult.Error"/> says why.</summary>
     Invalid,
 }
 
@@ -27,8 +24,6 @@ public enum UserGuideAnswer
 /// </summary>
 public static class UserGuideLine
 {
-    public const string SiteRepository = "oasis1701/msfs-blind-assist-site";
-
     // HTML comments first: the PR template's own examples of the line sit inside one and must never count as
     // the answer. An unclosed comment hides the rest of the description, as it does when GitHub renders it.
     private static readonly Regex HtmlComment = new(@"<!--.*?(?:-->|\z)",
@@ -39,7 +34,7 @@ public static class UserGuideLine
     private static readonly Regex Line = new(@"^[ \t]*(?:[-*+][ \t]+)?(?:\*\*|__)?user guide:(?:\*\*|__)?[ \t]*(?<value>.*?)[ \t]*$",
         RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.CultureInvariant);
 
-    // A template placeholder such as <reason> or <n>; an autolink such as <https://…> is not one.
+    // A template placeholder such as <reason> or <chapter>; an autolink such as <https://…> is not one.
     private static readonly Regex Placeholder = new(@"<(?!https?:)[a-z][^<>]*>",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
@@ -47,12 +42,6 @@ public static class UserGuideLine
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static readonly Regex NeededForm = new(@"^needed\b[\s,:;.\-–—]*(?<where>.*)$",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-
-    // The full URL or GitHub's short form, oasis1701/msfs-blind-assist-site#12. GitHub treats owner and
-    // repository names case-insensitively, so this does too.
-    private static readonly Regex SitePullRequestReference = new(
-        @"(?:https?://github\.com/" + Regex.Escape(SiteRepository) + @"/pull/|\b" + Regex.Escape(SiteRepository) + "#)(?<number>[1-9][0-9]*)",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     public static UserGuideLineResult Parse(string? description)
@@ -89,13 +78,8 @@ public static class UserGuideLine
                 : Invalid(value, "it says needed but not where; write \"needed: <chapter and section>\".");
         }
 
-        if (SitePullRequestReference.IsMatch(value))
-        {
-            return new UserGuideLineResult(UserGuideAnswer.SitePullRequest, value, null);
-        }
-
-        return Invalid(value, $"it is none of the three forms: a link to the {SiteRepository} pull request that updates " +
-            "the guide, \"needed: <chapter and section>\", or \"none, because <reason>\".");
+        return Invalid(value, "it is neither form: \"needed: <chapter and section>\" or \"none, because <reason>\". " +
+            "A PR that updates the guide changes files in guide/ and needs no line.");
     }
 
     private static bool HasWords(string text) => text.Any(char.IsLetterOrDigit);
@@ -107,6 +91,6 @@ public static class UserGuideLine
 /// <summary>Outcome of <see cref="UserGuideLine.Parse"/>. <see cref="Error"/> is set only for <see cref="UserGuideAnswer.Invalid"/>.</summary>
 public sealed record UserGuideLineResult(UserGuideAnswer Answer, string Value, string? Error)
 {
-    /// <summary>True for the three accepted answers.</summary>
-    public bool Answered => Answer is UserGuideAnswer.SitePullRequest or UserGuideAnswer.Needed or UserGuideAnswer.None;
+    /// <summary>True for the two accepted answers.</summary>
+    public bool Answered => Answer is UserGuideAnswer.Needed or UserGuideAnswer.None;
 }

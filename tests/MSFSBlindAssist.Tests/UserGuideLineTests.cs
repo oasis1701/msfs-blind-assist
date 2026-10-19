@@ -1,22 +1,15 @@
-// Tests for the advisory "User guide:" check (CORE-19): ChangelogBuilder.UserGuideLine reads the line from a PR
-// description, UserGuideImpact decides whether CI asks for it, and UserGuideCheck.Evaluate joins the two into
-// the pass or fail and the message .github/workflows/user-guide.yml shows. All three are pure, so every case is
-// a literal; messages are asserted loosely (Contains), since their wording is a UX detail.
+// Tests for the advisory "User guide line" PR check (CORE-19): GuideBuilder.UserGuideLine reads the line from a PR
+// description, UserGuideImpact decides whether the check asks, and PullRequestCheck.Evaluate joins the two into the
+// pass or fail and the message .github/workflows/user-guide-line.yml shows. All three are pure, so every case is a
+// literal; messages are asserted loosely (Contains), since their wording is a UX detail.
 
-using ChangelogBuilder;
+using GuideBuilder;
 
 namespace MSFSBlindAssist.Tests;
 
 public class UserGuideLineTests
 {
-    private const string SitePr = "https://github.com/oasis1701/msfs-blind-assist-site/pull/12";
-
     [Theory]
-    [InlineData("User guide: " + SitePr, UserGuideAnswer.SitePullRequest)]
-    [InlineData("User guide: oasis1701/msfs-blind-assist-site#12", UserGuideAnswer.SitePullRequest)]
-    [InlineData("User guide: [site PR 12](" + SitePr + ") adds the Volanta section", UserGuideAnswer.SitePullRequest)]
-    [InlineData("User guide: <" + SitePr + ">", UserGuideAnswer.SitePullRequest)]
-    [InlineData("User guide: https://github.com/Oasis1701/MSFS-Blind-Assist-Site/pull/12", UserGuideAnswer.SitePullRequest)]
     [InlineData("User guide: needed: Part 7, TFDi MD-11, Hotkeys", UserGuideAnswer.Needed)]
     [InlineData("User guide: Needed - Appendix D, Hotkey Reference", UserGuideAnswer.Needed)]
     [InlineData("User guide: none, because this restores the documented behavior", UserGuideAnswer.None)]
@@ -62,7 +55,7 @@ public class UserGuideLineTests
     [Fact]
     public void Parse_ignores_the_examples_inside_an_html_comment()
     {
-        const string description = "## User guide\n\n<!--\n  User guide: none, because <reason>\n  User guide: " + SitePr +
+        const string description = "## User guide\n\n<!--\n  User guide: none, because <reason>\n  User guide: needed: Part 4" +
             "\n-->\n\nUser guide:\n";
 
         Assert.Equal(UserGuideAnswer.Missing, UserGuideLine.Parse(description).Answer);
@@ -74,11 +67,7 @@ public class UserGuideLineTests
 
     [Fact]
     public void Parse_takes_an_answer_typed_on_a_later_line_when_the_template_line_was_left_empty()
-    {
-        UserGuideLineResult result = UserGuideLine.Parse("User guide:\r\n\r\nUser guide: none, because CI only\r\n");
-
-        Assert.Equal(UserGuideAnswer.None, result.Answer);
-    }
+        => Assert.Equal(UserGuideAnswer.None, UserGuideLine.Parse("User guide:\r\n\r\nUser guide: none, because CI only\r\n").Answer);
 
     [Fact]
     public void Parse_reads_crlf_descriptions_as_github_sends_them()
@@ -92,7 +81,6 @@ public class UserGuideLineTests
     [Theory]
     [InlineData("User guide: none, because <reason>", "<reason>")]
     [InlineData("User guide: needed: <chapter and section>", "<chapter and section>")]
-    [InlineData("User guide: https://github.com/oasis1701/msfs-blind-assist-site/pull/<n>", "<n>")]
     public void Parse_rejects_a_placeholder_left_in(string description, string placeholder)
     {
         UserGuideLineResult result = UserGuideLine.Parse(description);
@@ -106,9 +94,9 @@ public class UserGuideLineTests
     [InlineData("User guide: none, because", "no reason")]
     [InlineData("User guide: needed", "not where")]
     [InlineData("User guide: needed:", "not where")]
-    [InlineData("User guide: N/A", "three forms")]
-    [InlineData("User guide: TBD", "three forms")]
-    [InlineData("User guide: https://github.com/oasis1701/msfs-blind-assist/pull/12", "three forms")]
+    [InlineData("User guide: N/A", "neither form")]
+    [InlineData("User guide: TBD", "neither form")]
+    [InlineData("User guide: <https://github.com/oasis1701/msfs-blind-assist-site/pull/12>", "neither form")]
     public void Parse_rejects_an_incomplete_or_unknown_answer(string description, string because)
     {
         UserGuideLineResult result = UserGuideLine.Parse(description);
@@ -163,11 +151,7 @@ public class UserGuideLineTests
     [InlineData("MSFSBlindAssist/HotkeyGuides/TFDi_MD11_Hotkeys.txt")]
     [InlineData(@"MSFSBlindAssist\HotkeyGuides\PMDG_737_Hotkeys.txt")]
     public void Impact_asks_when_a_hotkey_guide_changes(string changed)
-    {
-        IReadOnlyList<string> reasons = UserGuideImpact.Reasons(Array.Empty<string>(), new[] { changed });
-
-        Assert.Equal(new[] { "changes " + changed.Replace('\\', '/') }, reasons);
-    }
+        => Assert.Equal(new[] { "changes " + changed.Replace('\\', '/') }, UserGuideImpact.Reasons(Array.Empty<string>(), new[] { changed }));
 
     [Fact]
     public void Impact_lists_every_reason_once()
@@ -180,23 +164,38 @@ public class UserGuideLineTests
     }
 
     [Fact]
-    public void Evaluate_fails_a_required_pr_with_no_line_and_shows_the_three_forms()
+    public void Impact_finds_the_guide_pages_a_pr_touches()
+        => Assert.Equal(new[] { "guide/taxi-guidance.md" },
+            UserGuideImpact.GuideChanges(new[] { "MSFSBlindAssist/MainForm.cs", @"guide\taxi-guidance.md", "docs/guide.md" }));
+
+    [Fact]
+    public void Evaluate_fails_an_asked_pr_with_no_guide_change_and_no_line()
     {
-        (bool pass, string message) = UserGuideCheck.Evaluate("## Summary\n\nAdds friends.",
+        (bool pass, string message) = PullRequestCheck.Evaluate("## Summary\n\nAdds friends.",
             new[] { "changelog.d/320-friends.feature.md" }, new[] { "changelog.d/320-friends.feature.md" });
 
         Assert.False(pass);
         Assert.Contains("adds changelog.d/320-friends.feature.md", message);
+        Assert.Contains("guide/", message);
         Assert.Contains("User guide: needed:", message);
         Assert.Contains("User guide: none, because", message);
-        Assert.Contains("msfs-blind-assist-site/pull/", message);
         Assert.Contains("advisory", message);
     }
 
     [Fact]
-    public void Evaluate_fails_a_required_pr_with_a_bad_line_and_says_what_is_wrong()
+    public void Evaluate_passes_an_asked_pr_that_updates_the_guide()
     {
-        (bool pass, string message) = UserGuideCheck.Evaluate("User guide: none",
+        (bool pass, string message) = PullRequestCheck.Evaluate("",
+            new[] { "changelog.d/320-friends.feature.md" }, new[] { "changelog.d/320-friends.feature.md", "guide/networks-and-integrations.md" });
+
+        Assert.True(pass);
+        Assert.Contains("guide/networks-and-integrations.md", message);
+    }
+
+    [Fact]
+    public void Evaluate_fails_an_asked_pr_with_a_bad_line_and_says_what_is_wrong()
+    {
+        (bool pass, string message) = PullRequestCheck.Evaluate("User guide: none",
             new[] { "changelog.d/320-friends.feature.md" }, Array.Empty<string>());
 
         Assert.False(pass);
@@ -204,9 +203,9 @@ public class UserGuideLineTests
     }
 
     [Fact]
-    public void Evaluate_passes_a_required_pr_that_answers()
+    public void Evaluate_passes_an_asked_pr_that_answers()
     {
-        (bool pass, string message) = UserGuideCheck.Evaluate("User guide: needed: Part 6, Volanta",
+        (bool pass, string message) = PullRequestCheck.Evaluate("User guide: needed: Part 6, Volanta",
             Array.Empty<string>(), new[] { "MSFSBlindAssist/HotkeyGuides/HS787_Hotkeys.txt" });
 
         Assert.True(pass);
@@ -218,16 +217,16 @@ public class UserGuideLineTests
     [InlineData("")]
     [InlineData("User guide: TBD")]
     [InlineData("User guide: none, because CI only")]
-    public void Evaluate_passes_a_pr_that_is_not_required_whatever_its_line_says(string description)
+    public void Evaluate_passes_a_pr_it_does_not_ask_whatever_its_line_says(string description)
     {
-        (bool pass, string message) = UserGuideCheck.Evaluate(description,
+        (bool pass, string message) = PullRequestCheck.Evaluate(description,
             new[] { "changelog.d/320-autobrake.fix.md" }, new[] { "changelog.d/320-autobrake.fix.md", "MSFSBlindAssist/MainForm.cs" });
 
         Assert.True(pass);
-        Assert.Contains("Not required", message);
+        Assert.Contains("Not asked", message);
     }
 
     [Fact]
-    public void Evaluate_still_points_out_a_bad_line_when_not_required()
-        => Assert.Contains("three forms", UserGuideCheck.Evaluate("User guide: TBD", Array.Empty<string>(), Array.Empty<string>()).Message);
+    public void Evaluate_still_points_out_a_bad_line_when_not_asked()
+        => Assert.Contains("neither form", PullRequestCheck.Evaluate("User guide: TBD", Array.Empty<string>(), Array.Empty<string>()).Message);
 }

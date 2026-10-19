@@ -82,6 +82,16 @@ jobs:
       - name: Build
         run: dotnet build MSFSBlindAssist.sln -c Release -p:Version=${{ steps.version.outputs.VERSION }}
 
+      # The one-page user guide ships next to the exe, where Help, User Guide opens it. Its file
+      # name is a contract with HelpLinks.BundledGuideFileName (GUIDE-3); keep this step in
+      # step with release.yml's.
+      - name: Build the one-page user guide
+        shell: bash
+        run: |
+          dotnet run --project tools/GuideBuilder -- one-page --guide guide \
+            --out "MSFSBlindAssist/bin/x64/Release/net10.0-windows/MSFS Blind Assist User Guide.html" \
+            --edition preview --version "${{ steps.version.outputs.VERSION }}"
+
       # Keep the Navdatareader version in sync with release.yml's identical step.
       # BUMPING THIS PIN REQUIRES re-deriving MSFSBlindAssist/Resources/navdatareader.cfg
       # from the new release's own config/navdatareader.cfg (re-copy stock, re-apply the
@@ -174,3 +184,18 @@ jobs:
           # which after the force-push above is `preview` itself — the generated list
           # would be nonsense. Our own notes are the whole body here.
           generate_release_notes: false
+
+      # The website's preview edition of the guide is built from main and names this preview's
+      # version, so ask it to rebuild once the preview above is published. Same token and the
+      # same best-effort rule as release.yml's step: it must never fail the preview.
+      - name: Ask the website to rebuild its guide
+        shell: bash
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "No SITE_PAGES_TOKEN secret; the website picks this up at its next scheduled build."
+            exit 0
+          fi
+          gh workflow run pages.yml -R oasis1701/msfs-blind-assist-site \
+            || echo "::warning::Could not start the website's build (is SITE_PAGES_TOKEN expired?); it picks this up at its next scheduled build."
+        env:
+          GH_TOKEN: ${{ secrets.SITE_PAGES_TOKEN }}
