@@ -16,7 +16,8 @@ public class GpsWaypointSequencerTests
 {
     private static SimConnectManager.GpsWaypointData Frame(
         string next, string prev, bool prevValid = true, double distanceMetres = 18520,
-        double bearing = 87, double ete = 360, bool plan = true, bool directTo = false)
+        double bearing = 87, double ete = 360, bool plan = true, bool directTo = false,
+        double groundSpeed = 120)
         => new()
         {
             NextId = next,
@@ -26,7 +27,8 @@ public class GpsWaypointSequencerTests
             EteSeconds = ete,
             IsActiveFlightPlan = plan ? 1 : 0,
             IsDirectTo = directTo ? 1 : 0,
-            PrevValid = prevValid ? 1 : 0
+            PrevValid = prevValid ? 1 : 0,
+            GroundSpeedKnots = groundSpeed
         };
 
     [Fact]
@@ -45,6 +47,18 @@ public class GpsWaypointSequencerTests
         // The waypoint we were flying TO has become the waypoint we are flying FROM.
         var r = GpsWaypointSequencer.Read(Frame("VEKIN", "SOXOM"), previousNextId: "SOXOM");
         Assert.Equal("SOXOM", r.PassedId);
+    }
+
+    [Fact]
+    public void AnEditWhileParkedIsNotAPassing()
+    {
+        // VCBI gate, 2026-10-15: the plan held only RW22; inserting MTL made RW22 the FROM and
+        // MTL the TO - structurally a passing - and "Passing R W 2 2" was spoken at 0 knots.
+        // A stopped or taxiing aeroplane never sequences a fix; only an edit can do that.
+        Assert.Equal("", GpsWaypointSequencer.Read(Frame("MTL", "RW22", groundSpeed: 0), "RW22").PassedId);
+        Assert.Equal("", GpsWaypointSequencer.Read(Frame("MTL", "RW22", groundSpeed: 15), "RW22").PassedId);
+        Assert.Equal("RW22", GpsWaypointSequencer.Read(
+            Frame("MTL", "RW22", groundSpeed: GpsWaypointSequencer.MinPassingGroundSpeedKnots), "RW22").PassedId);
     }
 
     [Fact]

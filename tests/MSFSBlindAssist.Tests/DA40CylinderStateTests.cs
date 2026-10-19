@@ -41,6 +41,22 @@ public class DA40CylinderStateTests
         Assert.Equal("Shock cooling, cylinder 2", DA40CylinderState.DescribeShockCooling(new[] { -0.1, -0.16, 0.0, 0.2 }));
     }
 
+    [Fact]
+    public void AShockCoolingRateHoveringOnTheLineIsSaidOnce()
+    {
+        // VCBI cruise, 2026-10-15: "Shock cooling, cylinder 3" twice, four seconds apart, as the
+        // rate hovered across the model's -0.15. The same cylinders again inside the hold are
+        // the same news; a different set is new news at once; after the hold it may speak.
+        var t0 = new System.DateTime(2026, 10, 15, 18, 10, 38, System.DateTimeKind.Utc);
+        const string c3 = "Shock cooling, cylinder 3";
+        Assert.True(DA40CylinderState.ShouldSpeakShockCooling(c3, null, System.DateTime.MinValue, t0));
+        Assert.False(DA40CylinderState.ShouldSpeakShockCooling(c3, c3, t0, t0.AddSeconds(4)));
+        Assert.True(DA40CylinderState.ShouldSpeakShockCooling("Shock cooling, cylinders 3 and 4", c3, t0, t0.AddSeconds(4)));
+        Assert.True(DA40CylinderState.ShouldSpeakShockCooling(c3, c3, t0,
+            t0.AddMilliseconds(DA40CylinderState.ShockCoolingRepeatHoldMs + 1)));
+        Assert.False(DA40CylinderState.ShouldSpeakShockCooling("None", c3, t0, t0.AddMinutes(5)));
+    }
+
     // ---- damage: DAMAGE_CYL:n 0-100, dead over 99 ----
 
     [Fact]

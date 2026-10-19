@@ -388,11 +388,11 @@ public partial class CowsDA40Definition
 
         // A GFC 700 mode the FMA already says (ApModeIsSpokenByFma). Handled so the generic
         // announcer stays out; the combo still refreshes (RefreshControlWhenDefHandled).
-        if (ApModeIsSpokenByFma(varName, value)) { _apModeChangedAt = DateTime.UtcNow; return true; }
+        if (ApModeIsSpokenByFma(varName, value)) { NoteApModeRow(varName, value); return true; }
 
         // The AFCS's own health, which a power dip makes churn: settled, then said once.
         if (NoteAfcsStatus(varName, value, announcer)) return true;
-        if (varName == "MON_ElevatorTrim" && _apEngaged)
+        if (varName == "MON_ElevatorTrim" && TrimMoveIsOurs(_apEngaged, DateTime.UtcNow, _trimOwnWriteUntil))
         {
             RebaseTrimAnnouncement(value);
             return true;

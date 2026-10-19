@@ -202,6 +202,20 @@ public partial class CowsDA40Definition
     }
 
     /// <summary>
+    /// A temperature DIFFERENCE measured in Fahrenheit degrees (a drop below a peak, a spread),
+    /// in the pilot's unit. ⚠️ Scaled by 5/9 and NEVER offset by 32: the absolute conversion
+    /// in <see cref="TryUnitText"/> turned a 32 F drop into "0 degrees celsius below its peak"
+    /// on the Lean Assist (VCBI, 2026-10-15).
+    /// </summary>
+    private string FahrenheitDifferenceText(double deltaF)
+    {
+        bool celsius = _unitTemperature != "fahrenheit";
+        double converted = celsius ? deltaF * 5.0 / 9.0 : deltaF;
+        return converted.ToString("F0", CultureInfo.CurrentCulture)
+            + (celsius ? " degrees celsius" : " degrees fahrenheit");
+    }
+
+    /// <summary>
     /// The measured conversions, owned here for the whole partial class. Fuel.cs and
     /// Hotkeys.cs each carried their own copy of the gallons-to-litres factor before this,
     /// which is one number that has to be right in two places.

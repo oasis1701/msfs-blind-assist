@@ -120,7 +120,7 @@ public class HotkeyManager : IDisposable
         // so borrowing the ND key was the only thing available and never the obvious one -
         // reported from the cockpit as "Alt+M for the MFD doesn't work". Alt+N still opens
         // it, because that is what the docs have said and a working key is not taken away.
-        private const int HOTKEY_READ_DISPLAY_MFD = 9254;   // not 9253: HOTKEY_VOLANTA's
+        private const int HOTKEY_READ_DISPLAY_MFD = 9255;   // not 9253 (HOTKEY_VOLANTA) nor 9254 (#116's HOTKEY_WAYPOINT_FD)
         private const int HOTKEY_READ_DISPLAY_ISIS = 9073;
 
         // GENERAL-AVIATION ENGINE READOUTS. Deliberately NOT named for one aeroplane: a

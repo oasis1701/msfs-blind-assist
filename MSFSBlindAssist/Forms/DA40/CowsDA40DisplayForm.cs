@@ -133,28 +133,21 @@ public sealed class CowsDA40DisplayForm : Form
         _text.SetText("Connecting to the display...");
 
         var bottom = new Panel { Dock = DockStyle.Bottom, Height = 44 };
-        var refreshButton = new Button
-        {
-            Text = "&Refresh (F5)",
-            Location = new Point(560, 8),
-            Size = new Size(90, 30),
-            TabIndex = 1,
-            AccessibleName = "Refresh"
-        };
-        refreshButton.Click += (s, e) => _ = _client?.ScrapeNowAsync();
-
+        // No Refresh button: the window updates itself, and F5 (ProcessCmdKey) refreshes at once
+        // from anywhere. Same call as the panel status display's (#315): the button only added
+        // a Tab stop that repeated what the window already does.
         var closeButton = new Button
         {
             Text = "&Close",
             Location = new Point(655, 8),
             Size = new Size(85, 30),
-            TabIndex = 2,
+            TabIndex = 1,
             DialogResult = DialogResult.OK,
             AccessibleName = "Close"
         };
         closeButton.Click += (s, e) => Close();
 
-        bottom.Controls.AddRange(new Control[] { refreshButton, closeButton });
+        bottom.Controls.Add(closeButton);
         Controls.Add(_text);
         Controls.Add(bottom);
         CancelButton = closeButton;

@@ -274,4 +274,35 @@ public class CowsDA40DisplayUnitsTests
         // PFD, and the MFD is where the pilot changes the setting.
         Assert.Equal(2, agent.Split("A.pushUnits(rows)").Length - 1);
     }
+
+    [Fact]
+    public void ATemperatureDifferenceIsScaledNeverOffset()
+    {
+        // VCBI cruise lean, 2026-10-15, G1000 in celsius: the Lean Assist said "cylinder 4
+        // 0 degrees celsius below its peak" - a 32 F drop run through the ABSOLUTE
+        // conversion, (32 - 32) x 5/9. A drop of 32 F is 18 C.
+        var def = new CowsDA40Definition(DA40Variant.XLS);
+        // Deltas first, with the assist still off, so the peak call-out does not fire.
+        def.ProcessSimVarUpdate("DA40_XLS_LEAN_DELTA_1", 32, null!);
+        def.ProcessSimVarUpdate("DA40_XLS_LEAN_PEAK_1", 1484, null!);
+        def.ProcessSimVarUpdate("DA40_XLS_LEAN_ASSIST", 1, null!);
+
+        Assert.Equal("On: cylinder 1 18 degrees celsius below its peak of 807 degrees celsius",
+            Render(def, "DA40_XLS_LEAN_ASSIST", 1));
+
+        // The EGT spread is a difference too: 1400 against 1310 F is 90 F, which is 50 C.
+        def.ProcessSimVarUpdate("DA40_XLS_EGT_1", 1400, null!);
+        def.ProcessSimVarUpdate("DA40_XLS_EGT_2", 1350, null!);
+        def.ProcessSimVarUpdate("DA40_XLS_EGT_3", 1310, null!);
+        def.ProcessSimVarUpdate("DA40_XLS_EGT_4", 1380, null!);
+        Assert.Equal("50 degrees celsius between the hottest and coolest",
+            Render(def, "DA40_XLS_EGT_SPREAD", 0));
+
+        // In fahrenheit nothing is converted at all.
+        def.NoteDisplayUnits(new[] { "Display units: temperature fahrenheit" });
+        Assert.Equal("On: cylinder 1 32 degrees fahrenheit below its peak of 1484 degrees fahrenheit",
+            Render(def, "DA40_XLS_LEAN_ASSIST", 1));
+        Assert.Equal("90 degrees fahrenheit between the hottest and coolest",
+            Render(def, "DA40_XLS_EGT_SPREAD", 0));
+    }
 }

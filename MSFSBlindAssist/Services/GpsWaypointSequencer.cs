@@ -31,6 +31,15 @@ public static class GpsWaypointSequencer
 {
     private const double MetresPerNauticalMile = 1852.0;
 
+    /// <summary>
+    /// Below this the aeroplane is parked or taxiing, and a parked aeroplane never sequences a
+    /// fix: what looks like one is a plan EDIT. At the VCBI gate (2026-10-15) inserting MTL
+    /// after a lone RW22 made RW22 the FROM - structurally a passing - and "Passing R W 2 2"
+    /// was spoken at 0 knots. The departure runway is already the FROM at the take-off roll,
+    /// so no real passing happens below this either.
+    /// </summary>
+    public const double MinPassingGroundSpeedKnots = 30;
+
     /// <summary>What one frame of GPS waypoint data means, once compared with the frame before.</summary>
     public readonly struct Reading
     {
@@ -93,6 +102,7 @@ public static class GpsWaypointSequencer
 
         bool passed =
             previousNextId != null &&                       // not the baseline frame
+            data.GroundSpeedKnots >= MinPassingGroundSpeedKnots && // moving: never a parked edit
             previousNextId.Length > 0 &&
             next.Length > 0 &&
             !string.Equals(next, previousNextId, StringComparison.OrdinalIgnoreCase) &&

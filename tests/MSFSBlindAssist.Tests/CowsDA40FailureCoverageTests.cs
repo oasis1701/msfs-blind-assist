@@ -44,6 +44,11 @@ public class CowsDA40FailureCoverageTests
         ["FAILURES_BLOCK"] = "inert on the XLS since COWS 1.2.0 removed block damage",
         ["FAILURES_VACC_LEAK"] = "inert on the XLS",
         ["FAILURES_FUEL_LEAK"] = "inert on the XLS (the per-tank leaks are the live ones)",
+        // ⚠️ READ, AND STILL INERT: the electrical logic does read it, but both of its
+        // branches set ELEC_ALT_VOLT_TARGET to the same 28.4 V, so NoFailureRowIsInert's
+        // read count passes it. Injected in flight at VCBI (2026-10-15): the bus held 28.3 V
+        // and nothing changed. A row would announce a failure the aeroplane does not have.
+        ["FAILURES_ALT_OVERVOLT"] = "inert on the XLS: COWS 1.2.0 regulates to 28.4 V with it set or not",
     };
 
     private static readonly Regex PickBlock = new(@"\(L:FAILURES_RNG\)\s+(\d+)\s+==");
@@ -129,6 +134,47 @@ public class CowsDA40FailureCoverageTests
             if (reads <= pickReads) inert.Add(key + " (" + n + ")");
         }
         Assert.True(inert.Count == 0, variant + ": failure rows nothing in the aeroplane acts on — " + string.Join(", ", inert));
+    }
+
+    /// <summary>
+    /// ⚠️ ON THE XLS, FIVE FAILURES ONLY ACT THROUGH THE DAMAGE TEMPLATE, which runs only with
+    /// Engine Damage Modelling on (<c>L:DAMAGE_ENABLED</c>). Injected in flight at VCBI
+    /// (2026-10-15) with damage off: Oil System failed for 30 s at 2390 RPM and the oil pressure
+    /// held 80 psi, health 1.000. So the Engine Failures panel says whether they are live, as
+    /// the Failures Active row does for all of them - and the set it names is the package's.
+    /// </summary>
+    [Fact]
+    public void TheXlsDamageGatedFailuresAreTheOnesThePanelNames()
+    {
+        string? root = CowsDA40PackagePresenceTests.PackageRoot();
+        if (root is null) return;
+
+        string dir = Path.Combine(root, "SimObjects", "Airplanes", "COWS_DA40XLS");
+        // The picker's own Failures.xml reads every failure in its "already failed?" check;
+        // what counts is who else reads it.
+        var files = Directory.EnumerateFiles(dir, "*.xml", SearchOption.AllDirectories)
+            .Where(f => !f.EndsWith("Failures.xml", StringComparison.Ordinal))
+            .Select(f => Regex.Replace(File.ReadAllText(f), "<!--.*?-->", "", RegexOptions.Singleline))
+            .ToList();
+        string logic = files.First(t => t.Contains("<Template Name = \"Damage\">", StringComparison.Ordinal));
+        int start = logic.IndexOf("<Template Name = \"Damage\">", StringComparison.Ordinal);
+        string damage = logic.Substring(start, logic.IndexOf("</Template>", start, StringComparison.Ordinal) - start);
+        Assert.Contains("(L:DAMAGE_ENABLED)", damage.Substring(0, 200), StringComparison.Ordinal);
+
+        var gated = Regex.Matches(damage, @"\(L:(FAILURES_[A-Z_]+(?::\d)?)\)").Select(m => m.Groups[1].Value)
+            .Where(n => n != "FAILURES_ON")
+            .Distinct()
+            .Where(n => files.Sum(t => CountOf(t, "(L:" + n + ")")) == CountOf(damage, "(L:" + n + ")"))
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.Equal(gated, CowsDA40Definition.XlsDamageGatedFailures.OrderBy(n => n, StringComparer.Ordinal));
+
+        var def = new CowsDA40Definition(DA40Variant.XLS);
+        Assert.Contains("DA40_XLS_DAMAGE_GATED_FAILURES", def.GetPanelDisplayVariables()["Engine Failures"]);
+        var row = def.GetVariables()["DA40_XLS_DAMAGE_GATED_FAILURES"];
+        Assert.Equal("DAMAGE_ENABLED", row.Name);
+        Assert.Equal("No, Engine Damage Modelling is off", row.ValueDescriptions[0]);
     }
 
     private static int CountOf(string text, string needle)

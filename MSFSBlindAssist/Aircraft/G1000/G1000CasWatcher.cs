@@ -85,7 +85,9 @@ internal sealed class G1000CasWatcher
     private System.Windows.Forms.Timer? _watchdog;
     private bool _sawRows;
 
-    private readonly HashSet<string> _known = new(StringComparer.Ordinal);
+    private readonly CasClearDebounce _debounce = new();
+    /// <summary>The clock the clear debounce reads; the suite steps it past the hold.</summary>
+    internal Func<DateTime> Now = () => DateTime.UtcNow;
     private string _lastFma = "";
     private bool _baselined;
 
@@ -159,7 +161,7 @@ internal sealed class G1000CasWatcher
         // must be able to report no rows again.
         _sawRows = false;
         _baselined = false;
-        _known.Clear();
+        _debounce.Baseline(Array.Empty<string>());
         _lastFma = "";
         _current = Array.Empty<string>();
         _currentRead = false;
@@ -347,7 +349,7 @@ internal sealed class G1000CasWatcher
         if (IsDisplayDark(rows))
         {
             _baselined = true;
-            _known.Clear();
+            _debounce.Baseline(Array.Empty<string>());
             _lastFma = "";
             _current = Array.Empty<string>();
             _currentDark = true;
@@ -378,23 +380,13 @@ internal sealed class G1000CasWatcher
         if (!_baselined || _quiet())
         {
             _baselined = true;
-            _known.Clear();
-            foreach (string c in cas) _known.Add(c);
+            _debounce.Baseline(cas);
             _lastFma = fma;
             return;
         }
 
-        var appeared = new List<string>();
-        foreach (string message in cas)
-            if (_known.Add(message)) appeared.Add(message);
-
-        var cleared = new List<string>();
-        _known.RemoveWhere(known =>
-        {
-            if (cas.Contains(known)) return false;
-            cleared.Add(known);
-            return true;
-        });
+        // A message flickering on its threshold is one message (DA40G-32).
+        var (appeared, cleared) = _debounce.Step(cas, Now());
 
         string? fmaChange = null;
         if (fma != _lastFma)
@@ -406,6 +398,55 @@ internal sealed class G1000CasWatcher
         var (immediate, queued) = ComposeCasSpeech(appeared, cleared, fmaChange);
         if (immediate.Length > 0) _announcer.AnnounceImmediate(immediate);
         foreach (string line in queued) _announcer.Announce(line);
+    }
+
+    /// <summary>
+    /// Which CAS messages appeared and which cleared, with a message that flickers on its
+    /// threshold held as ONE. ⚠️ Over the sea off VCBI (2026-10-15) the left tank sloshing on
+    /// its low line said "Caution: L FUEL LOW" / "L FUEL LOW cleared" twelve times in 25 s,
+    /// and a starving engine flapped FUEL PRES and PTRM the same way. A message that goes is
+    /// cleared only once it has stayed gone for <see cref="ClearSettleMs"/>; back inside that,
+    /// it was never gone and nothing is said. Pure, so the suite can pin it (DA40G-32).
+    /// </summary>
+    internal sealed class CasClearDebounce
+    {
+        /// <summary>Outlasts the widest measured gap (3.1 s) plus half a ~1.5 s poll.</summary>
+        internal const int ClearSettleMs = 4000;
+
+        private readonly List<string> _known = new();
+        private readonly Dictionary<string, DateTime> _goneSince = new(StringComparer.Ordinal);
+
+        /// <summary>What is on the display as far as the pilot has been told, in order.</summary>
+        internal IReadOnlyList<string> Known => _known;
+
+        internal void Baseline(IEnumerable<string> current)
+        {
+            _known.Clear();
+            _known.AddRange(current.Distinct(StringComparer.Ordinal));
+            _goneSince.Clear();
+        }
+
+        internal (List<string> Appeared, List<string> Cleared) Step(IReadOnlyCollection<string> current, DateTime now)
+        {
+            var appeared = new List<string>();
+            foreach (string message in current)
+            {
+                if (_known.Contains(message)) _goneSince.Remove(message);
+                else { _known.Add(message); appeared.Add(message); }
+            }
+
+            var cleared = new List<string>();
+            foreach (string known in _known.ToList())
+            {
+                if (current.Contains(known)) continue;
+                if (!_goneSince.TryGetValue(known, out var since)) { _goneSince[known] = now; continue; }
+                if ((now - since).TotalMilliseconds < ClearSettleMs) continue;
+                _known.Remove(known);
+                _goneSince.Remove(known);
+                cleared.Add(known);
+            }
+            return (appeared, cleared);
+        }
     }
 
     /// <summary>

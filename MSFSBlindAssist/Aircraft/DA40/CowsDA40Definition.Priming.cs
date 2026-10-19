@@ -306,7 +306,8 @@ public partial class CowsDA40Definition
         // second, and the pilot is holding the mixture forward waiting for the word.
         if (Settings.SettingsManager.Current.DA40DisabledMonitorVariablesSet.Contains("DA40_PRIME_CYL_1")) return false;
         _primeAnnouncer?.AnnounceImmediate(
-            DA40Priming.Describe(state, _primeCyl.Sum(), DA40Priming.RequiredTotal(_primeAtom[0], _primeEvap)));
+            DA40Priming.Describe(state, _primeCyl.Sum(), DA40Priming.RequiredTotal(_primeAtom[0], _primeEvap),
+                DA40Priming.FloodedCylinders(_primeCyl, _primeAtom, _primeEvap)));
         return false;
     }
 
@@ -329,7 +330,8 @@ public partial class CowsDA40Definition
                 displayText = DA40Priming.Describe(
                     DA40Priming.Classify(_primeCyl, _primeAtom, _primeEvap),
                     _primeCyl.Sum(),
-                    DA40Priming.RequiredTotal(_primeAtom[0], _primeEvap));
+                    DA40Priming.RequiredTotal(_primeAtom[0], _primeEvap),
+                    DA40Priming.FloodedCylinders(_primeCyl, _primeAtom, _primeEvap));
                 return true;
 
             case "DA40_PRIME_BOIL_1":
