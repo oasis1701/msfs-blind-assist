@@ -797,14 +797,17 @@ public partial class MainForm
         {
             if (currentControls.TryGetValue("_DISPLAY_", out var dispCtrl) && dispCtrl is ListBox dispBox)
             {
+                bool wasFocused = dispBox.Focused;
                 dispBox.Focus();
                 // If the list is empty (OnRequest display vars don't auto-update until a
                 // refresh), pull live content so the user lands on real status rather than a
                 // blank list. The refresh is silent; the screen reader reads the list itself.
                 // If it already has content (continuously-monitored vars / a prior refresh),
-                // leave it untouched so NVDA reads the current value immediately.
+                // leave it untouched so NVDA reads the current value immediately. Focus() just
+                // rebuilt the SD-page snapshot through the list's GotFocus unless the list
+                // already had focus, so the refresh does not rebuild it a second time.
                 if (dispBox.Items.Count == 0)
-                    _ = RefreshStatusDisplayAsync(dispBox);
+                    RefreshDisplayNow(dispBox, "Ctrl+3", rebuildSnapshot: wasFocused);
             }
             else
             {
@@ -814,11 +817,16 @@ public partial class MainForm
         }
         // F5 refreshes the current panel's Status Display at once, from the list or from the
         // edit field/combo you're on, without moving focus. The list also updates itself live.
+        // A held F5 refreshes once: its auto-repeats would re-read the whole panel about 30 times
+        // a second. The refresh changes nothing the screen reader would say, so it is confirmed
+        // once ([CORE-7]), as the E/WD window's F5 is.
         else if (keyData == Keys.F5 &&
                  currentControls.TryGetValue("_DISPLAY_", out var refreshCtrl) &&
                  refreshCtrl is ListBox refreshList)
         {
-            _ = RefreshStatusDisplayAsync(refreshList);
+            bool isAutoRepeat = (msg.LParam.ToInt64() & 0x40000000) != 0;   // WM_KEYDOWN bit 30: the key was already down
+            if (!isAutoRepeat && RefreshDisplayNow(refreshList, "F5"))
+                announcer.Announce("Status display refreshed");
             return true;
         }
 

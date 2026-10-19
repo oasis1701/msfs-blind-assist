@@ -339,7 +339,8 @@ public partial class MainForm : Form
     // While a panel with a "_DISPLAY_" status list is shown, this ticks every second and
     // (a) rebuilds any snapshot SD content via OnDisplayPanelShown and (b) re-pulls the
     // panel's OnRequest display vars — silently (the "Loading..." placeholder only shows on
-    // the first empty populate, so the box updates in place with no flash).
+    // the first empty populate, so the box updates in place with no flash). F5 runs the same
+    // refresh at once (RefreshDisplayNow).
     private System.Windows.Forms.Timer? _sdAutoRefreshTimer;
 
     // Liftoff → Hand Fly handoff guard. The handoff is ARMED on the on-ground→
@@ -469,8 +470,6 @@ public partial class MainForm : Form
     private bool _buildingPanel = false;
 
     private Dictionary<string, double> displayValues = new Dictionary<string, double>();  // Store display values
-
-    private Dictionary<string, TaskCompletionSource<bool>>? pendingDisplayRequests = null;  // Track pending display requests
 
     private ConcurrentDictionary<string, bool> pendingStateAnnouncements = new ConcurrentDictionary<string, bool>();  // Track state announcement requests
 
