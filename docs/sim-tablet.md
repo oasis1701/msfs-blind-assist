@@ -35,7 +35,7 @@ Measured live and read from `efb_os.js` (STAB-1 to STAB-3):
 The tablet has no SimBrief link of its own; Navigraph's SimBrief tablet app is an add-on this does not need. Pressing the button runs `MainForm.LoadSimBriefIntoSimTabletAsync`: it fetches the pilot's latest OFP with the SimBrief username from Settings (`SimBriefService.FetchFullOFPAsync`), then `Services/SimTabletSimBriefImport.cs` drives the reader's `A.route.*` steps:
 
 1. open the Flight Planner from the dock and its Route panel;
-2. open Import, "Enter route string", by its place in the menu, and type `ORIGIN route DESTINATION` (`SimTabletRoute.Build`), the shape measured to load;
+2. open Import, "Enter route string", by its place in the menu, and type `ORIGIN [SID] route [STAR] DESTINATION` (`SimTabletRoute.Build`), the shape measured to load: the tablet's parser takes a SID right after the departure airport and a STAR right before the destination, by name, never their transitions or an approach, and a speed and level group is never written, as the parser misreads it (STAB-10);
 3. press SAVE once the tablet enables it, unless the box already held this route (the plan is loaded), when SAVE never enables and the box is closed instead (STAB-9);
 4. wait until both airports show;
 5. pick SimBrief's runways on the airports' runway dropdowns (a runway written into the route string is ignored, STAB-7);
@@ -43,7 +43,7 @@ The tablet has no SimBrief link of its own; Navigraph's SimBrief tablet app is a
 
 Sending stays the pilot's press (STAB-5): Send, then "Send to avionics" (or ATC, or both) on the Route page. Measured: after a send, the C172's G1000 flight plan held KFFC RW31, SOONE, NOKIE, KSAV RW01 and the approach. The stock `GPS FLIGHT PLAN WP COUNT` SimVar stays 0 on the WT G1000, so its own planner is the check (`wtg1000-mfd`'s `planner`), which aircraft code may use and the tablet code does not, as it serves every aircraft.
 
-Untested: a jet OFP through the route box (SID and STAR names, airways).
+Untested live: a jet OFP through the route box (SID and STAR names, airways); what the parser does with them is read from its code.
 
 ## An aircraft asking for it
 

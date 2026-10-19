@@ -31,6 +31,58 @@ public class SimTabletRouteTests
         Assert.Equal("KFFC KSAV", SimTabletRoute.Build(Ofp(route: "")));
     }
 
+    [Fact]
+    public void TheSidGoesRightAfterTheOrigin_AndTheStarRightBeforeTheDestination_WhereTheParserLooks()
+    {
+        var ofp = Ofp("KATL", "PRMMM Q64 ONDRE", "KSAV");
+        ofp.SidIdent = "PRMMM3";
+        ofp.StarIdent = "ONDRE1";
+        Assert.Equal("KATL PRMMM3 PRMMM Q64 ONDRE ONDRE1 KSAV", SimTabletRoute.Build(ofp));
+    }
+
+    [Fact]
+    public void ASidOrStarTheRouteAlreadyCarries_IsNotWrittenTwice()
+    {
+        var ofp = Ofp("KATL", "PRMMM3 PRMMM Q64 ONDRE ONDRE1", "KSAV");
+        ofp.SidIdent = "prmmm3";
+        ofp.StarIdent = "ONDRE1";
+        Assert.Equal("KATL PRMMM3 PRMMM Q64 ONDRE ONDRE1 KSAV", SimTabletRoute.Build(ofp));
+    }
+
+    [Fact]
+    public void APlanWithOnlyProcedures_StillGetsThem()
+    {
+        var ofp = Ofp("KATL", "", "KSAV");
+        ofp.SidIdent = "PRMMM3";
+        ofp.StarIdent = "ONDRE1";
+        Assert.Equal("KATL PRMMM3 ONDRE1 KSAV", SimTabletRoute.Build(ofp));
+    }
+
+    // The tablet's parser takes the level from a speed and level group's SPEED digits (measured:
+    // N0112F030 set the cruise box to FL112), so such a group is never written.
+    [Theory]
+    [InlineData("N0112F030 DCT SOONE DCT NOKIE DCT")]
+    [InlineData("DCT SOONE N0450F370 DCT NOKIE DCT")]
+    [InlineData("M078F350 DCT SOONE DCT NOKIE DCT")]
+    public void ASpeedAndLevelGroupIsNeverWritten(string route)
+    {
+        string built = SimTabletRoute.Build(Ofp(route: route))!;
+        Assert.Equal("KFFC DCT SOONE DCT NOKIE DCT KSAV", built);
+    }
+
+    [Fact]
+    public void TheSidAndStarAreReadFromGeneral_WhereSimBriefWritesThem()
+    {
+        var doc = new System.Xml.XmlDocument();
+        doc.LoadXml("<OFP><general><route>PRMMM Q64 ONDRE</route><sid_ident>PRMMM3</sid_ident><star_ident>ONDRE1</star_ident></general>" +
+                    "<origin><icao_code>KATL</icao_code><plan_rwy>26L</plan_rwy></origin>" +
+                    "<destination><icao_code>KSAV</icao_code><plan_rwy>10</plan_rwy></destination></OFP>");
+        var ofp = new SimBriefService().ParseFullOFP(doc);
+        Assert.Equal("PRMMM3", ofp.SidIdent);
+        Assert.Equal("ONDRE1", ofp.StarIdent);
+        Assert.Equal("KATL PRMMM3 PRMMM Q64 ONDRE ONDRE1 KSAV", SimTabletRoute.Build(ofp));
+    }
+
     [Theory]
     [InlineData("", "KSAV")]
     [InlineData("KFFC", "")]

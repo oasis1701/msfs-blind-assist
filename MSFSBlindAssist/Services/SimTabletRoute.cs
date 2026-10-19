@@ -14,18 +14,45 @@ namespace MSFSBlindAssist.Services;
 /// <c>ORIGIN route DESTINATION</c>, "KFFC DCT SOONE DCT NOKIE DCT KSAV", and loads both airports
 /// and the en-route fixes. A runway written into it ("KSAV/01") is IGNORED: the tablet picks its
 /// own (it picked 10 where SimBrief planned 01), so the runways are set afterwards through the
-/// airports' runway dropdowns. A jet OFP (SID and STAR names, airways) has not been through it yet.
+/// airports' runway dropdowns.
+///
+/// READ FROM THE TABLET'S PARSER (atlasapp.js, EfbRouteParserService, 2026-10-19): the word right
+/// after the departure airport is matched against that airport's departure procedures and the word
+/// right before the destination against its arrivals, so a SID and a STAR are taken by name in
+/// exactly those two places (their transitions and the approach are not: the approach is the one the
+/// tablet picks for the arrival runway). A speed and level group after the departure airport
+/// ("N0112F030") is parsed, but WRONG: its tryParseStepClimb takes the level from the SPEED digits
+/// (measured: N0112F030 set the cruise box to FL112), so none is ever written. A jet OFP has not been
+/// through the box live yet.
 /// </summary>
 public static class SimTabletRoute
 {
-    /// <summary>"ORIGIN route DESTINATION", or null when the plan names no origin or destination.</summary>
+    // The tablet's own STEP_CLIMB_REGEX: a speed and level group, never written (see above).
+    private static readonly Regex SpeedLevelGroup = new(@"^[KNM]\d{3,4}[FSAM]\d{3,4}$", RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// "ORIGIN [SID] route [STAR] DESTINATION", or null when the plan names no origin or destination.
+    /// SimBrief's SID and STAR (<see cref="SimBriefOFP.SidIdent"/>, <see cref="SimBriefOFP.StarIdent"/>)
+    /// are put where the tablet looks for them when the route does not already start or end with them;
+    /// any speed and level group is dropped.
+    /// </summary>
     public static string? Build(SimBriefOFP ofp)
     {
         string origin = (ofp.OriginIcao ?? "").Trim().ToUpperInvariant();
         string dest = (ofp.DestIcao ?? "").Trim().ToUpperInvariant();
         if (origin.Length == 0 || dest.Length == 0) return null;
-        string route = Regex.Replace(ofp.Route ?? "", @"\s+", " ").Trim();
-        return route.Length == 0 ? $"{origin} {dest}" : $"{origin} {route} {dest}";
+
+        var words = Regex.Split((ofp.Route ?? "").Trim(), @"\s+")
+            .Where(w => w.Length > 0 && !SpeedLevelGroup.IsMatch(w.ToUpperInvariant()))
+            .ToList();
+        string sid = (ofp.SidIdent ?? "").Trim().ToUpperInvariant();
+        string star = (ofp.StarIdent ?? "").Trim().ToUpperInvariant();
+        if (sid.Length > 0 && (words.Count == 0 || !words[0].Equals(sid, StringComparison.OrdinalIgnoreCase)))
+            words.Insert(0, sid);
+        if (star.Length > 0 && (words.Count == 0 || !words[^1].Equals(star, StringComparison.OrdinalIgnoreCase)))
+            words.Add(star);
+
+        return words.Count == 0 ? $"{origin} {dest}" : $"{origin} {string.Join(' ', words)} {dest}";
     }
 
     /// <summary>
