@@ -105,4 +105,18 @@ public class DA40HoldSetTests
         holds.Start("ATT_CAGE", 700, null);
         Assert.Equal(1, holds.ValueOf("ATT_CAGE"));
     }
+
+    [Fact]
+    public void AHoldCanBeExtendedButNeverShortened()
+    {
+        // The ECU test's hold follows the model's stages (CowsDA40Definition.EcuTestHoldUntil).
+        var holds = new DA40HoldSet();
+        holds.Start("ECU_TEST:1", 1_000, null);
+        Assert.True(holds.ExtendTo("ECU_TEST:1", 2_000));
+        Assert.True(holds.ExtendTo("ECU_TEST:1", 1_500));   // never shortened
+        var (write, release, _) = holds.Tick(1_800, connected: true);
+        Assert.Equal(new[] { "ECU_TEST:1" }, write);
+        Assert.Empty(release);
+        Assert.False(holds.ExtendTo("ATT_CAGE", 9_000));    // not held: nothing to extend
+    }
 }

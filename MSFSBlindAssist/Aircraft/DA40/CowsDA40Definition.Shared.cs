@@ -340,7 +340,7 @@ public partial class CowsDA40Definition
         // Captured BEFORE the silence gate: the stick is silent by design, and a gate that
         // returns first would leave the elevator comparison with nothing to compare against.
         NoteFlightControlValue(varName, value);
-        NoteBusVoltage(varName, value);
+        NoteBusVoltage(varName, value, announcer);
         // The NG's running state, from the RPM alone (DA40E-16: the combustion flag is wrong
         // both ways). Above the silence gate: the RPM is a silent readout.
         if (NoteEngineRunning(varName, value, announcer)) return true;

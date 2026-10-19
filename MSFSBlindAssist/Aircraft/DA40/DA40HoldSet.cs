@@ -76,6 +76,14 @@ internal sealed class DA40HoldSet
         return (write, release, complete);
     }
 
+    /// <summary>Moves a hold's end later, never earlier; false when the var is not held.</summary>
+    public bool ExtendTo(string lvar, long untilTicks)
+    {
+        if (!_holds.TryGetValue(lvar, out var hold)) return false;
+        if (untilTicks > hold.UntilTicks) hold.UntilTicks = untilTicks;
+        return true;
+    }
+
     /// <summary>Drops one hold without completing it; true when it was held.</summary>
     public bool Release(string lvar) => _holds.Remove(lvar);
 

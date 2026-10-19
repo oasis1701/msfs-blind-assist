@@ -133,15 +133,45 @@ public partial class CowsDA40Definition
     private double? _lastEssBusVolts;
     private double? _lastBattBusVolts;
 
-    private void NoteBusVoltage(string varKey, double value)
+    private void NoteBusVoltage(string varKey, double value, ScreenReaderAnnouncer announcer)
     {
+        double? was;
         switch (varKey)
         {
-            case "DA40_ELEC_BUS_MAIN_VOLT": _lastMainBusVolts = value; break;
-            case "DA40_ELEC_BUS_ESS_VOLT": _lastEssBusVolts = value; break;
-            case "DA40_ELEC_BUS_BATT_VOLT": _lastBattBusVolts = value; break;
+            case "DA40_ELEC_BUS_MAIN_VOLT": was = _lastMainBusVolts; _lastMainBusVolts = value; break;
+            case "DA40_ELEC_BUS_ESS_VOLT": was = _lastEssBusVolts; _lastEssBusVolts = value; break;
+            case "DA40_ELEC_BUS_BATT_VOLT": _lastBattBusVolts = value; return;
+            default: return;
         }
+
+        // ⚠️ A BUS THAT DIES WITH THE MASTER ON IS NEWS. A flat battery under the NG's starter
+        // took the buses from 23 V to 0 and both screens dark, and MSFSBA said "Cranking" and
+        // nothing else (VCBI, 2026-10-19), where a sighted pilot watches the panel go black. With
+        // the master on (a switch move reports itself above), the main or essential bus dying or
+        // coming back speaks the same one-line bus state after the same settle; a crank's dip to
+        // about 20 V is no collapse. The settle restarts on every change, so a bus flickering on
+        // a dying battery is said once, where it came to rest.
+        if (!BusCollapsedOrRestored(was, value)) return;
+        if (!(_powerSwitchSeen.TryGetValue("DA40_ELEC_MASTER_BATTERY", out bool masterOn) && masterOn)) return;
+
+        _powerAnnouncer = announcer;
+        _powerPendingLabel = "bus";
+        _powerPendingOn = true;
+        if (_powerSettleTimer == null)
+        {
+            _powerSettleTimer = new System.Windows.Forms.Timer { Interval = PowerSettleMs };
+            _powerSettleTimer.Tick += (_, _) => UnderLoadSettle(_powerAnnouncer, FlushPowerSettle);
+        }
+        _powerSettleTimer.Stop();
+        _powerSettleTimer.Start();
     }
+
+    /// <summary>Volts a bus must fall below to be dead, and rise past to be back.</summary>
+    internal const double BusDeadVolts = 5, BusLiveVolts = 10;
+
+    /// <summary>A bus dying (from live to dead) or coming back; never a first reading. Pure for the suite.</summary>
+    internal static bool BusCollapsedOrRestored(double? was, double now)
+        => was is double w && ((w >= BusLiveVolts && now < BusDeadVolts) || (w < BusDeadVolts && now >= BusLiveVolts));
 
     /// <summary>
     /// The sentence. Pure so the suite can pin it.

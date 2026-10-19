@@ -104,4 +104,21 @@ public class CowsDA40PowerUpAnnounceTests
         Assert.True(CowsDA40Definition.PowerSwitchMoved(seen, "DA40_ELEC_MASTER_BATTERY", 0));
         Assert.True(CowsDA40Definition.PowerSwitchMoved(seen, "DA40_ELEC_MASTER_BATTERY", 1));
     }
+
+    // ⚠️ A BUS THAT DIES WITH THE MASTER ON SAID NOTHING. A flat battery under the NG's starter
+    // took the buses 23 V to 0 and the PFD dark; MSFSBA said "Cranking" and nothing else, while a
+    // sighted pilot watches both screens go black (VCBI, 2026-10-19). A crank's ordinary dip to
+    // about 20 V is not a collapse.
+    [Theory]
+    [InlineData(25.3, 0.2, true)]     // dead
+    [InlineData(0.2, 24.8, true)]     // back
+    [InlineData(25.3, 20.5, false)]   // a crank's dip
+    [InlineData(0.0, 0.2, false)]     // still dead
+    [InlineData(24.0, 24.5, false)]
+    public void ABusDyingOrComingBackIsAChange(double was, double now, bool changed)
+        => Assert.Equal(changed, CowsDA40Definition.BusCollapsedOrRestored(was, now));
+
+    [Fact]
+    public void AFirstReadingIsNeverACollapse()
+        => Assert.False(CowsDA40Definition.BusCollapsedOrRestored(null, 0));
 }
