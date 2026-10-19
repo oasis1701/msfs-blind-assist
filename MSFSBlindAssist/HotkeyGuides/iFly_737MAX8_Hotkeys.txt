@@ -93,6 +93,10 @@ Position:
                 In its Frequencies list, Enter tunes the selected frequency into COM 1 standby
                 and Shift+Enter tunes it straight into COM 1 active; COM 1 is read back to confirm.
 
+Traffic:
+  Shift+O    Open Volanta window (Volanta users and network pilots around you,
+             your Volanta friends and online ATC; also Extras > Volanta)
+
 AI Display Reading (needs an AI provider configured in Settings > AI tab):
   Alt+P      Describe the PFD (Primary Flight Display)
   Alt+N      Describe the ND (Navigation Display)

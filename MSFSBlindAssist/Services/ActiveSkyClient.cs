@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Http;
 using System.Text.Json;
+using MSFSBlindAssist.Utils;
 using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
@@ -535,12 +536,12 @@ public class ActiveSkyClient
 
     /// <summary>
     /// Parses the JSON returned by GetCurrentConditions / GetWeatherAreaJson.
-    /// All fields come back as STRINGS in the JSON (per ActiveSky's API,
-    /// invariant culture for floats). We tolerate missing fields and parse
-    /// permissively — any field that's missing or unparseable defaults to 0
-    /// or empty. Returns null only if the JSON itself is malformed.
+    /// All fields come back as STRINGS in the JSON (usually invariant culture
+    /// for floats, but not always: see NumberParsing.TryParseExternal). We tolerate missing
+    /// fields and parse permissively — any field that's missing or unparseable
+    /// defaults to 0 or empty. Returns null only if the JSON itself is malformed.
     /// </summary>
-    private static Conditions? ParseConditionsJson(string json)
+    internal static Conditions? ParseConditionsJson(string json)
     {
         try
         {
@@ -603,7 +604,8 @@ public class ActiveSkyClient
     }
 
     /// <summary>Parses /GetAtmosphere JSON ({"WeatherData":[{Altitude,WindDirection,
-    /// WindSpeed,Temperature,Pressure}]} — all values strings, invariant culture).
+    /// WindSpeed,Temperature,Pressure}]} — all values strings, usually invariant
+    /// culture but not always: see NumberParsing.TryParseExternal).
     /// Null on malformed input; permissive per-field AND per-element like
     /// ParseConditionsJson — a stray non-object array entry is skipped rather than
     /// failing the whole parse.</summary>
@@ -696,24 +698,22 @@ public class ActiveSkyClient
     {
         var a = el.Attribute(name);
         if (a == null) return 0;
-        return double.TryParse(a.Value, System.Globalization.NumberStyles.Float,
-            System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : 0;
+        return NumberParsing.TryParseExternal(a.Value, out var d) ? d : 0;
     }
 
     private static double ReadDouble(JsonElement obj, string field)
     {
         if (!obj.TryGetProperty(field, out var v)) return 0;
-        // ActiveSky returns numbers as strings (with invariant decimal
-        // separator). JsonElement.GetDouble works for native numbers but
-        // throws for strings — handle both.
+        // ActiveSky returns numbers as strings, usually with an invariant decimal
+        // separator but sometimes in the OS culture: seen live 2026-10-12 at ESGG
+        // under a Swedish Windows, QNH "1014,999" and AmbientTemperature
+        // "7,992481", which the old invariant NumberStyles.Any parse read as
+        // 1014999 hPa and 7992481°C. JsonElement.GetDouble works for native
+        // numbers but throws for strings — handle both.
         if (v.ValueKind == JsonValueKind.Number)
             return v.GetDouble();
-        if (v.ValueKind == JsonValueKind.String)
-        {
-            if (double.TryParse(v.GetString(), System.Globalization.NumberStyles.Any,
-                                System.Globalization.CultureInfo.InvariantCulture, out double d))
-                return d;
-        }
+        if (v.ValueKind == JsonValueKind.String && NumberParsing.TryParseExternal(v.GetString(), out double d))
+            return d;
         return 0;
     }
 
@@ -724,9 +724,14 @@ public class ActiveSkyClient
             return v.TryGetInt64(out long n) ? n : (long)v.GetDouble();
         if (v.ValueKind == JsonValueKind.String)
         {
-            if (long.TryParse(v.GetString(), System.Globalization.NumberStyles.Any,
+            // Like the Number branch: exact when integral, else ReadDouble's
+            // culture-tolerant parse, truncated ("1760300000.0", "1760300000,5").
+            string? s = v.GetString();
+            if (long.TryParse(s, System.Globalization.NumberStyles.Integer,
                               System.Globalization.CultureInfo.InvariantCulture, out long n))
                 return n;
+            if (NumberParsing.TryParseExternal(s, out double d))
+                return (long)d;
         }
         return 0;
     }

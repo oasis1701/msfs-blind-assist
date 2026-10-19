@@ -6,7 +6,7 @@ Two hotkey modes with three-tier delegation architecture for multi-aircraft supp
 
 ### Read Mode (Activated with `]`)
 - Read out values (altitude, heading, fuel, etc.)
-- Examples: Shift+H (FCU heading), A (altitude MSL), F (fuel), Ctrl+G (latest GSX tooltip), Alt+Y (Where Am I), Alt+L (Look around — nearest terminals/hangars/FBOs/tower/fuel), Ctrl+Shift+L (Surroundings window)
+- Examples: Shift+H (FCU heading), A (altitude MSL), F (fuel), Ctrl+G (latest GSX tooltip), Alt+Y (Where Am I), Alt+L (Look around — nearest terminals/hangars/FBOs/tower/fuel), Ctrl+Shift+L (Surroundings window), Shift+O (Volanta window)
 
 ### Input Mode (Activated with `[`)
 - Execute functions (teleportation, aircraft controls)
@@ -82,7 +82,7 @@ public override bool HandleHotkeyAction(
             "YOUR_ALT_SET_EVENT", simConnect, announcer, parentForm,
             validator: (input) =>
             {
-                if (double.TryParse(input, out double val) && val >= 100 && val <= 49000)
+                if (Utils.NumberParsing.TryParseTyped(input, out double val) && val >= 100 && val <= 49000)
                     return (true, "");
                 return (false, "Altitude must be 100-49000");
             },
