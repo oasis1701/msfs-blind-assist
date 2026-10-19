@@ -48,6 +48,7 @@ These guides do not teach you to fly the aircraft itself. For engine starts, flo
 
 1. [Airbus Aircraft](airbus-aircraft.md)
 2. [Boeing Aircraft and the MD-11](boeing-aircraft-and-the-md-11.md)
+3. [COWS Diamond DA40](diamond-da40.md)
 
 ## Part 8: General Flying Concepts {#part-8-general-flying-concepts}
 
