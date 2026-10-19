@@ -383,6 +383,8 @@ internal sealed class G1000CasWatcher
         // start-up messages (DA40LoadSettle).
         if (!_baselined || _quiet())
         {
+            // Unspoken, but still a change: a mode pressed in the quiet must not read as refused.
+            if (_baselined && fma != _lastFma) FmaChanges++;
             _baselined = true;
             _debounce.Baseline(cas);
             _lastFma = fma;

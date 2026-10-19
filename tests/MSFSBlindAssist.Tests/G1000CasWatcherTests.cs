@@ -111,6 +111,23 @@ public class G1000CasWatcherTests
     }
 
     [Fact]
+    public void An_fma_change_in_the_quiet_period_still_counts()
+    {
+        // Unspoken while a flight load settles, but a mode pressed then must not read as refused.
+        bool quiet = false;
+        var said = new GatedSpeechCapture();
+        var watcher = new G1000CasWatcher("test", () => quiet);
+        watcher.Arm(said);
+
+        watcher.ProcessRows(new() { "CAS messages: none", "Autopilot: AP, ROL, PIT" });   // the baseline
+        quiet = true;
+        watcher.ProcessRows(new() { "CAS messages: none", "Autopilot: AP, HDG, PIT" });
+
+        Assert.Equal(1, watcher.FmaChanges);
+        Assert.Empty(said.All);
+    }
+
+    [Fact]
     public void A_shutdown_and_restart_speaks_the_power_up_again()
     {
         var (watcher, said) = Armed();

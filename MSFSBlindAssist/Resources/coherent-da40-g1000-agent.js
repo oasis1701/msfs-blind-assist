@@ -17,7 +17,7 @@
 (function () {
     var A = {};
 
-    A.VERSION = 32;
+    A.VERSION = 33;
 
     function visible(el) {
         if (!el) return false;
@@ -2965,9 +2965,11 @@
             // page's Minimums box is a BARO toggle beside an empty altitude: the toggle took
             // "_ _ _ _ _FT" as its label and the altitude took "FT", read "blank: BARO" and
             // "FT: blank" (MTL hold, 2026-10-19). Placeholder glyphs mean the climb reached
-            // another field: no label. A bare unit is the field's own unit (A.M.walk puts it
-            // back on the value), never its name.
-            if (/_|[–—]{2,}|-{2,}/.test(cut)) return "";
+            // another field, so it is no label and the climb goes on (every level above carries
+            // the same glyphs, so it never lands on one; the Aux page's Time Offset, whose own
+            // empty rendering is "--:--", still climbs to its name). A bare unit is the field's
+            // own unit (A.M.walk puts it back on the value), never its name.
+            if (/_|[–—]{2,}|-{2,}/.test(cut)) { e2 = e2.parentElement; continue; }
             if (/^(FT|M|NM|KT|MIN|IN|HPA|MB)$/i.test(cut)) return "@unit:" + cut;
             var looksLikeValues = cut.indexOf("%") >= 0 || /\d{2,}/.test(cut);
             if (cut.length > 0 && cut.length <= 48 && cut !== whole &&
@@ -3172,11 +3174,12 @@
             // Not the first of its row, and carrying no label of its own.
             // A BUTTON is never named after its row: the procedure page's Load button sat in
             // the airport's row and read "LOWG: Load?".
-            // ⚠️ NOR A FIELD IN ANOTHER BOX: the procedure page's Minimums sit in the airport's
-            // row too, and read "VCRI: BARO" (MTL hold, 2026-10-19). A box of its own is a
-            // subject of its own.
+            // ⚠️ NOR A FIELD IN A BOX OF ITS OWN: the procedure page's Minimums sit in the
+            // airport's row too, and read "VCRI: BARO" (MTL hold, 2026-10-19). A field with no
+            // box, or the row's own box, is still named after it.
+            var ownBox = fields[m].group || "";
             if (!fields[m].label && firstOfRow[r] && !selfNamed(fields[m]) &&
-                fields[m].kind !== "button" && (fields[m].group || "") === groupOfRow[r]) {
+                fields[m].kind !== "button" && (ownBox === "" || ownBox === groupOfRow[r])) {
                 fields[m].label = firstOfRow[r];
             }
         }
@@ -4875,7 +4878,7 @@
         var on = null;
         try { on = A.M.cursor(); } catch (e) { on = null; }
         var side = "";
-        try { side = A.M.holdSubject(); } catch (e2) { side = ""; }
+        try { if (A.M.viewKey() === "HoldAt") side = A.M.holdSubject(); } catch (e2) { side = ""; }
         if (side) rows.push(side);
         rows.push("Fields (" + n + "), cursor " +
             (on === null ? "unknown" : on ? "on" : "off") + ":");

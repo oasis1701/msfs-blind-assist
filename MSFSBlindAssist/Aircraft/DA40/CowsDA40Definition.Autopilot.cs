@@ -382,10 +382,10 @@ public partial class CowsDA40Definition
     /// SILENTLY - APR from HDG after a go-around, NAV and APR in a quick run, AP while in GA
     /// (MTL/VCRI, 2026-10-19) - and the pilot heard nothing at all, the same as a press that
     /// worked and was still being drawn. Without fresh rows nothing is known, so nothing is said.
-    /// </summary>
     /// ⚠️ ITS OWN ROW MOVING IS AN ANSWER TOO: the G1000 keeps "AP" flashing on the FMA for
     /// seconds after a disconnect, so AP OFF found the FMA unmoved and said "Autopilot: no
     /// change" over an autopilot that had just let go (VCRI, 2026-10-19).
+    /// </summary>
     internal static bool ApPressUnanswered(int changesBefore, int changesNow, DateTime lastRowsAt,
         DateTime pressedAt, bool rowMoved)
         => !rowMoved && changesNow == changesBefore && lastRowsAt >= pressedAt.AddSeconds(1);
@@ -817,7 +817,12 @@ public partial class CowsDA40Definition
                 // settle key to mark as ours.
                 if (OutOfRange(announcer, value, 0, 360, "0", "the course range, in degrees")) return true;
                 int deg = ((int)Math.Round(value) % 360 + 360) % 360;
-                foreach (var courseKey in CdiCourseKeys()) MarkApTargetSpoken(courseKey, deg);
+                // The spoken value is recorded only for the one receiver the CDI is known to be
+                // on: before that, all three are marked ours, and the two not written keep the
+                // baseline they really have.
+                var courseKeys = CdiCourseKeys();
+                if (courseKeys.Length == 1) MarkApTargetSpoken(courseKeys[0], deg);
+                else MarkRadioSetByUs(courseKeys);
                 simConnect.ExecuteCalculatorCodeUnique(CourseWrite(deg));
                 announcer.AnnounceImmediate("Course " + HeadingWords(deg));
                 return true;
