@@ -1741,8 +1741,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
         // Seat headrests + rudder-pedal adjust — drag positions 0–100 (50 = the
         // position PMDG initializes at spawn). Clamped in HandleUIVariableSet.
-        // The varKey carries a "_SET" suffix so MainForm renders a TextBox +
-        // Set button (the numeric-input control); without it, a no-
+        // The varKey carries a "_SET" suffix so MainForm renders a TextBox that
+        // Enter applies (the numeric-input control); without it, a no-
         // ValueDescriptions var falls through to the plain-button branch whose
         // click always dispatches value 1 — the position slammed to 1/100 on
         // every press and the control "only went to one position".
@@ -3559,12 +3559,12 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["LTS_RunwayTurnoffSw_1"]      = "EVT_OH_LIGHTS_R_TURNOFF",
             ["LTS_TaxiSw"]                 = "EVT_OH_LIGHTS_TAXI",
             ["LTS_LogoSw"]                 = "EVT_OH_LIGHTS_LOGO",
-            // LTS_PositionSw is deliberately ABSENT: the position-lights switch ignores
-            // the CDA position write this map dispatches (live-probed 2026-07-06 — probe
-            // heat moved via the identical CDA write in the same session, this switch
-            // never did) — it is handled by the closed-loop click-walk branch (4c) in
-            // HandleUIVariableSet, which looks up EVT_OH_LIGHTS_POS_STROBE directly.
-            // Do not re-add it here.
+            // The position-lights switch ignores the CDA position write the generic
+            // step 5 sends (live-probed 2026-07-06), so never route it there: branch 4a
+            // claims it first (_absolutePositionSelectorSet) and sends the transmit-with-
+            // target, counted from the other end (_reversedAbsolutePositionSet). This
+            // entry only names its event for 4a; keep it.
+            ["LTS_PositionSw"]             = "EVT_OH_LIGHTS_POS_STROBE",
             ["LTS_AntiCollisionSw"]        = "EVT_OH_LIGHTS_ANT_COL",
             ["LTS_WingSw"]                 = "EVT_OH_LIGHTS_WING",
             ["LTS_WheelWellSw"]            = "EVT_OH_LIGHTS_WHEEL_WELL",
@@ -3773,7 +3773,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // stall and overspeed tests, the GPWS long test) and the panel's own held presses
     // (HeldTransmitAsync). ReleaseEngagedWarningTests releases them too, so quitting MSFSBA or
     // switching aircraft inside a hold no longer leaves the fire bell, stick shaker or clacker
-    // sounding in the sim ([P737-3]; only the toggles were released before). Static: the
+    // sounding in the sim ([P737-6]; only the toggles were released before). Static: the
     // executor has no handle on this instance. Whoever ends a hold first takes it out and sends
     // its release; the other sends nothing, so a hold released on the way out is not released
     // again when its timer ends, when the PMDG data manager may already be the next aircraft's.
@@ -4078,10 +4078,27 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // ABSOLUTE position parameter (NOT click-walking with LEFTSINGLE/RIGHTSINGLE).
     // The generic WalkPMDGSelector path inverted the click direction for these
     // selectors, producing the well-known "step Normal to A lands at B" pattern.
-    // Same fix shape as ENG_StartSelector/ENG_IgnitionSelector at line ~3478.
+    // Same fix shape as the ENG_StartSelector/ENG_IgnitionSelector branch (2c)
+    // in HandleUIVariableSet.
     // Verified in user-reported reproductions for FIRE_OvhtDetSw, CARGO_DetSelect,
     // MAIN_*DUSel, and NAVDIS_*Selector; absolute-position dispatch confirmed
     // working at the SDK protocol level for these families.
+    //
+    // Second batch, live-swept 2026-10-18 with tools/PMDGDispatchTester (one
+    // LEFTSINGLE then one RIGHTSINGLE per generic-walk selector, read back from
+    // the struct): on every knob below LEFTSINGLE stepped DOWN, so the generic
+    // walk drove each pick toward position 0 and pinned there (the Bank Limit
+    // "stuck at 10°" report). Each was then set by absolute target and read back
+    // across non-adjacent positions in one send. The selectors that stepped the
+    // right way stay on the walk: dome, no smoking, fasten belts, window heat
+    // test, packs, isolation valve, landing light retract, VOR/ADF pointers,
+    // disengage test, lights test, fuel flow.
+    //
+    // AIR_OutflowValveSwitch is spring-loaded in the real cockpit, but the NG3
+    // LATCHES it when set from outside: an absolute send and a CDA write of
+    // OPEN or CLOSE both held for 3+ s until Neutral was sent (2026-10-18), so the
+    // valve keeps driving until the pilot picks Neutral. Not in
+    // _springLoadedSelectorMap for that reason: nothing springs it back.
     private static readonly HashSet<string> _absolutePositionSelectorSet =
         new HashSet<string>
         {
@@ -4091,7 +4108,48 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             "MAIN_LowerDUSel_0", "MAIN_LowerDUSel_1",
             "NAVDIS_VHFNavSelector", "NAVDIS_IRSSelector", "NAVDIS_FMCSelector",
             "NAVDIS_SourceSelector", "NAVDIS_ControlPaneSelector",
+            "MCP_BankLimitSel",
+            "EFIS_ModeSel_0", "EFIS_ModeSel_1",
+            "EFIS_RangeSel_0", "EFIS_RangeSel_1",
+            "OH_WiperLSelector", "OH_WiperRSelector",
+            "AIR_PressurizationModeSelector", "AIR_OutflowValveSwitch",
+            "MAIN_N1SetSelector", "MAIN_SpdRefSelector",
+            "ELEC_DCMeterSelector", "ELEC_ACMeterSelector",
+            "LTS_PositionSw",
         };
+
+    // Absolute-position selectors whose event parameter counts from the OTHER
+    // end of the struct's range: parameter = top position − target. Live-proven
+    // 2026-10-18 on EVT_OH_LIGHTS_POS_STROBE: parameter 2 lands STEADY (struct 0),
+    // 1 lands OFF (1), 0 lands STROBE & STEADY (2).
+    private static readonly HashSet<string> _reversedAbsolutePositionSet =
+        new HashSet<string> { "LTS_PositionSw" };
+
+    internal static IReadOnlyCollection<string> AbsolutePositionSelectorKeys => _absolutePositionSelectorSet;
+
+    /// <summary>True when <paramref name="varKey"/> is an absolute-position
+    /// selector AND its event resolves to an id: branch 4a needs both, and a key
+    /// missing either would silently fall through to the backwards click-walk.</summary>
+    internal static bool TryGetAbsolutePositionEvent(string varKey, out int eventId)
+    {
+        eventId = 0;
+        return _absolutePositionSelectorSet.Contains(varKey) &&
+               _simpleEventMap.TryGetValue(varKey, out string? eventName) &&
+               EventIds.TryGetValue(eventName, out eventId);
+    }
+
+    internal static bool UsesAbsolutePositionDispatch(string varKey) =>
+        TryGetAbsolutePositionEvent(varKey, out _);
+
+    /// <summary>The event parameter that lands an absolute-position selector on
+    /// <paramref name="target"/>, or null when the target is outside its
+    /// <paramref name="positionCount"/> detents (never cast a stray index into a
+    /// parameter PMDG would read as a mouse flag).</summary>
+    internal static int? AbsoluteSelectorParameter(string varKey, int target, int positionCount)
+    {
+        if (target < 0 || target >= positionCount) return null;
+        return _reversedAbsolutePositionSet.Contains(varKey) ? positionCount - 1 - target : target;
+    }
 
     // =========================================================================
     // Behavior overrides — scaffold (populated in Tasks C10–C12)
@@ -4836,10 +4894,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             if (_simpleEventMap.TryGetValue(varKey, out string? irsEvent) &&
                 EventIds.TryGetValue(irsEvent, out int irsId))
             {
-                int target = (int)value;
-                var dm = simConnect.PMDGDataManager;
-                if (dm != null && (int)dm.GetFieldValue(varDef.Name) == target) return true;
-                simConnect.SendPMDGEvent(irsEvent, (uint)irsId, target);
+                // No "already at target" skip, as in 4a: the direct-position
+                // write is idempotent, and a lagging snapshot (or the 0.0 sentinel
+                // before the first one) would drop a pick of OFF.
+                simConnect.SendPMDGEvent(irsEvent, (uint)irsId, (int)value);
             }
             return true;
         }
@@ -4859,14 +4917,23 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         //     position as the parameter (vs. click-walking). See
         //     _absolutePositionSelectorSet for the list and rationale.
         // ------------------------------------------------------------------
-        if (_absolutePositionSelectorSet.Contains(varKey) &&
-            _simpleEventMap.TryGetValue(varKey, out string? absEventName) &&
-            EventIds.TryGetValue(absEventName, out int absEvId))
+        if (TryGetAbsolutePositionEvent(varKey, out int absEvId))
         {
-            int target = (int)value;
-            var dm = simConnect.PMDGDataManager;
-            if (dm != null && (int)dm.GetFieldValue(varDef.Name) == target) return true;
-            simConnect.SendPMDGEventViaTransmitWithTarget((uint)absEvId, (uint)target);
+            // No "already at target" skip: an absolute send is idempotent, and the
+            // cached snapshot can lag a quick A→B→A pick (or read the 0.0 sentinel
+            // before the first snapshot), which would drop the send and strand the
+            // knob at B while the combo shows A.
+            int positionCount = varDef.ValueDescriptions?.Count ?? 0;
+            int? parameter = AbsoluteSelectorParameter(varKey, (int)value, positionCount);
+            if (parameter is int p)
+            {
+                simConnect.SendPMDGEventViaTransmitWithTarget((uint)absEvId, (uint)p);
+            }
+            else
+            {
+                Log.Warn("PMDG737", $"{varKey}: position {value} is outside its {positionCount} detents; nothing sent");
+                announcer.AnnounceImmediate($"Can't set {varDef.DisplayName} to that position.");
+            }
             return true;
         }
 
@@ -4988,85 +5055,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
 
         // ------------------------------------------------------------------
-        // 4c. Position lights (LTS_PositionSw) — the second CDA-deaf rotary.
-        //     Identical mechanism and handling to the transponder branch (4b)
-        //     above: the switch ignores the CDA position write (live-probed
-        //     2026-07-06 — probe heat moved via the identical write in the same
-        //     session, this switch never did) and transmit-with-target, and
-        //     only steps on transmit mouse-clicks (RIGHTSINGLE up / LEFTSINGLE
-        //     down, verified 0→1→2 and back). Shares the same closed-loop walk;
-        //     see 4b's comments for the chaining / suppression / off-target
-        //     replay rationale — this branch mirrors it with its own state trio.
-        // ------------------------------------------------------------------
-        if (varKey == "LTS_PositionSw")
-        {
-            if (_posLtWalkOp is { IsCompleted: false })
-            {
-                Interlocked.Exchange(ref _posLtPendingTarget, (int)value);
-                announcer.AnnounceImmediate("Still setting position lights, please wait.");
-                return true;
-            }
-            var posLtDm = simConnect.PMDGDataManager;
-            if (posLtDm == null || !posLtDm.IsReady)
-            {
-                announcer.AnnounceImmediate("Switch not ready, please try again in a moment.");
-                return true;
-            }
-            if (EventIds.TryGetValue("EVT_OH_LIGHTS_POS_STROBE", out int posLtEvId))
-            {
-                int target = (int)value;
-                Interlocked.Exchange(ref _posLtPendingTarget, -1);
-                _posLtWalkSuppress = true;
-                async Task RunPosLtWalkAsync()
-                {
-                    try
-                    {
-                        int? landed = null;
-                        int currentTarget = target;
-                        while (true)
-                        {
-                            landed = await simConnect.WalkPMDGSelectorClosedLoop(
-                                (uint)posLtEvId, "LTS_PositionSw", currentTarget);
-                            if (!ReferenceEquals(simConnect.PMDGDataManager, posLtDm)) return;
-                            int next = Interlocked.Exchange(ref _posLtPendingTarget, -1);
-                            if (next >= 0 && next != currentTarget)
-                            {
-                                currentTarget = next;
-                                continue;
-                            }
-                            if (landed == currentTarget) return;
-                            if (landed is null)
-                            {
-                                await Task.Delay(1300);
-                                if (!ReferenceEquals(simConnect.PMDGDataManager, posLtDm)) return;
-                                if ((int)Math.Round(posLtDm.GetFieldValue("LTS_PositionSw")) == currentTarget) return;
-                                next = Interlocked.Exchange(ref _posLtPendingTarget, -1);
-                                if (next >= 0 && next != currentTarget)
-                                {
-                                    currentTarget = next;
-                                    continue;
-                                }
-                            }
-                            _posLtWalkSuppress = false;
-                            (posLtDm as SimConnect.PMDGNG3DataManager)?.RaiseFieldChanged("LTS_PositionSw");
-                            return;
-                        }
-                    }
-                    catch
-                    {
-                        // SimConnect drop mid-walk — never fault the fire-and-forget task.
-                    }
-                    finally
-                    {
-                        _posLtWalkSuppress = false;
-                    }
-                }
-                _posLtWalkOp = RunPosLtWalkAsync();
-            }
-            return true;
-        }
-
-        // ------------------------------------------------------------------
         // 4d. Synthetic system-test buttons (transmit press/hold/release — the
         //     same live-verified mechanism as the FO executor's pseudo-keys;
         //     timings shared from the executor's public consts). Fire-and-forget:
@@ -5182,13 +5170,15 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             }
 
             // 3+ position selector — walk through detents one click at a time
-            // via TransmitClientEvent LEFTSINGLE/RIGHTSINGLE. Stable-detent
-            // selectors (IRS_ModeSelector, ENG_StartSelector, LTS_DomeWhiteSw,
-            // EFIS_VORADFSel*, EFIS_ModeSel, EFIS_RangeSel, AIR_OutflowValve,
-            // AIR_PressurizationModeSelector, etc.) work with this pattern in
-            // user testing — each click advances one detent and the new
-            // position latches normally. Spring-loaded selectors are
-            // intercepted earlier by the _springLoadedSelectorMap branch.
+            // via TransmitClientEvent, LEFTSINGLE = up. That direction holds only
+            // for some NG3 knobs (LTS_DomeWhiteSw, EFIS_VORADFSel*, the packs and
+            // the rest of the right-way list in the comment above
+            // _absolutePositionSelectorSet, swept live 2026-10-18); EFIS mode/range,
+            // outflow and pressurization mode once listed here step the OTHER way
+            // and are now IN that set, dispatched by absolute target.
+            // A new 3+ position selector must be swept before it relies on this
+            // walk. Spring-loaded selectors are intercepted earlier by the
+            // _springLoadedSelectorMap branch.
             if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count >= 3)
             {
                 var dm = simConnect.PMDGDataManager;
@@ -5254,17 +5244,16 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
             // -------------------------------------------------------------
             // Position lights: same per-detent swallow as the transponder
-            // above — walking STEADY→STROBE & STEADY passes OFF, which would
-            // otherwise announce mid-walk and churn the combo off the user's
-            // pick. Same two self-clearing producers: the panel walk's own
-            // suppress flag (4c) and the FO executor's walk counter (which
-            // counts BOTH walked selectors; a concurrent cross-suppression
-            // window is at most one walk long and ends with the landed value
-            // either matching the pick, or replayed via RaiseFieldChanged).
+            // above while the FO executor walks them — walking STEADY→STROBE &
+            // STEADY passes OFF, which would otherwise announce mid-walk. Its
+            // walk counter counts BOTH walked selectors; a concurrent
+            // cross-suppression window is at most one walk long and ends with
+            // the landed value either matching the pick, or replayed via
+            // RaiseFieldChanged. The panel sets them in one absolute send (4a),
+            // with no walk of its own to swallow.
             // -------------------------------------------------------------
             case "LTS_PositionSw":
-                return _posLtWalkSuppress
-                    || MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.XpdrWalkInProgress;
+                return MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.XpdrWalkInProgress;
 
             // -------------------------------------------------------------
             // Stabilizer trim, in units (~0–17). Sourced from the PMDG L-var
@@ -6469,15 +6458,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // Target queued by a combo pick made while a walk is running (-1 = none).
     // Written on the UI thread, consumed by the walk task via Interlocked.
     private int _xpdrPendingTarget = -1;
-
-    // Position-lights closed-loop walk state — the same trio as the transponder's
-    // above (HandleUIVariableSet 4c). LTS_PositionSw is the second switch proven to
-    // ignore CDA position writes and step only on transmit mouse-clicks
-    // (live-probed 2026-07-06; RIGHTSINGLE up / LEFTSINGLE down, the EVT_TCAS_MODE
-    // convention, so it shares WalkSelectorClosedLoop unchanged).
-    private Task? _posLtWalkOp;
-    private volatile bool _posLtWalkSuppress;
-    private int _posLtPendingTarget = -1;
 
     // ---------------------------------------------------------------------
     // Captain EFIS baro knob: one rotation at a time, the Ctrl+B dialog's and the

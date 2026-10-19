@@ -830,8 +830,9 @@ Two fixes: (1) the manual-tick revert grace is now ACTION-AWARE — a tick's rev
 protection holds until its switch action has actually finished (covers the 4–20 s
 transponder walk and anything queued behind it on the dispatch gate), then a fresh
 10 s window covers the CDA readback; (2) `EVT_OH_LIGHTS_POS_STROBE` was live-proven
-CDA-deaf (like the transponder rotary) and now click-walks on BOTH the FO path and
-the panel's Position Lights combo.
+CDA-deaf (like the transponder rotary) and now click-walks on the FO path. (The
+panel's Position Lights combo click-walked too until main's #316 was merged in on
+2026-10-19; it now sets the switch in one absolute send, #316's own fix.)
 
 ### T.1 Transponder checklist ticks stick (the reported bug)
 1. On the ground, transponder at STBY. Open the FO checklist, Before Start group.

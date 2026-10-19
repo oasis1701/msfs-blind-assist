@@ -130,7 +130,7 @@ public class AircraftActionExecutor : IFoActionExecutor
     public bool IsAvailable => _sc is { IsConnected: true };
 
     // The weather radar test's restore while the test runs, sent at once when the window closes.
-    // The held test presses are the definition's (PMDG737Definition.BeginHeldPress, [P737-3]).
+    // The held test presses are the definition's (PMDG737Definition.BeginHeldPress, [P737-6]).
     private readonly HeldPresses _held = new();
 
     /// <summary>The window is closing: a running weather radar test is put back to WX with its
@@ -567,7 +567,7 @@ public class AircraftActionExecutor : IFoActionExecutor
     // window closed meanwhile and detached the executor: a test is never left held. The hold is
     // recorded with the definition (PMDG737Definition.BeginHeldPress), so quitting MSFSBA or
     // switching aircraft inside it releases it there, while the sim and this aircraft's data manager
-    // are still up ([P737-3]); a hold released that way is not released again here, when the data
+    // are still up ([P737-6]); a hold released that way is not released again here, when the data
     // manager may already be the next aircraft's.
     private async Task HoldThenReleaseAsync(SimConnectManager sc, int holdMs, Action<SimConnectManager> release)
     {

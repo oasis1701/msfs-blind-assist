@@ -357,7 +357,7 @@ Key dispatch rules (all in the `0-cabin` region of `HandleUIVariableSet`):
   Composite bin/blind buttons loop `SetLVar` over static lists (`s_binLvars` / `s_blindLvars`);
   L-vars not fitted on the loaded cabin layout are harmless no-ops.
 - **Drag-position varKeys carry a `_SET` suffix** (`headrest_CA_drag_h_SET` etc., Name = the bare
-  L-var). MainForm only renders the TextBox + Set numeric input for keys containing "_SET"; a
+  L-var). MainForm only renders the typed numeric field (Enter applies) for keys containing "_SET"; a
   no-ValueDescriptions var without it falls through to the plain-button branch, whose click
   always dispatches value 1 — the position slammed to 1/100 on every press ("only goes to one
   position"). Keep the suffix on any future numeric-input L-var.

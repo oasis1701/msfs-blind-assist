@@ -374,8 +374,8 @@ public partial class TFDiMD11Definition
     /// two overlapping entries would interleave their digits into a code nobody typed; instead the
     /// second waits for the first to finish (read-back included) and then enters its own, so the
     /// transponder ends on the code typed last and each entry gets its own confirmation — a pilot
-    /// who corrects a typo with a quick second Set hears "Squawk 1200." then "Squawk 1207.". Only
-    /// ever touched on the UI thread (the panel's Set button).
+    /// who corrects a typo with a quick second entry hears "Squawk 1200." then "Squawk 1207.". Only
+    /// ever touched on the UI thread (Enter in the panel's squawk field).
     /// </summary>
     private Task _squawkEntries = Task.CompletedTask;
 

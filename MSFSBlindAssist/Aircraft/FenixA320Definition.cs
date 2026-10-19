@@ -11119,7 +11119,7 @@ public class FenixA320Definition : BaseAircraftDefinition
 
             // Transponder Code Set (Standard MSFS Event - handled by MainForm)
             // Uses XPNDR_SET event with user-entered 4-digit code
-            // MainForm will display text box and set button automatically
+            // MainForm will display a text box that Enter applies automatically
 
             // ========== RADIO MANAGEMENT PANEL (RMP) ==========
 

@@ -182,7 +182,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "A32NX_ELEC_BAT_1_POTENTIAL",
             DisplayName = "Battery 1 Voltage",
             Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,  // Only on refresh button
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,  // Read by the status-display refresh (F5 / the 1 s tick)
             Units = "volts"
         },
         ["A32NX_ELEC_BAT_2_POTENTIAL"] = new SimConnect.SimVarDefinition
@@ -190,7 +190,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "A32NX_ELEC_BAT_2_POTENTIAL",
             DisplayName = "Battery 2 Voltage",
             Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,  // Only on refresh button
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,  // Read by the status-display refresh (F5 / the 1 s tick)
             Units = "volts"
         },
 
@@ -377,7 +377,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "A32NX_ADIRS_ADIRU_1_STATE",
             DisplayName = "IRS 1 Status",
             Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,  // Only on refresh button
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,  // Read by the status-display refresh (F5 / the 1 s tick)
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Aligning", [2] = "Aligned" }
         },
         ["A32NX_ADIRS_ADIRU_2_STATE"] = new SimConnect.SimVarDefinition
@@ -385,7 +385,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "A32NX_ADIRS_ADIRU_2_STATE",
             DisplayName = "IRS 2 Status",
             Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,  // Only on refresh button
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,  // Read by the status-display refresh (F5 / the 1 s tick)
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Aligning", [2] = "Aligned" }
         },
         ["A32NX_ADIRS_ADIRU_3_STATE"] = new SimConnect.SimVarDefinition
@@ -393,7 +393,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "A32NX_ADIRS_ADIRU_3_STATE",
             DisplayName = "IRS 3 Status",
             Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,  // Only on refresh button
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,  // Read by the status-display refresh (F5 / the 1 s tick)
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Aligning", [2] = "Aligned" }
         },
 
