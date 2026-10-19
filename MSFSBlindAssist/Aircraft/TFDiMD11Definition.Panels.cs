@@ -177,7 +177,7 @@ public partial class TFDiMD11Definition
         }
 
         // ---- Transponder -------------------------------------------------------------
-        // A typed four-digit squawk (text box + Set, the "_SET" convention) replaces the eight
+        // A typed four-digit squawk (a text box Enter applies, the "_SET" convention) replaces the eight
         // keypad buttons on the panel: HandleUIVariableSet presses the aircraft's own digit keys
         // in order and reads the stock TRANSPONDER CODE:1 back to confirm. The Name is the stock
         // XPNDR_SET event only so the registration is a real event; the MD-11 handler always
