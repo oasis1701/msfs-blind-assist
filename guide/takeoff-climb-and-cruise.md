@@ -198,14 +198,14 @@ Not every key exists on every aircraft; each aircraft's guide in Part 7 lists wh
 ### Using a value window {#autopilot-windows-how}
 
 1. Press the key, for example Input Ctrl+A. The window opens with the cursor in the value box.
-2. Type the value, for example 12000, and press Enter (or Tab to the **Set** button and press Space).
+2. Type the value, for example 12000, and press Enter. There is no Set button; Enter in the value box is how a value is set.
 3. BA confirms the value it set. On the FlyByWire Airbuses, for example, the speed window says *"FCU speed 250, selected"*.
 4. Tab on to the other buttons if you need them, such as **Altitude Pull (selected)**.
 5. Press Escape or the **Close** button. Focus goes back to where you were.
 
 On the Airbus aircraft the windows stay open alongside your other windows, so you can leave one open while you work in another. If you type something the aircraft cannot accept, BA tells you why, for example *"Invalid number format"*, and selects the text so you can type again.
 
-A typical speed window contains a value box, a **Set** button, push and pull buttons (or **Speed Intervene** on a Boeing), a speed or Mach toggle, and **Close**. Buttons that have a state say it in their name, for example *"SPD / MACH toggle — now knots (press for Mach)"*.
+A typical speed window contains a value box, push and pull buttons (or **Speed Intervene** on a Boeing), a speed or Mach toggle, and **Close**. Buttons that have a state say it in their name, for example *"SPD / MACH toggle — now knots (press for Mach)"*.
 
 ### Push, pull, managed and selected {#autopilot-windows-managed}
 

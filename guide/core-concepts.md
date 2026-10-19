@@ -72,7 +72,7 @@ BA speaks through your screen reader. When you are working in BA's own windows, 
 
 **BA** adds its own announcements on top, but only for things your screen reader cannot know about. BA deliberately does not repeat what you have just done. When you choose "On" in a combo box, your screen reader has already said "On", so BA stays quiet rather than saying it a second time. BA speaks in only three situations:
 
-- **A number you typed has been set.** When you type a value into a box and press Enter or the Set button, BA confirms the exact value, because you need to know the aircraft took exactly the number you meant.
+- **A number you typed has been set.** When you type a value into a box and press Enter, BA confirms the exact value, because you need to know the aircraft took exactly the number you meant.
 - **Something went wrong.** A value outside the allowed range, a control that could not be reached, a feature that is not available. Errors are always spoken.
 - **Something changed by itself.** A master caution, a flight mode change, the gear coming down, the autopilot dropping out, a taxi instruction, the simulator pausing. These are "background" changes you did not trigger, and they are the heart of what BA announces.
 
