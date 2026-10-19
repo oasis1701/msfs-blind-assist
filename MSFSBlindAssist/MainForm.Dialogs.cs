@@ -576,6 +576,87 @@ public partial class MainForm
         }
     }
 
+    /// <summary>
+    /// MSFS 2024's own tablet (Shift+T for an aircraft that asks for it, IAircraftDefinition.UsesSimTablet),
+    /// through the shared FbwEfbForm over the Coherent debugger, the same transport as the PMDG and
+    /// MD-11 tablets. MSFS 2020 has no such tablet, so there it says so instead of opening a window
+    /// that would never connect.
+    /// </summary>
+    private void ShowSimTabletDialog()
+    {
+        hotkeyManager.ExitInputHotkeyMode();
+        if (simConnectManager.DetectedSimulatorVersion == "FS2020")
+        {
+            announcer.AnnounceImmediate("The sim tablet is only in MSFS 2024.");
+            return;
+        }
+
+        if (coherentSimTablet == null)
+        {
+            coherentSimTablet = CoherentPmdgEfbClient.ForSimTablet();
+            coherentSimTablet.ClickInterceptor = idx =>
+            {
+                if (idx != SimTabletSimBriefImport.ActionIdx) return false;
+                _ = LoadSimBriefIntoSimTabletAsync();
+                return true;
+            };
+            coherentSimTablet.Start();
+        }
+        if (simTabletForm == null || simTabletForm.IsDisposed)
+        {
+            simTabletForm = new Forms.FBWA380.FbwEfbForm(coherentSimTablet, announcer, "Sim Tablet", "Sim tablet", "Sim tablet");
+            // Idle-gate the scrape to the window's visibility; the socket and reader stay warm.
+            var f = simTabletForm;
+            f.VisibleChanged += (_, _) => coherentSimTablet?.SetActive(!f.IsDisposed && f.Visible);
+        }
+        coherentSimTablet.SetActive(true);   // covers a re-Show of an already-visible window
+        simTabletForm.ShowForm();
+    }
+
+    /// <summary>
+    /// The sim tablet's "Load latest SimBrief plan": fetch the pilot's latest OFP with the SimBrief
+    /// username from Settings, then let SimTabletSimBriefImport type it into the tablet's Flight
+    /// Planner. Runs on the UI thread (the client's click path); the waits are awaited, never blocked.
+    /// </summary>
+    private async Task LoadSimBriefIntoSimTabletAsync()
+    {
+        var client = coherentSimTablet;
+        if (client == null) return;
+        if (simTabletImportBusy)
+        {
+            announcer.Announce("The SimBrief plan is still loading.");
+            return;
+        }
+        string username = MSFSBlindAssist.Settings.SettingsManager.Current.SimbriefUsername ?? "";
+        if (string.IsNullOrWhiteSpace(username))
+        {
+            announcer.Announce("Add your SimBrief username in Settings, SimBrief, to load a plan.");
+            return;
+        }
+
+        simTabletImportBusy = true;
+        try
+        {
+            announcer.Announce("Loading your SimBrief plan.");
+            Models.SimBriefOFP ofp;
+            try { ofp = await new SimBriefService().FetchFullOFPAsync(username.Trim()); }
+            catch (Exception ex)
+            {
+                announcer.Announce($"Could not fetch your SimBrief plan: {ex.Message}");
+                return;
+            }
+            var result = await new SimTabletSimBriefImport(client.EvaluateAsync).RunAsync(ofp);
+            Log.Info("SimTablet", $"SimBrief import {(result.Success ? "done" : "failed")}: {result.Message}");
+            announcer.Announce(result.Message);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("SimTablet", $"SimBrief import: {ex.Message}");
+            announcer.Announce("The SimBrief plan could not be loaded.");
+        }
+        finally { simTabletImportBusy = false; }
+    }
+
     // A380 ND OANS / BTV control panel — reuses the WebView2 EFB form, but driven
     // by the ND Coherent view through CoherentNDClient. Used for BTV (Brake-To-
     // Vacate) exit selection and airport/runway/exit search.

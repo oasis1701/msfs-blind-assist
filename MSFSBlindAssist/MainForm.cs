@@ -189,6 +189,13 @@ public partial class MainForm : Form
     private CoherentPmdgEfbClient? coherentMd11Efb;
     private Forms.FBWA380.FbwEfbForm? md11EfbForm;
 
+    // MSFS 2024's own tablet (Shift+T for an aircraft whose UsesSimTablet is true): the same shared
+    // form and client, pointed at the sim's "Electronic Flight Bag" view. simTabletImportBusy keeps
+    // the SimBrief import to one run at a time.
+    private CoherentPmdgEfbClient? coherentSimTablet;
+    private Forms.FBWA380.FbwEfbForm? simTabletForm;
+    private bool simTabletImportBusy;
+
     // MD-11 monitor manager (Ctrl+M) — the aircraft announces 532 annunciator lamps, so muting
     // them individually is not a nicety here.
     private Forms.MD11.Md11MonitorManagerForm? md11MonitorManagerForm;

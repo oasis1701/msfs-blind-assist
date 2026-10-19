@@ -289,6 +289,12 @@ public partial class MainForm
                     // host the live site directly (no scraping/shim like the FBW flyPad).
                     ShowFenixEFBDialog();
                 }
+                else if (currentAircraft?.UsesSimTablet == true)
+                {
+                    // MSFS 2024's own tablet, LAST: an aircraft with a tablet of its own opens
+                    // that above and never reaches this. Only an aircraft that asks for it does.
+                    ShowSimTabletDialog();
+                }
                 break;
             case HotkeyAction.ShowPMDGEFBFirstOfficer:
                 if (currentAircraft is IPMDGAircraft pmdgEfbFo && pmdgEfbFo.HasEFBSupport)

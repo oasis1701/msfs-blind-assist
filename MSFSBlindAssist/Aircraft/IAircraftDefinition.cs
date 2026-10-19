@@ -496,6 +496,13 @@ public interface IAircraftDefinition
     bool HasOwnIcingAnnouncer { get; }
 
     /// <summary>
+    /// True when Shift+T (input mode) opens MSFS 2024's own tablet, the sim's EFB, for this
+    /// aircraft. Off by default: an aircraft with a tablet of its own (PMDG, Fenix, FBW, MD-11,
+    /// iFly) opens that one, and an aircraft asks for the sim's only when it has no other.
+    /// </summary>
+    bool UsesSimTablet { get; }
+
+    /// <summary>
     /// Null when this aircraft's COM 1 takes the stock tuning events (COM_STBY_RADIO_SET_HZ,
     /// COM1_RADIO_SWAP) the surroundings window's Frequencies list sends on Enter / Shift+Enter;
     /// otherwise the sentence to speak INSTEAD of sending them. The FBW A380 ignores them

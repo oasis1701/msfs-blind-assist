@@ -134,6 +134,29 @@ namespace MSFSBlindAssist.SimConnect
         public static CoherentPmdgEfbClient ForMd11()
             => new("TFDi_MD11_efb", "coherent-md11-efb-agent.js", "__MSFSBA_MD11_EFB", side: null);
 
+        /// <summary>
+        /// MSFS 2024's own tablet: ONE view, "Electronic Flight Bag"
+        /// (coui://html_ui/efb_ui/efb_os/efb_ui.html), part of the sim's UI rather than any aircraft,
+        /// so it is the same view on every MSFS 2024 aircraft. MSFS 2020 has none, and the client
+        /// then never connects. Verified live 2026-10-19: the view keeps running with the toolbar
+        /// tablet closed and the camera outside.
+        /// </summary>
+        public static CoherentPmdgEfbClient ForSimTablet()
+            => new("Electronic Flight Bag", "coherent-sim-tablet-agent.js", "__MSFSBA_SIM_TABLET", side: null);
+
+        /// <summary>
+        /// Asked first on every click from the form, with the element's agent idx: true means the
+        /// owner handled the press itself and the click is not sent to the page. The sim tablet's
+        /// synthetic "Load latest SimBrief plan" button is the one user: the app fetches the plan.
+        /// </summary>
+        public Func<int, bool>? ClickInterceptor { get; set; }
+
+        /// <summary>
+        /// Runs one expression in the view, on the client's socket (Coherent takes one per page), and
+        /// returns its value: "" when the socket is not open or the call times out.
+        /// </summary>
+        public Task<string> EvaluateAsync(string expression) => EvalAsync(expression);
+
         public void Start()
         {
             if (_cts != null)
@@ -220,6 +243,7 @@ namespace MSFSBlindAssist.SimConnect
                     _forceNextPush = true;
                     return null;
                 case "click_display_element":
+                    if (ClickInterceptor != null && int.TryParse(Idx(), out int clicked) && ClickInterceptor(clicked)) return null;
                     return $"window.{_agentGlobal} && {_agentGlobal}.clickElement({JsInt(Idx())})";
                 case "set_element_value":
                     return $"window.{_agentGlobal} && {_agentGlobal}.setValue({JsInt(Idx())},{JsStr(Val())})";
