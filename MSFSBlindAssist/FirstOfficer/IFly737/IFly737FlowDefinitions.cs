@@ -330,7 +330,9 @@ public static class IFly737FlowDefinitions
             // APU start: the APU_START pseudo-key sequences ON -> 2s dwell -> START internally
             // (IFly737ActionExecutor.StartApuCoreAsync) — a single step replaces the PMDG's
             // three (ON, dwell, START).
-            SW("BS_APU_START", "APU: START", IFly737ActionExecutor.KeyApuStart, 1, isMomentary: true, checklistItemId: "BS_APU"),
+            // Links no line: "APU: ON line" reads the APU on line (FO_APU_ON), which the wait below
+            // completes, never the START press.
+            SW("BS_APU_START", "APU: START", IFly737ActionExecutor.KeyApuStart, 1, isMomentary: true),
             // Generator availability: APU_GEN_OFF_BUS_Light_Status lit = the APU generator is
             // up and able to take a bus. Stop policy — if the APU never comes on line, abort
             // the flow HERE, before the generator transfer and ground-power drop below.
@@ -349,9 +351,15 @@ public static class IFly737FlowDefinitions
             // runs. APU_Generator_Switch_Status (IFlySdkFields.cs:341) looks like a candidate
             // "already on the bus, skip this wait" guard, but it is UNVERIFIED against a live
             // sim and must not be added without an in-sim test first.
+            //
+            // It reads FO_APU_ON (2026-10-19), the "APU: ON line" line's own state, which it
+            // completes: the APU GEN OFF BUS light as before, and also the buses carried off the
+            // engine generators with no ground power available, so a re-run after a completed
+            // transfer with the GPU gone passes instead of timing out. With the GPU still available
+            // that case stays unknown (NaN) and the re-run still times out, as documented above.
             WaitForField("BS_APU_WAIT", "Waiting for the APU to come on line",
-                "APU_GEN_OFF_BUS_Light_Status", v => v > 0.5, 120,
-                onTimeout: FlowStepFailurePolicy.Stop),
+                IFly737StateEvaluator.ApuOnField, v => v > 0.5, 120,
+                onTimeout: FlowStepFailurePolicy.Stop, checklistItemId: "BS_APU"),
             // Transfer the electrical load to the APU: momentary bus-transfer buttons.
             Multi("BS_APUGEN", "APU generators: ON", "BS_APUGEN",
                 ("BTN_APU_GEN_1_ON", 1), ("BTN_APU_GEN_2_ON", 1)),
@@ -395,34 +403,45 @@ public static class IFly737FlowDefinitions
                 ("Pack_Switch_Status_0", IFly737ActionExecutor.PackOff),
                 ("Pack_Switch_Status_1", IFly737ActionExecutor.PackOff)),
             // --- Engine 2 ---
-            SW("ES_E2_GRD", "Engine 2 start switch: GRD", "Engine_Start_Switch_Status_1",
-                IFly737ActionExecutor.EngStartGround),
+            // An engine already RUNNING (N2 at or above EngineRunningN2) is never put back on GRD,
+            // which re-engaged its starter at idle on a re-run: "Already set", and the start steps
+            // below, which follow only a GRD this run sent, pass (the 777's shape).
+            Skip(SW("ES_E2_GRD", "Engine 2 start switch: GRD", "Engine_Start_Switch_Status_1",
+                IFly737ActionExecutor.EngStartGround), s => EngineRunning(s, 2)),
             // No start-valve field exists on this SDK (see class doc) — the early
-            // starter-engaged confirmation the PMDG has is dropped; N2 is the only gate before
-            // fuel introduction. On timeout (starter/bleed failure — N2 never builds) ABORT
-            // the flow rather than introduce fuel into an under-rotating engine. The executor
-            // runs the wait (StartWaitAsync): 60 s, restarted while the LEAP-1B's bowed rotor
-            // motoring reads active, which holds a hot engine at motoring speed for minutes.
-            StartWaitStep("ES_E2_N2", "Engine 2 motoring — waiting for N2 before introducing fuel",
-                IFly737ActionExecutor.KeyEng2FuelN2),
-            SW("ES_E2_RUN", "Engine 2 start lever: IDLE", "Engine_Start_Lever_Status_1", StartLeverIdle, checklistItemId: "ES_E2_RUN"),
+            // starter-engaged confirmation the PMDG has is dropped. The start lever goes to IDLE
+            // once MOTORING IS DONE (owner, 2026-10-19), never at a fixed 25 %: the LEAP-1B's bowed
+            // rotor motoring no longer reads active, with N2 at the motoring point to prove the
+            // starter is turning the engine. On timeout (starter/bleed failure — N2 never builds)
+            // ABORT the flow rather than introduce fuel into an under-rotating engine. The executor
+            // runs the wait (StartWaitAsync): 60 s, restarted while bowed rotor motoring reads
+            // active, which holds a hot engine at motoring speed for minutes.
+            OnlyIfSent(StartWaitStep("ES_E2_N2", "Engine 2 motoring — waiting for motoring to finish before introducing fuel",
+                IFly737ActionExecutor.KeyEng2FuelN2), "ES_E2_GRD"),
+            OnlyIfSent(SW("ES_E2_RUN", "Engine 2 start lever: IDLE", "Engine_Start_Lever_Status_1", StartLeverIdle,
+                checklistItemId: "ES_E2_RUN"), "ES_E2_GRD"),
             // Starter cutout: the start switch springs back out of GRD as the starter
             // disengages. Wait on the switch itself, gating engine 1's GRD press so it's never
             // set while engine 2's starter is still engaged (PMDG 737 parity). Stop on a timeout,
             // as the PMDG's does: carrying on put engine 1 on GRD over a starter still engaged.
             // 120 s, aware of bowed rotor motoring the same way.
-            StartWaitStep("ES_E2_CUTOUT", "Engine 2 starting — waiting for the start switch to cut out",
-                IFly737ActionExecutor.KeyEng2StarterCutout),
+            OnlyIfSent(StartWaitStep("ES_E2_CUTOUT", "Engine 2 starting — waiting for the start switch to cut out",
+                IFly737ActionExecutor.KeyEng2StarterCutout), "ES_E2_GRD"),
             // --- Engine 1 ---
-            SW("ES_E1_GRD", "Engine 1 start switch: GRD", "Engine_Start_Switch_Status_0",
-                IFly737ActionExecutor.EngStartGround),
-            StartWaitStep("ES_E1_N2", "Engine 1 motoring — waiting for N2 before introducing fuel",
-                IFly737ActionExecutor.KeyEng1FuelN2),
-            SW("ES_E1_RUN", "Engine 1 start lever: IDLE", "Engine_Start_Lever_Status_0", StartLeverIdle, checklistItemId: "ES_E1_RUN"),
-            StartWaitStep("ES_E1_CUTOUT", "Engine 1 starting — waiting for the start switch to cut out",
-                IFly737ActionExecutor.KeyEng1StarterCutout),
+            Skip(SW("ES_E1_GRD", "Engine 1 start switch: GRD", "Engine_Start_Switch_Status_0",
+                IFly737ActionExecutor.EngStartGround), s => EngineRunning(s, 1)),
+            OnlyIfSent(StartWaitStep("ES_E1_N2", "Engine 1 motoring — waiting for motoring to finish before introducing fuel",
+                IFly737ActionExecutor.KeyEng1FuelN2), "ES_E1_GRD"),
+            OnlyIfSent(SW("ES_E1_RUN", "Engine 1 start lever: IDLE", "Engine_Start_Lever_Status_0", StartLeverIdle,
+                checklistItemId: "ES_E1_RUN"), "ES_E1_GRD"),
+            OnlyIfSent(StartWaitStep("ES_E1_CUTOUT", "Engine 1 starting — waiting for the start switch to cut out",
+                IFly737ActionExecutor.KeyEng1StarterCutout), "ES_E1_GRD"),
         }
     };
+
+    // Engine n reads RUNNING: N2 at or above EngineRunningN2. Unread (NaN) is not running.
+    internal static bool EngineRunning(IFly737StateEvaluator s, int engine) =>
+        s.GetValue(engine == 1 ? "FO_ENG1_N2" : "FO_ENG2_N2") >= IFly737StateEvaluator.EngineRunningN2;
 
     // -----------------------------------------------------------------------
     // 5. Before Taxi (includes the after-start power transfer)
@@ -635,7 +654,8 @@ public static class IFly737FlowDefinitions
             // APU START for gate power — same collapsed pseudo-key sequence as Before Start;
             // no on-line wait (the aircraft is taxiing in, matching the PMDG template): the
             // Shutdown flow waits for the APU generator before its transfer (SD_POWER_WAIT).
-            SW("AL_APU", "APU: START", IFly737ActionExecutor.KeyApuStart, 1, isMomentary: true, checklistItemId: "AL_APU"),
+            // Links no line: AL_APU_ON_LINE, last, completes "APU: ON line".
+            SW("AL_APU", "APU: START", IFly737ActionExecutor.KeyApuStart, 1, isMomentary: true),
             Multi("AL_START_OFF", "Engine start switches: OFF", "AL_START_OFF",
                 ("Engine_Start_Switch_Status_0", IFly737ActionExecutor.EngStartOff),
                 ("Engine_Start_Switch_Status_1", IFly737ActionExecutor.EngStartOff)),
@@ -644,6 +664,12 @@ public static class IFly737FlowDefinitions
             SW("AL_FLAPS_UP", "Flaps: UP", "FLAP_Status", 0, checklistItemId: "AL_FLAPS"),
             SW("AL_AB_OFF", "Autobrake: OFF", "Autobrake_Selector_Status",
                 IFly737ActionExecutor.AutobrakeOff, checklistItemId: "AL_AB"),
+            // Read-only, LAST so the APU's spool-up holds nothing up: completes "APU: ON line" once
+            // the APU reads on line (FO_APU_ON); a timeout is heard skipped and keeps the line out
+            // of the latch, so an APU that never started is never latched ON. Never writes.
+            Skip(WaitForField("AL_APU_ON_LINE", "APU: ON line", IFly737StateEvaluator.ApuOnField, v => v > 0.5, 120,
+                    checklistItemId: "AL_APU"),
+                s => s.GetValue(IFly737StateEvaluator.ApuOnField) > 0.5),
         }
     };
 
@@ -657,6 +683,9 @@ public static class IFly737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "SHUTDOWN" },
         Steps = new()
         {
+            // Started by mistake in flight with the APU running, the power wait below passes and
+            // the levers cut both engines: never airborne (the MD-11's SD_ON_GROUND).
+            OnGroundGuard("SD_ON_GROUND"),
             // The levers take the engine generators off the buses, so something else must be able
             // to carry them first; Before Start guards its reverse transfer the same way
             // (BS_APU_WAIT, Stop). Passes on the APU generator waiting off the buses (the blue APU
@@ -674,6 +703,12 @@ public static class IFly737FlowDefinitions
                     ("BTN_APU_GEN_1_ON", 1), ("BTN_APU_GEN_2_ON", 1)),
                 s => !s.IsOn("APU_GEN_OFF_BUS_Light_Status"),
                 "APU generators left as they are: no APU generator is waiting to take the buses."),
+            // The transfer TOOK: the buses off the engine generators (or the levers already at
+            // CUTOFF). A transfer that did not take STOPS the flow here (the PMDG 737's verified
+            // SD_APUGEN, Stop): left alone, the levers below kept the engines running and the rest of
+            // Shutdown then switched the fuel and hydraulic pumps off under them.
+            WaitForField("SD_LOAD_OFF_ENGINES", "APU generator or ground power on the buses",
+                IFly737StateEvaluator.LoadOffEnginesField, v => v > 0.5, 10, onTimeout: FlowStepFailurePolicy.Stop),
             // Never cut while the engine generators still carry the buses (the APU generator press
             // did not take): that leaves the aircraft on the battery. "Already set" when both levers
             // already read CUTOFF.
@@ -718,6 +753,8 @@ public static class IFly737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "SECURE", "ELEC_POWER_DOWN" },
         Steps = new()
         {
+            // The IRS and the battery go off below: never airborne (the MD-11's SD_ON_GROUND).
+            OnGroundGuard("SE_ON_GROUND"),
             Also(Multi("SE_IRS_OFF", "IRS mode selectors: OFF", "SE_IRS",
                 ("IRS_Mode_Switch_Status_0", IFly737ActionExecutor.IrsOff),
                 ("IRS_Mode_Switch_Status_1", IFly737ActionExecutor.IrsOff)), "SEC_IRS"),
@@ -750,6 +787,12 @@ public static class IFly737FlowDefinitions
                 s => !EnginesStopped(s), "Engines running, so the battery stays on."),
         }
     };
+
+    // Stops a flow that cuts the engines or switches the IRS and battery off unless the aircraft
+    // reads on the ground (SIM_ON_GROUND from SimConnect's cache; unread fails the guard).
+    private static Step OnGroundGuard(string id) =>
+        WaitForField(id, "On the ground", IFly737StateEvaluator.OnGroundField, v => v > 0.5, 5,
+            onTimeout: FlowStepFailurePolicy.Stop);
 
     // Both engines read and below 10 % N2. NaN (no sample yet) is NOT stopped.
     internal static bool EnginesStopped(IFly737StateEvaluator s)

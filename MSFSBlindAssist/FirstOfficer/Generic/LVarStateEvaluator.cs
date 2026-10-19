@@ -16,8 +16,10 @@ public abstract class LVarStateEvaluator : IFoStateEvaluator
 {
     private SimConnectManager? _sc;
     private int _takeoffFlaps = -1;
-    private double _eng1N2;
-    private double _eng2N2;
+    // NaN until the window's first N2 answer, never 0: a guessed 0 reads "engine stopped" and
+    // lets an engines-off guard or line pass over a running engine (the iFly evaluator's rule).
+    private double _eng1N2 = double.NaN;
+    private double _eng2N2 = double.NaN;
 
     protected SimConnectManager? Sc => _sc;
 
@@ -41,6 +43,11 @@ public abstract class LVarStateEvaluator : IFoStateEvaluator
     /// <paramref name="test"/>. The "unknown is not false" contract every FO state read keeps.</summary>
     protected static double Both(double a, double b, Func<double, double, bool> test)
         => double.IsNaN(a) || double.IsNaN(b) ? double.NaN : test(a, b) ? 1.0 : 0.0;
+
+    /// <summary>A two-input "either is on" field: 1 when either reads above 0.5 (one lit source is
+    /// enough with the other unread), 0 when both read off, NaN otherwise.</summary>
+    protected static double AnyLit(double a, double b)
+        => a > 0.5 || b > 0.5 ? 1.0 : double.IsNaN(a) || double.IsNaN(b) ? double.NaN : 0.0;
 
     public double GetValue(string field)
     {

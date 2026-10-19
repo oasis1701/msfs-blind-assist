@@ -51,10 +51,10 @@ namespace MSFSBlindAssist.Automation;
 ///     pilot was told "Autopilot engaged" with the AP off and no retry ever came.
 /// On a null readback an aircraft that does not wait (<see cref="WaitForApState"/> off) takes the
 /// open-loop path: one press, announced on the press, with nothing to verify against. Only the
-/// stock AUTOPILOT_ON aircraft (the HS787, any aircraft without an engage of its own) take it: the
-/// event is idempotent. Every aircraft with a toggle engage sets <see cref="WaitForApState"/> and
-/// a 3 s <see cref="ApRetryIntervalMs"/> (the FlyByWire family, FO-21; the PMDG jets, the iFly, the
-/// MD-11 and the Fenix): there null only means "not read yet", and a press is a toggle, so the
+/// stock AUTOPILOT_ON aircraft (any aircraft without an engage of its own) take it: the event is
+/// idempotent. Every aircraft with a toggle engage sets <see cref="WaitForApState"/> (the FlyByWire
+/// family, FO-21; the PMDG jets, the iFly, the MD-11, the Fenix and the HorizonSim 787's AP_MASTER
+/// engage), most with a 3 s <see cref="ApRetryIntervalMs"/>: there null only means "not read yet", and a press is a toggle, so the
 /// service never presses on it. It waits for a definite reading, and if none comes
 /// within <see cref="MaxApEngageAttempts"/> attempts it reports a Captain action ("state unknown"
 /// when it never pressed or the latest reading is unknown again, "did not engage" when it pressed

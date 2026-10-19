@@ -4,7 +4,10 @@ the File menu. On the Flows tab it runs each phase's procedure, from power-up to
 aircraft, speaking every step, checking that each switch really moved and saying "Skipping" when
 one did not; the Captain's items, such as the landing autobrake, are spoken as reminders. The
 Checklists tab holds the aircraft's normal checklists: a line ticks itself once the aircraft is in
-that state, and ticking one yourself has the First Officer do it. Load SimBrief brings in the
+that state, and ticking one yourself has the First Officer do it. It never shuts an engine down by
+mistake: a power-up flow stops if an engine is turning, the shutdown and securing flows stop unless
+the aircraft is on the ground and the APU or ground power can take over, and ticking those lines
+yourself is refused the same way, with the reason spoken. Load SimBrief brings in the
 transition altitude and level and the takeoff flaps. On the A32NX, A330, Fenix, A380 and iFly it
 replaces the old Shift+C text checklist.
 

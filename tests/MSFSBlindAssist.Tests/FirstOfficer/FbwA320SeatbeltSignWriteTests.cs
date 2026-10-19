@@ -109,11 +109,13 @@ public class FbwA320SeatbeltSignWriteTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void Seatbelt_toggle_fires_when_the_sign_state_is_unknown(bool on)
+    public void Seatbelt_toggle_is_refused_when_the_sign_state_is_unknown(bool on)
     {
-        // Unchanged from the phase monitor's original method: no cached reading is treated as
-        // "not where we want it", so the step still acts rather than reporting success silently.
-        Assert.True(FbwA320ActionExecutor.SeatbeltToggleNeeded(null, on));
+        // 2026-10-19: an unread sign is REFUSED (null), never toggled. Toggled, a sign that was
+        // already ON went OFF while the flow said "Seatbelt signs: ON"; refused, the step is
+        // skipped aloud and the line stays open, the rule of every other First Officer toggle.
+        Assert.Null(FbwA320ActionExecutor.SeatbeltToggleNeeded(null, on));
+        Assert.Null(FbwA320ActionExecutor.SeatbeltToggleNeeded(double.NaN, on));
     }
 
     [Fact]

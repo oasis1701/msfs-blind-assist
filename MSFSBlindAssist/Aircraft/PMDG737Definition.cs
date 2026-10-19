@@ -3854,24 +3854,38 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     /// <summary>WXR/PWS test managed sequence — see the WXR_Test def comment. Restore
     /// (WX mode + overlay off) runs unconditionally after the wait, unless the aircraft changed
     /// meanwhile: these are 737 event ids, which press other controls on another aircraft. No
-    /// ConfigureAwait(false), for the reason HeldTransmitAsync gives.</summary>
+    /// ConfigureAwait(false), for the reason HeldTransmitAsync gives.
+    /// The caller took the connection's <see cref="MSFSBlindAssist.FirstOfficer.WxrTestGate"/>; it is ended
+    /// here, whatever happens. Fire-and-forget, so an exception is logged (the 777's shape), never
+    /// left as an unobserved task fault with the restore presses skipped and TEST latched.</summary>
     private static async Task WxrTestSequenceAsync(SimConnect.SimConnectManager simConnect)
     {
-        if (!EventIds.TryGetValue("EVT_EFIS_CPT_WXR", out int overlayEv) ||
-            !EventIds.TryGetValue("EVT_WXR_TEST", out int testEv) ||
-            !EventIds.TryGetValue("EVT_WXR_L_WX", out int wxEv))
-            return;
-        const int quick = MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.QuickTestHoldMs;
-        await HeldTransmitAsync(simConnect, (uint)overlayEv, quick);
-        await Task.Delay(MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.WxrOverlaySettleMs);
-        if (!Is737Loaded(simConnect)) return;
-        await HeldTransmitAsync(simConnect, (uint)testEv, quick);
-        await Task.Delay(MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.WxrTestWaitMs);
-        if (!Is737Loaded(simConnect)) return;
-        await HeldTransmitAsync(simConnect, (uint)wxEv, quick);
-        await Task.Delay(350);
-        if (!Is737Loaded(simConnect)) return;
-        await HeldTransmitAsync(simConnect, (uint)overlayEv, quick);
+        try
+        {
+            if (!EventIds.TryGetValue("EVT_EFIS_CPT_WXR", out int overlayEv) ||
+                !EventIds.TryGetValue("EVT_WXR_TEST", out int testEv) ||
+                !EventIds.TryGetValue("EVT_WXR_L_WX", out int wxEv))
+                return;
+            const int quick = MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.QuickTestHoldMs;
+            await HeldTransmitAsync(simConnect, (uint)overlayEv, quick);
+            await Task.Delay(MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.WxrOverlaySettleMs);
+            if (!Is737Loaded(simConnect)) return;
+            await HeldTransmitAsync(simConnect, (uint)testEv, quick);
+            await Task.Delay(MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.WxrTestWaitMs);
+            if (!Is737Loaded(simConnect)) return;
+            await HeldTransmitAsync(simConnect, (uint)wxEv, quick);
+            await Task.Delay(350);
+            if (!Is737Loaded(simConnect)) return;
+            await HeldTransmitAsync(simConnect, (uint)overlayEv, quick);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("PMDG", $"Weather radar test failed: {ex.GetType().Name}: {ex.Message}");
+        }
+        finally
+        {
+            MSFSBlindAssist.FirstOfficer.WxrTestGate.Pmdg737(simConnect).End();
+        }
     }
 
     // A 737 is still the loaded aircraft (an NG3 data manager): a sequence that outlives an
@@ -5078,7 +5092,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
         if (varKey == "WXR_Test")
         {
-            if (_wxrTestOp is { IsCompleted: false })
+            // One at a time with the First Officer's test too (WxrTestGate), refused aloud; the
+            // sequence ends the gate.
+            if (!MSFSBlindAssist.FirstOfficer.WxrTestGate.Pmdg737(simConnect).TryBegin())
             {
                 announcer.AnnounceImmediate("Still running the weather radar test, please wait.");
                 return true;
@@ -6554,8 +6570,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     /// waits out a Ctrl+B rotation already running, and its knob's settle, before it reads the
     /// altimeter, and a Ctrl+B entry while it runs is refused. <paramref name="attached"/> is
     /// asked before each knob: a First Officer window closed meanwhile sends nothing more.
+    /// True when the captain's altimeter, the one every MSFSBA readout uses, ends at standard: its
+    /// clicks all went out, or it already read standard. The phase monitor speaks "set to standard"
+    /// only then (it once spoke it over a rotation that sent nothing).
     /// </summary>
-    internal static Task RotateAltimetersToStandardAsync(
+    internal static Task<bool> RotateAltimetersToStandardAsync(
         SimConnect.SimConnectManager simConnect, Func<bool> attached)
     {
         var op = RotateAltimetersToStandardCoreAsync(simConnect, s_baroKnobOp, attached);
@@ -6563,7 +6582,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         return op;
     }
 
-    private static async Task RotateAltimetersToStandardCoreAsync(
+    private static async Task<bool> RotateAltimetersToStandardCoreAsync(
         SimConnect.SimConnectManager simConnect, Task? running, Func<bool> attached)
     {
         try
@@ -6576,11 +6595,15 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             }
             if (!EventIds.TryGetValue("EVT_EFIS_CPT_BARO", out int captEv) ||
                 !EventIds.TryGetValue("EVT_EFIS_FO_BARO", out int foEv))
-                return;
+                return false;
 
-            if (!attached()) return;
-            if (await RotateKnobToStandardAsync(simConnect, (uint)captEv, "EFIS_BaroSelHPA_0"))
+            if (!attached()) return false;
+            bool alreadyStandard = simConnect.GetCachedVariableValue("ALTIMETER_SETTING") is double before
+                && IsStandardPressure(before);
+            bool rotated = await RotateKnobToStandardAsync(simConnect, (uint)captEv, "EFIS_BaroSelHPA_0");
+            if (rotated)
                 s_baroRotatedToStd = true;
+            bool captainStandard = rotated || alreadyStandard;
 
             // The stock KOHLSMAN indexes read as ONE ganged value on the NG3 (live-probed: the FO
             // knob moved KOHLSMAN:1 and :2 together; there is no per-side readback). So the FO knob
@@ -6589,8 +6612,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // if a per-side topology ever surfaces, the captain's altimeter, the one every MSFSBA
             // readout uses, is still on standard.
             await Task.Delay(BaroSettleMs);
-            if (!attached()) return;
+            if (!attached()) return captainStandard;
             await RotateKnobToStandardAsync(simConnect, (uint)foEv, "EFIS_BaroSelHPA_1");
+            return captainStandard;
         }
         finally { s_baroOpEndedUtc = DateTime.UtcNow; }
     }

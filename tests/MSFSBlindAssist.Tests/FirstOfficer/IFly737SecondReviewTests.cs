@@ -191,11 +191,20 @@ public class IFly737SecondReviewTests
     public void Shutdown_waits_for_power_before_the_transfer_and_stops_when_none_comes()
     {
         var steps = IFly737FlowDefinitions.Build().Single(f => f.Id == "SHUTDOWN").Steps;
+        int onGround = steps.FindIndex(s => s.Id == "SD_ON_GROUND");
         int wait = steps.FindIndex(s => s.Id == "SD_POWER_WAIT");
         int apuGen = steps.FindIndex(s => s.Id == "SD_APUGEN");
+        int loadOff = steps.FindIndex(s => s.Id == "SD_LOAD_OFF_ENGINES");
         int levers = steps.FindIndex(s => s.Id == "SD_LEVERS");
 
-        Assert.Equal(new[] { 0, 1, 2 }, new[] { wait, apuGen, levers });
+        // Never airborne first (2026-10-19); the transfer is verified before the cut, and a
+        // transfer that did not take stops the flow there.
+        Assert.Equal(new[] { 0, 1, 2, 3, 4 }, new[] { onGround, wait, apuGen, loadOff, levers });
+        Assert.Equal(FlowStepFailurePolicy.Stop, steps[onGround].FailurePolicy);
+        Assert.Equal(IFly737StateEvaluator.OnGroundField, steps[onGround].ConditionFieldName);
+        Assert.Equal(FlowStepFailurePolicy.Stop, steps[loadOff].FailurePolicy);
+        Assert.Equal(IFly737StateEvaluator.LoadOffEnginesField, steps[loadOff].ConditionFieldName);
+        Assert.Empty(steps[loadOff].LinkedChecklistItemIds);
         var w = steps[wait];
         Assert.Equal(FlowStepActionType.WaitForCondition, w.ActionType);
         Assert.Equal(IFly737StateEvaluator.ShutdownPowerField, w.ConditionFieldName);
@@ -547,7 +556,7 @@ public class IFly737SecondReviewFlowTests
 /// for the aircraft, so a press changes no light and the guard reads the lights as they were.</summary>
 public class IFly737ShutdownPowerFlowTests
 {
-    private static readonly string[] Head = { "SD_POWER_WAIT", "SD_APUGEN", "SD_LEVERS" };
+    private static readonly string[] Head = { "SD_POWER_WAIT", "SD_APUGEN", "SD_LOAD_OFF_ENGINES", "SD_LEVERS" };
 
     private static bool SentLevers(IFly737FlowRun.Result run) =>
         run.Sent.Any(s => s.Event.StartsWith("Engine_Start_Lever_Status", StringComparison.Ordinal));
@@ -556,9 +565,12 @@ public class IFly737ShutdownPowerFlowTests
         run.Sent.Any(s => s.Event.StartsWith("BTN_APU_GEN", StringComparison.Ordinal));
 
     [Fact]
-    public async Task An_apu_generator_press_that_did_not_take_leaves_the_engines_running()
+    public async Task An_apu_generator_press_that_did_not_take_stops_the_flow_with_the_engines_running()
     {
         // The APU generator waits off the buses, the engine generators carry them, levers at IDLE.
+        // The press changes no light here, so the transfer never takes: the flow STOPS at the
+        // transfer check (10 s) and never reaches the levers or the pumps after them (2026-10-19:
+        // a left-alone lever step let the rest of Shutdown switch the fuel and hydraulic pumps off).
         var state = IFly737SecondReviewTests.State(IFly737SecondReviewTests.Overhead(2, 0, 0, 3));
         var run = await IFly737FlowRun.RunAsync(state, new IFly737RecordingExecutor(), "SHUTDOWN", Head);
 
@@ -566,9 +578,8 @@ public class IFly737ShutdownPowerFlowTests
         Assert.Contains("Waiting for: APU generator or ground power", run.Speech);
         Assert.True(SentApuGen(run));
         Assert.False(SentLevers(run));
-        Assert.Contains("No APU generator or ground power on the buses, so the engines stay running.", run.Speech);
-        Assert.Equal(new[] { "SD_LEVERS" }, run.Skipped);
-        Assert.Equal(new[] { "SDC_LEVERS", "SD_LEVERS" }, run.Unfinished);
+        Assert.Contains(run.Speech, s => s.Contains("APU generator or ground power on the buses", StringComparison.Ordinal));
+        Assert.DoesNotContain("SD_LEVERS", run.Skipped);
     }
 
     [Fact]

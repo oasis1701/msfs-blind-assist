@@ -70,6 +70,11 @@ public static class FenixFlowDefinitions
         RelatedChecklistGroupIds = new[] { "ELEC_POWER_UP" },
         Steps = new()
         {
+            // A cold-and-dark flow: started with an engine turning (a runway or engines-running
+            // start, or the wrong flow picked in flight), the master checks below would shut the
+            // engines down and the gear check would lower the gear. Stop instead (the MD-11's
+            // PU_ENGINES_STOPPED).
+            EnginesStoppedGuard("EPU_ENGINES_STOPPED"),
             // Safety-check prefix (JD preliminary cockpit prep / FSFO phase 1): every step
             // skips quietly when already correct, so a warm start no-ops through them.
             Skip(SW("EPU_CHK_MASTER1", "Engine 1 master: OFF", "S_ENG_MASTER_1", 0),
@@ -93,9 +98,10 @@ public static class FenixFlowDefinitions
             Done(Skip(SW("EPU_BAT2", "Battery 2: ON", "S_OH_ELEC_BAT2", 1),
                 s => s.IsOn("S_OH_ELEC_BAT2")), "EPU_BAT2"),
             // Momentary pushbutton (pulse table). Harmless no-op if no ground power exists;
-            // skipped when already on the bus (blue ON light).
-            Done(Skip(SW("EPU_EXTPWR", "External power: ON", "S_OH_ELEC_EXT_PWR", 1),
-                s => s.IsOn("I_OH_ELEC_EXT_PWR_L")), "EPU_EXTPWR"),
+            // skipped when already on the bus (blue ON light), left alone while that light is
+            // unread (a toggle: the pulse would take external power OFF the bus).
+            UnreadToggle(Done(Skip(SW("EPU_EXTPWR", "External power: ON", "S_OH_ELEC_EXT_PWR", 1),
+                s => s.IsOn("I_OH_ELEC_EXT_PWR_L")), "EPU_EXTPWR"), "I_OH_ELEC_EXT_PWR_L", "External power"),
             Done(Skip(SW("EPU_NAVLOGO", "Nav and logo lights: ON", "S_OH_EXT_LT_NAV_LOGO", 1),
                 s => s.GetValue("S_OH_EXT_LT_NAV_LOGO") > 0.5), "EPU_NAVLOGO"),
             // Cockpit lighting: bright for ground preparation (the A32NX's EPU_COCKPITLT point).
@@ -118,8 +124,8 @@ public static class FenixFlowDefinitions
             // Recorder: latching press with an ON light readback, then the CVR test
             // (held 3 s via the CVR_TEST pseudo-key — audible test tone, self-completing so
             // it never sticks in TEST).
-            Done(Skip(SW("PF_GNDCTL", "Recorder ground control: ON", "S_OH_RCRD_GND_CTL", 1),
-                s => s.IsOn("I_OH_RCRD_GND_CTL_L")), "PF_GNDCTL"),
+            UnreadToggle(Done(Skip(SW("PF_GNDCTL", "Recorder ground control: ON", "S_OH_RCRD_GND_CTL", 1),
+                s => s.IsOn("I_OH_RCRD_GND_CTL_L")), "PF_GNDCTL"), "I_OH_RCRD_GND_CTL_L", "Recorder ground control"),
             Done(SW("PF_CVR", "CVR test: listen for the test tone", "CVR_TEST", 1), "PF_CVR"),
             // ADIRS
             Done(Skip(Multi("PF_IRS", "IRS 1, 2 and 3: NAV",
@@ -230,9 +236,10 @@ public static class FenixFlowDefinitions
                 s => s.IsOn("S_OH_FUEL_LEFT_1") && s.IsOn("S_OH_FUEL_LEFT_2")
                      && s.IsOn("S_OH_FUEL_CENTER_1") && s.IsOn("S_OH_FUEL_CENTER_2")
                      && s.IsOn("S_OH_FUEL_RIGHT_1") && s.IsOn("S_OH_FUEL_RIGHT_2")), "BS_FUELPUMPS"),
-            // External power off (pulse toggles it off the bus); skip when not on the bus
-            Done(Skip(SW("BS_EXTPWR_OFF", "External power: OFF", "S_OH_ELEC_EXT_PWR", 1),
-                s => !s.IsOn("I_OH_ELEC_EXT_PWR_L")), "BS_EXTPWR_OFF"),
+            // External power off (pulse toggles it off the bus); skip when the ON light reads dark,
+            // left alone while it is unread: never "Already set" over a GPU still connected.
+            UnreadToggle(Done(Skip(SW("BS_EXTPWR_OFF", "External power: OFF", "S_OH_ELEC_EXT_PWR", 1),
+                s => s.IsPosition("I_OH_ELEC_EXT_PWR_L", 0)), "BS_EXTPWR_OFF"), "I_OH_ELEC_EXT_PWR_L", "External power"),
             Done(Skip(SW("BS_SEATBELTS", "Seatbelt signs: ON", "S_OH_SIGNS", 1),
                 s => s.IsOn("S_OH_SIGNS")), "BS_SEATBELTS"),
             // Completes the Before Start Checklist's "Beacon: ON" too (FO-6): the flow latches both
@@ -344,8 +351,8 @@ public static class FenixFlowDefinitions
             // Momentary button with a latched ON light — skip when already armed so the pulse can't
             // toggle it back off. Also the takeoff memo's "Autobrake: MAX" (FO-6): the flow latches
             // the Taxi Checklist too, so a failed press keeps that line open.
-            Also(Done(Skip(SW("TX_AUTOBRAKE", "Autobrake: MAX", "S_MIP_AUTOBRAKE_MAX", 1),
-                s => s.IsOn("I_MIP_AUTOBRAKE_MAX_L")), "TX_AUTOBRAKE"), "TXC_MEMO_AUTOBRK"),
+            UnreadToggle(Also(Done(Skip(SW("TX_AUTOBRAKE", "Autobrake: MAX", "S_MIP_AUTOBRAKE_MAX", 1),
+                s => s.IsOn("I_MIP_AUTOBRAKE_MAX_L")), "TX_AUTOBRAKE"), "TXC_MEMO_AUTOBRK"), "I_MIP_AUTOBRAKE_MAX_L", "Autobrake"),
             // "Radar and predictive windshear: ON and AUTO" (TXC_WXR) is true only with BOTH set, so
             // neither write completes it: the read-only TX_WXR_PWS_CHECK after them does (the
             // AL_WXR_PWS_CHECK shape: 5 s, skipped aloud on timeout, never writes).
@@ -468,10 +475,10 @@ public static class FenixFlowDefinitions
         {
             // LS actuator is the BASE var S_FCU_EFISn_LS (NOT "_PRESS" — writing the synthetic
             // panel key directly is a no-op; that was the "LS not on in approach" bug).
-            Done(Skip(SW("AP_LS1", "LS captain: ON", "S_FCU_EFIS1_LS", 1),
-                s => s.IsOn("I_FCU_EFIS1_LS")), "AP_LS1"),
-            Done(Skip(SW("AP_LS2", "LS first officer: ON", "S_FCU_EFIS2_LS", 1),
-                s => s.IsOn("I_FCU_EFIS2_LS")), "AP_LS2"),
+            UnreadToggle(Done(Skip(SW("AP_LS1", "LS captain: ON", "S_FCU_EFIS1_LS", 1),
+                s => s.IsOn("I_FCU_EFIS1_LS")), "AP_LS1"), "I_FCU_EFIS1_LS", "LS captain"),
+            UnreadToggle(Done(Skip(SW("AP_LS2", "LS first officer: ON", "S_FCU_EFIS2_LS", 1),
+                s => s.IsOn("I_FCU_EFIS2_LS")), "AP_LS2"), "I_FCU_EFIS2_LS", "LS first officer"),
             // Also the Approach Checklist's "Seat belts: ON" (FO-6): usually "Already set" after
             // Descent, and a write that fails keeps both lines out of the latch, following the switch.
             Also(Done(Skip(SW("AP_SEATBELTS", "Seat belts: ON", "S_OH_SIGNS", 1),
@@ -578,10 +585,21 @@ public static class FenixFlowDefinitions
         RelatedChecklistGroupIds = new[] { "SHUTDOWN" },
         Steps = new()
         {
+            // Started by mistake in flight, the masters below would shut the engines down and the
+            // fuel pumps go off: never airborne (the MD-11's SD_ON_GROUND).
+            OnGroundGuard("SD_ON_GROUND"),
             Done(Skip(SW("SD_PARKBRAKE", "Parking brake: ON", "S_MIP_PARKING_BRAKE", 1),
                 s => s.IsOn("S_MIP_PARKING_BRAKE")), "SD_PARKBRAKE"),
             Done(Skip(SW("SD_APUBLEED_ON", "APU bleed: ON", "S_OH_PNEUMATIC_APU_BLEED", 1),
                 s => s.IsOn("S_OH_PNEUMATIC_APU_BLEED")), "SD_APUBLEED_ON"),
+            // The masters take the engine generators off the buses, so the APU or external power
+            // must be able to carry them first: After Landing's APU wait only skips on a timeout,
+            // and without this the masters went off onto the batteries. Up to two minutes for an
+            // APU still starting, then the flow stops with the engines running (the MD-11's
+            // PK_POWER_SOURCE, the 737s' SD_POWER_WAIT). Passes at once with both masters off.
+            Skip(WaitForField("SD_POWER_SOURCE", "APU or external power available",
+                    FenixStateEvaluator.ApuOrExtPowerField, v => v > 0.5, 120, onTimeout: FlowStepFailurePolicy.Stop),
+                s => s.IsPosition("S_ENG_MASTER_1", 0) && s.IsPosition("S_ENG_MASTER_2", 0)),
             Done(Skip(SW("SD_ENG1_OFF", "Engine 1 master: OFF", "S_ENG_MASTER_1", 0),
                 s => s.IsPosition("S_ENG_MASTER_1", 0)), "SD_ENG1_OFF"),
             Done(Skip(SW("SD_ENG2_OFF", "Engine 2 master: OFF", "S_ENG_MASTER_2", 0),
@@ -593,11 +611,12 @@ public static class FenixFlowDefinitions
             Done(Skip(SW("SD_TCAS_STBY", "TCAS: STANDBY", "S_XPDR_MODE", 0),
                 s => s.IsPosition("S_XPDR_MODE", 0)), "SD_TCAS_STBY"),
             // LS pushbuttons OFF (pulse the BASE var S_FCU_EFISn_LS, mirrors approach AP_LSn
-            // inverted — pulse only when the indicator I_FCU_EFISn_LS reads on).
-            Done(Skip(SW("SD_LS1", "LS captain: OFF", "S_FCU_EFIS1_LS", 1),
-                s => !s.IsOn("I_FCU_EFIS1_LS")), "SD_LS1"),
-            Done(Skip(SW("SD_LS2", "LS first officer: OFF", "S_FCU_EFIS2_LS", 1),
-                s => !s.IsOn("I_FCU_EFIS2_LS")), "SD_LS2"),
+            // inverted — pulse only when the indicator I_FCU_EFISn_LS reads on; "Already set" only
+            // when it reads off, left alone while unread).
+            UnreadToggle(Done(Skip(SW("SD_LS1", "LS captain: OFF", "S_FCU_EFIS1_LS", 1),
+                s => s.IsPosition("I_FCU_EFIS1_LS", 0)), "SD_LS1"), "I_FCU_EFIS1_LS", "LS captain"),
+            UnreadToggle(Done(Skip(SW("SD_LS2", "LS first officer: OFF", "S_FCU_EFIS2_LS", 1),
+                s => s.IsPosition("I_FCU_EFIS2_LS", 0)), "SD_LS2"), "I_FCU_EFIS2_LS", "LS first officer"),
             Done(Skip(SW("SD_SEATBELTS_OFF", "Seatbelt signs: OFF", "S_OH_SIGNS", 0),
                 s => s.IsPosition("S_OH_SIGNS", 0)), "SD_SEATBELTS_OFF"),
             Done(Skip(SW("SD_BEACON_OFF", "Beacon: OFF", "S_OH_EXT_LT_BEACON", 0),
@@ -635,6 +654,8 @@ public static class FenixFlowDefinitions
         RelatedChecklistGroupIds = new[] { "SECURE", "SECURING_CL" },
         Steps = new()
         {
+            // The IRS and the batteries go off below: never airborne (the MD-11's SD_ON_GROUND).
+            OnGroundGuard("SC_ON_GROUND"),
             Done(Skip(Multi("SC_ADIRS", "IRS 1, 2 and 3: OFF",
                     ("S_OH_NAV_IR1_MODE", 0), ("S_OH_NAV_IR2_MODE", 0), ("S_OH_NAV_IR3_MODE", 0)),
                 s => s.IsPosition("S_OH_NAV_IR1_MODE", 0) && s.IsPosition("S_OH_NAV_IR2_MODE", 0)
@@ -657,10 +678,10 @@ public static class FenixFlowDefinitions
             // APU master this run switched off (FOA-10).
             OnlyIfSent(Wait("SC_APU_WAIT", "APU flap to close", 120), "SC_APUMASTER"),
             // A toggle pushbutton: press only while the ON light reads lit (a press while it is
-            // already off would turn it back ON). Skipping on an UNREAD light is the safe direction
-            // for a toggle, so unlike the FBW jets' absolute OFF write this keeps !IsOn.
-            Done(Skip(SW("SC_EXTPWR_OFF", "External power: OFF", "S_OH_ELEC_EXT_PWR", 1),
-                s => !s.IsOn("I_OH_ELEC_EXT_PWR_L")), "SC_EXTPWR_OFF"),
+            // already off would turn it back ON). "Already set" only on a light read dark; an UNREAD
+            // light is left alone, never pressed and never claimed set.
+            UnreadToggle(Done(Skip(SW("SC_EXTPWR_OFF", "External power: OFF", "S_OH_ELEC_EXT_PWR", 1),
+                s => s.IsPosition("I_OH_ELEC_EXT_PWR_L", 0)), "SC_EXTPWR_OFF"), "I_OH_ELEC_EXT_PWR_L", "External power"),
             Also(Done(Skip(SW("SC_BAT1", "Battery 1: OFF", "S_OH_ELEC_BAT1", 0),
                 s => s.IsPosition("S_OH_ELEC_BAT1", 0)), "SC_BAT1"), "SCC_BAT"),
             Also(Done(Skip(SW("SC_BAT2", "Battery 2: OFF", "S_OH_ELEC_BAT2", 0),
@@ -770,4 +791,21 @@ public static class FenixFlowDefinitions
         step.LeaveAloneText = text;
         return step;
     }
+
+    // A pulse toggle whose light has not been read yet: nothing is sent (a press could turn it the
+    // wrong way), nothing is claimed "Already set", and its lines stay open.
+    private static Step UnreadToggle(Step step, string light, string name) =>
+        LeaveAlone(step, s => double.IsNaN(s.GetValue(light)), UnreadToggleText(name));
+
+    internal static string UnreadToggleText(string name) => $"{name} left as it is: its light has not been read yet.";
+
+    // Stops a cold-and-dark flow unless both engines read stopped (FO_ENGINES_OFF, NaN until the
+    // N2 answers are in, so unread fails the guard): the MD-11's EnginesStoppedGuard.
+    private static Step EnginesStoppedGuard(string id) =>
+        WaitForField(id, "Engines stopped", "FO_ENGINES_OFF", v => v > 0.5, 5, onTimeout: FlowStepFailurePolicy.Stop);
+
+    // Stops a flow that switches engines, IRS or batteries off unless the aircraft reads on the
+    // ground (the stock SIM_ON_GROUND; unread fails the guard).
+    private static Step OnGroundGuard(string id) =>
+        WaitForField(id, "On the ground", "SIM_ON_GROUND", v => v > 0.5, 5, onTimeout: FlowStepFailurePolicy.Stop);
 }

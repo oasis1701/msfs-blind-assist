@@ -246,8 +246,9 @@ public static class IFly737ChecklistDefinitions
         {
             Reminder("BS_MCP", "BEFORE_START", "Set MCP airspeed, heading and initial altitude"),
             // APU_Switch_Status: 0 Off/1 On/2 Start — StartApuAsync dwells at ON then presses
-            // START; writing START directly never spools the APU up.
-            AutoAsync("BS_APU", "BEFORE_START", "APU: ON line", "APU_Switch_Status", v => v > 0.5,
+            // START; writing START directly never spools the APU up. Detected on the APU being on
+            // line (FO_APU_ON), never the switch alone, which ticked at ON with the APU not started.
+            AutoAsync("BS_APU", "BEFORE_START", "APU: ON line", IFly737StateEvaluator.ApuOnField, v => v > 0.5,
                 (e, _) => e.StartApuAsync()),
             // APU generator switches are stateless momentary click pairs — action-only, like
             // the PMDG's own APU-gen item (which has no state detection either).
@@ -288,13 +289,18 @@ public static class IFly737ChecklistDefinitions
             AutoLatch("ES_E2_GRD", "ENGINE_START", "Engine 2 start switch: GRD",
                 "FO_ENG2_N2", v => v >= IFly737StateEvaluator.EngineRunningN2,
                 (e, _) => e.SetEngStartSelector2(IFly737ActionExecutor.EngStartGround)),
-            Auto("ES_E2_RUN", "ENGINE_START", "Engine 2 start lever: IDLE (at 25 percent N2)",
+            // The MAX's start lever goes to IDLE once motoring is done (owner, 2026-10-19), not at a
+            // fixed 25 % N2: a tick while the engine's bowed rotor motoring reads active is refused
+            // with its reason and moves nothing (the flow's fuel wait, StartWaitDone).
+            LeaveAlone(Auto("ES_E2_RUN", "ENGINE_START", "Engine 2 start lever: IDLE (when motoring is done)",
                 "Engine_Start_Lever_Status_1", v => v >= 3, (e, _) => e.SetFuelControl2(1)),
+                s => s.IsBowedRotorMotoring(2), StillMotoringText(2)),
             AutoLatch("ES_E1_GRD", "ENGINE_START", "Engine 1 start switch: GRD",
                 "FO_ENG1_N2", v => v >= IFly737StateEvaluator.EngineRunningN2,
                 (e, _) => e.SetEngStartSelector1(IFly737ActionExecutor.EngStartGround)),
-            Auto("ES_E1_RUN", "ENGINE_START", "Engine 1 start lever: IDLE (at 25 percent N2)",
+            LeaveAlone(Auto("ES_E1_RUN", "ENGINE_START", "Engine 1 start lever: IDLE (when motoring is done)",
                 "Engine_Start_Lever_Status_0", v => v >= 3, (e, _) => e.SetFuelControl1(1)),
+                s => s.IsBowedRotorMotoring(1), StillMotoringText(1)),
         }
     };
 
@@ -459,7 +465,7 @@ public static class IFly737ChecklistDefinitions
             // No OFF position on this switch — AUTO is the resting position (see PF_PROBE_OFF).
             Auto("AL_PROBE", "AFTER_LANDING", "Probe heat: AUTO", "Probe_Heat_Switch_1_Status", v => v < 0.5,
                 new[] { "Probe_Heat_Switch_2_Status" }, (e, _) => e.SetProbeHeat(IFly737ActionExecutor.ProbeHeatAuto)),
-            AutoAsync("AL_APU", "AFTER_LANDING", "APU: ON line", "APU_Switch_Status", v => v > 0.5,
+            AutoAsync("AL_APU", "AFTER_LANDING", "APU: ON line", IFly737StateEvaluator.ApuOnField, v => v > 0.5,
                 (e, _) => e.StartApuAsync()),
             Auto("AL_START_OFF", "AFTER_LANDING", "Engine start switches: OFF", "Engine_Start_Switch_Status_0",
                 v => v > 0.5 && v < 1.5, new[] { "Engine_Start_Switch_Status_1" },
@@ -484,8 +490,12 @@ public static class IFly737ChecklistDefinitions
             // Engine_Start_Lever_Status_{0,1} < 3 = Cutoff (0-2 composite range) — reads the
             // lever position directly rather than a separate valve-closed annunciator (the
             // PMDG NG3 struct has no lever-position field, only the annunciator).
-            Auto("SD_LEVERS", "SHUTDOWN", "Engine start levers: CUTOFF", "Engine_Start_Lever_Status_0", v => v < 3,
+            // A tick cuts the engines only on the ground with the buses already off the engine
+            // generators (the flow's SD_ON_GROUND and SD_LOAD_OFF_ENGINES): before, a tick with the
+            // APU not yet carrying the buses cut both engines and left the aircraft on the battery.
+            LeaveAlone(Auto("SD_LEVERS", "SHUTDOWN", "Engine start levers: CUTOFF", "Engine_Start_Lever_Status_0", v => v < 3,
                 new[] { "Engine_Start_Lever_Status_1" }, (e, _) => { e.SetFuelControl1(0); e.SetFuelControl2(0); }),
+                s => s.OnGround != true || !s.AreBusesOffEngineGenerators(), LeversStayText),
             Auto("SD_BELTS", "SHUTDOWN", "Seatbelt signs: OFF", "Fasten_Belts_Switch_Status", v => v < 0.5,
                 (e, _) => e.SetSeatBelts(IFly737ActionExecutor.SignOff)),
             Auto("SD_TURNOFF", "SHUTDOWN", "Runway turnoff lights: OFF", "Runway_Turnoff_Light_1_Switch_Status",
@@ -559,8 +569,10 @@ public static class IFly737ChecklistDefinitions
         Id = "ELEC_POWER_DOWN", Name = "Electrical Power Down",
         Items = new()
         {
-            Auto("EPD_BAT", "ELEC_POWER_DOWN", "Battery: OFF", "Battery_Switch_Mode", v => v < 1.5,
+            // Never with an engine turning, the Secure flow's SE_BAT_OFF rule (FOB-22).
+            LeaveAlone(Auto("EPD_BAT", "ELEC_POWER_DOWN", "Battery: OFF", "Battery_Switch_Mode", v => v < 1.5,
                 (e, _) => e.SetBattery(false)),
+                s => !IFly737FlowDefinitions.EnginesStopped(s), BatteryStaysText),
         }
     };
 
@@ -882,4 +894,12 @@ public static class IFly737ChecklistDefinitions
         item.LeaveAloneText = text;
         return item;
     }
+
+    internal static string StillMotoringText(int engine) =>
+        $"Engine {engine} is still motoring, so its start lever stays at cutoff.";
+
+    internal const string LeversStayText =
+        "Start levers left at idle: not on the ground, or the engine generators still carry the buses.";
+
+    internal const string BatteryStaysText = "Engines running, so the battery stays on.";
 }

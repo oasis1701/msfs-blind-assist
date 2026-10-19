@@ -858,6 +858,9 @@ public partial class SimConnectManager
         lastVariableValues.Clear();
         unchangedDeliveryLogged.Clear();
         lock (forceUpdateVariables) { forceUpdateVariables.Clear(); }
+        // A cache-only poll never answered must not suppress the next aircraft's delivery of a key
+        // the two share (A32NX_* keys sit on several aircraft).
+        _cacheOnlyPolls.Clear();
         _freshReads.FailAll();
         FailCameraViewRead();
 

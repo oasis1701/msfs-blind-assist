@@ -64,10 +64,10 @@ public static class FenixChecklistDefinitions
                 (e, _) => e.Set("S_OH_ELEC_BAT2", 1)),
             // Momentary pushbutton; the blue ON light is the readable on-bus state.
             // Guarded: a retick while already on-bus must not re-pulse (that would
-            // disconnect external power) — act only when the light disagrees.
+            // disconnect external power) — act only when the light READS off; unread, nothing.
             Auto("EPU_EXTPWR", "ELEC_POWER_UP", "External power: ON (if available)",
                 "I_OH_ELEC_EXT_PWR_L", v => v > 0.5,
-                (e, s) => s.IsOn("I_OH_ELEC_EXT_PWR_L") ? Task.CompletedTask : e.Pulse("S_OH_ELEC_EXT_PWR")),
+                (e, s) => PulseWhenOff(e, s, "I_OH_ELEC_EXT_PWR_L", "S_OH_ELEC_EXT_PWR")),
             Auto("EPU_NAVLOGO", "ELEC_POWER_UP", "Nav and logo lights: ON",
                 "S_OH_EXT_LT_NAV_LOGO", v => v > 0.5,
                 (e, _) => e.Set("S_OH_EXT_LT_NAV_LOGO", 1)),
@@ -88,10 +88,10 @@ public static class FenixChecklistDefinitions
         Id = "PREFLIGHT", Name = "Preflight",
         Items = new()
         {
-            // Guarded: momentary pulse on a latching light — act only when off.
+            // Guarded: momentary pulse on a latching light — act only when it reads off.
             Auto("PF_GNDCTL", "PREFLIGHT", "Recorder ground control: ON",
                 "I_OH_RCRD_GND_CTL_L", v => v > 0.5,
-                (e, s) => s.IsOn("I_OH_RCRD_GND_CTL_L") ? Task.CompletedTask : e.Pulse("S_OH_RCRD_GND_CTL")),
+                (e, s) => PulseWhenOff(e, s, "I_OH_RCRD_GND_CTL_L", "S_OH_RCRD_GND_CTL")),
             // Held 3 s test (like the fire tests) — ticking runs a self-completing test and
             // the switch returns to NORMAL, so it never sticks in TEST.
             ActionManual("PF_CVR", "PREFLIGHT", "CVR test: listen for the test tone",
@@ -288,11 +288,11 @@ public static class FenixChecklistDefinitions
         Id = "TAXI", Name = "Taxi",
         Items = new()
         {
-            // Guarded: momentary pulse on a latching light — act only when not armed
-            // (mirrors the TX_AUTOBRAKE flow step's own skip guard).
+            // Guarded: momentary pulse on a latching light — act only when it reads not armed
+            // (mirrors the TX_AUTOBRAKE flow step's own skip and unread guards).
             Auto("TX_AUTOBRAKE", "TAXI", "Autobrake: MAX",
                 "I_MIP_AUTOBRAKE_MAX_L", v => v > 0.5,
-                (e, s) => s.IsOn("I_MIP_AUTOBRAKE_MAX_L") ? Task.CompletedTask : e.Pulse("S_MIP_AUTOBRAKE_MAX")),
+                (e, s) => PulseWhenOff(e, s, "I_MIP_AUTOBRAKE_MAX_L", "S_MIP_AUTOBRAKE_MAX")),
             Auto("TX_WXR", "TAXI", "Weather radar: SYSTEM 1",                          // [RADAR]
                 "S_WR_SYS", v => v < 0.5, (e, _) => e.Set("S_WR_SYS", 0)),             // [RADAR]
             Auto("TX_PWS", "TAXI", "Predictive windshear: AUTO",                        // [RADAR]
@@ -372,16 +372,16 @@ public static class FenixChecklistDefinitions
         Id = "APPROACH", Name = "Approach",
         Items = new()
         {
-            // Guarded: momentary pulse on a latching light — act only when not lit
-            // (a retick on an already-lit side must not turn LS back off).
+            // Guarded: momentary pulse on a latching light — act only when it reads dark
+            // (a retick on an already-lit or unread side must not turn LS back off).
             // LS actuator is the BASE var S_FCU_EFISn_LS (NOT "_PRESS" — that synthetic panel
             // key is a no-op when written directly; see FenixActionExecutor).
             Auto("AP_LS1", "APPROACH", "LS captain: ON",
                 "I_FCU_EFIS1_LS", v => v > 0.5,
-                (e, s) => s.IsOn("I_FCU_EFIS1_LS") ? Task.CompletedTask : e.Pulse("S_FCU_EFIS1_LS")),
+                (e, s) => PulseWhenOff(e, s, "I_FCU_EFIS1_LS", "S_FCU_EFIS1_LS")),
             Auto("AP_LS2", "APPROACH", "LS first officer: ON",
                 "I_FCU_EFIS2_LS", v => v > 0.5,
-                (e, s) => s.IsOn("I_FCU_EFIS2_LS") ? Task.CompletedTask : e.Pulse("S_FCU_EFIS2_LS")),
+                (e, s) => PulseWhenOff(e, s, "I_FCU_EFIS2_LS", "S_FCU_EFIS2_LS")),
             // The Approach flow's seat-belt step.
             Auto("AP_SEATBELTS", "APPROACH", "Seat belts: ON",
                 "S_OH_SIGNS", v => v > 0.5, (e, _) => e.Set("S_OH_SIGNS", 1)),
@@ -454,10 +454,14 @@ public static class FenixChecklistDefinitions
                 "S_MIP_PARKING_BRAKE", v => v > 0.5, (e, _) => e.Set("S_MIP_PARKING_BRAKE", 1)),
             Auto("SD_APUBLEED_ON", "SHUTDOWN", "APU bleed: ON",
                 "S_OH_PNEUMATIC_APU_BLEED", v => v > 0.5, (e, _) => e.Set("S_OH_PNEUMATIC_APU_BLEED", 1)),
-            Auto("SD_ENG1_OFF", "SHUTDOWN", "Engine 1 master: OFF",
+            // A tick shuts the engine down only on the ground with the APU or external power able to
+            // carry the buses, the Shutdown flow's own guards (SD_ON_GROUND, SD_POWER_SOURCE).
+            LeaveAlone(Auto("SD_ENG1_OFF", "SHUTDOWN", "Engine 1 master: OFF",
                 "S_ENG_MASTER_1", v => v < 0.5, (e, _) => e.Set("S_ENG_MASTER_1", 0)),
-            Auto("SD_ENG2_OFF", "SHUTDOWN", "Engine 2 master: OFF",
+                NoSafeEngineCut, EnginesStayText),
+            LeaveAlone(Auto("SD_ENG2_OFF", "SHUTDOWN", "Engine 2 master: OFF",
                 "S_ENG_MASTER_2", v => v < 0.5, (e, _) => e.Set("S_ENG_MASTER_2", 0)),
+                NoSafeEngineCut, EnginesStayText),
             // Transponder/TCAS to STANDBY here (moved from After Landing).
             Auto("SD_XPDR_STBY", "SHUTDOWN", "Transponder: STANDBY",
                 "S_XPDR_OPERATION", v => v < 0.5, (e, _) => e.Set("S_XPDR_OPERATION", 0)),
@@ -512,7 +516,8 @@ public static class FenixChecklistDefinitions
         Id = "SECURE", Name = "Securing",
         Items = new()
         {
-            Auto("SC_ADIRS", "SECURE", "IRS 1, 2 and 3: OFF",
+            // Never airborne (the Securing flow's SC_ON_GROUND).
+            LeaveAlone(Auto("SC_ADIRS", "SECURE", "IRS 1, 2 and 3: OFF",
                 "S_OH_NAV_IR1_MODE", v => v < 0.5, new[] { "S_OH_NAV_IR2_MODE", "S_OH_NAV_IR3_MODE" },
                 async (e, _) =>
                 {
@@ -520,6 +525,7 @@ public static class FenixChecklistDefinitions
                     await e.Set("S_OH_NAV_IR2_MODE", 0);
                     await e.Set("S_OH_NAV_IR3_MODE", 0);
                 }),
+                s => !s.IsPosition("SIM_ON_GROUND", 1), IrsStayText),
             Auto("SC_OXY", "SECURE", "Crew oxygen supply: OFF",
                 "S_OH_OXYGEN_CREW_OXYGEN", v => v < 0.5, (e, _) => e.Set("S_OH_OXYGEN_CREW_OXYGEN", 0)),
             Auto("SC_EMEREXIT", "SECURE", "Emergency exit lights: OFF",
@@ -800,4 +806,20 @@ public static class FenixChecklistDefinitions
         item.LeaveAloneText = text;
         return item;
     }
+
+    // A pulse toggle aimed ON, pressed only over a light READ dark: lit is already done, and an
+    // unread light is never pressed (the press could turn it OFF). The tick then un-ticks with
+    // "Unable to complete" unless the light comes on within the grace (FO-9).
+    private static Task PulseWhenOff(FenixActionExecutor e, FenixStateEvaluator s, string light, string button)
+        => s.IsPosition(light, 0) ? e.Pulse(button) : Task.CompletedTask;
+
+    // An engine master goes OFF on a tick only on the ground with the APU or external power read
+    // available; airborne, or either unread, the engines stay running.
+    private static bool NoSafeEngineCut(FenixStateEvaluator s) =>
+        !s.IsPosition("SIM_ON_GROUND", 1) || !s.IsOn(FenixStateEvaluator.ApuOrExtPowerField);
+
+    internal const string EnginesStayText =
+        "Engines left running: not on the ground, or no APU or external power to take the buses.";
+
+    internal const string IrsStayText = "IRS left on: the aircraft is not on the ground.";
 }

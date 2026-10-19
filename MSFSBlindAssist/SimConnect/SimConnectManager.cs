@@ -1433,6 +1433,8 @@ public partial class SimConnectManager
         // The Frame subscription died with the handle; the consumer count survives so a reconnect re-arms it.
         _frameEventSubscribed = false;
         lock (forceUpdateVariables) { forceUpdateVariables.Clear(); }
+        // A cache-only poll the dead connection never answered must not suppress a delivery on the next.
+        _cacheOnlyPolls.Clear();
         _freshReads.FailAll();
         FailCameraViewRead();
         ecamStringData.Clear();

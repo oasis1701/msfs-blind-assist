@@ -55,6 +55,10 @@ public static class PMDG777FlowDefinitions
         RelatedChecklistGroupIds = new[] { "ELEC_POWER_UP" },
         Steps = new()
         {
+            // A cold-and-dark flow: started with an engine turning (an engines-running start, or
+            // the wrong flow picked in flight), EPU_GEAR_DOWN would lower the gear. Stop instead
+            // (the MD-11's PU_ENGINES_STOPPED).
+            EnginesStoppedGuard("EPU_ENGINES_STOPPED"),
             // CompletesChecklistItemId must be the ITEM id ("EPU_BATTERY") — the old
             // "ELEC_POWER_UP_BATTERY" matched nothing and MarkComplete silently no-op'd.
             Skip(SW("EPU_BATTERY",     "Battery: ON",             "EVT_OH_ELEC_BATTERY_SWITCH",         1, "ELEC_Battery_Sw_ON",       v => v > 0.5, "EPU_BATTERY"),
@@ -137,6 +141,10 @@ public static class PMDG777FlowDefinitions
         RelatedChecklistGroupIds = new[] { "PREFLIGHT" },
         Steps = new()
         {
+            // A cold-and-dark flow: started with an engine turning (an engines-running start, or
+            // the wrong flow picked in flight), CP_FUEL_CTRL below cut both fuel controls and shut
+            // the engines down. Stop instead (the MD-11's PU_ENGINES_STOPPED). Links no line.
+            EnginesStoppedGuard("CP_ENGINES_STOPPED"),
             // Read-only, never writes: the five Preflight lines the Electrical Power Up flow set
             // (battery, ADIRU, demand pumps OFF, nav lights, gear lever DOWN) had no step here, so
             // a finished run latched them over whatever the switches read (FO-7). One check on
@@ -836,6 +844,9 @@ public static class PMDG777FlowDefinitions
         RelatedChecklistGroupIds = new[] { "SHUTDOWN", "SHUTDOWN_CL" },
         Steps = new()
         {
+            // Started by mistake in flight, SD_FC_CUTOFF below shut both engines down: never
+            // airborne (the MD-11's SD_ON_GROUND).
+            OnGroundGuard("SD_ON_GROUND"),
             // No "Storm lights: ON" step: PMDG's Shutdown Procedure has none (removed 2026-10-09,
             // FOB-4).
 
@@ -902,6 +913,8 @@ public static class PMDG777FlowDefinitions
         RelatedChecklistGroupIds = new[] { "SECURE", "SECURE_CL", "ELEC_POWER_DOWN" },
         Steps = new()
         {
+            // The ADIRU and the battery go off below: never airborne (the MD-11's SD_ON_GROUND).
+            OnGroundGuard("SEC_ON_GROUND"),
             Also(Skip(SW("SEC_ADIRU_OFF", "ADIRU: OFF",           "EVT_OH_ADIRU_SWITCH",         0,
                "ADIRU_Sw_On", v => v < 0.5, "SEC_ADIRU"),
                 s => s.IsOff("ADIRU_Sw_On")), "SECCL_ADIRU"),
@@ -953,6 +966,18 @@ public static class PMDG777FlowDefinitions
         double eng1 = s.GetValue("FO_ENG1_N2"), eng2 = s.GetValue("FO_ENG2_N2");
         return !double.IsNaN(eng1) && !double.IsNaN(eng2) && eng1 < 10 && eng2 < 10;
     }
+
+    // Stops a cold-and-dark flow unless both engines read stopped (the same test, through the
+    // evaluator's FO_ENGINES_STOPPED; unread fails the guard): the MD-11's EnginesStoppedGuard.
+    private static FlowStep<AircraftStateEvaluator> EnginesStoppedGuard(string id) =>
+        WaitForField(id, "Engines stopped", AircraftStateEvaluator.EnginesStoppedField, v => v > 0.5, 5,
+            onTimeout: FlowStepFailurePolicy.Stop);
+
+    // Stops a flow that cuts the engines or switches the ADIRU and battery off unless the aircraft
+    // reads on the ground (SIM ON GROUND; unread fails the guard).
+    private static FlowStep<AircraftStateEvaluator> OnGroundGuard(string id) =>
+        WaitForField(id, "On the ground", AircraftStateEvaluator.OnGroundField, v => v > 0.5, 5,
+            onTimeout: FlowStepFailurePolicy.Stop);
 
     // -----------------------------------------------------------------------
     // Step builder helpers

@@ -475,10 +475,12 @@ public static class FbwA320ChecklistDefinitions
                 v => v > 0.5, (e, _) => e.Set("A32NX_PARK_BRAKE_LEVER_POS", 1)),
             Auto("SD_APUBLEED_ON", "SHUTDOWN", "APU bleed: ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
                 v => v > 0.5, (e, _) => e.Set("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 1)),
-            Auto("SD_ENG1_OFF", "SHUTDOWN", "Engine 1 master: OFF", "ENGINE_1_MASTER",
-                v => v < 0.5, (e, _) => e.Set("ENGINE_1_MASTER", 0)),
-            Auto("SD_ENG2_OFF", "SHUTDOWN", "Engine 2 master: OFF", "ENGINE_2_MASTER",
-                v => v < 0.5, (e, _) => e.Set("ENGINE_2_MASTER", 0)),
+            // A tick shuts the engine down only on the ground with the APU or external power able to
+            // carry the buses, the Shutdown flow's own guards (SD_ON_GROUND, SD_POWER_SOURCE).
+            LeaveAlone(Auto("SD_ENG1_OFF", "SHUTDOWN", "Engine 1 master: OFF", "ENGINE_1_MASTER",
+                v => v < 0.5, (e, _) => e.Set("ENGINE_1_MASTER", 0)), NoSafeEngineCut, EnginesStayText),
+            LeaveAlone(Auto("SD_ENG2_OFF", "SHUTDOWN", "Engine 2 master: OFF", "ENGINE_2_MASTER",
+                v => v < 0.5, (e, _) => e.Set("ENGINE_2_MASTER", 0)), NoSafeEngineCut, EnginesStayText),
             // Transponder to standby at shutdown (moved from After Landing).
             Auto("SD_XPDR_STBY", "SHUTDOWN", "Transponder: STANDBY", "A32NX_TRANSPONDER_MODE",
                 v => v < 0.5, (e, _) => e.Set("A32NX_TRANSPONDER_MODE", 0)),
@@ -532,7 +534,8 @@ public static class FbwA320ChecklistDefinitions
         Id = "SECURE", Name = "Securing",
         Items = new()
         {
-            Auto("SC_ADIRS", "SECURE", "IRS 1, 2 and 3: OFF", "A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB",
+            // Never airborne (the Securing flow's SC_ON_GROUND).
+            LeaveAlone(Auto("SC_ADIRS", "SECURE", "IRS 1, 2 and 3: OFF", "A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB",
                 v => v < 0.5, new[] { "A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", "A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB" },
                 async (e, _) =>
                 {
@@ -540,6 +543,7 @@ public static class FbwA320ChecklistDefinitions
                     await e.Set("A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", 0);
                     await e.Set("A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB", 0);
                 }),
+                s => !s.IsPosition("SIM_ON_GROUND", 1), IrsStayText),
             // Crew oxygen OFF = 1 (inverted convention, see PF_OXY).
             Auto("SC_OXY", "SECURE", "Crew oxygen supply: OFF", "PUSH_OVHD_OXYGEN_CREW",
                 v => System.Math.Abs(v - 1) < 0.5, (e, _) => e.Set("PUSH_OVHD_OXYGEN_CREW", 1)),
@@ -811,4 +815,14 @@ public static class FbwA320ChecklistDefinitions
         item.LeaveAloneText = text;
         return item;
     }
+
+    // An engine master goes OFF on a tick only on the ground with the APU or external power read
+    // available; airborne, or either unread, the engines stay running (the Fenix's twin).
+    private static bool NoSafeEngineCut(FbwA320StateEvaluator s) =>
+        !s.IsPosition("SIM_ON_GROUND", 1) || !s.IsOn(FbwA320StateEvaluator.ApuOrExtPowerField);
+
+    internal const string EnginesStayText =
+        "Engines left running: not on the ground, or no APU or external power to take the buses.";
+
+    internal const string IrsStayText = "IRS left on: the aircraft is not on the ground.";
 }

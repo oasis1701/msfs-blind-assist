@@ -18,6 +18,10 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
     /// <summary>N2 percent at/above which an engine counts as running (CFM56 idle ≈ 58–60).</summary>
     public const double EngineRunningN2 = 55.0;
 
+    /// <summary>1 when the APU is available or external power is on the buses, 0 when both read
+    /// off, NaN while either is unread. Shutdown waits for it before the engine masters go off.</summary>
+    public const string ApuOrExtPowerField = "FO_APU_OR_EXT_POWER";
+
     private static readonly string[] PollFields =
     {
         // Electrical / APU
@@ -98,8 +102,16 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
                 return true;
             case "FO_ENG1_N2": value = Eng1N2; return true;
             case "FO_ENG2_N2": value = Eng2N2; return true;
+            // NaN until both N2 answers are in: unknown is never "engines off" (the power-up guard
+            // EPU_ENGINES_STOPPED and the Parking checklist's "Engines: OFF" read it).
             case "FO_ENGINES_OFF":
-                value = (Eng1N2 < 20 && Eng2N2 < 20) ? 1 : 0;
+                value = Both(Eng1N2, Eng2N2, (n1, n2) => n1 < 20 && n2 < 20);
+                return true;
+            // Something to carry the buses once the engine generators go (Shutdown's
+            // SD_POWER_SOURCE): the APU AVAIL legend or external power's ON legend lit. Either lit
+            // is enough; both dark is 0; anything unread is NaN.
+            case ApuOrExtPowerField:
+                value = AnyLit(GetValue(FenixActionExecutor.ApuAvailField), GetValue("I_OH_ELEC_EXT_PWR_L"));
                 return true;
             // "Landing gear: UP" — gear up, lights out (FenixGearConfirmation), never the
             // lever alone (owner decision 2026-09-22).

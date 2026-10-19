@@ -91,8 +91,11 @@ public static class Md11FoChecklistDefinitions
         Id = "POWER_UP", Name = "Power Up",
         Items = new()
         {
-            Auto("PU_FUEL_OFF", "POWER_UP", "Fuel switches: OFF", "FO_FUEL_SWITCHES_OFF", On,
+            // A cold-and-dark check: a tick cuts the fuel only with every engine read stopped (the
+            // flow's PU_ENGINES_STOPPED, added after the flow cut all three engines live).
+            LeaveAlone(Auto("PU_FUEL_OFF", "POWER_UP", "Fuel switches: OFF", "FO_FUEL_SWITCHES_OFF", On,
                 SetAll(("MD11_THR_L_FUEL_SW", 0), ("MD11_THR_C_FUEL_SW", 0), ("MD11_THR_R_FUEL_SW", 0))),
+                s => !s.IsOn("FO_ENGINES_STOPPED"), EnginesTurningText),
             Auto("PU_PARK", "POWER_UP", "Parking brake: SET", Park, On, Set(Park, 1)),
             Auto("PU_BATT", "POWER_UP", "Battery: ON", Batt, On, Set(Batt, 1)),
             Auto("PU_EXT_PWR", "POWER_UP", "External power: ON", "FO_EXT_POWER_ON", On, Set(X.ExtPower, 1)),
@@ -287,8 +290,11 @@ public static class Md11FoChecklistDefinitions
         Items = new()
         {
             Auto("PK_PARK", "PARKING", "Parking brake: SET", Park, On, Set(Park, 1)),
-            Auto("PK_FUEL", "PARKING", "Fuel switches: OFF", "FO_FUEL_SWITCHES_OFF", On,
+            // A tick cuts the fuel only on the ground with APU or external power on the busses, the
+            // Parking flow's own guards (PK_STOPPED, PK_POWER_SOURCE).
+            LeaveAlone(Auto("PK_FUEL", "PARKING", "Fuel switches: OFF", "FO_FUEL_SWITCHES_OFF", On,
                 SetAll(("MD11_THR_L_FUEL_SW", 0), ("MD11_THR_C_FUEL_SW", 0), ("MD11_THR_R_FUEL_SW", 0))),
+                s => !s.IsPosition("SIM_ON_GROUND", 1) || !s.IsOn("FO_APU_OR_EXT_POWER_ON"), EnginesStayText),
             Auto("PK_SEAT_BELTS", "PARKING", "Seat belt signs: OFF", SeatBelts, v => Is(v, 0), Set(SeatBelts, 0)),
             Auto("PK_ANTI_ICE", "PARKING", "Anti-ice: OFF", "FO_ANTI_ICE_OFF", On, Set(X.AntiIceOff, 0)),
             Auto("PK_IGNITION", "PARKING", "Engine ignition: OFF", "FO_IGNITION_OFF", On, Set(X.Ignition, 0)),
@@ -312,8 +318,10 @@ public static class Md11FoChecklistDefinitions
             Auto("SD_EMER_PWR", "SHUTDOWN", "Emergency power: OFF", EmerPwr, v => Is(v, 0), Set(EmerPwr, 0)),
             Auto("SD_WINDSHIELD", "SHUTDOWN", "Windshield anti-ice and defog: OFF", "FO_WINDSHIELD_OFF", On,
                 SetAll(("MD11_OVHD_WNDSHLD_AICE_L_BT", 0), ("MD11_OVHD_WNDSHLD_AICE_R_BT", 0), ("MD11_OVHD_WNDSHLD_AICE_DEFOG_BT", 1))),
-            Auto("SD_IRS", "SHUTDOWN", "IRS switches: OFF", "FO_IRS_OFF", On,
+            // Never airborne (the Shutdown flow's SD_ON_GROUND).
+            LeaveAlone(Auto("SD_IRS", "SHUTDOWN", "IRS switches: OFF", "FO_IRS_OFF", On,
                 SetAll(("MD11_OVHD_IRS_1_KB", 0), ("MD11_OVHD_IRS_2_KB", 0), ("MD11_OVHD_IRS_3_KB", 0))),
+                s => !s.IsPosition("SIM_ON_GROUND", 1), IrsStayText),
             Auto("SD_CARGO_TEMP", "SHUTDOWN", "Cargo temperatures: OFF", "FO_CARGO_TEMPS_OFF", On,
                 SetAll(("MD11_OVHD_PNEU_FWD_CARGO_TEMP", 0), ("MD11_OVHD_PNEU_AFT_CARGO_TEMP", 0))),
             Auto("SD_DOME", "SHUTDOWN", "Dome light: OFF", "FO_DOME_OFF", On, Set("MD11_OVHD_LTS_DOME_BT", 0)),
@@ -324,7 +332,10 @@ public static class Md11FoChecklistDefinitions
                 SetThenWait(X.ApuShutdown, 0, "FO_APU_OFF", On, 120)),
             // Ground power, when it was used: the Shutdown switch-off, which may leave the battery alone.
             Auto("SD_EXT_PWR", "SHUTDOWN", "External power: OFF", "FO_EXT_POWER_OFF", On, Set(X.ExtPowerShutdown, 0)),
-            Auto("SD_BATTERY", "SHUTDOWN", "Battery: OFF", Batt, Off, Set(Batt, 0)),
+            // Never airborne and never with an engine turning (the Shutdown flow's SD_ON_GROUND and
+            // SD_ENGINES_STOPPED).
+            LeaveAlone(Auto("SD_BATTERY", "SHUTDOWN", "Battery: OFF", Batt, Off, Set(Batt, 0)),
+                s => !s.IsPosition("SIM_ON_GROUND", 1) || !s.IsOn("FO_ENGINES_STOPPED"), BatteryStaysText),
         }
     };
 
@@ -612,4 +623,22 @@ public static class Md11FoChecklistDefinitions
         ManualCompletionAllowed = true,
         ReminderText = text,
     };
+
+    // A line whose hand-tick the First Officer refuses in the aircraft's current state
+    // (ChecklistItem.LeaveAloneWhen), speaking `text` instead: the guards the flows carry.
+    private static Item LeaveAlone(Item item, Func<Md11FoStateEvaluator, bool> when, string text)
+    {
+        item.LeaveAloneWhen = when;
+        item.LeaveAloneText = text;
+        return item;
+    }
+
+    internal const string EnginesTurningText = "Engines turning, so the fuel switches stay on.";
+
+    internal const string EnginesStayText =
+        "Fuel switches left on: not on the ground, or no APU or external power on the busses.";
+
+    internal const string IrsStayText = "IRS left on: the aircraft is not on the ground.";
+
+    internal const string BatteryStaysText = "Battery left on: not on the ground, or an engine is turning.";
 }

@@ -72,6 +72,12 @@ public static class FbwA380FlowDefinitions
         RelatedChecklistGroupIds = new[] { "COCKPIT_PREP_CL" },
         Steps = new()
         {
+            // A cold-and-dark flow: started with an engine turning (an engines-running start, or the
+            // wrong flow picked in flight), CP_MASTERS_OFF below shut all four engines down and
+            // CP_GEAR lowered the gear. Stop instead (the MD-11's PU_ENGINES_STOPPED): all four read
+            // Off in FlyByWire's own engine state, unread failing the guard.
+            WaitForField("CP_ENGINES_STOPPED", "Engines stopped", FbwA380StateEvaluator.EnginesStoppedField,
+                v => v > 0.5, 5, onTimeout: FlowStepFailurePolicy.Stop),
             Captain("CP_WIPERS", "Wipers off"),
             Done(Skip(SW("CP_GEAR", "Gear lever: DOWN", "A32NX_GEAR_HANDLE_POSITION", 1),
                 s => s.IsPosition("A32NX_GEAR_HANDLE_POSITION", 1)), "CP_GEAR"),
@@ -211,9 +217,10 @@ public static class FbwA380FlowDefinitions
                 onTimeout: FlowStepFailurePolicy.Stop),
             // Defensive: release the latched START PB (no repo evidence FBW auto-clears
             // it, and a stale latched 1 could surprise-start the APU on a later
-            // master-ON). Silently skipped when FBW already cleared it.
+            // master-ON). Skipped when FBW already cleared it; IsPosition(..., 0), never !IsOn(...):
+            // an unread switch must not skip an absolute OFF write.
             Skip(SW("BS_APU_START_OFF", "APU start button: released", "A32NX_OVHD_APU_START_PB_IS_ON", 0),
-                s => !s.IsOn("A32NX_OVHD_APU_START_PB_IS_ON")),
+                s => s.IsPosition("A32NX_OVHD_APU_START_PB_IS_ON", 0)),
             Done(Skip(SW("BS_APUBLEED", "APU bleed: ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 1),
                 s => s.IsOn("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON")), "BS_APUBLEED"),
             Done(Multi("BS_GPU_OFF", "Ground power: OFF",
@@ -289,7 +296,7 @@ public static class FbwA380FlowDefinitions
             // Release a still-latched START PB first — master-off must never coexist with
             // START=1 (a latched 1 would surprise-start the APU on the next master-ON).
             Skip(SW("AS_APU_START_OFF", "APU start button: released", "A32NX_OVHD_APU_START_PB_IS_ON", 0),
-                s => !s.IsOn("A32NX_OVHD_APU_START_PB_IS_ON")),
+                s => s.IsPosition("A32NX_OVHD_APU_START_PB_IS_ON", 0)),
             Done(Skip(SW("AS_APU_OFF", "APU: OFF", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0),
                 s => s.IsPosition("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0)), "AS_APU_OFF"),
             Done(Skip(SW("AS_APUBLEED_OFF", "APU bleed: OFF", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 0),
@@ -508,7 +515,7 @@ public static class FbwA380FlowDefinitions
             WaitForField("AL_APU_AVAIL", "Waiting for APU available",
                 "A32NX_OVHD_APU_START_PB_IS_AVAILABLE", v => v > 0.5, 180),
             Skip(SW("AL_APU_START_OFF", "APU start button: released", "A32NX_OVHD_APU_START_PB_IS_ON", 0),
-                s => !s.IsOn("A32NX_OVHD_APU_START_PB_IS_ON")),
+                s => s.IsPosition("A32NX_OVHD_APU_START_PB_IS_ON", 0)),
             Done(Multi("AL_ENGAI_OFF", "Engine anti-ice: OFF",
                 ("ENG1_ANTI_ICE", 0), ("ENG2_ANTI_ICE", 0), ("ENG3_ANTI_ICE", 0), ("ENG4_ANTI_ICE", 0)), "AL_ENGAI_OFF"),
             Done(Skip(SW("AL_WINGAI_OFF", "Wing anti-ice: OFF", "WING_ANTI_ICE_OVHD", 0),
@@ -534,9 +541,20 @@ public static class FbwA380FlowDefinitions
         RelatedChecklistGroupIds = new[] { "PARKING_CL" },
         Steps = new()
         {
+            // Started by mistake in flight, the masters below would shut all four engines down and
+            // the fuel pumps go off: never airborne (the MD-11's SD_ON_GROUND).
+            OnGroundGuard("PK_ON_GROUND"),
             Done(Skip(SW("PK_PARKBRK", "Parking brake: ON", "A32NX_PARK_BRAKE_LEVER_POS", 1),
                 s => s.IsOn("A32NX_PARK_BRAKE_LEVER_POS")), "PK_PARKBRK"),
             Done(Multi("PK_APU_GEN", "APU generators: ON", ("ELEC_APU_GEN:1", 1), ("ELEC_APU_GEN:2", 1)), "PK_APU_GEN"),
+            // The masters take the engine generators off the buses, so the APU or external power
+            // must be able to carry them first: After Landing's APU wait only skips on a timeout,
+            // and without this the masters went off onto the batteries. Up to two minutes for an
+            // APU still starting, then the flow stops with the engines running (the MD-11's
+            // PK_POWER_SOURCE). Passes at once with all four masters off.
+            Skip(WaitForField("PK_POWER_SOURCE", "APU or external power available",
+                    FbwA380StateEvaluator.ApuOrExtPowerField, v => v > 0.5, 120, onTimeout: FlowStepFailurePolicy.Stop),
+                s => s.IsOn("FO_ENGINES_OFF")),
             Done(Multi("PK_MASTERS_OFF", "Engine masters 1 to 4: OFF",
                 ("ENG_VALVE_SWITCH:1", 0), ("ENG_VALVE_SWITCH:2", 0),
                 ("ENG_VALVE_SWITCH:3", 0), ("ENG_VALVE_SWITCH:4", 0)), "PK_MASTERS_OFF"),
@@ -597,6 +615,8 @@ public static class FbwA380FlowDefinitions
         RelatedChecklistGroupIds = new[] { "SECURING_CL" },
         Steps = new()
         {
+            // The IRS and the batteries go off below: never airborne (the MD-11's SD_ON_GROUND).
+            OnGroundGuard("SC_ON_GROUND"),
             // Crew oxygen is INVERTED: 0 = Auto/on, 1 = Off. Cockpit Prep's CP_OXY writes 0.
             // Completes the Securing the Aircraft Checklist's "Oxygen: OFF" too (FO-6).
             Also(Done(Skip(SW("SC_OXY", "Crew oxygen supply: OFF", "PUSH_OVHD_OXYGEN_CREW", 1),
@@ -749,4 +769,9 @@ public static class FbwA380FlowDefinitions
     /// A32NX's own): a spoiler arm is left alone (FOA-11).</summary>
     internal static bool SpeedBrakeExtended(FbwA380StateEvaluator s) =>
         AirbusGroundSpoilers.FbwSpeedBrakeExtended(s.GetValue("A32NX_SPOILERS_HANDLE_POSITION"));
+
+    // Stops a flow that switches engines, IRS or batteries off unless the aircraft reads on the
+    // ground (the stock SIM_ON_GROUND; unread fails the guard): the MD-11's SD_ON_GROUND.
+    private static Step OnGroundGuard(string id) =>
+        WaitForField(id, "On the ground", "SIM_ON_GROUND", v => v > 0.5, 5, onTimeout: FlowStepFailurePolicy.Stop);
 }

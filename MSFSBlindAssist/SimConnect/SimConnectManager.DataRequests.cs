@@ -244,7 +244,14 @@ public partial class SimConnectManager
     /// <param name="varKey">The variable key to request</param>
     /// <param name="forceUpdate">If true, will always fire SimVarUpdated event even if value hasn't changed</param>
     public void RequestVariable(string varKey, bool forceUpdate = false)
-        => RequestVariable(varKey, forceUpdate, freshRequestId: null);
+    {
+        // Anyone else's read of a key with a cache-only poll in flight: the two answers come back
+        // under the one data-definition id and cannot be told apart, so the flag is dropped and
+        // the next answer is delivered as a normal one. Otherwise this caller's answer could be
+        // the one consumed as "cache-only" and swallowed when unchanged.
+        _cacheOnlyPolls.TryRemove(varKey, out _);
+        RequestVariable(varKey, forceUpdate, freshRequestId: null);
+    }
 
     /// <summary>
     /// A read that only keeps the cache current: the First Officer window's 1 Hz poll of its
@@ -256,8 +263,11 @@ public partial class SimConnectManager
     /// </summary>
     public void RequestVariableForCache(string varKey)
     {
+        // The private overload, never the public one, which drops this very flag (another caller's
+        // read in flight). Cleared on reconnect and re-registration, so an unanswered poll never
+        // outlives its connection or aircraft.
         if (variableDataDefinitions.ContainsKey(varKey)) _cacheOnlyPolls[varKey] = 0;
-        RequestVariable(varKey);
+        RequestVariable(varKey, forceUpdate: false, freshRequestId: null);
     }
 
     /// <summary>
@@ -477,15 +487,43 @@ public partial class SimConnectManager
     /// Request AGL altitude for the First Officer background timer.
     /// Fires SimVarUpdated with VarName "FO_ALTITUDE_AGL" — NOT announced by HandleSpecialAnnouncements.
     /// </summary>
-    public void RequestFOAltitudeAGL() =>
+    public void RequestFOAltitudeAGL()
+    {
+        if (CoalesceSampleRequest(ref _lastFoAglRequestMs)) return;
         RequestFoBackground(DATA_REQUESTS.REQUEST_FO_ALTITUDE_AGL, DATA_DEFINITIONS.DEF_FO_ALTITUDE_AGL, "FO altitude AGL");
+    }
+
+    // Aircraft position, AGL and IAS are asked for every second by BOTH the First Officer window
+    // and the universal automation, and each answer reaches every subscriber: a second request
+    // within SampleCoalesceMs of the last is dropped, its answer being the one about to arrive (or
+    // just arrived). Every requester polls at 1 s or slower, so none is starved. Racy by design
+    // and harmless: at worst two requests go out, as before.
+    internal const long SampleCoalesceMs = 900;
+    private long _lastPositionRequestMs = long.MinValue / 2;
+    private long _lastFoAglRequestMs = long.MinValue / 2;
+    private long _lastFoIasRequestMs = long.MinValue / 2;
+
+    private static bool CoalesceSampleRequest(ref long lastMs)
+    {
+        long now = Environment.TickCount64;
+        if (IsCoalesced(System.Threading.Volatile.Read(ref lastMs), now)) return true;
+        System.Threading.Volatile.Write(ref lastMs, now);
+        return false;
+    }
+
+    /// <summary>A request at <paramref name="nowMs"/> repeats the one at <paramref name="lastMs"/>
+    /// (pure, for the tests).</summary>
+    internal static bool IsCoalesced(long lastMs, long nowMs) => nowMs - lastMs < SampleCoalesceMs;
 
     /// <summary>
     /// Request indicated airspeed for the First Officer background timer.
     /// Fires SimVarUpdated with VarName "FO_AIRSPEED_IAS" — NOT announced by HandleSpecialAnnouncements.
     /// </summary>
-    public void RequestFOAirspeedIndicated() =>
+    public void RequestFOAirspeedIndicated()
+    {
+        if (CoalesceSampleRequest(ref _lastFoIasRequestMs)) return;
         RequestFoBackground(DATA_REQUESTS.REQUEST_FO_AIRSPEED_IAS, DATA_DEFINITIONS.DEF_FO_AIRSPEED_IAS, "FO airspeed IAS");
+    }
 
     /// <summary>
     /// Request every engine's N2 (1–3) for the First Officer background timer. The PMDG NG3 data
@@ -739,6 +777,9 @@ public partial class SimConnectManager
     public void RequestAircraftPosition()
     {
         if (!IsConnected) return;
+        // A repeat within SampleCoalesceMs is dropped (see CoalesceSampleRequest): the First
+        // Officer window and the universal automation both ask every second.
+        if (CoalesceSampleRequest(ref _lastPositionRequestMs)) return;
 
         try
         {

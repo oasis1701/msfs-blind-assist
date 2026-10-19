@@ -93,6 +93,10 @@ public static class FbwA320FlowDefinitions
         RelatedChecklistGroupIds = new[] { "ELEC_POWER_UP" },
         Steps = new()
         {
+            // A cold-and-dark flow: started with an engine turning (a runway or engines-running
+            // start, or the wrong flow picked in flight), the master checks below would shut the
+            // engines down. Stop instead (the MD-11's PU_ENGINES_STOPPED).
+            EnginesStoppedGuard("EPU_ENGINES_STOPPED"),
             // Safety-check prefix: every step skips quietly when already correct.
             Skip(SW("EPU_CHK_MASTER1", "Engine 1 master: OFF", "ENGINE_1_MASTER", 0),
                 s => s.IsPosition("ENGINE_1_MASTER", 0)),
@@ -241,8 +245,9 @@ public static class FbwA320FlowDefinitions
                 onTimeout: FlowStepFailurePolicy.Stop), "BS_APU"),
             // Defensive: release the latched START PB (mirrors the A380 flow's guard
             // against a stale 1 surprise-starting the APU on a later master-ON).
+            // IsPosition(..., 0), never !IsOn(...): an unread switch must not skip an absolute OFF write.
             Skip(SW("BS_APU_START_OFF", "APU start button: released", "A32NX_OVHD_APU_START_PB_IS_ON", 0),
-                s => !s.IsOn("A32NX_OVHD_APU_START_PB_IS_ON")),
+                s => s.IsPosition("A32NX_OVHD_APU_START_PB_IS_ON", 0)),
             Done(Skip(SW("BS_APUBLEED", "APU bleed: ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 1),
                 s => s.IsOn("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON")), "BS_APUBLEED"),
             // Fuel pumps immediately after the APU block (user decision, matches Fenix/FSFO)
@@ -253,9 +258,10 @@ public static class FbwA320FlowDefinitions
                 s => s.IsOn("FUEL_PUMP_L1") && s.IsOn("FUEL_PUMP_L2")
                      && s.IsOn("FUEL_PUMP_C1") && s.IsOn("FUEL_PUMP_C2")
                      && s.IsOn("FUEL_PUMP_R1") && s.IsOn("FUEL_PUMP_R2")), "BS_FUELPUMPS"),
-            // External power off; skip when not on the bus
+            // External power off; skip when it reads off. IsPosition(..., 0), never !IsOn(...): an
+            // unread switch was "Already set" and latched with the GPU still connected.
             Done(Skip(SW("BS_EXTPWR_OFF", "External power: OFF", "A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON", 0),
-                s => !s.IsOn("A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON")), "BS_EXTPWR_OFF"),
+                s => s.IsPosition("A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON", 0)), "BS_EXTPWR_OFF"),
             // Seatbelt signs: 2-position on the A320 (no AUTO, unlike the A380). Routed through
             // the SEATBELT_SIGN pseudo-key to FbwA320ActionExecutor.SetSeatbeltSign, the guarded
             // toggle. The bare CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE reaches no write branch, so
@@ -328,7 +334,7 @@ public static class FbwA320FlowDefinitions
             // Defensive: release a still-latched START PB before master-off (mirrors
             // Before Start / the A380 flow's guard).
             Skip(SW("AS_APU_START_OFF", "APU start button: released", "A32NX_OVHD_APU_START_PB_IS_ON", 0),
-                s => !s.IsOn("A32NX_OVHD_APU_START_PB_IS_ON")),
+                s => s.IsPosition("A32NX_OVHD_APU_START_PB_IS_ON", 0)),
             Done(Skip(SW("AS_APUMASTER_OFF", "APU master: OFF", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0),
                 s => s.IsPosition("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0)), "AS_APUMASTER_OFF"),
             // Ground spoilers arm: SPOILERS_ARM_TOGGLE is a genuine toggle event (no
@@ -588,7 +594,7 @@ public static class FbwA320FlowDefinitions
             Done(WaitForField("AL_APU_AVAIL", "Waiting for APU available",
                 "A32NX_OVHD_APU_START_PB_IS_AVAILABLE", v => v > 0.5, 180), "AL_APU"),
             Skip(SW("AL_APU_START_OFF", "APU start button: released", "A32NX_OVHD_APU_START_PB_IS_ON", 0),
-                s => !s.IsOn("A32NX_OVHD_APU_START_PB_IS_ON")),
+                s => s.IsPosition("A32NX_OVHD_APU_START_PB_IS_ON", 0)),
             Done(Skip(Multi("AL_ANTIICE_OFF", "Engine and wing anti-ice: OFF",
                     ("ENG_ANTI_ICE:1", 0), ("ENG_ANTI_ICE:2", 0), ("A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION", 0)),
                 s => s.IsPosition("ENG_ANTI_ICE:1", 0) && s.IsPosition("ENG_ANTI_ICE:2", 0)
@@ -606,10 +612,21 @@ public static class FbwA320FlowDefinitions
         RelatedChecklistGroupIds = new[] { "SHUTDOWN" },
         Steps = new()
         {
+            // Started by mistake in flight, the masters below would shut the engines down and the
+            // fuel pumps go off: never airborne (the MD-11's SD_ON_GROUND).
+            OnGroundGuard("SD_ON_GROUND"),
             Done(Skip(SW("SD_PARKBRAKE", "Parking brake: ON", "A32NX_PARK_BRAKE_LEVER_POS", 1),
                 s => s.IsOn("A32NX_PARK_BRAKE_LEVER_POS")), "SD_PARKBRAKE"),
             Done(Skip(SW("SD_APUBLEED_ON", "APU bleed: ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 1),
                 s => s.IsOn("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON")), "SD_APUBLEED_ON"),
+            // The masters take the engine generators off the buses, so the APU or external power
+            // must be able to carry them first: After Landing's APU wait only skips on a timeout,
+            // and without this the masters went off onto the batteries. Up to two minutes for an
+            // APU still starting, then the flow stops with the engines running (the MD-11's
+            // PK_POWER_SOURCE, the 737s' SD_POWER_WAIT). Passes at once with both masters off.
+            Skip(WaitForField("SD_POWER_SOURCE", "APU or external power available",
+                    FbwA320StateEvaluator.ApuOrExtPowerField, v => v > 0.5, 120, onTimeout: FlowStepFailurePolicy.Stop),
+                s => s.IsPosition("ENGINE_1_MASTER", 0) && s.IsPosition("ENGINE_2_MASTER", 0)),
             Done(Skip(SW("SD_ENG1_OFF", "Engine 1 master: OFF", "ENGINE_1_MASTER", 0),
                 s => s.IsPosition("ENGINE_1_MASTER", 0)), "SD_ENG1_OFF"),
             Done(Skip(SW("SD_ENG2_OFF", "Engine 2 master: OFF", "ENGINE_2_MASTER", 0),
@@ -621,13 +638,15 @@ public static class FbwA320FlowDefinitions
             Done(Skip(SW("SD_TCAS_STBY", "TCAS: STANDBY", "A32NX_SWITCH_TCAS_POSITION", 0),
                 s => s.IsPosition("A32NX_SWITCH_TCAS_POSITION", 0)), "SD_TCAS_STBY"),
             // LS pushbuttons off at shutdown (mirrors approach AP_LS1/AP_LS2, inverted to 0).
+            // IsPosition(..., 0), never !IsOn(...): an unread switch must not skip an absolute OFF write.
             Done(Skip(SW("SD_LS1", "LS captain: OFF", "A32NX_EFIS_L_LS_BUTTON_IS_ON", 0),
-                s => !s.IsOn("A32NX_EFIS_L_LS_BUTTON_IS_ON")), "SD_LS1"),
+                s => s.IsPosition("A32NX_EFIS_L_LS_BUTTON_IS_ON", 0)), "SD_LS1"),
             Done(Skip(SW("SD_LS2", "LS first officer: OFF", "A32NX_EFIS_R_LS_BUTTON_IS_ON", 0),
-                s => !s.IsOn("A32NX_EFIS_R_LS_BUTTON_IS_ON")), "SD_LS2"),
-            // SEATBELT_SIGN pseudo-key — see BS_SEATBELTS.
+                s => s.IsPosition("A32NX_EFIS_R_LS_BUTTON_IS_ON", 0)), "SD_LS2"),
+            // SEATBELT_SIGN pseudo-key — see BS_SEATBELTS. "Already set" only on a sign read off; an
+            // unread sign reaches the guarded toggle, which refuses it (SeatbeltToggleNeeded).
             Done(Skip(SW("SD_SEATBELTS_OFF", "Seatbelt signs: OFF", "SEATBELT_SIGN", 0),
-                s => !s.IsOn("CABIN SEATBELTS ALERT SWITCH")), "SD_SEATBELTS_OFF"),
+                s => s.IsPosition("CABIN SEATBELTS ALERT SWITCH", 0)), "SD_SEATBELTS_OFF"),
             Done(Skip(SW("SD_BEACON_OFF", "Beacon: OFF", "BEACON_LIGHTS_SET", 0),
                 s => s.IsPosition("LIGHT BEACON", 0)), "SD_BEACON_OFF"),
             Done(Skip(Multi("SD_FUELPUMPS_OFF", "Fuel pumps: ALL OFF",
@@ -664,6 +683,8 @@ public static class FbwA320FlowDefinitions
         RelatedChecklistGroupIds = new[] { "SECURE", "SECURING_CL" },
         Steps = new()
         {
+            // The IRS and the batteries go off below: never airborne (the MD-11's SD_ON_GROUND).
+            OnGroundGuard("SC_ON_GROUND"),
             Done(Skip(Multi("SC_ADIRS", "IRS 1, 2 and 3: OFF",
                     ("A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB", 0), ("A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", 0),
                     ("A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB", 0)),
@@ -791,4 +812,14 @@ public static class FbwA320FlowDefinitions
         step.LeaveAloneText = text;
         return step;
     }
+
+    // Stops a cold-and-dark flow unless both engines read stopped (FO_ENGINES_OFF, FlyByWire's own
+    // engine state; unread fails the guard): the MD-11's EnginesStoppedGuard, the Fenix's twin.
+    private static Step EnginesStoppedGuard(string id) =>
+        WaitForField(id, "Engines stopped", "FO_ENGINES_OFF", v => v > 0.5, 5, onTimeout: FlowStepFailurePolicy.Stop);
+
+    // Stops a flow that switches engines, IRS or batteries off unless the aircraft reads on the
+    // ground (the stock SIM_ON_GROUND; unread fails the guard).
+    private static Step OnGroundGuard(string id) =>
+        WaitForField(id, "On the ground", "SIM_ON_GROUND", v => v > 0.5, 5, onTimeout: FlowStepFailurePolicy.Stop);
 }

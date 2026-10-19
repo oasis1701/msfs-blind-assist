@@ -397,6 +397,22 @@ public class FlowManager<TExec, TState>
             _announcer.Announce($"{flow.Name} flow cancelled");
             return;
         }
+        catch (Exception ex)
+        {
+            // A throw outside ExecuteStepAsync's own catch: a SkipCondition or LeaveAloneWhen reading
+            // the evaluator mid-reconnect, a StepStarted or StepCompleted handler. Ended like a
+            // Stop-policy failure and said aloud: it once faulted the run in silence, with no
+            // FlowFailed, so the window kept showing the flow running and the fault went unobserved.
+            var failed = CurrentStepIndex >= 0 && CurrentStepIndex < flow.Steps.Count ? flow.Steps[CurrentStepIndex] : null;
+            Log.Error("FO", $"{flow.Id}.{failed?.Id}: flow threw", ex);
+            run.Cancel();
+            await CleanUpStoppedRunAsync(flow);
+            FlowFailed?.Invoke(flow, $"Step '{failed?.Label}' threw");
+            _announcer.AnnounceImmediate(failed != null
+                ? $"{flow.Name} flow stopped. Unable to complete: {failed.AnnounceText}"
+                : $"{flow.Name} flow stopped.");
+            return;
+        }
 
         FlowCompleted?.Invoke(flow);
         // NON-INTERRUPTING (Announce), never AnnounceImmediate (owner decision 2026-09-22).

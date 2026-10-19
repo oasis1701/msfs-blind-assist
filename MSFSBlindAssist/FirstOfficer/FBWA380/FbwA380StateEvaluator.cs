@@ -20,6 +20,14 @@ public sealed class FbwA380StateEvaluator : LVarStateEvaluator
     /// (NOSE_LIGHT 0); NaN while either is unread.</summary>
     internal const string LineupLightsField = "FO_LINEUP_LIGHTS";
 
+    /// <summary>Synthetic: the APU available or an external power pushbutton ON (1), all read off
+    /// (0), NaN while unread. Parking waits for it before the engine masters go off.</summary>
+    internal const string ApuOrExtPowerField = "FO_APU_OR_EXT_POWER";
+
+    /// <summary>Synthetic: all four engines read Off in FlyByWire's own engine state (1), any of them
+    /// on, starting or shutting down (0), NaN while unread. FO_ENGINES_OFF reads the masters instead.</summary>
+    internal const string EnginesStoppedField = "FO_ENGINES_STOPPED";
+
     private static readonly string[] PollFields =
     {
         "A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO",
@@ -47,6 +55,8 @@ public sealed class FbwA380StateEvaluator : LVarStateEvaluator
         "ANTISKID_BRAKES_ACTIVE", "A32NX_PARK_BRAKE_LEVER_POS", "A32NX_SPOILERS_ARMED",
         "A32NX_GEAR_HANDLE_POSITION", "ENGINE_MODE_SELECTOR",
         "ENG_VALVE_SWITCH:1", "ENG_VALVE_SWITCH:2", "ENG_VALVE_SWITCH:3", "ENG_VALVE_SWITCH:4",
+        // FlyByWire's own engine state (EnginesStoppedField): OnRequest, read by the SD engine page.
+        "A32NX_ENGINE_STATE:1", "A32NX_ENGINE_STATE:2", "A32NX_ENGINE_STATE:3", "A32NX_ENGINE_STATE:4",
         "XMLVAR_A320_WeatherRadar_Sys", "A32NX_SWITCH_RADAR_PWS_Position",
         "FUELPUMP_FEEDTK1_MAIN", "FUELPUMP_FEEDTK1_STBY", "FUELPUMP_FEEDTK2_MAIN", "FUELPUMP_FEEDTK2_STBY",
         "FUELPUMP_FEEDTK3_MAIN", "FUELPUMP_FEEDTK3_STBY", "FUELPUMP_FEEDTK4_MAIN", "FUELPUMP_FEEDTK4_STBY",
@@ -56,7 +66,7 @@ public sealed class FbwA380StateEvaluator : LVarStateEvaluator
         "FUELPUMP_OUTR_R", "FUELPUMP_MID_R_FWD", "FUELPUMP_MID_R_AFT", "FUELPUMP_INR_R_FWD", "FUELPUMP_INR_R_AFT",
         "FUELPUMP_TRIM_L", "FUELPUMP_TRIM_R",
         "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
-        "A32NX_OVHD_APU_START_PB_IS_ON",
+        "A32NX_OVHD_APU_START_PB_IS_ON", "A32NX_OVHD_APU_START_PB_IS_AVAILABLE",
         // Securing's APU flap wait (FOA-10): OnRequest and silent (FlyByWireA380Definition's Read).
         "A32NX_APU_FLAP_OPEN_PERCENTAGE",
         "A32NX_COCKPIT_DOOR_LOCKED", "A32NX_AUTOBRAKES_SELECTED_MODE",
@@ -188,6 +198,33 @@ public sealed class FbwA380StateEvaluator : LVarStateEvaluator
             case FbwA380GearConfirmation.DownField:
                 value = FbwA380GearConfirmation.DownValue(GetValue);
                 return true;
+            // Something to carry the buses once the engine generators go (Parking's
+            // PK_POWER_SOURCE): APU AVAIL, or any of the four external power pushbuttons ON. One lit
+            // is enough; all read dark is 0; anything else unread is NaN.
+            case ApuOrExtPowerField:
+            {
+                double[] sources =
+                {
+                    GetValue("A32NX_OVHD_APU_START_PB_IS_AVAILABLE"),
+                    GetValue("A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON"), GetValue("A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON"),
+                    GetValue("A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON"), GetValue("A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON"),
+                };
+                value = Array.Exists(sources, v => v > 0.5) ? 1.0
+                    : Array.Exists(sources, double.IsNaN) ? double.NaN : 0.0;
+                return true;
+            }
+            // 0 Off / 1 On / 2 Starting / 3 Shutting down: stopped only when all four read Off.
+            case EnginesStoppedField:
+            {
+                double[] states =
+                {
+                    GetValue("A32NX_ENGINE_STATE:1"), GetValue("A32NX_ENGINE_STATE:2"),
+                    GetValue("A32NX_ENGINE_STATE:3"), GetValue("A32NX_ENGINE_STATE:4"),
+                };
+                value = Array.Exists(states, double.IsNaN) ? double.NaN
+                    : Array.TrueForAll(states, v => v < 0.5) ? 1.0 : 0.0;
+                return true;
+            }
         }
         value = double.NaN;
         return false;

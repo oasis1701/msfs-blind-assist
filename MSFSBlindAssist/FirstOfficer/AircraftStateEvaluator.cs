@@ -93,6 +93,16 @@ public class AircraftStateEvaluator : IFoStateEvaluator
         // CDA snapshot has not landed, which is precisely when an engine start happens.
         if (fieldName == "FO_ENG1_N2") return System.Threading.Volatile.Read(ref _eng1N2);
         if (fieldName == "FO_ENG2_N2") return System.Threading.Volatile.Read(ref _eng2N2);
+        // Both engines below 10 % N2 (1), either above (0), NaN until both are read: the
+        // cold-and-dark flows' guard (PMDG777FlowDefinitions.EnginesStopped's test).
+        if (fieldName == EnginesStoppedField)
+        {
+            double n1 = System.Threading.Volatile.Read(ref _eng1N2), n2 = System.Threading.Volatile.Read(ref _eng2N2);
+            return double.IsNaN(n1) || double.IsNaN(n2) ? double.NaN : n1 < 10 && n2 < 10 ? 1 : 0;
+        }
+        // SIM ON GROUND from SimConnect (IsOnGround): 1 on the ground, 0 airborne, NaN unread.
+        if (fieldName == OnGroundField)
+            return IsOnGround() switch { true => 1, false => 0, null => double.NaN };
 
         // The speed-brake lever comes from SimConnect too (main's L:switch_498_a) — served
         // ahead of the CdaReady gate like N2.
@@ -368,6 +378,12 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     /// <summary>True on the ground, false airborne, null before SIM ON GROUND has been read.</summary>
     public bool? IsOnGround() =>
         _cachedValue?.Invoke(OnGroundKey) is double v && !double.IsNaN(v) ? v > 0.5 : null;
+
+    /// <summary>Synthetic: <see cref="IsOnGround"/> as 1 / 0 / NaN, for a flow's on-ground guard.</summary>
+    public const string OnGroundField = "FO_ON_GROUND";
+
+    /// <summary>Synthetic: both engines below 10 % N2 (1), either above (0), NaN until both are read.</summary>
+    public const string EnginesStoppedField = "FO_ENGINES_STOPPED";
 
     /// <summary>The gear lever goes UP only when this is true, SIM ON GROUND READ as airborne (the
     /// MD-11's rule): on the ground, or unread, it stays where it is.</summary>

@@ -117,6 +117,7 @@ public class NativeAccessibleTreeView : TreeView
     {
         _checkboxNodes.RemoveAll(n => n.TreeView != this);
         _hiddenCheckBoxNodes.Remove(node);
+        PruneHiddenHandles();   // before ApplyShow, so a reused handle is not stripped
         if (!_checkboxNodes.Contains(node))
             _checkboxNodes.Add(node);
         ApplyShow(node);
@@ -127,11 +128,28 @@ public class NativeAccessibleTreeView : TreeView
     /// exists — applied on creation.</summary>
     public void HideCheckBox(TreeNode node)
     {
-        _hiddenCheckBoxNodes.RemoveAll(n => n.TreeView != this); // prune nodes cleared from the tree
         _checkboxNodes.Remove(node);
+        PruneHiddenHandles();   // prune nodes cleared from the tree, and their handles
         if (!_hiddenCheckBoxNodes.Contains(node))
             _hiddenCheckBoxNodes.Add(node);
         ApplyHide(node);
+    }
+
+    /// <summary>
+    /// Drop hidden nodes no longer in this tree AND their native handles. A removed hidden node's
+    /// HTREEITEM stayed in <see cref="_hiddenHandles"/> until the next handle recreation, and
+    /// comctl32 reuses freed handles: a new checkable item given that handle (the "Loading..."
+    /// placeholder the expand clears, then the real children) had its checkbox stripped by the
+    /// interceptor for good, so the line could never be ticked. Rebuilt from the hidden nodes
+    /// still in the tree.
+    /// </summary>
+    private void PruneHiddenHandles()
+    {
+        _hiddenCheckBoxNodes.RemoveAll(n => n.TreeView != this);
+        _hiddenHandles.Clear();
+        if (!IsHandleCreated) return;
+        foreach (var n in _hiddenCheckBoxNodes)
+            _hiddenHandles.Add(n.Handle);
     }
 
     private void SetStateImage(TreeNode node, int index)

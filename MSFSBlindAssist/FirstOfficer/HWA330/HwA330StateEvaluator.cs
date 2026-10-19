@@ -18,6 +18,10 @@ namespace MSFSBlindAssist.FirstOfficer.HWA330;
 /// </summary>
 public sealed class HwA330StateEvaluator : LVarStateEvaluator
 {
+    /// <summary>1 when the APU is available or the external power pushbutton is ON, 0 when both
+    /// read off, NaN while either is unread. Shutdown waits for it before the engine masters go off.</summary>
+    internal const string ApuOrExtPowerField = "FO_APU_OR_EXT_POWER";
+
     private static readonly string[] PollFields =
     {
         // Batteries (A320 has only 2 — no ESS/APU battery like the A380's 4).
@@ -214,6 +218,11 @@ public sealed class HwA330StateEvaluator : LVarStateEvaluator
             // FAC 1 rudder trim word: neutral when |trim| < 0.1°; no data → NaN.
             case "FO_RUDDER_TRIM_NEUTRAL":
                 value = DecodeRudderTrimNeutral(GetValue("A32NX_FAC_1_RUDDER_TRIM_POS"));
+                return true;
+            // Something to carry the buses once the engine generators go (Shutdown's
+            // SD_POWER_SOURCE): APU AVAIL, or the external power pushbutton ON.
+            case ApuOrExtPowerField:
+                value = AnyLit(GetValue("A32NX_OVHD_APU_START_PB_IS_AVAILABLE"), GetValue("A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON"));
                 return true;
         }
         if (field == "FO_ENGINES_OFF")

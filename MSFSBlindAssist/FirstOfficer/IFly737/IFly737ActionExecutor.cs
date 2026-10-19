@@ -720,7 +720,8 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
                         AnnounceQueuedOnUi(BrmWaitText(wait.Engine));
                     }
                 }
-                var verdict = JudgeStartWait(wait.Done(state.GetValue(wait.Field)), t, t - brmSeenAt, wait.Seconds);
+                var verdict = JudgeStartWait(StartWaitDone(wait, state.GetValue(wait.Field), state.IsBowedRotorMotoring(wait.Engine)),
+                    t, t - brmSeenAt, wait.Seconds);
                 if (verdict == StartWaitVerdict.Done) return true;
                 if (verdict == StartWaitVerdict.TimedOut)
                 {
@@ -846,6 +847,16 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
         !double.IsNaN(startLever) && startLever < StartLeverIdle
         && !double.IsNaN(startSwitch) && Math.Abs(startSwitch - EngStartGround) < 0.1;
 
+    /// <summary>Whether a start wait's condition is met. The fuel waits end only once motoring is
+    /// done (owner, 2026-10-19: the start lever goes to IDLE when motoring is done, not at 25 %):
+    /// N2 at the motoring point AND bowed rotor motoring no longer reading active, never mid-BRM
+    /// however far N2 has come. Unread BRM is not active (IsBowedRotorMotoring).</summary>
+    internal static bool StartWaitDone(string key, double value, bool brmActive) =>
+        StartWaitDone(StartWaits[key], value, brmActive);
+
+    private static bool StartWaitDone(StartWait wait, double value, bool brmActive) =>
+        wait.Done(value) && !(wait.BeforeFuel && brmActive);
+
     internal enum StartWaitVerdict { Done, Waiting, TimedOut }
 
     /// <summary>The field a start wait reads, and whether <paramref name="value"/> ends it (for
@@ -928,18 +939,24 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
 
     private async Task<bool> SetAltimetersStandardCoreAsync()
     {
+        // Captured ONCE: a detach (the window closing on an aircraft switch or app exit) nulls the
+        // field during the verify delay below, and reading it again after the delay threw
+        // NullReferenceException (an unobserved fault from the phase monitor's call).
+        var sc = _sc;
+        if (sc == null) return false;
+
         // Skip-if-already-standard. An UNREADABLE cache (null) falls through and sends
         // anyway — a value-set is idempotent, so there is no unsafe direction here (that is
         // the whole point of moving off the toggle).
-        if (IsStandardInHg(_sc!.GetCachedVariableValue("ALTIMETER_SETTING")))
+        if (IsStandardInHg(sc.GetCachedVariableValue("ALTIMETER_SETTING")))
             return true; // already standard — a silent, correct no-op
 
-        _sc.SendEvent("KOHLSMAN_SET", StandardKohlsmanParameter);
+        sc.SendEvent("KOHLSMAN_SET", StandardKohlsmanParameter);
         _lastWriteUtc = DateTime.UtcNow;
 
         // Let the Continuous ALTIMETER_SETTING batch refresh before judging the result.
         await Task.Delay(KohlsmanVerifyMs);
-        double? after = _sc.GetCachedVariableValue("ALTIMETER_SETTING");
+        double? after = sc.GetCachedVariableValue("ALTIMETER_SETTING");
         if (after == null)
         {
             // Unreadable is NOT a confirmed failure — stay silent rather than claim one.

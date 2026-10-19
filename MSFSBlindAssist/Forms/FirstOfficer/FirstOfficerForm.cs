@@ -62,9 +62,10 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     // Latest one-shot values fed to FOAutoManager
     private double _latestAgl = double.NaN;
     private double _latestIas;
-    // Latest engine N2 (percent) fed to the state evaluator for engine-start detection
-    private double _latestEng1N2;
-    private double _latestEng2N2;
+    // Latest engine N2 (percent) fed to the state evaluator for engine-start detection. NaN until
+    // answered: engine 1's answer landing first pushes engine 2 as unknown, never as a stopped 0.
+    private double _latestEng1N2 = double.NaN;
+    private double _latestEng2N2 = double.NaN;
 
     // In-flight start (owner, 2026-10-14): the window first seeing the aircraft flying without a
     // takeoff it watched marks the departure checklists complete (FoDepartureGroups). The detector

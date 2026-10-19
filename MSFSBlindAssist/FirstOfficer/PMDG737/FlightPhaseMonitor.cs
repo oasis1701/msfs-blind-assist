@@ -1,4 +1,5 @@
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.FirstOfficer.PMDG737;
 
@@ -208,11 +209,12 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         {
             case TransitionCrossingDetector.Crossing.ClimbToStd:
                 // Climbing through transition altitude — rotate both EFIS baro knobs to
-                // standard (fire-and-forget). The rotation is the Ctrl+B dialog's own, under its
-                // one-at-a-time guard, and it records that the knob reads 29.92 with STD off, so
-                // the pilot's QNH entry at the transition level rotates instead of selecting STD.
-                _ = _executor.SetAltimetersStandardAsync();
-                _announcer.Announce("Transition altitude. Altimeters set to standard.");
+                // standard. The rotation is the Ctrl+B dialog's own, under its one-at-a-time
+                // guard, and it records that the knob reads 29.92 with STD off, so the pilot's
+                // QNH entry at the transition level rotates instead of selecting STD. Spoken once
+                // it is KNOWN (the MD-11's shape): "set to standard" was spoken over a rotation
+                // that sent nothing (an unread altimeter, an aircraft switch).
+                _ = SetStandardThenAnnounceAsync();
                 break;
             case TransitionCrossingDetector.Crossing.DescendToQnh:
                 // Descending through transition level — the local QNH is unknowable here,
@@ -220,5 +222,22 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
                 _announcer.Announce("Transition level. Set local altimeter pressure now.");
                 break;
         }
+    }
+
+    internal const string StandardSetText = "Transition altitude. Altimeters set to standard.";
+    internal const string StandardNotSetText = "Transition altitude. Set the altimeters to standard.";
+
+    // Fire-and-forget from the position callback: every exception is caught here, never left an
+    // unobserved task fault, and a failed rotation asks the Captain instead of claiming success.
+    private async Task SetStandardThenAnnounceAsync()
+    {
+        bool standard;
+        try { standard = await _executor.SetAltimetersStandardAsync(); }
+        catch (Exception ex)
+        {
+            Log.Warn("FO", $"737 transition altitude: standard rotation failed: {ex.Message}");
+            standard = false;
+        }
+        _announcer.Announce(standard ? StandardSetText : StandardNotSetText);
     }
 }

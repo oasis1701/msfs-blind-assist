@@ -562,27 +562,28 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
     public Task<bool> SetSeatbeltSign(bool on) => DispatchAsync(SeatbeltSignKey, on ? 1 : 0);
 
     /// <summary>
-    /// Whether the stock toggle must fire to put the sign at <paramref name="on"/>. A toggle
-    /// fired over a sign already in place would switch it the WRONG way — the flows mean
-    /// 1 = ON and 0 = OFF — so it fires only when the cached state differs. An unknown state
-    /// (no cached reading yet) counts as differing: that is the phase monitor's original
-    /// behaviour, kept unchanged, and it means the step acts rather than reporting success
-    /// over a sign it never touched; the checklist item's own state read then confirms or
-    /// reverts it.
+    /// Whether the stock toggle must fire to put the sign at <paramref name="on"/>: true when the
+    /// cached state differs, false when the sign is already in place (a toggle fired over it would
+    /// switch it the WRONG way — the flows mean 1 = ON and 0 = OFF), and null when the state is
+    /// unknown (no cached reading yet, or NaN). Unknown is REFUSED, never toggled: the toggle could
+    /// as well switch a sign that is already on OFF while the flow says "Seatbelt signs: ON", the
+    /// rule every other First Officer toggle keeps (the FD pushes, the AP engage).
     /// </summary>
-    public static bool SeatbeltToggleNeeded(double? currentSwitch, bool on)
+    public static bool? SeatbeltToggleNeeded(double? currentSwitch, bool on)
     {
-        if (currentSwitch is not double v) return true;
+        if (currentSwitch is not double v || double.IsNaN(v)) return null;
         return (v > 0.5) != on;
     }
 
     // Must be called inside _gate (dispatched from DispatchCoreAsync's SeatbeltSignKey arm,
-    // so the checklist action, the flow step and the phase monitor share one path).
+    // so the checklist action, the flow step and the phase monitor share one path). An unread
+    // sign is refused (false): the step is skipped aloud and the line stays open.
     private bool SetSeatbeltSignCore(bool on)
     {
         if (_sc == null) return false;
-        if (SeatbeltToggleNeeded(_sc.GetCachedVariableValue("CABIN SEATBELTS ALERT SWITCH"), on))
-            _sc.SendEvent("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE");
+        if (SeatbeltToggleNeeded(_sc.GetCachedVariableValue("CABIN SEATBELTS ALERT SWITCH"), on) is not bool needed)
+            return false;
+        if (needed) _sc.SendEvent("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE");
         return true;
     }
 }

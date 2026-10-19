@@ -20,9 +20,10 @@ public class FoA380SecureFlowTests
     // reference text (Checklists/FBW_A380_Checklist.txt, retired 2026-10-17, in git history) lists
     // external power first; this was the
     // order until then (SC_EXTPWR_OFF, SC_APU_OFF).
+    // SC_ON_GROUND first (2026-10-19): the IRS and batteries never go off airborne.
     private static readonly string[] ExpectedSecureIds =
     {
-        "SC_OXY", "SC_EFB", "SC_ADIRS", "SC_EMEREXIT", "SC_NOSMOKE",
+        "SC_ON_GROUND", "SC_OXY", "SC_EFB", "SC_ADIRS", "SC_EMEREXIT", "SC_NOSMOKE",
         "SC_EXTLT_OFF", "SC_APUBLEED_OFF", "SC_APU_OFF", "SC_APU_WAIT", "SC_EXTPWR_OFF", "SC_BAT_OFF",
     };
 
@@ -41,12 +42,14 @@ public class FoA380SecureFlowTests
     }
 
     // The Securing action list has one line per step, except for the read-only APU flap wait (SC_APU_WAIT,
-    // owner, 2026-10-14; FOA-10): a pacing wait links no line, so it has none, in the order the flow runs.
+    // owner, 2026-10-14; FOA-10) and the on-ground guard (SC_ON_GROUND): neither links a line, so neither
+    // has one, in the order the flow runs.
     [Fact]
     public void SecureChecklistGroupMirrorsTheFlowOneToOne()
     {
         var flowIds = FbwA380FlowDefinitions.Build()
-            .Single(f => f.Id == "SECURE").Steps.Where(s => s.Id != "SC_APU_WAIT").Select(s => s.Id).ToList();
+            .Single(f => f.Id == "SECURE").Steps.Where(s => s.Id is not ("SC_APU_WAIT" or "SC_ON_GROUND"))
+            .Select(s => s.Id).ToList();
         var itemIds = FbwA380ChecklistDefinitions.Build()
             .Single(g => g.Id == "SECURE").Items.Select(i => i.Id).ToList();
         Assert.Equal(flowIds, itemIds);

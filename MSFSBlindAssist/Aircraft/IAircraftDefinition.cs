@@ -374,10 +374,11 @@ public interface IAircraftDefinition
     /// attempts it gives the Captain call. Every aircraft whose engage is a toggle sets it: the
     /// FlyByWire family (FO-21, the AP 1 push), the PMDG 737 and 777 (CMD A, A/P L, null until the
     /// first CDA snapshot), the iFly 737 (CMD A), the TFDi MD-11 (AUTO FLIGHT, whose own engage presses
-    /// nothing on an unread state) and the Fenix (AP1): a blind press could disconnect an autopilot
-    /// that is already on, and their <c>null</c> means "not read yet". False (the default) takes the
-    /// open-loop press-and-announce on a null reading, which only the stock <c>AUTOPILOT_ON</c>
-    /// aircraft keep (the HS787 and any aircraft without its own engage).
+    /// nothing on an unread state), the Fenix (AP1) and the HorizonSim 787 (its AP_MASTER engage, with
+    /// an engaged read-back): a blind press could disconnect an autopilot that is already on, and their
+    /// <c>null</c> means "not read yet". False (the default) takes the open-loop press-and-announce on a
+    /// null reading, which only the stock <c>AUTOPILOT_ON</c> aircraft keep (any aircraft without an
+    /// engage of its own).
     /// </summary>
     bool AutopilotEngageWaitsForState { get; }
 

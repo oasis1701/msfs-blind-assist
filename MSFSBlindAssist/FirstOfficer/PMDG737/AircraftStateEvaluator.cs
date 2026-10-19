@@ -16,9 +16,11 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     // Engine N2 (percent), pushed from the FO background timer. The PMDG NG3 data struct
     // exposes no N1/N2, so this is the only reliable "engine running" signal — the fuel-valve
     // annunciator byte reads 0 both when running AND when cold/unpowered, which is exactly why
-    // the engine-start checklist used to false-complete at cold-and-dark.
-    private double _eng1N2;
-    private double _eng2N2;
+    // the engine-start checklist used to false-complete at cold-and-dark. NaN until the first
+    // push, never 0: a guessed 0 read "engines stopped" and let Secure's battery guard
+    // (PMDG737FlowDefinitions.EnginesStopped) pass over running engines.
+    private double _eng1N2 = double.NaN;
+    private double _eng2N2 = double.NaN;
     // N2 (percent) at/above which an engine is treated as RUNNING (≈ stabilised near idle).
     // Public so the engine-start checklist detection references the same value (tune in-sim).
     public const double EngineRunningN2 = 50.0;
@@ -38,6 +40,9 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     private Func<string, double?>? _cachedValue;
 
     public void SetCachedValueSource(Func<string, double?>? source) => _cachedValue = source;
+
+    /// <summary>Synthetic: the stock SIM_ON_GROUND from SimConnect's cache, 1 / 0 / NaN.</summary>
+    public const string OnGroundField = "FO_ON_GROUND";
 
     // Written on the UI thread (FO timer / SimConnect callback); read on a thread-pool thread
     // by the flow's WaitForCondition loop. Volatile.Read/Write makes the cross-thread handoff
@@ -61,6 +66,11 @@ public class AircraftStateEvaluator : IFoStateEvaluator
         // so a manual tick HOLDS — the no-plan degradation to a plain reminder.
         if (field == "FO_ENG1_N2") return Volatile.Read(ref _eng1N2);
         if (field == "FO_ENG2_N2") return Volatile.Read(ref _eng2N2);
+        // Air/ground from SimConnect's cache (the CDA carries none): the stock SIM_ON_GROUND,
+        // 1 on the ground, 0 airborne, NaN unread. Secure's on-ground guard reads it.
+        if (field == OnGroundField)
+            return _cachedValue?.Invoke("SIM_ON_GROUND") is double g && !double.IsNaN(g) ? (g > 0.5 ? 1 : 0) : double.NaN;
+        if (field == ApuOnField) return ApuOnSynthetic();
         // Speed brake: the lever from SimConnect (no CDA needed), and "armed" = the lever
         // exactly at ARM AND the ARMED light — the light alone stays lit to about 342.
         if (field == SpeedbrakeLeverState.LeverField) return SpeedbrakeLever();
@@ -184,6 +194,18 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public const double ApuRunningEgt = 100;
     public double ApuEgt()         => GetValue("APU_EGTNeedle");
     public bool IsApuRunning()     => ApuEgt() >= ApuRunningEgt;
+
+    /// <summary>Synthetic, the "APU: ON line" lines' state: the selector at ON or START AND the APU
+    /// running (<see cref="IsApuRunning"/>'s EGT test), 1 / 0, NaN while either is unread. The
+    /// selector alone ticked the line with the switch at ON and the APU never started.</summary>
+    public const string ApuOnField = "FO_APU_ON";
+
+    private double ApuOnSynthetic()
+    {
+        double selector = GetValue("APU_Selector"), egt = ApuEgt();
+        if (double.IsNaN(selector) || double.IsNaN(egt)) return double.NaN;
+        return selector > 0.5 && egt >= ApuRunningEgt ? 1 : 0;
+    }
 
     // -----------------------------------------------------------------------
     // Fuel + engine start levers (Run derived from the valve annunciator byte; <0.5 == open/Run)

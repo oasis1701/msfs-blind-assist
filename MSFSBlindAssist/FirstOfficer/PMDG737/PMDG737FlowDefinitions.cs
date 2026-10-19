@@ -200,11 +200,13 @@ public static class PMDG737FlowDefinitions
             // APU start: ON → dwell → momentary START. A direct write to START (skipping ON)
             // does not spool the APU up. Each command step skips when the APU is already
             // running (EGT-based), so a flow re-run never re-commands a running APU.
-            Skip(SW("BS_APU_ON", "APU selector: ON", "EVT_OH_LIGHTS_APU_START", 1, checklistItemId: "BS_APU"),
+            // Neither selector write links "APU: ON line", which reads the APU RUNNING (FO_APU_ON):
+            // BS_APU_RUNNING below completes it.
+            Skip(SW("BS_APU_ON", "APU selector: ON", "EVT_OH_LIGHTS_APU_START", 1),
                 s => s.IsApuRunning()),
             Skip(Wait("BS_APU_DWELL", "APU spinning up before start", 2),
                 s => s.IsApuRunning()),
-            Skip(SW("BS_APU_START", "APU selector: START", "EVT_OH_LIGHTS_APU_START", 2, checklistItemId: "BS_APU"),
+            Skip(SW("BS_APU_START", "APU selector: START", "EVT_OH_LIGHTS_APU_START", 2),
                 s => s.IsApuRunning()),
             // Starter cutout: START springs back to ON. Stop policy — if the APU never
             // starts, abort the flow HERE, before the generator transfer and ground-power
@@ -212,6 +214,12 @@ public static class PMDG737FlowDefinitions
             // and this passes instantly.
             WaitForField("BS_APU_WAIT", "Waiting for the APU to come on line", "APU_Selector",
                 v => Math.Abs(v - 1) < 0.1, 90, onTimeout: FlowStepFailurePolicy.Stop),
+            // Read-only: completes "APU: ON line" on the selector at ON with the APU running
+            // (FO_APU_ON, its EGT); passes at once after a healthy start. A timeout is heard skipped
+            // and keeps the line out of the latch. Never writes.
+            Skip(WaitForField("BS_APU_RUNNING", "APU running", AircraftStateEvaluator.ApuOnField, v => v > 0.5, 60,
+                    checklistItemId: "BS_APU"),
+                s => s.IsOn(AircraftStateEvaluator.ApuOnField)),
             // Generator availability: the blue APU GEN OFF BUS annunciator lights only once
             // the generator is up and able to take a bus — strictly LATER than starter
             // cutout, which happens while the APU is still spooling. Deliberately Skip, not
@@ -287,21 +295,26 @@ public static class PMDG737FlowDefinitions
                 s => s.IsApuBleedOn()),
             Multi("ES_PACKS_OFF", "Packs: OFF", "ES_PACKS", ("EVT_OH_BLEED_PACK_L_SWITCH", 0), ("EVT_OH_BLEED_PACK_R_SWITCH", 0)),
             // --- Engine 2 ---
-            SW("ES_E2_GRD", "Engine 2 start switch: GRD", "EVT_OH_LIGHTS_R_ENGINE_START", 0),
+            // An engine already RUNNING (N2 at or above EngineRunningN2, live once lit) is never put
+            // back on GRD, which re-engaged its starter at idle on a re-run: "Already set", and the
+            // start steps below, which follow only a GRD this run sent, pass (the 777's shape).
+            Skip(SW("ES_E2_GRD", "Engine 2 start switch: GRD", "EVT_OH_LIGHTS_R_ENGINE_START", 0),
+                s => EngineRunning(s, 2)),
             // Prove the starter actually engaged (start valve OPEN) before anything else.
             // If GRD didn't latch or there's no duct pressure, this aborts within 15 s with
             // a clear announcement instead of a 60 s silent N2 wait — and, critically,
             // instead of ever introducing fuel.
-            WaitForField("ES_E2_VALVE", "Engine 2 start valve open",
-                "ENG_StartValve_1", v => v > 0.5, 15, onTimeout: FlowStepFailurePolicy.Stop),
+            OnlyIfSent(WaitForField("ES_E2_VALVE", "Engine 2 start valve open",
+                "ENG_StartValve_1", v => v > 0.5, 15, onTimeout: FlowStepFailurePolicy.Stop), "ES_E2_GRD"),
             // Introduce fuel only once the engine has motored up (~25 % N2 on the real
             // procedure): a fixed EngStartMotorSeconds from the valve opening, because this
             // aircraft gives the app NO N2 to read while motoring (see the constant). The
             // valve wait above is what still refuses a start the starter never engaged; a
             // stalled crank with the valve open is not detectable here and never was — the
             // old N2 gate read 0 for a healthy crank and a dead one alike.
-            Wait("ES_E2_MOTOR", "Engine 2 motoring before fuel", EngStartMotorSeconds),
-            SW("ES_E2_RUN", "Engine 2 start lever: IDLE", "EVT_CONTROL_STAND_ENG2_START_LEVER", 1, checklistItemId: "ES_E2_RUN"),
+            OnlyIfSent(Wait("ES_E2_MOTOR", "Engine 2 motoring before fuel", EngStartMotorSeconds), "ES_E2_GRD"),
+            OnlyIfSent(SW("ES_E2_RUN", "Engine 2 start lever: IDLE", "EVT_CONTROL_STAND_ENG2_START_LEVER", 1, checklistItemId: "ES_E2_RUN"),
+                "ES_E2_GRD"),
             // Starter cutout: the GRD position is solenoid-held and springs back to OFF
             // as the starter disengages. Wait on the START SWITCH itself — matching the
             // pilot-paced checklist and guaranteeing engine 1's GRD is never set while
@@ -309,18 +322,24 @@ public static class PMDG737FlowDefinitions
             // early — user report 2026-07-03). Stop on a timeout: a switch that never cuts out
             // is a hung start or a starter still engaged, and the flow once carried on and put
             // engine 1 on GRD over it, breaking the very guarantee above.
-            WaitForField("ES_E2_CUTOUT", "Engine 2 starting — waiting for the start switch to cut out",
-                "ENG_StartSelector_1", v => Math.Abs(v - 1) < 0.1, 120, onTimeout: FlowStepFailurePolicy.Stop),
+            OnlyIfSent(WaitForField("ES_E2_CUTOUT", "Engine 2 starting — waiting for the start switch to cut out",
+                "ENG_StartSelector_1", v => Math.Abs(v - 1) < 0.1, 120, onTimeout: FlowStepFailurePolicy.Stop), "ES_E2_GRD"),
             // --- Engine 1 ---
-            SW("ES_E1_GRD", "Engine 1 start switch: GRD", "EVT_OH_LIGHTS_L_ENGINE_START", 0),
-            WaitForField("ES_E1_VALVE", "Engine 1 start valve open",
-                "ENG_StartValve_0", v => v > 0.5, 15, onTimeout: FlowStepFailurePolicy.Stop),
-            Wait("ES_E1_MOTOR", "Engine 1 motoring before fuel", EngStartMotorSeconds),
-            SW("ES_E1_RUN", "Engine 1 start lever: IDLE", "EVT_CONTROL_STAND_ENG1_START_LEVER", 1, checklistItemId: "ES_E1_RUN"),
-            WaitForField("ES_E1_CUTOUT", "Engine 1 starting — waiting for the start switch to cut out",
-                "ENG_StartSelector_0", v => Math.Abs(v - 1) < 0.1, 120, onTimeout: FlowStepFailurePolicy.Stop),
+            Skip(SW("ES_E1_GRD", "Engine 1 start switch: GRD", "EVT_OH_LIGHTS_L_ENGINE_START", 0),
+                s => EngineRunning(s, 1)),
+            OnlyIfSent(WaitForField("ES_E1_VALVE", "Engine 1 start valve open",
+                "ENG_StartValve_0", v => v > 0.5, 15, onTimeout: FlowStepFailurePolicy.Stop), "ES_E1_GRD"),
+            OnlyIfSent(Wait("ES_E1_MOTOR", "Engine 1 motoring before fuel", EngStartMotorSeconds), "ES_E1_GRD"),
+            OnlyIfSent(SW("ES_E1_RUN", "Engine 1 start lever: IDLE", "EVT_CONTROL_STAND_ENG1_START_LEVER", 1, checklistItemId: "ES_E1_RUN"),
+                "ES_E1_GRD"),
+            OnlyIfSent(WaitForField("ES_E1_CUTOUT", "Engine 1 starting — waiting for the start switch to cut out",
+                "ENG_StartSelector_0", v => Math.Abs(v - 1) < 0.1, 120, onTimeout: FlowStepFailurePolicy.Stop), "ES_E1_GRD"),
         }
     };
+
+    // Engine n reads RUNNING: N2 at or above EngineRunningN2. Unread (NaN) is not running.
+    internal static bool EngineRunning(AircraftStateEvaluator s, int engine) =>
+        s.GetValue(engine == 1 ? "FO_ENG1_N2" : "FO_ENG2_N2") >= AircraftStateEvaluator.EngineRunningN2;
 
     // -----------------------------------------------------------------------
     // 5. Before Taxi (includes the after-start power transfer)
@@ -506,9 +525,10 @@ public static class PMDG737FlowDefinitions
             // APU START for gate power — ON alone never spools it up (same ON → dwell →
             // momentary START sequence as Before Start; no on-line wait, the aircraft is
             // taxiing in and the Shutdown flow's gen transfer happens minutes later).
-            SW("AL_APU_ON", "APU selector: ON", "EVT_OH_LIGHTS_APU_START", 1, checklistItemId: "AL_APU"),
+            // Neither write links "APU: ON line" (FO_APU_ON): AL_APU_RUNNING, last, completes it.
+            SW("AL_APU_ON", "APU selector: ON", "EVT_OH_LIGHTS_APU_START", 1),
             Wait("AL_APU_DWELL", "APU spinning up before start", 2),
-            SW("AL_APU_START", "APU selector: START", "EVT_OH_LIGHTS_APU_START", 2, checklistItemId: "AL_APU"),
+            SW("AL_APU_START", "APU selector: START", "EVT_OH_LIGHTS_APU_START", 2),
             Multi("AL_START_OFF", "Engine start switches: OFF", "AL_START_OFF", ("EVT_OH_LIGHTS_L_ENGINE_START", 1), ("EVT_OH_LIGHTS_R_ENGINE_START", 1)),
             // Flaps UP — was missing entirely (the flow description always promised it).
             // The per-detent event routes through the executor's MouseFlag dispatch.
@@ -524,6 +544,12 @@ public static class PMDG737FlowDefinitions
             Skip(WaitForField("AL_FLAPS_UP_CHECK", "Flaps: retracted", "MAIN_TEFlapsNeedle_0", v => v < 0.5,
                     AircraftActionExecutor.FlapsUpTimeoutMs / 1000, checklistItemId: "AL_FLAPS"),
                 s => s.GetValue("MAIN_TEFlapsNeedle_0") < 0.5),
+            // Read-only, LAST with the flaps check: completes "APU: ON line" once the APU runs
+            // (FO_APU_ON); a timeout is heard skipped and keeps the line out of the latch, so an APU
+            // that never started is never latched ON. Never writes.
+            Skip(WaitForField("AL_APU_RUNNING", "APU running", AircraftStateEvaluator.ApuOnField, v => v > 0.5, 120,
+                    checklistItemId: "AL_APU"),
+                s => s.IsOn(AircraftStateEvaluator.ApuOnField)),
         }
     };
 
@@ -537,6 +563,9 @@ public static class PMDG737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "SHUTDOWN" },
         Steps = new()
         {
+            // Started by mistake in flight with the APU running, the power wait below passes and
+            // the levers cut both engines: never airborne (the MD-11's SD_ON_GROUND).
+            OnGroundGuard("SD_ON_GROUND"),
             // Power for the levers (PR #160 second review). Cutting the start levers takes the
             // engine generators off the transfer buses, and nothing takes the buses by itself: the
             // APU generators must be pressed on first, and only once the APU generator is up. The
@@ -594,6 +623,8 @@ public static class PMDG737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "SECURE", "ELEC_POWER_DOWN" },
         Steps = new()
         {
+            // The IRS and the battery go off below: never airborne (the MD-11's SD_ON_GROUND).
+            OnGroundGuard("SE_ON_GROUND"),
             Also(Multi("SE_IRS_OFF", "IRS mode selectors: OFF", "SE_IRS", ("EVT_IRU_MSU_LEFT", 0), ("EVT_IRU_MSU_RIGHT", 0)), "SEC_IRS"),
             Also(SW("SE_EMER_OFF", "Emergency exit lights: OFF", "EVT_OH_EMER_EXIT_LIGHT_SWITCH", 0, checklistItemId: "SE_EMER"), "SEC_EMER"),
             Also(Multi("SE_WINHEAT_OFF", "Window heat: OFF", "SE_WINHEAT",
@@ -628,6 +659,12 @@ public static class PMDG737FlowDefinitions
                 s => !EnginesStopped(s), "Engines running, so the battery stays on."),
         }
     };
+
+    // Stops a flow that cuts the engines or switches the IRS and battery off unless the aircraft
+    // reads on the ground (SIM_ON_GROUND from SimConnect's cache; unread fails the guard).
+    private static Step OnGroundGuard(string id) =>
+        WaitForField(id, "On the ground", AircraftStateEvaluator.OnGroundField, v => v > 0.5, 5,
+            onTimeout: FlowStepFailurePolicy.Stop);
 
     // Both engines read and below 10 % N2 — the battery may go off (the MD-11's EngineStoppedN2).
     internal static bool EnginesStopped(AircraftStateEvaluator s)

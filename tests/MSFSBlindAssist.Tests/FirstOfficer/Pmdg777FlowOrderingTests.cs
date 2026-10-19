@@ -631,8 +631,10 @@ public class Pmdg777FlowOrderingTests
         // (Every_flow_ticks_its_checklist_items_in_the_order_they_are_listed) reads only
         // CompletesChecklistItemId (PF_BATTERY), so it never sees the check's four Also lines,
         // three of which (PF_DEMAND_PUMPS_OFF, PF_NAV_LIGHTS, PF_GEAR_DOWN) the group lists far
-        // below: by design, so do not move the check to "fix" that order.
-        Assert.Equal("CP_POWER_UP_CHECK", cp[0]);
+        // below: by design, so do not move the check to "fix" that order. Only the engines-stopped
+        // guard (2026-10-19, links no line) comes before it: CP_FUEL_CTRL must never cut a running engine.
+        Assert.Equal("CP_ENGINES_STOPPED", cp[0]);
+        Assert.Equal("CP_POWER_UP_CHECK", cp[1]);
         // PMDG's order (FOB-4): CROSSFEED switches OFF, then FUEL PUMP switches OFF; the
         // Preflight group lists the two lines the same way.
         Assert.Equal(cp.IndexOf("CP_XFEED_OFF") + 1, cp.IndexOf("CP_FUEL_PUMPS_OFF"));

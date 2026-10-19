@@ -119,10 +119,14 @@ public class Pmdg737SecondReviewTests
     public void Shutdown_waits_for_power_before_the_transfer_and_verifies_it_before_the_levers()
     {
         var steps = Pmdg737Flows.Build().Single(f => f.Id == "SHUTDOWN").Steps;
+        int onGround = steps.FindIndex(s => s.Id == "SD_ON_GROUND");
         int wait = steps.FindIndex(s => s.Id == "SD_POWER_WAIT");
         int transfer = steps.FindIndex(s => s.Id == "SD_APUGEN");
         int levers = steps.FindIndex(s => s.Id == "SD_LEVERS");
-        Assert.True(wait == 0 && transfer == 1 && levers == 2, $"order {wait}, {transfer}, {levers}");
+        // Never airborne first (2026-10-19): with the APU running in flight the power wait passed.
+        Assert.True(onGround == 0 && wait == 1 && transfer == 2 && levers == 3,
+            $"order {onGround}, {wait}, {transfer}, {levers}");
+        Assert.Equal(FlowStepFailurePolicy.Stop, steps[onGround].FailurePolicy);
 
         var w = steps[wait];
         Assert.Equal(FlowStepActionType.WaitForCondition, w.ActionType);

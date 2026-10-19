@@ -327,6 +327,23 @@ public class AircraftActionExecutor : IFoActionExecutor
     /// since every press after the detach is refused, and the radar stayed in TEST, overlay on.</summary>
     public async Task<bool> WxrTestAsync()
     {
+        // One test at a time with the panel's button (WxrTestGate): a second sequence interleaved
+        // with this one turned the overlay off before TEST and left it on. Refused, the step is
+        // skipped aloud or the tick un-ticks.
+        var sc = _simConnect;
+        if (sc == null) return false;   // nothing touched, no gate taken
+        var gate = WxrTestGate.Pmdg777(sc);
+        if (!gate.TryBegin())
+        {
+            Log.Info("FO", "Weather radar test refused: one is already running");
+            return false;
+        }
+        try { return await WxrTestCoreAsync(); }
+        finally { gate.End(); }
+    }
+
+    private async Task<bool> WxrTestCoreAsync()
+    {
         // Read before the overlay press: a press that went out went out through this manager (a
         // detach in between makes HeldTransmitTestAsync press nothing and return false).
         var sc = _simConnect;

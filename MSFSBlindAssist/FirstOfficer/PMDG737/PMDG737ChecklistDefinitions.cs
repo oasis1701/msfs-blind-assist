@@ -120,7 +120,10 @@ public static class PMDG737ChecklistDefinitions
             Auto("PF_FUEL_OFF", "PREFLIGHT", "Fuel pumps: OFF", "FUEL_PumpFwdSw_0", v => v < 0.5,
                 new[] { "FUEL_PumpFwdSw_1", "FUEL_PumpAftSw_0", "FUEL_PumpAftSw_1", "FUEL_PumpCtrSw_0", "FUEL_PumpCtrSw_1" },
                 (e, _) => { e.SetWingFuelPumps(0); e.SetCenterFuelPumps(0); }),
-            Auto("PF_EMER", "PREFLIGHT", "Emergency exit lights: ARMED", "LTS_EmerExitSelector", v => v > 0.5, (e, _) => e.SetEmerExitLights(1)),
+            // LTS_EmerExitSelector 0 OFF / 1 ARMED / 2 ON: ARMED is 1 alone. `> 0.5` also ticked ON,
+            // the lights burning on their batteries, as ARMED.
+            Auto("PF_EMER", "PREFLIGHT", "Emergency exit lights: ARMED", "LTS_EmerExitSelector", v => v > 0.5 && v < 1.5,
+                (e, _) => e.SetEmerExitLights(1)),
             Auto("PF_BELTS", "PREFLIGHT", "Seatbelt signs: ON", "COMM_FastenBeltsSelector", v => v > 1.5, (e, _) => e.SetSeatBelts(2)),
             Auto("PF_WINHEAT", "PREFLIGHT", "Window heat: ON", "ICE_WindowHeatSw_0", v => v > 0.5,
                 new[] { "ICE_WindowHeatSw_1", "ICE_WindowHeatSw_2", "ICE_WindowHeatSw_3" }, (e, _) => e.SetWindowHeat(1)),
@@ -171,8 +174,11 @@ public static class PMDG737ChecklistDefinitions
         {
             Reminder("BS_MCP", "BEFORE_START", "Set MCP airspeed, heading and initial altitude"),
             // APU start must go ON → dwell → momentary START (StartApuAsync); writing START
-            // directly never spools the APU up. Auto-detects ON-line from APU_Selector.
-            AutoAsync("BS_APU", "BEFORE_START", "APU: ON line", "APU_Selector", v => v > 0.5, (e, _) => e.StartApuAsync()),
+            // directly never spools the APU up. Auto-detects ON-line from the selector at ON or START
+            // AND the APU running (FO_APU_ON): the selector alone ticked the line at ON with the APU
+            // never started, and a tick then skipped the start (FO-12).
+            AutoAsync("BS_APU", "BEFORE_START", "APU: ON line", AircraftStateEvaluator.ApuOnField, v => v > 0.5,
+                (e, _) => e.StartApuAsync()),
             // Electrical transfer to the APU. The APU GEN switches are stateless momentary
             // push pairs (no readable per-switch state) — action-only, like the panel.
             // (No separate "Ground power: OFF" item by user decision — the flow drops
@@ -368,8 +374,10 @@ public static class PMDG737ChecklistDefinitions
             Auto("AL_WAI", "AFTER_LANDING", "Wing anti-ice: OFF", "ICE_WingAntiIceSw", v => v < 0.5, (e, _) => e.SetWingAntiIce(0)),
             Auto("AL_PROBE", "AFTER_LANDING", "Probe heat: OFF", "ICE_ProbeHeatSw_0", v => v < 0.5,
                 new[] { "ICE_ProbeHeatSw_1" }, (e, _) => e.SetProbeHeat(0)),
-            // Full ON → dwell → START sequence — selector ON alone never spools the APU up.
-            AutoAsync("AL_APU", "AFTER_LANDING", "APU: ON line", "APU_Selector", v => v > 0.5, (e, _) => e.StartApuAsync()),
+            // Full ON → dwell → START sequence — selector ON alone never spools the APU up, so the
+            // line reads the APU running too (FO_APU_ON, BS_APU's state).
+            AutoAsync("AL_APU", "AFTER_LANDING", "APU: ON line", AircraftStateEvaluator.ApuOnField, v => v > 0.5,
+                (e, _) => e.StartApuAsync()),
             Auto("AL_START_OFF", "AFTER_LANDING", "Engine start switches: OFF", "ENG_StartSelector_0", v => v > 0.5 && v < 1.5,
                 new[] { "ENG_StartSelector_1" },
                 (e, _) => { e.SetEngStartSelector1(1); e.SetEngStartSelector2(1); }),
@@ -392,8 +400,13 @@ public static class PMDG737ChecklistDefinitions
             // APU GEN switches are stateless push pairs (PMDG exposes no reliable
             // per-switch state) — action-only, like the panel's two-button design.
             ActionManual("SD_APUGEN", "SHUTDOWN", "APU generators: ON", (e, _) => e.SetApuGenerators(1)),
-            Auto("SD_LEVERS", "SHUTDOWN", "Engine start levers: CUTOFF", "FUEL_annunENG_VALVE_CLOSED_0", v => v > 0.5,
+            // A tick cuts the engines only on the ground with the load already off the engine
+            // generators (the flow's SD_ON_GROUND and verified SD_APUGEN): before, a tick with the APU
+            // not yet carrying the buses cut both engines and left the aircraft on the battery.
+            LeaveAlone(Auto("SD_LEVERS", "SHUTDOWN", "Engine start levers: CUTOFF", "FUEL_annunENG_VALVE_CLOSED_0", v => v > 0.5,
                 new[] { "FUEL_annunENG_VALVE_CLOSED_1" }, (e, _) => { e.SetFuelControl1(0); e.SetFuelControl2(0); }),
+                s => !s.IsOn(AircraftStateEvaluator.OnGroundField) || !s.IsOn(GeneratorBusState.LoadOffEnginesField),
+                LeversStayText),
             Auto("SD_BELTS", "SHUTDOWN", "Seatbelt signs: OFF", "COMM_FastenBeltsSelector", v => v < 0.5, (e, _) => e.SetSeatBelts(0)),
             Auto("SD_TURNOFF", "SHUTDOWN", "Runway turnoff lights: OFF", "LTS_RunwayTurnoffSw_0", v => v < 0.5,
                 new[] { "LTS_RunwayTurnoffSw_1" }, (e, _) => e.SetRunwayTurnoff(0)),
@@ -444,7 +457,9 @@ public static class PMDG737ChecklistDefinitions
         Id = "ELEC_POWER_DOWN", Name = "Electrical Power Down",
         Items = new()
         {
-            Auto("EPD_BAT", "ELEC_POWER_DOWN", "Battery: OFF", "ELEC_BatSelector", v => v < 0.5, (e, _) => e.SetBattery(0)),
+            // Never with an engine turning, the Secure flow's SE_BAT_OFF rule (FOB-22).
+            LeaveAlone(Auto("EPD_BAT", "ELEC_POWER_DOWN", "Battery: OFF", "ELEC_BatSelector", v => v < 0.5, (e, _) => e.SetBattery(0)),
+                s => !PMDG737FlowDefinitions.EnginesStopped(s), BatteryStaysText),
         }
     };
 
@@ -729,6 +744,11 @@ public static class PMDG737ChecklistDefinitions
         item.LeaveAloneText = text;
         return item;
     }
+
+    internal const string LeversStayText =
+        "Start levers left at idle: not on the ground, or the engine generators still carry the buses.";
+
+    internal const string BatteryStaysText = "Engines running, so the battery stays on.";
 
     private static Item Reminder(string id, string groupId, string text) => new()
     {

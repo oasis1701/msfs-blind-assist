@@ -12613,19 +12613,6 @@ public class FenixA320Definition : BaseAircraftDefinition
     /// </summary>
     private const int TakeoffConfigTestHoldMs = 1500;
 
-    /// <summary>
-    /// Helper method to execute a Fenix momentary-button press (0 → 1 → 0).
-    /// Fenix buttons are transition-activated: they trigger on the 0 → 1 rising edge. This method
-    /// resets to 0, waits, presses (1), holds briefly, then RELEASES back to 0 so the button does
-    /// not stay latched down (which would keep re-triggering level-sensitive functions such as the
-    /// TO CONFIG TEST). Edge-triggered buttons keep their latched state after the release; the
-    /// release is a no-op for pure momentary actions (ECAM page, keypad, master-warning cancel…).
-    /// </summary>
-    /// <param name="pressHoldMs">How long to hold the button at 1 before releasing. Use a longer
-    /// value for level-triggered tests whose result must be observed while held (e.g. TO CONFIG).</param>
-    /// <param name="onHeld">Optional callback invoked while the button is still held at 1, just
-    /// before the release — lets a caller read the resulting state (e.g. the master-warning outcome
-    /// of the TO CONFIG test) before the button is released and the level-triggered effect clears.</param>
     // =========================================================================
     // Universal auto-AP engage (UniversalAutomationService)
     // =========================================================================
@@ -12645,13 +12632,15 @@ public class FenixA320Definition : BaseAircraftDefinition
     }
 
     /// <summary>Engaged when either FCU AP light (<c>I_FCU_AP1</c>, <c>I_FCU_AP2</c>, both Continuous)
-    /// is lit; off when both read dark; null until either has been read.</summary>
+    /// is lit; off when both read dark; null until both have been read. A cached NaN is unread too,
+    /// never dark (FO-18: unread is null, never false), or the toggle was pressed over an autopilot
+    /// that may already be on.</summary>
     public override bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect)
     {
         double? ap1 = simConnect.GetCachedVariableValue("I_FCU_AP1");
         double? ap2 = simConnect.GetCachedVariableValue("I_FCU_AP2");
         if (ap1 > 0.5 || ap2 > 0.5) return true;
-        return ap1 != null && ap2 != null ? false : null;
+        return ap1 is double a && !double.IsNaN(a) && ap2 is double b && !double.IsNaN(b) ? false : null;
     }
 
     /// <summary>The AP lights reach the cache with the 1 Hz batch: a retry sooner could land on an
@@ -12661,6 +12650,19 @@ public class FenixA320Definition : BaseAircraftDefinition
     /// <summary>AP1 is a toggle: never pressed on an unread state (the service waits for a reading).</summary>
     public override bool AutopilotEngageWaitsForState => true;
 
+    /// <summary>
+    /// Helper method to execute a Fenix momentary-button press (0 → 1 → 0).
+    /// Fenix buttons are transition-activated: they trigger on the 0 → 1 rising edge. This method
+    /// resets to 0, waits, presses (1), holds briefly, then RELEASES back to 0 so the button does
+    /// not stay latched down (which would keep re-triggering level-sensitive functions such as the
+    /// TO CONFIG TEST). Edge-triggered buttons keep their latched state after the release; the
+    /// release is a no-op for pure momentary actions (ECAM page, keypad, master-warning cancel…).
+    /// </summary>
+    /// <param name="pressHoldMs">How long to hold the button at 1 before releasing. Use a longer
+    /// value for level-triggered tests whose result must be observed while held (e.g. TO CONFIG).</param>
+    /// <param name="onHeld">Optional callback invoked while the button is still held at 1, just
+    /// before the release — lets a caller read the resulting state (e.g. the master-warning outcome
+    /// of the TO CONFIG test) before the button is released and the level-triggered effect clears.</param>
     private void ExecuteButtonTransition(string varName, string displayName,
         SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer? announcer,
         int pressHoldMs = ButtonPressHoldMs, Action? onHeld = null)

@@ -317,9 +317,12 @@ public class IFly737ProfileStructureTests
     {
         var steps = IFly737FlowDefinitions.Build().Single(f => f.Id == "BEFORE_START").Steps;
 
+        // FO_APU_ON (2026-10-19): the APU GEN OFF BUS light, or the buses carried with no ground
+        // power available; it completes "APU: ON line", which the START press no longer claims.
         int waitIdx = steps.FindIndex(s => s.ActionType == FlowStepActionType.WaitForCondition
-            && s.ConditionFieldName == "APU_GEN_OFF_BUS_Light_Status");
-        Assert.True(waitIdx >= 0, "no APU_GEN_OFF_BUS_Light_Status wait step found");
+            && s.ConditionFieldName == IFly737StateEvaluator.ApuOnField);
+        Assert.True(waitIdx >= 0, "no FO_APU_ON wait step found");
+        Assert.Equal(new[] { "BS_APU" }, steps[waitIdx].LinkedChecklistItemIds.ToArray());
         Assert.Equal(FlowStepFailurePolicy.Stop, steps[waitIdx].FailurePolicy);
         Assert.NotNull(steps[waitIdx].Condition);
         Assert.True(steps[waitIdx].Condition!(1));

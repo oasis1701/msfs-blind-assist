@@ -27,8 +27,10 @@ public class IFly737StateEvaluator : IFoStateEvaluator
     // struct), so the FO Engine Start flow/checklist reads the synthetic FO_ENG{1,2}_N2 keys
     // below against this threshold. Public so both paths can never disagree.
     public const double EngineRunningN2 = 50.0;
-    // N2 (percent) an engine must reach while motoring before the start lever introduces fuel
-    // (real-procedure ~25%; 20 gives margin). Shared by the Engine Start flow and the checklist.
+    // N2 (percent) that proves the starter is turning the engine before the start lever introduces
+    // fuel. Not the fuel point itself: on the MAX the lever goes to IDLE once motoring is done (owner,
+    // 2026-10-19), so the Engine Start flow's fuel wait also needs bowed rotor motoring to read
+    // inactive (IFly737ActionExecutor.StartWaitDone).
     public const double EngStartFuelN2 = 20.0;
     // Pressurization panel knob steps (feet) — the FLT ALT / LAND ALT digit-cell windows are
     // quantized to these; a match test must be strictly less than one full step.
@@ -125,6 +127,8 @@ public class IFly737StateEvaluator : IFoStateEvaluator
             return SpeedbrakeLeverState.ArmedValue(SpeedbrakeLeverState.IFly737,
                 GetValue(IFly737SpeedBrakeLever.FieldName), GetValue(SpeedbrakeArmedLight));
         if (field == ShutdownPowerField) return ShutdownPowerSynthetic();
+        if (field == ApuOnField) return ApuOnSynthetic();
+        if (field == LoadOffEnginesField) return LoadOffEnginesSynthetic();
         // SimConnect values, not SDK fields (see _sc). Independent of the SDK's readiness, like
         // the N2 cache: a stock SimVar and the WASM's L:vars.
         if (field is OnGroundField or IFly737MAXDefinition.Eng1BrmKey or IFly737MAXDefinition.Eng2BrmKey)
@@ -183,6 +187,40 @@ public class IFly737StateEvaluator : IFoStateEvaluator
     /// False when unread.</summary>
     public bool AreStartLeversAtCutoff() =>
         GetValue("Engine_Start_Lever_Status_0") < 3 && GetValue("Engine_Start_Lever_Status_1") < 3;
+
+    /// <summary>1 once the start levers can be cut without leaving the aircraft on the battery
+    /// AFTER the transfer: the buses already off the engine generators
+    /// (<see cref="AreBusesOffEngineGenerators"/>) or both levers already at CUTOFF. Unlike
+    /// <see cref="ShutdownPowerField"/>, an APU generator merely waiting off the buses does not
+    /// count. NaN while the SDK is not ready. Shutdown's SD_LOAD_OFF_ENGINES reads it.</summary>
+    public const string LoadOffEnginesField = "FO_LOAD_OFF_ENGINES";
+
+    private double LoadOffEnginesSynthetic()
+    {
+        if (!ReadySource()) return double.NaN;
+        return AreBusesOffEngineGenerators() || AreStartLeversAtCutoff() ? 1 : 0;
+    }
+
+    /// <summary>The "APU: ON line" lines' state. 0 with the APU switch read OFF; 1 with it at ON or
+    /// START and the APU generator waiting off the buses (the blue APU GEN OFF BUS light), or with
+    /// the buses carried off the engine generators and no ground power available (so the APU
+    /// carries them); NaN when that is ambiguous (ground power available: it may be the one
+    /// carrying them) or unread. The switch alone ticked the line at ON with the APU never started,
+    /// and a tick then skipped the start (FO-12).</summary>
+    public const string ApuOnField = "FO_APU_ON";
+
+    private double ApuOnSynthetic()
+    {
+        if (!ReadySource()) return double.NaN;
+        double sw = GetValue("APU_Switch_Status");
+        if (double.IsNaN(sw)) return double.NaN;
+        if (sw < 0.5) return 0;
+        if (IsOn("APU_GEN_OFF_BUS_Light_Status")) return 1;
+        double gpuAvailable = GetValue("GRD_POWER_AVAILABLE_Light_Status");
+        if (double.IsNaN(gpuAvailable)) return double.NaN;
+        if (AreBusesOffEngineGenerators()) return gpuAvailable > 0.5 ? double.NaN : 1;
+        return 0;
+    }
 
     // NOTE: there is deliberately no IsLit(field) helper here. GetValue(field) > 0.5-style
     // collapsing of NaN (unknown) to "not lit" is exactly the trap the auto-manager avoids —

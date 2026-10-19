@@ -185,9 +185,14 @@ when the start lever reads CUTOFF and the switch GRD, as the MD-11's light-up wa
 left at GRD, the starter motoring a dry engine. A start a flow began, its start switch to GRD, is
 recorded with the run until the lever goes to IDLE, so a Stop in the 2 s before the lever step
 (`OnFlowStoppedAsync`) and the window's close (`ReleaseHeldPresses`, before the detach) abort it
-the same way; a checklist tick's or the pilot's GRD is never aborted); and **APU availability comes from the
+the same way; a checklist tick's or the pilot's GRD is never aborted). **On the MAX the start lever
+goes to IDLE once motoring is done, never at a fixed 25 % (owner, 2026-10-19):** the N2 wait ends
+only with N2 at the motoring point AND bowed rotor motoring no longer reading active
+(`IFly737ActionExecutor.StartWaitDone`), and a tick of "Engine n start lever: IDLE (when motoring
+is done)" is refused while that engine's BRM reads active. And **APU availability comes from the
 `APU_GEN_OFF_BUS_Light_Status` annunciator, because there is no EGT field** to fall back on the way
-the PMDG NG3's `AircraftStateEvaluator.ApuRunningEgt` does. Since the PR #160 second review the
+the PMDG NG3's `AircraftStateEvaluator.ApuRunningEgt` does (since 2026-10-19 through `FO_APU_ON`,
+which also counts buses carried off the engine generators with no ground power available). Since the PR #160 second review the
 gear lever goes UP only when SIM ON GROUND reads airborne (step, line and executor), and Shutdown
 first waits (120 s, Stop) for the APU generator or ground power to be able to take the buses
 (`FO_SHUTDOWN_POWER`), presses APU GEN only with APU GEN OFF BUS lit, and cuts the levers only

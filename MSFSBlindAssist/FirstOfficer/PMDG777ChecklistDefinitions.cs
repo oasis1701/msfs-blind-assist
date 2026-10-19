@@ -79,9 +79,11 @@ public static class PMDG777ChecklistDefinitions
             // No wiper-selector state field exists in the 777 CDA struct — action-only.
             ActionManual("EPU_WIPERS_OFF", "ELEC_POWER_UP", "Wiper selectors: OFF",
                 (e, _) => e.SetWipers(0)),
-            Auto("EPU_GEAR_DOWN", "ELEC_POWER_UP", "Landing gear lever: DOWN",
+            // A cold-and-dark check: the tick moves the lever only on the ground (unread is not).
+            LeaveAlone(Auto("EPU_GEAR_DOWN", "ELEC_POWER_UP", "Landing gear lever: DOWN",
                 "GEAR_Lever", v => Math.Abs(v - 1) < 0.1,
                 action: (e, _) => e.SetGearLever(1)),
+                s => s.IsOnGround() != true, GearStaysText),
             // FCTL_AltnFlaps_Control_Sw is 0 RET, 1 OFF, 2 EXT (PMDG_777X_SDK.h). The line once
             // ticked to SetAltFlaps(0), RETRACT, as an action-only line ("no reliable position
             // field"); the field is the panel's own Continuous read-back, so the line follows it.
@@ -292,16 +294,20 @@ public static class PMDG777ChecklistDefinitions
                 new[] { "MCP_ATArm_Sw_On_1" },
                 (e, s) => { e.SetATArmLeft(1, s); e.SetATArmRight(1, s); }),
             // Vendor order: "Landing gear lever — Down" then "AUTOBRAKE selector — RTO".
-            Auto("PF_GEAR_DOWN", "PREFLIGHT", "Landing gear lever: DOWN",
+            LeaveAlone(Auto("PF_GEAR_DOWN", "PREFLIGHT", "Landing gear lever: DOWN",
                 "GEAR_Lever", v => Math.Abs(v - 1) < 0.1,
                 action: (e, _) => e.SetGearLever(1)),
+                s => s.IsOnGround() != true, GearStaysText),
             Auto("PF_AUTOBRAKE_RTO", "PREFLIGHT", "Autobrake selector: RTO",
                 "BRAKES_AutobrakeSelector", v => Math.Abs(v) < 0.1,
                 action: (e, _) => e.SetAutobrake(0)),
-            Auto("PF_FUEL_CONTROL", "PREFLIGHT", "Fuel Control switches: CUTOFF",
+            // A cold-and-dark check: the tick cuts the fuel only with both engines read stopped (the
+            // Cockpit Preparation flow's CP_ENGINES_STOPPED).
+            LeaveAlone(Auto("PF_FUEL_CONTROL", "PREFLIGHT", "Fuel Control switches: CUTOFF",
                 "ENG_FuelControl_Sw_RUN_0", v => v < 0.5,
                 new[] { "ENG_FuelControl_Sw_RUN_1" },
                 (e, _) => e.SetFuelControlLevers(0)),
+                s => !PMDG777FlowDefinitions.EnginesStopped(s), FuelControlsStayText),
             Manual("PF_CDU_PREFLIGHT", "PREFLIGHT", "CDU Preflight: Complete"),
             Manual("PF_FMC_PERF", "PREFLIGHT", "Performance data: Entered in FMC"),
             Reminder("PF_RESET_CL", "PREFLIGHT", "Reset checklists and obtain IFR clearance"),
@@ -382,13 +388,16 @@ public static class PMDG777ChecklistDefinitions
             // actually on, or ticking with no GPU connected would CONNECT one. Each side's
             // press is routed by ANNUNCIATOR INDEX (GroundPowerGate), because PMDG's event
             // names are reversed against the annunciator array.
-            Auto("BS_EXT_PWR_OFF", "BEFORE_START", "External power: Disconnect when APU available",
+            // "when APU available": a tick disconnects only with the APU running and its generator
+            // switch on (the flow's BS_APU_WAIT field), never onto the battery mid-preflight.
+            LeaveAlone(Auto("BS_EXT_PWR_OFF", "BEFORE_START", "External power: Disconnect when APU available",
                 "FO_ANY_GPU_ON", v => v < 0.5,
                 action: (e, s) =>
                 {
                     if (s.IsGpuPower1On()) e.PushGroundPowerPrimary();
                     if (s.IsGpuPower2On()) e.PushGroundPowerSecondary();
                 }),
+                s => !s.IsOn("APURunning") || !s.IsApuGenOn(), ExtPowerStaysText),
             ActionManual("BS_CANCEL_RECALL", "BEFORE_START", "Cancel/Recall: PUSH, verify expected alerts",
                 (e, _) => e.PushCancelRecall()),
             Auto("BS_TRANSPONDER", "BEFORE_START", "Transponder: XPNDR",
@@ -783,10 +792,12 @@ public static class PMDG777ChecklistDefinitions
                 "BRAKES_ParkingBrakeLeverOn", v => v > 0.5,
                 action: (e, _) => e.SetParkingBrake(1)),
             Manual("SD_APU", "SHUTDOWN", "APU: START (if needed for power)"),
-            Auto("SD_FUEL_CTRL", "SHUTDOWN", "Fuel Control switches: CUTOFF",
+            // Never airborne (the Shutdown flow's SD_ON_GROUND).
+            LeaveAlone(Auto("SD_FUEL_CTRL", "SHUTDOWN", "Fuel Control switches: CUTOFF",
                 "ENG_FuelControl_Sw_RUN_0", v => v < 0.5,
                 new[] { "ENG_FuelControl_Sw_RUN_1" },
                 (e, _) => e.SetFuelControlLevers(0)),
+                s => s.IsOnGround() != true, FuelControlsStayText),
             Auto("SD_SEAT_BELTS_OFF", "SHUTDOWN", "Fasten Belts switch: OFF",
                 "SIGNS_SeatBeltsSelector", v => v < 0.5,
                 action: (e, _) => e.SetSeatBelts(0)),
@@ -859,9 +870,11 @@ public static class PMDG777ChecklistDefinitions
         Id = "SECURE", Name = "Secure",
         Items = new()
         {
-            Auto("SEC_ADIRU", "SECURE", "ADIRU switch: OFF",
+            // Never airborne (the Secure flow's SEC_ON_GROUND).
+            LeaveAlone(Auto("SEC_ADIRU", "SECURE", "ADIRU switch: OFF",
                 "ADIRU_Sw_On", v => v < 0.5,
                 action: (e, _) => e.SetAdiru(0)),
+                s => s.IsOnGround() != true, AdiruStaysText),
             // One guarded call — it lifts the guard, waits out the settle gap, then moves
             // the switch. The old two-call form wrote the guard to 1 under a method named
             // "Close…" and sent the switch over CDA, which cannot reach OFF from ARMED.
@@ -919,9 +932,11 @@ public static class PMDG777ChecklistDefinitions
                     if (s.IsGpuPower2On()) e.PushGroundPowerSecondary();
                     return Task.CompletedTask;
                 }),
-            Auto("EPD_BATTERY_OFF", "ELEC_POWER_DOWN", "Battery switch: OFF",
+            // Never with an engine turning, the Secure flow's SEC_BATTERY_OFF rule (FOB-22).
+            LeaveAlone(Auto("EPD_BATTERY_OFF", "ELEC_POWER_DOWN", "Battery switch: OFF",
                 "ELEC_Battery_Sw_ON", v => v < 0.5,
                 action: (e, _) => e.SetBattery(0)),
+                s => !PMDG777FlowDefinitions.EnginesStopped(s), BatteryStaysText),
         }
     };
 
@@ -1027,6 +1042,18 @@ public static class PMDG777ChecklistDefinitions
         item.LeaveAloneText = text;
         return item;
     }
+
+    internal const string GearStaysText = "Gear lever left as it is: the aircraft is not read on the ground.";
+
+    internal const string FuelControlsStayText =
+        "Fuel control switches left at RUN: an engine is turning, or the aircraft is not read on the ground.";
+
+    internal const string ExtPowerStaysText =
+        "External power stays connected: the APU is not running with its generator on.";
+
+    internal const string AdiruStaysText = "ADIRU left on: the aircraft is not read on the ground.";
+
+    internal const string BatteryStaysText = "Engines running, so the battery stays on.";
 
     /// <summary>Captain reminder — user reads/confirms and manually ticks. No sim action.</summary>
     private static Item Reminder(string id, string groupId, string text) => new()

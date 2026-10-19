@@ -5613,13 +5613,14 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     /// leave TEST latched) → overlay off. Live-verified on the 777 2026-07-13.</summary>
     private static async Task WxrTestSequenceAsync(SimConnect.SimConnectManager simConnect)
     {
-        if (!EventIds.TryGetValue("EVT_EFIS_CPT_WXR", out int overlayEv) ||
-            !EventIds.TryGetValue("EVT_WXR_TEST", out int testEv) ||
-            !EventIds.TryGetValue("EVT_WXR_L_WX", out int wxEv))
-            return;
         const int quick = MSFSBlindAssist.FirstOfficer.AircraftActionExecutor.QuickTestHoldMs;
         try
         {
+            // Inside the try, so the finally ends the gate on this early return too.
+            if (!EventIds.TryGetValue("EVT_EFIS_CPT_WXR", out int overlayEv) ||
+                !EventIds.TryGetValue("EVT_WXR_TEST", out int testEv) ||
+                !EventIds.TryGetValue("EVT_WXR_L_WX", out int wxEv))
+                return;
             await HeldTransmitAsync(simConnect, (uint)overlayEv, quick);
             await Task.Delay(MSFSBlindAssist.FirstOfficer.AircraftActionExecutor.WxrOverlaySettleMs);
             await HeldTransmitAsync(simConnect, (uint)testEv, quick);
@@ -5632,6 +5633,11 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         {
             // Fire-and-forget: an escaped exception would vanish as an unobserved task fault.
             Log.Debug("PMDG", $"Weather radar test failed: {ex.GetType().Name}: {ex.Message}");
+        }
+        finally
+        {
+            // The caller took the gate the First Officer's test shares (WxrTestGate).
+            MSFSBlindAssist.FirstOfficer.WxrTestGate.Pmdg777(simConnect).End();
         }
     }
 
@@ -6577,8 +6583,10 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         }
         if (varKey == "WXR_Test")
         {
-            // One at a time, refused aloud: see _wxrTestOp.
-            if (_wxrTestOp is { IsCompleted: false })
+            // One at a time, refused aloud: see _wxrTestOp. The gate is shared with the First
+            // Officer's test (WxrTestGate), so a flow or tick mid-test refuses the button too; the
+            // sequence ends it.
+            if (!MSFSBlindAssist.FirstOfficer.WxrTestGate.Pmdg777(simConnect).TryBegin())
             {
                 announcer.AnnounceImmediate("Weather radar test still running, please wait.");
                 return true;

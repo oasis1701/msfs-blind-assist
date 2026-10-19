@@ -766,6 +766,23 @@ public class AircraftActionExecutor : IFoActionExecutor
     /// detach is refused, and the radar stayed in TEST, overlay on.</summary>
     public async Task<bool> WxrTestAsync()
     {
+        // One test at a time with the panel's button (WxrTestGate): a second sequence interleaved
+        // with this one turned the overlay off before TEST and left it on. Refused, the step is
+        // skipped aloud or the tick un-ticks.
+        var sc = _sc;
+        if (sc == null) return false;   // nothing touched, no gate taken
+        var gate = WxrTestGate.Pmdg737(sc);
+        if (!gate.TryBegin())
+        {
+            Log.Info("FO", "Weather radar test refused: one is already running");
+            return false;
+        }
+        try { return await WxrTestCoreAsync(); }
+        finally { gate.End(); }
+    }
+
+    private async Task<bool> WxrTestCoreAsync()
+    {
         // Read before the overlay press: a press that went out went out through this manager (a
         // detach in between makes WarningTestAsync press nothing and return false).
         var sc = _sc;
@@ -1029,10 +1046,13 @@ public class AircraftActionExecutor : IFoActionExecutor
     // STD instead of setting the QNH.
     // -----------------------------------------------------------------------
 
-    public Task SetAltimetersStandardAsync()
+    /// <summary>True when the captain's altimeter ends at standard (see
+    /// PMDG737Definition.RotateAltimetersToStandardAsync); false with no SimConnect, or when the
+    /// rotation sent nothing over a non-standard reading.</summary>
+    public Task<bool> SetAltimetersStandardAsync()
     {
         var sc = _sc;
-        if (sc == null) return Task.CompletedTask;
+        if (sc == null) return Task.FromResult(false);
         // Still this executor's SimConnect before each knob: a window closed meanwhile (an
         // aircraft switch) detached it, and the next knob must not be turned.
         return PMDG737Definition.RotateAltimetersToStandardAsync(sc, () => ReferenceEquals(_sc, sc));
