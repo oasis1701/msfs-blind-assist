@@ -61,8 +61,6 @@ public class FBWA380BaroWindow : FBWA380FCUWindowBase
             Location = new Point(75, 67), Size = new Size(100, 25), TabIndex = 2,
             AccessibleName = "Altimeter value", AccessibleDescription = "Enter altimeter value, Enter to set"
         };
-        // Enter in the value box sets it. The Set button beside it was removed on 2026-10-18 (the
-        // owner's call): it did what Enter does and only added a Tab stop. Close stays.
         valueTextBox.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.Handled = true; e.SuppressKeyPress = true; HandleSet(); } };
         var closeButton = new Button { Text = "Close", Location = new Point(130, 130), Size = new Size(140, 35), TabIndex = 4, DialogResult = DialogResult.OK, AccessibleName = "Close" };
         closeButton.Click += (s, e) => Close();

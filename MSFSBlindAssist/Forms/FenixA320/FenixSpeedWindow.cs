@@ -82,8 +82,6 @@ public partial class FenixSpeedWindow : Form
             AccessibleDescription = "Enter speed value: 100-399 knots or 0.10-0.99 Mach",
             TabIndex = 0
         };
-        // Enter sets the value. The Set button beside it was removed on 2026-10-18 (the owner's call):
-        // it did what Enter does and only added a Tab stop. Close stays.
         speedTextBox.KeyDown += SpeedTextBox_KeyDown;
 
         // Speed Push Button

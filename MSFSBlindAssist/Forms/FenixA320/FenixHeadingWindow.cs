@@ -82,8 +82,6 @@ public partial class FenixHeadingWindow : Form
             AccessibleDescription = "Enter heading value between 0 and 360 degrees",
             TabIndex = 0
         };
-        // Enter sets the value. The Set button beside it was removed on 2026-10-18 (the owner's call):
-        // it did what Enter does and only added a Tab stop. Close stays.
         headingTextBox.KeyDown += HeadingTextBox_KeyDown;
 
         // Heading Push Button

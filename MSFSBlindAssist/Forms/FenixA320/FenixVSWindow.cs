@@ -81,8 +81,6 @@ public partial class FenixVSWindow : Form
             AccessibleDescription = "Enter vertical speed value between -6000 and 6000 feet per minute",
             TabIndex = 0
         };
-        // Enter sets the value. The Set button beside it was removed on 2026-10-18 (the owner's call):
-        // it did what Enter does and only added a Tab stop. Close stays.
         vsTextBox.KeyDown += VsTextBox_KeyDown;
 
         // V/S Push Button

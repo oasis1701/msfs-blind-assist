@@ -17,7 +17,8 @@ public partial class FenixBaroWindow : Form
     private ComboBox unitCombo = null!;
     private TextBox valueTextBox = null!;
     private Button closeButton = null!;
-    // A set is on its way to the aircraft (it awaits the FCU): a second Enter waits for it.
+    // A set is on its way to the aircraft (it awaits the FCU): a second Enter is refused aloud,
+    // never queued, so the pilot knows to press it again once the first set ends.
     private bool _settingBaro;
 
     private readonly FenixA320Definition aircraft;
@@ -123,8 +124,6 @@ public partial class FenixBaroWindow : Form
             AccessibleDescription = "Enter altimeter value",
             TabIndex = 2
         };
-        // Enter in the value box sets it. The Set button beside it was removed on 2026-10-18 (the
-        // owner's call): it did what Enter does and only added a Tab stop. Close stays.
         valueTextBox.KeyDown += ValueTextBox_KeyDown;
 
         // Close Button
@@ -202,8 +201,14 @@ public partial class FenixBaroWindow : Form
 
     private async System.Threading.Tasks.Task HandleSetClick()
     {
-        // STD disables the value box (UpdateControlState), and a set already on its way blocks a second.
-        if (!valueTextBox.Enabled || _settingBaro) return;
+        // STD disables the value box (UpdateControlState).
+        if (!valueTextBox.Enabled) return;
+        // A set already on its way blocks a second, aloud: a silent drop let a corrected value vanish.
+        if (_settingBaro)
+        {
+            announcer.AnnounceImmediate("Altimeter set in progress, press Enter again when it finishes");
+            return;
+        }
 
         string input = valueTextBox.Text.Trim();
 

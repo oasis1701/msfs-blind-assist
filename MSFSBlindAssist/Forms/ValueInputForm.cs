@@ -204,9 +204,7 @@ public partial class ValueInputForm : Form
                 toggleY += 35;
             }
 
-            // No Set button: Enter in the box sets the value (ValueTextBox_KeyDown), so the button only
-            // added a stop to the Tab order. Removed on 2026-10-18, the owner's call, with the panels'
-            // typed fields. Cancel stays.
+            // No Set button: Enter in the box sets the value (ValueTextBox_KeyDown).
             cancelButton = new Button
             {
                 Text = "Cancel",

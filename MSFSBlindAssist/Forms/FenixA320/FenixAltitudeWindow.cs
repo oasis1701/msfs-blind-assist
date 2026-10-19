@@ -81,8 +81,6 @@ public partial class FenixAltitudeWindow : Form
             AccessibleDescription = "Enter altitude value between 100 and 49000 feet",
             TabIndex = 0
         };
-        // Enter sets the value. The Set button beside it was removed on 2026-10-18 (the owner's call):
-        // it did what Enter does and only added a Tab stop. Close stays.
         altitudeTextBox.KeyDown += AltitudeTextBox_KeyDown;
 
         // Altitude Push Button

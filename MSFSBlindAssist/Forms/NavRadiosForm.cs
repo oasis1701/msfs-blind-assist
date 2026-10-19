@@ -12,9 +12,10 @@ public record NavRadioSettings(double Nav1FreqMHz, int Nav1Course, double Nav2Fr
 /// <summary>
 /// Four-field dialog for tuning the NAV 1 / NAV 2 radios (frequency + course).
 /// Opened from input mode via Ctrl+N. Fields are pre-filled with the current
-/// values; Enter in any field applies all four (re-applying unchanged values is
-/// harmless). Frequency/course are set through standard SimConnect events by the
-/// caller's apply callback — see PMDG737Definition.
+/// values; Enter in any field, or Alt+S anywhere, applies all four (re-applying
+/// unchanged values is harmless). Frequency/course are set by the caller's apply
+/// callback — see PMDG737Definition (standard SimConnect events) and
+/// IFly737MAXDefinition (the NAV panel keypad, read back).
 /// </summary>
 public class NavRadiosForm : Form
 {
@@ -78,8 +79,7 @@ public class NavRadiosForm : Form
         AddField("NAV 2 course (degrees)", _nav2Course,
             "NAV 2 course in degrees, 0 to 359", ref y, ref tab);
 
-        // Enter in any field applies all four (AddField). The Set button was removed on 2026-10-18
-        // (the owner's call): it did what Enter does and only added a Tab stop. Cancel stays.
+        // Enter in any field (AddField) or Alt+S anywhere (ProcessCmdKey) applies all four.
         _cancelButton = new Button
         {
             Text = "&Cancel",
@@ -89,6 +89,9 @@ public class NavRadiosForm : Form
             AccessibleName = "Cancel",
             TabIndex = tab++
         };
+        // Both callers show this window modeless (Show), where DialogResult closes nothing:
+        // Cancel closes it itself, as Escape does.
+        _cancelButton.Click += (_, _) => { Close(); RestoreFocus(); };
 
         Controls.Add(_cancelButton);
         CancelButton = _cancelButton; // Esc cancels
@@ -203,6 +206,12 @@ public class NavRadiosForm : Form
         {
             Close();
             RestoreFocus();
+            return true;
+        }
+        // Alt+S applies from any control, as the removed "&Set" button's mnemonic did.
+        if (keyData == (Keys.Alt | Keys.S))
+        {
+            Apply();
             return true;
         }
         return base.ProcessCmdKey(ref msg, keyData);

@@ -19,8 +19,6 @@ public class FBWA380SpeedWindow : FBWA380FCUWindowBase
 
         var label = new Label { Text = "Speed (100-399 / 0.10-0.99):", Location = new Point(20, 25), Size = new Size(170, 20), AccessibleName = "Speed Label" };
         speedTextBox = new TextBox { Location = new Point(195, 22), Size = new Size(75, 25), TabIndex = 0, AccessibleName = "Speed value", AccessibleDescription = "Enter 100-399 knots or 0.10-0.99 Mach" };
-        // Enter sets the value. The Set button beside it was removed on 2026-10-18 (the owner's call):
-        // it did what Enter does and only added a Tab stop. Close stays.
         speedTextBox.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.Handled = true; e.SuppressKeyPress = true; HandleSet(); } };
         var pushButton = new Button { Text = "Speed Push (managed)", Location = new Point(20, 65), Size = new Size(165, 35), TabIndex = 2, AccessibleName = "Speed Push" };
         pushButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_SPD_PUSH", simConnect, announcer, readback: false);

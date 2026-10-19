@@ -19,8 +19,6 @@ public class FBWA320AltitudeWindow : FBWA320FCUWindowBase
 
         var label = new Label { Text = "Altitude (100-49000 ft):", Location = new Point(20, 25), Size = new Size(170, 20), AccessibleName = "Altitude Label" };
         altTextBox = new TextBox { Location = new Point(195, 22), Size = new Size(85, 25), TabIndex = 0, AccessibleName = "Altitude value" };
-        // Enter sets the value. The Set button beside it was removed on 2026-10-18 (the owner's call):
-        // it did what Enter does and only added a Tab stop. Close stays.
         altTextBox.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.Handled = true; e.SuppressKeyPress = true; HandleSet(); } };
         var pushButton = new Button { Text = "Altitude Push (managed)", Location = new Point(20, 65), Size = new Size(175, 35), TabIndex = 2, AccessibleName = "Altitude Push" };
         pushButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_ALT_PUSH", simConnect, announcer, readback: false);
