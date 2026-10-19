@@ -404,6 +404,13 @@ public interface IAircraftDefinition
     /// </summary>
     bool AutopilotEngageWaitsForState { get; }
 
+    /// <summary>
+    /// Whether the aircraft has gear for the universal auto-gear to move (FO-27). True everywhere but
+    /// where the simulator's own answer is wrong: the COWS DA40 has fixed gear, reports it retractable
+    /// with the handle up, and uses the gear key for its steering assist.
+    /// </summary>
+    bool HasRetractableGear { get; }
+
     // Display System Monitoring (ECAM for Airbus, EICAS for Boeing, etc.)
     // Aircraft without these systems should use the default implementation (does nothing)
 

@@ -21,7 +21,7 @@ Chapter 3 of 3 in [Part 7: Aircraft Guides](index.md#part-7-aircraft-guides) of 
 - [Reading the engine and the aeroplane](#da40-readouts)
 - [The DA40-NG](#da40-ng)
 - [The DA40-XLS](#da40-xls)
-- [Checklists](#da40-checklists)
+- [The First Officer and checklists](#da40-checklists)
 - [Failures and simulation](#da40-simulation)
 - [Things worth knowing](#da40-quirks)
 
@@ -153,9 +153,27 @@ Shift+F does not match the MFD's fuel totalizer, and is not meant to: the totali
 - **Fuel System**: the fuel selector (LEFT, RIGHT, OFF) and the electric fuel pump.
 - **Engine Start**: the aircraft's own auto-start and auto-shutdown, narrated step by step if you use them.
 
-## Checklists {#da40-checklists}
+## The First Officer and checklists {#da40-checklists}
 
-Output **Shift+C** opens the DA40's own checklist, read from the COWS package: every procedure page, the weights and speeds, and the Tips and help page, where COWS writes down its operating advice (warm-up times, power settings for the circuit, how to reset failures). The checklist follows the aircraft through COWS updates.
+### What it is {#da40-fo-what}
+
+Output **Shift+C** opens the DA40's [First Officer](planning-your-flight.md#checklists), named for your model, "DA40-NG First Officer" or "DA40-XLS First Officer". Its flows follow the aircraft's own COWS checklist pages, in their order: Before Engine Start, Engine Start, After Engine Start, Taxi, Before Take-off, Line Up, Climb, Cruise, Descent, Approach, Final, After Landing and Shutdown. The XLS has two more starts, the page's other procedures: Flooded or Hot Engine Start, and Engine Start, Reprime.
+
+Its checklists are those same COWS pages, read from the installed aircraft in COWS's own words, beside each flow's own list. The Weights/Speeds and Tips and help pages are there too, to read: Tips and help is where COWS writes down its operating advice (warm-up times, power settings for the circuit, how to reset failures). The pages follow the aircraft through COWS updates.
+
+### What the First Officer does {#da40-fo-does}
+
+It sets the switches each page lists and runs the tests the pages spell out: the flap travel test before engine start, the start itself (the key held until 500 RPM, and on the XLS the priming and the mixture run in as the engine fires), the pitot heat test, the standby altimeter set to match the G1000's, the standby horizon caged, the NG's ECU voter check and ECU test, and the XLS's propeller cycle and magneto check at 2000 RPM, during which you hear each magneto's drop. It closes a door only when it reads open.
+
+It does not move the power lever or throttle, except to the positions the XLS start gives, and it never sets the transponder code, the QNH on the G1000, a frequency, the autopilot or the flight plan. When a page asks for a lever at a position ("Throttle: 2000RPM"), the First Officer says it and waits for you. The ground lean, power settings and anything "as required" are yours.
+
+Before Engine Start and the engine starts stop at once unless the engine reads stopped, and Shutdown unless you are on the ground.
+
+### After take-off {#da40-fo-automation}
+
+- The automatic autopilot engagement (Settings, First Officer) waits for 800 feet above the ground on the DA40, the GFC 700's own limitation, whatever height you set.
+- The DA40 has fixed gear, so the automatic gear calls never fire on it.
+- At the transition altitude from your SimBrief plan, the First Officer sets both altimeters to 29.92, and at the transition level reminds you to set the local pressure. Above and below 10,000 feet it switches the landing and taxi lights.
 
 ## Failures and simulation {#da40-simulation}
 

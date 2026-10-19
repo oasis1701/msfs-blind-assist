@@ -100,7 +100,7 @@ public partial class CowsDA40Definition
     private const int EcuTestTypicalMs = 31000;
 
     /// <summary>The model's last stage: the test has finished and the engine is at idle.</summary>
-    private const double EcuTestCompleteStage = 10;
+    internal const double EcuTestCompleteStage = 10;
 
     /// <summary>
     /// The OTHER hold on the same button, and the aeroplane's own way out of a flat
@@ -457,6 +457,7 @@ public partial class CowsDA40Definition
             return;
         }
         ReleaseHeldLVar("ECU_TEST:1");
+        EcuTestCompletedTicks = Environment.TickCount64;
         // The press said "ECU test running"; the end is what a sighted pilot sees as the
         // CAS messages clearing and the engine settling at idle. A failed ECU latches its
         // own fault, which DA40_ECU_TEST_FAIL_A/B and the CAS announce.
@@ -469,6 +470,21 @@ public partial class CowsDA40Definition
         if (_holds.Release(lvar) && _holdSim != null) WriteReleased(_holdSim, lvar);
         if (_holds.IsEmpty) StopHoldTimer();
     }
+
+    /// <summary>
+    /// The First Officer's ECU test is being abandoned (its flow stopped, its window closed): the
+    /// button is let go now rather than at the end of its hold, completing nothing. A press of any
+    /// other control is left alone.
+    /// </summary>
+    internal void ReleaseEcuTestHold() => ReleaseHeldLVar("ECU_TEST:1");
+
+    /// <summary>When the model last reported the ECU test Complete and the button was let go for
+    /// it (<see cref="Environment.TickCount64"/>), 0 when never: the First Officer's verdict, which
+    /// the stage alone cannot give once it has dropped back.</summary>
+    internal long EcuTestCompletedTicks { get; private set; }
+
+    /// <summary>Whether the ECU test button is being held right now.</summary>
+    internal bool EcuTestHeld => _holds.IsHeld("ECU_TEST:1");
 
     /// <summary>Lets go of everything held, completing nothing — the aircraft is being left.</summary>
     private void ReleaseAllHeldLVars()

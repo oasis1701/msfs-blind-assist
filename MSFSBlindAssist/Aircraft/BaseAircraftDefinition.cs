@@ -880,6 +880,10 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// engage waits for a definite reading (FO-21).</summary>
     public virtual bool AutopilotEngageWaitsForState => false;
 
+    /// <summary>Default true: the aircraft has gear the universal auto-gear moves. The COWS DA40
+    /// overrides it (fixed gear the simulator reports as retractable; FO-27).</summary>
+    public virtual bool HasRetractableGear => true;
+
     // Display Monitoring Methods - Default implementations (do nothing)
     // Aircraft with ECAM/EICAS/etc. should override these methods
 

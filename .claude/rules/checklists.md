@@ -1,11 +1,9 @@
 ---
 paths:
   - "MSFSBlindAssist/Services/NativeChecklistReader.cs"
-  - "MSFSBlindAssist/Services/ChecklistContent.cs"
-  - "MSFSBlindAssist/Forms/ChecklistForm.cs"
-  - "tests/MSFSBlindAssist.Tests/**/*Checklist*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*NativeChecklist*.cs"
 ---
-# Checklist window rules
+# Native checklist rules
 
 Loaded when Claude reads matching code. Background: docs/checklists.md.
 

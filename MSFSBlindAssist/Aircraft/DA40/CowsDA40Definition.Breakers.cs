@@ -278,6 +278,10 @@ public partial class CowsDA40Definition
         [CbAirframeSystemsPanel] = CbAirframeSystemsControlsFor(),
     };
 
+    /// <summary>Every breaker key of this airframe, all six groups: the First Officer's "Circuit
+    /// breakers: all in" check.</summary>
+    internal IReadOnlyList<string> BreakerKeys => BreakerPanelsFor().Values.SelectMany(keys => keys).ToList();
+
     private static readonly Dictionary<string, string> BreakerCountKeys = new()
     {
         ["DA40_CB_CBENGINEFUEL_OUT"] = CbEngineFuelPanel,
