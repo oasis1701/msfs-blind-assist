@@ -116,14 +116,8 @@ public static class PMDG777FlowDefinitions
                "EPU_ADIRU"),
                 s => s.IsADIRUOn()),
             Wait("EPU_WAIT_ADIRU", "ADIRU aligning — 30 seconds", 30),
-            // ARMED is the guard-CLOSED position, so "guard closed" IS "lights armed" —
-            // reaching it means moving the switch to ARMED and letting the guard shut over
-            // it, which is what the pseudo-key sequence does. (This step used to write the
-            // guard event directly with 1, which OPENS the guard, under a label saying
-            // "closed", and left it standing open over ARMED.)
-            Skip(SW("EPU_EMER_EXIT_LIGHTS", "Emer exit lights: ARMED", "EMER_EXIT_LIGHTS",
-                    EmerExitLightSequence.Armed),
-                s => s.EmerLightsSelector() == EmerExitLightSequence.Armed),
+            // The emergency lights are armed in Cockpit Prep (CP_EMER_LIGHTS), where PMDG's
+            // Preflight Procedure lists them; its Electrical Power Up page does not.
             Skip(SW("EPU_THRUST_ASYM", "Thrust asym comp: AUTO",    "EVT_OH_THRUST_ASYM_COMP",            1,
                checklistItemId: "EPU_THRUST_ASYM"),
                 s => s.IsThrustAsymCompAuto()),
@@ -175,6 +169,18 @@ public static class PMDG777FlowDefinitions
                 s => s.IsGen1On() && s.IsGen2On()),
             Multi("CP_BACKUP_GENS","Backup generators: ON", "PF_BACKUP_GENS",
                 ("EVT_OH_ELEC_BACKUP_GEN1_SWITCH", 1), ("EVT_OH_ELEC_BACKUP_GEN2_SWITCH", 1)),
+            // PMDG's Preflight Procedure: "EMERGENCY LIGHTS switch: Guard closed", after the backup
+            // generators (its APU and L wiper lines sit elsewhere here) and before the window heat.
+            // ARMED is the guard-CLOSED position, so "guard closed" IS "lights armed": the pseudo-key
+            // sequence moves the switch to ARMED and shuts the guard over it. PMDG's Secure Procedure
+            // turns the switch OFF, so every turnaround needs this. It was an Electrical Power Up
+            // step with no checklist line, so a flight started from a powered panel never re-armed
+            // it (owner report, 2026-10-19: the Boris Audio Works soundpack plays passenger chatter
+            // only with the switch ARMED or ON). Verified: a write that does not take is heard
+            // skipped and keeps PF_EMER_LIGHTS out of the latch.
+            Skip(SW("CP_EMER_LIGHTS", "Emergency lights: ARMED", "EMER_EXIT_LIGHTS", EmerExitLightSequence.Armed,
+                    "LTS_EmerLightsSelector", v => Math.Abs(v - EmerExitLightSequence.Armed) < 0.1, "PF_EMER_LIGHTS"),
+                s => s.EmerLightsSelector() == EmerExitLightSequence.Armed),
             // Crew oxygen tests — quick momentary press per side (transmit
             // press/release); the audible oxygen-flow sound is the verification.
             // Before the fire test so the flow sound never sits under the fire bell.

@@ -160,6 +160,12 @@ public static class PMDG777ChecklistDefinitions
                 "ELEC_BackupGen_Sw_ON_0", v => v > 0.5,
                 new[] { "ELEC_BackupGen_Sw_ON_1" },
                 (e, _) => e.SetBackupGenerators(1)),
+            // PMDG's Preflight Procedure: "EMERGENCY LIGHTS switch: Guard closed". ARMED (1) is the
+            // guard-closed position; OFF and ON both sit outside the guard, and an unread selector
+            // (NaN) is neither. The tick runs the same guarded sequence as the flow's CP_EMER_LIGHTS.
+            Auto("PF_EMER_LIGHTS", "PREFLIGHT", "Emergency Lights switch: ARMED",
+                "LTS_EmerLightsSelector", v => Math.Abs(v - EmerExitLightSequence.Armed) < 0.1,
+                action: (e, _) => e.SetEmerExitLights(EmerExitLightSequence.Armed)),
             // Oxygen test: ONE ITEM PER SIDE, so each mask can be tested on its own (user
             // ruling 2026-08-16). Each tick fires only its own side's quick TEST press, and
             // the flow's matching step ticks the matching item. The single "Oxygen: Tested
