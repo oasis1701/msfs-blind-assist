@@ -677,8 +677,13 @@ public class CessnaC172G1000ControlsTests
         Assert.Equal(new[] { "Battery and Alternator", "Avionics" }, structure["Electrical"]);
         Assert.Equal(new[] { "C172G_STBY_BATTERY_STATE", "C172_BATTERY_STATE", "C172_ALTERNATOR_STATE" },
             controls["Battery and Alternator"]);
-        // The fuel pump with the fuel system, first.
-        Assert.Equal(new[] { "C172_FUEL_PUMP_STATE", "C172_FUEL_SELECTOR", "C172_FUEL_VALVE_STATE" }, controls["Fuel"]);
+        // The fuel pump with the fuel system, first; refuelling after the switches (C172-24).
+        Assert.Equal(new[]
+            {
+                "C172_FUEL_PUMP_STATE", "C172_FUEL_SELECTOR", "C172_FUEL_VALVE_STATE",
+                "C172_FUEL_LEFT_SET", "C172_FUEL_RIGHT_SET", "C172_FUEL_FILL",
+            },
+            controls["Fuel"]);
         // The flap combo is the whole lever.
         Assert.Equal(new[] { "C172_FLAPS", "C172_PARKING_BRAKE_STATE" }, controls["Flaps and Brake"]);
         // Pitot heat and the alternate static source are the pitot-static system, not anti-ice.

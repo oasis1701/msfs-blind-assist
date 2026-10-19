@@ -380,20 +380,6 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         ValueToDescriptionKey = open => open >= 0.5 ? 1 : 0
     };
 
-    /// <summary>
-    /// A typed GFC 700 value: an L:var name nobody reads, never written, so the definition handles
-    /// every set, and a typo arrives as NaN, not 0 (which is north, or the ground).
-    /// </summary>
-    private static SimVarDefinition TypedValue(string key, string displayName) => new()
-    {
-        Name = key,
-        DisplayName = displayName,
-        Type = SimVarType.LVar,
-        Units = "number",
-        UpdateFrequency = UpdateFrequency.Never,
-        UnparseableTextAsNaN = true
-    };
-
     internal const string HeadingBugSetKey = "C172G_AP_HDG_SET", SelectedAltitudeSetKey = "C172G_AP_ALT_SET",
         SelectedVerticalSpeedSetKey = "C172G_AP_VS_SET", SelectedAirspeedSetKey = "C172G_AP_IAS_SET";
 

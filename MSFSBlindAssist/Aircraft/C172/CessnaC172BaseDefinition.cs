@@ -441,6 +441,8 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
 
         // ===== RADIOS (CessnaC172BaseDefinition.Radios.cs) =====
         AddRadioVariables(v);
+        // ===== REFUELLING (CessnaC172BaseDefinition.Fuel.cs) =====
+        AddFuelLoadVariables(v);
         return v;
     }
 
@@ -521,6 +523,20 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
     /// <summary>The magneto key was last at START, so its next reading is the spring back. UI thread only.</summary>
     private bool _magnetoAtStart;
 
+    /// <summary>
+    /// A typed value: an L:var name nobody reads, never written, so the definition handles every set,
+    /// and a typo arrives as NaN, not 0 (which is north, the ground, or an empty tank).
+    /// </summary>
+    protected static SimConnect.SimVarDefinition TypedValue(string key, string displayName) => new()
+    {
+        Name = key,
+        DisplayName = displayName,
+        Type = SimConnect.SimVarType.LVar,
+        Units = "number",
+        UpdateFrequency = SimConnect.UpdateFrequency.Never,
+        UnparseableTextAsNaN = true
+    };
+
     /// <summary>A key with no state of its own: never read, only pressed.</summary>
     protected static SimConnect.SimVarDefinition KeyPress(string inputEvent, string displayName) => new()
     {
@@ -584,13 +600,13 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
                 "C172_THROTTLE"
             },
             // The fuel pump is a fuel system switch, so it is here with the selector and the valve,
-            // first (the owner's pick, 2026-10-18).
+            // first (the owner's pick, 2026-10-18); refuelling after them (C172-24).
             ["Fuel"] = new List<string>
             {
                 "C172_FUEL_PUMP_STATE",
                 "C172_FUEL_SELECTOR",
                 "C172_FUEL_VALVE_STATE"
-            },
+            }.Concat(FuelLoadControls).ToList(),
             ["Exterior Lights"] = new List<string>
             {
                 "C172_NAV_LIGHT_STATE",
@@ -1163,6 +1179,7 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
         if (varKey == SquawkSetKey) return false;
 
         if (HandleRadioSet(varKey, value, simConnect, announcer)) return true;
+        if (HandleFuelLoad(varKey, value, simConnect, announcer)) return true;
 
         // The mixture combo, silent: the screen reader reads the picked position, the two ends by
         // name, so anything spoken here would repeat it (CORE-7).
