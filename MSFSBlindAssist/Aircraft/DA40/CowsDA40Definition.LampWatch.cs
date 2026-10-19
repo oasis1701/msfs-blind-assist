@@ -129,6 +129,15 @@ public partial class CowsDA40Definition
     internal static bool LampReadsLit(double value) => value > 1e-6;
 
     /// <summary>
+    /// A light switched on and dark, with the battery master on. ⚠️ THE MASTER OFF IS NOT A
+    /// FAULT: every lamp is dark without power, and switching it off said "Taxi light not lit /
+    /// Position lights not lit" over a shutdown at VCRI (2026-10-19). With the master on, a dark
+    /// lamp speaks even on a dead bus - that is a real electrical symptom.
+    /// </summary>
+    internal static bool LampFaulted(double sw, double circuit, bool masterOn)
+        => masterOn && sw >= 0.5 && !LampReadsLit(circuit);
+
+    /// <summary>
     /// Notes that a switch or a circuit moved and arms the settle. Returns true for a
     /// CIRCUIT, which is how the circuit readouts stay out of the generic announcer.
     /// </summary>
@@ -192,6 +201,8 @@ public partial class CowsDA40Definition
             return;
         }
 
+        bool masterOn = (_lampSimConnect.GetCachedVariableValue("DA40_ELEC_MASTER_BATTERY") ?? 1) >= 0.5;
+
         foreach (var pair in LampPairs)
         {
             // Muting the SWITCH mutes this too - they are one thing to a pilot. Checked
@@ -203,7 +214,7 @@ public partial class CowsDA40Definition
             double? circuit = _lampSimConnect.GetCachedVariableValue(pair.Circuit);
             if (sw is null || circuit is null) continue;
 
-            bool faulted = sw.Value >= 0.5 && !LampReadsLit(circuit.Value);
+            bool faulted = LampFaulted(sw.Value, circuit.Value, masterOn);
 
             // Only the transition INTO a fault is spoken. Coming out of one is silent: the
             // pilot either switched the light off, and the switch already said so, or put

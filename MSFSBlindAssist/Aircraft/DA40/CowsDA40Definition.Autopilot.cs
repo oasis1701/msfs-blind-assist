@@ -372,6 +372,61 @@ public partial class CowsDA40Definition
     private readonly Dictionary<string, double> _afcsPending = new(StringComparer.Ordinal);
     private readonly Dictionary<string, double> _afcsSpoken = new(StringComparer.Ordinal);
 
+    /// <summary>How long after a mode press the FMA is asked whether it moved: two of the
+    /// watcher's 1.5 s polls, so the change has had a scrape to land in.</summary>
+    internal const int ApPressCheckMs = 3500;
+
+    /// <summary>
+    /// Whether a mode press went unanswered: the FMA did not move, and the watcher has read
+    /// the PFD since (at least a second after the press). ⚠️ THE GFC 700 REFUSES PRESSES
+    /// SILENTLY - APR from HDG after a go-around, NAV and APR in a quick run, AP while in GA
+    /// (MTL/VCRI, 2026-10-19) - and the pilot heard nothing at all, the same as a press that
+    /// worked and was still being drawn. Without fresh rows nothing is known, so nothing is said.
+    /// </summary>
+    internal static bool ApPressUnanswered(int changesBefore, int changesNow, DateTime lastRowsAt, DateTime pressedAt)
+        => changesNow == changesBefore && lastRowsAt >= pressedAt.AddSeconds(1);
+
+    internal static string ApPressNoChangeText(string control) => control + ": no change";
+
+    private System.Windows.Forms.Timer? _apPressTimer;
+
+    private void WatchApPress(string varKey, ScreenReaderAnnouncer announcer)
+    {
+        if (!GetVariables().TryGetValue(varKey, out var def)) return;
+        int before = Cas.FmaChanges;
+        DateTime pressedAt = Cas.Now();
+        _apPressTimer?.Stop();
+        _apPressTimer?.Dispose();
+        _apPressTimer = new System.Windows.Forms.Timer { Interval = ApPressCheckMs };
+        _apPressTimer.Tick += (_, _) =>
+        {
+            _apPressTimer?.Stop();
+            if (ApPressUnanswered(before, Cas.FmaChanges, Cas.LastRowsAt, pressedAt))
+                announcer.AnnounceImmediate(ApPressNoChangeText(def.DisplayName));
+        };
+        _apPressTimer.Start();
+    }
+
+    private void StopApPressWatch()
+    {
+        try { _apPressTimer?.Stop(); _apPressTimer?.Dispose(); } catch { }
+        _apPressTimer = null;
+    }
+
+    /// <summary>
+    /// Whether a settled AFCS status is worth saying. ⚠️ "NOT STARTED" NEVER IS: the self test
+    /// and pre-flight test return to 0 only when the AFCS loses power or resets, and the avionics
+    /// master off said "Autopilot Self Test: not started. Autopilot Pre-flight Test: not started"
+    /// over a shutdown (VCRI, 2026-10-19), reading like two results. The power-up's "running" and
+    /// its outcome still speak (DA40A-5); the failure flag keeps both edges.
+    /// </summary>
+    internal static bool AfcsStatusIsNews(string key, double was, double now)
+    {
+        if (Math.Abs(was - now) <= 0.01) return false;
+        bool test = key == "DA40_AP_SELFTEST" || key == "DA40_AP_PFT";
+        return !(test && Math.Round(now) == 0);
+    }
+
     private bool NoteAfcsStatus(string varKey, double value, Accessibility.ScreenReaderAnnouncer announcer)
     {
         if (Array.IndexOf(AfcsStatusKeys, varKey) < 0) return false;
@@ -401,7 +456,7 @@ public partial class CowsDA40Definition
         foreach (string key in AfcsStatusKeys)
         {
             if (!_afcsPending.TryGetValue(key, out double v)) continue;
-            bool changed = !_afcsSpoken.TryGetValue(key, out double was) || Math.Abs(was - v) > 0.01;
+            bool changed = !_afcsSpoken.TryGetValue(key, out double was) || AfcsStatusIsNews(key, was, v);
             _afcsSpoken[key] = v;
             if (!changed || muted.Contains(key) || !vars.TryGetValue(key, out var def)) continue;
             string state = def.ValueDescriptions.TryGetValue(Math.Round(v), out var d) ? d : v.ToString("0", System.Globalization.CultureInfo.InvariantCulture);
@@ -641,6 +696,7 @@ public partial class CowsDA40Definition
             // Unique, because a mode selected twice running is the same string twice and
             // MobiFlight coalesces byte-identical consecutive commands.
             simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"1 (>K:{onOff})"));
+            WatchApPress(varKey, announcer);
             return true;
         }
 
@@ -662,8 +718,8 @@ public partial class CowsDA40Definition
                 // preselect itself holds -1,000 to 30,000 ft (measured 2026-10-12: 60000 and
                 // -2000 written directly settled at 30000 and -1000).
                 if (OutOfRange(announcer, value, -1000, 30000, "0", "the selected altitude range, in feet")) return true;
-                MarkRadioSetByUs("DA40_AP_ALT_SET");
                 int feet = (int)(Math.Round(value / 100.0) * 100.0);
+                MarkApTargetSpoken("DA40_AP_ALT_SET", feet);
                 // ⚠️ AP_ALT_VAR_SET_ENGLISH IS AN INCREMENT AND IGNORES ITS PARAMETER, so
                 // this control never once set the altitude a pilot typed. Measured on the
                 // live DA40 with the preselect at 0: "5000 (>K:AP_ALT_VAR_SET_ENGLISH)"
@@ -695,8 +751,8 @@ public partial class CowsDA40Definition
                 // The GFC 700's range, measured: +1,500 fpm up (3000 settled at 1500) and at
                 // least -3,000 down. Refused outside it, never clamped.
                 if (OutOfRange(announcer, value, -3000, 1500, "0", "the vertical speed range, in feet per minute")) return true;
-                MarkRadioSetByUs("DA40_AP_VS_SET");
                 int fpm = (int)(Math.Round(value / 100.0) * 100.0);
+                MarkApTargetSpoken("DA40_AP_VS_SET", fpm);
                 simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{fpm} (>K:AP_VS_VAR_SET_ENGLISH)"));
                 announcer.AnnounceImmediate(fpm == 0
                     ? "Selected vertical speed level"
@@ -710,8 +766,8 @@ public partial class CowsDA40Definition
                 // 70. Refused outside it, never clamped (60 to 172 was MSFSBA's guess, and 30
                 // became a confirmed "Selected airspeed 60 knots").
                 if (OutOfRange(announcer, value, 70, 165, "0", "the flight level change speed range, in knots")) return true;
-                MarkRadioSetByUs("DA40_AP_IAS_SET");
                 int kt = (int)Math.Round(value);
+                MarkApTargetSpoken("DA40_AP_IAS_SET", kt);
                 simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{kt} (>K:AP_SPD_VAR_SET)"));
                 announcer.AnnounceImmediate($"Selected airspeed {kt} knots");
                 return true;
@@ -722,8 +778,8 @@ public partial class CowsDA40Definition
                 // Refused outside 0-360, never wrapped: a typed 400 used to set 040 and confirm it
                 // as if typed (same rule as the altitude, VS and speed above). 0 and 360 are north.
                 if (OutOfRange(announcer, value, 0, 360, "0", "the heading range, in degrees")) return true;
-                MarkRadioSetByUs("DA40_AP_HDG_SET");
                 int deg = ((int)Math.Round(value) % 360 + 360) % 360;
+                MarkApTargetSpoken("DA40_AP_HDG_SET", deg);
                 simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{deg} (>K:HEADING_BUG_SET)"));
                 announcer.AnnounceImmediate("Heading bug " + HeadingWords(deg));
                 return true;
@@ -735,8 +791,8 @@ public partial class CowsDA40Definition
                 // cache cannot send it to the wrong receiver; the cache only says which
                 // settle key to mark as ours.
                 if (OutOfRange(announcer, value, 0, 360, "0", "the course range, in degrees")) return true;
-                MarkRadioSetByUs(CdiCourseKeys());
                 int deg = ((int)Math.Round(value) % 360 + 360) % 360;
+                foreach (var courseKey in CdiCourseKeys()) MarkApTargetSpoken(courseKey, deg);
                 simConnect.ExecuteCalculatorCodeUnique(CourseWrite(deg));
                 announcer.AnnounceImmediate("Course " + HeadingWords(deg));
                 return true;

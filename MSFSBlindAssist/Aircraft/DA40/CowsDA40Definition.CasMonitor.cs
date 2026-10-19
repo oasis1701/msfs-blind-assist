@@ -37,6 +37,7 @@ public partial class CowsDA40Definition : IG1000DisplayOwner
         ResetXlsMixtureState();
         ResetPerfTableState();
         StopRadioAnnounce();
+        StopApPressWatch();
         try { _afcsSettle?.Stop(); _afcsSettle?.Dispose(); } catch { }
         _afcsSettle = null;
         _afcsPending.Clear();

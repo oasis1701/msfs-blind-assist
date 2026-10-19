@@ -248,8 +248,11 @@ public static class GpsWaypointSequencer
     /// fix. Only for the ident-shaped ones — an airport or a named leg the navigator generated
     /// ("HDG 071") is prose and stays prose.
     /// </summary>
+    /// ⚠️ THE NAVIGATOR'S OWN LEG WORDS ARE WORDS. The G1000 names a hold it built "HOLD", which
+    /// is ident-shaped and was spelt "H O L D" in the passing call (MTL hold, 2026-10-19).
     private static string Spell(string ident)
     {
+        if (ident == "HOLD") return "hold";
         if (ident.Length == 0 || ident.Length > 5) return ident;
         foreach (char c in ident)
             if (!char.IsLetterOrDigit(c)) return ident;

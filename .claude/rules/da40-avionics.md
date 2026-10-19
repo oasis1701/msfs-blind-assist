@@ -12,6 +12,7 @@ paths:
   - "MSFSBlindAssist/Aircraft/DA40/CowsDA40Definition.Hotkeys.cs"
   - "MSFSBlindAssist/Services/GpsWaypointSequencer.cs"
   - "tests/MSFSBlindAssist.Tests/**/CowsDA40AutopilotHotkeyTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/CowsDA40AfcsStatusTests.cs"
   - "tests/MSFSBlindAssist.Tests/**/CowsDA40BaroSetTests.cs"
   - "tests/MSFSBlindAssist.Tests/**/CowsDA40CourseSourceTests.cs"
   - "tests/MSFSBlindAssist.Tests/**/CowsDA40DisplayUnitsTests.cs"
@@ -48,3 +49,6 @@ Loaded with the DA40 radio, altimeter, autopilot, waypoint, unit and hotkey code
 - [DA40A-22] The GFC 700 mode rows are silent and the FMA speaks the modes (`ApModeIsSpokenByFma`); the master and flight director speak only OFF, combos refresh via `RefreshControlWhenDefHandled`, and modes without AP are the flight director's (DA40G-30). Full: docs/invariants/da40-avionics.md#da40a-22
 - [DA40A-23] A temperature DIFFERENCE (the lean-assist drop below a peak, the EGT spread) renders through `FahrenheitDifferenceText`, scaled by 5/9 and never offset by 32; `TryUnitText` converts absolute readings only. Full: docs/invariants/da40-avionics.md#da40a-23
 - [DA40A-24] VS and FLC sync their target as they engage (`ApTargetSyncedBy`): MSFSBA's press (`NoteOwnApModePress`) and the mode row's OFF-to-ON edge (`NoteApModeRow`, never a repeat) clear that target's own-write mark, so the sync is spoken. Full: docs/invariants/da40-avionics.md#da40a-24
+- [DA40A-25] An autopilot setter records the value it spoke as the last one heard (`MarkApTargetSpoken`), and a value back where the pilot last heard it drops any queued one (`StageRadioValue`): a mode's sync back to the old target is then spoken, never the stale echo. Full: docs/invariants/da40-avionics.md#da40a-25
+- [DA40A-26] A GFC 700 mode press the FMA does not answer within `ApPressCheckMs` says "<control>: no change" (`ApPressUnanswered`), only on rows read since the press; the autopilot refuses presses silently. Full: docs/invariants/da40-avionics.md#da40a-26
+- [DA40A-27] The AFCS self test and pre-flight test going back to "not started" is a power loss or reset, never news (`AfcsStatusIsNews`); the power-up's running and result still speak. Full: docs/invariants/da40-avionics.md#da40a-27

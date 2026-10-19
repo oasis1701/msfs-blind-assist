@@ -17,7 +17,7 @@
 (function () {
     var A = {};
 
-    A.VERSION = 31;
+    A.VERSION = 32;
 
     function visible(el) {
         if (!el) return false;
@@ -367,7 +367,15 @@
             }
             var value = text(host.querySelector(".verticalModeValue"));
             var units = text(host.querySelector(".verticalModeUnits"));
-            if (value) parts.push("target " + value + (units ? " " + units : ""));
+            // ⚠️ THE SIGN IS AN ARROW. VS draws its target unsigned beside an SVG arrow,
+            // rotated 180 for down and hidden when there is none, so "target 500 FPM" was read
+            // over a 500 fpm DESCENT (MTL, 2026-10-19).
+            var dir = "";
+            var arrow = host.querySelector(".verticalModeArrow path");
+            if (arrow && classList(arrow).indexOf("hide-element") < 0) {
+                dir = /rotate\(\s*180/.test(arrow.getAttribute("transform") || "") ? " down" : " up";
+            }
+            if (value) parts.push("target " + value + (units ? " " + units : "") + dir);
             return parts.join(", ");
         }
 
@@ -2953,6 +2961,14 @@
             // label. The PFD backlight window did exactly that and answered
             // "Auto100.00%Auto100.00: PFD Display" - four neighbouring values welded into
             // a name. A real label has words, no percent sign and no long runs of digits.
+            // ⚠️ A NEIGHBOUR'S EMPTY VALUE IS NOT A NAME, AND NEITHER IS A UNIT. The approach
+            // page's Minimums box is a BARO toggle beside an empty altitude: the toggle took
+            // "_ _ _ _ _FT" as its label and the altitude took "FT", read "blank: BARO" and
+            // "FT: blank" (MTL hold, 2026-10-19). Placeholder glyphs mean the climb reached
+            // another field: no label. A bare unit is the field's own unit (A.M.walk puts it
+            // back on the value), never its name.
+            if (/_|[–—]{2,}|-{2,}/.test(cut)) return "";
+            if (/^(FT|M|NM|KT|MIN|IN|HPA|MB)$/i.test(cut)) return "@unit:" + cut;
             var looksLikeValues = cut.indexOf("%") >= 0 || /\d{2,}/.test(cut);
             if (cut.length > 0 && cut.length <= 48 && cut !== whole &&
                 /[A-Za-z]/.test(cut) && !looksLikeValues) {
@@ -3142,18 +3158,27 @@
             return /[A-Za-z]/.test(String(f.value || ""));
         };
 
-        var firstOfRow = {};
+        var firstOfRow = {}, groupOfRow = {};
         for (var m = 0; m < fields.length; m++) {
             // A list entry is a whole item of its own, never a row's subject or its field.
             if (fields[m].entry) continue;
             var r = rowOf(fields[m].p);
             if (!r) continue;
-            if (!(r in firstOfRow)) { firstOfRow[r] = canName(fields[m]) ? fields[m].value : ""; continue; }
+            if (!(r in firstOfRow)) {
+                firstOfRow[r] = canName(fields[m]) ? fields[m].value : "";
+                groupOfRow[r] = fields[m].group || "";
+                continue;
+            }
             // Not the first of its row, and carrying no label of its own.
             // A BUTTON is never named after its row: the procedure page's Load button sat in
             // the airport's row and read "LOWG: Load?".
+            // ⚠️ NOR A FIELD IN ANOTHER BOX: the procedure page's Minimums sit in the airport's
+            // row too, and read "VCRI: BARO" (MTL hold, 2026-10-19). A box of its own is a
+            // subject of its own.
             if (!fields[m].label && firstOfRow[r] && !selfNamed(fields[m]) &&
-                fields[m].kind !== "button") fields[m].label = firstOfRow[r];
+                fields[m].kind !== "button" && (fields[m].group || "") === groupOfRow[r]) {
+                fields[m].label = firstOfRow[r];
+            }
         }
     };
 
@@ -3239,6 +3264,7 @@
             var digit = kind === "field" ? A.M.digitOf(c) : null;
             if (digit) value = digit.whole + ", " + digit.place;
             var label = kind === "button" ? "" : A.M.labelOf(c, digit ? digit.whole : value);
+            if (label.indexOf("@unit:") === 0) { value = value + " " + label.substring(6); label = ""; }
             // A BUTTON is boxed only by a real groupbox. The second, title-hunting pass named
             // the Direct-To dialog's "Activate?" after the neighbouring field title, "BRG"
             // (2026-10-12).
@@ -3986,6 +4012,22 @@
         return "";
     };
 
+    /// The hold dialog's heading, "Hold South of MTL": which side of the fix the hold is on.
+    /// It is text, not a control, so the field walk never met it, and it is the one thing
+    /// the course and its Inbound/Outbound toggle change: course 000 inbound holds south,
+    /// 180 holds north (MTL hold, 2026-10-19). Found by its words, "" anywhere else.
+    A.M.holdSubject = function () {
+        var all = document.querySelectorAll(".popout-dialog.open div");
+        for (var i = 0; i < all.length; i++) {
+            if (!visible(all[i])) continue;
+            var t = spacedText(all[i]);
+            if (!/^Hold [A-Za-z]+ of$/.test(t)) continue;
+            var fix = all[i].nextElementSibling ? spacedText(all[i].nextElementSibling) : "";
+            return fix ? t + " " + fix : t;
+        }
+        return "";
+    };
+
     A.M.say = function () {
         var key = A.M.viewKey();
 
@@ -4100,6 +4142,12 @@
                     var who = text(firstVisible(".wpt-entry-name"));
                     if (who) s += ", " + who;
                 }
+            }
+            // The course box is what moves the hold to the other side of the fix, so its
+            // fields say where the hold now is.
+            if (/^Direction\b/.test(f.group || "")) {
+                var side = A.M.holdSubject();
+                if (side) s += ", " + side;
             }
             var hint = A.M.enterHint(A.M.viewKey());
             if (hint) s += ", " + hint;
@@ -4826,6 +4874,9 @@
 
         var on = null;
         try { on = A.M.cursor(); } catch (e) { on = null; }
+        var side = "";
+        try { side = A.M.holdSubject(); } catch (e2) { side = ""; }
+        if (side) rows.push(side);
         rows.push("Fields (" + n + "), cursor " +
             (on === null ? "unknown" : on ? "on" : "off") + ":");
         for (var i = 0; i < fields.length; i++) rows.push("  " + fields[i]);

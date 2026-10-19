@@ -317,6 +317,7 @@ public partial class CowsDA40Definition
                     return true;
                 }
                 simConnect.ExecuteCalculatorCodeUnique("1 (>L:MIXTURE_SET_BEST)");
+                StartBestMixtureWatch(simConnect, announcer);
                 return true;
 
             case "DA40_XLS_PROP_CYCLE":
@@ -324,6 +325,75 @@ public partial class CowsDA40Definition
                 return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// Where Set Best Mixture left the lever. ⚠️ THE WALK TAKES SECONDS AND WAS SILENT: the
+    /// mixture is a silent number (DA40-9), so the pilot pressed the button and heard nothing
+    /// of the lever going from 100 to 62 percent (MTL cruise, 2026-10-19), where a sighted pilot
+    /// watches it stop. Said once, when the lever has been still for <see cref="SettleMs"/>
+    /// (over the 1 Hz batch that feeds it, DA40S-2), or at <see cref="TimeoutMs"/>.
+    /// </summary>
+    internal sealed class BestMixtureSettle
+    {
+        public const int SettleMs = 2500;
+        public const int TimeoutMs = 30000;
+
+        private readonly DateTime _start;
+        private double _last;
+        private DateTime _lastMove;
+
+        public BestMixtureSettle(DateTime start, double value)
+        {
+            _start = start;
+            _last = value;
+            _lastMove = start;
+        }
+
+        public bool Done { get; private set; }
+
+        /// <summary>The lever's settled value, once; null while it moves and after.</summary>
+        public double? Step(double value, DateTime now)
+        {
+            if (Done) return null;
+            if (Math.Abs(value - _last) > 0.5) { _last = value; _lastMove = now; }
+            if ((now - _lastMove).TotalMilliseconds < SettleMs &&
+                (now - _start).TotalMilliseconds < TimeoutMs) return null;
+            Done = true;
+            return value;
+        }
+    }
+
+    internal static string BestMixtureText(double percent) =>
+        FormattableString.Invariant($"Best mixture, mixture {Math.Round(percent):F0} percent");
+
+    private System.Windows.Forms.Timer? _bestMixtureTimer;
+    private BestMixtureSettle? _bestMixture;
+
+    private void StartBestMixtureWatch(SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        StopBestMixtureWatch();
+        _bestMixture = new BestMixtureSettle(DateTime.UtcNow,
+            simConnect.GetCachedVariableValue("DA40_XLS_MIXTURE_SET") ?? 0);
+        _bestMixtureTimer = new System.Windows.Forms.Timer { Interval = 250 };
+        _bestMixtureTimer.Tick += (_, _) =>
+        {
+            double? v = simConnect.GetCachedVariableValue("DA40_XLS_MIXTURE_SET");
+            if (v == null || _bestMixture == null) return;
+            double? settled = _bestMixture.Step(v.Value, DateTime.UtcNow);
+            if (settled == null) return;
+            StopBestMixtureWatch();
+            announcer.AnnounceImmediate(BestMixtureText(settled.Value));
+        };
+        _bestMixtureTimer.Start();
+    }
+
+    private void StopBestMixtureWatch()
+    {
+        _bestMixtureTimer?.Stop();
+        _bestMixtureTimer?.Dispose();
+        _bestMixtureTimer = null;
+        _bestMixture = null;
     }
 
     /// <summary>
@@ -612,10 +682,11 @@ public partial class CowsDA40Definition
         return parts.Count == 0 ? "On, waiting for a peak" : "On: " + string.Join("; ", parts);
     }
 
-    /// <summary>Forgets the captured state and stops a running prop cycle. Called when the aircraft is switched away.</summary>
+    /// <summary>Forgets the captured state and stops a running prop cycle or best-mixture watch. Called when the aircraft is switched away.</summary>
     private void ResetXlsMixtureState()
     {
         StopPropCycle();
+        StopBestMixtureWatch();
         _leanAssistOn = false;
         Array.Clear(_leanPeak); Array.Clear(_leanDelta); Array.Clear(_leanPeakSpoken);
         Array.Clear(_egt); Array.Clear(_cht); _chtHotCyl = 0;

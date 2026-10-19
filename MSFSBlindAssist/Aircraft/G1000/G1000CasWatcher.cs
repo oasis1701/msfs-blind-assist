@@ -108,6 +108,15 @@ internal sealed class G1000CasWatcher
     public bool IsRunning => _client != null;
 
     /// <summary>
+    /// How many times the FMA's modes have changed since the baseline, and when rows last
+    /// arrived. ⚠️ A MODE PRESS THE GFC 700 REFUSES CHANGES NOTHING ON THE FMA, and so said
+    /// nothing at all (APR, NAV and AP presses, MTL/VCRI 2026-10-19): the aircraft compares the
+    /// count across its press, and trusts the answer only while rows are fresh.
+    /// </summary>
+    public int FmaChanges { get; private set; }
+    public DateTime LastRowsAt { get; private set; } = DateTime.MinValue;
+
+    /// <summary>
     /// The PFD window's own rows, fed in while it holds the socket. Same detector, so a
     /// message seen through the window is not announced again when the monitor resumes.
     /// </summary>
@@ -331,6 +340,7 @@ internal sealed class G1000CasWatcher
         _onRows?.Invoke(rows);
 
         if (_announcer == null) return;
+        LastRowsAt = Now();
 
         if (!_sawRows)
         {
@@ -387,6 +397,7 @@ internal sealed class G1000CasWatcher
         {
             fmaChange = DescribeFmaChange(_lastFma, fma);
             _lastFma = fma;
+            FmaChanges++;
         }
 
         var (immediate, queued) = ComposeCasSpeech(appeared, cleared, fmaChange);
