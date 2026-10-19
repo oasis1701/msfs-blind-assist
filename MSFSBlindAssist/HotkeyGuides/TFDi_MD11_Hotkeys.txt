@@ -243,7 +243,7 @@ speed, V2, Slat retraction speed, Flap retraction speed - and simply drops out o
 MINIMUMS
 
 The EFIS Captain and EFIS First Officer panels each have a Minimums field next to the minimums
-knob: type the minimums in feet and press Set. The aircraft applies a typed value to the BARO
+knob: type the minimums in feet and press Enter. The aircraft applies a typed value to the BARO
 minimums; if the minimums mode switch beside it is on Radio, you are told so ("Captain baro
 minimums set to 500 feet. Minimums mode is Radio, showing 200 feet") and the display keeps
 showing the radio value until you switch the mode to Baro. The minimums rows in Read-outs say
@@ -286,8 +286,8 @@ THE RADIOS
 
 The Pedestal section opens with a Radios panel. For each of COM 1, 2 and 3 it lists the active
 and standby frequencies, a "COM n Standby" field (type the frequency in megahertz, 124.9 or
-124.900, and press Set or Enter) and a "COM n Transfer" button that swaps the standby into the
-active slot. Both read back through the announcements above: after Set you hear "COM 1 standby
+124.900, and press Enter) and a "COM n Transfer" button that swaps the standby into the
+active slot. Both read back through the announcements above: after Enter you hear "COM 1 standby
 124.900", after Transfer "COM 1 active 124.900" and the new standby. If the aircraft refuses a
 change you hear that instead ("COM 1 standby did not change, still 121.500"). The three radio
 control panels further down the Pedestal are the aircraft's own knobs and buttons, unchanged.
@@ -295,8 +295,8 @@ control panels further down the Pedestal are the aircraft's own knobs and button
 
 THE TRANSPONDER
 
-The Pedestal section's Transponder panel has a Squawk field: type the four digits and press Set
-(or Enter). MSFS Blind Assist presses the aircraft's own keypad for you, then reads the
+The Pedestal section's Transponder panel has a Squawk field: type the four digits and press
+Enter. MSFS Blind Assist presses the aircraft's own keypad for you, then reads the
 transponder back and tells you what it actually shows - "Squawk 1200", or "Squawk entry did not
 take, the transponder reads 5473" if the aircraft refused it. The current code is the panel's
 first row, "Squawk code". The eight digit keys are not listed any more; the field replaces them.
