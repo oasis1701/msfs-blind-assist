@@ -17,7 +17,7 @@
 (function () {
     var A = {};
 
-    A.VERSION = 29;
+    A.VERSION = 30;
 
     function visible(el) {
         if (!el) return false;
@@ -1255,7 +1255,11 @@
             for (var b = 0; b < bars.length; b++) {
                 if (x >= bars[b].left && x < bars[b].right) { colour = bars[b].colour; break; }
             }
-            if (!colour) colour = (x < scaleLeft) ? "below the scale" : "above the scale";
+            // ⚠️ A GAP IN THE SCALE IS NOT THE END OF IT. The XLS fuel gauge colours 0-1 red, 1-15
+            // and 19-25 green and leaves 15-19 bare (panel.xml), and a 17.4 gal tank read "above the
+            // scale, 64 percent along" (VCBI, 2026-10-19). Inside the scale with no band is unmarked.
+            if (!colour) colour = (x < scaleLeft) ? "below the scale"
+                                : (x >= scaleRight) ? "above the scale" : "unmarked";
 
             out.push({
                 colour: colour,
@@ -3927,11 +3931,13 @@
     A.M.enterHint = function (key) {
         if (A.M._hintKey === key) return "";
         A.M._hintKey = key;
-        var all = document.querySelectorAll(".popout-dialog.open [class*='press-ent']");
+        // By the TEXT, never a class: each dialog names its line differently
+        // (mfd-setrunway-press-ent, mfd-wptinfo-bottom-prompt, mfd-wpt-dup-prompt).
+        var all = document.querySelectorAll(".popout-dialog.open *");
         for (var i = 0; i < all.length; i++) {
-            if (!visible(all[i])) continue;
+            if (all[i].children.length || !visible(all[i])) continue;
             var t = spacedText(all[i]).replace(/"/g, "");
-            if (t) return t;
+            if (/^Press /.test(t)) return t;
         }
         return "";
     };
