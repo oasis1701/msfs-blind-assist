@@ -139,6 +139,53 @@ public class CessnaC172GaugesTests
         }
     }
 
+    // C172-25: the center of gravity in the flight model's percent MAC, against the sim's own limits
+    // (0.15 and 0.35 measured 2026-10-19), never converted to inches.
+    [Theory]
+    [InlineData("en-US")]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void The_center_of_gravity_is_percent_mac_against_the_sims_limits_in_any_culture(string culture)
+    {
+        var saved = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(culture);
+
+            // Measured: full tanks, pilot and front passenger 170 pounds each.
+            Assert.Equal("Center of gravity 18.7 percent MAC, within the 15 to 35 percent limits",
+                DescribeCenterOfGravity(0.1865992546081543, 0.15, 0.35));
+            Assert.Equal("Center of gravity 14.2 percent MAC, forward of the 15 percent limit",
+                DescribeCenterOfGravity(0.142, 0.15, 0.35));
+            Assert.Equal("Center of gravity 36.0 percent MAC, aft of the 35 percent limit",
+                DescribeCenterOfGravity(0.36, 0.15, 0.35));
+            // On a limit is inside it.
+            Assert.Equal("Center of gravity 35.0 percent MAC, within the 15 to 35 percent limits",
+                DescribeCenterOfGravity(0.35, 0.15, 0.35));
+            // A limit not read: the value alone.
+            Assert.Equal("Center of gravity 18.7 percent MAC", DescribeCenterOfGravity(0.1866, null, 0.35));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = saved;
+        }
+    }
+
+    [Fact]
+    public void The_center_of_gravity_reads_are_on_request_fractions()
+    {
+        var vars = new CessnaC172G1000Definition().GetVariables();
+        foreach (var (key, simVar) in new[]
+        {
+            ("C172_CG_PERCENT", "CG PERCENT"), ("C172_CG_FWD_LIMIT", "CG FWD LIMIT"), ("C172_CG_AFT_LIMIT", "CG AFT LIMIT"),
+        })
+        {
+            Assert.Equal(simVar, vars[key].Name);
+            Assert.Equal("percent over 100", vars[key].Units);
+            Assert.Equal(SimConnect.UpdateFrequency.OnRequest, vars[key].UpdateFrequency);
+        }
+    }
+
     // C172-19: the cache holds an on-request value's LAST fetch, however old, or nothing; a key that
     // read flaps, the altimeter or the autopilot's vertical speed from it said "Requesting" and nothing
     // more, or a value from before it last changed. Every literal cache lookup in the C172's code must

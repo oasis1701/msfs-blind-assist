@@ -68,7 +68,8 @@ Fuel:
              current flow
 
 Weight:
-  Shift+W    Read Gross Weight in kilograms and pounds, and the maximum
+  Shift+W    Read Gross Weight in kilograms and pounds, and the maximum, then
+             the center of gravity in percent MAC against its limits
 
 Flaps:
   L          Read Flap Position (Up, 10 degrees, 20 degrees, Full: 30 degrees)

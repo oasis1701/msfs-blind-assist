@@ -167,6 +167,22 @@ internal static class CessnaC172Gauges
         return text;
     }
 
+    /// <summary>
+    /// Output+Shift+W's center of gravity, in the flight model's terms: percent of the mean aerodynamic
+    /// chord (`CG PERCENT`, a fraction), and where it sits against the sim's own limits (`CG FWD LIMIT`
+    /// 0.15, `CG AFT LIMIT` 0.35 measured), worded as the FBW aircraft's ("center of gravity 25.3 percent
+    /// MAC"). Never inches: the sim's stations do not sit at the POH's arms (C172-25). The limits are left
+    /// out when either is not read.
+    /// </summary>
+    internal static string DescribeCenterOfGravity(double cg, double? forwardLimit, double? aftLimit)
+    {
+        string text = $"Center of gravity {N(cg * 100, "0.0")} percent MAC";
+        if (forwardLimit is not double fwd || aftLimit is not double aft) return text;
+        if (cg < fwd) return text + $", forward of the {N(fwd * 100, "0.#")} percent limit";
+        if (cg > aft) return text + $", aft of the {N(aft * 100, "0.#")} percent limit";
+        return text + $", within the {N(fwd * 100, "0.#")} to {N(aft * 100, "0.#")} percent limits";
+    }
+
     /// <summary>Output+F: each tank and the total.</summary>
     internal static string DescribeFuelQuantities(double left, double right) =>
         $"Left {N(left, "0.0")}, Right {N(right, "0.0")}, Total {N(left + right, "0.0")} gallons";

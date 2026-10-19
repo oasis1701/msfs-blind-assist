@@ -436,7 +436,13 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "pounds",
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
-            }
+            },
+            // Output+Shift+W's center of gravity, as the flight model has it: a fraction of the mean
+            // aerodynamic chord, against its own limits (0.15 and 0.35 measured). Never in inches: the
+            // sim's stations do not sit at the POH's arms (C172-25).
+            ["C172_CG_PERCENT"] = CgFraction("CG PERCENT", "Center of Gravity"),
+            ["C172_CG_FWD_LIMIT"] = CgFraction("CG FWD LIMIT", "Forward CG Limit"),
+            ["C172_CG_AFT_LIMIT"] = CgFraction("CG AFT LIMIT", "Aft CG Limit")
         };
 
         // ===== RADIOS (CessnaC172BaseDefinition.Radios.cs) =====
@@ -460,6 +466,16 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
         UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
         IsAnnounced = true,
         ExcludeFromMonitorManager = true
+    };
+
+    /// <summary>A center-of-gravity reading, a fraction of the mean aerodynamic chord, read fresh by Shift+W.</summary>
+    private static SimConnect.SimVarDefinition CgFraction(string simVar, string displayName) => new()
+    {
+        Name = simVar,
+        DisplayName = displayName,
+        Type = SimConnect.SimVarType.SimVar,
+        Units = "percent over 100",
+        UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
     };
 
     /// <summary>The readings swallowed silently (SilentReadout's, and the older ones built the same way).</summary>
@@ -1031,7 +1047,10 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
             : unavailable);
     }
 
-    /// <summary>Output+Shift+W: the gross weight and the maximum, both read fresh. On the UI thread.</summary>
+    /// <summary>
+    /// Output+Shift+W: the gross weight and the maximum, then the center of gravity against its limits
+    /// (C172-25), all read fresh. A CG the sim does not answer is left out. On the UI thread.
+    /// </summary>
     private static async Task AnnounceGrossWeightAsync(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
         if (await simConnect.ReadFreshAsync("C172_TOTAL_WEIGHT", 1500) is not double pounds)
@@ -1040,7 +1059,14 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
             return;
         }
         double? max = await simConnect.ReadFreshAsync("C172_MAX_GROSS_WEIGHT", 1500);
-        announcer.AnnounceImmediate(CessnaC172Gauges.DescribeGrossWeight(pounds, max) + ".");
+        string text = CessnaC172Gauges.DescribeGrossWeight(pounds, max) + ".";
+        if (await simConnect.ReadFreshAsync("C172_CG_PERCENT", 1500) is double cg)
+        {
+            double? forward = await simConnect.ReadFreshAsync("C172_CG_FWD_LIMIT", 1500);
+            double? aft = await simConnect.ReadFreshAsync("C172_CG_AFT_LIMIT", 1500);
+            text += " " + CessnaC172Gauges.DescribeCenterOfGravity(cg, forward, aft) + ".";
+        }
+        announcer.AnnounceImmediate(text);
     }
 
     internal static string Percent(double value) =>
