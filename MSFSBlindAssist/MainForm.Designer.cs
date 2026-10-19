@@ -101,8 +101,7 @@
             this.hotkeyListMenuItem,
             this.simPerformanceMenuItem,
             this.suspendHotkeysMenuItem,
-            this.updateApplicationMenuItem,
-            this.aboutMenuItem});
+            this.updateApplicationMenuItem});
             this.fileMenuItem.Name = "fileMenuItem";
             this.fileMenuItem.Size = new System.Drawing.Size(46, 24);
             this.fileMenuItem.Text = "&File";
@@ -315,10 +314,11 @@
             // helpMenuItem
             //
             this.helpMenuItem.AccessibleName = "Help menu";
-            this.helpMenuItem.AccessibleDescription = "The user guide and the project website";
+            this.helpMenuItem.AccessibleDescription = "The user guide, the project website and the application version";
             this.helpMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.userGuideMenuItem,
-            this.projectWebsiteMenuItem});
+            this.projectWebsiteMenuItem,
+            this.aboutMenuItem});
             this.helpMenuItem.Name = "helpMenuItem";
             this.helpMenuItem.Size = new System.Drawing.Size(55, 24);
             this.helpMenuItem.Text = "&Help";

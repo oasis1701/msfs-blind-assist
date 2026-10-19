@@ -393,7 +393,6 @@ BA's menu bar has four menus. Press Alt to reach it, then use the arrow keys.
 - **Sim Performance** opens the Sim Performance window. See [Sim Performance](troubleshooting-and-faq.md#gs-sim-performance).
 - **Suspend Hotkeys** turns the bracket keys off and on again. See [Suspending hotkeys](#hotkey-modes).
 - **Update Application** checks for a newer version straight away. See [Updates](#gs-updates).
-- **About** shows the BA version you are running, the exact build, and the author. Press **OK** or Escape to close it.
 
 ### The Aircraft menu {#the-aircraft-menu}
 
@@ -407,6 +406,7 @@ Holds tools that work alongside the simulator. It currently has one item, **Vola
 
 - **User Guide** opens this guide in your web browser, all on one page and matching the version of BA you have installed, so it works without an internet connection. If that copy is missing, as it is when you build BA yourself, BA says so and opens the online guide instead. See [Finding Your Way Around This Guide](welcome.md#gs-using-guide).
 - **Project Website** opens msfsblindassist.com, where you can download BA and read the guide online.
+- **About** shows the BA version you are running, the exact build, and the author. Press **OK** or Escape to close it.
 
 ## The Settings Window {#settings-overview}
 
@@ -496,7 +496,7 @@ To open it, press Windows+R, type %APPDATA%\\MSFSBlindAssist\\logs and press Ent
 When something does not work as this guide describes:
 
 1. Note what you did, what you expected, and what happened instead — including what BA said.
-2. Note your BA version and build. It is on the Updates tab of the Settings window and in File, About, for example *v8.0.1-pre.7 (build 4f7e7ba)*. The build part names the exact code you were running.
+2. Note your BA version and build. It is on the Updates tab of the Settings window and in Help, About, for example *v8.0.1-pre.7 (build 4f7e7ba)*. The build part names the exact code you were running.
 3. Note the aircraft and the simulator (2020 or 2024), and the airport if it is a ground problem.
 4. Collect the logs folder. The easiest way is to zip the whole **%APPDATA%\\MSFSBlindAssist** folder, which contains your settings and logs together. If that is too large because of the databases, zip just the logs folder.
 5. Share it with the BA community on the project's Discord server, or on the project's GitHub page.
