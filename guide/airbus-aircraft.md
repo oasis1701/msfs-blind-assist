@@ -88,7 +88,7 @@ There is no Doors or Ground Services panel on the A32NX. Door states are announc
 
 ### Autopilot / FCU windows {#autopilot-fcu-windows}
 
-In Input mode, each of these opens a small window with a value box, the knob's push and pull buttons, and the relevant mode toggle. When you press Set, BA confirms the value it sent, for example *"FCU heading 270, selected"*.
+In Input mode, each of these opens a small window with a value box, the knob's push and pull buttons, and the relevant mode toggle. Type a value in the box and press Enter, and BA confirms the value it sent, for example *"FCU heading 270, selected"*. In the altimeter window (Ctrl+B), Enter applies only from the value box; choosing a mode or a unit in its lists applies at once.
 
 <div class="table-wrap" markdown="1">
 
@@ -270,7 +270,7 @@ The Fenix has its own set of FCU windows, opened in Input mode:
 
 </div>
 
-The Fenix's FCU knobs are rotary encoders, so BA turns them click by click towards your value. A big change can take a moment to finish. Altitudes are set in steps of 100 feet; if you type 4550, BA says *"Rounding to 4500 feet"*. If the knob is already where you asked, you hear for example *"Already at heading 270"*.
+In each window, type the value and press Enter; in the altimeter window, only Enter in the value box applies it. The Fenix's FCU knobs are rotary encoders, so BA turns them click by click towards your value. A big change can take a moment to finish. Altitudes are set in steps of 100 feet; if you type 4550, BA says *"Rounding to 4500 feet"*. If the knob is already where you asked, you hear for example *"Already at heading 270"*. If you press Enter in the altimeter window while the previous setting is still being dialed in, BA says *"Altimeter set in progress, press Enter again when it finishes"* and keeps the first value.
 
 The push and pull keys and the Output FCU readouts work as on the FlyByWire aircraft.
 
