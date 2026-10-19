@@ -2870,13 +2870,12 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         isMach = false;
         value = 0;
         input = input.Trim().ToUpperInvariant();
-        if (input.StartsWith("M") || input.StartsWith("."))
+        if (input.StartsWith("M") || input.StartsWith(".") || input.StartsWith(","))
         {
             isMach = true;
             input = input.TrimStart('M');
         }
-        if (!double.TryParse(input, System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out value))
+        if (!Utils.NumberParsing.TryParseTyped(input, out value))
             return false;
         if (!isMach && value < 1.0) isMach = true; // "0.78"
         return true;
@@ -3018,8 +3017,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             "Altimeter Setting", "altimeter (hPa or inches)", "e.g. 1013 or 29.92", announcer,
             input =>
             {
-                if (!double.TryParse(input, System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out double v))
+                if (!Utils.NumberParsing.TryParseTyped(input, out double v))
                     return (false, "Enter a pressure like 1013 or 29.92");
                 if (v is >= 940 and <= 1090 || v is >= 27 and <= 32) return (true, "");
                 return (false, "Enter hPa (940-1090) or inches (27.00-32.00)");
@@ -3027,8 +3025,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             toggles,
             input =>
             {
-                if (!double.TryParse(input, System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out double v))
+                if (!Utils.NumberParsing.TryParseTyped(input, out double v))
                     return;
                 // The iFly SDK has no absolute baro-set command (INC/DEC only), and the
                 // aircraft tracks the stock Kohlsman value, so set it via the stock event

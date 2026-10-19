@@ -90,6 +90,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
     private Button fdTestToneButton = null!;
     private Label slipVolumeLabel = null!; private TrackBar slipVolumeTrackBar = null!; private Label slipVolumeValueLabel = null!;
     private CheckBox handFlyAutoActivateOnTakeoffCheckBox = null!;
+    private CheckBox rolloutCenterlineToneCheckBox = null!;
 
     // Six seconds of tone at TestTonePlayer's 100 ms tick — the longest of the three
     // auditions, because this one demonstrates pitch as well as pan and the pitch sweep is
@@ -600,6 +601,18 @@ public class HandFlyPanel : UserControl, ISettingsPanel
             AccessibleDescription = "When enabled, shortly after the aircraft lifts off, if Takeoff Assist is active it is turned off and Hand Fly mode turns on automatically, so you don't have to switch manually at rotation. If you already activated Hand Fly yourself, only Takeoff Assist is turned off. Liftoffs without Takeoff Assist are unaffected."
         };
 
+        // Rollout centerline tone: a destination runway or a landing exit arms the landing assist's
+        // rollout cue on its own, autolands included. Binds 1:1 to UserSettings.RolloutCenterlineToneEnabled.
+        rolloutCenterlineToneCheckBox = new CheckBox
+        {
+            Text = "Rollout centerline tone when a destination runway or landing exit is set",
+            // Below the Waypoint FD section (y 900-1273) and the hand-fly checkbox, as that one is.
+            Location = new Point(20, 1403),
+            Size = new Size(550, 25),
+            AccessibleName = "Rollout centerline tone when a destination runway or landing exit is set",
+            AccessibleDescription = "When enabled, the takeoff assist tone steers you along the runway centerline from touchdown until exit guidance takes over for the exit, after an autoland too, whenever a destination runway or a landing exit is set. It uses the takeoff assist tone, volume and steering settings above. The manual landing assist checkbox in the destination runway dialog is separate and adds the flare tones."
+        };
+
         // Add controls to panel
         Controls.AddRange(new Control[]
         {
@@ -623,7 +636,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
             fdAutoActivateCheckBox,
             fdTestToneButton,
             slipVolumeLabel, slipVolumeTrackBar, slipVolumeValueLabel,
-            handFlyAutoActivateOnTakeoffCheckBox
+            handFlyAutoActivateOnTakeoffCheckBox, rolloutCenterlineToneCheckBox
         });
 
         // Update control states based on feedback mode (no radio is checked yet at
@@ -672,6 +685,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         enableCalloutsCheckBox.TabIndex = 34;
         autoActivateOnLineupCheckBox.TabIndex = 35;
         handFlyAutoActivateOnTakeoffCheckBox.TabIndex = 36;
+        rolloutCenterlineToneCheckBox.TabIndex = 37;
     }
 
     private void UpdateControlStates()
@@ -1044,6 +1058,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         enableCalloutsCheckBox.Checked = settings.TakeoffAssistEnableCallouts;
         autoActivateOnLineupCheckBox.Checked = settings.TakeoffAssistAutoActivateOnLineup;
         handFlyAutoActivateOnTakeoffCheckBox.Checked = settings.HandFlyAutoActivateOnTakeoff;
+        rolloutCenterlineToneCheckBox.Checked = settings.RolloutCenterlineToneEnabled;
 
         fdToneCombo.SelectedIndex = (int)settings.WaypointFdToneWaveform;
         fdVolumeTrackBar.Value = (int)(settings.WaypointFdToneVolume * 100);
@@ -1107,6 +1122,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         settings.WaypointFdCenteredToneWaveform = (HandFlyWaveType)fdCenteredWaveCombo.SelectedIndex;
         settings.SlipCueVolume = slipVolumeTrackBar.Value / 100.0;
         settings.HandFlyAutoActivateOnTakeoff = handFlyAutoActivateOnTakeoffCheckBox.Checked;
+        settings.RolloutCenterlineToneEnabled = rolloutCenterlineToneCheckBox.Checked;
     }
 
     /// <summary>Stops the test tone whenever this tab is left (tab switch or dialog close on

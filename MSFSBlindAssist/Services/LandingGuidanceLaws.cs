@@ -170,6 +170,30 @@ public static class LandingGuidanceLaws
     }
 
     /// <summary>
+    /// Intercept crab for the ROLLOUT's centerline tone (Takeoff Assist's law), in degrees: the heading
+    /// offset from the runway heading that converges back on the centerline. The pan tone then steers
+    /// <c>crab − heading error</c>, so nulling it means converging on the centerline, not merely pointing
+    /// straight.
+    ///
+    /// POLARITY: <b>positive = intercept heading RIGHT of the runway heading</b>, fed by cross-track in
+    /// the codebase's canonical sign (positive = aircraft LEFT of centerline, per
+    /// <c>RunwayCenterlineTracker</c>). Zero inside <paramref name="deadbandFeet"/> so a centered roll
+    /// holds the runway heading, then linear per foot, capped: a steep crab command at runway speed
+    /// would be dangerous.
+    /// </summary>
+    /// <param name="crossTrackFeet">Signed cross-track: + = LEFT of centerline. NaN commands no crab, as the
+    ///   rollout's original inline law did, rather than throwing on the per-frame audio path.</param>
+    public static double CenterlineInterceptCrabDeg(
+        double crossTrackFeet,
+        double deadbandFeet,
+        double degreesPerFoot,
+        double maxCrabDeg)
+        => double.IsNaN(crossTrackFeet)
+            ? 0.0
+            : Math.Clamp((Math.Abs(crossTrackFeet) - deadbandFeet) * degreesPerFoot, 0.0, maxCrabDeg)
+              * Math.Sign(crossTrackFeet);
+
+    /// <summary>
     /// Maps a guidance command onto tone units, in the shared polarity used by BOTH vertical
     /// phases: <b>positive command (high / floating) → NEGATIVE units → LOW frequency → push
     /// down</b>; negative command (low / sinking) → high frequency → pull up.

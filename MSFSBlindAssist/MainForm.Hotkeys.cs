@@ -40,7 +40,10 @@ public partial class MainForm
             // Muting VATSIM chatter has nothing to do with the simulator. Without this
             // the pilot gets "Not connected to simulator, please wait" while trying to
             // silence a busy frequency.
-            HotkeyAction.ToggleVatsimAnnouncements
+            HotkeyAction.ToggleVatsimAnnouncements,
+            // The Volanta window reads Volanta's web map and opens from Extras whether or not the
+            // sim is connected; its hotkey must too.
+            HotkeyAction.ShowVolanta
         };
 
         // Guard clause: Block SimConnect-dependent actions if not fully connected
@@ -175,6 +178,9 @@ public partial class MainForm
                 break;
             case HotkeyAction.ShowWeatherRadar:
                 OpenWeatherRadarWindow();
+                break;
+            case HotkeyAction.ShowVolanta:
+                OpenVolantaWindow();
                 break;
             case HotkeyAction.ReadOutsideTemperature:
                 simConnectManager.RequestOutsideTemperature();

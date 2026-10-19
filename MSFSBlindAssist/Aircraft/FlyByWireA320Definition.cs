@@ -1715,7 +1715,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             Name = "A32NX.FCU_VS_SET",
             DisplayName = "VS/FPA",
-            Type = SimConnect.SimVarType.Event
+            Type = SimConnect.SimVarType.Event,
+            UnparseableTextAsNaN = true   // the V/S range check refuses NaN; a 0 here would level off
         },
         ["A32NX.FCU_VS_PUSH"] = new SimConnect.SimVarDefinition
         {

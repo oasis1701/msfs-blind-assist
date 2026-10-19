@@ -1,0 +1,22 @@
+---
+paths:
+  - "MSFSBlindAssist/Services/Volanta/**"
+  - "MSFSBlindAssist/Forms/Volanta/**"
+  - "tests/MSFSBlindAssist.Tests/Volanta/**"
+---
+# Volanta live map rules
+
+Loaded when Claude reads matching code. Background: docs/volanta.md. Full text of each rule: docs/invariants/volanta.md.
+
+- [VOL-2] Never show the last snapshot as current while Volanta's data stands still (web map loading or unable to start, nothing since `VolantaLinkSnapshot.ConnectedAt`, no new file for 30 s): each list's top line says why (`VolantaListOrder.StatusKeyPrefix`), from one reason (`VolantaLiveMapForm.StandstillOf`). Full: docs/invariants/volanta.md#vol-2
+- [VOL-4] The pilot's own flight is in Volanta's file with a position up to minutes old: `VolantaTrafficCalculator.IsOwnFlight` leaves it out by the logged-in user's id (only when one per-user key exists) or Volanta's flight id (`VolantaFeedParser.ParseActiveFlight`, then the hub), else by Volanta's own position report, never by distance alone. Full: docs/invariants/volanta.md#vol-4
+- [VOL-5] Network-file rows always say not on the ground, height 0, vertical speed 0: `VolantaFeedParser` infers ground below `NetworkGroundSpeedKt` and leaves height and vertical speed unknown; trust those flags only for Volanta users. Full: docs/invariants/volanta.md#vol-5
+- [VOL-6] The friends list comes from Volanta's own request at each logged-in page load; hub messages keep it current, it goes with a log out (`VolantaLink.LoggedOut`), no copy is kept on disk, and who flies comes from the flight file, never the list. Full: docs/invariants/volanta.md#vol-6
+- [VOL-7] A details list must never show another row's details mid-update: while a Volanta list reconciles, its selection handler does nothing, and the details are shown once after, for the final selection. Details rows are keyed by field name (`VolantaListOrder.DetailKeys`), never kept by line number. Full: docs/invariants/volanta.md#vol-7
+- [VOL-8] A traffic line's "Location:" is looked up off the UI thread, many positions per read of the offline location data, and cached per flight and kind (town, major city) by `VolantaPlaceCache` until it moves 2 nm: never one lookup per row per refresh, never on the UI thread. Its words are LocationPhrases' traffic and major-city places. Full: docs/invariants/volanta.md#vol-8
+- [VOL-9] A Volanta list never measures its own scrollbar width (a fixed HorizontalExtent, `ListScrollWidthPx`) and is never rewritten whole in place on the UI thread: a list nobody is in is rebuilt in one go, and the list the reader is in, its order held, rewrites only rows within `InPlaceWindowRows` of theirs (`VolantaListOrder.PlanHeldUpdate`). Full: docs/invariants/volanta.md#vol-9
+- [VOL-10] Every checkbox in the Volanta window is FlatStyle.System, so Windows itself reports a tick: .NET 10 WinForms (10.0.11, 10.0.13) sends the state-change notice for its own drawn checkboxes only with the NoClientNotifications switch ON (its check lost a "not"), so NVDA was silent on Space. Never set that switch: once fixed, it turns them off. Full: docs/invariants/volanta.md#vol-10
+- [VOL-11] Volanta's page polls only while "visible": set the web map's own controller visibility (`VolantaWebMap.SetActive`, a browser in a never-shown window), never the WinForms WebView2 control's; while paused, dispatch visibilitychange after every load and every 5 s (`VolantaWebMap.HiddenNudgeScript`): a page loaded hidden polls until told. Full: docs/invariants/volanta.md#vol-11
+- [VOL-12] The web map runs only while the Volanta window is open and downloads only while it is in the foreground: live on activation, paused `WebMapPauseAfter` (5 s) after it goes back; on resume `VolantaLink.Resumed` moves `ConnectedAt` to now, so a pause is never called stale. Full: docs/invariants/volanta.md#vol-12
+- [VOL-13] In Volanta's page read storage key NAMES only (per-user keys, whether `authToken` exists), never a stored value, the login token or a response carrying it; log out as Volanta's own logout does: clear the profile's site storage and cookies (`VolantaWebMap.LogOutAsync`), no request. Full: docs/invariants/volanta.md#vol-13
+- [VOL-14] The web map skips the page's cached second copy of a file (`VolantaWebMap.BodyKey`) but forgets every kept key at each page load and log out: an identical friends list after a new login was thrown away, and the Friends tab stayed empty. Full: docs/invariants/volanta.md#vol-14

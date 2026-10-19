@@ -93,6 +93,7 @@ Screen readers already announce every UI control interaction, so the app never r
 - [CORE-13] Never hardcode the FBWBA/MSFSBlindAssist database path: reads go through `DatabasePathResolver.ResolveExistingDatabasePath`, writes through `GetCanonicalDatabasePath`. Full: docs/invariants/core.md#core-13
 - [CORE-14] Every diagnostic log path resolves through `Utils/AppLogs.PathFor(...)` into `%APPDATA%\MSFSBlindAssist\logs`; never hand-build one (exempt, as in [CORE-15]: the vPilot plugin and the updater). Full: docs/invariants/core.md#core-14
 - [CORE-15] Never hand-build a log write (`File.AppendAllText`, a raw path): use `Log.Debug/Info/Warn/Error(category, msg)` for debug.log, or `Log.Channel(name)` for a named log. Exempt, as they cannot reference the app: the vPilot plugin's log ([VAT-6]) and the updater's own `%TEMP%` args log (`MSFSBlindAssistUpdater/Program.cs`). Full: docs/invariants/core.md#core-15
+- [CORE-17] Parse a number the pilot types with `NumberParsing.TryParseTyped`, one another program writes with `TryParseExternal`; never a bare `double.TryParse(s, out v)` (the PC's culture: "29.92" fails under sv-SE, reads 2992 under de-DE) or `NumberStyles.Any` with the invariant culture ("0,82" reads 82). Full: docs/invariants/core.md#core-17
 - [VAT-13] Status/diagnostic text in any settings panel is a read-only `TextBox`, never a `Label`: a `Label` is not in the tab order, so a screen-reader user has to hunt for it with the review cursor. Full: docs/invariants/vatsim.md#vat-13
 - [A380C-6] Every form marshaling a background bridge push to the UI thread must wrap `BeginInvoke` in try/catch(InvalidOperationException) (`SafeBeginInvoke`); an `IsHandleCreated` check alone races handle destruction. Full: docs/invariants/a380-coherent.md#a380c-6
 
@@ -135,6 +136,7 @@ Each area's rules load automatically when Claude reads its code; their full text
 | [weather.md](docs/weather.md) | ActiveSky, the weather radar, METAR readouts, weather announcements | weather |
 | [sayintentions.md](docs/sayintentions.md) | SayIntentions: clearance parsing, the taxi-route import, readouts | sayintentions-clearance, sayintentions-import, sayintentions-gates, sayintentions-readouts |
 | [vatsim.md](docs/vatsim.md) | VATSIM: the vPilot plugin, pipe server, announcement settings | vatsim |
+| [volanta.md](docs/volanta.md) | Extras, Volanta: Volanta's public web map read in a hidden WebView2, the traffic, friends and ATC tabs, logging in | volanta |
 | [updates.md](docs/updates.md) | Release and preview channels, the updater, release workflows, the startup data check | updates |
 | [visual-guidance.md](docs/visual-guidance.md) | Visual landing guidance (dual tone), hand fly, the liftoff handoff | visual-guidance |
 | [waypoint-flight-director.md](docs/waypoint-flight-director.md) | The en-route audio flight director to the tracked waypoint slots: dual tone, crossing-altitude constraints, per-aircraft tuning | waypoint-flight-director |
