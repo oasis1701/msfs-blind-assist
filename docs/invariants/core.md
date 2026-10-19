@@ -28,7 +28,7 @@ Corrected 2026-10-09: the rule said `-r win-x64` writes a separate `win-x64\` tr
 
 ## CORE-4
 
-- `dotnet build MSFSBlindAssist.sln` builds only two of the `tools/` projects, `tools/PMDGDispatchTester` and `tools/ChangelogBuilder`. The other 12 `tools/*` projects build on their own, never as part of the solution: `CDUTest`, `DistanceUnitsProbe`, `DockingProbe`, `GsxAirplaneProbe`, `GsxOffsetProbe`, `GsxProfileProbe`, `IFlySdkProbe`, `LandingExitSweep`, `ProgressiveTaxiProbe`, `StandBridgeSweep`, `TaxiAugmentProbe` and `TaxiGuidanceProbe`. docs/development.md ("Build output and traps") names what each does.
+- `dotnet build MSFSBlindAssist.sln` builds only three of the `tools/` projects, `tools/PMDGDispatchTester`, `tools/ChangelogBuilder` and `tools/GuideBuilder` (added 2026-10-19 with the user guide, docs/user-guide.md). The other 12 `tools/*` projects build on their own, never as part of the solution: `CDUTest`, `DistanceUnitsProbe`, `DockingProbe`, `GsxAirplaneProbe`, `GsxOffsetProbe`, `GsxProfileProbe`, `IFlySdkProbe`, `LandingExitSweep`, `ProgressiveTaxiProbe`, `StandBridgeSweep`, `TaxiAugmentProbe` and `TaxiGuidanceProbe`. docs/development.md ("Build output and traps") names what each does.
 
 Why it matters. Eleven of the twelve link production sources from `MSFSBlindAssist/` with `<Compile Include>` (`CDUTest` links none; it copies the main app's `SimConnect.dll`). A solution build never compiles them, so a change to a linked source can break one without any solution build showing it. Build the probe you rely on, after a change to a source it links.
 
@@ -138,6 +138,21 @@ Added 2026-10-14 (PR #303). Two traps misread decimals outside en-US. A bare `do
 ## CORE-18
 
 Numbered CORE-17 on PR #160 until PR #303 merged first with that number (renumbered 2026-10-15). **CRITICAL:** Never set `TreeView.CheckBoxes = true` on a tree that mixes checkable items with plain headers. In a `TVS_CHECKBOXES` tree, any item that is currently selected or was ever expanded reports MSAA role CHECKBUTTON ("check box" in NVDA) even with its checkbox hidden via state image 0 — and the focused item is always selected, so NVDA announced every visited group header as "check box not checked" (probe-verified 2026-07-16; state-image scrubbing cannot fix the role). Use `NativeAccessibleTreeView.CheckboxStateImages = true` + `ShowCheckBox(node)` per checkable node instead (custom TVSIL_STATE image list, no TVS_CHECKBOXES): headers stay plain tree items, checkable nodes announce checked/not checked from the state image, `TreeNode.Checked`/Space/AfterCheck keep working. Mouse state-image clicks need a NodeMouseClick hit-test handler (the native control only self-toggles under TVS_CHECKBOXES). See the FirstOfficerForm checklist tree for the reference implementation.
+
+## CORE-19
+
+Added 2026-10-19 (PR #319). The pilot's guide lives in `guide/` in this repo; the website (msfsblindassist.com/guide/) and the Help menu's one-page copy are both built from it (docs/user-guide.md). So a PR that changes what a pilot presses, sees or hears (a hotkey, window, setting, spoken text, tone or aircraft) updates the guide in the same PR, like its code and its changelog fragment. When it cannot, or when nothing in the guide changes, its description says so on a line of its own:
+
+- `User guide: needed: <chapter and section>`: the guide is now wrong or incomplete there and this PR does not fix it. These lines are the guide's backlog: search the PRs for "User guide: needed" to find them.
+- `User guide: none, because <reason>`: the guide is still right, for example after a fix that restores what it already describes, or an internal change.
+
+A PR that updates `guide/` needs no line. The guide on `main` describes `main`, preview features included: the website publishes the newest release's guide as the released edition and `main`'s as the preview edition, so nothing needs marking as "preview only". The PR template carries the line with both forms in a comment; a PR opened with `gh pr create --body` skips the template, so this rule is what puts the line there.
+
+The check. `.github/workflows/user-guide-line.yml` runs `GuideBuilder check-pr` (`tools/GuideBuilder/PullRequestCheck.cs`, `UserGuideLine.cs` and `UserGuideImpact.cs`, covered by `UserGuideLineTests`) when a PR is opened, pushed to, reopened or its description edited. It asks only when the PR adds an `aircraft`, `feature` or `improvement` fragment or changes a file in `MSFSBlindAssist/HotkeyGuides/`: of the 221 fragments on `main` on 2026-10-19, 59 were in those categories and 125 were fixes, most of which restore behavior the guide already describes. It passes when the PR changes a file in `guide/` or answers with the line. It reads the line outside HTML comments, so the template's own examples never count, and refuses a placeholder left in (`<reason>`), a bare "none" or "needed", and any other text. It is advisory: not a required check, as its message says. The rule asks on every pilot-visible PR; the check covers the commonest cases and is not the definition.
+
+Why a line to fill in, not a checkbox: most PRs here are written with Claude Code, and a checkbox can be ticked, or left in as boilerplate, without anyone deciding anything. A line that names the place still to fix or the reason none is needed records a decision a reviewer can check. The model is the Kubernetes PR template's required release-note block, with "NONE" as the explicit opt-out.
+
+History. The first draft of this rule (2026-10-19, same PR) asked for a link to a pull request in the website's repo, where the guide then lived; the guide moved into this repo before it merged.
 
 ## Background: the former CLAUDE.md core sections
 

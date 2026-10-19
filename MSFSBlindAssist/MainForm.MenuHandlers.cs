@@ -390,6 +390,33 @@ public partial class MainForm
         }
     }
 
+    // Help, User Guide: the one-page guide bundled next to the exe, or the online guide when it is missing
+    // (HelpLinks). The screen reader has just read the menu item, so only the fallback, which it cannot say, is
+    // spoken (CORE-7).
+    private void UserGuideMenuItem_Click(object? sender, EventArgs e)
+    {
+        (string target, bool isBundled) = HelpLinks.ResolveGuide(AppContext.BaseDirectory, File.Exists);
+        if (!isBundled)
+            announcer.Announce("This copy of BA has no user guide in its folder. Opening the online guide.");
+        OpenInBrowser(target, "the user guide");
+    }
+
+    private void ProjectWebsiteMenuItem_Click(object? sender, EventArgs e)
+        => OpenInBrowser(HelpLinks.WebsiteUrl, "the project website");
+
+    private void OpenInBrowser(string target, string what)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(target) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            announcer.AnnounceImmediate($"Could not open {what}: {ex.Message}");
+            Log.Warn("MainForm", $"Opening {what} ({target}) failed: {ex.Message}");
+        }
+    }
+
     // One modeless Sim Performance window at a time: a second click brings the open one forward.
     // It opens whether or not the sim is connected — the rows say what is measurable (a sim
     // still loading shows its memory climbing before SimConnect answers) — and it releases its
