@@ -841,8 +841,8 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                // Individual SimConnect subscription so the panel Refresh button's
-                // RequestVariable(ONCE) call gets a per-var data definition to query.
+                // Individual SimConnect subscription so the status-display refresh's
+                // (F5 / the 1 s tick) RequestVariable call gets a per-var data definition to query.
                 // Batched continuous vars share a struct slot and have no per-var
                 // data def, so RequestVariable is a silent no-op and the on-demand
                 // display path times out with "--" until a value-CHANGE event fires.
