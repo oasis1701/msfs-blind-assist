@@ -603,7 +603,8 @@ public class CessnaC172G1000ControlsTests
     [InlineData("C172G_AP_VS_SET", 2001, false)]
     [InlineData("C172G_AP_IAS_SET", 48, true)]
     [InlineData("C172G_AP_IAS_SET", 47, false)]
-    [InlineData("C172G_AP_IAS_SET", 161, false)]
+    [InlineData("C172G_AP_IAS_SET", 163, true)]
+    [InlineData("C172G_AP_IAS_SET", 164, false)]
     [InlineData("C172G_AP_IAS_SET", double.NaN, false)]
     public void A_typed_autopilot_value_is_refused_outside_its_range(string key, double value, bool taken)
     {

@@ -23,11 +23,13 @@ public static class TakeoffRollCallouts
     /// <summary>
     /// The DA40 rotates at 67 KIAS (XLS 59), so 80 and 100 land after it is flying — two
     /// announcements during the busiest ten seconds of the flight, neither marking anything.
-    /// One call at Vr is what a light single wants.
+    /// One call at Vr is what a light single wants. The C172 rotates at 55 KIAS, its flight
+    /// model's own Vr (<see cref="CessnaC172Speeds"/>), and gets the same single call.
     /// </summary>
     public static Profile For(IAircraftDefinition? aircraft) => aircraft switch
     {
         CowsDA40Definition da40 => new Profile(DA40Speeds.For(da40.Variant).Vr, "Rotate", null, string.Empty),
+        CessnaC172BaseDefinition => new Profile(CessnaC172Speeds.Vr, "Rotate", null, string.Empty),
         _ => Default,
     };
 

@@ -466,6 +466,7 @@ The Taxiing-phase steering tone feeds the pilot a **rate-lead projected error**,
 | Headwind A330 | 1.7 s | Unmeasured: one conservative step above the A320's 1.6 s, as the longer wheelbase and slower yaw response sit between the A320 and the A380; tune in-sim if rollouts run long or short |
 | iFly 737 MAX8 | 0.4 s | Proxy from the PMDG 737 measurement (same airframe class), not measured on the iFly |
 | TFDi MD-11 | 0.6 s | Unmeasured: long-wheelbase trijet |
+| Cessna 172 (G1000) | 0.8 s | Unmeasured: the COWS DA40's figure for another short-wheelbase single, until a guided taxi's turn rollouts measure it |
 
 **"Straighten." cue is yaw-episode based, NOT junction-angle based.** A sustained-yaw episode opens at |yawRate| ≥ 4°/s, accumulates signed heading change, closes below 1.5°/s (direction flip restarts it). The cue fires once per episode when the episode has turned ≥ 35°, the route ahead within 60 m bends < 15° (a steady mid-curve arc holds projected error near zero BY DESIGN — the straightness gate is what prevents false fires inside long curves), and the projected error crosses centre against the yaw direction. **Do not re-introduce a `TurnAngleDegrees ≥ SHARP_TURN_ANGLE_DEG` gate:** real navdata splits 90° turns into 5–15° micro-bends — a measured KSFO route had 107 junctions and only ONE ≥ 60°, which made the original junction-gated cue dead code.
 

@@ -1027,12 +1027,12 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
     }
 
     /// <summary>
-    /// The aircraft's own speed limits for a typed FLC target (C172-22), read from the sim on
-    /// 2026-10-18: `DESIGN SPEED VS1` 48 knots (the clean stall) and `AIRSPEED BARBER POLE` 160
-    /// (never exceed). The GFC 700 itself took any number (300 and 20 both held), so outside these a
-    /// typed value is a typo, refused aloud, never clamped.
+    /// The aircraft's own speed limits for a typed FLC target (C172-22): its clean stall, VS1 48 knots,
+    /// and never exceed, VNE 163 (<see cref="CessnaC172Speeds"/>, C172-23; 160 until 2026-10-18, from
+    /// `AIRSPEED BARBER POLE`, which is not VNE). The GFC 700 itself took any number (300 and 20 both
+    /// held), so outside these a typed value is a typo, refused aloud, never clamped.
     /// </summary>
-    internal const double FlcMinKnots = 48, FlcMaxKnots = 160;
+    internal const double FlcMinKnots = CessnaC172Speeds.Vs1, FlcMaxKnots = CessnaC172Speeds.Vne;
 
     /// <summary>
     /// The FLC speed, typed: `AP_SPD_VAR_SET` in whole knots (measured: 90 set 90), the value the

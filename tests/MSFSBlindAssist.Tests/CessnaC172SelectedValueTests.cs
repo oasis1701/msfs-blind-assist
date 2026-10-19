@@ -42,16 +42,16 @@ public class CessnaC172SelectedValueTests
     }
 
     // Input Ctrl+S, the FLC speed (C172-22): the GFC 700 took any number, so the aircraft's own
-    // stall (48) and never-exceed (160) speeds bound a typed value; parsed as typed (CORE-17), so a
-    // comma or a dot is a decimal and a grouped "1,500" is refused, on any PC.
+    // stall (VS1 48) and never-exceed (VNE 163) speeds bound a typed value; parsed as typed (CORE-17), so
+    // a comma or a dot is a decimal and a grouped "1,500" is refused, on any PC.
     [Theory]
     [InlineData("85", true)]
     [InlineData("48", true)]
-    [InlineData("160", true)]
+    [InlineData("163", true)]
     [InlineData("85.5", true)]
     [InlineData("85,5", true)]
     [InlineData("47", false)]
-    [InlineData("161", false)]
+    [InlineData("164", false)]
     [InlineData("1,500", false)]
     [InlineData("abc", false)]
     [InlineData("", false)]
@@ -65,7 +65,7 @@ public class CessnaC172SelectedValueTests
                 CultureInfo.CurrentCulture = new CultureInfo(culture);
                 string? refusal = CessnaC172G1000Definition.ValidateSelectedAirspeed(typed);
                 Assert.Equal(taken, refusal == null);
-                if (!taken) Assert.Equal("Enter an FLC speed between 48 and 160 knots", refusal);
+                if (!taken) Assert.Equal("Enter an FLC speed between 48 and 163 knots", refusal);
             }
             finally
             {

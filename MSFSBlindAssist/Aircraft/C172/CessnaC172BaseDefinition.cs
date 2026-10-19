@@ -695,6 +695,9 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
         Form parentForm,
         HotkeyManager hotkeyManager)
     {
+        // Output Shift+1 to 6: the C172's own speeds (CessnaC172BaseDefinition.Speeds.cs).
+        if (HandleSpeedReadout(action, simConnect, announcer)) return true;
+
         switch (action)
         {
             // ===== READ ACTIONS (Output mode) =====

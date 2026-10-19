@@ -66,6 +66,23 @@ Weight:
 Flaps:
   L          Read Flap Position (Up, 10 degrees, 20 degrees, Full: 30 degrees)
 
+Speeds (the keys the airliners use for their own speeds carry the C172's,
+from its flight model and the Pilot's Operating Handbook):
+  Shift+5    The take-off set: rotate 55 knots, best angle of climb 62 knots,
+             best rate of climb 74 knots
+  Shift+4    The landing set: approach 60 to 70 knots with full flaps, short
+             field approach 61 knots with full flaps, a landing without flaps
+             65 to 75 knots, best glide 68 knots
+  Shift+6    Where the flaps are set and the limit for that setting (with the
+             flaps up, the limit for 10 degrees)
+  Shift+3    Both flap limits: 110 knots with 10 degrees, 85 knots with 20
+             degrees or full
+  Shift+2    The airspeed limits, slowest first: stall with flaps up and with
+             full flaps, manoeuvring speed for the current weight, maximum
+             structural cruise and never exceed
+  Shift+1    Best glide
+  With takeoff assist on, the take-off roll says "Rotate" at 55 knots.
+
 Landing Gear:
   Shift+G    Says the gear is fixed
 
@@ -190,7 +207,7 @@ Autopilot:
   Ctrl+H     Set the heading bug (0 to 359)
   Ctrl+A     Set the selected altitude (0 to 25000 feet), which FLC climbs or
              descends to; FLC is refused until an altitude has been selected.
-  Ctrl+S     Set the FLC speed (48 to 160 knots, the C172's stall and
+  Ctrl+S     Set the FLC speed (48 to 163 knots, the C172's stall and
              never-exceed speeds). The C172 has no autothrottle: FLC holds
              this speed by pitching up or down, and the throttle stays yours
              (full power to climb, reduced power to descend).
