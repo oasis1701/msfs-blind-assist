@@ -254,10 +254,22 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
 
         // ---------- ELT ----------
         // 0 ON transmits (`ELT ACTIVATED` 1), 1 ARM is where it rests and stops a transmission, the
-        // real reset. The switch also holds a 2 that stopped a transmission too; its name is not known,
-        // so it is not offered, and never spoken (`IsUnlistedSwitchPosition`). Announced (C172-20).
+        // real reset. The switch also holds a 2 that stopped a transmission too, but the real C172S's
+        // remote ELT switch has two positions, ON and ARM (the owner's research, 2026-10-19), so it is
+        // not offered, and never spoken (`IsUnlistedSwitchPosition`). Announced (C172-20).
         v["C172G_ELT"] = RestingPositionFirst(InputEventState("SAFETY_ELT_1", "ELT",
             new() { [0] = "On", [1] = "Arm" }, announced: true));
+        // Whether it transmits. Going on with the switch at ARM is the ELT going off by itself, which is
+        // spoken (C172-26, `EltActivationCall`); its row in Ctrl+M mutes that.
+        v[EltActivatedKey] = new SimVarDefinition
+        {
+            Name = "ELT ACTIVATED",
+            DisplayName = "ELT Activation",
+            Type = SimVarType.SimVar,
+            Units = "Bool",
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true
+        };
 
         // ---------- GFC 700 ----------
         // The modes the base class already reads (AP, HDG, ALT, NAV, APR, BC, VS) keep their keys and
@@ -627,6 +639,16 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
     {
         _loadSettle.NoteChange();
         if (NoteAudioUpdate(varName, value, announcer)) return true;
+        // The ELT switch is kept for the activation's call below, then handled as before.
+        if (varName == "C172G_ELT") _eltSwitch = value;
+        if (varName == EltActivatedKey)
+        {
+            string? call;
+            (call, _eltAnnounced) = EltActivationCall(_eltActive, value, _eltSwitch, _eltAnnounced);
+            _eltActive = value;
+            if (call != null) announcer.Announce(call);
+            return true;
+        }
         if (IsUnlistedSwitchPosition(varName, value)) return true;
         if (IsNavigationReadout(varName)) return true;
 
@@ -641,10 +663,35 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         return base.ProcessSimVarUpdate(varName, value, announcer);
     }
 
+    internal const string EltActivatedKey = "C172G_ELT_ACTIVATED";
+
+    /// <summary>The ELT's last transmitting reading and switch position, and whether it was heard going off by itself. UI thread only.</summary>
+    private double? _eltActive, _eltSwitch;
+    private bool _eltAnnounced;
+
+    /// <summary>
+    /// What `ELT ACTIVATED` going from <paramref name="was"/> to <paramref name="now"/> says, and whether an
+    /// activation has now been heard (C172-26). Going on with the switch anywhere but ON (0) is the ELT
+    /// going off by itself, as a hard landing trips a real one: "ELT activated". Going on with the switch
+    /// at ON is the pilot's own, already said by the switch, so it is quiet. Going off after a heard
+    /// activation: "ELT stopped transmitting", so the reset is confirmed. The first reading is a baseline.
+    /// Pure so the suite can pin it.
+    /// </summary>
+    internal static (string? Call, bool Announced) EltActivationCall(double? was, double now, double? eltSwitch, bool announced)
+    {
+        if (was is not double before) return (null, false);
+        bool on = now >= 0.5, wasOn = before >= 0.5;
+        if (on && !wasOn)
+            return eltSwitch is < 0.5 ? (null, false) : ("ELT activated", true);
+        if (!on && wasOn)
+            return announced ? ("ELT stopped transmitting", false) : (null, false);
+        return (null, announced);
+    }
+
     /// <summary>
     /// A switch position the panel does not offer, never spoken as a bare number: the standby
-    /// battery's TEST (2), which springs back to OFF by itself, and the ELT's unnamed 2. Pure so
-    /// the suite can pin it.
+    /// battery's TEST (2), which springs back to OFF by itself, and the ELT's 2, which the real
+    /// switch does not have. Pure so the suite can pin it.
     /// </summary>
     internal static bool IsUnlistedSwitchPosition(string varName, double value) =>
         varName is "C172G_STBY_BATTERY_STATE" or "C172G_ELT" && value > 1.5;
@@ -662,23 +709,25 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         return $"{name} breaker {(pulled ? "popped" : "in")}";
     }
 
-    /// <summary>A new flight's first breaker and audio readings are where they stand, not changes.</summary>
+    /// <summary>A new flight's first breaker, audio and ELT readings are where they stand, not changes.</summary>
     public override void ResetAnnouncementBaselines()
     {
         base.ResetAnnouncementBaselines();
         _breakerPulled.Clear();
         ClearAudioBaselines();
+        ClearEltBaseline();
     }
 
     /// <summary>
-    /// A flight loaded or reset re-reads every breaker and audio key; nothing standing is a change.
-    /// The G1000 restarts too, so the CAS watcher only records until the load settles.
+    /// A flight loaded or reset re-reads every breaker, audio key and the ELT; nothing standing is a
+    /// change. The G1000 restarts too, so the CAS watcher only records until the load settles.
     /// </summary>
     public override void OnSimContextReset()
     {
         base.OnSimContextReset();
         _breakerPulled.Clear();
         ClearAudioBaselines();
+        ClearEltBaseline();
         _loadSettle.Begin();
     }
 
@@ -688,6 +737,14 @@ public partial class CessnaC172G1000Definition : CessnaC172BaseDefinition
         base.OnSwitchedAway();
         _breakerPulled.Clear();
         ClearAudioBaselines();
+        ClearEltBaseline();
+    }
+
+    /// <summary>The switch position is kept: every move of it is delivered, and cleared it would read as unknown.</summary>
+    private void ClearEltBaseline()
+    {
+        _eltActive = null;
+        _eltAnnounced = false;
     }
 
     /// <summary>

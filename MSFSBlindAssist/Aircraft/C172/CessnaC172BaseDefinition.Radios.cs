@@ -133,7 +133,7 @@ public abstract partial class CessnaC172BaseDefinition
             UpdateFrequency = UpdateFrequency.Never,
             RenderAsButton = true
         };
-        // Read only by the ident button's read-back.
+        // Read only by the ident button's read-back, on request, so it answers at once after the press.
         v["C172_XPNDR_IDENTING"] = new SimVarDefinition
         {
             Name = "TRANSPONDER IDENT:1",
@@ -142,7 +142,41 @@ public abstract partial class CessnaC172BaseDefinition
             Units = "Bool",
             UpdateFrequency = UpdateFrequency.OnRequest
         };
+        // The same SimVar batched, for "Ident off" when the ident ends by itself, about 18 s after the
+        // press (`NoteIdentUpdate`). A second key, so the button's read-back never waits on the batch;
+        // only this one is batched (VAR-7). Its Ctrl+M row mutes the call.
+        v[IdentStateKey] = new SimVarDefinition
+        {
+            Name = "TRANSPONDER IDENT:1",
+            DisplayName = "Transponder Ident",
+            Type = SimVarType.SimVar,
+            Units = "Bool",
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true
+        };
     }
+
+    internal const string IdentStateKey = "C172_XPNDR_IDENT_STATE";
+
+    /// <summary>The ident's last reading, null before the first. UI thread only.</summary>
+    private double? _identActive;
+
+    /// <summary>
+    /// The batched ident's deliveries: "Ident off" when it ends, queued so a Ctrl+M mute reaches it
+    /// (VAR-8). Its start is quiet: the Ident button already says "Ident". Spoken here with its own
+    /// baseline, never by the generic announcer, which would never see the end if the start were
+    /// swallowed (C172-12's trap). True for this key, false for any other.
+    /// </summary>
+    private bool NoteIdentUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
+    {
+        if (varName != IdentStateKey) return false;
+        if (IdentEnded(_identActive, value)) announcer.Announce("Ident off");
+        _identActive = value;
+        return true;
+    }
+
+    /// <summary>Whether a reading ends an ident: on before, off now. The first reading is a baseline. Pure so the suite can pin it.</summary>
+    internal static bool IdentEnded(double? was, double now) => was is >= 0.5 && now < 0.5;
 
     /// <summary>A frequency for a panel's status list, read when the panel opens and after each write.</summary>
     private static SimVarDefinition FrequencyRow(string simVar, string displayName) => new()

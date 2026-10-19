@@ -1140,6 +1140,7 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
         if (IsUnlistedTransponderMode(varName, value)) return true;
+        if (NoteIdentUpdate(varName, value, announcer)) return true;
 
         // The autopilot's own trimming is not spoken. The shared Shift+T announcer reads every 0.1
         // degree, and the GFC 700 trims all the time it flies: on the ground in PIT it said "Trim up
@@ -1189,6 +1190,27 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
         if (varName == "INDICATED_ALTITUDE") _rpmArc = CessnaC172Gauges.NextRpmArc(_rpmArc, value);
 
         return base.ProcessSimVarUpdate(varName, value, announcer);
+    }
+
+    /// <summary>A new flight's first ident reading is where it stands, not a change.</summary>
+    public override void ResetAnnouncementBaselines()
+    {
+        base.ResetAnnouncementBaselines();
+        _identActive = null;
+    }
+
+    /// <summary>A flight loaded or reset reads the ident afresh; an ident it cut short is not "Ident off".</summary>
+    public override void OnSimContextReset()
+    {
+        base.OnSimContextReset();
+        _identActive = null;
+    }
+
+    /// <summary>Coming back to this aircraft later, its first ident reading is not a change either.</summary>
+    public override void OnSwitchedAway()
+    {
+        base.OnSwitchedAway();
+        _identActive = null;
     }
 
     /// <summary>

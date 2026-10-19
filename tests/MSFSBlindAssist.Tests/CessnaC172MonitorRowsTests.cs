@@ -70,6 +70,8 @@ public class CessnaC172MonitorRowsTests
             "C172G_AUDIO_TRANSMIT", "C172G_AUDIO_COM1", "C172G_AUDIO_COM2", "C172G_AUDIO_NAV1",
             "C172G_AUDIO_NAV2", "C172G_AUDIO_DME", "C172G_AUDIO_ADF", "C172G_AUDIO_MKR_MUTE",
             "C172G_AUDIO_HI_SENS", "C172G_AUDIO_SPKR",
+            // "Ident off" and the ELT going off by itself (2026-10-19, C172-26).
+            CessnaC172BaseDefinition.IdentStateKey, CessnaC172G1000Definition.EltActivatedKey,
         })
         {
             Assert.Contains(key, keys);
