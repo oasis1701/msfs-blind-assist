@@ -15,7 +15,7 @@ namespace MSFSBlindAssist.Aircraft.MD11;
 /// </summary>
 public static class Md11Squawk
 {
-    /// <summary>The panel's text field. A key containing "_SET" is what MainForm renders as a text box plus Set button.</summary>
+    /// <summary>The panel's text field. A key containing "_SET" is what MainForm renders as a text box that Enter applies.</summary>
     public const string SetKey = "MD11_SQUAWK_SET";
 
     /// <summary>The read-back row: the stock <c>TRANSPONDER CODE:1</c>, BCO16, decoded to four digits.</summary>
