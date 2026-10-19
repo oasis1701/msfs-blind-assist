@@ -103,20 +103,8 @@ public static class DA40CylinderState
         return hit.Count == 0 ? "None" : "Shock cooling, " + Cylinders(hit);
     }
 
-    /// <summary>How long the same shock-cooling cylinders stay said before they may be said again.</summary>
-    public const int ShockCoolingRepeatHoldMs = 60000;
-
-    /// <summary>
-    /// Whether a shock-cooling state is news. ⚠️ The model's line has no hysteresis, and a
-    /// cooling rate hovering on it said "Shock cooling, cylinder 3" twice in four seconds
-    /// (VCBI, 2026-10-15). The same cylinders inside <see cref="ShockCoolingRepeatHoldMs"/>
-    /// of the last call are the same news; a different set speaks at once.
-    /// </summary>
-    public static bool ShouldSpeakShockCooling(string state, string? lastSpoken, DateTime lastSpokenAt, DateTime now)
-    {
-        if (state == "None") return false;
-        return state != lastSpoken || (now - lastSpokenAt).TotalMilliseconds > ShockCoolingRepeatHoldMs;
-    }
+    /// <summary>The cylinders (1-based) under the model's shock-cooling line.</summary>
+    public static List<int> ShockCoolingCylinders(double[] tempInc) => Where(tempInc, v => v < ShockCoolingInc);
 
     public static string DescribeHealth(double[] damage)
     {
@@ -171,4 +159,58 @@ public sealed class DA40SeenMask
     }
 
     public void Reset() { Array.Clear(_seen); _count = 0; }
+}
+
+/// <summary>
+/// The shock-cooling call, once per EPISODE (DA40X-9). The model's line has no hysteresis, and a
+/// power cut takes the cylinders across it one after another and back: at VCBI (2026-10-19) a cut
+/// from full to 37 percent said cylinder 1, then 1-2, 1-3, 1-4, then 1-3, 2-3 and 3 - seven calls
+/// in nine seconds. Cylinders crossing within <see cref="GatherMs"/> of the onset are named
+/// together once; a cylinder joining later is named alone; one leaving is never said; the episode
+/// ends after <see cref="EpisodeEndMs"/> with none under the line.
+/// </summary>
+public sealed class ShockCoolingCallout
+{
+    public const int GatherMs = 2000;
+    public const int EpisodeEndMs = 60000;
+
+    private readonly SortedSet<int> _named = new();
+    private readonly SortedSet<int> _pending = new();
+    private DateTime _pendingSince = DateTime.MinValue;
+    private DateTime _lastSeen = DateTime.MinValue;
+    private bool _active;
+
+    /// <summary>The cylinders under the line now; returns what to say, or null.</summary>
+    public string? Step(IReadOnlyCollection<int> cylinders, DateTime now)
+    {
+        if (cylinders.Count > 0)
+        {
+            _active = true;
+            _lastSeen = now;
+            foreach (int c in cylinders)
+            {
+                if (_named.Contains(c) || !_pending.Add(c)) continue;
+                if (_pending.Count == 1) _pendingSince = now;
+            }
+        }
+        else if (_active && _pending.Count == 0 && (now - _lastSeen).TotalMilliseconds >= EpisodeEndMs)
+        {
+            _active = false;
+            _named.Clear();
+        }
+
+        if (_pending.Count == 0 || (now - _pendingSince).TotalMilliseconds < GatherMs) return null;
+        var said = "Shock cooling, " + DA40CylinderState.Cylinders(_pending.ToList());
+        _named.UnionWith(_pending);
+        _pending.Clear();
+        return said;
+    }
+
+    public void Reset()
+    {
+        _named.Clear();
+        _pending.Clear();
+        _active = false;
+        _pendingSince = _lastSeen = DateTime.MinValue;
+    }
 }

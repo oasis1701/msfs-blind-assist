@@ -393,7 +393,6 @@ public partial class CowsDA40Definition
     private bool? _damageEnabled;
     private string? _redBoxSpoken;
     private double _foulWorstSpoken = -1;
-    private bool _shockSpoken;
     private readonly double?[] _damageSpoken = new double?[DA40CylinderState.CylinderCount];
     private readonly bool[] _plugSeen = new bool[DA40CylinderState.CylinderCount * 2];
 
@@ -491,22 +490,13 @@ public partial class CowsDA40Definition
 
     private void NoteShockCooling(ScreenReaderAnnouncer announcer)
     {
-        string state = DA40CylinderState.DescribeShockCooling(_cooling);
-        bool shocking = state != "None";
-        if (shocking == _shockSpoken && state == _shockState) return;
-        _shockSpoken = shocking;
-        _shockState = state;
-        var now = DateTime.UtcNow;
-        if (!DA40CylinderState.ShouldSpeakShockCooling(state, _shockSaid, _shockSaidAt, now)) return;
-        _shockSaid = state;
-        _shockSaidAt = now;
-        if (Muted("DA40_XLS_SHOCK_COOLING")) return;
-        announcer.AnnounceImmediate(state);
+        string? said = _shockCallout.Step(DA40CylinderState.ShockCoolingCylinders(_cooling), DateTime.UtcNow);
+        if (said == null || Muted("DA40_XLS_SHOCK_COOLING")) return;
+        announcer.AnnounceImmediate(said);
     }
 
-    private string? _shockState;
-    private string? _shockSaid;
-    private DateTime _shockSaidAt = DateTime.MinValue;
+    /// <summary>One call per shock-cooling episode (DA40X-9).</summary>
+    private readonly ShockCoolingCallout _shockCallout = new();
 
     /// <summary>A fall of five points on a cylinder - damage happens during something.</summary>
     private void NoteDamage(int i, ScreenReaderAnnouncer announcer)
@@ -633,7 +623,7 @@ public partial class CowsDA40Definition
         _damageEnabled = null;
         _redBoxSpoken = null;
         _foulWorstSpoken = -1;
-        _shockSpoken = false; _shockState = null; _shockSaid = null; _shockSaidAt = DateTime.MinValue;
+        _shockCallout.Reset();
         Array.Clear(_damageSpoken);
         Array.Clear(_plugSeen);
         _redBoxInputs.Reset();
