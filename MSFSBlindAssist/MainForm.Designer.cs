@@ -25,6 +25,9 @@
         private System.Windows.Forms.ToolStripMenuItem tfdiMd11MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem extrasMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem volantaMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem helpMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem userGuideMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem projectWebsiteMenuItem = null!;
         private System.Windows.Forms.ListBox sectionsListBox = null!;
         private System.Windows.Forms.ListBox panelsListBox = null!;
         private System.Windows.Forms.Panel controlsContainer = null!;
@@ -63,6 +66,9 @@
             this.tfdiMd11MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.extrasMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.volantaMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.helpMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.userGuideMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.projectWebsiteMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.sectionsListBox = new System.Windows.Forms.ListBox();
             this.panelsListBox = new System.Windows.Forms.ListBox();
             this.controlsContainer = new System.Windows.Forms.Panel();
@@ -77,7 +83,8 @@
             this.menuStrip.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.fileMenuItem,
             this.aircraftMenuItem,
-            this.extrasMenuItem});
+            this.extrasMenuItem,
+            this.helpMenuItem});
             this.menuStrip.Location = new System.Drawing.Point(0, 0);
             this.menuStrip.Name = "menuStrip";
             this.menuStrip.Size = new System.Drawing.Size(870, 28);
@@ -94,8 +101,7 @@
             this.hotkeyListMenuItem,
             this.simPerformanceMenuItem,
             this.suspendHotkeysMenuItem,
-            this.updateApplicationMenuItem,
-            this.aboutMenuItem});
+            this.updateApplicationMenuItem});
             this.fileMenuItem.Name = "fileMenuItem";
             this.fileMenuItem.Size = new System.Drawing.Size(46, 24);
             this.fileMenuItem.Text = "&File";
@@ -304,6 +310,36 @@
             this.volantaMenuItem.Size = new System.Drawing.Size(220, 26);
             this.volantaMenuItem.Text = "&Volanta…";
             this.volantaMenuItem.Click += new System.EventHandler(this.VolantaMenuItem_Click);
+            //
+            // helpMenuItem
+            //
+            this.helpMenuItem.AccessibleName = "Help menu";
+            this.helpMenuItem.AccessibleDescription = "The user guide, the project website and the application version";
+            this.helpMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.userGuideMenuItem,
+            this.projectWebsiteMenuItem,
+            this.aboutMenuItem});
+            this.helpMenuItem.Name = "helpMenuItem";
+            this.helpMenuItem.Size = new System.Drawing.Size(55, 24);
+            this.helpMenuItem.Text = "&Help";
+            //
+            // userGuideMenuItem
+            //
+            this.userGuideMenuItem.AccessibleName = "User Guide";
+            this.userGuideMenuItem.AccessibleDescription = "Open the user guide in your web browser";
+            this.userGuideMenuItem.Name = "userGuideMenuItem";
+            this.userGuideMenuItem.Size = new System.Drawing.Size(220, 26);
+            this.userGuideMenuItem.Text = "User &Guide";
+            this.userGuideMenuItem.Click += new System.EventHandler(this.UserGuideMenuItem_Click);
+            //
+            // projectWebsiteMenuItem
+            //
+            this.projectWebsiteMenuItem.AccessibleName = "Project Website";
+            this.projectWebsiteMenuItem.AccessibleDescription = "Open msfsblindassist.com in your web browser";
+            this.projectWebsiteMenuItem.Name = "projectWebsiteMenuItem";
+            this.projectWebsiteMenuItem.Size = new System.Drawing.Size(220, 26);
+            this.projectWebsiteMenuItem.Text = "Project &Website";
+            this.projectWebsiteMenuItem.Click += new System.EventHandler(this.ProjectWebsiteMenuItem_Click);
             //
             // sectionsListBox
             // 
