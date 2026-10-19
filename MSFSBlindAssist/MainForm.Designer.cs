@@ -317,7 +317,7 @@
             // simTabletMenuItem
             //
             this.simTabletMenuItem.AccessibleName = "In-Sim Tablet (FS2024 Native)";
-            this.simTabletMenuItem.AccessibleDescription = "MSFS 2024's own tablet, for every aircraft: its Flight Planner with a SimBrief import, Aircraft, Ground Services and its other apps";
+            this.simTabletMenuItem.AccessibleDescription = "MSFS 2024's own tablet";
             this.simTabletMenuItem.Name = "simTabletMenuItem";
             this.simTabletMenuItem.Size = new System.Drawing.Size(220, 26);
             this.simTabletMenuItem.Text = "&In-Sim Tablet (FS2024 Native)…";
