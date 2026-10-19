@@ -442,7 +442,7 @@ The tablet you get depends on the aircraft:
 
 The aircraft must be loaded and its tablet working; nothing needs installing in your Community folder. Each tablet's pages are described in [Airbus Aircraft](airbus-aircraft.md) and [Boeing Aircraft and the MD-11](boeing-aircraft-and-the-md-11.md).
 
-In MSFS 2024 the simulator also has a tablet of its own, the same on every aircraft. BA opens it from the Extras menu, beside the aircraft's tablet: see [The In-Sim Tablet (MSFS 2024)](#in-sim-tablet).
+MSFS 2024 also has a tablet of its own, meant for its default aircraft, which have no tablet of their own. BA opens it from the Extras menu, but it is not a replacement for the tablets above: see [The In-Sim Tablet (MSFS 2024)](#in-sim-tablet).
 
 ### The flyPad, PMDG and MD-11 tablets {#the-flypad-pmdg-and-md-11-tablets}
 
@@ -500,14 +500,22 @@ Both windows hide rather than close, so when you reopen them you are back on the
 
 ### What it is {#in-sim-tablet-what}
 
-Microsoft Flight Simulator 2024 has a tablet of its own, the same one on every aircraft: its Flight Planner, its Aircraft app (mass and balance, take-off and landing performance, checklists), the Pilot book, Ground Services, Settings, and any apps your add-ons install into it. BA opens it in an accessible window called "In-Sim Tablet", on any aircraft. It sits beside the aircraft's own tablet rather than replacing it: Input Shift+T still opens the aircraft's tablet, as described in [Aircraft EFBs](#aircraft-efb).
+Microsoft Flight Simulator 2024 has a tablet of its own, with a Flight Planner, an Aircraft app (mass and balance, take-off and landing performance, checklists) and other apps. BA opens it in an accessible window called "In-Sim Tablet". It is meant for MSFS 2024's default aircraft, which have no tablet of their own.
 
 MSFS 2020 has no such tablet.
 
+<div class="callout warning" role="note" markdown="1">
+
+**Warning:** These aircraft have their own tablet and flight computer: the FlyByWire A320neo and A380X, the Headwind A330-900neo, the Fenix A320, the PMDG 737 and 777, the iFly 737 MAX8, the TFDi MD-11 and the HorizonSim 787-9. On them, use the aircraft's own tablet (Input Shift+T, see [Aircraft EFBs](#aircraft-efb)) and flight computer, and never send a flight plan from the in-sim tablet: it causes problems with the aircraft.
+
+</div>
+
 ### When to use it {#in-sim-tablet-when}
 
-- To load your latest SimBrief plan into the simulator's Flight Planner with one press, then send it to your aircraft. What an aircraft does with a plan sent from the tablet is up to the aircraft.
-- To use the tablet's other apps: mass and balance, performance, checklists, ground services, or an add-on's app.
+With one of MSFS 2024's default aircraft:
+
+- To load your latest SimBrief plan into the simulator's Flight Planner with one press, then send it to the aircraft.
+- To use the tablet's mass and balance, performance and checklist pages.
 
 ### How to use it {#in-sim-tablet-how}
 
@@ -532,7 +540,7 @@ You need your SimBrief username in BA's settings first: see [Setting your SimBri
 1. Open the Flight Planner from the dock. A **Load latest SimBrief plan** button appears right after the dock.
 2. Press it. BA fetches your latest SimBrief plan, types its route into the tablet with the cruise altitude, adds SimBrief's SID and STAR by name, and sets SimBrief's departure and arrival runways.
 3. Listen to the summary, then check the plan on the Route page. When a runway is set, the tablet can choose an approach by itself (for example *"ILS 1 via Direct"*); the summary names every procedure the tablet chose, so you know what you will be sending. The tablet does not take the SID's or STAR's transitions from the route.
-4. Send it yourself: BA never sends the plan to the aircraft. On the Route page, press the Send button for the avionics (there are also buttons to send it to ATC, or to both).
+4. Send it yourself, and only to a default aircraft: BA never sends the plan for you. On the Route page, press the Send button for the avionics (there are also buttons to send it to ATC, or to both). Never send it to an aircraft that has its own flight computer (see the warning above).
 
 ### What you will hear {#in-sim-tablet-hear}
 

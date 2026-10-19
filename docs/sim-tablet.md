@@ -51,6 +51,8 @@ Extras, In-Sim Tablet (FS2024 Native) (`MainForm.MenuHandlers.cs`, then `ShowSim
 
 The window and its client stay open across aircraft switches, as the view is the sim's and the client reconnects by itself when the sim rebuilds it; exit closes them (`MainForm.cs`).
 
+Who it is for: MSFS 2024's default aircraft, which have no tablet of their own. Every aircraft BA has a profile for on main has its own tablet and flight computer, and sending a flight plan to one of them from the sim tablet causes problems (the owner, 2026-10-19), so the guide's section ("The In-Sim Tablet (MSFS 2024)", `guide/planning-your-flight.md`) carries a warning listing them, and the SimBrief import never sends (STAB-5). The owner chose that warning over an in-app guard. A new aircraft with its own flight computer joins the guide's list; a default aircraft such as the Cessna 172 does not.
+
 ## Testing
 
 - `tools/sim-tablet-test`: jsdom tests over live captures (`npm ci && npm test`, also in CI's `efb-readers` job). `capture.js` saves a page: run it in the view with `tools/coherent-eval.ps1 -Title "Electronic Flight Bag" -ExprFile tools/sim-tablet-test/capture.js` (UTF-8 console) and keep the output; `node run.js <fixture>` prints a fixture as the reader sees it.
