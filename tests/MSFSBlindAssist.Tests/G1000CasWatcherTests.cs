@@ -115,6 +115,44 @@ public class G1000CasWatcherTests
         Assert.Equal(new[] { "Caution: LOW VACUUM." }, said.All);
     }
 
+    /// <summary>
+    /// Alt+E: what stands on the screen now, in the display's order, the baseline and the quiet
+    /// period included (nothing is announced then, but asking still answers). A dark screen and a
+    /// screen not yet read say so, never "No CAS messages".
+    /// </summary>
+    [Fact]
+    public void Alt_E_lists_the_messages_on_the_screen_now()
+    {
+        var (watcher, _) = Armed();
+        Assert.Equal("CAS messages not read yet.", watcher.DescribeCurrentMessages());
+
+        watcher.ProcessRows(Powered("WARNING: LOW VOLTS", "WARNING: OIL PRESSURE", "Caution: LOW VACUUM"));   // the baseline
+        Assert.Equal("3 CAS messages. WARNING: LOW VOLTS. WARNING: OIL PRESSURE. Caution: LOW VACUUM.",
+            watcher.DescribeCurrentMessages());
+
+        watcher.ProcessRows(Powered("Caution: LOW VACUUM"));
+        Assert.Equal("1 CAS message. Caution: LOW VACUUM.", watcher.DescribeCurrentMessages());
+
+        watcher.ProcessRows(Powered());
+        Assert.Equal("No CAS messages.", watcher.DescribeCurrentMessages());
+
+        watcher.ProcessRows(Dark);
+        Assert.Equal("The PFD is off.", watcher.DescribeCurrentMessages());
+    }
+
+    [Fact]
+    public void Alt_E_answers_during_the_quiet_period_after_a_load()
+    {
+        var said = new GatedSpeechCapture();
+        var watcher = new G1000CasWatcher("test", () => true);
+        watcher.Arm(said);
+
+        watcher.ProcessRows(Powered("WARNING: LOW VOLTS"));
+
+        Assert.Empty(said.All);
+        Assert.Equal("1 CAS message. WARNING: LOW VOLTS.", watcher.DescribeCurrentMessages());
+    }
+
     [Fact]
     public void The_agent_writes_the_row_the_watcher_reads()
     {

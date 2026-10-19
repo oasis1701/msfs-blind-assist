@@ -83,6 +83,12 @@ internal sealed class G1000CasWatcher
     private string _lastFma = "";
     private bool _baselined;
 
+    // What the last scrape showed, for Alt+E (DescribeCurrentMessages): in the display's order,
+    // which the known SET does not keep, and replaced whole so the UI thread reads a finished list.
+    private volatile IReadOnlyList<string> _current = Array.Empty<string>();
+    private volatile bool _currentRead;
+    private volatile bool _currentDark;
+
     private volatile bool _suspended;
     private Func<string, Task<string>>? _lender;
 
@@ -149,6 +155,30 @@ internal sealed class G1000CasWatcher
         _baselined = false;
         _known.Clear();
         _lastFma = "";
+        _current = Array.Empty<string>();
+        _currentRead = false;
+        _currentDark = false;
+    }
+
+    /// <summary>
+    /// Output Alt+E: the CAS messages on the screen now, as the last scrape (the watcher's own, or
+    /// the PFD window's) showed them. The G1000's CAS window is these aircraft's E/WD; the DA40's
+    /// hotkey guide had promised the key since the window was built and nothing answered it.
+    /// </summary>
+    public string DescribeCurrentMessages() => DescribeCasList(_current, _currentDark, _currentRead);
+
+    /// <summary>
+    /// What Alt+E says: how many, then each message as the G1000 words it and in its order
+    /// (warnings on top), the way a new one is spoken; nothing appended (DA40-8). A dark screen and
+    /// a screen not read yet say so, never "No CAS messages". Pure so the suite can pin it.
+    /// </summary>
+    internal static string DescribeCasList(IReadOnlyList<string> cas, bool dark, bool read)
+    {
+        if (dark) return "The PFD is off.";
+        if (!read) return "CAS messages not read yet.";
+        if (cas.Count == 0) return "No CAS messages.";
+        string count = cas.Count == 1 ? "1 CAS message" : $"{cas.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)} CAS messages";
+        return count + ". " + string.Join(". ", cas.Select(c => c.TrimEnd('.'))) + ".";
     }
 
     public void Stop()
@@ -161,6 +191,9 @@ internal sealed class G1000CasWatcher
         try { _client.Stop(); _client.Dispose(); } catch { /* teardown must not throw */ }
         _client = null;
         _announcer = null;
+        _current = Array.Empty<string>();
+        _currentRead = false;
+        _currentDark = false;
     }
 
     /// <summary>
@@ -310,6 +343,9 @@ internal sealed class G1000CasWatcher
             _baselined = true;
             _known.Clear();
             _lastFma = "";
+            _current = Array.Empty<string>();
+            _currentDark = true;
+            _currentRead = true;
             return;
         }
 
@@ -318,6 +354,12 @@ internal sealed class G1000CasWatcher
 
         cas = ExtractCasMessages(rows);
         cas.AddRange(AlertsNotOnCas(rows, cas));
+
+        // For Alt+E, before the baseline and quiet-period returns: what is on the screen is worth
+        // saying when asked even while nothing is announced.
+        _current = cas.ToArray();
+        _currentDark = false;
+        _currentRead = true;
 
         foreach (string row in rows)
         {
