@@ -630,7 +630,12 @@ cross-check landing within a degree. The 777 took six turns to get three usable 
     approached from outside the radius (`legInsideAtStart` / `legArmedCapture`), so a leg that
     starts on the fix cannot cascade. Abeam (station passage) counts only while moving. A course leg
     uses abeam only when it started well outside the fix (`legStartDistNm > 4× capture radius`); an
-    outbound radial starts behind the fix, where abeam would misfire.
+    outbound radial starts behind the fix, where abeam would misfire. ⚠️ The FINAL fix is not
+    flown past by abeam until it has been ahead of the aircraft at least once (`legSeenAhead`,
+    `PassedByAbeam`), and `AdvanceLeg` never skips it as behind: "direct MTL" engaged climbing
+    out on 222 with MTL 92 nm away on 127 ended the FD in its first frame ("Tracking WP1." then
+    "Final waypoint reached.", XLS at VCBI, 2026-10-15). A direct-to while flying away from the
+    fix now turns the pilot round.
   - **Multi-slot skips are coalesced.** `AdvanceLeg` keeps advancing within one frame across fixes
     already flown past (`IsAlreadyBehind`) and speaks ONE callout naming how many were skipped —
     every advance uses `AnnounceImmediate`, which interrupts, so one advance per frame produced a

@@ -111,6 +111,9 @@ public class WaypointFlightDirectorManager : IDisposable
     // aircraft has flown clear of the radius while moving (station passage away from the fix).
     private bool legInsideAtStart;
     private bool legArmedCapture;
+    // Whether this leg's fix has been AHEAD of the aircraft (inside 90 degrees of the ground track)
+    // on any frame. The final fix is not "flown past" by the abeam test until it has (PassedByAbeam).
+    private bool legSeenAhead;
 
     private DateTime routineSuppressedUntil = DateTime.MinValue;
 
@@ -290,8 +293,11 @@ public class WaypointFlightDirectorManager : IDisposable
             legStartCaptured = true;
             legInsideAtStart = withinCapture;
             legArmedCapture = !withinCapture;
+            legSeenAhead = false;
         }
         if (!withinCapture) legArmedCapture = true;   // left (or never entered) the zone → arm capture
+        bool pastAbeam = G.IsPastAbeam(brgMag, groundTrack);
+        if (!pastAbeam) legSeenAhead = true;
 
         // Arrival → sequence to the next leg.
         //   captureArrival  : inside the radius, having approached from OUTSIDE it (a real fly-in). Counts
@@ -313,7 +319,8 @@ public class WaypointFlightDirectorManager : IDisposable
         //                     an outbound radial starts behind the fix, where abeam would misfire.
         bool captureArrival = legArmedCapture && withinCapture;
         bool clearedFromStart = legInsideAtStart && moving && !withinCapture && !isCourseLeg;
-        bool stationPassage = moving && G.IsPastAbeam(brgMag, groundTrack);
+        bool isFinalFix = tracker!.NextFilledSlot(activeSlot + 1) == 0;
+        bool stationPassage = PassedByAbeam(moving, pastAbeam, isFinalFix, legSeenAhead);
         bool startedFar = legStartDistNm > profile.CaptureRadiusNm * 4.0;   // inbound, not an outbound radial
         bool arrived = captureArrival || clearedFromStart
             || (isCourseLeg ? (startedFar && stationPassage) : stationPassage);
@@ -532,7 +539,10 @@ public class WaypointFlightDirectorManager : IDisposable
         while (next != 0)
         {
             var candidate = tracker!.GetSlot(next);
-            if (candidate == null || !IsAlreadyBehind(candidate.Value)) break;
+            // The LAST fix is never skipped as "behind": with nothing after it, skipping it ends the
+            // route on the spot, and a final fix off to the side is one to turn towards (WFD-17).
+            if (candidate == null || tracker.NextFilledSlot(next + 1) == 0
+                || !IsAlreadyBehind(candidate.Value)) break;
             skipped++;
             next = tracker.NextFilledSlot(next + 1);
         }
@@ -583,6 +593,16 @@ public class WaypointFlightDirectorManager : IDisposable
     ///     aircraft, so "behind" carries no information there — and a course the pilot deliberately
     ///     set is intent worth honouring rather than silently dropping.
     /// </summary>
+    /// <summary>
+    /// Whether the abeam test alone flies a fix past (WFD-7, WFD-17). ⚠️ The FINAL fix needs to
+    /// have been AHEAD at some point: "direct MTL" engaged climbing out on 222 with MTL 92 nm away
+    /// on 127 was past abeam on its first frame, and the FD said "Tracking WP1" and "Final waypoint
+    /// reached. Flight director off." together (XLS at VCBI, 2026-10-15). An earlier fix behind
+    /// still sequences at once, which is how a route engaged late skips what it has flown.
+    /// </summary>
+    internal static bool PassedByAbeam(bool moving, bool pastAbeam, bool isFinalFix, bool seenAhead)
+        => moving && pastAbeam && (!isFinalFix || seenAhead);
+
     private bool IsAlreadyBehind(WaypointSlotData slot)
     {
         if (slot.Course.HasValue) return false;
