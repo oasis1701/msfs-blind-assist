@@ -222,8 +222,12 @@ public static class PMDG777FlowDefinitions
                 s => s.AreSeatBeltsOff()),
             SW("CP_NO_SMOKING",   "No smoking: ON",            "EVT_OH_NO_SMOKING_LIGHT_SWITCH",     2,
                checklistItemId: "PF_NO_SMOKING"),
-            SW("CP_LIGHTS_MASTER","Lights master: ON",         "EVT_OH_LIGHTS_IND_LTS_SWITCH",       1,
-               checklistItemId: "PF_MASTER_LIGHTS"),
+            // PMDG's "MASTER BRIGHTNESS switch: ON" (see PF_MASTER_BRIGHT). This step was "Lights
+            // master: ON" and moved the INDICATOR LIGHTS switch to BRT instead (owner, 2026-10-19).
+            // A push button: pressed only over a switch READ as off, and verified.
+            Toggle(SW("CP_MASTER_BRIGHT", "Master brightness: ON",  "EVT_OH_MASTER_BRIGHT_PUSH",          1,
+                    "LTS_MasterBright_Sw_ON", v => v > 0.5, "PF_MASTER_BRIGHT"),
+                s => s.IsOn("LTS_MasterBright_Sw_ON"), "LTS_MasterBright_Sw_ON"),
             SW("CP_CARGO_FIRE_FWD","Cargo fire arm fwd: OFF",  "EVT_OH_FIRE_CARGO_ARM_FWD",          0,
                checklistItemId: "PF_CARGO_FIRE"),
             SW("CP_CARGO_FIRE_AFT","Cargo fire arm aft: OFF",  "EVT_OH_FIRE_CARGO_ARM_AFT",          0,

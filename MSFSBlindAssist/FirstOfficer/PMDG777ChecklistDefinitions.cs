@@ -213,9 +213,13 @@ public static class PMDG777ChecklistDefinitions
             Auto("PF_NO_SMOKING", "PREFLIGHT", "No Smoking selector: ON",
                 "SIGNS_NoSmokingSelector", v => v > 1.5,
                 action: (e, _) => e.SetNoSmoking(2)),
-            // No indicator-lights-master state field — action-only.
-            ActionManual("PF_MASTER_LIGHTS", "PREFLIGHT", "Indicator Lights master: ON",
-                (e, _) => e.SetMasterLights(1)),
+            // PMDG's Preflight Procedure: "MASTER BRIGHTNESS switch: ON". This line read "Indicator
+            // Lights master: ON" and moved the INDICATOR LIGHTS switch (TEST/BRT/DIM, PMDG's "As
+            // needed") to BRT instead; nothing set or read the master switch (owner, 2026-10-19).
+            // A push button: a tick presses it only over a switch READ as off.
+            Auto("PF_MASTER_BRIGHT", "PREFLIGHT", "Master Brightness switch: ON",
+                "LTS_MasterBright_Sw_ON", v => v > 0.5,
+                action: (e, s) => { if (s.IsOff("LTS_MasterBright_Sw_ON")) e.SetMasterBrightness(1); }),
             Auto("PF_CARGO_FIRE", "PREFLIGHT", "Cargo Fire ARM switches: OFF",
                 "FIRE_CargoFire_Sw_Arm_0", v => v < 0.5,
                 new[] { "FIRE_CargoFire_Sw_Arm_1" },

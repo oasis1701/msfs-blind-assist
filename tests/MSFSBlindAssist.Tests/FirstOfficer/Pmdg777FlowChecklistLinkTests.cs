@@ -79,6 +79,7 @@ public class Pmdg777FlowChecklistLinkTests
         Id("EVT_OH_ICE_ENGINE_ANTIICE_2", "ICE_EngAntiIceSw_1");
         Id("EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", "SIGNS_SeatBeltsSelector");
         Id("EVT_OH_NO_SMOKING_LIGHT_SWITCH", "SIGNS_NoSmokingSelector");
+        Id("EVT_OH_MASTER_BRIGHT_PUSH", "LTS_MasterBright_Sw_ON");   // push button, pressed only over off
         Id("EVT_OH_FIRE_CARGO_ARM_FWD", "FIRE_CargoFire_Sw_Arm_0");
         Id("EVT_OH_FIRE_CARGO_ARM_AFT", "FIRE_CargoFire_Sw_Arm_1");
         Id("EVT_OH_EEC_L_SWITCH", "ENG_EECMode_Sw_NORM_0");
@@ -160,7 +161,6 @@ public class Pmdg777FlowChecklistLinkTests
     {
         "EVT_OH_WIPER_LEFT_SWITCH", "EVT_OH_WIPER_RIGHT_SWITCH",     // no wiper field in the CDA struct
         "EVT_OH_CVR_TEST",                                          // momentary test
-        "EVT_OH_LIGHTS_IND_LTS_SWITCH",                             // no indicator-lights-master field
         "EVT_OH_FUEL_JETTISON_NOZZLE_L", "EVT_OH_FUEL_JETTISON_NOZZLE_R", "EVT_OH_FUEL_JETTISON_ARM",
         "EVT_OH_FUEL_CROSSFEED_FORWARD", "EVT_OH_FUEL_CROSSFEED_AFT",
         "EVT_DSP_CANC_RCL_SWITCH",                                  // momentary
@@ -181,7 +181,6 @@ public class Pmdg777FlowChecklistLinkTests
         ["PF_FIRE_TEST"] = new[] { W(("FIRE_OVHT_TEST", 1)) },
         ["PF_TCAS_TEST"] = new[] { W(("TCAS_TEST", 1)) },
         ["PF_WXR_TEST"] = new[] { W(("WXR_TEST", 1)) },
-        ["PF_MASTER_LIGHTS"] = new[] { W(("EVT_OH_LIGHTS_IND_LTS_SWITCH", 1)) },
         ["PF_JETTISON_OFF"] = new[]
         {
             W(("EVT_OH_FUEL_JETTISON_NOZZLE_L", 0), ("EVT_OH_FUEL_JETTISON_NOZZLE_R", 0)),
