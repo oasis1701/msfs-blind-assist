@@ -43,15 +43,11 @@ jobs:
       - name: Build
         run: dotnet build MSFSBlindAssist.sln -c Release -p:Version=${{ steps.version.outputs.VERSION }}
 
-      # The one-page user guide ships next to the exe, where Help, User Guide opens it. Its file
-      # name is a contract with HelpLinks.BundledGuideFileName (GUIDE-3); keep this step in
-      # step with preview.yml's.
+      # The one-page user guide ships next to the exe, where Help, User Guide opens it
+      # (GUIDE-3). A guide problem only warns: the zip then falls back to the online guide.
       - name: Build the one-page user guide
         shell: bash
-        run: |
-          dotnet run --project tools/GuideBuilder -- one-page --guide guide \
-            --out "MSFSBlindAssist/bin/x64/Release/net10.0-windows/MSFS Blind Assist User Guide.html" \
-            --edition release --version "${{ steps.version.outputs.VERSION }}"
+        run: bash tools/user-guide-publish.sh bundle release "${{ steps.version.outputs.VERSION }}"
 
       # Keep the Navdatareader version in sync with preview.yml's identical step.
       # BUMPING THIS PIN REQUIRES re-deriving MSFSBlindAssist/Resources/navdatareader.cfg
@@ -138,17 +134,9 @@ jobs:
       # The website builds its guide from this repo: the released edition from the newest
       # release, the preview edition from main (docs/user-guide.md). This asks it to rebuild
       # now rather than at its next scheduled run, so it must come after the release exists.
-      # SITE_PAGES_TOKEN is a fine-grained token with Actions read and write on
-      # oasis1701/msfs-blind-assist-site only. Best-effort, like the step above: a missing or
-      # expired token must never fail a release.
+      # Best-effort, like the step above: a missing or expired token never fails a release.
       - name: Ask the website to rebuild its guide
         shell: bash
-        run: |
-          if [ -z "$GH_TOKEN" ]; then
-            echo "No SITE_PAGES_TOKEN secret; the website picks this up at its next scheduled build."
-            exit 0
-          fi
-          gh workflow run pages.yml -R oasis1701/msfs-blind-assist-site \
-            || echo "::warning::Could not start the website's build (is SITE_PAGES_TOKEN expired?); it picks this up at its next scheduled build."
+        run: bash tools/user-guide-publish.sh refresh-site
         env:
           GH_TOKEN: ${{ secrets.SITE_PAGES_TOKEN }}

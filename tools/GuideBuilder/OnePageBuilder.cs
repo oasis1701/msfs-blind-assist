@@ -35,17 +35,20 @@ public static class OnePageBuilder
     /// <summary>A chapter page's ## becomes ####: two levels for the part and chapter headings above it.</summary>
     private const int Demotion = 2;
 
-    private static readonly (string Open, string Close)[] SiteOnlyBlocks =
+    private static readonly (string Open, Regex Close)[] SiteOnlyBlocks =
     {
-        ("<div class=\"guide-part\"", "</div>"),
-        ("<nav class=\"chapter-toc\"", "</nav>"),
-        ("<nav class=\"guide-nav\"", "</nav>"),
+        ("<div class=\"guide-part\"", ClosingTag("div")),
+        ("<nav class=\"chapter-toc\"", ClosingTag("nav")),
+        ("<nav class=\"guide-nav\"", ClosingTag("nav")),
     };
+
+    private static Regex ClosingTag(string tag) => new($@"</{tag}\s*>\s*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static readonly Regex MarkdownAttribute = new(@"\s+markdown=""1""", RegexOptions.CultureInvariant);
     private static readonly Regex BlockTagLine = new(@"^</?(?:div|nav|section|aside)\b[^>]*>$", RegexOptions.CultureInvariant);
     private static readonly Regex HtmlId = new(@"\sid=""(?<id>[^""]*)""", RegexOptions.CultureInvariant);
     private static readonly Regex HtmlHref = new(@"\shref=""(?<href>[^""]*)""", RegexOptions.CultureInvariant);
+    private static readonly Regex HtmlSrc = new(@"\ssrc=""(?<src>[^""]*)""", RegexOptions.CultureInvariant);
     private static readonly Regex LeftoverAttributes = new(@"\{#[A-Za-z0-9_-]+\}", RegexOptions.CultureInvariant);
 
     private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
@@ -87,58 +90,104 @@ public static class OnePageBuilder
     /// <summary>One page's Markdown, made ready to sit inside the single page.</summary>
     private static string Transform(string fileName, string body, List<string> problems)
     {
-        var output = new List<string>();
-        string? skippingUntil = null;
+        var output = new List<(string Text, bool InFence)>();
+        Regex? skippingUntil = null;
+        int skipStart = 0;
 
         foreach ((int number, string raw, bool inFence) in GuideMarkdown.Lines(body))
         {
             string text = raw;
             if (skippingUntil is not null)
             {
-                if (!inFence && text.Trim() == skippingUntil) skippingUntil = null;
-                continue;
+                if (inFence) continue;
+                if (skippingUntil.IsMatch(text))
+                {
+                    skippingUntil = null;
+                    continue;
+                }
+
+                if (!GuideMarkdown.Heading.IsMatch(text)) continue;
+
+                // A navigation block holds no headings, so reaching one means its closing tag is missing; without
+                // this the chapter up to the next matching closing tag (a callout's, say) would vanish unnoticed.
+                problems.Add(Unclosed(fileName, skipStart, $"the heading on line {number}"));
+                skippingUntil = null;
             }
 
             if (!inFence)
             {
-                (string Open, string Close) block = SiteOnlyBlocks.FirstOrDefault(b => text.TrimStart().StartsWith(b.Open, StringComparison.Ordinal));
+                (string Open, Regex Close) block = SiteOnlyBlocks.FirstOrDefault(b => text.TrimStart().StartsWith(b.Open, StringComparison.Ordinal));
                 if (block.Open is not null)
                 {
-                    if (!text.TrimEnd().EndsWith(block.Close, StringComparison.Ordinal)) skippingUntil = block.Close;
+                    if (!block.Close.IsMatch(text))
+                    {
+                        skippingUntil = block.Close;
+                        skipStart = number;
+                    }
+
                     continue;
                 }
 
                 Match heading = GuideMarkdown.Heading.Match(text);
                 if (heading.Success)
                 {
-                    int level = heading.Groups["hashes"].Length + Demotion;
+                    Group hashes = heading.Groups["hashes"];
+                    int level = hashes.Length + Demotion;
                     if (level > 6)
                     {
-                        problems.Add($"{fileName}:{number}: a level-{heading.Groups["hashes"].Length} heading is too deep for the one-page guide, where it would be level {level}; HTML stops at 6.");
+                        problems.Add($"{fileName}:{number}: a level-{hashes.Length} heading is too deep for the one-page guide, where it would be level {level}; HTML stops at 6.");
                         level = 6;
                     }
 
-                    text = new string('#', level) + text[heading.Groups["hashes"].Length..];
+                    text = new string('#', level) + text[(hashes.Index + hashes.Length)..];
                 }
 
-                text = RewriteLinks(MarkdownAttribute.Replace(text, ""));
+                text = MarkdownAttribute.Replace(text, "");
 
                 // CommonMark ends an HTML block at a blank line, so a block tag on its own line needs one either side
                 // for the Markdown inside a callout to be read as Markdown, as kramdown's markdown="1" reads it.
                 if (BlockTagLine.IsMatch(text.Trim()))
                 {
-                    output.Add("");
-                    output.Add(text.Trim());
-                    output.Add("");
+                    output.Add(("", false));
+                    output.Add((text.Trim(), false));
+                    output.Add(("", false));
                     continue;
                 }
             }
 
-            output.Add(text);
+            output.Add((text, inFence));
         }
 
-        return string.Join("\n", output).Trim('\n');
+        // Without this the rest of the chapter would silently vanish from the one-page guide.
+        if (skippingUntil is not null)
+        {
+            problems.Add(Unclosed(fileName, skipStart, "the end of the page"));
+        }
+
+        // Links are rewritten a run of non-code lines at a time, so a link whose text wraps onto the next line is
+        // rewritten too, and nothing inside fenced code is touched.
+        var lines = new List<string>();
+        var run = new List<string>();
+        foreach ((string text, bool inFence) in output)
+        {
+            if (!inFence)
+            {
+                run.Add(text);
+                continue;
+            }
+
+            if (run.Count > 0) lines.Add(RewriteLinks(string.Join("\n", run)));
+            run.Clear();
+            lines.Add(text);
+        }
+
+        if (run.Count > 0) lines.Add(RewriteLinks(string.Join("\n", run)));
+        return string.Join("\n", lines).Trim('\n');
     }
+
+    private static string Unclosed(string fileName, int line, string before)
+        => $"{fileName}:{line}: this site navigation block does not close before {before}, so the one-page guide would "
+            + "leave out what follows; end it with a line holding only its closing tag.";
 
     /// <summary>"page.md#id" and "#id" become "#id"; "page.md" becomes "#page" (the chapter heading's id).</summary>
     public static string RewriteLinks(string text) => GuideMarkdown.InlineLink.Replace(text, m =>
@@ -224,7 +273,8 @@ public static class OnePageBuilder
             """;
     }
 
-    /// <summary>What must hold of the finished page: unique ids, and every link either leaves the guide or jumps to an id on it.</summary>
+    /// <summary>What must hold of the finished page: unique ids, every link either leaves the guide or jumps to an id on
+    /// it, and nothing loaded from a relative path.</summary>
     private static IEnumerable<string> Verify(string html)
     {
         var ids = new HashSet<string>(StringComparer.Ordinal);
@@ -247,6 +297,16 @@ public static class OnePageBuilder
             }
 
             yield return $"one-page guide: a link to {href}, which would not work in a page opened from disk.";
+        }
+
+        // The page ships alone in the zip, so a relative image or other file it loads would be missing.
+        foreach (Match m in HtmlSrc.Matches(html))
+        {
+            string src = WebUtility.HtmlDecode(m.Groups["src"].Value);
+            if (!GuideMarkdown.IsExternal(src))
+            {
+                yield return $"one-page guide: it loads {src}, which is not shipped with the page.";
+            }
         }
 
         foreach (Match m in LeftoverAttributes.Matches(html))

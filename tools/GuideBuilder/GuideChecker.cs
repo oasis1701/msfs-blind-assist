@@ -116,6 +116,11 @@ public static class GuideChecker
             }
         }
 
+        foreach (int line in GuideMarkdown.SetextHeadings(page.Body))
+        {
+            problems.Add($"{page.FileName}:{line}: a line of = or - right under text turns that text into a heading with no id and no checked level; write it as ## Heading {{#id}} (GUIDE-2), or put a blank line above a --- rule.");
+        }
+
         var rawIds = new HashSet<string>(StringComparer.Ordinal);
         foreach ((int number, string text, bool inFence) in GuideMarkdown.Lines(page.Body))
         {
@@ -161,6 +166,12 @@ public static class GuideChecker
 
             if (GuideMarkdown.IsExternal(link.Target)) continue;
 
+            if (link.IsImage)
+            {
+                problems.Add($"{at}: an image at {link.Target}; the one-page guide shipped with the app is a single HTML file with no images beside it, so describe what it shows in words.");
+                continue;
+            }
+
             if (link.IsRawHtml)
             {
                 problems.Add($"{at}: a raw HTML link to {link.Target}; write it as a Markdown link, [text](page.md#id), which the site converts (GUIDE-1).");
@@ -179,7 +190,17 @@ public static class GuideChecker
                 continue;
             }
 
-            if (file == OnePageFile && fragment.Length == 0) continue;
+            if (file == OnePageFile && fragment.Length == 0)
+            {
+                // The site serves a chapter at /guide/<chapter>/, so only the contents page (/guide/) reaches the
+                // one-page file with a relative link.
+                if (page.FileName != GuideSource.ContentsFile)
+                {
+                    problems.Add($"{at}: links to {OnePageFile}, which only the contents page can link to: from a chapter the site resolves it inside the chapter's own folder. Link to index.md instead.");
+                }
+
+                continue;
+            }
 
             if (file.Contains('/') || !file.EndsWith(".md", StringComparison.Ordinal))
             {

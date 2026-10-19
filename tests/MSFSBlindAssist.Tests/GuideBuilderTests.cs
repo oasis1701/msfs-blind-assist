@@ -52,6 +52,9 @@ public class GuideBuilderTests
     [InlineData("## Clash {#alpha}", "chapter's own id")]
     [InlineData("## Reserved {#contents}", "the one-page guide")]
     [InlineData("## Odd {#bad.id}", "letters, digits")]
+    [InlineData("   ## Indented, no id", "has no {#id}")]
+    [InlineData("Underlined text\n---", "a line of = or -")]
+    [InlineData("Underlined text\n=====", "a line of = or -")]
     public void Headings_need_explicit_unique_ids_and_no_skipped_level(string heading, string problem)
         => Assert.Contains(Check(("beta.md", BetaWith(heading))), p => p.StartsWith("beta.md:", StringComparison.Ordinal) && p.Contains(problem));
 
@@ -65,7 +68,10 @@ public class GuideBuilderTests
     [InlineData("See [B](#nowhere).", "no heading on this page has")]
     [InlineData("See [B]().", "no target")]
     [InlineData("![](diagram.png)", "no alt text")]
+    [InlineData("![A diagram of the taxi tone](images/tones.png)", "describe what it shows in words")]
     [InlineData("[ref]: alpha.md", "reference-style")]
+    [InlineData("See the [whole guide on one page](one-page.html).", "only the contents page")]
+    [InlineData("See [Alpha's\nA section](alpha.md#nowhere).", "no heading with the id \"nowhere\"")]
     public void Links_are_plain_relative_page_links_that_resolve(string line, string problem)
         => Assert.Contains(Check(("beta.md", BetaWith(line))), p => p.StartsWith("beta.md:", StringComparison.Ordinal) && p.Contains(problem));
 
@@ -73,8 +79,10 @@ public class GuideBuilderTests
     [InlineData("Press \\[ then \\]; a line reading \\[SDK\\] and \\[a\\](#nowhere).")]
     [InlineData("See [the site](https://msfsblindassist.com/) and [mail](mailto:x@example.com).")]
     [InlineData("```\n{{ liquid }} and [x](#nowhere)\n## Not a heading\n```")]
-    [InlineData("See the [whole guide on one page](one-page.html).")]
-    public void Escaped_brackets_external_links_code_and_the_one_page_link_pass(string line)
+    [InlineData("Text above a rule.\n\n---")]
+    [InlineData("- A list item\n---")]
+    [InlineData("A paragraph with a [ stray bracket.\n\nAnd a [real link](#beta-b) later.")]
+    public void Escaped_brackets_external_links_code_and_rules_pass(string line)
         => Assert.Empty(Check(("beta.md", BetaWith(line))));
 
     [Fact]
@@ -205,6 +213,56 @@ public class GuideBuilderTests
 
         Assert.False(result.Ok);
         Assert.Contains(result.Problems, p => p.Contains("has no {#id}"));
+    }
+
+    [Fact]
+    public void The_one_page_guide_rewrites_a_link_that_wraps_and_demotes_an_indented_heading()
+    {
+        string beta = BetaWith("See the [first\nsection of Alpha](alpha.md#alpha-a).\n\n   ### Indented {#beta-indented}");
+        string html = OnePageBuilder.Build(GuideSource.FromFiles(Guide(("beta.md", beta))), GuideEdition.Local, null).Html!;
+
+        Assert.Contains("href=\"#alpha-a\">first\nsection of Alpha</a>", html);
+        Assert.Contains("<h5 id=\"beta-indented\">Indented</h5>", html);
+    }
+
+    [Fact]
+    public void A_site_block_that_never_closes_is_refused_rather_than_dropping_the_chapter()
+    {
+        string alpha = Alpha.Replace("Chapter 1 of 2 in [Part 1: Start](index.md#part-1).\n\n</div>", "Chapter 1 of 2 in [Part 1: Start](index.md#part-1).");
+        OnePageResult result = OnePageBuilder.Build(GuideSource.FromFiles(Guide(("alpha.md", alpha))), GuideEdition.Local, null);
+
+        Assert.False(result.Ok);
+        Assert.Contains(result.Problems, p => p.StartsWith("alpha.md:2:", StringComparison.Ordinal) && p.Contains("does not close before the heading"));
+    }
+
+    [Fact]
+    public void A_site_block_left_open_at_the_end_of_a_page_is_refused()
+    {
+        string beta = BetaWith("<nav class=\"guide-nav\" aria-label=\"Guide chapters\" markdown=\"1\">\n\n- [Guide contents](index.md)");
+        OnePageResult result = OnePageBuilder.Build(GuideSource.FromFiles(Guide(("beta.md", beta))), GuideEdition.Local, null);
+
+        Assert.False(result.Ok);
+        Assert.Contains(result.Problems, p => p.StartsWith("beta.md:", StringComparison.Ordinal) && p.Contains("the end of the page"));
+    }
+
+    [Fact]
+    public void A_site_block_closed_in_another_case_or_spacing_still_ends()
+    {
+        string alpha = Alpha.Replace("of 2 in [Part 1: Start](index.md#part-1).\n\n</div>", "of 2 in [Part 1: Start](index.md#part-1).\n\n</DIV >");
+        string html = OnePageBuilder.Build(GuideSource.FromFiles(Guide(("alpha.md", alpha))), GuideEdition.Local, null).Html!;
+
+        Assert.Contains("<h4 id=\"alpha-a\">A</h4>", html);
+        Assert.DoesNotContain("Chapter 1 of 2", html);
+    }
+
+    [Fact]
+    public void The_one_page_guide_is_refused_when_it_would_load_a_relative_file()
+    {
+        OnePageResult result = OnePageBuilder.Build(GuideSource.FromFiles(Guide(("beta.md", BetaWith("<img src=\"tones.png\" alt=\"Tones\">")))),
+            GuideEdition.Local, null);
+
+        Assert.False(result.Ok);
+        Assert.Contains(result.Problems, p => p.Contains("tones.png") && p.Contains("not shipped"));
     }
 
     [Fact]

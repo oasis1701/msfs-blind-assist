@@ -29,13 +29,14 @@ public static class UserGuideLine
     private static readonly Regex HtmlComment = new(@"<!--.*?(?:-->|\z)",
         RegexOptions.Singleline | RegexOptions.CultureInvariant);
 
-    // A list marker and bold are tolerated so "- **User guide:** none, because …" still reads. The colon is
-    // required, which keeps the template's "## User guide" heading from matching.
-    private static readonly Regex Line = new(@"^[ \t]*(?:[-*+][ \t]+)?(?:\*\*|__)?user guide:(?:\*\*|__)?[ \t]*(?<value>.*?)[ \t]*$",
+    // A list marker and bold are tolerated, with the bold ending before or after the colon, so "- **User guide:**
+    // none, because …" and "**User guide**: none, because …" both read. The colon is required, which keeps the
+    // template's "## User guide" heading from matching.
+    private static readonly Regex Line = new(@"^[ \t]*(?:[-*+][ \t]+)?(?:\*\*|__)?user guide(?:\*\*|__)?:(?:\*\*|__)?[ \t]*(?<value>.*?)[ \t]*$",
         RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.CultureInvariant);
 
-    // A template placeholder such as <reason> or <chapter>; an autolink such as <https://…> is not one.
-    private static readonly Regex Placeholder = new(@"<(?!https?:)[a-z][^<>]*>",
+    // The placeholders the PR template and CORE-19 use, and only those: a reason may name an HTML element (<nav>).
+    private static readonly Regex Placeholder = new(@"<(?:chapter(?: and section)?|reason|why the guide is still right|where)>",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static readonly Regex NoneForm = new(@"^none\b[\s,:;.\-–—]*(?:because\b[\s,:]*)?(?<reason>.*)$",

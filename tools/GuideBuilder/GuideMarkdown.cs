@@ -15,12 +15,22 @@ public sealed record GuideLink(int Line, string Target, bool IsRawHtml, bool IsI
 /// </summary>
 public static class GuideMarkdown
 {
-    public static readonly Regex Heading = new(@"^(?<hashes>#{1,6})[ \t]+(?<text>.*?)(?:[ \t]+\{#(?<id>[^}\s]+)\})?[ \t]*$",
+    // An ATX heading, which Markdown allows up to three spaces in.
+    public static readonly Regex Heading = new(@"^[ ]{0,3}(?<hashes>#{1,6})[ \t]+(?<text>.*?)(?:[ \t]+\{#(?<id>[^}\s]+)\})?[ \t]*$",
         RegexOptions.CultureInvariant);
 
     // [text](target) or ![alt](target), with an optional "title". Link text may hold escaped characters and one level
-    // of brackets; an escaped \[ is literal text, never a link.
-    public static readonly Regex InlineLink = new(@"(?<bang>!?)(?<!\\)\[(?<text>(?:\\.|[^\[\]\\]|\[[^\]]*\])*)\]\((?<target>[^)\s]*)(?:[ \t]+""[^""]*"")?\)",
+    // of brackets, and may wrap onto the next line but never across a blank one; an escaped \[ is literal text.
+    public static readonly Regex InlineLink = new(
+        @"(?<bang>!?)(?<!\\)\[(?<text>(?:\\.|[^\[\]\\\n]|\n(?![ \t]*(?:\n|$))|\[[^\]\n]*\])*)\]\((?<target>[^)\s]*)(?:[ \t]+""[^""]*"")?\)",
+        RegexOptions.CultureInvariant);
+
+    // A line of = or - under a paragraph line makes that line a setext heading, which carries no {#id}.
+    private static readonly Regex SetextUnderline = new(@"^[ ]{0,3}(?:=+|-+)[ \t]*$", RegexOptions.CultureInvariant);
+
+    // A line a setext underline cannot turn into a heading: blank, a list item, a heading, a quote, a table row,
+    // HTML or a fence. A --- after one of these is a rule or a list item.
+    private static readonly Regex NotParagraphText = new(@"^\s*$|^[ ]{0,3}(?:[-*+][ \t]|\d+[.)][ \t]|[#>|<]|`{3}|~{3})",
         RegexOptions.CultureInvariant);
 
     public static readonly Regex ReferenceDefinition = new(@"^[ ]{0,3}\[(?<label>[^\]]+)\]:[ \t]*(?<target>\S+)",
@@ -80,17 +90,40 @@ public static class GuideMarkdown
         return headings;
     }
 
+    /// <summary>The 1-based line numbers of setext headings: text underlined with a line of = or -.</summary>
+    public static IReadOnlyList<int> SetextHeadings(string body)
+    {
+        var found = new List<int>();
+        (string Text, bool InFence)? previous = null;
+        foreach ((int number, string text, bool inFence) in Lines(body))
+        {
+            if (!inFence && SetextUnderline.IsMatch(text) && previous is { InFence: false } p && !NotParagraphText.IsMatch(p.Text))
+            {
+                found.Add(number);
+            }
+
+            previous = (text, inFence);
+        }
+
+        return found;
+    }
+
     public static IReadOnlyList<GuideLink> Links(string body)
     {
         var links = new List<GuideLink>();
+
+        // Inline links are matched over the whole body, with fenced code blanked out and the line count kept, so a
+        // link whose text wraps onto the next line is found too.
+        string prose = OutsideFences(body);
+        foreach (Match m in InlineLink.Matches(prose))
+        {
+            int line = 1 + prose.AsSpan(0, m.Index).Count('\n');
+            links.Add(new GuideLink(line, m.Groups["target"].Value, false, m.Groups["bang"].Length > 0, m.Groups["text"].Value));
+        }
+
         foreach ((int number, string text, bool inFence) in Lines(body))
         {
             if (inFence) continue;
-            foreach (Match m in InlineLink.Matches(text))
-            {
-                links.Add(new GuideLink(number, m.Groups["target"].Value, false, m.Groups["bang"].Length > 0, m.Groups["text"].Value));
-            }
-
             foreach (Match m in RawHref.Matches(text))
             {
                 links.Add(new GuideLink(number, m.Groups["href"].Value, true, false, ""));
@@ -99,6 +132,9 @@ public static class GuideMarkdown
 
         return links;
     }
+
+    /// <summary>The body with every fenced-code line emptied, so it keeps its line numbers.</summary>
+    public static string OutsideFences(string body) => string.Join("\n", Lines(body).Select(l => l.InFence ? "" : l.Text));
 
     /// <summary>Every id a page defines: its headings' {#id}s and any raw HTML id="…" attributes.</summary>
     public static IReadOnlySet<string> Ids(string body)

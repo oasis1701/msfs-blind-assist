@@ -2,13 +2,14 @@ namespace MSFSBlindAssist.Services;
 
 /// <summary>
 /// What the Help menu opens. User Guide opens the one-page copy that release.yml and preview.yml build from guide/
-/// and put next to the exe, which matches the installed version, or the online guide when that copy is missing, as
-/// it is in a local build. Project Website opens the website. See docs/user-guide.md.
+/// (through tools/user-guide-publish.sh) and put next to the exe, which matches the installed version, or the online
+/// guide when that copy is missing, as it is in a local build. Project Website opens the website. See
+/// docs/user-guide.md.
 /// </summary>
 public static class HelpLinks
 {
     /// <summary>
-    /// The bundled guide's file name: a contract with release.yml and preview.yml, which write it (GUIDE-3);
+    /// The bundled guide's file name: a contract with tools/user-guide-publish.sh, which writes it (GUIDE-3);
     /// HelpLinksTests pins both sides.
     /// </summary>
     public const string BundledGuideFileName = "MSFS Blind Assist User Guide.html";

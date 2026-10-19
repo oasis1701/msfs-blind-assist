@@ -15,6 +15,8 @@ public class UserGuideLineTests
     [InlineData("User guide: none, because this restores the documented behavior", UserGuideAnswer.None)]
     [InlineData("User guide: None: CI only", UserGuideAnswer.None)]
     [InlineData("User guide: none because internal refactor", UserGuideAnswer.None)]
+    [InlineData("User guide: none, because only the <nav> markup changed", UserGuideAnswer.None)]
+    [InlineData("User guide: needed: the <kbd> examples in Part 2", UserGuideAnswer.Needed)]
     public void Parse_accepts_each_answer(string description, UserGuideAnswer expected)
     {
         UserGuideLineResult result = UserGuideLine.Parse(description);
@@ -27,6 +29,8 @@ public class UserGuideLineTests
     [Theory]
     [InlineData("- **User guide:** none, because CI only")]
     [InlineData("**User guide:** none, because CI only")]
+    [InlineData("**User guide**: none, because CI only")]
+    [InlineData("- __User guide__: none, because CI only")]
     [InlineData("  * User guide: none, because CI only")]
     [InlineData("user guide: none, because CI only")]
     [InlineData("USER GUIDE:none, because CI only")]
@@ -81,6 +85,8 @@ public class UserGuideLineTests
     [Theory]
     [InlineData("User guide: none, because <reason>", "<reason>")]
     [InlineData("User guide: needed: <chapter and section>", "<chapter and section>")]
+    [InlineData("User guide: none, because <why the guide is still right>", "<why the guide is still right>")]
+    [InlineData("User guide: needed: <Chapter>", "<Chapter>")]
     public void Parse_rejects_a_placeholder_left_in(string description, string placeholder)
     {
         UserGuideLineResult result = UserGuideLine.Parse(description);
