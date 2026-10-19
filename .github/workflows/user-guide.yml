@@ -1,0 +1,83 @@
+name: User guide
+
+# Advisory, not a required check (CORE-19). When a PR adds a feature, aircraft or
+# improvement fragment, or changes MSFSBlindAssist/HotkeyGuides/, its description needs
+# a filled-in "User guide:" line: the site PR that updates the guide, "needed: <where>",
+# or "none, because <reason>". The logic is ChangelogBuilder's guide-check mode
+# (tools/ChangelogBuilder/UserGuideCheck.cs), covered by UserGuideLineTests.
+#
+# `edited` is load-bearing: filling in the line edits the description, and without it
+# this check stays red until someone pushes an unrelated commit to re-run it.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+concurrency:
+  group: user-guide-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: User guide line
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        # Full history: the merge-base diff below needs the base branch.
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: List the files this PR adds and changes
+        shell: bash
+        run: |
+          git fetch --no-tags --prune origin \
+            "+refs/heads/$GITHUB_BASE_REF:refs/remotes/origin/$GITHUB_BASE_REF"
+          # Three dots = from the MERGE BASE, as in changelog.yml: two dots would also
+          # count files merged into the base since this branch diverged.
+          # added.txt: only an ADDED fragment is a new entry; editing an older PR's
+          # fragment does not make this PR owe the guide anything.
+          # changed.txt: every path, with renames split into delete + add, so moving a
+          # hotkey guide counts too.
+          git diff --name-only --diff-filter=A "origin/$GITHUB_BASE_REF...HEAD" > added.txt
+          git diff --name-only --no-renames "origin/$GITHUB_BASE_REF...HEAD" > changed.txt
+
+      - name: Check the User guide line
+        shell: bash
+        env:
+          # Through the environment, never ${{ }} inside the script: the description
+          # is text anyone opening a PR controls.
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          printf '%s' "$PR_BODY" > body.md
+          # Build first so `dotnet run --no-build` prints only the check's own message.
+          dotnet build tools/ChangelogBuilder -c Release --nologo -v quiet
+          status=0
+          dotnet run --project tools/ChangelogBuilder -c Release --no-build -- \
+            guide-check --body body.md --added added.txt --changed changed.txt > result.txt || status=$?
+          cat result.txt
+          # A code block: as Markdown, the message's <n> and <reason> would vanish as tags.
+          {
+            echo "### User guide line"
+            echo
+            echo '```text'
+            cat result.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -ne 0 ]; then
+            # %0A folds the whole message into ONE annotation, readable on the PR's
+            # checks page without opening the log (as in changelog.yml).
+            message="$(cat result.txt)"
+            message="${message//'%'/'%25'}"
+            message="${message//$'\r'/}"
+            message="${message//$'\n'/'%0A'}"
+            echo "::error::$message"
+          fi
+          exit "$status"

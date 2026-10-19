@@ -15,7 +15,24 @@ See changelog.d/README.md.
 
 - [ ] Added a changelog fragment named `<pr>-<slug>.<category>.md` (or applied `skip-changelog`)
 
-## Docs and rules
+## User guide
+
+<!--
+The pilot's guide is msfsblindassist.com/guide/; its source is the guide/ folder of
+the oasis1701/msfs-blind-assist-site repo. Does this PR change what a pilot presses,
+sees or hears (a hotkey, window, setting, spoken text, tone or aircraft)? Fill in the
+line below with ONE of these:
+  User guide: https://github.com/oasis1701/msfs-blind-assist-site/pull/<n>   (the site PR that updates the guide)
+  User guide: needed: <chapter and section>   (the guide still has to be updated there)
+  User guide: none, because <why the guide is still right>
+A feature only in the preview build is marked "in the preview build" in the guide.
+CI asks for this line when the PR adds a feature, aircraft or improvement fragment or
+changes MSFSBlindAssist/HotkeyGuides/. See CORE-19 in docs/invariants/core.md.
+-->
+
+User guide:
+
+## Developer docs and rules
 
 <!--
 Adds an aircraft or a feature, or a lesson a future change must not break?

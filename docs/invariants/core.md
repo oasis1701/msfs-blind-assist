@@ -135,6 +135,22 @@ Added 2026-10-14 (PR #303). Two traps misread decimals outside en-US. A bare `do
 
 `Utils/NumberParsing` holds the two parses. `TryParseTyped` is for what the pilot types: either decimal separator, a leading sign, and a possible thousands group refused, never guessed ("10,000", "1.500", "1.013,5"), so the box says the entry is invalid. A group is a lone separator before exactly three digits after a whole part of one or two digits: a whole part of 0 ("0,820", a Mach) or of three digits ("118,275", a COM frequency; as a group it would be 100,000 or more, which no typed field takes) is no group. `TryParseExternal` is for what another program writes (ActiveSky, the MobiFlight WASM): such programs never group, so a lone "," is the decimal (ActiveSky's "1014,999" has three decimals), "," with "." or whitespace inside the number is refused, and the U+2212 minus .NET 5+ writes for sv-SE reads as "-". Both refuse NaN and Infinity, which pass every `v < min || v > max` range check. Machine data already written invariant (SimBrief, GSX profiles, apt.dat, GeoNames, METAR) keeps its plain invariant `NumberStyles.Float` parse. `NumberParsingTests` runs every case under sv-SE, de-DE and en-US.
 
+## CORE-19
+
+Added 2026-10-19. The pilot's guide at msfsblindassist.com/guide/ is published from the `guide/` folder of the `oasis1701/msfs-blind-assist-site` repo, so a PR here cannot change it in the same commit. A PR that changes what a pilot presses, sees or hears (a hotkey, window, setting, spoken text, tone or aircraft) therefore says in its description, on a line of its own, what it means for the guide:
+
+- `User guide: https://github.com/oasis1701/msfs-blind-assist-site/pull/<n>`: the site PR that updates the guide. GitHub's short form, `oasis1701/msfs-blind-assist-site#<n>`, counts too.
+- `User guide: needed: <chapter and section>`: the guide is now wrong or incomplete there and nobody has updated it yet. These lines are the guide's backlog: search the PRs for "User guide: needed" to find them.
+- `User guide: none, because <reason>`: the guide is still right, for example after a fix that restores what it already describes, or an internal change.
+
+A feature that is only in the preview build is called "in the preview build" in the guide until a release ships it, as the site repo's own CLAUDE.md requires. The PR template carries the line with its three forms in a comment; a PR opened with `gh pr create --body` skips the template, so this rule is what puts the line there.
+
+The check. `.github/workflows/user-guide.yml` runs `ChangelogBuilder guide-check` (`tools/ChangelogBuilder/UserGuideCheck.cs`, `UserGuideLine.cs` and `UserGuideImpact.cs`, covered by `UserGuideLineTests`) when a PR is opened, pushed to, reopened or its description edited. It asks for the line only when the PR adds an `aircraft`, `feature` or `improvement` fragment or changes a file in `MSFSBlindAssist/HotkeyGuides/`: of the 221 fragments on `main` on 2026-10-19, 59 were in those categories and 125 were fixes, most of which restore behavior the guide already describes. It reads the line outside HTML comments, so the template's own examples never count, and refuses a placeholder left in (`<reason>`), a bare "none" or "needed", and any other text. It is advisory: not a required check, as its message says. The rule asks for the line on every pilot-visible PR; the check covers the commonest cases and is not the definition.
+
+Why a line to fill in, not a checkbox: most PRs here are written with Claude Code, and a checkbox can be ticked, or left in as boilerplate, without anyone deciding anything. A line that names the site PR, the place still to fix or the reason none is needed records a decision a reviewer can check. The model is the Kubernetes PR template's required release-note block, with "NONE" as the explicit opt-out.
+
+If the guide's source moves into this repo (the owner's and the guide author's decision), the rule becomes "update the guide in the same PR", and the check can look for that change instead of a line.
+
 ## Background: the former CLAUDE.md core sections
 
 These sections stood in CLAUDE.md's core until 2026-10; CLAUDE.md now keeps the rules as CORE one-liners. Kept here word for word; where the Screen Reader Announcements text below differs from CORE-7 above, CORE-7 governs.
