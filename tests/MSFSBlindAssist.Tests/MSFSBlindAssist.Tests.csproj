@@ -29,6 +29,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\MSFSBlindAssist\MSFSBlindAssist.csproj" />
     <ProjectReference Include="..\..\tools\ChangelogBuilder\ChangelogBuilder.csproj" />
+    <ProjectReference Include="..\..\tools\GuideBuilder\GuideBuilder.csproj" />
   </ItemGroup>
 
   <!-- Captured wire data the characterization tests read at run time. They resolve it
