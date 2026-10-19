@@ -577,17 +577,16 @@ public partial class MainForm
     }
 
     /// <summary>
-    /// MSFS 2024's own tablet (Shift+T for an aircraft that asks for it, IAircraftDefinition.UsesSimTablet),
+    /// MSFS 2024's own tablet (Extras, In-Sim Tablet, for every aircraft, beside its own tablet),
     /// through the shared FbwEfbForm over the Coherent debugger, the same transport as the PMDG and
     /// MD-11 tablets. MSFS 2020 has no such tablet, so there it says so instead of opening a window
     /// that would never connect.
     /// </summary>
     private void ShowSimTabletDialog()
     {
-        hotkeyManager.ExitInputHotkeyMode();
         if (simConnectManager.DetectedSimulatorVersion == "FS2020")
         {
-            announcer.AnnounceImmediate("The sim tablet is only in MSFS 2024.");
+            announcer.AnnounceImmediate("The in-sim tablet is only in MSFS 2024.");
             return;
         }
 
@@ -604,7 +603,7 @@ public partial class MainForm
         }
         if (simTabletForm == null || simTabletForm.IsDisposed)
         {
-            simTabletForm = new Forms.FBWA380.FbwEfbForm(coherentSimTablet, announcer, "Sim Tablet", "Sim tablet", "Sim tablet");
+            simTabletForm = new Forms.FBWA380.FbwEfbForm(coherentSimTablet, announcer, "In-Sim Tablet", "In-sim tablet", "In-sim tablet");
             // Idle-gate the scrape to the window's visibility; the socket and reader stay warm.
             var f = simTabletForm;
             f.VisibleChanged += (_, _) => coherentSimTablet?.SetActive(!f.IsDisposed && f.Visible);

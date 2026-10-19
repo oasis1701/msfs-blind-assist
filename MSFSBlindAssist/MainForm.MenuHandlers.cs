@@ -451,6 +451,10 @@ public partial class MainForm
         volantaLiveMapForm.ShowForm();
     }
 
+    // Extras > In-Sim Tablet (FS2024 Native): MSFS 2024's own tablet, for every aircraft and beside
+    // its own tablet, never in place of it (Input Shift+T stays the aircraft's own).
+    private void SimTabletMenuItem_Click(object? sender, EventArgs e) => ShowSimTabletDialog();
+
     private void FMCSettingsMenuItem_Click(object? sender, EventArgs e)
     {
         var s = SettingsManager.Current;

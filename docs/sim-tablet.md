@@ -1,6 +1,6 @@
 # The sim tablet (MSFS 2024's own EFB)
 
-> **Read this when:** working on the sim tablet window (Shift+T for an aircraft that asks for it), its reader `Resources/coherent-sim-tablet-agent.js`, or the "Load latest SimBrief plan" import. Rules: [invariants/sim-tablet.md](invariants/sim-tablet.md).
+> **Read this when:** working on the sim tablet window (Extras, In-Sim Tablet (FS2024 Native), for every aircraft), its reader `Resources/coherent-sim-tablet-agent.js`, or the "Load latest SimBrief plan" import. Rules: [invariants/sim-tablet.md](invariants/sim-tablet.md).
 
 MSFS 2024 gives every aircraft the same tablet: the sim's Electronic Flight Bag, with its Flight Planner (the "Atlas" app), Aircraft (mass and balance, take-off and landing performance, checklists), Pilot book, Settings, Ground Services and CIVA INS apps, plus any add-on apps installed into it (Fenix, GSX and SayIntentions put theirs there). MSFSBA reads and drives it in the shared tablet window (`Forms/FBWA380/FbwEfbForm.cs`), the same window the flyPad, PMDG and MD-11 tablets use. MSFS 2020 has no such tablet.
 
@@ -45,15 +45,11 @@ Sending stays the pilot's press (STAB-5): Send, then "Send to avionics" (or ATC,
 
 Untested live: a jet OFP through the route box (SID and STAR names, airways); what the parser does with them is read from its code.
 
-## An aircraft asking for it
+## Opening it
 
-`IAircraftDefinition.UsesSimTablet` is false by default (STAB-8). An aircraft with no tablet of its own overrides it:
+Extras, In-Sim Tablet (FS2024 Native) (`MainForm.MenuHandlers.cs`, then `ShowSimTabletDialog` in `MainForm.Dialogs.cs`) opens it for every aircraft, beside the aircraft's own tablet and never in place of it: Input Shift+T stays the aircraft's own (STAB-11, the owner's decision of 2026-10-19, replacing the first design, an opt-in per aircraft on Shift+T, STAB-8). There is no hotkey for it yet. On MSFS 2020 the menu item says the tablet is MSFS 2024 only and opens nothing; before the sim connects the version is unknown, so the window opens and connects once MSFS 2024 runs.
 
-```csharp
-public override bool UsesSimTablet => true;
-```
-
-Shift+T in input mode then opens the sim tablet for it. The branch is the last one in the tablet hotkey's routing, so an aircraft with its own tablet opens that.
+The window and its client stay open across aircraft switches, as the view is the sim's and the client reconnects by itself when the sim rebuilds it; exit closes them (`MainForm.cs`).
 
 ## Testing
 

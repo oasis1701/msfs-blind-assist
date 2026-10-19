@@ -154,7 +154,7 @@ Each area's rules load automatically when Claude reads its code; their full text
 | [gemini.md](docs/gemini.md) | AI providers (Gemini or Claude): display reads, scene and route description, route briefing | ai-display, route-briefing |
 | [location-data.md](docs/location-data.md) | Output C and Location Info (Shift+L): the offline GeoNames + Natural Earth download, its database and lookups | location-data |
 | [user-guide.md](docs/user-guide.md) | The pilot's user guide in `guide/`: writing it, how the website and the Help menu publish it, the one-page build, the PR line (CORE-19) | user-guide |
-| [sim-tablet.md](docs/sim-tablet.md) | MSFS 2024's own tablet (Shift+T for an aircraft that asks for it): its reader, input, and the SimBrief import into its Flight Planner | sim-tablet |
+| [sim-tablet.md](docs/sim-tablet.md) | MSFS 2024's own tablet (Extras, In-Sim Tablet, for every aircraft): its reader, input, and the SimBrief import into its Flight Planner | sim-tablet |
 
 ## Adding or changing a rule
 

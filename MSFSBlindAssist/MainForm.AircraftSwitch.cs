@@ -1021,20 +1021,9 @@ public partial class MainForm
             coherentMd11Efb = null;
         }
 
-        // The sim tablet's client holds the one socket for "Electronic Flight Bag" in the same way.
-        // The view is the sim's, so it outlives the aircraft, but the window carries the old
-        // aircraft's opt-in: close both and let the next Shift+T reconnect.
-        if (simTabletForm != null && !simTabletForm.IsDisposed)
-        {
-            simTabletForm.Dispose();
-            simTabletForm = null;
-        }
-        if (coherentSimTablet != null)
-        {
-            coherentSimTablet.Stop();
-            coherentSimTablet.Dispose();
-            coherentSimTablet = null;
-        }
+        // The in-sim tablet (Extras) is left open: its view is the sim's, not the aircraft's, the
+        // window serves every aircraft, and its client reconnects by itself if the sim rebuilds the
+        // view. It is closed only on exit (MainForm.cs).
 
         // Dispose FBW A380 MCDU + EFB forms on swap; disposing the forms clears
         // their state-update wiring so the next aircraft doesn't get cross-talk.

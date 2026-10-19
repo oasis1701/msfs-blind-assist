@@ -1,1 +1,0 @@
-MSFS 2024 only: the sim's own tablet can be opened with Shift+T for aircraft that ask for it, read with a screen reader, and filled from your latest SimBrief plan with one press. No aircraft asks for it yet; the Cessna 172 will be the first, and its own entry will tell pilots.

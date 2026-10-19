@@ -917,8 +917,6 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
 
     public virtual bool HasOwnIcingAnnouncer => false;
 
-    public virtual bool UsesSimTablet => false;
-
     public virtual string? StockComTuningRefusal => null;
 
     public virtual string? ChecklistFileName => null;
