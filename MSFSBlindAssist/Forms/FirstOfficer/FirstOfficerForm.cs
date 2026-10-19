@@ -561,6 +561,11 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         btnPanel.Controls.AddRange(new Control[] { _runRelatedFlowBtn, _resetSectionBtn, _resetAllBtn, _loadSimBriefChecklistBtn });
         layout.Controls.Add(btnPanel, 0, 2);
 
+        // Tab order: the tree, then the buttons, then the status readout (still focusable, VAT-13).
+        _checklistTree.TabIndex      = 0;
+        btnPanel.TabIndex            = 1;
+        _checklistStatusBox.TabIndex = 2;
+
         _checklistTab.Controls.Add(layout);
     }
 
@@ -587,6 +592,13 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
             AccessibleName = "Available flows",
         };
         _flowListBox.SelectedIndexChanged += FlowListBox_SelectedIndexChanged;
+        // Enter starts the selected flow, so a pilot never tabs past the lists to Start Flow.
+        _flowListBox.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode != Keys.Enter) return;
+            e.Handled = e.SuppressKeyPress = true;
+            StartSelectedFlow();
+        };
         layout.Controls.Add(_flowListBox, 0, 0);
 
         // Steps list (right)
@@ -627,6 +639,14 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         btnPanel.Controls.AddRange(new Control[] {
             _startFlowBtn, _pauseResumeBtn, _stopFlowBtn, _loadSimBriefBtn });
         layout.Controls.Add(btnPanel, 0, 3);
+
+        // Tab order: the lists, then the buttons, then the status readouts. The readouts stay
+        // focusable (VAT-13) but no longer sit between the flow list and Start Flow.
+        _flowListBox.TabIndex    = 0;
+        _stepsListBox.TabIndex   = 1;
+        btnPanel.TabIndex        = 2;
+        _currentStepBox.TabIndex = 3;
+        _flowStatusBox.TabIndex  = 4;
 
         _flowsTab.Controls.Add(layout);
 
