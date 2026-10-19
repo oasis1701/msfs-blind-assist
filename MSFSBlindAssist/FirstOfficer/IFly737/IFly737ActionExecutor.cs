@@ -682,6 +682,11 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
         return false;
     }
 
+    /// <summary>Speed brake lever to DOWN (0) through the same panel lever write as the arm (the After
+    /// Landing line's tick; PMDG's B738 After Landing Procedure opens with it).</summary>
+    public Task<bool> SetSpeedbrakeDown() =>
+        Set(IFly737SpeedBrakeLever.FieldName, IFly737SpeedBrakeLever.Detents[0].Value);
+
     // -----------------------------------------------------------------------
     // Engine start waits — read-only, and aware of bowed rotor motoring
     // (the waits themselves are StartWaits, beside the pseudo-keys above)

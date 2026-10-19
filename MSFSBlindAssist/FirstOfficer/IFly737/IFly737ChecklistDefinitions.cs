@@ -1,3 +1,4 @@
+using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.FirstOfficer.Models;
 
 namespace MSFSBlindAssist.FirstOfficer.IFly737;
@@ -448,6 +449,10 @@ public static class IFly737ChecklistDefinitions
         Id = "AFTER_LANDING", Name = "After Landing",
         Items = new()
         {
+            // PMDG's B738 After Landing Procedure opens with "Speed Brake Lever: Down" (18.1). DOWN is
+            // anything short of ARM; an unread lever (NaN) is not down. A tick writes the lever to 0.
+            Auto("AL_SPDBRK", "AFTER_LANDING", "Speed brake lever: DOWN", IFly737SpeedBrakeLever.FieldName,
+                IFly737StateEvaluator.IsSpeedbrakeLeverDown, (e, _) => e.SetSpeedbrakeDown()),
             Auto("AL_LAND_OFF", "AFTER_LANDING", "Landing lights: OFF", "Landing_Light_1_Switch_Status", v => v < 0.5,
                 new[] { "Landing_Light_2_Switch_Status" },
                 (e, _) => e.SetLandingLights(IFly737ActionExecutor.LandingLightsOff)),
@@ -498,6 +503,9 @@ public static class IFly737ChecklistDefinitions
                 s => s.OnGround != true || !s.AreBusesOffEngineGenerators(), LeversStayText),
             Auto("SD_BELTS", "SHUTDOWN", "Seatbelt signs: OFF", "Fasten_Belts_Switch_Status", v => v < 0.5,
                 (e, _) => e.SetSeatBelts(IFly737ActionExecutor.SignOff)),
+            // PMDG's B738 Shutdown Procedure: "ANTI COLLISION light switch: OFF" (19.8).
+            Auto("SD_ANTICOL", "SHUTDOWN", "Anti-collision light: OFF", "Anti_Collision_Light_Switch_Status", v => v < 0.5,
+                (e, _) => e.SetBeacon(0)),
             Auto("SD_TURNOFF", "SHUTDOWN", "Runway turnoff lights: OFF", "Runway_Turnoff_Light_1_Switch_Status",
                 v => v < 0.5, new[] { "Runway_Turnoff_Light_2_Switch_Status" }, (e, _) => e.SetRunwayTurnoff(0)),
             Auto("SD_TAXI", "SHUTDOWN", "Taxi light: OFF", "Taxi_Light_Switch_Status", v => v < 0.5,
@@ -528,6 +536,10 @@ public static class IFly737ChecklistDefinitions
             Auto("SD_WINHEAT", "SHUTDOWN", "Window heat: OFF", "Window_Heat_Switch_1_Status", v => v < 0.5,
                 new[] { "Window_Heat_Switch_2_Status", "Window_Heat_Switch_3_Status", "Window_Heat_Switch_4_Status" },
                 (e, _) => e.SetWindowHeat(0)),
+            // PMDG's B738 Shutdown Procedure: "FLIGHT DIRECTOR switches: OFF" (19.21). Absolute SETs
+            // (see PF_FD).
+            Auto("SD_FD", "SHUTDOWN", "Flight directors: OFF", "FD_1_Switch_Status", v => v < 0.5,
+                new[] { "FD_2_Switch_Status" }, (e, _) => { e.SetFDLeft(false); e.SetFDRight(false); }),
             // See PF_XPDR — this airframe's resting position is ALT OFF, not STBY.
             Auto("SD_XPDR", "SHUTDOWN", "Transponder: ALT OFF", "Transponder_Mode_Switch_Status", v => v < 0.5,
                 (e, _) => e.SetTransponderMode(IFly737ActionExecutor.XpdrAltOff)),

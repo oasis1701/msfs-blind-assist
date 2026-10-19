@@ -155,6 +155,11 @@ public class IFly737StateEvaluator : IFoStateEvaluator
     public bool IsSpeedbrakeArmed()    => GetValue(SpeedbrakeLeverState.ArmedField) > 0.5;
     public bool IsSpeedbrakeDeployed() => SpeedbrakePosition() == SpeedbrakeLeverPosition.Deployed;
 
+    /// <summary>A <see cref="IFly737SpeedBrakeLever.FieldName"/> value reads DOWN: anything short
+    /// of ARM. NaN is not down. The After Landing line and its flow step both judge by it.</summary>
+    public static bool IsSpeedbrakeLeverDown(double lever) =>
+        SpeedbrakeLeverState.Classify(SpeedbrakeLeverState.IFly737, lever) == SpeedbrakeLeverPosition.Down;
+
     // -----------------------------------------------------------------------
     // Shutdown: who carries the electrical buses when the engines are cut
     // -----------------------------------------------------------------------

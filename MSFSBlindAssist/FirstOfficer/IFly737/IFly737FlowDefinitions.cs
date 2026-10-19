@@ -1,3 +1,4 @@
+using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.FirstOfficer.Models;
 
 namespace MSFSBlindAssist.FirstOfficer.IFly737;
@@ -632,10 +633,21 @@ public static class IFly737FlowDefinitions
     private static Flow BuildAfterLanding() => new()
     {
         Id = "AFTER_LANDING", Name = "After Landing",
-        Description = "Lights, anti-ice off, probe heat off, APU on, start switches off, flaps up, autobrake off.",
+        Description = "Speed brake down, lights, anti-ice off, probe heat off, APU on, start switches off, flaps up, autobrake off.",
         RelatedChecklistGroupIds = new[] { "AFTER_LANDING" },
         Steps = new()
         {
+            // PMDG's B738 After Landing Procedure opens with "Speed Brake Lever: Down" (18.1); after
+            // an auto-speedbrake landing the lever sits at UP and nothing stowed it (owner, 2026-10-19,
+            // the PMDG 737's AL_SPDBRK_DOWN). Spoiler_Lever_Status 0 is DOWN, written through the
+            // panel's own lever write (the verified ARM writes 34 the same way), verified on the
+            // lever. "Already set" only over a lever read DOWN; a lever nobody can read is never written.
+            LeaveAlone(Skip(Verify(SW("AL_SPDBRK_DOWN", "Speed brake lever: DOWN", IFly737SpeedBrakeLever.FieldName,
+                        (int)IFly737SpeedBrakeLever.Detents[0].Value, checklistItemId: "AL_SPDBRK"),
+                    IFly737SpeedBrakeLever.FieldName, IFly737StateEvaluator.IsSpeedbrakeLeverDown),
+                s => s.SpeedbrakePosition() == SpeedbrakeLeverPosition.Down),
+                s => s.SpeedbrakePosition() == SpeedbrakeLeverPosition.Unknown,
+                "Skipping: Speed brake lever: DOWN. The lever cannot be read yet."),
             Multi("AL_LAND_OFF", "Landing lights: OFF", "AL_LAND_OFF",
                 ("Landing_Light_1_Switch_Status", IFly737ActionExecutor.LandingLightsOff),
                 ("Landing_Light_2_Switch_Status", IFly737ActionExecutor.LandingLightsOff)),
@@ -679,7 +691,7 @@ public static class IFly737FlowDefinitions
     private static Flow BuildShutdown() => new()
     {
         Id = "SHUTDOWN", Name = "Shutdown",
-        Description = "Once the APU generator or ground power can take the buses: engines cutoff, signs/lights off, fuel pumps off, anti-ice off, transponder ALT OFF.",
+        Description = "Once the APU generator or ground power can take the buses: engines cutoff, signs/lights off, fuel pumps off, anti-ice off, flight directors off, transponder ALT OFF.",
         RelatedChecklistGroupIds = new[] { "SHUTDOWN" },
         Steps = new()
         {
@@ -719,6 +731,9 @@ public static class IFly737FlowDefinitions
                 s => !s.AreBusesOffEngineGenerators(),
                 "No APU generator or ground power on the buses, so the engines stay running."),
             SW("SD_BELTS", "Seatbelt signs: OFF", "Fasten_Belts_Switch_Status", IFly737ActionExecutor.SignOff, checklistItemId: "SD_BELTS"),
+            // PMDG's B738 Shutdown Procedure: "ANTI COLLISION light switch: OFF" right after the belts
+            // (19.8). Before Start turned it ON and nothing turned it off (owner, 2026-10-19).
+            SW("SD_ANTICOL_OFF", "Anti-collision light: OFF", "Anti_Collision_Light_Switch_Status", 0, checklistItemId: "SD_ANTICOL"),
             Multi("SD_TURNOFF", "Runway turnoff lights: OFF", "SD_TURNOFF",
                 ("Runway_Turnoff_Light_1_Switch_Status", 0), ("Runway_Turnoff_Light_2_Switch_Status", 0)),
             SW("SD_TAXI_OFF", "Taxi light: OFF", "Taxi_Light_Switch_Status", 0, checklistItemId: "SD_TAXI"),
@@ -737,6 +752,11 @@ public static class IFly737FlowDefinitions
             Multi("SD_WINHEAT_OFF", "Window heat: OFF", "SD_WINHEAT",
                 ("Window_Heat_Switch_1_Status", 0), ("Window_Heat_Switch_2_Status", 0),
                 ("Window_Heat_Switch_3_Status", 0), ("Window_Heat_Switch_4_Status", 0)),
+            // PMDG's B738 Shutdown Procedure: "FLIGHT DIRECTOR switches: OFF" (19.21), then the
+            // transponder (19.22). Preflight turned them ON and nothing turned them off (owner,
+            // 2026-10-19). Absolute SETs on this airframe, so no toggle guard.
+            SW("SD_FD1", "Flight director 1: OFF", "FD_1_Switch_Status", 0, checklistItemId: "SD_FD"),
+            SW("SD_FD2", "Flight director 2: OFF", "FD_2_Switch_Status", 0, checklistItemId: "SD_FD"),
             // This airframe's resting position is ALT OFF, not STBY.
             SW("SD_XPDR", "Transponder: ALT OFF", "Transponder_Mode_Switch_Status",
                 IFly737ActionExecutor.XpdrAltOff, checklistItemId: "SD_XPDR"),
@@ -869,6 +889,16 @@ public static class IFly737FlowDefinitions
     private static Step Skip(Step step, Func<IFly737StateEvaluator, bool> cond)
     {
         step.SkipCondition = cond;
+        return step;
+    }
+
+    // A write judged by what it achieved (FlowStep.VerifyFieldName): FlowManager reads `field`
+    // against `condition` for a short window after the write, and a write that did not get there
+    // is heard skipped and keeps its lines out of the latch.
+    private static Step Verify(Step step, string field, Func<double, bool> condition)
+    {
+        step.VerifyFieldName = field;
+        step.VerifyCondition = condition;
         return step;
     }
 
