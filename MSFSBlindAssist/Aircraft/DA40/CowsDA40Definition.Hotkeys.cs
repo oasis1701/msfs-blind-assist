@@ -618,6 +618,16 @@ public partial class CowsDA40Definition
                 return true;
             }
 
+            // ---------- Alt+E: the CAS messages ----------
+            //
+            // The E/WD key, and the G1000's CAS window is what this aeroplane has instead. The
+            // hotkey guide has listed it since the display window was built, and nothing
+            // answered it: the CAS watcher spoke each message as it came and went, but there
+            // was no way to ask what stands now. Read from the watcher's last scrape.
+            case HotkeyAction.ReadDisplayUpperECAM:
+                announcer.AnnounceImmediate(Cas.DescribeCurrentMessages());
+                return true;
+
             // ---------- Alt+I: the standby instruments ----------
             //
             // The ISIS key, and on this aeroplane it is not a stand-in for anything: the

@@ -7,6 +7,7 @@ paths:
   - "MSFSBlindAssist/Aircraft/DA40/CowsDA40Definition.Autopilot.cs"
   - "MSFSBlindAssist/Aircraft/DA40/CowsDA40Definition.ApDialogs.cs"
   - "MSFSBlindAssist/Aircraft/DA40/CowsDA40Definition.Waypoint.cs"
+  - "MSFSBlindAssist/Aircraft/G1000/G1000Waypoints.cs"
   - "MSFSBlindAssist/Aircraft/DA40/CowsDA40Definition.Units.cs"
   - "MSFSBlindAssist/Aircraft/DA40/CowsDA40Definition.Hotkeys.cs"
   - "MSFSBlindAssist/Services/GpsWaypointSequencer.cs"
