@@ -212,8 +212,8 @@ Altimeter:
 Radios:
   Ctrl+N     Set NAV radios (input dialog with NAV 1 and NAV 2 frequency
              and course; pre-filled with current values, Enter in any
-             field (or Alt+S) applies all four; frequency 108.00-117.95
-             MHz, course 0-359 degrees)
+             field applies all four; frequency 108.00-117.95 MHz, course
+             0-359 degrees)
 
 Taxi Guidance:
   Shift+Y    Open Taxi Assist Form (enter ATC taxi clearance, start guidance)
