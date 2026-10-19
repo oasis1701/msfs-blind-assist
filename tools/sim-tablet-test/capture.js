@@ -27,7 +27,8 @@
       var keep = ['class', 'id', 'type', 'placeholder', 'disabled', 'inputmode', 'arguments', 'icon-url', 'src'];
       for (var i = 0; i < keep.length; i++) {
         var v = el.getAttribute(keep[i]);
-        if (v !== null && v !== '') out += ' ' + keep[i] + '="' + esc(v) + '"';
+        // disabled="" is how the OS disables a control: an empty boolean attribute is kept.
+        if (v !== null && (v !== '' || keep[i] === 'disabled')) out += ' ' + keep[i] + '="' + esc(v) + '"';
       }
       if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') {
         out += ' value="' + esc(el.value == null ? '' : el.value) + '"';
