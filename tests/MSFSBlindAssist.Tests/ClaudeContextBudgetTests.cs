@@ -701,13 +701,14 @@ public class ClaudeContextBudgetTests
     private static readonly Dictionary<string, string[]> CoverageExemptions = new(StringComparer.Ordinal)
     {
         ["CLAUDE.md always loads, and its rules for any file cover these: CORE-7 and CORE-8 (screen-reader output), "
-            + "CORE-12 (controls), CORE-13 (the database path and its dialogs), CORE-14 and CORE-15 (logging), and VAT-13 "
-            + "(settings panels; an area that owns a panel globs it as well)"] = new[]
+            + "CORE-12 (controls), CORE-13 (the database path and its dialogs), CORE-14 and CORE-15 (logging), CORE-17 "
+            + "(number parsing), and VAT-13 (settings panels; an area that owns a panel globs it as well)"] = new[]
         {
             "MSFSBlindAssist/Accessibility/", "MSFSBlindAssist/Controls/", "MSFSBlindAssist/Utils/Logging/",
             "MSFSBlindAssist/Utils/AppLogs.cs", "MSFSBlindAssist/Database/DatabasePathResolver.cs",
             "MSFSBlindAssist/Database/DatabaseSelector.cs", "MSFSBlindAssist/Forms/DatabaseSettingsForm.cs",
             "MSFSBlindAssist/Forms/DatabaseMismatchDialog.cs", "MSFSBlindAssist/Forms/Settings/",
+            "MSFSBlindAssist/Utils/NumberParsing.cs",
         },
         ["app scaffolding that no feature's rules apply to"] = new[]
         {

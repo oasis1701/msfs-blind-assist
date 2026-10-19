@@ -1351,6 +1351,7 @@ public partial class MainForm
         // in the same taxi-data augmentation every reader expects — see WithTaxiAugmentation's doc
         // comment for the bug a raw, never-rewrapped assignment here used to cause.
         airportDataProvider = WithTaxiAugmentation(DatabaseSelector.SelectProvider());
+        _loadedDatabaseStamp = DatabaseSelector.CurrentStamp();
 
         // Recreate flight plan manager with new navigation database path
         var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
@@ -1438,9 +1439,18 @@ public partial class MainForm
         // landing at all, or names a runway this database no longer has.
         //
         // Both tell the pilot, because both are things they deliberately set up and would
-        // otherwise expect to still be armed on the approach.
-        landingExitPlanner?.Clear();
+        // otherwise expect to still be armed on the approach. The assist says which it switched off
+        // (LandingFlareAssistManager.DisarmAnnouncement): "Manual landing assist off" for the checkbox
+        // arming, "Rollout centerline tone off" for the rollout-only cue, so that cue's silence at the
+        // next touchdown is never mistaken for an on-track tone.
+        //
+        // Order matters: the destination's arming record is forgotten and the assist disarmed BEFORE
+        // the plan is cleared, because clearing raises PlanChanged, whose re-arm would otherwise find
+        // the old database's destination runway for an instant (RefreshRolloutCueArming).
+        _rolloutCueDestination = null;
+        _rolloutCueApplied = null;
         flareAssistManager?.Disarm(announce: true);
+        landingExitPlanner?.Clear();
 
         // The ground-traffic runway watch caches an airport's runways too (the line-up wait needs them
         // after taxi guidance has stopped). Silent: the next route or takeoff-assist runway reloads them.

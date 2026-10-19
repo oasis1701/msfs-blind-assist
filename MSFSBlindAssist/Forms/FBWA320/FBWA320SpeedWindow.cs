@@ -65,7 +65,7 @@ public class FBWA320SpeedWindow : FBWA320FCUWindowBase
     private void HandleSet()
     {
         string input = speedTextBox.Text.Trim();
-        if (!double.TryParse(input, System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out double v)) { announcer.AnnounceImmediate("Invalid number format"); speedTextBox.SelectAll(); return; }
+        if (!Utils.NumberParsing.TryParseTyped(input, out double v)) { announcer.AnnounceImmediate("Invalid number format"); speedTextBox.SelectAll(); return; }
         if (!FcuValueEntry.TrySpeed(v, out int internalSpeed, out string? error)) { announcer.AnnounceImmediate(error!); speedTextBox.SelectAll(); return; }
         aircraft.SetFCUSpeedValue(internalSpeed, simConnect, announcer);
         speedTextBox.SelectAll();

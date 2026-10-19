@@ -241,7 +241,7 @@ public static class Md11Fcp
     // at FL360: 29.92 on the L:var and on the stock var, STD flag 0).
     // ---------------------------------------------------------------------------------
 
-    public const double StandardInHg = 29.92;
+    public const double StandardInHg = AltimeterPhrase.StandardInHg;
     public const double StandardHpa = 1013.25;
 
     /// <summary>
@@ -253,9 +253,6 @@ public static class Md11Fcp
     /// </summary>
     public static double StandardFor(double displayValue) => IsHpa(displayValue) ? StandardHpa : StandardInHg;
 
-    /// <summary>The PMDG definitions' factor, so a 30.12 reads 1020 here exactly as it does on the 737/777.</summary>
-    private const double HpaPerInHg = 33.8639;
-
     /// <summary>TFDi's own rule: a reading above 500 is hectopascals.</summary>
     public static bool IsHpa(double reading) => reading > 500;
 
@@ -263,7 +260,7 @@ public static class Md11Fcp
     public static (int Hpa, double InHg) AltimeterBothUnits(double reading)
         => IsHpa(reading)
             ? ((int)Math.Round(reading), HpaToInHg(reading))
-            : ((int)Math.Round(reading * HpaPerInHg), reading);
+            : ((int)Math.Round(reading * AltimeterPhrase.HpaPerInHg), reading); // a 30.12 reads 1020, as on the PMDG 737/777
 
     /// <summary>
     /// Standard pressure within the tolerance of the unit displayed: 0.005 inHg (the PMDG rule) or
@@ -272,14 +269,14 @@ public static class Md11Fcp
     public static bool IsStandard(double reading)
         => IsHpa(reading)
             ? Math.Abs(reading - StandardHpa) < 0.75
-            : Math.Abs(reading - StandardInHg) < 0.005;
+            : AltimeterPhrase.IsStandardInHg(reading);
 
     /// <summary>"standard", or "1013, 29.92" — hPa first, inches to two decimals, invariant culture.</summary>
     public static string DescribeAltimeter(double reading)
     {
         if (IsStandard(reading)) return "standard";
         var (hpa, inHg) = AltimeterBothUnits(reading);
-        return $"{hpa.ToString(System.Globalization.CultureInfo.InvariantCulture)}, {inHg.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}";
+        return AltimeterPhrase.BothUnits(hpa, inHg);
     }
 
     /// <summary>

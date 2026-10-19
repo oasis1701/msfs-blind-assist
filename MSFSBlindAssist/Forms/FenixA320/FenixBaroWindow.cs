@@ -263,8 +263,7 @@ public partial class FenixBaroWindow : Form
         }
         else
         {
-            if (!double.TryParse(input, System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out double inHgValue))
+            if (!Utils.NumberParsing.TryParseTyped(input, out double inHgValue))
             {
                 announcer.AnnounceImmediate("Invalid number format");
                 valueTextBox.Focus();

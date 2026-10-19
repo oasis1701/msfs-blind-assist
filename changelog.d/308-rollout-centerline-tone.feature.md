@@ -1,0 +1,1 @@
+A centerline tone now guides your landing rollout from touchdown to the exit whenever a destination runway or landing exit is set, after an autoland too, using your Takeoff Assist tone settings. If the aircraft starts to swerve, you hear which way to steer back before it leaves the runway.

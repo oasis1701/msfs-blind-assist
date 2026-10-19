@@ -338,6 +338,14 @@ public partial class SimConnectManager
                 GsxCouatlStartedLVar = ((SingleValue)data.dwData[0]).value != 0;
                 break;
 
+            case DATA_REQUESTS.REQUEST_SLEW_STATE:
+                ProcessSlewState(((SingleValue)data.dwData[0]).value);
+                break;
+
+            case DATA_REQUESTS.REQUEST_SIM_RATE:
+                ProcessSimRate(((SingleValue)data.dwData[0]).value);
+                break;
+
             case DATA_REQUESTS.REQUEST_SQUAWK_CODE:
                 SingleValue squawkData = (SingleValue)data.dwData[0];
                 int bcd = (int)squawkData.value;

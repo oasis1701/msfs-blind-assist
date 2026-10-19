@@ -2,7 +2,7 @@
  "_generated_by": "tools/md11-gen/generate_md11_map.py",
  "_source": "TFDi MD-11 ModelBehaviorDefs + md11host.wasm",
  "counts": {
-  "controls": 1361,
+  "controls": 1409,
   "wasm_control_vars": 1504,
   "export_vars": 58,
   "state_only_vars": 238,
@@ -11,7 +11,7 @@
   "unkeyed_words": 0,
   "by_kind": {
    "annun": 488,
-   "button": 660,
+   "button": 708,
    "guard": 32,
    "handle": 4,
    "knob": 99,
@@ -24,7 +24,7 @@
   "by_area": {
    "Aft Overhead": 63,
    "Aircraft Options": 10,
-   "Audio Panel (Observer)": 60,
+   "Audio Panel (Observer)": 76,
    "Cabin": 3,
    "Captain EFIS Control Panel": 23,
    "Captain Side Panel": 35,
@@ -48,7 +48,7 @@
    "MCDU (Right)": 74,
    "Main Instrument Panel": 21,
    "Overhead": 422,
-   "Pedestal": 211,
+   "Pedestal": 243,
    "Speedbrake": 1,
    "Throttle Quadrant": 19
   }
@@ -1721,7 +1721,7 @@
    "area": "Aircraft Options",
    "label": "Passenger Load Tens",
    "label_source": "curated",
-   "state_var": "MD11_OVHD_100_PAX_LOAD_SW",
+   "state_var": "MD11_OVHD_10_PAX_LOAD_SW",
    "value_map": {},
    "num_states": 1,
    "events": {
@@ -1738,7 +1738,7 @@
    "area": "Aircraft Options",
    "label": "Passenger Load Units",
    "label_source": "curated",
-   "state_var": "MD11_OVHD_100_PAX_LOAD_SW",
+   "state_var": "MD11_OVHD_1_PAX_LOAD_SW",
    "value_map": {},
    "num_states": 1,
    "events": {
@@ -1749,30 +1749,76 @@
    "source": "FlightDeck/Overhead.xml"
   },
   {
+   "node_id": "MD11_OBS_AUDIO_PNL_ADF1_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Audio Panel (Observer)",
+   "label": "Observer ADF1 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_OBS_AUDIO_PNL_ADF1_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 96313
+   },
+   "guard_id": null,
+   "source": "FlightDeck/RObserverAudio.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_OBS_AUDIO_PNL_ADF1_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_OBS_AUDIO_PNL_ADF1_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_OBS_AUDIO_PNL_ADF1_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Audio Panel (Observer)",
    "label": "Observer ADF1 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_OBS_AUDIO_PNL_ADF1_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_OBS_AUDIO_PNL_ADF1_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 96313,
     "WHEEL_UP": 96311,
     "WHEEL_DOWN": 96312
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_ADF1_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Audio Panel (Observer)",
-   "label": "Observer ADF1 Volume ON light",
-   "label_source": "curated",
+   "label": "Observer ADF1 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_OBS_AUDIO_PNL_ADF1_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -1786,7 +1832,40 @@
       "legend": "VOL",
       "lit": "On"
      }
+    ]
+   }
+  },
+  {
+   "node_id": "MD11_OBS_AUDIO_PNL_ADF2_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Audio Panel (Observer)",
+   "label": "Observer ADF2 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_OBS_AUDIO_PNL_ADF2_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 96316
+   },
+   "guard_id": null,
+   "source": "FlightDeck/RObserverAudio.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_OBS_AUDIO_PNL_ADF2_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
     ],
+    "latch": {
+     "var": "MD11_OBS_AUDIO_PNL_ADF2_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
     "dark": "Off"
    }
   },
@@ -1797,24 +1876,36 @@
    "area": "Audio Panel (Observer)",
    "label": "Observer ADF2 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_OBS_AUDIO_PNL_ADF2_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_OBS_AUDIO_PNL_ADF2_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 96316,
     "WHEEL_UP": 96314,
     "WHEEL_DOWN": 96315
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_ADF2_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Audio Panel (Observer)",
-   "label": "Observer ADF2 Volume ON light",
-   "label_source": "curated",
+   "label": "Observer ADF2 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_OBS_AUDIO_PNL_ADF2_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -1828,8 +1919,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -1907,30 +1997,76 @@
    }
   },
   {
+   "node_id": "MD11_OBS_AUDIO_PNL_CAB_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Audio Panel (Observer)",
+   "label": "Observer Cabin Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_OBS_AUDIO_PNL_CAB_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 96295
+   },
+   "guard_id": null,
+   "source": "FlightDeck/RObserverAudio.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_OBS_AUDIO_PNL_CAB_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_OBS_AUDIO_PNL_CAB_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_OBS_AUDIO_PNL_CAB_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Audio Panel (Observer)",
    "label": "Observer Cabin Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_OBS_AUDIO_PNL_CAB_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_OBS_AUDIO_PNL_CAB_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 96295,
     "WHEEL_UP": 96293,
     "WHEEL_DOWN": 96294
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_CAB_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Audio Panel (Observer)",
-   "label": "Observer Cabin Volume ON light",
-   "label_source": "curated",
+   "label": "Observer Cabin Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_OBS_AUDIO_PNL_CAB_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -1944,8 +2080,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -2023,30 +2158,76 @@
    }
   },
   {
+   "node_id": "MD11_OBS_AUDIO_PNL_HF1_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Audio Panel (Observer)",
+   "label": "Observer HF1 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_OBS_AUDIO_PNL_HF1_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 96283
+   },
+   "guard_id": null,
+   "source": "FlightDeck/RObserverAudio.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_OBS_AUDIO_PNL_HF1_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_OBS_AUDIO_PNL_HF1_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_OBS_AUDIO_PNL_HF1_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Audio Panel (Observer)",
    "label": "Observer HF1 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_OBS_AUDIO_PNL_HF1_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_OBS_AUDIO_PNL_HF1_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 96283,
     "WHEEL_UP": 96281,
     "WHEEL_DOWN": 96282
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_HF1_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Audio Panel (Observer)",
-   "label": "Observer HF1 Volume ON light",
-   "label_source": "curated",
+   "label": "Observer HF1 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_OBS_AUDIO_PNL_HF1_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -2060,8 +2241,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -2139,30 +2319,76 @@
    }
   },
   {
+   "node_id": "MD11_OBS_AUDIO_PNL_HF2_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Audio Panel (Observer)",
+   "label": "Observer HF2 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_OBS_AUDIO_PNL_HF2_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 96286
+   },
+   "guard_id": null,
+   "source": "FlightDeck/RObserverAudio.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_OBS_AUDIO_PNL_HF2_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_OBS_AUDIO_PNL_HF2_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_OBS_AUDIO_PNL_HF2_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Audio Panel (Observer)",
    "label": "Observer HF2 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_OBS_AUDIO_PNL_HF2_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_OBS_AUDIO_PNL_HF2_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 96286,
     "WHEEL_UP": 96284,
     "WHEEL_DOWN": 96285
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_HF2_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Audio Panel (Observer)",
-   "label": "Observer HF2 Volume ON light",
-   "label_source": "curated",
+   "label": "Observer HF2 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_OBS_AUDIO_PNL_HF2_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -2176,8 +2402,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -2231,30 +2456,76 @@
    }
   },
   {
+   "node_id": "MD11_OBS_AUDIO_PNL_ILS1_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Audio Panel (Observer)",
+   "label": "Observer ILS1 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_OBS_AUDIO_PNL_ILS1_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 96307
+   },
+   "guard_id": null,
+   "source": "FlightDeck/RObserverAudio.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_OBS_AUDIO_PNL_ILS1_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_OBS_AUDIO_PNL_ILS1_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_OBS_AUDIO_PNL_ILS1_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Audio Panel (Observer)",
    "label": "Observer ILS1 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_OBS_AUDIO_PNL_ILS1_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_OBS_AUDIO_PNL_ILS1_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 96307,
     "WHEEL_UP": 96305,
     "WHEEL_DOWN": 96306
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_ILS1_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Audio Panel (Observer)",
-   "label": "Observer ILS1 Volume ON light",
-   "label_source": "curated",
+   "label": "Observer ILS1 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_OBS_AUDIO_PNL_ILS1_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -2268,7 +2539,40 @@
       "legend": "VOL",
       "lit": "On"
      }
+    ]
+   }
+  },
+  {
+   "node_id": "MD11_OBS_AUDIO_PNL_ILS2_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Audio Panel (Observer)",
+   "label": "Observer ILS2 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_OBS_AUDIO_PNL_ILS2_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 96310
+   },
+   "guard_id": null,
+   "source": "FlightDeck/RObserverAudio.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_OBS_AUDIO_PNL_ILS2_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
     ],
+    "latch": {
+     "var": "MD11_OBS_AUDIO_PNL_ILS2_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
     "dark": "Off"
    }
   },
@@ -2279,24 +2583,36 @@
    "area": "Audio Panel (Observer)",
    "label": "Observer ILS2 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_OBS_AUDIO_PNL_ILS2_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_OBS_AUDIO_PNL_ILS2_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 96310,
     "WHEEL_UP": 96308,
     "WHEEL_DOWN": 96309
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_ILS2_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Audio Panel (Observer)",
-   "label": "Observer ILS2 Volume ON light",
-   "label_source": "curated",
+   "label": "Observer ILS2 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_OBS_AUDIO_PNL_ILS2_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -2310,8 +2626,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -2406,30 +2721,76 @@
    "source": "FlightDeck/RObserverAudio.xml"
   },
   {
+   "node_id": "MD11_OBS_AUDIO_PNL_INT_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Audio Panel (Observer)",
+   "label": "Observer Interphone Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_OBS_AUDIO_PNL_INT_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 96292
+   },
+   "guard_id": null,
+   "source": "FlightDeck/RObserverAudio.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_OBS_AUDIO_PNL_INT_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_OBS_AUDIO_PNL_INT_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_OBS_AUDIO_PNL_INT_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Audio Panel (Observer)",
    "label": "Observer Interphone Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_OBS_AUDIO_PNL_INT_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_OBS_AUDIO_PNL_INT_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 96292,
     "WHEEL_UP": 96290,
     "WHEEL_DOWN": 96291
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_INT_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Audio Panel (Observer)",
-   "label": "Observer Interphone Volume ON light",
-   "label_source": "curated",
+   "label": "Observer Interphone Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_OBS_AUDIO_PNL_INT_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -2443,7 +2804,40 @@
       "legend": "VOL",
       "lit": "On"
      }
+    ]
+   }
+  },
+  {
+   "node_id": "MD11_OBS_AUDIO_PNL_MKR_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Audio Panel (Observer)",
+   "label": "Observer Marker Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_OBS_AUDIO_PNL_MKR_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 96319
+   },
+   "guard_id": null,
+   "source": "FlightDeck/RObserverAudio.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_OBS_AUDIO_PNL_MKR_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
     ],
+    "latch": {
+     "var": "MD11_OBS_AUDIO_PNL_MKR_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
     "dark": "Off"
    }
   },
@@ -2454,24 +2848,36 @@
    "area": "Audio Panel (Observer)",
    "label": "Observer Marker Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_OBS_AUDIO_PNL_MKR_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_OBS_AUDIO_PNL_MKR_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 96319,
     "WHEEL_UP": 96317,
     "WHEEL_DOWN": 96318
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_MKR_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Audio Panel (Observer)",
-   "label": "Observer Marker Volume ON light",
-   "label_source": "curated",
+   "label": "Observer Marker Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_OBS_AUDIO_PNL_MKR_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -2485,7 +2891,40 @@
       "legend": "VOL",
       "lit": "On"
      }
+    ]
+   }
+  },
+  {
+   "node_id": "MD11_OBS_AUDIO_PNL_PA_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Audio Panel (Observer)",
+   "label": "Observer PA Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_OBS_AUDIO_PNL_PA_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 96298
+   },
+   "guard_id": null,
+   "source": "FlightDeck/RObserverAudio.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_OBS_AUDIO_PNL_PA_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
     ],
+    "latch": {
+     "var": "MD11_OBS_AUDIO_PNL_PA_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
     "dark": "Off"
    }
   },
@@ -2496,24 +2935,36 @@
    "area": "Audio Panel (Observer)",
    "label": "Observer PA Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_OBS_AUDIO_PNL_PA_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_OBS_AUDIO_PNL_PA_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 96298,
     "WHEEL_UP": 96296,
     "WHEEL_DOWN": 96297
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_PA_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Audio Panel (Observer)",
-   "label": "Observer PA Volume ON light",
-   "label_source": "curated",
+   "label": "Observer PA Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_OBS_AUDIO_PNL_PA_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -2527,8 +2978,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -2606,30 +3056,76 @@
    }
   },
   {
+   "node_id": "MD11_OBS_AUDIO_PNL_SAT_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Audio Panel (Observer)",
+   "label": "Observer Satellite Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_OBS_AUDIO_PNL_SAT_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 96289
+   },
+   "guard_id": null,
+   "source": "FlightDeck/RObserverAudio.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_OBS_AUDIO_PNL_SAT_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_OBS_AUDIO_PNL_SAT_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_OBS_AUDIO_PNL_SAT_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Audio Panel (Observer)",
    "label": "Observer Satellite Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_OBS_AUDIO_PNL_SAT_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_OBS_AUDIO_PNL_SAT_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 96289,
     "WHEEL_UP": 96287,
     "WHEEL_DOWN": 96288
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_SAT_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Audio Panel (Observer)",
-   "label": "Observer Satellite Volume ON light",
-   "label_source": "curated",
+   "label": "Observer Satellite Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_OBS_AUDIO_PNL_SAT_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -2643,8 +3139,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -2722,30 +3217,76 @@
    }
   },
   {
+   "node_id": "MD11_OBS_AUDIO_PNL_VHF1_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Audio Panel (Observer)",
+   "label": "Observer VHF1 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_OBS_AUDIO_PNL_VHF1_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 96274
+   },
+   "guard_id": null,
+   "source": "FlightDeck/RObserverAudio.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_OBS_AUDIO_PNL_VHF1_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_OBS_AUDIO_PNL_VHF1_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_OBS_AUDIO_PNL_VHF1_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Audio Panel (Observer)",
    "label": "Observer VHF1 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_OBS_AUDIO_PNL_VHF1_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_OBS_AUDIO_PNL_VHF1_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 96274,
     "WHEEL_UP": 96272,
     "WHEEL_DOWN": 96273
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_VHF1_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Audio Panel (Observer)",
-   "label": "Observer VHF1 Volume ON light",
-   "label_source": "curated",
+   "label": "Observer VHF1 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_OBS_AUDIO_PNL_VHF1_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -2759,8 +3300,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -2838,30 +3378,76 @@
    }
   },
   {
+   "node_id": "MD11_OBS_AUDIO_PNL_VHF2_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Audio Panel (Observer)",
+   "label": "Observer VHF2 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_OBS_AUDIO_PNL_VHF2_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 96277
+   },
+   "guard_id": null,
+   "source": "FlightDeck/RObserverAudio.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_OBS_AUDIO_PNL_VHF2_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_OBS_AUDIO_PNL_VHF2_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_OBS_AUDIO_PNL_VHF2_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Audio Panel (Observer)",
    "label": "Observer VHF2 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_OBS_AUDIO_PNL_VHF2_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_OBS_AUDIO_PNL_VHF2_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 96277,
     "WHEEL_UP": 96275,
     "WHEEL_DOWN": 96276
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_VHF2_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Audio Panel (Observer)",
-   "label": "Observer VHF2 Volume ON light",
-   "label_source": "curated",
+   "label": "Observer VHF2 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_OBS_AUDIO_PNL_VHF2_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -2875,8 +3461,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -2954,30 +3539,76 @@
    }
   },
   {
+   "node_id": "MD11_OBS_AUDIO_PNL_VHF3_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Audio Panel (Observer)",
+   "label": "Observer VHF3 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_OBS_AUDIO_PNL_VHF3_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 96280
+   },
+   "guard_id": null,
+   "source": "FlightDeck/RObserverAudio.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_OBS_AUDIO_PNL_VHF3_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_OBS_AUDIO_PNL_VHF3_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_OBS_AUDIO_PNL_VHF3_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Audio Panel (Observer)",
    "label": "Observer VHF3 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_OBS_AUDIO_PNL_VHF3_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_OBS_AUDIO_PNL_VHF3_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 96280,
     "WHEEL_UP": 96278,
     "WHEEL_DOWN": 96279
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_VHF3_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Audio Panel (Observer)",
-   "label": "Observer VHF3 Volume ON light",
-   "label_source": "curated",
+   "label": "Observer VHF3 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_OBS_AUDIO_PNL_VHF3_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -2991,7 +3622,40 @@
       "legend": "VOL",
       "lit": "On"
      }
+    ]
+   }
+  },
+  {
+   "node_id": "MD11_OBS_AUDIO_PNL_VOR1_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Audio Panel (Observer)",
+   "label": "Observer VOR1 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_OBS_AUDIO_PNL_VOR1_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 96301
+   },
+   "guard_id": null,
+   "source": "FlightDeck/RObserverAudio.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_OBS_AUDIO_PNL_VOR1_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
     ],
+    "latch": {
+     "var": "MD11_OBS_AUDIO_PNL_VOR1_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
     "dark": "Off"
    }
   },
@@ -3002,24 +3666,36 @@
    "area": "Audio Panel (Observer)",
    "label": "Observer VOR1 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_OBS_AUDIO_PNL_VOR1_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_OBS_AUDIO_PNL_VOR1_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 96301,
     "WHEEL_UP": 96299,
     "WHEEL_DOWN": 96300
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_VOR1_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Audio Panel (Observer)",
-   "label": "Observer VOR1 Volume ON light",
-   "label_source": "curated",
+   "label": "Observer VOR1 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_OBS_AUDIO_PNL_VOR1_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -3033,7 +3709,40 @@
       "legend": "VOL",
       "lit": "On"
      }
+    ]
+   }
+  },
+  {
+   "node_id": "MD11_OBS_AUDIO_PNL_VOR2_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Audio Panel (Observer)",
+   "label": "Observer VOR2 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_OBS_AUDIO_PNL_VOR2_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 96304
+   },
+   "guard_id": null,
+   "source": "FlightDeck/RObserverAudio.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_OBS_AUDIO_PNL_VOR2_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
     ],
+    "latch": {
+     "var": "MD11_OBS_AUDIO_PNL_VOR2_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
     "dark": "Off"
    }
   },
@@ -3044,24 +3753,36 @@
    "area": "Audio Panel (Observer)",
    "label": "Observer VOR2 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_OBS_AUDIO_PNL_VOR2_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_OBS_AUDIO_PNL_VOR2_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 96304,
     "WHEEL_UP": 96302,
     "WHEEL_DOWN": 96303
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverAudio.xml"
+   "source": "FlightDeck/RObserverAudio.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OBS_AUDIO_PNL_VOR2_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Audio Panel (Observer)",
-   "label": "Observer VOR2 Volume ON light",
-   "label_source": "curated",
+   "label": "Observer VOR2 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_OBS_AUDIO_PNL_VOR2_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -3075,8 +3796,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -3087,14 +3807,37 @@
    "label": "Circuit Breaker Panel Lighting",
    "label_source": "tooltip",
    "state_var": "MD11_OBS_CKTBKR_LT_KB",
-   "value_map": {},
-   "num_states": 3,
+   "value_map": {
+    "0": "0%",
+    "0.5": "5%",
+    "1": "10%",
+    "1.5": "15%",
+    "2": "20%",
+    "2.5": "25%",
+    "3": "30%",
+    "3.5": "35%",
+    "4": "40%",
+    "4.5": "45%",
+    "5": "50%",
+    "5.5": "55%",
+    "6": "60%",
+    "6.5": "65%",
+    "7": "70%",
+    "7.5": "75%",
+    "8": "80%",
+    "8.5": "85%",
+    "9": "90%",
+    "9.5": "95%",
+    "10": "100%"
+   },
+   "num_states": 21,
    "events": {
     "WHEEL_UP": 98304,
     "WHEEL_DOWN": 98305
    },
    "guard_id": null,
-   "source": "FlightDeck/RObserverLowerMaintenance.xml"
+   "source": "FlightDeck/RObserverLowerMaintenance.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_CABIN_OXY_MASKS",
@@ -3548,8 +4291,30 @@
    "label": "Captain Weather Radar/Terrain Display Brightness",
    "label_source": "tooltip",
    "state_var": "MD11_LECP_WXBRT_KB",
-   "value_map": {},
-   "num_states": 3,
+   "value_map": {
+    "0": "0%",
+    "3.6": "5%",
+    "7.2": "10%",
+    "10.8": "15%",
+    "14.4": "20%",
+    "18": "25%",
+    "21.6": "30%",
+    "25.2": "35%",
+    "28.8": "40%",
+    "32.4": "45%",
+    "36": "50%",
+    "39.6": "55%",
+    "43.2": "60%",
+    "46.8": "65%",
+    "50.4": "70%",
+    "54": "75%",
+    "57.6": "80%",
+    "61.2": "85%",
+    "64.8": "90%",
+    "68.4": "95%",
+    "72": "100%"
+   },
+   "num_states": 21,
    "events": {
     "LEFT_BUTTON_DOWN": 86052,
     "LEFT_BUTTON_UP": 86053,
@@ -3557,7 +4322,8 @@
     "WHEEL_DOWN": 86055
    },
    "guard_id": null,
-   "source": "FlightDeck/Glareshield.xml"
+   "source": "FlightDeck/Glareshield.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_LSIDE_BRIEFCASE_KB",
@@ -3567,14 +4333,37 @@
    "label": "Captain Briefcase Light",
    "label_source": "tooltip",
    "state_var": "MD11_LSIDE_BRIEFCASE_KB",
-   "value_map": {},
-   "num_states": 2,
+   "value_map": {
+    "0": "0%",
+    "1": "5%",
+    "2": "10%",
+    "3": "15%",
+    "4": "20%",
+    "5": "25%",
+    "6": "30%",
+    "7": "35%",
+    "8": "40%",
+    "9": "45%",
+    "10": "50%",
+    "11": "55%",
+    "12": "60%",
+    "13": "65%",
+    "14": "70%",
+    "15": "75%",
+    "16": "80%",
+    "17": "85%",
+    "18": "90%",
+    "19": "95%",
+    "20": "100%"
+   },
+   "num_states": 21,
    "events": {
     "WHEEL_UP": 94214,
     "WHEEL_DOWN": 94215
    },
    "guard_id": null,
-   "source": "FlightDeck/CaptainAux_Light.xml"
+   "source": "FlightDeck/CaptainAux_Light.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_LSIDE_FLOOR_SW",
@@ -4567,9 +5356,20 @@
    "area": "Center Instrument",
    "label": "Flight Number Digit 1",
    "label_source": "curated",
+   "value_map": {
+    "0": "0",
+    "1": "1",
+    "2": "2",
+    "3": "3",
+    "4": "4",
+    "5": "5",
+    "6": "6",
+    "7": "7",
+    "8": "8",
+    "9": "9"
+   },
    "state_var": "MD11_CTR_FLTNO1_SW",
-   "value_map": {},
-   "num_states": 1,
+   "num_states": 10,
    "events": {
     "WHEEL_UP": 82213,
     "WHEEL_DOWN": 82214
@@ -4584,9 +5384,20 @@
    "area": "Center Instrument",
    "label": "Flight Number Digit 2",
    "label_source": "curated",
+   "value_map": {
+    "0": "0",
+    "1": "1",
+    "2": "2",
+    "3": "3",
+    "4": "4",
+    "5": "5",
+    "6": "6",
+    "7": "7",
+    "8": "8",
+    "9": "9"
+   },
    "state_var": "MD11_CTR_FLTNO2_SW",
-   "value_map": {},
-   "num_states": 1,
+   "num_states": 10,
    "events": {
     "WHEEL_UP": 82215,
     "WHEEL_DOWN": 82216
@@ -4601,9 +5412,20 @@
    "area": "Center Instrument",
    "label": "Flight Number Digit 3",
    "label_source": "curated",
+   "value_map": {
+    "0": "0",
+    "1": "1",
+    "2": "2",
+    "3": "3",
+    "4": "4",
+    "5": "5",
+    "6": "6",
+    "7": "7",
+    "8": "8",
+    "9": "9"
+   },
    "state_var": "MD11_CTR_FLTNO3_SW",
-   "value_map": {},
-   "num_states": 1,
+   "num_states": 10,
    "events": {
     "WHEEL_UP": 82217,
     "WHEEL_DOWN": 82218
@@ -4618,9 +5440,20 @@
    "area": "Center Instrument",
    "label": "Flight Number Digit 4",
    "label_source": "curated",
+   "value_map": {
+    "0": "0",
+    "1": "1",
+    "2": "2",
+    "3": "3",
+    "4": "4",
+    "5": "5",
+    "6": "6",
+    "7": "7",
+    "8": "8",
+    "9": "9"
+   },
    "state_var": "MD11_CTR_FLTNO4_SW",
-   "value_map": {},
-   "num_states": 1,
+   "num_states": 10,
    "events": {
     "WHEEL_UP": 82219,
     "WHEEL_DOWN": 82220
@@ -9049,8 +9882,30 @@
    "label": "First Officer Weather Radar/Terrain Display Brightness",
    "label_source": "tooltip",
    "state_var": "MD11_RECP_WXBRT_KB",
-   "value_map": {},
-   "num_states": 3,
+   "value_map": {
+    "0": "0%",
+    "3.6": "5%",
+    "7.2": "10%",
+    "10.8": "15%",
+    "14.4": "20%",
+    "18": "25%",
+    "21.6": "30%",
+    "25.2": "35%",
+    "28.8": "40%",
+    "32.4": "45%",
+    "36": "50%",
+    "39.6": "55%",
+    "43.2": "60%",
+    "46.8": "65%",
+    "50.4": "70%",
+    "54": "75%",
+    "57.6": "80%",
+    "61.2": "85%",
+    "64.8": "90%",
+    "68.4": "95%",
+    "72": "100%"
+   },
+   "num_states": 21,
    "events": {
     "LEFT_BUTTON_DOWN": 86136,
     "LEFT_BUTTON_UP": 86137,
@@ -9058,7 +9913,8 @@
     "WHEEL_DOWN": 86139
    },
    "guard_id": null,
-   "source": "FlightDeck/Glareshield.xml"
+   "source": "FlightDeck/Glareshield.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_RSIDE_BRIEFCASE_KB",
@@ -9068,14 +9924,37 @@
    "label": "First Officer Briefcase Light",
    "label_source": "tooltip",
    "state_var": "MD11_RSIDE_BRIEFCASE_KB",
-   "value_map": {},
-   "num_states": 2,
+   "value_map": {
+    "0": "0%",
+    "1": "5%",
+    "2": "10%",
+    "3": "15%",
+    "4": "20%",
+    "5": "25%",
+    "6": "30%",
+    "7": "35%",
+    "8": "40%",
+    "9": "45%",
+    "10": "50%",
+    "11": "55%",
+    "12": "60%",
+    "13": "65%",
+    "14": "70%",
+    "15": "75%",
+    "16": "80%",
+    "17": "85%",
+    "18": "90%",
+    "19": "95%",
+    "20": "100%"
+   },
+   "num_states": 21,
    "events": {
     "WHEEL_UP": 95494,
     "WHEEL_DOWN": 95495
    },
    "guard_id": null,
-   "source": "FlightDeck/FOAux_Light.xml"
+   "source": "FlightDeck/FOAux_Light.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_RSIDE_FLOOR_SW",
@@ -10516,14 +11395,37 @@
    "label": "FGS Flood Lighting",
    "label_source": "tooltip",
    "state_var": "MD11_CGS_FLOOD_LT_KB",
-   "value_map": {},
-   "num_states": 2,
+   "value_map": {
+    "0": "0%",
+    "0.5": "5%",
+    "1": "10%",
+    "1.5": "15%",
+    "2": "20%",
+    "2.5": "25%",
+    "3": "30%",
+    "3.5": "35%",
+    "4": "40%",
+    "4.5": "45%",
+    "5": "50%",
+    "5.5": "55%",
+    "6": "60%",
+    "6.5": "65%",
+    "7": "70%",
+    "7.5": "75%",
+    "8": "80%",
+    "8.5": "85%",
+    "9": "90%",
+    "9.5": "95%",
+    "10": "100%"
+   },
+   "num_states": 21,
    "events": {
     "WHEEL_UP": 86122,
     "WHEEL_DOWN": 86123
    },
    "guard_id": null,
-   "source": "FlightDeck/Glareshield.xml"
+   "source": "FlightDeck/Glareshield.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_CGS_FMSSPD_BT",
@@ -10666,14 +11568,37 @@
    "label": "FGS Panel Lighting",
    "label_source": "tooltip",
    "state_var": "MD11_CGS_PNL_LT_KB",
-   "value_map": {},
-   "num_states": 2,
+   "value_map": {
+    "0": "0%",
+    "0.5": "5%",
+    "1": "10%",
+    "1.5": "15%",
+    "2": "20%",
+    "2.5": "25%",
+    "3": "30%",
+    "3.5": "35%",
+    "4": "40%",
+    "4.5": "45%",
+    "5": "50%",
+    "5.5": "55%",
+    "6": "60%",
+    "6.5": "65%",
+    "7": "70%",
+    "7.5": "75%",
+    "8": "80%",
+    "8.5": "85%",
+    "9": "90%",
+    "9.5": "95%",
+    "10": "100%"
+   },
+   "num_states": 21,
    "events": {
     "WHEEL_UP": 86120,
     "WHEEL_DOWN": 86121
    },
    "guard_id": null,
-   "source": "FlightDeck/Glareshield.xml"
+   "source": "FlightDeck/Glareshield.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_CGS_PROF_BT",
@@ -11043,14 +11968,37 @@
    "label": "Center MCDU Brightness",
    "label_source": "tooltip",
    "state_var": "MD11_CMCDU_BRT_KB",
-   "value_map": {},
-   "num_states": 2,
+   "value_map": {
+    "0": "0%",
+    "2.5": "5%",
+    "5": "10%",
+    "7.5": "15%",
+    "10": "20%",
+    "12.5": "25%",
+    "15": "30%",
+    "17.5": "35%",
+    "20": "40%",
+    "22.5": "45%",
+    "25": "50%",
+    "27.5": "55%",
+    "30": "60%",
+    "32.5": "65%",
+    "35": "70%",
+    "37.5": "75%",
+    "40": "80%",
+    "42.5": "85%",
+    "45": "90%",
+    "47.5": "95%",
+    "50": "100%"
+   },
+   "num_states": 21,
    "events": {
     "WHEEL_UP": 70044,
     "WHEEL_DOWN": 70043
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_CMCDU_B_BT",
@@ -12329,14 +13277,37 @@
    "label": "Left MCDU Brightness",
    "label_source": "tooltip",
    "state_var": "MD11_LMCDU_BRT_KB",
-   "value_map": {},
-   "num_states": 2,
+   "value_map": {
+    "0": "0%",
+    "2.5": "5%",
+    "5": "10%",
+    "7.5": "15%",
+    "10": "20%",
+    "12.5": "25%",
+    "15": "30%",
+    "17.5": "35%",
+    "20": "40%",
+    "22.5": "45%",
+    "25": "50%",
+    "27.5": "55%",
+    "30": "60%",
+    "32.5": "65%",
+    "35": "70%",
+    "37.5": "75%",
+    "40": "80%",
+    "42.5": "85%",
+    "45": "90%",
+    "47.5": "95%",
+    "50": "100%"
+   },
+   "num_states": 21,
    "events": {
     "WHEEL_UP": 81950,
     "WHEEL_DOWN": 81949
    },
    "guard_id": null,
-   "source": "FlightDeck/FootPedestalUpper.xml"
+   "source": "FlightDeck/FootPedestalUpper.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_LMCDU_B_BT",
@@ -13615,14 +14586,37 @@
    "label": "Right MCDU Brightness",
    "label_source": "tooltip",
    "state_var": "MD11_RMCDU_BRT_KB",
-   "value_map": {},
-   "num_states": 2,
+   "value_map": {
+    "0": "0%",
+    "2.5": "5%",
+    "5": "10%",
+    "7.5": "15%",
+    "10": "20%",
+    "12.5": "25%",
+    "15": "30%",
+    "17.5": "35%",
+    "20": "40%",
+    "22.5": "45%",
+    "25": "50%",
+    "27.5": "55%",
+    "30": "60%",
+    "32.5": "65%",
+    "35": "70%",
+    "37.5": "75%",
+    "40": "80%",
+    "42.5": "85%",
+    "45": "90%",
+    "47.5": "95%",
+    "50": "100%"
+   },
+   "num_states": 21,
    "events": {
     "WHEEL_UP": 82092,
     "WHEEL_DOWN": 82091
    },
    "guard_id": null,
-   "source": "FlightDeck/FootPedestalUpper.xml"
+   "source": "FlightDeck/FootPedestalUpper.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_RMCDU_B_BT",
@@ -14886,7 +15880,7 @@
     "when_true": "Down",
     "when_false": "Up"
    },
-   "num_states": 1,
+   "num_states": 2,
    "events": {
     "LEFT_BUTTON_DOWN": 94976
    },
@@ -22786,14 +23780,37 @@
    "label": "Main Instrument Panel and Pedestal Flood Lighting",
    "label_source": "tooltip",
    "state_var": "MD11_OVHD_LTS_INNER_INSTR_PED_PNL_FLOOD_KB",
-   "value_map": {},
-   "num_states": 2,
+   "value_map": {
+    "0": "0%",
+    "0.5": "5%",
+    "1": "10%",
+    "1.5": "15%",
+    "2": "20%",
+    "2.5": "25%",
+    "3": "30%",
+    "3.5": "35%",
+    "4": "40%",
+    "4.5": "45%",
+    "5": "50%",
+    "5.5": "55%",
+    "6": "60%",
+    "6.5": "65%",
+    "7": "70%",
+    "7.5": "75%",
+    "8": "80%",
+    "8.5": "85%",
+    "9": "90%",
+    "9.5": "95%",
+    "10": "100%"
+   },
+   "num_states": 21,
    "events": {
     "WHEEL_UP": 90254,
     "WHEEL_DOWN": 90253
    },
    "guard_id": null,
-   "source": "FlightDeck/Overhead.xml"
+   "source": "FlightDeck/Overhead.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OVHD_LTS_INNER_OVHD_PNL_FLOOD_KB",
@@ -22803,14 +23820,37 @@
    "label": "Overhead Flood Lighting",
    "label_source": "tooltip",
    "state_var": "MD11_OVHD_LTS_INNER_OVHD_PNL_FLOOD_KB",
-   "value_map": {},
-   "num_states": 2,
+   "value_map": {
+    "0": "0%",
+    "0.5": "5%",
+    "1": "10%",
+    "1.5": "15%",
+    "2": "20%",
+    "2.5": "25%",
+    "3": "30%",
+    "3.5": "35%",
+    "4": "40%",
+    "4.5": "45%",
+    "5": "50%",
+    "5.5": "55%",
+    "6": "60%",
+    "6.5": "65%",
+    "7": "70%",
+    "7.5": "75%",
+    "8": "80%",
+    "8.5": "85%",
+    "9": "90%",
+    "9.5": "95%",
+    "10": "100%"
+   },
+   "num_states": 21,
    "events": {
     "WHEEL_UP": 90241,
     "WHEEL_DOWN": 90240
    },
    "guard_id": null,
-   "source": "FlightDeck/Overhead.xml"
+   "source": "FlightDeck/Overhead.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OVHD_LTS_LDG_L_SW",
@@ -23298,14 +24338,37 @@
    "label": "Main Instrument Panel and Pedestal Panel Lighting",
    "label_source": "tooltip",
    "state_var": "MD11_OVHD_LTS_OUTER_INSTR_PED_PNL_FLOOD_KB",
-   "value_map": {},
-   "num_states": 2,
+   "value_map": {
+    "0": "0%",
+    "0.5": "5%",
+    "1": "10%",
+    "1.5": "15%",
+    "2": "20%",
+    "2.5": "25%",
+    "3": "30%",
+    "3.5": "35%",
+    "4": "40%",
+    "4.5": "45%",
+    "5": "50%",
+    "5.5": "55%",
+    "6": "60%",
+    "6.5": "65%",
+    "7": "70%",
+    "7.5": "75%",
+    "8": "80%",
+    "8.5": "85%",
+    "9": "90%",
+    "9.5": "95%",
+    "10": "100%"
+   },
+   "num_states": 21,
    "events": {
     "WHEEL_UP": 90252,
     "WHEEL_DOWN": 90251
    },
    "guard_id": null,
-   "source": "FlightDeck/Overhead.xml"
+   "source": "FlightDeck/Overhead.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OVHD_LTS_OUTER_OVHD_PNL_FLOOD_KB",
@@ -23315,14 +24378,37 @@
    "label": "Overhead Panel Lighting",
    "label_source": "tooltip",
    "state_var": "MD11_OVHD_LTS_OUTER_OVHD_PNL_FLOOD_KB",
-   "value_map": {},
-   "num_states": 2,
+   "value_map": {
+    "0": "0%",
+    "0.5": "5%",
+    "1": "10%",
+    "1.5": "15%",
+    "2": "20%",
+    "2.5": "25%",
+    "3": "30%",
+    "3.5": "35%",
+    "4": "40%",
+    "4.5": "45%",
+    "5": "50%",
+    "5.5": "55%",
+    "6": "60%",
+    "6.5": "65%",
+    "7": "70%",
+    "7.5": "75%",
+    "8": "80%",
+    "8.5": "85%",
+    "9": "90%",
+    "9.5": "95%",
+    "10": "100%"
+   },
+   "num_states": 21,
    "events": {
     "WHEEL_UP": 90239,
     "WHEEL_DOWN": 90238
    },
    "guard_id": null,
-   "source": "FlightDeck/Overhead.xml"
+   "source": "FlightDeck/Overhead.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_OVHD_LTS_OVW_ATTND_BT",
@@ -25988,30 +27074,76 @@
    "source": "FlightDeck/AftFootPedestal.xml"
   },
   {
+   "node_id": "MD11_PED_CPT_AUDIO_PNL_ADF1_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "Captain ADF1 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_ADF1_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69753
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_CPT_AUDIO_PNL_ADF1_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_PED_CPT_AUDIO_PNL_ADF1_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_ADF1_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Pedestal",
    "label": "Captain ADF1 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_CPT_AUDIO_PNL_ADF1_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_ADF1_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69753,
     "WHEEL_UP": 69751,
     "WHEEL_DOWN": 69752
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_ADF1_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "Captain ADF1 Volume ON light",
-   "label_source": "curated",
+   "label": "Captain ADF1 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_CPT_AUDIO_PNL_ADF1_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -26025,7 +27157,40 @@
       "legend": "VOL",
       "lit": "On"
      }
+    ]
+   }
+  },
+  {
+   "node_id": "MD11_PED_CPT_AUDIO_PNL_ADF2_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "Captain ADF2 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_ADF2_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69756
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_CPT_AUDIO_PNL_ADF2_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
     ],
+    "latch": {
+     "var": "MD11_PED_CPT_AUDIO_PNL_ADF2_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
     "dark": "Off"
    }
   },
@@ -26036,24 +27201,36 @@
    "area": "Pedestal",
    "label": "Captain ADF2 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_CPT_AUDIO_PNL_ADF2_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_ADF2_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69756,
     "WHEEL_UP": 69754,
     "WHEEL_DOWN": 69755
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_ADF2_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "Captain ADF2 Volume ON light",
-   "label_source": "curated",
+   "label": "Captain ADF2 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_CPT_AUDIO_PNL_ADF2_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -26067,8 +27244,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -26146,30 +27322,76 @@
    }
   },
   {
+   "node_id": "MD11_PED_CPT_AUDIO_PNL_CAB_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "Captain Cabin Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_CAB_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69735
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_CPT_AUDIO_PNL_CAB_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_PED_CPT_AUDIO_PNL_CAB_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_CAB_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Pedestal",
    "label": "Captain Cabin Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_CPT_AUDIO_PNL_CAB_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_CAB_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69735,
     "WHEEL_UP": 69733,
     "WHEEL_DOWN": 69734
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_CAB_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "Captain Cabin Volume ON light",
-   "label_source": "curated",
+   "label": "Captain Cabin Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_CPT_AUDIO_PNL_CAB_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -26183,8 +27405,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -26262,30 +27483,76 @@
    }
   },
   {
+   "node_id": "MD11_PED_CPT_AUDIO_PNL_HF1_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "Captain HF1 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_HF1_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69723
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_CPT_AUDIO_PNL_HF1_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_PED_CPT_AUDIO_PNL_HF1_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_HF1_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Pedestal",
    "label": "Captain HF1 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_CPT_AUDIO_PNL_HF1_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_HF1_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69723,
     "WHEEL_UP": 69721,
     "WHEEL_DOWN": 69722
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_HF1_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "Captain HF1 Volume ON light",
-   "label_source": "curated",
+   "label": "Captain HF1 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_CPT_AUDIO_PNL_HF1_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -26299,8 +27566,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -26378,30 +27644,76 @@
    }
   },
   {
+   "node_id": "MD11_PED_CPT_AUDIO_PNL_HF2_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "Captain HF2 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_HF2_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69726
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_CPT_AUDIO_PNL_HF2_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_PED_CPT_AUDIO_PNL_HF2_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_HF2_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Pedestal",
    "label": "Captain HF2 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_CPT_AUDIO_PNL_HF2_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_HF2_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69726,
     "WHEEL_UP": 69724,
     "WHEEL_DOWN": 69725
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_HF2_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "Captain HF2 Volume ON light",
-   "label_source": "curated",
+   "label": "Captain HF2 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_CPT_AUDIO_PNL_HF2_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -26415,8 +27727,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -26470,30 +27781,76 @@
    }
   },
   {
+   "node_id": "MD11_PED_CPT_AUDIO_PNL_ILS1_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "Captain ILS1 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_ILS1_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69747
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_CPT_AUDIO_PNL_ILS1_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_PED_CPT_AUDIO_PNL_ILS1_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_ILS1_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Pedestal",
    "label": "Captain ILS1 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_CPT_AUDIO_PNL_ILS1_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_ILS1_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69747,
     "WHEEL_UP": 69745,
     "WHEEL_DOWN": 69746
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_ILS1_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "Captain ILS1 Volume ON light",
-   "label_source": "curated",
+   "label": "Captain ILS1 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_CPT_AUDIO_PNL_ILS1_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -26507,7 +27864,40 @@
       "legend": "VOL",
       "lit": "On"
      }
+    ]
+   }
+  },
+  {
+   "node_id": "MD11_PED_CPT_AUDIO_PNL_ILS2_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "Captain ILS2 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_ILS2_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69750
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_CPT_AUDIO_PNL_ILS2_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
     ],
+    "latch": {
+     "var": "MD11_PED_CPT_AUDIO_PNL_ILS2_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
     "dark": "Off"
    }
   },
@@ -26518,24 +27908,36 @@
    "area": "Pedestal",
    "label": "Captain ILS2 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_CPT_AUDIO_PNL_ILS2_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_ILS2_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69750,
     "WHEEL_UP": 69748,
     "WHEEL_DOWN": 69749
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_ILS2_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "Captain ILS2 Volume ON light",
-   "label_source": "curated",
+   "label": "Captain ILS2 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_CPT_AUDIO_PNL_ILS2_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -26549,8 +27951,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -26645,30 +28046,76 @@
    "source": "FlightDeck/AftFootPedestal.xml"
   },
   {
+   "node_id": "MD11_PED_CPT_AUDIO_PNL_INT_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "Captain Interphone Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_INT_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69732
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_CPT_AUDIO_PNL_INT_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_PED_CPT_AUDIO_PNL_INT_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_INT_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Pedestal",
    "label": "Captain Interphone Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_CPT_AUDIO_PNL_INT_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_INT_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69732,
     "WHEEL_UP": 69730,
     "WHEEL_DOWN": 69731
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_INT_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "Captain Interphone Volume ON light",
-   "label_source": "curated",
+   "label": "Captain Interphone Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_CPT_AUDIO_PNL_INT_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -26682,7 +28129,40 @@
       "legend": "VOL",
       "lit": "On"
      }
+    ]
+   }
+  },
+  {
+   "node_id": "MD11_PED_CPT_AUDIO_PNL_MKR_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "Captain Marker Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_MKR_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69759
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_CPT_AUDIO_PNL_MKR_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
     ],
+    "latch": {
+     "var": "MD11_PED_CPT_AUDIO_PNL_MKR_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
     "dark": "Off"
    }
   },
@@ -26693,24 +28173,36 @@
    "area": "Pedestal",
    "label": "Captain Marker Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_CPT_AUDIO_PNL_MKR_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_MKR_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69759,
     "WHEEL_UP": 69757,
     "WHEEL_DOWN": 69758
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_MKR_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "Captain Marker Volume ON light",
-   "label_source": "curated",
+   "label": "Captain Marker Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_CPT_AUDIO_PNL_MKR_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -26724,7 +28216,40 @@
       "legend": "VOL",
       "lit": "On"
      }
+    ]
+   }
+  },
+  {
+   "node_id": "MD11_PED_CPT_AUDIO_PNL_PA_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "Captain PA Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_PA_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69738
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_CPT_AUDIO_PNL_PA_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
     ],
+    "latch": {
+     "var": "MD11_PED_CPT_AUDIO_PNL_PA_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
     "dark": "Off"
    }
   },
@@ -26735,24 +28260,36 @@
    "area": "Pedestal",
    "label": "Captain PA Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_CPT_AUDIO_PNL_PA_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_PA_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69738,
     "WHEEL_UP": 69736,
     "WHEEL_DOWN": 69737
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_PA_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "Captain PA Volume ON light",
-   "label_source": "curated",
+   "label": "Captain PA Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_CPT_AUDIO_PNL_PA_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -26766,8 +28303,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -26845,22 +28381,61 @@
    }
   },
   {
+   "node_id": "MD11_PED_CPT_AUDIO_PNL_SAT_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "Captain Satellite Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_SAT_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69729
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [],
+    "latch": {
+     "var": "MD11_PED_CPT_AUDIO_PNL_SAT_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    }
+   }
+  },
+  {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_SAT_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Pedestal",
    "label": "Captain Satellite Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_CPT_AUDIO_PNL_SAT_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_SAT_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69729,
     "WHEEL_UP": 69727,
     "WHEEL_DOWN": 69728
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_VHF1_CALL_LT",
@@ -26937,30 +28512,76 @@
    }
   },
   {
+   "node_id": "MD11_PED_CPT_AUDIO_PNL_VHF1_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "Captain VHF1 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_VHF1_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69714
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_CPT_AUDIO_PNL_VHF1_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_PED_CPT_AUDIO_PNL_VHF1_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_VHF1_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Pedestal",
    "label": "Captain VHF1 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_CPT_AUDIO_PNL_VHF1_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_VHF1_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69714,
     "WHEEL_UP": 69712,
     "WHEEL_DOWN": 69713
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_VHF1_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "Captain VHF1 Volume ON light",
-   "label_source": "curated",
+   "label": "Captain VHF1 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_CPT_AUDIO_PNL_VHF1_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -26974,8 +28595,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -27053,30 +28673,76 @@
    }
   },
   {
+   "node_id": "MD11_PED_CPT_AUDIO_PNL_VHF2_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "Captain VHF2 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_VHF2_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69717
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_CPT_AUDIO_PNL_VHF2_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_PED_CPT_AUDIO_PNL_VHF2_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_VHF2_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Pedestal",
    "label": "Captain VHF2 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_CPT_AUDIO_PNL_VHF2_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_VHF2_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69717,
     "WHEEL_UP": 69715,
     "WHEEL_DOWN": 69716
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_VHF2_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "Captain VHF2 Volume ON light",
-   "label_source": "curated",
+   "label": "Captain VHF2 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_CPT_AUDIO_PNL_VHF2_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -27090,8 +28756,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -27169,30 +28834,76 @@
    }
   },
   {
+   "node_id": "MD11_PED_CPT_AUDIO_PNL_VHF3_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "Captain VHF3 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_VHF3_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69720
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_CPT_AUDIO_PNL_VHF3_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_PED_CPT_AUDIO_PNL_VHF3_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_VHF3_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Pedestal",
    "label": "Captain VHF3 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_CPT_AUDIO_PNL_VHF3_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_VHF3_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69720,
     "WHEEL_UP": 69718,
     "WHEEL_DOWN": 69719
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_VHF3_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "Captain VHF3 Volume ON light",
-   "label_source": "curated",
+   "label": "Captain VHF3 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_CPT_AUDIO_PNL_VHF3_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -27206,7 +28917,40 @@
       "legend": "VOL",
       "lit": "On"
      }
+    ]
+   }
+  },
+  {
+   "node_id": "MD11_PED_CPT_AUDIO_PNL_VOR1_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "Captain VOR1 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_VOR1_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69741
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_CPT_AUDIO_PNL_VOR1_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
     ],
+    "latch": {
+     "var": "MD11_PED_CPT_AUDIO_PNL_VOR1_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
     "dark": "Off"
    }
   },
@@ -27217,24 +28961,36 @@
    "area": "Pedestal",
    "label": "Captain VOR1 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_CPT_AUDIO_PNL_VOR1_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_VOR1_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69741,
     "WHEEL_UP": 69739,
     "WHEEL_DOWN": 69740
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_VOR1_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "Captain VOR1 Volume ON light",
-   "label_source": "curated",
+   "label": "Captain VOR1 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_CPT_AUDIO_PNL_VOR1_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -27248,7 +29004,40 @@
       "legend": "VOL",
       "lit": "On"
      }
+    ]
+   }
+  },
+  {
+   "node_id": "MD11_PED_CPT_AUDIO_PNL_VOR2_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "Captain VOR2 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_VOR2_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69744
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_CPT_AUDIO_PNL_VOR2_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
     ],
+    "latch": {
+     "var": "MD11_PED_CPT_AUDIO_PNL_VOR2_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
     "dark": "Off"
    }
   },
@@ -27259,24 +29048,36 @@
    "area": "Pedestal",
    "label": "Captain VOR2 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_CPT_AUDIO_PNL_VOR2_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_CPT_AUDIO_PNL_VOR2_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69744,
     "WHEEL_UP": 69742,
     "WHEEL_DOWN": 69743
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_CPT_AUDIO_PNL_VOR2_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "Captain VOR2 Volume ON light",
-   "label_source": "curated",
+   "label": "Captain VOR2 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_CPT_AUDIO_PNL_VOR2_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -27290,8 +29091,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -27603,14 +29403,37 @@
    "label": "DU1 Brightness",
    "label_source": "tooltip",
    "state_var": "MD11_PED_DU1_BRT_KB",
-   "value_map": {},
-   "num_states": 3,
+   "value_map": {
+    "0": "0%",
+    "0.5": "5%",
+    "1": "10%",
+    "1.5": "15%",
+    "2": "20%",
+    "2.5": "25%",
+    "3": "30%",
+    "3.5": "35%",
+    "4": "40%",
+    "4.5": "45%",
+    "5": "50%",
+    "5.5": "55%",
+    "6": "60%",
+    "6.5": "65%",
+    "7": "70%",
+    "7.5": "75%",
+    "8": "80%",
+    "8.5": "85%",
+    "9": "90%",
+    "9.5": "95%",
+    "10": "100%"
+   },
+   "num_states": 21,
    "events": {
     "WHEEL_UP": 69817,
     "WHEEL_DOWN": 69816
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_DU2_BRT_KB",
@@ -27620,14 +29443,37 @@
    "label": "DU2 Brightness",
    "label_source": "tooltip",
    "state_var": "MD11_PED_DU2_BRT_KB",
-   "value_map": {},
-   "num_states": 3,
+   "value_map": {
+    "0": "0%",
+    "0.5": "5%",
+    "1": "10%",
+    "1.5": "15%",
+    "2": "20%",
+    "2.5": "25%",
+    "3": "30%",
+    "3.5": "35%",
+    "4": "40%",
+    "4.5": "45%",
+    "5": "50%",
+    "5.5": "55%",
+    "6": "60%",
+    "6.5": "65%",
+    "7": "70%",
+    "7.5": "75%",
+    "8": "80%",
+    "8.5": "85%",
+    "9": "90%",
+    "9.5": "95%",
+    "10": "100%"
+   },
+   "num_states": 21,
    "events": {
     "WHEEL_UP": 69819,
     "WHEEL_DOWN": 69818
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_DU3_BRT_KB",
@@ -27637,14 +29483,37 @@
    "label": "DU3 Brightness",
    "label_source": "tooltip",
    "state_var": "MD11_PED_DU3_BRT_KB",
-   "value_map": {},
-   "num_states": 3,
+   "value_map": {
+    "0": "0%",
+    "0.5": "5%",
+    "1": "10%",
+    "1.5": "15%",
+    "2": "20%",
+    "2.5": "25%",
+    "3": "30%",
+    "3.5": "35%",
+    "4": "40%",
+    "4.5": "45%",
+    "5": "50%",
+    "5.5": "55%",
+    "6": "60%",
+    "6.5": "65%",
+    "7": "70%",
+    "7.5": "75%",
+    "8": "80%",
+    "8.5": "85%",
+    "9": "90%",
+    "9.5": "95%",
+    "10": "100%"
+   },
+   "num_states": 21,
    "events": {
     "WHEEL_UP": 69821,
     "WHEEL_DOWN": 69820
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_DU4_BRT_KB",
@@ -27654,14 +29523,37 @@
    "label": "DU4 Brightness",
    "label_source": "tooltip",
    "state_var": "MD11_PED_DU4_BRT_KB",
-   "value_map": {},
-   "num_states": 3,
+   "value_map": {
+    "0": "0%",
+    "0.5": "5%",
+    "1": "10%",
+    "1.5": "15%",
+    "2": "20%",
+    "2.5": "25%",
+    "3": "30%",
+    "3.5": "35%",
+    "4": "40%",
+    "4.5": "45%",
+    "5": "50%",
+    "5.5": "55%",
+    "6": "60%",
+    "6.5": "65%",
+    "7": "70%",
+    "7.5": "75%",
+    "8": "80%",
+    "8.5": "85%",
+    "9": "90%",
+    "9.5": "95%",
+    "10": "100%"
+   },
+   "num_states": 21,
    "events": {
     "WHEEL_UP": 69823,
     "WHEEL_DOWN": 69822
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_DU5_BRT_KB",
@@ -27671,14 +29563,37 @@
    "label": "DU5 Brightness",
    "label_source": "tooltip",
    "state_var": "MD11_PED_DU5_BRT_KB",
-   "value_map": {},
-   "num_states": 3,
+   "value_map": {
+    "0": "0%",
+    "0.5": "5%",
+    "1": "10%",
+    "1.5": "15%",
+    "2": "20%",
+    "2.5": "25%",
+    "3": "30%",
+    "3.5": "35%",
+    "4": "40%",
+    "4.5": "45%",
+    "5": "50%",
+    "5.5": "55%",
+    "6": "60%",
+    "6.5": "65%",
+    "7": "70%",
+    "7.5": "75%",
+    "8": "80%",
+    "8.5": "85%",
+    "9": "90%",
+    "9.5": "95%",
+    "10": "100%"
+   },
+   "num_states": 21,
    "events": {
     "WHEEL_UP": 69825,
     "WHEEL_DOWN": 69824
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_DU6_BRT_KB",
@@ -27688,14 +29603,71 @@
    "label": "DU6 Brightness",
    "label_source": "tooltip",
    "state_var": "MD11_PED_DU6_BRT_KB",
-   "value_map": {},
-   "num_states": 3,
+   "value_map": {
+    "0": "0%",
+    "0.5": "5%",
+    "1": "10%",
+    "1.5": "15%",
+    "2": "20%",
+    "2.5": "25%",
+    "3": "30%",
+    "3.5": "35%",
+    "4": "40%",
+    "4.5": "45%",
+    "5": "50%",
+    "5.5": "55%",
+    "6": "60%",
+    "6.5": "65%",
+    "7": "70%",
+    "7.5": "75%",
+    "8": "80%",
+    "8.5": "85%",
+    "9": "90%",
+    "9.5": "95%",
+    "10": "100%"
+   },
+   "num_states": 21,
    "events": {
     "WHEEL_UP": 69827,
     "WHEEL_DOWN": 69826
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
+  },
+  {
+   "node_id": "MD11_PED_FO_AUDIO_PNL_ADF1_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "First Officer ADF1 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_FO_AUDIO_PNL_ADF1_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69801
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_FO_AUDIO_PNL_ADF1_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_PED_FO_AUDIO_PNL_ADF1_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_ADF1_VOL_KB",
@@ -27704,24 +29676,36 @@
    "area": "Pedestal",
    "label": "First Officer ADF1 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_FO_AUDIO_PNL_ADF1_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_FO_AUDIO_PNL_ADF1_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69801,
     "WHEEL_UP": 69799,
     "WHEEL_DOWN": 69800
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_ADF1_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "First Officer ADF1 Volume ON light",
-   "label_source": "curated",
+   "label": "First Officer ADF1 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_FO_AUDIO_PNL_ADF1_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -27735,7 +29719,40 @@
       "legend": "VOL",
       "lit": "On"
      }
+    ]
+   }
+  },
+  {
+   "node_id": "MD11_PED_FO_AUDIO_PNL_ADF2_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "First Officer ADF2 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_FO_AUDIO_PNL_ADF2_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69804
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_FO_AUDIO_PNL_ADF2_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
     ],
+    "latch": {
+     "var": "MD11_PED_FO_AUDIO_PNL_ADF2_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
     "dark": "Off"
    }
   },
@@ -27746,24 +29763,36 @@
    "area": "Pedestal",
    "label": "First Officer ADF2 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_FO_AUDIO_PNL_ADF2_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_FO_AUDIO_PNL_ADF2_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69804,
     "WHEEL_UP": 69802,
     "WHEEL_DOWN": 69803
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_ADF2_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "First Officer ADF2 Volume ON light",
-   "label_source": "curated",
+   "label": "First Officer ADF2 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_FO_AUDIO_PNL_ADF2_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -27777,8 +29806,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -27856,30 +29884,76 @@
    }
   },
   {
+   "node_id": "MD11_PED_FO_AUDIO_PNL_CAB_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "First Officer Cabin Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_FO_AUDIO_PNL_CAB_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69783
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_FO_AUDIO_PNL_CAB_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_PED_FO_AUDIO_PNL_CAB_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_PED_FO_AUDIO_PNL_CAB_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Pedestal",
    "label": "First Officer Cabin Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_FO_AUDIO_PNL_CAB_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_FO_AUDIO_PNL_CAB_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69783,
     "WHEEL_UP": 69781,
     "WHEEL_DOWN": 69782
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_CAB_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "First Officer Cabin Volume ON light",
-   "label_source": "curated",
+   "label": "First Officer Cabin Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_FO_AUDIO_PNL_CAB_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -27893,8 +29967,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -27972,30 +30045,76 @@
    }
   },
   {
+   "node_id": "MD11_PED_FO_AUDIO_PNL_HF1_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "First Officer HF1 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_FO_AUDIO_PNL_HF1_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69771
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_FO_AUDIO_PNL_HF1_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_PED_FO_AUDIO_PNL_HF1_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_PED_FO_AUDIO_PNL_HF1_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Pedestal",
    "label": "First Officer HF1 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_FO_AUDIO_PNL_HF1_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_FO_AUDIO_PNL_HF1_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69771,
     "WHEEL_UP": 69769,
     "WHEEL_DOWN": 69770
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_HF1_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "First Officer HF1 Volume ON light",
-   "label_source": "curated",
+   "label": "First Officer HF1 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_FO_AUDIO_PNL_HF1_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -28009,8 +30128,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -28088,30 +30206,76 @@
    }
   },
   {
+   "node_id": "MD11_PED_FO_AUDIO_PNL_HF2_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "First Officer HF2 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_FO_AUDIO_PNL_HF2_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69774
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_FO_AUDIO_PNL_HF2_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_PED_FO_AUDIO_PNL_HF2_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_PED_FO_AUDIO_PNL_HF2_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Pedestal",
    "label": "First Officer HF2 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_FO_AUDIO_PNL_HF2_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_FO_AUDIO_PNL_HF2_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69774,
     "WHEEL_UP": 69772,
     "WHEEL_DOWN": 69773
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_HF2_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "First Officer HF2 Volume ON light",
-   "label_source": "curated",
+   "label": "First Officer HF2 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_FO_AUDIO_PNL_HF2_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -28125,8 +30289,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -28180,30 +30343,76 @@
    }
   },
   {
+   "node_id": "MD11_PED_FO_AUDIO_PNL_ILS1_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "First Officer ILS1 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_FO_AUDIO_PNL_ILS1_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69795
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_FO_AUDIO_PNL_ILS1_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_PED_FO_AUDIO_PNL_ILS1_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_PED_FO_AUDIO_PNL_ILS1_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Pedestal",
    "label": "First Officer ILS1 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_FO_AUDIO_PNL_ILS1_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_FO_AUDIO_PNL_ILS1_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69795,
     "WHEEL_UP": 69793,
     "WHEEL_DOWN": 69794
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_ILS1_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "First Officer ILS1 Volume ON light",
-   "label_source": "curated",
+   "label": "First Officer ILS1 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_FO_AUDIO_PNL_ILS1_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -28217,7 +30426,40 @@
       "legend": "VOL",
       "lit": "On"
      }
+    ]
+   }
+  },
+  {
+   "node_id": "MD11_PED_FO_AUDIO_PNL_ILS2_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "First Officer ILS2 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_FO_AUDIO_PNL_ILS2_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69798
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_FO_AUDIO_PNL_ILS2_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
     ],
+    "latch": {
+     "var": "MD11_PED_FO_AUDIO_PNL_ILS2_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
     "dark": "Off"
    }
   },
@@ -28228,24 +30470,36 @@
    "area": "Pedestal",
    "label": "First Officer ILS2 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_FO_AUDIO_PNL_ILS2_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_FO_AUDIO_PNL_ILS2_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69798,
     "WHEEL_UP": 69796,
     "WHEEL_DOWN": 69797
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_ILS2_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "First Officer ILS2 Volume ON light",
-   "label_source": "curated",
+   "label": "First Officer ILS2 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_FO_AUDIO_PNL_ILS2_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -28259,8 +30513,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -28355,30 +30608,76 @@
    "source": "FlightDeck/AftFootPedestal.xml"
   },
   {
+   "node_id": "MD11_PED_FO_AUDIO_PNL_INT_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "First Officer Interphone Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_FO_AUDIO_PNL_INT_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69780
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_FO_AUDIO_PNL_INT_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_PED_FO_AUDIO_PNL_INT_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_PED_FO_AUDIO_PNL_INT_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Pedestal",
    "label": "First Officer Interphone Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_FO_AUDIO_PNL_INT_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_FO_AUDIO_PNL_INT_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69780,
     "WHEEL_UP": 69778,
     "WHEEL_DOWN": 69779
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_INT_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "First Officer Interphone Volume ON light",
-   "label_source": "curated",
+   "label": "First Officer Interphone Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_FO_AUDIO_PNL_INT_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -28392,7 +30691,40 @@
       "legend": "VOL",
       "lit": "On"
      }
+    ]
+   }
+  },
+  {
+   "node_id": "MD11_PED_FO_AUDIO_PNL_MKR_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "First Officer Marker Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_FO_AUDIO_PNL_MKR_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69807
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_FO_AUDIO_PNL_MKR_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
     ],
+    "latch": {
+     "var": "MD11_PED_FO_AUDIO_PNL_MKR_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
     "dark": "Off"
    }
   },
@@ -28403,24 +30735,36 @@
    "area": "Pedestal",
    "label": "First Officer Marker Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_FO_AUDIO_PNL_MKR_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_FO_AUDIO_PNL_MKR_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69807,
     "WHEEL_UP": 69805,
     "WHEEL_DOWN": 69806
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_MKR_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "First Officer Marker Volume ON light",
-   "label_source": "curated",
+   "label": "First Officer Marker Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_FO_AUDIO_PNL_MKR_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -28434,7 +30778,40 @@
       "legend": "VOL",
       "lit": "On"
      }
+    ]
+   }
+  },
+  {
+   "node_id": "MD11_PED_FO_AUDIO_PNL_PA_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "First Officer PA Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_FO_AUDIO_PNL_PA_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69786
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_FO_AUDIO_PNL_PA_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
     ],
+    "latch": {
+     "var": "MD11_PED_FO_AUDIO_PNL_PA_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
     "dark": "Off"
    }
   },
@@ -28445,24 +30822,36 @@
    "area": "Pedestal",
    "label": "First Officer PA Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_FO_AUDIO_PNL_PA_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_FO_AUDIO_PNL_PA_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69786,
     "WHEEL_UP": 69784,
     "WHEEL_DOWN": 69785
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_PA_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "First Officer PA Volume ON light",
-   "label_source": "curated",
+   "label": "First Officer PA Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_FO_AUDIO_PNL_PA_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -28476,8 +30865,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -28555,22 +30943,61 @@
    }
   },
   {
+   "node_id": "MD11_PED_FO_AUDIO_PNL_SAT_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "First Officer Satellite Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_FO_AUDIO_PNL_SAT_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69777
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [],
+    "latch": {
+     "var": "MD11_PED_FO_AUDIO_PNL_SAT_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    }
+   }
+  },
+  {
    "node_id": "MD11_PED_FO_AUDIO_PNL_SAT_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Pedestal",
    "label": "First Officer Satellite Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_FO_AUDIO_PNL_SAT_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_FO_AUDIO_PNL_SAT_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69777,
     "WHEEL_UP": 69775,
     "WHEEL_DOWN": 69776
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_VHF1_CALL_LT",
@@ -28647,30 +31074,76 @@
    }
   },
   {
+   "node_id": "MD11_PED_FO_AUDIO_PNL_VHF1_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "First Officer VHF1 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_FO_AUDIO_PNL_VHF1_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69762
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_FO_AUDIO_PNL_VHF1_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_PED_FO_AUDIO_PNL_VHF1_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_PED_FO_AUDIO_PNL_VHF1_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Pedestal",
    "label": "First Officer VHF1 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_FO_AUDIO_PNL_VHF1_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_FO_AUDIO_PNL_VHF1_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69762,
     "WHEEL_UP": 69760,
     "WHEEL_DOWN": 69761
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_VHF1_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "First Officer VHF1 Volume ON light",
-   "label_source": "curated",
+   "label": "First Officer VHF1 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_FO_AUDIO_PNL_VHF1_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -28684,8 +31157,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -28763,30 +31235,76 @@
    }
   },
   {
+   "node_id": "MD11_PED_FO_AUDIO_PNL_VHF2_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "First Officer VHF2 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_FO_AUDIO_PNL_VHF2_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69765
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_FO_AUDIO_PNL_VHF2_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_PED_FO_AUDIO_PNL_VHF2_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_PED_FO_AUDIO_PNL_VHF2_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Pedestal",
    "label": "First Officer VHF2 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_FO_AUDIO_PNL_VHF2_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_FO_AUDIO_PNL_VHF2_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69765,
     "WHEEL_UP": 69763,
     "WHEEL_DOWN": 69764
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_VHF2_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "First Officer VHF2 Volume ON light",
-   "label_source": "curated",
+   "label": "First Officer VHF2 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_FO_AUDIO_PNL_VHF2_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -28800,8 +31318,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
@@ -28879,30 +31396,76 @@
    }
   },
   {
+   "node_id": "MD11_PED_FO_AUDIO_PNL_VHF3_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "First Officer VHF3 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_FO_AUDIO_PNL_VHF3_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69768
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_FO_AUDIO_PNL_VHF3_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
+    ],
+    "latch": {
+     "var": "MD11_PED_FO_AUDIO_PNL_VHF3_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
+    "dark": "Off"
+   }
+  },
+  {
    "node_id": "MD11_PED_FO_AUDIO_PNL_VHF3_VOL_KB",
    "kind": "knob",
    "template": "TFDi_Design_MD11_Volume_Knob",
    "area": "Pedestal",
    "label": "First Officer VHF3 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_FO_AUDIO_PNL_VHF3_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_FO_AUDIO_PNL_VHF3_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69768,
     "WHEEL_UP": 69766,
     "WHEEL_DOWN": 69767
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_VHF3_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "First Officer VHF3 Volume ON light",
-   "label_source": "curated",
+   "label": "First Officer VHF3 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_FO_AUDIO_PNL_VHF3_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -28916,7 +31479,40 @@
       "legend": "VOL",
       "lit": "On"
      }
+    ]
+   }
+  },
+  {
+   "node_id": "MD11_PED_FO_AUDIO_PNL_VOR1_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "First Officer VOR1 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_FO_AUDIO_PNL_VOR1_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69789
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_FO_AUDIO_PNL_VOR1_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
     ],
+    "latch": {
+     "var": "MD11_PED_FO_AUDIO_PNL_VOR1_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
     "dark": "Off"
    }
   },
@@ -28927,24 +31523,36 @@
    "area": "Pedestal",
    "label": "First Officer VOR1 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_FO_AUDIO_PNL_VOR1_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_FO_AUDIO_PNL_VOR1_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69789,
     "WHEEL_UP": 69787,
     "WHEEL_DOWN": 69788
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_VOR1_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "First Officer VOR1 Volume ON light",
-   "label_source": "curated",
+   "label": "First Officer VOR1 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_FO_AUDIO_PNL_VOR1_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -28958,7 +31566,40 @@
       "legend": "VOL",
       "lit": "On"
      }
+    ]
+   }
+  },
+  {
+   "node_id": "MD11_PED_FO_AUDIO_PNL_VOR2_VOL_BT",
+   "kind": "button",
+   "template": "TFDi_Design_MD11_Volume_Knob",
+   "area": "Pedestal",
+   "label": "First Officer VOR2 Receiver",
+   "label_source": "curated",
+   "state_var": "MD11_PED_FO_AUDIO_PNL_VOR2_VOL_BT",
+   "value_map": {
+    "1": "On",
+    "0": "Off"
+   },
+   "num_states": 2,
+   "events": {
+    "LEFT_BUTTON_DOWN": 69792
+   },
+   "guard_id": null,
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "state": {
+    "lamps": [
+     {
+      "var": "MD11_PED_FO_AUDIO_PNL_VOR2_VOL_LT",
+      "legend": "VOL",
+      "lit": "On"
+     }
     ],
+    "latch": {
+     "var": "MD11_PED_FO_AUDIO_PNL_VOR2_VOL_BT",
+     "on": "On",
+     "off": "Off"
+    },
     "dark": "Off"
    }
   },
@@ -28969,24 +31610,36 @@
    "area": "Pedestal",
    "label": "First Officer VOR2 Volume",
    "label_source": "tooltip",
-   "state_var": "MD11_PED_FO_AUDIO_PNL_VOR2_VOL_BT",
-   "value_map": {},
-   "num_states": 2,
+   "state_var": "MD11_PED_FO_AUDIO_PNL_VOR2_VOL_KB",
+   "value_map": {
+    "0": "0%",
+    "1": "10%",
+    "2": "20%",
+    "3": "30%",
+    "4": "40%",
+    "5": "50%",
+    "6": "60%",
+    "7": "70%",
+    "8": "80%",
+    "9": "90%",
+    "10": "100%"
+   },
+   "num_states": 11,
    "events": {
-    "LEFT_BUTTON_DOWN": 69792,
     "WHEEL_UP": 69790,
     "WHEEL_DOWN": 69791
    },
    "guard_id": null,
-   "source": "FlightDeck/AftFootPedestal.xml"
+   "source": "FlightDeck/AftFootPedestal.xml",
+   "continuous": true
   },
   {
    "node_id": "MD11_PED_FO_AUDIO_PNL_VOR2_VOL_LT",
    "kind": "annun",
    "template": "TFDi_Design_MD11_Annunciator",
    "area": "Pedestal",
-   "label": "First Officer VOR2 Volume ON light",
-   "label_source": "curated",
+   "label": "First Officer VOR2 Receiver VOL light",
+   "label_source": "paired",
    "state_var": "MD11_PED_FO_AUDIO_PNL_VOR2_VOL_LT",
    "value_map": {},
    "num_states": null,
@@ -29000,8 +31653,7 @@
       "legend": "VOL",
       "lit": "On"
      }
-    ],
-    "dark": "Off"
+    ]
    }
   },
   {
