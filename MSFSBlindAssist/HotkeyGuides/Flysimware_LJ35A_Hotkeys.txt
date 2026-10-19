@@ -44,7 +44,7 @@ DISPLAY WINDOWS (direct Alt keys, no output mode)
 OUTPUT MODE (press the output-mode key, then the letter)
   P          N1 and N2, both engines
   E          N1, fuel flow and thrust-lever position, both engines
-  Shift+O    ITT, oil pressure and oil temperature, both engines
+  Shift+P    ITT, oil pressure and oil temperature, both engines
   Shift+A    altitude alerter (the FC-530 preselect)
   Shift+H    heading bug
   Shift+S    speed target, in knots or Mach as selected

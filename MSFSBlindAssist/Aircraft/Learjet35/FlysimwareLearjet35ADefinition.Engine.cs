@@ -4,7 +4,7 @@ namespace MSFSBlindAssist.Aircraft.Learjet35;
 
 /// <summary>
 /// Engine Panel → Engine Instruments, and Throttle Quadrant → Thrust and Flaps.
-/// The engine values are cached for the P / E / Shift+O readouts.
+/// The engine values are cached for the P / E / Shift+P readouts.
 /// </summary>
 public partial class FlysimwareLearjet35ADefinition
 {

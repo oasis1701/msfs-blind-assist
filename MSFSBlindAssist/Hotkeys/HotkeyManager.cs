@@ -120,7 +120,7 @@ public class HotkeyManager : IDisposable
         // so borrowing the ND key was the only thing available and never the obvious one -
         // reported from the cockpit as "Alt+M for the MFD doesn't work". Alt+N still opens
         // it, because that is what the docs have said and a working key is not taken away.
-        private const int HOTKEY_READ_DISPLAY_MFD = 9253;
+        private const int HOTKEY_READ_DISPLAY_MFD = 9255;   // not 9253 (HOTKEY_VOLANTA) nor 9254 (#116's HOTKEY_WAYPOINT_FD)
         private const int HOTKEY_READ_DISPLAY_ISIS = 9073;
 
         // GENERAL-AVIATION ENGINE READOUTS. Deliberately NOT named for one aeroplane: a
@@ -827,12 +827,13 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_PFD, MOD_ALT, 0x50);         // Alt+P (Read PFD)
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS, MOD_ALT, 0x49);        // Alt+I (Read ISIS)
 
-            // Output mode: P, E and Shift+O. All three were free on every modifier before
-            // this - checked against the whole registration table rather than assumed,
-            // because a silently lost registration is a key that does nothing with no error.
+            // Output mode: P, E and Shift+P. All three were free in output mode - checked
+            // against the whole registration table rather than assumed, because a silently
+            // lost registration is a key that does nothing with no error. The temperatures
+            // were Shift+O until main gave Shift+O to the Volanta window (2026-10-18).
             RegisterHotKey(windowHandle, HOTKEY_READ_ENGINE_RPM, MOD_NONE, 0x50);         // P (RPM / propeller)
             RegisterHotKey(windowHandle, HOTKEY_READ_ENGINE_POWER, MOD_NONE, 0x45);       // E (engine power)
-            RegisterHotKey(windowHandle, HOTKEY_READ_ENGINE_TEMPS, MOD_SHIFT, 0x4F);      // Shift+O (engine temperatures)
+            RegisterHotKey(windowHandle, HOTKEY_READ_ENGINE_TEMPS, MOD_SHIFT, 0x50);      // Shift+P (engine temperatures)
             RegisterHotKey(windowHandle, HOTKEY_DESCRIBE_SCENE, MOD_ALT, 0x44);           // Alt+D (Describe Scene)
             RegisterHotKey(windowHandle, HOTKEY_NEAREST_CITY, MOD_NONE, 0x43);             // C (Nearest City)
             RegisterHotKey(windowHandle, HOTKEY_TCAS_ANNOUNCE, MOD_NONE, 0x52);            // R (Announce Tracked TCAS Traffic)
@@ -955,7 +956,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS);
             UnregisterHotKey(windowHandle, HOTKEY_DESCRIBE_SCENE);
             // ⚠️ THESE THREE LEAKED, AND ONE BUG PRODUCED TWO SEPARATE COCKPIT SYMPTOMS.
-            // They are registered in ActivateOutputHotkeyMode as BARE P, BARE E and Shift+O,
+            // They are registered in ActivateOutputHotkeyMode as BARE P, BARE E and Shift+P,
             // and the matching releases were never added here. So one use of output mode held
             // P and E globally FOR THE REST OF THE SESSION: reported from the cockpit as
             // "Q and E don't work at all, I can't even type with them".

@@ -8,7 +8,7 @@ namespace MSFSBlindAssist.Aircraft.Learjet35;
 
 /// <summary>
 /// The Learjet's hotkeys, in jet terms. Output mode P is N1 and N2, E is N1 with fuel flow
-/// and lever position, Shift+O is ITT and oil. Alt+N and Alt+M open the GNS 530 window,
+/// and lever position, Shift+P is ITT and oil. Alt+N and Alt+M open the GNS 530 window,
 /// Alt+P the GNS 430. Input mode Ctrl+A/H/S/V set the FC-530 through the same dialogs the
 /// other aircraft use; Ctrl+B sets both altimeters.
 /// </summary>

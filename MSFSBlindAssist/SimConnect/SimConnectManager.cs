@@ -526,7 +526,7 @@ public partial class SimConnectManager
         // The FIRST of CameraReadIdCount (8) ids, 341-348: each read goes out under its own id
         // (CameraReadWaiters), so keep 342-348 free (pinned by CameraReadWaitersTests).
         REQUEST_CAMERA_VIEW = 341,
-        REQUEST_GPS_WAYPOINT = 351,   // NOT 341-349: 341-348 are the camera read's rotating ids, 349 is COM 1, 350 the DA40's attitude frame
+        REQUEST_GPS_WAYPOINT = 352,   // NOT 341-351: 341-348 are the camera read's rotating ids, 349 is COM 1, 350/351 the sim state
         // COM 1 active + standby, one-shot (RequestCom1Radio). 349: the first id past the
         // camera's rotating 341-348.
         REQUEST_COM1_RADIO = 349,
@@ -615,7 +615,7 @@ public partial class SimConnectManager
         // to CameraViewData, so a definition landing at 342 would have its SingleValue answer
         // mis-cast. Pinned by CameraReadWaitersTests.
         DEF_CAMERA_VIEW = 341,
-        DEF_GPS_WAYPOINT = 351,   // NOT 341-349: 341-348 are the camera read's rotating ids, 349 is COM 1, 350 the DA40's attitude frame
+        DEF_GPS_WAYPOINT = 352,   // NOT 341-351: 341-348 are the camera read's rotating ids, 349 is COM 1, 350/351 the sim state
         DEF_COM1_RADIO = 349,
         DEF_SLEW_STATE = 350,
         DEF_SIM_RATE = 351,
