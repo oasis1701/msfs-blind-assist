@@ -13,10 +13,25 @@ namespace MSFSBlindAssist.FirstOfficer.FBWA320;
 /// </summary>
 public sealed class FbwA320StateEvaluator : LVarStateEvaluator
 {
-    /// <summary>The CONF 3 landing selection the auto-flap cap reads (FOA-6). FlyByWire #10890
-    /// (2026-09-11) renamed it from A32NX_SPEEDS_LANDING_CONF3, which FlyByWire no longer writes;
-    /// the Headwind A330 still writes the old name (HwA330StateEvaluator).</summary>
-    internal const string LandingConf3Field = "A32NX_FM_LANDING_CONF3";
+    /// <summary>Synthetic: the CONF 3 landing selection the auto-flap cap reads (FOA-6), from the
+    /// running build's own L:var. FlyByWire #10890 (2026-09-11) renamed it to A32NX_FM_LANDING_CONF3,
+    /// which is what the FS2024 build (2024.2.0) writes; the FS2020 build (fs2020-master 2020.16.0)
+    /// predates #10890 and still writes A32NX_SPEEDS_LANDING_CONF3 (MCDU/mcdu.js). NaN while the
+    /// simulator build or the value is unknown - the cap treats that as FULL, as before.</summary>
+    internal const string LandingConf3Field = "FO_LANDING_CONF3";
+
+    /// <summary>The FS2020 build's CONF 3 L:var.</summary>
+    internal const string Fs2020LandingConf3Var = "A32NX_SPEEDS_LANDING_CONF3";
+    /// <summary>The FS2024 build's CONF 3 L:var (FBW #10890).</summary>
+    internal const string Fs2024LandingConf3Var = "A32NX_FM_LANDING_CONF3";
+
+    /// <summary>The CONF 3 L:var of <paramref name="build"/>, or null when unknown.</summary>
+    internal static string? LandingConf3VarFor(MSFSBlindAssist.Aircraft.FbwSimBuild build) => build switch
+    {
+        MSFSBlindAssist.Aircraft.FbwSimBuild.Fs2020 => Fs2020LandingConf3Var,
+        MSFSBlindAssist.Aircraft.FbwSimBuild.Fs2024 => Fs2024LandingConf3Var,
+        _ => null,
+    };
 
     /// <summary>1 when the APU is available or the external power pushbutton is ON, 0 when both
     /// read off, NaN while either is unread. Shutdown waits for it before the engine masters go off.</summary>
@@ -80,7 +95,7 @@ public sealed class FbwA320StateEvaluator : LVarStateEvaluator
         // A32NX_SPEEDS_VFEN (docs/a32nx.md).
         "A32NX_SPEEDS_GD", "A32NX_SPEEDS_S", "A32NX_SPEEDS_F",
         "FAC_1_V_FE_NEXT", "FAC_2_V_FE_NEXT",
-        LandingConf3Field,
+        Fs2020LandingConf3Var, Fs2024LandingConf3Var,
         // The wiper circuit switches the Power Up safety check reads (never the synthetic
         // WIPER_LEFT/RIGHT combos, which nothing writes back).
         "WIPER_L_SW", "WIPER_R_SW",
@@ -243,6 +258,12 @@ public sealed class FbwA320StateEvaluator : LVarStateEvaluator
                 return true;
             }
             value = (e1 < 0.5 && e2 < 0.5) ? 1 : 0;
+            return true;
+        }
+        if (field == LandingConf3Field)
+        {
+            string? key = LandingConf3VarFor(MSFSBlindAssist.Aircraft.FbwSimBuilds.From(Sc));
+            value = key == null ? double.NaN : GetValue(key);
             return true;
         }
         if (field == "FO_VFE_NEXT")

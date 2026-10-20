@@ -189,12 +189,12 @@ public static class FbwA380ChecklistDefinitions
                 async (e, _) => { await e.Set("A32NX_OVHD_COND_HOT_AIR_1_PB_IS_ON", 1);
                                   await e.Set("A32NX_OVHD_COND_HOT_AIR_2_PB_IS_ON", 1); }),
             Reminder("CP_AIRTEMP", "COCKPIT_PREP", "Cabin temperature: set as required"),
-            // The EFIS-CP's own hPa/inHg selector since FBW #10855 — 1 = inHg, so hectopascals is 0.
-            // Never XMLVAR_Baro_Selector_HPA_{1,2}: nothing reads it any more (A380Fbw10855DeadNameTests).
-            Multi("CP_BARO", "COCKPIT_PREP", "Baro reference: hectopascals", "A32NX_FCU_EFIS_L_BARO_IS_INHG", v => v < 0.5,
-                new[] { "A32NX_FCU_EFIS_R_BARO_IS_INHG" },
-                async (e, _) => { await e.Set("A32NX_FCU_EFIS_L_BARO_IS_INHG", 0);
-                                  await e.Set("A32NX_FCU_EFIS_R_BARO_IS_INHG", 0); }),
+            // The EFIS-CP hPa/inHg selectors, PER BUILD (A380BuildNames): FS2020 the one
+            // selector variable both sides read (1 = hPa), FS2024 A32NX_FCU_EFIS_{L,R}_BARO_IS_INHG
+            // (1 = inHg, FBW #10855). Read through the evaluator's per-build field, written through the
+            // executor's per-build key.
+            Auto("CP_BARO", "COCKPIT_PREP", "Baro reference: hectopascals", FbwA380StateEvaluator.BaroUnitHectopascalsField,
+                v => v > 0.5, (e, _) => e.Set(FbwA380ActionExecutor.BaroUnitHectopascalsKey, 1)),
             Reminder("CP_ALTIMETERS", "COCKPIT_PREP", "Altimeters: set QNH"),
             Auto("CP_ANTISKID", "COCKPIT_PREP", "Anti-skid: ON", "ANTISKID_BRAKES_ACTIVE",
                 v => v > 0.5, (e, _) => e.Set("ANTISKID_BRAKES_ACTIVE", 1)),
@@ -210,10 +210,11 @@ public static class FbwA380ChecklistDefinitions
             Multi("CP_EFISRANGE", "COCKPIT_PREP", "EFIS range: 40", "A32NX_EFIS_L_ND_RANGE", v => Math.Abs(v - 3) < 0.5,
                 new[] { "A32NX_EFIS_R_ND_RANGE" },
                 async (e, _) => { await e.Set("A32NX_EFIS_L_ND_RANGE", 3); await e.Set("A32NX_EFIS_R_ND_RANGE", 3); }),
-            // ONE FCU pushbutton since FBW #10855 (A380FlightDirector): its light is the state, and the
-            // definition presses it only when the pick differs, so "ON" over lit flight directors is no press.
-            Auto("CP_FD", "COCKPIT_PREP", "Flight directors: ON", A380FlightDirector.StateKey,
-                v => v > 0.5, (e, _) => e.Set(A380FlightDirector.StateKey, 1)),
+            // PER BUILD (A380BuildNames): FS2020 the two per-side flight directors, FS2024 the ONE FCU
+            // pushbutton (A380FlightDirector). The definition presses only a definite mismatch, so "ON"
+            // over flight directors already on is no press, and an unread state is refused.
+            Auto("CP_FD", "COCKPIT_PREP", "Flight directors: ON", FbwA380StateEvaluator.FlightDirectorsOnField,
+                v => v > 0.5, (e, _) => e.Set(FbwA380ActionExecutor.FlightDirectorsKey, 1)),
             Reminder("CP_CLOCK", "COCKPIT_PREP", "Clock: reset"),
             // ECAM SD page — real ECP write (door=5). Auto/RevertToState live mirror; the
             // page index sticks on this build (re-checked live 2026-06-13).
@@ -739,7 +740,8 @@ public static class FbwA380ChecklistDefinitions
                 v => v > 0.5, action: null),
             // Real state var — NOT the write-only A380X_MSFSBA_SPOILERS_ARM Act key.
             Auto("LDC_SPOILERS", "LANDING_CL", "Ground spoilers: ARM", "A32NX_SPOILERS_ARMED", v => v > 0.5, action: null),
-            // FULL, or 3 when the MFD PERF APPR page selects CONF 3 (A380X_FM_LANDING_CONF3).
+            // FULL, or 3 when the MFD PERF APPR page selects CONF 3 (FbwA380StateEvaluator.LandingConf3Field:
+            // the running build's CONF 3 variable, A380BuildNames.LandingConf3Key).
             Auto("LDC_FLAPS", "LANDING_CL", "Flaps: LDG", "FO_LDG_FLAPS_SET", v => v > 0.5, action: null),
         }
     };

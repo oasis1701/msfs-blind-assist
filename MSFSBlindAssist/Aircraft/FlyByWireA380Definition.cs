@@ -3095,6 +3095,9 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
             };
         }
 
+        // The First Officer's MSFS 2020 build names (A380BuildNames): OnRequest, never announced.
+        RegisterFirstOfficerBuildVariables(vars);
+
         return vars;
     }
 

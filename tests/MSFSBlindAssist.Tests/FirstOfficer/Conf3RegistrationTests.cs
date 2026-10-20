@@ -26,22 +26,37 @@ public class Conf3RegistrationTests
     private const string A330Conf3 = "A32NX_SPEEDS_LANDING_CONF3";
     private const string A380Conf3 = "A380X_FM_LANDING_CONF3";
 
+    // The A32NX and the A380 read the RUNNING build's CONF 3 (FbwSimBuild): the FS2020 FlyByWire
+    // builds (fs2020-master 2020.16.0) predate #10890 and still write A32NX_SPEEDS_LANDING_CONF3
+    // (A32NX MCDU/mcdu.js, A380 MFD/mfd.js); the FS2024 builds (2024.2.0) write the renamed ones.
     [Fact]
-    public void A32nx_reads_fbws_renamed_conf3()
+    public void A32nx_reads_the_running_builds_conf3()
     {
-        Assert.Equal(A32nxConf3, FbwA320StateEvaluator.LandingConf3Field);
+        Assert.Equal(A330Conf3, FbwA320StateEvaluator.LandingConf3VarFor(FbwSimBuild.Fs2020));
+        Assert.Equal(A32nxConf3, FbwA320StateEvaluator.LandingConf3VarFor(FbwSimBuild.Fs2024));
+        Assert.Null(FbwA320StateEvaluator.LandingConf3VarFor(FbwSimBuild.Unknown));
         var polled = new FbwA320StateEvaluator().OnRequestPollFields;
         Assert.Contains(A32nxConf3, polled);
-        Assert.DoesNotContain(A330Conf3, polled);
+        Assert.Contains(A330Conf3, polled);
+        Assert.DoesNotContain(A380Conf3, polled);
+
+        double Read(string sim) { var e = new FbwA320StateEvaluator();
+            e.SetSimConnect(SeededSimConnectCache.With((A330Conf3, 1), (A32nxConf3, 0)).On(sim));
+            return e.GetValue(FbwA320StateEvaluator.LandingConf3Field); }
+        Assert.Equal(1.0, Read("FS2020"));
+        Assert.Equal(0.0, Read("FS2024"));
+        Assert.True(double.IsNaN(Read("Unknown")));
     }
 
     [Fact]
-    public void A380_reads_its_own_conf3()
+    public void A380_reads_the_running_builds_conf3()
     {
-        Assert.Equal(A380Conf3, FbwA380StateEvaluator.LandingConf3Field);
+        Assert.Equal(A330Conf3, A380BuildNames.LandingConf3Key(FbwSimBuild.Fs2020));
+        Assert.Equal(A380Conf3, A380BuildNames.LandingConf3Key(FbwSimBuild.Fs2024));
         var polled = new FbwA380StateEvaluator().OnRequestPollFields;
         Assert.Contains(A380Conf3, polled);
-        Assert.DoesNotContain(A330Conf3, polled);
+        Assert.Contains(A330Conf3, polled);
+        Assert.DoesNotContain(A32nxConf3, polled);
     }
 
     [Fact]
@@ -56,16 +71,17 @@ public class Conf3RegistrationTests
     public void Each_airframe_registers_only_its_own_conf3()
     {
         var a32nx = new FlyByWireA320Definition().GetVariables();
-        Assert.True(a32nx.ContainsKey(A32nxConf3));
-        Assert.False(a32nx.ContainsKey(A330Conf3));
+        Assert.True(a32nx.ContainsKey(A32nxConf3));   // FS2024 build
+        Assert.True(a32nx.ContainsKey(A330Conf3));    // FS2020 build
 
         var a330 = new HeadwindA330Definition().GetVariables();
         Assert.True(a330.ContainsKey(A330Conf3));
         Assert.False(a330.ContainsKey(A32nxConf3));
 
         var a380 = new FlyByWireA380Definition().GetVariables();
-        Assert.True(a380.ContainsKey(A380Conf3));
-        Assert.False(a380.ContainsKey(A330Conf3));
+        Assert.True(a380.ContainsKey(A380Conf3));     // FS2024 build
+        Assert.True(a380.ContainsKey(A330Conf3));     // FS2020 build
+        Assert.False(a380.ContainsKey(A32nxConf3));
     }
 
     // ------------------------------------------------------------------
@@ -98,20 +114,24 @@ public class Conf3RegistrationTests
             "delivery path honours. Register it OnRequest and poll it from the evaluator (FOA-6).");
     }
 
-    [Fact]
-    public void A32nx_conf3_registration_matches_a_real_delivery_path()
+    [Theory]
+    [InlineData(A32nxConf3)]
+    [InlineData(A330Conf3)]
+    public void A32nx_conf3_registration_matches_a_real_delivery_path(string key)
         => AssertConf3ReachableByARealDeliveryPath(new FlyByWireA320Definition().GetVariables(),
-            new FbwA320StateEvaluator().OnRequestPollFields, A32nxConf3, "A32NX");
+            new FbwA320StateEvaluator().OnRequestPollFields, key, "A32NX");
 
     [Fact]
     public void A330_conf3_registration_matches_a_real_delivery_path()
         => AssertConf3ReachableByARealDeliveryPath(new HeadwindA330Definition().GetVariables(),
             new HwA330StateEvaluator().OnRequestPollFields, A330Conf3, "A339X");
 
-    [Fact]
-    public void A380_conf3_registration_matches_a_real_delivery_path()
+    [Theory]
+    [InlineData(A380Conf3)]
+    [InlineData(A330Conf3)]
+    public void A380_conf3_registration_matches_a_real_delivery_path(string key)
         => AssertConf3ReachableByARealDeliveryPath(new FlyByWireA380Definition().GetVariables(),
-            new FbwA380StateEvaluator().OnRequestPollFields, A380Conf3, "A380X");
+            new FbwA380StateEvaluator().OnRequestPollFields, key, "A380X");
 
     // ------------------------------------------------------------------
     // The auto managers read their own airframe's name

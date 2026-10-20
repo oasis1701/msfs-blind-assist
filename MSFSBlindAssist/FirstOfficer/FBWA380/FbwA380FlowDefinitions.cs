@@ -146,9 +146,11 @@ public static class FbwA380FlowDefinitions
             Done(Multi("CP_HOTAIR", "Hot air: ON",
                 ("A32NX_OVHD_COND_HOT_AIR_1_PB_IS_ON", 1), ("A32NX_OVHD_COND_HOT_AIR_2_PB_IS_ON", 1)), "CP_HOTAIR"),
             Captain("CP_AIRTEMP", "Cabin temperature: set as required"),
-            // EFIS-CP hPa/inHg selector since FBW #10855: 1 = inHg, so hectopascals is 0.
-            Done(Multi("CP_BARO", "Baro reference: hectopascals",
-                ("A32NX_FCU_EFIS_L_BARO_IS_INHG", 0), ("A32NX_FCU_EFIS_R_BARO_IS_INHG", 0)), "CP_BARO"),
+            // The EFIS-CP hPa/inHg selectors, PER BUILD (A380BuildNames): FS2020 the one selector
+            // variable both sides read (1 = hPa), FS2024 A32NX_FCU_EFIS_{L,R}_BARO_IS_INHG (1 = inHg).
+            // The executor's own key; the definition writes only a selector not already at hPa.
+            Done(Skip(SW("CP_BARO", "Baro reference: hectopascals", FbwA380ActionExecutor.BaroUnitHectopascalsKey, 1),
+                s => s.IsOn(FbwA380StateEvaluator.BaroUnitHectopascalsField)), "CP_BARO"),
             Captain("CP_ALTIMETERS", "Altimeters: set QNH"),
             Done(Skip(SW("CP_ANTISKID", "Anti-skid: ON", "ANTISKID_BRAKES_ACTIVE", 1), s => s.IsOn("ANTISKID_BRAKES_ACTIVE")),
                 "CP_ANTISKID"),
@@ -163,9 +165,11 @@ public static class FbwA380FlowDefinitions
                 "CP_EFISMODE"),
             Done(Multi("CP_EFISRANGE", "EFIS range: 40", ("A32NX_EFIS_L_ND_RANGE", 3), ("A32NX_EFIS_R_ND_RANGE", 3)),
                 "CP_EFISRANGE"),
-            // One FCU pushbutton since FBW #10855 — see A380FlightDirector. A toggle, so skip it when lit.
-            Done(Skip(SW("CP_FD", "Flight directors: ON", A380FlightDirector.StateKey, 1),
-                s => s.IsOn(A380FlightDirector.StateKey)), "CP_FD"),
+            // PER BUILD (A380BuildNames): FS2020 two per-side flight directors (TOGGLE_FLIGHT_DIRECTOR 1/2),
+            // FS2024 ONE FCU pushbutton (A380FlightDirector). Toggles, so skipped when on, and the
+            // definition presses only a definite mismatch: an unread state is refused, never guessed.
+            Done(Skip(SW("CP_FD", "Flight directors: ON", FbwA380ActionExecutor.FlightDirectorsKey, 1),
+                s => s.IsOn(FbwA380StateEvaluator.FlightDirectorsOnField)), "CP_FD"),
             Captain("CP_CLOCK", "Clock: reset"),
             // ECAM SD page selection — real ECP write (A32NX_ECAM_SD_CURRENT_PAGE_INDEX:
             // door=5, APU=1, engine=0, F/Ctl=11). Selecting a manual page overrides the

@@ -32,13 +32,29 @@ internal sealed class RecordingA380Definition : FlyByWireA380Definition
         return true;
     }
 
+    private readonly List<string> _calculatorCode = new();
+
+    /// <summary>Every calculator string the First Officer's per-build writes sent
+    /// (FlyByWireA380Definition.SendFirstOfficerCalculatorCode), in order, without the unique prefix.</summary>
+    public string[] CalculatorCode
+    {
+        get { lock (_gate) return _calculatorCode.ToArray(); }
+    }
+
+    internal override void SendFirstOfficerCalculatorCode(SimConnectManager sc, string rpn)
+    {
+        lock (_gate) _calculatorCode.Add(rpn);
+    }
+
     /// <summary>An executor whose writes land here. It reads as connected (its sim is a manager that never
     /// opened a handle), so its dispatch runs, and this definition records each write instead of sending
     /// it.</summary>
-    public FbwA380ActionExecutor Executor()
+    public FbwA380ActionExecutor Executor(string simulator = "FS2024", params (string Key, double Value)[] seed)
     {
         var executor = new FbwA380ActionExecutor();
-        executor.SetSimConnect(SeededSimConnectCache.ConnectedWith());
+        // The simulator whose FlyByWire build the writes go to (A380BuildNames): FS2024 unless a test
+        // says otherwise; the seed is what the definition reads before a per-build write.
+        executor.SetSimConnect(SeededSimConnectCache.ConnectedWith(seed).On(simulator));
         executor.SetDefinition(this);
         executor.SetAnnouncer(new GatedSpeechCapture());
         return executor;

@@ -3740,6 +3740,18 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             ExcludeFromMonitorManager = true,
             Units = "number"
         },
+        // The same read on the MSFS 2020 build (fs2020-master predates #10700, so the ECP keys set
+        // A32NX_ECAM_SD_CURRENT_PAGE_INDEX and the SD shows it; A32NX_ECAM_SD_PAGE_TO_DISPLAY does not
+        // exist there). The First Officer picks the build's key (FbwA320ActionExecutor.SdPageShownVarFor).
+        [MSFSBlindAssist.FirstOfficer.FBWA320.FbwA320ActionExecutor.Fs2020SdPageShownKey] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_ECAM_SD_CURRENT_PAGE_INDEX",
+            DisplayName = "System Display Page Shown (MSFS 2020 build)",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ExcludeFromMonitorManager = true,
+            Units = "number"
+        },
         // Approach minimums (CORRECTED 2026-07, mirrors the A380 fix): read the
         // PLAIN-feet L:vars the MCDU PERF APPR page writes directly
         // (A32NX_FMCMainDisplay.ts:5585/5591 — the same vars the ISIS reads), NOT the
@@ -4877,6 +4889,18 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             Name = "A32NX_FM_LANDING_CONF3",
             DisplayName = "Landing CONF 3 Selected",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ExcludeFromMonitorManager = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "CONF FULL", [1] = "CONF 3" }
+        },
+        // The MSFS 2020 build (fs2020-master 2020.16.0) predates #10890 and still writes the old name
+        // (MCDU/mcdu.js); the A32NX_FM_ one does not exist there. Both are registered; the First
+        // Officer reads the running build's (FbwA320StateEvaluator.LandingConf3VarFor).
+        ["A32NX_SPEEDS_LANDING_CONF3"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_SPEEDS_LANDING_CONF3",
+            DisplayName = "Landing CONF 3 Selected (MSFS 2020 build)",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ExcludeFromMonitorManager = true,

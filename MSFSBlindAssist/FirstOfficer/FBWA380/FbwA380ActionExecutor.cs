@@ -5,6 +5,7 @@ using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.FirstOfficer.Models;
 using MSFSBlindAssist.SimConnect;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.FirstOfficer.FBWA380;
 
@@ -31,7 +32,18 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
     private const string EvtAltPush = "A32NX.FCU_ALT_PUSH";
     private const string EvtAp1Push = "A32NX.FCU_AP_1_PUSH";
 
-    /// <summary>Every dotted FBW input event this executor can fire.</summary>
+    /// <summary>The executor's own name for both flight directors (FlyByWireA380Definition.
+    /// SetFlightDirectorsForFo resolves it per build; target 1 = on, 0 = off).</summary>
+    public const string FlightDirectorsKey = "FLIGHT_DIRECTORS";
+
+    /// <summary>The executor's own name for "every baro-unit selector to hectopascals"
+    /// (FlyByWireA380Definition.SetBaroUnitHectopascalsForFo resolves it per build).</summary>
+    public const string BaroUnitHectopascalsKey = "BARO_UNIT_HPA";
+
+    /// <summary>Every dotted FBW input event this executor fires through FireFCUButton, the same on
+    /// both builds (each is in both installed fbw.wasm builds). The flight directors' presses go
+    /// through the definition's calculator path instead, as the definition's own FD combo does
+    /// (FlyByWireA380Definition.SetFlightDirectorsForFo, A380BuildNames).</summary>
     public static readonly string[] FiredEventNames =
         { EvtSpdPush, EvtHdgPush, EvtAltPush, EvtAp1Push };
 
@@ -123,6 +135,9 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
             "FCU_PUSH_HEADING"=> FireFcu(EvtHdgPush),
             "FCU_PUSH_ALT"    => FireFcu(EvtAltPush),
             "AP1_ENGAGE"      => FireFcu(EvtAp1Push),
+            FlightDirectorsKey      => Accepted(name, _def!.SetFlightDirectorsForFo((target ?? 1) > 0, _sc!)),
+            BaroUnitHectopascalsKey => Accepted(name, _def!.SetBaroUnitHectopascalsForFo(_sc!)),
+            _ when A380BuildNames.IsNdKnobKey(name) => FireNdKnob(name, target ?? 0),
             _                 => ApplySilent(name, target ?? 1),
         };
         _lastWriteUtc = DateTime.UtcNow;
@@ -155,14 +170,52 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
 
     private bool FireBaro(bool std)
     {
-        // Both sides via the def's verified baro branch. #10855 deleted MsfsBaroManager and with
-        // it H:A380X_EFIS_CP_BARO_{PUSH,PULL}_{1,2}; the branch now fires the FCU computer's
-        // A32NX.FCU_EFIS_{L,R}_BARO_{PUSH,PULL} K-events instead. These var keys are unchanged,
-        // so routing this through ApplyUIVariable keeps the FO on whatever the def has verified.
-        // A380 polarity is PUSH = STD (the opposite of the A320) — see BaroModeEvent.
-        bool ok = ApplySilent("A32NX_FCU_LEFT_EIS_BARO_IS_STD", std ? 1 : 0);
-        ok &= ApplySilent("A32NX_FCU_RIGHT_EIS_BARO_IS_STD", std ? 1 : 0);
-        return ok;
+        // PER BUILD (A380BuildNames); A380 polarity is PUSH = STD on both (the opposite of the A320).
+        switch (FbwSimBuilds.From(_sc))
+        {
+            case FbwSimBuild.Fs2024:
+            {
+                // Both sides via the def's verified baro branch: FBW #10855 deleted MsfsBaroManager and
+                // with it H:A380X_EFIS_CP_BARO_{PUSH,PULL}_{1,2}; the branch fires the FCU computer's
+                // A32NX.FCU_EFIS_{L,R}_BARO_{PUSH,PULL} instead — see BaroModeEvent.
+                bool ok = ApplySilent(A380BuildNames.Fs2024BaroStdCaptKey, std ? 1 : 0);
+                ok &= ApplySilent(A380BuildNames.Fs2024BaroStdFoKey, std ? 1 : 0);
+                return ok;
+            }
+            case FbwSimBuild.Fs2020:
+                // The MSFS 2020 build predates #10855: its FCU still takes the H-events.
+                _def!.SetBaroStandardFs2020ForFo(std, _sc!);
+                return true;
+            default:
+                Log.Warn("fo_a380", $"Baro {(std ? "STD" : "QNH")}: simulator build unknown; nothing pressed");
+                return false;
+        }
+    }
+
+    // ND MODE / RANGE, per build: FS2020 the knob's own L:var, FS2024 the definition's FCU SET
+    // (A380NdKnobSelection); an unknown build writes nothing — on the wrong build either is dead.
+    private bool FireNdKnob(string varKey, int value)
+    {
+        switch (FbwSimBuilds.From(_sc))
+        {
+            case FbwSimBuild.Fs2024:
+                return ApplySilent(varKey, value);
+            case FbwSimBuild.Fs2020:
+                _def!.SetNdKnobFs2020ForFo(varKey, value, _sc!);
+                return true;
+            default:
+                Log.Warn("fo_a380", $"{varKey}: simulator build unknown; nothing written");
+                return false;
+        }
+    }
+
+    // A per-build write's verdict as the step's success: a refusal is a failure the FO reports,
+    // never a silent success over a control nobody moved.
+    private static bool Accepted(string what, A380FoWrite result)
+    {
+        if (result == A380FoWrite.Unknown)
+            Log.Warn("fo_a380", $"{what}: state or simulator build unknown; nothing written");
+        return result != A380FoWrite.Unknown;
     }
 
     private bool FireFcu(string evt)
@@ -278,6 +331,8 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
     // ---- Convenience methods for the auto-manager / phase monitor ----
     public Task<bool> SetGear(bool down)       => DispatchAsync("A32NX_GEAR_HANDLE_POSITION", down ? 1 : 0);
     public Task<bool> EngageAp1()              => DispatchAsync("AP1_ENGAGE", 1);
+    /// <summary>Both baros to STD / QNH; false when refused (simulator build unknown) — the phase
+    /// monitor then asks the Captain instead of announcing a change nobody made.</summary>
     public Task<bool> SetBaroStd(bool std)     => DispatchAsync(std ? "BARO_STD" : "BARO_QNH", 1);
     public Task<bool> SetLandingLights(int on) => DispatchAsync("LIGHT_LANDING", on);
     /// <summary>Nose light 3-position selector: 0=T.O., 1=Taxi, 2=Off (the old on/off
