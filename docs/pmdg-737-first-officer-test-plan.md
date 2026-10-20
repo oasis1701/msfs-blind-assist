@@ -1335,3 +1335,19 @@ Auto). Overhead → Signs → No Smoking reads the switch.
    so please report it.
 3. **Already at Auto.** Run Preflight again with the switch at Auto: "No smoking: AUTO" is spoken
    again (the write is sent and changes nothing), with no "Skipping", and the combo still reads Auto.
+
+## Part AC — "APU: ON line" stays ticked while the APU starts (PMDG 737, 2026-10-20)
+
+Not run in the sim yet. Ticking the line by hand said "Unable to complete: APU: ON line" about 10
+seconds later while the APU started normally: the line reads the APU running (APU EGT at 100 or
+more), which comes some way into the start. The tick now waits up to 2 minutes for it, as the
+After Landing flow does. The flows themselves are unchanged.
+
+1. **After Landing, by hand.** After landing, engines running, APU OFF: in the First Officer
+   window's After Landing group, tick "APU: ON line". The APU starts as before, you never hear
+   "Unable to complete: APU: ON line", and the line stays ticked throughout. If you hear "Unable to
+   complete", note how long after the tick it came. Before Start, ticked by hand at the gate, should
+   behave the same.
+2. **A start that never runs still says so.** Tick "APU: ON line" with the APU OFF, then about 5
+   seconds later (after the START press) set Electrical → APU back to OFF. About 2 minutes after the tick you hear "Unable to
+   complete: APU: ON line", and the line unticks.
