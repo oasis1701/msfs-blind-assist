@@ -124,6 +124,9 @@ public static class PMDG737ChecklistDefinitions
             // the lights burning on their batteries, as ARMED.
             Auto("PF_EMER", "PREFLIGHT", "Emergency exit lights: ARMED", "LTS_EmerExitSelector", v => v > 0.5 && v < 1.5,
                 (e, _) => e.SetEmerExitLights(1)),
+            // COMM_NoSmokingSelector 0 OFF / 1 AUTO: the NG3 has no ON (the SDK header's 2).
+            Auto("PF_NOSMOKE", "PREFLIGHT", "No smoking: AUTO", "COMM_NoSmokingSelector", v => v > 0.5 && v < 1.5,
+                (e, _) => e.SetNoSmoking(1)),
             Auto("PF_BELTS", "PREFLIGHT", "Seatbelt signs: ON", "COMM_FastenBeltsSelector", v => v > 1.5, (e, _) => e.SetSeatBelts(2)),
             Auto("PF_WINHEAT", "PREFLIGHT", "Window heat: ON", "ICE_WindowHeatSw_0", v => v > 0.5,
                 new[] { "ICE_WindowHeatSw_1", "ICE_WindowHeatSw_2", "ICE_WindowHeatSw_3" }, (e, _) => e.SetWindowHeat(1)),

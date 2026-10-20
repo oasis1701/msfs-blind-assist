@@ -16,7 +16,7 @@ using Step = Models.FlowStep<AircraftStateEvaluator>;
 /// - Packs 0=OFF,1=AUTO,2=HIGH; Isolation valve 0=CLOSE,1=AUTO,2=OPEN.
 /// - Engine start selector 0=GRD,1=OFF,2=CONT,3=FLT; ignition 0=IGN L,1=BOTH,2=IGN R.
 /// - Fuel-control levers 1=Run, 0=Cutoff (executor converts to the directional flag).
-/// - Seatbelt/No-smoking signs 0=OFF,1=AUTO,2=ON.
+/// - Seatbelt signs 0=OFF,1=AUTO,2=ON; No smoking 0=OFF,1=AUTO (the NG3 has no ON).
 /// - Landing lights (retractable) 0=RETRACT,1=EXTEND,2=ON; Position lights 0=STEADY,1=OFF,2=STROBE&STEADY.
 /// - EFIS mode 0=APP,1=VOR,2=MAP,3=PLAN; EFIS range index 0=5,1=10,2=20,3=40,4=80…7=640 nm.
 /// - Autobrake 0=RTO,1=OFF,2=1,3=2,4=3,5=MAX; Transponder 0=STBY,3=TA,4=TA/RA.
@@ -128,6 +128,11 @@ public static class PMDG737FlowDefinitions
                 ("EVT_OH_FUEL_PUMP_1_AFT", 0), ("EVT_OH_FUEL_PUMP_2_AFT", 0),
                 ("EVT_OH_FUEL_PUMP_L_CENTER", 0), ("EVT_OH_FUEL_PUMP_R_CENTER", 0)),
             SW("PF_EMER", "Emergency exit lights: ARMED", "EVT_OH_EMER_EXIT_LIGHT_SWITCH", 1, checklistItemId: "PF_EMER"),
+            // No smoking AUTO, before the belts as on the panel (owner request, 2026-10-20). PMDG's
+            // Preflight page lists only the belts; its Before Start Checklist reads "Passenger Signs:
+            // AUTO/ON". The NG3 switch is OFF/AUTO only, set by the CDA write (P737-3), verified here.
+            SW("PF_NOSMOKE", "No smoking: AUTO", "EVT_OH_NO_SMOKING_LIGHT_SWITCH", 1,
+                "COMM_NoSmokingSelector", v => v > 0.5 && v < 1.5, "PF_NOSMOKE"),
             SW("PF_BELTS", "Seatbelt signs: ON", "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", 2, checklistItemId: "PF_BELTS"),
             Also(Multi("PF_WINHEAT", "Window heat: ON", "PF_WINHEAT",
                 ("EVT_OH_ICE_WINDOW_HEAT_1", 1), ("EVT_OH_ICE_WINDOW_HEAT_2", 1),
