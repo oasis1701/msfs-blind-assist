@@ -726,7 +726,7 @@ public class ClaudeContextBudgetTests
         ["generic dialogs and display controls that no feature's rules apply to"] = new[]
         {
             "MSFSBlindAssist/Forms/AboutForm.cs", "MSFSBlindAssist/Forms/ValueInputForm.cs",
-            "MSFSBlindAssist/Forms/HotkeyListForm.cs", "MSFSBlindAssist/Forms/ChecklistForm.cs",
+            "MSFSBlindAssist/Forms/HotkeyListForm.cs",
             "MSFSBlindAssist/Forms/DisplayList.cs", "MSFSBlindAssist/Forms/DisplayListBox.cs", "MSFSBlindAssist/Forms/DisplayText.cs",
         },
         ["shared by several aircraft or areas, and no rule names it"] = new[]
@@ -734,6 +734,7 @@ public class ClaudeContextBudgetTests
             "MSFSBlindAssist/Forms/PMDG/", "MSFSBlindAssist/Forms/CduScratchpadAnnouncer.cs", "MSFSBlindAssist/Forms/FbwEwdWindow.cs",
             "MSFSBlindAssist/Forms/NavRadiosForm.cs", "MSFSBlindAssist/Forms/FMCSettingsForm.cs",
             "MSFSBlindAssist/Services/NdWaypointReadout.cs", "MSFSBlindAssist/Services/RelativeDirection.cs",
+            "MSFSBlindAssist/Services/McduWindowRouting.cs",
             "MSFSBlindAssist/Navigation/NavigationCalculator.cs", "MSFSBlindAssist/Navigation/RunwayCenterlineTracker.cs",
         },
         ["a feature with no rules or doc of its own yet (TCAS display, SimBrief planner, waypoint tracking, "
@@ -770,13 +771,22 @@ public class ClaudeContextBudgetTests
             "BRF-6 GetAssignedStatusAsync", "SI-30 ValidateDatabaseSimulatorMatch", "MD11-23 CalcPathVerdict.PilotWarning",
             "VAT-12 HotkeyAction.ToggleVatsimAnnouncements", "WX-10 HasOwnIcingAnnouncer",
             "DCK-19 UpdateHeadingErrorWithThresholds",
+            "DA40-14 OwnerMute", "DA40-23 SetLVar", "DA40-9 _uiSetEcho", "DA40A-3 ExecuteCalculatorCodeUnique",
+            "DA40A-9 AnnounceImmediate", "DA40A-16 BaseAircraftDefinition", "DA40F-3 ExecuteCalculatorCodeUnique",
+            "DA40F-4 ExecuteCalculatorCodeUnique", "DA40G-2 ExecuteCalculatorCodeUnique",
+            "DA40A-22 RefreshControlWhenDefHandled",
+            "FOA-1 FlyByWireA320Definition.ApplyUIVariable",
+            "FOA-8 ChecklistItem.LiveValue", "FOA-9 LiveValue", "FOB-1 IsReady", "FOB-2 PmdgSpeedBrakeLever.B777",
+            "FOB-6 MOUSE_FLAG_LEFTSINGLE", "FOB-17 IFly737MAXDefinition.ApplyUIVariable",
+            "FOD-1 CowsDA40Definition.HandleUIVariableSet", "FOD-1 SetLVar", "FOD-2 ScreenReaderAnnouncer.OwnerMute",
+            "FOD-2 CowsDA40Definition.UiEchoMark", "FOD-4 NativeChecklistReader.LoadPages", "FOD-7 HeldPresses",
         },
         ["named as what never to use: the rule guards the code that must avoid it"] = new[]
         {
             "DCK-17 CalculateCrossTrackError", "EXIT-1 LastKnownPosition", "EXIT-9 Runway.Length",
             "P777-14 RequestVariable", "STR-17 Runway.StartLat", "STR-17 StartLon", "SUR-4 GetNearbyAirportICAOs",
             "SUR-24 GetTaxiPaths", "SUR-1 TaxiGraph.Build", "SI-27 TaxiGraph", "BRF-1 TaxiGuidanceManager",
-            "TKO-3 TaxiGuidanceManager",
+            "TKO-3 TaxiGuidanceManager", "FO-4 AnnounceImmediate", "FOB-2 FCTL_Speedbrake_Lever", "FOB-17 BARO_STD_Status",
         },
         ["named as the model the rule's code copies, or as a reader its change would break"] = new[]
         {
@@ -786,27 +796,35 @@ public class ClaudeContextBudgetTests
         {
             "ROL-10 ExitBearingTrue", "ROL-21 ExitBearingTrue", "ROL-28 DistanceFromThresholdFeet", "SI-7 ParkingSpot.Radius",
             "SI-13 TaxiPathStampUtc", "SIC-23 ClearanceText", "STR-6 TurnAngleDegrees", "STR-16 TurnDirection",
-            "SUR-12 TaxiNode.Type", "HLD-5 RunwayCenterline",
+            "SUR-12 TaxiNode.Type", "HLD-5 RunwayCenterline", "ROL-43 VisualGuidanceProfile", "ROL-43 FlareTriggerWheelHeightFt",
+            "FOB-3 ELEC_annunExtPowr_ON", "FOB-5 MAIN_GearLever",
+            "FOB-6 MAIN_annunSPEEDBRAKE_ARMED", "FOB-6 MAIN_annunSPEEDBRAKE_DO_NOT_ARM", "FOB-7 XPDR_ModeSel",
         },
         ["a setting the rule's code reads or writes"] = new[]
         {
             "A320-9 A32NXDisabledMonitorVariablesSet", "A320-37 A380DisabledMonitorVariablesSet",
             "MD11-18 Md11DisabledMonitorVariablesSet", "AI-4 UserSettings.GeminiModel", "MON-3 SettingsManager.Save",
+            "DA40A-11 DA40DisabledMonitorVariablesSet",
+            "FOB-9 FOGpws737LongTest",
         },
         ["a SimVarDefinition field the aircraft definitions set: the rule loads on the definitions"] = new[]
         {
             "A320-10 SimVarDefinition.IsNotSet", "A380-2 RenderAsButton", "A380-10 RenderAsButton",
             "A380F-12 ExcludeFromBatch", "ARINC-2 ValueDescriptions", "MD11-11 ExcludeFromMonitorManager",
             "MD11-22 SimVarDefinition.ValueToDescriptionKey",
+            "DA40-7 HelpText", "DA40-9 IsAnnounced", "DA40-23 SimVarType.LVar", "DA40S-3 SimVarDefinition.Scale",
+            "DA40S-6 HelpText", "DA40S-6 RenderAsSlider",
+            "FOA-6 IsAnnounced",
         },
         ["a MainForm field declared in MainForm.cs and used by the partial the rule loads on"] = new[]
         {
             "DCK-15 tcasForm", "SIR-7 _lastOnGround",
         },
-        ["the same name, other code: the rule means a framework method, an enum value or a record parameter the "
-            + "declaration index does not see"] = new[]
+        ["the same name, other code: the rule means a framework method, an enum value, a record parameter or a folder "
+            + "the declaration index does not see"] = new[]
         {
             "A380C-3 SendAsync", "TRF-3 IdentityKey", "HLD-11 HoldShort", "SUR-22 HoldShort",
+            "FOA-1 FirstOfficer", "FOA-3 FirstOfficer",
         },
     };
 

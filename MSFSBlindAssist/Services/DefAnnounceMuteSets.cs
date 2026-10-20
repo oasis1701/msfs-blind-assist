@@ -21,10 +21,12 @@ namespace MSFSBlindAssist.Services;
 /// (its deferred off-sweep runs outside and checks the list itself);</item>
 /// <item>the PMDGs — the base class's trim callout, the 737's Stab Trim row and ~40 777 callouts;</item>
 /// <item>the MD-11 — its composed flap read-out and every lamp;</item>
+/// <item>the COWS DA40 (NG and XLS) — automixture, doors, magnetos, lamps, the fuel valve and more;</item>
 /// <item>the FBW A380 — its baro value, STD and unit call-outs, the approach capability and more.
 /// It was the one left out until 2026-09-25 and relied on each branch checking
 /// <c>A380DisabledMonitorVariablesSet</c> itself; the baro branches never did, so their rows muted
 /// nothing. The branches that check locally are unaffected.</item>
+/// <item>the Cessna 172 G1000: its low fuel, oil pressure, vacuum and RPM warnings, and the audio panel keys.</item>
 /// </list>
 /// The Fenix announces on the generic path, where its own gate lives, so it is not wrapped. Anything
 /// a definition speaks from a TIMER or a batch hook runs outside this wrap and must still check its
@@ -47,6 +49,8 @@ public static class DefAnnounceMuteSets
         "TFDI_MD11" => settings.Md11DisabledMonitorVariablesSet,
         "FBW_A380" => settings.A380DisabledMonitorVariablesSet,
         _ when aircraftCode.StartsWith("PMDG_", StringComparison.Ordinal) => settings.PMDGDisabledMonitorVariablesSet,
+        _ when aircraftCode.StartsWith("COWS_DA40", StringComparison.Ordinal) => settings.DA40DisabledMonitorVariablesSet,
+        _ when aircraftCode.StartsWith("C172_", StringComparison.Ordinal) => settings.C172DisabledMonitorVariablesSet,
         _ => null,
     };
 

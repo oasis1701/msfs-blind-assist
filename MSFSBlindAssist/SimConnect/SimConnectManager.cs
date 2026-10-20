@@ -118,6 +118,30 @@ public partial class SimConnectManager
     public event EventHandler<WindData>? WindReceived;
     public event EventHandler<AmbientWeatherData>? WeatherDataReceived;
     public event EventHandler<NavRadioData>? NavRadioReceived;
+
+    /// <summary>
+    /// The active flight plan's TO-waypoint, once a second, for every aircraft whose GPS
+    /// drives the stock GPS SimVars. Raised on each delivery, changed or not; the SEQUENCING
+    /// decision is made by <see cref="Services.GpsWaypointSequencer"/>, never here.
+    /// </summary>
+    public event EventHandler<GpsWaypointData>? GpsWaypointReceived;
+
+    /// <summary>
+    /// The last GPS waypoint frame delivered, or null before the first one. Read by the
+    /// on-demand readout hotkey — NEVER re-requested: this def carries a standing
+    /// PERIOD.SECOND subscription, and re-issuing its id with PERIOD.ONCE would REPLACE that
+    /// subscription with nothing to re-arm it (the same trap that froze the A380's
+    /// A32NX_FCU_ALT_MANAGED derivation the moment its panel was opened).
+    /// </summary>
+    public GpsWaypointData? LastGpsWaypoint { get; private set; }
+
+    /// <summary>
+    /// Attitude, once a second, for the unusual-attitude alert. Universal: every aircraft has
+    /// an attitude and every pilot can lose track of it.
+    /// </summary>
+    public event EventHandler<FlightAttitudeData>? FlightAttitudeReceived;
+
+    internal void SetLastGpsWaypoint(GpsWaypointData data) => LastGpsWaypoint = data;
     public event EventHandler<Com1RadioData>? Com1RadioReceived;
     public event EventHandler<TakeoffRunwayReferenceEventArgs>? TakeoffRunwayReferenceSet;
     // High-rate (SIM_FRAME) consolidated frame for the manual-landing flare/rollout
@@ -514,6 +538,20 @@ public partial class SimConnectManager
         // IS SLEW ACTIVE and SIMULATION RATE, SIM_FRAME + CHANGED (SimConnectManager.SimState.cs).
         REQUEST_SLEW_STATE = 350,
         REQUEST_SIM_RATE = 351,
+        REQUEST_GPS_WAYPOINT = 352,   // NOT 341-351: 341-348 are the camera read's rotating ids, 349 is COM 1, 350/351 the sim state
+        REQUEST_FLIGHT_ATTITUDE = 353,
+        // FO background data requests — NOT announced by HandleSpecialAnnouncements
+        REQUEST_FO_ALTITUDE_AGL  = 380,
+        REQUEST_FO_AIRSPEED_IAS  = 381,
+        REQUEST_FO_ENG1_N2       = 382,
+        REQUEST_FO_ENG2_N2       = 383,
+        REQUEST_FO_CENTER_FUEL_LBS = 384,
+        // PMDG 777 FO only: the three stock gear-leg positions in one definition (Pmdg777GearConfirmation).
+        REQUEST_FO_GEAR_POSITIONS  = 385,
+        // Engine 3 N2 (RequestFOEngineN2): asked for every aircraft, read only by three-engine FO profiles (the MD-11).
+        REQUEST_FO_ENG3_N2       = 386,
+        // The stock GEAR HANDLE POSITION for the universal auto-gear (RequestFOGearHandle).
+        REQUEST_FO_GEAR_HANDLE   = 387,
         REQUEST_AI_TRAFFIC = 500,
         // The ground-traffic monitor's own by-type sweeps (same DEF_AI_TRAFFIC definition, a small
         // radius), on their OWN ids so a completion can never be confused with a TCAS or other
@@ -599,6 +637,17 @@ public partial class SimConnectManager
         DEF_COM1_RADIO = 349,
         DEF_SLEW_STATE = 350,
         DEF_SIM_RATE = 351,
+        DEF_GPS_WAYPOINT = 352,   // NOT 341-351: 341-348 are the camera read's rotating ids, 349 is COM 1, 350/351 the sim state
+        DEF_FLIGHT_ATTITUDE = 353,
+        // FO background data definitions — paired with REQUEST_FO_* IDs, NOT announced
+        DEF_FO_ALTITUDE_AGL = 380,
+        DEF_FO_AIRSPEED_IAS = 381,
+        DEF_FO_ENG1_N2 = 382,
+        DEF_FO_ENG2_N2 = 383,
+        DEF_FO_CENTER_FUEL_LBS = 384,
+        DEF_FO_GEAR_POSITIONS = 385,
+        DEF_FO_ENG3_N2 = 386,
+        DEF_FO_GEAR_HANDLE = 387,
         DEF_AI_TRAFFIC = 500,
         // KEEP 600-607 FREE: the ground-traffic sweeps' rotating request ids (DATA_REQUESTS
         // .REQUEST_GROUND_TRAFFIC), and this enum is a request-id namespace too.
@@ -770,7 +819,8 @@ public partial class SimConnectManager
         public double HeadingMagnetic;      // degrees (requested in degrees, unlike TakeoffAssistData)
         public double MagneticVariation;    // degrees, East positive
         public double GroundSpeedKnots;
-        public double VerticalSpeedFPM;
+        public double VerticalSpeedFPM;     // VELOCITY WORLD Y in fpm: the TRUE vertical velocity, + up.
+                                            // Never VERTICAL SPEED, the indicated (VSI-filtered) figure.
         public double AGL;                  // PLANE ALT ABOVE GROUND — aircraft DATUM height, feet.
                                             // Subtract the aircraft's FlareAltitudeBiasFt for gear height.
         public double PitchRadians;         // body axis: negative = nose up (SimConnect convention)
@@ -813,6 +863,70 @@ public partial class SimConnectManager
         public double WindDirection;   // AMBIENT WIND DIRECTION, degrees
         public double WindSpeed;       // AMBIENT WIND VELOCITY, knots
         public double StructuralIcePct; // STRUCTURAL ICE PCT, ratio 0..1 ("percent over 100")
+    }
+
+    /// <summary>
+    /// Bank, pitch and air/ground, once a second, for <see cref="Services.UnusualAttitudeMonitor"/>.
+    ///
+    /// ⚠️ THIS EXISTS AS ITS OWN DEFINITION BECAUSE THE OBVIOUS SOURCE IS NOT USABLE.
+    /// <c>BaseAircraftDefinition</c> already carries PLANE_BANK_DEGREES, but it is OnRequest —
+    /// polled only while hand fly mode is running — so an alert built on it would be silent
+    /// exactly when a pilot is NOT already flying manually and watching. It is also declared in
+    /// RADIANS ("Note: Despite name, returns radians!"), which is the kind of detail that turns
+    /// a 65-degree bank into a 1.1 and an alert into silence.
+    ///
+    /// Asking for Degrees here lets SimConnect do that conversion once, at the boundary.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct FlightAttitudeData
+    {
+        /// <summary>⚠️ LEFT-POSITIVE. A right bank is negative. See UnusualAttitudeMonitor.</summary>
+        public double BankDegrees;
+        /// <summary>⚠️ NOSE-UP NEGATIVE (body axis). See UnusualAttitudeMonitor.EvaluateSim.</summary>
+        public double PitchDegrees;
+        public double OnGround;
+    }
+
+    /// <summary>
+    /// The active flight plan's TO-waypoint, straight off the stock GPS SimVars.
+    ///
+    /// ⚠️ These are not "the SDK's GPS variables" in the abstract — they are what the aircraft's
+    /// own navigator WRITES. Read live out of the Working Title G1000's `GpsSynchronizer` on the
+    /// DA40: `onWaypointIndexChanged` sets GPS WP NEXT ID to the ACTIVE LATERAL LEG's name,
+    /// `onIsPrevLegChanged` sets GPS WP PREV ID to the leg BEFORE it, and `onLnavDistanceChanged`
+    /// sets distance and ETE. So PREV ID is precisely "the waypoint just passed" — the aeroplane
+    /// answering the question rather than this app inferring it from a value that changed.
+    ///
+    /// ⚠️ GPS WP BEARING is written in RADIANS; the request below asks for degrees and lets
+    /// SimConnect convert. ⚠️ GPS FLIGHT PLAN WP COUNT is deliberately absent: the G1000's write
+    /// of it is COMMENTED OUT in the shipping build, so it reads 0 with a plan loaded and would
+    /// look like "no flight plan" to anything trusting it.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct GpsWaypointData
+    {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+        public string NextId;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+        public string PrevId;
+        public double DistanceMeters;
+        public double BearingDegrees;
+        public double EteSeconds;
+        public double IsActiveFlightPlan;
+        public double IsDirectTo;
+        public double PrevValid;
+        /// <summary>
+        /// Time to the DESTINATION (the whole route), not to the next waypoint - the plain
+        /// `GPS ETE`, distinct from `GPS WP ETE` above.
+        ///
+        /// ⚠️ ROUTE DISTANCE TO THE DESTINATION IS NEVER PUBLISHED AS A SIMVAR AT ALL. The
+        /// G1000's `onLnavDistanceToDestinationChanged` RECEIVES the distance and writes only
+        /// ETE and ETA from it — read out of the running instrument. But its formula is
+        /// `ete = 3600 * distance / groundSpeed`, so the distance is recoverable exactly by
+        /// inverting it, which is why ground speed rides along in this struct.
+        /// </summary>
+        public double RouteEteSeconds;
+        public double GroundSpeedKnots;
     }
 
     /// <summary>COM 1 as the sim holds it, in Hz (DEF_COM1_RADIO; order is the contract).</summary>
@@ -1016,6 +1130,25 @@ public partial class SimConnectManager
     public struct SingleValue
     {
         public double value;
+    }
+
+    /// <summary>Two doubles read in one data definition (e.g. the FO center-fuel request's
+    /// tank gallons + fuel weight per gallon, multiplied at dispatch into pounds).</summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct DoubleValuePair
+    {
+        public double value1;
+        public double value2;
+    }
+
+    /// <summary>Three doubles read in one data definition (the FO gear request's left, center
+    /// and right gear-leg positions).</summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct DoubleValueTriple
+    {
+        public double value1;
+        public double value2;
+        public double value3;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -1392,7 +1525,12 @@ public partial class SimConnectManager
         eventIds.Clear();
         // The Frame subscription died with the handle; the consumer count survives so a reconnect re-arms it.
         _frameEventSubscribed = false;
+        // So did the input-event subscriptions; the next connection's catalog re-subscribes.
+        _inputEventSubscriptions.Clear();
+        _inputEventReadRequests.Clear();
         lock (forceUpdateVariables) { forceUpdateVariables.Clear(); }
+        // A cache-only poll the dead connection never answered must not suppress a delivery on the next.
+        _cacheOnlyPolls.Clear();
         _freshReads.FailAll();
         FailCameraViewRead();
         ecamStringData.Clear();

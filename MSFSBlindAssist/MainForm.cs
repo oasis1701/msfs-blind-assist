@@ -83,8 +83,6 @@ public partial class MainForm : Form
     private readonly Services.Geography.OfflineLocationService offlineLocationService =
         new(Services.Geography.LocationDataStore.Default);
 
-    private ChecklistForm? checklistForm;
-
     private FenixMonitorManagerForm? fenixMonitorManagerForm;
 
     private Forms.FBWA380.FBWA380MonitorManagerForm? fbwA380MonitorManagerForm;
@@ -92,6 +90,7 @@ public partial class MainForm : Form
     private Forms.FlyByWireA320.FlyByWireA320MonitorManagerForm? fbwA320MonitorManagerForm;
 
     private Forms.HS787.HS787MonitorManagerForm? hs787MonitorManagerForm;
+    private Forms.DA40.CowsDA40MonitorManagerForm? cowsDA40MonitorManagerForm;
 
     private PMDGAnnouncementMonitorForm? pmdgAnnouncementMonitorForm;
 
@@ -108,6 +107,10 @@ public partial class MainForm : Form
     private MSFSBlindAssist.Services.FlyByWireMCDUService? flyByWireMCDUService;
 
     private System.Windows.Forms.Form? pmdgCDUForm;
+    /// <summary>The current aircraft's First Officer window (Shift+C, File → First Officer).
+    /// Built only by <see cref="Forms.FirstOfficer.FirstOfficerWindows.Create"/> (FO-24) and
+    /// disposed on every aircraft swap, so it always belongs to the loaded aircraft.</summary>
+    private Forms.FirstOfficer.IFirstOfficerWindow? firstOfficerForm;
 
     private Forms.FBWA380.FBWA380MCDUForm? fbwA380MCDUForm;
 
@@ -194,6 +197,9 @@ public partial class MainForm : Form
     private Forms.MD11.Md11MonitorManagerForm? md11MonitorManagerForm;
 
     private Forms.IFly737.IFly737MonitorManagerForm? iflyMonitorManagerForm;
+
+    // Cessna 172 monitor manager (Ctrl+M).
+    private Forms.C172.CessnaC172MonitorManagerForm? c172MonitorManagerForm;
 
     private TakeoffAssistManager takeoffAssistManager = null!;
 
@@ -413,6 +419,14 @@ public partial class MainForm : Form
 
     private readonly MSFSBlindAssist.Services.IceAccretionTracker _iceAccretionTracker = new();
 
+    /// <summary>
+    /// ⚠️ THE ALERT THAT DID NOT EXIST WHEN AN AEROPLANE WAS LOST TO A SPIRAL DIVE. Every
+    /// attitude channel in this app is a QUERY - the hand fly bank tone, the B readout - and a
+    /// query is useless for the attitude nobody noticed. State is carried here rather than in
+    /// the monitor so the monitor stays pure and testable.
+    /// </summary>
+    private MSFSBlindAssist.Services.UnusualAttitudeMonitor.State _attitudeState;
+
     private double _prevVisibility = -1;      // meters; -1 = uninitialized
 
     private bool _prevVisLow = false;         // was visibility below 1500m last check
@@ -470,6 +484,10 @@ public partial class MainForm : Form
     private bool _buildingPanel = false;
 
     private Dictionary<string, double> displayValues = new Dictionary<string, double>();  // Store display values
+
+    // The status list's GotFocus repaints from the cache and refreshes (SIM-23). This tells it
+    // the repaint was just done: Ctrl+3 repaints BEFORE focusing, so NVDA's first read is current.
+    private bool _displayListPaintedForFocus;
 
     private ConcurrentDictionary<string, bool> pendingStateAnnouncements = new ConcurrentDictionary<string, bool>();  // Track state announcement requests
 
@@ -540,6 +558,34 @@ public partial class MainForm : Form
         // countdown, so start it here.
         if (currentAircraft?.AircraftCode == "HS_787")
             StartHS787IrsMonitor();
+
+        // ⚠️ THE DA40's CAS WATCHER HAD TO BE HERE TOO, and its absence is why cautions
+        // never auto-announced. SwitchAircraft starts it — but SwitchAircraft runs ONLY
+        // when the pilot picks an aircraft from the menu. The startup path sets
+        // currentAircraft directly from the saved setting (see the constructor), so a
+        // session that opens with the DA40 already selected — which is every session for a
+        // DA40 pilot — never called it. Measured from the log: the aircraft registered, the
+        // display window worked, and "CAS monitor: started" was never written once.
+        //
+        // The A380 and HS787 monitors two blocks up exist for exactly this reason. This is
+        // the third, and the pattern is now: a background monitor must be started in BOTH
+        // places or it does not run for the aircraft the app opens with. Every G1000 aircraft
+        // has one (the DA40 and the Cessna 172, G1000CasWatcher).
+        // The waypoint-passing call too (G1000Waypoints), which every G1000 aircraft has.
+        if (currentAircraft is Aircraft.G1000.IG1000DisplayOwner g1000Cas)
+        {
+            g1000Cas.StartCasMonitor(announcer);
+            g1000Cas.AttachWaypointSequencer(simConnectManager, announcer);
+        }
+        if (currentAircraft is Aircraft.DA40.CowsDA40Definition da40Cas)
+        {
+            da40Cas.AttachLampWatch(simConnectManager);
+            da40Cas.UiEchoMark = SuppressUiEcho;
+        }
+
+        // The roll speed calls for the aircraft the app opens with (Vr on the DA40, 80 and
+        // 100 knots elsewhere) — SwitchAircraft and the Settings rebuild apply the same rule.
+        Services.TakeoffRollCallouts.Apply(takeoffAssistManager, currentAircraft);
 
         // iFly 737 MAX8: start the shared-memory SDK bridge (independent of SimConnect —
         // it works whenever the sim + iFly plugin are running). Generic announcements
@@ -712,7 +758,11 @@ public partial class MainForm : Form
         };
         simConnectManager.SimulatorVersionDetected += OnSimulatorVersionDetected;
         simConnectManager.SimVarUpdated += OnSimVarUpdated;
+        simConnectManager.FlightAttitudeReceived += OnFlightAttitude;
         simConnectManager.ContinuousBatchDelivered += OnContinuousBatchDelivered;
+
+        // The universal (all-aircraft) auto-gear/AP service and its 1 Hz feed: MainForm.UniversalAutomation.cs.
+        InitializeUniversalAutomation();
         simConnectManager.QueuedEventDispatched += OnQueuedEventDispatched;
         simConnectManager.TakeoffRunwayReferenceSet += OnTakeoffRunwayReferenceSet;
         simConnectManager.AircraftIcaoTypeDetected += OnAircraftIcaoTypeDetected;
@@ -876,7 +926,7 @@ public partial class MainForm : Form
         // ProcessSlowSample gate). Delegates read live state so aircraft swaps and
         // guidance-mode changes after arming are always honored.
         flareAssistManager = new LandingFlareAssistManager(announcer,
-            () => currentAircraft?.GetVisualGuidanceProfile()?.FlareAltitudeBiasFt ?? 12.0,
+            () => currentAircraft?.GetVisualGuidanceProfile(),
             () => visualGuidanceManager.IsActive,
             // The rollout cue and exit guidance share the tone: no speed end during a landing rollout, and
             // silence while exit guidance owns the tone for the exit itself. One lock per frame.
@@ -1367,6 +1417,13 @@ public partial class MainForm : Form
         _warmUpAfterLoadTimer?.Stop();
         _warmUpAfterLoadTimer?.Dispose();
 
+        // The First Officer window: only an aircraft switch disposed it, so on exit its 1 s timer
+        // and a running flow kept going through Disconnect()'s DoEvents pump below, still able to
+        // speak and to send writes. Its Dispose cancels the flow and detaches the executor.
+        firstOfficerForm?.Dispose(); firstOfficerForm = null;
+
+        DisposeUniversalAutomation();
+
         // Clean up taxi guidance, docking guidance, and ground traffic monitor
         taxiGuidanceManager?.Dispose();
         dockingGuidanceManager?.Dispose();
@@ -1433,6 +1490,10 @@ public partial class MainForm : Form
         md11MonitorManagerForm = null;
         coherentMd11Efb?.Dispose();
 
+        // The Cessna 172 monitor manager, disposed on exit as on a swap (MainForm.AircraftSwitch.cs).
+        if (c172MonitorManagerForm != null && !c172MonitorManagerForm.IsDisposed) c172MonitorManagerForm.Dispose();
+        c172MonitorManagerForm = null;
+
         // Clean up 787 forms + the IRS / CAS Coherent clients
         hs787FMCForm?.Dispose();
         hs787IrsClient?.Dispose();
@@ -1457,6 +1518,12 @@ public partial class MainForm : Form
         (currentAircraft as FlyByWireA380Definition)?.StopAllMotion();
         (currentAircraft as FlyByWireA320Definition)?.StopAllMotion();
         currentAircraft?.CancelDeferredFlush();
+        // The swap path's two other def hooks, which a quit never ran: the def's own timers that can
+        // still speak (OnSwitchedAway: the PMDG speed-brake settle call-out), and a held 737 warning
+        // test (stick shaker or overspeed clacker), released while the sim is still connected, or it
+        // kept sounding after MSFSBA had closed ([P737-6]).
+        (currentAircraft as BaseAircraftDefinition)?.OnSwitchedAway();
+        (currentAircraft as PMDG737Definition)?.ReleaseEngagedWarningTests(simConnectManager);
 
         // The MD-11 def owns the CEVENT pump and, during a hold-to-test's 3 s, a button the sim
         // still has pressed. Dispose it here — BEFORE Disconnect() — so its Dispose (which queues

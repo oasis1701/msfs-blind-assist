@@ -22,6 +22,7 @@ Chapter 4 of 4 in [Appendices](index.md#appendices) of the MSFS Blind Assist use
 - [HorizonSim 787-9](#hk-hs787)
 - [iFly 737 MAX8](#hk-ifly)
 - [TFDi MD-11](#hk-md11)
+- [COWS Diamond DA40](#hk-da40)
 
 </nav>
 
@@ -136,7 +137,7 @@ What each one includes (per tank, centre of gravity) depends on the aircraft; se
 
 - **Output Shift+E** — Open [the Flight Planning window](planning-your-flight.md#flight-planning-efb): route viewer, procedures and airport lookup.
 - **Output Shift+B** — Open the [SimBrief](planning-your-flight.md#simbrief) briefing.
-- **Output Shift+C** — Open this aircraft's text [checklist](planning-your-flight.md#checklists). Not on: PMDG 737, PMDG 777, HorizonSim 787, MD-11 (you hear *"No checklist for this aircraft."*).
+- **Output Shift+C** — Open this aircraft's [First Officer](planning-your-flight.md#checklists): its flows and checklists. Not on: HorizonSim 787 (you hear *"No checklist for this aircraft."*).
 - **Output Ctrl+M** — Open this aircraft's [Monitor Manager](core-concepts.md#monitor-manager), to mute any automatic announcement.
 
 ### Output: AI and display reading {#output-ai-and-display-reading}
@@ -531,6 +532,50 @@ The MD-11 has no EXEC, DEL or PREV PAGE key, like the real aircraft.
 - **Output D, Shift+D, Shift+3 to Shift+6, Ctrl+W, Ctrl+0, Ctrl+E** do nothing. V1, VR and V2 are in the Read-outs section.
 - **Input Shift+4** and **Ctrl+4** do nothing (the vertical speed wheel is in the Ctrl+P and Ctrl+V windows).
 - **Input Shift+A, Ctrl+O, Shift+P, Ctrl+J, Ctrl+L** do nothing; use the Ctrl+P window.
+
+## COWS Diamond DA40 {#hk-da40}
+
+Full explanations: [COWS Diamond DA40](diamond-da40.md). The keys are the same on the DA40-NG and the DA40-XLS; where the answer differs, the chapter says how.
+
+### Output keys {#output-keys-da40}
+
+- **Output Alt+P** — Open the G1000 PFD window.
+- **Output Alt+M**, **Alt+N** — Open the G1000 MFD window.
+- **Output Alt+E** — Read the CAS messages showing now.
+- **Output Alt+S** — The engine at a glance, every gauge with its arc.
+- **Output Alt+I** — The standby instruments, with a caged or toppled gyro warning.
+- **Output P** — RPM. **Output E** — Power. **Output Shift+P** — Engine temperatures.
+- **Output Shift+A**, **Shift+S**, **Shift+H**, **Shift+V** — The autopilot's selected altitude, airspeed, heading bug and vertical speed.
+- **Output Shift+2** to **Shift+6** — The AFM's speeds: Shift+5 the take-off set, Shift+4 the landing set, Shift+6 the limit for the flaps you have, Shift+3 both flap limits, Shift+2 manoeuvring and never-exceed.
+- **Output Ctrl+W** — The waypoint you are flying to.
+
+B reads both altimeters, L reads UP, T/O or LDG, Shift+G says "Fixed gear", F and Shift+F read the tanks, the flow and the endurance.
+
+### Input keys {#input-keys-da40}
+
+- **Input Shift+M** — Open the G1000 MFD window (the airliners' MCDU key).
+- **Input Ctrl+P** — The autopilot buttons window.
+- **Input Ctrl+A**, **Ctrl+S**, **Ctrl+H**, **Ctrl+V** — Set the selected altitude, airspeed, heading bug or vertical speed.
+- **Input Ctrl+B** — Set both altimeters from one entry.
+- **Input Ctrl+N** — Set both NAV standby frequencies.
+
+### G1000 windows (Output Alt+P and Alt+M) {#g1000-windows-da40}
+
+- **Arrow keys** — Read; **Enter** presses the softkey on the selected row.
+- **Shift+Enter** — FMS cursor on or off.
+- **Ctrl+Left/Right** — Large FMS knob. **Ctrl+Up/Down** — Small FMS knob. **Ctrl+Enter** — ENT.
+- **Ctrl+D** Direct-To, **Ctrl+F** Flight Plan, **Ctrl+P** Procedures, **Ctrl+E** Menu, **Ctrl+L** Clear.
+- **Ctrl+G** — List every page and open one. **Ctrl+T** — Type an ident into the waypoint box.
+- **Ctrl+Shift+L** — Close a window open over the page.
+- **Ctrl+Page Up/Down** — Map range.
+- **Alt+Up/Down**, **Alt+Left/Right** — COM tuning; with **Ctrl+Alt**, NAV tuning (PFD window).
+- **Alt+Enter**, **Ctrl+Alt+Enter** — Move the COM or NAV tuning box. **Alt+Shift+Enter**, **Ctrl+Alt+Shift+Enter** — Swap COM or NAV.
+- **Ctrl+Shift+Up/Down** — Baro knob.
+
+### General keys that differ or don't work here {#general-keys-that-differ-or-don-t-work-here-da40}
+
+- There is no FCU, MCDU or autothrottle: the airliners' FCU keys answer for the GFC 700 as listed above.
+- **Output Shift+G** reads "Fixed gear".
 
 <nav class="guide-nav" aria-label="Guide chapters" markdown="1">
 

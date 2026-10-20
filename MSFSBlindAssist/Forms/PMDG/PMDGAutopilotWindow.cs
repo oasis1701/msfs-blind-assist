@@ -28,9 +28,10 @@ public record SelectorRowDef(
     char Mnemonic = '\0');
 
 /// <summary>
-/// Shared Ctrl+P autopilot engage-cluster window for the PMDG 737 and 777. Aircraft-
-/// agnostic: it owns layout, refresh and lifecycle only, and is driven entirely by the
-/// row lists it is constructed with (built per aircraft by PMDGAutopilotRowBinder).
+/// Shared Ctrl+P autopilot engage-cluster window for the PMDG 737 and 777, and the C172
+/// G1000's GFC 700 window. Aircraft-agnostic: it owns layout, refresh and lifecycle only,
+/// and is driven entirely by the row lists it is constructed with (built per aircraft by
+/// PMDGAutopilotRowBinder; the C172 builds its own, from its panel buttons).
 /// <para>
 /// No explicit announcements. The screen reader announces the click, and the label
 /// refresh means the new state reads on focus — the same contract as

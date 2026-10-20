@@ -7,7 +7,7 @@ public enum SimVarType
     SimVar,      // Standard SimVar
     HVar,        // H-variable (requires MobiFlight WASM)
     PMDGVar,     // PMDG SDK variable (read via Client Data Area)
-    InputEvent   // B: InputEvent (write via SimConnect SetInputEvent API)
+    InputEvent   // B: InputEvent: Name is the event; read by subscription (SimConnectManager.InputEventReads.cs), write via SetInputEvent
 }
 
 public enum UpdateFrequency

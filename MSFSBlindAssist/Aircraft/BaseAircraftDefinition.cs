@@ -34,6 +34,15 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// </summary>
     protected const double TrimHysteresis = 0.03;
 
+    /// <summary>
+    /// Takes <paramref name="degrees"/> as the trim position last spoken, without speaking it.
+    /// For an aircraft whose autopilot trims continuously: the motion it makes is not news,
+    /// and re-basing on it keeps the first pilot trim afterwards from reporting the
+    /// autopilot's whole travel as one step.
+    /// </summary>
+    protected void RebaseTrimAnnouncement(double degrees)
+        => _lastAnnouncedTrimKey = DescribeElevatorTrim(degrees).Key;
+
     // Glideslope alive/lost tracking
     private bool _previousGlideSlopeAlive = false;
 
@@ -583,6 +592,20 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     }
 
     /// <summary>
+    /// Whether the status-display auto-refresh pauses ENTIRELY while a combo in the panel has
+    /// focus (SIM-23). True for an aircraft that overrides <see cref="OnDisplayPanelShown"/>:
+    /// its status box is a page snapshot driven by a page combo (the A320 family's and A380's
+    /// SD page, the PMDG 777's System Display), and a refresh while the pilot arrows that combo
+    /// can fight its announcement - the case the pause was written for. Every other aircraft
+    /// keeps the list live and holds back only the focused combo's own variable.
+    /// </summary>
+    public bool StatusRefreshPausesWhileComboFocused =>
+        _statusRefreshPauses ??= GetType().GetMethod(nameof(OnDisplayPanelShown),
+            new[] { typeof(string), typeof(SimConnect.SimConnectManager) })?.DeclaringType != typeof(BaseAircraftDefinition);
+
+    private bool? _statusRefreshPauses;
+
+    /// <summary>
     /// Default: no override — the panel display uses ValueDescriptions / numeric
     /// formatting. Aircraft with ARINC429 (or otherwise non-presentable) display
     /// fields override this to return a decoded string.
@@ -820,6 +843,47 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         return false;
     }
 
+    /// <summary>
+    /// Default autopilot engage: the stock <c>AUTOPILOT_ON</c> event (idempotent in the stock
+    /// autopilot). Aircraft whose own autopilot ignores it override this: the PMDG jets press
+    /// their MCP engage switch, the FlyByWire family presses AP 1 (FO-21).
+    /// </summary>
+    public virtual void EngageAutopilot(SimConnect.SimConnectManager simConnect)
+        => simConnect.SendEvent("AUTOPILOT_ON");
+
+    /// <summary>
+    /// Default: no engage floor. Aircraft whose autopilot REFUSES to engage below a height
+    /// override this (the PMDG 737 inhibits CMD below 400 ft RA after takeoff).
+    /// </summary>
+    public virtual int MinimumAutopilotEngageAltitudeAgl => 0;
+
+    /// <summary>
+    /// Default: no readable engaged state, so the auto-engage can't be verified. Aircraft
+    /// with an engage annunciator override this (the PMDG jets read theirs from the CDA).
+    /// </summary>
+    public virtual bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect) => null;
+
+    /// <summary>Default: retry every tick (FO-18's bounded retry), for the stock <c>AUTOPILOT_ON</c>,
+    /// which is idempotent. Every aircraft whose engage is a TOGGLE read back no faster than about
+    /// once a second overrides it with <see cref="ToggleAutopilotEngageRetryIntervalMs"/> (the PMDG
+    /// jets, the iFly, the MD-11, the Fenix) or the FlyByWire family's own (FO-21).</summary>
+    public virtual int AutopilotEngageRetryIntervalMs => 0;
+
+    /// <summary>The press spacing for a toggle engage whose state is read about once a second (a PMDG
+    /// CDA snapshot, the iFly SDK snapshot, a 1 Hz L:var batch): with no spacing, a retry on the next
+    /// position answer (two a second once the First Officer window exists) read the snapshot from
+    /// before the press and pressed CMD A again, which switched it off. The FlyByWire family's 3 s.</summary>
+    protected const int ToggleAutopilotEngageRetryIntervalMs = 3000;
+
+    /// <summary>Default false: a null reading takes the open-loop press-and-announce, which only the
+    /// stock <c>AUTOPILOT_ON</c> aircraft keep. Every aircraft with a toggle engage overrides it, so its
+    /// engage waits for a definite reading (FO-21).</summary>
+    public virtual bool AutopilotEngageWaitsForState => false;
+
+    /// <summary>Default true: the aircraft has gear the universal auto-gear moves. The COWS DA40
+    /// overrides it (fixed gear the simulator reports as retractable; FO-27).</summary>
+    public virtual bool HasRetractableGear => true;
+
     // Display Monitoring Methods - Default implementations (do nothing)
     // Aircraft with ECAM/EICAS/etc. should override these methods
 
@@ -918,8 +982,6 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     public virtual bool HasOwnIcingAnnouncer => false;
 
     public virtual string? StockComTuningRefusal => null;
-
-    public virtual string? ChecklistFileName => null;
 
     // One capture at a time, app-wide — the scene description takes the same gate, because the
     // camera both of them capture is the SIMULATOR's, not this definition's. See
@@ -1104,17 +1166,30 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     // event_base + N numberings — so a surviving 777 window can actuate an arbitrary
     // wrong control on a loaded 737 (and renders the new aircraft's CDA data under the
     // old aircraft's labels). The refresh timers keep ticking too.
-    private readonly Dictionary<Type, System.Windows.Forms.Form> _trackedWindows = new();
+    private readonly Dictionary<object, System.Windows.Forms.Form> _trackedWindows = new();
 
     protected void ShowTrackedWindow<T>(Func<T> factory, Action<T> show) where T : System.Windows.Forms.Form
+        => ShowTrackedWindow(typeof(T), factory, show);
+
+    /// <summary>
+    /// Shows a tracked window under an EXPLICIT key.
+    ///
+    /// The type alone is not always the identity. The DA40 opens its PFD and its MFD
+    /// through one <c>CowsDA40DisplayForm</c> differing only in which display it is bound
+    /// to, so keyed on the type the second one re-showed the first: Alt+N after Alt+P
+    /// handed the pilot the PFD again, with the right window title and the wrong screen
+    /// behind it. Anything that opens two instances of one form must pass its own key.
+    /// </summary>
+    protected void ShowTrackedWindow<T>(object key, Func<T> factory, Action<T> show)
+        where T : System.Windows.Forms.Form
     {
-        if (_trackedWindows.TryGetValue(typeof(T), out var existing) && !existing.IsDisposed) { show((T)existing); return; }
+        if (_trackedWindows.TryGetValue(key, out var existing) && !existing.IsDisposed) { show((T)existing); return; }
         var form = factory();
-        _trackedWindows[typeof(T)] = form;
+        _trackedWindows[key] = form;
         form.FormClosed += (s, _) =>
         {
-            if (_trackedWindows.TryGetValue(typeof(T), out var cur) && ReferenceEquals(cur, s))
-                _trackedWindows.Remove(typeof(T));
+            if (_trackedWindows.TryGetValue(key, out var cur) && ReferenceEquals(cur, s))
+                _trackedWindows.Remove(key);
         };
         show(form);
     }

@@ -17,12 +17,16 @@
         private System.Windows.Forms.ToolStripMenuItem flyByWireA320MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem fenixA320MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem pmdg777MenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem firstOfficerMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem flyByWireA380MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem pmdg737MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem horizonSim787MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem headwindA330MenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem cowsDA40NGMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem cowsDA40XLSMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem ifly737MaxMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem tfdiMd11MenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem cessnaC172G1000MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem extrasMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem volantaMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem helpMenuItem = null!;
@@ -58,12 +62,16 @@
             this.flyByWireA320MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.fenixA320MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.pmdg777MenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.firstOfficerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.flyByWireA380MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.pmdg737MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.horizonSim787MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.headwindA330MenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.cowsDA40NGMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.cowsDA40XLSMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.ifly737MaxMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.tfdiMd11MenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.cessnaC172G1000MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.extrasMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.volantaMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.helpMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -97,6 +105,7 @@
             this.fileMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.databaseSettingsMenuItem,
             this.settingsMenuItem,
+            this.firstOfficerMenuItem,
             this.fmcSettingsMenuItem,
             this.hotkeyListMenuItem,
             this.simPerformanceMenuItem,
@@ -184,6 +193,18 @@
             this.aboutMenuItem.Text = "&About";
             this.aboutMenuItem.Click += new System.EventHandler(this.AboutMenuItem_Click);
             //
+            // firstOfficerMenuItem
+            //
+            // Shown only for an aircraft with a First Officer; MainForm.UpdateAircraftSpecificMenuItems()
+            // sets Visible and the AccessibleName ("Fenix A320 First Officer" ...) from
+            // FirstOfficerWindows.NameFor on every aircraft change (FO-24).
+            this.firstOfficerMenuItem.AccessibleName = "First Officer";
+            this.firstOfficerMenuItem.AccessibleDescription = "Open the First Officer checklists and flows window";
+            this.firstOfficerMenuItem.Name = "firstOfficerMenuItem";
+            this.firstOfficerMenuItem.Size = new System.Drawing.Size(280, 26);
+            this.firstOfficerMenuItem.Text = "&First Officer";
+            this.firstOfficerMenuItem.Click += new System.EventHandler(this.FirstOfficerMenuItem_Click);
+            //
             // aircraftMenuItem
             //
             this.aircraftMenuItem.AccessibleName = "Aircraft menu";
@@ -192,12 +213,15 @@
             this.flyByWireA320MenuItem,
             this.flyByWireA380MenuItem,
             this.headwindA330MenuItem,
+            this.cowsDA40NGMenuItem,
+            this.cowsDA40XLSMenuItem,
             this.fenixA320MenuItem,
             this.pmdg737MenuItem,
             this.pmdg777MenuItem,
             this.horizonSim787MenuItem,
             this.ifly737MaxMenuItem,
-            this.tfdiMd11MenuItem});
+            this.tfdiMd11MenuItem,
+            this.cessnaC172G1000MenuItem});
             this.aircraftMenuItem.Name = "aircraftMenuItem";
             this.aircraftMenuItem.Size = new System.Drawing.Size(75, 24);
             this.aircraftMenuItem.Text = "&Aircraft";
@@ -271,6 +295,26 @@
             this.headwindA330MenuItem.Text = "&Headwind Airbus A330-900neo";
             this.headwindA330MenuItem.Checked = false;
             this.headwindA330MenuItem.Click += new System.EventHandler(this.HeadwindA330MenuItem_Click);
+            // 
+            // cowsDA40NGMenuItem
+            // 
+            this.cowsDA40NGMenuItem.AccessibleName = "COWS Diamond DA40-NG";
+            this.cowsDA40NGMenuItem.AccessibleDescription = "Switch to COWS Diamond DA40-NG";
+            this.cowsDA40NGMenuItem.Name = "cowsDA40NGMenuItem";
+            this.cowsDA40NGMenuItem.Size = new System.Drawing.Size(240, 26);
+            this.cowsDA40NGMenuItem.Text = "COWS Diamond DA40-&NG";
+            this.cowsDA40NGMenuItem.Checked = false;
+            this.cowsDA40NGMenuItem.Click += new System.EventHandler(this.CowsDA40NGMenuItem_Click);
+            // 
+            // cowsDA40XLSMenuItem
+            // 
+            this.cowsDA40XLSMenuItem.AccessibleName = "COWS Diamond DA40-XLS";
+            this.cowsDA40XLSMenuItem.AccessibleDescription = "Switch to COWS Diamond DA40-XLS";
+            this.cowsDA40XLSMenuItem.Name = "cowsDA40XLSMenuItem";
+            this.cowsDA40XLSMenuItem.Size = new System.Drawing.Size(240, 26);
+            this.cowsDA40XLSMenuItem.Text = "COWS Diamond DA40-&XLS";
+            this.cowsDA40XLSMenuItem.Checked = false;
+            this.cowsDA40XLSMenuItem.Click += new System.EventHandler(this.CowsDA40XLSMenuItem_Click);
             //
             // ifly737MaxMenuItem
             //
@@ -291,6 +335,16 @@
             this.tfdiMd11MenuItem.Text = "TFDi Design &MD-11";
             this.tfdiMd11MenuItem.Checked = false;
             this.tfdiMd11MenuItem.Click += new System.EventHandler(this.TFDiMD11MenuItem_Click);
+            //
+            // cessnaC172G1000MenuItem
+            //
+            this.cessnaC172G1000MenuItem.AccessibleName = "Cessna 172 Skyhawk G1000";
+            this.cessnaC172G1000MenuItem.AccessibleDescription = "Switch to the Cessna 172 Skyhawk with the G1000 glass cockpit";
+            this.cessnaC172G1000MenuItem.Name = "cessnaC172G1000MenuItem";
+            this.cessnaC172G1000MenuItem.Size = new System.Drawing.Size(240, 26);
+            this.cessnaC172G1000MenuItem.Text = "Cessna 172 Skyhawk &G1000";
+            this.cessnaC172G1000MenuItem.Checked = false;
+            this.cessnaC172G1000MenuItem.Click += new System.EventHandler(this.CessnaC172G1000MenuItem_Click);
             //
             // extrasMenuItem
             //

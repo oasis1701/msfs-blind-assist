@@ -31,6 +31,9 @@ public partial class SimConnectManager
     internal static bool IsValueChange(double? previous, double current, SimVarDefinition? def) =>
         previous is not double last || Math.Abs(last - current) > (def?.ChangeTolerance ?? ChangeTolerance);
 
+    // Keys with a cache-only poll in flight (RequestVariableForCache); its answer is consumed here.
+    private readonly ConcurrentDictionary<string, byte> _cacheOnlyPolls = new(StringComparer.Ordinal);
+
     /// <summary>
     /// Process individual variable response from our new registration system
     /// </summary>
@@ -78,6 +81,9 @@ public partial class SimConnectManager
             {
                 isForceUpdate = forceUpdateVariables.Remove(varKey);
             }
+            // ...and whether it answers a cache-only poll (RequestVariableForCache), consumed here
+            // whatever this delivery then does.
+            bool cacheOnlyPoll = _cacheOnlyPolls.TryRemove(varKey, out _);
 
             // Check for value changes — by the variable's own tolerance when it sets one.
             double? previousValue = lastVariableValues.TryGetValue(varKey, out double cached) ? cached : null;
@@ -141,6 +147,14 @@ public partial class SimConnectManager
             // fires regardless. Non-announced variables also fire on every response.
             if (!hasChanged && varDef.IsAnnounced &&
                 varDef.UpdateFrequency == UpdateFrequency.Continuous && !isForceUpdate)
+            {
+                return;
+            }
+
+            // The answer to a cache-only poll (RequestVariableForCache): the cache above is all its
+            // caller reads, so an unchanged, unforced value fires nothing. A change still fires, so
+            // any display or handler of the var sees it as before.
+            if (cacheOnlyPoll && !hasChanged && !isForceUpdate)
             {
                 return;
             }

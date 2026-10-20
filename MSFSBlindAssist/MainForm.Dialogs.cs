@@ -278,28 +278,21 @@ public partial class MainForm
         dialog.ShowForm();
     }
 
-    private void ShowChecklistDialog()
+    private void ShowFirstOfficerFromHotkey()
     {
-        // Ensure output hotkey mode is deactivated before showing dialog
+        // Ensure output hotkey mode is deactivated before showing the window
         hotkeyManager.ExitOutputHotkeyMode();
 
-        // Shift+C opens this aircraft's static text checklist. An aircraft with none of its own
-        // opens nothing and says so: another aircraft's list must never pass for this one's.
-        // The A380's LIVE Electronic Checklist is on its own key, Ctrl+Shift+C
-        // (ShowChecklistECLDialog).
-        if (currentAircraft.ChecklistFileName is not { } checklistFileName)
+        // Shift+C opens this aircraft's First Officer window, checklists and flows (FO-24). An
+        // aircraft without one opens nothing and says so. The A380's LIVE Electronic Checklist
+        // stays on its own key, Ctrl+Shift+C (ShowChecklistECLDialog).
+        if (Forms.FirstOfficer.FirstOfficerWindows.NameFor(currentAircraft) == null)
         {
             announcer.AnnounceImmediate("No checklist for this aircraft.");
             return;
         }
 
-        if (checklistForm == null || checklistForm.IsDisposed)
-        {
-            checklistForm = new ChecklistForm(announcer, checklistFileName);
-        }
-
-        // Show the form (reuses same instance to preserve checkbox states)
-        checklistForm.ShowForm();
+        ShowFirstOfficerDialog();
     }
 
     // Ctrl+Shift+C on the A380: the LIVE Electronic Checklist (ECL) read from the
@@ -311,10 +304,10 @@ public partial class MainForm
 
         if (currentAircraft?.AircraftCode != "FBW_A380")
         {
-            // Point to Shift+C only where it opens something: on an aircraft with no checklist
-            // file it says "No checklist for this aircraft." (ShowChecklistDialog).
-            announcer.AnnounceImmediate(currentAircraft?.ChecklistFileName != null
-                ? "The live Electronic Checklist is only on the A380. Use Shift+C for the text checklist."
+            // Point to Shift+C only where it opens something: on an aircraft with no First
+            // Officer it says "No checklist for this aircraft." (ShowFirstOfficerFromHotkey).
+            announcer.AnnounceImmediate(Forms.FirstOfficer.FirstOfficerWindows.NameFor(currentAircraft) != null
+                ? "The live Electronic Checklist is only on the A380. Shift+C opens the First Officer."
                 : "The live Electronic Checklist is only on the A380.");
             return;
         }
@@ -373,6 +366,31 @@ public partial class MainForm
             hs787MonitorManagerForm = new Forms.HS787.HS787MonitorManagerForm(currentAircraft.GetVariables());
         }
         hs787MonitorManagerForm.ShowForm();
+    }
+
+    public void ShowCowsDA40MonitorManagerDialog()
+    {
+        hotkeyManager.ExitOutputHotkeyMode();
+        if (cowsDA40MonitorManagerForm == null || cowsDA40MonitorManagerForm.IsDisposed)
+        {
+            cowsDA40MonitorManagerForm = new Forms.DA40.CowsDA40MonitorManagerForm(
+                currentAircraft.GetVariables());
+        }
+        cowsDA40MonitorManagerForm.ShowForm();
+    }
+
+    /// <summary>
+    /// The Cessna 172's monitor manager (Ctrl+M), for both variants. Called from the definition, so
+    /// it carries the MD-11's aircraft guard: a call that lands after SwitchAircraft has replaced the
+    /// C172 would otherwise build a "Cessna 172" window over the new aircraft's variables.
+    /// </summary>
+    public void ShowC172MonitorManagerDialog()
+    {
+        if (currentAircraft is not CessnaC172BaseDefinition c172) return;
+        hotkeyManager.ExitOutputHotkeyMode();
+        if (c172MonitorManagerForm == null || c172MonitorManagerForm.IsDisposed)
+            c172MonitorManagerForm = new Forms.C172.CessnaC172MonitorManagerForm(c172.GetVariables());
+        c172MonitorManagerForm.ShowForm();
     }
 
     public void ShowPMDGAnnouncementMonitorDialog()
@@ -536,6 +554,19 @@ public partial class MainForm
         }
         coherentEFBClient.SetActive(true);   // covers the already-visible re-Show path (no VisibleChanged)
         fbwEfbForm.ShowForm();
+    }
+
+    private void FirstOfficerMenuItem_Click(object? sender, EventArgs e) => ShowFirstOfficerDialog();
+
+    // The current aircraft's First Officer window, built once per aircraft by FirstOfficerWindows
+    // (FO-24: never a per-aircraft field, Show method or type test here). The aircraft swap
+    // disposes it, so a reopen after a swap builds the new aircraft's window.
+    private void ShowFirstOfficerDialog()
+    {
+        if (firstOfficerForm is not { IsDisposed: false })
+            firstOfficerForm = Forms.FirstOfficer.FirstOfficerWindows.Create(
+                currentAircraft, simConnectManager, announcer, MSFSBlindAssist.Settings.SettingsManager.Current);
+        firstOfficerForm?.ShowForm();
     }
 
     // PMDG 737/777 EFB tablet over the Coherent debugger — one client + window per

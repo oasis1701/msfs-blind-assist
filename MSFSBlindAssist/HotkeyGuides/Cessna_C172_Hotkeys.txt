@@ -1,0 +1,308 @@
+CESSNA 172 SKYHAWK HOTKEY REFERENCE
+
+Covers the Cessna 172 Skyhawk G1000, which flies with the Garmin GFC 700
+built into the G1000. The C172 has no autothrottle, no airliner FCU and no
+MCDU, so those sections of the airliner guides do not apply here.
+
+Before the first flight of a session: MSFS can park the aircraft with
+its engine, pitot and static-port covers on, and the engine will not start
+with its cover in. Remove them on the Covers panel (Walkaround section).
+
+Application Navigation:
+  Ctrl+1     Focus Sections List
+  Ctrl+2     Focus Panels List
+  Ctrl+3     Focus Status Display field of the current panel (refreshes it if empty)
+  F5         Refresh the current panel's Status Display now (it also updates itself live)
+
+Tip: Press the same bracket key again to cancel a mode you activated by accident.
+
+OUTPUT MODE - Press right bracket to activate
+
+Altitude:
+  Q          Read Altitude AGL
+  A          Read Altitude MSL
+
+Airspeed:
+  S          Read IAS (Indicated Airspeed)
+  T          Read TAS (True Airspeed)
+  G          Read Ground Speed
+  M          Read Mach Number
+
+Heading:
+  H          Read Magnetic Heading
+  U          Read True Heading
+
+Navigation:
+  N          Read NAV 1 and NAV 2 radio info (frequency, ident, localizer, glideslope, DME)
+  Ctrl+W     The waypoint you are flying to, from the G1000's flight plan:
+             ident (spelt out), distance, magnetic bearing and time to run.
+             When the flight plan moves on to the next waypoint, MSFS Blind
+             Assist says so by itself: "Passing SOXOM. Next VEKIN, 14 miles."
+             It tells you the waypoint went by; any report to ATC is yours.
+             Untick "Waypoint Passing Call" in Ctrl+M to stop the automatic
+             call; Ctrl+W keeps working.
+
+Autopilot (the selected values, each followed by its mode when that mode is
+active, for example "Heading bug 270, HDG active"):
+  Shift+A    Selected altitude (and "ALT hold active")
+  Shift+H    Heading bug (and "HDG active")
+  Shift+S    FLC speed, the airspeed FLC flies (and "active" when FLC is)
+  Shift+V    Selected vertical speed, signed (and "VS active")
+
+Engine:
+  P          RPM, with the arc it sits in on the G1000's tachometer (the green
+             arc tops out at 2500, 2600 or 2700 rpm by altitude; red from 2700)
+  E          Power: RPM, fuel flow, throttle and mixture
+  Shift+P    Engine temperatures: oil, EGT and CHT
+  Alt+S      The engine page in a window that updates live: RPM, fuel flow,
+             oil pressure and temperature, EGT, CHT, vacuum, both tanks,
+             engine hours, and the main and essential bus volts. Arrow
+             through it; Escape closes it.
+  Each reading says the zone the G1000 draws it in ("66 psi, green"). Where
+  a reading is outside the green with a red or yellow arc further out,
+  it says "below the green arc" or "above the green arc"; otherwise just
+  the number (idle RPM, cold oil, a full tank).
+
+Fuel:
+  F          Read fuel per tank and total, in gallons
+  Shift+F    Read fuel per tank and total, fuel flow, and endurance at the
+             current flow
+
+Weight:
+  Shift+W    Read Gross Weight in kilograms and pounds, and the maximum, then
+             the center of gravity in percent MAC against its limits
+
+Flaps:
+  L          Read Flap Position (Up, 10 degrees, 20 degrees, Full: 30 degrees)
+
+Speeds (the keys the airliners use for their own speeds carry the C172's,
+from its flight model and the Pilot's Operating Handbook):
+  Shift+5    The take-off set: rotate 55 knots, best angle of climb 62 knots,
+             best rate of climb 74 knots
+  Shift+4    The landing set: approach 60 to 70 knots with full flaps, short
+             field approach 61 knots with full flaps, a landing without flaps
+             65 to 75 knots, best glide 68 knots
+  Shift+6    Where the flaps are set and the limit for that setting (with the
+             flaps up, the limit for 10 degrees)
+  Shift+3    Both flap limits: 110 knots with 10 degrees, 85 knots with 20
+             degrees or full
+  Shift+2    The airspeed limits, slowest first: stall with flaps up and with
+             full flaps, manoeuvring speed for the current weight, maximum
+             structural cruise and never exceed
+  Shift+1    Best glide
+  With takeoff assist on, the take-off roll says "Rotate" at 55 knots.
+
+Landing Gear:
+  Shift+G    Says the gear is fixed
+
+Altimeter:
+  B          Read Altimeter Setting (inches, then hectopascals)
+
+Vertical:
+  V          Read Vertical Speed
+  Ctrl+Shift+R  Read last landing rate (touchdown vertical speed, feet per minute)
+  Ctrl+Shift+G  Read last landing peak g-force
+
+Weather:
+  I          Wind Info
+  O          Read Outside Temperature (Celsius)
+
+Time:
+  Z          Read Local Time at aircraft position
+  Shift+Z    Read Zulu / UTC Time
+
+Transponder:
+  X          Read Squawk Code
+
+Distance:
+  D          Distance and time to the destination of the G1000's flight plan.
+             The aircraft has to be moving: stopped, it says "not computed".
+  Shift+D    Distance to top of descent, from the G1000's own vertical
+             navigation. With no descent planned it says "no vertical path
+             computed".
+
+Location:
+  C          Read Nearest City
+
+Tools:
+  Ctrl+H     Activate/deactivate Hand Fly mode
+  Ctrl+V     Activate/deactivate Visual Guidance mode
+  Ctrl+T     Activate/deactivate Takeoff Assistance
+  Ctrl+D     Read Distance to Selected Runway
+  Ctrl+I     Read ILS Guidance System Report
+
+Taxi Guidance (turn-by-turn taxi assistance with audio steering tone):
+  Y          Taxi Status (current taxiway, next turn, distance to destination)
+  Ctrl+Y     Repeat Current Taxi Instruction
+  Alt+Y      Where Am I (announces current taxiway, gate, or runway at nearest airport)
+  Alt+L      Look Around (where you are, the apron or concourse you are in, and the nearest buildings with direction and distance)
+  Ctrl+Shift+L  Surroundings window (everything nearby as a list, with the airport's fuel and frequencies)
+                In its Frequencies list, Enter tunes the selected frequency into COM 1 standby
+                and Shift+Enter tunes it straight into COM 1 active; COM 1 is read back to confirm.
+  (Open the form with Input mode > Shift+Y)
+
+Waypoint Tracking (use Fix Track window or EFB route viewer to add):
+  1          Track Slot 1
+  2          Track Slot 2
+  3          Track Slot 3
+  4          Track Slot 4
+  5          Track Slot 5
+
+Traffic and Weather:
+  R          Announce Tracked TCAS Traffic
+  Ctrl+R     Open TCAS Traffic Window
+  Shift+O    Open Volanta window (Volanta users and network pilots around you,
+             your Volanta friends and online ATC; also Extras > Volanta)
+  Shift+R    Open Weather Radar Window
+  Alt+G      Announce nearest ground traffic
+
+Displays and Windows:
+  Ctrl+M     Cessna 172 Monitor Manager - a checklist of what the C172
+             announces by itself through MSFS Blind Assist (the switches, the
+             RPM redline, the stall warning, the autopilot and flight director
+             going off, the covers, the audio panel keys, the waypoint passing
+             call). Untick any you don't want spoken; the
+             choice is saved. Readout hotkeys are unaffected. The G1000's own
+             warnings and autopilot modes are not in it (see below).
+  Shift+E    Route viewer, procedure planner and airport lookup
+  Shift+L    Location Info
+  Shift+M    Show METAR Report
+  Ctrl+Shift+T  Cold Temperature Altitude Correction (offline calculator: field elevation + temperature + published altitudes -> corrected altitudes)
+  Shift+B    SimBrief Briefing
+  Alt+D      Describe outside scene (AI)
+
+The G1000 windows:
+  Alt+P      G1000 PFD window
+  Alt+M      G1000 MFD window (Alt+N and input mode Shift+M open it too)
+  Alt+E      The CAS messages on the PFD now: how many, then each one
+             ("3 CAS messages. WARNING: LOW VOLTS. ..."), "No CAS messages",
+             or "The PFD is off"
+  Alt+I      The standby instruments: airspeed, altitude, compass and the
+             standby attitude indicator, with the vacuum it runs on
+  The windows read the G1000's screens live and press its bezel keys, the
+  same windows as the COWS DA40's. Read with the arrow keys; the window's own
+  description lists its keys.
+  The G1000's warnings and cautions (OIL PRESSURE, LOW VOLTS, STBY BATT,
+  LOW VACUUM, LOW FUEL L and R) are spoken as they appear on the PFD and
+  when they clear, window open or not, and so is the autopilot status line
+  (the active and armed modes). When the master goes off nothing is
+  announced; when it comes back on, every warning the G1000 shows is spoken.
+
+Hand Fly Mode Hotkeys:
+  A          Read MSL
+  S          Read IAS
+  D          Read Distance to Destination Runway
+  H          Read Magnetic Heading
+  P          Read Aircraft Pitch
+  B          Read Aircraft Bank
+  Q          Read AGL
+  V          Read VS
+
+Visual Guidance Mode Hotkeys (same single-letter set as Hand Fly mode, plus F):
+  F          Read Target VS
+
+Ground Services:
+  Ctrl+G     Read latest GSX tooltip (no need to open the Access GSX window)
+
+SayIntentions:
+  Ctrl+S        Read last SayIntentions transmission
+  Ctrl+Shift+S  Open SayIntentions flight information
+
+VATSIM:
+  Alt+V      Mute or unmute VATSIM announcements (vPilot)
+
+INPUT MODE - Press [ to activate
+
+Teleport:
+  Shift+R    Runway Teleport
+  Shift+G    Gate Teleport
+
+Flight Planning:
+  Shift+F    Fix/Waypoint Tracking Window
+  Shift+D    Select Destination Runway
+
+Autopilot:
+  Shift+A    Autopilot on or off
+  Shift+1    Heading mode on or off
+  Shift+P    Approach mode on or off
+  Shift+3    Flight level change (FLC) on or off
+  Ctrl+H     Set the heading bug (0 to 359)
+  Ctrl+A     Set the selected altitude (0 to 25000 feet), which FLC climbs or
+             descends to; FLC is refused until an altitude has been selected.
+  Ctrl+S     Set the FLC speed (48 to 163 knots, the C172's stall and
+             never-exceed speeds). The C172 has no autothrottle: FLC holds
+             this speed by pitching up or down, and the throttle stays yours
+             (full power to climb, reduced power to descend).
+  Ctrl+V     Set the autopilot vertical speed (-2000 to 2000 feet per minute)
+  These value windows stay open after Enter, so you can type the next value
+  straight away; Escape closes them.
+  Ctrl+P     GFC 700 window: every autopilot button in one small window, each
+             showing its state as the panel does: Autopilot, Flight Director,
+             HDG Hold, NAV Mode, APR Mode, Back Course, ALT Hold, VS Mode,
+             FLC Mode, VNAV, Nose Up, Nose Down and Heading Sync. Each has an
+             Alt key (Alt+A Autopilot, Alt+H HDG Hold, Alt+F FLC Mode and so
+             on). The values are not in it: they have their own keys above.
+             Escape closes it.
+  The mode keys press the GFC 700's own keys, so each behaves as in the
+  cockpit: the first AP press engages the autopilot and flight director in
+  roll and pitch hold, and pressing a mode key again turns that mode off.
+  The GFC 700 panel (Autopilot section) has a button for every key:
+  Autopilot, Flight Director, HDG Hold, NAV Mode, APR Mode, Back Course,
+  ALT Hold, VS Mode, FLC Mode, VNAV, Nose Up and Nose Down. Nose Up and Nose
+  Down change the target of the vertical mode and say the new one: the
+  vertical speed in VS mode, the FLC speed in FLC, and the pitch in pitch
+  hold (the mode the autopilot starts in). In ALT Hold they have no effect,
+  and say so. Heading Sync moves the bug to the current heading, and Course
+  sets the course of whatever the CDI is on (GPS, NAV 1 or NAV 2).
+
+Altimeter:
+  Ctrl+B     Set the altimeter (28.00 to 31.00 inches)
+
+Radios:
+  Ctrl+N     Set both NAV standby frequencies in one window: NAV 1 standby,
+             then NAV 2 standby (108.00 to 117.95), each filled in with what
+             the radio holds now. Enter sets both and the window stays open;
+             each field's own Set button sets that radio alone and closes
+             the window. Escape closes it. The COM and NAV radios are also on
+             the Radios panel.
+
+Taxi Guidance:
+  Shift+Y    Open Taxi Assist Form (enter ATC taxi clearance, start guidance)
+  Y          Continue past current hold-short point
+  Ctrl+Y     Stop Taxi Guidance
+  Shift+X    Open Landing Exit Planner
+
+Ground Services:
+  Alt+G      Open Access GSX window (accessible GSX Ground Services Pro menu)
+
+SayIntentions:
+  Ctrl+Shift+Y Build a taxi route from the last SayIntentions taxi clearance.
+
+General:
+  Escape     Exit active hotkey mode
+
+Automatic Announcements:
+  - The G1000's warnings and cautions as they appear and clear on the PFD:
+    OIL PRESSURE, LOW VOLTS, STBY BATT, LOW VACUUM, LOW FUEL L, LOW FUEL R
+  - The autopilot status line (the active and armed modes) as it changes,
+    and the autopilot or flight director going off
+  - Engine RPM above 2700
+  - Any switch moved outside MSFS Blind Assist (from hardware, the sim's own
+    keys or its checklist): battery, alternator, avionics, magneto, fuel
+    pump, selector and valve, lights, pitot heat, the parking brake (set and
+    released), the flap lever, the standby battery, alternate static air,
+    the ELT and the trim disconnect. Your own picks in the panels are not
+    repeated.
+  - Stall warning, on and off
+  - A walkaround cover installed or removed
+  - A circuit breaker that pops or goes back in by itself
+  - An audio panel key changed outside MSFSBA (your own picks are not repeated)
+  - Pressing Starter with the engine cover still installed says so
+  - Passing a waypoint of the G1000's flight plan, with the next one
+    (see Ctrl+W)
+  The RPM warning speaks once and re-arms when the RPM comes back down.
+  Mute any of these from the Monitor Manager (Ctrl+M), except the G1000's
+  warnings and the autopilot status line.
+  The trim announcement (Shift+T) stays quiet while the autopilot is flying,
+  because the autopilot trims all the time; your own trim is spoken again
+  once it disconnects.

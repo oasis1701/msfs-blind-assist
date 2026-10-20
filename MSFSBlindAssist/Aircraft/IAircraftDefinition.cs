@@ -104,8 +104,30 @@ public sealed class VisualGuidanceProfile
     /// autoland behaviour vary: the A320 FCTM specifies a 30 ft initiation (default); the
     /// PMDG 777's autoland begins flaring at ~40 ft RA, so VG's cue is timed to match — a
     /// hand-flying pilot using VG to mirror autoland gets the cue at the same moment the
-    /// autopilot would have started its flare. Keep within 20–50 ft.</summary>
+    /// autopilot would have started its flare. Keep within 10–50 ft: a light single rounds
+    /// out lower than any jet (FAA Airplane Flying Handbook: 10–20 ft). The manual landing
+    /// assist speaks "Flare" at this same height (<c>LandingFlareAssistManager</c>).</summary>
     public double FlareTriggerWheelHeightFt { get; init; } = 30.0;
+
+    /// <summary>Time constant (s) of the manual landing assist's exponential flare law,
+    /// targetVS = −(gearAGL/τ·60 + <see cref="FlareTouchdownSinkFpm"/>). The 6 s default
+    /// meets a transport jet's ~620 fpm at the 50 ft engage height; a light single wants a
+    /// short round-out near the ground instead (see <see cref="FlareHoldsEntrySink"/>).</summary>
+    public double FlareSinkTauSec { get; init; } = 6.0;
+
+    /// <summary>Sink rate (fpm) the manual landing assist's flare law asks for at touchdown.</summary>
+    public double FlareTouchdownSinkFpm { get; init; } = 120.0;
+
+    /// <summary>When true the flare law never asks for MORE sink than the aircraft had when the
+    /// assist engaged at 50 ft: the target holds the approach sink until the exponential
+    /// falls below it, so a short τ starts the round-out low instead of telling a slow
+    /// approach it is floating. False (default) keeps the plain exponential the jets fly.</summary>
+    public bool FlareHoldsEntrySink { get; init; }
+
+    /// <summary>Ground speed (kt) below which the manual landing assist ends its rollout tone
+    /// when no landing-exit guidance runs. 40 kt is near a jet's taxi speed; a light single
+    /// touches down not far above it.</summary>
+    public double RolloutGuidanceEndKnots { get; init; } = 40.0;
 
     /// <summary>Target pitch (degrees) commanded during the flare phase. Per-aircraft because
     /// manufacturer flare pitch attitudes vary: Boeing FCTM specifies a 2–3° pitch increase
@@ -330,6 +352,65 @@ public interface IAircraftDefinition
     bool HandleUIVariableSet(string varKey, double value, SimConnect.SimVarDefinition varDef,
         SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer);
 
+    /// <summary>
+    /// Engage the autopilot for the universal auto-AP-engage feature. The default fires the
+    /// stock <c>AUTOPILOT_ON</c> event. Aircraft whose autopilot ignores or misreads that event
+    /// override this to press their own engage switch: the PMDG jets (CMD A on the 737, A/P L on
+    /// the 777), the FlyByWire family (AP 1 — FBW captures AUTOPILOT_ON into a flag nothing
+    /// reads, FO-21), the iFly 737 (CMD A), the TFDi MD-11 (AUTO FLIGHT) and the Fenix (the FCU's
+    /// AP1 pushbutton). Implementations should no-op unless the autopilot reads definitely off,
+    /// so a toggle-style engage switch can't disconnect it.
+    /// </summary>
+    void EngageAutopilot(SimConnect.SimConnectManager simConnect);
+
+    /// <summary>
+    /// Hard floor (ft AGL) below which THIS aircraft's autopilot refuses to engage, so the
+    /// universal auto-engage never presses into a rejection. 0 = no floor. The PMDG 737's
+    /// AFDS inhibits CMD engagement below 400 ft RA after takeoff — pressing at the 350 ft
+    /// default was silently rejected by the aircraft (the 2026-08 "AP never engages" bug).
+    /// </summary>
+    int MinimumAutopilotEngageAltitudeAgl { get; }
+
+    /// <summary>
+    /// Whether the autopilot is currently engaged: <c>true</c>/<c>false</c> when the aircraft
+    /// can be read, <c>null</c> when it exposes no engaged state OR its data feed isn't ready
+    /// yet. Never return <c>false</c> for "don't know" — the universal auto-engage retries a
+    /// definitive <c>false</c>, and the PMDG engage switches are TOGGLES, so a guessed
+    /// <c>false</c> over an engaged autopilot would disconnect it.
+    /// </summary>
+    bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect);
+
+    /// <summary>
+    /// Minimum time (ms) the universal auto-engage waits after an attempt, a press or a wait for a
+    /// reading, before trying again or giving up. 0 = retry every tick (the stock, idempotent
+    /// <c>AUTOPILOT_ON</c>). An aircraft whose engage is a TOGGLE and whose engaged state reaches the
+    /// cache no faster than the 1 Hz feed sets 3000 (the FlyByWire family, FO-21; the PMDG 737 and
+    /// 777, the iFly 737, the TFDi MD-11 and the Fenix), so a retry never lands on an autopilot the
+    /// previous press already engaged.
+    /// </summary>
+    int AutopilotEngageRetryIntervalMs { get; }
+
+    /// <summary>
+    /// True where the universal auto-engage must never press while <c>IsAutopilotEngaged</c> reads
+    /// <c>null</c>. The service waits for a definite reading instead, and if none comes within its
+    /// attempts it gives the Captain call. Every aircraft whose engage is a toggle sets it: the
+    /// FlyByWire family (FO-21, the AP 1 push), the PMDG 737 and 777 (CMD A, A/P L, null until the
+    /// first CDA snapshot), the iFly 737 (CMD A), the TFDi MD-11 (AUTO FLIGHT, whose own engage presses
+    /// nothing on an unread state), the Fenix (AP1) and the HorizonSim 787 (its AP_MASTER engage, with
+    /// an engaged read-back): a blind press could disconnect an autopilot that is already on, and their
+    /// <c>null</c> means "not read yet". False (the default) takes the open-loop press-and-announce on a
+    /// null reading, which only the stock <c>AUTOPILOT_ON</c> aircraft keep (any aircraft without an
+    /// engage of its own).
+    /// </summary>
+    bool AutopilotEngageWaitsForState { get; }
+
+    /// <summary>
+    /// Whether the aircraft has gear for the universal auto-gear to move (FO-27). True everywhere but
+    /// where the simulator's own answer is wrong: the COWS DA40 has fixed gear, reports it retractable
+    /// with the handle up, and uses the gear key for its steering assist.
+    /// </summary>
+    bool HasRetractableGear { get; }
+
     // Display System Monitoring (ECAM for Airbus, EICAS for Boeing, etc.)
     // Aircraft without these systems should use the default implementation (does nothing)
 
@@ -502,11 +583,4 @@ public interface IAircraftDefinition
     /// (live-verified: its radios tune only through the RMP).
     /// </summary>
     string? StockComTuningRefusal { get; }
-
-    /// <summary>
-    /// The hand-written checklist Shift+C opens (a file under Checklists\), or null when this
-    /// aircraft has none of its own: Shift+C then opens nothing and says
-    /// "No checklist for this aircraft." (MainForm.ShowChecklistDialog).
-    /// </summary>
-    string? ChecklistFileName { get; }
 }

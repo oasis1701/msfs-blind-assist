@@ -184,6 +184,9 @@ Traffic:
   Shift+O    Open Volanta window (Volanta users and network pilots around you,
              your Volanta friends and online ATC; also Extras > Volanta)
 
+First Officer:
+  Shift+C    First Officer window (checklists and flows)
+
 AI Display Reading (needs an AI provider and its key in File > Settings > AI tab):
   Alt+P      Read the captain's PFD, flight mode annunciator first
   Alt+N      Read the captain's ND

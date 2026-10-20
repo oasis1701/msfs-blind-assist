@@ -67,10 +67,22 @@ public sealed class Md11EventBus : IDisposable
     /// must not grow this without limit; dropping the overflow is strictly better than pumping a
     /// thousand stale events at the aircraft seconds later.
     /// </summary>
-    private const int MaxQueued = 256;
+    internal const int MaxQueued = 256;
+
+    /// <summary>
+    /// Room above <see cref="MaxQueued"/> that only a RELEASE may take: the UP a hold owes, or the UP
+    /// of a press whose DOWN the queue took. A full queue once refused such an UP after its DOWN had
+    /// gone out, and the button stayed held in the aircraft (constraint 3). A release is never more
+    /// than one per held or pressed button, so this is never filled in practice.
+    /// </summary>
+    private const int ReleaseReserve = 32;
 
     private readonly Action<string> _write;
-    private readonly BlockingCollection<QueuedEvent> _queue = new(new ConcurrentQueue<QueuedEvent>(), MaxQueued);
+    private readonly BlockingCollection<QueuedEvent> _queue = new(new ConcurrentQueue<QueuedEvent>(), MaxQueued + ReleaseReserve);
+
+    /// <summary>Makes an ordinary id's room check and its add one step, so racing producers cannot
+    /// spill past <see cref="MaxQueued"/> into the room kept for releases.</summary>
+    private readonly object _enqueueLock = new();
     private readonly Task _pump;
     private readonly CancellationTokenSource _cts = new();
 
@@ -210,13 +222,23 @@ public sealed class Md11EventBus : IDisposable
         TryEnqueue(new QueuedEvent(eventId, null));
     }
 
-    /// <summary>Queues one event; false when the bus is closing or the queue is full — both logged, neither thrown.</summary>
-    private bool TryEnqueue(QueuedEvent item)
+    /// <summary>
+    /// <see cref="Fire"/> that says whether the bus took the id: false for an id of 0 or less, and
+    /// when the bus is closing or its queue is full (both logged). For a caller that must never
+    /// report a dropped press done (the First Officer); the panel paths keep <see cref="Fire"/>.
+    /// </summary>
+    public bool TryFire(int eventId) => eventId > 0 && TryEnqueue(new QueuedEvent(eventId, null));
+
+    /// <summary>Queues one event; false when the bus is closing or the queue is full — both logged, neither thrown.
+    /// A <paramref name="release"/> (an UP owed to a DOWN already taken) may use the room above
+    /// <see cref="MaxQueued"/>, so a full queue never leaves a pressed button held.</summary>
+    private bool TryEnqueue(QueuedEvent item, bool release = false)
     {
         bool queued;
         try
         {
-            queued = _queue.TryAdd(item);
+            lock (_enqueueLock)
+                queued = (release || _queue.Count < MaxQueued) && _queue.TryAdd(item);
         }
         catch (Exception ex) when (ex is ObjectDisposedException or InvalidOperationException)
         {
@@ -237,12 +259,22 @@ public sealed class Md11EventBus : IDisposable
     /// <summary>
     /// Fires a full press→release pair for a momentary control. Both ids go through the same
     /// queue in order, so the release can never overtake the press. See constraint 3 — a press
-    /// without its release leaves the button held down for the session.
+    /// without its release leaves the button held down for the session: the UP of a DOWN the queue
+    /// took is a release (<see cref="ReleaseReserve"/>), and a DOWN it refused gets no UP.
     /// </summary>
-    public void FirePressRelease(int? downId, int? upId)
+    public void FirePressRelease(int? downId, int? upId) => TryFirePressRelease(downId, upId);
+
+    /// <summary>
+    /// <see cref="FirePressRelease"/> that says whether the bus took the press: false when it has
+    /// neither id, or did not take one of them. A DOWN it refused is never followed by its UP
+    /// alone (a release for a press that never happened); the UP of a DOWN it took is a release,
+    /// which a full queue still takes; a pair with no DOWN id fires the UP alone, as an ordinary id.
+    /// </summary>
+    public bool TryFirePressRelease(int? downId, int? upId)
     {
-        if (downId is > 0) Fire(downId.Value);
-        if (upId is > 0) Fire(upId.Value);
+        if (downId is not > 0 && upId is not > 0) return false;
+        if (downId is > 0 && !TryFire(downId.Value)) return false;
+        return upId is not > 0 || TryEnqueue(new QueuedEvent(upId.Value, null), release: downId is > 0);
     }
 
     /// <summary>Convenience overload for a control from the map.</summary>
@@ -327,16 +359,26 @@ public sealed class Md11EventBus : IDisposable
     /// backlog is zero and the hold is within one pacing gap of exact. For the hold-to-test
     /// buttons (see Md11TestButtons), whose lights are only on while the button is down.
     /// </summary>
-    public async Task PressAndHoldAsync(Md11Control control, int holdMs)
+    public Task PressAndHoldAsync(Md11Control control, int holdMs) => TryPressAndHoldAsync(control, holdMs);
+
+    /// <summary>
+    /// <see cref="PressAndHoldAsync"/> that says whether the bus took the hold: false when there is
+    /// no DOWN, or the bus did not take the DOWN (closing, or the queue full: nothing was pressed,
+    /// so nothing is owed) or the UP when the hold ended (closing: Dispose then owes it; a full
+    /// queue still takes it, <see cref="ReleaseReserve"/>). For a caller that must never report a
+    /// dropped test done (the First Officer).
+    /// </summary>
+    public async Task<bool> TryPressAndHoldAsync(Md11Control control, int holdMs)
     {
         var down = control.Event("LEFT_BUTTON_DOWN");
         var up = control.Event("LEFT_BUTTON_UP");
         // A button with no DOWN was never pressed, so it cannot be released: writing its UP alone
         // sends the aircraft a release for a press that never happened. (Nothing is tracked either
         // — Dispose must not release, or log, a button it never held.)
-        if (down is not > 0) return;
+        if (down is not > 0) return false;
         var backlogMs = BacklogMs;   // sampled before the DOWN joins the queue
         HeldPress? hold = null;
+        bool taken;
         if (up is > 0)
         {
             // Registered AND queued under the held table's lock, so Dispose can neither miss this
@@ -344,13 +386,15 @@ public sealed class Md11EventBus : IDisposable
             // queue would not take the DOWN: a DOWN that never goes out owes nothing, so neither
             // half is written at all.
             hold = TrackHeldAndFireDown(up.Value, down.Value);
-            if (hold == null) return;
+            if (hold == null) return false;
+            taken = true;
         }
-        else Fire(down.Value);   // no UP id at all: pressed, with nothing owed to release
+        else taken = TryFire(down.Value);   // no UP id at all: pressed, with nothing owed to release
         await Task.Delay(HoldDelayMs(holdMs, backlogMs)).ConfigureAwait(false);
         // Before Dispose this queues the UP; after it the entry is Dispose's, which writes the UP
         // only if the pump wrote the DOWN. Exactly one of the two, either way.
-        if (hold != null) ReleaseHeldAndFireUp(hold);
+        if (hold != null) taken &= ReleaseHeldAndFireUp(hold);
+        return taken;
     }
 
     /// <summary>
@@ -416,14 +460,15 @@ public sealed class Md11EventBus : IDisposable
     /// reaches it — behind an MCDU scratchpad send, say — still writes it FIRST when the pump wrote
     /// this hold's DOWN (<see cref="DisposalOrder"/>). Queued bare, it sat at the tail, the drain bound
     /// dropped it, and the button stayed held after a hold that had ended just before disposal.
+    /// The UP is a release (<see cref="ReleaseReserve"/>), so a full queue still takes it: refused, it
+    /// left the hold out of the table with its DOWN written, and the button stayed held.
     /// </summary>
     private bool ReleaseHeldAndFireUp(HeldPress hold)
     {
         lock (_held)
         {
             if (_closed || !_held.Remove(hold)) return false;
-            TryEnqueue(new QueuedEvent(hold.UpId, hold, IsRelease: true));
-            return true;
+            return TryEnqueue(new QueuedEvent(hold.UpId, hold, IsRelease: true), release: true);
         }
     }
 

@@ -156,7 +156,10 @@ public partial class MainForm
             "HS_787" => new HorizonSim787Definition(),
             "HW_A330" => new HeadwindA330Definition(),
             "IFLY_737MAX8" => new IFly737MAXDefinition(),
+            "COWS_DA40NG" => new Aircraft.DA40.CowsDA40Definition(Aircraft.DA40.DA40Variant.NG),
+            "COWS_DA40XLS" => new Aircraft.DA40.CowsDA40Definition(Aircraft.DA40.DA40Variant.XLS),
             "TFDI_MD11" => new TFDiMD11Definition(),
+            "C172_G1000" => new CessnaC172G1000Definition(),
             // Future aircraft will be added here
             _ => new FlyByWireA320Definition() // Default to A320
         };
@@ -201,7 +204,29 @@ public partial class MainForm
         }
         _lastAircraftLoadedTick = Environment.TickCount64;
         currentAircraft?.OnSimContextReset();
+        SwapDA40ProfileToMatch(file);
+        // The First Officer window outlives a flight load (only an aircraft switch disposes it):
+        // the last flight's SimBrief plan and phase latches are dropped here, and so are the
+        // universal automation's legs (a flight loaded in the air is no takeoff it watched).
+        if (firstOfficerForm is { IsDisposed: false } foForm)
+            foForm.OnFlightLoaded();
+        ResetUniversalAutomation();
         ScheduleCurrentAirportWarmUp();
+    }
+
+    /// <summary>
+    /// A DA40 profile follows the DA40 airframe the sim has loaded — see
+    /// <see cref="Aircraft.DA40.DA40Airframe"/>. Called with the AircraftLoaded file path on an
+    /// in-session change, and with the connect's title on the first connect (the connect
+    /// pipeline runs once per connection, so it never reports a later change).
+    /// </summary>
+    private void SwapDA40ProfileToMatch(string? titleOrFile)
+    {
+        if (currentAircraft == null) return;
+        string? target = Aircraft.DA40.DA40Airframe.SwapTarget(currentAircraft.AircraftCode, titleOrFile);
+        if (target == null) return;
+        Log.Debug("MainForm", $"DA40 profile {currentAircraft.AircraftCode} does not match '{titleOrFile}' - switching to {target}");
+        SwitchAircraft(LoadAircraftFromCode(target));
     }
 
     /// <summary>How long after AircraftLoaded the aircraft's position is read for the warm-up: the
@@ -274,6 +299,10 @@ public partial class MainForm
 
         if (status.StartsWith("Connected to"))
         {
+            // Before anything announces the profile: a DA40 profile on the other DA40 airframe
+            // swaps to the right one here, so the pilot hears the profile that is flying.
+            SwapDA40ProfileToMatch(status.Substring("Connected to".Length));
+
             // Start event batching timer for high-volume variable updates
             eventBatchTimer?.Start();
             Log.Debug("MainForm", "Event batching timer started");
@@ -310,7 +339,6 @@ public partial class MainForm
                 }
                 EnsurePMDGProgPageMonitor();
             }
-
             else if (currentAircraft?.AircraftCode == "TFDI_MD11")
             {
                 // The MD-11 is NOT an IPMDGAircraft, but it still reads a SimConnect client data
@@ -320,6 +348,10 @@ public partial class MainForm
                 // those are PMDG-only and InitializePMDG leaves PMDGDataManager null for the MD-11.
                 simConnectManager.InitializePMDG(currentAircraft);
             }
+
+            // Notify the First Officer window so it can re-wire its data manager references
+            if (firstOfficerForm is { IsDisposed: false } foForm)
+                foForm.OnSimConnectChanged();
 
             // Automatically switch database if simulator version doesn't match
             CheckAndSwitchDatabase();
@@ -769,6 +801,13 @@ public partial class MainForm
         // and `currentAircraft` already points at the new aircraft by the time the
         // cleanup block runs.
         var oldAircraft = currentAircraft;
+        // The First Officer window FIRST, before anything below tears the old definition down: its
+        // Dispose cancels a running flow and detaches the executor, so no flow step or queued write
+        // runs into the switch. Disposed late, a flow could still write the old aircraft's event ids
+        // into the new one, and say "flow complete" after the switch. Shift+C and the menu then
+        // build the new aircraft's window. Dispose() is idempotent, and unconditional nulling
+        // releases an already-disposed form a `!IsDisposed` guard would leave referenced.
+        firstOfficerForm?.Dispose(); firstOfficerForm = null;
         // Halt the old A380 def's seat-motor / slider-ramp timers — they keep firing
         // calc-path L:var writes at the new aircraft otherwise (sim stays connected).
         // Both FBW defs' StopAllMotion also disposes that def's TCAS RA compose timer.
@@ -791,6 +830,11 @@ public partial class MainForm
         // never a per-type line — but never on the instance being switched TO.
         if (!ReferenceEquals(oldAircraft, newAircraft))
             (oldAircraft as BaseAircraftDefinition)?.OnSwitchedAway();
+
+        // A manually-engaged 737 warning test (stick shaker / overspeed clacker) holds its
+        // spring switch open-ended via a transmit press — release it on swap so it can't
+        // keep sounding or bleed into the next aircraft (mirrors StopAllMotion above).
+        (oldAircraft as PMDG737Definition)?.ReleaseEngagedWarningTests(simConnectManager);
 
         // The MD-11 def owns the CEVENT pump — a background task draining a queue of event ids
         // into L:CEVENT. Left running it would keep actuating controls on whatever aircraft is
@@ -869,6 +913,11 @@ public partial class MainForm
         simVarMonitor.Reset();
         simConnectManager.SuppressECAMAnnouncements = true;
 
+        ResetUniversalAutomation();
+        // The NEW aircraft's floor, press spacing and wait flag now (currentAircraft is already the new
+        // definition), not at the next 1 s tick: an Update in between would act on the previous aircraft's.
+        PushUniversalAircraftLimits();
+
         // Hazard announcers re-baseline on switch — stale category/ice baselines
         // from the previous airframe must not announce as "changes".
         activeSkyWeatherMonitor?.ResetTurbulenceTracker();
@@ -922,19 +971,20 @@ public partial class MainForm
         panelsListBox.Items.Clear();
         controlsContainer.Controls.Clear();
 
-        // Dispose checklistForm so it reloads for new aircraft
-        if (checklistForm != null && !checklistForm.IsDisposed)
-        {
-            checklistForm.Dispose();
-            checklistForm = null;
-        }
-
         // Dispose A380 monitor manager when switching aircraft
         if (fbwA380MonitorManagerForm != null && !fbwA380MonitorManagerForm.IsDisposed)
         {
             fbwA380MonitorManagerForm.Dispose();
             fbwA380MonitorManagerForm = null;
         }
+        // Dispose the DA40 monitor manager when switching aircraft — it snapshots the
+        // variable dictionary at construction, so a stale one would list the old airframe.
+        if (cowsDA40MonitorManagerForm != null && !cowsDA40MonitorManagerForm.IsDisposed)
+        {
+            cowsDA40MonitorManagerForm.Dispose();
+            cowsDA40MonitorManagerForm = null;
+        }
+
         // Dispose fenixMonitorManagerForm when switching aircraft
         if (fenixMonitorManagerForm != null && !fenixMonitorManagerForm.IsDisposed)
         {
@@ -1006,6 +1056,13 @@ public partial class MainForm
             md11MonitorManagerForm = null;
         }
 
+        // The Cessna 172 monitor manager, for the same stale-snapshot reason.
+        if (c172MonitorManagerForm != null && !c172MonitorManagerForm.IsDisposed)
+        {
+            c172MonitorManagerForm.Dispose();
+            c172MonitorManagerForm = null;
+        }
+
         // The MD-11 EFB client holds the ONE inspector socket Coherent allows for that view —
         // leaving it open would block the page for the rest of the process, so the next aircraft
         // (or a re-loaded MD-11) could never connect to its EFB again.
@@ -1050,6 +1107,9 @@ public partial class MainForm
         pmdgCoherentEfbFirstOfficerForm?.Dispose(); pmdgCoherentEfbFirstOfficerForm = null;
         coherentPmdgEfbCaptain?.Dispose(); coherentPmdgEfbCaptain = null;
         coherentPmdgEfbFirstOfficer?.Dispose(); coherentPmdgEfbFirstOfficer = null;
+
+        // The First Officer window was disposed at the top of this method.
+
         if (coherentNDClient != null)
         {
             coherentNDClient.Dispose();
@@ -1100,6 +1160,11 @@ public partial class MainForm
             hs787MonitorManagerForm = null;
         }
         StopA380EWDMonitor(oldAircraft);
+
+        // Same trap the line above documents: by now currentAircraft is the NEW aircraft,
+        // so the OUTGOING definition is the one that has to be told to let its Coherent
+        // socket go.
+        (oldAircraft as Aircraft.G1000.IG1000DisplayOwner)?.StopCasMonitor();
 
         // Dispose HS 787 forms when switching aircraft
         if (hs787FMCForm != null && !hs787FMCForm.IsDisposed)
@@ -1153,6 +1218,28 @@ public partial class MainForm
             coherentClient.SetActive(false);   // connect + install agent now; scrape only while the MCDU window is open
             StartA380EWDMonitor();
         }
+
+        // The G1000's CAS/FMA watcher (the DA40 and the Cessna 172, G1000CasWatcher). It runs
+        // whether or not the PFD window is open, because a caution appearing is not something
+        // a pilot should have to be already watching for - and on these aeroplanes the CAS
+        // window is the only place most failures are announced at all (the DA40 has four
+        // annunciator lamps, the C172 none). The PFD window suspends it while open: one
+        // inspector socket per view.
+        // The waypoint-passing call starts beside it (G1000Waypoints), as in MainForm_Load (DA40S-7).
+        if (newAircraft is Aircraft.G1000.IG1000DisplayOwner g1000Cas)
+        {
+            g1000Cas.StartCasMonitor(announcer);
+            g1000Cas.AttachWaypointSequencer(simConnectManager, announcer);
+        }
+        if (newAircraft is Aircraft.DA40.CowsDA40Definition da40Cas)
+        {
+            da40Cas.AttachLampWatch(simConnectManager);
+            da40Cas.UiEchoMark = SuppressUiEcho;
+        }
+
+        // Every switch, not only onto the DA40: its single "Rotate" call must be taken back
+        // when the next aircraft is loaded, or that aircraft has no 80 and 100 knot calls.
+        Services.TakeoffRollCallouts.Apply(takeoffAssistManager, newAircraft);
 
         // The HS787 CDU + EFB open their own Coherent debugger connections on demand (from
         // their forms) — no HTTP bridge to start. The IRS-alignment monitor runs continuously
@@ -1248,6 +1335,15 @@ public partial class MainForm
         bool isHs787 = currentAircraft != null &&
                        currentAircraft.AircraftCode.StartsWith("HS_", StringComparison.Ordinal);
         fmcSettingsMenuItem.Visible = isPmdg || isFenix || isHs787;
+
+        // The one First Officer item shows only for an aircraft that has one, read with that
+        // aircraft's name ("Fenix A320 First Officer"). FirstOfficerWindows decides (FO-24).
+        string? firstOfficerName = Forms.FirstOfficer.FirstOfficerWindows.NameFor(currentAircraft);
+        firstOfficerMenuItem.Visible = firstOfficerName != null;
+        if (firstOfficerName != null)
+            firstOfficerMenuItem.AccessibleName = firstOfficerName;
+        // First Officer automation settings now live in the unified Settings dialog
+        // (Forms/Settings/FirstOfficerPanel.cs), always reachable regardless of aircraft.
     }
 
     /// <summary>
@@ -1265,6 +1361,7 @@ public partial class MainForm
         headwindA330MenuItem.Checked = false;
         ifly737MaxMenuItem.Checked = false;
         tfdiMd11MenuItem.Checked = false;
+        cessnaC172G1000MenuItem.Checked = false;
 
         // Set the check on the current aircraft's menu item.
         // NOTE: HeadwindA330Definition derives from FlyByWireA320Definition, so it MUST
@@ -1304,6 +1401,10 @@ public partial class MainForm
         else if (currentAircraft is IFly737MAXDefinition)
         {
             ifly737MaxMenuItem.Checked = true;
+        }
+        else if (currentAircraft is CessnaC172G1000Definition)
+        {
+            cessnaC172G1000MenuItem.Checked = true;
         }
     }
 

@@ -45,6 +45,57 @@ public partial class SimConnectManager
     };
 
     /// <summary>
+    /// The First Officer window's and the universal automation's 1 Hz background reads, registered
+    /// ONCE per connection like <see cref="HotkeyReadoutDefinitions"/> (SC-12). Their request
+    /// methods once cleared, re-added and re-registered the definition on every call: two timers
+    /// did that each second (one clearing AGL while the other's request was in flight, the race
+    /// SafelyClearDataDefinition warns about), each clear pumped DoEvents on the UI thread, and each
+    /// logged a line. (defId, simVar, unit) — one FLOAT64 each; defId doubles as the request id.
+    /// The centre-fuel pair and the gear-leg triple register beside them in
+    /// <see cref="RegisterFoBackgroundDefinitions"/>.
+    /// </summary>
+    private static readonly (int Id, string SimVar, string Unit)[] FoBackgroundDefinitions =
+    {
+        ((int)DATA_DEFINITIONS.DEF_FO_ALTITUDE_AGL, "PLANE ALT ABOVE GROUND", "feet"),
+        ((int)DATA_DEFINITIONS.DEF_FO_AIRSPEED_IAS, "AIRSPEED INDICATED",     "knots"),
+        ((int)DATA_DEFINITIONS.DEF_FO_ENG1_N2,      "TURB ENG N2:1",          "percent"),
+        ((int)DATA_DEFINITIONS.DEF_FO_ENG2_N2,      "TURB ENG N2:2",          "percent"),
+        ((int)DATA_DEFINITIONS.DEF_FO_ENG3_N2,      "TURB ENG N2:3",          "percent"),
+        ((int)DATA_DEFINITIONS.DEF_FO_GEAR_HANDLE,  "GEAR HANDLE POSITION",   "bool"),
+    };
+
+    /// <summary>Registers <see cref="FoBackgroundDefinitions"/>, the FO centre-fuel pair and the
+    /// FO gear-leg triple once per connection, with the other fixed definitions.</summary>
+    private void RegisterFoBackgroundDefinitions()
+    {
+        var sc = simConnect!;
+        foreach (var def in FoBackgroundDefinitions)
+        {
+            sc.AddToDataDefinition((DATA_DEFINITIONS)def.Id, def.SimVar, def.Unit,
+                SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.RegisterDataDefineStruct<SingleValue>((DATA_DEFINITIONS)def.Id);
+        }
+
+        // iFly MAX8 centre fuel: gallons x pounds per gallon, multiplied at dispatch.
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_FO_CENTER_FUEL_LBS, "FUEL TANK CENTER QUANTITY", "gallons",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_FO_CENTER_FUEL_LBS, "FUEL WEIGHT PER GALLON", "pounds",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.RegisterDataDefineStruct<DoubleValuePair>(DATA_DEFINITIONS.DEF_FO_CENTER_FUEL_LBS);
+
+        // PMDG 777 gear confirmation: the three stock gear-leg positions, percent extended.
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_FO_GEAR_POSITIONS, "GEAR LEFT POSITION", "percent",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_FO_GEAR_POSITIONS, "GEAR CENTER POSITION", "percent",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_FO_GEAR_POSITIONS, "GEAR RIGHT POSITION", "percent",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.RegisterDataDefineStruct<DoubleValueTriple>(DATA_DEFINITIONS.DEF_FO_GEAR_POSITIONS);
+
+        Log.Debug("SimConnect", $"Registered {FoBackgroundDefinitions.Length + 2} fixed First Officer background data definitions");
+    }
+
+    /// <summary>
     /// Registers every entry in <see cref="HotkeyReadoutDefinitions"/> once per connection.
     /// Called from SetupDataDefinitions, positioned with the other fixed/critical defs and
     /// BEFORE the bulk per-aircraft RegisterAllVariables() call — these are universal (not
@@ -95,6 +146,73 @@ public partial class SimConnectManager
         catch (Exception ex)
         {
             Log.Debug("SimConnect", $"GSX COUATL_STARTED registration failed (GSX-dependent features fall back to the Remote API flag alone): {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Attitude at 1 Hz for the unusual-attitude alert. An unusual attitude develops over tens
+    /// of seconds, so a second's resolution is ample and the cost is 24 bytes a second.
+    /// </summary>
+    private void RegisterFlightAttitudeDefinition()
+    {
+        try
+        {
+            var sc = simConnect!;
+            // ⚠️ Degrees, explicitly. The SimVar's native unit is RADIANS despite its name.
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_FLIGHT_ATTITUDE, "PLANE BANK DEGREES", "Degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_FLIGHT_ATTITUDE, "PLANE PITCH DEGREES", "Degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_FLIGHT_ATTITUDE, "SIM ON GROUND", "Bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.RegisterDataDefineStruct<FlightAttitudeData>(DATA_DEFINITIONS.DEF_FLIGHT_ATTITUDE);
+            sc.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FLIGHT_ATTITUDE,
+                DATA_DEFINITIONS.DEF_FLIGHT_ATTITUDE, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.SECOND, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            Log.Debug("SimConnect", "Registered flight attitude definition (periodic)");
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Flight attitude registration failed (unusual-attitude alert unavailable): {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// The active flight plan's TO-waypoint (GPS WP NEXT/PREV ID, distance, bearing, ETE),
+    /// one fixed def requested once a second. Universal rather than aircraft-specific — every
+    /// GPS navigator that drives the stock GPS SimVars fills it, which on the DA40 is the
+    /// Working Title G1000's own GpsSynchronizer — so it registers here with the fixed defs,
+    /// ahead of the bulk per-aircraft registration and its ceiling.
+    ///
+    /// ⚠️ DEFAULT, not CHANGED, for the SAME reason the GSX def above uses DEFAULT: this runs
+    /// inside SetupDataDefinitions, before OnRecvSimobjectData is attached and while
+    /// Application.DoEvents drains the receive queue with no handler on it. Under CHANGED the
+    /// one packet a plan already loaded produces lands in that window and nothing re-sends it,
+    /// so a pilot who loaded their route before MSFSBA connected would get no waypoint calls
+    /// at all. A hundred and forty-four bytes a second is the price of self-healing.
+    /// </summary>
+    private void RegisterGpsWaypointDefinition()
+    {
+        try
+        {
+            var sc = simConnect!;
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_GPS_WAYPOINT, "GPS WP NEXT ID", null, SIMCONNECT_DATATYPE.STRING64, 0.0f, SIMCONNECT_UNUSED);
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_GPS_WAYPOINT, "GPS WP PREV ID", null, SIMCONNECT_DATATYPE.STRING64, 0.0f, SIMCONNECT_UNUSED);
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_GPS_WAYPOINT, "GPS WP DISTANCE", "Meters", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            // Written in RADIANS by the navigator; SimConnect converts because we ask in degrees.
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_GPS_WAYPOINT, "GPS WP BEARING", "Degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_GPS_WAYPOINT, "GPS WP ETE", "Seconds", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_GPS_WAYPOINT, "GPS IS ACTIVE FLIGHT PLAN", "Bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_GPS_WAYPOINT, "GPS IS DIRECTTO FLIGHTPLAN", "Bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_GPS_WAYPOINT, "GPS WP PREV VALID", "Bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_GPS_WAYPOINT, "GPS ETE", "Seconds", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_GPS_WAYPOINT, "GPS GROUND SPEED", "Knots", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.RegisterDataDefineStruct<GpsWaypointData>(DATA_DEFINITIONS.DEF_GPS_WAYPOINT);
+            sc.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_GPS_WAYPOINT,
+                DATA_DEFINITIONS.DEF_GPS_WAYPOINT, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.SECOND, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            Log.Debug("SimConnect", "Registered GPS waypoint definition (periodic)");
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"GPS waypoint registration failed (waypoint readout and passing calls unavailable): {ex.Message}");
         }
     }
 
@@ -249,7 +367,11 @@ public partial class SimConnectManager
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)3);
         sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "GROUND VELOCITY", "knots",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)4);
-        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "VERTICAL SPEED", "feet per minute",
+        // TRUE vertical velocity, never VERTICAL SPEED: that is the INDICATED figure, filtered
+        // like a VSI. Measured on the COWS DA40 (2026-10-12) it read -300 fpm through two seconds
+        // of level flight in a flare (a balloon) and barely moved through the whole round-out, so
+        // a sink-rate cue keyed on it told the pilot to keep pulling after the descent had stopped.
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "VELOCITY WORLD Y", "feet per minute",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)5);
         sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "PLANE ALT ABOVE GROUND", "feet",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)6);
@@ -334,6 +456,8 @@ public partial class SimConnectManager
         // SC-12, 2026-07): universal, non-aircraft-specific, so they register here with the rest
         // of the fixed/critical defs, still safely ahead of the per-aircraft bulk registration.
         RegisterHotkeyReadoutDefinitions();
+        // The First Officer's and the universal automation's background reads, the same kind.
+        RegisterFoBackgroundDefinitions();
 
         // GSX's L:FSDT_GSX_COUATL_STARTED — one fixed def, requested once per second
         // (never per frame). Universal, not aircraft-specific, so it registers here
@@ -347,6 +471,10 @@ public partial class SimConnectManager
         // camera to an instrument view (SimConnectManager.Camera.cs). Universal, so it registers
         // here with the fixed defs, in its own try/catch like the GSX one above.
         RegisterCameraViewDefinition();
+
+        RegisterGpsWaypointDefinition();
+
+        RegisterFlightAttitudeDefinition();
 
         // IS SLEW ACTIVE and SIMULATION RATE for the sim-state announcements: two fixed defs, here
         // ahead of the bulk registration. Their requests go out in SetupEvents, once the handler
@@ -388,8 +516,10 @@ public partial class SimConnectManager
         {
             var varDef = kvp.Value;
 
-            // Skip write-only variables (Never frequency), H-variables, AND PMDG variables (handled by IPMDGDataManager)
-            if (varDef.UpdateFrequency == UpdateFrequency.Never || varDef.Type == SimVarType.HVar || varDef.Type == SimVarType.PMDGVar)
+            // Skip write-only variables (Never frequency), H-variables, PMDG variables (handled by
+            // IPMDGDataManager) AND input events (subscribed by hash: SimConnectManager.InputEventReads.cs)
+            if (varDef.UpdateFrequency == UpdateFrequency.Never || varDef.Type == SimVarType.HVar
+                || varDef.Type == SimVarType.PMDGVar || varDef.Type == SimVarType.InputEvent)
                 continue;
 
             // Batch-covered: Continuous + IsAnnounced + not ExcludeFromBatch. These are monitored
@@ -805,6 +935,9 @@ public partial class SimConnectManager
         lastVariableValues.Clear();
         unchangedDeliveryLogged.Clear();
         lock (forceUpdateVariables) { forceUpdateVariables.Clear(); }
+        // A cache-only poll never answered must not suppress the next aircraft's delivery of a key
+        // the two share (A32NX_* keys sit on several aircraft).
+        _cacheOnlyPolls.Clear();
         _freshReads.FailAll();
         FailCameraViewRead();
 
@@ -815,6 +948,8 @@ public partial class SimConnectManager
         // Re-register all variables for new aircraft
         RegisterAllVariables();
         SeedSimFrameSubscriptions();   // the handler is attached on this path, so the seeds answer at once
+        // A profile switch keeps the sim's catalog but brings a new variable set.
+        SubscribeAircraftInputEvents();
     }
 
     private void SetupEvents()
@@ -827,6 +962,8 @@ public partial class SimConnectManager
         sc.OnRecvClientData += SimConnect_OnRecvClientData;
         sc.OnRecvException += SimConnect_OnRecvException;
         sc.OnRecvEnumerateInputEvents += SimConnect_OnRecvEnumerateInputEvents;
+        sc.OnRecvSubscribeInputEvent += SimConnect_OnRecvSubscribeInputEvent;
+        sc.OnRecvGetInputEvent += SimConnect_OnRecvGetInputEvent;
         // AircraftLoaded fires when the user changes aircraft in-sim (or reloads).
         // The handler re-reads ATC MODEL / ICAO so AircraftIcaoTypeDetected re-fires
         // and the door-offset map is re-queried for the new aircraft.
@@ -850,6 +987,8 @@ public partial class SimConnectManager
         if (!IsConnected || simConnect == null) return;
         try
         {
+            // The hashes are per aircraft load: drop the subscriptions made with the old ones.
+            UnsubscribeAircraftInputEvents();
             inputEventHashes.Clear();
             simConnect.EnumerateInputEvents(DATA_REQUESTS.REQUEST_ENUMERATE_INPUT_EVENTS);
             Log.Debug("SimConnect", "Requested InputEvent enumeration");
@@ -881,9 +1020,10 @@ public partial class SimConnectManager
             // EnumerateInputEvents pages results. The "complete" signal is dwEntryNumber+1 == dwOutOf.
             if (data.dwEntryNumber + 1 >= data.dwOutOf)
             {
-                Log.Debug("SimConnect", 
+                Log.Debug("SimConnect",
                     $"InputEvent enumeration complete: {inputEventHashes.Count} events");
                 DumpInputEventCatalog();
+                SubscribeAircraftInputEvents();
             }
         }
         catch (Exception ex)

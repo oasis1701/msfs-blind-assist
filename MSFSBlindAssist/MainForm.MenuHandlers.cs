@@ -206,6 +206,9 @@ public partial class MainForm
                 settings.TakeoffAssistHeadingToneThreshold, settings.TakeoffAssistLegacyMode,
                 settings.TakeoffAssistEnableCallouts);
             takeoffAssistManager.TakeoffAssistActiveChanged += OnTakeoffAssistActiveChanged;
+            // A rebuilt manager starts with the airliner pair; give it the current aircraft's
+            // calls back, or saving Settings silently took the DA40's "Rotate" away.
+            Services.TakeoffRollCallouts.Apply(takeoffAssistManager, currentAircraft);
 
             if (hadRunwayRef)
             {
@@ -278,6 +281,12 @@ public partial class MainForm
         }
         _appliedSceneryIndexEnabled = settings.SceneryIndexEnabled;
         _appliedTaxiAugmentEnabled = settings.TaxiAugmentEnabled;
+
+        // First Officer automation toggles — push the saved settings into the First Officer
+        // window, if one is open, so a change takes effect without reopening it (moved from the
+        // retired FOSettingsMenuItem_Click).
+        if (firstOfficerForm is { IsDisposed: false } foForm)
+            foForm.ApplySettings();
 
         // VATSIM: install or refresh the vPilot plugin and start/stop the pipe server.
         var vatsimInstall = vatsimService?.ApplySettings(settings);
@@ -528,6 +537,21 @@ public partial class MainForm
     private void HeadwindA330MenuItem_Click(object? sender, EventArgs e)
     {
         SwitchAircraft(new HeadwindA330Definition());
+    }
+
+    private void CowsDA40NGMenuItem_Click(object? sender, EventArgs e)
+    {
+        SwitchAircraft(new Aircraft.DA40.CowsDA40Definition(Aircraft.DA40.DA40Variant.NG));
+    }
+
+    private void CowsDA40XLSMenuItem_Click(object? sender, EventArgs e)
+    {
+        SwitchAircraft(new Aircraft.DA40.CowsDA40Definition(Aircraft.DA40.DA40Variant.XLS));
+    }
+
+    private void CessnaC172G1000MenuItem_Click(object? sender, EventArgs e)
+    {
+        SwitchAircraft(new CessnaC172G1000Definition());
     }
 
     /// <summary>
