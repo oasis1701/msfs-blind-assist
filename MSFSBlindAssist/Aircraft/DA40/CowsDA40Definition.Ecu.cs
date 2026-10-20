@@ -353,6 +353,20 @@ public partial class CowsDA40Definition
     /// <summary>When the press ended, so "finished" reports time since the END.</summary>
     private long _ecuTestEndedTicks;
 
+    /// <summary>
+    /// What a held Asobo push button (<c>ASOBO_GT_Push_Button_Held</c>: the ECU test, the gyro cage)
+    /// is written to while held: 2, what COWS's OWN key bindings write (<c>MAGNETO1_START</c> writes
+    /// <c>2 (&gt;L:ECU_TEST:1)</c>, <c>ATTITUDE_CAGE_BUTTON</c> <c>2 (&gt;L:ATT_CAGE)</c>). The model tests
+    /// the variable for non-zero and the template drains it a third per frame, so 2 survives six
+    /// frames between rewrites where 1 survived three.
+    ///
+    /// ⚠️ AT 1 THE ECU TEST NEVER GOT PAST "SPINNING UP". Live at VCBI (2026-10-20), with every
+    /// other condition the model checks met, the stage went 0 → 0.5 → 0 twenty-six times in 120 s:
+    /// three frames at a high frame rate are shorter than one WinForms tick (~15.6 ms) plus any
+    /// pause on the UI thread, the button read 0 between rewrites, and the model restarted the test.
+    /// </summary>
+    internal const double HeldButtonPressValue = 2;
+
     /// <summary>One timer for every held control; it runs while anything is held.</summary>
     private System.Windows.Forms.Timer? _holdTimer;
     private SimConnectManager? _holdSim;
@@ -560,7 +574,7 @@ public partial class CowsDA40Definition
                                    d.ValueDescriptions.TryGetValue(_ecuLastStage, out var name) ? name : "not started";
                     announcer.AnnounceImmediate(EcuTestStoppedText(
                         (Environment.TickCount64 - _ecuTestStartedTicks) / 1000.0, stage));
-                });
+                }, HeldButtonPressValue);
                 return true;
             }
 
@@ -585,7 +599,7 @@ public partial class CowsDA40Definition
                     "and charges the batteries.");
 
                 HoldLVar("ECU_TEST:1", EcuResetHoldMs, simConnect, () =>
-                    announcer.AnnounceImmediate("Reset complete."));
+                    announcer.AnnounceImmediate("Reset complete."), HeldButtonPressValue);
                 return true;
             }
         }

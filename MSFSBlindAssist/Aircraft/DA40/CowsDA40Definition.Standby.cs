@@ -400,7 +400,7 @@ public partial class CowsDA40Definition
             case "DA40_STBY_GYRO_CAGE":
                 // Say what it did. A button that makes a noise and reports nothing is
                 // indistinguishable from a button that does nothing.
-                HoldLVar("ATT_CAGE", GyroCageHoldMs, simConnect);
+                HoldLVar("ATT_CAGE", GyroCageHoldMs, simConnect, value: HeldButtonPressValue);
                 announcer.AnnounceImmediate("Caging standby horizon");
                 return true;
 
