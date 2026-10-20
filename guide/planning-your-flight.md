@@ -627,7 +627,7 @@ On the **PMDG 737** and the **iFly 737 MAX8**, Input Ctrl+N opens the **NAV Radi
 - **NAV 1 frequency (MHz)** and **NAV 2 frequency (MHz)**, from 108.00 to 117.95.
 - **NAV 1 course (degrees)** and **NAV 2 course (degrees)**, from 0 to 359.
 
-Change what you need and press Enter (or **Set**) to apply all four; unchanged values are simply set again. Press Escape to cancel. You can type a frequency as 110.30, 110.3 or 11030, with a dot or a comma, and BA rounds it to the nearest valid channel. If a value is out of range, BA tells you and puts you back in that field, for example *"NAV 1 frequency must be between 108.00 and 117.95 megahertz"*.
+Change what you need and press Enter in any of the four fields to apply all four and close the window; unchanged values are simply set again. Press Escape, or the **Cancel** button, to close it without changing anything. You can type a frequency as 110.30, 110.3 or 11030, with a dot or a comma, and BA rounds it to the nearest valid channel. If a value is out of range, BA tells you and puts you back in that field, for example *"NAV 1 frequency must be between 108.00 and 117.95 megahertz"*.
 
 On the iFly, BA keys each frequency on the NAV control panel keypad, transfers it to active and sets the MCP course; read the result back with Output N. On other aircraft, tune the radios from their panels, or from the aircraft's own radio windows described in [Airbus Aircraft](airbus-aircraft.md) and [Boeing Aircraft and the MD-11](boeing-aircraft-and-the-md-11.md).
 
