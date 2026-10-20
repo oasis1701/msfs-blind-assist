@@ -19,7 +19,8 @@ public sealed class FbwA380StateEvaluator : LVarStateEvaluator
     internal const string LandingConf3Field = "FO_LANDING_CONF3";
 
     /// <summary>Synthetic: both flight directors on (1), any off (0), NaN unknown — per build
-    /// (A380BuildNames.FlightDirectorsOn: FS2020 FD_1_CTL + FD_2_CTL, FS2024 the FCU FD light).</summary>
+    /// (A380BuildNames.FlightDirectorsOn: FS2020 FO_A380_FS2020_FD_1 + FO_A380_FS2020_FD_2; FS2024 the
+    /// PRIM's FG discrete word 1 first, the FCU FD light only when the word has no data).</summary>
     internal const string FlightDirectorsOnField = "FO_FD_ON";
 
     /// <summary>Synthetic: both baro-unit selectors at hectopascals (1), either at inches (0), NaN

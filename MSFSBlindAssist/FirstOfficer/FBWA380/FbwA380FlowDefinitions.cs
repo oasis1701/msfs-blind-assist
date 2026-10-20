@@ -78,6 +78,9 @@ public static class FbwA380FlowDefinitions
             // Off in FlyByWire's own engine state, unread failing the guard.
             WaitForField("CP_ENGINES_STOPPED", "Engines stopped", FbwA380StateEvaluator.EnginesStoppedField,
                 v => v > 0.5, 5, onTimeout: FlowStepFailurePolicy.Stop),
+            // ...and never airborne (FO-25), as the CP_MASTERS_OFF tick requires: all four out in
+            // flight is a relight, not a cold cockpit. Links no line (the 777's CP_ON_GROUND).
+            OnGroundGuard("CP_ON_GROUND"),
             Captain("CP_WIPERS", "Wipers off"),
             Done(Skip(SW("CP_GEAR", "Gear lever: DOWN", "A32NX_GEAR_HANDLE_POSITION", 1),
                 s => s.IsPosition("A32NX_GEAR_HANDLE_POSITION", 1)), "CP_GEAR"),

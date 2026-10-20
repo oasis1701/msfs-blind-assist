@@ -75,6 +75,9 @@ public static class FenixFlowDefinitions
             // engines down and the gear check would lower the gear. Stop instead (the MD-11's
             // PU_ENGINES_STOPPED).
             EnginesStoppedGuard("EPU_ENGINES_STOPPED"),
+            // ...and never airborne (FO-25), as its master ticks require: with both engines out in
+            // flight the masters are what a relight needs. Links no line (the 777's EPU_ON_GROUND).
+            OnGroundGuard("EPU_ON_GROUND"),
             // Safety-check prefix (JD preliminary cockpit prep / FSFO phase 1): every step
             // skips quietly when already correct, so a warm start no-ops through them.
             Skip(SW("EPU_CHK_MASTER1", "Engine 1 master: OFF", "S_ENG_MASTER_1", 0),

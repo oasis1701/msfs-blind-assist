@@ -87,6 +87,9 @@ public static class Md11FoFlowDefinitions
             // A cold-and-dark flow: started by mistake with engines turning, the next step would
             // cut all three fuel switches (seen live). Stop instead.
             EnginesStoppedGuard("PU_ENGINES_STOPPED"),
+            // ...and never airborne (FO-25), as the PU_FUEL_OFF tick requires: all three fuel switches
+            // off in flight is a triple flame-out. Links no line (the 777's EPU_ON_GROUND).
+            OnGroundGuard("PU_ON_GROUND"),
             // TFDi's Cockpit Entry checks the First Officer finds and never moves: read only. The
             // emergency power selector is checked OFF before the flow arms it below.
             Check("PU_CHK_FLAPS", "Flap handle: UP", "FO_FLAPS_UP", On, CheckSeconds, "CEC_FLAPS"),
@@ -487,8 +490,7 @@ public static class Md11FoFlowDefinitions
         Steps = new()
         {
             // Switches the IRS and the battery off: never airborne, never with engines turning.
-            WaitForField("SD_ON_GROUND", "On the ground", "SIM_ON_GROUND", v => v > 0.5, 5,
-                onTimeout: FlowStepFailurePolicy.Stop),
+            OnGroundGuard("SD_ON_GROUND"),
             EnginesStoppedGuard("SD_ENGINES_STOPPED"),
             Also(Done(Skip(SW("SD_EMER_LTS", "Emergency lights: OFF", EmerLts, 0), s => s.IsPosition(EmerLts, 0)), "SD_EMER_LTS"),
                 "SDC_EMER_LTS"),
@@ -578,6 +580,14 @@ public static class Md11FoFlowDefinitions
     /// fed each second by the window, so an unread value — NaN — fails the guard rather than
     /// letting a destructive step through.
     /// </summary>
+    /// <summary>
+    /// Stops a flow that switches engines, IRS or batteries off unless the aircraft reads on the
+    /// ground (the stock SIM_ON_GROUND; unread fails the guard).
+    /// </summary>
+    private static Step OnGroundGuard(string id)
+        => WaitForField(id, "On the ground", "SIM_ON_GROUND", v => v > 0.5, 5,
+            onTimeout: FlowStepFailurePolicy.Stop);
+
     private static Step EnginesStoppedGuard(string id)
         => WaitForField(id, "Engines stopped", "FO_ENGINES_STOPPED", v => v > 0.5, 5,
             onTimeout: FlowStepFailurePolicy.Stop);
