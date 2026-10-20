@@ -61,8 +61,10 @@ public static class LandingExitPlannerPreset
                 return new PresetRunwaySelection(i, true, null);
 
         return new PresetRunwaySelection(0, false,
+            // Worded for both windows that share this selector (the Landing Exit Planner and
+            // Select Destination Runway), so no "plan an exit" here.
             $"Runway {presetRunwayId.Trim()} is not in this airport's runway list. " +
-            $"Showing runway {runwayIds[0]} instead — check the runway before you plan an exit.");
+            $"Showing runway {runwayIds[0]} instead — check the runway before you continue.");
     }
 
     /// <summary>True when two runway designators name the same runway end after

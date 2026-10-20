@@ -1,7 +1,7 @@
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Accessibility;
-using MSFSBlindAssist.Navigation;
+using MSFSBlindAssist.Services;
 
 namespace MSFSBlindAssist.Forms;
 public partial class DestinationRunwayForm : Form
@@ -18,11 +18,13 @@ public partial class DestinationRunwayForm : Form
     private CheckBox manualLandingCheckBox = null!;
     private Button selectButton = null!;
     private Button cancelButton = null!;
-    private Label statusLabel = null!;
+    private TextBox statusTextBox = null!;
 
     private readonly IAirportDataProvider _database;
+    private readonly ScreenReaderAnnouncer _announcer;
     private readonly IntPtr previousWindow;
-    private readonly DestinationPrefill _prefill;
+    private readonly string? _presetIcao;
+    private readonly string? _presetRunwayId;
 
     public Runway? SelectedRunway { get; private set; }
     public Airport? SelectedAirport { get; private set; }
@@ -34,12 +36,15 @@ public partial class DestinationRunwayForm : Form
     /// </summary>
     public bool ManualLandingAssist => manualLandingCheckBox.Checked;
 
-    /// <param name="prefill">Airport (and optionally runway) the app already knows, so the
-    /// ICAO box opens filled in. Null opens it empty.</param>
+    /// <param name="presetIcao">Airport the app already knows (LandingExitPlannerPreset.Resolve),
+    /// so the ICAO box opens filled in. Null opens it empty.</param>
+    /// <param name="presetRunwayId">Runway to highlight when the list is entered, or null.</param>
     public DestinationRunwayForm(IAirportDataProvider database, ScreenReaderAnnouncer announcer,
-        DestinationPrefill? prefill = null)
+        string? presetIcao = null, string? presetRunwayId = null)
     {
-        _prefill = prefill ?? DestinationPrefill.None;
+        _announcer = announcer;
+        _presetIcao = presetIcao;
+        _presetRunwayId = presetRunwayId;
         // Capture the current foreground window (likely the simulator)
         previousWindow = GetForegroundWindow();
 
@@ -77,6 +82,9 @@ public partial class DestinationRunwayForm : Form
             AccessibleDescription = "Enter the 4-letter ICAO code for the destination airport"
         };
         icaoTextBox.TextChanged += IcaoTextBox_TextChanged;
+        // A single-line TextBox doesn't claim Enter as an input key, so without this the
+        // Enter press goes to the form's AcceptButton and KeyDown never fires (PR #318 review).
+        icaoTextBox.PreviewKeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) e.IsInputKey = true; };
         icaoTextBox.KeyDown += IcaoTextBox_KeyDown;
 
         // Runway Label and ListBox
@@ -97,6 +105,7 @@ public partial class DestinationRunwayForm : Form
         };
         runwayListBox.SelectedIndexChanged += RunwayListBox_SelectedIndexChanged;
         runwayListBox.KeyDown += RunwayListBox_KeyDown;
+        runwayListBox.Enter += RunwayListBox_Enter;
 
         // Manual landing assist checkbox (unchecked by default). When checked, the flare tones
         // arm as well as the rollout centerline tone; unchecked (the normal choice for ILS-flown
@@ -111,11 +120,14 @@ public partial class DestinationRunwayForm : Form
             AccessibleDescription = "When checked, a flare guidance tone plays from 50 feet, then the centerline tone guides the rollout. Leave unchecked for ILS approaches: the rollout centerline tone still plays after touchdown while it is switched on in the Hand Fly settings, which it is by default."
         };
 
-        // Status Label
-        statusLabel = new Label
+        // Status box: a read-only TextBox, not a Label, so it is in the tab order and a
+        // screen-reader user can reach the lookup result ("Found N runways…", "Airport X
+        // not found…") without hunting with the review cursor (VAT-13).
+        statusTextBox = new TextBox
         {
             Location = new Point(20, 290),
             Size = new Size(350, 20),
+            ReadOnly = true,
             AccessibleName = "Status",
             Text = "Enter an airport ICAO code to see available runways"
         };
@@ -146,7 +158,7 @@ public partial class DestinationRunwayForm : Form
         Controls.AddRange(new Control[]
         {
             icaoLabel, icaoTextBox, runwayLabel, runwayListBox,
-            manualLandingCheckBox, statusLabel, selectButton, cancelButton
+            manualLandingCheckBox, statusTextBox, selectButton, cancelButton
         });
 
         AcceptButton = selectButton;
@@ -159,8 +171,9 @@ public partial class DestinationRunwayForm : Form
         icaoTextBox.TabIndex = 0;
         runwayListBox.TabIndex = 1;
         manualLandingCheckBox.TabIndex = 2;
-        selectButton.TabIndex = 3;
-        cancelButton.TabIndex = 4;
+        statusTextBox.TabIndex = 3;
+        selectButton.TabIndex = 4;
+        cancelButton.TabIndex = 5;
 
         // Focus and bring window to front when opened
         Load += (sender, e) =>
@@ -170,13 +183,15 @@ public partial class DestinationRunwayForm : Form
             TopMost = true;
             TopMost = false; // Flash to bring to front
 
-            // Fill in the destination airport the app already knows (flight plan arrival,
-            // or the destination set earlier). Setting the text loads the runway list.
+            // Fill in the destination airport the app already knows (the destination set
+            // earlier, or the flight plan arrival). Setting the text loads the runway list.
             // The text is selected so typing a different ICAO replaces it, and the screen
-            // reader speaks the filled-in value when the box takes focus.
-            if (_prefill.Icao != null && string.IsNullOrEmpty(icaoTextBox.Text))
+            // reader speaks the filled-in value when the box takes focus. Only a 4-character
+            // code: the box loads runways only at exactly 4 characters, so a shorter ident
+            // (an FAA code like 0S9) would sit in the box unloadable.
+            if (_presetIcao is { Length: 4 })
             {
-                icaoTextBox.Text = _prefill.Icao;
+                icaoTextBox.Text = _presetIcao;
                 icaoTextBox.SelectAll();
             }
             icaoTextBox.Focus();
@@ -201,27 +216,37 @@ public partial class DestinationRunwayForm : Form
     {
         if (e.KeyCode == Keys.Enter && runwayListBox.Items.Count > 0)
         {
-            runwayListBox.Focus();
-            if (runwayListBox.Items.Count > 0)
-            {
-                runwayListBox.SelectedIndex = PrefillRunwayIndex();
-            }
+            runwayListBox.Focus(); // RunwayListBox_Enter highlights the planned runway
             e.Handled = true;
+            e.SuppressKeyPress = true;
         }
     }
 
-    /// <summary>Index of the prefilled runway in the list, or 0 when it isn't there.</summary>
-    private int PrefillRunwayIndex()
+    /// <summary>
+    /// The list taking focus (Tab, or Enter from the ICAO box) with nothing selected highlights
+    /// the planned runway — the first runway when none is planned or the box holds a typed
+    /// airport. Through LandingExitPlannerPreset.SelectRunway, the Landing Exit Planner's
+    /// selector, so both windows match designators the same way and give the same notice when
+    /// the planned runway is not in this airport's list (closed, or renamed for magnetic
+    /// drift — how #234 started). Not done in LoadRunways: selecting there enables the Select
+    /// button, and Enter in the ICAO box would then confirm a runway straight away.
+    /// </summary>
+    private void RunwayListBox_Enter(object? sender, EventArgs e)
     {
-        // Only when the box still holds the prefilled airport; a typed one starts at the top.
-        if (!string.Equals(icaoTextBox.Text.Trim(), _prefill.Icao, StringComparison.OrdinalIgnoreCase))
-            return 0;
-        for (int i = 0; i < runwayListBox.Items.Count; i++)
+        if (runwayListBox.SelectedIndex != -1 || runwayListBox.Items.Count == 0) return;
+
+        bool presetAirport = !string.IsNullOrEmpty(_presetRunwayId)
+            && string.Equals(icaoTextBox.Text.Trim(), _presetIcao, StringComparison.OrdinalIgnoreCase);
+        var ids = runwayListBox.Items.OfType<Runway>().Select(r => r.RunwayID).ToList();
+        var selection = LandingExitPlannerPreset.SelectRunway(ids, presetAirport ? _presetRunwayId : null);
+
+        if (selection.Index >= 0 && selection.Index < runwayListBox.Items.Count)
+            runwayListBox.SelectedIndex = selection.Index;
+        if (selection.Notice != null)
         {
-            if (runwayListBox.Items[i] is Runway r && _prefill.MatchesRunway(r.RunwayID))
-                return i;
+            statusTextBox.Text = selection.Notice;
+            _announcer.Announce(selection.Notice);
         }
-        return 0;
     }
 
     private void LoadRunways(string icao)
@@ -231,7 +256,7 @@ public partial class DestinationRunwayForm : Form
             var airport = _database.GetAirport(icao);
             if (airport == null)
             {
-                statusLabel.Text = $"Airport {icao} not found in database";
+                statusTextBox.Text = $"Airport {icao} not found in database";
                 ClearRunways();
                 return;
             }
@@ -239,7 +264,7 @@ public partial class DestinationRunwayForm : Form
             var runways = _database.GetRunways(icao);
             if (runways.Count == 0)
             {
-                statusLabel.Text = $"No runways found for {icao}";
+                statusTextBox.Text = $"No runways found for {icao}";
                 ClearRunways();
                 return;
             }
@@ -248,13 +273,13 @@ public partial class DestinationRunwayForm : Form
             runwayListBox.Items.Clear();
             runwayListBox.Items.AddRange(runways.ToArray());
 
-            statusLabel.Text = $"Found {runways.Count} runways for {airport.Name}";
+            statusTextBox.Text = $"Found {runways.Count} runways for {airport.Name}";
 
             selectButton.Enabled = false;
         }
         catch (Exception ex)
         {
-            statusLabel.Text = $"Error loading runways: {ex.Message}";
+            statusTextBox.Text = $"Error loading runways: {ex.Message}";
             ClearRunways();
         }
     }
@@ -268,7 +293,7 @@ public partial class DestinationRunwayForm : Form
 
         if (string.IsNullOrEmpty(icaoTextBox.Text))
         {
-            statusLabel.Text = "Enter an airport ICAO code to see available runways";
+            statusTextBox.Text = "Enter an airport ICAO code to see available runways";
         }
     }
 
@@ -280,7 +305,7 @@ public partial class DestinationRunwayForm : Form
             selectButton.Enabled = true;
 
             string description = $"Selected {selectedRunway}";
-            statusLabel.Text = description;
+            statusTextBox.Text = description;
         }
         else
         {

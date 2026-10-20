@@ -231,14 +231,18 @@ public partial class MainForm
         if (!ValidateDatabaseSimulatorMatch())
             return;
 
-        // Open with the destination airport already filled in when the app knows it.
+        // Open with the destination airport already filled in when the app knows it. Same
+        // resolver, sources and order as the Landing Exit Planner (ShowLandingExitForm): the
+        // destination already set wins, then the flight plan's arrival when it names both —
+        // the two arrival windows must open on the same airport (PR #318 review).
+        bool hasDestination = simConnectManager.HasDestinationRunway();
         var plan = flightPlanManager?.CurrentFlightPlan;
-        var prefill = MSFSBlindAssist.Navigation.DestinationPrefill.Choose(
-            plan?.ArrivalICAO, plan?.ArrivalRunway,
-            simConnectManager.GetDestinationAirport()?.ICAO,
-            simConnectManager.GetDestinationRunway()?.RunwayID);
+        var preset = LandingExitPlannerPreset.Resolve(
+            hasDestination ? simConnectManager.GetDestinationAirport()?.ICAO : null,
+            hasDestination ? simConnectManager.GetDestinationRunway()?.RunwayID : null,
+            plan?.ArrivalICAO, plan?.ArrivalRunway);
 
-        var dialog = new DestinationRunwayForm(airportDataProvider, announcer, prefill);
+        var dialog = new DestinationRunwayForm(airportDataProvider, announcer, preset.Icao, preset.RunwayId);
         if (dialog.ShowDialog(this) == DialogResult.OK)
         {
             if (dialog.SelectedRunway != null && dialog.SelectedAirport != null)
