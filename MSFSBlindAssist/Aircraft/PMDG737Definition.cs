@@ -738,11 +738,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["LTS_annunEmerNOT_ARMED"]      = Annun("LTS_annunEmerNOT_ARMED", "Emergency Lights NOT ARMED");
         d["LTS_EmerExitSelector"]        = Selector("LTS_EmerExitSelector", "Emergency Exit Lights",
             "OFF", "ARMED", "ON");
-        // TFM: under-modeled as 2-position off/on switch.
-        // SDK line 215: `unsigned char COMM_NoSmokingSelector; // 0: OFF  1: AUTO  2: ON`.
-        // Resolved with SDK: this is a 3-position physical selector on the NG3 cockpit
-        // (OFF/AUTO/ON). TFM is wrong; keep our 3-position dispatch.
-        d["COMM_NoSmokingSelector"]      = Selector("COMM_NoSmokingSelector", "No Smoking", "OFF", "AUTO", "ON");
+        // Two positions, not the SDK header's three: the NG3 has no ON (swept
+        // 2026-10-20, P737-3; Pmdg737NoSmokingSwitchTests).
+        d["COMM_NoSmokingSelector"]      = Selector("COMM_NoSmokingSelector", "No Smoking", "OFF", "AUTO");
         d["COMM_FastenBeltsSelector"]    = Selector("COMM_FastenBeltsSelector", "Fasten Seat Belts", "OFF", "AUTO", "ON");
         d["COMM_annunCALL"]              = Annun("COMM_annunCALL", "Cabin Call");
         d["COMM_annunPA_IN_USE"]         = Annun("COMM_annunPA_IN_USE", "PA In Use");
@@ -4104,9 +4102,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // walk drove each pick toward position 0 and pinned there (the Bank Limit
     // "stuck at 10°" report). Each was then set by absolute target and read back
     // across non-adjacent positions in one send. The selectors that stepped the
-    // right way stay on the walk: dome, no smoking, fasten belts, window heat
-    // test, packs, isolation valve, landing light retract, VOR/ADF pointers,
-    // disengage test, lights test, fuel flow.
+    // right way stay on the walk: dome, fasten belts, window heat test, packs,
+    // isolation valve, landing light retract, VOR/ADF pointers, disengage test,
+    // lights test, fuel flow. No smoking also looked right that day, but it has
+    // only two positions (swept 2026-10-20) and takes the CDA write instead.
     //
     // AIR_OutflowValveSwitch is spring-loaded in the real cockpit, but the NG3
     // LATCHES it when set from outside: an absolute send and a CDA write of
@@ -4138,6 +4137,18 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // 1 lands OFF (1), 0 lands STROBE & STEADY (2).
     private static readonly HashSet<string> _reversedAbsolutePositionSet =
         new HashSet<string> { "LTS_PositionSw" };
+
+    // Two-position switches whose CDA write was read back as absolute and
+    // idempotent (No Smoking, 2026-10-20): they skip step 5's "already at target"
+    // guard, as branch 4a does. That guard reads the 1 Hz snapshot, so a quick
+    // A→B→A pick, or a pick of 0 before the first snapshot (the 0.0 sentinel),
+    // would drop the send.
+    private static readonly HashSet<string> _unguardedTwoPositionSet =
+        new HashSet<string> { "COMM_NoSmokingSelector" };
+
+    /// <summary>True when step 5 skips a pick the cached snapshot already shows.</summary>
+    internal static bool GuardsAlreadyAtTarget(string varKey, SimConnect.SimVarDefinition varDef) =>
+        varDef.ValueDescriptions.Count >= 2 && !_unguardedTwoPositionSet.Contains(varKey);
 
     internal static IReadOnlyCollection<string> AbsolutePositionSelectorKeys => _absolutePositionSelectorSet;
 
@@ -5154,7 +5165,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             }
 
             int target = (int)value;
-            if (varDef.ValueDescriptions.Count >= 2)
+            if (GuardsAlreadyAtTarget(varKey, varDef))
             {
                 var dm = simConnect.PMDGDataManager;
                 if (dm != null && (int)dm.GetFieldValue(varDef.Name) == target)
