@@ -322,4 +322,46 @@ public class RunwayHoldShortSelectorTests
 
         Assert.Equal(4, at);
     }
+
+    // ------------------------------------------------------------------
+    // SelectNamedHoldingPointStop — Pass 1.5 of TruncateToHoldShort
+    // (2026-08-31 EGKK: told "hold at A2", the scenery paints no hold node
+    // anywhere on the east loop, and the pilot rolled through the line with
+    // no callout). The pilot's explicitly picked point becomes the stop —
+    // ONLY consulted when Pass 1 found no HS/IHS on the route.
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public void NamedHoldingPointStop_FindsThePickedNode()
+    {
+        Assert.Equal(2, RunwayHoldShortSelector.SelectNamedHoldingPointStop(
+            new[] { 10, 20, 541, 30 }, 541));
+    }
+
+    [Fact]
+    public void NamedHoldingPointStop_TakesTheLatestOccurrence()
+    {
+        // A route can legitimately revisit a node (loop taxi); the stop is the
+        // LAST pass through the picked line — closest to the runway.
+        Assert.Equal(3, RunwayHoldShortSelector.SelectNamedHoldingPointStop(
+            new[] { 541, 20, 30, 541, 40 }, 541));
+    }
+
+    [Fact]
+    public void NamedHoldingPointStop_PointNotOnRoute_IsMinusOne()
+    {
+        // Aircraft already at/past the point, or the pin was dropped — nothing
+        // to stop at; the synthetic back-off (Pass 2) owns the stop instead.
+        Assert.Equal(-1, RunwayHoldShortSelector.SelectNamedHoldingPointStop(
+            new[] { 10, 20, 30 }, 541));
+    }
+
+    [Fact]
+    public void NamedHoldingPointStop_NoPointPicked_IsMinusOne()
+    {
+        // 0 is the "no holding point" sentinel (and node id 0 is the graph's
+        // permanent not-set sentinel, never a real node).
+        Assert.Equal(-1, RunwayHoldShortSelector.SelectNamedHoldingPointStop(
+            new[] { 10, 0, 30 }, 0));
+    }
 }

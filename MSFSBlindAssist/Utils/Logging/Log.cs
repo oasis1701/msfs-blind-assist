@@ -41,8 +41,17 @@ public static class Log
             return new LogChannel(file, category);
         });
 
+    /// <summary>
+    /// Virtual-pilot harness only (tools/VirtualPilot): when set, every line goes here INSTEAD of
+    /// the log folder, so thousands of simulated flights never write into the pilot's logs.
+    /// Never set in the app.
+    /// </summary>
+    internal static Action<string, string>? Redirect;
+
     internal static void Emit(string fileName, LogLevel level, string category, string message, Exception? ex)
     {
+        var redirect = Redirect;
+        if (redirect != null) { try { redirect(fileName, message); } catch { } return; }
         try { Writer.Enqueue(new LogEntry(fileName, LogFormatter.Format(DateTime.Now, level, category, message, ex))); }
         catch { /* logging must never throw into the caller */ }
     }

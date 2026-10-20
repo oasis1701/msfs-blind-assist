@@ -61,6 +61,19 @@ public class LandingExitForm : Form
     private ComboBox cmbRunway = null!;
     private Label lblExit = null!;
     private ComboBox cmbExit = null!;
+    private CheckBox chkLahso = null!;
+    // The landing runway the LAHSO list was last built for: a pick survives a rebuild only for it.
+    private string? _lahsoListRunwayId;
+    private ComboBox cmbLahsoRunway = null!;
+
+    /// <summary>Combo wrapper: a computed LAHSO hold with a speakable label.</summary>
+    private sealed class LahsoChoice
+    {
+        public Navigation.LahsoHold Hold { get; }
+        public LahsoChoice(Navigation.LahsoHold h) { Hold = h; }
+        public override string ToString() =>
+            $"Runway {Hold.CrossingRunwayId} — hold point {Services.DistanceFormatter.FromFeet(Hold.StopFromThresholdFeet, round: false)} from threshold (estimated)";
+    }
     private Button btnPlan = null!;
     private Button btnClear = null!;
     private Label lblStatus = null!;
@@ -73,6 +86,10 @@ public class LandingExitForm : Form
     // database query.
     private List<Runway> _allRunways = new();
     private List<LandingExit> _exits = new();
+    // What the pilot reads and picks from: _exits with same-turnoff duplicates collapsed
+    // (LandingExitDisplayList). _exits stays the full list — every resolution below reads
+    // the siblings, exactly as the rollout does.
+    private List<LandingExit> _shownExits = new();
 
     // The augmentation decorator, when the app wired one up (null when the feature is
     // off or the provider isn't decorated — tests pass a bare provider). Held typed so
@@ -132,7 +149,7 @@ public class LandingExitForm : Form
     private void InitializeFormControls()
     {
         this.Text = "Landing Exit Planner";
-        this.Size = new System.Drawing.Size(460, 340);
+        this.Size = new System.Drawing.Size(460, 410);
         this.StartPosition = FormStartPosition.CenterParent;
         this.FormBorderStyle = FormBorderStyle.FixedDialog;
         this.MaximizeBox = false;
@@ -198,6 +215,31 @@ public class LandingExitForm : Form
         };
         y += 35;
 
+        // LAHSO — land and hold short of a crossing runway (YMML's signature
+        // procedure; VATSIM gap analysis 2026-08-31, P5). Opt-in per plan: when
+        // checked, rollout guidance adds hold-point countdown callouts, and exits
+        // beyond the hold point are refused at Plan time.
+        chkLahso = new CheckBox
+        {
+            Text = "Land and hold short (LA&HSO) of:",
+            Location = new System.Drawing.Point(labelX, y),
+            AutoSize = true,
+            AccessibleName = "Land and hold short, LAHSO",
+            AccessibleDescription = "When checked, plan a land-and-hold-short operation: rollout guidance counts down to an estimated hold point short of the crossing runway selected below, and the exit must be before that point."
+        };
+        chkLahso.CheckedChanged += (s, e) => cmbLahsoRunway.Enabled = chkLahso.Checked;
+        y += 25;
+        cmbLahsoRunway = new ComboBox
+        {
+            Location = new System.Drawing.Point(controlX, y),
+            Width = controlWidth,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Enabled = false,
+            AccessibleName = "LAHSO crossing runway",
+            AccessibleDescription = "The crossing runway to hold short of, with the estimated hold point distance from the landing threshold. Only runways that actually cross the selected landing runway are listed."
+        };
+        y += 35;
+
         btnPlan = new Button
         {
             Text = "&Plan Exit",
@@ -236,6 +278,8 @@ public class LandingExitForm : Form
         this.Controls.Add(cmbRunway);
         this.Controls.Add(lblExit);
         this.Controls.Add(cmbExit);
+        this.Controls.Add(chkLahso);
+        this.Controls.Add(cmbLahsoRunway);
         this.Controls.Add(btnPlan);
         this.Controls.Add(btnClear);
         this.Controls.Add(lblStatus);
@@ -244,6 +288,8 @@ public class LandingExitForm : Form
         txtAirport.TabIndex = t++;
         cmbRunway.TabIndex = t++;
         cmbExit.TabIndex = t++;
+        chkLahso.TabIndex = t++;
+        cmbLahsoRunway.TabIndex = t++;
         btnPlan.TabIndex = t++;
         btnClear.TabIndex = t++;
 
@@ -333,6 +379,7 @@ public class LandingExitForm : Form
         cmbRunway.Items.Clear();
         cmbExit.Items.Clear();
         _exits.Clear();
+        _shownExits.Clear();
 
         if (!_dataProvider.AirportExists(icao))
         {
@@ -482,6 +529,7 @@ public class LandingExitForm : Form
     {
         cmbExit.Items.Clear();
         _exits.Clear();
+        _shownExits.Clear();
 
         if (_graph == null) return;
         if (cmbRunway.SelectedItem is not RunwayChoice choice) return;
@@ -508,24 +556,67 @@ public class LandingExitForm : Form
         // navdata maps no taxiway past the junction at all — better to learn that while
         // choosing than at 60 knots on the rollout.
         // Through the one owner (LandingExitVacateScreen) so this and the touchdown re-plan, which
-        // now applies the same preference, cannot drift apart on what "gets clear" means.
+        // now applies the same preference, cannot drift apart on what "gets clear" means. It also
+        // marks the "(sharp turn back)" exits.
         Navigation.LandingExitVacateScreen.Mark(_graph, _exits, rwy);
-        int unusable = _exits.Count(e => !e.VacatesRunway);
+        // A turn pad at the runway end reads "(backtrack required)", not as a data fault —
+        // the same rule the rollout uses to guide that backtrack (LandingExitBacktrack).
+        Navigation.LandingExitBacktrack.Mark(_graph, rwy, _exits);
+        // One row per turnoff for DISPLAY only (LandingExitDisplayList) — the rollout still
+        // reads every sibling in _exits.
+        _shownExits = Navigation.LandingExitDisplayList.Collapse(_exits);
+        int unusable = _shownExits.Count(e => !e.VacatesRunway && !e.NeedsBacktrack);
 
-        foreach (var exit in _exits)
+        foreach (var exit in _shownExits)
             cmbExit.Items.Add(exit);
 
         // Never a turnaround (Navigation.LandingExitDefault), then the old "gets clear" preference.
-        cmbExit.SelectedIndex = Navigation.LandingExitDefault.Index(_exits);
+        cmbExit.SelectedIndex = Math.Max(0, Navigation.LandingExitDefault.Index(_shownExits));
+
+        // LAHSO candidates: every runway direction whose centerline actually
+        // crosses this landing runway's pavement. Both directions of a crossing
+        // strip are listed (ATC names either designator). No crossings → the
+        // whole LAHSO block is disabled for this runway.
+        //
+        // The pilot's crossing-runway pick survives a rebuild that still lists it (the online name
+        // refresh, same runway). When it is gone (a different landing runway), LAHSO is UNTICKED rather
+        // than left ticked on item 0, a runway the pilot never chose and never heard selected; Plan would
+        // otherwise arm it or refuse the exit against it (PR #324 review).
+        // Same LANDING runway too: the reciprocal or a parallel can cross the same runway at a different
+        // hold point, which the pilot never heard (PR #324 re-review).
+        string? pickedLahso = string.Equals(_lahsoListRunwayId, rwy.RunwayID, StringComparison.OrdinalIgnoreCase)
+            ? (cmbLahsoRunway.SelectedItem as LahsoChoice)?.Hold.CrossingRunwayId
+            : null;
+        _lahsoListRunwayId = rwy.RunwayID;
+        cmbLahsoRunway.Items.Clear();
+        foreach (var other in _runways)
+        {
+            var hold = Navigation.LahsoHold.Compute(rwy, other);
+            if (hold != null)
+                cmbLahsoRunway.Items.Add(new LahsoChoice(hold));
+        }
+        if (cmbLahsoRunway.Items.Count > 0)
+        {
+            int keep = pickedLahso == null ? -1 : cmbLahsoRunway.Items.Cast<LahsoChoice>().ToList()
+                .FindIndex(c => string.Equals(c.Hold.CrossingRunwayId, pickedLahso, StringComparison.OrdinalIgnoreCase));
+            if (keep < 0) chkLahso.Checked = false;
+            cmbLahsoRunway.SelectedIndex = Math.Max(0, keep);
+            chkLahso.Enabled = true;
+        }
+        else
+        {
+            chkLahso.Checked = false;
+            chkLahso.Enabled = false;
+        }
 
         string warnSuffix = unusable > 0
             ? $" {unusable} of them ha{(unusable == 1 ? "s" : "ve")} no taxiway mapped clear of the runway."
             : "";
-        lblStatus.Text = $"{_exits.Count} exit(s) on runway {rwy.RunwayID}.{warnSuffix}";
+        lblStatus.Text = $"{_shownExits.Count} exit(s) on runway {rwy.RunwayID}.{warnSuffix}";
 
         if (announce)
             _announcer.Announce(
-                $"{_exits.Count} exit option{(_exits.Count == 1 ? "" : "s")} for runway {rwy.RunwayID}.{warnSuffix}");
+                $"{_shownExits.Count} exit option{(_shownExits.Count == 1 ? "" : "s")} for runway {rwy.RunwayID}.{warnSuffix}");
     }
 
     /// <summary>
@@ -594,20 +685,20 @@ public class LandingExitForm : Form
 
                 _graph = rebuilt;
 
-                int before = _exits.Count;
+                int before = _shownExits.Count;
                 var selected = cmbExit.SelectedItem as LandingExit;
 
                 RepopulateExits(announce: false);
 
                 // Restore the pilot's pick when it is still offered - by identity, not index, because the
                 // merge can insert exits ahead of it (Navigation.LandingExitDefault.RestoreIndex).
-                int idx = Navigation.LandingExitDefault.RestoreIndex(_exits, selected);
+                int idx = Navigation.LandingExitDefault.RestoreIndex(_shownExits, selected);
                 if (idx >= 0) cmbExit.SelectedIndex = idx;
 
-                if (_exits.Count != before && cmbRunway.SelectedItem is RunwayChoice choice)
+                if (_shownExits.Count != before && cmbRunway.SelectedItem is RunwayChoice choice)
                     _announcer.Announce(
-                        $"Taxiway names updated for {icao}. Now {_exits.Count} exit" +
-                        $"{(_exits.Count == 1 ? "" : "s")} for runway {choice.Runway.RunwayID}.");
+                        $"Taxiway names updated for {icao}. Now {_shownExits.Count} exit" +
+                        $"{(_shownExits.Count == 1 ? "" : "s")} for runway {choice.Runway.RunwayID}.");
             }
             finally
             {
@@ -648,8 +739,32 @@ public class LandingExitForm : Form
         // also default to airborne (better to arm and let the GS≥40 kt floor
         // reject false touchdowns than to fail to arm at all).
         bool currentlyAirborne = _simConnectManager?.LastKnownOnGround != true;
-        _planner.SetExit(_dataProvider, _currentIcao, rwy, exit, _graph, _allRunways, currentlyAirborne);
-        lblStatus.Text = $"Plan set: {exit}";
+
+        // LAHSO: the exit must sit clearly BEFORE the hold point, or following
+        // the exit guidance would roll the pilot toward the protected crossing
+        // runway. Refuse out loud rather than plan a contradiction.
+        Navigation.LahsoHold? lahso = null;
+        if (chkLahso.Checked)
+        {
+            if (cmbLahsoRunway.SelectedItem is not LahsoChoice lc)
+            {
+                _announcer.Announce("Select the LAHSO crossing runway, or uncheck land and hold short.");
+                return;
+            }
+            lahso = lc.Hold;
+            const double LAHSO_EXIT_MARGIN_FT = 100.0;
+            if (exit.DistanceFromThresholdFeet > lahso.StopFromThresholdFeet - LAHSO_EXIT_MARGIN_FT)
+            {
+                _announcer.Announce(
+                    $"Exit {exit.TaxiwayName} is at {Services.DistanceFormatter.FromFeet(exit.DistanceFromThresholdFeet)}, " +
+                    $"beyond the LAHSO hold point at {Services.DistanceFormatter.FromFeet(lahso.StopFromThresholdFeet)}. " +
+                    "Pick an earlier exit or uncheck land and hold short.");
+                return;
+            }
+        }
+
+        _planner.SetExit(_dataProvider, _currentIcao, rwy, exit, _graph, _allRunways, currentlyAirborne, lahso);
+        lblStatus.Text = $"Plan set: {exit}" + (lahso != null ? $" — LAHSO short of runway {lahso.CrossingRunwayId}" : "");
         this.Close();
     }
 }

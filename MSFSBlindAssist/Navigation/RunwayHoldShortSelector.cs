@@ -129,6 +129,26 @@ public static class RunwayHoldShortSelector
     }
 
     /// <summary>
+    /// Pass 1.5 of TruncateToHoldShort (2026-08-31 EGKK): the latest route-segment
+    /// index whose ToNode is the pilot's EXPLICITLY PICKED named holding point, or
+    /// -1 when the point isn't on the route (or none was picked). Consulted ONLY
+    /// after Pass 1 found no HS/IHS node on the route — navdata hold placement
+    /// stays authoritative wherever it exists; this consumes the pilot's own
+    /// selection at sceneries that paint no hold node at all (EGKK's east loop),
+    /// where the pilot otherwise rolls through the line ATC named with no callout
+    /// (live: "hold at A2", blown through, ATC intervened). It outranks the
+    /// synthetic 60 m back-off, which measures from the runway entry and can land
+    /// tens of metres past the named paint.
+    /// </summary>
+    public static int SelectNamedHoldingPointStop(IReadOnlyList<int> toNodeIds, int holdNodeId)
+    {
+        if (holdNodeId == 0) return -1;
+        for (int i = toNodeIds.Count - 1; i >= 0; i--)
+            if (toNodeIds[i] == holdNodeId) return i;
+        return -1;
+    }
+
+    /// <summary>
     /// The route-summary feedback sentence for an LVP request — a blind pilot
     /// has no other way to know whether the CAT III hold was actually honoured
     /// (navdata hold coverage is patchy, and the same-approach gate can
