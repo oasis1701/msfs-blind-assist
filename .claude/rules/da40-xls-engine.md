@@ -7,11 +7,14 @@ paths:
   - "MSFSBlindAssist/Aircraft/DA40/DA40RedBox.cs"
   - "MSFSBlindAssist/Aircraft/DA40/DA40CylinderState.cs"
   - "MSFSBlindAssist/Aircraft/DA40/DA40MagnetoCheck.cs"
+  - "MSFSBlindAssist/Aircraft/DA40/DA40MagnetoSettle.cs"
   - "MSFSBlindAssist/Aircraft/DA40/DA40InstrumentBands.cs"
   - "tests/MSFSBlindAssist.Tests/**/CowsDA40Xls*Tests.cs"
   - "tests/MSFSBlindAssist.Tests/**/DA40CylinderBaselineTests.cs"
   - "tests/MSFSBlindAssist.Tests/**/DA40CylinderStateTests.cs"
   - "tests/MSFSBlindAssist.Tests/**/DA40MagnetoCheckTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/DA40MagnetoSettleTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/CowsDA40MagnetoCrankBounceTests.cs"
   - "tests/MSFSBlindAssist.Tests/**/DA40PrimingTests.cs"
   - "tests/MSFSBlindAssist.Tests/**/DA40RedBoxTests.cs"
   - "tests/MSFSBlindAssist.Tests/**/DA40InstrumentBandsTests.cs"
@@ -31,6 +34,7 @@ Loaded with the XLS Lycoming code. Background: docs/da40-xls-variables.md. Full 
 - [DA40X-9] The model's shock-cooling line has no hysteresis: `ShockCoolingCallout` names an episode once (the cylinders crossing within `GatherMs`), then only a cylinder that newly joins, never one leaving, until `EpisodeEndMs` clear. Full: docs/invariants/da40-xls-engine.md#da40x-9
 - [DA40X-10] Set Best Mixture is read back once where the lever settles (`BestMixtureSettle`, still for `SettleMs`, or at `TimeoutMs`); the walk itself stays silent, as the mixture is a number. Full: docs/invariants/da40-xls-engine.md#da40x-10
 - [DA40X-11] While `STARTER_SPAD:1` cranks, the XLS key bounces START → BOTH every second: `NoteMagnetoChange` claims a move into START and START back to BOTH (silent, the crank speaks for itself); every other key position stays the generic announcer's. Full: docs/invariants/da40-xls-engine.md#da40x-11
+- [DA40X-12] The mag-check drop is read when the needle settles (`DA40MagnetoSettle`: no move over 10 RPM for 1.5 s, at least 2 s, at most 8 s), never at a fixed time: the 1 Hz tach read at two seconds was still falling (90 spoken for 120). Full: docs/invariants/da40-xls-engine.md#da40x-12
 
 Mirrored from da40-avionics.md (it governs `FahrenheitDifferenceText` in CowsDA40Definition.Units.cs, called from the Xls mixture rows; change it there and here together):
 - [DA40A-23] A temperature DIFFERENCE (the lean-assist drop below a peak, the EGT spread) renders through `FahrenheitDifferenceText`, scaled by 5/9 and never offset by 32; `TryUnitText` converts absolute readings only. Full: docs/invariants/da40-avionics.md#da40a-23

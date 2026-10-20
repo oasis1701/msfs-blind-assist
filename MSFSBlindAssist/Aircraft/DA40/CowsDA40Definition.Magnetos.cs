@@ -191,10 +191,12 @@ public partial class CowsDA40Definition
     // ==================================================================================
 
     /// <summary>
-    /// How long the engine gets to settle on one magneto before the drop is read. Measured:
-    /// the RPM was within a few rpm of its settled value inside a second on both sides.
+    /// How often the settle is checked while a side is pending. When the drop is read is
+    /// <see cref="DA40MagnetoSettle"/>'s decision: the needle has stopped moving, which a fixed
+    /// two seconds was not (it read 90 for a drop of 120 live).
     /// </summary>
-    private const int MagnetoSettleMs = 2000;
+    private const int MagnetoSettlePollMs = 250;
+    private readonly DA40MagnetoSettle _magSettle = new();
 
     private double _magRpmNow;
     private int _magLastPosition = -1;
@@ -223,6 +225,7 @@ public partial class CowsDA40Definition
         if (varKey == "DA40_XLS_RPM")
         {
             _magRpmNow = value;
+            _magSettle.Sample(value, Environment.TickCount64);
             return false;
         }
 
@@ -255,6 +258,7 @@ public partial class CowsDA40Definition
 
         // Any other position ends a pending side read.
         _magSettleTimer?.Stop();
+        _magSettle.Cancel();
         _magPendingPosition = -1;
 
         if (position == DA40MagnetoCheck.PositionBoth
@@ -274,10 +278,14 @@ public partial class CowsDA40Definition
 
     private void RestartMagnetoSettle()
     {
+        _magSettle.Start(Environment.TickCount64);
         if (_magSettleTimer == null)
         {
-            _magSettleTimer = new System.Windows.Forms.Timer { Interval = MagnetoSettleMs };
-            _magSettleTimer.Tick += (_, _) => UnderLoadSettle(_magAnnouncer, FlushMagnetoSettle);
+            _magSettleTimer = new System.Windows.Forms.Timer { Interval = MagnetoSettlePollMs };
+            _magSettleTimer.Tick += (_, _) =>
+            {
+                if (_magSettle.IsDue(Environment.TickCount64)) UnderLoadSettle(_magAnnouncer, FlushMagnetoSettle);
+            };
         }
 
         _magSettleTimer.Stop();
@@ -287,6 +295,7 @@ public partial class CowsDA40Definition
     private void FlushMagnetoSettle()
     {
         _magSettleTimer?.Stop();
+        _magSettle.Cancel();
         int position = _magPendingPosition;
         _magPendingPosition = -1;
         if (!DA40MagnetoCheck.IsSingleMagneto(position)) return;
@@ -316,6 +325,7 @@ public partial class CowsDA40Definition
     {
         try { _magSettleTimer?.Stop(); _magSettleTimer?.Dispose(); } catch { }
         _magSettleTimer = null;
+        _magSettle.Cancel();
         _magPendingPosition = -1;
         _magLastPosition = -1;
         _magDropLeft = null;
