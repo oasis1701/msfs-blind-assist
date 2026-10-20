@@ -40,6 +40,28 @@ public class EngineStartChecklistShapeTests
         Assert.Contains("ES_E2_GRD", ids);
     }
 
+    // The "Engine 1/2 Oil Pressure: Verify increases" lines were removed by owner request
+    // (2026-10-20): the 777 Engine Start group is the start selectors and fuel controls only.
+    [Fact]
+    public void B777_EngineStart_IsStartSelectorsAndFuelControlsOnly_TwoThenOne()
+    {
+        var ids = MSFSBlindAssist.FirstOfficer.PMDG777ChecklistDefinitions.Build()
+            .First(g => g.Id == "ENGINE_START").Items.Select(i => i.Id).ToList();
+        Assert.Equal(new[] { "ES_ENG2_START_SEL", "ES_ENG2_FUEL_CTRL",
+                             "ES_ENG1_START_SEL", "ES_ENG1_FUEL_CTRL" }, ids);
+    }
+
+    // No Boeing First Officer has an oil pressure line anywhere in its checklists (owner, 2026-10-20).
+    [Fact]
+    public void No_Boeing_checklist_has_an_oil_pressure_line()
+    {
+        var labels = MSFSBlindAssist.FirstOfficer.PMDG777ChecklistDefinitions.Build().SelectMany(g => g.Items).Select(i => i.Label)
+            .Concat(PMDG737ChecklistDefinitions.Build().SelectMany(g => g.Items).Select(i => i.Label))
+            .Concat(IFly737ChecklistDefinitions.Build().SelectMany(g => g.Items).Select(i => i.Label));
+        Assert.DoesNotContain(labels, l => System.Text.RegularExpressions.Regex.IsMatch(l, @"\boil\b",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase));
+    }
+
     [Fact]
     public void Md11_EngineStart_IsStartAndFuelSwitchesOnly_ThreeOneTwo()
     {
