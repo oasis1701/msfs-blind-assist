@@ -20,10 +20,11 @@ public class FoA380SecureFlowTests
     // reference text (Checklists/FBW_A380_Checklist.txt, retired 2026-10-17, in git history) lists
     // external power first; this was the
     // order until then (SC_EXTPWR_OFF, SC_APU_OFF).
-    // SC_ON_GROUND first (2026-10-19): the IRS and batteries never go off airborne.
+    // SC_ON_GROUND first (2026-10-19): the IRS and batteries never go off airborne; then
+    // SC_ENGINES_STOPPED (2026-10-20, FO-25): nor with an engine turning.
     private static readonly string[] ExpectedSecureIds =
     {
-        "SC_ON_GROUND", "SC_OXY", "SC_EFB", "SC_ADIRS", "SC_EMEREXIT", "SC_NOSMOKE",
+        "SC_ON_GROUND", "SC_ENGINES_STOPPED", "SC_OXY", "SC_EFB", "SC_ADIRS", "SC_EMEREXIT", "SC_NOSMOKE",
         "SC_EXTLT_OFF", "SC_APUBLEED_OFF", "SC_APU_OFF", "SC_APU_WAIT", "SC_EXTPWR_OFF", "SC_BAT_OFF",
     };
 
@@ -48,7 +49,7 @@ public class FoA380SecureFlowTests
     public void SecureChecklistGroupMirrorsTheFlowOneToOne()
     {
         var flowIds = FbwA380FlowDefinitions.Build()
-            .Single(f => f.Id == "SECURE").Steps.Where(s => s.Id is not ("SC_APU_WAIT" or "SC_ON_GROUND"))
+            .Single(f => f.Id == "SECURE").Steps.Where(s => s.Id is not ("SC_APU_WAIT" or "SC_ON_GROUND" or "SC_ENGINES_STOPPED"))
             .Select(s => s.Id).ToList();
         var itemIds = FbwA380ChecklistDefinitions.Build()
             .Single(g => g.Id == "SECURE").Items.Select(i => i.Id).ToList();

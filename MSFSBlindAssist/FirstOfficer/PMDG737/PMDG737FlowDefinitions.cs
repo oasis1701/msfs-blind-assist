@@ -303,7 +303,9 @@ public static class PMDG737FlowDefinitions
             // (crossbleed starts still work — the start-valve waits below are the gate).
             Skip(SW("ES_APUBLEED", "APU bleed air: ON", "EVT_OH_BLEED_APU_SWITCH", 1),
                 s => s.IsApuBleedOn()),
-            Multi("ES_PACKS_OFF", "Packs: OFF", "ES_PACKS", ("EVT_OH_BLEED_PACK_L_SWITCH", 0), ("EVT_OH_BLEED_PACK_R_SWITCH", 0)),
+            // Never airborne (FO-25): packs off there depressurise the cabin; the tick's own rule.
+            LeaveAlone(Multi("ES_PACKS_OFF", "Packs: OFF", "ES_PACKS", ("EVT_OH_BLEED_PACK_L_SWITCH", 0), ("EVT_OH_BLEED_PACK_R_SWITCH", 0)),
+                PMDG737ChecklistDefinitions.NotOnGround, PMDG737ChecklistDefinitions.PacksStayText),
             // --- Engine 2 ---
             // An engine already RUNNING (N2 at or above EngineRunningN2, live once lit) is never put
             // back on GRD, which re-engaged its starter at idle on a re-run: "Already set", and the
@@ -615,8 +617,6 @@ public static class PMDG737FlowDefinitions
                 s => s.IsOn(GeneratorBusState.LoadOffEnginesField)),
             Also(Multi("SD_LEVERS", "Engine start levers: CUTOFF", "SD_LEVERS",
                 ("EVT_CONTROL_STAND_ENG1_START_LEVER", 0), ("EVT_CONTROL_STAND_ENG2_START_LEVER", 0)), "SDC_LEVERS"),
-            // (No spool-down wait — mirrors the 777 shutdown: nothing downstream needs the
-            // engines stopped, and the old start-valve wait was an instant no-op anyway.)
             SW("SD_BELTS", "Seatbelt signs: OFF", "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", 0, checklistItemId: "SD_BELTS"),
             // PMDG's Shutdown Procedure: "ANTI COLLISION light switch: OFF" right after the belts
             // (19.8). Before Start turned it ON and nothing turned it off (owner audit, 2026-10-19).
@@ -625,6 +625,10 @@ public static class PMDG737FlowDefinitions
             SW("SD_TAXI_OFF", "Taxi light: OFF", "EVT_OH_LIGHTS_TAXI", 0, checklistItemId: "SD_TAXI"),
             SW("SD_LOGO_OFF", "Logo lights: OFF", "EVT_OH_LIGHTS_LOGO", 0, checklistItemId: "SD_LOGO"),
             SW("SD_APUBLEED", "APU bleed air: ON", "EVT_OH_BLEED_APU_SWITCH", 1, checklistItemId: "SD_APUBLEED"),
+            // The fuel and electric hydraulic pumps go off below only once both engines have spun
+            // down (FO-25): read, not a fixed pause, so it passes the moment both N2 read below
+            // 10 %. Two minutes after the levers, then the flow stops with the pumps still on.
+            EnginesStoppedGuard("SD_ENGINES_STOPPED", 120),
             Also(Multi("SD_FUEL_OFF", "Fuel pumps: OFF", "SD_FUEL",
                 ("EVT_OH_FUEL_PUMP_1_FORWARD", 0), ("EVT_OH_FUEL_PUMP_2_FORWARD", 0),
                 ("EVT_OH_FUEL_PUMP_1_AFT", 0), ("EVT_OH_FUEL_PUMP_2_AFT", 0),
@@ -659,6 +663,8 @@ public static class PMDG737FlowDefinitions
         {
             // The IRS and the battery go off below: never airborne (the MD-11's SD_ON_GROUND).
             OnGroundGuard("SE_ON_GROUND"),
+            // ...nor with an engine turning (FO-25): the whole flow stops, not just the battery.
+            EnginesStoppedGuard("SE_ENGINES_STOPPED"),
             Also(Multi("SE_IRS_OFF", "IRS mode selectors: OFF", "SE_IRS", ("EVT_IRU_MSU_LEFT", 0), ("EVT_IRU_MSU_RIGHT", 0)), "SEC_IRS"),
             Also(SW("SE_EMER_OFF", "Emergency exit lights: OFF", "EVT_OH_EMER_EXIT_LIGHT_SWITCH", 0, checklistItemId: "SE_EMER"), "SEC_EMER"),
             Also(Multi("SE_WINHEAT_OFF", "Window heat: OFF", "SE_WINHEAT",

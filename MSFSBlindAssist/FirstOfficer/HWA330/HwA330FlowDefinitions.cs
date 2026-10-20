@@ -663,6 +663,10 @@ public static class HwA330FlowDefinitions
                 s => s.IsPosition("CABIN SEATBELTS ALERT SWITCH", 0)), "SD_SEATBELTS_OFF"),
             Done(Skip(SW("SD_BEACON_OFF", "Beacon: OFF", "BEACON_LIGHTS_SET", 0),
                 s => s.IsPosition("LIGHT BEACON", 0)), "SD_BEACON_OFF"),
+            // The fuel goes off only once both engines have spun down (FO-25): the masters above
+            // leave them turning for a while. Two minutes, then the flow stops with the pumps on.
+            WaitForField("SD_ENGINES_STOPPED", "Engines stopped", "FO_ENGINES_OFF", v => v > 0.5, 120,
+                onTimeout: FlowStepFailurePolicy.Stop),
             Done(Skip(Multi("SD_FUELPUMPS_OFF", "Fuel pumps: ALL OFF",
                     ("FUEL_PUMP_L1", 0), ("FUEL_PUMP_L2", 0),
                     ("FUEL_PUMP_C1", 0), ("FUEL_PUMP_C2", 0),
@@ -699,6 +703,8 @@ public static class HwA330FlowDefinitions
         {
             // The IRS and the batteries go off below: never airborne (the MD-11's SD_ON_GROUND).
             OnGroundGuard("SC_ON_GROUND"),
+            // ...nor with an engine turning (FO-25): the whole flow stops, not just the IRS.
+            EnginesStoppedGuard("SC_ENGINES_STOPPED"),
             Done(Skip(Multi("SC_ADIRS", "IRS 1, 2 and 3: OFF",
                     ("A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB", 0), ("A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", 0),
                     ("A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB", 0)),

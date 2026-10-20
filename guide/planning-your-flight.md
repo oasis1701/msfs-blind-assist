@@ -537,7 +537,7 @@ The Flows tab has:
 
 To run a flow, select it in Available flows and press Enter, or Tab to Start Flow and press it. The First Officer works through the steps about two seconds apart. Pause / Resume holds the flow and continues it; Stop Flow ends it after the current step. Only one flow runs at a time.
 
-Before it switches anything that could stop an engine, a flow checks that it is safe. A power-up flow, and the 737 Preflights, stop if an engine is running or the aircraft is in the air, and the shutdown, parking and securing flows stop unless the aircraft is on the ground. Either way you hear why.
+Before it switches anything that could stop an engine, a flow checks that it is safe. A power-up flow, and the 737 Preflights, stop if an engine is running or the aircraft is in the air, and the shutdown, parking and securing flows stop unless the aircraft is on the ground. The securing flows also stop if an engine is still turning. A shutdown or parking flow cuts the engines first, then waits up to two minutes for them to spin down (*"Waiting for: Engines stopped"* when flow progress is spoken) before it switches the fuel pumps off. Either way you hear why.
 
 ### The Checklists tab {#fo-checklists-tab}
 
@@ -607,7 +607,7 @@ The gear and autopilot options work on every aircraft, including the HorizonSim 
 - **"No checklist for this aircraft."** This aircraft has no First Officer.
 - **"A flow is already running. Stop it first."** Only one flow runs at a time. Press Stop Flow, or wait for the flow to finish.
 - **"The last flow is still stopping. Start again when it has stopped."** The flow you stopped is finishing a step that cannot be interrupted, such as the weather radar test. Wait for *"… flow cancelled"*.
-- **"… flow stopped. Unable to complete: Engines stopped"** You ran a power-up flow with an engine turning. Choose the flow for this point in the flight. A shutdown or securing flow run in the air stops the same way, on *"On the ground"*.
+- **"… flow stopped. Unable to complete: Engines stopped"** You ran a power-up flow with an engine turning. Choose the flow for this point in the flight. A shutdown or securing flow run in the air stops the same way, on *"On the ground"*. A securing flow run with an engine turning, or a shutdown whose engines take more than two minutes to spin down, stops on *"Engines stopped"*: check the engines are shut down, then run it again.
 - **"Skipping: …"** The switch did not move, or the aircraft did not show it in time. Set it yourself from BA's panels and carry on; its checklist line stays unticked until the aircraft shows it.
 - **"No related flow found for this section"** That checklist has no flow; work it by hand.
 - **"SimBrief username not set. Configure it in Settings."** Enter your SimBrief username, as described in [SimBrief](#simbrief).

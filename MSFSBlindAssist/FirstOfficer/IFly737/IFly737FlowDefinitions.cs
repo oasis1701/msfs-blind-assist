@@ -411,9 +411,11 @@ public static class IFly737FlowDefinitions
             // Starter air insurance: the start NEEDS bleed pressure (normally the APU).
             Skip(SW("ES_APUBLEED", "APU bleed air: ON", "APU_Bleed_Air_Switch_Status", 1),
                 s => s.IsOn("APU_Bleed_Air_Switch_Status")),
-            Multi("ES_PACKS_OFF", "Packs: OFF", "ES_PACKS",
+            // Never airborne (FO-25): packs off there depressurise the cabin; the tick's own rule.
+            LeaveAlone(Multi("ES_PACKS_OFF", "Packs: OFF", "ES_PACKS",
                 ("Pack_Switch_Status_0", IFly737ActionExecutor.PackOff),
                 ("Pack_Switch_Status_1", IFly737ActionExecutor.PackOff)),
+                IFly737ChecklistDefinitions.NotOnGround, IFly737ChecklistDefinitions.PacksStayText),
             // --- Engine 2 ---
             // An engine already RUNNING (N2 at or above EngineRunningN2) is never put back on GRD,
             // which re-engaged its starter at idle on a re-run: "Already set", and the start steps
@@ -750,6 +752,10 @@ public static class IFly737FlowDefinitions
             SW("SD_TAXI_OFF", "Taxi light: OFF", "Taxi_Light_Switch_Status", 0, checklistItemId: "SD_TAXI"),
             SW("SD_LOGO_OFF", "Logo lights: OFF", "Logo_Light_Switch_Status", 0, checklistItemId: "SD_LOGO"),
             SW("SD_APUBLEED", "APU bleed air: ON", "APU_Bleed_Air_Switch_Status", 1, checklistItemId: "SD_APUBLEED"),
+            // The fuel and electric hydraulic pumps go off below only once both engines have spun
+            // down (FO-25): read, not a fixed pause, so it passes the moment both N2 read below
+            // 10 %. Two minutes after the levers, then the flow stops with the pumps still on.
+            EnginesStoppedGuard("SD_ENGINES_STOPPED", 120),
             Also(Multi("SD_FUEL_OFF", "Fuel pumps: OFF", "SD_FUEL",
                 ("Fuel_L_AFT_Switch_Status", 0), ("Fuel_L_FWD_Switch_Status", 0),
                 ("Fuel_R_FWD_Switch_Status", 0), ("Fuel_R_AFT_Switch_Status", 0),
@@ -789,6 +795,8 @@ public static class IFly737FlowDefinitions
         {
             // The IRS and the battery go off below: never airborne (the MD-11's SD_ON_GROUND).
             OnGroundGuard("SE_ON_GROUND"),
+            // ...nor with an engine turning (FO-25): the whole flow stops, not just the battery.
+            EnginesStoppedGuard("SE_ENGINES_STOPPED"),
             Also(Multi("SE_IRS_OFF", "IRS mode selectors: OFF", "SE_IRS",
                 ("IRS_Mode_Switch_Status_0", IFly737ActionExecutor.IrsOff),
                 ("IRS_Mode_Switch_Status_1", IFly737ActionExecutor.IrsOff)), "SEC_IRS"),

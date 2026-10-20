@@ -622,6 +622,10 @@ public static class FenixFlowDefinitions
                 s => s.IsPosition("S_OH_SIGNS", 0)), "SD_SEATBELTS_OFF"),
             Done(Skip(SW("SD_BEACON_OFF", "Beacon: OFF", "S_OH_EXT_LT_BEACON", 0),
                 s => s.IsPosition("S_OH_EXT_LT_BEACON", 0)), "SD_BEACON_OFF"),
+            // The fuel goes off only once both engines have spun down (FO-25): the masters above
+            // leave them turning for a while. Two minutes, then the flow stops with the pumps on.
+            WaitForField("SD_ENGINES_STOPPED", "Engines stopped", "FO_ENGINES_OFF", v => v > 0.5, 120,
+                onTimeout: FlowStepFailurePolicy.Stop),
             Done(Skip(Multi("SD_FUELPUMPS_OFF", "Fuel pumps: ALL OFF",
                     ("S_OH_FUEL_LEFT_1", 0), ("S_OH_FUEL_LEFT_2", 0),
                     ("S_OH_FUEL_CENTER_1", 0), ("S_OH_FUEL_CENTER_2", 0),
@@ -657,6 +661,8 @@ public static class FenixFlowDefinitions
         {
             // The IRS and the batteries go off below: never airborne (the MD-11's SD_ON_GROUND).
             OnGroundGuard("SC_ON_GROUND"),
+            // ...nor with an engine turning (FO-25): the whole flow stops, not just the IRS.
+            EnginesStoppedGuard("SC_ENGINES_STOPPED"),
             Done(Skip(Multi("SC_ADIRS", "IRS 1, 2 and 3: OFF",
                     ("S_OH_NAV_IR1_MODE", 0), ("S_OH_NAV_IR2_MODE", 0), ("S_OH_NAV_IR3_MODE", 0)),
                 s => s.IsPosition("S_OH_NAV_IR1_MODE", 0) && s.IsPosition("S_OH_NAV_IR2_MODE", 0)

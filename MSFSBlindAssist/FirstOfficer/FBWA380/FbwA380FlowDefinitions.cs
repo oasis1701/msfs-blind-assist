@@ -579,6 +579,10 @@ public static class FbwA380FlowDefinitions
                 s => s.IsPosition("WING_ANTI_ICE_OVHD", 0)), "PK_WINGAI_OFF"),
             Done(Skip(SW("PK_APUBLEED", "APU bleed: ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 1),
                 s => s.IsOn("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON")), "PK_APUBLEED"),
+            // The fuel goes off only once all four engines have spun down (FO-25): the masters above
+            // leave them turning for a while. Two minutes, then the flow stops with the pumps on.
+            WaitForField("PK_ENGINES_STOPPED", "Engines stopped", FbwA380StateEvaluator.EnginesStoppedField,
+                v => v > 0.5, 120, onTimeout: FlowStepFailurePolicy.Stop),
             // ALL 20 pumps OFF at parking — mirrors POWERUP_CONFIG_OFF (feed + transfer). Completes the
             // Parking Checklist's "Fuel pumps: OFF" too (FO-6), which reads the same 20.
             Also(Done(Multi("PK_FUELPUMPS_OFF", "Fuel pumps: OFF", FuelPumpWrites(0)), "PK_FUELPUMPS_OFF"),
@@ -617,6 +621,9 @@ public static class FbwA380FlowDefinitions
         {
             // The IRS and the batteries go off below: never airborne (the MD-11's SD_ON_GROUND).
             OnGroundGuard("SC_ON_GROUND"),
+            // ...nor with an engine turning (FO-25): the whole flow stops, not just the IRS.
+            WaitForField("SC_ENGINES_STOPPED", "Engines stopped", FbwA380StateEvaluator.EnginesStoppedField,
+                v => v > 0.5, 5, onTimeout: FlowStepFailurePolicy.Stop),
             // Crew oxygen is INVERTED: 0 = Auto/on, 1 = Off. Cockpit Prep's CP_OXY writes 0.
             // Completes the Securing the Aircraft Checklist's "Oxygen: OFF" too (FO-6).
             Also(Done(Skip(SW("SC_OXY", "Crew oxygen supply: OFF", "PUSH_OVHD_OXYGEN_CREW", 1),

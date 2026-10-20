@@ -23,7 +23,12 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 /// nothing written) airborne and with the state unread; every one except an engine cut is also
 /// left alone with the engines running on the ground (an engine cut runs with them turning by
 /// definition), and none is a blanket refusal: parked with the engines stopped, it goes ahead.
-/// A packs-OFF tick is left alone airborne and unread.
+/// A packs-OFF tick is left alone airborne and unread. Every flow step that makes one of these
+/// cuts sits behind BOTH an on-ground and an engines-stopped guard: an earlier read-only Stop
+/// wait (unread failing it), a requires rule on an engines wait, or its own leave-alone rule that
+/// refuses the same states as the tick (an engine cut needs either one, a packs step the ground
+/// guard). And every Securing flow, the 737 Preflights and the 777's cold-and-dark flows open with
+/// both guards, so they stop whole.
 ///
 /// Found by label, so a new line worded the way its neighbours are is covered without being
 /// listed. Before 2026-10-20 the fuel-pump-OFF ticks of the A320 family, the A380, both 737s and
@@ -110,6 +115,50 @@ public class FoCutGuardSweepTests
             if (cut == Cut.Pumps && !item.LeaveAloneWhen(running)) failures.Add($"{id}: ticks with the engines running");
             // ...and the guard is not a blanket refusal: parked, the cut goes ahead.
             if (cut != Cut.Engine && item.LeaveAloneWhen(parked)) failures.Add($"{id}: refused parked with the engines stopped");
+        }
+
+        foreach (var flow in p.Flows)
+        {
+            // The guards in force at each step: unconditional read-only Stop waits run before it
+            // (a wait with a skip rule may never run; a Skip-policy wait lets the flow carry on).
+            var groundGuarded = false;
+            var enginesGuarded = false;
+            var engineWaits = new HashSet<string>();   // any wait on the engines, for RequiresStepId
+            foreach (var step in flow.Steps)
+            {
+                if (step.ActionType == FlowStepActionType.WaitForCondition && step.ConditionFieldName is string field)
+                {
+                    bool unreadFails = step.Condition != null && !step.Condition(double.NaN);
+                    bool hard = step.FailurePolicy == FlowStepFailurePolicy.Stop && step.SkipCondition == null && unreadFails;
+                    if (GroundFields.Contains(field) && hard) groundGuarded = true;
+                    if (EngineFields.Contains(field))
+                    {
+                        if (hard) enginesGuarded = true;
+                        if (unreadFails) engineWaits.Add(step.Id);
+                    }
+                    continue;
+                }
+                if (step.ActionType is not (FlowStepActionType.SetSwitch or FlowStepActionType.SetSwitchMultiple)) continue;
+                if (Classify(step.Label) is not Cut cut) continue;
+                found++;
+
+                var la = step.LeaveAloneWhen;
+                bool groundOk = groundGuarded || (la != null && la(airborne) && la(unread));
+                bool enginesOk = enginesGuarded
+                    || (step.RequiresStepId != null && engineWaits.Contains(step.RequiresStepId))
+                    || (la != null && la(running) && la(unread));
+                bool ok = cut switch
+                {
+                    // An engine cut runs with the engines turning by nature: the ground guard, or a
+                    // cold-and-dark flow's engines-stopped guard (nothing left to cut).
+                    Cut.Engine => groundOk || enginesOk,
+                    Cut.Packs => groundOk,
+                    _ => groundOk && enginesOk,
+                };
+                if (!ok)
+                    failures.Add($"{p.Name} flow {flow.Id}/{step.Id} \"{step.Label}\": "
+                        + (groundOk ? "" : "no on-ground guard ") + (enginesOk ? "" : "no engines-stopped guard"));
+            }
         }
 
         Assert.True(found > 0, $"{p.Name}: the sweep found no engine, pump, IRS, battery or pack line at all");
@@ -207,9 +256,10 @@ public class FoCutGuardSweepTests
 
     // ---- The flows that power the aircraft down or set it up cold open with BOTH guards ---------
 
-    // The fields an opening guard reads: air/ground (the stock flag and the 737s' and 777's
-    // synthetic copy of it) and the engines stopped (every profile's FO_ENGINES_OFF / _STOPPED).
-    private static readonly HashSet<string> GroundFields = new() { "SIM_ON_GROUND", "FO_ON_GROUND" };
+    // The fields a guard wait reads: air/ground (the stock flag, the 737s' and 777's synthetic copy
+    // of it, and the MD-11 Parking flow's "aircraft stopped", a ground speed at a standstill) and
+    // the engines stopped (every profile's FO_ENGINES_OFF / _STOPPED).
+    private static readonly HashSet<string> GroundFields = new() { "SIM_ON_GROUND", "FO_ON_GROUND", "GROUND_VELOCITY" };
     private static readonly HashSet<string> EngineFields = new() { "FO_ENGINES_OFF", "FO_ENGINES_STOPPED" };
 
     // The opening run of read-only waits: one must read the aircraft on the ground and one the
@@ -225,6 +275,19 @@ public class FoCutGuardSweepTests
             && s.SkipCondition == null && s.Condition != null && !s.Condition(double.NaN) && !s.LinkedChecklistItemIds.Any();
         Assert.True(opening.Any(s => Guard(s, GroundFields)), $"{who} {flowId}: no opening on-ground Stop guard");
         Assert.True(opening.Any(s => Guard(s, EngineFields)), $"{who} {flowId}: no opening engines-stopped Stop guard");
+    }
+
+    [Fact]
+    public void Every_securing_flow_opens_with_both_guards()
+    {
+        AssertOpensWithGroundAndEnginesGuards(A32nx().Flows, "SECURE", "A32NX");
+        AssertOpensWithGroundAndEnginesGuards(HwA330().Flows, "SECURE", "Headwind A330");
+        AssertOpensWithGroundAndEnginesGuards(Fenix().Flows, "SECURE", "Fenix");
+        AssertOpensWithGroundAndEnginesGuards(A380().Flows, "SECURE", "A380");
+        AssertOpensWithGroundAndEnginesGuards(Pmdg737().Flows, "SECURE", "PMDG 737");
+        AssertOpensWithGroundAndEnginesGuards(IFly737().Flows, "SECURE", "iFly 737");
+        AssertOpensWithGroundAndEnginesGuards(Pmdg777().Flows, "SECURE", "PMDG 777");
+        AssertOpensWithGroundAndEnginesGuards(Md11().Flows, "SHUTDOWN", "MD-11");
     }
 
     [Fact]

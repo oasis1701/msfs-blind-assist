@@ -883,9 +883,12 @@ public static class PMDG777FlowDefinitions
                 VerifyFieldName = AircraftStateEvaluator.FuelControlsAtRunField, VerifyCondition = v => v < 0.5,
                 CompletesChecklistItemId = "SD_FUEL_CTRL",
                 AlsoCompletesChecklistItemIds = new[] { "SDCL_FUEL_CTRL" } },
-            // (No spool-down wait — the engines wind down on their own and nothing in the
-            // remaining steps needs them stopped; the old fixed 60 s pause just stalled
-            // the flow after cutoff. Removed 2026-07-02, user request.)
+            // The electric and demand hydraulic pumps and the fuel pumps go off below only once both
+            // engines have spun down (FO-25): read, not a fixed pause (the old 60 s one was removed
+            // 2026-07-02, user request), so it passes the moment both N2 read below 10 %. Two
+            // minutes, then the flow stops with the pumps on.
+            WaitForField("SD_ENGINES_STOPPED", "Engines stopped", AircraftStateEvaluator.EnginesStoppedField,
+                v => v > 0.5, 120, onTimeout: FlowStepFailurePolicy.Stop),
             SW("SD_SEAT_BELTS",  "Seat belts: OFF",          "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", 0,
                "SIGNS_SeatBeltsSelector", v => v < 0.5, "SD_SEAT_BELTS_OFF"),
             // PMDG's Shutdown Procedure turns off only the electric and demand pumps: the engine
@@ -932,6 +935,8 @@ public static class PMDG777FlowDefinitions
         {
             // The ADIRU and the battery go off below: never airborne (the MD-11's SD_ON_GROUND).
             OnGroundGuard("SEC_ON_GROUND"),
+            // ...nor with an engine turning (FO-25): the whole flow stops, not just the battery.
+            EnginesStoppedGuard("SEC_ENGINES_STOPPED"),
             Also(Skip(SW("SEC_ADIRU_OFF", "ADIRU: OFF",           "EVT_OH_ADIRU_SWITCH",         0,
                "ADIRU_Sw_On", v => v < 0.5, "SEC_ADIRU"),
                 s => s.IsOff("ADIRU_Sw_On")), "SECCL_ADIRU"),
