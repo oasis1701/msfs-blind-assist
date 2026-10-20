@@ -202,6 +202,11 @@ public static class IFly737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "PREFLIGHT" },
         Steps = new()
         {
+            // Cold and dark only (FO-25): PF_FUEL_OFF below switches the fuel pumps off. Stops
+            // unless both engines read stopped and the aircraft reads on the ground (unread fails
+            // either guard), like the 777's Cockpit Preparation. Link no line.
+            EnginesStoppedGuard("PF_ENGINES_STOPPED"),
+            OnGroundGuard("PF_ON_GROUND"),
             // Fire + warning tests (held self-completing tests via executor pseudo-keys —
             // the fire bell / stick shaker / overspeed clacker are the blind-pilot
             // verification, PMDG 737 parity).
@@ -816,6 +821,13 @@ public static class IFly737FlowDefinitions
                 s => !EnginesStopped(s), "Engines running, so the battery stays on."),
         }
     };
+
+    // Stops a flow that switches the fuel pumps, the IRS or the battery off unless both engines read
+    // stopped (IFly737StateEvaluator.EnginesStoppedField: both N2 read and below 10 %; unread fails the guard):
+    // the 777's EnginesStoppedGuard. Five seconds for an opening guard; a spool-down wait passes its own.
+    private static Step EnginesStoppedGuard(string id, int seconds = 5) =>
+        WaitForField(id, "Engines stopped", IFly737StateEvaluator.EnginesStoppedField, v => v > 0.5, seconds,
+            onTimeout: FlowStepFailurePolicy.Stop);
 
     // Stops a flow that cuts the engines or switches the IRS and battery off unless the aircraft
     // reads on the ground (SIM_ON_GROUND from SimConnect's cache; unread fails the guard).

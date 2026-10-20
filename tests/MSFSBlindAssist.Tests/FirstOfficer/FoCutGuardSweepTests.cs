@@ -205,6 +205,59 @@ public class FoCutGuardSweepTests
     [Fact]
     public void Tfdi_MD11() => Sweep(Md11());
 
+    // ---- The flows that power the aircraft down or set it up cold open with BOTH guards ---------
+
+    // The fields an opening guard reads: air/ground (the stock flag and the 737s' and 777's
+    // synthetic copy of it) and the engines stopped (every profile's FO_ENGINES_OFF / _STOPPED).
+    private static readonly HashSet<string> GroundFields = new() { "SIM_ON_GROUND", "FO_ON_GROUND" };
+    private static readonly HashSet<string> EngineFields = new() { "FO_ENGINES_OFF", "FO_ENGINES_STOPPED" };
+
+    // The opening run of read-only waits: one must read the aircraft on the ground and one the
+    // engines stopped, each Stop with unread failing it and linking no line, so a flow started in
+    // flight or with an engine turning stops whole instead of skipping its pump steps one by one.
+    private static void AssertOpensWithGroundAndEnginesGuards<T>(IEnumerable<FlowDefinition<T>> flows, string flowId, string who)
+        where T : IFoStateEvaluator
+    {
+        var opening = flows.Single(f => f.Id == flowId).Steps
+            .TakeWhile(s => s.ActionType == FlowStepActionType.WaitForCondition).ToList();
+        bool Guard(FlowStep<T> s, HashSet<string> fields) =>
+            s.ConditionFieldName is string f && fields.Contains(f) && s.FailurePolicy == FlowStepFailurePolicy.Stop
+            && s.SkipCondition == null && s.Condition != null && !s.Condition(double.NaN) && !s.LinkedChecklistItemIds.Any();
+        Assert.True(opening.Any(s => Guard(s, GroundFields)), $"{who} {flowId}: no opening on-ground Stop guard");
+        Assert.True(opening.Any(s => Guard(s, EngineFields)), $"{who} {flowId}: no opening engines-stopped Stop guard");
+    }
+
+    [Fact]
+    public void The_cold_and_dark_flows_that_switch_pumps_off_open_with_both_guards()
+    {
+        // The 737 Preflights switch the fuel pumps off: cold and dark only, like the 777's
+        // Cockpit Preparation and Electrical Power Up (hydraulic pumps, fuel controls).
+        AssertOpensWithGroundAndEnginesGuards(MSFSBlindAssist.FirstOfficer.PMDG737.PMDG737FlowDefinitions.Build(), "PREFLIGHT", "PMDG 737");
+        AssertOpensWithGroundAndEnginesGuards(MSFSBlindAssist.FirstOfficer.IFly737.IFly737FlowDefinitions.Build(), "PREFLIGHT", "iFly 737");
+        AssertOpensWithGroundAndEnginesGuards(PMDG777FlowDefinitions.Build(), "COCKPIT_PREP", "PMDG 777");
+        AssertOpensWithGroundAndEnginesGuards(PMDG777FlowDefinitions.Build(), "ELECTRICAL_POWER_UP", "PMDG 777");
+    }
+
+    [Fact]
+    public void The_737_engines_stopped_field_is_both_N2_below_10_and_NaN_until_read()
+    {
+        var p = new Pmdg737State();
+        Assert.True(double.IsNaN(p.GetValue(Pmdg737State.EnginesStoppedField)));
+        p.SetEngineN2(5, double.NaN);
+        Assert.True(double.IsNaN(p.GetValue(Pmdg737State.EnginesStoppedField)));
+        p.SetEngineN2(5, 9.9);
+        Assert.Equal(1, p.GetValue(Pmdg737State.EnginesStoppedField));
+        p.SetEngineN2(5, 10);
+        Assert.Equal(0, p.GetValue(Pmdg737State.EnginesStoppedField));
+
+        var i = IFly737SecondReviewTests.State(null);
+        Assert.True(double.IsNaN(i.GetValue(IFlyState.EnginesStoppedField)));
+        i.SetEngineN2(0, 0);
+        Assert.Equal(1, i.GetValue(IFlyState.EnginesStoppedField));
+        i.SetEngineN2(60, 0);
+        Assert.Equal(0, i.GetValue(IFlyState.EnginesStoppedField));
+    }
+
     // xUnit needs a public theory over the private enum, so it compares the enum's name.
     [Theory]
     [InlineData("Fuel pumps: ALL OFF", "Pumps")]

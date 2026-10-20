@@ -59,6 +59,9 @@ public static class PMDG777FlowDefinitions
             // the wrong flow picked in flight), EPU_GEAR_DOWN would lower the gear. Stop instead
             // (the MD-11's PU_ENGINES_STOPPED).
             EnginesStoppedGuard("EPU_ENGINES_STOPPED"),
+            // ...and never airborne (FO-25): with both engines out in flight, the hydraulic pumps this
+            // flow switches off are what a relight and the controls need. Links no line.
+            OnGroundGuard("EPU_ON_GROUND"),
             // CompletesChecklistItemId must be the ITEM id ("EPU_BATTERY") — the old
             // "ELEC_POWER_UP_BATTERY" matched nothing and MarkComplete silently no-op'd.
             Skip(SW("EPU_BATTERY",     "Battery: ON",             "EVT_OH_ELEC_BATTERY_SWITCH",         1, "ELEC_Battery_Sw_ON",       v => v > 0.5, "EPU_BATTERY"),

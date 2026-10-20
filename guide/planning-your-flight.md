@@ -537,7 +537,7 @@ The Flows tab has:
 
 To run a flow, select it in Available flows and press Enter, or Tab to Start Flow and press it. The First Officer works through the steps about two seconds apart. Pause / Resume holds the flow and continues it; Stop Flow ends it after the current step. Only one flow runs at a time.
 
-Before it switches anything that could stop an engine, a flow checks that it is safe. A power-up flow stops if an engine is running, and the shutdown, parking and securing flows stop unless the aircraft is on the ground. Either way you hear why.
+Before it switches anything that could stop an engine, a flow checks that it is safe. A power-up flow, and the 737 Preflights, stop if an engine is running or the aircraft is in the air, and the shutdown, parking and securing flows stop unless the aircraft is on the ground. Either way you hear why.
 
 ### The Checklists tab {#fo-checklists-tab}
 

@@ -44,6 +44,9 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     /// <summary>Synthetic: the stock SIM_ON_GROUND from SimConnect's cache, 1 / 0 / NaN.</summary>
     public const string OnGroundField = "FO_ON_GROUND";
 
+    /// <summary>Synthetic: both engines below 10 % N2 (1), either at or above it (0), NaN until both are read.</summary>
+    public const string EnginesStoppedField = "FO_ENGINES_STOPPED";
+
     // Written on the UI thread (FO timer / SimConnect callback); read on a thread-pool thread
     // by the flow's WaitForCondition loop. Volatile.Read/Write makes the cross-thread handoff
     // explicit (double can't be `volatile`); the value is monotonic during a start so no torn
@@ -66,6 +69,13 @@ public class AircraftStateEvaluator : IFoStateEvaluator
         // so a manual tick HOLDS — the no-plan degradation to a plain reminder.
         if (field == "FO_ENG1_N2") return Volatile.Read(ref _eng1N2);
         if (field == "FO_ENG2_N2") return Volatile.Read(ref _eng2N2);
+        // Both engines below 10 % N2 (1), either at or above it (0), NaN until both are read: the
+        // flows' engines-stopped guards (PMDG737FlowDefinitions.EnginesStopped's test, the 777's twin).
+        if (field == EnginesStoppedField)
+        {
+            double n1 = Volatile.Read(ref _eng1N2), n2 = Volatile.Read(ref _eng2N2);
+            return double.IsNaN(n1) || double.IsNaN(n2) ? double.NaN : n1 < 10 && n2 < 10 ? 1 : 0;
+        }
         // Air/ground from SimConnect's cache (the CDA carries none): the stock SIM_ON_GROUND,
         // 1 on the ground, 0 airborne, NaN unread. Secure's on-ground guard reads it.
         if (field == OnGroundField)

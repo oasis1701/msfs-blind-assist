@@ -53,6 +53,9 @@ public class IFly737StateEvaluator : IFoStateEvaluator
     /// 0 airborne, NaN unread.</summary>
     public const string OnGroundField = "SIM_ON_GROUND";
 
+    /// <summary>Synthetic: both engines below 10 % N2 (1), either at or above it (0), NaN until both are read.</summary>
+    public const string EnginesStoppedField = "FO_ENGINES_STOPPED";
+
     /// <summary>On the ground (true), airborne (false), or unread (null).</summary>
     public bool? OnGround
     {
@@ -113,6 +116,13 @@ public class IFly737StateEvaluator : IFoStateEvaluator
         // ChecklistManager skips both auto-tick AND revert on NaN, so a manual tick HOLDS.
         if (field == "FO_ENG1_N2") return Volatile.Read(ref _eng1N2);
         if (field == "FO_ENG2_N2") return Volatile.Read(ref _eng2N2);
+        // Both engines below 10 % N2 (1), either at or above it (0), NaN until both are read: the
+        // flows' engines-stopped guards (IFly737FlowDefinitions.EnginesStopped's test, the 777's twin).
+        if (field == EnginesStoppedField)
+        {
+            double n1 = Volatile.Read(ref _eng1N2), n2 = Volatile.Read(ref _eng2N2);
+            return double.IsNaN(n1) || double.IsNaN(n2) ? double.NaN : n1 < 10 && n2 < 10 ? 1 : 0;
+        }
         if (field == "FO_PRESS_ALTS_MATCH") return PressAltsMatchSynthetic();
         if (field == "FO_PRESS_LAND_ALT_MATCH") return PressLandAltMatchSynthetic();
         if (field == "FO_FUEL_PUMPS_BS_OK") return FuelPumpsBeforeStartSynthetic();
