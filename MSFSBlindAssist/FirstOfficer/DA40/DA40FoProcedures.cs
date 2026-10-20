@@ -76,6 +76,7 @@ internal static class DA40FoProcedures
         var p = new DA40FoPhase("BEFORE_START", "Before Engine Start",
             "Cold cockpit checks, electric master on, the flap travel test, fuel.");
         EngineStoppedGuard(p, "BS_ENGINE_STOPPED");
+        OnGroundGuard(p, "BS_ON_GROUND");
         Trim(p);
         PowerLeverIdle(p, "BS", "Power lever", R.BscPowerIdle);
         p.Set("BS_PARKBRK", "Parking brake: set", "DA40_BRAKE_PARK", 1, "DA40_BRAKE_PARK", On, R.BscParkBrake);
@@ -89,7 +90,7 @@ internal static class DA40FoProcedures
             R.BscAltStatic);
         p.Set("BS_ENG_MASTER_OFF", "Engine master: off", "DA40_START_ENGINE_MASTER", 0, "DA40_START_ENGINE_MASTER", Off,
                 R.BscStartSwitches)
-         .LeaveAlone(NotStopped, "Engine master stays as it is: the engine is not read as stopped.");
+         .LeaveAlone(NotParked, "Engine master stays as it is: " + NotParkedReason);
         p.Set("BS_FUEL_PUMP_OFF", "Fuel pump: off", "DA40_FUEL_PUMPS", 0, "DA40_FUEL_PUMPS", Off, R.BscStartSwitches);
         p.Set("BS_VOTER", "ECU voter: auto", "DA40_ECU_VOTER", 1, "DA40_ECU_VOTER", Is(1), R.BscStartSwitches);
         AllLightsOff(p);
@@ -252,7 +253,7 @@ internal static class DA40FoProcedures
         p.Set("SD_ELEC_OFF", "Electric master: off", "DA40_ELEC_MASTER_BATTERY", 0, "DA40_ELEC_MASTER_BATTERY", Off,
                 R.SdcElecOff)
          .Requires("SD_ENGINE_STOPPED", "Electric master stays on: the engine was not seen to stop.")
-         .LeaveAlone(NotOnGround, "Electric master stays on: the aircraft is not read on the ground.");
+         .LeaveAlone(NotParked, "Electric master stays on: " + NotParkedReason);
         CabinLightsOff(p);
         return p;
     }
@@ -273,18 +274,19 @@ internal static class DA40FoProcedures
         var p = new DA40FoPhase("BEFORE_START", "Before Engine Start",
             "Cold cockpit checks, levers, battery master on, the flap travel test, fuel selector to the lowest tank.");
         EngineStoppedGuard(p, "BS_ENGINE_STOPPED");
+        OnGroundGuard(p, "BS_ON_GROUND");
         Trim(p);
         p.Set("BS_PROP", "Propeller: high RPM", "DA40_XLS_PROP_SET", 100, "DA40_XLS_PROP_SET", v => v >= E.PropHighRpmPercent,
             R.BscLevers);
         p.Set("BS_MIXTURE", "Mixture: cut-off", "DA40_XLS_MIXTURE_SET", 0, "DA40_XLS_MIXTURE_SET", v => v <= E.LeverStopPercent,
                 R.BscLevers)
-         .LeaveAlone(NotStopped, "Mixture stays where it is: the engine is not read as stopped.");
+         .LeaveAlone(NotParked, "Mixture stays where it is: " + NotParkedReason);
         p.Captain("BS_THROTTLE", "Throttle: idle", s => s.IsOn(E.PowerIdleField));
         p.Check("BS_LEVERS", "Throttle idle, propeller high RPM, mixture cut-off", E.XlsLeversSetField, On,
             PilotLeverWaitSeconds, R.BscLevers);
         p.Set("BS_PARKBRK", "Parking brake: set", "DA40_BRAKE_PARK", 1, "DA40_BRAKE_PARK", On, R.BscParkBrake);
         p.Set("BS_IGNITION_OFF", "Ignition: off", "DA40_MAG_KEY", 0, "DA40_MAG_KEY", Is(0), R.BscIgnitionOff)
-         .LeaveAlone(NotStopped, "Ignition stays as it is: the engine is not read as stopped.");
+         .LeaveAlone(NotParked, "Ignition stays as it is: " + NotParkedReason);
         p.Set("BS_ALT_AIR", "Alternate air: closed", "DA40_ICE_ALTERNATE_AIR", 0, "DA40_ICE_ALTERNATE_AIR", Off, R.BscAltAir);
         p.Multi("BS_MASTERS_OFF", "Masters: off",
                 new[] { ("DA40_ELEC_AVIONICS_MASTER", 0), ("DA40_ELEC_ESS_BUS", 0), ("DA40_ELEC_ALT_MASTER", 0) },
@@ -506,7 +508,7 @@ internal static class DA40FoProcedures
         p.Set("SD_ELEC_OFF", "Battery master: off", "DA40_ELEC_MASTER_BATTERY", 0, "DA40_ELEC_MASTER_BATTERY", Off,
                 R.SdcElecOff)
          .Requires("SD_ENGINE_STOPPED", "Battery master stays on: the engine was not seen to stop.")
-         .LeaveAlone(NotOnGround, "Battery master stays on: the aircraft is not read on the ground.");
+         .LeaveAlone(NotParked, "Battery master stays on: " + NotParkedReason);
         p.Set("SD_STROBE_OFF", "Strobe: off", "DA40_LIGHT_STROBE", 0, "DA40_LIGHT_STROBE", Off, R.SdcStrobeOff);
         CabinLightsOff(p);
         return p;
@@ -576,6 +578,13 @@ internal static class DA40FoProcedures
     // The same guards on the ticks that make the cut: unread refuses (FO-25).
     private static bool NotStopped(E s) => !s.IsOn(E.EngineStoppedField);
     private static bool NotOnGround(E s) => !s.IsOn(E.OnGroundField);
+
+    // Both at once (FO-25): the cold cockpit's engine cuts, which airborne with the engine out would
+    // take away what a restart needs, and the master switch off, which with the engine turning cuts
+    // the NG's ECU ("premature shutdown will corrupt ECU data and cause a latched ECU failure").
+    // The electric fuel pump is outside it: a boost pump the POH switches off in the climb.
+    private static bool NotParked(E s) => NotOnGround(s) || NotStopped(s);
+    private const string NotParkedReason = "the aircraft is not read on the ground, or the engine is not read stopped.";
 
     private static void Trim(DA40FoPhase p) =>
         p.Set("BS_TRIM", "Elevator trim: neutral", "DA40_TRIM_CENTRE", 1, "DA40_TRIM_SET", v => Math.Abs(v) < 1, R.BscTrim);

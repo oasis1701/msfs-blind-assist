@@ -154,19 +154,66 @@ public class DA40FoStructureTests
         Assert.Empty(g.LinkedChecklistItemIds);
     }
 
+    // FO-25, as #160's sweep put it for every airliner: Before Engine Start is a cold-and-dark flow
+    // that cuts the engine, so it opens with the ground guard too (airborne with the engine out, the
+    // engine master, mixture and ignition are what a restart needs) and stops whole.
+    [Theory]
+    [MemberData(nameof(Data.Variants), MemberType = typeof(Data))]
+    public void Before_start_opens_with_both_guards(DA40Variant v)
+    {
+        var steps = Data.Flows(v).Single(f => f.Id == "BEFORE_START").Steps;
+        Assert.Equal(new[] { "BS_ENGINE_STOPPED", "BS_ON_GROUND" }, steps.Take(2).Select(s => s.Id));
+        var g = steps[1];
+        Assert.Equal(FlowStepActionType.WaitForCondition, g.ActionType);
+        Assert.Equal(DA40FoStateEvaluator.OnGroundField, g.ConditionFieldName);
+        Assert.Equal(FlowStepFailurePolicy.Stop, g.FailurePolicy);
+        Assert.False(g.Condition!(double.NaN));
+        Assert.Empty(g.LinkedChecklistItemIds);
+    }
+
+    // FO-25: the cold cockpit's engine cuts and the master switch off need BOTH: on the ground AND
+    // the engine stopped. The master is the one cut the NG's ECU punishes with the engine turning.
+    [Theory]
+    [InlineData(DA40Variant.NG, "BS_ENG_MASTER_OFF")]
+    [InlineData(DA40Variant.NG, "SD_ELEC_OFF")]
+    [InlineData(DA40Variant.XLS, "BS_MIXTURE")]
+    [InlineData(DA40Variant.XLS, "BS_IGNITION_OFF")]
+    [InlineData(DA40Variant.XLS, "SD_ELEC_OFF")]
+    public void A_parked_only_tick_needs_the_ground_and_the_engine_stopped(DA40Variant v, string itemId)
+    {
+        var item = Data.StandInGroups(v).SelectMany(g => g.Items).Single(i => i.Id == itemId);
+        var step = Data.Flows(v).SelectMany(f => f.Steps).First(s => s.Id == itemId);
+        string rpm = new DA40FoStateEvaluator { Variant = v }.RpmKey;
+        DA40FoStateEvaluator State(bool ground, bool running) =>
+            Eval(v, (DA40FoStateEvaluator.OnGroundField, ground ? 1 : 0), (rpm, running ? 2000 : 0));
+        foreach (var refuse in new[] { item.LeaveAloneWhen!, step.LeaveAloneWhen! })
+        {
+            Assert.True(refuse(Eval(v)), $"{itemId}: unread must refuse");
+            Assert.True(refuse(State(ground: false, running: false)), $"{itemId}: airborne with the engine out must refuse");
+            Assert.True(refuse(State(ground: true, running: true)), $"{itemId}: the engine turning must refuse");
+            Assert.False(refuse(State(ground: true, running: false)), $"{itemId}: parked, the cut goes ahead");
+        }
+        Assert.Contains("not read on the ground, or the engine is not read stopped", item.LeaveAloneText);
+    }
+
+    // The electric fuel pump is a boost pump the POH switches off in the climb, not a fuel cut: its
+    // OFF lines stay outside FO-25, unlike the airliners' fuel pumps.
+    [Theory]
+    [MemberData(nameof(Data.Variants), MemberType = typeof(Data))]
+    public void The_climb_fuel_pump_off_is_not_refused_airborne(DA40Variant v)
+    {
+        var item = Data.StandInGroups(v).SelectMany(g => g.Items).Single(i => i.Id == "CL_FUEL_PUMP_OFF");
+        Assert.Null(item.LeaveAloneWhen);
+    }
+
     // FO-25: a tick making the same cut refuses on an unread or wrong state.
     [Theory]
-    [InlineData(DA40Variant.NG, "BS_ENG_MASTER_OFF", DA40FoStateEvaluator.EngineStoppedField)]
     [InlineData(DA40Variant.NG, "SD_ENG_MASTER_OFF", DA40FoStateEvaluator.OnGroundField)]
-    [InlineData(DA40Variant.NG, "SD_ELEC_OFF", DA40FoStateEvaluator.OnGroundField)]
-    [InlineData(DA40Variant.XLS, "BS_MIXTURE", DA40FoStateEvaluator.EngineStoppedField)]
-    [InlineData(DA40Variant.XLS, "BS_IGNITION_OFF", DA40FoStateEvaluator.EngineStoppedField)]
     [InlineData(DA40Variant.XLS, "EH_MIXTURE", DA40FoStateEvaluator.EngineStoppedField)]
     [InlineData(DA40Variant.XLS, "ES_PRIME", DA40FoStateEvaluator.EngineStoppedField)]
     [InlineData(DA40Variant.XLS, "SD_MIXTURE", DA40FoStateEvaluator.OnGroundField)]
     [InlineData(DA40Variant.XLS, "SD_IGNITION_OFF", DA40FoStateEvaluator.OnGroundField)]
     [InlineData(DA40Variant.XLS, "SD_GROUNDING", DA40FoStateEvaluator.OnGroundField)]
-    [InlineData(DA40Variant.XLS, "SD_ELEC_OFF", DA40FoStateEvaluator.OnGroundField)]
     public void A_cutting_tick_is_left_alone_unless_the_guard_reads_true(DA40Variant v, string itemId, string field)
     {
         var item = Data.StandInGroups(v).SelectMany(g => g.Items).Single(i => i.Id == itemId);

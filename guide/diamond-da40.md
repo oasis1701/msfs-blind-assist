@@ -167,7 +167,7 @@ It sets the switches each page lists and runs the tests the pages spell out: the
 
 It does not move the power lever or throttle, except to the positions the XLS start gives, and it never sets the transponder code, the QNH on the G1000, a frequency, the autopilot or the flight plan. When a page asks for a lever at a position ("Throttle: 2000RPM"), the First Officer says it and waits for you. The ground lean, power settings and anything "as required" are yours.
 
-Before Engine Start and the engine starts stop at once unless the engine reads stopped, and Shutdown unless you are on the ground.
+Before Engine Start stops at once unless the engine reads stopped and you are on the ground, the engine starts unless the engine reads stopped, and Shutdown unless you are on the ground. A tick that switches the engine master, the mixture or the ignition off before the start, or the electric master off, is done only on the ground with the engine stopped; otherwise it is refused and the First Officer says why. The fuel pump's off lines are not refused: it is the boost pump you switch off in the climb.
 
 ### After take-off {#da40-fo-automation}
 

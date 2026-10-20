@@ -971,9 +971,13 @@ what it can read:
 the G1000, the radios, the flight plan (FO-2), the autopilot test, the ground lean, power settings,
 and anything "as required" or "if required".
 
-**Guards** (FO-25): Before Engine Start and every engine start stop at once unless the engine reads
+**Guards** (FO-25): Before Engine Start stops at once unless the engine reads stopped AND the aircraft
+reads on the ground (`BS_ENGINE_STOPPED`, `BS_ON_GROUND`), every engine start unless the engine reads
 stopped, Shutdown unless the aircraft reads on the ground; the ticks that make the same cut refuse
-on an unread state.
+on an unread state. The cold cockpit's engine cuts (the NG's engine master, the XLS's mixture and
+ignition) and the electric or battery master OFF need both (`NotParked`), the master because a
+premature shutdown latches the NG's ECU failure. The electric fuel pump is outside the rule: it is a
+boost pump the POH switches off in the climb, not a fuel cut.
 
 **Writes and speech** (FOD-1, FOD-2): every write goes through `CowsDA40Definition.HandleUIVariableSet`;
 the definition's own confirmation is muted and the write's echo marked, so the step is the one
