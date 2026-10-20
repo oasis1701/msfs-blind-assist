@@ -21,6 +21,7 @@ namespace MSFSBlindAssist.Services;
 /// (its deferred off-sweep runs outside and checks the list itself);</item>
 /// <item>the PMDGs — the base class's trim callout, the 737's Stab Trim row and ~40 777 callouts;</item>
 /// <item>the MD-11 — its composed flap read-out and every lamp;</item>
+/// <item>the Flysimware Learjet 35A — its derived annunciator lamps;</item>
 /// <item>the FBW A380 — its baro value, STD and unit call-outs, the approach capability and more.
 /// It was the one left out until 2026-09-25 and relied on each branch checking
 /// <c>A380DisabledMonitorVariablesSet</c> itself; the baro branches never did, so their rows muted
@@ -46,6 +47,7 @@ public static class DefAnnounceMuteSets
         "IFLY_737MAX8" => settings.IFlyDisabledMonitorVariablesSet,
         "TFDI_MD11" => settings.Md11DisabledMonitorVariablesSet,
         "FBW_A380" => settings.A380DisabledMonitorVariablesSet,
+        "FLYSIMWARE_LJ35A" => settings.LJ35DisabledMonitorVariablesSet,
         _ when aircraftCode.StartsWith("PMDG_", StringComparison.Ordinal) => settings.PMDGDisabledMonitorVariablesSet,
         _ => null,
     };

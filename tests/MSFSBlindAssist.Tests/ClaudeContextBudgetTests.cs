@@ -770,6 +770,7 @@ public class ClaudeContextBudgetTests
             "BRF-6 GetAssignedStatusAsync", "SI-30 ValidateDatabaseSimulatorMatch", "MD11-23 CalcPathVerdict.PilotWarning",
             "VAT-12 HotkeyAction.ToggleVatsimAnnouncements", "WX-10 HasOwnIcingAnnouncer",
             "DCK-19 UpdateHeadingErrorWithThresholds",
+            "LJ35-11 LastGpsWaypoint",
         },
         ["named as what never to use: the rule guards the code that must avoid it"] = new[]
         {
@@ -797,7 +798,7 @@ public class ClaudeContextBudgetTests
         {
             "A320-10 SimVarDefinition.IsNotSet", "A380-2 RenderAsButton", "A380-10 RenderAsButton",
             "A380F-12 ExcludeFromBatch", "ARINC-2 ValueDescriptions", "MD11-11 ExcludeFromMonitorManager",
-            "MD11-22 SimVarDefinition.ValueToDescriptionKey",
+            "MD11-22 SimVarDefinition.ValueToDescriptionKey", "LJ35-6 IsAnnounced", "LJ35-13 HelpText",
         },
         ["a MainForm field declared in MainForm.cs and used by the partial the rule loads on"] = new[]
         {

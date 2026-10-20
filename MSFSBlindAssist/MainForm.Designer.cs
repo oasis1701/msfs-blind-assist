@@ -23,6 +23,7 @@
         private System.Windows.Forms.ToolStripMenuItem headwindA330MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem ifly737MaxMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem tfdiMd11MenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem lj35MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem extrasMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem volantaMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem helpMenuItem = null!;
@@ -64,6 +65,7 @@
             this.headwindA330MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.ifly737MaxMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.tfdiMd11MenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.lj35MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.extrasMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.volantaMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.helpMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -197,7 +199,8 @@
             this.pmdg777MenuItem,
             this.horizonSim787MenuItem,
             this.ifly737MaxMenuItem,
-            this.tfdiMd11MenuItem});
+            this.tfdiMd11MenuItem,
+            this.lj35MenuItem});
             this.aircraftMenuItem.Name = "aircraftMenuItem";
             this.aircraftMenuItem.Size = new System.Drawing.Size(75, 24);
             this.aircraftMenuItem.Text = "&Aircraft";
@@ -292,6 +295,15 @@
             this.tfdiMd11MenuItem.Checked = false;
             this.tfdiMd11MenuItem.Click += new System.EventHandler(this.TFDiMD11MenuItem_Click);
             //
+            // lj35MenuItem
+            //
+            this.lj35MenuItem.AccessibleName = "Flysimware Learjet 35A";
+            this.lj35MenuItem.AccessibleDescription = "Switch to the Flysimware Learjet 35A";
+            this.lj35MenuItem.Name = "lj35MenuItem";
+            this.lj35MenuItem.Size = new System.Drawing.Size(240, 26);
+            this.lj35MenuItem.Text = "Flysimware &Learjet 35A";
+            this.lj35MenuItem.Checked = false;
+            this.lj35MenuItem.Click += new System.EventHandler(this.Lj35MenuItem_Click);
             // extrasMenuItem
             //
             this.extrasMenuItem.AccessibleName = "Extras menu";

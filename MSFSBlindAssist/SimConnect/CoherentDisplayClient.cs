@@ -59,6 +59,9 @@ namespace MSFSBlindAssist.SimConnect
         private List<string> _lastRows = new();
         private bool _disposed;
 
+        /// <summary>One-shot latch so a bad agent is reported once, not every 2 s.</summary>
+        private bool _reportedAgentFailure;
+
         public bool IsConnected => _connected;
         public List<string> CurrentRows => _lastRows;
 
@@ -112,12 +115,49 @@ namespace MSFSBlindAssist.SimConnect
             _agentInstalled = false;
         }
 
-        /// <summary>Pause/resume polling (e.g. only poll while a display window is open).
-        /// Forces a fresh push on re-activation.</summary>
+        /// <summary>
+        /// Hand the display over to another reader, or take it back.
+        ///
+        /// ⚠️ THIS MUST RELEASE THE SOCKET, NOT MERELY STOP POLLING, AND FOR YEARS IT DID NOT.
+        /// Coherent GT allows ONE inspector socket per view. Setting a flag left this client's
+        /// WebSocket open on AS1000_PFD, so when the PFD window then tried to read the same
+        /// screen its connection was refused and it showed:
+        ///
+        ///     "The G1000 allows only one debugger connection per screen, so the usual cause is
+        ///      that something else is already reading this one - another copy of this window,
+        ///      or a developer tool."
+        ///
+        /// The "something else" was MSFSBA'S OWN CAS MONITOR. The message sent the pilot hunting
+        /// for a developer tool that was never running - live report: restarted the PC to be
+        /// sure, and the display still would not open. The handover was designed (the CAS
+        /// monitor's own comment says "the window therefore takes the socket") and only half
+        /// built: the flag stopped the polling, nothing let go of the connection.
+        ///
+        /// Deactivating therefore tears the socket down the way <see cref="Stop"/> does, but
+        /// leaves the cancellation token alive so RunLoop keeps spinning - it calls
+        /// EnsureConnected on every active pass, so reactivation reconnects by itself with no
+        /// extra plumbing. Aborting without taking _connectLock follows Stop()'s existing
+        /// precedent: this is called from the UI thread, where waiting on that semaphore could
+        /// deadlock against the very loop being released, and EnsureConnected already copes
+        /// with the socket going null underneath it.
+        /// </summary>
         public void SetActive(bool active)
         {
             _active = active;
-            if (active) _lastHash = "";
+            if (active)
+            {
+                // Forces a fresh push once reconnected - the rows have not changed from this
+                // client's point of view, but the window that had the socket may have moved
+                // the display somewhere else entirely.
+                _lastHash = "";
+                return;
+            }
+
+            try { _ws?.Abort(); } catch { /* handover must never throw */ }
+            try { _ws?.Dispose(); } catch { }
+            _ws = null;
+            _connected = false;
+            _agentInstalled = false;
         }
 
         /// <summary>Force a one-shot scrape now and return the rows (used by F5 refresh).</summary>
@@ -132,6 +172,36 @@ namespace MSFSBlindAssist.SimConnect
             }
             catch { }
             return _lastRows;
+        }
+
+        /// <summary>
+        /// Runs one expression in the page and returns what it evaluated to.
+        ///
+        /// This is the WRITE path for controls SimConnect cannot reach. It exists because
+        /// the DA40's G1000 answers its softkeys over SimConnect but ignores the rest of
+        /// its bezel there — the FMS knob, MENU, ENT, CLR, Direct-To, FPL, PROC, the range
+        /// knob and the map joystick all arrive only through the instrument's own
+        /// onInteractionEvent, measured both plainly and with a uniquifying calculator
+        /// prefix. Everything that CAN go over SimConnect still does; this is for the
+        /// keys that have no other road.
+        ///
+        /// Serialised behind the same connect lock as the poll, so a key press and a
+        /// scrape can never interleave on one socket.
+        /// </summary>
+        public async Task<string> InvokeAsync(string expression)
+        {
+            if (_disposed) return "";
+            try
+            {
+                var ct = _cts?.Token ?? CancellationToken.None;
+                if (!await EnsureConnected(ct)) return "";
+                return await EvalAsync(expression, ct);
+            }
+            catch (Exception ex)
+            {
+                Log.Debug("SimConnect", $"CoherentDisplayClient[{_titleNeedle}] invoke: {ex.Message}");
+                return "";
+            }
         }
 
         // ---- connection + poll loop -------------------------------------
@@ -251,6 +321,25 @@ namespace MSFSBlindAssist.SimConnect
 
             string install = await EvalAsync(_agentJs, ct);
             _agentInstalled = install.IndexOf("MSFSBA_DISP_INSTALLED", StringComparison.Ordinal) >= 0;
+
+            // SAY SO when the agent does not answer with the token. Without this the loop
+            // retries for ever, silently: no error, no rows, nothing in the log, and a
+            // window stuck on "Connecting...". That is precisely how a DA40 agent
+            // returning its own version string instead of the token went undiagnosed.
+            // Reported ONCE per socket, not per retry, so a genuinely absent view does not
+            // fill the log.
+            if (!_agentInstalled && !_reportedAgentFailure)
+            {
+                _reportedAgentFailure = true;
+                RaiseError($"The display agent did not install ({_agentFileName}). " +
+                           "It must return a string containing MSFSBA_DISP_INSTALLED; " +
+                           $"it returned {(string.IsNullOrEmpty(install) ? "nothing" : "\"" + install + "\"")}.");
+            }
+            else if (_agentInstalled)
+            {
+                _reportedAgentFailure = false;
+            }
+
             _connected = _agentInstalled;
             return _agentInstalled;
             }
