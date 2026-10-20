@@ -140,6 +140,12 @@ namespace MSFSBlindAssist.SimConnect
         /// precedent: this is called from the UI thread, where waiting on that semaphore could
         /// deadlock against the very loop being released, and EnsureConnected already copes
         /// with the socket going null underneath it.
+        ///
+        /// ⚠️ ON-DEMAND CALLS STILL RECONNECT WHILE INACTIVE, deliberately: <see cref="ScrapeNowAsync"/>
+        /// and <see cref="InvokeAsync"/> call EnsureConnected whatever <c>_active</c> says, because the
+        /// A380's SD and E/WD scrape clients are deactivated at start ("on-demand only") and live on
+        /// those calls. So a caller that has HANDED its socket to a window must not call them; it
+        /// routes through the window's client instead, as <c>G1000CasWatcher.InvokeAsync</c> does.
         /// </summary>
         public void SetActive(bool active)
         {

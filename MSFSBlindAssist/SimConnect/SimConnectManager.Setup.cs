@@ -150,20 +150,6 @@ public partial class SimConnectManager
     }
 
     /// <summary>
-    /// The active flight plan's TO-waypoint (GPS WP NEXT/PREV ID, distance, bearing, ETE),
-    /// one fixed def requested once a second. Universal rather than aircraft-specific — every
-    /// GPS navigator that drives the stock GPS SimVars fills it, which on the DA40 is the
-    /// Working Title G1000's own GpsSynchronizer — so it registers here with the fixed defs,
-    /// ahead of the bulk per-aircraft registration and its ceiling.
-    ///
-    /// ⚠️ DEFAULT, not CHANGED, for the SAME reason the GSX def above uses DEFAULT: this runs
-    /// inside SetupDataDefinitions, before OnRecvSimobjectData is attached and while
-    /// Application.DoEvents drains the receive queue with no handler on it. Under CHANGED the
-    /// one packet a plan already loaded produces lands in that window and nothing re-sends it,
-    /// so a pilot who loaded their route before MSFSBA connected would get no waypoint calls
-    /// at all. A hundred and forty-four bytes a second is the price of self-healing.
-    /// </summary>
-    /// <summary>
     /// Attitude at 1 Hz for the unusual-attitude alert. An unusual attitude develops over tens
     /// of seconds, so a second's resolution is ample and the cost is 24 bytes a second.
     /// </summary>
@@ -188,6 +174,20 @@ public partial class SimConnectManager
         }
     }
 
+    /// <summary>
+    /// The active flight plan's TO-waypoint (GPS WP NEXT/PREV ID, distance, bearing, ETE),
+    /// one fixed def requested once a second. Universal rather than aircraft-specific — every
+    /// GPS navigator that drives the stock GPS SimVars fills it, which on the DA40 is the
+    /// Working Title G1000's own GpsSynchronizer — so it registers here with the fixed defs,
+    /// ahead of the bulk per-aircraft registration and its ceiling.
+    ///
+    /// ⚠️ DEFAULT, not CHANGED, for the SAME reason the GSX def above uses DEFAULT: this runs
+    /// inside SetupDataDefinitions, before OnRecvSimobjectData is attached and while
+    /// Application.DoEvents drains the receive queue with no handler on it. Under CHANGED the
+    /// one packet a plan already loaded produces lands in that window and nothing re-sends it,
+    /// so a pilot who loaded their route before MSFSBA connected would get no waypoint calls
+    /// at all. A hundred and forty-four bytes a second is the price of self-healing.
+    /// </summary>
     private void RegisterGpsWaypointDefinition()
     {
         try

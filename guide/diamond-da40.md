@@ -97,7 +97,7 @@ The G1000 tunes on the PFD, so the radio keys work in the PFD window:
 
 The frequency speaks itself when the knob comes to rest. The **Radios** panel keeps a typed entry for when you already know the frequency, and Input **Ctrl+N** sets both NAV standby frequencies in one window.
 
-Input **Ctrl+B** sets both altimeters, the G1000's and the standby, from one entry, in hectopascals or inches. Output **B** reads both. The transponder is set with the PFD's XPDR softkeys; Output **X** reads the code and mode.
+Input **Ctrl+B** opens both altimeter settings, the G1000's and the standby's, each filled in with its current value; type hectopascals or inches. Enter, or the Set button beside a box, sets that altimeter alone; **Set all** sets both. Output **B** reads both. The transponder is set with the PFD's XPDR softkeys; Output **X** reads the code and mode.
 
 ## The GFC 700 autopilot {#da40-autopilot}
 

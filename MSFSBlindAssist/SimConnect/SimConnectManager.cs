@@ -866,21 +866,6 @@ public partial class SimConnectManager
     }
 
     /// <summary>
-    /// The active flight plan's TO-waypoint, straight off the stock GPS SimVars.
-    ///
-    /// ⚠️ These are not "the SDK's GPS variables" in the abstract — they are what the aircraft's
-    /// own navigator WRITES. Read live out of the Working Title G1000's `GpsSynchronizer` on the
-    /// DA40: `onWaypointIndexChanged` sets GPS WP NEXT ID to the ACTIVE LATERAL LEG's name,
-    /// `onIsPrevLegChanged` sets GPS WP PREV ID to the leg BEFORE it, and `onLnavDistanceChanged`
-    /// sets distance and ETE. So PREV ID is precisely "the waypoint just passed" — the aeroplane
-    /// answering the question rather than this app inferring it from a value that changed.
-    ///
-    /// ⚠️ GPS WP BEARING is written in RADIANS; the request below asks for degrees and lets
-    /// SimConnect convert. ⚠️ GPS FLIGHT PLAN WP COUNT is deliberately absent: the G1000's write
-    /// of it is COMMENTED OUT in the shipping build, so it reads 0 with a plan loaded and would
-    /// look like "no flight plan" to anything trusting it.
-    /// </summary>
-    /// <summary>
     /// Bank, pitch and air/ground, once a second, for <see cref="Services.UnusualAttitudeMonitor"/>.
     ///
     /// ⚠️ THIS EXISTS AS ITS OWN DEFINITION BECAUSE THE OBVIOUS SOURCE IS NOT USABLE.
@@ -902,6 +887,21 @@ public partial class SimConnectManager
         public double OnGround;
     }
 
+    /// <summary>
+    /// The active flight plan's TO-waypoint, straight off the stock GPS SimVars.
+    ///
+    /// ⚠️ These are not "the SDK's GPS variables" in the abstract — they are what the aircraft's
+    /// own navigator WRITES. Read live out of the Working Title G1000's `GpsSynchronizer` on the
+    /// DA40: `onWaypointIndexChanged` sets GPS WP NEXT ID to the ACTIVE LATERAL LEG's name,
+    /// `onIsPrevLegChanged` sets GPS WP PREV ID to the leg BEFORE it, and `onLnavDistanceChanged`
+    /// sets distance and ETE. So PREV ID is precisely "the waypoint just passed" — the aeroplane
+    /// answering the question rather than this app inferring it from a value that changed.
+    ///
+    /// ⚠️ GPS WP BEARING is written in RADIANS; the request below asks for degrees and lets
+    /// SimConnect convert. ⚠️ GPS FLIGHT PLAN WP COUNT is deliberately absent: the G1000's write
+    /// of it is COMMENTED OUT in the shipping build, so it reads 0 with a plan loaded and would
+    /// look like "no flight plan" to anything trusting it.
+    /// </summary>
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
     public struct GpsWaypointData
     {

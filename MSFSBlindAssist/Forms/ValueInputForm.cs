@@ -196,6 +196,21 @@ public partial class ValueInputForm : Form
             };
             valueTextBox.KeyDown += ValueTextBox_KeyDown;
 
+            // A window with extra fields gives the main box its own Set button, straight after
+            // it in the tab order (it used to come after every extra field's).
+            if (_extraDefs.Count > 0)
+            {
+                mainSetButton = new Button
+                {
+                    Text = "Set",
+                    Location = new Point(185, 105 + toggleOffset - 20),
+                    Size = new Size(60, 25),
+                    AccessibleName = $"Set {parameterType}",
+                    TabIndex = tabIdx++
+                };
+                mainSetButton.Click += (_, _) => SetOneField(0);
+            }
+
             // Toggle buttons
             int toggleY = 70;
             foreach (var def in _toggleDefs)
@@ -284,7 +299,8 @@ public partial class ValueInputForm : Form
                     AccessibleDescription = $"Enter {ef.Label} and press Enter to set",
                     TabIndex = tabIdx++
                 };
-                box.KeyDown += ValueTextBox_KeyDown;
+                int field = _extraBoxes.Count + 1;
+                box.KeyDown += (_, e) => FieldKeyDown(e, field);
                 box.GotFocus += (_, _) => box.SelectAll();
 
                 // ⚠️ ONE BUTTON FOR TWO FIELDS READ AS A BUTTON FOR ONE OF THEM. The shared
@@ -314,19 +330,6 @@ public partial class ValueInputForm : Form
                 extraY += 48;
             }
             int extraOffset = _extraDefs.Count * 48;
-
-            if (_extraDefs.Count > 0)
-            {
-                mainSetButton = new Button
-                {
-                    Text = "Set",
-                    Location = new Point(185, 105 + toggleOffset - 20),
-                    Size = new Size(60, 25),
-                    AccessibleName = $"Set {parameterType}",
-                    TabIndex = tabIdx++
-                };
-                mainSetButton.Click += (_, _) => SetOneField(0);
-            }
 
             // No Set button on a one-field window: Enter in the box sets the value
             // (ValueTextBox_KeyDown). ⚠️ A window with extra fields (the DA40's main and
@@ -451,6 +454,18 @@ public partial class ValueInputForm : Form
         }
 
         private void ValueTextBox_KeyDown(object? sender, KeyEventArgs e)
+            => FieldKeyDown(e, _extraDefs.Count > 0 ? 0 : -1);
+
+        /// <summary>
+        /// Enter sets the field it was pressed in: <paramref name="field"/> 0 is the main box,
+        /// 1..n an extra one, -1 the one-field window's single value (unchanged behaviour).
+        ///
+        /// ⚠️ ENTER IN THE STANDBY BOX USED TO WRITE BOTH ALTIMETERS. It ran the "Set all" path,
+        /// and every box is pre-filled with its own altimeter's current value rounded to
+        /// hundredths of an inch, so setting the standby also rewrote the main one (a G1000 on
+        /// 1012 hPa, 29.884, was nudged to 29.88). "Set all" is the button for both.
+        /// </summary>
+        private void FieldKeyDown(KeyEventArgs e, int field)
         {
             if (e.KeyCode == Keys.Enter)
             {
@@ -459,7 +474,10 @@ public partial class ValueInputForm : Form
                 e.Handled = true;
                 e.SuppressKeyPress = true;
                 if (_inputEnabledCheck == null || _inputEnabledCheck())
-                    SetValue();
+                {
+                    if (field < 0) SetValue();
+                    else SetOneField(field);
+                }
             }
             else if (e.KeyCode == Keys.Escape)
             {

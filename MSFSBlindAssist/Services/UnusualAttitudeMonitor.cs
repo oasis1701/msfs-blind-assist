@@ -45,9 +45,23 @@ public static class UnusualAttitudeMonitor
     /// </summary>
     public const double BankClearDeg = 20;
 
-    public const double PitchUpAlertDeg = 20;
-    public const double PitchDownAlertDeg = -15;
-    public const double PitchClearDeg = 10;
+    /// <summary>
+    /// The pitch limits of the documented upset definition: FAA AC 120-111 (Upset Prevention and
+    /// Recovery Training) calls an aeroplane upset beyond 25 degrees nose up or 10 degrees nose
+    /// down (and 45 degrees of bank, <see cref="BankAlertDeg"/>). They were 20 and 15 here, which
+    /// matched no standard: tighter than the AC nose up, looser nose down.
+    /// </summary>
+    public const double PitchUpAlertDeg = 25;
+    public const double PitchDownAlertDeg = -10;
+
+    /// <summary>
+    /// Hysteresis per direction, so an aeroplane sitting on a limit does not chatter: "Pitch
+    /// normal" once the nose is back below 15 up and above 5 down. One shared band could not
+    /// work with the AC's figures, because the nose-down limit (10) would sit ON a 10-degree
+    /// clear band.
+    /// </summary>
+    public const double PitchUpClearDeg = 15;
+    public const double PitchDownClearDeg = -5;
 
     /// <summary>How much worse it has to get before it is worth saying again.</summary>
     public const double WorseningStepDeg = 20;
@@ -71,15 +85,11 @@ public static class UnusualAttitudeMonitor
     }
 
     /// <summary>
-    /// ⚠️ BANK IS LEFT-POSITIVE out of SimConnect — <c>PLANE BANK DEGREES</c> reports a RIGHT
-    /// bank as a NEGATIVE number, which is the opposite of every tone API in this codebase and
-    /// has caught this project before. The caller passes the raw SimVar and the naming is done
-    /// here, once, so no call site has to remember it.
-    /// </summary>
-    /// <summary>
-    /// The two attitude SimVars exactly as SimConnect delivers them — bank LEFT-positive,
-    /// pitch NOSE-UP NEGATIVE (<c>PLANE PITCH DEGREES</c> is a body-axis angle, which is why
-    /// hand fly negates it too). Passed through raw, a climb was announced as "Pitch down".
+    /// The two attitude SimVars exactly as SimConnect delivers them. ⚠️ BANK IS LEFT-POSITIVE:
+    /// <c>PLANE BANK DEGREES</c> reports a RIGHT bank as a NEGATIVE number, the opposite of every
+    /// tone API in this codebase. ⚠️ PITCH IS NOSE-UP NEGATIVE (<c>PLANE PITCH DEGREES</c> is a
+    /// body-axis angle, which is why hand fly negates it too); passed through raw, a climb was
+    /// announced as "Pitch down". The naming is done here, once, so no call site has to remember it.
     /// </summary>
     public static Verdict EvaluateSim(double simBankDeg, double simPitchDeg, bool onGround, State state)
         => Evaluate(simBankDeg, -simPitchDeg, onGround, state);
@@ -139,8 +149,12 @@ public static class UnusualAttitudeMonitor
         bool pitchOut = pitchDeg >= PitchUpAlertDeg || pitchDeg <= PitchDownAlertDeg;
         if (pitchOut)
         {
-            bool onset = !state.PitchAlerted;
-            bool worse = state.PitchAlerted &&
+            // ⚠️ A REVERSAL IS A NEW UPSET, whatever its size. "Worse" alone compared magnitudes,
+            // so a nose that went from 27 up straight through to 12 down (a stall break, sampled
+            // at 1 Hz on either side of the clear band) said nothing at all.
+            bool reversed = state.PitchAlerted && Math.Sign(pitchDeg) != Math.Sign(state.PitchSpokenDeg);
+            bool onset = !state.PitchAlerted || reversed;
+            bool worse = state.PitchAlerted && !reversed &&
                          Math.Abs(pitchDeg) >= Math.Abs(state.PitchSpokenDeg) + WorseningStepDeg;
 
             if (onset || worse)
@@ -158,7 +172,7 @@ public static class UnusualAttitudeMonitor
                 };
             }
         }
-        else if (state.PitchAlerted && Math.Abs(pitchDeg) <= PitchClearDeg)
+        else if (state.PitchAlerted && pitchDeg < PitchUpClearDeg && pitchDeg > PitchDownClearDeg)
         {
             return new Verdict
             {

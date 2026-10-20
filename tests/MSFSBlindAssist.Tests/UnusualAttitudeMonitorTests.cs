@@ -142,4 +142,40 @@ public class UnusualAttitudeMonitorTests
         var v = UnusualAttitudeMonitor.EvaluateSim(-60, 0, onGround: false, Fresh);
         Assert.Equal("Bank right 60 degrees.", v.Message);
     }
+
+    /// <summary>The pitch limits are FAA AC 120-111's upset definition: 25 up, 10 down.</summary>
+    [Theory]
+    [InlineData(24.9, "")]
+    [InlineData(25, "Pitch up 25 degrees.")]
+    [InlineData(-9.9, "")]
+    [InlineData(-10, "Pitch down 10 degrees.")]
+    public void ThePitchLimitsAreTheDocumentedUpsetFigures(double pitch, string expected)
+        => Assert.Equal(expected, UnusualAttitudeMonitor.Evaluate(0, pitch, onGround: false, Fresh).Message);
+
+    /// <summary>Each direction clears inside its own band, so the 10-degree nose-down limit cannot chatter.</summary>
+    [Fact]
+    public void ANoseDownAlertClearsOnlyAboveFiveDown()
+    {
+        var down = UnusualAttitudeMonitor.Evaluate(0, -10, false, Fresh);
+        var still = UnusualAttitudeMonitor.Evaluate(0, -7, false, down.Next);
+        Assert.Equal("", still.Message);
+        Assert.Equal("Pitch normal.", UnusualAttitudeMonitor.Evaluate(0, -4, false, still.Next).Message);
+
+        var up = UnusualAttitudeMonitor.Evaluate(0, 26, false, Fresh);
+        var stillUp = UnusualAttitudeMonitor.Evaluate(0, 18, false, up.Next);
+        Assert.Equal("", stillUp.Message);
+        Assert.Equal("Pitch normal.", UnusualAttitudeMonitor.Evaluate(0, 14, false, stillUp.Next).Message);
+    }
+
+    /// <summary>
+    /// A stall break sampled either side of the clear band: nose 27 up, then 12 down. A reversal is
+    /// a new upset whatever its size; comparing magnitudes alone kept it silent.
+    /// </summary>
+    [Fact]
+    public void APitchReversalIsAnnounced()
+    {
+        var up = UnusualAttitudeMonitor.Evaluate(0, 27, false, Fresh);
+        Assert.Equal("Pitch up 27 degrees.", up.Message);
+        Assert.Equal("Pitch down 12 degrees.", UnusualAttitudeMonitor.Evaluate(0, -12, false, up.Next).Message);
+    }
 }

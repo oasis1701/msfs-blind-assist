@@ -309,8 +309,9 @@ The G1000 windows (Alt+P and Alt+M):
              transmitting on the old one. Shift on the same key swaps it.
   Ctrl+Shift+Up/Down The barometric knob, one step at a time
 
-  Ctrl+B (input mode) still sets BOTH altimeters to a number you type, and takes
-  either unit - anything above 100 is read as hectopascals, below it as inches.
+  Ctrl+B (input mode) opens both altimeters, each box filled in with its current
+  setting: Enter (or the Set beside a box) sets that altimeter, Set all sets both.
+  It takes either unit - anything above 100 is read as hectopascals, below it as inches.
   That is the fast way to answer a controller's QNH; the knob above is how the
   aeroplane is actually flown.
 
