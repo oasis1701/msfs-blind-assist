@@ -23,6 +23,7 @@
         private System.Windows.Forms.ToolStripMenuItem headwindA330MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem ifly737MaxMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem tfdiMd11MenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem c680MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem extrasMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem volantaMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem helpMenuItem = null!;
@@ -64,6 +65,7 @@
             this.headwindA330MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.ifly737MaxMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.tfdiMd11MenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.c680MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.extrasMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.volantaMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.helpMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -197,7 +199,8 @@
             this.pmdg777MenuItem,
             this.horizonSim787MenuItem,
             this.ifly737MaxMenuItem,
-            this.tfdiMd11MenuItem});
+            this.tfdiMd11MenuItem,
+            this.c680MenuItem});
             this.aircraftMenuItem.Name = "aircraftMenuItem";
             this.aircraftMenuItem.Size = new System.Drawing.Size(75, 24);
             this.aircraftMenuItem.Text = "&Aircraft";
@@ -292,6 +295,15 @@
             this.tfdiMd11MenuItem.Checked = false;
             this.tfdiMd11MenuItem.Click += new System.EventHandler(this.TFDiMD11MenuItem_Click);
             //
+            // c680MenuItem
+            //
+            this.c680MenuItem.AccessibleName = "Skyward Citation Sovereign+";
+            this.c680MenuItem.AccessibleDescription = "Switch to the Skyward Citation Sovereign+";
+            this.c680MenuItem.Name = "c680MenuItem";
+            this.c680MenuItem.Size = new System.Drawing.Size(240, 26);
+            this.c680MenuItem.Text = "Skyward Citation &Sovereign+";
+            this.c680MenuItem.Checked = false;
+            this.c680MenuItem.Click += new System.EventHandler(this.C680MenuItem_Click);
             // extrasMenuItem
             //
             this.extrasMenuItem.AccessibleName = "Extras menu";

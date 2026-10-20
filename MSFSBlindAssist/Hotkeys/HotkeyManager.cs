@@ -54,6 +54,8 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_LANDING_RATE = 9240;     // Ctrl+Shift+R (last landing rate)  — output mode
         private const int HOTKEY_LANDING_PEAK_G = 9241;   // Ctrl+Shift+G (last landing g-force) — output mode
         private const int HOTKEY_SHOW_RMP = 9242;         // Ctrl+Shift+R (A380 Radio Management Panel) — input mode
+        private const int HOTKEY_C680_OTHER_MFD_GTC = 9270; // Ctrl+Shift+M (Citation Sovereign+: the other seat's MFD touchscreen) — input mode
+        private const int HOTKEY_C680_OTHER_PFD_GTC = 9271; // Alt+Shift+R (Citation Sovereign+: the other seat's PFD touchscreen) — input mode
         private const int HOTKEY_SHOW_DCDU = 9251;        // Ctrl+Shift+D (A32NX DCDU / CPDLC window) — input mode
         private const int HOTKEY_VATSIM_MUTE = 9252;      // Alt+V (Toggle VATSIM announcements) — output mode
         private const int HOTKEY_VOLANTA = 9253;          // Shift+O (Volanta live map window) — output mode
@@ -116,6 +118,16 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_READ_DISPLAY_UPPER_ECAM = 9071;
         private const int HOTKEY_READ_DISPLAY_ND = 9072;
         private const int HOTKEY_READ_DISPLAY_ISIS = 9073;
+
+        // GENERAL-AVIATION ENGINE READOUTS. Deliberately NOT named for one aeroplane: a
+        // piston single answers them with manifold pressure and mixture, a FADEC diesel
+        // with load percent, a turboprop with torque and ITT. The action says WHAT is being
+        // asked, and each aircraft definition says what that means on its own engine - the
+        // same shape as the V-speed keys, which mean one thing on an Airbus and another on
+        // a DA40.
+        private const int HOTKEY_READ_ENGINE_RPM = 9260;
+        private const int HOTKEY_READ_ENGINE_POWER = 9261;
+        private const int HOTKEY_READ_ENGINE_TEMPS = 9262;
         private const int HOTKEY_DESCRIBE_SCENE = 9074;
         private const int HOTKEY_SHOW_OANS = 9099; // A380 ND OANS / BTV control panel
 
@@ -331,6 +343,15 @@ public class HotkeyManager : IDisposable
                             break;
                         case HOTKEY_MACH_SPEED:
                             TriggerHotkey(HotkeyAction.ReadMachSpeed);
+                            break;
+                        case HOTKEY_READ_ENGINE_RPM:
+                            TriggerHotkey(HotkeyAction.ReadEngineRpm);
+                            break;
+                        case HOTKEY_READ_ENGINE_POWER:
+                            TriggerHotkey(HotkeyAction.ReadEnginePower);
+                            break;
+                        case HOTKEY_READ_ENGINE_TEMPS:
+                            TriggerHotkey(HotkeyAction.ReadEngineTemps);
                             break;
                         case HOTKEY_LANDING_RATE:
                             TriggerHotkey(HotkeyAction.ReadLastLandingRate);
@@ -646,6 +667,12 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_SHOW_RMP:
                             TriggerHotkey(HotkeyAction.ShowRMP);
                             break;
+                        case HOTKEY_C680_OTHER_MFD_GTC:
+                            TriggerHotkey(HotkeyAction.ShowC680OtherMfdTouchscreen);
+                            break;
+                        case HOTKEY_C680_OTHER_PFD_GTC:
+                            TriggerHotkey(HotkeyAction.ShowC680OtherPfdTouchscreen);
+                            break;
                         case HOTKEY_SHOW_DCDU:
                             TriggerHotkey(HotkeyAction.ShowDCDU);
                             break;
@@ -797,6 +824,14 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ND, MOD_ALT, 0x4E);          // Alt+N (Read ND)
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_PFD, MOD_ALT, 0x50);         // Alt+P (Read PFD)
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS, MOD_ALT, 0x49);        // Alt+I (Read ISIS)
+
+            // Output mode: P, E and Shift+P. All three were free in output mode - checked
+            // against the whole registration table rather than assumed, because a silently
+            // lost registration is a key that does nothing with no error. The temperatures
+            // were Shift+O until main gave Shift+O to the Volanta window (2026-10-18).
+            RegisterHotKey(windowHandle, HOTKEY_READ_ENGINE_RPM, MOD_NONE, 0x50);         // P (RPM / propeller)
+            RegisterHotKey(windowHandle, HOTKEY_READ_ENGINE_POWER, MOD_NONE, 0x45);       // E (engine power)
+            RegisterHotKey(windowHandle, HOTKEY_READ_ENGINE_TEMPS, MOD_SHIFT, 0x50);      // Shift+P (engine temperatures)
             RegisterHotKey(windowHandle, HOTKEY_DESCRIBE_SCENE, MOD_ALT, 0x44);           // Alt+D (Describe Scene)
             RegisterHotKey(windowHandle, HOTKEY_NEAREST_CITY, MOD_NONE, 0x43);             // C (Nearest City)
             RegisterHotKey(windowHandle, HOTKEY_TCAS_ANNOUNCE, MOD_NONE, 0x52);            // R (Announce Tracked TCAS Traffic)
@@ -913,6 +948,9 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_PFD);
             UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS);
             UnregisterHotKey(windowHandle, HOTKEY_DESCRIBE_SCENE);
+            UnregisterHotKey(windowHandle, HOTKEY_READ_ENGINE_RPM);
+            UnregisterHotKey(windowHandle, HOTKEY_READ_ENGINE_POWER);
+            UnregisterHotKey(windowHandle, HOTKEY_READ_ENGINE_TEMPS);
             UnregisterHotKey(windowHandle, HOTKEY_NEAREST_CITY);
             UnregisterHotKey(windowHandle, HOTKEY_TCAS_ANNOUNCE);
             UnregisterHotKey(windowHandle, HOTKEY_TCAS_WINDOW);
@@ -976,6 +1014,8 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_PMDG_EFB, MOD_SHIFT, 0x54);        // Shift+T (PMDG EFB Tablet)
             RegisterHotKey(windowHandle, HOTKEY_PMDG_EFB_FO, MOD_CONTROL | MOD_SHIFT, 0x54); // Ctrl+Shift+T (PMDG EFB First Officer)
             RegisterHotKey(windowHandle, HOTKEY_SHOW_RMP, MOD_CONTROL | MOD_SHIFT, 0x52);  // Ctrl+Shift+R (A380 Radio Management Panel)
+            RegisterHotKey(windowHandle, HOTKEY_C680_OTHER_MFD_GTC, MOD_CONTROL | MOD_SHIFT, 0x4D); // Ctrl+Shift+M (Sovereign+ other-seat MFD touchscreen)
+            RegisterHotKey(windowHandle, HOTKEY_C680_OTHER_PFD_GTC, MOD_ALT | MOD_SHIFT, 0x52);     // Alt+Shift+R (Sovereign+ other-seat PFD touchscreen)
             RegisterHotKey(windowHandle, HOTKEY_SHOW_DCDU, MOD_CONTROL | MOD_SHIFT, 0x44); // Ctrl+Shift+D (A32NX DCDU / CPDLC window)
 
             // Taxi guidance hotkeys (Input mode)
@@ -1036,6 +1076,8 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_PMDG_EFB);
             UnregisterHotKey(windowHandle, HOTKEY_PMDG_EFB_FO);
             UnregisterHotKey(windowHandle, HOTKEY_SHOW_RMP);
+            UnregisterHotKey(windowHandle, HOTKEY_C680_OTHER_MFD_GTC);
+            UnregisterHotKey(windowHandle, HOTKEY_C680_OTHER_PFD_GTC);
             UnregisterHotKey(windowHandle, HOTKEY_SHOW_DCDU);
 
             // Taxi guidance hotkeys
@@ -1303,6 +1345,13 @@ public class HotkeyManager : IDisposable
         ReadAirspeedTrue,
         ReadGroundSpeed,
         ReadMachSpeed,
+
+        // General-aviation engine readouts. What they MEAN is the aircraft's business:
+        // load percent on a FADEC diesel, manifold pressure and mixture on a piston,
+        // torque and ITT on a turboprop.
+        ReadEngineRpm,
+        ReadEnginePower,
+        ReadEngineTemps,
         ReadLastLandingRate,
         ReadLastLandingPeakG,
         ReadVerticalSpeed,
@@ -1384,6 +1433,8 @@ public class HotkeyManager : IDisposable
         ShowPMDGEFB,
         ShowPMDGEFBFirstOfficer,
         ShowRMP,
+        ShowC680OtherMfdTouchscreen,
+        ShowC680OtherPfdTouchscreen,
         ShowDCDU,
         ShowOANS,
         ReadNearestCity,

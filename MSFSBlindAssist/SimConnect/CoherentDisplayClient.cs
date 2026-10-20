@@ -134,6 +134,24 @@ namespace MSFSBlindAssist.SimConnect
             return _lastRows;
         }
 
+        /// <summary>
+        /// Evaluate an expression in the page (an agent call such as <c>__MSFSBA_GTC.press('Home')</c>)
+        /// and return its value as a string — a JS string comes back unquoted, anything else as its
+        /// JSON text; an empty string when the page is unreachable. Shares the one inspector socket
+        /// with the poll loop, so a window may drive its page and read it through one client.
+        /// </summary>
+        public async Task<string> InvokeAsync(string expression)
+        {
+            if (_disposed) return "";
+            try
+            {
+                var ct = _cts?.Token ?? CancellationToken.None;
+                if (!await EnsureConnected(ct)) return "";
+                return await EvalAsync(expression, ct);
+            }
+            catch { return ""; }
+        }
+
         // ---- connection + poll loop -------------------------------------
 
         private async Task RunLoop(CancellationToken ct)
