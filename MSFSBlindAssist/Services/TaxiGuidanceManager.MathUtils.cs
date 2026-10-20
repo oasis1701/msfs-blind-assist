@@ -264,7 +264,15 @@ public partial class TaxiGuidanceManager
             foreach (var cl in _graph.RunwayCenterlines)
             {
                 var shape = Navigation.RunwayShape.For(cl);
-                if (shape.IsDegenerate) continue;
+                if (shape.IsDegenerate)
+                {
+                    // A collapsed row pair has no axis to project on: treat it as the point it is,
+                    // never as clear, or a pilot on that runway would be told "Off the runway".
+                    double perp = TaxiGraph.PerpendicularDistanceMetersStatic(
+                        lat, lon, cl.Lat1, cl.Lon1, cl.Lat2, cl.Lon2);
+                    if (perp <= cl.HalfWidthMeters + RUNWAY_CLEAR_MARGIN_M) return false;
+                    continue;
+                }
                 var (along, lateral) = shape.Project(lat, lon);
                 if (!shape.IsClearOfAt(along, lateral, RUNWAY_CLEAR_MARGIN_M))
                     return false;

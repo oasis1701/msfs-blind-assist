@@ -35,4 +35,28 @@ public class RolloutLahsoRepickTests
     [Fact]
     public void Another_hold_point_on_the_same_runway_is_a_change()
         => Assert.False(TaxiGuidanceManager.SameLahsoHold(Hold("27", 5200), Hold("27", 4800)));
+
+    // --- RepickAdoptsLahso: what a re-pick on the roll may do to the active hold ---
+
+    [Fact]
+    public void A_re_pick_with_LAHSO_unticked_never_clears_the_planned_hold()
+        // The planner window is rebuilt on every open with LAHSO unticked: "none" is "not touched".
+        => Assert.False(TaxiGuidanceManager.RepickAdoptsLahso(Hold("27", 5200), null, "34", "34"));
+
+    [Fact]
+    public void A_hold_ticked_on_the_roll_is_adopted()
+        => Assert.True(TaxiGuidanceManager.RepickAdoptsLahso(null, Hold("27", 5200), "34", "34"));
+
+    [Fact]
+    public void A_changed_hold_is_adopted()
+        => Assert.True(TaxiGuidanceManager.RepickAdoptsLahso(Hold("27", 5200), Hold("22", 4100), "34", "34"));
+
+    [Fact]
+    public void The_same_hold_again_is_not_re_adopted_so_its_countdown_keeps_its_place()
+        => Assert.False(TaxiGuidanceManager.RepickAdoptsLahso(Hold("27", 5200), Hold("27", 5200), "34", "34"));
+
+    [Fact]
+    public void A_hold_computed_for_the_reciprocal_end_is_never_adopted()
+        // Measured from the other threshold, it sits past the protected runway as seen from this end.
+        => Assert.False(TaxiGuidanceManager.RepickAdoptsLahso(null, Hold("18", 4000), "27", "09"));
 }

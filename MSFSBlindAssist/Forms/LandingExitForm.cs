@@ -62,6 +62,8 @@ public class LandingExitForm : Form
     private Label lblExit = null!;
     private ComboBox cmbExit = null!;
     private CheckBox chkLahso = null!;
+    // The landing runway the LAHSO list was last built for: a pick survives a rebuild only for it.
+    private string? _lahsoListRunwayId;
     private ComboBox cmbLahsoRunway = null!;
 
     /// <summary>Combo wrapper: a computed LAHSO hold with a speakable label.</summary>
@@ -580,7 +582,12 @@ public class LandingExitForm : Form
         // refresh, same runway). When it is gone (a different landing runway), LAHSO is UNTICKED rather
         // than left ticked on item 0, a runway the pilot never chose and never heard selected; Plan would
         // otherwise arm it or refuse the exit against it (PR #324 review).
-        string? pickedLahso = (cmbLahsoRunway.SelectedItem as LahsoChoice)?.Hold.CrossingRunwayId;
+        // Same LANDING runway too: the reciprocal or a parallel can cross the same runway at a different
+        // hold point, which the pilot never heard (PR #324 re-review).
+        string? pickedLahso = string.Equals(_lahsoListRunwayId, rwy.RunwayID, StringComparison.OrdinalIgnoreCase)
+            ? (cmbLahsoRunway.SelectedItem as LahsoChoice)?.Hold.CrossingRunwayId
+            : null;
+        _lahsoListRunwayId = rwy.RunwayID;
         cmbLahsoRunway.Items.Clear();
         foreach (var other in _runways)
         {

@@ -3013,10 +3013,11 @@ public partial class TaxiGuidanceManager
     /// in LandingRollout or the pick is for a different runway; the caller then
     /// falls back to arming a normal next-landing plan.
     ///
-    /// <paramref name="lahso"/> is the form's LAHSO as it stands at this pick ("hold short of 27,
-    /// exit at H" on the roll): it replaces the active hold, null clearing it, and a changed hold
-    /// re-arms its countdown and is named in the sentence. Without it a LAHSO set on the roll was
-    /// silently dropped and the downfield retarget kept filtering on the old one (PR #324 review).
+    /// <paramref name="lahso"/> is the LAHSO ticked in the form at this pick ("hold short of 27,
+    /// exit at H" on the roll). A re-pick only ever SETS one (<see cref="RepickAdoptsLahso"/>), never
+    /// clears it: the planner window is rebuilt on every open with LAHSO unticked, so "none" means
+    /// "not touched", and clearing on it silently dropped the planned hold (PR #324 re-review). A new
+    /// hold re-arms its countdown and is named once, whichever exit the retarget ends on.
     /// </summary>
     public bool TryRetargetActiveRolloutExit(
         Navigation.LandingExit exit, string runwayId, Navigation.LahsoHold? lahso = null)
@@ -3029,17 +3030,10 @@ public partial class TaxiGuidanceManager
                 !RunwayDesignatorsMatch(_rolloutRunway.RunwayID, runwayId))
                 return false;
 
-            string lahsoNote = "";
-            if (!SameLahsoHold(_lahsoHold, lahso))
-            {
-                _lahsoHold = lahso;
-                _lahso1500Announced = _lahso500Announced = _lahsoStopAnnounced = _lahsoPassedAnnounced = false;
-                if (lahso != null)
-                    lahsoNote = $" Land and hold short of runway {lahso.CrossingRunwayId}.";
-            }
-
             // An exit already behind the aircraft cannot be taken — say so and
-            // keep the current target (same signed-along rule as the scans).
+            // keep the current target (same signed-along rule as the scans). The
+            // pick is rejected whole: its LAHSO was validated against the rejected
+            // exit, not the one kept, so it is not adopted either.
             double signedAlongM = SignedAlongRunwayMeters(
                 _lastLat, _lastLon, exit.Latitude, exit.Longitude, _rolloutRunwayHeadingTrue);
             if (signedAlongM >= 0.0)
@@ -3047,8 +3041,16 @@ public partial class TaxiGuidanceManager
                 string keptName = string.IsNullOrEmpty(_rolloutExit.TaxiwayName)
                     ? "the planned exit" : $"taxiway {_rolloutExit.TaxiwayName}";
                 SpeakNow(
-                    $"Exit {(string.IsNullOrEmpty(exit.TaxiwayName) ? "" : exit.TaxiwayName + " ")}is behind you. Keeping {keptName}.{lahsoNote}");
+                    $"Exit {(string.IsNullOrEmpty(exit.TaxiwayName) ? "" : exit.TaxiwayName + " ")}is behind you. Keeping {keptName}.");
                 return true; // handled: spoken, no next-landing plan wanted
+            }
+
+            string lahsoNote = "";
+            if (RepickAdoptsLahso(_lahsoHold, lahso, _rolloutRunway.RunwayID, runwayId))
+            {
+                _lahsoHold = lahso;
+                _lahso1500Announced = _lahso500Announced = _lahsoStopAnnounced = _lahsoPassedAnnounced = false;
+                lahsoNote = $"Land and hold short of runway {lahso!.CrossingRunwayId}.";
             }
 
             int distAheadFt = (int)Math.Round(
@@ -3058,10 +3060,29 @@ public partial class TaxiGuidanceManager
                 ? "new exit" : $"taxiway {exit.TaxiwayName}";
             RetargetLandingExit(exit, _lastLat, _lastLon, _lastHeading,
                 overrideAnnouncement:
-                    $"New exit, {newName}, {DistanceFormatter.FromFeet(distAheadFt)} ahead.{lahsoNote}");
+                    $"New exit, {newName}, {DistanceFormatter.FromFeet(distAheadFt)} ahead."
+                    + (lahsoNote.Length > 0 ? " " + lahsoNote : ""));
+            // A fall-forward to another exit speaks the ordinary retarget sentence, not the one
+            // above, so the new constraint follows it queued rather than going unheard.
+            if (lahsoNote.Length > 0 && _rolloutExit?.NodeId != exit.NodeId)
+                AnnounceQueuedInstruction(lahsoNote);
             return true;
         }
     }
+
+    /// <summary>
+    /// Whether a mid-rollout re-pick installs its LAHSO: only a hold the pilot ticked (never "none",
+    /// which is the rebuilt window's default), only for the EXACT runway being rolled out on (a hold
+    /// computed for the reciprocal end is measured from the other threshold and sits past the
+    /// protected runway), and only when it differs from the active one.
+    /// </summary>
+    internal static bool RepickAdoptsLahso(Navigation.LahsoHold? active, Navigation.LahsoHold? picked,
+        string rolloutRunwayId, string pickRunwayId)
+        => picked != null
+           && string.Equals(Navigation.RouteRunwayCrossings.NormalizeDesignator(rolloutRunwayId.Trim()),
+                            Navigation.RouteRunwayCrossings.NormalizeDesignator(pickRunwayId.Trim()),
+                            StringComparison.OrdinalIgnoreCase)
+           && !SameLahsoHold(active, picked);
 
     /// <summary>The same LAHSO constraint: both none, or the same crossing runway and hold point.</summary>
     internal static bool SameLahsoHold(Navigation.LahsoHold? a, Navigation.LahsoHold? b)
