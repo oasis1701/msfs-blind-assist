@@ -106,11 +106,11 @@ Only shown for Gate / Parking. Type a gate letter or number, such as "B12" or ju
 
 The list of places you can go, which depends on the destination type.
 
-- For runways, each item reads like *"Runway 27L"*. Closed runways are left out.
-- For stands, each item names the stand, its type and its equipment, for example *"Gate A 25 - Gate Medium (Jetway)"*. The nearest stands to you come first. If the stand is also known by another name online, the item ends with something like *", also 25 (online)"*. A stand the taxiway network does not reach is still listed, with *"(no taxi route)"* on the end, so you know it exists; BA will tell you it cannot route there if you choose it.
+- For runways, each item reads like *"Runway 27L"*. Closed runways are left out. A runway whose full length can only be reached by taxiing along it first reads *"Runway 28 (backtrack required)"*; see [Full-length departure (requires backtrack)](#full-length-departure-requires-backtrack).
+- For stands, each item names the stand, its type and its equipment, for example *"Gate A 25 - Gate Medium (Jetway)"*. The stands nearest to you by taxi distance come first, so a stand just across a runway, close as it looks, is listed behind the ones you can reach without going all the way round. If the stand is also known by another name online, the item ends with something like *", also 25 (online)"*. A stand the taxiway network does not reach is still listed, with *"(no taxi route)"* on the end, so you know it exists; BA will tell you it cannot route there if you choose it.
 - For places, each item names the place, its kind and the stand it ends at.
 
-When you pick a runway and BA has online data for that airport's painted holding points, it may also tell you which painted line the normal full-length departure uses, for example *"Full length holding point A1."* That helps you check the default matches your clearance before you calculate.
+When you pick a runway and BA has online data for that airport's painted holding points, it may also tell you which painted line the normal full-length departure uses, for example *"Full length holding point A1."* Without that data it names the taxiway the full-length departure enters by, for example *"Full length entry via N9."* Either helps you check the default matches your clearance before you calculate.
 
 ### Intersection departure {#intersection-departure}
 
@@ -122,7 +122,7 @@ If the runway has no usable intersections, you hear *"No runway intersections av
 
 Runway only. A checkbox. Controllers often name the painted holding point you should use, such as "hold short A2", even when the taxiway in your scenery is not called A2. Tick this box to choose the painted line by name. A list appears, with entries such as *"A2 (runway hold), 3600 metres remaining, 0 metres from threshold"*. The word in brackets says what kind of line it is: *"(runway hold)"* for the normal line, *"(ILS hold)"* for a line set further back to protect the ILS, and *"(intermediate hold)"* for a line out on the taxiway system.
 
-BA then routes you through that exact painted line, not just to the runway entrance it shares with its neighbours. These names come from online data, so this needs the online names setting switched on and the airport's data loaded. When there is nothing to offer, you hear *"No named holding points available for this runway. Full length departure."* and the box unticks itself.
+BA then routes you through that exact painted line, not just to the runway entrance it shares with its neighbours. These names come from online data, so this needs the online names setting switched on and the airport's data loaded. In Progressive Taxi, where the online data has no name for a line ATC uses, BA can also offer one from the scenery's own signs, marked *"(from sign, approximate)"*: it stops you at the sign's position, which may not be exactly on a painted line. When there is nothing to offer, you hear *"No named holding points available for this runway. Full length departure."* and the box unticks itself.
 
 ### CAT III / low-visibility hold (LVP) {#cat-iii-low-visibility-hold-lvp}
 
@@ -443,7 +443,7 @@ What each part means:
 
 Most routes produce a clean summary. When something is not right, a warning is added. These are the ones you may meet.
 
-**"... with no hold short point for runway 06L"** (added to the runway list). The route crosses or enters that runway, but there is nowhere safe to stop before it. BA will not stop you there. You must judge that runway yourself: slow down, check with ATC, and listen for traffic. Every other runway named without this warning will get a proper stop.
+**"... with no hold short point for runway 06L"** (added to the runway list). The route crosses or enters that runway, but there is nowhere safe to stop before it. BA will not stop you there. You must judge that runway yourself: slow down, check with ATC, and listen for traffic. Every other runway named without this warning will get a proper stop. Because guidance starts talking straight away and can cut the summary short, BA also says it again once you are stopped and guidance has started, *"Warning: no hold short point for runway 06L."*, so you hear it whatever happens to the summary. A stop you have already rolled past is never reported missing.
 
 **"Warning: this route does not reach Runway 27L. Check your taxiway entry and reprogram."** You hear this short form; the box holds a longer explanation, such as *"Warning: this route ends about 450 metres to the side of Runway 27L and does not reach the runway. You may be missing the taxiway that connects to the runway."* or *"Warning: this route stops short of Runway 27L ... The last taxiway you entered does not connect to it."* Usually the clearance's last taxiway runs beside the runway, and you have left out the short link taxiway onto it. Add it and calculate again. If you carry on anyway and BA is still far from the centreline during lineup, it repeats: *"This route does not reach Runway 27L. Reprogram the taxi route, including the taxiway that connects to the runway."*
 
@@ -610,6 +610,16 @@ Sometimes two runways are so close together that there is nowhere to stop betwee
 2. When cleared for 09, press Continue. You hear *"Runway 09 cleared. Still holding. Press continue when cleared for runway 01."* Stay where you are.
 3. When cleared for 01, press Continue again, and you move off.
 
+### Two runways close together {#two-runways-close-together}
+
+Where two parallel runways sit close together, ATC often clears you across both at once ("cross runways 28L and 28R at F"), but your route still has a stop before each. When you press Continue at the first and BA sees the second stop a short way ahead, it offers to clear both:
+
+1. Press Continue at the first hold line. You hear something like *"Continuing. Taxiway F. Next hold short of runway 28R at F in 120 metres. Press continue again if cleared across both."*
+2. If ATC cleared you across both, press Continue again once you have heard that. You hear *"Also cleared across runway 28R at F. No stop between the runways."*, and BA does not stop you between them.
+3. If you were cleared across the first runway only, do nothing. BA stops you at the second hold line as normal.
+
+A second press only counts once the offer has been spoken, about two seconds after the first, so a key that bounces or a quick double tap never clears the second runway by mistake. The offer stands for about twelve seconds.
+
 ### At the departure runway {#at-the-departure-runway}
 
 At the hold for your departure runway you hear *"Stop. Hold short of Runway 27L. Press continue when cleared."* Continue here means "cleared to line up" (or cleared for takeoff). See [Lining Up on the Runway](#taxi-lineup).
@@ -623,6 +633,7 @@ Every runway your route crosses or enters gets a stop, as described above, inclu
 BA watches for runway hold lines as you move, whether or not they are on your route.
 
 - *"Crossing runway 22R at B."* A reminder that the hold line just ahead is part of your route, a runway crossing you have planned.
+- *"Passing the runway 09L at F hold line."* The route passes a runway hold line but does not then go onto the runway, for example a line set back to protect an ILS beside your taxiway. You are not crossing a runway here.
 - *"Warning: approaching runway 36L at M8, off route."* You are heading towards a runway hold line that is **not** on your route, for example because you turned the wrong way or missed a turn. Stop and check where you are with Output Alt+Y. This only speaks for a hold line actually ahead of you, on your heading or on the taxiway you are turning onto, not for lines beside a parallel taxiway you are correctly following. It repeats for the same line no more than every ten seconds.
 
 ## Lining Up on the Runway {#taxi-lineup}
@@ -630,7 +641,7 @@ BA watches for runway hold lines as you move, whether or not they are on your ro
 At the departure runway, guidance takes you from the hold line onto the centreline.
 
 1. At the hold: *"Stop. Hold short of Runway 27L. Press continue when cleared."* As you approach the runway you may also hear *"Runway 27L ahead."*
-2. When ATC says "line up and wait" or "cleared for takeoff", press Input Y. You hear *"Entering Runway 27L, heading 268."*, with *"Turn right."* or *"Turn left."* added if you are more than ten degrees off the runway heading.
+2. When ATC says "line up and wait" or "cleared for takeoff", press Input Y. You hear *"Entering Runway 27L, heading 268."*, with *"Turn right."* or *"Turn left."* added if you are more than ten degrees off the runway heading. Where the hold line is set back from the runway and the taxiway runs on before meeting it, you hear *"Continue onto the runway, then turn left."* instead: the tone first follows the taxiway onto the runway, and only then turns you onto the centreline, so you never cut across the grass. If the stop before your runway also guards a runway you cross on the way in, both are named at the hold line, for example *"Hold short of Runway 32 and runway 35."*
 3. Follow the precise lineup tone onto the centreline (see [On the runway: lineup precision](#taxi-tone)). Roll forward gently while you turn; if you stop before you are lined up, the tone pulses.
 4. When you are within one degree of the runway heading and within about 10 feet (3 metres) of the centreline, the tone stops and you hear *"Lined up, Runway 27L. Hold position."* This is the same position the runway teleport puts you in.
 
