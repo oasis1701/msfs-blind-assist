@@ -23,6 +23,13 @@ public abstract partial class CessnaC172BaseDefinition : BaseAircraftDefinition
     private CessnaC172Gauges.RpmArc _rpmArc = CessnaC172Gauges.RpmArc.LowAlt;
     private bool _autopilotEngaged = false;
 
+    /// <summary>
+    /// Fixed gear, on every C172 variant: the universal auto-gear (FO-27), when the pilot has it on,
+    /// neither moves a gear nor says "Gear down." on this aeroplane. Whether the flight model reports
+    /// IS GEAR RETRACTABLE is not measured and does not matter: the property decides, not the SimVar.
+    /// </summary>
+    public override bool HasRetractableGear => false;
+
     // FCU control types: the autopilot's values are typed, never stepped
     public override FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
     public override FCUControlType GetHeadingControlType() => FCUControlType.SetValue;

@@ -9,6 +9,8 @@ paths:
   - "MSFSBlindAssist/Aircraft/PMDG737Definition.cs"
   - "MSFSBlindAssist/Aircraft/PMDG777Definition.cs"
   - "MSFSBlindAssist/Aircraft/DA40/CowsDA40Definition.AutopilotEngage.cs"
+  - "MSFSBlindAssist/Aircraft/C172/CessnaC172BaseDefinition.cs"
+  - "MSFSBlindAssist/Aircraft/C172/CessnaC172G1000Definition.AutopilotEngage.cs"
 ---
 # Auto-autopilot engage rules for the aircraft definitions
 
