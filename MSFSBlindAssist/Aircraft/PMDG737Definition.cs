@@ -727,14 +727,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["LTS_annunEmerNOT_ARMED"]      = Annun("LTS_annunEmerNOT_ARMED", "Emergency Lights NOT ARMED");
         d["LTS_EmerExitSelector"]        = Selector("LTS_EmerExitSelector", "Emergency Exit Lights",
             "OFF", "ARMED", "ON");
-        // Two positions, not the SDK header's three (line 215: 0 OFF, 1 AUTO, 2 ON).
-        // Swept live 2026-10-20 with tools/PMDGDispatchTester: LEFTSINGLE and
-        // RIGHTSINGLE both toggle OFF <-> AUTO, and 2 is refused by the CDA write,
-        // the absolute transmit and the cockpit's own K:ROTOR_BRAKE click, wheel
-        // and drag codes; the switch animation (L:switch_103_73X) reads 100 at
-        // AUTO where the 3-position Fasten Belts reads 50. With ON offered, a pick
-        // of ON walked one LEFTSINGLE from AUTO and landed OFF. Two positions take
-        // the CDA direct-position write below (absolute and idempotent, read back).
+        // Two positions, not the SDK header's three: the NG3 has no ON (swept
+        // 2026-10-20, P737-3; Pmdg737NoSmokingSwitchTests).
         d["COMM_NoSmokingSelector"]      = Selector("COMM_NoSmokingSelector", "No Smoking", "OFF", "AUTO");
         d["COMM_FastenBeltsSelector"]    = Selector("COMM_FastenBeltsSelector", "Fasten Seat Belts", "OFF", "AUTO", "ON");
         d["COMM_annunCALL"]              = Annun("COMM_annunCALL", "Cabin Call");
@@ -3947,6 +3941,18 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     private static readonly HashSet<string> _reversedAbsolutePositionSet =
         new HashSet<string> { "LTS_PositionSw" };
 
+    // Two-position switches whose CDA write was read back as absolute and
+    // idempotent (No Smoking, 2026-10-20): they skip step 5's "already at target"
+    // guard, as branch 4a does. That guard reads the 1 Hz snapshot, so a quick
+    // A→B→A pick, or a pick of 0 before the first snapshot (the 0.0 sentinel),
+    // would drop the send.
+    private static readonly HashSet<string> _unguardedTwoPositionSet =
+        new HashSet<string> { "COMM_NoSmokingSelector" };
+
+    /// <summary>True when step 5 skips a pick the cached snapshot already shows.</summary>
+    internal static bool GuardsAlreadyAtTarget(string varKey, SimConnect.SimVarDefinition varDef) =>
+        varDef.ValueDescriptions.Count >= 2 && !_unguardedTwoPositionSet.Contains(varKey);
+
     internal static IReadOnlyCollection<string> AbsolutePositionSelectorKeys => _absolutePositionSelectorSet;
 
     /// <summary>True when <paramref name="varKey"/> is an absolute-position
@@ -4857,7 +4863,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             }
 
             int target = (int)value;
-            if (varDef.ValueDescriptions.Count >= 2)
+            if (GuardsAlreadyAtTarget(varKey, varDef))
             {
                 var dm = simConnect.PMDGDataManager;
                 if (dm != null && (int)dm.GetFieldValue(varDef.Name) == target)
