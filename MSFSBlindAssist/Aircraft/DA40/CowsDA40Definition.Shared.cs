@@ -345,8 +345,9 @@ public partial class CowsDA40Definition
         // both ways). Above the silence gate: the RPM is a silent readout.
         if (NoteEngineRunning(varName, value, announcer)) return true;
         // The XLS mag check: the tachometer is silent by design and this must see it, so
-        // the drop can be read from the RPM the key left BOTH at. Never announces itself.
-        NoteMagnetoChange(varName, value, announcer);
+        // the drop can be read from the RPM the key left BOTH at. Never announces itself, and
+        // claims the key's crank bounce (Start <-> Both) so the generic announcer never reads it.
+        if (NoteMagnetoChange(varName, value, announcer)) return true;
         // The XLS priming state: its inputs are silent numbers, so this must see them here.
         NotePrimingChange(varName, value, announcer);
         // The XLS start readiness and auto-start narration: reads the master, selector,
