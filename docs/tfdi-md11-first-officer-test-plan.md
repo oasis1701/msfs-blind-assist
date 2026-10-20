@@ -87,7 +87,10 @@ Worked on 26 September: engines 3, 1 and 2, about three and a half minutes.
    not "Skipping". Both failed on 26 September until a fix, and that fix has since been replaced
    by main's version of it.
 2. **Settle:** about a minute and a half after "APU bleed: OFF", the APU shuts itself down.
-3. Autobrake T.O., the system display config page, nose light taxi, Captain reminders.
+3. Autobrake T.O., the system display config page, nose light taxi, then (2026-10-20, altitude
+   reporting before taxi) "Transponder: XPDR" — the mode knob reads Transponder only — and
+   "Altitude reporting: ON". With the knob already at TA or TA/RA the mode step must say "Already
+   set" and not turn it back. Then the Captain reminders. Before Takeoff still turns it to TA/RA.
 
 ### Before Takeoff
 
