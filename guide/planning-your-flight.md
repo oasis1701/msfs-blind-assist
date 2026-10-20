@@ -545,7 +545,7 @@ The checklists are a tree. Each checklist is named with its progress, for exampl
 
 - A line ticks itself once the aircraft is in that state, so as you read down a checklist you hear what is already done.
 - Press Space to tick a line yourself. If it is a switch the First Officer can set, it sets it, and BA adds the value it reads, such as the flap setting. If the switch never moves, the line unticks itself and you hear *"Unable to complete:"* followed by the line.
-- If the aircraft's state makes a line unsafe to do, for example a battery off with an engine running, the tick is refused and BA says why.
+- If the aircraft's state makes a line unsafe to do, the tick is refused and BA says why. A line that switches the fuel pumps, a hydraulic pump, the IRS or a battery off is done only on the ground with the engines stopped, and a packs-off line only on the ground. Until BA has read the aircraft, it refuses too. For example: *"Fuel pumps left on: not read on the ground, or the engines are not read stopped."*
 - A line the First Officer cannot set, such as a read-back item, only records that you checked it.
 - A checklist you finished, by hand or with its flow, stays complete for the rest of the flight, even when later flows move the same switches.
 - The **Checklist status** line below the tree shows the selected line with its live value and whether it is complete, without ticking it.

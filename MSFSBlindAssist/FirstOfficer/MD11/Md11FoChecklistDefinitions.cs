@@ -95,7 +95,7 @@ public static class Md11FoChecklistDefinitions
             // flow's PU_ENGINES_STOPPED, added after the flow cut all three engines live).
             LeaveAlone(Auto("PU_FUEL_OFF", "POWER_UP", "Fuel switches: OFF", "FO_FUEL_SWITCHES_OFF", On,
                 SetAll(("MD11_THR_L_FUEL_SW", 0), ("MD11_THR_C_FUEL_SW", 0), ("MD11_THR_R_FUEL_SW", 0))),
-                s => !s.IsOn("FO_ENGINES_STOPPED"), EnginesTurningText),
+                NotParked, EnginesTurningText),
             Auto("PU_PARK", "POWER_UP", "Parking brake: SET", Park, On, Set(Park, 1)),
             Auto("PU_BATT", "POWER_UP", "Battery: ON", Batt, On, Set(Batt, 1)),
             Auto("PU_EXT_PWR", "POWER_UP", "External power: ON", "FO_EXT_POWER_ON", On, Set(X.ExtPower, 1)),
@@ -318,15 +318,17 @@ public static class Md11FoChecklistDefinitions
             Auto("SD_EMER_PWR", "SHUTDOWN", "Emergency power: OFF", EmerPwr, v => Is(v, 0), Set(EmerPwr, 0)),
             Auto("SD_WINDSHIELD", "SHUTDOWN", "Windshield anti-ice and defog: OFF", "FO_WINDSHIELD_OFF", On,
                 SetAll(("MD11_OVHD_WNDSHLD_AICE_L_BT", 0), ("MD11_OVHD_WNDSHLD_AICE_R_BT", 0), ("MD11_OVHD_WNDSHLD_AICE_DEFOG_BT", 1))),
-            // Never airborne (the Shutdown flow's SD_ON_GROUND).
+            // Never airborne (the Shutdown flow's SD_ON_GROUND), nor with an engine turning (FO-25).
             LeaveAlone(Auto("SD_IRS", "SHUTDOWN", "IRS switches: OFF", "FO_IRS_OFF", On,
                 SetAll(("MD11_OVHD_IRS_1_KB", 0), ("MD11_OVHD_IRS_2_KB", 0), ("MD11_OVHD_IRS_3_KB", 0))),
-                s => !s.IsPosition("SIM_ON_GROUND", 1), IrsStayText),
+                NotParked, IrsStayText),
             Auto("SD_CARGO_TEMP", "SHUTDOWN", "Cargo temperatures: OFF", "FO_CARGO_TEMPS_OFF", On,
                 SetAll(("MD11_OVHD_PNEU_FWD_CARGO_TEMP", 0), ("MD11_OVHD_PNEU_AFT_CARGO_TEMP", 0))),
             Auto("SD_DOME", "SHUTDOWN", "Dome light: OFF", "FO_DOME_OFF", On, Set("MD11_OVHD_LTS_DOME_BT", 0)),
             Auto("SD_EVAC", "SHUTDOWN", "Evacuation switch: OFF", Evac, v => Is(v, 0), Set(Evac, 0)),
-            Auto("SD_PACKS", "SHUTDOWN", "Packs: OFF", "FO_PACKS_OFF", On, Set(X.PacksOff, 0)),
+            // Never airborne: packs off there depressurise the cabin.
+            LeaveAlone(Auto("SD_PACKS", "SHUTDOWN", "Packs: OFF", "FO_PACKS_OFF", On, Set(X.PacksOff, 0)),
+                s => !s.IsPosition("SIM_ON_GROUND", 1), PacksStayText),
             // SLOW: the APU stops up to 90 s after its bleed valve closes — hold the tick open.
             Auto("SD_APU", "SHUTDOWN", "APU: OFF", "FO_APU_OFF", On,
                 SetThenWait(X.ApuShutdown, 0, "FO_APU_OFF", On, 120)),
@@ -335,7 +337,7 @@ public static class Md11FoChecklistDefinitions
             // Never airborne and never with an engine turning (the Shutdown flow's SD_ON_GROUND and
             // SD_ENGINES_STOPPED).
             LeaveAlone(Auto("SD_BATTERY", "SHUTDOWN", "Battery: OFF", Batt, Off, Set(Batt, 0)),
-                s => !s.IsPosition("SIM_ON_GROUND", 1) || !s.IsOn("FO_ENGINES_STOPPED"), BatteryStaysText),
+                NotParked, BatteryStaysText),
         }
     };
 
@@ -633,12 +635,20 @@ public static class Md11FoChecklistDefinitions
         return item;
     }
 
-    internal const string EnginesTurningText = "Engines turning, so the fuel switches stay on.";
+    internal const string EnginesTurningText = "Fuel switches left on: not read on the ground, or an engine is not read stopped.";
 
     internal const string EnginesStayText =
         "Fuel switches left on: not on the ground, or no APU or external power on the busses.";
 
-    internal const string IrsStayText = "IRS left on: the aircraft is not on the ground.";
+    internal const string IrsStayText = "IRS left on: not read on the ground, or an engine is not read stopped.";
 
-    internal const string BatteryStaysText = "Battery left on: not on the ground, or an engine is turning.";
+    internal const string PacksStayText = "Packs left on: not read on the ground.";
+
+    // On the ground with every engine read stopped (FO_ENGINES_STOPPED); airborne, an engine turning,
+    // or either unread, the fuel switches, IRS and battery stay as they are (FO-25). The cold-and-dark
+    // fuel line needs the ground half too: airborne with all three engines out, cutoff ends a relight.
+    private static bool NotParked(Md11FoStateEvaluator s) =>
+        !s.IsPosition("SIM_ON_GROUND", 1) || !s.IsOn("FO_ENGINES_STOPPED");
+
+    internal const string BatteryStaysText = "Battery left on: not read on the ground, or an engine is not read stopped.";
 }

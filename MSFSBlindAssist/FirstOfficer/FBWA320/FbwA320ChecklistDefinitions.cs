@@ -496,7 +496,9 @@ public static class FbwA320ChecklistDefinitions
                 v => v < 0.5, (e, _) => e.SetSeatbeltSign(false)),
             Auto("SD_BEACON_OFF", "SHUTDOWN", "Beacon: OFF", "LIGHT BEACON",
                 v => v < 0.5, (e, _) => e.Set("BEACON_LIGHTS_SET", 0)),
-            Auto("SD_FUELPUMPS_OFF", "SHUTDOWN", "Fuel pumps: ALL OFF", "FUEL_PUMP_L1", v => v < 0.5,
+            // Never airborne or with an engine turning (FO-25; the Shutdown flow's SD_ON_GROUND and
+            // the engine masters before it).
+            LeaveAlone(Auto("SD_FUELPUMPS_OFF", "SHUTDOWN", "Fuel pumps: ALL OFF", "FUEL_PUMP_L1", v => v < 0.5,
                 new[] { "FUEL_PUMP_L2", "FUEL_PUMP_C1", "FUEL_PUMP_C2", "FUEL_PUMP_R1", "FUEL_PUMP_R2" },
                 async (e, _) =>
                 {
@@ -507,6 +509,7 @@ public static class FbwA320ChecklistDefinitions
                     await e.Set("FUEL_PUMP_R1", 0);
                     await e.Set("FUEL_PUMP_R2", 0);
                 }),
+                NotParked, FuelPumpsStayText),
             Auto("SD_NOSE_OFF", "SHUTDOWN", "Nose light: OFF", "LIGHTING_LANDING_1",
                 v => System.Math.Abs(v - 2) < 0.5, (e, _) => e.Set("LIGHTING_LANDING_1", 2)),
             Auto("SD_TURNOFF_OFF", "SHUTDOWN", "Runway turn-off lights: OFF", "LIGHT TAXI:2",
@@ -534,7 +537,7 @@ public static class FbwA320ChecklistDefinitions
         Id = "SECURE", Name = "Securing",
         Items = new()
         {
-            // Never airborne (the Securing flow's SC_ON_GROUND).
+            // Never airborne (the Securing flow's SC_ON_GROUND), nor with an engine turning (FO-25).
             LeaveAlone(Auto("SC_ADIRS", "SECURE", "IRS 1, 2 and 3: OFF", "A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB",
                 v => v < 0.5, new[] { "A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", "A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB" },
                 async (e, _) =>
@@ -543,7 +546,7 @@ public static class FbwA320ChecklistDefinitions
                     await e.Set("A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", 0);
                     await e.Set("A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB", 0);
                 }),
-                s => !s.IsPosition("SIM_ON_GROUND", 1), IrsStayText),
+                NotParked, IrsStayText),
             // Crew oxygen OFF = 1 (inverted convention, see PF_OXY).
             Auto("SC_OXY", "SECURE", "Crew oxygen supply: OFF", "PUSH_OVHD_OXYGEN_CREW",
                 v => System.Math.Abs(v - 1) < 0.5, (e, _) => e.Set("PUSH_OVHD_OXYGEN_CREW", 1)),
@@ -557,10 +560,13 @@ public static class FbwA320ChecklistDefinitions
                 v => v < 0.5, (e, _) => e.Set("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0)),
             Auto("SC_EXTPWR_OFF", "SECURE", "External power: OFF", "A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON",
                 v => v < 0.5, (e, _) => e.Set("A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON", 0)),
-            Auto("SC_BAT1", "SECURE", "Battery 1: OFF", "A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO",
+            // Never airborne or with an engine turning (FO-25), as the IRS above.
+            LeaveAlone(Auto("SC_BAT1", "SECURE", "Battery 1: OFF", "A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO",
                 v => v < 0.5, (e, _) => e.Set("A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", 0)),
-            Auto("SC_BAT2", "SECURE", "Battery 2: OFF", "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO",
+                NotParked, BatteriesStayText),
+            LeaveAlone(Auto("SC_BAT2", "SECURE", "Battery 2: OFF", "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO",
                 v => v < 0.5, (e, _) => e.Set("A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", 0)),
+                NotParked, BatteriesStayText),
             // ★ Cockpit lighting off (full off-scene).
             Auto("SC_COCKPITLT", "SECURE", "Cockpit lights: annunciator bright", "A32NX_OVHD_INTLT_ANN",
                 v => System.Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A32NX_OVHD_INTLT_ANN", 1)),
@@ -826,5 +832,17 @@ public static class FbwA320ChecklistDefinitions
     internal const string EnginesStayText =
         "Engines left running: not on the ground, or no APU or external power to take the buses.";
 
-    internal const string IrsStayText = "IRS left on: the aircraft is not on the ground.";
+    internal const string IrsStayText = "IRS left on: not read on the ground, or the engines are not read stopped.";
+
+    // The fuel pumps, the IRS and the batteries go OFF on a tick only on the ground with both
+    // engines read stopped (FO_ENGINES_OFF); airborne, an engine turning, or either unread, they
+    // stay on (FO-25).
+    private static bool NotParked(FbwA320StateEvaluator s) =>
+        !s.IsPosition("SIM_ON_GROUND", 1) || !s.IsOn("FO_ENGINES_OFF");
+
+    internal const string FuelPumpsStayText =
+        "Fuel pumps left on: not read on the ground, or the engines are not read stopped.";
+
+    internal const string BatteriesStayText =
+        "Battery left on: not read on the ground, or the engines are not read stopped.";
 }

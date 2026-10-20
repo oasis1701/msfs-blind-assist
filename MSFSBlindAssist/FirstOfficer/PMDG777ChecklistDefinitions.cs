@@ -68,14 +68,18 @@ public static class PMDG777ChecklistDefinitions
             Auto("EPU_STORM_OFF", "ELEC_POWER_UP", "Storm lights: OFF",
                 "LTS_Storm_Sw_ON", v => v < 0.5,
                 action: (e, _) => e.SetStormLights(0)),
-            Auto("EPU_ELEC_PUMPS_OFF", "ELEC_POWER_UP", "Electric primary pump switches: OFF",
+            // Cold-and-dark checks: hydraulic and fuel pumps go off on a tick only on the ground with
+            // both engines read stopped (FO-25; the Electrical Power Up flow's EPU_ENGINES_STOPPED).
+            LeaveAlone(Auto("EPU_ELEC_PUMPS_OFF", "ELEC_POWER_UP", "Electric primary pump switches: OFF",
                 "HYD_PrimaryElecPump_Sw_ON_0", v => v < 0.5,
                 new[] { "HYD_PrimaryElecPump_Sw_ON_1" },
                 (e, _) => e.SetElecPumps(0)),
-            Auto("EPU_DEMAND_PUMPS_OFF", "ELEC_POWER_UP", "Demand pump selectors: OFF",
+                NotParked, HydPumpsStayText),
+            LeaveAlone(Auto("EPU_DEMAND_PUMPS_OFF", "ELEC_POWER_UP", "Demand pump selectors: OFF",
                 "HYD_DemandElecPump_Selector_0", v => v < 0.5,
                 new[] { "HYD_DemandElecPump_Selector_1", "HYD_DemandAirPump_Selector_0", "HYD_DemandAirPump_Selector_1" },
                 (e, _) => e.SetDemandPumps(0)),
+                NotParked, HydPumpsStayText),
             // No wiper-selector state field exists in the 777 CDA struct — action-only.
             ActionManual("EPU_WIPERS_OFF", "ELEC_POWER_UP", "Wiper selectors: OFF",
                 (e, _) => e.SetWipers(0)),
@@ -199,10 +203,11 @@ public static class PMDG777ChecklistDefinitions
                 "HYD_PrimaryEngPump_Sw_ON_0", v => v > 0.5,
                 new[] { "HYD_PrimaryEngPump_Sw_ON_1" },
                 (e, _) => e.SetEngPumps(1)),
-            Auto("PF_DEMAND_PUMPS_OFF", "PREFLIGHT", "Demand pump selectors: OFF",
+            LeaveAlone(Auto("PF_DEMAND_PUMPS_OFF", "PREFLIGHT", "Demand pump selectors: OFF",
                 "HYD_DemandElecPump_Selector_0", v => v < 0.5,
                 new[] { "HYD_DemandElecPump_Selector_1", "HYD_DemandAirPump_Selector_0", "HYD_DemandAirPump_Selector_1" },
                 (e, _) => e.SetDemandPumps(0)),
+                NotParked, HydPumpsStayText),
             // OFF (0), as PMDG's Preflight Procedure reads (owner, 2026-10-09); see the
             // CP_SEAT_BELTS note in the flow. The sign goes ON in Before Start (BS_SEAT_BELTS,
             // ON rather than the vendor's AUTO: owner ruling 2026-08-29). Exactly OFF: AUTO (1)
@@ -237,11 +242,13 @@ public static class PMDG777ChecklistDefinitions
                 (e, _) => e.SetCrossfeeds(0)),
             // Vendor runs "CROSSFEED switches — OFF" then "FUEL PUMP switches — OFF" then
             // the fire test; this sat ~20 items later, after the fuel control switches.
-            Auto("PF_FUEL_PUMPS_OFF", "PREFLIGHT", "Fuel pumps: OFF",
+            // A cold-and-dark check: never airborne or with an engine turning (FO-25).
+            LeaveAlone(Auto("PF_FUEL_PUMPS_OFF", "PREFLIGHT", "Fuel pumps: OFF",
                 "FUEL_PumpFwd_Sw_0", v => v < 0.5,
                 new[] { "FUEL_PumpFwd_Sw_1", "FUEL_PumpAft_Sw_0", "FUEL_PumpAft_Sw_1",
                         "FUEL_PumpCtr_Sw_0", "FUEL_PumpCtr_Sw_1" },
                 (e, _) => { e.SetWingFuelPumps(0); e.SetCenterFuelPumps(0); }),
+                NotParked, FuelPumpsStayText),
             Auto("PF_WING_ANTI_ICE", "PREFLIGHT", "Wing Anti-Ice: AUTO",
                 "ICE_WingAntiIceSw", v => v > 0.5,
                 action: (e, _) => e.SetWingAntiIce(1)),  // 1=Auto (panel ValueDescriptions: 0=Off,1=Auto,2=On)
@@ -318,7 +325,7 @@ public static class PMDG777ChecklistDefinitions
                 "ENG_FuelControl_Sw_RUN_0", v => v < 0.5,
                 new[] { "ENG_FuelControl_Sw_RUN_1" },
                 (e, _) => e.SetFuelControlLevers(0)),
-                s => s.IsOnGround() != true || !PMDG777FlowDefinitions.EnginesStopped(s), PreflightFuelControlsStayText),
+                NotParked, PreflightFuelControlsStayText),
             Manual("PF_CDU_PREFLIGHT", "PREFLIGHT", "CDU Preflight: Complete"),
             Manual("PF_FMC_PERF", "PREFLIGHT", "Performance data: Entered in FMC"),
             Reminder("PF_RESET_CL", "PREFLIGHT", "Reset checklists and obtain IFR clearance"),
@@ -814,18 +821,23 @@ public static class PMDG777ChecklistDefinitions
                 action: (e, _) => e.SetSeatBelts(0)),
             // No engine primary pump line: PMDG's Shutdown Procedure leaves them ON (see the flow's
             // SD_ELEC_PUMPS note; removed 2026-10-19, owner).
-            Auto("SD_ELEC_PUMPS_OFF", "SHUTDOWN", "Electric primary pump switches: OFF",
+            // Hydraulic and fuel pumps go off on a tick only on the ground with both engines read
+            // stopped (FO-25; the Shutdown flow's SD_ON_GROUND and the fuel cutoff before them).
+            LeaveAlone(Auto("SD_ELEC_PUMPS_OFF", "SHUTDOWN", "Electric primary pump switches: OFF",
                 "HYD_PrimaryElecPump_Sw_ON_0", v => v < 0.5,
                 new[] { "HYD_PrimaryElecPump_Sw_ON_1" },
                 (e, _) => e.SetElecPumps(0)),
-            Auto("SD_DEMAND_OFF", "SHUTDOWN", "Demand pump selectors: OFF",
+                NotParked, HydPumpsStayText),
+            LeaveAlone(Auto("SD_DEMAND_OFF", "SHUTDOWN", "Demand pump selectors: OFF",
                 "HYD_DemandElecPump_Selector_0", v => v < 0.5,
                 new[] { "HYD_DemandElecPump_Selector_1", "HYD_DemandAirPump_Selector_0", "HYD_DemandAirPump_Selector_1" },
                 (e, _) => e.SetDemandPumps(0)),
-            Auto("SD_FUEL_PUMPS", "SHUTDOWN", "Fuel Pump switches: OFF",
+                NotParked, HydPumpsStayText),
+            LeaveAlone(Auto("SD_FUEL_PUMPS", "SHUTDOWN", "Fuel Pump switches: OFF",
                 "FUEL_PumpFwd_Sw_0", v => v < 0.5,
                 new[] { "FUEL_PumpFwd_Sw_1", "FUEL_PumpAft_Sw_0", "FUEL_PumpAft_Sw_1", "FUEL_PumpCtr_Sw_0", "FUEL_PumpCtr_Sw_1" },
                 (e, _) => { e.SetWingFuelPumps(0); e.SetCenterFuelPumps(0); }),
+                NotParked, FuelPumpsStayText),
             Auto("SD_BEACON_OFF", "SHUTDOWN", "Beacon light: OFF",
                 "LTS_Beacon_Sw_ON", v => v < 0.5,
                 action: (e, _) => e.SetBeacon(0)),
@@ -879,20 +891,22 @@ public static class PMDG777ChecklistDefinitions
         Id = "SECURE", Name = "Secure",
         Items = new()
         {
-            // Never airborne (the Secure flow's SEC_ON_GROUND).
+            // Never airborne (the Secure flow's SEC_ON_GROUND), nor with an engine turning (FO-25).
             LeaveAlone(Auto("SEC_ADIRU", "SECURE", "ADIRU switch: OFF",
                 "ADIRU_Sw_On", v => v < 0.5,
                 action: (e, _) => e.SetAdiru(0)),
-                s => s.IsOnGround() != true, AdiruStaysText),
+                NotParked, AdiruStaysText),
             // One guarded call — it lifts the guard, waits out the settle gap, then moves
             // the switch. The old two-call form wrote the guard to 1 under a method named
             // "Close…" and sent the switch over CDA, which cannot reach OFF from ARMED.
             ActionManual("SEC_EMER_EXIT_OFF", "SECURE", "Emergency Exit Lights switch: OFF",
                 (e, _) => e.SetEmerExitLights(EmerExitLightSequence.Off)),
-            Auto("SEC_PACKS_OFF", "SECURE", "Pack switches: OFF",
+            // Never airborne: packs off there depressurise the cabin.
+            LeaveAlone(Auto("SEC_PACKS_OFF", "SECURE", "Pack switches: OFF",
                 "AIR_Pack_Sw_AUTO_0", v => v < 0.5,
                 new[] { "AIR_Pack_Sw_AUTO_1" },
                 (e, _) => e.SetPacks(0)),
+                s => s.IsOnGround() != true, PacksStayText),
             // GPU buttons are momentary TOGGLES — press only the side that is actually on,
             // or a tick with no GPU connected would CONNECT one. Guarded per side (mirrors
             // the ELEC_POWER_DOWN disconnect); a single confirm line for the Secure flow.
@@ -941,11 +955,12 @@ public static class PMDG777ChecklistDefinitions
                     if (s.IsGpuPower2On()) e.PushGroundPowerSecondary();
                     return Task.CompletedTask;
                 }),
-            // Never with an engine turning, the Secure flow's SEC_BATTERY_OFF rule (FOB-22).
+            // Never with an engine turning, the Secure flow's SEC_BATTERY_OFF rule (FOB-22), and never
+            // airborne (FO-25: the Secure flow's SEC_ON_GROUND; this group has no flow of its own).
             LeaveAlone(Auto("EPD_BATTERY_OFF", "ELEC_POWER_DOWN", "Battery switch: OFF",
                 "ELEC_Battery_Sw_ON", v => v < 0.5,
                 action: (e, _) => e.SetBattery(0)),
-                s => !PMDG777FlowDefinitions.EnginesStopped(s), BatteryStaysText),
+                NotParked, BatteryTickStaysText),
         }
     };
 
@@ -1065,9 +1080,20 @@ public static class PMDG777ChecklistDefinitions
     internal const string ExtPowerStaysText =
         "External power stays connected: the APU is not running with its generator on.";
 
-    internal const string AdiruStaysText = "ADIRU left on: the aircraft is not read on the ground.";
+    internal const string AdiruStaysText = "ADIRU left on: not read on the ground, or the engines are not read stopped.";
 
-    internal const string BatteryStaysText = "Engines running, so the battery stays on.";
+    // On the ground with both engines read stopped, or the pumps, fuel controls, ADIRU and battery
+    // stay as they are (FO-25); unread is neither.
+    internal static bool NotParked(AircraftStateEvaluator s) =>
+        s.IsOnGround() != true || !PMDG777FlowDefinitions.EnginesStopped(s);
+
+    internal const string FuelPumpsStayText = "Fuel pumps left on: not read on the ground, or the engines are not read stopped.";
+
+    internal const string HydPumpsStayText = "Hydraulic pumps left on: not read on the ground, or the engines are not read stopped.";
+
+    internal const string BatteryTickStaysText = "Battery left on: not read on the ground, or the engines are not read stopped.";
+
+    internal const string PacksStayText = "Packs left on: not read on the ground.";
 
     /// <summary>Captain reminder — user reads/confirms and manually ticks. No sim action.</summary>
     private static Item Reminder(string id, string groupId, string text) => new()
