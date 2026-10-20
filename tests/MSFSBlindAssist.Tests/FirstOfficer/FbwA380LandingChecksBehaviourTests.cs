@@ -18,7 +18,7 @@ public sealed class FbwA380LandingChecksBehaviourTests
     // puts them: the lever position, and whether CONF 3 is selected on the MFD PERF APPR page.
     private static (string Key, double Value)[] Seed(double flapLever, double conf3) => new[]
     {
-        ("SEATBELT_SIGN_LIGHT", 1.0), ("A32NX_FLAPS_HANDLE_INDEX", flapLever), (FbwA380StateEvaluator.LandingConf3Field, conf3),
+        ("SEATBELT_SIGN_LIGHT", 1.0), ("A32NX_FLAPS_HANDLE_INDEX", flapLever), ("A380X_FM_LANDING_CONF3", conf3),
         (FbwA380GearConfirmation.HandleField, 1.0),
         ("A32NX_GEAR_CENTER_POSITION", 100.0), ("A32NX_GEAR_LEFT_POSITION", 100.0), ("A32NX_GEAR_RIGHT_POSITION", 100.0),
     };
@@ -95,7 +95,7 @@ public sealed class FbwA380LandingChecksBehaviourTests
         Assert.True(r.Group.CompletionLatched);
 
         // The pilot sets FULL flaps: "Flaps: LDG" follows the aircraft by itself.
-        r.State.SetSimConnect(SeededSimConnectCache.ConnectedWith(Seed(flapLever: 4, conf3: 0)));
+        r.State.SetSimConnect(SeededSimConnectCache.ConnectedWith(Seed(flapLever: 4, conf3: 0)).On("FS2024"));
         r.Checklist.EvaluateAutoDetection();
         Assert.True(r.Items["LDC_FLAPS"].IsChecked);
         Assert.False(r.Items["LDC_FLAPS"].ExemptFromCompletionLatch);

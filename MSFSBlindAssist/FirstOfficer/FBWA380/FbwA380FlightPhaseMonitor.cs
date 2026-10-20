@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using MSFSBlindAssist.Accessibility;
 
 namespace MSFSBlindAssist.FirstOfficer.FBWA380;
@@ -143,13 +144,27 @@ public sealed class FbwA380FlightPhaseMonitor : IFoPhaseMonitor
         switch (crossing)
         {
             case TransitionCrossingDetector.Crossing.ClimbToStd:
-                _ = _executor.SetBaroStd(true);
-                _announcer.Announce("Transition altitude. Altimeters set to standard.");
+                _ = AnnounceWhenDoneAsync(_executor.SetBaroStd(true), ClimbToStdDone, ClimbToStdRefused);
                 break;
             case TransitionCrossingDetector.Crossing.DescendToQnh:
-                _ = _executor.SetBaroStd(false);
-                _announcer.Announce("Transition level. Altimeters set to QNH mode. Set local pressure now.");
+                _ = AnnounceWhenDoneAsync(_executor.SetBaroStd(false), DescendToQnhDone, DescendToQnhRefused);
                 break;
         }
+    }
+
+    internal const string ClimbToStdDone = "Transition altitude. Altimeters set to standard.";
+    internal const string ClimbToStdRefused = "Transition altitude. Set both altimeters to standard.";
+    internal const string DescendToQnhDone = "Transition level. Altimeters set to QNH mode. Set local pressure now.";
+    internal const string DescendToQnhRefused = "Transition level. Set both altimeters to QNH and set local pressure.";
+
+    // The baro write is per build and refuses when the simulator build is unknown
+    // (FbwA380ActionExecutor.FireBaro) — so the call says "set" only once the write went out, and
+    // otherwise hands the Captain the action instead of reporting a change nobody made.
+    private async Task AnnounceWhenDoneAsync(Task<bool> write, string done, string refused)
+    {
+        bool ok;
+        try { ok = await write; }   // no ConfigureAwait(false): Announce stays on the caller's (UI) context
+        catch { ok = false; }
+        _announcer.Announce(ok ? done : refused);
     }
 }

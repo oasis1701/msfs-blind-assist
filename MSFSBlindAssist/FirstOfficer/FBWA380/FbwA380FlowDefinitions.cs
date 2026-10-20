@@ -146,9 +146,11 @@ public static class FbwA380FlowDefinitions
             Done(Multi("CP_HOTAIR", "Hot air: ON",
                 ("A32NX_OVHD_COND_HOT_AIR_1_PB_IS_ON", 1), ("A32NX_OVHD_COND_HOT_AIR_2_PB_IS_ON", 1)), "CP_HOTAIR"),
             Captain("CP_AIRTEMP", "Cabin temperature: set as required"),
-            // EFIS-CP hPa/inHg selector since FBW #10855: 1 = inHg, so hectopascals is 0.
-            Done(Multi("CP_BARO", "Baro reference: hectopascals",
-                ("A32NX_FCU_EFIS_L_BARO_IS_INHG", 0), ("A32NX_FCU_EFIS_R_BARO_IS_INHG", 0)), "CP_BARO"),
+            // The EFIS-CP hPa/inHg selectors, PER BUILD (A380BuildNames): FS2020 the one selector
+            // variable both sides read (1 = hPa), FS2024 A32NX_FCU_EFIS_{L,R}_BARO_IS_INHG (1 = inHg).
+            // The executor's own key; the definition writes only a selector not already at hPa.
+            Done(Skip(SW("CP_BARO", "Baro reference: hectopascals", FbwA380ActionExecutor.BaroUnitHectopascalsKey, 1),
+                s => s.IsOn(FbwA380StateEvaluator.BaroUnitHectopascalsField)), "CP_BARO"),
             Captain("CP_ALTIMETERS", "Altimeters: set QNH"),
             Done(Skip(SW("CP_ANTISKID", "Anti-skid: ON", "ANTISKID_BRAKES_ACTIVE", 1), s => s.IsOn("ANTISKID_BRAKES_ACTIVE")),
                 "CP_ANTISKID"),
@@ -163,9 +165,11 @@ public static class FbwA380FlowDefinitions
                 "CP_EFISMODE"),
             Done(Multi("CP_EFISRANGE", "EFIS range: 40", ("A32NX_EFIS_L_ND_RANGE", 3), ("A32NX_EFIS_R_ND_RANGE", 3)),
                 "CP_EFISRANGE"),
-            // One FCU pushbutton since FBW #10855 — see A380FlightDirector. A toggle, so skip it when lit.
-            Done(Skip(SW("CP_FD", "Flight directors: ON", A380FlightDirector.StateKey, 1),
-                s => s.IsOn(A380FlightDirector.StateKey)), "CP_FD"),
+            // PER BUILD (A380BuildNames): FS2020 two per-side flight directors (TOGGLE_FLIGHT_DIRECTOR 1/2),
+            // FS2024 ONE FCU pushbutton (A380FlightDirector). Toggles, so skipped when on, and the
+            // definition presses only a definite mismatch: an unread state is refused, never guessed.
+            Done(Skip(SW("CP_FD", "Flight directors: ON", FbwA380ActionExecutor.FlightDirectorsKey, 1),
+                s => s.IsOn(FbwA380StateEvaluator.FlightDirectorsOnField)), "CP_FD"),
             Captain("CP_CLOCK", "Clock: reset"),
             // ECAM SD page selection — real ECP write (A32NX_ECAM_SD_CURRENT_PAGE_INDEX:
             // door=5, APU=1, engine=0, F/Ctl=11). Selecting a manual page overrides the
@@ -256,7 +260,7 @@ public static class FbwA380FlowDefinitions
     private static Flow BuildEngineStart() => new()
     {
         Id = "ENGINE_START", Name = "Engine Start",
-        Description = "Engine mode IGN/START, engines 1 and 2, then 3 and 4, with dwell periods.",
+        Description = "Engine mode IGN/START, engines 1 and 2, then 3 and 4 once 1 and 2 are running.",
         RelatedChecklistGroupIds = new string[] { },
         Steps = new()
         {
@@ -269,12 +273,19 @@ public static class FbwA380FlowDefinitions
                 s => s.IsOn("ENG_VALVE_SWITCH:1")), "ES_ENG1"),
             Done(Skip(SW("ES_ENG2", "Engine 2 master: START", "ENG_VALVE_SWITCH:2", 1),
                 s => s.IsOn("ENG_VALVE_SWITCH:2")), "ES_ENG2"),
-            Wait("ES_STBY1", "Standby", 60),
+            // Engines 3 and 4 are started only once 1 and 2 RUN (FlyByWire's engine state On on both),
+            // never after a fixed pause: a slow or failed start must not have the next pair started on
+            // top of it. A start that has not finished in EngineStartTimeoutSeconds STOPS the flow,
+            // aloud ("Engine Start flow stopped. Unable to complete: Engines 1 and 2 running"); an
+            // unread state counts as not running. Already running (a re-run) passes at once.
+            WaitForField("ES_ENG12_RUNNING", "Engines 1 and 2 running", FbwA380StateEvaluator.Engines12RunningField,
+                v => v > 0.5, EngineStartTimeoutSeconds, onTimeout: FlowStepFailurePolicy.Stop),
             Done(Skip(SW("ES_ENG3", "Engine 3 master: START", "ENG_VALVE_SWITCH:3", 1),
                 s => s.IsOn("ENG_VALVE_SWITCH:3")), "ES_ENG3"),
             Done(Skip(SW("ES_ENG4", "Engine 4 master: START", "ENG_VALVE_SWITCH:4", 1),
                 s => s.IsOn("ENG_VALVE_SWITCH:4")), "ES_ENG4"),
-            Wait("ES_STBY2", "Standby", 60),
+            WaitForField("ES_ENG34_RUNNING", "Engines 3 and 4 running", FbwA380StateEvaluator.Engines34RunningField,
+                v => v > 0.5, EngineStartTimeoutSeconds, onTimeout: FlowStepFailurePolicy.Stop),
         }
     };
 
@@ -579,6 +590,10 @@ public static class FbwA380FlowDefinitions
                 s => s.IsPosition("WING_ANTI_ICE_OVHD", 0)), "PK_WINGAI_OFF"),
             Done(Skip(SW("PK_APUBLEED", "APU bleed: ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 1),
                 s => s.IsOn("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON")), "PK_APUBLEED"),
+            // The fuel goes off only once all four engines have spun down (FO-25): the masters above
+            // leave them turning for a while. Two minutes, then the flow stops with the pumps on.
+            WaitForField("PK_ENGINES_STOPPED", "Engines stopped", FbwA380StateEvaluator.EnginesStoppedField,
+                v => v > 0.5, 120, onTimeout: FlowStepFailurePolicy.Stop),
             // ALL 20 pumps OFF at parking — mirrors POWERUP_CONFIG_OFF (feed + transfer). Completes the
             // Parking Checklist's "Fuel pumps: OFF" too (FO-6), which reads the same 20.
             Also(Done(Multi("PK_FUELPUMPS_OFF", "Fuel pumps: OFF", FuelPumpWrites(0)), "PK_FUELPUMPS_OFF"),
@@ -617,6 +632,9 @@ public static class FbwA380FlowDefinitions
         {
             // The IRS and the batteries go off below: never airborne (the MD-11's SD_ON_GROUND).
             OnGroundGuard("SC_ON_GROUND"),
+            // ...nor with an engine turning (FO-25): the whole flow stops, not just the IRS.
+            WaitForField("SC_ENGINES_STOPPED", "Engines stopped", FbwA380StateEvaluator.EnginesStoppedField,
+                v => v > 0.5, 5, onTimeout: FlowStepFailurePolicy.Stop),
             // Crew oxygen is INVERTED: 0 = Auto/on, 1 = Off. Cockpit Prep's CP_OXY writes 0.
             // Completes the Securing the Aircraft Checklist's "Oxygen: OFF" too (FO-6).
             Also(Done(Skip(SW("SC_OXY", "Crew oxygen supply: OFF", "PUSH_OVHD_OXYGEN_CREW", 1),
@@ -712,6 +730,10 @@ public static class FbwA380FlowDefinitions
     // the Before Start and Parking pump steps cannot switch a different set from the one those lines read.
     private static (string EventName, int? TargetValue)[] FuelPumpWrites(int target) =>
         FbwA380ChecklistDefinitions.FuelPumps.Select(pump => (EventName: pump, TargetValue: (int?)target)).ToArray();
+
+    /// <summary>How long the Engine Start flow waits for a pair of engines to run: 120 s, the
+    /// A32NX's per-engine start wait (ES_ENG1_N2); a pair starts together.</summary>
+    internal const int EngineStartTimeoutSeconds = 120;
 
     private static Step Wait(string id, string label, int seconds) => new()
     {

@@ -545,3 +545,20 @@ offline ticks, seat belts) are Part AA.1 of the PMDG 737 plan.
     switch reads Off. Until now the switch stayed at GRD, the starter motoring a dry engine. A Stop
     in the 2 seconds between that wait passing and "Engine 2 start lever: IDLE" is handled the same
     way (the switch back to OFF), but there is no cue to time it by ear, so it has no step here.
+
+## Part I — Preflight sets No Smoking to AUTO (2026-10-20)
+
+Not run in the sim yet. The PMDG 737 gained the same step the same day (its plan, Part AB).
+Overhead → Signs → No Smoking Sign reads the switch (Off, Auto, On).
+
+1. **The checklist line follows the switch.** Do this before running Preflight, since a finished
+   flow latches its group. Cold and dark, run Electrical Power Up only, then set No Smoking Sign to
+   Off. In the First Officer window's Preflight group the "No smoking: AUTO" line is unticked. Tick
+   it: the combo reads Auto and the line stays ticked. Set the combo to On: within about a second
+   the line unticks (only Auto ticks it). Set it to Off and leave it there.
+2. **Preflight sets it.** Run Preflight. Right after "Emergency exit lights: ARMED" you hear "No
+   smoking: AUTO", then "Seatbelt signs: ON". The combo reads Auto, and the "No smoking: AUTO" line
+   is ticked. You should not hear "Skipping: No smoking: AUTO"; if you do, the switch did not move,
+   so please report it.
+3. **From On.** Set the combo to On and run Preflight again: "No smoking: AUTO" with no
+   "Skipping", and the combo reads Auto.

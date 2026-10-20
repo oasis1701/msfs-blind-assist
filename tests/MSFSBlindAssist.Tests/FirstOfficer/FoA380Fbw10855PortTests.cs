@@ -7,16 +7,10 @@ using Xunit;
 namespace MSFSBlindAssist.Tests.FirstOfficer;
 
 /// <summary>
-/// The A380 cockpit-preparation items FBW #10855 rewired, ported when #251 reached this branch.
-///
-/// BARO: the hPa/inHg selector is the EFIS-CP's own <c>A32NX_FCU_EFIS_{L,R}_BARO_IS_INHG</c>, whose
-/// polarity is the OPPOSITE of the dead <c>XMLVAR_Baro_Selector_HPA_{1,2}</c> it replaces — 1 is inHg,
-/// so hectopascals is 0. A port that kept the old 1 would set every pilot to inches.
-///
-/// FLIGHT DIRECTORS: ONE FCU pushbutton, read from its light and pressed only when the pick differs
-/// (<see cref="A380FlightDirector"/>). The per-side FD_1_CTL/FD_2_CTL keys are gone from the
-/// definition; writing them would have created bogus L:vars and reported success with the flight
-/// directors still off (<see cref="FbwA380FoKeyRegistrationTests"/> guards the whole class).
+/// The A380 cockpit-preparation items FBW #10855 rewired. The owner flies BOTH simulators with a
+/// DIFFERENT FlyByWire build in each (FS2020 fs2020-master, without #10855; FS2024, with it), so the
+/// flow and the checklist name build-NEUTRAL keys and the per-build names live in
+/// <see cref="A380BuildNames"/> (pinned by <see cref="FbwA380BuildResolutionTests"/>).
 /// </summary>
 public class FoA380Fbw10855PortTests
 {
@@ -27,46 +21,43 @@ public class FoA380Fbw10855PortTests
         FbwA380ChecklistDefinitions.Build().SelectMany(g => g.Items).Single(i => i.Id == id);
 
     [Fact]
-    public void The_baro_step_selects_hectopascals_as_zero_on_both_sides()
+    public void The_baro_step_writes_the_per_build_hectopascals_key_and_skips_when_already_set()
     {
-        Assert.Equal(
-            new (string, int?)[] { ("A32NX_FCU_EFIS_L_BARO_IS_INHG", 0), ("A32NX_FCU_EFIS_R_BARO_IS_INHG", 0) },
-            Step("CP_BARO").MultiActions.ToArray());
-    }
-
-    [Fact]
-    public void The_baro_item_reads_hectopascals_as_zero_on_both_sides()
-    {
-        var item = Item("CP_BARO");
-
-        Assert.Equal("A32NX_FCU_EFIS_L_BARO_IS_INHG", item.StateFieldName);
-        Assert.Equal(new[] { "A32NX_FCU_EFIS_R_BARO_IS_INHG" }, item.AdditionalStateFields.ToArray());
-        Assert.True(item.StateCondition!(0));        // hectopascals
-        Assert.False(item.StateCondition!(1));       // inches
-        Assert.True(item.AdditionalStateCondition!(0));
-        Assert.False(item.AdditionalStateCondition!(1));
-        Assert.False(item.StateCondition!(double.NaN));
-    }
-
-    [Fact]
-    public void The_fd_step_sets_the_one_fcu_pushbutton_and_skips_when_already_lit()
-    {
-        var step = Step("CP_FD");
-
+        var step = Step("CP_BARO");
         Assert.Equal(FlowStepActionType.SetSwitch, step.ActionType);
-        Assert.Equal(A380FlightDirector.StateKey, step.EventName);
+        Assert.Equal(FbwA380ActionExecutor.BaroUnitHectopascalsKey, step.EventName);
         Assert.Equal(1, step.TargetValue);
-        Assert.Empty(step.MultiActions);
-        // A toggle: the skip keeps "Already set" honest, and the definition presses only on a difference.
         Assert.NotNull(step.SkipCondition);
     }
 
     [Fact]
-    public void The_fd_item_reads_the_fd_light()
+    public void The_baro_item_reads_the_per_build_hectopascals_field()
+    {
+        var item = Item("CP_BARO");
+        Assert.Equal(FbwA380StateEvaluator.BaroUnitHectopascalsField, item.StateFieldName);
+        Assert.Empty(item.AdditionalStateFields);
+        Assert.True(item.StateCondition!(1));
+        Assert.False(item.StateCondition!(0));
+        Assert.False(item.StateCondition!(double.NaN));
+        Assert.NotNull(item.CheckAction);
+    }
+
+    [Fact]
+    public void The_fd_step_writes_the_per_build_key_and_skips_when_already_on()
+    {
+        var step = Step("CP_FD");
+        Assert.Equal(FlowStepActionType.SetSwitch, step.ActionType);
+        Assert.Equal(FbwA380ActionExecutor.FlightDirectorsKey, step.EventName);
+        Assert.Equal(1, step.TargetValue);
+        Assert.Empty(step.MultiActions);
+        Assert.NotNull(step.SkipCondition);
+    }
+
+    [Fact]
+    public void The_fd_item_reads_the_per_build_fd_field()
     {
         var item = Item("CP_FD");
-
-        Assert.Equal(A380FlightDirector.StateKey, item.StateFieldName);
+        Assert.Equal(FbwA380StateEvaluator.FlightDirectorsOnField, item.StateFieldName);
         Assert.Empty(item.AdditionalStateFields);
         Assert.True(item.StateCondition!(1));
         Assert.False(item.StateCondition!(0));

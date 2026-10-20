@@ -1318,3 +1318,20 @@ None of these has run in the sim. B reads the altimeter, L the flap lever, Shift
     the flaps stay where they are." and L still says "Flaps 5"; the After Takeoff "Flaps: UP" line
     stays unticked, and ticking it says the same sentence. In the air after takeoff the flaps go up
     as before. After Landing still moves the flaps up on the ground.
+
+## Part AB — Preflight sets No Smoking to AUTO (PMDG 737, 2026-10-20)
+
+Not run in the sim yet. Needs a build with main's #323 (the No Smoking combo offers only Off and
+Auto). Overhead → Signs → No Smoking reads the switch.
+
+1. **The checklist line follows the switch.** Do this before running Preflight, since a finished
+   flow latches its group. Cold and dark, run Electrical Power Up only, then set No Smoking to Off.
+   In the First Officer window's Preflight group the "No smoking: AUTO" line is unticked. Tick it:
+   the combo reads Auto and the line stays ticked. Set the combo back to Off: within about a second
+   the line unticks. Leave it at Off.
+2. **Preflight sets it.** Run Preflight. Right after "Emergency exit lights: ARMED" you hear "No
+   smoking: AUTO", then "Seatbelt signs: ON". The combo reads Auto, and the "No smoking: AUTO" line
+   is ticked. You should not hear "Skipping: No smoking: AUTO"; if you do, the switch did not move,
+   so please report it.
+3. **Already at Auto.** Run Preflight again with the switch at Auto: "No smoking: AUTO" is spoken
+   again (the write is sent and changes nothing), with no "Skipping", and the combo still reads Auto.

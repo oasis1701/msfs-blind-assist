@@ -90,11 +90,12 @@ internal static class FbwA380FlowRun
     /// the read-only checks' real timeouts are pinned on the real steps by FbwA380ReadOnlyCheckTests.</summary>
     public static async Task<RunResult> Run(string flowId, string groupId, string[] stepIds,
         (string Key, double Value)[] seed, bool windowHasTicked, int? waitTimeoutSeconds = null,
-        RecordingA380Definition? writesLandOn = null)
+        RecordingA380Definition? writesLandOn = null, string simulator = "FS2024")
     {
         var state = new FbwA380StateEvaluator();
-        state.SetSimConnect(SeededSimConnectCache.ConnectedWith(seed));
-        var executor = writesLandOn?.Executor() ?? new FbwA380ActionExecutor();
+        // The simulator whose FlyByWire build the seed names (FS2024 unless a test says otherwise).
+        state.SetSimConnect(SeededSimConnectCache.ConnectedWith(seed).On(simulator));
+        var executor = writesLandOn?.Executor(simulator, seed) ?? new FbwA380ActionExecutor();
         var groups = FbwA380ChecklistDefinitions.Build();
         var flow = Subset(flowId, stepIds);
         if (waitTimeoutSeconds is int timeout)

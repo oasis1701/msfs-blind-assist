@@ -241,6 +241,24 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
     /// wrote directly: that lit the ECP key and left the SD on its page.</summary>
     public const string SdPageShownVar = "A32NX_ECAM_SD_PAGE_TO_DISPLAY";
 
+    /// <summary>The definition's key for the FS2020 build's page variable,
+    /// <c>L:A32NX_ECAM_SD_CURRENT_PAGE_INDEX</c>: fs2020-master predates #10700, so its ECP keys set
+    /// that variable to the page, or to -1 when that page was already the selection, and the SD
+    /// shows it (SystemsHost index.js buttonMapperFactory; SD/sd.js). <c>A32NX_ECAM_SD_PAGE_TO_DISPLAY</c>
+    /// does not exist on that build and reads 0 (ENG). Its own key, so the Headwind A330 (whose
+    /// executor writes the same L:var as a plain key) is untouched.</summary>
+    public const string Fs2020SdPageShownKey = "FO_A32NX_FS2020_SD_PAGE";
+
+    /// <summary>The key that says which page the SD shows on <paramref name="build"/>, or null when
+    /// the build is unknown — then nothing is pressed, because a second press of a selected page's
+    /// key returns the SD to automatic selection on BOTH builds, so the read-back decides the press.</summary>
+    public static string? SdPageShownVarFor(FbwSimBuild build) => build switch
+    {
+        FbwSimBuild.Fs2020 => Fs2020SdPageShownKey,
+        FbwSimBuild.Fs2024 => SdPageShownVar,
+        _ => null,
+    };
+
     // ECAM page pseudo-key -> the ECP key that selects the page (FlyByWire's
     // A32NX_ECP_<key>_PRESSED / _RELEASED H-events, Ecp.ts) and the page it selects.
     internal static readonly IReadOnlyDictionary<string, (string Key, int Page)> EcamPageKeys =
@@ -271,7 +289,12 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
             Log.Warn("fo_a320", $"ECAM page {page.Key}: no MobiFlight channel for the ECP key; nothing pressed");
             return false;
         }
-        if (await SdShowsAsync(sc, page.Page) == true) return true;
+        if (SdPageShownVarFor(FbwSimBuilds.From(sc)) is not { } shownVar)
+        {
+            Log.Warn("fo_a320", $"ECAM page {page.Key}: simulator build unknown; nothing pressed");
+            return false;
+        }
+        if (await SdShowsAsync(sc, shownVar, page.Page) == true) return true;
         if (_sc == null) return false;   // detached while reading (the window closed)
 
         string key = "A32NX_ECP_" + page.Key;
@@ -286,13 +309,13 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
             _held.End(hold);
         }
         await Task.Delay(EcpPageSettleMs);
-        return await SdShowsAsync(sc, page.Page) != false;
+        return await SdShowsAsync(sc, shownVar, page.Page) != false;
     }
 
     // Whether the SD shows the page; null when the read-back did not arrive.
-    private static async Task<bool?> SdShowsAsync(SimConnectManager sc, int page)
+    private static async Task<bool?> SdShowsAsync(SimConnectManager sc, string shownVar, int page)
     {
-        double? shown = await sc.ReadFreshAsync(SdPageShownVar, SdPageReadTimeoutMs);
+        double? shown = await sc.ReadFreshAsync(shownVar, SdPageReadTimeoutMs);
         return shown is double v ? Math.Abs(v - page) < 0.5 : null;
     }
 

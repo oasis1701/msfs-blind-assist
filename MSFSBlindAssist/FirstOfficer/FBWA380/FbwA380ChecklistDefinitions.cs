@@ -90,7 +90,8 @@ public static class FbwA380ChecklistDefinitions
             Auto("CP_ENGMODE", "COCKPIT_PREP", "Engine mode: NORM", "ENGINE_MODE_SELECTOR",
                 v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("ENGINE_MODE_SELECTOR", 1)),
             // A cold-and-dark check: a tick switches a master off only with every engine read Off
-            // (FlyByWire's engine state), never over a turning engine (the flow's CP_ENGINES_STOPPED).
+            // (FlyByWire's engine state), never over a turning engine (the flow's CP_ENGINES_STOPPED),
+            // and never airborne, where all four out would be a relight, not a cold cockpit (FO-25).
             LeaveAlone(Multi("CP_MASTERS_OFF", "COCKPIT_PREP", "Engine masters 1 to 4: OFF",
                 "ENG_VALVE_SWITCH:1", v => v < 0.5,
                 new[] { "ENG_VALVE_SWITCH:2", "ENG_VALVE_SWITCH:3", "ENG_VALVE_SWITCH:4" },
@@ -101,7 +102,7 @@ public static class FbwA380ChecklistDefinitions
                     await e.Set("ENG_VALVE_SWITCH:3", 0);
                     await e.Set("ENG_VALVE_SWITCH:4", 0);
                 }),
-                s => !s.IsOn(FbwA380StateEvaluator.EnginesStoppedField), EnginesTurningText),
+                NotParked, EnginesTurningText),
             Auto("CP_WXR", "COCKPIT_PREP", "Weather radar: OFF", "XMLVAR_A320_WeatherRadar_Sys",
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("XMLVAR_A320_WeatherRadar_Sys", 0)),
             // All FOUR A380 batteries (BAT 1/2/ESS/APU) — the panel exposes all four; the
@@ -188,12 +189,12 @@ public static class FbwA380ChecklistDefinitions
                 async (e, _) => { await e.Set("A32NX_OVHD_COND_HOT_AIR_1_PB_IS_ON", 1);
                                   await e.Set("A32NX_OVHD_COND_HOT_AIR_2_PB_IS_ON", 1); }),
             Reminder("CP_AIRTEMP", "COCKPIT_PREP", "Cabin temperature: set as required"),
-            // The EFIS-CP's own hPa/inHg selector since FBW #10855 — 1 = inHg, so hectopascals is 0.
-            // Never XMLVAR_Baro_Selector_HPA_{1,2}: nothing reads it any more (A380Fbw10855DeadNameTests).
-            Multi("CP_BARO", "COCKPIT_PREP", "Baro reference: hectopascals", "A32NX_FCU_EFIS_L_BARO_IS_INHG", v => v < 0.5,
-                new[] { "A32NX_FCU_EFIS_R_BARO_IS_INHG" },
-                async (e, _) => { await e.Set("A32NX_FCU_EFIS_L_BARO_IS_INHG", 0);
-                                  await e.Set("A32NX_FCU_EFIS_R_BARO_IS_INHG", 0); }),
+            // The EFIS-CP hPa/inHg selectors, PER BUILD (A380BuildNames): FS2020 the one
+            // selector variable both sides read (1 = hPa), FS2024 A32NX_FCU_EFIS_{L,R}_BARO_IS_INHG
+            // (1 = inHg, FBW #10855). Read through the evaluator's per-build field, written through the
+            // executor's per-build key.
+            Auto("CP_BARO", "COCKPIT_PREP", "Baro reference: hectopascals", FbwA380StateEvaluator.BaroUnitHectopascalsField,
+                v => v > 0.5, (e, _) => e.Set(FbwA380ActionExecutor.BaroUnitHectopascalsKey, 1)),
             Reminder("CP_ALTIMETERS", "COCKPIT_PREP", "Altimeters: set QNH"),
             Auto("CP_ANTISKID", "COCKPIT_PREP", "Anti-skid: ON", "ANTISKID_BRAKES_ACTIVE",
                 v => v > 0.5, (e, _) => e.Set("ANTISKID_BRAKES_ACTIVE", 1)),
@@ -209,10 +210,11 @@ public static class FbwA380ChecklistDefinitions
             Multi("CP_EFISRANGE", "COCKPIT_PREP", "EFIS range: 40", "A32NX_EFIS_L_ND_RANGE", v => Math.Abs(v - 3) < 0.5,
                 new[] { "A32NX_EFIS_R_ND_RANGE" },
                 async (e, _) => { await e.Set("A32NX_EFIS_L_ND_RANGE", 3); await e.Set("A32NX_EFIS_R_ND_RANGE", 3); }),
-            // ONE FCU pushbutton since FBW #10855 (A380FlightDirector): its light is the state, and the
-            // definition presses it only when the pick differs, so "ON" over lit flight directors is no press.
-            Auto("CP_FD", "COCKPIT_PREP", "Flight directors: ON", A380FlightDirector.StateKey,
-                v => v > 0.5, (e, _) => e.Set(A380FlightDirector.StateKey, 1)),
+            // PER BUILD (A380BuildNames): FS2020 the two per-side flight directors, FS2024 the ONE FCU
+            // pushbutton (A380FlightDirector). The definition presses only a definite mismatch, so "ON"
+            // over flight directors already on is no press, and an unread state is refused.
+            Auto("CP_FD", "COCKPIT_PREP", "Flight directors: ON", FbwA380StateEvaluator.FlightDirectorsOnField,
+                v => v > 0.5, (e, _) => e.Set(FbwA380ActionExecutor.FlightDirectorsKey, 1)),
             Reminder("CP_CLOCK", "COCKPIT_PREP", "Clock: reset"),
             // ECAM SD page — real ECP write (door=5). Auto/RevertToState live mirror; the
             // page index sticks on this build (re-checked live 2026-06-13).
@@ -590,8 +592,9 @@ public static class FbwA380ChecklistDefinitions
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("WING_ANTI_ICE_OVHD", 0)),
             Auto("PK_APUBLEED", "PARKING", "APU bleed: ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
                 v => v > 0.5, (e, _) => e.Set("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 1)),
-            // ALL 20 pumps OFF — mirrors POWERUP_CONFIG_OFF (feed + transfer).
-            Multi("PK_FUELPUMPS_OFF", "PARKING", "Fuel pumps: OFF", FuelPumps[0], v => v < 0.5, FuelPumps.Skip(1).ToArray(),
+            // ALL 20 pumps OFF — mirrors POWERUP_CONFIG_OFF (feed + transfer). Never airborne or
+            // with an engine turning (FO-25; the Parking flow's PK_ON_GROUND and masters before it).
+            LeaveAlone(Multi("PK_FUELPUMPS_OFF", "PARKING", "Fuel pumps: OFF", FuelPumps[0], v => v < 0.5, FuelPumps.Skip(1).ToArray(),
                 async (e, _) =>
                 {
                     await e.Set("FUELPUMP_FEEDTK1_MAIN", 0);
@@ -615,6 +618,7 @@ public static class FbwA380ChecklistDefinitions
                     await e.Set("FUELPUMP_TRIM_L", 0);
                     await e.Set("FUELPUMP_TRIM_R", 0);
                 }),
+                NotParked, FuelPumpsStayText),
             Auto("PK_SEATBELTS_OFF", "PARKING", "Seatbelt signs: OFF", "SEATBELT_SIGN_LIGHT",
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("SEATBELT_SIGN", 2)),
             Reminder("PK_XPDR", "PARKING", "Transponder: standby (MFD SURV page)"),
@@ -736,7 +740,8 @@ public static class FbwA380ChecklistDefinitions
                 v => v > 0.5, action: null),
             // Real state var — NOT the write-only A380X_MSFSBA_SPOILERS_ARM Act key.
             Auto("LDC_SPOILERS", "LANDING_CL", "Ground spoilers: ARM", "A32NX_SPOILERS_ARMED", v => v > 0.5, action: null),
-            // FULL, or 3 when the MFD PERF APPR page selects CONF 3 (A380X_FM_LANDING_CONF3).
+            // FULL, or 3 when the MFD PERF APPR page selects CONF 3 (FbwA380StateEvaluator.LandingConf3Field:
+            // the running build's CONF 3 variable, A380BuildNames.LandingConf3Key).
             Auto("LDC_FLAPS", "LANDING_CL", "Flaps: LDG", "FO_LDG_FLAPS_SET", v => v > 0.5, action: null),
         }
     };
@@ -768,7 +773,7 @@ public static class FbwA380ChecklistDefinitions
             Auto("SC_OXY", "SECURE", "Crew oxygen supply: OFF", "PUSH_OVHD_OXYGEN_CREW",
                 v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("PUSH_OVHD_OXYGEN_CREW", 1)),
             Reminder("SC_EFB", "SECURE", "EFB tablets and flyPad: stowed"),
-            // Never airborne (the Securing flow's SC_ON_GROUND).
+            // Never airborne (the Securing flow's SC_ON_GROUND), nor with an engine turning (FO-25).
             LeaveAlone(Multi("SC_ADIRS", "SECURE", "IRS 1, 2 and 3: OFF",
                 "A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB", v => v < 0.5,
                 new[] { "A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", "A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB" },
@@ -778,7 +783,7 @@ public static class FbwA380ChecklistDefinitions
                     await e.Set("A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", 0);
                     await e.Set("A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB", 0);
                 }),
-                s => !s.IsPosition("SIM_ON_GROUND", 1), IrsStayText),
+                NotParked, IrsStayText),
             Auto("SC_EMEREXIT", "SECURE", "Emergency exit lighting: OFF",
                 "XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_Position", v => Math.Abs(v - 2) < 0.5,
                 (e, _) => e.Set("XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_Position", 2)),
@@ -811,7 +816,8 @@ public static class FbwA380ChecklistDefinitions
                     await e.Set("A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON", 0);
                     await e.Set("A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON", 0);
                 }),
-            Multi("SC_BAT_OFF", "SECURE", "Batteries: OFF", "A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO",
+            // Never airborne or with an engine turning (FO-25), as the IRS above.
+            LeaveAlone(Multi("SC_BAT_OFF", "SECURE", "Batteries: OFF", "A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO",
                 v => v < 0.5,
                 new[] { "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", "A32NX_OVHD_ELEC_BAT_ESS_PB_IS_AUTO",
                         "A32NX_OVHD_ELEC_BAT_APU_PB_IS_AUTO" },
@@ -822,6 +828,7 @@ public static class FbwA380ChecklistDefinitions
                     await e.Set("A32NX_OVHD_ELEC_BAT_ESS_PB_IS_AUTO", 0);
                     await e.Set("A32NX_OVHD_ELEC_BAT_APU_PB_IS_AUTO", 0);
                 }),
+                NotParked, BatteriesStayText),
         }
     };
 
@@ -917,10 +924,22 @@ public static class FbwA380ChecklistDefinitions
         return item;
     }
 
-    internal const string EnginesTurningText = "Engine masters left as they are: an engine is not read stopped.";
+    internal const string EnginesTurningText =
+        "Engine masters left as they are: not read on the ground, or an engine is not read stopped.";
 
     internal const string EnginesStayText =
         "Engines left running: not on the ground, or no APU or external power to take the buses.";
 
-    internal const string IrsStayText = "IRS left on: the aircraft is not on the ground.";
+    internal const string IrsStayText = "IRS left on: not read on the ground, or an engine is not read stopped.";
+
+    // The fuel pumps, the IRS and the batteries go OFF on a tick only on the ground with all four
+    // engines read stopped; airborne, an engine turning, or either unread, they stay on (FO-25).
+    private static bool NotParked(FbwA380StateEvaluator s) =>
+        !s.IsPosition("SIM_ON_GROUND", 1) || !s.IsOn(FbwA380StateEvaluator.EnginesStoppedField);
+
+    internal const string FuelPumpsStayText =
+        "Fuel pumps left on: not read on the ground, or an engine is not read stopped.";
+
+    internal const string BatteriesStayText =
+        "Batteries left on: not read on the ground, or an engine is not read stopped.";
 }

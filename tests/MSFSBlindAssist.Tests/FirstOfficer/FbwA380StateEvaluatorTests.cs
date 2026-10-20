@@ -18,7 +18,8 @@ public class FbwA380StateEvaluatorTests
     private static FbwA380StateEvaluator With(params (string Key, double Value)[] values)
     {
         var e = new FbwA380StateEvaluator();
-        e.SetSimConnect(SeededSimConnectCache.With(values));
+        // These tests use the FS2024 build's names (FbwA380BuildResolutionTests covers FS2020).
+        e.SetSimConnect(SeededSimConnectCache.With(values).On("FS2024"));
         return e;
     }
 

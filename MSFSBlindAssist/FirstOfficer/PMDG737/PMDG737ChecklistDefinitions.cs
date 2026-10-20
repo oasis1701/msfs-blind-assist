@@ -117,13 +117,18 @@ public static class PMDG737ChecklistDefinitions
             ActionManualAsync("PF_TCAS_TEST", "PREFLIGHT", "TCAS test",
                 (e, _) => e.TcasTestAsync()),
             Auto("PF_YD", "PREFLIGHT", "Yaw damper: ON", "FCTL_YawDamper_Sw", v => v > 0.5, (e, _) => e.SetYawDamper(1)),
-            Auto("PF_FUEL_OFF", "PREFLIGHT", "Fuel pumps: OFF", "FUEL_PumpFwdSw_0", v => v < 0.5,
+            // A cold-and-dark check: never airborne or with an engine turning (FO-25).
+            LeaveAlone(Auto("PF_FUEL_OFF", "PREFLIGHT", "Fuel pumps: OFF", "FUEL_PumpFwdSw_0", v => v < 0.5,
                 new[] { "FUEL_PumpFwdSw_1", "FUEL_PumpAftSw_0", "FUEL_PumpAftSw_1", "FUEL_PumpCtrSw_0", "FUEL_PumpCtrSw_1" },
                 (e, _) => { e.SetWingFuelPumps(0); e.SetCenterFuelPumps(0); }),
+                NotParked, FuelPumpsStayText),
             // LTS_EmerExitSelector 0 OFF / 1 ARMED / 2 ON: ARMED is 1 alone. `> 0.5` also ticked ON,
             // the lights burning on their batteries, as ARMED.
             Auto("PF_EMER", "PREFLIGHT", "Emergency exit lights: ARMED", "LTS_EmerExitSelector", v => v > 0.5 && v < 1.5,
                 (e, _) => e.SetEmerExitLights(1)),
+            // COMM_NoSmokingSelector 0 OFF / 1 AUTO: the NG3 has no ON (the SDK header's 2).
+            Auto("PF_NOSMOKE", "PREFLIGHT", "No smoking: AUTO", "COMM_NoSmokingSelector", v => v > 0.5 && v < 1.5,
+                (e, _) => e.SetNoSmoking(1)),
             Auto("PF_BELTS", "PREFLIGHT", "Seatbelt signs: ON", "COMM_FastenBeltsSelector", v => v > 1.5, (e, _) => e.SetSeatBelts(2)),
             Auto("PF_WINHEAT", "PREFLIGHT", "Window heat: ON", "ICE_WindowHeatSw_0", v => v > 0.5,
                 new[] { "ICE_WindowHeatSw_1", "ICE_WindowHeatSw_2", "ICE_WindowHeatSw_3" }, (e, _) => e.SetWindowHeat(1)),
@@ -204,8 +209,10 @@ public static class PMDG737ChecklistDefinitions
         Id = "ENGINE_START", Name = "Engine Start",
         Items = new()
         {
-            Auto("ES_PACKS", "ENGINE_START", "Packs: OFF", "AIR_PackSwitch_0", v => v < 0.5,
+            // Never airborne: packs off there depressurise the cabin.
+            LeaveAlone(Auto("ES_PACKS", "ENGINE_START", "Packs: OFF", "AIR_PackSwitch_0", v => v < 0.5,
                 new[] { "AIR_PackSwitch_1" }, (e, _) => e.SetPacks(0)),
+                NotOnGround, PacksStayText),
             // PILOT-PACED start, 777 convention (user request 2026-07-02): separate items
             // for the start switch and the start lever, each firing its own switch — the
             // pilot times the fuel introduction (~25% N2) themselves. The old monolithic
@@ -421,17 +428,21 @@ public static class PMDG737ChecklistDefinitions
             Auto("SD_TAXI", "SHUTDOWN", "Taxi light: OFF", "LTS_TaxiSw", v => v < 0.5, (e, _) => e.SetTaxiLights(0)),
             Auto("SD_LOGO", "SHUTDOWN", "Logo lights: OFF", "LTS_LogoSw", v => v < 0.5, (e, _) => e.SetLogo(0)),
             Auto("SD_APUBLEED", "SHUTDOWN", "APU bleed air: ON", "AIR_APUBleedAirSwitch", v => v > 0.5, (e, _) => e.SetApuBleed(1)),
-            Auto("SD_FUEL", "SHUTDOWN", "Fuel pumps: OFF", "FUEL_PumpFwdSw_0", v => v < 0.5,
+            // Fuel and electric hydraulic pumps go off on a tick only on the ground with both engines
+            // read stopped (FO-25; the Shutdown flow's SD_ON_GROUND and the start levers before them).
+            LeaveAlone(Auto("SD_FUEL", "SHUTDOWN", "Fuel pumps: OFF", "FUEL_PumpFwdSw_0", v => v < 0.5,
                 new[] { "FUEL_PumpFwdSw_1", "FUEL_PumpAftSw_0", "FUEL_PumpAftSw_1",
                         "FUEL_PumpCtrSw_0", "FUEL_PumpCtrSw_1" },
                 (e, _) => { e.SetWingFuelPumps(0); e.SetCenterFuelPumps(0); }),
+                NotParked, FuelPumpsStayText),
             Auto("SD_EAI", "SHUTDOWN", "Engine anti-ice: OFF", "ICE_EngAntiIceSw_0", v => v < 0.5,
                 new[] { "ICE_EngAntiIceSw_1" }, (e, _) => e.SetEngAntiIce(0)),
             // PMDG's Shutdown Procedure: ENGINE HYDRAULIC PUMPS ON (19.14), ELECTRIC OFF (19.15).
             Auto("SD_HYDENG", "SHUTDOWN", "Engine hydraulic pumps: ON", "HYD_PumpSw_eng_0", v => v > 0.5,
                 new[] { "HYD_PumpSw_eng_1" }, (e, _) => e.SetEngHydPumps(1)),
-            Auto("SD_HYDELEC", "SHUTDOWN", "Electric hydraulic pumps: OFF", "HYD_PumpSw_elec_0", v => v < 0.5,
+            LeaveAlone(Auto("SD_HYDELEC", "SHUTDOWN", "Electric hydraulic pumps: OFF", "HYD_PumpSw_elec_0", v => v < 0.5,
                 new[] { "HYD_PumpSw_elec_1" }, (e, _) => e.SetElecHydPumps(0)),
+                NotParked, HydPumpsStayText),
             Auto("SD_WINHEAT", "SHUTDOWN", "Window heat: OFF", "ICE_WindowHeatSw_0", v => v < 0.5,
                 new[] { "ICE_WindowHeatSw_1", "ICE_WindowHeatSw_2", "ICE_WindowHeatSw_3" }, (e, _) => e.SetWindowHeat(0)),
             // PMDG's Shutdown Procedure: "FLIGHT DIRECTOR switches: OFF" (19.21). TOGGLES: the action
@@ -447,13 +458,16 @@ public static class PMDG737ChecklistDefinitions
         Id = "SECURE", Name = "Secure",
         Items = new()
         {
-            Auto("SE_IRS", "SECURE", "IRS mode selectors: OFF", "IRS_ModeSelector_0", v => v < 0.5,
+            // Never airborne or with an engine turning (FO-25; the Secure flow's SE_ON_GROUND).
+            LeaveAlone(Auto("SE_IRS", "SECURE", "IRS mode selectors: OFF", "IRS_ModeSelector_0", v => v < 0.5,
                 new[] { "IRS_ModeSelector_1" }, (e, _) => e.SetIrsMode(0)),
+                NotParked, IrsStayText),
             Auto("SE_EMER", "SECURE", "Emergency exit lights: OFF", "LTS_EmerExitSelector", v => v < 0.5, (e, _) => e.SetEmerExitLights(0)),
             Auto("SE_WINHEAT", "SECURE", "Window heat: OFF", "ICE_WindowHeatSw_0", v => v < 0.5,
                 new[] { "ICE_WindowHeatSw_1", "ICE_WindowHeatSw_2", "ICE_WindowHeatSw_3" }, (e, _) => e.SetWindowHeat(0)),
-            Auto("SE_PACKS", "SECURE", "Packs: OFF", "AIR_PackSwitch_0", v => v < 0.5,
+            LeaveAlone(Auto("SE_PACKS", "SECURE", "Packs: OFF", "AIR_PackSwitch_0", v => v < 0.5,
                 new[] { "AIR_PackSwitch_1" }, (e, _) => e.SetPacks(0)),
+                NotOnGround, PacksStayText),
             Auto("SE_APU_OFF", "SECURE", "APU: OFF", "APU_Selector", v => v < 0.5, (e, _) => e.SetApuSelector(0)),
             // Ground power OFF: no reliable stateless "GPU on bus" signal to auto-detect,
             // so this is a manual-tick action — inverts the EPU_GPU "Ground power: ON" form
@@ -470,9 +484,10 @@ public static class PMDG737ChecklistDefinitions
         Id = "ELEC_POWER_DOWN", Name = "Electrical Power Down",
         Items = new()
         {
-            // Never with an engine turning, the Secure flow's SE_BAT_OFF rule (FOB-22).
+            // Never with an engine turning, the Secure flow's SE_BAT_OFF rule (FOB-22), and never
+            // airborne (FO-25: the Secure flow's SE_ON_GROUND; this group has no flow of its own).
             LeaveAlone(Auto("EPD_BAT", "ELEC_POWER_DOWN", "Battery: OFF", "ELEC_BatSelector", v => v < 0.5, (e, _) => e.SetBattery(0)),
-                s => !PMDG737FlowDefinitions.EnginesStopped(s), BatteryStaysText),
+                NotParked, BatteryTickStaysText),
         }
     };
 
@@ -761,7 +776,22 @@ public static class PMDG737ChecklistDefinitions
     internal const string LeversStayText =
         "Start levers left at idle: not on the ground, or the engine generators still carry the buses.";
 
-    internal const string BatteryStaysText = "Engines running, so the battery stays on.";
+    // On the ground with both engines read stopped, or the pumps, IRS and battery stay as they are
+    // (FO-25); unread is neither.
+    internal static bool NotParked(AircraftStateEvaluator s) =>
+        !s.IsOn(AircraftStateEvaluator.OnGroundField) || !PMDG737FlowDefinitions.EnginesStopped(s);
+
+    internal static bool NotOnGround(AircraftStateEvaluator s) => !s.IsOn(AircraftStateEvaluator.OnGroundField);
+
+    internal const string FuelPumpsStayText = "Fuel pumps left on: not read on the ground, or the engines are not read stopped.";
+
+    internal const string HydPumpsStayText = "Hydraulic pumps left on: not read on the ground, or the engines are not read stopped.";
+
+    internal const string IrsStayText = "IRS left on: not read on the ground, or the engines are not read stopped.";
+
+    internal const string BatteryTickStaysText = "Battery left on: not read on the ground, or the engines are not read stopped.";
+
+    internal const string PacksStayText = "Packs left on: not read on the ground.";
 
     private static Item Reminder(string id, string groupId, string text) => new()
     {

@@ -948,7 +948,7 @@ public class AircraftActionExecutor : IFoActionExecutor
 
     /// <summary>Seat-belt sign: ON = position 2, OFF = position 0 (0=OFF,1=AUTO,2=ON).</summary>
     public bool SetSeatbeltSign(bool on) => SetSeatBelts(on ? 2 : 0);
-    public bool SetNoSmoking(int p)      => Fire("EVT_OH_NO_SMOKING_LIGHT_SWITCH", p);
+    public bool SetNoSmoking(int p)      => Fire("EVT_OH_NO_SMOKING_LIGHT_SWITCH", p);      // 0=OFF,1=AUTO (no ON on the NG3); CDA write
     public bool SetEmerExitLights(int p) => Fire("EVT_OH_EMER_EXIT_LIGHT_SWITCH", p);       // 0=OFF,1=ARMED,2=ON (guarded)
 
     // Flight controls / pedestal

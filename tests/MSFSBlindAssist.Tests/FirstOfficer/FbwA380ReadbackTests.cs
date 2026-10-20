@@ -271,7 +271,7 @@ public class FbwA380ReadbackTests
                 ("WING_ANTI_ICE_OVHD", 0),
                 ("A32NX_FLAPS_HANDLE_INDEX", 2),
                 ("AIRLINER_MINIMUM_DESCENT_ALTITUDE", 940), ("AIRLINER_DECISION_HEIGHT", -1),
-                ("A32NX_AUTOBRAKES_ARMED_MODE", 3)));
+                ("A32NX_AUTOBRAKES_ARMED_MODE", 3)).On("FS2024"));   // FS2024 names
             var items = ReadbackItems();
             Assert.Equal("12,400 kilograms", items["CPC_FUEL"].ReadLiveValue(e));
             Assert.Equal("QNH 1013", items["CPC_ALTIMETERS"].ReadLiveValue(e));

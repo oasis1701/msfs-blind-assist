@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using MSFSBlindAssist.FirstOfficer.Airbus;
 using MSFSBlindAssist.FirstOfficer.Generic;
 using MSFSBlindAssist.SimConnect;
@@ -12,9 +13,21 @@ namespace MSFSBlindAssist.FirstOfficer.FBWA380;
 /// </summary>
 public sealed class FbwA380StateEvaluator : LVarStateEvaluator
 {
-    /// <summary>The CONF 3 landing selection the auto-flap cap reads (FOA-6): the A380X's own
-    /// name; nothing in FlyByWire writes A32NX_SPEEDS_LANDING_CONF3 any more.</summary>
-    internal const string LandingConf3Field = "A380X_FM_LANDING_CONF3";
+    /// <summary>Synthetic: the CONF 3 landing selection the auto-flap cap reads (FOA-6), from the
+    /// running build's own variable (A380BuildNames.LandingConf3Key): FS2020 A32NX_SPEEDS_LANDING_CONF3,
+    /// FS2024 A380X_FM_LANDING_CONF3. NaN while the build or the value is unknown.</summary>
+    internal const string LandingConf3Field = "FO_LANDING_CONF3";
+
+    /// <summary>Synthetic: both flight directors on (1), any off (0), NaN unknown — per build
+    /// (A380BuildNames.FlightDirectorsOn: FS2020 FD_1_CTL + FD_2_CTL, FS2024 the FCU FD light).</summary>
+    internal const string FlightDirectorsOnField = "FO_FD_ON";
+
+    /// <summary>Synthetic: both baro-unit selectors at hectopascals (1), either at inches (0), NaN
+    /// unknown — per build (FS2020 XMLVAR_Baro_Selector_HPA_n = 1, FS2024 *_BARO_IS_INHG = 0).</summary>
+    internal const string BaroUnitHectopascalsField = "FO_BARO_UNIT_HPA";
+
+    /// <summary>The build the evaluator reads for; the running simulator unless a test pins it.</summary>
+    internal MSFSBlindAssist.Aircraft.FbwSimBuild Build => MSFSBlindAssist.Aircraft.FbwSimBuilds.From(Sc);
 
     /// <summary>Synthetic: the Lineup landing lights (LIGHT_LANDING on) AND the nose light at T.O.
     /// (NOSE_LIGHT 0); NaN while either is unread.</summary>
@@ -27,6 +40,21 @@ public sealed class FbwA380StateEvaluator : LVarStateEvaluator
     /// <summary>Synthetic: all four engines read Off in FlyByWire's own engine state (1), any of them
     /// on, starting or shutting down (0), NaN while unread. FO_ENGINES_OFF reads the masters instead.</summary>
     internal const string EnginesStoppedField = "FO_ENGINES_STOPPED";
+
+    /// <summary>Synthetic: engines 1 AND 2 running — FlyByWire's engine state reads On (1) on both,
+    /// i.e. each start has finished, not just begun (2 = Starting); 0 when either reads anything
+    /// else, NaN while either is unread. The Engine Start flow waits on it before engines 3 and 4
+    /// (the same FBW state as the A32NX's FO_ENG1_RUNNING, A32NX_ENGINE_STATE:n, in both builds).</summary>
+    internal const string Engines12RunningField = "FO_ENGINES_1_2_RUNNING";
+
+    /// <summary>Synthetic: engines 3 AND 4 running, as <see cref="Engines12RunningField"/>.</summary>
+    internal const string Engines34RunningField = "FO_ENGINES_3_4_RUNNING";
+
+    /// <summary>1 when both engine states read On (1), 0 when either reads anything else, NaN when
+    /// either is unread.</summary>
+    internal static double PairRunning(double stateA, double stateB) =>
+        double.IsNaN(stateA) || double.IsNaN(stateB) ? double.NaN
+            : Math.Abs(stateA - 1) < 0.5 && Math.Abs(stateB - 1) < 0.5 ? 1.0 : 0.0;
 
     private static readonly string[] PollFields =
     {
@@ -72,10 +100,9 @@ public sealed class FbwA380StateEvaluator : LVarStateEvaluator
         "A32NX_COCKPIT_DOOR_LOCKED", "A32NX_AUTOBRAKES_SELECTED_MODE",
         "A32NX_EFIS_L_ND_MODE", "A32NX_EFIS_R_ND_MODE",
         "A32NX_EFIS_L_ND_RANGE", "A32NX_EFIS_R_ND_RANGE",
-        // FBW #10855: the baro unit is the EFIS-CP's BARO_IS_INHG (1 = inHg) and the flight
-        // directors are ONE FCU pushbutton, read from its light (A380FlightDirector.StateKey).
-        "A32NX_FCU_EFIS_L_BARO_IS_INHG", "A32NX_FCU_EFIS_R_BARO_IS_INHG",
-        MSFSBlindAssist.Aircraft.A380FlightDirector.StateKey,
+        // The build-dependent state (A380BuildNames): flight directors, baro unit, baro STD and the
+        // landing CONF 3 selection, BOTH builds' names, so whichever build is flying has its own
+        // values on the cache (an L:var the other build never writes just reads 0, unused).
         "ELEC_APU_GEN:1", "ELEC_APU_GEN:2",
         // Read-back sources (FOA-9): what the self-ticking lines and the spoken values read. The
         // OnRequest ones (the SEC rudder-trim words, the gear legs, total fuel, flex) are delivered only
@@ -85,14 +112,17 @@ public sealed class FbwA380StateEvaluator : LVarStateEvaluator
         "A32NX_TOTAL_FUEL_QUANTITY", "A32NX_EFB_USING_METRIC_UNIT",
         "PFD_V1", "PFD_VR", "PFD_V2", "A32NX_AIRLINER_TO_FLEX_TEMP",
         "AIRLINER_MINIMUM_DESCENT_ALTITUDE", "AIRLINER_DECISION_HEIGHT",
-        "A32NX_FCU_LEFT_EIS_BARO_IS_STD", "A32NX_FCU_LEFT_EIS_BARO_HPA",
+        "A32NX_FCU_LEFT_EIS_BARO_HPA",
         "A32NX_AUTOBRAKES_ARMED_MODE",
         // Auto-flap schedule inputs (speed tape + landing config + flaps handle).
         "A32NX_SPEEDS_GD", "A32NX_SPEEDS_S", "A32NX_SPEEDS_F", "A32NX_SPEEDS_VFEN",
-        LandingConf3Field, "A32NX_FLAPS_HANDLE_INDEX",
+        "A32NX_FLAPS_HANDLE_INDEX",
     };
 
-    public override IReadOnlyList<string> OnRequestPollFields => PollFields;
+    private static readonly string[] AllPollFields =
+        PollFields.Concat(MSFSBlindAssist.Aircraft.A380BuildNames.AllStateKeys).Distinct().ToArray();
+
+    public override IReadOnlyList<string> OnRequestPollFields => AllPollFields;
 
     /// <summary>
     /// SEC rudder-trim word (ARINC 429 degrees, positive = nose-left): 1 when the trim is within
@@ -133,8 +163,14 @@ public sealed class FbwA380StateEvaluator : LVarStateEvaluator
     }
 
     /// <summary>The Captain-side baro: "standard", or the QNH in the EFIS-CP's unit. Null when unknown.</summary>
-    public string? BaroText() => FbwA380ReadbackFormat.Baro(GetValue("A32NX_FCU_LEFT_EIS_BARO_IS_STD"),
-        GetValue("A32NX_FCU_LEFT_EIS_BARO_HPA"), GetValue("A32NX_FCU_EFIS_L_BARO_IS_INHG"));
+    public string? BaroText()
+    {
+        var build = Build;
+        string? stdKey = MSFSBlindAssist.Aircraft.A380BuildNames.BaroStdKey(build, 1);
+        return FbwA380ReadbackFormat.Baro(stdKey == null ? double.NaN : GetValue(stdKey),
+            GetValue("A32NX_FCU_LEFT_EIS_BARO_HPA"),
+            MSFSBlindAssist.Aircraft.A380BuildNames.CaptainBaroIsInHg(build, GetValue));
+    }
 
     /// <summary>The approach minimum set on the MFD PERF page (A380F-15). Null when unknown.</summary>
     public string? MinimumText() => FbwA380ReadbackFormat.Minimum(
@@ -144,6 +180,18 @@ public sealed class FbwA380StateEvaluator : LVarStateEvaluator
     {
         switch (field)
         {
+            case LandingConf3Field:
+            {
+                string? key = MSFSBlindAssist.Aircraft.A380BuildNames.LandingConf3Key(Build);
+                value = key == null ? double.NaN : GetValue(key);
+                return true;
+            }
+            case FlightDirectorsOnField:
+                value = MSFSBlindAssist.Aircraft.A380BuildNames.FlightDirectorsOn(Build, GetValue);
+                return true;
+            case BaroUnitHectopascalsField:
+                value = MSFSBlindAssist.Aircraft.A380BuildNames.BaroUnitsHectopascals(Build, GetValue);
+                return true;
             case "FO_ENGINES_OFF":
             {
                 double v1 = GetValue("ENG_VALVE_SWITCH:1"), v2 = GetValue("ENG_VALVE_SWITCH:2"),
@@ -161,7 +209,7 @@ public sealed class FbwA380StateEvaluator : LVarStateEvaluator
                     GetValue("A32NX_SEC_3_RUDDER_ACTUAL_POSITION"));
                 return true;
             // Landing "Flaps: LDG": FULL, or 3 when the MFD PERF APPR page selects CONF 3
-            // (LandingConf3Field, A380X_FM_LANDING_CONF3), FlyByWire's own ECL sensing
+            // (LandingConf3Field, the running build's CONF 3 variable), FlyByWire's own ECL sensing
             // (FwsNormalChecklists.ts L587-590).
             case "FO_LDG_FLAPS_SET":
                 value = Both(GetValue("A32NX_FLAPS_HANDLE_INDEX"), GetValue(LandingConf3Field),
@@ -213,6 +261,12 @@ public sealed class FbwA380StateEvaluator : LVarStateEvaluator
                     : Array.Exists(sources, double.IsNaN) ? double.NaN : 0.0;
                 return true;
             }
+            case Engines12RunningField:
+                value = PairRunning(GetValue("A32NX_ENGINE_STATE:1"), GetValue("A32NX_ENGINE_STATE:2"));
+                return true;
+            case Engines34RunningField:
+                value = PairRunning(GetValue("A32NX_ENGINE_STATE:3"), GetValue("A32NX_ENGINE_STATE:4"));
+                return true;
             // 0 Off / 1 On / 2 Starting / 3 Shutting down: stopped only when all four read Off.
             case EnginesStoppedField:
             {

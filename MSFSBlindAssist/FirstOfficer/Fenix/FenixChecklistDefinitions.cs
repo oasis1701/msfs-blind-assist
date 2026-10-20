@@ -481,7 +481,9 @@ public static class FenixChecklistDefinitions
                 "S_OH_SIGNS", v => v < 0.5, (e, _) => e.Set("S_OH_SIGNS", 0)),
             Auto("SD_BEACON_OFF", "SHUTDOWN", "Beacon: OFF",
                 "S_OH_EXT_LT_BEACON", v => v < 0.5, (e, _) => e.Set("S_OH_EXT_LT_BEACON", 0)),
-            Auto("SD_FUELPUMPS_OFF", "SHUTDOWN", "Fuel pumps: ALL OFF",
+            // Never airborne or with an engine turning (FO-25; the Shutdown flow's SD_ON_GROUND and
+            // the engine masters before it).
+            LeaveAlone(Auto("SD_FUELPUMPS_OFF", "SHUTDOWN", "Fuel pumps: ALL OFF",
                 "S_OH_FUEL_LEFT_1", v => v < 0.5,
                 new[] { "S_OH_FUEL_LEFT_2", "S_OH_FUEL_CENTER_1", "S_OH_FUEL_CENTER_2",
                         "S_OH_FUEL_RIGHT_1", "S_OH_FUEL_RIGHT_2" },
@@ -494,6 +496,7 @@ public static class FenixChecklistDefinitions
                     await e.Set("S_OH_FUEL_RIGHT_1", 0);
                     await e.Set("S_OH_FUEL_RIGHT_2", 0);
                 }),
+                NotParked, FuelPumpsStayText),
             Auto("SD_NOSE_OFF", "SHUTDOWN", "Nose light: OFF",
                 "S_OH_EXT_LT_NOSE", v => v < 0.5, (e, _) => e.SetNoseLight(0)),
             Auto("SD_TURNOFF_OFF", "SHUTDOWN", "Runway turn-off lights: OFF",
@@ -517,7 +520,7 @@ public static class FenixChecklistDefinitions
         Id = "SECURE", Name = "Securing",
         Items = new()
         {
-            // Never airborne (the Securing flow's SC_ON_GROUND).
+            // Never airborne (the Securing flow's SC_ON_GROUND), nor with an engine turning (FO-25).
             LeaveAlone(Auto("SC_ADIRS", "SECURE", "IRS 1, 2 and 3: OFF",
                 "S_OH_NAV_IR1_MODE", v => v < 0.5, new[] { "S_OH_NAV_IR2_MODE", "S_OH_NAV_IR3_MODE" },
                 async (e, _) =>
@@ -526,7 +529,7 @@ public static class FenixChecklistDefinitions
                     await e.Set("S_OH_NAV_IR2_MODE", 0);
                     await e.Set("S_OH_NAV_IR3_MODE", 0);
                 }),
-                s => !s.IsPosition("SIM_ON_GROUND", 1), IrsStayText),
+                NotParked, IrsStayText),
             Auto("SC_OXY", "SECURE", "Crew oxygen supply: OFF",
                 "S_OH_OXYGEN_CREW_OXYGEN", v => v < 0.5, (e, _) => e.Set("S_OH_OXYGEN_CREW_OXYGEN", 0)),
             Auto("SC_EMEREXIT", "SECURE", "Emergency exit lights: OFF",
@@ -542,10 +545,13 @@ public static class FenixChecklistDefinitions
             Auto("SC_EXTPWR_OFF", "SECURE", "External power: OFF",
                 "I_OH_ELEC_EXT_PWR_L", v => v < 0.5,
                 (e, s) => s.IsOn("I_OH_ELEC_EXT_PWR_L") ? e.Pulse("S_OH_ELEC_EXT_PWR") : Task.CompletedTask),
-            Auto("SC_BAT1", "SECURE", "Battery 1: OFF",
+            // Never airborne or with an engine turning (FO-25), as the IRS above.
+            LeaveAlone(Auto("SC_BAT1", "SECURE", "Battery 1: OFF",
                 "S_OH_ELEC_BAT1", v => v < 0.5, (e, _) => e.Set("S_OH_ELEC_BAT1", 0)),
-            Auto("SC_BAT2", "SECURE", "Battery 2: OFF",
+                NotParked, BatteriesStayText),
+            LeaveAlone(Auto("SC_BAT2", "SECURE", "Battery 2: OFF",
                 "S_OH_ELEC_BAT2", v => v < 0.5, (e, _) => e.Set("S_OH_ELEC_BAT2", 0)),
+                NotParked, BatteriesStayText),
             // Cockpit lighting off: ANN left at BRIGHT for the next power-up, dome and knobs off.
             Auto("SC_COCKPITLT", "SECURE", "Cockpit lights: annunciator bright",
                 "S_OH_IN_LT_ANN_LT", v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("S_OH_IN_LT_ANN_LT", 1)),
@@ -824,5 +830,17 @@ public static class FenixChecklistDefinitions
     internal const string EnginesStayText =
         "Engines left running: not on the ground, or no APU or external power to take the buses.";
 
-    internal const string IrsStayText = "IRS left on: the aircraft is not on the ground.";
+    internal const string IrsStayText = "IRS left on: not read on the ground, or the engines are not read stopped.";
+
+    // The fuel pumps, the IRS and the batteries go OFF on a tick only on the ground with both
+    // engines read stopped (FO_ENGINES_OFF); airborne, an engine turning, or either unread, they
+    // stay on (FO-25).
+    private static bool NotParked(FenixStateEvaluator s) =>
+        !s.IsPosition("SIM_ON_GROUND", 1) || !s.IsOn("FO_ENGINES_OFF");
+
+    internal const string FuelPumpsStayText =
+        "Fuel pumps left on: not read on the ground, or the engines are not read stopped.";
+
+    internal const string BatteriesStayText =
+        "Battery left on: not read on the ground, or the engines are not read stopped.";
 }

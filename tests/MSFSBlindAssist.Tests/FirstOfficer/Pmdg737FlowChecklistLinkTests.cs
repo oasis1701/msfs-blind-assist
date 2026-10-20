@@ -59,6 +59,7 @@ public class Pmdg737FlowChecklistLinkTests
         Id("EVT_OH_FUEL_PUMP_L_CENTER", "FUEL_PumpCtrSw_0", "FO_FUEL_PUMPS_BS_OK");
         Id("EVT_OH_FUEL_PUMP_R_CENTER", "FUEL_PumpCtrSw_1", "FO_FUEL_PUMPS_BS_OK");
         Id("EVT_OH_EMER_EXIT_LIGHT_SWITCH", "LTS_EmerExitSelector");
+        Id("EVT_OH_NO_SMOKING_LIGHT_SWITCH", "COMM_NoSmokingSelector");
         Id("EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", "COMM_FastenBeltsSelector");
         for (int i = 1; i <= 4; i++) Id($"EVT_OH_ICE_WINDOW_HEAT_{i}", $"ICE_WindowHeatSw_{i - 1}");
         Id("EVT_OH_ICE_PROBE_HEAT_1", "ICE_ProbeHeatSw_0");

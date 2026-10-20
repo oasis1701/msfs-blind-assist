@@ -71,8 +71,8 @@ public class FbwA380ReadOnlyCheckTests
             new[] { ("A32NX_OVHD_COND_PACK_1_PB_IS_ON", 1.0), ("A32NX_OVHD_COND_PACK_2_PB_IS_ON", 1.0) },
             new[] { ("A32NX_OVHD_COND_PACK_1_PB_IS_ON", 1.0), ("A32NX_OVHD_COND_PACK_2_PB_IS_ON", 0.0) }),
         ("LANDING", "LD_MEMO_CHECK",
-            new[] { ("SEATBELT_SIGN_LIGHT", 1.0), ("A32NX_FLAPS_HANDLE_INDEX", 4.0), (FbwA380StateEvaluator.LandingConf3Field, 0.0) },
-            new[] { ("SEATBELT_SIGN_LIGHT", 1.0), ("A32NX_FLAPS_HANDLE_INDEX", 3.0), (FbwA380StateEvaluator.LandingConf3Field, 0.0) }),
+            new[] { ("SEATBELT_SIGN_LIGHT", 1.0), ("A32NX_FLAPS_HANDLE_INDEX", 4.0), ("A380X_FM_LANDING_CONF3", 0.0) },
+            new[] { ("SEATBELT_SIGN_LIGHT", 1.0), ("A32NX_FLAPS_HANDLE_INDEX", 3.0), ("A380X_FM_LANDING_CONF3", 0.0) }),
         ("LANDING", "LD_GEAR_DOWN_CHECK",
             new[] { (FbwA380GearConfirmation.HandleField, 1.0), ("A32NX_GEAR_CENTER_POSITION", 100.0),
                     ("A32NX_GEAR_LEFT_POSITION", 100.0), ("A32NX_GEAR_RIGHT_POSITION", 100.0) },
@@ -83,7 +83,7 @@ public class FbwA380ReadOnlyCheckTests
     private static FbwA380StateEvaluator Reading(params (string Key, double Value)[] values)
     {
         var e = new FbwA380StateEvaluator();
-        e.SetSimConnect(SeededSimConnectCache.With(values));
+        e.SetSimConnect(SeededSimConnectCache.With(values).On("FS2024"));   // FS2024 names
         return e;
     }
 

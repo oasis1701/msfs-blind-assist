@@ -47,7 +47,11 @@ public class FbwA380FoKeyRegistrationTests
         ["BARO_STD"] = "the executor's own name: DispatchCoreAsync fires both baro PUSHes itself",
         ["BARO_QNH"] = "the executor's own name: DispatchCoreAsync fires both baro PULLs itself",
         ["FCU_PUSH_SPEED"] = "the executor's own name for A32NX.FCU_SPD_PUSH (FireFcu)",
-        ["FCU_PUSH_HEADING"] = "the executor's own name for A32NX.FCU_HDG_PUSH (FireFcu)",
+        ["FCU_PUSH_HEADING"] = "the executor's own name for A32NX.FCU_HDG_PUSH (FireFcu; in both builds' fbw.wasm)",
+        ["FLIGHT_DIRECTORS"] = "the executor's own name: FlyByWireA380Definition.SetFlightDirectorsForFo "
+            + "resolves it per build (FS2020 TOGGLE_FLIGHT_DIRECTOR per side, FS2024 the one FCU FD pushbutton)",
+        ["BARO_UNIT_HPA"] = "the executor's own name: FlyByWireA380Definition.SetBaroUnitHectopascalsForFo "
+            + "resolves it per build (FS2020 XMLVAR_Baro_Selector_HPA_n, FS2024 *_BARO_IS_INHG)",
         ["FCU_PUSH_ALT"] = "the executor's own name for A32NX.FCU_ALT_PUSH (FireFcu)",
         ["AP1_ENGAGE"] = "the executor's own name for A32NX.FCU_AP_1_PUSH (FireFcu)",
         ["FIRE_TEST"] = "a flow step ExecuteStepAsync runs itself (the held fire test)",

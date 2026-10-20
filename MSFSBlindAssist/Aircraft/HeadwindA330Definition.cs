@@ -327,6 +327,9 @@ public class HeadwindA330Definition : FlyByWireA320Definition
         // A32NX_Speeds.ts only resets it to 0) and never A32NX_FM_LANDING_CONF3, so the A330
         // swaps the inherited registration for its own (HwA330StateEvaluator polls this one).
         vars.Remove("A32NX_FM_LANDING_CONF3");
+        // ...and the A32NX First Officer's MSFS 2020 SD-page read: the A330 executor sets and reads
+        // its page by its own A32NX_ECAM_SD_CURRENT_PAGE_INDEX key (HwA330ActionExecutor).
+        vars.Remove(MSFSBlindAssist.FirstOfficer.FBWA320.FbwA320ActionExecutor.Fs2020SdPageShownKey);
         vars["A32NX_SPEEDS_LANDING_CONF3"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_SPEEDS_LANDING_CONF3",

@@ -537,7 +537,7 @@ The Flows tab has:
 
 To run a flow, select it in Available flows and press Enter, or Tab to Start Flow and press it. The First Officer works through the steps about two seconds apart. Pause / Resume holds the flow and continues it; Stop Flow ends it after the current step. Only one flow runs at a time.
 
-Before it switches anything that could stop an engine, a flow checks that it is safe. A power-up flow stops if an engine is running, and the shutdown, parking and securing flows stop unless the aircraft is on the ground. Either way you hear why.
+Before it switches anything that could stop an engine, a flow checks that it is safe. A power-up flow, and the 737 Preflights, stop if an engine is running or the aircraft is in the air, and the shutdown, parking and securing flows stop unless the aircraft is on the ground. The securing flows also stop if an engine is still turning. A shutdown or parking flow cuts the engines first, then waits up to two minutes for them to spin down (*"Waiting for: Engines stopped"* when flow progress is spoken) before it switches the fuel pumps off. Either way you hear why.
 
 ### The Checklists tab {#fo-checklists-tab}
 
@@ -545,7 +545,7 @@ The checklists are a tree. Each checklist is named with its progress, for exampl
 
 - A line ticks itself once the aircraft is in that state, so as you read down a checklist you hear what is already done.
 - Press Space to tick a line yourself. If it is a switch the First Officer can set, it sets it, and BA adds the value it reads, such as the flap setting. If the switch never moves, the line unticks itself and you hear *"Unable to complete:"* followed by the line.
-- If the aircraft's state makes a line unsafe to do, for example a battery off with an engine running, the tick is refused and BA says why.
+- If the aircraft's state makes a line unsafe to do, the tick is refused and BA says why. A line that switches the fuel pumps, a hydraulic pump, the IRS or a battery off is done only on the ground with the engines stopped, and a packs-off line only on the ground. Until BA has read the aircraft, it refuses too. For example: *"Fuel pumps left on: not read on the ground, or the engines are not read stopped."*
 - A line the First Officer cannot set, such as a read-back item, only records that you checked it.
 - A checklist you finished, by hand or with its flow, stays complete for the rest of the flight, even when later flows move the same switches.
 - The **Checklist status** line below the tree shows the selected line with its live value and whether it is complete, without ticking it.
@@ -607,7 +607,8 @@ The gear and autopilot options work on every aircraft, including the HorizonSim 
 - **"No checklist for this aircraft."** This aircraft has no First Officer.
 - **"A flow is already running. Stop it first."** Only one flow runs at a time. Press Stop Flow, or wait for the flow to finish.
 - **"The last flow is still stopping. Start again when it has stopped."** The flow you stopped is finishing a step that cannot be interrupted, such as the weather radar test. Wait for *"… flow cancelled"*.
-- **"… flow stopped. Unable to complete: Engines stopped"** You ran a power-up flow with an engine turning. Choose the flow for this point in the flight. A shutdown or securing flow run in the air stops the same way, on *"On the ground"*.
+- **"… flow stopped. Unable to complete: Engines stopped"** You ran a power-up flow with an engine turning. Choose the flow for this point in the flight. A shutdown or securing flow run in the air stops the same way, on *"On the ground"*. A securing flow run with an engine turning, or a shutdown whose engines take more than two minutes to spin down, stops on *"Engines stopped"*: check the engines are shut down, then run it again.
+- **"Transition altitude. Set both altimeters to standard."** (or *"Transition level. Set both altimeters to QNH and set local pressure."*) On the FlyByWire A380, BA had not yet worked out whether you are flying MSFS 2020 or MSFS 2024, whose FlyByWire builds use different altimeter controls, so it set nothing. Set the altimeters yourself. The same reason makes an A380 or A32NX flow skip its flight director, baro unit, navigation display or ECAM page step.
 - **"Skipping: …"** The switch did not move, or the aircraft did not show it in time. Set it yourself from BA's panels and carry on; its checklist line stays unticked until the aircraft shows it.
 - **"No related flow found for this section"** That checklist has no flow; work it by hand.
 - **"SimBrief username not set. Configure it in Settings."** Enter your SimBrief username, as described in [SimBrief](#simbrief).
