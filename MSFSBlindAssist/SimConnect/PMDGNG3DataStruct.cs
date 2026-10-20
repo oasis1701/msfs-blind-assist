@@ -327,7 +327,7 @@ public struct PMDGNG3DataStruct
     [MarshalAs(UnmanagedType.U1)]
     public bool LTS_annunEmerNOT_ARMED;
     public byte LTS_EmerExitSelector;                           // 0: OFF  1: ARMED  2: ON
-    public byte COMM_NoSmokingSelector;                         // 0: OFF  1: AUTO   2: ON
+    public byte COMM_NoSmokingSelector;                         // 0: OFF  1: AUTO   2: ON (per the SDK; the NG3 never reaches 2)
     public byte COMM_FastenBeltsSelector;
     [MarshalAs(UnmanagedType.U1)]
     public bool COMM_annunCALL;
