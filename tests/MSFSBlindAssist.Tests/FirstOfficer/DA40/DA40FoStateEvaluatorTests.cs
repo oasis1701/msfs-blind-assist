@@ -90,6 +90,12 @@ public class DA40FoStateEvaluatorTests
             .GetValue(E.AltimetersAgreeField));
         Assert.Equal(0, With(DA40Variant.NG, ("DA40_G1000_BARO", 30.12), ("DA40_STBY_ALTIMETER_SET", 29.92))
             .GetValue(E.AltimetersAgreeField));
+        // One hundredth apart on the dial: the live gate case (G1000 to 1013 hPa, standby left on 29.92).
+        Assert.Equal(0, With(DA40Variant.NG, ("DA40_G1000_BARO", 29.91), ("DA40_STBY_ALTIMETER_SET", 29.92))
+            .GetValue(E.AltimetersAgreeField));
+        // A G1000 in hPa (1012 hPa = 29.884 in) agrees with the standby on the nearest hundredth.
+        Assert.Equal(1, With(DA40Variant.NG, ("DA40_G1000_BARO", 29.884), ("DA40_STBY_ALTIMETER_SET", 29.88))
+            .GetValue(E.AltimetersAgreeField));
     }
 
     [Theory]

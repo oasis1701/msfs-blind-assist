@@ -251,8 +251,11 @@ public sealed class DA40FoStateEvaluator : LVarStateEvaluator
                 value = One(GetValue("DA40_AP_PFT"), v => v >= 1.5);
                 return true;
             case AltimetersAgreeField:
+                // In the hundredths the standby is set in (FO_STBY_BARO writes them): 29.91 against
+                // 29.92 is one hundredth, about 10 ft, and does not agree. A 0.015 tolerance passed
+                // that pair live as "Already set" and left the standby wrong.
                 value = Both(GetValue("DA40_G1000_BARO"), GetValue("DA40_STBY_ALTIMETER_SET"),
-                    (g1000, standby) => Math.Abs(g1000 - standby) < 0.015);
+                    (g1000, standby) => Math.Round(g1000 * 100) == Math.Round(standby * 100));
                 return true;
             case SelectorOnLowerTankField:
                 value = Selector(LowerTank());
