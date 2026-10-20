@@ -39,7 +39,7 @@ using Step = Models.FlowStep<IFly737StateEvaluator>;
 ///   StartLeverCutoff/StartLeverIdle consts, duplicated here since those are private to the
 ///   executor) — the def's own `map` lambda inverts this to the command's Value2 (0 IDLE / 1
 ///   CUTOFF), so a SW step here always sends the COMBO position, never the command value.
-/// - Seatbelt/No-smoking signs 0=Off/1=Auto/2=On (same numbering as PMDG).
+/// - Seatbelt/No-smoking signs 0=Off/1=Auto/2=On (the PMDG's numbering; the PMDG's No smoking has no On).
 /// - Emergency exit lights 0=Guard closed/1=Off/2=Armed/3=On — NOT the PMDG's 0/1/2 numbering;
 ///   use IFly737ActionExecutor.EmerExit* constants, never a bare literal.
 /// - Position lights 0=Strobe&amp;Steady/1=Off/2=Steady (probe-verified, PR #196 — the SDK status
@@ -232,6 +232,12 @@ public static class IFly737FlowDefinitions
             // PMDG's numbering; use the executor's EmerExitArmed constant.
             SW("PF_EMER", "Emergency exit lights: ARMED", "Emergency_Light_Switch_Status",
                 IFly737ActionExecutor.EmerExitArmed, checklistItemId: "PF_EMER"),
+            // No_Smoking_Switch_Status: 0 Off/1 Auto/2 On. AUTO before the belts, as on the panel and
+            // the PMDG 737 (owner request, 2026-10-20), verified on the switch: a write that did not
+            // take is heard skipped and keeps the line out of the latch.
+            Verify(SW("PF_NOSMOKE", "No smoking: AUTO", "No_Smoking_Switch_Status",
+                    IFly737ActionExecutor.SignAuto, checklistItemId: "PF_NOSMOKE"),
+                "No_Smoking_Switch_Status", v => v > 0.5 && v < 1.5),
             // Fasten_Belts_Switch_Status: 0 Off/1 Auto/2 On — same numbering as the PMDG.
             SW("PF_BELTS", "Seatbelt signs: ON", "Fasten_Belts_Switch_Status",
                 IFly737ActionExecutor.SignOn, checklistItemId: "PF_BELTS"),

@@ -144,9 +144,6 @@ public class Pmdg737IFly737ReadbackLinkTests
             // iFly: no lower-DU page-select field, so "Lower display unit: SYS" is a Captain reminder.
             "PMDG 737 only: BEFORE_TAXI/BT_LOWERDU",
             "PMDG 737 only: PREFLIGHT/PF_EFIS_RANGE",
-            // No smoking AUTO, added to the PMDG Preflight on 2026-10-20 (owner request). The iFly
-            // lacks it too; its fix is its own change, with its own in-sim test.
-            "PMDG 737 only: PREFLIGHT/PF_NOSMOKE",
             // iFly: its SDK has no crew oxygen test (only the passenger-oxygen switch).
             "PMDG 737 only: PREFLIGHT/PF_OXY_TEST_CAPT",
             "PMDG 737 only: PREFLIGHT/PF_OXY_TEST_FO",

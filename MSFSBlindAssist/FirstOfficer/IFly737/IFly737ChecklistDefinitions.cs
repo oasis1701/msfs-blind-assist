@@ -179,6 +179,9 @@ public static class IFly737ChecklistDefinitions
             // Off) and v==3 (On) are the only non-armed readings.
             Auto("PF_EMER", "PREFLIGHT", "Emergency exit lights: ARMED", "Emergency_Light_Switch_Status",
                 v => v < 0.5 || (v > 1.5 && v < 2.5), (e, _) => e.SetEmerExitLights(IFly737ActionExecutor.EmerExitArmed)),
+            // No_Smoking_Switch_Status: 0 Off/1 Auto/2 On; AUTO alone ticks the line.
+            Auto("PF_NOSMOKE", "PREFLIGHT", "No smoking: AUTO", "No_Smoking_Switch_Status", v => v > 0.5 && v < 1.5,
+                (e, _) => e.SetNoSmoking(IFly737ActionExecutor.SignAuto)),
             // Fasten_Belts_Switch_Status: 0 Off/1 Auto/2 On — same numbering as the PMDG.
             Auto("PF_BELTS", "PREFLIGHT", "Seatbelt signs: ON", "Fasten_Belts_Switch_Status", v => v > 1.5,
                 (e, _) => e.SetSeatBelts(IFly737ActionExecutor.SignOn)),
