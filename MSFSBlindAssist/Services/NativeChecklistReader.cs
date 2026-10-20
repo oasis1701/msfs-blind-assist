@@ -41,6 +41,20 @@ namespace MSFSBlindAssist.Services;
 public static class NativeChecklistReader
 {
     /// <summary>
+    /// ⚠️ ASOBO'S CHECKLIST XML DECLARES <c>encoding="Windows-1252"</c> (both COWS DA40 files do),
+    /// and .NET reads no Windows code page until a provider is registered. Without it every
+    /// <see cref="XDocument.Load(string)"/> threw "'Windows-1252' is not a supported encoding name",
+    /// the catch logged it at Debug, and the reader answered "no checklist" for an aeroplane that
+    /// ships one: the checklist window fell back to its bundled file, and the DA40 First Officer opened
+    /// with no read-backs at all, and nobody heard a thing (DA40S-14).
+    /// Registering is idempotent and process-wide; every load goes through <see cref="LoadDocument"/>.
+    /// </summary>
+    static NativeChecklistReader() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
+    /// <summary>The one way a checklist file is opened (see the static constructor).</summary>
+    internal static XDocument LoadDocument(string path) => XDocument.Load(path);
+
+    /// <summary>
     /// Every folder an aircraft package may sit in, Community before Official: the packages
     /// root each simulator's UserCfg.opt names, then the default Community folders of both
     /// simulators and the Store layout, which cover a config that is missing or unreadable.
@@ -135,7 +149,7 @@ public static class NativeChecklistReader
 
         try
         {
-            return RenderFile(XDocument.Load(path));
+            return RenderFile(LoadDocument(path));
         }
         catch (Exception ex)
         {
@@ -157,7 +171,7 @@ public static class NativeChecklistReader
 
         try
         {
-            return ReadPages(XDocument.Load(path));
+            return ReadPages(LoadDocument(path));
         }
         catch (Exception ex)
         {

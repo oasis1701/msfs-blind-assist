@@ -29,6 +29,15 @@ internal static class DA40FoTestData
     public static IReadOnlyList<NativeChecklistPage>? InstalledPages(DA40Variant v) => NativeChecklistReader.LoadPages(Code(v));
 
     /// <summary>
+    /// A package-backed test skips only when the package is really absent: a file that is found and
+    /// still loads nothing is the bug. "Null, so return" passed every one of these on a PC with the
+    /// package while the Windows-1252 declaration made every load throw (DA40S-14).
+    /// </summary>
+    public static void AssertNotInstalled(DA40Variant v)
+        => Xunit.Assert.True(NativeChecklistReader.FindChecklistFile(Code(v)) is null,
+            $"{Code(v)}'s checklist is installed but did not load: {NativeChecklistReader.FindChecklistFile(Code(v))}");
+
+    /// <summary>
     /// Stand-in pages: every line the variant's flows link, on its page and in its block, under the
     /// COWS titles, plus a line nothing links (a Captain line) and a note, and the two reference pages.
     /// </summary>

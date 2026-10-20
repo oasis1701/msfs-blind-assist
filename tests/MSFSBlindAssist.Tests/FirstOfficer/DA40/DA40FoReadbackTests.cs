@@ -121,14 +121,14 @@ public class DA40FoReadbackTests
         Assert.True(ids.IndexOf(DA40FoReadback.WeightsSpeedsPage) > ids.IndexOf(DA40FoReadback.ShutdownPage));
     }
 
-    // ---- against the installed package (skips without it) ----
+    // ---- against the installed package (skips only when no file is found, DA40S-14) ----
 
     [Theory]
     [MemberData(nameof(Data.Variants), MemberType = typeof(Data))]
     public void Every_installed_page_is_a_known_group(DA40Variant v)
     {
         var pages = Data.InstalledPages(v);
-        if (pages == null) return;
+        if (pages == null) { Data.AssertNotInstalled(v); return; }
         Assert.All(pages, p => Assert.NotNull(DA40FoReadback.GroupFor(p.Title)));
     }
 
@@ -139,7 +139,7 @@ public class DA40FoReadbackTests
     public void Every_linked_line_is_on_the_installed_page(DA40Variant v)
     {
         var pages = Data.InstalledPages(v);
-        if (pages == null) return;
+        if (pages == null) { Data.AssertNotInstalled(v); return; }
         var lineIds = DA40FoReadback.Build(pages).SelectMany(g => g.Items).Select(i => i.Id).ToHashSet();
         var readbackIds = DA40FoReadback.Links.Select(l => l.Id).ToHashSet();
         var missing = Data.Flows(v).SelectMany(f => f.Steps.SelectMany(s => s.LinkedChecklistItemIds
@@ -155,7 +155,7 @@ public class DA40FoReadbackTests
     public void Every_installed_line_is_kept(DA40Variant v)
     {
         var pages = Data.InstalledPages(v);
-        if (pages == null) return;
+        if (pages == null) { Data.AssertNotInstalled(v); return; }
         Assert.Equal(pages.Sum(p => p.Lines.Count), DA40FoReadback.Build(pages).Sum(g => g.Items.Count));
     }
 }
