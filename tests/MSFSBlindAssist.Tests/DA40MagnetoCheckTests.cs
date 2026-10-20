@@ -51,4 +51,26 @@ public class DA40MagnetoCheckTests
     [Fact]
     public void ADropIsRoundedToWholeRpm()
         => Assert.Equal(78, DA40MagnetoCheck.Drop(2192.5, 2114.1));
+
+    /// <summary>
+    /// Live at VCBI (2026-10-20): 2020 on BOTH; the sample in the key's own batch already read 1990
+    /// on the way down to 1900. The baseline is the sample before it, so the drop is 120, not 90.
+    /// </summary>
+    [Fact]
+    public void ASampleInTheKeysOwnBatchIsNotTheBaseline()
+    {
+        double baseline = DA40MagnetoCheck.BaselineRpm(rpmNow: 1990, rpmNowAtMs: 10_000, rpmBefore: 2020, keyAtMs: 10_001);
+        Assert.Equal(2020, baseline);
+        Assert.Equal(120, DA40MagnetoCheck.Drop(baseline, 1900));
+    }
+
+    /// <summary>No tach sample in the key's batch: the latest one was taken on BOTH.</summary>
+    [Fact]
+    public void AnOlderSampleIsTheBaselineAsItStands()
+        => Assert.Equal(2020, DA40MagnetoCheck.BaselineRpm(rpmNow: 2020, rpmNowAtMs: 9_000, rpmBefore: 1980, keyAtMs: 10_001));
+
+    /// <summary>Switching to one magneto only lowers the RPM: a rising throttle keeps the higher sample.</summary>
+    [Fact]
+    public void TheHigherOfTheTwoIsTheBaseline()
+        => Assert.Equal(2010, DA40MagnetoCheck.BaselineRpm(rpmNow: 2010, rpmNowAtMs: 10_000, rpmBefore: 1950, keyAtMs: 10_050));
 }
