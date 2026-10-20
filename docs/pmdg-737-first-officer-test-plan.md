@@ -185,7 +185,7 @@ then each aircraft had its own item).
 ### D2. 737 engine-driven hydraulic pumps (functional-hole fix)
 The 737 FO now manages the engine-driven hyd pumps (previously never set; the 777 already did). PMDG cold-dark starts the EDP switches OFF.
 - Cold-dark → run **Before Start** → the new **"Engine hydraulic pumps: ON"** flow step fires; confirm `HYD_PumpSw_eng_0` / `HYD_PumpSw_eng_1` read ON (via sim tools), and the new Before Start checklist item **"Engine hydraulic pumps: ON"** auto-ticks (alongside the existing electric-pump item).
-- Run **Shutdown** → the new **"Engine hydraulic pumps: OFF"** flow step fires; confirm both read OFF. (No checklist line for the OFF — shutdown keeps the generic "Hydraulic panel: set" reminder.)
+- Run **Shutdown** → **"Engine hydraulic pumps: ON"** then **"Electric hydraulic pumps: OFF"**, as PMDG's Shutdown Procedure sets the panel (`B738_Checklist.xml` 19.14-19.15; changed 2026-10-19 from an OFF write, owner); confirm the engine pumps still read ON and the electric pumps OFF.
 
 ### D3. 777 primary hydraulic pump readback
 The Before Start flow already turns the primary pumps ON; the checklist now verifies them.

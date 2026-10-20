@@ -149,6 +149,36 @@ public class Pmdg737AfterLandingShutdownTests
         }
     }
 
+    // --- Shutdown: the hydraulic panel as PMDG sets it (19.14 engine pumps ON, 19.15 electric OFF) ---
+
+    [Theory]
+    [InlineData(1, true)]
+    [InlineData(0, false)]
+    [InlineData(double.NaN, false)]
+    public void Shutdown_line_reads_the_engine_hydraulic_pumps_on(double value, bool expected)
+    {
+        var item = Item("SHUTDOWN", "SD_HYDENG");
+        Assert.Equal("Engine hydraulic pumps: ON", item.Label);
+        Assert.Equal("HYD_PumpSw_eng_0", item.StateFieldName);
+        Assert.Contains("HYD_PumpSw_eng_1", item.AdditionalStateFields);
+        Assert.Equal(expected, item.EvaluateState(value));
+    }
+
+    [Fact]
+    public void Shutdown_leaves_the_engine_pumps_on_then_turns_the_electric_pumps_off()
+    {
+        var sd = FlowStepIds("SHUTDOWN");
+        Assert.Equal(sd.IndexOf("SD_HYDENG_ON") + 1, sd.IndexOf("SD_HYDELEC_OFF"));
+        Assert.DoesNotContain("SD_HYDENG_OFF", sd);
+        var items = ItemIds("SHUTDOWN");
+        Assert.Equal(items.IndexOf("SD_HYDENG") + 1, items.IndexOf("SD_HYDELEC"));
+
+        var step = Step("SHUTDOWN", "SD_HYDENG_ON");
+        Assert.Equal(new[] { ("EVT_OH_HYD_ENG1", (int?)1), ("EVT_OH_HYD_ENG2", (int?)1) },
+            step.MultiActions.Select(a => (a.EventName, a.TargetValue)).ToArray());
+        Assert.Equal(new[] { "SD_HYDENG" }, step.LinkedChecklistItemIds.ToArray());
+    }
+
     // --- The two descriptions that said what nothing does ---
 
     [Fact]

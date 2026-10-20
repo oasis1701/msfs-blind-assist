@@ -745,10 +745,13 @@ public static class IFly737FlowDefinitions
                 ("Fuel_CENTER_L_Switch_Status", 0), ("Fuel_CENTER_R_Switch_Status", 0)), "SDC_FUEL"),
             Multi("SD_EAI_OFF", "Engine anti-ice: OFF", "SD_EAI",
                 ("Eng_1_AntiIce_Switch_Status", 0), ("Eng_2_AntiIce_Switch_Status", 0)),
+            // The hydraulic panel as PMDG's B738 Shutdown Procedure sets it: ENGINE HYDRAULIC PUMPS ON
+            // (19.14), then ELECTRIC HYDRAULIC PUMPS OFF (19.15). The engine pumps were switched OFF
+            // here (owner, 2026-10-19: follow the page; the PMDG 737 and the 777 alike).
+            Multi("SD_HYDENG_ON", "Engine hydraulic pumps: ON", "SD_HYDENG",
+                ("ENG_1_HYD_Switch_Status", 1), ("ENG_2_HYD_Switch_Status", 1)),
             Multi("SD_HYDELEC_OFF", "Electric hydraulic pumps: OFF", "SD_HYDELEC",
                 ("ELEC_1_HYD_Switch_Status", 0), ("ELEC_2_HYD_Switch_Status", 0)),
-            Multi("SD_HYDENG_OFF", "Engine hydraulic pumps: OFF", "SD_HYDENG",
-                ("ENG_1_HYD_Switch_Status", 0), ("ENG_2_HYD_Switch_Status", 0)),
             Multi("SD_WINHEAT_OFF", "Window heat: OFF", "SD_WINHEAT",
                 ("Window_Heat_Switch_1_Status", 0), ("Window_Heat_Switch_2_Status", 0),
                 ("Window_Heat_Switch_3_Status", 0), ("Window_Heat_Switch_4_Status", 0)),

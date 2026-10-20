@@ -620,8 +620,11 @@ public static class PMDG737FlowDefinitions
                 ("EVT_OH_FUEL_PUMP_1_AFT", 0), ("EVT_OH_FUEL_PUMP_2_AFT", 0),
                 ("EVT_OH_FUEL_PUMP_L_CENTER", 0), ("EVT_OH_FUEL_PUMP_R_CENTER", 0)), "SDC_FUEL"),
             Multi("SD_EAI_OFF", "Engine anti-ice: OFF", "SD_EAI", ("EVT_OH_ICE_ENGINE_ANTIICE_1", 0), ("EVT_OH_ICE_ENGINE_ANTIICE_2", 0)),
+            // The hydraulic panel as PMDG's Shutdown Procedure sets it: ENGINE HYDRAULIC PUMPS ON
+            // (19.14), then ELECTRIC HYDRAULIC PUMPS OFF (19.15). The engine pumps were switched OFF
+            // here (owner, 2026-10-19: follow the page; the iFly and the 777 alike).
+            Multi("SD_HYDENG_ON", "Engine hydraulic pumps: ON", "SD_HYDENG", ("EVT_OH_HYD_ENG1", 1), ("EVT_OH_HYD_ENG2", 1)),
             Multi("SD_HYDELEC_OFF", "Electric hydraulic pumps: OFF", "SD_HYDELEC", ("EVT_OH_HYD_ELEC1", 0), ("EVT_OH_HYD_ELEC2", 0)),
-            Multi("SD_HYDENG_OFF", "Engine hydraulic pumps: OFF", "SD_HYDENG", ("EVT_OH_HYD_ENG1", 0), ("EVT_OH_HYD_ENG2", 0)),
             Multi("SD_WINHEAT_OFF", "Window heat: OFF", "SD_WINHEAT",
                 ("EVT_OH_ICE_WINDOW_HEAT_1", 0), ("EVT_OH_ICE_WINDOW_HEAT_2", 0),
                 ("EVT_OH_ICE_WINDOW_HEAT_3", 0), ("EVT_OH_ICE_WINDOW_HEAT_4", 0)),

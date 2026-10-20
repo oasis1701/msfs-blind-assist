@@ -643,9 +643,9 @@ public class Pmdg777FlowOrderingTests
     }
 
     // =====================================================================
-    // 9. Non-PMDG steps (FOB-4, owner 2026-10-09)
+    // 9. Non-PMDG steps (FOB-4, owner 2026-10-09 and 2026-10-19)
     //
-    // PMDG's procedure pages have neither of these two steps, and the owner removed both. The
+    // PMDG's procedure pages have none of these three steps, and the owner removed them. The
     // other non-PMDG steps stay as the owner's choices, listed in FOB-4's full text.
     // =====================================================================
 
@@ -671,6 +671,19 @@ public class Pmdg777FlowOrderingTests
         Assert.DoesNotContain("EVT_OH_LIGHTS_STORM", WrittenEvents("SHUTDOWN"));
     }
 
+    // PMDG's Shutdown Procedure turns off only the electric and demand pumps: the engine primary
+    // pumps stay ON, as both 737s now leave theirs (owner, 2026-10-19).
+    [Fact]
+    public void Shutdown_leaves_the_engine_primary_pumps_on()
+    {
+        Assert.DoesNotContain("SD_ENG_PUMPS", FlowStepIds("SHUTDOWN"));
+        Assert.DoesNotContain("SD_ENG_PUMPS_OFF", ItemIds("SHUTDOWN"));
+        Assert.DoesNotContain("EVT_OH_HYD_ENG1", WrittenEvents("SHUTDOWN"));
+        Assert.DoesNotContain("EVT_OH_HYD_ENG2", WrittenEvents("SHUTDOWN"));
+        // The electric and demand pumps still go OFF, as PMDG's page reads.
+        AssertOrder(FlowStepIds("SHUTDOWN"), "SD_SEAT_BELTS", "SD_ELEC_PUMPS", "SD_DEMAND");
+    }
+
     // The steps and Captain reminders with no line on PMDG's pages that the flows KEEP as the
     // owner's choices (checked by hand against the procedure pages of B777_Checklist.xml, 2026-10-09).
     // FOB-4's full text lists each, and each must still be a 777 flow step, so the list cannot
@@ -682,12 +695,12 @@ public class Pmdg777FlowOrderingTests
         "EPU_STORM_OFF", "EPU_CVR", "CP_TCAS_TEST", "CP_WXR_TEST", "CP_NO_SMOKING", "CP_GASPER",
         "BS_GND_PWR_1", "BS_GND_PWR_2",
         "BT_TAXI_LIGHTS", "BT_STORM_OFF", "BTKOF_LANDING_L", "BTKOF_TURNOFF", "BTKOF_STROBE", "BTKOF_XPNDR",
-        "ATKOF_TURNOFF_OFF", "DSC_EFIS_FO_MODE", "DSC_EFIS_FO_RANGE", "SD_ENG_PUMPS",
+        "ATKOF_TURNOFF_OFF", "DSC_EFIS_FO_MODE", "DSC_EFIS_FO_RANGE",
         "CP_ATIS", "BS_START_ACARS", "BS_TAXI_CLR", "LD_MISSED", "CP_RESET_CL",
     };
 
     [Fact]
-    public void Fob4_lists_the_hand_listed_non_PMDG_steps_the_flows_keep_and_the_two_removed()
+    public void Fob4_lists_the_hand_listed_non_PMDG_steps_the_flows_keep_and_the_ones_removed()
     {
         string text = System.IO.File.ReadAllText(System.IO.Path.Combine(
             ClaudeContextBudgetTests.RepoRoot(), "docs", "invariants", "first-officer-boeing.md"));
@@ -700,7 +713,7 @@ public class Pmdg777FlowOrderingTests
             Assert.True(steps.Contains(id), $"{id} is not a 777 flow step any more: update FOB-4's full text");
             Assert.True(fob4.Contains($"`{id}`", System.StringComparison.Ordinal), $"FOB-4's full text does not list {id}");
         }
-        foreach (string removed in new[] { "ATKOF_LANDING_OFF", "SD_STORM" })
+        foreach (string removed in new[] { "ATKOF_LANDING_OFF", "SD_STORM", "SD_ENG_PUMPS" })
         {
             Assert.DoesNotContain(removed, steps);
             Assert.True(fob4.Contains($"`{removed}`", System.StringComparison.Ordinal), $"FOB-4's full text does not record {removed}");

@@ -427,10 +427,11 @@ public static class PMDG737ChecklistDefinitions
                 (e, _) => { e.SetWingFuelPumps(0); e.SetCenterFuelPumps(0); }),
             Auto("SD_EAI", "SHUTDOWN", "Engine anti-ice: OFF", "ICE_EngAntiIceSw_0", v => v < 0.5,
                 new[] { "ICE_EngAntiIceSw_1" }, (e, _) => e.SetEngAntiIce(0)),
+            // PMDG's Shutdown Procedure: ENGINE HYDRAULIC PUMPS ON (19.14), ELECTRIC OFF (19.15).
+            Auto("SD_HYDENG", "SHUTDOWN", "Engine hydraulic pumps: ON", "HYD_PumpSw_eng_0", v => v > 0.5,
+                new[] { "HYD_PumpSw_eng_1" }, (e, _) => e.SetEngHydPumps(1)),
             Auto("SD_HYDELEC", "SHUTDOWN", "Electric hydraulic pumps: OFF", "HYD_PumpSw_elec_0", v => v < 0.5,
                 new[] { "HYD_PumpSw_elec_1" }, (e, _) => e.SetElecHydPumps(0)),
-            Auto("SD_HYDENG", "SHUTDOWN", "Engine hydraulic pumps: OFF", "HYD_PumpSw_eng_0", v => v < 0.5,
-                new[] { "HYD_PumpSw_eng_1" }, (e, _) => e.SetEngHydPumps(0)),
             Auto("SD_WINHEAT", "SHUTDOWN", "Window heat: OFF", "ICE_WindowHeatSw_0", v => v < 0.5,
                 new[] { "ICE_WindowHeatSw_1", "ICE_WindowHeatSw_2", "ICE_WindowHeatSw_3" }, (e, _) => e.SetWindowHeat(0)),
             // PMDG's Shutdown Procedure: "FLIGHT DIRECTOR switches: OFF" (19.21). TOGGLES: the action

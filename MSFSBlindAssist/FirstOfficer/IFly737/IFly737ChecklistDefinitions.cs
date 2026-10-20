@@ -529,10 +529,11 @@ public static class IFly737ChecklistDefinitions
                 (e, _) => { e.SetWingFuelPumps(0); e.SetCenterFuelPumps(0); }),
             Auto("SD_EAI", "SHUTDOWN", "Engine anti-ice: OFF", "Eng_1_AntiIce_Switch_Status", v => v < 0.5,
                 new[] { "Eng_2_AntiIce_Switch_Status" }, (e, _) => e.SetEngAntiIce(0)),
+            // PMDG's B738 Shutdown Procedure: ENGINE HYDRAULIC PUMPS ON (19.14), ELECTRIC OFF (19.15).
+            Auto("SD_HYDENG", "SHUTDOWN", "Engine hydraulic pumps: ON", "ENG_1_HYD_Switch_Status", v => v > 0.5,
+                new[] { "ENG_2_HYD_Switch_Status" }, (e, _) => e.SetEngHydPumps(1)),
             Auto("SD_HYDELEC", "SHUTDOWN", "Electric hydraulic pumps: OFF", "ELEC_1_HYD_Switch_Status", v => v < 0.5,
                 new[] { "ELEC_2_HYD_Switch_Status" }, (e, _) => e.SetElecHydPumps(0)),
-            Auto("SD_HYDENG", "SHUTDOWN", "Engine hydraulic pumps: OFF", "ENG_1_HYD_Switch_Status", v => v < 0.5,
-                new[] { "ENG_2_HYD_Switch_Status" }, (e, _) => e.SetEngHydPumps(0)),
             Auto("SD_WINHEAT", "SHUTDOWN", "Window heat: OFF", "Window_Heat_Switch_1_Status", v => v < 0.5,
                 new[] { "Window_Heat_Switch_2_Status", "Window_Heat_Switch_3_Status", "Window_Heat_Switch_4_Status" },
                 (e, _) => e.SetWindowHeat(0)),

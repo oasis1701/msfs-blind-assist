@@ -811,10 +811,8 @@ public static class PMDG777ChecklistDefinitions
             Auto("SD_SEAT_BELTS_OFF", "SHUTDOWN", "Fasten Belts switch: OFF",
                 "SIGNS_SeatBeltsSelector", v => v < 0.5,
                 action: (e, _) => e.SetSeatBelts(0)),
-            Auto("SD_ENG_PUMPS_OFF", "SHUTDOWN", "Engine primary pump switches: OFF",
-                "HYD_PrimaryEngPump_Sw_ON_0", v => v < 0.5,
-                new[] { "HYD_PrimaryEngPump_Sw_ON_1" },
-                (e, _) => e.SetEngPumps(0)),
+            // No engine primary pump line: PMDG's Shutdown Procedure leaves them ON (see the flow's
+            // SD_ELEC_PUMPS note; removed 2026-10-19, owner).
             Auto("SD_ELEC_PUMPS_OFF", "SHUTDOWN", "Electric primary pump switches: OFF",
                 "HYD_PrimaryElecPump_Sw_ON_0", v => v < 0.5,
                 new[] { "HYD_PrimaryElecPump_Sw_ON_1" },

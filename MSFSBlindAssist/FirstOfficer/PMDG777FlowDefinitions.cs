@@ -882,8 +882,9 @@ public static class PMDG777FlowDefinitions
             // the flow after cutoff. Removed 2026-07-02, user request.)
             SW("SD_SEAT_BELTS",  "Seat belts: OFF",          "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", 0,
                "SIGNS_SeatBeltsSelector", v => v < 0.5, "SD_SEAT_BELTS_OFF"),
-            Multi("SD_ENG_PUMPS","Engine pumps: OFF", "SD_ENG_PUMPS_OFF",
-                ("EVT_OH_HYD_ENG1", 0), ("EVT_OH_HYD_ENG2", 0)),
+            // PMDG's Shutdown Procedure turns off only the electric and demand pumps: the engine
+            // primary pumps stay ON (owner, 2026-10-19: SD_ENG_PUMPS, which switched them OFF, was
+            // removed; both 737s leave theirs ON too). FOB-4 records it.
             Multi("SD_ELEC_PUMPS","Electric pumps: OFF", "SD_ELEC_PUMPS_OFF",
                 ("EVT_OH_HYD_ELEC1", 0), ("EVT_OH_HYD_ELEC2", 0)),
             Multi("SD_DEMAND",   "Demand pumps: OFF", "SD_DEMAND_OFF",
