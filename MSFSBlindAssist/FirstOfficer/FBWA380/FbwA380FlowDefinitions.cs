@@ -260,7 +260,7 @@ public static class FbwA380FlowDefinitions
     private static Flow BuildEngineStart() => new()
     {
         Id = "ENGINE_START", Name = "Engine Start",
-        Description = "Engine mode IGN/START, engines 1 and 2, then 3 and 4, with dwell periods.",
+        Description = "Engine mode IGN/START, engines 1 and 2, then 3 and 4 once 1 and 2 are running.",
         RelatedChecklistGroupIds = new string[] { },
         Steps = new()
         {
@@ -273,12 +273,19 @@ public static class FbwA380FlowDefinitions
                 s => s.IsOn("ENG_VALVE_SWITCH:1")), "ES_ENG1"),
             Done(Skip(SW("ES_ENG2", "Engine 2 master: START", "ENG_VALVE_SWITCH:2", 1),
                 s => s.IsOn("ENG_VALVE_SWITCH:2")), "ES_ENG2"),
-            Wait("ES_STBY1", "Standby", 60),
+            // Engines 3 and 4 are started only once 1 and 2 RUN (FlyByWire's engine state On on both),
+            // never after a fixed pause: a slow or failed start must not have the next pair started on
+            // top of it. A start that has not finished in EngineStartTimeoutSeconds STOPS the flow,
+            // aloud ("Engine Start flow stopped. Unable to complete: Engines 1 and 2 running"); an
+            // unread state counts as not running. Already running (a re-run) passes at once.
+            WaitForField("ES_ENG12_RUNNING", "Engines 1 and 2 running", FbwA380StateEvaluator.Engines12RunningField,
+                v => v > 0.5, EngineStartTimeoutSeconds, onTimeout: FlowStepFailurePolicy.Stop),
             Done(Skip(SW("ES_ENG3", "Engine 3 master: START", "ENG_VALVE_SWITCH:3", 1),
                 s => s.IsOn("ENG_VALVE_SWITCH:3")), "ES_ENG3"),
             Done(Skip(SW("ES_ENG4", "Engine 4 master: START", "ENG_VALVE_SWITCH:4", 1),
                 s => s.IsOn("ENG_VALVE_SWITCH:4")), "ES_ENG4"),
-            Wait("ES_STBY2", "Standby", 60),
+            WaitForField("ES_ENG34_RUNNING", "Engines 3 and 4 running", FbwA380StateEvaluator.Engines34RunningField,
+                v => v > 0.5, EngineStartTimeoutSeconds, onTimeout: FlowStepFailurePolicy.Stop),
         }
     };
 
@@ -723,6 +730,10 @@ public static class FbwA380FlowDefinitions
     // the Before Start and Parking pump steps cannot switch a different set from the one those lines read.
     private static (string EventName, int? TargetValue)[] FuelPumpWrites(int target) =>
         FbwA380ChecklistDefinitions.FuelPumps.Select(pump => (EventName: pump, TargetValue: (int?)target)).ToArray();
+
+    /// <summary>How long the Engine Start flow waits for a pair of engines to run: 120 s, the
+    /// A32NX's per-engine start wait (ES_ENG1_N2); a pair starts together.</summary>
+    internal const int EngineStartTimeoutSeconds = 120;
 
     private static Step Wait(string id, string label, int seconds) => new()
     {

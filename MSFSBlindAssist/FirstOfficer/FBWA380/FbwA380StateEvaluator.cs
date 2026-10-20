@@ -41,6 +41,21 @@ public sealed class FbwA380StateEvaluator : LVarStateEvaluator
     /// on, starting or shutting down (0), NaN while unread. FO_ENGINES_OFF reads the masters instead.</summary>
     internal const string EnginesStoppedField = "FO_ENGINES_STOPPED";
 
+    /// <summary>Synthetic: engines 1 AND 2 running — FlyByWire's engine state reads On (1) on both,
+    /// i.e. each start has finished, not just begun (2 = Starting); 0 when either reads anything
+    /// else, NaN while either is unread. The Engine Start flow waits on it before engines 3 and 4
+    /// (the same FBW state as the A32NX's FO_ENG1_RUNNING, A32NX_ENGINE_STATE:n, in both builds).</summary>
+    internal const string Engines12RunningField = "FO_ENGINES_1_2_RUNNING";
+
+    /// <summary>Synthetic: engines 3 AND 4 running, as <see cref="Engines12RunningField"/>.</summary>
+    internal const string Engines34RunningField = "FO_ENGINES_3_4_RUNNING";
+
+    /// <summary>1 when both engine states read On (1), 0 when either reads anything else, NaN when
+    /// either is unread.</summary>
+    internal static double PairRunning(double stateA, double stateB) =>
+        double.IsNaN(stateA) || double.IsNaN(stateB) ? double.NaN
+            : Math.Abs(stateA - 1) < 0.5 && Math.Abs(stateB - 1) < 0.5 ? 1.0 : 0.0;
+
     private static readonly string[] PollFields =
     {
         "A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO",
@@ -246,6 +261,12 @@ public sealed class FbwA380StateEvaluator : LVarStateEvaluator
                     : Array.Exists(sources, double.IsNaN) ? double.NaN : 0.0;
                 return true;
             }
+            case Engines12RunningField:
+                value = PairRunning(GetValue("A32NX_ENGINE_STATE:1"), GetValue("A32NX_ENGINE_STATE:2"));
+                return true;
+            case Engines34RunningField:
+                value = PairRunning(GetValue("A32NX_ENGINE_STATE:3"), GetValue("A32NX_ENGINE_STATE:4"));
+                return true;
             // 0 Off / 1 On / 2 Starting / 3 Shutting down: stopped only when all four read Off.
             case EnginesStoppedField:
             {

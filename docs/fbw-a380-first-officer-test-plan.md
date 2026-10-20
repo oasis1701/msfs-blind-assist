@@ -75,11 +75,13 @@ own narration.
    **ground power 1-4 OFF**, **fuel pumps ON** (all 20: the 8 feed pumps, tanks 1-4 MAIN + STBY,
    and the 12 transfer pumps), beacon lights ON, parking brake confirmed ON.
 3. **Engine Start**: APU bleed ON, engine mode selector → IGN, **engine 1 master → START**,
-   **engine 2 master → START**, a **60-second standby wait**, **engine 3 master → START**,
-   **engine 4 master → START**, a second **60-second standby wait**. Confirm all four engines
-   actually spool (cross-check via the Engines display or EWD) — this aircraft has no N2-gated
-   wait like the Fenix/PMDG 737; the waits are fixed dwell periods, so the FO does not block on
-   engine state.
+   **engine 2 master → START**, then a wait until **engines 1 and 2 both run** (FlyByWire's engine
+   state On; *"Waiting for: Engines 1 and 2 running"* with flow progress spoken), **engine 3 master →
+   START**, **engine 4 master → START**, and the same wait for engines 3 and 4. Confirm engines 3 and 4
+   are NOT started while 1 or 2 is still starting, and that each wait ends as soon as its pair is
+   stable. Then fail a start (for example, close the APU bleed before the flow): within 120 s the flow
+   must say *"Engine Start flow stopped. Unable to complete: Engines 1 and 2 running"* and leave
+   engines 3 and 4 alone.
 4. **After Start**: engine mode → NORM, APU OFF, APU bleed OFF, **nose light selector →
    TAXI** (the nose light is now the faithful 3-position T.O./Taxi/Off combo `NOSE_LIGHT`,
    PR #139 — confirm the selector reads "Taxi" and the nose taxi beam `LIGHT TAXI:1` comes on),
@@ -390,10 +392,10 @@ switches. This is legitimate state feedback, not a double-announce bug.
   setting itself is never automated** (Captain item); the manager only handles climbout retraction,
   approach extension (gear-gated to FULL / capped at 3 for CONF 3), the Airbus-SOP go-around
   one-step retraction, and VFE-next overspeed protection. See Part D checks 4–13.
-- **No engine-N2 gating in Engine Start** — unlike the Fenix and PMDG 737 First Officers (which
-  wait for N2 to cross a running threshold before proceeding), the A380 Engine Start flow uses
-  fixed 60-second dwell periods between engine pairs. Cross-check actual engine spool via the
-  Engines display or EWD rather than relying on the FO to detect a stall/hung start.
+- **Engine Start waits on engine state, per pair** — each pair must read FlyByWire's engine state
+  On (1) on both engines before the next pair is started (120 s, then the flow stops aloud), like
+  the A32NX's per-engine wait. It does not watch EGT or N3 for a hung start beyond that: a start
+  that never reaches On is caught only by the timeout.
 - **Spoiler arm/disarm writes a write-only Act key (`A380X_MSFSBA_SPOILERS_ARM`), but every
   state read (flow Skip conditions and checklist auto-detect) uses the real
   `A32NX_SPOILERS_ARMED` var** — never expect the Act key itself to reflect state; if a
