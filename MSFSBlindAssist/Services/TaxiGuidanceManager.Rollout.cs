@@ -707,6 +707,10 @@ public partial class TaxiGuidanceManager
                 $"acft.lat={lat:F6} acft.lon={lon:F6} hdg={headingTrue:F2} gs={groundSpeedKts:F1}");
         }
 
+        // Before the countdown branch: a LAHSO still stands after the last usable exit is missed,
+        // which is exactly when the rollout falls into the runway-end countdown (PR #324 review).
+        UpdateLahsoCountdown(lat, lon);
+
         if (_rolloutNoExitMode)
         {
             UpdateRunwayEndCountdown(lat, lon, headingTrue, groundSpeedKts);
@@ -1713,38 +1717,6 @@ public partial class TaxiGuidanceManager
                     RetargetLandingExit(earlierExit, lat, lon, headingTrue, Navigation.RetargetReason.Earlier);
                     return;
                 }
-            }
-        }
-
-        // LAHSO hold-point countdown (P5). Independent of exit guidance — the
-        // hold constraint stands whether or not the exit is made. Distances are
-        // ALONG-TRACK to the estimated hold point (the along-track invariant all
-        // rollout distance gates follow). One callout per frame via else-if.
-        if (_lahsoHold != null && !_lahsoPassedAnnounced)
-        {
-            double lahsoAheadFt = -SignedAlongRunwayMeters(
-                lat, lon, _lahsoHold.Latitude, _lahsoHold.Longitude, _rolloutRunwayHeadingTrue)
-                * METERS_TO_FEET;
-            string lahsoRwy = _lahsoHold.CrossingRunwayId;
-            if (lahsoAheadFt <= 0)
-            {
-                AnnounceInstruction($"Warning: past the LAHSO hold point for runway {lahsoRwy}.");
-                _lahsoPassedAnnounced = true;
-            }
-            else if (lahsoAheadFt < 500 && !_lahsoStopAnnounced)
-            {
-                AnnounceInstruction($"LAHSO hold point in {DistanceFormatter.FromFeet(lahsoAheadFt)}. Stop before runway {lahsoRwy}.");
-                _lahsoStopAnnounced = _lahso500Announced = _lahso1500Announced = true;
-            }
-            else if (lahsoAheadFt < 1000 && !_lahso500Announced)
-            {
-                AnnounceInstruction($"LAHSO hold point in {DistanceFormatter.FromFeet(lahsoAheadFt)}. Slow down.");
-                _lahso500Announced = _lahso1500Announced = true;
-            }
-            else if (lahsoAheadFt < 2000 && !_lahso1500Announced)
-            {
-                AnnounceInstruction($"LAHSO hold point, runway {lahsoRwy}, in {DistanceFormatter.FromFeet(lahsoAheadFt)}.");
-                _lahso1500Announced = true;
             }
         }
 
@@ -2876,6 +2848,42 @@ public partial class TaxiGuidanceManager
     /// notice for a mid-runway stop. On exit, _route stays null so the Taxiing branch's
     /// off-route recalc has nothing to chase.
     /// </summary>
+    /// <summary>
+    /// LAHSO hold-point countdown (P5). Independent of exit guidance — the hold constraint stands
+    /// whether or not the exit is made, and in the runway-end countdown too, so it runs before
+    /// <c>UpdateLandingRollout</c>'s countdown branch. Distances are ALONG-TRACK to the estimated hold
+    /// point (the along-track invariant all rollout distance gates follow). One callout per frame via
+    /// else-if.
+    /// </summary>
+    private void UpdateLahsoCountdown(double lat, double lon)
+    {
+        if (_lahsoHold == null || _lahsoPassedAnnounced) return;
+        double lahsoAheadFt = -SignedAlongRunwayMeters(
+            lat, lon, _lahsoHold.Latitude, _lahsoHold.Longitude, _rolloutRunwayHeadingTrue)
+            * METERS_TO_FEET;
+        string lahsoRwy = _lahsoHold.CrossingRunwayId;
+        if (lahsoAheadFt <= 0)
+        {
+            AnnounceInstruction($"Warning: past the LAHSO hold point for runway {lahsoRwy}.");
+            _lahsoPassedAnnounced = true;
+        }
+        else if (lahsoAheadFt < 500 && !_lahsoStopAnnounced)
+        {
+            AnnounceInstruction($"LAHSO hold point in {DistanceFormatter.FromFeet(lahsoAheadFt)}. Stop before runway {lahsoRwy}.");
+            _lahsoStopAnnounced = _lahso500Announced = _lahso1500Announced = true;
+        }
+        else if (lahsoAheadFt < 1000 && !_lahso500Announced)
+        {
+            AnnounceInstruction($"LAHSO hold point in {DistanceFormatter.FromFeet(lahsoAheadFt)}. Slow down.");
+            _lahso500Announced = _lahso1500Announced = true;
+        }
+        else if (lahsoAheadFt < 2000 && !_lahso1500Announced)
+        {
+            AnnounceInstruction($"LAHSO hold point, runway {lahsoRwy}, in {DistanceFormatter.FromFeet(lahsoAheadFt)}.");
+            _lahso1500Announced = true;
+        }
+    }
+
     private void UpdateRunwayEndCountdown(double lat, double lon, double headingTrue, double groundSpeedKts)
     {
         if (_rolloutRunway == null)
@@ -3030,6 +3038,18 @@ public partial class TaxiGuidanceManager
                 !RunwayDesignatorsMatch(_rolloutRunway.RunwayID, runwayId))
                 return false;
 
+            string keptName = string.IsNullOrEmpty(_rolloutExit.TaxiwayName)
+                ? "the planned exit" : $"taxiway {_rolloutExit.TaxiwayName}";
+            string pickedName = string.IsNullOrEmpty(exit.TaxiwayName) ? "That exit" : $"Taxiway {exit.TaxiwayName}";
+
+            // The reciprocal end's list measures every exit from the other threshold (distance, side,
+            // type), so its pick cannot steer this rollout; say so and keep the target (PR #324 review).
+            if (!IsSameRunwayEnd(_rolloutRunway.RunwayID, runwayId))
+            {
+                SpeakNow($"That exit list is for runway {runwayId}. Rolling out on runway {_rolloutRunway.RunwayID}. Keeping {keptName}.");
+                return true;
+            }
+
             // An exit already behind the aircraft cannot be taken — say so and
             // keep the current target (same signed-along rule as the scans). The
             // pick is rejected whole: its LAHSO was validated against the rejected
@@ -3038,15 +3058,26 @@ public partial class TaxiGuidanceManager
                 _lastLat, _lastLon, exit.Latitude, exit.Longitude, _rolloutRunwayHeadingTrue);
             if (signedAlongM >= 0.0)
             {
-                string keptName = string.IsNullOrEmpty(_rolloutExit.TaxiwayName)
-                    ? "the planned exit" : $"taxiway {_rolloutExit.TaxiwayName}";
                 SpeakNow(
                     $"Exit {(string.IsNullOrEmpty(exit.TaxiwayName) ? "" : exit.TaxiwayName + " ")}is behind you. Keeping {keptName}.");
                 return true; // handled: spoken, no next-landing plan wanted
             }
 
+            // The pick must stop short of the LAHSO that will be in force: the one it brings, else
+            // the one already active. The planner window opens with LAHSO unticked, so its own check
+            // never sees an active hold, and guidance would lead through the hold point while the
+            // countdown says "Stop before runway X" (PR #324 review). Same margin as the downfield
+            // retarget's ExitsBeforeLahsoHold.
+            bool adoptsLahso = RepickAdoptsLahso(_lahsoHold, lahso, _rolloutRunway.RunwayID, runwayId);
+            var holdInForce = adoptsLahso ? lahso : _lahsoHold;
+            if (holdInForce != null && !ExitStopsShortOfLahso(exit, holdInForce))
+            {
+                SpeakNow($"{pickedName} is past the LAHSO hold point for runway {holdInForce.CrossingRunwayId}. Keeping {keptName}.");
+                return true;
+            }
+
             string lahsoNote = "";
-            if (RepickAdoptsLahso(_lahsoHold, lahso, _rolloutRunway.RunwayID, runwayId))
+            if (adoptsLahso)
             {
                 _lahsoHold = lahso;
                 _lahso1500Announced = _lahso500Announced = _lahsoStopAnnounced = _lahsoPassedAnnounced = false;
@@ -3079,10 +3110,21 @@ public partial class TaxiGuidanceManager
     internal static bool RepickAdoptsLahso(Navigation.LahsoHold? active, Navigation.LahsoHold? picked,
         string rolloutRunwayId, string pickRunwayId)
         => picked != null
-           && string.Equals(Navigation.RouteRunwayCrossings.NormalizeDesignator(rolloutRunwayId.Trim()),
-                            Navigation.RouteRunwayCrossings.NormalizeDesignator(pickRunwayId.Trim()),
-                            StringComparison.OrdinalIgnoreCase)
+           && IsSameRunwayEnd(rolloutRunwayId, pickRunwayId)
            && !SameLahsoHold(active, picked);
+
+    /// <summary>The same runway END (never its reciprocal): exits and LAHSO holds are measured from one threshold.</summary>
+    internal static bool IsSameRunwayEnd(string a, string b)
+        => string.Equals(Navigation.RouteRunwayCrossings.NormalizeDesignator(a.Trim()),
+                         Navigation.RouteRunwayCrossings.NormalizeDesignator(b.Trim()),
+                         StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// An exit the aircraft can take while honouring the LAHSO: at least 100 ft short of its hold point,
+    /// the margin <see cref="ExitsBeforeLahsoHold"/> filters the downfield retarget with.
+    /// </summary>
+    internal static bool ExitStopsShortOfLahso(Navigation.LandingExit exit, Navigation.LahsoHold hold)
+        => exit.DistanceFromThresholdFeet <= hold.StopFromThresholdFeet - 100.0;
 
     /// <summary>The same LAHSO constraint: both none, or the same crossing runway and hold point.</summary>
     internal static bool SameLahsoHold(Navigation.LahsoHold? a, Navigation.LahsoHold? b)
@@ -3357,7 +3399,7 @@ public partial class TaxiGuidanceManager
     private List<Navigation.LandingExit> ExitsBeforeLahsoHold()
         => _lahsoHold == null
             ? _rolloutAllExits
-            : _rolloutAllExits.Where(e => e.DistanceFromThresholdFeet <= _lahsoHold.StopFromThresholdFeet - 100.0).ToList();
+            : _rolloutAllExits.Where(e => ExitStopsShortOfLahso(e, _lahsoHold)).ToList();
 
     /// <summary>
     /// The overshoot verdict with no way off ahead: "Missed last exit on runway X.", then the runway-end

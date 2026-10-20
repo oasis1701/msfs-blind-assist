@@ -55,6 +55,24 @@ public class RolloutLahsoRepickTests
     public void The_same_hold_again_is_not_re_adopted_so_its_countdown_keeps_its_place()
         => Assert.False(TaxiGuidanceManager.RepickAdoptsLahso(Hold("27", 5200), Hold("27", 5200), "34", "34"));
 
+    [Theory]
+    [InlineData(4000.0, true)]   // 1,200 ft short of the hold point
+    [InlineData(5100.0, true)]   // exactly the 100 ft margin
+    [InlineData(5150.0, false)]  // inside the margin
+    [InlineData(6000.0, false)]  // beyond the hold point
+    public void An_exit_is_takeable_under_a_LAHSO_only_100_ft_or_more_short_of_its_hold_point(
+        double exitFromThresholdFt, bool takeable)
+        => Assert.Equal(takeable, TaxiGuidanceManager.ExitStopsShortOfLahso(
+            new LandingExit { DistanceFromThresholdFeet = exitFromThresholdFt }, Hold("27", 5200)));
+
+    [Theory]
+    [InlineData("27", "27", true)]
+    [InlineData("27L", "27l", true)]
+    [InlineData("27", "09", false)]   // the reciprocal: its exits are measured from the other threshold
+    [InlineData("27L", "27R", false)]
+    public void A_re_pick_steers_the_rollout_only_from_the_same_runway_end(string rollout, string pick, bool same)
+        => Assert.Equal(same, TaxiGuidanceManager.IsSameRunwayEnd(rollout, pick));
+
     [Fact]
     public void A_hold_computed_for_the_reciprocal_end_is_never_adopted()
         // Measured from the other threshold, it sits past the protected runway as seen from this end.
