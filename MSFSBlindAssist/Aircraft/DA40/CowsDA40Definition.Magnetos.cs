@@ -206,9 +206,17 @@ public partial class CowsDA40Definition
     private ScreenReaderAnnouncer? _magAnnouncer;
 
     /// <summary>
-    /// Watches the key and the tachometer. Returns FALSE always: the key's own change is the
-    /// generic announcer's to speak ("Right", "Left", "Both"), and the drop is an extra
-    /// call-out on top of it, made from the settle timer.
+    /// Watches the key and the tachometer. The key's own change is the generic announcer's to
+    /// speak ("Right", "Left", "Both"), and the drop is an extra call-out on top of it, made from
+    /// the settle timer, so this returns FALSE, with one exception: the crank's own movement.
+    ///
+    /// ⚠️ WHILE <c>STARTER_SPAD:1</c> CRANKS, THE KEY BOUNCES START → BOTH → START EVERY SECOND
+    /// (the template's one-second spring-back, then the crank sets START again). Measured live on
+    /// the XLS at VCBI (2026-10-20): 4, 3, 4, 3 at one-second steps for the five-second crank, and
+    /// each one reached the generic announcer, so a crank spoke "Ignition Key: Start. Both. Start.
+    /// Both." A sighted pilot sees a key held in START; the crank speaks for itself ("Cranking",
+    /// "Starter released"). So a move INTO Start, and Start back to Both, returns TRUE: handled,
+    /// silent. Every other position still speaks.
     /// </summary>
     private bool NoteMagnetoChange(string varKey, double value, ScreenReaderAnnouncer announcer)
     {
@@ -227,6 +235,9 @@ public partial class CowsDA40Definition
 
         // A first reading is not a change.
         if (previous < 0) return false;
+
+        bool crankMovement = position == DA40MagnetoCheck.PositionStart
+            || (previous == DA40MagnetoCheck.PositionStart && position == DA40MagnetoCheck.PositionBoth);
 
         if (DA40MagnetoCheck.IsSingleMagneto(position))
         {
@@ -258,7 +269,7 @@ public partial class CowsDA40Definition
             _magDropRight = null;
         }
 
-        return false;
+        return crankMovement;
     }
 
     private void RestartMagnetoSettle()
