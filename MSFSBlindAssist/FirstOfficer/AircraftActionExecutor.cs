@@ -631,7 +631,9 @@ public class AircraftActionExecutor : IFoActionExecutor
         ok &= ExecuteSingle("EVT_OH_LIGHTS_R_TURNOFF", position, false, false);
         return ok;
     }
-    public bool SetMasterLights(int position)   => ExecuteSingle("EVT_OH_LIGHTS_IND_LTS_SWITCH", position, false, false);
+    // MASTER BRIGHTNESS switch (LTS_MasterBright_Sw_ON), a push button: the same CDA write as the
+    // panel's Master Bright Switch. Callers press it only over a switch read as off.
+    public bool SetMasterBrightness(int position) => ExecuteSingle("EVT_OH_MASTER_BRIGHT_PUSH", position, false, false);
 
     // Signs
     public bool SetSeatBelts(int position)      => ExecuteSingle("EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", position, false, false);

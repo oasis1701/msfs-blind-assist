@@ -185,7 +185,7 @@ then each aircraft had its own item).
 ### D2. 737 engine-driven hydraulic pumps (functional-hole fix)
 The 737 FO now manages the engine-driven hyd pumps (previously never set; the 777 already did). PMDG cold-dark starts the EDP switches OFF.
 - Cold-dark → run **Before Start** → the new **"Engine hydraulic pumps: ON"** flow step fires; confirm `HYD_PumpSw_eng_0` / `HYD_PumpSw_eng_1` read ON (via sim tools), and the new Before Start checklist item **"Engine hydraulic pumps: ON"** auto-ticks (alongside the existing electric-pump item).
-- Run **Shutdown** → the new **"Engine hydraulic pumps: OFF"** flow step fires; confirm both read OFF. (No checklist line for the OFF — shutdown keeps the generic "Hydraulic panel: set" reminder.)
+- Run **Shutdown** → **"Engine hydraulic pumps: ON"** then **"Electric hydraulic pumps: OFF"**, as PMDG's Shutdown Procedure sets the panel (`B738_Checklist.xml` 19.14-19.15; changed 2026-10-19 from an OFF write, owner); confirm the engine pumps still read ON and the electric pumps OFF.
 
 ### D3. 777 primary hydraulic pump readback
 The Before Start flow already turns the primary pumps ON; the checklist now verifies them.
@@ -212,8 +212,8 @@ These were changed from 2→1 based on the panel's `{0=Off,1=On}` map, but flagg
 ### E5. 737 battery ON (byte 1, was phantom byte 2)
 Cold-dark → run **Electrical Power Up** → confirm the battery turns ON (`ELEC_BatSelector` = **1**) and the **"Battery: ON"** checklist item auto-ticks. (Previously it commanded byte 2 — a non-existent detent — and never detected ON.)
 
-### E6. 737 Lower DU label — **deferred, needs in-sim name check**
-The flow step `BT_LOWERDU` sends value **1**, which the panel labels **"NORM"**, but the FO announces it as **"SYS"**. Left unchanged (the middle-detent name is itself marked "verify in sim" in the panel def). Tell me the real middle-position name on the 737 lower DU selector and I'll align the label (cosmetic — spoken label only, no functional effect).
+### E6. 737 Lower DU label — **resolved 2026-10-19**
+The flow step `BT_LOWERDU` sends value **1** to the lower display unit SELECTOR (ENG PRI / NORM / ND, the SDK's `MAIN_LowerDUSel` order), but the FO announced it as **"SYS"**, a page selected by a different button. Both the step and the line now read **"Lower display unit selector: NORM"**, PMDG's Preflight position for the selector (`B738_Checklist.xml` 5.20); the write is unchanged.
 
 ---
 

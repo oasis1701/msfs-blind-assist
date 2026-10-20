@@ -160,6 +160,12 @@ public static class PMDG777ChecklistDefinitions
                 "ELEC_BackupGen_Sw_ON_0", v => v > 0.5,
                 new[] { "ELEC_BackupGen_Sw_ON_1" },
                 (e, _) => e.SetBackupGenerators(1)),
+            // PMDG's Preflight Procedure: "EMERGENCY LIGHTS switch: Guard closed". ARMED (1) is the
+            // guard-closed position; OFF and ON both sit outside the guard, and an unread selector
+            // (NaN) is neither. The tick runs the same guarded sequence as the flow's CP_EMER_LIGHTS.
+            Auto("PF_EMER_LIGHTS", "PREFLIGHT", "Emergency Lights switch: ARMED",
+                "LTS_EmerLightsSelector", v => Math.Abs(v - EmerExitLightSequence.Armed) < 0.1,
+                action: (e, _) => e.SetEmerExitLights(EmerExitLightSequence.Armed)),
             // Oxygen test: ONE ITEM PER SIDE, so each mask can be tested on its own (user
             // ruling 2026-08-16). Each tick fires only its own side's quick TEST press, and
             // the flow's matching step ticks the matching item. The single "Oxygen: Tested
@@ -207,9 +213,13 @@ public static class PMDG777ChecklistDefinitions
             Auto("PF_NO_SMOKING", "PREFLIGHT", "No Smoking selector: ON",
                 "SIGNS_NoSmokingSelector", v => v > 1.5,
                 action: (e, _) => e.SetNoSmoking(2)),
-            // No indicator-lights-master state field — action-only.
-            ActionManual("PF_MASTER_LIGHTS", "PREFLIGHT", "Indicator Lights master: ON",
-                (e, _) => e.SetMasterLights(1)),
+            // PMDG's Preflight Procedure: "MASTER BRIGHTNESS switch: ON". This line read "Indicator
+            // Lights master: ON" and moved the INDICATOR LIGHTS switch (TEST/BRT/DIM, PMDG's "As
+            // needed") to BRT instead; nothing set or read the master switch (owner, 2026-10-19).
+            // A push button: a tick presses it only over a switch READ as off.
+            Auto("PF_MASTER_BRIGHT", "PREFLIGHT", "Master Brightness switch: ON",
+                "LTS_MasterBright_Sw_ON", v => v > 0.5,
+                action: (e, s) => { if (s.IsOff("LTS_MasterBright_Sw_ON")) e.SetMasterBrightness(1); }),
             Auto("PF_CARGO_FIRE", "PREFLIGHT", "Cargo Fire ARM switches: OFF",
                 "FIRE_CargoFire_Sw_Arm_0", v => v < 0.5,
                 new[] { "FIRE_CargoFire_Sw_Arm_1" },
@@ -801,10 +811,8 @@ public static class PMDG777ChecklistDefinitions
             Auto("SD_SEAT_BELTS_OFF", "SHUTDOWN", "Fasten Belts switch: OFF",
                 "SIGNS_SeatBeltsSelector", v => v < 0.5,
                 action: (e, _) => e.SetSeatBelts(0)),
-            Auto("SD_ENG_PUMPS_OFF", "SHUTDOWN", "Engine primary pump switches: OFF",
-                "HYD_PrimaryEngPump_Sw_ON_0", v => v < 0.5,
-                new[] { "HYD_PrimaryEngPump_Sw_ON_1" },
-                (e, _) => e.SetEngPumps(0)),
+            // No engine primary pump line: PMDG's Shutdown Procedure leaves them ON (see the flow's
+            // SD_ELEC_PUMPS note; removed 2026-10-19, owner).
             Auto("SD_ELEC_PUMPS_OFF", "SHUTDOWN", "Electric primary pump switches: OFF",
                 "HYD_PrimaryElecPump_Sw_ON_0", v => v < 0.5,
                 new[] { "HYD_PrimaryElecPump_Sw_ON_1" },

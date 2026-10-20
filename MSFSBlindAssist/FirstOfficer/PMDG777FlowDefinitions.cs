@@ -116,14 +116,8 @@ public static class PMDG777FlowDefinitions
                "EPU_ADIRU"),
                 s => s.IsADIRUOn()),
             Wait("EPU_WAIT_ADIRU", "ADIRU aligning — 30 seconds", 30),
-            // ARMED is the guard-CLOSED position, so "guard closed" IS "lights armed" —
-            // reaching it means moving the switch to ARMED and letting the guard shut over
-            // it, which is what the pseudo-key sequence does. (This step used to write the
-            // guard event directly with 1, which OPENS the guard, under a label saying
-            // "closed", and left it standing open over ARMED.)
-            Skip(SW("EPU_EMER_EXIT_LIGHTS", "Emer exit lights: ARMED", "EMER_EXIT_LIGHTS",
-                    EmerExitLightSequence.Armed),
-                s => s.EmerLightsSelector() == EmerExitLightSequence.Armed),
+            // The emergency lights are armed in Cockpit Prep (CP_EMER_LIGHTS), where PMDG's
+            // Preflight Procedure lists them; its Electrical Power Up page does not.
             Skip(SW("EPU_THRUST_ASYM", "Thrust asym comp: AUTO",    "EVT_OH_THRUST_ASYM_COMP",            1,
                checklistItemId: "EPU_THRUST_ASYM"),
                 s => s.IsThrustAsymCompAuto()),
@@ -175,6 +169,18 @@ public static class PMDG777FlowDefinitions
                 s => s.IsGen1On() && s.IsGen2On()),
             Multi("CP_BACKUP_GENS","Backup generators: ON", "PF_BACKUP_GENS",
                 ("EVT_OH_ELEC_BACKUP_GEN1_SWITCH", 1), ("EVT_OH_ELEC_BACKUP_GEN2_SWITCH", 1)),
+            // PMDG's Preflight Procedure: "EMERGENCY LIGHTS switch: Guard closed", after the backup
+            // generators (its APU and L wiper lines sit elsewhere here) and before the window heat.
+            // ARMED is the guard-CLOSED position, so "guard closed" IS "lights armed": the pseudo-key
+            // sequence moves the switch to ARMED and shuts the guard over it. PMDG's Secure Procedure
+            // turns the switch OFF, so every turnaround needs this. It was an Electrical Power Up
+            // step with no checklist line, so a flight started from a powered panel never re-armed
+            // it (owner report, 2026-10-19: the Boris Audio Works soundpack plays passenger chatter
+            // only with the switch ARMED or ON). Verified: a write that does not take is heard
+            // skipped and keeps PF_EMER_LIGHTS out of the latch.
+            Skip(SW("CP_EMER_LIGHTS", "Emergency lights: ARMED", "EMER_EXIT_LIGHTS", EmerExitLightSequence.Armed,
+                    "LTS_EmerLightsSelector", v => Math.Abs(v - EmerExitLightSequence.Armed) < 0.1, "PF_EMER_LIGHTS"),
+                s => s.EmerLightsSelector() == EmerExitLightSequence.Armed),
             // Crew oxygen tests — quick momentary press per side (transmit
             // press/release); the audible oxygen-flow sound is the verification.
             // Before the fire test so the flow sound never sits under the fire bell.
@@ -216,8 +222,12 @@ public static class PMDG777FlowDefinitions
                 s => s.AreSeatBeltsOff()),
             SW("CP_NO_SMOKING",   "No smoking: ON",            "EVT_OH_NO_SMOKING_LIGHT_SWITCH",     2,
                checklistItemId: "PF_NO_SMOKING"),
-            SW("CP_LIGHTS_MASTER","Lights master: ON",         "EVT_OH_LIGHTS_IND_LTS_SWITCH",       1,
-               checklistItemId: "PF_MASTER_LIGHTS"),
+            // PMDG's "MASTER BRIGHTNESS switch: ON" (see PF_MASTER_BRIGHT). This step was "Lights
+            // master: ON" and moved the INDICATOR LIGHTS switch to BRT instead (owner, 2026-10-19).
+            // A push button: pressed only over a switch READ as off, and verified.
+            Toggle(SW("CP_MASTER_BRIGHT", "Master brightness: ON",  "EVT_OH_MASTER_BRIGHT_PUSH",          1,
+                    "LTS_MasterBright_Sw_ON", v => v > 0.5, "PF_MASTER_BRIGHT"),
+                s => s.IsOn("LTS_MasterBright_Sw_ON"), "LTS_MasterBright_Sw_ON"),
             SW("CP_CARGO_FIRE_FWD","Cargo fire arm fwd: OFF",  "EVT_OH_FIRE_CARGO_ARM_FWD",          0,
                checklistItemId: "PF_CARGO_FIRE"),
             SW("CP_CARGO_FIRE_AFT","Cargo fire arm aft: OFF",  "EVT_OH_FIRE_CARGO_ARM_AFT",          0,
@@ -872,8 +882,9 @@ public static class PMDG777FlowDefinitions
             // the flow after cutoff. Removed 2026-07-02, user request.)
             SW("SD_SEAT_BELTS",  "Seat belts: OFF",          "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", 0,
                "SIGNS_SeatBeltsSelector", v => v < 0.5, "SD_SEAT_BELTS_OFF"),
-            Multi("SD_ENG_PUMPS","Engine pumps: OFF", "SD_ENG_PUMPS_OFF",
-                ("EVT_OH_HYD_ENG1", 0), ("EVT_OH_HYD_ENG2", 0)),
+            // PMDG's Shutdown Procedure turns off only the electric and demand pumps: the engine
+            // primary pumps stay ON (owner, 2026-10-19: SD_ENG_PUMPS, which switched them OFF, was
+            // removed; both 737s leave theirs ON too). FOB-4 records it.
             Multi("SD_ELEC_PUMPS","Electric pumps: OFF", "SD_ELEC_PUMPS_OFF",
                 ("EVT_OH_HYD_ELEC1", 0), ("EVT_OH_HYD_ELEC2", 0)),
             Multi("SD_DEMAND",   "Demand pumps: OFF", "SD_DEMAND_OFF",

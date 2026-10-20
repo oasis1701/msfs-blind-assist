@@ -255,7 +255,9 @@ public static class PMDG737ChecklistDefinitions
             Auto("BT_TURNOFF", "BEFORE_TAXI", "Runway turnoff lights: ON", "LTS_RunwayTurnoffSw_0", v => v > 0.5,
                 new[] { "LTS_RunwayTurnoffSw_1" }, (e, _) => e.SetRunwayTurnoff(1)),
             Reminder("BT_FLAPS", "BEFORE_TAXI", "Set the takeoff flaps"),
-            ActionManual("BT_LOWERDU", "BEFORE_TAXI", "Lower display unit: SYS", (e, _) => e.SetLowerDUCapt(1)),
+            // The SELECTOR to NORM (ENG PRI 0 / NORM 1 / ND 2): it read "Lower display unit: SYS",
+            // a page this switch never selects (owner audit, 2026-10-19).
+            ActionManual("BT_LOWERDU", "BEFORE_TAXI", "Lower display unit selector: NORM", (e, _) => e.SetLowerDUCapt(1)),
             // Presses the six-pack: every active annunciator + master caution latch on and
             // are announced by the app's monitors; the captain resets with Master Caution.
             ActionManual("BT_RECALL", "BEFORE_TAXI", "Recall: checked", (e, _) => e.PressRecall()),
@@ -357,6 +359,10 @@ public static class PMDG737ChecklistDefinitions
         Id = "AFTER_LANDING", Name = "After Landing",
         Items = new()
         {
+            // PMDG's After Landing Procedure opens with "Speed Brake Lever: Down" (18.1). DOWN is
+            // anything short of ARM; an unread lever (NaN) is not down. A tick clicks the DOWN detent.
+            Auto("AL_SPDBRK", "AFTER_LANDING", "Speed brake lever: DOWN", SpeedbrakeLeverState.LeverField,
+                AircraftStateEvaluator.IsSpeedbrakeLeverDown, (e, _) => e.SetSpeedbrakeDown()),
             // OFF detection covers all four lights (same <0.5 condition works for the
             // 3-position retractables at RETRACT and the fixed bools at off). The ON
             // item (BTKO_LAND) detects on the retractables only — the fixed bools top
@@ -408,6 +414,8 @@ public static class PMDG737ChecklistDefinitions
                 s => !s.IsOn(AircraftStateEvaluator.OnGroundField) || !s.IsOn(GeneratorBusState.LoadOffEnginesField),
                 LeversStayText),
             Auto("SD_BELTS", "SHUTDOWN", "Seatbelt signs: OFF", "COMM_FastenBeltsSelector", v => v < 0.5, (e, _) => e.SetSeatBelts(0)),
+            // PMDG's Shutdown Procedure: "ANTI COLLISION light switch: OFF" (19.8).
+            Auto("SD_ANTICOL", "SHUTDOWN", "Anti-collision light: OFF", "LTS_AntiCollisionSw", v => v < 0.5, (e, _) => e.SetBeacon(0)),
             Auto("SD_TURNOFF", "SHUTDOWN", "Runway turnoff lights: OFF", "LTS_RunwayTurnoffSw_0", v => v < 0.5,
                 new[] { "LTS_RunwayTurnoffSw_1" }, (e, _) => e.SetRunwayTurnoff(0)),
             Auto("SD_TAXI", "SHUTDOWN", "Taxi light: OFF", "LTS_TaxiSw", v => v < 0.5, (e, _) => e.SetTaxiLights(0)),
@@ -419,12 +427,17 @@ public static class PMDG737ChecklistDefinitions
                 (e, _) => { e.SetWingFuelPumps(0); e.SetCenterFuelPumps(0); }),
             Auto("SD_EAI", "SHUTDOWN", "Engine anti-ice: OFF", "ICE_EngAntiIceSw_0", v => v < 0.5,
                 new[] { "ICE_EngAntiIceSw_1" }, (e, _) => e.SetEngAntiIce(0)),
+            // PMDG's Shutdown Procedure: ENGINE HYDRAULIC PUMPS ON (19.14), ELECTRIC OFF (19.15).
+            Auto("SD_HYDENG", "SHUTDOWN", "Engine hydraulic pumps: ON", "HYD_PumpSw_eng_0", v => v > 0.5,
+                new[] { "HYD_PumpSw_eng_1" }, (e, _) => e.SetEngHydPumps(1)),
             Auto("SD_HYDELEC", "SHUTDOWN", "Electric hydraulic pumps: OFF", "HYD_PumpSw_elec_0", v => v < 0.5,
                 new[] { "HYD_PumpSw_elec_1" }, (e, _) => e.SetElecHydPumps(0)),
-            Auto("SD_HYDENG", "SHUTDOWN", "Engine hydraulic pumps: OFF", "HYD_PumpSw_eng_0", v => v < 0.5,
-                new[] { "HYD_PumpSw_eng_1" }, (e, _) => e.SetEngHydPumps(0)),
             Auto("SD_WINHEAT", "SHUTDOWN", "Window heat: OFF", "ICE_WindowHeatSw_0", v => v < 0.5,
                 new[] { "ICE_WindowHeatSw_1", "ICE_WindowHeatSw_2", "ICE_WindowHeatSw_3" }, (e, _) => e.SetWindowHeat(0)),
+            // PMDG's Shutdown Procedure: "FLIGHT DIRECTOR switches: OFF" (19.21). TOGGLES: the action
+            // presses only a side READ on (the same guard as Preflight's PF_FD and the flow's SD_FD1/2).
+            AutoAsync("SD_FD", "SHUTDOWN", "Flight directors: OFF", "MCP_FDSw_0", v => v < 0.5,
+                new[] { "MCP_FDSw_1" }, (e, s) => e.SetFlightDirectorsAsync(0, s)),
             Auto("SD_XPDR", "SHUTDOWN", "Transponder: ALT RPTG OFF", "XPDR_ModeSel", v => v < 1.5, (e, _) => e.SetTransponderMode(1)),
         }
     };
