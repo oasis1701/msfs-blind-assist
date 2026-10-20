@@ -108,11 +108,16 @@ public class Pmdg777PowerUpCheckTests
     public void Cockpit_prep_opens_with_a_read_only_check_that_delivers_the_five_lines()
     {
         var steps = PMDG777FlowDefinitions.Build().Single(f => f.Id == "COCKPIT_PREP").Steps;
-        // After the engines-stopped guard alone (2026-10-19), which links no line.
+        // After the engines-stopped guard (2026-10-19) and the on-ground guard (2026-10-20, FO-25),
+        // which link no line.
         Assert.Equal("CP_ENGINES_STOPPED", steps[0].Id);
-        Assert.Empty(steps[0].LinkedChecklistItemIds);
-        Assert.Equal(FlowStepFailurePolicy.Stop, steps[0].FailurePolicy);
-        var step = steps[1];
+        Assert.Equal("CP_ON_GROUND", steps[1].Id);
+        foreach (var guard in steps.Take(2))
+        {
+            Assert.Empty(guard.LinkedChecklistItemIds);
+            Assert.Equal(FlowStepFailurePolicy.Stop, guard.FailurePolicy);
+        }
+        var step = steps[2];
 
         Assert.Equal("CP_POWER_UP_CHECK", step.Id);
         Assert.Equal("Battery, ADIRU, demand pumps, nav lights and gear: checked", step.Label);

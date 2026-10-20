@@ -311,13 +311,14 @@ public static class PMDG777ChecklistDefinitions
             Auto("PF_AUTOBRAKE_RTO", "PREFLIGHT", "Autobrake selector: RTO",
                 "BRAKES_AutobrakeSelector", v => Math.Abs(v) < 0.1,
                 action: (e, _) => e.SetAutobrake(0)),
-            // A cold-and-dark check: the tick cuts the fuel only with both engines read stopped (the
-            // Cockpit Preparation flow's CP_ENGINES_STOPPED).
+            // A cold-and-dark check: the tick cuts the fuel only on the ground with both engines read
+            // stopped (the Cockpit Preparation flow's CP_ENGINES_STOPPED): airborne with both engines
+            // out, the switches must stay at RUN for a relight.
             LeaveAlone(Auto("PF_FUEL_CONTROL", "PREFLIGHT", "Fuel Control switches: CUTOFF",
                 "ENG_FuelControl_Sw_RUN_0", v => v < 0.5,
                 new[] { "ENG_FuelControl_Sw_RUN_1" },
                 (e, _) => e.SetFuelControlLevers(0)),
-                s => !PMDG777FlowDefinitions.EnginesStopped(s), FuelControlsStayText),
+                s => s.IsOnGround() != true || !PMDG777FlowDefinitions.EnginesStopped(s), PreflightFuelControlsStayText),
             Manual("PF_CDU_PREFLIGHT", "PREFLIGHT", "CDU Preflight: Complete"),
             Manual("PF_FMC_PERF", "PREFLIGHT", "Performance data: Entered in FMC"),
             Reminder("PF_RESET_CL", "PREFLIGHT", "Reset checklists and obtain IFR clearance"),
@@ -807,7 +808,7 @@ public static class PMDG777ChecklistDefinitions
                 "ENG_FuelControl_Sw_RUN_0", v => v < 0.5,
                 new[] { "ENG_FuelControl_Sw_RUN_1" },
                 (e, _) => e.SetFuelControlLevers(0)),
-                s => s.IsOnGround() != true, FuelControlsStayText),
+                s => s.IsOnGround() != true, ShutdownFuelControlsStayText),
             Auto("SD_SEAT_BELTS_OFF", "SHUTDOWN", "Fasten Belts switch: OFF",
                 "SIGNS_SeatBeltsSelector", v => v < 0.5,
                 action: (e, _) => e.SetSeatBelts(0)),
@@ -1053,8 +1054,13 @@ public static class PMDG777ChecklistDefinitions
 
     internal const string GearStaysText = "Gear lever left as it is: the aircraft is not read on the ground.";
 
-    internal const string FuelControlsStayText =
-        "Fuel control switches left at RUN: an engine is turning, or the aircraft is not read on the ground.";
+    // Each says exactly what its line checks: the Preflight cut both the ground and the engines,
+    // the Shutdown cut the ground alone (it is the cut that stops the engines).
+    internal const string PreflightFuelControlsStayText =
+        "Fuel control switches left at RUN: not read on the ground, or the engines are not read stopped.";
+
+    internal const string ShutdownFuelControlsStayText =
+        "Fuel control switches left at RUN: not read on the ground.";
 
     internal const string ExtPowerStaysText =
         "External power stays connected: the APU is not running with its generator on.";

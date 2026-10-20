@@ -139,6 +139,9 @@ public static class PMDG777FlowDefinitions
             // the wrong flow picked in flight), CP_FUEL_CTRL below cut both fuel controls and shut
             // the engines down. Stop instead (the MD-11's PU_ENGINES_STOPPED). Links no line.
             EnginesStoppedGuard("CP_ENGINES_STOPPED"),
+            // ...and never airborne (FO-25): with both engines out in flight, the fuel controls this
+            // flow cuts and the pumps it switches off are what a relight needs. Links no line.
+            OnGroundGuard("CP_ON_GROUND"),
             // Read-only, never writes: the five Preflight lines the Electrical Power Up flow set
             // (battery, ADIRU, demand pumps OFF, nav lights, gear lever DOWN) had no step here, so
             // a finished run latched them over whatever the switches read (FO-7). One check on
