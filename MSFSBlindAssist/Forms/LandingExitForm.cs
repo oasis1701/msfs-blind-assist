@@ -575,6 +575,12 @@ public class LandingExitForm : Form
         // crosses this landing runway's pavement. Both directions of a crossing
         // strip are listed (ATC names either designator). No crossings → the
         // whole LAHSO block is disabled for this runway.
+        //
+        // The pilot's crossing-runway pick survives a rebuild that still lists it (the online name
+        // refresh, same runway). When it is gone (a different landing runway), LAHSO is UNTICKED rather
+        // than left ticked on item 0, a runway the pilot never chose and never heard selected; Plan would
+        // otherwise arm it or refuse the exit against it (PR #324 review).
+        string? pickedLahso = (cmbLahsoRunway.SelectedItem as LahsoChoice)?.Hold.CrossingRunwayId;
         cmbLahsoRunway.Items.Clear();
         foreach (var other in _runways)
         {
@@ -584,7 +590,10 @@ public class LandingExitForm : Form
         }
         if (cmbLahsoRunway.Items.Count > 0)
         {
-            cmbLahsoRunway.SelectedIndex = 0;
+            int keep = pickedLahso == null ? -1 : cmbLahsoRunway.Items.Cast<LahsoChoice>().ToList()
+                .FindIndex(c => string.Equals(c.Hold.CrossingRunwayId, pickedLahso, StringComparison.OrdinalIgnoreCase));
+            if (keep < 0) chkLahso.Checked = false;
+            cmbLahsoRunway.SelectedIndex = Math.Max(0, keep);
             chkLahso.Enabled = true;
         }
         else

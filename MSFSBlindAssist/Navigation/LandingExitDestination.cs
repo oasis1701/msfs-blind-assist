@@ -16,6 +16,14 @@ namespace MSFSBlindAssist.Navigation;
 public static class LandingExitDestination
 {
     /// <summary>
+    /// Largest along-track gap between consecutive same-named exit junctions that
+    /// still reads as one continuous rapid-exit arc. Real multi-segment RET nodes
+    /// sit tens-to-hundreds of feet apart; the known same-named-but-separate pairs
+    /// are 946 ft (EGLL 09R S5W U-link) and ≥ 1,400 ft (KBNA gap-fill re-admissions).
+    /// </summary>
+    private const double RET_CONTINUATION_MAX_STEP_FT = 500.0;
+
+    /// <summary>
     /// The destination the route should terminate at, BEFORE the vacate walk.
     ///
     /// Priority:
@@ -27,14 +35,6 @@ public static class LandingExitDestination
     /// None of these guarantees the aircraft ends up off the runway; that is
     /// <see cref="RunwayVacateResolver.ExtendClearOfRunway"/>'s job, applied after.
     /// </summary>
-    /// <summary>
-    /// Largest along-track gap between consecutive same-named exit junctions that
-    /// still reads as one continuous rapid-exit arc. Real multi-segment RET nodes
-    /// sit tens-to-hundreds of feet apart; the known same-named-but-separate pairs
-    /// are 946 ft (EGLL 09R S5W U-link) and ≥ 1,400 ft (KBNA gap-fill re-admissions).
-    /// </summary>
-    private const double RET_CONTINUATION_MAX_STEP_FT = 500.0;
-
     public static int Pick(TaxiGraph? graph, LandingExit exit,
                            IReadOnlyList<LandingExit> allExits, out string source)
     {

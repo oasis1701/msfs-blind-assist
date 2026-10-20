@@ -144,7 +144,7 @@ public class LandingExitPlanner
         // returns false when it isn't in LandingRollout or the runway differs,
         // and the normal arming below then runs unchanged.
         if (!currentlyAirborne &&
-            _guidanceManager.TryRetargetActiveRolloutExit(exit, runway.RunwayID))
+            _guidanceManager.TryRetargetActiveRolloutExit(exit, runway.RunwayID, lahso))
         {
             DiagLog($"SetExit routed to active rollout: exit='{exit.TaxiwayName}' runway={runway.RunwayID}");
             return;

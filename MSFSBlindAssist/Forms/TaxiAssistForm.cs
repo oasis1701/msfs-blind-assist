@@ -304,12 +304,6 @@ public class TaxiAssistForm : Form
     /// </summary>
     private string _graphSourceToken = "";
     private double _aircraftLat, _aircraftLon, _aircraftHeading;
-    // Magnetic variation (east positive) matching _aircraftHeading, which is MAGNETIC.
-    // AircraftHeadingTrue() applies it, and every LoadRoute call passes that TRUE heading —
-    // so never also pass aircraftHeadingMagVar, or the route-start turn cue is rotated by
-    // the variation twice and can contradict the tone near a U-turn. Left at 0 until a
-    // position sample supplies one, which is the same no-conversion behaviour as before.
-    private double _aircraftMagVar;
     // Per-ICAO memo of GetRunways for the intersection picker, which re-lists on
     // every checkbox toggle / runway change. GetRunways opens a fresh SQLite
     // connection per call, so caching the (session-stable) runway set for the
@@ -500,6 +494,9 @@ public class TaxiAssistForm : Form
     /// LoadRoute call sites, which already pass true. Falls back to the raw
     /// magnetic value when no variation sample exists yet — the pre-fix behavior.
     /// </summary>
+    // _aircraftHeading is MAGNETIC; this is the TRUE heading every LoadRoute call is given. Never
+    // also pass aircraftHeadingMagVar to LoadRoute: the route-start turn cue would be rotated by the
+    // variation twice and could contradict the tone near a U-turn.
     private double AircraftHeadingTrue()
         => _simConnectManager?.LastKnownPosition is { } p
             ? _aircraftHeading + p.MagneticVariation
@@ -2596,10 +2593,13 @@ public class TaxiAssistForm : Form
             // would see "Parking 21" in the gate teleport dialog but NOT in
             // the taxi guidance form — confusing and route-blocking.
             //
-            // The fix: drive the dropdown directly from
-            // `_dataProvider.GetParkingSpots(icao)` — the same data source
-            // gate teleport uses — and use `ParkingSpot.ToString()` for
-            // identical display labels (e.g. "P 21 - Ramp GA Large (Jetway)").
+            // The fix: drive the dropdown directly from the parking list —
+            // resolved through `Services.ParkingSpotSource`, the one resolution
+            // gate teleport, the graph builds and the SayIntentions
+            // parked-at-the-right-stand check also use, so a stand cannot be
+            // named two different ways in one session — and use
+            // `ParkingSpot.ToString()` for identical display labels
+            // (e.g. "P 21 - Ramp GA Large (Jetway)").
             // Each parking spot's actual lat/lon is the convergence target,
             // matching what TeleportToParkingSpot places you at, so taxi
             // guidance and gate teleport end up at the same physical position.
@@ -4651,21 +4651,6 @@ public class TaxiAssistForm : Form
             // Consumers that compare against TRUE graph bearings convert via
             // AircraftHeadingTrue() instead.
             _aircraftHeading = pos.HeadingMagnetic;
-            // Captured alongside the heading it belongs to: the heading above is MAGNETIC,
-            // and the route-start turn cue must be composed in TRUE north to agree with the
-            // steering tone.
-            //
-            // What is guaranteed: the two fields are written TOGETHER here, so whenever this
-            // branch runs the variation matches the heading, and both LoadRoute calls later
-            // in OnCalculateClicked see that pair. What is NOT guaranteed: this branch is
-            // conditional on LastKnownPosition being available, and three other sites
-            // (SetAircraftPosition and friends) write _aircraftHeading WITHOUT touching
-            // _aircraftMagVar. So a Calculate with no LastKnownPosition can pair a heading
-            // from one of those sites with a variation from an earlier position — or with
-            // 0.0 if there has never been one. That is a fraction of a degree in any
-            // realistic case (variation drifts slowly and a taxi never leaves the airport),
-            // but the fields are not structurally coupled and must not be assumed to be.
-            _aircraftMagVar = pos.MagneticVariation;
         }
 
         // Progressive Taxi: resolve the last-row terminator to a destination

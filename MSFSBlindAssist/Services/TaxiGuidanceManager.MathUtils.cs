@@ -250,6 +250,11 @@ public partial class TaxiGuidanceManager
     /// system?" — used by the ended-on-runway clearing conclusion AND the backtrack
     /// handoff/connection-node filter, which must agree: a "Runway vacated." claim
     /// from one path must mean the same thing as the other's.
+    ///
+    /// Each runway is read through <see cref="Navigation.RunwayShape.For"/> (HLD-7), never
+    /// the start-row segment: at a displaced threshold the pavement runs hundreds of metres
+    /// past the start row (OMDB 12R: 761 m), and a segment test called that pavement clear.
+    /// The margin applies off the ends as well as the edges (<c>IsClearOfAt</c>).
     /// </summary>
     private bool IsClearOfAllRunwayCorridors(double lat, double lon)
     {
@@ -258,9 +263,10 @@ public partial class TaxiGuidanceManager
         {
             foreach (var cl in _graph.RunwayCenterlines)
             {
-                double perp = TaxiGraph.PerpendicularDistanceMetersStatic(
-                    lat, lon, cl.Lat1, cl.Lon1, cl.Lat2, cl.Lon2);
-                if (perp <= cl.HalfWidthMeters + RUNWAY_CLEAR_MARGIN_M)
+                var shape = Navigation.RunwayShape.For(cl);
+                if (shape.IsDegenerate) continue;
+                var (along, lateral) = shape.Project(lat, lon);
+                if (!shape.IsClearOfAt(along, lateral, RUNWAY_CLEAR_MARGIN_M))
                     return false;
             }
         }

@@ -462,12 +462,6 @@ public static class RouteRunwayCrossings
     }
 
     /// <summary>
-    /// "with no hold short point for runway 26R" / "… for runways 09L and 04L" — each pavement
-    /// named ONCE however many of its passages went unheld, reciprocals merged onto the first name
-    /// seen (the same pavement identity <see cref="ComposeRunwayGroup"/> uses). Empty when every
-    /// passage was held, which is the overwhelmingly common route and must gain no extra words.
-    /// </summary>
-    /// <summary>
     /// "no hold short point for runway 26R" — every runway the route enters or crosses with no stop
     /// placed for it (and not already passed), one pavement once; "" when every one is held. Spoken
     /// at standstill as well as in the summary (<c>TaxiGuidanceManager.LastRouteStartWarning</c>),
@@ -482,6 +476,12 @@ public static class RouteRunwayCrossings
         return clause.StartsWith("with ", StringComparison.Ordinal) ? clause[5..] : clause;
     }
 
+    /// <summary>
+    /// "with no hold short point for runway 26R" / "… for runways 09L and 04L" — each pavement
+    /// named ONCE however many of its passages went unheld, reciprocals merged onto the first name
+    /// seen (the same pavement identity <see cref="ComposeRunwayGroup"/> uses). Empty when every
+    /// passage was held, which is the overwhelmingly common route and must gain no extra words.
+    /// </summary>
     private static string ComposeUnheldWarning(IReadOnlyList<TaxiRouteRunwayEvent> events)
     {
         var names = new List<string>();

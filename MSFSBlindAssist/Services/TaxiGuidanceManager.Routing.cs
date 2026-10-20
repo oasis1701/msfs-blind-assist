@@ -1150,6 +1150,7 @@ public partial class TaxiGuidanceManager
             _holdShortAtDestination = false;
             _unchartedAnnouncedIdx = -1;
             _pairedCrossingSegIdx = -1;
+            _pairedCrossingWindowFrom = DateTime.MinValue;
             _pairedCrossingWindowUntil = DateTime.MinValue;
 
             // Append a session-start header + CSV column row to the diagnostic
@@ -2822,6 +2823,7 @@ public partial class TaxiGuidanceManager
         LastRouteStartHoldCue = null;
         // So is a paired-crossing double-Continue: its segment index means nothing on a new route.
         _pairedCrossingSegIdx = -1;
+        _pairedCrossingWindowFrom = DateTime.MinValue;
         _pairedCrossingWindowUntil = DateTime.MinValue;
         _route = route;
     }

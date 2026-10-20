@@ -254,10 +254,16 @@ public partial class TaxiGuidanceManager : IDisposable
     // within PAIRED_CROSSING_MAX_M ahead; a second Continue press inside the window
     // clears that stop ("cross runways 28L and 28R at F" — one clearance, no stop
     // between the parallels). 400 m ≈ the FAA's 1,300 ft paired-runway threshold.
+    // The window opens PAIRED_CROSSING_MIN_DELAY_SEC after the first press, never at once: a key
+    // bounce or a quick "to be sure" double press would otherwise land inside it and clear the
+    // second runway's stop before the offer was even spoken (PR #324 review). A deliberate answer
+    // comes after the offer sentence, which takes longer than this to say.
     private int _pairedCrossingSegIdx = -1;
+    private DateTime _pairedCrossingWindowFrom = DateTime.MinValue;
     private DateTime _pairedCrossingWindowUntil = DateTime.MinValue;
     private const double PAIRED_CROSSING_MAX_M = 400.0;
     private const double PAIRED_CROSSING_WINDOW_SEC = 12.0;
+    private const double PAIRED_CROSSING_MIN_DELAY_SEC = 2.0;
 
     // LAHSO — land and hold short (VATSIM gap analysis 2026-08-31, P5). Set by
     // BeginLandingRollout(NoGraph) from the landing exit planner, cleared at
@@ -4098,9 +4104,12 @@ public partial class TaxiGuidanceManager : IDisposable
         // loud; a second Continue press inside the window is the pilot's explicit
         // "cleared across both" and clears the next crossing's stop. Never
         // automatic — an un-pressed second crossing keeps its full countdown.
+        // A press before the window opens is ignored and keeps the offer standing (it falls through to
+        // the HoldShort guard below, which returns: the aircraft is already taxiing).
         if (_state == TaxiGuidanceState.Taxiing && _route != null
             && _pairedCrossingSegIdx >= 0
-            && MSFSBlindAssist.Utils.SimClock.UtcNow <= _pairedCrossingWindowUntil)
+            && Navigation.PairedCrossingHoldWindow.Accepts(
+                MSFSBlindAssist.Utils.SimClock.UtcNow, _pairedCrossingWindowFrom, _pairedCrossingWindowUntil))
         {
             int segIdx = _pairedCrossingSegIdx;
             _pairedCrossingSegIdx = -1;
@@ -4276,7 +4285,9 @@ public partial class TaxiGuidanceManager : IDisposable
                     if (Navigation.RouteRunwayCrossings.ExtractRunwayDesignators(s.HoldShortRunway).Count != 1)
                         break;
                     _pairedCrossingSegIdx = i;
-                    _pairedCrossingWindowUntil = MSFSBlindAssist.Utils.SimClock.UtcNow.AddSeconds(PAIRED_CROSSING_WINDOW_SEC);
+                    var offeredAt = MSFSBlindAssist.Utils.SimClock.UtcNow;
+                    _pairedCrossingWindowFrom = offeredAt.AddSeconds(PAIRED_CROSSING_MIN_DELAY_SEC);
+                    _pairedCrossingWindowUntil = offeredAt.AddSeconds(PAIRED_CROSSING_WINDOW_SEC);
                     pairedOffer = $"Next hold short of {s.HoldShortRunway} in {FormatDistance(aheadM)}. " +
                                   "Press continue again if cleared across both.";
                     break;

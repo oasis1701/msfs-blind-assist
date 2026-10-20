@@ -2137,6 +2137,18 @@ public partial class TaxiGuidanceManager
     }
 
     /// <summary>
+    /// "left" / "right" for the targeted exit, or null when it cannot be said: ResolveExitTurnDirection,
+    /// then the side the exit list gives it. Never the aircraft's own bearing to the node — see
+    /// ComposeExitTurnPhrase.
+    /// </summary>
+    private string? ExitTurnDirectionWord()
+        => ResolveExitTurnDirection()
+           ?? (_rolloutExit == null ? null
+               : string.Equals(_rolloutExit.ExitSide, "Left", StringComparison.OrdinalIgnoreCase) ? "left"
+               : string.Equals(_rolloutExit.ExitSide, "Right", StringComparison.OrdinalIgnoreCase) ? "right"
+               : null);
+
+    /// <summary>
     /// Which way the chosen exit turns, as a spoken word ("left"/"right"), or NULL when no
     /// aircraft-independent source is confident enough to name a side.
     ///
@@ -2158,18 +2170,6 @@ public partial class TaxiGuidanceManager
     /// the direction word and says "Turn now, taxiway X" (e.g. KDTW Y4, whose ExitBearingTrue
     /// is a 1.8-degree parallel stub and whose ApronNodeId was never computed).
     /// </summary>
-    /// <summary>
-    /// "left" / "right" for the targeted exit, or null when it cannot be said: ResolveExitTurnDirection,
-    /// then the side the exit list gives it. Never the aircraft's own bearing to the node — see
-    /// ComposeExitTurnPhrase.
-    /// </summary>
-    private string? ExitTurnDirectionWord()
-        => ResolveExitTurnDirection()
-           ?? (_rolloutExit == null ? null
-               : string.Equals(_rolloutExit.ExitSide, "Left", StringComparison.OrdinalIgnoreCase) ? "left"
-               : string.Equals(_rolloutExit.ExitSide, "Right", StringComparison.OrdinalIgnoreCase) ? "right"
-               : null);
-
     private string? ResolveExitTurnDirection()
     {
         if (_rolloutExit == null) return null;
@@ -2523,31 +2523,6 @@ public partial class TaxiGuidanceManager
     }
 
     /// <summary>
-    /// Picks the destination node for a LandingRollout → Taxiing re-route. Shared by
-    /// BOTH handoff paths (<see cref="TryEarlyExitHandoff"/> for high-speed exits and
-    /// the turnBegun / exitedLaterally / trulyStopped handoff in
-    /// <c>UpdateLandingRollout</c>) so the two can never drift apart — they picked the
-    /// destination with two hand-copied blocks before, and only one of them carried
-    /// the multi-segment-RET branch.
-    ///
-    /// Priority:
-    ///   (a) ApronNodeId — corridor-exit node computed by GetLandingExits' BFS.
-    ///   (b) Furthest same-named non-End exit — multi-segment RETs (LEMD L5).
-    ///   (c) FindExitExtensionNode — first adjacent node in the exit direction.
-    ///   (d) NodeId — the junction itself (dead-end).
-    ///
-    /// Then — unconditionally, whichever branch won —
-    /// <see cref="RunwayVacateResolver.ExtendClearOfRunway"/> walks the destination
-    /// on down the exit taxiway until the aircraft would be past the runway-holding
-    /// position. None of (a)-(d) guarantees that on its own: (a)'s corridor tolerance
-    /// only means "off the pavement" (half-width + 15 m) and it is not computed for
-    /// every exit-classification branch, while (c) returns whatever node happens to be
-    /// adjacent. At EVRA 18 → B that adjacent node was 33 m from the centreline
-    /// (half-width 22.6 m, hold line at 106 m), so guidance said "hold position" with
-    /// the aircraft still occupying the runway strip and tower unable to clear a
-    /// departure — the defect this stage exists to prevent.
-    /// </summary>
-    /// <summary>
     /// Removes any "hold short of runway X" for the landed runway on the LEADING run of a
     /// landing-exit route — the part still on the runway the aircraft just landed on. Before
     /// 2026-09 the crossing pass detected a crossing by edge-vs-centerline intersection, and an
@@ -2739,7 +2714,6 @@ public partial class TaxiGuidanceManager
                   _rolloutRunway.StartLat, _rolloutRunway.StartLon, _rolloutRunwayHeadingTrue) * METERS_TO_FEET;
 
 
-    /// <summary>The miss-margin extension for the current exit: the on-centreline run not already in TurnPointOffsetFeet.</summary>
     /// <summary>
     /// How far past the exit's junction BOTH missed-exit detectors wait before calling a miss. Main's
     /// margin is read at how steeply the exit leaves its node (RolloutExitGate.OvershootMarginFor on
@@ -2759,6 +2733,7 @@ public partial class TaxiGuidanceManager
         return Math.Max(byDivergence, byStub);
     }
 
+    /// <summary>The miss-margin extension for the current exit: the on-centreline run not already in TurnPointOffsetFeet.</summary>
     private double OnAxisMissExtensionFeet()
     {
         if (_rolloutExit == null) return 0.0;
@@ -2795,6 +2770,31 @@ public partial class TaxiGuidanceManager
         return false;
     }
 
+    /// <summary>
+    /// Picks the destination node for a LandingRollout → Taxiing re-route. Shared by
+    /// BOTH handoff paths (<see cref="TryEarlyExitHandoff"/> for high-speed exits and
+    /// the turnBegun / exitedLaterally / trulyStopped handoff in
+    /// <c>UpdateLandingRollout</c>) so the two can never drift apart — they picked the
+    /// destination with two hand-copied blocks before, and only one of them carried
+    /// the multi-segment-RET branch.
+    ///
+    /// Priority:
+    ///   (a) ApronNodeId — corridor-exit node computed by GetLandingExits' BFS.
+    ///   (b) Furthest same-named non-End exit — multi-segment RETs (LEMD L5).
+    ///   (c) FindExitExtensionNode — first adjacent node in the exit direction.
+    ///   (d) NodeId — the junction itself (dead-end).
+    ///
+    /// Then — unconditionally, whichever branch won —
+    /// <see cref="RunwayVacateResolver.ExtendClearOfRunway"/> walks the destination
+    /// on down the exit taxiway until the aircraft would be past the runway-holding
+    /// position. None of (a)-(d) guarantees that on its own: (a)'s corridor tolerance
+    /// only means "off the pavement" (half-width + 15 m) and it is not computed for
+    /// every exit-classification branch, while (c) returns whatever node happens to be
+    /// adjacent. At EVRA 18 → B that adjacent node was 33 m from the centreline
+    /// (half-width 22.6 m, hold line at 106 m), so guidance said "hold position" with
+    /// the aircraft still occupying the runway strip and tower unable to clear a
+    /// departure — the defect this stage exists to prevent.
+    /// </summary>
     private int ResolveExitHandoffDestination(out string source)
     {
         source = "none";
@@ -3004,22 +3004,6 @@ public partial class TaxiGuidanceManager
     }
 
     /// <summary>
-    /// Re-routes the active landing rollout to a new exit. Called by
-    /// UpdateLandingRollout when the aircraft has overshot the previously
-    /// chosen exit and there is a downfield exit available.
-    ///
-    /// Calls LoadRoute (re-entrant on _stateLock, safe from inside
-    /// UpdateLandingRollout) to build a new route from the current position
-    /// to <paramref name="newExit"/>'s node. LoadRoute transitions the
-    /// manager to RouteLoaded; we force it back to LandingRollout afterward
-    /// so the per-frame loop keeps invoking UpdateLandingRollout with the
-    /// new exit. Approach callouts (1500 / 500 / turn-now) are re-armed
-    /// for the new exit.
-    ///
-    /// On LoadRoute failure, falls through to EnterRunwayEndCountdown so
-    /// the off-route recalc cannot fire back to the just-passed exit.
-    /// </summary>
-    /// <summary>
     /// Pilot-commanded exit change DURING an active rollout — the tower's "turn
     /// right at Hotel" on the roll, re-picked through the landing exit planner
     /// (VATSIM gap analysis 2026-08-31, P6: previously a plan set after touchdown
@@ -3028,8 +3012,14 @@ public partial class TaxiGuidanceManager
     /// use. Returns false — with nothing spoken — when guidance is not currently
     /// in LandingRollout or the pick is for a different runway; the caller then
     /// falls back to arming a normal next-landing plan.
+    ///
+    /// <paramref name="lahso"/> is the form's LAHSO as it stands at this pick ("hold short of 27,
+    /// exit at H" on the roll): it replaces the active hold, null clearing it, and a changed hold
+    /// re-arms its countdown and is named in the sentence. Without it a LAHSO set on the roll was
+    /// silently dropped and the downfield retarget kept filtering on the old one (PR #324 review).
     /// </summary>
-    public bool TryRetargetActiveRolloutExit(Navigation.LandingExit exit, string runwayId)
+    public bool TryRetargetActiveRolloutExit(
+        Navigation.LandingExit exit, string runwayId, Navigation.LahsoHold? lahso = null)
     {
         lock (_stateLock)
         {
@@ -3038,6 +3028,15 @@ public partial class TaxiGuidanceManager
             if (_rolloutRunway == null ||
                 !RunwayDesignatorsMatch(_rolloutRunway.RunwayID, runwayId))
                 return false;
+
+            string lahsoNote = "";
+            if (!SameLahsoHold(_lahsoHold, lahso))
+            {
+                _lahsoHold = lahso;
+                _lahso1500Announced = _lahso500Announced = _lahsoStopAnnounced = _lahsoPassedAnnounced = false;
+                if (lahso != null)
+                    lahsoNote = $" Land and hold short of runway {lahso.CrossingRunwayId}.";
+            }
 
             // An exit already behind the aircraft cannot be taken — say so and
             // keep the current target (same signed-along rule as the scans).
@@ -3048,7 +3047,7 @@ public partial class TaxiGuidanceManager
                 string keptName = string.IsNullOrEmpty(_rolloutExit.TaxiwayName)
                     ? "the planned exit" : $"taxiway {_rolloutExit.TaxiwayName}";
                 SpeakNow(
-                    $"Exit {(string.IsNullOrEmpty(exit.TaxiwayName) ? "" : exit.TaxiwayName + " ")}is behind you. Keeping {keptName}.");
+                    $"Exit {(string.IsNullOrEmpty(exit.TaxiwayName) ? "" : exit.TaxiwayName + " ")}is behind you. Keeping {keptName}.{lahsoNote}");
                 return true; // handled: spoken, no next-landing plan wanted
             }
 
@@ -3059,10 +3058,17 @@ public partial class TaxiGuidanceManager
                 ? "new exit" : $"taxiway {exit.TaxiwayName}";
             RetargetLandingExit(exit, _lastLat, _lastLon, _lastHeading,
                 overrideAnnouncement:
-                    $"New exit, {newName}, {DistanceFormatter.FromFeet(distAheadFt)} ahead.");
+                    $"New exit, {newName}, {DistanceFormatter.FromFeet(distAheadFt)} ahead.{lahsoNote}");
             return true;
         }
     }
+
+    /// <summary>The same LAHSO constraint: both none, or the same crossing runway and hold point.</summary>
+    internal static bool SameLahsoHold(Navigation.LahsoHold? a, Navigation.LahsoHold? b)
+        => a == null || b == null
+            ? a == null && b == null
+            : string.Equals(a.CrossingRunwayId, b.CrossingRunwayId, StringComparison.OrdinalIgnoreCase)
+              && Math.Abs(a.StopFromThresholdFeet - b.StopFromThresholdFeet) < 1.0;
 
     /// <summary>
     /// The runway-end countdown's status sentence, "Runway end in N.", led by "Stopped on runway R." for a

@@ -2448,17 +2448,6 @@ public partial class TaxiGraph
     }
 
     /// <summary>
-    /// Finds the nearest graph node lying on a named taxiway. Heading-independent.
-    /// Use case: snapping a route start onto the user's first ATC-cleared taxiway
-    /// regardless of aircraft orientation (e.g. immediately after pushback). Caller
-    /// can pass <paramref name="requiredComponentId"/> to restrict candidates to a
-    /// connected component (typically the destination's) so isolated-island
-    /// taxiways are skipped — see <see cref="FindNearestNodeInDirection"/>. Returns
-    /// null if no node on <paramref name="taxiwayName"/> lies within
-    /// <paramref name="maxDistanceM"/> of the position (and within the requested
-    /// component if set).
-    /// </summary>
-    /// <summary>
     /// Every node of <paramref name="taxiwayName"/> within <paramref name="maxDistanceM"/> that
     /// lies within <paramref name="maxOffNoseDeg"/> of <paramref name="headingTrue"/> (or under
     /// 5 m away), nearest first.
