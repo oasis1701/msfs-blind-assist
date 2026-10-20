@@ -9,7 +9,12 @@ paths:
   - "MSFSBlindAssist/Services/RunwayIncursionWatch.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Hold*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Incursion*.cs"
-  - "MSFSBlindAssist/Services/TaxiGuidanceManager*.cs"
+  - "MSFSBlindAssist/Services/TaxiGuidanceManager.cs"
+  - "MSFSBlindAssist/Services/TaxiGuidanceManager.Routing.cs"
+  - "MSFSBlindAssist/Services/TaxiGuidanceManager.Announcements.cs"
+  - "MSFSBlindAssist/Services/TaxiGuidanceManager.Backtrack.cs"
+  - "MSFSBlindAssist/Services/TaxiGuidanceManager.MathUtils.cs"
+  - "MSFSBlindAssist/Services/TaxiGuidanceManager.TrafficContext.cs"
   - "MSFSBlindAssist/Database/Models/TaxiRoute.cs"
   - "tests/MSFSBlindAssist.Tests/**/*RunwayShape*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*RunwayPavement*.cs"
@@ -22,6 +27,9 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*TaxiMathUtils*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*RunwayRouteClassifier*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*RouteRunwayCrossings*.cs"
+  - "MSFSBlindAssist/Services/TaxiAugment/SignHoldingPointExtractor.cs"
+  - "MSFSBlindAssist/Navigation/RunwayCrossingResolver.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*RunwayCrossingResolver*.cs"
 ---
 # Runway hold-shorts, crossings and runway shape rules
 
@@ -38,3 +46,14 @@ Loaded when Claude reads matching code. Background: docs/taxi-guidance.md. Full 
 - [HLD-9] `CheckRunwayIncursion` builds each hold node's paths (`CollectPathsIntoNode`: taxiway side only, never a chain onto runway pavement) and `GuardedRunway` once per graph, never per frame, and a new graph resets node memory; only the node spoken about is latched, so a withheld node (logged once) is judged again every frame. Full: docs/invariants/runway-holds.md#hld-9
 - [HLD-10] Whether a route STARTS HELD is the pass's call from the aircraft (`AircraftPosition`: not within `RunwayWithinClearMargin` of any runway, not >10 m along) plus `MayStartHeld`, false only from `TryRecalculateRoute` (`recalculation: true`); never a ground-speed gate, an `allowStartHold` flag or the `landingRolloutRoute` log label. Full: docs/invariants/runway-holds.md#hld-10
 - [HLD-11] A stop guarding several runways takes one Continue per runway (`RunwayHoldStages`, `ContinuePastHoldShort`): a press with a runway outstanding answers `ComposeAdvance` WITHOUT moving (state stays `HoldShort`, tone paused); never stage the destination hold (`_holdShortAtDestination`), whose Continue is a lineup clearance. Full: docs/invariants/runway-holds.md#hld-11
+- [HLD-12] A runway-destination hold found ON runway pavement moves back to the latest node clear of every runway within 200 m (`TruncateToHoldShort` Pass 1.25), only ever earlier; the synthetic 60 m back-off must clear every runway edge too. Full: docs/invariants/runway-holds.md#hld-12
+- [HLD-13] The destination hold must be one that can BE this runway's line (`CanBeDestinationHold`: near the entry whatever it names, or ≤ 1,000 m back naming this runway or none), never the latest hold anywhere on the route. Full: docs/invariants/runway-holds.md#hld-13
+- [HLD-14] A hold line the route passes without then going onto runway pavement within 150 m is announced "Passing the runway X hold line at Y", never "Crossing runway X" (`RouteReachesRunwayAfter`). Full: docs/invariants/runway-holds.md#hld-14
+- [HLD-15] Measured and REJECTED, never rebuild without a new idea: a dead-ahead exception to the off-route tracking silence, a 4× cost on runway-aligned edges, pinning intersection departures through the approach node, stopping at a painted line behind the navdata hold. Full: docs/invariants/runway-holds.md#hld-15
+- [HLD-16] User runway picks run BEFORE the automatic hold pass (`ApplyAutoHoldShortPasses`), and a pick that finds no stop is retried after it (`RetryDeferredRunwayPicks`) before any warning, never warned early. Full: docs/invariants/runway-holds.md#hld-16
+- [HLD-17] A runway entered or crossed with no safe stop must be SAID (`DescribeUnheldRunways`), published as `LastRouteStartWarning` and spoken in the form's ONE standstill utterance, never only in the summary; a stop already passed is never reported missing. Full: docs/invariants/runway-holds.md#hld-17
+- [HLD-18] X-Plane red signs are a FALLBACK for Progressive Taxi's hold-at list ONLY (`SignHoldingPointExtractor` → `ResolveSigns`), kept in their own list, never a runway entry or cross-at point; every gate refuses rather than guesses; a painted name wins. Full: docs/invariants/runway-holds.md#hld-18
+- [HLD-19] Inside the cooldown an accepted recalculation opens (`_incursionCooldownFromRecalc`), a real off-route runway warning is QUEUED behind the route-change sentence, never dropped; never queue it in every cooldown window. Full: docs/invariants/runway-holds.md#hld-19
+- [HLD-20] Every runway hold is placed by the ONE `RouteRunwayCrossings.ResolveHoldStop` (auto pass and user picks): the scenery hold line, else a node CLEAR of the runway, else a start hold; never on any runway's pavement, only ever earlier (more: see full). Full: docs/invariants/runway-holds.md#hld-20
+- [HLD-21] The informational "Crossing runway X" is silenced ONLY by `IsVacatingLandedRunwayHold` (landing-exit route, hold named for the landed runway, line farther out than the aircraft); never widen it to taxi routes or other runways. Full: docs/invariants/runway-holds.md#hld-21
+- [HLD-22] The off-route runway warning (`CheckRunwayIncursion`) counts the WHOLE route as on-route and is silent beside it only while `IsTrackingRoute` (12 m, 30°, three segments back); never widen that without a wrong-turn A/B, never rebuild the removed geometric silence. Full: docs/invariants/runway-holds.md#hld-22

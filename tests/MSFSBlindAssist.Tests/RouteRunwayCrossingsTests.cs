@@ -150,4 +150,17 @@ public class RouteRunwayCrossingsTests
     {
         Assert.Equal(expected, RouteRunwayCrossings.StripRunwayPrefix(input));
     }
+
+    [Fact]
+    public void ExtractRunwayDesignator_reads_the_threshold_fallback_label_shape()
+    {
+        // Build names a hold node from the nearest CENTERLINE when one is within 150 m
+        // ("runway 27R at A1") and otherwise from the nearest runway START within 500 m, which
+        // puts the designator last ("A2, Runway 27R"). Both shapes must parse: a set-back CAT III
+        // hold only ever gets the second one — EGLL's A2 sits 186 m from the 27R centreline and
+        // A3 158 m — and TaxiGuidanceManager.ProgressiveHoldRunway reads this label to decide
+        // which runway to watch, and whether a "hold at holding point A2" leg is a departure.
+        Assert.Equal("27R", RouteRunwayCrossings.ExtractRunwayDesignator("A2, Runway 27R"));
+        Assert.Equal(new[] { "27R" }, RouteRunwayCrossings.ExtractRunwayDesignators("A2, Runway 27R"));
+    }
 }

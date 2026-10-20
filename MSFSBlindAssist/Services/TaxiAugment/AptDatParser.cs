@@ -10,6 +10,8 @@ public static class AptDatParser
     //        type is taxiway_D/taxiway_E/taxiway_F or runway
     //   1300 <lat> <lon> <heading> <type> <airlines> <name...>
     //         p[1]  p[2]   p[3]     p[4]    p[5]      p[6..]
+    //   20   <lat> <lon> <heading> <reserved> <size> <sign markup>
+    //         p[1]  p[2]   p[3]      p[4]      p[5]    p[6..]
 
     public static AirportTaxiData Parse(string text)
     {
@@ -33,7 +35,9 @@ public static class AptDatParser
             }
         }
 
-        // Second pass: emit taxiway edges from 1202 rows and parking from 1300 rows
+        var signs = new List<(double Lat, double Lon, string Markup)>();
+
+        // Second pass: emit taxiway edges from 1202 rows, parking from 1300 rows, signs from 20
         foreach (var raw in lines)
         {
             var line = raw.Trim();
@@ -69,7 +73,18 @@ public static class AptDatParser
                 if (string.IsNullOrWhiteSpace(spotName)) continue;  // mirror taxiway/OSM empty-name skip
                 data.Parking.Add((spotName, la, lo));
             }
+            else if (line.StartsWith("20 "))
+            {
+                var p = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+                if (p.Length < 7) continue;
+                if (!double.TryParse(p[1], System.Globalization.CultureInfo.InvariantCulture, out var la)) continue;
+                if (!double.TryParse(p[2], System.Globalization.CultureInfo.InvariantCulture, out var lo)) continue;
+                signs.Add((la, lo, string.Join(" ", p, 6, p.Length - 6)));
+            }
         }
+
+        // Signs are tied to a taxiway in X-Plane's own frame, so this needs the edges above.
+        data.SignHoldingPoints.AddRange(SignHoldingPointExtractor.Extract(signs, data.Taxiways));
 
         return data;
     }

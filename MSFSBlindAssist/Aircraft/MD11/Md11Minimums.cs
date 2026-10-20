@@ -18,7 +18,7 @@ public sealed record Md11MinimumsSide(string Name, string SetKey, string ReadKey
 ///     through this inbox at all.
 /// The read-back sentence therefore has to say which of those two things the pilot is hearing.
 ///
-/// The field is MainForm's "_SET" text box plus Set button (the COM-standby convention), pre-
+/// The field is MainForm's "_SET" text box, applied by Enter (the COM-standby convention), pre-
 /// filled from the export so tabbing in reads the current value; the aircraft's own minimums
 /// knob and mode switch stay on the panel beside it.
 ///

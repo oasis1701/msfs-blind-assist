@@ -14,6 +14,10 @@ public static class LandingExitDefault
     public static int Index(IReadOnlyList<LandingExit> exits)
     {
         if (exits == null || exits.Count == 0) return -1;
+        // An exit flagged "(sharp turn back)" (LandingExitDestination.RequiresTurnBack) stays offered
+        // but is not the default while an unflagged one gets clear.
+        for (int i = 0; i < exits.Count; i++)
+            if (exits[i].VacatesRunway && IsForward(exits[i]) && !exits[i].RequiresTurnBack) return i;
         for (int i = 0; i < exits.Count; i++)
             if (exits[i].VacatesRunway && IsForward(exits[i])) return i;
         for (int i = 0; i < exits.Count; i++)

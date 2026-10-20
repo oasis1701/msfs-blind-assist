@@ -219,37 +219,68 @@ public class ParkingSpot
     private bool IsGateType() => ParkingTypes.IsGate(Type);
 
     /// <summary>
+    /// How much a stand may be under the aircraft's half-span and still count as fitting.
+    /// <para>
+    /// Navdata parking radii are not measurements, they are round METRE buckets rendered
+    /// in feet — 7, 14, 18, 20, 24, 32, 38.1 and 40 m dominate the whole DB — and the
+    /// buckets land just UNDER the ICAO code ceilings they stand for. 18 m radius caps a
+    /// 36 m span, exactly Code C. 40 m caps 80 m, exactly Code F. But 32 m caps 64 m,
+    /// while Code E runs to 65 m: so a Code E aircraft misses its own stand class by
+    /// centimetres. Measured live 2026-09-20 at EGLL, a 747-400 (64.44 m / 211.4 ft span)
+    /// was excluded from all 86 of Heathrow's 105 ft "Gate Heavy" stands — by 0.7 ft —
+    /// leaving ten cargo stands at the top of the pilot's list. GSX's own menu called 17
+    /// gates suitable at the same moment.
+    /// </para>
+    /// <para>
+    /// 2 % lifts the 64 m bucket to 65.3 m: it admits the Code E aircraft that miss by a
+    /// hair (747-400, 777-300ER, A350-1000 at 64.4-64.8 m) and still refuses the Code F
+    /// ones above them (747-8 at 68.4 m, A380 at 79.75 m — measured whole-DB, the A380's
+    /// admitted-stand count does not move at all). It is far smaller than the real
+    /// clearance margin on any stand, and smaller than the rounding in the data it
+    /// corrects.
+    /// </para>
+    /// </summary>
+    public const double FitToleranceFraction = 0.02;
+
+    /// <summary>
     /// Returns whether this spot fits an aircraft with the given wing span
     /// (in FEET — matches <c>SimConnectManager.AircraftWingSpan</c>).
     /// <para>
-    /// UNIT-AWARE by SOURCE:
-    ///   • GSX spots carry the authoritative max allowed wing span in METERS
-    ///     (<see cref="MaxWingspanMeters"/>) — compare directly (aircraft → metres).
-    ///     The GSX-sourced <see cref="Radius"/> is metres (maxwingspan/2), so the old
+    /// UNIT-AWARE, and GSX-FIRST:
+    ///   • <see cref="MaxWingspanMeters"/> wins WHEREVER it exists, whatever the
+    ///     <see cref="Source"/>. It is the scenery author's STATED limit for the stand in
+    ///     METRES, not a radius standing in for one, so it is preferred over the navdata
+    ///     proxy on any spot that carries both. Compare directly (aircraft → metres); the
+    ///     GSX-sourced <see cref="Radius"/> is metres (maxwingspan/2), so the old
     ///     "Radius >= wingspanFeet/2" test mixed metres with a feet threshold and
-    ///     filtered almost everything out. A GSX spot whose profile omits maxwingspan
-    ///     has no reliable size → treat it as fitting (don't hide it).
+    ///     filtered almost everything out.
+    ///   • A GSX spot whose profile omits maxwingspan has no reliable size → treat it as
+    ///     fitting (don't hide it).
     ///   • Navdata spots have a physical parking <see cref="Radius"/> in FEET — keep the
     ///     original "radius holds the half-span" test (both feet).
     /// </para>
+    /// Both size tests carry <see cref="FitToleranceFraction"/>: the same round-bucket
+    /// problem shows up in GSX profiles, which are written in whole metres too.
+    /// <para>
     /// An unknown wing span (&lt;= 0) fits everything (filter is a no-op).
+    /// </para>
     /// </summary>
     public bool FitsAircraft(double aircraftWingspanFeet)
     {
         if (aircraftWingspanFeet <= 0) return true;
 
-        if (Source == GateSource.Gsx)
+        if (MaxWingspanMeters.HasValue)
         {
-            // No GSX size info → don't filter it out (placeholder Radius is not real).
-            if (!MaxWingspanMeters.HasValue) return true;
-
             const double feetToMeters = 0.3048;
             double aircraftWingspanMeters = aircraftWingspanFeet * feetToMeters;
-            return MaxWingspanMeters.Value >= aircraftWingspanMeters;
+            return MaxWingspanMeters.Value * (1.0 + FitToleranceFraction) >= aircraftWingspanMeters;
         }
 
+        // No GSX size info → don't filter it out (placeholder Radius is not real).
+        if (Source == GateSource.Gsx) return true;
+
         // Navdata: physical parking radius (feet) must hold the half-span (feet).
-        return Radius >= aircraftWingspanFeet / 2.0;
+        return Radius * (1.0 + FitToleranceFraction) >= aircraftWingspanFeet / 2.0;
     }
 
     private static string FriendlyVdgs(string? vdgs)

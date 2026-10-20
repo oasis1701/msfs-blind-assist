@@ -1,0 +1,1 @@
+The user guide now comes with the app: the new Help menu's User Guide opens the whole guide on one page, matching your version and working offline, and the online guide gets an edition for the preview build. The Help menu also opens the project website and now holds About, moved there from the File menu.

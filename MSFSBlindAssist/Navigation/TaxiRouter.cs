@@ -82,6 +82,39 @@ public class TaxiRouter
     public TaxiRoute? FindConstrainedPath(int startNodeId, int endNodeId, List<string> taxiwaySequence,
         bool destinationIsRunway = false)
     {
+        // A clearance that returns to a taxiway it just left ("A, C, A") can be honoured two ways: let
+        // the short leg shrink to nothing at the junction it was entered by (the historical router), or
+        // leave it at a DIFFERENT junction (FindBestDetourEntry + the entry exclusion). Neither wins
+        // everywhere — honouring cut OTBH 16L "A, C, A" from 9.1 to 2.9 km and ZPPP "A, B, A" from 6.2
+        // to 3.9, but made KABQ's alternating "P, M, P, M" loop (2.7 → 4.0 km) — so both are built and
+        // the honoured one taken unless it is more than 25 % + 100 m longer (a loop); a route that fell
+        // back to shortest path loses to one that did not (VirtualPilot 2026-09-18, 100 airports).
+        bool hasRepeat = false;
+        if (taxiwaySequence != null)
+            for (int i = 0; i + 2 < taxiwaySequence.Count && !hasRepeat; i++)
+                hasRepeat = string.Equals(taxiwaySequence[i], taxiwaySequence[i + 2], StringComparison.OrdinalIgnoreCase);
+        var plain = FindConstrainedPathCore(startNodeId, endNodeId, taxiwaySequence!, destinationIsRunway, honourRepeats: false);
+        if (!hasRepeat) return plain;
+        var honoured = FindConstrainedPathCore(startNodeId, endNodeId, taxiwaySequence!, destinationIsRunway, honourRepeats: true);
+        if (honoured == null) return plain;
+        if (plain == null) return honoured;
+        bool plainFellBack = plain.ConstrainedFallbackReason != null, honouredFellBack = honoured.ConstrainedFallbackReason != null;
+        // Honour the clearance as given unless that makes it loop: a genuine bypass ("A, B, A" around
+        // part of A) is legitimately a little longer and must still use B.
+        // A plain route that already DRIVES every cleared taxiway in order satisfies the clearance —
+        // the repeated leg is just a short piece along the way — and honouring it again only adds a
+        // detour (KPIT "V, D, V": +385 m). Otherwise the honoured route wins unless it loops.
+        var pick = plainFellBack != honouredFellBack
+            ? (plainFellBack ? honoured : plain)
+            : VisitsInOrder(plain, taxiwaySequence!) ? plain
+            : (honoured.TotalDistanceMeters <= plain.TotalDistanceMeters * REPEAT_HONOUR_MAX_RATIO + REPEAT_HONOUR_MAX_PAD_M ? honoured : plain);
+        Log($"Repeated taxiway in clearance: plain {plain.TotalDistanceMeters:F0} m, honoured {honoured.TotalDistanceMeters:F0} m -> {(ReferenceEquals(pick, honoured) ? "honoured" : "plain")}");
+        return pick;
+    }
+
+    private TaxiRoute? FindConstrainedPathCore(int startNodeId, int endNodeId, List<string> taxiwaySequence,
+        bool destinationIsRunway, bool honourRepeats)
+    {
         // Append a session header. Size-capping/rotation is now handled by the
         // shared LogWriter (5 MB cap, 3-file retention) rather than a hand-rolled
         // per-call truncate, so a recalc can never wipe a prior build's entry
@@ -136,7 +169,12 @@ public class TaxiRouter
         int firstBridgeEntryOnSecond = -1;
         if (secondTaxiway != null)
         {
-            firstTarget = FindBestIntersection(startNodeId, endNodeId, distFromFinalDest, taxiwaySequence[0], secondTaxiway);
+            firstTarget = honourRepeats && taxiwaySequence.Count > 2
+                          && string.Equals(taxiwaySequence[2], taxiwaySequence[0], StringComparison.OrdinalIgnoreCase)
+                ? FindBestDetourEntry(startNodeId, distFromFinalDest, taxiwaySequence[0], secondTaxiway)
+                : -1;
+            if (firstTarget == -1)
+                firstTarget = FindBestIntersection(startNodeId, endNodeId, distFromFinalDest, taxiwaySequence[0], secondTaxiway);
             if (firstTarget == -1)
             {
                 // Same fallback as the inner loop: try a runway bridge before
@@ -272,7 +310,21 @@ public class TaxiRouter
             int bridgeEntryOnNext = -1;
             if (nextTaxiway != null)
             {
-                targetNode = FindBestIntersection(currentNode, endNodeId, distFromFinalDest, currentTaxiway, nextTaxiway);
+                // "via A, C, A": leaving C back onto the taxiway the route just came off can never be
+                // at the junction it entered C by — that gives C zero length, and the rest of the
+                // clearance is then routed from the wrong place (OTBH 16L "A, C, A": C dropped, and
+                // the last A leg ran 6 km to A's far end; VirtualPilot 2026-09-18). Exclude the entry
+                // junction when the taxiway repeats; with no other junction, the old answer stands.
+                bool returnsToPrevious = honourRepeats && string.Equals(nextTaxiway, taxiwaySequence[i - 1], StringComparison.OrdinalIgnoreCase);
+                bool detourFollows = honourRepeats && i + 2 < taxiwaySequence.Count
+                    && string.Equals(taxiwaySequence[i + 2], currentTaxiway, StringComparison.OrdinalIgnoreCase);
+                targetNode = returnsToPrevious
+                    ? FindBestIntersection(currentNode, endNodeId, distFromFinalDest, currentTaxiway, nextTaxiway, excludeNodeId: currentNode)
+                    : detourFollows
+                        ? FindBestDetourEntry(currentNode, distFromFinalDest, currentTaxiway, nextTaxiway)
+                        : -1;
+                if (targetNode == -1)
+                    targetNode = FindBestIntersection(currentNode, endNodeId, distFromFinalDest, currentTaxiway, nextTaxiway);
                 if (targetNode == -1)
                 {
                     // No shared node. Common cause: an ATC clearance like
@@ -320,7 +372,14 @@ public class TaxiRouter
                 // Runway destinations ONLY (see the destinationIsRunway note on this method): for a
                 // gate this skip would strand the route at the taxiway end instead of continuing onto
                 // the stand via the final connector leg.
-                if (destinationIsRunway && targetNode == currentNode && taxiwaySequence.Count > 1)
+                // Not when the route has already REACHED the destination runway — the node itself or
+                // the same runway's pavement: a runway bridge into this last taxiway can land on the
+                // destination node (ZPPP 04L "A, B, A"), a junction can sit on the runway (OTBH 16L
+                // "A, C, A"), and "routing along it" then drove away to the taxiway's far end — 2.3
+                // and 6 km of detour (VirtualPilot 2026-09-18). This rule is for a clearance that stops
+                // SHORT of the runway.
+                if (destinationIsRunway && targetNode == currentNode && taxiwaySequence.Count > 1
+                    && !IsOnDestinationRunway(currentNode, endNodeId))
                 {
                     int comp = _graph.Nodes[currentNode].ComponentId;
                     var destNode = _graph.Nodes[endNodeId];
@@ -746,7 +805,85 @@ public class TaxiRouter
     /// intersection nodes that are closer in straight-line distance to
     /// either endpoint can require a long graph backtrack to escape).
     /// </summary>
-    internal int FindBestIntersection(int currentNodeId, int finalDestId, Dictionary<int, double> distFromFinalDest, string taxiway1, string taxiway2)
+    /// <summary>Every node the two taxiways share (see FindBestIntersection for the fallback rule).</summary>
+    private List<int> IntersectionNodes(string taxiway1, string taxiway2)
+    {
+        var onTaxiway1 = new HashSet<int>(_graph.GetNodesOnTaxiway(taxiway1));
+        var onTaxiway2 = new HashSet<int>(_graph.GetNodesOnTaxiway(taxiway2));
+        var intersections = new List<int>();
+        foreach (var node in _graph.Nodes.Values)
+        {
+            bool hasTaxiway1 = onTaxiway1.Contains(node.NodeId) || node.TaxiwayNames.Contains(taxiway1);
+            bool hasTaxiway2 = onTaxiway2.Contains(node.NodeId) || node.TaxiwayNames.Contains(taxiway2);
+            if (hasTaxiway1 && hasTaxiway2)
+                intersections.Add(node.NodeId);
+        }
+        return intersections;
+    }
+
+    /// <summary>
+    /// For a clearance "X, Y, X" (a short Y bypass or connector between two stretches of X): the
+    /// X→Y junction J1 minimising entry→J1 + J1→J2 + J2→destination over the Y→X junctions J2 ≠ J1.
+    /// Choosing J1 alone by entry + destination cost picks Y's FAR junction (it is nearer the
+    /// destination), so Y is then run backwards and X forwards again — a loop (LEBL 24R "T, T2, T",
+    /// +740 m; VirtualPilot 2026-09-18). -1 when fewer than two junctions exist or none is reachable.
+    /// </summary>
+    private int FindBestDetourEntry(int currentNodeId, Dictionary<int, double> distFromFinalDest, string x, string y)
+    {
+        var junctions = IntersectionNodes(x, y);
+        if (junctions.Count < 2 || junctions.Count > 12) return -1;
+        // Junctions on runway pavement take no part unless the route is already on the runway there:
+        // honouring the repeat by turning on a runway is worse than the old zero-length Y (OTBH).
+        if (!OnRunwayPavement(currentNodeId))
+            junctions = junctions.Where(j => !OnRunwayPavement(j)).ToList();
+        if (junctions.Count < 2) return -1;
+        var fromEntry = ComputeGraphDistancesFrom(currentNodeId);
+        int best = -1;
+        double bestScore = double.MaxValue;
+        foreach (int j1 in junctions)
+        {
+            if (!fromEntry.TryGetValue(j1, out double e)) continue;
+            var fromJ1 = ComputeGraphDistancesFrom(j1);
+            foreach (int j2 in junctions)
+            {
+                if (j2 == j1) continue;
+                if (!fromJ1.TryGetValue(j2, out double d12) || !distFromFinalDest.TryGetValue(j2, out double dd)) continue;
+                double score = e + d12 + dd;
+                if (score < bestScore) { bestScore = score; best = j1; }
+            }
+        }
+        return best;
+    }
+
+    /// <summary>The node IS the destination, or stands on the destination node's runway pavement.</summary>
+    private bool IsOnDestinationRunway(int nodeId, int endNodeId)
+    {
+        if (nodeId == endNodeId) return true;
+        if (!_graph.Nodes.TryGetValue(nodeId, out var n) || !_graph.Nodes.TryGetValue(endNodeId, out var e)) return false;
+        var destRunway = RouteRunwayCrossings.RunwayUnder(_graph.RunwayCenterlines, e.Latitude, e.Longitude);
+        return destRunway != null
+            && ReferenceEquals(destRunway, RouteRunwayCrossings.RunwayUnder(_graph.RunwayCenterlines, n.Latitude, n.Longitude));
+    }
+
+    /// <summary>Does the route's own taxiway naming contain the clearance, in order (gaps allowed)?</summary>
+    internal static bool VisitsInOrder(TaxiRoute route, List<string> clearance)
+    {
+        int k = 0;
+        foreach (var seg in route.Segments)
+            if (k < clearance.Count && string.Equals(seg.TaxiwayName, clearance[k], StringComparison.OrdinalIgnoreCase))
+                k++;
+        return k == clearance.Count;
+    }
+
+    private const double REPEAT_HONOUR_MAX_RATIO = 1.25;
+    private const double REPEAT_HONOUR_MAX_PAD_M = 100.0;
+
+    private bool OnRunwayPavement(int nodeId)
+        => _graph.Nodes.TryGetValue(nodeId, out var n)
+           && RouteRunwayCrossings.RunwayUnder(_graph.RunwayCenterlines, n.Latitude, n.Longitude) != null;
+
+    internal int FindBestIntersection(int currentNodeId, int finalDestId, Dictionary<int, double> distFromFinalDest, string taxiway1, string taxiway2,
+        int excludeNodeId = -1)
     {
         // Hybrid: the O(E)-per-node edge scan is replaced by an O(1) index-set lookup
         // (proven exactly equal in content — TaxiGraph.RegisterTaxiwayNode is called
@@ -757,18 +894,7 @@ public class TaxiRouter
         // but is skipped before RegisterTaxiwayNode runs — so the index alone would
         // silently drop those nodes here. Dropping the fallback would change which
         // intersection candidates are found, which this routing code must not risk.
-        var onTaxiway1 = new HashSet<int>(_graph.GetNodesOnTaxiway(taxiway1));
-        var onTaxiway2 = new HashSet<int>(_graph.GetNodesOnTaxiway(taxiway2));
-
-        var intersections = new List<int>();
-        foreach (var node in _graph.Nodes.Values)
-        {
-            bool hasTaxiway1 = onTaxiway1.Contains(node.NodeId) || node.TaxiwayNames.Contains(taxiway1);
-            bool hasTaxiway2 = onTaxiway2.Contains(node.NodeId) || node.TaxiwayNames.Contains(taxiway2);
-
-            if (hasTaxiway1 && hasTaxiway2)
-                intersections.Add(node.NodeId);
-        }
+        var intersections = IntersectionNodes(taxiway1, taxiway2);
 
         if (intersections.Count == 0)
             return -1;
@@ -784,14 +910,19 @@ public class TaxiRouter
         int bestNode = -1;
         double bestScore = double.MaxValue;
 
+        // The alternative to the excluded entry junction must not be on runway pavement unless the
+        // entry itself is: honouring "A, C, A" by turning around on a runway (OTBH gate to gate: the
+        // only other A/C junction is on 16L) is worse than the zero-length C it replaces.
+        bool avoidRunway = excludeNodeId != -1 && !OnRunwayPavement(excludeNodeId);
         foreach (int nodeId in intersections)
         {
+            if (nodeId == excludeNodeId) continue;
+            if (avoidRunway && OnRunwayPavement(nodeId)) continue;
             if (!distFromEntry.TryGetValue(nodeId, out double entryDist))
                 continue; // unreachable from entry
             if (!distFromFinalDest.TryGetValue(nodeId, out double destDist))
                 continue; // unreachable from destination
             double score = entryDist + destDist;
-
             if (score < bestScore)
             {
                 bestScore = score;
@@ -1262,6 +1393,339 @@ public class TaxiRouter
             route.Segments[i].RemainingDistanceMeters = cumulative - route.Segments[i].CumulativeDistanceMeters + route.Segments[i].DistanceMeters;
         }
 
+        route.TotalDistanceMeters = cumulative;
+        return route;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // UNCHARTED APRON CROSSING — routing to a destination on a DISCONNECTED
+    // component of the taxi network.
+    //
+    // Some sceneries split an airport's taxi paths into islands separated by
+    // real, drivable pavement that simply has no taxi paths drawn (default LMML
+    // 2026-08-31, live: the P/N/NW aprons are a 503-node island 192 m of bare
+    // apron away from the B..G network an arriving aircraft is on — ATC clears
+    // stands over there exactly as in the real world, where the pavement is
+    // continuous). No sequence of charted taxiways can cross such a gap, and the
+    // silent gap-bridges (BridgeSameNamedGaps ≤40 m, BridgeTinyDeadEndGaps ≤6 m)
+    // rightly refuse it. This path instead builds BOTH charted halves normally
+    // and joins them with ONE explicit synthetic segment (IsUncharted = true)
+    // that guidance announces out loud — the same design language as the
+    // backtrack departure's geometric steer, never a silent shortcut.
+    //
+    // Safety gates: crossing gap capped (UNCHARTED_CROSSING_MAX_M); the straight
+    // line must stay clear of every runway pavement corridor (the caller passes
+    // TaxiGraph.LineIsClearOfRunwayCorridors); both charted halves are built by
+    // the normal router (A* never runs across the gap).
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Longest synthetic crossing this router will build. Beyond this the
+    /// "pavement" between two islands is more likely grass/buildings than apron.
+    /// Sized on the motivating airport, measured against the live DB with
+    /// tools/UnchartedCrossingProbe: LMML's NARROWEST waist (193 m, taxiway F's
+    /// end to the P apron) is correctly refused by the runway-corridor check —
+    /// F's end node sits ~5 m off the 13/31 centreline, so that line clips the
+    /// runway — and the safe crossing (the diagonal the stranded pilot actually
+    /// drove on 2026-08-31, parallel-taxiway end → P-apron corner, clear of both
+    /// runways by >90 m) is ~430 m. A 250 m cap refused the exact case the
+    /// feature exists for.</summary>
+    public const double UNCHARTED_CROSSING_MAX_M = 450.0;
+
+    /// <summary>Score weight on the uncharted gap when picking the crossing pair —
+    /// a metre of uncharted apron costs 3× a metre of charted taxiway, so the
+    /// narrowest usable waist wins unless it forces a huge charted detour.</summary>
+    private const double UNCHARTED_GAP_WEIGHT = 3.0;
+
+    /// <summary>Max candidate pairs to run the runway-corridor line test on
+    /// (ascending score). Sized generously: at LMML the best-scored ~dozens of
+    /// pairs all funnel through the runway-adjacent F-end waist and fail the
+    /// corridor check before the first clear diagonal pair ranks in — if none of
+    /// the best 120 is clear, the gap genuinely sits across a runway.</summary>
+    private const int UNCHARTED_LINE_CHECK_CAP = 120;
+
+    /// <summary>Two components whose nodes come within this of each other effectively
+    /// MEET. If every such near-touching line is runway-blocked, the components
+    /// connect via runway pavement (GA sceneries routinely join the two sides of the
+    /// field only through the runway) and no synthetic crossing is fabricated — a
+    /// "clear" line elsewhere would be an overland diagonal across what is usually
+    /// grass. Whole-DB sweep 2026-08-31: 408 of 1,569 crossing-possible airports were
+    /// this shape (00CA: islands 1 m apart at the runway, first clear line 175 m of
+    /// open ground). Runway backtaxi is the honest way across at such airports.</summary>
+    private const double NEAR_TOUCH_M = 50.0;
+    private const int NEAR_TOUCH_CHECK_CAP = 20;
+
+    internal sealed record ComponentCrossing(int ExitNodeId, int EntryNodeId, double GapMeters);
+
+    /// <summary>
+    /// Finds the best pair of nodes to bridge between the start node's component and
+    /// the destination node's component: minimises graph-distance-from-start +
+    /// weighted gap + graph-distance-to-destination, gap capped, straight line
+    /// verified clear of runway corridors via <paramref name="lineIsClear"/>.
+    /// </summary>
+    internal ComponentCrossing? FindBestComponentCrossing(
+        int startNodeId, int endNodeId, double maxGapMeters,
+        Func<double, double, double, double, bool> lineIsClear)
+    {
+        if (!_graph.Nodes.ContainsKey(startNodeId) || !_graph.Nodes.ContainsKey(endNodeId))
+            return null;
+        int compA = _graph.Nodes[startNodeId].ComponentId;
+        int compB = _graph.Nodes[endNodeId].ComponentId;
+        if (compA == compB) return null;
+
+        var distFromStart = ComputeGraphDistancesFrom(startNodeId);
+        var distFromDest = ComputeGraphDistancesFrom(endNodeId);
+
+        // Reachable nodes per side, with bounding boxes for the prefilter below
+        // (huge airports can have thousands of nodes per component — only nodes
+        // within the gap cap of the OTHER side's extent can ever pair).
+        var aNodes = new List<TaxiNode>();
+        var bNodes = new List<TaxiNode>();
+        double aMinLat = double.MaxValue, aMaxLat = double.MinValue,
+               aMinLon = double.MaxValue, aMaxLon = double.MinValue;
+        double bMinLat = double.MaxValue, bMaxLat = double.MinValue,
+               bMinLon = double.MaxValue, bMaxLon = double.MinValue;
+        foreach (var n in _graph.Nodes.Values)
+        {
+            if (n.ComponentId == compA && distFromStart.ContainsKey(n.NodeId))
+            {
+                aNodes.Add(n);
+                if (n.Latitude < aMinLat) aMinLat = n.Latitude;
+                if (n.Latitude > aMaxLat) aMaxLat = n.Latitude;
+                if (n.Longitude < aMinLon) aMinLon = n.Longitude;
+                if (n.Longitude > aMaxLon) aMaxLon = n.Longitude;
+            }
+            else if (n.ComponentId == compB && distFromDest.ContainsKey(n.NodeId))
+            {
+                bNodes.Add(n);
+                if (n.Latitude < bMinLat) bMinLat = n.Latitude;
+                if (n.Latitude > bMaxLat) bMaxLat = n.Latitude;
+                if (n.Longitude < bMinLon) bMinLon = n.Longitude;
+                if (n.Longitude > bMaxLon) bMaxLon = n.Longitude;
+            }
+        }
+        if (aNodes.Count == 0 || bNodes.Count == 0) return null;
+
+        double midLatRad = (aMinLat + aMaxLat + bMinLat + bMaxLat) * 0.25 * Math.PI / 180.0;
+        double latPad = maxGapMeters / 111132.0;
+        double lonPad = maxGapMeters / Math.Max(1.0, 111132.0 * Math.Cos(midLatRad));
+
+        var aNear = aNodes.Where(n =>
+            n.Latitude >= bMinLat - latPad && n.Latitude <= bMaxLat + latPad &&
+            n.Longitude >= bMinLon - lonPad && n.Longitude <= bMaxLon + lonPad).ToList();
+        var bNear = bNodes.Where(n =>
+            n.Latitude >= aMinLat - latPad && n.Latitude <= aMaxLat + latPad &&
+            n.Longitude >= aMinLon - lonPad && n.Longitude <= aMaxLon + lonPad).ToList();
+        if (aNear.Count == 0 || bNear.Count == 0) return null;
+
+        var candidates = new List<(double score, double gap, TaxiNode a, TaxiNode b)>();
+        var nearTouch = new List<(double gap, TaxiNode a, TaxiNode b)>();
+        foreach (var a in aNear)
+        {
+            foreach (var b in bNear)
+            {
+                double gap = TaxiGraph.FastDistanceMeters(
+                    a.Latitude, a.Longitude, b.Latitude, b.Longitude);
+                if (gap > maxGapMeters) continue;
+                if (gap < NEAR_TOUCH_M) nearTouch.Add((gap, a, b));
+                double score = distFromStart[a.NodeId] + gap * UNCHARTED_GAP_WEIGHT
+                             + distFromDest[b.NodeId];
+                candidates.Add((score, gap, a, b));
+            }
+        }
+        if (candidates.Count == 0) return null;
+
+        // Near-touching-at-a-runway gate (see NEAR_TOUCH_M): components that come
+        // within touching distance connect there in the real world. If every such
+        // line is runway-blocked, refuse the whole crossing rather than fabricate
+        // a longer diagonal around the runway; if any is clear, it is a genuine
+        // tiny modelling gap and ranks fine on its own.
+        if (nearTouch.Count > 0)
+        {
+            nearTouch.Sort((x, y) => x.gap.CompareTo(y.gap));
+            bool anyNearTouchClear = false;
+            int ntChecks = 0;
+            foreach (var (_, a, b) in nearTouch)
+            {
+                if (++ntChecks > NEAR_TOUCH_CHECK_CAP) break;
+                if (lineIsClear(a.Latitude, a.Longitude, b.Latitude, b.Longitude))
+                {
+                    anyNearTouchClear = true;
+                    break;
+                }
+            }
+            if (!anyNearTouchClear)
+            {
+                Log($"Uncharted crossing refused: components meet within {NEAR_TOUCH_M:F0} m " +
+                    $"at a runway ({nearTouch.Count} near-touch pairs, none runway-clear) — " +
+                    "they connect via runway pavement, not open apron");
+                return null;
+            }
+        }
+
+        candidates.Sort((x, y) => x.score.CompareTo(y.score));
+
+        int checks = 0;
+        foreach (var (_, gap, a, b) in candidates)
+        {
+            if (++checks > UNCHARTED_LINE_CHECK_CAP) break;
+            if (lineIsClear(a.Latitude, a.Longitude, b.Latitude, b.Longitude))
+            {
+                Log($"Uncharted crossing: node {a.NodeId} -> {b.NodeId}, gap {gap:F0} m " +
+                    $"(checked {checks} of {candidates.Count} candidate pairs)");
+                return new ComponentCrossing(a.NodeId, b.NodeId, gap);
+            }
+        }
+        Log($"Uncharted crossing: no runway-clear pair among best {checks} of {candidates.Count} candidates");
+        return null;
+    }
+
+    /// <summary>
+    /// Splits a cleared taxiway sequence between the two sides of a component
+    /// crossing: names stay on the NEAR side until the first name that exists ONLY
+    /// on the far component, from which point everything goes to the far side (an
+    /// ATC clearance is ordered, so once it names far-side pavement it never comes
+    /// back). Names in neither component stay where the walk puts them and are
+    /// reported by the per-leg constrained router exactly as today.
+    /// </summary>
+    internal static (List<string> nearSide, List<string> farSide) PartitionSequenceByComponent(
+        TaxiGraph graph, List<string> sequence, int nearComponentId, int farComponentId)
+    {
+        var near = new List<string>();
+        var far = new List<string>();
+        bool switched = false;
+        foreach (string name in sequence)
+        {
+            bool inNear = false, inFar = false;
+            foreach (int id in graph.GetNodesOnTaxiway(name))
+            {
+                int c = graph.Nodes[id].ComponentId;
+                if (c == nearComponentId) inNear = true;
+                else if (c == farComponentId) inFar = true;
+                if (inNear && inFar) break;
+            }
+            if (!switched && inFar && !inNear) switched = true;
+            if (switched) far.Add(name); else near.Add(name);
+        }
+        return (near, far);
+    }
+
+    /// <summary>
+    /// Builds a route from <paramref name="startNodeId"/> to a destination on a
+    /// DIFFERENT connected component: charted leg on the start side, one synthetic
+    /// <see cref="TaxiRouteSegment.IsUncharted"/> segment across the gap, charted
+    /// leg on the destination side. Null when no gated crossing exists or either
+    /// charted leg cannot build. A per-leg constrained fallback is carried up in
+    /// <see cref="TaxiRoute.ConstrainedFallbackReason"/> so the existing warning speaks.
+    /// </summary>
+    public TaxiRoute? FindCrossComponentPath(
+        int startNodeId, int endNodeId, List<string>? taxiwaySequence,
+        bool destinationIsRunway, double maxGapMeters,
+        Func<double, double, double, double, bool> lineIsClear,
+        out double crossingGapMeters)
+    {
+        crossingGapMeters = 0;
+        var crossing = FindBestComponentCrossing(startNodeId, endNodeId, maxGapMeters, lineIsClear);
+        if (crossing == null) return null;
+
+        List<string>? leg1Seq = null, leg2Seq = null;
+        if (taxiwaySequence is { Count: > 0 })
+        {
+            (leg1Seq, leg2Seq) = PartitionSequenceByComponent(
+                _graph, taxiwaySequence,
+                _graph.Nodes[startNodeId].ComponentId, _graph.Nodes[endNodeId].ComponentId);
+        }
+
+        TaxiRoute? leg1 = null;
+        if (crossing.ExitNodeId != startNodeId)
+        {
+            leg1 = leg1Seq is { Count: > 0 }
+                ? FindConstrainedPath(startNodeId, crossing.ExitNodeId, leg1Seq,
+                    destinationIsRunway: false)
+                : FindShortestPath(startNodeId, crossing.ExitNodeId);
+            if (leg1 == null || leg1.Segments.Count == 0)
+            {
+                Log("Uncharted crossing: near-side leg failed to build");
+                return null;
+            }
+        }
+
+        TaxiRoute? leg2 = null;
+        if (crossing.EntryNodeId != endNodeId)
+        {
+            leg2 = leg2Seq is { Count: > 0 }
+                ? FindConstrainedPath(crossing.EntryNodeId, endNodeId, leg2Seq,
+                    destinationIsRunway: destinationIsRunway)
+                : FindShortestPath(crossing.EntryNodeId, endNodeId);
+            if (leg2 == null || leg2.Segments.Count == 0)
+            {
+                Log("Uncharted crossing: far-side leg failed to build");
+                return null;
+            }
+        }
+
+        var route = StitchWithCrossing(leg1, crossing, leg2);
+        route.ConstrainedFallbackReason =
+            leg1?.ConstrainedFallbackReason ?? leg2?.ConstrainedFallbackReason;
+        crossingGapMeters = crossing.GapMeters;
+        Log($"Uncharted crossing route: {route.Segments.Count} segments, " +
+            $"{route.TotalDistanceMeters:F0} m total incl. {crossing.GapMeters:F0} m uncharted");
+        return route;
+    }
+
+    /// <summary>Concatenates near leg + synthetic crossing segment + far leg, recomputing
+    /// turn info at both joins and the cumulative/remaining distances across the whole.</summary>
+    private TaxiRoute StitchWithCrossing(TaxiRoute? leg1, ComponentCrossing crossing, TaxiRoute? leg2)
+    {
+        var route = new TaxiRoute();
+        var a = _graph.Nodes[crossing.ExitNodeId];
+        var b = _graph.Nodes[crossing.EntryNodeId];
+        double crossingBearing = NavigationCalculator.CalculateBearing(
+            a.Latitude, a.Longitude, b.Latitude, b.Longitude);
+
+        if (leg1 != null)
+            route.Segments.AddRange(leg1.Segments);
+
+        double turnAngle = 0;
+        string turnDir = "straight";
+        if (route.Segments.Count > 0)
+        {
+            turnAngle = NormalizeAngle(crossingBearing - route.Segments[^1].BearingDegrees);
+            turnDir = GetTurnDirection(turnAngle);
+        }
+        route.Segments.Add(new TaxiRouteSegment
+        {
+            FromNode = a,
+            ToNode = b,
+            DistanceMeters = crossing.GapMeters,
+            // Deliberately UNNAMED: the generic turn callouts then say "turn left in
+            // 90 metres" with no bogus taxiway name, and the dedicated entering-
+            // uncharted announcement carries the explanation.
+            TaxiwayName = "",
+            BearingDegrees = crossingBearing,
+            TurnAngleDegrees = turnAngle,
+            TurnDirection = turnDir,
+            PathWidth = 0,
+            IsUncharted = true,
+        });
+
+        if (leg2 != null && leg2.Segments.Count > 0)
+        {
+            // BuildRoute started leg2 fresh, so its first segment carries no turn
+            // relative to the crossing bearing — recompute it.
+            var first = leg2.Segments[0];
+            first.TurnAngleDegrees = NormalizeAngle(first.BearingDegrees - crossingBearing);
+            first.TurnDirection = GetTurnDirection(first.TurnAngleDegrees);
+            route.Segments.AddRange(leg2.Segments);
+        }
+
+        double cumulative = 0;
+        foreach (var s in route.Segments)
+        {
+            cumulative += s.DistanceMeters;
+            s.CumulativeDistanceMeters = cumulative;
+        }
+        foreach (var s in route.Segments)
+            s.RemainingDistanceMeters = cumulative - s.CumulativeDistanceMeters + s.DistanceMeters;
         route.TotalDistanceMeters = cumulative;
         return route;
     }

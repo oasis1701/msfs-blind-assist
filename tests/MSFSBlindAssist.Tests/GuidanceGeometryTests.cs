@@ -429,4 +429,56 @@ public class GuidanceGeometryTests
     {
         Assert.Equal(-30.0, GuidanceGeometry.ProjectHeadingError(0.0, 100.0, 1.5, 30.0), 0.01);
     }
+
+    // --- Far behind the route start (YPPH 21 → C11, 2026-09-18) --------------
+
+    // The C11 handoff route's opening stub: 5 m due SOUTH, then the exit arc. The
+    // aircraft stood 700 m short of it, 40 m off a runway heading 194°.
+    [Fact]
+    public void WalkTarget_far_behind_the_first_segment_stays_on_the_route()
+    {
+        var (lats, lons) = BuildPolyline(-31.95804, 115.95993,
+            new (double, double)[] { (180, 5), (180, 7), (180, 9), (163, 10), (146, 30), (104, 89) });
+        // 700 m back up a 194° runway from the stub, 40 m to its left (east).
+        double back = 194 * Math.PI / 180.0, cl = Math.Cos(lats[0] * Math.PI / 180.0);
+        double aLat = lats[0] - 700 * Math.Cos(back) / MPD + 40 * Math.Sin(back) / MPD;
+        double aLon = lons[0] - 700 * Math.Sin(back) / (MPD * cl) - 40 * Math.Cos(back) / (MPD * cl);
+
+        var tgt = GuidanceGeometry.WalkTarget(lats, lons, 0, aLat, aLon, 98.0);
+
+        // The unclamped walk extended the 180° stub backwards 700 m and put the target
+        // ~150 m beside the runway. It must be on (or within the walk's 50 m approach
+        // lead of) the route instead.
+        double best = double.MaxValue;
+        for (int i = 0; i < lats.Length; i++) best = Math.Min(best, DistM(lats[i], lons[i], tgt.lat, tgt.lon));
+        Assert.True(best < 30.0, $"target {best:F0} m from the nearest route node");
+    }
+
+    [Fact]
+    public void WalkTarget_capture_case_behind_the_segment_is_unchanged_by_the_far_clamp()
+    {
+        // 20 m behind a 100 m north segment (inside MAX_BEHIND_START_M): the walk
+        // starts at the aircraft, so a 52 m look-ahead lands 32 m up the segment.
+        var (lats, lons) = BuildPolyline(33.0, -84.0, new (double, double)[] { (0, 100), (90, 100) });
+        double aLat = lats[0] - 20.0 / MPD;
+
+        var tgt = GuidanceGeometry.WalkTarget(lats, lons, 0, aLat, lons[0], 52.0);
+
+        Assert.Equal(32.0, (tgt.lat - lats[0]) * MPD, 0.5);
+    }
+
+    [Fact]
+    public void WalkTarget_is_continuous_across_the_far_behind_clamp()
+    {
+        var (lats, lons) = BuildPolyline(33.0, -84.0, new (double, double)[] { (0, 100), (90, 100) });
+        (double lat, double lon)? prev = null;
+        double maxJump = 0;
+        for (double behind = 60; behind >= 40; behind -= 0.5)
+        {
+            var tgt = GuidanceGeometry.WalkTarget(lats, lons, 0, lats[0] - behind / MPD, lons[0], 52.0);
+            if (prev is { } p) maxJump = Math.Max(maxJump, DistM(p.lat, p.lon, tgt.lat, tgt.lon));
+            prev = tgt;
+        }
+        Assert.True(maxJump < 1.0, $"max jump {maxJump:F2} m");
+    }
 }

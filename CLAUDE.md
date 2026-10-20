@@ -13,12 +13,12 @@ dotnet build MSFSBlindAssist.sln -c Debug
 dotnet build MSFSBlindAssist.sln -c Release
 ```
 
-The app runs from `MSFSBlindAssist\bin\x64\{Debug|Release}\net10.0-windows\`. Prerequisites: the MSFS_SDK environment variable and the .NET 10 SDK. The solution builds six projects, `tools/PMDGDispatchTester`, `tools/ChangelogBuilder` and the vPilot plugin among them; the other 12 `tools/*` projects (`tools/CDUTest`, the probes and the sweeps) build on their own. Output paths, the projects and the probes in full: [docs/development.md](docs/development.md#build-output-and-traps).
+The app runs from `MSFSBlindAssist\bin\x64\{Debug|Release}\net10.0-windows\`. Prerequisites: the MSFS_SDK environment variable and the .NET 10 SDK. The solution builds seven projects, `tools/PMDGDispatchTester`, `tools/ChangelogBuilder`, `tools/GuideBuilder` and the vPilot plugin among them; the other 12 `tools/*` projects (`tools/CDUTest`, the probes and the sweeps) build on their own. Output paths, the projects and the probes in full: [docs/development.md](docs/development.md#build-output-and-traps).
 
 - [CORE-1] Always build the `.sln` or pass `-p:Platform=x64`; never the bare `.csproj`, which defaults to AnyCPU and writes to `bin\Debug\…`, so the x64 exe the app runs from never updates. Full: docs/invariants/core.md#core-1
 - [CORE-2] Keep `RuntimeIdentifier=win-x64` (else the build ships every platform's SQLite binaries) and `AppendRuntimeIdentifierToOutputPath=false` (else it writes to a `win-x64\` folder the app, release.yml and PostBuild never use) in the csproj. `dotnet publish` writes `win-x64\publish\`; other `win-x64\` build output predates 2026-08-25: stale. Full: docs/invariants/core.md#core-2
 - [CORE-3] The exe is file-locked while MSFSBA runs (MSB3021): close the app before building an exe the user will run. Full: docs/invariants/core.md#core-3
-- [CORE-4] `dotnet build MSFSBlindAssist.sln` builds only `tools/PMDGDispatchTester` and `tools/ChangelogBuilder`; the other 12 `tools/*` projects (`CDUTest`, the probes and the sweeps, listed in docs/development.md) build on their own, never as part of the solution. Full: docs/invariants/core.md#core-4
+- [CORE-4] `dotnet build MSFSBlindAssist.sln` builds only `tools/PMDGDispatchTester`, `tools/ChangelogBuilder` and `tools/GuideBuilder`; the other 12 `tools/*` projects (`CDUTest`, the probes and the sweeps, listed in docs/development.md) build on their own, never as part of the solution. Full: docs/invariants/core.md#core-4
 
 ## Testing
 
@@ -73,12 +73,13 @@ not set one cannot catch it.
 The `main` branch is protected. Always create a new branch for changes and open a pull request — never commit directly to main. Every PR adds `changelog.d/<pr>-<slug>.<category>.md`, written for a pilot, not a reviewer; a required CI check fails without it. `<pr>` is READ, never guessed (issues and PRs share one number sequence): commit and push, open the PR (`gh pr create` prints its number), then add the fragment, commit and push. Categories: `aircraft`, `feature`, `improvement`, `fix`, `internal` (never published). A released fragment is never deleted; before merging, a long-running PR's own fragments may be condensed to what a pilot sees changed. Full convention: [changelog.d/README.md](changelog.d/README.md).
 
 - [CORE-6] `main` is protected: never commit to it directly; always branch and open a PR. Full: docs/invariants/core.md#core-6
+- [CORE-19] A PR that changes what a pilot presses, sees or hears (a hotkey, window, setting, spoken text, tone, aircraft) updates the pilot's guide in `guide/` in the same PR; if it cannot, its description says `User guide: needed: <chapter>`, and if the guide is still right, `User guide: none, because <reason>`. Full: docs/invariants/core.md#core-19
 
 ## Rules for any file
 
 ### Screen reader announcements
 
-Screen readers already announce every UI control interaction, so the app never repeats one: it confirms a direct interaction once, and only with what the reader cannot say, and it always speaks numeric input confirmations, validation errors and background state changes the user did not trigger. Today's cases: the TFDi MD-11's once-after-settle press confirmation ([MD11-11]); the EFB shell's `announceChange` opt-in ([MD11-26]); the FBW A320, Headwind A330 and FBW A380 button read-back (`GetButtonStateMapping`, `HandleButtonStateAnnouncement`); the value-dialog toggle read-back (`ValueInputForm`, about 1.2 s after a press); "<name> pressed" for a momentary button or an Idle/Activate action combo with no readable state (`PulseMomentaryLVar`, the A380's `PulseEcpKey`, MainForm's unhandled-button fallback); the A380 FCU push/pull value read-out (`OnPanelButtonFired`); the FBW E/WD pop-out's refresh and the menu's hotkey suspend and resume confirmations.
+Screen readers already announce every UI control interaction, so the app never repeats one: it confirms a direct interaction once, and only with what the reader cannot say, and it always speaks numeric input confirmations, validation errors and background state changes the user did not trigger. Today's cases: the TFDi MD-11's once-after-settle press confirmation ([MD11-11]); the EFB shell's `announceChange` opt-in ([MD11-26]); the FBW A320, Headwind A330 and FBW A380 button read-back (`GetButtonStateMapping`, `HandleButtonStateAnnouncement`); the value-dialog toggle read-back (`ValueInputForm`, about 1.2 s after a press); "<name> pressed" for a momentary button or an Idle/Activate action combo with no readable state (`PulseMomentaryLVar`, the A380's `PulseEcpKey`, MainForm's unhandled-button fallback); the A380 FCU push/pull value read-out (`OnPanelButtonFired`); the FBW E/WD pop-out's and the panel status display's F5 refresh, and the menu's hotkey suspend and resume confirmations.
 
 - [CORE-7] Never repeat what the screen reader just said (a panel control's press, label or new combo value). Confirm a direct interaction once, only with what the reader cannot say: a state read back after the press, or "<name> pressed" for an action with no readable state. Numeric confirmations, validation errors and background changes always speak. Full: docs/invariants/core.md#core-7
 - [CORE-8] Combo double-announce suppression is GLOBAL, never aircraft-gated: `_uiSetEcho`/`MarkUiSet` plus a wrap that sets `announcer.Suppressed` around `ProcessSimVarUpdate` for any var inside the echo window. Full: docs/invariants/core.md#core-8
@@ -131,7 +132,8 @@ Each area's rules load automatically when Claude reads its code; their full text
 | [development.md](docs/development.md) | Dependencies, key files, build output paths and traps, and the Claude Code hooks | claude-tooling |
 | [tooling.md](docs/tooling.md) | Live debugging over the Coherent debugger (`:19999`), the probes in `tools/`, crash diagnosis | coherent-clients |
 | [troubleshooting-playbook.md](docs/troubleshooting-playbook.md) | A control "doesn't work": read this FIRST, before calling it broken or unsettable | troubleshooting |
-| [taxi-guidance.md](docs/taxi-guidance.md) | Taxi guidance, runway holds, landing exits and rollout, ground traffic, surroundings, takeoff assist | taxi-routing, taxi-graph, taxi-position, runway-holds, taxi-steering, landing-exits, landing-rollout, landing-touchdown, rollout-geometry, ground-traffic, surroundings, scenery-index, taxi-augmentation, takeoff-and-callouts |
+| [taxi-guidance.md](docs/taxi-guidance.md) | Taxi guidance, runway holds, landing exits and rollout, ground traffic, surroundings, takeoff assist | taxi-routing, taxi-graph, taxi-position, runway-holds, taxi-steering, landing-exits, exit-geometry, landing-rollout, rollout-exit-turn, landing-touchdown, rollout-geometry, runway-vacate, runway-backtrack, runway-entry, ground-traffic, surroundings, scenery-index, taxi-augmentation, takeoff-and-callouts |
+| [virtual-pilot.md](docs/virtual-pilot.md) | Changing landing-rollout, exit or taxi guidance behaviour: measure it first with simulated landings, taxis and wrong turns through the real guidance code | virtual-pilot |
 | [gsx.md](docs/gsx.md) | GSX gate selection and Remote API, docking guidance, the metres/feet toggle | gsx-remote, gsx-stands-docking, gsx-stands, gsx-docking |
 | [weather.md](docs/weather.md) | ActiveSky, the weather radar, METAR readouts, weather announcements | weather |
 | [sayintentions.md](docs/sayintentions.md) | SayIntentions: clearance parsing, the taxi-route import, readouts | sayintentions-clearance, sayintentions-import, sayintentions-gates, sayintentions-readouts |
@@ -152,6 +154,7 @@ Each area's rules load automatically when Claude reads its code; their full text
 | [md11.md](docs/md11.md) | TFDi MD-11: CEVENT transport, control state, layout, the control-map generator | md11, md11-controls |
 | [gemini.md](docs/gemini.md) | AI providers (Gemini or Claude): display reads, scene and route description, route briefing | ai-display, route-briefing |
 | [location-data.md](docs/location-data.md) | Output C and Location Info (Shift+L): the offline GeoNames + Natural Earth download, its database and lookups | location-data |
+| [user-guide.md](docs/user-guide.md) | The pilot's user guide in `guide/`: writing it, how the website and the Help menu publish it, the one-page build, the PR line (CORE-19) | user-guide |
 
 ## Adding or changing a rule
 
