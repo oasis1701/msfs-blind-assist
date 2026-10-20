@@ -102,6 +102,9 @@ public class DA40FoReadbackTests
         Assert.Equal("weights speeds", DA40FoReadback.Normalize("Weights/Speeds"));
         Assert.Equal(DA40FoReadback.BeforeTakeoffPage, DA40FoReadback.GroupFor("Before Take off"));
         Assert.Equal(DA40FoReadback.LineupPage, DA40FoReadback.GroupFor("LINE UP"));
+        // Each airframe's spelling of the reference page (the XLS's adds its power table).
+        Assert.Equal(DA40FoReadback.WeightsSpeedsPage, DA40FoReadback.GroupFor("Weights/Speeds"));
+        Assert.Equal(DA40FoReadback.WeightsSpeedsPage, DA40FoReadback.GroupFor("Weights/Speeds/Power table"));
     }
 
     [Fact]

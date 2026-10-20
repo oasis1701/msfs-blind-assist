@@ -59,6 +59,8 @@ internal static class DA40FoReadback
         ["after landing"] = AfterLandingPage,
         ["shutdown"] = ShutdownPage,
         ["weights speeds"] = WeightsSpeedsPage,
+        // The XLS's reference page carries its cruise power table too.
+        ["weights speeds power table"] = WeightsSpeedsPage,
         ["tips and help"] = TipsPage,
     };
 

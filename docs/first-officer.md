@@ -929,7 +929,7 @@ Before Take-off, Line Up, Climb, Cruise, Descent, Approach, Final, After Landing
 (FOD-5), so no action line exists without the step that delivers it.
 
 **The read-backs are the aircraft's own pages** (FOD-4): `DA40FoReadback` builds each `*_CL` group,
-and the two reference pages (Weights/Speeds, Tips and help), from the installed package at the
+and the two reference pages (Weights/Speeds, on the XLS Weights/Speeds/Power table, and Tips and help), from the installed package at the
 moment the window opens (`NativeChecklistReader.LoadPages`), COWS's words, block headings and clues
 included. The lines the First Officer delivers are matched by page, block, subject and expectation
 and auto-detect; every other line is a Captain line. These pages are also what Shift+C used to show
