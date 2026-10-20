@@ -562,3 +562,23 @@ Overhead → Signs → No Smoking Sign reads the switch (Off, Auto, On).
    so please report it.
 3. **From On.** Set the combo to On and run Preflight again: "No smoking: AUTO" with no
    "Skipping", and the combo reads Auto.
+
+## Part J — "APU: ON line" stays ticked while the APU starts (2026-10-20)
+
+Not run in the sim yet. Ticking the line by hand used to say "Unable to complete: APU: ON line"
+about 12 seconds later, with the APU still spooling up: the line reads the APU on line, which took
+60 seconds after START on the ground (measured with the iFly SDK probe). The tick now waits up to
+2 minutes for it, as the flows do. The flows themselves are unchanged.
+
+1. **After Landing, by hand.** After landing, engines running, no ground power, APU OFF: in the
+   First Officer window's After Landing group, tick "APU: ON line". The APU starts as before. You
+   should hear "APU Generator Off Bus light on" after about a minute, and never "Unable to
+   complete: APU: ON line"; the line stays ticked throughout. If you hear "Unable to complete",
+   note how long after the tick it came.
+2. **Before Start, by hand.** At the gate on ground power with the APU OFF, tick "APU: ON line" in
+   the Before Start group: the same, no "Unable to complete", and the line stays ticked. Ground
+   power kept this case from failing before (the line cannot tell who carries the buses, so it
+   waits), so this only checks nothing broke.
+3. **A start that never comes on line still says so.** Tick "APU: ON line" with the APU OFF, then
+   within a few seconds set Overhead → Engines and APU → APU back to Off. About 2 minutes after the
+   tick you hear "Unable to complete: APU: ON line", and the line unticks.
