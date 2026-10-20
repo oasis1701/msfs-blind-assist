@@ -1,7 +1,7 @@
 # The checklist window (Shift+C)
 
 What the checklist window shows, where it comes from, and the traps found building it. The rules
-are in `.claude/rules/checklists.md`; their full text is DA40S-9 in
+are in `.claude/rules/checklists.md`; their full text is DA40S-9 and DA40S-14 in
 [invariants/da40-shared-code.md](invariants/da40-shared-code.md#da40s-9), where the DA40 work
 that built the reader recorded it.
 
@@ -21,6 +21,11 @@ back:
 
 ## Traps in the real files
 
+- **The files declare `encoding="Windows-1252"`**, which .NET reads only once a code-page provider
+  is registered. Without it every load threw, the reader answered "no checklist", and the window
+  quietly showed the bundled file instead: the aircraft's own checklist had never loaded.
+  `NativeChecklistReader` registers the provider and opens every file through `LoadDocument`.
+
 - **Walk a page's children in order, including one level of `<Block>`.** A page mixes loose
   checkpoints with blocks, and each block carries its own `SubjectTT` heading. Walking only the
   direct children dropped 105 of the COWS DA40-XLS's 220 checkpoints and 29 of the NG's 137.
@@ -32,6 +37,7 @@ back:
   `Official\*`. The four default Community folders alone missed every pilot who installed
   packages on another drive.
 
-The tests assert against the installed package and skip when it is absent: a reader tested only
-against a hand-built sample passes while dropping a shape the real file uses. The DA40 write-up is
+The tests assert against the installed package and skip only when no file is found: a reader
+tested only against a hand-built sample passes while dropping a shape the real file uses, and a
+test that skipped on "nothing loaded" passed through the encoding failure above. The DA40 write-up is
 in [da40.md](da40.md) ("The aeroplane's own checklist, read out of its package").
