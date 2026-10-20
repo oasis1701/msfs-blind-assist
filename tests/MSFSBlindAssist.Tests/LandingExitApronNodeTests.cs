@@ -107,10 +107,13 @@ public class LandingExitApronNodeTests
 
         var f = Assert.Single(g.GetLandingExits(Runway0927()), e => e.TaxiwayName == "F");
 
-        // The ~23° first stub classifies F as High-speed — which is what gated the
-        // early handoff (TryEarlyExitHandoff fires only for High-speed exits) that
-        // routed the LPFR aircraft to the on-runway extension node.
-        Assert.Equal("High-speed", f.ExitType);
+        // The ~23° first stub alone would classify F as High-speed — which is what gated the
+        // early handoff (TryEarlyExitHandoff fires only for High-speed exits) that routed the
+        // LPFR aircraft to the on-runway extension node. But F's own route bends on to 40°
+        // and then 59° off the runway before it is clear, so it is listed as the Normal turn
+        // its route makes (GetLandingExits' CorroborateHighSpeed — the real LPFR 28 F turns
+        // 87°): no early handoff, no rapid-exit callout, the spoken turn cue kept.
+        Assert.Equal("Normal", f.ExitType);
 
         // The selected exit node is the junction on the runway centreline — routing to
         // it (or to its immediate neighbour) would strand the aircraft on the pavement.
@@ -149,5 +152,74 @@ public class LandingExitApronNodeTests
         // runway corridor, so ApronNodeId must come back "not found" (-1) rather than
         // land on the stand stub the fabricated bridge reaches.
         Assert.Equal(-1, f.ApronNodeId);
+    }
+
+    // ------------------------------------------------------------------------
+    // Exit-angle corroboration (KDTW 22L Y3, live 2026-08-18).
+    //
+    // Y3's junction node carries exactly ONE edge, a 34 m stub running 207.2° against a
+    // 208.6° runway — 1.4° off axis, which read as a rapid exit taxiway. The pavement
+    // then turns through 208°, 187°, 154°, 127°: an 81° right-angle turnoff. Believing
+    // the stub fired the 900 ft rapid-exit callout and TryEarlyExitHandoff, which pans
+    // the tone hard toward the exit from 300 ft out and skips the 150 ft "turn now"
+    // verbal — the pilot got a 22° left pan at 38 kt with no spoken cue and missed Y3.
+    //
+    // Fixture: the same equatorial 09/27 runway. Exit "Y3" leaves the centreline with a
+    // 34 m stub along the runway axis, then arcs away; a control exit "S5" is a genuine
+    // ~30° rapid exit and must stay High-speed.
+    // ------------------------------------------------------------------------
+
+    private static TaxiGraph BuildStubThenTurnGraph()
+    {
+        const double jLon = 0.009;                          // Y3 junction, ~1000 m along
+        // 34 m dead along the runway axis (due east), lateral offset unchanged.
+        double s1Lat = 0.0,                    s1Lon = jLon + 34.0 * DEG_PER_M;
+        // Then the arc: north-east, then north, clearing the 37.6 m corridor.
+        double s2Lat = 20.0 * DEG_PER_M,       s2Lon = s1Lon + 20.0 * DEG_PER_M;
+        double s3Lat = 60.0 * DEG_PER_M,       s3Lon = s2Lon + 10.0 * DEG_PER_M;
+
+        // Control: a real RET at 2000 m along — one continuous ~30° divergence.
+        const double rLon = 0.018;
+        double r1Lat = 30.0 * DEG_PER_M,       r1Lon = rLon + 52.0 * DEG_PER_M;
+        double r2Lat = 60.0 * DEG_PER_M,       r2Lon = r1Lon + 52.0 * DEG_PER_M;
+
+        var paths = new List<TaxiPath>
+        {
+            new TaxiPath { StartLat = 0.0,   StartLon = jLon,  EndLat = s1Lat, EndLon = s1Lon, Name = "Y3" },
+            new TaxiPath { StartLat = s1Lat, StartLon = s1Lon, EndLat = s2Lat, EndLon = s2Lon, Name = "Y3" },
+            new TaxiPath { StartLat = s2Lat, StartLon = s2Lon, EndLat = s3Lat, EndLon = s3Lon, Name = "Y3" },
+
+            new TaxiPath { StartLat = 0.0,   StartLon = rLon,  EndLat = r1Lat, EndLon = r1Lon, Name = "S5" },
+            new TaxiPath { StartLat = r1Lat, StartLon = r1Lon, EndLat = r2Lat, EndLon = r2Lon, Name = "S5" },
+        };
+        return TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
+    }
+
+    [Fact]
+    public void A_stub_along_the_runway_does_not_make_a_right_angle_turnoff_a_rapid_exit()
+    {
+        var g = BuildStubThenTurnGraph();
+
+        var y3 = Assert.Single(g.GetLandingExits(Runway0927()), e => e.TaxiwayName == "Y3");
+
+        // First edge is ~0° off the runway axis; the path is not.
+        Assert.Equal("Normal", y3.ExitType);
+        Assert.True(y3.ExitAngleDegrees > 50.0,
+            $"Y3 should be measured off its arc, not its stub; was {y3.ExitAngleDegrees:F1}°");
+    }
+
+    [Fact]
+    public void A_genuine_rapid_exit_stays_high_speed()
+    {
+        var g = BuildStubThenTurnGraph();
+
+        var s5 = Assert.Single(g.GetLandingExits(Runway0927()), e => e.TaxiwayName == "S5");
+
+        // The corroboration only ever RAISES the angle, and a real RET never turns far
+        // enough to cross the 50° ceiling — measured on live navdata: EIDW S5 21°,
+        // EDDM B6 25°, LEMD L2 14°, KJFK J 21°, EHAM V1 20°, LPFR RG 29°.
+        Assert.Equal("High-speed", s5.ExitType);
+        Assert.True(s5.ExitAngleDegrees <= 50.0,
+            $"S5 should stay inside the rapid-exit band; was {s5.ExitAngleDegrees:F1}°");
     }
 }

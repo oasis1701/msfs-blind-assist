@@ -39,8 +39,9 @@ paths:
 ---
 # Runway-hold rules for the routing and rollout files
 
-MIRRORS: copied word for word from runway-holds.md, whose globs leave these files out: TaxiGraph.cs reads the runway geometry they name, the rollout files read `RunwayShape`, and HLD-1, naming no code, keeps loading on every taxi-routing.md file. Change a rule there and here together; ClaudeContextBudgetTests fails if the two differ.
+MIRRORS: copied word for word from runway-holds.md, whose globs leave these files out: TaxiGraph.cs reads the runway geometry they name, the rollout files read `RunwayShape`, HLD-1, naming no code, keeps loading on every taxi-routing.md file, and TaxiAssistForm.cs speaks HLD-17's warning. Change a rule there and here together; ClaudeContextBudgetTests fails if the two differ.
 
 - [HLD-1] Hold-short-to-runway association must be by nearest runway CENTERLINE, never threshold distance, which mislabels crossings far from either threshold with the taxiway name instead of the runway. Full: docs/invariants/runway-holds.md#hld-1
 - [HLD-7] Read runway geometry through the ONE `RunwayShape.For` (classifier, holds, Where-Am-I, takeoff, vacate, reach walk), bar `MatchHoldShortRunwayName` (start rows) and four callers with their own geometry; never read `Pavement*` directly or test membership on `Lat1..Lon2` alone; repair an outboard start ROW, never cap the extent (more: see full). Full: docs/invariants/runway-holds.md#hld-7
 - [HLD-8] Never tune `NamedHoldingPointResolver`'s snap radii: don't widen `DESIGNATED_SNAP_M` (15 m) toward `MAX_SNAP_M` (30 m), don't require a designated node for runway/ILS kinds, and don't add a "never snap runway-ward" guard; all three were probed and are worse. Full: docs/invariants/runway-holds.md#hld-8
+- [HLD-17] A runway entered or crossed with no safe stop must be SAID (`DescribeUnheldRunways`), published as `LastRouteStartWarning` and spoken in the form's ONE standstill utterance, never only in the summary; a stop already passed is never reported missing. Full: docs/invariants/runway-holds.md#hld-17

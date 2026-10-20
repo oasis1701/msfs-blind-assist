@@ -36,6 +36,15 @@ public sealed class AirportTaxiData
     /// never itself a route target (the augmentation anti-geometry rule).
     /// </summary>
     public List<(string Name, double Lat, double Lon, string Kind)> HoldingPoints { get; } = new();
+
+    /// <summary>
+    /// Named holding points read off X-Plane's red mandatory SIGNS (<see cref="SignHoldingPointExtractor"/>),
+    /// apt.dat only. Kept in their OWN list, never merged into <see cref="HoldingPoints"/>: a sign's
+    /// position is approximate, so these feed exactly one consumer — the Progressive Taxi
+    /// "hold at named holding point" list, as a FALLBACK for names no painted line carries
+    /// (OMDB "KK"). They never become runway-entry selectors or cross-at points.
+    /// </summary>
+    public List<SignHoldingPoint> SignHoldingPoints { get; } = new();
 }
 
 public sealed class CoverageReport
