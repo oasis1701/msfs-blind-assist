@@ -21,8 +21,6 @@ public class FBWA380AltitudeWindow : FBWA380FCUWindowBase
         label = new Label { Location = new Point(20, 25), Size = new Size(170, 20), AccessibleName = "Altitude Label" };
         altTextBox = new TextBox { Location = new Point(195, 22), Size = new Size(85, 25), TabIndex = 0, AccessibleName = "Altitude value" };
         altTextBox.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.Handled = true; e.SuppressKeyPress = true; HandleSet(); } };
-        var setButton = new Button { Text = "Set", Location = new Point(290, 20), Size = new Size(80, 30), TabIndex = 1, AccessibleName = "Set Altitude" };
-        setButton.Click += (s, e) => HandleSet();
         var pushButton = new Button { Text = "Altitude Push (managed)", Location = new Point(20, 65), Size = new Size(175, 35), TabIndex = 2, AccessibleName = "Altitude Push" };
         pushButton.Click += (s, e) => aircraft.FireFCUButton("A32NX.FCU_ALT_PUSH", simConnect, announcer, readback: false);
         var pullButton = new Button { Text = "Altitude Pull (selected)", Location = new Point(205, 65), Size = new Size(175, 35), TabIndex = 3, AccessibleName = "Altitude Pull" };
@@ -36,8 +34,7 @@ public class FBWA380AltitudeWindow : FBWA380FCUWindowBase
         var closeButton = new Button { Text = "Close", Location = new Point(140, 200), Size = new Size(140, 35), TabIndex = 7, DialogResult = DialogResult.OK, AccessibleName = "Close" };
         closeButton.Click += (s, e) => Close();
 
-        Controls.AddRange(new Control[] { label, altTextBox, setButton, pushButton, pullButton, inc100, inc1000, metricButton, closeButton });
-        AcceptButton = setButton;
+        Controls.AddRange(new Control[] { label, altTextBox, pushButton, pullButton, inc100, inc1000, metricButton, closeButton });
         CancelButton = closeButton;
         RefreshLabel();
     }
@@ -56,7 +53,7 @@ public class FBWA380AltitudeWindow : FBWA380FCUWindowBase
     private void HandleSet()
     {
         string input = altTextBox.Text.Trim();
-        if (!double.TryParse(input, System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out double v)) { announcer.AnnounceImmediate("Invalid number format"); altTextBox.SelectAll(); return; }
+        if (!Utils.NumberParsing.TryParseTyped(input, out double v)) { announcer.AnnounceImmediate("Invalid number format"); altTextBox.SelectAll(); return; }
         bool metric = aircraft.MetricAlt;
         double feet = metric ? v / 0.3048 : v;
         if (feet < 100 || feet > 49000)

@@ -4,7 +4,7 @@ Reference for working with `PMDG737Definition`, `PMDGNG3DataManager`, `PMDGNG3Da
 
 ## Scope
 
-Only the 737-800 BW HD is currently supported. The data struct's `AircraftModel` field (`ushort`) discriminates variants if -600 / -700 / -900 support is added later. `EVT_*_600` and `EVT_*_800` entries are both in `EventIds`, so wiring a variant is largely a one-line `_simpleEventMap` change.
+One definition serves every NG3 variant, since they share one SDK struct. It was built on the 737-800 BW HD, and the -700 has been flown with it (2026-10-11). The data struct's `AircraftModel` field (`ushort`; SDK header: 1 -600, 2-4 -700, 5-7 -800, 8-12 -900/-900ER, 13-22 the BDSF, BCF and BBJ versions) is the variant discriminator: the calculated flap speeds pick their measured VREF table from it (`Pmdg737FlapSpeeds.VariantFromModel`), falling back to the TITLE only before the first CDA snapshot or for a value the header does not list. `EVT_*_600` and `EVT_*_800` entries are both in `EventIds`, so wiring a variant-specific event is largely a one-line `_simpleEventMap` change.
 
 ## Panel structure
 
@@ -126,6 +126,46 @@ Implementation in PMDG737Definition.HandleHotkeyAction. MainForm has no generic
 fallback for these actions — every PMDG aircraft must implement them or the
 hotkey silently does nothing.
 
+**STD cannot be read; the knob says.** PMDG ignores absolute baro writes, so `Ctrl+B`
+turns the captain's baro knob. The NG3 SDK's EFIS block has no STD flag, and STD
+reads 29.92 inHg exactly as a local 29.92 does. With STD on, a click moves only
+the preselect shown under STD and the reading stays at 29.92. So from a reading
+of 29.92 the dialog asks the knob (`Pmdg737Baro.SetFromStandardAsync`): one click
+toward the target, then a settled read. A reading that moved means STD is off and
+the turn goes on from there; a reading still at 29.92 means STD is on, so STD is
+pushed off and the turn counts from the reading after the push. A reading still
+at 29.92 after the push is a preselect sitting at 29.92, or a check click PMDG
+dropped and a push that turned STD ON, so the knob is asked once more; that
+second push undoes a wrong first one, and 29.92 surviving both checks says
+"Altimeter not confirmed". Until 2026-10 the dialog pushed STD on any reading of
+29.92, which turned a local 29.92 INTO STD. Every read after a click or a push
+waits out `Pmdg737Baro.SettleMs` (a few frames), then for the next delivery
+(`ReadFreshAsync`): ALTIMETER_SETTING is batch-covered, so the cache can predate
+the action by up to a second, and the old 200 ms re-read counted the clicks from
+the 29.92 it had before the push. For the same reason every turn and STD push
+from the dialog, the Standard button's too, holds off the next one ("Still
+setting altimeter") until a delivery after it, so a quick re-submit counts from
+where the knob landed. The altimeter callout stays quiet while the check runs;
+the dialog then speaks the landed reading, delivered after the last click, as
+the value (never "standard": this path ends with STD off), and makes it the
+callout's baseline. A timed mute that let the callout speak it instead lost it
+whenever the batch fell inside the mute. A read that delivers nothing after the
+knob has moved says "Altimeter not confirmed" and re-fires the callout.
+
+The dialog's **Standard** button turns STD on. A reading off 29.92 is STD off,
+since STD reads 29.92, so one push does it. Until 2026-10 the button did nothing
+within 0.02 of 29.92 (29.90 to 29.94, or 1013 hPa), so as not to toggle STD off,
+yet still said "Standard". From a reading of 29.92 it now asks the knob
+(`Pmdg737Baro.EngageStdAsync`): a click up and a click back, each read once it
+has landed. If neither moved the reading, STD is already on and nothing is
+pushed; if either did, STD is off, so the setting is put back to the local 29.92
+(STD keeps it as the preselect) and STD is pushed. The click back doubles as the
+second check, so one dropped click still finds a local 29.92. The B
+readout and the callout still say "Altimeter standard" for any reading of 29.92,
+a local one included. Unmeasured: whether PMDG drives the stock
+`KOHLSMAN SETTING STD:1`; a read across an STD push would show whether STD can be
+read after all.
+
 ## Guarded selector dispatch
 
 Two primitives on IPMDGDataManager:
@@ -169,13 +209,19 @@ DU source selectors (`MAIN_MainPanelDUSel`, `MAIN_LowerDUSel`) have a "reverse s
 
 ## Options.ini requirement
 
-`737NG3_Options.ini` lives at:
+Each installed variant keeps its own `737_Options.ini` in its package's `work` folder, in MSFS's
+per-package storage (not Community). On an FS2024 Store install (measured on the owner's machine,
+2026-10-12, all four variants):
 
 ```
-%LOCALAPPDATA%\Packages\Microsoft.Limitless_8wekyb3d8bbwe\LocalCache\Packages\Community\pmdg-aircraft-738\work\737NG3_Options.ini
+%LOCALAPPDATA%\Packages\Microsoft.Limitless_8wekyb3d8bbwe\LocalState\WASM\MSFS2024\pmdg-aircraft-73x\work\737_Options.ini
 ```
 
-Must contain:
+FS2024 Steam uses `%APPDATA%\Microsoft Flight Simulator 2024\WASM\MSFS2024\`, FS2020 Store
+`...\Microsoft.FlightSimulator_8wekyb3d8bbwe\LocalState\packages\`, FS2020 Steam
+`%APPDATA%\Microsoft Flight Simulator\Packages\` (`PMDGOptionsIniLocator`). The package folders are
+`pmdg-aircraft-736` (737-600), `-737` (737-700), `-738` (737-800) and `-739` (737-900). PMDG creates
+the file the first time the variant is loaded. It must contain:
 
 ```ini
 [SDK]
@@ -184,7 +230,11 @@ EnableCDUBroadcast.0=1
 EnableCDUBroadcast.1=1
 ```
 
-User-managed (same as the 777's options.ini workflow today).
+The pilot adds it; MSFSBA never edits the file ([PSDK-1]). Picking the PMDG 737 from the Aircraft
+menu, or starting MSFSBA with it as the selected profile, reads every installed variant's file and,
+while any lacks these lines (or none exists yet), opens the PMDG 737 SDK setup dialog: the steps, the
+lines with a Copy lines button, and a row per file with Open folder ([PSDK-2]: never at connect). The
+777 works the same way (docs/pmdg-777.md).
 
 ## Fire handles need an active fire to test
 
@@ -272,7 +322,7 @@ Key dispatch rules (all in the `0-cabin` region of `HandleUIVariableSet`):
   Composite bin/blind buttons loop `SetLVar` over static lists (`s_binLvars` / `s_blindLvars`);
   L-vars not fitted on the loaded cabin layout are harmless no-ops.
 - **Drag-position varKeys carry a `_SET` suffix** (`headrest_CA_drag_h_SET` etc., Name = the bare
-  L-var). MainForm only renders the TextBox + Set numeric input for keys containing "_SET"; a
+  L-var). MainForm only renders the typed numeric field (Enter applies) for keys containing "_SET"; a
   no-ValueDescriptions var without it falls through to the plain-button branch, whose click
   always dispatches value 1 — the position slammed to 1/100 on every press ("only goes to one
   position"). Keep the suffix on any future numeric-input L-var.

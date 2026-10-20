@@ -93,7 +93,7 @@ public class Md11SquawkTests
     public void TheField_IsATextEntry_AndTheReadBack_IsAReadOnlyStatusRow()
     {
         var set = Vars[Md11Squawk.SetKey];
-        Assert.Contains("_SET", Md11Squawk.SetKey);       // MainForm's text box + Set button convention
+        Assert.Contains("_SET", Md11Squawk.SetKey);       // MainForm's typed-field convention (Enter applies)
         Assert.Equal("Squawk", set.DisplayName);
         Assert.False(set.PreventTextInput);
 

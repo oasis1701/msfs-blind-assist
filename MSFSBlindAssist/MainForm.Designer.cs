@@ -9,6 +9,7 @@
         private System.Windows.Forms.ToolStripMenuItem settingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem fmcSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem hotkeyListMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem simPerformanceMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem suspendHotkeysMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem updateApplicationMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem aboutMenuItem = null!;
@@ -22,6 +23,11 @@
         private System.Windows.Forms.ToolStripMenuItem headwindA330MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem ifly737MaxMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem tfdiMd11MenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem extrasMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem volantaMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem helpMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem userGuideMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem projectWebsiteMenuItem = null!;
         private System.Windows.Forms.ListBox sectionsListBox = null!;
         private System.Windows.Forms.ListBox panelsListBox = null!;
         private System.Windows.Forms.Panel controlsContainer = null!;
@@ -44,6 +50,7 @@
             this.settingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.fmcSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.hotkeyListMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.simPerformanceMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.suspendHotkeysMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.updateApplicationMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.aboutMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -57,6 +64,11 @@
             this.headwindA330MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.ifly737MaxMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.tfdiMd11MenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.extrasMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.volantaMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.helpMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.userGuideMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.projectWebsiteMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.sectionsListBox = new System.Windows.Forms.ListBox();
             this.panelsListBox = new System.Windows.Forms.ListBox();
             this.controlsContainer = new System.Windows.Forms.Panel();
@@ -70,7 +82,9 @@
             this.menuStrip.AccessibleDescription = "Main application menu";
             this.menuStrip.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.fileMenuItem,
-            this.aircraftMenuItem});
+            this.aircraftMenuItem,
+            this.extrasMenuItem,
+            this.helpMenuItem});
             this.menuStrip.Location = new System.Drawing.Point(0, 0);
             this.menuStrip.Name = "menuStrip";
             this.menuStrip.Size = new System.Drawing.Size(870, 28);
@@ -85,9 +99,9 @@
             this.settingsMenuItem,
             this.fmcSettingsMenuItem,
             this.hotkeyListMenuItem,
+            this.simPerformanceMenuItem,
             this.suspendHotkeysMenuItem,
-            this.updateApplicationMenuItem,
-            this.aboutMenuItem});
+            this.updateApplicationMenuItem});
             this.fileMenuItem.Name = "fileMenuItem";
             this.fileMenuItem.Size = new System.Drawing.Size(46, 24);
             this.fileMenuItem.Text = "&File";
@@ -132,6 +146,15 @@
             this.hotkeyListMenuItem.Size = new System.Drawing.Size(220, 26);
             this.hotkeyListMenuItem.Text = "&Hotkey List";
             this.hotkeyListMenuItem.Click += new System.EventHandler(this.HotkeyListMenuItem_Click);
+            //
+            // simPerformanceMenuItem
+            //
+            this.simPerformanceMenuItem.AccessibleName = "Sim Performance";
+            this.simPerformanceMenuItem.AccessibleDescription = "Show the simulator's frame rate and its CPU, memory and GPU usage, like the in-sim developer FPS display";
+            this.simPerformanceMenuItem.Name = "simPerformanceMenuItem";
+            this.simPerformanceMenuItem.Size = new System.Drawing.Size(220, 26);
+            this.simPerformanceMenuItem.Text = "Sim &Performance";
+            this.simPerformanceMenuItem.Click += new System.EventHandler(this.SimPerformanceMenuItem_Click);
             //
             // suspendHotkeysMenuItem
             //
@@ -268,6 +291,55 @@
             this.tfdiMd11MenuItem.Text = "TFDi Design &MD-11";
             this.tfdiMd11MenuItem.Checked = false;
             this.tfdiMd11MenuItem.Click += new System.EventHandler(this.TFDiMD11MenuItem_Click);
+            //
+            // extrasMenuItem
+            //
+            this.extrasMenuItem.AccessibleName = "Extras menu";
+            this.extrasMenuItem.AccessibleDescription = "Tools that work alongside the simulator";
+            this.extrasMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.volantaMenuItem});
+            this.extrasMenuItem.Name = "extrasMenuItem";
+            this.extrasMenuItem.Size = new System.Drawing.Size(65, 24);
+            this.extrasMenuItem.Text = "E&xtras";
+            //
+            // volantaMenuItem
+            //
+            this.volantaMenuItem.AccessibleName = "Volanta";
+            this.volantaMenuItem.AccessibleDescription = "Volanta's live map as text: Volanta users and network pilots around you, your friends, and online ATC";
+            this.volantaMenuItem.Name = "volantaMenuItem";
+            this.volantaMenuItem.Size = new System.Drawing.Size(220, 26);
+            this.volantaMenuItem.Text = "&Volanta…";
+            this.volantaMenuItem.Click += new System.EventHandler(this.VolantaMenuItem_Click);
+            //
+            // helpMenuItem
+            //
+            this.helpMenuItem.AccessibleName = "Help menu";
+            this.helpMenuItem.AccessibleDescription = "The user guide, the project website and the application version";
+            this.helpMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.userGuideMenuItem,
+            this.projectWebsiteMenuItem,
+            this.aboutMenuItem});
+            this.helpMenuItem.Name = "helpMenuItem";
+            this.helpMenuItem.Size = new System.Drawing.Size(55, 24);
+            this.helpMenuItem.Text = "&Help";
+            //
+            // userGuideMenuItem
+            //
+            this.userGuideMenuItem.AccessibleName = "User Guide";
+            this.userGuideMenuItem.AccessibleDescription = "Open the user guide in your web browser";
+            this.userGuideMenuItem.Name = "userGuideMenuItem";
+            this.userGuideMenuItem.Size = new System.Drawing.Size(220, 26);
+            this.userGuideMenuItem.Text = "User &Guide";
+            this.userGuideMenuItem.Click += new System.EventHandler(this.UserGuideMenuItem_Click);
+            //
+            // projectWebsiteMenuItem
+            //
+            this.projectWebsiteMenuItem.AccessibleName = "Project Website";
+            this.projectWebsiteMenuItem.AccessibleDescription = "Open msfsblindassist.com in your web browser";
+            this.projectWebsiteMenuItem.Name = "projectWebsiteMenuItem";
+            this.projectWebsiteMenuItem.Size = new System.Drawing.Size(220, 26);
+            this.projectWebsiteMenuItem.Text = "Project &Website";
+            this.projectWebsiteMenuItem.Click += new System.EventHandler(this.ProjectWebsiteMenuItem_Click);
             //
             // sectionsListBox
             // 

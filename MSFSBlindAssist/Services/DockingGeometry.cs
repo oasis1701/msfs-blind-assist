@@ -326,8 +326,8 @@ public static class DockingGeometry
     /// </para>
     /// <para>
     /// Verified live (KBOS E13, B772, 2026-06-13): datum 31.5 m → 23 m → GSX arrival services
-    /// + jetway connects; EDDF A66 / KATL C20 untouched. See
-    /// docs/superpowers/specs/2026-06-13-gsx-vdgs-nose-stop-datum-handoff.md. Pure function;
+    /// + jetway connects; EDDF A66 / KATL C20 untouched. See [DCK-18], [DCK-3] and
+    /// docs/gsx.md, "Developer internals" (its GSX static occupancy clamp bullet). Pure function;
     /// a sign error here parks the aircraft in the wrong spot — keep probe-tested.
     /// </para>
     /// </summary>

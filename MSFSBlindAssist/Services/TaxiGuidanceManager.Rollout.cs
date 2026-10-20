@@ -27,7 +27,9 @@ public partial class TaxiGuidanceManager
         _rolloutStoppedShortAnnounced = false;
         _rolloutTooFastNoExit = false;
         _rolloutCountdownStatusOwed = false;
-        _rolloutToneMode = Navigation.RolloutToneMode.Silent;
+        // Not Silent: until this rollout's first tone frame the landing assist's centerline cue keeps the tone
+        // (RolloutExitGate.ToneModeAtRolloutEntry), so ownership never fails toward both tones silent.
+        _rolloutToneMode = Navigation.RolloutExitGate.ToneModeAtRolloutEntry;
         _rolloutToneLogMode = null;
         _rolloutToneLogExit = null;
         _rolloutToneLogUtc = DateTime.MinValue;
@@ -1235,7 +1237,7 @@ public partial class TaxiGuidanceManager
             // segment the tone is ACTUALLY about to steer at. It used to sit inside the
             // re-route block gated on handoffRerouted, which left the fallback path — the
             // one that resumes on the touchdown route — with no guard at all, while
-            // CLAUDE.md requires it to gate EVERY landing-exit handoff re-route. For a
+            // [ROL-29] requires it to gate EVERY landing-exit handoff re-route. For a
             // successful re-route the cursor is 0, so that case is unchanged.
             if (_route != null && _currentSegmentIndex >= 0
                 && _currentSegmentIndex < _route.Segments.Count)
@@ -1932,11 +1934,12 @@ public partial class TaxiGuidanceManager
             // Fall through — bearing-to-junction tone below acts as the fallback.
         }
 
-        // Rollout steering tone — three modes, selected by RolloutExitGate.SelectToneMode:
+        // Rollout steering tone — three modes, selected by RolloutExitGate.SelectToneMode, plus a
+        // fourth, Centerline, while the landing assist's centerline cue is engaged (see below):
         //
-        // Above ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS (50 kt) the tone is Silent — at runway
-        // speed a pan cue is useless and autopilot crab / crosswind alignment would cause
-        // confusing pan.
+        // Above ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS (50 kt) the tone is Silent — this heading cue's
+        // pan would follow autopilot crab / crosswind alignment at runway speed. The centerline
+        // cue, when engaged, covers this band with a cross-track law instead.
         //
         // Below 50 kt and beyond ROLLOUT_EXIT_TONE_ARM_FT (300 ft) of the chosen exit, the
         // tone is DriftCorrection: desired heading is the runway itself, steering the pilot
@@ -1972,12 +1975,20 @@ public partial class TaxiGuidanceManager
         // Too fast for the targeted exit — by the too-fast rule before its turn point, or declined there
         // ("too fast to turn" with no exit left): the tone holds the runway heading and never leads the
         // pilot toward that exit, nor goes quiet for a turn toward it (RolloutExitGate.SelectToneMode).
+        //
+        // While the landing assist's rollout centerline cue is engaged (CenterlineCueEngagedProvider), the
+        // cue owns the runway and exit guidance the exit: the silent band above 50 kt, the drift band beyond
+        // the exit's turn window and every too-fast frame become Centerline, which pauses this tone while the
+        // cue plays Takeoff Assist's centerline law (LandingFlareAssistManager reads ExitGuidanceOwnsRolloutTone).
+        // KSEA 16R 2026-10-15: an A300 autoland yawed off the runway between 96 and 70 kt, all of it above the
+        // 50 kt line, with no cue at all.
         bool tooFastForExit = _rolloutTooFastNoExit
             || (!_rolloutTurnNowAnnounced
                 && Navigation.RolloutExitGate.IsTooFastToTurn(groundSpeedKts, _rolloutExit.ExitAngleDegrees));
         var toneMode = Navigation.RolloutExitGate.SelectToneMode(
             groundSpeedKts, distToExitFeet, hdgDelta, exitRelBearingDeg,
-            turnWindowFeet, tooFastForExit: tooFastForExit);
+            turnWindowFeet, tooFastForExit: tooFastForExit,
+            centerlineCueEngaged: CenterlineCueEngagedProvider?.Invoke() ?? false);
         if (toneMode != _rolloutToneMode)
         {
             // Start every mode from a clean filter so the pan is sharp and immediate rather
@@ -1994,10 +2005,11 @@ public partial class TaxiGuidanceManager
         // pause case): a runway-heading hold would pull AGAINST the turn just commanded, so the verbal
         // owns the turn until the 15° turnBegun handoff brings the route tone in. The one silent
         // window, and it is brief.
+        // Centerline: the landing assist's cue plays instead of this tone, so this one is paused exactly as for Silent.
         bool normalExit = _rolloutExit!.ExitType == "Normal";
         bool turnTonePaused = toneMode == Navigation.RolloutToneMode.ExitBearing
                               && _rolloutTurnNowAnnounced && normalExit && _rolloutTurnTonePause;
-        if (toneMode == Navigation.RolloutToneMode.Silent || turnTonePaused)
+        if (toneMode is Navigation.RolloutToneMode.Silent or Navigation.RolloutToneMode.Centerline || turnTonePaused)
         {
             _steeringTone.Pause();
             _headingErrorInitialized = false;
@@ -2355,7 +2367,7 @@ public partial class TaxiGuidanceManager
 
         // Reachability guard — the LAST ungated landing-exit handoff re-route. This method
         // builds a route, arms the post-handoff monitor and moves to Taxiing exactly like
-        // the handoff in UpdateLandingRollout, so CLAUDE.md's "IsHandoffRouteReachable must
+        // the handoff in UpdateLandingRollout, so [ROL-29]'s "IsHandoffRouteReachable must
         // gate every landing-exit handoff re-route" was simply not true of it. Its only
         // route sanity check is the first segment's BEARING (above); the KSEA 34L failure
         // lived on the DISTANCE axis — a segment 53.9 m of cross-track away, with the
@@ -2402,7 +2414,7 @@ public partial class TaxiGuidanceManager
             }
 
             // Same whole-route crossing guard as the UpdateLandingRollout handoff —
-            // CLAUDE.md requires EVERY landing-exit handoff re-route to be gated
+            // [ROL-27] requires EVERY landing-exit handoff re-route to be gated
             // identically, and this method was the last ungated one once before
             // (commit 29b8bcbf). See the other site for the KATL 26R defect.
             if (HandoffRouteReCrossesLandingRunway(lat, lon))
@@ -3409,7 +3421,7 @@ public partial class TaxiGuidanceManager
     ///
     /// <para>ONE owner for the whole conclude sequence (reason split → clear the handoff flag
     /// → Taxiing → HandleArrival). It was hand-copied at four guard sites, whose identity
-    /// CLAUDE.md requires and which nothing enforced; this method is that enforcement. Note
+    /// [ROL-27] requires and which nothing enforced; this method is that enforcement. Note
     /// the two <c>TryEarlyExitHandoff</c> sites can only ever take the
     /// <c>_landingExitRouteUnreachable</c> arm — that method's <c>LoadRoute</c> nulls the
     /// planned-exit name and never restores it — and calling the shared rule from there

@@ -100,7 +100,8 @@ public class SimVarDefinition
     // UI customization properties (aircraft-specific)
     public bool RenderAsButton { get; set; }  // True to render as button instead of combo box (e.g., APU Start)
     /// <summary>
-    /// When true (opt-in, set by the FBW momentary-button helpers), the panel label
+    /// When true (opt-in, set by the momentary-button definitions of the FBW A320/A380, the
+    /// iFly 737 and the TFDi MD-11), the panel label
     /// SUPPRESSES the value-0 resting state ("Released"/"Off"/"Idle") — a momentary
     /// push-button has no meaningful resting value, so appending it reads as noise.
     /// MUST stay opt-in: PMDG 777 MCP buttons and the HS787 Baro STD use value-0
@@ -116,6 +117,15 @@ public class SimVarDefinition
     /// silently misses and the change the user just made re-announces.
     /// </summary>
     public bool UiEchoMatchesAnyValue { get; set; } = false;
+    /// <summary>
+    /// Key of a SEPARATE variable that reads this control's new state back, such as a switch's
+    /// own light (the Fenix ACP reception knobs: `S_ASP_VHF_2_REC_LATCH` lights
+    /// `I_ASP_VHF_2_REC`). A panel pick marks that key in MainForm's UI-set echo gate too, with
+    /// the same value, so the light's change is not spoken after the screen reader already said
+    /// the pick (CORE-7). The partner must read back the value the switch was set to; the gate
+    /// stays value-matched, so a different change to the light inside the window still speaks.
+    /// </summary>
+    public string? UiEchoVariable { get; set; }
     // Accessible SLIDER (WinForms TrackBar) for a continuous axis control (cockpit window/
     // sunshade/seat position, speedbrake handle, trims). The TrackBar is 0-100 and maps linearly
     // to [SliderMin, SliderMax]; on change MSFSBA writes the mapped value live (HandleUIVariableSet,

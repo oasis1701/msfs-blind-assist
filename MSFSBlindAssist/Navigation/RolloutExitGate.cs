@@ -15,7 +15,14 @@ public enum RolloutToneMode
     /// </summary>
     DriftCorrection,
     /// <summary>Steer at the exit junction. Owns the last 300 ft before the exit.</summary>
-    ExitBearing
+    ExitBearing,
+    /// <summary>
+    /// The landing assist's rollout centerline cue owns the tone (LandingFlareAssistManager's Takeoff
+    /// Assist-style law) and exit guidance's own tone is paused. Selected only while that cue is engaged,
+    /// in place of <see cref="Silent"/> above 50 kt and of <see cref="DriftCorrection"/> beyond the
+    /// targeted exit's turn window: the cue owns the runway, exit guidance the exit.
+    /// </summary>
+    Centerline
 }
 
 /// <summary>
@@ -82,7 +89,7 @@ public static class RolloutExitGate
     /// pilot's distance-unit setting (<c>DistanceMilestones</c> → <c>DistanceFormatter.IsMetres</c>),
     /// so reading it here moved this decision by ~8 ft when the pilot switched between feet and
     /// metres, and by whatever a future extra milestone would shift the positional index to.
-    /// CLAUDE.md: "<c>DistanceFormatter</c> is a DISPLAY layer only — never use it for guidance
+    /// [DCK-35]: "<c>DistanceFormatter</c> is a DISPLAY layer only — never use it for guidance
     /// thresholds; those must stay unit-native internally."</para>
     /// </summary>
     public const double NearRunwayEndFeet = 500.0;
@@ -348,14 +355,28 @@ public static class RolloutExitGate
     /// toward an off-centreline node at 35–50 kt led a pilot into a turn <c>turnBegun</c> then handed
     /// off at speed (the KMEM 36L shape).
     /// </param>
+    /// <param name="centerlineCueEngaged">
+    /// The landing assist's rollout centerline cue is engaged (LandingFlareAssistManager.IsRolloutEngaged).
+    /// It then owns the runway and this returns <see cref="RolloutToneMode.Centerline"/> wherever the tone
+    /// used to be silent for speed, wherever it would drift-correct beyond the exit's turn window, and
+    /// whenever the aircraft is too fast for the exit; the exit zone keeps today's tones, and a turn toward
+    /// the exit inside its window is never fought. KSEA 16R, 2026-10-15: an A300 autoland held the
+    /// centerline to 96 kt, then yawed right at 2-3°/s and left the pavement at 70 kt with no cue at all,
+    /// because every frame of it was above 50 kt. False: exactly the behaviour described above.
+    /// </param>
     public static RolloutToneMode SelectToneMode(
         double groundSpeedKts,
         double distToExitFeet,
         double headingDeltaSignedDeg,
         double exitRelativeBearingDeg,
         double turnWindowFeet,
-        bool tooFastForExit = false)
+        bool tooFastForExit = false,
+        bool centerlineCueEngaged = false)
     {
+        if (centerlineCueEngaged)
+            return SelectToneModeWithCenterlineCue(groundSpeedKts, distToExitFeet, headingDeltaSignedDeg,
+                exitRelativeBearingDeg, turnWindowFeet, tooFastForExit);
+
         if (groundSpeedKts > ToneActiveBelowGroundSpeedKts) return RolloutToneMode.Silent;
         if (tooFastForExit) return RolloutToneMode.DriftCorrection;
         if (distToExitFeet <= ExitToneArmFeet) return RolloutToneMode.ExitBearing;
@@ -370,6 +391,57 @@ public static class RolloutExitGate
 
         return RolloutToneMode.DriftCorrection;
     }
+
+    /// <summary>
+    /// <see cref="SelectToneMode"/> while the landing assist's centerline cue is engaged. Too fast for
+    /// the exit: <see cref="RolloutToneMode.Centerline"/> (no turn to protect). Above 50 kt, where exit
+    /// guidance has no tone of its own: Centerline, or <see cref="RolloutToneMode.Silent"/> for a turn
+    /// toward a known exit side inside the exit's own window. At or below 50 kt: the exit-bearing tone
+    /// within 300 ft and the turn-window tones exactly as without the cue, Centerline beyond the window.
+    /// </summary>
+    private static RolloutToneMode SelectToneModeWithCenterlineCue(
+        double groundSpeedKts,
+        double distToExitFeet,
+        double headingDeltaSignedDeg,
+        double exitRelativeBearingDeg,
+        double turnWindowFeet,
+        bool tooFastForExit)
+    {
+        if (tooFastForExit) return RolloutToneMode.Centerline;
+
+        bool turningTowardExitInWindow = distToExitFeet <= turnWindowFeet
+            && Math.Abs(headingDeltaSignedDeg) >= DriftToneSilentDeg
+            && HasKnownExitSide(exitRelativeBearingDeg)
+            && IsTurnTowardExit(headingDeltaSignedDeg, exitRelativeBearingDeg);
+
+        if (groundSpeedKts > ToneActiveBelowGroundSpeedKts)
+            return turningTowardExitInWindow ? RolloutToneMode.Silent : RolloutToneMode.Centerline;
+
+        if (distToExitFeet <= ExitToneArmFeet) return RolloutToneMode.ExitBearing;
+        if (distToExitFeet <= turnWindowFeet)
+            return turningTowardExitInWindow ? RolloutToneMode.Silent : RolloutToneMode.DriftCorrection;
+        return RolloutToneMode.Centerline;
+    }
+
+    /// <summary>
+    /// Does exit guidance own the rollout tone? Only in a landing rollout with an exit
+    /// (<paramref name="noExitMode"/> false: not the runway-end countdown) whose last tone mode is not
+    /// <see cref="RolloutToneMode.Centerline"/>. The landing assist's centerline cue sounds only when
+    /// this is false, so the two tones never sound together: it plays with no exit guidance, in the
+    /// countdown (which pauses exit guidance's tone) and in Centerline, and comes back when exit
+    /// guidance retargets downfield.
+    /// </summary>
+    public static bool ExitGuidanceOwnsTone(bool inLandingRollout, bool noExitMode, RolloutToneMode lastToneMode)
+        => inLandingRollout && !noExitMode && lastToneMode != RolloutToneMode.Centerline;
+
+    /// <summary>
+    /// The tone mode a landing rollout holds from its entry (and from every retarget) until its first tone
+    /// frame: <see cref="RolloutToneMode.Centerline"/>, so <see cref="ExitGuidanceOwnsTone"/> grants exit
+    /// guidance the tone only once it has actually chosen a mode of its own. The landing assist's cue then
+    /// fails toward sounding, never toward both tones silent — even should exit guidance's frames stop.
+    /// Without the cue nothing reads this, and the first frame's own mode replaces it.
+    /// </summary>
+    public const RolloutToneMode ToneModeAtRolloutEntry = RolloutToneMode.Centerline;
 
     /// <summary>
     /// Does the exit have a knowable side, per the same <see cref="ExitSideMinBearingDeg"/>

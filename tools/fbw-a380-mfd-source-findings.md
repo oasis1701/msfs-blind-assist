@@ -32,7 +32,7 @@ From `FmsHeader.tsx` the FMS header tabs + items (index → label → URI):
   CAPT_MFD_pageSelectorActive_0   F-PLN      fms/active/f-pln (activeFlightPlanPageUri)
   CAPT_MFD_pageSelectorActive_1   PERF       fms/active/perf
   CAPT_MFD_pageSelectorActive_2   FUEL&LOAD  fms/active/fuel-load (activeFlightPlanFuelAndLoadUri)
-  CAPT_MFD_pageSelectorActive_3   WIND       (disabled)
+  CAPT_MFD_pageSelectorActive_3   WIND       fms/active/wind (enabled since FBW #10929, 2026-10-09)
   CAPT_MFD_pageSelectorActive_4   INIT       fms/active/init
   CAPT_MFD_pageSelectorPosition_0 MONITOR    fms/position/monitor
   CAPT_MFD_pageSelectorPosition_1 REPORT     (disabled)

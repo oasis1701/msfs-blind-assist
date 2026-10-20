@@ -242,7 +242,7 @@ public partial class FlyByWireA380Definition
             "A380X_OVHD_STORM_LT",
             "A32NX_LIGHTING_PRESET_LOAD", "A32NX_LIGHTING_PRESET_SAVE",
             // Passenger-cabin lighting (moved here from the flyPad Quick Controls, which
-            // can't be set through the injected agent — see CLAUDE.md flyPad note).
+            // can't be set through the injected agent — see [FPD-1]).
             "CABIN_BRIGHTNESS_SET", "A32NX_CABIN_USING_AUTOBRIGHTNESS", "A32NX_CABIN_AUTOBRIGHTNESS"
         };
         p["Exterior Lighting"] = new List<string>
@@ -304,7 +304,7 @@ public partial class FlyByWireA380Definition
             "A32NX.FCU_ALT_PUSH", "A32NX.FCU_ALT_PULL", "A32NX_FCU_ALT_INCREMENT_1000",
             "A32NX.FCU_VS_PUSH", "A32NX.FCU_VS_PULL",
             "A32NX.FCU_SPD_MACH_TOGGLE_PUSH",
-            "A32NX.FCU_AP_DISCONNECT_PUSH", "A32NX.FCU_ATHR_DISCONNECT_PUSH",
+            "A32NX.FCU_AP_DISCONNECT_PUSH", AutothrustDisconnectEvent,
             A380MetricAltitude.ControlKey
         };
         p["OIT"] = new List<string> { "A380X_SWITCH_OIT_SIDE_LEFT", "A380X_SWITCH_OIT_SIDE_RIGHT" };

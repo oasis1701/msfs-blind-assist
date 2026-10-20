@@ -117,16 +117,29 @@ public partial class MainForm
             return;
         }
 
+        if (!offlineLocationService.IsAvailable)
+        {
+            announcer.AnnounceImmediate(LocationDataUnavailableText());
+            return;
+        }
+
         try
         {
-            announcer.AnnounceImmediate("Requesting aircraft position...");
-
-            simConnectManager.RequestAircraftPositionAsync((position) =>
+            // The lookup is local and takes milliseconds, so the window opens already filled: no
+            // "Requesting…" or "Loading…" stage, and its focused first box is what NVDA reads.
+            var query = Services.Geography.LocationQuerySettings.From(MSFSBlindAssist.Settings.SettingsManager.Current);
+            simConnectManager.RequestAircraftPositionAsync(async position =>
             {
-                // This callback runs when position data is received
+                // This callback runs on the UI thread, so the await resumes there.
                 try
                 {
-                    var locationForm = new Forms.LocationInfoForm(position.Latitude, position.Longitude, announcer);
+                    var report = await Task.Run(() => offlineLocationService.GetLocationInfo(position.Latitude, position.Longitude, query));
+                    if (report?.Details is null)
+                    {
+                        announcer.AnnounceImmediate(LocationDataUnavailableText());
+                        return;
+                    }
+                    var locationForm = new Forms.LocationInfoForm(report, query.Kilometres);
                     locationForm.Show();
                 }
                 catch (Exception ex)
@@ -229,20 +242,20 @@ public partial class MainForm
                 // approach (instead of waiting until ILS guidance or the landing-exit planner opens).
                 _airportWarmUp?.AtDestination(dialog.SelectedAirport.ICAO);
 
-                // Manual-landing checkbox: arm (or clear) the flare/rollout assist for this
-                // destination. A re-selection WITHOUT the checkbox must disarm — the pilot's
-                // latest choice wins.
+                // The destination arms the landing assist (RefreshRolloutCueArming): the manual-landing
+                // checkbox adds the flare tones, and with RolloutCenterlineToneEnabled the rollout
+                // centerline cue is armed even without it. A re-selection always re-applies — the
+                // pilot's latest choice wins.
+                _rolloutCueDestination = new MSFSBlindAssist.Navigation.RolloutCueDestination(
+                    dialog.SelectedRunway, dialog.SelectedAirport.ICAO,
+                    airportDataProvider.GetRunways(dialog.SelectedAirport.ICAO), dialog.ManualLandingAssist,
+                    dialog.SelectedAirport);
+                _rolloutCueLatest = MSFSBlindAssist.Navigation.RolloutCueSource.Destination;
+                RefreshRolloutCueArming(force: true);
                 if (dialog.ManualLandingAssist)
-                {
-                    flareAssistManager.Arm(dialog.SelectedRunway, dialog.SelectedAirport,
-                        airportDataProvider.GetRunways(dialog.SelectedAirport.ICAO));
                     announcer.AnnounceImmediate($"Destination runway set: {dialog.SelectedAirport.ICAO} Runway {dialog.SelectedRunway.RunwayID}. Manual landing assist armed.");
-                }
                 else
-                {
-                    flareAssistManager.Disarm();
                     announcer.AnnounceImmediate($"Destination runway set: {dialog.SelectedAirport.ICAO} Runway {dialog.SelectedRunway.RunwayID}");
-                }
             }
         }
     }

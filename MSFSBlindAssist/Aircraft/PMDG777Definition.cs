@@ -4561,6 +4561,18 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true
             },
+            // Gross weight for the CALCULATED flap maneuvering speeds (Pmdg777FlapSpeeds;
+            // the bugs are exposed nowhere). OnRequest, never a stream, as
+            // PMDG737_FLAP_SPEEDS_GW: the Shift+1..5 readout reads it fresh per press
+            // (AnnounceFlapManeuverSpeed).
+            ["PMDG777_FLAP_SPEEDS_GW"] = new SimConnect.SimVarDefinition
+            {
+                Name = "TOTAL WEIGHT",
+                DisplayName = "Gross Weight (flap speeds)",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "pounds",
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            },
 
             // Altimeter setting — read from SimConnect for reliable STD detection
             ["ALTIMETER_SETTING"] = new SimConnect.SimVarDefinition
@@ -5475,6 +5487,29 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
 
     // Altimeter announcement suppression (initial value)
     private double _lastAnnouncedAltimeter = double.NaN;
+
+    // After a flight load or a dropped connection (OnSimContextReset) the setting the sim settles
+    // on is the loaded aircraft's, not a change: altimeter deliveries go into the baseline, unspoken,
+    // until this many batch-1 deliveries pass without one (the FCU callouts' settle rule,
+    // FcuValueAnnouncer.SettleQuietDeliveries). The baseline is KEPT, never emptied: a load
+    // re-delivers only a CHANGED setting, so an emptied one would make the pilot's first real
+    // change a silent baseline whenever the load left the setting as it was.
+    private const int AltimeterSettleQuietDeliveries = FcuValueAnnouncer.SettleQuietDeliveries;
+    private int _altimeterSettleDeliveriesLeft;
+
+    /// <inheritdoc />
+    public override void OnSimContextReset()
+    {
+        base.OnSimContextReset();
+        _altimeterSettleDeliveriesLeft = AltimeterSettleQuietDeliveries;
+    }
+
+    /// <inheritdoc />
+    public override void OnContinuousBatchDelivered(int batchNum)
+    {
+        base.OnContinuousBatchDelivered(batchNum);
+        if (batchNum == 1 && _altimeterSettleDeliveriesLeft > 0) _altimeterSettleDeliveriesLeft--;
+    }
 
     // Headphone-simulation (switch_622_a / LOCALVAR_A20) announce tracker.
     // -1 = unseen (first poll suppressed). Declared 2-state (0 / 100), but
@@ -6660,10 +6695,12 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         {
             double inHg = value;
 
-            // First update: store silently
-            if (double.IsNaN(_lastAnnouncedAltimeter))
+            // First update, or one inside the settle after a context reset: store silently
+            if (double.IsNaN(_lastAnnouncedAltimeter) || _altimeterSettleDeliveriesLeft > 0)
             {
                 _lastAnnouncedAltimeter = inHg;
+                if (_altimeterSettleDeliveriesLeft > 0)
+                    _altimeterSettleDeliveriesLeft = AltimeterSettleQuietDeliveries; // still publishing
                 return true;
             }
 
@@ -6672,14 +6709,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 return true;
 
             _lastAnnouncedAltimeter = inHg;
-
-            if (Math.Abs(inHg - 29.92) < 0.005)
-                announcer.Announce("Altimeter standard");
-            else
-            {
-                int hpa = (int)Math.Round(inHg * 33.8639);
-                announcer.Announce($"Altimeter: {hpa}, {inHg:0.00}");
-            }
+            announcer.Announce(AltimeterPhrase.Sentence(inHg));
             return true;
         }
 
@@ -6918,6 +6948,23 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     /// </summary>
     protected override IReadOnlyList<AiDisplayRead> DisplayReads => Pmdg777DisplayReads.All;
 
+    /// <summary>Output-mode Shift+1..5 flap maneuver speed readout: a fresh
+    /// gross-weight read per press (PMDG777_FLAP_SPEEDS_GW is OnRequest), spoken
+    /// through FlapManeuverSpeeds.AnnounceAsync. The variant comes from the CDA
+    /// AircraftModel; before the first snapshot it is unknown and the readout says
+    /// unavailable.</summary>
+    private static void AnnounceFlapManeuverSpeed(int scheduleIndex,
+        SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        _ = FlapManeuverSpeeds.AnnounceAsync(simConnect, announcer, "PMDG777_FLAP_SPEEDS_GW", "PMDG", lbs =>
+        {
+            int model = GetAircraftModel(simConnect);
+            if (!Pmdg777FlapSpeeds.IsKnownModel(model))
+                Log.Info("PMDG", $"Flap speeds: unknown 777 AircraftModel {model}");
+            return Pmdg777FlapSpeeds.Describe(lbs, model, scheduleIndex);
+        });
+    }
+
 
     public override bool HandleHotkeyAction(
         HotkeyAction action,
@@ -7059,9 +7106,6 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
 
             case HotkeyAction.ReadAltimeter:
             {
-                var dm = simConnect.PMDGDataManager;
-                if (dm == null) return false;
-
                 // Read actual altimeter setting from cached SimConnect variable
                 double? inHgRaw = simConnect.GetCachedVariableValue("ALTIMETER_SETTING");
                 if (inHgRaw == null)
@@ -7070,18 +7114,9 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                     return true;
                 }
 
-                double inHg = inHgRaw.Value;
-
-                // Detect STD: 29.92 inHg (1013.25 hPa) is standard pressure
-                if (Math.Abs(inHg - 29.92) < 0.005)
-                {
-                    announcer.AnnounceImmediate("Altimeter standard");
-                    return true;
-                }
-
-                // Report in both units (hPa first, matching Fenix format)
-                int hpa = (int)Math.Round(inHg * 33.8639);
-                announcer.AnnounceImmediate($"Altimeter: {hpa}, {inHg:0.00}");
+                // "Altimeter standard" at 29.92 inHg (1013.25 hPa), otherwise both units, hPa
+                // first as on the Fenix, with a decimal point in any Windows culture.
+                announcer.AnnounceImmediate(AltimeterPhrase.Sentence(inHgRaw.Value));
                 return true;
             }
 
@@ -7284,6 +7319,18 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                     "TOTAL WEIGHT", "pounds", "GROSS_WEIGHT_KG");
                 return true;
             }
+
+            // ------------------------------------------------------------------
+            // Flap maneuvering speeds — output-mode Shift+1..5 (the slots the
+            // PMDG 737 and iFly use). CALCULATED from live gross weight over this
+            // variant's measured VREF30 table (Pmdg777FlapSpeeds); the readout
+            // says "calculated" because nothing exposes the PFD bugs.
+            // ------------------------------------------------------------------
+            case HotkeyAction.ReadSpeedGD:  AnnounceFlapManeuverSpeed(0, simConnect, announcer); return true; // Shift+1: flaps up
+            case HotkeyAction.ReadSpeedS:   AnnounceFlapManeuverSpeed(1, simConnect, announcer); return true; // Shift+2: flaps 1
+            case HotkeyAction.ReadSpeedF:   AnnounceFlapManeuverSpeed(2, simConnect, announcer); return true; // Shift+3: flaps 5
+            case HotkeyAction.ReadSpeedVLS: AnnounceFlapManeuverSpeed(3, simConnect, announcer); return true; // Shift+4: flaps 15
+            case HotkeyAction.ReadSpeedVS:  AnnounceFlapManeuverSpeed(4, simConnect, announcer); return true; // Shift+5: flaps 20
 
             case HotkeyAction.MonitorManager:
                 // PMDG announcement monitor (Input + Ctrl+M). Hotkey arrives in
@@ -7500,8 +7547,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         bool hasMachPrefix = trimmed.StartsWith("M", StringComparison.OrdinalIgnoreCase);
         if (hasMachPrefix) trimmed = trimmed.Substring(1);
 
-        if (!double.TryParse(trimmed, System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture, out value))
+        if (!Utils.NumberParsing.TryParseTyped(trimmed, out value))
             return false;
 
         // Either explicit M prefix, or a value < 10 (interpreted as Mach).
@@ -7595,8 +7641,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             "MCP Vertical Speed", "V/S or FPA", "V/S: -8000 to 6000 fpm / FPA: -9.9 to 9.9", announcer,
             input =>
             {
-                if (double.TryParse(input, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out double val))
+                if (Utils.NumberParsing.TryParseTyped(input, out double val))
                 {
                     if (dm != null && (int)dm.GetFieldValue("MCP_VSDial_Mode") == 1)
                     {
@@ -7606,6 +7651,10 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                     }
                     else
                     {
+                        // 0 levels off; anything nearer 0 than the 50 fpm dial step is an FPA
+                        // typed in V/S mode ("-2,5"), which (int)val would send as -2 fpm.
+                        if (val != 0 && Math.Abs(val) < 50)
+                            return (false, "V/S must be 0 or at least 50 fpm; for an angle, switch the mode to FPA");
                         if (val >= -8000 && val <= 6000)
                             return (true, "");
                         return (false, "Enter V/S between -8000 and 6000 fpm");
@@ -7616,8 +7665,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             toggles,
             input =>
             {
-                if (!double.TryParse(input, System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture, out double val))
+                if (!Utils.NumberParsing.TryParseTyped(input, out double val))
                     return;
 
                 bool isFPA = dm != null && (int)dm.GetFieldValue("MCP_VSDial_Mode") == 1;

@@ -7,54 +7,6 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 - The SimConnect data-definition budget is 1000 per connection (resets per aircraft switch) — never register a var as BOTH an individual def AND a batch-covered def; a Continuous+IsAnnounced var must skip its individual registration and read from the shared batch cache. → [architecture.md](../architecture.md)
 
-## SIM-2
-
-- `SetupDataDefinitions` must register bulk/batch vars LAST, after the fixed/critical defs (AIRCRAFT_INFO/ATC/position) — so a def-count overflow degrades gracefully instead of stranding aircraft detection. → [architecture.md](../architecture.md)
-
-## SIM-3
-
-- Watch `registration.log`'s `approxTotalDefs` — never let a new var addition push a connection's total definitions near/over 1000 without splitting to a second SimConnect connection. → [architecture.md](../architecture.md)
-
-## SIM-4
-
-- `RequestVariable(key, forceUpdate:true)` must also work for batch-covered (no-individual-def) vars — `ProcessContinuousBatch` must consult `forceUpdateVariables` too, or a forced re-read of an unchanged batch value silently no-ops. → [architecture.md](../architecture.md)
-
-## SIM-5
-
-- `SimConnectManager.RequestVariable` may be called from ANY thread and must stay safe there: the MD-11's walks and read-backs reach `ReadFreshAsync` from thread-pool threads (`ConfigureAwait(false)` chains). The manager captures the UI thread's WinForms `SynchronizationContext` and thread id at construction (`UiThreadGate`; any other kind of context leaves the gate inert, because a context that runs its posts on a pool thread would re-post forever), and `RequestVariable` called off that thread POSTS itself there and re-checks the connection when it runs — a post refused at shutdown is dropped, never run inline. `FreshReadWaiters.WaitAsync` registers the waiter BEFORE invoking the issue callback, so a posted request loses nothing, and `continuousVariableIndexMap` is a `ConcurrentDictionary`. Never read that map or issue `RequestDataOnSimObject` from a pool thread directly. The CEVENT pump's calculator writes still run on the pump thread — `SendMFCommand` is a pure send with no shared state — a recorded residual, not a licence. → [md11.md](../md11.md)
-
-## SIM-6
-
-- Request ids 505–508 are the hand-numbered guidance frames (`(DATA_REQUESTS)505..508`: visual guidance, takeoff assist, taxi-guidance position, flare assist — `SimConnectManager.Monitoring.cs`/`Dispatch.cs`) and 600–607 are the ground-traffic sweeps' rotating range (`REQUEST_GROUND_TRAFFIC`, `GroundTrafficRequestIdCount`) — never assign an id in either range to anything else, and grep for raw `(DATA_REQUESTS)` casts before choosing a new one: SimConnect treats a request issued under an existing id as a REPLACEMENT, so a sweep planned at 501–508 would have cancelled taxi guidance's own position stream (the enum alone does not show those four; an earlier review missed them exactly that way). Pinned by `GroundTrafficRequestIdTests`, which also scans every `*.cs` under `MSFSBlindAssist/` for a raw `(DATA_REQUESTS)NNN` cast, so a future hand-numbered id is caught too. → [architecture.md](../architecture.md)
-
-## SIM-7
-
-- A delivered value is a CHANGE (fires `SimVarUpdated`) only when it moves by more than its definition's `SimVarDefinition.ChangeTolerance`, or the shared `SimConnectManager.ChangeTolerance` (0.001) when that is null — ONE rule, `SimConnectManager.IsValueChange`, for both delivery paths. Widen it only for a var whose readers need a coarse line and whose ripple costs work: the MD-11's `MD11_DC_BUS_VOLTAGE` is 0.5 V (its power gate needs only the 20 V line, and each ripple re-composed every stateful row of the open panel once a second). The cache still takes every delivery, so a drift slower than the tolerance per sample never fires — never widen a var whose reader acts on a small cumulative change, and never one `Md11SeedGate` counts (it compares at the shared constant). → [md11.md](../md11.md)
-
-## SIM-8
-
-- The calc-path probe MUST report its verdict — `CalcPathVerdict.LogLine` on both outcomes, and `PilotWarning` spoken when an aircraft that registers the probe target (`MSFSBA_BRIDGE_PROBE` — the FBW defs, the Headwind A330 by inheritance, and the TFDi MD-11) concludes UNVERIFIED. MainForm's timer gates on THAT REGISTRATION, never on a type list: a type list is how the MD-11 — every control write a calculator-path CEVENT — sat outside the probe with no module and no warning, while every load logged a false `NOT available after 0 attempt(s)`. It reported NOTHING before, which is the sole reason a broken probe degraded every generic L:var write and dotted FBW event for ten weeks unnoticed. Never make the verdict silent again. → [architecture.md](../architecture.md)
-
-## SIM-9
-
-- The `MSFSBA_BRIDGE_PROBE` read-back LAGS ITS WRITE BY ONE ROUND (the data-def request is issued right after the calc write, so the sim answers with the pre-write value) — the match must accept the PREVIOUS nonce as well (`SimConnect.BridgeProbe.IsEcho`). Comparing only the current nonce misses by exactly one every round, and since each miss picks a fresh nonce the probe NEVER converges: measured live with the nonce past 861 having never once verified. The cost is silent and huge — `CalcPathVerified` stays false, so `SetLVar` falls back to the data-def write that is unreliable for FBW L:vars AND every dotted FBW event falls back to a transport the FCU ignores ("the FCU won't accept"). → [architecture.md](../architecture.md)
-
-## SIM-10
-
-- **A380** FCU events (`A32NX.FCU_*`) must NEVER wait on that probe (`SimConnectManager.IsFbwFcuEvent`) — the A380X FCU consumes them strictly as calculator K-events, so a probe false negative does not degrade them, it kills them. `FireFCUButton` always bypassed the gate by calling `ExecuteCalculatorCode` directly, which is exactly why the knob buttons worked while the combos silently did nothing — that inconsistency hid the fault. The predicate is gated on `AircraftCode == "FBW_A380"` and that half is load-bearing: the **A32NX shares the event NAMES** but is reached fine by `MapClientEventToSimEvent` + `TransmitClientEvent`, so applying the bypass there deletes a working fallback instead of rescuing a broken one — a pilot without the MobiFlight WASM module (a supported, degraded configuration, the one `CalcPathVerdict.PilotWarning` announces) would lose `FCU_HDG/SPD/ALT_SET`, the `FCU_EFIS_{L,R}_BARO_{SET,PUSH,PULL}` writes and every A320 FCU panel button outright. → [architecture.md](../architecture.md)
-
-## SIM-11
-
-- `SetLVar`'s MobiFlight calc-path routing must gate on `CalcPathVerified`, never on bare `IsMobiFlightConnected` — that flag is true even with no WASM module installed. → [architecture.md](../architecture.md)
-
-## SIM-12
-
-- A name containing a space or colon (e.g. `TRANSPONDER STATE:1`) is a stock SimVar shape and must stay on the data-def write path — never route it through the L:var calc path. → [architecture.md](../architecture.md)
-
-## SIM-13
-
-- H: events must always go to the MobiFlight channel whenever `IsMobiFlightConnected`; dotted events must wait for `CalcPathVerified` (queued, bounded, flushed on verify or probe-conclude) — never fire a dotted event before the probe concludes. → [architecture.md](../architecture.md)
-
 ## SIM-14
 
 - The status-display auto-refresh repaint must be a LEADING-edge one-shot coalesce, never a restart-per-push trailing debounce — a trailing debounce starves under high-frequency PFD/ISIS streams (hand-fly posts per SIM_FRAME). → [architecture.md](../architecture.md)
@@ -67,6 +19,29 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 - The per-event "is this var in any panel display" gate must use the cached `GetDisplayVarNamesCached()` HashSet — never call a def's `GetPanelDisplayVariables()` per SimVar event; it rebuilds its whole dictionary on every call. → [architecture.md](../architecture.md)
 
-## SIM-17
+## SIM-20
 
-- Every calc-path event string must be unique per call — `SimConnectManager.BuildCalcEventCode` prefixes `{seq} 0 *` centrally, because MobiFlight dedups byte-identical consecutive commands and a TOGGLE fires the SAME event for on and off, so without it a control could be switched on and never off. The dedup keys on TEXT, not elapsed time: "presses are seconds apart" is NOT a mitigation. → [a380x.md](../a380x.md)
+- `SimConnectManager.SendEvent` (`SimConnect/SimConnectManager.EventSend.cs`) is safe on the UI thread only. On its stock-event path it maps every event name it has not sent before (`if (!eventIds.ContainsKey(eventName)) { uint eventId = nextEventId++; eventIds[eventName] = eventId; … MapClientEventToSimEvent … }`) and then reads the id back for `TransmitClientEvent`. `eventIds` is a plain `Dictionary<string, uint>` with no lock, `nextEventId++` is not atomic, and the UI thread also writes the map (`RegisterClientEvents`, from `Connect`, after `SetupEvents`) and clears it (`Disconnect`). So never call `SendEvent` from a pool thread: not inside `Task.Run`, not from a `System.Threading.Timer` or `System.Timers.Timer` callback, and not in a continuation after `ConfigureAwait(false)`. To send after a delay, start a plain `async` method or local function on the UI thread and `await Task.Delay(...)` with no `ConfigureAwait(false)` (the PMDG 777 emergency lights, [P777-13]; the iFly flap walk), or marshal with `BeginInvoke`. H: events and dotted events on a verified calc path leave before the map (`FireCalcEvent`, whose `calcEventSeq` is `Interlocked`), and the pending-event queue is locked; but a stock event always reaches the map, and a dotted event reaches it once the calc-path probe has concluded unverified, or when the MobiFlight module object is absent (the calc branch needs `mobiFlightWasm != null`, and `InitializeMobiFlight` nulls it when initialization fails), so the rule covers every caller.
+
+Added 2026-10-09 from a caller audit (`git grep -n "SendEvent(" -- MSFSBlindAssist`, leaving out the PMDG data managers' own `SendEvent`, a different method). Every caller but two runs on the UI thread: MainForm's panel controls (`MainForm.PanelBuilder.cs`: WinForms events and `System.Windows.Forms.Timer` ticks); every definition's `HandleUIVariableSet`, which only the panel builder, the aircraft windows (the Fenix FCU windows' `SetFCUVariable`, the A380 baro window's `ApplyUIVariable`) and the PMDG autopilot window call; `HandleHotkeyAction`, reached from `WM_HOTKEY` through `HotkeyManager.ProcessWindowMessage`; the FBW and HS787 FCU, autopilot and baro windows and dialogs, directly or through the definitions' helpers (`SetFCU*Value`, `FireFCUButton`, `SetEfisBaro*`, `SetAltIncrement`, `SetTrkFpaMode`, `ToggleMetricAltitude`, `ToggleFlightDirectors`, `ShowFCUInputDialog`); the PMDG 737 and iFly NAV radio dialogs and the iFly baro dialog; and the async methods that resume on the UI thread (the iFly flap walk and `TuneNavActiveAsync`, the PMDG 777 emergency lights, `MainForm.TuneCom1FromSurroundings`, and the MD-11's `SetComStandby` and `SwapCom`, which send before their first await). `FlushPendingCalcEvents` re-enters `SendEvent` from `MainForm.BridgeProbeTimer_Tick`, a WinForms timer.
+
+Known race, not fixed (found 2026-10-09): `FlyByWireA320Definition.DeferReadback` runs its action inside `Task.Run` after a `Task.Delay`, so two writes it defers reach `SendEvent` from a pool thread. (1) `COM{n}_RADIO_SWAP`, 100 ms after a COM active-frequency set in `HandleUIVariableSet`: a stock event, so it always reads the map, and writes it the first time that name is sent. (2) `A32NX.FCU_ALT_SET`, 50 ms after the 100 ft increment when the target of `SetFCUAltitudeValue` is not a multiple of 1000 (`SetAltitudeAndAnnounce`; a multiple of 1000 runs it synchronously): a dotted event, so it reaches the map only after the probe concluded unverified, or when the MobiFlight module object is absent. The Headwind A330 inherits both from `FlyByWireA320Definition`. A write to the map on another thread at the same moment (a UI-thread `SendEvent` of a name not sent before, `RegisterClientEvents` on a reconnect, the `Clear` in `Disconnect`, or the swaps of two radios set within 100 ms of each other) can corrupt the map or give two names one id. Fixing it means deferring those two writes on the UI thread; that is a code change for its own PR.
+
+Corrected 2026-10-09: the writers of `eventIds` are `RegisterClientEvents` (`SimConnectManager.Setup.cs`, called only from `Connect()` in `SimConnectManager.cs`, after `SetupEvents()`), the new-name mapping in `SendEvent` (`SimConnectManager.EventSend.cs`) and the `Clear` in `Disconnect`. `SetupEvents` and `ReregisterAllVariables`, the aircraft-switch path, never touch the map; an aircraft switch re-registers variables, not events.
+
+## SIM-21
+
+- The pause, slew and sim-rate announcements (`SimStateTracker`, fed by `SimConnectManager.SimState.cs`) read the "Pause_EX1" system event's flags one bit at a time: `SimPauseFlag` (8) is the Esc menu pause, `ActivePauseFlag` (4) is active pause. `FullPauseFlag` (1) is never spoken, the "Sim" system event gates speech (a change while it reports 0 is tracked silently), and the first delivery of each signal on a connection only seeds it.
+
+Measured live on 2026-10-17 with a throwaway SimConnect probe on MSFS 2024 (build 282174, the FS2020 key layout), a parked aircraft:
+
+- Esc fires the key events `PAUSE_TOGGLE` and `PAUSE_OFF`, then `Paused`, `Pause` = 1 and `Pause_EX1` = 8. Closing the menu: `Unpaused`, `Pause` = 0, `Pause_EX1` = 0. The sim clock (`SIMULATION TIME`) stops.
+- Active pause (Pause/Break) fires no key event: `Paused`, `Pause` = 1, `Pause_EX1` = 4, and 0 when it ends. The sim clock keeps running. None of `ACTIVE_PAUSE_TOGGLE`, `TOGGLE_ACTIVE_PAUSE`, `ACTIVE_PAUSE_ON`/`OFF`/`SET` is a known event name, and no simvar for it was found (`IS PAUSED`, `IS ACTIVE PAUSE`, `ACTIVE PAUSE`, `SIM PAUSED` are unrecognized).
+- Esc during active pause reports 8, not 12, and closing the menu reports 0: the menu ENDS active pause (a second run showed it staying off until the pilot pressed the key again). So that one delivery is both "Sim paused" and "Active pause off".
+- The full-pause bit came only from the sim: two 13 ms 1-then-0 blips while a flight loaded, and a 1 about a second after entering the cockpit from the walkaround, held until the next Esc while the sim clock kept running. Esc on top of it went 0, 9, 8, then 0. Speaking bit 1 would have said "Sim paused" with the sim running; reading the whole value instead of bits would have mis-read the 9.
+- Leaving for the main menu sends nothing beyond the Esc that got there (the menu pause stays 8, "Sim" stays 1). The next load sends `SimStop` ("Sim" 0), `PositionChanged`, the 8-to-0 unpause, then `SimStart` ("Sim" 1), all within one second, then the full-pause blips; "Ready to fly" sends nothing. The "Sim" gate is what keeps that unpause silent.
+- Slew: `SLEW_TOGGLE` fires and `IS SLEW ACTIVE` flips 0/1 within 3 ms on every toggle; the sim clock stops while slewing. SIM_FRAME requests kept delivering through the Esc pause, active pause and slew.
+- Sim rate: the FS2020 layout's select key fires `SIM_RATE` alone (auto-repeating while held) and changes nothing; the + or − after it fires `SIM_RATE_INCR`/`SIM_RATE_DECR` (through `OnRecvEventEx1`, not `OnRecvEvent`) and `SIMULATION RATE` moves within 3 ms, in steps 0.25, 0.5, 1, 2, 4. So the announcement keys on the simvar's value, never on the key events. The rate did not change through any pause.
+- Each subscription (`Pause_EX1`, `Sim`, and the CHANGED slew and rate requests) delivers its current state at once, which is why the first delivery only seeds: connecting to an already-paused sim stays silent.
+
+Not measured: MSFS 2020, where a pause may report only bit 1 and so go unspoken; re-measure there before widening the bits spoken. Replay (MSFS 2024): no signal found yet; `Replay`, `ReplayStart`, `ReplayStop`, `REPLAY_PLAY`/`PAUSE`/`TOGGLE`, `TOGGLE_REPLAY` and the simvars `IS IN REPLAY`, `IS REPLAY ACTIVE`, `REPLAY STATE`, `IS REPLAY`, `SIM REPLAY`, `REPLAY` are all unrecognized, and replay could not be started on a parked aircraft with nothing recorded.

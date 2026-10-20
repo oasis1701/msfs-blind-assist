@@ -37,9 +37,13 @@ public partial class SimConnectManager
         // so they are deliberate defence in depth, not leftovers. Only ~7 of the ~71 calc call
         // sites in those defs are even this shape; the rest are RPN logic and parameterised
         // K-/H-events that could never be replaced by a plain L:var write.
-        //   * Only for TRUE L:vars: a name with a space or colon is a stock-SimVar shape
-        //     (e.g. "TRANSPONDER STATE:1", "INTERACTIVE POINT OPEN:0") and must NOT be written as (>L:..).
-        //     SetLVar always prepends "L:" to varName, so a real caller never passes such a name here.
+        //   * Only for names with no space and no colon [SIM-12]. Stock SimVar names carry one
+        //     (e.g. "TRANSPONDER STATE:1", "INTERACTIVE POINT OPEN:0") and must never be routed through
+        //     the L:var calc path — but an add-on L:var can carry one too: the HS787 passes the
+        //     colon-indexed "B787_IRS_Knob_State:1" here, and it gets the data-def write below. For such
+        //     an L:var that route is unmeasured, not a rule: move it to the calc path only if an in-sim
+        //     read-back shows the data-def write reverting. SetLVar always writes L:<name>, so it can
+        //     never write a stock SimVar: use SetSimVar for one.
         if (CalcPathVerified
             && !string.IsNullOrEmpty(varName)
             && varName.IndexOf(' ') < 0
@@ -116,7 +120,7 @@ public partial class SimConnectManager
     /// unverified and its verdict refuses every write on the aircraft switched to next.
     /// Note this is NOT what <see cref="ExecuteCalculatorCode"/> guards itself
     /// with, and must not become it — the FBW defs' per-prefix catch-alls write through the
-    /// calculator UNCONDITIONALLY by design (CLAUDE.md), and gating them on the probe is what kept
+    /// calculator UNCONDITIONALLY by design ([VAR-3]), and gating them on the probe is what kept
     /// the A380/A32NX overhead panels alive through the ten-week probe outage.
     /// </summary>
     public bool CalcWriteCanLand => CanExecuteCalculatorCode && !(CalcPathProbeConcluded && !CalcPathVerified);
@@ -260,7 +264,10 @@ public partial class SimConnectManager
     }
 
     // Ever-increasing discriminator for the calc-path event strings. Interlocked because
-    // SendEvent is reached from the UI thread, hotkey handling and background timers alike.
+    // SendEvent is not reached from the UI thread alone: the FBW A320's DeferReadback calls it
+    // from a pool thread, whose A32NX.FCU_ALT_SET comes through here on a verified calc path
+    // (its COM swap is a known race on eventIds above, [SIM-20]). Every other caller, hotkeys
+    // included (WM_HOTKEY), runs on the UI thread.
     private long calcEventSeq;
 
     /// <summary>

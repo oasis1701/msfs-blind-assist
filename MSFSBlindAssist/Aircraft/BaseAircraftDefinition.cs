@@ -438,9 +438,10 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// Resolves the spoken time-zone name at a given lat/lon. Falls back to
     /// the system's local time zone when lat/lon are missing, the
     /// GeoTimeZone lookup fails, or no Windows mapping exists for the IANA
-    /// id. Always returns a non-null, non-empty string.
+    /// id. Always returns a non-null, non-empty string. Also used by the Location Info
+    /// window's "Where you are" box (<c>Services/Geography/OfflineLocationService</c>).
     /// </summary>
-    private static string LookupTimeZoneName(double? lat, double? lon)
+    internal static string LookupTimeZoneName(double? lat, double? lon)
     {
         try
         {
@@ -503,13 +504,15 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         var dialog = new Forms.ValueInputForm(title, parameterType, rangeText, announcer, validator);
         if (dialog.ShowDialog(parentForm) == DialogResult.OK && dialog.IsValidInput)
         {
-            if (double.TryParse(dialog.InputValue, out double value))
+            if (Utils.NumberParsing.TryParseTyped(dialog.InputValue, out double value))
             {
                 uint valueToSend = valueConverter != null ? valueConverter(value) : (uint)value;
                 simConnect.SendEvent(eventName, valueToSend);
                 announcer.AnnounceImmediate($"{parameterType} set to {value}");
                 return true;
             }
+            // The validator accepted what TryParseTyped refuses: say so rather than send nothing silently.
+            announcer.AnnounceImmediate("Invalid number format");
         }
 
         return false;

@@ -2,6 +2,7 @@
 paths:
   - "MSFSBlindAssist/Forms/*MonitorManager*.cs"
   - "MSFSBlindAssist/Forms/**/*MonitorManager*.cs"
+  - "MSFSBlindAssist/Forms/PMDGAnnouncementMonitorForm.cs"
   - "MSFSBlindAssist/Services/MonitorRowBuilder.cs"
   - "MSFSBlindAssist/Services/MonitorVariableFilter.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Monitor*.cs"
@@ -10,7 +11,7 @@ paths:
 
 Loaded when Claude reads matching code. Background: docs/architecture.md. Full text of each rule: docs/invariants/monitor-manager.md.
 
-- [MON-1] All seven monitor managers subclass `Forms/MonitorManagerFormBase`, supplying only a title, rows and their `*DisabledMonitorVariables` list — never re-add per-form UI, and never copy the filter into a form. Full: docs/invariants/monitor-manager.md#mon-1
+- [MON-1] Every per-aircraft monitor manager subclasses `Forms/MonitorManagerFormBase`, supplying only a title, rows and its `*DisabledMonitorVariables` list — never re-add per-form UI, and never copy the filter into a form. Full: docs/invariants/monitor-manager.md#mon-1
 - [MON-2] The list rebuilds on exactly THREE events (form open, search text changed, Show filter changed), NEVER from `ItemCheck`: re-filtering on a tick slides the next row under the caret, so a second Space mutes a variable the pilot never selected. Full: docs/invariants/monitor-manager.md#mon-2
 - [MON-3] `_suppressItemCheck` must wrap every rebuild: `SetItemChecked` raises `ItemCheck` per row, so without it one filter keystroke fires hundreds of `SettingsManager.Save()` disk writes on the UI thread. Full: docs/invariants/monitor-manager.md#mon-3
 - [MON-4] The list's `AccessibleName` names the ACTIVE FILTER and the count ("Muted variables, 12 of 300"), composed by `MonitorVariableFilter.DescribeList` — never a `Label`, never spoken; the three Show modes must never render the same leading phrase. Full: docs/invariants/monitor-manager.md#mon-4

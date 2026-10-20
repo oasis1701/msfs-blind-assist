@@ -15,7 +15,6 @@ public partial class FenixVSWindow : Form
 
     private Label vsLabel = null!;
     private TextBox vsTextBox = null!;
-    private Button setButton = null!;
     private Button vsPushButton = null!;
     private Button vsPullButton = null!;
     private Button closeButton = null!;
@@ -84,18 +83,6 @@ public partial class FenixVSWindow : Form
         };
         vsTextBox.KeyDown += VsTextBox_KeyDown;
 
-        // Set Button
-        setButton = new Button
-        {
-            Text = "Set",
-            Location = new Point(270, 20),
-            Size = new Size(90, 30),
-            AccessibleName = "Set Vertical Speed",
-            AccessibleDescription = "Set the entered vertical speed value",
-            TabIndex = 1
-        };
-        setButton.Click += async (s, e) => await HandleSetClick();
-
         // V/S Push Button
         vsPushButton = new Button
         {
@@ -136,11 +123,10 @@ public partial class FenixVSWindow : Form
         // Add controls to form
         Controls.AddRange(new Control[]
         {
-            vsLabel, vsTextBox, setButton, vsPushButton, vsPullButton, closeButton
+            vsLabel, vsTextBox, vsPushButton, vsPullButton, closeButton
         });
 
         CancelButton = closeButton;
-        AcceptButton = setButton;
     }
 
     private void SetupAccessibility()
@@ -188,7 +174,7 @@ public partial class FenixVSWindow : Form
             return System.Threading.Tasks.Task.CompletedTask;
         }
 
-        if (!double.TryParse(input, out double value))
+        if (!Utils.NumberParsing.TryParseTyped(input, out double value))
         {
             announcer.AnnounceImmediate("Invalid number format");
             vsTextBox.Focus();

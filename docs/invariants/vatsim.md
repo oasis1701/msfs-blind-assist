@@ -27,6 +27,8 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 - The plugin's own log (`%APPDATA%\MSFSBlindAssist\logs\vpilot-plugin.log`) is the ONE exception to "every log write goes through `Utils/Logging/Log`" — it runs in vPilot's process on .NET Framework and cannot reference the app's logger. It still resolves into the canonical logs folder. → [vatsim.md](../vatsim.md)
 
+Corrected 2026-10-09: "the ONE exception" is now "an exception". [CORE-15] names two programs that cannot reference the app and are exempt from writing through `Log`: this plugin and the updater, `MSFSBlindAssistUpdater`, whose `Program.Main` writes a startup-arguments log to `%TEMP%`. Unlike the updater's, the plugin's log still resolves into the canonical logs folder. Evidence: `MSFSBlindAssistUpdater/Program.cs` (`logPath`); CORE-15's full text in docs/invariants/core.md.
+
 ## VAT-7
 
 - `VPilotPluginInstaller` writes outside MSFSBA's own tree, so every method is best-effort and must NEVER throw — a failed install degrades to a status the settings dialog explains, and `VatsimPanel.Validate` never fails. → [vatsim.md](../vatsim.md)

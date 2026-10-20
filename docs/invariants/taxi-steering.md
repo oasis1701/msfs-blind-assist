@@ -2,7 +2,6 @@
 
 Each section is the complete text of one rule. Its one-line form, under the same ID, is in `.claude/rules/taxi-steering.md`, which Claude Code loads when it reads matching code. Background: [taxi-guidance.md](../taxi-guidance.md).
 The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" pointer is the original's. Cross-references such as "the bullet below", "above" or "under Core" point at CLAUDE.md's old single list, whose rules now live in several files: search `docs/invariants/` for the rule's key name to find it.
-STR-19 onward came with the taxi/landing port (`feat/taxi-landing-port`) and are verbatim from that branch's CLAUDE.md as of `4854ec3d`. They sit on top of main's own designs, which win wherever the two overlap; their figures were measured on the owner's local build, and of the sweeps they name only `tools/VirtualPilot` and `tools/ExitConsistencySweep` are in the repository, so re-measure with VirtualPilot ([virtual-pilot.md](../virtual-pilot.md)) before touching one.
 
 ## STR-1
 
@@ -50,7 +49,9 @@ STR-19 onward came with the taxi/landing port (`feat/taxi-landing-port`) and are
 
 ## STR-12
 
-- No feet-quantity verbal cues for spatial/cross-track guidance — a blind pilot has no reference for "42 feet left"; the tone is the cross-track instrument (heading numbers are fine, every pilot has a heading instrument). → [taxi-guidance.md](../taxi-guidance.md)
+- No feet-quantity verbal cues for lateral (cross-track) guidance — a blind pilot has no reference for "42 feet left"; the tone is the cross-track instrument (heading numbers are fine, every pilot has a heading instrument). Along-track distances are not banned: two rules require them, ROL-23's "Continue to taxiway Y, N feet." and ROL-27's `RolloutRunwayReCrossing.ComposeContinueToExit`, which names the exit and the distance. → [taxi-guidance.md](../taxi-guidance.md)
+
+Corrected 2026-10-08: "spatial/cross-track guidance" became "lateral (cross-track)", since ROL-23 and ROL-27 require along-track distances in feet. Evidence: ROL-23 and ROL-27 in `docs/invariants/landing-rollout.md`, and `RolloutRunwayReCrossing.ComposeContinueToExit`.
 
 ## STR-13
 
@@ -70,11 +71,15 @@ STR-19 onward came with the taxi/landing port (`feat/taxi-landing-port`) and are
 
 ## STR-17
 
-- Runway-destination lineup must anchor on the `start` table (`GetRunwayStarts`), never `Runway.StartLat/StartLon` directly — the latter is the pavement edge, hundreds of metres off the lineup point at displaced-threshold runways, and routes the aircraft to a node off the runway. → [taxi-guidance.md](../taxi-guidance.md)
+- Runway-destination lineup must anchor on the `start` table (`GetRunwayStarts`), never `Runway.StartLat/StartLon` directly — the latter is the pavement edge, hundreds of metres off the lineup point at displaced-threshold runways, and routes the aircraft to a node off the runway. `RunwayLineupTarget.Resolve` falls back to the pavement start only when no start row is usable (`TaxiGraph.PickFullLengthStart` returns none), the one legitimate use. → [taxi-guidance.md](../taxi-guidance.md)
+
+Corrected 2026-10-08: the one-line form restores "directly", which it had dropped, and both now name the fallback. Evidence: `RunwayLineupTarget.Resolve`.
 
 ## STR-18
 
 - The route-start turn cue has ONE owner (`Navigation/RouteStartTurnCue`), composed through the single `TaxiGuidanceManager.ComposeInitialTurnCue` — by `LoadRoute`, and again by the landing-exit handoff's segment-cursor RE-ANCHOR — never on the first taxiing frame — it fired there as an interrupting `AnnounceImmediate` 50 ms after the SayIntentions import summary and cut it off mid-word (live KATL 2026-08-27; the fifth time two announcements at Calculate have stomped each other, and the established remedy is one utterance). It is delivered EITHER folded into `TaxiAssistForm`'s single standstill utterance OR by the per-frame one-shot — or, on a route that STARTS HELD, in the Continue sentence (`ContinuePastHoldShort`), because the one-shot runs only on a taxiing frame — never twice, via `ConsumeInitialTurnCue()`. ⚠️ The form folds it only on the path that reaches its standstill block: **Progressive Taxi** calls `StartGuidance` and returns before it, so there (as on landing-exit handoffs and `announceSummary:false` callers) the one-shot still delivers the cue — unchanged by this branch and deliberately left alone, since a progressive leg composes no other utterance for it to stomp. The RE-ANCHOR call is load-bearing, not tidiness: when the handoff re-route FAILS, guidance continues on the TOUCHDOWN route, whose cue was composed rolling straight down the runway (heading error ≈ 0, so `Compose` returned null) while the re-anchor moves the cursor to a segment that can sit BEHIND the aircraft — leaving the pilot the hard-panned tone of a turnaround with no words on the degraded path, where the pre-composition design had computed it fresh on the first frame. It names the first NAMED leg at or after the cursor, which for a re-anchored cursor is not `Segments[0]`. The angle MUST be `ComputeSteeringHeadingError`'s value read against the route and cursor just assigned, with BOTH sides TRUE north, or the spoken left/right can contradict the tone's pan and a blind pilot has nothing to break the tie — never `route.Segments[0].BearingDegrees`, a different number (35° apart on the live KATL route). It names the ROUTE's first named leg; ⚠️ that is a robustness improvement for the paths that call `LoadRoute` WITHOUT `StartGuidance` (the three `Rollout` re-routes and `LandingExitPlanner`), NOT the cause of the live bare "Make a U-turn to the left" — `StartGuidance` re-sets `_lastAnnouncedTaxiway` from an identical first-named-segment walk before the first taxiing frame, so on the form's Calculate path the old cue would have named the taxiway too. Commit fec4b05a's message and the first version of that type's doc both blamed the blanked field; they are wrong and this is the correction. → [taxi-guidance.md](../taxi-guidance.md)
+
+Corrected 2026-10-08: the one-line form said the cue's owner was "never the first taxiing frame", which read as a ban on the per-frame one-shot; it now says the cue is never COMPOSED there, and the one-shot stays a delivery path, as this text says. Evidence: `ComposeInitialTurnCue`'s callers in `TaxiGuidanceManager.Routing.cs` (`LoadRoute`) and `TaxiGuidanceManager.Rollout.cs` (the re-anchor), and `ConsumeInitialTurnCue`'s three consumers (`TaxiAssistForm`'s standstill utterance, the per-frame one-shot and the start-held Continue sentence).
 
 ## STR-19
 
@@ -82,7 +87,7 @@ STR-19 onward came with the taxi/landing port (`feat/taxi-landing-port`) and are
 
 ## STR-20
 
-- **An entry stub that ends ON the destination centreline just beyond the runway's recorded end still reaches the runway** (`RunwaysOnEntryStub` fallback: last stub point within the runway's half-width of the extended centreline, ≤ `ENTRY_STUB_BEYOND_END_M` 100 m past the recorded extent). Taxi2Gate LFPG records 26R as starting at its 600 m displaced threshold, so T12 meets the pavement 47 m "before the runway", the stub was dropped and the lineup tone cut from the hold 98 m to the side across the grass. Never widen the lateral bound: KVPS 12 "reaches" its runway 900 m to the side and must keep NO stub. A real-world full-length 26R (from R1) is not inferable on that scenery — its runway record omits the pavement — so it comes from the pilot's corrections file (next bullet), never from a rule. → CLAUDE.md
+- **An entry stub that ends ON the destination centreline just beyond the runway's recorded end still reaches the runway** (`RunwaysOnEntryStub` fallback: last stub point within the runway's half-width of the extended centreline, ≤ `ENTRY_STUB_BEYOND_END_M` 100 m past the recorded extent). Taxi2Gate LFPG records 26R as starting at its 600 m displaced threshold, so T12 meets the pavement 47 m "before the runway", the stub was dropped and the lineup tone cut from the hold 98 m to the side across the grass. Never widen the lateral bound: KVPS 12 "reaches" its runway 900 m to the side and must keep NO stub. A real-world full-length 26R (from R1) is not inferable on that scenery — its runway record omits the pavement — so it comes from the pilot's corrections file, never from a rule. → CLAUDE.md
 
 ## STR-21
 
@@ -95,3 +100,5 @@ STR-19 onward came with the taxi/landing port (`feat/taxi-landing-port`) and are
 ## STR-23
 
 - **The opening turn tone keeps to the side the opening cue SAID** (`_initialTurnSign`, set by `ComposeInitialTurnCue`): while `_initialTurnPending`, a heading error past 90° pointing the other way is expressed the announced way round, capped at 179° (the tone folds anything past ±180 back to the short way). Near a reversal the shortest way round flips between frames, so "Turn right to come around" was followed by a hard-left tone and the pilot left the stand apron (LOWW Parking 61B). VirtualPilot: 12 taxis off pavement fixed, 6 new. → [virtual-pilot.md](../virtual-pilot.md)
+
+STR-19 to STR-23 came with the taxi/landing port (`feat/taxi-landing-port`) and are verbatim from that branch's CLAUDE.md as of `4854ec3d`. They sit on top of main's own designs, which win wherever the two overlap; their figures were measured on the owner's local build, and of the sweeps they name only `tools/VirtualPilot` and `tools/ExitConsistencySweep` are in the repository, so re-measure with VirtualPilot ([virtual-pilot.md](../virtual-pilot.md)) before touching one.

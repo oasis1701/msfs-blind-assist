@@ -4,6 +4,7 @@ Application Navigation:
   Ctrl+1     Focus Sections List
   Ctrl+2     Focus Panels List
   Ctrl+3     Focus Status Display field of the current panel (refreshes it if empty)
+  F5         Refresh the current panel's Status Display now (it also updates itself live)
 
 Tip: Press the same bracket key again to cancel a mode you activated by accident.
 
@@ -134,6 +135,8 @@ Displays:
 Traffic and Weather:
   R          Announce Tracked TCAS Traffic
   Ctrl+R     Open TCAS Traffic Window
+  Shift+O    Open Volanta window (Volanta users and network pilots around you,
+             your Volanta friends and online ATC; also Extras > Volanta)
   Shift+R    Open Weather Radar Window (auto-detects ActiveSky and silently
              uses richer data — surface wind+gust, ceiling, QNH, turbulence,
              METAR-decoded precipitation — when running. Falls back to MSFS
@@ -335,10 +338,13 @@ Arrow Navigation:
   Alt+Down       Scroll down
 
 Automatic Announcements:
-  - Thrust-lever detents reached (Idle / Climb / Flex MCT / TOGA / Reverse)
   - Flight Mode Annunciator (FMA) — vertical, lateral and autothrust modes
   - ECAM warnings, cautions and memos (toggle with Ctrl+E)
   - Master Warning / Master Caution
   - Altimeter setting, approach minimums, flaps and gear
   - Ground speed callouts while on the ground
+  - "V1", "Rotate" and "V2" on the take-off roll, as the airspeed reaches the
+    speeds entered on the MCDU PERF TAKE OFF page (one call, "V1, Rotate", when
+    V1 and VR are the same). They arm on the ground below 40 knots with V1 and VR
+    entered; mute each with its speed's row (V1, VR, V2).
   Mute any of these from the Monitor Manager (Ctrl+M).

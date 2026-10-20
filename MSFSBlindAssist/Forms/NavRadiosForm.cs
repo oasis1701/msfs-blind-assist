@@ -12,9 +12,9 @@ public record NavRadioSettings(double Nav1FreqMHz, int Nav1Course, double Nav2Fr
 /// <summary>
 /// Four-field dialog for tuning the NAV 1 / NAV 2 radios (frequency + course).
 /// Opened from input mode via Ctrl+N. Fields are pre-filled with the current
-/// values; pressing Set applies all four (re-applying unchanged values is
-/// harmless). Frequency/course are set through standard SimConnect events by the
-/// caller's apply callback — see PMDG737Definition.
+/// values; Enter in any field applies all four (re-applying unchanged values is
+/// harmless). Frequency/course are set by the caller's apply callback — see PMDG737Definition (standard SimConnect events) and
+/// IFly737MAXDefinition (the NAV panel keypad, read back).
 /// </summary>
 public class NavRadiosForm : Form
 {
@@ -35,7 +35,6 @@ public class NavRadiosForm : Form
     private readonly TextBox _nav1Course = new();
     private readonly TextBox _nav2Freq = new();
     private readonly TextBox _nav2Course = new();
-    private Button _setButton = null!;
     private Button _cancelButton = null!;
 
     public NavRadiosForm(
@@ -79,16 +78,7 @@ public class NavRadiosForm : Form
         AddField("NAV 2 course (degrees)", _nav2Course,
             "NAV 2 course in degrees, 0 to 359", ref y, ref tab);
 
-        _setButton = new Button
-        {
-            Text = "&Set",
-            Location = new Point(170, y + 8),
-            Size = new Size(75, 30),
-            AccessibleName = "Set NAV radios",
-            TabIndex = tab++
-        };
-        _setButton.Click += (_, _) => Apply();
-
+        // Enter in any field applies all four (AddField).
         _cancelButton = new Button
         {
             Text = "&Cancel",
@@ -98,10 +88,11 @@ public class NavRadiosForm : Form
             AccessibleName = "Cancel",
             TabIndex = tab++
         };
+        // Both callers show this window modeless (Show), where DialogResult closes nothing:
+        // Cancel closes it itself, as Escape does.
+        _cancelButton.Click += (_, _) => { Close(); RestoreFocus(); };
 
-        Controls.Add(_setButton);
         Controls.Add(_cancelButton);
-        AcceptButton = _setButton;   // Enter applies
         CancelButton = _cancelButton; // Esc cancels
 
         Load += (_, _) =>
@@ -127,6 +118,15 @@ public class NavRadiosForm : Form
         box.AccessibleName = label;
         box.AccessibleDescription = accessibleDescription;
         box.TabIndex = tab++;
+        // Enter applies all four. With no AcceptButton the box receives Enter itself;
+        // SuppressKeyPress stops the edit control's ding.
+        box.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode != Keys.Enter) return;
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            Apply();
+        };
         Controls.Add(lbl);
         Controls.Add(box);
         y += 35;

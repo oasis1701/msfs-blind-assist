@@ -166,7 +166,7 @@ public class MsfsPackagesLocatorTests : IDisposable
     [Fact]
     public void A_config_that_exists_but_cannot_be_read_is_a_read_failure_not_no_community_folder()
     {
-        // SI-2: every MSFS 2024 surroundings build asks this. "Could not read the config" and "there
+        // [SUR-21]: every MSFS 2024 surroundings build asks this. "Could not read the config" and "there
         // is no Community folder" were the same null, so one moment's exclusive lock left a catalog
         // with no scenery tier that was cached as complete and never built again.
         string packages = WriteUserCfg("Roaming/Microsoft Flight Simulator 2024", Path.Combine(_root, "p2024"));
@@ -222,7 +222,7 @@ public class MsfsPackagesLocatorTests : IDisposable
         // The simulator writes InstalledPackagesPathNextBoot as soon as the pilot PICKS a new folder
         // in-sim, and that folder normally exists already — so on the first-existing rule a NextBoot
         // line above the active one won, and the census scanned a Community folder the running
-        // simulator is not loading (review SI-5).
+        // simulator is not loading ([SUR-7]).
         string next = Path.Combine(_root, "next"), active = Path.Combine(_root, "active");
         Directory.CreateDirectory(Path.Combine(next, "Community"));
         WriteUserCfg("Roaming/Microsoft Flight Simulator 2024", active, extraLineBefore: $"InstalledPackagesPathNextBoot \"{next}\"");

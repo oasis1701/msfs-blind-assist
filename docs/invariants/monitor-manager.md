@@ -5,7 +5,9 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## MON-1
 
-- All seven per-aircraft monitor managers are subclasses of `Forms/MonitorManagerFormBase` supplying only a title, their rows, and their `*DisabledMonitorVariables` list — never re-add per-form UI, and never copy the filter into a form. The pure half (`Services/MonitorRowBuilder` + `Services/MonitorVariableFilter`) carries the xUnit coverage. (The MD-11's was the last hand-rolled one — no search box over ~530 rows — and was migrated 2026-09-06.)
+- Every per-aircraft monitor manager is a subclass of `Forms/MonitorManagerFormBase` supplying only a title, its rows, and its `*DisabledMonitorVariables` list — never re-add per-form UI, and never copy the filter into a form. The pure half (`Services/MonitorRowBuilder` + `Services/MonitorVariableFilter`) carries the xUnit coverage. (The MD-11's was the last hand-rolled one — no search box over ~530 rows — and was migrated 2026-09-06.)
+
+Reworded 2026-10-07 from "All seven per-aircraft monitor managers are subclasses of `Forms/MonitorManagerFormBase` supplying only a title, their rows, and their `*DisabledMonitorVariables` list": there were seven when it was written, and the count was dropped so that each new aircraft's monitor manager need not edit it.
 
 ## MON-2
 

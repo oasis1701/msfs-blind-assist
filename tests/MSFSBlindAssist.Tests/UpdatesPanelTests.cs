@@ -1,3 +1,4 @@
+using System.Windows.Forms;
 using MSFSBlindAssist.Forms.Settings;
 using MSFSBlindAssist.Settings;
 using Xunit;
@@ -64,6 +65,30 @@ public class UpdatesPanelTests
 
         Assert.Equal(UpdateChannel.Release, settings.UpdateChannel);
         Assert.True(settings.CheckForUpdatesOnStartup);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void RoundTrip_PreservesTheMissingDataCheck(bool on)
+    {
+        using var panel = new UpdatesPanel();
+        panel.LoadFrom(new UserSettings { CheckForMissingDataOnStartup = on });
+        var target = new UserSettings { CheckForMissingDataOnStartup = !on };
+        panel.ApplyTo(target);
+
+        Assert.Equal(on, target.CheckForMissingDataOnStartup);
+    }
+
+    [Fact]
+    public void The_missing_data_check_is_on_by_default_and_named_as_the_startup_dialog_names_it()
+    {
+        Assert.True(new UserSettings().CheckForMissingDataOnStartup);
+
+        // The startup dialog tells the pilot to turn off exactly this checkbox (UPD-9).
+        using var panel = new UpdatesPanel();
+        Assert.Contains(panel.Controls.OfType<CheckBox>(),
+            c => c.Text.Replace("&", "") == MSFSBlindAssist.Services.StartupDataCheck.SettingName);
     }
 
     [Fact]

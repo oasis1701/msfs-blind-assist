@@ -3,6 +3,8 @@ paths:
   - "MSFSBlindAssist/SimConnect/CoherentPmdgEfbClient.cs"
   - "MSFSBlindAssist/Resources/coherent-pmdg-efb-agent.js"
   - "tests/MSFSBlindAssist.Tests/**/*PmdgEfb*.cs"
+  - "MSFSBlindAssist/Patching/EFBModPackageManager.cs"
+  - "MSFSBlindAssist/Patching/LegacyEfbBridgeCleanup.cs"
 ---
 # PMDG EFB over the Coherent debugger rules
 
@@ -16,3 +18,8 @@ Loaded when Claude reads matching code. Background: docs/pmdg-efb.md. Full text 
 - [PEFB-6] Capture an alert/confirmation card as ONE assertive item and skip its heading/message subtree in the main collect loop; the app must `AnnounceImmediate` a dynamically-injected alert, since WebView2 aria-live isn't reliable for it. Full: docs/invariants/pmdg-efb.md#pefb-6
 - [PEFB-7] Unit toggles must read the LIVE `el.checked` state, never the lagging `Settings` object or a `::after` CSS caption: the toggles are textless and `Settings` only commits on Save Preferences. Full: docs/invariants/pmdg-efb.md#pefb-7
 - [PEFB-8] `window.Settings` is ALWAYS false on the live PMDG view; code reading it must fall back to the bare global, never a `window.Settings`-only check, which silently no-ops live. Full: docs/invariants/pmdg-efb.md#pefb-8
+- [A380C-13] Never detect the PMDG EFB settings page's unit toggles (`coherent-pmdg-efb-agent.js`) with a universal "checked=metric" rule; direction differs per toggle id, so use the per-id `UNIT_PAIRS` map. Full: docs/invariants/pmdg-efb.md#a380c-13
+
+Mirrored from md11.md (they govern the MD-11 view, key and `announceChange` plumbing in CoherentPmdgEfbClient.cs; change them there and here together):
+- [MD11-13] Stepper options come from the FIRST React fiber with `options`, never hand-listed and never past an empty array; a press is the pointer sequence plus `el.click()` and NOTHING ELSE; refuse targets under `pointer-events-none` (`A.isInert`); stamp a stable `key` in the reader, never a shared-shell text heuristic. (more: see full) Full: docs/invariants/md11.md#md11-13
+- [MD11-26] The EFB shell speaks a pressed control's changed label ONLY where the reader flags it `announceChange: true` (the two stepper arrows, the tile button, the state tile's ACTION button), never unconditionally and never by suffix or by who was pressed; the per-item `live` hint cannot do this job. Full: docs/invariants/md11.md#md11-26

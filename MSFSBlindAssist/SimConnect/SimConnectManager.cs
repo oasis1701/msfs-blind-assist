@@ -433,6 +433,10 @@ public partial class SimConnectManager
     private string currentAircraftFlightNumber = "";
     private string currentAircraftAtcModel = ""; // raw ATC MODEL simvar value
     private string currentAircraftTitle = "";    // TITLE simvar value (aircraft.cfg [FLTSIM.N] title)
+    /// <summary>The loaded aircraft's TITLE (e.g. "737-700 PAX BW SC"). Empty until aircraft detection completes.</summary>
+    public string CurrentAircraftTitle => currentAircraftTitle;
+    /// <summary>The user aircraft's ATC ID (its tail number or callsign in the sim). Empty until read.</summary>
+    public string CurrentAircraftAtcId => currentAircraftAtcId;
     /// <summary>Extracted ICAO type designator for the current aircraft (e.g. "B77W"). Empty if not yet known.</summary>
     public string CurrentAircraftIcaoType { get; private set; } = "";
 
@@ -507,6 +511,9 @@ public partial class SimConnectManager
         // COM 1 active + standby, one-shot (RequestCom1Radio). 349: the first id past the
         // camera's rotating 341-348.
         REQUEST_COM1_RADIO = 349,
+        // IS SLEW ACTIVE and SIMULATION RATE, SIM_FRAME + CHANGED (SimConnectManager.SimState.cs).
+        REQUEST_SLEW_STATE = 350,
+        REQUEST_SIM_RATE = 351,
         REQUEST_AI_TRAFFIC = 500,
         // The ground-traffic monitor's own by-type sweeps (same DEF_AI_TRAFFIC definition, a small
         // radius), on their OWN ids so a completion can never be confused with a TCAS or other
@@ -590,6 +597,8 @@ public partial class SimConnectManager
         // mis-cast. Pinned by CameraReadWaitersTests.
         DEF_CAMERA_VIEW = 341,
         DEF_COM1_RADIO = 349,
+        DEF_SLEW_STATE = 350,
+        DEF_SIM_RATE = 351,
         DEF_AI_TRAFFIC = 500,
         // KEEP 600-607 FREE: the ground-traffic sweeps' rotating request ids (DATA_REQUESTS
         // .REQUEST_GROUND_TRAFFIC), and this enum is a request-id namespace too.
@@ -605,7 +614,13 @@ public partial class SimConnectManager
     /// <summary>IDs for SimConnect SubscribeToSystemEvent notifications.</summary>
     private enum SYSTEM_EVENT_ID : uint
     {
-        AircraftLoaded = 9000
+        AircraftLoaded = 9000,
+        // "Frame": once per rendered frame, subscribed only while the Sim Performance window is open
+        // (SimConnectManager.FrameRate.cs).
+        Frame = 9001,
+        // Pause and flight-running state, always subscribed (SimConnectManager.SimState.cs).
+        PauseEx1 = 9002,
+        Sim = 9003
     }
 
 
@@ -1340,6 +1355,8 @@ public partial class SimConnectManager
                 simConnect.OnRecvClientData -= SimConnect_OnRecvClientData;
                 simConnect.OnRecvException -= SimConnect_OnRecvException;
                 simConnect.OnRecvEventFilename -= SimConnect_OnRecvEventFilename;
+                simConnect.OnRecvEventFrame -= SimConnect_OnRecvEventFrame;
+                simConnect.OnRecvEvent -= SimConnect_OnRecvEvent;
 
                 Log.Debug("SimConnect", "Event handlers unregistered, disposing SimConnect...");
             }
@@ -1373,6 +1390,8 @@ public partial class SimConnectManager
         for (int i = 0; i < batchVarArrays.Length; i++)
             batchVarArrays[i] = Array.Empty<(string key, int index, SimVarDefinition def)>();
         eventIds.Clear();
+        // The Frame subscription died with the handle; the consumer count survives so a reconnect re-arms it.
+        _frameEventSubscribed = false;
         lock (forceUpdateVariables) { forceUpdateVariables.Clear(); }
         _freshReads.FailAll();
         FailCameraViewRead();

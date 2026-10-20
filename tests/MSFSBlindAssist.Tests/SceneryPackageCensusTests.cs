@@ -215,8 +215,8 @@ public class SceneryPackageCensusTests : IDisposable
     [Fact]
     public void A_row_an_earlier_schema_wrote_is_read_again()
     {
-        // Schema 1 persisted scans taken while an installer was still writing the package (review
-        // SI-1): a row of it may hold a short count frozen under the package's FINAL stamp. This one
+        // Schema 1 persisted scans taken while an installer was still writing the package
+        // ([SUR-7]): a row of it may hold a short count frozen under the package's FINAL stamp. This one
         // says the package models nothing, and must not be believed.
         string pkg = Package("kxyz", 30, 33.6400, -84.4300);
         string cache = Path.Combine(_root, "cacheOld");

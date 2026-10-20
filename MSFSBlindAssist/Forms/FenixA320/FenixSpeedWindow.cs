@@ -15,7 +15,6 @@ public partial class FenixSpeedWindow : Form
 
     private Label speedLabel = null!;
     private TextBox speedTextBox = null!;
-    private Button setButton = null!;
     private Button spdPushButton = null!;
     private Button spdPullButton = null!;
     private Button spdMachButton = null!;
@@ -85,18 +84,6 @@ public partial class FenixSpeedWindow : Form
         };
         speedTextBox.KeyDown += SpeedTextBox_KeyDown;
 
-        // Set Button
-        setButton = new Button
-        {
-            Text = "Set",
-            Location = new Point(280, 20),
-            Size = new Size(80, 30),
-            AccessibleName = "Set Speed",
-            AccessibleDescription = "Set the entered speed value",
-            TabIndex = 1
-        };
-        setButton.Click += async (s, e) => await HandleSetClick();
-
         // Speed Push Button
         spdPushButton = new Button
         {
@@ -149,12 +136,11 @@ public partial class FenixSpeedWindow : Form
         // Add controls to form
         Controls.AddRange(new Control[]
         {
-            speedLabel, speedTextBox, setButton, spdPushButton, spdPullButton,
+            speedLabel, speedTextBox, spdPushButton, spdPullButton,
             spdMachButton, closeButton
         });
 
         CancelButton = closeButton;
-        AcceptButton = setButton;
     }
 
     private void SetupAccessibility()
@@ -202,7 +188,7 @@ public partial class FenixSpeedWindow : Form
             return System.Threading.Tasks.Task.CompletedTask;
         }
 
-        if (!double.TryParse(input, out double value))
+        if (!Utils.NumberParsing.TryParseTyped(input, out double value))
         {
             announcer.AnnounceImmediate("Invalid number format");
             speedTextBox.Focus();
@@ -220,7 +206,7 @@ public partial class FenixSpeedWindow : Form
         }
 
         // Convert Mach to internal representation (multiply by 100)
-        int targetSpeed = value < 1.0 ? (int)(value * 100) : (int)Math.Round(value);
+        int targetSpeed = value < 1.0 ? (int)Math.Round(value * 100) : (int)Math.Round(value);   // 0.58 * 100 is 57.99...
         _ = aircraft.SetFCUSpeed(targetSpeed, simConnect, announcer);
         speedTextBox.SelectAll();
         return System.Threading.Tasks.Task.CompletedTask;

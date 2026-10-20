@@ -4,6 +4,7 @@ Application Navigation:
   Ctrl+1     Focus Sections List
   Ctrl+2     Focus Panels List
   Ctrl+3     Focus Status Display field of the current panel (refreshes it if empty)
+  F5         Refresh the current panel's Status Display now (it also updates itself live)
 
 Tip: Press the same bracket key again to cancel a mode you activated by accident.
 
@@ -129,6 +130,8 @@ Waypoint tracking, use Fix track window or Electronic flight bag route viewer wi
 Traffic and Weather:
   R          Announce Tracked TCAS Traffic
   Ctrl+R     Open TCAS Traffic Window
+  Shift+O    Open Volanta window (Volanta users and network pilots around you,
+             your Volanta friends and online ATC; also Extras > Volanta)
   Shift+R    Open Weather Radar Window (auto-detects ActiveSky and silently
              uses richer data — surface wind+gust, ceiling, QNH, turbulence,
              METAR-decoded precipitation — when running. Falls back to MSFS
@@ -287,3 +290,7 @@ Alt+Arrow Navigation:
   Alt+Right    Next section
   Alt+Up       Scroll up
   Alt+Down     Scroll down
+
+MCDU Side:
+  Ctrl+Shift+L  Left MCDU (Captain)
+  Ctrl+Shift+R  Right MCDU (First Officer)

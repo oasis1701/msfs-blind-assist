@@ -11,6 +11,7 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*AltitudeManagedState*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*AltitudeModeTracker*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*ArmedAltitudeMode*.cs"
+  - "MSFSBlindAssist/Forms/FBWA380/FBWA380*Window*.cs"
 ---
 # FlyByWire A380X FCU, EFIS and FMA rules
 
@@ -32,3 +33,5 @@ Loaded when Claude reads matching code. Background: docs/a380x.md. Full text of 
 - [A380F-14] The A380 has ONE FD pushbutton: state `L:A32NX_FCU_FD_LIGHT_ON`, pressed with `A32NX.FCU_FD_PUSH` only when the pick differs (`A380FlightDirector`). Never the stock `TOGGLE_FLIGHT_DIRECTOR` pair or per-side FD keys; every FD press sets `A380FlightDirector.StateKey`. Full: docs/invariants/a380-fcu.md#a380f-14
 - [A380F-15] Approach minimums read the plain-feet `AIRLINER_MINIMUM_DESCENT_ALTITUDE`/`AIRLINER_DECISION_HEIGHT` L:vars, never the ARINC `A32NX_FM1/FM2_*` words, which read NCD ("Not set") until the FMC is in approach range. Full: docs/invariants/a380-fcu.md#a380f-15
 - [A380F-16] Takeoff trim reads the ARINC word `A32NX_FM1_TO_PITCH_TRIM`, never the dead bare `A32NX_TO_PITCH_TRIM`, and it is a PERCENT (takeoff CG %MAC), not degrees. Full: docs/invariants/a380-fcu.md#a380f-16
+- [A380F-17] MTRS keeps three flags apart: `_metricAlt` (last word) and `_metricAltBaselined` (call-out baseline) are never reset; `_metricAltKnown` is cleared ONLY in `OnSimContextReset`, never in `ResetAnnouncementBaselines`, which runs after a reconnect's first batch (a pick during the settle would then press MTRS blind). Full: docs/invariants/a380-fcu.md#a380f-17
+- [A380F-18] The A380 TRK/FPA mode moves only through `SetTrkFpaMode`: `A32NX.FCU_TRK_FPA_TOGGLE_PUSH` when the pick differs from `CommandedOrCachedValue` (unknown fires, a no-op force-reads); never write `L:A32NX_TRK_FPA_MODE_ACTIVE`, an FCU-shim output since FBW #10855. Full: docs/invariants/a380-fcu.md#a380f-18

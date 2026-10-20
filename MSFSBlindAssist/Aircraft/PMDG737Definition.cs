@@ -1,6 +1,7 @@
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Forms;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Aircraft;
 
@@ -85,7 +86,22 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     internal PmdgSpeedBrakeCallout SpeedBrakeCallout => _speedBrakeCallout;
 
     /// <inheritdoc />
-    public override void OnSwitchedAway() => _speedBrakeCallout.Dispose();
+    /// <remarks>Also drops the ACP receiver presses in flight, so none is settled over the next aircraft.</remarks>
+    public override void OnSwitchedAway()
+    {
+        _speedBrakeCallout.Dispose();
+        ForgetReceiverPresses();
+    }
+
+    /// <inheritdoc />
+    /// <remarks>A reconnect voids the ACP receiver presses in flight and the bits last seen: the first
+    /// snapshot after it is an initial one, which never reaches ProcessSimVarUpdate, so a press could
+    /// neither complete nor be compared against it.</remarks>
+    public override void ResetAnnouncementBaselines()
+    {
+        base.ResetAnnouncementBaselines();
+        ForgetReceiverPresses();
+    }
 
     // EFIS Minimums knob step sizes per click on the PMDG NG3 737. RADIO mode
     // (DH) clicks in 1-ft increments; BARO mode (DA) clicks in 20-ft increments.
@@ -621,8 +637,20 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["ELEC_GrdPwrSw_On"]        = Momentary("ELEC_GrdPwrSw_On",  "Ground Power On");
         d["ELEC_GrdPwrSw_Off"]       = Momentary("ELEC_GrdPwrSw_Off", "Ground Power Off");
         d["ELEC_BusTransSw_AUTO"]    = Toggle("ELEC_BusTransSw_AUTO", "Bus Transfer", "OFF", "AUTO");
-        d["ELEC_GenSw_0"]            = Toggle("ELEC_GenSw_0", "Generator 1");
-        d["ELEC_GenSw_1"]            = Toggle("ELEC_GenSw_1", "Generator 2");
+        // GEN 1/2: the same honest push-button pair as APU GEN 1/2 below. They
+        // used to be Off/On combos showing a LOCALLY REMEMBERED state (PMDG's
+        // ELEC_GenSw bool lies), which started at Off on every load and never saw
+        // the APU GEN trip the engine gens off the bus; re-picking the "On" the
+        // combo already showed sent nothing, so the switch looked stuck. The
+        // truthful state is the GEN OFF BUS lights below, announced and listed
+        // on the Electrical panel after the buttons; nothing remembers a switch
+        // state any more. Each button and its light take their name from one
+        // constant ([VAR-1]).
+        const string Gen1 = "Generator 1", Gen2 = "Generator 2", ApuGen = "APU Gen";
+        d["ELEC_GenSw_0_On"]         = Momentary("ELEC_GenSw_0_On",  $"{Gen1} On");
+        d["ELEC_GenSw_0_Off"]        = Momentary("ELEC_GenSw_0_Off", $"{Gen1} Off");
+        d["ELEC_GenSw_1_On"]         = Momentary("ELEC_GenSw_1_On",  $"{Gen2} On");
+        d["ELEC_GenSw_1_Off"]        = Momentary("ELEC_GenSw_1_Off", $"{Gen2} Off");
         // APU GEN 1/2: rendered as two momentary push buttons each ("On" / "Off")
         // because PMDG NG3 exposes no reliable per-switch position signal — the
         // ELEC_APUGenSw[] bool is a spring-loaded transient (always reads 1 at
@@ -631,23 +659,28 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // state that could be out of sync with reality, we expose stateless
         // action buttons that just dispatch a directional press. Dispatch
         // shape per button is in _directionalPushMap below.
-        d["ELEC_APUGenSw_0_On"]      = Momentary("ELEC_APUGenSw_0_On",  "APU Gen 1 On");
-        d["ELEC_APUGenSw_0_Off"]     = Momentary("ELEC_APUGenSw_0_Off", "APU Gen 1 Off");
-        d["ELEC_APUGenSw_1_On"]      = Momentary("ELEC_APUGenSw_1_On",  "APU Gen 2 On");
-        d["ELEC_APUGenSw_1_Off"]     = Momentary("ELEC_APUGenSw_1_Off", "APU Gen 2 Off");
+        d["ELEC_APUGenSw_0_On"]      = Momentary("ELEC_APUGenSw_0_On",  $"{ApuGen} 1 On");
+        d["ELEC_APUGenSw_0_Off"]     = Momentary("ELEC_APUGenSw_0_Off", $"{ApuGen} 1 Off");
+        d["ELEC_APUGenSw_1_On"]      = Momentary("ELEC_APUGenSw_1_On",  $"{ApuGen} 2 On");
+        d["ELEC_APUGenSw_1_Off"]     = Momentary("ELEC_APUGenSw_1_Off", $"{ApuGen} 2 Off");
         // TFM: `_offOrOnStates` (0:on, 1:off); SDK lines 171-174: bus-off annunciator arrays,
         // no inline comments. Resolved with TFM's inverted convention: these are `annunOFF`
         // lamps — they light when the named bus/source is OFF. byte=1 means the lamp is lit
         // → the bus IS off → announce "off". Default Annun would announce "on" when the lamp
-        // lights, which contradicts the lamp's semantic meaning. Applies to all eight bus-off
-        // annunciators below.
+        // lights, which contradicts the lamp's semantic meaning. Applies to the four
+        // TRANSFER BUS / SOURCE OFF annunciators below.
         d["ELEC_annunTRANSFER_BUS_OFF_0"] = AnnunInverted("ELEC_annunTRANSFER_BUS_OFF_0", "Transfer Bus 1 Off");
         d["ELEC_annunTRANSFER_BUS_OFF_1"] = AnnunInverted("ELEC_annunTRANSFER_BUS_OFF_1", "Transfer Bus 2 Off");
         d["ELEC_annunSOURCE_OFF_0"]  = AnnunInverted("ELEC_annunSOURCE_OFF_0", "Source 1 Off");
         d["ELEC_annunSOURCE_OFF_1"]  = AnnunInverted("ELEC_annunSOURCE_OFF_1", "Source 2 Off");
-        d["ELEC_annunGEN_BUS_OFF_0"] = AnnunInverted("ELEC_annunGEN_BUS_OFF_0", "Gen Bus 1 Off");
-        d["ELEC_annunGEN_BUS_OFF_1"] = AnnunInverted("ELEC_annunGEN_BUS_OFF_1", "Gen Bus 2 Off");
-        d["ELEC_annunAPU_GEN_OFF_BUS"] = AnnunInverted("ELEC_annunAPU_GEN_OFF_BUS", "APU Gen Off Bus");
+        // The GEN OFF BUS and APU GEN OFF BUS lights are the generator buttons' read-back on
+        // the Electrical panel, so they are named for the LIGHT, as on the iFly MAX: "on" =
+        // lit, as the cockpit shows it. The inverted "Gen Bus 1 Off: on" sounded lit while the
+        // light was dark. The APU light is one for both APU generators, and dark whenever the
+        // APU is not running.
+        d["ELEC_annunGEN_BUS_OFF_0"] = Annun("ELEC_annunGEN_BUS_OFF_0", $"{Gen1} Off Bus light");
+        d["ELEC_annunGEN_BUS_OFF_1"] = Annun("ELEC_annunGEN_BUS_OFF_1", $"{Gen2} Off Bus light");
+        d["ELEC_annunAPU_GEN_OFF_BUS"] = Annun("ELEC_annunAPU_GEN_OFF_BUS", $"{ApuGen} Off Bus light");
         d["ELEC_MeterDisplayTop"]    = Display("ELEC_MeterDisplayTop", "Electrical Meter Top Display");
         d["ELEC_MeterDisplayBottom"] = Display("ELEC_MeterDisplayBottom", "Electrical Meter Bottom Display");
         // ELEC_BusPowered[16] — bus-powered indicators (SDK line 299, `bool[16]`). All 16 are
@@ -694,11 +727,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["LTS_annunEmerNOT_ARMED"]      = Annun("LTS_annunEmerNOT_ARMED", "Emergency Lights NOT ARMED");
         d["LTS_EmerExitSelector"]        = Selector("LTS_EmerExitSelector", "Emergency Exit Lights",
             "OFF", "ARMED", "ON");
-        // TFM: under-modeled as 2-position off/on switch.
-        // SDK line 215: `unsigned char COMM_NoSmokingSelector; // 0: OFF  1: AUTO  2: ON`.
-        // Resolved with SDK: this is a 3-position physical selector on the NG3 cockpit
-        // (OFF/AUTO/ON). TFM is wrong; keep our 3-position dispatch.
-        d["COMM_NoSmokingSelector"]      = Selector("COMM_NoSmokingSelector", "No Smoking", "OFF", "AUTO", "ON");
+        // Two positions, not the SDK header's three: the NG3 has no ON (swept
+        // 2026-10-20, P737-3; Pmdg737NoSmokingSwitchTests).
+        d["COMM_NoSmokingSelector"]      = Selector("COMM_NoSmokingSelector", "No Smoking", "OFF", "AUTO");
         d["COMM_FastenBeltsSelector"]    = Selector("COMM_FastenBeltsSelector", "Fasten Seat Belts", "OFF", "AUTO", "ON");
         d["COMM_annunCALL"]              = Annun("COMM_annunCALL", "Cabin Call");
         d["COMM_annunPA_IN_USE"]         = Annun("COMM_annunPA_IN_USE", "PA In Use");
@@ -1254,15 +1285,23 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["COMM_SelectedMic_1"] = Selector("COMM_SelectedMic_1", "First Officer Selected Mic",
             "VHF1", "VHF2", "VHF3", "HF1", "HF2", "FLT", "SVC", "PA");
         // SDK line 723: `uint[3] COMM_ReceiverSwitches` — bitmask of currently-selected
-        // receivers per ACP (ACP_SEL_RECV_* flags, SDK lines 610-623). Each receiver button
-        // is an independent momentary toggle (EVT_ACP_*_REC_X events), so the UI can't
-        // model this as a single-selection selector. Exposed as Display for status query
-        // (value rendered as bitmask decode in ProcessSimVarUpdate). Index 2 is the overhead
-        // ACP — surfaced because the overhead ACP DOES exist on the 737 (the observer one
-        // doesn't). TFM exposes all three.
+        // receivers per ACP (ACP_SEL_RECV_* flags, SDK lines 610-623). Each receiver is on or
+        // off independently of the others, so the UI can't model this as a single-selection
+        // selector. These rows are in no panel: they carry the background announce and the
+        // press read-back in ProcessSimVarUpdate. Index 2 is the overhead ACP — surfaced
+        // because the overhead ACP DOES exist on the 737 (the observer one doesn't). TFM
+        // exposes all three.
         d["COMM_ReceiverSwitches_0"] = Display("COMM_ReceiverSwitches_0", "Captain Receivers");
         d["COMM_ReceiverSwitches_1"] = Display("COMM_ReceiverSwitches_1", "First Officer Receivers");
         d["COMM_ReceiverSwitches_2"] = Display("COMM_ReceiverSwitches_2", "Overhead Receivers");
+        // ACP VHF receiver on/off buttons (EVT_ACP_*_REC_VHFn). A radio is heard only
+        // while its receiver is on at that seat, so COM2 needs VHF 2 receive. The event's CDA
+        // parameter is the TARGET state, not a toggle (measured 2026-10-14). Each button is its
+        // own StateVariable: PMDGNG3DataManager publishes the receiver's bit under the button's
+        // key, so the label reads "Captain VHF2 Receiver: On". Table, dispatch and read-back:
+        // Pmdg737AcpReceivers.
+        foreach (var r in Pmdg737AcpReceivers.All)
+            d[r.Key] = Momentary(r.Key, r.DisplayName, stateVar: r.Key);
 
         // Stab trim
         d["TRIM_StabTrimMainElecSw_NORMAL"] = Toggle("TRIM_StabTrimMainElecSw_NORMAL",
@@ -1447,6 +1486,17 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["FMC_DistanceToTOD"]     = Quantity("FMC_DistanceToTOD", "Distance To Top of Descent");
         d["FMC_DistanceToDest"]    = Quantity("FMC_DistanceToDest", "Distance To Destination");
         d["FMC_flightNumber"]      = Display("FMC_flightNumber", "Flight Number");
+        // Gross weight for the CALCULATED flap maneuvering speeds (Pmdg737FlapSpeeds;
+        // the bugs are exposed nowhere). OnRequest, never a stream: the Shift+1..6
+        // readout reads it fresh per press (AnnounceFlapManeuverSpeed).
+        d["PMDG737_FLAP_SPEEDS_GW"] = new SimConnect.SimVarDefinition
+        {
+            Name = "TOTAL WEIGHT",
+            DisplayName = "Gross Weight (flap speeds)",
+            Type = SimConnect.SimVarType.SimVar,
+            Units = "pounds",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+        };
 
         // General / misc
         d["WeightInKg"]          = Toggle("WeightInKg", "Weight Units", "Pounds", "Kilograms");
@@ -1648,8 +1698,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
         // Seat headrests + rudder-pedal adjust — drag positions 0–100 (50 = the
         // position PMDG initializes at spawn). Clamped in HandleUIVariableSet.
-        // The varKey carries a "_SET" suffix so MainForm renders a TextBox +
-        // Set button (the numeric-input control); without it, a no-
+        // The varKey carries a "_SET" suffix so MainForm renders a TextBox that
+        // Enter applies (the numeric-input control); without it, a no-
         // ValueDescriptions var falls through to the plain-button branch whose
         // click always dispatches value 1 — the position slammed to 1/100 on
         // every press and the control "only went to one position".
@@ -1819,9 +1869,15 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 "ELEC_BatSelector", "ELEC_StandbyPowerSelector",
                 "ELEC_DCMeterSelector", "ELEC_ACMeterSelector",
-                "ELEC_GenSw_0", "ELEC_GenSw_1",
+                "ELEC_GenSw_0_On", "ELEC_GenSw_0_Off",
+                "ELEC_GenSw_1_On", "ELEC_GenSw_1_Off",
                 "ELEC_APUGenSw_0_On", "ELEC_APUGenSw_0_Off",
                 "ELEC_APUGenSw_1_On", "ELEC_APUGenSw_1_Off",
+                // The generator buttons are stateless; these lamps are their
+                // read-back, so a pilot can check the bus on demand (the iFly
+                // Overhead panel lists its GEN OFF BUS lights the same way).
+                "ELEC_annunGEN_BUS_OFF_0", "ELEC_annunGEN_BUS_OFF_1",
+                "ELEC_annunAPU_GEN_OFF_BUS",
                 "ELEC_BusTransSw_AUTO",
                 "ELEC_GrdPwrSw_On", "ELEC_GrdPwrSw_Off",
                 "ELEC_IDGDisconnectSw_0", "ELEC_IDGDisconnectSw_1",
@@ -2031,15 +2087,16 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "COM1_ActiveFreq", "COM_STANDBY_FREQUENCY_SET:1", "COM1_RADIO_SWAP",
                 "COM2_ActiveFreq", "COM_STANDBY_FREQUENCY_SET:2", "COM2_RADIO_SWAP"
             },
-            ["Calls"] = new List<string>
-            {
+            ["Calls"] =
+            [
                 "COMM_SelectedMic_0", "COMM_SelectedMic_1",
+                .. Pmdg737AcpReceivers.All.Select(r => r.Key),
                 "COMM_ServiceInterphoneSw",
                 // Overhead ATTEND / GRD CALL push buttons (live-verified CDA
                 // param-1 dispatch). The press-count announce handler speaks
                 // "Attend call" / "Ground call" as the confirmation.
                 "COMM_AttendCallBtn", "COMM_GrndCallBtn"
-            },
+            ],
             ["Flight Deck Door"] = new List<string>
             {
                 "PED_FltDkDoorSel",                          // read-only status (AUTO at rest)
@@ -3387,11 +3444,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["ELEC_ACMeterSelector"]       = "EVT_OH_ELEC_AC_METER",
             ["ELEC_CabUtilSw"]             = "EVT_OH_ELEC_CAB_UTIL",
             ["ELEC_IFEPassSeatSw"]         = "EVT_OH_ELEC_IFE",
-            ["ELEC_GrdPwrSw"]              = "EVT_OH_ELEC_GRD_PWR_SWITCH",
-            ["ELEC_GenSw_0"]               = "EVT_OH_ELEC_GEN1_SWITCH",
-            ["ELEC_GenSw_1"]               = "EVT_OH_ELEC_GEN2_SWITCH",
-            ["ELEC_APUGenSw_0"]            = "EVT_OH_ELEC_APU_GEN1_SWITCH",
-            ["ELEC_APUGenSw_1"]            = "EVT_OH_ELEC_APU_GEN2_SWITCH",
+            // GRD PWR, GEN 1/2 and APU GEN 1/2 are On/Off push pairs — see
+            // _directionalPushMap; this path's CDA write is ignored for them.
             // ELEC_BatSelector, ELEC_StandbyPowerSelector, ELEC_BusTransSw_AUTO,
             // ELEC_IDGDisconnectSw_0/1 are guarded — see _guardedMap.
 
@@ -3581,6 +3635,26 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         ["COMM_GrndCallBtn"]   = "EVT_OH_GRND_CALL_SWITCH",
     };
 
+    /// <summary>
+    /// ACP receiver presses awaiting their read-back (Pmdg737AcpReceivers). UI thread only: the
+    /// button handler, the COMM_ReceiverSwitches_* announce, the timeout and the switch/reconnect
+    /// resets all run on it.
+    /// </summary>
+    private readonly List<Pmdg737AcpReceivers.Press> _pendingReceiverPresses = new();
+
+    /// <summary>
+    /// Each COMM_ReceiverSwitches_* field's bits as last seen (its last update, or the snapshot at a
+    /// press when no update has come since a reset), so an update beside a press can tell a change
+    /// no press explains. Same thread as the presses; cleared with them.
+    /// </summary>
+    private readonly Dictionary<string, uint> _receiverBits = new();
+
+    private void ForgetReceiverPresses()
+    {
+        _pendingReceiverPresses.Clear();
+        _receiverBits.Clear();
+    }
+
     // Jumpseat/armrest combos: varKey = the PMDG-owned read-back L-var (combo
     // display, 0/100), value = the SDK event whose CDA parameter IS the position.
     private static readonly Dictionary<string, string> _sdkFurnitureEventMap = new()
@@ -3761,51 +3835,24 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     }
 
     // =========================================================================
-    // Momentary press-to-toggle bool switches — 2-position bool fields whose
-    // PMDG NG3 event ID is modeled as a momentary spring-loaded toggle (not a
-    // stable detent). CDA direct-position writes have no effect; bare
-    // LEFTSINGLE/RIGHTSINGLE click TransmitClientEvents play the switch sound
-    // but the bool springs back within a frame. The fix is the FD-switch
-    // dispatch pattern from PMDG_NG3_ConnectionTest.cpp:
-    //   LEFTSINGLE   then LEFTRELEASE  for target=1 (ON / up)
-    //   RIGHTSINGLE  then RIGHTRELEASE for target=0 (OFF / down)
-    //
-    //   - ELEC_GrdPwrSw  (real Boeing GRD POWER switch is momentary spring-loaded)
-    //   - ELEC_GenSw_0   (GEN 1 — user reported "spring back" on the click-walk path)
-    //   - ELEC_GenSw_1   (GEN 2 — same)
-    //   - ELEC_APUGenSw_0 (APU GEN 1 — user reported "locked in the on position")
-    //   - ELEC_APUGenSw_1 (APU GEN 2 — same)
-    //
-    // The diagnostic log captured at 2026-05-22 17:25-17:26 confirmed CDA-direct
-    // writes were reaching PMDG (multiple EVT_OH_ELEC_GRD_PWR_SWITCH param=0
-    // entries) but the switch played its sound and snapped back to ON — the
-    // signature of an unmatched mouse press without RELEASE.
-    // =========================================================================
-    private static readonly IReadOnlyDictionary<string, string> _momentaryToggleMap =
-        new Dictionary<string, string>
-        {
-            // Ground Power and APU GEN 1/2 are NOT here — they're two-button
-            // push pairs dispatched via _directionalPushMap below (PMDG NG3
-            // exposes no reliable state signal that distinguishes their
-            // source from other AC sources on shared buses).
-            ["ELEC_GenSw_0"]    = "EVT_OH_ELEC_GEN1_SWITCH",
-            ["ELEC_GenSw_1"]    = "EVT_OH_ELEC_GEN2_SWITCH",
-        };
-
-    // =========================================================================
     // Directional push buttons — momentary buttons that dispatch a specific
     // mouse-flag direction (LEFTSINGLE = press up = "On", RIGHTSINGLE = press
-    // down = "Off"). Used for APU GEN 1/2 where PMDG NG3 exposes no reliable
-    // per-switch state signal (shared annunciator, spring-loaded bool that
-    // always reads 1 at rest). Rather than display a possibly-wrong state,
-    // each switch shows two stateless action buttons: "APU Gen N On" /
-    // "APU Gen N Off". Each press dispatches the corresponding direction once.
+    // down = "Off"). Used for GEN 1/2 and APU GEN 1/2, where PMDG NG3 exposes
+    // no reliable per-switch state signal (spring-loaded bools that always
+    // read 1 at rest; one shared APU annunciator). Rather than display a
+    // possibly-wrong state, each switch shows two stateless action buttons:
+    // "Generator N On" / "Generator N Off", "APU Gen N On" / "APU Gen N Off".
+    // Each press dispatches the corresponding direction once.
     // =========================================================================
     private static readonly IReadOnlyDictionary<string, (string EventName, bool IsOn)> _directionalPushMap =
         new Dictionary<string, (string, bool)>
         {
             ["ELEC_GrdPwrSw_On"]    = ("EVT_OH_ELEC_GRD_PWR_SWITCH", true),
             ["ELEC_GrdPwrSw_Off"]   = ("EVT_OH_ELEC_GRD_PWR_SWITCH", false),
+            ["ELEC_GenSw_0_On"]     = ("EVT_OH_ELEC_GEN1_SWITCH", true),
+            ["ELEC_GenSw_0_Off"]    = ("EVT_OH_ELEC_GEN1_SWITCH", false),
+            ["ELEC_GenSw_1_On"]     = ("EVT_OH_ELEC_GEN2_SWITCH", true),
+            ["ELEC_GenSw_1_Off"]    = ("EVT_OH_ELEC_GEN2_SWITCH", false),
             ["ELEC_APUGenSw_0_On"]  = ("EVT_OH_ELEC_APU_GEN1_SWITCH", true),
             ["ELEC_APUGenSw_0_Off"] = ("EVT_OH_ELEC_APU_GEN1_SWITCH", false),
             ["ELEC_APUGenSw_1_On"]  = ("EVT_OH_ELEC_APU_GEN2_SWITCH", true),
@@ -3846,10 +3893,28 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // ABSOLUTE position parameter (NOT click-walking with LEFTSINGLE/RIGHTSINGLE).
     // The generic WalkPMDGSelector path inverted the click direction for these
     // selectors, producing the well-known "step Normal to A lands at B" pattern.
-    // Same fix shape as ENG_StartSelector/ENG_IgnitionSelector at line ~3478.
+    // Same fix shape as the ENG_StartSelector/ENG_IgnitionSelector branch (2c)
+    // in HandleUIVariableSet.
     // Verified in user-reported reproductions for FIRE_OvhtDetSw, CARGO_DetSelect,
     // MAIN_*DUSel, and NAVDIS_*Selector; absolute-position dispatch confirmed
     // working at the SDK protocol level for these families.
+    //
+    // Second batch, live-swept 2026-10-18 with tools/PMDGDispatchTester (one
+    // LEFTSINGLE then one RIGHTSINGLE per generic-walk selector, read back from
+    // the struct): on every knob below LEFTSINGLE stepped DOWN, so the generic
+    // walk drove each pick toward position 0 and pinned there (the Bank Limit
+    // "stuck at 10°" report). Each was then set by absolute target and read back
+    // across non-adjacent positions in one send. The selectors that stepped the
+    // right way stay on the walk: dome, fasten belts, window heat test, packs,
+    // isolation valve, landing light retract, VOR/ADF pointers, disengage test,
+    // lights test, fuel flow. No smoking also looked right that day, but it has
+    // only two positions (swept 2026-10-20) and takes the CDA write instead.
+    //
+    // AIR_OutflowValveSwitch is spring-loaded in the real cockpit, but the NG3
+    // LATCHES it when set from outside: an absolute send and a CDA write of
+    // OPEN or CLOSE both held for 3+ s until Neutral was sent (2026-10-18), so the
+    // valve keeps driving until the pilot picks Neutral. Not in
+    // _springLoadedSelectorMap for that reason: nothing springs it back.
     private static readonly HashSet<string> _absolutePositionSelectorSet =
         new HashSet<string>
         {
@@ -3859,7 +3924,60 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             "MAIN_LowerDUSel_0", "MAIN_LowerDUSel_1",
             "NAVDIS_VHFNavSelector", "NAVDIS_IRSSelector", "NAVDIS_FMCSelector",
             "NAVDIS_SourceSelector", "NAVDIS_ControlPaneSelector",
+            "MCP_BankLimitSel",
+            "EFIS_ModeSel_0", "EFIS_ModeSel_1",
+            "EFIS_RangeSel_0", "EFIS_RangeSel_1",
+            "OH_WiperLSelector", "OH_WiperRSelector",
+            "AIR_PressurizationModeSelector", "AIR_OutflowValveSwitch",
+            "MAIN_N1SetSelector", "MAIN_SpdRefSelector",
+            "ELEC_DCMeterSelector", "ELEC_ACMeterSelector",
+            "LTS_PositionSw",
         };
+
+    // Absolute-position selectors whose event parameter counts from the OTHER
+    // end of the struct's range: parameter = top position − target. Live-proven
+    // 2026-10-18 on EVT_OH_LIGHTS_POS_STROBE: parameter 2 lands STEADY (struct 0),
+    // 1 lands OFF (1), 0 lands STROBE & STEADY (2).
+    private static readonly HashSet<string> _reversedAbsolutePositionSet =
+        new HashSet<string> { "LTS_PositionSw" };
+
+    // Two-position switches whose CDA write was read back as absolute and
+    // idempotent (No Smoking, 2026-10-20): they skip step 5's "already at target"
+    // guard, as branch 4a does. That guard reads the 1 Hz snapshot, so a quick
+    // A→B→A pick, or a pick of 0 before the first snapshot (the 0.0 sentinel),
+    // would drop the send.
+    private static readonly HashSet<string> _unguardedTwoPositionSet =
+        new HashSet<string> { "COMM_NoSmokingSelector" };
+
+    /// <summary>True when step 5 skips a pick the cached snapshot already shows.</summary>
+    internal static bool GuardsAlreadyAtTarget(string varKey, SimConnect.SimVarDefinition varDef) =>
+        varDef.ValueDescriptions.Count >= 2 && !_unguardedTwoPositionSet.Contains(varKey);
+
+    internal static IReadOnlyCollection<string> AbsolutePositionSelectorKeys => _absolutePositionSelectorSet;
+
+    /// <summary>True when <paramref name="varKey"/> is an absolute-position
+    /// selector AND its event resolves to an id: branch 4a needs both, and a key
+    /// missing either would silently fall through to the backwards click-walk.</summary>
+    internal static bool TryGetAbsolutePositionEvent(string varKey, out int eventId)
+    {
+        eventId = 0;
+        return _absolutePositionSelectorSet.Contains(varKey) &&
+               _simpleEventMap.TryGetValue(varKey, out string? eventName) &&
+               EventIds.TryGetValue(eventName, out eventId);
+    }
+
+    internal static bool UsesAbsolutePositionDispatch(string varKey) =>
+        TryGetAbsolutePositionEvent(varKey, out _);
+
+    /// <summary>The event parameter that lands an absolute-position selector on
+    /// <paramref name="target"/>, or null when the target is outside its
+    /// <paramref name="positionCount"/> detents (never cast a stray index into a
+    /// parameter PMDG would read as a mouse flag).</summary>
+    internal static int? AbsoluteSelectorParameter(string varKey, int target, int positionCount)
+    {
+        if (target < 0 || target >= positionCount) return null;
+        return _reversedAbsolutePositionSet.Contains(varKey) ? positionCount - 1 - target : target;
+    }
 
     // =========================================================================
     // Behavior overrides — scaffold (populated in Tasks C10–C12)
@@ -4424,10 +4542,31 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 
         // ------------------------------------------------------------------
         // 2d. Directional push buttons — momentary buttons that dispatch a
-        //     specific mouse-flag direction once per press. Used by APU GEN
-        //     1/2 (split into separate "On" / "Off" buttons because PMDG NG3
-        //     gives no reliable per-switch state signal — see
-        //     _directionalPushMap above).
+        //     specific mouse-flag direction once per press. Used by GEN 1/2,
+        //     APU GEN 1/2 and Ground Power (split into separate "On" / "Off"
+        //     buttons because PMDG NG3 gives no reliable per-switch state
+        //     signal — see _directionalPushMap above). GEN 1/2 were the last
+        //     of these as combos, retired because a combo can't re-send the
+        //     value it already shows.
+        //
+        //     Verified dispatch shape (2026-05-22, PMDGDispatchTester rig
+        //     subscribed to PMDG_NG3_Data with PERIOD.ON_SET / FLAG.CHANGED):
+        //     CDA write with a directional MOUSE_FLAG_* in the Parameter field,
+        //     LEFTSINGLE (0x20000000) = ON (push up), RIGHTSINGLE (0x80000000)
+        //     = OFF (push down). The state persists and same-direction repeats
+        //     are idempotent on the PMDG side, so there is no cache no-op guard
+        //     (which also fixed "ON does nothing" when the snapshot lagged).
+        //
+        //     Patterns tried that do NOT work (do not revive):
+        //       - bare LEFT/RIGHTSINGLE via TransmitClientEvent (click-walk):
+        //         plays sound, state springs back.
+        //       - CDA direct-position (Parameter=0/1, taxi-light convention):
+        //         silently ignored on this event family.
+        //       - paired LEFTSINGLE+LEFTRELEASE via TransmitClientEvent
+        //         (FD-switch convention from ConnectionTest.cpp): ignored.
+        //       - CDA with MOUSE_FLAG_LEFTSINGLE for both directions (toggle):
+        //         worked for ON but cache-mismatch races could flip OFF the
+        //         wrong way ("toggling OFF actually turned it on").
         // ------------------------------------------------------------------
         if (_directionalPushMap.TryGetValue(varKey, out var directional) &&
             EventIds.TryGetValue(directional.EventName, out int dirEvId))
@@ -4436,53 +4575,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             const int MOUSE_FLAG_RIGHTSINGLE = unchecked((int)0x80000000);
             int flag = directional.IsOn ? MOUSE_FLAG_LEFTSINGLE : MOUSE_FLAG_RIGHTSINGLE;
             simConnect.SendPMDGEvent(directional.EventName, (uint)dirEvId, flag);
-            return true;
-        }
-
-        // ------------------------------------------------------------------
-        // 2e. Momentary press-to-set bool switches — Ground Power and the
-        //     four generator switches on the 737 NG.
-        //
-        //     Verified dispatch shape (2026-05-22, standalone test rig in
-        //     PMDGDispatchTester subscribing directly to PMDG_NG3_Data with
-        //     PERIOD.ON_SET / FLAG.CHANGED): CDA write with a directional
-        //     MOUSE_FLAG_* value in the Parameter field.
-        //         LEFTSINGLE  (0x20000000) → set ON   (push up)
-        //         RIGHTSINGLE (0x80000000) → set OFF  (push down)
-        //     Direct parameter 0/1 is silently ignored. The state PERSISTS
-        //     (no spring back) and same-direction repeats are idempotent on
-        //     the PMDG side, so we don't need a cache no-op guard. Removing
-        //     the guard also fixes the "ON does nothing" complaint when the
-        //     CDA snapshot lags the actual cockpit state.
-        //
-        //     Patterns tried that do NOT work (do not revive):
-        //       - bare LEFT/RIGHTSINGLE via TransmitClientEvent (click-walk):
-        //         plays sound, state springs back.
-        //       - CDA direct-position (Parameter=0/1, taxi-light convention):
-        //         silently ignored on this event family.
-        //       - paired LEFTSINGLE+LEFTRELEASE via TransmitClientEvent
-        //         (FD-switch convention from ConnectionTest.cpp): silently
-        //         ignored.
-        //       - CDA with MOUSE_FLAG_LEFTSINGLE for both directions (toggle):
-        //         worked for ON but cache-mismatch races could flip OFF the
-        //         wrong way ("toggling OFF actually turned it on").
-        // ------------------------------------------------------------------
-        if (_momentaryToggleMap.TryGetValue(varKey, out string? momentaryEventName) &&
-            EventIds.TryGetValue(momentaryEventName, out int momentaryEvId))
-        {
-            int target = (int)value;
-            const int MOUSE_FLAG_LEFTSINGLE  = unchecked((int)0x20000000);
-            const int MOUSE_FLAG_RIGHTSINGLE = unchecked((int)0x80000000);
-            int mouseFlag = target != 0 ? MOUSE_FLAG_LEFTSINGLE : MOUSE_FLAG_RIGHTSINGLE;
-            simConnect.SendPMDGEvent(momentaryEventName, (uint)momentaryEvId, mouseFlag);
-            // Inform the data manager of the user's intended switch state so
-            // it can publish the derived-override event with the right value.
-            // PMDG's own snapshot for these switches lies, and the annunciator
-            // can't disambiguate APU GEN 1 vs APU GEN 2 (they share one).
-            // Without this, after the first user click PMDG's stale snapshot
-            // would re-set the display via the next derived-override pass.
-            (simConnect.PMDGDataManager as SimConnect.PMDGNG3DataManager)
-                ?.NotifyLocalSwitchState(varKey, target != 0);
             return true;
         }
 
@@ -4542,6 +4634,32 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
 
         // ------------------------------------------------------------------
+        // 3a-2. ACP VHF receiver buttons — each press flips the receiver
+        //       (CDA parameter = target state; Pmdg737AcpReceivers). Silent
+        //       here: the COMM_ReceiverSwitches_* announce speaks
+        //       "<receiver> on/off" once the bit moves, and a press no update
+        //       completes is settled from the snapshot after the read-back window.
+        // ------------------------------------------------------------------
+        if (Pmdg737AcpReceivers.ByKey.TryGetValue(varKey, out var receiver) &&
+            EventIds.TryGetValue(receiver.EventName, out int recEvId))
+        {
+            var dm = simConnect.PMDGDataManager;
+            if (dm == null || !dm.IsReady)
+            {
+                announcer.AnnounceImmediate("Switch not ready, please try again in a moment.");
+                return true;
+            }
+            uint cachedBits = (uint)dm.GetFieldValue(receiver.StateField);
+            _receiverBits.TryAdd(receiver.StateField, cachedBits);
+            bool turnOn = Pmdg737AcpReceivers.TargetFor(_pendingReceiverPresses, receiver, cachedBits);
+            var press = new Pmdg737AcpReceivers.Press(receiver, turnOn);
+            Pmdg737AcpReceivers.AddPress(_pendingReceiverPresses, press);
+            simConnect.SendPMDGEvent(receiver.EventName, (uint)recEvId, turnOn ? 1 : 0);
+            _ = ReportUnchangedReceiverAsync(press, dm, announcer);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
         // 3b. IRS Mode Selector Unit (left/right rotary). The generic 3+-
         //     position click-walk does NOT move this selector — verified
         //     in-sim 2026-05-25: LEFTSINGLE clicks no-op, but a CDA direct-
@@ -4552,10 +4670,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             if (_simpleEventMap.TryGetValue(varKey, out string? irsEvent) &&
                 EventIds.TryGetValue(irsEvent, out int irsId))
             {
-                int target = (int)value;
-                var dm = simConnect.PMDGDataManager;
-                if (dm != null && (int)dm.GetFieldValue(varDef.Name) == target) return true;
-                simConnect.SendPMDGEvent(irsEvent, (uint)irsId, target);
+                // No "already at target" skip, as in 4a: the direct-position
+                // write is idempotent, and a lagging snapshot (or the 0.0 sentinel
+                // before the first one) would drop a pick of OFF.
+                simConnect.SendPMDGEvent(irsEvent, (uint)irsId, (int)value);
             }
             return true;
         }
@@ -4575,14 +4693,23 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         //     position as the parameter (vs. click-walking). See
         //     _absolutePositionSelectorSet for the list and rationale.
         // ------------------------------------------------------------------
-        if (_absolutePositionSelectorSet.Contains(varKey) &&
-            _simpleEventMap.TryGetValue(varKey, out string? absEventName) &&
-            EventIds.TryGetValue(absEventName, out int absEvId))
+        if (TryGetAbsolutePositionEvent(varKey, out int absEvId))
         {
-            int target = (int)value;
-            var dm = simConnect.PMDGDataManager;
-            if (dm != null && (int)dm.GetFieldValue(varDef.Name) == target) return true;
-            simConnect.SendPMDGEventViaTransmitWithTarget((uint)absEvId, (uint)target);
+            // No "already at target" skip: an absolute send is idempotent, and the
+            // cached snapshot can lag a quick A→B→A pick (or read the 0.0 sentinel
+            // before the first snapshot), which would drop the send and strand the
+            // knob at B while the combo shows A.
+            int positionCount = varDef.ValueDescriptions?.Count ?? 0;
+            int? parameter = AbsoluteSelectorParameter(varKey, (int)value, positionCount);
+            if (parameter is int p)
+            {
+                simConnect.SendPMDGEventViaTransmitWithTarget((uint)absEvId, (uint)p);
+            }
+            else
+            {
+                Log.Warn("PMDG737", $"{varKey}: position {value} is outside its {positionCount} detents; nothing sent");
+                announcer.AnnounceImmediate($"Can't set {varDef.DisplayName} to that position.");
+            }
             return true;
         }
 
@@ -4736,7 +4863,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             }
 
             int target = (int)value;
-            if (varDef.ValueDescriptions.Count >= 2)
+            if (GuardsAlreadyAtTarget(varKey, varDef))
             {
                 var dm = simConnect.PMDGDataManager;
                 if (dm != null && (int)dm.GetFieldValue(varDef.Name) == target)
@@ -4768,13 +4895,15 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             }
 
             // 3+ position selector — walk through detents one click at a time
-            // via TransmitClientEvent LEFTSINGLE/RIGHTSINGLE. Stable-detent
-            // selectors (IRS_ModeSelector, ENG_StartSelector, LTS_DomeWhiteSw,
-            // EFIS_VORADFSel*, EFIS_ModeSel, EFIS_RangeSel, AIR_OutflowValve,
-            // AIR_PressurizationModeSelector, etc.) work with this pattern in
-            // user testing — each click advances one detent and the new
-            // position latches normally. Spring-loaded selectors are
-            // intercepted earlier by the _springLoadedSelectorMap branch.
+            // via TransmitClientEvent, LEFTSINGLE = up. That direction holds only
+            // for some NG3 knobs (LTS_DomeWhiteSw, EFIS_VORADFSel*, the packs and
+            // the rest of the right-way list in the comment above
+            // _absolutePositionSelectorSet, swept live 2026-10-18); EFIS mode/range,
+            // outflow and pressurization mode once listed here step the OTHER way
+            // and are now IN that set, dispatched by absolute target.
+            // A new 3+ position selector must be swept before it relies on this
+            // walk. Spring-loaded selectors are intercepted earlier by the
+            // _springLoadedSelectorMap branch.
             if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count >= 3)
             {
                 var dm = simConnect.PMDGDataManager;
@@ -4889,6 +5018,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // -------------------------------------------------------------
             case "ALTIMETER_SETTING":
             {
+                // A knob check from the Ctrl+B dialog re-baselines this callout where it landed
+                // (QuietBaroCheckAsync), so its steps stay quiet.
+                if (_baroCheckQuiet) return true;
                 if (double.IsNaN(_lastAnnouncedAltimeter))
                 {
                     _lastAnnouncedAltimeter = value;
@@ -4897,13 +5029,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 if (Math.Abs(value - _lastAnnouncedAltimeter) < 0.005)
                     return true;
                 _lastAnnouncedAltimeter = value;
-                if (Math.Abs(value - 29.92) < 0.005)
-                    announcer.Announce("Altimeter standard");
-                else
-                {
-                    int hpa = (int)Math.Round(value * 33.8639);
-                    announcer.Announce($"Altimeter: {hpa}, {value:0.00}");
-                }
+                announcer.Announce(Pmdg737Baro.ReadsStandard(value) ? "Altimeter standard" : AltimeterValuePhrase(value));
                 return true;
             }
 
@@ -5276,22 +5402,38 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // -------------------------------------------------------------
             // ACP receiver bitmasks (SDK lines 723 + 610-623). Decode the
             // selected-receiver bitmask into a readable string. Suppress when
-            // value is 0 (no receivers selected — usually means "muted"); the
-            // panel display still surfaces the raw value for query.
+            // value is 0 (no receivers selected — usually means "muted"). A
+            // receiver button press is read back as that receiver on/off instead
+            // (Pmdg737AcpReceivers).
             // -------------------------------------------------------------
             case "COMM_ReceiverSwitches_0":
             case "COMM_ReceiverSwitches_1":
             case "COMM_ReceiverSwitches_2":
             {
                 uint bits = (uint)value;
+                uint? previousBits = _receiverBits.TryGetValue(varName, out uint lastBits) ? lastBits : null;
+                _receiverBits[varName] = bits;
+                // A receiver button's read-back names only the receiver it switched
+                // ("Captain VHF2 Receiver on"): the list made the pilot work out
+                // what changed, and "none" read as silence while the mic radio is heard.
+                // This branch is mute-wrap exempt (IsMuteWrapExempt): a press always
+                // confirms, and only the background list below honours the Ctrl+M row.
+                // The list still speaks a change no press explains, even one that lands
+                // beside a read-back or while a press is pending.
+                var readbacks = Pmdg737AcpReceivers.CompleteReadbacks(
+                    _pendingReceiverPresses, varName, previousBits, bits, out bool otherChange);
+                foreach (var said in readbacks) announcer.Announce(said);
+                if (!otherChange) return true;
                 if (bits == 0) return true;
+                if (Services.DefAnnounceMuteSets.IsMuted(AircraftCode, varName, Settings.SettingsManager.Current))
+                    return true;
                 string acpLabel = varName switch
                 {
                     "COMM_ReceiverSwitches_0" => "Captain receivers",
                     "COMM_ReceiverSwitches_1" => "First officer receivers",
                     _                         => "Overhead receivers"
                 };
-                announcer.Announce($"{acpLabel}: {DecodeReceiverBitmask(bits)}");
+                announcer.Announce($"{acpLabel}: {Pmdg737AcpReceivers.Describe(bits)}");
                 return true;
             }
 
@@ -5300,34 +5442,65 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
     }
 
-    // -------------------------------------------------------------------
-    // Decode `COMM_ReceiverSwitches` bitmask into a comma-separated list of
-    // selected-receiver labels. Bit definitions per SDK lines 610-623.
-    // -------------------------------------------------------------------
-    private static string DecodeReceiverBitmask(uint bits)
+    /// <summary>
+    /// The receiver branches speak a press read-back, which belongs to the button row, so the
+    /// Ctrl+M wrap must not silence them; the branch checks its own row for the list.
+    /// </summary>
+    public override bool IsMuteWrapExempt(string varName) =>
+        varName is "COMM_ReceiverSwitches_0" or "COMM_ReceiverSwitches_1" or "COMM_ReceiverSwitches_2";
+
+    /// <summary>
+    /// Settles a receiver press no update completed within the read-back window, from the snapshot
+    /// now: its read-back if the receiver is at the press's target after all (a quick double press
+    /// returns it there between two 1 Hz snapshots), else that the press changed nothing (PMDG
+    /// ignored it, e.g. an unpowered ACP). Silent when the press is gone: completed, superseded, or
+    /// dropped by an aircraft switch or reconnect (ForgetReceiverPresses).
+    /// Resumes on the UI thread: called from the button handler, no ConfigureAwait(false).
+    /// </summary>
+    private async Task ReportUnchangedReceiverAsync(Pmdg737AcpReceivers.Press press,
+        SimConnect.IPMDGDataManager dm, ScreenReaderAnnouncer announcer)
     {
-        var labels = new List<string>();
-        if ((bits & 0x0001) != 0) labels.Add("VHF1");
-        if ((bits & 0x0002) != 0) labels.Add("VHF2");
-        if ((bits & 0x0004) != 0) labels.Add("VHF3");
-        if ((bits & 0x0008) != 0) labels.Add("HF1");
-        if ((bits & 0x0010) != 0) labels.Add("HF2");
-        if ((bits & 0x0020) != 0) labels.Add("FLT");
-        if ((bits & 0x0040) != 0) labels.Add("SVC");
-        if ((bits & 0x0080) != 0) labels.Add("PA");
-        if ((bits & 0x0100) != 0) labels.Add("NAV1");
-        if ((bits & 0x0200) != 0) labels.Add("NAV2");
-        if ((bits & 0x0400) != 0) labels.Add("ADF1");
-        if ((bits & 0x0800) != 0) labels.Add("ADF2");
-        if ((bits & 0x1000) != 0) labels.Add("MKR");
-        if ((bits & 0x2000) != 0) labels.Add("SPKR");
-        return labels.Count == 0 ? "none" : string.Join(", ", labels);
+        try
+        {
+            await Task.Delay(Pmdg737AcpReceivers.ReadbackWindowMs);
+            if (Pmdg737AcpReceivers.ExpireIfUnconfirmed(_pendingReceiverPresses, press))
+                announcer.Announce(Pmdg737AcpReceivers.ExpiryReadback(press,
+                    (uint)dm.GetFieldValue(press.Receiver.StateField)));
+        }
+        catch
+        {
+            // Fire-and-forget: never fault the task.
+        }
     }
     /// <summary>
     /// The camera is moved to the instrument view that frames the display, the capture is taken,
     /// and the camera is put back where the pilot had it (Services/InstrumentViewSwitcher).
     /// </summary>
     protected override IReadOnlyList<AiDisplayRead> DisplayReads => Pmdg737DisplayReads.All;
+
+    /// <summary>Output-mode Shift+1..6 flap maneuver speed readout: a fresh
+    /// gross-weight read per press (PMDG737_FLAP_SPEEDS_GW is OnRequest), spoken
+    /// through FlapManeuverSpeeds.AnnounceAsync. The variant comes from the CDA
+    /// AircraftModel, the TITLE only as a fallback; an unknown one is logged once.</summary>
+    private void AnnounceFlapManeuverSpeed(int scheduleIndex,
+        SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        _ = FlapManeuverSpeeds.AnnounceAsync(simConnect, announcer, "PMDG737_FLAP_SPEEDS_GW", "PMDG737", lbs =>
+        {
+            var dm = simConnect.PMDGDataManager;
+            int model = dm != null && dm.IsReady ? (int)dm.GetFieldValue("AircraftModel") : 0;
+            string title = simConnect.CurrentAircraftTitle;
+            int? variant = Pmdg737FlapSpeeds.Variant(model, title);
+            if (variant == null && !_flapSpeedVariantUnknownLogged)
+            {
+                _flapSpeedVariantUnknownLogged = true;
+                Log.Info("PMDG737", $"Flap speeds: AircraftModel {model} and title '{title}' name no 737 variant, using the -800 table");
+            }
+            return Pmdg737FlapSpeeds.Describe(lbs, variant, scheduleIndex);
+        });
+    }
+
+    private bool _flapSpeedVariantUnknownLogged;
 
 
     public override bool HandleHotkeyAction(
@@ -5501,15 +5674,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 }
 
                 double inHg = inHgRaw.Value;
-
-                if (Math.Abs(inHg - 29.92) < 0.005)
-                {
-                    announcer.AnnounceImmediate("Altimeter standard");
-                    return true;
-                }
-
-                int hpa = (int)Math.Round(inHg * 33.8639);
-                announcer.AnnounceImmediate($"Altimeter: {hpa}, {inHg:0.00}");
+                announcer.AnnounceImmediate(Pmdg737Baro.ReadsStandard(inHg) ? "Altimeter standard" : AltimeterValuePhrase(inHg));
                 return true;
             }
 
@@ -5567,6 +5732,19 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                     "TOTAL WEIGHT", "pounds", "GROSS_WEIGHT_KG");
                 return true;
             }
+
+            // ------------------------------------------------------------------
+            // Flap maneuvering speeds — output-mode Shift+1..6 (the FBW speed
+            // hotkey slots, as on the iFly). CALCULATED from live gross weight
+            // over this variant's measured VREF40 table (Pmdg737FlapSpeeds); the
+            // readout says "calculated" because nothing exposes the PFD bugs.
+            // ------------------------------------------------------------------
+            case HotkeyAction.ReadSpeedGD:  AnnounceFlapManeuverSpeed(0, simConnect, announcer); return true; // Shift+1: flaps up
+            case HotkeyAction.ReadSpeedS:   AnnounceFlapManeuverSpeed(1, simConnect, announcer); return true; // Shift+2: flaps 1
+            case HotkeyAction.ReadSpeedF:   AnnounceFlapManeuverSpeed(2, simConnect, announcer); return true; // Shift+3: flaps 5
+            case HotkeyAction.ReadSpeedVLS: AnnounceFlapManeuverSpeed(3, simConnect, announcer); return true; // Shift+4: flaps 10
+            case HotkeyAction.ReadSpeedVS:  AnnounceFlapManeuverSpeed(4, simConnect, announcer); return true; // Shift+5: flaps 15
+            case HotkeyAction.ReadSpeedVFE: AnnounceFlapManeuverSpeed(5, simConnect, announcer); return true; // Shift+6: flaps 25
 
             // ------------------------------------------------------------------
             // MCP Direct-Set Input Dialogs
@@ -5839,8 +6017,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         bool hasMachPrefix = trimmed.StartsWith("M", StringComparison.OrdinalIgnoreCase);
         if (hasMachPrefix) trimmed = trimmed.Substring(1);
 
-        if (!double.TryParse(trimmed, System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture, out value))
+        if (!Utils.NumberParsing.TryParseTyped(trimmed, out value))
             return false;
 
         // Either explicit M prefix, or a value < 10 (interpreted as Mach).
@@ -5962,6 +6139,14 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     private Task? _baroKnobOp;
     private Task? _minsKnobOp;
 
+    // True while a knob check from the Ctrl+B dialog (QuietBaroCheckAsync: a typed value or the
+    // Standard button from 29.92) turns the knob: its check clicks and STD pushes each leave a
+    // reading the pilot did not ask for, so ProcessSimVarUpdate consumes ALTIMETER_SETTING silently
+    // until the landed reading has been delivered. That reading then becomes the callout's
+    // baseline (and a typed value speaks it), so nothing the window swallowed and still stands
+    // goes unspoken. UI thread only, like _baroKnobOp.
+    private bool _baroCheckQuiet;
+
     // Transponder-mode closed-loop walk re-entrancy guard (HandleUIVariableSet
     // 4b; the walk itself is PMDGNG3DataManager.WalkSelectorClosedLoop).
     private Task? _xpdrWalkOp;
@@ -5993,16 +6178,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             return;
         }
 
-        // Parse "1013", "1013,5", or "29.92" into a single double (locale-tolerant).
-        static bool TryParseBaro(string input, out double value)
-        {
-            return double.TryParse(
-                input.Replace(',', '.'),
-                System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture,
-                out value);
-        }
+        // The Standard button refused its press: its 1.2 s state announce would cut off the refusal.
+        bool standardRefused = false;
 
+        // "1013", "1013,5", "29.92" or "29,92" parse through Utils.NumberParsing.TryParseTyped,
+        // the same rules as every other baro box (a thousands group such as "1,013" is refused).
         var dialog = new ValueInputForm(
             "Altimeter", "altimeter", "900-1060 hPa or 26.50-31.30 inHg", announcer,
             input =>
@@ -6010,7 +6190,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 if (string.IsNullOrWhiteSpace(input))
                     return (false, "Enter a value in hPa or inHg");
 
-                if (!TryParseBaro(input, out double value))
+                if (!Utils.NumberParsing.TryParseTyped(input, out double value))
                     return (false, "Enter a numeric value in hPa or inHg");
 
                 // Branch on magnitude — ranges don't overlap (smallest hPa 900 > largest inHg 31.30).
@@ -6029,29 +6209,42 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 // Set the altimeter to standard (29.92 inHg / 1013 hPa) via the
                 // EFIS baro knob's STD push (EVT_EFIS_CPT_BARO_STD). That event is
-                // a QNH<->STD toggle and there is no STD-state readback on the NG3,
-                // so we guard on the current setting: only push when the altimeter
-                // is meaningfully off standard (which means we're not already in
-                // STD, since STD always reads 29.92). This avoids toggling STD off.
+                // a QNH<->STD toggle and there is no STD-state readback on the NG3.
+                // A reading off 29.92 is STD off (STD reads 29.92), so one push turns
+                // it on; 29.91, 29.93 and 1013 hPa included, which an old 0.02 band
+                // refused. From 29.92 the knob is asked first
+                // (EngageStdFromStandardAsync), so STD already on is not toggled off
+                // and a local 29.92 still gets STD.
                 // The push is a momentary button: NG3 commits it only with a
                 // LEFTSINGLE+LEFTRELEASE pair (SendPMDGMomentaryToggle). A bare
                 // dwData transmit — including 0 — plays no click and never commits.
                 // The dialog's button handler announces "Standard" as confirmation.
+                // Refused while a turn or STD check runs, which a push would switch
+                // STD under; the push itself holds _baroKnobOp until the cache has caught up.
                 new ToggleButtonDef(
                     "&Standard",
                     () => "",
                     () =>
                     {
+                        standardRefused = _baroKnobOp is { IsCompleted: false };
+                        if (standardRefused)
+                        {
+                            announcer.Announce("Still setting altimeter, please wait.");
+                            return;
+                        }
+                        if (CaptainKnob(simConnect) is not { } knob) return;
                         double? curInHg = simConnect.GetCachedVariableValue("ALTIMETER_SETTING");
-                        if (curInHg != null && Math.Abs(curInHg.Value - 29.92) < 0.02)
-                            return;   // already at standard pressure — don't toggle STD off
-                        if (EventIds.TryGetValue("EVT_EFIS_CPT_BARO_STD", out int stdEvId))
-                            _ = simConnect.SendPMDGMomentaryToggle((uint)stdEvId, 1);
+                        _baroKnobOp = curInHg is double cur && Pmdg737Baro.ReadsStandard(cur)
+                            ? EngageStdFromStandardAsync(simConnect, knob, announcer)
+                            : SettleAfterAsync(knob.PushStdAsync(), knob);
                     })
+                {
+                    SuppressStateAnnounce = () => standardRefused
+                }
             },
             input =>
             {
-                if (!TryParseBaro(input, out double value)) return;
+                if (!Utils.NumberParsing.TryParseTyped(input, out double value)) return;
 
                 if (_baroKnobOp is { IsCompleted: false })
                 {
@@ -6065,50 +6258,26 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 // (EVT_EFIS_CPT_BARO via TransmitClientEvent). Verified in-sim
                 // 2026-05-25: RIGHTSINGLE = up, LEFTSINGLE = down, ~1 hPa per click
                 // in hPa mode / 0.01 inHg per click in inHg mode. So read the current
-                // baro, compute the difference in the displayed unit, and step the knob.
+                // baro, compute the difference in the displayed unit, and step the knob. The cache
+                // is current for this dialog's own turns and STD pushes: each holds _baroKnobOp
+                // until a delivery after it (SettleAfterAsync, SetBaroFromStandardAsync).
                 double? curInHg = simConnect.GetCachedVariableValue("ALTIMETER_SETTING");
                 if (curInHg == null) { announcer.AnnounceImmediate("Altimeter not available"); return; }
-                if (!EventIds.TryGetValue("EVT_EFIS_CPT_BARO", out int baroEvId)) return;
+                if (CaptainKnob(simConnect) is not { } knob) return;
 
-                // STD-mode lockout fix: when STD is active, ALTIMETER_SETTING reads
-                // ~29.92 and rotate-clicks fire behind the STD mask with no visible
-                // effect. Detect "STD likely active" via the 29.92 tolerance, and if
-                // the user's target value is meaningfully different from 29.92 inHg,
-                // disengage STD first via EVT_EFIS_CPT_BARO_STD, then re-read the
-                // baro to compute clicks against the post-STD value.
-                double targetInHg = value >= 100 ? value / 33.8639 : value;
-                bool likelyStdActive = Math.Abs(curInHg.Value - 29.92) < 0.005;
-                bool targetIsAtStd   = Math.Abs(targetInHg - 29.92) < 0.005;
-                if (likelyStdActive && !targetIsAtStd)
+                // STD lockout: with STD on, ALTIMETER_SETTING reads 29.92 and the clicks only move
+                // the preselect behind it. A local 29.92 reads the same and the NG3 has no STD
+                // flag, so from a reading of 29.92 the knob is asked first (Pmdg737Baro): pushing
+                // STD on a guess turned a local 29.92 INTO STD.
+                if (Pmdg737Baro.NeedsStdCheck(curInHg.Value, value))
                 {
-                    if (EventIds.TryGetValue("EVT_EFIS_CPT_BARO_STD", out int stdEvId))
-                    {
-                        _baroKnobOp = DisengageStdThenRotateAsync(
-                            simConnect, (uint)stdEvId, (uint)baroEvId, targetInHg, announcer);
-                        return;
-                    }
+                    _baroKnobOp = SetBaroFromStandardAsync(simConnect, knob, curInHg.Value, value, announcer);
+                    return;
                 }
 
-                var dm = simConnect.PMDGDataManager;
-                bool hpaMode = dm != null && (int)dm.GetFieldValue("EFIS_BaroSelHPA_0") == 1;
-
-                int clicks;
-                if (hpaMode)
-                {
-                    int curHpa = (int)Math.Round(curInHg.Value * 33.8639);
-                    int tgtHpa = (int)Math.Round(value >= 100 ? value : value * 33.8639);
-                    clicks = tgtHpa - curHpa;                                  // 1 hPa per click
-                }
-                else
-                {
-                    double tgtInHg = value >= 100 ? value / 33.8639 : value;
-                    clicks = (int)Math.Round((tgtInHg - curInHg.Value) / 0.01); // 0.01 inHg per click
-                }
-
+                int clicks = Pmdg737Baro.ClicksTo(curInHg.Value, value, knob.HpaDisplay);
                 if (clicks == 0) return;
-                // RIGHTSINGLE (0x80000000) = up, LEFTSINGLE (0x20000000) = down.
-                uint flag = clicks > 0 ? 0x80000000u : 0x20000000u;
-                _baroKnobOp = RotateBaroKnobAsync(simConnect, (uint)baroEvId, flag, Math.Min(Math.Abs(clicks), 200));
+                _baroKnobOp = SettleAfterAsync(knob.TurnAsync(clicks), knob);
             });
 
         dialog.ShowCancelButton = false;
@@ -6129,40 +6298,104 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
     }
 
-    // STD-mode lockout fix: toggles STD off, awaits sim settle, re-reads the
-    // post-STD altimeter, then rotates the baro knob to the user's target.
-    // Called only when STD appeared active at submit time and the user's
-    // target value is meaningfully different from 29.92 inHg.
-    private static async Task DisengageStdThenRotateAsync(
-        SimConnect.SimConnectManager simConnect, uint stdEventId, uint baroEventId,
-        double targetInHg, ScreenReaderAnnouncer announcer)
+    // Ctrl+B from a reading of 29.92, which is STD or a local 29.92 (Pmdg737Baro): the knob shows
+    // which, and the turn counts from a reading delivered after the click or the STD push. The
+    // altimeter callout stays quiet meanwhile (_baroCheckQuiet); the landed reading, delivered
+    // after the last click, is spoken here and becomes the callout's baseline, so it speaks once
+    // whenever its batch falls. Always the value, never "standard": this path ends with STD off,
+    // over a local 29.92 too.
+    private async Task SetBaroFromStandardAsync(
+        SimConnect.SimConnectManager simConnect, IPmdg737BaroKnob knob,
+        double currentInHg, double typed, ScreenReaderAnnouncer announcer)
     {
-        // Press EVT_EFIS_CPT_BARO_STD once to toggle STD off.
-        await simConnect.SendPMDGMomentaryToggle(stdEventId, 1);
-        await Task.Delay(200);
+        double? landed = await QuietBaroCheckAsync(simConnect, announcer,
+            () => Pmdg737Baro.SetFromStandardAsync(knob, currentInHg, typed));
+        if (landed is double inHg) announcer.Announce(AltimeterValuePhrase(inHg));
+    }
 
-        // Re-read the now post-STD altimeter setting.
-        double? curInHg = simConnect.GetCachedVariableValue("ALTIMETER_SETTING");
-        if (curInHg == null) { announcer.AnnounceImmediate("Altimeter not available"); return; }
+    // The Standard button from a reading of 29.92, which is STD already or a local 29.92
+    // (Pmdg737Baro.EngageStdAsync). The reading ends at 29.92 either way, so there is nothing for
+    // the callout to say: the dialog's own "Standard" confirms the press.
+    private Task EngageStdFromStandardAsync(
+        SimConnect.SimConnectManager simConnect, IPmdg737BaroKnob knob, ScreenReaderAnnouncer announcer)
+        => QuietBaroCheckAsync(simConnect, announcer, () => Pmdg737Baro.EngageStdAsync(knob));
 
-        var dm = simConnect.PMDGDataManager;
-        bool hpaMode = dm != null && (int)dm.GetFieldValue("EFIS_BaroSelHPA_0") == 1;
-
-        int clicks;
-        if (hpaMode)
+    // Runs a knob check with the altimeter callout quiet (_baroCheckQuiet): its clicks and pushes
+    // leave readings the pilot did not ask for. The reading it returns, delivered after its last
+    // action, becomes the callout's baseline. Null means a read failed after the knob had moved,
+    // or the check could not tell: the setting is unknown, not unchanged, so it says so and
+    // re-fires the callout, which speaks the setting on the next delivery if it moved.
+    private async Task<double?> QuietBaroCheckAsync(
+        SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer, Func<Task<double?>> check)
+    {
+        double? landed;
+        _baroCheckQuiet = true;
+        try
         {
-            int curHpa = (int)Math.Round(curInHg.Value * 33.8639);
-            int tgtHpa = (int)Math.Round(targetInHg * 33.8639);
-            clicks = tgtHpa - curHpa;
+            landed = await check();
         }
-        else
+        finally
         {
-            clicks = (int)Math.Round((targetInHg - curInHg.Value) / 0.01);
+            _baroCheckQuiet = false;
         }
 
-        if (clicks == 0) return;
-        uint flag = clicks > 0 ? 0x80000000u : 0x20000000u;
-        await RotateBaroKnobAsync(simConnect, baroEventId, flag, Math.Min(Math.Abs(clicks), 200));
+        if (landed is double inHg)
+        {
+            _lastAnnouncedAltimeter = inHg;
+            return inHg;
+        }
+        announcer.AnnounceImmediate("Altimeter not confirmed");
+        simConnect.RequestVariable("ALTIMETER_SETTING", forceUpdate: true);
+        return null;
+    }
+
+    // Holds _baroKnobOp until a delivery after the turn or STD push, so a re-submit counts from
+    // where it landed: the batch-covered cache can predate it by up to a second.
+    private static async Task SettleAfterAsync(Task action, IPmdg737BaroKnob knob)
+    {
+        await action;
+        await knob.ReadSettledAsync();
+    }
+
+    // "Altimeter: <hpa>, <inHg>": the callout, the B readout and Ctrl+B's STD check say it alike.
+    private static string AltimeterValuePhrase(double inHg)
+        => $"Altimeter: {(int)Math.Round(inHg * Pmdg737Baro.HpaPerInHg)}, {inHg:0.00}";
+
+    // The captain's baro knob, or null when the event map lacks its turn or its STD push.
+    private CaptainBaroKnob? CaptainKnob(SimConnect.SimConnectManager simConnect)
+        => EventIds.TryGetValue("EVT_EFIS_CPT_BARO", out int baroEvId)
+           && EventIds.TryGetValue("EVT_EFIS_CPT_BARO_STD", out int stdEvId)
+            ? new CaptainBaroKnob(simConnect, (uint)baroEvId, (uint)stdEvId)
+            : null;
+
+    // The captain's baro knob as Pmdg737Baro turns it. ALTIMETER_SETTING is batch-covered (1 Hz),
+    // so a read waits out the settle and then for the next delivery, never the cache, which can
+    // predate the click or the push by up to a second.
+    private sealed class CaptainBaroKnob(
+        SimConnect.SimConnectManager simConnect, uint baroEventId, uint stdEventId) : IPmdg737BaroKnob
+    {
+        public bool HpaDisplay =>
+            simConnect.PMDGDataManager is { } dm && (int)dm.GetFieldValue("EFIS_BaroSelHPA_0") == 1;
+
+        // RIGHTSINGLE (0x80000000) = up, LEFTSINGLE (0x20000000) = down.
+        public Task TurnAsync(int clicks) => RotateBaroKnobAsync(
+            simConnect, baroEventId, clicks > 0 ? 0x80000000u : 0x20000000u, Math.Min(Math.Abs(clicks), 200));
+
+        public Task PushStdAsync()
+        {
+            Log.Debug("PMDG737", "Ctrl+B: pushing STD");
+            return simConnect.SendPMDGMomentaryToggle(stdEventId, 1);
+        }
+
+        public async Task<double?> ReadSettledAsync()
+        {
+            await Task.Delay(Pmdg737Baro.SettleMs);
+            double? inHg = await simConnect.ReadFreshAsync("ALTIMETER_SETTING", Pmdg737Baro.ReadTimeoutMs);
+            Log.Debug("PMDG737", inHg is double v
+                ? FormattableString.Invariant($"Ctrl+B settled read {v:0.000} inHg")
+                : "Ctrl+B settled read: nothing delivered");
+            return inHg;
+        }
     }
 
     // Stateless mins dispatch: zero the knob via RST, then rotate up by
