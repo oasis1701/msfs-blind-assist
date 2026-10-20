@@ -199,6 +199,8 @@ public partial class CowsDA40Definition
     private readonly DA40MagnetoSettle _magSettle = new();
 
     private double _magRpmNow;
+    private double _magRpmBefore;
+    private long _magRpmAtMs;
     private int _magLastPosition = -1;
     private double _magBaselineRpm;
     private int _magPendingPosition = -1;
@@ -224,8 +226,11 @@ public partial class CowsDA40Definition
     {
         if (varKey == "DA40_XLS_RPM")
         {
+            long now = Environment.TickCount64;
+            _magRpmBefore = _magRpmNow;
             _magRpmNow = value;
-            _magSettle.Sample(value, Environment.TickCount64);
+            _magRpmAtMs = now;
+            _magSettle.Sample(value, now);
             return false;
         }
 
@@ -246,7 +251,8 @@ public partial class CowsDA40Definition
         {
             // Leaving BOTH: remember the RPM the engine was doing on both magnetos. Going
             // straight from one side to the other keeps the baseline already taken.
-            if (previous == DA40MagnetoCheck.PositionBoth) _magBaselineRpm = _magRpmNow;
+            if (previous == DA40MagnetoCheck.PositionBoth)
+                _magBaselineRpm = DA40MagnetoCheck.BaselineRpm(_magRpmNow, _magRpmAtMs, _magRpmBefore, Environment.TickCount64);
 
             // A stopped engine is being prepared, not checked.
             if (_magBaselineRpm < DA40MagnetoCheck.RunningRpm) return false;
