@@ -4,7 +4,7 @@ using Call = MSFSBlindAssist.Services.LandingFlareAssistManager.FlareCall;
 namespace MSFSBlindAssist.Tests;
 
 /// <summary>
-/// When the manual landing assist says "Flare" (LandingFlareAssistManager.DecideFlareCallout, ROL-35).
+/// When the manual landing assist says "Flare" (LandingFlareAssistManager.DecideFlareCallout, ROL-43).
 /// </summary>
 public class LandingFlareCalloutTests
 {

@@ -796,7 +796,7 @@ public class ClaudeContextBudgetTests
         {
             "ROL-10 ExitBearingTrue", "ROL-21 ExitBearingTrue", "ROL-28 DistanceFromThresholdFeet", "SI-7 ParkingSpot.Radius",
             "SI-13 TaxiPathStampUtc", "SIC-23 ClearanceText", "STR-6 TurnAngleDegrees", "STR-16 TurnDirection",
-            "SUR-12 TaxiNode.Type", "HLD-5 RunwayCenterline", "ROL-35 VisualGuidanceProfile", "ROL-35 FlareTriggerWheelHeightFt",
+            "SUR-12 TaxiNode.Type", "HLD-5 RunwayCenterline", "ROL-43 VisualGuidanceProfile", "ROL-43 FlareTriggerWheelHeightFt",
             "FOB-3 ELEC_annunExtPowr_ON", "FOB-5 MAIN_GearLever",
             "FOB-6 MAIN_annunSPEEDBRAKE_ARMED", "FOB-6 MAIN_annunSPEEDBRAKE_DO_NOT_ARM", "FOB-7 XPDR_ModeSel",
         },

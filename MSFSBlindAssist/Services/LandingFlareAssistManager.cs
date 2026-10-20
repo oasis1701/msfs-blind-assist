@@ -783,7 +783,7 @@ public class LandingFlareAssistManager : IDisposable
     }
 
     /// <summary>
-    /// When "Flare" is spoken (ROL-35). Pure — <c>LandingFlareCalloutTests</c>. Due at the aircraft's
+    /// When "Flare" is spoken (ROL-43). Pure — <c>LandingFlareCalloutTests</c>. Due at the aircraft's
     /// flare height, led by speech latency (<see cref="LandingGuidanceLaws.FlareCalloutDue"/>); queued
     /// behind an engage sentence still being spoken so it never cuts off a runway correction; dropped
     /// when the gear is already more than <see cref="FLARE_CALLOUT_TOO_LATE_FT"/> below the height.
