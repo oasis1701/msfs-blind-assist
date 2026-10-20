@@ -79,6 +79,17 @@ public sealed class DA40FoActionExecutor : IFoActionExecutor
     /// <summary>The XLS mixture's full-rich and cut-off positions, percent (<c>INPUT_MIXTURE</c>).</summary>
     public const int MixtureRich = 100, MixtureCutOff = 0;
 
+    /// <summary>
+    /// XLS: after the mixture goes rich, the key stays in START until the engine has held
+    /// <see cref="StarterReleaseRpm"/> this long (at most <see cref="XlsCatchMaxMs"/>), as a pilot
+    /// keeps cranking until the engine is running.
+    ///
+    /// ⚠️ LET GO AT THE FIRST 500 RPM, THE ENGINE STUMBLED. Live at VCBI (2026-10-20), the reprime
+    /// start reached 550 RPM on the prime alone, the mixture went rich and the key was released in
+    /// the same instant: it fell to 250 RPM and read stopped for a second before it caught.
+    /// </summary>
+    public const int XlsCatchMs = 1000, XlsCatchMaxMs = 3000;
+
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly HeldPresses _held = new();
     private SimConnectManager? _sc;
@@ -262,8 +273,9 @@ public sealed class DA40FoActionExecutor : IFoActionExecutor
     /// The start key held until the engine turns <see cref="StarterReleaseRpm"/>, at most
     /// <see cref="MaxCrankSeconds"/>, then released whatever happened (the flow's Stop and the
     /// window's close release it at once). The XLS runs its mixture to full rich the moment the
-    /// engine fires and before the key is let go: "When engine fires: Mixture full rich". True when
-    /// the engine reached the release speed.
+    /// engine fires and before the key is let go: "When engine fires: Mixture full rich", and keeps
+    /// the key in START until the engine holds the release speed (<see cref="XlsCatchMs"/>). True
+    /// when the engine reached the release speed.
     /// </summary>
     private async Task<bool> CrankAsync(SimConnectManager sc, CancellationToken stop)
     {
@@ -285,7 +297,19 @@ public sealed class DA40FoActionExecutor : IFoActionExecutor
                 if (state.GetValue(state.RpmKey) >= StarterReleaseRpm) { fired = true; break; }
                 await Task.Delay(PollMs);
             }
-            if (fired && !ng) Apply(sc, "DA40_XLS_MIXTURE_SET", MixtureRich);
+            if (fired && !ng)
+            {
+                Apply(sc, "DA40_XLS_MIXTURE_SET", MixtureRich);
+                // Still cranking until it runs on the mixture it was just given (see XlsCatchMs).
+                long start = Environment.TickCount64, above = start;
+                while (!stop.IsCancellationRequested && sc.IsConnected)
+                {
+                    long now = Environment.TickCount64;
+                    if (state.GetValue(state.RpmKey) < StarterReleaseRpm) above = now;
+                    if (now - above >= XlsCatchMs || now - start >= XlsCatchMaxMs) break;
+                    await Task.Delay(PollMs);
+                }
+            }
             return fired;
         }
         finally
