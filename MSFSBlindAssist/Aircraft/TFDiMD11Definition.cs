@@ -473,6 +473,8 @@ public partial class TFDiMD11Definition : BaseAircraftDefinition, IDisposable
         foreach (var kvp in BuildExportVariables())
             if (!vars.ContainsKey(kvp.Key)) vars[kvp.Key] = kvp.Value;
 
+        AddFirstOfficerReadVariables(vars);
+
         vars[DcPowerKey] = new SimVarDefinition
         {
             Name = "ELECTRICAL MAIN BUS VOLTAGE",

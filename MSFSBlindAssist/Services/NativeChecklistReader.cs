@@ -20,12 +20,11 @@ namespace MSFSBlindAssist.Services;
 /// how to reset failures and charge the batteries. Days of this project were spent deriving
 /// by probe what was written down in the package the whole time.
 ///
-/// It was also the fix for a quieter fault. <see cref="Forms.ChecklistForm"/> read a
-/// hand-written text file per aircraft and fell back to the A320's when it had none — so on
-/// the DA40 the checklist window was showing an AIRBUS checklist. Reading the aeroplane's own
-/// is both more correct and less to maintain: nothing to transcribe, and it follows the
-/// aircraft through updates. <see cref="ChecklistContent"/> owns the order: this reader
-/// first, MSFSBA's bundled file when the package cannot be found or ships none.
+/// It was also the fix for a quieter fault. The old checklist window read a hand-written text
+/// file per aircraft and fell back to the A320's when it had none — so on the DA40 it showed an
+/// AIRBUS checklist. Reading the aeroplane's own is both more correct and less to maintain:
+/// nothing to transcribe, and it follows the aircraft through updates. The DA40's First Officer
+/// builds its read-back checklists and its reference pages from it (<see cref="LoadPages"/>).
 ///
 /// THE SHAPE OF THE FILE, which is Asobo's rather than ours:
 /// <code>
@@ -41,6 +40,20 @@ namespace MSFSBlindAssist.Services;
 /// </summary>
 public static class NativeChecklistReader
 {
+    /// <summary>
+    /// ⚠️ ASOBO'S CHECKLIST XML DECLARES <c>encoding="Windows-1252"</c> (both COWS DA40 files do),
+    /// and .NET reads no Windows code page until a provider is registered. Without it every
+    /// <see cref="XDocument.Load(string)"/> threw "'Windows-1252' is not a supported encoding name",
+    /// the catch logged it at Debug, and the reader answered "no checklist" for an aeroplane that
+    /// ships one: the checklist window fell back to its bundled file, and the DA40 First Officer opened
+    /// with no read-backs at all, and nobody heard a thing (DA40S-14).
+    /// Registering is idempotent and process-wide; every load goes through <see cref="LoadDocument"/>.
+    /// </summary>
+    static NativeChecklistReader() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
+    /// <summary>The one way a checklist file is opened (see the static constructor).</summary>
+    internal static XDocument LoadDocument(string path) => XDocument.Load(path);
+
     /// <summary>
     /// Every folder an aircraft package may sit in, Community before Official: the packages
     /// root each simulator's UserCfg.opt names, then the default Community folders of both
@@ -126,8 +139,8 @@ public static class NativeChecklistReader
     }
 
     /// <summary>
-    /// The checklist as <see cref="Forms.ChecklistForm"/>'s own text format — "[Category]"
-    /// followed by its lines — or null when the aircraft ships none, which is most of them.
+    /// The checklist as text — "[Category]" followed by its lines — or null when the aircraft
+    /// ships none, which is most of them.
     /// </summary>
     public static string? Render(string simObjectFolder)
     {
@@ -136,12 +149,32 @@ public static class NativeChecklistReader
 
         try
         {
-            return RenderFile(XDocument.Load(path));
+            return RenderFile(LoadDocument(path));
         }
         catch (Exception ex)
         {
-            // A malformed checklist must not take the window down with it — the bundled
-            // text file is still there to fall back on.
+            // A malformed checklist must not take its reader down with it.
+            Log.Debug("Checklist", $"Could not read {path}: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The checklist as PAGES, for a reader that needs the structure rather than the text: the
+    /// DA40's First Officer builds its read-back checklists from it. Null when the aircraft
+    /// ships none or the file cannot be read.
+    /// </summary>
+    public static IReadOnlyList<NativeChecklistPage>? LoadPages(string simObjectFolder)
+    {
+        string? path = FindChecklistFile(simObjectFolder);
+        if (path == null) return null;
+
+        try
+        {
+            return ReadPages(LoadDocument(path));
+        }
+        catch (Exception ex)
+        {
             Log.Debug("Checklist", $"Could not read {path}: {ex.Message}");
             return null;
         }
@@ -153,18 +186,51 @@ public static class NativeChecklistReader
         var sb = new StringBuilder();
         var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        foreach (var page in ReadPages(doc))
+        {
+            // Two pages can share a name across steps (a "Notes" page in more than one
+            // phase); a category dictionary downstream keyed by name would silently swallow
+            // the first one's contents.
+            string unique = page.Title;
+            for (int n = 2; !used.Add(unique); n++) unique = page.Title + " " + n;
+
+            sb.Append('[').Append(unique).Append(']').Append('\n');
+            foreach (var line in page.Lines)
+            {
+                if (line.IsHeading)
+                {
+                    sb.Append(line.Subject).Append('\n');
+                    continue;
+                }
+
+                if (line.Subject.Length > 0)
+                    sb.Append(line.Expectation.Length == 0 ? line.Subject : line.Subject + " ... " + line.Expectation)
+                      .Append('\n');
+
+                foreach (string clue in line.Clues) sb.Append("   ").Append(clue).Append('\n');
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Every page of the document in order, its lines in the author's order: a block's heading,
+    /// then the block's checkpoints. A page with no lines is left out.
+    /// </summary>
+    public static IReadOnlyList<NativeChecklistPage> ReadPages(XDocument doc)
+    {
+        var pages = new List<NativeChecklistPage>();
+
         foreach (var page in doc.Descendants("Page"))
         {
             string title = Attr(page, "SubjectTT");
             if (title.Length == 0) title = "Checklist";
 
-            // Two pages can share a name across steps (a "Notes" page in more than one
-            // phase); the category dictionary downstream is keyed by name, so a duplicate
-            // would silently swallow the first one's contents.
-            string unique = title;
-            for (int n = 2; !used.Add(unique); n++) unique = title + " " + n;
+            // The step a page belongs to (PREFLIGHT_GATE, FLIGHT_CRUISE ...): Asobo's phase.
+            string step = page.Ancestors("Step").FirstOrDefault() is { } s ? Attr(s, "ChecklistStepId") : "";
 
-            var lines = new List<string>();
+            var lines = new List<NativeChecklistLine>();
 
             // ⚠️ A CHECKPOINT CAN SIT INSIDE A <Block>, AND WALKING ONLY THE PAGE'S DIRECT
             // CHILDREN THREW AWAY NEARLY HALF THE DOCUMENT. Measured against the two files
@@ -177,46 +243,47 @@ public static class NativeChecklistReader
             // and the High Altitude operations notes.
             //
             // Blocks are ONE LEVEL DEEP in both files and each carries its own SubjectTT,
-            // which is a real heading ("Cruise:65%, 9.5gph (Best Power)") and renders as
-            // one. The walk is over the page's children IN ORDER, so a page that mixes
-            // loose checkpoints with blocks keeps the author's sequence.
-            RenderChildren(page, lines);
+            // which is a real heading ("Cruise:65%, 9.5gph (Best Power)") and reads as one.
+            // The walk is over the page's children IN ORDER, so a page that mixes loose
+            // checkpoints with blocks keeps the author's sequence.
+            ReadChildren(page, null, lines);
 
             if (lines.Count == 0) continue;
-
-            sb.Append('[').Append(unique).Append(']').Append('\n');
-            foreach (string line in lines) sb.Append(line).Append('\n');
+            pages.Add(new NativeChecklistPage(title, step.Length == 0 ? null : step, lines));
         }
 
-        return sb.ToString();
+        return pages;
     }
 
     /// <summary>
-    /// A page's or a block's children, in the author's own order: a block renders its
-    /// SubjectTT as a heading and then its own children, a checkpoint renders itself.
+    /// A page's or a block's children, in the author's own order: a block gives its heading
+    /// line and then its own children, a checkpoint gives one line.
     ///
     /// Recursive rather than a Descendants("Checkpoint") sweep, which would find the same
     /// checkpoints but lose a nested block's heading. Both shipped files are one level
     /// deep today, so this costs nothing and is what keeps a deeper one readable.
     /// </summary>
-    private static void RenderChildren(XElement parent, List<string> lines)
+    private static void ReadChildren(XElement parent, string? block, List<NativeChecklistLine> lines)
     {
         foreach (var element in parent.Elements())
         {
             if (element.Name == "Block")
             {
                 string blockTitle = Attr(element, "SubjectTT");
-                if (blockTitle.Length > 0) lines.Add(blockTitle);
-                RenderChildren(element, lines);
+                if (blockTitle.Length > 0)
+                    lines.Add(new NativeChecklistLine(blockTitle, "", Array.Empty<string>(),
+                        Array.Empty<string>(), block, IsNote: false, IsHeading: true));
+                ReadChildren(element, blockTitle.Length > 0 ? blockTitle : block, lines);
                 continue;
             }
 
-            if (element.Name == "Checkpoint") RenderCheckpoint(element, lines);
+            if (element.Name == "Checkpoint") ReadCheckpoint(element, block, lines);
         }
     }
 
-    /// <summary>One checkpoint: its subject, its expectation, and any clue lines under it.</summary>
-    private static void RenderCheckpoint(XElement checkpoint, List<string> lines)
+    /// <summary>One checkpoint: its subject, its expectation, its clue lines and the cockpit
+    /// instruments it highlights.</summary>
+    private static void ReadCheckpoint(XElement checkpoint, string? block, List<NativeChecklistLine> lines)
     {
         var desc = checkpoint.Element("CheckpointDesc");
         string subject = desc != null ? Attr(desc, "SubjectTT") : "";
@@ -227,16 +294,13 @@ public static class NativeChecklistReader
         // for the text that follows.
         bool isNote = string.Equals(expect, "Clue", StringComparison.OrdinalIgnoreCase);
 
-        if (subject.Length > 0)
-        {
-            lines.Add(isNote || expect.Length == 0 ? subject : subject + " ... " + expect);
-        }
+        var clues = checkpoint.Elements("Clue").Select(c => Attr(c, "Name")).Where(t => t.Length > 0).ToList();
+        var instruments = checkpoint.Descendants("Instrument").Select(i => Attr(i, "Id"))
+            .Where(t => t.Length > 0).ToList();
 
-        foreach (var clue in checkpoint.Elements("Clue"))
-        {
-            string text = Attr(clue, "Name");
-            if (text.Length > 0) lines.Add("   " + text);
-        }
+        if (subject.Length == 0 && clues.Count == 0) return;
+        lines.Add(new NativeChecklistLine(subject, isNote ? "" : expect, clues, instruments, block,
+            isNote, IsHeading: false));
     }
 
     private static string Attr(XElement e, string name) => e.Attribute(name)?.Value.Trim() ?? "";
@@ -253,3 +317,19 @@ public static class NativeChecklistReader
         catch (Exception) { return Array.Empty<string>(); }
     }
 }
+
+/// <summary>One page of an aircraft's own checklist: Asobo's <c>Page</c>, in its <c>Step</c>.</summary>
+public sealed record NativeChecklistPage(string Title, string? StepId, IReadOnlyList<NativeChecklistLine> Lines);
+
+/// <summary>
+/// One line of a native checklist page: a checkpoint (subject, expectation, clue lines, the
+/// cockpit instrument ids it highlights) or a block's heading. A note row has no expectation.
+/// </summary>
+public sealed record NativeChecklistLine(
+    string Subject,
+    string Expectation,
+    IReadOnlyList<string> Clues,
+    IReadOnlyList<string> Instruments,
+    string? Block,
+    bool IsNote,
+    bool IsHeading);

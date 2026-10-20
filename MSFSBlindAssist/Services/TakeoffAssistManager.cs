@@ -594,11 +594,6 @@ public class TakeoffAssistManager : IDisposable
     }
 
     /// <summary>
-    /// Sets the Fenix V-speeds for callouts. Call when takeoff assist activates on Fenix.
-    /// </summary>
-    /// <param name="v1">V1 speed in knots (0 or null = not configured)</param>
-    /// <param name="vr">VR speed in knots (0 or null = not configured)</param>
-    /// <summary>
     /// Replace the two takeoff-roll speed callouts for this aircraft.
     ///
     /// A callout is only worth making if it MARKS something on the roll. On an airliner 80 and
@@ -617,6 +612,11 @@ public class TakeoffAssistManager : IDisposable
             $"{highKts?.ToString() ?? "none"} '{highPhrase}'");
     }
 
+    /// <summary>
+    /// Sets the Fenix V-speeds for callouts. Call when takeoff assist activates on Fenix.
+    /// </summary>
+    /// <param name="v1">V1 speed in knots (0 or null = not configured)</param>
+    /// <param name="vr">VR speed in knots (0 or null = not configured)</param>
     public void SetFenixVSpeeds(double? v1, double? vr)
     {
         fenixV1Speed = (v1.HasValue && v1.Value > 0) ? v1 : null;

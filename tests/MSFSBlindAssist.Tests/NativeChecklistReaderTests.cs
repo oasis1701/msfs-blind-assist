@@ -127,18 +127,48 @@ public class NativeChecklistReaderTests : IDisposable
         // Skips itself when the aeroplane is not installed — a test that fails for being on
         // the wrong computer teaches people to ignore failures.
         string? text = NativeChecklistReader.Render("COWS_DA40NG");
-        if (text is null) return;
+        if (text is null) { AssertNotInstalled("COWS_DA40NG"); return; }
 
         Assert.Contains("[Tips and help]", text, StringComparison.Ordinal);
 
         // The lines this whole exercise was for: the aeroplane's own operating knowledge.
         Assert.Contains("Idle for 2 min", text, StringComparison.Ordinal);
         Assert.Contains("Downwind", text, StringComparison.Ordinal);
-        Assert.Contains("ECU test button for 10 seconds", text, StringComparison.Ordinal);
+        Assert.Contains("ECU test button for 10s", text, StringComparison.Ordinal);
 
         // And the procedures themselves, not just the tips.
         Assert.Contains("[Before engine start]", text, StringComparison.Ordinal);
         Assert.True(text.Split('\n').Length > 100, "the whole checklist should be far longer");
+    }
+
+    /// <summary>
+    /// A real-package test may skip only when the package is really not there: when the file is
+    /// found and still reads as nothing, that is the bug, not a missing aeroplane. The skip used to
+    /// be "null, so return", and every one of these passed for months on a PC that had the package,
+    /// because no checklist had ever loaded (DA40S-14).
+    /// </summary>
+    private static void AssertNotInstalled(string simObject)
+        => Assert.True(NativeChecklistReader.FindChecklistFile(simObject) is null,
+            $"{simObject}'s checklist is installed but did not load: {NativeChecklistReader.FindChecklistFile(simObject)}");
+
+    /// <summary>
+    /// ⚠️ ASOBO'S CHECKLISTS DECLARE WINDOWS-1252 and .NET reads no code page without a provider:
+    /// every load threw and the reader answered "no checklist" (DA40S-14). Written as real 1252
+    /// bytes with a character outside ASCII, so the decode is proven, not just the declaration.
+    /// </summary>
+    [Fact]
+    public void AWindows1252ChecklistLoadsAndDecodes()
+    {
+        Directory.CreateDirectory(_root);
+        string file = Path.Combine(_root, "Checklist.xml");
+        string xml = "<?xml version=\"1.0\" encoding=\"Windows-1252\"?>\n<Checklist><Step><Page SubjectTT=\"Café\">"
+            + "<Checkpoint><CheckpointDesc SubjectTT=\"Fuel\" ExpectationTT=\"Checked\"/></Checkpoint></Page></Step></Checklist>";
+        File.WriteAllBytes(file, xml.Select(c => (byte)c).ToArray());   // Latin-1 range: the 1252 byte for é is 0xE9
+
+        string text = NativeChecklistReader.RenderFile(NativeChecklistReader.LoadDocument(file));
+
+        Assert.Contains("[Café]", text, StringComparison.Ordinal);
+        Assert.Contains("Fuel ... Checked", text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -225,7 +255,7 @@ public class NativeChecklistReaderTests : IDisposable
     public void TheRealXlsChecklistCarriesItsPowerTableAndItsStartProcedures()
     {
         string? text = NativeChecklistReader.Render("COWS_DA40XLS");
-        if (text is null) return;
+        if (text is null) { AssertNotInstalled("COWS_DA40XLS"); return; }
 
         // Inside blocks, every one of them.
         Assert.Contains("Cold start", text, StringComparison.Ordinal);
@@ -242,7 +272,7 @@ public class NativeChecklistReaderTests : IDisposable
     public void TheRealNgChecklistCarriesItsWeightsAndSpeeds()
     {
         string? text = NativeChecklistReader.Render("COWS_DA40NG");
-        if (text is null) return;
+        if (text is null) { AssertNotInstalled("COWS_DA40NG"); return; }
 
         Assert.Contains("Weights", text, StringComparison.Ordinal);
         Assert.Contains("Operating speeds", text, StringComparison.Ordinal);

@@ -60,12 +60,14 @@ Navigation:
              announcement. Ctrl+W keeps working either way.
 
 Checklist:
-  Shift+C    Open the checklist window. It shows the aeroplane's own checklist,
-             read from the COWS package, when MSFSBA can find the package (it looks
-             in the packages folder the simulator's settings name, and in the
-             default Community folders). Otherwise it shows MSFSBA's own DA40-NG or
-             DA40-XLS checklist, which names the MSFSBA panel for each step.
-             Space ticks an item; the ticks last for the session. Escape closes.
+  Shift+C    First Officer window (flows and checklists). Its flows follow the
+             aeroplane's own COWS checklist pages, Before engine start to
+             Shutdown, and its read-back checklists ARE those pages, read from
+             the COWS package with the Weights/Speeds and Tips and help pages.
+             The First Officer sets switches and runs the tests the pages spell
+             out (the flap travel test, the ECU test, the magneto check); the
+             levers, the transponder code, the QNH and the flight plan stay
+             yours. Escape hides the window; it keeps working.
 
 Fuel:
   F          Fuel in the TANKS - total and each tank. Answers in the units set on
@@ -307,8 +309,9 @@ The G1000 windows (Alt+P and Alt+M):
              transmitting on the old one. Shift on the same key swaps it.
   Ctrl+Shift+Up/Down The barometric knob, one step at a time
 
-  Ctrl+B (input mode) still sets BOTH altimeters to a number you type, and takes
-  either unit - anything above 100 is read as hectopascals, below it as inches.
+  Ctrl+B (input mode) opens both altimeters, each box filled in with its current
+  setting: Enter (or the Set beside a box) sets that altimeter, Set all sets both.
+  It takes either unit - anything above 100 is read as hectopascals, below it as inches.
   That is the fast way to answer a controller's QNH; the knob above is how the
   aeroplane is actually flown.
 

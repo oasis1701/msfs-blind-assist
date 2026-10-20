@@ -191,12 +191,16 @@ public partial class CowsDA40Definition
     // ==================================================================================
 
     /// <summary>
-    /// How long the engine gets to settle on one magneto before the drop is read. Measured:
-    /// the RPM was within a few rpm of its settled value inside a second on both sides.
+    /// How often the settle is checked while a side is pending. When the drop is read is
+    /// <see cref="DA40MagnetoSettle"/>'s decision: the needle has stopped moving, which a fixed
+    /// two seconds was not (it read 90 for a drop of 120 live).
     /// </summary>
-    private const int MagnetoSettleMs = 2000;
+    private const int MagnetoSettlePollMs = 250;
+    private readonly DA40MagnetoSettle _magSettle = new();
 
     private double _magRpmNow;
+    private double _magRpmBefore;
+    private long _magRpmAtMs;
     private int _magLastPosition = -1;
     private double _magBaselineRpm;
     private int _magPendingPosition = -1;
@@ -206,15 +210,27 @@ public partial class CowsDA40Definition
     private ScreenReaderAnnouncer? _magAnnouncer;
 
     /// <summary>
-    /// Watches the key and the tachometer. Returns FALSE always: the key's own change is the
-    /// generic announcer's to speak ("Right", "Left", "Both"), and the drop is an extra
-    /// call-out on top of it, made from the settle timer.
+    /// Watches the key and the tachometer. The key's own change is the generic announcer's to
+    /// speak ("Right", "Left", "Both"), and the drop is an extra call-out on top of it, made from
+    /// the settle timer, so this returns FALSE, with one exception: the crank's own movement.
+    ///
+    /// ⚠️ WHILE <c>STARTER_SPAD:1</c> CRANKS, THE KEY BOUNCES START → BOTH → START EVERY SECOND
+    /// (the template's one-second spring-back, then the crank sets START again). Measured live on
+    /// the XLS at VCBI (2026-10-20): 4, 3, 4, 3 at one-second steps for the five-second crank, and
+    /// each one reached the generic announcer, so a crank spoke "Ignition Key: Start. Both. Start.
+    /// Both." A sighted pilot sees a key held in START; the crank speaks for itself ("Cranking",
+    /// "Starter released"). So a move INTO Start, and Start back to Both, returns TRUE: handled,
+    /// silent. Every other position still speaks.
     /// </summary>
     private bool NoteMagnetoChange(string varKey, double value, ScreenReaderAnnouncer announcer)
     {
         if (varKey == "DA40_XLS_RPM")
         {
+            long now = Environment.TickCount64;
+            _magRpmBefore = _magRpmNow;
             _magRpmNow = value;
+            _magRpmAtMs = now;
+            _magSettle.Sample(value, now);
             return false;
         }
 
@@ -228,11 +244,15 @@ public partial class CowsDA40Definition
         // A first reading is not a change.
         if (previous < 0) return false;
 
+        bool crankMovement = position == DA40MagnetoCheck.PositionStart
+            || (previous == DA40MagnetoCheck.PositionStart && position == DA40MagnetoCheck.PositionBoth);
+
         if (DA40MagnetoCheck.IsSingleMagneto(position))
         {
             // Leaving BOTH: remember the RPM the engine was doing on both magnetos. Going
             // straight from one side to the other keeps the baseline already taken.
-            if (previous == DA40MagnetoCheck.PositionBoth) _magBaselineRpm = _magRpmNow;
+            if (previous == DA40MagnetoCheck.PositionBoth)
+                _magBaselineRpm = DA40MagnetoCheck.BaselineRpm(_magRpmNow, _magRpmAtMs, _magRpmBefore, Environment.TickCount64);
 
             // A stopped engine is being prepared, not checked.
             if (_magBaselineRpm < DA40MagnetoCheck.RunningRpm) return false;
@@ -244,6 +264,7 @@ public partial class CowsDA40Definition
 
         // Any other position ends a pending side read.
         _magSettleTimer?.Stop();
+        _magSettle.Cancel();
         _magPendingPosition = -1;
 
         if (position == DA40MagnetoCheck.PositionBoth
@@ -258,15 +279,19 @@ public partial class CowsDA40Definition
             _magDropRight = null;
         }
 
-        return false;
+        return crankMovement;
     }
 
     private void RestartMagnetoSettle()
     {
+        _magSettle.Start(Environment.TickCount64);
         if (_magSettleTimer == null)
         {
-            _magSettleTimer = new System.Windows.Forms.Timer { Interval = MagnetoSettleMs };
-            _magSettleTimer.Tick += (_, _) => UnderLoadSettle(_magAnnouncer, FlushMagnetoSettle);
+            _magSettleTimer = new System.Windows.Forms.Timer { Interval = MagnetoSettlePollMs };
+            _magSettleTimer.Tick += (_, _) =>
+            {
+                if (_magSettle.IsDue(Environment.TickCount64)) UnderLoadSettle(_magAnnouncer, FlushMagnetoSettle);
+            };
         }
 
         _magSettleTimer.Stop();
@@ -276,6 +301,7 @@ public partial class CowsDA40Definition
     private void FlushMagnetoSettle()
     {
         _magSettleTimer?.Stop();
+        _magSettle.Cancel();
         int position = _magPendingPosition;
         _magPendingPosition = -1;
         if (!DA40MagnetoCheck.IsSingleMagneto(position)) return;
@@ -305,6 +331,7 @@ public partial class CowsDA40Definition
     {
         try { _magSettleTimer?.Stop(); _magSettleTimer?.Dispose(); } catch { }
         _magSettleTimer = null;
+        _magSettle.Cancel();
         _magPendingPosition = -1;
         _magLastPosition = -1;
         _magDropLeft = null;

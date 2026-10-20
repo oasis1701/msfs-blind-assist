@@ -843,6 +843,47 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         return false;
     }
 
+    /// <summary>
+    /// Default autopilot engage: the stock <c>AUTOPILOT_ON</c> event (idempotent in the stock
+    /// autopilot). Aircraft whose own autopilot ignores it override this: the PMDG jets press
+    /// their MCP engage switch, the FlyByWire family presses AP 1 (FO-21).
+    /// </summary>
+    public virtual void EngageAutopilot(SimConnect.SimConnectManager simConnect)
+        => simConnect.SendEvent("AUTOPILOT_ON");
+
+    /// <summary>
+    /// Default: no engage floor. Aircraft whose autopilot REFUSES to engage below a height
+    /// override this (the PMDG 737 inhibits CMD below 400 ft RA after takeoff).
+    /// </summary>
+    public virtual int MinimumAutopilotEngageAltitudeAgl => 0;
+
+    /// <summary>
+    /// Default: no readable engaged state, so the auto-engage can't be verified. Aircraft
+    /// with an engage annunciator override this (the PMDG jets read theirs from the CDA).
+    /// </summary>
+    public virtual bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect) => null;
+
+    /// <summary>Default: retry every tick (FO-18's bounded retry), for the stock <c>AUTOPILOT_ON</c>,
+    /// which is idempotent. Every aircraft whose engage is a TOGGLE read back no faster than about
+    /// once a second overrides it with <see cref="ToggleAutopilotEngageRetryIntervalMs"/> (the PMDG
+    /// jets, the iFly, the MD-11, the Fenix) or the FlyByWire family's own (FO-21).</summary>
+    public virtual int AutopilotEngageRetryIntervalMs => 0;
+
+    /// <summary>The press spacing for a toggle engage whose state is read about once a second (a PMDG
+    /// CDA snapshot, the iFly SDK snapshot, a 1 Hz L:var batch): with no spacing, a retry on the next
+    /// position answer (two a second once the First Officer window exists) read the snapshot from
+    /// before the press and pressed CMD A again, which switched it off. The FlyByWire family's 3 s.</summary>
+    protected const int ToggleAutopilotEngageRetryIntervalMs = 3000;
+
+    /// <summary>Default false: a null reading takes the open-loop press-and-announce, which only the
+    /// stock <c>AUTOPILOT_ON</c> aircraft keep. Every aircraft with a toggle engage overrides it, so its
+    /// engage waits for a definite reading (FO-21).</summary>
+    public virtual bool AutopilotEngageWaitsForState => false;
+
+    /// <summary>Default true: the aircraft has gear the universal auto-gear moves. The COWS DA40
+    /// overrides it (fixed gear the simulator reports as retractable; FO-27).</summary>
+    public virtual bool HasRetractableGear => true;
+
     // Display Monitoring Methods - Default implementations (do nothing)
     // Aircraft with ECAM/EICAS/etc. should override these methods
 
@@ -941,8 +982,6 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     public virtual bool HasOwnIcingAnnouncer => false;
 
     public virtual string? StockComTuningRefusal => null;
-
-    public virtual string? ChecklistFileName => null;
 
     // One capture at a time, app-wide — the scene description takes the same gate, because the
     // camera both of them capture is the SIMULATOR's, not this definition's. See

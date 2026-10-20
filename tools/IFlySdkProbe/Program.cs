@@ -135,6 +135,24 @@ switch (mode)
         }
         break;
     }
+    case "fuel":
+    {
+        // fuel — dump the raw fuel-quantity gauge digit cells (3 tanks x 5 cells), the
+        // composed per-tank text, and UNITstyle. Diagnoses the FO center-pump quantity
+        // read (CenterQuantityLbs) against the live gauge.
+        var data = Read();
+        if (data == null) return;
+        var s = new IFlySdkSnapshot(data);
+        Console.WriteLine($"UNITstyle={s.ByteAt(IFlySdkOffsets.UNITstyle)} (0=Metric kg, 1=US lb)");
+        string[] tankNames = { "Left", "Right", "Center" };
+        for (int t = 0; t < 3; t++)
+        {
+            int b = IFlySdkOffsets.Fuel_Quantity_Indicator_Status + t * IFlySdkOffsets.Fuel_Quantity_Indicator_Status_Stride0;
+            var raw = string.Join(",", Enumerable.Range(0, 5).Select(i => data[b + i].ToString()));
+            Console.WriteLine($"tank {t} ({tankNames[t]}): cells=[{raw}] text='{s.FuelQuantityText(t)}'");
+        }
+        break;
+    }
     case "xpdr":
     {
         // xpdr <digits> [delayMs] [--noclr] — replay the app's squawk-entry key

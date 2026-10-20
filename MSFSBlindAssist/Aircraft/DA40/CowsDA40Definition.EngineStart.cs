@@ -70,8 +70,8 @@ public partial class CowsDA40Definition
     // start's cranking speed cannot read as running). COWS's prop does not windmill - it
     // stopped within six seconds of the master going off in cruise - so RPM cannot read a dead
     // engine as running. The XLS keeps the flag alone: its piston engine's flag follows combustion.
-    private const double EngineRunningRpm = 400;
-    private const double EngineStoppedRpm = 200;
+    internal const double EngineRunningRpm = 400;
+    internal const double EngineStoppedRpm = 200;
     private bool? _engineRunning;
 
     /// <summary>Running from the RPM, with hysteresis; null until the RPM is known. Pure for the suite.</summary>

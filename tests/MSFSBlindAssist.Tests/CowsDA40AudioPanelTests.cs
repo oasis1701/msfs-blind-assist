@@ -89,6 +89,9 @@ public class CowsDA40AudioPanelTests
         Assert.False(new CowsDA40Definition(DA40Variant.NG).StatusRefreshPausesWhileComboFocused);
         Assert.True(new MSFSBlindAssist.Aircraft.FlyByWireA380Definition().StatusRefreshPausesWhileComboFocused);
         Assert.True(new MSFSBlindAssist.Aircraft.FlyByWireA320Definition().StatusRefreshPausesWhileComboFocused);
+        Assert.True(new MSFSBlindAssist.Aircraft.PMDG777Definition().StatusRefreshPausesWhileComboFocused);
+        // No page snapshot on the Fenix: its list stays live like the DA40's.
+        Assert.False(new MSFSBlindAssist.Aircraft.FenixA320Definition().StatusRefreshPausesWhileComboFocused);
     }
 
     [Theory]

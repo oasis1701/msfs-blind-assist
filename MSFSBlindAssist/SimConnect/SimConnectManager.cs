@@ -540,6 +540,18 @@ public partial class SimConnectManager
         REQUEST_SIM_RATE = 351,
         REQUEST_GPS_WAYPOINT = 352,   // NOT 341-351: 341-348 are the camera read's rotating ids, 349 is COM 1, 350/351 the sim state
         REQUEST_FLIGHT_ATTITUDE = 353,
+        // FO background data requests — NOT announced by HandleSpecialAnnouncements
+        REQUEST_FO_ALTITUDE_AGL  = 380,
+        REQUEST_FO_AIRSPEED_IAS  = 381,
+        REQUEST_FO_ENG1_N2       = 382,
+        REQUEST_FO_ENG2_N2       = 383,
+        REQUEST_FO_CENTER_FUEL_LBS = 384,
+        // PMDG 777 FO only: the three stock gear-leg positions in one definition (Pmdg777GearConfirmation).
+        REQUEST_FO_GEAR_POSITIONS  = 385,
+        // Engine 3 N2 (RequestFOEngineN2): asked for every aircraft, read only by three-engine FO profiles (the MD-11).
+        REQUEST_FO_ENG3_N2       = 386,
+        // The stock GEAR HANDLE POSITION for the universal auto-gear (RequestFOGearHandle).
+        REQUEST_FO_GEAR_HANDLE   = 387,
         REQUEST_AI_TRAFFIC = 500,
         // The ground-traffic monitor's own by-type sweeps (same DEF_AI_TRAFFIC definition, a small
         // radius), on their OWN ids so a completion can never be confused with a TCAS or other
@@ -627,6 +639,15 @@ public partial class SimConnectManager
         DEF_SIM_RATE = 351,
         DEF_GPS_WAYPOINT = 352,   // NOT 341-351: 341-348 are the camera read's rotating ids, 349 is COM 1, 350/351 the sim state
         DEF_FLIGHT_ATTITUDE = 353,
+        // FO background data definitions — paired with REQUEST_FO_* IDs, NOT announced
+        DEF_FO_ALTITUDE_AGL = 380,
+        DEF_FO_AIRSPEED_IAS = 381,
+        DEF_FO_ENG1_N2 = 382,
+        DEF_FO_ENG2_N2 = 383,
+        DEF_FO_CENTER_FUEL_LBS = 384,
+        DEF_FO_GEAR_POSITIONS = 385,
+        DEF_FO_ENG3_N2 = 386,
+        DEF_FO_GEAR_HANDLE = 387,
         DEF_AI_TRAFFIC = 500,
         // KEEP 600-607 FREE: the ground-traffic sweeps' rotating request ids (DATA_REQUESTS
         // .REQUEST_GROUND_TRAFFIC), and this enum is a request-id namespace too.
@@ -845,21 +866,6 @@ public partial class SimConnectManager
     }
 
     /// <summary>
-    /// The active flight plan's TO-waypoint, straight off the stock GPS SimVars.
-    ///
-    /// ⚠️ These are not "the SDK's GPS variables" in the abstract — they are what the aircraft's
-    /// own navigator WRITES. Read live out of the Working Title G1000's `GpsSynchronizer` on the
-    /// DA40: `onWaypointIndexChanged` sets GPS WP NEXT ID to the ACTIVE LATERAL LEG's name,
-    /// `onIsPrevLegChanged` sets GPS WP PREV ID to the leg BEFORE it, and `onLnavDistanceChanged`
-    /// sets distance and ETE. So PREV ID is precisely "the waypoint just passed" — the aeroplane
-    /// answering the question rather than this app inferring it from a value that changed.
-    ///
-    /// ⚠️ GPS WP BEARING is written in RADIANS; the request below asks for degrees and lets
-    /// SimConnect convert. ⚠️ GPS FLIGHT PLAN WP COUNT is deliberately absent: the G1000's write
-    /// of it is COMMENTED OUT in the shipping build, so it reads 0 with a plan loaded and would
-    /// look like "no flight plan" to anything trusting it.
-    /// </summary>
-    /// <summary>
     /// Bank, pitch and air/ground, once a second, for <see cref="Services.UnusualAttitudeMonitor"/>.
     ///
     /// ⚠️ THIS EXISTS AS ITS OWN DEFINITION BECAUSE THE OBVIOUS SOURCE IS NOT USABLE.
@@ -881,6 +887,21 @@ public partial class SimConnectManager
         public double OnGround;
     }
 
+    /// <summary>
+    /// The active flight plan's TO-waypoint, straight off the stock GPS SimVars.
+    ///
+    /// ⚠️ These are not "the SDK's GPS variables" in the abstract — they are what the aircraft's
+    /// own navigator WRITES. Read live out of the Working Title G1000's `GpsSynchronizer` on the
+    /// DA40: `onWaypointIndexChanged` sets GPS WP NEXT ID to the ACTIVE LATERAL LEG's name,
+    /// `onIsPrevLegChanged` sets GPS WP PREV ID to the leg BEFORE it, and `onLnavDistanceChanged`
+    /// sets distance and ETE. So PREV ID is precisely "the waypoint just passed" — the aeroplane
+    /// answering the question rather than this app inferring it from a value that changed.
+    ///
+    /// ⚠️ GPS WP BEARING is written in RADIANS; the request below asks for degrees and lets
+    /// SimConnect convert. ⚠️ GPS FLIGHT PLAN WP COUNT is deliberately absent: the G1000's write
+    /// of it is COMMENTED OUT in the shipping build, so it reads 0 with a plan loaded and would
+    /// look like "no flight plan" to anything trusting it.
+    /// </summary>
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
     public struct GpsWaypointData
     {
@@ -1109,6 +1130,25 @@ public partial class SimConnectManager
     public struct SingleValue
     {
         public double value;
+    }
+
+    /// <summary>Two doubles read in one data definition (e.g. the FO center-fuel request's
+    /// tank gallons + fuel weight per gallon, multiplied at dispatch into pounds).</summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct DoubleValuePair
+    {
+        public double value1;
+        public double value2;
+    }
+
+    /// <summary>Three doubles read in one data definition (the FO gear request's left, center
+    /// and right gear-leg positions).</summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct DoubleValueTriple
+    {
+        public double value1;
+        public double value2;
+        public double value3;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -1489,6 +1529,8 @@ public partial class SimConnectManager
         _inputEventSubscriptions.Clear();
         _inputEventReadRequests.Clear();
         lock (forceUpdateVariables) { forceUpdateVariables.Clear(); }
+        // A cache-only poll the dead connection never answered must not suppress a delivery on the next.
+        _cacheOnlyPolls.Clear();
         _freshReads.FailAll();
         FailCameraViewRead();
         ecamStringData.Clear();

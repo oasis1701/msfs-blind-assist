@@ -36,7 +36,7 @@ You start the simulator with the aircraft parked at a stand. BA announces *"Conn
 
 You plan first. If you use SimBrief, Output Shift+B opens the SimBrief briefing, and the [SimBrief](planning-your-flight.md#simbrief) section explains how to load your plan and hear an AI route briefing. The [Flight Planning Window](planning-your-flight.md#flight-planning-efb) (Output Shift+E) lets you look at your route, SID, STAR and approach, and look up runways and frequencies. You check the weather with the METAR report (Output Shift+M) and the [Weather Radar](weather.md#weather-radar) (Output Shift+R).
 
-Then you set up the aircraft: its panels in the main window, its flight computer (Input Shift+M opens the MCDU, CDU or FMC on every aircraft), and its own tablet through [Aircraft EFBs](planning-your-flight.md#aircraft-efb) (Input Shift+T on most aircraft) for fuel, payload and takeoff performance. A [checklist](planning-your-flight.md#checklists) (Output Shift+C on aircraft that ship one) keeps you from missing a step. If you use GSX for ground services, the accessible GSX window is covered in [Gates, GSX and Docking](gates-gsx-and-docking.md).
+Then you set up the aircraft: its panels in the main window, its flight computer (Input Shift+M opens the MCDU, CDU or FMC on every aircraft), and its own tablet through [Aircraft EFBs](planning-your-flight.md#aircraft-efb) (Input Shift+T on most aircraft) for fuel, payload and takeoff performance. The [First Officer](planning-your-flight.md#checklists) (Output Shift+C on most aircraft) runs the flows with you and keeps you from missing a step on the checklists. If you use GSX for ground services, the accessible GSX window is covered in [Gates, GSX and Docking](gates-gsx-and-docking.md).
 
 ### Pushback and taxi out {#pushback-and-taxi-out}
 
@@ -335,7 +335,7 @@ You choose between two AI services: **Google Gemini** or **Anthropic Claude**. Y
 ### What it can read {#what-it-can-read}
 
 - **Alt+D, scene description:** on every aircraft, Output Alt+D describes the outside scene: what the simulator window is showing.
-- **Cockpit displays:** on the aircraft whose screens cannot be read as text, Output Alt+P, Alt+N, Alt+E, Alt+S and Alt+I read the PFD, the navigation display, the engine/warning display, the lower or system display, and the standby instruments. Which keys exist depends on the aircraft: the Fenix A320, PMDG 737 and 777, iFly 737 MAX, HorizonSim 787 and TFDi MD-11 have AI display reads. The FlyByWire aircraft read their displays as text instead, from the Panels list, and need no AI. See your aircraft's chapter for exactly what each key reads.
+- **Cockpit displays:** on the aircraft whose screens cannot be read as text, Output Alt+P, Alt+N, Alt+E, Alt+S and Alt+I read the PFD, the navigation display, the engine/warning display, the lower or system display, and the standby instruments. Which keys exist depends on the aircraft: the Fenix A320, PMDG 737 and 777, iFly 737 MAX, HorizonSim 787 and TFDi MD-11 have AI display reads. The FlyByWire aircraft read their displays as text instead, from the Panels list, and need no AI, and the COWS DA40 opens its G1000 PFD and MFD as windows you read and operate (see [COWS Diamond DA40](diamond-da40.md#da40-g1000)). See your aircraft's chapter for exactly what each key reads.
 
 The AI is also used for the route briefing in the flight planning window; see [The Flight Planning Window](planning-your-flight.md#flight-planning-efb).
 

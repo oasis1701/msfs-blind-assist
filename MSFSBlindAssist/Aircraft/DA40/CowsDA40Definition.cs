@@ -48,16 +48,20 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
 
     private bool IsNG => _variant == DA40Variant.NG;
 
+    /// <summary>
+    /// MainForm's echo mark (<c>SuppressUiEcho</c>), handed over where the DA40's monitors are
+    /// attached: the First Officer marks each switch it writes, so the background change its write
+    /// causes is not spoken after its own step said it (CORE-7), exactly as a panel write is not.
+    /// Null until MainForm has attached it.
+    /// </summary>
+    internal Action<string, double>? UiEchoMark { get; set; }
+
     public override string AircraftName =>
         IsNG ? "COWS Diamond DA40-NG" : "COWS Diamond DA40-XLS";
 
     public override string AircraftCode =>
         IsNG ? "COWS_DA40NG" : "COWS_DA40XLS";
 
-    /// <summary>MSFSBA's bundled text checklist, shown when the package's own cannot be read
-    /// (<see cref="Services.ChecklistContent"/> tries the aircraft's own first).</summary>
-    public override string? ChecklistFileName =>
-        IsNG ? "COWS_DA40NG_Checklist.txt" : "COWS_DA40XLS_Checklist.txt";
 
     // ==================================================================================
     // Panel structure — Sections → Panels

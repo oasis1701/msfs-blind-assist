@@ -1,0 +1,337 @@
+// Characterization tests for the iFly 737 MAX8 First Officer background automation —
+// IFly737FOAutoManager (LNAV/VNAV push at 400 ft AGL, center-pump policy input composition)
+// and, structurally, IFly737FlightPhaseMonitor. See .superpowers/sdd/task-7-brief.md.
+//
+// Neither class can be CONSTRUCTED in a unit test: both take a ScreenReaderAnnouncer, which
+// has no parameterless constructor and must never be instantiated a second time (the app
+// creates exactly one, in MainForm) — and IFly737ActionExecutor.IsAvailable can never be made
+// true without a live SimConnect connection, which gates the whole of Update() before any of
+// this logic runs. So these tests exercise the two INTERNAL, STATIC seams
+// IFly737FOAutoManager exposes for exactly this reason — ShouldPushMcpMode (the annunciator
+// push guard, a pure function of the raw value) and ReadCenterPumpInputs (the center-pump
+// policy's three composed inputs, a pure function of an IFly737StateEvaluator) — the same
+// pattern IFly737StateEvaluatorTests uses to drive the evaluator sim-less via its internal
+// SnapshotSource/ReadySource seam.
+
+namespace MSFSBlindAssist.Tests.FirstOfficer;
+
+using MSFSBlindAssist.FirstOfficer;
+using MSFSBlindAssist.FirstOfficer.IFly737;
+using MSFSBlindAssist.SimConnect.IFly;
+using Action = MSFSBlindAssist.FirstOfficer.CenterFuelPumpAutomation.Action;
+
+public class IFly737AutoManagerTests
+{
+    private static byte[] Buf() => new byte[IFlySdkOffsets.StructSize];
+
+    private static IFly737StateEvaluator Ready(byte[] data)
+    {
+        var eval = new IFly737StateEvaluator();
+        var snap = new IFlySdkSnapshot(data);
+        eval.SnapshotSource = () => snap;
+        eval.ReadySource = () => true;
+        return eval;
+    }
+
+    private static void SetCenterQty(byte[] b, string digits, byte units = 1)
+    {
+        int t2 = IFlySdkOffsets.Fuel_Quantity_Indicator_Status + 2 * IFlySdkOffsets.Fuel_Quantity_Indicator_Status_Stride0;
+        for (int i = 0; i < 5; i++)
+            b[t2 + i] = i < digits.Length ? (byte)(digits[i] - '0') : (byte)10; // 10 = blank
+        b[IFlySdkOffsets.UNITstyle] = units;
+    }
+
+    private static void SetAllWingPumps(byte[] b, bool on)
+    {
+        byte v = on ? (byte)1 : (byte)0;
+        b[IFlySdkOffsets.Fuel_L_FWD_Switch_Status] = v;
+        b[IFlySdkOffsets.Fuel_R_FWD_Switch_Status] = v;
+        b[IFlySdkOffsets.Fuel_L_AFT_Switch_Status] = v;
+        b[IFlySdkOffsets.Fuel_R_AFT_Switch_Status] = v;
+    }
+
+    // ------------------------------------------------------------------
+    // ShouldPushMcpMode: NaN -> no press (indeterminate, never coerced to "unlit"); every lit
+    // encoding (mod 3 != 0) -> no press; every definitively-unlit encoding (mod 3 == 0) -> press.
+    // The NaN case is the one this test exists to pin: IFly737FoComposition.Lit(NaN) already
+    // returns false (not lit), so a bare `!IsLit(field)` cannot distinguish "confirmed off"
+    // from "unknown" — ShouldPushMcpMode must check the raw value for NaN FIRST.
+    // ------------------------------------------------------------------
+    [Fact]
+    public void LnavVnav_PressOnlyWhenDefinitivelyUnlit()
+    {
+        Assert.False(IFly737FOAutoManager.ShouldPushMcpMode(double.NaN));
+
+        foreach (double lit in new[] { 1.0, 2.0, 4.0, 5.0 })
+            Assert.False(IFly737FOAutoManager.ShouldPushMcpMode(lit));
+
+        foreach (double unlit in new[] { 0.0, 3.0 })
+            Assert.True(IFly737FOAutoManager.ShouldPushMcpMode(unlit));
+    }
+
+    // Non-integral raw reads (SDK bytes are integral in practice, but GetValue's contract is a
+    // plain double) must round to the nearest composite value before the mod-3 test, matching
+    // IFly737FoComposition.Lit exactly, rather than truncating or misclassifying.
+    [Theory]
+    [InlineData(0.4, true)]   // rounds to 0 -> unlit -> press
+    [InlineData(2.6, true)]   // rounds to 3 -> unlit -> press
+    [InlineData(1.4, false)]  // rounds to 1 -> lit -> no press
+    [InlineData(4.6, false)]  // rounds to 5 -> lit -> no press
+    public void ShouldPushMcpMode_RoundsBeforeClassifying(double raw, bool expected) =>
+        Assert.Equal(expected, IFly737FOAutoManager.ShouldPushMcpMode(raw));
+
+    // ------------------------------------------------------------------
+    // ReadCenterPumpInputs: the three inputs read from live SDK field names (verified against
+    // IFlySdkOffsets.cs). Then fed into a real CenterFuelPumpAutomation policy instance to prove
+    // the composition actually drives the shared decision — asserted via the policy's public
+    // Diagnostics after one Update tick, per the brief.
+    // ------------------------------------------------------------------
+
+    // Ground-arm scenario: wing pumps on, center switches off, center tank loaded above the
+    // arm threshold. Fed into a fresh policy this composes into an immediate TurnOn
+    // (CenterFuelPumpAutomationTests pins the policy's own arm rule; this test pins that THIS
+    // composition reaches it correctly).
+    [Fact]
+    public void CenterPumpInputs_MapThroughToPolicy()
+    {
+        var buf = Buf();
+        SetAllWingPumps(buf, true);
+        SetCenterQty(buf, "2300"); // well above CenterFuelPumpAutomation.ArmThresholdLbs (1500)
+        var eval = Ready(buf);
+
+        var (qty, pumpsOn, wingOn) = IFly737FOAutoManager.ReadCenterPumpInputs(eval);
+        Assert.Equal(2300.0, qty);
+        Assert.False(pumpsOn);
+        Assert.True(wingOn);
+
+        var policy = new CenterFuelPumpAutomation();
+        Action action = policy.Update(
+            enabled: true, dataReady: true, onGround: true,
+            centerQtyLbs: qty, centerPumpsOn: pumpsOn,
+            wingPumpsOn: wingOn, rawElapsedMs: 1000);
+
+        Assert.Equal(Action.TurnOn, action);
+        Assert.Contains("pending=On", policy.Diagnostics);
+    }
+
+    // Both center switches on -> "pumps on" is true regardless of any other field.
+    [Fact]
+    public void ReadCenterPumpInputs_BothCenterPumpsRunning_PumpsOnTrue()
+    {
+        var buf = Buf();
+        buf[IFlySdkOffsets.Fuel_CENTER_L_Switch_Status] = 1;
+        buf[IFlySdkOffsets.Fuel_CENTER_R_Switch_Status] = 1;
+        var eval = Ready(buf);
+
+        var (_, pumpsOn, _) = IFly737FOAutoManager.ReadCenterPumpInputs(eval);
+        Assert.True(pumpsOn);
+    }
+
+    // A single running center pump also reads pumpsOn true (an "either" test, not "both").
+    [Fact]
+    public void ReadCenterPumpInputs_OneCenterPumpRunning_PumpsOnTrue()
+    {
+        var buf = Buf();
+        buf[IFlySdkOffsets.Fuel_CENTER_L_Switch_Status] = 1;
+        var eval = Ready(buf);
+
+        var (_, pumpsOn, _) = IFly737FOAutoManager.ReadCenterPumpInputs(eval);
+        Assert.True(pumpsOn);
+    }
+
+    // Neither center switch on -> not "pumps on".
+    [Fact]
+    public void ReadCenterPumpInputs_BothCenterSwitchesOff_PumpsOnFalse()
+    {
+        var eval = Ready(Buf());
+        var (_, pumpsOn, _) = IFly737FOAutoManager.ReadCenterPumpInputs(eval);
+        Assert.False(pumpsOn);
+    }
+
+    // wingOn requires ALL FOUR wing pumps switched on — one alone is not enough.
+    [Fact]
+    public void ReadCenterPumpInputs_OneWingPumpOn_WingOnFalse()
+    {
+        var buf = Buf();
+        buf[IFlySdkOffsets.Fuel_L_FWD_Switch_Status] = 1;
+        var eval = Ready(buf);
+
+        var (_, _, wingOn) = IFly737FOAutoManager.ReadCenterPumpInputs(eval);
+        Assert.False(wingOn); // only 1 of 4 wing pumps on
+    }
+
+    [Fact]
+    public void ReadCenterPumpInputs_AllFourWingPumpsOn_WingOnTrue()
+    {
+        var buf = Buf();
+        SetAllWingPumps(buf, true);
+        var eval = Ready(buf);
+
+        var (_, _, wingOn) = IFly737FOAutoManager.ReadCenterPumpInputs(eval);
+        Assert.True(wingOn);
+    }
+
+    // Center quantity delegates to the evaluator's own metric-aware CenterQtyLbs() — pin that
+    // the composition reads the SAME quantity IFly737StateEvaluatorTests.CenterQty_Synthetic
+    // already pins, not a second/independent read.
+    [Fact]
+    public void ReadCenterPumpInputs_QuantityMatchesEvaluatorCenterQtyLbs()
+    {
+        var buf = Buf();
+        SetCenterQty(buf, "1000", units: 0); // metric -> converted to lb
+        var eval = Ready(buf);
+
+        var (qty, _, _) = IFly737FOAutoManager.ReadCenterPumpInputs(eval);
+        Assert.Equal(eval.CenterQtyLbs(), qty);
+        Assert.Equal(1000.0 * IFly737FoComposition.KgToLb, qty, 3);
+    }
+
+    // ------------------------------------------------------------------
+    // Structural: both classes must implement the shared FO interfaces the profile task wires
+    // up against (IFoAutoManager / IFoPhaseMonitor), and AutoLights10kEnabled must default to
+    // the same "on" the PMDG template and every other aircraft's monitor use.
+    // ------------------------------------------------------------------
+    [Fact]
+    public void Types_ImplementSharedFoInterfaces()
+    {
+        Assert.True(typeof(IFoAutoManager).IsAssignableFrom(typeof(IFly737FOAutoManager)));
+        Assert.True(typeof(IFoPhaseMonitor).IsAssignableFrom(typeof(IFly737FlightPhaseMonitor)));
+    }
+
+    // ------------------------------------------------------------------
+    // ShouldBurnLnavVnavLatch (fix pass 1): the one-shot must only be spent when the tick's
+    // decision was actually informed. Pins the three cases the review named plus the mixed
+    // (one known / one unknown, no push) case that must also NOT burn.
+    // ------------------------------------------------------------------
+    [Fact]
+    public void LnavVnavLatch_BothUnknown_DoesNotBurn() =>
+        Assert.False(IFly737FOAutoManager.ShouldBurnLnavVnavLatch(
+            pushedLnav: false, pushedVnav: false, lnavRead: double.NaN, vnavRead: double.NaN));
+
+    [Fact]
+    public void LnavVnavLatch_BothAlreadyLit_Burns() =>
+        // Known reads, both lit (e.g. raw value 1) -> ShouldPushMcpMode is false for both, no
+        // push fires, but both reads are genuinely known -> the tick was informed.
+        Assert.True(IFly737FOAutoManager.ShouldBurnLnavVnavLatch(
+            pushedLnav: false, pushedVnav: false, lnavRead: 1.0, vnavRead: 1.0));
+
+    [Fact]
+    public void LnavVnavLatch_AFiredPush_Burns()
+    {
+        Assert.True(IFly737FOAutoManager.ShouldBurnLnavVnavLatch(
+            pushedLnav: true, pushedVnav: false, lnavRead: 0.0, vnavRead: 1.0));
+        Assert.True(IFly737FOAutoManager.ShouldBurnLnavVnavLatch(
+            pushedLnav: false, pushedVnav: true, lnavRead: 1.0, vnavRead: 0.0));
+    }
+
+    // Mixed: one side known (and already lit, so no push), the other still unreadable. The
+    // decision is only PARTIALLY informed -> must not burn, so the unresolved side gets another
+    // chance next tick.
+    [Fact]
+    public void LnavVnavLatch_OneKnownOneUnknown_DoesNotBurn()
+    {
+        Assert.False(IFly737FOAutoManager.ShouldBurnLnavVnavLatch(
+            pushedLnav: false, pushedVnav: false, lnavRead: 1.0, vnavRead: double.NaN));
+        Assert.False(IFly737FOAutoManager.ShouldBurnLnavVnavLatch(
+            pushedLnav: false, pushedVnav: false, lnavRead: double.NaN, vnavRead: 1.0));
+    }
+
+    // ------------------------------------------------------------------
+    // IFly737FlightPhaseMonitor.Evaluate10kCrossing (fix pass 1): the 10,000 ft landing-light
+    // crossing's action + new-latch decision, extracted as a pure function so it's testable
+    // without constructing the monitor (same ScreenReaderAnnouncer construction obstacle as the
+    // FOAutoManager). Uses the class's real thresholds — nowAbove = alt > 10,300, nowBelow =
+    // alt < 9,700 — via the internal static seam directly, so no magic numbers are duplicated
+    // here beyond the two probe altitudes.
+    // ------------------------------------------------------------------
+    private const double Above = 10_400; // > 10,300 -> nowAbove
+    private const double Below = 9_600;  // < 9,700   -> nowBelow
+    private const double Band = 10_000;  // inside the hysteresis band -> neither
+
+    [Fact]
+    public void Evaluate10kCrossing_ClimbingThroughUpperBand_TurnsOffAndLatchesAbove()
+    {
+        var (action, newLatch) = IFly737FlightPhaseMonitor.Evaluate10kCrossing(
+            Above, climbing: true, descending: false, prevAbove10k: false, autoLightsEnabled: true);
+
+        Assert.Equal(IFly737FlightPhaseMonitor.LandingLightAction.TurnOff, action);
+        Assert.True(newLatch);
+    }
+
+    [Fact]
+    public void Evaluate10kCrossing_DescendingThroughLowerBand_TurnsOnAndLatchesBelow()
+    {
+        var (action, newLatch) = IFly737FlightPhaseMonitor.Evaluate10kCrossing(
+            Below, climbing: false, descending: true, prevAbove10k: true, autoLightsEnabled: true);
+
+        Assert.Equal(IFly737FlightPhaseMonitor.LandingLightAction.TurnOn, action);
+        Assert.False(newLatch);
+    }
+
+    // The invariant the brief singles out: the crossing latch keeps tracking real altitude
+    // while the setting is disabled, so a stale crossing can't fire the instant it's
+    // re-enabled. Disabled while climbing through the upper band -> no action, but the latch
+    // still flips to "above".
+    [Fact]
+    public void Evaluate10kCrossing_DisabledWhileClimbing_NoActionButLatchStillTracksAbove()
+    {
+        var (action, newLatch) = IFly737FlightPhaseMonitor.Evaluate10kCrossing(
+            Above, climbing: true, descending: false, prevAbove10k: false, autoLightsEnabled: false);
+
+        Assert.Equal(IFly737FlightPhaseMonitor.LandingLightAction.None, action);
+        Assert.True(newLatch);
+    }
+
+    // Re-enabling AFTER the disabled climb-through must not resurrect a stale "turn lights off"
+    // — the latch is already "above" from the disabled tick above, so the next (enabled) tick
+    // at the same altitude sees prevAbove10k == true and takes no action.
+    [Fact]
+    public void Evaluate10kCrossing_ReEnabledAfterDisabledCrossing_DoesNotFireStaleAction()
+    {
+        var (_, latchAfterDisabledClimb) = IFly737FlightPhaseMonitor.Evaluate10kCrossing(
+            Above, climbing: true, descending: false, prevAbove10k: false, autoLightsEnabled: false);
+
+        var (action, _) = IFly737FlightPhaseMonitor.Evaluate10kCrossing(
+            Above, climbing: true, descending: false, prevAbove10k: latchAfterDisabledClimb, autoLightsEnabled: true);
+
+        Assert.Equal(IFly737FlightPhaseMonitor.LandingLightAction.None, action);
+    }
+
+    // Inside the hysteresis band: neither nowAbove nor nowBelow -> no action, latch holds its
+    // previous value unchanged (not overwritten to null or flipped).
+    [Fact]
+    public void Evaluate10kCrossing_InsideBand_LatchHoldsPreviousValue()
+    {
+        var (action, newLatch) = IFly737FlightPhaseMonitor.Evaluate10kCrossing(
+            Band, climbing: true, descending: false, prevAbove10k: true, autoLightsEnabled: true);
+
+        Assert.Equal(IFly737FlightPhaseMonitor.LandingLightAction.None, action);
+        Assert.True(newLatch);
+    }
+
+    // Direction-tolerant gate: the TurnOff branch only requires !descending, not climbing —
+    // a VS lull (neither climbing nor descending) on the crossing tick must NOT block the
+    // action from firing (same tolerance the transition-altitude crossing uses). Only the
+    // OPPOSITE direction (actually descending through the upper band) blocks it.
+    [Fact]
+    public void Evaluate10kCrossing_VsLull_DoesNotBlockAction()
+    {
+        var (action, newLatch) = IFly737FlightPhaseMonitor.Evaluate10kCrossing(
+            Above, climbing: false, descending: false, prevAbove10k: false, autoLightsEnabled: true);
+
+        Assert.Equal(IFly737FlightPhaseMonitor.LandingLightAction.TurnOff, action);
+        Assert.True(newLatch);
+    }
+
+    // The opposite direction genuinely blocks: descending through the upper band must not
+    // command lights off (that would be backwards — descending through 10,300 while heading
+    // down is not a climb-through crossing).
+    [Fact]
+    public void Evaluate10kCrossing_ActuallyDescendingThroughUpperBand_NoAction()
+    {
+        var (action, _) = IFly737FlightPhaseMonitor.Evaluate10kCrossing(
+            Above, climbing: false, descending: true, prevAbove10k: false, autoLightsEnabled: true);
+
+        Assert.Equal(IFly737FlightPhaseMonitor.LandingLightAction.None, action);
+    }
+}

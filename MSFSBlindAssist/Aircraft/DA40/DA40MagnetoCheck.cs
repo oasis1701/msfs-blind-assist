@@ -56,6 +56,22 @@ public static class DA40MagnetoCheck
     public static int Drop(double rpmBoth, double rpmSide)
         => (int)Math.Round(rpmBoth - rpmSide);
 
+    /// <summary>A tachometer sample and a key move this close together came in one 1 Hz batch.</summary>
+    public const int SameBatchMs = 250;
+
+    /// <summary>
+    /// The RPM on BOTH, taken as the key leaves it.
+    ///
+    /// ⚠️ THE TACHOMETER AND THE KEY ARRIVE IN ONE BATCH, TACHOMETER FIRST. So when the key's move is
+    /// read, the tach sample in front of it can already carry part of the drop: live at VCBI
+    /// (2026-10-20) the RPM on BOTH was 2020 and the sample in the key's batch read 2000 (left) and
+    /// 1990 (right), so the drops came out 20 and 30 short. When the latest sample came in the key's
+    /// own batch, the one before it was taken on BOTH for a whole second; the higher of the two is
+    /// the baseline (switching to one magneto only ever lowers the RPM).
+    /// </summary>
+    public static double BaselineRpm(double rpmNow, long rpmNowAtMs, double rpmBefore, long keyAtMs)
+        => keyAtMs - rpmNowAtMs <= SameBatchMs && rpmBefore > 0 ? Math.Max(rpmBefore, rpmNow) : rpmNow;
+
     /// <summary>The call-out for one magneto, once the RPM has settled on it.</summary>
     public static string DescribeSide(int position, double rpmBoth, double rpmNow)
     {
