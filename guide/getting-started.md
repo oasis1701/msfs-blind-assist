@@ -400,7 +400,10 @@ Lists the nine supported aircraft, with the current one checked. See [Choosing Y
 
 ### The Extras menu {#the-extras-menu}
 
-Holds tools that work alongside the simulator. It currently has one item, **Volanta…**, which opens a text view of Volanta's live map: Volanta users and network pilots around you, your friends, and online ATC. You can also open it with Output Shift+O. It is described in [Volanta](networks-and-integrations.md#volanta).
+Holds tools that work alongside the simulator:
+
+- **Volanta…** opens a text view of Volanta's live map: Volanta users and network pilots around you, your friends, and online ATC. You can also open it with Output Shift+O. It is described in [Volanta](networks-and-integrations.md#volanta).
+- **In-Sim Tablet (FS2024 Native)…** opens Microsoft Flight Simulator 2024's own tablet, meant for its default aircraft, with a one-press SimBrief import into its Flight Planner. Aircraft with a tablet of their own keep using it. It is described in [The In-Sim Tablet (MSFS 2024)](planning-your-flight.md#in-sim-tablet).
 
 ### The Help menu {#the-help-menu}
 

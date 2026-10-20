@@ -75,6 +75,12 @@ jobs:
           npm ci --no-audit --no-fund
           npm test
 
+      - name: Sim tablet reader
+        working-directory: tools/sim-tablet-test
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+
       - name: flyPad shell reconcile
         working-directory: tools/flypad-shell-test
         run: |

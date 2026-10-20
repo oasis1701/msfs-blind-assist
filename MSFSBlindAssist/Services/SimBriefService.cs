@@ -705,7 +705,7 @@ public class SimBriefService
     /// Parses a SimBrief XML OFP document into a SimBriefOFP model.
     /// All fields gracefully fall back to empty string if not present.
     /// </summary>
-    private SimBriefOFP ParseFullOFP(XmlDocument doc)
+    internal SimBriefOFP ParseFullOFP(XmlDocument doc)
     {
         var ofp = new SimBriefOFP();
         string V(XmlNode? n, string child) => n?.SelectSingleNode(child)?.InnerText?.Trim() ?? "";
@@ -732,6 +732,11 @@ public class SimBriefService
             ofp.AvgIsaDev       = V(gen, "avg_temp_dev");
             ofp.Units           = V(gen, "units").ToUpperInvariant() is "KGS" or "KG" ? "kgs" : "lbs";
             ofp.StepClimbString = V(gen, "stepclimb_string");
+            // The plan's SID and STAR as SimBrief names them in <general>; the sim tablet's route
+            // import writes them where its parser looks for them. OriginSid/DestStar keep their own
+            // sources for the planner window.
+            ofp.SidIdent        = V(gen, "sid_ident");
+            ofp.StarIdent       = V(gen, "star_ident");
         }
 
         // ── Aircraft ─────────────────────────────────────────────────────────

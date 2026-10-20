@@ -1021,6 +1021,10 @@ public partial class MainForm
             coherentMd11Efb = null;
         }
 
+        // The in-sim tablet (Extras) is left open: its view is the sim's, not the aircraft's, the
+        // window serves every aircraft, and its client reconnects by itself if the sim rebuilds the
+        // view. It is closed only on exit (MainForm.cs).
+
         // Dispose FBW A380 MCDU + EFB forms on swap; disposing the forms clears
         // their state-update wiring so the next aircraft doesn't get cross-talk.
         if (fbwA380MCDUForm != null && !fbwA380MCDUForm.IsDisposed)

@@ -17,6 +17,7 @@ Chapter 1 of 2 in [Part 3: Planning and Preflight](index.md#part-3-planning-and-
 - [The Flight Planning Window](#flight-planning-efb)
 - [The AI Route Briefing](#planning-route-briefing)
 - [Aircraft EFBs](#aircraft-efb)
+- [The In-Sim Tablet (MSFS 2024)](#in-sim-tablet)
 - [Checklists](#checklists)
 - [Tracking Waypoints](#fix-tracking)
 - [NAV Radios](#planning-nav-radios)
@@ -441,6 +442,8 @@ The tablet you get depends on the aircraft:
 
 The aircraft must be loaded and its tablet working; nothing needs installing in your Community folder. Each tablet's pages are described in [Airbus Aircraft](airbus-aircraft.md) and [Boeing Aircraft and the MD-11](boeing-aircraft-and-the-md-11.md).
 
+MSFS 2024 also has a tablet of its own, meant for its default aircraft, which have no tablet of their own. BA opens it from the Extras menu, but it is not a replacement for the tablets above: see [The In-Sim Tablet (MSFS 2024)](#in-sim-tablet).
+
 ### The flyPad, PMDG and MD-11 tablets {#the-flypad-pmdg-and-md-11-tablets}
 
 The FlyByWire flyPad, the PMDG tablet and the MD-11 EFB all open in the same kind of window. BA reads the live tablet page and shows it as a simple web page inside the window, so your screen reader treats it exactly like a web page in your browser.
@@ -492,6 +495,67 @@ The Fenix A320 and the iFly 737 MAX8 serve their tablets as real web sites on yo
 - **iFly 737 EFB:** opens the iFly SP1 tablet, with its Performance, Navigraph and SimBrief, Payload and Balance, Ground Services, Doors and other apps. BA says *"iFly EFB loaded."* when the page is ready. If the iFly EFB is not running yet, a message explains why and a **Retry** button is focused. Press Escape to close, F5 to reload, and Alt+Home to go back to the EFB's main page.
 
 Both windows hide rather than close, so when you reopen them you are back on the page you left.
+
+## The In-Sim Tablet (MSFS 2024) {#in-sim-tablet}
+
+### What it is {#in-sim-tablet-what}
+
+Microsoft Flight Simulator 2024 has a tablet of its own, with a Flight Planner, an Aircraft app (mass and balance, take-off and landing performance, checklists) and other apps. BA opens it in an accessible window called "In-Sim Tablet". It is meant for MSFS 2024's default aircraft, which have no tablet of their own.
+
+MSFS 2020 has no such tablet.
+
+<div class="callout warning" role="note" markdown="1">
+
+**Warning:** These aircraft have their own tablet and flight computer: the FlyByWire A320neo and A380X, the Headwind A330-900neo, the Fenix A320, the PMDG 737 and 777, the iFly 737 MAX8, the TFDi MD-11 and the HorizonSim 787-9. On them, use the aircraft's own tablet (Input Shift+T, see [Aircraft EFBs](#aircraft-efb)) and flight computer, and never send a flight plan from the in-sim tablet: it causes problems with the aircraft.
+
+</div>
+
+### When to use it {#in-sim-tablet-when}
+
+With one of MSFS 2024's default aircraft:
+
+- To load your latest SimBrief plan into the simulator's Flight Planner with one press, then send it to the aircraft.
+- To use the tablet's mass and balance, performance and checklist pages.
+
+### How to use it {#in-sim-tablet-how}
+
+In the main window, open the **Extras** menu and choose **In-Sim Tablet (FS2024 Native)**. The window is the same kind as the flyPad, PMDG and MD-11 tablet windows, so you read it in browse mode and use the same keys (F5 to re-read, F6 for the connection status, Alt+F4 to hide it): see [The flyPad, PMDG and MD-11 tablets](#the-flypad-pmdg-and-md-11-tablets).
+
+What the window shows:
+
+- **The dock comes first:** one tab per app, the open one marked *"(current page)"*. Press a tab to open that app.
+- **A pop-up comes before the page,** such as the box for typing a route, and its title is spoken as it opens.
+- **Seats, cargo and fuel tanks** are edit fields named with their unit and limit, for example *"Co-Pilot (LBS, max 300)"*. Type a weight and press Enter.
+- **Checklist items and switches** are check boxes.
+- **The Import, Save and Send menus** show as one button for each choice in them.
+- **Flight Planner waypoints** are one line each, for example *"SOONE: Hdg 138°, Dist 24.6 NM"*.
+- The map and the charts are pictures, so they cannot be read.
+
+The tablet does not need to be on screen: the window works with the toolbar tablet closed and the camera anywhere. Typing in the window never takes your keyboard away from the simulator, so the sim's keys and BA's hotkeys keep working. The window stays open when you change aircraft.
+
+### Loading your SimBrief plan {#in-sim-tablet-simbrief}
+
+You need your SimBrief username in BA's settings first: see [Setting your SimBrief username](#setting-your-simbrief-username).
+
+1. Open the Flight Planner from the dock. A **Load latest SimBrief plan** button appears right after the dock.
+2. Press it. BA fetches your latest SimBrief plan, types its route into the tablet with the cruise altitude, adds SimBrief's SID and STAR by name, and sets SimBrief's departure and arrival runways.
+3. Listen to the summary, then check the plan on the Route page. When a runway is set, the tablet can choose an approach by itself (for example *"ILS 1 via Direct"*); the summary names every procedure the tablet chose, so you know what you will be sending. The tablet does not take the SID's or STAR's transitions from the route.
+4. Send it yourself, and only to a default aircraft: BA never sends the plan for you. On the Route page, press the Send button for the avionics (there are also buttons to send it to ATC, or to both). Never send it to an aircraft that has its own flight computer (see the warning above).
+
+### What you will hear {#in-sim-tablet-hear}
+
+- *"Loading your SimBrief plan."* when you press the button, then a summary: both airports with their runways, the number of waypoints, the cruise altitude, and any procedure the tablet chose.
+- *"The Flight Planner already had this route."* at the end of the summary, when the tablet already held this plan.
+- *"The SimBrief plan is still loading."* if you press the button again before the first press has finished.
+
+### If something goes wrong {#in-sim-tablet-problems}
+
+- ***"The in-sim tablet is only in MSFS 2024."*** You are flying MSFS 2020, which has no such tablet.
+- **F6 says the tablet is not connected.** MSFS 2024 is not running or is still loading the flight. The window connects by itself once the flight has loaded.
+- ***"Add your SimBrief username in Settings, SimBrief, to load a plan."*** See [Setting your SimBrief username](#setting-your-simbrief-username).
+- ***"Could not fetch your SimBrief plan: …"*** BA could not get a plan from SimBrief, for example with no internet connection or no plan generated yet for your username. Check both and press the button again.
+- ***"The sim tablet's flight plan is locked, so a route cannot be entered now."*** The tablet is not taking a new route at the moment. Try again later.
+- ***"The sim tablet did not take the route."*** The tablet would not save the route. Check the plan in SimBrief and press the button again.
 
 ## Checklists {#checklists}
 

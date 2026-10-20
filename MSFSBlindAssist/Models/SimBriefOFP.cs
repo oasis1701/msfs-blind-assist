@@ -23,6 +23,9 @@ public class SimBriefOFP
     public string AvgWindComp       { get; set; } = "";
     public string AvgIsaDev         { get; set; } = "";
     public string Units             { get; set; } = "lbs";
+    /// <summary>The SID and STAR from &lt;general&gt; (sid_ident, star_ident); empty when the plan has none.</summary>
+    public string SidIdent          { get; set; } = "";
+    public string StarIdent         { get; set; } = "";
 
     // ── Aircraft ──────────────────────────────────────────────────────────────
     public string AircraftName      { get; set; } = "";
