@@ -467,20 +467,19 @@ public static class PMDG777ChecklistDefinitions
         {
             // Start selectors spring back to NORM once the start completes, so these are
             // action-only (an auto-detect on the transient START position would untick).
+            // No oil pressure lines (owner, 2026-10-20; FOB-4, EngineStartChecklistShapeTests).
             AutoLatch("ES_ENG2_START_SEL", "ENGINE_START", "Engine 2 Start/Ignition selector: START",
                 "FO_ENG2_N2", v => v >= AircraftStateEvaluator.EngineRunningN2,
                 (e, _) => e.SetEngStartSelector2(0)),  // 0=START/GND
             Auto("ES_ENG2_FUEL_CTRL", "ENGINE_START", "Engine 2 Fuel Control: RUN",
                 "ENG_FuelControl_Sw_RUN_1", v => v > 0.5,
                 action: (e, _) => e.SetFuelControl2(1)),  // logical 1=RUN
-            Manual("ES_ENG2_OIL_PRESS", "ENGINE_START", "Engine 2 Oil Pressure: Verify increases"),
             AutoLatch("ES_ENG1_START_SEL", "ENGINE_START", "Engine 1 Start/Ignition selector: START",
                 "FO_ENG1_N2", v => v >= AircraftStateEvaluator.EngineRunningN2,
                 (e, _) => e.SetEngStartSelector1(0)),  // 0=START/GND
             Auto("ES_ENG1_FUEL_CTRL", "ENGINE_START", "Engine 1 Fuel Control: RUN",
                 "ENG_FuelControl_Sw_RUN_0", v => v > 0.5,
                 action: (e, _) => e.SetFuelControl1(1)),  // logical 1=RUN
-            Manual("ES_ENG1_OIL_PRESS", "ENGINE_START", "Engine 1 Oil Pressure: Verify increases"),
         }
     };
 

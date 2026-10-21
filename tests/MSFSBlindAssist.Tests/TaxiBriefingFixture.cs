@@ -154,13 +154,25 @@ internal static class TaxiBriefingFixture
     /// <see cref="AirportWithSouthStand"/> plus taxiway Q, which leaves runway 09/27 twice, once to each side:
     ///   east 1900: Q from 09's centreline (HS) north-east at 45° to A at 2000 E — a high-speed exit on the LEFT
     ///              landing 09, 328 ft beyond C, so as the high-speed exit within 1,500 ft it is preferred to C.
-    ///   east 2300: Q from 09's centreline (HS) straight south to north -100, where S now continues east from 2000 E
-    ///              to meet it.
-    /// LandingExitDestination resolves the first Q to the furthest same-named exit further down the runway — the
-    /// second Q — and vacates that one to the SOUTH: the route of "the exit on the left" begins on the right, on S,
-    /// and to a stand north of the runway it crosses 09 back at X.
+    ///   east 2000: Q from 09's centreline (HS) straight south to S's east end at north -100.
+    /// The second Q is 328 ft down the runway from the first — within LandingExitDestination's chained-continuation
+    /// step (RET_CONTINUATION_MAX_STEP_FT, 500 ft) — so the first Q resolves to it as one rapid-exit arc and vacates
+    /// to the SOUTH: the route of "the exit on the left" begins on the right, on S, and to a stand north of the
+    /// runway it crosses 09 back at X.
     /// </summary>
     public static GraphBundle AirportWithOppositeSideNamesake() => AirportWith(
+        SouthStandPaths().Concat(new[]
+        {
+            Path("Q", 1900, 0, 2000, 100, startType: "HS"),
+            Path("Q", 2000, 0, 2000, -100, startType: "HS"),
+        }), SouthStandSpots());
+
+    /// <summary>
+    /// As <see cref="AirportWithOppositeSideNamesake"/>, but the second Q leaves the runway 400 m (1,312 ft) further
+    /// down, at east 2300, with S continuing east from 2000 E to meet it. That gap is wider than one rapid-exit arc
+    /// (RET_CONTINUATION_MAX_STEP_FT): the two Qs are separate turnoffs, and the first vacates on its own side.
+    /// </summary>
+    public static GraphBundle AirportWithDistantOppositeSideNamesake() => AirportWith(
         SouthStandPaths().Concat(new[]
         {
             Path("Q", 1900, 0, 2000, 100, startType: "HS"),

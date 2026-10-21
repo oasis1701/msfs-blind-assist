@@ -207,6 +207,10 @@ public static class Md11FoChecklistDefinitions
             Auto("AS_AUTOBRAKE", "AFTER_START", "Autobrake: T.O.", Autobrake, v => Is(v, 0), Set(Autobrake, 0)),
             ActionManual("AS_CONFIG_PAGE", "AFTER_START", "System display: config page", Set("MD11_PED_SD_CONFIG_BT", 1)),
             Auto("AS_TAXI_LIGHT", "AFTER_START", "Nose light: TAXI", Nose, v => Is(v, 1), Set(Nose, 1)),
+            // XPDR or any TCAS mode reads as reporting, so the line does not revert when Before
+            // Takeoff turns the knob on to TA/RA.
+            Auto("AS_XPDR_MODE", "AFTER_START", "Transponder: XPDR", XpdrMode, v => v > 0.5, Set(XpdrMode, 1)),
+            Auto("AS_ALT_RPTG", "AFTER_START", "Altitude reporting: ON", AltRptg, On, Set(AltRptg, 1)),
             Reminder("AS_FLT_CTRL", "AFTER_START", "Check the flight controls"),
             Reminder("AS_STAB_TRIM", "AFTER_START", "Set the stabilizer trim from the takeoff data"),
         }

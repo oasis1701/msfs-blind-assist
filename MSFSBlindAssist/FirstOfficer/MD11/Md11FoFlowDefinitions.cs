@@ -87,6 +87,9 @@ public static class Md11FoFlowDefinitions
             // A cold-and-dark flow: started by mistake with engines turning, the next step would
             // cut all three fuel switches (seen live). Stop instead.
             EnginesStoppedGuard("PU_ENGINES_STOPPED"),
+            // ...and never airborne (FO-25), as the PU_FUEL_OFF tick requires: all three fuel switches
+            // off in flight is a triple flame-out. Links no line (the 777's EPU_ON_GROUND).
+            OnGroundGuard("PU_ON_GROUND"),
             // TFDi's Cockpit Entry checks the First Officer finds and never moves: read only. The
             // emergency power selector is checked OFF before the flow arms it below.
             Check("PU_CHK_FLAPS", "Flap handle: UP", "FO_FLAPS_UP", On, CheckSeconds, "CEC_FLAPS"),
@@ -294,7 +297,7 @@ public static class Md11FoFlowDefinitions
     private static Flow BuildAfterStart() => new()
     {
         Id = "AFTER_START", Name = "After Start",
-        Description = "APU bleed off, flap handle to the Dial-A-Flap detent, spoilers armed, autobrake T.O., config page, taxi light.",
+        Description = "APU bleed off, flap handle to the Dial-A-Flap detent, spoilers armed, autobrake T.O., config page, taxi light, transponder XPDR with altitude reporting.",
         RelatedChecklistGroupIds = new[] { "AFTER_START", "AFTER_START_CL" },
         Steps = new()
         {
@@ -307,6 +310,12 @@ public static class Md11FoFlowDefinitions
             Done(SW("AS_CONFIG_PAGE", "System display: config page", "MD11_PED_SD_CONFIG_BT", 1), "AS_CONFIG_PAGE"),
             Also(Done(Skip(SW("AS_TAXI_LIGHT", "Nose light: TAXI", Nose, 1), s => s.IsPosition(Nose, 1)), "AS_TAXI_LIGHT"),
                 "ASC_TAXI_LIGHT"),
+            // Altitude reporting before the aircraft taxis, through the same knob and switch Before
+            // Takeoff turns to TA/RA (AftFootPedestal.xml: MD11_PED_XPNDR_MODE_KB 0 Standby /
+            // 1 Transponder only / 2 TA only / 3 TA-RA, MD11_PED_XPNDR_ALT_RPTG_KB 1 Enabled). A mode
+            // already past standby (XPDR, TA or TA/RA) is left where it is.
+            Done(Skip(SW("AS_XPDR_MODE", "Transponder: XPDR", XpdrMode, 1), s => s.GetValue(XpdrMode) > 0.5), "AS_XPDR_MODE"),
+            Done(Skip(SW("AS_ALT_RPTG", "Altitude reporting: ON", AltRptg, 1), s => s.IsOn(AltRptg)), "AS_ALT_RPTG"),
             Captain("AS_FLT_CTRL", "Check the flight controls"),
             Captain("AS_STAB_TRIM", "Set the stabilizer trim from the takeoff data"),
         }
@@ -487,8 +496,7 @@ public static class Md11FoFlowDefinitions
         Steps = new()
         {
             // Switches the IRS and the battery off: never airborne, never with engines turning.
-            WaitForField("SD_ON_GROUND", "On the ground", "SIM_ON_GROUND", v => v > 0.5, 5,
-                onTimeout: FlowStepFailurePolicy.Stop),
+            OnGroundGuard("SD_ON_GROUND"),
             EnginesStoppedGuard("SD_ENGINES_STOPPED"),
             Also(Done(Skip(SW("SD_EMER_LTS", "Emergency lights: OFF", EmerLts, 0), s => s.IsPosition(EmerLts, 0)), "SD_EMER_LTS"),
                 "SDC_EMER_LTS"),
@@ -578,6 +586,14 @@ public static class Md11FoFlowDefinitions
     /// fed each second by the window, so an unread value — NaN — fails the guard rather than
     /// letting a destructive step through.
     /// </summary>
+    /// <summary>
+    /// Stops a flow that switches engines, IRS or batteries off unless the aircraft reads on the
+    /// ground (the stock SIM_ON_GROUND; unread fails the guard).
+    /// </summary>
+    private static Step OnGroundGuard(string id)
+        => WaitForField(id, "On the ground", "SIM_ON_GROUND", v => v > 0.5, 5,
+            onTimeout: FlowStepFailurePolicy.Stop);
+
     private static Step EnginesStoppedGuard(string id)
         => WaitForField(id, "Engines stopped", "FO_ENGINES_STOPPED", v => v > 0.5, 5,
             onTimeout: FlowStepFailurePolicy.Stop);

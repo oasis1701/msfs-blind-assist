@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
@@ -145,6 +145,22 @@ public class TaxiAssistForm : Form
     // back, protects the ILS critical area — e.g. EGKK A3/C3/M3) instead of the
     // default full-length line (A1/M1). Passed to LoadRoute as preferIlsHold.
     private CheckBox chkCatIiiHold = null!;
+    // Runway combo items carry this affordance when the taxi network only reaches
+    // the runway partway down (TaxiGraph.RunwayNeedsBacktrack — LICR 15/33 class),
+    // so a blind pilot hears "backtrack required" WHILE ARROWING the destination
+    // list, as part of the item's own label — never as a separate announcement
+    // (the screen reader already speaks the item; a second voice would step on
+    // it). The suffixed label is the key for every _destination*Map, and every
+    // consumer that PARSES or SPEAKS the runway name strips it first via
+    // StripBacktrackSuffix. The SayIntentions import needs no change:
+    // MatchDestinationLabel's CleanRunway extracts the designator by regex from
+    // anywhere in the label.
+    internal const string BacktrackRequiredSuffix = " (backtrack required)";
+
+    internal static string StripBacktrackSuffix(string label)
+        => label.EndsWith(BacktrackRequiredSuffix, StringComparison.OrdinalIgnoreCase)
+            ? label[..^BacktrackRequiredSuffix.Length].TrimEnd()
+            : label;
     // Full-length backtrack departure (runway destinations only). When ticked, and
     // the airport requires it, guidance holds short of an intermediate runway
     // entrance, then backtracks to the departure threshold and lines up full length
@@ -188,6 +204,12 @@ public class TaxiAssistForm : Form
     // but once raw data has arrived the O(points × nodes) scan must not repeat on every
     // dropdown open and every taxiway row add/remove.
     private bool _namedHoldingPointsResolved;
+    // "Cross at" HOLDING POINTS offered by the After-crossing-runway terminator
+    // ("cross runway 23R at P1"), keyed by their combo label. Rebuilt with the list
+    // in PopulateTerminatorTaxiwayList and read at Calculate, so a label only ever
+    // resolves to a point that had a genuine crossing when it was offered.
+    private readonly Dictionary<string, NamedHoldingPoint> _crossAtHoldPoints = new();
+    private const string CrossAtHoldPointSuffix = " (holding point)";
     // Computed height of the terminator block (1-3 visible lines depending on
     // terminator type), read by UpdateLayout. Always set by RefreshTerminatorRow
     // before UpdateLayout consumes it (and UpdateLayout only reads it while the
@@ -220,7 +242,10 @@ public class TaxiAssistForm : Form
     // because A, T, E, F, H, D, C, S are already burned by other form controls
     // (see the mnemonic plan at the top of InitializeFormControls). O is free
     // and reads cleanly: "Hold short OF runway".
-    private const string HOLD_SHORT_RUNWAY_LABEL = "Hold short &of runway:";
+    private const string HOLD_SHORT_RUNWAY_LABEL = "Hold short &of:";
+    // Prefix distinguishing a taxiway pick from a bare runway designator inside the
+    // per-row "Hold short of" combos ("16" is a runway, "Taxiway B10" a taxiway).
+    private const string TAXIWAY_HOLDSHORT_PREFIX = "Taxiway ";
 
     private Panel pnlTaxiways = null!;
 
@@ -279,12 +304,6 @@ public class TaxiAssistForm : Form
     /// </summary>
     private string _graphSourceToken = "";
     private double _aircraftLat, _aircraftLon, _aircraftHeading;
-    // Magnetic variation (east positive) matching _aircraftHeading, which is MAGNETIC.
-    // Only the route-start turn cue consumes it (passed to LoadRoute as
-    // aircraftHeadingMagVar) — it must be composed in TRUE north like the steering tone,
-    // or the spoken direction can contradict the tone near a U-turn. Left at 0 until a
-    // position sample supplies one, which is the same no-conversion behaviour as before.
-    private double _aircraftMagVar;
     // Per-ICAO memo of GetRunways for the intersection picker, which re-lists on
     // every checkbox toggle / runway change. GetRunways opens a fresh SQLite
     // connection per call, so caching the (session-stable) runway set for the
@@ -367,6 +386,23 @@ public class TaxiAssistForm : Form
     // extra moments it is checked outside PopulateDestinations.
     private List<(ParkingSpot spot, int nodeId)>? _cachedGateSpots;
     private string _cachedGateSpotsIcao = "";
+
+    // TAXI distance from the aircraft to every graph node, for ordering the stand list.
+    // Cached because PopulateDestinations re-runs on every gate-search keystroke and every
+    // filter toggle, while a Dijkstra over a big airport's graph (EGLL: 6,085 nodes,
+    // 12,792 edges) is ~100 ms of UI thread. Keyed on the ANCHOR NODE, not on a position:
+    // the anchor only changes when the aircraft's nearest node changes, which is the only
+    // thing that can reorder the list, and testing it is a single FindNearestNode.
+    private Dictionary<int, double>? _gateTaxiDistances;
+    private int _gateTaxiDistancesAnchor = -1;
+    private string _gateTaxiDistancesIcao = "";
+
+    // Rank offset for a stand the taxi network cannot reach from here. FINITE on purpose:
+    // double.MaxValue + x is a floating-point no-op, which ties every unreachable stand
+    // and lets the sort order them arbitrarily (the EVRA lesson, TaxiRouter). Larger than
+    // any real taxi distance, so a reachable stand always sorts first, and the straight-line
+    // distance added on top still orders the unreachable ones sensibly among themselves.
+    private const double UNREACHABLE_STAND_RANK_M = 1_000_000.0;
     private string _cachedGateSpotsSourceToken = "";
 
     // Navdata stands the SELECTABLE list does not carry (GSX drops fuel and headingless stands).
@@ -447,6 +483,25 @@ public class TaxiAssistForm : Form
         _aircraftHeading = heading;
     }
 
+    /// <summary>
+    /// The aircraft heading in the TRUE frame, for consumers that compare against
+    /// graph/segment bearings (which are all true): LoadRoute's
+    /// FindNearestNodeInDirection start-node cone, and the direction-aware
+    /// taxiway sort. `_aircraftHeading` itself stays MAGNETIC (the frame its
+    /// writers deliver and the HeadingExitSideSign contract pins); passing it to
+    /// a true-bearing comparison biased the pick by the full local variation
+    /// (20-30° at high-magvar airports), and disagreed with the recalc/rollout
+    /// LoadRoute call sites, which already pass true. Falls back to the raw
+    /// magnetic value when no variation sample exists yet — the pre-fix behavior.
+    /// </summary>
+    // _aircraftHeading is MAGNETIC; this is the TRUE heading every LoadRoute call is given. Never
+    // also pass aircraftHeadingMagVar to LoadRoute: the route-start turn cue would be rotated by the
+    // variation twice and could contradict the tone near a U-turn.
+    private double AircraftHeadingTrue()
+        => _simConnectManager?.LastKnownPosition is { } p
+            ? _aircraftHeading + p.MagneticVariation
+            : _aircraftHeading;
+
     private void InitializeFormControls()
     {
         this.Text = "Taxi Guidance";
@@ -469,7 +524,6 @@ public class TaxiAssistForm : Form
         //   Alt+A  Airport (ICAO)
         //   Alt+T  Destination Type combo
         //   Alt+E  Destination combo (D&estination)
-        //   Alt+L  CAT III / low-visibility hold checkbox ("(&LVP)", runway dest. only)
         //   Alt+F  First taxiway combo
         //   Alt+H  First Hold-short checkbox  (dynamic Hold-shorts share Alt+H — cycle)
         //   Alt+O  Hold short &of runway combo (first row + dynamic — all cycle on Alt+O)
@@ -482,18 +536,16 @@ public class TaxiAssistForm : Form
         //          "Cross at ta&xiway" picker (Alt+X) for type "After crossing runway"
         //   Alt+P  Progressive-taxi terminator named holding-&point combo (last row
         //          only, type "Hold at named holding point")
-        //   Alt+Y  Fill from Sa&yIntentions (matches the Ctrl+Shift+Y hotkey)
         //   Alt+C  Calculate Route
         //   Alt+S  Stop Guidance
         //   Alt+R  Remove (dynamic) — shared across all Remove buttons (cycle)
         //   Alt+2..9  Dynamic Taxiway label (Taxiway &2 .. Taxiway &9)
         //
         // Tab order (top→bottom of form, no jumps to dynamic panel at the end):
-        //   txtAirport, cmbDestType, txtGateSearch, cmbDestination,
-        //   chkIntersection, cmbIntersection, chkCatIiiHold, chkFitFilter,
-        //   cmbFirstTaxiway, chkFirstHoldShort, cmbFirstHoldShortRunway,
-        //   btnAddTaxiway, pnlTaxiways (dynamic rows in insertion order),
-        //   btnCalculate, btnStop, txtRouteSummary.
+        //   1 txtAirport, 2 cmbDestType, 3 cmbDestination,
+        //   4 cmbFirstTaxiway, 5 chkFirstHoldShort, 6 btnAddTaxiway,
+        //   7 pnlTaxiways (dynamic taxiway groups visit here in insertion order),
+        //   8 btnCalculate, 9 btnStop.
 
         // Airport ICAO
         lblAirport = new Label
@@ -741,12 +793,7 @@ public class TaxiAssistForm : Form
             AccessibleName = "CAT three, low visibility hold",
             AccessibleDescription = "When checked, hold at the CAT three / ILS hold-short further back from the runway for low-visibility procedures, instead of the full-length hold closest to the runway"
         };
-        // Ticking LVP changes WHICH painted line the route holds at (EGKK 26L: M3
-        // behind M1), and the call-out has a dedicated CAT III variant keyed on this
-        // state — without this the variant was unreachable in the natural flow, so a
-        // pilot ticking it for exactly the low-visibility case that matters heard
-        // nothing and taxied expecting the normal line. Not a "combo value change"
-        // readback: the tick names the DERIVED hold, which the screen reader cannot.
+        // Toggling changes WHICH painted line the route holds at, so re-name it.
         chkCatIiiHold.CheckedChanged += (s, e) => AnnounceDefaultHoldingPoint();
         y += 30;
 
@@ -813,7 +860,7 @@ public class TaxiAssistForm : Form
             Text = HOLD_SHORT_RUNWAY_LABEL,
             Location = new System.Drawing.Point(labelX, y),
             AutoSize = true,
-            AccessibleName = "Hold short of runway after first taxiway label"
+            AccessibleName = "Hold short after first taxiway label"
         };
         y += 20;
         cmbFirstHoldShortRunway = new ComboBox
@@ -821,8 +868,8 @@ public class TaxiAssistForm : Form
             Location = new System.Drawing.Point(controlX, y),
             Width = 200,
             DropDownStyle = ComboBoxStyle.DropDownList,
-            AccessibleName = "Hold short of runway after first taxiway",
-            AccessibleDescription = "Optional: pick a runway to hold short of after this taxiway. Use when ATC explicitly assigns a hold-short clearance for a runway your route crosses. Leave at \"(none)\" to rely on automatic runway-crossing detection."
+            AccessibleName = "Hold short of runway or taxiway after first taxiway",
+            AccessibleDescription = "Optional: pick a runway or taxiway to hold short of after this taxiway. Use when ATC explicitly assigns a hold-short clearance, such as hold short of runway 27 or hold short of taxiway Alpha. Leave at \"(none)\" to rely on automatic runway-crossing detection."
         };
         cmbFirstHoldShortRunway.Items.Add(NO_RUNWAY_HOLDSHORT);
         cmbFirstHoldShortRunway.SelectedIndex = 0;
@@ -955,9 +1002,8 @@ public class TaxiAssistForm : Form
         // y will be adjusted dynamically
 
         // SayIntentions import. Sits immediately above Calculate because it is the step
-        // BEFORE it: it fills the fields, it does not start guidance. The label says
-        // "Fill from" for exactly that reason — a pilot who reads it as "go" would press
-        // it expecting to be moving.
+        // BEFORE calculating: it fills this form in from the clearance ATC just gave, and
+        // the pilot then reviews it and presses Calculate.
         //
         // Disabled rather than hidden when no import callback was supplied (see
         // _importFromSayIntentions).
@@ -1109,10 +1155,7 @@ public class TaxiAssistForm : Form
 
         // Tab order: Airport → Type → Destination → First taxiway → First
         // hold-short → First hold-short-of-runway → Add Taxiway → DYNAMIC
-        // TAXIWAYS → Fill from SayIntentions → Calculate → Stop. The import sits
-        // with the other actions rather than at the top: it is one of three things
-        // the pilot can DO once the fields are in view, and it is the one that
-        // feeds Calculate. The dynamic-taxiway panel needs an
+        // TAXIWAYS → Calculate → Stop. The dynamic-taxiway panel needs an
         // explicit TabIndex BETWEEN Add and Calculate; without that, its inner
         // controls land at the END of the tab order (after Stop), which is
         // what made adding taxiways feel "illogical" — Tab from Add jumped
@@ -1927,9 +1970,7 @@ public class TaxiAssistForm : Form
             txtRouteSummary.Text = reason;
     }
 
-    /// <summary>Puts every route-shaping control an import does not itself set back to
-    /// its default, so the imported clearance is the WHOLE route.
-    ///
+    /// <summary>Clears the route-SHAPING controls an imported route must not inherit.
     /// OnDestTypeChanged only clears the runway-only boxes when the type CHANGES, so a
     /// runway route imported over a hand-built runway route keeps the old intersection
     /// departure and CAT III hold — a different lineup point with nothing in the
@@ -1946,6 +1987,13 @@ public class TaxiAssistForm : Form
         // Unticking fires OnIntersectionToggled, which also empties the intersection
         // list and its map.
         if (chkIntersection.Checked) chkIntersection.Checked = false;
+        // Unticking fires OnHoldingPointToggled, which hides + clears the point list.
+        // It belongs here for exactly the reason the other two do: OnDestTypeChanged only
+        // clears it when the destination LEAVES runway mode, so a runway-to-runway import
+        // carried a hand-picked holding point straight through and silently moved the
+        // lineup point — the failure this method exists to prevent, through the one door
+        // it did not cover.
+        if (chkHoldingPoint.Checked) chkHoldingPoint.Checked = false;
         if (chkCatIiiHold.Checked) chkCatIiiHold.Checked = false;
         if (chkFirstHoldShort.Checked) chkFirstHoldShort.Checked = false;
         if (cmbFirstHoldShortRunway.SelectedIndex > 0) cmbFirstHoldShortRunway.SelectedIndex = 0;
@@ -2027,6 +2075,10 @@ public class TaxiAssistForm : Form
         }
     }
 
+    // Non-handler async void (called from the airport textbox's Leave lambda and from
+    // the nearest-airport auto-load) — wrapped end-to-end so a DB/graph-build fault
+    // can't escape as an unobserved async-void exception; only the augmentation
+    // prefetch and the graph build had their own local guards before this.
     private async Task LoadAirportDataCoreAsync(string icao)
     {
       try
@@ -2091,6 +2143,9 @@ public class TaxiAssistForm : Form
         _cachedGateSpotsIcao = "";
         _cachedGateSpotsSourceToken = "";
         _cachedNavdataOnlyStands = null;
+        _gateTaxiDistances = null;
+        _gateTaxiDistancesAnchor = -1;
+        _gateTaxiDistancesIcao = "";
         // A previous import's occupied-stand and wingspan suppressions belonged to that
         // airport's assigned gate; the pilot's own filter settings own the new airport's
         // list.
@@ -2106,7 +2161,7 @@ public class TaxiAssistForm : Form
         cmbFirstTaxiway.Items.Clear();
         ClearAllAdditionalTaxiways();
         _airportRunwayIds = new List<string>();
-        RebuildHoldShortRunwayCombo(cmbFirstHoldShortRunway);
+        RebuildHoldShortRunwayCombo(cmbFirstHoldShortRunway, includeTaxiways: true);
         RebuildHoldShortRunwayCombo(cmbTerminatorRunway);
         _namedHoldingPoints = new List<NamedHoldingPoint>();
         _namedHoldingPointsResolved = false;
@@ -2162,20 +2217,21 @@ public class TaxiAssistForm : Form
         // hold-short and named-holding-point resolvers read. See Services/ParkingSpotSource.
         var parking = Services.ParkingSpotSource.GetNamedSpots(_dataProvider, _gateSource, icao);
         var starts = _dataProvider.GetRunwayStarts(icao);
-        // The runway table is what lets Build run SnapStartToRunwayCenterline, which
-        // repairs start rows that navdata stores off to the SIDE of their own runway
-        // (EGKK: three of four rows 99–122 m out). Without it this graph pairs its
-        // centerlines from the unrepaired rows while the guidance manager's own build
-        // is repaired — two graphs disagreeing about where a runway is, and THIS is the
-        // one the planner hands to LoadRoute as prebuiltGraph, so it is the one every
-        // hold-short association and crossing test on a planned route measures against.
-        var graphRunways = _dataProvider.GetRunways(icao);
+
+        // Runways are handed to the builder so it can repair laterally-bogus start rows
+        // against the runway table (SnapStartToRunwayCenterline). Cache it here — the
+        // destination/holding-point passes below want the same list anyway.
+        if (_cachedRunways == null || _cachedRunwaysIcao != icao)
+        {
+            _cachedRunways = _dataProvider.GetRunways(icao);
+            _cachedRunwaysIcao = icao;
+        }
 
         lblStatus.Text = $"{icao}: building taxi graph…";
         btnCalculate.Enabled = false;
         try
         {
-            _graph = await TaxiGraph.BuildAsync(paths, parking, starts, graphRunways);
+            _graph = await TaxiGraph.BuildAsync(paths, parking, starts, _cachedRunways);
         }
         finally
         {
@@ -2226,7 +2282,7 @@ public class TaxiAssistForm : Form
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
             .ToList();
-        RebuildHoldShortRunwayCombo(cmbFirstHoldShortRunway);
+        RebuildHoldShortRunwayCombo(cmbFirstHoldShortRunway, includeTaxiways: true);
         RebuildHoldShortRunwayCombo(cmbTerminatorRunway);
 
         // Populate first taxiway combobox sorted by distance, closest first
@@ -2246,13 +2302,23 @@ public class TaxiAssistForm : Form
     /// Preserves the current selection by name when possible, so a user that
     /// switches airports and back doesn't lose their pick.
     /// </summary>
-    private void RebuildHoldShortRunwayCombo(ComboBox combo)
+    private void RebuildHoldShortRunwayCombo(ComboBox combo, bool includeTaxiways = false)
     {
         string? previous = combo.SelectedItem?.ToString();
         combo.Items.Clear();
         combo.Items.Add(NO_RUNWAY_HOLDSHORT);
         foreach (string r in _airportRunwayIds)
             combo.Items.Add(r);
+
+        // Per-row combos also offer taxiway hold-shorts ("hold short of taxiway
+        // Alpha" — the standard post-landing instruction at KATL/OMDB/VHHH-class
+        // fields; VATSIM gap analysis 2026-08-31 P2). The Progressive terminator
+        // runway combo stays runway-only — it has its own taxiway-target picker.
+        if (includeTaxiways && _graph != null)
+        {
+            foreach (string t in _graph.GetAllTaxiwayNames())
+                combo.Items.Add(TAXIWAY_HOLDSHORT_PREFIX + t);
+        }
 
         int idx = 0;
         if (!string.IsNullOrEmpty(previous))
@@ -2271,6 +2337,60 @@ public class TaxiAssistForm : Form
         _suppressHoldingPointAnnounce = true;
         try { cmbDestination.SelectedIndex = index; }
         finally { _suppressHoldingPointAnnounce = prior; }
+    }
+
+    /// <summary>
+    /// Taxi distance from the aircraft to every reachable graph node, computed once per
+    /// (airport, anchor node) and reused across search keystrokes and filter toggles.
+    /// Null when there is no graph or the aircraft has no nearby node, which sends
+    /// <see cref="StandRankMeters"/> back to straight-line ordering — the behaviour
+    /// before taxi ranking existed, so a graph this cannot anchor on never loses a list.
+    /// </summary>
+    private Dictionary<int, double>? GetGateTaxiDistances()
+    {
+        if (_graph == null) return null;
+
+        var anchor = _graph.FindNearestNode(_aircraftLat, _aircraftLon);
+        if (anchor == null) return null;
+
+        if (_gateTaxiDistances != null
+            && _gateTaxiDistancesAnchor == anchor.NodeId
+            && _gateTaxiDistancesIcao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase))
+        {
+            return _gateTaxiDistances;
+        }
+
+        try
+        {
+            _gateTaxiDistances = new TaxiRouter(_graph).ComputeGraphDistancesFrom(anchor.NodeId);
+            _gateTaxiDistancesAnchor = anchor.NodeId;
+            _gateTaxiDistancesIcao = _currentIcao;
+        }
+        catch (Exception ex)
+        {
+            // Ordering is a convenience; never let it cost the pilot the list itself.
+            Log.Warn("TaxiAssistForm", $"Stand taxi-distance ranking unavailable: {ex.Message}");
+            _gateTaxiDistances = null;
+            _gateTaxiDistancesAnchor = -1;
+            _gateTaxiDistancesIcao = "";
+        }
+        return _gateTaxiDistances;
+    }
+
+    /// <summary>
+    /// Sort key for the stand list: taxi distance where the graph can answer, otherwise a
+    /// straight-line distance pushed behind every reachable stand by a finite offset.
+    /// A stand with no routing node at all (listed as "(no taxi route)") is unreachable by
+    /// definition and sorts with them.
+    /// </summary>
+    private double StandRankMeters(ParkingSpot spot, int nodeId, Dictionary<int, double>? taxiDistances)
+    {
+        double straightLine = TaxiGraph.CalculateDistanceMeters(
+            _aircraftLat, _aircraftLon, spot.Latitude, spot.Longitude);
+
+        if (taxiDistances == null) return straightLine;
+        if (nodeId >= 0 && taxiDistances.TryGetValue(nodeId, out double taxiM)) return taxiM;
+        return UNREACHABLE_STAND_RANK_M + straightLine;
     }
 
     /// <summary>Whether the wingspan "show fitting only" filter applies to this
@@ -2348,7 +2468,18 @@ public class TaxiAssistForm : Form
                 var nearNode = lineup.EntryNode;
                 if (nearNode != null)
                 {
-                    string name = $"Runway {rwy.RunwayID}";
+                    // "(backtrack required)" is part of the ITEM LABEL so the screen
+                    // reader speaks it while the pilot arrows the list — the LICR
+                    // class, where the unticked route can quietly end hundreds of
+                    // metres short of the threshold with no warning (the destination
+                    // node sits just under the reach warning's 120 m bar).
+                    double rwyHalfWidthM = (rwy.Width > 0 ? rwy.Width : 150.0) * 0.3048 / 2.0;
+                    bool needsBacktrack = _graph.RunwayNeedsBacktrack(
+                        lineupLat, lineupLon,
+                        rwy.StartLat, rwy.StartLon, rwy.EndLat, rwy.EndLon,
+                        rwyHalfWidthM, _aircraftLat, _aircraftLon);
+                    string name = $"Runway {rwy.RunwayID}"
+                        + (needsBacktrack ? BacktrackRequiredSuffix : "");
 
                     if (!_destinationNodeMap.ContainsKey(name))
                     {
@@ -2549,11 +2680,20 @@ public class TaxiAssistForm : Form
             // a list a screen reader walks one item at a time. Falls back to the old
             // category / number / name ordering when the position isn't known yet
             // (LoadAirportData before the first position fix).
+            //
+            // "Nearest" is TAXI distance, never straight-line. A stand on the far side of
+            // a runway is not near, however close it looks as the crow flies — the same
+            // lesson the router already learned for exit and entry-node picking (the KDEN
+            // M4 and EVRA cases). Measured live 2026-09-20 at EGLL: after vacating 27L at
+            // N7 on the NORTH side, Gate 405 (Terminal 4, 706 m SOUTH of the centreline)
+            // sat near the top of the list at 1.87 km straight-line, while the taxi to it
+            // was 2.4 km, opened with a 166-degree turn back and crossed runway 27L. The
+            // pilot picked it believing the list was ordered by what was closest.
             bool haveOwnPosition = _aircraftLat != 0 || _aircraftLon != 0;
+            var taxiDistances = haveOwnPosition ? GetGateTaxiDistances() : null;
             var parkingSpots = haveOwnPosition
                 ? filtered
-                    .OrderBy(r => TaxiGraph.CalculateDistanceMeters(
-                        _aircraftLat, _aircraftLon, r.spot.Latitude, r.spot.Longitude))
+                    .OrderBy(r => StandRankMeters(r.spot, r.nodeId, taxiDistances))
                     .ThenBy(r => r.spot.Name, StringComparer.OrdinalIgnoreCase)
                     .ToList()
                 : filtered
@@ -2972,14 +3112,15 @@ public class TaxiAssistForm : Form
         // Add "(None - calculate shortest path)" as first option
         cmbFirstTaxiway.Items.Add("(None - calculate shortest path)");
 
-        // Get taxiways sorted by distance, closest first
-        var sorted = _graph.GetTaxiwayNamesSortedByDistance(_aircraftLat, _aircraftLon, _aircraftHeading);
+        // Get taxiways sorted by distance, closest first (TRUE heading — the
+        // graph's bearings are true; see AircraftHeadingTrue).
+        var sorted = _graph.GetTaxiwayNamesSortedByDistance(_aircraftLat, _aircraftLon, AircraftHeadingTrue());
 
         foreach (var name in sorted)
             cmbFirstTaxiway.Items.Add(name);
 
         // Select the closest taxiway in the aircraft's direction
-        string? closest = _graph.GetClosestTaxiwayInDirection(_aircraftLat, _aircraftLon, _aircraftHeading);
+        string? closest = _graph.GetClosestTaxiwayInDirection(_aircraftLat, _aircraftLon, AircraftHeadingTrue());
         if (closest != null)
         {
             int idx = cmbFirstTaxiway.Items.IndexOf(closest);
@@ -3201,10 +3342,12 @@ public class TaxiAssistForm : Form
         string? destName = cmbDestination.SelectedItem?.ToString();
         if (string.IsNullOrEmpty(destName)) return;
 
-        // "Runway 22R" → "22R".
-        string runwayId = destName.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase)
-            ? destName.Substring(7).Trim()
-            : destName.Trim();
+        // "Runway 22R (backtrack required)" → "22R". destName itself stays the full
+        // combo label — the _destination*Map lookups below are keyed on it.
+        string cleanName = StripBacktrackSuffix(destName);
+        string runwayId = cleanName.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase)
+            ? cleanName.Substring(7).Trim()
+            : cleanName.Trim();
 
         // Physical runway geometry (runway_end thresholds), NOT the start-table
         // centerline — the start table sits inside the pavement at displaced
@@ -3234,9 +3377,13 @@ public class TaxiAssistForm : Form
             lineupLon = lineup.lon;
         }
 
+        // The aircraft's side of the runway decides where an angled entry reaches the pavement
+        // (GetRunwayIntersections); (0,0) = no position yet, and the list is as before.
+        bool haveOwnPos = _aircraftLat != 0 || _aircraftLon != 0;
         foreach (var ix in _graph.GetRunwayIntersections(
                      rwy.StartLat, rwy.StartLon, rwy.EndLat, rwy.EndLon, halfWidthM,
-                     lineupLat, lineupLon))
+                     lineupLat, lineupLon,
+                     haveOwnPos ? _aircraftLat : null, haveOwnPos ? _aircraftLon : null))
         {
             string label =
                 $"{ix.TaxiwayName}, {DistanceFormatter.FromMetres(ix.RemainingMeters)} remaining, " +
@@ -3302,8 +3449,11 @@ public class TaxiAssistForm : Form
         }
         else
         {
+            string? entrance = ResolveFullLengthEntranceName(cmbDestination.SelectedItem?.ToString());
             _announcer.AnnounceImmediate(
-                "No named holding points available for this runway. Full length departure.");
+                entrance == null
+                    ? "No named holding points available for this runway. Full length departure."
+                    : $"No named holding points available for this runway. Full length departure via {entrance}.");
             chkHoldingPoint.Checked = false; // re-enters OnHoldingPointToggled → hides the list
         }
     }
@@ -3393,10 +3543,12 @@ public class TaxiAssistForm : Form
             .ToList();
         if (holdingPoints.Count == 0) return resolved;
 
-        // "Runway 28" → "28".
-        string runwayId = destName.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase)
-            ? destName.Substring(7).Trim()
-            : destName.Trim();
+        // "Runway 28 (backtrack required)" → "28". destName itself stays the full
+        // combo label — the _destination*Map lookups below are keyed on it.
+        string cleanName = StripBacktrackSuffix(destName);
+        string runwayId = cleanName.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase)
+            ? cleanName.Substring(7).Trim()
+            : cleanName.Trim();
 
         if (_cachedRunways == null || _cachedRunwaysIcao != _currentIcao)
         {
@@ -3433,8 +3585,10 @@ public class TaxiAssistForm : Form
 
         double farLineupLat = rwy.EndLat, farLineupLon = rwy.EndLon;
         string? reciprocal = TaxiGraph.ReciprocalRunwayName(rwy.RunwayID);
+        // The reciprocal's combo label may carry "(backtrack required)" — the map keys on the label.
         if (reciprocal != null &&
-            _destinationThresholdMap.TryGetValue($"Runway {reciprocal}", out var farLineup))
+            (_destinationThresholdMap.TryGetValue($"Runway {reciprocal}", out var farLineup)
+             || _destinationThresholdMap.TryGetValue($"Runway {reciprocal}{BacktrackRequiredSuffix}", out farLineup)))
         {
             farLineupLat = farLineup.lat;
             farLineupLon = farLineup.lon;
@@ -3476,6 +3630,53 @@ public class TaxiAssistForm : Form
     }
 
     /// <summary>
+    /// The TAXIWAY a plain full-length departure enters the named runway by ("K16"), from
+    /// NAVDATA alone — the fallback for the very common airport whose OSM holding points
+    /// carry no ref, where there is no painted name to speak but the entrance is named.
+    ///
+    /// Measured against the PHYSICAL runway (runway_end pavement edges) like the
+    /// intersection list, not ChooseHoldingPointExtent's envelope: the answer is relative
+    /// to the LINEUP POINT, so the extent only has to contain the runway, and a starter
+    /// extension's negative along-track is handled by FindFullLengthEntrance itself.
+    ///
+    /// Null — and therefore silent — when no named taxiway meets the runway near the
+    /// lineup point. Never substitute the nearest named taxiway at any distance: at OMDB
+    /// 30L that would be M18, 695 m down a 3,606 m runway, and calling an intersection
+    /// departure "full length" is the kind of confidently-wrong answer this app must not
+    /// give a pilot who cannot see the sign.
+    /// </summary>
+    private string? ResolveFullLengthEntranceName(string? destName)
+    {
+        if (_graph == null || cmbDestType.SelectedIndex != 0) return null;
+        if (string.IsNullOrEmpty(destName)) return null;
+
+        // Without a start-table lineup point there is no reference for "full length".
+        if (!_destinationThresholdMap.TryGetValue(destName, out var lineup)) return null;
+
+        string cleanName = StripBacktrackSuffix(destName);
+        string runwayId = cleanName.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase)
+            ? cleanName.Substring(7).Trim()
+            : cleanName.Trim();
+
+        if (_cachedRunways == null || _cachedRunwaysIcao != _currentIcao)
+        {
+            _cachedRunways = _dataProvider.GetRunways(_currentIcao);
+            _cachedRunwaysIcao = _currentIcao;
+        }
+        var rwy = _cachedRunways
+            .FirstOrDefault(r => string.Equals(r.RunwayID, runwayId, StringComparison.OrdinalIgnoreCase));
+        if (rwy == null) return null;
+
+        double halfWidthM = (rwy.Width > 0 ? rwy.Width : 150.0) * 0.3048 / 2.0;
+
+        var entrance = _graph.FindFullLengthEntrance(
+            rwy.StartLat, rwy.StartLon, rwy.EndLat, rwy.EndLon, halfWidthM,
+            lineup.lat, lineup.lon);
+
+        return string.IsNullOrWhiteSpace(entrance?.TaxiwayName) ? null : entrance!.TaxiwayName;
+    }
+
+    /// <summary>
     /// Speaks (and writes to the status line) WHICH painted holding point a plain
     /// runway departure will use, so the pilot knows before they calculate whether the
     /// default matches their clearance — and therefore whether they need to tick
@@ -3514,7 +3715,29 @@ public class TaxiAssistForm : Form
         var fullLength = ResolveHoldingPointsForRunway(destName)
             .Where(r => !r.Partway)
             .ToList();
-        if (fullLength.Count == 0) return;
+        if (fullLength.Count == 0)
+        {
+            // No PAINTED name to speak — but the ENTRANCE still has one in navdata, and
+            // that is what the pilot actually wanted to know. OMDB publishes 235 OSM
+            // holding_position nodes and not one carries a ref, so the whole airport was
+            // silent here while every runway had a perfectly good named entrance (30R via
+            // N9, 30L via K16). Navdata-only, so it works with augmentation off as well.
+            string? entrance = ResolveFullLengthEntranceName(destName);
+            if (entrance == null) return;
+
+            // The LVP tick can't be honoured without painted names — say so rather than
+            // letting the pilot hear a full-length entrance as if it answered their
+            // CAT III question.
+            string entryMsg = lvp
+                ? $"CAT three hold not named in online data. Full length entry via {entrance}."
+                : $"Full length entry via {entrance}.";
+
+            lblStatus.Text = statusPrefix == null
+                ? $"{destName}: {entryMsg}"
+                : $"{statusPrefix} {destName}: {entryMsg}";
+            _announcer.Announce(entryMsg);
+            return;
+        }
 
         // Default (no LVP): the line closest to the runway — the normal clearance, and
         // the one OSM tags holding_position:type=runway (EGKK M1 of the M1/M3 pair).
@@ -3728,17 +3951,17 @@ public class TaxiAssistForm : Form
             Text = HOLD_SHORT_RUNWAY_LABEL,
             Location = new System.Drawing.Point(0, panelY + 45),
             AutoSize = true,
-            AccessibleName = $"Hold short of runway after taxiway {taxiwayNumber} label"
+            AccessibleName = $"Hold short after taxiway {taxiwayNumber} label"
         };
         var holdShortRunwayCmb = new ComboBox
         {
             Location = new System.Drawing.Point(180, panelY + 43),
             Width = 190,
             DropDownStyle = ComboBoxStyle.DropDownList,
-            AccessibleName = $"Hold short of runway after taxiway {taxiwayNumber}",
-            AccessibleDescription = $"Optional: pick a runway to hold short of after taxiway {taxiwayNumber}. Use when ATC explicitly assigns a hold-short clearance for a runway your route crosses. Leave at \"(none)\" to rely on automatic runway-crossing detection."
+            AccessibleName = $"Hold short of runway or taxiway after taxiway {taxiwayNumber}",
+            AccessibleDescription = $"Optional: pick a runway or taxiway to hold short of after taxiway {taxiwayNumber}. Use when ATC explicitly assigns a hold-short clearance, such as hold short of runway 27 or hold short of taxiway Alpha. Leave at \"(none)\" to rely on automatic runway-crossing detection."
         };
-        RebuildHoldShortRunwayCombo(holdShortRunwayCmb);
+        RebuildHoldShortRunwayCombo(holdShortRunwayCmb, includeTaxiways: true);
 
         // Tab order WITHIN the panel: each new group is added at the end so
         // pressing Tab inside the panel walks through Combo → Hold-short →
@@ -3912,10 +4135,12 @@ public class TaxiAssistForm : Form
         var result = new Dictionary<int, string>();
 
         // First taxiway slot — only meaningful if a real taxiway is selected.
+        // Taxiway-prefixed picks belong to GetUserTaxiwayHoldShorts.
         string? firstTaxi = cmbFirstTaxiway.SelectedItem?.ToString();
         string? firstRwy = cmbFirstHoldShortRunway.SelectedItem?.ToString();
         if (!string.IsNullOrEmpty(firstTaxi) && !firstTaxi.StartsWith("(None") &&
-            !string.IsNullOrEmpty(firstRwy) && firstRwy != NO_RUNWAY_HOLDSHORT)
+            !string.IsNullOrEmpty(firstRwy) && firstRwy != NO_RUNWAY_HOLDSHORT &&
+            !firstRwy.StartsWith(TAXIWAY_HOLDSHORT_PREFIX, StringComparison.Ordinal))
         {
             result[0] = firstRwy;
         }
@@ -3928,8 +4153,44 @@ public class TaxiAssistForm : Form
             if (!string.IsNullOrEmpty(sel) && !sel.StartsWith("(None"))
             {
                 string? rwy = row.HoldShortRunway.SelectedItem?.ToString();
-                if (!string.IsNullOrEmpty(rwy) && rwy != NO_RUNWAY_HOLDSHORT)
+                if (!string.IsNullOrEmpty(rwy) && rwy != NO_RUNWAY_HOLDSHORT &&
+                    !rwy.StartsWith(TAXIWAY_HOLDSHORT_PREFIX, StringComparison.Ordinal))
                     result[seqIndex] = rwy;
+                seqIndex++;
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// The taxiway-flavored picks from the same per-row "Hold short of" combos:
+    /// sequence index → taxiway name to hold short of AFTER that row's taxiway
+    /// ("taxi via A, hold short of taxiway B" — the standard post-landing shape at
+    /// KATL/OMDB/VHHH-class fields; VATSIM gap analysis 2026-08-31 P2). Items carry
+    /// the "Taxiway " prefix in the combo; this strips it back to the bare name.
+    /// </summary>
+    private Dictionary<int, string> GetUserTaxiwayHoldShorts()
+    {
+        var result = new Dictionary<int, string>();
+
+        string? firstTaxi = cmbFirstTaxiway.SelectedItem?.ToString();
+        string? firstPick = cmbFirstHoldShortRunway.SelectedItem?.ToString();
+        if (!string.IsNullOrEmpty(firstTaxi) && !firstTaxi.StartsWith("(None") &&
+            firstPick != null && firstPick.StartsWith(TAXIWAY_HOLDSHORT_PREFIX, StringComparison.Ordinal))
+        {
+            result[0] = firstPick.Substring(TAXIWAY_HOLDSHORT_PREFIX.Length);
+        }
+
+        int seqIndex = 1;
+        foreach (var row in _additionalTaxiways)
+        {
+            string? sel = row.Combo.SelectedItem?.ToString();
+            if (!string.IsNullOrEmpty(sel) && !sel.StartsWith("(None"))
+            {
+                string? pick = row.HoldShortRunway.SelectedItem?.ToString();
+                if (pick != null && pick.StartsWith(TAXIWAY_HOLDSHORT_PREFIX, StringComparison.Ordinal))
+                    result[seqIndex] = pick.Substring(TAXIWAY_HOLDSHORT_PREFIX.Length);
                 seqIndex++;
             }
         }
@@ -4063,13 +4324,13 @@ public class TaxiAssistForm : Form
         if (needTaxiwayTarget)
         {
             lblTerminatorTaxiway.Text = tType == 2
-                ? "Cross at ta&xiway (optional):"
+                ? "Cross at ta&xiway or holding point (optional):"
                 : "Hold short of taxi&way:";
             lblTerminatorTaxiway.AccessibleName = tType == 2
-                ? "Cross at taxiway, optional"
+                ? "Cross at taxiway or holding point, optional"
                 : "Progressive taxi terminator taxiway label";
             cmbTerminatorTaxiway.AccessibleDescription = tType == 2
-                ? "Optional: pick the taxiway at which to cross the runway, when ATC names a crossing point. Lists only taxiways that cross the runway picked above. Leave at \"(none)\" to cross at the nearest point automatically."
+                ? "Optional: pick where to cross the runway when ATC names a crossing point — a taxiway, or a holding point such as P1. Lists only taxiways and holding points on your side that genuinely cross the runway picked above; guidance takes you through that point and properly clear on the other side. Leave at \"(none)\" to cross at the nearest point automatically."
                 : "Pick the taxiway to hold short of where it meets the last taxiway in your route.";
             lblTerminatorTaxiway.Location = new System.Drawing.Point(0, Line(nextLine) + 2);
             cmbTerminatorTaxiway.Location = new System.Drawing.Point(180, Line(nextLine));
@@ -4111,6 +4372,7 @@ public class TaxiAssistForm : Form
         if (_graph == null) return;
         string? prev = cmbTerminatorTaxiway.SelectedItem?.ToString();
         cmbTerminatorTaxiway.Items.Clear();
+        _crossAtHoldPoints.Clear();
 
         if (cmbTerminatorType.SelectedIndex == 2)
         {
@@ -4122,6 +4384,18 @@ public class TaxiAssistForm : Form
             {
                 foreach (string tw in GetTaxiwaysCrossingRunway(crossRwy))
                     cmbTerminatorTaxiway.Items.Add(tw);
+
+                // Painted holding points ATC names as the crossing point ("cross 23R at
+                // P1"), after the taxiways so first-letter type-ahead still lands on a
+                // taxiway first. Only points that genuinely cross from the aircraft's side.
+                if (!_namedHoldingPointsResolved)
+                    ResolveNamedHoldingPoints();
+                foreach (var (hp, _) in GetHoldingPointsCrossingRunway(crossRwy))
+                {
+                    string label = hp.Name + CrossAtHoldPointSuffix;
+                    if (_crossAtHoldPoints.TryAdd(label, hp))
+                        cmbTerminatorTaxiway.Items.Add(label);
+                }
             }
         }
         else
@@ -4164,11 +4438,30 @@ public class TaxiAssistForm : Form
             || !aug.Enabled)
             return;
         var raw = aug.GetNamedHoldingPoints(_currentIcao);
+        var signs = aug.GetSignHoldingPoints(_currentIcao);
         // Leave the latch clear on an empty source: the online fetch is async, so this
         // is "not yet", not "none" — and retrying is free, we returned before scanning.
-        if (raw.Count == 0) return;
+        if (raw.Count == 0 && signs.Count == 0) return;
         _namedHoldingPoints = NamedHoldingPointResolver.Resolve(_graph, raw);
         _namedHoldingPointsResolved = true;
+
+        // X-Plane red signs fill in ONLY names no painted line carries (OMDB "KK"). Their
+        // position is approximate, so they are labelled so and kept out of runway entries
+        // and cross-at points (GetHoldingPointsCrossingRunway).
+        if (signs.Count > 0)
+        {
+            var taken = new HashSet<string>(
+                _namedHoldingPoints.Select(p => p.Name), StringComparer.OrdinalIgnoreCase);
+            var fromSigns = NamedHoldingPointResolver.ResolveSigns(
+                _graph, signs, taken, msg => _taxiRouterLog.Debug($"  {msg}"));
+            _taxiRouterLog.Info(
+                $"{_currentIcao}: sign holding points raw={signs.Count} added={fromSigns.Count}" +
+                (fromSigns.Count > 0 ? $" ({string.Join(", ", fromSigns.Select(p => p.Name))})" : ""));
+            if (fromSigns.Count > 0)
+                _namedHoldingPoints = _namedHoldingPoints.Concat(fromSigns)
+                    .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+        }
 
         // Field diagnostics: a "why isn't VIKAS in my list?" report is otherwise
         // unanswerable without an ad-hoc probe against the user's navdata.
@@ -4353,22 +4646,11 @@ public class TaxiAssistForm : Form
         {
             _aircraftLat = pos.Latitude;
             _aircraftLon = pos.Longitude;
+            // MAGNETIC, like every other writer of this field (see the
+            // HeadingExitSideSign consumer, whose contract pins the frame).
+            // Consumers that compare against TRUE graph bearings convert via
+            // AircraftHeadingTrue() instead.
             _aircraftHeading = pos.HeadingMagnetic;
-            // Captured alongside the heading it belongs to: the heading above is MAGNETIC,
-            // and the route-start turn cue must be composed in TRUE north to agree with the
-            // steering tone.
-            //
-            // What is guaranteed: the two fields are written TOGETHER here, so whenever this
-            // branch runs the variation matches the heading, and both LoadRoute calls later
-            // in OnCalculateClicked see that pair. What is NOT guaranteed: this branch is
-            // conditional on LastKnownPosition being available, and three other sites
-            // (SetAircraftPosition and friends) write _aircraftHeading WITHOUT touching
-            // _aircraftMagVar. So a Calculate with no LastKnownPosition can pair a heading
-            // from one of those sites with a variation from an earlier position — or with
-            // 0.0 if there has never been one. That is a fraction of a degree in any
-            // realistic case (variation drifts slowly and a taxi never leaves the airport),
-            // but the fields are not structurally coupled and must not be assumed to be.
-            _aircraftMagVar = pos.MagneticVariation;
         }
 
         // Progressive Taxi: resolve the last-row terminator to a destination
@@ -4379,7 +4661,14 @@ public class TaxiAssistForm : Form
         {
             var progSeq = GetSelectedTaxiwayNames();
             string? lastTaxiway = progSeq.Count > 0 ? progSeq[^1] : null;
-            if (string.IsNullOrEmpty(lastTaxiway))
+            // A progressive instruction often names only the point ("at P1 cross 23R",
+            // "hold at VIKAS") with no taxiway. Those two terminators resolve their target
+            // without a last taxiway, so an empty list routes by shortest path (through the
+            // picked holding point, when one is picked). Hold short of runway / of taxiway /
+            // end of taxiway are anchored ON the last taxiway and still need one.
+            int termIndex = cmbTerminatorType.SelectedIndex;
+            bool taxiwayOptional = termIndex == 2 || termIndex == 4;
+            if (string.IsNullOrEmpty(lastTaxiway) && !taxiwayOptional)
             {
                 _announcer.AnnounceImmediate("Select at least one taxiway for progressive taxi.");
                 return;
@@ -4389,7 +4678,7 @@ public class TaxiAssistForm : Form
             // taxiway names exactly, and LoadRoute's alias resolution only covers the route
             // SEQUENCE, not these pre-route terminator lookups. Without this, picking an alias
             // label from the terminator dropdown fails with "Could not find taxiway B (HAWKER)".
-            lastTaxiway = _graph.ResolveTaxiwayName(lastTaxiway);
+            lastTaxiway = _graph.ResolveTaxiwayName(lastTaxiway ?? "");
 
             // Component + start node for the graph-distance terminator helpers,
             // mirroring FindFarSideRunwayNode's aircraft-component restriction so
@@ -4417,6 +4706,9 @@ public class TaxiAssistForm : Form
             int terminatorTypeIndex = cmbTerminatorType.SelectedIndex;
             int destNode = -1;
             ProgressiveTerminator term;
+            // "Cross runway X at <holding point>": the painted point the route is pinned
+            // through on its way across (see LoadRoute's holdingPointHoldNodeId).
+            NamedHoldingPoint? crossAtHold = null;
             var progRwyHoldShorts = GetUserRunwayHoldShorts();
 
             switch (terminatorTypeIndex)
@@ -4457,6 +4749,25 @@ public class TaxiAssistForm : Form
                         _announcer.AnnounceImmediate("Pick the runway to cross in the terminator runway combo.");
                         return;
                     }
+                    // A named HOLDING POINT as the crossing point ("cross 23R at P1"):
+                    // resolve the crossing from that point's own node, which also finds
+                    // the far side when the taxiway changes name on the way across.
+                    // Re-resolved here (not cached from the list) because the aircraft
+                    // may have moved since the list was built.
+                    string? crossLabel = cmbTerminatorTaxiway.SelectedItem?.ToString();
+                    if (crossLabel != null && _crossAtHoldPoints.TryGetValue(crossLabel, out var pickedHold))
+                    {
+                        crossAtHold = pickedHold;
+                        if (_crossRunwayMap.TryGetValue($"Runway {runwayTarget}", out var holdRwy))
+                        {
+                            var match = GetHoldingPointsCrossingRunway(holdRwy)
+                                .FirstOrDefault(c => c.Point.NodeId == pickedHold.NodeId);
+                            if (match.Point != null) destNode = match.Crossing.FarNodeId;
+                        }
+                        term = new ProgressiveTerminator(ProgressiveTerminatorType.AfterCrossingRunway, runwayTarget);
+                        break;
+                    }
+
                     // Optional "cross at" taxiway pins the crossing point when ATC
                     // names one ("cross runway 27 at Tango"); "(none)" or unset =
                     // nearest crossing automatically.
@@ -4519,9 +4830,11 @@ public class TaxiAssistForm : Form
                 string what = terminatorTypeIndex == 1 ? $"taxiway {taxiwayTarget}"
                     : terminatorTypeIndex == 3 ? $"the end of taxiway {lastTaxiway}"
                     : terminatorTypeIndex == 4 ? $"holding point {term.Target}"
+                    : crossAtHold != null ? $"a crossing of runway {runwayTarget} at holding point {crossAtHold.Name}"
                     : pinnedCross ? $"taxiway {taxiwayTarget} crossing runway {runwayTarget}"
                     : $"runway {runwayTarget}";
-                string msg = $"Could not find {what} from {lastTaxiway}. Check your entry.";
+                string from = string.IsNullOrEmpty(lastTaxiway) ? "your position" : lastTaxiway;
+                string msg = $"Could not find {what} from {from}. Check your entry.";
                 _announcer.AnnounceImmediate(msg);
                 lblStatus.Text = msg;
                 return;
@@ -4533,26 +4846,32 @@ public class TaxiAssistForm : Form
             {
                 ProgressiveTerminatorType.HoldShortRunway => $"hold short of runway {runwayTarget}",
                 ProgressiveTerminatorType.HoldShortTaxiway => $"hold short of taxiway {taxiwayTarget}",
-                ProgressiveTerminatorType.AfterCrossingRunway => $"across runway {runwayTarget}",
+                ProgressiveTerminatorType.AfterCrossingRunway => crossAtHold != null
+                    ? $"across runway {runwayTarget} at {crossAtHold.Name}"
+                    : $"across runway {runwayTarget}",
                 ProgressiveTerminatorType.HoldAtNamedPoint => $"holding point {term.Target}",
                 _ => $"end of taxiway {lastTaxiway}",
             };
 
             string? progError = _guidanceManager.LoadRoute(
                 _dataProvider, _currentIcao,
-                _aircraftLat, _aircraftLon, _aircraftHeading,
+                _aircraftLat, _aircraftLon, AircraftHeadingTrue(),
                 destNode, progDestName,
                 progSeq.Count > 0 ? progSeq : null,
                 progHoldShorts,
-                // _aircraftHeading is MAGNETIC — see aircraftHeadingMagVar on LoadRoute.
-                aircraftHeadingMagVar: _aircraftMagVar,
                 destinationHeading: null,
                 destinationThresholdLat: null, destinationThresholdLon: null,
                 destinationHeadingTrue: null,
                 isRunwayDestination: false,
                 prebuiltGraph: _graph,
                 userRunwayHoldShorts: progRwyHoldShorts.Count > 0 ? progRwyHoldShorts : null,
-                progressiveTerminator: term);
+                progressiveTerminator: term,
+                // Crossing at a named holding point: pin the route THROUGH that painted
+                // line (same pin a named-holding-point departure uses), so the pilot
+                // crosses where ATC said and not at a neighbouring connector. Null for
+                // every other progressive leg.
+                holdingPointHoldNodeId: crossAtHold?.NodeId,
+                holdingPointName: crossAtHold?.Name);
 
             if (progError != null)
             {
@@ -4572,21 +4891,31 @@ public class TaxiAssistForm : Form
             _dockingManager?.SetDestinationGate(null);
 
             txtRouteSummary.Text = _guidanceManager.LastRouteSummary;
+
             lblStatus.Text = "Route loaded. Guidance active.";
             _guidanceManager.StartGuidance(progSettings);
             // A leg that begins at a runway hold line started HELD, with no opening callout. Its hold
             // sentence is this leg's one opening instruction, spoken here and consumed: MainForm feeds
-            // no position frames while guidance holds, so nothing later would say it. Immediate, like
-            // the unheld leg's opening callout.
+            // no position frames while guidance holds, so nothing later would say it. A warning the leg
+            // carries (no hold short point, a route it cannot join) goes in front, in the SAME utterance:
+            // consecutive AnnounceImmediate calls stomp each other.
+            var progParts = new List<string>();
+            if (!string.IsNullOrEmpty(_guidanceManager.LastRouteStartWarning))
+                progParts.Add(_guidanceManager.LastRouteStartWarning);
             string? progStartHold = _guidanceManager.ConsumeStartHoldCue();
             if (!string.IsNullOrEmpty(progStartHold))
-                _announcer.AnnounceImmediate(progStartHold);
+                progParts.Add(progStartHold);
+            if (progParts.Count > 0)
+                _announcer.AnnounceImmediate(string.Join(" ", progParts));
             return;
         }
 
-        // Get destination
-        string? destName = cmbDestination.SelectedItem?.ToString();
-        if (string.IsNullOrEmpty(destName) || !_destinationNodeMap.TryGetValue(destName, out int destNodeId))
+        // Get destination. destLabel is the combo item and the key for every
+        // _destination*Map (it may carry the "(backtrack required)" affordance);
+        // destName is the CLEAN name — the one that is parsed for a runway id,
+        // passed to LoadRoute, and spoken in every callout.
+        string? destLabel = cmbDestination.SelectedItem?.ToString();
+        if (string.IsNullOrEmpty(destLabel) || !_destinationNodeMap.TryGetValue(destLabel, out int destNodeId))
         {
             const string noDestination = "Please select a destination.";
             AnnounceCalculateAbort(noDestination);
@@ -4595,6 +4924,7 @@ public class TaxiAssistForm : Form
             ShowRouteFailure(noDestination, keepSummary: _guidanceManager.HasLiveRoute);
             return;
         }
+        string destName = StripBacktrackSuffix(destLabel);
 
         if (destNodeId < 0)
         {
@@ -4613,13 +4943,14 @@ public class TaxiAssistForm : Form
         var taxiwaySequence = GetSelectedTaxiwayNames();
         var userHoldShorts = GetUserHoldShortIndices();
         var userRunwayHoldShorts = GetUserRunwayHoldShorts();
+        var userTaxiwayHoldShorts = GetUserTaxiwayHoldShorts();
 
         // Load route through guidance manager
         var settings = SettingsManager.Current;
-        double? destHeading = _destinationHeadingMap.TryGetValue(destName, out double h) ? h : null;
-        double? destHeadingTrue = _destinationHeadingTrueMap.TryGetValue(destName, out double ht) ? ht : null;
+        double? destHeading = _destinationHeadingMap.TryGetValue(destLabel, out double h) ? h : null;
+        double? destHeadingTrue = _destinationHeadingTrueMap.TryGetValue(destLabel, out double ht) ? ht : null;
         double? thresholdLat = null, thresholdLon = null;
-        if (_destinationThresholdMap.TryGetValue(destName, out var threshold))
+        if (_destinationThresholdMap.TryGetValue(destLabel, out var threshold))
         {
             thresholdLat = threshold.lat;
             thresholdLon = threshold.lon;
@@ -4675,13 +5006,20 @@ public class TaxiAssistForm : Form
                     // (and by an abort's), so the pilot who ticked backtrack would taxi
                     // off expecting to be taken onto the runway with no audible sign the
                     // mode was dropped. It rides in that one utterance instead — the
-                    // same lesson as the import summary and the reach warning below.
+                    // same lesson as the reach warning below.
                     backtrackFallbackNote =
                         "No backtrack entrance found for this runway. Full length departure.";
                 }
             }
         }
 
+        // Intersection departure (skipped when backtracking — the two are different
+        // maneuvers): retarget the route to the chosen taxiway intersection. The
+        // destination node becomes the taxiway's on-runway node and the lineup
+        // target becomes that point on the centerline, so guidance holds short there
+        // and lines up partway down the runway instead of at the full-length
+        // threshold. destHeading/destHeadingTrue stay the runway's takeoff heading —
+        // the centerline is the same line, just entered further along.
         TaxiGraph.RunwayIntersection? intersection = null;
         if (!backtrackActive && isRunwayDest && chkIntersection.Checked
             && cmbIntersection.SelectedItem is string interLabel
@@ -4718,7 +5056,7 @@ public class TaxiAssistForm : Form
 
         string? error = _guidanceManager.LoadRoute(
             _dataProvider, _currentIcao,
-            _aircraftLat, _aircraftLon, _aircraftHeading,
+            _aircraftLat, _aircraftLon, AircraftHeadingTrue(),
             destNodeId, destName,
             taxiwaySequence.Count > 0 ? taxiwaySequence : null,
             userHoldShorts,
@@ -4727,6 +5065,7 @@ public class TaxiAssistForm : Form
             isRunwayDest,
             prebuiltGraph: _graph,
             userRunwayHoldShorts: userRunwayHoldShorts.Count > 0 ? userRunwayHoldShorts : null,
+            userTaxiwayHoldShorts: userTaxiwayHoldShorts.Count > 0 ? userTaxiwayHoldShorts : null,
             preferIlsHold: isRunwayDest && chkCatIiiHold.Checked,
             fullLengthBacktrack: backtrackActive,
             // Pin the route through the chosen painted hold line, not just its runway entry
@@ -4734,15 +5073,27 @@ public class TaxiAssistForm : Form
             // NEIGHBOURING stub that merges with this one short of the runway (EGLL 27R:
             // picked A2, taxied and held at A3). See ApplyHoldingPointPin.
             holdingPointHoldNodeId: holdingPointEntry?.HoldNodeId,
-            // _aircraftHeading is MAGNETIC — see aircraftHeadingMagVar on LoadRoute.
-            aircraftHeadingMagVar: _aircraftMagVar);
+            // The point's label ("A1") so the hold-short stop can name the line the
+            // pilot picked — spoken only when the stop node IS that point's node.
+            holdingPointName: holdingPointEntry?.TaxiwayName,
+            intersectionDeparture: intersection != null);
 
         if (error != null)
         {
             // The dropped-backtrack note leads: it explains what the pilot asked for
             // and did not get, and the abort's own reason follows it.
-            AnnounceCalculateAbort(
-                backtrackFallbackNote == null ? error : backtrackFallbackNote + " " + error);
+            string spoken = backtrackFallbackNote == null ? error : backtrackFallbackNote + " " + error;
+            // A runway whose item label carries "(backtrack required)" can fail to
+            // route at all when its full-length entrance is an island the taxi network
+            // never reaches (iniBuilds LMML 31: taxiways A/A1 at the threshold are their
+            // own component). The failure alone leaves a blind pilot with nothing to try;
+            // the backtrack option is the one recalculation that works, so say so here
+            // as well as on the successful-route advisory below.
+            if (isRunwayDest && !backtrackActive
+                && destLabel.EndsWith(BacktrackRequiredSuffix, StringComparison.OrdinalIgnoreCase))
+                spoken += " This runway has no full length taxiway. Recalculate with the " +
+                          "full length departure with backtrack option.";
+            AnnounceCalculateAbort(spoken);
             // A reachability refusal rolls back and leaves the PREVIOUS route still live
             // (TaxiGuidanceManager.RestoreLoadRouteRollback) -- the pilot IS still flying a
             // route even though this Calculate failed, so the summary box must keep showing
@@ -4750,7 +5101,7 @@ public class TaxiAssistForm : Form
             // 7 Defect B). Decided from the manager's own guidance STATE (HasLiveRoute),
             // never guessed from the error string, and never from CurrentRoute != null,
             // which stays true well past arrival (PR #238 review, Important 3).
-            ShowRouteFailure(error, keepSummary: _guidanceManager.HasLiveRoute);
+            ShowRouteFailure(spoken, keepSummary: _guidanceManager.HasLiveRoute);
             return;
         }
 
@@ -4760,6 +5111,7 @@ public class TaxiAssistForm : Form
         // particularly long string. This is the only place that surfaces
         // what the router actually decided when no taxiways were picked.
         txtRouteSummary.Text = _guidanceManager.LastRouteSummary;
+
         lblStatus.Text = "Route loaded. Guidance active.";
 
         // Docking guidance: set the target gate unconditionally when heading to
@@ -4771,7 +5123,7 @@ public class TaxiAssistForm : Form
         }
         else
         {
-            _destinationSpotMap.TryGetValue(destName, out var destSpot);
+            _destinationSpotMap.TryGetValue(destLabel, out var destSpot);
             _dockingManager?.SetDestinationGate(destSpot);
             ApplyGsxStopOffset(destSpot);
         }
@@ -4790,18 +5142,20 @@ public class TaxiAssistForm : Form
         // start-hold sentence, the instruction to act on, follows it).
         // (No-op for Progressive Taxi: LastRouteReachWarning is only set for
         // runway destinations, and progressive legs never set a lineup target.)
-        //
-        // An imported (SayIntentions) route's summary rides at the FRONT of that same
-        // utterance — see StartImportedRoute. Front, because the reach warning (or a
-        // start-hold sentence after it) stays the
-        // last thing said, per the ordering above; the import summary leads with its own
-        // warnings for the same reason.
         var standstillParts = new List<string>();
+        // An imported (SayIntentions) route's summary rides at the FRONT of this same utterance —
+        // see StartImportedRoute. Front, because the reach warning and the start-hold sentence stay
+        // the last things said; the import summary leads with its own warnings for the same reason.
         string? imported = _importSummary?.Invoke(true);
         if (!string.IsNullOrEmpty(imported)) standstillParts.Add(imported);
         // A ticked backtrack the airport could not honour — said before the route
         // details, because it changes what the pilot should expect to happen next.
         if (backtrackFallbackNote != null) standstillParts.Add(backtrackFallbackNote);
+        // Warnings the route itself carries (cannot be joined from here, a runway with no hold short point,
+        // a hold-short pick that could not be set). They are in the spoken summary too, but StartGuidance's
+        // first callout cuts that off — the same lesson as the reach warning below.
+        if (!string.IsNullOrEmpty(_guidanceManager.LastRouteStartWarning))
+            standstillParts.Add(_guidanceManager.LastRouteStartWarning);
         if (intersection != null)
         {
             string rwyLabel = destName.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase)
@@ -4811,11 +5165,6 @@ public class TaxiAssistForm : Form
                 $"Intersection {intersection.TaxiwayName} departure, {rwyLabel}. " +
                 $"About {DistanceFormatter.FromMetres(intersection.RemainingMeters)} of runway ahead.");
         }
-        // A named holding-point departure changes WHERE the route meets the runway just
-        // as an intersection departure does, so it gets the same confirmation: which
-        // painted line the route now runs through, and how much runway is left beyond it.
-        // Without it the only difference a pilot could hear between "depart from A2" and
-        // "depart from A4" was the hold-short callout minutes later, out on the taxiway.
         if (holdingPointEntry != null)
         {
             string rwyLabel = destName.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase)
@@ -4856,6 +5205,19 @@ public class TaxiAssistForm : Form
         {
             standstillParts.Add(turnCue);
         }
+        // Backtrack advisory: the pilot calculated to a runway whose item label
+        // carries "(backtrack required)" WITHOUT ticking the full-length backtrack
+        // box. The label covers arrowing the combo; this covers every other way the
+        // destination gets set (SayIntentions import, restored selection) — and the
+        // stakes: at the LICR class the unticked route can quietly end hundreds of
+        // metres short of the threshold with no reach warning. Advisory, not a
+        // refusal — an intersection-style departure from the mid-field entrance is
+        // legitimate if the pilot wants it.
+        if (isRunwayDest && !backtrackActive
+            && destLabel.EndsWith(BacktrackRequiredSuffix, StringComparison.OrdinalIgnoreCase))
+            standstillParts.Add(
+                "This runway has no full length taxiway. For the full length, " +
+                "recalculate with the full length departure with backtrack option.");
         // A route that begins at a runway hold line started HELD. Its hold sentence is the LAST part of
         // this one utterance — it is what the pilot must act on — and is consumed here, because
         // MainForm feeds guidance no frames while it holds and nothing else would say it.
@@ -4864,6 +5226,10 @@ public class TaxiAssistForm : Form
             standstillParts.Add(startHoldCue);
         if (standstillParts.Count > 0)
             _announcer.AnnounceImmediate(string.Join(" ", standstillParts));
+        // (The old separate second AnnounceImmediate for the intersection
+        // confirmation was removed: consecutive AnnounceImmediate calls stomp
+        // each other — per the comment above — so it silently swallowed the
+        // reach warning whenever an intersection was chosen.)
 
         // GSX gate auto-select: fire-and-forget when the destination is one GSX can prepare
         // (ShouldSendGateSelect — which destination types ask, and for a Place which stands)
@@ -4880,7 +5246,7 @@ public class TaxiAssistForm : Form
         // GSX parking stand, which has no deice-pad equivalent. DockingGuidanceManager
         // handles deice guidance via SetDestinationGate (spot.IsDeiceArea is true)
         // without any GSX Remote API interaction.
-        _destinationSpotMap.TryGetValue(destName, out var selectSpot);
+        _destinationSpotMap.TryGetValue(destLabel, out var selectSpot);
         if (ShouldSendGateSelect(cmbDestType.SelectedIndex, selectSpot)
             && SettingsManager.Current.GsxAutoSelectGateOnRoute && _gsxGateSelector != null)
         {
@@ -5137,56 +5503,118 @@ public class TaxiAssistForm : Form
             }
         }
 
+        // The named taxiway changes NAME on the way across (EGCC: P1 → centreline → DZ1),
+        // so no far-side node carries it. Only then, follow the network across from where
+        // that taxiway meets the runway on the near side. A name-matched far node is kept
+        // whenever one exists, so every crossing that resolved before resolves identically.
+        if (bestNode == null && crossAtTaxiway != null)
+        {
+            foreach (int startId in RunwayCrossingResolver.TaxiwayCrossingStarts(_graph, runway, crossAtTaxiway, -targetSign))
+            {
+                if (aircraftComponentId.HasValue
+                    && _graph.Nodes[startId].ComponentId != aircraftComponentId.Value) continue;
+                if (RunwayCrossingResolver.FindAcross(_graph, runway, startId) is not { } crossing) continue;
+                if (!_graph.Nodes.TryGetValue(crossing.FarNodeId, out var far)) continue;
+                double dist = TaxiGraph.CalculateDistanceMeters(
+                    _aircraftLat, _aircraftLon, far.Latitude, far.Longitude);
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    bestNode = far;
+                }
+            }
+        }
+
         return bestNode;
     }
 
     /// <summary>
-    /// Returns the distinct named taxiways that physically cross
-    /// <paramref name="runway"/> — i.e. have a graph edge whose endpoints sit on
-    /// opposite sides of the runway centerline, with the crossing falling within
-    /// the runway's length. Used to populate the Progressive Taxi "After crossing
-    /// runway" terminator's optional "Cross at" picker so the pilot can only choose
-    /// a crossing point that actually exists. Sorted alphanumerically. Mirrors the
-    /// cross-track / along-track geometry used by FindFarSideRunwayNode.
+    /// Named holding points from which the aircraft can genuinely cross
+    /// <paramref name="runway"/> ("cross runway 23R at P1"), each with its resolved
+    /// crossing. A point qualifies only when ALL hold:
+    /// <list type="bullet">
+    /// <item>It is not an intermediate hold — those guard taxiway junctions, not runways.</item>
+    /// <item>It is the last line before the runway on its crossing — no hold-short node or other
+    /// runway holding point lies between it and the pavement.</item>
+    /// <item>Its nearest runway centreline is THIS runway (a hold between close parallels
+    /// belongs to whichever runway it is nearer).</item>
+    /// <item>It is on the aircraft's side (either side when the aircraft is on the pavement) and
+    /// in the aircraft's connected component — a point across the runway cannot be where you
+    /// start a crossing, and an island cannot be reached.</item>
+    /// <item><see cref="RunwayCrossingResolver.FindAcross"/> finds a real crossing from its node.</item>
+    /// </list>
     /// </summary>
-    private List<string> GetTaxiwaysCrossingRunway(Runway runway)
+    private List<(NamedHoldingPoint Point, RunwayCrossingResolver.Crossing Crossing)> GetHoldingPointsCrossingRunway(Runway runway)
     {
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (_graph == null) return new List<string>();
+        var result = new List<(NamedHoldingPoint, RunwayCrossingResolver.Crossing)>();
+        if (_graph == null || _namedHoldingPoints.Count == 0) return result;
 
         var frame = RunwayFrame.For(runway, runway.StartLat);
-        const double ALONG_BUFFER_M = 50.0;
+        double halfWidth = HoldShortNodeResolver.TrueHalfWidthMetres(runway);
+        double acCt = frame.SignedCrossTrack(_aircraftLat, _aircraftLon);
+        int acSide = Math.Abs(acCt) >= halfWidth ? Math.Sign(acCt) : 0;
+        int? acComponent = _graph.FindNearestNode(_aircraftLat, _aircraftLon)?.ComponentId;
+        // Sign-sourced points are approximate and are never a runway crossing point.
+        static bool NotACrossingPoint(NamedHoldingPoint p) =>
+            string.Equals(p.Kind, "intermediate", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(p.Kind, NamedHoldingPointResolver.SignKind, StringComparison.OrdinalIgnoreCase);
+        var runwayHoldNodes = _namedHoldingPoints
+            .Where(p => !NotACrossingPoint(p))
+            .Select(p => p.NodeId)
+            .ToHashSet();
 
-        foreach (var edges in _graph.Adjacency.Values)
+        foreach (var hp in _namedHoldingPoints)
         {
-            foreach (var edge in edges)
-            {
-                if (string.IsNullOrEmpty(edge.TaxiwayName)) continue;
-                if (names.Contains(edge.TaxiwayName)) continue;
-                if (!_graph.Nodes.TryGetValue(edge.FromNodeId, out var a)) continue;
-                if (!_graph.Nodes.TryGetValue(edge.ToNodeId, out var b)) continue;
+            if (NotACrossingPoint(hp)) continue;
+            if (!_graph.Nodes.TryGetValue(hp.NodeId, out var node)) continue;
+            if (acComponent.HasValue && node.ComponentId != acComponent.Value) continue;
 
-                double ctA = frame.SignedCrossTrack(a.Latitude, a.Longitude);
-                double ctB = frame.SignedCrossTrack(b.Latitude, b.Longitude);
+            double ct = frame.SignedCrossTrack(node.Latitude, node.Longitude);
+            if (acSide != 0 && Math.Sign(ct) != acSide) continue;
+            if (Math.Abs(ct) > RunwayCrossingResolver.MaxStartLateralM) continue;
+            if (IsNearerAnotherRunway(node, runway, Math.Abs(ct))) continue;
 
-                // Edge spans the centerline iff its endpoints are on opposite
-                // sides (sign change). Require the crossing to fall within the
-                // runway's length so a parallel taxiway that merely touches the
-                // centerline beyond a threshold isn't counted.
-                if (Math.Sign(ctA) == Math.Sign(ctB)) continue;
+            if (RunwayCrossingResolver.FindAcross(_graph, runway, hp.NodeId) is not { } crossing) continue;
 
-                double alongMid = (frame.Along(a.Latitude, a.Longitude) + frame.Along(b.Latitude, b.Longitude)) / 2.0;
-                if (alongMid < -ALONG_BUFFER_M) continue;
-                if (alongMid > frame.LengthM + ALONG_BUFFER_M) continue;
+            // Only the LAST line before the runway is a crossing point. A hold further back
+            // (EGCC B2 behind B1, an ILS hold behind its runway hold) reaches the runway only
+            // THROUGH that nearer line — ATC names the nearer one, and offering both would put
+            // two "crossings" in the list for one piece of pavement.
+            if (RunwayCrossingResolver.PassesNearSideHold(_graph, crossing)) continue;
+            if (crossing.NearSideNodeIds.Any(runwayHoldNodes.Contains)) continue;
 
-                names.Add(edge.TaxiwayName);
-            }
+            result.Add((hp, crossing));
         }
-
-        var list = names.ToList();
-        list.Sort(StringComparer.OrdinalIgnoreCase);
-        return list;
+        return result;
     }
+
+    /// <summary>True when some OTHER runway's centreline is nearer the node than this runway's axis.</summary>
+    private bool IsNearerAnotherRunway(TaxiNode node, Runway runway, double lateralToRunwayM)
+    {
+        if (_graph == null) return false;
+        var frame = RunwayFrame.For(runway, runway.StartLat);
+        foreach (var cl in _graph.RunwayCenterlines)
+        {
+            bool ours = Math.Abs(frame.SignedCrossTrack(cl.Lat1, cl.Lon1)) <= 30.0
+                     && Math.Abs(frame.SignedCrossTrack(cl.Lat2, cl.Lon2)) <= 30.0;
+            if (ours) continue;
+            double perp = TaxiGraph.PerpendicularDistanceMetersStatic(
+                node.Latitude, node.Longitude, cl.Lat1, cl.Lon1, cl.Lat2, cl.Lon2);
+            if (perp < lateralToRunwayM) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Returns the distinct named taxiways that physically cross
+    /// <paramref name="runway"/>, for the Progressive Taxi "After crossing runway"
+    /// terminator's optional "Cross at" picker, so the pilot can only choose a crossing
+    /// point that actually exists. Sorted alphanumerically. The rule lives in
+    /// <see cref="RunwayCrossingResolver.TaxiwaysCrossing"/> — an edge spanning the
+    /// centreline, or taxiways meeting at a node ON the runway from both sides (EGCC P/DZ).
+    /// </summary>
+    private List<string> GetTaxiwaysCrossingRunway(Runway runway)
+        => RunwayCrossingResolver.TaxiwaysCrossing(_graph, runway);
 
     /// <summary>
     /// Computes the GSX <c>.py</c> per-aircraft stop offset for <paramref name="spot"/> and

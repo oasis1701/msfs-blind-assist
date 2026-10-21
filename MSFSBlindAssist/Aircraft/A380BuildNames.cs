@@ -20,7 +20,8 @@ namespace MSFSBlindAssist.Aircraft;
 /// <item>FLIGHT DIRECTORS — FS2020: per side, the stock AUTOPILOT FLIGHT DIRECTOR ACTIVE:n (the
 /// fcu.xml tooltip and FCU/fcu.js read it), toggled by K:TOGGLE_FLIGHT_DIRECTOR with the side as the
 /// parameter (fcu.xml BUTTON_CODE fires "1 (&gt;K:TOGGLE_FLIGHT_DIRECTOR)" and "2 …"; the FS2020
-/// fbw.wasm does not name the event, so nothing masks it). FS2024: ONE FCU pushbutton —
+/// fbw.wasm does name the event and logs it, but the cockpit button fires that same event, so a
+/// toggle sent from here is exactly what a press does). FS2024: ONE FCU pushbutton —
 /// <c>A32NX.FCU_FD_PUSH</c> with light <c>L:A32NX_FCU_FD_LIGHT_ON</c> (fcu.xml + fbw.wasm; neither
 /// name exists in the FS2020 package); see <see cref="A380FlightDirector"/>. That light is FD 1 OR
 /// FD 2, so "both on" is read from the PRIM's FG discrete word 1 (bits 13 AND 14, the definition's

@@ -181,9 +181,10 @@ public static class PMDG737ChecklistDefinitions
             // APU start must go ON → dwell → momentary START (StartApuAsync); writing START
             // directly never spools the APU up. Auto-detects ON-line from the selector at ON or START
             // AND the APU running (FO_APU_ON): the selector alone ticked the line at ON with the APU
-            // never started, and a tick then skipped the start (FO-12).
-            AutoAsync("BS_APU", "BEFORE_START", "APU: ON line", AircraftStateEvaluator.ApuOnField, v => v > 0.5,
-                (e, _) => e.StartApuAsync()),
+            // never started, and a tick then skipped the start (FO-12). The EGT gets there about 25 s
+            // after START, so StartApuAsync holds the tick open until then (FO-11).
+            AutoAsync("BS_APU", "BEFORE_START", "APU: ON line", AircraftStateEvaluator.ApuOnField,
+                AircraftActionExecutor.IsApuOnLine, (e, s) => e.StartApuAsync(s)),
             // Electrical transfer to the APU. The APU GEN switches are stateless momentary
             // push pairs (no readable per-switch state) — action-only, like the panel.
             // (No separate "Ground power: OFF" item by user decision — the flow drops
@@ -388,9 +389,10 @@ public static class PMDG737ChecklistDefinitions
             Auto("AL_PROBE", "AFTER_LANDING", "Probe heat: OFF", "ICE_ProbeHeatSw_0", v => v < 0.5,
                 new[] { "ICE_ProbeHeatSw_1" }, (e, _) => e.SetProbeHeat(0)),
             // Full ON → dwell → START sequence — selector ON alone never spools the APU up, so the
-            // line reads the APU running too (FO_APU_ON, BS_APU's state).
-            AutoAsync("AL_APU", "AFTER_LANDING", "APU: ON line", AircraftStateEvaluator.ApuOnField, v => v > 0.5,
-                (e, _) => e.StartApuAsync()),
+            // line reads the APU running too (FO_APU_ON, BS_APU's state). Held open until the APU
+            // runs, as BS_APU.
+            AutoAsync("AL_APU", "AFTER_LANDING", "APU: ON line", AircraftStateEvaluator.ApuOnField,
+                AircraftActionExecutor.IsApuOnLine, (e, s) => e.StartApuAsync(s)),
             Auto("AL_START_OFF", "AFTER_LANDING", "Engine start switches: OFF", "ENG_StartSelector_0", v => v > 0.5 && v < 1.5,
                 new[] { "ENG_StartSelector_1" },
                 (e, _) => { e.SetEngStartSelector1(1); e.SetEngStartSelector2(1); }),

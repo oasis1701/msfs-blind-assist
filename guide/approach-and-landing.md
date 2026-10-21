@@ -288,7 +288,8 @@ Plan your exit during the descent or approach, once you know your landing runway
 3. **Runway** (Alt+R): a list of runway directions, already set to your destination runway if you have one. If the runway BA was given is not in the list, it tells you, for example: *"Runway 27R is not in this airport's runway list. Showing runway 09L instead — check the runway before you plan an exit."*
 4. When a runway is selected, BA tells you how many exits it found, for example *"6 exit options for runway 27L."* If some exits have no taxiway mapped clear of the runway in your database, it adds *"2 of them have no taxiway mapped clear of the runway."*
 5. **Exit taxiway** (Alt+E): arrow through the exits. They are listed in order of distance from the landing threshold, nearest first. BA pre-selects a sensible one: never a turnaround, and one that leads clear of the runway if there is one.
-6. Choose **Plan Exit** (Alt+P). The window closes and BA confirms, for example: *"Landing exit planned: taxiway B5 at EGLL runway 27L, 2100 metres from threshold. Guidance will auto-start on touchdown."*
+6. If ATC has given you a land and hold short instruction (LAHSO), tick **Land and hold short (LA&HSO) of** (Alt+H) and choose the crossing runway you must stop before. Each choice reads like *"Runway 27 — hold point 1700 m from threshold (estimated)"*: BA estimates the stop point from the two runways' geometry, so treat it as a guide, not a painted line. Only runways that actually cross yours are listed. If your exit lies beyond that point, Plan Exit refuses it: *"Exit B9 is at 3200 metres, beyond the LAHSO hold point at 1700 metres. Pick an earlier exit or uncheck land and hold short."*
+7. Choose **Plan Exit** (Alt+P). The window closes and BA confirms, for example: *"Landing exit planned: taxiway B5 at EGLL runway 27L, 2100 metres from threshold. Guidance will auto-start on touchdown."* With a LAHSO, it adds *"Land and hold short of runway 27: estimated hold point 1700 metres from the threshold."*
 
 To remove a plan, open the window again and choose **Clear Plan** (Alt+C). BA says *"Landing exit plan cleared."* Escape closes the window without changing anything.
 
@@ -312,7 +313,11 @@ Each exit reads like this:
   - **End**: an exit at or near the far end of the runway that turns back sharply (more than 110 degrees). You will need to slow right down, and it often means a sharp turn back.
 - **The side**: left or right, as you face the landing direction.
 - **The angle** between the exit and the runway, in degrees.
+- **"(sharp turn back)"** at the end means the exit's path turns back hard soon after it leaves the runway, so you must be at walking pace by the turn. BA pre-selects an exit without this mark when there is one.
+- **"(backtrack required)"** at the end means the exit is a turn pad at the runway end: you roll to the end, turn around and backtrack along the runway to a taxiway. BA guides that backtrack for you.
 - **"— WARNING: no taxiway mapped clear of the runway"** at the end means your database has nothing past the junction. BA could guide you to the turn but not off the runway. Choose another exit if you can.
+
+Where the database has several entries for what is really one turn-off, the list shows it once.
 
 If BA finds no exits at all, it says *"No usable exits found on runway 27L in the database. Try another runway or update your navdata."*
 
@@ -356,18 +361,42 @@ Every callout between touchdown and leaving the runway, in roughly the order you
 - *"Touchdown on runway 27R, not 27L. No usable exit."*: there is no usable exit on the runway you landed on. BA goes straight to the runway-end countdown.
 - *"Touchdown. Runway not identified. No exit guidance this landing."*: BA could not work out which runway you are on, for example after a bounce, a touch-and-go or a landing beside the runway. You get no exit guidance on this landing, but your plan is kept for the next one. Taxi off the runway yourself, then use Where Am I (Output Alt+Y) and the taxi planner.
 
+The touchdown sentence can end with a reminder about this landing: *"LAHSO: hold short of runway 27."* if you planned a land and hold short, *"Sharp turn back, slow down early."* for an exit marked "(sharp turn back)", or *"Backtrack required, to taxiway A."* for a turn-pad exit.
+
 ### Approaching the exit {#land-callouts-approach}
 
 - *"Approaching exit taxiway B7, 500 metres."* (1,500 feet): your first warning.
 - *"Taxiway B5, 300 metres."* (900 feet): high-speed exits only, a second warning, about where a sighted pilot would see the first exit lights.
 - *"Taxiway B7, 150 metres."* (500 feet): get ready to turn. If it ends with *"Slow down."*, you are too fast to make this exit: above about 60 knots for a shallow exit, or above about 30 knots for a right-angle exit or an end exit. Brake.
+- *"Left turn ahead, taxiway B7."* or *"Right turn ahead, taxiway B7."*: on an ordinary right-angle exit, an early warning that the turn is coming. It comes sooner the faster you are, so you have time to slow down; it does not mean turn yet.
 - *"Turn left now, taxiway B7."* or *"Turn right now, taxiway B7."*: turn now. The steering tone swings to the exit; follow it. For a very shallow exit (under 20 degrees) you hear *"Gentle left now"* or *"Gentle right now"* instead: make a small steering input, not a full turn.
 
-If the exit's side cannot be worked out, the direction comes from where the exit is relative to your aircraft.
+If BA cannot be sure which side the exit turns to, for example because the scenery draws the junction right on the centreline, it leaves the direction out and says *"Turn now, taxiway B7."* It never guesses a side, because a wrong side is worse than none.
+
+### Land and hold short {#land-callouts-lahso}
+
+If you planned a LAHSO, BA counts you down to the estimated hold point whatever happens with your exit, even if you miss every exit and end up in the runway-end countdown:
+
+- *"LAHSO hold point, runway 27, in 600 metres."*
+- *"LAHSO hold point in 300 metres. Slow down."*
+- *"LAHSO hold point in 150 metres. Stop before runway 27."*
+- *"Warning: past the LAHSO hold point for runway 27."*: you have rolled past it. Stop and tell ATC.
+
+When BA has to switch to another exit, it only ever picks one short of the hold point.
+
+### Changing your exit on the rollout {#land-callouts-repick}
+
+If ATC changes your exit while you are rolling out ("turn right at Hotel"), open the Landing Exit Planner (Input Shift+X), pick the new exit and choose Plan Exit. BA switches guidance to it: *"New exit, taxiway H, 600 metres ahead."* You can tick a LAHSO here too, and BA adds *"Land and hold short of runway 27."* A LAHSO you planned before landing stays in force; it cannot be cancelled on the roll.
+
+BA refuses a change it cannot safely follow, says why, and keeps your current exit:
+
+- *"Exit H is behind you. Keeping taxiway G."*
+- *"Taxiway H is past the LAHSO hold point for runway 27. Keeping taxiway G."*
+- *"That exit list is for runway 09. Rolling out on runway 27. Keeping taxiway G."*: the planner was showing the other end of your runway, whose exits are measured from the other threshold. Choose the runway you are on and pick again.
 
 ### The steering tone on the rollout {#land-callouts-tone}
 
-During the middle of the rollout, the tone keeps you on runway heading and quiet. It only starts steering you toward the exit once you are close to it and turning its way. If you drift off the centreline while slowing down, the tone steers you back onto runway heading rather than pulling you at the exit early. Close to the exit, a drift toward the exit's side goes quiet, because you are plainly already making the turn.
+During the middle of the rollout, the tone keeps you on runway heading and quiet. It only starts steering you toward the exit once you are close to it and turning its way. On an ordinary right-angle exit, it holds runway heading right up to *"Turn ... now"*, so it never pulls you toward the exit before you should turn; after the callout it pauses briefly while you start the turn, then steers you along the exit. If you drift off the centreline while slowing down, the tone steers you back onto runway heading rather than pulling you at the exit early. Close to the exit, a drift toward the exit's side goes quiet, because you are plainly already making the turn.
 
 ### Too fast, missed, or early {#land-callouts-retarget}
 
@@ -409,8 +438,8 @@ The countdown ends according to what you do next:
 
 While backtracking:
 
-- *"Taxiway ahead. Vacate runway."*: the taxiway BA found for you to leave the runway is coming up. Turn off onto it.
-- *"Runway vacated. No route set — use the taxi planner for a route to your stand."*: you are off. The tone stops, and if you ask for taxi status you will hear that no route is loaded. That is expected.
+- *"Taxiway H ahead on the left. Vacate runway."*: the taxiway BA found for you to leave the runway is coming up, about 200 metres ahead, on the side named. The tone now swings toward it; follow it off the runway. Without a name or a clear side you hear just *"Taxiway ahead. Vacate runway."*
+- *"Runway vacated. No route set — use the taxi planner for a route to your stand."*: you are off, clear of every runway. The tone stops, and if you ask for taxi status you will hear that no route is loaded. That is expected.
 - *"Backtracking on the runway. No taxiway connection found — use the taxi planner to set a route."*: BA cannot find a taxiway to leave by. Ask ATC and plan with the taxi planner.
 
 <div class="callout warning" role="note" markdown="1">

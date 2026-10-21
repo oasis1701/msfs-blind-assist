@@ -65,6 +65,7 @@ public sealed class NamedHoldingPoint
                 "runway"       => " (runway hold)",
                 "ils"          => " (ILS hold)",
                 "intermediate" => " (intermediate hold)",
+                NamedHoldingPointResolver.SignKind => " (from sign, approximate)",
                 _              => "",
             };
             return Name + suffix;
@@ -113,8 +114,15 @@ public static class NamedHoldingPointResolver
     /// the three points that legitimately stay dropped there are 55.6 m, 77.3 m and 85.5 m from
     /// any edge, so nothing in between is being guessed at. This is NOT the banned "widen the
     /// snap radius" tune — MAX_SNAP_M and DESIGNATED_SNAP_M are untouched.
+    /// <para>8 m, not 5 (2026-09-24): a converted scenery draws its centreline a few metres off
+    /// OSM's paint — Taxi2Gate LFPG's TL6/TL7 sit 6.2/5.4 m from their own taxiways and were
+    /// dropped. Swept over the 98 VirtualPilot OSM snapshots: 5 → 8 m ADDS 4 points (LFPG TL6/TL7,
+    /// KIAH "18" 7.8 m, RJBB NR2 8.0 m), moves none and changes no runway entry. A half-width
+    /// rule was measured too and rejected: it also admits points 12-14 m off the line (KDFW
+    /// "17C ILS HOLD", RJAA A5 — the latter re-pinning a runway entry), i.e. beside the
+    /// taxiway, not on it.</para>
     /// </summary>
-    public const double EDGE_PROJECTION_MAX_M = 5.0;
+    public const double EDGE_PROJECTION_MAX_M = 8.0;
 
     /// <summary>
     /// Snaps ONE online holding-point coordinate onto a navdata graph node using this
@@ -219,6 +227,127 @@ public static class NamedHoldingPointResolver
         return best.Values
             .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    /// <summary>Kind given to a sign-sourced point; <see cref="NamedHoldingPoint.DisplayLabel"/> marks it approximate.</summary>
+    public const string SignKind = "sign";
+
+    /// <summary>
+    /// A sign's centroid further than this from the navdata taxiway it names is dropped. Signs
+    /// stand at the taxiway edge and X-Plane sits ~20 m off MSFS scenery, so OMDB's measure
+    /// 30-35 m; 60 m is the same bound the extractor uses to tie a sign to a taxiway at all.
+    /// </summary>
+    public const double SIGN_TO_TAXIWAY_MAX_M = 60.0;
+
+    /// <summary>
+    /// A scenery hold-short node (HS/IHS) ON the named taxiway within this of the sign is taken
+    /// as the painted line the sign marks — the scenery's own geometry, better than a projection.
+    /// </summary>
+    public const double SIGN_DESIGNATED_SNAP_M = 40.0;
+
+    /// <summary>
+    /// A sign-sourced point must be at least this far from every runway centreline (within the
+    /// runway's length). Where a pilot holds before a runway is never taken from a sign, and a
+    /// red name sign that close to a runway is a runway holding position, not an intermediate one.
+    /// </summary>
+    public const double SIGN_RUNWAY_CLEARANCE_M = 150.0;
+
+    /// <summary>
+    /// Places X-Plane sign-sourced holding points onto the navdata graph, as a FALLBACK for names
+    /// no painted line carries. A sign whose name is in <paramref name="namesTaken"/> is skipped —
+    /// OSM (or anything else) always wins. Each point goes on the navdata taxiway the sign stands
+    /// beside (by NAME, through the alias map), at a scenery hold node on that taxiway within
+    /// <see cref="SIGN_DESIGNATED_SNAP_M"/> when there is one, otherwise at the projection of the
+    /// sign onto it. Dropped when that taxiway is not within <see cref="SIGN_TO_TAXIWAY_MAX_M"/> or
+    /// the placement is within <see cref="SIGN_RUNWAY_CLEARANCE_M"/> of a runway centreline.
+    /// Changes the graph only for a point it keeps.
+    /// </summary>
+    public static List<NamedHoldingPoint> ResolveSigns(
+        TaxiGraph graph,
+        IEnumerable<MSFSBlindAssist.Services.TaxiAugment.SignHoldingPoint> signs,
+        ISet<string> namesTaken,
+        Action<string>? log = null)
+    {
+        var result = new List<NamedHoldingPoint>();
+        var shapes = graph.RunwayCenterlines.Select(RunwayShape.For).Where(s => !s.IsDegenerate).ToList();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var sign in signs)
+        {
+            string name = sign.Name.Trim();
+            if (name.Length == 0 || namesTaken.Contains(name) || !seen.Add(name)) continue;
+
+            // A sign name that is also a taxiway ("K" at EGGP) would read as "hold at taxiway K"
+            // — ambiguous, and the terminator already offers "hold short of taxiway". Signs are a
+            // fallback; when in doubt, leave the point out.
+            if (graph.GetNodesOnTaxiway(graph.ResolveTaxiwayName(name)).Count > 0)
+            {
+                log?.Invoke($"sign {name}: is also a taxiway name");
+                continue;
+            }
+
+            string taxiway = graph.ResolveTaxiwayName(sign.Taxiway.Trim());
+            if (graph.GetNodesOnTaxiway(taxiway).Count == 0)
+            {
+                log?.Invoke($"sign {name}: taxiway {sign.Taxiway} not in scenery");
+                continue;
+            }
+
+            TaxiNode? designated = null;
+            double designatedD = SIGN_DESIGNATED_SNAP_M;
+            foreach (int id in graph.GetNodesOnTaxiway(taxiway))
+            {
+                var n = graph.Nodes[id];
+                if (n.Type != TaxiNodeType.HoldShort && n.Type != TaxiNodeType.ILSHoldShort) continue;
+                double d = TaxiGraph.FastDistanceMeters(sign.Lat, sign.Lon, n.Latitude, n.Longitude);
+                if (d < designatedD) { designatedD = d; designated = n; }
+            }
+
+            double pLat, pLon, dist;
+            (TaxiEdge Edge, double Lat, double Lon, double PerpMeters)? proj = null;
+            if (designated != null)
+            {
+                pLat = designated.Latitude; pLon = designated.Longitude; dist = designatedD;
+            }
+            else
+            {
+                proj = graph.ProjectOntoNamedTaxiway(sign.Lat, sign.Lon, taxiway, SIGN_TO_TAXIWAY_MAX_M);
+                if (proj is not { } p)
+                {
+                    log?.Invoke($"sign {name}: no {taxiway} within {SIGN_TO_TAXIWAY_MAX_M:F0} m");
+                    continue;
+                }
+                pLat = p.Lat; pLon = p.Lon; dist = p.PerpMeters;
+            }
+
+            var tooClose = shapes.FirstOrDefault(s =>
+            {
+                var (along, lateral) = s.Project(pLat, pLon);
+                return along >= s.ExtentMinMeters && along <= s.ExtentMaxMeters
+                    && Math.Abs(lateral) < SIGN_RUNWAY_CLEARANCE_M;
+            });
+            if (tooClose != null)
+            {
+                log?.Invoke($"sign {name}: within {SIGN_RUNWAY_CLEARANCE_M:F0} m of runway {tooClose.Name1}/{tooClose.Name2}");
+                continue;
+            }
+
+            var node = designated ?? graph.PlaceNodeOnNamedTaxiway(proj!.Value.Edge, pLat, pLon);
+            result.Add(new NamedHoldingPoint
+            {
+                Name = name,
+                Kind = SignKind,
+                NodeId = node.NodeId,
+                Latitude = node.Latitude,
+                Longitude = node.Longitude,
+                SnapDistanceMeters = dist,
+                SnappedToDesignatedNode = designated != null,
+                InsertedOnEdge = designated == null && graph.IsHoldingPointProjectionNode(node.NodeId),
+            });
+            log?.Invoke($"sign {name}: on {taxiway}, node {node.NodeId}, {dist:F1} m from sign" +
+                        (designated != null ? " (scenery hold node)" : ""));
+        }
+        return result.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     // Duplicate-name ranking, in tiers: winning the ≤DESIGNATED_SNAP_M preference always beats

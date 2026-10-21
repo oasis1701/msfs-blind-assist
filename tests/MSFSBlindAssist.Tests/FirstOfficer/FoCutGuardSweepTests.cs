@@ -26,8 +26,8 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 /// A packs-OFF tick is left alone airborne and unread. Every flow step that makes one of these
 /// cuts sits behind BOTH an on-ground and an engines-stopped guard: an earlier read-only Stop
 /// wait (unread failing it), a requires rule on an engines wait, or its own leave-alone rule that
-/// refuses the same states as the tick (an engine cut needs either one, a packs step the ground
-/// guard). And every Securing flow, the 737 Preflights and the 777's cold-and-dark flows open with
+/// refuses the same states as the tick (an engine cut and a packs step need the ground guard, as
+/// their ticks do). And every Securing flow, every power-up flow and the 737 Preflights open with
 /// both guards, so they stop whole.
 ///
 /// Found by label, so a new line worded the way its neighbours are is covered without being
@@ -149,9 +149,11 @@ public class FoCutGuardSweepTests
                     || (la != null && la(running) && la(unread));
                 bool ok = cut switch
                 {
-                    // An engine cut runs with the engines turning by nature: the ground guard, or a
-                    // cold-and-dark flow's engines-stopped guard (nothing left to cut).
-                    Cut.Engine => groundOk || enginesOk,
+                    // An engine cut runs with the engines turning by nature, so it needs no
+                    // engines guard; but never airborne, exactly as its tick (2026-10-20: the
+                    // power-up flows' master/fuel-switch checks rode on the engines guard alone
+                    // while their ticks already refused airborne).
+                    Cut.Engine => groundOk,
                     Cut.Packs => groundOk,
                     _ => groundOk && enginesOk,
                 };
@@ -293,6 +295,13 @@ public class FoCutGuardSweepTests
     [Fact]
     public void The_cold_and_dark_flows_that_switch_pumps_off_open_with_both_guards()
     {
+        // The power-up flows check the masters / fuel switches OFF, which their ticks do only on
+        // the ground: the flow stops airborne too, so flow and tick agree.
+        AssertOpensWithGroundAndEnginesGuards(A32nx().Flows, "ELECTRICAL_POWER_UP", "A32NX");
+        AssertOpensWithGroundAndEnginesGuards(HwA330().Flows, "ELECTRICAL_POWER_UP", "Headwind A330");
+        AssertOpensWithGroundAndEnginesGuards(Fenix().Flows, "ELECTRICAL_POWER_UP", "Fenix");
+        AssertOpensWithGroundAndEnginesGuards(A380().Flows, "COCKPIT_PREP", "A380");
+        AssertOpensWithGroundAndEnginesGuards(Md11().Flows, "POWER_UP", "MD-11");
         // The 737 Preflights switch the fuel pumps off: cold and dark only, like the 777's
         // Cockpit Preparation and Electrical Power Up (hydraulic pumps, fuel controls).
         AssertOpensWithGroundAndEnginesGuards(MSFSBlindAssist.FirstOfficer.PMDG737.PMDG737FlowDefinitions.Build(), "PREFLIGHT", "PMDG 737");

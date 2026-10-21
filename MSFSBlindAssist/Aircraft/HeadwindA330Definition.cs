@@ -392,7 +392,7 @@ public class HeadwindA330Definition : FlyByWireA320Definition
 
         // ==============================================================================
         // A339X airframe divergences from the A32NX. Each measured against the installed
-        // package; see docs/headwind-a330-first-officer-test-plan.md for the live checks.
+        // package, then checked live with the rest of PR #160 (owner, 2026-10-20).
         // ==============================================================================
 
         // Nav & logo: the A339X has NO A32NX_LIGHTS_NAV_LOGO L:var at all (0 occurrences

@@ -296,9 +296,8 @@ public class AircraftActionExecutor : IFoActionExecutor
     /// <summary>FIRE/OVHT TEST button, HELD: transmit LEFTSINGLE, hold, LEFTRELEASE —
     /// fire bell + fire warning lights while held, self-releasing. NOT the panel's
     /// momentary CDA param-1 press (that is a bare blip; the test wants a real hold,
-    /// and CDA has no release). In-sim verification: 737 test plan Part U (the 777
-    /// shares that plan); fallback if transmit proves inert on this button is the
-    /// CDA param-1 press.</summary>
+    /// and CDA has no release). Checked in the sim on the 737 and the 777 with the rest
+    /// of PR #160 (owner, 2026-10-20).</summary>
     public Task<bool> FireOvhtTestAsync() =>
         HeldTransmitTestAsync("EVT_OH_FIRE_OVHT_TEST", FireOvhtTestHoldMs);
 

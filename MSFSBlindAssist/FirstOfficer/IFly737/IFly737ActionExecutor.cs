@@ -52,6 +52,15 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     /// without passing through ON does not spool the APU up.</summary>
     public const int ApuOnToStartMs = 2000;
 
+    /// <summary>How long a checklist tick's <see cref="StartApuAsync"/> waits for the APU to come
+    /// on line: the flows' own waits (BS_APU_WAIT, AL_APU_ON_LINE) give it the same 120 s, so both
+    /// paths give up together. On the ground it took 60 s from START to the APU GEN OFF BUS light
+    /// (measured 2026-10-20).</summary>
+    public const int ApuOnLineTimeoutMs = 120_000;
+
+    /// <summary>The on-line poll cadence: FlowManager's own waits read once a second too.</summary>
+    private const int ApuOnLinePollMs = 1000;
+
     /// <summary>OVHT/FIRE test switch hold (PMDG 737 parity).</summary>
     public const int FireTestHoldMs = 2000;
 
@@ -598,20 +607,55 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
         return true;
     }
 
-    /// <summary>APU start: selector ON, dwell, then START. START is spring-loaded and snaps
-    /// back to ON by itself, so nothing has to be released. Positions from RegisterEnginesApu
-    /// (IFly737MAXDefinition.Overhead.cs:550 — "Off", "On", "Start").</summary>
+    /// <summary>
+    /// APU start for a checklist tick ("APU: ON line"): selector ON, dwell, START, then a wait
+    /// until the APU reads on line (<see cref="IFly737StateEvaluator.ApuOnField"/>, the line's own
+    /// state) or <see cref="ApuOnLineTimeoutMs"/> passes. START is spring-loaded and snaps back to
+    /// ON by itself, so nothing has to be released. Positions from RegisterEnginesApu
+    /// (IFly737MAXDefinition.Overhead.cs:550 — "Off", "On", "Start").
+    ///
+    /// The wait is what keeps the tick (FO-11): ChecklistManager holds a hand-tick's revert only
+    /// while its action runs plus 10 s, and the APU comes on line about a minute after START.
+    /// Returning at START un-ticked the line with "Unable to complete: APU: ON line" while the APU
+    /// was still spooling up (2026-10-20, After Landing). An APU that never comes on line still
+    /// reverts with that message, now truthfully. The gate is released before the wait, so it never
+    /// holds up another write or <see cref="WaitForDispatchDrainAsync"/>. A flow's APU_START step
+    /// runs <see cref="StartApuCoreAsync"/> and never waits here: its own read-only wait completes
+    /// the line, and After Landing's comes last so the spool-up holds nothing up.
+    /// </summary>
     public async Task<bool> StartApuAsync()
     {
         await _gate.WaitAsync();
+        bool started;
         try
         {
             if (!IsAvailable) return false;
             await PaceAsync();
-            return await StartApuCoreAsync();
+            started = await StartApuCoreAsync();
         }
         finally { _gate.Release(); }
+        var state = _state;
+        return started && state != null
+            && await WaitForApuOnLineAsync(() => state.GetValue(IFly737StateEvaluator.ApuOnField),
+                ApuOnLineTimeoutMs, ApuOnLinePollMs);
     }
+
+    /// <summary>Reads <paramref name="apuOn"/> every <paramref name="pollMs"/> until it reads on line
+    /// or <paramref name="timeoutMs"/> passes. Not on line (0) and unread (NaN: ground power may be
+    /// what carries the buses) both keep waiting.</summary>
+    internal static async Task<bool> WaitForApuOnLineAsync(Func<double> apuOn, int timeoutMs, int pollMs)
+    {
+        for (int waited = 0; waited < timeoutMs; waited += pollMs)
+        {
+            if (IsApuOnLine(apuOn())) return true;
+            await Task.Delay(pollMs);
+        }
+        return IsApuOnLine(apuOn());
+    }
+
+    /// <summary>The "APU: ON line" lines' test (BS_APU, AL_APU), shared with the tick's wait so the
+    /// two can never disagree about what on line means.</summary>
+    public static bool IsApuOnLine(double apuOn) => apuOn > 0.5;
 
     private async Task<bool> StartApuCoreAsync()
     {

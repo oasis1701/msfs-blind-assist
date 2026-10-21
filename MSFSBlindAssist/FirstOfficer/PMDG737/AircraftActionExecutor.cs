@@ -65,6 +65,15 @@ public class AircraftActionExecutor : IFoActionExecutor
     // START, otherwise the APU never spools up (same fix as the 777 StartApuAsync).
     private const int ApuOnToStartMs = 2000;
 
+    /// <summary>How long a checklist tick's <see cref="StartApuAsync"/> waits for the APU to read
+    /// running: After Landing's own wait for the same line (AL_APU_RUNNING) gives it the same
+    /// 120 s, so both paths give up together. On the ground a cold APU's EGT went from 19 to 357
+    /// between 23 and 28 s after START (measured 2026-10-20).</summary>
+    public const int ApuOnLineTimeoutMs = 120_000;
+
+    /// <summary>The running poll cadence: FlowManager's own waits read once a second too.</summary>
+    private const int ApuOnLinePollMs = 1000;
+
     /// <summary>Held-test durations (user-tuned 2026-07-11): the OVHT/FIRE detection test
     /// switch is HELD at position 2 (fire bell + staggered annunciators, live-probed:
     /// FIRE WARN immediately, handle lights by ~1.7 s), the stall/Mach-IAS warning test
@@ -831,14 +840,45 @@ public class AircraftActionExecutor : IFoActionExecutor
         return true;
     }
 
-    /// <summary>APU start sequence: selector ON, dwell, then momentary START (springs back to ON).
-    /// A direct write to START without first passing through ON does not spool the APU up.</summary>
-    public async Task StartApuAsync()
+    /// <summary>
+    /// APU start for a checklist tick ("APU: ON line"): selector ON, dwell, momentary START
+    /// (springs back to ON), then a wait until the APU reads running
+    /// (<see cref="AircraftStateEvaluator.ApuOnField"/>, the line's own state) or
+    /// <see cref="ApuOnLineTimeoutMs"/> passes. A direct write to START without first passing
+    /// through ON does not spool the APU up.
+    ///
+    /// The wait is what keeps the tick (FO-11): ChecklistManager holds a hand-tick's revert only
+    /// while its action runs plus 10 s, and the APU EGT reaches 100 about 25 s after START.
+    /// Returning at START un-ticked the line with "Unable to complete: APU: ON line" over an APU
+    /// starting normally (owner, 2026-10-20). An APU that never runs still reverts with that
+    /// message, now truthfully. Each write takes and releases the dispatch gate, so the wait never
+    /// holds up another write or <see cref="WaitForDispatchDrainAsync"/>. The flows never call
+    /// this: their own read-only waits (BS_APU_RUNNING, AL_APU_RUNNING) complete the line.
+    /// </summary>
+    public async Task<bool> StartApuAsync(AircraftStateEvaluator state)
     {
-        SetApuSelector(1);                  // ON
+        if (!await DispatchAsync("EVT_OH_LIGHTS_APU_START", 1)) return false;   // ON
         await Task.Delay(ApuOnToStartMs);
-        SetApuSelector(2);                  // START
+        if (!await DispatchAsync("EVT_OH_LIGHTS_APU_START", 2)) return false;   // START
+        return await WaitForApuOnLineAsync(() => state.GetValue(AircraftStateEvaluator.ApuOnField),
+            ApuOnLineTimeoutMs, ApuOnLinePollMs);
     }
+
+    /// <summary>Reads <paramref name="apuOn"/> every <paramref name="pollMs"/> until it reads running
+    /// or <paramref name="timeoutMs"/> passes. Not running (0) and unread (NaN) both keep waiting.</summary>
+    internal static async Task<bool> WaitForApuOnLineAsync(Func<double> apuOn, int timeoutMs, int pollMs)
+    {
+        for (int waited = 0; waited < timeoutMs; waited += pollMs)
+        {
+            if (IsApuOnLine(apuOn())) return true;
+            await Task.Delay(pollMs);
+        }
+        return IsApuOnLine(apuOn());
+    }
+
+    /// <summary>The "APU: ON line" lines' test (BS_APU, AL_APU), shared with the tick's wait so the
+    /// two can never disagree about what on line means.</summary>
+    public static bool IsApuOnLine(double apuOn) => apuOn > 0.5;
 
     /// <summary>Both flight directors to a target state — the checklist-tick equivalent of
     /// the Preflight flow's PF_FD1/PF_FD2 mouse-flag steps. FD switches are TOGGLES, so each

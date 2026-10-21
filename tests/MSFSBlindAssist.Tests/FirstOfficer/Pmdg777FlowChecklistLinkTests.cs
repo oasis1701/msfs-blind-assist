@@ -366,7 +366,7 @@ public class Pmdg777FlowChecklistLinkTests
             // Engine start selectors: StayComplete on N2 (never linked — see above).
             // --- Manual verification lines (no state, no action) the flow still latches ---
             // (trim, CDU, V speeds, MCP, altimeters, anti-ice, flight controls, recall read-backs,
-            // oil pressure, WX radar, APU, the Shutdown Checklist's parking brake "As required") —
+            // WX radar, APU, the Shutdown Checklist's parking brake "As required") —
             // delivered by the pilot or a Captain reminder step.
             "AFTER_LANDING/AL_WX_RADAR_OFF",
             "APPROACH_SETUP/APP_ALTIMETERS",
@@ -393,9 +393,7 @@ public class Pmdg777FlowChecklistLinkTests
             "DESCENT_SETUP/DSC_AUTOBRAKE",
             "DESCENT_SETUP/DSC_LANDING_DATA",
             "DESCENT_SETUP/DSC_RECALL",
-            "ENGINE_START/ES_ENG1_OIL_PRESS",
             "ENGINE_START/ES_ENG1_START_SEL",
-            "ENGINE_START/ES_ENG2_OIL_PRESS",
             "ENGINE_START/ES_ENG2_START_SEL",
             "SHUTDOWN/SDCL_HYD",
             "SHUTDOWN/SDCL_PARK_BRAKE",

@@ -103,6 +103,9 @@ public static class HwA330FlowDefinitions
             // start, or the wrong flow picked in flight), the master checks below would shut the
             // engines down. Stop instead (the MD-11's PU_ENGINES_STOPPED).
             EnginesStoppedGuard("EPU_ENGINES_STOPPED"),
+            // ...and never airborne (FO-25), as its master ticks require: with both engines out in
+            // flight the masters are what a relight needs. Links no line (the 777's EPU_ON_GROUND).
+            OnGroundGuard("EPU_ON_GROUND"),
             // Safety-check prefix: every step skips quietly when already correct.
             Skip(SW("EPU_CHK_MASTER1", "Engine 1 master: OFF", "ENGINE_1_MASTER", 0),
                 s => s.IsPosition("ENGINE_1_MASTER", 0)),

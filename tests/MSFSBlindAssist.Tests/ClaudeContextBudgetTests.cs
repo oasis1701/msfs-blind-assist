@@ -770,7 +770,7 @@ public class ClaudeContextBudgetTests
             "BRF-1 TaxiGraph.Build", "SUR-12 TaxiGraph.IsNavdataHoldShort", "RTE-4 RunwayShape", "STR-17 GetRunwayStarts",
             "BRF-6 GetAssignedStatusAsync", "SI-30 ValidateDatabaseSimulatorMatch", "MD11-23 CalcPathVerdict.PilotWarning",
             "VAT-12 HotkeyAction.ToggleVatsimAnnouncements", "WX-10 HasOwnIcingAnnouncer",
-            "DCK-19 UpdateHeadingErrorWithThresholds",
+            "DCK-19 UpdateHeadingErrorWithThresholds", "RTE-32 StartGuidance", "EXG-8 RefineForPlanner",
             "DA40-14 OwnerMute", "DA40-23 SetLVar", "DA40-9 _uiSetEcho", "DA40A-3 ExecuteCalculatorCodeUnique",
             "DA40A-9 AnnounceImmediate", "DA40A-16 BaseAircraftDefinition", "DA40F-3 ExecuteCalculatorCodeUnique",
             "DA40F-4 ExecuteCalculatorCodeUnique", "DA40G-2 ExecuteCalculatorCodeUnique",
@@ -785,18 +785,21 @@ public class ClaudeContextBudgetTests
         {
             "DCK-17 CalculateCrossTrackError", "EXIT-1 LastKnownPosition", "EXIT-9 Runway.Length",
             "P777-14 RequestVariable", "STR-17 Runway.StartLat", "STR-17 StartLon", "SUR-4 GetNearbyAirportICAOs",
-            "SUR-24 GetTaxiPaths", "SUR-1 TaxiGraph.Build", "SI-27 TaxiGraph", "BRF-1 TaxiGuidanceManager",
-            "TKO-3 TaxiGuidanceManager", "FO-4 AnnounceImmediate", "FOB-2 FCTL_Speedbrake_Lever", "FOB-17 BARO_STD_Status",
+            "SUR-24 GetTaxiPaths", "SUR-1 TaxiGraph.Build", "SI-27 TaxiGraph",
+            "FO-4 AnnounceImmediate", "FOB-2 FCTL_Speedbrake_Lever", "FOB-17 BARO_STD_Status",
         },
         ["named as the model the rule's code copies, or as a reader its change would break"] = new[]
         {
-            "MD11-20 TakeoffVSpeedCallouts", "SIM-7 Md11SeedGate",
+            "MD11-20 TakeoffVSpeedCallouts", "SIM-7 Md11SeedGate", "EXIT-16 _rolloutAllExits",
         },
         ["a data-model field the rule's code reads"] = new[]
         {
             "ROL-10 ExitBearingTrue", "ROL-21 ExitBearingTrue", "ROL-28 DistanceFromThresholdFeet", "SI-7 ParkingSpot.Radius",
             "SI-13 TaxiPathStampUtc", "SIC-23 ClearanceText", "STR-6 TurnAngleDegrees", "STR-16 TurnDirection",
-            "SUR-12 TaxiNode.Type", "HLD-5 RunwayCenterline", "ROL-43 VisualGuidanceProfile", "ROL-43 FlareTriggerWheelHeightFt",
+            "SUR-12 TaxiNode.Type", "HLD-5 RunwayCenterline", "ROL-41 ApronNodeId", "ROL-41 ExitBearingTrue",
+            "ROL-42 ExitBearingTrue", "EXG-1 ExitBearingTrue", "EXG-1 ApronNodeId", "EXG-4 ExitSide",
+            "EXG-5 ExitBearingTrue", "EXG-7 TurnPointOffsetFeet", "EXG-8 ApronNodeId", "STR-19 TaxiRoute.RunwayEntryStub",
+            "ROL-43 VisualGuidanceProfile", "ROL-43 FlareTriggerWheelHeightFt",
             "FOB-3 ELEC_annunExtPowr_ON", "FOB-5 MAIN_GearLever",
             "FOB-6 MAIN_annunSPEEDBRAKE_ARMED", "FOB-6 MAIN_annunSPEEDBRAKE_DO_NOT_ARM", "FOB-7 XPDR_ModeSel",
         },
@@ -819,6 +822,12 @@ public class ClaudeContextBudgetTests
         ["a MainForm field declared in MainForm.cs and used by the partial the rule loads on"] = new[]
         {
             "DCK-15 tcasForm", "SIR-7 _lastOnGround",
+        },
+        ["a TaxiGuidanceManager field or constant declared in TaxiGuidanceManager.cs and used by the partial the rule "
+            + "loads on"] = new[]
+        {
+            "ROL-37 ROLLOUT_NEAR_EXIT_FT", "ROL-37 ROLLOUT_STOPPED_HANDOFF_MAX_DIST_FT", "ROL-38 ROLLOUT_TURN_NOW_FT",
+            "ROL-38 _rolloutTurnPrepAnnounced", "ROL-39 _rolloutTurnNowAnnounced",
         },
         ["the same name, other code: the rule means a framework method, an enum value, a record parameter or a folder "
             + "the declaration index does not see"] = new[]

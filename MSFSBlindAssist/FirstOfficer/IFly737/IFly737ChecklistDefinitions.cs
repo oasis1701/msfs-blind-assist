@@ -254,8 +254,9 @@ public static class IFly737ChecklistDefinitions
             // APU_Switch_Status: 0 Off/1 On/2 Start — StartApuAsync dwells at ON then presses
             // START; writing START directly never spools the APU up. Detected on the APU being on
             // line (FO_APU_ON), never the switch alone, which ticked at ON with the APU not started.
-            AutoAsync("BS_APU", "BEFORE_START", "APU: ON line", IFly737StateEvaluator.ApuOnField, v => v > 0.5,
-                (e, _) => e.StartApuAsync()),
+            // About a minute after START, so StartApuAsync holds the tick open until then (FO-11).
+            AutoAsync("BS_APU", "BEFORE_START", "APU: ON line", IFly737StateEvaluator.ApuOnField,
+                IFly737ActionExecutor.IsApuOnLine, (e, _) => e.StartApuAsync()),
             // APU generator switches are stateless momentary click pairs — action-only, like
             // the PMDG's own APU-gen item (which has no state detection either).
             ActionManual("BS_APUGEN", "BEFORE_START", "APU generators: ON",
@@ -477,8 +478,9 @@ public static class IFly737ChecklistDefinitions
             // No OFF position on this switch — AUTO is the resting position (see PF_PROBE_OFF).
             Auto("AL_PROBE", "AFTER_LANDING", "Probe heat: AUTO", "Probe_Heat_Switch_1_Status", v => v < 0.5,
                 new[] { "Probe_Heat_Switch_2_Status" }, (e, _) => e.SetProbeHeat(IFly737ActionExecutor.ProbeHeatAuto)),
-            AutoAsync("AL_APU", "AFTER_LANDING", "APU: ON line", IFly737StateEvaluator.ApuOnField, v => v > 0.5,
-                (e, _) => e.StartApuAsync()),
+            // Held open until the APU is on line, as BS_APU.
+            AutoAsync("AL_APU", "AFTER_LANDING", "APU: ON line", IFly737StateEvaluator.ApuOnField,
+                IFly737ActionExecutor.IsApuOnLine, (e, _) => e.StartApuAsync()),
             Auto("AL_START_OFF", "AFTER_LANDING", "Engine start switches: OFF", "Engine_Start_Switch_Status_0",
                 v => v > 0.5 && v < 1.5, new[] { "Engine_Start_Switch_Status_1" },
                 (e, _) => { e.SetEngStartSelector1(IFly737ActionExecutor.EngStartOff);
