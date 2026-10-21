@@ -216,6 +216,22 @@ public partial class MainForm
         }
     }
 
+    /// <summary>
+    /// The airport and runway an arrival window opens with: the destination already set, else
+    /// the loaded flight plan's arrival when it names both. One call for Select Destination
+    /// Runway and the Landing Exit Planner, so the two can never open on different airports.
+    /// flightPlanManager can be null after an aircraft switch.
+    /// </summary>
+    private LandingExitPlannerPresetResult ResolveArrivalPreset()
+    {
+        bool hasDestination = simConnectManager.HasDestinationRunway();
+        var plan = flightPlanManager?.CurrentFlightPlan;
+        return LandingExitPlannerPreset.Resolve(
+            hasDestination ? simConnectManager.GetDestinationAirport()?.ICAO : null,
+            hasDestination ? simConnectManager.GetDestinationRunway()?.RunwayID : null,
+            plan?.ArrivalICAO, plan?.ArrivalRunway);
+    }
+
     private void ShowDestinationRunwayDialog()
     {
         // Ensure output hotkey mode is deactivated before showing modal dialog
@@ -231,18 +247,13 @@ public partial class MainForm
         if (!ValidateDatabaseSimulatorMatch())
             return;
 
-        // Open with the destination airport already filled in when the app knows it. Same
-        // resolver, sources and order as the Landing Exit Planner (ShowLandingExitForm): the
-        // destination already set wins, then the flight plan's arrival when it names both —
-        // the two arrival windows must open on the same airport (PR #318 review).
-        bool hasDestination = simConnectManager.HasDestinationRunway();
-        var plan = flightPlanManager?.CurrentFlightPlan;
-        var preset = LandingExitPlannerPreset.Resolve(
-            hasDestination ? simConnectManager.GetDestinationAirport()?.ICAO : null,
-            hasDestination ? simConnectManager.GetDestinationRunway()?.RunwayID : null,
-            plan?.ArrivalICAO, plan?.ArrivalRunway);
+        // Open with the destination airport already filled in when the app knows it, from the
+        // same preset as the Landing Exit Planner, so the two never open on different airports.
+        var preset = ResolveArrivalPreset();
+        string? presetIcao = LandingExitPlannerPreset.DestinationWindowIcao(
+            preset, flightPlanManager?.CurrentFlightPlan?.ArrivalICAO);
 
-        var dialog = new DestinationRunwayForm(airportDataProvider, announcer, preset.Icao, preset.RunwayId);
+        var dialog = new DestinationRunwayForm(airportDataProvider, announcer, presetIcao, preset.RunwayId);
         if (dialog.ShowDialog(this) == DialogResult.OK)
         {
             if (dialog.SelectedRunway != null && dialog.SelectedAirport != null)
@@ -867,13 +878,7 @@ public partial class MainForm
         // airport's first runway, which is how issue #234 began. If nothing is known, the
         // form still opens empty so the pilot can type an ICAO + pick a runway manually.
         // flightPlanManager can be null after an aircraft switch.
-        bool hasIlsDestination = simConnectManager.HasDestinationRunway();
-        var arrivalPlan = flightPlanManager?.CurrentFlightPlan;
-        var preset = LandingExitPlannerPreset.Resolve(
-            hasIlsDestination ? simConnectManager.GetDestinationAirport()?.ICAO : null,
-            hasIlsDestination ? simConnectManager.GetDestinationRunway()?.RunwayID : null,
-            arrivalPlan?.ArrivalICAO,
-            arrivalPlan?.ArrivalRunway);
+        var preset = ResolveArrivalPreset();
         // Task 1 — Destination prefetch (silent, fire-and-forget; claimed only while online data is on)
         if (!string.IsNullOrEmpty(preset.Icao) && _augmentingProvider?.Enabled == true && _augmentPrefetched.Add(preset.Icao))
             _ = _augmentingProvider?.PrefetchAsync(preset.Icao, force: true);

@@ -25,6 +25,7 @@ public partial class DestinationRunwayForm : Form
     private readonly IntPtr previousWindow;
     private readonly string? _presetIcao;
     private readonly string? _presetRunwayId;
+    private int _loadGeneration;
 
     public Runway? SelectedRunway { get; private set; }
     public Airport? SelectedAirport { get; private set; }
@@ -214,12 +215,18 @@ public partial class DestinationRunwayForm : Form
 
     private void IcaoTextBox_KeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.KeyCode == Keys.Enter && runwayListBox.Items.Count > 0)
-        {
+        if (e.KeyCode != Keys.Enter) return;
+        // Always swallow it: PreviewKeyDown claimed Enter, so an unhandled one reaches the
+        // native edit control, which beeps.
+        e.Handled = true;
+        e.SuppressKeyPress = true;
+
+        if (runwayListBox.SelectedItem != null)
+            SelectButton_Click(sender, e); // a runway is already chosen: Enter confirms, as AcceptButton did
+        else if (runwayListBox.Items.Count > 0)
             runwayListBox.Focus(); // RunwayListBox_Enter highlights the planned runway
-            e.Handled = true;
-            e.SuppressKeyPress = true;
-        }
+        else
+            _announcer.Announce(statusTextBox.Text); // nothing to move to: say why
     }
 
     /// <summary>
@@ -249,43 +256,54 @@ public partial class DestinationRunwayForm : Form
         }
     }
 
-    private void LoadRunways(string icao)
+    /// <summary>
+    /// Loads the airport's runways off the UI thread: GetRunways is a multi-JOIN query with
+    /// correlated ILS subqueries, and the prefill runs it on every open (LandingExitForm moved
+    /// the same query off-thread, PR #238 §8a). A failed lookup is spoken, not only written to
+    /// the status box: with the prefill the pilot never typed anything, and a wrong typed code
+    /// is a validation error (CORE-7).
+    /// </summary>
+    private async void LoadRunways(string icao)
     {
+        ClearRunways(); // never leave the previous airport's runways selectable while loading
+        int generation = _loadGeneration;
+        statusTextBox.Text = $"Loading runways for {icao}…";
+
+        string? failure = null;
         try
         {
-            var airport = _database.GetAirport(icao);
+            var (airport, runways) = await Task.Run(() =>
+            {
+                var a = _database.GetAirport(icao);
+                return (a, a == null ? new List<Runway>() : _database.GetRunways(icao));
+            });
+            if (IsDisposed || Disposing || generation != _loadGeneration) return;
+
             if (airport == null)
+                failure = $"Airport {icao} not found in database";
+            else if (runways.Count == 0)
+                failure = $"No runways found for {icao}";
+            else
             {
-                statusTextBox.Text = $"Airport {icao} not found in database";
-                ClearRunways();
+                SelectedAirport = airport;
+                runwayListBox.Items.AddRange(runways.ToArray());
+                statusTextBox.Text = $"Found {runways.Count} runways for {airport.Name}";
                 return;
             }
-
-            var runways = _database.GetRunways(icao);
-            if (runways.Count == 0)
-            {
-                statusTextBox.Text = $"No runways found for {icao}";
-                ClearRunways();
-                return;
-            }
-
-            SelectedAirport = airport;
-            runwayListBox.Items.Clear();
-            runwayListBox.Items.AddRange(runways.ToArray());
-
-            statusTextBox.Text = $"Found {runways.Count} runways for {airport.Name}";
-
-            selectButton.Enabled = false;
         }
         catch (Exception ex)
         {
-            statusTextBox.Text = $"Error loading runways: {ex.Message}";
-            ClearRunways();
+            if (IsDisposed || Disposing || generation != _loadGeneration) return;
+            failure = $"Error loading runways: {ex.Message}";
         }
+
+        statusTextBox.Text = failure;
+        _announcer.Announce(failure);
     }
 
     private void ClearRunways()
     {
+        _loadGeneration++; // a load still in flight is for text the box no longer holds
         runwayListBox.Items.Clear();
         SelectedRunway = null;
         SelectedAirport = null;
