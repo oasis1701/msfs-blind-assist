@@ -36,6 +36,36 @@ public class FenixA320Definition : BaseAircraftDefinition
         FlareTargetPitchDeg       = 6.0     // A320 FCTM: flare attitude ~+5–6°
     };
 
+    // Waypoint Flight Director: MEASURED in-sim (2026-09-08). Four 90° AP heading-select captures,
+    // both directions at 180 kt and at 280 kt, level at 4000 ft. Bank cap read directly at
+    // 25.0-25.2° on every run, which is also the Airbus FG "Roll Limit 2" ceiling (Roll Limit 1
+    // reaches 30°, engine-out clamps to 15°). Roll-in 2.9°/s at both speeds; roll-out 2.4-2.8°/s.
+    // Captures settle within 0.2° and hunt ±0.15°.
+    //
+    // The gain is deliberately tuned to APPROACH/TERMINAL speeds. At 180 kt the Fenix autopilot is
+    // a near-perfect proportional law: bank ÷ track error held 2.06-2.12 through both rollouts,
+    // widening only at the rate-limited entry and the capture tail. At 280 kt it is not — the bank
+    // stays pinned at the cap until the error is down to ~5°, where a 2.10 gain predicts 11.9°.
+    // Fenix anticipates its own rollout arc rather than steering proportionally, and no single
+    // speed-invariant gain reproduces both speeds. Two points cannot identify that law, so it is
+    // not guessed at here: 2.10 is right where the director is actually used (course tracking and
+    // approaches, 140-250 kt), and above ~250 kt it calls the roll-out early on a large capture.
+    // Raising the gain to match cruise captures was rejected — the gain also multiplies the
+    // small-error command a hand-flying pilot lives on (a 3° error would order 15° of bank at
+    // K=5.0), inviting exactly the pilot-induced oscillation the director exists to prevent.
+    //
+    // Note this characterises the ADD-ON's autopilot, not the airframe: the FBW A320 neo measures
+    // 4.95 with a saturate-then-rate-limit strategy on the same aircraft type. See
+    // docs/waypoint-flight-director.md.
+    public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new()
+    {
+        KRollDegPerDegTrack   = 2.10,   // measured, both directions at 180 kt
+        MaxBankDeg            = 25.0,   // measured 25.0-25.2; = Airbus FG Roll Limit 2 upper bound
+        MaxBankRateDegPerSec  = 2.9,    // measured roll-in, same at 180 and 280 kt
+        BankRateLeadSec       = 0.0,    // proportional at tracking speeds; no anticipation term
+        TypicalApproachAoaDeg = 5.0     // ~2° approach pitch on a 3° path
+    };
+
     // Same airframe class as the FBW A320 — its measured 1.3 s used as proxy.
     public override double TaxiTurnLeadSeconds => 1.3;
 

@@ -142,6 +142,7 @@ Each area's rules load automatically when Claude reads its code; their full text
 | [volanta.md](docs/volanta.md) | Extras, Volanta: Volanta's public web map read in a hidden WebView2, the traffic, friends and ATC tabs, logging in | volanta |
 | [updates.md](docs/updates.md) | Release and preview channels, the updater, release workflows, the startup data check | updates |
 | [visual-guidance.md](docs/visual-guidance.md) | Visual landing guidance (dual tone), hand fly, the liftoff handoff | visual-guidance |
+| [waypoint-flight-director.md](docs/waypoint-flight-director.md) | The en-route audio flight director to the tracked waypoint slots: dual tone, crossing-altitude constraints, per-aircraft tuning | waypoint-flight-director |
 | [audio.md](docs/audio.md) | Which Windows audio endpoint guidance tones play on | audio-output |
 | [fenix-increment-decrement.md](docs/fenix-increment-decrement.md) | Fenix rotary encoders (RMP, FCU) | — |
 | [a32nx.md](docs/a32nx.md) | FlyByWire A32NX, Fenix A320, Headwind A330: panels, MCDU, DCDU, cockpit controls | a32nx-fenix, fcu-callouts, tcas-ra, a32nx-mcdu, fbw-arinc |

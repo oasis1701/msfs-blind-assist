@@ -167,6 +167,61 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // their own anticipation may relax as they learn to trust it.
     public override double TaxiTurnLeadSeconds => 0.4;
 
+    // Waypoint Flight Director. NOTE the measured taxi-turn lead above is NOT evidence for
+    // BankRateLeadSec — that figure is ground steering, dominated by the pilot's own rollout
+    // anticipation; the FD's lead models the airframe's roll-out in flight (WFD-3).
+    // Approach-AoA fallback 5.0 to match the figure this same airframe already uses in its Visual
+    // Guidance profile: it was 6.0 here and 5.0 there, two values for one physical quantity on one
+    // aircraft. Published 737 approach attitude is ~2.5° pitch on a 3° path ≈ 5-5.5° AoA.
+    public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new()
+    {
+        // MEASURED off the aeroplane, 2026-10-18 (five AP-flown HDG SEL turns, PMDG 737-800 at
+        // 4000 ft, CMD A, bank limit selector at 25: 90° right and left at 180 kt and at 280 kt,
+        // then a roll-in from wings level). Sampled bank + magnetic heading at 4 Hz over SimConnect.
+        //
+        // Unlike the 777, the 737 AFDS ANTICIPATES the roll-out. Bank came off the 25° cap 13.5° short
+        // of the target at 180 kt (turn rate 2.9°/s) and 12.2-12.4° short at 280 kt (1.7°/s). A pure
+        // proportional law would start at the same heading error at both speeds; this onset moves
+        // with turn rate, which is a lead in TIME. Solving onset = 25 / gain + lead × rate for both
+        // speeds gives gain 2.36 and lead 1.02 s — both positive, unlike the Fenix and A380, whose
+        // two speeds solve to a negative cap / gain. Left and right at 280 kt differ by 0.2° against
+        // a 1.2° speed effect; the 180 kt onset is one run (the other's sampling began after it).
+        // The previous 1.1 was a class guess that asked for under half the bank the aeroplane uses. Mid-rollout bank / error reads 2.1-2.6, above the fitted gain, because the aeroplane
+        // rolls out slower than the law commands; the last 2° creep in with ~1° of bank and no
+        // overshoot on any run.
+        KRollDegPerDegTrack   = 2.35,
+        BankRateLeadSec       = 1.0,
+        // Bank cap from the type: the 737 AFDS commands up to 30° in LNAV above 200 ft AGL (8°
+        // below). The measured 25.0-25.2° steady bank (at both speeds) was the bank limit selector,
+        // which HDG SEL obeys, so the turns do not test this cap.
+        MaxBankDeg            = 30.0,
+        // Measured roll-in 3.3°/s steady (peak 3.8) from wings level to ~17°, easing to 1-2°/s over
+        // the last few degrees into the cap. The 5.0 default let the tone move faster than the
+        // aeroplane can roll.
+        MaxBankRateDegPerSec  = 3.5,
+        TypicalApproachAoaDeg = 5.0     // matches this airframe's VG profile
+    };
+
+    // Visual Landing Guidance: a 737-800 is close enough to the A320 in size and approach speed
+    // that most of the baseline carries over — but the FLARE is Boeing, not Airbus, and the
+    // baseline's flare numbers are explicitly Airbus-tuned. Three deltas, all from the same FCTM
+    // reasoning the measured PMDG 777 profile uses:
+    //   - FlareTriggerWheelHeightFt = 20: Boeing 737 FCTM initiates the flare at ~20 ft RA, vs the
+    //     A320 FCTM's 30 ft. On the baseline the cue fired ~10 ft high on every 737 landing.
+    //   - FlareTargetPitchDeg = 5.0: Boeing FCTM specifies a 2-3° increase from approach attitude;
+    //     the 737-800 approaches at ~+2.5°, so flare ≈ +5°. The Airbus default of 6° overshoots.
+    //   - TypicalApproachAoaDeg = 5.0: only a fallback for a missing/implausible live AoA reading.
+    // Everything else (Vref ~140 like the A320, narrowbody pitch/bank rates, the datum biases) is
+    // left on the baseline deliberately — a 737-800 does not differ markedly there. The glideslope
+    // and flare datum biases remain ESTIMATES pending an in-sim coupled-ILS-autoland calibration,
+    // exactly as the A320 baseline's are.
+    public override VisualGuidanceProfile GetVisualGuidanceProfile() => new()
+    {
+        TypicalApproachAoaDeg     = 5.0,
+        FlareTriggerWheelHeightFt = 20.0,
+        FlareTargetPitchDeg       = 5.0
+    };
+
     // =========================================================================
     // Panel Structure
     // =========================================================================
