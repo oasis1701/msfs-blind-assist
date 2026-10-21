@@ -86,11 +86,22 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     internal PmdgSpeedBrakeCallout SpeedBrakeCallout => _speedBrakeCallout;
 
     /// <inheritdoc />
-    /// <remarks>Also drops the ACP receiver presses in flight, so none is settled over the next aircraft.</remarks>
+    /// <remarks>Also drops the ACP receiver presses in flight, so none is settled over the next aircraft,
+    /// and what the app knew of the baro knob (a rotation to standard, see s_baroRotatedToStd).</remarks>
     public override void OnSwitchedAway()
     {
         _speedBrakeCallout.Dispose();
         ForgetReceiverPresses();
+        ForgetBaroRotation();
+    }
+
+    /// <inheritdoc />
+    /// <remarks>A new flight or a lost connection: the baro knob the app rotated to standard may not
+    /// be that knob any more, so the Ctrl+B dialog reads 29.92 as STD again (see s_baroRotatedToStd).</remarks>
+    public override void OnSimContextReset()
+    {
+        base.OnSimContextReset();
+        ForgetBaroRotation();
     }
 
     /// <inheritdoc />
@@ -223,7 +234,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 "Electrical", "ADIRU", "Hydraulics", "Fuel", "Engines",
                 "Anti-Ice", "Air Systems", "Lights", "Signs", "Oxygen",
-                "Wipers", "Flight Controls", "Flight Recorder"
+                "Wipers", "Flight Controls", "Flight Recorder", "Warning Tests"
             },
             ["Forward Panel"] = new List<string>
             {
@@ -231,7 +242,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             },
             ["Pedestal"] = new List<string>
             {
-                "Control Stand", "Transponder/TCAS", "Fire Protection", "Cargo Fire",
+                "Control Stand", "Transponder/TCAS", "Weather Radar", "Fire Protection", "Cargo Fire",
                 "Radio", "Calls", "Flight Deck Door", "Boris Audio Works"
             },
             ["Glareshield"] = new List<string>
@@ -950,6 +961,27 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // only the event, no state field.
         d["AIR_BleedOvhtTest"]       = Momentary("AIR_BleedOvhtTest", "Bleed Overheat Test");
 
+        // Manual stick-shaker / overspeed-clacker warning tests (aft overhead P5). No SDK
+        // state exists for these, so they are app-tracked TOGGLES (RenderAsButton): each
+        // press flips engaged/released and fires the transmit press (LEFTSINGLE = hold the
+        // spring switch, shaker/clacker sounds) or release (LEFTRELEASE = stop). Handled by
+        // the dedicated 4e branch in HandleUIVariableSet; the def announces the new state
+        // (the button label is static). Live-verified 2026-07-13 that LEFTSINGLE holds
+        // open-ended until LEFTRELEASE. NOT in _simpleEventMap.
+        static SimConnect.SimVarDefinition WarnTest(string name, string display) =>
+            new SimConnect.SimVarDefinition
+            {
+                Name = name,
+                DisplayName = display,
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+            };
+        d["WARN_StickShakerTest1"]      = WarnTest("WARN_StickShakerTest1", "Stick Shaker Test 1");
+        d["WARN_StickShakerTest2"]      = WarnTest("WARN_StickShakerTest2", "Stick Shaker Test 2");
+        d["WARN_OverspeedClackerTest1"] = WarnTest("WARN_OverspeedClackerTest1", "Overspeed Clacker Test 1");
+        d["WARN_OverspeedClackerTest2"] = WarnTest("WARN_OverspeedClackerTest2", "Overspeed Clacker Test 2");
+
         // Doors
         d["DOOR_annunFWD_ENTRY"]          = Door("DOOR_annunFWD_ENTRY", "Forward Entry Door");
         d["DOOR_annunFWD_SERVICE"]        = Door("DOOR_annunFWD_SERVICE", "Forward Service Door");
@@ -1292,6 +1324,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // GPWS system test — momentary push; plays the EGPWS self-test sequence
         // (visual + audible). SDK exposes only the event, no state field.
         d["GPWS_SysTest"]              = Momentary("GPWS_SysTest", "GPWS System Test");
+        // GPWS long self-test — same button HELD 5 s (extended callout sequence). Synthetic
+        // key: dispatched by a dedicated HandleUIVariableSet branch (held transmit), NOT the
+        // generic momentary path (SendPMDGMomentaryToggle can't hold).
+        d["GPWS_SysTestLong"]          = Momentary("GPWS_SysTestLong", "GPWS System Test (Long)");
 
         // =================================================================
         // CONTROL STAND — CDU annunciators, COMM counters, ACP, stab trim, fire, xpdr, etc.
@@ -1495,6 +1531,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // TCAS self-test — momentary push; plays the TCAS test sequence (TA/RA
         // audio + display callouts). SDK exposes only the event, no state field.
         d["XPDR_TcasTest"]        = Momentary("XPDR_TcasTest", "TCAS Test");
+        // Weather radar / predictive-windshear test — synthetic managed sequence (the EFIS
+        // WXR overlay is a blind toggle with NO readable state in the NG3 SDK, and the WXR
+        // TEST mode latches): overlay ON → settle → TEST ("MONITOR RADAR DISPLAY …
+        // WINDSHEAR" aural) → wait → WX mode → overlay OFF. Assumes the overlay starts OFF.
+        d["WXR_Test"]                  = Momentary("WXR_Test", "Weather Radar Test");
         // Transponder IDENT — momentary push; squawks IDENT to make the aircraft
         // blip flash on ATC radar for ~18 seconds. SDK exposes only the event.
         d["XPDR_Ident"]           = Momentary("XPDR_Ident", "Ident");
@@ -2033,6 +2074,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 "FLTREC_SwNormal"
             },
+            ["Warning Tests"] = new List<string>
+            {
+                "WARN_StickShakerTest1", "WARN_StickShakerTest2",
+                "WARN_OverspeedClackerTest1", "WARN_OverspeedClackerTest2",
+            },
 
             // ===== Glareshield =====
             ["Warnings"] = new List<string>
@@ -2083,7 +2129,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["GPWS"] = new List<string>
             {
                 "GPWS_FlapInhibitSw_NORM", "GPWS_GearInhibitSw_NORM", "GPWS_TerrInhibitSw_NORM",
-                "GPWS_SysTest"
+                "GPWS_SysTest", "GPWS_SysTestLong"
             },
             ["Instruments"] = new List<string>
             {
@@ -2119,6 +2165,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "XPDR_XpndrSelector_2", "XPDR_AltSourceSel_2", "XPDR_ModeSel",
                 "TRANSPONDER_CODE_SET",
                 "XPDR_Ident", "XPDR_TcasTest"
+            },
+            ["Weather Radar"] = new List<string>
+            {
+                "WXR_Test"
             },
             ["Fire Protection"] = new List<string>
             {
@@ -3562,6 +3612,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["LTS_RunwayTurnoffSw_1"]      = "EVT_OH_LIGHTS_R_TURNOFF",
             ["LTS_TaxiSw"]                 = "EVT_OH_LIGHTS_TAXI",
             ["LTS_LogoSw"]                 = "EVT_OH_LIGHTS_LOGO",
+            // The position-lights switch ignores the CDA position write the generic
+            // step 5 sends (live-probed 2026-07-06), so never route it there: branch 4a
+            // claims it first (_absolutePositionSelectorSet) and sends the transmit-with-
+            // target, counted from the other end (_reversedAbsolutePositionSet). This
+            // entry only names its event for 4a; keep it.
             ["LTS_PositionSw"]             = "EVT_OH_LIGHTS_POS_STROBE",
             ["LTS_AntiCollisionSw"]        = "EVT_OH_LIGHTS_ANT_COL",
             ["LTS_WingSw"]                 = "EVT_OH_LIGHTS_WING",
@@ -3748,6 +3803,148 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         await Task.Delay(350).ConfigureAwait(false);
         simConnect.SendPMDGEvent(eventName, eventId, 0);
     }
+
+    private const uint MOUSE_FLAG_LEFTSINGLE_U  = 0x20000000u;
+    private const uint MOUSE_FLAG_LEFTRELEASE_U = 0x00020000u;
+
+    // Manual warning-test toggles: app-tracked engaged state (no SDK readback) + the
+    // var-key → PMDG event map. Engaging fires LEFTSINGLE (holds the spring switch so the
+    // shaker/clacker sounds); releasing fires LEFTRELEASE. Released on aircraft swap
+    // (ReleaseEngagedWarningTests) so a held test can't leak into the next aircraft.
+    private readonly Dictionary<string, bool> _warnTestEngaged = new();
+    private static readonly IReadOnlyDictionary<string, string> _warnTestEventMap =
+        new Dictionary<string, string>
+        {
+            ["WARN_StickShakerTest1"]      = "EVT_OH_WARNING_TEST_STALL_1_PUSH",
+            ["WARN_StickShakerTest2"]      = "EVT_OH_WARNING_TEST_STALL_2_PUSH",
+            ["WARN_OverspeedClackerTest1"] = "EVT_OH_WARNING_TEST_MACH_IAS_1_PUSH",
+            ["WARN_OverspeedClackerTest2"] = "EVT_OH_WARNING_TEST_MACH_IAS_2_PUSH",
+        };
+
+    // Presses held right now for a set time, beside the toggles above: the First Officer's
+    // preflight tests (FirstOfficer/PMDG737 AircraftActionExecutor: the fire test held 2 s, the
+    // stall and overspeed tests, the GPWS long test) and the panel's own held presses
+    // (HeldTransmitAsync). ReleaseEngagedWarningTests releases them too, so quitting MSFSBA or
+    // switching aircraft inside a hold no longer leaves the fire bell, stick shaker or clacker
+    // sounding in the sim ([P737-6]; only the toggles were released before). Static: the
+    // executor has no handle on this instance. Whoever ends a hold first takes it out and sends
+    // its release; the other sends nothing, so a hold released on the way out is not released
+    // again when its timer ends, when the PMDG data manager may already be the next aircraft's.
+    private static readonly object s_heldPressLock = new();
+    private static readonly HashSet<HeldPress> s_heldPresses = new();
+
+    /// <summary>A press held right now, with the write that releases it.</summary>
+    internal sealed class HeldPress
+    {
+        internal HeldPress(Action<SimConnect.SimConnectManager> release) => Release = release;
+        internal Action<SimConnect.SimConnectManager> Release { get; }
+    }
+
+    /// <summary>Records a press just sent and held until <see cref="EndHeldPress"/>, so an app
+    /// exit or aircraft switch meanwhile releases it (<see cref="ReleaseEngagedWarningTests"/>).</summary>
+    internal static HeldPress BeginHeldPress(Action<SimConnect.SimConnectManager> release)
+    {
+        var hold = new HeldPress(release);
+        lock (s_heldPressLock) s_heldPresses.Add(hold);
+        return hold;
+    }
+
+    /// <summary>Ends a hold: true when the caller still owes its release, false when an exit or
+    /// aircraft switch released it already.</summary>
+    internal static bool EndHeldPress(HeldPress hold)
+    {
+        lock (s_heldPressLock) return s_heldPresses.Remove(hold);
+    }
+
+    /// <summary>Held transmit press/release — for the spring test buttons that only commit
+    /// via the '#id' transmit path (GPWS long test, the WXR sequence's presses). The hold is
+    /// recorded (<see cref="BeginHeldPress"/>). No ConfigureAwait(false): the panel starts it on
+    /// the UI thread, and the release goes out from there like every other SimConnect write,
+    /// never from a pool thread while the UI thread pumps ReceiveMessage.</summary>
+    private static async Task HeldTransmitAsync(
+        SimConnect.SimConnectManager simConnect, uint eventId, int holdMs)
+    {
+        simConnect.SendPMDGEventViaTransmitWithTarget(eventId, MOUSE_FLAG_LEFTSINGLE_U);
+        var hold = BeginHeldPress(sc => sc.SendPMDGEventViaTransmitWithTarget(eventId, MOUSE_FLAG_LEFTRELEASE_U));
+        await Task.Delay(holdMs);
+        if (EndHeldPress(hold))
+            simConnect.SendPMDGEventViaTransmitWithTarget(eventId, MOUSE_FLAG_LEFTRELEASE_U);
+    }
+
+    /// <summary>Release any warning test left ENGAGED, and any press held right now (the First
+    /// Officer's preflight tests, the panel's held test presses). Called on aircraft swap and on
+    /// app exit, while the sim still takes writes and this aircraft's data manager is still the
+    /// loaded one, so a held stick shaker, clacker or fire bell can't sound forever or bleed into
+    /// the next aircraft. Best-effort; a swap must never throw.</summary>
+    public void ReleaseEngagedWarningTests(SimConnect.SimConnectManager? simConnect)
+    {
+        if (simConnect == null) return;
+        foreach (var kv in _warnTestEngaged.Where(e => e.Value).ToList())
+        {
+            try
+            {
+                if (_warnTestEventMap.TryGetValue(kv.Key, out string? evName) &&
+                    EventIds.TryGetValue(evName, out int evId))
+                    simConnect.SendPMDGEventViaTransmitWithTarget((uint)evId, MOUSE_FLAG_LEFTRELEASE_U);
+            }
+            catch { /* swap teardown must not throw */ }
+            _warnTestEngaged[kv.Key] = false;
+        }
+
+        List<HeldPress> held;
+        lock (s_heldPressLock)
+        {
+            held = s_heldPresses.ToList();
+            s_heldPresses.Clear();
+        }
+        foreach (var hold in held)
+        {
+            try { hold.Release(simConnect); }
+            catch { /* swap teardown must not throw */ }
+        }
+    }
+
+    /// <summary>WXR/PWS test managed sequence — see the WXR_Test def comment. Restore
+    /// (WX mode + overlay off) runs unconditionally after the wait, unless the aircraft changed
+    /// meanwhile: these are 737 event ids, which press other controls on another aircraft. No
+    /// ConfigureAwait(false), for the reason HeldTransmitAsync gives.
+    /// The caller took the connection's <see cref="MSFSBlindAssist.FirstOfficer.WxrTestGate"/>; it is ended
+    /// here, whatever happens. Fire-and-forget, so an exception is logged (the 777's shape), never
+    /// left as an unobserved task fault with the restore presses skipped and TEST latched.</summary>
+    private static async Task WxrTestSequenceAsync(SimConnect.SimConnectManager simConnect)
+    {
+        try
+        {
+            if (!EventIds.TryGetValue("EVT_EFIS_CPT_WXR", out int overlayEv) ||
+                !EventIds.TryGetValue("EVT_WXR_TEST", out int testEv) ||
+                !EventIds.TryGetValue("EVT_WXR_L_WX", out int wxEv))
+                return;
+            const int quick = MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.QuickTestHoldMs;
+            await HeldTransmitAsync(simConnect, (uint)overlayEv, quick);
+            await Task.Delay(MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.WxrOverlaySettleMs);
+            if (!Is737Loaded(simConnect)) return;
+            await HeldTransmitAsync(simConnect, (uint)testEv, quick);
+            await Task.Delay(MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.WxrTestWaitMs);
+            if (!Is737Loaded(simConnect)) return;
+            await HeldTransmitAsync(simConnect, (uint)wxEv, quick);
+            await Task.Delay(350);
+            if (!Is737Loaded(simConnect)) return;
+            await HeldTransmitAsync(simConnect, (uint)overlayEv, quick);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("PMDG", $"Weather radar test failed: {ex.GetType().Name}: {ex.Message}");
+        }
+        finally
+        {
+            MSFSBlindAssist.FirstOfficer.WxrTestGate.Pmdg737(simConnect).End();
+        }
+    }
+
+    // A 737 is still the loaded aircraft (an NG3 data manager): a sequence that outlives an
+    // aircraft switch stops, its 737 event ids being other controls on the next aircraft.
+    private static bool Is737Loaded(SimConnect.SimConnectManager simConnect)
+        => simConnect.PMDGDataManager is SimConnect.PMDGNG3DataManager;
 
     // Overhead bins: rows 1–18 left/right + the two small TC-layout row-3 bins.
     private static readonly string[] s_binLvars = BuildBinLvarList();
@@ -4043,8 +4240,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // clicking the switch. Click directions on this control are INVERTED
     // relative to the battery: ClkR moves position UP (toward AUTO=2), ClkL
     // moves DOWN (toward BAT=0). Source: TFM StandbyAuto sends 2x ClkR to
-    // reach position 2; StandbyBat sends 2x ClkL to reach position 0.
-    private static async Task DispatchStandbyPowerAsync(
+    // reach position 2; StandbyBat sends 2x ClkL to reach position 0. Internal: the First
+    // Officer's 737 executor drives the selector through this same sequence.
+    internal static async Task DispatchStandbyPowerAsync(
         SimConnect.SimConnectManager simConnect,
         uint guardEventId, uint switchEventId,
         int currentPosition, int targetPosition)
@@ -4068,6 +4266,57 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             if (i < steps - 1) await Task.Delay(80);
         }
     }
+
+    /// <summary>
+    /// Engage the autopilot via MCP CMD A — the NG3 momentary MCP push commits only via a
+    /// LEFTSINGLE+LEFTRELEASE pair (<see cref="SimConnect.SimConnectManager.SendPMDGMomentaryToggle"/>);
+    /// the stock <c>AUTOPILOT_ON</c> engages the basic AFDS, not CMD. Guarded on EVERY autopilot
+    /// engage annunciator (<see cref="AutopilotEngagedFields"/>), so the press can neither
+    /// disconnect an engaged CMD A (a toggle) nor take a CMD B or CWS autopilot the pilot
+    /// engaged over to CMD A. No press while the snapshot is unread.
+    /// </summary>
+    public override void EngageAutopilot(SimConnect.SimConnectManager simConnect)
+    {
+        if (IsAutopilotEngaged(simConnect) != false) return;   // engaged, or not read yet
+        if (EventIds.TryGetValue("EVT_MCP_CMD_A_SWITCH", out int id))
+            _ = simConnect.SendPMDGMomentaryToggle((uint)id, 1);
+    }
+
+    /// <summary>The MCP's autopilot engage annunciators: an autopilot is engaged when any is lit.
+    /// CMD A was once the only one read, so a CMD B the pilot engaged read "not engaged": the
+    /// service pressed CMD A over it and announced the engagement it made.</summary>
+    internal static readonly string[] AutopilotEngagedFields =
+        { "MCP_annunCMD_A", "MCP_annunCMD_B", "MCP_annunCWS_A", "MCP_annunCWS_B" };
+
+    /// <summary>
+    /// The AFDS INHIBITS CMD engagement below 400 ft RA after takeoff (Boeing 737 NG SDS
+    /// 4.20 / FCTM). A CMD A press below it is accepted by the transport and rejected by the
+    /// aircraft — silently. With the ~1 Hz position feed the old 350 ft default landed in
+    /// [350, 400) on essentially every takeoff, which is why auto-AP-engage announced but
+    /// never engaged while LNAV/VNAV (fixed at 400 ft) worked. Do NOT lower this.
+    /// </summary>
+    public override int MinimumAutopilotEngageAltitudeAgl => 400;
+
+    /// <summary>
+    /// Autopilot engaged state (CMD A, CMD B or CWS, <see cref="AutopilotEngagedFields"/>) for
+    /// the universal auto-engage's verify/retry loop. NULL until the first CDA snapshot — before
+    /// that <c>GetFieldValue</c> returns the 0.0 "unknown" sentinel for every field, and
+    /// reporting that as "not engaged" would retry-press a toggle switch over an
+    /// already-engaged autopilot.
+    /// </summary>
+    public override bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect)
+    {
+        var dm = simConnect.PMDGDataManager;
+        if (dm is not { IsReady: true }) return null;
+        return AutopilotEngagedFields.Any(f => dm.GetFieldValue(f) > 0.5);
+    }
+
+    /// <summary>CMD A is a toggle read back through the 1 Hz CDA snapshot: presses 3 s apart, so a retry
+    /// never reads the snapshot from before the press and switches the autopilot off again.</summary>
+    public override int AutopilotEngageRetryIntervalMs => ToggleAutopilotEngageRetryIntervalMs;
+
+    /// <summary>Never pressed on an unread snapshot (null): the service waits for a reading.</summary>
+    public override bool AutopilotEngageWaitsForState => true;
 
     // Per-detent flaps lever events. The base EVT_CONTROL_STAND_FLAPS_LEVER is a
     public override bool HandleUIVariableSet(
@@ -4886,6 +5135,59 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
 
         // ------------------------------------------------------------------
+        // 4d. Synthetic system-test buttons (transmit press/hold/release — the
+        //     same live-verified mechanism as the FO executor's pseudo-keys;
+        //     timings shared from the executor's public consts). Fire-and-forget:
+        //     the test announces itself aurally in-sim, no app-side announcement.
+        //     One run at a time, a second press refused aloud like the walked
+        //     selectors above: a second weather radar sequence started over the
+        //     first toggled the blind WXR overlay off before TEST, and the test
+        //     was silent; a second long GPWS press was released early by the
+        //     first one's release.
+        // ------------------------------------------------------------------
+        if (varKey == "GPWS_SysTestLong" && EventIds.TryGetValue("EVT_GPWS_SYS_TEST_BTN", out int gpwsLongEv))
+        {
+            if (_gpwsLongTestOp is { IsCompleted: false })
+            {
+                announcer.AnnounceImmediate("Still running the GPWS test, please wait.");
+                return true;
+            }
+            _gpwsLongTestOp = HeldTransmitAsync(simConnect, (uint)gpwsLongEv,
+                MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.GpwsLongTestHoldMs);
+            return true;
+        }
+        if (varKey == "WXR_Test")
+        {
+            // One at a time with the First Officer's test too (WxrTestGate), refused aloud; the
+            // sequence ends the gate.
+            if (!MSFSBlindAssist.FirstOfficer.WxrTestGate.Pmdg737(simConnect).TryBegin())
+            {
+                announcer.AnnounceImmediate("Still running the weather radar test, please wait.");
+                return true;
+            }
+            _wxrTestOp = WxrTestSequenceAsync(simConnect);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 4e. Manual warning-test TOGGLES (stick shaker / overspeed clacker).
+        //     App-tracked engaged state; each press flips it and fires the
+        //     transmit press (LEFTSINGLE, holds the spring switch so the aural
+        //     sounds) or release (LEFTRELEASE). The def announces the new state
+        //     (static button label). Live-verified: LEFTSINGLE holds open-ended.
+        // ------------------------------------------------------------------
+        if (_warnTestEventMap.TryGetValue(varKey, out string? warnEvName) &&
+            EventIds.TryGetValue(warnEvName, out int warnEvId))
+        {
+            bool nowEngaged = !(_warnTestEngaged.TryGetValue(varKey, out bool wasOn) && wasOn);
+            _warnTestEngaged[varKey] = nowEngaged;
+            simConnect.SendPMDGEventViaTransmitWithTarget((uint)warnEvId,
+                nowEngaged ? MOUSE_FLAG_LEFTSINGLE_U : MOUSE_FLAG_LEFTRELEASE_U);
+            announcer.Announce($"{varDef.DisplayName} {(nowEngaged ? "engaged" : "released")}");
+            return true;
+        }
+
+        // ------------------------------------------------------------------
         // 5. Generic _simpleEventMap lookup — covers every remaining mapped
         //    var-key. The parameter shape is determined by the var def:
         //
@@ -5004,16 +5306,36 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // OFF/XPNDR/TA and each detent would otherwise announce AND churn
             // the combo (return-true also skips MainForm's combo re-sync,
             // which is desired mid-walk: the combo holds the user's pick
-            // until the outcome). Gate = THIS def's _xpdrWalkSuppress, set by
-            // the 4b dispatch and cleared in the walk task's finally on every
-            // exit path, so leftover state can never mute a later genuine
-            // background change — a knob turned in the VC announces normally.
-            // A walk that lands off target replays the final state through
-            // RaiseFieldChanged after clearing the gate, so the combo re-syncs
-            // and the failure announces via the standard monitor path.
+            // until the outcome). Two producers gate it, both self-clearing on
+            // every exit path so leftover state can never mute a later genuine
+            // background change (a knob turned in the VC announces normally):
+            //   • the PANEL path sets THIS def's _xpdrWalkSuppress (instance)
+            //     around its own walk task; a walk that lands off target
+            //     replays the final state through RaiseFieldChanged after
+            //     clearing the gate, so the combo re-syncs and the failure
+            //     announces via the standard monitor path.
+            //   • the FIRST OFFICER executor drives the SAME shared walk but
+            //     can't reach this def instance (and ProcessSimVarUpdate has no
+            //     SimConnectManager handle to read the manager's walk counter),
+            //     so it exposes AircraftActionExecutor.XpdrWalkInProgress — a
+            //     self-clearing static read only here, in the 737 def.
             // -------------------------------------------------------------
             case "XPDR_ModeSel":
-                return _xpdrWalkSuppress;
+                return _xpdrWalkSuppress
+                    || MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.XpdrWalkInProgress;
+
+            // -------------------------------------------------------------
+            // Position lights: same per-detent swallow as the transponder
+            // above while the FO executor walks them — walking STEADY→STROBE &
+            // STEADY passes OFF, which would otherwise announce mid-walk. Its
+            // walk counter counts BOTH walked selectors; a concurrent
+            // cross-suppression window is at most one walk long and ends with
+            // the landed value either matching the pick, or replayed via
+            // RaiseFieldChanged. The panel sets them in one absolute send (4a),
+            // with no walk of its own to swallow.
+            // -------------------------------------------------------------
+            case "LTS_PositionSw":
+                return MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.XpdrWalkInProgress;
 
             // -------------------------------------------------------------
             // Stabilizer trim, in units (~0–17). Sourced from the PMDG L-var
@@ -5073,6 +5395,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // -------------------------------------------------------------
             case "ALTIMETER_SETTING":
             {
+                NoteAltimeterReading(value);
                 // A knob check from the Ctrl+B dialog re-baselines this callout where it landed
                 // (QuietBaroCheckAsync), so its steps stay quiet.
                 if (_baroCheckQuiet) return true;
@@ -6190,16 +6513,21 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // would launch a competing sweep and overstep the knob. These hold the
     // in-flight Task so a re-submit is ignored until it completes. UI-thread-only
     // access (dialog callbacks / HandleUIVariableSet + WinForms continuations),
-    // so no synchronization is needed.
-    private Task? _baroKnobOp;
+    // so no synchronization is needed. The baro knob's is s_baroKnobOp (with the
+    // baro dialog below), which the First Officer's rotation shares.
     private Task? _minsKnobOp;
+
+    // The panel's long system tests, one run at a time (HandleUIVariableSet 4d).
+    // UI thread only, like the guards above.
+    private Task? _gpwsLongTestOp;
+    private Task? _wxrTestOp;
 
     // True while a knob check from the Ctrl+B dialog (QuietBaroCheckAsync: a typed value or the
     // Standard button from 29.92) turns the knob: its check clicks and STD pushes each leave a
     // reading the pilot did not ask for, so ProcessSimVarUpdate consumes ALTIMETER_SETTING silently
     // until the landed reading has been delivered. That reading then becomes the callout's
     // baseline (and a typed value speaks it), so nothing the window swallowed and still stands
-    // goes unspoken. UI thread only, like _baroKnobOp.
+    // goes unspoken. UI thread only, like s_baroKnobOp.
     private bool _baroCheckQuiet;
 
     // Transponder-mode closed-loop walk re-entrancy guard (HandleUIVariableSet
@@ -6212,6 +6540,160 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // Target queued by a combo pick made while a walk is running (-1 = none).
     // Written on the UI thread, consumed by the walk task via Interlocked.
     private int _xpdrPendingTarget = -1;
+
+    // ---------------------------------------------------------------------
+    // Captain EFIS baro knob: one rotation at a time, the Ctrl+B dialog's and the
+    // First Officer's, and what the app knows about STD.
+    //
+    // Both set the altimeter by ROTATING the knob (RotateBaroKnobAsync; PMDG ignores
+    // absolute baro writes): the dialog to a typed value, the First Officer to
+    // standard at the transition altitude (RotateAltimetersToStandardAsync). The
+    // First Officer's rotation had its own copy of the click math and ignored the
+    // dialog's guard, so a Ctrl+B entry during it stepped the knob twice. One guard
+    // now, s_baroKnobOp: static, because the First Officer's executor has no handle
+    // on this instance; UI thread only (the dialog's callbacks, the crossing, which
+    // the SimConnect message pump raises, and the continuations of both).
+    //
+    // The NG3 has no STD readback, and STD reads 29.92 inHg exactly as a local 29.92
+    // does. The dialog used to read 29.92 as STD selected and press STD to deselect it
+    // before rotating; after the First Officer's rotation to 29.92 the pilot's QNH entry
+    // (asked for by "Transition level. Set local altimeter pressure now.") pressed STD,
+    // which SELECTED it, and rotated behind the STD mask: the altimeter stayed on
+    // standard and nothing was said (PR #160 second review). Main's #313 made the dialog
+    // ask the knob from any 29.92 instead (Pmdg737Baro). s_baroRotatedToStd records that
+    // the app's own rotation put the captain knob on standard, so the dialog turns
+    // straight to the QNH over that 29.92 without asking. It holds until the knob is
+    // known to have left standard: a dialog rotation away, an STD press or check through
+    // the app, a reading away from standard once the app's rotation has settled (the
+    // knob moved in the cockpit), a new flight, a lost connection or another aircraft.
+    // An STD press in the cockpit over a rotated 29.92 cannot be seen.
+    // ---------------------------------------------------------------------
+    private static Task? s_baroKnobOp;
+    private static bool s_baroRotatedToStd;
+    private static DateTime s_baroOpEndedUtc = DateTime.MinValue;
+
+    private const double StdInHg = Pmdg737Baro.StandardInHg;
+    private const int MaxBaroClicks = 200;     // safety cap on one rotation
+    private const int BaroClickGapMs = 40;     // the in-sim-verified click rate (2026-05-25)
+    // The knob's last clicks reach ALTIMETER_SETTING (the continuous batch, about 1 Hz)
+    // within this, so a rotation that follows another reads the knob where it landed.
+    private const int BaroSettleMs = 1500;
+    // ALTIMETER_SETTING readings this soon after an app rotation ended can still be its
+    // own in-between values, never a sign that the knob left standard.
+    private const int BaroReadingSettleMs = 3000;
+
+    /// <summary>A baro knob rotation of the app's is running: the Ctrl+B dialog's or the
+    /// First Officer's.</summary>
+    internal static bool BaroKnobBusy => s_baroKnobOp is { IsCompleted: false };
+
+    /// <summary>Within half a click (0.005 inHg) of standard pressure, 29.92 inHg: the
+    /// dialog's STD test (<see cref="Pmdg737Baro.ReadsStandard"/>). 1013 hPa (29.914 inHg) is outside it.</summary>
+    internal static bool IsStandardPressure(double inHg) => Pmdg737Baro.ReadsStandard(inHg);
+
+    // A Ctrl+B value in inHg: hPa when 100 or more (the two ranges never overlap).
+    private static double TypedToInHg(double typed) => Pmdg737Baro.ToInHg(typed);
+
+    /// <summary>Whether the Ctrl+B dialog takes the captain baro to be possibly on STD: it reads
+    /// standard pressure, and the app did not rotate it there itself.</summary>
+    internal static bool BaroReadsAsStd(double currentInHg, bool rotatedToStdByApp)
+        => IsStandardPressure(currentInHg) && !rotatedToStdByApp;
+
+    /// <summary>Whether a Ctrl+B entry must find out whether STD is on before it counts clicks
+    /// (the knob check, <see cref="Pmdg737Baro.SetFromStandardAsync"/>, which pushes STD only when
+    /// the knob says it is on): the reading may be STD and a value other than standard was typed.</summary>
+    internal static bool BaroSetPressesStdFirst(double currentInHg, double typed, bool rotatedToStdByApp)
+        => BaroReadsAsStd(currentInHg, rotatedToStdByApp) && !IsStandardPressure(TypedToInHg(typed));
+
+    /// <summary>Knob clicks from the current setting to <paramref name="typed"/> (hPa when 100
+    /// or more, otherwise inHg), in the knob's own unit: 1 hPa or 0.01 inHg per click, positive
+    /// up. The one click count for the Ctrl+B dialog and the First Officer's standard (29.92)
+    /// (<see cref="Pmdg737Baro.ClicksTo"/>).</summary>
+    internal static int BaroKnobClicks(double currentInHg, double typed, bool hpaMode)
+        => Pmdg737Baro.ClicksTo(currentInHg, typed, hpaMode);
+
+    // The knob's own hPa/inHg selector (EFIS_BaroSelHPA_0 captain, _1 first officer): 1 = hPa.
+    private static bool BaroKnobInHpa(SimConnect.SimConnectManager simConnect, string unitField)
+        => simConnect.PMDGDataManager is { IsReady: true } dm && (int)Math.Round(dm.GetFieldValue(unitField)) == 1;
+
+    // An ALTIMETER_SETTING reading (ProcessSimVarUpdate). Away from standard once the app's own
+    // rotation has settled, it means the knob left standard in the cockpit: the app no longer
+    // knows what a later 29.92 is.
+    private static void NoteAltimeterReading(double inHg)
+    {
+        if (s_baroRotatedToStd && !IsStandardPressure(inHg) && !BaroKnobBusy
+            && (DateTime.UtcNow - s_baroOpEndedUtc).TotalMilliseconds > BaroReadingSettleMs)
+            s_baroRotatedToStd = false;
+    }
+
+    // A new flight, a lost connection or another aircraft: what the app knew of the knob is gone.
+    private static void ForgetBaroRotation() => s_baroRotatedToStd = false;
+
+    /// <summary>
+    /// The First Officer's transition-altitude set (FirstOfficer/PMDG737
+    /// AircraftActionExecutor.SetAltimetersStandardAsync): both EFIS baro knobs ROTATED to
+    /// standard in their own unit, 29.92 inHg or 1013 hPa, never the STD push, which commits
+    /// only intermittently on the NG3 and cannot be read back. It is the one baro rotation: it
+    /// waits out a Ctrl+B rotation already running, and its knob's settle, before it reads the
+    /// altimeter, and a Ctrl+B entry while it runs is refused. <paramref name="attached"/> is
+    /// asked before each knob: a First Officer window closed meanwhile sends nothing more.
+    /// True when the captain's altimeter, the one every MSFSBA readout uses, ends at standard: its
+    /// clicks all went out, or it already read standard. The phase monitor speaks "set to standard"
+    /// only then (it once spoke it over a rotation that sent nothing).
+    /// </summary>
+    internal static Task<bool> RotateAltimetersToStandardAsync(
+        SimConnect.SimConnectManager simConnect, Func<bool> attached)
+    {
+        var op = RotateAltimetersToStandardCoreAsync(simConnect, s_baroKnobOp, attached);
+        s_baroKnobOp = op;
+        return op;
+    }
+
+    private static async Task<bool> RotateAltimetersToStandardCoreAsync(
+        SimConnect.SimConnectManager simConnect, Task? running, Func<bool> attached)
+    {
+        try
+        {
+            if (running is { IsCompleted: false })
+            {
+                try { await running; }
+                catch (Exception ex) { Log.Info("PMDG737", $"Baro rotation before the standard set failed: {ex.Message}"); }
+                await Task.Delay(BaroSettleMs);
+            }
+            if (!EventIds.TryGetValue("EVT_EFIS_CPT_BARO", out int captEv) ||
+                !EventIds.TryGetValue("EVT_EFIS_FO_BARO", out int foEv))
+                return false;
+
+            if (!attached()) return false;
+            bool alreadyStandard = simConnect.GetCachedVariableValue("ALTIMETER_SETTING") is double before
+                && IsStandardPressure(before);
+            bool rotated = await RotateKnobToStandardAsync(simConnect, (uint)captEv, "EFIS_BaroSelHPA_0");
+            if (rotated)
+                s_baroRotatedToStd = true;
+            bool captainStandard = rotated || alreadyStandard;
+
+            // The stock KOHLSMAN indexes read as ONE ganged value on the NG3 (live-probed: the FO
+            // knob moved KOHLSMAN:1 and :2 together; there is no per-side readback). So the FO knob
+            // turns by whatever residual remains once the captain's clicks have landed and the
+            // batch has delivered the fresh value: 0 under the ganged topology (no double-apply);
+            // if a per-side topology ever surfaces, the captain's altimeter, the one every MSFSBA
+            // readout uses, is still on standard.
+            await Task.Delay(BaroSettleMs);
+            if (!attached()) return captainStandard;
+            await RotateKnobToStandardAsync(simConnect, (uint)foEv, "EFIS_BaroSelHPA_1");
+            return captainStandard;
+        }
+        finally { s_baroOpEndedUtc = DateTime.UtcNow; }
+    }
+
+    // One knob to standard in its own unit: true when it sent clicks and all of them went out.
+    private static async Task<bool> RotateKnobToStandardAsync(
+        SimConnect.SimConnectManager simConnect, uint knobEventId, string unitField)
+    {
+        double? curInHg = simConnect.GetCachedVariableValue("ALTIMETER_SETTING");
+        if (curInHg == null) return false;
+        int clicks = BaroKnobClicks(curInHg.Value, StdInHg, BaroKnobInHpa(simConnect, unitField));
+        return clicks != 0 && await RotateBaroKnobAsync(simConnect, knobEventId, clicks);
+    }
 
     /// <summary>
     /// PMDG owns the baro and ignores absolute writes (KOHLSMAN_SET event and direct
@@ -6233,7 +6715,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             return;
         }
 
-        // The Standard button refused its press: its 1.2 s state announce would cut off the refusal.
+        // The Standard button refused its press (a rotation is running): its 1.2 s state announce
+        // would cut off the refusal.
         bool standardRefused = false;
 
         // "1013", "1013,5", "29.92" or "29,92" parse through Utils.NumberParsing.TryParseTyped,
@@ -6274,24 +6757,29 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 // LEFTSINGLE+LEFTRELEASE pair (SendPMDGMomentaryToggle). A bare
                 // dwData transmit — including 0 — plays no click and never commits.
                 // The dialog's button handler announces "Standard" as confirmation.
-                // Refused while a turn or STD check runs, which a push would switch
-                // STD under; the push itself holds _baroKnobOp until the cache has caught up.
+                // Refused while a knob rotation or STD check runs (the dialog's or the
+                // First Officer's), which a push would switch STD under; the push
+                // itself holds s_baroKnobOp until the cache has caught up.
                 new ToggleButtonDef(
                     "&Standard",
                     () => "",
                     () =>
                     {
-                        standardRefused = _baroKnobOp is { IsCompleted: false };
+                        standardRefused = BaroKnobBusy;
                         if (standardRefused)
                         {
                             announcer.Announce("Still setting altimeter, please wait.");
                             return;
                         }
                         if (CaptainKnob(simConnect) is not { } knob) return;
+                        // STD selected or found on: a later 29.92 is STD again, not a rotated
+                        // knob. A 29.92 the app rotated to is asked of the knob like any other,
+                        // since a cockpit STD press over it cannot be seen.
+                        ForgetBaroRotation();
                         double? curInHg = simConnect.GetCachedVariableValue("ALTIMETER_SETTING");
-                        _baroKnobOp = curInHg is double cur && Pmdg737Baro.ReadsStandard(cur)
+                        StartBaroOp(curInHg is double cur && IsStandardPressure(cur)
                             ? EngageStdFromStandardAsync(simConnect, knob, announcer)
-                            : SettleAfterAsync(knob.PushStdAsync(), knob);
+                            : SettleAfterAsync(knob.PushStdAsync(), knob));
                     })
                 {
                     SuppressStateAnnounce = () => standardRefused
@@ -6301,7 +6789,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 if (!Utils.NumberParsing.TryParseTyped(input, out double value)) return;
 
-                if (_baroKnobOp is { IsCompleted: false })
+                if (BaroKnobBusy)
                 {
                     announcer.AnnounceImmediate("Still setting altimeter, please wait.");
                     return;
@@ -6314,8 +6802,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 // 2026-05-25: RIGHTSINGLE = up, LEFTSINGLE = down, ~1 hPa per click
                 // in hPa mode / 0.01 inHg per click in inHg mode. So read the current
                 // baro, compute the difference in the displayed unit, and step the knob. The cache
-                // is current for this dialog's own turns and STD pushes: each holds _baroKnobOp
-                // until a delivery after it (SettleAfterAsync, SetBaroFromStandardAsync).
+                // is current for this dialog's own turns and STD pushes: each holds s_baroKnobOp
+                // until a delivery after it (SetCaptainBaroAsync, SettleAfterAsync,
+                // SetBaroFromStandardAsync), and the First Officer's rotation settles before it ends.
                 double? curInHg = simConnect.GetCachedVariableValue("ALTIMETER_SETTING");
                 if (curInHg == null) { announcer.AnnounceImmediate("Altimeter not available"); return; }
                 if (CaptainKnob(simConnect) is not { } knob) return;
@@ -6323,34 +6812,63 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 // STD lockout: with STD on, ALTIMETER_SETTING reads 29.92 and the clicks only move
                 // the preselect behind it. A local 29.92 reads the same and the NG3 has no STD
                 // flag, so from a reading of 29.92 the knob is asked first (Pmdg737Baro): pushing
-                // STD on a guess turned a local 29.92 INTO STD.
-                if (Pmdg737Baro.NeedsStdCheck(curInHg.Value, value))
+                // STD on a guess turned a local 29.92 INTO STD. Not over a 29.92 the app rotated
+                // the knob to itself (s_baroRotatedToStd): STD is off there, so the turn goes
+                // straight to the QNH.
+                if (BaroSetPressesStdFirst(curInHg.Value, value, s_baroRotatedToStd))
                 {
-                    _baroKnobOp = SetBaroFromStandardAsync(simConnect, knob, curInHg.Value, value, announcer);
+                    StartBaroOp(SetBaroFromStandardAsync(simConnect, knob, curInHg.Value, value, announcer));
                     return;
                 }
 
-                int clicks = Pmdg737Baro.ClicksTo(curInHg.Value, value, knob.HpaDisplay);
+                int clicks = BaroKnobClicks(curInHg.Value, value, knob.HpaDisplay);
                 if (clicks == 0) return;
-                _baroKnobOp = SettleAfterAsync(knob.TurnAsync(clicks), knob);
+                StartBaroOp(SetCaptainBaroAsync(knob, clicks, toStandard: IsStandardPressure(TypedToInHg(value))));
             });
 
         dialog.ShowCancelButton = false;
         dialog.Show(parentForm);
     }
 
-    // Rotates the captain EFIS baro knob (EVT_EFIS_CPT_BARO) `count` clicks in the
-    // given direction (RIGHTSINGLE=up, LEFTSINGLE=down) via TransmitClientEvent.
-    // PMDG ignores absolute baro writes, so the set dialog reaches a target by
-    // stepping the knob ~1 hPa (or 0.01 inHg) per click. Verified in-sim 2026-05-25.
-    private static async Task RotateBaroKnobAsync(
-        SimConnect.SimConnectManager simConnect, uint eventId, uint flag, int count)
+    // Rotates an EFIS baro knob |clicks| clicks via TransmitClientEvent, up (RIGHTSINGLE)
+    // for positive and down (LEFTSINGLE) for negative, at most MaxBaroClicks. PMDG ignores
+    // absolute baro writes, so a target is reached by stepping the knob ~1 hPa (or 0.01
+    // inHg) per click. Verified in-sim 2026-05-25. False when it stopped short because the
+    // aircraft changed meanwhile: the rest would click the next aircraft's controls.
+    private static async Task<bool> RotateBaroKnobAsync(
+        SimConnect.SimConnectManager simConnect, uint eventId, int clicks)
     {
+        uint flag = clicks > 0 ? 0x80000000u : 0x20000000u;
+        int count = Math.Min(Math.Abs(clicks), MaxBaroClicks);
         for (int i = 0; i < count; i++)
         {
+            if (!Is737Loaded(simConnect)) return false;
             simConnect.SendPMDGEventViaTransmitWithTarget(eventId, flag);
-            if (i < count - 1) await System.Threading.Tasks.Task.Delay(40);
+            if (i < count - 1) await Task.Delay(BaroClickGapMs);
         }
+        return true;
+    }
+
+    // The dialog's rotation to a typed value, as the one baro op (s_baroKnobOp): the knob
+    // leaves standard with its first click, or lands on standard with its last. It holds the op
+    // until a delivery after the turn, so a re-submit counts from where it landed: the
+    // batch-covered cache can predate it by up to a second.
+    private static async Task SetCaptainBaroAsync(CaptainBaroKnob knob, int clicks, bool toStandard)
+    {
+        if (!toStandard) s_baroRotatedToStd = false;
+        if (await knob.RotateAsync(clicks) && toStandard)
+            s_baroRotatedToStd = true;
+        await knob.ReadSettledAsync();
+    }
+
+    // Starts a dialog op as the one baro op (s_baroKnobOp), which the First Officer's rotation
+    // waits out, and stamps its end for NoteAltimeterReading's settle.
+    private static void StartBaroOp(Task op) => s_baroKnobOp = StampBaroOpEndAsync(op);
+
+    private static async Task StampBaroOpEndAsync(Task op)
+    {
+        try { await op; }
+        finally { s_baroOpEndedUtc = DateTime.UtcNow; }
     }
 
     // Ctrl+B from a reading of 29.92, which is STD or a local 29.92 (Pmdg737Baro): the knob shows
@@ -6358,14 +6876,20 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // altimeter callout stays quiet meanwhile (_baroCheckQuiet); the landed reading, delivered
     // after the last click, is spoken here and becomes the callout's baseline, so it speaks once
     // whenever its batch falls. Always the value, never "standard": this path ends with STD off,
-    // over a local 29.92 too.
+    // over a local 29.92 too. STD is pushed or found off on the way, so what the app knew of a
+    // rotation to standard is replaced by where the knob landed.
     private async Task SetBaroFromStandardAsync(
         SimConnect.SimConnectManager simConnect, IPmdg737BaroKnob knob,
         double currentInHg, double typed, ScreenReaderAnnouncer announcer)
     {
+        ForgetBaroRotation();
         double? landed = await QuietBaroCheckAsync(simConnect, announcer,
             () => Pmdg737Baro.SetFromStandardAsync(knob, currentInHg, typed));
-        if (landed is double inHg) announcer.Announce(AltimeterValuePhrase(inHg));
+        if (landed is double inHg)
+        {
+            s_baroRotatedToStd = IsStandardPressure(inHg);   // 1013 typed on an hPa display lands on 29.92, STD off
+            announcer.Announce(AltimeterValuePhrase(inHg));
+        }
     }
 
     // The Standard button from a reading of 29.92, which is STD already or a local 29.92
@@ -6404,7 +6928,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         return null;
     }
 
-    // Holds _baroKnobOp until a delivery after the turn or STD push, so a re-submit counts from
+    // Holds s_baroKnobOp until a delivery after the turn or STD push, so a re-submit counts from
     // where it landed: the batch-covered cache can predate it by up to a second.
     private static async Task SettleAfterAsync(Task action, IPmdg737BaroKnob knob)
     {
@@ -6429,12 +6953,12 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     private sealed class CaptainBaroKnob(
         SimConnect.SimConnectManager simConnect, uint baroEventId, uint stdEventId) : IPmdg737BaroKnob
     {
-        public bool HpaDisplay =>
-            simConnect.PMDGDataManager is { } dm && (int)dm.GetFieldValue("EFIS_BaroSelHPA_0") == 1;
+        public bool HpaDisplay => BaroKnobInHpa(simConnect, "EFIS_BaroSelHPA_0");
 
-        // RIGHTSINGLE (0x80000000) = up, LEFTSINGLE (0x20000000) = down.
-        public Task TurnAsync(int clicks) => RotateBaroKnobAsync(
-            simConnect, baroEventId, clicks > 0 ? 0x80000000u : 0x20000000u, Math.Min(Math.Abs(clicks), 200));
+        // True when every click went out: false when the aircraft changed meanwhile (RotateBaroKnobAsync).
+        public Task<bool> RotateAsync(int clicks) => RotateBaroKnobAsync(simConnect, baroEventId, clicks);
+
+        public Task TurnAsync(int clicks) => RotateAsync(clicks);
 
         public Task PushStdAsync()
         {

@@ -27,6 +27,15 @@ public class LandingExit
     public double Latitude { get; set; }
     public double Longitude { get; set; }
 
+    /// <summary>
+    /// How far DOWN the runway (feet, ≥ 0) from this junction the exit path actually
+    /// leaves the centreline — non-zero only where the scenery draws the taxiway along
+    /// the runway first (LROP 08R D: 147 ft). The rollout measures its turn cues and
+    /// its missed-exit test from junction + this offset; nothing else reads it, so the
+    /// exit list, types and routes are identical to an offset of 0.
+    /// </summary>
+    public double TurnPointOffsetFeet { get; set; }
+
     /// <summary>Along-runway distance from the landing threshold to this exit, in feet.</summary>
     public double DistanceFromThresholdFeet { get; set; }
 
@@ -105,6 +114,26 @@ public class LandingExit
     public bool VacatesRunway { get; set; } = true;
 
     /// <summary>
+    /// For an END exit whose only way off the runway is to turn round and backtrack (a
+    /// turn pad / runway-end loop — LROP 08R's "D" at 11,185 ft), the earlier exit the
+    /// backtrack heads for (D at 7,793 ft); otherwise null. Set by
+    /// <see cref="LandingExitBacktrack.Mark"/>. Shown as "(backtrack required)" in place of
+    /// the generic no-taxiway warning, which reads as a data fault for a normal turnaround.
+    /// </summary>
+    public LandingExit? BacktrackVia { get; set; }
+
+    public bool NeedsBacktrack => BacktrackVia != null;
+
+    /// <summary>
+    /// The way off the runway from this junction starts by running BACK down it — a reverse
+    /// exit, usable only with a sharp turn back at taxi speed (KMSP 04 A: only W, back down the
+    /// runway). Set by the exit list (<see cref="LandingExitDestination.RequiresTurnBack"/>);
+    /// spoken in the label and the touchdown callout. VirtualPilot 2026-09-18: without it the
+    /// first a pilot heard was "Make a U-turn" at the turn-now point, at rollout speed.
+    /// </summary>
+    public bool RequiresTurnBack { get; set; }
+
+    /// <summary>
     /// True when the exit's branch is a turnaround as read from its junction and forward only as met at the
     /// exit's own node (<see cref="ExitBranch.FromExitNode"/>): the junction the inward walk reached lies past
     /// the lead-in's own start (SBGL 15 F). Such an exit only fills a gap in the planner list - its per-name
@@ -124,7 +153,9 @@ public class LandingExit
         // The warning goes at the END so the screen reader speaks the identity of the
         // exit first — a blind pilot arrowing through the list needs the name and
         // distance immediately, not a caution prefix repeated on every bad entry.
-        string warn = VacatesRunway ? "" : " — WARNING: no taxiway mapped clear of the runway";
+        string warn = VacatesRunway ? (RequiresTurnBack ? " (sharp turn back)" : "")
+            : NeedsBacktrack ? " (backtrack required)"
+            : " — WARNING: no taxiway mapped clear of the runway";
         return $"{nameLabel} — {dist} from threshold ({ExitType}{sideLabel}, {angle}°){warn}";
     }
 }

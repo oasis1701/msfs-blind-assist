@@ -138,7 +138,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             },
             ["Pedestal"] = new List<string>
             {
-                "Control Stand", "Transponder/TCAS",
+                "Control Stand", "Transponder/TCAS", "Weather Radar",
                 "Evacuation", "Warning", "Engine Fire", "Radio", "Calls",
                 "Boris Audio Works"
             },
@@ -4044,6 +4044,15 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 RenderAsButton = true,
                 IsMomentary = true
             },
+            ["WXR_Test"] = new SimConnect.SimVarDefinition
+            {
+                Name = "WXR_Test",
+                DisplayName = "Weather Radar Test",
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+                IsMomentary = true
+            },
             ["TRANSPONDER_CODE_SET"] = new SimConnect.SimVarDefinition
             {
                 Name = "TRANSPONDER CODE:1",
@@ -5427,6 +5436,12 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 "TRANSPONDER_CODE_SET"
             },
 
+            // Pedestal — Weather Radar (managed PWS test sequence)
+            ["Weather Radar"] = new List<string>
+            {
+                "WXR_Test"
+            },
+
             // Pedestal — CDU
 
             // Pedestal — Evacuation
@@ -5614,6 +5629,61 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["switch_1008_a"] = "EVT_FO_ARMREST_LEFT_SWITCH",
             ["switch_1009_a"] = "EVT_FO_ARMREST_RIGHT_SWITCH",
         };
+
+    private const uint MOUSE_FLAG_LEFTSINGLE_U  = 0x20000000u;
+    private const uint MOUSE_FLAG_LEFTRELEASE_U = 0x00020000u;
+
+    /// <summary>Held transmit press/release — for test buttons whose CDA param-1 press is
+    /// silent (TCAS TEST) or that need a managed sequence (WXR test). No ConfigureAwait(false),
+    /// here or in the WXR sequence: started from HandleUIVariableSet on the UI thread, the awaits
+    /// resume there, so the release never goes out from a pool thread ([SIM-20], P777-13's reason
+    /// for the emergency-lights sequence).</summary>
+    private static async Task HeldTransmitAsync(
+        SimConnect.SimConnectManager simConnect, uint eventId, int holdMs)
+    {
+        simConnect.SendPMDGEventViaTransmitWithTarget(eventId, MOUSE_FLAG_LEFTSINGLE_U);
+        await Task.Delay(holdMs);
+        simConnect.SendPMDGEventViaTransmitWithTarget(eventId, MOUSE_FLAG_LEFTRELEASE_U);
+    }
+
+    /// <summary>WXR/PWS test managed sequence — overlay on (blind toggle, assumed OFF) →
+    /// settle → TEST (aural "MONITOR RADAR DISPLAY … WINDSHEAR") → wait → WX mode (never
+    /// leave TEST latched) → overlay off. Live-verified on the 777 2026-07-13.</summary>
+    private static async Task WxrTestSequenceAsync(SimConnect.SimConnectManager simConnect)
+    {
+        const int quick = MSFSBlindAssist.FirstOfficer.AircraftActionExecutor.QuickTestHoldMs;
+        try
+        {
+            // Inside the try, so the finally ends the gate on this early return too.
+            if (!EventIds.TryGetValue("EVT_EFIS_CPT_WXR", out int overlayEv) ||
+                !EventIds.TryGetValue("EVT_WXR_TEST", out int testEv) ||
+                !EventIds.TryGetValue("EVT_WXR_L_WX", out int wxEv))
+                return;
+            await HeldTransmitAsync(simConnect, (uint)overlayEv, quick);
+            await Task.Delay(MSFSBlindAssist.FirstOfficer.AircraftActionExecutor.WxrOverlaySettleMs);
+            await HeldTransmitAsync(simConnect, (uint)testEv, quick);
+            await Task.Delay(MSFSBlindAssist.FirstOfficer.AircraftActionExecutor.WxrTestWaitMs);
+            await HeldTransmitAsync(simConnect, (uint)wxEv, quick);
+            await Task.Delay(350);
+            await HeldTransmitAsync(simConnect, (uint)overlayEv, quick);
+        }
+        catch (Exception ex)
+        {
+            // Fire-and-forget: an escaped exception would vanish as an unobserved task fault.
+            Log.Debug("PMDG", $"Weather radar test failed: {ex.GetType().Name}: {ex.Message}");
+        }
+        finally
+        {
+            // The caller took the gate the First Officer's test shares (WxrTestGate).
+            MSFSBlindAssist.FirstOfficer.WxrTestGate.Pmdg777(simConnect).End();
+        }
+    }
+
+    // The panel's weather radar test while it runs (about 25 s): a second press during it
+    // interleaved its overlay and TEST presses with the first sequence's, and the test stayed
+    // silent. UI-thread only (HandleUIVariableSet and the sequence's own continuations), like the
+    // 737's _baroKnobOp, so it needs no lock.
+    private Task? _wxrTestOp;
 
     // =========================================================================
     // Variable → event name mapping (simple toggle and momentary controls)
@@ -5972,7 +6042,9 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["XPDR_AltSource"]          = "EVT_TCAS_ALTSOURCE",
             ["XPDR_ModeSel"]             = "EVT_TCAS_MODE",
             ["XPDR_Ident"]              = "EVT_TCAS_IDENT",
-            ["XPDR_Test"]               = "EVT_TCAS_TEST",
+            // XPDR_Test is deliberately NOT in this map — its CDA param-1 press is
+            // SILENT (live-verified 2026-07-13); it dispatches via the dedicated
+            // transmit press/release branch in HandleUIVariableSet.
 
             // --- Warning ---
             ["WARN_Reset_L"]            = "EVT_MASTER_WARNING_RESET_LEFT",
@@ -6098,6 +6170,46 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         return isCargoKnob ? isFreighter : !isFreighter;
     }
 
+    /// <summary>
+    /// Engage the autopilot via the MCP left A/P engage switch (A/P L). The 777 momentary
+    /// convention is <c>SendPMDGEvent(name, id, 1)</c>. Guarded on both A/P engaged annunciators
+    /// (<see cref="IsAutopilotEngaged"/>) so re-engaging (a toggle) can't disconnect an
+    /// already-engaged autopilot, and never pressed on an unread snapshot.
+    /// </summary>
+    public override void EngageAutopilot(SimConnect.SimConnectManager simConnect)
+    {
+        if (IsAutopilotEngaged(simConnect) != false) return;   // engaged, or not read yet
+        if (EventIds.TryGetValue("EVT_MCP_AP_L_SWITCH", out int id))
+            simConnect.SendPMDGEvent("EVT_MCP_AP_L_SWITCH", (uint)id, 1);
+    }
+
+    /// <summary>
+    /// Minimum A/P engage height after takeoff (777 FCOM). Below the 350 ft default, so this
+    /// changes nothing unless the pilot lowers the setting — it exists so they can't set the
+    /// auto-engage under the aircraft's own limit the way the 737 was (see that override).
+    /// </summary>
+    public override int MinimumAutopilotEngageAltitudeAgl => 200;
+
+    /// <summary>
+    /// A/P engaged state for the universal auto-engage's verify/retry loop: either A/P engage
+    /// annunciator (<c>MCP_annunAP[2]</c>) lit, so an autopilot engaged on A/P R reads engaged too.
+    /// NULL until the first CDA snapshot — see the 737's override for why "unknown" must not read
+    /// as false.
+    /// </summary>
+    public override bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect)
+    {
+        var dm = simConnect.PMDGDataManager;
+        if (dm is not { IsReady: true }) return null;
+        return dm.GetFieldValue("MCP_annunAP_0") > 0.5 || dm.GetFieldValue("MCP_annunAP_1") > 0.5;
+    }
+
+    /// <summary>A/P L is read back through the 1 Hz CDA snapshot: presses 3 s apart, as on the 737, so a
+    /// retry never reads the snapshot from before the press.</summary>
+    public override int AutopilotEngageRetryIntervalMs => ToggleAutopilotEngageRetryIntervalMs;
+
+    /// <summary>Never pressed on an unread snapshot (null): the service waits for a reading.</summary>
+    public override bool AutopilotEngageWaitsForState => true;
+
     // ----------------------------------------------------------------------
     // Serializes the emergency-exit light guard→switch sequence (see the
     // LTS_EmerLights block in HandleUIVariableSet). The sequence spans an
@@ -6117,6 +6229,13 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     // ----------------------------------------------------------------------
     private static readonly SemaphoreSlim _emerLightsGate = new(1, 1);
     private static int _emerLightsRequest;
+
+    /// <summary>The same gate, for the First Officer's own guarded sequence
+    /// (AircraftActionExecutor.SetEmerExitLightsAsync, whose Secure flow and checklist lines drive
+    /// this switch too): a combo pick then never lands between its guard and switch writes, nor the
+    /// reverse. It takes no part in the latest-selection collapse (<c>_emerLightsRequest</c>):
+    /// the gate's first-come order already lets the later of the two finish last.</summary>
+    internal static SemaphoreSlim EmerLightsSequenceGate => _emerLightsGate;
 
     public override bool HandleUIVariableSet(
         string varKey, double value,
@@ -6478,6 +6597,39 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                     _speedBrakeCallout.RecordPick(sbIdx);
                 }
             }
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 1e. Synthetic system-test buttons (transmit press/hold/release — the
+        //     same live-verified mechanism as the FO executor's pseudo-keys;
+        //     timings shared from the executor's public consts). TCAS TEST
+        //     commits ONLY via the transmit press/release: the generic momentary
+        //     CDA param-1 press is SILENT for this button (live-verified
+        //     2026-07-13; same finding family as EVT_OH_FIRE_OVHT_TEST).
+        //     Aural "TCAS TEST" → ~8 s → "TCAS TEST PASS" is the verification.
+        //     Fire-and-forget: the tests announce themselves aurally in-sim,
+        //     no app-side announcement. These keys are deliberately NOT in
+        //     _simpleEventMap (this branch must run before the section-2
+        //     lookup, which early-returns false for unmapped keys).
+        // ------------------------------------------------------------------
+        if (varKey == "XPDR_Test" && EventIds.TryGetValue("EVT_TCAS_TEST", out int tcasTestEv))
+        {
+            _ = HeldTransmitAsync(simConnect, (uint)tcasTestEv,
+                MSFSBlindAssist.FirstOfficer.AircraftActionExecutor.QuickTestHoldMs);
+            return true;
+        }
+        if (varKey == "WXR_Test")
+        {
+            // One at a time, refused aloud: see _wxrTestOp. The gate is shared with the First
+            // Officer's test (WxrTestGate), so a flow or tick mid-test refuses the button too; the
+            // sequence ends it.
+            if (!MSFSBlindAssist.FirstOfficer.WxrTestGate.Pmdg777(simConnect).TryBegin())
+            {
+                announcer.AnnounceImmediate("Weather radar test still running, please wait.");
+                return true;
+            }
+            _wxrTestOp = WxrTestSequenceAsync(simConnect);
             return true;
         }
 
@@ -8479,6 +8631,8 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["EVT_TCAS_MODE"]                      = 70381,
             ["EVT_TCAS_IDENT"]                     = 70378,
             ["EVT_TCAS_TEST"]                      = 77123,
+            ["EVT_WXR_TEST"]                       = 70217,   // base + 585 (WXR panel TEST mode)
+            ["EVT_WXR_L_WX"]                       = 70209,   // base + 577 (WX mode — exits TEST)
 
             // CDU Right and Center brightness (missing from initial registration)
             ["EVT_CDU_R_BRITENESS"]                = 70105,

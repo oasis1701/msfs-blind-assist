@@ -17,6 +17,7 @@
         private System.Windows.Forms.ToolStripMenuItem flyByWireA320MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem fenixA320MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem pmdg777MenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem firstOfficerMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem flyByWireA380MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem pmdg737MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem horizonSim787MenuItem = null!;
@@ -58,6 +59,7 @@
             this.flyByWireA320MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.fenixA320MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.pmdg777MenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.firstOfficerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.flyByWireA380MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.pmdg737MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.horizonSim787MenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -97,6 +99,7 @@
             this.fileMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.databaseSettingsMenuItem,
             this.settingsMenuItem,
+            this.firstOfficerMenuItem,
             this.fmcSettingsMenuItem,
             this.hotkeyListMenuItem,
             this.simPerformanceMenuItem,
@@ -183,6 +186,18 @@
             this.aboutMenuItem.Size = new System.Drawing.Size(220, 26);
             this.aboutMenuItem.Text = "&About";
             this.aboutMenuItem.Click += new System.EventHandler(this.AboutMenuItem_Click);
+            //
+            // firstOfficerMenuItem
+            //
+            // Shown only for an aircraft with a First Officer; MainForm.UpdateAircraftSpecificMenuItems()
+            // sets Visible and the AccessibleName ("Fenix A320 First Officer" ...) from
+            // FirstOfficerWindows.NameFor on every aircraft change (FO-24).
+            this.firstOfficerMenuItem.AccessibleName = "First Officer";
+            this.firstOfficerMenuItem.AccessibleDescription = "Open the First Officer checklists and flows window";
+            this.firstOfficerMenuItem.Name = "firstOfficerMenuItem";
+            this.firstOfficerMenuItem.Size = new System.Drawing.Size(280, 26);
+            this.firstOfficerMenuItem.Text = "&First Officer";
+            this.firstOfficerMenuItem.Click += new System.EventHandler(this.FirstOfficerMenuItem_Click);
             //
             // aircraftMenuItem
             //

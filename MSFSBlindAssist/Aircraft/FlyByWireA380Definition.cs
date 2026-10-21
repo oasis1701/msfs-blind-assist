@@ -40,7 +40,6 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
 {
     public override string AircraftName => "FlyByWire A380X";
     public override string AircraftCode => "FBW_A380";
-    public override string? ChecklistFileName => "FBW_A380_Checklist.txt";
 
     /// <summary>The autothrust instinctive disconnect (see its Evt registration).</summary>
     public const string AutothrustDisconnectEvent = "AUTO_THROTTLE_DISCONNECT";
@@ -2794,6 +2793,14 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         Read("A32NX_SPEEDS_VS", "V S (stall)", "knots");
         Read("A32NX_SPEEDS_VFEN", "V F E next", "knots");
 
+        // Landing-config selection from the MFD PERF APPR page (1 = CONF 3, 0 = FULL).
+        // Registered for the First Officer's auto-flap schedule (FO polls it OnRequest); it is
+        // in no panel display, hotkey or announcement, so that poll is its only consumer. The
+        // A380X's own name (FlyByWireInterface.cpp idFmsFlap3ApproachSelected); nothing writes
+        // A32NX_SPEEDS_LANDING_CONF3 any more, so this registration named a dead variable until
+        // 2026-10-09 (FOA-6).
+        Read("A380X_FM_LANDING_CONF3", "Landing Configuration 3", "bool");
+
         // Lighting extras.
         Sel("A380X_OVHD_EXTLT_STBY_COMPASS_ICE_IND_SWITCH_POS", "Standby Compass / Ice Light",
             new Dictionary<double, string> { [0] = "Off", [1] = "On" });
@@ -3164,6 +3171,9 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "No", [1] = "Yes" }
             };
         }
+
+        // The First Officer's MSFS 2020 build names (A380BuildNames): OnRequest, never announced.
+        RegisterFirstOfficerBuildVariables(vars);
 
         return vars;
     }

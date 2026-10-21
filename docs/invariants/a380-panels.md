@@ -1,7 +1,7 @@
 # FlyByWire A380X panel controls and read-outs — rules in full
 
 Each section is the complete text of one rule. Its one-line form, under the same ID, is in `.claude/rules/a380-panels.md`, which Claude Code loads when it reads matching code. Background: [a380x.md](../a380x.md).
-The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" pointer is the original's. Cross-references such as "the bullet below", "above" or "under Core" point at CLAUDE.md's old single list, whose rules now live in several files: search `docs/invariants/` for the rule's key name to find it.
+The text is verbatim from CLAUDE.md as of `1f37801a` (A380-28: PR #160's widened text as of `642f48c1`); a trailing "→ doc" pointer is the original's. Cross-references such as "the bullet below", "above" or "under Core" point at CLAUDE.md's old single list, whose rules now live in several files: search `docs/invariants/` for the rule's key name to find it.
 
 ## A380-2
 
@@ -36,6 +36,8 @@ Moved 2026-10-10 from a380-systems.md (split for the rule budget).
 - **A380 ECAM control-panel keys (`L:A32NX_BTN_*`) must be held `A380EcpKeyPulse.HoldMs` (250 ms) and left released `ReleaseMs` (250 ms) between presses.** FBW #10934 (a380x `27a73e219`, 2026-09-19) moved the FWS's 125 ms `UpdateThrottler` check ahead of the block that reads them, so a key is sampled once per FWS cycle, not every frame: the checklist window's old 45 ms press registered about one time in three, silently. Never shorten them back; re-derive both if FBW changes the throttle (`A380EcpKeyPulseTests` pins it). The release time is enforced on EVERY press, on ONE clock the whole app shares (`A380EcpKeyPulse.Shared`): a press RESERVES its slot when it STARTS, recording when it WILL be released, so a press begun while another is still held waits for it — the checklist window (`PressEcpKey` and its close-time C/L) and the ECAM Control Panel's buttons (the A380's `PulseEcpKey`, every `A32NX_BTN_*` key) all press on it. Never go back to a guard per caller (a press queued during a burst's closing scrape followed the release by only 85 ms plus the scrape) or to recording the release after it happens (Escape during the opening C/L's hold sent the close-time C/L on top of it, and the overlay stayed up). → [a380x.md](../a380x.md)
 
 Moved 2026-10-10 from a380-systems.md (split for the rule budget).
+
+**The First Officer's T.O CONFIG test presses on the same clock (2026-10-18, PR #160 second review).** `FbwA380ActionExecutor.TakeoffConfigTestAsync` holds `A32NX_BTN_TOCONFIG` 2 s, FlyByWire's own preset hold. It reserves the whole hold with `PressClock.Reserve(now, holdMs)`, which refuses a hold shorter than `HoldMs`, waits out the last press's release, and marks its own release. Until then it wrote the key with no reservation, so a panel or checklist-window ECP press during the hold, or a re-tick within 250 ms of the release, could merge with it. The rule is mirrored to the executor in `a380-first-officer-call-sites.md`, since this file's globs leave the First Officer out. Pinned by `A380EcpKeyPulseTests` and `FbwFamilySecondReviewTests`.
 
 ## A380-16
 
@@ -89,7 +91,7 @@ Moved 2026-10-10 from a380-systems.md (split for the rule budget).
 
 ## A380-28
 
-- "Passengers on Board" sums the per-station `A32NX_PAX_<st>_DESIRED` seat bitmasks (the planned/target load the flyPad headline + GSX `FSDT_GSX_NUMPASSENGERS` report), NOT the boarded `A32NX_PAX_<st>` set — the boarded bitmask lags and, under GSX-driven boarding, settles below target and stays there (popcount is exact, max 50 seats/station < 2⁵³; it's the wrong quantity, not a math bug). → [a380x.md](../a380x.md)
+- "Passengers on Board" sums the per-station `A32NX_PAX_<st>_DESIRED` seat bitmasks (the planned/target load the flyPad headline + GSX `FSDT_GSX_NUMPASSENGERS` report), NOT the boarded `A32NX_PAX_<st>` set — the boarded bitmask lags and, under GSX-driven boarding, settles below target and stays there (popcount is exact, but the "max 50 seats/station" margin is A320-calibrated and does NOT describe the wider cabins — the Headwind A330's station J was live-measured at 9007197107257344, a FULL 53-bit mask sitting just 2³¹ below float64's exact-integer limit of 2⁵³; still exact, with far less headroom than that phrase implies; it's the wrong quantity, not a math bug). → [a380x.md](../a380x.md)
 
 Moved 2026-10-10 from a380-systems.md (split for the rule budget).
 

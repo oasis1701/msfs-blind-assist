@@ -24,7 +24,9 @@ public partial class MainForm
         // Actions that don't require SimConnect connection (can be used offline)
         var offlineActions = new HashSet<HotkeyAction>
         {
-            HotkeyAction.ShowChecklist,
+            // The First Officer window opens before the sim connects (as from the File menu) and
+            // re-wires on connect (IFirstOfficerWindow.OnSimConnectChanged).
+            HotkeyAction.ShowFirstOfficer,
             HotkeyAction.ShowMETARReport,
             HotkeyAction.ShowColdTempCorrection,
             HotkeyAction.SimBriefBriefing,
@@ -212,8 +214,8 @@ public partial class MainForm
             case HotkeyAction.ShowChecklistECL:
                 ShowChecklistECLDialog();
                 break;
-            case HotkeyAction.ShowChecklist:
-                ShowChecklistDialog();
+            case HotkeyAction.ShowFirstOfficer:
+                ShowFirstOfficerFromHotkey();
                 break;
             case HotkeyAction.ShowElectronicFlightBag:
                 ShowElectronicFlightBagDialog();

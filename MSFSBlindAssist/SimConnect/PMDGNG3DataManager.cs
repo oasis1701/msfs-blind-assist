@@ -289,6 +289,12 @@ public class PMDGNG3DataManager : IPMDGDataManager
     // Cache for derived-field values so we can detect change deltas
     // independently of PMDG's lying source fields. Keyed by the user-facing
     // varKey (e.g. "ELEC_GrdPwrSw"), value is the most recent derived bool.
+    //
+    // THREADING: guarded by _derivedLock. The snapshot pass writes on the UI
+    // thread, but GetFieldValue reads from the First Officer flow engine's
+    // WaitForCondition pool thread — unsynchronized Dictionary access across
+    // those would be a data race.
+    private readonly object _derivedLock = new();
     private readonly Dictionary<string, bool> _lastDerivedValues = new();
 
     /// <summary>
@@ -347,11 +353,15 @@ public class PMDGNG3DataManager : IPMDGDataManager
     private void RaiseDerivedIfChanged(string fieldName, bool newVal, bool isFirstSnapshot)
     {
         bool fire = isFirstSnapshot;
-        if (!_lastDerivedValues.TryGetValue(fieldName, out bool prev) || prev != newVal)
-            fire = true;
-        _lastDerivedValues[fieldName] = newVal;
+        lock (_derivedLock)
+        {
+            if (!_lastDerivedValues.TryGetValue(fieldName, out bool prev) || prev != newVal)
+                fire = true;
+            _lastDerivedValues[fieldName] = newVal;
+        }
         if (fire)
         {
+            // Outside the lock — handlers must never run under _derivedLock.
             RaiseVariableChanged(fieldName, newVal ? 1.0 : 0.0, isFirstSnapshot);
         }
     }
@@ -508,9 +518,12 @@ public class PMDGNG3DataManager : IPMDGDataManager
         // the panel-refresh path at MainForm.cs:4640+ overwrites our
         // synthetic-event-populated cache with PMDG's lying value, and the
         // combo flips to ON.
-        if (_lastDerivedValues.TryGetValue(fieldName, out bool derived))
+        lock (_derivedLock)
         {
-            return derived ? 1.0 : 0.0;
+            if (_lastDerivedValues.TryGetValue(fieldName, out bool derived))
+            {
+                return derived ? 1.0 : 0.0;
+            }
         }
 
         object snapshotBox = _lastDataSnapshot;

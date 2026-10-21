@@ -1,4 +1,4 @@
-﻿using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
@@ -8,9 +8,37 @@ namespace MSFSBlindAssist.Services;
 
 public partial class TaxiGuidanceManager
 {
+    /// <summary>Uncharted crossings shorter than this skip the spoken entering/exit
+    /// narration — the hop is over before the sentence finishes.</summary>
+    private const double UNCHARTED_ANNOUNCE_MIN_M = 40.0;
     private void CheckUpcomingAnnouncements(double distToTargetM, TaxiRouteSegment currentSeg, double arrivalRadius)
     {
         if (_route == null) return;
+
+        // Uncharted-crossing narration. Entering the synthetic segment gets an
+        // IMMEDIATE explanation — the tone is about to steer across pavement the
+        // data knows nothing about, and unexplained that reads as guidance gone
+        // mad (the LMML wander this feature replaces). Advancing off it gets the
+        // one-shot all-clear so the pilot knows the tone is back on real taxiways.
+        if (currentSeg.IsUncharted)
+        {
+            // Trivial hops (a tiny modelling gap the crossing happened to bridge)
+            // don't earn the full speech — the crossing is over before it finishes.
+            if (_unchartedAnnouncedIdx != _currentSegmentIndex &&
+                currentSeg.DistanceMeters >= UNCHARTED_ANNOUNCE_MIN_M)
+            {
+                _unchartedAnnouncedIdx = _currentSegmentIndex;
+                AnnounceInstruction(
+                    $"Entering uncharted apron. No taxiway data for the next " +
+                    $"{FormatDistance(currentSeg.DistanceMeters)}. Follow the tone slowly. " +
+                    "Guidance resumes on the far side.");
+            }
+        }
+        else if (_unchartedAnnouncedIdx >= 0 && _currentSegmentIndex > _unchartedAnnouncedIdx)
+        {
+            _unchartedAnnouncedIdx = -1;
+            AnnounceInstruction("Back on charted taxiways.");
+        }
 
         int nextIdx = _currentSegmentIndex + 1;
         if (nextIdx >= _route.Segments.Count)
@@ -57,7 +85,7 @@ public partial class TaxiGuidanceManager
             // to cost "turn now" too, permanently rather than just late.
             if (distToTargetM < APPROACH_ANNOUNCE_DISTANCE_M && !_approachAnnounced &&
                 !StartWarningChatterGate.ShouldHold(
-                    DateTime.UtcNow, _startChatterSuppressUntil, distToTargetM, arrivalRadius, _lastGroundSpeedKts))
+                    MSFSBlindAssist.Utils.SimClock.UtcNow, _startChatterSuppressUntil, distToTargetM, arrivalRadius, _lastGroundSpeedKts))
             {
                 AnnounceInstruction($"{_route.DestinationName} ahead.");
                 _approachAnnounced = true;
@@ -73,6 +101,11 @@ public partial class TaxiGuidanceManager
         // METERS not feet, so "<150" fired at ~492 ft and duplicated the 300
         // ft cadence. Removed.
         if (currentSeg.IsHoldShortPoint)
+            return;
+
+        // Still coming around after the initial turn cue: the tone owns the turn, and the
+        // callouts below would describe junctions beyond it (see _initialTurnPending).
+        if (_initialTurnPending)
             return;
 
         // Cumulative-curve cue — fires for gentle multi-segment curves that the
@@ -138,7 +171,7 @@ public partial class TaxiGuidanceManager
         // not to the junction.
         if (distToTargetM < approachDist && !_approachAnnounced &&
             !StartWarningChatterGate.ShouldHold(
-                DateTime.UtcNow, _startChatterSuppressUntil,
+                MSFSBlindAssist.Utils.SimClock.UtcNow, _startChatterSuppressUntil,
                 distToTargetM, WAYPOINT_CAPTURE_RADIUS_M, _lastGroundSpeedKts))
         {
             string distStr = distToTargetM > 15 ? $"In {FormatDistance(distToTargetM)}, " : "";
@@ -149,12 +182,17 @@ public partial class TaxiGuidanceManager
             string turnStr = hasTurn
                 ? ComputeTurnVerbalFromHeading(nextSeg.BearingDegrees, _lastHeading)
                 : "continue";
-            string sharpStr = sharpTurn ? "sharp " : "";
+            // "Sharp" and the junction angle describe the ROUTE's bend; turnStr is measured from
+            // the aircraft's heading. When the aircraft is not yet pointing along the route the
+            // two disagree ("sharp slight right onto taxiway A3, 160 degrees" — VirtualPilot,
+            // EGLL 09L A1 → gate), so the route's sharpness is only spoken with a full left/right.
+            bool fullTurnWord = turnStr == "left" || turnStr == "right";
+            string sharpStr = sharpTurn && fullTurnWord ? "sharp " : "";
             string taxiStr = taxiwayChanging ? $" onto taxiway {nextTaxiway}" : "";
             // For sharp turns, speak the rounded angle so the blind pilot knows
             // 70° vs. 150° hairpin. No extra "slow to X" advice here — the speed
             // warning module handles that with its own cadence.
-            string angleStr = sharpTurn
+            string angleStr = sharpTurn && fullTurnWord
                 ? $", {(int)Math.Round(turnAngle / 10.0) * 10} degrees"
                 : "";
 
@@ -175,11 +213,14 @@ public partial class TaxiGuidanceManager
 
         if (hasTurn && distToTargetM < turnImminentDistance && !_turnImminentAnnounced && _approachAnnounced)
         {
-            string sharpStr = sharpTurn ? "sharp " : "";
             string taxiStr = taxiwayChanging ? $", taxiway {nextTaxiway}" : "";
             // Same as the advance-notice cue: actual heading, not route's static turn.
             string turnStr = ComputeTurnVerbalFromHeading(nextSeg.BearingDegrees, _lastHeading);
-            AnnounceInstruction($"{sharpStr}{turnStr} now{taxiStr}.");
+            string sharpStr = sharpTurn && (turnStr == "left" || turnStr == "right") ? "sharp " : "";
+            // Already pointing along the next leg: there is no turn left to call, and
+            // "continue now." is not an instruction.
+            if (turnStr != "continue")
+                AnnounceInstruction($"{sharpStr}{turnStr} now{taxiStr}.");
             _turnImminentAnnounced = true;
         }
     }
@@ -219,7 +260,7 @@ public partial class TaxiGuidanceManager
         // there is simply no second, closer point (short of the bend itself) where that
         // dropping-out happens, so there is nothing to subtract.
         if (StartWarningChatterGate.ShouldHold(
-                DateTime.UtcNow, _startChatterSuppressUntil,
+                MSFSBlindAssist.Utils.SimClock.UtcNow, _startChatterSuppressUntil,
                 distToTargetM, clearRadiusMeters: 0, _lastGroundSpeedKts))
             return;
 
@@ -249,6 +290,14 @@ public partial class TaxiGuidanceManager
         // 2026-06-11). Defer; the cue fires the moment the current turn settles.
         if (_yawRateDegSec * sign < 0 &&
             Math.Abs(_yawRateDegSec) >= CURVE_ANNOUNCE_MAX_OPPOSITE_YAW_DEG_SEC)
+            return;
+
+        // Nor while the tone is steering the pilot the OTHER way: the curve lies beyond the
+        // turn still to be made (a U-turn onto the exit, a sharp turn onto the route), and
+        // "Curving right." over a hard-left tone reads as a contradiction. Defer, unlatched —
+        // it speaks once the aircraft is pointing along the route, if the curve is still ahead.
+        if (_lastRouteHeadingErrorDeg * sign < 0 &&
+            Math.Abs(_lastRouteHeadingErrorDeg) >= CURVE_ANNOUNCE_MAX_OPPOSING_ERROR_DEG)
             return;
 
         _curveAnnouncedSign = sign;
@@ -304,7 +353,7 @@ public partial class TaxiGuidanceManager
         // intersection as two graph nodes 5–15m apart, which would otherwise fire
         // "Crossing taxiway Link 53" twice in a row. Suppress repeats of the same
         // NAME within the dedup window even across different junction nodes.
-        DateTime now = DateTime.UtcNow;
+        DateTime now = MSFSBlindAssist.Utils.SimClock.UtcNow;
         var freshNames = new List<string>();
         foreach (var name in otherTaxiways)
         {
@@ -328,7 +377,7 @@ public partial class TaxiGuidanceManager
         // Hold this informational callout during the post-reach-warning grace
         // window so it doesn't stomp the warning at guidance start. Mark the node
         // handled so we don't re-test every frame while inside the window.
-        if (DateTime.UtcNow < _startChatterSuppressUntil)
+        if (MSFSBlindAssist.Utils.SimClock.UtcNow < _startChatterSuppressUntil)
         {
             _crossingAnnounced = true;
             _lastCrossingNodeId = junctionNode.NodeId;
@@ -339,7 +388,7 @@ public partial class TaxiGuidanceManager
             ? $"Crossing taxiway {freshNames[0]}."
             : $"Crossing taxiways {string.Join(", ", freshNames)}.";
 
-        _announcer.AnnounceImmediate(label);
+        SpeakNow(label);
         _crossingAnnounced = true;
         _lastCrossingNodeId = junctionNode.NodeId;
 
@@ -374,8 +423,79 @@ public partial class TaxiGuidanceManager
     /// </summary>
     private void AnnounceInstruction(string text)
     {
+        // Callouts are composed from lower-case parts ("left now.", "sharp right now, taxiway
+        // B."); a sentence read aloud and in braille starts with a capital.
+        if (text.Length > 0 && char.IsLower(text[0]))
+            text = char.ToUpperInvariant(text[0]) + text.Substring(1);
         _lastInstruction = text;
-        _announcer.AnnounceImmediate(text);
+        SpeakNow(text);
+    }
+
+    /// <summary>
+    /// Speaks now — or, inside a position frame, adds the line to that frame's ONE utterance
+    /// (FlushFrameSpeech). Every line here is interrupting, so two spoken in one frame left
+    /// the pilot hearing only the last: "In 30 metres, slight right." cut off by "Slight
+    /// right now." cut off by "Slow for turn." — the direction never heard at all
+    /// (VirtualPilot 2026-09-25: ~12,000 such frames over the 100-airport run).
+    /// </summary>
+    private void SpeakNow(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        if (_frameSpeech != null) _frameSpeech.Add(text);
+        else _announcer.AnnounceImmediate(text);
+    }
+
+    private void FlushFrameSpeech(List<string> parts, List<string> queued)
+    {
+        string? joined = ComposeFrameUtterance(parts);
+        if (joined != null) _announcer.AnnounceImmediate(joined);
+        // Queued lines go AFTER the frame's one interrupting utterance: queued earlier in the
+        // frame, that utterance would have discarded them unheard.
+        foreach (var q in queued) _announcer.Announce(q);
+    }
+
+    /// <summary>
+    /// Queued speech — or, inside a position frame, deferred until that frame's interrupting
+    /// utterance has been handed over (FlushFrameSpeech), so the utterance cannot discard it.
+    /// </summary>
+    private void QueueSpeech(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        if (_frameQueuedSpeech != null) _frameQueuedSpeech.Add(text);
+        else _announcer.Announce(text);
+    }
+
+    /// <summary>
+    /// One frame's lines as one utterance: duplicates dropped; the advance notice dropped
+    /// when the same frame already says "… now" (it came too late to be advance notice);
+    /// safety lines (stop, warnings, missed exit, route changes) first.
+    /// </summary>
+    internal static string? ComposeFrameUtterance(IReadOnlyList<string> parts)
+    {
+        if (parts.Count == 0) return null;
+        var lines = new List<string>();
+        foreach (var raw in parts)
+        {
+            string p = raw.Trim();
+            if (p.Length == 0 || lines.Contains(p)) continue;
+            lines.Add(p);
+        }
+        bool hasNow = lines.Any(l => System.Text.RegularExpressions.Regex.IsMatch(l, @"^(?:Turn )?(?:Sharp |Slight )?(?:left|right) now\b",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant));
+        if (hasNow && lines.Count > 1)
+            lines.RemoveAll(l => (l.StartsWith("In ", StringComparison.Ordinal) && System.Text.RegularExpressions.Regex.IsMatch(l,
+                    @"^In [^,]+, (?:sharp |slight )?(?:left|right)\b", System.Text.RegularExpressions.RegexOptions.CultureInvariant))
+                // The rollout's speed-scaled "Left turn ahead, taxiway Y3." landing in the same frame as
+                // "Turn left now, taxiway Y3." is no longer advance notice (KDTW 22L Y3, VirtualPilot).
+                || System.Text.RegularExpressions.Regex.IsMatch(l, @"^(?:(?:Left|Right) )?[Tt]urn ahead\b",
+                    System.Text.RegularExpressions.RegexOptions.CultureInvariant));
+        static bool Urgent(string l) =>
+            l.StartsWith("Stop", StringComparison.OrdinalIgnoreCase) || l.StartsWith("Warning", StringComparison.OrdinalIgnoreCase)
+            || l.StartsWith("Missed", StringComparison.OrdinalIgnoreCase) || l.StartsWith("Unable", StringComparison.OrdinalIgnoreCase)
+            || l.StartsWith("Off route", StringComparison.OrdinalIgnoreCase) || l.StartsWith("Off pavement", StringComparison.OrdinalIgnoreCase)
+            || l.StartsWith("Route changed", StringComparison.OrdinalIgnoreCase);
+        var ordered = lines.Where(Urgent).Concat(lines.Where(l => !Urgent(l)));
+        return string.Join(" ", ordered.Select(l => l.EndsWith('.') || l.EndsWith('!') || l.EndsWith('?') ? l : l + "."));
     }
 
     /// <summary>
@@ -385,7 +505,7 @@ public partial class TaxiGuidanceManager
     private void AnnounceQueuedInstruction(string text)
     {
         _lastInstruction = text;
-        _announcer.Announce(text);
+        QueueSpeech(text);
     }
 
     /// <summary>
@@ -456,6 +576,12 @@ public partial class TaxiGuidanceManager
             string gsStr = _positionInitialized
                 ? $" Ground speed {(int)Math.Round(_lastGroundSpeedKts)} knots."
                 : "";
+            if (_backtrackTargeted && _plannedBacktrackVia != null && _positionInitialized)
+            {
+                double aheadM = Math.Max(0.0, -SignedAlongRunwayMeters(
+                    _lastLat, _lastLon, _backtrackTurnoffLat, _backtrackTurnoffLon, _backtrackHeadingTrue));
+                return $"Backtracking to {BacktrackViaLabel(_plannedBacktrackVia)}, {DistanceFormatter.FromMetres(aheadM)} ahead.{gsStr}";
+            }
             if (_backtrackConnectionNodeId > 0 && _positionInitialized)
             {
                 double distM = TaxiGraph.FastDistanceMeters(

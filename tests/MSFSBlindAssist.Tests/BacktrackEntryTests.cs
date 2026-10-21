@@ -151,4 +151,87 @@ public class BacktrackEntryTests
         Assert.Null(g.FindBacktrackEntryNode(
             0, 0.006, 0, 0.006, HalfWidthM, AcLat, AcLon));
     }
+
+    // ------------------------------------------------------------ RunwayNeedsBacktrack
+    //
+    // The "(backtrack required)" combo-label predicate (LICR class, 2026-08-28):
+    // TRUE only when the taxi network's sole access to the runway is mid-field —
+    // full length then requires entering partway down and backtaxiing to the head.
+    // Measured live against LICR/LGSK/EGPB/EGNM (all true) and
+    // EGKK/EGLL/KJFK/LEBL (all false) before pinning.
+
+    [Fact]
+    public void MidFieldOnlyRunway_NeedsBacktrack()
+    {
+        // BuildBacktrackGraph: entrances at 667/1334/2000 m, nothing at the head.
+        var g = BuildBacktrackGraph();
+        bool needs = g.RunwayNeedsBacktrack(
+            0, 0, 0, 0, 0, FarLon, HalfWidthM, AcLat, AcLon);
+        Assert.True(needs);
+    }
+
+    [Fact]
+    public void HeadEntrance_MeansNoBacktrack()
+    {
+        // Same shape plus a REAL head entrance at 100 m: the minimum-along
+        // entrance is now ~at the head, so full length is directly accessible.
+        var paths = new List<TaxiPath>
+        {
+            new TaxiPath { StartLat = OffLat, StartLon = 0.0009, EndLat = OffLat, EndLon = 0.006 },
+            new TaxiPath { StartLat = OffLat, StartLon = 0.0009, EndLat = 0, EndLon = 0.0009 }, // 100 m
+            new TaxiPath { StartLat = OffLat, StartLon = 0.006,  EndLat = 0, EndLon = 0.006 },
+        };
+        var g = TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
+        bool needs = g.RunwayNeedsBacktrack(
+            0, 0, 0, 0, 0, FarLon, HalfWidthM, AcLat, AcLon);
+        Assert.False(needs);
+    }
+
+    [Fact]
+    public void ParallelTaxiwayReachingTheHead_MeansNoBacktrack()
+    {
+        // Mid-field entrance at 667 m, no on-runway head node — but the parallel
+        // spine continues to abeam the head (within the 250 m head-access radius),
+        // exactly the simple-GA shape where the lineup intercept covers the last
+        // metres today. Off-runway head access → no advisory.
+        var paths = new List<TaxiPath>
+        {
+            new TaxiPath { StartLat = OffLat, StartLon = 0.0009, EndLat = OffLat, EndLon = 0.006 }, // to abeam-head (100 m along, 66.7 m abeam → ~120 m from lineup)
+            new TaxiPath { StartLat = OffLat, StartLon = 0.006,  EndLat = 0, EndLon = 0.006 },
+        };
+        var g = TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
+        bool needs = g.RunwayNeedsBacktrack(
+            0, 0, 0, 0, 0, FarLon, HalfWidthM, AcLat, AcLon);
+        Assert.False(needs);
+    }
+
+    [Fact]
+    public void Aircraft_on_an_orphan_parking_stub_still_finds_the_main_network_entrance()
+    {
+        // LICR class (2026-08-28): sceneries routinely leave ORPHAN 2-node
+        // parking-connector stubs disconnected from the taxi network. The
+        // aircraft's literal nearest node then sits in a stub component with no
+        // entrance in it, and anchoring reachability on that single node killed
+        // the whole ticked backtrack ("No backtrack entrance found") at exactly
+        // the airports that need it. The anchor must be the nearest node in a
+        // component that actually CONTAINS a qualified entrance.
+        var paths = new List<TaxiPath>
+        {
+            // Spine + connector: the main network with one real entrance at 667 m.
+            new TaxiPath { StartLat = OffLat, StartLon = 0.006, EndLat = OffLat, EndLon = 0.012 },
+            new TaxiPath { StartLat = OffLat, StartLon = 0.006, EndLat = 0, EndLon = 0.006 },
+            // Orphan parking stub RIGHT NEXT to the aircraft, connected to nothing.
+            new TaxiPath { StartLat = 0.0012, StartLon = 0.0090, EndLat = 0.0013, EndLon = 0.0091 },
+        };
+        var g = TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
+
+        // Aircraft parked beside the orphan stub — its nearest node is on the stub.
+        var entry = g.FindBacktrackEntryNode(
+            thrLat: 0, thrLon: 0, farLat: 0, farLon: FarLon,
+            halfWidthMeters: HalfWidthM, aircraftLat: 0.0012, aircraftLon: 0.0090);
+
+        Assert.NotNull(entry);
+        Assert.Equal(0.006, entry!.Longitude, 6);
+        Assert.Equal(0.0, entry.Latitude, 6);
+    }
 }

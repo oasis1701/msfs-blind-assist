@@ -138,7 +138,7 @@ What each one includes (per tank, centre of gravity) depends on the aircraft; se
 
 - **Output Shift+E** — Open [the Flight Planning window](planning-your-flight.md#flight-planning-efb): route viewer, procedures and airport lookup.
 - **Output Shift+B** — Open the [SimBrief](planning-your-flight.md#simbrief) briefing.
-- **Output Shift+C** — Open this aircraft's text [checklist](planning-your-flight.md#checklists). Not on: PMDG 737, PMDG 777, HorizonSim 787, MD-11 (you hear *"No checklist for this aircraft."*).
+- **Output Shift+C** — Open this aircraft's [First Officer](planning-your-flight.md#checklists): its flows and checklists. Not on: HorizonSim 787 (you hear *"No checklist for this aircraft."*).
 - **Output Ctrl+M** — Open this aircraft's [Monitor Manager](core-concepts.md#monitor-manager), to mute any automatic announcement.
 
 ### Output: AI and display reading {#output-ai-and-display-reading}
