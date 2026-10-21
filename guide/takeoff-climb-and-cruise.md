@@ -4,7 +4,7 @@ title: "Takeoff, Climb and Cruise"
 
 <div class="guide-part" markdown="1">
 
-Chapter 1 of 2 in [Part 5: Flying](index.md#part-5-flying) of the MSFS Blind Assist user guide.
+Chapter 1 of 2 in [Part 6: Flying](index.md#part-5-flying) of the MSFS Blind Assist user guide.
 
 </div>
 
@@ -193,7 +193,7 @@ The keys are the same on almost every aircraft, all in input mode:
 
 </div>
 
-Not every key exists on every aircraft; each aircraft's guide in Part 7 lists what it has. To read the values back without opening a window, Output Shift+S, Shift+H, Shift+A and Shift+V read the speed, heading, altitude and vertical speed windows on every aircraft.
+Not every key exists on every aircraft; each aircraft's guide in Part 8 lists what it has. To read the values back without opening a window, Output Shift+S, Shift+H, Shift+A and Shift+V read the speed, heading, altitude and vertical speed windows on every aircraft.
 
 ### Using a value window {#autopilot-windows-how}
 
@@ -407,7 +407,7 @@ Airliners show warnings, cautions and status messages on a central display: ECAM
 
 On the FlyByWire A320, Headwind A330 and FlyByWire A380, BA speaks ECAM warnings, cautions and memos as they appear. Press Output Ctrl+E to turn these call-outs off or on; you hear *"E W D monitoring disabled"* or *"E W D monitoring enabled"*. Master Warning and Master Caution are always announced. To read the whole display at any time, press Output Alt+E to open the E/WD window.
 
-Other aircraft work in a similar way: the PMDG aircraft announce Master Warning and Master Caution and their annunciator lights, and the HorizonSim 787 announces Master Warning and Master Caution and lists the full EICAS alerts in its Alt+E window. Each aircraft's guide in Part 7 gives the details, and every one of these announcements can be muted in the Monitor Manager.
+Other aircraft work in a similar way: the PMDG aircraft announce Master Warning and Master Caution and their annunciator lights, and the HorizonSim 787 announces Master Warning and Master Caution and lists the full EICAS alerts in its Alt+E window. Each aircraft's guide in Part 8 gives the details, and every one of these announcements can be muted in the Monitor Manager.
 
 ## TCAS Traffic {#tcas}
 

@@ -4,7 +4,7 @@ title: "General Flying Concepts"
 
 <div class="guide-part" markdown="1">
 
-Chapter 1 of 1 in [Part 8: General Flying Concepts](index.md#part-8-general-flying-concepts) of the MSFS Blind Assist user guide.
+Chapter 1 of 1 in [Part 9: General Flying Concepts](index.md#part-8-general-flying-concepts) of the MSFS Blind Assist user guide.
 
 </div>
 
@@ -223,7 +223,7 @@ Runways are the most dangerous place on an airport. A runway incursion, an aircr
 
 Airline crews work from two kinds of procedure. **Flows** are the sequences of actions you do from memory as you work around the cockpit, such as setting up the overhead panel. **Checklists** are short lists read afterwards to confirm the most important items were done. They are read at fixed points: before start, after start, before takeoff, after takeoff, approach, landing, after landing and shutdown.
 
-Use checklists in the simulator even when nobody is watching. They catch the forgotten item — the parking brake still set, flaps not selected for takeoff, the altimeter not reset — before it matters. [The First Officer and Checklists](planning-your-flight.md#checklists) explains the flows and checklists BA's First Officer runs with you, and some aircraft, such as the FlyByWire A380X, have their own electronic checklists that BA can read.
+Use checklists in the simulator even when nobody is watching. They catch the forgotten item — the parking brake still set, flaps not selected for takeoff, the altimeter not reset — before it matters. [The First Officer and Checklists](first-officer.md) explains the flows and checklists BA's First Officer runs with you, and some aircraft, such as the FlyByWire A380X, have their own electronic checklists that BA can read.
 
 <div class="callout note" role="note" markdown="1">
 

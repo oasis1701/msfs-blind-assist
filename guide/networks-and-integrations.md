@@ -4,7 +4,7 @@ title: "Networks and Integrations"
 
 <div class="guide-part" markdown="1">
 
-Chapter 1 of 1 in [Part 6: Networks and Integrations](index.md#part-6-networks-and-integrations) of the MSFS Blind Assist user guide.
+Chapter 1 of 1 in [Part 7: Networks and Integrations](index.md#part-6-networks-and-integrations) of the MSFS Blind Assist user guide.
 
 </div>
 

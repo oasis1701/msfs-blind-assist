@@ -4,7 +4,7 @@ title: "Weather"
 
 <div class="guide-part" markdown="1">
 
-Chapter 2 of 2 in [Part 3: Planning and Preflight](index.md#part-3-planning-and-preflight) of the MSFS Blind Assist user guide.
+Chapter 2 of 2 in [Part 4: Planning and Preflight](index.md#part-3-planning-and-preflight) of the MSFS Blind Assist user guide.
 
 </div>
 

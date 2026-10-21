@@ -4,7 +4,7 @@ title: "Airbus Aircraft"
 
 <div class="guide-part" markdown="1">
 
-Chapter 1 of 2 in [Part 7: Aircraft Guides](index.md#part-7-aircraft-guides) of the MSFS Blind Assist user guide.
+Chapter 1 of 2 in [Part 8: Aircraft Guides](index.md#part-7-aircraft-guides) of the MSFS Blind Assist user guide.
 
 </div>
 
@@ -185,7 +185,7 @@ On a long message, the answer keys stay inactive until you have paged to the end
 
 **PFD, ND, ISIS and System Display.** These have no window of their own. Read them from the panels in the Instrument section: the **PFD** panel (flight mode annunciator, speeds, minimums), the **ND** panel, the **ISIS** standby instruments and the **Status** panel. Press Ctrl+3 to jump straight to the status display of the panel you are on. For the System Display, open the **System Display** panel and choose a page in its **System Display Page** combo: Upper E/WD, Electrical, Hydraulics, Pressurization, APU, Air Conditioning, Wheel / Brakes, Bleed, Fuel, Doors, Engine and Flight Controls. The status box then lists that page's values. Choosing a page here only changes what BA reads, not the page on the aircraft's screen.
 
-**First Officer: Output Shift+C.** Flows and checklists from cold and dark to securing the aircraft. See [The First Officer and Checklists](planning-your-flight.md#checklists).
+**First Officer: Output Shift+C.** Flows and checklists from cold and dark to securing the aircraft. See [The First Officer and Checklists](first-officer.md).
 
 ### Aircraft-specific hotkeys and callouts {#aircraft-specific-hotkeys-and-callouts}
 
@@ -305,7 +305,7 @@ The Fenix tablet opens with Input Shift+T (in Output mode, Shift+T toggles trim 
 
 BA moves the camera for you, as described in [AI Display Reading](core-concepts.md#ai-display-reading). Two details: Alt+N reads the captain's navigation display, the one whose range and mode you set on the left EFIS. Alt+P reads the First Officer's PFD, because no camera view on the Fenix frames the captain's without cutting it off. The two PFDs differ only in the altimeter setting and in which side's autopilot and flight director are shown.
 
-**First Officer: Output Shift+C.** Flows and checklists. See [The First Officer and Checklists](planning-your-flight.md#checklists).
+**First Officer: Output Shift+C.** Flows and checklists. See [The First Officer and Checklists](first-officer.md).
 
 ### Aircraft-specific hotkeys and callouts {#aircraft-specific-hotkeys-and-callouts-2}
 
@@ -452,7 +452,7 @@ Note that Ctrl+Shift+R in Output mode reads your last landing rate instead.
 
 Sensed items tick themselves when the aircraft detects the action. Set the parking brake, for example, and you hear the item followed by *"checked"*. If the window shows "Checklist not reachable", make sure the aircraft is loaded and its displays are powered, then press Refresh.
 
-Output Shift+C opens the A380's First Officer, with its flows and its own checklists. See [The First Officer and Checklists](planning-your-flight.md#checklists).
+Output Shift+C opens the A380's First Officer, with its flows and its own checklists. See [The First Officer and Checklists](first-officer.md).
 
 **Airport Map and BTV (OANS): Output Ctrl+Shift+B.** On the real A380 you arm Brake-To-Vacate (BTV) by tapping the runway and exit on a moving airport map. This window lets you pick them from lists instead and reads the predicted stopping distances. It never changes or zooms your navigation display. It has three tabs:
 
