@@ -3,8 +3,10 @@ using MSFSBlindAssist.Aircraft.A300;
 namespace MSFSBlindAssist.FirstOfficer.A300;
 
 /// <summary>One press of a test row and the lights that prove it. <paramref name="AnyLight"/>: any one of them is
-/// enough (the cargo smoke lights differ between the freighter and the passenger variant).</summary>
-public sealed record A300FoTestPress(string Row, IReadOnlyList<string> Lights, bool AnyLight = false);
+/// enough (the cargo smoke lights differ between the freighter and the passenger variant). <paramref name="WatchMs"/>:
+/// how long its lights are watched from the press, for a test whose first light comes later than the default
+/// watch (the hold plus a second, at least four seconds).</summary>
+public sealed record A300FoTestPress(string Row, IReadOnlyList<string> Lights, bool AnyLight = false, int? WatchMs = null);
 
 /// <summary>A system test: its presses in order. <paramref name="ExpectDark"/>: passing means the lights stay dark
 /// (the takeoff config test). <paramref name="ResetsMasterWarning"/>: a master warning left lit afterwards is reset.</summary>
@@ -41,9 +43,12 @@ public static class A300FoSystemTests
         new A300FoTestPress(A300FoKeys.SmokeTest, A300FoKeys.CargoSmokeLights.Append(A300FoKeys.MasterWarning).ToArray(), AnyLight: true),
     }, ResetsMasterWarning: true);
 
+    /// <summary>The GPWS self-test lights the below glide slope light about 7 s after the press and the GPWS warning
+    /// light about 25 s after (measured 2026-10-21, twice), so either proves it, watched 12 s.</summary>
     public static readonly A300FoSystemTest Gpws = new("FO_TEST_GPWS", "GPWS test", new[]
     {
-        new A300FoTestPress(A300FoKeys.GpwsTest, new[] { A300FoKeys.GpwsLight }),
+        new A300FoTestPress(A300FoKeys.GpwsTest, new[] { A300FoKeys.GlideslopeLight, A300FoKeys.GpwsLight },
+            AnyLight: true, WatchMs: 12_000),
     });
 
     public static readonly A300FoSystemTest GearWarning = new("FO_TEST_GEAR_WARNING", "Landing gear warning test", new[]

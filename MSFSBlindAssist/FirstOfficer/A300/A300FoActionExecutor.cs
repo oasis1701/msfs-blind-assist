@@ -203,7 +203,7 @@ public sealed class A300FoActionExecutor : IFoActionExecutor
             if (!port.IsPlacedRow(press.Row))
                 return false;
             // Lights arrive once a second ([A300-24]), so even a 250 ms press is watched for seconds.
-            int watch = Math.Max(port.HoldMs(press.Row) + 1000, MinTestWatchMs);
+            int watch = press.WatchMs ?? Math.Max(port.HoldMs(press.Row) + 1000, MinTestWatchMs);
             port.HoldQuiet(watch + MasterWarningSettleMs + 2000);
             var litBefore = press.Lights.Where(Lit).ToHashSet(StringComparer.Ordinal);
             var seen = new HashSet<string>(StringComparer.Ordinal);

@@ -108,6 +108,29 @@ public class A300FoSystemTestTests
     }
 
     [Fact]
+    public async Task The_gpws_test_passes_on_the_glide_slope_light_seven_seconds_after_the_press()
+    {
+        // Measured 2026-10-21, twice: the below glide slope light comes on about 7 s after the press and the
+        // GPWS warning light about 25 s after; a 4 s watch on the warning light alone reported a working test
+        // as failed.
+        Light(A300FoKeys.GlideslopeLight, false);
+        Light(A300FoKeys.GpwsLight, false);
+        _port.OnDelay = elapsed => { if (elapsed >= 7000) Light(A300FoKeys.GlideslopeLight, true); };
+        Assert.True(await _exec.Set(A300FoSystemTests.Gpws.Key, 1));
+        Assert.Equal(new[] { "GPWS test: pass." }, _speech.All);
+    }
+
+    [Fact]
+    public async Task A_gpws_test_with_no_light_fails_and_names_the_glide_slope_light()
+    {
+        Light(A300FoKeys.GlideslopeLight, false);
+        Light(A300FoKeys.GpwsLight, false);
+        Assert.False(await _exec.Set(A300FoSystemTests.Gpws.Key, 1));
+        Assert.Equal(new[] { $"GPWS test: fail. {A300FoSystemTests.LightName(A300FoKeys.GlideslopeLight)} did not light." }, _speech.All);
+        Assert.True(_port.Elapsed >= 10_000, $"watched {_port.Elapsed} ms");
+    }
+
+    [Fact]
     public async Task The_engine_light_up_succeeds_at_20_percent()
     {
         _port.OnDelay = elapsed => { if (elapsed >= 10_000) _state.SetEngineN2(0, 21); };

@@ -101,7 +101,7 @@ public static class A300FoKeys
     public const string ApuSquibLight = "A300_LT_FIRE_APU_AG_SEQ1_LIGHT";
     public static readonly string[] CargoSmokeLights =
         { "A300_LT_DECK_MID1_SMOKE_LIGHT", "A300_LT_DECK_MID2_SMOKE_LIGHT", "A300_LT_DECK_AFT_SMOKE_LIGHT" };
-    public const string GpwsLight = "A300_LAMP_GPWS_LIGHT";
+    public const string GpwsLight = "A300_LAMP_GPWS_LIGHT", GlideslopeLight = "A300_LAMP_GLIDESLOPE_LIGHT";
     public static readonly string[] GearDownLights =
         { "A300_LT_GEAR_1_UNLK_SEQ2_LIGHT", "A300_LT_GEAR_2_UNLK_SEQ2_LIGHT", "A300_LT_GEAR_3_UNLK_SEQ2_LIGHT" };
     public static readonly string[] GearUnlockedLights =
@@ -112,7 +112,7 @@ public static class A300FoKeys
     {
         ExtPowerAvailLight, ApuAvailLight, ApuStartOnLight, StartValve1Light, StartValve2Light, FireHandleEng1Light,
         FireHandleEng2Light, FireHandleApuLight, Eng1Squib1Light, Eng1Squib2Light, Eng2Squib1Light, Eng2Squib2Light,
-        ApuSquibLight, GpwsLight, MasterWarning,
+        ApuSquibLight, GpwsLight, GlideslopeLight, MasterWarning,
     }.Concat(CargoSmokeLights).Concat(GearDownLights).Concat(GearUnlockedLights).ToArray();
 
     // ---------------------------------------------------------------- other values
