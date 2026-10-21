@@ -25,9 +25,9 @@ The A32NX panel set in `FlyByWireA320Definition.cs` is now at parity with the A3
 - **A32NX autobrake set uses the calc path.** The Autobrake combo (`AUTOBRAKE_MODE` → `HandleUIVariableSet`) writes `A32NX_AUTOBRAKES_ARMED_MODE_SET` via the MobiFlight **calculator** path (`ExecuteCalculatorCode`), NOT `SetLVar` (the data-def write is unreliable for FBW L:vars). Verified live: `2 (>L:A32NX_AUTOBRAKES_ARMED_MODE_SET)` arms MED, the SET var auto-resets to -1. The FCU value-set events likewise work via the calc-K path (live-verified: HDG/SPD/ALT/VS incl. signed VS round-trip through the `A32NX_FCU_AFS_DISPLAY_*` readback vars).
 - **Phase 4 — the two FBW jets share identical keyboard shortcuts.** Both handle the same `HotkeyAction`s: the A320 gained **ReadFlaps (L)** + **ReadGear (Shift+G)**; the A380 gained **ReadFuelInfo** + a **Ctrl+B Set-Altimeter** dialog (`ShowA380BaroSetDialog`, which uses the stock `KOHLSMAN_SET` = hPa×16, NOT the A320's `A32NX.FCU_EFIS_*_BARO_SET`). NEW on both: **A/THR = Ctrl+J** and **LOC = Ctrl+L** (input mode) → `A32NX.FCU_ATHR_PUSH` / `A32NX.FCU_LOC_PUSH`. **D / Shift+D (distance + time to destination / Top of Descent) now works on BOTH jets** — the A320 reads its FMS `guidanceController` by evaluating `coherent-a32nx-flightinfo.js` on the `A32NX_MCDU` view — once the MCDU window has been opened the MCDU service OWNS that view (`CoherentViewOwnership`, reconnect gaps included) and the script rides its socket (`EvalOnMcduViewAsync`; "Flight management not ready." while it reconnects), and only before that is a one-shot `CoherentEvalClient` eval used (since 2026-09; see Transport below — the two must never both hold the view, and `CoherentEvalClient` refuses a claimed view). ⚠️ The script reads the distance to destination from FBW's per-plan Map (`alongTrackDistancesToDestination`, #9627, 2025-11-25) AND, when that is absent, the older plain `alongTrackDistanceToDestination`: the Headwind A330 0.8.1 (built 2026-01-04) pins FBW at 2025-11-10 and ships only the old field, so with the Map alone plain D said "Destination distance not available" for a whole A330 flight (live 2026-09-26). Check the INSTALLED package's `mcdu.js` before assuming the fork matches its source head — the clone's head pinned FBW 2026-05-10 and would have hidden this. Both share `MainForm.AnnounceFlightInfoJson` for an identical readout. See the "D / Shift+D distance hotkeys" section above.
 
-- **Status-display boxes refresh live — F5 AND auto, without yanking the reader cursor (both jets).** The SD-page status box renders the aircraft def's `_sdPageContent`, an OnRequest **snapshot** that is ONLY rebuilt by `OnDisplayPanelShown → RefreshSdPageDisplayAsync` (which re-reads the underlying SimVars: FOB, engine N1/N2/N3, per-tank fuel, …). **The core bug:** the F5 / Refresh handler re-requested the panel's display vars and re-rendered, but never rebuilt `_sdPageContent` — so it re-printed the SAME stale snapshot and "FOB 13400 KG" never moved, *even on a manual F5*. Fix: the refresh handler now calls `OnDisplayPanelShown(currentPanel)` (fire-and-forget; it pushes its own `UpdateDisplayText` ~0.6 s later when the fresh read completes). Non-SD panels no-op (each def gates on its own panel key: A380 = "ECAM Control Panel", A32NX = "System Display").
+- **Status-display boxes refresh live — F5 AND auto, without yanking the reader cursor (both jets).** The SD-page status box renders the aircraft def's `_sdPageContent`, an OnRequest **snapshot** that is ONLY rebuilt by `OnDisplayPanelShown → RefreshSdPageDisplayAsync` (which re-reads the underlying SimVars: FOB, engine N1/N2/N3, per-tank fuel, …). **The core bug:** the F5 / Refresh handler re-requested the panel's display vars and re-rendered, but never rebuilt `_sdPageContent` — so it re-printed the SAME stale snapshot and "FOB 13400 KG" never moved, *even on a manual F5*. Fix: the refresh (now `MainForm.RefreshDisplayNow`, run by the 1 s tick, by F5 and by Ctrl+3 onto an empty list; the Refresh button was removed once the list updated itself) calls `OnDisplayPanelShown(currentPanel)` (fire-and-forget; it pushes its own `UpdateDisplayText` ~0.6 s later when the fresh read completes). Non-SD panels no-op (each def gates on its own panel key: A380 = "ECAM Control Panel", A32NX = "System Display").
   - **The status display is a LISTBOX, not a TextBox (2026-07 rework).** The generic `_DISPLAY_` control is a read-only navigable `ListBox` (one synoptic row per item); every write goes through `MainForm.UpdateDisplayText(ListBox)` → **`Forms.DisplayList.UpdateInPlace`**, which rewrites ONLY the rows whose text changed, grows/shrinks the tail in place (never `Items.Clear()`), and restores the selection by ROW CONTENT — matching the occurrence **nearest the old index** (status lists contain duplicate/blank rows) and **clamping to the last row** when the list shrinks past the cursor (never dropping the selection to -1). A ListBox item-text update never touches a caret, so NVDA's cursor stays on the row being read; a row whose value actually changes re-announces while focused (intended live behaviour). The old TextBox path + its `SetDisplayTextPreserveCaret` wrapper were REMOVED from MainForm. All MCDU/CDU/DCDU forms, the pop-out windows (E/WD, OANS, RMP, HS787 display + EICAS, GSX menu, Weather Radar — via the shared `Forms/DisplayListBox` control), and the ECL now reconcile through `DisplayList.UpdateInPlace`; per-form selection semantics (title/page force-select, CDU positional index restore, ECL FWS cursor-follow) run caller-side after the call. `DisplayText.SetPreserveCaret` survives with a single caller (the OANS Airport tab's one-line box); the GSX status/tooltip boxes keep plain unchanged-guarded `.Text` writes.
-  - **Auto-refresh** (`MainForm._sdAutoRefreshTimer`, **1 s**, started/stopped by `StartOrStopSdAutoRefresh()` per panel — only panels with a `_REFRESH_` button): each tick rebuilds any snapshot SD content via `OnDisplayPanelShown` AND force-reads the panel's display vars directly (`RequestVariable(…, forceUpdate: true)` — no more `PerformClick`/2 s-timeout dance), then schedules a repaint. Repaints are **coalesced by `ScheduleDisplayRepaint`**, a one-shot 120 ms timer armed by the FIRST push and NOT restarted by later ones — a bounded leading-edge coalesce. **Do NOT make it a restart-per-push trailing debounce**: hand-fly/takeoff-assist stream `PLANE_PITCH/BANK/HEADING` per SIM_FRAME (~30-60 Hz), those are PFD/ISIS display vars, and a trailing debounce starves — the "live" list froze exactly while hand-flying. **`UpdateDisplayText` always overwrites `displayValues` from `GetCachedVariableValue` first** — displayValues alone goes stale for def-handled vars (`ProcessSimVarUpdate` returns true → the Step-3 write is skipped: A32NX COM freqs, A380 EFIS baro, HS787 flight data); the old 3 s tick masked that by `displayValues.Clear()` via the Refresh button, which the live tick no longer does. The tick still skips while a selector combo is focused; the Refresh handler shows "Loading..." only on the first **empty** populate. Perf invariant: the per-event "is this var in any panel display" gate in `OnSimVarUpdated` uses **`GetDisplayVarNamesCached()`** (a HashSet keyed on the aircraft instance) — never call the defs' `GetPanelDisplayVariables()` per event; it rebuilds its whole dictionary each call (the same lag class `_varCache` fixed for `GetVariables`).
+  - **Auto-refresh** (`MainForm._sdAutoRefreshTimer`, **1 s**, started/stopped by `StartOrStopSdAutoRefresh()` per panel — only panels with a `_DISPLAY_` status list): each tick rebuilds any snapshot SD content via `OnDisplayPanelShown` AND force-reads the panel's display vars directly (`RequestVariable(…, forceUpdate: true)` — no more `PerformClick`/2 s-timeout dance), then schedules a repaint. Repaints are **coalesced by `ScheduleDisplayRepaint`**, a one-shot 120 ms timer armed by the FIRST push and NOT restarted by later ones — a bounded leading-edge coalesce. **Do NOT make it a restart-per-push trailing debounce**: hand-fly/takeoff-assist stream `PLANE_PITCH/BANK/HEADING` per SIM_FRAME (~30-60 Hz), those are PFD/ISIS display vars, and a trailing debounce starves — the "live" list froze exactly while hand-flying. **`UpdateDisplayText` always overwrites `displayValues` from `GetCachedVariableValue` first** — displayValues alone goes stale for def-handled vars (`ProcessSimVarUpdate` returns true → the Step-3 write is skipped: A32NX COM freqs, A380 EFIS baro, HS787 flight data); the old 3 s tick masked that by `displayValues.Clear()` via the old Refresh button. **Nothing clears `displayValues` any more, F5 included:** for a row the cache never holds (the iFly 737's SDK-fed `PMDGVar` rows, which `RequestVariable` cannot re-read and whose live text comes from `TryGetDisplayOverride` only while a stored value exists) a clear blanked the row to "--" until the aircraft reloaded. F5 runs the tick's own `RefreshDisplayNow` without the combo skip, ignores its key auto-repeat, and speaks "Status display refreshed" ([CORE-7]). The tick still skips while a selector combo is focused; the refresh shows "Loading..." only on the first **empty** populate. Perf invariant: the per-event "is this var in any panel display" gate in `OnSimVarUpdated` uses **`GetDisplayVarNamesCached()`** (a HashSet keyed on the aircraft instance) — never call the defs' `GetPanelDisplayVariables()` per event; it rebuilds its whole dictionary each call (the same lag class `_varCache` fixed for `GetVariables`).
 - **Master Warning / Caution acknowledge — clears the aural too (live on the A380, source-correct on the A32NX).** The acknowledge PBs are momentary **buttons** (`Btn`, pulse L:var 1→0) not combos. **A380:** the FBW glareshield.xml HOLD_SIMVAR is misspelled `PUSH_AUTOPILOT_MASTER`**`A`**`WARN_L/R` (extra A) — verified live: pulsing that clears `A32NX_MASTER_WARNING` + cancels the aural, while the no-A name is a no-op; caution `PUSH_AUTOPILOT_MASTERCAUT_L/R` is spelled normally. **A32NX:** `CLEAR_MASTER_WARNING`/`CLEAR_MASTER_CAUTION` already pulse `PUSH_AUTOPILOT_MASTERWARN_L`/`MASTERCAUT_L` (no extra A — the conventional A32NX name; the typo was A380-specific) 1→0 via `HandleUIVariableSet`, rendered as buttons. **DEFERRED (verify when loaded in the A32NX):** confirm the A32NX master-warn/caut pulse actually clears `A32NX_MASTER_WARNING`/`_CAUTION` + the aural live (source XMLs aren't in this fbw-aircraft checkout to cross-check the var name); if the no-A name no-ops like the A380 did, switch to `MASTERAWARN`.
 
 - **A380 button-vs-combo audit (2026-06, 3 parallel source-cross-referenced agents).** Policy: a MOMENTARY cockpit action with no readable resting state → `Btn` (push-button, pulses L:var 1→0, announces "<name> pressed"); a multi-state selector or a LATCHING pushbutton whose pushed-in state matters → COMBO (state stays visible); fire/smoke TESTS stay combos. Changes made:
@@ -280,9 +280,13 @@ it the same way.
 **FBW #10890 (`c0421a9`, 11 Sep 2026, "various AFS fixes") stopped the A32NX publishing
 `A32NX_SPEEDS_VFEN` and `A32NX_SPEEDS_VS` at all.** The writes were deleted from
 `A32NX_Speeds.ts`; the values still exist inside `NXSpeeds` but nothing puts them on an
-L-var any more. Nothing was renamed, so a name-diff sweep finds nothing — the vars simply
+L-var any more. Neither was renamed, so a name-diff sweep finds nothing — the vars simply
 stop being written and read a stale `0` forever. That is the failure mode to fear: the VFE
 and VS readouts did not go silent, they confidently said a wrong number.
+
+The same commit DID rename one L-var: `A32NX_SPEEDS_LANDING_CONF3`, the CONF 3 landing selection,
+became `A32NX_FM_LANDING_CONF3`. The First Officer's auto-flap cap read the old name, got NaN and
+took flaps FULL until 2026-10-09 (FOA-6). The Headwind A330 still writes the old name.
 
 The readouts now take the FAC's own characteristic speeds, which is what the PFD tape uses:
 
@@ -290,6 +294,13 @@ The readouts now take the FAC's own characteristic speeds, which is what the PFD
 | --- | --- | --- |
 | VFE | `A32NX_SPEEDS_VFEN` | `A32NX_FAC_1_V_FE_NEXT`, else `A32NX_FAC_2_V_FE_NEXT` |
 | VS | `A32NX_SPEEDS_VS` | `A32NX_FAC_1_V_STALL_1G`, else `A32NX_FAC_2_V_STALL_1G` |
+
+The First Officer's automatic flap extension had the same dependency: `FbwA320FOAutoManager`
+gated extension on `A32NX_SPEEDS_VFEN`, and with it reading 0 the guard held on every approach,
+so the FO never extended flaps. It now reads the FAC word through the evaluator's
+`FO_VFE_NEXT` synthetic field: FAC 1, else FAC 2, and no data means hold. The Headwind A330's
+evaluator resolves `FO_VFE_NEXT` to the plain L-var. The A380 First Officer still reads the
+plain L-var its aircraft publishes.
 
 VS keeps its meaning: `V_STALL_1G` is the 1g stall speed, the same quantity the deleted
 `A32NX_SPEEDS_VS` carried, and the call-out still says "Stall Speed". Like the PFD, FAC 1 is
@@ -686,3 +697,82 @@ location as the round gauges, so view 8 serves both.
 ⚠️ The old hotkey-guide line said the ISIS needs "default camera view 9". That is wrong: view 9
 (index 8) holds the first officer's ND and PFD with the ECAM clipped at its left edge, and no
 standby instruments at all. The standby is in view 8 (index 7), measured.
+
+### Fenix A320 First Officer — "Landing gear: UP" by lights out, "DOWN" by three green (2026-09-22 / 2026-09-25)
+
+**Updated 2026-10-06 ([FOA-8](invariants/first-officer-airbus.md#foa-8)).** The Fenix First
+Officer no longer has an After Takeoff checklist (Airbus deleted it in November 2021) and no
+`ATC_GEAR` or `AFTER_TAKEOFF_CL`; the "gear down" read-back line is `LDC_MEMO_GEAR`, the first
+line of the Landing checklist's landing memo (it was `LDC_GEAR`). What follows is the history
+and the measurements, which still hold: the lights-out and three-green reads below are what
+`FO_GEAR_UP` and `FO_GEAR_DOWN` still do, and the read-only After Takeoff wait still exists but
+now links no checklist line. The FlyByWire A32NX and the Headwind A330 have the same two
+fields, built from the gear legs instead of lights (`FbwA320GearConfirmation`, below).
+
+The Fenix's old After Takeoff Checklist's "Landing gear: UP" (`ATC_GEAR`) used to read
+`S_MIP_GEAR` directly, and `FirstOfficerForm`'s automatic `<Id>_CL` rule (`RelatedGroupIdsFor`)
+latches `flow.Id + "_CL"` complete on top of every group a flow explicitly declares — so
+finishing the After Takeoff flow latched `AFTER_TAKEOFF_CL` even though `ATC_GEAR` had no step of
+its own behind it, and the line could read complete over gear that was still down. Fixed the
+way the PMDG 737's equivalent line was fixed (see [pmdg-737.md](pmdg-737.md) — same owner
+decision, same day): `FenixGearConfirmation` (`FirstOfficer/Fenix/FenixGearConfirmation.cs`,
+published as the synthetic state field `FO_GEAR_UP`) reads UP only when the lever reads UP
+(`S_MIP_GEAR` = 0) **and** all seven LDG GEAR indicator lights are out — `I_MIP_GEAR_1_U` /
+`_1_L`, `I_MIP_GEAR_2_U` / `_2_L`, `I_MIP_GEAR_3_U` / `_3_L` (each wheel's upper/lower
+legend) and `I_MIP_GEAR_RED` (the main-panel lever's own red arrow). All seven are
+`Continuous`-registered L:vars, so the shared batch cache always carries a fresh sample once
+the aircraft is powered; an unwritten field (any of the seven, or the lever) reads NaN via
+the shared `GearLightRules.AsField`, which a flow's wait treats as "not up yet" rather than
+a false positive.
+
+**DOWN is "three green", from a MEASURED legend (2026-09-25).** The PMDG 737 composes
+"three green, no red" from separate green DOWN-AND-LOCKED and red IN-TRANSIT fields. Each
+Fenix wheel instead carries two legend L:vars, `_U` (Upper) and `_L` (Lower), and a Fenix
+legend's meaning must never be inferred from its suffix, from the real aircraft, or from a
+sibling pushbutton (the APU START `_U`/`_L` reversal is the cautionary tale — see
+`FoPr160ProcedureFixTests`). So it was read in the sim: Fenix A320 CFM, parked at KDFW,
+powered (main bus 28.5 V), lever `S_MIP_GEAR` = 1, gear down and locked. With the
+annunciator switch `S_OH_IN_LT_ANN_LT` at Bright (1), `I_MIP_GEAR_1_L`/`_2_L`/`_3_L` all read
+1 and `I_MIP_GEAR_1_U`/`_2_U`/`_3_U` and `I_MIP_GEAR_RED` all read 0; with the switch at TEST
+(2) all three `_U` and `I_MIP_GEAR_RED` read 1 (proving the `_U` vars are live lights, not a
+nonexistent L:var reading 0), and back to Bright returned them to 0. At DIM (0) the three `_L` still read 1 — the legends are plain
+on/off, not brightness-scaled like the iFly's, so the `> 0.5` test holds at either setting. So **`_L` is the green
+DOWN-AND-LOCKED legend**, and `_U` is the wheel's other legend — dark when down-locked, lit
+in the light test; its colour in transit was NOT observed and nothing depends on it. The
+real A320's LDG GEAR panel happens to agree (red UNLK above, green triangle below), but the
+measurement is the authority, not the real jet.
+
+`FenixGearConfirmation.DownValue`, published as the synthetic `FO_GEAR_DOWN`, reads DOWN only
+when the lever reads DOWN **and** all three `_L` legends are lit **and** none of the three
+`_U` legends nor `I_MIP_GEAR_RED` is lit — the shared `GearLightRules.IsDown`. Treating `_U`
+and the arrow as reds means an annunciator light test (which lights everything) can never
+read as "down". Any unwritten reading gives NaN, as for UP. The Landing Checklist's "Landing
+memo, landing gear: DOWN" line (`LDC_MEMO_GEAR`, formerly `LDC_GEAR`) auto-ticks from
+`FO_GEAR_DOWN` instead of the plain lever
+— the same field the PMDG 737 and iFly lines read. It has no `CheckAction`, so a hand tick
+never writes the gear. The Fenix First Officer profile has **no Landing flow**, so nothing
+latches `LANDING_CL` complete: the line ticks and un-ticks from its own state alone
+(`FenixGearConfirmationTests.No_Fenix_flow_latches_LANDING_CL` pins that premise — a future
+Fenix Landing flow would need a read-only gear-down check completing `LDC_MEMO_GEAR` first).
+
+**The After Takeoff flow ends with a read-only step**, `AT_GEAR_UP_CHECK` ("Landing gear:
+UP"), that waits up to 20 s for `FO_GEAR_UP`. It never writes the lever — gear retraction
+stays the `UniversalAutomationService`'s auto-gear-up job (the flow's own `Description` says
+so) — it only confirms. It used to complete `ATC_GEAR`; with the After Takeoff checklist gone
+(2026-10-06) it links no checklist line, and the wait stays. On a timeout the step is
+announced as skipped ("Timed out waiting for: Landing gear: UP" / "Skipping: Landing gear:
+UP", heard before the non-interrupting "After Takeoff flow complete" — see
+[first-officer.md](first-officer.md)).
+
+**The A32NX and A330 confirm from the legs, not lights (2026-10-06).** Neither FlyByWire jet
+has the Fenix's gear lights, so `FbwA320GearConfirmation` (`FirstOfficer/FBWA320/`, shared by
+the Headwind A330) publishes the same two fields from the handle and the three leg positions:
+`FO_GEAR_UP` is the handle up AND `A32NX_GEAR_CENTER_POSITION`, `_LEFT_POSITION` and
+`_RIGHT_POSITION` all under 5 %; `FO_GEAR_DOWN` is the handle down AND all three over 95 %.
+Any unknown input gives NaN, so a flow's wait reads "not yet" instead of a false positive.
+`AT_GEAR_UP_CHECK` on those two aircraft is the same read-only 20 s wait (FO-13), and the
+Landing checklist's `LDC_MEMO_GEAR` reads `FO_GEAR_DOWN`. The A32NX gear lever itself still
+cannot be written, so its power-up flow's gear-lever step reads it instead (2026-10-09): a read-only
+5 s check of `GEAR_HANDLE_POSITION`, "Already set" with the lever down and skipped aloud otherwise,
+that completes the detect-only "Gear lever: DOWN" line (it used to be a Captain reminder; the
+Headwind A330 is the same, and the Fenix writes its lever down).

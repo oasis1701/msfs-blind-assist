@@ -25,10 +25,12 @@ internal static class GeographyFixtureWorld
         Row(8, "Some School", 38.51, -76.51, "S", "SCH", "MD", 0),
         // Just across the border in the second state: the nearest town to (38.31, -76.9), which is in Maryland.
         Row(9, "Bordertown", 38.28, -76.90, "P", "PPL", "VA", 800),
+        // A section of Bigtown (PPLX) with its own population, nearer the bay than Bigtown: never a major city.
+        Row(10, "Harbor District", 39.25, -76.61, "P", "PPLX", "MD", 90000),
     };
 
     /// <summary>Places the catalog keeps out of <see cref="Rows"/> (the school is dropped).</summary>
-    internal const int KeptPlaces = 8;
+    internal const int KeptPlaces = 9;
 
     internal const string CountryInfo = "#ISO\tISO3\tNum\tfips\tCountry\nUS\tUSA\t840\tUS\tUnited States\n";
     internal const string Admin1 = "US.MD\tMaryland\tMaryland\t4361885\nUS.VA\tVirginia\tVirginia\t6254928\n";

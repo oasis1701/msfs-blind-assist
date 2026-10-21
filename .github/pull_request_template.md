@@ -15,7 +15,23 @@ See changelog.d/README.md.
 
 - [ ] Added a changelog fragment named `<pr>-<slug>.<category>.md` (or applied `skip-changelog`)
 
-## Docs and rules
+## User guide
+
+<!--
+The pilot's guide is guide/ in this repo: the website (msfsblindassist.com/guide/) and
+Help, User Guide in the app are built from it. Does this PR change what a pilot presses,
+sees or hears (a hotkey, window, setting, spoken text, tone or aircraft)? Then update
+guide/ in this PR (docs/user-guide.md says how) and leave the line below empty.
+Otherwise fill it in with ONE of these:
+  User guide: needed: <chapter and section>   (the guide still has to be updated there)
+  User guide: none, because <why the guide is still right>
+CI asks when the PR adds a feature, aircraft or improvement fragment or changes
+MSFSBlindAssist/HotkeyGuides/. See CORE-19 in docs/invariants/core.md.
+-->
+
+User guide:
+
+## Developer docs and rules
 
 <!--
 Adds an aircraft or a feature, or a lesson a future change must not break?

@@ -36,7 +36,6 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
 
     public override string AircraftName => "iniBuilds A300-600";
     public override string AircraftCode => Code;
-    public override string? ChecklistFileName => "iniBuilds_A300_Checklist.txt";
 
     private readonly A300ControlMap _map;
     private readonly A300Placement _placement;

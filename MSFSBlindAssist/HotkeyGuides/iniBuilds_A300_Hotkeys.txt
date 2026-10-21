@@ -396,7 +396,6 @@ Aircraft state:
   Shift+F    Read total fuel (kilograms)
   W          Read gross weight (pounds)
   Shift+W    Read gross weight (kilograms)
-  Shift+C    Open the A300 checklist (the aircraft's own checklist, phase by phase)
   Ctrl+M     A300 Monitor Manager
 
 Altitude:
@@ -482,6 +481,8 @@ Traffic and Weather:
   Alt+G      Announce nearest ground traffic (up to 3 aircraft on ground with
              direction and distance; auto-alerts also fire at 500/250/100 ft
              zone transitions while taxiing)
+  Shift+O    Open Volanta window (Volanta users and network pilots around you,
+             your Volanta friends and online ATC; also Extras > Volanta)
 
 Displays and Windows:
   Shift+E    Route viewer, procedure planner and airport lookup

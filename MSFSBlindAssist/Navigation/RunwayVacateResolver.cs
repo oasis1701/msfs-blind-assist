@@ -138,6 +138,50 @@ public static class RunwayVacateResolver
         Runway? runway,
         double runwayHeadingTrue,
         out double startLateralM,
+        out double endLateralM,
+        bool ownHoldSearch = true)
+    {
+        // First pass WITH the another-runway hold-line gates: the walk never
+        // steps onto or past a hold line that genuinely guards a different
+        // runway (close parallels, crossing runways) — stopping before it is
+        // the correct hold-short semantics. But at some fields the only path
+        // off the landing runway's pavement leads through such a line, and a
+        // stop ON the landed runway is strictly worse than one inside another
+        // runway's protected area — so when the gated walk fails even the
+        // off-pavement test, retry unrestricted (the legacy walk) and take
+        // whichever result gets further from the runway. Every exit whose
+        // gated walk clears the pavement keeps the hold-short stop; nothing
+        // ends closer to the runway than the legacy walk achieved (whole-DB
+        // sweep requirement: zero width-relative off-pavement regressions).
+        int gated = ExtendClearOfRunwayCore(graph, destNodeId, cameFromNodeId,
+            runway, runwayHeadingTrue, enforceHoldGates: true,
+            out startLateralM, out endLateralM);
+        if (graph == null || runway == null) return gated;
+        if (IsOffPavement(endLateralM, runway))
+            return ownHoldSearch
+                ? ExtendPastOwnHoldAhead(graph, gated, runway, runwayHeadingTrue, ref endLateralM)
+                : gated;
+
+        int legacy = ExtendClearOfRunwayCore(graph, destNodeId, cameFromNodeId,
+            runway, runwayHeadingTrue, enforceHoldGates: false,
+            out double legacyStartM, out double legacyEndM);
+        if (legacyEndM > endLateralM + 0.5)
+        {
+            startLateralM = legacyStartM;
+            endLateralM = legacyEndM;
+            return legacy;
+        }
+        return gated;
+    }
+
+    private static int ExtendClearOfRunwayCore(
+        TaxiGraph? graph,
+        int destNodeId,
+        int cameFromNodeId,
+        Runway? runway,
+        double runwayHeadingTrue,
+        bool enforceHoldGates,
+        out double startLateralM,
         out double endLateralM)
     {
         startLateralM = 0.0;
@@ -193,13 +237,28 @@ public static class RunwayVacateResolver
         startLateralM = Lateral(startNode);
         endLateralM = startLateralM;
 
+        // A destination sitting on a CROSSING runway can be arbitrarily far from the
+        // LANDING runway's axis and still be the worst possible stop point. At a
+        // runway intersection (KDTW 04R × 09L: exits Y/Y4/V resolve their ApronNodeId
+        // to a node dead-centre on 09L, ~95 m from 04R's axis) the lateral-only test
+        // below reads "already vacated" and the walk never runs — so guidance routed
+        // the pilot onto 09L and announced "Off the runway. Stop and hold position."
+        // Measured DB-wide 2026-08-26: 2,213 exits at 792 airports resolved onto
+        // another runway's pavement. When the start node is on another runway the walk
+        // MUST run (to escape it), and the never-closer contract floor is dropped to
+        // zero — a node clear of every runway beats one parked on a crossing runway
+        // regardless of its offset from the landing runway.
+        bool startOnOtherRunway = IsOnDifferentRunway(graph, startNode, runway, runwayHeadingTrue);
+        double contractFloorM = startOnOtherRunway ? 0.0 : startLateralM;
+
         // Already vacated — leave the destination alone. A destination that IS the
         // hold line still enters the walk, so it gets the same single tail-clearance
         // hop past the line that a destination reached BY walking does; otherwise an
         // ApronNodeId that happens to land on the hold node would stop with the
         // airframe straddling it while an identical geometry reached one hop earlier
         // would not.
-        if (startLateralM >= VacatedClearanceMetres && !IsHoldNode(startNode))
+        if (startLateralM >= VacatedClearanceMetres && !IsHoldNode(startNode)
+            && !startOnOtherRunway)
             return destNodeId;
 
         int cur = destNodeId;
@@ -242,7 +301,24 @@ public static class RunwayVacateResolver
                 // the centreline because the only way out was one on-pavement node).
                 // Crossing to the far side is prevented by the `side` latch, not by
                 // this test.
-                if (IsOnDifferentRunway(graph, cand, runway, runwayHeadingTrue)) continue;
+                // EXCEPTION: when the walk STARTS on another runway (a crossing-
+                // intersection exit — KDTW 04R × 09L, where the whole Y/Y4/V hub
+                // sits inside 09L's corridor), transit through that pavement is the
+                // only physical way off it, so on-runway candidates are traversable.
+                // What must never happen is SETTLING there — the best-node update
+                // below requires the settled node to be clear of every other runway.
+                if (!startOnOtherRunway
+                    && IsOnDifferentRunway(graph, cand, runway, runwayHeadingTrue)) continue;
+
+                // Never step ONTO (and therefore never past) a hold-short line
+                // that NAMES a different runway — the walk stops at the node
+                // before it, which is exactly where an aircraft holds short. The
+                // pavement test above cannot catch this: the protected area
+                // between another runway's hold line and its pavement edge is
+                // off-pavement by that test, yet parking there is the incursion
+                // the line exists to prevent (close parallels, crossing runways).
+                if (enforceHoldGates && IsHoldNode(cand)
+                    && HoldGuardsAnotherRunway(graph, cand, runway, runwayHeadingTrue)) continue;
 
                 double lat = Progress(cand);
                 if (lat <= curLateral + 0.5) continue;   // must genuinely move away
@@ -272,7 +348,14 @@ public static class RunwayVacateResolver
             bool prevWasHold = graph.Nodes.TryGetValue(cur, out var curNode)
                                && IsHoldNode(curNode);
             if (prevWasHold && curLateral >= VacatedClearanceMetres
-                && pick.DistanceMeters > PastHoldMarginMetres)
+                && (pick.DistanceMeters > PastHoldMarginMetres
+                    // The tail-clearance hop past a hold line is for the LANDING
+                    // runway's own line only. The pick filter above keeps the walk
+                    // from stepping ONTO another runway's named hold, so `cur` can
+                    // normally only be one when the DESTINATION itself was placed
+                    // on it — never step deeper into that runway's protected area.
+                    || (enforceHoldGates
+                        && HoldGuardsAnotherRunway(graph, curNode!, runway, runwayHeadingTrue))))
                 break;
 
             walked += pick.DistanceMeters;
@@ -289,7 +372,12 @@ public static class RunwayVacateResolver
             // caller and the pilot care about, so it gates the update.
             if (curLateral > bestLateral
                 && graph.Nodes.TryGetValue(cur, out var curBestNode)
-                && Lateral(curBestNode) >= startLateralM)
+                && Lateral(curBestNode) >= contractFloorM
+                // Never SETTLE on another runway — traversable (startOnOtherRunway
+                // exception above) is not stoppable. For a start-clear walk this is
+                // a no-op: on-runway candidates never became hops at all.
+                && !(startOnOtherRunway
+                     && IsOnDifferentRunway(graph, curBestNode, runway, runwayHeadingTrue)))
             {
                 best = cur;
                 bestLateral = curLateral;
@@ -297,9 +385,35 @@ public static class RunwayVacateResolver
 
             if (curLateral >= VacatedClearanceMetres)
             {
-                // Clear. Stop here unless this node is the hold line itself, in
-                // which case the loop takes exactly one more short hop past it.
-                if (!(graph.Nodes.TryGetValue(cur, out var n) && IsHoldNode(n)))
+                // Clear. Stop here unless this node is the hold line itself (the
+                // loop then takes exactly one more short hop past it), or the walk
+                // is still transiting another runway's pavement (keep escaping),
+                // or the LANDING runway's own painted hold line is just one short
+                // hop ahead — a scenery whose hold sits beyond the 90 m target
+                // (CAT II/III set-backs run to 160 m; EVRA's own line is at 106 m)
+                // with an ordinary node in the 90-105 m band used to stop BETWEEN
+                // the clearance target and the paint, leaving the tail in the
+                // strip the hold protects. Continuing that one hop lands on the
+                // hold node, and the existing one-more-hop rule then clears it.
+                bool haveN = graph.Nodes.TryGetValue(cur, out var n);
+                bool stillOnOther = startOnOtherRunway && haveN
+                    && IsOnDifferentRunway(graph, n!, runway, runwayHeadingTrue);
+                bool ownHoldJustAhead = false;
+                if (!(haveN && IsHoldNode(n!)) && !stillOnOther
+                    && graph.Adjacency.TryGetValue(cur, out var aheadEdges))
+                {
+                    foreach (var ae in aheadEdges)
+                    {
+                        if (ae.ToNodeId == prev || visited.Contains(ae.ToNodeId)) continue;
+                        if (ae.DistanceMeters > PastHoldMarginMetres) continue;
+                        if (string.Equals(ae.PathType, "R", StringComparison.OrdinalIgnoreCase)) continue;
+                        if (TaxiGraph.IsStandBridge(ae)) continue;
+                        if (!graph.Nodes.TryGetValue(ae.ToNodeId, out var aheadN)) continue;
+                        if (!IsHoldNode(aheadN) || HoldGuardsAnotherRunway(graph, aheadN, runway, runwayHeadingTrue)) continue;
+                        if (Progress(aheadN) > curLateral + 0.5) { ownHoldJustAhead = true; break; }
+                    }
+                }
+                if (!(haveN && IsHoldNode(n!)) && !stillOnOther && !ownHoldJustAhead)
                     break;
             }
         }
@@ -317,20 +431,26 @@ public static class RunwayVacateResolver
         // node it settles on to be genuinely further out. It is deliberately gated on
         // the greedy walk having failed, so every exit that already reaches the
         // holding position is byte-for-byte unaffected by it.
-        if (bestLateral < VacatedClearanceMetres)
+        // Also runs when the walk failed to move OFF a crossing runway: the greedy
+        // walk's step filter refuses candidates on another runway, so from a start
+        // node ON one it can dead-end with best == the on-runway start even though
+        // its lateral clears the 90 m target (see startOnOtherRunway above).
+        bool bestStillOnOtherRunway = startOnOtherRunway && best == destNodeId;
+        if (bestLateral < VacatedClearanceMetres || bestStillOnOtherRunway)
         {
             int found = 0;
-            double foundProgress = bestLateral;
+            double foundProgress = bestStillOnOtherRunway ? 0.0 : bestLateral;
             // With no side established (destination still on the centreline and the
             // junction step degenerate) each side is searched separately, so a path is
             // never assembled from nodes on BOTH sides — which would cross the runway.
             foreach (int trySide in side != 0 ? new[] { side } : new[] { 1, -1 })
             {
                 int cand = SearchForClearNode(graph, destNodeId, cameFromNodeId, runway,
-                                              runwayHeadingTrue, trySide, ProgressOn);
+                                              runwayHeadingTrue, trySide, ProgressOn,
+                                              startOnOtherRunway, enforceHoldGates);
                 if (cand <= 0 || !graph.Nodes.TryGetValue(cand, out var candNode)) continue;
                 double p = ProgressOn(candNode, trySide);
-                if (p > foundProgress + 0.5 && Lateral(candNode) >= startLateralM)
+                if (p > foundProgress + 0.5 && Lateral(candNode) >= contractFloorM)
                 {
                     found = cand;
                     foundProgress = p;
@@ -347,8 +467,196 @@ public static class RunwayVacateResolver
         return best;
     }
 
+    /// <summary>How far past the walk's stop the search for the landed runway's own hold line reaches.</summary>
+    private const double OwnHoldSearchMetres = 80.0;
+    /// <summary>A line further out than this is not a runway-holding position (ICAO: 107.5 m code F; CAT II/III set-backs to ~160 m, EGKK A3 162 m).</summary>
+    private const double OwnHoldMaxLateralMetres = 180.0;
+
+    /// <summary>
+    /// The greedy walk only takes steps that move strictly further from the runway, so on an exit
+    /// taxiway that CURVES it stops where the offset briefly stops growing, which can be short of
+    /// the landed runway's own painted hold line. EGLL 09L to A1 (VirtualPilot 2026-09-25): the walk
+    /// stopped at 120 m (A1 runs 120, 123, 120 m out), 22 m short of the "A1, Runway 27R" line at
+    /// 141 m, so the pilot was told "Off the runway" inside the protected area. The walk's one-hop
+    /// lookahead cannot see a line two hops away.
+    ///
+    /// <para>Searches up to <see cref="OwnHoldSearchMetres"/> of taxiing further, never more than
+    /// 10 m back toward the runway, never onto any runway or past another runway's hold, for a hold
+    /// node that NAMES the runway just landed on (either end; an unnamed line never counts) further
+    /// out than the stop. Found, the stop moves past it by the walk's own tail-clearance hop;
+    /// otherwise it is returned unchanged, so this only ever moves a stop OUTWARD past its own
+    /// line.</para>
+    /// </summary>
+    private static int ExtendPastOwnHoldAhead(
+        TaxiGraph graph, int stopNodeId, Runway runway, double runwayHeadingTrue, ref double endLateralM)
+    {
+        if (!graph.Nodes.TryGetValue(stopNodeId, out var stop)) return stopNodeId;
+        if (IsHoldNode(stop) && NamesLandingRunway(stop, runway)) return stopNodeId;
+
+        double hdgRad = runwayHeadingTrue * Math.PI / 180.0;
+        double cosH = Math.Cos(hdgRad), sinH = Math.Sin(hdgRad);
+        double Lateral(TaxiNode n)
+        {
+            double latR = (runway.StartLat + n.Latitude) * 0.5 * Math.PI / 180.0;
+            double dN = (n.Latitude - runway.StartLat) * MetersPerDegLat;
+            double dE = (n.Longitude - runway.StartLon) * MetersPerDegLat * Math.Cos(latR);
+            return Math.Abs(dE * cosH - dN * sinH);
+        }
+        double stopLat = Lateral(stop);
+        double floor = stopLat - 10.0;
+
+        var dist = new Dictionary<int, double> { [stopNodeId] = 0.0 };
+        var parent = new Dictionary<int, int>();
+        var queue = new PriorityQueue<int, double>();
+        queue.Enqueue(stopNodeId, 0.0);
+        TaxiNode? hold = null;
+        while (queue.TryDequeue(out int cur, out double d))
+        {
+            if (d > dist[cur]) continue;
+            if (cur != stopNodeId && graph.Nodes.TryGetValue(cur, out var cn) && IsHoldNode(cn)
+                && NamesLandingRunway(cn, runway) && Lateral(cn) > stopLat + 2.0
+                && Lateral(cn) <= OwnHoldMaxLateralMetres)
+            { hold = cn; break; }
+            if (!graph.Adjacency.TryGetValue(cur, out var edges)) continue;
+            foreach (var e in edges)
+            {
+                double nd = d + e.DistanceMeters;
+                if (nd > OwnHoldSearchMetres) continue;
+                if (string.Equals(e.PathType, "R", StringComparison.OrdinalIgnoreCase)) continue;
+                if (TaxiGraph.IsStandBridge(e)) continue;
+                if (!graph.Nodes.TryGetValue(e.ToNodeId, out var nn)) continue;
+                if (Lateral(nn) < floor) continue;
+                if (IsOnDifferentRunway(graph, nn, runway, runwayHeadingTrue)) continue;
+                if (IsHoldNode(nn) && HoldGuardsAnotherRunway(graph, nn, runway, runwayHeadingTrue)) continue;
+                if (dist.TryGetValue(e.ToNodeId, out double old) && old <= nd) continue;
+                dist[e.ToNodeId] = nd;
+                parent[e.ToNodeId] = cur;
+                queue.Enqueue(e.ToNodeId, nd);
+            }
+        }
+        if (hold == null) return stopNodeId;
+
+        int result = hold.NodeId;
+        double holdLat = Lateral(hold);
+        int cameFrom = parent.TryGetValue(hold.NodeId, out int pNode) ? pNode : -1;
+        if (graph.Adjacency.TryGetValue(hold.NodeId, out var past))
+        {
+            double bestLat = holdLat + 0.5;
+            foreach (var e in past)
+            {
+                if (e.ToNodeId == cameFrom || e.DistanceMeters > PastHoldMarginMetres) continue;
+                if (string.Equals(e.PathType, "R", StringComparison.OrdinalIgnoreCase)) continue;
+                if (TaxiGraph.IsStandBridge(e)) continue;
+                if (!graph.Nodes.TryGetValue(e.ToNodeId, out var nn)) continue;
+                if (IsOnDifferentRunway(graph, nn, runway, runwayHeadingTrue)) continue;
+                if (IsHoldNode(nn) && HoldGuardsAnotherRunway(graph, nn, runway, runwayHeadingTrue)) continue;
+                double l = Lateral(nn);
+                if (l > bestLat) { bestLat = l; result = nn.NodeId; }
+            }
+        }
+        // No short hop past the line: stopping ON it leaves the aircraft on a node whose only way
+        // on is a long leg (KCVG 09 C: 298 m), and the taxi planner then starts the route from a
+        // node elsewhere ("the route begins 250 metres from your position"). Keep the old stop.
+        if (result == hold.NodeId) return stopNodeId;
+        endLateralM = graph.Nodes.TryGetValue(result, out var rn) ? Lateral(rn) : endLateralM;
+        return result;
+    }
+
+    /// <summary>True when a hold node's label names the runway just landed on (either end).</summary>
+    private static bool NamesLandingRunway(TaxiNode n, Runway runway)
+    {
+        string? des = string.IsNullOrEmpty(n.HoldShortName) ? null
+            : RouteRunwayCrossings.ExtractRunwayDesignator(n.HoldShortName);
+        if (des == null) return false;
+        string mine = RouteRunwayCrossings.NormalizeDesignator((runway.RunwayID ?? "").Trim());
+        return mine.Length > 0 && (des.Equals(mine, StringComparison.OrdinalIgnoreCase)
+            || RouteRunwayCrossings.Reciprocal(des).Equals(mine, StringComparison.OrdinalIgnoreCase));
+    }
+
     private static bool IsHoldNode(TaxiNode n)
         => n.Type == TaxiNodeType.HoldShort || n.Type == TaxiNodeType.ILSHoldShort;
+
+    /// <summary>
+    /// True when a hold-short node genuinely guards a runway OTHER than the one
+    /// just landed on. The walk treats every hold node it meets as the exit path's
+    /// own line and steps PAST it; at close parallels (KSEA-class, ~230 m
+    /// separation) or an exit feeding a crossing runway, the hold within reach can
+    /// be the NEXT runway's — and stepping past it parks the stop point inside
+    /// that runway's protected area, the exact incursion the line exists to
+    /// prevent.
+    ///
+    /// <para>TWO independent signals must agree before the verdict flips, because
+    /// each alone is unreliable exactly where it matters:</para>
+    /// <para>1. The NAME must attribute the hold to a different (non-reciprocal)
+    /// designator. But hold names mis-bind between close parallels — TaxiGraph
+    /// names a hold after the nearest centerline within 150 m, so at paired strips
+    /// under that separation (12TS: 18L/36R beside 18R/36L) the landing runway's
+    /// OWN holds routinely carry the parallel's name. Trusting the name alone
+    /// stalled 2,400+ vacate walks just off the pavement in the whole-DB sweep.</para>
+    /// <para>2. The GEOMETRY must corroborate: the node must lie closer to the
+    /// named runway's centerline than to the landing runway's axis. A mis-bound
+    /// own-hold sits close to the landing runway and fails this; a genuine
+    /// next-runway hold sits in that runway's approach band and passes.</para>
+    /// <para>An UNNAMED hold (or a name with no runway designator, or no matching
+    /// centerline) returns false — walking away from the landing runway, the
+    /// holds encountered are overwhelmingly its own, so only affirmative
+    /// name+geometry agreement changes behaviour.</para>
+    /// </summary>
+    private static bool HoldGuardsAnotherRunway(
+        TaxiGraph graph, TaxiNode n, Runway runway, double runwayHeadingTrue)
+    {
+        string? label = n.HoldShortName;
+        if (string.IsNullOrEmpty(label)) return false;
+        string? des = RouteRunwayCrossings.ExtractRunwayDesignator(label);
+        if (des == null) return false;
+        string mine = RouteRunwayCrossings.NormalizeDesignator((runway.RunwayID ?? "").Trim());
+        if (mine.Length == 0) return false;
+        if (des.Equals(mine, StringComparison.OrdinalIgnoreCase) ||
+            RouteRunwayCrossings.Reciprocal(des).Equals(mine, StringComparison.OrdinalIgnoreCase))
+            return false;   // named for the strip just landed on
+
+        // Signal 2: geometric corroboration against the NAMED runway's centerline.
+        double hdgRad = runwayHeadingTrue * Math.PI / 180.0;
+        double cosH = Math.Cos(hdgRad);
+        double sinH = Math.Sin(hdgRad);
+        double latR = (runway.StartLat + n.Latitude) * 0.5 * Math.PI / 180.0;
+        double mPerLon = MetersPerDegLat * Math.Cos(latR);
+        double dN = (n.Latitude - runway.StartLat) * MetersPerDegLat;
+        double dE = (n.Longitude - runway.StartLon) * mPerLon;
+        double landingLateral = Math.Abs(dE * cosH - dN * sinH);
+
+        foreach (var cl in graph.RunwayCenterlines)
+        {
+            bool named =
+                des.Equals(RouteRunwayCrossings.NormalizeDesignator(cl.Name1),
+                           StringComparison.OrdinalIgnoreCase) ||
+                des.Equals(RouteRunwayCrossings.NormalizeDesignator(cl.Name2),
+                           StringComparison.OrdinalIgnoreCase);
+            if (!named) continue;
+            if (IsLandingRunway(cl, runway, runwayHeadingTrue)) continue;
+            double perp = TaxiGraph.PerpendicularDistanceMetersStatic(
+                n.Latitude, n.Longitude, cl.Lat1, cl.Lon1, cl.Lat2, cl.Lon2);
+            if (perp < landingLateral) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// True when the node is clear of every OTHER runway's pavement (the landing
+    /// runway is judged by <see cref="IsOffPavement"/> instead). Pairs with it at
+    /// both verdict sites — the handoff's <c>_landingExitOffPavement</c> and the
+    /// form's <c>VacatesRunway</c> — so a stop point parked on a CROSSING runway is
+    /// never announced as "off the runway, stop and hold position" (KDTW 04R × 09L).
+    /// Unknown graph/node degrades to true — the caller then falls back to the
+    /// lateral-only verdict, which is today's behaviour.
+    /// </summary>
+    public static bool IsClearOfOtherRunways(
+        TaxiGraph? graph, int nodeId, Runway? runway, double runwayHeadingTrue)
+    {
+        if (graph == null || runway == null || nodeId <= 0) return true;
+        if (!graph.Nodes.TryGetValue(nodeId, out var node)) return true;
+        return !IsOnDifferentRunway(graph, node, runway, runwayHeadingTrue);
+    }
 
     /// <summary>
     /// How far a traversed node may sit on the FAR side of the runway axis. A node on
@@ -372,7 +680,9 @@ public static class RunwayVacateResolver
     /// </summary>
     private static int SearchForClearNode(
         TaxiGraph graph, int startNodeId, int cameFromNodeId, Runway runway,
-        double runwayHeadingTrue, int side, Func<TaxiNode, int, double> progressOn)
+        double runwayHeadingTrue, int side, Func<TaxiNode, int, double> progressOn,
+        bool allowOtherRunwayTransit = false,
+        bool enforceHoldGates = true)
     {
         var dist = new Dictionary<int, double> { [startNodeId] = 0.0 };
         var queue = new PriorityQueue<int, double>();
@@ -392,7 +702,19 @@ public static class RunwayVacateResolver
                 if (string.Equals(e.PathType, "R", StringComparison.OrdinalIgnoreCase)) continue;
                 if (TaxiGraph.IsStandBridge(e)) continue;
                 if (!graph.Nodes.TryGetValue(e.ToNodeId, out var cand)) continue;
-                if (IsOnDifferentRunway(graph, cand, runway, runwayHeadingTrue)) continue;
+                // Same transit exception as the greedy walk: a search that STARTS on
+                // a crossing runway may pass through its pavement (the only way off
+                // it at an intersection hub), but may never SETTLE there — both
+                // accept sites below re-check.
+                bool candOnOther = IsOnDifferentRunway(graph, cand, runway, runwayHeadingTrue);
+                if (candOnOther && !allowOtherRunwayTransit) continue;
+
+                // Same rule as the greedy walk: never path onto or past a hold
+                // line that NAMES a different runway — the node before it is the
+                // correct stop, and a path assembled through it would settle
+                // inside that runway's protected area.
+                if (enforceHoldGates && IsHoldNode(cand)
+                    && HoldGuardsAnotherRunway(graph, cand, runway, runwayHeadingTrue)) continue;
 
                 double p = progressOn(cand, side);
                 if (p < FarSideFloorMetres) continue;      // would cross the runway
@@ -405,10 +727,12 @@ public static class RunwayVacateResolver
 
                 // First node to clear the holding position wins outright — the queue is
                 // ordered by walked distance, so this IS the nearest qualifying node.
-                if (p >= VacatedClearanceMetres)
-                    return ExtendPastHoldLine(graph, e.ToNodeId, cur, side, progressOn);
+                // A node still on another runway's pavement is transit, not an answer.
+                if (p >= VacatedClearanceMetres && !candOnOther)
+                    return ExtendPastHoldLine(graph, e.ToNodeId, cur, side, progressOn,
+                                              runway, runwayHeadingTrue, enforceHoldGates);
 
-                if (p > bestFarProgress) { bestFarProgress = p; bestFar = e.ToNodeId; }
+                if (p > bestFarProgress && !candOnOther) { bestFarProgress = p; bestFar = e.ToNodeId; }
                 queue.Enqueue(e.ToNodeId, nd);
             }
         }
@@ -422,9 +746,13 @@ public static class RunwayVacateResolver
     /// airframe ends up beyond it.
     /// </summary>
     private static int ExtendPastHoldLine(
-        TaxiGraph graph, int node, int cameFrom, int side, Func<TaxiNode, int, double> progressOn)
+        TaxiGraph graph, int node, int cameFrom, int side, Func<TaxiNode, int, double> progressOn,
+        Runway runway, double runwayHeadingTrue, bool enforceHoldGates = true)
     {
         if (!graph.Nodes.TryGetValue(node, out var n) || !IsHoldNode(n)) return node;
+        // Only the LANDING runway's own line gets the tail-clearance hop past it —
+        // another runway's line is a boundary to hold at, never to step beyond.
+        if (enforceHoldGates && HoldGuardsAnotherRunway(graph, n, runway, runwayHeadingTrue)) return node;
         if (!graph.Adjacency.TryGetValue(node, out var edges)) return node;
 
         double curProgress = progressOn(n, side);

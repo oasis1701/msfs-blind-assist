@@ -165,25 +165,6 @@
     <None Update="HotkeyGuides\iniBuilds_A300_Hotkeys.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <!-- Checklist Files -->
-    <None Update="Checklists\FBW_A320_Checklist.txt">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Checklists\FBW_A330_Checklist.txt">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Checklists\Fenix_A320_Checklist.txt">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Checklists\FBW_A380_Checklist.txt">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Checklists\iFly_737MAX8_Checklist.txt">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="Checklists\iniBuilds_A300_Checklist.txt">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
     <!-- User-facing guides/manuals. Shipped in full (whole folder) so the in-app
          hotkey lists' "see Guides\..." references resolve next to the exe, and any
          future per-aircraft manual added here ships automatically. -->

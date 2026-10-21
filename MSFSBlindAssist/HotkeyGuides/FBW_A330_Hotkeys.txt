@@ -7,6 +7,7 @@ Application Navigation:
   Ctrl+1     Focus Sections List
   Ctrl+2     Focus Panels List
   Ctrl+3     Focus Status Display field of the current panel (refreshes it if empty)
+  F5         Refresh the current panel's Status Display now (it also updates itself live)
 
 Tip: Press the same bracket key again to cancel a mode you activated by accident.
 
@@ -137,6 +138,8 @@ Displays:
 Traffic and Weather:
   R          Announce Tracked TCAS Traffic
   Ctrl+R     Open TCAS Traffic Window
+  Shift+O    Open Volanta window (Volanta users and network pilots around you,
+             your Volanta friends and online ATC; also Extras > Volanta)
   Shift+R    Open Weather Radar Window (auto-detects ActiveSky and silently
              uses richer data — surface wind+gust, ceiling, QNH, turbulence,
              METAR-decoded precipitation — when running. Falls back to MSFS
@@ -154,7 +157,7 @@ Displays and Windows:
   Shift+M    Show METAR Report (VATSIM, plus ActiveSky METAR if AS detected)
   Ctrl+Shift+T  Cold Temperature Altitude Correction (offline calculator: field elevation + temperature + published altitudes -> corrected altitudes)
   Shift+B    SimBrief Briefing
-  Shift+C    Show Checklist (static text, cold-and-dark to shutdown)
+  Shift+C    First Officer window (checklists and flows)
 
 Hand Fly Mode Hotkeys:
   A          Read MSL

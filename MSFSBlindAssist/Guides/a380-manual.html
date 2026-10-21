@@ -114,7 +114,7 @@
 <tr><td>flyPad / EFB</td><td>(INPUT) <kbd>Shift</kbd>+<kbd>T</kbd></td><td>The tablet — loading, fuel, ground services, charts, settings, checklists (<a href="#part6">Part 6</a>).</td></tr>
 <tr><td>Airport Map &amp; BTV (OANS)</td><td>(OUTPUT) <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd></td><td>Airport map data and Brake-To-Vacate exit selection (<a href="#part11">Part 11</a>).</td></tr>
 <tr><td>E/WD (Engine/Warning Display)</td><td>(OUTPUT) <kbd>Alt</kbd>+<kbd>E</kbd></td><td>Engine readouts, memos and active warnings (<a href="#part8">Part 8</a>).</td></tr>
-<tr><td>Live Checklist (ECL)</td><td>(OUTPUT) <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd></td><td>The real interactive electronic checklist; <kbd>Shift</kbd>+<kbd>C</kbd> is the static text checklist (<a href="#part7">Part 7</a>).</td></tr>
+<tr><td>Live Checklist (ECL)</td><td>(OUTPUT) <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd></td><td>The real interactive electronic checklist; <kbd>Shift</kbd>+<kbd>C</kbd> opens the First Officer window instead (<a href="#part7">Part 7</a>).</td></tr>
 <tr><td>Radio Management Panel (RMP)</td><td>(INPUT) <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd></td><td>Tune the VHF radios and set the squawk (<a href="#part10">Part 10</a>).</td></tr>
 <tr><td>Monitor Manager</td><td>(OUTPUT) <kbd>Ctrl</kbd>+<kbd>M</kbd></td><td>Tick/untick which variables auto-announce (<a href="#part9">Part 9</a>).</td></tr>
 </table>
@@ -122,7 +122,7 @@
 <p>In a pop-out window (E/WD, MCDU, flyPad, OANS, RMP, ECL), <kbd>F5</kbd> refreshes the reading and <kbd>Escape</kbd> closes it. The PFD, ND, ISIS and System Display pages do <strong>not</strong> have their own windows — they are read from the panel tree (see <a href="#part8">Part 8</a>); only the E/WD keeps a pop-out window.</p>
 
 <h3>The panel tree</h3>
-<p>Press <kbd>Ctrl</kbd>+<kbd>1</kbd> to focus the <strong>Sections</strong> list and <kbd>Ctrl</kbd>+<kbd>2</kbd> for the <strong>Panels</strong> list. Together they expose every cockpit system as a browsable tree. Many panels include a read-only "Status Display" field that lists live readouts one per line (press the panel's Refresh, or re-open it, to update). The sections are: Overhead, Glareshield, Instrument, Pedestal, Ground Services, and Displays. The settable controls inside them are catalogued in <a href="#part10">Part 10</a>.</p>
+<p>Press <kbd>Ctrl</kbd>+<kbd>1</kbd> to focus the <strong>Sections</strong> list and <kbd>Ctrl</kbd>+<kbd>2</kbd> for the <strong>Panels</strong> list. Together they expose every cockpit system as a browsable tree. Many panels include a read-only "Status Display" field that lists live readouts one per line and updates itself every second (press <kbd>F5</kbd> to update it at once). The sections are: Overhead, Glareshield, Instrument, Pedestal, Ground Services, and Displays. The settable controls inside them are catalogued in <a href="#part10">Part 10</a>.</p>
 
 <!-- ===================================================================== -->
 <h2 id="part4">4. The MFD / MCDU in depth</h2>
@@ -279,7 +279,7 @@
 
 <p>The A380's real checklists live on the <strong>Electronic Checklist (ECL)</strong>, shown on the Engine/Warning Display and driven by the ECAM Control Panel. MSFSBA opens it as a fully interactive list that always matches the real cockpit, including any abnormal procedure that an ECAM alert raises.</p>
 
-<div class="note">There are <strong>two</strong> checklist keys (both in OUTPUT mode, press <kbd>]</kbd> first): <kbd>Shift</kbd>+<kbd>C</kbd> opens a simple <strong>static text checklist</strong> (cold-and-dark to shutdown), and <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> opens the <strong>live ECL</strong> described here.</div>
+<div class="note">There are <strong>two</strong> checklist keys (both in OUTPUT mode, press <kbd>]</kbd> first): <kbd>Shift</kbd>+<kbd>C</kbd> opens the <strong>First Officer</strong> window (its checklists tick themselves, and its flows set the aircraft up for you; opening it also starts the First Officer's automation, such as the landing lights at 10,000 feet, which you can turn off in Settings, First Officer), and <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> opens the <strong>live ECL</strong> described here.</div>
 
 <div class="step">
 <ol>
@@ -294,7 +294,7 @@
 <!-- ===================================================================== -->
 <h2 id="part8">8. Displays: PFD, ND, ISIS, System Display, E/WD</h2>
 
-<p>The PFD, ND, ISIS and the System Display read from the <strong>panel tree</strong> (<kbd>Ctrl</kbd>+<kbd>2</kbd>), not from pop-out windows — each one's "Status Display" field lists its live values one per line (press the panel's Refresh, or re-open it, to update). The dedicated PFD/ND/ISIS/SD windows were removed; only the <strong>E/WD</strong> keeps its own window (<kbd>Alt</kbd>+<kbd>E</kbd>). The most important values from these displays also have their own quick hotkeys, and the FMA, ECAM warnings and other key changes are announced automatically (<a href="#part9">Part 9</a>).</p>
+<p>The PFD, ND, ISIS and the System Display read from the <strong>panel tree</strong> (<kbd>Ctrl</kbd>+<kbd>2</kbd>), not from pop-out windows — each one's "Status Display" field lists its live values one per line and updates itself every second (press <kbd>F5</kbd> to update it at once). The dedicated PFD/ND/ISIS/SD windows were removed; only the <strong>E/WD</strong> keeps its own window (<kbd>Alt</kbd>+<kbd>E</kbd>). The most important values from these displays also have their own quick hotkeys, and the FMA, ECAM warnings and other key changes are announced automatically (<a href="#part9">Part 9</a>).</p>
 
 <h3>PFD (Primary Flight Display) — Displays section, "PFD" panel</h3>
 <p>The PFD panel reads the <strong>Flight Mode Annunciator (FMA)</strong> — the autoflight modes — plus the approach capability and any PFD messages. The FMA is the most important readout in flight; MSFSBA also announces FMA changes automatically (see <a href="#part9">Part 9</a>). Tape values (speed, altitude, attitude) come from instruments and have their own hotkeys.</p>
@@ -461,6 +461,7 @@
 <table>
 <tr><th>Key</th><th>Action</th></tr>
 <tr><td><kbd>Ctrl</kbd>+<kbd>1</kbd> / <kbd>Ctrl</kbd>+<kbd>2</kbd> / <kbd>Ctrl</kbd>+<kbd>3</kbd></td><td>Focus the Sections list / Panels list / Status Display field of the current panel. <kbd>Ctrl</kbd>+<kbd>3</kbd> also refreshes the Status Display if it's empty, so you land on live status. (These work when INPUT mode is off; in INPUT mode the same chords are the FCU Heading / Altitude / Speed knob pulls.)</td></tr>
+<tr><td><kbd>F5</kbd></td><td>Refresh the current panel's Status Display now, from anywhere in the panel, without moving focus. It also updates itself every second.</td></tr>
 </table>
 
 <h3>OUTPUT mode (press <kbd>]</kbd> first) — readouts</h3>
@@ -468,7 +469,7 @@
 <tr><th>Key</th><th>Action</th></tr>
 <tr><td><kbd>Ctrl</kbd>+<kbd>M</kbd> / <kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>Monitor Manager (choose what auto-announces) / Toggle ECAM E/WD call-outs</td></tr>
 <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd></td><td>Airport Map &amp; BTV (OANS) window</td></tr>
-<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> / <kbd>Shift</kbd>+<kbd>C</kbd></td><td>Live Electronic Checklist (ECL) window / static text checklist</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> / <kbd>Shift</kbd>+<kbd>C</kbd></td><td>Live Electronic Checklist (ECL) window / First Officer window (checklists and flows)</td></tr>
 <tr><td><kbd>Q</kbd> / <kbd>A</kbd></td><td>Altitude AGL / MSL (in metres when the FCU MTRS button is on — see <a href="#part9">Part 9</a>)</td></tr>
 <tr><td><kbd>S</kbd> / <kbd>T</kbd> / <kbd>G</kbd> / <kbd>M</kbd></td><td>IAS / TAS / Ground Speed / Mach</td></tr>
 <tr><td><kbd>H</kbd> / <kbd>U</kbd> / <kbd>V</kbd></td><td>Magnetic Heading / True Heading / Vertical Speed</td></tr>

@@ -139,6 +139,8 @@ AI Display Reading (requires an AI API key — Gemini or Claude — in File > Se
 Traffic and Weather:
   R          Announce Tracked TCAS Traffic
   Ctrl+R     Open TCAS Traffic Window
+  Shift+O    Open Volanta window (Volanta users and network pilots around you,
+             your Volanta friends and online ATC; also Extras > Volanta)
   Shift+R    Open Weather Radar Window (auto-detects ActiveSky and silently
              uses richer data — surface wind+gust, ceiling, QNH, turbulence,
              METAR-decoded precipitation — when running. Falls back to MSFS
@@ -154,6 +156,7 @@ Displays and Windows:
   Shift+L    Location Info
   Shift+M    Show METAR Report (VATSIM, plus ActiveSky METAR if AS detected)
   Shift+B    SimBrief Briefing
+  Shift+C    First Officer window (checklists and flows)
 
 INPUT MODE - PMDG EFB Tablet:
   Shift+T    PMDG EFB Tablet - Captain tablet
@@ -209,8 +212,9 @@ Altimeter:
 
 Radios:
   Ctrl+N     Set NAV radios (input dialog with NAV 1 and NAV 2 frequency
-             and course; pre-filled with current values, applies all on
-             Set; frequency 108.00-117.95 MHz, course 0-359 degrees)
+             and course; pre-filled with current values, Enter in any
+             field applies all four; frequency 108.00-117.95 MHz, course
+             0-359 degrees)
 
 Taxi Guidance:
   Shift+Y    Open Taxi Assist Form (enter ATC taxi clearance, start guidance)

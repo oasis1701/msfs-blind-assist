@@ -17,6 +17,7 @@
         private System.Windows.Forms.ToolStripMenuItem flyByWireA320MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem fenixA320MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem pmdg777MenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem firstOfficerMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem flyByWireA380MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem pmdg737MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem horizonSim787MenuItem = null!;
@@ -24,6 +25,11 @@
         private System.Windows.Forms.ToolStripMenuItem ifly737MaxMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem tfdiMd11MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem iniA300MenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem extrasMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem volantaMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem helpMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem userGuideMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem projectWebsiteMenuItem = null!;
         private System.Windows.Forms.ListBox sectionsListBox = null!;
         private System.Windows.Forms.ListBox panelsListBox = null!;
         private System.Windows.Forms.Panel controlsContainer = null!;
@@ -54,6 +60,7 @@
             this.flyByWireA320MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.fenixA320MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.pmdg777MenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.firstOfficerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.flyByWireA380MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.pmdg737MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.horizonSim787MenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -61,6 +68,11 @@
             this.ifly737MaxMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.tfdiMd11MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.iniA300MenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.extrasMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.volantaMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.helpMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.userGuideMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.projectWebsiteMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.sectionsListBox = new System.Windows.Forms.ListBox();
             this.panelsListBox = new System.Windows.Forms.ListBox();
             this.controlsContainer = new System.Windows.Forms.Panel();
@@ -74,7 +86,9 @@
             this.menuStrip.AccessibleDescription = "Main application menu";
             this.menuStrip.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.fileMenuItem,
-            this.aircraftMenuItem});
+            this.aircraftMenuItem,
+            this.extrasMenuItem,
+            this.helpMenuItem});
             this.menuStrip.Location = new System.Drawing.Point(0, 0);
             this.menuStrip.Name = "menuStrip";
             this.menuStrip.Size = new System.Drawing.Size(870, 28);
@@ -87,12 +101,12 @@
             this.fileMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.databaseSettingsMenuItem,
             this.settingsMenuItem,
+            this.firstOfficerMenuItem,
             this.fmcSettingsMenuItem,
             this.hotkeyListMenuItem,
             this.simPerformanceMenuItem,
             this.suspendHotkeysMenuItem,
-            this.updateApplicationMenuItem,
-            this.aboutMenuItem});
+            this.updateApplicationMenuItem});
             this.fileMenuItem.Name = "fileMenuItem";
             this.fileMenuItem.Size = new System.Drawing.Size(46, 24);
             this.fileMenuItem.Text = "&File";
@@ -174,6 +188,18 @@
             this.aboutMenuItem.Size = new System.Drawing.Size(220, 26);
             this.aboutMenuItem.Text = "&About";
             this.aboutMenuItem.Click += new System.EventHandler(this.AboutMenuItem_Click);
+            //
+            // firstOfficerMenuItem
+            //
+            // Shown only for an aircraft with a First Officer; MainForm.UpdateAircraftSpecificMenuItems()
+            // sets Visible and the AccessibleName ("Fenix A320 First Officer" ...) from
+            // FirstOfficerWindows.NameFor on every aircraft change (FO-24).
+            this.firstOfficerMenuItem.AccessibleName = "First Officer";
+            this.firstOfficerMenuItem.AccessibleDescription = "Open the First Officer checklists and flows window";
+            this.firstOfficerMenuItem.Name = "firstOfficerMenuItem";
+            this.firstOfficerMenuItem.Size = new System.Drawing.Size(280, 26);
+            this.firstOfficerMenuItem.Text = "&First Officer";
+            this.firstOfficerMenuItem.Click += new System.EventHandler(this.FirstOfficerMenuItem_Click);
             //
             // aircraftMenuItem
             //
@@ -293,6 +319,55 @@
             this.iniA300MenuItem.Text = "ini&Builds Airbus A300-600";
             this.iniA300MenuItem.Checked = false;
             this.iniA300MenuItem.Click += new System.EventHandler(this.IniA300MenuItem_Click);
+            //
+            // extrasMenuItem
+            //
+            this.extrasMenuItem.AccessibleName = "Extras menu";
+            this.extrasMenuItem.AccessibleDescription = "Tools that work alongside the simulator";
+            this.extrasMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.volantaMenuItem});
+            this.extrasMenuItem.Name = "extrasMenuItem";
+            this.extrasMenuItem.Size = new System.Drawing.Size(65, 24);
+            this.extrasMenuItem.Text = "E&xtras";
+            //
+            // volantaMenuItem
+            //
+            this.volantaMenuItem.AccessibleName = "Volanta";
+            this.volantaMenuItem.AccessibleDescription = "Volanta's live map as text: Volanta users and network pilots around you, your friends, and online ATC";
+            this.volantaMenuItem.Name = "volantaMenuItem";
+            this.volantaMenuItem.Size = new System.Drawing.Size(220, 26);
+            this.volantaMenuItem.Text = "&Volanta…";
+            this.volantaMenuItem.Click += new System.EventHandler(this.VolantaMenuItem_Click);
+            //
+            // helpMenuItem
+            //
+            this.helpMenuItem.AccessibleName = "Help menu";
+            this.helpMenuItem.AccessibleDescription = "The user guide, the project website and the application version";
+            this.helpMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.userGuideMenuItem,
+            this.projectWebsiteMenuItem,
+            this.aboutMenuItem});
+            this.helpMenuItem.Name = "helpMenuItem";
+            this.helpMenuItem.Size = new System.Drawing.Size(55, 24);
+            this.helpMenuItem.Text = "&Help";
+            //
+            // userGuideMenuItem
+            //
+            this.userGuideMenuItem.AccessibleName = "User Guide";
+            this.userGuideMenuItem.AccessibleDescription = "Open the user guide in your web browser";
+            this.userGuideMenuItem.Name = "userGuideMenuItem";
+            this.userGuideMenuItem.Size = new System.Drawing.Size(220, 26);
+            this.userGuideMenuItem.Text = "User &Guide";
+            this.userGuideMenuItem.Click += new System.EventHandler(this.UserGuideMenuItem_Click);
+            //
+            // projectWebsiteMenuItem
+            //
+            this.projectWebsiteMenuItem.AccessibleName = "Project Website";
+            this.projectWebsiteMenuItem.AccessibleDescription = "Open msfsblindassist.com in your web browser";
+            this.projectWebsiteMenuItem.Name = "projectWebsiteMenuItem";
+            this.projectWebsiteMenuItem.Size = new System.Drawing.Size(220, 26);
+            this.projectWebsiteMenuItem.Text = "Project &Website";
+            this.projectWebsiteMenuItem.Click += new System.EventHandler(this.ProjectWebsiteMenuItem_Click);
             //
             // sectionsListBox
             // 

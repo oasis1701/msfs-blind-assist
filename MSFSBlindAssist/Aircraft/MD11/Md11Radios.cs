@@ -33,7 +33,7 @@ public static class Md11Radios
 
     /// <summary>
     /// The Radios panel's CONTROL rows, radio by radio: the typed standby entry (MainForm's
-    /// "_SET" text box + Set button) and the transfer button. The active/standby read-backs
+    /// "_SET" text box, applied by Enter) and the transfer button. The active/standby read-backs
     /// (<see cref="Keys"/>) are the panel's Status Display rows, not tab stops.
     /// </summary>
     public static readonly string[] PanelKeys =

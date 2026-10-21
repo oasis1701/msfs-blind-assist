@@ -12,6 +12,8 @@
 //   cda <eventId> <p>   — SetClientData write {EventId, Parameter=p} on Control CDA
 //   evt <eventId> <p>   — TransmitClientEvent with eventId, parameter=p
 //   alias <eventId>     — pre-register a "#<eventId>" alias for evt
+//   watch <FieldName>   — also print a PMDGNG3DataStruct field (e.g. MCP_BankLimitSel) on change
+//   sleep <ms>          — wait, for scripted runs piped in on stdin
 //   help                — show this help
 //   q                   — quit
 //
@@ -182,10 +184,12 @@ class Program
             line = line.Trim();
             if (line.Length == 0) continue;
             if (line.StartsWith("#")) continue; // comment
-            if (line.StartsWith("sleep "))
+            if (line.StartsWith("sleep", StringComparison.OrdinalIgnoreCase))
             {
-                int ms = int.Parse(line.Substring(6));
-                Thread.Sleep(ms);
+                if (int.TryParse(line.Substring(5).Trim(), out int ms) && ms >= 0)
+                    Thread.Sleep(ms);
+                else
+                    Console.WriteLine("usage: sleep <milliseconds>");
                 continue;
             }
             HandleCommand(line);
@@ -303,14 +307,24 @@ class Program
         var snapshot = ExtractFields(typed);
         bool firstTime = _lastValues.Count == 0;
         var changeList = new List<string>();
+        var newlyWatched = new List<string>();
         foreach (var (name, val) in snapshot)
         {
-            if (!_lastValues.TryGetValue(name, out var prev) || prev != val)
+            if (!_lastValues.TryGetValue(name, out var prev))
             {
-                if (!firstTime) changeList.Add($"{name}={val}");
+                // A field added by `watch` has no previous value: its first
+                // reading is a baseline, never a CHANGE a click caused.
+                if (!firstTime) newlyWatched.Add($"{name}={val}");
+                _lastValues[name] = val;
+            }
+            else if (prev != val)
+            {
+                changeList.Add($"{name}={val}");
                 _lastValues[name] = val;
             }
         }
+        if (newlyWatched.Count > 0)
+            Console.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] WATCH baseline: " + string.Join(", ", newlyWatched));
         if (firstTime)
         {
             Console.WriteLine($"[{DateTime.Now:HH:mm:ss.fff}] Initial snapshot — values:");
@@ -359,7 +373,8 @@ class Program
         typeof(MSFSBlindAssist.SimConnect.PMDGNG3DataStruct)
             .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
 
-    static readonly string[] s_namedFieldsOfInterest = new[]
+    // Grown at runtime by the `watch` command (copy-on-write: the pump thread reads it).
+    static volatile string[] s_namedFieldsOfInterest = new[]
     {
         // Electrical (kept for cross-checks)
         "ELEC_BatSelector",
@@ -373,6 +388,19 @@ class Program
         "ENG_annunENGINE_CONTROL",
         // Fuel
         "FUEL_annunENG_VALVE_CLOSED", // 2-element byte[]: 0=closed (CUTOFF), 1=open (RUN), 2=in transit
+        // Fuel pumps + low-press annunciators + tank quantities (center-pump automation probe).
+        // Center pump events: EVT_OH_FUEL_PUMP_L_CENTER = 69677, R_CENTER = 69678.
+        // Wing: 1_FORWARD = 69670, 2_FORWARD = 69671, 1_AFT = 69669, 2_AFT = 69672.
+        "FUEL_PumpCtrSw",             // 2-element bool[]: [0]=ctr left, [1]=ctr right
+        "FUEL_annunLOWPRESS_Ctr",     // 2-element bool[]: pairs 1:1 with FUEL_PumpCtrSw (live-verified)
+        "FUEL_PumpFwdSw",             // 2-element bool[]
+        "FUEL_PumpAftSw",             // 2-element bool[]
+        "FUEL_annunLOWPRESS_Fwd",     // 2-element bool[]
+        "FUEL_annunLOWPRESS_Aft",     // 2-element bool[]
+        "FUEL_CrossFeedSw",
+        "FUEL_QtyCenter",             // float, LBS
+        "FUEL_QtyLeft",
+        "FUEL_QtyRight",
         // APU
         "APU_Selector",
         "APU_EGTNeedle",
@@ -382,6 +410,15 @@ class Program
         "COMM_annunCALL",
         // Airstair door state (interior-controls probe)
         "DOOR_annunAIRSTAIR",
+        // Fire panel OVHT/FIRE detection test (FO fire-test probe)
+        "FIRE_DetTestSw",             // byte: 0=FAULT/INOP?  1=neutral  2=OVHT/FIRE?
+        "WARN_annunFIRE_WARN",        // 2-element bool[]: master FIRE WARN lights
+        "WARN_annunOVHT_DET",
+        "FIRE_HandleIlluminated",     // 3-element bool[]: Eng1, APU, Eng2 handle lights
+        "FIRE_annunFAULT",
+        "FIRE_annunAPU_DET_INOP",
+        "FIRE_annunENG_OVERHEAT",     // 2-element bool[]
+        "WARN_annunMASTER_CAUTION",   // 2-element bool[]
     };
 
     static (string, double)[] ExtractFields(MSFSBlindAssist.SimConnect.PMDGNG3DataStruct data)
@@ -460,6 +497,23 @@ class Program
                         SIMCONNECT_CLIENT_DATA_REQUEST_FLAG.DEFAULT,
                         0, 0, 0);
                     break;
+                case "watch":
+                {
+                    if (parts.Length != 2) { Console.WriteLine("usage: watch <FieldName>"); break; }
+                    if (Array.Find(s_namedFields, f => f.Name == parts[1]) == null)
+                    {
+                        Console.WriteLine($"[ERR] No field {parts[1]} in PMDGNG3DataStruct.");
+                        break;
+                    }
+                    if (Array.IndexOf(s_namedFieldsOfInterest, parts[1]) >= 0)
+                    {
+                        Console.WriteLine($"[WATCH] {parts[1]} is already watched.");
+                        break;
+                    }
+                    s_namedFieldsOfInterest = [.. s_namedFieldsOfInterest, parts[1]];
+                    Console.WriteLine($"[WATCH] {parts[1]} added; its baseline prints on the next snapshot.");
+                    break;
+                }
                 case "cda":
                 {
                     if (parts.Length != 3) { Console.WriteLine("usage: cda <eventId> <parameter>"); break; }
@@ -598,6 +652,8 @@ class Program
         Console.WriteLine("  read              Force a one-shot data refresh");
         Console.WriteLine("  cda E P           Send via CDA SetClientData (E=eventId, P=parameter)");
         Console.WriteLine("  evt E P           Send via TransmitClientEvent");
+        Console.WriteLine("  watch NAME        Also print struct field NAME (e.g. MCP_BankLimitSel) on change");
+        Console.WriteLine("  sleep MS          Wait MS milliseconds (scripted runs)");
         Console.WriteLine("  q                 Quit");
         Console.WriteLine();
         Console.WriteLine("Useful event IDs:");

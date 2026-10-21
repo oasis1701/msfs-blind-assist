@@ -71,7 +71,7 @@ MSFS Blind Assist now supports the Fenix A320. It allows totally blind individua
 - Using the power of Google Gemini to read Fenix displays, such as ECAM, ISIS, PFD and Navigation displays, Requires users own free AIStudio API key.
 - All our previous features are already integrated to this aircraft as well, including the route viewer, gate/runway teleport, metar report, our full-featured location info and text-based map and many more.
 - Comes with a hotkey list guide that shows all the global hotkeys that are currently supported through the input and output modes.
-- Work in progress checklist viewer, easily editable and readable by screen readers.
+- A First Officer, opened with Shift+C in output mode: interactive checklists that tick themselves as the aircraft is set up, and flows the First Officer runs for you.
 
 #### Fenix A320 MCDU access
 
@@ -180,7 +180,7 @@ Navdata Reader command-line tool by Alexander Barthel to build the airport and n
 - Gus Pacleb ([@kn4iee](https://github.com/kn4iee), &lt;augustu.pacleb@gmail.com&gt;) — FlyByWire accessibility contributor: the shared accessible flyPad EFB for both FBW jets (WebView2 browser mode over the Coherent DevTools transport — Ground Services / Payload / Fuel, Settings, Quick Controls, door open/closed states, throttle calibration), the FlyByWire A32NX accessible MCDU (SimBridge relay), the FlyByWire A32NX cockpit parity audit pass (decoded SD pages and Upper E/WD, weight-unit and distance/top-of-descent hotkeys, light-switch and V-speed fixes, safety aurals), and the data-only OANS/BTV rework, Fenix-style FCU windows (speed / heading / altitude / V-S / autopilot / baro), screen-faithful MFD F-PLN/PERF/SURV/D-ATIS read-outs and colour-aware E/WD auto-announce on the A380X; plus A380X systems fixes (engine-start ignition fan-out, hydraulics, fuel pumps, seats, cabin lighting, GPU and ground-service announcements, ROW/ROP and BTV rollout call-outs, distance/time-to-destination hotkeys), HorizonSim 787-9 FMC bridge FS2024 support (in-place patching, community-folder detection), PMDG 777 center/right CDU index fixes, and the Coherent-debugger developer tooling
 
 ## Usage and Documentation
-See [Download](#download) above for the current release and preview builds. MSFS Blind Assist is in active development and a small group of testers are using it daily. A thorough documentation is in the works and a hotkey list is included in the application.
+See [Download](#download) above for the current release and preview builds. The complete user guide is online at [msfsblindassist.com/guide](https://msfsblindassist.com/guide/), with a separate edition for the preview build, and comes with the app as one page: Help, User Guide. Its source is the [guide](guide/) folder, which changes together with the app (see [docs/user-guide.md](docs/user-guide.md)). The app also lists every hotkey under File, Hotkey List.
 
 ## Contributing
 Pure-logic changes should come with characterization tests in tests/MSFSBlindAssist.Tests (CI runs them on every PR).

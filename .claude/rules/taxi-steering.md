@@ -6,7 +6,12 @@ paths:
   - "MSFSBlindAssist/Navigation/RouteStartTurnCue.cs"
   - "tests/MSFSBlindAssist.Tests/**/*GuidanceGeometry*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Lineup*.cs"
-  - "MSFSBlindAssist/Services/TaxiGuidanceManager*.cs"
+  - "MSFSBlindAssist/Services/TaxiGuidanceManager.Rollout.cs"
+  - "MSFSBlindAssist/Services/TaxiGuidanceManager.Announcements.cs"
+  - "MSFSBlindAssist/Services/TaxiGuidanceManager.Backtrack.cs"
+  - "MSFSBlindAssist/Services/TaxiGuidanceManager.MathUtils.cs"
+  - "MSFSBlindAssist/Services/TaxiGuidanceManager.TrafficContext.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*TaxiFrameUtterance*.cs"
 ---
 # Taxi steering tone, lineup and turn cues rules
 
@@ -30,6 +35,11 @@ Loaded when Claude reads matching code. Background: docs/taxi-guidance.md. Full 
 - [STR-16] Verbal turn direction must come from the aircraft's current heading (`ComputeTurnVerbalFromHeading`), never the route's static `TurnDirection`, which off-axis can contradict the correct tone. Full: docs/invariants/taxi-steering.md#str-16
 - [STR-17] Runway-destination lineup must anchor on the `start` table (`GetRunwayStarts`), never `Runway.StartLat/StartLon` directly (`RunwayLineupTarget` falls back to it only with no usable start row): that is the pavement edge, hundreds of metres off the lineup point at displaced thresholds. Full: docs/invariants/taxi-steering.md#str-17
 - [STR-18] The route-start turn cue has ONE owner (`RouteStartTurnCue`), composed via `ComposeInitialTurnCue` from `LoadRoute` and the handoff RE-ANCHOR, never on the first taxiing frame; delivered once via `ConsumeInitialTurnCue()`, the per-frame one-shot included, angle from `ComputeSteeringHeadingError`, both sides true north (more: see full). Full: docs/invariants/taxi-steering.md#str-18
+- [STR-19] After Continue at a runway-destination hold the lineup tone follows the entry stub (`TaxiRoute.RunwayEntryStub`, `LineupStubHeading`) onto the pavement, handing over AT the edge; keep the stub only when it reaches the destination runway's pavement. Full: docs/invariants/taxi-steering.md#str-19
+- [STR-20] An entry stub ending on the destination centreline up to `ENTRY_STUB_BEYOND_END_M` (100 m) past the recorded end still reaches the runway (`RunwaysOnEntryStub` fallback); never widen its lateral bound past the runway's half-width. Full: docs/invariants/taxi-steering.md#str-20
+- [STR-21] `AdvanceToNearestSegment` must not skip past a SHARP junction early (the `ADVANCE_*` hairpin guard, covering every segment past the junction); each gate is measured, so re-run a VirtualPilot A/B before touching one. Full: docs/invariants/taxi-steering.md#str-21
+- [STR-22] Everything taxi guidance says in one position frame is ONE utterance (`SpeakNow` → `ComposeFrameUtterance`, flushed by `UpdatePosition`), safety lines first; never call `_announcer.AnnounceImmediate` directly inside the manager. Full: docs/invariants/taxi-steering.md#str-22
+- [STR-23] While the opening turn is pending (`_initialTurnPending`) the tone keeps to the side the opening cue SAID (`_initialTurnSign`, capped at 179°), never the short way round, which flips between frames near a reversal. Full: docs/invariants/taxi-steering.md#str-23
 
 Mirrored from takeoff-and-callouts.md and gsx-stands-docking.md (they govern the lineup code in TaxiGuidanceManager.Rollout.cs; change them there and here together):
 - [TKO-2] Auto-activate-Takeoff-Assist-on-lineup is a one-shot latch (`_autoActivateFired`) that must NOT reset on lineup drift-out; re-engaging after a deliberate manual deactivation would surprise the pilot. Full: docs/invariants/takeoff-and-callouts.md#tko-2

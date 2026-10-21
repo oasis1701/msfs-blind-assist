@@ -15,7 +15,6 @@ public partial class FenixSpeedWindow : Form
 
     private Label speedLabel = null!;
     private TextBox speedTextBox = null!;
-    private Button setButton = null!;
     private Button spdPushButton = null!;
     private Button spdPullButton = null!;
     private Button spdMachButton = null!;
@@ -40,7 +39,7 @@ public partial class FenixSpeedWindow : Form
     }
 
     /// <summary>
-    /// Shows the form and ensures it gets focus (like ChecklistForm pattern).
+    /// Shows the form and ensures it gets focus (the shared non-modal ShowForm pattern).
     /// </summary>
     public void ShowForm()
     {
@@ -84,18 +83,6 @@ public partial class FenixSpeedWindow : Form
             TabIndex = 0
         };
         speedTextBox.KeyDown += SpeedTextBox_KeyDown;
-
-        // Set Button
-        setButton = new Button
-        {
-            Text = "Set",
-            Location = new Point(280, 20),
-            Size = new Size(80, 30),
-            AccessibleName = "Set Speed",
-            AccessibleDescription = "Set the entered speed value",
-            TabIndex = 1
-        };
-        setButton.Click += async (s, e) => await HandleSetClick();
 
         // Speed Push Button
         spdPushButton = new Button
@@ -149,12 +136,11 @@ public partial class FenixSpeedWindow : Form
         // Add controls to form
         Controls.AddRange(new Control[]
         {
-            speedLabel, speedTextBox, setButton, spdPushButton, spdPullButton,
+            speedLabel, speedTextBox, spdPushButton, spdPullButton,
             spdMachButton, closeButton
         });
 
         CancelButton = closeButton;
-        AcceptButton = setButton;
     }
 
     private void SetupAccessibility()

@@ -89,6 +89,22 @@ public partial class MainForm
     }
 
     /// <summary>
+    /// The sim paused or unpaused, or active pause or slew turned on or off (SimStateTracker).
+    /// Interrupting, like a step read-back: the pilot pressed a key the sim says nothing about, and a
+    /// quick on-off should end on the state it left.
+    /// </summary>
+    private void OnSimStateChanged(object? sender, SimStateChange change)
+    {
+        string? text = SimStateTracker.Describe(change);
+        if (text != null) announcer.AnnounceImmediate(text);
+    }
+
+    /// <summary>The sim rate changed. Interrupting for the same reason: stepping through rates should
+    /// end on the rate reached.</summary>
+    private void OnSimRateChanged(object? sender, double rate)
+        => announcer.AnnounceImmediate(SimStateTracker.DescribeSimRate(rate));
+
+    /// <summary>
     /// Pause the take-off callouts' per-frame airspeed feed while the aircraft does not need it
     /// (airborne, no roll armed) and resume it when it does (touchdown) — judged after each delivery of
     /// the feed and of SIM_ON_GROUND, the only two things that change the answer. The manager ignores a
@@ -129,6 +145,10 @@ public partial class MainForm
         // CONSUMER: Process event on UI thread (called from ProcessEventBatch)
         // Step 1: ALWAYS store the value first (needed by all consumers)
         currentSimVarValues[e.VarName] = e.Value;
+
+        if (e.VarName == "FO_ALTITUDE_AGL") _universalLatestAgl = e.Value;
+        else if (e.VarName == "FO_GEAR_HANDLE") _universalLatestGearHandle = e.Value;
+        else if (e.VarName == "FO_AIRSPEED_IAS") _universalLatestIas = e.Value;
 
         // Composed-state controls (MD-11): relabel every dependent of this key, on EVERY path
         // below — initial snapshot, def-handled (ProcessSimVarUpdate returns true and exits
@@ -227,16 +247,6 @@ public partial class MainForm
         }
         UpdateTakeoffCalloutFeed(e.VarName);
 
-        // Complete any pending display request for BOTH branches, before the def-handled early
-        // return below. A var whose ProcessSimVarUpdate returns true still ARRIVED, and the panel
-        // populate is waiting on exactly that — but so is every ordinary var, which reaches Step 3
-        // instead. The two are mutually exclusive (the def-handled branch returns), so this must
-        // sit above the split: completing in only one of them leaves the other's panels waiting
-        // out the full 2 s fallback on every open and Refresh.
-        if (pendingDisplayRequests != null && pendingDisplayRequests.ContainsKey(e.VarName))
-        {
-            pendingDisplayRequests[e.VarName].TrySetResult(true);
-        }
         if (wasProcessedByAircraft)
         {
             // The def announced (suppressed) and updated its own baseline — consume the echo so a

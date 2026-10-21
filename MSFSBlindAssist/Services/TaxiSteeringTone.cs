@@ -88,6 +88,17 @@ public class TaxiSteeringTone : IDisposable
     /// </summary>
     public bool HardPan { get; set; } = false;
 
+    /// <summary>
+    /// Virtual-pilot harness only (tools/VirtualPilot): no audio device is opened and the tone
+    /// state is still computed, exposed through <see cref="ObservedPan"/>. Never set in the app.
+    /// </summary>
+    internal static bool Headless;
+
+    /// <summary>What a pilot hears: the signed pan (-1 left … +1 right) while the tone sounds, 0 when silent or paused.</summary>
+    internal float ObservedPan => _isActive && !_isSilent && !_isPaused ? _lastPan : 0f;
+    internal bool ObservedPulse => _pulseActive && IsTonePlaying;
+    private float _lastPan;
+
     public bool IsActive => _isActive;
     public bool IsTonePlaying => _isActive && !_isSilent && !_isPaused;
 
@@ -113,8 +124,17 @@ public class TaxiSteeringTone : IDisposable
             // at 3 Hz when it should be continuous.
             _pulseActive = false;
 
-            // Create tone generator now, but at zero volume (silent)
-            if (_toneGenerator == null)
+            // Create tone generator now, but at zero volume (silent).
+            // If a generator is already live (a route reload without an
+            // intervening Stop — e.g. the form's Calculate over running
+            // guidance), it was created with the PREVIOUS Start's waveform and
+            // kept it: volume self-heals per frame via EffectiveVolume, but the
+            // waveform did not — push the (possibly changed) setting through.
+            if (_toneGenerator != null)
+            {
+                _toneGenerator.UpdateWaveType(_waveType);
+            }
+            else if (!Headless)
             {
                 _toneGenerator = new AudioToneGenerator();
                 _toneGenerator.Start(_waveType, 0.0, TONE_FREQUENCY);
@@ -218,7 +238,7 @@ public class TaxiSteeringTone : IDisposable
             // Sounding. Only allow silencing once we've sustained for MIN_SUSTAIN_MS
             // (prevents a transient spike from producing a 50ms blip).
             if (absError <= silentThresholdDeg &&
-                (DateTime.UtcNow - _soundingSince).TotalMilliseconds >= MIN_SUSTAIN_MS)
+                (MSFSBlindAssist.Utils.SimClock.UtcNow - _soundingSince).TotalMilliseconds >= MIN_SUSTAIN_MS)
             {
                 SetSilent();
                 return;
@@ -307,12 +327,13 @@ public class TaxiSteeringTone : IDisposable
 
     private void SetTone(float pan)
     {
-        if (_toneGenerator == null) return;
+        if (_toneGenerator == null && !Headless) return;
+        _lastPan = Math.Clamp(pan, -1f, 1f);
 
         if (_isSilent)
         {
             _isSilent = false;
-            _soundingSince = DateTime.UtcNow;
+            _soundingSince = MSFSBlindAssist.Utils.SimClock.UtcNow;
         }
 
         // Always refresh volume each frame the tone is sounding. This must run
@@ -325,9 +346,9 @@ public class TaxiSteeringTone : IDisposable
         // half), the tone stayed silent in continuous mode until something
         // else (going silent and re-activating, e.g., oversteer) reset it.
         // A 30 Hz UpdateVolume call is cheap; correctness beats the micro-op.
-        _toneGenerator.UpdateVolume(EffectiveVolume());
+        _toneGenerator?.UpdateVolume(EffectiveVolume());
 
-        _toneGenerator.SetPan(Math.Clamp(pan, -1f, 1f));
+        _toneGenerator?.SetPan(Math.Clamp(pan, -1f, 1f));
     }
 
     /// <summary>
@@ -342,7 +363,7 @@ public class TaxiSteeringTone : IDisposable
 
         double periodMs = 1000.0 / PULSE_HZ;
         double halfPeriodMs = periodMs * 0.5;
-        long ms = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
+        long ms = MSFSBlindAssist.Utils.SimClock.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
         bool on = ((ms / (long)halfPeriodMs) % 2L) == 0L;
         return on ? _configuredVolume : 0.0;
     }

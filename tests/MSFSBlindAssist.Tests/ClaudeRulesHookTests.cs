@@ -680,7 +680,7 @@ public class ClaudeRulesHookTests : IDisposable
         string context = output.Value.GetProperty("additionalContext").GetString()!;
         Assert.InRange(context.Length, 1, 9_000);
         AssertEachRuleFileShownOrNamed(context, ClaudeContextBudgetTests.RepoRoot(), "landing-rollout.md",
-            "runway-holds.md", "taxi-manager-call-sites.md", "taxi-position.md", "taxi-steering.md",
+            "runway-holds.md", "taxi-manager-call-sites.md", "taxi-position.md", "steering-manager-call-sites.md",
             "a380-definition-call-sites.md", "a380-fcu.md", "a380-panels.md", "a380-systems.md", "fbw-arinc.md",
             "fcu-callouts.md", "flypad-call-sites.md", "tcas-ra.md", "troubleshooting.md", "variable-definitions.md");
     }
