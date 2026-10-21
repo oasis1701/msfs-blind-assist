@@ -44,7 +44,6 @@ plans 02-11.
 | `MSFSBlindAssist/Aircraft/FenixA320Definition.cs` | 01 (seams only), then **02** | |
 | `MSFSBlindAssist/Aircraft/FenixA320Definition.Hooks.cs`, `Aircraft/FenixVariant.cs` | 01 | Frozen after 01 |
 | `MSFSBlindAssist/Aircraft/FenixA320Definition.Variants.cs` | 06 | Implements 01's panel, display and variant seams |
-| `MSFSBlindAssist/Aircraft/FenixA320Definition.Documents.cs` | 07 | Implements 01's documents background seams (only if D1 is (b)) |
 | `MSFSBlindAssist/Aircraft/FenixA320Definition.Cabin.cs` | 08 | Implements 01's cabin background seams |
 | `MSFSBlindAssist/Aircraft/FenixA320Definition.Engines.cs` | 09 | Only if the owner wants engine announcements outside the Engines window |
 | `MSFSBlindAssist/Aircraft/FenixA320DisplayReads.cs` | 04 | |
@@ -113,7 +112,7 @@ behind it, or no use to a blind pilot).
 | 19 | 11 | Also offer the EFB's permanent change ("Set as user override") and reset to the Fenix default? | Yes, by the owner principle | Yes (owner, 2026-10-21): Shift+F2 permanent, Ctrl+F2 reset, each behind a Yes/No defaulting to No (plan 11 Task 6) |
 | 20 | 08 | FAP Set-Up page: loudspeaker volume and screen brightness? | Loudspeaker volume yes, brightness no | Add the loudspeaker volume; leave brightness out (owner, 2026-10-21; plan 08 Tasks 3 and 8) |
 | 21 | — | Datalink (CPDLC on the DCDU, ATSU, Virtual ACARS, printer): plan it now? | A plan 13 starting with a live Hoppie investigation | Leave until after FenixV3 (owner, 2026-10-21); plan 12 lists it as a follow-up |
-| 22 | 07 | D1: speak a newly pinned ECAM procedure app-wide ("ECAM procedure available: …")? | Yes, app-wide, always on (plan 07 Task 7) | pending |
+| 22 | 07 | D1: speak a newly pinned ECAM procedure app-wide ("ECAM procedure available: …")? | Yes, app-wide, always on | Never (owner, 2026-10-21): without the ECAM itself, readable only through AI display reads, the pins are a partial picture; not now. Plan 07 drops its Task 7; the window's Pinned list and Ctrl+P stay |
 | 23 | 07 | D2: open every collapsible section when a document opens? | Yes | pending |
 | 24 | 07 | D3: checklist lines as tick boxes? | Yes | pending |
 | 25 | 07 | D4: pin and unpin a document from the window (Ctrl+D), as the EFB does? | Yes (plan 07 Task 6) | pending |
