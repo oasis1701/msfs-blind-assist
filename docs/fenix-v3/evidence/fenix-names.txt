@@ -1,0 +1,1076 @@
+# kind	name	file:line  -- every sim-facing name MSFS Blind Assist uses for the Fenix A320.
+# kinds: lvar, kevent, hevent, bvar, simvar, calc, gql (Fenix data-service dataRef), other.
+# A trailing (...) after the name is a tag: (expanded) = built by interpolation in the code.
+# lvar: read as SimConnect data definition 'L:<name>', written with SimConnectManager.SetLVar.
+lvar	I_OH_NAV_IR3_SWITCH_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:139
+lvar	I_OH_NAV_IR3_SWITCH_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:148
+lvar	I_OH_NAV_IR2_SWITCH_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:157
+lvar	I_OH_NAV_IR2_SWITCH_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:166
+lvar	I_OH_NAV_IR1_SWITCH_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:175
+lvar	I_OH_NAV_IR1_SWITCH_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:184
+lvar	I_OH_NAV_ADR1_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:193
+lvar	I_OH_NAV_ADR1_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:202
+lvar	I_OH_NAV_ADR2_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:211
+lvar	I_OH_NAV_ADR2_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:220
+lvar	I_OH_NAV_ADR3_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:229
+lvar	I_OH_NAV_ADR3_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:238
+lvar	I_OH_NAV_ADIRS_ON_BAT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:247
+lvar	I_OH_PNEUMATIC_EXTRACT_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:258
+lvar	I_OH_PNEUMATIC_EXTRACT_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:267
+lvar	I_OH_PNEUMATIC_CAB_FANS_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:276
+lvar	I_OH_PNEUMATIC_CAB_FANS_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:285
+lvar	I_OH_PNEUMATIC_BLOWER_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:294
+lvar	I_OH_PNEUMATIC_BLOWER_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:303
+lvar	I_OH_PNEUMATIC_PRESS_MODE_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:312
+lvar	I_OH_PNEUMATIC_PRESS_MODE_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:321
+lvar	I_OH_PNEUMATIC_DITCHING_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:330
+lvar	I_OH_PNEUMATIC_RAM_AIR_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:339
+lvar	I_OH_PNEUMATIC_PACK_2_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:348
+lvar	I_OH_PNEUMATIC_PACK_2_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:357
+lvar	I_OH_PNEUMATIC_PACK_1_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:366
+lvar	I_OH_PNEUMATIC_PACK_1_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:375
+lvar	I_OH_PNEUMATIC_HOT_AIR_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:384
+lvar	I_OH_PNEUMATIC_HOT_AIR_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:393
+lvar	I_OH_PNEUMATIC_ENG2_BLEED_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:402
+lvar	I_OH_PNEUMATIC_ENG2_BLEED_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:411
+lvar	I_OH_PNEUMATIC_ENG1_BLEED_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:420
+lvar	I_OH_PNEUMATIC_ENG1_BLEED_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:429
+lvar	I_OH_PNEUMATIC_APU_BLEED_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:438
+lvar	I_OH_PNEUMATIC_APU_BLEED_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:447
+lvar	I_OH_PNEUMATIC_WING_ANTI_ICE_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:458
+lvar	I_OH_PNEUMATIC_WING_ANTI_ICE_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:467
+lvar	I_OH_PROBE_HEAT_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:476
+lvar	I_OH_PROBE_HEAT_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:485
+lvar	I_OH_PNEUMATIC_ENG2_ANTI_ICE_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:494
+lvar	I_OH_PNEUMATIC_ENG2_ANTI_ICE_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:503
+lvar	I_OH_PNEUMATIC_ENG1_ANTI_ICE_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:512
+lvar	I_OH_PNEUMATIC_ENG1_ANTI_ICE_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:521
+lvar	I_FCU_EXPED	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:532
+lvar	I_FCU_ATHR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:541
+lvar	I_FCU_APPR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:550
+lvar	I_FCU_AP2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:559
+lvar	I_FCU_AP1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:568
+lvar	I_FCU_LOC	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:577
+lvar	I_FCU_SPEED_MANAGED	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:586
+lvar	I_FCU_HEADING_MANAGED	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:595
+lvar	I_FCU_ALTITUDE_MANAGED	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:604
+lvar	I_FCU_TRACK_FPA_MODE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:613
+lvar	I_FCU_MACH_MODE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:622
+lvar	N_FCU_SPEED	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:631
+lvar	N_FCU_HEADING	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:639
+lvar	N_FCU_ALTITUDE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:647
+lvar	N_FCU_VS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:655
+lvar	B_FCU_SPEED_DASHED	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:663
+lvar	B_FCU_HEADING_DASHED	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:672
+lvar	B_FCU_VERTICALSPEED_DASHED	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:681
+lvar	B_FCU_POWER	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:690
+lvar	B_FCU_SPEED_MACH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:699
+lvar	B_FCU_TRACK_FPA_MODE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:708
+lvar	I_XPDR_FAIL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:719
+lvar	I_MIP_GPWS_TERRAIN_ON_ND_FO_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:728
+lvar	I_MIP_GPWS_TERRAIN_ON_ND_CAPT_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:737
+lvar	I_MIP_ATC_MSG_FO_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:746
+lvar	I_MIP_ATC_MSG_FO_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:755
+lvar	I_MIP_ATC_MSG_CAPT_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:764
+lvar	I_MIP_ATC_MSG_CAPT_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:773
+lvar	I_MIP_AUTOLAND_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:782
+lvar	I_MIP_AUTOLAND_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:791
+lvar	I_FC_SIDESTICK_PRIORITY_FO_ARROW	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:802
+lvar	I_FC_SIDESTICK_PRIORITY_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:811
+lvar	I_FC_SIDESTICK_PRIORITY_CAPT_ARROW	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:820
+lvar	I_FC_SIDESTICK_PRIORITY_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:829
+lvar	I_OH_FLT_CTL_SEC_3_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:838
+lvar	I_OH_FLT_CTL_SEC_3_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:847
+lvar	I_OH_FLT_CTL_SEC_2_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:856
+lvar	I_OH_FLT_CTL_SEC_2_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:865
+lvar	I_OH_FLT_CTL_SEC_1_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:874
+lvar	I_OH_FLT_CTL_SEC_1_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:883
+lvar	I_OH_FLT_CTL_FAC_2_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:892
+lvar	I_OH_FLT_CTL_FAC_2_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:901
+lvar	I_OH_FLT_CTL_FAC_1_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:910
+lvar	I_OH_FLT_CTL_FAC_1_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:919
+lvar	I_OH_FLT_CTL_ELAC_2_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:928
+lvar	I_OH_FLT_CTL_ELAC_2_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:937
+lvar	I_OH_FLT_CTL_ELAC_1_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:946
+lvar	I_OH_FLT_CTL_ELAC_1_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:955
+lvar	B_FC_RUDDER_TRIM_DASHED	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:964
+lvar	I_ECAM_WHEEL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:974
+lvar	I_ECAM_STATUS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:983
+lvar	I_ECAM_CAB_PRESS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:992
+lvar	I_ECAM_HYD	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1001
+lvar	I_ECAM_FUEL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1010
+lvar	I_ECAM_FCTL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1019
+lvar	I_ECAM_ENGINE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1028
+lvar	I_ECAM_ELEC	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1037
+lvar	I_ECAM_DOOR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1046
+lvar	I_ECAM_COND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1055
+lvar	I_ECAM_CLR_RIGHT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1064
+lvar	I_ECAM_CLR_LEFT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1073
+lvar	I_ECAM_BLEED	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1082
+lvar	I_ECAM_APU	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1091
+lvar	I_ECAM_EMER_CANCEL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1100
+lvar	S_DCDU1_DIM_BRT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1111
+lvar	S_DCDU1_LSK1L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1119
+lvar	S_DCDU1_LSK1R	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1127
+lvar	S_DCDU1_LSK2L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1135
+lvar	S_DCDU1_LSK2R	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1143
+lvar	S_DCDU1_MSGUP	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1151
+lvar	S_DCDU1_MSGDWN	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1159
+lvar	S_DCDU1_PGUP	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1167
+lvar	S_DCDU1_PGDN	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1175
+lvar	S_DCDU1_PRINT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1183
+lvar	S_EFB_VISIBLE_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1193
+lvar	S_EFB_VISIBLE_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1202
+lvar	S_EFB_CHARGING_CABLE_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1211
+lvar	S_EFB_CHARGING_CABLE_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1220
+lvar	I_FCU_EFIS2_WPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1231
+lvar	I_FCU_EFIS2_VORD	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1240
+lvar	I_FCU_EFIS2_NDB	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1249
+lvar	I_FCU_EFIS2_LS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1258
+lvar	I_FCU_EFIS2_FD	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1267
+lvar	I_FCU_EFIS2_CSTR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1276
+lvar	I_FCU_EFIS2_ARPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1285
+lvar	I_FCU_EFIS1_WPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1294
+lvar	I_FCU_EFIS1_VORD	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1303
+lvar	I_FCU_EFIS1_NDB	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1312
+lvar	I_FCU_EFIS1_LS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1321
+lvar	I_FCU_EFIS1_FD	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1330
+lvar	I_FCU_EFIS1_CSTR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1339
+lvar	I_FCU_EFIS1_ARPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1348
+lvar	S_FCU_EFIS1_BARO_MODE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1357
+lvar	S_FCU_EFIS2_BARO_MODE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1366
+lvar	I_FCU_EFIS1_QNH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1375
+lvar	I_FCU_EFIS2_QNH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1384
+lvar	N_FCU_EFIS1_BARO_INCH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1393
+lvar	N_FCU_EFIS1_BARO_HPA	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1402
+lvar	N_FCU_EFIS2_BARO_HPA	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1411
+lvar	N_FCU_EFIS2_BARO_INCH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1420
+lvar	I_OH_ELEC_IDG2_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1432
+lvar	I_OH_ELEC_IDG1_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1441
+lvar	I_OH_ELEC_GEN2_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1450
+lvar	I_OH_ELEC_GEN2_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1459
+lvar	I_OH_ELEC_GEN1_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1468
+lvar	I_OH_ELEC_GEN1_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1477
+lvar	I_OH_ELEC_GALY_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1486
+lvar	I_OH_ELEC_GALY_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1495
+lvar	I_OH_ELEC_EXT_PWR_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1504
+lvar	I_OH_ELEC_EXT_PWR_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1513
+lvar	I_OH_ELEC_COMMERCIAL_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1522
+lvar	I_OH_ELEC_COMMERCIAL_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1531
+lvar	I_OH_ELEC_BUSTIE_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1540
+lvar	I_OH_ELEC_BAT2_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1549
+lvar	I_OH_ELEC_BAT2_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1558
+lvar	I_OH_ELEC_BAT1_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1567
+lvar	I_OH_ELEC_BAT1_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1576
+lvar	I_OH_ELEC_APU_GENERATOR_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1585
+lvar	I_OH_ELEC_APU_GENERATOR_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1594
+lvar	I_OH_ELEC_AC_ESS_FEED_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1603
+lvar	I_OH_ELEC_AC_ESS_FEED_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1612
+lvar	S_OH_ELEC_BAT1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1623
+lvar	S_OH_ELEC_BAT2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1631
+lvar	S_OH_ELEC_GEN1_LINE (panel key S_OH_ELEC_GEN1)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1641
+lvar	S_OH_ELEC_GEN2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1649
+lvar	S_OH_ELEC_EXT_PWR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1657
+lvar	S_OH_ELEC_APU_GENERATOR (panel key S_OH_ELEC_APU_GEN)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1666
+lvar	S_OH_ELEC_BUSTIE (panel key S_OH_ELEC_BUS_TIE)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1674
+lvar	S_OH_ELEC_AC_ESS_FEED	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1682
+lvar	S_OH_ELEC_IDG1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1690
+lvar	S_OH_ELEC_IDG2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1698
+lvar	S_OH_ELEC_GALY	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1706
+lvar	S_OH_ELEC_COMMERCIAL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1714
+lvar	S_OH_ELEC_APU_MASTER	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1722
+lvar	S_OH_ELEC_APU_START	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1730
+lvar	S_OH_ELEC_EMER_GEN_TEST	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1747
+lvar	S_OH_ELEC_EMER_GEN_MAN_ON	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1755
+lvar	S_OH_ELEC_EMER_GEN_MAN_ON_Cover	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1763
+lvar	S_OH_ELEC_EMER_GEN_TEST_Cover	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1771
+lvar	S_OH_NAV_IR1_MODE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1784
+lvar	S_OH_NAV_IR2_MODE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1792
+lvar	S_OH_NAV_IR3_MODE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1800
+lvar	S_OH_NAV_ADR1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1810
+lvar	S_OH_NAV_ADR2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1819
+lvar	S_OH_NAV_ADR3	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1828
+lvar	S_OH_NAV_IR1_SWITCH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1839
+lvar	S_OH_NAV_IR2_SWITCH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1848
+lvar	S_OH_NAV_IR3_SWITCH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1857
+lvar	S_OH_NAV_DATA_DISP	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1868
+lvar	S_OH_NAV_SYS_DISP	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1876
+lvar	S_OH_ADIRS_KEY_0	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1886
+lvar	S_OH_ADIRS_KEY_1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1894
+lvar	S_OH_ADIRS_KEY_2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1902
+lvar	S_OH_ADIRS_KEY_3	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1910
+lvar	S_OH_ADIRS_KEY_4	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1918
+lvar	S_OH_ADIRS_KEY_5	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1926
+lvar	S_OH_ADIRS_KEY_6	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1934
+lvar	S_OH_ADIRS_KEY_7	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1942
+lvar	S_OH_ADIRS_KEY_8	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1950
+lvar	S_OH_ADIRS_KEY_9	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1958
+lvar	S_OH_ADIRS_KEY_CLR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1966
+lvar	S_OH_ADIRS_KEY_ENT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1974
+lvar	S_PED_RMP1_POWER	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1986
+lvar	S_PED_RMP1_VHF1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:1996
+lvar	S_PED_RMP1_VHF2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2005
+lvar	S_PED_RMP1_VHF3	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2014
+lvar	S_PED_RMP1_HF1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2023
+lvar	S_PED_RMP1_HF2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2032
+lvar	S_PED_RMP1_NAV	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2041
+lvar	S_PED_RMP1_VOR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2050
+lvar	S_PED_RMP1_ILS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2059
+lvar	S_PED_RMP1_MLS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2068
+lvar	S_PED_RMP1_ADF	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2077
+lvar	S_PED_RMP1_BFO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2086
+lvar	S_PED_RMP1_AM	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2095
+lvar	S_PED_RMP2_POWER	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2106
+lvar	S_PED_RMP2_VHF1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2116
+lvar	S_PED_RMP2_VHF2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2125
+lvar	S_PED_RMP2_VHF3	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2134
+lvar	S_PED_RMP2_HF1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2143
+lvar	S_PED_RMP2_HF2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2152
+lvar	S_PED_RMP2_NAV	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2161
+lvar	S_PED_RMP2_VOR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2170
+lvar	S_PED_RMP2_ILS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2179
+lvar	S_PED_RMP2_MLS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2188
+lvar	S_PED_RMP2_ADF	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2197
+lvar	S_PED_RMP2_BFO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2206
+lvar	S_PED_RMP2_AM	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2215
+lvar	S_PED_RMP3_POWER	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2226
+lvar	S_PED_RMP3_VHF1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2236
+lvar	S_PED_RMP3_VHF2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2245
+lvar	S_PED_RMP3_VHF3	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2254
+lvar	S_PED_RMP3_HF1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2263
+lvar	S_PED_RMP3_HF2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2272
+lvar	S_PED_RMP3_NAV	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2281
+lvar	S_PED_RMP3_VOR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2290
+lvar	S_PED_RMP3_ILS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2299
+lvar	S_PED_RMP3_MLS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2308
+lvar	S_PED_RMP3_ADF	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2317
+lvar	S_PED_RMP3_BFO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2326
+lvar	S_PED_RMP3_AM	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2335
+lvar	S_PED_RMP1_XFER	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2346
+lvar	S_PED_RMP2_XFER	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2354
+lvar	S_PED_RMP3_XFER	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2362
+lvar	A_ASP_VHF_1_VOLUME	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2378
+lvar	A_ASP_VHF_2_VOLUME	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2386
+lvar	A_ASP_VHF_3_VOLUME	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2394
+lvar	A_ASP_HF_1_VOLUME	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2402
+lvar	A_ASP_HF_2_VOLUME	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2410
+lvar	A_ASP_CAB_VOLUME	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2418
+lvar	A_ASP_PA_VOLUME	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2426
+lvar	A_ASP_INT_VOLUME	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2434
+lvar	A_ASP_ILS_VOLUME	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2442
+lvar	A_ASP_ADF_1_VOLUME	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2450
+lvar	A_ASP_ADF_2_VOLUME	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2458
+lvar	A_ASP_MARKER_VOLUME	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2466
+lvar	A_ASP_VOR_1_VOLUME	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2474
+lvar	A_ASP_VOR_2_VOLUME	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2482
+lvar	S_ASP_INTRAD	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2492
+lvar	S_ASP_VHF_1_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2502
+lvar	S_ASP_VHF_2_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2511
+lvar	S_ASP_VHF_3_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2520
+lvar	S_ASP_HF_1_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2529
+lvar	S_ASP_HF_2_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2538
+lvar	S_ASP_CAB_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2547
+lvar	S_ASP_INT_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2556
+lvar	S_ASP_PA_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2565
+lvar	S_ASP_RESET	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2576
+lvar	S_ASP_VOICE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2584
+lvar	S_ASP_VHF_1_REC_LATCH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2596
+lvar	S_ASP_VHF_2_REC_LATCH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2605
+lvar	S_ASP_VHF_3_REC_LATCH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2614
+lvar	S_ASP_HF_1_REC_LATCH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2623
+lvar	S_ASP_HF_2_REC_LATCH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2632
+lvar	S_ASP_INT_REC_LATCH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2641
+lvar	S_ASP_CAB_REC_LATCH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2650
+lvar	S_ASP_PA_REC_LATCH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2659
+lvar	S_ASP_ILS_REC_LATCH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2668
+lvar	S_ASP_VOR_1_REC_LATCH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2677
+lvar	S_ASP_VOR_2_REC_LATCH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2686
+lvar	S_ASP_MARKER_REC_LATCH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2695
+lvar	S_ASP_ADF_1_REC_LATCH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2704
+lvar	S_ASP_ADF_2_REC_LATCH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2713
+lvar	S_FCU_EFIS1_ND_MODE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2726
+lvar	S_FCU_EFIS1_ND_ZOOM	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2736
+lvar	S_FCU_EFIS1_BARO_STD	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2746
+lvar	E_FCU_EFIS1_BARO_INC (synthetic app panel key: registered/read as an L:var but the app writes a different var; not expected to exist in the Fenix)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2756
+lvar	E_FCU_EFIS1_BARO_DEC (synthetic app panel key: registered/read as an L:var but the app writes a different var; not expected to exist in the Fenix)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2764
+lvar	S_FCU_EFIS1_NAV1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2774
+lvar	S_FCU_EFIS1_NAV2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2782
+lvar	S_FCU_EFIS1_ARPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2792
+lvar	S_FCU_EFIS1_CSTR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2801
+lvar	S_FCU_EFIS1_WPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2810
+lvar	S_FCU_EFIS1_VORD	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2819
+lvar	S_FCU_EFIS1_NDB	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2828
+lvar	S_FCU_EFIS1_FD_PRESS (synthetic app panel key: registered/read as an L:var but the app writes a different var; not expected to exist in the Fenix)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2839
+lvar	S_FCU_EFIS1_LS_PRESS (synthetic app panel key: registered/read as an L:var but the app writes a different var; not expected to exist in the Fenix)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2848
+lvar	S_FCU_EFIS2_ND_MODE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2861
+lvar	S_FCU_EFIS2_ND_ZOOM	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2871
+lvar	S_FCU_EFIS2_BARO_STD	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2881
+lvar	E_FCU_EFIS2_BARO_INC (synthetic app panel key: registered/read as an L:var but the app writes a different var; not expected to exist in the Fenix)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2891
+lvar	E_FCU_EFIS2_BARO_DEC (synthetic app panel key: registered/read as an L:var but the app writes a different var; not expected to exist in the Fenix)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2899
+lvar	S_FCU_EFIS2_NAV1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2909
+lvar	S_FCU_EFIS2_NAV2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2917
+lvar	S_FCU_EFIS2_ARPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2927
+lvar	S_FCU_EFIS2_CSTR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2936
+lvar	S_FCU_EFIS2_WPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2945
+lvar	S_FCU_EFIS2_VORD	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2954
+lvar	S_FCU_EFIS2_NDB	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2963
+lvar	S_FCU_EFIS2_FD_PRESS (synthetic app panel key: registered/read as an L:var but the app writes a different var; not expected to exist in the Fenix)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2974
+lvar	S_FCU_EFIS2_LS_PRESS (synthetic app panel key: registered/read as an L:var but the app writes a different var; not expected to exist in the Fenix)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2983
+lvar	S_FCU_AP1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:2996
+lvar	S_FCU_AP2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3005
+lvar	S_FCU_ATHR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3014
+lvar	S_FCU_LOC	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3025
+lvar	S_FCU_APPR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3034
+lvar	S_FCU_EXPED	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3043
+lvar	S_FCU_HDGVS_TRKFPA	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3052
+lvar	S_FCU_SPD_MACH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3062
+lvar	S_FCU_METRIC_ALT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3070
+lvar	E_FCU_ALTITUDE (panel key E_FCU_ALTITUDE_INC)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3080
+lvar	S_FCU_ALTITUDE (panel key S_FCU_ALTITUDE_PUSH)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3096
+lvar	S_FCU_ALTITUDE_SCALE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3112
+lvar	E_FCU_HEADING (panel key E_FCU_HEADING_INC)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3122
+lvar	S_FCU_HEADING (panel key S_FCU_HEADING_PUSH)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3138
+lvar	E_FCU_SPEED (panel key E_FCU_SPEED_INC)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3156
+lvar	S_FCU_SPEED (panel key S_FCU_SPEED_PUSH)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3172
+lvar	E_FCU_VS (panel key E_FCU_VS_INC)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3190
+lvar	S_FCU_VERTICAL_SPEED (panel key S_FCU_VERTICAL_SPEED_PUSH)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3206
+lvar	S_OH_PNEUMATIC_APU_BLEED	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3226
+lvar	S_OH_PNEUMATIC_ENG1_BLEED	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3234
+lvar	S_OH_PNEUMATIC_ENG2_BLEED	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3242
+lvar	S_OH_PNEUMATIC_PACK_1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3252
+lvar	S_OH_PNEUMATIC_PACK_2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3260
+lvar	S_OH_PNEUMATIC_HOT_AIR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3270
+lvar	S_OH_PNEUMATIC_RAM_AIR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3278
+lvar	S_OH_PNEUMATIC_DITCHING	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3288
+lvar	S_OH_PNEUMATIC_PRESS_MODE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3296
+lvar	A_OH_PNEUMATIC_LDG_ELEV	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3304
+lvar	S_OH_PNEUMATIC_PRESS_MAN	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3312
+lvar	S_OH_PNEUMATIC_BLOWER	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3322
+lvar	S_OH_PNEUMATIC_EXTRACT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3330
+lvar	S_OH_PNEUMATIC_CAB_FANS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3338
+lvar	S_OH_PNEUMATIC_XBLEED_SELECTOR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3348
+lvar	S_OH_PNEUMATIC_PACK_FLOW	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3356
+lvar	A_OH_PNEUMATIC_COCKPIT_TEMP	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3366
+lvar	A_OH_PNEUMATIC_FWD_TEMP	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3374
+lvar	A_OH_PNEUMATIC_AFT_TEMP	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3382
+lvar	S_OH_PNEUMATIC_HOT_AIR_AFT_CARGO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3392
+lvar	S_OH_PNEUMATIC_CARGO_AFT_ISOL_VALVE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3400
+lvar	S_OH_FIRE_ENG1_BUTTON	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3411
+lvar	S_OH_FIRE_ENG2_BUTTON	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3419
+lvar	S_OH_FIRE_APU_BUTTON	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3427
+lvar	S_OH_FIRE_ENG1_TEST	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3437
+lvar	S_OH_FIRE_ENG2_TEST	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3445
+lvar	S_OH_FIRE_APU_TEST	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3453
+lvar	S_OH_FIRE_ENG1_AGENT1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3463
+lvar	S_OH_FIRE_ENG1_AGENT2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3471
+lvar	S_OH_FIRE_ENG2_AGENT1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3479
+lvar	S_OH_FIRE_ENG2_AGENT2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3487
+lvar	S_OH_FIRE_APU_AGENT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3495
+lvar	S_OH_HYD_ENG_1_PUMP	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3506
+lvar	S_OH_HYD_ENG_2_PUMP	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3514
+lvar	S_OH_HYD_BLUE_ELEC_PUMP	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3524
+lvar	S_OH_HYD_YELLOW_ELEC_PUMP	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3532
+lvar	S_OH_HYD_PTU	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3543
+lvar	S_OH_HYD_RAT_MAN_ON	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3551
+lvar	S_OH_HYD_LMV_YELLOW	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3561
+lvar	S_OH_HYD_LMV_GREEN	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3569
+lvar	S_OH_HYD_LMV_BLUE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3577
+lvar	S_OH_HYD_BLUE_PUMP_OVERRIDE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3585
+lvar	S_OH_FUEL_LEFT_1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3596
+lvar	S_OH_FUEL_LEFT_2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3604
+lvar	S_OH_FUEL_CENTER_1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3614
+lvar	S_OH_FUEL_CENTER_2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3622
+lvar	S_OH_FUEL_RIGHT_1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3632
+lvar	S_OH_FUEL_RIGHT_2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3640
+lvar	S_OH_FUEL_XFEED	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3650
+lvar	S_OH_FUEL_MODE_SEL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3658
+lvar	S_OH_PNEUMATIC_ENG1_ANTI_ICE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3669
+lvar	S_OH_PNEUMATIC_ENG2_ANTI_ICE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3677
+lvar	S_OH_PNEUMATIC_WING_ANTI_ICE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3687
+lvar	S_OH_PROBE_HEAT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3697
+lvar	S_DISPLAY_ATT_HDG	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3709
+lvar	S_DISPLAY_AIR_DATA	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3718
+lvar	S_DISPLAY_EIS_DMC	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3727
+lvar	S_DISPLAY_ECAM_ND_XFR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3736
+lvar	S_DISPLAY_PFDND_XFER_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3746
+lvar	S_DISPLAY_PFDND_XFER_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3755
+lvar	S_MIP_AUTOBRAKE_LO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3766
+lvar	S_MIP_AUTOBRAKE_MED	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3775
+lvar	S_MIP_AUTOBRAKE_MAX	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3784
+lvar	S_MIP_GEAR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3795
+lvar	S_MIP_BRAKE_FAN	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3805
+lvar	S_FC_MIP_ANTI_SKID	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3815
+lvar	S_MIP_LIGHT_CONSOLEFLOOR_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3825
+lvar	S_MIP_LIGHT_CONSOLEFLOOR_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3833
+lvar	S_MIP_ISFD_BUGS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3843
+lvar	S_MIP_ISFD_LS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3851
+lvar	S_MIP_ISFD_PLUS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3859
+lvar	S_MIP_ISFD_MINUS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3867
+lvar	S_MIP_ISFD_RST	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3875
+lvar	E_MIP_ISFD_BARO_INC (synthetic app panel key: registered/read as an L:var but the app writes a different var; not expected to exist in the Fenix)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3885
+lvar	E_MIP_ISFD_BARO_DEC (synthetic app panel key: registered/read as an L:var but the app writes a different var; not expected to exist in the Fenix)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3893
+lvar	S_MIP_GPWS_VISUAL_ALERT_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3903
+lvar	S_MIP_GPWS_VISUAL_ALERT_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3912
+lvar	S_MIP_GPWS_TERRAIN_ON_ND_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3921
+lvar	S_MIP_GPWS_TERRAIN_ON_ND_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3930
+lvar	S_MIP_MASTER_WARNING_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3941
+lvar	S_MIP_MASTER_WARNING_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3950
+lvar	S_MIP_MASTER_CAUTION_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3959
+lvar	S_MIP_MASTER_CAUTION_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3968
+lvar	S_MIP_ATC_MSG_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3977
+lvar	S_MIP_ATC_MSG_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3986
+lvar	S_MIP_CHRONO_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:3995
+lvar	S_MIP_CHRONO_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4003
+lvar	S_MIP_AUTOLAND_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4013
+lvar	S_MIP_AUTOLAND_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4022
+lvar	A_MIP_LIGHTING_MAP_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4033
+lvar	A_MIP_LIGHTING_MAP_R	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4054
+lvar	A_MIP_LIGHTING_FLOOD_MAIN	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4075
+lvar	A_MIP_LIGHTING_FLOOD_PEDESTAL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4096
+lvar	A_DISPLAY_BRIGHTNESS_CO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4119
+lvar	A_DISPLAY_BRIGHTNESS_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4150
+lvar	A_DISPLAY_BRIGHTNESS_CI	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4181
+lvar	A_DISPLAY_BRIGHTNESS_FI	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4212
+lvar	A_DISPLAY_BRIGHTNESS_CI_OUTER	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4243
+lvar	A_DISPLAY_BRIGHTNESS_FI_OUTER	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4274
+lvar	A_CHART_LIGHT_TEMP_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4307
+lvar	A_CHART_LIGHT_TEMP_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4328
+lvar	A_FCU_LIGHTING_TEXT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4351
+lvar	A_PED_LIGHTING_PEDESTAL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4382
+lvar	A_MIP_LOUDSPEAKER_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4415
+lvar	A_MIP_LOUDSPEAKER_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4436
+lvar	S_OH_OXYGEN_CREW_OXYGEN	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4459
+lvar	S_OH_OXYGEN_HIGH_ALT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4467
+lvar	S_OH_OXYGEN_MASK_MAN_ON	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4475
+lvar	S_OH_OXYGEN_TMR_RESET	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4483
+lvar	S_OXYGEN_MASK_1_TEST_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4492
+lvar	S_OXYGEN_MASK_1_TEST_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4500
+lvar	S_OXYGEN_MASK_2_TEST_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4508
+lvar	S_OXYGEN_MASK_2_TEST_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4516
+lvar	S_OH_EVAC_CAPT_PURSER	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4526
+lvar	S_OH_EVAC_COMMAND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4534
+lvar	S_OH_EVAC_HORN_SHUTOFF	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4542
+lvar	S_OH_CALLS_MECH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4552
+lvar	S_OH_CALLS_ALL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4560
+lvar	S_OH_CALLS_FWD	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4568
+lvar	S_OH_CALLS_AFT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4576
+lvar	S_OH_CALLS_EMER	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4584
+lvar	S_OH_CALLS_EMER_Cover	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4592
+lvar	S_MISC_WIPER_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4602
+lvar	S_MISC_WIPER_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4610
+lvar	S_MISC_WIPER_REPELLENT_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4618
+lvar	S_MISC_WIPER_REPELLENT_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4626
+lvar	S_OH_CARGO_SMOKE_TEST	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4636
+lvar	S_OH_CARGO_DISC_1_OLD_LAYOUT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4644
+lvar	S_OH_CARGO_DISC_2_OLD_LAYOUT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4652
+lvar	S_OH_GPWS_TERR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4662
+lvar	S_OH_GPWS_SYS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4670
+lvar	S_OH_GPWS_LDG_FLAP3	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4678
+lvar	S_OH_GPWS_GS_MODE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4686
+lvar	S_OH_GPWS_FLAP_MODE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4694
+lvar	S_OH_ENG_MANSTART_1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4704
+lvar	S_OH_ENG_MANSTART_2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4712
+lvar	S_OH_ENG_N1_MODE_1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4720
+lvar	S_OH_ENG_N1_MODE_2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4728
+lvar	S_OH_AFT_FADEC_GND_1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4738
+lvar	S_OH_AFT_FADEC_GND_2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4746
+lvar	S_OH_ELT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4754
+lvar	S_OH_ELT_TEST	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4762
+lvar	S_OH_APU_AUTOEXTING_RESET	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4770
+lvar	S_OH_APU_AUTOEXTING_TEST	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4778
+lvar	S_OH_SVCE_INT_OVRD	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4786
+lvar	S_OH_LIGHTING_AVIONICS_COMPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4794
+lvar	S_ENG_MODE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4804
+lvar	S_ENG_MASTER_1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4812
+lvar	S_ENG_MASTER_2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4820
+lvar	S_WR_PRED_WS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4831
+lvar	S_WR_SYS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4841
+lvar	S_WR_GCS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4851
+lvar	S_WR_MULTISCAN	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4861
+lvar	A_WR_TILT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4871
+lvar	A_WR_GAIN	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4889
+lvar	S_WR_MODE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4903
+lvar	S_SEAT_HEIGHT_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4925
+lvar	S_SEAT_DISTANCE_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4926
+lvar	S_ARMREST_LEFT_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4927
+lvar	S_ARMREST_RIGHT_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4928
+lvar	S_SEAT_HEIGHT_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4929
+lvar	S_SEAT_DISTANCE_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4930
+lvar	S_ARMREST_LEFT_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4931
+lvar	S_ARMREST_RIGHT_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4932
+lvar	S_SUNSHADE_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4933
+lvar	S_SUNSHADE_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4934
+lvar	S_WINDOW_BLINDS_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4935
+lvar	S_WINDOW_BLINDS_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4936
+lvar	S_WINDOW_BLINDS_REAR_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4937
+lvar	S_WINDOW_BLINDS_REAR_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4938
+lvar	S_STANDBY_COMPASS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4939
+lvar	S_STANDBY_ATTITUDE_CAGE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4940
+lvar	S_JUMPSEAT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4941
+lvar	S_JUMPSEAT_HEADREST	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4942
+lvar	S_PED_COCKPIT_DOOR_VIDEO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4943
+lvar	S_OXYGEN_MASK_COVER_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4944
+lvar	S_OXYGEN_MASK_COVER_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4945
+lvar	S_HYD_GRAVITY_GEAR_EXTEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4947
+lvar	S_HYD_GRAVITY_GEAR_EXTEND_ROTATION	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4948
+lvar	S_DCDU2_DIM_BRT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4949
+lvar	A_DISPLAY_BRIGHTNESS_ECAM_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4953
+lvar	A_DISPLAY_BRIGHTNESS_ECAM_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4961
+lvar	S_ECAM_ENGINE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4971
+lvar	S_ECAM_BLEED	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4980
+lvar	S_ECAM_CAB_PRESS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4989
+lvar	S_ECAM_ELEC	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:4998
+lvar	S_ECAM_HYD	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5007
+lvar	S_ECAM_FUEL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5016
+lvar	S_ECAM_APU	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5025
+lvar	S_ECAM_COND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5034
+lvar	S_ECAM_DOOR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5043
+lvar	S_ECAM_WHEEL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5052
+lvar	S_ECAM_FCTL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5061
+lvar	S_ECAM_ALL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5070
+lvar	S_ECAM_STATUS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5078
+lvar	S_ECAM_CLR_LEFT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5087
+lvar	S_ECAM_CLR_RIGHT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5096
+lvar	S_ECAM_RCL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5105
+lvar	S_ECAM_TO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5113
+lvar	S_ECAM_EMER_CANCEL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5121
+lvar	S_MIP_PARKING_BRAKE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5132
+lvar	A_FC_SPEEDBRAKE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5140
+lvar	S_FC_RUDDER_TRIM (panel key S_FC_RUDDER_TRIM_LEFT)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5148
+lvar	S_FC_RUDDER_TRIM_RESET	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5164
+lvar	A_FC_ELEVATOR_TRIM	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5172
+lvar	S_FC_FLAPS (panel key S_FC_FLAPS_LEVER)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5201
+lvar	A_FC_THROTTLE_LEFT_INPUT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5209
+lvar	A_FC_THROTTLE_RIGHT_INPUT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5217
+lvar	A_FC_THROTTLE_BOTH_INPUT (synthetic app panel key: registered/read as an L:var but the app writes a different var; not expected to exist in the Fenix)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5225
+lvar	S_FC_THR_INST_DISCONNECT1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5233
+lvar	S_FC_THR_INST_DISCONNECT2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5241
+lvar	S_FC_CAPT_INST_DISCONNECT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5249
+lvar	S_FC_FO_INST_DISCONNECT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5257
+lvar	S_XPDR_MODE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5269
+lvar	S_XPDR_OPERATION	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5279
+lvar	S_XPDR_ATC	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5289
+lvar	S_XPDR_ALTREPORTING	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5299
+lvar	S_TCAS_RANGE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5309
+lvar	S_XPDR_IDENT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5319
+lvar	S_PED_ATC_CLR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5329
+kevent	XPNDR_SET (panel key TRANSPONDER_CODE_SET)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5339
+lvar	S_OH_SIGNS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5349
+lvar	S_OH_SIGNS_SMOKING	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5359
+lvar	S_OH_INT_LT_EMER	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5369
+lvar	S_OH_EXT_LT_NAV_LOGO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5380
+lvar	S_OH_EXT_LT_STROBE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5390
+lvar	S_OH_EXT_LT_BEACON	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5400
+lvar	S_OH_EXT_LT_WING	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5410
+lvar	S_OH_EXT_LT_LANDING_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5420
+lvar	S_OH_EXT_LT_LANDING_R	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5430
+lvar	S_OH_EXT_LT_LANDING_BOTH (written directly by the panel; no measurement in the repo that the Fenix has this var - verify)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5440
+lvar	S_OH_EXT_LT_RWY_TURNOFF	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5450
+lvar	S_OH_EXT_LT_NOSE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5460
+lvar	S_OH_INT_LT_DOME	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5471
+lvar	S_OH_IN_LT_ANN_LT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5481
+lvar	S_OH_IN_LT_ICE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5491
+lvar	A_OH_LIGHTING_READING_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5501
+lvar	A_OH_LIGHTING_READING_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5511
+lvar	A_OH_LIGHTING_OVD	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5521
+lvar	S_OH_FLT_CTL_ELAC_1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5532
+lvar	S_OH_FLT_CTL_ELAC_2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5542
+lvar	S_OH_FLT_CTL_SEC_1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5552
+lvar	S_OH_FLT_CTL_SEC_2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5562
+lvar	S_OH_FLT_CTL_SEC_3	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5572
+lvar	S_OH_FLT_CTL_FAC_1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5582
+lvar	S_OH_FLT_CTL_FAC_2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5592
+lvar	S_OH_RCRD_GND_CTL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5603
+lvar	S_OH_RCRD_ERASE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5614
+lvar	S_OH_RCRD_TEST	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5624
+lvar	S_OH_COCKPIT_DOOR_VIDEO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5635
+lvar	N_ELEC_VOLT_BAT_1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5644
+lvar	N_ELEC_VOLT_BAT_2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5652
+lvar	B_ELEC_BUS_POWER_AC_STAT_INV	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5660
+lvar	B_ELEC_BUS_POWER_AC_ESS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5669
+lvar	B_ELEC_BUS_POWER_AC_1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5678
+lvar	B_ELEC_BUS_POWER_AC_2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5687
+lvar	B_ELEC_BUS_POWER_AC_ESS_SHED	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5696
+lvar	B_ELEC_BUS_POWER_DC_ESS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5705
+lvar	B_ELEC_BUS_POWER_DC_SERIVICE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5714
+lvar	B_ELEC_BUS_POWER_DC_BAT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5723
+lvar	B_ELEC_BUS_POWER_DC_ESS_SHED	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5732
+lvar	B_ELEC_BUS_POWER_DC_1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5741
+lvar	B_ELEC_BUS_POWER_DC_2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5750
+lvar	I_OH_ENG_MANSTART_2_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5779
+lvar	I_OH_ENG_MANSTART_1_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5788
+lvar	I_OH_ELEC_APU_START_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5797
+lvar	I_OH_ELEC_APU_START_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5806
+lvar	I_OH_ELEC_APU_MASTER_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5815
+lvar	I_OH_ELEC_APU_MASTER_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5824
+lvar	FNX2PLD_speedV1 (display name says FNX320+FENIXQUARTZ: published by the FenixQuartz utility rather than the Fenix itself - verify)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5845
+lvar	FNX2PLD_speedVR (display name says FNX320+FENIXQUARTZ: published by the FenixQuartz utility rather than the Fenix itself - verify)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5854
+lvar	FNX2PLD_speedV2 (display name says FNX320+FENIXQUARTZ: published by the FenixQuartz utility rather than the Fenix itself - verify)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5863
+lvar	FNX2PLD_fcuSpd (display name says FNX320+FENIXQUARTZ: published by the FenixQuartz utility rather than the Fenix itself - verify)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5872
+lvar	FNX2PLD_fcuHdg (display name says FNX320+FENIXQUARTZ: published by the FenixQuartz utility rather than the Fenix itself - verify)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5881
+lvar	FNX2PLD_fcuAlt (display name says FNX320+FENIXQUARTZ: published by the FenixQuartz utility rather than the Fenix itself - verify)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5890
+lvar	FNX2PLD_fcuVs (display name says FNX320+FENIXQUARTZ: published by the FenixQuartz utility rather than the Fenix itself - verify)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5899
+lvar	FNX2PLD_isVsActive (display name says FNX320+FENIXQUARTZ: published by the FenixQuartz utility rather than the Fenix itself - verify)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5908
+lvar	FNX2PLD_fcuSpdDashed (display name says FNX320+FENIXQUARTZ: published by the FenixQuartz utility rather than the Fenix itself - verify)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5917
+lvar	FNX2PLD_fcuHdgDashed (display name says FNX320+FENIXQUARTZ: published by the FenixQuartz utility rather than the Fenix itself - verify)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5926
+lvar	FNX2PLD_fcuVsDashed (display name says FNX320+FENIXQUARTZ: published by the FenixQuartz utility rather than the Fenix itself - verify)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5935
+lvar	FNX2PLD_bat1 (display name says FNX320+FENIXQUARTZ: published by the FenixQuartz utility rather than the Fenix itself - verify)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5944
+lvar	FNX2PLD_bat2 (display name says FNX320+FENIXQUARTZ: published by the FenixQuartz utility rather than the Fenix itself - verify)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5952
+lvar	FNX2PLD_clockChr (display name says FNX320+FENIXQUARTZ: published by the FenixQuartz utility rather than the Fenix itself - verify)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5960
+lvar	FNX2PLD_clockEt (display name says FNX320+FENIXQUARTZ: published by the FenixQuartz utility rather than the Fenix itself - verify)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5968
+lvar	I_OH_FUEL_RIGHT_2_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5978
+lvar	I_OH_FUEL_RIGHT_2_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5987
+lvar	I_OH_FUEL_RIGHT_1_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:5996
+lvar	I_OH_FUEL_RIGHT_1_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6005
+lvar	I_OH_FUEL_LEFT_2_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6014
+lvar	I_OH_FUEL_LEFT_2_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6023
+lvar	I_OH_FUEL_LEFT_1_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6032
+lvar	I_OH_FUEL_LEFT_1_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6041
+lvar	I_OH_FUEL_MODE_SEL_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6050
+lvar	I_OH_FUEL_MODE_SEL_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6059
+lvar	I_OH_FUEL_XFEED_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6068
+lvar	I_OH_FUEL_XFEED_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6077
+lvar	I_OH_FUEL_CENTER_2_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6086
+lvar	I_OH_FUEL_CENTER_2_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6095
+lvar	I_OH_FUEL_CENTER_1_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6104
+lvar	I_OH_FUEL_CENTER_1_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6113
+lvar	I_MIP_GEAR_RED	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6124
+lvar	I_MIP_GEAR_3_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6133
+lvar	I_MIP_GEAR_3_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6142
+lvar	I_MIP_GEAR_2_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6151
+lvar	I_MIP_GEAR_2_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6160
+lvar	I_MIP_GEAR_1_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6169
+lvar	I_MIP_GEAR_1_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6178
+lvar	I_MIP_BRAKE_FAN_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6187
+lvar	I_MIP_BRAKE_FAN_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6196
+lvar	I_MIP_AUTOBRAKE_MED_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6205
+lvar	I_MIP_AUTOBRAKE_MED_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6214
+lvar	I_MIP_AUTOBRAKE_MAX_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6223
+lvar	I_MIP_AUTOBRAKE_MAX_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6232
+lvar	I_MIP_AUTOBRAKE_LO_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6241
+lvar	I_MIP_AUTOBRAKE_LO_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6250
+lvar	S_FC_CAPT_TILLER_PEDAL_DISCONNECT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6268
+lvar	I_OH_HYD_PTU_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6279
+lvar	I_OH_HYD_PTU_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6288
+lvar	I_OH_HYD_ENG_2_PUMP_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6297
+lvar	I_OH_HYD_ENG_2_PUMP_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6306
+lvar	I_OH_HYD_ENG_1_PUMP_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6315
+lvar	I_OH_HYD_ENG_1_PUMP_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6324
+lvar	I_OH_HYD_YELLOW_ELEC_PUMP_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6333
+lvar	I_OH_HYD_YELLOW_ELEC_PUMP_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6342
+lvar	I_OH_HYD_BLUE_ELEC_PUMP_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6351
+lvar	I_OH_HYD_BLUE_ELEC_PUMP_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6360
+lvar	FNX2PLD_isisBaro (display name says FNX320+FENIXQUARTZ: published by the FenixQuartz utility rather than the Fenix itself - verify)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6371
+lvar	A_FCU_LIGHTING	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6383
+lvar	N_PED_LIGHTING_PEDESTAL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6391
+lvar	I_CDU2_RDY	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6404
+lvar	I_CDU1_RDY	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6413
+lvar	I_CDU2_MCDU_MENU	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6422
+lvar	I_CDU1_MCDU_MENU	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6431
+lvar	I_CDU2_IND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6440
+lvar	I_CDU1_IND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6449
+lvar	I_CDU2_FM2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6458
+lvar	I_CDU1_FM2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6467
+lvar	I_CDU2_FM1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6476
+lvar	I_CDU1_FM1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6485
+lvar	I_CDU2_FM	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6494
+lvar	I_CDU1_FM	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6503
+lvar	I_CDU2_FAIL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6512
+lvar	I_CDU1_FAIL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6521
+lvar	I_CDU2_DASH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6530
+lvar	I_CDU1_DASH	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6539
+lvar	N_MISC_PERF_TO_V1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6548
+lvar	N_MISC_PERF_TO_V2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6556
+lvar	N_MISC_PERF_TO_VR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6564
+lvar	N_MISC_PERF_TO_FLEX	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6572
+lvar	I_OH_CARGO_SMOKE_FWD_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6582
+lvar	I_OH_CARGO_SMOKE_AFT_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6591
+lvar	I_OH_PNEUMATIC_HOT_AIR_AFT_CARGO_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6600
+lvar	I_OH_PNEUMATIC_HOT_AIR_AFT_CARGO_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6609
+lvar	I_OH_PNEUMATIC_CARGO_AFT_ISOL_VALVE_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6618
+lvar	I_OH_PNEUMATIC_CARGO_AFT_ISOL_VALVE_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6627
+lvar	I_OH_RCRD_GND_CTL_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6636
+lvar	I_OH_SVCE_INT_OVRD	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6645
+lvar	I_OH_OXYGEN_TMR_RESET_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6654
+lvar	I_OH_OXYGEN_TMR_RESET_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6663
+lvar	I_OH_HYD_LMV_YELLOW_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6672
+lvar	I_OH_HYD_LMV_GREEN_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6681
+lvar	I_OH_HYD_LMV_BLUE_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6690
+lvar	I_OH_AFT_FADEC_GND_2_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6699
+lvar	I_OH_AFT_FADEC_GND_1_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6708
+lvar	I_OH_DOOR_VIDEO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6717
+lvar	I_OH_HYD_BLUE_PUMP_OVERRIDE_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6726
+lvar	I_OH_LIGHTING_AVIONICS_COMPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6735
+lvar	I_OH_APU_AUTOEXTING_TEST_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6744
+lvar	I_OH_APU_AUTOEXTING_TEST_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6753
+lvar	I_OH_DOOR_CTL_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6762
+lvar	I_OH_DOOR_CTL_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6771
+lvar	I_OH_TOILET	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6780
+lvar	S_TRAY_TABLE_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6789
+lvar	S_TRAY_TABLE_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6798
+lvar	N_MIP_CLOCK_CHRONO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6807
+lvar	N_MIP_CLOCK_ELAPSED	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6815
+lvar	N_MIP_CLOCK_MODE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6823
+lvar	I_PED_COCKPIT_DOOR_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6831
+lvar	I_PED_COCKPIT_DOOR_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6840
+lvar	I_OH_NAV_ADIRS_QUEUE_CLR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6851
+lvar	I_OH_NAV_ADIRS_QUEUE_ENT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6860
+lvar	I_ASP3_VOICE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6870
+lvar	I_ASP3_VHF_3_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6879
+lvar	I_ASP3_VHF_3_CALL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6888
+lvar	I_ASP3_VHF_2_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6897
+lvar	I_ASP3_VHF_2_CALL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6906
+lvar	I_ASP3_VHF_1_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6915
+lvar	I_ASP3_VHF_1_CALL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6924
+lvar	I_ASP3_INT_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6933
+lvar	I_ASP3_INT_CALL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6942
+lvar	I_ASP3_HF_2_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6951
+lvar	I_ASP3_HF_2_CALL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6960
+lvar	I_ASP3_HF_1_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6969
+lvar	I_ASP3_HF_1_CALL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6978
+lvar	I_ASP3_CAB_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6987
+lvar	I_ASP2_VOICE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:6996
+lvar	I_ASP2_VHF_3_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7005
+lvar	I_ASP2_VHF_3_CALL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7014
+lvar	I_ASP2_VHF_2_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7023
+lvar	I_ASP2_VHF_2_CALL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7032
+lvar	I_ASP2_VHF_1_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7041
+lvar	I_ASP2_VHF_1_CALL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7050
+lvar	I_ASP2_PA_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7059
+lvar	I_ASP2_INT_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7068
+lvar	I_ASP2_INT_CALL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7077
+lvar	I_ASP2_HF_2_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7086
+lvar	I_ASP2_HF_2_CALL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7095
+lvar	I_ASP2_HF_1_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7104
+lvar	I_ASP2_HF_1_CALL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7113
+lvar	I_ASP2_CAB_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7122
+lvar	I_ASP_VOICE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7131
+lvar	I_ASP_VHF_3_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7140
+lvar	I_ASP_VHF_3_CALL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7149
+lvar	I_ASP_VHF_2_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7158
+lvar	I_ASP_VHF_2_CALL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7167
+lvar	I_ASP_VHF_1_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7176
+lvar	I_ASP_VHF_1_CALL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7185
+lvar	I_ASP_PA_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7194
+lvar	I_ASP_INT_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7203
+lvar	I_ASP_INT_CALL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7212
+lvar	I_ASP_HF_2_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7221
+lvar	I_ASP_HF_2_CALL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7230
+lvar	I_ASP_HF_1_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7239
+lvar	I_ASP_HF_1_CALL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7248
+lvar	I_ASP_CAB_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7257
+lvar	I_PED_RMP3_VOR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7266
+lvar	I_PED_RMP3_VHF3	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7275
+lvar	I_PED_RMP3_VHF2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7284
+lvar	I_PED_RMP3_VHF1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7293
+lvar	I_PED_RMP3_SEL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7302
+lvar	I_PED_RMP3_NAV	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7311
+lvar	I_PED_RMP3_ILS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7320
+lvar	I_PED_RMP3_HF2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7329
+lvar	I_PED_RMP3_HF1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7338
+lvar	I_PED_RMP3_MLS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7347
+lvar	I_PED_RMP3_BFO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7356
+lvar	I_PED_RMP3_AM	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7365
+lvar	I_PED_RMP3_ADF	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7374
+lvar	I_PED_RMP2_VOR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7383
+lvar	I_PED_RMP2_VHF3	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7392
+lvar	I_PED_RMP2_VHF2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7401
+lvar	I_PED_RMP2_VHF1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7410
+lvar	I_PED_RMP2_SEL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7419
+lvar	I_PED_RMP2_NAV	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7428
+lvar	I_PED_RMP2_ILS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7437
+lvar	I_PED_RMP2_HF2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7446
+lvar	I_PED_RMP2_HF1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7455
+lvar	I_PED_RMP2_MLS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7464
+lvar	I_PED_RMP2_BFO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7473
+lvar	I_PED_RMP2_AM	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7482
+lvar	I_PED_RMP2_ADF	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7491
+lvar	I_PED_RMP1_VOR	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7500
+lvar	I_PED_RMP1_VHF3	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7509
+lvar	I_PED_RMP1_VHF2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7518
+lvar	I_PED_RMP1_VHF1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7527
+lvar	I_PED_RMP1_SEL	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7536
+lvar	I_PED_RMP1_NAV	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7545
+lvar	I_PED_RMP1_ILS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7554
+lvar	I_PED_RMP1_HF2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7563
+lvar	I_PED_RMP1_HF1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7572
+lvar	I_PED_RMP1_MLS	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7581
+lvar	I_PED_RMP1_BFO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7590
+lvar	I_PED_RMP1_AM	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7599
+lvar	I_PED_RMP1_ADF	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7608
+lvar	I_ASP3_PA_SEND	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7617
+simvar	COM STANDBY FREQUENCY:1 (panel key COM_STANDBY_FREQUENCY_SET:1)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7627
+simvar	COM STANDBY FREQUENCY:2 (panel key COM_STANDBY_FREQUENCY_SET:2)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7635
+simvar	COM STANDBY FREQUENCY:3 (panel key COM_STANDBY_FREQUENCY_SET:3)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7643
+lvar	N_PED_RMP1_ACTIVE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7652
+lvar	N_PED_RMP1_STDBY	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7660
+lvar	N_PED_RMP2_ACTIVE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7668
+lvar	N_PED_RMP2_STDBY	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7676
+lvar	N_PED_RMP3_ACTIVE	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7684
+lvar	N_PED_RMP3_STDBY	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7692
+lvar	N_FREQ_STANDBY_XPDR_SELECTED	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7700
+lvar	N_FREQ_XPDR_SELECTED	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7708
+lvar	N_PED_XPDR_CHAR_DISPLAYED	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7716
+lvar	I_ASP_VHF_1_REC	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7724
+lvar	I_ASP_VHF_2_REC	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7733
+lvar	I_ASP_VHF_3_REC	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7742
+lvar	I_ASP_HF_1_REC	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7751
+lvar	I_ASP_HF_2_REC	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7760
+lvar	I_ASP_INT_REC	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7769
+lvar	I_ASP_CAB_REC	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7778
+lvar	I_ASP_PA_REC	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7787
+lvar	I_ASP_NAV_1_REC	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7796
+lvar	I_ASP_NAV_2_REC	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7805
+lvar	I_ASP_MARKER_REC	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7814
+lvar	I_ASP_ILS_REC	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7823
+lvar	I_ASP_ADF_1_REC	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7832
+lvar	I_ASP_ADF_2_REC	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7841
+lvar	I_OH_OXYGEN_PASSENGER_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7852
+lvar	I_OH_OXYGEN_CREW_OXYGEN_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7861
+lvar	I_OH_OXYGEN_HIGH_ALT_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7870
+lvar	I_OH_CARGO_SMOKE_DISCHARGE_2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7879
+lvar	I_OH_CARGO_SMOKE_DISCHARGE_1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7888
+lvar	I_OH_CARGO_SMOKE_DISCHARGE_AGENT_2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7897
+lvar	I_OH_FIRE_ENG2_AGENT2_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7906
+lvar	I_OH_FIRE_ENG2_AGENT2_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7915
+lvar	I_OH_FIRE_ENG2_AGENT1_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7924
+lvar	I_OH_FIRE_ENG2_AGENT1_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7933
+lvar	I_OH_FIRE_ENG1_AGENT2_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7942
+lvar	I_OH_FIRE_ENG1_AGENT2_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7951
+lvar	I_OH_FIRE_ENG1_AGENT1_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7960
+lvar	I_OH_FIRE_ENG1_AGENT1_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7969
+lvar	I_OH_FIRE_APU_AGENT_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7978
+lvar	I_OH_FIRE_APU_AGENT_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7987
+lvar	I_OH_FIRE_ENG1_BUTTON	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:7996
+lvar	I_OH_FIRE_ENG2_BUTTON	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8005
+lvar	I_OH_FIRE_APU_BUTTON	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8014
+lvar	B_INT_CFSBLT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8023
+lvar	I_OH_EVAC_COMMAND_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8072
+lvar	I_OH_EVAC_COMMAND_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8081
+lvar	I_OH_ELEC_EMERG_GEN_FAULT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8090
+lvar	I_OH_ELEC_GEN1_LINE_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8099
+lvar	I_OH_ELEC_GEN1_LINE_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8108
+lvar	I_OH_CALLS_EMER_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8117
+lvar	I_OH_CALLS_EMER_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8126
+lvar	I_ENG_FIRE_2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8135
+lvar	I_ENG_FIRE_1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8144
+lvar	I_ENG_FAULT_2	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8153
+lvar	I_ENG_FAULT_1	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8162
+lvar	I_OH_INT_LT_EMER_OFF	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8171
+lvar	I_MIP_GPWS_VISUAL_ALERT_FO_u	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8180
+lvar	I_MIP_GPWS_VISUAL_ALERT_FO_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8189
+lvar	I_MIP_GPWS_VISUAL_ALERT_CAPT_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8198
+lvar	I_MIP_GPWS_VISUAL_ALERT_CAPT_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8207
+lvar	I_OH_GPWS_TERR_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8216
+lvar	I_OH_GPWS_TERR_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8225
+lvar	I_OH_GPWS_SYS_U	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8234
+lvar	I_OH_GPWS_SYS_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8243
+lvar	I_OH_GPWS_LDG_FLAP3_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8252
+lvar	I_OH_GPWS_GS_MODE_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8261
+lvar	I_OH_GPWS_FLAP_MODE_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8270
+lvar	I_MIP_MASTER_WARNING_FO_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8279
+lvar	I_MIP_MASTER_WARNING_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8288
+lvar	I_MIP_MASTER_WARNING_CAPT_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8297
+lvar	I_MIP_MASTER_WARNING_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8306
+lvar	I_MIP_MASTER_CAUTION_FO_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8315
+lvar	I_MIP_MASTER_CAUTION_FO	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8324
+lvar	I_MIP_MASTER_CAUTION_CAPT_L	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8333
+lvar	I_MIP_MASTER_CAUTION_CAPT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8342
+simvar	PLANE HEADING DEGREES MAGNETIC (panel key PLANE_HEADING_DEGREES_MAGNETIC)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8354
+simvar	FUEL TOTAL QUANTITY WEIGHT	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:8369
+lvar	E_FCU_EFIS1_BARO (baro encoder counter; also atomic RPN at :12433)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:11641
+lvar	E_FCU_EFIS2_BARO (baro encoder counter; also atomic RPN at :12433)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:11741
+lvar	E_MIP_ISFD_BARO (ISIS baro encoder counter)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:10112
+lvar	S_FCU_EFIS1_FD (real FD actuator behind the S_FCU_EFIS1_FD_PRESS panel key)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:11698
+lvar	S_FCU_EFIS1_LS (real LS actuator behind the S_FCU_EFIS1_LS_PRESS panel key)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:11704
+lvar	S_FCU_EFIS2_FD (real FD actuator)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:11798
+lvar	S_FCU_EFIS2_LS (real LS actuator)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:11804
+lvar	S_COCKPIT_DOOR (First Officer only; 0 closed / 1 open)	MSFSBlindAssist/FirstOfficer/Fenix/FenixActionExecutor.cs:268
+lvar	N_MIP_CLOCK_UTC (only in the default-silent seed list; its definition is commented out at FenixA320Definition.cs:8408)	MSFSBlindAssist/Settings/SettingsManager.cs:239
+calc	(L:{counterVar}) {op} (>L:{counterVar}) (template, AdjustBaroCounter; op = '<n> +' or '<n> -')	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:12433
+calc	(L:E_FCU_EFIS1_BARO) <n> + (>L:E_FCU_EFIS1_BARO) (expanded; also '<n> -')	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:12433
+calc	(L:E_FCU_EFIS2_BARO) <n> + (>L:E_FCU_EFIS2_BARO) (expanded; also '<n> -')	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:12433
+calc	<seq> 0 * (L:S_FCU_SPEED) 1 - (>L:S_FCU_SPEED) (expanded: speed knob PUSH; PULL is '1 +')	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:12459
+calc	<seq> 0 * (L:S_FCU_HEADING) 1 - (>L:S_FCU_HEADING) (expanded: heading knob PUSH; PULL is '1 +')	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:12459
+calc	<seq> 0 * (L:S_FCU_ALTITUDE) 1 - (>L:S_FCU_ALTITUDE) (expanded: altitude knob PUSH; PULL is '1 +')	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:12459
+calc	(L:{knobLVar}) 1 - (>L:{knobLVar}) (template, First Officer PushFcuManaged, unique-prefixed; knobs S_FCU_SPEED / S_FCU_HEADING / S_FCU_ALTITUDE)	MSFSBlindAssist/FirstOfficer/Fenix/FenixActionExecutor.cs:316
+calc	{value} (>L:{name}) (generic: the form EVERY Fenix SetLVar write takes once CalcPathVerified; otherwise a native data-def write of L:{name}, EventSend.cs:59-)	MSFSBlindAssist/SimConnect/SimConnectManager.EventSend.cs:54
+kevent	COM_STBY_RADIO_SET_HZ (COM 1 standby, Hz)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:9398
+kevent	COM2_STBY_RADIO_SET_HZ (COM 2 standby, Hz)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:9398
+kevent	COM3_STBY_RADIO_SET_HZ (COM 3 standby, Hz)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:9397
+kevent	GEAR_UP (universal auto-gear, used on the Fenix)	MSFSBlindAssist/Automation/UniversalAutomationService.cs:291
+kevent	GEAR_DOWN (universal auto-gear, used on the Fenix)	MSFSBlindAssist/Automation/UniversalAutomationService.cs:306
+simvar	GEAR HANDLE POSITION (Shift+G gear readout, bool; also universal auto-gear SimConnectManager.Setup.cs:64)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:12474
+simvar	TOTAL WEIGHT (W / Shift+W gross weight, pounds)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:12521
+simvar	TURB ENG N2:1 (First Officer engine-running test, >= 55 %)	MSFSBlindAssist/SimConnect/SimConnectManager.Setup.cs:61
+simvar	TURB ENG N2:2 (First Officer engine-running test, >= 55 %)	MSFSBlindAssist/SimConnect/SimConnectManager.Setup.cs:62
+simvar	PLANE ALT ABOVE GROUND (First Officer / universal automation AGL)	MSFSBlindAssist/SimConnect/SimConnectManager.Setup.cs:59
+simvar	AIRSPEED INDICATED (First Officer / universal automation IAS; Takeoff Assist V1/rotate)	MSFSBlindAssist/SimConnect/SimConnectManager.Setup.cs:60
+simvar	CAMERA VIEW TYPE AND INDEX:0 (AI display reads: camera type)	MSFSBlindAssist/SimConnect/SimConnectManager.Camera.cs:50
+simvar	CAMERA VIEW TYPE AND INDEX:1 (AI display reads: Fenix instrument view index 7 / 8)	MSFSBlindAssist/SimConnect/SimConnectManager.Camera.cs:52
+simvar	CAMERA STATE (AI display reads)	MSFSBlindAssist/SimConnect/SimConnectManager.Camera.cs:48
+simvar	TITLE (generic aircraft identity, ICAO lookup via aircraft.cfg)	MSFSBlindAssist/SimConnect/SimConnectManager.Setup.cs:168
+simvar	ATC TYPE (generic aircraft identity)	MSFSBlindAssist/SimConnect/SimConnectManager.Setup.cs:178
+simvar	ATC MODEL (generic aircraft identity / ICAO)	MSFSBlindAssist/SimConnect/SimConnectManager.Setup.cs:184
+simvar	SIM ON GROUND (shared base variable, every aircraft)	MSFSBlindAssist/Aircraft/BaseAircraftDefinition.cs:66
+simvar	INDICATED ALTITUDE (shared base variable, every aircraft)	MSFSBlindAssist/Aircraft/BaseAircraftDefinition.cs:83
+simvar	GROUND VELOCITY (shared base variable, every aircraft)	MSFSBlindAssist/Aircraft/BaseAircraftDefinition.cs:113
+simvar	G FORCE (shared base variable, every aircraft)	MSFSBlindAssist/Aircraft/BaseAircraftDefinition.cs:136
+simvar	PLANE TOUCHDOWN NORMAL VELOCITY (shared base variable, every aircraft)	MSFSBlindAssist/Aircraft/BaseAircraftDefinition.cs:158
+simvar	NAV HAS GLIDE SLOPE:1 (shared base variable, every aircraft)	MSFSBlindAssist/Aircraft/BaseAircraftDefinition.cs:175
+simvar	ELEVATOR TRIM POSITION (shared base variable, every aircraft)	MSFSBlindAssist/Aircraft/BaseAircraftDefinition.cs:186
+simvar	PLANE PITCH DEGREES (shared base variable, every aircraft)	MSFSBlindAssist/Aircraft/BaseAircraftDefinition.cs:197
+simvar	PLANE BANK DEGREES (shared base variable, every aircraft)	MSFSBlindAssist/Aircraft/BaseAircraftDefinition.cs:206
+simvar	PLANE LATITUDE (shared base variable, every aircraft)	MSFSBlindAssist/Aircraft/BaseAircraftDefinition.cs:217
+simvar	PLANE LONGITUDE (shared base variable, every aircraft)	MSFSBlindAssist/Aircraft/BaseAircraftDefinition.cs:226
+simvar	GPS GROUND MAGNETIC TRACK (shared base variable, every aircraft)	MSFSBlindAssist/Aircraft/BaseAircraftDefinition.cs:262
+gql	aircraft.mcdu1.display (subscribed; Captain MCDU screen XML)	MSFSBlindAssist/Services/FenixMcduSides.cs:14
+gql	aircraft.mcdu2.display (subscribed; First Officer MCDU screen XML)	MSFSBlindAssist/Services/FenixMcduSides.cs:15
+gql	system.switches.S_CDU{side}_KEY_{key} (template; writeInt 1 then 0)	MSFSBlindAssist/Services/FenixMcduSides.cs:32
+gql	system.switches.S_CDU1_KEY_LSK1L (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:381
+gql	system.switches.S_CDU1_KEY_LSK2L (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:381
+gql	system.switches.S_CDU1_KEY_LSK3L (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:381
+gql	system.switches.S_CDU1_KEY_LSK4L (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:381
+gql	system.switches.S_CDU1_KEY_LSK5L (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:381
+gql	system.switches.S_CDU1_KEY_LSK6L (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:381
+gql	system.switches.S_CDU1_KEY_LSK1R (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:390
+gql	system.switches.S_CDU1_KEY_LSK2R (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:390
+gql	system.switches.S_CDU1_KEY_LSK3R (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:390
+gql	system.switches.S_CDU1_KEY_LSK4R (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:390
+gql	system.switches.S_CDU1_KEY_LSK5R (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:390
+gql	system.switches.S_CDU1_KEY_LSK6R (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:390
+gql	system.switches.S_CDU1_KEY_ARROW_LEFT (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:285
+gql	system.switches.S_CDU1_KEY_ARROW_RIGHT (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:291
+gql	system.switches.S_CDU1_KEY_CLEAR (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:297
+gql	system.switches.S_CDU1_KEY_ARROW_UP (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:303
+gql	system.switches.S_CDU1_KEY_ARROW_DOWN (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:309
+gql	system.switches.S_CDU1_KEY_INIT (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:123
+gql	system.switches.S_CDU1_KEY_DIR (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:125
+gql	system.switches.S_CDU1_KEY_PROG (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:127
+gql	system.switches.S_CDU1_KEY_FPLN (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:129
+gql	system.switches.S_CDU1_KEY_PERF (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:131
+gql	system.switches.S_CDU1_KEY_RAD_NAV (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:136
+gql	system.switches.S_CDU1_KEY_SEC_FPLN (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:138
+gql	system.switches.S_CDU1_KEY_FUEL_PRED (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:140
+gql	system.switches.S_CDU1_KEY_ATC_COM (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:142
+gql	system.switches.S_CDU1_KEY_MENU (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:144
+gql	system.switches.S_CDU1_KEY_AIRPORT (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:149
+gql	system.switches.S_CDU1_KEY_DATA (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:151
+gql	system.switches.S_CDU1_KEY_OVFLY (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:153
+gql	system.switches.S_CDU1_KEY_A (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_B (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_C (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_D (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_E (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_F (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_G (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_H (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_I (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_J (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_K (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_L (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_M (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_N (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_O (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_P (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_Q (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_R (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_S (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_T (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_U (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_V (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_W (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_X (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_Y (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_Z (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU1_KEY_0 (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:499
+gql	system.switches.S_CDU1_KEY_1 (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:499
+gql	system.switches.S_CDU1_KEY_2 (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:499
+gql	system.switches.S_CDU1_KEY_3 (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:499
+gql	system.switches.S_CDU1_KEY_4 (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:499
+gql	system.switches.S_CDU1_KEY_5 (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:499
+gql	system.switches.S_CDU1_KEY_6 (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:499
+gql	system.switches.S_CDU1_KEY_7 (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:499
+gql	system.switches.S_CDU1_KEY_8 (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:499
+gql	system.switches.S_CDU1_KEY_9 (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:499
+gql	system.switches.S_CDU1_KEY_DOT (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:500
+gql	system.switches.S_CDU1_KEY_SLASH (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:501
+gql	system.switches.S_CDU1_KEY_MINUS (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:502
+gql	system.switches.S_CDU1_KEY_SPACE (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:503
+gql	system.switches.S_CDU2_KEY_LSK1L (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:381
+gql	system.switches.S_CDU2_KEY_LSK2L (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:381
+gql	system.switches.S_CDU2_KEY_LSK3L (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:381
+gql	system.switches.S_CDU2_KEY_LSK4L (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:381
+gql	system.switches.S_CDU2_KEY_LSK5L (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:381
+gql	system.switches.S_CDU2_KEY_LSK6L (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:381
+gql	system.switches.S_CDU2_KEY_LSK1R (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:390
+gql	system.switches.S_CDU2_KEY_LSK2R (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:390
+gql	system.switches.S_CDU2_KEY_LSK3R (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:390
+gql	system.switches.S_CDU2_KEY_LSK4R (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:390
+gql	system.switches.S_CDU2_KEY_LSK5R (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:390
+gql	system.switches.S_CDU2_KEY_LSK6R (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:390
+gql	system.switches.S_CDU2_KEY_ARROW_LEFT (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:285
+gql	system.switches.S_CDU2_KEY_ARROW_RIGHT (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:291
+gql	system.switches.S_CDU2_KEY_CLEAR (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:297
+gql	system.switches.S_CDU2_KEY_ARROW_UP (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:303
+gql	system.switches.S_CDU2_KEY_ARROW_DOWN (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:309
+gql	system.switches.S_CDU2_KEY_INIT (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:123
+gql	system.switches.S_CDU2_KEY_DIR (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:125
+gql	system.switches.S_CDU2_KEY_PROG (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:127
+gql	system.switches.S_CDU2_KEY_FPLN (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:129
+gql	system.switches.S_CDU2_KEY_PERF (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:131
+gql	system.switches.S_CDU2_KEY_RAD_NAV (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:136
+gql	system.switches.S_CDU2_KEY_SEC_FPLN (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:138
+gql	system.switches.S_CDU2_KEY_FUEL_PRED (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:140
+gql	system.switches.S_CDU2_KEY_ATC_COM (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:142
+gql	system.switches.S_CDU2_KEY_MENU (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:144
+gql	system.switches.S_CDU2_KEY_AIRPORT (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:149
+gql	system.switches.S_CDU2_KEY_DATA (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:151
+gql	system.switches.S_CDU2_KEY_OVFLY (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:153
+gql	system.switches.S_CDU2_KEY_A (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_B (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_C (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_D (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_E (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_F (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_G (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_H (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_I (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_J (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_K (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_L (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_M (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_N (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_O (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_P (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_Q (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_R (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_S (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_T (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_U (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_V (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_W (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_X (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_Y (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_Z (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:498
+gql	system.switches.S_CDU2_KEY_0 (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:499
+gql	system.switches.S_CDU2_KEY_1 (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:499
+gql	system.switches.S_CDU2_KEY_2 (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:499
+gql	system.switches.S_CDU2_KEY_3 (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:499
+gql	system.switches.S_CDU2_KEY_4 (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:499
+gql	system.switches.S_CDU2_KEY_5 (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:499
+gql	system.switches.S_CDU2_KEY_6 (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:499
+gql	system.switches.S_CDU2_KEY_7 (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:499
+gql	system.switches.S_CDU2_KEY_8 (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:499
+gql	system.switches.S_CDU2_KEY_9 (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:499
+gql	system.switches.S_CDU2_KEY_DOT (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:500
+gql	system.switches.S_CDU2_KEY_SLASH (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:501
+gql	system.switches.S_CDU2_KEY_MINUS (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:502
+gql	system.switches.S_CDU2_KEY_SPACE (expanded)	MSFSBlindAssist/Forms/FenixA320/FenixMCDUForm.cs:503
+other	ws://127.0.0.1:8083/graphql (MCDU screen subscription)	MSFSBlindAssist/Services/FenixMCDUService.cs:45
+other	http://127.0.0.1:8083/graphql (MCDU key writes, HTTP POST)	MSFSBlindAssist/Services/FenixMCDUService.cs:46
+other	graphql-transport-ws (WebSocket subprotocol)	MSFSBlindAssist/Services/FenixMCDUService.cs:133
+other	http://localhost:8083/#/efb (EFB web UI in WebView2)	MSFSBlindAssist/Forms/Fenix/FenixEFBForm.cs:24
+other	FENIX_A320CEO (app aircraft code; persisted in settings)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:14
+other	Fenix A320 CEO (app aircraft name)	MSFSBlindAssist/Aircraft/FenixA320Definition.cs:13
+other	common/config/cameras.cfg (Fenix package file the measured view indices were checked against)	MSFSBlindAssist/Aircraft/FenixA320DisplayReads.cs:28
