@@ -67,7 +67,8 @@ public class AircraftActionExecutor : IFoActionExecutor
 
     /// <summary>How long a checklist tick's <see cref="StartApuAsync"/> waits for the APU to read
     /// running: After Landing's own wait for the same line (AL_APU_RUNNING) gives it the same
-    /// 120 s, so both paths give up together.</summary>
+    /// 120 s, so both paths give up together. On the ground a cold APU's EGT went from 19 to 357
+    /// between 23 and 28 s after START (measured 2026-10-20).</summary>
     public const int ApuOnLineTimeoutMs = 120_000;
 
     /// <summary>The running poll cadence: FlowManager's own waits read once a second too.</summary>
@@ -847,7 +848,7 @@ public class AircraftActionExecutor : IFoActionExecutor
     /// through ON does not spool the APU up.
     ///
     /// The wait is what keeps the tick (FO-11): ChecklistManager holds a hand-tick's revert only
-    /// while its action runs plus 10 s, and the APU EGT reaches 100 only some way into the start.
+    /// while its action runs plus 10 s, and the APU EGT reaches 100 about 25 s after START.
     /// Returning at START un-ticked the line with "Unable to complete: APU: ON line" over an APU
     /// starting normally (owner, 2026-10-20). An APU that never runs still reverts with that
     /// message, now truthfully. Each write takes and releases the dispatch gate, so the wait never

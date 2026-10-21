@@ -1340,7 +1340,8 @@ Auto). Overhead → Signs → No Smoking reads the switch.
 
 Not run in the sim yet. Ticking the line by hand said "Unable to complete: APU: ON line" about 10
 seconds later while the APU started normally: the line reads the APU running (APU EGT at 100 or
-more), which comes some way into the start. The tick now waits up to 2 minutes for it, as the
+more), which came about 25 seconds after START on the ground (measured 2026-10-20). Start from a
+cold APU (a fresh flight): a hot one reads running as soon as the switch reaches ON. The tick now waits up to 2 minutes for it, as the
 After Landing flow does. The flows themselves are unchanged.
 
 1. **After Landing, by hand.** After landing, engines running, APU OFF: in the First Officer

@@ -181,8 +181,8 @@ public static class PMDG737ChecklistDefinitions
             // APU start must go ON → dwell → momentary START (StartApuAsync); writing START
             // directly never spools the APU up. Auto-detects ON-line from the selector at ON or START
             // AND the APU running (FO_APU_ON): the selector alone ticked the line at ON with the APU
-            // never started, and a tick then skipped the start (FO-12). The EGT gets there only some
-            // way into the start, so StartApuAsync holds the tick open until then (FO-11).
+            // never started, and a tick then skipped the start (FO-12). The EGT gets there about 25 s
+            // after START, so StartApuAsync holds the tick open until then (FO-11).
             AutoAsync("BS_APU", "BEFORE_START", "APU: ON line", AircraftStateEvaluator.ApuOnField,
                 AircraftActionExecutor.IsApuOnLine, (e, s) => e.StartApuAsync(s)),
             // Electrical transfer to the APU. The APU GEN switches are stateless momentary

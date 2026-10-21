@@ -12,7 +12,7 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 /// <summary>
 /// PMDG 737 NG3 — "Unable to complete: APU: ON line" about 10 s after a hand-tick over a healthy APU
 /// start (owner, 2026-10-20). The line reads the APU running (FO_APU_ON: the selector at ON or START
-/// and APU EGT at or above 100), which the APU reaches only some way into its start, while
+/// and APU EGT at or above 100), which a cold APU reached 23-28 s after START (measured), while
 /// StartApuAsync returned at START and ChecklistManager holds a hand-tick's revert only while its
 /// action runs plus 10 s (FO-11). The iFly 737 MAX8 had the same bug the same day.
 /// </summary>
