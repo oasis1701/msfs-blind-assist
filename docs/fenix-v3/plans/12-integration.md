@@ -35,7 +35,7 @@
 
 - [ ] **Step 1:** Pull `FenixV3`. Every plan file's **Status** line reads "done", and every plan's "Handoff to plan 12" section is filled in (in-sim results included).
 - [ ] **Step 2: No shared files.** `git log --format='%h %s' --name-only <base-sha>..FenixV3` shows each plan's commits touching only the files `00-index.md` gives that plan (`FirstOfficer/Fenix/FenixActionExecutor.cs` is plan 02's alone: its take-off config members are there and plan 05 did not edit the file).
-- [ ] **Step 3:** `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64` and the full suite. Expected: green. (Pushes to `FenixV3` run no CI, so this is the first combined check.)
+- [ ] **Step 3:** `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64` and the full suite. Expected: green. (Every push to `FenixV3` has run the tests on GitHub since plan 01 landed; this local run with everything merged is the integration check, and the last push's run on GitHub must be green too.)
 
 ### Task 2: Code handoffs, by file
 
@@ -111,11 +111,12 @@ Aircraft: a Fenix v3 A320 or A321 at a gate, cold and dark with ground power ava
 ### Task 7: Remove the working documents
 
 - [ ] `git rm -r docs/fenix-v3`; `git grep -n "docs/fenix-v3"` returns nothing outside `changelog.d` (fix any hit). Commit `docs: remove the Fenix v3 working documents`.
+- [ ] `.github/workflows/tests.yml`: set `push:` `branches` back to `[main]` and the comment above it back to "Post-merge safety net: also run on direct pushes to main." (plan 01 Task 7 Step 2 added FenixV3). `git diff origin/main -- .github/workflows/` is then empty, so the pull request changes no workflow (the `gh` token cannot merge one that does). Commit `ci: drop the FenixV3 push trigger`.
 
 ### Task 8: Pull request (owner go-ahead first)
 
 - [ ] **Step 1:** Ask the owner to approve pushing `FenixV3`. Then push and `gh pr create --base main --head FenixV3` with: what changes for a pilot (memory: explain in user terms), the in-sim results, `User guide: updated: Part <n>, Fenix A320 family`, the follow-ups below, and the closing attribution line.
-- [ ] **Step 2:** Read the PR number from `gh pr create`'s output. Add the fragments, written for a pilot: `changelog.d/<pr>-fenix-v3-fixes.fix.md` (plans 02, 04, 05), `changelog.d/<pr>-fenix-v3-windows.feature.md` (plans 01, 07, 08, 09, 10, 11), `changelog.d/<pr>-fenix-v3-variants.improvement.md` (plan 06). Use the plans' draft lines. Commit and push.
+- [ ] **Step 2:** Read the PR number from `gh pr create`'s output. Add the fragments, written for a pilot: `changelog.d/<pr>-fenix-v3-fixes.fix.md` (plans 02, 03, 04, 05), `changelog.d/<pr>-fenix-v3-windows.feature.md` (plans 01, 07, 08, 09, 10, 11), `changelog.d/<pr>-fenix-v3-variants.improvement.md` (plan 06). Use the plans' draft lines. Commit and push.
 - [ ] **Step 3:** CI green (tests, changelog, user-guide-line). The owner merges.
 
 ## Follow-ups (record in the PR, not built)

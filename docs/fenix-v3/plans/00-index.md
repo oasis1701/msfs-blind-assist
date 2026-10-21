@@ -68,6 +68,7 @@ plans 02-11.
 | `tests/MSFSBlindAssist.Tests/Fixtures/fenix-failures-manual-ch21.json` (new; first ATA chapter only, never the full catalog) | 10 | |
 | `MainForm*.cs` (other partials), `BaseAircraftDefinition.cs`, `IAircraftDefinition.cs`, `Forms/FirstOfficer/**`, shared FO classes outside `FirstOfficer/Fenix/` | nobody before 12 | Handoff requests only |
 | `MSFSBlindAssist/HotkeyGuides/Fenix_A320_Hotkeys.txt` | 01 (its one line), then 12 | |
+| `.github/workflows/tests.yml` | 01 (adds FenixV3 to the push list), then 12 (removes it before the pull request) | No other plan edits a workflow |
 | `guide/**`, `changelog.d/**`, `docs/*.md`, `docs/invariants/**`, `CLAUDE.md`, `.claude/rules/**` | 01 (its rule file and CLAUDE.md row), then 12 | Plans list pilot-facing notes and proposed rule lines in their handoff section |
 | `docs/fenix-v3/**` | each plan its own plan file, its **Claimed by** / **Status** line included; 12 deletes the folder | A worker may tick its own plan's checkboxes |
 | Tests | each plan its NEW test files named for its feature (`*FenixData*`, `*FenixWindow*`, `FenixVariantTests.cs`, `FenixDefinitionSeamTests.cs` → 01; `*FenixV3Fix*`, `*FenixTakeoffConfig*`, `*FenixTakeoffCallouts*`, `SettingsSeedTests.cs` → 02; `*FenixEfb*` → 03; `*FenixA320DisplayReads*`, `*FenixMcdu*` → 04; `tests/.../FirstOfficer/Fenix*.cs`, `A320FamilyParityTests.cs` → 05; `*FenixVariantControls*` → 06; `*FenixDocument*` → 07; `*FenixCabin*` → 08; `*FenixEngine*` → 09; `*FenixFailure*` → 10; `*FenixOption*` → 11) | Test names must match a rule glob (a32nx-fenix.md covers `**/*Fenix*.cs`) |
@@ -130,7 +131,7 @@ no changelog fragments and no guide edits until plan 12 opens the one pull reque
 2. Build the solution once before testing: `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64`.
 3. Work task by task (TDD), committing as the plan says. Tests: `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64`.
 4. Before every push: `git pull --rebase` onto `FenixV3`, then build and run the full suite yourself and see it green
-   (CI runs only on pull requests and on `main`, so nothing checks a push to `FenixV3` for you). Your commits touch only
+   (once plan 01 has landed, every push to `FenixV3` also runs the tests on GitHub: a safety net, not a replacement for your own run). Your commits touch only
    files your plan owns, plus your own plan file. Then `git push origin HEAD:FenixV3`. Because plans own separate
    files, a rebase conflict means someone left their files: stop and sort it out with them.
 5. When your plan is done, fill in its "Handoff to plan 12" section in your plan file (pilot-facing changes, proposed

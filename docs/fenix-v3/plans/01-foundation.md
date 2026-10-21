@@ -195,9 +195,12 @@
 
 ### Task 7: Land the base
 
+**Files:** `.github/workflows/tests.yml` (the `push:` branch list and the comment above it), `docs/fenix-v3/plans/00-index.md` (the base-commit line).
+
 - [ ] **Step 1:** `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64` and the full test suite: both green.
-- [ ] **Step 2:** Record the `FenixV3` HEAD SHA in `docs/fenix-v3/plans/00-index.md` under "Base commit for parallel work" and commit that one line.
-- [ ] **Step 3:** Hand back: SHA, files, test count, the live-check results (Task 3 Step 5, Task 4 Step 5), and anything a later plan must know.
+- [ ] **Step 2: Tests on every FenixV3 push.** In `.github/workflows/tests.yml`, change `push:` `branches: [main]` to `branches: [main, FenixV3]`, and the comment above it to "Post-merge safety net: also run on direct pushes to main, and on every push to the FenixV3 work branch (plan 12 removes FenixV3 before its pull request)." Nothing else in the file changes. GitHub runs a push with the workflow file inside the pushed commit, so this takes effect on the branch alone; the test job has no pull-request-only step. Commit `ci: run the tests on every push to FenixV3`. (Pushing a workflow edit works with `git push`; only `gh`'s token lacks the workflow scope.)
+- [ ] **Step 3:** Record the `FenixV3` HEAD SHA in `docs/fenix-v3/plans/00-index.md` under "Base commit for parallel work" and commit that one line. The owner says when the branch is pushed; the first push to FenixV3 runs the tests on GitHub (check the run is green).
+- [ ] **Step 4:** Hand back: SHA, files, test count, the live-check results (Task 3 Step 5, Task 4 Step 5), and anything a later plan must know.
 
 ## Handoff to plan 12
 
