@@ -1,0 +1,69 @@
+// Plan 01 (Fenix v3 foundation) turns FenixA320Definition into a partial class with optional
+// `partial void` seams, so the later v3 plans each implement theirs in their own file without
+// editing the 13,000-line main file. With no implementation a partial void call compiles to
+// nothing: the definition must behave exactly as it did before the seams existed.
+//
+// The facts here survive plans 02 and 06 adding and removing definitions in parallel, so none of
+// them pins a total count.
+
+using MSFSBlindAssist.Aircraft;
+
+namespace MSFSBlindAssist.Tests;
+
+public class FenixDefinitionSeamTests
+{
+    private static readonly FenixA320Definition Definition = new();
+
+    [Fact]
+    public void Panel_controls_are_visible_when_no_variant_hides_them()
+        => Assert.True(Definition.IsPanelControlVisible("S_OH_ELEC_BAT1", null));
+
+    [Fact]
+    public void No_display_override_exists_without_a_variant_implementation()
+    {
+        Assert.False(Definition.TryGetDisplayOverride("S_OH_ELEC_BAT1", 1, out string text));
+        Assert.Equal("", text);
+    }
+
+    [Theory]
+    [InlineData("S_OH_ELEC_BAT1")]
+    [InlineData("N_FCU_SPEED")]
+    [InlineData("S_FC_FLAPS")]
+    [InlineData("I_MIP_MASTER_WARNING_CAPT")]
+    public void Long_standing_variables_are_still_registered(string key)
+        => Assert.Contains(key, Definition.GetVariables().Keys);
+
+    [Fact]
+    public void Every_panel_control_names_a_registered_variable()
+    {
+        var variables = Definition.GetVariables();
+        // A panel name can itself contain a slash ("GPWS/Terrain"), so pair the two, never split a string.
+        var unknown = Definition.GetPanelControls()
+            .SelectMany(panel => panel.Value.Select(key => (Panel: panel.Key, Key: key)))
+            .Where(entry => !variables.ContainsKey(entry.Key))
+            .Select(entry => $"{entry.Panel} -> {entry.Key}")
+            .ToList();
+        Assert.True(unknown.Count == 0, "Panel controls without a variable: " + string.Join(", ", unknown));
+    }
+
+    [Fact]
+    public void The_definition_is_partial_and_calls_every_seam_from_its_main_file()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            RepoRoot(), "MSFSBlindAssist", "Aircraft", "FenixA320Definition.cs"));
+        Assert.Contains("public partial class FenixA320Definition", source);
+        foreach (string seam in new[]
+        {
+            "AddVariantVariables(", "AddVariantPanelControls(", "AddVariantPanelStructure(",
+            "AddVariantPanelDisplayVariables(", "HandleVariantUIVariableSet(", "OnVariantSimVarUpdate(",
+        })
+            Assert.True(source.Contains(seam), $"FenixA320Definition.cs never calls {seam}");
+    }
+
+    private static string RepoRoot()
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
+            if (File.Exists(Path.Combine(dir.FullName, "MSFSBlindAssist.sln"))) return dir.FullName;
+        throw new InvalidOperationException($"MSFSBlindAssist.sln was not found above {AppContext.BaseDirectory}");
+    }
+}

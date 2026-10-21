@@ -8,7 +8,7 @@ namespace MSFSBlindAssist.Aircraft;
 /// Aircraft definition for Fenix A320 CEO.
 /// Fenix uses increment/decrement controls for FCU instead of direct value input.
 /// </summary>
-public class FenixA320Definition : BaseAircraftDefinition
+public partial class FenixA320Definition : BaseAircraftDefinition
 {
     public override string AircraftName => "Fenix A320 CEO";
     public override string AircraftCode => "FENIX_A320CEO";
@@ -8499,12 +8499,13 @@ public class FenixA320Definition : BaseAircraftDefinition
             };
         }
 
+        AddVariantVariables(variables);
         return variables;
     }
 
     public override Dictionary<string, List<string>> GetPanelStructure()
     {
-        return new Dictionary<string, List<string>>
+        var structure = new Dictionary<string, List<string>>
         {
             ["Overhead"] = new List<string>
             {
@@ -8572,11 +8573,13 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "Cockpit Other"
             }
         };
+        AddVariantPanelStructure(structure);
+        return structure;
     }
 
     protected override Dictionary<string, List<string>> BuildPanelControls()
     {
-        return new Dictionary<string, List<string>>
+        var panels = new Dictionary<string, List<string>>
         {
             ["Electrical"] = new List<string>
             {
@@ -9324,14 +9327,18 @@ public class FenixA320Definition : BaseAircraftDefinition
                 "S_DISPLAY_PFDND_XFER_FO"
             }
         };
+        AddVariantPanelControls(panels);
+        return panels;
     }
 
     public override Dictionary<string, List<string>> GetPanelDisplayVariables()
     {
-        return new Dictionary<string, List<string>>
+        var displayVariables = new Dictionary<string, List<string>>
         {
             // Display-only variables can be added here as needed
         };
+        AddVariantPanelDisplayVariables(displayVariables);
+        return displayVariables;
     }
 
     public override Dictionary<string, string> GetButtonStateMapping()
@@ -9350,6 +9357,10 @@ public class FenixA320Definition : BaseAircraftDefinition
     public override bool HandleUIVariableSet(string varKey, double value, SimConnect.SimVarDefinition varDef,
         SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
     {
+        bool handled = false;
+        HandleVariantUIVariableSet(varKey, value, varDef, simConnect, announcer, ref handled);
+        if (handled) return true;
+
         try
         {
             // ========== COCKPIT (seats, comfort, standby, gravity gear, DCDU2 brightness) ==========
@@ -12102,6 +12113,11 @@ public class FenixA320Definition : BaseAircraftDefinition
         // Only process if we have the announcer saved
         if (lastAnnouncer == null)
             lastAnnouncer = announcer;
+
+        EnsureFenixBackground(announcer);
+        bool handled = false;
+        OnVariantSimVarUpdate(varName, value, announcer, ref handled);
+        if (handled) return true;
 
         // ========== FCU and Altimeter Readouts ==========
         // Each readout is two legs, a value and its status, answered by the on-request twins.
