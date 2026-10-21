@@ -39,6 +39,12 @@ Static research notes mined from FBW source (var names, page-index maps): `a380-
 
 `probe-coherent-debugger.ps1`, `test-coherent-ws.ps1`, `prove-coherent-scrape.ps1`, `probe-efb-frames.ps1`, `probe-flypad-elements.ps1` — the first scripts that discovered the Coherent architecture. Superseded by `coherent-eval.ps1` + `_probe/`; their "Developer Mode ON" headers are **obsolete** (Dev Mode is **not** required). Kept as historical record / quick "is the port up" smoke tests. Prefer `coherent-eval.ps1` for new work.
 
+## Aircraft live harnesses (standalone C#, not in the solution)
+
+| Tool | Job |
+|---|---|
+| [`DA40Probe/`](DA40Probe/README.md) | Presses every COWS DA40 panel control through MSFSBA's real `SimConnectManager` and `CowsDA40Definition` and reads it back; also typed entries, hotkeys, input events and held inputs. Read its README before running it: a full pass stops the engine and pops breakers. |
+
 ## Pre-existing — do NOT modify
 
 `PMDGDispatchTester/` and `CDUTest/` predate the FBW work and are independent PMDG console apps (not Coherent tooling). See [`../docs/development.md`](../docs/development.md#build-output-and-traps) → Build output and traps. Leave them untouched.

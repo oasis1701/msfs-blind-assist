@@ -1,6 +1,6 @@
 # First Officer Automation
 
-Screen-reader First Officer (flows + checklists) for the PMDG 777, PMDG 737 NG3, Fenix A320, FlyByWire A380, FlyByWire A32NX, iFly 737 MAX8, HeadwindSim A330-900neo and TFDi MD-11. This is the detailed reference. Its rules load with the code from `.claude/rules/first-officer.md` (shared: flows, checklists, the window), `first-officer-automation.md` (auto-flaps, the auto-autopilot, the 10,000 ft lights, the transition altimeters; split out 2026-10-18), `first-officer-boeing.md` (PMDG 777/737, iFly 737 MAX8, centre fuel pumps) and `first-officer-airbus.md` (Fenix, FBW A32NX/A380, Headwind A330); their full texts are in `docs/invariants/` under the same names. The per-aircraft in-sim test plans (`docs/*-first-officer-test-plan.md`) were removed before merge, once the owner had passed every check in them (2026-10-20); a test plan or one of its Parts named in an older comment, design note or commit message is in those files, last present at commit `411f157cf`.
+Screen-reader First Officer (flows + checklists) for the PMDG 777, PMDG 737 NG3, Fenix A320, FlyByWire A380, FlyByWire A32NX, iFly 737 MAX8, HeadwindSim A330-900neo, TFDi MD-11 and COWS Diamond DA40 (NG and XLS). This is the detailed reference. Its rules load with the code from `.claude/rules/first-officer.md` (shared: flows, checklists, the window), `first-officer-automation.md` (auto-flaps, the auto-autopilot, the 10,000 ft lights, the transition altimeters; split out 2026-10-18), `first-officer-boeing.md` (PMDG 777/737, iFly 737 MAX8, centre fuel pumps), `first-officer-airbus.md` (Fenix, FBW A32NX/A380, Headwind A330) and `first-officer-da40.md` (the COWS DA40); their full texts are in `docs/invariants/` under the same names. The per-aircraft in-sim test plans (`docs/*-first-officer-test-plan.md`) were removed before merge, once the owner had passed every check in them (2026-10-20); a test plan or one of its Parts named in an older comment, design note or commit message is in those files, last present at commit `411f157cf`.
 
 ## Overview
 
@@ -913,3 +913,82 @@ its phase and auto managers run whether the window is visible or hidden (Escape 
 apply from then on. Escape or closing the window gives focus back to the window it was opened
 from, usually the simulator (`NativeForeground`, which exists because the CLR refuses a P/Invoke in
 a generic type).
+
+## COWS Diamond DA40 First Officer (2026-10-20)
+
+A ninth profile, and the first general-aviation one: `FirstOfficer/DA40/`, one `DA40FoProfile` for
+both COWS airframes, the DA40-NG (Austro AE300, FADEC) and the DA40-XLS (Lycoming IO-360, mixture,
+propeller, magnetos), registered in `FirstOfficerWindows` under both aircraft codes ("DA40-NG First
+Officer", "DA40-XLS First Officer"). Its rules are FOD-1 to FOD-7 (`.claude/rules/first-officer-da40.md`);
+the aircraft itself is [da40.md](da40.md).
+
+**The procedures are the aircraft's own.** The phases follow the COWS checklist pages, which COWS
+edited for the simulator, in their order (DA40-18): Before Engine Start, Engine Start (the XLS adds a
+Flooded or Hot start and a Reprime start, the page's other two blocks), After Engine Start, Taxi,
+Before Take-off, Line Up, Climb, Cruise, Descent, Approach, Final, After Landing, Shutdown.
+`DA40FoProcedures` builds each phase once, through `DA40FoPhase`, into its flow and its action group
+(FOD-5), so no action line exists without the step that delivers it.
+
+**The read-backs are the aircraft's own pages** (FOD-4): `DA40FoReadback` builds each `*_CL` group,
+and the two reference pages (Weights/Speeds, on the XLS Weights/Speeds/Power table, and Tips and help), from the installed package at the
+moment the window opens (`NativeChecklistReader.LoadPages`), COWS's words, block headings and clues
+included. The lines the First Officer delivers are matched by page, block, subject and expectation
+and auto-detect; every other line is a Captain line. These pages are also what Shift+C used to show
+on the DA40 before PR #160 replaced the checklist window, so nothing the window read is lost.
+
+**What the First Officer does.** It sets switches, runs the composites the pages spell out and checks
+what it can read:
+
+- Before Engine Start: the cold checks (trim to neutral, parking brake, alternate air and static,
+  avionics and ESS bus, the start switches, all nine lights off, breakers, flaps, pitot, transfer),
+  the electric or battery master on, the flap travel test (LDG, then UP, each waited for on the
+  surface position), and on the XLS the propeller high, the mixture cut-off, the ignition off and the
+  fuel selector to the lower tank.
+- Engine Start: the doors closed (only a door that reads open, FOD-3), the strobe, the engine master
+  (and its guard) on the NG with the glow wait; on the XLS the cold start's priming mark, pump,
+  four-second prime and starting position, the ignition at BOTH. Then the start key held until
+  500 RPM (FOD-7), the XLS's mixture run in as it fires, oil pressure, the alternator, the volts and
+  the breakers.
+- After Engine Start: oil pressure and idle RPM (NG), the pitot heat test, avionics on, the standby
+  altimeter set to the G1000's, the standby horizon caged, the GFC 700 pre-flight test waited for,
+  flaps T/O.
+- Before Take-off: NG the ECU voter A, AUTO, B, AUTO, each held three seconds, then the ECU test
+  through the definition (held until Complete, DA40-13) and its result; XLS the mixture full rich,
+  the propeller cycled three times and the magnetos L, BOTH, R, BOTH at 2000 RPM (the definition's
+  magneto check speaks each drop); the fuel pump on.
+- Line Up: landing, taxi, position and strobe lights; the transponder to ALT.
+- Climb, Approach, Final, After Landing, Shutdown: flaps (LDG left alone above the flaps-LDG limit),
+  the fuel pump and transfer, the parking brake, the transponder to standby, the XLS's propeller and
+  mixture for landing, the cool-down, the lights, the engine master or the XLS grounding check and
+  mixture cut-off, the master off only once the engine reads stopped.
+
+**What stays the Captain's** (FOD-6): every lever the page checks (the power lever or throttle,
+"Throttle: 2000RPM"), said and then waited for by a read-only check; the transponder code, the QNH on
+the G1000, the radios, the flight plan (FO-2), the autopilot test, the ground lean, power settings,
+and anything "as required" or "if required".
+
+**Guards** (FO-25): Before Engine Start stops at once unless the engine reads stopped AND the aircraft
+reads on the ground (`BS_ENGINE_STOPPED`, `BS_ON_GROUND`), every engine start unless the engine reads
+stopped, Shutdown unless the aircraft reads on the ground; the ticks that make the same cut refuse
+on an unread state. The cold cockpit's engine cuts (the NG's engine master, the XLS's mixture and
+ignition) and the electric or battery master OFF need both (`NotParked`), the master because a
+premature shutdown latches the NG's ECU failure. The electric fuel pump is outside the rule: it is a
+boost pump the POH switches off in the climb, not a fuel cut.
+
+**Writes and speech** (FOD-1, FOD-2): every write goes through `CowsDA40Definition.HandleUIVariableSet`;
+the definition's own confirmation is muted and the write's echo marked, so the step is the one
+voice, except a refusal, the ECU test's verdict and a numeric setting.
+
+**Automation.** No auto-flaps (FO-15) and no gear: the DA40's gear is fixed, which the simulator does
+not say (FO-27, `HasRetractableGear`). The universal auto-AP presses `AUTOPILOT_ON` through the
+calculator, confirmed on `AUTOPILOT MASTER`, never below 800 ft AGL, the GFC 700 supplement's
+limitation (FO-17). The phase monitor switches the landing and taxi lights at 10,000 ft (FO-19), sets
+both altimeters to 29.92 at the SimBrief transition altitude and reminds the pilot of the local
+pressure at the transition level (FO-23); there is no seat-belt sign.
+
+**In-sim test plan** (CORE-5). On each airframe, cold and dark at a gate: Before Engine Start through
+Engine Start, hearing each step and finding the switches moved (the flap test's travel, the doors
+left alone when closed); a start that does not reach 500 RPM stopping the flow with the key released;
+After Engine Start's standby altimeter matching the G1000; Before Take-off's ECU test (NG) or
+magneto check and propeller cycle (XLS); a flight through the transition altitude; the read-back
+lines ticking as the aircraft reaches them; Shutdown refusing in the air and running on the ground.

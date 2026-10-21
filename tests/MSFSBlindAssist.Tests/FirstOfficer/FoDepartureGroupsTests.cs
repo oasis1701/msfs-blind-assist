@@ -27,6 +27,7 @@ public class FoDepartureGroupsTests
         new object[] { "PMDG 777" }, new object[] { "PMDG 737" }, new object[] { "iFly 737 MAX8" },
         new object[] { "Fenix A320" }, new object[] { "FBW A32NX" }, new object[] { "Headwind A330" },
         new object[] { "FBW A380" }, new object[] { "TFDi MD-11" },
+        new object[] { "DA40-NG" }, new object[] { "DA40-XLS" },
     };
 
     internal static string[] GroupIds(string profile) => profile switch
@@ -39,6 +40,8 @@ public class FoDepartureGroupsTests
         "Headwind A330" => HwA330.HwA330ChecklistDefinitions.Build().Select(g => g.Id).ToArray(),
         "FBW A380" => A380.FbwA380ChecklistDefinitions.Build().Select(g => g.Id).ToArray(),
         "TFDi MD-11" => Md11.Md11FoChecklistDefinitions.Build().Select(g => g.Id).ToArray(),
+        "DA40-NG" => DA40.DA40FoTestData.StandInGroups(MSFSBlindAssist.Aircraft.DA40.DA40Variant.NG).Select(g => g.Id).ToArray(),
+        "DA40-XLS" => DA40.DA40FoTestData.StandInGroups(MSFSBlindAssist.Aircraft.DA40.DA40Variant.XLS).Select(g => g.Id).ToArray(),
         _ => throw new System.ArgumentException(profile),
     };
 
@@ -48,8 +51,10 @@ public class FoDepartureGroupsTests
     {
         foreach (var id in GroupIds(profile))
         {
-            bool dep = FoDepartureGroups.Departure.Contains(id), arr = FoDepartureGroups.Arrival.Contains(id);
-            Assert.True(dep ^ arr, $"{profile}: group {id} is {(dep && arr ? "in both sets" : "unclassified")}");
+            bool dep = FoDepartureGroups.Departure.Contains(id), arr = FoDepartureGroups.Arrival.Contains(id),
+                 refPage = FoDepartureGroups.Reference.Contains(id);
+            int sets = (dep ? 1 : 0) + (arr ? 1 : 0) + (refPage ? 1 : 0);
+            Assert.True(sets == 1, $"{profile}: group {id} is {(sets > 1 ? "in more than one set" : "unclassified")}");
         }
     }
 

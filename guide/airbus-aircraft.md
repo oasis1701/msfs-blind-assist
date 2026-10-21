@@ -4,7 +4,7 @@ title: "Airbus Aircraft"
 
 <div class="guide-part" markdown="1">
 
-Chapter 1 of 2 in [Part 7: Aircraft Guides](index.md#part-7-aircraft-guides) of the MSFS Blind Assist user guide.
+Chapter 1 of 3 in [Part 7: Aircraft Guides](index.md#part-7-aircraft-guides) of the MSFS Blind Assist user guide.
 
 </div>
 
