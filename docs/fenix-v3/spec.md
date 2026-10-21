@@ -23,7 +23,7 @@ in the running sim today; everything else says where it comes from.
 | 1.7 | FCU vertical speed spoken every second or two during a managed climb or descent | v3's `N_FCU_VS` carries the live V/S while the window is dashed (`B_FCU_VERTICALSPEED_DASHED` = 1); v2 held it still; nothing gates the announcement | A collaborator's v3 test flight, 2026-10-21: dashed from 13:40, `N_FCU_VS` 3400 → 1700 → 4100 → 3400 between 14:09 and 14:12 | Silence `N_FCU_VS` while dashed (plan 02 Task 10) |
 
 Not broken, checked: the MCDU subscription and key writes (same query shapes, same XML `title`/`line`/`scratchpad`,
-key names match the v3 web MCDU), FCU readouts (`N_FCU_*` agree on both paths), the EFB page at `/#/efb`, ATC MODEL
+key names match the v3 web MCDU), FCU readouts (`N_FCU_*` agree on both paths), the EFB page loading at `/#/efb` (it loads, but a screen reader cannot use it: section 8), ATC MODEL
 `A320` (ICAO detection and door offsets), COM 1/2 standby frequencies, battery and bus names other than 1.1, every
 `S_CDU*_KEY_*`, the FCU push/pull and encoder convention (`(L:S_FCU_SPEED) --/++`, `E_FCU_*`), 944 of our 1,028 names
 found in the package, and the rest of the 68 runtime-only names found live through the data service.
@@ -133,12 +133,13 @@ Ordered by value to a blind pilot (my judgement):
    Pushover). The MCDU now lists `<ATSU`, readable in our MCDU window already. DCDU screen text is not published;
    FO DCDU keys exist (`S_DCDU2_LSK*`, `MSGUP/DWN`, `PGUP/DN`, `PRINT`). AOC text may be in
    `fenix.aoc.message.uplink` / `downlink.all` (empty now). SayIntentions as the ACARS provider overlaps our
-   SayIntentions integration.
+   SayIntentions integration. Deferred by the owner until after FenixV3 (2026-10-21); plan 12 records it as a follow-up.
 7. Smaller: registration and SELCAL (`L:FNX_TAIL_LO/HI`, `L:FNX_SELCAL`, 6-bit packed, decoder in
    `Registration.js`); `L:FNX_FLT_LOADED` (1 approach, 2 apron, 3 climb, 4 cruise, 5 final, 6 hangar, 7 runway, 8 taxi)
    for the FO's in-flight start; takeoff perf from `aircraft.fms.perf.takeOff.*`; ground services
    (`groundservice.*`), boarding status, panel state (`control.state.string`); EFB documents app = 607 ECAM procedures
-   as text (reachable in our EFB window already).
+   as text (its Documents app is not keyboard usable, section 8: plan 07 builds an accessible documents window and
+   plan 03 makes the EFB's own app readable).
 8. **Cockpit controls the app never offered** (owner request; measured live 2026-10-21 on the A321 IAE, every value
    restored): the headset `A320_Sound:Headset_On` (noise cancelling `A320_Sound:ANC` follows it), the clock
    (`S_MIP_CLOCK_CHR/RST/SET/ET/UTC`; chrono in seconds, ET in minutes, -1 blank; a written ET Reset does not spring
@@ -150,7 +151,10 @@ Ordered by value to a blind pilot (my judgement):
 The gateway now tracks the live ECAM: its log shows `EcamDocumentsService: 6 entries, 1 titled crew alerts
 [ENG THR LEVERS NOT SET]` and pins the matching procedure. That data sits in the gateway but is not published as a
 data name we know of, and schema introspection was refused on purpose in v2 (not retried, not worked around).
-Asking Fenix to publish it was dropped by the owner on 2026-10-21; the AI picture reads stay the route.
+Asking Fenix to publish it was dropped by the owner on 2026-10-21; the AI picture reads stay the route. The
+procedure pins themselves are readable (the `pinned_documents` setting), but the owner decided not to announce them
+(2026-10-21, index answer 22): without the ECAM itself they are only part of the picture. Plan 07's documents window
+lists them and opens one with Ctrl+P.
 
 ## 6. For the pilot (not the app)
 
@@ -165,9 +169,13 @@ Asking Fenix to publish it was dropped by the owner on 2026-10-21; the AI pictur
 
 1. TO CONFIG with a deliberately bad config (flaps 0): does our panel button and the FO say "check configuration"?
 2. Gravity gear crank to 3 turns and back, and which AUTOLAND light lights during an autoland warning.
-3. ~~Load an A319 and an A321~~ A321 done 2026-10-21 (type 4, ECON FLOW, CALLS MID/EXIT); an A319 and an IAE preset
-   would confirm 2 and the engine value.
+3. ~~Load an A319 and an A321~~ A321 done 2026-10-21 (type 4, ECON FLOW, CALLS MID/EXIT), and the IAE A321 read
+   engine 1; an A319 would confirm type 2.
 4. After any FenixQuartz replacement: V-speeds read back once perf is entered.
+5. Thrust-lever reverse with the engines at idle (plan 02 Task 11 Step 1): the other panel questions were measured live
+   on 2026-10-21 (section 2.5).
+
+Each plan also lists its own few owner checks; these are the investigation's.
 
 ## 8. The v3 EFB with a screen reader (tour of 2026-10-21)
 
@@ -210,5 +218,5 @@ regression check, re-captured after each Fenix update.
 In `docs/fenix-v3/evidence/` (described in `docs/fenix-v3/plans/00-index.md`): `live-findings.md`, `settings.tsv`
 (credentials masked), `efb-datarefs.txt`, `fap-datarefs.txt`, `gql-operations.txt`, `fenix-options-labels.tsv`,
 `failures-manual-shape.json` (first ATA chapter only), `inventory.md`, `fenix-names.txt`, `namediff-missing.tsv`,
-`namediff-unused-by-us.md`, `web-research.md`, `efb-tour.md`. Fenix's EFB and FAP bundles are not committed: fetch them from your
+`namediff-unused-by-us.md`, `web-research.md`, `efb-tour.md`, `panel-sweep.md`. Fenix's EFB and FAP bundles are not committed: fetch them from your
 own running Fenix with `docs/fenix-v3/tools/fetch_gateway_bundles.py <folder>`.
