@@ -484,6 +484,9 @@ Traffic and Weather:
   Shift+O    Open Volanta window (Volanta users and network pilots around you,
              your Volanta friends and online ATC; also Extras > Volanta)
 
+First Officer:
+  Shift+C    First Officer window (checklists and flows)
+
 Displays and Windows:
   Shift+E    Route viewer, procedure planner and airport lookup
   Shift+L    Location Info

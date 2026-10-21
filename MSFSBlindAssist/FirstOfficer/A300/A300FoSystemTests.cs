@@ -12,7 +12,7 @@ public sealed record A300FoSystemTest(string Key, string Name, IReadOnlyList<A30
     bool ExpectDark = false, bool ResetsMasterWarning = false);
 
 /// <summary>
-/// The A300 system tests and how each proves itself (owner's standing rule: every test reads back pass or fail).
+/// The A300 system tests and how each proves itself (design decision: every test reads back pass or fail).
 /// The rows are held as long as the aircraft's own checklist holds them (A300WritePlan.TestHoldMs). A light counts
 /// only if it was dark before its press: a light already lit proves nothing.
 /// </summary>

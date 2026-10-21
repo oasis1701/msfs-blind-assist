@@ -90,7 +90,7 @@ public class A300FoActionExecutorTests
     [Fact]
     public async Task Flaps_are_never_moved_off_the_ground_or_with_the_ground_unread()
     {
-        // The owner: the FO raises the flaps after landing, on the ground only. A hand-tick reaches here too.
+        // Design decision: the FO raises the flaps after landing, on the ground only. A hand-tick reaches here too.
         _cache[A300FoKeys.Flaps] = 2;
         _cache[A300FoKeys.OnGround] = 0;
         Assert.False(await _exec.Set(A300FoKeys.Flaps, 0));

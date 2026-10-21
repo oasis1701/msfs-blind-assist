@@ -11,7 +11,7 @@ using Step = FlowStep<A300FoStateEvaluator>;
 /// The iniBuilds A300 First Officer flows: iniBuilds' Simplified Procedures (A300 MSFS Manual, pages 29 to 46), each
 /// position the target iniBuilds' own checklist tests. Every switch line carries "Already set" on its own field,
 /// and the executor reads back. Captain steps are spoken reminders. The FO never programs the MCDU ([FO-2]), never
-/// sets the takeoff flaps (owner, 2026-10-10), never moves the flaps in flight, never sets the landing autobrake
+/// sets the takeoff flaps (design decision, 2026-10-10), never moves the flaps in flight, never sets the landing autobrake
 /// ([FO-14]), and never moves the thrust levers or trims. Visual checks a blind pilot cannot perform are left out.
 /// </summary>
 public static class A300FoFlowDefinitions

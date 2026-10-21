@@ -18,10 +18,10 @@ public partial class IniA300Definition
     public int FoHoldMs(string rowKey) =>
         _rows.TryGetValue(rowKey, out var row) && row.Control is { } control ? A300WritePlan.HoldMsFor(control) : 0;
 
-    /// <summary>How long a First Officer write keeps its own row and lights quiet ([FOA-10]).</summary>
+    /// <summary>How long a First Officer write keeps its own row and lights quiet ([FOA-14]).</summary>
     public const int FoQuietMs = A300FoQuiet.RowQuietMs;
 
-    /// <summary>The First Officer's quiet, per control (<see cref="A300FoQuiet"/>, [FOA-10]).</summary>
+    /// <summary>The First Officer's quiet, per control (<see cref="A300FoQuiet"/>, [FOA-14]).</summary>
     private readonly A300FoQuiet _foQuiet = new();
 
     /// <summary>A system test's run: every light and the master lights stay quiet, since a test lights many. A
@@ -31,7 +31,7 @@ public partial class IniA300Definition
     /// <summary>Whether this light is quiet: its row was just written by the First Officer, or a test is running.</summary>
     internal bool IsFoQuietLamp(string lampId) => _foQuiet.IsLampQuiet(lampId, Clock());
 
-    /// <summary>Whether this row's lever call-out and "stayed" are quiet: the First Officer just wrote it.</summary>
+    /// <summary>Whether this row's lever call-out and "did not move" are quiet: the First Officer just wrote it.</summary>
     internal bool IsFoQuietRow(string rowKey) => _foQuiet.IsRowQuiet(rowKey, Clock());
 
     /// <summary>The master warning and caution are quiet only during a test.</summary>
@@ -40,7 +40,7 @@ public partial class IniA300Definition
     /// <summary>
     /// The First Officer's one write path: the row's own panel write (<see cref="HandleUIVariableSet"/>, [A300-1]),
     /// with the announcer suppressed so the flow's narration is the single voice, quieting that row and its own
-    /// lights ([FOA-10]). False for a key that is not a placed row; nothing is ever written another way. A refusal
+    /// lights ([FOA-14]). False for a key that is not a placed row ([FOA-13]); nothing is ever written another way. A refusal
     /// (an unknown position) sends nothing; the First Officer's read-back finds that out.
     /// </summary>
     public bool FoApply(string rowKey, double value, SimConnectManager sim, ScreenReaderAnnouncer announcer)

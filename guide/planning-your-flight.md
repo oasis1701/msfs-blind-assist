@@ -502,7 +502,7 @@ Output Shift+C opens the **First Officer**, a crew member who works the flows an
 - **Flows** runs each phase's procedure for you, from powering up the aircraft to securing it. The First Officer sets its own switches, checks that each one really moved, and reminds you of the Captain's items.
 - **Checklists** holds the aircraft's normal checklists. A line ticks itself once the aircraft is in that state, and ticking a line yourself has the First Officer do it.
 
-The First Officer is on the PMDG 777 and 737, the iFly 737 MAX8, the Fenix A320, the FlyByWire A32NX and A380X, the Headwind A330-900neo and the TFDi MD-11. You can also open it from the File menu, where the **First Officer** item is named after your aircraft, for example "Fenix A320 First Officer". On any other aircraft the item is not there, and Output Shift+C says *"No checklist for this aircraft."* and opens nothing.
+The First Officer is on the PMDG 777 and 737, the iFly 737 MAX8, the Fenix A320, the FlyByWire A32NX and A380X, the Headwind A330-900neo, the TFDi MD-11 and the iniBuilds A300-600. You can also open it from the File menu, where the **First Officer** item is named after your aircraft, for example "Fenix A320 First Officer". On any other aircraft the item is not there, and Output Shift+C says *"No checklist for this aircraft."* and opens nothing.
 
 The First Officer never programs the MCDU, CDU or FMC: you still enter the flight plan and performance yourself. Items only the Captain can judge, such as the landing autobrake setting, are spoken as reminders and left to you.
 

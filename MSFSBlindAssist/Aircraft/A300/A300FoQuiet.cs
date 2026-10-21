@@ -1,8 +1,8 @@
 namespace MSFSBlindAssist.Aircraft.A300;
 
 /// <summary>
-/// The A300 First Officer's quiet, per control (the MD-11's model, owner's ruling 2026-10-10; [FOA-10]). A First
-/// Officer write quiets only the row it moved (its lever call-out, its "stayed" read-back) and that row's own lights
+/// The A300 First Officer's quiet, per control (the MD-11's model, design decision 2026-10-10; [FOA-14]). A First
+/// Officer write quiets only the row it moved (its lever call-out, its "did not move" read-back) and that row's own lights
 /// for <see cref="RowQuietMs"/>; the flow step already says what happened. Every other light, and the master warning
 /// and caution, still speak. Only a system test's run quiets every light (<see cref="QuietAll"/>), since a test lights
 /// many. A later, shorter call never shortens a window. Pure; the caller passes the time.

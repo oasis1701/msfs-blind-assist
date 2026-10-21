@@ -312,7 +312,7 @@ public sealed class A300FoActionExecutor : IFoActionExecutor
     }
 
     /// <summary>The flap lever one detent per write, each read back (the spec: never a jump of several detents),
-    /// and only on the ground: the owner keeps the flaps in flight the Captain's, and a hand-tick reaches here too.</summary>
+    /// and only on the ground: the flaps in flight are the Captain's (design decision), and a hand-tick reaches here too.</summary>
     private async Task<bool> SetFlapsAsync(int target)
     {
         if (!Is(A300FoKeys.OnGround, v => v >= 0.5))

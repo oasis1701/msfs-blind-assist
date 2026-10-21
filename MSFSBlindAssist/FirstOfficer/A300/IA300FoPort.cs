@@ -16,7 +16,7 @@ public interface IA300FoPort
     /// <summary>How long a hold row is held (a test's own duration).</summary>
     int HoldMs(string rowKey);
 
-    /// <summary>Keeps every light quiet for a test's whole run ([FOA-10]); an ordinary write quiets only its own row.</summary>
+    /// <summary>Keeps every light quiet for a test's whole run ([FOA-14]); an ordinary write quiets only its own row.</summary>
     void HoldQuiet(int milliseconds);
 
     /// <summary>Ctrl+B's STD sequence, which speaks its own read-back.</summary>

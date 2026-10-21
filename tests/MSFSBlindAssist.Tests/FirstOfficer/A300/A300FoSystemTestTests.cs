@@ -3,7 +3,7 @@ using MSFSBlindAssist.FirstOfficer.A300;
 
 namespace MSFSBlindAssist.Tests.FirstOfficer.A300;
 
-/// <summary>Every test reports pass or fail from the lights the aircraft lights (owner's standing rule), held as
+/// <summary>Every test reports pass or fail from the lights the aircraft lights (design decision), held as
 /// long as the aircraft's checklist holds it, with the definition quiet for its whole run.</summary>
 public class A300FoSystemTestTests
 {

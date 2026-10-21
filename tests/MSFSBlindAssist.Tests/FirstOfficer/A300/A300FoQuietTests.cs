@@ -3,7 +3,7 @@ using MSFSBlindAssist.Aircraft.A300;
 namespace MSFSBlindAssist.Tests.FirstOfficer.A300;
 
 /// <summary>
-/// The A300 First Officer's quiet, per control (the MD-11's model, owner's ruling 2026-10-10): a write quiets
+/// The A300 First Officer's quiet, per control (the MD-11's model, design decision 2026-10-10): a write quiets
 /// only the row it moved and that row's own lights; only a system test's run quiets every light.
 /// </summary>
 public class A300FoQuietTests
