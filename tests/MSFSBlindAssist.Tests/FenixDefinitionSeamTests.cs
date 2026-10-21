@@ -7,6 +7,7 @@
 // them pins a total count.
 
 using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Services;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -44,6 +45,21 @@ public class FenixDefinitionSeamTests
             .Select(entry => $"{entry.Panel} -> {entry.Key}")
             .ToList();
         Assert.True(unknown.Count == 0, "Panel controls without a variable: " + string.Join(", ", unknown));
+    }
+
+    [Fact]
+    public async Task A_switched_away_definition_keeps_its_disposed_data_service()
+    {
+        // MainForm makes a new definition on every switch, so a late callback touching the old one's
+        // DataService must get the disposed, inert service back, never a fresh live one that retries
+        // its socket for the rest of the session. The disposed service answers without a request.
+        var definition = new FenixA320Definition();
+        var service = definition.DataService;
+
+        definition.OnSwitchedAway();
+
+        Assert.Same(service, definition.DataService);
+        Assert.Equal(FenixValueKind.EmptyOrUnknown, (await definition.DataService.ReadAsync("x")).Kind);
     }
 
     [Fact]

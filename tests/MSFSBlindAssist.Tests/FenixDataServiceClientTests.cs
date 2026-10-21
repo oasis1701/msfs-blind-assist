@@ -185,6 +185,31 @@ public class FenixDataServiceClientTests
             Assert.Null(await serverError.QueryAsync("query { fap { ok } }"));
     }
 
+    [Theory]
+    [InlineData("{\"data\":{\"dataRef\":{\"r0\":{\"value\":1},\"writeInt\":true}},\"errors\":[\"x\"]}")]
+    [InlineData("{\"data\":{\"dataRef\":{\"r0\":{\"value\":1},\"writeInt\":true}},\"errors\":[null]}")]
+    public async Task An_errors_entry_that_is_not_an_object_is_still_an_error_and_never_throws(string answer)
+    {
+        // Reading "message" off a JValue throws in Newtonsoft; that must not reach the caller, and the
+        // data beside the errors must not be taken as a clean answer either.
+        using var service = new FenixDataService(Answering(answer));
+
+        Assert.Null(await service.QueryAsync("query { x }"));
+        Assert.False(await service.WriteIntAsync("x", 1));
+        Assert.Equal(FenixValueKind.EmptyOrUnknown, (await service.ReadAsync("x")).Kind);
+    }
+
+    [Fact]
+    public async Task An_empty_errors_list_is_no_error()
+    {
+        using var service = new FenixDataService(
+            Answering("{\"data\":{\"dataRef\":{\"r0\":{\"value\":59.3},\"writeInt\":true}},\"errors\":[]}"));
+
+        Assert.NotNull(await service.QueryAsync("query { x }"));
+        Assert.True(await service.WriteIntAsync("x", 1));
+        Assert.Equal(59.3, (await service.ReadAsync("x")).Number);
+    }
+
     [Fact]
     public async Task QueryAsync_sends_the_query_and_its_variables()
     {

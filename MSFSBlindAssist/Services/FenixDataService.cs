@@ -365,24 +365,33 @@ public sealed class FenixDataService : IDisposable
         var answer = await SendHttpAsync(HttpMethod.Post, GraphQlUrl, body, ct).ConfigureAwait(false);
         if (answer is not { } reply) return null;
 
-        var json = ParseMessage(reply.Body);
-        string? error = json == null ? null : FirstError(json);
-        if (reply.Status != HttpStatusCode.OK)
+        // Whatever shape the answer has, nothing here reaches the caller as an exception.
+        try
         {
-            LogProblem($"GraphQL answered HTTP {(int)reply.Status}{(error != null ? ": " + error : "")}");
+            var json = ParseMessage(reply.Body);
+            string? error = json == null ? null : FirstError(json);
+            if (reply.Status != HttpStatusCode.OK)
+            {
+                LogProblem($"GraphQL answered HTTP {(int)reply.Status}{(error != null ? ": " + error : "")}");
+                return null;
+            }
+            if (json == null)
+            {
+                LogProblem("GraphQL answer was not a JSON object");
+                return null;
+            }
+            if (error != null)
+            {
+                LogProblem($"GraphQL errors: {error}");
+                return null;
+            }
+            return json;
+        }
+        catch (Exception ex)
+        {
+            LogProblem($"Unreadable GraphQL answer: {ex.GetType().Name}: {ex.Message}");
             return null;
         }
-        if (json == null)
-        {
-            LogProblem("GraphQL answer was not a JSON object");
-            return null;
-        }
-        if (error != null)
-        {
-            LogProblem($"GraphQL errors: {error}");
-            return null;
-        }
-        return json;
     }
 
     private async Task<string?> RestAsync(HttpMethod method, string path, string? body, CancellationToken ct)
@@ -440,6 +449,8 @@ public sealed class FenixDataService : IDisposable
         }
     }
 
+    // The first entry of a non-empty "errors" as text, or null when there is none. Type-safe: an entry
+    // that is not an object ("x", null) is still an error, and indexing a JValue would throw.
     private static string? FirstError(JObject answer)
     {
         var errors = answer["errors"];
@@ -447,7 +458,10 @@ public sealed class FenixDataService : IDisposable
         if (errors is JArray list)
         {
             if (list.Count == 0) return null;
-            return TextOf(list[0]?["message"]) ?? list[0]?.ToString(Formatting.None) ?? "error";
+            var first = list[0];
+            return first is JObject error
+                ? TextOf(error["message"]) ?? error.ToString(Formatting.None)
+                : first.ToString(Formatting.None);
         }
         return errors.ToString(Formatting.None);
     }
