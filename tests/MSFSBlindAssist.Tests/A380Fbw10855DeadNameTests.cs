@@ -79,6 +79,11 @@ public class A380Fbw10855DeadNameTests
         string app = Path.Combine(RepoRoot(), "MSFSBlindAssist");
         var files = Directory.EnumerateFiles(Path.Combine(app, "Aircraft"), "FlyByWireA380Definition*.cs")
             .Concat(Directory.EnumerateFiles(Path.Combine(app, "Aircraft"), "A380*.cs"))
+            // The one exemption: the First Officer's per-build table is where the MSFS 2020 build's
+            // names live, because that build (fs2020-master, 2020.16.0) predates #10855 and still
+            // has every one of them. Each is read or written only when the running simulator is MSFS
+            // 2020 (FbwA380BuildResolutionTests pins that), and nowhere else may spell them.
+            .Where(f => Path.GetFileName(f) != "A380BuildNames.cs")
             .Concat(Directory.EnumerateFiles(Path.Combine(app, "Forms", "FBWA380"), "*.cs"));
         string firstOfficer = Path.Combine(app, "FirstOfficer", "FBWA380");
         return Directory.Exists(firstOfficer)

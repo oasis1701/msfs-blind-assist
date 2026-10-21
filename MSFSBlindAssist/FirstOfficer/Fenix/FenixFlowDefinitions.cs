@@ -1,0 +1,821 @@
+using MSFSBlindAssist.FirstOfficer.Airbus;
+using MSFSBlindAssist.FirstOfficer.Models;
+
+namespace MSFSBlindAssist.FirstOfficer.Fenix;
+
+using Flow = Models.FlowDefinition<FenixStateEvaluator>;
+using Step = Models.FlowStep<FenixStateEvaluator>;
+
+/// <summary>
+/// Data-driven Fenix A320 First-Officer flow definitions — Airbus SOPs reconciled from
+/// JD's Guide v1.31.1, the FSFO FENA320 flow data, and the user's own Fenix checklist.
+/// Flow steps reference Fenix L:var names directly (the executor's default dispatch is a
+/// held L:var write; momentary buttons are in its pulse table; FIRE_TEST_* and
+/// FCU_PUSH_*_MANAGED are pseudo-keys intercepted by FenixActionExecutor).
+///
+/// Fenix value conventions (from FenixA320Definition, panel-proven):
+/// - S_ENG_MODE 0=Crank,1=Norm,2=Ign/Start; masters 0=Off,1=On.
+/// - IRS mode 0=Off,1=Nav,2=Att. Landing lights 0=Retract,1=Off,2=On; nose 0/1=Taxi/2=TO;
+///   strobe 0/1=Auto/2=On. Signs: seatbelts 0/1; smoking 0/1=Auto/2; emer exit 0/1=Arm/2.
+/// - A_FC_SPEEDBRAKE 0=Armed,1=Disarmed,2=Half,3=Full. Flaps L:var S_FC_FLAPS 0..4.
+/// - XPDR mode 0=STBY,1=TA,2=TA/RA; operation 0=STBY,1=AUTO,2=ON; TCAS range 1=ALL.
+/// - X-bleed 1=Auto; pack flow 1=Normal; press mode 1=Auto.
+/// - Cockpit lighting, at the A32NX's four points (power-up bright, after start dim,
+///   shutdown bright, secure off): annunciator S_OH_IN_LT_ANN_LT 0=Dim/1=Bright/2=Test (NOT
+///   the A32NX's 1=Bright/2=Dim; never write 2, TEST lights the gear reds), dome
+///   S_OH_INT_LT_DOME 0=Off/1=Dim/2=Bright, and the COCKPIT_LIGHT_SCENE_* pseudo-key for the
+///   four brightness knobs (FenixActionExecutor.CockpitLightingWrites). Each line has its own
+///   step (FO-7), in the order the A32NX flow uses for the same points (its annunciator, dome and
+///   scene steps; it also has a standby-compass step). No standby-compass light on the Fenix, so
+///   no compass step.
+/// </summary>
+public static class FenixFlowDefinitions
+{
+    /// <summary>N2 percent at/above which an engine counts as started (CFM56 idle ~58-60).</summary>
+    private const double EngRunningN2 = FenixStateEvaluator.EngineRunningN2;
+
+    // [RADAR] Weather radar OFF/ON values — confirmed against the def's registered
+    // ValueDescriptions (FenixA320Definition.cs: S_WR_SYS {0="1",1="Off",2="2"},
+    // S_WR_PRED_WS {0="Off",1="Auto"}).
+    private const int WxOff = 1;
+    private const int WxSys1 = 0;
+    private const int PwsOff = 0;
+    private const int PwsAuto = 1;
+
+    public static List<Flow> Build() => new()
+    {
+        BuildElectricalPowerUp(),
+        BuildPreflight(),
+        BuildBeforeStart(),
+        BuildEngineStart(),
+        BuildAfterStart(),
+        BuildTaxi(),
+        BuildLineup(),
+        BuildAfterTakeoff(),
+        BuildDescent(),
+        BuildApproach(),
+        BuildLanding(),
+        BuildAfterLanding(),
+        BuildShutdown(),
+        BuildSecure(),
+    };
+
+    // -----------------------------------------------------------------------
+    // 1. Electrical Power Up
+    // -----------------------------------------------------------------------
+    private static Flow BuildElectricalPowerUp() => new()
+    {
+        Id = "ELECTRICAL_POWER_UP", Name = "Electrical Power Up",
+        Description = "Safety checks, batteries on, external power if available, nav lights, cockpit lights.",
+        RelatedChecklistGroupIds = new[] { "ELEC_POWER_UP" },
+        Steps = new()
+        {
+            // A cold-and-dark flow: started with an engine turning (a runway or engines-running
+            // start, or the wrong flow picked in flight), the master checks below would shut the
+            // engines down and the gear check would lower the gear. Stop instead (the MD-11's
+            // PU_ENGINES_STOPPED).
+            EnginesStoppedGuard("EPU_ENGINES_STOPPED"),
+            // ...and never airborne (FO-25), as its master ticks require: with both engines out in
+            // flight the masters are what a relight needs. Links no line (the 777's EPU_ON_GROUND).
+            OnGroundGuard("EPU_ON_GROUND"),
+            // Safety-check prefix (JD preliminary cockpit prep / FSFO phase 1): every step
+            // skips quietly when already correct, so a warm start no-ops through them.
+            Skip(SW("EPU_CHK_MASTER1", "Engine 1 master: OFF", "S_ENG_MASTER_1", 0),
+                s => s.IsPosition("S_ENG_MASTER_1", 0)),
+            Skip(SW("EPU_CHK_MASTER2", "Engine 2 master: OFF", "S_ENG_MASTER_2", 0),
+                s => s.IsPosition("S_ENG_MASTER_2", 0)),
+            Skip(SW("EPU_CHK_MODE", "Engine mode selector: NORM", "S_ENG_MODE", 1),
+                s => s.IsPosition("S_ENG_MODE", 1)),
+            Skip(SW("EPU_CHK_GEAR", "Gear lever: DOWN", "S_MIP_GEAR", 1),
+                s => s.IsGearDown()),
+            Skip(Multi("EPU_CHK_WIPERS", "Wipers: OFF",
+                    ("S_MISC_WIPER_CAPT", 0), ("S_MISC_WIPER_FO", 0)),
+                s => s.IsPosition("S_MISC_WIPER_CAPT", 0) && s.IsPosition("S_MISC_WIPER_FO", 0)),
+            Skip(SW("EPU_CHK_WXR", "Weather radar: OFF", "S_WR_SYS", WxOff),   // [RADAR]
+                s => s.IsPosition("S_WR_SYS", WxOff)),                          // [RADAR]
+            Skip(SW("EPU_CHK_PARK", "Parking brake: ON", "S_MIP_PARKING_BRAKE", 1),
+                s => s.IsOn("S_MIP_PARKING_BRAKE")),
+            // Power up
+            Done(Skip(SW("EPU_BAT1", "Battery 1: ON", "S_OH_ELEC_BAT1", 1),
+                s => s.IsOn("S_OH_ELEC_BAT1")), "EPU_BAT1"),
+            Done(Skip(SW("EPU_BAT2", "Battery 2: ON", "S_OH_ELEC_BAT2", 1),
+                s => s.IsOn("S_OH_ELEC_BAT2")), "EPU_BAT2"),
+            // Momentary pushbutton (pulse table). Harmless no-op if no ground power exists;
+            // skipped when already on the bus (blue ON light), left alone while that light is
+            // unread (a toggle: the pulse would take external power OFF the bus).
+            UnreadToggle(Done(Skip(SW("EPU_EXTPWR", "External power: ON", "S_OH_ELEC_EXT_PWR", 1),
+                s => s.IsOn("I_OH_ELEC_EXT_PWR_L")), "EPU_EXTPWR"), "I_OH_ELEC_EXT_PWR_L", "External power"),
+            Done(Skip(SW("EPU_NAVLOGO", "Nav and logo lights: ON", "S_OH_EXT_LT_NAV_LOGO", 1),
+                s => s.GetValue("S_OH_EXT_LT_NAV_LOGO") > 0.5), "EPU_NAVLOGO"),
+            // Cockpit lighting: bright for ground preparation (the A32NX's EPU_COCKPITLT point).
+            Done(SW("EPU_COCKPITLT", "Cockpit lights: set", "S_OH_IN_LT_ANN_LT", 1), "EPU_COCKPITLT"),
+            Done(SW("EPU_DOME", "Dome light: bright", "S_OH_INT_LT_DOME", 2), "EPU_DOME"),
+            Done(Scene("EPU_LTSCENE", FenixActionExecutor.CockpitLightScene.DayPrep), "EPU_LTSCENE"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 2. Preflight
+    // -----------------------------------------------------------------------
+    private static Flow BuildPreflight() => new()
+    {
+        Id = "PREFLIGHT", Name = "Preflight",
+        Description = "Cockpit preparation: recorder, IRS, oxygen, fire tests, air conditioning, signs, transponder setup.",
+        RelatedChecklistGroupIds = new[] { "PREFLIGHT" },
+        Steps = new()
+        {
+            // Recorder: latching press with an ON light readback, then the CVR test
+            // (held 3 s via the CVR_TEST pseudo-key — audible test tone, self-completing so
+            // it never sticks in TEST).
+            UnreadToggle(Done(Skip(SW("PF_GNDCTL", "Recorder ground control: ON", "S_OH_RCRD_GND_CTL", 1),
+                s => s.IsOn("I_OH_RCRD_GND_CTL_L")), "PF_GNDCTL"), "I_OH_RCRD_GND_CTL_L", "Recorder ground control"),
+            Done(SW("PF_CVR", "CVR test: listen for the test tone", "CVR_TEST", 1), "PF_CVR"),
+            // ADIRS
+            Done(Skip(Multi("PF_IRS", "IRS 1, 2 and 3: NAV",
+                    ("S_OH_NAV_IR1_MODE", 1), ("S_OH_NAV_IR2_MODE", 1), ("S_OH_NAV_IR3_MODE", 1)),
+                s => s.IsPosition("S_OH_NAV_IR1_MODE", 1) && s.IsPosition("S_OH_NAV_IR2_MODE", 1)
+                     && s.IsPosition("S_OH_NAV_IR3_MODE", 1)), "PF_IRS"),
+            Done(Skip(SW("PF_OXY", "Crew oxygen supply: ON", "S_OH_OXYGEN_CREW_OXYGEN", 1),
+                s => s.IsOn("S_OH_OXYGEN_CREW_OXYGEN")), "PF_OXY"),
+            // Fire tests (held switches via the executor pseudo-keys; fire bell audible)
+            Done(SW("PF_FIRE_APU", "APU fire test", "FIRE_TEST_APU", 1), "PF_FIRE_APU"),
+            Done(SW("PF_FIRE_ENG1", "Engine 1 fire test", "FIRE_TEST_ENG1", 1), "PF_FIRE_ENG1"),
+            Done(SW("PF_FIRE_ENG2", "Engine 2 fire test", "FIRE_TEST_ENG2", 1), "PF_FIRE_ENG2"),
+            // ECAM page: door (momentary SD page button — in the executor's pulse table)
+            Done(SW("PF_ECAMDOOR", "ECAM page: door", "S_ECAM_DOOR", 1), "PF_ECAMDOOR"),
+            // Air conditioning / pressurization
+            Done(Skip(Multi("PF_PACKS", "Packs 1 and 2: ON",
+                    ("S_OH_PNEUMATIC_PACK_1", 1), ("S_OH_PNEUMATIC_PACK_2", 1)),
+                s => s.IsOn("S_OH_PNEUMATIC_PACK_1") && s.IsOn("S_OH_PNEUMATIC_PACK_2")), "PF_PACKS"),
+            Done(Skip(SW("PF_XBLEED", "Crossbleed: AUTO", "S_OH_PNEUMATIC_XBLEED_SELECTOR", 1),
+                s => s.IsPosition("S_OH_PNEUMATIC_XBLEED_SELECTOR", 1)), "PF_XBLEED"),
+            Done(Skip(SW("PF_PACKFLOW", "Pack flow: NORMAL", "S_OH_PNEUMATIC_PACK_FLOW", 1),
+                s => s.IsPosition("S_OH_PNEUMATIC_PACK_FLOW", 1)), "PF_PACKFLOW"),
+            Done(Skip(SW("PF_HOTAIR", "Hot air: ON", "S_OH_PNEUMATIC_HOT_AIR", 1),
+                s => s.IsOn("S_OH_PNEUMATIC_HOT_AIR")), "PF_HOTAIR"),
+            Done(Skip(SW("PF_PRESSMODE", "Cabin pressure mode: AUTO", "S_OH_PNEUMATIC_PRESS_MODE", 1),
+                s => s.IsPosition("S_OH_PNEUMATIC_PRESS_MODE", 1)), "PF_PRESSMODE"),
+            // Signs and lights
+            Done(Skip(SW("PF_STROBE", "Strobes: AUTO", "S_OH_EXT_LT_STROBE", 1),
+                s => s.IsPosition("S_OH_EXT_LT_STROBE", 1)), "PF_STROBE"),
+            Done(Skip(SW("PF_WING_LT", "Wing lights: OFF", "S_OH_EXT_LT_WING", 0),
+                s => s.IsPosition("S_OH_EXT_LT_WING", 0)), "PF_WING_LT"),
+            Done(Skip(SW("PF_NOSMOKE", "No smoking: AUTO", "S_OH_SIGNS_SMOKING", 1),
+                s => s.IsPosition("S_OH_SIGNS_SMOKING", 1)), "PF_NOSMOKE"),
+            Done(Skip(SW("PF_EMEREXIT", "Emergency exit lights: ARM", "S_OH_INT_LT_EMER", 1),
+                s => s.IsPosition("S_OH_INT_LT_EMER", 1)), "PF_EMEREXIT"),
+            // Transponder setup
+            Done(Skip(SW("PF_ALTRPTG", "Altitude reporting: ON", "S_XPDR_ALTREPORTING", 1),
+                s => s.IsOn("S_XPDR_ALTREPORTING")), "PF_ALTRPTG"),
+            Done(Skip(SW("PF_TCASTRAFFIC", "TCAS traffic: ALL", "S_TCAS_RANGE", 1),
+                s => s.IsPosition("S_TCAS_RANGE", 1)), "PF_TCASTRAFFIC"),
+            // Flight directors — verify on (skip when the FD lights are lit). The actuator is
+            // the BASE var S_FCU_EFISn_FD, NOT "_PRESS" (the synthetic panel key is a no-op
+            // written directly — same class of bug as the LS buttons).
+            Skip(SW("PF_FD1", "Flight director 1: ON", "S_FCU_EFIS1_FD", 1),
+                s => s.IsOn("I_FCU_EFIS1_FD")),
+            Skip(SW("PF_FD2", "Flight director 2: ON", "S_FCU_EFIS2_FD", 1),
+                s => s.IsOn("I_FCU_EFIS2_FD")),
+            // Captain items
+            Captain("PF_BARO", "Set QNH on both altimeters and the standby altimeter"),
+            Captain("PF_FCUALT", "Set the initial cleared altitude on the FCU"),
+            Captain("PF_SQUAWK", "Set the squawk code"),
+            Captain("PF_EFB", "EFB setup — import SimBrief, load fuel and payload"),
+            Captain("PF_MCDU", "MCDU setup — INIT, flight plan, and PERF pages"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 3. Before Start (APU + fuel pumps here by user decision)
+    // -----------------------------------------------------------------------
+    private static Flow BuildBeforeStart() => new()
+    {
+        Id = "BEFORE_START", Name = "Before Start",
+        Description = "APU start, fuel pumps, external power off, signs, beacon, FCU managed modes.",
+        RelatedChecklistGroupIds = new[] { "BEFORE_START" },
+        Steps = new()
+        {
+            // ECAM page: APU (momentary SD page button — in the executor's pulse table)
+            Done(SW("BS_ECAMAPU", "ECAM page: APU", "S_ECAM_APU", 1), "BS_ECAMAPU"),
+            // APU block: master on, dwell, start pulse, wait for AVAIL (green light).
+            // "Available" is FenixActionExecutor.ApuAvailField — the ONE spelling every
+            // site here references, never a repeated literal, because the executor and
+            // these definitions disagreeing about which lamp meant AVAIL is exactly how
+            // this went wrong before. MEASURED live 2026-09-04 (Fenix A319, cold APU
+            // started in flight, both legends polled throughout): at the START press the
+            // _L legend goes 1 and _U stays 0; when the APU becomes available ~50 s later
+            // they EXCHANGE and stay that way — _U 1, _L 0. So _L is the TRANSIENT ON
+            // legend and _U is the PERSISTENT AVAIL legend.
+            // ⚠️ That is REVERSED against the real A320 (upper = ON, lower = AVAIL) AND
+            // against the Fenix's own APU MASTER pushbutton, measured in the same session
+            // as _U = FAULT dark / _L = ON lit, matching the real jet exactly — so the
+            // suffixes look trustworthy right up until this button. Reading the wrong one
+            // makes a running APU report "not available" forever: the skip check below
+            // fails to skip (re-pressing START on a live APU) and the wait then sits on a
+            // lamp that will never light again. Both readings have now shipped once each on
+            // reasoning alone, each reproducing the other's bug, so: on the Fenix a legend's
+            // meaning is NEVER inferred — not from its suffix, not from the real aircraft,
+            // not from a sibling pushbutton — it is read in the sim.
+            // The line "APU: ON and available" is the AVAIL state, so the AVAIL WAIT completes
+            // it, never the master write: a master that is on with an APU that never comes up
+            // must not tick the line (FO-6/FO-7). The master write links nothing on purpose.
+            Skip(SW("BS_APU_MASTER", "APU master: ON", "S_OH_ELEC_APU_MASTER", 1),
+                s => s.IsOn("S_OH_ELEC_APU_MASTER")),
+            Wait("BS_APU_DWELL", "Waiting before APU start", 3),
+            Skip(SW("BS_APU_START", "APU start", "S_OH_ELEC_APU_START", 1),
+                s => s.IsOn(FenixActionExecutor.ApuAvailField)),
+            // Stop policy: an APU start failure aborts the flow HERE, before external
+            // power is pulsed off the bus below — never a silent transfer to batteries.
+            Done(WaitForField("BS_APU_AVAIL", "Waiting for APU available",
+                FenixActionExecutor.ApuAvailField, v => v > 0.5, 180,
+                onTimeout: FlowStepFailurePolicy.Stop), "BS_APU"),
+            Done(Skip(SW("BS_APUBLEED", "APU bleed: ON", "S_OH_PNEUMATIC_APU_BLEED", 1),
+                s => s.IsOn("S_OH_PNEUMATIC_APU_BLEED")), "BS_APUBLEED"),
+            // Fuel pumps immediately after the APU block (user decision, matches FSFO)
+            Done(Skip(Multi("BS_FUELPUMPS", "Fuel pumps: ALL ON",
+                    ("S_OH_FUEL_LEFT_1", 1), ("S_OH_FUEL_LEFT_2", 1),
+                    ("S_OH_FUEL_CENTER_1", 1), ("S_OH_FUEL_CENTER_2", 1),
+                    ("S_OH_FUEL_RIGHT_1", 1), ("S_OH_FUEL_RIGHT_2", 1)),
+                s => s.IsOn("S_OH_FUEL_LEFT_1") && s.IsOn("S_OH_FUEL_LEFT_2")
+                     && s.IsOn("S_OH_FUEL_CENTER_1") && s.IsOn("S_OH_FUEL_CENTER_2")
+                     && s.IsOn("S_OH_FUEL_RIGHT_1") && s.IsOn("S_OH_FUEL_RIGHT_2")), "BS_FUELPUMPS"),
+            // External power off (pulse toggles it off the bus); skip when the ON light reads dark,
+            // left alone while it is unread: never "Already set" over a GPU still connected.
+            UnreadToggle(Done(Skip(SW("BS_EXTPWR_OFF", "External power: OFF", "S_OH_ELEC_EXT_PWR", 1),
+                s => s.IsPosition("I_OH_ELEC_EXT_PWR_L", 0)), "BS_EXTPWR_OFF"), "I_OH_ELEC_EXT_PWR_L", "External power"),
+            Done(Skip(SW("BS_SEATBELTS", "Seatbelt signs: ON", "S_OH_SIGNS", 1),
+                s => s.IsOn("S_OH_SIGNS")), "BS_SEATBELTS"),
+            // Completes the Before Start Checklist's "Beacon: ON" too (FO-6): the flow latches both
+            // groups, so a failed write must keep BSC_BEACON out of the latch as well.
+            Also(Done(Skip(SW("BS_BEACON", "Beacon: ON", "S_OH_EXT_LT_BEACON", 1),
+                s => s.IsOn("S_OH_EXT_LT_BEACON")), "BS_BEACON"), "BSC_BEACON"),
+            // FCU managed modes (pseudo-keys → atomic knob-push calc)
+            Done(SW("BS_FCUSPD", "FCU speed: managed", "FCU_PUSH_SPEED_MANAGED", 1), "BS_FCUSPD"),
+            Done(SW("BS_FCUHDG", "FCU heading: managed", "FCU_PUSH_HEADING_MANAGED", 1), "BS_FCUHDG"),
+            Captain("BS_ALT", "Set cleared altitude on the FCU"),
+            Done(SW("BS_FCUALT", "FCU altitude: pushed", "FCU_PUSH_ALT_MANAGED", 1), "BS_FCUALT"),
+            // Cockpit door: closed (S_COCKPIT_DOOR=0, live-verified actuator 2026-07-05).
+            Done(SW("BS_COCKPITDOOR", "Cockpit door: closed and locked", "S_COCKPIT_DOOR", 0), "BS_COCKPITDOOR"),
+            Captain("BS_DOORS", "Close doors and remove ground services on the EFB"),
+            Captain("BS_THRLEVERS", "Confirm thrust levers idle"),
+            Captain("BS_ACARS", "Start ACARS"),
+            Captain("BS_CLEARANCE", "Obtain pushback and start clearance"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 4. Engine Start (FADEC-managed: mode IGN, master on, N2 verification)
+    // -----------------------------------------------------------------------
+    private static Flow BuildEngineStart() => new()
+    {
+        Id = "ENGINE_START", Name = "Engine Start",
+        Description = "Engine mode IGN/START, then engine 1 and engine 2 with N2 verification.",
+        RelatedChecklistGroupIds = new[] { "ENGINE_START" },
+        Steps = new()
+        {
+            // ECAM page: engine (momentary SD page button — in the executor's pulse table)
+            Done(SW("ES_ECAMENG", "ECAM page: engine", "S_ECAM_ENGINE", 1), "ES_ECAMENG"),
+            Done(Skip(SW("ES_MODE", "Engine mode selector: IGN START", "S_ENG_MODE", 2),
+                s => s.IsPosition("S_ENG_MODE", 2)), "ES_MODE"),
+            // Engine 1 first, then engine 2 (user preference). The FADEC runs the whole
+            // start; each N2 wait verifies the engine actually spooled (stock TURB ENG N2,
+            // pushed per second) before the next master goes on, and completes its own "Engine n:
+            // running" line, which reads the same N2 (FO-6). A timeout stops the flow, so nothing
+            // is latched.
+            Done(Skip(SW("ES_ENG1", "Engine 1 master: ON", "S_ENG_MASTER_1", 1),
+                s => s.IsOn("S_ENG_MASTER_1")), "ES_ENG1"),
+            Done(WaitForField("ES_ENG1_N2", "Engine 1 starting — waiting for the engine to stabilize",
+                "FO_ENG1_N2", v => v >= EngRunningN2, 120, onTimeout: FlowStepFailurePolicy.Stop), "ES_ENG1_RUN"),
+            Done(Skip(SW("ES_ENG2", "Engine 2 master: ON", "S_ENG_MASTER_2", 1),
+                s => s.IsOn("S_ENG_MASTER_2")), "ES_ENG2"),
+            Done(WaitForField("ES_ENG2_N2", "Engine 2 starting — waiting for the engine to stabilize",
+                "FO_ENG2_N2", v => v >= EngRunningN2, 120, onTimeout: FlowStepFailurePolicy.Stop), "ES_ENG2_RUN"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 5. After Start
+    // -----------------------------------------------------------------------
+    private static Flow BuildAfterStart() => new()
+    {
+        Id = "AFTER_START", Name = "After Start",
+        Description = "Mode NORM, APU off, spoilers armed, takeoff flaps, trims, taxi light, cockpit lights dim.",
+        RelatedChecklistGroupIds = new[] { "AFTER_START" },
+        Steps = new()
+        {
+            Done(Skip(SW("AS_MODE_NORM", "Engine mode selector: NORM", "S_ENG_MODE", 1),
+                s => s.IsPosition("S_ENG_MODE", 1)), "AS_MODE_NORM"),
+            Done(Skip(SW("AS_APUBLEED_OFF", "APU bleed: OFF", "S_OH_PNEUMATIC_APU_BLEED", 0),
+                s => s.IsPosition("S_OH_PNEUMATIC_APU_BLEED", 0)), "AS_APUBLEED_OFF"),
+            Done(Skip(SW("AS_APUMASTER_OFF", "APU master: OFF", "S_OH_ELEC_APU_MASTER", 0),
+                s => s.IsPosition("S_OH_ELEC_APU_MASTER", 0)), "AS_APUMASTER_OFF"),
+            Done(Skip(SW("AS_SPOILERS_ARM", "Ground spoilers: ARMED", "A_FC_SPEEDBRAKE", 0),
+                s => s.IsPosition("A_FC_SPEEDBRAKE", 0)), "AS_SPOILERS_ARM"),
+            // Completes the After Start Checklist's "Rudder trim: NEUTRAL" too (FO-6), though that
+            // line is a Reminder here (no measured Fenix trim var): the reset is what the line
+            // asks for, and linking it only keeps the line unticked, for the pilot, when the
+            // reset could not be sent. It does not claim the trim was read as neutral.
+            Also(Done(SW("AS_RUDDERTRIM", "Rudder trim: RESET", "S_FC_RUDDER_TRIM_RESET", 1), "AS_RUDDERTRIM"),
+                "ASC_RUDDER"),
+            // Takeoff flaps from SimBrief (quiet skip when no plan loaded)
+            Done(Provider("AS_FLAPS", "Flaps: takeoff setting", "S_FC_FLAPS",
+                s => { int f = s.TakeoffFlapsLeverIndex(); return f >= 1 ? f : (int?)null; }), "AS_FLAPS"),
+            // The Captain is asked to set the takeoff flaps unless the lever already reads a
+            // takeoff position (1-3): without a SimBrief plan the Provider above skips quietly,
+            // and a write that did not take leaves the lever where it was. Keyed on the LEVER,
+            // never on the plan: keyed on the plan, a failed write was heard as "Skipping…" then
+            // a false "Already set", and the reminder was lost. Unread (NaN) is not set.
+            Skip(Captain("AS_FLAPS_CAPT", "Flaps: set for takeoff"),
+                s => IsTakeoffFlapsLever(s.GetValue("S_FC_FLAPS"))),
+            Done(Skip(SW("AS_NOSE_TAXI", "Nose light: TAXI", "S_OH_EXT_LT_NOSE", 1),
+                s => s.IsPosition("S_OH_EXT_LT_NOSE", 1)), "AS_NOSE_TAXI"),
+            Captain("AS_ANTIICE", "Set engine and wing anti-ice as required"),
+            Captain("AS_PITCHTRIM", "Set pitch trim per the loadsheet"),
+            // Cockpit lighting: dim for taxi and flight (the A32NX's AS_COCKPITLT point).
+            // Annunciator DIM is 0 on the Fenix (the A32NX's DIM is 2).
+            Done(SW("AS_COCKPITLT", "Cockpit lights: dim", "S_OH_IN_LT_ANN_LT", 0), "AS_COCKPITLT"),
+            Done(SW("AS_DOME", "Dome light: dim", "S_OH_INT_LT_DOME", 1), "AS_DOME"),
+            Done(Scene("AS_LTSCENE", FenixActionExecutor.CockpitLightScene.DimFlight), "AS_LTSCENE"),
+            // ECAM page: status (momentary SD page button — in the executor's pulse table)
+            Done(SW("AS_ECAMSTS", "ECAM page: status", "S_ECAM_STATUS", 1), "AS_ECAMSTS"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 6. Taxi (run while taxiing, before the Taxi checklist; FOA-8)
+    // -----------------------------------------------------------------------
+    private static Flow BuildTaxi() => new()
+    {
+        Id = "TAXI", Name = "Taxi",
+        Description = "Autobrake MAX, weather radar and predictive windshear, transponder AUTO, a check of the takeoff memo items, then the takeoff config test.",
+        RelatedChecklistGroupIds = new[] { "TAXI" },
+        Steps = new()
+        {
+            // Momentary button with a latched ON light — skip when already armed so the pulse can't
+            // toggle it back off. Also the takeoff memo's "Autobrake: MAX" (FO-6): the flow latches
+            // the Taxi Checklist too, so a failed press keeps that line open.
+            UnreadToggle(Also(Done(Skip(SW("TX_AUTOBRAKE", "Autobrake: MAX", "S_MIP_AUTOBRAKE_MAX", 1),
+                s => s.IsOn("I_MIP_AUTOBRAKE_MAX_L")), "TX_AUTOBRAKE"), "TXC_MEMO_AUTOBRK"), "I_MIP_AUTOBRAKE_MAX_L", "Autobrake"),
+            // "Radar and predictive windshear: ON and AUTO" (TXC_WXR) is true only with BOTH set, so
+            // neither write completes it: the read-only TX_WXR_PWS_CHECK after them does (the
+            // AL_WXR_PWS_CHECK shape: 5 s, skipped aloud on timeout, never writes).
+            Done(Skip(SW("TX_WXR", "Weather radar: SYSTEM 1", "S_WR_SYS", WxSys1),        // [RADAR]
+                s => s.IsPosition("S_WR_SYS", WxSys1)), "TX_WXR"),                         // [RADAR]
+            Done(Skip(SW("TX_PWS", "Predictive windshear: AUTO", "S_WR_PRED_WS", PwsAuto), // [RADAR]
+                s => s.IsPosition("S_WR_PRED_WS", PwsAuto)), "TX_PWS"),                    // [RADAR]
+            Done(Skip(WaitForField("TX_WXR_PWS_CHECK", "Radar and predictive windshear: ON and AUTO", "FO_WXR_ON_AUTO",
+                    v => v > 0.5, 5, onTimeout: FlowStepFailurePolicy.Skip),
+                s => s.GetValue("FO_WXR_ON_AUTO") > 0.5), "TXC_WXR"),
+            Done(Skip(SW("TX_XPDRAUTO", "Transponder: AUTO", "S_XPDR_OPERATION", 1),
+                s => s.IsPosition("S_XPDR_OPERATION", 1)), "TX_XPDRAUTO"),
+            // Read-only check of the takeoff memo items set earlier (FO_TAXI_MEMO_OK): the ground
+            // spoilers armed and a takeoff flap lever (After Start sets both) and the memo's SIGNS
+            // on (Before Start's seat belts, Preflight's no smoking). 5 s, skipped aloud on
+            // timeout, never writes: flaps held until the holding point (icing) time it out. Of its
+            // four lines the ones that read wrong then stay unticked and out of the latch, following
+            // the aircraft ("Flaps: T.O" with the lever up); "Flaps setting: SET", a Reminder, waits
+            // for the pilot's tick; lines already reading right (the window ticks them every second)
+            // latch with the rest.
+            Also(Done(Skip(WaitForField("TX_MEMO_CHECK", "Spoilers, flaps and seat belts: set for takeoff", "FO_TAXI_MEMO_OK",
+                    v => v > 0.5, 5, onTimeout: FlowStepFailurePolicy.Skip),
+                s => s.GetValue("FO_TAXI_MEMO_OK") > 0.5), "TXC_MEMO_SPLRS"),
+                "TXC_MEMO_FLAPS", "TXC_FLAPS", "TXC_MEMO_SIGNS"),
+            // Takeoff config test, LAST (FOA-8 owner choice 12: the memo is read after it). Also the
+            // memo's "T.O config: NORMAL".
+            Also(Done(SW("TX_CONFIG", "Takeoff config test", "S_ECAM_TO", 1), "TX_CONFIG"), "TXC_MEMO_TOCFG"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 7. Line-up (run when cleared onto the runway, before the Line-up checklist)
+    // -----------------------------------------------------------------------
+    private static Flow BuildLineup() => new()
+    {
+        Id = "LINEUP", Name = "Line-up",
+        Description = "Cabin call, TCAS TA/RA, strobes, runway turn-off, nose and landing lights, then the takeoff clearance reminder.",
+        RelatedChecklistGroupIds = new[] { "LINEUP" },
+        Steps = new()
+        {
+            // Advise the cabin crew: hit CALL ALL and release (momentary chime). The ONE cabin call
+            // before takeoff, here at line-up since 2026-10-19 (owner; in Taxi from 2026-10-09).
+            // Also the Line-up Checklist's "Cabin: READY", a line the pilot confirms: a call that
+            // could not be sent keeps it open.
+            Also(Done(SW("LU_CABIN", "Advise the cabin crew for takeoff (call all)", "CABIN_CALL_ALL", 1), "LU_CABIN"),
+                "LUC_CABIN"),
+            // Also the Line-up Checklist's "TCAS: TA/RA" (FO-6).
+            Also(Done(Skip(SW("LU_TCAS", "TCAS: TA/RA", "S_XPDR_MODE", 2),
+                s => s.IsPosition("S_XPDR_MODE", 2)), "LU_TCAS"), "LUC_TCAS"),
+            Done(Skip(SW("LU_STROBE", "Strobes: ON", "S_OH_EXT_LT_STROBE", 2),
+                s => s.IsPosition("S_OH_EXT_LT_STROBE", 2)), "LU_STROBE"),
+            Done(Skip(SW("LU_TURNOFF", "Runway turn-off lights: ON", "S_OH_EXT_LT_RWY_TURNOFF", 1),
+                s => s.IsOn("S_OH_EXT_LT_RWY_TURNOFF")), "LU_TURNOFF"),
+            Done(Skip(SW("LU_NOSE_TO", "Nose light: TAKEOFF", "S_OH_EXT_LT_NOSE", 2),
+                s => s.IsPosition("S_OH_EXT_LT_NOSE", 2)), "LU_NOSE_TO"),
+            // Landing lights here, a little before the takeoff clearance (owner, 2026-10-09: as the A380).
+            Done(SW("LU_LANDING_LT", "Landing lights: ON", "LANDING_LIGHTS_BOTH", 2), "LU_LANDING_LT"),
+            Captain("LU_CLEARANCE", "Obtain takeoff clearance"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 8. After Takeoff
+    // -----------------------------------------------------------------------
+    private static Flow BuildAfterTakeoff() => new()
+    {
+        Id = "AFTER_TAKEOFF", Name = "After Takeoff",
+        Description = "Spoilers disarm, packs on, turn-off lights off. Gear and autopilot are handled by the auto-managers; 10,000 ft lights and transition-altitude STD by the phase monitor. Ends by confirming the gear is up (lights out).",
+        RelatedChecklistGroupIds = new[] { "AFTER_TAKEOFF" },
+        Steps = new()
+        {
+            Done(Skip(SW("AT_SPOILERS_DISARM", "Ground spoilers: DISARM", "A_FC_SPEEDBRAKE", 1),
+                s => s.IsPosition("A_FC_SPEEDBRAKE", 1)), "AT_SPOILERS_DISARM"),
+            Done(Skip(Multi("AT_PACKS", "Packs 1 and 2: ON",
+                    ("S_OH_PNEUMATIC_PACK_1", 1), ("S_OH_PNEUMATIC_PACK_2", 1)),
+                s => s.IsOn("S_OH_PNEUMATIC_PACK_1") && s.IsOn("S_OH_PNEUMATIC_PACK_2")), "AT_PACKS"),
+            Done(Skip(SW("AT_TURNOFF_OFF", "Runway turn-off lights: OFF", "S_OH_EXT_LT_RWY_TURNOFF", 0),
+                s => s.IsPosition("S_OH_EXT_LT_RWY_TURNOFF", 0)), "AT_TURNOFF_OFF"),
+            // Read-only gear-up confirmation — the gear lever itself is retracted by the
+            // UniversalAutomationService's auto-gear-up (see this flow's own Description),
+            // not by this flow. Confirms the gear the way a crew does, "gear up, lights
+            // out" (FenixGearConfirmation: the lever plus all seven LDG GEAR indicator
+            // lights, never the lever alone — owner decision 2026-09-22). LAST, so gear still
+            // retracting does not hold up the steps above; waits up to 20 s. If the gear is not
+            // confirmed up the step is announced as skipped. The Airbus card has no After
+            // Takeoff checklist (Airbus deleted it in Nov 2021), so there is no read-back line
+            // for this wait to complete: it deliberately links no checklist item.
+            Skip(WaitForField("AT_GEAR_UP_CHECK", "Landing gear: UP", FenixGearConfirmation.UpField, v => v > 0.5, 20),
+                s => s.GetValue(FenixGearConfirmation.UpField) > 0.5),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 9. Descent
+    // -----------------------------------------------------------------------
+    private static Flow BuildDescent() => new()
+    {
+        Id = "DESCENT", Name = "Descent",
+        Description = "Seatbelt signs, arrival preparation reminders; landing autobrake is a Captain item.",
+        RelatedChecklistGroupIds = new[] { "DESCENT" },
+        Steps = new()
+        {
+            Captain("DC_AUTOBRAKE", "Set the landing autobrake — Main Instrument Panel, Auto Brakes"),
+            Done(Skip(SW("DC_SEATBELTS", "Seatbelt signs: ON", "S_OH_SIGNS", 1),
+                s => s.IsOn("S_OH_SIGNS")), "DC_SEATBELTS"),
+            // ONE descent-preparation item — see FenixChecklistDefinitions.BuildDescent.
+            Captain("DC_MCDU",
+                "Descent preparation: MCDU PERF APPR set — QNH, temperature, wind and minimums; landing configuration reviewed"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 10. Approach
+    // -----------------------------------------------------------------------
+    private static Flow BuildApproach() => new()
+    {
+        Id = "APPROACH", Name = "Approach",
+        Description = "LS on both sides, seat belts on, notify the cabin for landing, approach reminders.",
+        RelatedChecklistGroupIds = new[] { "APPROACH" },
+        Steps = new()
+        {
+            // LS actuator is the BASE var S_FCU_EFISn_LS (NOT "_PRESS" — writing the synthetic
+            // panel key directly is a no-op; that was the "LS not on in approach" bug).
+            UnreadToggle(Done(Skip(SW("AP_LS1", "LS captain: ON", "S_FCU_EFIS1_LS", 1),
+                s => s.IsOn("I_FCU_EFIS1_LS")), "AP_LS1"), "I_FCU_EFIS1_LS", "LS captain"),
+            UnreadToggle(Done(Skip(SW("AP_LS2", "LS first officer: ON", "S_FCU_EFIS2_LS", 1),
+                s => s.IsOn("I_FCU_EFIS2_LS")), "AP_LS2"), "I_FCU_EFIS2_LS", "LS first officer"),
+            // Also the Approach Checklist's "Seat belts: ON" (FO-6): usually "Already set" after
+            // Descent, and a write that fails keeps both lines out of the latch, following the switch.
+            Also(Done(Skip(SW("AP_SEATBELTS", "Seat belts: ON", "S_OH_SIGNS", 1),
+                s => s.IsOn("S_OH_SIGNS")), "AP_SEATBELTS"), "APC_SEATBELTS"),
+            // Notify the cabin crew for landing: hit CALL ALL and release (momentary chime).
+            Done(SW("AP_CABIN", "Notify the cabin crew for landing (call all)", "CABIN_CALL_ALL", 1), "AP_CABIN"),
+            Captain("AP_MINIMUMS", "Check minimums set on the MCDU approach page"),
+            Captain("AP_ENGMODE", "Set engine mode selector as required"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 10a. Landing (run on final once the gear is down, before the Landing checklist; FOA-11)
+    // -----------------------------------------------------------------------
+    private static Flow BuildLanding() => new()
+    {
+        Id = "LANDING", Name = "Landing",
+        Description = "Ground spoilers armed, then a check of the landing memo and the gear.",
+        RelatedChecklistGroupIds = new[] { "LANDING" },
+        Steps = new()
+        {
+            // After Takeoff disarmed the ground spoilers and nothing armed them again (the A32NX report,
+            // 2026-10-16). After Start's write (A_FC_SPEEDBRAKE 0 = ARM), also the Landing Checklist's
+            // "Spoilers: ARMED" (FO-6). Left alone over an extended speed brake (above 1, stowed), which
+            // the write would move to ARM: the line stays open until the pilot arms.
+            LeaveAlone(Also(Done(Skip(SW("LD_SPOILERS_ARM", "Ground spoilers: ARMED", "A_FC_SPEEDBRAKE", 0),
+                    s => s.IsPosition("A_FC_SPEEDBRAKE", 0)), "LD_SPOILERS_ARM"), "LDC_MEMO_SPLRS"),
+                s => AirbusGroundSpoilers.FenixSpeedBrakeExtended(s.GetValue("A_FC_SPEEDBRAKE")),
+                AirbusGroundSpoilers.LeaveAloneText),
+            // The landing memo's signs and flaps (FO_LDG_MEMO_OK), read only, the Taxi memo check's
+            // shape: 5 s, skipped aloud on timeout, never writes.
+            Also(Done(Skip(WaitForField("LD_MEMO_CHECK", "Seat belts and flaps: set for landing", "FO_LDG_MEMO_OK",
+                    v => v > 0.5, 5, onTimeout: FlowStepFailurePolicy.Skip),
+                s => s.GetValue("FO_LDG_MEMO_OK") > 0.5), "LDC_MEMO_SIGNS"), "LDC_MEMO_FLAPS"),
+            // LAST (FO-13): three green, no red (FenixGearConfirmation), read only. 20 s, then skip.
+            Done(Skip(WaitForField("LD_GEAR_DOWN_CHECK", "Landing gear: DOWN", FenixGearConfirmation.DownField,
+                    v => v > 0.5, 20, onTimeout: FlowStepFailurePolicy.Skip),
+                s => s.GetValue(FenixGearConfirmation.DownField) > 0.5), "LDC_MEMO_GEAR"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 11. After Landing (pilot-triggered once clear of the runway)
+    // -----------------------------------------------------------------------
+    private static Flow BuildAfterLanding() => new()
+    {
+        Id = "AFTER_LANDING", Name = "After Landing",
+        Description = "Clean up after vacating: spoilers, flaps, radar, transponder, lights, APU start.",
+        RelatedChecklistGroupIds = new[] { "AFTER_LANDING" },
+        Steps = new()
+        {
+            Done(Skip(SW("AL_SPOILERS", "Ground spoilers: DISARM", "A_FC_SPEEDBRAKE", 1),
+                s => s.IsPosition("A_FC_SPEEDBRAKE", 1)), "AL_SPOILERS"),
+            Done(Skip(SW("AL_FLAPS_UP", "Flaps: UP", "S_FC_FLAPS", 0),
+                s => s.IsPosition("S_FC_FLAPS", 0)), "AL_FLAPS_UP"),
+            // The After Landing Checklist's "Radar and predictive windshear: OFF" (ALC_WXR) is true
+            // only when BOTH are off, so neither write completes it (FO-6): it is that read-back's
+            // only line, so a write linking it latched the whole read-back with the other switch
+            // still on. The read-only AL_WXR_PWS_CHECK after both completes it (the FO-13 shape,
+            // never writes). 5 s: it starts after AL_PWS_OFF's 2 s pause and reads once a second,
+            // the rate both switches are polled, so its last read comes some 6 s after the windshear
+            // write, well past the second or two a polled switch lags its write. A timeout is
+            // skipped aloud and keeps the line out of the latch.
+            Done(Skip(SW("AL_WXR_OFF", "Weather radar: OFF", "S_WR_SYS", WxOff),           // [RADAR]
+                s => s.IsPosition("S_WR_SYS", WxOff)), "AL_WXR_OFF"),                       // [RADAR]
+            Done(Skip(SW("AL_PWS_OFF", "Predictive windshear: OFF", "S_WR_PRED_WS", PwsOff), // [RADAR]
+                s => s.IsPosition("S_WR_PRED_WS", PwsOff)), "AL_PWS_OFF"),                  // [RADAR]
+            Done(Skip(WaitForField("AL_WXR_PWS_CHECK", "Radar and predictive windshear: OFF", "FO_WXR_PWS_OFF",
+                    v => v > 0.5, 5, onTimeout: FlowStepFailurePolicy.Skip),
+                s => s.GetValue("FO_WXR_PWS_OFF") > 0.5), "ALC_WXR"),
+            Done(Skip(SW("AL_STROBE_AUTO", "Strobes: AUTO", "S_OH_EXT_LT_STROBE", 1),
+                s => s.IsPosition("S_OH_EXT_LT_STROBE", 1)), "AL_STROBE_AUTO"),
+            Done(SW("AL_LANDING_OFF", "Landing lights: OFF", "LANDING_LIGHTS_BOTH", 1), "AL_LANDING_OFF"),
+            Done(Skip(SW("AL_NOSE_TAXI", "Nose light: TAXI", "S_OH_EXT_LT_NOSE", 1),
+                s => s.IsPosition("S_OH_EXT_LT_NOSE", 1)), "AL_NOSE_TAXI"),
+            // APU for the gate (skip the whole block when already available).
+            // AVAIL is FenixActionExecutor.ApuAvailField (the persistent lamp, measured) — see
+            // BS_APU_MASTER above. The AVAIL wait completes "APU: ON and available", never the
+            // master write: a timed-out wait is skipped aloud and keeps the line out of the latch.
+            Skip(SW("AL_APU_MASTER", "APU master: ON", "S_OH_ELEC_APU_MASTER", 1),
+                s => s.IsOn(FenixActionExecutor.ApuAvailField)),
+            Skip(Wait("AL_APU_DWELL", "Waiting before APU start", 3),
+                s => s.IsOn(FenixActionExecutor.ApuAvailField)),
+            Skip(SW("AL_APU_START", "APU start", "S_OH_ELEC_APU_START", 1),
+                s => s.IsOn(FenixActionExecutor.ApuAvailField)),
+            Done(WaitForField("AL_APU_AVAIL", "Waiting for APU available",
+                FenixActionExecutor.ApuAvailField, v => v > 0.5, 180), "AL_APU"),
+            Done(Skip(Multi("AL_ANTIICE_OFF", "Engine and wing anti-ice: OFF",
+                    ("S_OH_PNEUMATIC_ENG1_ANTI_ICE", 0), ("S_OH_PNEUMATIC_ENG2_ANTI_ICE", 0),
+                    ("S_OH_PNEUMATIC_WING_ANTI_ICE", 0)),
+                s => s.IsPosition("S_OH_PNEUMATIC_ENG1_ANTI_ICE", 0)
+                     && s.IsPosition("S_OH_PNEUMATIC_ENG2_ANTI_ICE", 0)
+                     && s.IsPosition("S_OH_PNEUMATIC_WING_ANTI_ICE", 0)), "AL_ANTIICE_OFF"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 12. Shutdown / Parking
+    // -----------------------------------------------------------------------
+    private static Flow BuildShutdown() => new()
+    {
+        Id = "SHUTDOWN", Name = "Shutdown",
+        Description = "Parking brake, APU bleed, engine masters off, signs, beacon, fuel pumps, cockpit lights, ECAM door page.",
+        RelatedChecklistGroupIds = new[] { "SHUTDOWN" },
+        Steps = new()
+        {
+            // Started by mistake in flight, the masters below would shut the engines down and the
+            // fuel pumps go off: never airborne (the MD-11's SD_ON_GROUND).
+            OnGroundGuard("SD_ON_GROUND"),
+            Done(Skip(SW("SD_PARKBRAKE", "Parking brake: ON", "S_MIP_PARKING_BRAKE", 1),
+                s => s.IsOn("S_MIP_PARKING_BRAKE")), "SD_PARKBRAKE"),
+            Done(Skip(SW("SD_APUBLEED_ON", "APU bleed: ON", "S_OH_PNEUMATIC_APU_BLEED", 1),
+                s => s.IsOn("S_OH_PNEUMATIC_APU_BLEED")), "SD_APUBLEED_ON"),
+            // The masters take the engine generators off the buses, so the APU or external power
+            // must be able to carry them first: After Landing's APU wait only skips on a timeout,
+            // and without this the masters went off onto the batteries. Up to two minutes for an
+            // APU still starting, then the flow stops with the engines running (the MD-11's
+            // PK_POWER_SOURCE, the 737s' SD_POWER_WAIT). Passes at once with both masters off.
+            Skip(WaitForField("SD_POWER_SOURCE", "APU or external power available",
+                    FenixStateEvaluator.ApuOrExtPowerField, v => v > 0.5, 120, onTimeout: FlowStepFailurePolicy.Stop),
+                s => s.IsPosition("S_ENG_MASTER_1", 0) && s.IsPosition("S_ENG_MASTER_2", 0)),
+            Done(Skip(SW("SD_ENG1_OFF", "Engine 1 master: OFF", "S_ENG_MASTER_1", 0),
+                s => s.IsPosition("S_ENG_MASTER_1", 0)), "SD_ENG1_OFF"),
+            Done(Skip(SW("SD_ENG2_OFF", "Engine 2 master: OFF", "S_ENG_MASTER_2", 0),
+                s => s.IsPosition("S_ENG_MASTER_2", 0)), "SD_ENG2_OFF"),
+            // Transponder/TCAS to STANDBY here (moved from After Landing) so traffic
+            // reporting continues until the aircraft is parked and shut down.
+            Done(Skip(SW("SD_XPDR_STBY", "Transponder: STANDBY", "S_XPDR_OPERATION", 0),
+                s => s.IsPosition("S_XPDR_OPERATION", 0)), "SD_XPDR_STBY"),
+            Done(Skip(SW("SD_TCAS_STBY", "TCAS: STANDBY", "S_XPDR_MODE", 0),
+                s => s.IsPosition("S_XPDR_MODE", 0)), "SD_TCAS_STBY"),
+            // LS pushbuttons OFF (pulse the BASE var S_FCU_EFISn_LS, mirrors approach AP_LSn
+            // inverted — pulse only when the indicator I_FCU_EFISn_LS reads on; "Already set" only
+            // when it reads off, left alone while unread).
+            UnreadToggle(Done(Skip(SW("SD_LS1", "LS captain: OFF", "S_FCU_EFIS1_LS", 1),
+                s => s.IsPosition("I_FCU_EFIS1_LS", 0)), "SD_LS1"), "I_FCU_EFIS1_LS", "LS captain"),
+            UnreadToggle(Done(Skip(SW("SD_LS2", "LS first officer: OFF", "S_FCU_EFIS2_LS", 1),
+                s => s.IsPosition("I_FCU_EFIS2_LS", 0)), "SD_LS2"), "I_FCU_EFIS2_LS", "LS first officer"),
+            Done(Skip(SW("SD_SEATBELTS_OFF", "Seatbelt signs: OFF", "S_OH_SIGNS", 0),
+                s => s.IsPosition("S_OH_SIGNS", 0)), "SD_SEATBELTS_OFF"),
+            Done(Skip(SW("SD_BEACON_OFF", "Beacon: OFF", "S_OH_EXT_LT_BEACON", 0),
+                s => s.IsPosition("S_OH_EXT_LT_BEACON", 0)), "SD_BEACON_OFF"),
+            // The fuel goes off only once both engines have spun down (FO-25): the masters above
+            // leave them turning for a while. Two minutes, then the flow stops with the pumps on.
+            WaitForField("SD_ENGINES_STOPPED", "Engines stopped", "FO_ENGINES_OFF", v => v > 0.5, 120,
+                onTimeout: FlowStepFailurePolicy.Stop),
+            Done(Skip(Multi("SD_FUELPUMPS_OFF", "Fuel pumps: ALL OFF",
+                    ("S_OH_FUEL_LEFT_1", 0), ("S_OH_FUEL_LEFT_2", 0),
+                    ("S_OH_FUEL_CENTER_1", 0), ("S_OH_FUEL_CENTER_2", 0),
+                    ("S_OH_FUEL_RIGHT_1", 0), ("S_OH_FUEL_RIGHT_2", 0)),
+                s => s.IsPosition("S_OH_FUEL_LEFT_1", 0) && s.IsPosition("S_OH_FUEL_LEFT_2", 0)
+                     && s.IsPosition("S_OH_FUEL_CENTER_1", 0) && s.IsPosition("S_OH_FUEL_CENTER_2", 0)
+                     && s.IsPosition("S_OH_FUEL_RIGHT_1", 0) && s.IsPosition("S_OH_FUEL_RIGHT_2", 0)), "SD_FUELPUMPS_OFF"),
+            Done(Skip(SW("SD_NOSE_OFF", "Nose light: OFF", "S_OH_EXT_LT_NOSE", 0),
+                s => s.IsPosition("S_OH_EXT_LT_NOSE", 0)), "SD_NOSE_OFF"),
+            Done(Skip(SW("SD_TURNOFF_OFF", "Runway turn-off lights: OFF", "S_OH_EXT_LT_RWY_TURNOFF", 0),
+                s => s.IsPosition("S_OH_EXT_LT_RWY_TURNOFF", 0)), "SD_TURNOFF_OFF"),
+            // Cockpit door: open for disembark (S_COCKPIT_DOOR=1, live-verified actuator 2026-07-05).
+            Done(SW("SD_COCKPITDOOR", "Cockpit door: unlocked", "S_COCKPIT_DOOR", 1), "SD_COCKPITDOOR"),
+            // Cockpit lighting: bright for parking (the A32NX's SD_COCKPITLT point).
+            Done(SW("SD_COCKPITLT", "Cockpit lights: set", "S_OH_IN_LT_ANN_LT", 1), "SD_COCKPITLT"),
+            Done(SW("SD_DOME", "Dome light: bright", "S_OH_INT_LT_DOME", 2), "SD_DOME"),
+            Done(Scene("SD_LTSCENE", FenixActionExecutor.CockpitLightScene.ParkingBright), "SD_LTSCENE"),
+            // ECAM page: door (momentary SD page button — in the executor's pulse table)
+            Done(SW("SD_ECAMDOOR", "ECAM page: door", "S_ECAM_DOOR", 1), "SD_ECAMDOOR"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 13. Securing
+    // -----------------------------------------------------------------------
+    private static Flow BuildSecure() => new()
+    {
+        Id = "SECURE", Name = "Securing",
+        Description = "ADIRS, oxygen, emergency lights, signs, APU off, wait for the APU flap, external power and batteries off, cockpit lights off.",
+        // SECURING_CL: the Securing Checklist read-back, latched by a finished run through the Also links below.
+        RelatedChecklistGroupIds = new[] { "SECURE", "SECURING_CL" },
+        Steps = new()
+        {
+            // The IRS and the batteries go off below: never airborne (the MD-11's SD_ON_GROUND).
+            OnGroundGuard("SC_ON_GROUND"),
+            // ...nor with an engine turning (FO-25): the whole flow stops, not just the IRS.
+            EnginesStoppedGuard("SC_ENGINES_STOPPED"),
+            Done(Skip(Multi("SC_ADIRS", "IRS 1, 2 and 3: OFF",
+                    ("S_OH_NAV_IR1_MODE", 0), ("S_OH_NAV_IR2_MODE", 0), ("S_OH_NAV_IR3_MODE", 0)),
+                s => s.IsPosition("S_OH_NAV_IR1_MODE", 0) && s.IsPosition("S_OH_NAV_IR2_MODE", 0)
+                     && s.IsPosition("S_OH_NAV_IR3_MODE", 0)), "SC_ADIRS"),
+            Also(Done(Skip(SW("SC_OXY", "Crew oxygen supply: OFF", "S_OH_OXYGEN_CREW_OXYGEN", 0),
+                s => s.IsPosition("S_OH_OXYGEN_CREW_OXYGEN", 0)), "SC_OXY"), "SCC_OXY"),
+            Also(Done(Skip(SW("SC_EMEREXIT", "Emergency exit lights: OFF", "S_OH_INT_LT_EMER", 0),
+                s => s.IsPosition("S_OH_INT_LT_EMER", 0)), "SC_EMEREXIT"), "SCC_EMEREXIT"),
+            Done(Skip(SW("SC_NOSMOKE", "No smoking: OFF", "S_OH_SIGNS_SMOKING", 0),
+                s => s.IsPosition("S_OH_SIGNS_SMOKING", 0)), "SC_NOSMOKE"),
+            Done(Skip(SW("SC_APUBLEED", "APU bleed: OFF", "S_OH_PNEUMATIC_APU_BLEED", 0),
+                s => s.IsPosition("S_OH_PNEUMATIC_APU_BLEED", 0)), "SC_APUBLEED"),
+            // The skip below is what makes the wait after it conditional: an APU master that already
+            // reads OFF is "Already set", not "sent" (RunOnlyIfStepSent), so no 2-minute wait follows.
+            Done(Skip(SW("SC_APUMASTER", "APU master: OFF", "S_OH_ELEC_APU_MASTER", 0),
+                s => s.IsPosition("S_OH_ELEC_APU_MASTER", 0)), "SC_APUMASTER"),
+            // FlyByWire's A320 order (owner, 2026-10-14): wait for the APU flap before external
+            // power goes off. The Fenix publishes no APU flap or speed (and its lamps are never
+            // inferred, FO-11), so this is a fixed 2 minutes — a judgement — and only after an
+            // APU master this run switched off (FOA-10).
+            OnlyIfSent(Wait("SC_APU_WAIT", "APU flap to close", 120), "SC_APUMASTER"),
+            // A toggle pushbutton: press only while the ON light reads lit (a press while it is
+            // already off would turn it back ON). "Already set" only on a light read dark; an UNREAD
+            // light is left alone, never pressed and never claimed set.
+            UnreadToggle(Done(Skip(SW("SC_EXTPWR_OFF", "External power: OFF", "S_OH_ELEC_EXT_PWR", 1),
+                s => s.IsPosition("I_OH_ELEC_EXT_PWR_L", 0)), "SC_EXTPWR_OFF"), "I_OH_ELEC_EXT_PWR_L", "External power"),
+            Also(Done(Skip(SW("SC_BAT1", "Battery 1: OFF", "S_OH_ELEC_BAT1", 0),
+                s => s.IsPosition("S_OH_ELEC_BAT1", 0)), "SC_BAT1"), "SCC_BAT"),
+            Also(Done(Skip(SW("SC_BAT2", "Battery 2: OFF", "S_OH_ELEC_BAT2", 0),
+                s => s.IsPosition("S_OH_ELEC_BAT2", 0)), "SC_BAT2"), "SCC_BAT"),
+            // Cockpit lighting off (the A32NX's SC_COCKPITLT point): annunciator left at
+            // BRIGHT for the next power-up, dome and knobs off.
+            Done(SW("SC_COCKPITLT", "Cockpit lights: annunciator bright", "S_OH_IN_LT_ANN_LT", 1), "SC_COCKPITLT"),
+            Done(SW("SC_DOME", "Dome light: off", "S_OH_INT_LT_DOME", 0), "SC_DOME"),
+            Done(Scene("SC_LTSCENE", FenixActionExecutor.CockpitLightScene.Off), "SC_LTSCENE"),
+        }
+    };
+
+    /// <summary>True when the flap lever (<c>S_FC_FLAPS</c>, 0..4) reads a takeoff position, 1-3 —
+    /// the same test as the AS_FLAPS line. 0, FULL and an unread lever (NaN) are not, so the
+    /// AS_FLAPS_CAPT reminder speaks.</summary>
+    internal static bool IsTakeoffFlapsLever(double lever) => lever is >= 0.5 and <= 3.5;
+
+    // -----------------------------------------------------------------------
+    // Step builders (mirror the 737 file's helpers)
+    // -----------------------------------------------------------------------
+
+    private static Step SW(string id, string label, string eventName, int target) => new()
+    {
+        Id = id, Label = label,
+        ActionType = FlowStepActionType.SetSwitch,
+        EventName = eventName,
+        TargetValue = target,        FailurePolicy = FlowStepFailurePolicy.Skip,
+    };
+
+    // One lighting scene's four brightness knobs, through the executor's COCKPIT_LIGHT_SCENE_*
+    // pseudo-key; labelled as the A32NX's scene line.
+    private static Step Scene(string id, FenixActionExecutor.CockpitLightScene scene) =>
+        SW(id, "Panel and integral brightness: SET", FenixActionExecutor.CockpitLightSceneKey(scene), 1);
+
+    private static Step Provider(string id, string label, string eventName, Func<FenixStateEvaluator, int?> provider) => new()
+    {
+        Id = id, Label = label,
+        ActionType = FlowStepActionType.SetSwitch,
+        EventName = eventName,
+        TargetValueProvider = provider,        FailurePolicy = FlowStepFailurePolicy.Skip,
+    };
+
+    private static Step Multi(string id, string label, params (string EventName, int? TargetValue)[] actions) => new()
+    {
+        Id = id, Label = label,
+        ActionType = FlowStepActionType.SetSwitchMultiple,
+        MultiActions = actions.ToList(),        FailurePolicy = FlowStepFailurePolicy.Skip,
+    };
+
+    private static Step Wait(string id, string label, int seconds) => new()
+    {
+        Id = id, Label = label,
+        ActionType = FlowStepActionType.WaitSeconds,
+        WaitSeconds = seconds,    };
+
+    private static Step WaitForField(string id, string label, string field, Func<double, bool> condition, int timeoutSec,
+        FlowStepFailurePolicy onTimeout = FlowStepFailurePolicy.Skip) => new()
+    {
+        Id = id, Label = label,
+        ActionType = FlowStepActionType.WaitForCondition,
+        ConditionFieldName = field,
+        Condition = condition,
+        TimeoutSeconds = timeoutSec,
+        FailurePolicy = onTimeout,    };
+
+    private static Step Captain(string id, string label, string? reminderText = null) => new()
+    {
+        Id = id, Label = label,
+        ActionType = FlowStepActionType.CaptainReminder,
+        ReminderText = reminderText ?? label,    };
+
+    private static Step Skip(Step step, Func<FenixStateEvaluator, bool> cond)
+    {
+        step.SkipCondition = cond;
+        return step;
+    }
+
+    private static Step Done(Step step, string checklistItemId)
+    {
+        step.CompletesChecklistItemId = checklistItemId;
+        return step;
+    }
+
+    // A further line the step delivers, beyond Done's: the same line in the flow's own *_CL
+    // read-back (FlowStep.AlsoCompletesChecklistItemIds; FlowManager marks and, on a skip,
+    // excludes every linked id).
+    private static Step Also(Step step, params string[] alsoCompletes)
+    {
+        step.AlsoCompletesChecklistItemIds = alsoCompletes;
+        return step;
+    }
+
+    // A wait that follows an earlier switch step: it runs only when that step actually SENT its write
+    // this run, and otherwise passes silently as done (FlowStep.RunOnlyIfStepSent). Only meaningful
+    // after a step that has a SkipCondition reading "already set", or it is "sent" on every run.
+    private static Step OnlyIfSent(Step step, string sentStepId)
+    {
+        step.RunOnlyIfStepSent = sentStepId;
+        return step;
+    }
+
+    // The aircraft's state says the First Officer must not act (FlowStep.LeaveAloneWhen): nothing is
+    // sent, the text is spoken and the step's lines stay out of the latch.
+    private static Step LeaveAlone(Step step, Func<FenixStateEvaluator, bool> when, string text)
+    {
+        step.LeaveAloneWhen = when;
+        step.LeaveAloneText = text;
+        return step;
+    }
+
+    // A pulse toggle whose light has not been read yet: nothing is sent (a press could turn it the
+    // wrong way), nothing is claimed "Already set", and its lines stay open.
+    private static Step UnreadToggle(Step step, string light, string name) =>
+        LeaveAlone(step, s => double.IsNaN(s.GetValue(light)), UnreadToggleText(name));
+
+    internal static string UnreadToggleText(string name) => $"{name} left as it is: its light has not been read yet.";
+
+    // Stops a cold-and-dark flow unless both engines read stopped (FO_ENGINES_OFF, NaN until the
+    // N2 answers are in, so unread fails the guard): the MD-11's EnginesStoppedGuard.
+    private static Step EnginesStoppedGuard(string id) =>
+        WaitForField(id, "Engines stopped", "FO_ENGINES_OFF", v => v > 0.5, 5, onTimeout: FlowStepFailurePolicy.Stop);
+
+    // Stops a flow that switches engines, IRS or batteries off unless the aircraft reads on the
+    // ground (the stock SIM_ON_GROUND; unread fails the guard).
+    private static Step OnGroundGuard(string id) =>
+        WaitForField(id, "On the ground", "SIM_ON_GROUND", v => v > 0.5, 5, onTimeout: FlowStepFailurePolicy.Stop);
+}

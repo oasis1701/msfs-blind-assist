@@ -330,6 +330,58 @@ public interface IAircraftDefinition
     bool HandleUIVariableSet(string varKey, double value, SimConnect.SimVarDefinition varDef,
         SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer);
 
+    /// <summary>
+    /// Engage the autopilot for the universal auto-AP-engage feature. The default fires the
+    /// stock <c>AUTOPILOT_ON</c> event. Aircraft whose autopilot ignores or misreads that event
+    /// override this to press their own engage switch: the PMDG jets (CMD A on the 737, A/P L on
+    /// the 777), the FlyByWire family (AP 1 — FBW captures AUTOPILOT_ON into a flag nothing
+    /// reads, FO-21), the iFly 737 (CMD A), the TFDi MD-11 (AUTO FLIGHT) and the Fenix (the FCU's
+    /// AP1 pushbutton). Implementations should no-op unless the autopilot reads definitely off,
+    /// so a toggle-style engage switch can't disconnect it.
+    /// </summary>
+    void EngageAutopilot(SimConnect.SimConnectManager simConnect);
+
+    /// <summary>
+    /// Hard floor (ft AGL) below which THIS aircraft's autopilot refuses to engage, so the
+    /// universal auto-engage never presses into a rejection. 0 = no floor. The PMDG 737's
+    /// AFDS inhibits CMD engagement below 400 ft RA after takeoff — pressing at the 350 ft
+    /// default was silently rejected by the aircraft (the 2026-08 "AP never engages" bug).
+    /// </summary>
+    int MinimumAutopilotEngageAltitudeAgl { get; }
+
+    /// <summary>
+    /// Whether the autopilot is currently engaged: <c>true</c>/<c>false</c> when the aircraft
+    /// can be read, <c>null</c> when it exposes no engaged state OR its data feed isn't ready
+    /// yet. Never return <c>false</c> for "don't know" — the universal auto-engage retries a
+    /// definitive <c>false</c>, and the PMDG engage switches are TOGGLES, so a guessed
+    /// <c>false</c> over an engaged autopilot would disconnect it.
+    /// </summary>
+    bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect);
+
+    /// <summary>
+    /// Minimum time (ms) the universal auto-engage waits after an attempt, a press or a wait for a
+    /// reading, before trying again or giving up. 0 = retry every tick (the stock, idempotent
+    /// <c>AUTOPILOT_ON</c>). An aircraft whose engage is a TOGGLE and whose engaged state reaches the
+    /// cache no faster than the 1 Hz feed sets 3000 (the FlyByWire family, FO-21; the PMDG 737 and
+    /// 777, the iFly 737, the TFDi MD-11 and the Fenix), so a retry never lands on an autopilot the
+    /// previous press already engaged.
+    /// </summary>
+    int AutopilotEngageRetryIntervalMs { get; }
+
+    /// <summary>
+    /// True where the universal auto-engage must never press while <c>IsAutopilotEngaged</c> reads
+    /// <c>null</c>. The service waits for a definite reading instead, and if none comes within its
+    /// attempts it gives the Captain call. Every aircraft whose engage is a toggle sets it: the
+    /// FlyByWire family (FO-21, the AP 1 push), the PMDG 737 and 777 (CMD A, A/P L, null until the
+    /// first CDA snapshot), the iFly 737 (CMD A), the TFDi MD-11 (AUTO FLIGHT, whose own engage presses
+    /// nothing on an unread state), the Fenix (AP1) and the HorizonSim 787 (its AP_MASTER engage, with
+    /// an engaged read-back): a blind press could disconnect an autopilot that is already on, and their
+    /// <c>null</c> means "not read yet". False (the default) takes the open-loop press-and-announce on a
+    /// null reading, which only the stock <c>AUTOPILOT_ON</c> aircraft keep (any aircraft without an
+    /// engage of its own).
+    /// </summary>
+    bool AutopilotEngageWaitsForState { get; }
+
     // Display System Monitoring (ECAM for Airbus, EICAS for Boeing, etc.)
     // Aircraft without these systems should use the default implementation (does nothing)
 
@@ -502,11 +554,4 @@ public interface IAircraftDefinition
     /// (live-verified: its radios tune only through the RMP).
     /// </summary>
     string? StockComTuningRefusal { get; }
-
-    /// <summary>
-    /// The hand-written checklist Shift+C opens (a file under Checklists\), or null when this
-    /// aircraft has none of its own: Shift+C then opens nothing and says
-    /// "No checklist for this aircraft." (MainForm.ShowChecklistDialog).
-    /// </summary>
-    string? ChecklistFileName { get; }
 }
