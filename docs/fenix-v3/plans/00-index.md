@@ -37,6 +37,8 @@ Work only in the files your plan owns. A change you need in a file you don't own
 | `MSFSBlindAssist/Aircraft/FenixA320Definition.cs` | 01 (seams only), then **02** | |
 | `MSFSBlindAssist/Aircraft/FenixA320Definition.Hooks.cs`, `Aircraft/FenixVariant.cs` | 01 | Frozen after 01 |
 | `MSFSBlindAssist/Aircraft/FenixA320Definition.Variants.cs` | 03 | Implements 01's panel/variant seams |
+| `MSFSBlindAssist/Aircraft/FenixA320Definition.Cabin.cs` | 05 | Implements 01's cabin background seams |
+| `MSFSBlindAssist/Aircraft/FenixA320Definition.Engines.cs` | 04 | Only if the owner wants engine announcements outside the Engines window |
 | `MSFSBlindAssist/Aircraft/FenixA320DisplayReads.cs` | 09 | |
 | `MSFSBlindAssist/Services/FenixData*.cs` | 01 | Frozen after 01 |
 | `MSFSBlindAssist/Services/FenixMCDUService.cs`, `Services/FenixMcdu*.cs`, `Forms/FenixA320/FenixMCDUForm*.cs`, `Forms/Fenix/FenixEFBForm.cs` | 09 | |
@@ -45,12 +47,14 @@ Work only in the files your plan owns. A change you need in a file you don't own
 | `Forms/Fenix/FenixWindowRegistry.Cabin.cs`, `Forms/Fenix/FenixCabin*.cs`, `Services/FenixCabin*.cs` | 05 | |
 | `Forms/Fenix/FenixWindowRegistry.Failures.cs`, `Forms/Fenix/FenixFailures*.cs`, `Services/FenixFailure*.cs` | 06 | |
 | `Forms/Fenix/FenixWindowRegistry.Options.cs`, `Forms/Fenix/FenixOptions*.cs`, `Services/FenixOption*.cs` | 07 | |
-| `FirstOfficer/Fenix/FenixTakeoffConfigVerdict.cs` | 02 | The TO CONFIG check is one feature across panel and First Officer |
+| `MSFSBlindAssist/Aircraft/FenixA320GravityGear.cs` (new) | 02 | |
+| `FirstOfficer/Fenix/FenixTakeoffConfigVerdict.cs`, `tests/.../FirstOfficer/FenixTakeoffConfigVerdictTests.cs` | 02 | The TO CONFIG check is one feature across panel and First Officer; plan 08 leaves both alone |
 | `FirstOfficer/Fenix/FenixActionExecutor.cs` | **08, except** the `TakeoffConfigTest` and `AnnounceTakeoffConfigResult` members, which **02** owns | The one controlled overlap: two named members. Neither plan edits the other's lines; the second to merge resolves |
 | Every other `FirstOfficer/Fenix/*.cs` | 08 | |
 | `Settings/SettingsManager.cs` (the `FNX2PLD_clock*` seed lines only) | 02 | |
 | `MSFSBlindAssist/Hotkeys/HotkeyManager.cs`, `MainForm.Hotkeys.cs` | 01 | No other plan adds a hotkey; windows open from the "Fenix windows" list |
-| `GeminiService.cs` (the `NDFenix` / `StandbyFenix` prompt entries only) | 09 | |
+| `GeminiService.cs` (the `NDFenix` / `StandbyFenix` prompt entries, and the two new Fenix standby `DisplayType` members plan 09 adds beside them) | 09 | |
+| `tests/MSFSBlindAssist.Tests/Fixtures/fenix-failures-manual-ch21.json` (new; first ATA chapter only, never the full catalog) | 06 | |
 | `MainForm*.cs` (other partials), `BaseAircraftDefinition.cs`, `IAircraftDefinition.cs`, `Forms/FirstOfficer/**`, shared FO classes outside `FirstOfficer/Fenix/` | nobody before 10 | Handoff requests only |
 | `MSFSBlindAssist/HotkeyGuides/Fenix_A320_Hotkeys.txt` | 01 (its one line), then 10 | |
 | `guide/**`, `changelog.d/**`, `docs/*.md`, `docs/invariants/**`, `CLAUDE.md`, `.claude/rules/**` | 01 (its rule file and CLAUDE.md row), then 10 | Plans list pilot-facing notes and proposed rule lines in their handoff section |
@@ -59,42 +63,66 @@ Work only in the files your plan owns. A change you need in a file you don't own
 
 ## Who is on which plan
 
-Claim a plan by putting your GitHub name here (commit the one line to `FenixV3`) before you start; one person per
-plan. Plan 01 must land before anyone starts 02-09; plan 10 starts when 02-09 have merged.
+Claim a plan by putting your GitHub name here and pushing that one line to `FenixV3` before you start; one person
+per plan. Plan 01 must land before anyone starts 02-09; plan 10 starts when 02-09 are done.
 
-| Plan | Claimed by | Branch | Pull request | Status |
+| Plan | Claimed by | Status |
+|---|---|---|
+| 01 | | |
+| 02 | | |
+| 03 | | |
+| 04 | | |
+| 05 | | |
+| 06 | | |
+| 07 | | |
+| 08 | | |
+| 09 | | |
+| 10 | | |
+
+## Owner answers
+
+Decisions only the owner can make. Each plan builds the recommendation unless the answer here says otherwise; the
+owner fills in "Answer". Items marked "after check" wait for that plan's in-sim result.
+
+| # | Plan | Question | Recommendation | Answer |
 |---|---|---|---|---|
-| 01 | | `FenixV3-p01-foundation` | | |
-| 02 | | `FenixV3-p02-v3-fixes` | | |
-| 03 | | `FenixV3-p03-variants` | | |
-| 04 | | `FenixV3-p04-engine-data` | | |
-| 05 | | `FenixV3-p05-cabin-fap` | | |
-| 06 | | `FenixV3-p06-failures` | | |
-| 07 | | `FenixV3-p07-fenix-options` | | |
-| 08 | | `FenixV3-p08-first-officer` | | |
-| 09 | | `FenixV3-p09-displays-efb` | | |
-| 10 | | `FenixV3-p10-integration` | | |
+| 1 | 02 | If v3 lights neither master light on a bad TO CONFIG, what is said? | "Takeoff config test done. No warning seen. Check the ECAM memo." (after check) | pending |
+| 2 | 02 | May the gravity-gear check be flown (gear up in flight)? | Yes | pending |
+| 3 | 09 | AI display reads for Fenix v3 only (2.x gets wrong frames)? | Yes, v3 only; the guide says to update | pending |
+| 4 | 09 | Alt+P reads the captain's PFD, Alt+N from the captain's view? | Yes | pending |
+| 5 | 07 | May the Fenix options window change options? | Yes, F2 for on/off and choice options, this sim session only | pending |
+| 6 | 05 | Cabin window opens and closes doors at the gate? | Yes | pending |
+| 7 | 05 | Aft door names on the A319/A320 | The FAP's "Door 4 left" (the EFB says "2 left") | pending |
+| 8 | 06 | Failures: confirm every write (No default), no checkboxes, arming needs a condition, speak triggered failures while open | Yes to all four | pending |
+| 9 | 03 | Make CALLS MECH/ALL/FWD/AFT press buttons like the new MID/EXIT? | Yes (A320-3) | pending |
+| 10 | 03 | Hide panels the variant leaves empty ("DCDU Left" without a DCDU)? | Yes | pending |
+| 11 | 03 | Rename the profile from "Fenix A320 CEO" (the stored code stays)? | Keep the name | pending |
+| 12 | 03 | Speak the detected variant once after loading? | No | pending |
+| 13 | 03 | Rebuild an open panel when the variant changes? | No | pending |
+| 14 | 04 | Engines window rows: one value per row, or one row per parameter with both engines (braille)? | One value per row | pending |
+| 15 | 08 | First Officer: show cabin-ready as a live value only, or a check that ticks the line? | Live value only | pending |
+| 16 | 08 | Make the takeoff speeds read "not set" below 1 everywhere (`NotSetBelow`)? | Yes | pending |
+| 17 | 04 | Engine running/stopped announcements: in the window, always, or none? | In the window (after check) | pending |
+| 18 | 04 | Oil units; Output O using the Fenix's outside temperature | Decided by plan 04's checks (after check) | pending |
 
 ## Workflow for one plan
 
-1. Fetch `FenixV3` and branch from it (02-09: from the base commit recorded at the bottom of this file):
-   `git switch -c FenixV3-pNN-<slug> <base-sha>` (a hyphen: git cannot hold both `FenixV3` and `FenixV3/...`).
-   Contributors working from a fork branch from the upstream `FenixV3`. An agent works in a worktree inside the repo
+Everyone working on this is a contributor to the repo and pushes straight to `FenixV3`: no pull requests per plan,
+no changelog fragments and no guide edits until plan 10 opens the one pull request for the whole branch.
+
+1. Pull `FenixV3` (02-09: once plan 01's commit, recorded at the bottom of this file, is on it). Work on `FenixV3`
+   itself, or on a local branch you rebase onto it before pushing. An agent works in a worktree inside the repo
    (`.claude/worktrees/fenix-v3-pNN`) so the source-scan tests find the repo root, and removes it when done.
 2. Build the solution once before testing: `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64`.
-3. Work task by task (TDD). Tests: `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64`.
-4. Before opening the pull request: build and full suite green; `git diff --name-only <base-sha>` lists only files you
-   own (plus your own plan file's ticked checkboxes).
-5. Open a pull request **into `FenixV3`, not `main`**:
-   - add the `skip-changelog` label (the changelog fragments are written once, in plan 10's pull request to `main`);
-   - put `User guide: needed: <chapter>` in the description (plan 10 writes the guide; the user-guide-line check
-     accepts this answer);
-   - paste your plan's "Handoff to plan 10" section, filled in: pilot-facing changes, proposed rule lines, handoff
-     requests, in-sim checks still needed;
-   - CI runs the test suite on it like any pull request.
-6. Steps marked owner-in-sim need MSFS 2024 with the Fenix v3; if you don't have it, leave them unticked and list them
-   in the pull request for the owner. Never write to the sim without the owner's go-ahead (reads are fine).
-7. The `FenixV3` maintainer merges the pull request and updates the table above.
+3. Work task by task (TDD), committing as the plan says. Tests: `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64`.
+4. Before every push: `git pull --rebase` onto `FenixV3`, then build and run the full suite yourself and see it green
+   (CI runs only on pull requests and on `main`, so nothing checks a push to `FenixV3` for you). Your commits touch only
+   files your plan owns, plus your own plan file and your row above. Then `git push origin HEAD:FenixV3`. Because
+   plans own separate files, a rebase conflict means someone left their files: stop and sort it out with them.
+5. When your plan is done, fill in its "Handoff to plan 10" section in your plan file (pilot-facing changes, proposed
+   rule lines, handoff requests, the in-sim results and checks still needed), set your row to "done", and push.
+6. Steps marked owner-in-sim need MSFS 2024 with the Fenix v3; if you don't have it, leave them unticked, note them in
+   your handoff section for the owner. Never write to the sim without the owner's go-ahead (reads are fine).
 
 ## Shared conventions
 

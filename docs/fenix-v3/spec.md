@@ -117,8 +117,8 @@ Ordered by value to a blind pilot (my judgement):
    longer sets CABIN READY; the virtual purser does (official changelog), which may matter to FO flows.
 3. **Cabin announcements and boarding music**: `fap { pram { state { prerecordedAnnouncements, bgmChannels, volume } } }`
    with mutations `directPlay`, `playNext`, `stop`, `setBgmOn`, `setBgmChannel`, `setVolume`. Live: 2 announcements
-   ("After Takeoff", "Safety Briefing"), 15 music channels.
-4. **Failures window**: `GET http://127.0.0.1:8083/fenix/failures/manual` returns 549 failures by ATA chapter with
+   ("After Takeoff", "Safety Briefing"), 15 music channels on the A320 loaded first; the channel list is per livery (the IAE A321 Delta livery had one).
+4. **Failures window**: `GET http://127.0.0.1:8083/fenix/failures/manual` returns the failures by ATA chapter (549 on the A320 CFM, 555 on the A321 IAE: the catalog follows the variant) with
    titles and armed state (JSON). Arming is `POST /fenix/failures/saveManual` (not probed; read the EFB's call first).
 5. **Fenix options, spoken or adapted to**: `settings { state { settings { key category value possibleValues writable } } }`
    (146 options). Several can disturb our control paths if a pilot turns them on: `encoder_acceleration_enabled`
