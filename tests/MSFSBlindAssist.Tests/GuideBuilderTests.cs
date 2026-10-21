@@ -10,7 +10,8 @@ namespace MSFSBlindAssist.Tests;
 public class GuideBuilderTests
 {
     private const string Index = "---\ntitle: \"User guide\"\n---\n\nThe site's own preamble, [one page](one-page.html).\n\n" +
-        "## Part 1: Start {#part-1}\n\nPart text with [a link](beta.md#beta-b).\n\n1. [Alpha](alpha.md)\n2. [Beta](beta.md)\n";
+        "## Part 1: Start {#part-1}\n\nPart text with [a link](beta.md#beta-b).\n\n" +
+        "1. [Alpha](alpha.md)\n   - [A](alpha.md#alpha-a)\n2. [Beta](beta.md)\n   - [B](beta.md#beta-b)\n";
 
     private const string Alpha = "---\ntitle: \"Alpha\"\n---\n\n" +
         "<div class=\"guide-part\" markdown=\"1\">\n\nChapter 1 of 2 in [Part 1: Start](index.md#part-1).\n\n</div>\n\n" +
@@ -137,6 +138,68 @@ public class GuideBuilderTests
         Assert.Equal(new[] { "alpha.md", "beta.md" }, part.ChapterFiles);
     }
 
+    [Fact]
+    public void Contents_reads_each_chapters_section_lines_and_keeps_them_out_of_the_intro()
+    {
+        GuidePart part = Assert.Single(GuideContents.Parse(GuideSource.FromFiles(Guide()).Pages["index.md"].Body));
+
+        Assert.Equal(new[] { "   - [A](alpha.md#alpha-a)" }, part.Chapters[0].SectionLines);
+        Assert.Equal(new[] { "   - [B](beta.md#beta-b)" }, part.Chapters[1].SectionLines);
+        Assert.DoesNotContain("alpha-a", part.Intro);
+    }
+
+    private const string AlphaListed = "1. [Alpha](alpha.md)\n   - [A](alpha.md#alpha-a)\n";
+
+    [Theory]
+    [InlineData("1. [Alpha](alpha.md)\n", "\"   - [A](alpha.md#alpha-a)\" is missing")]
+    [InlineData("1. [Alpha](alpha.md)\n   - [A](alpha.md#alpha-a)\n   - [Gone](alpha.md#alpha-gone)\n", "\"   - [Gone](alpha.md#alpha-gone)\" is not one of its sections")]
+    [InlineData("1. [Alpha](alpha.md)\n   - [Old name](alpha.md#alpha-a)\n", "reads \"   - [Old name](alpha.md#alpha-a)\" where it should read \"   - [A](alpha.md#alpha-a)\"")]
+    [InlineData("1. [Alpha](alpha.md)\n  - [A](alpha.md#alpha-a)\n", "where it should read \"   - [A](alpha.md#alpha-a)\"")]
+    public void The_contents_lists_each_chapters_sections_as_its_headings_have_them(string alphaLines, string problem)
+    {
+        IReadOnlyList<string> problems = Check(("index.md", Index.Replace(AlphaListed, alphaLines)));
+
+        Assert.Contains(problems, p => p.StartsWith("index.md:", StringComparison.Ordinal) && p.Contains("under Alpha") && p.Contains(problem)
+            && p.Contains("GuideBuilder -- contents --guide guide"));
+    }
+
+    [Fact]
+    public void A_new_section_in_a_chapter_must_join_the_contents()
+        => Assert.Contains(Check(("beta.md", BetaWith("## C {#beta-c}"))), p => p.StartsWith("index.md:", StringComparison.Ordinal)
+            && p.Contains("under Beta") && p.Contains("\"   - [C](beta.md#beta-c)\" is missing"));
+
+    [Fact]
+    public void Writing_the_sections_rebuilds_each_chapters_list_from_its_headings()
+    {
+        GuideSource source = GuideSource.FromFiles(Guide(("beta.md", BetaWith("## C {#beta-c}\n\n### C one {#beta-c-one}"))));
+        string stale = Index.Replace(AlphaListed, "1. [Alpha](alpha.md)\n   - [Old](alpha.md#alpha-old)\n");
+
+        string written = GuideContents.WithSections(stale, source);
+
+        Assert.Equal(Index.Replace("   - [B](beta.md#beta-b)\n", "   - [B](beta.md#beta-b)\n   - [C](beta.md#beta-c)\n"), written);
+        Assert.Equal(written, GuideContents.WithSections(written, source));
+        Assert.Empty(GuideChecker.Check(GuideSource.FromFiles(Guide(("index.md", written), ("beta.md", BetaWith("## C {#beta-c}\n\n### C one {#beta-c-one}"))))));
+    }
+
+    [Fact]
+    public void Section_lines_are_indented_to_their_chapters_number()
+    {
+        string tenth = Index.Replace(AlphaListed, "10. [Alpha](alpha.md)\n");
+
+        Assert.Contains("10. [Alpha](alpha.md)\n    - [A](alpha.md#alpha-a)\n", GuideContents.WithSections(tenth, GuideSource.FromFiles(Guide())));
+    }
+
+    [Fact]
+    public void Writing_the_sections_reads_crlf_and_escapes_brackets_in_a_heading()
+    {
+        GuideSource source = GuideSource.FromFiles(Guide(("alpha.md", Alpha.Replace("## A {#alpha-a}", "## A [beta] {#alpha-a}"))));
+
+        string written = GuideContents.WithSections(Index.Replace("\n", "\r\n"), source);
+
+        Assert.Contains("1. [Alpha](alpha.md)\n   - [A \\[beta\\]](alpha.md#alpha-a)\n", written);
+        Assert.DoesNotContain("\r", written);
+    }
+
     [Theory]
     [InlineData("[B](beta.md#beta-b)", "[B](#beta-b)")]
     [InlineData("[Beta](beta.md)", "[Beta](#beta)")]
@@ -161,8 +224,18 @@ public class GuideBuilderTests
         Assert.Contains("<h4 id=\"alpha-a\">A</h4>", html);
         Assert.Contains("<h5 id=\"alpha-a-one\">A one</h5>", html);
         Assert.Contains("<h3 id=\"beta\">Beta</h3>", html);
-        Assert.Contains("<li><a href=\"#alpha\">Alpha</a></li>", html);
+        Assert.Contains("<li><a href=\"#alpha\">Alpha</a>", html);
         Assert.Contains("<html lang=\"en\">", html);
+    }
+
+    [Fact]
+    public void The_one_page_contents_lists_each_chapters_sections_and_the_body_does_not_repeat_them()
+    {
+        string html = OnePageBuilder.Build(GuideSource.FromFiles(Guide()), GuideEdition.Local, null).Html!;
+
+        Assert.Contains("<li><a href=\"#alpha\">Alpha</a>\n<ul>\n<li><a href=\"#alpha-a\">A</a></li>\n</ul>\n</li>", html);
+        Assert.Contains("<li><a href=\"#beta-b\">B</a></li>", html);
+        Assert.Contains("Part text with <a href=\"#beta-b\">a link</a>.</p>\n<h3 id=\"alpha\">", html);
     }
 
     [Fact]

@@ -17,11 +17,16 @@ History: the guide was written by the community as one long HTML page, published
 - **The section pattern.** Feature sections share the sub-headings "What it is", "When to use it", "How to use it", "What you will hear", "Settings" and "If something goes wrong". Follow it, so a pilot who knows the pattern can jump straight to the part they want.
 - **Callouts and tables.** A callout is `<div class="callout note" role="note" markdown="1">` (or `tip`, `warning`), a blank line, the Markdown starting with `**Note:**`, a blank line, `</div>`. A table sits inside `<div class="table-wrap" markdown="1">`, with blank lines inside, and gets a sentence before it saying what it lists.
 - **Site navigation blocks.** Each chapter opens with a `<div class="guide-part" markdown="1">` line ("Chapter 2 of 4 in Part 4") and an "In this chapter" `<nav class="chapter-toc">` list, and ends with a `<nav class="guide-nav">` list of the previous chapter, the next one and the contents. Keep them up to date when you add, remove or reorder a section or chapter. The one-page guide leaves all three out.
-- **A new chapter.** Add the file, list it in `index.md` under its part as a numbered `[Title](page.md)` line (that list sets the one-page guide's order, and the checker fails a chapter it does not list), and update the neighboring chapters' part lines and previous and next links.
+- **A new chapter.** Add the file, list it in `index.md` under its part as a numbered `[Title](page.md)` line (that list sets the one-page guide's order, and the checker fails a chapter it does not list), run the contents command below to list its sections, and update the neighboring chapters' part lines and previous and next links.
+- **The contents' section lists.** Under each chapter's numbered line, `index.md` lists that chapter's `##` sections, one indented `- [Heading](page.md#id)` line each, and the one-page guide's contents lists them the same way. Never write those lines by hand: after you add, rename, remove or reorder a section, run `dotnet run --project tools/GuideBuilder -- contents --guide guide`, which rewrites every list from the chapters' headings. The checker fails a list that differs, and says which line.
 - **Wording.** Write for a pilot, in US English. Name keys as the guide already does ("Output Shift+D", "Input Shift+R"). Quote what BA says in italics, as it says it. Keep the cockpit's own words as the display shows them.
 - **What is in the guide on `main`.** It describes `main`, preview features included: the website's released edition comes from the newest release, so nothing needs marking as "preview only".
 
-To check your change locally, run the checker, then build the one-page guide and open it in a browser with your screen reader:
+To check your change locally, bring the contents' section lists up to date, run the checker, then build the one-page guide and open it in a browser with your screen reader:
+
+```bash
+dotnet run --project tools/GuideBuilder -- contents --guide guide
+```
 
 ```bash
 dotnet run --project tools/GuideBuilder -- check --guide guide
@@ -52,7 +57,7 @@ After the build, release.yml and preview.yml run `tools/user-guide-publish.sh bu
 
 | Check | Where | What it does |
 |---|---|---|
-| `GuideBuilderTests` | xUnit suite, every PR (`tests.yml`) | Runs the checker and the one-page build over the real `guide/`: contents, ids, heading levels, links, no Liquid, image alt text. |
+| `GuideBuilderTests` | xUnit suite, every PR (`tests.yml`) | Runs the checker and the one-page build over the real `guide/`: contents and their section lists, ids, heading levels, links, no Liquid, image alt text. |
 | User guide build | `.github/workflows/user-guide-build.yml`, PRs touching `guide/` or the tool | Builds the website with the PR's guide as both editions, checks every link in the result, uploads it as the `built-guide` artifact. |
 | User guide line | `.github/workflows/user-guide-line.yml`, every PR, advisory | When a PR adds a feature, aircraft or improvement fragment or changes a hotkey guide, it passes if the PR changes `guide/` or its description has `User guide: needed: …` or `User guide: none, because …` (CORE-19). |
 | The website's build | the site repo's `pages.yml` | Checks every link in the built guide; on the site's own pull requests a broken link fails the build. |

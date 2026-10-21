@@ -4,7 +4,7 @@ namespace GuideBuilder;
 
 /// <summary>
 /// Checks the guide/ folder against the rules the site, GitHub's file view and the one-page build rely on (GUIDE-1,
-/// GUIDE-2): every chapter is in the contents; every heading carries an explicit, guide-wide unique {#id} and no
+/// GUIDE-2): every chapter is in the contents, with its sections listed under it; every heading carries an explicit, guide-wide unique {#id} and no
 /// level is skipped; links between pages are plain relative "page.md#id" links that resolve; no Liquid; images have
 /// alt text. Each problem names its file and line.
 /// </summary>
@@ -80,6 +80,43 @@ public static class GuideChecker
         {
             problems.Add($"{file}: is not in {GuideSource.ContentsFile}'s numbered chapter lists, so the one-page guide would leave it out.");
         }
+
+        foreach (GuideContentsChapter chapter in parts.SelectMany(p => p.Chapters))
+        {
+            if (!source.Pages.TryGetValue(chapter.File, out GuidePage? page)) continue;
+            string? difference = SectionDifference(chapter.SectionLines, GuideContents.SectionLines(page, chapter.Indent));
+            if (difference is not null)
+            {
+                problems.Add($"{GuideSource.ContentsFile}:{chapter.Line}: the sections listed under {page.Title} ({chapter.File}) do not match its ## headings: "
+                    + $"{difference}. Run `dotnet run --project tools/GuideBuilder -- contents --guide guide` to rewrite every chapter's section list.");
+            }
+        }
+    }
+
+    /// <summary>The first way a chapter's section lines in the contents differ from what its headings give, or null.</summary>
+    private static string? SectionDifference(IReadOnlyList<string> listed, IReadOnlyList<string> expected)
+    {
+        for (int i = 0; i < Math.Max(listed.Count, expected.Count); i++)
+        {
+            string? found = i < listed.Count ? listed[i] : null;
+            string? wanted = i < expected.Count ? expected[i] : null;
+            if (found == wanted) continue;
+
+            // A heading added or removed shows as a missing or surplus line, not as every later line out of place.
+            if (found is null || (wanted is not null && !listed.Contains(wanted) && expected.Contains(found)))
+            {
+                return $"\"{wanted}\" is missing";
+            }
+
+            if (wanted is null || (!expected.Contains(found) && listed.Contains(wanted)))
+            {
+                return $"\"{found}\" is not one of its sections";
+            }
+
+            return $"it reads \"{found}\" where it should read \"{wanted}\"";
+        }
+
+        return null;
     }
 
     private static void CheckPage(GuidePage page, Dictionary<string, string> owners, List<string> problems)
