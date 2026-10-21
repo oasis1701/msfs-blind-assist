@@ -1,4 +1,6 @@
-# Fenix Cabin (FAP) Window Implementation Plan (plan 05)
+# Fenix Cabin (FAP) Window Implementation Plan (plan 07)
+
+**Claimed by:** nobody yet · **Status:** not started
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -19,7 +21,7 @@ The plan implements the recommendation in each row unless the owner says otherwi
 | D1 | Which FAP pages | Cabin Status, Cabin Ready, Lights (folded into the Status tab), Audio, Doors / Slides, Temperature, Water / Waste, and the FAP's cautions as lines. Leave out Smoke Detection, Seat Setting, Cabin Programming and Layout Selection (FAP-local screens: the FAP's data-name table has no smoke, seat or programming name and no write behind them), System Info (part numbers the FAP generates from the MSN, plus two fixed "SYSTEM OK" / "DRAINMAST OK" lines), and FAP Set-Up's screen brightness (`aircraft.communication.cids.fap.brightness`; no use to a blind pilot). **Decided by the owner, 2026-10-21 (index answer 20): FAP Set-Up's loudspeaker volume IS included** (`aircraft.communication.cids.fap.speakerVolume`, writeFloat percent/100; Task 3 and Task 8) | — |
 | D2 | Open and close passenger and cargo doors from the Doors tab (the EFB Ground Services writes, not a FAP function) | Include (Task 9, Step 3) | Doors tab read-only; doors stay in the EFB window |
 | D3 | Door names on the A319/A320 aft doors | The FAP's own numbering: "Door 4 left" (data name `d4l`); the EFB calls the same door "2 left" | The EFB's "2 left" |
-| D4 | "Cabin ready" speech | App-wide, once on each not-ready to ready change, always on, no setting | Also speak "Cabin not ready" on the falling edge; or a setting (plan 10, settings files) |
+| D4 | "Cabin ready" speech | App-wide, once on each not-ready to ready change, always on, no setting | Also speak "Cabin not ready" on the falling edge; or a setting (plan 11, settings files) |
 | D5 | The FAP's CABIN READY button in our window | Include as a checkbox; while the Fenix says it is not available (the FAP greys it), pressing it speaks "Cabin ready is not available yet." and writes nothing | Read-only line only |
 | D6 | Announcement set selector (`announcementsVariant`, 0 to `maxVariant`) | Shown only when `maxVariant` > 0 (0 on the A321 today) | Never shown |
 | D7 | FAP cautions (water, waste, lavatory, door pressure) | Shown as lines in the Status, Doors and Water tabs; never spoken in the background | Speak new cautions app-wide |
@@ -311,21 +313,21 @@ The logic is tested in Tasks 2, 4 and 5; this task wires it, and Task 7's scans 
 
 - [ ] **Step 1: Full suite and build green;** `git diff --name-only <base-sha>` lists only this plan's files.
 - [ ] **Step 2: Hand the owner the in-sim checks** (Handoff section, in this order; each is reversible). The writes are unverified until the owner runs them; record each result (heard phrase, value read back) in this plan's handoff section.
-- [ ] **Step 3: Push to `FenixV3`** (index workflow, step 4) with the handoff section filled in, and set this plan's row to "done".
+- [ ] **Step 3: Push to `FenixV3`** (index workflow, step 4) with the handoff section filled in, and set the **Status** line at the top of this file to "done".
 
-## Handoff to plan 10
+## Handoff to plan 11
 
 **Pilot-facing changes**
 - Fenix: input mode (`[`), Ctrl+Shift+F, "Cabin": a Cabin window with five tabs. Status (cabin ready, cabin lights, music, doors, slides, cargo doors, temperatures, water and waste, cautions; a Cabin ready checkbox; a cabin lights choice of Bright, Dim 1, Dim 2, Off), Audio (boarding music on or off, channel, volume; prerecorded announcements: play now, memo, play next, play all, stop), Doors (each door with its slide and pressure warnings; open or close a door or cargo door at the gate), Temperature (forward and aft zone, warmer, cooler, reset to the cockpit temperatures), Water (water, preselect, waste, service panels, lavatories, cautions).
 - Anywhere in the app with the Fenix loaded: "Cabin ready" is spoken once when the cabin reports ready. In v3 the virtual purser reports it, not the cockpit cabin call (`docs/fenix-v3/evidence/web-research.md`).
 - Guide: the Fenix chapter gets a "Cabin window" section; changelog category `feature`.
 
-**Handoff requests** (none touch the Fenix definition: the monitor starts and stops through plan 01's `StartCabinBackground`/`StopCabinBackground`, implemented in plan 05's own `MSFSBlindAssist/Aircraft/FenixA320Definition.Cabin.cs`; plan 01's `fenix-data.md` globs already cover every plan 05 file)
-1. Plan 08 (First Officer): the app-wide "Cabin ready" belongs to plan 05. The First Officer may show cabin ready as a live checklist value (`aircraft.communication.cids.cabinReady`, `FenixCabinNames.CabinReady` once merged) but must never speak it; `Only_the_monitor_speaks_cabin_ready` fails if any other Fenix file (`**/Fenix*.cs`, `Forms/Fenix/**`, `FirstOfficer/Fenix/**`) holds the string literal `"Cabin ready"`. Live settings 2026-10-21: `cabin_ready_call_enabled` True, `cabin_ready_fwc_type` Checklist.
+**Handoff requests** (none touch the Fenix definition: the monitor starts and stops through plan 01's `StartCabinBackground`/`StopCabinBackground`, implemented in plan 07's own `MSFSBlindAssist/Aircraft/FenixA320Definition.Cabin.cs`; plan 01's `fenix-data.md` globs already cover every plan 07 file)
+1. Plan 04 (First Officer): the app-wide "Cabin ready" belongs to plan 07. The First Officer may show cabin ready as a live checklist value (`aircraft.communication.cids.cabinReady`, `FenixCabinNames.CabinReady` once merged) but must never speak it; `Only_the_monitor_speaks_cabin_ready` fails if any other Fenix file (`**/Fenix*.cs`, `Forms/Fenix/**`, `FirstOfficer/Fenix/**`) holds the string literal `"Cabin ready"`. Live settings 2026-10-21: `cabin_ready_call_enabled` True, `cabin_ready_fwc_type` Checklist.
 2. Spec 4.3 says "15 music channels"; the IAE A321 Delta livery had one ("Boarding Music") on 2026-10-21. Reword to "a per-livery channel list".
-3. For plan 01 / 10: the EFB's own engine enum is `CFM=0, IAE=1, LEAP=2, GTF=3` (EFB chunk 964, offset 30793). It is the order plan 01 assumes for `N_CONFIG_ENGINETYPE` 2 and 3, but it is the EFB's enum, not a reading of that L:var.
+3. For plan 01 / 11: the EFB's own engine enum is `CFM=0, IAE=1, LEAP=2, GTF=3` (EFB chunk 964, offset 30793). It is the order plan 01 assumes for `N_CONFIG_ENGINETYPE` 2 and 3, but it is the EFB's enum, not a reading of that L:var.
 
-**Proposed rule lines** (`.claude/rules/fenix-data.md`; plan 10 numbers them)
+**Proposed rule lines** (`.claude/rules/fenix-data.md`; plan 11 numbers them)
 - `- [FNX-?] Every Fenix cabin write comes from the FAP/EFB bundles and is built only by `FenixCabinWrites` (name, kind, value) or `FenixCabinPram` (the bundle's mutation text verbatim, its `success` checked); never guess a name or shape, and never write `doors.control.*` 0 (Armed), which the EFB never writes. Full: docs/invariants/fenix-data.md#fnx-?`
 - `- [FNX-?] "Cabin ready" is spoken app-wide by `FenixCabinReadyMonitor` alone: once per known false-to-true change of `aircraft.communication.cids.cabinReady` after a silent baseline, unknown values ignored; the Cabin window and the First Officer never speak it (v3: the virtual purser sets it, not the cockpit cabin call). Full: docs/invariants/fenix-data.md#fnx-?`
 - `- [FNX-?] The Cabin window lists and controls only the doors, slides and lavatories `FenixCabinLayout.Resolve` gives (Fenix settings `emergency_exits_type`/`aircraft_variant` first, then `FenixVariant.Type`): the data service answers for doors an airframe lacks (the A321 reads overwing slides armed). Full: docs/invariants/fenix-data.md#fnx-?`

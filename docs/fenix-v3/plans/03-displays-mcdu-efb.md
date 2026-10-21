@@ -1,4 +1,6 @@
-# Fenix v3 Displays, MCDU and EFB Window Implementation Plan (plan 09)
+# Fenix v3 Displays, MCDU and EFB Window Implementation Plan (plan 03)
+
+**Claimed by:** nobody yet · **Status:** not started
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -83,7 +85,7 @@ Answered by the owner on 2026-10-21; the plan follows the answers.
 
 **Interfaces:**
 - Consumes: Task 1's measured indices.
-- Produces: `public const int FirstOfficerPanelView = 9;` and `public const int CenterPanelView = 8;` (Task 1's values; no `CaptainPanelView`), `public static readonly IReadOnlyList<AiDisplayRead> All` (the variant-unknown table; `FenixA320Definition.DisplayReads` keeps using it until plan 10 wires `For`). Alt+P on `FirstOfficerPanelView`; Alt+N, E, S, I on `CenterPanelView`. `NDFenix` and its prompt are unchanged.
+- Produces: `public const int FirstOfficerPanelView = 9;` and `public const int CenterPanelView = 8;` (Task 1's values; no `CaptainPanelView`), `public static readonly IReadOnlyList<AiDisplayRead> All` (the variant-unknown table; `FenixA320Definition.DisplayReads` keeps using it until plan 11 wires `For`). Alt+P on `FirstOfficerPanelView`; Alt+N, E, S, I on `CenterPanelView`. `NDFenix` and its prompt are unchanged.
 
 - [ ] **Step 1: Update the tests first.** In `FenixA320DisplayReadsTests`, change only view numbers and comments:
   - `EachRead_HasItsPromptNameAndView` rows become `(ReadDisplayPFD, PFD, "PFD", 9)`, `(ReadDisplayND, NDFenix, "ND", 8)`, `(ReadDisplayUpperECAM, UpperECAM, "E/WD", 8)`, `(ReadDisplayLowerECAM, LowerECAM, "SD", 8)`, `(ReadDisplayISIS, StandbyFenix, "Standby instruments", 8)`.
@@ -104,7 +106,7 @@ Answered by the owner on 2026-10-21; the plan follows the answers.
 
 **Interfaces:**
 - Consumes (plan 01, `Aircraft/FenixVariant.cs`): `FenixVariant` (positional record, `bool? HasIsis`), `FenixVariant.Unknown`, `FenixVariant.With(string configVar, double value)`, `FenixConfigVars.Standby` (`"B_CONFIG_STDBY"`; 0 maps to `HasIsis == true`).
-- Produces: `GeminiService.DisplayType.StandbyFenixIsis`, `GeminiService.DisplayType.StandbyFenixAnalogue`; `public static IReadOnlyList<AiDisplayRead> For(FenixVariant variant)` on `FenixA320DisplayReads`: `HasIsis` true → the ISIS table, false → the round-gauge table, null → `All` (same instance). The three tables are static and differ only in the standby row's `DisplayType`. Plan 10 wires it (handoff 1).
+- Produces: `GeminiService.DisplayType.StandbyFenixIsis`, `GeminiService.DisplayType.StandbyFenixAnalogue`; `public static IReadOnlyList<AiDisplayRead> For(FenixVariant variant)` on `FenixA320DisplayReads`: `HasIsis` true → the ISIS table, false → the round-gauge table, null → `All` (same instance). The three tables are static and differ only in the standby row's `DisplayType`. Plan 11 wires it (handoff 1).
 
 - [ ] **Step 1: Write the failing tests** in `FenixA320DisplayReadsStandbyTests`:
   - `An_isis_livery_reads_the_isis`: `For(FenixVariant.Unknown.With(FenixConfigVars.Standby, 0))`'s `ReadDisplayISIS` row has `DisplayType.StandbyFenixIsis`.
@@ -193,12 +195,12 @@ Build from this branch. The Fenix loaded on the ground, displays powered, a norm
 1. **First officer's PFD.** Press Alt+P. Hear "Capturing PFD...", then "PFD analysis ready."; the result reads a whole PFD: airspeed, altitude, the FMA and a baro setting (not a clipped edge). No "Could not return to your previous view.".
 2. **Captain's ND, centre view.** Set the captain's EFIS to ARC, range 20, and the first officer's to ROSE NAV, range 40 (panel or Fenix). Press Alt+N. The result's first line has ARC and 20; ROSE or 40 means it read the wrong ND.
 3. **Centre view.** Press Alt+E, then Alt+S. E/WD: N1 for both engines and the flap setting; SD: a page name.
-4. **Standby.** Press Alt+I on the ISIS A321: the result reads one digital screen (airspeed, altitude, baro). With plan 10's wiring in place, also load a round-gauge livery (the CFM A320 house livery read `standby_type` Analogue) and read `B_CONFIG_STDBY` there first (plan 01 maps only 0 today): Alt+I describes three round gauges.
+4. **Standby.** Press Alt+I on the ISIS A321: the result reads one digital screen (airspeed, altitude, baro). With plan 11's wiring in place, also load a round-gauge livery (the CFM A320 house livery read `standby_type` Analogue) and read `B_CONFIG_STDBY` there first (plan 01 maps only 0 today): Alt+I describes three round gauges.
 5. **EFB keyboard.** Input mode (`[`) then Shift+T. Tab moves through the EFB and focus stays put after 5 s idle. Open Documents, find an ECAM procedure (for example ENG 1 BLEED STATUS FAULT - IN FLIGHT) and read it in browse mode; say whether headings and checklist items are usable.
 6. **EFB message.** Before the Fenix has loaded (main menu), `[` Shift+T: hear "Fenix EFB is not reachable at http://127.0.0.1:8083. Make sure the Fenix A320 is fully loaded, then press Retry."; Shift+Tab from Retry reaches the message.
 7. **MCDU typing.** `[` Shift+M, Alt+S, type AAB1, Enter: the scratchpad is announced as "AAB1". Doubled letters mean v3 counts our 0 write as a press: report it (the fix then is writing 1 only, at `Services/FenixMCDUService.cs:243-252`). Backspace clears it.
 
-## Handoff to plan 10
+## Handoff to plan 11
 
 **Pilot-facing changes** (guide, hotkey guide, changelog `fix`):
 - Alt+P, N, E, S and I frame the right displays again on Fenix v3 (Fenix restored a camera, which renumbered the views); they read the same displays as before: Alt+P the first officer's PFD, Alt+N the captain's ND. Fenix 2.x is no longer supported for these reads (Owner decision 1).
@@ -224,4 +226,4 @@ Build from this branch. The Fenix loaded on the ground, displays powered, a norm
 
 **Follow-ups (not planned):** an accessible "Fenix documents" window built on `GET /fenix/documents`, `/documents/search?q=…&limit=10` and `/documents/content/<path>` through plan 01's `GetRestAsync` (ECAM procedure lookup by alert title; never `OpenDocumentsFolder`), worth doing if check 5 finds the EFB's Documents app hard to use; if the owner revisits decisions 2-3, v3's index 7 frames the captain's PFD and ND (Task 1 records what it holds).
 
-**In-sim checks still needed after merge:** check 4's round-gauge half (needs handoffs 1 and 5); checks 1-3 again if plan 10 changes `ReadDisplay` or the camera code.
+**In-sim checks still needed after merge:** check 4's round-gauge half (needs handoffs 1 and 5); checks 1-3 again if plan 11 changes `ReadDisplay` or the camera code.

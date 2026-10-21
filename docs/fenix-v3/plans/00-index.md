@@ -3,7 +3,7 @@
 **Spec:** `docs/fenix-v3/spec.md` (the investigation findings; read it first, every plan argues from it).
 **Branch:** `FenixV3`, cut from `main`. All plans land on this one branch; one pull request at the end.
 **Where these documents live:** `docs/fenix-v3/` on the `FenixV3` branch, so anyone who checks out the branch has
-the spec, the plans and the evidence. Plan 10 deletes the folder before the pull request merges (as PR #160 did with
+the spec, the plans and the evidence. Plan 11 deletes the folder before the pull request merges (as PR #160 did with
 its test plans). Plans refer to files by repo-relative path only.
 
 Each plan is written so a different person can pick it up alone: it names every file it touches, the interfaces it
@@ -11,77 +11,70 @@ uses from plan 01, the tests that prove it, and the in-sim checks only the owner
 
 ## The plans
 
+Numbered in the recommended order: the foundation, then fixes to what exists, then the new windows, then integration.
+Plans 02-10 can run at the same time once plan 01 has landed; the order only says what to pick first.
+
 | # | Plan | Covers (spec section) | Depends on | Runs |
 |---|---|---|---|---|
 | 01 | `01-foundation.md` | Partial-class seams, shared data-service client, variant detection, "Fenix windows" list + hotkey, rule file | none | FIRST, alone |
-| 02 | `02-v3-fixes.md` | What v3 broke and the older definition bugs: renames, gravity gear, AUTOLAND, Generator 1, hidden ELAC/SEC/FAC panel, dead FenixQuartz definitions, the TO CONFIG check (panel AND First Officer) (1, 2) | 01 | parallel |
-| 03 | `03-variants.md` | Panel controls and visibility per variant: A321 ECON FLOW / CALLS MID+EXIT, ACT PUMP, IAE N1 MODE lights, ADIRS vs GNADIRS, DCDU, standby (3) | 01 | parallel |
-| 04 | `04-engine-data.md` | "Engines" window from the Fenix's own values (4.1) | 01 | parallel |
-| 05 | `05-cabin-fap.md` | Accessible FAP / cabin window, announcements, boarding music, cabin-ready (4.2, 4.3) | 01 | parallel |
-| 06 | `06-failures.md` | Accessible failures window (4.4) | 01 | parallel |
-| 07 | `07-fenix-options.md` | Fenix options readout; the options that disturb our controls (4.5) | 01 | parallel |
-| 08 | `08-first-officer.md` | Everything the First Officer needs for v3: takeoff speeds, engine running from the Fenix's own N2 (IAE), variant-aware flows (A321, IAE, ACT), the cabin-ready change, renamed names (2.1, 3, 4.1, 4.2) | 01 | parallel |
-| 09 | `09-displays-mcdu-efb.md` | AI display reads and camera views against v3's cameras, ISIS vs analogue standby, the MCDU window against v3's screen text, the EFB window's page target | 01 | parallel |
-| 11 | `11-documents.md` | Accessible "Fenix documents" window: search and read the EFB's ECAM procedures, QRH and user guide; open the pinned ECAM procedure (owner principle; the EFB's Documents app is not keyboard usable) | 01 | parallel |
-| 10 | `10-integration.md` | Merge, handoff requests, guide, hotkey list, docs, rules, changelog, in-sim checks, PR, delete `docs/fenix-v3/` | 02-09, 11 | LAST, alone |
+| 02 | `02-v3-fixes.md` | What v3 broke and the older definition bugs: renames, gravity gear, AUTOLAND, Generator 1, hidden ELAC/SEC/FAC panel, dead FenixQuartz definitions, the TO CONFIG check (panel AND First Officer), take-off speed calls, FCU V/S while dashed (1, 2) | 01 | parallel |
+| 03 | `03-displays-mcdu-efb.md` | AI display reads and camera views against v3's cameras, ISIS vs analogue standby, the MCDU window against v3's screen text, the EFB window's page target | 01 | parallel |
+| 04 | `04-first-officer.md` | Everything the First Officer needs for v3: takeoff speeds, engine running from the Fenix's own N2 (IAE), variant-aware flows (A321, IAE, ACT), the cabin-ready change, renamed names (2.1, 3, 4.1, 4.2) | 01 | parallel |
+| 05 | `05-variants.md` | Panel controls and visibility per variant: A321 ECON FLOW / CALLS MID+EXIT, ACT PUMP, IAE N1 MODE lights, ADIRS vs GNADIRS, DCDU, standby, aft cargo heat; plus the headset, the Clock panel, the ISIS baro push and the aft cargo temperature knob (3, 4.8) | 01 | parallel |
+| 06 | `06-documents.md` | Accessible "Fenix documents" window: search and read the EFB's ECAM procedures, QRH and user guide; open the pinned ECAM procedure (owner principle; the EFB's Documents app is not keyboard usable) | 01 | parallel |
+| 07 | `07-cabin-fap.md` | Accessible FAP / cabin window, announcements, boarding music, cabin-ready (4.2, 4.3) | 01 | parallel |
+| 08 | `08-engine-data.md` | "Engines" window from the Fenix's own values (4.1) | 01 | parallel |
+| 09 | `09-failures.md` | Accessible failures window (4.4) | 01 | parallel |
+| 10 | `10-fenix-options.md` | Fenix options readout and changes; the options that disturb our controls (4.5) | 01 | parallel |
+| 11 | `11-integration.md` | Merge, handoff requests, guide, hotkey list, docs, rules, changelog, in-sim checks, PR, delete `docs/fenix-v3/` | 02-10 | LAST, alone |
 
-Not planned now (spec 4.6 datalink, 4.7 extras): plan 10 records them as follow-ups. Spec section 5 (asking Fenix
+Not planned now (spec 4.6 datalink, 4.7 extras): plan 11 records them as follow-ups. Spec section 5 (asking Fenix
 to publish ECAM/DCDU text) is dropped by the owner (2026-10-21): no letter.
 
-## File ownership (the contract that keeps overlap near zero)
+## File ownership (the contract that keeps overlap at zero)
 
 Work only in the files your plan owns. A change you need in a file you don't own goes in your plan's
-"Handoff to plan 10" section (file, change, why); plan 10 applies it after the merges.
+"Handoff to plan 11" section (file, change, why); plan 11 applies it after the merges. No file is owned by two of
+plans 02-10.
 
 | File or pattern | Owner | Notes |
 |---|---|---|
 | `MSFSBlindAssist/Aircraft/FenixA320Definition.cs` | 01 (seams only), then **02** | |
 | `MSFSBlindAssist/Aircraft/FenixA320Definition.Hooks.cs`, `Aircraft/FenixVariant.cs` | 01 | Frozen after 01 |
-| `MSFSBlindAssist/Aircraft/FenixA320Definition.Variants.cs` | 03 | Implements 01's panel/variant seams |
-| `MSFSBlindAssist/Aircraft/FenixA320Definition.Cabin.cs` | 05 | Implements 01's cabin background seams |
-| `MSFSBlindAssist/Aircraft/FenixA320Definition.Engines.cs` | 04 | Only if the owner wants engine announcements outside the Engines window |
-| `MSFSBlindAssist/Aircraft/FenixA320DisplayReads.cs` | 09 | |
+| `MSFSBlindAssist/Aircraft/FenixA320Definition.Variants.cs` | 05 | Implements 01's panel, display and variant seams |
+| `MSFSBlindAssist/Aircraft/FenixA320Definition.Documents.cs` | 06 | Implements 01's documents background seams (only if D1 is (b)) |
+| `MSFSBlindAssist/Aircraft/FenixA320Definition.Cabin.cs` | 07 | Implements 01's cabin background seams |
+| `MSFSBlindAssist/Aircraft/FenixA320Definition.Engines.cs` | 08 | Only if the owner wants engine announcements outside the Engines window |
+| `MSFSBlindAssist/Aircraft/FenixA320DisplayReads.cs` | 03 | |
 | `MSFSBlindAssist/Services/FenixData*.cs` | 01 | Frozen after 01 |
-| `MSFSBlindAssist/Services/FenixMCDUService.cs`, `Services/FenixMcdu*.cs`, `Forms/FenixA320/FenixMCDUForm*.cs`, `Forms/Fenix/FenixEFBForm.cs` | 09 | |
+| `MSFSBlindAssist/Services/FenixMCDUService.cs`, `Services/FenixMcdu*.cs`, `Forms/FenixA320/FenixMCDUForm*.cs`, `Forms/Fenix/FenixEFBForm.cs` | 03 | |
 | `Forms/Fenix/FenixWindowsForm.cs`, `Forms/Fenix/FenixWindowRegistry.cs` | 01 | Frozen after 01 |
-| `Forms/Fenix/FenixWindowRegistry.Engines.cs`, `Forms/Fenix/FenixEngines*.cs`, `Services/FenixEngine*.cs` | 04 | |
-| `Forms/Fenix/FenixWindowRegistry.Cabin.cs`, `Forms/Fenix/FenixCabin*.cs`, `Services/FenixCabin*.cs` | 05 | |
-| `Forms/Fenix/FenixWindowRegistry.Failures.cs`, `Forms/Fenix/FenixFailures*.cs`, `Services/FenixFailure*.cs` | 06 | |
-| `Forms/Fenix/FenixWindowRegistry.Options.cs`, `Forms/Fenix/FenixOptions*.cs`, `Services/FenixOption*.cs` | 07 | |
-| `Forms/Fenix/FenixWindowRegistry.Documents.cs`, `Forms/Fenix/FenixDocuments*.cs`, `Services/FenixDocument*.cs` | 11 | |
+| `Forms/Fenix/FenixWindowRegistry.Documents.cs`, `Forms/Fenix/FenixDocuments*.cs`, `Services/FenixDocument*.cs` | 06 | |
+| `Forms/Fenix/FenixWindowRegistry.Cabin.cs`, `Forms/Fenix/FenixCabin*.cs`, `Services/FenixCabin*.cs` | 07 | |
+| `Forms/Fenix/FenixWindowRegistry.Engines.cs`, `Forms/Fenix/FenixEngines*.cs`, `Services/FenixEngine*.cs` | 08 | |
+| `Forms/Fenix/FenixWindowRegistry.Failures.cs`, `Forms/Fenix/FenixFailures*.cs`, `Services/FenixFailure*.cs` | 09 | |
+| `Forms/Fenix/FenixWindowRegistry.Options.cs`, `Forms/Fenix/FenixOptions*.cs`, `Services/FenixOption*.cs` | 10 | |
 | `MSFSBlindAssist/Aircraft/FenixA320GravityGear.cs`, `MSFSBlindAssist/Aircraft/FenixTakeoffCallouts.cs` (new) | 02 | |
 | `Services/TakeoffAssistManager.cs` (its Fenix V-speed code only) and the Fenix V-speed block of `MainForm.Hotkeys.cs` | 02 | Removed when the Fenix moves to the shared take-off calls (plan 02 Task 9); plan 01 edits `MainForm.Hotkeys.cs` first, so the two are sequential |
-| `FirstOfficer/Fenix/FenixTakeoffConfigVerdict.cs`, `tests/.../FirstOfficer/FenixTakeoffConfigVerdictTests.cs` | 02 | The TO CONFIG check is one feature across panel and First Officer; plan 08 leaves both alone |
-| `FirstOfficer/Fenix/FenixActionExecutor.cs` | **08, except** the `TakeoffConfigTest` and `AnnounceTakeoffConfigResult` members, which **02** owns | The one controlled overlap: two named members. Neither plan edits the other's lines; the second to merge resolves |
-| Every other `FirstOfficer/Fenix/*.cs` | 08 | |
+| `FirstOfficer/Fenix/FenixTakeoffConfigVerdict.cs`, `FirstOfficer/Fenix/FenixActionExecutor.cs`, `tests/.../FirstOfficer/FenixTakeoffConfigVerdictTests.cs` | 02 | The TO CONFIG check is one feature across panel and First Officer; plan 04 leaves these files alone |
+| Every other `FirstOfficer/Fenix/*.cs` | 04 | |
 | `Settings/SettingsManager.cs` (the `FNX2PLD_clock*` seed lines only) | 02 | |
 | `MSFSBlindAssist/Hotkeys/HotkeyManager.cs`, `MainForm.Hotkeys.cs` | 01 | No other plan adds a hotkey; windows open from the "Fenix windows" list |
-| `GeminiService.cs` (the `NDFenix` / `StandbyFenix` prompt entries, and the two new Fenix standby `DisplayType` members plan 09 adds beside them) | 09 | |
-| `tests/MSFSBlindAssist.Tests/Fixtures/fenix-failures-manual-ch21.json` (new; first ATA chapter only, never the full catalog) | 06 | |
-| `MainForm*.cs` (other partials), `BaseAircraftDefinition.cs`, `IAircraftDefinition.cs`, `Forms/FirstOfficer/**`, shared FO classes outside `FirstOfficer/Fenix/` | nobody before 10 | Handoff requests only |
-| `MSFSBlindAssist/HotkeyGuides/Fenix_A320_Hotkeys.txt` | 01 (its one line), then 10 | |
-| `guide/**`, `changelog.d/**`, `docs/*.md`, `docs/invariants/**`, `CLAUDE.md`, `.claude/rules/**` | 01 (its rule file and CLAUDE.md row), then 10 | Plans list pilot-facing notes and proposed rule lines in their handoff section |
-| `docs/fenix-v3/**` | the plan's own file, and its own row of the claim table in `00-index.md`; 10 deletes the folder | A worker may tick its own plan's checkboxes |
-| Tests | each plan its NEW test files named for its feature (`*FenixData*`, `*FenixWindow*`, `*FenixVariant*` → 01; `*FenixV3Fix*`, `*FenixTakeoffConfig*`, `SettingsSeedTests.cs` → 02; `*FenixVariantControls*` → 03; `*FenixEngine*` → 04; `*FenixCabin*` → 05; `*FenixFailure*` → 06; `*FenixOption*` → 07; `tests/.../FirstOfficer/Fenix*.cs`, `A320FamilyParityTests.cs` → 08; `*FenixA320DisplayReads*`, `*FenixMcdu*`, `*FenixEfb*` → 09; `*FenixDocument*` → 11) | Test names must match a rule glob (a32nx-fenix.md covers `**/*Fenix*.cs`) |
+| `GeminiService.cs` (the `NDFenix` / `StandbyFenix` prompt entries, and the two new Fenix standby `DisplayType` members plan 03 adds beside them) | 03 | |
+| `tests/MSFSBlindAssist.Tests/Fixtures/fenix-document-spd-brk-disagree.json` (new; one response) | 06 | |
+| `tests/MSFSBlindAssist.Tests/Fixtures/fenix-failures-manual-ch21.json` (new; first ATA chapter only, never the full catalog) | 09 | |
+| `MainForm*.cs` (other partials), `BaseAircraftDefinition.cs`, `IAircraftDefinition.cs`, `Forms/FirstOfficer/**`, shared FO classes outside `FirstOfficer/Fenix/` | nobody before 11 | Handoff requests only |
+| `MSFSBlindAssist/HotkeyGuides/Fenix_A320_Hotkeys.txt` | 01 (its one line), then 11 | |
+| `guide/**`, `changelog.d/**`, `docs/*.md`, `docs/invariants/**`, `CLAUDE.md`, `.claude/rules/**` | 01 (its rule file and CLAUDE.md row), then 11 | Plans list pilot-facing notes and proposed rule lines in their handoff section |
+| `docs/fenix-v3/**` | each plan its own plan file, its **Claimed by** / **Status** line included; 11 deletes the folder | A worker may tick its own plan's checkboxes |
+| Tests | each plan its NEW test files named for its feature (`*FenixData*`, `*FenixWindow*`, `FenixVariantTests.cs`, `FenixDefinitionSeamTests.cs` → 01; `*FenixV3Fix*`, `*FenixTakeoffConfig*`, `*FenixTakeoffCallouts*`, `SettingsSeedTests.cs` → 02; `*FenixA320DisplayReads*`, `*FenixMcdu*`, `*FenixEfb*` → 03; `tests/.../FirstOfficer/Fenix*.cs`, `A320FamilyParityTests.cs` → 04; `*FenixVariantControls*` → 05; `*FenixDocument*` → 06; `*FenixCabin*` → 07; `*FenixEngine*` → 08; `*FenixFailure*` → 09; `*FenixOption*` → 10) | Test names must match a rule glob (a32nx-fenix.md covers `**/*Fenix*.cs`) |
 
 ## Who is on which plan
 
-Claim a plan by putting your GitHub name here and pushing that one line to `FenixV3` before you start; one person
-per plan. Plan 01 must land before anyone starts 02-09 or 11; plan 10 starts when 02-09 and 11 are done.
-
-| Plan | Claimed by | Status |
-|---|---|---|
-| 01 | | |
-| 02 | | |
-| 03 | | |
-| 04 | | |
-| 05 | | |
-| 06 | | |
-| 07 | | |
-| 08 | | |
-| 09 | | |
-| 11 | | |
-| 10 | | |
+Each plan file starts with a line `**Claimed by:** … · **Status:** …`. Claim a plan by putting your GitHub name on
+that line in its own file and pushing that one change to `FenixV3` before you start; one person per plan. Because each
+claim lives in its own file, two people claiming or finishing plans at the same time never edit the same line. Plan 01
+must land before anyone starts 02-10; plan 11 starts when every Status line of 02-10 reads "done".
 
 ## Owner answers
 
@@ -97,42 +90,48 @@ behind it, or no use to a blind pilot).
 |---|---|---|---|---|
 | 1 | 02 | If v3 lights neither master light on a bad TO CONFIG, what is said? | "Takeoff config test done. No warning seen. Check the ECAM memo." (after check) | Use that wording (owner, 2026-10-21) |
 | 2 | 02 | May the gravity-gear check be flown (gear up in flight)? | Yes | No: ground check only, watching the crank value go 0 to 3 and back; the real gear drop stays unproven, a follow-up (owner, 2026-10-21) |
-| 3 | 09 | AI display reads for Fenix v3 only (2.x gets wrong frames)? | Yes, v3 only; the guide says to update | v3 only (owner, 2026-10-21) |
-| 4 | 09 | Alt+P reads the captain's PFD, Alt+N from the captain's view? | Yes | No: keep Alt+P on the first officer's PFD and Alt+N on the centre view, on v3's view numbers (owner, 2026-10-21) |
-| 5 | 07 | May the Fenix options window change options? | Yes, F2 for on/off and choice options, this sim session only | Yes, session only, with guards: on/off and choice options only (no credentials or typed values); speak the value the Fenix reads back, not the requested one; a Yes/No confirm before the cockpit-reshaping options (`standby_type`, `isis_type`, `adirs_type`, `acp_type`, `dcdu_enabled`). Why: the EFB's own Settings app hides which choice is selected from a screen reader (checked 2026-10-21) (owner, 2026-10-21) |
-| 6 | 05 | Cabin window opens and closes doors at the gate? | Yes | Yes, by the owner principle (owner, 2026-10-21) |
-| 7 | 05 | Aft door names on the A319/A320 | The FAP's "Door 4 left" (the EFB says "2 left") | The FAP's naming (owner, 2026-10-21) |
-| 8 | 06 | Failures: confirm every write (No default), no checkboxes, arming needs a condition, speak triggered failures while open | Yes to all four | Yes to all four (owner, 2026-10-21) |
-| 9 | 03 | Make CALLS MECH/ALL/FWD/AFT press buttons like the new MID/EXIT? | Yes (A320-3) | Convert (owner, 2026-10-21); plan 10 Task 2 applies handoff H3 |
-| 10 | 03 | Hide panels the variant leaves empty ("DCDU Left" without a DCDU)? | Yes | Yes, hide them (owner, 2026-10-21); plan 10 Task 2 applies handoff H2. Equipment such as the DCDU, ISIS and extra tanks follows the loaded livery's config values, not the aircraft type |
-| 11 | 03 | Rename the profile from "Fenix A320 CEO" (the stored code stays)? | Keep the name | Keep "Fenix A320 CEO" (owner, 2026-10-21); handoff H1 is dropped |
-| 12 | 03 | Speak the detected variant once after loading? | No | Speak it (owner, 2026-10-21): plan 03 runs its Task 4 |
-| 13 | 03 | Rebuild an open panel when the variant changes? | No | No refresh (owner, 2026-10-21); handoff H4 is dropped |
-| 14 | 04 | Engines window rows: one value per row, or one row per parameter with both engines (braille)? | One value per row | One value per row (owner, 2026-10-21) |
-| 15 | 08 | First Officer: show cabin-ready as a live value only, or a check that ticks the line? | Live value only | Live value only (owner, 2026-10-21); plan 08 handoff 3 is dropped |
-| 16 | 08 | Make the takeoff speeds read "not set" below 1 everywhere (`NotSetBelow`)? | Yes | Yes (owner, 2026-10-21); plan 02 Task 9 applies it with the take-off calls |
-| 17 | 04 | Engine running/stopped announcements: in the window, always, or none? | In the window (after check) | Only while the Engines window is open (owner, 2026-10-21) |
-| 18 | 04 | Oil units; Output O using the Fenix's outside temperature | Decided by plan 04's checks (after check) | pending |
-| 21 | — | Datalink (CPDLC on the DCDU, ATSU, Virtual ACARS, printer): plan it now? | A plan 12 starting with a live Hoppie investigation | Leave until after FenixV3 (owner, 2026-10-21); plan 10 lists it as a follow-up |
-| 20 | 05 | FAP Set-Up page: loudspeaker volume and screen brightness? | Loudspeaker volume yes, brightness no | Add the loudspeaker volume; leave brightness out (owner, 2026-10-21; plan 05 Tasks 3 and 8) |
-| 19 | 07 | Also offer the EFB's permanent change ("Set as user override") and reset to the Fenix default? | Yes, by the owner principle | Yes (owner, 2026-10-21): Shift+F2 permanent, Ctrl+F2 reset, each behind a Yes/No defaulting to No (plan 07 Task 6) |
+| 3 | 03 | AI display reads for Fenix v3 only (2.x gets wrong frames)? | Yes, v3 only; the guide says to update | v3 only (owner, 2026-10-21) |
+| 4 | 03 | Alt+P reads the captain's PFD, Alt+N from the captain's view? | Yes | No: keep Alt+P on the first officer's PFD and Alt+N on the centre view, on v3's view numbers (owner, 2026-10-21) |
+| 5 | 10 | May the Fenix options window change options? | Yes, F2 for on/off and choice options, this sim session only | Yes, session only, with guards: on/off and choice options only (no credentials or typed values); speak the value the Fenix reads back, not the requested one; a Yes/No confirm before the cockpit-reshaping options (`standby_type`, `isis_type`, `adirs_type`, `acp_type`, `dcdu_enabled`). Why: the EFB's own Settings app hides which choice is selected from a screen reader (checked 2026-10-21) (owner, 2026-10-21) |
+| 6 | 07 | Cabin window opens and closes doors at the gate? | Yes | Yes, by the owner principle (owner, 2026-10-21) |
+| 7 | 07 | Aft door names on the A319/A320 | The FAP's "Door 4 left" (the EFB says "2 left") | The FAP's naming (owner, 2026-10-21) |
+| 8 | 09 | Failures: confirm every write (No default), no checkboxes, arming needs a condition, speak triggered failures while open | Yes to all four | Yes to all four (owner, 2026-10-21) |
+| 9 | 05 | Make CALLS MECH/ALL/FWD/AFT press buttons like the new MID/EXIT? | Yes (A320-3) | Convert (owner, 2026-10-21); plan 11 Task 2 applies handoff H3 |
+| 10 | 05 | Hide panels the variant leaves empty ("DCDU Left" without a DCDU)? | Yes | Yes, hide them (owner, 2026-10-21); plan 11 Task 2 applies handoff H2. Equipment such as the DCDU, ISIS and extra tanks follows the loaded livery's config values, not the aircraft type |
+| 11 | 05 | Rename the profile from "Fenix A320 CEO" (the stored code stays)? | Keep the name | Keep "Fenix A320 CEO" (owner, 2026-10-21); handoff H1 is dropped |
+| 12 | 05 | Speak the detected variant once after loading? | No | Speak it (owner, 2026-10-21): plan 05 runs its Task 4 |
+| 13 | 05 | Rebuild an open panel when the variant changes? | No | No refresh (owner, 2026-10-21); handoff H4 is dropped |
+| 14 | 08 | Engines window rows: one value per row, or one row per parameter with both engines (braille)? | One value per row | One value per row (owner, 2026-10-21) |
+| 15 | 04 | First Officer: show cabin-ready as a live value only, or a check that ticks the line? | Live value only | Live value only (owner, 2026-10-21); plan 04 handoff 3 is dropped |
+| 16 | 04 | Make the takeoff speeds read "not set" below 1 everywhere (`NotSetBelow`)? | Yes | Yes (owner, 2026-10-21); plan 02 Task 9 applies it with the take-off calls |
+| 17 | 08 | Engine running/stopped announcements: in the window, always, or none? | In the window (after check) | Only while the Engines window is open (owner, 2026-10-21) |
+| 18 | 08 | Oil units; Output O using the Fenix's outside temperature | Decided by plan 08's checks (after check) | pending |
+| 19 | 10 | Also offer the EFB's permanent change ("Set as user override") and reset to the Fenix default? | Yes, by the owner principle | Yes (owner, 2026-10-21): Shift+F2 permanent, Ctrl+F2 reset, each behind a Yes/No defaulting to No (plan 10 Task 6) |
+| 20 | 07 | FAP Set-Up page: loudspeaker volume and screen brightness? | Loudspeaker volume yes, brightness no | Add the loudspeaker volume; leave brightness out (owner, 2026-10-21; plan 07 Tasks 3 and 8) |
+| 21 | — | Datalink (CPDLC on the DCDU, ATSU, Virtual ACARS, printer): plan it now? | A plan 12 starting with a live Hoppie investigation | Leave until after FenixV3 (owner, 2026-10-21); plan 11 lists it as a follow-up |
+| 22 | 06 | D1: speak a newly pinned ECAM procedure app-wide ("ECAM procedure available: …")? | Yes, app-wide, always on (plan 06 Task 7) | pending |
+| 23 | 06 | D2: open every collapsible section when a document opens? | Yes | pending |
+| 24 | 06 | D3: checklist lines as tick boxes? | Yes | pending |
+| 25 | 06 | D4: pin and unpin a document from the window (Ctrl+D), as the EFB does? | Yes (plan 06 Task 6) | pending |
 
 ## Workflow for one plan
 
 Everyone working on this is a contributor to the repo and pushes straight to `FenixV3`: no pull requests per plan,
-no changelog fragments and no guide edits until plan 10 opens the one pull request for the whole branch.
+no changelog fragments and no guide edits until plan 11 opens the one pull request for the whole branch.
 
-1. Pull `FenixV3` (02-09 and 11: once plan 01's commit, recorded at the bottom of this file, is on it). Work on `FenixV3`
-   itself, or on a local branch you rebase onto it before pushing. An agent works in a worktree inside the repo
-   (`.claude/worktrees/fenix-v3-pNN`) so the source-scan tests find the repo root, and removes it when done.
+1. Pull `FenixV3` (02-10: once plan 01's commit, recorded at the bottom of this file, is on it). Claim your plan
+   (above). Work on `FenixV3` itself, or on a local branch you rebase onto it before pushing. An agent works in a
+   worktree inside the repo (`.claude/worktrees/fenix-v3-pNN`) so the source-scan tests find the repo root, and
+   removes it when done.
 2. Build the solution once before testing: `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64`.
 3. Work task by task (TDD), committing as the plan says. Tests: `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64`.
 4. Before every push: `git pull --rebase` onto `FenixV3`, then build and run the full suite yourself and see it green
    (CI runs only on pull requests and on `main`, so nothing checks a push to `FenixV3` for you). Your commits touch only
-   files your plan owns, plus your own plan file and your row above. Then `git push origin HEAD:FenixV3`. Because
-   plans own separate files, a rebase conflict means someone left their files: stop and sort it out with them.
-5. When your plan is done, fill in its "Handoff to plan 10" section in your plan file (pilot-facing changes, proposed
-   rule lines, handoff requests, the in-sim results and checks still needed), set your row to "done", and push.
+   files your plan owns, plus your own plan file. Then `git push origin HEAD:FenixV3`. Because plans own separate
+   files, a rebase conflict means someone left their files: stop and sort it out with them.
+5. When your plan is done, fill in its "Handoff to plan 11" section in your plan file (pilot-facing changes, proposed
+   rule lines, handoff requests, the in-sim results and checks still needed), set its **Status** line to "done", and
+   push.
 6. Steps marked owner-in-sim need MSFS 2024 with the Fenix v3; if you don't have it, leave them unticked, note them in
    your handoff section for the owner. Never write to the sim without the owner's go-ahead (reads are fine).
 
@@ -150,6 +149,8 @@ no changelog fragments and no guide edits until plan 10 opens the one pull reque
   trees use `NativeAccessibleTreeView` (CORE-12, CORE-18). Speech follows CORE-7.
 - Aircraft variant: use plan 01's `FenixA320Definition.Variant` and `VariantChanged`; never read `N_CONFIG_*`
   yourself.
+- The simconnect MCP can return null or stale L:var reads until it reconnects (seen 2026-10-21): reconnect, check a
+  stock value, and read one name per call before trusting a null.
 
 ## Evidence (in `docs/fenix-v3/evidence/`)
 

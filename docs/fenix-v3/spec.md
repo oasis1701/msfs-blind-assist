@@ -2,7 +2,7 @@
 
 Investigation of 2026-10-21, on `main` at 2d6444ab1. The previous Fenix measured in this repo was 2.4.0.4720.
 Lives on the `FenixV3` branch with the plans (`docs/fenix-v3/plans/`) and the evidence (`docs/fenix-v3/evidence/`);
-plan 10 deletes `docs/fenix-v3/` before the branch merges.
+plan 11 deletes `docs/fenix-v3/` before the branch merges.
 
 How it was checked: the live sim (Fenix A320 CFM WF at KATL, engines running) through the simconnect MCP, the
 Fenix data service on 127.0.0.1:8083 (read-only queries), the Coherent debugger (:19999), the installed package
@@ -20,6 +20,7 @@ in the running sim today; everything else says where it comes from.
 | 1.4 | "Gravity Gear Extension" / "Gravity Gear Crank" (Cockpit Other) do not extend the gear | v3 crank is `S_HYD_GRAVITY_GEAR_EXTEND` 0 to 3 turns in 0.05 steps, plus a stow handle; `S_HYD_GRAVITY_GEAR_EXTEND_ROTATION` is gone. Our 0/1 control writes 1 = a third of the crank | Package template `FNX32X_Interact_Emergency_Gear_Lever_Template` | Redesign the control to crank to 3 and stow back to 0; in-sim test |
 | 1.5 | AUTOLAND light read-back may be dead | Model now reads `I_MIP_AUTOLAND_{CAPT,FO}_{U,L}`; the data service still knows the old unsplit name too | Package + data service (all names exist, all 0 now) | In-sim check during an autoland warning which name lights |
 | 1.6 | **Risk:** "Takeoff config normal" over a bad config | v3 rebuilt the FWC: MASTER WARN/CAUT now follow its deliberately delayed timing (official changelog). Our panel button and FO hold TO CONFIG 1.5 s and read the CACHED (about 1 Hz) master warning/caution (`FenixTakeoffConfigVerdict`, FenixA320Definition.cs:12749, FenixActionExecutor.cs:223) | Release notes + code | In-sim test with a bad config (e.g. flaps 0) first; likely read fresh over a window, or after release |
+| 1.7 | FCU vertical speed spoken every second or two during a managed climb or descent | v3's `N_FCU_VS` carries the live V/S while the window is dashed (`B_FCU_VERTICALSPEED_DASHED` = 1); v2 held it still; nothing gates the announcement | A collaborator's v3 test flight, 2026-10-21: dashed from 13:40, `N_FCU_VS` 3400 → 1700 → 4100 → 3400 between 14:09 and 14:12 | Silence `N_FCU_VS` while dashed (plan 02 Task 10) |
 
 Not broken, checked: the MCDU subscription and key writes (same query shapes, same XML `title`/`line`/`scratchpad`,
 key names match the v3 web MCDU), FCU readouts (`N_FCU_*` agree on both paths), the EFB page at `/#/efb`, ATC MODEL
@@ -137,6 +138,11 @@ Ordered by value to a blind pilot (my judgement):
    for the FO's in-flight start; takeoff perf from `aircraft.fms.perf.takeOff.*`; ground services
    (`groundservice.*`), boarding status, panel state (`control.state.string`); EFB documents app = 607 ECAM procedures
    as text (reachable in our EFB window already).
+8. **Cockpit controls the app never offered** (owner request; measured live 2026-10-21 on the A321 IAE, every value
+   restored): the headset `A320_Sound:Headset_On` (noise cancelling `A320_Sound:ANC` follows it), the clock
+   (`S_MIP_CLOCK_CHR/RST/SET/ET/UTC`; chrono in seconds, ET in minutes, -1 blank; a written ET Reset does not spring
+   back), the ISIS baro knob push `S_MIP_ISFD_BARO_BUTTON` (no readable state found) and the aft cargo temperature
+   knob `A_OH_PNEUMATIC_CARGO_AFT_TEMP` (only with aft cargo heat, `B_CONFIG_CARGOMEAT` ≠ 0). Planned in plan 05 Task 5.
 
 ## 5. ECAM text (not pursued)
 

@@ -1,4 +1,6 @@
-# Fenix Options Implementation Plan (plan 07)
+# Fenix Options Implementation Plan (plan 10)
+
+**Claimed by:** nobody yet · **Status:** not started
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -8,7 +10,7 @@
 
 **Tech Stack:** C# 13 / .NET 10 Windows Forms, Newtonsoft.Json (`JObject`, already referenced), xUnit.
 
-**Spec:** `docs/fenix-v3/spec.md` section 4.5; index `docs/fenix-v3/plans/00-index.md`; foundation `docs/fenix-v3/plans/01-foundation.md` (consumed by exact name below). Depends on plan 01: branch from the base SHA 00-index.md records (`git switch -c FenixV3-p07-options <base-sha>`, worktree `.claude/worktrees/fenix-v3-p07`).
+**Spec:** `docs/fenix-v3/spec.md` section 4.5; index `docs/fenix-v3/plans/00-index.md`; foundation `docs/fenix-v3/plans/01-foundation.md` (consumed by exact name below). Depends on plan 01: branch from the base SHA 00-index.md records (`git switch -c FenixV3-p10-options <base-sha>`, worktree `.claude/worktrees/fenix-v3-p10`).
 
 ## Owner decisions
 
@@ -23,7 +25,7 @@
 D1 facts, all from the EFB bundle (`main.ccd882238ccd3f2d.js`, chunk `869`; operations also in `docs/fenix-v3/evidence/gql-operations.txt` lines 13, 14, 25, 34), none tried live:
 - Mutation, verbatim: `mutation SetSetting($setSetting: SetSettingInput!) { settings { setSetting(setSetting: $setSetting) { success } } }`. `SetSettingInput` is `{ key, value, persist }`: the store's `B()` builds `{key:h.key, value:String(h.value), persist:h.persist}`, so `value` is always a string ("true"/"false" for a toggle, the enum name for a choice). Also present, not used: `setSettings([SetSettingInput!]!)`, `setDefault(key)`, `setDefaults(keys)`.
 - The EFB's own toggle sends `persist: false`; Fenix's own tooltip for that state: "This setting is overridden for the current simulator session and will reset when you close MSFS or change aircraft/livery." Its "Set as user override" sends `persist: true` ("will apply regardless of livery or Fenix defaults"). (b) sends `persist: false` only, never `true`, never a reset.
-- Risks of (b): the write path has never run against the gateway (first write is owner step E1); `standby_type`, `adirs_type`, `acp_type`, `dcdu_enabled` reshape the cockpit mid-session (plans 01/03 follow the config L:vars); Fenix itself warns that FCU Readouts "New" can blank the FCU until the flight restarts; a wrong choice lasts until MSFS closes. Why recommended: whether the EFB settings page works with a screen reader is unmeasured, and (b) lets a pilot switch off an option that M1-M4 show disturbs the app.
+- Risks of (b): the write path has never run against the gateway (first write is owner step E1); `standby_type`, `adirs_type`, `acp_type`, `dcdu_enabled` reshape the cockpit mid-session (plans 01/05 follow the config L:vars); Fenix itself warns that FCU Readouts "New" can blank the FCU until the flight restarts; a wrong choice lasts until MSFS closes. Why recommended: whether the EFB settings page works with a screen reader is unmeasured, and (b) lets a pilot switch off an option that M1-M4 show disturbs the app.
 
 ## Global Constraints
 
@@ -140,9 +142,9 @@ public class FenixOptionLabelsTests
 ```
 
 - [ ] **Step 3: Run them; they fail to compile.** `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64 --filter FenixOptionLabelsTests`
-- [ ] **Step 4: Implement.** Paste the 159 data rows (no header) of Step 1's TSV, tabs replaced by `|` (`tail -n +2 fenix-options-labels.tsv | tr '\t' '|'`), into a C# raw string literal `private const string Table = """ … """;`; `All` = `Parse(Table)`, built once (`Lazy` or static readonly). Row = `key|value|label|description|control`: empty `value` = option row, else a value label of the option above it; empty control = null. Split lines on `\n` and trim a trailing `\r` (a CRLF checkout puts one on every row), skip blank lines. The file header says where the rows come from and how to regenerate them (Step 1 and Appendix A; after plan 10 deletes `docs/fenix-v3/`, `docs/a32nx.md`, handoff R6).
+- [ ] **Step 4: Implement.** Paste the 159 data rows (no header) of Step 1's TSV, tabs replaced by `|` (`tail -n +2 fenix-options-labels.tsv | tr '\t' '|'`), into a C# raw string literal `private const string Table = """ … """;`; `All` = `Parse(Table)`, built once (`Lazy` or static readonly). Row = `key|value|label|description|control`: empty `value` = option row, else a value label of the option above it; empty control = null. Split lines on `\n` and trim a trailing `\r` (a CRLF checkout puts one on every row), skip blank lines. The file header says where the rows come from and how to regenerate them (Step 1 and Appendix A; after plan 11 deletes `docs/fenix-v3/`, `docs/a32nx.md`, handoff R6).
 - [ ] **Step 5: Run them; all pass.**
-- [ ] **Step 6: Commit.** `git add MSFSBlindAssist/Services/FenixOptionLabels.cs tests/MSFSBlindAssist.Tests/FenixOptionLabelsTests.cs` and `git commit -m "feat(fenix): the Fenix EFB's own option labels (plan 07)"`
+- [ ] **Step 6: Commit.** `git add MSFSBlindAssist/Services/FenixOptionLabels.cs tests/MSFSBlindAssist.Tests/FenixOptionLabelsTests.cs` and `git commit -m "feat(fenix): the Fenix EFB's own option labels (plan 10)"`
 
 ### Task 2: Catalog: keys, notes, masking and formatting
 
@@ -157,7 +159,7 @@ public class FenixOptionLabelsTests
   - `public static class FenixOptionNotes`: `string? AppNote(string key)`, `string? TestedValue(string key)`.
   - `public static class FenixOptionCatalog`: `bool IsSecret(string key)`, `string Humanize(string key)`, `string Label(string key)`, `string FormatValue(FenixSetting s)`, `string RowText(FenixSetting s)` (= `$"{Label(s.Key)}: {FormatValue(s)}"`), `IReadOnlyList<string> DetailLines(FenixSetting s)`, `string SourceText(string? source)`.
 
-Exact copy for `FenixOptionNotes` (pilot-facing; plan 10 updates the wording once M1-M4 are in):
+Exact copy for `FenixOptionNotes` (pilot-facing; plan 11 updates the wording once M1-M4 are in):
 
 | Key | `AppNote` | `TestedValue` |
 |---|---|---|
@@ -294,7 +296,7 @@ public void Source_is_named_in_Fenix_words(string source, string text) => Assert
 - [ ] **Step 2: Run them; they fail to compile.** `… --filter FenixOptionCatalogTests`
 - [ ] **Step 3: Implement the three files** per Interfaces and the two tables above. `IsSecret` uses `FenixOptionKeys.Secrets.Contains(key, StringComparer.Ordinal)`.
 - [ ] **Step 4: Run them; all pass.**
-- [ ] **Step 5: Commit.** `git add` the four files; `git commit -m "feat(fenix): option catalog: masking, Fenix's value labels, app notes (plan 07)"`
+- [ ] **Step 5: Commit.** `git add` the four files; `git commit -m "feat(fenix): option catalog: masking, Fenix's value labels, app notes (plan 10)"`
 
 ### Task 3: Grouping, order and status texts
 
@@ -380,7 +382,7 @@ Rules: first the affecting group (keys in `FenixOptionKeys.AffectsApp` order, on
 - [ ] **Step 2: Run them; they fail to compile.** `… --filter FenixOptionGroupingTests`
 - [ ] **Step 3: Implement `FenixOptionGrouping.cs`** per Interfaces and Rules.
 - [ ] **Step 4: Run them; all pass.**
-- [ ] **Step 5: Commit.** `git commit -m "feat(fenix): option groups, order and status texts (plan 07)"` (the two files).
+- [ ] **Step 5: Commit.** `git commit -m "feat(fenix): option groups, order and status texts (plan 10)"` (the two files).
 
 ### Task 4: The "Fenix options" window and its registry entry
 
@@ -435,7 +437,7 @@ public class FenixOptionsFormSourceTests
 - [ ] **Step 3: Implement the form and the registry partial** as above.
 - [ ] **Step 4: Run the whole suite and build.** `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64` then `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64`; all green.
 - [ ] **Step 5: Live check (app built, sim up with the Fenix loaded, owner at the keyboard; reads only).** `[` then Ctrl+Shift+F, select "Fenix options", Enter: the reader says "Encoder Acceleration: Off" (or On); Tab twice: status "Fenix 3.0.0.7426: 149 options. Read only: change options in the Fenix EFB." on the IAE A321 (146 on the CFM A320); Enter on a row speaks its note and description; F5 says "Refreshed, no changes."; Tab back, collapse and expand "Connections (…)": the Hoppie, Navigraph, Pushover and SimBrief rows say "set, hidden" or "not set" and no value appears in `%APPDATA%\MSFSBlindAssist\logs\debug.log`; switch to another aircraft profile with the window open: it closes, no error in debug.log. If the sim is not up, stop and ask the owner to load the Fenix.
-- [ ] **Step 6: Commit.** `git commit -m "feat(fenix): Fenix options window in the Fenix windows list (plan 07)"` (the three files).
+- [ ] **Step 6: Commit.** `git commit -m "feat(fenix): Fenix options window in the Fenix windows list (plan 10)"` (the three files).
 
 ### Task 5 (D1 = b, decided by the owner 2026-10-21; index answer 5): Change an option for this session
 
@@ -495,7 +497,7 @@ public class FenixOptionsFormSourceTests
 - [ ] **Step 3: Implement.** F2 on an option node: `!CanChange` → speak "MSFS Blind Assist cannot change this option."; else show the dialog modally; on OK with a different value, if `NeedsConfirm`, a Yes/No box with `ConfirmText` and **No** as the default (pattern `MSFSBlindAssist/Forms/GateTeleportForm.cs:476-481`), No → nothing sent, nothing spoken; then `await _data.QueryAsync(SetSettingDocument, Variables(key, value))`, `if (IsDisposed) return;`; not `Succeeded` → speak "The Fenix did not accept the change."; else reload silently and speak the new `RowText` (a read-back, CORE-7), or `$"Fenix kept {RowText}."` when the re-read value is not the one sent. Status uses `changesAllowed: true`. Never log the value.
 - [ ] **Step 4: Run the whole suite and build; all green.**
 - [ ] **Step 5: Owner step E1 (first write ever; owner present, sim up, on the ground).** In Fenix options on "Encoder Acceleration: Off": F2, choose On, Enter → "Encoder Acceleration: On"; Enter on the row → details end with the session sentence ("…will reset when you close MSFS or change aircraft/livery."); F2, Off, Enter → "Encoder Acceleration: Off". Any other answer: stop, record it, do not commit Task 5.
-- [ ] **Step 6: Commit.** `git commit -m "feat(fenix): change a Fenix option for this session from the options window (plan 07)"`
+- [ ] **Step 6: Commit.** `git commit -m "feat(fenix): change a Fenix option for this session from the options window (plan 10)"`
 
 ### Task 6 (owner request, 2026-10-21; index answer 19): permanent change and reset to the Fenix default
 
@@ -515,13 +517,13 @@ Why: the EFB's per-option menu (the unnamed "overflow" button after each option)
 - [ ] **Step 4: Implement.** Shift+F2 on an option that `CanChange`: the same dialog titled "Make a Fenix option permanent", its ComboBox named `$"{optionLabel}, permanent"`; then always a Yes/No box with `PermanentConfirmText`, **No** default; then `setSetting` with `persist: true`; read back as Task 5. Ctrl+F2: a Yes/No box with `ResetConfirmText`, **No** default; then `SetDefaultDocument` with the key; read back and speak the new `RowText`. A failure speaks "The Fenix did not accept the change." Never on a secret; never `setSettings` or `setDefaults` (all-option resets have no single-option EFB equivalent).
 - [ ] **Step 5: Run the whole suite and build; all green.**
 - [ ] **Step 6: Owner step E2 (after E1).** On "Encoder Acceleration: Off": Shift+F2, On, Enter, Yes → "Encoder Acceleration: On"; close and reopen MSFS (or switch livery): still On; Ctrl+F2, Yes → back to the Fenix default ("Encoder Acceleration: Off"). Any other answer: stop and record it.
-- [ ] **Step 7: Commit.** `git commit -m "feat(fenix): make a Fenix option permanent or reset it to the default (plan 07)"`
+- [ ] **Step 7: Commit.** `git commit -m "feat(fenix): make a Fenix option permanent or reset it to the default (plan 10)"`
 
 ### Task 6: Hand back
 
 - [ ] **Step 1:** Full suite and solution build green; `git diff --name-only <base-sha>` lists only this plan's files.
 - [ ] **Step 2:** Ask the owner for M1-M4 (below; E1 first if D1 = b). Write each heard phrase into "Measurement results" at the end of this file, and mark which handoff (R1-R4) applies.
-- [ ] **Step 3:** Hand back the branch and this file's handoff section to plan 10.
+- [ ] **Step 3:** Hand back the branch and this file's handoff section to plan 11.
 
 ## In-sim measurements (owner; prioritised; reads and the owner's own switch presses only)
 
@@ -553,7 +555,7 @@ Setup for all: Fenix loaded (any variant), parked, aircraft powered (batteries p
 
 Not measured (note only): `control_position_type` First Officer (ACP behaviour), `auto_toga_enabled`, `tcas_ap_enabled`, `incremental_thrust_handling_enabled` (code shows no app path, see Task 2).
 
-## Handoff to plan 10
+## Handoff to plan 11
 
 **Pilot-facing changes.**
 - "Fenix windows" (`[` then Ctrl+Shift+F) lists "Fenix options": every option of the Fenix EFB with its value in Fenix's own words, grouped as in the EFB; the eleven that can change how the app works come first, each with a note (Enter speaks it, Tab shows it); F5 refreshes; Hoppie, Navigraph, Pushover and SimBrief credentials read "set, hidden". With D1 = b: F2 changes an on/off or choice option until MSFS closes.
@@ -571,12 +573,12 @@ Not measured (note only): `control_position_type` First Officer (ACP behaviour),
 
 **Handoff requests.**
 - R1 → plan 02, if M1 misbehaves: `MSFSBlindAssist/Aircraft/FenixA320Definition.cs` `JumpCounter` (12847-12870) writes a whole delta at once, `SetFCUValueWithVerification` (12876-12949) retries in batches of 10, `AdjustBaroCounter` (12428-12437) one RPN delta. Make the sets land on target when acceleration is on (smaller spaced steps, or read `FenixOptionKeys.EncoderAcceleration` through `DataService.GetSettingsAsync()` before a set), and speak a final miss ("Altitude set to 7100, not 7000") instead of the silent log at 12947.
-- R2 → plan 08, if M2 misbehaves: `MSFSBlindAssist/FirstOfficer/Fenix/FenixFlowDefinitions.cs` PF_FD1/PF_FD2 (175-178), AP_LS1/AP_LS2 (482-485), SD_LS1/SD_LS2 (620-623), and `FenixChecklistDefinitions.cs` 378-385 and 473-479: with FD/LS sync on, press one side and verify both.
+- R2 → plan 04, if M2 misbehaves: `MSFSBlindAssist/FirstOfficer/Fenix/FenixFlowDefinitions.cs` PF_FD1/PF_FD2 (175-178), AP_LS1/AP_LS2 (482-485), SD_LS1/SD_LS2 (620-623), and `FenixChecklistDefinitions.cs` 378-385 and 473-479: with FD/LS sync on, press one side and verify both.
 - R3 → plan 02, if M3 misbehaves: `SetFCUBaro` (12301-12406) computes EFIS 2's delta from a cached read 500 ms after a write (12332-12335, 12363-12366) and does not wait after EFIS 1's correction (12354, 12382): when linked, set EFIS 1 only and verify EFIS 2 with `ReadFreshAsync`.
 - R4 → plan 02, if M4 misbehaves: COM standby set (9392-9406) accepts any 118.000-136.975: check the value against the Fenix's spacing and say so, or speak the RMP's answer.
 - R5 → ~~rule globs~~ (Covered by plan 01: its fenix-data.md globs are final and include these files.)
-- R6 → plan 10: `docs/a32nx.md` gets a "Fenix options" section: where labels come from, Appendix A as the regeneration recipe, D1-D4 and the M1-M4 results; replace `docs/fenix-v3/evidence/fenix-options-labels.tsv` with Appendix A's output (the committed one drops 18 descriptions, truncates door automation's, keeps `→` escapes and loses scoped value labels).
-- Also seen, not this plan: RMP frequencies spoken with `{freqMHz:F3}` in the PC's culture (`FenixA320Definition.cs:12154`, "132,475" on de-DE) → plan 02; "Setting altimeter to {inHgValue:0.00}" in the PC's culture (`Forms/FenixA320/FenixBaroWindow.cs:280`) → plan 10 (no owner); the FD and LS pushbutton lights are announced as "EFIS 1 FD Fault", "EFIS 2 LS Fault" and so on (`FenixA320Definition.cs:1258-1275, 1321-1338`) though the FO reads them as "FD on" → plan 02 to check against the cockpit.
+- R6 → plan 11: `docs/a32nx.md` gets a "Fenix options" section: where labels come from, Appendix A as the regeneration recipe, D1-D4 and the M1-M4 results; replace `docs/fenix-v3/evidence/fenix-options-labels.tsv` with Appendix A's output (the committed one drops 18 descriptions, truncates door automation's, keeps `→` escapes and loses scoped value labels).
+- Also seen, not this plan: RMP frequencies spoken with `{freqMHz:F3}` in the PC's culture (`FenixA320Definition.cs:12154`, "132,475" on de-DE) → plan 02; "Setting altimeter to {inHgValue:0.00}" in the PC's culture (`Forms/FenixA320/FenixBaroWindow.cs:280`) → plan 11 (no owner); the FD and LS pushbutton lights are announced as "EFIS 1 FD Fault", "EFIS 2 LS Fault" and so on (`FenixA320Definition.cs:1258-1275, 1321-1338`) though the FO reads them as "FD on" → plan 02 to check against the cockpit.
 
 **In-sim checks still needed:** Task 4 Step 5; E1 (D1 = b); M1-M4.
 
