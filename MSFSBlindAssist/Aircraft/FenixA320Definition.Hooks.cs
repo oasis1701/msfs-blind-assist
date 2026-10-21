@@ -47,6 +47,58 @@ public partial class FenixA320Definition
         }
     }
 
+    // Variant detection: which Fenix is loaded, read from the eight config L:vars (FenixConfigVars).
+    // Variant starts Unknown and fills in as each var is first delivered; VariantChanged is raised, on the
+    // UI thread (ProcessSimVarUpdate's), only when the record changes. Later plans share this one answer.
+    public FenixVariant Variant { get; private set; } = FenixVariant.Unknown;
+    public event EventHandler<FenixVariant>? VariantChanged;
+
+    private static readonly HashSet<string> ConfigVarNames = new(FenixConfigVars.All, StringComparer.Ordinal);
+
+    // The eight are read, never spoken or put on a panel: consumed by TryApplyConfigValue, so they take no
+    // Ctrl+M row ([VAR-9]). Each is keyed by its own name, which no other Fenix var uses ([VAR-7]).
+    private void AddConfigVariables(Dictionary<string, SimConnect.SimVarDefinition> variables)
+    {
+        (string Name, string DisplayName)[] configVariables =
+        {
+            (FenixConfigVars.AircraftType, "Fenix config: aircraft type"),
+            (FenixConfigVars.EngineType, "Fenix config: engine type"),
+            (FenixConfigVars.ActCount, "Fenix config: extra tank count"),
+            (FenixConfigVars.Standby, "Fenix config: standby instrument"),
+            (FenixConfigVars.Dcdu, "Fenix config: DCDU"),
+            (FenixConfigVars.IsNeo, "Fenix config: NEO"),
+            (FenixConfigVars.Adirs, "Fenix config: ADIRS type"),
+            (FenixConfigVars.CargoHeat, "Fenix config: aft cargo heat"),
+        };
+        foreach (var (name, displayName) in configVariables)
+        {
+            variables[name] = new SimConnect.SimVarDefinition
+            {
+                Name = name,
+                DisplayName = displayName,
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = false,
+                Units = "number",
+                ExcludeFromMonitorManager = true,
+            };
+        }
+    }
+
+    // True for the eight config vars (consumed silently, also when the reading changes nothing), false for
+    // every other var, which carries on down ProcessSimVarUpdate.
+    private bool TryApplyConfigValue(string varName, double value)
+    {
+        if (!ConfigVarNames.Contains(varName)) return false;
+        var updated = Variant.With(varName, value);
+        if (updated != Variant)
+        {
+            Variant = updated;
+            VariantChanged?.Invoke(this, updated);
+        }
+        return true;
+    }
+
     private void EnsureFenixBackground(Accessibility.ScreenReaderAnnouncer announcer)
     {
         if (_backgroundStarted) return;

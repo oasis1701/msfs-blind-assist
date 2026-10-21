@@ -8499,6 +8499,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             };
         }
 
+        AddConfigVariables(variables);
         AddVariantVariables(variables);
         return variables;
     }
@@ -12115,6 +12116,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             lastAnnouncer = announcer;
 
         EnsureFenixBackground(announcer);
+        if (TryApplyConfigValue(varName, value)) return true;
         bool handled = false;
         OnVariantSimVarUpdate(varName, value, announcer, ref handled);
         if (handled) return true;
