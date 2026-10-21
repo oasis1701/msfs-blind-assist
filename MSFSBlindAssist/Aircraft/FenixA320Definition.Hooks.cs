@@ -33,6 +33,11 @@ public partial class FenixA320Definition
 
     private bool _backgroundStarted;
 
+    // The Fenix data service client (127.0.0.1:8083), created on first use. OnSwitchedAway disposes
+    // it after the background Stops, so its consumers stop before the service goes.
+    private Services.FenixDataService? _dataService;
+    public Services.FenixDataService DataService => _dataService ??= new Services.FenixDataService();
+
     private void EnsureFenixBackground(Accessibility.ScreenReaderAnnouncer announcer)
     {
         if (_backgroundStarted) return;
@@ -62,5 +67,7 @@ public partial class FenixA320Definition
         StopCabinBackground();
         StopEngineBackground();
         _backgroundStarted = false;
+        _dataService?.Dispose();
+        _dataService = null;
     }
 }
