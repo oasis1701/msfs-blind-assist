@@ -9357,12 +9357,12 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     public override bool HandleUIVariableSet(string varKey, double value, SimConnect.SimVarDefinition varDef,
         SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
     {
-        bool handled = false;
-        HandleVariantUIVariableSet(varKey, value, varDef, simConnect, announcer, ref handled);
-        if (handled) return true;
-
         try
         {
+            bool handled = false;
+            HandleVariantUIVariableSet(varKey, value, varDef, simConnect, announcer, ref handled);
+            if (handled) return true;
+
             // ========== COCKPIT (seats, comfort, standby, gravity gear, DCDU2 brightness) ==========
             // All hold their written value; SetLVar routes through the MobiFlight calc path.
             // Seats are 3-position direction switches (Down/Stop/Up, Aft/Stop/Forward) that hold —
