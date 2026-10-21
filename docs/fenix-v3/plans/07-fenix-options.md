@@ -14,7 +14,7 @@
 
 | # | Decision | Options | Default if unanswered |
 |---|---|---|---|
-| D1 | **May the window change options?** | (a) Read only. (b) **Recommended:** F2 changes an on/off or choice option for the current sim session only, the way the EFB's own toggle does. | (a): skip Task 5 |
+| D1 | **May the window change options?** | (a) Read only. (b) **Recommended:** F2 changes an on/off or choice option for the current sim session only, the way the EFB's own toggle does. | **Decided (owner, 2026-10-21): (b)**, with a Yes/No confirm before cockpit-reshaping options (Task 5) |
 | D2 | `selcal_code` | Shown (decided): the EFB shows it in plain text, it is painted on the livery and broadcast on HF, and it is not a login. Masked only if the owner says so (add it to `FenixOptionKeys.Secrets`, one line, plus a test row). | Shown |
 | D3 | Live updates | Re-read on open, on reopen and on F5 (decided). No `settingsState` subscription: plan 01's `Subscribe` carries only dataRefs, a second socket would copy its client, and options change only when the pilot changes them or a SimBrief import switches `weight_unit`, which no app path reads. | Re-read |
 | D4 | Options the EFB hides (`writable` false, category `None`) | Shown (decided): they carry the variant facts (`type_code`, `engine_family`, `is_sharklet`). Category `None` becomes the last group, "Other, not in the Fenix EFB". | Shown |
@@ -437,7 +437,7 @@ public class FenixOptionsFormSourceTests
 - [ ] **Step 5: Live check (app built, sim up with the Fenix loaded, owner at the keyboard; reads only).** `[` then Ctrl+Shift+F, select "Fenix options", Enter: the reader says "Encoder Acceleration: Off" (or On); Tab twice: status "Fenix 3.0.0.7426: 149 options. Read only: change options in the Fenix EFB." on the IAE A321 (146 on the CFM A320); Enter on a row speaks its note and description; F5 says "Refreshed, no changes."; Tab back, collapse and expand "Connections (…)": the Hoppie, Navigraph, Pushover and SimBrief rows say "set, hidden" or "not set" and no value appears in `%APPDATA%\MSFSBlindAssist\logs\debug.log`; switch to another aircraft profile with the window open: it closes, no error in debug.log. If the sim is not up, stop and ask the owner to load the Fenix.
 - [ ] **Step 6: Commit.** `git commit -m "feat(fenix): Fenix options window in the Fenix windows list (plan 07)"` (the three files).
 
-### Task 5 (only if D1 = b): Change an option for this session
+### Task 5 (D1 = b, decided by the owner 2026-10-21; index answer 5): Change an option for this session
 
 **Files:**
 - Create: `MSFSBlindAssist/Services/FenixOptionEdits.cs`, `MSFSBlindAssist/Forms/Fenix/FenixOptionsChangeDialog.cs`
@@ -445,7 +445,7 @@ public class FenixOptionsFormSourceTests
 - Test: `tests/MSFSBlindAssist.Tests/FenixOptionEditsTests.cs`
 
 **Interfaces:**
-- Produces: `public sealed record FenixOptionChoice(string Value, string Label);` and `public static class FenixOptionEdits` with `public const string SetSettingDocument = "mutation SetSetting($setSetting: SetSettingInput!) { settings { setSetting(setSetting: $setSetting) { success } } }";`, `bool CanChange(FenixSetting s)` (`Writable`, not secret, key not `charts_provider_type` (the EFB hides it), and `Type` is `System.Boolean` or `Enum` with at least 2 `PossibleValues`), `IReadOnlyList<FenixOptionChoice> Choices(FenixSetting s)`, `object Variables(string key, string value)`, `bool Succeeded(JObject? data)` (`data.settings.setSetting.success == true`). `FenixOptionsChangeDialog(string optionLabel, IReadOnlyList<FenixOptionChoice> choices, string? currentValue)` with `string? SelectedValue`: title "Change Fenix option", a DropDownList `ComboBox` named `$"{optionLabel}, for this simulator session"` on the current value, OK (`AcceptButton`) and Cancel (`CancelButton`).
+- Produces: `public sealed record FenixOptionChoice(string Value, string Label);` and `public static class FenixOptionEdits` with `public const string SetSettingDocument = "mutation SetSetting($setSetting: SetSettingInput!) { settings { setSetting(setSetting: $setSetting) { success } } }";`, `bool CanChange(FenixSetting s)` (`Writable`, not secret, key not `charts_provider_type` (the EFB hides it), and `Type` is `System.Boolean` or `Enum` with at least 2 `PossibleValues`), `IReadOnlyList<FenixOptionChoice> Choices(FenixSetting s)`, `object Variables(string key, string value)`, `bool Succeeded(JObject? data)` (`data.settings.setSetting.success == true`), `bool NeedsConfirm(FenixSetting s)` (true for the cockpit-reshaping keys `standby_type`, `isis_type`, `adirs_type`, `acp_type`, `dcdu_enabled`; owner answer 5), and `string ConfirmText(string optionLabel, string choiceLabel)` = `$"Change {optionLabel} to {choiceLabel}? This changes your cockpit panels until MSFS closes."`. `FenixOptionsChangeDialog(string optionLabel, IReadOnlyList<FenixOptionChoice> choices, string? currentValue)` with `string? SelectedValue`: title "Change Fenix option", a DropDownList `ComboBox` named `$"{optionLabel}, for this simulator session"` on the current value, OK (`AcceptButton`) and Cancel (`CancelButton`).
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -474,6 +474,15 @@ public class FenixOptionsFormSourceTests
     => Assert.Equal("{\"setSetting\":{\"key\":\"encoder_acceleration_enabled\",\"value\":\"true\",\"persist\":false}}",
         JObject.FromObject(FenixOptionEdits.Variables("encoder_acceleration_enabled", "true")).ToString(Formatting.None));
 
+[Fact] public void Cockpit_reshaping_options_ask_first()
+{
+    Assert.True(FenixOptionEdits.NeedsConfirm(S("adirs_type", "Adirs", "Enum", possible: new[] { "Gnadirs", "Adirs" })));
+    Assert.True(FenixOptionEdits.NeedsConfirm(S("dcdu_enabled", "false")));
+    Assert.False(FenixOptionEdits.NeedsConfirm(S("encoder_acceleration_enabled", "false", category: "Realism")));
+    Assert.Equal("Change Air Data Inertial Reference System (ADIRS) to GNADIRS? This changes your cockpit panels until MSFS closes.",
+        FenixOptionEdits.ConfirmText("Air Data Inertial Reference System (ADIRS)", "GNADIRS"));
+}
+
 [Fact] public void Succeeded_reads_success()
 {
     Assert.True(FenixOptionEdits.Succeeded(JObject.Parse("{\"settings\":{\"setSetting\":{\"success\":true}}}")));
@@ -483,10 +492,30 @@ public class FenixOptionsFormSourceTests
 ```
 
 - [ ] **Step 2: Run them; they fail to compile.** `… --filter FenixOptionEditsTests`
-- [ ] **Step 3: Implement.** F2 on an option node: `!CanChange` → speak "MSFS Blind Assist cannot change this option."; else show the dialog modally; on OK with a different value, `await _data.QueryAsync(SetSettingDocument, Variables(key, value))`, `if (IsDisposed) return;`; not `Succeeded` → speak "The Fenix did not accept the change."; else reload silently and speak the new `RowText` (a read-back, CORE-7), or `$"Fenix kept {RowText}."` when the re-read value is not the one sent. Status uses `changesAllowed: true`. Never log the value.
+- [ ] **Step 3: Implement.** F2 on an option node: `!CanChange` → speak "MSFS Blind Assist cannot change this option."; else show the dialog modally; on OK with a different value, if `NeedsConfirm`, a Yes/No box with `ConfirmText` and **No** as the default (pattern `MSFSBlindAssist/Forms/GateTeleportForm.cs:476-481`), No → nothing sent, nothing spoken; then `await _data.QueryAsync(SetSettingDocument, Variables(key, value))`, `if (IsDisposed) return;`; not `Succeeded` → speak "The Fenix did not accept the change."; else reload silently and speak the new `RowText` (a read-back, CORE-7), or `$"Fenix kept {RowText}."` when the re-read value is not the one sent. Status uses `changesAllowed: true`. Never log the value.
 - [ ] **Step 4: Run the whole suite and build; all green.**
 - [ ] **Step 5: Owner step E1 (first write ever; owner present, sim up, on the ground).** In Fenix options on "Encoder Acceleration: Off": F2, choose On, Enter → "Encoder Acceleration: On"; Enter on the row → details end with the session sentence ("…will reset when you close MSFS or change aircraft/livery."); F2, Off, Enter → "Encoder Acceleration: Off". Any other answer: stop, record it, do not commit Task 5.
 - [ ] **Step 6: Commit.** `git commit -m "feat(fenix): change a Fenix option for this session from the options window (plan 07)"`
+
+### Task 6 (owner request, 2026-10-21; index answer 19): permanent change and reset to the Fenix default
+
+Why: the EFB's per-option menu (the unnamed "overflow" button after each option) lets a sighted pilot make a change permanent ("Set as user override", `persist: true`, which "will apply regardless of livery or Fenix defaults") and go back to the default (`setDefault`); by the owner principle the window offers both.
+
+**Files:**
+- Modify: `MSFSBlindAssist/Services/FenixOptionEdits.cs`, `MSFSBlindAssist/Forms/Fenix/FenixOptionsForm.cs`
+- Test: `tests/MSFSBlindAssist.Tests/FenixOptionEditsTests.cs`
+
+**Interfaces:**
+- Consumes: Task 5's `FenixOptionEdits`, `FenixOptionsChangeDialog`.
+- Produces: `object Variables(string key, string value, bool persist)` (Task 5's two-argument form keeps `persist: false`); `public const string SetDefaultDocument` = the bundle's `SetDefault` mutation verbatim (`docs/fenix-v3/evidence/gql-operations.txt`); `bool DefaultSucceeded(JObject? data)` (`data.settings.setDefault.success == true`); `string PermanentConfirmText(string optionLabel, string choiceLabel)` = `$"Make {optionLabel} {choiceLabel} your permanent setting? It applies to every flight and livery until you change it."`; `string ResetConfirmText(string optionLabel)` = `$"Reset {optionLabel} to the Fenix default?"`.
+
+- [ ] **Step 1: Read what the EFB's overflow menu sends.** In the EFB bundle (fetch with `docs/fenix-v3/tools/fetch_gateway_bundles.py`), find the overflow menu's items and the call each makes (`setSetting` with `persist: true`, `setDefault(key)`, or anything else), and the label the EFB shows for each. Quote them in this task; never guess. If the menu offers something else (e.g. "remove override" with a different call), mirror that instead and keep the same confirm-first pattern.
+- [ ] **Step 2: Write the failing tests:** `Variables_can_be_permanent` (`Variables("weight_unit", "Kilograms", persist: true)` serialises `"persist":true`); `Default_succeeded_reads_success`; `Permanent_and_reset_ask_first` (the two exact confirm texts above, de-DE).
+- [ ] **Step 3: Run them; they fail.**
+- [ ] **Step 4: Implement.** Shift+F2 on an option that `CanChange`: the same dialog titled "Make a Fenix option permanent", its ComboBox named `$"{optionLabel}, permanent"`; then always a Yes/No box with `PermanentConfirmText`, **No** default; then `setSetting` with `persist: true`; read back as Task 5. Ctrl+F2: a Yes/No box with `ResetConfirmText`, **No** default; then `SetDefaultDocument` with the key; read back and speak the new `RowText`. A failure speaks "The Fenix did not accept the change." Never on a secret; never `setSettings` or `setDefaults` (all-option resets have no single-option EFB equivalent).
+- [ ] **Step 5: Run the whole suite and build; all green.**
+- [ ] **Step 6: Owner step E2 (after E1).** On "Encoder Acceleration: Off": Shift+F2, On, Enter, Yes → "Encoder Acceleration: On"; close and reopen MSFS (or switch livery): still On; Ctrl+F2, Yes → back to the Fenix default ("Encoder Acceleration: Off"). Any other answer: stop and record it.
+- [ ] **Step 7: Commit.** `git commit -m "feat(fenix): make a Fenix option permanent or reset it to the default (plan 07)"`
 
 ### Task 6: Hand back
 
@@ -537,7 +566,7 @@ Not measured (note only): `control_position_type` First Officer (ACP behaviour),
 ```text
 - [FNX-?] Fenix option secrets (`FenixOptionKeys.Secrets`: hoppie_key, navigraph_refresh_token, pushover_application_key, pushover_token, simbrief_id) match by EXACT key, never substring (a substring mask hid encoder_acceleration_enabled); `FenixOptionCatalog` never puts their value in a row, details, speech or a log. Full: docs/invariants/fenix-data.md#fnx-?
 - [FNX-?] Fenix option labels, descriptions and value labels are the EFB's own (`FenixOptionLabels`, scoped per option: "Realistic" differs between refuel rate and failure rate); a key or value without one falls back to `FenixOptionCatalog.Humanize` (the EFB's humanizeKey) or the raw value, never our own wording. Full: docs/invariants/fenix-data.md#fnx-?
-- [FNX-?] `FenixOptionEdits` changes a Fenix option only as the EFB's own toggle does: `setSetting` with `persist: false` (session only), on/off and choice options, never a secret, never `persist: true`, `setSettings` or `setDefault`. Full: docs/invariants/fenix-data.md#fnx-?
+- [FNX-?] `FenixOptionEdits` changes one on/off or choice option at a time, as the EFB does: F2 session only (`persist: false`), Shift+F2 permanent (`persist: true`) and Ctrl+F2 `setDefault`, the last two always behind a Yes/No defaulting to No; never a secret, never `setSettings` or `setDefaults`; the read-back is spoken, never the request. Full: docs/invariants/fenix-data.md#fnx-?
 ```
 
 **Handoff requests.**

@@ -165,7 +165,7 @@ Not variant-dependent (checked): `S_STANDBY_COMPASS` (both standby types), the A
 - [ ] **Step 4: Run the filter, then the whole suite; all pass. Build the solution:** `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64`. Expected: 0 errors.
 - [ ] **Step 5: Commit.** `feat(fenix): write ECON FLOW, ACT PUMP and CALLS MID/EXIT; refuse controls the variant lacks`.
 
-### Task 4 (only if the owner answers Q1 yes): speak the variant once
+### Task 4 (decided: the owner answered Q1 yes, 2026-10-21; index answer 12): speak the variant once
 
 **Files:**
 - Modify: `MSFSBlindAssist/Aircraft/FenixA320Definition.Variants.cs`
@@ -173,18 +173,19 @@ Not variant-dependent (checked): `S_STANDBY_COMPASS` (both standby types), the A
 
 **Interfaces:**
 - Consumes: `VariantChanged` (raised on the UI thread), `FenixVariant.IsKnown`, `FenixVariant.Describe()`, the main file's private `lastAnnouncer` (FenixA320Definition.cs:67, set by `ProcessSimVarUpdate`).
-- Produces: `internal static string? VariantSpeech(FenixVariant? lastSpoken, FenixVariant now)`, returning `now.Describe()` when `now.IsKnown && now != lastSpoken`, else null.
+- Produces: `internal static string? VariantSpeech(string? lastSpokenText, FenixVariant now)`, returning `now.Describe()` when `now.IsKnown` and that text differs from `lastSpokenText`, else null. The config values arrive one per `ProcessSimVarUpdate` call within the same batch, so `VariantChanged` fires several times in a row: speech waits for a 1 s quiet period (a WinForms `Timer` restarted on each change) and then compares the text, so one load is spoken once and a field the sentence does not mention (ISIS, DCDU) never re-speaks it.
 
 - [ ] **Step 1: Write the failing test** `Variant_is_spoken_once_per_distinct_known_variant`, run under `CultureInfo.CurrentCulture = new CultureInfo("de-DE")`:
   - `VariantSpeech(null, FenixVariant.Unknown)` is null.
   - `VariantSpeech(null, a321)` == `a321.Describe()`.
-  - `VariantSpeech(a321, a321)` is null.
-  - `VariantSpeech(a321, a321 with { ActCount = 0 })` is not null.
+  - `VariantSpeech(a321.Describe(), a321)` is null.
+  - `VariantSpeech(a321.Describe(), a321 with { HasIsis = false })` is null (the sentence does not change).
+  - `VariantSpeech(a321.Describe(), a321 with { ActCount = 0 })` is not null.
 - [ ] **Step 2: Run it; it fails to compile.**
 - [ ] **Step 3: Implement.**
-  - `VariantSpeech`, plus a private `FenixVariant? _spokenVariant`.
+  - `VariantSpeech`, plus a private `string? _spokenVariantText` and a 1 s one-shot `System.Windows.Forms.Timer` restarted on each `VariantChanged`; its Tick speaks `VariantSpeech(_spokenVariantText, Variant)` once (queued `Announce`, CORE-7 background change) and stores the text.
   - In `AddVariantVariables` (runs once per instance), subscribe a handler, unsubscribing it first (`VariantChanged -= OnVariantKnown; VariantChanged += OnVariantKnown;`). The handler speaks `VariantSpeech(_spokenVariant, v)` through `lastAnnouncer?.Announce`, then records `_spokenVariant`.
-  - Implement `partial void OnFenixSwitchedAway()`: unsubscribe and clear `_spokenVariant`.
+  - Implement `partial void OnFenixSwitchedAway()`: unsubscribe, stop and dispose the timer, clear `_spokenVariantText`.
 - [ ] **Step 4: Run the filter and the suite; all pass.**
 - [ ] **Step 5: Commit.** `feat(fenix): say which Fenix variant is loaded, once`.
 

@@ -26,7 +26,7 @@ My calls (the reviewer can change any of them):
 Only the owner can answer:
 
 - (a) If Task 1 shows v3 lights neither master light on a bad TO CONFIG, the app can never tell normal from bad. What should it say then? (My proposal, not built: "Takeoff config test done. No warning seen. Check the ECAM memo.")
-- (b) Is an airborne test of the gravity gear acceptable (Task 5 Step 7 needs the aircraft flying with the gear up)?
+- (b) ~~Airborne gravity-gear test~~ Answered: ground check only (index, owner answer 2).
 
 ## Global Constraints
 
@@ -195,7 +195,7 @@ The first list's last element `"S_OH_FLT_CTL_FAC_2"` has no trailing comma; keep
 - [ ] **Step 4: Wire the definition.** Def 4947: `ValueDescriptions = {[0] = "Stowed", [3] = "Extended"}`, `ValueToDescriptionKey = FenixA320GravityGear.DescriptionKey` (OnRequest, display name unchanged). Delete def 4948, its "Cockpit Other" entry and both case labels 9382-9383. New branch: `if (varKey == FenixA320GravityGear.CrankKey) { _ = MoveGravityGearAsync(value >= FenixA320GravityGear.FullTurns / 2, simConnect, announcer); return true; }`. `private async Task MoveGravityGearAsync(bool extend, SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer? announcer)` keeps one `FenixA320GravityGearWalker` per definition (field `_gravityGearWalker`), whose delegates call the manager from the latest call (field `_gravityGearSim`): `SetLVar(k, v)`, `ReadFreshAsync(k, FenixA320GravityGear.ReadTimeoutMs)`, `Task.Delay`. Speak the result: refusals and "no read-back" with `AnnounceImmediate`, the completion read-back with `Announce` (it lands about 6 s after the pick). Wrap in try/catch → `Log.Debug("Fenix", …)`.
 - [ ] **Step 5: Run the suite: all green.**
 - [ ] **Step 6: Commit.** `fix(fenix): gravity gear is one control that raises the handle and cranks three turns`
-- [ ] **Step 7: Owner in sim (flight).** Fenix airborne at least 3,000 ft above ground, at most 200 kt, autopilot on, gear lever up, gear up. Cockpit → Cockpit Other → **Gravity Gear Extension** → Extended. Expected after about 6 s: *"Gravity gear: cranked 3 turns."*, then the gear lights speak as the gear falls (*"MainPanel Landing Gear 1 Lower: On"* and its 2 and 3 siblings; `_L` read 1 on the ground with the gear down today). Then choose Stowed: about 6 s later *"Gravity gear: crank stowed."*. If the crank reports 3 turns but no gear light changes within 30 s: STOP; replace the per-step `SetLVar` with the template's own step through the calculator, `simConnect.ExecuteCalculatorCodeUnique("3 (L:S_HYD_GRAVITY_GEAR_EXTEND) 0.05 + min (>L:S_HYD_GRAVITY_GEAR_EXTEND)")` (stow: `"0 (L:S_HYD_GRAVITY_GEAR_EXTEND) 0.05 - max (>L:S_HYD_GRAVITY_GEAR_EXTEND)"`), and retest once; if that fails too, report to the owner.
+- [ ] **Step 7: Owner in sim (ground only: owner answer 2, no flight test).** Fenix on the ground, parked. Cockpit → Cockpit Other → **Gravity Gear Extension** → Extended. Expected after about 6 s: *"Gravity gear: cranked 3 turns."*, and a read-only data-service read of `system.switches.S_HYD_GRAVITY_GEAR_EXTEND` gives 3. Then choose Stowed: about 6 s later *"Gravity gear: crank stowed."* and the read gives 0. If the read does not reach 3: replace the per-step `SetLVar` with the template's own step through the calculator, `simConnect.ExecuteCalculatorCodeUnique("3 (L:S_HYD_GRAVITY_GEAR_EXTEND) 0.05 + min (>L:S_HYD_GRAVITY_GEAR_EXTEND)")` (stow: `"0 (L:S_HYD_GRAVITY_GEAR_EXTEND) 0.05 - max (>L:S_HYD_GRAVITY_GEAR_EXTEND)"`), and retest once; if that fails too, report to the owner. Whether 3 turns actually drops the gear in flight stays unproven: list it as a follow-up in the handoff.
 
 ### Task 6: AUTOLAND lights (measure, then follow)
 
@@ -275,10 +275,32 @@ A caution does not end the watch early: a later warning outranks it. Times are t
 - [ ] **Step 7: Commit.** `fix(fenix): panel and First Officer TO CONFIG read fresh twins through the shared watch`
 - [ ] **Step 8: Owner in sim (ground, engines running, parking brake set).** (1) Flaps 0, Pedestal → ECAM → **ECAM TO CONFIG**: within `VerdictAfterMs` *"Takeoff config: check configuration."*. (2) Flaps 1, trim and V-speeds set, same button: after about `VerdictAfterMs` *"Takeoff config normal."* (3) First Officer window (Output Shift+C), Taxi checklist, tick **Takeoff config test** with flaps 0: *"Takeoff config: check configuration."* A wrong verdict in any of the three: STOP and report with `debug.log`.
 
-### Task 9: Hand back
+### Task 9: Take-off V-speed callouts on the shared machine (owner request, 2026-10-21)
+
+Why: the Fenix is the only airframe still calling V1/rotate from `TakeoffAssistManager`, which reads `N_MISC_PERF_TO_V1/VR` ONCE when Takeoff Assist turns on (`MainForm.Hotkeys.cs:521-533`, `TakeoffAssistManager.SetFenixVSpeeds` :588-595): speeds entered or changed after that, or Takeoff Assist left off, give no V1 or rotate call and nothing says why. The FBW A320/A380, MD-11 and iFly use the shared `TakeoffVSpeedCallouts` machine (TKO-5), which follows the speeds live and calls V1, Rotate and V2 whether or not Takeoff Assist is on. Move the Fenix onto it, built from the A320's (`A320TakeoffCallouts`; `FlyByWireA320Definition.cs:3006-3019`, :7017-7036, :8120-8148); owner answer 16 (`NotSetBelow`) lands here too, on the same rows.
+
+**Files:**
+- Create: `MSFSBlindAssist/Aircraft/FenixTakeoffCallouts.cs` (owned by plan 02)
+- Modify: `MSFSBlindAssist/Aircraft/FenixA320Definition.cs` (the IAS feed definition beside the V-speed rows about :6548-6571, `NotSetBelow = 1` and `Units = "knots"` on `N_MISC_PERF_TO_V1/VR/V2`, the `TakeoffCalloutFeedKey` / `TakeoffCalloutFeedNeeded` / `IsMuteWrapExempt` overrides, the first branch of `ProcessSimVarUpdate`, the arm drop in `ResetAnnouncementBaselines` and `OnSimContextReset`)
+- Modify: `MSFSBlindAssist/Services/TakeoffAssistManager.cs` (delete the Fenix-only fields :78-81, the V1/rotate blocks :560-580 and `SetFenixVSpeeds`/`ClearFenixVSpeeds` :583-605; the 80/100 knots calls stay) and `MSFSBlindAssist/MainForm.Hotkeys.cs` (the Fenix block :521-533 and `ClearFenixVSpeeds()` :551-552; plan 01's own lines in this file are already in, so this is sequential, not an overlap)
+- Test: `tests/MSFSBlindAssist.Tests/FenixTakeoffCalloutsTests.cs`
+
+**Interfaces:**
+- Consumes: `TakeoffVSpeedCallouts` (`ProcessSample`, `NeedsSamples`, `Compose`), `TakeoffCalloutKeys` (`IsMuted`, `IsVSpeedKey`, `Feed`), `UserSettings.FenixDisabledMonitorVariablesSet`.
+- Produces: `public static class FenixTakeoffCallouts` with `public const string IasKey = "FENIX_TAKEOFF_CALLOUT_IAS";`, `V1Key = "N_MISC_PERF_TO_V1"`, `VrKey = "N_MISC_PERF_TO_VR"`, `V2Key = "N_MISC_PERF_TO_V2"`, `public static readonly TakeoffCalloutKeys Keys`.
+
+- [ ] **Step 1: Check the Fenix plays no V-speed call of its own.** Search `<MSFS Community>\fnx-aircraft-320\SimObjects\Airplanes\FNX_32X\attachments\fnx\Part_Interior_Cockpit_CEO\sound\sound.xml` (and the common cockpit sound file) for a V1/rotate event. If the Fenix calls V1 itself, stop and ask the owner whether the app should still call it (the A380 note in TKO-5 is the precedent).
+- [ ] **Step 2: Write the failing tests** (pattern of `A320TakeoffCalloutsTests.cs`, under de-DE): `Keys_name_the_fenix_speed_rows` (feed key and the three `N_MISC_PERF_TO_*` keys); `Definition_registers_the_feed` (`AIRSPEED INDICATED`, knots, `Continuous`, `IsAnnounced`, `ExcludeFromBatch`, `HighFrequency`, `ExcludeFromMonitorManager`; and `TakeoffCalloutFeedKey == FenixTakeoffCallouts.IasKey`); `Speed_rows_read_not_set_below_1` (`NotSetBelow == 1` on all three); `Takeoff_assist_has_no_fenix_vspeed_code` (source scan: `TakeoffAssistManager.cs` and `MainForm.Hotkeys.cs` no longer mention `FenixVSpeeds` or `N_MISC_PERF_TO_V1`).
+- [ ] **Step 3: Run them; they fail.**
+- [ ] **Step 4: Implement** exactly as the A320 does, with the Fenix's keys and its mute set `FenixDisabledMonitorVariablesSet`: the feed branch first in `ProcessSimVarUpdate` (one `AnnounceImmediate` of `Compose`, skipped while `announcer.Suppressed`), `SIM_ON_GROUND` and the three speed keys PEEKED (fed to the machine, never consumed, so "MCDU V1 Speed: 140" is still spoken as it is entered), the arm dropped in both resets, never the speeds. Then delete the old Fenix path from `TakeoffAssistManager` and `MainForm.Hotkeys`.
+- [ ] **Step 5: Run the suite, including `TakeoffVSpeedCalloutsTests`, `TakeoffCalloutFeedTests` and `TakeoffCalloutKeysTests`; all green. Build.**
+- [ ] **Step 6: Commit.** `feat(fenix): take-off V1, Rotate and V2 on the shared callout machine (TKO-5)`
+- [ ] **Step 7: Owner in sim (with plan 08's takeoff-speeds check).** PERF TAKE OFF: enter V1 140, VR 142, V2 145; hear "MCDU V1 Speed: 140" etc. Take off with Takeoff Assist OFF: hear "V1", "Rotate", "V2" at those speeds (one utterance when two coincide). Clear a speed: hear "not set", not "0".
+
+### Task 10: Hand back
 
 - [ ] **Step 1:** `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64` and the full suite: both green.
-- [ ] **Step 2:** `git diff --name-only <base-sha>` lists only: `FenixA320Definition.cs`, `FenixA320GravityGear.cs`, `FenixTakeoffConfigVerdict.cs`, `FenixActionExecutor.cs` (two members), `SettingsManager.cs` (seed), `SettingsSeedTests.cs`, `FenixTakeoffConfigVerdictTests.cs`, and the new `FenixV3Fix*Tests.cs` / `FenixTakeoffConfigWiringTests.cs`.
+- [ ] **Step 2:** `git diff --name-only <base-sha>` lists only: `FenixA320Definition.cs`, `FenixA320GravityGear.cs`, `FenixTakeoffCallouts.cs`, `FenixTakeoffConfigVerdict.cs`, `FenixActionExecutor.cs` (two members), `TakeoffAssistManager.cs` (Fenix V-speed code removed), `MainForm.Hotkeys.cs` (its Fenix V-speed block), `SettingsManager.cs` (seed), `SettingsSeedTests.cs`, `FenixTakeoffConfigVerdictTests.cs`, and the new `FenixV3Fix*Tests.cs` / `FenixTakeoffConfigWiringTests.cs` / `FenixTakeoffCalloutsTests.cs`.
 - [ ] **Step 3:** Fill Task 1's and Task 6's records in this file, tick the boxes, and hand the "Handoff to plan 10" section below to the integrator.
 
 ---
@@ -291,7 +313,8 @@ A caution does not end the watch early: a later warning outranks it. Times are t
 2. **Gravity Gear Extension** (Cockpit → Cockpit Other) is now one control, Stowed or Extended. Extended raises the handle and turns the crank three times (about six seconds), then BA says "Gravity gear: cranked 3 turns."; Stowed turns it back and stows the handle. The separate "Gravity Gear Crank" is gone. Guide line 252 ("gravity gear extension and its crank").
 3. **TO CONFIG** (panel key and First Officer) now waits for the Fenix warning computer's own delay: "Takeoff config normal." comes only after both master lights stayed dark that long (about `VerdictAfterMs`); a bad config is announced as soon as the light comes on. It can also say "Takeoff config: caution. Check the ECAM." and "Takeoff config: no result read. Check the ECAM." Guide line 314.
 4. **Generator 1** now switches GEN 1. It used to press the EMER ELEC GEN 1 LINE button.
-5. On Fenix v3 these are announced again: the DC SERVICE bus, the cockpit door video light, and (if Task 6 changed them) the AUTOLAND lights. The COMMERCIAL upper-legend row and 13 FenixQuartz rows leave the Ctrl+M Monitor Manager (they never spoke).
+5. **Take-off calls:** the Fenix now calls "V1", "Rotate" and "V2" from the speeds on PERF TAKE OFF, followed live (enter or change them any time before the roll), whether or not Takeoff Assist is on; each call is muted with its speed row in Ctrl+M; a cleared speed is spoken as "not set". Guide: the Fenix part of the take-off callouts section.
+6. On Fenix v3 these are announced again: the DC SERVICE bus, the cockpit door video light, and (if Task 6 changed them) the AUTOLAND lights. The COMMERCIAL upper-legend row and 13 FenixQuartz rows leave the Ctrl+M Monitor Manager (they never spoke).
 
 ### Proposed rule lines (new Fenix rules go to `.claude/rules/fenix-data.md`, since a32nx-fenix.md is at its cap)
 
@@ -314,10 +337,11 @@ Both are under 400 characters. Full text for `docs/invariants/fenix-data.md`: Ta
 6. (Withdrawn: plan 01 no longer pins counts.)
 7. Docs (spec 2.4 plus this plan): `docs/a32nx.md:71` (crank), `:89-91` (TO CONFIG: `onHeld`, 1.5 s, cached read are gone); `docs/first-officer.md:95-96`.
 8. Follow-up, not built: an ISIS baro readout from `N_MIP_ISFD_BARO_HPA` / `_INCH` (decision 3), with plan 09's ISIS/standby work.
+9. Task 9 (take-off calls): mirror TKO-5 onto the Fenix definition, as a "Mirrored from takeoff-and-callouts.md" line in a rule file that loads on `FenixA320Definition.cs` but not on takeoff-and-callouts.md's own files (run `ClaudeContextBudgetTests` for a double load, e.g. on `FenixTakeoffCalloutsTests.cs`), and add the Fenix to TKO-5's full text in `docs/invariants/takeoff-and-callouts.md`.
 
 ### In-sim checks still needed (owner, in this order)
 
 1. TO CONFIG measurement (Task 1), then the three verdict checks (Task 8 Step 8).
-2. Gravity gear in flight (Task 5 Step 7).
+2. Gravity gear on the ground (Task 5 Step 7: the crank reads 3, then 0). The real gear drop in flight stays unproven (follow-up).
 3. AUTOLAND with the annunciator test (Task 6 Steps 1 and 5); a real autoland warning only if the test lit nothing.
 4. One ground power-up pass: Overhead → Electrical → **Generator 1** Off then On with an engine running, hearing the "Electrical Generator 1 Upper/Lower" lights change; "ELEC BUS POWER DC SERVICE STATUS: Powered" at power-up; Overhead lists **Flight Control Computers**.

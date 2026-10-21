@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Bring plans 02-09 together on `FenixV3`, apply every handoff they left, write the docs, rules, guide and changelog, run one short owner-in-sim pass, delete `docs/fenix-v3/`, and open the pull request to `main`.
+**Goal:** Bring plans 02-09 and 11 together on `FenixV3`, apply every handoff they left, write the docs, rules, guide and changelog, run one short owner-in-sim pass, delete `docs/fenix-v3/`, and open the pull request to `main`.
 
-**Architecture:** One person, after 02-09 are done on `FenixV3` (contributors push there directly; this is the only pull request). This plan owns every file the index assigns to "nobody before 10" (MainForm partials, `SettingsManager.cs` beyond plan 02's seed lines, shared tests, `docs/`, `guide/`, `changelog.d/`, `CLAUDE.md`, `.claude/rules/`), and edits other plans' files only for the handoff items listed here.
+**Architecture:** One person, after 02-09 and 11 are done on `FenixV3` (contributors push there directly; this is the only pull request). This plan owns every file the index assigns to "nobody before 10" (MainForm partials, `SettingsManager.cs` beyond plan 02's seed lines, shared tests, `docs/`, `guide/`, `changelog.d/`, `CLAUDE.md`, `.claude/rules/`), and edits other plans' files only for the handoff items listed here.
 
 **Tech Stack:** C# / .NET 10, xUnit, Markdown, `gh`.
 
@@ -27,7 +27,7 @@
 
 ---
 
-### Task 1: Confirm 02-09 are in
+### Task 1: Confirm 02-09 and 11 are in
 
 **Files:** none (read only).
 
@@ -48,7 +48,6 @@ Each item: make the change, add or adjust its test, run the suite, commit per fi
 - [ ] [03 H6] `S_OH_ENG_N1_MODE_1/2` are registered twice in one initializer (about :4720-4735 and :5761-5778): keep one definition (the panel control; VAR-6, VAR-7), test that each name is registered once.
 - [ ] [07, also seen] RMP frequency spoken with `{freqMHz:F3}` in the PC's culture (about :12154): invariant culture; de-DE test.
 - [ ] [07, also seen] FD and LS pushbutton lights announced as "… FD Fault" / "… LS Fault" (about :1258-1275, :1321-1338): read the lights in the sim (owner) and name them by what they show; never infer a legend.
-- [ ] [08 H4, owner's choice] `NotSetBelow = 1` on `N_MISC_PERF_TO_V1/VR/V2` (A320-10) if the owner agrees.
 - [ ] [04 H2, conditional] Output O on the Fenix reads `aircraft.temperature.oat` through `DataService.ReadAsync` when plan 04's check 2 showed a 1 °C or larger difference from stock; else nothing.
 - [ ] [07 R1, R3, R4, conditional on M1, M3, M4] FCU encoder sets with acceleration on; baro set with Linked EFIS; COM standby against the Fenix's channel spacing: apply only the ones plan 07's measurements showed misbehaving, as plan 07 describes them.
 - [ ] [03 H1-H4, conditional on owner answers] menu/profile name (`AircraftName` and `MainForm.Designer.cs` menu text, never `AircraftCode`); hide empty panels in `GetPanelStructure`; CALLS MECH/ALL/FWD/AFT as press buttons; panel rebuild on `VariantChanged` (`MainForm.PanelBuilder.cs`).
@@ -72,6 +71,7 @@ Each item: make the change, add or adjust its test, run the suite, commit per fi
 - [ ] **Step 1:** Collect the proposed lines from each plan's handoff: FNX lines from 02 (2), 03 (2), 04 (2), 05 (3), 06 (3), 07 (2, plus 1 if options editing was built), 09 (1); FOA-13 to FOA-15 from 08; AI-10 from 09. Number the FNX lines FNX-4 upward in merge order; drop any whose mechanism a test with a self-explaining name already pins (the CLAUDE.md "one mechanism per ID" rule).
 - [ ] **Step 2:** Add each line and its `## ID` full text (from the plan's evidence and owner decisions, with dates and measurements).
 - [ ] **Step 3:** If `fenix-data.md` passes 8,000 characters, split by subject: keep data service, variant and EFB rules in `fenix-data.md`; move the window rules (engines, cabin, failures, options) to a new `.claude/rules/fenix-windows.md` with globs `MSFSBlindAssist/Forms/Fenix/**`, `MSFSBlindAssist/Services/FenixEngine*.cs`, `FenixCabin*.cs`, `FenixFailure*.cs`, `FenixOption*.cs` and their tests, a `docs/invariants/fenix-windows.md`, and the CLAUDE.md row. IDs never change.
+- [ ] **Step 3b:** [02 handoff 9] Mirror TKO-5 onto the Fenix definition and add the Fenix to its full text (take-off calls moved to the shared machine).
 - [ ] **Step 4:** [09 H6] In `docs/invariants/a32nx-fenix.md` A320-40, replace "Not covered by this rule: the Fenix EFB window (…)" with "The Fenix EFB window uses the same address (FNX rule)."
 - [ ] **Step 5:** Run `ClaudeContextBudgetTests` and the whole suite; follow any failure's message. Commit `docs(rules): Fenix v3 rules`.
 
@@ -88,7 +88,7 @@ Each item: make the change, add or adjust its test, run the suite, commit per fi
 
 **Files:** `guide/airbus-aircraft.md` (Fenix chapter), `guide/first-officer.md`, `guide/planning-your-flight.md`, the hotkey appendix, `MSFSBlindAssist/HotkeyGuides/Fenix_A320_Hotkeys.txt`.
 
-- [ ] Fenix chapter, from each plan's "Pilot-facing changes": the "Fenix windows" key (input mode, Ctrl+Shift+F) and its Engines, Cabin, Failures and Fenix options windows; the Flight Control Computers panel; gravity gear; TO CONFIG wording; Generator 1; the A321, extra-tank and IAE controls and "Not fitted on this aircraft."; Alt+P/N/E/S/I on v3 (09 H3, about :306) and "Fenix 2.x: update the Fenix" if the owner chose v3-only; a short note that Fenix v3 needs Navigraph connected in its EFB for current navdata.
+- [ ] Fenix chapter, from each plan's "Pilot-facing changes": the "Fenix windows" key (input mode, Ctrl+Shift+F) and its Engines, Cabin, Failures, Fenix documents and Fenix options windows; the Flight Control Computers panel; gravity gear; TO CONFIG wording; Generator 1; the A321, extra-tank and IAE controls and "Not fitted on this aircraft."; Alt+P/N/E/S/I frame the right displays on v3 (09 H3, about :306; Alt+P stays the first officer's PFD, owner answer 4) and "These reads need Fenix v3: update the Fenix" (owner answer 3); a short note that Fenix v3 needs Navigraph connected in its EFB for current navdata.
 - [ ] `guide/first-officer.md`: plan 08's five pilot-facing lines.
 - [ ] `guide/planning-your-flight.md:491`: plan 09's EFB message text (09 H4).
 - [ ] `Fenix_A320_Hotkeys.txt` (about :33-38 for the reads, plus plan 01's Ctrl+Shift+F line) and the hotkey appendix.
@@ -102,7 +102,7 @@ Aircraft: a Fenix v3 A320 or A321 at a gate, cold and dark with ground power ava
 - [ ] 1. `[` then Ctrl+Shift+F: "Fenix windows" lists Engines, Cabin, Failures, Fenix options; each opens and Escape returns.
 - [ ] 2. Overhead: "Flight Control Computers" is listed; Electrical: Generator 1 Off then On with an engine running changes GEN 1 (not EMER GEN 1 LINE).
 - [ ] 3. A bad TO CONFIG (flaps up) from the panel key: "Takeoff config: check configuration."; set flaps 1: "Takeoff config normal." after the measured delay.
-- [ ] 4. Alt+P: the AI describes the captain's PFD.
+- [ ] 4. Alt+P: the AI describes the first officer's PFD (airspeed, altitude, FMA), not the centre panel.
 - [ ] 5. With a pre-update Ctrl+M mute on "ELEC BUS POWER DC SERVICE STATUS" (or a test settings file), the row stays muted.
 - [ ] Record results in the PR description.
 
@@ -113,13 +113,12 @@ Aircraft: a Fenix v3 A320 or A321 at a gate, cold and dark with ground power ava
 ### Task 8: Pull request (owner go-ahead first)
 
 - [ ] **Step 1:** Ask the owner to approve pushing `FenixV3`. Then push and `gh pr create --base main --head FenixV3` with: what changes for a pilot (memory: explain in user terms), the in-sim results, `User guide: updated: Part <n>, Fenix A320 family`, the follow-ups below, and the closing attribution line.
-- [ ] **Step 2:** Read the PR number from `gh pr create`'s output. Add the fragments, written for a pilot: `changelog.d/<pr>-fenix-v3-fixes.fix.md` (plans 02, 08, 09), `changelog.d/<pr>-fenix-v3-windows.feature.md` (plans 01, 04, 05, 06, 07), `changelog.d/<pr>-fenix-v3-variants.improvement.md` (plan 03). Use the plans' draft lines. Commit and push.
+- [ ] **Step 2:** Read the PR number from `gh pr create`'s output. Add the fragments, written for a pilot: `changelog.d/<pr>-fenix-v3-fixes.fix.md` (plans 02, 08, 09), `changelog.d/<pr>-fenix-v3-windows.feature.md` (plans 01, 04, 05, 06, 07, 11), `changelog.d/<pr>-fenix-v3-variants.improvement.md` (plan 03). Use the plans' draft lines. Commit and push.
 - [ ] **Step 3:** CI green (tests, changelog, user-guide-line). The owner merges.
 
 ## Follow-ups (record in the PR, not built)
 
 - Datalink: DCDU screen and CPDLC (Hoppie / SayIntentions / BeyondATC), AOC messages, printer (spec 4.6).
-- An accessible "Fenix documents" window over `/fenix/documents` (09), if the EFB's Documents app proved hard to use.
 - ISIS baro readout from `N_MIP_ISFD_BARO_HPA/_INCH` (02).
 - Variant follow-ups: brake fans, cargo heat vs vent, GNADIRS IR ALIGN/FAULT lights, analogue standby baro knob, ACT refuel valves and FQI, A321 centre-tank legends (03); confirm `N_CONFIG_AIRCRAFT_TYPE` 2 on an A319.
 - Failures "clear all" (06). Fenix options editing, if read-only was chosen (07). Speaking the detected variant (03 Q1), if declined.

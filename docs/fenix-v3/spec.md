@@ -120,7 +120,7 @@ Ordered by value to a blind pilot (my judgement):
    ("After Takeoff", "Safety Briefing"), 15 music channels on the A320 loaded first; the channel list is per livery (the IAE A321 Delta livery had one).
 4. **Failures window**: `GET http://127.0.0.1:8083/fenix/failures/manual` returns the failures by ATA chapter (549 on the A320 CFM, 555 on the A321 IAE: the catalog follows the variant) with
    titles and armed state (JSON). Arming is `POST /fenix/failures/saveManual` (not probed; read the EFB's call first).
-5. **Fenix options, spoken or adapted to**: `settings { state { settings { key category value possibleValues writable } } }`
+5. **Fenix options, spoken or adapted to** (the EFB has its own searchable Settings app, checked in the built-in browser on 2026-10-21: readable headings, descriptions and search, but every on/off checkbox is named "on", each option ends in an unnamed button, the selected choice of a choice option shows only by colour (no pressed/checked state), and the category list is not keyboard reachable; so our own window is still worth building): `settings { state { settings { key category value possibleValues writable } } }`
    (146 options). Several can disturb our control paths if a pilot turns them on: `encoder_acceleration_enabled`
    (our FCU/baro encoder bursts), `efis_baro_linking_type` (our separate left/right baro sets), `fd_ls_sync_enabled`,
    `channel_spacing_type` (8.33 kHz on this PC), `fcu_readouts_type`, `weight_unit` (Pounds here), `baro_unit`.
