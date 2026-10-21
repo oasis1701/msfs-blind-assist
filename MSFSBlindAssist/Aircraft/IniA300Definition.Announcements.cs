@@ -84,7 +84,8 @@ public partial class IniA300Definition
                 _lampSpeech.NotePowerChange(Clock());
             foreach (var change in _lampBoard.Update(varName, value))
             {
-                if (announcer.Suppressed || IsMuted(change.Lamp.MuteKey) || IsPressedButtonsLamp(change.Lamp.Id))
+                if (announcer.Suppressed || IsMuted(change.Lamp.MuteKey) || IsPressedButtonsLamp(change.Lamp.Id)
+                    || IsFoQuietLamp(change.Lamp.Id))
                 {
                     // Not spoken, but the light has moved on from its earlier change, still held or pending: drop it,
                     // or it is spoken later although wrong ([A300-24]).
@@ -129,7 +130,10 @@ public partial class IniA300Definition
         {
             if (_seedGate.Armed)
                 _seedGate.NoteValue(varName, value, ownedByAircraft: IsAircraftOwned(varName));
-            if (_tracker.Observe(varName, value) is string phrase)
+            // Observed whatever the quiet: the baseline must follow the aircraft. A master light is quiet only
+            // during a test; a lever only just after the First Officer moved it ([FOA-14]).
+            bool master = varName is A300Announcements.MasterWarningKey or A300Announcements.MasterCautionKey;
+            if (_tracker.Observe(varName, value) is string phrase && !(master ? IsFoQuietMaster() : IsFoQuietRow(varName)))
                 announcer.Announce(phrase);
             return true;
         }

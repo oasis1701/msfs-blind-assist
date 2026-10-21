@@ -276,6 +276,7 @@ public partial class IniA300Definition : BaseAircraftDefinition, IDisposable
 
         RegisterFmaSources(vars);
         RegisterTakeoffCallouts(vars);
+        RegisterFirstOfficerVariables(vars);
 
         // Ctrl+B's STD and QNH (A300Baro, [A300-16]): each side's STD flag streams on its own
         // once-a-second subscription, never the batch (a new batch name can split the FMA's sources,

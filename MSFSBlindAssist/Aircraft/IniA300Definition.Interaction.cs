@@ -147,7 +147,9 @@ public partial class IniA300Definition
                 return;
             _commanded.Record(CommandKey(row.Key), now, Clock());
             ReRead(row.Key, sim);
-            announcer.Announce($"{row.Name} did not move");
+            // A First Officer write reports its own result; its "did not move" would be a second voice.
+            if (!IsFoQuietRow(row.Key))
+                announcer.Announce($"{row.Name} did not move");
         }
         catch (Exception ex)
         {
