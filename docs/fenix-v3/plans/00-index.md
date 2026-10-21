@@ -100,7 +100,7 @@ behind it, or no use to a blind pilot).
 | 6 | 08 | Cabin window opens and closes doors at the gate? | Yes | Yes, by the owner principle (owner, 2026-10-21) |
 | 7 | 08 | Aft door names on the A319/A320 | The FAP's "Door 4 left" (the EFB says "2 left") | The FAP's naming (owner, 2026-10-21) |
 | 8 | 10 | Failures: confirm every write (No default), no checkboxes, arming needs a condition, speak triggered failures while open | Yes to all four | Yes to all four (owner, 2026-10-21) |
-| 9 | 06 | Make CALLS MECH/ALL/FWD/AFT press buttons like the new MID/EXIT? | Yes (A320-3) | Convert (owner, 2026-10-21); plan 12 Task 2 applies handoff H3 |
+| 9 | 06 | Make CALLS MECH/ALL/FWD/AFT press buttons like the new MID/EXIT? | Yes (A320-3) | Convert (owner, 2026-10-21); plan 02 Task 11 does it (it owns the definition file) |
 | 10 | 06 | Hide panels the variant leaves empty ("DCDU Left" without a DCDU)? | Yes | Yes, hide them (owner, 2026-10-21); plan 12 Task 2 applies handoff H2. Equipment such as the DCDU, ISIS and extra tanks follows the loaded livery's config values, not the aircraft type |
 | 11 | 06 | Rename the profile from "Fenix A320 CEO" (the stored code stays)? | Keep the name | Keep "Fenix A320 CEO" (owner, 2026-10-21); handoff H1 is dropped |
 | 12 | 06 | Speak the detected variant once after loading? | No | Speak it (owner, 2026-10-21): plan 06 runs its Task 4 |

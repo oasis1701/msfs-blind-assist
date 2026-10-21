@@ -282,12 +282,12 @@ Why: the parity principle (index): a sighted pilot can work these four in the Fe
   - The guide and README mentions.
   - Never `AircraftCode`.
 - **H2 (if Q4 is yes).** In `FenixA320Definition.GetPanelStructure()` (:8505-8575), drop a panel when its `GetPanelControls()` list is non-empty and no key in it passes `IsPanelControlVisible(key, null)`. MainForm reloads a section's panel list only when the section is selected again (MainForm.PanelBuilder.cs:65-89), so this takes effect on the next section change.
-- **H3 (if Q3 is yes).** CALLS MECH/ALL/FWD/AFT become `RenderAsButton` with `ExecuteButtonTransition` on `value == 1`: definitions at FenixA320Definition.cs:4552-4583, handlers at :10629-10651. They keep their labels. `S_OH_CALLS_EMER` and its cover are not part of this.
+- **H3 (moved to plan 02 Task 11, which owns the file; Q3 was answered "convert").** CALLS MECH/ALL/FWD/AFT become `RenderAsButton` with `ExecuteButtonTransition` on `value == 1`: definitions at FenixA320Definition.cs:4552-4583, handlers at :10629-10651. They keep their labels. `S_OH_CALLS_EMER` and its cover are not part of this.
 - **H4 (if Q5 is yes).** MainForm.PanelBuilder: on the Fenix's `VariantChanged`, reload `currentPanel` (the `PanelLoadTimer_Tick` path) only when the focus is not inside `controlsContainer`.
 - **H5 (after in-sim check 1).**
   - If the ECON FLOW light simply follows the switch (the screen reader says "On" and then "Econ Flow Lower: On" is heard), set `UiEchoVariable = "I_OH_PNEUMATIC_ECON_FLOW_L"` on `S_OH_PNEUMATIC_ECON_FLOW` in the Variants file (CORE-7). `FenixAcpReceptionTests.Every_ui_echo_partner_is_an_announced_light_with_the_same_values` then covers it.
   - If the owner reads ACT PUMP's real legends, the labels may move from Off/On to them.
-- **H6 (also seen, main file, plan 02's).** `S_OH_ENG_N1_MODE_1/2` are registered twice in one initializer (FenixA320Definition.cs:4720-4735 and :5761-5778). The later entry wins (`Continuous`, `IsAnnounced`, "Engine N1 Mode 1"), which is also a panel control (VAR-6). Pick one definition.
+- **H6 (moved to plan 02 Task 11, which keeps one `OnRequest` definition labelled "Engine N1 Mode 1"/"2", so this plan's light labels stay as tested).** `S_OH_ENG_N1_MODE_1/2` are registered twice in one initializer (FenixA320Definition.cs:4720-4735 and :5761-5778). The later entry wins (`Continuous`, `IsAnnounced`, "Engine N1 Mode 1"), which is also a panel control (VAR-6). Pick one definition.
 - **H7 (resolved before work started).** Plan 01's `FenixDefinitionSeamTests` asserts the seams' wiring and pins no totals, so this plan's additions leave it green.
 - **To plan 01 (detection).** `B_CONFIG_ADIRS` and `B_CONFIG_BRAKEFANS` read null through the simconnect MCP on 2026-10-21, while the settings API said Adirs and brake fans True. Confirm the app's own read gives 1 (in-sim check 3).
 - **To plan 05 (First Officer).**

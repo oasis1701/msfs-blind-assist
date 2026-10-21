@@ -519,7 +519,7 @@ Why: the EFB's per-option menu (the unnamed "overflow" button after each option)
 - [ ] **Step 6: Owner step E2 (after E1).** On "Encoder Acceleration: Off": Shift+F2, On, Enter, Yes → "Encoder Acceleration: On"; close and reopen MSFS (or switch livery): still On; Ctrl+F2, Yes → back to the Fenix default ("Encoder Acceleration: Off"). Any other answer: stop and record it.
 - [ ] **Step 7: Commit.** `git commit -m "feat(fenix): make a Fenix option permanent or reset it to the default (plan 11)"`
 
-### Task 6: Hand back
+### Task 7: Hand back
 
 - [ ] **Step 1:** Full suite and solution build green; `git diff --name-only <base-sha>` lists only this plan's files.
 - [ ] **Step 2:** Ask the owner for M1-M4 (below; E1 first if D1 = b). Write each heard phrase into "Measurement results" at the end of this file, and mark which handoff (R1-R4) applies.

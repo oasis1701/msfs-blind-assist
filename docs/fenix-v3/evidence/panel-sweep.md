@@ -22,15 +22,23 @@ press-release pulse (0, 1, 0; A320-3) matches it. A combo that writes 0 or 1 ins
 | DCDU Left, Cockpit Other | `S_DCDU1_DIM_BRT`, `S_DCDU2_DIM_BRT` | Dim/Mid/Bright | spring-loaded both ways (0 decrease, 2 increase) | "Dim" or "Bright" stays held, ramping to the limit until "Mid" | certain from the model; effect: in sim |
 | Flight Controls | `A_FC_THROTTLE_LEFT/RIGHT/BOTH_INPUT` | "Reverse" = 1 | 0..5 (a preset: 0 full reverse, 1 idle reverse) | only idle reverse | likely |
 
-## Check in the sim
+## Measured live on 2026-10-21 (A320-214 CFM on the ground, ground power; repeated on a reloaded flight through a direct SimConnect connection; every value restored)
+
+- Press-release pulse (0, 1, 0): holds of 50, 100 and 200 ms register (`S_ECAM_DOOR` / `I_ECAM_DOOR`, and the bus tie), 20 ms does not. The app's 200 ms is safe on v3. Toggling the bus tie disturbs ground power: never test with it.
+- `S_OH_LIGHTING_AVIONICS_COMPT`, `S_OH_SVCE_INT_OVRD`: presses arrive (clicks heard) but their lights stay 0 on the ground.
+- Baro STD: a push/pull counter; state `I_FCU_EFIS1_QNH` (1 QNH, 0 STD). After two pulls (counter 2), writing 1 (the app's "STD") selected QNH.
+- `E_FCU_SPEED`: after three cockpit clicks (counter 3, speed 103), writing 1 (the app's first "increase") gave 101.
+- `S_OH_PNEUMATIC_PRESS_MAN` in MAN: 0 closes the outflow valve (`A320_Cabin_Pressure_Outflow_Anim` 100 to 92), 2 opens it (92 to 99): 0 = DOWN, 2 = UP, ours reversed.
+- `S_OH_IN_LT_ANN_LT`: 0 dim (`N_BRIGHTNESS_ANNUNCIATORS` 0.351), 1 bright (1), 2 test (master warning lit): ours right.
+- Thrust-lever reverse: not readable with the engines off (plan 02 Task 11 Step 1 measures it at idle).
+
+## Still to check in the sim (plan 02 Task 11 Step 1)
 
 | Panel | Key | Question |
 |---|---|---|
-| EFIS L/R | `S_FCU_EFIS1_BARO_STD`, `_2_` (`SetFCUBaro` writes 0/1) | the model is a push/pull counter (push −1, pull +1): after a push or pull in the virtual cockpit, do STD/QNH from the app still work? |
-| FCU, EFIS, ISIS | `E_FCU_SPEED/HEADING/ALTITUDE/VS`, `E_FCU_EFIS{1,2}_BARO`, `E_MIP_ISFD_BARO` (INC/DEC), `S_FCU_VERTICAL_SPEED_PUSH/PULL` | relative counters written from a counter the app starts at 0: after a knob turn outside the app, does the first app step jump? V/S push/pull is the one FCU push/pull not on `AdjustFcuPushPullCounter` |
-| Interior Lights | `S_OH_IN_LT_ANN_LT` | v3 tooltips say 0 BRT, 1 DIM, 2 TEST; ours 0 Dim, 1 Bright (2023 presets agree with ours) |
-| Pressurization | `S_OH_PNEUMATIC_PRESS_MAN` | v3 names say 0 DOWN, 2 UP; ours the reverse (2022 presets and the click direction agree with ours) |
-| ACP | `S_ASP_INTRAD` | v3 names say 0 RAD, 2 INT; ours 0 INT, 2 RAD (presets agree with ours); RAD is spring-loaded, so ours holds a transmit until OFF |
+| Flight Controls | `A_FC_THROTTLE_LEFT/RIGHT/BOTH_INPUT` | with the engines at idle, is 0 full reverse and 1 reverse idle? |
+| ACP | `S_ASP_INTRAD` | v3 names say 0 RAD, 2 INT; ours 0 INT, 2 RAD (presets agree with ours): does 2 key the radio? |
+| ADIRS, Weather Radar | `S_OH_NAV_SYS_DISP`, `S_WR_MODE` | position names (from the real panels in the plan) on a GNADIRS livery and on the ND |
 
 ## Matching by design (no change)
 

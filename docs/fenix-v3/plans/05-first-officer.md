@@ -67,6 +67,7 @@ none of the names v3 renamed or removed (spec 1.1 to 1.5, 2.3).
 | `MSFSBlindAssist/FirstOfficer/Fenix/FenixFlowDefinitions.cs` | Modify | A321 pack-flow provider; 180 s start waits; comments |
 | `MSFSBlindAssist/FirstOfficer/Fenix/FenixFOAutoManager.cs` | Modify | Stale comment only |
 | `tests/MSFSBlindAssist.Tests/FirstOfficer/FenixFo{TakeoffSpeeds,LiveReadings,EngineRunning,A321,CabinReady,NameSweep}Tests.cs` | Create | One per task |
+| `tests/MSFSBlindAssist.Tests/FirstOfficer/FenixFoBaroStdTests.cs` | Create | Task 7: baro STD from the QNH lights |
 | `tests/MSFSBlindAssist.Tests/FirstOfficer/FenixReadbackTests.cs`, `FenixFlowParityTests.cs` | Modify | Updated names, timeout, live-value list, fuel tests |
 
 ---
@@ -255,7 +256,23 @@ public void Fuel_prefers_the_Fenixs_own_total(string culture)
 - [ ] **Step 4: Run `FenixReadbackTests` and the whole suite.**
 - [ ] **Step 5: Commit.** `fix(fo-fenix): fuel quantity line from the Fenix's own total (counts ACT fuel)`
 
-### Task 7: Name sweep: everything the FO reads exists, nothing renamed by v3
+### Task 7: Baro STD from the QNH lights (measured 2026-10-21)
+
+Why: `S_FCU_EFISn_BARO_STD` is the baro knob's push/pull counter, not a state: a pull adds 1, a push takes 1 away, so after cockpit pulls and pushes it holds any number (measured: 3 while in STD). The state is `I_FCU_EFISn_QNH`, 1 = QNH, 0 = STD (HubHop's "EFIS1_BARO_STD Status" output; read live: 0 in STD, 1 in QNH). The First Officer's baro readback (`BaroText`, "Baro reference: SET" reminders, `FenixChecklistDefinitions.cs:587, 678`) reads the counter today. Plan 02 Task 11 fixes the write side (`SetBaroStdBoth`, plan 02's file); this task fixes the read side.
+
+**Files:**
+- Modify: `MSFSBlindAssist/FirstOfficer/Fenix/FenixStateEvaluator.cs` (polled list :56; `BaroText` :175-190)
+- Test: `tests/MSFSBlindAssist.Tests/FirstOfficer/FenixFoBaroStdTests.cs` (new)
+
+**Interfaces:** `internal static string? BaroText(Func<string, double> read)` keeps its signature; it reads `I_FCU_EFIS1_QNH` (registered `Continuous` in the definition at :1375) instead of `S_FCU_EFIS1_BARO_STD`.
+
+- [ ] **Step 1: Write the failing tests:** `Std_comes_from_the_qnh_light`: with `I_FCU_EFIS1_QNH` 0, `BaroText` reads as standard whatever `S_FCU_EFIS1_BARO_STD` holds (seed it 3, then 0, then -2); with the light 1 and `S_FCU_EFIS1_BARO_MODE` 1, `N_FCU_EFIS1_BARO_HPA` 1010, it reads "QNH 1010" even with the counter at 3; light unread (NaN) gives the same result as today's unread STD. A source scan: `FenixStateEvaluator.cs` polls `I_FCU_EFIS1_QNH` and `I_FCU_EFIS2_QNH`, and no longer names `S_FCU_EFIS1_BARO_STD`.
+- [ ] **Step 2: Run; they fail.**
+- [ ] **Step 3: Implement:** poll the two lights in place of the two counters; `BaroText` treats light 0 as STD, 1 as QNH (the existing unit and value logic unchanged).
+- [ ] **Step 4: Run `FenixFoBaroStdTests`, `FenixReadbackTests` and the whole suite; all pass.**
+- [ ] **Step 5: Commit.** `fix(fo-fenix): baro STD read from the QNH light, not the knob's push/pull counter`
+
+### Task 8: Name sweep: everything the FO reads exists, nothing renamed by v3
 
 **Files:**
 - Create: `tests/MSFSBlindAssist.Tests/FirstOfficer/FenixFoNameSweepTests.cs`
@@ -267,10 +284,10 @@ public void Fuel_prefers_the_Fenixs_own_total(string culture)
 - [ ] **Step 1: Write the tests:**
   - `Every_cache_key_the_first_officer_reads_is_registered`: `keys = new FenixA320Definition().GetVariables().Keys`; for each seed value 0, 1 and 2 (conditions short-circuit, so one seed cannot reach every read), build `RecordingSimConnectCache.With(keys.Select(k => (k, (double)seed)))`, give it to a new `FenixStateEvaluator`, then call every flow step's `SkipCondition`, `LeaveAloneWhen`, `TargetValueProvider` and `GetValue(ConditionFieldName)`, and every checklist item's `GetValue(StateFieldName)`, `GetValue` of each `AdditionalStateFields`, `ReadLiveValue` and `LeaveAloneWhen`. Assert every recorded key, and every `OnRequestPollFields` entry, is in `keys` (message lists the strays).
   - `No_first_officer_file_names_a_name_v3_renamed_removed_or_left_dead`: none of `FNX2PLD_`, `B_ELEC_BUS_POWER_DC_SERIVICE`, `I_OH_DOOR_VIDEO`, `I_OH_ELEC_COMMERCIAL_U`, `S_HYD_GRAVITY_GEAR_EXTEND_ROTATION`, `I_MIP_AUTOLAND_`, `S_OH_ELEC_GEN1` appears in `MSFSBlindAssist/FirstOfficer/Fenix/*.cs` (spec 1.1 to 1.5, 2.1, 2.3).
-- [ ] **Step 2: Run them; both pass** after Tasks 1-6 (they pin today's state; if the first fails, the message names a read that nothing registers: fix the FO, not the test).
+- [ ] **Step 2: Run them; both pass** after Tasks 1-7 (they pin today's state; if the first fails, the message names a read that nothing registers: fix the FO, not the test).
 - [ ] **Step 3: Commit.** `test(fo-fenix): sweep the names the Fenix First Officer reads against the definition and v3's renames`
 
-### Task 8: Hand back
+### Task 9: Hand back
 
 - [ ] **Step 1:** Build the solution and run the whole suite: green. `git diff --name-only <base-sha>` lists only the files in "File structure".
 - [ ] **Step 2:** Owner-in-sim checks below (stop and ask the owner; build only with MSFSBA closed, CORE-3).

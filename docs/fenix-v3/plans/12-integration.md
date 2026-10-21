@@ -47,12 +47,11 @@ Each item: make the change, add or adjust its test, run the suite, commit per fi
 **`MSFSBlindAssist/Aircraft/FenixA320Definition.cs`**
 - [ ] [02 H2] Delete the three `FNX2PLD_speedV1/VR/V2` definitions and their comment (plan 05 now reads `N_MISC_PERF_TO_*`); `FenixV3FixNamesTests.Only_the_takeoff_speed_FenixQuartz_names_remain` becomes "no FenixQuartz names remain".
 - [ ] [04 H1] `protected override IReadOnlyList<AiDisplayRead> DisplayReads => FenixA320DisplayReads.For(Variant);` (about :13185) with plan 04's summary; replace the stale comment at about :13204 ("…dispatched from FenixA320DisplayReads by the base, on measured views.").
-- [ ] [06 H6] `S_OH_ENG_N1_MODE_1/2` are registered twice in one initializer (about :4720-4735 and :5761-5778): keep one definition (the panel control; VAR-6, VAR-7), test that each name is registered once.
 - [ ] [11, also seen] RMP frequency spoken with `{freqMHz:F3}` in the PC's culture (about :12154): invariant culture; de-DE test.
 - [ ] [11, also seen] FD and LS pushbutton lights announced as "… FD Fault" / "… LS Fault" (about :1258-1275, :1321-1338): read the lights in the sim (owner) and name them by what they show; never infer a legend.
 - [ ] [09 H2, conditional] Output O on the Fenix reads `aircraft.temperature.oat` through `DataService.ReadAsync` when plan 09's check 2 showed a 1 °C or larger difference from stock; else nothing.
 - [ ] [11 R1, R3, R4, conditional on M1, M3, M4] FCU encoder sets with acceleration on; baro set with Linked EFIS; COM standby against the Fenix's channel spacing: apply only the ones plan 11's measurements showed misbehaving, as plan 11 describes them.
-- [ ] [06 H1-H4, conditional on owner answers] menu/profile name (`AircraftName` and `MainForm.Designer.cs` menu text, never `AircraftCode`); hide empty panels in `GetPanelStructure`; CALLS MECH/ALL/FWD/AFT as press buttons; panel rebuild on `VariantChanged` (`MainForm.PanelBuilder.cs`).
+- [ ] [06 H1-H4, conditional on owner answers] menu/profile name (`AircraftName` and `MainForm.Designer.cs` menu text, never `AircraftCode`); hide empty panels in `GetPanelStructure`; panel rebuild on `VariantChanged` (CALLS MECH/ALL/FWD/AFT and the N1 MODE duplicate are plan 02 Task 11's now) (`MainForm.PanelBuilder.cs`).
 
 **`MSFSBlindAssist/FirstOfficer/Fenix/`**
 - [ ] [02 H4] Delete the "holds 1.5 s" comment in `FenixChecklistDefinitions.cs` (about :302).
@@ -70,7 +69,7 @@ Each item: make the change, add or adjust its test, run the suite, commit per fi
 
 **Files:** `.claude/rules/fenix-data.md`, `docs/invariants/fenix-data.md`, `.claude/rules/first-officer-airbus.md`, `docs/invariants/first-officer-airbus.md`, `.claude/rules/ai-display.md`, `docs/invariants/ai-display.md`, `docs/invariants/a32nx-fenix.md` (A320-40 text), `CLAUDE.md`.
 
-- [ ] **Step 1:** Collect the proposed lines from each plan's handoff: FNX lines from plans 02 (2), 03 (2), 06 (3), 07 (4), 08 (3), 09 (2), 10 (3) and 11 (3, one of them only if options editing was built); FOA-13 to FOA-15 from plan 05; AI-10 from plan 04. Number the FNX lines FNX-4 upward in merge order; drop any whose mechanism a test with a self-explaining name already pins (the CLAUDE.md "one mechanism per ID" rule).
+- [ ] **Step 1:** Collect the proposed lines from each plan's handoff: FNX lines from plans 02 (4), 03 (2), 06 (3), 07 (4), 08 (3), 09 (2), 10 (3) and 11 (3, one of them only if options editing was built); FOA-13 to FOA-15 from plan 05; AI-10 from plan 04. Number the FNX lines FNX-4 upward in merge order; drop any whose mechanism a test with a self-explaining name already pins (the CLAUDE.md "one mechanism per ID" rule).
 - [ ] **Step 2:** Add each line and its `## ID` full text (from the plan's evidence and owner decisions, with dates and measurements).
 - [ ] **Step 3:** If `fenix-data.md` passes 8,000 characters, split by subject: keep data service, variant and EFB rules in `fenix-data.md`; move the window rules (engines, cabin, failures, options) to a new `.claude/rules/fenix-windows.md` with globs `MSFSBlindAssist/Forms/Fenix/**`, `MSFSBlindAssist/Services/FenixEngine*.cs`, `FenixCabin*.cs`, `FenixFailure*.cs`, `FenixOption*.cs` and their tests, a `docs/invariants/fenix-windows.md`, and the CLAUDE.md row. IDs never change.
 - [ ] **Step 3b:** [02 handoff 9] Mirror TKO-5 onto the Fenix definition and add the Fenix to its full text (take-off calls moved to the shared machine).
