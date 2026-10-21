@@ -10,15 +10,15 @@
 
 **Tech Stack:** C# 13 / .NET 10 WinForms, SimConnect (`SimConnectManager.SetLVar`, `ReadFreshAsync`), xUnit.
 
-**Spec:** `docs/fenix-v3/spec.md` sections 1 and 2 (2.4 doc fixes belong to plan 11). Index and ownership: `docs/fenix-v3/plans/00-index.md`. Seams this plan builds on: `docs/fenix-v3/plans/01-foundation.md`.
+**Spec:** `docs/fenix-v3/spec.md` sections 1 and 2 (2.4 doc fixes belong to plan 12). Index and ownership: `docs/fenix-v3/plans/00-index.md`. Seams this plan builds on: `docs/fenix-v3/plans/01-foundation.md`.
 
 ## Owner decisions
 
 My calls (the reviewer can change any of them):
 
-1. **Renamed names get renamed keys** (`B_ELEC_BUS_POWER_DC_SERVICE`, `I_OH_COCKPIT_DOOR_VIDEO`): key equals the L:var again. A pilot's Ctrl+M mute is stored by key (`UserSettings.FenixDisabledMonitorVariables`), so the two old mutes must be carried by `SettingsManager.CarryRenamedMonitorMutes`; that method is outside this plan's lines, so it is a handoff to plan 11 (exact change below). Until it lands, a pilot who muted one of these rows in v2 hears it once and can mute it again.
-2. **FenixQuartz: 13 of the 16 `FNX2PLD_*` definitions go now; the three `FNX2PLD_speedV1/VR/V2` stay** until plan 04 moves the First Officer to `N_MISC_PERF_TO_*`. Deleting them here breaks `FenixReadbackTests` (plan 04's file), which asserts they are registered. Plan 11 deletes the three after merging 08.
-3. **No ISIS baro readout in this plan.** The dead `FNX2PLD_isisBaro` never spoke, so dropping it loses nothing. A real ISIS baro readout (`N_MIP_ISFD_BARO_HPA` 1013 / `_INCH` 2991.39 = inches x100 on the data service, read live today; the L:var encoding is unmeasured, and the unit follows the ISIS's own BARO button) is a new feature in plan 03's ISIS/standby area. Listed as a follow-up for plan 11.
+1. **Renamed names get renamed keys** (`B_ELEC_BUS_POWER_DC_SERVICE`, `I_OH_COCKPIT_DOOR_VIDEO`): key equals the L:var again. A pilot's Ctrl+M mute is stored by key (`UserSettings.FenixDisabledMonitorVariables`), so the two old mutes must be carried by `SettingsManager.CarryRenamedMonitorMutes`; that method is outside this plan's lines, so it is a handoff to plan 12 (exact change below). Until it lands, a pilot who muted one of these rows in v2 hears it once and can mute it again.
+2. **FenixQuartz: 13 of the 16 `FNX2PLD_*` definitions go now; the three `FNX2PLD_speedV1/VR/V2` stay** until plan 05 moves the First Officer to `N_MISC_PERF_TO_*`. Deleting them here breaks `FenixReadbackTests` (plan 05's file), which asserts they are registered. Plan 12 deletes the three after merging 08.
+3. **No ISIS baro readout in this plan.** The dead `FNX2PLD_isisBaro` never spoke, so dropping it loses nothing. A real ISIS baro readout (`N_MIP_ISFD_BARO_HPA` 1013 / `_INCH` 2991.39 = inches x100 on the data service, read live today; the L:var encoding is unmeasured, and the unit follows the ISIS's own BARO button) is a new feature in plan 04's ISIS/standby area. Listed as a follow-up for plan 12.
 4. **Gravity gear is one control, "Gravity Gear Extension": Stowed / Extended.** Extended raises the handle, then turns the crank to 3 turns in the cockpit template's own 0.05 steps; Stowed turns it back to 0, then stows the handle. "Gravity Gear Crank" is removed. Write method: `SetLVar` per step (the route every Fenix switch uses). The owner verifies it in flight (Task 5); the fallback if it does not extend the gear is in that task.
 5. **The overhead ELAC/SEC/FAC panel is named "Flight Control Computers"**, the name the FBW A320 and A380 use, placed after "GPWS" in the Overhead section as the FBW A320 does.
 6. **AUTOLAND: keys stay, only the L:var name follows the measurement** (Task 6), so the Autoland buttons' state label and any Ctrl+M mute keep working.
@@ -38,7 +38,7 @@ Only the owner can answer:
 - Never infer a Fenix light's legend from its suffix or the real aircraft (FO-11): display names stay as they are.
 - Speech (CORE-7): the screen reader already spoke the pick; the app speaks only a read-back, a refusal, or a verdict. Anything with a number is formatted invariant and tested under sv-SE.
 - Line numbers are on `main` 2d6444ab1. Plan 01 shifts lines after `BuildVariables` by a few; find each spot by the quoted text.
-- Owned files: `MSFSBlindAssist/Aircraft/FenixA320Definition.cs`; new `MSFSBlindAssist/Aircraft/FenixA320GravityGear.cs` (matches the a32nx-fenix.md glob `Aircraft/FenixA320*.cs`); `MSFSBlindAssist/FirstOfficer/Fenix/FenixTakeoffConfigVerdict.cs`; `MSFSBlindAssist/FirstOfficer/Fenix/FenixActionExecutor.cs` (the whole file for the parallel phase; plan 04 does not edit it, and this plan changes only the take-off config members and the constant they no longer use); `MSFSBlindAssist/Settings/SettingsManager.cs` ONLY the Fenix seed (lines 226-227 comment, 240); tests `SettingsSeedTests.cs`, `FirstOfficer/FenixTakeoffConfigVerdictTests.cs` and new `*FenixV3Fix*` / `*FenixTakeoffConfig*` files.
+- Owned files: `MSFSBlindAssist/Aircraft/FenixA320Definition.cs`; new `MSFSBlindAssist/Aircraft/FenixA320GravityGear.cs` (matches the a32nx-fenix.md glob `Aircraft/FenixA320*.cs`); `MSFSBlindAssist/FirstOfficer/Fenix/FenixTakeoffConfigVerdict.cs`; `MSFSBlindAssist/FirstOfficer/Fenix/FenixActionExecutor.cs` (the whole file for the parallel phase; plan 05 does not edit it, and this plan changes only the take-off config members and the constant they no longer use); `MSFSBlindAssist/Settings/SettingsManager.cs` ONLY the Fenix seed (lines 226-227 comment, 240); tests `SettingsSeedTests.cs`, `FirstOfficer/FenixTakeoffConfigVerdictTests.cs` and new `*FenixV3Fix*` / `*FenixTakeoffConfig*` files.
 - Test command: `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64` (add `--filter <ClassName>` for one class).
 
 ## Evidence read live on 2026-10-21 (Fenix A321 IAE, data service, read-only)
@@ -117,15 +117,15 @@ while (t := time.monotonic() - t0) < a.seconds:
 - Modify: `tests/MSFSBlindAssist.Tests/SettingsSeedTests.cs:214`
 - Create: `tests/MSFSBlindAssist.Tests/FenixV3FixNamesTests.cs`
 
-**Interfaces:** Produces the keys `B_ELEC_BUS_POWER_DC_SERVICE` and `I_OH_COCKPIT_DOOR_VIDEO` (used by plan 11's mute carry).
+**Interfaces:** Produces the keys `B_ELEC_BUS_POWER_DC_SERVICE` and `I_OH_COCKPIT_DOOR_VIDEO` (used by plan 12's mute carry).
 
 - [ ] **Step 1: Write the failing tests.** In `FenixV3FixNamesTests` (`Vars = new FenixA320Definition().GetVariables()`):
   - `V3_name_is_registered_under_its_own_key_and_announced` `[Theory]` over `B_ELEC_BUS_POWER_DC_SERVICE`, `I_OH_COCKPIT_DOOR_VIDEO`, `I_OH_ELEC_COMMERCIAL_L`: `Assert.Equal(name, Vars[name].Name)`, `Continuous`, `IsAnnounced`.
   - `No_variable_reads_a_name_v3_removed` `[Theory]` over `B_ELEC_BUS_POWER_DC_SERIVICE`, `I_OH_DOOR_VIDEO`, `I_OH_ELEC_COMMERCIAL_U`: `Assert.DoesNotContain(Vars, kv => kv.Key == gone || kv.Value.Name == gone)`.
-  - `Only_the_takeoff_speed_FenixQuartz_names_remain`: the ordinal-sorted `Name`s starting `FNX2PLD_` equal `{ "FNX2PLD_speedV1", "FNX2PLD_speedV2", "FNX2PLD_speedVR" }` (comment: plan 04 moves the First Officer off them, plan 11 deletes them).
+  - `Only_the_takeoff_speed_FenixQuartz_names_remain`: the ordinal-sorted `Name`s starting `FNX2PLD_` equal `{ "FNX2PLD_speedV1", "FNX2PLD_speedV2", "FNX2PLD_speedVR" }` (comment: plan 05 moves the First Officer off them, plan 12 deletes them).
   - In `SettingsSeedTests`: `Fenix_DefaultSilentVars_AreAllRegisteredFenixVariables`: every entry of `ExpectedDefaultSilentVars` is a key of `new FenixA320Definition().GetVariables()`.
 - [ ] **Step 2: Run them.** `--filter "FenixV3FixNamesTests|SettingsSeedTests"`. Expected: every DC SERVICE, door-video, `COMMERCIAL_U` and FenixQuartz case fails; the `COMMERCIAL_L` case and the seed fact pass for now.
-- [ ] **Step 3: Implement.** Rename key and `Name` of the DC SERVICE and door-video entries (display names unchanged). Delete `I_OH_ELEC_COMMERCIAL_U`; leave `_L` as it is. Delete the 13 `FNX2PLD_*` entries and `FNX2PLD_isisBaro`; above the three speed entries put one comment: FenixQuartz (discontinued, never installed here), read only by the First Officer until plan 04, plan 11 deletes them. Fix the "(20 variables)" header count. Confirm with `rg -n FNX2PLD MSFSBlindAssist tests` that only the three speed definitions, the First Officer (plan 04's files) and the `MainForm.Hotkeys.cs:524` comment remain.
+- [ ] **Step 3: Implement.** Rename key and `Name` of the DC SERVICE and door-video entries (display names unchanged). Delete `I_OH_ELEC_COMMERCIAL_U`; leave `_L` as it is. Delete the 13 `FNX2PLD_*` entries and `FNX2PLD_isisBaro`; above the three speed entries put one comment: FenixQuartz (discontinued, never installed here), read only by the First Officer until plan 05, plan 12 deletes them. Fix the "(20 variables)" header count. Confirm with `rg -n FNX2PLD MSFSBlindAssist tests` that only the three speed definitions, the First Officer (plan 05's files) and the `MainForm.Hotkeys.cs:524` comment remain.
 - [ ] **Step 4: Seed.** Run the seed fact: it now fails on `FNX2PLD_clockChr`. Delete line 240 of `SettingsManager.cs` and the matching line 214 of `ExpectedDefaultSilentVars` (now 7 entries); drop the FenixQuartz words from the doc comment. Existing users keep the two stale strings in their list: harmless, nothing matches them.
 - [ ] **Step 6: Run the whole suite.** Expected: all green.
 - [ ] **Step 7: Commit.** `fix(fenix): v3 renames (DC SERVICE, door video), drop COMMERCIAL upper and 13 dead FenixQuartz vars`
@@ -297,14 +297,14 @@ Why: the Fenix is the only airframe still calling V1/rotate from `TakeoffAssistM
 - [ ] **Step 4: Implement** exactly as the A320 does, with the Fenix's keys and its mute set `FenixDisabledMonitorVariablesSet`: the feed branch first in `ProcessSimVarUpdate` (one `AnnounceImmediate` of `Compose`, skipped while `announcer.Suppressed`), `SIM_ON_GROUND` and the three speed keys PEEKED (fed to the machine, never consumed, so "MCDU V1 Speed: 140" is still spoken as it is entered), the arm dropped in both resets, never the speeds. Then delete the old Fenix path from `TakeoffAssistManager` and `MainForm.Hotkeys`.
 - [ ] **Step 5: Run the suite, including `TakeoffVSpeedCalloutsTests`, `TakeoffCalloutFeedTests` and `TakeoffCalloutKeysTests`; all green. Build.**
 - [ ] **Step 6: Commit.** `feat(fenix): take-off V1, Rotate and V2 on the shared callout machine (TKO-5)`
-- [ ] **Step 7: Owner in sim (with plan 04's takeoff-speeds check).** PERF TAKE OFF: enter V1 140, VR 142, V2 145; hear "MCDU V1 Speed: 140" etc. Take off with Takeoff Assist OFF: hear "V1", "Rotate", "V2" at those speeds (one utterance when two coincide). Clear a speed: hear "not set", not "0".
+- [ ] **Step 7: Owner in sim (with plan 05's takeoff-speeds check).** PERF TAKE OFF: enter V1 140, VR 142, V2 145; hear "MCDU V1 Speed: 140" etc. Take off with Takeoff Assist OFF: hear "V1", "Rotate", "V2" at those speeds (one utterance when two coincide). Clear a speed: hear "not set", not "0".
 
 ### Task 10: FCU vertical speed is silent while the window is dashed (collaborator report, 2026-10-21)
 
 Why: in v3, `N_FCU_VS` carries the LIVE vertical speed even while the FCU V/S window is dashed (`B_FCU_VERTICALSPEED_DASHED` = 1, managed climb or descent); v2 held it still. `N_FCU_VS` is a plain `Continuous` + `IsAnnounced` row (FenixA320Definition.cs:655-662) with nothing gating it, so a managed climb speaks "FCU VERTICAL SPEED: 3400 … 1700 … 4100" every second or two. A collaborator's v3 test flight: dashed from 13:40, yet `N_FCU_VS` went 3400 → 1700 → 4100 → 3400 between 14:09 and 14:12. Speed, heading and altitude are unaffected; the Shift+V readout already checks the dashed flag (:12122-12125).
 
 **Files:**
-- Modify: `MSFSBlindAssist/Aircraft/FenixA320Definition.cs` (`ProcessSimVarUpdate` from :12100; a private `_fcuVsDashed` field). Never override `TryGetDisplayOverride` here: plan 01's hooks file owns that override (plan 05's clock readouts use it), and a second one would not compile. The Fenix panel display list (`GetPanelDisplayVariables`, :9329) was empty on 2026-10-21.
+- Modify: `MSFSBlindAssist/Aircraft/FenixA320Definition.cs` (`ProcessSimVarUpdate` from :12100; a private `_fcuVsDashed` field). Never override `TryGetDisplayOverride` here: plan 01's hooks file owns that override (plan 06's clock readouts use it), and a second one would not compile. The Fenix panel display list (`GetPanelDisplayVariables`, :9329) was empty on 2026-10-21.
 - Test: `tests/MSFSBlindAssist.Tests/FenixV3FixFcuVsTests.cs`
 
 **Interfaces:**
@@ -313,7 +313,7 @@ Why: in v3, `N_FCU_VS` carries the LIVE vertical speed even while the FCU V/S wi
 - [ ] **Step 1: Check the whole of what you touch.** Find every place the Fenix shows or speaks `N_FCU_VS`: the panel display list (`GetPanelDisplayVariables`, :9329), the FCU/autopilot windows (`Forms/FenixA320/`), the V/S set path (`SetFCUVS`, :13103, which reads the cached `N_FCU_VS` as the starting point: a live value there while dashed changes the step count; note what it does today). Record the list in this task.
 - [ ] **Step 2: Write the failing tests** (constructing the definition and announcer as `FenixFcuReadoutTests.cs` does): `Vs_is_silent_while_dashed`: after `ProcessSimVarUpdate("B_FCU_VERTICALSPEED_DASHED", 1, a)`, `ProcessSimVarUpdate("N_FCU_VS", 3400, a)` returns true (consumed) and nothing is spoken; `Vs_speaks_when_shown`: after the flag reads 0, `N_FCU_VS` 1500 is not consumed (returns false, so the generic announcement speaks it); `Vs_speaks_before_the_flag_is_read`: with no flag read yet, `N_FCU_VS` is not consumed; `Dashed_flag_still_announces`: `ProcessSimVarUpdate("B_FCU_VERTICALSPEED_DASHED", 1, a)` returns false (peeked, never consumed, so "FCU VERTICAL SPEED DISPLAY: Dashed" is still heard); `FcuVsIsSilenced` is true only for exactly 1 (`null`, 0, `double.NaN` → false).
 - [ ] **Step 3: Run them; they fail.**
-- [ ] **Step 4: Implement.** In `ProcessSimVarUpdate`, after the readout `switch` (:12131): `if (varName == "B_FCU_VERTICALSPEED_DASHED") _fcuVsDashed = value;` (no return); `if (varName == "N_FCU_VS" && FcuVsIsSilenced(_fcuVsDashed)) return true;`. Reset `_fcuVsDashed` to null where the definition resets its announcement baselines (reconnect, `OnSimContextReset`), so a stale "dashed" never silences a fresh flight. If Step 1 finds the V/S on a panel display after all, do not change the display here: hand it to plan 11 (it should show "Dashed" while `FcuVsIsSilenced`, through plan 01's display hook). If `SetFCUVS` starts from a live value while dashed, note it in the handoff for the owner (do not change the set path here).
+- [ ] **Step 4: Implement.** In `ProcessSimVarUpdate`, after the readout `switch` (:12131): `if (varName == "B_FCU_VERTICALSPEED_DASHED") _fcuVsDashed = value;` (no return); `if (varName == "N_FCU_VS" && FcuVsIsSilenced(_fcuVsDashed)) return true;`. Reset `_fcuVsDashed` to null where the definition resets its announcement baselines (reconnect, `OnSimContextReset`), so a stale "dashed" never silences a fresh flight. If Step 1 finds the V/S on a panel display after all, do not change the display here: hand it to plan 12 (it should show "Dashed" while `FcuVsIsSilenced`, through plan 01's display hook). If `SetFCUVS` starts from a live value while dashed, note it in the handoff for the owner (do not change the set path here).
 - [ ] **Step 5: Run the suite; all green.**
 - [ ] **Step 6: Commit.** `fix(fenix): FCU vertical speed is silent while its window is dashed (v3 sends the live V/S)`
 - [ ] **Step 7: Owner or collaborator in sim.** A managed climb with the V/S window dashed: no "FCU VERTICAL SPEED" callouts for a minute. Pull the V/S knob: hear "FCU VERTICAL SPEED DISPLAY: Shown"; turn it: each new target is spoken. Push it: "…: Dashed", then silence again. Note the race: the first selected value at a pull may arrive just before the "Shown" flag and stay unspoken (the next turn speaks); acceptable, say so in the handoff.
@@ -322,11 +322,11 @@ Why: in v3, `N_FCU_VS` carries the LIVE vertical speed even while the FCU V/S wi
 
 - [ ] **Step 1:** `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64` and the full suite: both green.
 - [ ] **Step 2:** `git diff --name-only <base-sha>` lists only: `FenixA320Definition.cs`, `FenixA320GravityGear.cs`, `FenixTakeoffCallouts.cs`, `FenixTakeoffConfigVerdict.cs`, `FenixActionExecutor.cs` (two members and the unused hold constant), `TakeoffAssistManager.cs` (Fenix V-speed code removed), `MainForm.Hotkeys.cs` (its Fenix V-speed block), `SettingsManager.cs` (seed), `SettingsSeedTests.cs`, `FenixTakeoffConfigVerdictTests.cs`, and the new `FenixV3Fix*Tests.cs` (incl. `FenixV3FixFcuVsTests.cs`) / `FenixTakeoffConfigWiringTests.cs` / `FenixTakeoffCalloutsTests.cs`.
-- [ ] **Step 3:** Fill Task 1's and Task 6's records in this file, tick the boxes, and hand the "Handoff to plan 11" section below to the integrator.
+- [ ] **Step 3:** Fill Task 1's and Task 6's records in this file, tick the boxes, and hand the "Handoff to plan 12" section below to the integrator.
 
 ---
 
-## Handoff to plan 11
+## Handoff to plan 12
 
 ### Pilot-facing changes (for the guide and changelog, `fix` category)
 
@@ -340,7 +340,7 @@ Why: in v3, `N_FCU_VS` carries the LIVE vertical speed even while the FCU V/S wi
 
 ### Proposed rule lines (new Fenix rules go to `.claude/rules/fenix-data.md`, since a32nx-fenix.md is at its cap)
 
-fenix-data.md's globs (plan 01) cover only the definition's partials, so plan 11 also adds the globs `MSFSBlindAssist/Aircraft/FenixA320Definition.cs`, `MSFSBlindAssist/Aircraft/FenixA320GravityGear.cs`, `MSFSBlindAssist/FirstOfficer/Fenix/FenixTakeoffConfigVerdict.cs`, `tests/MSFSBlindAssist.Tests/**/*FenixV3Fix*.cs` and `tests/MSFSBlindAssist.Tests/**/*FenixTakeoffConfig*.cs`, then runs `ClaudeContextBudgetTests`.
+fenix-data.md's globs (plan 01) cover only the definition's partials, so plan 12 also adds the globs `MSFSBlindAssist/Aircraft/FenixA320Definition.cs`, `MSFSBlindAssist/Aircraft/FenixA320GravityGear.cs`, `MSFSBlindAssist/FirstOfficer/Fenix/FenixTakeoffConfigVerdict.cs`, `tests/MSFSBlindAssist.Tests/**/*FenixV3Fix*.cs` and `tests/MSFSBlindAssist.Tests/**/*FenixTakeoffConfig*.cs`, then runs `ClaudeContextBudgetTests`.
 
 ```text
 - [FNX-4] Fenix TO CONFIG verdicts (panel key and First Officer) come only from `FenixTakeoffConfigVerdict.WatchAsync`: fresh twin reads timed from the press it observed; "normal" only when both master lights read dark at or past `VerdictAfterMs` (v3 delays them). Never the cached 1 Hz lights, a fixed-time read or a pre-press baseline. Full: docs/invariants/fenix-data.md#fnx-4
@@ -352,13 +352,13 @@ Both are under 400 characters. Full text for `docs/invariants/fenix-data.md`: Ta
 ### Handoff requests (files plan 02 does not own)
 
 1. `MSFSBlindAssist/Settings/SettingsManager.cs`: add `private static readonly (string Old, string New)[] FenixRenamedMonitorKeys = { ("B_ELEC_BUS_POWER_DC_SERIVICE", "B_ELEC_BUS_POWER_DC_SERVICE"), ("I_OH_DOOR_VIDEO", "I_OH_COCKPIT_DOOR_VIDEO") };` and `moved |= Carry(settings.FenixDisabledMonitorVariables, FenixRenamedMonitorKeys);` in `CarryRenamedMonitorMutes`; extend its doc comment (Fenix v3, 2026-10-21); test like `A380RenamedMonitorMuteTests`. Why: keep a pilot's Ctrl+M mute across the v3 rename (decision 1).
-2. `MSFSBlindAssist/Aircraft/FenixA320Definition.cs`, after plan 04 merges: delete the three `FNX2PLD_speedV1/VR/V2` definitions and their comment; `FenixV3FixNamesTests.Only_the_takeoff_speed_FenixQuartz_names_remain` then expects none. Why: plan 04 reads `N_MISC_PERF_TO_*` instead.
-3. Note for plan 04: the First Officer reads none of the renamed or removed names except `FNX2PLD_speedV1/VR/V2` (`FenixChecklistDefinitions.cs:599-600`, `FenixStateEvaluator.cs:67`, `FenixReadbackTests.cs:220`): it must stop reading them. `TakeoffConfigTest` now takes up to `VerdictAfterMs` plus the press, not 1.5 s.
+2. `MSFSBlindAssist/Aircraft/FenixA320Definition.cs`, after plan 05 merges: delete the three `FNX2PLD_speedV1/VR/V2` definitions and their comment; `FenixV3FixNamesTests.Only_the_takeoff_speed_FenixQuartz_names_remain` then expects none. Why: plan 05 reads `N_MISC_PERF_TO_*` instead.
+3. Note for plan 05: the First Officer reads none of the renamed or removed names except `FNX2PLD_speedV1/VR/V2` (`FenixChecklistDefinitions.cs:599-600`, `FenixStateEvaluator.cs:67`, `FenixReadbackTests.cs:220`): it must stop reading them. `TakeoffConfigTest` now takes up to `VerdictAfterMs` plus the press, not 1.5 s.
 4. (The unused `TakeoffConfigTestHoldMs` is deleted in Task 8 Step 5.) `FenixChecklistDefinitions.cs:302`: the "holds 1.5 s" comment.
 5. `MSFSBlindAssist/MainForm.Hotkeys.cs:524`: the comment naming `FNX2PLD_speedV1/VR` can go (no behaviour).
 6. (Withdrawn: plan 01 no longer pins counts.)
 7. Docs (spec 2.4 plus this plan): `docs/a32nx.md:71` (crank), `:89-91` (TO CONFIG: `onHeld`, 1.5 s, cached read are gone); `docs/first-officer.md:95-96`.
-8. Follow-up, not built: an ISIS baro readout from `N_MIP_ISFD_BARO_HPA` / `_INCH` (decision 3), with plan 03's ISIS/standby work.
+8. Follow-up, not built: an ISIS baro readout from `N_MIP_ISFD_BARO_HPA` / `_INCH` (decision 3), with plan 04's ISIS/standby work.
 9. Task 9 (take-off calls): mirror TKO-5 onto the Fenix definition, as a "Mirrored from takeoff-and-callouts.md" line in a rule file that loads on `FenixA320Definition.cs` but not on takeoff-and-callouts.md's own files (run `ClaudeContextBudgetTests` for a double load, e.g. on `FenixTakeoffCalloutsTests.cs`), and add the Fenix to TKO-5's full text in `docs/invariants/takeoff-and-callouts.md`.
 
 ### In-sim checks still needed (owner, in this order)

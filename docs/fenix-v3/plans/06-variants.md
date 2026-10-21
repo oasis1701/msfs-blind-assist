@@ -1,4 +1,4 @@
-# Fenix Variants Implementation Plan (plan 05)
+# Fenix Variants Implementation Plan (plan 06)
 
 **Claimed by:** nobody yet · **Status:** not started
 
@@ -24,7 +24,7 @@ My calls (the owner can overturn any of them; each is one small edit):
 6. **Placement:** ECON FLOW straight after Pack Flow (only one of the two is ever shown). MID and EXIT between Forward and Aft (front-to-back cabin order). ACT Pump after Center Tank Pump 2.
 7. **No live panel rebuild when the variant arrives.** Detection takes about a second after load; a panel opened before then shows everything until it is reopened (MainForm.PanelBuilder.cs:312-318 re-evaluates visibility on every build). A rebuild under the pilot's focus would move the focus.
 8. **Out of this plan, recorded as follow-ups** (they need fields `FenixVariant` does not have, or are unmeasured): brake-fan visibility, GNADIRS IR ALIGN/FAULT lights, the analogue standby altimeter baro knob, the ACT refuel valves and FQI selector, the A321 centre-tank legends. Details are in the handoff section.
-9. **`OnVariantSimVarUpdate` and `OnFenixSwitchedAway` stay unimplemented** unless Q1 is answered yes: nothing in this plan needs a per-update hook, so `OnFenixSwitchedAway` stays free for plan 11.
+9. **`OnVariantSimVarUpdate` and `OnFenixSwitchedAway` stay unimplemented** unless Q1 is answered yes: nothing in this plan needs a per-update hook, so `OnFenixSwitchedAway` stays free for plan 12.
 10. **The four new cockpit controls (Task 5) follow the aircraft's layout and the FBW A320's wording.** The clock gets its own "Clock" panel in the Main Instrument Panel section straight after "Landing Gear": the model's clock controls (`MainPanel_Clock_*`) sit on the centre panel beside the gear lever and the autobrake, and the FBW A320 (the same type) also has a "Clock" panel in its instrument section. Its labels and display texts are the FBW A320's ("Chronometer Start/Stop", "Elapsed Time" Run/Stop/Reset, "2 minutes 5 seconds", "Reset"). The headset goes at the end of Cockpit Other, the ISIS baro push after ISIS Baro Dec, and the aft cargo temperature knob between Aft Cargo Hot Air and the Aft Cargo Isolation Valve, the model's left-to-right order of the cargo heat panel. The knob shows 0.0 to 1.0 like the Fenix's cabin temperature knobs (never "harmonize" it to Cold/Hot here). The clock buttons are silent after the press, like every Fenix `ExecuteButtonTransition` button: the chronometer and elapsed time are read from the Clock panel's display.
 
 Questions only the owner can answer:
@@ -256,9 +256,9 @@ Why: the parity principle (index): a sighted pilot can work these four in the Fe
 
 ---
 
-## Handoff to plan 11
+## Handoff to plan 12
 
-**Pilot-facing changes (guide: `guide/airbus-aircraft.md`, Fenix section; plan 11 writes it)**
+**Pilot-facing changes (guide: `guide/airbus-aircraft.md`, Fenix section; plan 12 writes it)**
 - On the A321, Overhead > Air Conditioning and Pressurization offers Econ Flow (Off/On) instead of Pack Flow. Overhead > Calls adds Calls Mid and Calls Exit buttons.
 - With extra centre tanks, Overhead > Fuel offers ACT Pump (Off/On), and its upper and lower lights are announced.
 - On IAE engines the N1 MODE lights are announced ("Engine N1 Mode 1 Lower: On"). On CFM engines the N1 MODE switches are no longer offered.
@@ -290,12 +290,12 @@ Why: the parity principle (index): a sighted pilot can work these four in the Fe
 - **H6 (also seen, main file, plan 02's).** `S_OH_ENG_N1_MODE_1/2` are registered twice in one initializer (FenixA320Definition.cs:4720-4735 and :5761-5778). The later entry wins (`Continuous`, `IsAnnounced`, "Engine N1 Mode 1"), which is also a panel control (VAR-6). Pick one definition.
 - **H7 (resolved before work started).** Plan 01's `FenixDefinitionSeamTests` asserts the seams' wiring and pins no totals, so this plan's additions leave it green.
 - **To plan 01 (detection).** `B_CONFIG_ADIRS` and `B_CONFIG_BRAKEFANS` read null through the simconnect MCP on 2026-10-21, while the settings API said Adirs and brake fans True. Confirm the app's own read gives 1 (in-sim check 3).
-- **To plan 04 (First Officer).**
+- **To plan 05 (First Officer).**
   - An A321 has no PACK FLOW knob; its ECON FLOW is `S_OH_PNEUMATIC_ECON_FLOW` (0 Off, 1 On).
   - The ACT pump is `S_OH_FUEL_ACT`.
   - The IAE N1 MODE lights are `I_OH_ENG_N1_MODE_1/2_L`.
   - A write through `HandleUIVariableSet` to a control the variant lacks is refused aloud, so flows check `Variant` first.
-- **To plan 03 (displays).** ISIS vs analogue standby is `Variant.HasIsis`. The glTF groups are `MainPanel_Standby_ISIS_Visibility` and `MainPanel_Standby_Analog_Visibility`.
+- **To plan 04 (displays).** ISIS vs analogue standby is `Variant.HasIsis`. The glTF groups are `MainPanel_Standby_ISIS_Visibility` and `MainPanel_Standby_Analog_Visibility`.
 - **Follow-ups (new `FenixVariant` fields or unmeasured)**
   - Brake fans: `B_CONFIG_BRAKEFANS` shows `S_MIP_BRAKE_FAN`, node `MainPanel_Brake_Fan_Button_Mouse`.
   - Clock: the SET knob `E_MIP_CLOCK_SET` (infinite encoder; with the UTC selector at SET and the DATE button it sets the time and date) and a UTC time readout from `N_MIP_CLOCK_UTC` (HHMMSS; its definition is commented out at FenixA320Definition.cs:8408). No date value was found to read.

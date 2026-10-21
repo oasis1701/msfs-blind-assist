@@ -2,7 +2,7 @@
 
 Investigation of 2026-10-21, on `main` at 2d6444ab1. The previous Fenix measured in this repo was 2.4.0.4720.
 Lives on the `FenixV3` branch with the plans (`docs/fenix-v3/plans/`) and the evidence (`docs/fenix-v3/evidence/`);
-plan 11 deletes `docs/fenix-v3/` before the branch merges.
+plan 12 deletes `docs/fenix-v3/` before the branch merges.
 
 How it was checked: the live sim (Fenix A320 CFM WF at KATL, engines running) through the simconnect MCP, the
 Fenix data service on 127.0.0.1:8083 (read-only queries), the Coherent debugger (:19999), the installed package
@@ -142,7 +142,7 @@ Ordered by value to a blind pilot (my judgement):
    restored): the headset `A320_Sound:Headset_On` (noise cancelling `A320_Sound:ANC` follows it), the clock
    (`S_MIP_CLOCK_CHR/RST/SET/ET/UTC`; chrono in seconds, ET in minutes, -1 blank; a written ET Reset does not spring
    back), the ISIS baro knob push `S_MIP_ISFD_BARO_BUTTON` (no readable state found) and the aft cargo temperature
-   knob `A_OH_PNEUMATIC_CARGO_AFT_TEMP` (only with aft cargo heat, `B_CONFIG_CARGOMEAT` ≠ 0). Planned in plan 05 Task 5.
+   knob `A_OH_PNEUMATIC_CARGO_AFT_TEMP` (only with aft cargo heat, `B_CONFIG_CARGOMEAT` ≠ 0). Planned in plan 06 Task 5.
 
 ## 5. ECAM text (not pursued)
 
@@ -168,10 +168,46 @@ Asking Fenix to publish it was dropped by the owner on 2026-10-21; the AI pictur
    would confirm 2 and the engine value.
 4. After any FenixQuartz replacement: V-speeds read back once perf is entered.
 
+## 8. The v3 EFB with a screen reader (tour of 2026-10-21)
+
+Our "Fenix EFB" window hosts the Fenix's own EFB page, and its code still says the page is "already screen-reader
+accessible". That was true of v2; the v3 EFB is not. Every app was opened in the same browser engine, read only
+(details per app: `evidence/efb-tour.md`). What a blind pilot meets:
+
+- **No way around the EFB by keyboard.** The home-screen app tiles, the app switcher and the home button are not
+  buttons and not on the Tab order; the home button and the switcher's icons have no names at all, so once in an app
+  there is no way back to the home screen.
+- **Switches and boxes without names.** Ground Services' 14 switches (GPU, PCA, stairs, chocks, every door, tug) and
+  every on/off option in Settings read "switch, on" / "checkbox, on"; the Takeoff and Landing entry boxes read their
+  placeholders ("----"), their drop-downs read nothing; Mass and Balance's boxes read only their limits ("Max 180").
+- **Selections shown by colour only:** Settings' picture choices (GNADIRS/ADIRS, hPa/inHg …), Landing's runway
+  condition code, failure armed/failed state.
+- **Two dead ends.** The MCDU and FAP tiles leave the EFB for pages a screen reader cannot use (the web MCDU is two
+  canvases; the FAP opens on its screensaver) with no way back. Our MCDU window and plan 08's Cabin window cover them.
+- **Silent progress and messages:** loading notices and progress bars are plain text; nothing is spoken.
+- Out of reach by nature: the Charts moving map.
+
+How to fix, in order of value:
+
+1. **An accessibility layer our EFB window injects**, as `IFlyEfbForm` already does for the iFly EFB: give tiles, the
+   switcher, the home button and the collapsible lists button roles, names and Tab stops (Enter and Space press them;
+   Alt+Home goes home anywhere); name every switch, box and drop-down from the text the page shows beside it; expose
+   selected and open states from the page's own classes, kept current by a MutationObserver; name the unnamed icon
+   buttons; speak loading notices. Tested offline with jsdom against trimmed live page captures, like
+   `tools/md11-efb-test`. Ground Services, Mass and Balance, Panel States, Takeoff and Landing have no other accessible
+   path in the app, so they come first; Settings, Documents and Failures get the layer too, beside plans 11, 07 and 10.
+2. **The window steps in at the dead ends:** when the page navigates to the MCDU or FAP, go back to the EFB home and
+   say where to go instead (the app's MCDU window; Fenix windows > Cabin).
+3. Correct the window's doc comment ("already accessible"), and move the window to 127.0.0.1 with a tabbable status
+   box. All three are plan 03 (the EFB window).
+
+Risk: the layer keys on Fenix's page structure; a Fenix update can silently undo a fix. The jsdom captures are the
+regression check, re-captured after each Fenix update.
+
 ## Evidence files
 
 In `docs/fenix-v3/evidence/` (described in `docs/fenix-v3/plans/00-index.md`): `live-findings.md`, `settings.tsv`
 (credentials masked), `efb-datarefs.txt`, `fap-datarefs.txt`, `gql-operations.txt`, `fenix-options-labels.tsv`,
 `failures-manual-shape.json` (first ATA chapter only), `inventory.md`, `fenix-names.txt`, `namediff-missing.tsv`,
-`namediff-unused-by-us.md`, `web-research.md`. Fenix's EFB and FAP bundles are not committed: fetch them from your
+`namediff-unused-by-us.md`, `web-research.md`, `efb-tour.md`. Fenix's EFB and FAP bundles are not committed: fetch them from your
 own running Fenix with `docs/fenix-v3/tools/fetch_gateway_bundles.py <folder>`.

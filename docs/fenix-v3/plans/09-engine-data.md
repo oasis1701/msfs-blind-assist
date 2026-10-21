@@ -1,4 +1,4 @@
-# Fenix Engine Data Implementation Plan (plan 08)
+# Fenix Engine Data Implementation Plan (plan 09)
 
 **Claimed by:** nobody yet · **Status:** not started
 
@@ -26,7 +26,7 @@
 
 **Questions only the owner can answer** (none blocks Tasks 1-2):
 
-- Q1. Keep the `running` announcements (window-only, as built), drop them, or ask plan 11 to make them always-on (a definition-owned watcher, with a Ctrl+M entry)? Decide after in-sim check 1, which shows WHEN in a start the Fenix sets `running`.
+- Q1. Keep the `running` announcements (window-only, as built), drop them, or ask plan 12 to make them always-on (a definition-owned watcher, with a Ctrl+M entry)? Decide after in-sim check 1, which shows WHEN in a start the Fenix sets `running`.
 - Q2. After in-sim check 2: which oil units to show ("quarts", "psi", "degrees C" are the A320 ENGINE page's QT/PSI/°C, if the Fenix's page shows those)?
 - Q3. Braille readers: one value per row (as built) or one row per parameter carrying both engines ("N2: 62.2, 62.4 percent")?
 - Q4. Output O on the Fenix speaks the sim's stock `AMBIENT TEMPERATURE`. If check 2 shows it differs from the Fenix's OAT row, should O speak the Fenix's value (handoff, not this plan)?
@@ -63,16 +63,16 @@ Searched every `.cs` under `MSFSBlindAssist/` for the stock engine and air-tempe
 
 | Where | Stock SimVar | What the pilot gets on the Fenix | Note / handoff |
 |---|---|---|---|
-| `MSFSBlindAssist/SimConnect/SimConnectManager.Setup.cs:41`, `SimConnectManager.DataRequests.cs:662`, `MainForm.Hotkeys.cs:183-184`, spoken at `SimConnectManager.Dispatch.cs:413` | `AMBIENT TEMPERATURE` | Output O: "17 degrees Celsius" (the Fenix definition does not handle O, so the generic path speaks) | In-sim check 2 compares it with the Fenix's OAT; only if they differ, plan 11 routes the Fenix's O to `aircraft.temperature.oat` (Q4) |
+| `MSFSBlindAssist/SimConnect/SimConnectManager.Setup.cs:41`, `SimConnectManager.DataRequests.cs:662`, `MainForm.Hotkeys.cs:183-184`, spoken at `SimConnectManager.Dispatch.cs:413` | `AMBIENT TEMPERATURE` | Output O: "17 degrees Celsius" (the Fenix definition does not handle O, so the generic path speaks) | In-sim check 2 compares it with the Fenix's OAT; only if they differ, plan 12 routes the Fenix's O to `aircraft.temperature.oat` (Q4) |
 | `SimConnectManager.Setup.cs:343`, `Services/WeatherService.cs:774-788`, `Forms/WeatherRadarForm.cs:483` | `AMBIENT TEMPERATURE` | Weather Radar window "Temperature: 17°C" | The sim's weather, the same for every aircraft: leave it |
-| `SimConnectManager.Setup.cs:61-63`, `SimConnectManager.DataRequests.cs:537-542`, `Forms/FirstOfficer/FirstOfficerForm.cs:220`, `FirstOfficer/Fenix/FenixStateEvaluator.cs:12-19` | `TURB ENG N2:1/2` | First Officer "engine running" (never spoken) | Plan 04's, as briefed; in-sim check 1 gives it the Fenix N2 at the `running` edge |
-| `Aircraft/FenixA320DisplayReads.cs:67`, `Services/GeminiService.cs:343` | none (AI reads E/WD pixels) | Output Alt+E | Not a SimVar; the guide can point to the Engines window for exact values (plan 11) |
+| `SimConnectManager.Setup.cs:61-63`, `SimConnectManager.DataRequests.cs:537-542`, `Forms/FirstOfficer/FirstOfficerForm.cs:220`, `FirstOfficer/Fenix/FenixStateEvaluator.cs:12-19` | `TURB ENG N2:1/2` | First Officer "engine running" (never spoken) | Plan 05's, as briefed; in-sim check 1 gives it the Fenix N2 at the `running` edge |
+| `Aircraft/FenixA320DisplayReads.cs:67`, `Services/GeminiService.cs:343` | none (AI reads E/WD pixels) | Output Alt+E | Not a SimVar; the guide can point to the Engines window for exact values (plan 12) |
 
 Not engine values, noted only: the fuel and weight readouts (F, Shift+F, W, Shift+W) use stock `FUEL TOTAL QUANTITY WEIGHT` and `TOTAL WEIGHT` (`FenixA320Definition.cs:12511-12571`, `BaseAircraftDefinition.cs:1358-1366`); no mismatch has been measured.
 
 ## Before you start
 
-- [ ] Branch from the base commit in `docs/fenix-v3/plans/00-index.md` ("Base commit for parallel work"): `git switch -c FenixV3-p08-engine-data <base-sha>`; an agent works in `.claude/worktrees/fenix-v3-p08`.
+- [ ] Branch from the base commit in `docs/fenix-v3/plans/00-index.md` ("Base commit for parallel work"): `git switch -c FenixV3-p09-engine-data <base-sha>`; an agent works in `.claude/worktrees/fenix-v3-p09`.
 - [ ] Read (Read tool, so rules load, CORE-16): `MSFSBlindAssist/Services/FenixDataService.cs`, `FenixDataValue.cs`, `FenixDataQueries.cs`, `MSFSBlindAssist/Forms/Fenix/FenixWindowRegistry.cs`, `MSFSBlindAssist/Aircraft/FenixA320Definition.Hooks.cs`, `MSFSBlindAssist/Aircraft/FenixVariant.cs` (plan 01's), `MSFSBlindAssist/Forms/HS787/HS787EicasForm.cs` (the window pattern), `MSFSBlindAssist/Forms/DisplayListBox.cs`, `tests/MSFSBlindAssist.Tests/TestCulture.cs`.
 - [ ] `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64` then `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64`: both green; note the test count.
 
@@ -275,7 +275,7 @@ private static readonly string[] IdleKg =
 
 **Interfaces:**
 - Consumes (plan 01): `FenixWindowContext(FenixA320Definition Definition, FenixDataService Data, SimConnectManager SimConnect, ScreenReaderAnnouncer Announcer, Form Owner)`; `FenixWindowEntry(string Name, string Description, Action<FenixWindowContext> Open)`; the seam `static partial void AddEngineWindows(List<FenixWindowEntry> entries);` on `public static partial class FenixWindowRegistry`; `FenixA320Definition.ShowFenixWindow<T>(Func<T> factory, Action<T> show)` (reuse-if-open, closed and disposed on aircraft switch by `DisposeTrackedWindows`, `BaseAircraftDefinition.cs:1144-1176`); `FenixA320Definition.Variant` (`IsKnown`, `Describe()`); `FenixDataService.Subscribe(IReadOnlyList<string>, Action<string, FenixDataValue>) : IDisposable` (callbacks on a pool thread), `ReadManyAsync(IReadOnlyList<string>, CancellationToken)`, `GetSettingsAsync(CancellationToken)`. Tasks 1-3's types.
-- Produces: the list entry named `"Engines"` (plan 11's guide text); `public sealed class FenixEnginesForm : Form` with `public FenixEnginesForm(FenixWindowContext context)` and `public void ShowForm()`.
+- Produces: the list entry named `"Engines"` (plan 12's guide text); `public sealed class FenixEnginesForm : Form` with `public FenixEnginesForm(FenixWindowContext context)` and `public void ShowForm()`.
 
 - [ ] **Step 1: Write the failing tests** (`FenixEngineWindowTests`, header comment naming FNX-2 and the 30-45 Hz stream):
   - `Registry_lists_the_Engines_window_once`: `var e = Assert.Single(FenixWindowRegistry.Build(), x => x.Name == "Engines");` and `Assert.Equal("N1, EGT, N2, fuel flow, oil and air temperatures, from the Fenix's own values", e.Description);`
@@ -298,16 +298,16 @@ private static readonly string[] IdleKg =
 
 ### Task 5: Hand back
 
-- [ ] **Step 1:** `git diff --name-only <base-sha>` lists only the 12 files of Tasks 1-4 (7 code, 5 tests), plus `docs/fenix-v3/plans/08-engine-data.md` if you ticked its boxes; build and full suite green.
-- [ ] **Step 2:** Fill in "Handoff to plan 11" below with what changed (Task 4 Step 6 results, the test count) then rebase onto `FenixV3` and push (index workflow, step 4).
+- [ ] **Step 1:** `git diff --name-only <base-sha>` lists only the 12 files of Tasks 1-4 (7 code, 5 tests), plus `docs/fenix-v3/plans/09-engine-data.md` if you ticked its boxes; build and full suite green.
+- [ ] **Step 2:** Fill in "Handoff to plan 12" below with what changed (Task 4 Step 6 results, the test count) then rebase onto `FenixV3` and push (index workflow, step 4).
 - [ ] **Step 3 (after the owner's in-sim check 2, only if the owner confirms units, Q2):** change the three oil suffixes in `FenixEngineFormat` and the six oil rows of `IdleKg` together (e.g. `"Engine 1 Oil Quantity: 14.4 quarts"`, `"Engine 1 Oil Pressure: 150 psi"`, `"Engine 1 Oil Temperature: 118 degrees C"`), run the suite, commit `feat(fenix): oil units measured on the Fenix ENGINE page`.
 
 ## Owner in-sim checks (few, prioritised)
 
-1. **An engine start with the window open** (aircraft on the ground, APU bleed on, engine 2 off; any Fenix, an IAE one preferred). Press `[` then Ctrl+Shift+F, arrow to "Engines", Enter; it reads "Engine 2: not running", and BA says nothing. Alt+Tab to the sim and start engine 2 as usual. Expected: BA says "Engine 2 running" once. As soon as you hear it, Alt+Tab back, arrow to "Engine 2 N2" and note the number; note it again when the engine has settled at idle. Tell us: did "Engine 2 running" come at light-up or when the start was complete, and the two N2 numbers (this also answers plan 04's "engine running" question). Was the window too chatty during the start? Press F5: "Engines refreshed". Then switch the aircraft profile with the window still open: it closes and says nothing more.
+1. **An engine start with the window open** (aircraft on the ground, APU bleed on, engine 2 off; any Fenix, an IAE one preferred). Press `[` then Ctrl+Shift+F, arrow to "Engines", Enter; it reads "Engine 2: not running", and BA says nothing. Alt+Tab to the sim and start engine 2 as usual. Expected: BA says "Engine 2 running" once. As soon as you hear it, Alt+Tab back, arrow to "Engine 2 N2" and note the number; note it again when the engine has settled at idle. Tell us: did "Engine 2 running" come at light-up or when the start was complete, and the two N2 numbers (this also answers plan 05's "engine running" question). Was the window too chatty during the start? Press F5: "Engines refreshed". Then switch the aircraft profile with the window still open: it closes and says nothing more.
 2. **Units, engines at idle, AI provider set up.** In BA's main window choose section "Pedestal", panel "ECAM", press "ECAM ENG". Press `]` then Alt+S (the SD by AI): note the oil quantity, pressure and temperature and the units it reads. Press `]` then Alt+E (the E/WD): note the fuel flow and its unit (KG/H or LBS/H). Press `]` then O: note "… degrees Celsius". Compare with the window: the oil numbers should match the Engines rows, the fuel flow should be within about 20 of the row and in the same unit, and O should equal "Outside Air Temperature". Tell us the units (Q2) and any difference (Q4).
 
-## Handoff to plan 11
+## Handoff to plan 12
 
 **Pilot-facing changes** (guide: the Fenix section of `guide/airbus-aircraft.md` near its displays text at line 218, and the hotkey appendix; changelog fragment, category `feature`):
 - Fenix: input mode, Ctrl+Shift+F, "Engines" opens a window with the Fenix's own engine readings, the same numbers its screens show: running or not, N1, EGT, N2, fuel flow (in the weight unit set in the Fenix EFB), oil quantity, pressure and temperature, total and outside air temperature. Values update every second; F5 reads them again and says "Engines refreshed"; Escape closes. While it is open BA says "Engine 1 running" or "Engine 1 stopped" when the Fenix's engine state changes (if the owner keeps it, Q1). Why: the sim's own engine values do not match the Fenix (an IAE A321 at idle: sim N1 30.9 % against the Fenix's 22.4 %).
@@ -324,18 +324,18 @@ private static readonly string[] IdleKg =
 
 **Handoff requests:**
 1. ~~Rule globs~~ (Covered by plan 01: its fenix-data.md globs are final and include these files.)
-2. Output O on the Fenix (Q4): only if check 2 shows the stock `AMBIENT TEMPERATURE` differs from `aircraft.temperature.oat` by 1 °C or more, handle `HotkeyAction.ReadOutsideTemperature` in `FenixA320Definition.HandleHotkeyAction` with a `DataService.ReadAsync(FenixEngineNames.Oat)` read, falling back to the generic path when unknown (owner of that file: plan 02 / 11).
-3. Plan 04 (First Officer engine running): in-sim check 1 reports the Fenix N2 at the `running` edge and at idle. After merge, plan 04's own engine names can fold onto `FenixEngineNames.For(n, FenixEngineField.N2)` / `.Running` if they duplicate them.
-4. If the owner chooses always-on running announcements (Q1): implement plan 01's `StartEngineBackground` / `StopEngineBackground` seams in a new `MSFSBlindAssist/Aircraft/FenixA320Definition.Engines.cs` (owned by plan 08) holding a `FenixEngineSnapshot` + `FenixEngineRunningWatch`, and remove the window's own speaking. Only the Ctrl+M row (`UserSettings.FenixDisabledMonitorVariables`, monitor manager) stays a plan 11 handoff.
-5. Guide (plan 03 / 11): the AI E/WD read (Output Alt+E) stays for alerts; the guide can point pilots to the Engines window for exact engine numbers.
+2. Output O on the Fenix (Q4): only if check 2 shows the stock `AMBIENT TEMPERATURE` differs from `aircraft.temperature.oat` by 1 °C or more, handle `HotkeyAction.ReadOutsideTemperature` in `FenixA320Definition.HandleHotkeyAction` with a `DataService.ReadAsync(FenixEngineNames.Oat)` read, falling back to the generic path when unknown (owner of that file: plan 02 / 12).
+3. Plan 05 (First Officer engine running): in-sim check 1 reports the Fenix N2 at the `running` edge and at idle. After merge, plan 05's own engine names can fold onto `FenixEngineNames.For(n, FenixEngineField.N2)` / `.Running` if they duplicate them.
+4. If the owner chooses always-on running announcements (Q1): implement plan 01's `StartEngineBackground` / `StopEngineBackground` seams in a new `MSFSBlindAssist/Aircraft/FenixA320Definition.Engines.cs` (owned by plan 09) holding a `FenixEngineSnapshot` + `FenixEngineRunningWatch`, and remove the window's own speaking. Only the Ctrl+M row (`UserSettings.FenixDisabledMonitorVariables`, monitor manager) stays a plan 12 handoff.
+5. Guide (plan 04 / 12): the AI E/WD read (Output Alt+E) stays for alerts; the guide can point pilots to the Engines window for exact engine numbers.
 
 **In-sim checks still needed:** Owner checks 1 and 2 above; Task 4 Step 6 if the implementer had no sim; Task 5 Step 3 after check 2.
 
 ---
 
 Summary:
-1. Plan 08 adds a Fenix "Engines" window (input mode, Ctrl+Shift+F, Engines) reading the Fenix's own 18 engine and temperature values through plan 01's data service.
+1. Plan 09 adds a Fenix "Engines" window (input mode, Ctrl+Shift+F, Engines) reading the Fenix's own 18 engine and temperature values through plan 01's data service.
 2. Pure logic (names, snapshot, invariant formatting with a display hold, status, running-edge watcher) is test-first in `Services/FenixEngine*.cs`, with de-DE/sv-SE and "-0" tests.
 3. The window never marshals per update: the 30-45 Hz callback fills a locked snapshot; a 1 s timer reconciles a `DisplayListBox` in place, without moving focus.
 4. Owner decides: running announcements (window-only proposal), oil units after an ENGINE-page check, row layout, and whether Output O should use the Fenix's OAT.
-5. Survey: outside the First Officer only Output O and the weather window read a stock temperature on the Fenix; no stock engine SimVar is read; two rule lines and five handoffs go to plan 11.
+5. Survey: outside the First Officer only Output O and the weather window read a stock temperature on the Fenix; no stock engine SimVar is read; two rule lines and five handoffs go to plan 12.

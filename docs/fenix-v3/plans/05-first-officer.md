@@ -1,4 +1,4 @@
-# First Officer for Fenix v3 Implementation Plan (plan 04)
+# First Officer for Fenix v3 Implementation Plan (plan 05)
 
 **Claimed by:** nobody yet · **Status:** not started
 
@@ -12,7 +12,7 @@
 
 **Spec:** `docs/fenix-v3/spec.md` (sections 2.1, 3, 4.1, 4.2); index and file ownership `docs/fenix-v3/plans/00-index.md`; interfaces `docs/fenix-v3/plans/01-foundation.md`.
 
-**Branch:** `git switch -c FenixV3-p04-first-officer <base-sha>` (the SHA plan 01 records in `00-index.md`), in a worktree `.claude/worktrees/fenix-v3-p04`.
+**Branch:** `git switch -c FenixV3-p05-first-officer <base-sha>` (the SHA plan 01 records in `00-index.md`), in a worktree `.claude/worktrees/fenix-v3-p05`.
 
 ## Owner decisions
 
@@ -176,7 +176,7 @@ public void Takeoff_speeds_line_reads_the_native_perf_vars(string culture)
     // push 50 again through the new callback, then AttachFenix(null, null, null) -> 61.4.
 [Fact] public void Running_threshold_sits_between_starter_cut_out_and_both_measured_idles()
 {
-    const double StarterCutOut = 50.0, CfmIdleFenix = 59.3, IaeIdleFenix = 62.3; // manualslib p.22; spec 3; plan 04 read
+    const double StarterCutOut = 50.0, CfmIdleFenix = 59.3, IaeIdleFenix = 62.3; // manualslib p.22; spec 3; plan 05 read
     Assert.InRange(FenixStateEvaluator.EngineRunningN2, StarterCutOut + 1, Math.Min(CfmIdleFenix, IaeIdleFenix) - 1);
 }
 ```
@@ -217,7 +217,7 @@ public void Takeoff_speeds_line_reads_the_native_perf_vars(string culture)
 
 **Interfaces:**
 - Consumes: Task 2's `_live.CabinReady`.
-- Produces: `public const string CabinReadyField = "FO_CABIN_READY";` (1, 0 or NaN); `public string? CabinReadyText()` and `internal static string? CabinReadyText(double v)`: 1 gives `"reported ready"`, 0 gives `"not reported"`, NaN gives null. Both lines become `Reminder(…, "Cabin: READY", s => s.CabinReadyText())`: still Reminders (the pilot confirms; FOA-8), the tick speaks only the value (CORE-7), and the status line shows it. Nothing in the FO announces cabin ready on its own: plan 07 owns that announcement.
+- Produces: `public const string CabinReadyField = "FO_CABIN_READY";` (1, 0 or NaN); `public string? CabinReadyText()` and `internal static string? CabinReadyText(double v)`: 1 gives `"reported ready"`, 0 gives `"not reported"`, NaN gives null. Both lines become `Reminder(…, "Cabin: READY", s => s.CabinReadyText())`: still Reminders (the pilot confirms; FOA-8), the tick speaks only the value (CORE-7), and the status line shows it. Nothing in the FO announces cabin ready on its own: plan 08 owns that announcement.
 
 - [ ] **Step 1: Write the failing tests** in `FenixFoCabinReadyTests`:
   - `Cabin_lines_read_the_pursers_report` (Theory over `LUC_CABIN`, `LDC_MEMO_CABIN`): push `CabinReadyName` `Flag(true)` gives `ReadLiveValue(e) == "reported ready"`; `Flag(false)` gives `"not reported"`; `FenixDataValue.Unknown` gives null.
@@ -262,7 +262,7 @@ public void Fuel_prefers_the_Fenixs_own_total(string culture)
 
 **Interfaces:**
 - Consumes: `RecordingSimConnectCache` (`tests/.../FirstOfficer/RecordingSimConnectCache.cs`), `ClaudeContextBudgetTests.RepoRoot()`.
-- Produces: the guard plan 11 relies on when it merges plan 02's renames and deletions.
+- Produces: the guard plan 12 relies on when it merges plan 02's renames and deletions.
 
 - [ ] **Step 1: Write the tests:**
   - `Every_cache_key_the_first_officer_reads_is_registered`: `keys = new FenixA320Definition().GetVariables().Keys`; for each seed value 0, 1 and 2 (conditions short-circuit, so one seed cannot reach every read), build `RecordingSimConnectCache.With(keys.Select(k => (k, (double)seed)))`, give it to a new `FenixStateEvaluator`, then call every flow step's `SkipCondition`, `LeaveAloneWhen`, `TargetValueProvider` and `GetValue(ConditionFieldName)`, and every checklist item's `GetValue(StateFieldName)`, `GetValue` of each `AdditionalStateFields`, `ReadLiveValue` and `LeaveAloneWhen`. Assert every recorded key, and every `OnRequestPollFields` entry, is in `keys` (message lists the strays).
@@ -274,7 +274,7 @@ public void Fuel_prefers_the_Fenixs_own_total(string culture)
 
 - [ ] **Step 1:** Build the solution and run the whole suite: green. `git diff --name-only <base-sha>` lists only the files in "File structure".
 - [ ] **Step 2:** Owner-in-sim checks below (stop and ask the owner; build only with MSFSBA closed, CORE-3).
-- [ ] **Step 3:** Fill in the results under "Handoff to plan 11" (measured values, decision outcomes) and hand back the branch.
+- [ ] **Step 3:** Fill in the results under "Handoff to plan 12" (measured values, decision outcomes) and hand back the branch.
 
 ## Owner-in-sim checks (few, prioritised)
 
@@ -293,9 +293,9 @@ Invoke-RestMethod -Uri http://127.0.0.1:8083/graphql -Method Post -ContentType '
 2. **Takeoff speeds and cabin ready (O4, Task 1).** On the MCDU's PERF TAKEOFF page enter V1 142, VR 145, V2 149, FLX 55. In the FO window, Ctrl+Tab to **Checklists**, arrow to *"Before Start Checklist"*, Right Arrow, Down to *"Takeoff speeds and thrust: SET"*, Tab to **Checklist status**: it reads *"Takeoff speeds and thrust: SET, V1 142, VR 145, V2 149, flex 55 — Incomplete"*. Then run **Line-up** (the cabin call is its first step) and watch *"Cabin: READY"* in the Line-up Checklist: *"not reported"* until the purser reports, then *"reported ready"*. Record the seconds from the call to `c` reading true, and the *Cabin Ready Call* setting.
 3. **A321 pack flow (O3; optional).** Run **Preflight** on the A321: no *"Pack flow"* line is spoken. On any A320 preset it still says *"Already set: Pack flow: NORMAL"*.
 
-## Handoff to plan 11
+## Handoff to plan 12
 
-**Pilot-facing changes (guide: the First Officer part, `guide/first-officer.md`; plan 11 writes it):**
+**Pilot-facing changes (guide: the First Officer part, `guide/first-officer.md`; plan 12 writes it):**
 - Fenix: the Before Start Checklist's *"Takeoff speeds and thrust: SET"* line now reads V1, VR, V2 and flex from the MCDU's PERF TAKEOFF page (it was silent unless the discontinued FenixQuartz tool ran), and *"not set"* until they are entered.
 - Fenix: Engine Start waits for the Fenix's own N2, which is right on IAE engines too, and allows up to 3 minutes per engine (the IAE cranks 30 or 50 seconds before it lights).
 - Fenix A321: the Preflight flow no longer mentions the pack flow selector, which the A321 does not have; set its ECON FLOW button as you need it.
@@ -312,8 +312,8 @@ Invoke-RestMethod -Uri http://127.0.0.1:8083/graphql -Method Post -ContentType '
 (Lengths 399, 328 and 375 characters, each under the 400 cap.)
 
 **Handoff requests:**
-1. **Order with plan 02: resolved.** Plan 02 keeps `FNX2PLD_speedV1/VR/V2` and deletes only the other 13 FenixQuartz definitions; plan 11 deletes the three after this plan's Task 1 is on `FenixV3`, so the two plans can land in either order.
-2. ~~Rule globs~~ (Covered by plan 01: its fenix-data.md globs are final and include these files.) Plan 11 still runs `ClaudeContextBudgetTests` (per-file load: FO code about 13,800, these tests about 22,600, under 30,000).
+1. **Order with plan 02: resolved.** Plan 02 keeps `FNX2PLD_speedV1/VR/V2` and deletes only the other 13 FenixQuartz definitions; plan 12 deletes the three after this plan's Task 1 is on `FenixV3`, so the two plans can land in either order.
+2. ~~Rule globs~~ (Covered by plan 01: its fenix-data.md globs are final and include these files.) Plan 12 still runs `ClaudeContextBudgetTests` (per-file load: FO code about 13,800, these tests about 22,600, under 30,000).
 3. **Optional, owner's choice (O4 alternative):** make the Line-up and Landing *"Cabin: READY"* lines delivered by a read-only `FO_CABIN_READY` check (Skip on timeout; 30 s at line-up, before `LU_CLEARANCE`; 20 s in Landing, before the gear check that FO-13 keeps last) instead of by the CALL ALL step. It needs, together: the steps in `FenixFlowDefinitions.cs`; `LU_CABIN` linking only itself; `A320FamilyParityTests` entries (`KnownStepDivergences` for both new steps, `KnownStepLinkDivergences` for `LU_CABIN`, reason: the Fenix v3 publishes the purser's cabin ready and a call no longer sets it; the A32NX publishes none); and edits to the shared tests `A320FamilyReadbackLinkTests.cs:100`, `A320FamilyReadbackLinkBehaviourTests.cs:41` and `A320FamilyTaxiAndRunwayEntryFlowTests.cs:44`, which pin the Fenix's Line-up steps and the `LU_CABIN` to `LUC_CABIN` link. Set the timeouts from in-sim check 2.
 4. **Also seen, plan 02's file (owner decides):** `FenixA320Definition.cs:6548-6571` has no `NotSetBelow = 1` on `N_MISC_PERF_TO_V1/VR/V2`, so the app's own announcement of a cleared speed would say a number; A320-10 makes `SimVarDefinition.IsNotSet` the one "not set" test.
 5. **Docs (`docs/first-officer.md`):** line 802 names the APU AVAIL lamp `_L` (the code and the 2026-09-04 measurement say `_U`, spec 2.4); add the v3 result of in-sim check 1. Replace "stock N2" wording for the Fenix (around line 76) with the Fenix's own N2 and the stock fallback.

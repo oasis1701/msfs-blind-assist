@@ -1,4 +1,4 @@
-# Fenix v3 Failures Window Implementation Plan (plan 09)
+# Fenix v3 Failures Window Implementation Plan (plan 10)
 
 **Claimed by:** nobody yet · **Status:** not started
 
@@ -24,7 +24,7 @@
 | D6 | Chapter order and wording | The Fenix's order (21, 22, 24 … 70, as the EFB); "Air Conditioning, ATA 21" (title first, for first-letter navigation) | Sorted by ATA number |
 | D7 | Units in conditions | The EFB's own labels, no unit: "above IAS 250", "above altitude 10000 AMSL" (the EFB states none) | Add "knots"/"feet" after the owner confirms them in the sim |
 | D8 | Test fixture | **Decided (coordinator, 2026-10-21):** commit only the first chapter (ATA 21: 14 groups, 57 failures), not the full catalog (Fenix's content, public repo); multi-chapter facts come from a small inline catalog in the tests; 20 chapters / 549 (A320 CFM) and 555 (A321 IAE) are checked only in the read-only sim check | (the full 65,828-byte capture: rejected) |
-| D9 | Automatic failures (`auto_failure_mode`, `failure_rate`) | Shown read-only in the status box; plan 10 owns changing them | Leave out |
+| D9 | Automatic failures (`auto_failure_mode`, `failure_rate`) | Shown read-only in the status box; plan 11 owns changing them | Leave out |
 
 ## What the Fenix EFB does (the evidence this plan follows)
 
@@ -189,7 +189,7 @@ Fetch the bundles from a running Fenix: `python -I docs/fenix-v3/tools/fetch_gat
 ### Task 5: Hand back
 
 - [ ] **Step 1:** Build and full suite green; `git diff --name-only <base-sha>` lists only this plan's files.
-- [ ] **Step 2:** Fill in "Handoff to plan 11" below with what you found (Task 4 Step 6 results; any deviation from the defaults) and hand the branch to the integrator.
+- [ ] **Step 2:** Fill in "Handoff to plan 12" below with what you found (Task 4 Step 6 results; any deviation from the defaults) and hand the branch to the integrator.
 
 ## Owner-in-sim steps (writes: each needs the owner's go-ahead in chat)
 
@@ -199,7 +199,7 @@ Aircraft parked at a gate, app connected on the Fenix profile, nothing armed. Al
 2. **Timed arm and trigger** (the condition shape, `time`, the trigger seen by a GET, background speech). Alt+A; in the dialog Alt+S, type 30, Enter; the box reads "Arm Lavatory/Galley fan: after 30 seconds? This changes your flight."; Y. Expect "Lavatory/Galley fan armed: after 30 seconds." or "… armed at <time>." (say which; for a time, is it the PC's clock or the sim's?). Leave the window open about 45 s: expect "Failure triggered: Lavatory/Galley fan." and the node "…, failed". Then Alt+C, Y.
 3. **Optional, on a flight (AND or OR).** Before takeoff arm it with Above IAS 100 and Above altitude AMSL 30000. A failure on the takeoff roll means the fields combine as OR; none before 30000 ft means AND. Clear it after.
 
-## Handoff to plan 11
+## Handoff to plan 12
 
 - **Pilot-facing:** "Fenix windows" (input mode, Ctrl+Shift+F) gains "Failures": a tree of the Fenix's manual failures by ATA chapter (names as the Fenix gives them; a failure says "armed: <condition>" or "failed"), a search box (Enter jumps to the results and says how many), a Show filter (all, armed, failed, armed or failed), Fail now (Alt+N), Arm (Alt+A: above IAS, above or below altitude AMSL, after V1, take-off or landing, seconds), Clear (Alt+C), each asking first, F5 refresh; the status box shows the aircraft variant, the totals and the Fenix's automatic-failure options; while open, a failure that triggers is spoken ("Failure triggered: …"). Guide: the Fenix part of `guide/airbus-aircraft.md` (a "Failures" section beside the EFB window) and the hotkey appendix (no new key). Changelog: `feature`.
 - **Proposed rules** (in `.claude/rules/fenix-data.md`; plan 01's final globs already cover `Services/Fenix*.cs` and `tests/**/*Fenix*.cs`; each line under 400 characters):

@@ -1,14 +1,14 @@
-# Fenix v3 Displays, MCDU and EFB Window Implementation Plan (plan 03)
+# Fenix v3 Displays and MCDU Implementation Plan (plan 04)
 
 **Claimed by:** nobody yet · **Status:** not started
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make the Fenix AI display reads frame the same displays as before on v3's renumbered cameras, make the standby read follow the fitted standby (ISIS or three round gauges), pin the EFB window to the EFB's keyboard-friendly "external" target on 127.0.0.1, and characterize v3's MCDU text without reworking the MCDU.
+**Goal:** Make the Fenix AI display reads frame the same displays as before on v3's renumbered cameras, make the standby read follow the fitted standby (ISIS or three round gauges), and characterize v3's MCDU text without reworking the MCDU.
 
-**Architecture:** Fenix v3 restored the "Main Panel (Left)" instrument camera that v2 lacked, so every live instrument index from 7 up moved by one: today Alt+P lands on the centre panel and Alt+N/E/S/I on the captain's side. After one owner-approved live measurement, `FenixA320DisplayReads` keeps its two views under their new numbers, the first officer's side (predicted 9) for the PFD and the centre panel (predicted 8) for ND, E/WD, SD and standby, and gains `For(FenixVariant)`, which swaps only the standby row's prompt by plan 01's `Variant.HasIsis`. The EFB window loads `http://127.0.0.1:8083/?target=external#/efb`. The MCDU gets captured-v3 characterization tests and changes only if a capture shows a misread (owner, 2026-10-21).
+**Architecture:** Fenix v3 restored the "Main Panel (Left)" instrument camera that v2 lacked, so every live instrument index from 7 up moved by one: today Alt+P lands on the centre panel and Alt+N/E/S/I on the captain's side. After one owner-approved live measurement, `FenixA320DisplayReads` keeps its two views under their new numbers, the first officer's side (predicted 9) for the PFD and the centre panel (predicted 8) for ND, E/WD, SD and standby, and gains `For(FenixVariant)`, which swaps only the standby row's prompt by plan 01's `Variant.HasIsis`. The MCDU gets captured-v3 characterization tests and changes only if a capture shows a misread (owner, 2026-10-21).
 
-**Tech Stack:** C# 13 / .NET 10 WinForms, WebView2, xUnit.
+**Tech Stack:** C# 13 / .NET 10 WinForms, xUnit.
 
 **Spec:** `docs/fenix-v3/spec.md`. Index and file ownership: `docs/fenix-v3/plans/00-index.md`. Interfaces consumed from `docs/fenix-v3/plans/01-foundation.md`.
 
@@ -20,9 +20,7 @@ Answered by the owner on 2026-10-21; the plan follows the answers.
 2. **Alt+P reads the CAPTAIN'S PFD** from the restored left view. **Declined by the owner, 2026-10-21.** Alt+P keeps reading the FIRST OFFICER'S PFD (the 2026-09-21 ruling, docs/a32nx.md:679-684), on v3's number for that view.
 3. **Alt+N reads the captain's ND from the captain's own view (7).** **Declined by the owner, 2026-10-21.** Alt+N keeps the centre view and today's `NDFenix` prompt ("the left-hand one of two"), on v3's number for that view.
 4. **Alt+I's prompt follows the fitted standby**: an ISIS prompt when `Variant.HasIsis == true`, a round-gauge prompt when `false`, today's identify-which prompt when unknown. The spoken name stays "Standby instruments". Recommended: yes.
-5. **EFB target `external`, explicitly.** Today's URL has no `target`, and the EFB's own `detectTargetDevice` falls back to `external` for any browser that is not Chrome 49 (Coherent GT) and has no `_capt` in the URL, so WebView2 already gets `external`. Pinning it removes that reliance. What `external` means, read in the v3 bundle: Tab works and PageUp/PageDown/Home/End reach the page (a sim target swallows Tab unless its on-screen keyboard is open, blocks those four keys on a non-editable focus, and releases focus 2 s after a click: `AUTO_UNFOCUS_DELAY_MS=2e3`, `isSimTablet()`); no simulated battery or sleep; the physical keyboard, no on-screen one; its own `chart_theme_external_type` / `map_style_external_type` settings, so it never changes the cockpit tablets' themes; never touches `fenix.efb.hidden_*`/`connected_*`; charts come from Navigraph or the moving map only (the in-sim MSFS 2024 charts provider is for sim targets); and, as in any browser, the page reports its script errors to Fenix's error tracker (a sim target does not). Recommended: `?target=external`. If declined: leave the URL's target out (same behaviour, implicit).
-6. **EFB on `127.0.0.1`, not `localhost`** (A320-40). WebView2 races IPv4 against the refused `::1` (Chromium starts IPv4 300 ms after IPv6; from Chromium's source, not measured in WebView2), so the cost is up to 0.3 s per new connection, not 2 s; a plain client pays the full refusal (measured here: 2,002-2,005 ms, three tries; 127.0.0.1 connects in 0.3-10 ms). The page builds every gateway address from its own origin (`getHostUrl`, `backendUrl`), so the choice reaches its GraphQL socket and REST calls too. One-time cost: the EFB's only per-origin state, `localStorage["fenix.efb.background-image-state"]` (the custom-background flag), starts empty. Recommended: 127.0.0.1.
-7. **The EFB's "not reachable" message becomes a read-only TextBox** (VAT-13), as the iFly EFB window already does (`Forms/IFly737/IFlyEfbForm.cs:316-328`); the Fenix window is the odd one out with a `Label`. Recommended: yes.
+5-7. (Moved to plan 03 with the EFB window on 2026-10-21: the `external` target, 127.0.0.1, the status TextBox.)
 8. **MCDU: characterize only.** No code change unless a v3 capture shows a misread (criteria in Task 5); the key pulse (1, 50 ms, 0; `Services/FenixMCDUService.cs:243-252`) stays unless the owner's typing check doubles letters. The v3 web MCDU writes 1 only (its `pressKey`), so a 0 that v3 counted as a press would show as doubled letters.
 
 ## Global Constraints
@@ -30,16 +28,14 @@ Answered by the owner on 2026-10-21; the plan follows the answers.
 - Fenix 3.0.0.7426. Data service `http://127.0.0.1:8083`: reads only, never `localhost`, never introspect the schema, never guess a name (FNX-3, A320-40). Never call `/fenix/documents/OpenDocumentsFolder` (it acts on the PC).
 - Never write to the sim without the owner's go-ahead in chat; Task 1's camera writes need it. SimConnect SimVar reads time out while the sim is paused (measured 2026-10-21: `SIM_TIMEOUT` on `CAMERA STATE`, `PLANE ALTITUDE`): unpause first.
 - Camera index = 0-based instrument view (`CAMERA VIEW TYPE AND INDEX:1`, type `:0` = 2). Measure on the live aircraft, never read indices off cameras.cfg (`Aircraft/AiDisplayRead.cs:10-16`). Any manual restore writes index 0, then the type, then the index, as separate writes with about 250 ms between, and confirms after a settle (AI-3).
-- EFB URL, exact: `http://127.0.0.1:8083/?target=external#/efb` (the target must be in the query, before `#`).
 - MCDU: keep A320-31 (colour rule before size rule, conservative size rule, `SpecialChars` `\uXXXX` escapes).
-- Files owned: `MSFSBlindAssist/Aircraft/FenixA320DisplayReads.cs`, `Services/FenixMCDUService.cs`, `Services/FenixMcdu*.cs`, `Forms/FenixA320/FenixMCDUForm*.cs`, `Forms/Fenix/FenixEFBForm.cs`, the Fenix entries in `Services/GeminiService.cs` (`NDFenix`, `StandbyFenix`, and the two new `StandbyFenix*` members and prompts next to them), tests `*FenixA320DisplayReads*`, `*FenixMcdu*`, `*FenixEfb*`. Anything else is a handoff.
+- Files owned: `MSFSBlindAssist/Aircraft/FenixA320DisplayReads.cs`, `Services/FenixMCDUService.cs`, `Services/FenixMcdu*.cs`, `Forms/FenixA320/FenixMCDUForm*.cs`, the Fenix entries in `Services/GeminiService.cs` (`NDFenix`, `StandbyFenix`, and the two new `StandbyFenix*` members and prompts next to them), tests `*FenixA320DisplayReads*` and `*FenixMcdu*`. Anything else is a handoff.
 - Read every file with the Read tool before changing it (CORE-16). Nothing here formats a number, so no culture test is needed.
 - Tests: `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64`. Build: `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64`.
 
 ## Review Focus
 
 - The variant is unknown at the key press (config vars not delivered yet, a `B_CONFIG_STDBY` value plan 01 maps to null, an older Fenix): the standby read must use the identify-which prompt, never guess ISIS (Task 3 test `An_unknown_standby_asks_the_ai_to_identify_it`).
-- The EFB target written after `#` is silently ignored (`window.location.search` is empty) and the page falls back to the browser-version guess (Task 4 test on `Uri.Query` and `Uri.Fragment`).
 - A v3 MCDU screen with a new glyph, or lowercase text a format code eats, reads off the 24-column grid (Task 5 tripwire tests).
 - The centre view stops framing BOTH NDs, so `NDFenix` ("the left-hand one of two") reads the wrong display: Task 1 Step 5 requires both NDs whole in the centre view, and Task 2 keeps `TheNdPromptNamesWhichOfTheTwoToRead`.
 - A variant table that changed a key, view or spoken name would desync the guide from what the pilot hears; only the standby prompt may vary (Task 3 test `Only_the_standby_row_follows_the_variant`).
@@ -49,8 +45,7 @@ Answered by the owner on 2026-10-21; the plan follows the answers.
 - **Cameras.** v3 moved cameras.cfg into the fuselage parts: `<Community>\fnx-aircraft-a32x-common\SimObjects\Airplanes\FNX_32X\attachments\fnx\Part_Exterior_Fuselage_A3{19,20,21}\config\cameras.cfg` (99 definitions each); `FNX_32X\common\config\cameras.cfg` is a 55-byte stub; the preset folders keep 45-byte `[MODULAR_MERGE]` stubs. 19 `Cockpit`/`Instrument` cameras, in file order: 0 MCDU (Captain), 1 MCDU (FO), 2 EFB (Captain), 3 EFB (FO), 4 Overhead, 5 Pedestal, 6 FCU, 7 Main Panel (Left), 8 Main Panel (Center), 9 Main Panel (Right), 10 Upper Overhead, 11 Circuit Breaker Wall, 12 Cabin, 13-18 cabin seats. Instruments 0-11 are byte-identical on all three types (only cabin views move), so one measurement covers every variant. Main Panel x positions 0.035 / 0.499 / 0.963 m (captain's eye -0.045, first officer's 1.05).
 - **Fenix's V3 changelog:** "Fixed main panel (left) camera missing" (https://fenixsim.com/blog/entries/2026-10-21_v3_update). In v2 that camera was absent from the live list, so live 7 was the centre panel and 8 the first officer's side (`MAX:2` 18; docs/a32nx.md:666-672). Expected on v3: live index = file position, `MAX:2` 19, **7 = captain's side, 8 = centre, 9 = first officer's side** (prediction, not a measurement: Task 1 measures).
 - `B_CONFIG_STDBY` reads 0 on the loaded ISIS A321 (MobiFlight L:var read). Settings `standby_type` Isis|Analogue, `isis_type` Old|New|Auto, `metric_standby_enabled`, `ddrmi_enabled` (docs/fenix-v3/evidence/settings.tsv). Changelog: old and new ISIS styles; inHg on the analogue altimeter; a separate metric standby gauge.
-- **EFB.** `/`, `/?target=external`, `/index.html?target=external`, `/index_capt.html` all serve the same 8,383-byte "FenixSim EFB" page. Target detection and its effects: Owner decision 5 (fetch the bundle with `python -I docs/fenix-v3/tools/fetch_gateway_bundles.py <scratch folder>`, then search `efb\main.*.js` for `detectTargetDevice` and the largest chunk for `isSimTablet`). Routes: `#/efb/documents`, `charts`, `settings`, `depperf`, `arrperf`, `manual-failures`, `fenix/{my-flight,ground-services,mass-balance,panel-states,sim-settings}`.
-- **Documents app.** `GET /fenix/documents` lists 772 Markdown documents: 612 ECAM procedures (`fenix/ECAM/<system>/…`; the spec counted 607 on the A320), 141 QRH, 17 user guide, checklists, delay codes. `GET /fenix/documents/content/<path>` returns server-rendered HTML with real headings (h1 procedure title, h4/h5 sections), lists and `details` checklist items; the flight-phase inhibition is an image (alt "Flight phase"). Value for a blind pilot: the procedure for an active ECAM alert, which the app pins automatically on a failure, as text. Readable in our EFB window today in principle; screen-reader use is the owner's check (Task 6).
+- **EFB and Documents:** moved to plan 03 (the EFB window) and plan 07 (the documents window) with their evidence.
 - **MCDU.** Live MCDU MENU on both sides (fixture in Task 5): `<ATSU` replaces v2's line, `<FMGC` is green. v3 web MCDU `pressKey` writes `system.switches.S_CDU<n>_KEY_<key>` = 1 only.
 
 ---
@@ -85,7 +80,7 @@ Answered by the owner on 2026-10-21; the plan follows the answers.
 
 **Interfaces:**
 - Consumes: Task 1's measured indices.
-- Produces: `public const int FirstOfficerPanelView = 9;` and `public const int CenterPanelView = 8;` (Task 1's values; no `CaptainPanelView`), `public static readonly IReadOnlyList<AiDisplayRead> All` (the variant-unknown table; `FenixA320Definition.DisplayReads` keeps using it until plan 11 wires `For`). Alt+P on `FirstOfficerPanelView`; Alt+N, E, S, I on `CenterPanelView`. `NDFenix` and its prompt are unchanged.
+- Produces: `public const int FirstOfficerPanelView = 9;` and `public const int CenterPanelView = 8;` (Task 1's values; no `CaptainPanelView`), `public static readonly IReadOnlyList<AiDisplayRead> All` (the variant-unknown table; `FenixA320Definition.DisplayReads` keeps using it until plan 12 wires `For`). Alt+P on `FirstOfficerPanelView`; Alt+N, E, S, I on `CenterPanelView`. `NDFenix` and its prompt are unchanged.
 
 - [ ] **Step 1: Update the tests first.** In `FenixA320DisplayReadsTests`, change only view numbers and comments:
   - `EachRead_HasItsPromptNameAndView` rows become `(ReadDisplayPFD, PFD, "PFD", 9)`, `(ReadDisplayND, NDFenix, "ND", 8)`, `(ReadDisplayUpperECAM, UpperECAM, "E/WD", 8)`, `(ReadDisplayLowerECAM, LowerECAM, "SD", 8)`, `(ReadDisplayISIS, StandbyFenix, "Standby instruments", 8)`.
@@ -106,7 +101,7 @@ Answered by the owner on 2026-10-21; the plan follows the answers.
 
 **Interfaces:**
 - Consumes (plan 01, `Aircraft/FenixVariant.cs`): `FenixVariant` (positional record, `bool? HasIsis`), `FenixVariant.Unknown`, `FenixVariant.With(string configVar, double value)`, `FenixConfigVars.Standby` (`"B_CONFIG_STDBY"`; 0 maps to `HasIsis == true`).
-- Produces: `GeminiService.DisplayType.StandbyFenixIsis`, `GeminiService.DisplayType.StandbyFenixAnalogue`; `public static IReadOnlyList<AiDisplayRead> For(FenixVariant variant)` on `FenixA320DisplayReads`: `HasIsis` true → the ISIS table, false → the round-gauge table, null → `All` (same instance). The three tables are static and differ only in the standby row's `DisplayType`. Plan 11 wires it (handoff 1).
+- Produces: `GeminiService.DisplayType.StandbyFenixIsis`, `GeminiService.DisplayType.StandbyFenixAnalogue`; `public static IReadOnlyList<AiDisplayRead> For(FenixVariant variant)` on `FenixA320DisplayReads`: `HasIsis` true → the ISIS table, false → the round-gauge table, null → `All` (same instance). The three tables are static and differ only in the standby row's `DisplayType`. Plan 12 wires it (handoff 1).
 
 - [ ] **Step 1: Write the failing tests** in `FenixA320DisplayReadsStandbyTests`:
   - `An_isis_livery_reads_the_isis`: `For(FenixVariant.Unknown.With(FenixConfigVars.Standby, 0))`'s `ReadDisplayISIS` row has `DisplayType.StandbyFenixIsis`.
@@ -124,22 +119,9 @@ Answered by the owner on 2026-10-21; the plan follows the answers.
 - [ ] **Step 4: Run them and the whole suite; all pass.**
 - [ ] **Step 5: Commit.** `feat(fenix): standby read follows the fitted ISIS or round gauges`
 
-### Task 4: EFB window on the external target at 127.0.0.1
+### Task 4: (moved to plan 03, 2026-10-21)
 
-**Files:**
-- Modify: `MSFSBlindAssist/Forms/Fenix/FenixEFBForm.cs` (class comment 8-21; `EfbUrl` line 24; `_errorLabel` 33, 90-96, 104; `NotReachableMessage` 109-111; `ShowError` 186)
-- Create: `tests/MSFSBlindAssist.Tests/FenixEfbAddressTests.cs`
-
-**Interfaces:** Produces `internal const string EfbUrl` and `internal const string NotReachableMessage` on `FenixEFBForm`.
-
-- [ ] **Step 1: Write the failing tests.**
-  - `The_efb_page_is_the_external_target_on_ipv4`: `Assert.Equal("http://127.0.0.1:8083/?target=external#/efb", FenixEFBForm.EfbUrl)`; `var u = new Uri(FenixEFBForm.EfbUrl);` `u.Host == "127.0.0.1"`, `u.Query == "?target=external"`, `u.Fragment == "#/efb"`.
-  - `The_not_reachable_message_names_the_address_it_tried`: `Assert.Equal("Fenix EFB is not reachable at http://127.0.0.1:8083. Make sure the Fenix A320 is fully loaded, then press Retry.", FenixEFBForm.NotReachableMessage)`.
-  - `The_window_never_addresses_the_gateway_by_name_and_shows_no_label`: source scan of `MSFSBlindAssist/Forms/Fenix/FenixEFBForm.cs` (via `ClaudeContextBudgetTests.RepoRoot()`, as `FenixDataServiceAddressTests` does): no match for `(?i)(ws|http)s?://localhost`, and no `new Label`.
-- [ ] **Step 2: Run them; they fail.** `--filter FenixEfbAddressTests`.
-- [ ] **Step 3: Implement.** The two constants as `internal const` with those values (comment: external target and why, per Owner decision 5; IPv4 per A320-40). Replace `_errorLabel` with `_errorBox`, a read-only multiline `TextBox` built like `IFlyEfbForm`'s (`ReadOnly = true`, `TabStop = true`, `Multiline = true`, `ScrollBars = Vertical`, `AccessibleName = "Fenix EFB status message"`, location 12,12, size 700×100) and move Retry below it; `ShowError` sets `_errorBox.Text`; focus and speech unchanged (Retry focused, `AnnounceImmediate`). Rewrite the class comment's URL and add one sentence on the target.
-- [ ] **Step 4: Run them and the whole suite; all pass. Build the solution.**
-- [ ] **Step 5: Commit.** `fix(fenix): EFB window loads the external target on 127.0.0.1; status text tabbable`
+The EFB window's address and status message are plan 03's Task 1 now. Numbering kept so Task 5 stays Task 5.
 
 ### Task 5: MCDU v3 characterization (one verification task)
 
@@ -195,35 +177,32 @@ Build from this branch. The Fenix loaded on the ground, displays powered, a norm
 1. **First officer's PFD.** Press Alt+P. Hear "Capturing PFD...", then "PFD analysis ready."; the result reads a whole PFD: airspeed, altitude, the FMA and a baro setting (not a clipped edge). No "Could not return to your previous view.".
 2. **Captain's ND, centre view.** Set the captain's EFIS to ARC, range 20, and the first officer's to ROSE NAV, range 40 (panel or Fenix). Press Alt+N. The result's first line has ARC and 20; ROSE or 40 means it read the wrong ND.
 3. **Centre view.** Press Alt+E, then Alt+S. E/WD: N1 for both engines and the flap setting; SD: a page name.
-4. **Standby.** Press Alt+I on the ISIS A321: the result reads one digital screen (airspeed, altitude, baro). With plan 11's wiring in place, also load a round-gauge livery (the CFM A320 house livery read `standby_type` Analogue) and read `B_CONFIG_STDBY` there first (plan 01 maps only 0 today): Alt+I describes three round gauges.
-5. **EFB keyboard.** Input mode (`[`) then Shift+T. Tab moves through the EFB and focus stays put after 5 s idle. Open Documents, find an ECAM procedure (for example ENG 1 BLEED STATUS FAULT - IN FLIGHT) and read it in browse mode; say whether headings and checklist items are usable.
-6. **EFB message.** Before the Fenix has loaded (main menu), `[` Shift+T: hear "Fenix EFB is not reachable at http://127.0.0.1:8083. Make sure the Fenix A320 is fully loaded, then press Retry."; Shift+Tab from Retry reaches the message.
+4. **Standby.** Press Alt+I on the ISIS A321: the result reads one digital screen (airspeed, altitude, baro). With plan 12's wiring in place, also load a round-gauge livery (the CFM A320 house livery read `standby_type` Analogue) and read `B_CONFIG_STDBY` there first (plan 01 maps only 0 today): Alt+I describes three round gauges.
+5. (Moved to plan 03: EFB keyboard.)
+6. (Moved to plan 03: EFB message.)
 7. **MCDU typing.** `[` Shift+M, Alt+S, type AAB1, Enter: the scratchpad is announced as "AAB1". Doubled letters mean v3 counts our 0 write as a press: report it (the fix then is writing 1 only, at `Services/FenixMCDUService.cs:243-252`). Backspace clears it.
 
-## Handoff to plan 11
+## Handoff to plan 12
 
 **Pilot-facing changes** (guide, hotkey guide, changelog `fix`):
 - Alt+P, N, E, S and I frame the right displays again on Fenix v3 (Fenix restored a camera, which renumbered the views); they read the same displays as before: Alt+P the first officer's PFD, Alt+N the captain's ND. Fenix 2.x is no longer supported for these reads (Owner decision 1).
 - Alt+I tells the AI whether the livery has the digital ISIS or three round gauges (after handoff 1).
-- The EFB window's "not reachable" message now says http://127.0.0.1:8083 and can be reached with Tab.
-- The EFB Documents app (QRH and ECAM procedures, pinned on a failure) is reachable in the Fenix EFB window, if check 5 passes.
 
 **Handoff requests:**
 1. `MSFSBlindAssist/Aircraft/FenixA320Definition.cs:13185-13189` (plan 02's file): `protected override IReadOnlyList<AiDisplayRead> DisplayReads => FenixA320DisplayReads.For(Variant);` with the summary "The five AI display reads, on v3's measured instrument views; the standby prompt follows the fitted standby (FenixA320DisplayReads)." Replace the comment at :13204-13205 with "Alt+P / Alt+N / Alt+E / Alt+S / Alt+I are dispatched from FenixA320DisplayReads by the base, on measured views." (spec 2.4 lists both as stale; apply once).
 2. `docs/a32nx.md:647-700`: rewrite the Fenix display-read section from Task 1 (table: Alt+P first officer's PFD on view 10 / index 9; Alt+N, Alt+E, Alt+S, Alt+I on view 9 / index 8; the v3 cameras.cfg location and the restored left camera, replacing the "file position 7 is absent" bullet; "The captain's PFD cannot be read" becomes: v3 frames it at index 7, and the owner kept the first officer's PFD on 2026-10-21; four Fenix prompts, not two).
 3. `guide/airbus-aircraft.md:306` and `MSFSBlindAssist/HotkeyGuides/Fenix_A320_Hotkeys.txt:33-38`: keep "Alt+P reads the First Officer's PFD" and drop its reason ("because no camera view … cutting it off"), which v3 made untrue; keep the sentence on how the two PFDs differ; add "Alt+I knows whether your Fenix has the digital ISIS or the three round standby gauges." (after handoff 1).
-4. `guide/planning-your-flight.md:491`: the new message text (Task 4 Step 1).
+4. (Moved to plan 03, handoff H2.)
 5. Plan 01's `FenixVariant.With`: map `B_CONFIG_STDBY` 1 to `HasIsis == false` once check 4 reads 1 on a round-gauge livery.
-6. `docs/invariants/a32nx-fenix.md` A320-40, last bullet: replace "Not covered by this rule: the Fenix EFB window (…)" with "The Fenix EFB window uses the same address (FNX rule below)."
+6. (Moved to plan 03, handoff H1.)
 7. If check 7 doubled letters: `docs/a32nx.md:96` "writeInt 1 then 0" becomes "writeInt 1, as Fenix's own web MCDU does".
 
-**Proposed rule lines** (the first for `.claude/rules/ai-display.md`, which already loads on `Aircraft/**/*DisplayReads.cs` and the `*DisplayRead*` tests; the second for `.claude/rules/fenix-data.md`, adding the glob `tests/MSFSBlindAssist.Tests/**/*FenixEfb*.cs`; full texts from the evidence above: the camera list and changelog line, the bundle's `detectTargetDevice`, `isSimTablet` and `AUTO_UNFOCUS_DELAY_MS`, the 2,002-2,005 ms `::1` refusal):
+**Proposed rule line** (for `.claude/rules/ai-display.md`, which already loads on `Aircraft/**/*DisplayReads.cs` and the `*DisplayRead*` tests; full text from the evidence above: the camera list and changelog line):
 
 ```text
 - [AI-10] `FenixA320DisplayReads` view indices are measured per Fenix release, never read off cameras.cfg: Fenix v3 (3.0.0.7426) restored the missing "Main Panel (Left)" camera, moving every v2 index from 7 up by one (`CenterPanelView` 8, `FirstOfficerPanelView` 9, MAX:2 19). Re-measure when a Fenix update ships a new cameras.cfg. Full: docs/invariants/ai-display.md#ai-10
-- [FNX-?] `FenixEFBForm` loads http://127.0.0.1:8083/?target=external#/efb, the target in the query before the #: a sim target (sim-capt, sim-fo, msfs2024-efb) swallows Tab and PageUp/PageDown/Home/End and drops focus 2 s after a click, and localhost pays the ::1 refusal ([A320-40]). Full: docs/invariants/fenix-data.md#fnx-?
 ```
 
-**Follow-ups (not planned):** an accessible "Fenix documents" window built on `GET /fenix/documents`, `/documents/search?q=…&limit=10` and `/documents/content/<path>` through plan 01's `GetRestAsync` (ECAM procedure lookup by alert title; never `OpenDocumentsFolder`), worth doing if check 5 finds the EFB's Documents app hard to use; if the owner revisits decisions 2-3, v3's index 7 frames the captain's PFD and ND (Task 1 records what it holds).
+**Follow-ups (not planned):** if the owner revisits decisions 2-3, v3's index 7 frames the captain's PFD and ND (Task 1 records what it holds).
 
-**In-sim checks still needed after merge:** check 4's round-gauge half (needs handoffs 1 and 5); checks 1-3 again if plan 11 changes `ReadDisplay` or the camera code.
+**In-sim checks still needed after merge:** check 4's round-gauge half (needs handoffs 1 and 5); checks 1-3 again if plan 12 changes `ReadDisplay` or the camera code.
