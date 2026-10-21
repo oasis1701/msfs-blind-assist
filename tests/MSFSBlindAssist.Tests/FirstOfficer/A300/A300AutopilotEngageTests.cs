@@ -33,6 +33,16 @@ public class A300AutopilotEngageTests
     }
 
     [Fact]
+    public void A_second_engage_before_ap_1_reads_back_never_flips_it_off_again()
+    {
+        // The press is remembered as commanded (2.5 s, [A300-1]) under the same key the row's own writes use.
+        _cache["A300_AP_SWITCH_1"] = 0;
+        _def.EngageAutopilot(_sim);
+        _def.EngageAutopilot(_sim);
+        Assert.Single(_sent);
+    }
+
+    [Fact]
     public void Engage_sends_nothing_when_ap_1_is_already_on_or_unread()
     {
         _cache["A300_AP_SWITCH_1"] = 1;
@@ -52,5 +62,14 @@ public class A300AutopilotEngageTests
         Assert.False(_def.IsAutopilotEngaged(_sim));
         _cache["A300_AP_SWITCH_2"] = 1;
         Assert.True(_def.IsAutopilotEngaged(_sim));
+    }
+
+    [Fact]
+    public void Ap_1_toggles_so_the_automation_waits_for_its_reading_and_presses_3_s_apart()
+    {
+        // Its Set flips AP 1 ([A300-1]): never pressed blind, never pressed again before a press can read back
+        // ([FO-18], the Fenix, iFly and HS787 toggles' spacing).
+        Assert.True(_def.AutopilotEngageWaitsForState);
+        Assert.Equal(3000, _def.AutopilotEngageRetryIntervalMs);
     }
 }

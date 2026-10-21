@@ -45,6 +45,92 @@ public sealed class A300FoActionExecutor : IFoActionExecutor
         }
     }
 
+    // ---------------------------------------------------------------- a stopped engine start (the MD-11's rule)
+
+    /// <summary>Engines whose starter this flow switched on (it read off before) and whose fuel lever the flow has
+    /// not yet put on: a flow stopped in between owes their starter back off. Never a starter the pilot or a tick
+    /// switched on. Guarded by itself.</summary>
+    private readonly HashSet<int> _startersOwed = new();
+
+    /// <summary>The running flow's Stop, for the light-up watch only; every other step is atomic.</summary>
+    private CancellationToken _flowStop;
+
+    /// <summary>The flow's own entry point. The light-up watch ends at once on Stop (<see cref="OnFlowStoppedAsync"/>
+    /// then puts the starter back); every other step runs to its end.</summary>
+    public async Task<bool> ExecuteStepAsync(IFlowStepDispatch step, CancellationToken stop)
+    {
+        string? key = step.ActionType == FlowStepActionType.SetSwitch ? step.EventName : null;
+        int engine = key == null ? 0 : StarterEngine(key);
+        double before = engine != 0 && _state != null ? _state.GetValue(key!) : double.NaN;
+        bool starterWasOff = step.TargetValue == 1 && !double.IsNaN(before) && before < 0.5;
+        _flowStop = stop;
+        try
+        {
+            bool ok = await ExecuteStepAsync(step);
+            if (ok && starterWasOff)
+                lock (_startersOwed) _startersOwed.Add(engine);
+            else if (ok && key != null && FuelEngine(key) is int fuelled and not 0 && step.TargetValue == 1)
+                lock (_startersOwed) _startersOwed.Remove(fuelled);
+            return ok;
+        }
+        finally
+        {
+            _flowStop = CancellationToken.None;
+        }
+    }
+
+    /// <summary>A flow stopped part-way: each starter it owes goes back off, over a fuel lever read off.</summary>
+    public async Task OnFlowStoppedAsync()
+    {
+        foreach (int engine in TakeOwedStarters())
+            if (StarterOwedOff(engine))
+                await Set(StarterKey(engine), 0);
+    }
+
+    /// <summary>The window is closing: the same, at once, while the sim still listens (no read-back).</summary>
+    public void ReleaseHeldPresses()
+    {
+        var port = _port;
+        foreach (int engine in TakeOwedStarters())
+            if (port != null && StarterOwedOff(engine))
+                port.Apply(StarterKey(engine), 0);
+    }
+
+    private int[] TakeOwedStarters()
+    {
+        lock (_startersOwed)
+        {
+            var owed = _startersOwed.ToArray();
+            _startersOwed.Clear();
+            return owed;
+        }
+    }
+
+    /// <summary>Its starter reads on and its fuel lever reads off; anything unread leaves it alone.</summary>
+    private bool StarterOwedOff(int engine)
+    {
+        if (_state == null) return false;
+        double starter = _state.GetValue(StarterKey(engine)), fuel = _state.GetValue(FuelKey(engine));
+        return !double.IsNaN(starter) && starter >= 0.5 && !double.IsNaN(fuel) && fuel < 0.5;
+    }
+
+    private static int StarterEngine(string key) => key switch
+    {
+        A300FoKeys.Starter1 => 1,
+        A300FoKeys.Starter2 => 2,
+        _ => 0,
+    };
+
+    private static int FuelEngine(string key) => key switch
+    {
+        A300FoKeys.FuelLever1 => 1,
+        A300FoKeys.FuelLever2 => 2,
+        _ => 0,
+    };
+
+    private static string StarterKey(int engine) => engine == 1 ? A300FoKeys.Starter1 : A300FoKeys.Starter2;
+    private static string FuelKey(int engine) => engine == 1 ? A300FoKeys.FuelLever1 : A300FoKeys.FuelLever2;
+
     public async Task<bool> Set(string key, int target)
     {
         await _gate.WaitAsync();
@@ -183,8 +269,12 @@ public sealed class A300FoActionExecutor : IFoActionExecutor
     {
         string n2 = engine == 1 ? A300FoKeys.Eng1N2Field : A300FoKeys.Eng2N2Field;
         string starter = engine == 1 ? A300FoKeys.Starter1 : A300FoKeys.Starter2;
-        if (await WaitAsync(() => _state!.GetValue(n2) >= LightUpN2, LightUpTimeoutMs))
+        var stop = _flowStop;
+        if (await WaitAsync(() => _state!.GetValue(n2) >= LightUpN2, LightUpTimeoutMs, stop))
             return true;
+        // Stopped: OnFlowStoppedAsync puts the starter back, over a fuel lever read off.
+        if (stop.IsCancellationRequested)
+            return false;
         // Say the starter is off only when it read back off.
         Say(await SetRowAsync(starter, 0)
             ? $"Engine {engine} did not reach 20 percent N2. Starter off."
@@ -276,13 +366,13 @@ public sealed class A300FoActionExecutor : IFoActionExecutor
         return !double.IsNaN(v) && done(v);
     }
 
-    private async Task<bool> WaitAsync(Func<bool> done, int timeoutMs)
+    private async Task<bool> WaitAsync(Func<bool> done, int timeoutMs, CancellationToken stop = default)
     {
         for (int waited = 0; ; waited += PollMs)
         {
             if (done())
                 return true;
-            if (waited >= timeoutMs)
+            if (waited >= timeoutMs || stop.IsCancellationRequested)
                 return false;
             await _port!.Delay(PollMs);
         }

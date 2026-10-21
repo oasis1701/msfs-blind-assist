@@ -70,8 +70,9 @@ public partial class IniA300Definition
 
     /// <summary>
     /// The universal automation's engage: AP 1's own panel row, sent only from a known off ([A300-1]: its Set
-    /// flips it). Recorded as MSFSBA's own pick, so A300EngagementTracker stays silent ([A300-13]); the
-    /// automation announces the confirmed engagement itself ([FO-18]).
+    /// flips it). Recorded as MSFSBA's own pick under the row's command key, as its own writes are, so a second
+    /// engage plans from it and A300EngagementTracker stays silent ([A300-13]); the automation announces the
+    /// confirmed engagement itself ([FO-18]).
     /// </summary>
     public override void EngageAutopilot(SimConnectManager simConnect)
     {
@@ -81,9 +82,15 @@ public partial class IniA300Definition
         var plan = A300WritePlan.ForSet(control, 1, CurrentValue(Ap1Key, simConnect));
         if (plan.Refusal != null || plan.IsEmpty || !CanLand(simConnect))
             return;
-        _commanded.Record(Ap1Key, 1, Clock());
+        _commanded.Record(CommandKey(Ap1Key), 1, Clock());
         _ = RunAsync(Ap1Key, plan.Steps, simConnect);
     }
+
+    /// <summary>AP 1 toggles: the automation waits for its reading before a press ([FO-18]).</summary>
+    public override bool AutopilotEngageWaitsForState => true;
+
+    /// <summary>A press is read back before the next, 3 s apart, as the fleet's other toggles are ([FO-18]).</summary>
+    public override int AutopilotEngageRetryIntervalMs => ToggleAutopilotEngageRetryIntervalMs;
 
     /// <summary>Either autopilot's light; null until both are read ([FO-18]).</summary>
     public override bool? IsAutopilotEngaged(SimConnectManager simConnect) =>
