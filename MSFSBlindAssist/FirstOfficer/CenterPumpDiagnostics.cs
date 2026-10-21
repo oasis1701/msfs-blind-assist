@@ -12,7 +12,7 @@ namespace MSFSBlindAssist.FirstOfficer;
 /// window) and its windows are tune-in-sim consts — but the only thing observable from the
 /// cockpit is whether the announcement happened. The previous annunciator-based design failed
 /// invisibly TWICE (2026-08, then again 2026-08-16) with nothing recorded to say WHICH term was
-/// failing. This makes the in-sim test plan verifiable instead of listen-and-hope.
+/// failing. This makes the in-sim checks verifiable instead of listen-and-hope.
 ///
 /// Deliberately CHANGE-TRIGGERED, not per-tick: a line is written only when an action fires or when
 /// the state key moves. Center quantity is excluded from that key (it changes every tick while

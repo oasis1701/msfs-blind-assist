@@ -459,7 +459,7 @@ public class Pmdg737SecondReviewStaticStateTests
     /// Standard press meanwhile is refused (the double-step half of the finding). The knob clicks
     /// themselves need the sim: a test cannot send through a PMDG data manager (it loads the
     /// SimConnect SDK), so with none attached nothing is clicked and nothing is recorded. That the
-    /// rotation then marks the knob rotated to standard is the in-sim test plan's (AA.2 item 1).
+    /// rotation then marks the knob rotated to standard was checked in the sim.
     /// </summary>
     [Fact]
     public async Task The_First_Officers_rotation_holds_the_dialogs_guard()

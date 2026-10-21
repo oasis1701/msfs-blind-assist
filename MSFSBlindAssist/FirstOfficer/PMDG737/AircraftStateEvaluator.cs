@@ -205,7 +205,7 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public int  ApuSelector()      => (int)Math.Round(GetValue("APU_Selector"));              // 0=OFF,1=ON,2=START
     // EGT-based "APU running": the selector position only proves where the switch is (it
     // reads ON the moment the flow sets it). A running/starting APU holds EGT well above
-    // ambient; cold reads near ambient. Threshold verified in-sim (test plan) — tune here.
+    // ambient; cold reads near ambient. Threshold verified in-sim — tune here.
     public const double ApuRunningEgt = 100;
     public double ApuEgt()         => GetValue("APU_EGTNeedle");
     public bool IsApuRunning()     => ApuEgt() >= ApuRunningEgt;
@@ -329,7 +329,7 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     // is robust to manual flap moves and a wrong takeoff-flap assumption. Returns -1 when
     // the value is outside the plausible 0–45° band, so the caller can fall back to its
     // own command tracking. (If in-sim testing shows the needle is on a different scale,
-    // adjust FlapDetentAngles / the band — see the test plan.)
+    // adjust FlapDetentAngles / the band.)
     // -----------------------------------------------------------------------
     private static readonly int[] FlapDetentAngles = { 0, 1, 2, 5, 10, 15, 25, 30, 40 };
 
