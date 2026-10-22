@@ -77,12 +77,16 @@ public partial class FenixA320Definition
     }
 
     // Variant detection: which Fenix is loaded, read from the eight config L:vars (FenixConfigVars).
-    // Variant starts Unknown and fills in as each var is first delivered; VariantChanged is raised, on the
-    // UI thread (ProcessSimVarUpdate's), only when the record changes. Later plans share this one answer.
+    // Variant stays Unknown until the aircraft type reads 1-4, then holds every reading so far and follows
+    // each new one (the gate in TryApplyConfigValue); VariantChanged is raised, on the UI thread
+    // (ProcessSimVarUpdate's), only when the record changes. Later plans share this one answer.
     public FenixVariant Variant { get; private set; } = FenixVariant.Unknown;
     public event EventHandler<FenixVariant>? VariantChanged;
 
     private static readonly HashSet<string> ConfigVarNames = new(FenixConfigVars.All, StringComparer.Ordinal);
+
+    // The latest finite reading of each config var, kept whether or not the config is published yet.
+    private readonly Dictionary<string, double> _configReadings = new(StringComparer.Ordinal);
 
     // The eight are read, never spoken or put on a panel: consumed by TryApplyConfigValue, so they take no
     // Ctrl+M row ([VAR-9]). Each is keyed by its own name, which no other Fenix var uses ([VAR-7]).
@@ -121,13 +125,49 @@ public partial class FenixA320Definition
     private bool TryApplyConfigValue(string varName, double value)
     {
         if (!ConfigVarNames.Contains(varName)) return false;
-        var updated = Variant.With(varName, value);
+        // Not a finite number: nothing to apply (FenixVariant.With ignores it too), and the last good
+        // reading is kept.
+        if (!double.IsFinite(value)) return true;
+        _configReadings[varName] = value;
+
+        // The gate (ruling R14): SimConnect reads an L:var the Fenix has not written yet as 0, and 0 is a
+        // real value for seven of the eight (CFM, ISIS, GNADIRS, no DCDU, CEO, no cargo heat, no extra
+        // tanks), so in the sim menu or while the Fenix loads they would claim all of those. An aircraft
+        // type of 1-4 is the sign the Fenix has published its config: until it reads that, the readings
+        // are only kept and Variant stays Unknown; when it does, every kept reading comes in at once, as
+        // one change; after that each reading applies on its own. A type back at 0 or out of range makes
+        // Variant Unknown again.
+        FenixVariant updated;
+        if (!IsPublishedType(_configReadings.GetValueOrDefault(FenixConfigVars.AircraftType)))
+            updated = FenixVariant.Unknown;
+        else if (Variant.Type == FenixAircraftType.Unknown)
+            updated = FoldKeptConfigReadings();
+        else
+            updated = Variant.With(varName, value);
+
         if (updated != Variant)
         {
             Variant = updated;
             RaiseVariantChanged(updated);
         }
         return true;
+    }
+
+    // An aircraft type FenixVariant maps to an airframe: a whole number 1-4.
+    private static bool IsPublishedType(double type)
+        => FenixVariant.Unknown.With(FenixConfigVars.AircraftType, type).Type != FenixAircraftType.Unknown;
+
+    // Every kept reading folded into one record, the aircraft type first.
+    private FenixVariant FoldKeptConfigReadings()
+    {
+        var variant = FenixVariant.Unknown.With(
+            FenixConfigVars.AircraftType, _configReadings[FenixConfigVars.AircraftType]);
+        foreach (string name in FenixConfigVars.All)
+        {
+            if (name != FenixConfigVars.AircraftType && _configReadings.TryGetValue(name, out double reading))
+                variant = variant.With(name, reading);
+        }
+        return variant;
     }
 
     // Each subscriber in turn: one that throws is logged, and the ones after it still hear the change.

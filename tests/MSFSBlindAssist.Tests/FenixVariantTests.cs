@@ -430,11 +430,108 @@ public class FenixVariantTests
         var speech = new SpeechCapture();
         int raised = 0;
         definition.VariantChanged += (_, _) => raised++;
+        definition.ProcessSimVarUpdate(FenixConfigVars.AircraftType, 3, speech);   // the config is published
+        Assert.Equal(1, raised);
 
         definition.ProcessSimVarUpdate(FenixConfigVars.Standby, 0, speech);
         definition.ProcessSimVarUpdate(FenixConfigVars.Standby, 1, speech);
-        Assert.Equal(2, raised);
+        Assert.Equal(3, raised);
         Assert.False(definition.Variant.HasIsis);
+    }
+
+    // Ruling R14: SimConnect reads an L:var the Fenix has not written yet as 0, and 0 is a real value for
+    // seven of the eight (CFM, ISIS, GNADIRS, no DCDU, CEO, no cargo heat, no extra tanks). An aircraft type
+    // of 1-4 is the sign the Fenix has published its config; until then the variant stays Unknown.
+
+    [Fact]
+    public void Readings_before_the_aircraft_type_leave_the_variant_unknown_and_raise_nothing()
+    {
+        var definition = new FenixA320Definition();
+        var speech = new SpeechCapture();
+        int raised = 0;
+        definition.VariantChanged += (_, _) => raised++;
+
+        // The sim menu, or the Fenix still loading: all eight read 0.
+        foreach (string name in FenixConfigVars.All)
+            Assert.True(definition.ProcessSimVarUpdate(name, 0, speech), $"{name} was not consumed");
+        // Other readings before the type are consumed too, and claim nothing either.
+        foreach (string name in FenixConfigVars.All.Where(n => n != FenixConfigVars.AircraftType))
+            Assert.True(definition.ProcessSimVarUpdate(name, 1, speech), $"{name} was not consumed");
+
+        Assert.Same(FenixVariant.Unknown, definition.Variant);
+        Assert.Equal(0, raised);
+        Assert.Empty(speech.All);
+    }
+
+    [Fact]
+    public void The_aircraft_type_brings_every_earlier_reading_in_one_change_and_later_readings_apply_directly()
+    {
+        var definition = new FenixA320Definition();
+        var speech = new SpeechCapture();
+        var raised = new List<(FenixVariant Variant, FenixVariant Current)>();
+        definition.VariantChanged += (_, variant) => raised.Add((variant, definition.Variant));
+        foreach (string name in FenixConfigVars.All)
+            definition.ProcessSimVarUpdate(name, 0, speech);
+
+        // The A321 IAE publishes its config, the type last here; each latest reading counts.
+        definition.ProcessSimVarUpdate(FenixConfigVars.EngineType, 1, speech);
+        definition.ProcessSimVarUpdate(FenixConfigVars.EngineType, double.NaN, speech);   // nothing to apply
+        definition.ProcessSimVarUpdate(FenixConfigVars.ActCount, 2, speech);
+        definition.ProcessSimVarUpdate(FenixConfigVars.Dcdu, 1, speech);
+        definition.ProcessSimVarUpdate(FenixConfigVars.Adirs, 1, speech);
+        Assert.Empty(raised);
+
+        definition.ProcessSimVarUpdate(FenixConfigVars.AircraftType, 4, speech);
+
+        var a321 = new FenixVariant(FenixAircraftType.A321, FenixEngineFamily.IaeV2500, 2,
+            HasIsis: true, HasDcdu: true, IsNeo: false, HasGnadirs: false, HasCargoHeat: false);
+        var change = Assert.Single(raised);
+        Assert.Equal(a321, change.Variant);
+        Assert.Same(change.Variant, change.Current);
+        Assert.Equal(a321, definition.Variant);
+
+        // From now on each reading applies on its own.
+        definition.ProcessSimVarUpdate(FenixConfigVars.ActCount, 3, speech);
+        Assert.Equal(2, raised.Count);
+        Assert.Equal(a321 with { ActCount = 3 }, definition.Variant);
+        definition.ProcessSimVarUpdate(FenixConfigVars.ActCount, 3, speech);
+        Assert.Equal(2, raised.Count);
+        Assert.Empty(speech.All);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(7)]
+    [InlineData(3.5)]
+    public void An_aircraft_type_that_stops_reading_1_to_4_makes_the_variant_unknown_again(double type)
+    {
+        var definition = new FenixA320Definition();
+        var speech = new SpeechCapture();
+        var raised = new List<FenixVariant>();
+        definition.ProcessSimVarUpdate(FenixConfigVars.AircraftType, 3, speech);
+        definition.ProcessSimVarUpdate(FenixConfigVars.EngineType, 0, speech);
+        definition.ProcessSimVarUpdate(FenixConfigVars.ActCount, 2, speech);
+        definition.VariantChanged += (_, variant) => raised.Add(variant);
+
+        definition.ProcessSimVarUpdate(FenixConfigVars.AircraftType, type, speech);
+
+        Assert.Same(FenixVariant.Unknown, definition.Variant);
+        Assert.Same(FenixVariant.Unknown, Assert.Single(raised));
+
+        // While it is unknown, readings are kept, not applied, and the same type again changes nothing.
+        definition.ProcessSimVarUpdate(FenixConfigVars.EngineType, 1, speech);
+        definition.ProcessSimVarUpdate(FenixConfigVars.AircraftType, type, speech);
+        Assert.Same(FenixVariant.Unknown, definition.Variant);
+        Assert.Single(raised);
+
+        // Published again: one change carrying every reading so far.
+        definition.ProcessSimVarUpdate(FenixConfigVars.AircraftType, 4, speech);
+        Assert.Equal(2, raised.Count);
+        Assert.Equal(FenixVariant.Unknown with
+        {
+            Type = FenixAircraftType.A321, Engine = FenixEngineFamily.IaeV2500, ActCount = 2,
+        }, raised[1]);
+        Assert.Empty(speech.All);
     }
 
     [Fact]
