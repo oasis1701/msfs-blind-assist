@@ -102,7 +102,7 @@ public static class FenixOptionCatalog
     /// as the EFB's F() looks it up), else the raw value. An empty label counts as none: the EFB builds a
     /// choice with the raw value as its label and a label-less entry (acp_type's images) keeps it.
     /// </summary>
-    private static string ChoiceLabel(string key, string value)
+    internal static string ChoiceLabel(string key, string value)
     {
         if (value.Length == 0) return "(none)";
         if (FenixOptionLabels.TryGet(key, out var text))

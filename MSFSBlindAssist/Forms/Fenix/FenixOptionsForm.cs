@@ -10,13 +10,17 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// <summary>
 /// The "Fenix options" window (Fenix windows list, Ctrl+Shift+F in input mode): every Fenix EFB option with
 /// its value, as a tree of groups, the options that change how the app works first. Enter on an option speaks
-/// its details; F5 reads the options again and says how many changed. Read only.
+/// its details; F5 reads the options again and says how many changed; F2 changes an on/off or choice option
+/// for this simulator session only, as the Fenix EFB's own toggle does.
 /// </summary>
 /// <remarks>
 /// Every request is awaited from a UI-thread handler, so continuations resume on the UI thread; nothing runs on
-/// a pool thread and nothing subscribes, so nothing marshals. One read at a time (<see cref="_loading"/>).
+/// a pool thread and nothing subscribes, so nothing marshals. One read or change at a time
+/// (<see cref="_loading"/>, <see cref="_changing"/>).
 /// A read that keeps every group and its options in the same order only rewrites the Text of the nodes, so
 /// NVDA's place in the tree holds; any other read rebuilds the tree and reselects the same option or group.
+/// A change is sent only for an option <see cref="FenixOptionEdits.CanChange"/> allows, with persist false,
+/// and what is spoken afterwards is what the Fenix reads back, never what was asked for.
 /// Nothing here logs an option's value: keys and counts only.
 /// </remarks>
 public sealed class FenixOptionsForm : Form
@@ -30,8 +34,14 @@ public sealed class FenixOptionsForm : Form
     // Marks the one child a group carries until it is first expanded.
     private const string PlaceholderTag = "placeholder";
 
-    // Whether options can be changed from this window; the status box says which. Read only for now.
-    private const bool ChangesAllowed = false;
+    // Whether options can be changed from this window; the status box says which.
+    private const bool ChangesAllowed = true;
+
+    // How long the Fenix gets to apply a change before it is read back a second time.
+    private const int ReadBackRetryMilliseconds = 500;
+
+    // What F5 and F2 say while a read or a change is running.
+    private const string StillLoadingText = "Still loading.";
 
     private readonly FenixDataService _data;
     private readonly ScreenReaderAnnouncer _announcer;
@@ -45,6 +55,7 @@ public sealed class FenixOptionsForm : Form
     private IReadOnlyList<FenixSetting>? _settings;
     private IReadOnlyList<FenixOptionGroup>? _groups;
     private bool _loading;
+    private bool _changing;   // a change is being asked for, sent and read back
     private bool _tornDown;
     private IntPtr _previousWindow;
 
@@ -144,26 +155,37 @@ public sealed class FenixOptionsForm : Form
     // ---- Reads ------------------------------------------------------------------------------------
 
     // Reads every option and applies it; F5 (speak) says the result. Awaited on the UI thread, never throws.
+    // A read or a change already running answers "Still loading." to F5 and is left to finish.
     private async Task LoadAsync(bool speak)
     {
         if (IsDisposed || _tornDown) return;
-        if (_loading)
+        if (_loading || _changing)
         {
-            if (speak) _announcer.AnnounceImmediate("Still loading.");
+            if (speak) _announcer.AnnounceImmediate(StillLoadingText);
             return;
         }
+
+        await ReadAndApplyAsync(speak);
+    }
+
+    // The one read of the options and the one place the tree is written, for F5, the first show and the
+    // read-back after a change. Returns the options it applied, or null when the Fenix did not answer, the
+    // read failed or the window went away. Never throws.
+    private async Task<IReadOnlyList<FenixSetting>?> ReadAndApplyAsync(bool speak)
+    {
+        if (IsDisposed || _tornDown || _loading) return null;
 
         _loading = true;
         try
         {
             JObject? data = await _data.QueryAsync(FenixDataQueries.SettingsQuery, null, _cts.Token);
-            if (IsDisposed || _tornDown) return;
+            if (IsDisposed || _tornDown) return null;
 
             if (data == null)
             {
                 Log.Debug(LogCategory, "The Fenix did not answer the settings read");
                 ReportNoAnswer(speak);
-                return;
+                return null;
             }
 
             // Everything an unexpected answer could make throw runs before the tree is touched, so a throw
@@ -182,10 +204,12 @@ public sealed class FenixOptionsForm : Form
             SetStatus(status);
             Log.Debug(LogCategory, $"Read {settings.Count} options in {groups.Count} groups ({(rebuilt ? "rebuilt" : "updated in place")})");
             if (result != null) _announcer.AnnounceImmediate(result);
+            return settings;
         }
         catch (OperationCanceledException)
         {
             // The window closed while a read was in flight.
+            return null;
         }
         catch (Exception ex)
         {
@@ -196,12 +220,136 @@ public sealed class FenixOptionsForm : Form
                 try { ReportNoAnswer(speak); }
                 catch (Exception inner) { Log.Debug(LogCategory, $"Options outage report failed: {inner.GetType().Name}: {inner.Message}"); }
             }
+            return null;
         }
         finally
         {
             _loading = false;
         }
     }
+
+    // ---- Changes ----------------------------------------------------------------------------------
+
+    /// <summary>
+    /// F2: change the selected on/off or choice option for this simulator session. The pilot picks the new
+    /// value in a dialog; an option that reshapes the cockpit asks Yes or No first (No by default). The change
+    /// is sent as the EFB sends it, then the options are read again and what the Fenix reads back is spoken,
+    /// never what was asked for (CORE-7). Awaited on the UI thread, never throws.
+    /// </summary>
+    private async Task ChangeAsync()
+    {
+        if (IsDisposed || _tornDown) return;
+        if (_loading || _changing)
+        {
+            _announcer.AnnounceImmediate(StillLoadingText);
+            return;
+        }
+
+        FenixSetting? option = SettingOf(_tree.SelectedNode);
+        if (option == null)
+        {
+            _announcer.AnnounceImmediate("Select an option first.");
+            return;
+        }
+        if (!FenixOptionEdits.CanChange(option))
+        {
+            _announcer.AnnounceImmediate("MSFS Blind Assist cannot change this option.");
+            return;
+        }
+
+        string key = option.Key;
+        bool sent = false;
+        _changing = true;
+        try
+        {
+            string label = FenixOptionCatalog.Label(key);
+            IReadOnlyList<FenixOptionChoice> choices = FenixOptionEdits.Choices(option);
+
+            string? chosen;
+            using (var dialog = new FenixOptionsChangeDialog(label, choices, option.Value))
+            {
+                if (dialog.ShowDialog(this) != DialogResult.OK) return;
+                chosen = dialog.SelectedValue;
+            }
+            if (IsDisposed || _tornDown) return;
+            // The same value again changes nothing: nothing is sent and nothing is spoken.
+            if (chosen == null || FenixOptionEdits.SameValue(chosen, option.Value)) return;
+
+            if (FenixOptionEdits.NeedsConfirm(option))
+            {
+                string choiceLabel = choices.FirstOrDefault(c => string.Equals(c.Value, chosen, StringComparison.Ordinal))?.Label ?? chosen;
+                DialogResult answer = MessageBox.Show(this, FenixOptionEdits.ConfirmText(label, choiceLabel), "Change Fenix option",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2);
+                if (IsDisposed || _tornDown || answer != DialogResult.Yes) return;
+            }
+
+            Log.Debug(LogCategory, $"Setting change sent for {key}");
+            sent = true;
+            JObject? reply = await _data.QueryAsync(FenixOptionEdits.SetSettingDocument, FenixOptionEdits.Variables(key, chosen), _cts.Token);
+            if (IsDisposed || _tornDown) return;
+            if (!FenixOptionEdits.Succeeded(reply))
+            {
+                Log.Debug(LogCategory, $"Setting change not accepted for {key}");
+                _announcer.AnnounceImmediate("The Fenix did not accept the change.");
+                return;
+            }
+
+            // What the Fenix reads back is the answer. It may take a moment to apply a change, so a value that
+            // is not the one sent gets one more look before it is called kept.
+            FenixSetting? now = Find(await ReadAndApplyAsync(speak: false), key);
+            if (IsDisposed || _tornDown) return;
+            if (now != null && !FenixOptionEdits.SameValue(now.Value, chosen))
+            {
+                await Task.Delay(ReadBackRetryMilliseconds, _cts.Token);
+                if (IsDisposed || _tornDown) return;
+                now = Find(await ReadAndApplyAsync(speak: false), key);
+                if (IsDisposed || _tornDown) return;
+            }
+
+            if (now == null)
+            {
+                Log.Debug(LogCategory, $"Setting change for {key} was not read back");
+                _announcer.AnnounceImmediate("Change sent, but the Fenix did not read it back. Press F5.");
+            }
+            else if (FenixOptionEdits.SameValue(now.Value, chosen))
+            {
+                Log.Debug(LogCategory, $"Setting {key} reads back as sent");
+                _announcer.AnnounceImmediate(FenixOptionCatalog.RowText(now));
+            }
+            else
+            {
+                Log.Debug(LogCategory, $"Setting {key} reads back as not changed");
+                _announcer.AnnounceImmediate($"Fenix kept {FenixOptionCatalog.RowText(now)}.");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // The window closed while the change was in flight.
+        }
+        catch (Exception ex)
+        {
+            Log.Debug(LogCategory, $"Setting change for {key} failed: {ex.GetType().Name}: {ex.Message}");
+            // Never silent: a change that throws is reported like one that could not be completed.
+            if (!IsDisposed && !_tornDown)
+            {
+                try
+                {
+                    _announcer.AnnounceImmediate(sent
+                        ? "Change sent, but the Fenix did not read it back. Press F5."
+                        : "The Fenix did not accept the change.");
+                }
+                catch (Exception inner) { Log.Debug(LogCategory, $"Setting change report failed: {inner.GetType().Name}: {inner.Message}"); }
+            }
+        }
+        finally
+        {
+            _changing = false;
+        }
+    }
+
+    // The option with this key in a read; null when there was no read or it lacks the key.
+    private static FenixSetting? Find(IReadOnlyList<FenixSetting>? settings, string key)
+        => settings?.FirstOrDefault(s => string.Equals(s.Key, key, StringComparison.Ordinal));
 
     // A read with no answer: the status says so and the tree keeps the last values; F5 speaks it.
     private void ReportNoAnswer(bool speak)
@@ -402,6 +550,12 @@ public sealed class FenixOptionsForm : Form
             {
                 // Bit 30: the key was already down (auto-repeat).
                 if ((msg.LParam.ToInt64() & 0x40000000) == 0) _ = LoadAsync(speak: true);
+                return true;
+            }
+            if (keyData == Keys.F2)
+            {
+                // Bit 30 again: holding F2 must not ask twice. Shift and Ctrl with F2 are not this key.
+                if ((msg.LParam.ToInt64() & 0x40000000) == 0) _ = ChangeAsync();
                 return true;
             }
         }
