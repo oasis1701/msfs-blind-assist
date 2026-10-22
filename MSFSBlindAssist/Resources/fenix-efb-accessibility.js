@@ -4,12 +4,16 @@
 // text or a written value. It never overrides a page's own aria-hidden, aria-label or role, never gives a
 // disabled control a Tab stop, and takes back only its own Tab stops. (It does give tabindex 0 to an enabled
 // control the Tab key skips, one the page set to -1 too, and puts the page's own value back afterwards.)
-// Two more attributes it writes: a drop-down's aria-labelledby gets the drop-down's own id in front of the
-// page's list (the page's list goes back when the layer's label goes), and aria-hidden "true" goes on a
-// results label whose value cell carries that label and on what a screen reader does not need: decorative
-// pictures, icon-font glyphs inside a control, the W&B chart's picture and labels but its limits, the seat map.
-// Besides its key handlers it adds one listener: a change listener on the document that only schedules a pass
-// (a Settings switch's state is a checkbox property the observer cannot see; ruling R40).
+// More attributes it writes: a drop-down's aria-labelledby gets the drop-down's own id in front of the page's
+// list (the page's list goes back when the layer's label goes); aria-hidden "true" goes on what a screen reader
+// does not need: decorative pictures, icon-font glyphs inside a control, the W&B chart's picture and labels but
+// its limits, the seat map; and the Takeoff results grid gets an aria-owns that reads each label right before
+// its value.
+// Three exceptions to "attributes only", each a ruling's: ids for that aria-owns, written only on the cells it
+// lists and only as "msfsba-<n>" (an id the page set is used, never replaced; ruling R46); the runway
+// condition's roving Tab stop, whose arrow keys press the next code and move the focus to it (ruling R47); and
+// one change listener on the document that only schedules a pass (a Settings switch's state is a checkbox
+// property the observer cannot see; ruling R40).
 // It runs in the top document only. Plain ES2017, no modules.
 (function () {
   if (window.__msfsbaFenixEfb) { return; }
@@ -52,8 +56,14 @@
   // The aria-expanded the layer wrote on the app switcher's chevron, a failure chapter and a Documents folder
   // (the way `written` keeps a label).
   var expandedWritten = new WeakMap();
-  // The aria-checked the layer wrote on a radio, the same way.
+  // The aria-checked the layer wrote on a radio, a switch or a check box, the same way.
   var checkedWritten = new WeakMap();
+  // The runway condition's roving Tab stop (ruling R47): each code's tabindex before the layer's first write (the
+  // attribute's text, or null for none) and the one the layer wrote last, so the page's own goes back when the group
+  // stops being the runway condition, unless the page changed it since.
+  var rovingTab = new WeakMap();
+  // The codes of each container the layer treats as the runway condition, in page order: the arrows move along them.
+  var rovingCodes = new WeakMap();
   // The aria-pressed it wrote on a Settings option and a map control, and the aria-current on a category and
   // on the selected Documents file.
   var pressedWritten = new WeakMap();
@@ -62,8 +72,12 @@
   // row. A pairing is kept while the two rows sit together (see readGrid).
   var gridValueOf = new WeakMap();
   var gridLabelOf = new WeakMap();
-  // The aria-hidden "true" the layer wrote: on a results label the cell under it now carries, and on a picture, a glyph
-  // or a chart label a screen reader does not need.
+  // The aria-owns the layer wrote on a results grid (the way `written` keeps a label), and the id it wrote on each
+  // element that list names (ruling R46). An id that is there and is not the one written is the page's.
+  var ownsWritten = new WeakMap();
+  var idWritten = new WeakMap();
+  var idCount = 0;
+  // The aria-hidden "true" the layer wrote on a picture, a glyph or a chart label a screen reader does not need.
   var hiddenWritten = new WeakSet();
   // The aria-labelledby a drop-down had before the layer put the drop-down's own id in front of it.
   var labelledbyWas = new WeakMap();
@@ -144,21 +158,47 @@
     if (original === null) { el.removeAttribute('tabindex'); } else { el.setAttribute('tabindex', original); }
   }
 
+  // The arrow keys, and which way each moves through the runway condition's codes (ruling R47).
+  var ARROW_STEPS = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1, Down: 1, Right: 1, Up: -1, Left: -1 };
+
+  // The runway condition code an arrow on `el` moves to: the next one (step 1) or the previous one (step -1) in the
+  // page's order, round the ends, passing over a code the page disables. Null when `el` is not one of its codes.
+  function nextCode(el, step) {
+    var codes = el.parentElement ? rovingCodes.get(el.parentElement) : undefined;
+    var at = codes ? codes.indexOf(el) : -1;
+    if (at === -1) { return null; }
+    for (var k = 1; k < codes.length; k++) {
+      var code = codes[((at + step * k) % codes.length + codes.length) % codes.length];
+      if (!isDisabled(code)) { return code; }
+    }
+    return null;
+  }
+
   function onButtonKey(e) {
     try {
-      if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') { return; }
+      var activate = e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar';
+      var step = Object.prototype.hasOwnProperty.call(ARROW_STEPS, e.key) ? ARROW_STEPS[e.key] : 0;
+      if (!activate && !step) { return; }
       if (e.altKey || e.ctrlKey || e.metaKey) { return; }
+      var el = e.currentTarget;
       // A withdrawn element, or one the page has disabled, is not pressed and its keys stay the page's.
-      if (!pressable.has(e.currentTarget) || isDisabled(e.currentTarget)) { return; }
+      if (!pressable.has(el) || isDisabled(el)) { return; }
       var target = e.target;
       // Typing in a text box is never caught.
       var tag = target && target.localName ? target.localName.toLowerCase() : '';
       if (tag === 'input' || tag === 'textarea' || tag === 'select' || (target && target.isContentEditable)) { return; }
       // Only the button itself is pressed: a control inside it (a link, a drop-down) keeps its own keys.
-      if (target !== e.currentTarget) { return; }
+      if (target !== el) { return; }
+      // Enter and Space press the control itself. An arrow on a runway condition code presses the code it moves to
+      // (ruling R47); anywhere else an arrow is the page's.
+      var chosen = activate ? el : nextCode(el, step);
+      if (!chosen) { return; }
       e.preventDefault();
       // A held key presses once, as the page's own buttons do.
-      if (!e.repeat) { e.currentTarget.click(); }
+      if (e.repeat) { return; }
+      chosen.click();
+      // The arrow takes the focus to the code it pressed, as in any radio group: the one focus move the layer makes.
+      if (chosen !== el) { chosen.focus(); }
     } catch (err) { /* never throw into the page */ }
   }
 
@@ -189,24 +229,29 @@
     if (el.getAttribute(MARK) === '1') { el.removeAttribute(MARK); }
   }
 
-  // Makes an element a button a keyboard and a screen reader can use: a role (a radio's, when asked), a Tab
-  // stop, a name, and Enter / Space calling the page's own click. A role or a label the page gave is kept; an
-  // element the Tab key skips (no tabindex, or a negative one) gets tabindex 0 -- unless the page marks it
-  // disabled, which is no Tab stop and takes no key (a tab stop the layer gave before is taken back).
-  function button(el, text, role) {
+  // Everything button() gives an element but the Tab stop: a role, a name, the stamp and the key handler.
+  function pressableAs(el, text, role) {
     giveRole(el, role || 'button');
-    if (isDisabled(el)) {
-      restoreTab(el);
-    } else if (el.tabIndex < 0) {
-      tabOriginal.set(el, el.getAttribute('tabindex'));
-      el.setAttribute('tabindex', '0');
-    }
     name(el, text);
     mark(el);
     pressable.add(el);
     if (!handled.has(el)) {
       handled.add(el);
       el.addEventListener('keydown', onButtonKey);
+    }
+  }
+
+  // Makes an element a button a keyboard and a screen reader can use: a role (another, when asked), a Tab
+  // stop, a name, and Enter / Space calling the page's own click. A role or a label the page gave is kept; an
+  // element the Tab key skips (no tabindex, or a negative one) gets tabindex 0 -- unless the page marks it
+  // disabled, which is no Tab stop and takes no key (a tab stop the layer gave before is taken back).
+  function button(el, text, role) {
+    pressableAs(el, text, role);
+    if (isDisabled(el)) {
+      restoreTab(el);
+    } else if (el.tabIndex < 0) {
+      tabOriginal.set(el, el.getAttribute('tabindex'));
+      el.setAttribute('tabindex', '0');
     }
   }
 
@@ -244,13 +289,31 @@
     return null;
   }
 
-  // A radio button: a button with the radio role that says whether it is the checked one.
-  function radio(el, text, checked) {
-    button(el, text, 'radio');
+  // A runway condition code: a radio that says whether it is the checked one, with the group's roving Tab stop
+  // (ruling R47): tabindex 0 on the group's one stop, -1 on the others, written over the page's own (30 to 35), which
+  // unradio puts back.
+  function rovingRadio(el, text, checked, stop) {
+    pressableAs(el, text, 'radio');
     ownState(el, 'aria-checked', checked ? 'true' : 'false', checkedWritten);
+    var record = rovingTab.get(el);
+    if (!record) {
+      record = { original: el.getAttribute('tabindex'), wrote: null };
+      rovingTab.set(el, record);
+    }
+    record.wrote = stop ? '0' : '-1';
+    setAttr(el, 'tabindex', record.wrote);
   }
 
+  // Takes back what rovingRadio gave a code: the page's own tabindex goes back (unless the page changed it since), and
+  // the checked state, role, label and stamp the layer wrote go.
   function unradio(el) {
+    var record = rovingTab.get(el);
+    if (record) {
+      rovingTab.delete(el);
+      if (el.getAttribute('tabindex') === record.wrote) {
+        if (record.original === null) { el.removeAttribute('tabindex'); } else { el.setAttribute('tabindex', record.original); }
+      }
+    }
     ownState(el, 'aria-checked', null, checkedWritten);
     unbutton(el);
   }
@@ -611,73 +674,77 @@
     return cells;
   }
 
-  // What a results cell says: its text, or "not computed" for the yellow boxes the MCDU shows where a value
-  // has not been worked out.
-  function resultText(cell) {
-    var text = textOf(cell);
-    if (text) { return text; }
-    return cell.querySelector('.small-yellow-box') ? 'not computed' : '';
-  }
-
-  // Makes a results cell one named image: "V1: not computed". A role="img" is the one thing a screen reader
-  // reads as a single named object in browse mode (a generic div's aria-label is not read, and the glyphs
-  // inside, the yellow boxes and the brackets, are read one by one); an image's children are presentational.
-  // Returns true when the cell now carries the layer's own label (so the label above can be hidden); a cell
-  // with a role of the page's is the page's.
-  function resultCell(cell, text) {
+  // A value cell the MCDU has not worked out shows only yellow boxes, which a screen reader cannot say: it is one
+  // picture named "not computed", the only picture in the grid (ruling R46). A cell that holds a value, or has a
+  // role of the page's, is read as the page has it, and what the layer wrote on it is taken back.
+  function notComputed(cell) {
     var role = cell.getAttribute('role');
-    if (role && wroteRole.get(cell) !== role) { name(cell, ''); return false; }
+    var empty = textOf(cell) === '' && cell.querySelector('.small-yellow-box') !== null;
+    if (!empty || (role && wroteRole.get(cell) !== role)) { release(cell); return; }
     giveRole(cell, 'img');
-    name(cell, text);
-    return written.get(cell) !== undefined && cell.getAttribute('aria-label') === written.get(cell);
+    name(cell, 'not computed');
   }
 
-  // Hides an element from a screen reader. A hidden state the page set is the page's (never overridden); the layer
-  // takes back only its own.
-  function hide(el) {
-    if (!el.hasAttribute('aria-hidden')) { el.setAttribute('aria-hidden', 'true'); hiddenWritten.add(el); }
+  // The id an element in the grid's list goes by (ruling R46): the page's own when it has one, else one the layer
+  // writes, "msfsba-" and a number no element of the page uses. Null for an empty id of the page's (not usable, and
+  // the page's to keep).
+  function ownId(el) {
+    var id = el.getAttribute('id');
+    if (id !== null) {
+      if (idWritten.get(el) !== id) { idWritten.delete(el); }
+      return id || null;
+    }
+    do { idCount++; } while (document.getElementById('msfsba-' + idCount));
+    el.setAttribute('id', 'msfsba-' + idCount);
+    idWritten.set(el, el.getAttribute('id'));
+    return el.getAttribute('id');
   }
 
-  function unhide(el) {
-    if (!hiddenWritten.has(el)) { return; }
-    hiddenWritten.delete(el);
-    if (el.getAttribute('aria-hidden') === 'true') { el.removeAttribute('aria-hidden'); }
+  // Takes back the id the layer wrote on an element, if it is still there (an id the page set is the page's).
+  function dropId(el) {
+    var mine = idWritten.get(el);
+    if (mine === undefined) { return; }
+    idWritten.delete(el);
+    if (el.getAttribute('id') === mine) { el.removeAttribute('id'); }
   }
 
-  // One label row and the value row under it. A value is paired with the label in the same column; rows that
-  // do not line up (a different number of cells) are not paired by guess.
-  function readPair(labelRow, valueRow) {
+  // Lets go of a cell, or of a row and its cells, that is not in the grid's list: what the layer wrote on it is taken
+  // back (its role, label, stamp and id; never anything the page set).
+  function letGo(el) {
+    var cells = [el].concat(gridCells(el));
+    for (var i = 0; i < cells.length; i++) { release(cells[i]); dropId(cells[i]); }
+  }
+
+  // One label row and the value row under it: each label cell and then the value cell in the same column go into the
+  // list. Rows that do not line up (a different number of cells) are not paired by guess: both are let go of.
+  function readPair(labelRow, valueRow, listed) {
     var labels = gridCells(labelRow);
     var values = gridCells(valueRow);
-    var lined = labels.length === values.length;
-    for (var i = 0; i < Math.max(labels.length, values.length); i++) {
-      var carried = false;
-      if (values[i]) {
-        var label = lined ? textOf(labels[i]) : '';
-        var value = label ? resultText(values[i]) : '';
-        if (value) { carried = resultCell(values[i], label + ': ' + value); } else { release(values[i]); }
-      }
-      if (labels[i]) { if (carried) { hide(labels[i]); } else { unhide(labels[i]); } }
+    if (labels.length !== values.length) { letGo(labelRow); letGo(valueRow); return; }
+    for (var i = 0; i < labels.length; i++) {
+      release(labels[i]);
+      notComputed(values[i]);
+      listed.push(labels[i], values[i]);
     }
   }
 
-  // Lets go of a row that is not part of a pair: what the layer wrote on its cells is taken back and a label
-  // the layer hid is read again (never anything the page set).
-  function letGo(row) {
-    var cells = gridCells(row);
-    for (var i = 0; i < cells.length; i++) { release(cells[i]); unhide(cells[i]); }
-  }
-
-  // Pairs the rows of one results grid. The first time the layer sees two rows side by side that have no
-  // pairing yet, the first is a label row and the second its value row, and the pairing is kept. After that
-  // a row is read only with the row it was paired with, and only while the two still sit together: a row the
-  // page puts between them, or takes out from under the label, withdraws that pairing instead of shifting
-  // every pair below it into a garbled name. A pairing whose other row has left the grid is forgotten, so
-  // rows the page replaces pair up again. A row without a pair is let go of.
+  // Reads one results grid (ruling R46, which replaces R14). A screen reader reads it in page order: every label of a
+  // row, then every value under them. Its aria-owns lists the title (div.text-center), then each label cell followed
+  // by the value cell under it, so each label is read right before its value; nothing is hidden. The ids it needs are
+  // written only on the cells it lists (see ownId). Rows pair as R23 has them: the first time the layer sees two rows
+  // side by side that have no pairing yet, the first is a label row and the second its value row, and the pairing is
+  // kept; after that a row is listed only with the row it was paired with, and only while the two still sit together.
+  // A row the page puts between them, or takes out from under the label, withdraws that pairing instead of shifting
+  // every pair below it; a pairing whose other row has left the grid is forgotten, so rows the page replaces pair up
+  // again. A row without a pair is let go of, and the list follows. A grid with an aria-owns of the page's own is
+  // ordered by the page: the layer lists nothing there.
   function readGrid(screen) {
     var rows = [];
+    var title = null;
     for (var child = screen.firstElementChild; child; child = child.nextElementSibling) {
-      if (child.classList.contains('row')) { rows.push(child); } else { letGo(child); }
+      if (child.classList.contains('row')) { rows.push(child); }
+      else if (!title && child.localName === 'div' && child.classList.contains('text-center')) { title = child; }
+      else { letGo(child); }
     }
     for (var k = 0; k < rows.length; k++) {
       var value = gridValueOf.get(rows[k]);
@@ -685,6 +752,7 @@
       var label = gridLabelOf.get(rows[k]);
       if (label !== undefined && rows.indexOf(label) === -1) { gridLabelOf.delete(rows[k]); gridValueOf.delete(label); }
     }
+    var listed = [];
     for (var r = 0; r < rows.length; ) {
       var next = rows[r + 1];
       var known = gridValueOf.has(rows[r]) || gridLabelOf.has(rows[r]);
@@ -693,18 +761,34 @@
         gridLabelOf.set(next, rows[r]);
       }
       if (next && gridValueOf.get(rows[r]) === next) {
-        readPair(rows[r], next);
+        readPair(rows[r], next, listed);
         r += 2;
       } else {
         letGo(rows[r]);
         r += 1;
       }
     }
+    var owns = screen.getAttribute('aria-owns');
+    var pagesOwn = owns !== null && owns !== ownsWritten.get(screen);
+    if (pagesOwn || listed.length === 0) {
+      // Nothing to list, or the page orders the grid itself: no list and no id of the layer's.
+      if (title) { listed.unshift(title); }
+      for (var d = 0; d < listed.length; d++) { dropId(listed[d]); }
+      if (pagesOwn) { ownsWritten.delete(screen); } else { ownState(screen, 'aria-owns', null, ownsWritten); }
+      return;
+    }
+    if (title) { listed.unshift(title); }
+    var ids = [];
+    for (var n = 0; n < listed.length; n++) {
+      var id = ownId(listed[n]);
+      if (id) { ids.push(id); }
+    }
+    ownState(screen, 'aria-owns', ids.join(' '), ownsWritten);
   }
 
   // Takeoff: the results are the MCDU's take-off page, a title and then rows that alternate: a row of small
   // labels and, under it, a row of values. After Calculate the page changes the values in place; each pass
-  // reads them again (name() keeps the label in step with the text).
+  // reads them again (the list keeps its cells, so the order holds).
   RULES.push(function (root) {
     var screens = root.querySelectorAll('.mcdu-screen');
     for (var s = 0; s < screens.length; s++) { readGrid(screens[s]); }
@@ -720,6 +804,9 @@
     return m ? m[0] : '';
   }
 
+  // The group is one Tab stop (ruling R47): the checked code, or the first one when none is checked; never a code the
+  // page disables. The arrows move through the codes (see onButtonKey). A group that stops matching gets the page's
+  // own Tab stops back.
   RULES.push(function (root) {
     var groups = root.querySelectorAll('div.section-group');
     for (var i = 0; i < groups.length; i++) {
@@ -730,11 +817,19 @@
       if (items.length === CONDITION_CODES.length && items.map(conditionCode).join('') === CONDITION_CODES) {
         giveRole(groups[i], 'radiogroup');
         name(groups[i], 'Runway condition');
-        // Every radio stays a Tab stop: the page gives each its own tabindex, and the layer writes none.
+        rovingCodes.set(groups[i], items);
+        var stop = null;
+        for (var s = 0; s < items.length && !stop; s++) {
+          if (items[s].classList.contains('section-selected') && !isDisabled(items[s])) { stop = items[s]; }
+        }
+        for (var f = 0; f < items.length && !stop; f++) {
+          if (!isDisabled(items[f])) { stop = items[f]; }
+        }
         for (var j = 0; j < items.length; j++) {
-          radio(items[j], textOf(items[j]), items[j].classList.contains('section-selected'));
+          rovingRadio(items[j], textOf(items[j]), items[j].classList.contains('section-selected'), items[j] === stop);
         }
       } else {
+        rovingCodes.delete(groups[i]);
         release(groups[i]);
         for (var k = 0; k < items.length; k++) { unradio(items[k]); }
       }
@@ -1086,6 +1181,18 @@
 
   // ---- What a screen reader does not need ----
   // These rules come last: the glyph rule asks which elements are controls, and the rules above make them so.
+
+  // Hides an element from a screen reader. A hidden state the page set is the page's (never overridden); the layer
+  // takes back only its own.
+  function hide(el) {
+    if (!el.hasAttribute('aria-hidden')) { el.setAttribute('aria-hidden', 'true'); hiddenWritten.add(el); }
+  }
+
+  function unhide(el) {
+    if (!hiddenWritten.has(el)) { return; }
+    hiddenWritten.delete(el);
+    if (el.getAttribute('aria-hidden') === 'true') { el.removeAttribute('aria-hidden'); }
+  }
 
   // Hides from a screen reader the elements a rule found on this pass, and reads again the ones it hid on an earlier
   // pass and no longer finds (only the layer's own hidden state, never the page's). Returns this pass's list.

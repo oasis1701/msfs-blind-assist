@@ -1,8 +1,9 @@
 'use strict';
-// The Takeoff (depperf) and Landing (arrperf) calculators, checked against the LIVE captures
-// (fixtures/depperf.html, fixtures/arrperf.html; Fenix 3.0.0.7438, A320-232 IAE, kilograms and hPa): the
-// fields named by the page's own labels, the Takeoff results grid read as "<label>: <value>" (ruling R14),
-// the Landing runway condition as a radio group, the Landing options and procedures as buttons.
+// The Takeoff (depperf) and Landing (arrperf, arrperf-electrical) calculators, checked against the LIVE captures
+// (fixtures/depperf.html, arrperf.html, arrperf-electrical.html; Fenix 3.0.0.7438, A320-232 IAE, kilograms and hPa):
+// the fields named by the page's own labels, the Takeoff results grid read label then value (ruling R46), the
+// Landing runway condition as a radio group with one Tab stop (R47), the Landing options and procedures as buttons,
+// and a procedure's sub-page with its Back button and tick boxes (R39).
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -180,70 +181,122 @@ test('A_field_without_its_own_label_takes_its_column_header_else_a_placeholder_w
   }
 });
 
-// ---- The results grid (ruling R14) ----
+// ---- The results grid (ruling R46, which replaces R14) ----
+// The results are the MCDU's take-off page: a title, then rows that alternate, a row of small labels and under it a
+// row of values. A screen reader reads the page in DOM order, so it met every label of a row before any of its values.
+// The grid's aria-owns lists the title, then, for each label / value row pair and each column, the label cell and then
+// its value cell: each label is read right before its value. Nothing is hidden and no cell is a picture, except an
+// empty "not computed" value cell (only the MCDU's yellow boxes), which is one named "not computed". The ids aria-owns
+// needs are the layer's own ("msfsba-<n>"), written only on the cells it lists; an id the page set is used as it is.
 
 const rowsOf = window => [...window.document.querySelector('.mcdu-screen').children].filter(el => el.classList.contains('row'));
 const cellsOf = row => [...row.children];
+const screenOf = window => window.document.querySelector('.mcdu-screen');
+const titleOf = window => window.document.querySelector('.mcdu-screen > .text-center');
 
-test('Takeoff_results_read_label_and_value', async () => {
+// The elements the grid's aria-owns lists, in its order (a missing id would show as null).
+const ownedOf = window => (screenOf(window).getAttribute('aria-owns') || '').split(/\s+/).filter(Boolean)
+  .map(id => window.document.getElementById(id));
+// What a screen reader says for each of them, in that order: a picture's label, else the element's text.
+const reading = window => ownedOf(window)
+  .map(el => el.getAttribute('role') === 'img' ? el.getAttribute('aria-label') : textOf(window)(el));
+// The elements that carry an id of the layer's.
+const layerIds = window => all(window, '[id^="msfsba-"]');
+
+// Each column's label and value, as captured (the three empty speeds are "not computed").
+const PAIRS = [
+  ['V1', 'not computed'], ['FLP RETR', 'F=---'], ['STOP MARGIN', '----'],
+  ['VR', 'not computed'], ['SLT RETR', 'S=---'], ['TO SHIFT', '[M] [ ]*'],
+  ['V2', 'not computed'], ['CLEAN', 'O=---'], ['FLAPS/THS', '[]/[ ]'],
+  ['TRANS ALT', '----'], ['FLEX TO TEMP', '[]°'],
+  ['THR RED/ACC', '----/----'], ['ENG OUT ACC', '----']
+];
+const TITLE = 'TAKE OFF RWY';
+// The reading with the given pairs (by index into PAIRS) left out.
+const readingWithout = (...left) => [TITLE, ...PAIRS.filter((p, i) => !left.includes(i)).flat()];
+const READING = readingWithout();
+// The cells the layer has written nothing on.
+const untouched = cell => ['role', 'aria-label', 'aria-hidden', 'data-msfsba', 'id'].every(a => !cell.hasAttribute(a));
+function makeRow(window, texts) {
+  const row = window.document.createElement('div');
+  row.className = 'row';
+  row.innerHTML = texts.map(t => '<div class="col-6"><div class="text-mcdu-small">' + t + '</div></div>').join('');
+  return row;
+}
+
+test('Takeoff_results_read_each_label_right_before_its_value', async () => {
+  const bare = await load('depperf', { layer: false });
   const window = await load('depperf');
   try {
     const rows = rowsOf(window);
     assert.strictEqual(rows.length, 10, 'five label rows, each with its value row under it');
-    const expected = [
-      ['V1: not computed', 'FLP RETR: F=---', 'STOP MARGIN: ----'],
-      ['VR: not computed', 'SLT RETR: S=---', 'TO SHIFT: [M] [ ]*'],
-      ['V2: not computed', 'CLEAN: O=---', 'FLAPS/THS: []/[ ]'],
-      ['TRANS ALT: ----', 'FLEX TO TEMP: []°'],
-      ['THR RED/ACC: ----/----', 'ENG OUT ACC: ----']
-    ];
+    const title = titleOf(window);
+    assert.strictEqual(textOf(window)(title), TITLE);
+
+    // The order: the title, then label, value, label, value ... across each pair of rows.
+    const expected = [title];
     for (let r = 0; r < 5; r++) {
       const labels = cellsOf(rows[2 * r]);
       const values = cellsOf(rows[2 * r + 1]);
-      assert.strictEqual(values.length, expected[r].length);
       assert.strictEqual(labels.length, values.length);
-      for (let c = 0; c < values.length; c++) {
-        // One named object per value cell: role img (a generic div's label is not read in browse mode).
-        assert.strictEqual(values[c].getAttribute('role'), 'img', expected[r][c]);
-        assert.strictEqual(values[c].getAttribute('aria-label'), expected[r][c]);
-        assert.strictEqual(nameOf(values[c]), expected[r][c]);
-        // The label above is not read twice.
-        assert.strictEqual(labels[c].getAttribute('aria-hidden'), 'true', expected[r][c]);
-        assert.ok(!labels[c].hasAttribute('role') && !labels[c].hasAttribute('aria-label'));
-      }
+      for (let c = 0; c < labels.length; c++) expected.push(labels[c], values[c]);
     }
-    // The title above the grid is still read.
-    const title = window.document.querySelector('.mcdu-screen > .text-center');
-    assert.strictEqual(title.hasAttribute('aria-hidden'), false);
-    assert.strictEqual(textOf(window)(title), 'TAKE OFF RWY');
-    // Nothing else on the page became an image, and nothing else in the grid was hidden (the glyphs in the page's
-    // buttons are, by the glyph rule).
-    assert.strictEqual(all(window, '[role=img]').length, 13);
-    assert.strictEqual(all(window, '.mcdu-screen [aria-hidden=true]').length, 13);
+    const owned = ownedOf(window);
+    assert.strictEqual(owned.length, expected.length);
+    owned.forEach((el, i) => assert.strictEqual(el, expected[i], 'entry ' + i));
+    assert.deepStrictEqual(reading(window), READING);
+
+    // The ids are the layer's own: on the listed elements and nowhere else, each new (none had an id on the page).
+    const ids = screenOf(window).getAttribute('aria-owns').split(' ');
+    assert.ok(ids.every(id => /^msfsba-\d+$/.test(id)), ids.join(' '));
+    assert.strictEqual(new Set(ids).size, ids.length, 'each id once');
+    assert.strictEqual(layerIds(window).length, ids.length, 'no other element carries an id of the layer\'s');
+    const bareAll = [...bare.document.querySelectorAll('*')];
+    const windowAll = [...window.document.querySelectorAll('*')];
+    for (const el of owned) assert.strictEqual(bareAll[windowAll.indexOf(el)].hasAttribute('id'), false);
+    assert.deepStrictEqual(windowAll.filter(el => el.hasAttribute('id') && !el.id.startsWith('msfsba-')).map(el => el.id),
+      bareAll.filter(el => el.hasAttribute('id')).map(el => el.id), 'the page\'s own ids are as they were');
+
+    // No picture but the three empty speeds, nothing hidden, no other name: the labels and values are read as text.
+    const pictures = all(window, '[role=img]');
+    assert.deepStrictEqual(pictures, [1, 3, 5].map(r => cellsOf(rows[r])[0]), 'V1, VR and V2');
+    assert.ok(pictures.every(p => p.getAttribute('aria-label') === 'not computed' && nameOf(p) === 'not computed'));
+    assert.strictEqual(all(window, '.mcdu-screen [aria-hidden]').length, 0);
+    assert.strictEqual(all(window, '.mcdu-screen [aria-label]').length, 3);
+    // The grid gets its order and nothing else.
+    const screen = screenOf(window);
+    assert.ok(['role', 'aria-label', 'id', 'tabindex'].every(a => !screen.hasAttribute(a)));
   } finally {
+    bare.close();
     window.close();
   }
 });
 
-test('Takeoff_results_follow_the_page_when_Calculate_changes_them_in_place', async () => {
+test('Takeoff_results_keep_their_order_when_Calculate_changes_them_in_place', async () => {
   const window = await load('depperf');
   try {
     const doc = window.document;
+    const screen = screenOf(window);
+    const owns = screen.getAttribute('aria-owns');
     const rows = rowsOf(window);
     const [v1, flp, stop] = cellsOf(rows[1]);
-    const [v1Label, flpLabel] = cellsOf(rows[0]);
+    const [, flpLabel] = cellsOf(rows[0]);
+    const at = (reads, label) => reads[reads.indexOf(label) + 1];
 
-    // Angular updates a text node in place: the label follows.
+    // Angular updates a text node in place: the order holds and the new value is read after its label.
     const flpText = [...flp.firstElementChild.childNodes].find(n => n.nodeType === 3);
     flpText.nodeValue = ' F=161 ';
     await turns();
-    assert.strictEqual(flp.getAttribute('aria-label'), 'FLP RETR: F=161');
+    assert.strictEqual(screen.getAttribute('aria-owns'), owns);
+    assert.strictEqual(at(reading(window), 'FLP RETR'), 'F=161');
 
-    // The three yellow boxes give way to a number, and come back.
+    // The yellow boxes give way to a number: the cell is no picture any more, and is read as text in its place.
     v1.firstElementChild.textContent = ' 143 ';
     await turns();
-    assert.strictEqual(v1.getAttribute('aria-label'), 'V1: 143');
-    assert.strictEqual(nameOf(v1), 'V1: 143');
+    assert.strictEqual(screen.getAttribute('aria-owns'), owns);
+    assert.ok(['role', 'aria-label', 'data-msfsba'].every(a => !v1.hasAttribute(a)));
+    assert.deepStrictEqual(reading(window).slice(0, 3), [TITLE, 'V1', '143']);
+    // And the yellow boxes come back.
     v1.firstElementChild.textContent = '';
     for (let i = 0; i < 3; i++) {
       const box = doc.createElement('span');
@@ -251,37 +304,29 @@ test('Takeoff_results_follow_the_page_when_Calculate_changes_them_in_place', asy
       v1.firstElementChild.appendChild(box);
     }
     await turns();
-    assert.strictEqual(v1.getAttribute('aria-label'), 'V1: not computed');
+    assert.strictEqual(v1.getAttribute('role'), 'img');
+    assert.strictEqual(nameOf(v1), 'not computed');
+    assert.strictEqual(screen.getAttribute('aria-owns'), owns);
 
-    // The label above changes its text: the name follows it.
+    // A label's text changes: it is read as the page now has it, in its place.
     flpLabel.firstElementChild.firstChild.nodeValue = 'FLP RETR (KT)';
     await turns();
-    assert.strictEqual(flp.getAttribute('aria-label'), 'FLP RETR (KT): F=161');
+    assert.strictEqual(at(reading(window), 'FLP RETR (KT)'), 'F=161');
 
-    // A value cell that empties is not an image any more: what the layer wrote is taken back and the
-    // label above is read again.
+    // A value cell that empties stays in its place (read as nothing), and is no picture: it has no yellow boxes.
     stop.firstElementChild.textContent = '';
     await turns();
-    assert.strictEqual(stop.hasAttribute('role'), false);
-    assert.strictEqual(stop.hasAttribute('aria-label'), false);
-    assert.strictEqual(stop.hasAttribute('data-msfsba'), false);
-    const stopLabel = cellsOf(rows[0])[2];
-    assert.strictEqual(stopLabel.hasAttribute('aria-hidden'), false);
-    assert.strictEqual(textOf(window)(stopLabel), 'STOP MARGIN');
-    // The rest carried on.
-    assert.strictEqual(v1Label.getAttribute('aria-hidden'), 'true');
-    assert.strictEqual(flpLabel.getAttribute('aria-hidden'), 'true');
-
-    // The value comes back: so does the name.
+    assert.strictEqual(screen.getAttribute('aria-owns'), owns);
+    assert.ok(['role', 'aria-label', 'data-msfsba'].every(a => !stop.hasAttribute(a)));
     stop.firstElementChild.textContent = ' 1450 ';
     await turns();
-    assert.strictEqual(stop.getAttribute('aria-label'), 'STOP MARGIN: 1450');
-    assert.strictEqual(stopLabel.getAttribute('aria-hidden'), 'true');
+    assert.strictEqual(at(reading(window), 'STOP MARGIN'), '1450');
 
-    // A pass run by hand sees the same: change the text, run it, and the label follows.
+    // A pass run by hand sees the same, and writes nothing new.
     flpText.nodeValue = ' F=158 ';
     window.__msfsbaFenixEfb.pass();
-    assert.strictEqual(flp.getAttribute('aria-label'), 'FLP RETR (KT): F=158');
+    assert.strictEqual(screen.getAttribute('aria-owns'), owns);
+    assert.strictEqual(at(reading(window), 'FLP RETR (KT)'), 'F=158');
   } finally {
     window.close();
   }
@@ -290,139 +335,142 @@ test('Takeoff_results_follow_the_page_when_Calculate_changes_them_in_place', asy
 test('A_results_grid_that_does_not_line_up_is_left_alone', async () => {
   const window = await load('depperf', { layer: false });
   try {
-    // A label row and value row of different widths: no cell is paired by guess.
+    // A label row and value row of different widths: no cell is paired by guess, so neither row is listed.
     const rows = rowsOf(window);
     rows[1].removeChild(rows[1].lastElementChild);
     window.eval(fs.readFileSync(LAYER, 'utf8'));
     await turns();
-    const [firstLabels, firstValues] = [cellsOf(rows[0]), cellsOf(rows[1])];
-    assert.ok(firstValues.every(v => !v.hasAttribute('role') && !v.hasAttribute('aria-label')));
-    assert.ok(firstLabels.every(l => !l.hasAttribute('aria-hidden')));
+    assert.ok([...cellsOf(rows[0]), ...cellsOf(rows[1])].every(untouched));
     // The other pairs still line up.
-    assert.strictEqual(cellsOf(rows[3])[0].getAttribute('aria-label'), 'VR: not computed');
-    assert.strictEqual(cellsOf(rows[2])[0].getAttribute('aria-hidden'), 'true');
+    assert.deepStrictEqual(reading(window), readingWithout(0, 1, 2));
+    assert.strictEqual(cellsOf(rows[3])[0].getAttribute('aria-label'), 'not computed');
   } finally {
     window.close();
   }
 });
 
-test('A_role_label_or_hidden_state_the_page_set_in_the_results_grid_is_never_overridden', async () => {
+test('A_role_label_hidden_state_or_id_the_page_set_in_the_results_grid_is_never_overridden', async () => {
   const window = await load('depperf', { layer: false });
   try {
     const rows = rowsOf(window);
-    const [v1, flp, stop] = cellsOf(rows[1]);
+    const [v1, flp] = cellsOf(rows[1]);
     const [, , stopLabel] = cellsOf(rows[0]);
-    const vrLabel = cellsOf(rows[2])[0];
-    const vrValue = cellsOf(rows[3])[0];
-    stop.setAttribute('role', 'status');                         // the page's own role
-    flp.setAttribute('aria-label', 'Flap retraction speed');     // the page's own label
-    vrLabel.setAttribute('aria-hidden', 'false');                // the page's own hidden state
+    const [vrLabel] = cellsOf(rows[2]);
+    v1.setAttribute('role', 'status');                        // the page's own role on an empty speed
+    flp.setAttribute('aria-label', 'Flap retraction speed');  // the page's own label on a value
+    stopLabel.setAttribute('aria-hidden', 'true');            // the page's own hidden state on a label
+    vrLabel.setAttribute('id', 'vr-label');                   // the page's own id on a label
     window.eval(fs.readFileSync(LAYER, 'utf8'));
     await turns();
 
-    assert.strictEqual(stop.getAttribute('role'), 'status');
-    assert.strictEqual(stop.hasAttribute('aria-label'), false, 'a cell with a role of the page\'s is not named');
-    assert.strictEqual(stopLabel.hasAttribute('aria-hidden'), false, 'its label is not carried, so it stays read');
-
+    assert.strictEqual(v1.getAttribute('role'), 'status');
+    assert.strictEqual(v1.hasAttribute('aria-label'), false, 'a cell with a role of the page\'s is not named');
     assert.strictEqual(flp.getAttribute('aria-label'), 'Flap retraction speed');
-    assert.strictEqual(cellsOf(rows[0])[1].hasAttribute('aria-hidden'), false, 'the page\'s label is not the grid\'s: label above stays read');
+    assert.strictEqual(stopLabel.getAttribute('aria-hidden'), 'true');
+    // The page's id is the one listed for its cell, in its place; the layer writes none over it.
+    assert.strictEqual(vrLabel.id, 'vr-label');
+    const owned = ownedOf(window);
+    assert.strictEqual(owned.indexOf(vrLabel), 7, 'the title and three pairs before it');
+    assert.strictEqual(owned[8], cellsOf(rows[3])[0]);
+    assert.ok(owned.includes(v1) && owned.includes(flp), 'the page\'s cells are listed in their places too');
 
-    assert.strictEqual(vrLabel.getAttribute('aria-hidden'), 'false');
-    assert.strictEqual(vrValue.getAttribute('aria-label'), 'VR: not computed');
-    assert.strictEqual(v1.getAttribute('aria-label'), 'V1: not computed');
+    // Withdrawn, the page's id stays (it is no longer listed); the layer's own go.
+    const screen = screenOf(window);
+    screen.insertBefore(makeRow(window, ['A', 'B', 'C']), rows[3]);
+    await turns();
+    assert.strictEqual(vrLabel.id, 'vr-label');
+    assert.ok(!ownedOf(window).includes(vrLabel));
+    assert.ok(cellsOf(rows[3]).every(untouched));
   } finally {
     window.close();
   }
 });
 
-// ---- The results grid keeps up with its rows (ruling R23) ----
-// A row that falls out of its label / value pair is let go of: what the layer wrote on it is taken back and
-// the label above is read again. A pairing is trusted only while its two rows still sit together; a row that
-// turns up between them (or anywhere) never shifts the pairs below it into a garbled name.
+test('A_results_grid_the_page_orders_itself_is_left_to_the_page', async () => {
+  const window = await load('depperf', { layer: false });
+  try {
+    screenOf(window).setAttribute('aria-owns', 'page-own-order');
+    window.eval(fs.readFileSync(LAYER, 'utf8'));
+    await turns();
+    assert.strictEqual(screenOf(window).getAttribute('aria-owns'), 'page-own-order');
+    assert.strictEqual(layerIds(window).length, 0, 'no id written');
+    // The empty speeds are still named.
+    assert.strictEqual(all(window, '[role=img]').length, 3);
 
-const RESULT_NAMES = [
-  'V1: not computed', 'FLP RETR: F=---', 'STOP MARGIN: ----',
-  'VR: not computed', 'SLT RETR: S=---', 'TO SHIFT: [M] [ ]*',
-  'V2: not computed', 'CLEAN: O=---', 'FLAPS/THS: []/[ ]',
-  'TRANS ALT: ----', 'FLEX TO TEMP: []°',
-  'THR RED/ACC: ----/----', 'ENG OUT ACC: ----'
-];
-const imageNames = window => all(window, '.mcdu-screen [role=img]').map(el => el.getAttribute('aria-label'));
-const hiddenCount = window => all(window, '.mcdu-screen [aria-hidden=true]').length;
-// A cell the layer has not touched: none of the attributes it writes.
-const untouched = cell => ['role', 'aria-label', 'aria-hidden', 'data-msfsba'].every(a => !cell.hasAttribute(a));
-function makeRow(window, texts) {
-  const row = window.document.createElement('div');
-  row.className = 'row';
-  row.innerHTML = texts.map(t => '<div class="col-6"><div class="text-mcdu-small">' + t + '</div></div>').join('');
-  return row;
-}
+    // The page takes its own away: the layer lists the grid from then on.
+    screenOf(window).removeAttribute('aria-owns');
+    window.__msfsbaFenixEfb.pass();
+    assert.deepStrictEqual(reading(window), READING);
+  } finally {
+    window.close();
+  }
+});
 
-test('A_label_row_left_without_its_value_row_is_read_again_and_pairs_again_when_the_value_row_returns', async () => {
+// ---- The results grid keeps up with its rows (ruling R23, kept by R46) ----
+// A row that falls out of its label / value pair is let go of: its cells leave the list and lose the layer's ids. A
+// pairing is trusted only while its two rows still sit together; a row that turns up between them (or anywhere) never
+// shifts the pairs below it or mixes the cells of two rows.
+
+test('A_label_row_left_without_its_value_row_leaves_the_list_and_pairs_again_when_the_value_row_returns', async () => {
   const window = await load('depperf');
   try {
-    const screen = window.document.querySelector('.mcdu-screen');
+    const screen = screenOf(window);
     const rows = rowsOf(window);
     const last = rows[9];
     const after = last.nextSibling;
-    assert.deepStrictEqual(imageNames(window), RESULT_NAMES);
-    assert.strictEqual(hiddenCount(window), 13);
+    assert.deepStrictEqual(reading(window), READING);
+    assert.strictEqual(layerIds(window).length, 1 + 2 * 13);
 
     // The page drops the last value row: its two labels have nothing under them.
     screen.removeChild(last);
     await turns();
     const orphans = cellsOf(rows[8]);
-    assert.ok(orphans.every(untouched), 'the labels are not hidden, not images, not stamped');
+    assert.ok(orphans.every(untouched), 'no id, no role, no name, not hidden');
     assert.deepStrictEqual(orphans.map(textOf(window)), ['THR RED/ACC', 'ENG OUT ACC']);
-    assert.deepStrictEqual(imageNames(window), RESULT_NAMES.slice(0, 11), 'the other pairs carry on');
-    assert.strictEqual(hiddenCount(window), 11);
+    assert.deepStrictEqual(reading(window), readingWithout(11, 12), 'the other pairs carry on');
+    assert.strictEqual(layerIds(window).length, 1 + 2 * 11);
 
-    // The value row comes back: so do the names.
+    // The value row comes back: so does the pair.
     screen.insertBefore(last, after);
     await turns();
-    assert.deepStrictEqual(imageNames(window), RESULT_NAMES);
-    assert.strictEqual(hiddenCount(window), 13);
-    assert.ok(orphans.every(c => c.getAttribute('aria-hidden') === 'true'));
-    assert.strictEqual(cellsOf(last)[0].getAttribute('aria-label'), 'THR RED/ACC: ----/----');
+    assert.deepStrictEqual(reading(window), READING);
+    assert.ok(orphans.every(c => c.id.startsWith('msfsba-')));
+    assert.strictEqual(layerIds(window).length, 1 + 2 * 13);
   } finally {
     window.close();
   }
 });
 
-test('A_row_inserted_into_the_results_grid_never_garbles_a_name_and_a_pairing_it_breaks_is_withdrawn', async () => {
+test('A_row_inserted_into_the_results_grid_never_mixes_two_rows_and_a_pairing_it_breaks_is_withdrawn', async () => {
   const window = await load('depperf');
   try {
-    const screen = window.document.querySelector('.mcdu-screen');
+    const screen = screenOf(window);
     const rows = rowsOf(window);
 
     // Between two pairs, two columns wide like the pairs below it: every pair still holds, the new row is no pair.
     const extra = makeRow(window, ['NOTE', 'HERE']);
     screen.insertBefore(extra, rows[6]);
     await turns();
-    assert.deepStrictEqual(imageNames(window), RESULT_NAMES);
-    assert.strictEqual(hiddenCount(window), 13);
+    assert.deepStrictEqual(reading(window), READING);
     assert.ok(cellsOf(extra).every(untouched));
 
-    // Between a label row and its value row, three columns wide like the pair it breaks: that pairing no
-    // longer holds and is withdrawn (VR, SLT RETR and TO SHIFT are plain labels and plain values again);
-    // nothing else changes and no name mixes the texts of two rows.
+    // Between a label row and its value row, three columns wide like the pair it breaks: that pairing no longer holds
+    // and is withdrawn (VR, SLT RETR and TO SHIFT leave the list); nothing else changes.
     const between = makeRow(window, ['A', 'B', 'C']);
     screen.insertBefore(between, rows[3]);
     await turns();
     for (const row of [rows[2], rows[3], between]) assert.ok(cellsOf(row).every(untouched));
-    assert.deepStrictEqual(imageNames(window), [...RESULT_NAMES.slice(0, 3), ...RESULT_NAMES.slice(6)]);
-    assert.strictEqual(hiddenCount(window), 10);
+    assert.deepStrictEqual(reading(window), readingWithout(3, 4, 5));
     assert.ok(cellsOf(extra).every(untouched));
 
-    // Taken out again, the grid is as it was: every name is back.
+    // Taken out again, the grid is as it was.
     screen.removeChild(between);
     await turns();
-    assert.deepStrictEqual(imageNames(window), RESULT_NAMES);
-    assert.strictEqual(hiddenCount(window), 13);
+    assert.deepStrictEqual(reading(window), READING);
     screen.removeChild(extra);
     await turns();
-    assert.deepStrictEqual(imageNames(window), RESULT_NAMES);
-    assert.strictEqual(hiddenCount(window), 13);
+    assert.deepStrictEqual(reading(window), READING);
+    assert.strictEqual(layerIds(window).length, 1 + 2 * 13);
   } finally {
     window.close();
   }
@@ -431,19 +479,19 @@ test('A_row_inserted_into_the_results_grid_never_garbles_a_name_and_a_pairing_it
 test('A_row_that_stops_being_a_value_row_is_released_and_a_new_pair_of_rows_is_read', async () => {
   const window = await load('depperf');
   try {
-    const screen = window.document.querySelector('.mcdu-screen');
+    const screen = screenOf(window);
     const rows = rowsOf(window);
     const [labelRow, valueRow] = [rows[2], rows[3]];
 
     // The page takes the row class off the value row: it is not a row of the grid any more.
     valueRow.className = 'not-a-row';
     await turns();
-    assert.ok(cellsOf(valueRow).every(untouched), 'a stale image is not left behind');
-    assert.ok(cellsOf(labelRow).every(untouched), 'and its label is read again');
-    assert.deepStrictEqual(imageNames(window), [...RESULT_NAMES.slice(0, 3), ...RESULT_NAMES.slice(6)]);
+    assert.ok(cellsOf(valueRow).every(untouched), 'no stale picture or id is left behind');
+    assert.ok(cellsOf(labelRow).every(untouched));
+    assert.deepStrictEqual(reading(window), readingWithout(3, 4, 5));
     valueRow.className = 'row';
     await turns();
-    assert.deepStrictEqual(imageNames(window), RESULT_NAMES);
+    assert.deepStrictEqual(reading(window), READING);
 
     // A new pair of rows (a label row and its value row) is read as a pair, wherever the page puts it.
     const newLabels = makeRow(window, ['ALT', 'SPD']);
@@ -451,14 +499,13 @@ test('A_row_that_stops_being_a_value_row_is_released_and_a_new_pair_of_rows_is_r
     screen.insertBefore(newLabels, rows[4]);
     screen.insertBefore(newValues, rows[4]);
     await turns();
-    assert.deepStrictEqual(imageNames(window), [...RESULT_NAMES.slice(0, 6), 'ALT: 350', 'SPD: 250', ...RESULT_NAMES.slice(6)]);
-    assert.strictEqual(hiddenCount(window), 15);
+    assert.deepStrictEqual(reading(window), [TITLE, ...PAIRS.slice(0, 6).flat(), 'ALT', '350', 'SPD', '250', ...PAIRS.slice(6).flat()]);
 
-    // The page puts a fresh value row in place of one it dropped: the label pairs with it again.
+    // The page puts a fresh value row in place of one it dropped: the labels pair with it again.
     const fresh = makeRow(window, ['FRESH', 'ROW']);
     screen.replaceChild(fresh, rows[9]);
     await turns();
-    assert.deepStrictEqual(imageNames(window).slice(-3), ['FLEX TO TEMP: []°', 'THR RED/ACC: FRESH', 'ENG OUT ACC: ROW']);
+    assert.deepStrictEqual(reading(window).slice(-4), ['THR RED/ACC', 'FRESH', 'ENG OUT ACC', 'ROW']);
   } finally {
     window.close();
   }
@@ -467,27 +514,29 @@ test('A_row_that_stops_being_a_value_row_is_released_and_a_new_pair_of_rows_is_r
 test('A_withdrawn_pairing_takes_back_only_what_the_layer_wrote', async () => {
   const window = await load('depperf', { layer: false });
   try {
-    const screen = window.document.querySelector('.mcdu-screen');
+    const screen = screenOf(window);
     const rows = rowsOf(window);
     const [vr, slt] = cellsOf(rows[3]);
     const [vrLabel, sltLabel] = cellsOf(rows[2]);
-    vr.setAttribute('aria-label', 'Rotation speed');   // the page's own label on a value cell
+    vr.setAttribute('aria-label', 'Rotation speed');   // the page's own label on an empty speed
     vrLabel.setAttribute('aria-hidden', 'true');       // the page's own hidden state on a label
+    sltLabel.setAttribute('id', 'slt-label');          // the page's own id on a label
     window.eval(fs.readFileSync(LAYER, 'utf8'));
     await turns();
     assert.strictEqual(vr.getAttribute('role'), 'img');
-    assert.strictEqual(slt.getAttribute('aria-label'), 'SLT RETR: S=---');
-    assert.strictEqual(sltLabel.getAttribute('aria-hidden'), 'true');
+    assert.strictEqual(vr.getAttribute('aria-label'), 'Rotation speed', 'the page\'s label is not replaced');
+    assert.ok(slt.id.startsWith('msfsba-') && vr.id.startsWith('msfsba-'));
+    assert.ok(ownedOf(window).includes(sltLabel));
 
-    // The pairing is withdrawn: the layer's role, label and hidden state go, the page's stay.
+    // The pairing is withdrawn: the layer's role, ids and stamp go, the page's label, hidden state and id stay.
     screen.insertBefore(makeRow(window, ['A', 'B', 'C']), rows[3]);
     await turns();
     assert.strictEqual(vr.getAttribute('aria-label'), 'Rotation speed', 'the page\'s label is not taken back');
-    assert.strictEqual(vr.hasAttribute('role'), false, 'the layer\'s role is');
-    assert.strictEqual(vr.hasAttribute('data-msfsba'), false);
+    assert.ok(['role', 'id', 'data-msfsba'].every(a => !vr.hasAttribute(a)), 'the layer\'s are');
     assert.ok(untouched(slt));
     assert.strictEqual(vrLabel.getAttribute('aria-hidden'), 'true', 'the page\'s hidden state stays');
-    assert.strictEqual(sltLabel.hasAttribute('aria-hidden'), false, 'the layer\'s hidden state is taken back');
+    assert.strictEqual(sltLabel.id, 'slt-label', 'the page\'s id stays');
+    assert.ok(!ownedOf(window).includes(sltLabel));
   } finally {
     window.close();
   }
@@ -519,19 +568,21 @@ test('Runway_condition_is_a_radio_group_that_follows_the_page', async () => {
     assert.strictEqual(all(window, '[role=radiogroup]').length, 1);
     assert.strictEqual(all(window, '.section-item').length, 18, 'the capture has twelve other section-items: the six are not all of them');
 
-    // Every radio stays a Tab stop: the page gives each its own tabindex and the layer writes none.
-    assert.deepStrictEqual(items.map(i => i.getAttribute('tabindex')), ['30', '31', '32', '33', '34', '35']);
+    // One Tab stop (R47): the checked radio, the others reached with the arrows.
+    assert.deepStrictEqual(items.map(i => i.getAttribute('tabindex')), ['0', '-1', '-1', '-1', '-1', '-1']);
 
-    // The page moves section-selected to "3 MED": aria-checked follows.
+    // The page moves section-selected to "3 MED": aria-checked and the Tab stop follow.
     items[0].classList.remove('section-selected');
     items[3].classList.add('section-selected');
     await turns();
     assert.deepStrictEqual(items.map(i => i.getAttribute('aria-checked')), ['false', 'false', 'false', 'true', 'false', 'false']);
+    assert.deepStrictEqual(items.map(i => i.getAttribute('tabindex')), ['-1', '-1', '-1', '0', '-1', '-1']);
     // And back, with a pass run by hand.
     items[3].classList.remove('section-selected');
     items[0].classList.add('section-selected');
     window.__msfsbaFenixEfb.pass();
     assert.deepStrictEqual(items.map(i => i.getAttribute('aria-checked')), ['true', 'false', 'false', 'false', 'false', 'false']);
+    assert.deepStrictEqual(items.map(i => i.getAttribute('tabindex')), ['0', '-1', '-1', '-1', '-1', '-1']);
 
     // Enter and Space press a radio through the page's own click, like every button.
     let clicks = 0;
@@ -552,13 +603,15 @@ test('The_radio_group_is_the_container_that_holds_exactly_the_six_codes_and_is_w
     const last = items[5];
     const parent = last.parentElement;
 
-    // The page drops a code: five items are not the runway condition, and the layer takes back what it wrote.
+    // The page drops a code: five items are not the runway condition, and the layer takes back what it wrote; each
+    // item has the page's own Tab stop again (R47).
     parent.removeChild(last);
     await turns();
     assert.strictEqual(all(window, '[role=radio],[role=radiogroup]').length, 0);
     assert.strictEqual(all(window, '[aria-checked]').length, 0);
     assert.strictEqual(group.hasAttribute('aria-label'), false);
-    assert.ok(items.slice(0, 5).every(i => !i.hasAttribute('data-msfsba') && i.getAttribute('tabindex') !== '0'));
+    assert.ok(items.slice(0, 5).every(i => !i.hasAttribute('data-msfsba')));
+    assert.deepStrictEqual(items.slice(0, 5).map(i => i.getAttribute('tabindex')), ['30', '31', '32', '33', '34']);
 
     // Six again, but not the six codes: still not the runway condition.
     const other = window.document.createElement('div');
@@ -568,12 +621,146 @@ test('The_radio_group_is_the_container_that_holds_exactly_the_six_codes_and_is_w
     await turns();
     assert.strictEqual(all(window, '[role=radio],[role=radiogroup]').length, 0);
 
-    // The six codes are back.
+    // The six codes are back: one Tab stop again.
     parent.removeChild(other);
     parent.appendChild(last);
     await turns();
     assert.strictEqual(all(window, '[role=radio]').length, 6);
     assert.strictEqual(group.getAttribute('role'), 'radiogroup');
+    assert.deepStrictEqual(items.map(i => i.getAttribute('tabindex')), ['0', '-1', '-1', '-1', '-1', '-1']);
+    // Withdrawn once more, the page's own Tab stops come back again, the dropped code's too.
+    parent.removeChild(items[0]);
+    await turns();
+    assert.deepStrictEqual(items.slice(1).map(i => i.getAttribute('tabindex')), ['31', '32', '33', '34', '35']);
+  } finally {
+    window.close();
+  }
+});
+
+// R47: the runway condition is one Tab stop; the arrows move through the codes as in any radio group, each move the
+// code's own click (it picks that code, as the page's mouse click does) and then the focus on it, wrapping round.
+test('The_runway_condition_arrows_press_the_next_code_and_move_to_it_wrapping_round', async () => {
+  const window = await load('arrperf');
+  try {
+    const doc = window.document;
+    const items = [...conditionItems(window)];
+    const clicks = [];
+    items.forEach((item, i) => { item.click = () => { clicks.push(i); }; });
+    const arrow = (from, key, init = {}) => press(window, items[from], Object.assign({ key }, init));
+
+    assert.ok(arrow(0, 'ArrowDown').defaultPrevented);
+    assert.deepStrictEqual(clicks, [1], 'the next code, once');
+    assert.strictEqual(doc.activeElement, items[1], 'and the focus with it');
+    assert.ok(arrow(1, 'ArrowRight').defaultPrevented);
+    assert.deepStrictEqual(clicks, [1, 2]);
+    assert.strictEqual(doc.activeElement, items[2]);
+    assert.ok(arrow(2, 'ArrowUp').defaultPrevented);
+    assert.ok(arrow(1, 'ArrowLeft').defaultPrevented);
+    assert.deepStrictEqual(clicks, [1, 2, 1, 0]);
+    assert.strictEqual(doc.activeElement, items[0]);
+
+    // Round the ends.
+    assert.ok(arrow(0, 'ArrowUp').defaultPrevented);
+    assert.deepStrictEqual(clicks.slice(-1), [5]);
+    assert.strictEqual(doc.activeElement, items[5]);
+    assert.ok(arrow(5, 'ArrowRight').defaultPrevented);
+    assert.deepStrictEqual(clicks.slice(-1), [0]);
+    assert.strictEqual(doc.activeElement, items[0]);
+
+    // A held arrow moves once (as a held Enter presses once); an arrow with Alt, Ctrl or the Windows key, and any other
+    // key, is the page's.
+    const count = clicks.length;
+    assert.ok(arrow(0, 'ArrowDown', { repeat: true }).defaultPrevented);
+    for (const init of [{ altKey: true }, { ctrlKey: true }, { metaKey: true }]) {
+      assert.strictEqual(arrow(0, 'ArrowDown', init).defaultPrevented, false);
+    }
+    assert.strictEqual(arrow(0, 'a').defaultPrevented, false);
+    assert.strictEqual(arrow(0, 'Home').defaultPrevented, false);
+    assert.strictEqual(clicks.length, count);
+    assert.strictEqual(doc.activeElement, items[0]);
+    // An arrow on any other button the layer made is the page's too.
+    const option = doc.querySelector('div.one-click-change');
+    let optionClicks = 0;
+    option.click = () => { optionClicks++; };
+    assert.strictEqual(press(window, option, { key: 'ArrowDown' }).defaultPrevented, false);
+    assert.strictEqual(optionClicks, 0);
+    assert.strictEqual(doc.activeElement, items[0]);
+
+    // Enter and Space still press the code itself, and move nothing.
+    assert.ok(arrow(3, 'Enter').defaultPrevented);
+    assert.ok(arrow(3, ' ').defaultPrevented);
+    assert.deepStrictEqual(clicks.slice(-2), [3, 3]);
+    assert.strictEqual(doc.activeElement, items[0]);
+
+    // A code the page disables is passed over by the arrows, and is never the Tab stop.
+    items[2].setAttribute('aria-disabled', 'true');
+    await turns();
+    assert.ok(arrow(1, 'ArrowDown').defaultPrevented);
+    assert.deepStrictEqual(clicks.slice(-1), [3]);
+    assert.strictEqual(doc.activeElement, items[3]);
+    items[0].classList.remove('section-selected');
+    items[2].classList.add('section-selected');
+    await turns();
+    assert.deepStrictEqual(items.map(i => i.getAttribute('tabindex')), ['0', '-1', '-1', '-1', '-1', '-1'],
+      'the checked code is disabled: the first one that is not is the Tab stop');
+  } finally {
+    window.close();
+  }
+});
+
+test('Typing_in_a_text_box_is_unaffected_by_the_runway_condition_arrows', async () => {
+  const window = await load('arrperf');
+  try {
+    const doc = window.document;
+    const items = [...conditionItems(window)];
+    let clicks = 0;
+    items.forEach(item => { item.click = () => { clicks++; }; });
+    // The Landing page's own text boxes keep their arrows.
+    const icao = all(window, 'app-keyboard-input input')[0];
+    icao.focus();
+    for (const key of ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight']) {
+      assert.strictEqual(press(window, icao, { key }).defaultPrevented, false, key);
+    }
+    // So does a text box inside a code.
+    const box = doc.createElement('input');
+    items[1].appendChild(box);
+    await turns();
+    assert.strictEqual(all(window, '[role=radio]').length, 6, 'still the runway condition');
+    for (const key of ['ArrowDown', 'ArrowRight']) {
+      assert.strictEqual(press(window, box, { key }).defaultPrevented, false, key);
+    }
+    assert.strictEqual(clicks, 0);
+    assert.strictEqual(doc.activeElement, icao);
+  } finally {
+    window.close();
+  }
+});
+
+test('A_runway_condition_tab_stop_the_page_changes_is_the_pages_when_the_group_is_withdrawn', async () => {
+  const window = await load('arrperf');
+  try {
+    const items = [...conditionItems(window)];
+    const parent = items[0].parentElement;
+    // The page gives one code a Tab stop of its own; the next pass would be the layer's, but the page drops a code
+    // first: that pass withdraws the group, and the page's value stays where the page put it.
+    items[1].setAttribute('tabindex', '7');
+    parent.removeChild(items[5]);
+    await turns();
+    assert.deepStrictEqual(items.slice(0, 5).map(i => i.getAttribute('tabindex')), ['30', '7', '32', '33', '34']);
+    // A code the page left without a tabindex of its own gets none back.
+    const bare = await load('arrperf', { layer: false });
+    try {
+      const codes = [...conditionItems(bare)];
+      codes[2].removeAttribute('tabindex');
+      bare.eval(fs.readFileSync(LAYER, 'utf8'));
+      await turns();
+      assert.strictEqual(codes[2].getAttribute('tabindex'), '-1');
+      codes[0].parentElement.removeChild(codes[5]);
+      await turns();
+      assert.strictEqual(codes[2].hasAttribute('tabindex'), false);
+    } finally {
+      bare.close();
+    }
   } finally {
     window.close();
   }
@@ -821,7 +1008,7 @@ for (const fixture of ['depperf', 'arrperf', 'arrperf-electrical']) {
 // A second pass finds everything handled already: nothing changes, no element gets a second listener, and
 // the elements that took a key handler are exactly the ones that are not real buttons or inputs.
 const SECOND_PASS = {
-  depperf: { handled: 2 + 12 + 13, listeners: 2, note: 'home, chevron; six boxes and six drop-downs; thirteen result cells' },
+  depperf: { handled: 2 + 12 + 3, listeners: 2, note: 'home, chevron; six boxes and six drop-downs; the three "not computed" speeds' },
   arrperf: { handled: 2 + 6 + 1 + 6 + 5 + 9, listeners: 2 + 6 + 5 + 9, note: 'home, chevron; six fields; the group and six radios; five options; nine procedures' },
   // The sub-page capture also holds the app switcher, closed, with its nine icons (as mass-balance does).
   'arrperf-electrical': { handled: 2 + 9 + 1 + 8, listeners: 2 + 9 + 1 + 8, note: 'home, chevron; the nine icons of the closed switcher; Back; eight tick boxes' }
@@ -851,7 +1038,7 @@ for (const [fixture, expected] of Object.entries(SECOND_PASS)) {
 // the whole page (the layer's rules ask document.body); every other rule still does its work.
 const ISOLATION = {
   depperf: [
-    ['mcdu-screen', '[role=img]', 13],
+    ['mcdu-screen', '.mcdu-screen[aria-owns]', 1],
     ['app-keyboard-input', 'app-keyboard-input input[aria-label]', 6],
     ['mat-select', 'mat-select[aria-label]', 6]
   ],
