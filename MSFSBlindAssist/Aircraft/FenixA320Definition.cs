@@ -12123,7 +12123,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     // harmless, because the machine arms only on a sample below 40 kt, which the air never delivers.
     private bool _calloutOnGround = true;
 
-    /// <summary>Last B_FCU_VERTICALSPEED_DASHED seen; null until read (and after a reset).</summary>
+    /// <summary>Last B_FCU_VERTICALSPEED_DASHED seen; null until read (and after a cache clear, which
+    /// re-delivers it).</summary>
     private double? _fcuVsDashed;
 
     /// <summary>
@@ -12150,7 +12151,6 @@ public partial class FenixA320Definition : BaseAircraftDefinition
         // A flight load delivers the per-frame airspeed ahead of the 1 Hz SIM_ON_GROUND, so an arm
         // kept from a parked aircraft would call V1, Rotate and V2 at the loaded cruise.
         _takeoffCallouts.Reset();
-        _fcuVsDashed = null;   // a stale "dashed" must not silence a fresh flight's V/S
         base.OnSimContextReset();
     }
 
@@ -12159,8 +12159,18 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     {
         // Nothing armed before a drop may fire on a later landing rollout. The speeds are kept.
         _takeoffCallouts.Reset();
-        _fcuVsDashed = null;
         base.ResetAnnouncementBaselines();
+    }
+
+    /// <inheritdoc />
+    /// <remarks>The dashed flag mirrors a state, so it is forgotten only here, where every var
+    /// re-fires and re-seeds it. Never in <see cref="OnSimContextReset"/> (a flight load clears no
+    /// cache) or <see cref="ResetAnnouncementBaselines"/> (it runs after the reconnect's first batch):
+    /// an unchanged flag is not delivered again, so the V/S would speak for a whole managed climb.</remarks>
+    public override void OnVariableCacheCleared()
+    {
+        _fcuVsDashed = null;
+        base.OnVariableCacheCleared();
     }
 
     /// <summary>

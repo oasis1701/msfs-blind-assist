@@ -62,19 +62,42 @@ public class FenixV3FixFcuVsTests : IDisposable
         Assert.False(def.ProcessSimVarUpdate(Dashed, 1, speech));
     }
 
+    // The flag mirrors a state, not a baseline. ResetAnnouncementBaselines runs after the reconnect's
+    // first batch has re-delivered every var, and a flight load clears no cache, so an unchanged
+    // announced flag is never delivered again: a wipe on either would let the V/S speak for a whole
+    // managed climb.
     [Fact]
-    public void A_context_reset_forgets_a_stale_dashed_flag()
+    public void A_reconnect_or_flight_load_keeps_the_dashed_flag()
+    {
+        var def = new FenixA320Definition();
+        var speech = new SpeechCapture();
+
+        def.ProcessSimVarUpdate(Dashed, 1, speech);
+        def.ResetAnnouncementBaselines();
+        Assert.True(def.ProcessSimVarUpdate(Vs, 3400, speech));
+
+        def.OnSimContextReset();
+        Assert.True(def.ProcessSimVarUpdate(Vs, 3400, speech));
+
+        def.ProcessSimVarUpdate(Dashed, 0, speech);
+        Assert.False(def.ProcessSimVarUpdate(Vs, 1500, speech));
+    }
+
+    // After a cache clear (a dropped connection) every var re-fires, so the flag is re-read: until it
+    // is, the V/S is not silenced on a stale value.
+    [Fact]
+    public void A_cache_clear_forgets_the_flag_until_it_is_read_again()
     {
         var def = new FenixA320Definition();
         var speech = new SpeechCapture();
 
         def.ProcessSimVarUpdate(Dashed, 1, speech);
         def.OnSimContextReset();
+        def.OnVariableCacheCleared();
         Assert.False(def.ProcessSimVarUpdate(Vs, 1500, speech));
 
         def.ProcessSimVarUpdate(Dashed, 1, speech);
-        def.ResetAnnouncementBaselines();
-        Assert.False(def.ProcessSimVarUpdate(Vs, 1500, speech));
+        Assert.True(def.ProcessSimVarUpdate(Vs, 3400, speech));
     }
 
     [Theory]
