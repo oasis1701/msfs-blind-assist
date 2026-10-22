@@ -6,22 +6,27 @@ using MSFSBlindAssist.Accessibility;
 namespace MSFSBlindAssist.Forms.Fenix;
 
 /// <summary>
-/// Hosts the Fenix A320 EFB web UI (http://localhost:8083/#/efb) in a WebView2.
+/// Hosts the Fenix A320 EFB web UI (http://127.0.0.1:8083/?target=external#/efb) in a
+/// WebView2.
 ///
-/// Unlike the FlyByWire flyPad (FbwEfbForm), the Fenix EFB website is ALREADY
-/// screen-reader accessible when opened in a browser, so there is no scraping,
-/// no accessible-HTML shim, and no Coherent/SimConnect client here — we simply
-/// host the live site. The URL is reachable whenever the Fenix A320 is loaded
-/// in the sim.
+/// The v3 EFB page is NOT screen-reader accessible on its own (spec 8). This window
+/// adds the accessibility layer on top of the live page and catches its dead ends
+/// (pages a screen reader cannot use, a failed load) instead of leaving a blind user
+/// in them. The URL is reachable whenever the Fenix A320 is loaded in the sim.
 ///
 /// On a navigation failure (aircraft still loading, server not up, transient
-/// hiccup) the form swaps the browser for an accessible retry panel and speaks
-/// the failure, so a blind user gets clear feedback instead of WebView2's raw
-/// error page.
+/// hiccup) the form swaps the browser for an accessible retry panel, with the failure
+/// text in a tabbable read-only TextBox, and speaks the failure, so a blind user gets
+/// clear feedback instead of WebView2's raw error page.
 /// </summary>
 public class FenixEFBForm : Form
 {
-    private const string EfbUrl = "http://localhost:8083/#/efb";
+    // Plan 03, owner decision 1: the external target, named explicitly. The page's own
+    // target detection already falls back to external for WebView2; pinning it removes
+    // that reliance (Tab and the paging keys reach the page, no simulated sleep).
+    // Decision 2: 127.0.0.1, never localhost ([A320-40]) - the gateway listens on IPv4
+    // only, and a client that tries ::1 first pays for the refusal on every new connection.
+    internal const string EfbUrl = "http://127.0.0.1:8083/?target=external#/efb";
 
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
@@ -30,7 +35,7 @@ public class FenixEFBForm : Form
 
     private WebView2 _webView = null!;
     private Panel _errorPanel = null!;
-    private Label _errorLabel = null!;
+    private TextBox _errorBox = null!;
     private Button _retryButton = null!;
     private bool _webViewReady;
     private IntPtr _previousWindow = IntPtr.Zero;
@@ -83,15 +88,23 @@ public class FenixEFBForm : Form
         {
             Text = "&Retry",
             AutoSize = true,
-            Location = new System.Drawing.Point(12, 60),
+            Location = new System.Drawing.Point(12, 120),
         };
         _retryButton.Click += (_, _) => Navigate();
 
-        _errorLabel = new Label
+        // Read-only multiline TextBox, not a Label: the status text must be a
+        // tab-stoppable control so a screen reader can review the failure text on
+        // demand ([VAT-13]); same build as IFlyEfbForm's.
+        _errorBox = new TextBox
         {
-            AutoSize = true,
-            MaximumSize = new System.Drawing.Size(700, 0),
             Location = new System.Drawing.Point(12, 12),
+            Size = new System.Drawing.Size(700, 100),
+            Multiline = true,
+            ReadOnly = true,
+            TabStop = true,
+            ScrollBars = ScrollBars.Vertical,
+            BorderStyle = BorderStyle.FixedSingle,
+            AccessibleName = "Fenix EFB status message",
             Text = NotReachableMessage,
         };
 
@@ -101,13 +114,14 @@ public class FenixEFBForm : Form
             Visible = false,
             AccessibleName = "Fenix EFB status",
         };
-        _errorPanel.Controls.Add(_errorLabel);
+        _errorPanel.Controls.Add(_errorBox);
         _errorPanel.Controls.Add(_retryButton);
         Controls.Add(_errorPanel);
     }
 
-    private const string NotReachableMessage =
-        "Fenix EFB is not reachable at http://localhost:8083. " +
+    // Names the address the window tried (decision 2), so the failure text says where it looked.
+    internal const string NotReachableMessage =
+        "Fenix EFB is not reachable at http://127.0.0.1:8083. " +
         "Make sure the Fenix A320 is fully loaded, then press Retry.";
 
     private async Task InitWebViewAsync()
@@ -183,7 +197,7 @@ public class FenixEFBForm : Form
 
     private void ShowError(string message)
     {
-        _errorLabel.Text = message;
+        _errorBox.Text = message;
         _webView.Visible = false;
         _errorPanel.Visible = true;
         _retryButton.Focus();
