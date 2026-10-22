@@ -299,6 +299,134 @@ Why: `S_FCU_EFISn_BARO_STD` is the baro knob's push/pull counter, not a state: a
 - [ ] **Step 2:** Owner-in-sim checks below (stop and ask the owner; build only with MSFSBA closed, CORE-3).
 - [ ] **Step 3:** Fill in the results under "Handoff to plan 12" (measured values, decision outcomes) and hand back the branch. Done except the measured values, which wait for Step 2.
 
+## Follow-up from in-sim check 1 (2026-10-22, IAE A321 with two ACTs, 30 s crank)
+
+**What was measured** (a reads-only recorder polling the data service twice a second, a raw `dataRefs`
+subscription held through a start and a shutdown, and MSFSBA's debug.log; the owner flew the flows):
+- The `dataRefs` subscription (`FenixDataQueries.SubscriptionQuery`, the same one the Fenix EFB uses) sends
+  `aircraft.engines.{n}.n2` ONCE, when it opens, and never again: one value through a whole shutdown (62.3 % to
+  5 %). Opened cold and dark, even that first value fails (`Any cannot coerce the runtime value of type
+  System.Double`; a query answers null there). The running flags (on change), EGT (about every second while it
+  moves) and the fuel total (every 2 s) do stream. So the FO never had the Fenix's N2 (every trace line:
+  "Fenix N2 unread, source stock"), and plan 09's Engines window keeps its first N2 until F5.
+- A query (`ReadManyAsync`) answers fresh N2 every time, and null (unknown) while an engine is off.
+- Start (FO Engine Start flow): master ON to the Fenix `running` flag about 66 s per engine (fuel on after a 27-29 s
+  dry crank at N2 26 %; flag at N2 62.1 / 62.4 %, the idle, 6.3 / 6.8 s after N2 passed 55 %). The 180 s wait holds
+  with room for the 50 s crank. Stock N2 passed 55 % within a second of the flag: right by luck.
+- Shutdown: stock N2 went from 72.9 % to 0 % one second after each master went off; the Fenix N2 took about 20 s to
+  fall below 20 %; the `running` flag went false at once. The FO's "Engines stopped" passed at 13:59:08 on stock N2,
+  5 and 7 s before the Fenix's engines 1 and 2 were below 20 %, and the fuel pumps went off at 13:59:11.
+- APU: the START `_L` light lit through the start, then `_U` lit and `_L` went out at AVAIL: `_U` is AVAIL on v3,
+  as on v2 (FO-11 holds).
+
+**Owner decision (2026-10-22):** fix it all ("any and all changes needed"): the FO reads N2 by a once-a-second query,
+judges "running" on the Fenix's own flag (N2 55 % the fallback), keeps "stopped" on N2 < 20 % now from the Fenix,
+and plan 09's window keeps its numbers fresh the same way (plan 09 is done; follow-up approved).
+
+**Global constraints (in addition to the plan's):** new names only from this plan and plan 09 (FNX-3); polling runs
+on the thread pool and only ever stores (FNX-2); an unknown poll answer is unknown, never 0 (FNX-1); the running
+flag never reaches the Engines window from a poll (the subscription's flag is newer, and a stale poll would speak a
+false "stopped"). Files: `MSFSBlindAssist/Services/FenixDataPoller.cs` (new, plan 01's `Services/FenixData*.cs`
+family, written after plan 01 closed), the plan 05 files, `MSFSBlindAssist/Services/FenixEngineNames.cs` and
+`MSFSBlindAssist/Forms/Fenix/FenixEnginesForm.cs` (plan 09's, done), and their tests.
+
+**Review focus:** (1) the gateway down or the Fenix not loaded: every poll answers unknown, N2 falls back to stock,
+running to N2, nothing throws or floods the log; (2) a switch or the FO window closing while a poll is in flight: the
+answer is dropped (generation) and the poller stops; (3) cold and dark: N2 unknown, "Engines: OFF" still from stock 0;
+(4) a shutdown: "running" goes false at master-off, "stopped" waits for the Fenix's N2 < 20 % (about 20 s, inside the
+120 s wait); (5) the Engines window: no false "Engine n stopped" or "running" from a poll.
+
+### Task 10: A poller for values the subscription does not stream
+
+**Files:** Create `MSFSBlindAssist/Services/FenixDataPoller.cs`; test `tests/MSFSBlindAssist.Tests/FenixDataPollerTests.cs`.
+
+**Interfaces:**
+- Produces (namespace `MSFSBlindAssist.Services`): `public sealed class FenixDataPoller : IDisposable` with
+  `public static readonly TimeSpan DefaultInterval = TimeSpan.FromSeconds(1);`,
+  `public FenixDataPoller(IReadOnlyList<string> names, Func<IReadOnlyList<string>, CancellationToken, Task<IReadOnlyDictionary<string, FenixDataValue>>> read, Action<string, FenixDataValue> onValue, TimeSpan? interval = null)`,
+  `public void Start()` (starts one loop on the thread pool; a second call, or a call after Dispose, does nothing;
+  no names: never reads), `public Task PollOnceAsync(CancellationToken ct = default)` (one read, then `onValue` for
+  each of `names` the answer holds, in `names` order; a read or `onValue` that throws is swallowed, logged once with
+  `Log.Debug("FenixData", …)`), `public void Dispose()` (cancels the loop; idempotent; never throws). The loop is
+  poll, then wait `interval`, so the first read is immediate and reads never overlap. The read's token is cancelled
+  by Dispose.
+
+- [ ] **Step 1: Write the failing tests** (`FenixDataPollerTests`): `PollOnce_hands_each_answered_name_to_the_callback_in_order`
+  (names a, b; answer a = Number 1, b = Unknown: callback gets a then b, b unknown); `PollOnce_swallows_a_failing_read`
+  (read throws: no callback, no exception); `Start_polls_until_disposed` (interval 10 ms: at least 3 reads within 5 s;
+  after Dispose and 200 ms, at most one more read started); `Reads_never_overlap` (a read held open by a gate: after
+  200 ms with interval 1 ms, one read started); `Start_twice_runs_one_loop_and_Start_after_Dispose_never_reads`;
+  `No_names_never_reads`; `Dispose_cancels_the_reads_token`.
+- [ ] **Step 2: Run them; they fail to compile.** `--filter "FullyQualifiedName~FenixDataPollerTests"`
+- [ ] **Step 3: Implement** the class as specified.
+- [ ] **Step 4: Run the class and the whole suite; all pass.**
+- [ ] **Step 5: Commit.** `feat(fenix): a data-service poller for values the subscription does not stream`
+
+### Task 11: The First Officer reads the Fenix's N2 once a second
+
+**Files:** Modify `MSFSBlindAssist/FirstOfficer/Fenix/FenixFoLiveReadings.cs`, `FenixStateEvaluator.cs`; tests
+`tests/MSFSBlindAssist.Tests/FirstOfficer/FenixFoLiveReadingsTests.cs`, `FenixFoEngineRunningTests.cs`.
+
+**Interfaces:**
+- Consumes: Task 10's `FenixDataPoller`; `FenixDataService.ReadManyAsync(IReadOnlyList<string>, CancellationToken)`.
+- Produces: `FenixFoLiveReadings.SubscribedNames` = `Engine1Running, Engine2Running, CabinReadyName, FuelTotalKgName`
+  and `FenixFoLiveReadings.PolledNames` = `Engine1N2, Engine2N2` (`Names` stays the six, documented as every name the
+  FO reads). `internal void AttachFenix(object? source, Func<FenixVariant>? variant, Func<IReadOnlyList<string>, Action<string, FenixDataValue>, IDisposable>? subscribe, Func<IReadOnlyList<string>, CancellationToken, Task<IReadOnlyDictionary<string, FenixDataValue>>>? read = null)`:
+  subscribes `SubscribedNames`; with a `read`, starts a `FenixDataPoller(PolledNames, read, (n, v) => Deliver(generation, n, v))`;
+  a switch or detach disposes the poller with the subscription. The public `AttachFenix(FenixA320Definition?)` passes
+  `(names, ct) => definition.DataService.ReadManyAsync(names, ct)`. Comments say why N2 is polled (the measurement above).
+- [ ] **Step 1: Write the failing tests:** `Attach_subscribes_the_streamed_names_and_polls_N2` (the fake subscribe sees
+  `SubscribedNames`; a fake read is called with `PolledNames`); `A_polled_N2_reaches_the_engine_fields` (read answers
+  62.3 / 62.4: `FO_ENG1_N2` 62.3 over stock 72.4 once the first read is in); `A_polled_null_N2_falls_back_to_stock`
+  (answer `Kind.Null`, stock 0: `FO_ENG1_N2` 0, `FO_ENGINES_OFF` 1); `A_poll_answer_after_a_switch_is_dropped` (a read
+  held open, then `AttachFenix(otherSource, …)`, then the read answers 62.3: `FO_ENG1_N2` is stock; the held read's
+  token is cancelled). Update `Attach_subscribes_once_per_source_and_detaches_on_null` to `SubscribedNames`.
+- [ ] **Step 2: Run them; they fail.**
+- [ ] **Step 3: Implement.**
+- [ ] **Step 4: Run `FenixFo*`, `FoPollSilenceTests`, `FoEngineAndGroundGuardTests`, `FoCutGuardSweepTests` and the whole suite.**
+- [ ] **Step 5: Commit.** `fix(fo-fenix): read the Fenix's N2 once a second (the subscription sends it only once)`
+
+### Task 12: "Running" is the Fenix's own flag
+
+**Files:** Modify `FenixStateEvaluator.cs`, `FenixFlowDefinitions.cs` (the two start waits, ~line 300 and 304),
+`FenixChecklistDefinitions.cs` (`ES_ENG1_RUN` / `ES_ENG2_RUN`, ~lines 237 and 241); tests `FenixFoEngineRunningTests.cs`,
+`FenixFlowParityTests.cs`.
+
+**Interfaces:**
+- Produces: synthetic `FO_ENG1_RUNNING` / `FO_ENG2_RUNNING` (the A32NX's names): the Fenix flag (1 or 0) while known,
+  else `FO_ENG{n}_N2 >= EngineRunningN2` (1 or 0) while that is known, else NaN; a pure
+  `internal static double RunningValue(double fenixFlag, double resolvedN2)`. Both start waits wait on
+  `FO_ENG{n}_RUNNING` with `v => v > 0.5` (step ids, labels, timeout and Stop unchanged); both checklist lines read
+  `FO_ENG{n}_RUNNING` with `v > 0.5`. "Stopped" (`FO_ENGINES_OFF`, N2 < 20 %) is unchanged. Comments give the measured
+  flag (IAE 62.1 / 62.4 % at idle, 6-7 s after 55 %; CFM 59.2 %, about 4 s after, plan 09) and the A32NX precedent.
+- [ ] **Step 1: Write the failing tests:** `Running_is_the_Fenixs_own_flag_while_known` (flag true with N2 50 gives 1;
+  flag false with N2 62 gives 0); `Running_falls_back_to_N2_when_the_flag_is_unknown` (flag unknown: stock 61.4 gives 1,
+  50 gives 0; both unknown gives NaN); `RunningValue` theory over those pairs; in `FenixFlowParityTests` the start
+  waits read `FO_ENG{n}_RUNNING`, their condition holds at 1 and not at 0, and `ConditionFieldName` still equals the
+  running line's `StateFieldName`.
+- [ ] **Step 2: Run; they fail.**
+- [ ] **Step 3: Implement**; remove `FenixFlowDefinitions.EngRunningN2` if nothing reads it.
+- [ ] **Step 4: Run `FenixFo*`, `FenixFlowParityTests`, `A320Family*`, the sweep and the whole suite.**
+- [ ] **Step 5: Commit.** `fix(fo-fenix): engine running is the Fenix's own flag, as on the A32NX (N2 55 % the fallback)`
+
+### Task 13: The Engines window keeps its numbers fresh (plan 09 follow-up)
+
+**Files:** Modify `MSFSBlindAssist/Services/FenixEngineNames.cs`, `MSFSBlindAssist/Forms/Fenix/FenixEnginesForm.cs`;
+test `tests/MSFSBlindAssist.Tests/FenixEngineWindowTests.cs` (or the existing names test).
+
+**Interfaces:**
+- Consumes: Task 10's `FenixDataPoller`.
+- Produces: `FenixEngineNames.Polled`: `All` without the two `running` names (16, in `All` order). The window starts a
+  `FenixDataPoller(FenixEngineNames.Polled, (n, ct) => _context.Data.ReadManyAsync(n, ct), _snapshot.Apply)` where it
+  subscribes, and disposes it wherever it disposes `_subscription`. The running flag keeps coming from the
+  subscription and the open/F5 read only.
+- [ ] **Step 1: Write the failing test** `Polled_is_every_value_but_the_running_flags` (16 names, none ending
+  `.running`, `All` order).
+- [ ] **Step 2: Run; it fails.**
+- [ ] **Step 3: Implement** the list and the window wiring (sim-facing: no unit test, CORE-5).
+- [ ] **Step 4: Run `FenixEngine*` and the whole suite.**
+- [ ] **Step 5: Commit.** `fix(fenix): the Engines window reads its numbers once a second (the subscription sends N2 only once)`
+
 ## Owner-in-sim checks (few, prioritised)
 
 Anyone with MSFS 2024 and the Fenix v3 can run these (the owner or a collaborator). Build `FenixV3` with MSFSBA closed
