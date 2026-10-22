@@ -1,6 +1,6 @@
 # Fenix Variants Implementation Plan (plan 06)
 
-**Claimed by:** danielw97 · **Status:** in progress
+**Claimed by:** danielw97 · **Status:** done (2026-10-22: code, reviews and the owner's in-sim checks on the A321 IAE SC and an A320 CFM; see "Results")
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -91,7 +91,7 @@ Not variant-dependent (checked): `S_STANDBY_COMPASS` (both standby types), the A
 - Consumes: plan 01's `partial void AddVariantVariables(Dictionary<string, SimConnect.SimVarDefinition>)`, called after the readout twins; `partial void AddVariantPanelControls(Dictionary<string, List<string>>)`.
 - Produces: `internal const string EconFlowName = "Econ Flow";` and `internal const string ActPumpName = "ACT Pump";` on `FenixA320Definition`.
 
-- [ ] **Step 1: Write the failing tests** (class `FenixVariantControlsTests`; style of `FenixAcpReceptionTests`: one static `new FenixA320Definition()`, `GetVariables()`, `GetPanelControls()`).
+- [x] **Step 1: Write the failing tests** (class `FenixVariantControlsTests`; style of `FenixAcpReceptionTests`: one static `new FenixA320Definition()`, `GetVariables()`, `GetPanelControls()`).
   - `Switches_are_on_request_and_lights_are_announced`:
     - `S_OH_PNEUMATIC_ECON_FLOW` and `S_OH_FUEL_ACT`: `LVar`, `OnRequest`, values exactly `{0:"Off",1:"On"}`, `RenderAsButton` false.
     - `S_OH_CALLS_MID` and `S_OH_CALLS_EXIT`: `LVar`, `OnRequest`, `RenderAsButton` true, labels "Calls Mid" and "Calls Exit".
@@ -107,13 +107,13 @@ Not variant-dependent (checked): `S_STANDBY_COMPASS` (both standby types), the A
     - In "Fuel", `S_OH_FUEL_ACT` comes straight after `S_OH_FUEL_CENTER_2`.
     - Across all panels, each of the four switches appears exactly once, and no light appears in any panel (VAR-6).
   - `Touched_panels_repeat_no_label`: in those three panels, the `DisplayName`s of the listed keys are distinct.
-- [ ] **Step 2: Run them; they fail.** `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64 --filter FenixVariantControlsTests`. Expected: failures on missing keys (`KeyNotFoundException`).
-- [ ] **Step 3: Implement `AddVariantVariables` and `AddVariantPanelControls`** in a `public partial class FenixA320Definition` (namespace `MSFSBlindAssist.Aircraft`), opening with a comment that cites spec 3 and the evidence table.
+- [x] **Step 2: Run them; they fail.** `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64 --filter FenixVariantControlsTests`. Expected: failures on missing keys (`KeyNotFoundException`).
+- [x] **Step 3: Implement `AddVariantVariables` and `AddVariantPanelControls`** in a `public partial class FenixA320Definition` (namespace `MSFSBlindAssist.Aircraft`), opening with a comment that cites spec 3 and the evidence table.
   - Register the nine definitions with `variables.Add`. Use `OffOn` for the switch and light values.
   - Read the N1 MODE light labels from `variables["S_OH_ENG_N1_MODE_n"].DisplayName`.
   - Place the switches by `IndexOf(anchor) + 1` on the existing lists. A missing anchor throws `InvalidOperationException` naming it: a silent append would hide a changed panel.
-- [ ] **Step 4: Run the filter, then the whole suite.** Same command without `--filter`. Expected: all green, `VarNameCollisionTests`, `ComboLabelCollapseTests`, `ClaudeContextBudgetTests` and plan 01's `FenixDefinitionSeamTests` (it pins no totals) included. Any failure is yours to fix.
-- [ ] **Step 5: Commit.** `git add` both files; message `feat(fenix): A321 ECON FLOW and CALLS MID/EXIT, ACT PUMP, IAE N1 MODE lights`.
+- [x] **Step 4: Run the filter, then the whole suite.** Same command without `--filter`. Expected: all green, `VarNameCollisionTests`, `ComboLabelCollapseTests`, `ClaudeContextBudgetTests` and plan 01's `FenixDefinitionSeamTests` (it pins no totals) included. Any failure is yours to fix.
+- [x] **Step 5: Commit.** `git add` both files; message `feat(fenix): A321 ECON FLOW and CALLS MID/EXIT, ACT PUMP, IAE N1 MODE lights`.
 
 ### Task 2: Show only what the loaded variant has
 
@@ -125,7 +125,7 @@ Not variant-dependent (checked): `S_STANDBY_COMPASS` (both standby types), the A
 - Consumes: `FenixVariant`, enums, `FenixVariant.Unknown`, the instance's `Variant`; plan 01's `partial void IsVariantControlVisible(string varKey, ref bool visible)`, which `IsPanelControlVisible` calls.
 - Produces: `internal static bool IsFitted(string varKey, FenixVariant variant)`, true unless the variant's own field for that key says the airframe lacks it (the evidence table's last column); `true` for every key the table does not name.
 
-- [ ] **Step 1: Write the failing tests.** Add a helper `static FenixVariant V(int type, int engine, int? act, bool? isis, bool? dcdu, bool? neo, bool? gnadirs) => new((FenixAircraftType)type, (FenixEngineFamily)engine, act, isis, dcdu, neo, gnadirs);` so the measured raw values appear in the tests.
+- [x] **Step 1: Write the failing tests.** Add a helper `static FenixVariant V(int type, int engine, int? act, bool? isis, bool? dcdu, bool? neo, bool? gnadirs) => new((FenixAircraftType)type, (FenixEngineFamily)engine, act, isis, dcdu, neo, gnadirs);` so the measured raw values appear in the tests.
   - `A321_iae_with_act_as_read_on_2026_10_21`: `V(4, 1, 2, true, false, false, false)`.
     - Fitted: ECON FLOW, CALLS MID, CALLS EXIT, `S_OH_FUEL_ACT`, both N1 MODE switches, `S_OH_NAV_IR1_SWITCH`, `S_MIP_ISFD_BUGS`, `S_OH_ELEC_BAT1`.
     - Not fitted: `S_OH_PNEUMATIC_PACK_FLOW`, `S_OH_ADIRS_KEY_0`, `S_OH_NAV_DATA_DISP`, `S_DCDU1_LSK1L`, `S_DCDU2_DIM_BRT`, `S_STANDBY_ATTITUDE_CAGE`.
@@ -139,10 +139,10 @@ Not variant-dependent (checked): `S_STANDBY_COMPASS` (both standby types), the A
   - `Unknown_variant_fits_every_panel_control`: for `FenixVariant.Unknown`, `IsFitted` is true for every key in every list of `GetPanelControls()`. On a fresh definition (Variant Unknown), `IsPanelControlVisible(key, null)` is true for the same keys, which proves the seam is wired.
   - `Each_control_reads_only_its_own_field`: `V(4, -1, null, null, null, null, null)` fits `S_OH_FUEL_ACT`, both N1 MODE switches, `S_OH_ADIRS_KEY_0`, `S_OH_NAV_IR1_SWITCH`, `S_DCDU1_PRINT`, `S_MIP_ISFD_LS` and `S_STANDBY_ATTITUDE_CAGE`, and does not fit PACK FLOW. `V(0, 0, 2, null, null, null, null)` fits ECON FLOW and PACK FLOW (type unknown), and does not fit N1 MODE.
   - `Unmeasured_engine_families_keep_n1_mode`: engines 2 and 3 (`CfmLeap`, `PwGtf`) with `neo: true` fit both N1 MODE switches, and the NEO flag changes no other answer in the A321 case.
-- [ ] **Step 2: Run them; they fail to compile** (no `IsFitted`). Same filter command.
-- [ ] **Step 3: Implement `IsFitted`** as one `switch` on `varKey` with one arm per row of the evidence table (`ActCount is null or > 0`; `!= false` / `!= true` for the booleans; `Type is Unknown or A321` for A321-only; `Type != A321` for PACK FLOW; `Engine != Cfm56` for N1 MODE), `_ => true`. **Implement `IsVariantControlVisible`** as `if (!IsFitted(varKey, Variant)) visible = false;`.
-- [ ] **Step 4: Run the filter, then the whole suite; all pass.**
-- [ ] **Step 5: Commit.** `feat(fenix): hide the controls the loaded Fenix variant lacks`.
+- [x] **Step 2: Run them; they fail to compile** (no `IsFitted`). Same filter command.
+- [x] **Step 3: Implement `IsFitted`** as one `switch` on `varKey` with one arm per row of the evidence table (`ActCount is null or > 0`; `!= false` / `!= true` for the booleans; `Type is Unknown or A321` for A321-only; `Type != A321` for PACK FLOW; `Engine != Cfm56` for N1 MODE), `_ => true`. **Implement `IsVariantControlVisible`** as `if (!IsFitted(varKey, Variant)) visible = false;`.
+- [x] **Step 4: Run the filter, then the whole suite; all pass.**
+- [x] **Step 5: Commit.** `feat(fenix): hide the controls the loaded Fenix variant lacks`.
 
 ### Task 3: Write the new controls; refuse a control the variant lacks
 
@@ -157,18 +157,18 @@ Not variant-dependent (checked): `S_STANDBY_COMPASS` (both standby types), the A
   - `internal const string NotFittedMessage = "Not fitted on this aircraft.";`
   - `internal static bool TryRefuseNotFitted(string varKey, FenixVariant variant, Accessibility.ScreenReaderAnnouncer announcer)`: when `!IsFitted`, speaks `NotFittedMessage` with `AnnounceImmediate` and returns true; otherwise it is silent and returns false.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - `Not_fitted_control_is_refused_aloud`: with the A321 case from Task 2, `TryRefuseNotFitted("S_OH_PNEUMATIC_PACK_FLOW", a321, speech)` is true and `speech.Interrupts` equals `["Not fitted on this aircraft."]`. With the A320 case, `TryRefuseNotFitted("S_OH_CALLS_MID", …)` is true. With the A321 case, `TryRefuseNotFitted("S_OH_PNEUMATIC_ECON_FLOW", …)` is false and nothing is spoken.
   - `Unknown_variant_refuses_nothing`: for every panel key, `TryRefuseNotFitted(key, FenixVariant.Unknown, speech)` is false and `speech.All` is empty.
   - `New_latched_switches_are_handled_silently`: on a fresh definition with a disconnected manager (`new SimConnectManager(IntPtr.Zero)`), `HandleUIVariableSet("S_OH_PNEUMATIC_ECON_FLOW", 1, …)` and `HandleUIVariableSet("S_OH_FUEL_ACT", 0, …)` both return true, and `speech.All` is empty. Not the CALLS buttons: their WinForms timers need a message loop.
-- [ ] **Step 2: Run them; they fail to compile.**
-- [ ] **Step 3: Implement `TryRefuseNotFitted` and `HandleVariantUIVariableSet`.**
+- [x] **Step 2: Run them; they fail to compile.**
+- [x] **Step 3: Implement `TryRefuseNotFitted` and `HandleVariantUIVariableSet`.**
   - First, if `TryRefuseNotFitted(varKey, Variant, announcer)`, set `handled = true` and return. This covers existing keys too: PACK FLOW on an A321 never reaches the main handler.
   - Then: `S_OH_PNEUMATIC_ECON_FLOW` and `S_OH_FUEL_ACT` call `simConnect.SetLVar(varKey, value)`.
   - `S_OH_CALLS_MID` and `S_OH_CALLS_EXIT`, when `value == 1`, call `ExecuteButtonTransition(varKey, varDef.DisplayName, simConnect, announcer)`.
   - Each of those sets `handled = true`. Every other key leaves `handled` false.
-- [ ] **Step 4: Run the filter, then the whole suite; all pass. Build the solution:** `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64`. Expected: 0 errors.
-- [ ] **Step 5: Commit.** `feat(fenix): write ECON FLOW, ACT PUMP and CALLS MID/EXIT; refuse controls the variant lacks`.
+- [x] **Step 4: Run the filter, then the whole suite; all pass. Build the solution:** `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64`. Expected: 0 errors.
+- [x] **Step 5: Commit.** `feat(fenix): write ECON FLOW, ACT PUMP and CALLS MID/EXIT; refuse controls the variant lacks`.
 
 ### Task 4 (decided: the owner answered Q1 yes, 2026-10-21; index answer 12): speak the variant once
 
@@ -180,19 +180,19 @@ Not variant-dependent (checked): `S_STANDBY_COMPASS` (both standby types), the A
 - Consumes: `VariantChanged` (raised on the UI thread), `FenixVariant.IsKnown`, `FenixVariant.Describe()`, the main file's private `lastAnnouncer` (FenixA320Definition.cs:67, set by `ProcessSimVarUpdate`).
 - Produces: `internal static string? VariantSpeech(string? lastSpokenText, FenixVariant now)`, returning `now.Describe()` when `now.IsKnown` and that text differs from `lastSpokenText`, else null. The config values arrive one per `ProcessSimVarUpdate` call within the same batch, so `VariantChanged` fires several times in a row: speech waits for a 1 s quiet period (a WinForms `Timer` restarted on each change) and then compares the text, so one load is spoken once and a field the sentence does not mention (ISIS, DCDU) never re-speaks it.
 
-- [ ] **Step 1: Write the failing test** `Variant_is_spoken_once_per_distinct_known_variant`, run under `CultureInfo.CurrentCulture = new CultureInfo("de-DE")`:
+- [x] **Step 1: Write the failing test** `Variant_is_spoken_once_per_distinct_known_variant`, run under `CultureInfo.CurrentCulture = new CultureInfo("de-DE")`:
   - `VariantSpeech(null, FenixVariant.Unknown)` is null.
   - `VariantSpeech(null, a321)` == `a321.Describe()`.
   - `VariantSpeech(a321.Describe(), a321)` is null.
   - `VariantSpeech(a321.Describe(), a321 with { HasIsis = false })` is null (the sentence does not change).
   - `VariantSpeech(a321.Describe(), a321 with { ActCount = 0 })` is not null.
-- [ ] **Step 2: Run it; it fails to compile.**
-- [ ] **Step 3: Implement.**
+- [x] **Step 2: Run it; it fails to compile.**
+- [x] **Step 3: Implement.**
   - `VariantSpeech`, plus a private `string? _spokenVariantText` and a 1 s one-shot `System.Windows.Forms.Timer` restarted on each `VariantChanged`; its Tick speaks `VariantSpeech(_spokenVariantText, Variant)` once (queued `Announce`, CORE-7 background change) and stores the text.
   - In `AddVariantVariables` (runs once per instance), subscribe a handler, unsubscribing it first (`VariantChanged -= OnVariantKnown; VariantChanged += OnVariantKnown;`). The handler speaks `VariantSpeech(_spokenVariant, v)` through `lastAnnouncer?.Announce`, then records `_spokenVariant`.
   - Implement `partial void OnFenixSwitchedAway()`: unsubscribe, stop and dispose the timer, clear `_spokenVariantText`.
-- [ ] **Step 4: Run the filter and the suite; all pass.**
-- [ ] **Step 5: Commit.** `feat(fenix): say which Fenix variant is loaded, once`.
+- [x] **Step 4: Run the filter and the suite; all pass.**
+- [x] **Step 5: Commit.** `feat(fenix): say which Fenix variant is loaded, once`.
 
 ### Task 5: Headset, clock, ISIS baro push and aft cargo temperature (owner request 2026-10-21, measured live the same day)
 
@@ -220,7 +220,7 @@ Why: the parity principle (index): a sighted pilot can work these four in the Fe
 - Consumes: plan 01's `AddVariantPanelStructure`, `AddVariantPanelDisplayVariables`, `TryVariantDisplayOverride` and `FenixVariant.HasCargoHeat`; Tasks 1-3's `AddVariantVariables`, `AddVariantPanelControls`, `IsFitted`, `HandleVariantUIVariableSet`.
 - Produces: `internal const string ClockPanel = "Clock";`, `internal static string ChronometerText(double seconds)` and `internal static string ElapsedTimeText(double minutes)`: a negative value gives "Reset"; otherwise `$"{m} minutes {s} seconds"` from whole seconds and `$"{h} hours {m} minutes"` from whole minutes (the FBW A320's texts; the Fenix's units differ, as measured).
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - `New_cockpit_controls_are_registered` (each `LVar`, `OnRequest`, `Name` equal to its key):
     - `A320_Sound:Headset_On`: label "Headset", values `{0:"Off",1:"On"}`.
     - Buttons (`RenderAsButton` true): `S_MIP_CLOCK_CHR` "Chronometer Start/Stop", `S_MIP_CLOCK_RST` "Chronometer Reset", `S_MIP_CLOCK_SET` "Date", `S_MIP_ISFD_BARO_BUTTON` "ISIS Baro Push".
@@ -235,8 +235,8 @@ Why: the parity principle (index): a sighted pilot can work these four in the Fe
   - `Clock_display_texts_use_the_fbw_wording`, under `CultureInfo.CurrentCulture = new CultureInfo("de-DE")`: `ChronometerText(-1)` "Reset", `(0)` "0 minutes 0 seconds", `(125)` "2 minutes 5 seconds"; `ElapsedTimeText(-1)` "Reset", `(2)` "0 hours 2 minutes", `(135)` "2 hours 15 minutes". On a fresh definition `TryGetDisplayOverride("N_MIP_CLOCK_CHRONO", 125, out var t)` is true with `t` "2 minutes 5 seconds", and `TryGetDisplayOverride("S_OH_ELEC_BAT1", 1, out _)` is false.
   - `Cargo_heat_controls_follow_the_livery`: with the A321 case from Task 2 plus `HasCargoHeat: false` (as read on 2026-10-21), `S_OH_PNEUMATIC_HOT_AIR_AFT_CARGO` and `A_OH_PNEUMATIC_CARGO_AFT_TEMP` are not fitted; with `true` or `null` both are; `S_OH_PNEUMATIC_CARGO_AFT_ISOL_VALVE` is fitted in all three.
   - `New_switches_are_handled_silently` (the Task 3 harness): `HandleUIVariableSet` returns true and speaks nothing for `A320_Sound:Headset_On` 1, `S_MIP_CLOCK_UTC` 1, `S_MIP_CLOCK_ET` 0 and `A_OH_PNEUMATIC_CARGO_AFT_TEMP` 0.3. Not the buttons and not ET Reset: their WinForms timers need a message loop.
-- [ ] **Step 2: Run them; they fail.** Same filter command as Task 1.
-- [ ] **Step 3: Implement.**
+- [x] **Step 2: Run them; they fail.** Same filter command as Task 1.
+- [x] **Step 3: Implement.**
   - `AddVariantVariables`: register the eight with `variables.Add`. The cargo knob copies `variables["A_OH_PNEUMATIC_AFT_TEMP"].ValueDescriptions`, so the two knobs read the same.
   - `AddVariantPanelControls`: add the "Clock" list and place the other three keys as Step 1 says, by `IndexOf(anchor) + 1` (a missing anchor throws, as in Task 1); the headset with `Add`.
   - `AddVariantPanelStructure`: insert `ClockPanel` after "Landing Gear" in "Main Instrument Panel" (a missing anchor throws). `AddVariantPanelDisplayVariables`: add `ClockPanel` with the two readouts. `TryVariantDisplayOverride`: `N_MIP_CLOCK_CHRONO` → `ChronometerText`, `N_MIP_CLOCK_ELAPSED` → `ElapsedTimeText`, every other key leaves `displayText` null.
@@ -245,16 +245,40 @@ Why: the parity principle (index): a sighted pilot can work these four in the Fe
     - Headset, UTC, the cargo knob, and ET 0 or 1: `simConnect.SetLVar(varKey, value)`.
     - ET 2 (Reset): `SetLVar("S_MIP_CLOCK_ET", 2)`, then after `ButtonPressHoldMs` a one-shot `System.Windows.Forms.Timer` writes 1 (only while `IsConnected`, as `ExecuteButtonTransition` does), because the real knob springs back to Stop. The combo keeps saying Reset until the panel is reopened, and then shows Stop.
     - CHR, RST, DATE and the ISIS push, when `value == 1`: `ExecuteButtonTransition(varKey, varDef.DisplayName, simConnect, announcer)` (A320-3).
-- [ ] **Step 4: Run the filter, then the whole suite; all pass. Build the solution.**
-- [ ] **Step 5: Commit.** `feat(fenix): headset, clock, ISIS baro push and aft cargo temperature on their panels`.
+- [x] **Step 4: Run the filter, then the whole suite; all pass. Build the solution.**
+- [x] **Step 5: Commit.** `feat(fenix): headset, clock, ISIS baro push and aft cargo temperature on their panels`.
 
 ### Task 6: Verify and hand back
 
-- [ ] **Step 1:** `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64` and `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64`. Expected: build 0 errors; every test green.
-- [ ] **Step 2:** `git diff --name-only <base-sha>` lists only `MSFSBlindAssist/Aircraft/FenixA320Definition.Variants.cs` and `tests/MSFSBlindAssist.Tests/FenixVariantControlsTests.cs`.
-- [ ] **Step 3:** Hand back with the section below filled in (commits, test count, the answers to Q1-Q5 if given).
+- [x] **Step 1:** `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64` and `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64`. Expected: build 0 errors; every test green.
+- [x] **Step 2:** `git diff --name-only <base-sha>` lists only `MSFSBlindAssist/Aircraft/FenixA320Definition.Variants.cs` and `tests/MSFSBlindAssist.Tests/FenixVariantControlsTests.cs`.
+- [x] **Step 3:** Hand back with the section below filled in (commits, test count, the answers to Q1-Q5 if given).
 
 ---
+
+## Results (2026-10-22)
+
+**Commits** (FenixV3, base 8c1e4d6da): 07c100e14 (Task 1), d6247e801 (Task 2), b5a08e72b (Task 3), 4596cd9a5 (Task 5), 870f7699e (Task 4), 2f8222697 (rename `TryWritePlain`), 7319efbce (final-review fixes), c1f72e454 (Headset first). Only the two planned files changed. Tests: `FenixVariantControlsTests` 34, full suite 14876 green; solution builds with 0 errors.
+
+**Owner answers:** Q1 yes (Task 4; spoken once, and reloading the same preset stays quiet, confirmed 2026-10-22). Q2 keep "Fenix A320 CEO". Q3 convert (done by plan 02). Q4 no: empty panels stay. Q5 no live rebuild. New on 2026-10-22: CALLS MID/EXIT, the clock CHR/RST/DATE buttons and ISIS Baro Push say "<name> pressed" (`confirmPress: true`, as plan 02 made CALLS MECH/ALL/FWD/AFT), overriding decisions 4 and 10's "silent". Headset is first in Cockpit Other, not last (decision 10): the panel has no physical order and the headset is its most-used control.
+
+**Changes from the plan text**
+- The plain writes (ECON FLOW, ACT PUMP, headset, UTC, ET Run/Stop, cargo knob) go through `TryWritePlain(key, value, writer)`: `SetLVar` cannot run in the test host (no SimConnect dll), so the tests check the writer and the in-sim checks prove the seam.
+- Elapsed Time Reset goes through the existing `PulseSpringSwitch(EtKey, 2, …)`, which also re-reads, so the combo shows Stop again about half a second after Reset (the plan expected "Reset" until the panel is reopened). Proposed rule FNX-k should name `PulseSpringSwitch`.
+- ISIS Baro Push is gated on `HasIsis` like the other ISIS controls: `MainPanel_Standby_Baro_Button` sits under `MainPanel_Standby_ISIS_Visibility` in `fnx-aircraft-320`'s `FNX_32X_Interior_Cockpit_LOD00.gltf`.
+- Task 4: one field `_spokenVariantText`; `VariantChanged` only restarts the 1 s timer, the Tick speaks.
+
+**Live variant reads, "FenixA321 IAE SL SC"** (simconnect MCP): type 4, engine 1, ACT 0, `B_CONFIG_ADIRS` 1, `B_CONFIG_STDBY` 0, `B_CONFIG_DCDU` 0, `B_CONFIG_CARGOMEAT` 1, `B_CONFIG_BRAKEFANS` 1. The single-class preset has no ACT and has cargo heat, unlike the two-class one. ADIRS and BRAKEFANS read fine: the 2026-10-21 nulls were the MCP (closes the plan 01 detection request).
+
+**In-sim results (owner)**
+- A321 IAE SC: the variant is spoken once after "connected… loading". Econ Flow shown, no Pack Flow; Aft Cargo Hot Air and Aft Cargo Temperature shown; no ACT Pump. Calls Mid and Exit say "pressed"; **only Calls Exit chimed** (open: click MID in the virtual cockpit to see whether Fenix chimes MID in the cockpit at all). Engine N1 Mode 1 on/off works. ADIRS shows IR Push, no keypad; DCDU Left empty; ISIS has its controls; Standby Instruments only the compass. Headset works. Chronometer runs and reads in the Clock display; Elapsed Time Reset springs back to Stop. ISIS Baro Push says "pressed", no readable effect (expected).
+- A320 CFM: no Econ Flow, Calls without Mid/Exit, Standby Instruments as expected for its standby type.
+
+**For plan 12, from the final review**
+- The Clock display rows read "CLOCK CHRONO"/"CLOCK ELAPSED" from the main file's `DisplayName`s (FenixA320Definition.cs ~:6763, :6771), not the FBW A320's "Chronometer"/"Elapsed Time" (decision 10). Renaming them also changes the Ctrl+M rows.
+- UTC Selector "Set" has no follow-through until the SET encoder `E_MIP_CLOCK_SET` is added; the guide should say so.
+- Ctrl+M announcements of CHRONO/ELAPSED, if unmuted, speak raw values (they do not use `TryGetDisplayOverride`). Pre-existing.
+- The First Officer's `PF_PACKFLOW` step (FenixChecklistDefinitions.cs ~:126) is not variant-gated; the FO writes directly, so no refusal happens (plan 05).
 
 ## Handoff to plan 12
 
