@@ -5,9 +5,9 @@ namespace MSFSBlindAssist.Forms.Fenix;
 
 // The Cabin window's Audio page (plan 08 Task 8): boarding music with its channel and volume, the prerecorded
 // announcements and the memo they are queued in, the announcement set, and the FAP loudspeaker volume.
-// It plugs into the shell (FenixCabinForm.cs) through BuildAudioTab and UpdateAudioControls and sends only
-// through the shell's RunMutationAsync (the FAP's audio mutations) and RunWriteAsync (the loudspeaker
-// volume), which say "The Fenix is not answering." and "The Fenix did not accept that." themselves.
+// It plugs into the shell (FenixCabinForm.cs) through BuildAudioTab, UpdateAudioLists and UpdateAudioControls
+// and sends only through the shell's RunMutationAsync (the FAP's audio mutations) and RunWriteAsync (the
+// loudspeaker volume), which say "The Fenix is not answering." and "The Fenix did not accept that." themselves.
 //
 // Every handler checks in this order (rulings R13, R14): the Fenix not answering, an unknown value, then
 // the limits. Speech (CORE-7): a check box, a combo and a list say their own state, so those presses have
@@ -29,8 +29,8 @@ public sealed partial class FenixCabinForm
     private FlowLayoutPanel _setPanel = null!;
     private ComboBox _setCombo = null!;
 
-    // The announcements and the memo as the lists show them, so a press acts on the row the pilot selected
-    // even when a later read has already changed the state (the lists wait while a control is held).
+    // The announcements and the memo as the lists show them, so a press acts on the row the pilot selected.
+    // They are set on every render (UpdateAudioLists), so they are never older than the last render.
     private IReadOnlyList<FenixCabinItem> _shownAnnouncements = Array.Empty<FenixCabinItem>();
     private IReadOnlyList<FenixCabinItem> _shownMemo = Array.Empty<FenixCabinItem>();
 
@@ -177,6 +177,19 @@ public sealed partial class FenixCabinForm
 
     // ---- Setting the controls from the audio state ----------------------------------------------
 
+    // On every render, also while the controls are held (the shell calls it before the hold): a list is the
+    // data a press acts on, so it follows the Fenix at once. Only a check box or a combo flips back and
+    // needs the hold. Rewritten in place, so the pilot's selection stays.
+    partial void UpdateAudioLists()
+    {
+        FenixCabinPramState? pram = _pram;
+
+        _shownAnnouncements = pram?.Announcements ?? Array.Empty<FenixCabinItem>();
+        _announcementsList.SetLines(_shownAnnouncements.Select(item => item.Name).ToArray());
+        _shownMemo = pram?.Memo ?? Array.Empty<FenixCabinItem>();
+        _memoList.SetLines(_shownMemo.Select(item => item.Name).ToArray());
+    }
+
     partial void UpdateAudioControls()
     {
         FenixCabinPramState? pram = _pram;
@@ -185,13 +198,6 @@ public sealed partial class FenixCabinForm
         if (_musicBox.Checked != music) _musicBox.Checked = music;
 
         UpdateChannelCombo(pram);
-
-        // Rewritten in place, so the pilot's selection stays.
-        _shownAnnouncements = pram?.Announcements ?? Array.Empty<FenixCabinItem>();
-        _announcementsList.SetLines(_shownAnnouncements.Select(item => item.Name).ToArray());
-        _shownMemo = pram?.Memo ?? Array.Empty<FenixCabinItem>();
-        _memoList.SetLines(_shownMemo.Select(item => item.Name).ToArray());
-
         UpdateSetCombo(pram);
     }
 
@@ -383,7 +389,29 @@ public sealed partial class FenixCabinForm
             Refuse("Select a memo entry first.");
             return;
         }
+        // The Fenix applies the index to its memo as it is now. If that is no longer the memo the pilot
+        // sees (it changed after the last render, a poll lag away), the index may name another entry:
+        // show the new memo and ask again.
+        if (!SameEntries(_shownMemo, _pram!.Memo))
+        {
+            MarkDirty();
+            Refuse("The memo has changed. Select the entry again.");
+            return;
+        }
         _ = RunMutationAsync(FenixCabinPram.RemoveFromMemo(index), MemoKey, speakIfUnchanged: false);
+    }
+
+    // The same entries in the same order, by id and name (never the state records, which compare their
+    // lists by reference).
+    private static bool SameEntries(IReadOnlyList<FenixCabinItem> a, IReadOnlyList<FenixCabinItem> b)
+    {
+        if (a.Count != b.Count) return false;
+        for (int i = 0; i < a.Count; i++)
+        {
+            if (!string.Equals(a[i].Id, b[i].Id, StringComparison.Ordinal)
+                || !string.Equals(a[i].Name, b[i].Name, StringComparison.Ordinal)) return false;
+        }
+        return true;
     }
 
     private void ClearMemo()

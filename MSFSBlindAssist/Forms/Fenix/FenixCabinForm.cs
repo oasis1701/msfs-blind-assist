@@ -112,6 +112,12 @@ public sealed partial class FenixCabinForm : Form
     /// <summary>Task 9 (<c>FenixCabinForm.Controls.cs</c>) builds the Doors, Temperature and Water pages; called once, from the constructor.</summary>
     partial void BuildControlTabs(TabPage doors, TabPage temperature, TabPage water);
 
+    /// <summary>
+    /// Sets the Audio page's announcement and memo lists from <see cref="_pram"/>; called by every render, also
+    /// while the controls are held: a list is data the presses act on, not a control that flips back.
+    /// </summary>
+    partial void UpdateAudioLists();
+
     /// <summary>Sets the Audio page's controls from <see cref="_pram"/>; called by the render with <see cref="_updatingControls"/> set.</summary>
     partial void UpdateAudioControls();
 
@@ -464,6 +470,9 @@ public sealed partial class FenixCabinForm : Form
             // A list with no selection reads no current line ([MON-6]'s reasoning).
             if (list.SelectedIndex < 0 && list.Items.Count > 0) list.SelectedIndex = 0;
         }
+
+        // The audio lists follow the Fenix on every render: a press acts on the entry the list shows.
+        UpdateAudioLists();
 
         if (_controlsHeld) return;
         _updatingControls = true;

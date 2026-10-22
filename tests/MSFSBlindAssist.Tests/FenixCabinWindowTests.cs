@@ -815,6 +815,71 @@ public class FenixCabinWindowTests
         Assert.Empty(rig.Speech.Interrupts);
     }
 
+    private static readonly FenixCabinItem Welcome = new("a3", "Welcome");
+
+    [Fact]
+    public void The_memo_list_follows_the_Fenix_while_the_controls_are_held()
+    {
+        // A check box change holds the controls for a few seconds, so the Fenix's value cannot flip them back.
+        // The lists are not controls: a memo that changes meanwhile shows at once, or a Remove would send a
+        // position of a memo the pilot no longer sees.
+        var before = Pram() with { Memo = new[] { AfterTakeoff, SafetyBriefing, Welcome } };
+        var after = Pram() with { Memo = new[] { AfterTakeoff, Welcome } };
+        using var rig = new AudioRig(before, answer: after);
+        MemoList(rig.Form).SelectedIndex = 1;
+
+        MusicBox(rig.Form).Checked = true;
+        WaitFor(() => FenixCabinForm.SamePram(rig.Form.AudioState, after), "the memo read");
+        rig.Form.Render();
+
+        Assert.Equal(new object[] { "After Takeoff", "Welcome" }, MemoList(rig.Form).Items.Cast<object>().ToArray());
+        // The hold is still on: the check box keeps what the pilot chose, not the Fenix's "off".
+        Assert.True(MusicBox(rig.Form).Checked);
+
+        // A Remove now sends the position in the memo the pilot sees ("Welcome", second), not in the old one.
+        Assert.Equal(1, MemoList(rig.Form).SelectedIndex);
+        int sent = rig.Gateway.Mutations.Count;
+        Click(AudioButton(rig.Form, "&Remove from memo"));
+        WaitFor(() => rig.Gateway.Mutations.Count == sent + 1, "the remove");
+        JObject remove = rig.Gateway.Mutations[sent];
+        Assert.Equal(FenixCabinPram.RemoveFromMemo(1).Query, (string?)remove["query"]);
+        Assert.Equal(VariablesOf(FenixCabinPram.RemoveFromMemo(1)), VariablesOf(remove));
+        Assert.Empty(rig.Speech.Interrupts);
+    }
+
+    [Fact]
+    public void Remove_from_memo_refuses_when_the_memo_changed_behind_the_shown_list()
+    {
+        var shown = Pram() with { Memo = new[] { AfterTakeoff, SafetyBriefing, Welcome } };
+        var changed = Pram() with { Memo = new[] { AfterTakeoff, Welcome } };
+        using var rig = new AudioRig(shown);
+        FenixCabinForm form = rig.Form;
+        MemoList(form).SelectedIndex = 1;
+        Tick(form);   // renders, so nothing is waiting for a render
+
+        // The memo changes after the last render, a poll's lag before the next one.
+        BindingFlags instance = BindingFlags.Instance | BindingFlags.NonPublic;
+        typeof(FenixCabinForm).GetField("_pram", instance)!.SetValue(form, changed);
+        FieldInfo dirty = typeof(FenixCabinForm).GetField("_dirty", instance)!;
+        Assert.False((bool)dirty.GetValue(form)!);
+
+        Click(AudioButton(form, "&Remove from memo"));
+
+        Assert.Equal(new[] { "The memo has changed. Select the entry again." }, rig.Speech.Interrupts);
+        Assert.Equal(0, rig.Gateway.Sent);
+        // The next render shows the new memo.
+        Assert.True((bool)dirty.GetValue(form)!);
+        Tick(form);
+        Assert.Equal(new object[] { "After Takeoff", "Welcome" }, MemoList(form).Items.Cast<object>().ToArray());
+
+        // Asked again about the memo the pilot now sees, it sends that position.
+        MemoList(form).SelectedIndex = 1;
+        Click(AudioButton(form, "&Remove from memo"));
+        WaitFor(() => rig.Gateway.Mutations.Count == 1, "the remove");
+        Assert.Equal(VariablesOf(FenixCabinPram.RemoveFromMemo(1)), VariablesOf(rig.Gateway.Mutations[0]));
+        Assert.Single(rig.Speech.Interrupts);
+    }
+
     [Fact]
     public void The_loudspeaker_buttons_write_the_next_five_percent_step_of_what_the_page_shows()
     {
