@@ -494,6 +494,38 @@ test('Opening_a_More_options_menu_takes_the_focus_to_its_first_item_and_closing_
   }
 });
 
+// R60: Shift+Tab from the first item reaches the "Close menu" backdrop, and Enter there closes the menu. CDK takes the
+// pane away at once but keeps the backdrop in the page for its fade (up to 500 ms), with the focus still on it: that
+// focus is lost with the menu too, and goes back to the button. So does the focus when the backdrop goes as well.
+for (const backdropLingers of [true, false]) {
+  test('Closing_a_menu_from_its_Close_menu_backdrop_brings_the_focus_back_to_its_button_' +
+    (backdropLingers ? 'while_the_backdrop_lingers' : 'when_the_backdrop_goes_too'), async () => {
+    const markup = await openMenuMarkup();
+    const window = await load('settings');
+    try {
+      const doc = window.document;
+      const origin = await openFirstMenu(window, markup);
+      const overlay = one(window, 'div.app-overlay-container');
+      const backdrop = overlay.querySelector('.cdk-overlay-backdrop');
+      assert.strictEqual(nameOf(backdrop), 'Close menu');
+      backdrop.focus();
+      assert.strictEqual(doc.activeElement, backdrop, 'the focus is on "Close menu"');
+
+      // The page closes the menu: the button is collapsed, the pane (in its bounding box) goes at once.
+      origin.setAttribute('aria-expanded', 'false');
+      overlay.removeChild(overlay.querySelector('.cdk-overlay-connected-position-bounding-box'));
+      if (!backdropLingers) overlay.removeChild(backdrop);
+      assert.strictEqual(backdrop.isConnected, backdropLingers, 'as the test set it up');
+      await turns();
+      assert.strictEqual(doc.activeElement, origin, 'the focus is back on the button');
+      assert.deepStrictEqual(layerStamp(backdrop), NO_STAMP, 'the backdrop is no button of the layer\'s any more');
+      assert.strictEqual(origin.closest('div.settings-overflow').hasAttribute('aria-owns'), false);
+    } finally {
+      window.close();
+    }
+  });
+}
+
 test('A_menu_that_closes_while_the_focus_is_elsewhere_leaves_the_focus_there', async () => {
   const markup = await openMenuMarkup();
   const window = await load('settings');

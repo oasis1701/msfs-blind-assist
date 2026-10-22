@@ -144,8 +144,10 @@ public class FenixEFBForm : Form
             // Escape from INSIDE the web content never reaches ProcessCmdKey (the
             // WebView2 browser process owns that focus), and the WinForms WebView2
             // wrapper doesn't expose the controller's AcceleratorKeyPressed event.
-            // So a tiny injected listener posts a close message; capture-phase (true)
-            // guarantees it fires even if the page handles Escape itself.
+            // So a tiny injected capture-phase listener posts a close message: Escape
+            // closes the window, except while a CDK overlay pane with content is open
+            // (a "More options" menu, a drop-down panel, the Panel States dialog), where
+            // the page's own overlay closes on Escape instead (ruling R58).
             // ProcessCmdKey still covers Escape on the error panel.
             await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
                 "window.addEventListener('keydown',function(e){" +

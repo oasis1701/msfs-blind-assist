@@ -1043,7 +1043,9 @@
       pane: pane,
       container: origins[0].closest('div.settings-overflow'),
       origin: origins[0],
-      backdrop: backdrop && backdrop.classList.contains('cdk-overlay-backdrop') ? backdrop : null
+      backdrop: backdrop && backdrop.classList.contains('cdk-overlay-backdrop') ? backdrop : null,
+      // The CDK overlay container that holds the backdrop and the pane's host.
+      overlay: host ? host.parentElement : null
     };
   }
 
@@ -1057,27 +1059,36 @@
   }
 
   // The open menu as the layer saw it on the last pass (its pane, its button's container, the button recorded when it
-  // opened, its backdrop), or null.
+  // opened, its backdrop, its overlay container), or null.
   var menu = null;
+
+  // True when the focus went with a menu that closed: it is on the page's body or nowhere, still in the emptied pane, or
+  // on the menu's backdrop or anything else in its overlay container (ruling R60: "Close menu" closes the menu with the
+  // focus on it, and CDK keeps the backdrop in the page for its fade before the focus drops to the body).
+  function focusLostWith(was) {
+    var active = document.activeElement;
+    if (!active || active === document.body) { return true; }
+    if (was.pane.contains(active) || active === was.backdrop) { return true; }
+    return was.overlay !== null && was.overlay.contains(active);
+  }
 
   // While a menu is open, its button's container aria-owns the pane (the page's own id, else one of the layer's), so the
   // items are read right after the button, and the backdrop is the button "Close menu", whose click closes the menu as
   // a mouse click outside does. When a menu opens the focus goes to its first item that is not disabled; when it closes
-  // and the focus is lost with it (on the page's body, or still in the emptied pane), the focus goes back to the button
-  // the layer recorded when the menu opened, if that is still on the page. What the layer wrote for a menu goes with it.
+  // and the focus is lost with it (see focusLostWith), the focus goes back to the button the layer recorded when the
+  // menu opened, if that is still on the page. That is decided before the backdrop's Tab stop is taken back. What the
+  // layer wrote for a menu goes with it.
   function followMenu(root) {
     var now = openMenu(root);
     var was = menu;
     var opened = now !== null && (was === null || was.pane !== now.pane);
     if (now && !opened) { now.origin = was.origin; }
     if (was) {
+      var gone = !was.pane.isConnected || !was.pane.querySelector('div.overflow-menu');
+      if (!now && gone && focusLostWith(was) && was.origin.isConnected) { moveFocus(was.origin); }
       if (!now || now.container !== was.container) { ownState(was.container, 'aria-owns', null, ownsWritten); }
       if (!now || now.pane !== was.pane) { dropId(was.pane); }
       if (was.backdrop && (!now || now.backdrop !== was.backdrop)) { unbutton(was.backdrop); }
-      var gone = !was.pane.isConnected || !was.pane.querySelector('div.overflow-menu');
-      var active = document.activeElement;
-      var lost = !active || active === document.body || was.pane.contains(active);
-      if (!now && gone && lost && was.origin.isConnected) { moveFocus(was.origin); }
     }
     if (now) {
       ownState(now.container, 'aria-owns', ownId(now.pane), ownsWritten);
