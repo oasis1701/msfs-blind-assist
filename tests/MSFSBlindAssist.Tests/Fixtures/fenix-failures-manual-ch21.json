@@ -1,0 +1,424 @@
+{
+ "atas": [
+  {
+   "id": 21,
+   "title": "Air Conditioning",
+   "shortTitle": "Air",
+   "groups": [
+    {
+     "groupName": "Lavatory/Galley Ventilation",
+     "failures": [
+      {
+       "id": "F_PNEUMATIC_LAV_GAL_FAN",
+       "title": "Lavatory/Galley fan",
+       "failureCondition": null,
+       "failed": false
+      }
+     ]
+    },
+    {
+     "groupName": "CPC",
+     "failures": [
+      {
+       "id": "F_PNEUMATIC_CPC_1",
+       "title": "CPC 1",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_CPC_2",
+       "title": "CPC 2",
+       "failureCondition": null,
+       "failed": false
+      }
+     ]
+    },
+    {
+     "groupName": "Overheat",
+     "failures": [
+      {
+       "id": "F_PNEUMATIC_PACK_1_OVERHEAT",
+       "title": "Pack 1 overheat",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_PACK_2_OVERHEAT",
+       "title": "Pack 2 overheat",
+       "failureCondition": null,
+       "failed": false
+      }
+     ]
+    },
+    {
+     "groupName": "Regulator fault",
+     "failures": [
+      {
+       "id": "F_PNEUMATIC_PACK_1_REG_FAULT",
+       "title": "Pack 1 regulator fault",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_PACK_2_REG_FAULT",
+       "title": "Pack 2 regulator fault",
+       "failureCondition": null,
+       "failed": false
+      }
+     ]
+    },
+    {
+     "groupName": "Zone controller",
+     "failures": [
+      {
+       "id": "F_PNEUMATIC_ZONECONTROLLER_PRIM",
+       "title": "Zone controller primary",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_ZONECONTROLLER_SEC",
+       "title": "Zone controller secondary",
+       "failureCondition": null,
+       "failed": false
+      }
+     ]
+    },
+    {
+     "groupName": "Trim air",
+     "failures": [
+      {
+       "id": "F_PNEUMATIC_TRIM_AIR",
+       "title": "Hot air fault",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_TRIM_AIR_FLTDCK",
+       "title": "Trim valve flight deck fault",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_TRIM_AIR_FWDCAB",
+       "title": "Trim valve fwd cabin fault",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_TRIM_AIR_AFTCAB",
+       "title": "Trim valve aft cabin fault",
+       "failureCondition": null,
+       "failed": false
+      }
+     ]
+    },
+    {
+     "groupName": "Cargo",
+     "failures": [
+      {
+       "id": "F_PNEUMATIC_CVC",
+       "title": "Cargo ventilation controller",
+       "failureCondition": null,
+       "failed": false
+      }
+     ]
+    },
+    {
+     "groupName": "Pneumatic valves",
+     "failures": [
+      {
+       "id": "F_PNEUMATIC_HOT_AIR_VALVE_AFT_CARGO",
+       "title": "Hot air valve aft cargo",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_HOT_AIR_VALVE_AFT_CARGO_MECH_SECURED_CLOSED",
+       "title": "Hot air valve aft cargo secured closed",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_HOT_AIR_VALVE_AFT_CARGO_MECH_SECURED_OPEN",
+       "title": "Hot air valve aft cargo secured open",
+       "failureCondition": null,
+       "failed": false
+      }
+     ]
+    },
+    {
+     "groupName": "Cargo vent",
+     "failures": [
+      {
+       "id": "F_PNEUMATIC_CARGO_ISOL_FWD_UP",
+       "title": "Cargo fwd isolation valve upstream",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_CARGO_ISOL_FWD_UP_MECH_SECURED_CLOSED",
+       "title": "Cargo fwd isolation valve upstream secured closed",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_CARGO_ISOL_FWD_UP_MECH_SECURED_OPEN",
+       "title": "Cargo fwd isolation valve upstream secured open",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_CARGO_ISOL_FWD_DOWN",
+       "title": "Cargo fwd isolation valve downstream",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_CARGO_ISOL_FWD_DOWN_MECH_SECURED_CLOSED",
+       "title": "Cargo fwd isolation valve downstream secured closed",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_CARGO_ISOL_FWD_DOWN_MECH_SECURED_OPEN",
+       "title": "Cargo fwd isolation valve downstream secured open",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_CARGO_ISOL_AFT_UP",
+       "title": "Cargo aft isolation valve upstream",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_CARGO_ISOL_AFT_UP_MECH_SECURED_CLOSED",
+       "title": "Cargo aft isolation valve upstream secured closed",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_CARGO_ISOL_AFT_UP_MECH_SECURED_OPEN",
+       "title": "Cargo aft isolation valve upstream secured open",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_CARGO_ISOL_AFT_DOWN",
+       "title": "Cargo aft isolation valve downstream",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_CARGO_ISOL_AFT_DOWN_MECH_SECURED_CLOSED",
+       "title": "Cargo aft isolation valve downstream secured closed",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_CARGO_ISOL_AFT_DOWN_MECH_SECURED_OPEN",
+       "title": "Cargo aft isolation valve downstream secured open",
+       "failureCondition": null,
+       "failed": false
+      }
+     ]
+    },
+    {
+     "groupName": "Recirculation",
+     "failures": [
+      {
+       "id": "F_PNEUMATIC_RECIRC_FANS",
+       "title": "Recirculation fans",
+       "failureCondition": null,
+       "failed": false
+      }
+     ]
+    },
+    {
+     "groupName": "Decompression",
+     "failures": [
+      {
+       "id": "F_PNEUMATIC_DECOMPRESSION_MINOR",
+       "title": "Slow decompression",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_DECOMPRESSION_MAJOR",
+       "title": "Rapid decompression",
+       "failureCondition": null,
+       "failed": false
+      }
+     ]
+    },
+    {
+     "groupName": "Outflow valve",
+     "failures": [
+      {
+       "id": "F_PNEUMATIC_OUTFLOWVALVE_STUCK",
+       "title": "Outflow valve stuck",
+       "failureCondition": null,
+       "failed": false
+      }
+     ]
+    },
+    {
+     "groupName": "Ventilation",
+     "failures": [
+      {
+       "id": "F_PNEUMATIC_AEVC",
+       "title": "Ventilation AEVC",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_BLOWER",
+       "title": "Ventilation blower fault",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_EXTRACT",
+       "title": "Ventilation extract fault",
+       "failureCondition": null,
+       "failed": false
+      }
+     ]
+    },
+    {
+     "groupName": "Ventilation valves",
+     "failures": [
+      {
+       "id": "F_PNEUMATIC_VENT_INLET",
+       "title": "Skin air inlet valve",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_VENT_INLET_MECH_SECURED_CLOSED",
+       "title": "Skin air inlet valve secured closed",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_VENT_INLET_MECH_SECURED_OPEN",
+       "title": "Skin air inlet valve secured open",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_VENT_EXTRACT",
+       "title": "Skin air outlet valve",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_VENT_EXTRACT_MECH_SECURED_CLOSED",
+       "title": "Skin air outlet valve secured closed",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_VENT_EXTRACT_MECH_SECURED_OPEN",
+       "title": "Skin air outlet valve secured open",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_SKIN_AIR_OUTLET_INTERNAL_FLAP",
+       "title": "Skin air outlet internal flap",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_SKIN_AIR_OUTLET_INTERNAL_FLAP_MECH_SECURED_CLOSED",
+       "title": "Skin air outlet internal flap secured closed",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_SKIN_AIR_OUTLET_INTERNAL_FLAP_MECH_SECURED_OPEN",
+       "title": "Skin air outlet internal flap secured open",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_SKIN_HX_INLET_BYPASS_VALVE",
+       "title": "Skin heat exchanger inlet bypass valve",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_SKIN_HX_INLET_BYPASS_VALVE_MECH_SECURED_CLOSED",
+       "title": "Skin heat exchanger inlet bypass valve secured closed",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_SKIN_HX_INLET_BYPASS_VALVE_MECH_SECURED_OPEN",
+       "title": "Skin heat exchanger inlet bypass valve secured open",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_SKIN_HX_ISOLATION_VALVE",
+       "title": "Skin heat exchanger isolation valve",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_SKIN_HX_ISOLATION_VALVE_MECH_SECURED_CLOSED",
+       "title": "Skin heat exchanger isolation valve secured closed",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_SKIN_HX_ISOLATION_VALVE_MECH_SECURED_OPEN",
+       "title": "Skin heat exchanger isolation valve secured open",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_SKIN_HX_OUTLET_BYPASS_VALVE",
+       "title": "Skin heat exchanger outlet bypass valve",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_SKIN_HX_OUTLET_BYPASS_VALVE_MECH_SECURED_CLOSED",
+       "title": "Skin heat exchanger outlet bypass valve secured closed",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_SKIN_HX_OUTLET_BYPASS_VALVE_MECH_SECURED_OPEN",
+       "title": "Skin heat exchanger outlet bypass valve secured open",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_AVNCS_COND_AIR_INLET_VALVE",
+       "title": "Conditioning air inlet valve",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_AVNCS_COND_AIR_INLET_VALVE_MECH_SECURED_CLOSED",
+       "title": "Conditioning air inlet valve secured closed",
+       "failureCondition": null,
+       "failed": false
+      },
+      {
+       "id": "F_PNEUMATIC_AVNCS_COND_AIR_INLET_VALVE_MECH_SECURED_OPEN",
+       "title": "Conditioning air inlet valve secured open",
+       "failureCondition": null,
+       "failed": false
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "_note": "First ATA chapter only, for its shape. Live: 20 chapters, 549 failures (GET http://127.0.0.1:8083/fenix/failures/manual, Fenix 3.0.0.7426, 2026-10-21)."
+}
