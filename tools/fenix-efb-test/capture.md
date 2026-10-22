@@ -39,7 +39,7 @@ copy((() => { const c = document.body.cloneNode(true);
 
 The seat map (`#seatContainer`) is kept: the layer hides it from a screen reader, and the tests check that.
 
-## The 21 screens
+## The 22 screens
 
 | Fixture name                | Screen |
 |---|---|
@@ -60,12 +60,13 @@ The seat map (`#seatContainer`) is kept: the layer hides it from a screen reader
 | `settings-misc`             | Settings, the Misc category. |
 | `settings-printer`          | Settings, the Printer category. |
 | `settings-realism`          | Settings, the Realism category. |
+| `settings-overflow-open`    | Settings, the Aircraft category, with the first "More options" (three dots) menu open. Close it with a click outside, pressing no item. |
 | `failures`                  | Failures, with ATA 21 open. |
 | `documents`                 | Documents. |
 | `charts`                    | Charts. |
 | `quick-settings`            | Quick settings. |
 
-These 21 names are the explicit list in `sweep.test.js`. A missing capture fails its test with
+These 22 names are the explicit list in `sweep.test.js`. A missing capture fails its test with
 "fixture missing"; the sweep never lists the fixtures folder, so a hand-made fixture another task
 adds there is not part of it.
 
@@ -116,6 +117,11 @@ is fine; delete any value you find, keeping the element. Connections holds the c
   - `settings-audio`, `settings-cabin`, `settings-connections`, `settings-ground-services`,
     `settings-misc`, `settings-printer`, `settings-realism`: one per Settings category.
   - Credential search: clean. Connections holds only the settings' names and empty password boxes.
+- `settings-overflow-open` (2026-10-22, Fenix 3.0.0.7438, the same way): Settings, Aircraft, with the first "More
+  options" menu open. The menu is a CDK overlay at the end of `<body>`: the backdrop
+  `div.cdk-overlay-backdrop`, then `div.cdk-overlay-connected-position-bounding-box > div#cdk-overlay-0.cdk-overlay-pane
+  > div.overflow-menu` with its two `button.overflow-menu__item`; the first `button.overflow-button` has
+  `aria-expanded="true"`. Credential search: clean (Aircraft has no credential settings).
 
 ## Check live after every Fenix update
 

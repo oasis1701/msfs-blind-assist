@@ -1378,8 +1378,8 @@ test('A_map_control_without_text_or_a_known_icon_and_an_airplane_button_without_
 
 // ---- The layer's own rules ----
 
-const FIXTURES = ['settings', ...Object.keys(SETTINGS_SCREENS).filter(s => s !== 'settings'), 'failures', 'documents',
-  'charts', 'quick-settings'];
+const FIXTURES = ['settings', ...Object.keys(SETTINGS_SCREENS).filter(s => s !== 'settings'), 'settings-overflow-open',
+  'failures', 'documents', 'charts', 'quick-settings'];
 
 // The layer writes attributes only: no node added or removed, no text changed, no value written.
 for (const fixture of FIXTURES) {

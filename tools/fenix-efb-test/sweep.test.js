@@ -8,13 +8,13 @@ const { JSDOM } = require('jsdom');
 const { computeAccessibleName, getRole } = require('dom-accessibility-api');
 const { load } = require('./load');
 
-// The 21 captures, listed on purpose and never read from the fixtures folder: a capture that is
+// The 22 captures, listed on purpose and never read from the fixtures folder: a capture that is
 // missing must fail loudly here, and a hand-made fixture a later task adds has its own tests.
 const CAPTURES = [
   'home', 'switcher', 'my-flight', 'ground-services', 'mass-balance', 'panel-states', 'depperf',
   'arrperf', 'arrperf-electrical', 'settings', 'settings-audio', 'settings-cabin', 'settings-connections',
-  'settings-ground-services', 'settings-misc', 'settings-printer', 'settings-realism', 'failures', 'documents',
-  'charts', 'quick-settings'
+  'settings-ground-services', 'settings-misc', 'settings-printer', 'settings-realism', 'settings-overflow-open',
+  'failures', 'documents', 'charts', 'quick-settings'
 ];
 
 const CONTROLS = [
