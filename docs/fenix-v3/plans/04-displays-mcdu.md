@@ -1,12 +1,12 @@
 # Fenix v3 Displays and MCDU Implementation Plan (plan 04)
 
-**Claimed by:** danielw97 · **Status:** in progress
+**Claimed by:** danielw97 · **Status:** done (code and every in-sim check passed 2026-10-22)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the Fenix AI display reads frame the same displays as before on v3's renumbered cameras, make the standby read follow the fitted standby (ISIS or three round gauges), and characterize v3's MCDU text without reworking the MCDU.
 
-**Architecture:** Fenix v3 restored the "Main Panel (Left)" instrument camera that v2 lacked, so every live instrument index from 7 up moved by one: today Alt+P lands on the centre panel and Alt+N/E/S/I on the captain's side. After one owner-approved live measurement, `FenixA320DisplayReads` keeps its two views under their new numbers, the first officer's side (predicted 9) for the PFD and the centre panel (predicted 8) for ND, E/WD, SD and standby, and gains `For(FenixVariant)`, which swaps only the standby row's prompt by plan 01's `Variant.HasIsis`. The MCDU gets captured-v3 characterization tests and changes only if a capture shows a misread (owner, 2026-10-21).
+**Architecture:** Fenix v3 restored the "Main Panel (Left)" instrument camera that v2 lacked, so every live instrument index from 7 up moved by one: today Alt+P lands on the centre panel and Alt+N/E/S/I on the captain's side. After one owner-approved live measurement, `FenixA320DisplayReads` keeps its two views under their new numbers, the first officer's side (predicted 9) for the PFD and the centre panel (predicted 8) for ND, E/WD, SD and standby (measured: the ND moved to the captain's view, 7, decision 3), and gains `For(FenixVariant)`, which swaps only the standby row's prompt by plan 01's `Variant.HasIsis`. The MCDU gets captured-v3 characterization tests and changes only if a capture shows a misread (owner, 2026-10-21).
 
 **Tech Stack:** C# 13 / .NET 10 WinForms, xUnit.
 
@@ -157,21 +157,21 @@ The EFB window's address and status message are plan 03's Task 1 now. Numbering 
   - `Every_v3_capture_stays_on_the_24_column_grid` (Theory over every fixture in the file): each decoded string with `*` removed is exactly 24 characters.
   - `Every_v3_capture_uses_only_known_glyphs` (Theory): every character above U+007E in the raw XML is one of U+00A4, U+00A5, U+00A2, U+00A3 (the `SpecialChars` keys).
 - [x] **Step 2: Run them; they pass** (characterization of today's behaviour). If one fails, that is a misread: go to Step 5. (2026-10-22: the six all-space lines decode to `""`, not 24 spaces: `XDocument.Parse` without `PreserveWhitespace` drops whitespace-only text, as `ParseDisplayXml` always has. Not a misread: the service fills missing lines with `""`, `SplitLine` pads to 24, the form trims line ends. The test pins `""` for those lines and the grid Theory skips empty lines; the `s`-prefixed blanks keep 24 spaces.)
-- [ ] **Step 3: Owner brings up three pages on MCDU 1 (captain)**, one at a time, saying "showing" each time: the **ARRIVAL** page for a destination with an RNAV (GPS) approach, approach list showing (for "RNV"); **PERF TAKE OFF** at the gate; **ATSU** (MCDU MENU, then LSK 2 left). After each, capture read-only:
+- [x] **Step 3: Owner brings up three pages on MCDU 1 (captain)**, one at a time, saying "showing" each time: the **ARRIVAL** page for a destination with an RNAV (GPS) approach, approach list showing (for "RNV"); **PERF TAKE OFF** at the gate; **ATSU** (MCDU MENU, then LSK 2 left). After each, capture read-only:
   ```powershell
   $b = '{"query":"query { dataRef { r1: dataRef(name: \"aircraft.mcdu1.display\") { value } } }"}'
   (Invoke-RestMethod -Uri 'http://127.0.0.1:8083/graphql' -Method Post -ContentType 'application/json' -Body $b).data.dataRef.r1.value
   ```
   Keep captures outside the repo. If the owner happens to fly, a PERF TAKE OFF capture during the takeoff roll shows TO SHIFT as four dashes (optional).
-- [ ] **Step 4: Add one test per page** with the raw XML verbatim as the fixture (it joins the two Theories) and exact expected decoded lines: `Arrival_v3_reads_rnv_approaches` (some decoded line contains "RNV", none "RNAV", plus its exact lines), `Perf_takeoff_v3_decodes`, `Atsu_v3_decodes`. Run; they pass unless Step 5 applies.
-- [ ] **Step 5: Only if a misread shows** (a line off the 24-column grid; a glyph outside the known set that NVDA would not speak as the MCDU means it, such as a box glyph other than `#`, which maps to `-`; a `*` on a line where the page selects nothing; uppercase or lowercase display text eaten as a code): keep the failing test, fix in `FenixMcduFormat` within A320-31, run the suite, and name the capture in the commit. Otherwise change no production code.
-- [ ] **Step 6: Commit.** `test(fenix): characterize v3 MCDU screens (MCDU MENU, ARRIVAL, PERF TAKE OFF, ATSU)` (or `fix(fenix): …` when Step 5 changed the formatter).
+- [x] **Step 4: Add one test per page** with the raw XML verbatim as the fixture (it joins the two Theories) and exact expected decoded lines: `Arrival_v3_reads_rnv_approaches` (some decoded line contains "RNV", none "RNAV", plus its exact lines), `Perf_takeoff_v3_decodes`, `Atsu_v3_decodes`. Run; they pass unless Step 5 applies. (2026-10-22, CFM A320 C-FFWM, captured read-only: ARRIVAL to KMCO with ILS36R, RNV17L-Y and RNV17L-Z; PERF TAKE OFF at the gate, nothing entered; ATSU DATALINK. All on the grid. Two findings, neither a misread: the ARRIVAL title's green destination decodes "ARRIVAL TO *KMCO" by the green rule, long-standing, and the owner ruled it not worth chasing; PERF TAKE OFF's FLEX TO TEMP carries U+00B0 (°), which passes through unmapped and NVDA speaks as "degree", so the glyph Theory allows it.)
+- [x] **Step 5: Only if a misread shows** (none: no production change) (a line off the 24-column grid; a glyph outside the known set that NVDA would not speak as the MCDU means it, such as a box glyph other than `#`, which maps to `-`; a `*` on a line where the page selects nothing; uppercase or lowercase display text eaten as a code): keep the failing test, fix in `FenixMcduFormat` within A320-31, run the suite, and name the capture in the commit. Otherwise change no production code.
+- [x] **Step 6: Commit.** `test(fenix): characterize v3 MCDU screens (MCDU MENU, ARRIVAL, PERF TAKE OFF, ATSU)` (or `fix(fenix): …` when Step 5 changed the formatter).
 
 ### Task 6: Owner in-sim checks and hand back
 
-- [ ] **Step 1: Build, full suite green; `git diff --name-only <base-sha>` lists only owned files.**
-- [ ] **Step 2: Run the owner checks** (next section) with the owner; record each result in the hand-back.
-- [ ] **Step 3: Hand back:** branch, test count, Task 1's table, Task 5's captures, the check results, and the handoff list below.
+- [x] **Step 1: Build, full suite green; `git diff --name-only <base-sha>` lists only owned files.** (2026-10-22: 14683 passed. Besides owned files, `docs/a32nx.md`'s `NDFenix` paragraph, which Task 2's amendment requires.)
+- [x] **Step 2: Run the owner checks** (next section) with the owner; record each result in the hand-back.
+- [x] **Step 3: Hand back:** branch, test count, Task 1's table, Task 5's captures, the check results, and the handoff list below.
 
 ## Owner in-sim checks (few, in priority order)
 
@@ -187,6 +187,15 @@ Build from this branch. The Fenix loaded on the ground, displays powered, a norm
 
 ## Handoff to plan 12
 
+**Hand-back (2026-10-22, danielw97):** branch `FenixV3`, commits `38cae6def` (Task 2), `2abd4200f` (Task 3), `1dc1ec00f` and the Task 5 commit; 14683 tests green. Task 1's table is above; Task 5's four captures are the fixtures in `FenixMcduV3ScreensTests`.
+
+**In-sim results** (CFM A320 C-FFWM at CYYZ, MSFS 2024, Fenix v3; Haiku 5.5 first, then a larger model, which read small text noticeably better):
+1. Alt+P: passed. The first officer's PFD whole ("the PFD is the right-hand screen"); with the IRs aligned, attitude, heading 360, QNH 1013, about 500 ft at CYYZ. Blank FMA and a red FD flag at the gate (ground state).
+2. Alt+N: passed. Captain's EFIS ARC 40: "ARC mode, range about 40" (ring labels 20 and 30), GPS PRIMARY, active waypoint AIRRA 156 NM; never the first officer's ND, never the PFD beside it. Before alignment it read MAP NOT AVAIL, correctly.
+3. Alt+E / Alt+S: passed. E/WD engines XX (off), FOB 2640 KG, the memo (IR IN ALIGN > 7 MN, PARK BRK, APU AVAIL …); SD the ENGINE page.
+4. Alt+I (today's identify-which prompt; `For` not yet wired): passed. "Round standby gauges", 1013 hPa, DMEs dashed. `B_CONFIG_STDBY` read 1 on this livery (handoff 5).
+7. MCDU typing: passed. AAB1 announced, no doubled letters, Backspace cleared it.
+
 **Pilot-facing changes** (guide, hotkey guide, changelog `fix`):
 - Alt+P, N, E, S and I frame the right displays again on Fenix v3 (Fenix restored a camera, which renumbered the views); they read the same displays as before: Alt+P the first officer's PFD, Alt+N the captain's ND. Fenix 2.x is no longer supported for these reads (Owner decision 1).
 - Alt+I tells the AI whether the livery has the digital ISIS or three round gauges (after handoff 1).
@@ -196,16 +205,16 @@ Build from this branch. The Fenix loaded on the ground, displays powered, a norm
 2. `docs/a32nx.md:647-700`: rewrite the Fenix display-read section from Task 1 (table: Alt+P first officer's PFD on view 10 / index 9; Alt+N the captain's ND on view 8 / index 7, the captain's own view (the same number as v2's centre view, a different camera); Alt+E, Alt+S, Alt+I on view 9 / index 8; the `NDFenix` sentence was already updated by Task 2; the v3 cameras.cfg location and the restored left camera, replacing the "file position 7 is absent" bullet; "The captain's PFD cannot be read" becomes: v3 frames it at index 7, and the owner kept the first officer's PFD on 2026-10-21; four Fenix prompts, not two).
 3. `guide/airbus-aircraft.md:306` and `MSFSBlindAssist/HotkeyGuides/Fenix_A320_Hotkeys.txt:33-38`: keep "Alt+P reads the First Officer's PFD" and drop its reason ("because no camera view … cutting it off"), which v3 made untrue; keep the sentence on how the two PFDs differ; add "Alt+I knows whether your Fenix has the digital ISIS or the three round standby gauges." (after handoff 1).
 4. (Moved to plan 03, handoff H2.)
-5. Plan 01's `FenixVariant.With`: map `B_CONFIG_STDBY` 1 to `HasIsis == false` once check 4 reads 1 on a round-gauge livery.
+5. ~~Plan 01's `FenixVariant.With`: map `B_CONFIG_STDBY` 1 to `HasIsis == false` once check 4 reads 1 on a round-gauge livery.~~ **Measured 2026-10-22:** `B_CONFIG_STDBY` = 1 on the round-gauge CFM A320 (C-FFWM, `N_CONFIG_AIRCRAFT_TYPE` 3; Alt+I's identify-which prompt answered "Round standby gauges"), 0 on the ISIS A321. `With` already maps 1 to `HasIsis == false`; only its comment ("1 is taken as …") can now say measured.
 6. (Moved to plan 03, handoff H1.)
-7. If check 7 doubled letters: `docs/a32nx.md:96` "writeInt 1 then 0" becomes "writeInt 1, as Fenix's own web MCDU does".
+7. ~~If check 7 doubled letters: `docs/a32nx.md:96` "writeInt 1 then 0" becomes "writeInt 1, as Fenix's own web MCDU does".~~ Not needed: check 7 typed AAB1 with no doubled letters (2026-10-22); the 1, 50 ms, 0 pulse stays.
 
 **Proposed rule line** (for `.claude/rules/ai-display.md`, which already loads on `Aircraft/**/*DisplayReads.cs` and the `*DisplayRead*` tests; full text from the evidence above: the camera list and changelog line):
 
 ```text
-- [AI-10] `FenixA320DisplayReads` view indices are measured per Fenix release, never read off cameras.cfg: Fenix v3 (3.0.0.7426) restored the missing "Main Panel (Left)" camera, moving every v2 index from 7 up by one (`CenterPanelView` 8, `FirstOfficerPanelView` 9, MAX:2 19). Re-measure when a Fenix update ships a new cameras.cfg. Full: docs/invariants/ai-display.md#ai-10
+- [AI-10] `FenixA320DisplayReads` view indices are measured per Fenix release, never read off cameras.cfg: Fenix v3 (3.0.0.7426) restored the missing "Main Panel (Left)" camera, moving every v2 index from 7 up by one (`CaptainPanelView` 7, `CenterPanelView` 8, `FirstOfficerPanelView` 9, MAX:2 19). Re-measure when a Fenix update ships a new cameras.cfg. Full: docs/invariants/ai-display.md#ai-10
 ```
 
-**Follow-ups (not planned):** if the owner revisits decisions 2-3, v3's index 7 frames the captain's PFD and ND (Task 1 records what it holds).
+**Follow-ups (not planned):** if the owner revisits decision 2, v3's index 7 frames the captain's PFD too (Task 1 records what it holds). The ARRIVAL title reads "ARRIVAL TO *KMCO" (the green rule marks the green destination); long-standing, and the owner ruled it not worth chasing (2026-10-22).
 
-**In-sim checks still needed after merge:** check 4's round-gauge half (needs handoffs 1 and 5); checks 1-3 again if plan 12 changes `ReadDisplay` or the camera code.
+**In-sim checks still needed after merge:** check 4 with `For` wired (handoff 1): Alt+I on the round-gauge A320 reads three dials without naming which kind first, and on the ISIS A321 one digital screen; checks 1-3 again if plan 12 changes `ReadDisplay` or the camera code.
