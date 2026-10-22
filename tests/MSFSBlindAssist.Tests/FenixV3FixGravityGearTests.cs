@@ -135,6 +135,46 @@ public class FenixV3FixGravityGearTests
         finally { CultureInfo.CurrentCulture = old; }
     }
 
+    // MD11-8: the crank delivery is consumed while a move runs, so no read reaches the combo refresh.
+    [Fact]
+    public async Task The_crank_delivery_is_consumed_only_while_a_move_runs()
+    {
+        var def = new FenixA320Definition();
+        var gate = new TaskCompletionSource();
+        var (walker, _) = Make(new double?[] { 0, 3 }, _ => gate.Task);
+        def.SetGravityGearWalkerForTests(walker);
+
+        Assert.False(def.ProcessSimVarUpdate(FenixA320GravityGear.CrankKey, 0, null!));
+
+        var move = walker.MoveAsync(true);
+        Assert.True(walker.IsRunning);
+        Assert.True(def.ProcessSimVarUpdate(FenixA320GravityGear.CrankKey, 0, null!));
+
+        gate.SetResult();
+        await move;
+        Assert.False(def.ProcessSimVarUpdate(FenixA320GravityGear.CrankKey, 3, null!));
+    }
+
+    [Fact]
+    public void The_move_force_reads_the_crank_once_it_ends()
+    {
+        string src = File.ReadAllText(Path.Combine(RepoRoot(), "MSFSBlindAssist", "Aircraft", "FenixA320Definition.cs"));
+        int start = src.IndexOf("private async Task MoveGravityGearAsync", StringComparison.Ordinal);
+        Assert.True(start > 0);
+        int end = src.IndexOf("/// <summary>", start, StringComparison.Ordinal);
+        string body = src.Substring(start, end - start);
+        int moved = body.IndexOf("await _gravityGearWalker.MoveAsync", StringComparison.Ordinal);
+        int read = body.IndexOf("RequestVariable(FenixA320GravityGear.CrankKey, forceUpdate: true)", StringComparison.Ordinal);
+        Assert.True(moved > 0 && read > moved, "the end-of-move force-read must follow the awaited move");
+    }
+
+    private static string RepoRoot()
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
+            if (File.Exists(Path.Combine(dir.FullName, "MSFSBlindAssist.sln"))) return dir.FullName;
+        throw new InvalidOperationException("MSFSBlindAssist.sln not found");
+    }
+
     [Fact]
     public void The_extension_control_is_stowed_or_extended()
     {

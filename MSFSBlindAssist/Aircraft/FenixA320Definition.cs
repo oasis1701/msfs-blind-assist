@@ -9258,6 +9258,9 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     private FenixA320GravityGearWalker? _gravityGearWalker;
     private SimConnect.SimConnectManager? _gravityGearSim;
 
+    /// <summary>Test seam: puts a walker with fake delegates into the definition.</summary>
+    internal void SetGravityGearWalkerForTests(FenixA320GravityGearWalker walker) => _gravityGearWalker = walker;
+
     private async Task MoveGravityGearAsync(bool extend, SimConnect.SimConnectManager simConnect,
         Accessibility.ScreenReaderAnnouncer? announcer)
     {
@@ -9270,10 +9273,15 @@ public partial class FenixA320Definition : BaseAircraftDefinition
         {
             string result = await _gravityGearWalker.MoveAsync(extend);
             // Refusals and "no read-back" cut in; the completion read-back lands about 6 s after the pick.
-            if (result.Contains("already turning") || result.Contains("nothing moved"))
+            bool refused = result.Contains("already turning");
+            if (refused || result.Contains("nothing moved"))
                 announcer?.AnnounceImmediate(result);
             else
                 announcer?.Announce(result);
+            // The move that ran re-syncs the combo once to where the crank really is ([MD11-27]). A
+            // refusal does not: the move still running does its own end-read.
+            if (!refused && simConnect.IsConnected)
+                simConnect.RequestVariable(FenixA320GravityGear.CrankKey, forceUpdate: true);
         }
         catch (Exception ex)
         {
@@ -12081,6 +12089,12 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     /// </summary>
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
+        // Gravity gear walk ([MD11-8]): the walker's own reads of the crank are consumed silently while
+        // it runs, so none reaches MainForm's combo refresh and snaps the pick back mid-walk. The
+        // fresh-read waiter is completed in SimConnectManager before this runs.
+        if (varName == FenixA320GravityGear.CrankKey && _gravityGearWalker is { IsRunning: true })
+            return true;
+
         // Take-off roll V-speed callouts, fed per SIM_FRAME (hot path, first branch). The contract is
         // TakeoffVSpeedCallouts': arms on the ground below 40 kt with V1 and VR set, upward crossings
         // only, once per roll, a rejected take-off re-arms. AnnounceImmediate, deliberately: "V1" and
