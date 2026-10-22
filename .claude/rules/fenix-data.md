@@ -5,6 +5,7 @@ paths:
   - "MSFSBlindAssist/Aircraft/FenixVariant*.cs"
   - "MSFSBlindAssist/Forms/Fenix/**"
   - "MSFSBlindAssist/FirstOfficer/Fenix/**"
+  - "MSFSBlindAssist/Resources/fenix-*.js"
   - "tests/MSFSBlindAssist.Tests/**/*Fenix*.cs"
 ---
 # Fenix data service rules
