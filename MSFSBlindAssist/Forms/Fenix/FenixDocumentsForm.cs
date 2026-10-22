@@ -14,7 +14,7 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// procedures, QRH, the Fenix user guide, the pilot's own) in the EFB's folders and order, the gateway's search, and
 /// a reader that shows one document as an inert page (scripts off, every navigation but its own cancelled), with a
 /// plain-text fallback when WebView2 cannot run. Ctrl+P opens the documents the Fenix pinned, one after another.
-/// Keys: Enter opens, Ctrl+F search box, F6 / Shift+F6 between the tree and the document, F5 reload, Escape hides.
+/// Keys: Enter opens, Ctrl+F search box, F6 document, tree, search box (Shift+F6 the reverse), F5 reload, Escape hides.
 /// Before a document opens the reader shows a placeholder page, never a blank one.
 /// </summary>
 /// <remarks>
@@ -818,8 +818,8 @@ public sealed class FenixDocumentsForm : Form
     {
         Keys.Escape => () => { if (!IsDisposed && Visible) Close(); },
         Keys.F5 => () => { if (!IsDisposed) _ = LoadAsync(speak: true); },
-        Keys.F6 => () => MovePane(inDocument),
-        Keys.Shift | Keys.F6 => () => MovePane(inDocument),
+        Keys.F6 => () => MovePane(1, inDocument),
+        Keys.Shift | Keys.F6 => () => MovePane(-1, inDocument),
         Keys.Control | Keys.F => FocusSearch,
         Keys.Control | Keys.P => OpenNextPinned,
         _ => null,
@@ -850,13 +850,17 @@ public sealed class FenixDocumentsForm : Form
         SafeBeginInvoke(action);
     }
 
-    // F6 and Shift+F6 both move between the tree and the document; from anywhere else (search box, Status, Close)
-    // they go to the tree. The search box is not in this order (owner, 2026-10-22): Ctrl+F reaches it.
-    private void MovePane(bool inDocument)
+    // F6 runs document, tree, search box and round again; Shift+F6 runs the reverse (owner, 2026-10-22). From
+    // Status or Close, F6 goes to the tree and Shift+F6 to the search box.
+    private void MovePane(int step, bool inDocument)
     {
         if (IsDisposed || !Visible) return;
         Control document = _fallbackShown ? _fallback : _reader;
-        Control target = !inDocument && _tree.Focused ? document : _tree;
+        Control[] panes = { document, _tree, _search };
+        int current = inDocument || document.Focused ? 0 : _tree.Focused ? 1 : _search.Focused ? 2 : -1;
+        Control target = current < 0
+            ? (step > 0 ? _tree : _search)
+            : panes[(current + step + panes.Length) % panes.Length];
         target.Focus();
     }
 
