@@ -506,6 +506,13 @@ public sealed partial class FenixCabinForm : Form
     {
         if (_updatingControls) return;
         bool isChecked = _cabinReadyBox.Checked;
+        // The Fenix down first (R13): every control gives that reason, not the availability it cannot know.
+        if (!_cache.AnyKnown)
+        {
+            SetCabinReadyBox(_cache.Bool(FenixCabinNames.CabinReady) == true);
+            Refuse(NotAnswering);
+            return;
+        }
         // The FAP greys its button unless the Fenix says cabin ready is available (D5); unknown is not.
         if (_cache.Bool(FenixCabinNames.CabinReadyAvailable) != true)
         {

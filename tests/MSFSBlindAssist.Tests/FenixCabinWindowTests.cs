@@ -247,15 +247,25 @@ public class FenixCabinWindowTests
     [Fact]
     public void Cabin_ready_refuses_and_restores_itself_until_the_Fenix_offers_it()
     {
-        // The FAP greys its button unless cabin ready is available (D5); unknown is not available.
+        // The Fenix down first (R13), then the FAP's greyed button unless cabin ready is available (D5);
+        // unknown is not available. Every press is the pilot's; nothing is written (the data service is null).
         var speech = new SpeechCapture();
         using var form = new FenixCabinForm(Context(speech));
         form.Render();
 
-        CabinReadyBox(form).Checked = true; // the pilot's press: nothing is written (the data service is null)
+        // Nothing answered: the same reason every control gives while the Fenix is down.
+        CabinReadyBox(form).Checked = true;
 
         Assert.False(CabinReadyBox(form).Checked);
-        Assert.Equal(new[] { "Cabin ready is not available yet." }, speech.Interrupts);
+        Assert.Equal(new[] { "The Fenix is not answering." }, speech.Interrupts);
+
+        // The Fenix answering, availability not known: not available.
+        form.Cache.Apply(FenixCabinNames.FapOperational, True);
+        form.Render();
+        CabinReadyBox(form).Checked = true;
+
+        Assert.False(CabinReadyBox(form).Checked);
+        Assert.Equal(new[] { "The Fenix is not answering.", "Cabin ready is not available yet." }, speech.Interrupts);
 
         // Known not available, cabin ready on: unchecking is refused too, and the box shows the Fenix's value.
         form.Cache.Apply(FenixCabinNames.CabinReady, True);
@@ -266,7 +276,9 @@ public class FenixCabinWindowTests
         CabinReadyBox(form).Checked = false;
 
         Assert.True(CabinReadyBox(form).Checked);
-        Assert.Equal(new[] { "Cabin ready is not available yet.", "Cabin ready is not available yet." }, speech.Interrupts);
+        Assert.Equal(
+            new[] { "The Fenix is not answering.", "Cabin ready is not available yet.", "Cabin ready is not available yet." },
+            speech.Interrupts);
         Assert.Equal(speech.Interrupts, speech.All);
     }
 
