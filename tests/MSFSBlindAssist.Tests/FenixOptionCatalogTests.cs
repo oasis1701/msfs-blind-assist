@@ -24,6 +24,33 @@ public class FenixOptionCatalogTests
         Assert.EndsWith(": not set", FenixOptionCatalog.RowText(S(key, "", "System.String", "Connections")));
     }
 
+    [Fact] public void A_credential_with_no_value_reads_not_set()
+        => Assert.EndsWith(": not set", FenixOptionCatalog.RowText(S("hoppie_key", null, "System.String", "Connections")));
+
+    [Theory]
+    [InlineData("true", "True", true)] [InlineData("False", "false", true)] [InlineData("TRUE", "true", true)]
+    [InlineData("true", "false", false)]
+    [InlineData("Khz25", "Khz25", true)] [InlineData("Khz25", "khz25", false)] [InlineData("Khz25", "Khz8d33", false)]
+    [InlineData("", "", true)] [InlineData("true", "yes", false)]
+    public void Booleans_match_in_any_spelling_and_other_values_exactly(string a, string b, bool same)
+        => Assert.Equal(same, FenixOptionCatalog.SameValue(a, b));
+
+    [Fact] public void A_missing_value_matches_nothing()
+    {
+        Assert.False(FenixOptionCatalog.SameValue(null, "true"));
+        Assert.False(FenixOptionCatalog.SameValue("true", null));
+        Assert.False(FenixOptionCatalog.SameValue(null, ""));
+        Assert.False(FenixOptionCatalog.SameValue(null, null));
+    }
+
+    [Theory] [InlineData("de-DE")] [InlineData("sv-SE")] [InlineData("tr-TR")]
+    public void SameValue_does_not_depend_on_the_PC_culture(string culture)
+    {
+        Assert.True(TestCulture.Run(culture, () => FenixOptionCatalog.SameValue("TRUE", "true")));
+        Assert.True(TestCulture.Run(culture, () => FenixOptionCatalog.SameValue("False", "false")));
+        Assert.False(TestCulture.Run(culture, () => FenixOptionCatalog.SameValue("Khz25", "KHZ25")));
+    }
+
     [Fact] public void Lookalike_keys_are_not_masked()
     {
         Assert.Equal("Encoder Acceleration: Off", FenixOptionCatalog.RowText(S("encoder_acceleration_enabled", "False")));

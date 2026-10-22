@@ -113,6 +113,38 @@ public static class FenixOptionEdits
     public static string ResetConfirmText(string optionLabel)
         => $"Reset {optionLabel} to the Fenix default?";
 
+    // Added to the permanent and the reset question for an option that reshapes the cockpit's panels.
+    private const string ReshapesCockpit = " This changes your cockpit panels.";
+
+    /// <summary>
+    /// The Yes/No question a change asks before anything is sent, or null when it asks none. F2 asks only
+    /// before a change that reshapes the cockpit (<see cref="NeedsConfirm"/>); Shift+F2 and Ctrl+F2 always
+    /// ask, and say so too when the option reshapes the cockpit. Never null for a permanent change or a reset.
+    /// <paramref name="choiceLabel"/> is the chosen value as the pilot hears it (unused for a reset).
+    /// </summary>
+    public static string? Question(FenixChangeKind kind, FenixSetting option, string optionLabel, string choiceLabel)
+    {
+        bool cockpit = NeedsConfirm(option);
+        return kind switch
+        {
+            FenixChangeKind.Permanent => PermanentConfirmText(optionLabel, choiceLabel) + (cockpit ? ReshapesCockpit : ""),
+            FenixChangeKind.Reset => ResetConfirmText(optionLabel) + (cockpit ? ReshapesCockpit : ""),
+            _ => cockpit ? ConfirmText(optionLabel, choiceLabel) : null,
+        };
+    }
+
+    /// <summary>
+    /// What the read-back says when the Fenix accepted a request but, after the retry, still reads the
+    /// option as not applied: the option as the Fenix now has it (<paramref name="rowText"/>, its row), said
+    /// as kept, not made permanent, or not reset.
+    /// </summary>
+    public static string NotAppliedText(FenixChangeKind kind, string rowText) => kind switch
+    {
+        FenixChangeKind.Permanent => $"Not made permanent: {rowText}.",
+        FenixChangeKind.Reset => $"Not reset: {rowText}.",
+        _ => $"Fenix kept {rowText}.",
+    };
+
     /// <summary>
     /// Whether the Fenix has applied a request, judged on a read after it was accepted. A session change
     /// applied when the option now reads the value that was sent; a permanent one also needs the value to
@@ -125,26 +157,14 @@ public static class FenixOptionEdits
     public static bool Applied(FenixChangeKind kind, FenixSetting before, string? sentValue, FenixSetting now)
         => kind switch
         {
-            FenixChangeKind.Session => SameValue(now.Value, sentValue),
-            FenixChangeKind.Permanent => SameValue(now.Value, sentValue) && FenixOptionCatalog.SourceKind(now.Source) == "user",
+            FenixChangeKind.Session => FenixOptionCatalog.SameValue(now.Value, sentValue),
+            FenixChangeKind.Permanent => FenixOptionCatalog.SameValue(now.Value, sentValue) && FenixOptionCatalog.SourceKind(now.Source) == "user",
             _ => !SameOrBothMissing(now.Value, before.Value)
                  || FenixOptionCatalog.SourceKind(now.Source) != FenixOptionCatalog.SourceKind(before.Source),
         };
 
-    /// <summary>
-    /// Whether two option values are the same one: two on/off values match whatever their spelling ("True" is
-    /// "true"), any other pair must match exactly. A missing value matches nothing.
-    /// </summary>
-    public static bool SameValue(string? a, string? b)
-    {
-        if (a is null || b is null) return false;
-        return bool.TryParse(a, out bool x) && bool.TryParse(b, out bool y)
-            ? x == y
-            : string.Equals(a, b, StringComparison.Ordinal);
-    }
-
     // Two values that are the same one, or that are both missing (SameValue says a missing value matches nothing).
-    private static bool SameOrBothMissing(string? a, string? b) => (a is null && b is null) || SameValue(a, b);
+    private static bool SameOrBothMissing(string? a, string? b) => (a is null && b is null) || FenixOptionCatalog.SameValue(a, b);
 
     private static bool IsBoolean(FenixSetting s) => string.Equals(s.Type, "System.Boolean", StringComparison.Ordinal);
 

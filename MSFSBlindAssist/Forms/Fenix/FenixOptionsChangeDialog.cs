@@ -4,10 +4,11 @@ namespace MSFSBlindAssist.Forms.Fenix;
 
 /// <summary>
 /// Asks what one Fenix option should be, for this simulator session (F2) or permanently (Shift+F2): a
-/// drop-down list of its choices, on the current value. The combo's accessible name carries the option and
-/// which of the two it is, so there is no label for the reader to say twice. OK closes with
-/// <see cref="SelectedValue"/> set to the chosen choice's value; Cancel leaves it null. The dialog itself
-/// never writes: the Fenix options window confirms and sends.
+/// drop-down list of its choices, on the current value (on nothing when the value matches no choice). The
+/// combo's accessible name carries the option and which of the two it is, so there is no label for the reader
+/// to say twice. OK closes with <see cref="SelectedValue"/> set to the chosen choice's value; Cancel, and OK
+/// with nothing chosen, leave it null. The dialog itself never writes: the Fenix options window confirms and
+/// sends.
 /// </summary>
 public sealed class FenixOptionsChangeDialog : Form
 {
@@ -50,8 +51,9 @@ public sealed class FenixOptionsChangeDialog : Form
             TabIndex = tab++,
         };
         foreach (FenixOptionChoice choice in choices) _combo.Items.Add(choice.Label);
-        int current = IndexOf(choices, currentValue);
-        if (_combo.Items.Count > 0) _combo.SelectedIndex = current < 0 ? 0 : current;
+        // On the current value; on nothing when it matches no choice, so OK cannot send the first choice by
+        // accident (OK with nothing chosen hands back nothing).
+        _combo.SelectedIndex = IndexOf(choices, currentValue);
         layout.Controls.Add(_combo);
 
         var ok = new Button { Text = "OK", AutoSize = true, DialogResult = DialogResult.OK, TabIndex = tab++ };
@@ -72,7 +74,7 @@ public sealed class FenixOptionsChangeDialog : Form
     private static int IndexOf(IReadOnlyList<FenixOptionChoice> choices, string? currentValue)
     {
         for (int i = 0; i < choices.Count; i++)
-            if (FenixOptionEdits.SameValue(choices[i].Value, currentValue)) return i;
+            if (FenixOptionCatalog.SameValue(choices[i].Value, currentValue)) return i;
         return -1;
     }
 

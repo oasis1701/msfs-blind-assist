@@ -81,17 +81,21 @@ public static class FenixOptionGrouping
             string? tested = FenixOptionNotes.TestedValue(key);
             if (tested is null) continue;
             var present = settings.FirstOrDefault(s => string.Equals(s.Key, key, StringComparison.Ordinal));
-            if (present is not null && !SameValue(present.Value, tested)) rows.Add(FenixOptionCatalog.RowText(present));
+            if (present is not null && !FenixOptionCatalog.SameValue(present.Value, tested)) rows.Add(FenixOptionCatalog.RowText(present));
         }
         return rows;
     }
 
-    /// <summary>The status box: the Fenix version, how many options, what F2 does, and what is not as tested.</summary>
+    /// <summary>
+    /// The status box: the Fenix version, how many options, what F2, Shift+F2 and Ctrl+F2 do, and what is not
+    /// as tested.
+    /// </summary>
     public static string StatusText(string? version, IReadOnlyList<FenixSetting> settings, bool changesAllowed)
     {
         string text = $"Fenix {(string.IsNullOrWhiteSpace(version) ? "version unknown" : version)}: {settings.Count} options. "
             + (changesAllowed
-                ? "F2 changes an on/off or choice option for this simulator session."
+                ? "F2 changes an on/off or choice option for this simulator session. Shift+F2 makes an option permanent. "
+                  + "Ctrl+F2 resets your change to the Fenix default."
                 : "Read only: change options in the Fenix EFB.");
         var untested = Untested(settings);
         return untested.Count > 0
@@ -121,12 +125,6 @@ public static class FenixOptionGrouping
         foreach (var s in settings) values[s.Key] = s.Value;
         return values;
     }
-
-    /// <summary>Booleans match whatever their spelling ("True" is "true"); anything else must match exactly.</summary>
-    private static bool SameValue(string? actual, string tested)
-        => bool.TryParse(actual, out bool a) && bool.TryParse(tested, out bool t)
-            ? a == t
-            : string.Equals(actual, tested, StringComparison.Ordinal);
 
     // OrderBy is stable, so options the comparison ties keep the order the Fenix gave them.
     private static List<FenixSetting> Sorted(List<FenixSetting> options)

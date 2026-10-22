@@ -83,7 +83,11 @@ public class FenixOptionGroupingTests
     }
 
     [Fact] public void CountChanged_counts_changes_additions_and_removals()
-        => Assert.Equal(2, FenixOptionGrouping.CountChanged(new[] { S("a", "1"), S("b", "2") }, new[] { S("a", "1"), S("b", "3"), S("c", "4") }));
+    {
+        Assert.Equal(2, FenixOptionGrouping.CountChanged(new[] { S("a", "1"), S("b", "2") }, new[] { S("a", "1"), S("b", "3"), S("c", "4") }));
+        // An option the second read no longer has counts as one change.
+        Assert.Equal(1, FenixOptionGrouping.CountChanged(new[] { S("a", "1"), S("b", "2") }, new[] { S("a", "1") }));
+    }
 
     [Fact] public void Untested_compares_booleans_not_their_spelling()
     {
@@ -107,7 +111,13 @@ public class FenixOptionGroupingTests
         }).ToList();
         Assert.Equal("Fenix version unknown: 11 options. Read only: change options in the Fenix EFB. Not what MSFS Blind Assist is tested with: "
             + "Encoder Acceleration: On; EFIS Linking: Baro: Linked Left+Right.", FenixOptionGrouping.StatusText(null, risky, false));
-        Assert.EndsWith("F2 changes an on/off or choice option for this simulator session.", FenixOptionGrouping.StatusText("3.0.0.7426", LiveEleven(), true));
+        Assert.Equal("Fenix 3.0.0.7426: 11 options. F2 changes an on/off or choice option for this simulator session. "
+            + "Shift+F2 makes an option permanent. Ctrl+F2 resets your change to the Fenix default.",
+            FenixOptionGrouping.StatusText("3.0.0.7426", LiveEleven(), true));
+        Assert.Equal("Fenix version unknown: 11 options. F2 changes an on/off or choice option for this simulator session. "
+            + "Shift+F2 makes an option permanent. Ctrl+F2 resets your change to the Fenix default. "
+            + "Not what MSFS Blind Assist is tested with: Encoder Acceleration: On; EFIS Linking: Baro: Linked Left+Right.",
+            FenixOptionGrouping.StatusText(null, risky, true));
         Assert.Equal("Refreshed, no changes.", FenixOptionGrouping.RefreshText(0));
         Assert.Equal("Refreshed, 1 option changed.", FenixOptionGrouping.RefreshText(1));
         Assert.Equal("Refreshed, 3 options changed.", FenixOptionGrouping.RefreshText(3));

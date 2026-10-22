@@ -117,21 +117,6 @@ public class FenixOptionEditsTests
     public void Anything_but_success_true_is_not_accepted(string json)
         => Assert.False(FenixOptionEdits.Succeeded(JObject.Parse(json)));
 
-    [Theory]
-    [InlineData("true", "True", true)] [InlineData("False", "false", true)] [InlineData("TRUE", "true", true)]
-    [InlineData("true", "false", false)]
-    [InlineData("Khz25", "Khz25", true)] [InlineData("Khz25", "khz25", false)] [InlineData("Khz25", "Khz8d33", false)]
-    [InlineData("", "", true)] [InlineData("true", "yes", false)]
-    public void Booleans_match_in_any_spelling_and_other_values_exactly(string a, string b, bool same)
-        => Assert.Equal(same, FenixOptionEdits.SameValue(a, b));
-
-    [Fact] public void A_missing_value_matches_nothing()
-    {
-        Assert.False(FenixOptionEdits.SameValue(null, "true"));
-        Assert.False(FenixOptionEdits.SameValue("true", null));
-        Assert.False(FenixOptionEdits.SameValue(null, ""));
-    }
-
     // ---- The dialog (built, never shown: a ComboBox and two Buttons construct fine headless) ---------
 
     // Every control of this type anywhere below the root, not only its direct children.
@@ -172,7 +157,7 @@ public class FenixOptionEditsTests
 
     [Theory]
     [InlineData("false", 1)] [InlineData("False", 1)] [InlineData("true", 0)] [InlineData("True", 0)]
-    [InlineData(null, 0)] [InlineData("maybe", 0)]
+    [InlineData(null, -1)] [InlineData("maybe", -1)]   // no current choice: nothing is selected
     public void The_dialog_starts_on_the_current_value_whatever_its_spelling(string? current, int expected)
     {
         using var dialog = new FenixOptionsChangeDialog("Encoder Acceleration", FenixOptionEdits.Choices(S("encoder_acceleration_enabled", "false")), current);
@@ -185,7 +170,19 @@ public class FenixOptionEditsTests
         using var on833 = new FenixOptionsChangeDialog("Channel Spacing", choices, "Khz8d33");
         Assert.Equal(1, Only<ComboBox>(on833).SelectedIndex);
         using var unknown = new FenixOptionsChangeDialog("Channel Spacing", choices, "khz8d33");
-        Assert.Equal(0, Only<ComboBox>(unknown).SelectedIndex);
+        Assert.Equal(-1, Only<ComboBox>(unknown).SelectedIndex);
+    }
+
+    [Theory] [InlineData(false)] [InlineData(true)]
+    public void A_current_value_that_matches_no_choice_selects_nothing_and_OK_sends_nothing(bool permanent)
+    {
+        // A value the Fenix lists no choice for: the list starts on nothing, so Enter cannot send the first
+        // choice by accident; OK with nothing chosen hands back nothing, which the window treats as Cancel.
+        var choices = FenixOptionEdits.Choices(S("channel_spacing_type", "Khz50", "Enum", possible: new[] { "Khz25", "Khz8d33" }));
+        using var dialog = new FenixOptionsChangeDialog("Channel Spacing", choices, "Khz50", permanent);
+        Assert.Equal(-1, Only<ComboBox>(dialog).SelectedIndex);
+        ClickOk(dialog);
+        Assert.Null(dialog.SelectedValue);
     }
 
     [Fact] public void OK_and_Cancel_are_the_accept_and_cancel_buttons_after_the_list()
@@ -232,7 +229,7 @@ public class FenixOptionEditsTests
     {
         Assert.Equal(new[] { new FenixOptionChoice("true", "On"), new FenixOptionChoice("false", "Off") },
             TestCulture.Run(culture, () => FenixOptionEdits.Choices(S("fd_ls_sync_enabled", "False"))));
-        Assert.True(TestCulture.Run(culture, () => FenixOptionEdits.SameValue("TRUE", "true")));
+        Assert.True(TestCulture.Run(culture, () => FenixOptionCatalog.SameValue("TRUE", "true")));
         Assert.True(TestCulture.Run(culture, () => FenixOptionEdits.CanChange(S("is_sharklet", "True"))));
         Assert.Equal("{\"setSetting\":{\"key\":\"is_sharklet\",\"value\":\"false\",\"persist\":false}}",
             TestCulture.Run(culture, () => JObject.FromObject(FenixOptionEdits.Variables("is_sharklet", "false")).ToString(Formatting.None)));
@@ -265,6 +262,61 @@ public class FenixOptionEditsTests
             TestCulture.Run("de-DE", () => FenixOptionEdits.PermanentConfirmText("Encoder Acceleration", "On")));
         Assert.Equal("Reset Encoder Acceleration to the Fenix default?",
             TestCulture.Run("de-DE", () => FenixOptionEdits.ResetConfirmText("Encoder Acceleration")));
+    }
+
+    // ---- Which question each key asks (Yes/No, No by default), worked out under a comma-decimal culture ----
+
+    const string Adirs = "Air Data Inertial Reference System (ADIRS)";
+
+    static string? Question(FenixChangeKind kind, FenixSetting option, string optionLabel, string choiceLabel)
+        => TestCulture.Run("de-DE", () => FenixOptionEdits.Question(kind, option, optionLabel, choiceLabel));
+
+    static FenixSetting Encoder() => S("encoder_acceleration_enabled", "false", category: "Realism");
+    static FenixSetting AdirsOption() => S("adirs_type", "Adirs", "Enum", possible: new[] { "Gnadirs", "Adirs" }, source: "UserFile");
+
+    [Fact] public void F2_asks_only_before_a_change_that_reshapes_the_cockpit()
+    {
+        Assert.Null(Question(FenixChangeKind.Session, Encoder(), "Encoder Acceleration", "On"));
+        Assert.Equal($"Change {Adirs} to GNADIRS? This changes your cockpit panels until MSFS closes.",
+            Question(FenixChangeKind.Session, AdirsOption(), Adirs, "GNADIRS"));
+    }
+
+    [Fact] public void Shift_F2_always_asks_and_says_when_it_reshapes_the_cockpit()
+    {
+        Assert.Equal("Make Encoder Acceleration On your permanent setting? It applies to every flight and livery until you change it.",
+            Question(FenixChangeKind.Permanent, Encoder(), "Encoder Acceleration", "On"));
+        Assert.Equal($"Make {Adirs} GNADIRS your permanent setting? It applies to every flight and livery until you change it. This changes your cockpit panels.",
+            Question(FenixChangeKind.Permanent, AdirsOption(), Adirs, "GNADIRS"));
+    }
+
+    [Fact] public void Ctrl_F2_always_asks_and_says_when_it_reshapes_the_cockpit()
+    {
+        Assert.Equal("Reset Encoder Acceleration to the Fenix default?",
+            Question(FenixChangeKind.Reset, Encoder(), "Encoder Acceleration", ""));
+        Assert.Equal($"Reset {Adirs} to the Fenix default? This changes your cockpit panels.",
+            Question(FenixChangeKind.Reset, AdirsOption(), Adirs, ""));
+    }
+
+    [Theory] [InlineData("standby_type")] [InlineData("isis_type")] [InlineData("adirs_type")]
+    [InlineData("acp_type")] [InlineData("dcdu_enabled")]
+    public void Every_cockpit_reshaping_key_asks_for_every_kind_of_change(string key)
+    {
+        var option = S(key, "a", "Enum", possible: new[] { "a", "b" }, source: "UserFile");
+        Assert.EndsWith(" This changes your cockpit panels until MSFS closes.", Question(FenixChangeKind.Session, option, "X", "b"));
+        Assert.EndsWith(" This changes your cockpit panels.", Question(FenixChangeKind.Permanent, option, "X", "b"));
+        Assert.EndsWith(" This changes your cockpit panels.", Question(FenixChangeKind.Reset, option, "X", ""));
+    }
+
+    // ---- What the read-back says when the Fenix accepted a request but has not applied it -------------
+
+    [Fact] public void A_change_that_did_not_apply_says_so_per_kind()
+    {
+        Assert.Equal("Fenix kept Encoder Acceleration: Off.",
+            TestCulture.Run("de-DE", () => FenixOptionEdits.NotAppliedText(FenixChangeKind.Session, "Encoder Acceleration: Off")));
+        Assert.Equal("Not made permanent: Encoder Acceleration: On.",
+            TestCulture.Run("de-DE", () => FenixOptionEdits.NotAppliedText(FenixChangeKind.Permanent, "Encoder Acceleration: On")));
+        Assert.Equal("Not reset: Encoder Acceleration: On.",
+            TestCulture.Run("de-DE", () => FenixOptionEdits.NotAppliedText(FenixChangeKind.Reset, "Encoder Acceleration: On")));
     }
 
     [Fact] public void The_default_mutation_is_the_one_the_EFB_runs()
@@ -330,20 +382,6 @@ public class FenixOptionEditsTests
         Assert.Equal("session", TestCulture.Run("tr-TR", () => FenixOptionCatalog.SourceKind("SESSION")));
         Assert.Equal("livery", TestCulture.Run("tr-TR", () => FenixOptionCatalog.SourceKind("LIVERY")));
         Assert.True(TestCulture.Run("tr-TR", () => FenixOptionEdits.CanReset(S("is_sharklet", "True", source: "USERFILE"))));
-    }
-
-    [Theory]
-    [InlineData("UserFile")] [InlineData("Session")] [InlineData("Livery")] [InlineData("Internal")] [InlineData(null)]
-    public void The_source_tooltip_still_follows_the_source_kind(string? source)
-    {
-        string expected = FenixOptionCatalog.SourceKind(source) switch
-        {
-            "user" => "This setting has been overridden by you and will apply regardless of livery or Fenix defaults.",
-            "session" => "This setting is overridden for the current simulator session and will reset when you close MSFS or change aircraft/livery.",
-            "livery" => "This setting has been overridden by the current livery.",
-            _ => "This setting is the default Fenix value."
-        };
-        Assert.Equal(expected, FenixOptionCatalog.SourceText(source));
     }
 
     [Fact] public void The_permanent_dialog_is_titled_and_named_for_a_permanent_change()
@@ -449,7 +487,7 @@ public class FenixOptionEditsTests
         Assert.False(TestCulture.Run(culture, () => FenixOptionEdits.Applied(FenixChangeKind.Reset, Opt("true", "USERFILE"), null, Opt("True", "userfile"))));
     }
 
-    // ---- The window's source (sim-facing, so pinned by scans like Task 4's) ---------------------------
+    // ---- The window's source (sim-facing): scans only for what a change must never do ------------------
 
     static string FormSource() => File.ReadAllText(Path.Combine(ClaudeContextBudgetTests.RepoRoot(), "MSFSBlindAssist", "Forms", "Fenix", "FenixOptionsForm.cs"));
 
@@ -460,18 +498,8 @@ public class FenixOptionEditsTests
             .Concat(Directory.GetFiles(Path.Combine(root, "Forms", "Fenix"), "FenixOptions*.cs"));
     }
 
-    [Fact] public void The_window_handles_F2_with_and_without_Shift_and_Ctrl_and_filters_auto_repeat()
+    [Fact] public void Nothing_hard_codes_a_permanent_write_and_no_file_sends_an_all_options_write()
     {
-        string form = FormSource();
-        Assert.Contains("keyData == Keys.F2", form);
-        Assert.Contains("keyData == (Keys.Shift | Keys.F2)", form);
-        Assert.Contains("keyData == (Keys.Control | Keys.F2)", form);
-        Assert.Contains("0x40000000", form);
-    }
-
-    [Fact] public void Only_a_permanent_change_persists_and_no_file_sends_an_all_options_write()
-    {
-        Assert.Contains("persist: kind == FenixChangeKind.Permanent", FormSource());
         Assert.DoesNotContain("persist: true", FormSource());
         foreach (string file in OptionSources())
         {
@@ -485,27 +513,17 @@ public class FenixOptionEditsTests
     {
         string form = FormSource();
         // One shared send-and-read-back, judged by FenixOptionEdits.Applied for every kind, with one wait and
-        // one retry: no per-kind copy and no "nothing was sent" special case that speaks the first read.
+        // one retry: a second copy of the retry logic would drift from the first.
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(form, @"private async Task SendAndReadBackAsync\("));
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(form, @"Task\.Delay\("));
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(form, @"FenixOptionEdits\.Applied\("));
-        Assert.Contains("Func<FenixSetting, bool> applied", form);
-        Assert.Contains("Fenix kept ", form);
-        Assert.DoesNotContain("sentValue == null", form);
-        Assert.DoesNotContain("sentValue != null", form);
-        // The three kinds are told apart only by what they send and by their applied test.
-        Assert.Contains("FenixOptionEdits.Applied(kind, option, chosen, now)", form);
     }
 
     [Fact] public void Every_send_is_behind_a_Yes_with_No_as_the_default()
     {
         string form = FormSource();
-        // One question box serves the session confirm, the permanent confirm and the reset confirm.
-        Assert.Single(System.Text.RegularExpressions.Regex.Matches(form, @"MessageBox\.Show\("));
         Assert.Contains("MessageBoxDefaultButton.Button2", form);
         Assert.DoesNotContain("MessageBoxDefaultButton.Button1", form);
         Assert.Contains("answer != DialogResult.Yes", form);
-        Assert.Contains("FenixOptionEdits.PermanentConfirmText", form);
-        Assert.Contains("FenixOptionEdits.ResetConfirmText", form);
     }
 }

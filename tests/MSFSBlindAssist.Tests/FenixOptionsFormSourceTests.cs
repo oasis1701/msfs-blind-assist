@@ -17,14 +17,35 @@ public class FenixOptionsFormSourceTests
         Assert.DoesNotContain("ConfigureAwait(false)", form);
     }
 
+    // A value read out directly, or a whole FenixSetting interpolated: FenixSetting is a positional record, so
+    // its ToString() prints Value too (for a credential, the credential). The names are the ones this plan's
+    // code gives a FenixSetting (or a list of them, indexed).
+    const string ValueLeak = @"\.Value\b|RowText|FormatValue|DetailLines"
+        + @"|\{\s*(?:option|now|before|landed|present|setting|settings|s|o|a|b|row)\s*(?:\[[^\]]*\])?\s*!?\s*(?:\.ToString\(\))?\s*[,:}]";
+
     [Fact] public void Never_logs_an_option_value()
     {
         var root = Path.Combine(ClaudeContextBudgetTests.RepoRoot(), "MSFSBlindAssist");
         var files = Directory.GetFiles(Path.Combine(root, "Services"), "FenixOption*.cs")
             .Concat(Directory.GetFiles(Path.Combine(root, "Forms", "Fenix"), "FenixOptions*.cs"));
         foreach (var line in files.SelectMany(File.ReadAllLines).Where(l => l.Contains("Log.")))
-            Assert.DoesNotMatch(@"\.Value\b|RowText|FormatValue|DetailLines", line);
+            Assert.DoesNotMatch(ValueLeak, line);
     }
+
+    // The scan itself: it catches a whole setting interpolated, and lets the keys-and-counts lines through.
+    [Theory]
+    [InlineData("Log.Debug(LogCategory, $\"Setting {option} sent\");", true)]
+    [InlineData("Log.Debug(LogCategory, $\"Read back {now}\");", true)]
+    [InlineData("Log.Debug(LogCategory, $\"Was {before,20}\");", true)]
+    [InlineData("Log.Debug(LogCategory, $\"Got {landed!}\");", true)]
+    [InlineData("Log.Debug(LogCategory, $\"Got {s.ToString()}\");", true)]
+    [InlineData("Log.Debug(LogCategory, $\"First {settings[0]}\");", true)]
+    [InlineData("Log.Debug(LogCategory, $\"Value {option.Value}\");", true)]
+    [InlineData("Log.Debug(LogCategory, $\"Setting {what} sent for {key}\");", false)]
+    [InlineData("Log.Debug(LogCategory, $\"Read {settings.Count} options in {groups.Count} groups\");", false)]
+    [InlineData("Log.Debug(LogCategory, $\"Options read failed: {ex.GetType().Name}: {ex.Message}\");", false)]
+    public void The_log_scan_catches_a_whole_setting(string line, bool leaks)
+        => Assert.Equal(leaks, System.Text.RegularExpressions.Regex.IsMatch(line, ValueLeak));
 
     [Fact] public void Registry_lists_Fenix_options_once()
         => Assert.Single(MSFSBlindAssist.Forms.Fenix.FenixWindowRegistry.Build(), e => e.Name == "Fenix options");

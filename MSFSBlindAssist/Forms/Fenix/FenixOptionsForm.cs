@@ -201,9 +201,10 @@ public sealed class FenixOptionsForm : Form
             IReadOnlyList<FenixSetting> settings = FenixDataQueries.ParseSettings(data);
             IReadOnlyList<FenixOptionGroup> groups = FenixOptionGrouping.Group(settings);
             string status = FenixOptionGrouping.StatusText(version, settings, changesAllowed: ChangesAllowed);
-            // No earlier read to count changes against (the Fenix did not answer on open): F5 says the status.
+            // No earlier read with options to count changes against (the Fenix did not answer on open, or
+            // answered with none): F5 says the status.
             string? result = !speak ? null
-                : _settings == null ? status
+                : _settings is not { Count: > 0 } ? status
                 : FenixOptionGrouping.RefreshText(FenixOptionGrouping.CountChanged(_settings, settings));
 
             bool rebuilt = Apply(groups);
@@ -297,17 +298,12 @@ public sealed class FenixOptionsForm : Form
                 if (IsDisposed || _tornDown) return;
                 // The same value again changes nothing for the session: nothing is sent and nothing is spoken.
                 // A permanent change may be the current value (making it permanent), so it goes on to the question.
-                if (chosen == null || (kind == FenixChangeKind.Session && FenixOptionEdits.SameValue(chosen, option.Value))) return;
+                if (chosen == null || (kind == FenixChangeKind.Session && FenixOptionCatalog.SameValue(chosen, option.Value))) return;
                 choiceLabel = choices.FirstOrDefault(c => string.Equals(c.Value, chosen, StringComparison.Ordinal))?.Label ?? chosen;
             }
 
             // The one question box: Yes sends, anything else sends nothing and says nothing; No is the default.
-            string? question = kind switch
-            {
-                FenixChangeKind.Permanent => FenixOptionEdits.PermanentConfirmText(label, choiceLabel),
-                FenixChangeKind.Reset => FenixOptionEdits.ResetConfirmText(label),
-                _ => FenixOptionEdits.NeedsConfirm(option) ? FenixOptionEdits.ConfirmText(label, choiceLabel) : null,
-            };
+            string? question = FenixOptionEdits.Question(kind, option, label, choiceLabel);
             if (question != null)
             {
                 DialogResult answer = MessageBox.Show(this, question, ConfirmTitle(kind),
@@ -353,7 +349,9 @@ public sealed class FenixOptionsForm : Form
     // has, never what was asked for. `applied` says whether a read shows the request applied (the change's
     // value read, the value now the pilot's own, the option no longer as it was: FenixOptionEdits.Applied).
     // The Fenix may take a moment, so a read that does not show it applied gets one more look after a short
-    // wait, and one that still does not is spoken as kept. Never throws.
+    // wait, and one that still does not is spoken as kept, not made permanent or not reset. A request with no
+    // answer at all (a time-out, the gateway gone, or GraphQL errors) may still have landed, so one silent
+    // read says which. Never throws.
     private async Task SendAndReadBackAsync(string key, FenixChangeKind kind, string document, object variables,
         Func<JObject?, bool> accepted, Func<FenixSetting, bool> applied)
     {
@@ -363,6 +361,34 @@ public sealed class FenixOptionsForm : Form
             Log.Debug(LogCategory, $"Setting {what} sent for {key}");
             JObject? reply = await _data.QueryAsync(document, variables, _cts.Token);
             if (IsDisposed || _tornDown) return;
+            if (reply == null)
+            {
+                Log.Debug(LogCategory, $"Setting {what} for {key} got no answer; reading it back");
+                IReadOnlyList<FenixSetting>? read = await ReadAndApplyAsync(speak: false);
+                if (IsDisposed || _tornDown) return;
+                FenixSetting? landed = Find(read, key);
+                if (read == null)
+                {
+                    Log.Debug(LogCategory, $"Setting {what} for {key}: no answer to the read either");
+                    _announcer.AnnounceImmediate(FenixOptionGrouping.NoAnswerText);
+                }
+                else if (landed == null)
+                {
+                    Log.Debug(LogCategory, $"Setting {what} for {key} was not read back");
+                    _announcer.AnnounceImmediate(NotReadBackText);
+                }
+                else if (applied(landed))
+                {
+                    Log.Debug(LogCategory, $"Setting {key} reads back as {(kind == FenixChangeKind.Reset ? "reset" : "sent")} after no answer");
+                    _announcer.AnnounceImmediate(FenixOptionCatalog.RowText(landed));
+                }
+                else
+                {
+                    Log.Debug(LogCategory, $"Setting {what} for {key} got no answer and reads back as not changed");
+                    _announcer.AnnounceImmediate(NotAcceptedText);
+                }
+                return;
+            }
             if (!accepted(reply))
             {
                 Log.Debug(LogCategory, $"Setting {what} not accepted for {key}");
@@ -393,7 +419,7 @@ public sealed class FenixOptionsForm : Form
             else
             {
                 Log.Debug(LogCategory, $"Setting {key} reads back as not changed");
-                _announcer.AnnounceImmediate($"Fenix kept {FenixOptionCatalog.RowText(now)}.");
+                _announcer.AnnounceImmediate(FenixOptionEdits.NotAppliedText(kind, FenixOptionCatalog.RowText(now)));
             }
         }
         catch (OperationCanceledException)
@@ -455,15 +481,17 @@ public sealed class FenixOptionsForm : Form
     // Returns true when the tree was rebuilt.
     private bool Apply(IReadOnlyList<FenixOptionGroup> groups)
     {
-        bool first = _groups == null;
-        bool rebuild = first || !SameShape(_groups!, groups) || _tree.Nodes.Count != groups.Count;
+        // The first options shown are the first that fill an empty tree: an answer with no options leaves the
+        // tree empty, so the next read is still the first.
+        bool first = _tree.Nodes.Count == 0;
+        bool rebuild = first || _groups == null || !SameShape(_groups, groups) || _tree.Nodes.Count != groups.Count;
         if (rebuild) Rebuild(groups, first);
         else UpdateTexts(groups);
         _groups = groups;
         ShowDetails();
 
         // The first options shown: the tree takes focus with the first option selected, which the reader says.
-        if (first)
+        if (first && _tree.Nodes.Count > 0)
         {
             if (ContainsFocus) _tree.Focus();
             else ActiveControl = _tree;

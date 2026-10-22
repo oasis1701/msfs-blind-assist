@@ -111,6 +111,19 @@ public static class FenixOptionCatalog
     }
 
     /// <summary>
+    /// Whether two option values are the same one, the one comparison every part of the options window uses:
+    /// two on/off values match whatever their spelling ("True" is "true"), any other pair must match exactly.
+    /// A missing value matches nothing.
+    /// </summary>
+    internal static bool SameValue(string? a, string? b)
+    {
+        if (a is null || b is null) return false;
+        return bool.TryParse(a, out bool x) && bool.TryParse(b, out bool y)
+            ? x == y
+            : string.Equals(a, b, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// A choice as the EFB shows it: "" is "(none)", else the option's value label (exact, then lower case
     /// as the EFB's F() looks it up), else the raw value. An empty label counts as none: the EFB builds a
     /// choice with the raw value as its label and a label-less entry (acp_type's images) keeps it.

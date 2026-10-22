@@ -27,8 +27,8 @@ public static class FenixOptionKeys
 
     /// <summary>
     /// The options whose value the app never shows, speaks or logs. Matched by the whole key, never by a
-    /// part of it: "key", "code" and "token" also sit in encoder_acceleration_enabled, type_code and
-    /// cdls_keypad_beep_type, which are harmless.
+    /// part of it: "code" also sits in encoder_acceleration_enabled and type_code, and "key" in
+    /// cdls_keypad_beep_type and on_screen_keyboard_enabled, which are harmless.
     /// </summary>
     public static readonly IReadOnlyList<string> Secrets = new[]
     {
