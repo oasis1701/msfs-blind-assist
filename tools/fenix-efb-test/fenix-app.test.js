@@ -8,10 +8,11 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const { computeAccessibleName } = require('dom-accessibility-api');
-const { load, loadCounting, press, attributesOf, turns, LAYER } = require('./load');
+const { load, loadCounting, press, attributesOf, hiddenByLayer, turns, LAYER } = require('./load');
 
 const nameOf = el => computeAccessibleName(el);
 const all = (window, selector) => [...window.document.querySelectorAll(selector)];
+const squash = text => text.replace(/\s+/g, ' ').trim();
 
 // The Fenix-app captures that show the tab bar (the switcher's shows My Flights behind it).
 const TAB_BAR_SCREENS = ['my-flight', 'switcher', 'ground-services', 'mass-balance', 'panel-states'];
@@ -128,6 +129,129 @@ test('Mass_and_balance_names_follow_the_pages_text', async () => {
     window.close();
   }
 });
+
+// R37: the W&B chart is a picture with labels laid over it: axis ticks (numbers only), the axis title "%MAC", line
+// captions, and the three limits ("MZFW = 61,000KG"). Without the picture the ticks are a bare run of numbers and the
+// captions name lines no one can see: hidden. The limits are values a pilot uses: kept. A label is a text-only child of
+// the chart; the figures table under it (ZFW, GW and their %MAC, live values) is not a label and is left alone.
+const LIMITS = ['MZFW = 61,000KG', 'MLW = 64,500KG', 'MTOW = 73,500KG'];
+const chartLabels = chart => [...chart.children].filter(el => el.firstElementChild === null && squash(el.textContent) !== '');
+
+test('The_weight_and_balance_chart_keeps_only_its_limits_for_a_screen_reader', async () => {
+  const window = await load('mass-balance');
+  try {
+    const chart = window.document.getElementById('mainWandBCont');
+    const text = el => squash(el.textContent);
+    const hidden = el => el.getAttribute('aria-hidden') === 'true';
+    const labels = chartLabels(chart);
+    assert.strictEqual(labels.length, 36, 'as captured: 27 ticks, "%MAC", five line captions, three limits');
+    const ticks = labels.filter(l => /^[\d.,]+$/.test(text(l)));
+    assert.strictEqual(ticks.length, 27);
+    assert.ok(ticks.every(hidden), 'every tick is hidden');
+    const words = labels.filter(l => !ticks.includes(l) && !text(l).includes('='));
+    assert.deepStrictEqual(words.map(text),
+      ['Operational Limits', 'Take-Off Limits', 'Zfw limit', 'Zfw limit', 'Take-Off Limits', '%MAC']);
+    assert.ok(words.every(hidden), 'the axis title and the line captions are hidden');
+    assert.deepStrictEqual(labels.filter(l => !hidden(l)).map(text), LIMITS, 'the limits are read');
+    assert.ok(labels.every(l => !l.hasAttribute('role') && !l.hasAttribute('aria-label')), 'hidden or kept, nothing else');
+
+    // The chart picture is hidden; the figures under the chart are values and stay readable.
+    assert.strictEqual(window.document.getElementById('mainWandB').getAttribute('aria-hidden'), 'true');
+    const figures = chart.querySelector('.mandbInfoArea');
+    assert.ok(figures, 'the capture has the figures');
+    assert.strictEqual(figures.querySelectorAll('[aria-hidden]').length + (figures.hasAttribute('aria-hidden') ? 1 : 0), 0);
+    assert.ok(window.__msfsbaFenixEfb.textOf(figures).includes('43,839'), 'the live ZFW is read');
+
+    // A label's text changes: what is hidden follows the text, not the label.
+    const mlw = labels.find(l => text(l) === 'MLW = 64,500KG');
+    mlw.firstChild.nodeValue = ' MLW ';
+    await turns();
+    assert.strictEqual(mlw.getAttribute('aria-hidden'), 'true');
+    mlw.firstChild.nodeValue = ' MLW = 64,000KG ';
+    await turns();
+    assert.strictEqual(mlw.hasAttribute('aria-hidden'), false, 'the layer\'s own hidden state is taken back');
+    ticks[0].firstChild.nodeValue = ' CG = 21 ';
+    window.__msfsbaFenixEfb.pass();
+    assert.strictEqual(ticks[0].hasAttribute('aria-hidden'), false);
+  } finally {
+    window.close();
+  }
+});
+
+test('A_hidden_state_the_page_set_on_the_chart_is_kept', async () => {
+  const window = await load('mass-balance', { layer: false });
+  try {
+    const labels = chartLabels(window.document.getElementById('mainWandBCont'));
+    const mac = labels.find(l => squash(l.textContent) === '%MAC');
+    const mzfw = labels.find(l => squash(l.textContent) === LIMITS[0]);
+    mac.setAttribute('aria-hidden', 'false');
+    mzfw.setAttribute('aria-hidden', 'true');
+    window.eval(fs.readFileSync(LAYER, 'utf8'));
+    await turns();
+    assert.strictEqual(mac.getAttribute('aria-hidden'), 'false', 'the page\'s own, not overridden');
+    assert.strictEqual(mzfw.getAttribute('aria-hidden'), 'true', 'the page\'s own, not taken back');
+  } finally {
+    window.close();
+  }
+});
+
+// R38: the seat map is a table of a few hundred seats the page clicks, each read as "clickable"; it shows occupancy,
+// and the boarded counts are in the table beside it. Hidden from a screen reader, the seats themselves untouched.
+test('The_seat_map_is_hidden_from_a_screen_reader', async () => {
+  const bare = await load('mass-balance', { layer: false });
+  const window = await load('mass-balance');
+  try {
+    const seats = window.document.getElementById('seatContainer');
+    assert.ok(seats, 'the capture keeps the seat map');
+    assert.ok(seats.querySelectorAll('td.seat-td').length > 100, 'as captured');
+    assert.strictEqual(seats.getAttribute('aria-hidden'), 'true');
+    assert.ok(['role', 'aria-label', 'tabindex', 'data-msfsba'].every(a => !seats.hasAttribute(a)));
+    assert.strictEqual(seats.querySelectorAll('[role],[aria-hidden],[aria-label],[data-msfsba]').length, 0, 'the seats are left as they are');
+
+    // On this screen the layer hides exactly: the top bar's pictures and glyphs, the chart's picture and labels but
+    // its limits, and the seat map.
+    const hidden = hiddenByLayer(bare, window);
+    assert.deepStrictEqual(hidden.filter(h => !/^div\.(line-with-text|text-numbers-)/.test(h)), [
+      'img#appBg', 'i.fas.fa-chevron-down', 'img.airplane-icon.top-icon-fade-out', 'img.signal-icon.top-icon-fade-in',
+      'img#linkedup', 'i.fas.fa-cog', 'img#mainWandB', 'div#seatContainer'
+    ]);
+    assert.strictEqual(hidden.length, 8 + 33);
+  } finally {
+    bare.close();
+    window.close();
+  }
+});
+
+const MASS_BALANCE_ISOLATION = [
+  ['mainWandBCont', '#mainWandBCont > [aria-hidden=true]', 34],
+  ['seatContainer', '#seatContainer[aria-hidden=true]', 1],
+  ['planned-input', 'input.planned-input[aria-label]', 4]
+];
+for (const [failing] of MASS_BALANCE_ISOLATION) {
+  test('A_failing_rule_does_not_skip_the_others_on_mass_balance_when_' + failing.replace(/-/g, '_') + '_fails', async () => {
+    const window = await load('mass-balance', { layer: false });
+    const proto = window.Element.prototype;
+    const original = proto.querySelectorAll;
+    try {
+      proto.querySelectorAll = function (s) {
+        if (this === window.document.body && s.includes(failing)) throw new Error('boom');
+        return original.call(this, s);
+      };
+      window.eval(fs.readFileSync(LAYER, 'utf8'));
+      await turns();
+      proto.querySelectorAll = original;
+      assert.strictEqual(window.document.getElementById('homeButtonFree').getAttribute('role'), 'button', 'an older rule ran');
+      for (const [needle, selector, count] of MASS_BALANCE_ISOLATION) {
+        const found = window.document.querySelectorAll(selector).length;
+        assert.strictEqual(found, needle === failing ? 0 : count,
+          needle === failing ? 'the failing rule did nothing' : 'the rule for ' + needle + ' still ran');
+      }
+    } finally {
+      proto.querySelectorAll = original;
+      window.close();
+    }
+  });
+}
 
 test('A_box_the_layer_cannot_place_in_a_table_is_named_by_what_the_page_gives_it', async () => {
   const window = await load('mass-balance');

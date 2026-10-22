@@ -8,7 +8,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const { computeAccessibleName } = require('dom-accessibility-api');
-const { load, loadCounting, press, attributesOf, turns, LAYER } = require('./load');
+const { load, loadCounting, press, attributesOf, hiddenByLayer, turns, LAYER } = require('./load');
 
 const nameOf = el => computeAccessibleName(el);
 const all = (window, selector) => [...window.document.querySelectorAll(selector)];
@@ -197,6 +197,125 @@ test('Settings_badges_and_the_pages_other_buttons_are_named_by_their_own_text', 
     for (const el of own) assert.deepStrictEqual(layerStamp(el), { ...NO_STAMP, label: el.getAttribute('aria-label') });
     assert.deepStrictEqual(all(window, 'button.sidebar-action').map(nameOf), ['Restart EFB', 'Sleep EFB']);
     assert.strictEqual(nameOf(one(window, 'app-search-input input')), 'Search settings');
+  } finally {
+    window.close();
+  }
+});
+
+// R41: an icon font draws its glyph from a style sheet as a private-use character, and Chromium makes that character the
+// name of a button that has only a title ("Expanded view") or reads it as a stray line before the text. So a glyph
+// inside a control is hidden from a screen reader; the control keeps its own name (its text, title or label).
+test('Icon_glyphs_inside_a_control_are_hidden_and_the_control_keeps_its_own_name', async () => {
+  const bare = await load('settings', { layer: false });
+  const window = await load('settings');
+  try {
+    assert.deepStrictEqual(hiddenByLayer(bare, window), [
+      'i.fas.fa-chevron-down', 'i.fas.fa-cog', 'i.fas.fa-solid.fa-power-off', 'i.fas.fa-solid.fa-moon',
+      'i.fas.fa-solid.fa-images', 'i.fas.fa-solid.fa-list-ul'
+    ], 'the chevron\'s, the quick settings cog\'s, the two sidebar actions\' and the two view buttons\'');
+    const view = all(window, 'button.toggle-button');
+    assert.deepStrictEqual(view.map(nameOf), ['Expanded view', 'Compact view'], 'named by their titles');
+    assert.ok(view.every(b => b.querySelector('i').getAttribute('aria-hidden') === 'true'));
+    assert.deepStrictEqual(all(window, 'button.sidebar-action').map(nameOf), ['Restart EFB', 'Sleep EFB']);
+    // The glyph is hidden, nothing else: no role, label or stamp on it.
+    for (const icon of all(window, 'button i')) {
+      assert.ok(['role', 'aria-label', 'tabindex', 'data-msfsba'].every(a => !icon.hasAttribute(a)));
+    }
+  } finally {
+    bare.close();
+    window.close();
+  }
+});
+
+test('An_icon_that_is_itself_the_control_is_left_alone_and_one_outside_a_control_too', async () => {
+  const bare = await load('charts', { layer: false });
+  const window = await load('charts');
+  try {
+    // The zoom icons are the buttons themselves (R15): not hidden.
+    for (const id of ['mapZoomInBtn', 'mapZoomOutBtn']) {
+      const icon = window.document.getElementById(id);
+      assert.strictEqual(icon.getAttribute('role'), 'button');
+      assert.strictEqual(icon.hasAttribute('aria-hidden'), false, id);
+    }
+    assert.deepStrictEqual(all(window, 'div.map-control-item').map(nameOf), ['Map settings', 'World Map', 'Dark map', 'Light map']);
+    assert.deepStrictEqual(hiddenByLayer(bare, window), [
+      'i.fas.fa-chevron-down', 'i.fas.fa-cog', 'i.fa-download.fas', 'i.fas.fa-cog', 'i.fas.fa-moon', 'i.fas.fa-sun'
+    ], 'the chevron\'s, the quick settings cog\'s, Sync SimBrief\'s and the three map controls\'');
+  } finally {
+    bare.close();
+    window.close();
+  }
+});
+
+test('A_glyph_follows_its_control_and_a_hidden_state_the_page_set_on_a_glyph_is_kept', async () => {
+  const window = await load('settings');
+  try {
+    const doc = window.document;
+    const holder = doc.createElement('div');
+    holder.innerHTML =
+      '<div class="page-control" role="button"><i class="fas fa-star"></i></div>' +
+      '<button class="own"><i class="fas fa-star" aria-hidden="false"></i></button>' +
+      '<button class="holds-a-control"><i class="fas fa-plus" role="button"></i></button>' +
+      '<a href="#x"><i class="far fa-file"></i> File</a>' +
+      '<div class="plain"><i class="fas fa-star"></i></div>';
+    doc.querySelector('app-settings2').appendChild(holder);
+    await turns();
+    const [inRole, own, self, inLink, plain] = [...holder.querySelectorAll('i')];
+    assert.strictEqual(inRole.getAttribute('aria-hidden'), 'true', 'inside a role=button of the page\'s');
+    assert.strictEqual(own.getAttribute('aria-hidden'), 'false', 'the page\'s own');
+    assert.strictEqual(self.hasAttribute('aria-hidden'), false, 'the icon is itself a control');
+    assert.strictEqual(inLink.getAttribute('aria-hidden'), 'true', 'inside a link');
+    assert.strictEqual(plain.hasAttribute('aria-hidden'), false, 'inside no control');
+
+    // The control goes (the page takes its role away; the observer does not watch roles, so the pass is run by hand):
+    // the glyph is read again. It comes back with the role.
+    inRole.parentElement.removeAttribute('role');
+    window.__msfsbaFenixEfb.pass();
+    assert.strictEqual(inRole.hasAttribute('aria-hidden'), false);
+    inRole.parentElement.setAttribute('role', 'button');
+    window.__msfsbaFenixEfb.pass();
+    assert.strictEqual(inRole.getAttribute('aria-hidden'), 'true');
+  } finally {
+    window.close();
+  }
+});
+
+// R42: a Settings choice can show a picture whose alt repeats the choice's own text ("GNADIRS"), so a screen reader read
+// each choice twice. The settings capture has the choices without their pictures (the old snippet removed every <img>),
+// so they are put back here as the live page has them, as the button's first child.
+test('Option_pictures_that_repeat_the_options_text_are_hidden', async () => {
+  const window = await load('settings', { layer: false });
+  try {
+    const doc = window.document;
+    const options = all(window, 'button.option');
+    for (const option of options) {
+      const img = doc.createElement('img');
+      img.className = 'option-image';
+      img.setAttribute('src', '/assets/img/settings/option.png');
+      img.setAttribute('alt', squash(option.textContent));
+      option.insertBefore(img, option.firstChild);
+    }
+    // A choice that is only a picture: its picture is its name, and stays.
+    const lone = doc.createElement('button');
+    lone.className = 'option';
+    lone.setAttribute('type', 'button');
+    lone.innerHTML = '<img class="option-image" src="/assets/img/settings/only.png" alt="Picture only">';
+    options[0].parentElement.appendChild(lone);
+    window.eval(fs.readFileSync(LAYER, 'utf8'));
+    await turns();
+
+    const pictures = options.map(o => o.querySelector('img.option-image'));
+    assert.ok(pictures.every(p => p.getAttribute('aria-hidden') === 'true'));
+    assert.deepStrictEqual(options.map(nameOf), ['GNADIRS', 'ADIRS', 'Classic', 'Modern', 'hPa', 'inHg'], 'each read once');
+    assert.strictEqual(lone.querySelector('img').hasAttribute('aria-hidden'), false);
+    assert.strictEqual(nameOf(lone), 'Picture only');
+
+    // The choice's text goes: its picture is its name again.
+    const label = options[2].querySelector('span.option-label');
+    label.firstChild.nodeValue = '';
+    await turns();
+    assert.strictEqual(pictures[2].hasAttribute('aria-hidden'), false);
+    assert.strictEqual(nameOf(options[2]), 'Classic');
   } finally {
     window.close();
   }

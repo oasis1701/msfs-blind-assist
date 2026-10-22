@@ -90,4 +90,22 @@ function press(window, target, init) {
 const attributesOf = window => [...window.document.querySelectorAll('*')]
   .map(el => el.localName + ':' + [...el.attributes].map(a => a.name + '=' + a.value).join('|'));
 
-module.exports = { load, loadCounting, press, attributesOf, sleep, turns, LAYER, TITLES };
+// An element as tag#id.class (Angular's ng- classes left out), for a readable list.
+function describe(el) {
+  const id = el.getAttribute('id');
+  const cls = (el.getAttribute('class') || '').split(/\s+/).filter(c => c && !c.startsWith('ng-')).join('.');
+  return el.localName + (id ? '#' + id : '') + (cls ? '.' + cls : '');
+}
+
+// The elements the layer hid from a screen reader: aria-hidden "true" in `window` and not in `bare`, the same
+// capture loaded without the layer. The layer adds and moves no node, so the two hold the same elements in the
+// same order. Returns each as describe() gives it, in document order.
+function hiddenByLayer(bare, window) {
+  const before = [...bare.document.querySelectorAll('*')];
+  const after = [...window.document.querySelectorAll('*')];
+  if (before.length !== after.length) throw new Error('the two windows do not hold the same elements');
+  return after.filter((el, i) => el.getAttribute('aria-hidden') === 'true' && before[i].getAttribute('aria-hidden') !== 'true')
+    .map(describe);
+}
+
+module.exports = { load, loadCounting, press, attributesOf, describe, hiddenByLayer, sleep, turns, LAYER, TITLES };

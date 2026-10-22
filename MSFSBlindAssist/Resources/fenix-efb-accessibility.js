@@ -59,7 +59,8 @@
   // row. A pairing is kept while the two rows sit together (see readGrid).
   var gridValueOf = new WeakMap();
   var gridLabelOf = new WeakMap();
-  // The aria-hidden "true" the layer wrote on a label the cell under it now carries.
+  // The aria-hidden "true" the layer wrote: on a results label the cell under it now carries, and on a picture, a glyph
+  // or a chart label a screen reader does not need.
   var hiddenWritten = new WeakSet();
   // The aria-labelledby a drop-down had before the layer put the drop-down's own id in front of it.
   var labelledbyWas = new WeakMap();
@@ -619,8 +620,8 @@
     return written.get(cell) !== undefined && cell.getAttribute('aria-label') === written.get(cell);
   }
 
-  // Hides a label from a screen reader because the value under it says it. A hidden state the page set is
-  // the page's (never overridden); the layer takes back only its own.
+  // Hides an element from a screen reader. A hidden state the page set is the page's (never overridden); the layer
+  // takes back only its own.
   function hide(el) {
     if (!el.hasAttribute('aria-hidden')) { el.setAttribute('aria-hidden', 'true'); hiddenWritten.add(el); }
   }
@@ -1018,6 +1019,99 @@
   RULES.push(function (root) {
     var backdrops = root.querySelectorAll('div.brightness-popup-backdrop');
     for (var i = 0; i < backdrops.length; i++) { button(backdrops[i], 'Close quick settings'); }
+  });
+
+  // ---- What a screen reader does not need ----
+  // These rules come last: the glyph rule asks which elements are controls, and the rules above make them so.
+
+  // Hides from a screen reader the elements a rule found on this pass, and reads again the ones it hid on an earlier
+  // pass and no longer finds (only the layer's own hidden state, never the page's). Returns this pass's list.
+  function hideOnly(found, before) {
+    var now = [];
+    for (var i = 0; i < found.length; i++) { hide(found[i]); now.push(found[i]); }
+    for (var j = 0; j < before.length; j++) {
+      if (now.indexOf(before[j]) === -1) { unhide(before[j]); }
+    }
+    return now;
+  }
+
+  // Every screen: the background picture and the top bar's status icons (airplane mode, signal, link) are pictures with
+  // no alt, of nothing a pilot acts on: decorative (ruling R45).
+  var decorative = [];
+  RULES.push(function (root) {
+    decorative = hideOnly(root.querySelectorAll('img#appBg, img.airplane-icon, img.signal-icon, img#linkedup'), decorative);
+  });
+
+  // Mass and Balance: the W&B chart is a picture with labels laid over it (ruling R37). Without the picture its axis
+  // ticks (digits, dots or commas only) are a bare run of numbers, and its axis title ("%MAC") and line captions
+  // ("Take-Off Limits") name what no one can see: the picture and every label are hidden, except a label that states a
+  // limit ("MZFW = 61,000KG", a text with "="). A label is a child of the chart with text and no element of its own; the
+  // figures table under the chart (live values) is not a label and stays.
+  var chartHidden = [];
+  RULES.push(function (root) {
+    var charts = root.querySelectorAll('div#mainWandBCont');
+    var found = [];
+    for (var i = 0; i < charts.length; i++) {
+      for (var child = charts[i].firstElementChild; child; child = child.nextElementSibling) {
+        if (child.localName === 'img') { found.push(child); continue; }
+        if (child.firstElementChild) { continue; }
+        var text = textOf(child);
+        if (text && text.indexOf('=') === -1) { found.push(child); }
+      }
+    }
+    chartHidden = hideOnly(found, chartHidden);
+  });
+
+  // Mass and Balance: the seat map is a few hundred seats the page clicks, each read as "clickable"; it shows only
+  // occupancy, and the boarded counts are in the table beside it (ruling R38).
+  var seatMaps = [];
+  RULES.push(function (root) {
+    seatMaps = hideOnly(root.querySelectorAll('#seatContainer'), seatMaps);
+  });
+
+  // Settings: a choice's picture repeats the choice's own text in its alt ("GNADIRS"), so the choice was read twice. It
+  // is hidden while the choice has text of its own; a choice that is only a picture keeps it as its name (ruling R42).
+  var optionPictures = [];
+  RULES.push(function (root) {
+    var pictures = root.querySelectorAll('button.option img.option-image');
+    var found = [];
+    for (var i = 0; i < pictures.length; i++) {
+      if (textOf(pictures[i].closest('button.option'))) { found.push(pictures[i]); }
+    }
+    optionPictures = hideOnly(found, optionPictures);
+  });
+
+  // Two plain wrappers the page gives a click handler, which a screen reader announces as "clickable": the span around
+  // the top bar's status icons and quick settings button, and the div around every app's view. Neither is a control;
+  // role "none" quiets them (ruling R48). A role the page gives is the page's; the layer's own goes with the class.
+  var quieted = [];
+  RULES.push(function (root) {
+    var wrappers = root.querySelectorAll('span.status-icons-clickable, div.router-container');
+    var now = [];
+    for (var i = 0; i < wrappers.length; i++) { giveRole(wrappers[i], 'none'); now.push(wrappers[i]); }
+    for (var j = 0; j < quieted.length; j++) {
+      if (now.indexOf(quieted[j]) === -1) { takeRole(quieted[j]); }
+    }
+    quieted = now;
+  });
+
+  // The controls a glyph can sit in: the page's own, and every element the layer stamped.
+  var CONTROL = 'button, a[href], [role=button], [role=switch], [role=checkbox], [role=radio], [role=tab], ' +
+    '[role=combobox], [role=link], [' + MARK + ']';
+
+  // Every screen: an icon font draws its glyph from a style sheet as a private-use character, which Chromium makes the
+  // name of a button that has only a title ("Expanded view") or reads as a stray line before a button's text ("SYNC
+  // LIVE WX"). A glyph inside a control is hidden; the control keeps its own name (ruling R41). An icon that is itself
+  // the control (Charts' zoom icons) is left alone, and so is one in no control.
+  var glyphs = [];
+  RULES.push(function (root) {
+    var icons = root.querySelectorAll('i[class*="fa-"]');
+    var found = [];
+    for (var i = 0; i < icons.length; i++) {
+      var holder = icons[i].parentElement;
+      if (!icons[i].matches(CONTROL) && holder && holder.closest(CONTROL)) { found.push(icons[i]); }
+    }
+    glyphs = hideOnly(found, glyphs);
   });
 
   function pass() {

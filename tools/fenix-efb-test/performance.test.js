@@ -7,7 +7,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const { computeAccessibleName } = require('dom-accessibility-api');
-const { load, loadCounting, press, attributesOf, turns, LAYER } = require('./load');
+const { load, loadCounting, press, attributesOf, hiddenByLayer, turns, LAYER } = require('./load');
 
 const nameOf = el => computeAccessibleName(el);
 const all = (window, selector) => [...window.document.querySelectorAll(selector)];
@@ -216,9 +216,10 @@ test('Takeoff_results_read_label_and_value', async () => {
     const title = window.document.querySelector('.mcdu-screen > .text-center');
     assert.strictEqual(title.hasAttribute('aria-hidden'), false);
     assert.strictEqual(textOf(window)(title), 'TAKE OFF RWY');
-    // Nothing else on the page became an image or was hidden.
+    // Nothing else on the page became an image, and nothing else in the grid was hidden (the glyphs in the page's
+    // buttons are, by the glyph rule).
     assert.strictEqual(all(window, '[role=img]').length, 13);
-    assert.strictEqual(all(window, '[aria-hidden=true]').length, 13);
+    assert.strictEqual(all(window, '.mcdu-screen [aria-hidden=true]').length, 13);
   } finally {
     window.close();
   }
@@ -656,6 +657,29 @@ test('Landing_fields_are_named_by_their_label_or_unit_and_the_weight_box_by_its_
     window.close();
   }
 });
+
+// R41 (finding D): "SYNC LIVE WX" holds an icon-font glyph before its text, which a screen reader met as an unlabeled
+// line of its own. The glyph is hidden; the button keeps its text as its name. So is the intersection button's arrow.
+for (const [fixture, selector, glyphs] of [
+  ['depperf', 'button.btn-live-wx', ['i.fas.fa-chevron-down', 'i.fas.fa-cog', 'i.fas.fa-2x.fa-sync-alt', 'i.select-arrow.fas.fa-arrow-right']],
+  ['arrperf', 'button.arrival-btn-live-wx', ['i.fas.fa-chevron-down', 'i.fas.fa-cog', 'i.fas.fa-sync-alt']]
+]) {
+  test('The_SYNC_LIVE_WX_glyph_is_hidden_and_the_button_keeps_its_text_on_' + fixture, async () => {
+    const bare = await load(fixture, { layer: false });
+    const window = await load(fixture);
+    try {
+      const sync = window.document.querySelector(selector);
+      assert.strictEqual(sync.querySelector('i').getAttribute('aria-hidden'), 'true');
+      assert.strictEqual(nameOf(sync), 'SYNC LIVE WX');
+      assert.strictEqual(sync.hasAttribute('aria-label'), false, 'the page\'s text is the name');
+      // Only glyphs inside controls are hidden here (the wind arrows on Landing's results are in no control).
+      assert.deepStrictEqual(hiddenByLayer(bare, window).filter(h => /^i[.#]/.test(h)), glyphs);
+    } finally {
+      bare.close();
+      window.close();
+    }
+  });
+}
 
 // ---- The layer's own rules ----
 

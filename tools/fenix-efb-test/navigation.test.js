@@ -4,8 +4,9 @@
 // are buttons with names, and a second pass changes nothing.
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('fs');
 const { computeAccessibleName } = require('dom-accessibility-api');
-const { load, loadCounting, press, attributesOf, turns, TITLES } = require('./load');
+const { load, loadCounting, press, attributesOf, hiddenByLayer, turns, LAYER, TITLES } = require('./load');
 
 test('Home_tiles_are_named_buttons_and_the_quick_settings_button_keeps_its_own_name', async () => {
   const window = await load('home');
@@ -18,10 +19,12 @@ test('Home_tiles_are_named_buttons_and_the_quick_settings_button_keeps_its_own_n
       assert.strictEqual(computeAccessibleName(tile), TITLES[i]);
     });
 
-    // The home tiles hold the same pictures as the switcher, but the pictures are not buttons here.
+    // The home tiles hold the same pictures as the switcher, but the pictures are not buttons here, and the
+    // layer does not hide them either (the tile is named by its title).
     for (const img of window.document.querySelectorAll('img.app-img')) {
       assert.strictEqual(img.getAttribute('role'), null);
       assert.strictEqual(img.hasAttribute('data-msfsba'), false);
+      assert.strictEqual(img.hasAttribute('aria-hidden'), false);
     }
 
     // The page already names this one; the layer leaves it exactly as it is.
@@ -232,3 +235,124 @@ test('Second_pass_changes_nothing_on_the_switcher', async () => {
     window.close();
   }
 });
+
+// ---- What a screen reader does not need (rulings R45, R48, R41) ----
+
+// R45: the background picture is the first thing on every screen, and the top bar's status icons are pictures of a
+// state the pilot does not act on. None has an alt of its own; all are hidden from a screen reader. So is the glyph
+// of the quick settings cog (R41: an icon font's glyph inside a button). Nothing else on home is.
+test('The_background_and_the_top_bar_status_icons_are_hidden_from_a_screen_reader', async () => {
+  const bare = await load('home', { layer: false });
+  const window = await load('home');
+  try {
+    const pictures = ['img#appBg', 'img.airplane-icon', 'img.signal-icon', 'img#linkedup'].map(s => window.document.querySelector(s));
+    assert.ok(pictures.every(Boolean), 'the capture has all four');
+    assert.ok(pictures.every(img => !img.hasAttribute('alt')), 'none has an alt of its own');
+    assert.deepStrictEqual(pictures.map(img => img.getAttribute('aria-hidden')), ['true', 'true', 'true', 'true']);
+    assert.ok(pictures.every(img => !img.hasAttribute('role') && !img.hasAttribute('data-msfsba')), 'hidden, nothing else');
+    assert.deepStrictEqual(hiddenByLayer(bare, window), [
+      'img#appBg', 'img.airplane-icon.top-icon-fade-out', 'img.signal-icon.top-icon-fade-in', 'img#linkedup', 'i.fas.fa-cog'
+    ]);
+    // The quick settings button keeps the page's own name; its glyph is not part of it.
+    assert.strictEqual(computeAccessibleName(window.document.querySelector('button.top-bar-settings-btn')), 'Open quick settings');
+  } finally {
+    bare.close();
+    window.close();
+  }
+});
+
+test('A_hidden_state_the_page_set_on_a_top_bar_picture_is_kept', async () => {
+  const window = await load('home', { layer: false });
+  try {
+    const background = window.document.getElementById('appBg');
+    const link = window.document.getElementById('linkedup');
+    background.setAttribute('aria-hidden', 'false');
+    window.eval(fs.readFileSync(LAYER, 'utf8'));
+    await turns();
+    assert.strictEqual(background.getAttribute('aria-hidden'), 'false', 'the page\'s own');
+    assert.strictEqual(link.getAttribute('aria-hidden'), 'true', 'the others as usual');
+  } finally {
+    window.close();
+  }
+});
+
+// R48: the page gives two plain wrappers a click handler of their own, so a screen reader says "clickable" on them: the
+// span around the top bar's status icons and quick settings button, and the div around every app's view (the empty
+// "clickable" between Home and the tiles). role="none" quiets them; it is the layer's own and goes when they go.
+test('The_clickable_wrappers_have_no_role_of_their_own', async () => {
+  const window = await load('home');
+  try {
+    const doc = window.document;
+    const status = doc.querySelector('span.status-icons-clickable');
+    const router = doc.querySelector('div.router-container');
+    for (const wrapper of [status, router]) {
+      assert.strictEqual(wrapper.getAttribute('role'), 'none');
+      assert.ok(['aria-label', 'tabindex', 'data-msfsba'].every(a => !wrapper.hasAttribute(a)), 'a role, nothing else');
+    }
+    assert.strictEqual(doc.querySelectorAll('[role=none]').length, 2, 'nothing else');
+    // What they hold is as it was.
+    assert.strictEqual(computeAccessibleName(doc.querySelector('button.top-bar-settings-btn')), 'Open quick settings');
+    assert.deepStrictEqual([...doc.querySelectorAll('#appContainer > div.appIcon')].map(computeAccessibleName), TITLES);
+
+    // The page takes the class off: the layer's role goes; it comes back with the class.
+    status.setAttribute('class', 'status-icons');
+    await turns();
+    assert.strictEqual(status.hasAttribute('role'), false);
+    status.setAttribute('class', 'status-icons-clickable');
+    await turns();
+    assert.strictEqual(status.getAttribute('role'), 'none');
+  } finally {
+    window.close();
+  }
+});
+
+test('A_role_the_page_gave_a_clickable_wrapper_is_kept', async () => {
+  const window = await load('home', { layer: false });
+  try {
+    const router = window.document.querySelector('div.router-container');
+    router.setAttribute('role', 'main');
+    window.eval(fs.readFileSync(LAYER, 'utf8'));
+    await turns();
+    assert.strictEqual(router.getAttribute('role'), 'main');
+    assert.strictEqual(window.document.querySelector('span.status-icons-clickable').getAttribute('role'), 'none');
+    // Withdrawn, the page's role stays.
+    router.setAttribute('class', 'router');
+    await turns();
+    assert.strictEqual(router.getAttribute('role'), 'main');
+  } finally {
+    window.close();
+  }
+});
+
+// Each rule is its own: one that throws never skips the others. A rule is made to fail by its own query of the
+// whole page; every other rule still does its work.
+const HOME_ISOLATION = [
+  ['img#appBg', 'img[aria-hidden=true]', 4],
+  ['status-icons-clickable', '[role=none]', 2],
+  ['i[class*=', 'i[aria-hidden=true]', 1]
+];
+for (const [failing] of HOME_ISOLATION) {
+  test('A_failing_rule_does_not_skip_the_others_on_home_when_' + failing.replace(/[^A-Za-z0-9]+/g, '_') + '_fails', async () => {
+    const window = await load('home', { layer: false });
+    const proto = window.Element.prototype;
+    const original = proto.querySelectorAll;
+    try {
+      proto.querySelectorAll = function (s) {
+        if (this === window.document.body && s.includes(failing)) throw new Error('boom');
+        return original.call(this, s);
+      };
+      window.eval(fs.readFileSync(LAYER, 'utf8'));
+      await turns();
+      proto.querySelectorAll = original;
+      assert.strictEqual(window.document.getElementById('homeButtonFree').getAttribute('role'), 'button', 'an older rule ran');
+      for (const [needle, selector, count] of HOME_ISOLATION) {
+        const found = window.document.querySelectorAll(selector).length;
+        assert.strictEqual(found, needle === failing ? 0 : count,
+          needle === failing ? 'the failing rule did nothing' : 'the rule for ' + needle + ' still ran');
+      }
+    } finally {
+      proto.querySelectorAll = original;
+      window.close();
+    }
+  });
+}
