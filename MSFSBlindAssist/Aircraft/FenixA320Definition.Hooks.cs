@@ -57,6 +57,8 @@ public partial class FenixA320Definition
 
     // The eight are read, never spoken or put on a panel: consumed by TryApplyConfigValue, so they take no
     // Ctrl+M row ([VAR-9]). Each is keyed by its own name, which no other Fenix var uses ([VAR-7]).
+    // IsAnnounced is true although nothing is spoken: only announced Continuous vars are subscribed
+    // (ContinuousBatchLayout.RidesBatch), and ProcessSimVarUpdate consumes them before any announcement.
     private void AddConfigVariables(Dictionary<string, SimConnect.SimVarDefinition> variables)
     {
         (string Name, string DisplayName)[] configVariables =
@@ -78,7 +80,7 @@ public partial class FenixA320Definition
                 DisplayName = displayName,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = false,
+                IsAnnounced = true,
                 Units = "number",
                 ExcludeFromMonitorManager = true,
             };

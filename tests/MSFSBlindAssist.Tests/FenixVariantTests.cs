@@ -312,7 +312,27 @@ public class FenixVariantTests
             Assert.Equal(UpdateFrequency.Continuous, variable.UpdateFrequency);
             Assert.Equal("number", variable.Units);
             Assert.True(variable.ExcludeFromMonitorManager, $"{name} would earn a Ctrl+M row that mutes nothing");
-            Assert.False(variable.IsAnnounced, $"{name} must be consumed silently");
+            // Nothing is spoken (ProcessSimVarUpdate consumes each, see the silent-consumption tests), but
+            // only an ANNOUNCED Continuous var is subscribed: without it nothing requests the var and
+            // Variant would stay Unknown in the app.
+            Assert.True(variable.IsAnnounced, $"{name} must be announced-flagged or nothing ever reads it");
+        }
+    }
+
+    [Fact]
+    public void The_config_vars_ride_the_continuous_batch_the_app_registers()
+    {
+        // The batch is what delivers them to ProcessSimVarUpdate; ProcessSimVarUpdate calls in the tests
+        // below bypass it, so this pins the delivery itself with the batch's own membership test.
+        var variables = new FenixA320Definition().GetVariables();
+        var batchNumbers = ContinuousBatchLayout.BatchNumbers(variables);
+
+        foreach (string name in FenixConfigVars.All)
+        {
+            Assert.True(ContinuousBatchLayout.RidesBatch(variables[name]), $"{name} does not ride the continuous batch");
+            // SimConnectManager registers five batches of ContinuousBatchLayout.BatchSize; a var past them is never requested.
+            int batch = batchNumbers.GetValueOrDefault(name);
+            Assert.True(batch is >= 1 and <= 5, $"{name} lands in batch {batch}, outside the five that are registered");
         }
     }
 
@@ -333,8 +353,7 @@ public class FenixVariantTests
         foreach (string name in FenixConfigVars.All)
         {
             var sharers = variables
-                .Where(kv => kv.Value.Name == name && kv.Value.UpdateFrequency == UpdateFrequency.Continuous
-                             && !kv.Value.ExcludeFromBatch)
+                .Where(kv => kv.Value.Name == name && ContinuousBatchLayout.RidesBatch(kv.Value))
                 .Select(kv => kv.Key)
                 .ToList();
             Assert.Equal(new[] { name }, sharers);
