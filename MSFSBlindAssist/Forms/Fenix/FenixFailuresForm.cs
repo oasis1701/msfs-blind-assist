@@ -221,12 +221,7 @@ public sealed class FenixFailuresForm : Form
             FenixFailureCatalog? loaded = FenixFailureCatalog.Parse(json);
             if (loaded == null)
             {
-                // Once per outage on the re-read; always when the pilot asked (open, F5).
-                bool speak = reason is LoadReason.Open or LoadReason.Refresh || !_outageSpoken;
-                _outageSpoken = true;
-                _lastResult = "";
-                UpdateStatus(unavailable: true);
-                if (speak) _announcer.AnnounceImmediate(FenixFailureText.Unavailable);
+                ReportUnavailable(reason);
                 return;
             }
 
@@ -258,11 +253,28 @@ public sealed class FenixFailuresForm : Form
         catch (Exception ex)
         {
             Log.Debug(LogCategory, $"Failures read failed: {ex.GetType().Name}: {ex.Message}");
+            // Never silent: a read that throws is heard as an outage, like a read that failed.
+            if (!IsDisposed && !_tornDown)
+            {
+                try { ReportUnavailable(reason); }
+                catch (Exception inner) { Log.Debug(LogCategory, $"Failures outage report failed: {inner.GetType().Name}: {inner.Message}"); }
+            }
         }
         finally
         {
             if (reason != LoadReason.AfterSave) _busy = false;
         }
+    }
+
+    // A read that gave no catalog: the status says so, and it is spoken once per outage on the re-read and
+    // always when the pilot asked (open, F5).
+    private void ReportUnavailable(LoadReason reason)
+    {
+        bool speak = reason is LoadReason.Open or LoadReason.Refresh || !_outageSpoken;
+        _outageSpoken = true;
+        _lastResult = "";
+        UpdateStatus(unavailable: true);
+        if (speak) _announcer.AnnounceImmediate(FenixFailureText.Unavailable);
     }
 
     private void RequestRefresh()
@@ -299,21 +311,32 @@ public sealed class FenixFailuresForm : Form
         }
 
         FenixFailureCondition? condition = null;
-        if (action == FenixFailureAction.Arm)
+        DialogResult answer;
+        // No re-read while the pilot is in the arm dialog or the Yes/No box: the catalog stays the one the
+        // question was asked about.
+        _timer.Stop();
+        try
         {
-            using var dialog = new FenixFailuresArmDialog(failure, _announcer);
-            if (dialog.ShowDialog(this) != DialogResult.OK || dialog.Condition == null) return;
-            condition = dialog.Condition;
-            if (IsDisposed || _tornDown) return;
-        }
+            if (action == FenixFailureAction.Arm)
+            {
+                using var dialog = new FenixFailuresArmDialog(failure, _announcer);
+                if (dialog.ShowDialog(this) != DialogResult.OK || dialog.Condition == null) return;
+                condition = dialog.Condition;
+                if (IsDisposed || _tornDown) return;
+            }
 
-        // D1: every write asks, with No as the default button.
-        DialogResult answer = MessageBox.Show(this,
-            FenixFailureText.Confirm(failure, action, condition, TimeZoneInfo.Local),
-            "Confirm failure change",
-            MessageBoxButtons.YesNo,
-            MessageBoxIcon.Warning,
-            MessageBoxDefaultButton.Button2);
+            // D1: every write asks, with No as the default button.
+            answer = MessageBox.Show(this,
+                FenixFailureText.Confirm(failure, action, condition, TimeZoneInfo.Local),
+                "Confirm failure change",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+        }
+        finally
+        {
+            if (!IsDisposed && !_tornDown) _timer.Start();
+        }
         if (answer != DialogResult.Yes || IsDisposed || _tornDown) return;
         if (_busy)
         {
@@ -321,10 +344,18 @@ public sealed class FenixFailuresForm : Form
             return;
         }
 
+        // A variant change may still have replaced the catalog: the body is built from the current object.
+        if (_catalog?.Find(failure.Id) is not { } current)
+        {
+            _announcer.AnnounceImmediate(FenixFailureText.NotConfirmed(failure.Title));
+            return;
+        }
+
         _busy = true;
+        bool resultSpoken = false;
         try
         {
-            string body = FenixFailureRequests.BuildSaveBody(failure, action, condition);
+            string body = FenixFailureRequests.BuildSaveBody(current, action, condition);
             Log.Debug(LogCategory, $"Save {failure.Id} ({action}): {body}");
             string? reply = await _data.PostRestAsync(FenixFailureRequests.SavePath, body, _cts.Token);
             if (IsDisposed || _tornDown) return;
@@ -337,12 +368,14 @@ public sealed class FenixFailuresForm : Form
                 _lastResult = FenixFailureText.SavedLine(saved, TimeZoneInfo.Local);
                 UpdateStatus();
                 _announcer.Announce(_lastResult);
+                resultSpoken = true;
             }
             else
             {
                 _lastResult = FenixFailureText.NotConfirmed(failure.Title);
                 UpdateStatus();
                 _announcer.AnnounceImmediate(_lastResult);
+                resultSpoken = true;
             }
 
             await LoadAsync(LoadReason.AfterSave, failure.Id);
@@ -354,6 +387,12 @@ public sealed class FenixFailuresForm : Form
         catch (Exception ex)
         {
             Log.Debug(LogCategory, $"Save {failure.Id} failed: {ex.GetType().Name}: {ex.Message}");
+            if (!IsDisposed && !_tornDown)
+            {
+                // Never silent: success was not confirmed, so say so, then read back what the Fenix has.
+                if (!resultSpoken) _announcer.AnnounceImmediate(FenixFailureText.NotConfirmed(failure.Title));
+                await LoadAsync(LoadReason.AfterSave, failure.Id);
+            }
         }
         finally
         {

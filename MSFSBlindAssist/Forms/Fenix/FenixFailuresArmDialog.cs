@@ -121,8 +121,8 @@ public sealed class FenixFailuresArmDialog : Form
             return;
         }
 
-        // A validation error always speaks (CORE-7), then the refused field takes focus.
-        _announcer.AnnounceImmediate(error ?? "Enter at least one condition.");
+        // The refused field takes focus first, then the error speaks (CORE-7): NVDA cancels speech on a focus
+        // change, so speaking first would lose the error.
         TextBox target = errorField switch
         {
             FenixFailureConditionField.AltAbove => _altAbove,
@@ -132,5 +132,6 @@ public sealed class FenixFailuresArmDialog : Form
         };
         target.Focus();
         target.SelectAll();
+        _announcer.AnnounceImmediate(error ?? "Enter at least one condition.");
     }
 }
