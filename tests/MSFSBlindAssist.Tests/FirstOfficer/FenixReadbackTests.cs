@@ -121,11 +121,12 @@ public class FenixReadbackTests
         var items = FenixChecklistDefinitions.Build().SelectMany(g => g.Items).ToDictionary(i => i.Id);
         foreach (var id in new[] { "CPC_FUEL", "CPC_BARO", "BSC_PARKBRK", "BSC_TOSPEEDS", "ASC_ANTIICE",
                                    "TXC_FLAPS", "TXC_ENGMODE", "LUC_TCAS", "LUC_PACKS", "APC_BARO",
-                                   "APC_AUTOBRAKE", "APC_ENGMODE", "LDC_MEMO_FLAPS", "PKC_PARKBRK" })
+                                   "APC_AUTOBRAKE", "APC_ENGMODE", "LDC_MEMO_FLAPS", "PKC_PARKBRK",
+                                   "LUC_CABIN", "LDC_MEMO_CABIN" })
             Assert.NotNull(items[id].LiveValue);
         foreach (var id in new[] { "CPC_PINS", "BSC_WINDOWS", "ASC_ECAMSTS", "ASC_PITCH", "ASC_RUDDER",
-                                   "TXC_FCTEST", "LUC_CABIN", "TXC_MEMO_TOCFG", "LUC_RUNWAY",
-                                   "APC_MINIMUM", "LDC_MEMO_CABIN", "SCC_EFBS" })
+                                   "TXC_FCTEST", "TXC_MEMO_TOCFG", "LUC_RUNWAY",
+                                   "APC_MINIMUM", "SCC_EFBS" })
             Assert.False(items[id].IsAutoDetectable, id);
     }
 

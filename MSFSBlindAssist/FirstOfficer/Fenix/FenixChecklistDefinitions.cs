@@ -313,7 +313,8 @@ public static class FenixChecklistDefinitions
         Items = new()
         {
             // Advise the cabin crew: hit CALL ALL and release (momentary chime). At line-up since
-            // 2026-10-19 (owner; in Taxi from 2026-10-09).
+            // 2026-10-19 (owner; in Taxi from 2026-10-09). In v3 the call only hurries the purser;
+            // it does not set CABIN READY, which the purser reports on her own (LUC_CABIN reads it).
             ActionManual("LU_CABIN", "LINEUP", "Advise the cabin crew for takeoff (call all)",
                 (e, _) => e.CabinCall("S_OH_CALLS_ALL")),
             Auto("LU_TCAS", "LINEUP", "TCAS: TA/RA",
@@ -386,7 +387,8 @@ public static class FenixChecklistDefinitions
             // The Approach flow's seat-belt step.
             Auto("AP_SEATBELTS", "APPROACH", "Seat belts: ON",
                 "S_OH_SIGNS", v => v > 0.5, (e, _) => e.Set("S_OH_SIGNS", 1)),
-            // Notify the cabin crew for landing: hit CALL ALL and release (momentary chime).
+            // Notify the cabin crew for landing: hit CALL ALL and release (momentary chime). In v3
+            // the call only hurries the purser; it does not set CABIN READY (LDC_MEMO_CABIN reads it).
             ActionManual("AP_CABIN", "APPROACH", "Notify the cabin crew for landing (call all)",
                 (e, _) => e.CabinCall("S_OH_CALLS_ALL")),
             Reminder("AP_MINIMUMS", "APPROACH", "Check minimums set on the MCDU approach page"),
@@ -659,8 +661,9 @@ public static class FenixChecklistDefinitions
         {
             Reminder("LUC_RUNWAY", "LINEUP_CL", "Takeoff runway: CONFIRMED"),
             // The takeoff memo's cabin line, here since the cabin call moved to the Line-up flow
-            // (owner, 2026-10-19; FOA-8).
-            Reminder("LUC_CABIN", "LINEUP_CL", "Cabin: READY"),
+            // (owner, 2026-10-19; FOA-8). Still the pilot's to confirm; the live value is the
+            // purser's own report from the Fenix data service (v3), never the call we sent.
+            Reminder("LUC_CABIN", "LINEUP_CL", "Cabin: READY", s => s.CabinReadyText()),
             Auto("LUC_TCAS", "LINEUP_CL", "TCAS: TA/RA",
                 "S_XPDR_MODE", v => Math.Abs(v - 2) < 0.5, action: null,
                 live: s => AirbusReadbackFormat.Tcas(s.GetValue("S_XPDR_MODE"))),
@@ -700,7 +703,8 @@ public static class FenixChecklistDefinitions
                 FenixGearConfirmation.DownField, v => v > 0.5, action: null),
             Auto("LDC_MEMO_SIGNS", "LANDING_CL", "Signs: ON",
                 "S_OH_SIGNS", v => v > 0.5, action: null),
-            Reminder("LDC_MEMO_CABIN", "LANDING_CL", "Cabin: READY"),
+            // Same as LUC_CABIN: the pilot confirms, the live value is the purser's report.
+            Reminder("LDC_MEMO_CABIN", "LANDING_CL", "Cabin: READY", s => s.CabinReadyText()),
             Auto("LDC_MEMO_SPLRS", "LANDING_CL", "Spoilers: ARMED",
                 "A_FC_SPEEDBRAKE", v => Math.Abs(v) < 0.5, action: null),
             // FULL, or 3 with the GPWS LDG FLAP 3 switch on; the live value is the lever itself.

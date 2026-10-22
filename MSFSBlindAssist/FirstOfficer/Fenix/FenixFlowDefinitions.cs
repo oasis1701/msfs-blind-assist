@@ -409,8 +409,9 @@ public static class FenixFlowDefinitions
         {
             // Advise the cabin crew: hit CALL ALL and release (momentary chime). The ONE cabin call
             // before takeoff, here at line-up since 2026-10-19 (owner; in Taxi from 2026-10-09).
-            // Also the Line-up Checklist's "Cabin: READY", a line the pilot confirms: a call that
-            // could not be sent keeps it open.
+            // In v3 the call only hurries the purser; it does not set CABIN READY. Linked to the
+            // Line-up Checklist's cabin line, which the pilot confirms: a call that could not be
+            // sent keeps that line open.
             Also(Done(SW("LU_CABIN", "Advise the cabin crew for takeoff (call all)", "CABIN_CALL_ALL", 1), "LU_CABIN"),
                 "LUC_CABIN"),
             // Also the Line-up Checklist's "TCAS: TA/RA" (FO-6).
@@ -498,7 +499,8 @@ public static class FenixFlowDefinitions
             // Descent, and a write that fails keeps both lines out of the latch, following the switch.
             Also(Done(Skip(SW("AP_SEATBELTS", "Seat belts: ON", "S_OH_SIGNS", 1),
                 s => s.IsOn("S_OH_SIGNS")), "AP_SEATBELTS"), "APC_SEATBELTS"),
-            // Notify the cabin crew for landing: hit CALL ALL and release (momentary chime).
+            // Notify the cabin crew for landing: hit CALL ALL and release (momentary chime). In v3
+            // the call only hurries the purser; it does not set CABIN READY.
             Done(SW("AP_CABIN", "Notify the cabin crew for landing (call all)", "CABIN_CALL_ALL", 1), "AP_CABIN"),
             Captain("AP_MINIMUMS", "Check minimums set on the MCDU approach page"),
             Captain("AP_ENGMODE", "Set engine mode selector as required"),

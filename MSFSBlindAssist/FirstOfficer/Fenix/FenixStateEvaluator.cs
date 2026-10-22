@@ -33,6 +33,11 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
     /// off, NaN while either is unread. Shutdown waits for it before the engine masters go off.</summary>
     public const string ApuOrExtPowerField = "FO_APU_OR_EXT_POWER";
 
+    /// <summary>1 when the Fenix's purser has reported the cabin ready, 0 when not, NaN while the data
+    /// service has not said (FNX-1). Only the purser sets it: a cabin call from the cockpit hurries
+    /// the purser and does not.</summary>
+    public const string CabinReadyField = "FO_CABIN_READY";
+
     private static readonly string[] PollFields =
     {
         // Electrical / APU
@@ -193,6 +198,8 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
             // Each engine's N2: the Fenix's own while it is fresh, the stock value otherwise.
             case "FO_ENG1_N2": value = EngineN2(1); return true;
             case "FO_ENG2_N2": value = EngineN2(2); return true;
+            // The purser's cabin-ready report from the Fenix's data service: 1, 0, or NaN until it says.
+            case CabinReadyField: value = _live.CabinReady; return true;
             // NaN until both N2 answers are in (either source): unknown is never "engines off" (the
             // power-up guard EPU_ENGINES_STOPPED and the Parking checklist's "Engines: OFF" read it).
             case "FO_ENGINES_OFF":
@@ -338,4 +345,11 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
     internal static string? AutobrakeText(Func<string, double> read) =>
         AirbusReadbackFormat.Autobrake(AirbusReadbackFormat.AutobrakeModeFromLamps(
             read("I_MIP_AUTOBRAKE_LO_L"), read("I_MIP_AUTOBRAKE_MED_L"), read("I_MIP_AUTOBRAKE_MAX_L")));
+
+    /// <summary>What the purser has reported, for the Line-up and Landing checklists' cabin lines: the
+    /// pilot still confirms the line, and this only says what the Fenix reports. Null while unknown.</summary>
+    public string? CabinReadyText() => CabinReadyText(GetValue(CabinReadyField));
+
+    internal static string? CabinReadyText(double v) =>
+        double.IsNaN(v) ? null : v > 0.5 ? "reported ready" : "not reported";
 }
