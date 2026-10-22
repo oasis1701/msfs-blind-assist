@@ -31,8 +31,16 @@ using Step = Models.FlowStep<FenixStateEvaluator>;
 /// </summary>
 public static class FenixFlowDefinitions
 {
-    /// <summary>N2 percent at/above which an engine counts as started (CFM56 idle ~58-60).</summary>
+    /// <summary>N2 percent at/above which an engine counts as started: above the starter cut-out
+    /// (about 50 %), below the Fenix's measured idles (59.3 % CFM, 62.3 % IAE). Read on the Fenix's
+    /// own N2, with stock as the fallback (FenixStateEvaluator.EngineN2).</summary>
     private const double EngRunningN2 = FenixStateEvaluator.EngineRunningN2;
+
+    /// <summary>How long each engine-start wait lets the engine spool before the flow stops. The IAE
+    /// FADEC dry-cranks about 30 s before ignition and fuel on every auto start (the Fenix option
+    /// iae_crank_type offers 30 or 50 s), so 120 s was too tight there; 180 s is margin, not a
+    /// measured start time.</summary>
+    internal const int EngineStartTimeoutSeconds = 180;
 
     // [RADAR] Weather radar OFF/ON values — confirmed against the def's registered
     // ValueDescriptions (FenixA320Definition.cs: S_WR_SYS {0="1",1="Off",2="2"},
@@ -278,18 +286,18 @@ public static class FenixFlowDefinitions
             Done(Skip(SW("ES_MODE", "Engine mode selector: IGN START", "S_ENG_MODE", 2),
                 s => s.IsPosition("S_ENG_MODE", 2)), "ES_MODE"),
             // Engine 1 first, then engine 2 (user preference). The FADEC runs the whole
-            // start; each N2 wait verifies the engine actually spooled (stock TURB ENG N2,
-            // pushed per second) before the next master goes on, and completes its own "Engine n:
-            // running" line, which reads the same N2 (FO-6). A timeout stops the flow, so nothing
-            // is latched.
+            // start; each N2 wait verifies the engine actually spooled (the Fenix's own N2 from its
+            // data service, the stock TURB ENG N2 pushed per second only while that is unknown)
+            // before the next master goes on, and completes its own "Engine n: running" line, which
+            // reads the same N2 (FO-6). A timeout stops the flow, so nothing is latched.
             Done(Skip(SW("ES_ENG1", "Engine 1 master: ON", "S_ENG_MASTER_1", 1),
                 s => s.IsOn("S_ENG_MASTER_1")), "ES_ENG1"),
             Done(WaitForField("ES_ENG1_N2", "Engine 1 starting — waiting for the engine to stabilize",
-                "FO_ENG1_N2", v => v >= EngRunningN2, 120, onTimeout: FlowStepFailurePolicy.Stop), "ES_ENG1_RUN"),
+                "FO_ENG1_N2", v => v >= EngRunningN2, EngineStartTimeoutSeconds, onTimeout: FlowStepFailurePolicy.Stop), "ES_ENG1_RUN"),
             Done(Skip(SW("ES_ENG2", "Engine 2 master: ON", "S_ENG_MASTER_2", 1),
                 s => s.IsOn("S_ENG_MASTER_2")), "ES_ENG2"),
             Done(WaitForField("ES_ENG2_N2", "Engine 2 starting — waiting for the engine to stabilize",
-                "FO_ENG2_N2", v => v >= EngRunningN2, 120, onTimeout: FlowStepFailurePolicy.Stop), "ES_ENG2_RUN"),
+                "FO_ENG2_N2", v => v >= EngRunningN2, EngineStartTimeoutSeconds, onTimeout: FlowStepFailurePolicy.Stop), "ES_ENG2_RUN"),
         }
     };
 
