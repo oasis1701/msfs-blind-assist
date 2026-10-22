@@ -1519,15 +1519,6 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = OffOn
             },
-            ["I_OH_ELEC_COMMERCIAL_U"] = new SimConnect.SimVarDefinition
-            {
-                Name = "I_OH_ELEC_COMMERCIAL_U",
-                DisplayName = "Electrical Commercial Upper",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = OffOn
-            },
             ["I_OH_ELEC_COMMERCIAL_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_ELEC_COMMERCIAL_L",
@@ -5711,9 +5702,9 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Unpowered", [1] = "Powered"}
             },
-            ["B_ELEC_BUS_POWER_DC_SERIVICE"] = new SimConnect.SimVarDefinition
+            ["B_ELEC_BUS_POWER_DC_SERVICE"] = new SimConnect.SimVarDefinition
             {
-                Name = "B_ELEC_BUS_POWER_DC_SERIVICE",
+                Name = "B_ELEC_BUS_POWER_DC_SERVICE",
                 DisplayName = "ELEC BUS POWER DC SERVICE STATUS",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
@@ -5841,7 +5832,9 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Up", [1] = "1", [2] = "2", [3] = "3", [4] = "Full"}
             },
-            // ========== FLIGHT INSTRUMENTATION (20 variables) ==========
+            // ========== FLIGHT INSTRUMENTATION (3 variables) ==========
+            // FenixQuartz (discontinued, never installed here): read only by the First Officer until
+            // plan 05 moves it off them; plan 12 deletes these three.
             ["FNX2PLD_speedV1"] = new SimConnect.SimVarDefinition
             {
                 Name = "FNX2PLD_speedV1",
@@ -5868,110 +5861,6 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 Units = "knots",
-            },
-            ["FNX2PLD_fcuSpd"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_fcuSpd",
-                DisplayName = "FNX320+FENIXQUARTZ AUTOPILOT TARGET AIRSPEED",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                Units = "knots",
-            },
-            ["FNX2PLD_fcuHdg"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_fcuHdg",
-                DisplayName = "FNX320+FENIXQUARTZ AUTOPILOT TARGET HEADING",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                Units = "degrees",
-            },
-            ["FNX2PLD_fcuAlt"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_fcuAlt",
-                DisplayName = "FNX320+FENIXQUARTZ AUTOPILOT TARGET ALTITUDE",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                Units = "feet",
-            },
-            ["FNX2PLD_fcuVs"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_fcuVs",
-                DisplayName = "FNX320+FENIXQUARTZ AUTOPILOT TARGET VERTICAL SPEED",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                Units = "feet per minute",
-            },
-            ["FNX2PLD_isVsActive"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_isVsActive",
-                DisplayName = "FNX320+FENIXQUARTZ AUTOPILOT VERTICAL SPEED ACTIVE LED",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = OffOn
-            },
-            ["FNX2PLD_fcuSpdDashed"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_fcuSpdDashed",
-                DisplayName = "FNX320+FENIXQUARTZ AUTOPILOT SPEED Dashed LED",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Displayed", [1] = "Dashed"}
-            },
-            ["FNX2PLD_fcuHdgDashed"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_fcuHdgDashed",
-                DisplayName = "FNX320+FENIXQUARTZ AUTOPILOT HDG Dashed LED",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Displayed", [1] = "Dashed"}
-            },
-            ["FNX2PLD_fcuVsDashed"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_fcuVsDashed",
-                DisplayName = "FNX320+FENIXQUARTZ AUTOPILOT AUTOPILOT VS Dashed LED",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> {[0] = "Displayed", [1] = "Dashed"}
-            },
-            ["FNX2PLD_bat1"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_bat1",
-                DisplayName = "FNX320+FENIXQUARTZ BAT 1 VOLTAGE",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-            },
-            ["FNX2PLD_bat2"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_bat2",
-                DisplayName = "FNX320+FENIXQUARTZ BAT 2 VOLTAGE",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-            },
-            ["FNX2PLD_clockChr"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_clockChr",
-                DisplayName = "FNX320+FENIXQUARTZ CLOCK CHR",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-            },
-            ["FNX2PLD_clockEt"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_clockEt",
-                DisplayName = "FNX320+FENIXQUARTZ CLOCK ET",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
             },
 
             // ========== FUEL (16 variables) ==========
@@ -6367,16 +6256,6 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = OffOn
             },
 
-            // ========== ISIS (1 variables) ==========
-            ["FNX2PLD_isisBaro"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_isisBaro",
-                DisplayName = "FNX320+FENIXQUARTZ ISIS BARO",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-            },
-
             // ========== LIGHTS (2 variables) ==========
             // A_MIP_LIGHTING_FLOOD_MAIN is not here: it is the Main Instrument Lights panel knob
             // (OnRequest, 0-100 %), defined once above. A second entry here silently replaced it.
@@ -6714,9 +6593,9 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = OffOn
             },
-            ["I_OH_DOOR_VIDEO"] = new SimConnect.SimVarDefinition
+            ["I_OH_COCKPIT_DOOR_VIDEO"] = new SimConnect.SimVarDefinition
             {
-                Name = "I_OH_DOOR_VIDEO",
+                Name = "I_OH_COCKPIT_DOOR_VIDEO",
                 DisplayName = "OverheadMisc Cockpit Door Video",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,

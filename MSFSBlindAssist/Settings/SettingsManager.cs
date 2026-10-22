@@ -223,7 +223,7 @@ public static class SettingsManager
         /// One-time seed of Fenix vars that should be auto-monitored but NOT spoken by
         /// default — added to the Fenix disabled-monitor list (the combo/display still
         /// tracks them; only the spoken call-out is gated off):
-        ///   * CLOCK CHRONO / ELAPSED / UTC and the FenixQuartz chrono/ET counters —
+        ///   * CLOCK CHRONO / ELAPSED / UTC —
         ///     raw-seconds counters that tick every second.
         ///   * the four seat height/distance switches — Continuous so the combo can spring
         ///     to "Stop" at the travel limit, but silent (the user just wants the value).
@@ -237,7 +237,6 @@ public static class SettingsManager
             string[] defaultSilent =
             {
                 "N_MIP_CLOCK_CHRONO", "N_MIP_CLOCK_ELAPSED", "N_MIP_CLOCK_UTC",
-                "FNX2PLD_clockChr", "FNX2PLD_clockEt",
                 "S_SEAT_HEIGHT_CAPT", "S_SEAT_DISTANCE_CAPT",
                 "S_SEAT_HEIGHT_FO", "S_SEAT_DISTANCE_FO",
             };
