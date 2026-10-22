@@ -220,6 +220,8 @@ const CHAPTERS = [
   'ATA 31 - Indicating/Recording system', 'ATA 35 - Oxygen', 'ATA 46 - Information systems', 'ATA 52 - Doors',
   'ATA 70 - Power plant'
 ];
+// R28: the capture has ATA 34 marked manual-failure-ata--ata-failed (a failure is set in it), so its title says so.
+const CHAPTER_NAMES = CHAPTERS.map(c => c === 'ATA 34 - Navigation' ? c + ', has failures' : c);
 
 // The group title of a failure item, from the page: the title row of the item's own group.
 const groupTitleOf = item => {
@@ -231,7 +233,8 @@ test('Failure_chapters_open_and_items_name_their_group', async () => {
   const window = await load('failures');
   try {
     const chapters = all(window, 'div.manual-failure-ata-title');
-    assert.deepStrictEqual(chapters.map(nameOf), CHAPTERS);
+    assert.deepStrictEqual(chapters.map(c => squash(c.textContent)), CHAPTERS, 'the page\'s own titles');
+    assert.deepStrictEqual(chapters.map(nameOf), CHAPTER_NAMES);
     assert.ok(chapters.every(c => c.getAttribute('role') === 'button' && c.tabIndex === 0));
     // ATA 21 is the open chapter (the capture shows its groups and the down chevron); the rest are closed.
     assert.deepStrictEqual(chapters.map(attr('aria-expanded')), ['true', ...Array(19).fill('false')]);
@@ -297,6 +300,82 @@ test('Failure_chapters_follow_the_page_when_one_opens_and_another_closes', async
     set(0, 'fa-bars');
     await turns();
     assert.strictEqual(chapters[0].hasAttribute('aria-expanded'), false);
+  } finally {
+    window.close();
+  }
+});
+
+// R28: the page shows a failure's state by colour only (spec 8): the item button gets manual-failure-failed or
+// manual-failure-armed, its chapter manual-failure-ata--ata-failed or --ata-armed (the bundle's ngClass). The
+// layer says it in the name, and the name follows the class.
+test('Failure_states_are_spoken_in_the_name_and_follow_the_page', async () => {
+  const window = await load('failures', { layer: false });
+  try {
+    // A synthetic copy of a real item (CPC 1) in its own group, and of the item that has no group title, so the
+    // capture's own items are not the ones whose state is moved.
+    const [lavatory, cpc1] = all(window, 'button.manual-failure-item');
+    const copy = cpc1.cloneNode(true);
+    cpc1.parentElement.appendChild(copy);
+    const bare = lavatory.cloneNode(true);
+    lavatory.parentElement.appendChild(bare);
+    window.eval(fs.readFileSync(LAYER, 'utf8'));
+    await turns();
+
+    // The capture: ATA 34's chapter carries the failed class (on the chapter, the title's parent).
+    const chapters = all(window, 'div.manual-failure-ata-title');
+    const navigation = chapters[7];
+    const chapterOf = title => title.closest('div.manual-failure-ata');
+    assert.strictEqual(chapterOf(navigation), navigation.parentElement);
+    assert.ok(chapterOf(navigation).classList.contains('manual-failure-ata--ata-failed'), 'as captured');
+    assert.strictEqual(nameOf(navigation), 'ATA 34 - Navigation, has failures');
+    assert.strictEqual(chapters.filter(c => /, has/.test(nameOf(c))).length, 1, 'no other chapter has a state');
+
+    // A chapter's state follows its class; failed wins over armed.
+    const air = chapters[0];
+    chapterOf(air).classList.add('manual-failure-ata--ata-armed');
+    await turns();
+    assert.strictEqual(nameOf(air), 'ATA 21 - Air Conditioning, has armed failures');
+    chapterOf(air).classList.add('manual-failure-ata--ata-failed');
+    await turns();
+    assert.strictEqual(nameOf(air), 'ATA 21 - Air Conditioning, has failures');
+    chapterOf(air).classList.remove('manual-failure-ata--ata-failed', 'manual-failure-ata--ata-armed');
+    chapterOf(navigation).classList.remove('manual-failure-ata--ata-failed');
+    await turns();
+    assert.strictEqual(nameOf(air), 'ATA 21 - Air Conditioning');
+    assert.strictEqual(nameOf(navigation), 'ATA 34 - Navigation');
+    assert.strictEqual(air.getAttribute('aria-expanded'), 'true', 'the open state is still the icon\'s');
+
+    // An item's state follows its class, on the name the item already had.
+    assert.strictEqual(nameOf(copy), 'CPC 1');
+    copy.classList.add('manual-failure-failed');
+    await turns();
+    assert.strictEqual(nameOf(copy), 'CPC 1, failed');
+    copy.classList.remove('manual-failure-failed');
+    copy.classList.add('manual-failure-armed');
+    await turns();
+    assert.strictEqual(nameOf(copy), 'CPC 1, armed');
+    copy.classList.add('manual-failure-failed');
+    window.__msfsbaFenixEfb.pass();
+    assert.strictEqual(nameOf(copy), 'CPC 1, failed', 'failed wins');
+    copy.classList.remove('manual-failure-failed', 'manual-failure-armed');
+    await turns();
+    assert.strictEqual(nameOf(copy), 'CPC 1');
+
+    // An item without a group title is named by its own text until it has a state; then the layer names it.
+    assert.strictEqual(bare.hasAttribute('aria-label'), false);
+    bare.classList.add('manual-failure-failed');
+    await turns();
+    assert.strictEqual(nameOf(bare), 'Lavatory/Galley fan, failed');
+    bare.classList.remove('manual-failure-failed');
+    await turns();
+    assert.strictEqual(bare.hasAttribute('aria-label'), false, 'the layer\'s label is taken back');
+    assert.strictEqual(nameOf(bare), 'Lavatory/Galley fan');
+
+    // A label the page gives is the page's: the state is not added to it.
+    copy.setAttribute('aria-label', 'Cabin pressure controller 1');
+    copy.classList.add('manual-failure-armed');
+    await turns();
+    assert.strictEqual(copy.getAttribute('aria-label'), 'Cabin pressure controller 1');
   } finally {
     window.close();
   }
@@ -382,13 +461,17 @@ test('Documents_folders_and_files_are_buttons', async () => {
     }
     assert.deepStrictEqual(layerStamp(mine), NO_STAMP);
 
-    // The capture shows no open or closed state on a folder: every folder has both icons and none carries a
-    // class that says which is shown. So no aria-expanded is written (it would be a guess). A Fenix update
-    // that adds such a class shows up here, and the rule can then follow it.
-    assert.ok(all(window, '.folder, .folder-name, app-document-tree-node').every(el => !/open|clos|expand|collaps/i.test(el.className)));
-    assert.ok(folders.every(f => !f.hasAttribute('aria-expanded')));
-    assert.ok(files.every(f => !f.hasAttribute('aria-expanded')));
-    assert.ok(all(window, 'span.label').every(l => !l.hasAttribute('aria-expanded')));
+    // R29: a folder is open while its div.folder (the row's container) carries the page's `open` class (the
+    // bundle's [class.open]); every folder in the capture is closed. The state sits on the folder's button: the
+    // row, or for My Documents its label (R27).
+    assert.ok(folders.every(f => f.parentElement.localName === 'div' && f.parentElement.classList.contains('folder')));
+    assert.ok(folders.every(f => !f.parentElement.classList.contains('open')), 'every folder closed, as captured');
+    assert.deepStrictEqual([qrh, ecam, guide].map(attr('aria-expanded')), ['false', 'false', 'false']);
+    assert.strictEqual(mine.hasAttribute('aria-expanded'), false, 'My Documents\' row is not its button');
+    assert.strictEqual(mine.querySelector('span.label').getAttribute('aria-expanded'), 'false');
+    assert.ok(files.every(f => !f.hasAttribute('aria-expanded')), 'a file is not a folder');
+    // No file is selected in the capture, so none is the current one.
+    assert.ok(files.every(f => !f.classList.contains('is-selected') && !f.hasAttribute('aria-current')));
 
     // Enter and Space press them through the page's own click.
     assert.deepStrictEqual(pressed(window, ecam), { caught: true, clicks: 1 });
@@ -482,6 +565,92 @@ test('A_documents_row_that_gains_or_loses_controls_hands_the_button_over_and_tak
     // A label whose button was withdrawn takes no key: its listener stays but the handler ignores it.
     assert.deepStrictEqual(pressed(window, qrhLabel), { caught: false, clicks: 0 });
     assert.deepStrictEqual(pressed(window, qrh), { caught: true, clicks: 1 });
+  } finally {
+    window.close();
+  }
+});
+
+// R29: the folder's open state and the selected file follow the page's own classes, on whichever element is the
+// button; what the layer wrote is taken back when the class goes or the button moves, and a state the page set
+// is never touched.
+test('Documents_folder_and_file_states_follow_the_page', async () => {
+  const window = await load('documents');
+  try {
+    const [qrh, ecam, , mine] = all(window, 'div.folder-name');
+    const mineLabel = mine.querySelector('span.label');
+    const qrhLabel = qrh.querySelector('span.label');
+    const [checklists, codes] = all(window, 'div.file');
+
+    // A folder opens and closes: the page moves `open` on its div.folder.
+    qrh.parentElement.classList.add('open');
+    await turns();
+    assert.deepStrictEqual([qrh, ecam].map(attr('aria-expanded')), ['true', 'false']);
+    qrh.parentElement.classList.remove('open');
+    mine.parentElement.classList.add('open');
+    await turns();
+    assert.strictEqual(qrh.getAttribute('aria-expanded'), 'false');
+    assert.strictEqual(mineLabel.getAttribute('aria-expanded'), 'true', 'on My Documents\' label, its button');
+    assert.strictEqual(mine.hasAttribute('aria-expanded'), false);
+
+    // The button moves to the label (a control comes into the row) and back: the state moves with it.
+    qrh.parentElement.classList.add('open');
+    const inner = window.document.createElement('button');
+    inner.title = 'Rename';
+    qrh.appendChild(inner);
+    await turns();
+    assert.strictEqual(qrh.hasAttribute('aria-expanded'), false, 'the row\'s state is taken back');
+    assert.strictEqual(qrhLabel.getAttribute('aria-expanded'), 'true');
+    qrh.removeChild(inner);
+    await turns();
+    assert.strictEqual(qrh.getAttribute('aria-expanded'), 'true');
+    assert.strictEqual(qrhLabel.hasAttribute('aria-expanded'), false);
+
+    // The selected file is the current one, and only while the page marks it is-selected.
+    checklists.classList.add('is-selected');
+    await turns();
+    assert.deepStrictEqual([checklists, codes].map(attr('aria-current')), ['true', null]);
+    checklists.classList.remove('is-selected');
+    codes.classList.add('is-selected');
+    window.__msfsbaFenixEfb.pass();
+    assert.deepStrictEqual([checklists, codes].map(attr('aria-current')), [null, 'true']);
+    codes.classList.remove('is-selected');
+    await turns();
+    assert.deepStrictEqual([checklists, codes].map(attr('aria-current')), [null, null]);
+  } finally {
+    window.close();
+  }
+});
+
+test('A_folder_or_file_state_the_page_set_is_kept', async () => {
+  const window = await load('documents', { layer: false });
+  try {
+    const [qrh, ecam] = all(window, 'div.folder-name');
+    const [checklists, codes] = all(window, 'div.file');
+    qrh.setAttribute('aria-expanded', 'true');       // the page's own, though its folder is closed
+    checklists.setAttribute('aria-current', 'page');  // the page's own, though the file is not selected
+    window.eval(fs.readFileSync(LAYER, 'utf8'));
+    await turns();
+    assert.strictEqual(qrh.getAttribute('aria-expanded'), 'true');
+    assert.strictEqual(checklists.getAttribute('aria-current'), 'page');
+    assert.strictEqual(ecam.getAttribute('aria-expanded'), 'false', 'the others are as usual');
+
+    // The page selects the other file and opens the folder: the page's own states stay as the page set them.
+    codes.classList.add('is-selected');
+    qrh.parentElement.classList.add('open');
+    qrh.setAttribute('aria-expanded', 'false');
+    await turns();
+    assert.strictEqual(codes.getAttribute('aria-current'), 'true');
+    assert.strictEqual(checklists.getAttribute('aria-current'), 'page');
+    assert.strictEqual(qrh.getAttribute('aria-expanded'), 'false');
+
+    // A folder row with no div.folder around it says nothing about being open (no state is made up).
+    const loose = window.document.createElement('div');
+    loose.className = 'folder-name';
+    loose.innerHTML = '<span class="label">Loose</span>';
+    window.document.querySelector('app-documents').appendChild(loose);
+    await turns();
+    assert.strictEqual(loose.getAttribute('role'), 'button');
+    assert.strictEqual(loose.hasAttribute('aria-expanded'), false);
   } finally {
     window.close();
   }

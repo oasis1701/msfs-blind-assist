@@ -46,12 +46,13 @@
   // presence means the layer wrote the 0. It is put back when the control stops being a button or is
   // disabled.
   var tabOriginal = new WeakMap();
-  // The aria-expanded the layer wrote on the app switcher's chevron and on a failure chapter (the way
-  // `written` keeps a label).
+  // The aria-expanded the layer wrote on the app switcher's chevron, a failure chapter and a Documents folder
+  // (the way `written` keeps a label).
   var expandedWritten = new WeakMap();
   // The aria-checked the layer wrote on a radio, the same way.
   var checkedWritten = new WeakMap();
-  // The aria-pressed it wrote on a Settings option and a map control, and the aria-current on a category.
+  // The aria-pressed it wrote on a Settings option and a map control, and the aria-current on a category and
+  // on the selected Documents file.
   var pressedWritten = new WeakMap();
   var currentWritten = new WeakMap();
   // The results grid's pairs, as the layer made them: each label row's value row and each value row's label
@@ -788,12 +789,31 @@
 
   // ---- Failures ----
 
+  // The page shows a failure's state by colour only (spec 8), with classes of its own (ruling R28). A chapter
+  // (div.manual-failure-ata, the title's container) carries manual-failure-ata--ata-failed while a failure in it
+  // is set and --ata-armed while one is armed; failed wins. The words go after the chapter's title.
+  function chapterState(title) {
+    var chapter = title.closest('div.manual-failure-ata');
+    if (!chapter) { return ''; }
+    if (chapter.classList.contains('manual-failure-ata--ata-failed')) { return ', has failures'; }
+    if (chapter.classList.contains('manual-failure-ata--ata-armed')) { return ', has armed failures'; }
+    return '';
+  }
+
+  // An item button carries manual-failure-failed while it is set and manual-failure-armed while it is armed.
+  function itemState(item) {
+    if (item.classList.contains('manual-failure-failed')) { return ', failed'; }
+    if (item.classList.contains('manual-failure-armed')) { return ', armed'; }
+    return '';
+  }
+
   // Failures: a chapter's title (ATA 21 ...) is a bare div the page opens and closes; its chevron points down
-  // while the chapter is open and right while it is closed.
+  // while the chapter is open and right while it is closed. Its name says whether the chapter has failures.
   RULES.push(function (root) {
     var titles = root.querySelectorAll('app-manual-failures div.manual-failure-ata-title');
     for (var i = 0; i < titles.length; i++) {
-      button(titles[i], textOf(titles[i]));
+      var text = textOf(titles[i]);
+      button(titles[i], text ? text + chapterState(titles[i]) : '');
       ownState(titles[i], 'aria-expanded', iconState(titles[i], 'fa-chevron-circle-down', 'fa-chevron-circle-right'), expandedWritten);
     }
   });
@@ -808,13 +828,16 @@
   }
 
   // Failures: an item says only its own part ("1", "Pack 1"); its name starts with its group's title ("CPC 1",
-  // "Overheat Pack 1"). An item in a group without a title is named by its own text, which the button already is.
+  // "Overheat Pack 1") and ends with its state ("CPC 1, failed"). An item in a group without a title and with no
+  // state is named by its own text, which the button already is, so the layer writes no name there.
   RULES.push(function (root) {
     var items = root.querySelectorAll('app-manual-failures button.manual-failure-item');
     for (var i = 0; i < items.length; i++) {
       var group = groupTitleOf(items[i]);
       var text = textOf(items[i]);
-      name(items[i], group && text ? group + ' ' + text : '');
+      var state = itemState(items[i]);
+      var full = group && text ? group + ' ' + text : text;
+      name(items[i], text && (group || state) ? full + state : '');
     }
   });
 
@@ -829,32 +852,52 @@
 
   // ---- Documents ----
 
-  // Documents: a folder's row and a file's row are bare divs the page clicks, and each is a button. The
-  // capture has no open / closed class on a folder (both icons are always there), so no aria-expanded is
-  // written: that would be a guess. A row that holds controls of its own (a button, a box or a link: "My
-  // Documents" has "Open documents folder" and "Upload document") is not a button, because a control inside a
-  // button cannot be reached: its label is the button instead, and Enter on the label is a click on the text,
-  // which reaches the row's own handler. A row that gains or loses controls hands the button over; each time
-  // only the stamp the layer wrote on the element that no longer applies is taken back.
+  // Documents: a folder's row and a file's row are bare divs the page clicks, and each is a button. A row that
+  // holds controls of its own (a button, a box or a link: "My Documents" has "Open documents folder" and "Upload
+  // document") is not a button, because a control inside a button cannot be reached: its label is the button
+  // instead, and Enter on the label is a click on the text, which reaches the row's own handler. A row that gains
+  // or loses controls hands the button over; each time only the stamp the layer wrote on the element that no
+  // longer applies is taken back. Returns the element that is the button (null when there is none).
   function documentRow(row, nameFromLabel) {
     var label = row.querySelector('span.label');
     if (row.querySelector('button, input, a[href]')) {
       unbutton(row);
       if (label) { button(label, textOf(label)); }
-    } else {
-      if (label) { unbutton(label); }
-      button(row, textOf(nameFromLabel && label ? label : row));
+      return label;
     }
+    if (label) { unbutton(label); }
+    button(row, textOf(nameFromLabel && label ? label : row));
+    return row;
   }
 
+  // A row's state goes on its button (the row or its label); the one the layer wrote on the other is taken back.
+  function rowState(row, target, attr, value, store) {
+    var label = row.querySelector('span.label');
+    if (row !== target) { ownState(row, attr, null, store); }
+    if (label && label !== target) { ownState(label, attr, null, store); }
+    if (target) { ownState(target, attr, value, store); }
+  }
+
+  // Documents: a folder is open while its div.folder (the row's container) carries the page's `open` class
+  // (ruling R29); a row with no div.folder around it says nothing about being open.
   RULES.push(function (root) {
     var folders = root.querySelectorAll('app-documents div.folder-name');
-    for (var i = 0; i < folders.length; i++) { documentRow(folders[i], true); }
+    for (var i = 0; i < folders.length; i++) {
+      var target = documentRow(folders[i], true);
+      var folder = folders[i].parentElement;
+      var open = folder && folder.localName === 'div' && folder.classList.contains('folder') ?
+        (folder.classList.contains('open') ? 'true' : 'false') : null;
+      rowState(folders[i], target, 'aria-expanded', open, expandedWritten);
+    }
   });
 
+  // Documents: the file the page marks is-selected is the current one (ruling R29).
   RULES.push(function (root) {
     var files = root.querySelectorAll('app-documents div.file');
-    for (var i = 0; i < files.length; i++) { documentRow(files[i], false); }
+    for (var i = 0; i < files.length; i++) {
+      var target = documentRow(files[i], false);
+      rowState(files[i], target, 'aria-current', files[i].classList.contains('is-selected') ? 'true' : null, currentWritten);
+    }
   });
 
   // Documents: the button on the edge of the list has no text and no title (ruling R21).
