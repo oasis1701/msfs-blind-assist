@@ -31,6 +31,9 @@ public class FenixV3FixPanelControlsTests : IDisposable
     private static string ExecutorPath => Path.Combine(ClaudeContextBudgetTests.RepoRoot(),
         "MSFSBlindAssist", "FirstOfficer", "Fenix", "FenixActionExecutor.cs");
 
+    private static string BaroWindowPath => Path.Combine(ClaudeContextBudgetTests.RepoRoot(),
+        "MSFSBlindAssist", "Forms", "FenixA320", "FenixBaroWindow.cs");
+
     private static readonly string Handler = FoFbwUnclaimedEventKeyTests.MethodBody(DefinitionPath, "HandleUIVariableSet");
 
     /// <summary>The <c>if (varKey == "key"…)</c> branch of HandleUIVariableSet, condition and body.</summary>
@@ -154,6 +157,21 @@ public class FenixV3FixPanelControlsTests : IDisposable
 
         // Nothing in the definition writes the STD counter as an absolute value.
         Assert.DoesNotMatch(@"SetLVar\(\$?""S_FCU_EFIS[^""]*_BARO_STD""", File.ReadAllText(DefinitionPath));
+    }
+
+    [Fact]
+    public void Baro_window_mode_pick_steps_the_std_counter()
+    {
+        // The window's QNH/STD pick is a pull (+1) or a push (-1) from the sim's own count, as the
+        // panel and the First Officer step it: an absolute write could select the wrong mode or nothing.
+        string body = FoFbwUnclaimedEventKeyTests.MethodBody(BaroWindowPath, "BaroModeCombo_SelectedIndexChanged");
+        foreach (var n in new[] { "1", "2" })
+            Assert.Contains($"CounterStepCode(\"S_FCU_EFIS{n}_BARO_STD\", isStd ? 1 : -1)", body);
+        Assert.Contains("ExecuteCalculatorCodeUnique(", body);
+
+        string source = File.ReadAllText(BaroWindowPath);
+        Assert.DoesNotMatch(@"SetLVar\(\$?""S_FCU_EFIS[^""]*_BARO_STD""", source);
+        Assert.Contains("CounterStepCode(", source);
     }
 
     [Fact]

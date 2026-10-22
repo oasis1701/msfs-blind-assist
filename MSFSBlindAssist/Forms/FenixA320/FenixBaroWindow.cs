@@ -175,9 +175,11 @@ public partial class FenixBaroWindow : Form
     {
         bool isStd = baroModeCombo.SelectedIndex == 1;
 
-        // Set both EFIS altimeters
-        simConnect.SetLVar("S_FCU_EFIS1_BARO_STD", isStd ? 1 : 0);
-        simConnect.SetLVar("S_FCU_EFIS2_BARO_STD", isStd ? 1 : 0);
+        // Set both EFIS altimeters: a pull (+1, STD) or a push (-1, QNH) from the sim's own count. The
+        // STD knob is a push/pull counter the Fenix acts on by difference, so an absolute value could
+        // select the wrong mode or nothing.
+        simConnect.ExecuteCalculatorCodeUnique(FenixA320Definition.CounterStepCode("S_FCU_EFIS1_BARO_STD", isStd ? 1 : -1));
+        simConnect.ExecuteCalculatorCodeUnique(FenixA320Definition.CounterStepCode("S_FCU_EFIS2_BARO_STD", isStd ? 1 : -1));
 
         UpdateControlState();
     }
