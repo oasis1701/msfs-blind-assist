@@ -58,12 +58,28 @@ public class FenixV3FixStateLightTests : IDisposable
         Assert.Equal("Off", v.DescribeStateLight(0));
     }
 
-    [Fact]
-    public void The_bus_tie_lamp_speaks_as_its_button_reads()
+    [Theory]
+    [MemberData(nameof(OffLegendButtons))]
+    public void An_off_legend_lamp_speaks_as_its_button_reads(string key, string light, string dark)
     {
         // The light is the only speech after a press; it must say what the button's label says.
         foreach (double v in new[] { 0.0, 1.0, 2.0 })
-            Assert.Equal(Vars["S_OH_ELEC_BUS_TIE"].DescribeStateLight(v), Vars["I_OH_ELEC_BUSTIE_L"].ValueDescriptions[v]);
+            Assert.Equal(Vars[key].DescribeStateLight(v), Vars[light].ValueDescriptions[v]);
+        Assert.Equal(dark, Vars[light].ValueDescriptions[0]);
+    }
+
+    [Theory]
+    [InlineData("I_OH_NAV_ADR1_L", "ADR 1")]
+    [InlineData("I_OH_NAV_ADR2_L", "ADR 2")]
+    [InlineData("I_OH_NAV_ADR3_L", "ADR 3")]
+    [InlineData("I_OH_NAV_IR1_SWITCH_L", "IR 1")]
+    [InlineData("I_OH_NAV_IR2_SWITCH_L", "IR 2")]
+    [InlineData("I_OH_NAV_IR3_SWITCH_L", "IR 3")]
+    public void The_adr_and_ir_off_lamps_are_named_for_their_system(string light, string name)
+    {
+        // Owner, 2026-10-22: "ADR 1: Off", not "OH ADIRS ADR1 Lower: On", when ADR 1 is switched off.
+        Assert.Equal(name, Vars[light].DisplayName);
+        Assert.Equal("Off", Vars[light].ValueDescriptions[1]);
     }
 
     [Fact]

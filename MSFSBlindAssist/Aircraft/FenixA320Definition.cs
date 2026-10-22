@@ -123,6 +123,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     // sites anywhere), it is only ever read. Definitions whose wording varies even slightly
     // (e.g. "Off"/"Activated", "Closed"/"Open") are left as their own inline dictionaries.
     private static readonly Dictionary<double, string> OffOn = new Dictionary<double, string> { [0] = "Off", [1] = "On" };
+    // An OFF-legend lamp spoken as its system: dark is On, lit is Off (the ADR and IR lower legends, measured 2026-10-22)
+    private static readonly Dictionary<double, string> OffLegendOnOff = new Dictionary<double, string> { [0] = "On", [1] = "Off", [2] = "Off" };
     private static readonly Dictionary<double, string> PercentSteps5 = new Dictionary<double, string>
     {
         [0.00] = "0%", [0.05] = "5%", [0.10] = "10%", [0.15] = "15%", [0.20] = "20%",
@@ -144,11 +146,11 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_NAV_IR3_SWITCH_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_NAV_IR3_SWITCH_L",
-                DisplayName = "ADIRS IR 3 Lower",
+                DisplayName = "IR 3",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffLegendOnOff
             },
             ["I_OH_NAV_IR3_SWITCH_U"] = new SimConnect.SimVarDefinition
             {
@@ -162,11 +164,11 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_NAV_IR2_SWITCH_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_NAV_IR2_SWITCH_L",
-                DisplayName = "ADIRS IR 2 Lower",
+                DisplayName = "IR 2",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffLegendOnOff
             },
             ["I_OH_NAV_IR2_SWITCH_U"] = new SimConnect.SimVarDefinition
             {
@@ -180,11 +182,11 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_NAV_IR1_SWITCH_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_NAV_IR1_SWITCH_L",
-                DisplayName = "ADIRS IR 1 Lower",
+                DisplayName = "IR 1",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffLegendOnOff
             },
             ["I_OH_NAV_IR1_SWITCH_U"] = new SimConnect.SimVarDefinition
             {
@@ -198,11 +200,11 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_NAV_ADR1_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_NAV_ADR1_L",
-                DisplayName = "OH ADIRS ADR1 Lower",
+                DisplayName = "ADR 1",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffLegendOnOff
             },
             ["I_OH_NAV_ADR1_U"] = new SimConnect.SimVarDefinition
             {
@@ -216,11 +218,11 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_NAV_ADR2_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_NAV_ADR2_L",
-                DisplayName = "OH ADIRS ADR2 Lower",
+                DisplayName = "ADR 2",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffLegendOnOff
             },
             ["I_OH_NAV_ADR2_U"] = new SimConnect.SimVarDefinition
             {
@@ -234,11 +236,11 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             ["I_OH_NAV_ADR3_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_NAV_ADR3_L",
-                DisplayName = "OH ADIRS ADR3 Lower",
+                DisplayName = "ADR 3",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = OffOn
+                ValueDescriptions = OffLegendOnOff
             },
             ["I_OH_NAV_ADR3_U"] = new SimConnect.SimVarDefinition
             {
