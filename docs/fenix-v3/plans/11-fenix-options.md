@@ -1,6 +1,6 @@
 # Fenix Options Implementation Plan (plan 11)
 
-**Claimed by:** kn4iee · **Status:** in progress
+**Claimed by:** kn4iee · **Status:** code done and reviewed (2026-10-22, Tasks 1-6, subagent-driven, see "Rulings"); the owner's in-sim checks are open (Task 4 Step 5, E1, E2, M1-M4: "In-sim checks still needed")
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -24,14 +24,14 @@
 
 D1 facts, all from the EFB bundle (`main.ccd882238ccd3f2d.js`, chunk `869`; operations also in `docs/fenix-v3/evidence/gql-operations.txt` lines 13, 14, 25, 34), none tried live:
 - Mutation, verbatim: `mutation SetSetting($setSetting: SetSettingInput!) { settings { setSetting(setSetting: $setSetting) { success } } }`. `SetSettingInput` is `{ key, value, persist }`: the store's `B()` builds `{key:h.key, value:String(h.value), persist:h.persist}`, so `value` is always a string ("true"/"false" for a toggle, the enum name for a choice). Also present, not used: `setSettings([SetSettingInput!]!)`, `setDefault(key)`, `setDefaults(keys)`.
-- The EFB's own toggle sends `persist: false`; Fenix's own tooltip for that state: "This setting is overridden for the current simulator session and will reset when you close MSFS or change aircraft/livery." Its "Set as user override" sends `persist: true` ("will apply regardless of livery or Fenix defaults"). (b) sends `persist: false` only, never `true`, never a reset.
+- The EFB's own toggle sends `persist: false`; Fenix's own tooltip for that state: "This setting is overridden for the current simulator session and will reset when you close MSFS or change aircraft/livery." Its "Set as user override" sends `persist: true` ("will apply regardless of livery or Fenix defaults"). (b) sends `persist: false` only, never `true`, never a reset. (Superseded for Shift+F2 and Ctrl+F2 by owner answer 19: Task 6 sends `persist: true` and `setDefault`, each behind a Yes/No defaulting to No.)
 - Risks of (b): the write path has never run against the gateway (first write is owner step E1); `standby_type`, `adirs_type`, `acp_type`, `dcdu_enabled` reshape the cockpit mid-session (plans 01/06 follow the config L:vars); Fenix itself warns that FCU Readouts "New" can blank the FCU until the flight restarts; a wrong choice lasts until MSFS closes. Why recommended: whether the EFB settings page works with a screen reader is unmeasured, and (b) lets a pilot switch off an option that M1-M4 show disturbs the app.
 
 ## Global Constraints
 
 - Data service only at `127.0.0.1:8083` through plan 01's `FenixDataService` (A320-40); never `localhost`, never schema introspection, never `navigraph { … }`, never a guessed name (FNX-3).
 - Read with plan 01's `FenixDataQueries.SettingsQuery` = `query { settings { softwareVersion state { settings { key category value possibleValues source type writable } } } }` via `QueryAsync`; parse with `FenixDataQueries.ParseSettings` and `ParseSoftwareVersion`. `QueryAsync` null = the Fenix did not answer.
-- No write in Tasks 1-4. Task 5 (only if D1 = b) sends `setSetting` with `persist: false`, never for a secret, never `setSettings`, `setDefault(s)` or `persist: true`.
+- No write in Tasks 1-4. Task 5 (only if D1 = b) sends `setSetting` with `persist: false`, never for a secret, never `setSettings`, `setDefault(s)` or `persist: true`. Owner answer 19 (Task 6) adds `persist: true` on Shift+F2 and `setDefault` on Ctrl+F2 only, each behind a Yes/No defaulting to No; `setSettings` and `setDefaults` stay out (ruling R3).
 - Secrets by EXACT key (ordinal): `hoppie_key`, `navigraph_refresh_token`, `pushover_application_key`, `pushover_token`, `simbrief_id`. Never substring: the live-dump script's substring mask hid `encoder_acceleration_enabled`, `type_code`, `cdls_keypad_beep_type`, `on_screen_keyboard_enabled` and `navigraph_navdata_mode`. A secret's value never reaches a row, the details, speech or a log; no file of this plan logs any option value (keys and counts only).
 - Labels, descriptions and value labels are Fenix's own (EFB bundle 3.0.0.7426). A key without one uses `FenixOptionCatalog.Humanize`, a port of the EFB's `humanizeKey` pipe, which is what the EFB itself shows; an enum value without one shows the raw value, `""` shows "(none)", as the EFB does.
 - Numbers formatted invariant (`"0.###"`); every formatting test also runs under de-DE and sv-SE (`TestCulture.Run`); `Humanize` casing is culture-invariant (tr-TR test).
@@ -84,8 +84,8 @@ static FenixSetting S(string key, string? value, string type = "System.Boolean",
   - `public sealed record FenixOptionText(string Label, string Description, string? ControlType, IReadOnlyDictionary<string, string> ValueLabels);`
   - `public static class FenixOptionLabels` with `public const string SourceVersion = "3.0.0.7426";`, `public static IReadOnlyDictionary<string, FenixOptionText> All { get; }` (ordinal keys), `public static bool TryGet(string key, [NotNullWhen(true)] out FenixOptionText? text)`, `internal static IReadOnlyDictionary<string, FenixOptionText> Parse(string table)`.
 
-- [ ] **Step 1: Generate the table.** With the Fenix loaded: `python -I docs/fenix-v3/tools/fetch_gateway_bundles.py <new-empty-folder>`; in `<folder>/efb/` find the chunk holding `name:"humanizeKey"` (`869.06e499eaa8d7474c.js` in 3.0.0.7426); save Appendix A outside that folder and run it on the chunk: `python -I option_labels.py <chunk.js> fenix-options-labels.tsv` must print `125 options, 159 rows`. Do not use the committed `docs/fenix-v3/evidence/fenix-options-labels.tsv` (regex extraction: it drops 18 descriptions, truncates one, leaves `→` escapes and keeps one label per value name across options, so refuel rate's "Realistic (16 Kg/s)" is lost); handoff R6 replaces it.
-- [ ] **Step 2: Write the failing tests.**
+- [x] **Step 1: Generate the table.** With the Fenix loaded: `python -I docs/fenix-v3/tools/fetch_gateway_bundles.py <new-empty-folder>`; in `<folder>/efb/` find the chunk holding `name:"humanizeKey"` (`869.06e499eaa8d7474c.js` in 3.0.0.7426); save Appendix A outside that folder and run it on the chunk: `python -I option_labels.py <chunk.js> fenix-options-labels.tsv` must print `125 options, 159 rows`. Do not use the committed `docs/fenix-v3/evidence/fenix-options-labels.tsv` (regex extraction: it drops 18 descriptions, truncates one, leaves `→` escapes and keeps one label per value name across options, so refuel rate's "Realistic (16 Kg/s)" is lost); handoff R6 replaces it.
+- [x] **Step 2: Write the failing tests.**
 
 ```csharp
 public class FenixOptionLabelsTests
@@ -141,10 +141,10 @@ public class FenixOptionLabelsTests
 }
 ```
 
-- [ ] **Step 3: Run them; they fail to compile.** `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64 --filter FenixOptionLabelsTests`
-- [ ] **Step 4: Implement.** Paste the 159 data rows (no header) of Step 1's TSV, tabs replaced by `|` (`tail -n +2 fenix-options-labels.tsv | tr '\t' '|'`), into a C# raw string literal `private const string Table = """ … """;`; `All` = `Parse(Table)`, built once (`Lazy` or static readonly). Row = `key|value|label|description|control`: empty `value` = option row, else a value label of the option above it; empty control = null. Split lines on `\n` and trim a trailing `\r` (a CRLF checkout puts one on every row), skip blank lines. The file header says where the rows come from and how to regenerate them (Step 1 and Appendix A; after plan 12 deletes `docs/fenix-v3/`, `docs/a32nx.md`, handoff R6).
-- [ ] **Step 5: Run them; all pass.**
-- [ ] **Step 6: Commit.** `git add MSFSBlindAssist/Services/FenixOptionLabels.cs tests/MSFSBlindAssist.Tests/FenixOptionLabelsTests.cs` and `git commit -m "feat(fenix): the Fenix EFB's own option labels (plan 11)"`
+- [x] **Step 3: Run them; they fail to compile.** `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64 --filter FenixOptionLabelsTests`
+- [x] **Step 4: Implement.** Paste the 159 data rows (no header) of Step 1's TSV, tabs replaced by `|` (`tail -n +2 fenix-options-labels.tsv | tr '\t' '|'`), into a C# raw string literal `private const string Table = """ … """;`; `All` = `Parse(Table)`, built once (`Lazy` or static readonly). Row = `key|value|label|description|control`: empty `value` = option row, else a value label of the option above it; empty control = null. Split lines on `\n` and trim a trailing `\r` (a CRLF checkout puts one on every row), skip blank lines. The file header says where the rows come from and how to regenerate them (Step 1 and Appendix A; after plan 12 deletes `docs/fenix-v3/`, `docs/a32nx.md`, handoff R6).
+- [x] **Step 5: Run them; all pass.**
+- [x] **Step 6: Commit.** `git add MSFSBlindAssist/Services/FenixOptionLabels.cs tests/MSFSBlindAssist.Tests/FenixOptionLabelsTests.cs` and `git commit -m "feat(fenix): the Fenix EFB's own option labels (plan 11)"`
 
 ### Task 2: Catalog: keys, notes, masking and formatting
 
@@ -192,7 +192,7 @@ Code evidence behind the "not affected" notes: weights and fuel read stock `TOTA
 
 `Humanize` ports the EFB pipe: `Regex.Replace(k, "[_-]+", " ")`, then `"([A-Z]+)([A-Z][a-z])"` → `"$1 $2"`, then `"([a-z0-9])([A-Z])"` → `"$1 $2"`, split on whitespace dropping empties, first char `char.ToUpperInvariant`, join with " ". `Label` = `FenixOptionLabels` label, else `Humanize(key)`.
 
-- [ ] **Step 1: Write the failing tests** (`FenixOptionCatalogTests`, helper `S` from the top):
+- [x] **Step 1: Write the failing tests** (`FenixOptionCatalogTests`, helper `S` from the top):
 
 ```csharp
 [Theory]
@@ -293,10 +293,10 @@ public void Source_is_named_in_Fenix_words(string source, string text) => Assert
 }
 ```
 
-- [ ] **Step 2: Run them; they fail to compile.** `… --filter FenixOptionCatalogTests`
-- [ ] **Step 3: Implement the three files** per Interfaces and the two tables above. `IsSecret` uses `FenixOptionKeys.Secrets.Contains(key, StringComparer.Ordinal)`.
-- [ ] **Step 4: Run them; all pass.**
-- [ ] **Step 5: Commit.** `git add` the four files; `git commit -m "feat(fenix): option catalog: masking, Fenix's value labels, app notes (plan 11)"`
+- [x] **Step 2: Run them; they fail to compile.** `… --filter FenixOptionCatalogTests`
+- [x] **Step 3: Implement the three files** per Interfaces and the two tables above. `IsSecret` uses `FenixOptionKeys.Secrets.Contains(key, StringComparer.Ordinal)`.
+- [x] **Step 4: Run them; all pass.**
+- [x] **Step 5: Commit.** `git add` the four files; `git commit -m "feat(fenix): option catalog: masking, Fenix's value labels, app notes (plan 11)"`
 
 ### Task 3: Grouping, order and status texts
 
@@ -312,7 +312,7 @@ public void Source_is_named_in_Fenix_words(string source, string text) => Assert
 
 Rules: first the affecting group (keys in `FenixOptionKeys.AffectsApp` order, only those present; omitted when none), then one group per category named `Humanize(category)` sorted with `StringComparer.InvariantCultureIgnoreCase`, then `OtherGroup` for category `None` or "". An affecting option appears in both its own group and the first. Inside a category: the EFB's `compareSettings`: two `^gpws(\d+)([a-z|_]*)$` keys (ignore case) by altitude descending, then suffix ordinal; otherwise by `Label` with `InvariantCultureIgnoreCase`; use a stable sort (`OrderBy` with an `IComparer`). `CountChanged` counts keys whose `Value` differs (ordinal) plus keys present on one side only. `Untested` returns, in `FenixOptionKeys.AffectsApp` order, `RowText` of each present option whose `TestedValue` is non-null and differs (booleans compared by `bool.TryParse`, others ordinal). `StatusText` = `$"Fenix {version ?? "version unknown"}: {n} options. "` + (`changesAllowed` ? "F2 changes an on/off or choice option for this simulator session." : "Read only: change options in the Fenix EFB.") + (untested any ? `$" Not what MSFS Blind Assist is tested with: {string.Join("; ", untested)}."` : ""). `RefreshText`: 0 → "Refreshed, no changes."; 1 → "Refreshed, 1 option changed."; n → `$"Refreshed, {n} options changed."`.
 
-- [ ] **Step 1: Write the failing tests.** Fixture `LiveEleven()`: the 11 affecting options as read live on the IAE A321 (2026-10-21; `docs/fenix-v3/evidence/settings.tsv` has the CFM A320 equivalents): encoder `false` Realism; efis_baro_linking_type `Independent` Realism `[Independent, LinkedWithStandby, Linked]`; fd_ls `false` Realism; channel_spacing `Khz8d33` Aircraft `[Khz25, Khz8d33]`; fcu_readouts `Old` Misc `[Old, New]`; weight_unit `Pounds` Aircraft `[Kilograms, Pounds]`; baro_unit `Inhg` Aircraft `[Hpa, Inhg]`; control_position `Captain` Misc `[Captain, FirstOfficer]`; incremental_thrust `false` Misc; auto_toga `true` Aircraft; tcas_ap `false` Aircraft.
+- [x] **Step 1: Write the failing tests.** Fixture `LiveEleven()`: the 11 affecting options as read live on the IAE A321 (2026-10-21; `docs/fenix-v3/evidence/settings.tsv` has the CFM A320 equivalents): encoder `false` Realism; efis_baro_linking_type `Independent` Realism `[Independent, LinkedWithStandby, Linked]`; fd_ls `false` Realism; channel_spacing `Khz8d33` Aircraft `[Khz25, Khz8d33]`; fcu_readouts `Old` Misc `[Old, New]`; weight_unit `Pounds` Aircraft `[Kilograms, Pounds]`; baro_unit `Inhg` Aircraft `[Hpa, Inhg]`; control_position `Captain` Misc `[Captain, FirstOfficer]`; incremental_thrust `false` Misc; auto_toga `true` Aircraft; tcas_ap `false` Aircraft.
 
 ```csharp
 [Fact] public void Live_snapshot_reads_as_the_pilot_hears_it()
@@ -379,10 +379,10 @@ Rules: first the affecting group (keys in `FenixOptionKeys.AffectsApp` order, on
 }
 ```
 
-- [ ] **Step 2: Run them; they fail to compile.** `… --filter FenixOptionGroupingTests`
-- [ ] **Step 3: Implement `FenixOptionGrouping.cs`** per Interfaces and Rules.
-- [ ] **Step 4: Run them; all pass.**
-- [ ] **Step 5: Commit.** `git commit -m "feat(fenix): option groups, order and status texts (plan 11)"` (the two files).
+- [x] **Step 2: Run them; they fail to compile.** `… --filter FenixOptionGroupingTests`
+- [x] **Step 3: Implement `FenixOptionGrouping.cs`** per Interfaces and Rules.
+- [x] **Step 4: Run them; all pass.**
+- [x] **Step 5: Commit.** `git commit -m "feat(fenix): option groups, order and status texts (plan 11)"` (the two files).
 
 ### Task 4: The "Fenix options" window and its registry entry
 
@@ -402,7 +402,7 @@ Window (title "Fenix options"), tab order: tree, details, status, Close.
 - Load (`async Task LoadAsync(bool speak)`): ignore a second load while one runs (F5 then speaks "Still loading."); `data = await _data.QueryAsync(FenixDataQueries.SettingsQuery)`; `if (IsDisposed) return;`. Null → status `NoAnswerText`, keep any previous tree, speak `NoAnswerText` if `speak`. Otherwise parse version and settings; when every group name and each group's key sequence equal the previous load, update populated nodes' texts in place (selection and expansion kept); else rebuild and reselect the same key (first occurrence) or group. If `speak`, `AnnounceImmediate(RefreshText(CountChanged(old, new)))`. Opening loads with `speak: false`; `ShowForm` on an already-open window (plan 01 reuses tracked windows) activates it and reloads with `speak: false`; F5 loads with `speak: true`.
 - Logging: `Log.Debug("FenixOptions", …)` with counts or keys only (Global Constraints).
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```csharp
 public class FenixOptionsFormSourceTests
@@ -433,11 +433,11 @@ public class FenixOptionsFormSourceTests
 }
 ```
 
-- [ ] **Step 2: Run them; they fail.** `… --filter FenixOptionsFormSourceTests`
-- [ ] **Step 3: Implement the form and the registry partial** as above.
-- [ ] **Step 4: Run the whole suite and build.** `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64` then `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64`; all green.
-- [ ] **Step 5: Live check (app built, sim up with the Fenix loaded, owner at the keyboard; reads only).** `[` then Ctrl+Shift+F, select "Fenix options", Enter: the reader says "Encoder Acceleration: Off" (or On); Tab twice: status "Fenix 3.0.0.7426: 149 options. Read only: change options in the Fenix EFB." on the IAE A321 (146 on the CFM A320); Enter on a row speaks its note and description; F5 says "Refreshed, no changes."; Tab back, collapse and expand "Connections (…)": the Hoppie, Navigraph, Pushover and SimBrief rows say "set, hidden" or "not set" and no value appears in `%APPDATA%\MSFSBlindAssist\logs\debug.log`; switch to another aircraft profile with the window open: it closes, no error in debug.log. If the sim is not up, stop and ask the owner to load the Fenix.
-- [ ] **Step 6: Commit.** `git commit -m "feat(fenix): Fenix options window in the Fenix windows list (plan 11)"` (the three files).
+- [x] **Step 2: Run them; they fail.** `… --filter FenixOptionsFormSourceTests`
+- [x] **Step 3: Implement the form and the registry partial** as above.
+- [x] **Step 4: Run the whole suite and build.** `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64` then `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64`; all green.
+- [ ] **Step 5: Live check (app built, sim up with the Fenix loaded, owner at the keyboard; reads only).** `[` then Ctrl+Shift+F, select "Fenix options", Enter: the reader says "Encoder Acceleration: Off" (or On); Tab twice: status "Fenix 3.0.0.7426: 149 options. F2 changes an on/off or choice option for this simulator session. Shift+F2 makes an option permanent. Ctrl+F2 resets your change to the Fenix default." on the IAE A321 (146 on the CFM A320; Task 5 and ruling R18 replaced the read-only sentence); Enter on a row speaks its note and description; F5 says "Refreshed, no changes."; Tab back, collapse and expand "Connections (…)": the Hoppie, Navigraph, Pushover and SimBrief rows say "set, hidden" or "not set" and no value appears in `%APPDATA%\MSFSBlindAssist\logs\debug.log`; switch to another aircraft profile with the window open: it closes, no error in debug.log. If the sim is not up, stop and ask the owner to load the Fenix.
+- [x] **Step 6: Commit.** `git commit -m "feat(fenix): Fenix options window in the Fenix windows list (plan 11)"` (the three files).
 
 ### Task 5 (D1 = b, decided by the owner 2026-10-21; index answer 5): Change an option for this session
 
@@ -449,7 +449,7 @@ public class FenixOptionsFormSourceTests
 **Interfaces:**
 - Produces: `public sealed record FenixOptionChoice(string Value, string Label);` and `public static class FenixOptionEdits` with `public const string SetSettingDocument = "mutation SetSetting($setSetting: SetSettingInput!) { settings { setSetting(setSetting: $setSetting) { success } } }";`, `bool CanChange(FenixSetting s)` (`Writable`, not secret, key not `charts_provider_type` (the EFB hides it), and `Type` is `System.Boolean` or `Enum` with at least 2 `PossibleValues`), `IReadOnlyList<FenixOptionChoice> Choices(FenixSetting s)`, `object Variables(string key, string value)`, `bool Succeeded(JObject? data)` (`data.settings.setSetting.success == true`), `bool NeedsConfirm(FenixSetting s)` (true for the cockpit-reshaping keys `standby_type`, `isis_type`, `adirs_type`, `acp_type`, `dcdu_enabled`; owner answer 5), and `string ConfirmText(string optionLabel, string choiceLabel)` = `$"Change {optionLabel} to {choiceLabel}? This changes your cockpit panels until MSFS closes."`. `FenixOptionsChangeDialog(string optionLabel, IReadOnlyList<FenixOptionChoice> choices, string? currentValue)` with `string? SelectedValue`: title "Change Fenix option", a DropDownList `ComboBox` named `$"{optionLabel}, for this simulator session"` on the current value, OK (`AcceptButton`) and Cancel (`CancelButton`).
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```csharp
 [Fact] public void Only_writable_on_off_and_choice_options_can_change()
@@ -493,11 +493,11 @@ public class FenixOptionsFormSourceTests
 }
 ```
 
-- [ ] **Step 2: Run them; they fail to compile.** `… --filter FenixOptionEditsTests`
-- [ ] **Step 3: Implement.** F2 on an option node: `!CanChange` → speak "MSFS Blind Assist cannot change this option."; else show the dialog modally; on OK with a different value, if `NeedsConfirm`, a Yes/No box with `ConfirmText` and **No** as the default (pattern `MSFSBlindAssist/Forms/GateTeleportForm.cs:476-481`), No → nothing sent, nothing spoken; then `await _data.QueryAsync(SetSettingDocument, Variables(key, value))`, `if (IsDisposed) return;`; not `Succeeded` → speak "The Fenix did not accept the change."; else reload silently and speak the new `RowText` (a read-back, CORE-7), or `$"Fenix kept {RowText}."` when the re-read value is not the one sent. Status uses `changesAllowed: true`. Never log the value.
-- [ ] **Step 4: Run the whole suite and build; all green.**
-- [ ] **Step 5: Owner step E1 (first write ever; owner present, sim up, on the ground).** In Fenix options on "Encoder Acceleration: Off": F2, choose On, Enter → "Encoder Acceleration: On"; Enter on the row → details end with the session sentence ("…will reset when you close MSFS or change aircraft/livery."); F2, Off, Enter → "Encoder Acceleration: Off". Any other answer: stop, record it, do not commit Task 5.
-- [ ] **Step 6: Commit.** `git commit -m "feat(fenix): change a Fenix option for this session from the options window (plan 11)"`
+- [x] **Step 2: Run them; they fail to compile.** `… --filter FenixOptionEditsTests`
+- [x] **Step 3: Implement.** F2 on an option node: `!CanChange` → speak "MSFS Blind Assist cannot change this option."; else show the dialog modally; on OK with a different value, if `NeedsConfirm`, a Yes/No box with `ConfirmText` and **No** as the default (pattern `MSFSBlindAssist/Forms/GateTeleportForm.cs:476-481`), No → nothing sent, nothing spoken; then `await _data.QueryAsync(SetSettingDocument, Variables(key, value))`, `if (IsDisposed) return;`; not `Succeeded` → speak "The Fenix did not accept the change."; else reload silently and speak the new `RowText` (a read-back, CORE-7), or `$"Fenix kept {RowText}."` when the re-read value is not the one sent. Status uses `changesAllowed: true`. Never log the value.
+- [x] **Step 4: Run the whole suite and build; all green.**
+- [ ] **Step 5: Owner step E1 (first write ever; owner present, sim up, on the ground).** In Fenix options on "Encoder Acceleration: Off": F2, choose On (the list is On, Off and opens on the current value, so Up arrow), Enter → "Encoder Acceleration: On"; Enter on the row → details end with the session sentence ("…will reset when you close MSFS or change aircraft/livery."); F2, Off, Enter → "Encoder Acceleration: Off". Any other answer: stop, record it, do not commit Task 5.
+- [x] **Step 6: Commit.** `git commit -m "feat(fenix): change a Fenix option for this session from the options window (plan 11)"`
 
 ### Task 6 (owner request, 2026-10-21; index answer 19): permanent change and reset to the Fenix default
 
@@ -511,17 +511,18 @@ Why: the EFB's per-option menu (the unnamed "overflow" button after each option)
 - Consumes: Task 5's `FenixOptionEdits`, `FenixOptionsChangeDialog`.
 - Produces: `object Variables(string key, string value, bool persist)` (Task 5's two-argument form keeps `persist: false`); `public const string SetDefaultDocument` = the bundle's `SetDefault` mutation verbatim (`docs/fenix-v3/evidence/gql-operations.txt`); `bool DefaultSucceeded(JObject? data)` (`data.settings.setDefault.success == true`); `string PermanentConfirmText(string optionLabel, string choiceLabel)` = `$"Make {optionLabel} {choiceLabel} your permanent setting? It applies to every flight and livery until you change it."`; `string ResetConfirmText(string optionLabel)` = `$"Reset {optionLabel} to the Fenix default?"`.
 
-- [ ] **Step 1: Read what the EFB's overflow menu sends.** In the EFB bundle (fetch with `docs/fenix-v3/tools/fetch_gateway_bundles.py`), find the overflow menu's items and the call each makes (`setSetting` with `persist: true`, `setDefault(key)`, or anything else), and the label the EFB shows for each. Quote them in this task; never guess. If the menu offers something else (e.g. "remove override" with a different call), mirror that instead and keep the same confirm-first pattern.
-- [ ] **Step 2: Write the failing tests:** `Variables_can_be_permanent` (`Variables("weight_unit", "Kilograms", persist: true)` serialises `"persist":true`); `Default_succeeded_reads_success`; `Permanent_and_reset_ask_first` (the two exact confirm texts above, de-DE).
-- [ ] **Step 3: Run them; they fail.**
-- [ ] **Step 4: Implement.** Shift+F2 on an option that `CanChange`: the same dialog titled "Make a Fenix option permanent", its ComboBox named `$"{optionLabel}, permanent"`; then always a Yes/No box with `PermanentConfirmText`, **No** default; then `setSetting` with `persist: true`; read back as Task 5. Ctrl+F2: a Yes/No box with `ResetConfirmText`, **No** default; then `SetDefaultDocument` with the key; read back and speak the new `RowText`. A failure speaks "The Fenix did not accept the change." Never on a secret; never `setSettings` or `setDefaults` (all-option resets have no single-option EFB equivalent).
-- [ ] **Step 5: Run the whole suite and build; all green.**
-- [ ] **Step 6: Owner step E2 (after E1).** On "Encoder Acceleration: Off": Shift+F2, On, Enter, Yes → "Encoder Acceleration: On"; close and reopen MSFS (or switch livery): still On; Ctrl+F2, Yes → back to the Fenix default ("Encoder Acceleration: Off"). Any other answer: stop and record it.
-- [ ] **Step 7: Commit.** `git commit -m "feat(fenix): make a Fenix option permanent or reset it to the default (plan 11)"`
+- [x] **Step 1: Read what the EFB's overflow menu sends.** In the EFB bundle (fetch with `docs/fenix-v3/tools/fetch_gateway_bundles.py`), find the overflow menu's items and the call each makes (`setSetting` with `persist: true`, `setDefault(key)`, or anything else), and the label the EFB shows for each. Quote them in this task; never guess. If the menu offers something else (e.g. "remove override" with a different call), mirror that instead and keep the same confirm-first pattern.
+  Read 2026-10-22 (EFB 3.0.0.7426, chunk `869.06e499eaa8d7474c.js` and `main.ccd882238ccd3f2d.js`): two items, " Set as user override " → `setUserOverride(r)` and " Reset to default " → `resetToDefault(r)`. "Set as user override" is disabled when `"user"===t.source`; "Reset to default" is disabled when `"user"!==t.source&&"session"!==t.source`. `setUserOverride(t){if("action-button"===t.control.type||"background-image"===t.control.type||t.isSynthetic)return;const o=String(t.control.value);this.settingsStore.setSettingUnchecked({key:t.key,value:o,persist:!0})…}` (the CURRENT value, made permanent); `resetToDefault(t){t.isSynthetic||(this.settingsStore.setDefault(t.key)…)}` → `setDefaultGql.mutate({key:l})` with `mutation SetDefault($key: String!) { settings { setDefault(key: $key) { success } } }`. The EFB's own toggle, for comparison: `onSettingChange(t,o){t.isSynthetic||this.settingsStore.setSettingUnchecked({key:t.key,value:String(o),persist:!1})}`. Built as rulings R14 and R17 say (Shift+F2's dialog opens on the current value, so Enter then Yes is "Set as user override"; Ctrl+F2 only for a user or session override).
+- [x] **Step 2: Write the failing tests:** `Variables_can_be_permanent` (`Variables("weight_unit", "Kilograms", persist: true)` serialises `"persist":true`); `Default_succeeded_reads_success`; `Permanent_and_reset_ask_first` (the two exact confirm texts above, de-DE).
+- [x] **Step 3: Run them; they fail.**
+- [x] **Step 4: Implement.** Shift+F2 on an option that `CanChange`: the same dialog titled "Make a Fenix option permanent", its ComboBox named `$"{optionLabel}, permanent"`; then always a Yes/No box with `PermanentConfirmText`, **No** default; then `setSetting` with `persist: true`; read back as Task 5. Ctrl+F2: a Yes/No box with `ResetConfirmText`, **No** default; then `SetDefaultDocument` with the key; read back and speak the new `RowText`. A failure speaks "The Fenix did not accept the change." Never on a secret; never `setSettings` or `setDefaults` (all-option resets have no single-option EFB equivalent).
+- [x] **Step 5: Run the whole suite and build; all green.**
+- [ ] **Step 6: Owner step E2 (after E1).** Ruling R16: run it on "Printer: Auto Telex Messages: On" (at the Fenix default), not Encoder Acceleration, whose Off is the owner's own permanent setting that Ctrl+F2 would remove. Shift+F2, Down arrow to Off, Enter, Yes → "Printer: Auto Telex Messages: Off"; Enter on the row → details end "This setting has been overridden by you and will apply regardless of livery or Fenix defaults."; (optional) close and reopen MSFS: still Off; Ctrl+F2, Yes → "Printer: Auto Telex Messages: On", details end "This setting is the default Fenix value.". "Not made permanent: …" or "Not reset: …" means the Fenix read back something else: stop and record it.
+- [x] **Step 7: Commit.** `git commit -m "feat(fenix): make a Fenix option permanent or reset it to the default (plan 11)"`
 
 ### Task 7: Hand back
 
-- [ ] **Step 1:** Full suite and solution build green; `git diff --name-only <base-sha>` lists only this plan's files.
+- [x] **Step 1:** Full suite and solution build green; `git diff --name-only <base-sha>` lists only this plan's files.
 - [ ] **Step 2:** Ask the owner for M1-M4 (below; E1 first if D1 = b). Write each heard phrase into "Measurement results" at the end of this file, and mark which handoff (R1-R4) applies.
 - [ ] **Step 3:** Hand back the branch and this file's handoff section to plan 12.
 
@@ -555,12 +556,31 @@ Setup for all: Fenix loaded (any variant), parked, aircraft powered (batteries p
 
 Not measured (note only): `control_position_type` First Officer (ACP behaviour), `auto_toga_enabled`, `tcas_ap_enabled`, `incremental_thrust_handling_enabled` (code shows no app path, see Task 2).
 
+## Rulings (where the code departs from this plan's text, 2026-10-22)
+
+- R1: worked on `FenixV3` itself in the main folder, not on a branch from 80a857441 in a worktree (FenixV3 had moved on past plan 01).
+- R3: owner answer 19 supersedes "never `persist: true` / `setDefault`" for Shift+F2 and Ctrl+F2 only.
+- R7: an empty value label in `FenixOptionLabels` (acp_type's Classic and Modern carry only an image) means no label, so the raw value shows, as the EFB's `Object.assign({value, label: I(value)}, entry)` does.
+- R10: F5 after a failed first read speaks the status line, not "Refreshed, 146 options changed.".
+- R11: after an accepted write the window re-reads; a value that differs gets one more read 500 ms later before it is called not applied.
+- R12: wording the plan left open: "Select an option first." (F2, Shift+F2 or Ctrl+F2 on a group), "Still loading." (during a load or a change), "Change sent, but the Fenix did not read it back. Press F5.".
+- R13: rows and the change dialog share `FenixOptionCatalog.ChoiceLabel`; on/off values compare by `bool.TryParse` (the live Fenix sends "False").
+- R14 (replaces R9): Shift+F2 follows Task 6 Step 4: the change dialog, titled "Make a Fenix option permanent", opens on the current value, then always a Yes/No (so Enter then Yes is the EFB's "Set as user override"). Ctrl+F2 mirrors the EFB's rule: only for a user or session override, otherwise "{label} has no change of yours to reset.".
+- R15: Ctrl+F2 keeps F2's guard (on/off and choice options only), though the EFB also resets typed values. **Owner question:** allow resetting typed values such as Registration?
+- R16: E2 runs on "Printer: Auto Telex Messages" (Task 6 Step 6).
+- R17: the read-back judges each kind with `FenixOptionEdits.Applied`: session = the value sent; permanent = the value sent and a user source; reset = the value or the source changed.
+- R18: the status sentence names F2, Shift+F2 and Ctrl+F2 (Task 3's text predates Task 6).
+- R19: a change that did not apply says "Fenix kept …" (F2), "Not made permanent: …" (Shift+F2) or "Not reset: …" (Ctrl+F2).
+- R20: a write with no answer gets one silent re-read: still no answer → the no-answer text; applied → the row; otherwise "The Fenix did not accept the change.".
+- R21: Shift+F2 and Ctrl+F2 on the five cockpit-reshaping options add "This changes your cockpit panels." to their question.
+- R22, R23: review fixes: the question per kind is pure (`FenixOptionEdits.Question`), the log scan also catches a whole `FenixSetting`, the change dialog starts with nothing selected when the current value matches no choice (OK then sends nothing), the first load is judged by an empty tree.
+
 ## Handoff to plan 12
 
 **Pilot-facing changes.**
-- "Fenix windows" (`[` then Ctrl+Shift+F) lists "Fenix options": every option of the Fenix EFB with its value in Fenix's own words, grouped as in the EFB; the eleven that can change how the app works come first, each with a note (Enter speaks it, Tab shows it); F5 refreshes; Hoppie, Navigraph, Pushover and SimBrief credentials read "set, hidden". With D1 = b: F2 changes an on/off or choice option until MSFS closes.
-- Guide (CORE-19): Fenix chapter, new section "Fenix options"; hotkey list unchanged (plan 01's key).
-- Changelog (`feature`): "Fenix: the new Fenix options window lists every Fenix EFB option with its value and tells you which ones change how MSFS Blind Assist works."
+- "Fenix windows" (`[` then Ctrl+Shift+F) lists "Fenix options": every option of the Fenix EFB with its value in Fenix's own words, grouped as in the EFB; the eleven that can change how the app works come first, each with a note (Enter speaks it, Tab shows it); F5 refreshes; Hoppie, Navigraph, Pushover and SimBrief credentials read "set, hidden". F2 changes an on/off or choice option until MSFS closes (a Yes/No first for the five options that reshape the cockpit); Shift+F2 makes an option permanent and Ctrl+F2 resets your change to the Fenix default, each after a Yes/No that defaults to No; the window speaks the value the Fenix reads back.
+- Guide (CORE-19): Fenix chapter, new section "Fenix options" (the three keys, the status line, credentials hidden); hotkey list unchanged (plan 01's key).
+- Changelog (`feature`): "Fenix: the new Fenix options window lists every Fenix EFB option with its value, tells you which ones change how MSFS Blind Assist works, and lets you change an on/off or choice option for this flight (F2), make it permanent (Shift+F2) or reset it to the Fenix default (Ctrl+F2)."
 - After M1-M4: update `FenixOptionNotes` copy (measured effect or "no effect, measured <date>").
 
 **Proposed rule lines** (fenix-data.md; R5 adds the globs they need; 361, 356 and 276 characters; the third only if D1 = b):
@@ -580,11 +600,17 @@ Not measured (note only): `control_position_type` First Officer (ACP behaviour),
 - R6 → plan 12: `docs/a32nx.md` gets a "Fenix options" section: where labels come from, Appendix A as the regeneration recipe, D1-D4 and the M1-M4 results; replace `docs/fenix-v3/evidence/fenix-options-labels.tsv` with Appendix A's output (the committed one drops 18 descriptions, truncates door automation's, keeps `→` escapes and loses scoped value labels).
 - Also seen, not this plan: RMP frequencies spoken with `{freqMHz:F3}` in the PC's culture (`FenixA320Definition.cs:12154`, "132,475" on de-DE) → plan 02; "Setting altimeter to {inHgValue:0.00}" in the PC's culture (`Forms/FenixA320/FenixBaroWindow.cs:280`) → plan 12 (no owner); the FD and LS pushbutton lights are announced as "EFIS 1 FD Fault", "EFIS 2 LS Fault" and so on (`FenixA320Definition.cs:1258-1275, 1321-1338`) though the FO reads them as "FD on" → plan 02 to check against the cockpit.
 
-**In-sim checks still needed:** Task 4 Step 5; E1 (D1 = b); M1-M4.
+**Follow-ups (review findings left open, for plan 12 or later).**
+- Test pins dropped by the final fix wave: `persist` is true only for Shift+F2 (extract `FenixOptionEdits.Persists(kind)` and test it per kind), a second Yes/No box without a default button would default to Yes, the F2 auto-repeat filter.
+- Raw choice names such as "ManualImport", "IfrHi" and "AviationWeather" are what the EFB shows (Global Constraints) but may read run together with a screen reader: the owner decides whether to split them.
+- Reopening a minimized Fenix window leaves it minimized (also the Failures window and the windows list: shared code, not this plan's).
+- Smaller test gaps: `FenixOptionLabels.Parse`'s CRLF trim, a culture-dependent comparer, null or unparsable on/off and number rows; a reset where both the old and new value are missing counts as not changed.
+
+**In-sim checks still needed:** Task 4 Step 5; E1 (Task 5 Step 5); E2 (Task 6 Step 6, on "Printer: Auto Telex Messages"); M1-M4. Listen in E1 and E2 for a change read twice (NVDA reading the updated row and then the app's read-back, CORE-7), and press F2 on "Channel Spacing" once to hear the list open on "8.33 kHz" (Escape, nothing sent).
 
 ## Measurement results
 
-(Filled in by the implementer from the owner's run: date, aircraft, each step's phrase, handoff triggered.)
+Not run yet. Read live 2026-10-22 (read-only, Fenix 3.0.0.7426, the loaded aircraft: 146 options, the CFM A320 count): Boolean 73, Enum 42, String 19, Int32 11, Single 1; sources Internal 76, UserFile 41, Livery 28, Session 1; 25 keys without an EFB label (the hidden ones: type_code, engine_family, is_sharklet, the FAP volumes …) read through `Humanize`; no on/off or number option arrived empty; Encoder Acceleration reads "False" from the owner's own permanent setting (UserFile), EFIS Linking: Baro Independent and FD/LS off likewise.
 
 ## Appendix A: option label extractor (run with `python -I`, on a bundle in its own folder)
 
