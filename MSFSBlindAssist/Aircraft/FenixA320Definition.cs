@@ -1631,7 +1631,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             // Button Controls (write-only - execute RPN operations)
             ["S_OH_ELEC_GEN1"] = new SimConnect.SimVarDefinition
             {
-                Name = "S_OH_ELEC_GEN1_LINE",  // Note: Uses GEN1_LINE internally
+                Name = "S_OH_ELEC_GEN1",
                 DisplayName = "Generator 1",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
@@ -9315,7 +9315,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
 
             if (varKey == "S_OH_ELEC_GEN1")
             {
-                simConnect.SetLVar("S_OH_ELEC_GEN1_LINE", value);
+                simConnect.SetLVar("S_OH_ELEC_GEN1", value);
                 return true;
             }
 
