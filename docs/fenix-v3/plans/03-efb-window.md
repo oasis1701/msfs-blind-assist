@@ -1,6 +1,6 @@
 # Fenix v3 EFB Window Implementation Plan (plan 03)
 
-**Claimed by:** nobody yet · **Status:** not started
+**Claimed by:** robin24 · **Status:** in progress
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
