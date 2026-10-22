@@ -1,6 +1,6 @@
 # First Officer for Fenix v3 Implementation Plan (plan 05)
 
-**Claimed by:** kn4iee · **Status:** in progress
+**Claimed by:** kn4iee · **Status:** in progress (code and reviews done 2026-10-22; in-sim checks remain, see "Owner-in-sim checks")
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -85,7 +85,7 @@ none of the names v3 renamed or removed (spec 1.1 to 1.5, 2.3).
 - Consumes: `AirbusReadbackFormat.TakeoffSpeeds(v1, vr, v2, flex)` (shared, unchanged: NaN gives null, a known value below 1 gives "not set", the same threshold as `SimVarDefinition.NotSetBelow = 1` that A320-10 names).
 - Produces: `BSC_TOSPEEDS` reads `N_MISC_PERF_TO_V1`, `N_MISC_PERF_TO_VR`, `N_MISC_PERF_TO_V2`, `N_MISC_PERF_TO_FLEX` (all registered Continuous at `FenixA320Definition.cs:6548-6579`; the takeoff-speed hotkey reads V1/VR at `MainForm.Hotkeys.cs:525-526`). No FO file names `FNX2PLD_` any more, so plan 02 can delete those definitions.
 
-- [ ] **Step 1: Write the failing tests** in `FenixFoTakeoffSpeedsTests`:
+- [x] **Step 1: Write the failing tests** in `FenixFoTakeoffSpeedsTests`:
 
 ```csharp
 // Cultures: "en-US", "de-DE", "sv-SE" (MemberData, the FenixReadbackValueTests pattern).
@@ -103,10 +103,10 @@ public void Takeoff_speeds_line_reads_the_native_perf_vars(string culture)
 [Fact] public void No_Fenix_first_officer_file_names_a_FenixQuartz_var() // no "FNX2PLD_" in any MSFSBlindAssist/FirstOfficer/Fenix/*.cs (ClaudeContextBudgetTests.RepoRoot())
 ```
 
-- [ ] **Step 2: Run them; the live-value theory, the "not set" fact and the source scan fail.**
-- [ ] **Step 3: Replace the three `FNX2PLD_speed*` names** in `BSC_TOSPEEDS` and in `PollFields` with `N_MISC_PERF_TO_V1`, `N_MISC_PERF_TO_VR`, `N_MISC_PERF_TO_V2` (same order); update the list at `FenixReadbackTests.cs:220` the same way; fix the `FenixFOAutoManager` comment.
-- [ ] **Step 4: Run the Fenix FO tests and the whole suite; all pass** (`FoPollSilenceTests` included: the perf vars are not spoken on every delivery).
-- [ ] **Step 5: Commit.** `fix(fo-fenix): takeoff speeds read-back from N_MISC_PERF_TO_* (FenixQuartz is gone)`
+- [x] **Step 2: Run them; the live-value theory, the "not set" fact and the source scan fail.**
+- [x] **Step 3: Replace the three `FNX2PLD_speed*` names** in `BSC_TOSPEEDS` and in `PollFields` with `N_MISC_PERF_TO_V1`, `N_MISC_PERF_TO_VR`, `N_MISC_PERF_TO_V2` (same order); update the list at `FenixReadbackTests.cs:220` the same way; fix the `FenixFOAutoManager` comment.
+- [x] **Step 4: Run the Fenix FO tests and the whole suite; all pass** (`FoPollSilenceTests` included: the perf vars are not spoken on every delivery).
+- [x] **Step 5: Commit.** `fix(fo-fenix): takeoff speeds read-back from N_MISC_PERF_TO_* (FenixQuartz is gone)`
 
 ### Task 2: Fenix live readings and attaching the evaluator
 
@@ -132,16 +132,16 @@ public void Takeoff_speeds_line_reads_the_native_perf_vars(string culture)
   - `private readonly FenixFoLiveReadings _live = new();` (read by the synthetic fields in Tasks 3, 5, 6; the class is sealed, so not `protected`)
 - Produces, in `FenixFoProfile.BindDataManager`: `state.SetSimConnect(sc); state.AttachFenix(sc.CurrentAircraft as FenixA320Definition);` Why this path: `SimConnectManager.CurrentAircraft` (`SimConnectManager.cs:155-163`) is set by MainForm on load and on switch (`MainForm.cs:698`, `MainForm.AircraftSwitch.cs:875`), and `FirstOfficerForm.UpdateServicesFromConnection` (`FirstOfficerForm.cs:464-468`) calls `BindDataManager` at construction and on every reconnect, so the Fenix row in `FirstOfficerWindows.cs:38` stays as it is. The subscription ends when the definition disposes its data service on a switch (plan 01's `OnSwitchedAway`), which is also when MainForm disposes the FO window.
 
-- [ ] **Step 1: Write the failing tests** in `FenixFoLiveReadingsTests` (helpers `Num(double)` and `Flag(bool)` build `FenixDataValue`s; a fake clock is a `long` field the test moves):
+- [x] **Step 1: Write the failing tests** in `FenixFoLiveReadingsTests` (helpers `Num(double)` and `Flag(bool)` build `FenixDataValue`s; a fake clock is a `long` field the test moves):
   - `Unknown_values_read_NaN`: `Apply(Engine1N2, FenixDataValue.Unknown)` gives `double.IsNaN(N2(1))`; a JSON-null value (`Kind == Null`) the same; `Apply(CabinReadyName, Num(1))` (wrong kind) gives `double.IsNaN(CabinReady)`.
   - `N2_goes_stale_after_five_seconds`: clock 0, `Apply(Engine1N2, Num(62.35))`; at 4,999 `N2(1) == 62.35`; at 5,001 `double.IsNaN(N2(1))`; a new `Apply` at 5,001 makes it 62.35 again.
   - `Flags_and_fuel_read_their_last_value`: running true gives `Running(1) == 1`, cabin false gives `CabinReady == 0`, fuel `Num(2557.18)` gives `FuelTotalKg == 2557.18`, all still the same after the clock moves 60 s.
   - `Clear_forgets_everything`: after `Clear()`, every getter is NaN.
   - `Attach_subscribes_once_per_source_and_detaches_on_null`: with a fake `subscribe` that records each call and returns a handle with a `Disposed` flag: `AttachFenix(srcA, () => A321, sub)` twice gives one call, whose names equal `FenixFoLiveReadings.Names`, and `Variant.Type == FenixAircraftType.A321`; `AttachFenix(srcB, …)` disposes handle A and calls again; `AttachFenix(null, null, null)` disposes handle B and `Variant == FenixVariant.Unknown`. `AttachFenix((FenixA320Definition?)null)` on a fresh evaluator does not throw. (That a switch also clears the values is pinned in Task 3, where the values first reach a field.)
-- [ ] **Step 2: Run them; they fail to compile.**
-- [ ] **Step 3: Implement** `FenixFoLiveReadings` (one private lock, a dictionary name to (value, received-at ms)) and the evaluator and profile members above. The evaluator keeps its parameterless constructor (`FoPollSilenceTests` creates it by reflection).
-- [ ] **Step 4: Run the class, then the whole suite; all pass.**
-- [ ] **Step 5: Commit.** `feat(fo-fenix): read the Fenix's own engine, cabin and fuel values from the data service`
+- [x] **Step 2: Run them; they fail to compile.**
+- [x] **Step 3: Implement** `FenixFoLiveReadings` (one private lock, a dictionary name to (value, received-at ms)) and the evaluator and profile members above. The evaluator keeps its parameterless constructor (`FoPollSilenceTests` creates it by reflection).
+- [x] **Step 4: Run the class, then the whole suite; all pass.**
+- [x] **Step 5: Commit.** `feat(fo-fenix): read the Fenix's own engine, cabin and fuel values from the data service`
 
 ### Task 3: Engine running and stopped from the Fenix's N2
 
@@ -156,7 +156,7 @@ public void Takeoff_speeds_line_reads_the_native_perf_vars(string culture)
 - Produces: `FO_ENG{n}_N2` = `_live.N2(n)` when known, else the stock value; `FO_ENGINES_OFF` = `Both(FO_ENG1_N2, FO_ENG2_N2, both < 20)` on those resolved values (NaN while either is unknown, as today). `EngineRunningN2` stays 55.0. `internal const int EngineStartTimeoutSeconds = 180;` in `FenixFlowDefinitions`, used by both start waits. Every consumer follows without change: `EPU_ENGINES_STOPPED`, `SC_ENGINES_STOPPED`, `SD_ENGINES_STOPPED`, `ES_ENG{n}_RUN`, `PKC_ENGINES`, `NotParked`.
 - Diagnostic, no test: `private void TraceEngine(int engine, double fenixN2, double stockN2)`, called from the two `FO_ENG{n}_N2` reads, logs one `Log.Info("FO", …)` line when the source changes (Fenix or stock), or when Fenix N2 ≥ 55, stock N2 ≥ 55 or the running flag changes, for example `Fenix engine 1: Fenix N2 55.2 %, stock N2 68.0 %, running flag 1, source Fenix` (invariant culture; a lock guards the edge state, since the window timer and a flow read at the same time). In-sim check 1 reads these lines.
 
-- [ ] **Step 1: Write the failing tests** in `FenixFoEngineRunningTests` (attach a fake subscription as in Task 2 and push values through its callback):
+- [x] **Step 1: Write the failing tests** in `FenixFoEngineRunningTests` (attach a fake subscription as in Task 2 and push values through its callback):
 
 ```csharp
 [Fact] public void Fresh_Fenix_N2_wins_over_stock()
@@ -183,10 +183,10 @@ public void Takeoff_speeds_line_reads_the_native_perf_vars(string culture)
 ```
 
   And in `FenixFlowParityTests.Engine_start_waits_for_N2_and_completes_its_running_line`: `Assert.Equal(180, s.TimeoutSeconds)`.
-- [ ] **Step 2: Run them; all but the threshold test fail** (the evaluator still reads stock only, and the timeout is 120).
-- [ ] **Step 3: Implement** the three synthetic fields over the resolved per-engine N2, `TraceEngine`, the 180 s constant; rewrite the stale comments (stock is now the fallback; give the measured idles and the cut-out source).
-- [ ] **Step 4: Run the class, `FoEngineAndGroundGuardTests`, `FoCutGuardSweepTests` (both push stock N2 only and must pass unchanged) and the whole suite.**
-- [ ] **Step 5: Commit.** `fix(fo-fenix): engine running and stopped from the Fenix's own N2; 3 min start wait for IAE`
+- [x] **Step 2: Run them; all but the threshold test fail** (the evaluator still reads stock only, and the timeout is 120).
+- [x] **Step 3: Implement** the three synthetic fields over the resolved per-engine N2, `TraceEngine`, the 180 s constant; rewrite the stale comments (stock is now the fallback; give the measured idles and the cut-out source).
+- [x] **Step 4: Run the class, `FoEngineAndGroundGuardTests`, `FoCutGuardSweepTests` (both push stock N2 only and must pass unchanged) and the whole suite.**
+- [x] **Step 5: Commit.** `fix(fo-fenix): engine running and stopped from the Fenix's own N2; 3 min start wait for IAE`
 
 ### Task 4: The A321 has no PACK FLOW selector
 
@@ -199,13 +199,13 @@ public void Takeoff_speeds_line_reads_the_native_perf_vars(string culture)
 - Consumes: Task 2's `Variant`; the file's `Provider(...)` builder (`FenixFlowDefinitions.cs:729-735`).
 - Produces: `public bool HasPackFlowSelector => Variant.Type != FenixAircraftType.A321;` (Unknown, A318, A319, A320 have one). `PF_PACKFLOW` becomes `Done(Skip(Provider("PF_PACKFLOW", "Pack flow: NORMAL", "S_OH_PNEUMATIC_PACK_FLOW", s => s.HasPackFlowSelector ? 1 : null), s => s.HasPackFlowSelector && s.IsPosition("S_OH_PNEUMATIC_PACK_FLOW", 1)), "PF_PACKFLOW")`: same id, label, kind (SetSwitch) and link, so parity is untouched; on an A321 FlowManager's FO-20 path skips it silently. The checklist line `PF_PACKFLOW` is unchanged.
 
-- [ ] **Step 1: Write the failing tests** in `FenixFoA321Tests` (`A321 = FenixVariant.Unknown with { Type = FenixAircraftType.A321, Engine = FenixEngineFamily.IaeV2500 }`, attached with `e.AttachFenix(new object(), () => A321, null)` over `SeededSimConnectCache.ConnectedWith(("S_OH_PNEUMATIC_PACK_FLOW", 1))`):
+- [x] **Step 1: Write the failing tests** in `FenixFoA321Tests` (`A321 = FenixVariant.Unknown with { Type = FenixAircraftType.A321, Engine = FenixEngineFamily.IaeV2500 }`, attached with `e.AttachFenix(new object(), () => A321, null)` over `SeededSimConnectCache.ConnectedWith(("S_OH_PNEUMATIC_PACK_FLOW", 1))`):
   - `A321_preflight_neither_writes_nor_claims_pack_flow`: `Assert.False(step.SkipCondition!(e))`, `Assert.Null(step.TargetValueProvider!(e))`, `Assert.Equal(new[] { "PF_PACKFLOW" }, step.LinkedChecklistItemIds)`.
   - `A320_and_unknown_keep_pack_flow_normal` (Theory over `FenixAircraftType.Unknown`, `A319`, `A320`): `Assert.True(step.SkipCondition!(e))` and `Assert.Equal(1, step.TargetValueProvider!(e))`.
-- [ ] **Step 2: Run them; they fail** (no provider yet).
-- [ ] **Step 3: Implement** the property and the step change.
-- [ ] **Step 4: Run the class, `A320FamilyParityTests` and the whole suite; all pass with no allow-list change.**
-- [ ] **Step 5: Commit.** `fix(fo-fenix): no pack flow step on the A321, which has no selector`
+- [x] **Step 2: Run them; they fail** (no provider yet).
+- [x] **Step 3: Implement** the property and the step change.
+- [x] **Step 4: Run the class, `A320FamilyParityTests` and the whole suite; all pass with no allow-list change.**
+- [x] **Step 5: Commit.** `fix(fo-fenix): no pack flow step on the A321, which has no selector`
 
 ### Task 5: CABIN READY from the purser (v3)
 
@@ -220,14 +220,14 @@ public void Takeoff_speeds_line_reads_the_native_perf_vars(string culture)
 - Consumes: Task 2's `_live.CabinReady`.
 - Produces: `public const string CabinReadyField = "FO_CABIN_READY";` (1, 0 or NaN); `public string? CabinReadyText()` and `internal static string? CabinReadyText(double v)`: 1 gives `"reported ready"`, 0 gives `"not reported"`, NaN gives null. Both lines become `Reminder(…, "Cabin: READY", s => s.CabinReadyText())`: still Reminders (the pilot confirms; FOA-8), the tick speaks only the value (CORE-7), and the status line shows it. Nothing in the FO announces cabin ready on its own: plan 08 owns that announcement.
 
-- [ ] **Step 1: Write the failing tests** in `FenixFoCabinReadyTests`:
+- [x] **Step 1: Write the failing tests** in `FenixFoCabinReadyTests`:
   - `Cabin_lines_read_the_pursers_report` (Theory over `LUC_CABIN`, `LDC_MEMO_CABIN`): push `CabinReadyName` `Flag(true)` gives `ReadLiveValue(e) == "reported ready"`; `Flag(false)` gives `"not reported"`; `FenixDataValue.Unknown` gives null.
   - `Cabin_lines_stay_pilot_confirmed_reminders`: `Type == ChecklistItemType.CaptainReminder`, `StateFieldName` null, `CheckAction` null.
   - `No_Fenix_first_officer_string_says_cabin_ready`: no string literal matching `"[^"\n]*cabin ready[^"\n]*"` (case-insensitive) in `MSFSBlindAssist/FirstOfficer/Fenix/*.cs` (the labels say "Cabin: READY").
-- [ ] **Step 2: Run them; the live-value theory fails.**
-- [ ] **Step 3: Implement**, and add both ids to the `FenixReadbackTests` live-value list.
-- [ ] **Step 4: Run the class, `FenixReadbackTests`, `A320FamilyParityTests` and the whole suite.**
-- [ ] **Step 5: Commit.** `feat(fo-fenix): Cabin READY lines read the purser's report (Fenix v3)`
+- [x] **Step 2: Run them; the live-value theory fails.**
+- [x] **Step 3: Implement**, and add both ids to the `FenixReadbackTests` live-value list.
+- [x] **Step 4: Run the class, `FenixReadbackTests`, `A320FamilyParityTests` and the whole suite.**
+- [x] **Step 5: Commit.** `feat(fo-fenix): Cabin READY lines read the purser's report (Fenix v3)`
 
 ### Task 6: Fuel quantity from the Fenix's own total
 
@@ -239,7 +239,7 @@ public void Takeoff_speeds_line_reads_the_native_perf_vars(string culture)
 - Consumes: Task 2's `_live.FuelTotalKg`.
 - Produces: `public const string FuelTotalKgField = "FO_FUEL_TOTAL_KG";`; `internal static string? FuelText(Func<string, double> read)` reads `FuelTotalKgField` first (kilograms) and falls back to `FUEL TOTAL QUANTITY WEIGHT` (pounds, as today). The stock weight stays polled.
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
 
 ```csharp
 [Theory, MemberData(nameof(Cultures))]
@@ -251,10 +251,10 @@ public void Fuel_prefers_the_Fenixs_own_total(string culture)
 // The existing Fuel_is_the_stock_pounds_spoken_in_kilograms_to_the_nearest_hundred and Fuel_is_null_when_unknown stay as they are.
 ```
 
-- [ ] **Step 2: Run; the new theory fails** ("45,400 kilograms", from the stock 99,999 lb).
-- [ ] **Step 3: Implement** the field and the fallback.
-- [ ] **Step 4: Run `FenixReadbackTests` and the whole suite.**
-- [ ] **Step 5: Commit.** `fix(fo-fenix): fuel quantity line from the Fenix's own total (counts ACT fuel)`
+- [x] **Step 2: Run; the new theory fails** ("45,400 kilograms", from the stock 99,999 lb).
+- [x] **Step 3: Implement** the field and the fallback.
+- [x] **Step 4: Run `FenixReadbackTests` and the whole suite.**
+- [x] **Step 5: Commit.** `fix(fo-fenix): fuel quantity line from the Fenix's own total (counts ACT fuel)`
 
 ### Task 7: Baro STD from the QNH lights (measured 2026-10-21)
 
@@ -266,11 +266,11 @@ Why: `S_FCU_EFISn_BARO_STD` is the baro knob's push/pull counter, not a state: a
 
 **Interfaces:** `internal static string? BaroText(Func<string, double> read)` keeps its signature; it reads `I_FCU_EFIS1_QNH` (registered `Continuous` in the definition at :1375) instead of `S_FCU_EFIS1_BARO_STD`.
 
-- [ ] **Step 1: Write the failing tests:** `Std_comes_from_the_qnh_light`: with `I_FCU_EFIS1_QNH` 0, `BaroText` reads as standard whatever `S_FCU_EFIS1_BARO_STD` holds (seed it 3, then 0, then -2); with the light 1 and `S_FCU_EFIS1_BARO_MODE` 1, `N_FCU_EFIS1_BARO_HPA` 1010, it reads "QNH 1010" even with the counter at 3; light unread (NaN) gives the same result as today's unread STD. A source scan: `FenixStateEvaluator.cs` polls `I_FCU_EFIS1_QNH` and `I_FCU_EFIS2_QNH`, and no longer names `S_FCU_EFIS1_BARO_STD`.
-- [ ] **Step 2: Run; they fail.**
-- [ ] **Step 3: Implement:** poll the two lights in place of the two counters; `BaroText` treats light 0 as STD, 1 as QNH (the existing unit and value logic unchanged).
-- [ ] **Step 4: Run `FenixFoBaroStdTests`, `FenixReadbackTests` and the whole suite; all pass.**
-- [ ] **Step 5: Commit.** `fix(fo-fenix): baro STD read from the QNH light, not the knob's push/pull counter`
+- [x] **Step 1: Write the failing tests:** `Std_comes_from_the_qnh_light`: with `I_FCU_EFIS1_QNH` 0, `BaroText` reads as standard whatever `S_FCU_EFIS1_BARO_STD` holds (seed it 3, then 0, then -2); with the light 1 and `S_FCU_EFIS1_BARO_MODE` 1, `N_FCU_EFIS1_BARO_HPA` 1010, it reads "QNH 1010" even with the counter at 3; light unread (NaN) gives the same result as today's unread STD. A source scan: `FenixStateEvaluator.cs` polls `I_FCU_EFIS1_QNH` and `I_FCU_EFIS2_QNH`, and no longer names `S_FCU_EFIS1_BARO_STD`.
+- [x] **Step 2: Run; they fail.**
+- [x] **Step 3: Implement:** poll the two lights in place of the two counters; `BaroText` treats light 0 as STD, 1 as QNH (the existing unit and value logic unchanged).
+- [x] **Step 4: Run `FenixFoBaroStdTests`, `FenixReadbackTests` and the whole suite; all pass.**
+- [x] **Step 5: Commit.** `fix(fo-fenix): baro STD read from the QNH light, not the knob's push/pull counter`
 
 ### Task 8: Name sweep: everything the FO reads exists, nothing renamed by v3
 
@@ -281,33 +281,59 @@ Why: `S_FCU_EFISn_BARO_STD` is the baro knob's push/pull counter, not a state: a
 - Consumes: `RecordingSimConnectCache` (`tests/.../FirstOfficer/RecordingSimConnectCache.cs`), `ClaudeContextBudgetTests.RepoRoot()`.
 - Produces: the guard plan 12 relies on when it merges plan 02's renames and deletions.
 
-- [ ] **Step 1: Write the tests:**
+- [x] **Step 1: Write the tests:**
   - `Every_cache_key_the_first_officer_reads_is_registered`: `keys = new FenixA320Definition().GetVariables().Keys`; for each seed value 0, 1 and 2 (conditions short-circuit, so one seed cannot reach every read), build `RecordingSimConnectCache.With(keys.Select(k => (k, (double)seed)))`, give it to a new `FenixStateEvaluator`, then call every flow step's `SkipCondition`, `LeaveAloneWhen`, `TargetValueProvider` and `GetValue(ConditionFieldName)`, and every checklist item's `GetValue(StateFieldName)`, `GetValue` of each `AdditionalStateFields`, `ReadLiveValue` and `LeaveAloneWhen`. Assert every recorded key, and every `OnRequestPollFields` entry, is in `keys` (message lists the strays).
   - `No_first_officer_file_names_a_name_v3_renamed_removed_or_left_dead`: none of `FNX2PLD_`, `B_ELEC_BUS_POWER_DC_SERIVICE`, `I_OH_DOOR_VIDEO`, `I_OH_ELEC_COMMERCIAL_U`, `S_HYD_GRAVITY_GEAR_EXTEND_ROTATION`, `I_MIP_AUTOLAND_`, `S_OH_ELEC_GEN1` appears in `MSFSBlindAssist/FirstOfficer/Fenix/*.cs` (spec 1.1 to 1.5, 2.1, 2.3).
-- [ ] **Step 2: Run them; both pass** after Tasks 1-7 (they pin today's state; if the first fails, the message names a read that nothing registers: fix the FO, not the test).
-- [ ] **Step 3: Commit.** `test(fo-fenix): sweep the names the Fenix First Officer reads against the definition and v3's renames`
+- [x] **Step 2: Run them; both pass** after Tasks 1-7 (they pin today's state; if the first fails, the message names a read that nothing registers: fix the FO, not the test).
+- [x] **Step 3: Commit.** `test(fo-fenix): sweep the names the Fenix First Officer reads against the definition and v3's renames`
 
 ### Task 9: Hand back
 
-- [ ] **Step 1:** Build the solution and run the whole suite: green. `git diff --name-only <base-sha>` lists only the files in "File structure".
+- [x] **Step 1:** Build the solution and run the whole suite: green. `git diff --name-only <base-sha>` lists only the files in "File structure", plus `FenixFlightPhaseMonitor.cs` (one comment; handoff request 9).
 - [ ] **Step 2:** Owner-in-sim checks below (stop and ask the owner; build only with MSFSBA closed, CORE-3).
-- [ ] **Step 3:** Fill in the results under "Handoff to plan 12" (measured values, decision outcomes) and hand back the branch.
+- [ ] **Step 3:** Fill in the results under "Handoff to plan 12" (measured values, decision outcomes) and hand back the branch. Done except the measured values, which wait for Step 2.
 
 ## Owner-in-sim checks (few, prioritised)
 
-Build the branch, start MSFSBA, load the **Fenix A321 IAE with ACTs** (loaded today at a stand, engines running). The First Officer window is **Output Shift+C**; **Ctrl+Tab** reaches the **Flows** tab; select a flow with the arrow keys and press **Enter**. Leave "Speak flow progress" on. The implementer reads, never writes; one read of the APU legends and cabin ready (PowerShell):
+Anyone with MSFS 2024 and the Fenix v3 can run these (the owner or a collaborator). Build `FenixV3` with MSFSBA closed
+(CORE-3), start MSFSBA, and load the **Fenix A321 IAE with ACTs** at a stand. The First Officer window is
+**Output Shift+C**. **Ctrl+Tab** moves between its **Flows** and **Checklists** tabs. On Flows, arrow to a flow and press
+**Enter** to run it. On Checklists, arrow to a checklist, **Right Arrow** opens it, **Down Arrow** walks its lines, and
+**Tab** reaches **Checklist status**, which reads the selected line with its live value. Leave **Speak flow progress**
+on.
+
+Who does what: the pilot presses the keys and listens. The readings below can be taken by a second person, or by Claude
+Code with the simconnect MCP (cockpit L:vars and stock SimVars) and the PowerShell query below (the Fenix's own values
+on its data service). Reads only: nothing writes to the sim except the pilot's own flows and cockpit actions. The MCP
+can return 0 or null for an L:var until it reconnects: read one name per call and check a stock value before trusting
+a null. The First Officer's own record is `%APPDATA%\MSFSBlindAssist\logs\debug.log` (lines starting `Fenix engine 1:`
+and `Fenix engine 2:`, written only when something changes).
+
+One read of the APU legends and cabin ready (PowerShell):
 
 ```powershell
 $q = '{"query":"query { dataRef { u: dataRef(name: \"system.indicators.I_OH_ELEC_APU_START_U\") { value } l: dataRef(name: \"system.indicators.I_OH_ELEC_APU_START_L\") { value } c: dataRef(name: \"aircraft.communication.cids.cabinReady\") { value } } }"}'
 Invoke-RestMethod -Uri http://127.0.0.1:8083/graphql -Method Post -ContentType 'application/json' -Body $q | ConvertTo-Json -Depth 5 -Compress
 ```
 
+The Fenix's own engine N2 and fuel total (PowerShell; the MCP cannot read these, they live only on the data service):
+
+```powershell
+$q = '{"query":"query { dataRef { e1: dataRef(name: \"aircraft.engines.1.n2\") { value } e2: dataRef(name: \"aircraft.engines.2.n2\") { value } f: dataRef(name: \"aircraft.fuel.total.amount.kg\") { value } } }"}'
+Invoke-RestMethod -Uri http://127.0.0.1:8083/graphql -Method Post -ContentType 'application/json' -Body $q | ConvertTo-Json -Depth 5 -Compress
+```
+
 1. **Ground turnaround: APU, engines off, IAE engine start (highest; O1, O2, O7).** Note the Fenix EFB setting *IAE Crank Duration* first.
-   - Run **Before Start**. Expect *"APU master: ON"*, *"Waiting before APU start"*, *"APU start"*, *"Waiting for: Waiting for APU available"*, then *"APU bleed: ON"* with no *"Timed out waiting for"*. Every few seconds the implementer runs the read above: once AVAIL, `u` should read 1 and `l` 0, as on v2. If `l` is the lit one, stop: `FenixActionExecutor.ApuAvailField` must change (FO-11), report it.
-   - Run **Shutdown**. Expect *"Waiting for: Engines stopped"* to pass, then *"Fuel pumps: ALL OFF"*, and *"Shutdown flow complete"*, not *"Shutdown flow stopped"*.
+   - Run **Before Start**. Expect *"APU master: ON"*, *"Waiting before APU start"*, *"APU start"*, *"Waiting for: Waiting for APU available"*, then *"APU bleed: ON"* with no *"Timed out waiting for"*. Every few seconds the reader runs the APU read above (or reads `I_OH_ELEC_APU_START_U` and `_L` with the MCP): once AVAIL, `u` should read 1 and `l` 0, as on v2. If `l` is the lit one, stop: `FenixActionExecutor.ApuAvailField` must change (FO-11), report it.
+   - Run **Shutdown**. Expect *"Waiting for: Engines stopped"* to pass, then *"Fuel pumps: ALL OFF"*, and *"Shutdown flow complete"*, not *"Shutdown flow stopped"*. A minute later, note in debug.log whether a `Fenix engine` line ending `source stock` appeared (expected if the Fenix sends N2 only when it changes; harmless, stock N2 is 0 too).
    - Run **Before Start** again (pumps and beacon back on; the APU says *"Already set"*), then **Engine Start**. Expect *"Engine 1 starting — waiting for the engine to stabilize"*, then *"Engine 2 master: ON"*, then *"Engine Start flow complete"*, with no *"Timed out"*.
-   - Read `%APPDATA%\MSFSBlindAssist\logs\debug.log` for `Fenix engine 1:` and `Fenix engine 2:` lines: the Fenix-versus-stock N2 at each crossing, the running-flag edge, and the time from the *"Engine 1 master: ON"* step to engine 1's Fenix-N2 ≥ 55 line (must be under 180 s). Record these numbers in the handoff.
-2. **Takeoff speeds and cabin ready (O4, Task 1).** On the MCDU's PERF TAKEOFF page enter V1 142, VR 145, V2 149, FLX 55. In the FO window, Ctrl+Tab to **Checklists**, arrow to *"Before Start Checklist"*, Right Arrow, Down to *"Takeoff speeds and thrust: SET"*, Tab to **Checklist status**: it reads *"Takeoff speeds and thrust: SET, V1 142, VR 145, V2 149, flex 55 — Incomplete"*. Then run **Line-up** (the cabin call is its first step) and watch *"Cabin: READY"* in the Line-up Checklist: *"not reported"* until the purser reports, then *"reported ready"*. Record the seconds from the call to `c` reading true, and the *Cabin Ready Call* setting.
+   - Read debug.log's `Fenix engine 1:` and `Fenix engine 2:` lines: the Fenix-versus-stock N2 at each crossing, the running-flag edge, and the time from the *"Engine 1 master: ON"* step to engine 1's first line with Fenix N2 ≥ 55 (must be under 180 s). Between those two moments there should be no line ending `source stock`: if there is one, the Fenix stopped sending N2 during the crank and the FO judged on stock N2, so report it with the lines (the 5 s staleness rule rests on how often the Fenix sends N2, which is unmeasured for a crank). Record these numbers in the handoff.
+2. **Checklist live values: takeoff speeds, fuel, baro, cabin ready (O4, O5, Tasks 1, 5, 6, 7).** All on the **Checklists** tab, each read with **Checklist status**.
+   - *"Before Start Checklist"*, *"Takeoff speeds and thrust: SET"*: before PERF TAKEOFF is filled in it says *"not set"*. On the MCDU's PERF TAKEOFF page enter V1 142, VR 145, V2 149, FLX 55: it reads *"Takeoff speeds and thrust: SET, V1 142, VR 145, V2 149, flex 55 — Incomplete"*.
+   - *"Cockpit Preparation Checklist"*, *"Fuel quantity: CHECKED"*: kilograms to the nearest hundred, matching the fuel on board the ECAM or EFB shows, the ACT fuel included (or the `f` value of the second read above).
+   - Same checklist, *"Baro reference: SET"*: pull and push the captain's baro knob a few times in the cockpit, ending pulled (STD): it says *"standard"*. Push it (QNH): it says *"QNH"* and the value. (The old code read the knob's counter and got this wrong after several pulls; the reader can confirm `I_FCU_EFIS1_QNH` with the MCP: 0 in STD, 1 in QNH.)
+   - Run **Line-up** (the cabin call is its first step) and watch *"Line-up Checklist"*, *"Cabin: READY"*: *"not reported"* until the purser reports, then *"reported ready"*. Record the seconds from the call to `c` reading true, and the EFB's *Cabin Ready Call* setting. Also record what Checklist status says right after the call: *"Cabin: READY, not reported — Complete"* is the known open question (handoff request 8).
+   - In flight, after takeoff and before the approach: *"Landing Checklist"*, *"Cabin: READY"* should say *"not reported"* (and `c` false). If it says *"reported ready"*, the Fenix keeps the departure report and the Landing line would claim a ready cabin before the purser reports for landing: record it (handoff request 8). If you fly on to the approach, note when it changes to *"reported ready"* after the **Approach** flow's cabin call.
 3. **A321 pack flow (O3; optional).** Run **Preflight** on the A321: no *"Pack flow"* line is spoken. On any A320 preset it still says *"Already set: Pack flow: NORMAL"*.
 
 ## Handoff to plan 12
@@ -318,23 +344,30 @@ Invoke-RestMethod -Uri http://127.0.0.1:8083/graphql -Method Post -ContentType '
 - Fenix A321: the Preflight flow no longer mentions the pack flow selector, which the A321 does not have; set its ECON FLOW button as you need it.
 - Fenix v3: the Line-up and Landing checklists' *"Cabin: READY"* lines say whether the cabin crew has reported (*"reported ready"* or *"not reported"*). In v3 the cabin call no longer makes the cabin ready; the purser reports when the cabin is ready.
 - Fenix: the Cockpit Preparation Checklist's fuel line uses the Fenix's own total, which counts the extra centre tanks.
-- Changelog fragment (category `fix`), for example: "Fenix A320 family First Officer: the takeoff-speeds check reads your MCDU speeds again, engine start is judged on the Fenix's own engine readings (IAE engines no longer move on too early), the A321 skips the pack flow selector it does not have, and the cabin-ready lines say whether the cabin crew has reported."
+- Fenix: the Cockpit Preparation and Approach checklists' *"Baro reference: SET"* lines read standard or QNH from the EFIS's own QNH light, so they stay right after you pull and push the baro knob several times.
+- Changelog fragment (category `fix`), for example: "Fenix A320 family First Officer: the takeoff-speeds check reads your MCDU speeds again, engine start is judged on the Fenix's own engine readings (IAE engines no longer move on too early), the A321 skips the pack flow selector it does not have, the cabin-ready lines say whether the cabin crew has reported, and the baro reference line is right after you pull and push the baro knob."
 
-**Proposed rule lines** (`.claude/rules/first-officer-airbus.md`, body 4,736 of 8,000 characters; these three add about 1,100; IDs provisional, renumber if plan 02 also proposes FOA lines; full text under `## FOA-13..15` in `docs/invariants/first-officer-airbus.md` from this plan's Owner decisions and sources):
+**Proposed rule lines** (`.claude/rules/first-officer-airbus.md`, body 4,736 of 8,000 characters; these four add about 1,450; IDs provisional, renumber if plan 02 also proposes FOA lines; full text under `## FOA-13..16` in `docs/invariants/first-officer-airbus.md` from this plan's Owner decisions and sources, FOA-16's from Task 7):
 ```text
 - [FOA-13] The Fenix FO judges an engine running or stopped on the Fenix's own N2 (`FenixFoLiveReadings.N2`, data service), falling back per engine to stock N2 only while that value is unknown or 5 s old: stock N2 is a generic model (IAE idle 72 % vs the Fenix's 62 %). Running is 55 %: above the ~50 % starter cut-out, below both measured idles. Full: docs/invariants/first-officer-airbus.md#foa-13
 - [FOA-14] Fenix v3: a cockpit cabin call no longer sets CABIN READY, the virtual purser does. The FO reads `FenixStateEvaluator.CabinReadyField` only as the "Cabin: READY" lines' live value and never speaks cabin ready itself (the Fenix cabin window owns that announcement). Full: docs/invariants/first-officer-airbus.md#foa-14
 - [FOA-15] A Fenix FO step only some variants have gates on `FenixStateEvaluator.Variant` (the definition's detected variant), never on the config L:vars; on a variant without it the step's target provider returns null (FO-20's silent skip), and an unknown variant behaves as the A320 (the A321 has no PACK FLOW selector). Full: docs/invariants/first-officer-airbus.md#foa-15
+- [FOA-16] The Fenix FO reads baro STD from the EFIS QNH light (`I_FCU_EFIS1_QNH`: 0 STD, 1 QNH; `FenixStateEvaluator.BaroText`), never `S_FCU_EFIS1_BARO_STD`, the knob's push/pull counter (a pull adds 1, a push takes 1 away; it read 3 in STD, 2026-10-21). Full: docs/invariants/first-officer-airbus.md#foa-16
 ```
-(Lengths 399, 328 and 375 characters, each under the 400 cap.)
+(Lengths 399, 328, 375 and 309 characters, each under the 400 cap.)
 
 **Handoff requests:**
 1. **Order with plan 02: resolved.** Plan 02 keeps `FNX2PLD_speedV1/VR/V2` and deletes only the other 13 FenixQuartz definitions; plan 12 deletes the three after this plan's Task 1 is on `FenixV3`, so the two plans can land in either order.
 2. ~~Rule globs~~ (Covered by plan 01: its fenix-data.md globs are final and include these files.) Plan 12 still runs `ClaudeContextBudgetTests` (per-file load: FO code about 13,800, these tests about 22,600, under 30,000).
 3. **Optional, owner's choice (O4 alternative):** make the Line-up and Landing *"Cabin: READY"* lines delivered by a read-only `FO_CABIN_READY` check (Skip on timeout; 30 s at line-up, before `LU_CLEARANCE`; 20 s in Landing, before the gear check that FO-13 keeps last) instead of by the CALL ALL step. It needs, together: the steps in `FenixFlowDefinitions.cs`; `LU_CABIN` linking only itself; `A320FamilyParityTests` entries (`KnownStepDivergences` for both new steps, `KnownStepLinkDivergences` for `LU_CABIN`, reason: the Fenix v3 publishes the purser's cabin ready and a call no longer sets it; the A32NX publishes none); and edits to the shared tests `A320FamilyReadbackLinkTests.cs:100`, `A320FamilyReadbackLinkBehaviourTests.cs:41` and `A320FamilyTaxiAndRunwayEntryFlowTests.cs:44`, which pin the Fenix's Line-up steps and the `LU_CABIN` to `LUC_CABIN` link. Set the timeouts from in-sim check 2.
-4. **Also seen, plan 02's file (owner decides):** `FenixA320Definition.cs:6548-6571` has no `NotSetBelow = 1` on `N_MISC_PERF_TO_V1/VR/V2`, so the app's own announcement of a cleared speed would say a number; A320-10 makes `SimVarDefinition.IsNotSet` the one "not set" test.
-5. **Docs (`docs/first-officer.md`):** line 802 names the APU AVAIL lamp `_L` (the code and the 2026-09-04 measurement say `_U`, spec 2.4); add the v3 result of in-sim check 1. Replace "stock N2" wording for the Fenix (around line 76) with the Fenix's own N2 and the stock fallback.
+4. ~~Also seen, plan 02's file~~ Resolved: plan 02 Task 9 set `NotSetBelow = 1` on `N_MISC_PERF_TO_V1/VR/V2` (owner answer 16; checked on `FenixV3` 2026-10-22).
+5. **Docs (`docs/first-officer.md`):** line 802 names the APU AVAIL lamp `_L` (the code and the 2026-09-04 measurement say `_U`, spec 2.4); add the v3 result of in-sim check 1. Replace "stock N2" wording for the Fenix (around line 76) with the Fenix's own N2 and the stock fallback. Line 8 makes two claims that are now wrong: that the Fenix exposes no V1/VR/V2 L:var outside the MCDU display (the FO reads `N_MISC_PERF_TO_V1/VR/V2`), and that baro STD is a directly readable per-side state written as 1/0 (it is a push/pull counter; plan 02 steps it, this plan reads the QNH light).
 6. **For plan 01, information only:** `system.numerical.N_CONFIG_AIRCRAFT_TYPE`, `_ENGINETYPE` and `_ACT_COUNT` read `""` on the data service today, so variant detection must stay on the L:vars, as plan 01 plans.
 7. **Not changed, for the record:** `Forms/FirstOfficer/FirstOfficerWindows.cs:38` could pass the definition to `FenixFoProfile` explicitly (as the FBW rows do); not needed, since `SimConnectManager.CurrentAircraft` serves.
+8. **Owner decides, after in-sim check 2: a "Cabin: READY" line can read Complete before the purser reports.** Both lines are Reminders (not auto-detected), and both get ticked whatever the purser reported: the Line-up cabin call step links `LUC_CABIN`, so a sent call ticks it (FO-6, `FenixFlowDefinitions.cs:419-420` → `FlowManager.cs:388-389`), and a finished Line-up or Landing flow ticks and latches every line of its group (FO-7, `ChecklistManager.cs:229-241`), which is the only way `LDC_MEMO_CABIN` gets ticked. So Checklist status can say *"Cabin: READY, not reported — Complete"*. Unlinking the call alone would not change it. Owner answer 15 (live value only; request 3 dropped) was given before this was known, so it is worth asking again: keep it, or adopt request 3's read-only check, which also needs the flag to clear after departure (check 2) or the Landing check would pass on the departure report.
+9. **One file outside "File structure":** `FenixFlightPhaseMonitor.cs` (plan 05's, comment only): its class comment described the baro STD write as a direct state write; it now describes plan 02's counter step (`FenixActionExecutor.SetBaroStdBoth`).
+10. **Left as the plan says (O3), for the owner:** on an A321 the Preflight checklist line `PF_PACKFLOW` keeps its `CheckAction`; a hand-tick while the state is still unread would write the knob the A321 does not have (harmless: the name reads 1 and nothing moves).
 
-**In-sim checks still needed after merge:** the three above, with their recorded numbers: the APU AVAIL legend on v3, the IAE start time and the Fenix-versus-stock N2 crossings, and the purser's cabin-ready delay.
+**Done (2026-10-22):** Tasks 1-8 plus a final-review fix wave, each reviewed, on `FenixV3`; full suite green (14,620 at the fix wave, baseline 14,558). Nothing was checked in the sim.
+
+**In-sim checks still needed after merge:** the three above, with their recorded numbers: the APU AVAIL legend on v3, the IAE start time, the Fenix-versus-stock N2 crossings and any `source stock` line during the crank, the purser's cabin-ready delay, and whether the cabin-ready flag clears after departure.
