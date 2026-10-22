@@ -33,6 +33,8 @@ public class FenixEFBForm : Form
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     private readonly ScreenReaderAnnouncer _announcer;
+    // A dead end is caught once: the router may change the address twice on its way into the MCDU (R33).
+    private readonly FenixEfbDeadEndGate _deadEndGate = new();
 
     private WebView2 _webView = null!;
     private Panel _errorPanel = null!;
@@ -217,6 +219,11 @@ public class FenixEFBForm : Form
         FenixEfbRoute route = FenixEfbRoutes.Classify(source);
         string? message = FenixEfbRoutes.DeadEndMessage(route);
         if (message == null) return;
+        if (!_deadEndGate.ShouldCatch(route, Environment.TickCount64))
+        {
+            Log.Debug("FenixEFB", $"EFB page {source} is the {route} caught under {FenixEfbDeadEndGate.WindowMs} ms ago; left to that catch");
+            return;
+        }
 
         Log.Debug("FenixEFB", $"EFB page {source} is the unreadable {route}; back to the EFB home");
         _webView.CoreWebView2.Navigate(EfbUrl);

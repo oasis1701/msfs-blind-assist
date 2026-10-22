@@ -76,3 +76,32 @@ internal static class FenixEfbRoutes
         _ => null,
     };
 }
+
+/// <summary>
+/// Decides whether a dead end the Fenix EFB window has just met is caught (ruling R33). The EFB's router may
+/// change the address twice on its way into the MCDU, so a second catch of the same route within
+/// <see cref="WindowMs"/> of the last catch does nothing: no second navigation, no second spoken line. A
+/// different dead end is always caught, and an ignored catch does not hold the gate shut any longer. Times are
+/// a monotonic tick count in milliseconds (<see cref="Environment.TickCount64"/>), never the wall clock, which
+/// can jump.
+/// </summary>
+internal sealed class FenixEfbDeadEndGate
+{
+    /// <summary>How long after a catch the same dead end is ignored, in milliseconds.</summary>
+    internal const long WindowMs = 1_500;
+
+    private FenixEfbRoute? _lastRoute;
+    private long _lastTick;
+
+    /// <summary>
+    /// True when <paramref name="route"/>, met at <paramref name="nowTick"/>, is to be caught (it is then the
+    /// last catch); false for the same route met again less than <see cref="WindowMs"/> after the last catch.
+    /// </summary>
+    internal bool ShouldCatch(FenixEfbRoute route, long nowTick)
+    {
+        if (_lastRoute == route && nowTick - _lastTick < WindowMs) return false;
+        _lastRoute = route;
+        _lastTick = nowTick;
+        return true;
+    }
+}
