@@ -69,7 +69,7 @@ public partial class FenixA320Definition
         Button(IsisBaroPushKey, "ISIS Baro Push");
         Combo(EtKey, "Elapsed Time", new Dictionary<double, string> { [0] = "Run", [1] = "Stop", [2] = "Reset" });
         Combo(UtcKey, "UTC Selector", new Dictionary<double, string> { [0] = "GPS", [1] = "Internal", [2] = "Set" });
-        Combo(CargoTempKey, "Aft Cargo Temperature", variables["A_OH_PNEUMATIC_AFT_TEMP"].ValueDescriptions!);
+        Combo(CargoTempKey, "Aft Cargo Temperature", new Dictionary<double, string>(variables["A_OH_PNEUMATIC_AFT_TEMP"].ValueDescriptions!));
 
         Switch(EconFlowKey, EconFlowName);
         Switch(ActKey, ActPumpName);
@@ -211,6 +211,7 @@ public partial class FenixA320Definition
             "S_DCDU2_DIM_BRT" => variant.HasDcdu != false,
             "S_MIP_ISFD_BUGS" or "S_MIP_ISFD_LS" or "S_MIP_ISFD_PLUS" or "S_MIP_ISFD_MINUS"
                 or "S_MIP_ISFD_RST" or "E_MIP_ISFD_BARO_INC" or "E_MIP_ISFD_BARO_DEC"
+                or IsisBaroPushKey
                 => variant.HasIsis != false,
             "S_STANDBY_ATTITUDE_CAGE" => variant.HasIsis != true,
             "S_OH_PNEUMATIC_HOT_AIR_AFT_CARGO" or CargoTempKey => variant.HasCargoHeat != false,
@@ -268,15 +269,9 @@ public partial class FenixA320Definition
         switch (varKey)
         {
             case EtKey: // Reset (value 2): the real knob springs back to Stop, a written 2 stays 2.
-                simConnect.SetLVar(EtKey, 2);
-                var back = new System.Windows.Forms.Timer { Interval = ButtonPressHoldMs };
-                back.Tick += (_, _) =>
-                {
-                    back.Stop();
-                    back.Dispose();
-                    if (simConnect.IsConnected) simConnect.SetLVar(EtKey, 1);
-                };
-                if (simConnect.IsConnected) back.Start(); else back.Dispose();
+                // PulseSpringSwitch writes 2, returns to the middle (1 = Stop) after the hold and forces a
+                // read, so the open combo shows Stop again shortly after Reset.
+                PulseSpringSwitch(EtKey, 2, simConnect);
                 handled = true;
                 break;
             case ChrKey:

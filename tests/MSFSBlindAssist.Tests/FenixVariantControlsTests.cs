@@ -235,7 +235,7 @@ public class FenixVariantControlsTests
     {
         var v = V(4, 1, 2, true, false, false, false);
         AssertFitted(v, "S_OH_PNEUMATIC_ECON_FLOW", "S_OH_CALLS_MID", "S_OH_CALLS_EXIT", "S_OH_FUEL_ACT",
-            "S_OH_ENG_N1_MODE_1", "S_OH_ENG_N1_MODE_2", "S_OH_NAV_IR1_SWITCH", "S_MIP_ISFD_BUGS", "S_OH_ELEC_BAT1");
+            "S_OH_ENG_N1_MODE_1", "S_OH_ENG_N1_MODE_2", "S_OH_NAV_IR1_SWITCH", "S_MIP_ISFD_BUGS", "S_MIP_ISFD_BARO_BUTTON", "S_OH_ELEC_BAT1");
         AssertNotFitted(v, "S_OH_PNEUMATIC_PACK_FLOW", "S_OH_ADIRS_KEY_0", "S_OH_NAV_DATA_DISP",
             "S_DCDU1_LSK1L", "S_DCDU2_DIM_BRT", "S_STANDBY_ATTITUDE_CAGE");
     }
@@ -247,7 +247,7 @@ public class FenixVariantControlsTests
         var v = V(3, 0, 0, false, false, false, false);
         AssertFitted(v, "S_OH_PNEUMATIC_PACK_FLOW", "S_STANDBY_ATTITUDE_CAGE", "S_OH_NAV_IR2_SWITCH");
         AssertNotFitted(v, "S_OH_PNEUMATIC_ECON_FLOW", "S_OH_CALLS_MID", "S_OH_CALLS_EXIT", "S_OH_FUEL_ACT",
-            "S_OH_ENG_N1_MODE_1", "S_OH_ENG_N1_MODE_2", "S_MIP_ISFD_RST", "E_MIP_ISFD_BARO_INC", "S_OH_ADIRS_KEY_ENT");
+            "S_OH_ENG_N1_MODE_1", "S_OH_ENG_N1_MODE_2", "S_MIP_ISFD_RST", "E_MIP_ISFD_BARO_INC", "S_MIP_ISFD_BARO_BUTTON", "S_OH_ADIRS_KEY_ENT");
     }
 
     [Fact]
@@ -326,7 +326,7 @@ public class FenixVariantControlsTests
     [Theory]
     [InlineData("S_OH_PNEUMATIC_ECON_FLOW", 1)]
     [InlineData("S_OH_FUEL_ACT", 0)]
-    public void New_latched_switches_are_handled_silently(string key, double value)
+    public void New_latched_switches_are_written_plainly(string key, double value)
     {
         // The test host has no Microsoft.FlightSimulator.SimConnect.dll, so SetLVar cannot run even on a
         // never-connected manager: the write goes through TryWritePlain with a recording writer.
@@ -336,14 +336,13 @@ public class FenixVariantControlsTests
     }
 
     [Fact]
-    public void Other_keys_are_not_written_as_latched_switches()
+    public void Other_keys_are_not_plain_writes()
     {
         var writes = new List<(string, double)>();
         Assert.False(FenixA320Definition.TryWritePlain("S_OH_CALLS_MID", 1, (k, v) => writes.Add((k, v))));
         Assert.False(FenixA320Definition.TryWritePlain("S_OH_FUEL_CENTER_2", 1, (k, v) => writes.Add((k, v))));
         Assert.Empty(writes);
     }
-
 
     [Fact]
     public void Variant_is_spoken_once_per_distinct_known_variant()
