@@ -202,6 +202,175 @@ test('Settings_badges_and_the_pages_other_buttons_are_named_by_their_own_text', 
   }
 });
 
+// ---- Settings: on/off options and boxes, in every category ----
+
+// The eight Settings captures, one per category, and how many on/off options each holds (as captured).
+const SETTINGS_SCREENS = {
+  'settings': 5, 'settings-audio': 1, 'settings-cabin': 6, 'settings-connections': 0, 'settings-ground-services': 8,
+  'settings-misc': 4, 'settings-printer': 2, 'settings-realism': 3
+};
+// The setting an article is about, from the page: its heading without the "Default" / "User" badge.
+function settingOf(article) {
+  const heading = article.querySelector('.settings-name').cloneNode(true);
+  heading.querySelectorAll('.settings-source').forEach(badge => badge.remove());
+  return squash(heading.textContent);
+}
+const togglesOf = window => all(window, 'label.toggle').filter(label => label.querySelector('input[type=checkbox]'));
+
+// R40: the page hides an on/off option's real checkbox (display: none) and shows a styled slider, so a screen reader met
+// nothing (jsdom has no CSS, so the checkbox looked named here). The label that holds them is the control: a switch
+// named by its setting, checked while the checkbox is, with a Tab stop.
+for (const [fixture, count] of Object.entries(SETTINGS_SCREENS)) {
+  test('Every_on_off_option_is_a_named_switch_on_' + fixture.replace(/-/g, '_'), async () => {
+    const window = await load(fixture);
+    try {
+      const toggles = togglesOf(window);
+      assert.strictEqual(toggles.length, count, 'as captured');
+      assert.strictEqual(all(window, 'label.toggle').length, count, 'every label.toggle holds a checkbox');
+      for (const label of toggles) {
+        const setting = settingOf(label.closest('article'));
+        const box = label.querySelector('input[type=checkbox]');
+        assert.ok(setting, 'the article has a heading');
+        assert.strictEqual(label.getAttribute('role'), 'switch', setting);
+        assert.strictEqual(nameOf(label), setting);
+        assert.strictEqual(label.getAttribute('aria-checked'), box.checked ? 'true' : 'false', setting);
+        assert.strictEqual(label.getAttribute('tabindex'), '0', setting);
+        // The same setting name the article's three dots use.
+        const dots = label.closest('article').querySelector('button.overflow-button');
+        assert.strictEqual(nameOf(dots), 'More options for ' + setting);
+        // The hidden checkbox keeps its own name and nothing else: it is not a second switch.
+        assert.strictEqual(nameOf(box), setting);
+        assert.ok(!box.hasAttribute('role') && !box.hasAttribute('tabindex') && !box.hasAttribute('aria-checked'));
+      }
+      assert.strictEqual(all(window, '[role=switch]').length, count, 'nothing else is a switch');
+    } finally {
+      window.close();
+    }
+  });
+}
+
+test('A_settings_switch_toggles_with_Enter_and_Space_and_says_its_new_state', async () => {
+  const window = await load('settings');
+  try {
+    const [label] = togglesOf(window);
+    const box = label.querySelector('input');
+    assert.strictEqual(box.checked, false, 'as captured');
+
+    // Enter and Space are the label's own click.
+    assert.deepStrictEqual(pressed(window, label), { caught: true, clicks: 1 });
+    assert.deepStrictEqual(pressed(window, label, ' '), { caught: true, clicks: 1 });
+    delete label.click;
+
+    // That click toggles the hidden checkbox, as a mouse click on the slider does. The checked state is a property
+    // (no attribute or class changes, so the observer sees nothing): the change event brings the switch up to date.
+    let changes = 0;
+    let stopped = false;
+    box.addEventListener('change', e => { changes++; stopped = stopped || e.defaultPrevented; });
+    assert.ok(press(window, label, { key: 'Enter' }).defaultPrevented);
+    assert.strictEqual(box.checked, true);
+    await turns();
+    assert.strictEqual(label.getAttribute('aria-checked'), 'true');
+    assert.ok(press(window, label, { key: ' ' }).defaultPrevented);
+    assert.strictEqual(box.checked, false);
+    await turns();
+    assert.strictEqual(label.getAttribute('aria-checked'), 'false');
+    // The page's own change listener still hears every change, unprevented.
+    assert.strictEqual(changes, 2);
+    assert.strictEqual(stopped, false);
+
+    // The page sets the state itself and says so with a change event: the switch follows.
+    box.checked = true;
+    box.dispatchEvent(new window.Event('change', { bubbles: true }));
+    await turns();
+    assert.strictEqual(label.getAttribute('aria-checked'), 'true');
+  } finally {
+    window.close();
+  }
+});
+
+test('A_settings_switch_whose_checkbox_the_page_disables_has_no_Tab_stop_and_takes_no_key', async () => {
+  const window = await load('settings');
+  try {
+    const [label] = togglesOf(window);
+    const box = label.querySelector('input');
+    box.setAttribute('disabled', '');
+    await turns();
+    assert.strictEqual(label.hasAttribute('tabindex'), false, 'no Tab stop: none was there before the layer');
+    assert.strictEqual(label.getAttribute('role'), 'switch', 'still read');
+    assert.deepStrictEqual(pressed(window, label), { caught: false, clicks: 0 });
+    box.removeAttribute('disabled');
+    await turns();
+    assert.strictEqual(label.getAttribute('tabindex'), '0');
+    assert.deepStrictEqual(pressed(window, label), { caught: true, clicks: 1 });
+  } finally {
+    window.close();
+  }
+});
+
+test('A_role_name_or_state_the_page_gave_a_settings_switch_is_kept_and_the_layers_own_goes_with_the_checkbox', async () => {
+  const window = await load('settings', { layer: false });
+  try {
+    const [first, second, third, fourth] = togglesOf(window);
+    first.setAttribute('role', 'checkbox');
+    second.setAttribute('aria-label', 'Autopilot TCAS');
+    third.setAttribute('aria-checked', 'mixed');
+    window.eval(fs.readFileSync(LAYER, 'utf8'));
+    await turns();
+    assert.strictEqual(first.getAttribute('role'), 'checkbox');
+    assert.strictEqual(second.getAttribute('aria-label'), 'Autopilot TCAS');
+    assert.strictEqual(second.getAttribute('role'), 'switch');
+    assert.strictEqual(third.getAttribute('aria-checked'), 'mixed');
+
+    // The checkbox goes from a label (the test takes it out): the label is not a switch any more; what the layer wrote
+    // is taken back, the page's own stays. It comes back with the checkbox.
+    second.removeChild(second.querySelector('input'));
+    const fourthBox = fourth.querySelector('input');
+    fourth.removeChild(fourthBox);
+    await turns();
+    assert.strictEqual(second.hasAttribute('role'), false);
+    assert.strictEqual(second.getAttribute('aria-label'), 'Autopilot TCAS');
+    assert.deepStrictEqual(layerStamp(fourth), NO_STAMP);
+    assert.strictEqual(fourth.hasAttribute('aria-checked'), false);
+    fourth.insertBefore(fourthBox, fourth.firstChild);
+    await turns();
+    assert.strictEqual(fourth.getAttribute('role'), 'switch');
+    assert.strictEqual(fourth.getAttribute('aria-checked'), 'false');
+  } finally {
+    window.close();
+  }
+});
+
+// Settings' text and password boxes (and Misc's picture upload box) have no label: their placeholder "Enter value" says
+// nothing of the setting. Each takes its article's setting name, as the switch and the three dots do.
+const SETTINGS_BOXES = {
+  'settings-audio': ['ACP Volume: CAB', 'ACP Volume: HF1', 'ACP Volume: HF2', 'ACP Volume: INT', 'ACP Volume: VHF1',
+    'ACP Volume: VHF2', 'ACP Volume: VHF3'],
+  'settings-connections': ['Hoppie Logon Code', 'Pushover: Application Key', 'Pushover: Token', 'SimBrief Username / ID'],
+  'settings-misc': ['Background Image'],
+  'settings-printer': null
+};
+for (const [fixture, expected] of Object.entries(SETTINGS_BOXES)) {
+  test('Settings_boxes_are_named_by_their_setting_on_' + fixture.replace(/-/g, '_'), async () => {
+    const bare = await load(fixture, { layer: false });
+    const window = await load(fixture);
+    try {
+      const boxes = all(window, 'app-settings2 article input:not([type=checkbox])');
+      assert.ok(boxes.length > 0, 'the capture has boxes');
+      const names = boxes.map(nameOf);
+      assert.deepStrictEqual(names, boxes.map(box => settingOf(box.closest('article'))));
+      if (expected) assert.deepStrictEqual(names, expected);
+      // The page's own type, placeholder and Tab stop stay; nothing but a name is added.
+      const keep = el => ['type', 'placeholder', 'tabindex', 'role', 'class'].map(a => a + '=' + el.getAttribute(a)).join('|');
+      assert.deepStrictEqual(boxes.map(keep), all(bare, 'app-settings2 article input:not([type=checkbox])').map(keep));
+      // The search box keeps the page's own name.
+      assert.strictEqual(nameOf(one(window, 'app-search-input input')), 'Search settings');
+    } finally {
+      bare.close();
+      window.close();
+    }
+  });
+}
+
 // R41: an icon font draws its glyph from a style sheet as a private-use character, and Chromium makes that character the
 // name of a button that has only a title ("Expanded view") or reads it as a stray line before the text. So a glyph
 // inside a control is hidden from a screen reader; the control keeps its own name (its text, title or label).
@@ -1095,8 +1264,9 @@ for (const fixture of FIXTURES) {
 // the elements that took a key handler are exactly the ones that are not real buttons.
 const SECOND_PASS = {
   'settings': {
-    handled: 2 + 8 + 8 + 5 + 8 + 3, listeners: 2 + 8,
-    note: 'home, chevron; eight categories; eight badges; five checkboxes; eight three-dot buttons; three choice groups'
+    handled: 2 + 8 + 8 + 5 + 5 + 8 + 3, listeners: 2 + 8 + 5,
+    note: 'home, chevron; eight categories; eight badges; five checkboxes and the five switches that hold them; eight ' +
+      'three-dot buttons; three choice groups'
   },
   'failures': {
     handled: 2 + 20 + 53 + 1, listeners: 2 + 20,
@@ -1146,7 +1316,10 @@ const ISOLATION = {
     ['app-settings2 button.option', 'button.option[aria-pressed]', 6],
     ['article button.option', 'div.option-grid[role=group]', 3],
     ['button.overflow-button', 'button.overflow-button[aria-label]', 8],
-    ['label.toggle', 'input[type=checkbox][aria-label]', 5],
+    // The checkbox rule asks for 'app-settings2 article label.toggle > input', the switch rule for 'app-settings2
+    // label.toggle': each needle is in its own rule's query only.
+    ['label.toggle > input', 'input[type=checkbox][aria-label]', 5],
+    ['app-settings2 label.toggle', 'label.toggle[role=switch]', 5],
     ['span.settings-source', 'span.settings-source[aria-label]', 8]
   ],
   'failures': [

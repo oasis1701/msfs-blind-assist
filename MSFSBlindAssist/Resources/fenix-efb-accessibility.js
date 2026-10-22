@@ -5,8 +5,11 @@
 // disabled control a Tab stop, and takes back only its own Tab stops. (It does give tabindex 0 to an enabled
 // control the Tab key skips, one the page set to -1 too, and puts the page's own value back afterwards.)
 // Two more attributes it writes: a drop-down's aria-labelledby gets the drop-down's own id in front of the
-// page's list (the page's list goes back when the layer's label goes), and aria-hidden "true" goes only on
-// a results label whose value cell carries that label.
+// page's list (the page's list goes back when the layer's label goes), and aria-hidden "true" goes on a
+// results label whose value cell carries that label and on what a screen reader does not need: decorative
+// pictures, icon-font glyphs inside a control, the W&B chart's picture and labels but its limits, the seat map.
+// Besides its key handlers it adds one listener: a change listener on the document that only schedules a pass
+// (a Settings switch's state is a checkbox property the observer cannot see; ruling R40).
 // It runs in the top document only. Plain ES2017, no modules.
 (function () {
   if (window.__msfsbaFenixEfb) { return; }
@@ -123,10 +126,12 @@
   }
 
   // True when the page marks the control unavailable: aria-disabled "true", the disabled attribute or
-  // property, or Material's mat-tab-disabled class.
+  // property, or Material's mat-tab-disabled class. A label (a Settings switch) is as unavailable as the control it
+  // labels.
   function isDisabled(el) {
     return el.getAttribute('aria-disabled') === 'true' || el.hasAttribute('disabled') || el.disabled === true ||
-      el.classList.contains('mat-tab-disabled');
+      el.classList.contains('mat-tab-disabled') ||
+      (el.localName === 'label' && !!el.control && el.control !== el && isDisabled(el.control));
   }
 
   // Puts the tabindex back to what it was before the layer set it to 0 (none, or the page's own -1). A
@@ -168,6 +173,13 @@
     if (role === undefined) { return; }
     wroteRole.delete(el);
     if (el.getAttribute('role') === role) { el.removeAttribute('role'); }
+  }
+
+  // Takes back the role the layer gave an element that now needs another one, so giveRole can write the new one (a
+  // role the page set is never touched).
+  function changeRole(el, role) {
+    var mine = wroteRole.get(el);
+    if (mine !== undefined && mine !== role) { takeRole(el); }
   }
 
   // Takes back a role, a label and a stamp the layer wrote (never the page's own).
@@ -735,10 +747,35 @@
     for (var i = 0; i < options.length; i++) { button(options[i], textOf(options[i])); }
   });
 
-  // Landing: the nine system procedures are bare divs with no Tab stop (the layer gives them one).
+  // Landing: the nine system procedures are bare divs with no Tab stop (the layer gives them one). Pressing one opens its
+  // sub-page in place (the route stays), whose items are the procedure's conditions: each holds a tick box
+  // (div.arrival-checkbox) and is ticked while the page marks it section-selected. Those are check boxes named by their
+  // text (ruling R39). An item that gains or loses its tick box changes role; the layer's checked state goes with it.
   RULES.push(function (root) {
     var items = root.querySelectorAll('div.arrival-procedure-item');
-    for (var i = 0; i < items.length; i++) { button(items[i], textOf(items[i])); }
+    for (var i = 0; i < items.length; i++) {
+      var tick = items[i].querySelector('.arrival-checkbox') !== null;
+      var role = tick ? 'checkbox' : 'button';
+      changeRole(items[i], role);
+      button(items[i], textWithout(items[i], '.arrival-checkbox'), role);
+      var ticked = items[i].classList.contains('section-selected') ? 'true' : 'false';
+      ownState(items[i], 'aria-checked', tick ? ticked : null, checkedWritten);
+    }
+  });
+
+  // Landing: a procedure's sub-page has no way back but its title row, whose arrow (div.arrival-back) is only an icon; the
+  // page's click is on the row and returns to the main Landing page. The row is the button "Back, <title>" (ruling R39).
+  // A title row without the arrow (the main page's section titles) is not a button.
+  RULES.push(function (root) {
+    var titles = root.querySelectorAll('div.arrival-title');
+    for (var i = 0; i < titles.length; i++) {
+      if (titles[i].querySelector('div.arrival-back')) {
+        var text = textWithout(titles[i], 'div.arrival-back');
+        button(titles[i], text ? 'Back, ' + text : 'Back');
+      } else {
+        unbutton(titles[i]);
+      }
+    }
   });
 
   // ---- Settings ----
@@ -752,6 +789,32 @@
   // Settings: a switch is a checkbox in a label with no text; it takes the name of its article's heading.
   RULES.push(function (root) {
     var boxes = root.querySelectorAll('app-settings2 article label.toggle > input[type=checkbox]');
+    for (var i = 0; i < boxes.length; i++) { name(boxes[i], settingName(boxes[i].closest('article'))); }
+  });
+
+  // Settings: an on/off option is a label holding that checkbox and a styled slider, and the page hides the checkbox
+  // (display: none), so a screen reader never meets it. The label is the control (ruling R40): a switch named by the
+  // setting, checked while the hidden checkbox is (its checked property), with a Tab stop, and Enter and Space as the
+  // label's own click, which toggles the checkbox as a mouse click on the slider does. The checkbox keeps the name the
+  // rule above gives it; hidden by the page, it is not read twice. A label that loses its checkbox is let go of.
+  RULES.push(function (root) {
+    var labels = root.querySelectorAll('app-settings2 label.toggle');
+    for (var i = 0; i < labels.length; i++) {
+      var box = labels[i].querySelector('input[type=checkbox]');
+      if (box) {
+        button(labels[i], settingName(labels[i].closest('article')), 'switch');
+        ownState(labels[i], 'aria-checked', box.checked ? 'true' : 'false', checkedWritten);
+      } else {
+        ownState(labels[i], 'aria-checked', null, checkedWritten);
+        unbutton(labels[i]);
+      }
+    }
+  });
+
+  // Settings: a text, password or file box in an article has no label of its own, and its placeholder ("Enter value")
+  // does not say which setting it is: it takes the setting's name, as the switch and the three dots do.
+  RULES.push(function (root) {
+    var boxes = root.querySelectorAll('app-settings2 article input:not([type=checkbox])');
     for (var i = 0; i < boxes.length; i++) { name(boxes[i], settingName(boxes[i].closest('article'))); }
   });
 
@@ -1144,6 +1207,12 @@
         childList: true, subtree: true, characterData: true, attributes: true,
         attributeFilter: ['class', 'aria-disabled', 'disabled']
       });
+      // A Settings switch's state is its hidden checkbox's checked property, which the observer cannot see: a change
+      // event (heard here on its way down, before the page's own listeners) schedules a pass. It is neither stopped
+      // nor prevented, so it changes nothing the page does (ruling R40).
+      document.addEventListener('change', function () {
+        try { schedule(); } catch (err) { /* never throw into the page */ }
+      }, true);
     } catch (err) { /* never throw into the page */ }
   }
 

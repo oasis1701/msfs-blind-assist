@@ -634,6 +634,120 @@ test('Landing_options_and_procedures_are_buttons', async () => {
   }
 });
 
+// R39: a procedure ("Electrical System") opens a sub-page in place (the route stays #/efb/arrperf). Its only way back is
+// the title row, whose arrow is an icon and whose click (the page's, on the row) returns to the main Landing page: it is
+// the button "Back, <title>". The sub-page's items are the procedure's conditions, each with a tick box the page marks
+// section-selected: check boxes named by their text.
+const ELECTRICAL = [
+  'AC BUS 1 FAULT', 'DC BUS 2 FAULT', 'DC BUS 1+2 FAULT', 'DC ESS BUS FAULT (if no Ice Accretion)',
+  'DC ESS BUS FAULT (if Ice Accretion)', 'DC ESS SHED BUS (if Ice Accretion)', 'DC EMER CONFIG (calculated with 140kt min)',
+  'EMER CONFIG (calculated with 140kt min)'
+];
+const squash = text => text.replace(/\s+/g, ' ').trim();
+
+test('The_Landing_sub_page_has_a_Back_button_and_tick_boxes', async () => {
+  const window = await load('arrperf-electrical');
+  try {
+    const doc = window.document;
+    const title = doc.querySelector('div.arrival-title');
+    const arrow = title.querySelector('div.arrival-back');
+    assert.ok(arrow, 'the capture has the arrow in the title row');
+    assert.strictEqual(title.getAttribute('role'), 'button');
+    assert.strictEqual(title.tabIndex, 0);
+    assert.strictEqual(nameOf(title), 'Back, Electrical System');
+    assert.ok(['role', 'tabindex', 'aria-label', 'data-msfsba'].every(a => !arrow.hasAttribute(a)), 'the arrow is not the button');
+    assert.strictEqual(arrow.querySelector('i').getAttribute('aria-hidden'), 'true', 'its glyph is hidden (R41)');
+    // Enter and Space are the row's own click; that click is the one a mouse click makes, on the row's own handler.
+    let clicks = 0;
+    title.click = () => { clicks++; };
+    assert.ok(press(window, title, { key: 'Enter' }).defaultPrevented);
+    assert.ok(press(window, title, { key: ' ' }).defaultPrevented);
+    assert.strictEqual(clicks, 2);
+    delete title.click;
+    let backs = 0;
+    title.addEventListener('click', () => { backs++; });
+    press(window, title, { key: 'Enter' });
+    assert.strictEqual(backs, 1);
+
+    const items = all(window, 'div.arrival-procedure-item');
+    assert.deepStrictEqual(items.map(i => squash(i.querySelector('span').textContent)), ELECTRICAL, 'the page\'s own texts');
+    assert.deepStrictEqual(items.map(nameOf), ELECTRICAL);
+    assert.ok(items.every(i => i.getAttribute('role') === 'checkbox' && i.tabIndex === 0));
+    assert.ok(items.every(i => !i.classList.contains('section-selected')), 'nothing ticked, as captured');
+    assert.deepStrictEqual(items.map(i => i.getAttribute('aria-checked')), Array(8).fill('false'));
+    assert.ok(items.every(i => i.querySelector('.arrival-checkbox i').getAttribute('aria-hidden') === 'true'), 'the tick glyph is hidden');
+
+    // The page ticks one and unticks it: the state follows its class.
+    items[2].classList.add('section-selected');
+    await turns();
+    assert.deepStrictEqual(items.map(i => i.getAttribute('aria-checked')), ['false', 'false', 'true', 'false', 'false', 'false', 'false', 'false']);
+    items[2].classList.remove('section-selected');
+    window.__msfsbaFenixEfb.pass();
+    assert.strictEqual(items[2].getAttribute('aria-checked'), 'false');
+
+    // Enter and Space tick through the page's own click.
+    let ticks = 0;
+    items[5].click = () => { ticks++; };
+    assert.ok(press(window, items[5], { key: 'Enter' }).defaultPrevented);
+    assert.ok(press(window, items[5], { key: ' ' }).defaultPrevented);
+    assert.strictEqual(ticks, 2);
+  } finally {
+    window.close();
+  }
+});
+
+test('The_main_Landing_page_has_no_Back_button_and_its_procedures_are_not_tick_boxes', async () => {
+  const window = await load('arrperf');
+  try {
+    const titles = all(window, 'div.arrival-title');
+    assert.ok(titles.length > 0, 'the main page has title rows too');
+    assert.ok(titles.every(t => !t.querySelector('div.arrival-back') && !t.hasAttribute('role') && !t.hasAttribute('tabindex')));
+    assert.strictEqual(all(window, '[role=checkbox]').length, 0);
+    assert.ok(all(window, 'div.arrival-procedure-item').every(i => i.getAttribute('role') === 'button' && !i.hasAttribute('aria-checked')));
+  } finally {
+    window.close();
+  }
+});
+
+test('A_Landing_item_or_title_that_gains_or_loses_its_tick_box_or_arrow_follows_and_the_pages_own_stays', async () => {
+  const window = await load('arrperf-electrical', { layer: false });
+  try {
+    const doc = window.document;
+    const title = doc.querySelector('div.arrival-title');
+    const arrow = title.querySelector('div.arrival-back');
+    const [first, second, third] = all(window, 'div.arrival-procedure-item');
+    third.setAttribute('role', 'option');
+    third.setAttribute('aria-checked', 'mixed');
+    window.eval(fs.readFileSync(LAYER, 'utf8'));
+    await turns();
+    assert.strictEqual(third.getAttribute('role'), 'option', 'the page\'s own role');
+    assert.strictEqual(third.getAttribute('aria-checked'), 'mixed', 'the page\'s own state');
+
+    // An item loses its tick box (the test takes it out): it is a button, with no checked state; and back.
+    const tick = first.querySelector('.arrival-checkbox');
+    first.removeChild(tick);
+    await turns();
+    assert.strictEqual(first.getAttribute('role'), 'button');
+    assert.strictEqual(first.hasAttribute('aria-checked'), false);
+    assert.strictEqual(nameOf(first), 'AC BUS 1 FAULT');
+    first.appendChild(tick);
+    await turns();
+    assert.strictEqual(first.getAttribute('role'), 'checkbox');
+    assert.strictEqual(first.getAttribute('aria-checked'), 'false');
+    assert.strictEqual(second.getAttribute('role'), 'checkbox');
+
+    // The title row loses its arrow: it is not a button any more (what the layer wrote is taken back); and back.
+    title.removeChild(arrow);
+    await turns();
+    assert.ok(['role', 'tabindex', 'aria-label', 'data-msfsba'].every(a => !title.hasAttribute(a)));
+    title.insertBefore(arrow, title.firstChild);
+    await turns();
+    assert.strictEqual(nameOf(title), 'Back, Electrical System');
+  } finally {
+    window.close();
+  }
+});
+
 test('Landing_fields_are_named_by_their_label_or_unit_and_the_weight_box_by_its_placeholder_and_unit', async () => {
   const window = await load('arrperf');
   try {
@@ -683,7 +797,7 @@ for (const [fixture, selector, glyphs] of [
 
 // ---- The layer's own rules ----
 
-for (const fixture of ['depperf', 'arrperf']) {
+for (const fixture of ['depperf', 'arrperf', 'arrperf-electrical']) {
   test('The_layer_writes_attributes_only_on_' + fixture, async () => {
     const bare = await load(fixture, { layer: false });
     const shape = window => ({
@@ -708,7 +822,9 @@ for (const fixture of ['depperf', 'arrperf']) {
 // the elements that took a key handler are exactly the ones that are not real buttons or inputs.
 const SECOND_PASS = {
   depperf: { handled: 2 + 12 + 13, listeners: 2, note: 'home, chevron; six boxes and six drop-downs; thirteen result cells' },
-  arrperf: { handled: 2 + 6 + 1 + 6 + 5 + 9, listeners: 2 + 6 + 5 + 9, note: 'home, chevron; six fields; the group and six radios; five options; nine procedures' }
+  arrperf: { handled: 2 + 6 + 1 + 6 + 5 + 9, listeners: 2 + 6 + 5 + 9, note: 'home, chevron; six fields; the group and six radios; five options; nine procedures' },
+  // The sub-page capture also holds the app switcher, closed, with its nine icons (as mass-balance does).
+  'arrperf-electrical': { handled: 2 + 9 + 1 + 8, listeners: 2 + 9 + 1 + 8, note: 'home, chevron; the nine icons of the closed switcher; Back; eight tick boxes' }
 };
 for (const [fixture, expected] of Object.entries(SECOND_PASS)) {
   test('Second_pass_changes_nothing_on_' + fixture, async () => {
@@ -743,6 +859,10 @@ const ISOLATION = {
     ['one-click-change', '.one-click-change[role=button]', 5],
     ['arrival-procedure-item', '.arrival-procedure-item[role=button]', 9],
     ['section-group', '[role=radio]', 6]
+  ],
+  'arrperf-electrical': [
+    ['arrival-title', 'div.arrival-title[role=button]', 1],
+    ['arrival-procedure-item', '.arrival-procedure-item[role=checkbox]', 8]
   ]
 };
 for (const [fixture, cases] of Object.entries(ISOLATION)) {
