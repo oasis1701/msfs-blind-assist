@@ -6435,6 +6435,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                Units = "knots",
+                NotSetBelow = 1,   // a cleared speed reads 0: "not set", never "0"
             },
             ["N_MISC_PERF_TO_V2"] = new SimConnect.SimVarDefinition
             {
@@ -6443,6 +6445,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                Units = "knots",
+                NotSetBelow = 1,
             },
             ["N_MISC_PERF_TO_VR"] = new SimConnect.SimVarDefinition
             {
@@ -6451,6 +6455,23 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                Units = "knots",
+                NotSetBelow = 1,
+            },
+            // Take-off roll "V1" / "Rotate" / "V2" as those speeds are reached (FenixTakeoffCallouts),
+            // the A320 pattern: indicated airspeed per SIM_FRAME (ExcludeFromBatch + HighFrequency),
+            // consumed, never spoken, hidden from Ctrl+M; each call is muted by its speed's row above.
+            [FenixTakeoffCallouts.IasKey] = new SimConnect.SimVarDefinition
+            {
+                Name = "AIRSPEED INDICATED",
+                DisplayName = "Take-off callout airspeed",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "knots",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ExcludeFromBatch = true,
+                HighFrequency = true,
+                ExcludeFromMonitorManager = true,
             },
             ["N_MISC_PERF_TO_FLEX"] = new SimConnect.SimVarDefinition
             {
@@ -12018,11 +12039,72 @@ public partial class FenixA320Definition : BaseAircraftDefinition
         return false;
     }
 
+    // ---- Take-off roll "V1" / "Rotate" / "V2" (FenixTakeoffCallouts, on the shared
+    // TakeoffVSpeedCallouts machine, TKO-5). Its ARM is dropped on every context reset and on a
+    // reconnect, never the speeds, as every user of the machine does.
+    private readonly TakeoffVSpeedCallouts _takeoffCallouts = new();
+    // The last SIM_ON_GROUND sample. Starts true: a ramp start is the norm, and an airborne start is
+    // harmless, because the machine arms only on a sample below 40 kt, which the air never delivers.
+    private bool _calloutOnGround = true;
+
+    /// <inheritdoc />
+    public override string? TakeoffCalloutFeedKey => FenixTakeoffCallouts.IasKey;
+
+    /// <inheritdoc />
+    public override bool TakeoffCalloutFeedNeeded => _takeoffCallouts.NeedsSamples(_calloutOnGround);
+
+    /// <summary>
+    /// The take-off airspeed feed speaks V1, Rotate and V2, whose Ctrl+M rows are the V-speeds', so it
+    /// is kept out of MainForm's mute wrap and checks each call's row itself (VAR-8).
+    /// </summary>
+    public override bool IsMuteWrapExempt(string varName) => varName == FenixTakeoffCallouts.IasKey;
+
+    /// <inheritdoc />
+    public override void OnSimContextReset()
+    {
+        // A flight load delivers the per-frame airspeed ahead of the 1 Hz SIM_ON_GROUND, so an arm
+        // kept from a parked aircraft would call V1, Rotate and V2 at the loaded cruise.
+        _takeoffCallouts.Reset();
+        base.OnSimContextReset();
+    }
+
+    /// <inheritdoc />
+    public override void ResetAnnouncementBaselines()
+    {
+        // Nothing armed before a drop may fire on a later landing rollout. The speeds are kept.
+        _takeoffCallouts.Reset();
+        base.ResetAnnouncementBaselines();
+    }
+
     /// <summary>
     /// Processes SimConnect variable updates, combining the FCU and altimeter readout twins' two legs for the hotkey readouts ([A320-41]).
     /// </summary>
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
+        // Take-off roll V-speed callouts, fed per SIM_FRAME (hot path, first branch). The contract is
+        // TakeoffVSpeedCallouts': arms on the ground below 40 kt with V1 and VR set, upward crossings
+        // only, once per roll, a rejected take-off re-arms. AnnounceImmediate, deliberately: "V1" and
+        // "Rotate" are action cues whose value IS the timing. It interrupts, so the calls one sample
+        // crosses go out as ONE utterance (Compose). AnnounceImmediate bypasses both MainForm's
+        // Suppressed wrap and the Ctrl+M mute, so both are applied here, per speed, keyed on the
+        // V1 / VR / V2 rows (FenixTakeoffCallouts.Keys), as the A320 does.
+        if (varName == FenixTakeoffCallouts.IasKey)
+        {
+            var callouts = _takeoffCallouts.ProcessSample(value, _calloutOnGround);
+            if (callouts.Count > 0 && !announcer.Suppressed)
+            {
+                var muted = Settings.SettingsManager.Current.FenixDisabledMonitorVariablesSet;
+                string? sentence = TakeoffVSpeedCallouts.Compose(callouts, callout => FenixTakeoffCallouts.Keys.IsMuted(callout, muted));
+                if (sentence != null) announcer.AnnounceImmediate(sentence);   // "V1, Rotate": one utterance, never two
+            }
+            return true;
+        }
+        // Air/ground and the MCDU V-speeds that arm the callouts are PEEKED, never consumed:
+        // SIM_ON_GROUND still reaches the base's "On ground"/"Airborne", and the monitor still speaks
+        // "MCDU V1 Speed: 140 knots" as the pilot enters a speed.
+        if (varName == "SIM_ON_GROUND") _calloutOnGround = value >= 0.5;
+        else if (FenixTakeoffCallouts.Keys.IsVSpeedKey(varName)) FenixTakeoffCallouts.Keys.Feed(_takeoffCallouts, varName, value);
+
         // Only process if we have the announcer saved
         if (lastAnnouncer == null)
             lastAnnouncer = announcer;
