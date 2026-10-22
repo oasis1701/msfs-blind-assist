@@ -106,7 +106,7 @@ Measured 2026-10-22 (danielw97), MSFS 2024, Fenix v3 CFM A320 (C-FFWM), sim wind
 - Consumes (plan 01, `Aircraft/FenixVariant.cs`): `FenixVariant` (positional record, `bool? HasIsis`), `FenixVariant.Unknown`, `FenixVariant.With(string configVar, double value)`, `FenixConfigVars.Standby` (`"B_CONFIG_STDBY"`; 0 maps to `HasIsis == true`).
 - Produces: `GeminiService.DisplayType.StandbyFenixIsis`, `GeminiService.DisplayType.StandbyFenixAnalogue`; `public static IReadOnlyList<AiDisplayRead> For(FenixVariant variant)` on `FenixA320DisplayReads`: `HasIsis` true → the ISIS table, false → the round-gauge table, null → `All` (same instance). The three tables are static and differ only in the standby row's `DisplayType`. Plan 12 wires it (handoff 1).
 
-- [ ] **Step 1: Write the failing tests** in `FenixA320DisplayReadsStandbyTests`:
+- [x] **Step 1: Write the failing tests** in `FenixA320DisplayReadsStandbyTests`:
   - `An_isis_livery_reads_the_isis`: `For(FenixVariant.Unknown.With(FenixConfigVars.Standby, 0))`'s `ReadDisplayISIS` row has `DisplayType.StandbyFenixIsis`.
   - `A_round_gauge_livery_reads_the_gauges`: `For(FenixVariant.Unknown with { HasIsis = false })` → `StandbyFenixAnalogue`.
   - `An_unknown_standby_asks_the_ai_to_identify_it`: `Assert.Same(FenixA320DisplayReads.All, FenixA320DisplayReads.For(FenixVariant.Unknown))`, and that row is `StandbyFenix`.
@@ -114,13 +114,13 @@ Measured 2026-10-22 (danielw97), MSFS 2024, Fenix v3 CFM A320 (C-FFWM), sim wind
   - `The_isis_prompt_reads_one_digital_screen`: contains "ISIS", "baro", "STD", "hPa"; not "round" (all `OrdinalIgnoreCase`).
   - `The_round_gauge_prompt_reads_three_dials`: contains "round", "altimeter", "inches of mercury", "metric"; not "ISIS" (all `OrdinalIgnoreCase`).
   - `Every_standby_prompt_is_its_own`: the prompts for `StandbyFenix`, `StandbyFenixIsis`, `StandbyFenixAnalogue` and `ISIS` are four distinct strings, none equal to `GetPromptForDisplay((GeminiService.DisplayType)(-1))`.
-- [ ] **Step 2: Run them; they fail to compile.** `--filter FenixA320DisplayReadsStandbyTests`.
-- [ ] **Step 3: Implement.** Enum members with one-line comments ("Standby (Fenix A320) when the livery fits an ISIS, B_CONFIG_STDBY 0" / "… the three round standby gauges"). Prompts:
+- [x] **Step 2: Run them; they fail to compile.** `--filter FenixA320DisplayReadsStandbyTests`.
+- [x] **Step 3: Implement.** Enum members with one-line comments ("Standby (Fenix A320) when the livery fits an ISIS, B_CONFIG_STDBY 0" / "… the three round standby gauges"). Prompts:
   - `StandbyFenixIsis`: "You are reading the ISIS (integrated standby instrument system) of an Airbus A320 for a screen reader user. / The image contains the whole centre panel. Describe ONLY the ISIS, the single small digital screen between the captain's navigation display and the ECAM displays. Ignore the navigation displays, the ECAM displays, and the landing gear and autobrake panels. It may be the older or the newer ISIS style; read either the same way. / Report, each on its own line: airspeed, altitude, the barometric setting (the number and whether it is hPa or inches of mercury, or STD), pitch and bank if either is other than level, and any flags or annunciations." then the `StandbyFenix` prompt's last three lines (dark or not visible → one line and stop; colours; formatting).
   - `StandbyFenixAnalogue`: same opening with "STANDBY INSTRUMENTS" and "three round dial gauges: airspeed, altimeter and attitude", then the `StandbyFenix` prompt's round-gauge paragraph without its "first line" clause, plus "If a separate metric altitude gauge is fitted, report its reading too." before the DME/VOR sentence, then the same last three lines.
   - `For` as in Interfaces. Leave `StandbyFenix` unchanged.
-- [ ] **Step 4: Run them and the whole suite; all pass.**
-- [ ] **Step 5: Commit.** `feat(fenix): standby read follows the fitted ISIS or round gauges`
+- [x] **Step 4: Run them and the whole suite; all pass.** (2026-10-22: 14671 passed.)
+- [x] **Step 5: Commit.** `feat(fenix): standby read follows the fitted ISIS or round gauges`
 
 ### Task 4: (moved to plan 03, 2026-10-21)
 

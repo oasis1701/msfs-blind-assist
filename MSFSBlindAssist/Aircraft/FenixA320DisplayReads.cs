@@ -60,12 +60,34 @@ internal static class FenixA320DisplayReads
     /// </summary>
     public const int FirstOfficerPanelView = 9;
 
-    public static readonly IReadOnlyList<AiDisplayRead> All = new[]
+    /// <summary>
+    /// The reads while the fitted standby is unknown: Alt+I asks the AI to identify an ISIS or the
+    /// round gauges itself.
+    /// </summary>
+    public static readonly IReadOnlyList<AiDisplayRead> All = Build(GeminiService.DisplayType.StandbyFenix);
+
+    private static readonly IReadOnlyList<AiDisplayRead> WithIsis = Build(GeminiService.DisplayType.StandbyFenixIsis);
+
+    private static readonly IReadOnlyList<AiDisplayRead> WithRoundGauges = Build(GeminiService.DisplayType.StandbyFenixAnalogue);
+
+    /// <summary>
+    /// The reads for <paramref name="variant"/>: only Alt+I's prompt follows the fitted standby
+    /// (<see cref="FenixVariant.HasIsis"/>), and an unknown standby returns <see cref="All"/>,
+    /// never a guess. Keys, views and spoken names are the same in every table.
+    /// </summary>
+    public static IReadOnlyList<AiDisplayRead> For(FenixVariant variant) => variant.HasIsis switch
+    {
+        true => WithIsis,
+        false => WithRoundGauges,
+        null => All,
+    };
+
+    private static IReadOnlyList<AiDisplayRead> Build(GeminiService.DisplayType standby) => new[]
     {
         new AiDisplayRead(HotkeyAction.ReadDisplayPFD, GeminiService.DisplayType.PFD, "PFD", FirstOfficerPanelView),
         new AiDisplayRead(HotkeyAction.ReadDisplayND, GeminiService.DisplayType.NDFenix, "ND", CaptainPanelView),
         new AiDisplayRead(HotkeyAction.ReadDisplayUpperECAM, GeminiService.DisplayType.UpperECAM, "E/WD", CenterPanelView),
         new AiDisplayRead(HotkeyAction.ReadDisplayLowerECAM, GeminiService.DisplayType.LowerECAM, "SD", CenterPanelView),
-        new AiDisplayRead(HotkeyAction.ReadDisplayISIS, GeminiService.DisplayType.StandbyFenix, "Standby instruments", CenterPanelView),
+        new AiDisplayRead(HotkeyAction.ReadDisplayISIS, standby, "Standby instruments", CenterPanelView),
     };
 }
