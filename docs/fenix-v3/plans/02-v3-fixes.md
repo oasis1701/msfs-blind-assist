@@ -1,6 +1,6 @@
 # Fenix v3 Fixes Implementation Plan (plan 02)
 
-**Claimed by:** nobody yet · **Status:** not started
+**Claimed by:** oasis1701 · **Status:** in progress
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
