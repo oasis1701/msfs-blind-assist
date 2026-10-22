@@ -8407,6 +8407,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 "Wipers",
                 "Cargo Smoke",
                 "GPWS",
+                "Flight Control Computers",
                 "Engine",
                 "Maintenance"
             },
@@ -8671,7 +8672,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 "A_OH_LIGHTING_OVD"
             },
 
-            ["Flight Controls"] = new List<string>
+            ["Flight Control Computers"] = new List<string>
             {
                 // Flight Control Computers (7 controls)
                 "S_OH_FLT_CTL_ELAC_1",
