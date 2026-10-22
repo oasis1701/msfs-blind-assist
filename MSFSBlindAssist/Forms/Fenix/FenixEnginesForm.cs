@@ -11,12 +11,14 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// Escape closes.
 /// </summary>
 /// <remarks>
-/// The values stream at 30-45 Hz on a pool thread ([FNX-2]): the subscription callback writes only the
-/// lock-protected <see cref="FenixEngineSnapshot"/>, and a 1 s WinForms timer reads it into the list,
-/// so the form never marshals per update. The list is reconciled in place and the refresh never moves
-/// focus. While the window is open, the Fenix's running flag edges are spoken (plan 09, Q1). The
-/// subscription sends N2 only once, so a <see cref="FenixDataPoller"/> also reads every number but the
-/// running flag once a second, on the same pool-thread, store-only footing.
+/// The subscription's values arrive on a pool thread ([FNX-2]), as the Fenix changes them (measured
+/// 2026-10-22: the running flags on change, EGT about every second while it moves, N2 only once, when
+/// the subscription opens): its callback writes only the lock-protected <see cref="FenixEngineSnapshot"/>,
+/// and a 1 s WinForms timer reads it into the list, so the form never marshals per update. The list is
+/// reconciled in place and the refresh never moves focus. While the window is open, the Fenix's running
+/// flag edges are spoken (plan 09, Q1). Because N2 is sent only once, a <see cref="FenixDataPoller"/>,
+/// started after the open read, also reads every number but the running flag once a second, on the same
+/// pool-thread, store-only footing.
 /// </remarks>
 public sealed class FenixEnginesForm : Form
 {
@@ -93,23 +95,42 @@ public sealed class FenixEnginesForm : Form
             RefreshNow();
             if (_list.Items.Count > 0) _list.SelectedIndex = 0;
             _subscription = _context.Data.Subscribe(FenixEngineNames.All, _snapshot.Apply);
-            // The subscription sends N2 only once, when it opens (measured live, 2026-10-22: one value
-            // through a whole shutdown), so a subscription alone froze the N2 rows until F5. The numbers
-            // are also read by query once a second. Not the running flag: the subscription's is newer,
-            // and a stale polled one would speak a false "Engine n stopped". An unknown answer is
-            // stored as unknown (an engine that is off answers null; a gateway that stopped answering
-            // shows "--", not a frozen number) [FNX-1]. The poll runs on the thread pool and only stores.
-            _poller = new FenixDataPoller(FenixEngineNames.Polled,
-                (names, ct) => _context.Data.ReadManyAsync(names, ct), _snapshot.Apply);
-            _poller.Start();
             _timer.Start();
-            _ = ReloadAsync(false);
+            _ = OpenAsync();
         }
         // The pilot's own open: the only focus calls in the form.
         Show();
         BringToFront();
         Activate();
         _list.Focus();
+    }
+
+    // The open: the one-shot read first, then the poll. The poll starts only after the open read has
+    // been applied, because that read is dropped whole (running flags included) when anything was stored
+    // meanwhile (ApplyAllIfUnchangedSince), and the poller's first read is immediate: started alongside,
+    // it could make the open read lose, leaving the running flags unknown until they next change.
+    // Continues on the UI thread; ReloadAsync catches its own failures, so the poll starts either way.
+    private async Task OpenAsync()
+    {
+        await ReloadAsync(false);
+        StartPoller();
+    }
+
+    // Starts the once-a-second poll of the numbers; never twice, and not once the window is torn down
+    // (TearDown or Dispose may run before the open read returns). UI thread.
+    //
+    // Why: the subscription sends N2 only once, when it opens (measured live, 2026-10-22: one value
+    // through a whole shutdown), so a subscription alone froze the N2 rows until F5. The numbers are
+    // also read by query. Not the running flag: the subscription's is newer, and a stale polled one
+    // would speak a false "Engine n stopped". An unknown answer is stored as unknown (N2 answers null
+    // while an engine is off, measured; a gateway that stopped answering shows "--", not a frozen
+    // number) [FNX-1]. The poll runs on the thread pool and only stores.
+    private void StartPoller()
+    {
+        if (_tornDown || IsDisposed || _poller != null) return;
+        _poller = new FenixDataPoller(FenixEngineNames.Polled,
+            (names, ct) => _context.Data.ReadManyAsync(names, ct), _snapshot.Apply);
+        _poller.Start();
     }
 
     // The timer's tick (UI thread): rows, running edges and status from the snapshot. Never focuses.
@@ -142,7 +163,10 @@ public sealed class FenixEnginesForm : Form
             bool anyKnown = values.Values.Any(v => v.IsKnown);
             // A read with nothing known (gateway down, Fenix not loaded) leaves the snapshot alone, so
             // the status keeps saying it is waiting or that values stopped. A read the subscription
-            // overtook is dropped: its older running flag would speak a false "stopped".
+            // overtook is dropped: its older running flag would speak a false "stopped". Once the poll
+            // runs (it starts after the open read), an F5 read can lose this race to a poll answer and
+            // be dropped too: acceptable, the poll keeps the numbers fresh and the subscription
+            // carries the running flags.
             if (anyKnown)
                 _snapshot.ApplyAllIfUnchangedSince(values, version);
             RefreshNow();
