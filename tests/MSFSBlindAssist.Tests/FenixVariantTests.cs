@@ -438,6 +438,25 @@ public class FenixVariantTests
     }
 
     [Fact]
+    public void A_throwing_variant_subscriber_stops_neither_the_next_subscriber_nor_the_update()
+    {
+        // Later plans subscribe; one that throws must not keep the others from the change, and the
+        // reading must still be consumed (each config value is delivered once).
+        var definition = new FenixA320Definition();
+        var speech = new SpeechCapture();
+        var seen = new List<FenixVariant>();
+        definition.VariantChanged += (_, _) => throw new InvalidOperationException("a later plan's handler failed");
+        definition.VariantChanged += (_, variant) => seen.Add(variant);
+
+        bool consumed = definition.ProcessSimVarUpdate(FenixConfigVars.AircraftType, 3, speech);
+
+        Assert.True(consumed);
+        Assert.Equal(FenixAircraftType.A320, Assert.Single(seen).Type);
+        Assert.Equal(FenixAircraftType.A320, definition.Variant.Type);
+        Assert.Empty(speech.All);
+    }
+
+    [Fact]
     public void A_var_that_is_not_a_config_var_is_not_consumed_by_variant_detection()
     {
         var definition = new FenixA320Definition();

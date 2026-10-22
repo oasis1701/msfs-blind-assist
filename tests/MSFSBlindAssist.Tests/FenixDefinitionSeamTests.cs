@@ -63,6 +63,34 @@ public class FenixDefinitionSeamTests
     }
 
     [Fact]
+    public async Task A_switched_away_definition_never_builds_a_live_data_service()
+    {
+        // The same holds when nothing touched DataService before the switch: a late callback must not
+        // build a live one then. Disposed, so the read below answers without a request.
+        var definition = new FenixA320Definition();
+
+        definition.OnSwitchedAway();
+
+        Assert.True(definition.DataService.IsDisposed, "a live data service was built after the switch");
+        Assert.Same(definition.DataService, definition.DataService);
+        Assert.Equal(FenixValueKind.EmptyOrUnknown, (await definition.DataService.ReadAsync("x")).Kind);
+    }
+
+    [Fact]
+    public void A_sim_update_starts_no_background_seam_in_the_tests()
+    {
+        // FenixTestHost turns the seams off for the whole test assembly: plans 08 and 09 open a live
+        // subscription to 127.0.0.1:8083 from them, and the pilot's sim may be answering there.
+        Assert.False(FenixA320Definition.BackgroundSeamsEnabled, "FenixTestHost's module initializer did not run");
+        var definition = new FenixA320Definition();
+
+        definition.ProcessSimVarUpdate(FenixConfigVars.AircraftType, 3, new SpeechCapture());
+        definition.ProcessSimVarUpdate("NOT_A_FENIX_CONFIG_VAR", 1, new SpeechCapture());
+
+        Assert.False(definition.BackgroundStarted);
+    }
+
+    [Fact]
     public void The_definition_is_partial_and_calls_every_seam_from_its_main_file()
     {
         string source = File.ReadAllText(Path.Combine(

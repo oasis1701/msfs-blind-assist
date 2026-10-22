@@ -1,3 +1,5 @@
+using MSFSBlindAssist.Utils.Logging;
+
 namespace MSFSBlindAssist.Aircraft;
 
 // Seams the Fenix v3 plans fill in from their own partial files. Each `partial void` is optional:
@@ -23,9 +25,11 @@ public partial class FenixA320Definition
     // C# allows one implementation, so plan 06 owns it.
     partial void OnFenixSwitchedAway();
 
-    // Background seams, one Start/Stop pair per plan (cabin: plan 08, engine: plan 09). Start runs once
-    // per definition instance, on the UI thread, from the first ProcessSimVarUpdate after a connection;
-    // Stop runs in OnSwitchedAway.
+    // Background seams, one Start/Stop pair per plan (cabin: plan 08, engine: plan 09). Start runs once per
+    // definition instance, on the UI thread, from the first ProcessSimVarUpdate that instance receives; a
+    // sim reconnect keeps the instance, so Start does not run again then. Stop runs in OnSwitchedAway, on an
+    // aircraft switch and on app quit. Every seam call is isolated: an exception from one is logged and the
+    // others still run, so a later plan's failure never aborts the switch, the quit or the update.
     partial void StartCabinBackground(Accessibility.ScreenReaderAnnouncer announcer);
     partial void StopCabinBackground();
     partial void StartEngineBackground(Accessibility.ScreenReaderAnnouncer announcer);
@@ -33,8 +37,33 @@ public partial class FenixA320Definition
 
     private bool _backgroundStarted;
 
+    /// <summary>
+    /// False keeps every background seam from starting. It exists for the tests, whose module initializer
+    /// (FenixTestHost) turns it off: the seams subscribe and read over 127.0.0.1:8083, and a test feeding a
+    /// sim update to a new definition would otherwise leave a socket loop talking to the pilot's sim. The
+    /// app never changes it.
+    /// </summary>
+    internal static bool BackgroundSeamsEnabled { get; set; } = true;
+
+    /// <summary>For the tests: whether this instance has run its background Start seams.</summary>
+    internal bool BackgroundStarted => _backgroundStarted;
+
+    // Runs one later plan's seam: an exception from it is logged (CORE-15), never thrown at the caller.
+    private static void RunSeam(string seam, Action call)
+    {
+        try
+        {
+            call();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Fenix", $"{seam} failed: {ex.GetType().Name}: {ex.Message}", ex);
+        }
+    }
+
     // The Fenix data service client (127.0.0.1:8083), created on first use from any thread. OnSwitchedAway
-    // disposes it after the background Stops, so its consumers stop before the service goes.
+    // disposes it after the background Stops, so its consumers stop before the service goes, and from then
+    // on the getter returns that disposed instance.
     private readonly object _dataServiceLock = new();
     private Services.FenixDataService? _dataService;
 
@@ -96,17 +125,34 @@ public partial class FenixA320Definition
         if (updated != Variant)
         {
             Variant = updated;
-            VariantChanged?.Invoke(this, updated);
+            RaiseVariantChanged(updated);
         }
         return true;
     }
 
+    // Each subscriber in turn: one that throws is logged, and the ones after it still hear the change.
+    private void RaiseVariantChanged(FenixVariant variant)
+    {
+        if (VariantChanged is not { } handlers) return;
+        foreach (EventHandler<FenixVariant> handler in handlers.GetInvocationList())
+        {
+            try
+            {
+                handler(this, variant);
+            }
+            catch (Exception ex)
+            {
+                Log.Error("Fenix", $"A VariantChanged subscriber failed: {ex.GetType().Name}: {ex.Message}", ex);
+            }
+        }
+    }
+
     private void EnsureFenixBackground(Accessibility.ScreenReaderAnnouncer announcer)
     {
-        if (_backgroundStarted) return;
+        if (_backgroundStarted || !BackgroundSeamsEnabled) return;
         _backgroundStarted = true;
-        StartCabinBackground(announcer);
-        StartEngineBackground(announcer);
+        RunSeam(nameof(StartCabinBackground), () => StartCabinBackground(announcer));
+        RunSeam(nameof(StartEngineBackground), () => StartEngineBackground(announcer));
     }
 
     public override bool IsPanelControlVisible(string varKey, SimConnect.SimConnectManager? simConnect)
@@ -149,14 +195,22 @@ public partial class FenixA320Definition
 
     public override void OnSwitchedAway()
     {
-        OnFenixSwitchedAway();
-        StopCabinBackground();
-        StopEngineBackground();
-        _backgroundStarted = false;
-        // Disposed but kept, never nulled: a disposed service is inert (Unknown, false, no-op Subscribe),
-        // so a late callback touching DataService cannot bring a live one back after the switch.
-        Services.FenixDataService? dataService;
-        lock (_dataServiceLock) dataService = _dataService;
-        dataService?.Dispose();
+        try
+        {
+            RunSeam(nameof(OnFenixSwitchedAway), () => OnFenixSwitchedAway());
+            RunSeam(nameof(StopCabinBackground), () => StopCabinBackground());
+            RunSeam(nameof(StopEngineBackground), () => StopEngineBackground());
+            _backgroundStarted = false;
+        }
+        finally
+        {
+            // Disposed but kept, never nulled: a disposed service is inert (Unknown, false, no-op Subscribe),
+            // so a late callback touching DataService cannot bring a live one back after the switch. One
+            // nothing touched yet is built here first, for the same reason: the getter then hands out the
+            // disposed one, never a fresh live service nobody would dispose.
+            Services.FenixDataService dataService;
+            lock (_dataServiceLock) dataService = _dataService ??= new Services.FenixDataService();
+            dataService.Dispose();
+        }
     }
 }
