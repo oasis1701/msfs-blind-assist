@@ -7,9 +7,9 @@ name: Tests
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-  # Post-merge safety net: also run on direct pushes to main.
+  # Post-merge safety net: also run on direct pushes to main, and on every push to the FenixV3 work branch (plan 12 removes FenixV3 before its pull request).
   push:
-    branches: [main]
+    branches: [main, FenixV3]
 
 # When a PR branch gets a new push, cancel the still-running test job for the
 # previous commit so only the latest commit's run counts. On push events
