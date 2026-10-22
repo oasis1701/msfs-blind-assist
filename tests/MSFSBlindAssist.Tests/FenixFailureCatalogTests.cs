@@ -96,6 +96,18 @@ public class FenixFailureCatalogTests
         Assert.Equal("1792593125000", cat.Find("F")!.Condition!.Time);
     }
 
+    [Fact]
+    public void Parse_reads_the_real_countdown_reply()
+    {
+        var cat = Inline(
+            "{\"id\":\"T\",\"title\":\"t\",\"failed\":false,\"failureCondition\":{\"id\":4,\"ias\":null,\"alt\":null,\"altb\":null,\"time\":30,\"afterEvent\":null,\"afterEventSeconds\":null}}");
+        var t = cat.Find("T")!;
+        Assert.Equal(FenixFailureState.Armed, t.State);
+        Assert.Equal("30", t.Condition!.Time);
+        Assert.Null(t.Condition.Ias);
+        Assert.Null(t.Condition.AfterEvent);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

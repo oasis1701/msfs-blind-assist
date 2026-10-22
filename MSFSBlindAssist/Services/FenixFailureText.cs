@@ -42,7 +42,7 @@ public static class FenixFailureText
         else if (condition.AfterEventSeconds is { } secs && condition.Time == null)
             parts.Add("after " + Seconds(secs));
         else if (condition.Time != null)
-            parts.Add(ArmedAtPrefix + TimeText(condition.Time, zone));
+            parts.Add(TimePart(condition.Time, zone));
 
         return string.Join(", ", parts);
     }
@@ -137,7 +137,7 @@ public static class FenixFailureText
     }
 
     private static string? ConditionKey(FenixFailure f, TimeZoneInfo zone)
-        => f.Condition == null ? null : Condition(f.Condition, zone);
+        => f.Condition == null ? null : Condition(f.Condition with { Time = null }, zone); // a ticking countdown is not a change
 
     private static string ArmedPhrase(FenixFailureCondition? condition, TimeZoneInfo zone)
     {
@@ -172,20 +172,19 @@ public static class FenixFailureText
 
     private static string Seconds(int n) => n == 1 ? "1 second" : Num(n) + " seconds";
 
-    // All-digit text is Unix milliseconds; otherwise a date text read as UTC when it carries no zone.
-    private static string TimeText(string text, TimeZoneInfo zone)
+    // Numeric text is the seconds remaining until the failure triggers (it counts down); other text is an
+    // ISO date, read as UTC when it carries no zone. Unparseable text is kept as is.
+    private static string TimePart(string text, TimeZoneInfo zone)
     {
-        DateTimeOffset when;
-        if (text.Length > 0 && text.All(char.IsAsciiDigit))
+        if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double remaining)
+            && double.IsFinite(remaining))
         {
-            if (!long.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out long ms)) return text;
-            try { when = DateTimeOffset.FromUnixTimeMilliseconds(ms); }
-            catch (ArgumentOutOfRangeException) { return text; }
+            int n = (int)Math.Min(int.MaxValue, Math.Max(1, Math.Ceiling(remaining)));
+            return "fails in " + Seconds(n);
         }
-        else if (!DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out when))
-            return text;
-
-        return TimeZoneInfo.ConvertTime(when, zone).ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+        if (!DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out DateTimeOffset when))
+            return ArmedAtPrefix + text;
+        return ArmedAtPrefix + TimeZoneInfo.ConvertTime(when, zone).ToString("HH:mm:ss", CultureInfo.InvariantCulture);
     }
 
     private static string Plural(int n, string one, string many)

@@ -65,11 +65,41 @@ public class FenixFailureTextTests : IDisposable
     [InlineData(null, null, null, "Rotation", null, null, "at Rotation")]
     [InlineData(null, null, null, null, 90, null, "after 90 seconds")]
     [InlineData(null, null, null, null, 90, "2026-10-21T14:32:05Z", "armed at 14:32:05")]
-    [InlineData(null, null, null, null, null, "1792593125000", "armed at 14:32:05")]
+    [InlineData(null, null, null, null, null, "30", "fails in 30 seconds")]
+    [InlineData(null, null, null, null, null, "19.800000214", "fails in 20 seconds")]
+    [InlineData(null, null, null, null, null, "19.8", "fails in 20 seconds")]
+    [InlineData(null, null, null, null, null, "0.78", "fails in 1 second")]
+    [InlineData(null, null, null, null, null, "1", "fails in 1 second")]
+    [InlineData(null, null, null, null, 90, "30", "fails in 30 seconds")]
+    [InlineData(null, null, null, "V1", null, "30", "at V1")]
     [InlineData(null, null, null, null, null, "garbage", "armed at garbage")]
     [InlineData(null, null, null, null, null, null, "")]
     public void Condition_uses_the_EFB_labels(int? ias, int? above, int? below, string? ev, int? secs, string? time, string expected)
         => Assert.Equal(expected, FenixFailureText.Condition(Cond(ias, above, below, ev, secs, time), Zone));
+
+    [Fact]
+    public void Countdown_node_and_saved_line_use_the_colon_form()
+    {
+        var fan = Fan(Fixture());
+        Assert.Equal("Lavatory/Galley fan, armed: fails in 30 seconds",
+            FenixFailureText.FailureNode(fan with { Condition = Cond(time: "30") }, Zone));
+        Assert.Equal("Lavatory/Galley fan armed: fails in 30 seconds.",
+            FenixFailureText.SavedLine(fan with { Condition = Cond(time: "30") }, Zone));
+    }
+
+    [Fact]
+    public void Changes_ignore_a_ticking_countdown()
+    {
+        var cat = Fixture();
+        var fan = Fan(cat);
+        var a = cat.With(fan with { Condition = Cond(time: "30") });
+        Assert.Null(FenixFailureText.Changes(a, cat.With(fan with { Condition = Cond(time: "20.8") }), null, Zone));
+        Assert.Equal("Lavatory/Galley fan armed: above IAS 300, fails in 20 seconds.",
+            FenixFailureText.Changes(cat.With(fan with { Condition = Cond(ias: 250, time: "30") }),
+                cat.With(fan with { Condition = Cond(ias: 300, time: "19.8") }), null, Zone));
+        Assert.Equal("Failure triggered: Lavatory/Galley fan.",
+            FenixFailureText.Changes(a, cat.With(fan with { Failed = true }), null, Zone));
+    }
 
     [Fact]
     public void Times_and_numbers_are_invariant()

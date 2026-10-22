@@ -628,6 +628,8 @@ public sealed class FenixFailuresForm : Form
         {
             if (keyData == Keys.Escape)
             {
+                // An open Show list closes first; the combo handles this Escape.
+                if (_show.DroppedDown) return base.ProcessCmdKey(ref msg, keyData);
                 Close();
                 return true;
             }
