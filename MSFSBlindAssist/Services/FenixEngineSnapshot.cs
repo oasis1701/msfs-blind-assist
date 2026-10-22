@@ -45,6 +45,7 @@ public sealed class FenixEngineSnapshot
     private double? _tat;
     private double? _oat;
     private long? _lastUpdateTick;
+    private long _version;
 
     public FenixEngineSnapshot(Func<long>? clock = null)
     {
@@ -57,26 +58,59 @@ public sealed class FenixEngineSnapshot
     /// </summary>
     public void Apply(string name, FenixDataValue value)
     {
+        lock (_lock)
+            ApplyLocked(name, value);
+    }
+
+    /// <summary>Counts every stored value (known or not); a one-shot read compares it to see whether newer values arrived meanwhile.</summary>
+    public long Version
+    {
+        get { lock (_lock) return _version; }
+    }
+
+    /// <summary>
+    /// Stores a one-shot read (the window's open and F5) only when nothing was stored since
+    /// <paramref name="version"/> (<see cref="Version"/> taken before the read was sent); otherwise the
+    /// subscription's newer values stand and this returns false. Atomic against the subscription thread.
+    /// </summary>
+    public bool ApplyAllIfUnchangedSince(IEnumerable<KeyValuePair<string, FenixDataValue>> values, long version)
+    {
+        lock (_lock)
+        {
+            if (_version != version) return false;
+            foreach (var (name, value) in values)
+                ApplyLocked(name, value);
+            return true;
+        }
+    }
+
+    // Caller holds the lock.
+    private void ApplyLocked(string name, FenixDataValue value)
+    {
         if (name == null || !Map.TryGetValue(name, out var target)) return;
 
         double? number = value.Kind == FenixValueKind.Number && double.IsFinite(value.Number) ? value.Number : null;
-        lock (_lock)
+        bool known;
+        if (target.Engine == 0)
         {
-            if (target.Engine == 0)
-            {
-                if (name == FenixEngineNames.Tat) _tat = number;
-                else _oat = number;
-            }
-            else if (target.Field == FenixEngineField.Running)
-            {
-                _running[target.Engine - 1] = value.Kind == FenixValueKind.Bool ? value.Bool : null;
-            }
-            else
-            {
-                _numbers[target.Engine - 1, (int)target.Field] = number;
-            }
-            _lastUpdateTick = _clock();
+            if (name == FenixEngineNames.Tat) _tat = number;
+            else _oat = number;
+            known = number != null;
         }
+        else if (target.Field == FenixEngineField.Running)
+        {
+            bool? running = value.Kind == FenixValueKind.Bool ? value.Bool : null;
+            _running[target.Engine - 1] = running;
+            known = running != null;
+        }
+        else
+        {
+            _numbers[target.Engine - 1, (int)target.Field] = number;
+            known = number != null;
+        }
+        _version++;
+        // Only a known value is news ([FNX-1]): "" for every name must leave the status "waiting".
+        if (known) _lastUpdateTick = _clock();
     }
 
     /// <summary>The current values (any thread).</summary>

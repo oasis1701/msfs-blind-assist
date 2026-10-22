@@ -63,15 +63,50 @@ public class FenixEngineSnapshotTests
         Assert.Equal(FenixEngineReading.None, s.Read());
     }
 
+    // Only a known value is news: the gateway answering "" for every name (Fenix not loaded) must leave
+    // the status "waiting", not "values update every second" over a list of dashes.
     [Fact]
-    public void Last_update_follows_the_clock()
+    public void Last_update_follows_known_values_only()
     {
         long now = 1000;
         var s = new FenixEngineSnapshot(() => now);
         Assert.Null(s.Read().LastUpdateTick);
+        s.Apply("aircraft.engines.1.egt", V("\"\""));
+        Assert.Null(s.Read().LastUpdateTick);
         s.Apply("aircraft.engines.1.n1", V("22.4"));
         now = 5000;
         s.Apply("aircraft.engines.1.n1", V("\"\""));
-        Assert.Equal(5000, s.Read().LastUpdateTick);
+        Assert.Equal(1000, s.Read().LastUpdateTick);
+        now = 6000;
+        s.Apply("aircraft.engines.1.n1", V("22.5"));
+        Assert.Equal(6000, s.Read().LastUpdateTick);
+    }
+
+    // The window's one-shot read (open, F5) is sampled before the subscription's newer values can
+    // arrive: applying it late would turn "Engine 2 running" back into a false "stopped".
+    [Fact]
+    public void A_read_older_than_a_subscription_value_is_not_applied()
+    {
+        var s = new FenixEngineSnapshot(() => 1);
+        long before = s.Version;
+        s.Apply("aircraft.engines.2.running", V("true"));
+        var read = new[] { new KeyValuePair<string, FenixDataValue>("aircraft.engines.2.running", V("false")) };
+        Assert.False(s.ApplyAllIfUnchangedSince(read, before));
+        Assert.True(s.Read().Engine2.Running);
+    }
+
+    [Fact]
+    public void A_read_with_nothing_newer_is_applied()
+    {
+        var s = new FenixEngineSnapshot(() => 1);
+        long before = s.Version;
+        var read = new[]
+        {
+            new KeyValuePair<string, FenixDataValue>("aircraft.engines.2.running", V("false")),
+            new KeyValuePair<string, FenixDataValue>("aircraft.engines.2.n2", V("20.5")),
+        };
+        Assert.True(s.ApplyAllIfUnchangedSince(read, before));
+        Assert.False(s.Read().Engine2.Running);
+        Assert.Equal(20.5, s.Read().Engine2.N2);
     }
 }

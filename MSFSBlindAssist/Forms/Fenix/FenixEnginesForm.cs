@@ -123,17 +123,16 @@ public sealed class FenixEnginesForm : Form
             _unit = unit ?? FenixEngineWeightUnit.Kilograms;
             _unitFromFenix = unit != null;
 
+            long version = _snapshot.Version;
             var values = await _context.Data.ReadManyAsync(FenixEngineNames.All);
             if (IsDisposed) return;
 
             bool anyKnown = values.Values.Any(v => v.IsKnown);
             // A read with nothing known (gateway down, Fenix not loaded) leaves the snapshot alone, so
-            // the status keeps saying it is waiting or that values stopped.
+            // the status keeps saying it is waiting or that values stopped. A read the subscription
+            // overtook is dropped: its older running flag would speak a false "stopped".
             if (anyKnown)
-            {
-                foreach (var (name, value) in values)
-                    _snapshot.Apply(name, value);
-            }
+                _snapshot.ApplyAllIfUnchangedSince(values, version);
             RefreshNow();
 
             if (!anyKnown)
