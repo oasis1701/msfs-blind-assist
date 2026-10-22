@@ -218,7 +218,7 @@ public static class FenixCabinWrites
 
     // The FAP Set-Up page's own display value: 5 * round(100 * v / 5), kept in 0 to 100. JavaScript's
     // Math.round is floor(x + 0.5), so a half goes up (also for a negative number).
-    private static int ShownSpeakerPercent(double fraction)
+    internal static int ShownSpeakerPercent(double fraction)
     {
         double rounded = SpeakerVolumeStepPercent * Math.Floor(100 * fraction / SpeakerVolumeStepPercent + 0.5);
         return (int)Math.Min(MaxSpeakerVolumePercent, Math.Max(MinSpeakerVolumePercent, rounded));
