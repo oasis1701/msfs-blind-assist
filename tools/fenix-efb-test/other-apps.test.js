@@ -54,12 +54,14 @@ test('Settings_options_say_name_and_choice_and_follow_the_page', async () => {
       assert.strictEqual(nameOf(box), squash(heading.firstChild.nodeValue), 'the heading\'s own text, the badge left out');
     }
 
-    // The options say which one is chosen, from the page's own class; the name is the option's own text.
+    // The options say which one is chosen, from the page's own class; the name is the option's own label text, written
+    // as a label (R52: Chromium's tree showed them unnamed).
     const options = all(window, 'button.option');
     assert.deepStrictEqual(options.map(nameOf), ['GNADIRS', 'ADIRS', 'Classic', 'Modern', 'hPa', 'inHg']);
+    assert.deepStrictEqual(options.map(attr('aria-label')), options.map(o => squash(o.querySelector('.option-label').textContent)));
     assert.deepStrictEqual(options.map(o => o.classList.contains('option--active')), [false, true, false, true, true, false]);
     assert.deepStrictEqual(options.map(attr('aria-pressed')), ['false', 'true', 'false', 'true', 'true', 'false']);
-    assert.ok(options.every(o => !o.hasAttribute('role') && !o.hasAttribute('aria-label')), 'real buttons: nothing else added');
+    assert.ok(options.every(o => !o.hasAttribute('role') && !o.hasAttribute('tabindex')), 'real buttons: no role or Tab stop added');
 
     // The page moves the choice: the state follows after a pass.
     options[1].classList.toggle('option--active', false);
@@ -452,40 +454,93 @@ test('A_glyph_follows_its_control_and_a_hidden_state_the_page_set_on_a_glyph_is_
 // R42: a Settings choice can show a picture whose alt repeats the choice's own text ("GNADIRS"), so a screen reader read
 // each choice twice. The settings capture has the choices without their pictures (the old snippet removed every <img>),
 // so they are put back here as the live page has them, as the button's first child.
-test('Option_pictures_that_repeat_the_options_text_are_hidden', async () => {
+// Loads the settings capture with each choice's picture put back, as the live page has it (the button's first child, its
+// alt the choice's own text), and a choice that is only a picture. The layer is not run yet.
+async function loadSettingsWithPictures() {
   const window = await load('settings', { layer: false });
+  const doc = window.document;
+  const options = all(window, 'button.option');
+  for (const option of options) {
+    const img = doc.createElement('img');
+    img.className = 'option-image';
+    img.setAttribute('src', '/assets/img/settings/option.png');
+    img.setAttribute('alt', squash(option.textContent));
+    option.insertBefore(img, option.firstChild);
+  }
+  const lone = doc.createElement('button');
+  lone.className = 'option';
+  lone.setAttribute('type', 'button');
+  lone.innerHTML = '<img class="option-image" src="/assets/img/settings/only.png" alt="Picture only">';
+  options[0].parentElement.appendChild(lone);
+  return { window, options, lone };
+}
+
+test('Option_pictures_that_repeat_the_options_text_are_hidden', async () => {
+  const { window, options, lone } = await loadSettingsWithPictures();
   try {
-    const doc = window.document;
-    const options = all(window, 'button.option');
-    for (const option of options) {
-      const img = doc.createElement('img');
-      img.className = 'option-image';
-      img.setAttribute('src', '/assets/img/settings/option.png');
-      img.setAttribute('alt', squash(option.textContent));
-      option.insertBefore(img, option.firstChild);
-    }
-    // A choice that is only a picture: its picture is its name, and stays.
-    const lone = doc.createElement('button');
-    lone.className = 'option';
-    lone.setAttribute('type', 'button');
-    lone.innerHTML = '<img class="option-image" src="/assets/img/settings/only.png" alt="Picture only">';
-    options[0].parentElement.appendChild(lone);
     window.eval(fs.readFileSync(LAYER, 'utf8'));
     await turns();
 
     const pictures = options.map(o => o.querySelector('img.option-image'));
     assert.ok(pictures.every(p => p.getAttribute('aria-hidden') === 'true'));
     assert.deepStrictEqual(options.map(nameOf), ['GNADIRS', 'ADIRS', 'Classic', 'Modern', 'hPa', 'inHg'], 'each read once');
+    // A choice that is only a picture: its picture stays, and its alt is the choice's name (R52).
     assert.strictEqual(lone.querySelector('img').hasAttribute('aria-hidden'), false);
+    assert.strictEqual(lone.getAttribute('aria-label'), 'Picture only');
     assert.strictEqual(nameOf(lone), 'Picture only');
 
-    // The choice's text goes: its picture is its name again.
+    // The choice's text goes: its picture is read again, and its alt is the name.
     const label = options[2].querySelector('span.option-label');
     label.firstChild.nodeValue = '';
     await turns();
     assert.strictEqual(pictures[2].hasAttribute('aria-hidden'), false);
+    assert.strictEqual(options[2].getAttribute('aria-label'), 'Classic');
     assert.strictEqual(nameOf(options[2]), 'Classic');
   } finally {
+    window.close();
+  }
+});
+
+// R52: a choice is named by its own label text as a label of the layer's, which follows the text; a label the page
+// gives is the page's.
+test('A_settings_choice_is_named_by_its_label_text_and_a_label_the_page_gives_it_is_kept', async () => {
+  const window = await load('settings', { layer: false });
+  try {
+    const [gnadirs, adirs, classic] = all(window, 'button.option');
+    adirs.setAttribute('aria-label', 'Modern ADIRS');
+    window.eval(fs.readFileSync(LAYER, 'utf8'));
+    await turns();
+    assert.strictEqual(gnadirs.getAttribute('aria-label'), 'GNADIRS');
+    assert.strictEqual(gnadirs.getAttribute('data-msfsba'), '1');
+    assert.strictEqual(adirs.getAttribute('aria-label'), 'Modern ADIRS', 'the page\'s own');
+    // Angular updates the label's text in place: the name follows.
+    classic.querySelector('.option-label').firstChild.nodeValue = ' Classic panel ';
+    await turns();
+    assert.strictEqual(nameOf(classic), 'Classic panel');
+  } finally {
+    window.close();
+  }
+});
+
+// R42's rule is its own: when it fails, the choices are still named and pressed, and the other rules ran.
+test('A_failing_rule_does_not_skip_the_others_on_settings_when_img_option_image_fails', async () => {
+  const { window, options } = await loadSettingsWithPictures();
+  const proto = window.Element.prototype;
+  const original = proto.querySelectorAll;
+  try {
+    proto.querySelectorAll = function (s) {
+      if (this === window.document.body && s.includes('img.option-image')) throw new Error('boom');
+      return original.call(this, s);
+    };
+    window.eval(fs.readFileSync(LAYER, 'utf8'));
+    await turns();
+    proto.querySelectorAll = original;
+    assert.ok(options.every(o => !o.querySelector('img').hasAttribute('aria-hidden')), 'the failing rule did nothing');
+    assert.deepStrictEqual(options.map(attr('aria-label')), ['GNADIRS', 'ADIRS', 'Classic', 'Modern', 'hPa', 'inHg']);
+    assert.strictEqual(all(window, 'button.option[aria-pressed]').length, 7);
+    assert.strictEqual(all(window, 'label.toggle[role=switch]').length, 5);
+  } finally {
+    proto.querySelectorAll = original;
     window.close();
   }
 });
@@ -1153,6 +1208,40 @@ test('Charts_and_quick_settings_controls_are_named', async () => {
   }
 });
 
+// R51: the quick settings' airplane picture and the Charts sidebar's item icons have no alt: hidden from a screen
+// reader, and the buttons holding them keep their names. The charts capture has the sidebar without its pictures (the old
+// snippet removed every <img>), so they are put back here as the live page has them, first in each item's left part.
+test('Unlabeled_pictures_on_Charts_and_quick_settings_are_hidden_and_their_buttons_keep_their_names', async () => {
+  let quick = null;
+  let charts = null;
+  try {
+    quick = await load('quick-settings');
+    const airplane = one(quick, 'button.quick-settings-btn img[src*=airplane]');
+    assert.strictEqual(airplane.hasAttribute('alt'), false, 'as captured');
+    assert.strictEqual(airplane.getAttribute('aria-hidden'), 'true');
+    assert.strictEqual(nameOf(airplane.closest('button')), 'Airplane mode');
+
+    charts = await load('charts', { layer: false });
+    const items = all(charts, 'app-navigraph-sidebar-item');
+    for (const item of items) {
+      const icon = charts.document.createElement('img');
+      icon.className = 'navigraph-sidebar-item--left-icon';
+      icon.setAttribute('src', item.getAttribute('iconimage'));
+      const left = item.querySelector('.navigraph-sidebar-item--left');
+      left.insertBefore(icon, left.firstChild);
+    }
+    charts.eval(fs.readFileSync(LAYER, 'utf8'));
+    await turns();
+    const icons = all(charts, 'img.navigraph-sidebar-item--left-icon');
+    assert.strictEqual(icons.length, 2);
+    assert.ok(icons.every(icon => icon.getAttribute('aria-hidden') === 'true'));
+    assert.deepStrictEqual(all(charts, 'app-navigraph-sidebar-item div.navigraph-sidebar-item').map(nameOf), ['Route', 'Sync SimBrief']);
+  } finally {
+    if (quick) quick.close();
+    if (charts) charts.close();
+  }
+});
+
 // R24 and R26.
 test('The_moving_map_is_named_without_a_role_or_a_Tab_stop_of_ours_and_the_chart_list_toggle_is_a_button', async () => {
   const window = await load('charts');
@@ -1264,9 +1353,9 @@ for (const fixture of FIXTURES) {
 // the elements that took a key handler are exactly the ones that are not real buttons.
 const SECOND_PASS = {
   'settings': {
-    handled: 2 + 8 + 8 + 5 + 5 + 8 + 3, listeners: 2 + 8 + 5,
+    handled: 2 + 8 + 8 + 5 + 5 + 8 + 3 + 6, listeners: 2 + 8 + 5,
     note: 'home, chevron; eight categories; eight badges; five checkboxes and the five switches that hold them; eight ' +
-      'three-dot buttons; three choice groups'
+      'three-dot buttons; three choice groups; their six choices'
   },
   'failures': {
     handled: 2 + 20 + 53 + 1, listeners: 2 + 20,

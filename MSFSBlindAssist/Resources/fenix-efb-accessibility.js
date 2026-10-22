@@ -6,9 +6,9 @@
 // control the Tab key skips, one the page set to -1 too, and puts the page's own value back afterwards.)
 // More attributes it writes: a drop-down's aria-labelledby gets the drop-down's own id in front of the page's
 // list (the page's list goes back when the layer's label goes); aria-hidden "true" goes on what a screen reader
-// does not need: decorative pictures, icon-font glyphs inside a control, the W&B chart's picture and labels but
-// its limits, the seat map; and the Takeoff results grid gets an aria-owns that reads each label right before
-// its value.
+// does not need: decorative pictures and every picture with no alt, icon-font glyphs inside a control, the W&B
+// chart's picture and labels but its limits, the seat map; and the Takeoff results grid gets an aria-owns that
+// reads each label right before its value and every other child in its place.
 // Three exceptions to "attributes only", each a ruling's: ids for that aria-owns, written only on the cells it
 // lists and only as "msfsba-<n>" (an id the page set is used, never replaced; ruling R46); the runway
 // condition's roving Tab stop, whose arrow keys press the next code and move the focus to it (ruling R47); and
@@ -77,6 +77,9 @@
   var ownsWritten = new WeakMap();
   var idWritten = new WeakMap();
   var idCount = 0;
+  // What each results grid's list named on the last pass (ruling R53), so what the layer wrote on an element it no
+  // longer lists is taken back.
+  var gridListed = new WeakMap();
   // The aria-hidden "true" the layer wrote on a picture, a glyph or a chart label a screen reader does not need.
   var hiddenWritten = new WeakSet();
   // The aria-labelledby a drop-down had before the layer put the drop-down's own id in front of it.
@@ -278,6 +281,18 @@
       setAttr(el, attr, value);
       store.set(el, value);
     }
+  }
+
+  // Follows what a rule finds from pass to pass: `keep` is applied to each element found on this pass, and `drop` to each
+  // found on an earlier pass and not on this one (so what the layer wrote on it is taken back). Returns this pass's list,
+  // to hand in as `before` next time.
+  function followFound(found, before, keep, drop) {
+    var now = [];
+    for (var i = 0; i < found.length; i++) { keep(found[i]); now.push(found[i]); }
+    for (var j = 0; j < before.length; j++) {
+      if (now.indexOf(before[j]) === -1) { drop(before[j]); }
+    }
+    return now;
   }
 
   // Whether the page's own icon inside an element says open ('true'), closed ('false') or neither (null):
@@ -711,43 +726,32 @@
     if (el.getAttribute('id') === mine) { el.removeAttribute('id'); }
   }
 
-  // Lets go of a cell, or of a row and its cells, that is not in the grid's list: what the layer wrote on it is taken
-  // back (its role, label, stamp and id; never anything the page set).
+  // Takes back what the layer wrote on an element of a results grid it no longer lists: its role, label, stamp and id
+  // (never anything the page set).
   function letGo(el) {
-    var cells = [el].concat(gridCells(el));
-    for (var i = 0; i < cells.length; i++) { release(cells[i]); dropId(cells[i]); }
+    release(el);
+    dropId(el);
   }
 
-  // One label row and the value row under it: each label cell and then the value cell in the same column go into the
-  // list. Rows that do not line up (a different number of cells) are not paired by guess: both are let go of.
-  function readPair(labelRow, valueRow, listed) {
-    var labels = gridCells(labelRow);
-    var values = gridCells(valueRow);
-    if (labels.length !== values.length) { letGo(labelRow); letGo(valueRow); return; }
-    for (var i = 0; i < labels.length; i++) {
-      release(labels[i]);
-      notComputed(values[i]);
-      listed.push(labels[i], values[i]);
-    }
-  }
-
-  // Reads one results grid (ruling R46, which replaces R14). A screen reader reads it in page order: every label of a
-  // row, then every value under them. Its aria-owns lists the title (div.text-center), then each label cell followed
-  // by the value cell under it, so each label is read right before its value; nothing is hidden. The ids it needs are
-  // written only on the cells it lists (see ownId). Rows pair as R23 has them: the first time the layer sees two rows
-  // side by side that have no pairing yet, the first is a label row and the second its value row, and the pairing is
-  // kept; after that a row is listed only with the row it was paired with, and only while the two still sit together.
-  // A row the page puts between them, or takes out from under the label, withdraws that pairing instead of shifting
-  // every pair below it; a pairing whose other row has left the grid is forgotten, so rows the page replaces pair up
-  // again. A row without a pair is let go of, and the list follows. A grid with an aria-owns of the page's own is
-  // ordered by the page: the layer lists nothing there.
+  // Reads one results grid (rulings R46 and R53, which replace R14). A screen reader reads it in page order: every
+  // label of a row, then every value under them. Its aria-owns lists every child of the grid in page order, with each
+  // label / value row pair expanded into its cells, the label cell and then the value cell under it, column by column:
+  // each label is read right before its value, and the title, the output line and any row without a pair keep their
+  // place. Nothing is hidden. The ids it needs are written only on what it lists (see ownId). Rows pair as R23 has
+  // them: the first time the layer sees two rows side by side that have no pairing yet, the first is a label row and
+  // the second its value row, and the pairing is kept; after that a row is expanded only with the row it was paired
+  // with, and only while the two still sit together and have as many cells. A row the page puts between them, or
+  // takes out from under the label, withdraws that pairing instead of shifting every pair below it; a pairing whose
+  // other row has left the grid is forgotten, so rows the page replaces pair up again. What the layer wrote on an
+  // element it listed before and no longer lists (its pair broke, or the page moved it out of the grid) is taken back.
+  // A grid with no pair has nothing to reorder, and one with an aria-owns of the page's own is the page's: the layer
+  // lists nothing there.
   function readGrid(screen) {
+    var children = [];
     var rows = [];
-    var title = null;
     for (var child = screen.firstElementChild; child; child = child.nextElementSibling) {
+      children.push(child);
       if (child.classList.contains('row')) { rows.push(child); }
-      else if (!title && child.localName === 'div' && child.classList.contains('text-center')) { title = child; }
-      else { letGo(child); }
     }
     for (var k = 0; k < rows.length; k++) {
       var value = gridValueOf.get(rows[k]);
@@ -755,7 +759,10 @@
       var label = gridLabelOf.get(rows[k]);
       if (label !== undefined && rows.indexOf(label) === -1) { gridLabelOf.delete(rows[k]); gridValueOf.delete(label); }
     }
-    var listed = [];
+    // This pass's pairs whose rows line up (as many cells each): a value is paired with the label in its column, and
+    // rows that do not line up are not paired by guess.
+    var labelRows = [];
+    var valueRows = [];
     for (var r = 0; r < rows.length; ) {
       var next = rows[r + 1];
       var known = gridValueOf.has(rows[r]) || gridLabelOf.has(rows[r]);
@@ -764,37 +771,59 @@
         gridLabelOf.set(next, rows[r]);
       }
       if (next && gridValueOf.get(rows[r]) === next) {
-        readPair(rows[r], next, listed);
+        if (gridCells(rows[r]).length === gridCells(next).length) { labelRows.push(rows[r]); valueRows.push(next); }
         r += 2;
       } else {
-        letGo(rows[r]);
         r += 1;
       }
     }
     var owns = screen.getAttribute('aria-owns');
     var pagesOwn = owns !== null && owns !== ownsWritten.get(screen);
-    if (pagesOwn || listed.length === 0) {
-      // Nothing to list, or the page orders the grid itself: no list and no id of the layer's.
-      if (title) { listed.unshift(title); }
-      for (var d = 0; d < listed.length; d++) { dropId(listed[d]); }
-      if (pagesOwn) { ownsWritten.delete(screen); } else { ownState(screen, 'aria-owns', null, ownsWritten); }
-      return;
+    var listed = [];
+    if (!pagesOwn && labelRows.length > 0) {
+      for (var c = 0; c < children.length; c++) {
+        if (valueRows.indexOf(children[c]) !== -1) { continue; }
+        var at = labelRows.indexOf(children[c]);
+        if (at === -1) { listed.push(children[c]); continue; }
+        var labels = gridCells(labelRows[at]);
+        var values = gridCells(valueRows[at]);
+        for (var i = 0; i < labels.length; i++) {
+          release(labels[i]);
+          notComputed(values[i]);
+          listed.push(labels[i], values[i]);
+        }
+      }
     }
-    if (title) { listed.unshift(title); }
+    var before = gridListed.get(screen) || [];
+    for (var b = 0; b < before.length; b++) {
+      if (listed.indexOf(before[b]) === -1) { letGo(before[b]); }
+    }
+    gridListed.set(screen, listed);
+    if (pagesOwn) { ownsWritten.delete(screen); return; }
     var ids = [];
     for (var n = 0; n < listed.length; n++) {
       var id = ownId(listed[n]);
       if (id) { ids.push(id); }
     }
-    ownState(screen, 'aria-owns', ids.join(' '), ownsWritten);
+    ownState(screen, 'aria-owns', ids.length ? ids.join(' ') : null, ownsWritten);
   }
 
-  // Takeoff: the results are the MCDU's take-off page, a title and then rows that alternate: a row of small
-  // labels and, under it, a row of values. After Calculate the page changes the values in place; each pass
-  // reads them again (the list keeps its cells, so the order holds).
+  // Lets go of a grid that is no longer a results grid (the page took the class off, or the grid is gone): its aria-owns
+  // and everything the layer wrote on what it listed are taken back.
+  function letGoGrid(screen) {
+    var before = gridListed.get(screen) || [];
+    for (var b = 0; b < before.length; b++) { letGo(before[b]); }
+    gridListed.delete(screen);
+    ownState(screen, 'aria-owns', null, ownsWritten);
+  }
+
+  // Takeoff: the results are the MCDU's take-off page, a title, rows that alternate (a row of small labels and, under
+  // it, a row of values) and an output line. After Calculate the page changes the values in place; each pass reads them
+  // again (the list keeps its cells, so the order holds). The grids read on the last pass are remembered, so a grid
+  // that stops being one is given back.
+  var grids = [];
   RULES.push(function (root) {
-    var screens = root.querySelectorAll('.mcdu-screen');
-    for (var s = 0; s < screens.length; s++) { readGrid(screens[s]); }
+    grids = followFound(root.querySelectorAll('.mcdu-screen'), grids, readGrid, letGoGrid);
   });
 
   // Landing: the runway condition is the group of exactly six items whose texts start 6 to 1 ("6 DRY" ...
@@ -927,11 +956,21 @@
     }
   });
 
-  // Settings: an option is a real button named by its own text; it says whether it is the chosen one, as the
-  // page does with option--active.
+  // A Settings choice's name: its label's text, else (a choice that is only a picture) the picture's alt.
+  function optionName(option) {
+    var text = textOf(option.querySelector('.option-label'));
+    if (text) { return text; }
+    var picture = option.querySelector('img');
+    return picture ? (picture.getAttribute('alt') || '').replace(/\s+/g, ' ').trim() : '';
+  }
+
+  // Settings: an option is a real button. Chromium's tree showed it unnamed once its picture was hidden (R42), so it is
+  // named by its own label's text, written as a label (ruling R52). It says whether it is the chosen one, as the page
+  // does with option--active.
   RULES.push(function (root) {
     var options = root.querySelectorAll('app-settings2 button.option');
     for (var i = 0; i < options.length; i++) {
+      name(options[i], optionName(options[i]));
       ownState(options[i], 'aria-pressed', options[i].classList.contains('option--active') ? 'true' : 'false', pressedWritten);
     }
   });
@@ -1202,19 +1241,15 @@
   // Hides from a screen reader the elements a rule found on this pass, and reads again the ones it hid on an earlier
   // pass and no longer finds (only the layer's own hidden state, never the page's). Returns this pass's list.
   function hideOnly(found, before) {
-    var now = [];
-    for (var i = 0; i < found.length; i++) { hide(found[i]); now.push(found[i]); }
-    for (var j = 0; j < before.length; j++) {
-      if (now.indexOf(before[j]) === -1) { unhide(before[j]); }
-    }
-    return now;
+    return followFound(found, before, hide, unhide);
   }
 
   // Every screen: the background picture and the top bar's status icons (airplane mode, signal, link) are pictures with
   // no alt, of nothing a pilot acts on: decorative (ruling R45).
+  var DECORATIVE = 'img#appBg, img.airplane-icon, img.signal-icon, img#linkedup';
   var decorative = [];
   RULES.push(function (root) {
-    decorative = hideOnly(root.querySelectorAll('img#appBg, img.airplane-icon, img.signal-icon, img#linkedup'), decorative);
+    decorative = hideOnly(root.querySelectorAll(DECORATIVE), decorative);
   });
 
   // Mass and Balance: the W&B chart is a picture with labels laid over it (ruling R37). Without the picture its axis
@@ -1222,9 +1257,10 @@
   // ("Take-Off Limits") name what no one can see: the picture and every label are hidden, except a label that states a
   // limit ("MZFW = 61,000KG", a text with "="). A label is a child of the chart with text and no element of its own; the
   // figures table under the chart (live values) is not a label and stays.
+  var W_AND_B = 'div#mainWandBCont';
   var chartHidden = [];
   RULES.push(function (root) {
-    var charts = root.querySelectorAll('div#mainWandBCont');
+    var charts = root.querySelectorAll(W_AND_B);
     var found = [];
     for (var i = 0; i < charts.length; i++) {
       for (var child = charts[i].firstElementChild; child; child = child.nextElementSibling) {
@@ -1260,14 +1296,9 @@
   // the top bar's status icons and quick settings button, and the div around every app's view. Neither is a control;
   // role "none" quiets them (ruling R48). A role the page gives is the page's; the layer's own goes with the class.
   var quieted = [];
+  function quiet(el) { giveRole(el, 'none'); }
   RULES.push(function (root) {
-    var wrappers = root.querySelectorAll('span.status-icons-clickable, div.router-container');
-    var now = [];
-    for (var i = 0; i < wrappers.length; i++) { giveRole(wrappers[i], 'none'); now.push(wrappers[i]); }
-    for (var j = 0; j < quieted.length; j++) {
-      if (now.indexOf(quieted[j]) === -1) { takeRole(quieted[j]); }
-    }
-    quieted = now;
+    quieted = followFound(root.querySelectorAll('span.status-icons-clickable, div.router-container'), quieted, quiet, takeRole);
   });
 
   // The controls a glyph can sit in: the page's own, and every element the layer stamped.
@@ -1287,6 +1318,24 @@
       if (!icons[i].matches(CONTROL) && holder && holder.closest(CONTROL)) { found.push(icons[i]); }
     }
     glyphs = hideOnly(found, glyphs);
+  });
+
+  // Every screen: a picture with no alt attribute says nothing to a screen reader but "graphic", or its file name (the
+  // Landing logo and FMS and one-click pictures, the Charts sidebar icons, quick settings' airplane): it is hidden
+  // (ruling R51). An alt, an empty one included, is the page's own word on the picture, and a picture that is itself a
+  // control is the control: both are left alone. The pictures the rules above hide (the background and status icons,
+  // the W&B chart's picture) are theirs. A control that holds a hidden picture keeps its name: a picture with no alt
+  // gives none.
+  var unlabeled = [];
+  RULES.push(function (root) {
+    var pictures = root.querySelectorAll('img:not([alt])');
+    var found = [];
+    for (var i = 0; i < pictures.length; i++) {
+      var picture = pictures[i];
+      var chart = picture.parentElement && picture.parentElement.matches(W_AND_B);
+      if (!chart && !picture.matches(CONTROL) && !picture.matches(DECORATIVE)) { found.push(picture); }
+    }
+    unlabeled = hideOnly(found, unlabeled);
   });
 
   function pass() {

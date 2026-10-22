@@ -208,14 +208,16 @@ test('The_seat_map_is_hidden_from_a_screen_reader', async () => {
     assert.ok(['role', 'aria-label', 'tabindex', 'data-msfsba'].every(a => !seats.hasAttribute(a)));
     assert.strictEqual(seats.querySelectorAll('[role],[aria-hidden],[aria-label],[data-msfsba]').length, 0, 'the seats are left as they are');
 
-    // On this screen the layer hides exactly: the top bar's pictures and glyphs, the chart's picture and labels but
-    // its limits, and the seat map.
+    // On this screen the layer hides exactly: the top bar's pictures and glyphs, every other picture with no alt (R51:
+    // the closed switcher's icons, the battery pictures, the logos, the seat map's background), the chart's picture and
+    // labels but its limits, and the seat map.
     const hidden = hiddenByLayer(bare, window);
     assert.deepStrictEqual(hidden.filter(h => !/^div\.(line-with-text|text-numbers-)/.test(h)), [
       'img#appBg', 'i.fas.fa-chevron-down', 'img.airplane-icon.top-icon-fade-out', 'img.signal-icon.top-icon-fade-in',
-      'img#linkedup', 'i.fas.fa-cog', 'img#mainWandB', 'div#seatContainer'
+      'img#linkedup', 'i.fas.fa-cog', ...Array(9).fill('img.app-img'), 'img.battery-none', 'img.lightning', 'img',
+      'img#mainWandB', 'img.logo.opacity-10.logo-big', 'img#seatMapBg', 'div#seatContainer'
     ]);
-    assert.strictEqual(hidden.length, 8 + 33);
+    assert.strictEqual(hidden.length, 22 + 33);
   } finally {
     bare.close();
     window.close();

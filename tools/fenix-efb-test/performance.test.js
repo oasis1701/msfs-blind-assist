@@ -1,9 +1,10 @@
 'use strict';
 // The Takeoff (depperf) and Landing (arrperf, arrperf-electrical) calculators, checked against the LIVE captures
 // (fixtures/depperf.html, arrperf.html, arrperf-electrical.html; Fenix 3.0.0.7438, A320-232 IAE, kilograms and hPa):
-// the fields named by the page's own labels, the Takeoff results grid read label then value (ruling R46), the
-// Landing runway condition as a radio group with one Tab stop (R47), the Landing options and procedures as buttons,
-// and a procedure's sub-page with its Back button and tick boxes (R39).
+// the fields named by the page's own labels, the Takeoff results grid read label then value with every other child in
+// its place (rulings R46, R53), the Landing runway condition as a radio group with one Tab stop at its place in the
+// page's Tab order (R47, R54), the Landing options and procedures as buttons, a procedure's sub-page with its Back
+// button and tick boxes (R39), and the pictures with no alt hidden (R51).
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -181,18 +182,21 @@ test('A_field_without_its_own_label_takes_its_column_header_else_a_placeholder_w
   }
 });
 
-// ---- The results grid (ruling R46, which replaces R14) ----
+// ---- The results grid (rulings R46 and R53, which replace R14) ----
 // The results are the MCDU's take-off page: a title, then rows that alternate, a row of small labels and under it a
-// row of values. A screen reader reads the page in DOM order, so it met every label of a row before any of its values.
-// The grid's aria-owns lists the title, then, for each label / value row pair and each column, the label cell and then
-// its value cell: each label is read right before its value. Nothing is hidden and no cell is a picture, except an
-// empty "not computed" value cell (only the MCDU's yellow boxes), which is one named "not computed". The ids aria-owns
-// needs are the layer's own ("msfsba-<n>"), written only on the cells it lists; an id the page set is used as it is.
+// row of values, then an output line. A screen reader reads the page in DOM order, so it met every label of a row
+// before any of its values. The grid's aria-owns lists every child of the grid in DOM order, with each label / value
+// row pair expanded into its cells, the label cell and then the value cell under it, column by column: each label is
+// read right before its value, and nothing (the output line, a row without a pair) is read before the title or out of
+// its place. Nothing is hidden and no cell is a picture, except an empty "not computed" value cell (only the MCDU's
+// yellow boxes), which is one named "not computed". The ids aria-owns needs are the layer's own ("msfsba-<n>"),
+// written only on what it lists; an id the page set is used as it is.
 
 const rowsOf = window => [...window.document.querySelector('.mcdu-screen').children].filter(el => el.classList.contains('row'));
 const cellsOf = row => [...row.children];
 const screenOf = window => window.document.querySelector('.mcdu-screen');
 const titleOf = window => window.document.querySelector('.mcdu-screen > .text-center');
+const outputOf = window => window.document.querySelector('.mcdu-screen > .text-output');
 
 // The elements the grid's aria-owns lists, in its order (a missing id would show as null).
 const ownedOf = window => (screenOf(window).getAttribute('aria-owns') || '').split(/\s+/).filter(Boolean)
@@ -202,6 +206,19 @@ const reading = window => ownedOf(window)
   .map(el => el.getAttribute('role') === 'img' ? el.getAttribute('aria-label') : textOf(window)(el));
 // The elements that carry an id of the layer's.
 const layerIds = window => all(window, '[id^="msfsba-"]');
+// A label row and the value row under it, as the list has them: label cell, value cell, column by column.
+const pairOf = (labelRow, valueRow) => cellsOf(labelRow).flatMap((label, c) => [label, cellsOf(valueRow)[c]]);
+// The capture's own order: the title, the five pairs, the output line.
+const fullOrder = window => {
+  const rows = rowsOf(window);
+  return [titleOf(window), ...[0, 2, 4, 6, 8].flatMap(r => pairOf(rows[r], rows[r + 1])), outputOf(window)];
+};
+// The list is exactly these elements, in this order.
+function assertOwned(window, expected, message) {
+  const owned = ownedOf(window);
+  assert.strictEqual(owned.length, expected.length, (message || '') + ': how many');
+  owned.forEach((el, i) => assert.strictEqual(el, expected[i], (message || '') + ': entry ' + i));
+}
 
 // Each column's label and value, as captured (the three empty speeds are "not computed").
 const PAIRS = [
@@ -212,9 +229,8 @@ const PAIRS = [
   ['THR RED/ACC', '----/----'], ['ENG OUT ACC', '----']
 ];
 const TITLE = 'TAKE OFF RWY';
-// The reading with the given pairs (by index into PAIRS) left out.
-const readingWithout = (...left) => [TITLE, ...PAIRS.filter((p, i) => !left.includes(i)).flat()];
-const READING = readingWithout();
+// The output line under the grid is empty in the capture.
+const READING = [TITLE, ...PAIRS.flat(), ''];
 // The cells the layer has written nothing on.
 const untouched = cell => ['role', 'aria-label', 'aria-hidden', 'data-msfsba', 'id'].every(a => !cell.hasAttribute(a));
 function makeRow(window, texts) {
@@ -224,36 +240,39 @@ function makeRow(window, texts) {
   return row;
 }
 
-test('Takeoff_results_read_each_label_right_before_its_value', async () => {
+test('Takeoff_results_read_each_label_right_before_its_value_and_every_other_child_in_its_place', async () => {
   const bare = await load('depperf', { layer: false });
   const window = await load('depperf');
   try {
+    const screen = screenOf(window);
     const rows = rowsOf(window);
-    assert.strictEqual(rows.length, 10, 'five label rows, each with its value row under it');
-    const title = titleOf(window);
-    assert.strictEqual(textOf(window)(title), TITLE);
+    // As captured: the title, ten rows (five label rows, each with its value row under it) and the output line.
+    assert.deepStrictEqual([...screen.children].map(c => c.className.split(' ')[0]),
+      ['text-center', ...Array(10).fill('row'), 'text-output']);
+    assert.strictEqual(textOf(window)(titleOf(window)), TITLE);
 
-    // The order: the title, then label, value, label, value ... across each pair of rows.
-    const expected = [title];
-    for (let r = 0; r < 5; r++) {
-      const labels = cellsOf(rows[2 * r]);
-      const values = cellsOf(rows[2 * r + 1]);
+    // The order: every child in DOM order, each pair of rows as label, value, label, value ... column by column.
+    const expected = [titleOf(window)];
+    for (let r = 0; r < 10; r += 2) {
+      const labels = cellsOf(rows[r]);
+      const values = cellsOf(rows[r + 1]);
       assert.strictEqual(labels.length, values.length);
       for (let c = 0; c < labels.length; c++) expected.push(labels[c], values[c]);
     }
-    const owned = ownedOf(window);
-    assert.strictEqual(owned.length, expected.length);
-    owned.forEach((el, i) => assert.strictEqual(el, expected[i], 'entry ' + i));
+    expected.push(outputOf(window));
+    assertOwned(window, expected, 'the full order');
     assert.deepStrictEqual(reading(window), READING);
+    assert.strictEqual(ownedOf(window)[0], titleOf(window), 'nothing is read before the title');
 
     // The ids are the layer's own: on the listed elements and nowhere else, each new (none had an id on the page).
-    const ids = screenOf(window).getAttribute('aria-owns').split(' ');
+    const ids = screen.getAttribute('aria-owns').split(' ');
+    assert.strictEqual(ids.length, 1 + 2 * 13 + 1);
     assert.ok(ids.every(id => /^msfsba-\d+$/.test(id)), ids.join(' '));
     assert.strictEqual(new Set(ids).size, ids.length, 'each id once');
     assert.strictEqual(layerIds(window).length, ids.length, 'no other element carries an id of the layer\'s');
     const bareAll = [...bare.document.querySelectorAll('*')];
     const windowAll = [...window.document.querySelectorAll('*')];
-    for (const el of owned) assert.strictEqual(bareAll[windowAll.indexOf(el)].hasAttribute('id'), false);
+    for (const el of ownedOf(window)) assert.strictEqual(bareAll[windowAll.indexOf(el)].hasAttribute('id'), false);
     assert.deepStrictEqual(windowAll.filter(el => el.hasAttribute('id') && !el.id.startsWith('msfsba-')).map(el => el.id),
       bareAll.filter(el => el.hasAttribute('id')).map(el => el.id), 'the page\'s own ids are as they were');
 
@@ -264,7 +283,6 @@ test('Takeoff_results_read_each_label_right_before_its_value', async () => {
     assert.strictEqual(all(window, '.mcdu-screen [aria-hidden]').length, 0);
     assert.strictEqual(all(window, '.mcdu-screen [aria-label]').length, 3);
     // The grid gets its order and nothing else.
-    const screen = screenOf(window);
     assert.ok(['role', 'aria-label', 'id', 'tabindex'].every(a => !screen.hasAttribute(a)));
   } finally {
     bare.close();
@@ -322,6 +340,12 @@ test('Takeoff_results_keep_their_order_when_Calculate_changes_them_in_place', as
     await turns();
     assert.strictEqual(at(reading(window), 'STOP MARGIN'), '1450');
 
+    // The output line gets a message: it is read last, where the page has it.
+    outputOf(window).textContent = 'CHECK TOW';
+    await turns();
+    assert.strictEqual(screen.getAttribute('aria-owns'), owns);
+    assert.strictEqual(reading(window).slice(-1)[0], 'CHECK TOW');
+
     // A pass run by hand sees the same, and writes nothing new.
     flpText.nodeValue = ' F=158 ';
     window.__msfsbaFenixEfb.pass();
@@ -332,18 +356,18 @@ test('Takeoff_results_keep_their_order_when_Calculate_changes_them_in_place', as
   }
 });
 
-test('A_results_grid_that_does_not_line_up_is_left_alone', async () => {
+test('A_results_grid_that_does_not_line_up_is_left_in_its_place', async () => {
   const window = await load('depperf', { layer: false });
   try {
-    // A label row and value row of different widths: no cell is paired by guess, so neither row is listed.
+    // A label row and value row of different widths: no cell is paired by guess, so both rows are listed as rows, in
+    // their place, and their cells are left as they are.
     const rows = rowsOf(window);
     rows[1].removeChild(rows[1].lastElementChild);
     window.eval(fs.readFileSync(LAYER, 'utf8'));
     await turns();
     assert.ok([...cellsOf(rows[0]), ...cellsOf(rows[1])].every(untouched));
-    // The other pairs still line up.
-    assert.deepStrictEqual(reading(window), readingWithout(0, 1, 2));
-    assert.strictEqual(cellsOf(rows[3])[0].getAttribute('aria-label'), 'not computed');
+    assertOwned(window, [titleOf(window), rows[0], rows[1], ...fullOrder(window).slice(7)]);
+    assert.strictEqual(cellsOf(rows[3])[0].getAttribute('aria-label'), 'not computed', 'the other pairs still line up');
   } finally {
     window.close();
   }
@@ -369,10 +393,8 @@ test('A_role_label_hidden_state_or_id_the_page_set_in_the_results_grid_is_never_
     assert.strictEqual(stopLabel.getAttribute('aria-hidden'), 'true');
     // The page's id is the one listed for its cell, in its place; the layer writes none over it.
     assert.strictEqual(vrLabel.id, 'vr-label');
-    const owned = ownedOf(window);
-    assert.strictEqual(owned.indexOf(vrLabel), 7, 'the title and three pairs before it');
-    assert.strictEqual(owned[8], cellsOf(rows[3])[0]);
-    assert.ok(owned.includes(v1) && owned.includes(flp), 'the page\'s cells are listed in their places too');
+    assertOwned(window, fullOrder(window));
+    assert.strictEqual(ownedOf(window).indexOf(vrLabel), 7, 'the title and three pairs before it');
 
     // Withdrawn, the page's id stays (it is no longer listed); the layer's own go.
     const screen = screenOf(window);
@@ -394,48 +416,51 @@ test('A_results_grid_the_page_orders_itself_is_left_to_the_page', async () => {
     await turns();
     assert.strictEqual(screenOf(window).getAttribute('aria-owns'), 'page-own-order');
     assert.strictEqual(layerIds(window).length, 0, 'no id written');
-    // The empty speeds are still named.
-    assert.strictEqual(all(window, '[role=img]').length, 3);
+    assert.strictEqual(all(window, '[role=img]').length, 0, 'the grid is the page\'s: no picture either');
 
-    // The page takes its own away: the layer lists the grid from then on.
+    // The page takes its own away: the layer reads the grid from then on.
     screenOf(window).removeAttribute('aria-owns');
     window.__msfsbaFenixEfb.pass();
     assert.deepStrictEqual(reading(window), READING);
+    assert.strictEqual(all(window, '[role=img]').length, 3);
   } finally {
     window.close();
   }
 });
 
-// ---- The results grid keeps up with its rows (ruling R23, kept by R46) ----
-// A row that falls out of its label / value pair is let go of: its cells leave the list and lose the layer's ids. A
-// pairing is trusted only while its two rows still sit together; a row that turns up between them (or anywhere) never
-// shifts the pairs below it or mixes the cells of two rows.
+// ---- The results grid keeps up with its rows (ruling R23, kept by R46 and R53) ----
+// A row that falls out of its label / value pair is let go of: its cells leave the list and lose what the layer wrote,
+// and the row itself is listed in its place. A pairing is trusted only while its two rows still sit together; a row
+// that turns up between them (or anywhere) never shifts the pairs below it or mixes the cells of two rows.
 
-test('A_label_row_left_without_its_value_row_leaves_the_list_and_pairs_again_when_the_value_row_returns', async () => {
+test('A_label_row_left_without_its_value_row_is_listed_as_a_row_and_pairs_again_when_the_value_row_returns', async () => {
   const window = await load('depperf');
   try {
     const screen = screenOf(window);
     const rows = rowsOf(window);
     const last = rows[9];
     const after = last.nextSibling;
-    assert.deepStrictEqual(reading(window), READING);
-    assert.strictEqual(layerIds(window).length, 1 + 2 * 13);
+    assertOwned(window, fullOrder(window));
+    assert.strictEqual(layerIds(window).length, 1 + 2 * 13 + 1);
 
     // The page drops the last value row: its two labels have nothing under them.
     screen.removeChild(last);
     await turns();
     const orphans = cellsOf(rows[8]);
     assert.ok(orphans.every(untouched), 'no id, no role, no name, not hidden');
-    assert.deepStrictEqual(orphans.map(textOf(window)), ['THR RED/ACC', 'ENG OUT ACC']);
-    assert.deepStrictEqual(reading(window), readingWithout(11, 12), 'the other pairs carry on');
-    assert.strictEqual(layerIds(window).length, 1 + 2 * 11);
+    assertOwned(window, [titleOf(window), ...[0, 2, 4, 6].flatMap(r => pairOf(rows[r], rows[r + 1])), rows[8], outputOf(window)]);
+    assert.deepStrictEqual(reading(window).slice(-2), ['THR RED/ACC ENG OUT ACC', ''], 'the row as a row, then the output line');
+    assert.strictEqual(layerIds(window).length, 1 + 2 * 11 + 1 + 1);
+    assert.ok(cellsOf(last).every(untouched), 'the dropped row\'s cells get back what the layer wrote');
 
     // The value row comes back: so does the pair.
     screen.insertBefore(last, after);
     await turns();
+    assertOwned(window, fullOrder(window));
     assert.deepStrictEqual(reading(window), READING);
     assert.ok(orphans.every(c => c.id.startsWith('msfsba-')));
-    assert.strictEqual(layerIds(window).length, 1 + 2 * 13);
+    assert.strictEqual(rows[8].hasAttribute('id'), false, 'the row is not listed now: its id is taken back');
+    assert.strictEqual(layerIds(window).length, 1 + 2 * 13 + 1);
   } finally {
     window.close();
   }
@@ -446,31 +471,33 @@ test('A_row_inserted_into_the_results_grid_never_mixes_two_rows_and_a_pairing_it
   try {
     const screen = screenOf(window);
     const rows = rowsOf(window);
+    const [title, output] = [titleOf(window), outputOf(window)];
+    const pairs = [0, 2, 4, 6, 8].map(r => pairOf(rows[r], rows[r + 1]));
 
-    // Between two pairs, two columns wide like the pairs below it: every pair still holds, the new row is no pair.
+    // Between two pairs, two columns wide like the pairs below it: every pair still holds, the new row is listed as a
+    // row, in its place.
     const extra = makeRow(window, ['NOTE', 'HERE']);
     screen.insertBefore(extra, rows[6]);
     await turns();
-    assert.deepStrictEqual(reading(window), READING);
+    assertOwned(window, [title, ...pairs[0], ...pairs[1], ...pairs[2], extra, ...pairs[3], ...pairs[4], output]);
     assert.ok(cellsOf(extra).every(untouched));
 
     // Between a label row and its value row, three columns wide like the pair it breaks: that pairing no longer holds
-    // and is withdrawn (VR, SLT RETR and TO SHIFT leave the list); nothing else changes.
+    // and is withdrawn (VR, SLT RETR and TO SHIFT leave the list as cells; the three rows are listed as rows).
     const between = makeRow(window, ['A', 'B', 'C']);
     screen.insertBefore(between, rows[3]);
     await turns();
     for (const row of [rows[2], rows[3], between]) assert.ok(cellsOf(row).every(untouched));
-    assert.deepStrictEqual(reading(window), readingWithout(3, 4, 5));
-    assert.ok(cellsOf(extra).every(untouched));
+    assertOwned(window, [title, ...pairs[0], rows[2], between, rows[3], ...pairs[2], extra, ...pairs[3], ...pairs[4], output]);
 
     // Taken out again, the grid is as it was.
     screen.removeChild(between);
     await turns();
-    assert.deepStrictEqual(reading(window), READING);
+    assertOwned(window, [title, ...pairs[0], ...pairs[1], ...pairs[2], extra, ...pairs[3], ...pairs[4], output]);
     screen.removeChild(extra);
     await turns();
-    assert.deepStrictEqual(reading(window), READING);
-    assert.strictEqual(layerIds(window).length, 1 + 2 * 13);
+    assertOwned(window, fullOrder(window));
+    assert.strictEqual(layerIds(window).length, 1 + 2 * 13 + 1);
   } finally {
     window.close();
   }
@@ -482,16 +509,18 @@ test('A_row_that_stops_being_a_value_row_is_released_and_a_new_pair_of_rows_is_r
     const screen = screenOf(window);
     const rows = rowsOf(window);
     const [labelRow, valueRow] = [rows[2], rows[3]];
+    const [title, output] = [titleOf(window), outputOf(window)];
 
-    // The page takes the row class off the value row: it is not a row of the grid any more.
+    // The page takes the row class off the value row: it is not a row of the grid any more, but still a child of it.
     valueRow.className = 'not-a-row';
     await turns();
     assert.ok(cellsOf(valueRow).every(untouched), 'no stale picture or id is left behind');
     assert.ok(cellsOf(labelRow).every(untouched));
-    assert.deepStrictEqual(reading(window), readingWithout(3, 4, 5));
+    assertOwned(window, [title, ...pairOf(rows[0], rows[1]), labelRow, valueRow,
+      ...[4, 6, 8].flatMap(r => pairOf(rows[r], rows[r + 1])), output]);
     valueRow.className = 'row';
     await turns();
-    assert.deepStrictEqual(reading(window), READING);
+    assertOwned(window, fullOrder(window));
 
     // A new pair of rows (a label row and its value row) is read as a pair, wherever the page puts it.
     const newLabels = makeRow(window, ['ALT', 'SPD']);
@@ -499,13 +528,14 @@ test('A_row_that_stops_being_a_value_row_is_released_and_a_new_pair_of_rows_is_r
     screen.insertBefore(newLabels, rows[4]);
     screen.insertBefore(newValues, rows[4]);
     await turns();
-    assert.deepStrictEqual(reading(window), [TITLE, ...PAIRS.slice(0, 6).flat(), 'ALT', '350', 'SPD', '250', ...PAIRS.slice(6).flat()]);
+    assert.deepStrictEqual(reading(window),
+      [TITLE, ...PAIRS.slice(0, 6).flat(), 'ALT', '350', 'SPD', '250', ...PAIRS.slice(6).flat(), '']);
 
     // The page puts a fresh value row in place of one it dropped: the labels pair with it again.
     const fresh = makeRow(window, ['FRESH', 'ROW']);
     screen.replaceChild(fresh, rows[9]);
     await turns();
-    assert.deepStrictEqual(reading(window).slice(-4), ['THR RED/ACC', 'FRESH', 'ENG OUT ACC', 'ROW']);
+    assert.deepStrictEqual(reading(window).slice(-5), ['THR RED/ACC', 'FRESH', 'ENG OUT ACC', 'ROW', '']);
   } finally {
     window.close();
   }
@@ -537,6 +567,63 @@ test('A_withdrawn_pairing_takes_back_only_what_the_layer_wrote', async () => {
     assert.strictEqual(vrLabel.getAttribute('aria-hidden'), 'true', 'the page\'s hidden state stays');
     assert.strictEqual(sltLabel.id, 'slt-label', 'the page\'s id stays');
     assert.ok(!ownedOf(window).includes(sltLabel));
+  } finally {
+    window.close();
+  }
+});
+
+// What the layer wrote on a grid that stops being one, or on rows the page moves out of it, is taken back: the grid's
+// aria-owns, the ids and the "not computed" pictures (review minor 1). The grid as the page left it is what remains.
+test('A_grid_that_stops_being_a_results_grid_gets_back_everything_the_layer_wrote', async () => {
+  const bare = await load('depperf', { layer: false });
+  const window = await load('depperf');
+  try {
+    const screen = screenOf(window);
+    const subtree = grid => [grid, ...grid.querySelectorAll('*')]
+      .map(el => el.localName + ':' + [...el.attributes].map(a => a.name + '=' + a.value).join('|'));
+    const bareGrid = screenOf(bare);
+    const asCaptured = subtree(bareGrid);
+    assert.ok(screen.hasAttribute('aria-owns') && all(window, '[role=img]').length === 3, 'read as a grid first');
+
+    screen.setAttribute('class', 'mcdu-screen-off');
+    await turns();
+    assert.strictEqual(screen.hasAttribute('aria-owns'), false);
+    assert.strictEqual(layerIds(window).length, 0);
+    assert.strictEqual(all(window, '[role=img]').length, 0);
+    // Everything in it is as the page has it (the grid itself carries only the class the test changed).
+    assert.deepStrictEqual(subtree(screen).slice(1), asCaptured.slice(1));
+    assert.deepStrictEqual([...screen.attributes].map(a => a.name), [...bareGrid.attributes].map(a => a.name));
+
+    // It becomes a grid again: it is read as one again.
+    screen.setAttribute('class', 'mcdu-screen');
+    await turns();
+    assertOwned(window, fullOrder(window));
+    assert.strictEqual(all(window, '[role=img]').length, 3);
+  } finally {
+    bare.close();
+    window.close();
+  }
+});
+
+test('Cells_of_rows_the_page_moves_out_of_the_grid_get_back_what_the_layer_wrote', async () => {
+  const window = await load('depperf');
+  try {
+    const doc = window.document;
+    const rows = rowsOf(window);
+    const holder = doc.createElement('div');
+    doc.body.appendChild(holder);
+    // The first pair (V1, with its "not computed" picture) moves out as a pair, and the last label row alone.
+    holder.appendChild(rows[0]);
+    holder.appendChild(rows[1]);
+    holder.appendChild(rows[8]);
+    await turns();
+    for (const row of [rows[0], rows[1], rows[8]]) {
+      assert.ok(cellsOf(row).every(untouched), 'nothing of the layer\'s is left on a moved cell');
+      assert.strictEqual(row.hasAttribute('id'), false);
+    }
+    assert.strictEqual(cellsOf(rows[1])[0].hasAttribute('role'), false, 'V1 is no picture out of the grid');
+    // The grid lists what it holds now: the last value row has no label row above it any more, so it is a row.
+    assertOwned(window, [titleOf(window), ...[2, 4, 6].flatMap(r => pairOf(rows[r], rows[r + 1])), rows[9], outputOf(window)]);
   } finally {
     window.close();
   }
@@ -1026,6 +1113,47 @@ test('Landing_fields_are_named_by_their_label_or_unit_and_the_weight_box_by_its_
     assert.strictEqual(nameOf(window.document.querySelector('button.arrival-btn-live-wx')), 'SYNC LIVE WX');
   } finally {
     window.close();
+  }
+});
+
+// R51: the Landing page's pictures have no alt: the logo (a data: PNG), the FMS button's picture and the one-click
+// options' pictures. They are hidden, and the buttons holding them keep their names. The arrperf capture has them
+// removed (the old snippet removed every <img>), so they are put back here as the live page has them; the sub-page
+// capture has the logo itself.
+test('Unlabeled_Landing_pictures_are_hidden_and_the_buttons_holding_them_keep_their_names', async () => {
+  const window = await load('arrperf', { layer: false });
+  let sub = null;
+  try {
+    const doc = window.document;
+    const put = (parent, cls, src) => {
+      const img = doc.createElement('img');
+      if (cls) img.className = cls;
+      img.setAttribute('src', src);
+      parent.insertBefore(img, parent.firstChild);
+      return img;
+    };
+    const logo = put(doc.querySelector('div.arrival-logo'), '', 'data:,');
+    const fms = put(doc.querySelector('button.btn-from-fms'), 'fms-img', '/assets/img/fms.png');
+    const ones = all(window, 'div.one-click-change').map(o => put(o, 'one-click-change-img', '/assets/img/up.png'));
+    // A picture the page describes is the page's.
+    const described = put(doc.querySelector('div.arrival-logo'), 'described', '/assets/img/fenix.png');
+    described.setAttribute('alt', 'Fenix');
+    window.eval(fs.readFileSync(LAYER, 'utf8'));
+    await turns();
+
+    assert.ok([logo, fms, ...ones].every(img => img.getAttribute('aria-hidden') === 'true'));
+    assert.strictEqual(described.hasAttribute('aria-hidden'), false);
+    assert.strictEqual(nameOf(doc.querySelector('button.btn-from-fms')), 'FMS');
+    assert.deepStrictEqual(all(window, 'div.one-click-change').map(nameOf),
+      ['LOW A/BRAKE', 'IDLE/NO REV', 'MANUAL LAND', 'FLAP FULL', 'A/THR ON']);
+
+    sub = await load('arrperf-electrical');
+    const subLogo = sub.document.querySelector('div.arrival-logo img');
+    assert.strictEqual(subLogo.getAttribute('src'), 'data:,', 'as captured');
+    assert.strictEqual(subLogo.getAttribute('aria-hidden'), 'true');
+  } finally {
+    window.close();
+    if (sub) sub.close();
   }
 });
 

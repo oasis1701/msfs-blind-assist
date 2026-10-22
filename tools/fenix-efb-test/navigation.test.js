@@ -19,12 +19,12 @@ test('Home_tiles_are_named_buttons_and_the_quick_settings_button_keeps_its_own_n
       assert.strictEqual(computeAccessibleName(tile), TITLES[i]);
     });
 
-    // The home tiles hold the same pictures as the switcher, but the pictures are not buttons here, and the
-    // layer does not hide them either (the tile is named by its title).
+    // The home tiles hold the same pictures as the switcher, but the pictures are not buttons here. They have no alt,
+    // so they are hidden from a screen reader (R51); the tile is named by its title.
     for (const img of window.document.querySelectorAll('img.app-img')) {
       assert.strictEqual(img.getAttribute('role'), null);
       assert.strictEqual(img.hasAttribute('data-msfsba'), false);
-      assert.strictEqual(img.hasAttribute('aria-hidden'), false);
+      assert.strictEqual(img.getAttribute('aria-hidden'), 'true');
     }
 
     // The page already names this one; the layer leaves it exactly as it is.
@@ -240,7 +240,8 @@ test('Second_pass_changes_nothing_on_the_switcher', async () => {
 
 // R45: the background picture is the first thing on every screen, and the top bar's status icons are pictures of a
 // state the pilot does not act on. None has an alt of its own; all are hidden from a screen reader. So is the glyph
-// of the quick settings cog (R41: an icon font's glyph inside a button). Nothing else on home is.
+// of the quick settings cog (R41: an icon font's glyph inside a button), and so are the tiles' pictures (R51: a picture
+// with no alt). Nothing else on home is.
 test('The_background_and_the_top_bar_status_icons_are_hidden_from_a_screen_reader', async () => {
   const bare = await load('home', { layer: false });
   const window = await load('home');
@@ -251,8 +252,9 @@ test('The_background_and_the_top_bar_status_icons_are_hidden_from_a_screen_reade
     assert.deepStrictEqual(pictures.map(img => img.getAttribute('aria-hidden')), ['true', 'true', 'true', 'true']);
     assert.ok(pictures.every(img => !img.hasAttribute('role') && !img.hasAttribute('data-msfsba')), 'hidden, nothing else');
     assert.deepStrictEqual(hiddenByLayer(bare, window), [
-      'img#appBg', 'img.airplane-icon.top-icon-fade-out', 'img.signal-icon.top-icon-fade-in', 'img#linkedup', 'i.fas.fa-cog'
-    ]);
+      'img#appBg', 'img.airplane-icon.top-icon-fade-out', 'img.signal-icon.top-icon-fade-in', 'img#linkedup', 'i.fas.fa-cog',
+      'img.battery-none', 'img.lightning', ...Array(9).fill('img.app-img')
+    ], 'the top bar\'s battery pictures have no alt either (R51)');
     // The quick settings button keeps the page's own name; its glyph is not part of it.
     assert.strictEqual(computeAccessibleName(window.document.querySelector('button.top-bar-settings-btn')), 'Open quick settings');
   } finally {
@@ -324,10 +326,49 @@ test('A_role_the_page_gave_a_clickable_wrapper_is_kept', async () => {
   }
 });
 
+// R51: a picture with no alt attribute that is not itself a control says nothing to a screen reader but "graphic" (or
+// its file name): it is hidden, wherever it is. A picture with an alt (an empty one included: that is the page saying
+// it is decorative) is the page's to describe, and one that is itself a control is the control.
+test('A_picture_with_no_alt_is_hidden_and_the_control_holding_it_keeps_its_name', async () => {
+  const window = await load('home');
+  try {
+    const doc = window.document;
+    const tiles = [...doc.querySelectorAll('#appContainer > div.appIcon')];
+    assert.ok(tiles.every(t => t.querySelector('img.app-img').getAttribute('aria-hidden') === 'true'));
+    assert.deepStrictEqual(tiles.map(computeAccessibleName), TITLES, 'each tile keeps its name');
+
+    const holder = doc.createElement('div');
+    holder.className = 'pictures';
+    holder.innerHTML =
+      '<img class="no-alt" src="/assets/img/x.png">' +
+      '<img class="empty-alt" src="/assets/img/y.png" alt="">' +
+      '<img class="alt" src="/assets/img/z.png" alt="Logo">' +
+      '<img class="own-role" src="/assets/img/w.png" role="button" tabindex="0">' +
+      '<img class="page-shown" src="/assets/img/v.png" aria-hidden="false">';
+    doc.body.appendChild(holder);
+    await turns();
+    const pic = cls => holder.querySelector('img.' + cls);
+    assert.strictEqual(pic('no-alt').getAttribute('aria-hidden'), 'true');
+    assert.ok(['empty-alt', 'alt', 'own-role'].every(c => !pic(c).hasAttribute('aria-hidden')), 'the page\'s to describe, or a control');
+    assert.strictEqual(pic('page-shown').getAttribute('aria-hidden'), 'false', 'the page\'s own');
+    assert.deepStrictEqual([...holder.querySelectorAll('img')].map(img => img.getAttribute('alt')), [null, '', 'Logo', null, null],
+      'the layer writes no alt');
+
+    // The page gives the picture an alt (the observer does not watch alt, so the pass is run by hand): the layer's
+    // hidden state is taken back.
+    pic('no-alt').setAttribute('alt', 'Now described');
+    window.__msfsbaFenixEfb.pass();
+    assert.strictEqual(pic('no-alt').hasAttribute('aria-hidden'), false);
+  } finally {
+    window.close();
+  }
+});
+
 // Each rule is its own: one that throws never skips the others. A rule is made to fail by its own query of the
 // whole page; every other rule still does its work.
 const HOME_ISOLATION = [
-  ['img#appBg', 'img[aria-hidden=true]', 4],
+  ['img#appBg', ['#appBg', '#linkedup', '.airplane-icon', '.signal-icon'].map(s => 'img' + s + '[aria-hidden=true]').join(', '), 4],
+  ['img:not([alt])', 'img.app-img[aria-hidden=true]', 9],
   ['status-icons-clickable', '[role=none]', 2],
   ['i[class*=', 'i[aria-hidden=true]', 1]
 ];
