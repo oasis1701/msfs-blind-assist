@@ -2,7 +2,8 @@
 // Settings, Failures, Documents, Charts and the quick settings, checked against the LIVE captures
 // (fixtures/settings.html, failures.html, documents.html, charts.html, quick-settings.html; Fenix 3.0.0.7438,
 // A320-232 IAE). A name is the page's own text wherever the page gives one; where it gives none the name is
-// one the rulings chose (R10 quick settings, R15 Charts, R21 Documents) or owner decision 5's.
+// one the rulings chose (R10 and R30 quick settings, R15 Charts, R21 Documents) or owner decision 5's; states
+// and failure words follow the page's own classes (R28, R29).
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -97,6 +98,78 @@ test('Settings_options_say_name_and_choice_and_follow_the_page', async () => {
     assert.deepStrictEqual(pressed(window, categories[3]), { caught: true, clicks: 1 });
     assert.deepStrictEqual(pressed(window, categories[3], ' '), { caught: true, clicks: 1 });
     assert.deepStrictEqual(pressed(window, options[0]), { caught: false, clicks: 0 });
+  } finally {
+    window.close();
+  }
+});
+
+// R32: each article's choices sit in a container of the page's own; it becomes a group named by the setting, so a
+// Tab into "Classic" or "Modern" says which setting they choose. The choices keep their own names and states.
+test('Settings_choices_sit_in_a_group_named_by_their_setting', async () => {
+  const window = await load('settings');
+  try {
+    const options = all(window, 'button.option');
+    const containers = [...new Set(options.map(o => o.parentElement))];
+    assert.strictEqual(containers.length, 3);
+    assert.ok(containers.every(c => c.classList.contains('option-grid')), 'the page\'s own container, as captured');
+    assert.deepStrictEqual(containers.map(attr('role')), ['group', 'group', 'group']);
+    assert.deepStrictEqual(containers.map(nameOf),
+      ['Air Data Inertial Reference System (ADIRS)', 'Audio Control Panel (ACP)', 'Barometric Unit']);
+    // The same setting name the article's other controls use (here, its "More options for ..." button).
+    for (const container of containers) {
+      const dots = container.closest('article').querySelector('button.overflow-button');
+      assert.strictEqual('More options for ' + nameOf(container), nameOf(dots));
+    }
+    assert.deepStrictEqual(options.map(nameOf), ['GNADIRS', 'ADIRS', 'Classic', 'Modern', 'hPa', 'inHg']);
+    assert.deepStrictEqual(options.map(attr('aria-pressed')), ['false', 'true', 'false', 'true', 'true', 'false']);
+    assert.strictEqual(all(window, '[role=group]').length, 3, 'nothing else became a group');
+
+    // The heading's text changes: the group's name follows.
+    const acp = containers[1];
+    const heading = acp.closest('article').querySelector('.settings-name');
+    heading.firstChild.nodeValue = ' Audio panel ';
+    await turns();
+    assert.strictEqual(nameOf(acp), 'Audio panel');
+
+    // The container stops holding choices: the layer's own role and label go (the test takes the choices out);
+    // they come back with the choices.
+    const choices = [...acp.querySelectorAll('button.option')];
+    for (const choice of choices) acp.removeChild(choice);
+    await turns();
+    assert.strictEqual(acp.hasAttribute('role'), false);
+    assert.strictEqual(acp.hasAttribute('aria-label'), false);
+    assert.strictEqual(acp.hasAttribute('data-msfsba'), false);
+    for (const choice of choices) acp.appendChild(choice);
+    await turns();
+    assert.strictEqual(acp.getAttribute('role'), 'group');
+    assert.strictEqual(nameOf(acp), 'Audio panel');
+  } finally {
+    window.close();
+  }
+});
+
+test('A_role_or_label_the_page_gave_a_settings_choice_container_is_kept', async () => {
+  const window = await load('settings', { layer: false });
+  try {
+    const [adirs, acp] = [...new Set(all(window, 'button.option').map(o => o.parentElement))];
+    adirs.setAttribute('role', 'radiogroup');
+    acp.setAttribute('aria-label', 'Panel style');
+    window.eval(fs.readFileSync(LAYER, 'utf8'));
+    await turns();
+    assert.strictEqual(adirs.getAttribute('role'), 'radiogroup');
+    assert.strictEqual(nameOf(adirs), 'Air Data Inertial Reference System (ADIRS)');
+    assert.strictEqual(acp.getAttribute('aria-label'), 'Panel style');
+    assert.strictEqual(acp.getAttribute('role'), 'group');
+
+    // Withdrawn, the layer takes back only its own: the page's role and label stay.
+    for (const container of [adirs, acp]) {
+      for (const choice of [...container.querySelectorAll('button.option')]) container.removeChild(choice);
+    }
+    await turns();
+    assert.strictEqual(adirs.getAttribute('role'), 'radiogroup');
+    assert.strictEqual(adirs.hasAttribute('aria-label'), false);
+    assert.strictEqual(acp.getAttribute('aria-label'), 'Panel style');
+    assert.strictEqual(acp.hasAttribute('role'), false);
   } finally {
     window.close();
   }
@@ -712,11 +785,31 @@ test('Charts_and_quick_settings_controls_are_named', async () => {
   try {
     charts = await load('charts');
     quick = await load('quick-settings');
-    // The sidebar has three items as captured, all buttons named by their text.
-    const sidebar = all(charts, 'div.navigraph-sidebar-item');
-    assert.deepStrictEqual(sidebar.map(nameOf), ['My Flight', 'Route', 'Sync SimBrief']);
+    // The sidebar's items (R34): each app-navigraph-sidebar-item's div is a button named by its text. The
+    // "My Flight" header above them carries the item class too, but it is a heading, not a button.
+    const sidebar = all(charts, 'app-navigraph-sidebar-item div.navigraph-sidebar-item');
+    assert.deepStrictEqual(sidebar.map(nameOf), ['Route', 'Sync SimBrief']);
     assert.ok(sidebar.every(el => el.getAttribute('role') === 'button' && el.tabIndex === 0));
-    assert.deepStrictEqual(pressed(charts, sidebar[1]), { caught: true, clicks: 1 });
+    assert.deepStrictEqual(pressed(charts, sidebar[0]), { caught: true, clicks: 1 });
+    const header = one(charts, 'div.navigraph-sidebar-header');
+    assert.ok(header.classList.contains('navigraph-sidebar-item'), 'as captured');
+    assert.strictEqual(squash(header.textContent), 'My Flight');
+    assert.deepStrictEqual(layerStamp(header), NO_STAMP);
+    assert.deepStrictEqual(pressed(charts, header), { caught: false, clicks: 0 });
+
+    // Quick settings (R30): the backdrop behind the pop-up closes it when clicked, as a mouse click outside does;
+    // it is the keyboard's way out ("Close quick settings").
+    const backdrop = one(quick, 'div.brightness-popup-backdrop');
+    assert.strictEqual(backdrop.getAttribute('role'), 'button');
+    assert.strictEqual(backdrop.tabIndex, 0);
+    assert.strictEqual(nameOf(backdrop), 'Close quick settings');
+    assert.deepStrictEqual(pressed(quick, backdrop), { caught: true, clicks: 1 });
+    assert.deepStrictEqual(pressed(quick, backdrop, ' '), { caught: true, clicks: 1 });
+    let closes = 0;
+    backdrop.addEventListener('click', () => { closes++; });
+    delete backdrop.click;                // the element's own click: it reaches the page's handler
+    assert.ok(press(quick, backdrop, { key: 'Enter' }).defaultPrevented);
+    assert.strictEqual(closes, 1);
 
     // The zoom icons (R15 / owner decision 5): the ids sit on the icons and their parent holds both, so each
     // icon is the button (a capture cannot show where the page's listener is).
@@ -883,8 +976,8 @@ for (const fixture of FIXTURES) {
 // the elements that took a key handler are exactly the ones that are not real buttons.
 const SECOND_PASS = {
   'settings': {
-    handled: 2 + 8 + 8 + 5 + 8, listeners: 2 + 8,
-    note: 'home, chevron; eight categories; eight badges; five checkboxes; eight three-dot buttons'
+    handled: 2 + 8 + 8 + 5 + 8 + 3, listeners: 2 + 8,
+    note: 'home, chevron; eight categories; eight badges; five checkboxes; eight three-dot buttons; three choice groups'
   },
   'failures': {
     handled: 2 + 20 + 53 + 1, listeners: 2 + 20,
@@ -895,12 +988,12 @@ const SECOND_PASS = {
     note: 'home, chevron; three folder rows and the label of My Documents; two files; the list toggle'
   },
   'charts': {
-    handled: 2 + 3 + 2 + 4 + 1 + 1, listeners: 2 + 3 + 2 + 4 + 1,
-    note: 'home, chevron; three sidebar items; two zoom icons; four map controls; the list toggle; the map (a name only)'
+    handled: 2 + 2 + 2 + 4 + 1 + 1, listeners: 2 + 2 + 2 + 4 + 1,
+    note: 'home, chevron; two sidebar items (not the My Flight header); two zoom icons; four map controls; the list toggle; the map (a name only)'
   },
   'quick-settings': {
-    handled: 1 + 9 + 1 + 1, listeners: 1 + 9,
-    note: 'home (the chevron is hidden here); nine home tiles; the slider; the airplane button'
+    handled: 1 + 9 + 1 + 1 + 1, listeners: 1 + 9 + 1,
+    note: 'home (the chevron is hidden here); nine home tiles; the slider; the airplane button; the backdrop that closes the pop-up'
   }
 };
 for (const [fixture, expected] of Object.entries(SECOND_PASS)) {
@@ -929,7 +1022,10 @@ for (const [fixture, expected] of Object.entries(SECOND_PASS)) {
 const ISOLATION = {
   'settings': [
     ['li.category', 'li.category[role=button]', 8],
-    ['button.option', 'button.option[aria-pressed]', 6],
+    // The pressed-state rule asks for 'app-settings2 button.option', the group rule for 'app-settings2 article
+    // button.option': each needle is in its own rule's query only.
+    ['app-settings2 button.option', 'button.option[aria-pressed]', 6],
+    ['article button.option', 'div.option-grid[role=group]', 3],
     ['button.overflow-button', 'button.overflow-button[aria-label]', 8],
     ['label.toggle', 'input[type=checkbox][aria-label]', 5],
     ['span.settings-source', 'span.settings-source[aria-label]', 8]
@@ -945,7 +1041,7 @@ const ISOLATION = {
     ['button.sidebar-toggle-btn', 'button.sidebar-toggle-btn[aria-label]', 1]
   ],
   'charts': [
-    ['div.navigraph-sidebar-item', 'div.navigraph-sidebar-item[role=button]', 3],
+    ['div.navigraph-sidebar-item', 'div.navigraph-sidebar-item[role=button]', 2],
     ['div.chart-viewer-controls', '.chart-viewer-controls i[role=button]', 2],
     ['div.map-control-item', 'div.map-control-item[role=button]', 4],
     ['div.sidebar-toggle-btn', 'div.sidebar-toggle-btn[role=button]', 1],
@@ -953,7 +1049,8 @@ const ISOLATION = {
   ],
   'quick-settings': [
     ['mat-slider', 'mat-slider[aria-label]', 1],
-    ['img[src*=airplane]', 'button[aria-label="Airplane mode"]', 1]
+    ['img[src*=airplane]', 'button[aria-label="Airplane mode"]', 1],
+    ['brightness-popup-backdrop', 'div.brightness-popup-backdrop[role=button]', 1]
   ]
 };
 for (const [fixture, cases] of Object.entries(ISOLATION)) {

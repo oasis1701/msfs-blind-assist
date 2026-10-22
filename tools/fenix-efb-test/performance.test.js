@@ -139,9 +139,11 @@ test('A_takeoff_label_that_goes_takes_the_name_with_it_and_puts_the_pages_value_
   }
 });
 
-// The first text the page gives a field without a label of its own: the header of its table column, else
-// the unit written after it; a field with neither stays unnamed, and the placeholder is never used.
-test('A_takeoff_field_without_its_own_label_takes_the_column_header_above_it_else_its_unit_and_never_the_placeholder', async () => {
+// The first text the page gives a field without a label of its own: the header of its table column; else a
+// placeholder that has letters in it ("LANDING WT") with the unit written after the field ("LANDING WT, T"),
+// or the unit alone. A placeholder of only dashes, digits or punctuation ("----", "---/--") is never a name,
+// and a field with nothing else stays unnamed (ruling R31).
+test('A_field_without_its_own_label_takes_its_column_header_else_a_placeholder_with_letters_and_its_unit', async () => {
   const window = await load('depperf');
   try {
     const doc = window.document;
@@ -149,20 +151,29 @@ test('A_takeoff_field_without_its_own_label_takes_the_column_header_above_it_els
     holder.innerHTML =
       '<div class="in-table"><table><tr><th>Cross <b>wind</b></th><th>Gust</th></tr>' +
       '<tr><td><app-keyboard-input placeholder="x"><input placeholder="---/--"></app-keyboard-input></td>' +
-      '<td><app-keyboard-input placeholder="x"><input placeholder="--"></app-keyboard-input></td></tr></table></div>' +
+      '<td><app-keyboard-input placeholder="x"><input placeholder="GUST KT"></app-keyboard-input></td></tr></table></div>' +
       '<div class="section-item"><app-keyboard-input placeholder="x"><input placeholder="--"></app-keyboard-input> KT </div>' +
       '<div class="section-item"><div class="boxed"><div class="inner"><app-keyboard-input placeholder="x"><input placeholder="LANDING WT"></app-keyboard-input></div></div>' +
       '<button>FMS</button><div class="unit"> T <!----></div></div>' +
-      '<div class="bare"><app-keyboard-input placeholder="x"><input placeholder="Nothing around me"></app-keyboard-input></div>';
+      '<div class="bare"><app-keyboard-input placeholder="x"><input placeholder=" Nothing   around me "></app-keyboard-input></div>' +
+      '<div class="bare"><app-keyboard-input placeholder="x"><input placeholder="----"></app-keyboard-input></div>' +
+      '<div class="bare"><app-keyboard-input placeholder="x"><input placeholder="12.5 / -- %"></app-keyboard-input></div>';
     doc.querySelector('app-departure').appendChild(holder);
     await turns();
     const inputs = [...holder.querySelectorAll('input')];
-    // The last one has no text anywhere but its placeholder: the layer leaves it unnamed and does not give it
-    // the placeholder as a name (a reader that falls back to the placeholder still can, as for any such box).
-    assert.deepStrictEqual(inputs.map(i => i.getAttribute('aria-label')), ['Cross wind', 'Gust', 'KT', 'T', null]);
-    assert.deepStrictEqual(inputs.slice(0, 4).map(nameOf), ['Cross wind', 'Gust', 'KT', 'T']);
-    assert.strictEqual(inputs[4].getAttribute('placeholder'), 'Nothing around me', 'the page\'s own placeholder stays');
-    // The real fields are untouched by the new ones.
+    // A column header wins over a placeholder; a placeholder with letters joins the unit; the last two say
+    // nothing but dashes, digits and punctuation, and stay unnamed.
+    assert.deepStrictEqual(inputs.map(i => i.getAttribute('aria-label')),
+      ['Cross wind', 'Gust', 'KT', 'LANDING WT, T', 'Nothing around me', null, null]);
+    assert.deepStrictEqual(inputs.slice(0, 5).map(nameOf), ['Cross wind', 'Gust', 'KT', 'LANDING WT, T', 'Nothing around me']);
+    assert.deepStrictEqual(inputs.map(i => i.getAttribute('placeholder')),
+      ['---/--', 'GUST KT', '--', 'LANDING WT', ' Nothing   around me ', '----', '12.5 / -- %'], 'the page\'s own placeholders stay');
+
+    // The placeholder changes: the name follows (a pass by hand; the observer does not watch placeholders).
+    inputs[3].setAttribute('placeholder', 'LDG WT');
+    window.__msfsbaFenixEfb.pass();
+    assert.strictEqual(inputs[3].getAttribute('aria-label'), 'LDG WT, T');
+    // The real fields keep their labels.
     assert.strictEqual(all(window, 'app-keyboard-input input')[0].getAttribute('aria-label'), 'ICAO CODE');
   } finally {
     window.close();
@@ -622,15 +633,17 @@ test('Landing_options_and_procedures_are_buttons', async () => {
   }
 });
 
-test('Landing_fields_are_named_by_their_label_or_the_unit_after_them_and_never_the_placeholder', async () => {
+test('Landing_fields_are_named_by_their_label_or_unit_and_the_weight_box_by_its_placeholder_and_unit', async () => {
   const window = await load('arrperf');
   try {
     const fields = all(window, FIELDS);
     assert.strictEqual(fields.length, 6);
     // ICAO CODE and RUNWAY have a label of their own; wind, temperature and pressure only the unit written
-    // after the box; the landing weight the unit "T" (its FMS button is a button, not part of the name).
-    assert.deepStrictEqual(fields.map(f => f.getAttribute('aria-label')), ['ICAO CODE', 'RUNWAY', 'KT', '°C', 'HPA', 'T']);
-    assert.deepStrictEqual(fields.map(nameOf), ['ICAO CODE', 'RUNWAY', 'KT', '°C', 'HPA', 'T']);
+    // after the box (their placeholders are dashes); the landing weight its placeholder "LANDING WT" and the
+    // unit "T" (R31; its FMS button is a button, not part of the name).
+    const NAMES = ['ICAO CODE', 'RUNWAY', 'KT', '°C', 'HPA', 'LANDING WT, T'];
+    assert.deepStrictEqual(fields.map(f => f.getAttribute('aria-label')), NAMES);
+    assert.deepStrictEqual(fields.map(nameOf), NAMES);
     assert.deepStrictEqual(all(window, 'app-keyboard-input input').map(i => i.getAttribute('placeholder')),
       ['----', '---/--', '--', '----', 'LANDING WT'], 'the placeholders are the page\'s own and stay');
     const runway = fields[1];

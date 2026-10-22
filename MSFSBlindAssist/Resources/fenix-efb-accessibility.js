@@ -531,15 +531,25 @@
     return '';
   }
 
+  // A box's placeholder when it says what the box is: one with a letter in it ("LANDING WT"). A placeholder of
+  // only dashes, digits or punctuation ("----", "---/--") shows the format, and is never a name (ruling R31).
+  function wordyPlaceholder(field) {
+    if (field.localName !== 'input') { return ''; }
+    var text = (field.getAttribute('placeholder') || '').replace(/\s+/g, ' ').trim();
+    return /[A-Za-z]/.test(text) ? text : '';
+  }
+
   // What the page says a field is: its own label; a field without one takes the header of its table column,
-  // else its unit. A placeholder is never the name, and a field with none of these stays unnamed.
+  // else a placeholder with letters in it and its unit ("LANDING WT, T"), else its unit. A field with none of
+  // these stays unnamed.
   function fieldText(field) {
     var text = ownLabel(field);
     if (!text) {
       var table = field.closest('table');
       text = table ? columnHeader(field, table) : '';
     }
-    return text || unitAfter(field);
+    if (text) { return text; }
+    return [wordyPlaceholder(field), unitAfter(field)].filter(Boolean).join(', ');
   }
 
   // Takeoff and Landing: the text boxes. The page hides each label in a div beside the box.
@@ -762,6 +772,30 @@
     }
   });
 
+  // The containers the layer made a group of on its last pass (ruling R32).
+  var choiceGroups = [];
+
+  // Settings: an article's choices (button.option) sit in a container of the page's own. It is a group named by
+  // the setting, as the article's checkbox and three dots are, so a Tab into "Classic" or "Modern" says which
+  // setting they choose. A container that no longer holds a choice is let go of: the layer takes back its own
+  // role and label, never the page's.
+  RULES.push(function (root) {
+    var options = root.querySelectorAll('app-settings2 article button.option');
+    var groups = [];
+    for (var i = 0; i < options.length; i++) {
+      var container = options[i].parentElement;
+      var article = options[i].closest('article');
+      if (!container || container === article || groups.indexOf(container) !== -1) { continue; }
+      groups.push(container);
+      giveRole(container, 'group');
+      name(container, settingName(article));
+    }
+    for (var j = 0; j < choiceGroups.length; j++) {
+      if (groups.indexOf(choiceGroups[j]) === -1) { release(choiceGroups[j]); }
+    }
+    choiceGroups = groups;
+  });
+
   // Settings: the categories are list items the page clicks; each is a button, and the open one is the
   // current page (the page marks it category--active).
   RULES.push(function (root) {
@@ -908,9 +942,10 @@
 
   // ---- Charts and quick settings ----
 
-  // Charts: the sidebar's items are divs the page clicks, named by their text.
+  // Charts: the sidebar's items (the div of each app-navigraph-sidebar-item) are divs the page clicks, named by
+  // their text. The "My Flight" header above them carries the item class too, but it is a heading (ruling R34).
   RULES.push(function (root) {
-    var items = root.querySelectorAll('app-navigraph-sidebar div.navigraph-sidebar-item');
+    var items = root.querySelectorAll('app-navigraph-sidebar-item div.navigraph-sidebar-item');
     for (var i = 0; i < items.length; i++) { button(items[i], textOf(items[i])); }
   });
 
@@ -976,6 +1011,13 @@
   RULES.push(function (root) {
     var sliders = root.querySelectorAll('mat-slider.brightness-popup-slider');
     for (var i = 0; i < sliders.length; i++) { name(sliders[i], 'Brightness'); }
+  });
+
+  // Quick settings: the backdrop behind the pop-up is an empty div whose click closes it, as a mouse click outside
+  // the pop-up does. Escape closes the whole window, so it is the keyboard's way out (ruling R30).
+  RULES.push(function (root) {
+    var backdrops = root.querySelectorAll('div.brightness-popup-backdrop');
+    for (var i = 0; i < backdrops.length; i++) { button(backdrops[i], 'Close quick settings'); }
   });
 
   function pass() {
