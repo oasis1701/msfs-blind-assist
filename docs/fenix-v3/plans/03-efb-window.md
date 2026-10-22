@@ -1,6 +1,6 @@
 # Fenix v3 EFB Window Implementation Plan (plan 03)
 
-**Claimed by:** robin24 · **Status:** in progress
+**Claimed by:** robin24 · **Status:** in progress (code and reviews done 2026-10-22; owner in-sim checks remain, see "Owner in-sim checks")
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -88,14 +88,14 @@ Structures the layer keys on, read live in the same Chromium engine (the per-app
 
 **Interfaces:** Produces `internal const string EfbUrl` and `internal const string NotReachableMessage` on `FenixEFBForm`.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - `The_efb_page_is_the_external_target_on_ipv4`: `Assert.Equal("http://127.0.0.1:8083/?target=external#/efb", FenixEFBForm.EfbUrl)`; `var u = new Uri(FenixEFBForm.EfbUrl);` `u.Host == "127.0.0.1"`, `u.Query == "?target=external"`, `u.Fragment == "#/efb"`.
   - `The_not_reachable_message_names_the_address_it_tried`: `Assert.Equal("Fenix EFB is not reachable at http://127.0.0.1:8083. Make sure the Fenix A320 is fully loaded, then press Retry.", FenixEFBForm.NotReachableMessage)`.
   - `The_window_never_addresses_the_gateway_by_name_and_shows_no_label`: source scan of `MSFSBlindAssist/Forms/Fenix/FenixEFBForm.cs` (via `ClaudeContextBudgetTests.RepoRoot()`, as `FenixDataServiceAddressTests` does): no match for `(?i)(ws|http)s?://localhost`, no `new Label`, and no "already screen-reader accessible".
-- [ ] **Step 2: Run them; they fail.** `--filter FenixEfbAddressTests`.
-- [ ] **Step 3: Implement.** The two constants as `internal const` (comment: decisions 1 and 2). Replace `_errorLabel` with `_errorBox`, a read-only multiline `TextBox` built like `IFlyEfbForm`'s (`ReadOnly = true`, `TabStop = true`, `Multiline = true`, `ScrollBars = Vertical`, `AccessibleName = "Fenix EFB status message"`, location 12,12, size 700×100), Retry below it; `ShowError` sets `_errorBox.Text`; focus and speech unchanged. Rewrite the class comment: the v3 page is NOT accessible on its own (spec 8); this window adds the layer and catches the dead ends.
-- [ ] **Step 4: Run them and the whole suite; all pass. Build the solution.**
-- [ ] **Step 5: Commit.** `fix(fenix): EFB window loads the external target on 127.0.0.1; status text tabbable`
+- [x] **Step 2: Run them; they fail.** `--filter FenixEfbAddressTests`.
+- [x] **Step 3: Implement.** The two constants as `internal const` (comment: decisions 1 and 2). Replace `_errorLabel` with `_errorBox`, a read-only multiline `TextBox` built like `IFlyEfbForm`'s (`ReadOnly = true`, `TabStop = true`, `Multiline = true`, `ScrollBars = Vertical`, `AccessibleName = "Fenix EFB status message"`, location 12,12, size 700×100), Retry below it; `ShowError` sets `_errorBox.Text`; focus and speech unchanged. Rewrite the class comment: the v3 page is NOT accessible on its own (spec 8); this window adds the layer and catches the dead ends.
+- [x] **Step 4: Run them and the whole suite; all pass. Build the solution.**
+- [x] **Step 5: Commit.** `fix(fenix): EFB window loads the external target on 127.0.0.1; status text tabbable`
 
 ### Task 2: Catch the MCDU and FAP dead ends
 
@@ -106,14 +106,14 @@ Structures the layer keys on, read live in the same Chromium engine (the per-app
 **Interfaces:**
 - Produces: `internal enum FenixEfbRoute { Efb, Mcdu, Fap, Other }`; `internal static class FenixEfbRoutes` with `FenixEfbRoute Classify(string? url)` (by the fragment's first segment: `#/mcdu…` Mcdu, `#/fap…` Fap, `#/efb…` or an empty fragment on the gateway's origin Efb, anything else Other; host compare ordinal-ignore-case) and `string? DeadEndMessage(FenixEfbRoute route)` (decision 8's two lines exactly; null for Efb and Other).
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - `Dead_ends_are_recognised`: `Classify("http://127.0.0.1:8083/#/mcdu")` and `…/#/mcdu?cdu=1&fullscreen=false` → Mcdu; `…/#/fap/screen-saver` and `…/#/fap/cabin-status` → Fap.
   - `Efb_routes_are_left_alone`: `…/?target=external#/efb`, `…/#/efb/fenix/ground-services`, `…/#/efb/settings`, `…/` → Efb; `https://support.fenixsim.com/#/mcdu` → Other; `null` and `""` → Other.
   - `Each_dead_end_says_where_to_go`: the two exact strings; `DeadEndMessage(Efb)` and `(Other)` null.
-- [ ] **Step 2: Run them; they fail to compile.** `--filter FenixEfbRoutesTests`.
-- [ ] **Step 3: Implement `FenixEfbRoutes`,** then in `FenixEFBForm.InitWebViewAsync` subscribe `CoreWebView2.SourceChanged` (it fires for in-page fragment changes, `IsNewDocument` false): on Mcdu or Fap, `_webView.CoreWebView2.Navigate(EfbUrl)` and `_announcer.AnnounceImmediate(message)`. Log the catch with `Log.Debug("FenixEFB", …)` (CORE-15).
-- [ ] **Step 4: Run them and the suite; all pass. Build.**
-- [ ] **Step 5: Commit.** `fix(fenix): EFB window returns from the unreadable MCDU and FAP pages and says where to go`
+- [x] **Step 2: Run them; they fail to compile.** `--filter FenixEfbRoutesTests`.
+- [x] **Step 3: Implement `FenixEfbRoutes`,** then in `FenixEFBForm.InitWebViewAsync` subscribe `CoreWebView2.SourceChanged` (it fires for in-page fragment changes, `IsNewDocument` false): on Mcdu or Fap, `_webView.CoreWebView2.Navigate(EfbUrl)` and `_announcer.AnnounceImmediate(message)`. Log the catch with `Log.Debug("FenixEFB", …)` (CORE-15).
+- [x] **Step 4: Run them and the suite; all pass. Build.**
+- [x] **Step 5: Commit.** `fix(fenix): EFB window returns from the unreadable MCDU and FAP pages and says where to go`
 
 ### Task 3: The offline harness, the captures and the sweep
 
@@ -123,7 +123,7 @@ Structures the layer keys on, read live in the same Chromium engine (the per-app
 
 **Interfaces:** `load.js` exports `async function load(fixtureName, { layer = true } = {})` returning the jsdom `window`: reads `fixtures/<name>.html`, builds `new JSDOM(html, { runScripts: "outside-only", url: "http://127.0.0.1:8083/?target=external#/efb" })`, evaluates `../../MSFSBlindAssist/Resources/fenix-efb-accessibility.js` in it when `layer`, then awaits two macrotask turns so the observer's pass has run. Tests use `computeAccessibleName` and `getRole` from `dom-accessibility-api`.
 
-- [ ] **Step 1: Capture the fixtures** (Fenix loaded, any variant). In any Chromium browser open `http://127.0.0.1:8083/?target=external#/efb`, go to each screen below by mouse, and in the developer console run the snippet from `capture.md`, then paste the clipboard into the fixture file:
+- [x] **Step 1: Capture the fixtures** (Fenix loaded, any variant). In any Chromium browser open `http://127.0.0.1:8083/?target=external#/efb`, go to each screen below by mouse, and in the developer console run the snippet from `capture.md`, then paste the clipboard into the fixture file:
   ```js
   copy((() => { const c = document.body.cloneNode(true);
     c.querySelectorAll('script,style,link,canvas,svg,img,#seatContainer,.leaflet-pane').forEach(n => n.remove());
@@ -131,9 +131,9 @@ Structures the layer keys on, read live in the same Chromium engine (the per-app
     return '<!doctype html><html><body>' + c.innerHTML + '</body></html>'; })())
   ```
   Screens and names: `home`, `switcher` (an app open, the top-bar arrow pressed), `my-flight`, `ground-services`, `mass-balance`, `panel-states` (its pop-up open; close it with Escape afterwards, pressing nothing), `depperf`, `arrperf`, `settings` (Aircraft category), `failures` (ATA 21 open), `documents`, `charts`, `quick-settings`. The snippet removes pictures, so add back by hand, in `home` and `switcher` only, one `<img class="app-img">` per tile where it stood (the layer needs the elements, not the pictures). Search `settings.html` for credential values (Global Constraints). Write in `capture.md` the date, the Fenix version and the aircraft.
-- [ ] **Step 2: Write `sweep.test.js`:** for every fixture, after `load(name)`, every element that is a `button`, `a[href]`, `input` (not hidden), `[role=switch|checkbox|radio|combobox|button|tab|slider]`, `[tabindex]` or `div.appIcon` has a computed name that is non-empty, is not only dashes, slashes and spaces, and is not `on` or `x`; the failures list names each offending element by its tag and class. Also `Without_the_layer_the_page_fails_the_sweep`: the same check with `{ layer: false }` on `ground-services` finds at least 14 offenders (proves the harness sees today's problem).
-- [ ] **Step 3: Run it; the sweep fails on every fixture** (the layer is empty). `cd tools/fenix-efb-test && npm install && node --test`.
-- [ ] **Step 4: Commit** (the sweep stays red until Task 7). `test(fenix): offline EFB harness, live captures and the every-control-named sweep`
+- [x] **Step 2: Write `sweep.test.js`:** for every fixture, after `load(name)`, every element that is a `button`, `a[href]`, `input` (not hidden), `[role=switch|checkbox|radio|combobox|button|tab|slider]`, `[tabindex]` or `div.appIcon` has a computed name that is non-empty, is not only dashes, slashes and spaces, and is not `on` or `x`; the failures list names each offending element by its tag and class. Also `Without_the_layer_the_page_fails_the_sweep`: the same check with `{ layer: false }` on `ground-services` finds at least 14 offenders (proves the harness sees today's problem).
+- [x] **Step 3: Run it; the sweep fails on every fixture** (the layer is empty). `cd tools/fenix-efb-test && npm install && node --test`.
+- [x] **Step 4: Commit** (the sweep stays red until Task 7). `test(fenix): offline EFB harness, live captures and the every-control-named sweep`
 
 ### Task 4: The layer's core, navigation, and shipping it
 
@@ -151,61 +151,61 @@ Structures the layer keys on, read live in the same Chromium engine (the per-app
 - Alt+Home: a capture-phase `keydown` on `window`: `location.hash = "#/efb"`, `preventDefault()`.
 - C#: the form reads `Path.Combine(AppContext.BaseDirectory, "Resources", "fenix-efb-accessibility.js")` once; missing or unreadable → `Log.Warn("FenixEFB", …)` and the page loads without it.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - `core.test.js`: `textOf` folds `Resend<br>Loadsheet` to "Resend Loadsheet"; `Second_pass_changes_nothing` (run `pass()` twice on `home`: same attributes, one listener per element, counted by wrapping `addEventListener`); `Late_elements_are_fixed` (append a new `div.appIcon` with a `span.appTitle` "Test" after load; after two turns it is a named button); `Unknown_page_is_left_alone` (a fixture of plain unrelated markup: no attribute added, nothing thrown); `Keys_press_buttons_but_not_text_boxes` (Enter on a tile calls its click once; Space in an `input` does not; Alt+Home from inside an `input` sets `location.hash` to `#/efb`).
   - `navigation.test.js`: on `home`, the 9 tiles are role `button` with names "Fenix", "Takeoff", "Landing", "Charts", "Documents", "Failures", "Settings", "MCDU", "FAP" and `tabIndex` 0; "Open quick settings" keeps its own name; on `switcher`, each `img.app-img` (in its clickable parent) is a button named by the tiles' titles in order and `#homeButtonFree` is a button named "Home".
   - `FenixEfbLayerTests` (xUnit, so CI guards it): the script file exists and starts its IIFE with the `__msfsbaFenixEfb` guard; it contains none of `fetch(`, `XMLHttpRequest`, `WebSocket`, `.remove(`, `removeChild`, `innerHTML =`, `.value =`; the csproj has a `None Update="Resources\fenix-efb-accessibility.js"` with `PreserveNewest`; `FenixEFBForm.cs` calls `AddScriptToExecuteOnDocumentCreatedAsync` with the text read from `"fenix-efb-accessibility.js"`.
-- [ ] **Step 2: Run them; they fail.**
-- [ ] **Step 3: Implement the core, the home/switcher/home-button rules, Alt+Home, the csproj entry and the injection.**
-- [ ] **Step 4: Run both suites; the new tests pass (the sweep still fails on the other fixtures). Build the solution.**
-- [ ] **Step 5: Commit.** `feat(fenix): EFB accessibility layer: tiles, switcher and home are buttons; Alt+Home`
+- [x] **Step 2: Run them; they fail.**
+- [x] **Step 3: Implement the core, the home/switcher/home-button rules, Alt+Home, the csproj entry and the injection.**
+- [x] **Step 4: Run both suites; the new tests pass (the sweep still fails on the other fixtures). Build the solution.**
+- [x] **Step 5: Commit.** `feat(fenix): EFB accessibility layer: tiles, switcher and home are buttons; Alt+Home`
 
 ### Task 5: The Fenix app (My Flights, Ground Services, Mass and Balance, Panel States) and notices
 
 **Files:** Modify the script; Create `tools/fenix-efb-test/fenix-app.test.js`.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - `Ground_services_switches_are_named_by_their_text`: on `ground-services`, the 14 `input[role=switch]` names are exactly, in page order, the 14 `div.text` texts ("GPU", "PCA", "ENGINE FAN HEATING", "CHOCKS & CONES", "FWD STAIRS", "AFT STAIRS", "1 left", "1 right", "2 left", "2 right", "fwd cargo", "aft cargo", "bulk", "CONNECT TUG" as captured); the three arrows are buttons "Pushback left", "Pushback straight", "Pushback right".
   - `Mass_and_balance_boxes_say_what_they_hold`: the four `input.planned-input` names are "Passengers Planned, Max 180", "Cargo Planned, Max 19,460", "Fuel Planned, Max 41,897", "Planned Weights Zero Fuel Weight, Max 134,482" (section title before its first parenthesis, column header, placeholder; use the captured numbers); buttons read "Reset All", "Resend Loadsheet", "Load Aircraft", "Send To MCDU" (page capitals kept as captured).
   - `My_flight_cards_are_buttons`: the three "TAP TO IMPORT FROM SIMBRIEF" zones are buttons named "<card title>: Tap to import from SimBrief" (card titles "A320 FLIGHT", "ROUTE", "WEATHER" as captured); the tab-bar arrows are "Previous tabs", "Next tabs".
   - `Panel_states_popup_has_a_title`: on `panel-states`, the `mat-dialog-container` has role `dialog` and name "Panel states"; its four buttons keep their text.
   - `Loading_notices_are_spoken`: in a fixture `notices.html` written by hand from the bundle's markup (`.loading-notification > .notification-content` with a `.progress-bar` `value="40"`, a `.fap-notification`, a `.no-data-notification`), each notice has `aria-live="polite"`, the bar is `role=progressbar` with `aria-valuenow="40"`, and changing `value` to 60 then a pass updates `aria-valuenow`.
-- [ ] **Step 2: Run them; they fail.**
-- [ ] **Step 3: Implement the rules.** Section and column texts come from the page (the section's leading text node, the column header row's cell at the input's column).
-- [ ] **Step 4: Run; they pass.**
-- [ ] **Step 5: Commit.** `feat(fenix): EFB layer names Ground Services, Mass and Balance and Panel States`
+- [x] **Step 2: Run them; they fail.**
+- [x] **Step 3: Implement the rules.** Section and column texts come from the page (the section's leading text node, the column header row's cell at the input's column).
+- [x] **Step 4: Run; they pass.**
+- [x] **Step 5: Commit.** `feat(fenix): EFB layer names Ground Services, Mass and Balance and Panel States`
 
 ### Task 6: Takeoff and Landing
 
 **Files:** Modify the script; Create `tools/fenix-efb-test/performance.test.js`.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - `Every_takeoff_field_is_named_by_its_label`: on `depperf`, each `input` and `mat-select` is named by the `.departure-label` in its own container ("ICAO CODE", "RUNWAY", "RUNWAY SURFACE", "FLAP CONFIG", "FORCE TOGA", "ANTI- ICE" as captured, "PACKS", "TOW (LBS)", "MACTOW (%)", "WIND", "TEMPERATURE", "ALTIMETER (INHG)"); a field without its own label takes the column header above it, else its unit text, never its placeholder.
   - `Takeoff_results_read_label_and_value`: in `.mcdu-screen`, each value cell is named "<label above>: <value>" ("V1: not computed" where the value is `small-yellow-box` spans, "FLP RETR: F=---", "STOP MARGIN: ----"); the label rows are not read twice (`aria-hidden="true"` on a label cell only when its value cell carries the label).
   - `Runway_condition_is_a_radio_group_that_follows_the_page`: on `arrperf`, the six codes are role `radio` in a `radiogroup` named "Runway condition", names "6 DRY" … "1 POOR", `aria-checked` true only on `section-selected`; moving `section-selected` to "3 MED" and a pass moves `aria-checked`.
   - `Landing_options_and_procedures_are_buttons`: the five `.one-click-change` are buttons named by their text; the nine `.arrival-procedure-item` are buttons with Tab stops, names as captured.
-- [ ] **Step 2: Run them; they fail.**
-- [ ] **Step 3: Implement the rules.**
-- [ ] **Step 4: Run; they pass.**
-- [ ] **Step 5: Commit.** `feat(fenix): EFB layer names the takeoff and landing calculators`
+- [x] **Step 2: Run them; they fail.**
+- [x] **Step 3: Implement the rules.**
+- [x] **Step 4: Run; they pass.**
+- [x] **Step 5: Commit.** `feat(fenix): EFB layer names the takeoff and landing calculators`
 
 ### Task 7: Settings, Failures, Documents, Charts and quick settings
 
 **Files:** Modify the script; Create `tools/fenix-efb-test/other-apps.test.js`.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - `Settings_options_say_name_and_choice_and_follow_the_page`: each `article`'s checkbox is named by its heading without the badge ("A/C ESS Auto Switching", not "… Default"); each `button.option` has `aria-pressed` true only with `option--active` ("ADIRS" true, "GNADIRS" false as captured), and moving the class flips it after a pass; each "⋮" is "More options for <setting>"; the categories are buttons with Tab stops and `aria-current="page"` only on `category--active`.
   - `Failure_chapters_open_and_items_name_their_group`: on `failures`, each `.manual-failure-ata-title` is a button with `aria-expanded` true for the open chapter (ATA 21) and false for the others; items are named "<group title> <item>" ("CPC 1", "CPC 2", "Overheat Pack 1", "Regulator Fault Pack 1"), an item with no group title keeps its own text ("Lavatory/Galley fan").
   - `Documents_folders_and_files_are_buttons`: `.folder-name` and `.file` are buttons with Tab stops; folders carry `aria-expanded`.
   - `Charts_and_quick_settings_controls_are_named`: the five sidebar items are buttons named by their text; zoom "Zoom in", "Zoom out"; each `.map-control-item` named by its picture's title; the slider "Brightness"; the airplane button "Airplane mode".
-- [ ] **Step 2: Run them; they fail.**
-- [ ] **Step 3: Implement the rules.**
-- [ ] **Step 4: Run both suites; everything passes, the sweep included, on every fixture.** Build the solution.
-- [ ] **Step 5: Commit.** `feat(fenix): EFB layer names Settings, Failures, Documents, Charts and quick settings`
+- [x] **Step 2: Run them; they fail.**
+- [x] **Step 3: Implement the rules.**
+- [x] **Step 4: Run both suites; everything passes, the sweep included, on every fixture.** Build the solution.
+- [x] **Step 5: Commit.** `feat(fenix): EFB layer names Settings, Failures, Documents, Charts and quick settings`
 
 ### Task 8: Owner in-sim checks and hand back
 
-- [ ] **Step 1:** Build, both suites green; `git diff --name-only <base-sha>` lists only owned files.
+- [x] **Step 1:** Build, both suites green; `git diff --name-only <base-sha>` lists only owned files. (2026-10-22: build 0 errors; C# 14,601 passed; Node 166/166; only plan 03's files and the one fenix-data.md glob.)
 - [ ] **Step 2:** Run the owner checks below with the owner (NVDA); record each heard phrase under "Results".
 - [ ] **Step 3:** Fill in the handoff section, set the **Status** line at the top of this file to "done", push.
 
@@ -213,27 +213,30 @@ Structures the layer keys on, read live in the same Chromium engine (the per-app
 
 Build from this branch; the Fenix loaded on the ground; NVDA running; app on the Fenix profile. Open the window with input mode, then Shift+T.
 
-1. **Getting around.** Tab from the top: hear "Open quick settings, button", then "Fenix, button" through "FAP, button". Enter on "Fenix" opens it; Alt+Home returns to the tiles. The "Home" button is found in browse mode and works.
-2. **Ground Services.** Fenix > Ground Services: arrowing down reads "GPU, switch, on" (or off) and every door by name. With the owner's go-ahead, Space on GPU toggles it and the screen reader says the new state; put it back.
-3. **Takeoff.** Takeoff: each box and list says its name ("ICAO CODE, edit"). Type the departure airport, pick a runway, Calculate (a calculation in the EFB, nothing sent): the results read "V1: …", "VR: …", "V2: …".
-4. **Settings.** Settings: an on/off option says its own name ("AP/FD TCAS, check box, checked"); on the ADIRS option, the selected picture says "pressed".
-5. **Dead ends.** Press the MCDU tile: back on the tiles, hear "The EFB's MCDU can't be read with a screen reader. Use the MCDU window instead: input mode, then Shift+M." Same for FAP with its line.
+1. **Getting around.** Tab from the top: hear "Open quick settings, button", "Home, button", then "Fenix, button" through "FAP, button" (the capture's order). Enter on "Fenix" opens it; Alt+Home returns to the tiles. In an app, "App switcher, button, collapsed": Enter opens it ("expanded"); press "Settings", then from the switcher "Charts": each opens the app it names. The "Home" button is found in browse mode and works.
+2. **Ground Services.** Fenix > Ground Services: arrowing down reads "GPU, switch, on" (or off) and every door by name. With the owner's go-ahead, Space on GPU toggles it and the screen reader says the new state; put it back. Optional, tug connected: whether Enter on "Pushback left" steers (the page may steer on a held press, which Enter cannot do).
+3. **Takeoff and Landing.** Takeoff: each box and list says its name ("ICAO CODE, edit"; a list says its name and value, e.g. "RUNWAY SURFACE DRY": say whether the value is then read twice). Type the departure airport, pick a runway, Calculate (a calculation in the EFB, nothing sent): the results read "V1: …", "VR: …", "V2: …" (say whether NVDA adds "graphic"). Landing: one Enter on "LOW A/BRAKE" moves it exactly one step; Space on "3 MED" says "checked"; the weight box says "LANDING WT, T"; judge the wind, temperature and QNH boxes named "KT", "°C", "HPA".
+4. **Settings.** Settings: an on/off option says its own name ("AP/FD TCAS, check box, checked"); Tab into the ADIRS choice says the setting's name (a group), and the selected picture says "pressed".
+5. **Dead ends.** Press the MCDU tile: back on the tiles, hear "The EFB's MCDU can't be read with a screen reader. Use the MCDU window instead: input mode, then Shift+M." once and in full, and the window ends on the tiles. Same for FAP with its line.
 6. **Status message.** Before the Fenix has loaded (main menu), open the window: hear "Fenix EFB is not reachable at http://127.0.0.1:8083. Make sure the Fenix A320 is fully loaded, then press Retry."; Shift+Tab from Retry reaches the message.
+7. **Smaller ones (any order).** Quick settings: "Close quick settings" closes the pop-up (Escape closes the whole window). Fenix > Panel States opens one pop-up, titled "Panel states" (close it with Escape, pressing nothing). Charts: the map is announced as "Moving map". Failures: ATA 34 (or any chapter with an active failure) says ", has failures".
 
 ## Handoff to plan 12
 
 **Pilot-facing changes** (guide: Fenix chapter, the EFB section; `guide/planning-your-flight.md:491`; changelog `fix`):
-- The Fenix EFB window works with a screen reader again on Fenix v3: every app is a button you can Tab to, every switch, box and list says its name, selections and open chapters say their state, and Alt+Home goes back to the EFB's home screen from anywhere.
+- The Fenix EFB window works with a screen reader again on Fenix v3: every app is a button you can Tab to, every switch, box and list says its name, selections and open chapters say their state, and Alt+Home goes back to the EFB's home screen from anywhere. In an app, the "App switcher" button opens the list of apps.
+- Takeoff results read as "V1: 142" and so on; Landing's runway condition is a radio group; failures say ", failed" or ", armed" (and a chapter ", has failures"); Settings choices say which setting they belong to; quick settings has a "Close quick settings" button.
 - The EFB's own MCDU and FAP pages can't be read with a screen reader: the window brings you back and tells you to use the MCDU window or the Fenix windows list.
-- The Charts map stays pictures only.
+- The Charts map stays pictures only (it is announced as "Moving map").
 - The window's "not reachable" message says http://127.0.0.1:8083 and can be reached with Tab.
-- Changelog draft: "Fenix: the EFB window reads properly on Fenix v3 (switch and box names, selections, a Home key with Alt+Home), and leaves the unreadable MCDU and FAP pages for the app's own windows."
+- Changelog draft: "Fenix: the EFB window reads properly on Fenix v3 (switch and box names, selections, failure states, a Home key with Alt+Home), and leaves the unreadable MCDU and FAP pages for the app's own windows."
 
 **Handoff requests:**
 - H1. `docs/invariants/a32nx-fenix.md` A320-40, last bullet: replace "Not covered by this rule: the Fenix EFB window (…)" with "The Fenix EFB window uses the same address (FNX rule below)."
 - H2. `guide/planning-your-flight.md:491`: the new message text (Task 1 Step 1).
 - H3. `docs/a32nx.md`, the Fenix EFB section: no longer "already accessible"; the layer, the captures and how to re-take them after a Fenix update (`tools/fenix-efb-test/capture.md`); the dead ends.
 - H4. `docs/tooling.md` Node line: add `tools/fenix-efb-test/` to the jsdom harnesses.
+- H5. `docs/a32nx.md`, the same section (support step): renaming or removing `Resources\fenix-efb-accessibility.js` beside the app turns the layer off (a `Log.Warn("FenixEFB", …)` line, and the plain page loads), if a Fenix update ever makes the layer misbehave.
 
 **Proposed rule lines** (`.claude/rules/fenix-data.md`, whose globs cover `Forms/Fenix/**` and, once this plan adds it with its script (line 36), `Resources/fenix-*.js`; next free FNX numbers; full texts from this plan's decisions and Evidence):
 ```text
@@ -241,8 +244,13 @@ Build from this branch; the Fenix loaded on the ground; NVDA running; app on the
 - [FNX-?] The EFB layer (fenix-efb-accessibility.js, injected by `FenixEFBForm`) only adds roles, names, states, Tab stops and Enter/Space to the page's own click: never a request, a removed element or a written value. Names come from the page's text; re-take the tools/fenix-efb-test captures after every Fenix update. Full: docs/invariants/fenix-data.md#fnx-?
 ```
 
-**Follow-ups (not planned):** the top-bar status icons (signal, link) stay unnamed; a native readout of the takeoff results if the owner finds the grid slow to read.
+**Follow-ups (not planned):** the top-bar status icons (signal, link) stay unnamed; a native readout of the takeoff results if the owner finds the grid slow to read; the EFB-side loading spinners (Documents' doc/search/tree loading, Charts' chart loading, the Takeoff/Landing METAR spinners) stay silent (the plan's notices exist only on the FAP pages, behind the dead-end catch); more captures to widen the tests: Takeoff after Calculate (row pairing), Landing with a procedure picked (no selected class in today's capture), Failures with a failed item open, Settings' other seven categories.
 
 ## Results
 
-(Filled in by the implementer: date, aircraft, each check's heard phrases, decisions taken.)
+**2026-10-22, Fenix 3.0.0.7438, A320-232 IAE (kg, hPa), implementer robin24 (Claude Code).**
+
+- Offline: Node 166/166 (all 13 capture sweeps green); C# suite and build green (counts in the commit log). Branch commits: the Task 1-7 commits plus a final fix wave after a whole-branch review.
+- Live checks done during the work (built-in browser on the gateway, pressing nothing that changes the aircraft): the 13 captures; the app switcher's nine pictures are the home tiles' pictures in home order (so the tile-title names are right); a click on a My Flights side card's overlay only slides that card in (so the layer never presses a covered import zone); the page binds no keys on Landing's items or Documents' rows (so Enter presses once); the EFB keeps its tiles hidden until its layout runs on screen (the home capture's `visibility: hidden`).
+- Decisions taken beyond the plan (each recorded at the commit that made it): the layer exposes `{ pass, textOf }` for tests; starts when `<body>` exists and skips child frames; never overrides a page's own aria-hidden, aria-label or role, and takes back only what it wrote; refreshes its own names when the page's text changes; the sweep skips controls a screen reader never meets; result cells are `role="img"`; Material drop-downs are named by prefixing their own id to the page's `aria-labelledby`; the "App switcher" chevron, "Close quick settings", "Moving map", "Toggle document list", "Toggle chart list", "Map settings", "Dark map", "Light map" and "Show <card>" names; failure states in the name; the dead-end line speaks once per route within 1.5 s.
+- Owner in-sim checks 1-7: not yet run.
