@@ -12055,6 +12055,15 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     // harmless, because the machine arms only on a sample below 40 kt, which the air never delivers.
     private bool _calloutOnGround = true;
 
+    /// <summary>Last B_FCU_VERTICALSPEED_DASHED seen; null until read (and after a reset).</summary>
+    private double? _fcuVsDashed;
+
+    /// <summary>
+    /// v3 sends the LIVE vertical speed on N_FCU_VS while the V/S window is dashed (managed climb or
+    /// descent), so it is not spoken then. Only an exact 1 silences it; unread, 0 and NaN do not.
+    /// </summary>
+    internal static bool FcuVsIsSilenced(double? dashed) => dashed == 1;
+
     /// <inheritdoc />
     public override string? TakeoffCalloutFeedKey => FenixTakeoffCallouts.IasKey;
 
@@ -12073,6 +12082,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
         // A flight load delivers the per-frame airspeed ahead of the 1 Hz SIM_ON_GROUND, so an arm
         // kept from a parked aircraft would call V1, Rotate and V2 at the loaded cruise.
         _takeoffCallouts.Reset();
+        _fcuVsDashed = null;   // a stale "dashed" must not silence a fresh flight's V/S
         base.OnSimContextReset();
     }
 
@@ -12081,6 +12091,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     {
         // Nothing armed before a drop may fire on a later landing rollout. The speeds are kept.
         _takeoffCallouts.Reset();
+        _fcuVsDashed = null;
         base.ResetAnnouncementBaselines();
     }
 
@@ -12160,6 +12171,10 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 or FenixTakeoffConfigVerdict.MasterCautionFreshKey:
                 return true;
         }
+
+        // The dashed flag is only peeked, so "FCU VERTICAL SPEED DISPLAY: Dashed" is still heard.
+        if (varName == "B_FCU_VERTICALSPEED_DASHED") _fcuVsDashed = value;
+        if (varName == "N_FCU_VS" && FcuVsIsSilenced(_fcuVsDashed)) return true;
 
         // ========== Suppress baro announcements during set operation ==========
         if (isSettingBaro && (varName == "N_FCU_EFIS1_BARO_HPA" || varName == "N_FCU_EFIS1_BARO_INCH" ||
