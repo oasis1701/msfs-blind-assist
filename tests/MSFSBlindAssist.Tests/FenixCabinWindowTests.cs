@@ -6,9 +6,10 @@
 // the data flow only shows in the live sim. The window itself is built, never shown: a TabControl, a
 // ListBox and a TextBox construct headless in this xUnit host (FenixWindowsFormTests), and nothing that
 // is built here touches the definition or the data service (both null). The Status page's render runs
-// on values put straight into the window's cache, as the poll would apply them. The Audio page's presses
-// run against a real FenixDataService over a fake HttpMessageHandler (never the network), so a test sees
-// the exact request each control sends and what the read-back then says.
+// on values put straight into the window's cache, as the poll would apply them. The Audio page's and the
+// Doors, Temperature and Water pages' presses run against a real FenixDataService over a fake
+// HttpMessageHandler (never the network), so a test sees the exact request each control sends and what the
+// read-back then says.
 
 using System.Net;
 using System.Reflection;
@@ -976,5 +977,753 @@ public class FenixCabinWindowTests
 
         Assert.Equal(new[] { "FAP loudspeaker volume: 80 percent" }, rig.Speech.All);
         Assert.Empty(rig.Speech.Interrupts);
+    }
+
+    // ---- Doors, Temperature and Water pages (plan 08 Task 9) ------------------------------------
+
+    private static TabPage PageAt(Form form, int index) => form.Controls.OfType<TabControl>().Single().TabPages[index];
+    private static TabPage DoorsPage(Form form) => PageAt(form, 2);
+    private static TabPage TemperaturePage(Form form) => PageAt(form, 3);
+    private static TabPage WaterPage(Form form) => PageAt(form, 4);
+
+    private static ListBox PageList(TabPage page) => Descendants(page).OfType<ListBox>().Single();
+    private static ListBox DoorsList(Form form) => PageList(DoorsPage(form));
+    private static ListBox TemperatureList(Form form) => PageList(TemperaturePage(form));
+    private static ListBox WaterList(Form form) => PageList(WaterPage(form));
+    private static Button DoorButton(Form form) => Descendants(DoorsPage(form)).OfType<Button>().Single();
+    private static Button TemperatureButton(Form form, string text)
+        => Descendants(TemperaturePage(form)).OfType<Button>().Single(button => button.Text == text);
+    private static Button WaterButton(Form form, string text)
+        => Descendants(WaterPage(form)).OfType<Button>().Single(button => button.Text == text);
+
+    private const string ForwardWarmer = "&Forward warmer";
+    private const string ForwardCooler = "Forward &cooler";
+    private const string AftWarmer = "&Aft warmer";
+    private const string AftCooler = "Aft c&ooler";
+    private const string ResetTemperatures = "&Reset to the cockpit temperatures";
+    private const string PreselectUp = "Preselect &up";
+    private const string PreselectDown = "Preselect &down";
+    private const string NoDoorControlButton = "No door control for this line";
+    private const string NotAcceptedText = "The Fenix did not accept that.";
+
+    private static FenixDataValue Num(double value)
+        => new(FenixValueKind.Number, value, false, null, value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+    // The A320 the window starts from, before any setting says otherwise.
+    private static FenixCabinLayout DefaultLayout()
+        => FenixCabinLayout.Resolve(MSFSBlindAssist.Aircraft.FenixAircraftType.Unknown, null, null, null);
+
+    // Puts values in the window's cache, as the poll would, and renders.
+    private static void Set(FenixCabinForm form, params (string Name, FenixDataValue Value)[] values)
+    {
+        foreach ((string name, FenixDataValue value) in values) form.Cache.Apply(name, value);
+        form.Render();
+    }
+
+    private static void Zones(FenixCabinForm form, double forwardSelected, double forwardOffset, double aftSelected, double aftOffset)
+        => Set(form,
+            (FenixCabinNames.TempFwdAir, Num(24)), (FenixCabinNames.TempFwdSelected, Num(forwardSelected)), (FenixCabinNames.TempFwdOffset, Num(forwardOffset)),
+            (FenixCabinNames.TempAftAir, Num(24)), (FenixCabinNames.TempAftSelected, Num(aftSelected)), (FenixCabinNames.TempAftOffset, Num(aftOffset)));
+
+    // Selects the Doors line with this key, from the lines the window shows for the layout.
+    private static void SelectDoorLine(FenixCabinForm form, FenixCabinLayout layout, string key)
+    {
+        int index = FenixCabinLines.Build(form.Cache, null, layout)
+            .Where(line => line.Section == FenixCabinSection.Doors)
+            .Select(line => line.Key)
+            .ToList()
+            .IndexOf(key);
+        Assert.True(index >= 0, "no Doors line " + key);
+        DoorsList(form).SelectedIndex = index;
+    }
+
+    // What the gateway answers a data-name write: accepted or refused, for each of the four kinds.
+    private static string WriteAnswer(bool accepted)
+        => new JObject
+        {
+            ["data"] = new JObject
+            {
+                ["dataRef"] = new JObject
+                {
+                    ["writeInt"] = accepted,
+                    ["writeBool"] = accepted,
+                    ["writeFloat"] = accepted,
+                    ["writeString"] = accepted
+                }
+            }
+        }.ToString(Formatting.None);
+
+    // The window over a fake gateway that accepts every write. Answering unless told not to.
+    private sealed class ControlsRig : IDisposable
+    {
+        public SpeechCapture Speech { get; } = new();
+        public AudioGateway Gateway { get; } = new();
+        public FenixDataService Data { get; }
+        public FenixCabinForm Form { get; }
+
+        // layout: the doors the window lists; the A320 by default.
+        public ControlsRig(bool answering = true, FenixCabinLayout? layout = null)
+        {
+            Data = new FenixDataService(Gateway);
+            Form = new FenixCabinForm(Context(Speech, Data));
+            Gateway.Answer = () => WriteAnswer(accepted: true);
+            if (layout != null)
+                typeof(FenixCabinForm).GetField("_layout", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(Form, layout);
+            if (answering) Form.Cache.Apply(FenixCabinNames.FapOperational, True);
+            Form.Render();
+        }
+
+        public void Dispose()
+        {
+            Form.Dispose();
+            Data.Dispose();
+        }
+    }
+
+    // Each press that was accepted leaves a read-back expectation in the window: its line, the press-time
+    // text, how long to wait and whether to say "unchanged". Read from the window's own read-back object. A
+    // snapshot taken while an accepted press is being recorded on another thread is retried by the caller.
+    private static (string Key, string? PressText, TimeSpan Window, bool SpeakIfUnchanged)[] Expectations(FenixCabinForm form)
+    {
+        BindingFlags instance = BindingFlags.Instance | BindingFlags.NonPublic;
+        object readback = typeof(FenixCabinForm).GetField("_readback", instance)!.GetValue(form)!;
+        var pending = (System.Collections.IEnumerable)typeof(FenixCabinReadback).GetField("_pending", instance)!.GetValue(readback)!;
+        try
+        {
+            return pending.Cast<object>()
+                .Select(item => (
+                    Key: (string)item.GetType().GetProperty("Key")!.GetValue(item)!,
+                    PressText: (string?)item.GetType().GetProperty("PressText")!.GetValue(item),
+                    Window: (TimeSpan)item.GetType().GetProperty("Window")!.GetValue(item)!,
+                    SpeakIfUnchanged: (bool)item.GetType().GetProperty("SpeakIfUnchanged")!.GetValue(item)!))
+                .ToArray();
+        }
+        catch (InvalidOperationException)
+        {
+            return Array.Empty<(string, string?, TimeSpan, bool)>();
+        }
+    }
+
+    // A write the gateway received, against the write the press should have made: its kind (the mutation's
+    // name), the data name and the value.
+    private static void AssertSent(JObject sent, FenixCabinWrite expected)
+    {
+        Assert.Contains($"write{expected.Kind}(", (string?)sent["query"]);
+        Assert.Equal(expected.Name, (string?)sent["variables"]!["name"]);
+        JToken value = sent["variables"]!["value"]!;
+        Assert.True(JToken.DeepEquals(JToken.FromObject(expected.Value), value),
+            $"{expected.Name}: sent {value.ToString(Formatting.None)}, expected {expected.Value}");
+    }
+
+    private static FenixCabinWrite Float(string name, double value) => new(FenixCabinWriteKind.Float, name, value);
+
+    // The text of the line with this key, as the window renders it for the A320.
+    private static string? LineTextOf(FenixCabinForm form, string key)
+        => FenixCabinLines.Build(form.Cache, null, DefaultLayout()).FirstOrDefault(line => line.Key == key)?.Text;
+
+    [Fact]
+    public void The_doors_temperature_and_water_pages_have_their_controls_named_for_the_reader()
+    {
+        using var form = new FenixCabinForm(Context(new SpeechCapture()));
+
+        var pages = new (TabPage Page, string List, string[] Buttons)[]
+        {
+            (DoorsPage(form), "Doors and slides", new[] { NoDoorControlButton }),
+            (TemperaturePage(form), "Cabin temperatures", new[] { ForwardWarmer, ForwardCooler, AftWarmer, AftCooler, ResetTemperatures }),
+            (WaterPage(form), "Water and waste", new[] { PreselectUp, PreselectDown })
+        };
+        foreach ((TabPage page, string listName, string[] buttonTexts) in pages)
+        {
+            // A DisplayListBox with the label as its AccessibleName; the buttons are read by their text (R12).
+            var list = Assert.Single(Descendants(page).OfType<ListBox>());
+            Assert.IsType<DisplayListBox>(list);
+            Assert.Equal(listName, list.AccessibleName);
+            Assert.Equal(0, list.TabIndex);
+
+            Button[] buttons = Descendants(page).OfType<Button>().ToArray();
+            Assert.Equal(buttonTexts, buttons.Select(button => button.Text).ToArray());
+            Assert.All(buttons, button => Assert.Null(button.AccessibleName));
+            // The buttons follow the list in the tab order, in the order they are listed here.
+            Assert.Equal(Enumerable.Range(0, buttons.Length).ToArray(), buttons.Select(button => button.TabIndex).ToArray());
+            Assert.Equal(1, buttons[0].Parent!.TabIndex);
+
+            // No mnemonic twice on a page.
+            char[] mnemonics = buttons.Select(button => button.Text).Where(text => text.Contains('&'))
+                .Select(text => char.ToLowerInvariant(text[text.IndexOf('&') + 1])).ToArray();
+            Assert.Equal(mnemonics.Length, mnemonics.Distinct().Count());
+        }
+        Assert.Empty(Descendants(DoorsPage(form)).OfType<CheckBox>());
+    }
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void The_doors_temperature_and_water_lists_show_their_lines(string culture)
+        => TestCulture.Run(culture, () =>
+        {
+            var speech = new SpeechCapture();
+            using var form = new FenixCabinForm(Context(speech));
+            form.Render();
+
+            // Before any answer every value reads "no data", and each list opens on its first line.
+            Assert.Equal("Forward zone: no data", TemperatureList(form).Items[0]);
+            Assert.Equal("Water: no data", WaterList(form).Items[0]);
+            Assert.Equal("Door 1 left: no status", DoorsList(form).Items[0]);
+            Assert.All(new[] { DoorsList(form), TemperatureList(form), WaterList(form) }, list => Assert.Equal(0, list.SelectedIndex));
+
+            Set(form,
+                (FenixCabinNames.FapOperational, True),
+                (FenixCabinNames.TempFwdAir, Num(24)), (FenixCabinNames.TempFwdSelected, Num(24)), (FenixCabinNames.TempFwdOffset, Num(0.5)),
+                (FenixCabinNames.WaterTank, Num(85)), (FenixCabinNames.WaterPreselect, Num(100)),
+                (FenixCabinNames.Door("d1l"), False), (FenixCabinNames.Slide("d1l"), True));
+
+            FenixCabinLayout layout = DefaultLayout();
+            FenixCabinLine[] lines = FenixCabinLines.Build(form.Cache, null, layout).ToArray();
+            foreach ((FenixCabinSection section, ListBox list) in new[]
+                     {
+                         (FenixCabinSection.Doors, DoorsList(form)),
+                         (FenixCabinSection.Temperature, TemperatureList(form)),
+                         (FenixCabinSection.Water, WaterList(form))
+                     })
+                Assert.Equal(lines.Where(line => line.Section == section).Select(line => line.Text).ToArray(),
+                    list.Items.Cast<string>().ToArray());
+
+            Assert.Equal("Door 1 left: closed, slide armed", DoorsList(form).Items[0]);
+            Assert.Equal("Forward zone: 24.0 degrees, target 24.5 degrees, offset plus 0.5", TemperatureList(form).Items[0]);
+            Assert.Equal("Water: 85 percent", WaterList(form).Items[0]);
+            Assert.Equal("Water preselect: 100 percent", WaterList(form).Items[1]);
+            Assert.Empty(speech.All);
+            return 0;
+        });
+
+    [Fact]
+    public void The_doors_button_says_what_the_selected_line_can_do()
+    {
+        using var rig = new ControlsRig();
+        FenixCabinForm form = rig.Form;
+        FenixCabinLayout layout = DefaultLayout();
+        string ButtonText() => DoorButton(form).Text;
+
+        // The A320 lists its four corner doors, the overwing slides between them, and three cargo doors.
+        Assert.Equal(
+            new[] { "Door 1 left", "Door 1 right", "Overwing slide left", "Overwing slide right", "Door 4 left", "Door 4 right" },
+            DoorsList(form).Items.Cast<string>().Take(6).Select(text => text[..text.IndexOf(':')]).ToArray());
+        Assert.Equal(9, DoorsList(form).Items.Count);
+
+        // The list opens on Door 1 left, whose control the Fenix has not said.
+        Assert.Equal(0, DoorsList(form).SelectedIndex);
+        Assert.Equal("&Open door 1 left", ButtonText());
+
+        // Open (2) reads Close; armed (0) and disarmed (1) read Open; so does a control that stops being known.
+        Set(form, (FenixCabinNames.DoorControl("d1l"), Num(2)));
+        Assert.Equal("&Close door 1 left", ButtonText());
+        Set(form, (FenixCabinNames.DoorControl("d1l"), Num(1)));
+        Assert.Equal("&Open door 1 left", ButtonText());
+        Set(form, (FenixCabinNames.DoorControl("d1l"), Num(0)));
+        Assert.Equal("&Open door 1 left", ButtonText());
+        Set(form, (FenixCabinNames.DoorControl("d1l"), Num(2)));
+        Set(form, (FenixCabinNames.DoorControl("d1l"), FenixDataValue.Unknown));
+        Assert.Equal("&Open door 1 left", ButtonText());
+
+        // A new selection changes the button at once, before any render.
+        form.Cache.Apply(FenixCabinNames.DoorControl("d4r"), Num(2));
+        SelectDoorLine(form, layout, "door.d4r");
+        Assert.Equal("&Close door 4 right", ButtonText());
+
+        // An overwing slide has no control to press.
+        SelectDoorLine(form, layout, "slide.owl");
+        Assert.Equal(NoDoorControlButton, ButtonText());
+        SelectDoorLine(form, layout, "slide.owr");
+        Assert.Equal(NoDoorControlButton, ButtonText());
+
+        // A cargo door: Open until the Fenix says it is open; a moving door keeps the word of its flag.
+        SelectDoorLine(form, layout, "cargo.forward");
+        Assert.Equal("&Open the forward cargo door", ButtonText());
+        Set(form, (FenixCabinNames.CargoForward, True));
+        Assert.Equal("&Close the forward cargo door", ButtonText());
+        Set(form, (FenixCabinNames.CargoFwdMoving, True));
+        Assert.Equal("&Close the forward cargo door", ButtonText());
+        Set(form, (FenixCabinNames.CargoForward, False));
+        Assert.Equal("&Open the forward cargo door", ButtonText());
+
+        SelectDoorLine(form, layout, "cargo.aft");
+        Assert.Equal("&Open the aft cargo door", ButtonText());
+        Set(form, (FenixCabinNames.CargoAft, True));
+        Assert.Equal("&Close the aft cargo door", ButtonText());
+
+        SelectDoorLine(form, layout, "cargo.bulk");
+        Assert.Equal("&Open the bulk cargo door", ButtonText());
+        Set(form, (FenixCabinNames.CargoBulk, True));
+        Assert.Equal("&Close the bulk cargo door", ButtonText());
+
+        // No selection: nothing to press.
+        DoorsList(form).SelectedIndex = -1;
+        Assert.Equal(NoDoorControlButton, ButtonText());
+
+        // Setting the button is the render's doing, not the pilot's: nothing was said or sent.
+        Assert.Empty(rig.Speech.All);
+        Assert.Equal(0, rig.Gateway.Sent);
+    }
+
+    [Fact]
+    public void A_door_the_EFB_does_not_list_has_no_control_and_the_A321_has_all_eight()
+    {
+        // An A320 whose exits setting is double full-size has doors 2 and 3 in the cabin, but the EFB's A320
+        // ground service lists only the four corner doors.
+        FenixCabinLayout a320 = FenixCabinLayout.Resolve(MSFSBlindAssist.Aircraft.FenixAircraftType.A320, "DoubleFullsize", null, null);
+        using (var rig = new ControlsRig(layout: a320))
+        {
+            Set(rig.Form, (FenixCabinNames.DoorControl("d2l"), Num(2)), (FenixCabinNames.DoorControl("d1l"), Num(2)));
+            SelectDoorLine(rig.Form, a320, "door.d1l");
+            Assert.Equal("&Close door 1 left", DoorButton(rig.Form).Text);
+            SelectDoorLine(rig.Form, a320, "door.d2l");
+
+            Assert.Equal(NoDoorControlButton, DoorButton(rig.Form).Text);
+            Click(DoorButton(rig.Form));
+            Assert.Equal(new[] { "No door control for this line." }, rig.Speech.Interrupts);
+            Assert.Equal(0, rig.Gateway.Sent);
+        }
+
+        FenixCabinLayout a321 = FenixCabinLayout.Resolve(MSFSBlindAssist.Aircraft.FenixAircraftType.A321, null, null, null);
+        using (var rig = new ControlsRig(layout: a321))
+        {
+            Set(rig.Form, (FenixCabinNames.DoorControl("d2l"), Num(2)), (FenixCabinNames.DoorControl("d3r"), Num(0)));
+            SelectDoorLine(rig.Form, a321, "door.d2l");
+            Assert.Equal("&Close door 2 left", DoorButton(rig.Form).Text);
+            SelectDoorLine(rig.Form, a321, "door.d3r");
+            Assert.Equal("&Open door 3 right", DoorButton(rig.Form).Text);
+        }
+    }
+
+    [Fact]
+    public void Every_press_on_the_new_pages_says_the_Fenix_is_not_answering_first_and_sends_nothing()
+    {
+        // The Fenix down (R13): the same reason from every button, whatever else is wrong; the Doors list
+        // is on a line with no control, which would otherwise say so.
+        using var rig = new ControlsRig(answering: false);
+        SelectDoorLine(rig.Form, DefaultLayout(), "slide.owl");
+        Button[] buttons = new[] { DoorsPage(rig.Form), TemperaturePage(rig.Form), WaterPage(rig.Form) }
+            .SelectMany(page => Descendants(page).OfType<Button>())
+            .ToArray();
+        Assert.Equal(8, buttons.Length);
+
+        foreach (Button button in buttons) Click(button);
+
+        Assert.Equal(Enumerable.Repeat(NotAnsweringText, buttons.Length).ToArray(), rig.Speech.Interrupts);
+        Assert.Equal(rig.Speech.Interrupts, rig.Speech.All);
+        Assert.Equal(0, rig.Gateway.Sent);
+    }
+
+    [Fact]
+    public void Temperature_presses_refuse_for_an_unknown_value_or_an_unavailable_page_before_any_limit()
+    {
+        using var rig = new ControlsRig();
+        FenixCabinForm form = rig.Form;
+        Button[] steps =
+        {
+            TemperatureButton(form, ForwardWarmer), TemperatureButton(form, ForwardCooler),
+            TemperatureButton(form, AftWarmer), TemperatureButton(form, AftCooler)
+        };
+
+        // The Fenix answers, but no zone value is known.
+        foreach (Button step in steps) Click(step);
+        Assert.Equal(Enumerable.Repeat("Temperature control is not available.", 4).ToArray(), rig.Speech.Interrupts);
+
+        // One zone known, the other not: only the unknown one refuses.
+        Zones(form, 24, 0, 24, 0);
+        form.Cache.Apply(FenixCabinNames.TempAftOffset, FenixDataValue.Unknown);
+        form.Render();
+        Click(TemperatureButton(form, AftWarmer));
+        Click(TemperatureButton(form, AftCooler));
+        Assert.Equal(Enumerable.Repeat("Temperature control is not available.", 6).ToArray(), rig.Speech.Interrupts);
+        Assert.Equal(0, rig.Gateway.Sent);
+
+        // Each of the three flags known false makes the page unavailable, even at a limit (an unknown flag does
+        // not: the limits test below refuses with the zone's own words).
+        Zones(form, 30, 0, 18, -2.5);
+        int refusals = rig.Speech.Interrupts.Count;
+        foreach (string flag in new[]
+                 {
+                     FenixCabinNames.ZoneControllerOperational, FenixCabinNames.LavGalleyFanRunning, FenixCabinNames.CidsOperational
+                 })
+        {
+            Set(form, (flag, False));
+            Click(TemperatureButton(form, ForwardWarmer));
+            Click(TemperatureButton(form, AftCooler));
+            Click(TemperatureButton(form, ResetTemperatures));
+            Set(form, (flag, True));
+        }
+        Assert.Equal(Enumerable.Repeat("Temperature control is not available.", 9).ToArray(), rig.Speech.Interrupts.Skip(refusals).ToArray());
+        Assert.Equal(0, rig.Gateway.Sent);
+    }
+
+    [Fact]
+    public void Temperature_presses_at_a_limit_say_so_for_their_zone_and_send_nothing()
+    {
+        using var rig = new ControlsRig();
+        FenixCabinForm form = rig.Form;
+
+        // Forward at 30 degrees (the target), aft at the lowest offset: warmest forward, coolest aft.
+        Zones(form, 30, 0, 24, -2.5);
+        Click(TemperatureButton(form, ForwardWarmer));
+        Click(TemperatureButton(form, AftCooler));
+        // Forward at the highest offset, aft at 18 degrees: the other limits of each rule.
+        Zones(form, 24, 2.5, 18, 0);
+        Click(TemperatureButton(form, ForwardWarmer));
+        Click(TemperatureButton(form, AftCooler));
+        // Forward at the lowest offset, aft at 30: coolest forward, warmest aft.
+        Zones(form, 24, -2.5, 30, 0);
+        Click(TemperatureButton(form, ForwardCooler));
+        Click(TemperatureButton(form, AftWarmer));
+        // Forward at 18 degrees, aft at the highest offset.
+        Zones(form, 18, 0, 24, 2.5);
+        Click(TemperatureButton(form, ForwardCooler));
+        Click(TemperatureButton(form, AftWarmer));
+
+        Assert.Equal(
+            new[]
+            {
+                "Forward zone is at its warmest setting.", "Aft zone is at its coolest setting.",
+                "Forward zone is at its warmest setting.", "Aft zone is at its coolest setting.",
+                "Forward zone is at its coolest setting.", "Aft zone is at its warmest setting.",
+                "Forward zone is at its coolest setting.", "Aft zone is at its warmest setting."
+            },
+            rig.Speech.Interrupts);
+        Assert.Equal(0, rig.Gateway.Sent);
+    }
+
+    [Fact]
+    public void The_water_preselect_is_not_stepped_when_unknown_or_at_a_limit()
+    {
+        using var rig = new ControlsRig();
+        FenixCabinForm form = rig.Form;
+
+        // Answering without a preselect: not stepped from the FAP's assumed 100 (R14).
+        Click(WaterButton(form, PreselectDown));
+        Click(WaterButton(form, PreselectUp));
+        Assert.Equal(Enumerable.Repeat("Water preselect is not known.", 2).ToArray(), rig.Speech.Interrupts);
+
+        Set(form, (FenixCabinNames.WaterPreselect, Num(100)));
+        Click(WaterButton(form, PreselectUp));
+        Set(form, (FenixCabinNames.WaterPreselect, Num(25)));
+        Click(WaterButton(form, PreselectDown));
+
+        Assert.Equal(
+            new[] { "Water preselect is already 100 percent.", "Water preselect is already 25 percent." },
+            rig.Speech.Interrupts.Skip(2).ToArray());
+        Assert.Equal(0, rig.Gateway.Sent);
+    }
+
+    [Fact]
+    public void Door_presses_refuse_an_unknown_state_a_moving_cargo_door_and_a_line_without_a_control()
+    {
+        using var rig = new ControlsRig();
+        FenixCabinForm form = rig.Form;
+        FenixCabinLayout layout = DefaultLayout();
+        var expected = new List<string>();
+        void Presses(string line, string refusal)
+        {
+            SelectDoorLine(form, layout, line);
+            Click(DoorButton(form));
+            expected.Add(refusal);
+            Assert.Equal(expected, rig.Speech.Interrupts);
+        }
+
+        // The Fenix answers without a control value for the door, or a state for the cargo door (R15).
+        Presses("door.d1l", "Door 1 left state is not known.");
+        Presses("door.d4r", "Door 4 right state is not known.");
+        Presses("cargo.forward", "The forward cargo door state is not known.");
+        Presses("cargo.aft", "The aft cargo door state is not known.");
+        Presses("cargo.bulk", "The bulk cargo door state is not known.");
+
+        // A cargo door that moves, open or closed: the EFB greys its toggle.
+        Set(form, (FenixCabinNames.CargoForward, False), (FenixCabinNames.CargoFwdMoving, True));
+        Presses("cargo.forward", "The forward cargo door is moving.");
+        Set(form, (FenixCabinNames.CargoAft, True), (FenixCabinNames.CargoAftMoving, True));
+        Presses("cargo.aft", "The aft cargo door is moving.");
+
+        // An unknown state comes before the movement flag (the order is unknown, then the limits).
+        Set(form, (FenixCabinNames.CargoAft, FenixDataValue.Unknown));
+        Presses("cargo.aft", "The aft cargo door state is not known.");
+
+        // An overwing slide and no selection at all.
+        Presses("slide.owl", "No door control for this line.");
+        Presses("slide.owr", "No door control for this line.");
+        DoorsList(form).SelectedIndex = -1;
+        Click(DoorButton(form));
+        expected.Add("No door control for this line.");
+        Assert.Equal(expected, rig.Speech.Interrupts);
+
+        Assert.Equal(0, rig.Gateway.Sent);
+        Assert.Equal(rig.Speech.Interrupts, rig.Speech.All);
+    }
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("sv-SE")]
+    public void Each_temperature_and_water_button_sends_its_own_write(string culture)
+        => TestCulture.Run(culture, () =>
+        {
+            using var rig = new ControlsRig();
+            FenixCabinForm form = rig.Form;
+            // Forward: selected 24, offset plus 0.5. Aft: selected 22, offset minus 1.0. Water preselect 75.
+            Zones(form, 24, 0.5, 22, -1.0);
+            Set(form, (FenixCabinNames.WaterPreselect, Num(75)));
+
+            var presses = new (Button Button, FenixCabinWrite Write)[]
+            {
+                (TemperatureButton(form, ForwardWarmer), Float(FenixCabinNames.TempFwdOffset, 1.0)),
+                (TemperatureButton(form, ForwardCooler), Float(FenixCabinNames.TempFwdOffset, 0.0)),
+                (TemperatureButton(form, AftWarmer), Float(FenixCabinNames.TempAftOffset, -0.5)),
+                (TemperatureButton(form, AftCooler), Float(FenixCabinNames.TempAftOffset, -1.5)),
+                (WaterButton(form, PreselectUp), Float(FenixCabinNames.WaterPreselect, 100)),
+                (WaterButton(form, PreselectDown), Float(FenixCabinNames.WaterPreselect, 50))
+            };
+            for (int i = 0; i < presses.Length; i++)
+            {
+                Click(presses[i].Button);
+                int count = i + 1;
+                WaitFor(() => rig.Gateway.Writes.Count == count, presses[i].Button.Text);
+                AssertSent(rig.Gateway.Writes[i], presses[i].Write);
+            }
+
+            // Reset: both offsets to zero, forward first, whatever the zones read.
+            Click(TemperatureButton(form, ResetTemperatures));
+            WaitFor(() => rig.Gateway.Writes.Count == presses.Length + 2, "the reset");
+            AssertSent(rig.Gateway.Writes[presses.Length], Float(FenixCabinNames.TempFwdOffset, 0.0));
+            AssertSent(rig.Gateway.Writes[presses.Length + 1], Float(FenixCabinNames.TempAftOffset, 0.0));
+
+            // Accepted, so nothing is said until the lines change.
+            Assert.Empty(rig.Speech.All);
+            return 0;
+        });
+
+    [Fact]
+    public void The_reset_works_without_any_zone_value_known()
+    {
+        // Only the Fenix has to answer: the reset writes zeros and needs no value to step from.
+        using var rig = new ControlsRig();
+
+        Click(TemperatureButton(rig.Form, ResetTemperatures));
+
+        WaitFor(() => rig.Gateway.Writes.Count == 2, "the reset");
+        AssertSent(rig.Gateway.Writes[0], Float(FenixCabinNames.TempFwdOffset, 0.0));
+        AssertSent(rig.Gateway.Writes[1], Float(FenixCabinNames.TempAftOffset, 0.0));
+        Assert.Empty(rig.Speech.Interrupts);
+    }
+
+    [Fact]
+    public void Each_door_press_writes_the_toggle_of_the_selected_line()
+    {
+        using var rig = new ControlsRig();
+        FenixCabinForm form = rig.Form;
+        FenixCabinLayout layout = DefaultLayout();
+        Set(form,
+            (FenixCabinNames.DoorControl("d1l"), Num(2)), (FenixCabinNames.DoorControl("d1r"), Num(0)),
+            (FenixCabinNames.DoorControl("d4l"), Num(1)),
+            (FenixCabinNames.CargoForward, False), (FenixCabinNames.CargoFwdMoving, False),
+            (FenixCabinNames.CargoAft, True), (FenixCabinNames.CargoAftMoving, False),
+            (FenixCabinNames.CargoBulk, False));
+
+        // An open door is disarmed (1), a door armed (0) or disarmed (1) is opened (2): the EFB's own toggle.
+        // A cargo door writes the opposite of its flag.
+        var presses = new (string Line, FenixCabinWrite Write)[]
+        {
+            ("door.d1l", new FenixCabinWrite(FenixCabinWriteKind.Int, FenixCabinNames.DoorControl("d1l"), 1)),
+            ("door.d1r", new FenixCabinWrite(FenixCabinWriteKind.Int, FenixCabinNames.DoorControl("d1r"), 2)),
+            ("door.d4l", new FenixCabinWrite(FenixCabinWriteKind.Int, FenixCabinNames.DoorControl("d4l"), 2)),
+            ("cargo.forward", new FenixCabinWrite(FenixCabinWriteKind.Bool, FenixCabinNames.CargoForward, true)),
+            ("cargo.aft", new FenixCabinWrite(FenixCabinWriteKind.Bool, FenixCabinNames.CargoAft, false)),
+            ("cargo.bulk", new FenixCabinWrite(FenixCabinWriteKind.Bool, FenixCabinNames.CargoBulk, true))
+        };
+        for (int i = 0; i < presses.Length; i++)
+        {
+            SelectDoorLine(form, layout, presses[i].Line);
+            Click(DoorButton(form));
+            int count = i + 1;
+            WaitFor(() => rig.Gateway.Writes.Count == count, presses[i].Line);
+            AssertSent(rig.Gateway.Writes[i], presses[i].Write);
+        }
+
+        // The button acts on the Fenix's value of the moment, not on the text it had: the door that was open
+        // is now armed, so the same line is opened.
+        SelectDoorLine(form, layout, "door.d1l");
+        Assert.Equal("&Close door 1 left", DoorButton(form).Text);
+        form.Cache.Apply(FenixCabinNames.DoorControl("d1l"), Num(0));
+        Click(DoorButton(form));
+        WaitFor(() => rig.Gateway.Writes.Count == presses.Length + 1, "the second press");
+        AssertSent(rig.Gateway.Writes[presses.Length], new FenixCabinWrite(FenixCabinWriteKind.Int, FenixCabinNames.DoorControl("d1l"), 2));
+
+        Assert.Empty(rig.Speech.Interrupts);
+    }
+
+    [Fact]
+    public void A_bulk_cargo_door_has_no_movement_flag_to_wait_for()
+    {
+        using var rig = new ControlsRig();
+        FenixCabinLayout layout = DefaultLayout();
+        // Another door's movement does not stop the bulk door.
+        Set(rig.Form, (FenixCabinNames.CargoBulk, False), (FenixCabinNames.CargoFwdMoving, True), (FenixCabinNames.CargoAftMoving, True));
+        SelectDoorLine(rig.Form, layout, "cargo.bulk");
+
+        Click(DoorButton(rig.Form));
+
+        WaitFor(() => rig.Gateway.Writes.Count == 1, "the bulk door write");
+        AssertSent(rig.Gateway.Writes[0], new FenixCabinWrite(FenixCabinWriteKind.Bool, FenixCabinNames.CargoBulk, true));
+        Assert.Empty(rig.Speech.Interrupts);
+    }
+
+    [Fact]
+    public void Each_press_waits_for_its_own_line_for_its_own_time()
+    {
+        // The read-back key and window of every press (and whether it says "unchanged"): 5 s and a spoken
+        // "unchanged" for the numbers, 30 s and silence for a door. The reset waits on both zones.
+        var five = TimeSpan.FromSeconds(5);
+        var thirty = TimeSpan.FromSeconds(30);
+        FenixCabinLayout layout = DefaultLayout();
+
+        var cases = new (string Name, Action<FenixCabinForm> Press, (string Key, bool Unchanged, TimeSpan Window)[] Waits)[]
+        {
+            ("Forward warmer", form => Click(TemperatureButton(form, ForwardWarmer)), new[] { ("temp.forward", true, five) }),
+            ("Forward cooler", form => Click(TemperatureButton(form, ForwardCooler)), new[] { ("temp.forward", true, five) }),
+            ("Aft warmer", form => Click(TemperatureButton(form, AftWarmer)), new[] { ("temp.aft", true, five) }),
+            ("Aft cooler", form => Click(TemperatureButton(form, AftCooler)), new[] { ("temp.aft", true, five) }),
+            ("Reset", form => Click(TemperatureButton(form, ResetTemperatures)), new[] { ("temp.forward", true, five), ("temp.aft", true, five) }),
+            ("Preselect up", form => Click(WaterButton(form, PreselectUp)), new[] { ("water.preselect", true, five) }),
+            ("Preselect down", form => Click(WaterButton(form, PreselectDown)), new[] { ("water.preselect", true, five) }),
+            ("Door", form => { SelectDoorLine(form, layout, "door.d1l"); Click(DoorButton(form)); }, new[] { ("door.d1l", false, thirty) }),
+            ("Forward cargo", form => { SelectDoorLine(form, layout, "cargo.forward"); Click(DoorButton(form)); }, new[] { ("cargo.forward", false, thirty) }),
+            ("Aft cargo", form => { SelectDoorLine(form, layout, "cargo.aft"); Click(DoorButton(form)); }, new[] { ("cargo.aft", false, thirty) }),
+            ("Bulk cargo", form => { SelectDoorLine(form, layout, "cargo.bulk"); Click(DoorButton(form)); }, new[] { ("cargo.bulk", false, thirty) })
+        };
+
+        foreach (var c in cases)
+        {
+            using var rig = new ControlsRig();
+            Zones(rig.Form, 24, 0, 24, 0);
+            Set(rig.Form,
+                (FenixCabinNames.WaterPreselect, Num(75)),
+                (FenixCabinNames.DoorControl("d1l"), Num(0)),
+                (FenixCabinNames.CargoForward, False), (FenixCabinNames.CargoAft, False), (FenixCabinNames.CargoBulk, False));
+            string?[] before = c.Waits.Select(wait => LineTextOf(rig.Form, wait.Key)).ToArray();
+
+            c.Press(rig.Form);
+
+            WaitFor(() => Expectations(rig.Form).Length == c.Waits.Length, c.Name);
+            var waiting = Expectations(rig.Form);
+            Assert.True(c.Waits.Select(wait => wait.Key).SequenceEqual(waiting.Select(w => w.Key)), $"{c.Name} waits on [{string.Join(", ", waiting.Select(w => w.Key))}]");
+            for (int i = 0; i < waiting.Length; i++)
+            {
+                Assert.Equal(c.Waits[i].Window, waiting[i].Window);
+                Assert.Equal(c.Waits[i].Unchanged, waiting[i].SpeakIfUnchanged);
+                // The text of the line as the pilot had it at the press.
+                Assert.Equal(before[i], waiting[i].PressText);
+                Assert.NotNull(waiting[i].PressText);
+            }
+            Assert.Empty(rig.Speech.All);
+        }
+    }
+
+    [Fact]
+    public void A_temperature_press_reads_the_zone_line_back_and_a_door_press_reads_the_door_line()
+    {
+        // Forward warmer: the poll's next read shows the new offset, and the zone's line is what is said.
+        using (var rig = new ControlsRig())
+        {
+            Zones(rig.Form, 24, 0, 24, 0);
+            Click(TemperatureButton(rig.Form, ForwardWarmer));
+            WaitFor(() => Expectations(rig.Form).Length == 1, "the forward press");
+
+            Set(rig.Form, (FenixCabinNames.TempFwdOffset, Num(0.5)));
+            Tick(rig.Form);
+
+            Assert.Equal(new[] { "Forward zone: 24.0 degrees, target 24.5 degrees, offset plus 0.5" }, rig.Speech.All);
+            Assert.Empty(rig.Speech.Interrupts);
+            Assert.Empty(Expectations(rig.Form));
+        }
+
+        // Preselect down: "Water preselect: 50 percent".
+        using (var rig = new ControlsRig())
+        {
+            Set(rig.Form, (FenixCabinNames.WaterPreselect, Num(75)));
+            Click(WaterButton(rig.Form, PreselectDown));
+            WaitFor(() => Expectations(rig.Form).Length == 1, "the preselect press");
+
+            Set(rig.Form, (FenixCabinNames.WaterPreselect, Num(50)));
+            Tick(rig.Form);
+
+            Assert.Equal(new[] { "Water preselect: 50 percent" }, rig.Speech.All);
+        }
+
+        // Opening door 1 left: its line says open; the slide is not part of what changed, but of the line.
+        using (var rig = new ControlsRig())
+        {
+            Set(rig.Form, (FenixCabinNames.Door("d1l"), False), (FenixCabinNames.Slide("d1l"), True), (FenixCabinNames.DoorControl("d1l"), Num(0)));
+            Click(DoorButton(rig.Form));
+            WaitFor(() => Expectations(rig.Form).Length == 1, "the door press");
+
+            Set(rig.Form, (FenixCabinNames.Door("d1l"), True), (FenixCabinNames.DoorControl("d1l"), Num(2)));
+            Tick(rig.Form);
+
+            Assert.Equal(new[] { "Door 1 left: open, slide armed" }, rig.Speech.All);
+            Assert.Equal("&Close door 1 left", DoorButton(rig.Form).Text);
+        }
+    }
+
+    [Fact]
+    public void The_reset_stops_at_the_first_write_the_Fenix_refuses()
+    {
+        // The first refused: said once, the aft write never sent, nothing awaited.
+        using (var rig = new ControlsRig())
+        {
+            rig.Gateway.Answer = () => WriteAnswer(accepted: false);
+
+            Click(TemperatureButton(rig.Form, ResetTemperatures));
+
+            WaitFor(() => rig.Speech.Interrupts.Count == 1, "the refusal");
+            Thread.Sleep(300);
+            Assert.Equal(new[] { NotAcceptedText }, rig.Speech.Interrupts);
+            Assert.Single(rig.Gateway.Writes);
+            Assert.Empty(Expectations(rig.Form));
+        }
+
+        // The second refused: the forward zone is still read back, the failure is said once.
+        using (var rig = new ControlsRig())
+        {
+            rig.Gateway.Answer = () => WriteAnswer(accepted: rig.Gateway.Writes.Count < 2);
+
+            Click(TemperatureButton(rig.Form, ResetTemperatures));
+
+            WaitFor(() => rig.Speech.Interrupts.Count == 1, "the refusal");
+            Assert.Equal(new[] { NotAcceptedText }, rig.Speech.Interrupts);
+            Assert.Equal(2, rig.Gateway.Writes.Count);
+            Assert.Equal(new[] { "temp.forward" }, Expectations(rig.Form).Select(w => w.Key).ToArray());
+        }
+    }
+
+    [Fact]
+    public void A_write_the_Fenix_refuses_is_said_and_nothing_is_read_back()
+    {
+        var presses = new (string Name, Action<FenixCabinForm> Press)[]
+        {
+            ("Forward warmer", form => Click(TemperatureButton(form, ForwardWarmer))),
+            ("Aft cooler", form => Click(TemperatureButton(form, AftCooler))),
+            ("Preselect up", form => Click(WaterButton(form, PreselectUp))),
+            ("Door", form => Click(DoorButton(form)))
+        };
+        foreach (var c in presses)
+        {
+            using var rig = new ControlsRig();
+            Zones(rig.Form, 24, 0, 24, 0);
+            Set(rig.Form, (FenixCabinNames.WaterPreselect, Num(75)), (FenixCabinNames.DoorControl("d1l"), Num(0)));
+            rig.Gateway.Answer = () => WriteAnswer(accepted: false);
+
+            c.Press(rig.Form);
+
+            WaitFor(() => rig.Speech.Interrupts.Count == 1, c.Name);
+            Assert.Equal(new[] { NotAcceptedText }, rig.Speech.Interrupts);
+            Assert.Single(rig.Gateway.Writes);
+            Assert.Empty(Expectations(rig.Form));
+        }
     }
 }

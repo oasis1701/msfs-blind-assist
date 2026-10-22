@@ -585,24 +585,25 @@ public sealed partial class FenixCabinForm : Form
     /// is sent and the pilot hears "The Fenix is not answering."; a write it refuses says "The Fenix did
     /// not accept that."; an accepted one with a <paramref name="readbackKey"/> waits
     /// <paramref name="window"/> for that line to change (<see cref="FenixCabinReadback.Expect"/>). UI thread.
+    /// The result is true when the Fenix accepted the write; a press that sends several stops at the first false.
     /// </summary>
-    private Task RunWriteAsync(FenixCabinWrite w, string? readbackKey, TimeSpan window, bool speakIfUnchanged)
+    private Task<bool> RunWriteAsync(FenixCabinWrite w, string? readbackKey, TimeSpan window, bool speakIfUnchanged)
         => RunAsync(() => _context.Data.SendAsync(w), readbackKey, window, speakIfUnchanged, refreshPram: false);
 
     /// <summary>
     /// Sends one FAP audio mutation (<see cref="FenixCabinPram"/>), as <see cref="RunWriteAsync"/> sends a
     /// write, with a 5 s read-back window; once accepted, the audio state is read again at once.
     /// </summary>
-    private Task RunMutationAsync(FenixCabinMutation m, string? readbackKey, bool speakIfUnchanged)
+    private Task<bool> RunMutationAsync(FenixCabinMutation m, string? readbackKey, bool speakIfUnchanged)
         => RunAsync(() => _context.Data.SendAsync(m), readbackKey, ReadbackWindow, speakIfUnchanged, refreshPram: true);
 
-    private async Task RunAsync(Func<Task<bool>> send, string? readbackKey, TimeSpan window, bool speakIfUnchanged, bool refreshPram)
+    private async Task<bool> RunAsync(Func<Task<bool>> send, string? readbackKey, TimeSpan window, bool speakIfUnchanged, bool refreshPram)
     {
         if (!_cache.AnyKnown)
         {
             ReleaseControls();
             Refuse(NotAnswering);
-            return;
+            return false;
         }
 
         // The line as the pilot had it at the press: a change from this text is the press's answer, also
@@ -620,16 +621,17 @@ public sealed partial class FenixCabinForm : Form
             accepted = false;
         }
         // Closed meanwhile: nothing is said once the window has gone.
-        if (_tornDown || IsDisposed) return;
+        if (_tornDown || IsDisposed) return false;
 
         if (!accepted)
         {
             ReleaseControls();
             Refuse(NotAccepted);
-            return;
+            return false;
         }
         if (readbackKey != null)
             _readback.Expect(readbackKey, pressText, DateTime.UtcNow, window, speakIfUnchanged);
         if (refreshPram) RequestPramRefresh();
+        return true;
     }
 }

@@ -511,14 +511,25 @@ public static class FenixCabinLines
         return data.Bool(door.OpenFlag) switch { true => "open", false => "closed", null => null };
     }
 
+    /// <summary>
+    /// True when the Fenix says temperature control is not available: the zone controller, the lavatory and
+    /// galley extraction fan or the CIDS is known not to run (the FAP's <c>dataAvailable$</c> needs all
+    /// three). An unknown flag is not "unavailable" ([FNX-1]); the temperature line and the Cabin window's
+    /// temperature buttons share this one rule.
+    /// </summary>
+    public static bool TemperatureUnavailable(FenixCabinData data)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        return data.Bool(FenixCabinNames.ZoneControllerOperational) == false
+            || data.Bool(FenixCabinNames.LavGalleyFanRunning) == false
+            || data.Bool(FenixCabinNames.CidsOperational) == false;
+    }
+
     private static void AddTemperature(List<FenixCabinLine> lines, FenixCabinData data)
     {
         void Add(string key, string text) => lines.Add(new FenixCabinLine(FenixCabinSection.Temperature, key, text));
 
-        bool unavailable = data.Bool(FenixCabinNames.ZoneControllerOperational) == false
-            || data.Bool(FenixCabinNames.LavGalleyFanRunning) == false
-            || data.Bool(FenixCabinNames.CidsOperational) == false;
-        if (unavailable) Add("temp.available", "Temperature control: not available");
+        if (TemperatureUnavailable(data)) Add("temp.available", "Temperature control: not available");
 
         Add("temp.forward", "Forward zone: "
             + ZoneState(data, FenixCabinNames.TempFwdAir, FenixCabinNames.TempFwdSelected, FenixCabinNames.TempFwdOffset));
