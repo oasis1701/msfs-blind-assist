@@ -230,15 +230,16 @@ public static class FenixChecklistDefinitions
             Auto("ES_MODE", "ENGINE_START", "Engine mode selector: IGN START",
                 "S_ENG_MODE", v => Math.Abs(v - 2) < 0.5, (e, _) => e.Set("S_ENG_MODE", 2)),
             // Engine 1 first, then engine 2 (user preference). Each "Engine n: running" line is
-            // completed by the flow's ES_ENGn_N2 wait (FO-6) and also ticks itself from N2.
+            // completed by the flow's ES_ENGn_N2 wait (FO-6) and also ticks itself from the Fenix's own
+            // running flag (FO_ENGn_RUNNING, N2 55 % while the flag is unknown), as the A32NX's does.
             Auto("ES_ENG1", "ENGINE_START", "Engine 1 master: ON",
                 "S_ENG_MASTER_1", v => v > 0.5, (e, _) => e.Set("S_ENG_MASTER_1", 1)),
             Auto("ES_ENG1_RUN", "ENGINE_START", "Engine 1: running",
-                "FO_ENG1_N2", v => v >= FenixStateEvaluator.EngineRunningN2, action: null),
+                "FO_ENG1_RUNNING", v => v > 0.5, action: null),
             Auto("ES_ENG2", "ENGINE_START", "Engine 2 master: ON",
                 "S_ENG_MASTER_2", v => v > 0.5, (e, _) => e.Set("S_ENG_MASTER_2", 1)),
             Auto("ES_ENG2_RUN", "ENGINE_START", "Engine 2: running",
-                "FO_ENG2_N2", v => v >= FenixStateEvaluator.EngineRunningN2, action: null),
+                "FO_ENG2_RUNNING", v => v > 0.5, action: null),
         }
     };
 

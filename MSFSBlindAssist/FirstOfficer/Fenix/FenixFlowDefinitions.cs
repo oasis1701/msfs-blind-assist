@@ -31,16 +31,11 @@ using Step = Models.FlowStep<FenixStateEvaluator>;
 /// </summary>
 public static class FenixFlowDefinitions
 {
-    /// <summary>N2 percent at/above which an engine counts as started: above the starter cut-out
-    /// (about 50 %), below the Fenix's measured idles (59.3 % CFM, 62.3 % IAE). Read on the Fenix's
-    /// own N2, with stock as the fallback (FenixStateEvaluator.EngineN2).</summary>
-    private const double EngRunningN2 = FenixStateEvaluator.EngineRunningN2;
-
     /// <summary>How long each engine-start wait lets the engine spool before the flow stops. Sourced
     /// (Airbus instructor notes, plan 05 O2): the IAE FADEC dry-cranks 30 s before ignition and fuel
     /// on every auto start, and the Fenix option iae_crank_type offers 30 or 50 s of it. Assumed: 180 s
-    /// is margin over that (120 s was the old wait), not a measured start time; plan 05's in-sim check
-    /// times it.</summary>
+    /// is margin over that (120 s was the old wait). Measured (plan 05 follow-up, 2026-10-22, IAE A321
+    /// with a 30 s crank): master ON to the Fenix running flag about 66 s per engine.</summary>
     internal const int EngineStartTimeoutSeconds = 180;
 
     // [RADAR] Weather radar OFF/ON values — confirmed against the def's registered
@@ -276,7 +271,7 @@ public static class FenixFlowDefinitions
     };
 
     // -----------------------------------------------------------------------
-    // 4. Engine Start (FADEC-managed: mode IGN, master on, N2 verification)
+    // 4. Engine Start (FADEC-managed: mode IGN, master on, wait for the running flag)
     // -----------------------------------------------------------------------
     private static Flow BuildEngineStart() => new()
     {
@@ -290,18 +285,19 @@ public static class FenixFlowDefinitions
             Done(Skip(SW("ES_MODE", "Engine mode selector: IGN START", "S_ENG_MODE", 2),
                 s => s.IsPosition("S_ENG_MODE", 2)), "ES_MODE"),
             // Engine 1 first, then engine 2 (user preference). The FADEC runs the whole
-            // start; each N2 wait verifies the engine actually spooled (the Fenix's own N2 from its
-            // data service, the stock TURB ENG N2 pushed per second only while that is unknown)
-            // before the next master goes on, and completes its own "Engine n: running" line, which
-            // reads the same N2 (FO-6). A timeout stops the flow, so nothing is latched.
+            // start; each wait is on the Fenix's own running flag (FO_ENGn_RUNNING, the A32NX's
+            // name and the A32NX flow's shape; N2 55 % only while the flag is unknown), so the next
+            // master goes on once the engine has stabilized, and it completes its own "Engine n:
+            // running" line, which reads the same field (FO-6). The step ids keep their _N2 names.
+            // A timeout stops the flow, so nothing is latched.
             Done(Skip(SW("ES_ENG1", "Engine 1 master: ON", "S_ENG_MASTER_1", 1),
                 s => s.IsOn("S_ENG_MASTER_1")), "ES_ENG1"),
             Done(WaitForField("ES_ENG1_N2", "Engine 1 starting — waiting for the engine to stabilize",
-                "FO_ENG1_N2", v => v >= EngRunningN2, EngineStartTimeoutSeconds, onTimeout: FlowStepFailurePolicy.Stop), "ES_ENG1_RUN"),
+                "FO_ENG1_RUNNING", v => v > 0.5, EngineStartTimeoutSeconds, onTimeout: FlowStepFailurePolicy.Stop), "ES_ENG1_RUN"),
             Done(Skip(SW("ES_ENG2", "Engine 2 master: ON", "S_ENG_MASTER_2", 1),
                 s => s.IsOn("S_ENG_MASTER_2")), "ES_ENG2"),
             Done(WaitForField("ES_ENG2_N2", "Engine 2 starting — waiting for the engine to stabilize",
-                "FO_ENG2_N2", v => v >= EngRunningN2, EngineStartTimeoutSeconds, onTimeout: FlowStepFailurePolicy.Stop), "ES_ENG2_RUN"),
+                "FO_ENG2_RUNNING", v => v > 0.5, EngineStartTimeoutSeconds, onTimeout: FlowStepFailurePolicy.Stop), "ES_ENG2_RUN"),
         }
     };
 

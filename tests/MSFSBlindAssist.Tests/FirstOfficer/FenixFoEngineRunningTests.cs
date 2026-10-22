@@ -8,10 +8,11 @@ using Xunit;
 namespace MSFSBlindAssist.Tests.FirstOfficer;
 
 /// <summary>
-/// The Fenix First Officer judges each engine running or stopped on the Fenix's own N2 (the data
-/// service), with the stock N2 as the per-engine fallback. The stock value cannot be trusted alone:
-/// on the IAE the stock N2 reads idle while the Fenix engine is still starting (72.4 against 62.3).
-/// The values are pushed through the callback a fake subscription captured, as the data service
+/// The Fenix First Officer judges each engine stopped on the Fenix's own N2 (the data service), with
+/// the stock N2 as the per-engine fallback, and running on the Fenix's own running flag, with N2 55 %
+/// as the fallback while the flag is unknown (the "Running" section below). The stock value cannot be trusted
+/// alone: on the IAE the stock N2 reads idle while the Fenix engine is still starting (72.4 against
+/// 62.3). The values are pushed through the callback a fake subscription captured, as the data service
 /// would push them from its own thread (FNX-2).
 /// </summary>
 public class FenixFoEngineRunningTests
@@ -234,6 +235,77 @@ public class FenixFoEngineRunningTests
         {
             e.AttachFenix(null, null, null);
         }
+    }
+
+    // ---- "Running" is the Fenix's own flag, N2 55 % the fallback ---------------------------------
+    // Measured live (plan 05 follow-up, 2026-10-22): the Fenix flags an engine running at its idle, 62.1 /
+    // 62.4 % N2 on the IAE (6-7 s after N2 passed 55 %), 59.2 % on the CFM (about 4 s after, plan 09), and
+    // drops the flag at once on a shutdown while its N2 takes about 20 s to fall. The A32NX First Officer
+    // does the same with FlyByWire's own engine state (FO_ENGn_RUNNING). The flag streams through the
+    // subscription, so these tests push it through the same fake callback.
+
+    private static FenixDataValue Flag(bool on) => new(FenixValueKind.Bool, 0, on, null, "");
+
+    [Fact]
+    public void Running_is_the_Fenixs_own_flag_while_known()
+    {
+        var (e, fenix) = Attached();
+        fenix.Callback!(FenixFoLiveReadings.Engine1Running, Flag(true));
+        fenix.Callback!(FenixFoLiveReadings.Engine2Running, Flag(false));
+        fenix.Callback!(FenixFoLiveReadings.Engine1N2, Num(50.0));      // below 55 %, and the Fenix says running
+        fenix.Callback!(FenixFoLiveReadings.Engine2N2, Num(62.0));      // above 55 %, and the Fenix says not (a shutdown)
+        e.SetEngineN2(72.4, 72.4);
+
+        Assert.Equal(1, e.GetValue("FO_ENG1_RUNNING"));
+        Assert.Equal(0, e.GetValue("FO_ENG2_RUNNING"));
+    }
+
+    [Fact]
+    public void Running_falls_back_to_N2_when_the_flag_is_unknown()
+    {
+        // Nothing read at all: unknown, never "not running".
+        var unattached = new FenixStateEvaluator();
+        Assert.True(double.IsNaN(unattached.GetValue("FO_ENG1_RUNNING")));
+        Assert.True(double.IsNaN(unattached.GetValue("FO_ENG2_RUNNING")));
+
+        // Stock N2 only, no flag: 55 % is the line.
+        unattached.SetEngineN2(61.4, 50.0);
+        Assert.Equal(1, unattached.GetValue("FO_ENG1_RUNNING"));
+        Assert.Equal(0, unattached.GetValue("FO_ENG2_RUNNING"));
+
+        // A flag the service sent as unknown or null (FNX-1) is no flag: the same fallback, and on the
+        // Fenix's own fresh N2 where there is one (62.3 here, above the stock 50).
+        var (e, fenix) = Attached();
+        fenix.Callback!(FenixFoLiveReadings.Engine1Running, FenixDataValue.Unknown);
+        fenix.Callback!(FenixFoLiveReadings.Engine2Running, FenixFoFakeRead.Null);
+        e.SetEngineN2(50.0, 50.0);
+        Assert.Equal(0, e.GetValue("FO_ENG1_RUNNING"));
+        Assert.Equal(0, e.GetValue("FO_ENG2_RUNNING"));
+
+        fenix.Callback!(FenixFoLiveReadings.Engine1N2, Num(62.3));
+        Assert.Equal(1, e.GetValue("FO_ENG1_RUNNING"));
+        Assert.Equal(0, e.GetValue("FO_ENG2_RUNNING"));
+    }
+
+    // The pure rule: the flag while it is 1 or 0, else the resolved N2 against 55 %, else NaN.
+    [Theory]
+    [InlineData(1.0, 50.0, 1.0)]                      // the flag wins over a low N2 ...
+    [InlineData(0.0, 62.0, 0.0)]                      // ... and over a high one
+    [InlineData(1.0, double.NaN, 1.0)]                // the flag needs no N2
+    [InlineData(0.0, double.NaN, 0.0)]
+    [InlineData(double.NaN, 61.4, 1.0)]               // no flag: N2 decides
+    [InlineData(double.NaN, 55.0, 1.0)]               // 55 % itself runs (the same >= as before)
+    [InlineData(double.NaN, 54.9, 0.0)]
+    [InlineData(double.NaN, 50.0, 0.0)]
+    [InlineData(double.NaN, double.NaN, double.NaN)]  // nothing known is unknown (FNX-1), never 0
+    public void RunningValue_is_the_flag_then_N2_then_unknown(double flag, double n2, double expected)
+    {
+        double actual = FenixStateEvaluator.RunningValue(flag, n2);
+
+        if (double.IsNaN(expected))
+            Assert.True(double.IsNaN(actual), $"expected NaN, got {actual}");
+        else
+            Assert.Equal(expected, actual);
     }
 
     [Fact]

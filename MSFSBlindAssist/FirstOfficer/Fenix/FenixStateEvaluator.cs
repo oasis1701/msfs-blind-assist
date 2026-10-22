@@ -1,6 +1,5 @@
 namespace MSFSBlindAssist.FirstOfficer.Fenix;
 
-using System.Globalization;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.FirstOfficer.Airbus;
 using MSFSBlindAssist.FirstOfficer.Generic;
@@ -16,18 +15,22 @@ using MSFSBlindAssist.Utils.Logging;
 /// <see cref="AttachFenix(FenixA320Definition?)"/> subscribes to, or polls once a second for the
 /// engine N2 the subscription sends only once.
 ///
-/// Engine running is judged per engine on the Fenix's own N2 from its data service
-/// (FenixFoLiveReadings), NOT from Fenix L:vars. The stock TURB ENG N2 SimVars pushed in by the
-/// form timer (RequestFOEngineN2 → SetEngineN2) are only the fallback, used for an engine while
-/// its Fenix value is unknown or more than 5 s old: stock N2 is a generic engine model that does
-/// not follow the Fenix (on the IAE it reads 72.4 % at idle while the Fenix engine reads 62.3 %).
+/// Engine running is the Fenix's own <c>running</c> flag from its data service (FenixFoLiveReadings),
+/// NOT from Fenix L:vars, as the A32NX First Officer judges it on FlyByWire's own engine state
+/// (FO_ENGn_RUNNING, <see cref="RunningValue"/>); N2 55 % is only the fallback while the flag is
+/// unknown. Engine stopped stays on N2 below 20 % (FO_ENGINES_OFF), read per engine from the Fenix's
+/// own N2 while it is fresh. The stock TURB ENG N2 SimVars pushed in by the form timer
+/// (RequestFOEngineN2 → SetEngineN2) are only the N2 fallback, used for an engine while its Fenix value
+/// is unknown or more than 5 s old: stock N2 is a generic engine model that does not follow the Fenix
+/// (on the IAE it reads 72.4 % at idle while the Fenix engine reads 62.3 %, and it falls to 0 within a
+/// second of a shutdown while the Fenix's takes about 20 s).
 /// </summary>
 public sealed class FenixStateEvaluator : LVarStateEvaluator
 {
-    /// <summary>N2 percent at/above which an engine counts as running. It sits above the starter
-    /// cut-out (about 50 % N2, Airbus instructor support notes, manualslib A320 series p.22) and
-    /// below both idles measured on the Fenix: 59.3 % on the CFM56 A320 and 62.3 % on the IAE A321.
-    /// One threshold serves both engine families.</summary>
+    /// <summary>N2 percent at/above which an engine counts as running while the Fenix's own running flag
+    /// is unknown (<see cref="RunningValue"/>). It sits above the starter cut-out (about 50 % N2, Airbus
+    /// instructor support notes, manualslib A320 series p.22) and below both idles measured on the Fenix:
+    /// 59.3 % on the CFM56 A320 and 62.3 % on the IAE A321. One threshold serves both engine families.</summary>
     public const double EngineRunningN2 = 55.0;
 
     /// <summary>1 when the APU is available or external power is on the buses, 0 when both read
@@ -230,6 +233,10 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
             // Each engine's N2: the Fenix's own while it is fresh, the stock value otherwise.
             case "FO_ENG1_N2": value = EngineN2(1); return true;
             case "FO_ENG2_N2": value = EngineN2(2); return true;
+            // Each engine running: the Fenix's own flag while it is known, N2 55 % while it is not (the
+            // A32NX's names, FO_ENGn_RUNNING). Only "stopped" below stays on N2.
+            case "FO_ENG1_RUNNING": value = EngineRunning(1); return true;
+            case "FO_ENG2_RUNNING": value = EngineRunning(2); return true;
             // NaN until both N2 answers are in (either source): unknown is never "engines off" (the
             // power-up guard EPU_ENGINES_STOPPED and the Parking checklist's "Engines: OFF" read it).
             case "FO_ENGINES_OFF":
@@ -263,49 +270,41 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
 
     // ---- Engine N2: the Fenix's own value, stock as the per-engine fallback ----------------------
 
-    /// <summary>The N2 the First Officer judges an engine by: the Fenix's own when it is known and
-    /// fresh, else the stock value the window pushes each second, which is NaN until its first answer.
+    /// <summary>The N2 the First Officer judges an engine stopped by, and running by while the Fenix's
+    /// flag is unknown: the Fenix's own when it is known and fresh, else the stock value the window
+    /// pushes each second, which is NaN until its first answer.
     /// The Fenix N2 is read by a once-a-second query (<see cref="FenixFoLiveReadings.PolledNames"/>), so
     /// <see cref="FenixFoLiveReadings.N2"/> reads NaN past 5 s only when the polling stopped answering
     /// (the gateway is down, the Fenix is not loaded), and while an engine is off (the query answers null).</summary>
     private double EngineN2(int engine)
     {
         double fenix = _live.N2(engine);
-        double stock = engine == 1 ? Eng1N2 : Eng2N2;
-        TraceEngine(engine, fenix, stock);
-        return double.IsNaN(fenix) ? stock : fenix;
+        return double.IsNaN(fenix) ? (engine == 1 ? Eng1N2 : Eng2N2) : fenix;
     }
 
-    // What each engine was last logged as. A diagnostic only: the window timer reads FO_ENG{n}_N2
-    // each second and the flows read it too, so a line is written when this changes, never per read.
-    private readonly record struct EngineTrace(bool FromFenix, bool FenixAbove, bool StockAbove, int RunningFlag);
+    // ---- Engine running: the Fenix's own flag, N2 the fallback ------------------------------------
 
-    private readonly object _traceLock = new();
-    private static readonly EngineTrace QuietStart = new(false, false, false, -1);   // stock, below 55 %, flag unread
-    private readonly EngineTrace[] _trace = { QuietStart, QuietStart };
+    /// <summary>1 when the engine is running, 0 when it is not, NaN while neither the Fenix's flag nor an
+    /// N2 is known. The flag is the Fenix's own <c>aircraft.engines.n.running</c> (FenixFoLiveReadings),
+    /// which streams on change; N2 is only the fallback while the flag is unknown.</summary>
+    private double EngineRunning(int engine) => RunningValue(_live.Running(engine), EngineN2(engine));
 
-    /// <summary>Logs one line when an engine's source (Fenix or stock) changes, or when the Fenix N2,
-    /// the stock N2 or the Fenix running flag crosses the running threshold or changes, so the
-    /// in-sim check can read how the two N2s and the flag move through a start.</summary>
-    private void TraceEngine(int engine, double fenixN2, double stockN2)
+    /// <summary>The "running" rule, pure for the tests: the Fenix's flag while it reads 1 or 0, else the
+    /// resolved N2 against <see cref="EngineRunningN2"/> while that is known, else NaN (unknown, never
+    /// "not running", FNX-1).
+    ///
+    /// Why the flag and not N2 alone: the A32NX First Officer does the same with FlyByWire's own engine
+    /// state (FbwA320StateEvaluator.RunningFrom), and the stock N2 the fallback uses is a generic engine
+    /// model that does not follow the Fenix. Measured live (plan 05 follow-up, 2026-10-22): the Fenix
+    /// flags an engine running at its idle, 62.1 and 62.4 % N2 on the IAE A321 (6-7 s after N2 passed
+    /// 55 %) and 59.2 % on the CFM A320 (about 4 s after, plan 09); on a shutdown the flag drops at once
+    /// while the Fenix's N2 takes about 20 s to fall below 20 %. "Stopped" (FO_ENGINES_OFF) stays on
+    /// N2 below 20 %, so a shutdown reads not running at master-off and stopped once N2 has spun down.</summary>
+    internal static double RunningValue(double fenixFlag, double resolvedN2)
     {
-        double flag = _live.Running(engine);
-        var now = new EngineTrace(!double.IsNaN(fenixN2), fenixN2 >= EngineRunningN2,
-            stockN2 >= EngineRunningN2, double.IsNaN(flag) ? -1 : (int)flag);
-
-        lock (_traceLock)
-        {
-            if (now == _trace[engine - 1]) return;
-            _trace[engine - 1] = now;
-        }
-
-        string runningFlag = now.RunningFlag < 0 ? "unread" : now.RunningFlag.ToString(CultureInfo.InvariantCulture);
-        string source = now.FromFenix ? "Fenix" : "stock";
-        Log.Info("FO", string.Create(CultureInfo.InvariantCulture,
-            $"Fenix engine {engine}: Fenix N2 {Percent(fenixN2)}, stock N2 {Percent(stockN2)}, running flag {runningFlag}, source {source}"));
-
-        static string Percent(double n2) =>
-            double.IsNaN(n2) ? "unread" : n2.ToString("0.0", CultureInfo.InvariantCulture) + " %";
+        if (!double.IsNaN(fenixFlag)) return fenixFlag > 0.5 ? 1.0 : 0.0;
+        if (!double.IsNaN(resolvedN2)) return resolvedN2 >= EngineRunningN2 ? 1.0 : 0.0;
+        return double.NaN;
     }
 
     /// <summary>Gear lever position (S_MIP_GEAR 1 = Down). NaN-safe: unknown reads as down,
