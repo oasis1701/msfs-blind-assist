@@ -1,8 +1,12 @@
 // Fenix EFB accessibility layer, injected into the Fenix EFB web page by FenixEFBForm.
-// It only adds roles, names, states, Tab stops and key handlers that call the page's own click --
-// never a request, a removed element or a written value. Plain ES2017, no modules.
+// It only adds roles, names, states, Tab stops and key handlers that call the page's own click (and takes
+// back a name it wrote itself) -- never a request, a removed element, written text or a written value.
+// It runs in the top document only. Plain ES2017, no modules.
 (function () {
   if (window.__msfsbaFenixEfb) { return; }
+  // WebView2 runs a document-created script in every iframe too; the layer belongs to the top document
+  // only (an iframe gets no export, no observer, no Alt+Home). A window that cannot be compared is a frame.
+  try { if (window.top !== window) { return; } } catch (err) { return; }
 
   // Marks every element the layer has handled, so a later pass knows it has been here.
   var MARK = 'data-msfsba';
@@ -21,6 +25,10 @@
   // Elements that already have a keydown handler from the layer. A page that clones a node copies its
   // attributes but not its listeners, so the element itself is the record, not the attribute.
   var handled = new WeakSet();
+
+  // The aria-label the layer wrote on each element. A label that is there and is not the one written is
+  // the page's, and the layer never touches it; the one it wrote it keeps in step with the text.
+  var written = new WeakMap();
 
   function collect(node, out, isRoot) {
     if (node.nodeType === 3) { out.push(node.nodeValue); return; }
@@ -47,12 +55,24 @@
     if (el.getAttribute(MARK) !== '1') { el.setAttribute(MARK, '1'); }
   }
 
-  // Gives the element an accessible name, unless the page gave it one or there is nothing to say.
+  // Gives the element an accessible name. A non-empty label the page wrote is never touched. A label the
+  // layer wrote follows the text: rewritten when it changes, removed when it becomes empty (no name beats
+  // a stale one). Only attributes are written, so a change here never wakes the observer.
   function name(el, text) {
-    if (!text) { return; }
     var existing = el.getAttribute('aria-label');
-    if (existing && existing.trim() !== '') { return; }
-    el.setAttribute('aria-label', text);
+    var mine = written.get(el);
+    var ours = mine !== undefined && existing === mine;
+    if (!ours && existing !== null && existing.trim() !== '') {
+      written.delete(el); // the page's label (it may have replaced ours): not ours any more
+      return;
+    }
+    if (!text) {
+      if (ours) { el.removeAttribute('aria-label'); }
+      written.delete(el);
+      return;
+    }
+    if (existing !== text) { el.setAttribute('aria-label', text); }
+    written.set(el, text);
     mark(el);
   }
 
@@ -105,6 +125,30 @@
     for (var i = 0; i < buttons.length; i++) { button(buttons[i], 'Home'); }
   });
 
+  // Every app: the top bar's chevron opens the app switcher. It is a bare div and the only way to the
+  // switcher. Where the page hides it (home, quick settings: class top-bar-slot-hidden, aria-hidden
+  // "true") it is no Tab stop, also if it was one a moment ago.
+  RULES.push(function (root) {
+    var arrows = root.querySelectorAll('div.popup-arrow');
+    for (var i = 0; i < arrows.length; i++) {
+      var arrow = arrows[i];
+      if (arrow.getAttribute('aria-hidden') === 'true' || arrow.classList.contains('top-bar-slot-hidden')) {
+        if (handled.has(arrow) && arrow.getAttribute('tabindex') === '0') { arrow.setAttribute('tabindex', '-1'); }
+      } else {
+        button(arrow, 'App switcher');
+      }
+    }
+  });
+
+  // True when the picture's parent holds nothing else: no element but the picture and line breaks, and no
+  // text of its own. The live switcher has <div class="col noSel"><img class="app-img"><br></div>.
+  function holdsOnly(parent, img) {
+    for (var child = parent.firstElementChild; child; child = child.nextElementSibling) {
+      if (child !== img && child.localName !== 'br') { return false; }
+    }
+    return textOf(parent) === '';
+  }
+
   // The app switcher: pictures without names, each in its own clickable parent. The home tiles hold the
   // same pictures, so they are told apart by their div.appIcon container.
   RULES.push(function (root) {
@@ -117,9 +161,9 @@
     var named = icons.length === TILE_TITLES.length;
     for (var j = 0; j < icons.length; j++) {
       var parent = icons[j].parentElement;
-      // The parent is the clickable thing, unless it holds several icons (then pressing the picture
-      // itself reaches the page's own handler).
-      var target = parent && parent.querySelectorAll('img.app-img').length === 1 ? parent : icons[j];
+      // The parent is the clickable thing when it is only the picture's holder; otherwise (it holds more,
+      // or text) pressing the picture itself reaches the page's own handler.
+      var target = parent && parent !== root && holdsOnly(parent, icons[j]) ? parent : icons[j];
       button(target, named ? TILE_TITLES[j] : '');
     }
   });
@@ -132,8 +176,9 @@
     }
   }
 
-  // One pass per 50 ms however many mutations arrive. The observer sees only child-list changes and the
-  // class attribute, so the layer's own writes (role, aria-*, tabindex, data-msfsba) never wake it.
+  // One pass per 50 ms however many mutations arrive. The observer sees child-list changes, text changes
+  // (Angular updates a text node in place) and the class attribute, so the layer's own writes (role,
+  // aria-*, tabindex, data-msfsba: attributes, never text or nodes) never wake it.
   var timer = null;
   function schedule() {
     if (timer !== null) { return; }
@@ -148,7 +193,9 @@
       pass();
       new MutationObserver(function () {
         try { schedule(); } catch (err) { /* never throw into the page */ }
-      }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+      }).observe(document.body, {
+        childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class']
+      });
     } catch (err) { /* never throw into the page */ }
   }
 
