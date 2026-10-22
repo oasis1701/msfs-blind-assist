@@ -106,17 +106,20 @@ public sealed class FenixDataService : IDisposable
         }
     }
 
-    /// <summary>Writes an Int data ref; true only when the service answered 200 without errors.</summary>
+    /// <summary>Writes an Int data ref; true only when the service answered 200 without errors and did not
+    /// answer the write false.</summary>
     public Task<bool> WriteIntAsync(string name, int value, CancellationToken ct = default)
         => WriteAsync("Int", name, value, ct);
 
-    /// <summary>Writes a Boolean data ref; true only when the service answered 200 without errors.</summary>
+    /// <summary>Writes a Boolean data ref; true only when the service answered 200 without errors and did
+    /// not answer the write false.</summary>
     public Task<bool> WriteBoolAsync(string name, bool value, CancellationToken ct = default)
         => WriteAsync("Bool", name, value, ct);
 
     /// <summary>
     /// Writes a Float data ref (an invariant decimal point under any PC culture); true only when the
-    /// service answered 200 without errors. NaN or infinity is never sent and gives false.
+    /// service answered 200 without errors and did not answer the write false. NaN or infinity is never
+    /// sent and gives false.
     /// </summary>
     public Task<bool> WriteFloatAsync(string name, double value, CancellationToken ct = default)
     {
@@ -125,7 +128,8 @@ public sealed class FenixDataService : IDisposable
         return Task.FromResult(false);
     }
 
-    /// <summary>Writes a String data ref; true only when the service answered 200 without errors.</summary>
+    /// <summary>Writes a String data ref; true only when the service answered 200 without errors and did
+    /// not answer the write false.</summary>
     public Task<bool> WriteStringAsync(string name, string value, CancellationToken ct = default)
         => value == null ? Task.FromResult(false) : WriteAsync("String", name, value, ct);
 
@@ -216,6 +220,9 @@ public sealed class FenixDataService : IDisposable
     /// <paramref name="onChange"/> runs on a thread-pool thread (the socket loop), never the UI
     /// thread: a form marshals to its own thread. An exception from it is logged and swallowed.
     /// After <see cref="Dispose"/>, or with no names, the handle does nothing.
+    /// <para>When the service itself ends a subscription (it sends <c>complete</c> or <c>error</c> for
+    /// it), the subscription stays registered but receives nothing more until the socket next
+    /// reconnects, which subscribes it again. Nothing tells the caller.</para>
     /// </remarks>
     public IDisposable Subscribe(IReadOnlyList<string> names, Action<string, FenixDataValue> onChange)
     {
@@ -359,7 +366,18 @@ public sealed class FenixDataService : IDisposable
             LogProblem($"Write body for {name} could not be built: {ex.Message}");
             return false;
         }
-        return await PostGraphQlAsync(body, ct).ConfigureAwait(false) != null;
+        var answer = await PostGraphQlAsync(body, ct).ConfigureAwait(false);
+        if (answer == null) return false;
+
+        // The mutation answers data.dataRef.write<Kind>. Only an explicit JSON false there is a refusal;
+        // anything else, a missing field included, is taken as accepted.
+        var result = ((answer["data"] as JObject)?["dataRef"] as JObject)?["write" + kind];
+        if (result is { Type: JTokenType.Boolean } && !(bool)result)
+        {
+            LogProblem($"The data service refused the write to {name}");
+            return false;
+        }
+        return true;
     }
 
     // The whole answer object of a GraphQL POST, or null unless it is 200, JSON and free of errors.

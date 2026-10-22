@@ -143,6 +143,32 @@ public class FenixDataServiceClientTests
             request.Body);
     }
 
+    [Theory]
+    [InlineData("{\"data\":{\"dataRef\":{\"writeInt\":false}}}", false)]
+    [InlineData("{\"data\":{\"dataRef\":{\"writeInt\":true}}}", true)]
+    // Only an explicit false is a refusal: anything else keeps the 200-without-errors reading.
+    [InlineData("{\"data\":{\"dataRef\":{}}}", true)]
+    [InlineData("{\"data\":{\"dataRef\":{\"writeInt\":null}}}", true)]
+    [InlineData("{\"data\":{}}", true)]
+    public async Task Write_returns_false_only_when_the_service_answers_false(string answer, bool expected)
+    {
+        using var service = new FenixDataService(Answering(answer));
+
+        Assert.Equal(expected, await service.WriteIntAsync("x", 1));
+    }
+
+    [Fact]
+    public async Task Each_write_kind_reads_its_own_result()
+    {
+        using var service = new FenixDataService(Answering(
+            "{\"data\":{\"dataRef\":{\"writeInt\":true,\"writeBool\":false,\"writeFloat\":false,\"writeString\":false}}}"));
+
+        Assert.True(await service.WriteIntAsync("x", 1));
+        Assert.False(await service.WriteBoolAsync("x", true));
+        Assert.False(await service.WriteFloatAsync("x", 1.5));
+        Assert.False(await service.WriteStringAsync("x", "on"));
+    }
+
     [Fact]
     public void WriteFloatAsync_sends_an_invariant_decimal_point_under_a_comma_culture()
     {
