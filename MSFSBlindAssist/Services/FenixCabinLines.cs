@@ -16,6 +16,18 @@ public enum FenixCabinSection { Status, Audio, Doors, Temperature, Water }
 public sealed record FenixCabinLine(FenixCabinSection Section, string Key, string Text, string? State = null);
 
 /// <summary>
+/// A cargo door as the Doors page lists and presses it (<see cref="FenixCabinLines.CargoDoors"/>).
+/// </summary>
+/// <param name="Key">Its line's <see cref="FenixCabinLine.Key"/>: <c>cargo.forward</c>.</param>
+/// <param name="Name">Its line's label: <c>Forward cargo door</c>.</param>
+/// <param name="SummaryName">Its word in the Status page's cargo summary: <c>forward</c>.</param>
+/// <param name="Door">The door the EFB's toggle writes (<see cref="FenixCabinWrites.CargoDoor"/>).</param>
+/// <param name="OpenFlag">The EFB's open flag: <see cref="FenixCabinNames.CargoForward"/>.</param>
+/// <param name="MovingFlag">The EFB's movement flag that greys the toggle; null for the bulk door, which has none.</param>
+public sealed record FenixCabinCargoDoor(
+    string Key, string Name, string SummaryName, FenixCargoDoor Door, string OpenFlag, string? MovingFlag);
+
+/// <summary>
 /// The last value the Fenix data service gave for each cabin name. Not thread-safe: the Cabin window
 /// applies values on its UI thread. A name never seen reads <see cref="FenixDataValue.Unknown"/>, and the
 /// typed reads give a value only for their own kind, so an unknown name (<c>""</c>, [FNX-1]) or a JSON
@@ -332,7 +344,7 @@ public static class FenixCabinLines
     {
         var notClosed = new List<string>();
         bool allKnown = true;
-        foreach (CargoDoor door in CargoDoors(layout))
+        foreach (FenixCabinCargoDoor door in CargoDoorsOf(layout))
         {
             string? state = CargoState(data, door);
             if (state == null) allKnown = false;
@@ -450,7 +462,7 @@ public static class FenixCabinLines
             if (listed.Add(door))
                 AddDoor(door);
         }
-        foreach (CargoDoor door in CargoDoors(layout))
+        foreach (FenixCabinCargoDoor door in CargoDoorsOf(layout))
         {
             string? state = CargoState(data, door);
             // A moving door has not settled: no state until it is open or closed.
@@ -507,25 +519,23 @@ public static class FenixCabinLines
         return PressureMessage(data.Number(FenixCabinNames.DoorPressure(key)), data.Number(FenixCabinNames.SlidePressure(key)));
     }
 
-    // A cargo door: its line key and label, its word in the summary, its open flag and movement flag names.
-    private sealed record CargoDoor(string Key, string Name, string SummaryName, string OpenFlag, string? MovingFlag);
-
-    private static readonly CargoDoor ForwardCargo =
-        new("cargo.forward", "Forward cargo door", "forward", FenixCabinNames.CargoForward, FenixCabinNames.CargoFwdMoving);
-    private static readonly CargoDoor AftCargo =
-        new("cargo.aft", "Aft cargo door", "aft", FenixCabinNames.CargoAft, FenixCabinNames.CargoAftMoving);
-    private static readonly CargoDoor BulkCargo =
-        new("cargo.bulk", "Bulk cargo door", "bulk", FenixCabinNames.CargoBulk, null);
-
-    private static IEnumerable<CargoDoor> CargoDoors(FenixCabinLayout layout)
+    /// <summary>
+    /// The cargo doors, forward, aft and bulk: the one table the lines and the Cabin window's Doors button
+    /// both read, so a line key or flag name cannot differ between them. A layout lists the bulk door only
+    /// when the airframe has one (<see cref="FenixCabinLayout.HasBulkCargo"/>).
+    /// </summary>
+    public static IReadOnlyList<FenixCabinCargoDoor> CargoDoors { get; } = Array.AsReadOnly(new FenixCabinCargoDoor[]
     {
-        yield return ForwardCargo;
-        yield return AftCargo;
-        if (layout.HasBulkCargo) yield return BulkCargo;
-    }
+        new("cargo.forward", "Forward cargo door", "forward", FenixCargoDoor.Forward, FenixCabinNames.CargoForward, FenixCabinNames.CargoFwdMoving),
+        new("cargo.aft", "Aft cargo door", "aft", FenixCargoDoor.Aft, FenixCabinNames.CargoAft, FenixCabinNames.CargoAftMoving),
+        new("cargo.bulk", "Bulk cargo door", "bulk", FenixCargoDoor.Bulk, FenixCabinNames.CargoBulk, null)
+    });
+
+    private static IEnumerable<FenixCabinCargoDoor> CargoDoorsOf(FenixCabinLayout layout)
+        => CargoDoors.Where(door => door.Door != FenixCargoDoor.Bulk || layout.HasBulkCargo);
 
     // "moving" while the EFB's movement flag is true (the bulk door has none), else open or closed; null when unknown.
-    private static string? CargoState(FenixCabinData data, CargoDoor door)
+    private static string? CargoState(FenixCabinData data, FenixCabinCargoDoor door)
     {
         if (door.MovingFlag != null && data.Bool(door.MovingFlag) == true) return "moving";
         return data.Bool(door.OpenFlag) switch { true => "open", false => "closed", null => null };

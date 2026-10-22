@@ -148,7 +148,8 @@ public sealed partial class FenixCabinForm : Form
             TabIndex = 0
         };
 
-        _tabs = new TabControl { Dock = DockStyle.Fill, TabIndex = 1 };
+        // The house tab control: the reader says the page's name, not "tab control" on every page change.
+        _tabs = new MSFSBlindAssist.Controls.AccessibleTabControl { Dock = DockStyle.Fill, TabIndex = 1 };
         TabPage status = AddPage("Status", FenixCabinSection.Status);
         TabPage audio = AddPage("Audio", FenixCabinSection.Audio);
         TabPage doors = AddPage("Doors", FenixCabinSection.Doors);
@@ -213,6 +214,8 @@ public sealed partial class FenixCabinForm : Form
         foreach (FenixCabinLightLevel level in LightLevels)
             _lightsCombo.Items.Add(FenixCabinWrites.LightName(level));
         _lightsCombo.SelectionChangeCommitted += OnLightsCommitted;
+        // A level that changed while the list was open is shown once it closes, as the Audio combos do.
+        _lightsCombo.DropDownClosed += (_, _) => MarkDirty();
 
         var controls = new FlowLayoutPanel
         {
@@ -318,8 +321,9 @@ public sealed partial class FenixCabinForm : Form
 
     // ---- Layout ---------------------------------------------------------------------------------
 
-    // Reads the three layout settings. On open, and again each time the Fenix starts answering, so a
-    // window opened before the Fenix loaded still gets its doors and lavatories. Continues on the UI thread.
+    // Reads the three layout settings. On open, again each time the Fenix starts answering (the render
+    // tick), so a window opened before the Fenix loaded still gets its doors and lavatories, and on a
+    // variant change. Continues on the UI thread.
     private async Task LoadSettingsAsync()
     {
         try
@@ -348,12 +352,14 @@ public sealed partial class FenixCabinForm : Form
     private void ResolveLayout()
         => _layout = FenixCabinLayout.Resolve(_context.Definition.Variant.Type, _exitsSetting, _variantSetting, _slideMessageSetting);
 
-    // Raised on the UI thread when the loaded airframe changes.
+    // Raised on the UI thread when the loaded airframe changes. The settings are read again too: another
+    // airframe in the same definition must not keep the previous one's doors and lavatories.
     private void OnVariantChanged(object? sender, FenixVariant variant)
     {
         if (_tornDown || IsDisposed) return;
         ResolveLayout();
         MarkDirty();
+        _ = LoadSettingsAsync();
     }
 
     // ---- Audio state ----------------------------------------------------------------------------
@@ -433,6 +439,11 @@ public sealed partial class FenixCabinForm : Form
         if (_dirty)
         {
             _dirty = false;
+            // The Fenix has started answering: read the layout settings again. Here, not in Render, so a
+            // render never touches the data service.
+            bool answering = _cache.AnyKnown;
+            if (answering && !_wasAnswering) _ = LoadSettingsAsync();
+            _wasAnswering = answering;
             try
             {
                 Render();
@@ -456,16 +467,13 @@ public sealed partial class FenixCabinForm : Form
     internal FenixCabinData Cache => _cache;
 
     // Rebuilds every line, the status box, the lists and, unless the pilot has just changed one, the
-    // controls. UI thread; never focuses, never speaks. Internal for the tests.
+    // controls. UI thread; never focuses, never speaks, never reads or writes the data service. Internal
+    // for the tests.
     internal void Render()
     {
-        bool answering = _cache.AnyKnown;
-        if (answering && !_wasAnswering) _ = LoadSettingsAsync();
-        _wasAnswering = answering;
-
         _lines = FenixCabinLines.Build(_cache, _pram, _layout);
 
-        string status = FenixCabinLines.ConnectionStatus(answering, _cache);
+        string status = FenixCabinLines.ConnectionStatus(_cache.AnyKnown, _cache);
         if (_statusBox.Text != status) _statusBox.Text = status;
 
         foreach ((FenixCabinSection section, DisplayListBox list) in _lineLists)

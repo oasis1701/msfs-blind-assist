@@ -32,17 +32,6 @@ public sealed partial class FenixCabinForm
     // "This section can only be used when on the ground" above it (EFB chunk 856 @50828, ruling R16).
     private const double GroundServiceMaxHeightFeet = 100;
 
-    // A cargo door the Doors page can press: its line, door, open flag, movement flag (the bulk door has
-    // none) and the name the button and the refusals use.
-    private sealed record CargoControl(string LineKey, FenixCargoDoor Door, string OpenFlag, string? MovingFlag, string Name);
-
-    private static readonly CargoControl[] CargoControls =
-    {
-        new("cargo.forward", FenixCargoDoor.Forward, FenixCabinNames.CargoForward, FenixCabinNames.CargoFwdMoving, "forward cargo door"),
-        new("cargo.aft", FenixCargoDoor.Aft, FenixCabinNames.CargoAft, FenixCabinNames.CargoAftMoving, "aft cargo door"),
-        new("cargo.bulk", FenixCargoDoor.Bulk, FenixCabinNames.CargoBulk, null, "bulk cargo door")
-    };
-
     private ListBox _doorsList = null!;
     private Button _doorButton = null!;
 
@@ -146,6 +135,13 @@ public sealed partial class FenixCabinForm
             Refuse(TemperatureUnavailableText);
             return;
         }
+        // And while every zone's offset is 0 (offsetsReset$): only when both are known 0, so an unknown
+        // offset is still reset.
+        if (_cache.Number(FenixCabinNames.TempFwdOffset) == 0 && _cache.Number(FenixCabinNames.TempAftOffset) == 0)
+        {
+            Refuse("Both zones already have no offset.");
+            return;
+        }
         foreach (FenixCabinWrite write in FenixCabinWrites.ResetTemperatures())
         {
             string key = write.Name == FenixCabinNames.TempFwdOffset ? ForwardTemperatureKey : AftTemperatureKey;
@@ -202,8 +198,12 @@ public sealed partial class FenixCabinForm
         return designation == null ? null : (dataKey, FenixCabinLines.DoorName(designation));
     }
 
-    private static CargoControl? CargoOf(FenixCabinLine? line)
-        => line == null ? null : CargoControls.FirstOrDefault(cargo => cargo.LineKey == line.Key);
+    // The cargo door behind a line, from the one cargo table the lines are built from (FenixCabinLines.CargoDoors).
+    private static FenixCabinCargoDoor? CargoOf(FenixCabinLine? line)
+        => line == null ? null : FenixCabinLines.CargoDoors.FirstOrDefault(cargo => cargo.Key == line.Key);
+
+    // A name in mid-sentence: "Door 1 left" is "door 1 left", "Forward cargo door" is "forward cargo door".
+    private static string Lower(string name) => char.ToLowerInvariant(name[0]) + name[1..];
 
     // The Doors button's text for a line. Close when the Fenix says the door is open, Open otherwise, also
     // when the value is unknown: the press then refuses instead of writing.
@@ -213,10 +213,10 @@ public sealed partial class FenixCabinForm
         {
             // The EFB's control is Open when it reads 2 (FenixCabinWrites.DoorOpen).
             bool open = _cache.Number(FenixCabinNames.DoorControl(door.DataKey)) == FenixCabinWrites.DoorOpen;
-            return (open ? "&Close " : "&Open ") + char.ToLowerInvariant(door.Name[0]) + door.Name[1..];
+            return (open ? "&Close " : "&Open ") + Lower(door.Name);
         }
         if (CargoOf(line) is { } cargo)
-            return (_cache.Bool(cargo.OpenFlag) == true ? "&Close the " : "&Open the ") + cargo.Name;
+            return (_cache.Bool(cargo.OpenFlag) == true ? "&Close the " : "&Open the ") + Lower(cargo.Name);
         return NoDoorControlText;
     }
 
@@ -239,7 +239,7 @@ public sealed partial class FenixCabinForm
         }
         FenixCabinLine? line = SelectedDoorLine();
         (string DataKey, string Name)? groundDoor = GroundDoorOf(line);
-        CargoControl? cargoDoor = CargoOf(line);
+        FenixCabinCargoDoor? cargoDoor = CargoOf(line);
         if (groundDoor == null && cargoDoor == null)
         {
             Refuse("No door control for this line.");
@@ -260,21 +260,21 @@ public sealed partial class FenixCabinForm
             return;
         }
 
-        CargoControl cargo = cargoDoor!;
+        FenixCabinCargoDoor cargo = cargoDoor!;
         bool? open = _cache.Bool(cargo.OpenFlag);
         if (open == null)
         {
-            Refuse($"The {cargo.Name} state is not known.");
+            Refuse($"The {Lower(cargo.Name)} state is not known.");
             return;
         }
         // The EFB greys the toggle while the door moves.
         if (cargo.MovingFlag != null && _cache.Bool(cargo.MovingFlag) == true)
         {
-            Refuse($"The {cargo.Name} is moving.");
+            Refuse($"The {Lower(cargo.Name)} is moving.");
             return;
         }
         // Waits through "moving" for open or closed (R17).
-        _ = RunWriteAsync(FenixCabinWrites.CargoDoor(cargo.Door, !open.Value), cargo.LineKey, DoorReadbackWindow, speakIfUnchanged: false, byState: true);
+        _ = RunWriteAsync(FenixCabinWrites.CargoDoor(cargo.Door, !open.Value), cargo.Key, DoorReadbackWindow, speakIfUnchanged: false, byState: true);
     }
 
     // True, after saying so, unless the Fenix says the aircraft is on the ground as the EFB counts it: its

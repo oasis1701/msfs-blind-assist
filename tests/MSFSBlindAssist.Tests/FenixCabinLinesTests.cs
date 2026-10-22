@@ -493,6 +493,22 @@ public class FenixCabinLinesTests
                 Data((FenixCabinNames.DoorPressure("d1l"), 900), (FenixCabinNames.SlidePressure("d1l"), 3500)), null, A321), "door.d1l"));
     }
 
+    [Fact]
+    public void The_cargo_lines_come_from_the_one_cargo_table_the_Doors_button_reads()
+    {
+        // The Cabin window's Doors button finds a cargo line's door and flags in this same table.
+        Assert.Equal(new[] { "cargo.forward", "cargo.aft", "cargo.bulk" }, FenixCabinLines.CargoDoors.Select(c => c.Key));
+        Assert.Equal(new[] { FenixCargoDoor.Forward, FenixCargoDoor.Aft, FenixCargoDoor.Bulk }, FenixCabinLines.CargoDoors.Select(c => c.Door));
+        Assert.Equal(new[] { FenixCabinNames.CargoForward, FenixCabinNames.CargoAft, FenixCabinNames.CargoBulk },
+            FenixCabinLines.CargoDoors.Select(c => c.OpenFlag));
+        Assert.Equal(new[] { FenixCabinNames.CargoFwdMoving, FenixCabinNames.CargoAftMoving, null },
+            FenixCabinLines.CargoDoors.Select(c => c.MovingFlag));
+
+        var lines = FenixCabinLines.Build(Live(), LivePram, A321);
+        Assert.Equal(FenixCabinLines.CargoDoors.Select(c => $"{c.Name}: closed"),
+            Section(lines, FenixCabinSection.Doors).Where(l => l.Key.StartsWith("cargo.", StringComparison.Ordinal)).Select(l => l.Text));
+    }
+
     // ---- The part of a line a press changes (ruling R17) ------------------------------------------
 
     private static string? State(IReadOnlyList<FenixCabinLine> lines, string key) => Assert.Single(lines, l => l.Key == key).State;

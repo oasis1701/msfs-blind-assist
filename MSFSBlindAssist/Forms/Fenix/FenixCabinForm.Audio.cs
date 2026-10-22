@@ -273,15 +273,24 @@ public sealed partial class FenixCabinForm
     // ---- Refusals -------------------------------------------------------------------------------
 
     /// <summary>
-    /// True, after saying so, when no audio press can work: the Fenix is not answering (ruling R13), or it
-    /// answers without an audio state (the page then reads "no data from the Fenix"). Both say the shell's
-    /// not-answering message; a press is never sent on a state the window does not have.
+    /// True, after saying so, when no audio press can work: the Fenix is not answering (ruling R13, the
+    /// shell's not-answering message), or it answers without an audio state ("No audio data from the
+    /// Fenix.", as the page's line reads "Audio: no data from the Fenix"). A press is never sent on a state
+    /// the window does not have.
     /// </summary>
     private bool RefuseWithoutAudioState()
     {
-        if (_cache.AnyKnown && _pram != null) return false;
-        Refuse(NotAnswering);
-        return true;
+        if (!_cache.AnyKnown)
+        {
+            Refuse(NotAnswering);
+            return true;
+        }
+        if (_pram == null)
+        {
+            Refuse("No audio data from the Fenix.");
+            return true;
+        }
+        return false;
     }
 
     // Runs the setter with the change handlers off: it shows the Fenix's value again after a refusal.
@@ -414,27 +423,47 @@ public sealed partial class FenixCabinForm
         return true;
     }
 
+    // A press that would change nothing says so up front and sends nothing (CORE-7's validation messages).
     private void ClearMemo()
     {
         if (RefuseWithoutAudioState()) return;
+        if (_pram!.Memo.Count == 0)
+        {
+            Refuse("The memo is already empty.");
+            return;
+        }
         _ = RunMutationAsync(FenixCabinPram.ClearMemo(), MemoKey, speakIfUnchanged: false);
     }
 
     private void PlayNext()
     {
-        if (RefuseWithoutAudioState()) return;
+        if (RefuseWithoutAudioState() || RefuseEmptyMemo()) return;
         _ = RunMutationAsync(FenixCabinPram.PlayNext(), AnnouncingKey, speakIfUnchanged: false);
     }
 
     private void PlayAll()
     {
-        if (RefuseWithoutAudioState()) return;
+        if (RefuseWithoutAudioState() || RefuseEmptyMemo()) return;
         _ = RunMutationAsync(FenixCabinPram.PlayAll(), AnnouncingKey, speakIfUnchanged: false);
+    }
+
+    // True, after saying so, when the memo has nothing to play. Call after RefuseWithoutAudioState.
+    private bool RefuseEmptyMemo()
+    {
+        if (_pram!.Memo.Count > 0) return false;
+        Refuse("The memo is empty.");
+        return true;
     }
 
     private void StopAnnouncements()
     {
         if (RefuseWithoutAudioState()) return;
+        // Nothing to stop: no announcement playing and the memo not being played.
+        if (string.IsNullOrEmpty(_pram!.NowAnnouncing) && !_pram.PlayingAllInMemo)
+        {
+            Refuse("Nothing is playing.");
+            return;
+        }
         _ = RunMutationAsync(FenixCabinPram.Stop(), AnnouncingKey, speakIfUnchanged: false);
     }
 

@@ -4,12 +4,13 @@
 // bundle builders (FenixCabinWrites, FenixCabinPram), never a raw typed write; and the app-wide call
 // that the cabin is ready is FenixCabinReadyMonitor's alone (CORE-7). Those are source scans, because
 // the data flow only shows in the live sim. The window itself is built, never shown: a TabControl, a
-// ListBox and a TextBox construct headless in this xUnit host (FenixWindowsFormTests), and nothing that
-// is built here touches the definition or the data service (both null). The Status page's render runs
-// on values put straight into the window's cache, as the poll would apply them. The Audio page's and the
-// Doors, Temperature and Water pages' presses run against a real FenixDataService over a fake
-// HttpMessageHandler (never the network), so a test sees the exact request each control sends and what the
-// read-back then says.
+// ListBox and a TextBox construct headless in this xUnit host (FenixWindowsFormTests). Building it and
+// rendering it touch neither the definition nor the data service, so the tests that only build and render
+// pass both as null; the Status page's render runs on values put straight into the window's cache, as the
+// poll would apply them. The settings read that starts when the Fenix begins to answer belongs to the render
+// tick, not to the render, and every test that ticks or presses, or reads the settings, runs against a real
+// FenixDataService over a fake HttpMessageHandler (never the network), so it sees the exact request each
+// control sends and what the read-back then says.
 
 using System.Net;
 using System.Reflection;
@@ -160,6 +161,8 @@ public class FenixCabinWindowTests
         Assert.True(statusBox.TabStop);
 
         var tabs = Assert.Single(form.Controls.OfType<TabControl>());
+        // The house tab control, so the reader does not say "tab control" on every page change.
+        Assert.IsType<MSFSBlindAssist.Controls.AccessibleTabControl>(tabs);
         Assert.Equal(new[] { "Status", "Audio", "Doors", "Temperature", "Water" },
             tabs.TabPages.Cast<TabPage>().Select(page => page.Text).ToArray());
         // Ruling R12: a tab page, a check box and a button are named by their text alone.
@@ -301,6 +304,100 @@ public class FenixCabinWindowTests
         form.Dispose();
 
         Assert.Empty(speech.All);
+    }
+
+    [Fact]
+    public void The_layout_settings_are_read_by_the_render_tick_when_the_Fenix_starts_answering_never_by_a_render()
+    {
+        // The window may open before the Fenix has loaded: when it starts answering, the doors and lavatories
+        // are read again. That read belongs to the render timer's tick; a render itself touches no data service.
+        var gateway = new AudioGateway();
+        using var data = new FenixDataService(gateway);
+        using var form = new FenixCabinForm(Context(new SpeechCapture(), data));
+        form.Cache.Apply(FenixCabinNames.FapOperational, True);
+
+        form.Render();
+        Thread.Sleep(300);
+        Assert.Equal(0, gateway.Count(FenixDataQueries.SettingsQuery));
+
+        Tick(form);
+        WaitFor(() => gateway.Count(FenixDataQueries.SettingsQuery) == 1, "the settings read");
+
+        // Once per start of answering, not on every tick.
+        typeof(FenixCabinForm).GetField("_dirty", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(form, true);
+        Tick(form);
+        Thread.Sleep(300);
+        Assert.Equal(1, gateway.Count(FenixDataQueries.SettingsQuery));
+    }
+
+    // The settings query's answer with the emergency-exits setting the FAP lays the doors out from.
+    private static string SettingsAnswer(string exits)
+        => new JObject
+        {
+            ["data"] = new JObject
+            {
+                ["settings"] = new JObject
+                {
+                    ["softwareVersion"] = "3.0.0.7426",
+                    ["state"] = new JObject
+                    {
+                        ["settings"] = new JArray(new JObject
+                        {
+                            ["key"] = "emergency_exits_type",
+                            ["category"] = "Aircraft",
+                            ["value"] = exits
+                        })
+                    }
+                }
+            }
+        }.ToString(Formatting.None);
+
+    [Fact]
+    public void A_variant_change_reads_the_layout_settings_again()
+    {
+        // Another airframe loaded into the same definition: its settings are read, so the window does not keep
+        // the previous airframe's doors. The Unknown type takes the settings' exits.
+        var gateway = new AudioGateway { Answer = () => SettingsAnswer("DoubleFullsize") };
+        using var data = new FenixDataService(gateway);
+        var context = new FenixWindowContext(new MSFSBlindAssist.Aircraft.FenixA320Definition(), data, null!, new SpeechCapture(), null!);
+        using var form = new FenixCabinForm(context);
+        BindingFlags instance = BindingFlags.Instance | BindingFlags.NonPublic;
+        FieldInfo layout = typeof(FenixCabinForm).GetField("_layout", instance)!;
+        MethodInfo loadSettings = typeof(FenixCabinForm).GetMethod("LoadSettingsAsync", instance)!;
+        FenixExitsType Exits() => ((FenixCabinLayout)layout.GetValue(form)!).Exits;
+
+        // The previous airframe's settings: every door full size (the Unknown type alone would be overwing).
+        Assert.Equal(FenixExitsType.DoubleOverwing, Exits());
+        loadSettings.Invoke(form, null);
+        WaitFor(() => Exits() == FenixExitsType.DoubleFullsize, "the first airframe's exits");
+
+        // The new airframe has overwing exits.
+        gateway.Answer = () => SettingsAnswer("DoubleOverwing");
+        typeof(FenixCabinForm).GetMethod("OnVariantChanged", instance)!
+            .Invoke(form, new object?[] { null, MSFSBlindAssist.Aircraft.FenixVariant.Unknown });
+
+        WaitFor(() => Exits() == FenixExitsType.DoubleOverwing, "the new airframe's exits");
+        Assert.Equal(2, gateway.Count(FenixDataQueries.SettingsQuery));
+    }
+
+    [Fact]
+    public void Each_combo_asks_for_a_render_when_its_list_closes()
+    {
+        // A value that changed while the pilot had the list open (the render leaves an open list alone) is shown
+        // once it closes: the lights combo as the audio combos.
+        using var form = new FenixCabinForm(Context(new SpeechCapture()));
+        FieldInfo dirty = typeof(FenixCabinForm).GetField("_dirty", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        MethodInfo closed = typeof(ComboBox).GetMethod("OnDropDownClosed", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        foreach (ComboBox combo in new[] { LightsCombo(form), ChannelCombo(form), SetCombo(form) })
+        {
+            Tick(form);
+            Assert.False((bool)dirty.GetValue(form)!);
+
+            closed.Invoke(combo, new object[] { EventArgs.Empty });
+
+            Assert.True((bool)dirty.GetValue(form)!, combo.AccessibleName);
+        }
     }
 
     // ---- Audio state comparison -----------------------------------------------------------------
@@ -462,6 +559,9 @@ public class FenixCabinWindowTests
 
         /// <summary>How many things a press sent: audio mutations and data-name writes (the window's own reads are not counted).</summary>
         public int Sent => Mutations.Count + Writes.Count;
+
+        /// <summary>How many requests carried exactly this query (the window's settings read, say).</summary>
+        public int Count(string query) => Where(sent => string.Equals(sent, query, StringComparison.Ordinal)).Count;
 
         /// <summary>The FAP audio mutations sent, in order.</summary>
         public List<JObject> Mutations
@@ -672,9 +772,10 @@ public class FenixCabinWindowTests
     public void Every_audio_press_says_the_Fenix_is_not_answering_first_and_sends_nothing()
     {
         // The Fenix down (R13): the same reason from every control, whatever else is wrong; a control the
-        // pilot changed shows the Fenix's own value again. Volume 0 and nothing selected: the reasons that
-        // would otherwise be given ("Volume is already 0.", "Select an announcement first.") come after.
-        using var rig = new AudioRig(FullPram() with { Volume = 0 }, answering: false);
+        // pilot changed shows the Fenix's own value again. Volume 0, nothing selected, an empty memo and
+        // nothing playing: the reasons that would otherwise be given ("Volume is already 0.", "Select an
+        // announcement first.", "The memo is empty.", "Nothing is playing.") come after.
+        using var rig = new AudioRig(FullPram() with { Volume = 0, Memo = Array.Empty<FenixCabinItem>() }, answering: false);
         var presses = AudioPresses(rig.Form);
 
         foreach (var press in presses) press.Press();
@@ -690,9 +791,9 @@ public class FenixCabinWindowTests
     [Fact]
     public void An_answering_Fenix_without_an_audio_state_refuses_every_audio_press_alike()
     {
-        // The page then reads "no data from the Fenix"; a press is never sent on a state it lacks. The
-        // loudspeaker volume is its own data name, so it is judged on its own (below). The combos have no
-        // items to choose from.
+        // The page then reads "no data from the Fenix", and so does every press: the Fenix answers, only the
+        // audio state is missing. A press is never sent on a state it lacks. The loudspeaker volume is its own
+        // data name, so it is judged on its own (below). The combos have no items to choose from.
         using var rig = new AudioRig(null);
         var presses = AudioPresses(rig.Form)
             .Where(p => !p.Name.StartsWith("FAP", StringComparison.Ordinal) && p.Name is not ("Music channel" or "Announcement set"))
@@ -700,9 +801,56 @@ public class FenixCabinWindowTests
 
         foreach (var press in presses) press.Press();
 
-        Assert.Equal(Enumerable.Repeat(NotAnsweringText, presses.Length).ToArray(), rig.Speech.Interrupts);
+        Assert.Equal(Enumerable.Repeat("No audio data from the Fenix.", presses.Length).ToArray(), rig.Speech.Interrupts);
         Assert.Equal(0, rig.Gateway.Sent);
         Assert.False(MusicBox(rig.Form).Checked);
+    }
+
+    [Fact]
+    public void An_answering_Fenix_without_an_audio_state_restores_the_combos_with_the_audio_message()
+    {
+        // A combo the pilot changes while the audio state is missing shows none again; the reason is the
+        // missing audio data, not the Fenix being down. The combos are filled from a state, then it is lost.
+        using var rig = new AudioRig(FullPram());
+        rig.Form.SetAudioState(null);
+
+        Commit(ChannelCombo(rig.Form), 1);
+        Commit(SetCombo(rig.Form), 2);
+
+        Assert.Equal(new[] { "No audio data from the Fenix.", "No audio data from the Fenix." }, rig.Speech.Interrupts);
+        Assert.Equal(-1, ChannelCombo(rig.Form).SelectedIndex);
+        Assert.Equal(-1, SetCombo(rig.Form).SelectedIndex);
+        Assert.Equal(0, rig.Gateway.Sent);
+    }
+
+    [Fact]
+    public void Memo_and_stop_presses_that_would_change_nothing_say_so_and_send_nothing()
+    {
+        // An empty memo, nothing announcing and the memo not being played (CORE-7's validation messages).
+        using var rig = new AudioRig(Pram());
+
+        Click(AudioButton(rig.Form, "Clear &memo"));
+        Click(AudioButton(rig.Form, "Play &next"));
+        Click(AudioButton(rig.Form, "Play a&ll"));
+        Click(AudioButton(rig.Form, "&Stop"));
+
+        Assert.Equal(
+            new[] { "The memo is already empty.", "The memo is empty.", "The memo is empty.", "Nothing is playing." },
+            rig.Speech.Interrupts);
+        Assert.Equal(rig.Speech.Interrupts, rig.Speech.All);
+        Assert.Equal(0, rig.Gateway.Sent);
+
+        // Something to stop: the memo being played, or one announcement.
+        rig.Form.SetAudioState(Pram() with { PlayingAllInMemo = true });
+        rig.Form.Render();
+        Click(AudioButton(rig.Form, "&Stop"));
+        WaitFor(() => rig.Gateway.Mutations.Count == 1, "the stop while the memo plays");
+        rig.Form.SetAudioState(Pram() with { NowAnnouncing = "After Takeoff" });
+        rig.Form.Render();
+        Click(AudioButton(rig.Form, "&Stop"));
+        WaitFor(() => rig.Gateway.Mutations.Count == 2, "the stop while an announcement plays");
+        Assert.All(rig.Gateway.Mutations, sent => Assert.Equal(FenixCabinPram.Stop().Query, (string?)sent["query"]));
+        Assert.Equal(4, rig.Speech.Interrupts.Count);
     }
 
     [Fact]
@@ -781,7 +929,8 @@ public class FenixCabinWindowTests
     [Fact]
     public void Each_audio_control_sends_its_own_mutation()
     {
-        using var rig = new AudioRig(FullPram());
+        // An announcement playing, so Stop has something to stop.
+        using var rig = new AudioRig(FullPram() with { NowAnnouncing = "After Takeoff" });
         FenixCabinForm form = rig.Form;
 
         void Sends(Action press, FenixCabinMutation expected)
@@ -917,9 +1066,9 @@ public class FenixCabinWindowTests
             ("&Add to memo", Pram(), Pram() with { Memo = new[] { AfterTakeoff } }, "Memo: After Takeoff"),
             ("&Remove from memo", withMemo, Pram() with { Memo = new[] { SafetyBriefing } }, "Memo: Safety Briefing"),
             ("Clear &memo", withMemo, Pram(), "Memo: empty"),
-            ("Play &next", Pram(), Pram() with { NowAnnouncing = "After Takeoff" }, "Now announcing: After Takeoff"),
+            ("Play &next", withMemo, withMemo with { NowAnnouncing = "After Takeoff" }, "Now announcing: After Takeoff"),
             // Playing the memo also changes "Playing all memo announcements", which a press does not read back.
-            ("Play a&ll", Pram(), Pram() with { NowAnnouncing = "After Takeoff", PlayingAllInMemo = true }, "Now announcing: After Takeoff"),
+            ("Play a&ll", withMemo, withMemo with { NowAnnouncing = "After Takeoff", PlayingAllInMemo = true }, "Now announcing: After Takeoff"),
             ("&Stop", Pram() with { NowAnnouncing = "After Takeoff" }, Pram(), "Now announcing: nothing")
         };
 
@@ -1611,6 +1760,32 @@ public class FenixCabinWindowTests
         });
 
     [Fact]
+    public void The_reset_says_so_when_both_offsets_are_already_zero_and_sends_nothing()
+    {
+        // The FAP greys its Reset button then (offsetsReset$: every zone's selectedOffset is 0).
+        using var rig = new ControlsRig();
+        Zones(rig.Form, 24, 0, 22, 0);
+
+        Click(TemperatureButton(rig.Form, ResetTemperatures));
+
+        Assert.Equal(new[] { "Both zones already have no offset." }, rig.Speech.Interrupts);
+        Assert.Equal(0, rig.Gateway.Sent);
+
+        // One offset not known: not proven reset, so the reset is sent (forward first).
+        Set(rig.Form, (FenixCabinNames.TempAftOffset, FenixDataValue.Unknown));
+        Click(TemperatureButton(rig.Form, ResetTemperatures));
+        WaitFor(() => rig.Gateway.Writes.Count == 2, "the reset");
+        AssertSent(rig.Gateway.Writes[0], Float(FenixCabinNames.TempFwdOffset, 0.0));
+        AssertSent(rig.Gateway.Writes[1], Float(FenixCabinNames.TempAftOffset, 0.0));
+
+        // One offset not zero: sent too.
+        Set(rig.Form, (FenixCabinNames.TempAftOffset, Num(-0.5)));
+        Click(TemperatureButton(rig.Form, ResetTemperatures));
+        WaitFor(() => rig.Gateway.Writes.Count == 4, "the second reset");
+        Assert.Single(rig.Speech.Interrupts);
+    }
+
+    [Fact]
     public void The_reset_works_without_any_zone_value_known()
     {
         // Only the Fenix has to answer: the reset writes zeros and needs no value to step from.
@@ -1713,7 +1888,8 @@ public class FenixCabinWindowTests
         foreach (var c in cases)
         {
             using var rig = new ControlsRig();
-            Zones(rig.Form, 24, 0, 24, 0);
+            // An offset forward, so the reset has something to reset.
+            Zones(rig.Form, 24, 0.5, 24, 0);
             Set(rig.Form,
                 (FenixCabinNames.WaterPreselect, Num(75)),
                 (FenixCabinNames.Door("d1l"), False), (FenixCabinNames.DoorControl("d1l"), Num(0)),
