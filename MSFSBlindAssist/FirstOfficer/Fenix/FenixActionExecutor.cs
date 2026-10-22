@@ -226,9 +226,11 @@ public sealed class FenixActionExecutor : LVarActionExecutor
             },
             FenixTakeoffConfigVerdict.FirstOfficerPressWait);
         bool pressed = await PulseAsync(FenixTakeoffConfigVerdict.ButtonKey, FenixTakeoffConfigVerdict.HoldMs);
+        // Not pressed: nothing to judge, so no wait of up to 30 s on the watch (its string is dropped).
+        if (!pressed) return false;
         string verdict = await watch;
-        if (pressed) AnnounceTakeoffConfigResult(sc, verdict);
-        return pressed;
+        AnnounceTakeoffConfigResult(sc, verdict);
+        return true;
     }
 
     /// <summary>Speaks the TO CONFIG verdict in <see cref="FenixTakeoffConfigVerdict"/>'s words, the

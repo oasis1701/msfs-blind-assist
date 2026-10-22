@@ -12780,8 +12780,9 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     /// TO CONFIG TEST). Edge-triggered buttons keep their latched state after the release; the
     /// release is a no-op for pure momentary actions (ECAM page, keypad, master-warning cancel…).
     /// </summary>
-    /// <param name="pressHoldMs">How long to hold the button at 1 before releasing. Use a longer
-    /// value for level-triggered tests whose result must be observed while held (e.g. TO CONFIG).</param>
+    /// <param name="pressHoldMs">How long to hold the button at 1 before releasing. A level-triggered
+    /// test may need a longer hold than the default (TO CONFIG holds
+    /// <see cref="FenixTakeoffConfigVerdict.HoldMs"/>).</param>
     /// <param name="confirmPress">Speak "<paramref name="displayName"/> pressed" once as the press is
     /// sent (CORE-7). Only for a button with no readable state: one with a light stays silent, the
     /// light speaks. Pass the panel's DisplayName, the name the reader just spoke.</param>
