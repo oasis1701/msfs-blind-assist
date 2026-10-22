@@ -271,14 +271,29 @@ public sealed class FenixActionExecutor : LVarActionExecutor
     /// a no-op (1) or a momentary pulse that springs back (0) and never moves the door.</summary>
     public Task<bool> SetCockpitDoor(bool open) => DispatchAsync("S_COCKPIT_DOOR", open ? 1 : 0);
 
-    /// <summary>Set both EFIS baro references to STD (true) or QNH mode (false). The Fenix
-    /// STD state is a plain settable L:var per side — no toggle-push ambiguity.</summary>
+    /// <summary>Set both EFIS baro references to STD (true) or QNH mode (false). Each side's baro
+    /// knob is a push/pull counter (v3 <c>Knob_PushPullButton</c>): any increase selects STD, any
+    /// decrease QNH, and extra pulls stay STD, extra pushes QNH. So each side is stepped +1 (pull,
+    /// STD) or -1 (push, QNH) from the sim's own count, the panel's own step
+    /// (FenixA320Definition.CounterStepCode): idempotent, so no prior read is needed. An absolute
+    /// write of 1 after two cockpit pulls was a decrease and selected QNH. Sent through
+    /// ExecuteCalculatorCodeUnique (SIM-17), on the manager's one counter shared with the panel.</summary>
     public async Task<bool> SetBaroStdBoth(bool std)
     {
-        int v = std ? 1 : 0;
-        bool ok = await DispatchAsync("S_FCU_EFIS1_BARO_STD", v);
-        ok &= await DispatchAsync("S_FCU_EFIS2_BARO_STD", v);
-        return ok;
+        var sc = Sc;
+        if (sc is not { IsConnected: true }) return false;
+        int step = std ? 1 : -1;
+        bool sent = false;
+        await RunGatedAsync(() =>
+        {
+            // Detached while it waited for the gate (the window closed): never sent.
+            if (!StillAttached(sc)) return Task.CompletedTask;
+            sc.ExecuteCalculatorCodeUnique(MSFSBlindAssist.Aircraft.FenixA320Definition.CounterStepCode("S_FCU_EFIS1_BARO_STD", step));
+            sc.ExecuteCalculatorCodeUnique(MSFSBlindAssist.Aircraft.FenixA320Definition.CounterStepCode("S_FCU_EFIS2_BARO_STD", step));
+            sent = true;
+            return Task.CompletedTask;
+        });
+        return sent;
     }
 
     /// <summary>Both landing-light switches: 0=Retract, 1=Off, 2=On.</summary>
