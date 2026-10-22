@@ -345,6 +345,23 @@ public class FenixVariantControlsTests
     }
 
 
+    [Fact]
+    public void Variant_is_spoken_once_per_distinct_known_variant()
+    {
+        var old = System.Globalization.CultureInfo.CurrentCulture;
+        System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("de-DE");
+        try
+        {
+            var a321 = V(4, 1, 2, true, false, false, false);
+            Assert.Null(FenixA320Definition.VariantSpeech(null, FenixVariant.Unknown));
+            Assert.Equal(a321.Describe(), FenixA320Definition.VariantSpeech(null, a321));
+            Assert.Null(FenixA320Definition.VariantSpeech(a321.Describe(), a321));
+            Assert.Null(FenixA320Definition.VariantSpeech(a321.Describe(), a321 with { HasIsis = false }));
+            Assert.NotNull(FenixA320Definition.VariantSpeech(a321.Describe(), a321 with { ActCount = 0 }));
+        }
+        finally { System.Globalization.CultureInfo.CurrentCulture = old; }
+    }
+
     [Theory]
     [InlineData(2)]
     [InlineData(3)]

@@ -81,6 +81,54 @@ public partial class FenixA320Definition
         Light("I_OH_FUEL_ACT_L", ActPumpName + " Lower");
         Light("I_OH_ENG_N1_MODE_1_L", variables["S_OH_ENG_N1_MODE_1"].DisplayName + " Lower");
         Light("I_OH_ENG_N1_MODE_2_L", variables["S_OH_ENG_N1_MODE_2"].DisplayName + " Lower");
+
+        VariantChanged -= OnVariantKnown;
+        VariantChanged += OnVariantKnown;
+    }
+
+    // Task 4: the loaded variant is spoken once. The config values arrive one per ProcessSimVarUpdate call,
+    // so VariantChanged fires several times in a row; speech waits for a 1 s quiet period, then compares the
+    // sentence, so one load is spoken once and a field the sentence does not mention never re-speaks it.
+    private const int VariantSpeechQuietMs = 1000;
+    private string? _spokenVariantText;
+    private System.Windows.Forms.Timer? _variantSpeechTimer;
+
+    /// <summary>The text to speak for <paramref name="now"/>: its description when it is known and differs
+    /// from <paramref name="lastSpokenText"/>, else null.</summary>
+    internal static string? VariantSpeech(string? lastSpokenText, FenixVariant now)
+    {
+        if (!now.IsKnown) return null;
+        string text = now.Describe();
+        return text == lastSpokenText ? null : text;
+    }
+
+    // Raised on the UI thread (plan 01). Does not speak: it restarts the quiet-period timer.
+    private void OnVariantKnown(object? sender, FenixVariant variant)
+    {
+        if (_variantSpeechTimer == null)
+        {
+            _variantSpeechTimer = new System.Windows.Forms.Timer { Interval = VariantSpeechQuietMs };
+            _variantSpeechTimer.Tick += (_, _) =>
+            {
+                _variantSpeechTimer?.Stop();
+                string? text = VariantSpeech(_spokenVariantText, Variant);
+                if (text == null) return;
+                _spokenVariantText = text;
+                // Queued, not immediate: a background change the pilot did not trigger (CORE-7).
+                lastAnnouncer?.Announce(text);
+            };
+        }
+        _variantSpeechTimer.Stop();
+        _variantSpeechTimer.Start();
+    }
+
+    partial void OnFenixSwitchedAway()
+    {
+        VariantChanged -= OnVariantKnown;
+        _variantSpeechTimer?.Stop();
+        _variantSpeechTimer?.Dispose();
+        _variantSpeechTimer = null;
+        _spokenVariantText = null;
     }
 
     partial void AddVariantPanelControls(Dictionary<string, List<string>> panels)
