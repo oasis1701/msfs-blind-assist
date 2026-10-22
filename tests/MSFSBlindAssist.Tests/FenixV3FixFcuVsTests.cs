@@ -32,6 +32,19 @@ public class FenixV3FixFcuVsTests : IDisposable
         Assert.Empty(speech.All);
     }
 
+    // Owner request (2026-10-22): a climb is spoken with its sign, as a descent already was, and as
+    // the FBW A320's V/S call-out does. The class runs under sv-SE, so a culture-formatted value fails.
+    [Theory]
+    [InlineData(300.0, "FCU VERTICAL SPEED: +300")]
+    [InlineData(1500.0, "FCU VERTICAL SPEED: +1500")]
+    [InlineData(-300.0, "FCU VERTICAL SPEED: -300")]
+    [InlineData(0.0, "FCU VERTICAL SPEED: 0")]
+    public void Vs_is_spoken_with_its_sign(double value, string expected)
+    {
+        var def = new FenixA320Definition().GetVariables()[Vs];
+        Assert.Equal(expected, new MSFSBlindAssist.SimConnect.SimConnectManager(IntPtr.Zero).FormatVariableValue(Vs, def, value));
+    }
+
     [Fact]
     public void Vs_speaks_when_shown()
     {

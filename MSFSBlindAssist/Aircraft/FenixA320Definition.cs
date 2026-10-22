@@ -664,6 +664,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                SpokenNumberFormat = "+0;-0;0",   // "+300", as the FBW A320's V/S (owner, 2026-10-22)
             },
             ["B_FCU_SPEED_DASHED"] = new SimConnect.SimVarDefinition
             {

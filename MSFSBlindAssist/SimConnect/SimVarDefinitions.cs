@@ -146,6 +146,13 @@ public class SimVarDefinition
     /// <inheritdoc cref="StateLitText"/>
     public string? StateDarkText { get; set; }
 
+    /// <summary>
+    /// A .NET numeric format for the value spoken on the generic announce path, applied in the
+    /// invariant culture: the Fenix FCU V/S speaks "+300" with "+0;-0;0", as the FBW A320 and iFly
+    /// V/S call-outs already do. Null (the default) keeps the unit-based formatting.
+    /// </summary>
+    public string? SpokenNumberFormat { get; set; }
+
     /// <summary>The button's state for a <see cref="StateVariable"/> value: any non-zero value is lit.</summary>
     public string DescribeStateLight(double lightValue) =>
         lightValue != 0 ? StateLitText ?? "On" : StateDarkText ?? "Off";

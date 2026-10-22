@@ -263,6 +263,11 @@ public partial class SimConnectManager
             return $"{varDef.DisplayName}: not set";
         }
 
+        if (varDef.SpokenNumberFormat != null)
+        {
+            return $"{varDef.DisplayName}: {value.ToString(varDef.SpokenNumberFormat, System.Globalization.CultureInfo.InvariantCulture)}";
+        }
+
         // Special formatting for FMA armed modes (bitmask decoding)
         if (varKey == "A32NX_FMA_LATERAL_ARMED")
         {
