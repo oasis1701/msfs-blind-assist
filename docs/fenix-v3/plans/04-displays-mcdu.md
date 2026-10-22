@@ -56,21 +56,23 @@ Answered by the owner on 2026-10-21; the plan follows the answers.
 
 **Interfaces:** Produces the two numbers Task 2 uses: `FirstOfficerPanelView` (the v3 index that frames the first officer's PFD whole) and `CenterPanelView` (the v3 index that frames both NDs, the standby, the E/WD and the SD whole).
 
-- [ ] **Step 1: Ask the owner** for: the Fenix loaded on the ground, a cockpit view, PFD/ND/ECAM/standby powered (external power or APU), the sim NOT paused; and a go-ahead to move the camera about six times and put it back.
-- [ ] **Step 2: Read, write nothing.** With the simconnect MCP (`msfs_get_simvar`): `CAMERA STATE` (expect 2), `CAMERA VIEW TYPE AND INDEX` index 0 and index 1 (note both: the pilot's view), `CAMERA VIEW TYPE AND INDEX MAX` index 2 (expect 19).
-- [ ] **Step 3: For index 6, 7, 8, 9, 10, 11:** write `CAMERA VIEW TYPE AND INDEX:0` = 2, then `:1` = index (`msfs_set_simvar`), wait 1 s, screenshot the sim window, and note which of these are WHOLE in frame: captain's PFD, captain's ND, standby, E/WD, SD, first officer's ND, first officer's PFD.
-- [ ] **Step 4: Put the camera back:** `:1` = 0, wait 250 ms, `:0` = noted type, wait 250 ms, `:1` = noted index, wait 1.5 s, read both back; they must equal Step 2's values. Tell the owner the camera is back.
+- [x] **Step 1: Ask the owner** for: the Fenix loaded on the ground, a cockpit view, PFD/ND/ECAM/standby powered (external power or APU), the sim NOT paused; and a go-ahead to move the camera about six times and put it back.
+- [x] **Step 2: Read, write nothing.** With the simconnect MCP (`msfs_get_simvar`): `CAMERA STATE` (expect 2), `CAMERA VIEW TYPE AND INDEX` index 0 and index 1 (note both: the pilot's view), `CAMERA VIEW TYPE AND INDEX MAX` index 2 (expect 19).
+- [x] **Step 3: For index 6, 7, 8, 9, 10, 11:** write `CAMERA VIEW TYPE AND INDEX:0` = 2, then `:1` = index (`msfs_set_simvar`), wait 1 s, screenshot the sim window, and note which of these are WHOLE in frame: captain's PFD, captain's ND, standby, E/WD, SD, first officer's ND, first officer's PFD.
+- [x] **Step 4: Put the camera back:** `:1` = 0, wait 250 ms, `:0` = noted type, wait 250 ms, `:1` = noted index, wait 1.5 s, read both back; they must equal Step 2's values. Tell the owner the camera is back.
 - [ ] **Step 5: Decide.** If `MAX:2` = 19, one index (predicted 9) holds the first officer's PFD whole, and one (predicted 8) holds both NDs, the standby, the E/WD and the SD whole: Task 2 uses those two numbers. If `MAX:2` = 18: v3 did not restore the camera here; skip Task 2 (v2's 8 and 7 stand) and do Task 3 on the existing views. Anything else (no index holds the first officer's PFD whole, or the centre view loses an ND): stop and ask the owner.
 
 | Index | Expected (cfg + changelog) | Measured |
 |---|---|---|
-| `MAX:2` | 19 | |
-| 6 | FCU | |
-| 7 | Captain's PFD + ND whole, ECAM cut at right (not used: decisions 2-3) | |
-| 8 | Captain's ND, standby, E/WD, SD, first officer's ND; PFDs as slivers | |
-| 9 | First officer's ND + PFD, ECAM cut at left | |
-| 10 | Upper overhead | |
-| 11 | Circuit-breaker wall | |
+| `MAX:2` | 19 | 19 |
+| 6 | FCU | FCU and both EFIS panels; only the top half of the E/WD, no display whole |
+| 7 | Captain's PFD + ND whole, ECAM cut at right (not used: decisions 2-3) | Captain's PFD and ND whole, standby (three round gauges) whole; the E/WD edge only |
+| 8 | Captain's ND, standby, E/WD, SD, first officer's ND; PFDs as slivers | E/WD, SD and standby whole; **both NDs clipped**: about the right two thirds of the captain's, the left third of the first officer's; no PFD |
+| 9 | First officer's ND + PFD, ECAM cut at left | First officer's ND and PFD whole; ECAM not in frame |
+| 10 | Upper overhead | Upper overhead (circuit breakers, CVR, ELT); no display |
+| 11 | Circuit-breaker wall | Rear circuit-breaker wall; no display |
+
+Measured 2026-10-22 (danielw97), MSFS 2024, Fenix v3 CFM A320 (C-FFWM), sim window 1920 x 1080, screens powered, IRs aligning. Pilot's view before and after: type 1, index 1 (read back after the restore). Step 5: `MAX:2` = 19 and index 9 holds the first officer's PFD whole, but the centre view (8) loses both NDs, so this is the "stop and ask the owner" case for Alt+N.
 
 ### Task 2: Display reads on v3's view numbers (same displays)
 
