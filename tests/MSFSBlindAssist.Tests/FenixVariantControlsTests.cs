@@ -126,7 +126,7 @@ public class FenixVariantControlsTests
 
         var isis = Panels["ISIS"];
         Assert.Equal(isis.IndexOf("E_MIP_ISFD_BARO_DEC") + 1, isis.IndexOf("S_MIP_ISFD_BARO_BUTTON"));
-        Assert.Equal("A320_Sound:Headset_On", Panels["Cockpit Other"][^1]);
+        Assert.Equal("A320_Sound:Headset_On", Panels["Cockpit Other"][0]);
         var air = Panels[AirPanel];
         int i = air.IndexOf("S_OH_PNEUMATIC_HOT_AIR_AFT_CARGO");
         Assert.Equal(new[] { "S_OH_PNEUMATIC_HOT_AIR_AFT_CARGO", "A_OH_PNEUMATIC_CARGO_AFT_TEMP", "S_OH_PNEUMATIC_CARGO_AFT_ISOL_VALVE" },

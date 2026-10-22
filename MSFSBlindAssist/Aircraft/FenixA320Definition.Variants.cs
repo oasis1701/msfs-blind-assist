@@ -150,7 +150,8 @@ public partial class FenixA320Definition
         panels[ClockPanel] = new List<string> { ChrKey, ChrRstKey, EtKey, UtcKey, DateKey };
         After(panels, "ISIS", "E_MIP_ISFD_BARO_DEC", IsisBaroPushKey);
         After(panels, "Air Conditioning and Pressurization", "S_OH_PNEUMATIC_HOT_AIR_AFT_CARGO", CargoTempKey);
-        panels["Cockpit Other"].Add(HeadsetKey);
+        // First in the tab order: the panel has no physical order, and the headset is its most-used control.
+        panels["Cockpit Other"].Insert(0, HeadsetKey);
     }
 
     partial void AddVariantPanelStructure(Dictionary<string, List<string>> structure)
