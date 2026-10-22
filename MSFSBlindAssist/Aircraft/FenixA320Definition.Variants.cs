@@ -105,4 +105,55 @@ public partial class FenixA320Definition
     {
         if (!IsFitted(varKey, Variant)) visible = false;
     }
+
+    internal const string NotFittedMessage = "Not fitted on this aircraft.";
+
+    /// <summary>
+    /// Speaks "Not fitted on this aircraft." and returns true when the variant lacks the control (a
+    /// validation error, so CORE-7 lets it speak); silent and false otherwise.
+    /// </summary>
+    internal static bool TryRefuseNotFitted(string varKey, FenixVariant variant,
+        Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        if (IsFitted(varKey, variant)) return false;
+        announcer.AnnounceImmediate(NotFittedMessage);
+        return true;
+    }
+
+    // ECON FLOW and ACT PUMP hold their value (the model's latched-button template): one SetLVar write,
+    // nothing spoken. The writer is passed in so a test can see the write without a SimConnect.
+    internal static bool TryWriteLatchedSwitch(string varKey, double value, Action<string, double> write)
+    {
+        if (varKey is not (EconFlowKey or ActKey)) return false;
+        write(varKey, value);
+        return true;
+    }
+
+    partial void HandleVariantUIVariableSet(string varKey, double value, SimConnect.SimVarDefinition varDef,
+        SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer, ref bool handled)
+    {
+        // Also covers existing keys: PACK FLOW on an A321 never reaches the main handler.
+        if (TryRefuseNotFitted(varKey, Variant, announcer))
+        {
+            handled = true;
+            return;
+        }
+
+        if (TryWriteLatchedSwitch(varKey, value, simConnect.SetLVar))
+        {
+            handled = true;
+            return;
+        }
+
+        switch (varKey)
+        {
+            case CallsMidKey:
+            case CallsExitKey:
+                // Same as CALLS MECH/ALL/FWD/AFT: the press-release pulse, then "<name> pressed".
+                if (value == 1)
+                    ExecuteButtonTransition(varKey, varDef.DisplayName, simConnect, announcer, confirmPress: true);
+                handled = true;
+                break;
+        }
+    }
 }

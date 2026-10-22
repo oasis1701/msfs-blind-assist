@@ -181,6 +181,56 @@ public class FenixVariantControlsTests
         AssertNotFitted(actOnly, "S_OH_ENG_N1_MODE_1", "S_OH_ENG_N1_MODE_2");
     }
 
+    [Fact]
+    public void Not_fitted_control_is_refused_aloud()
+    {
+        var a321 = V(4, 1, 2, true, false, false, false);
+        var a320 = V(3, 0, 0, false, false, false, false);
+
+        var speech = new SpeechCapture();
+        Assert.True(FenixA320Definition.TryRefuseNotFitted("S_OH_PNEUMATIC_PACK_FLOW", a321, speech));
+        Assert.Equal(new[] { "Not fitted on this aircraft." }, speech.Interrupts);
+
+        var speech2 = new SpeechCapture();
+        Assert.True(FenixA320Definition.TryRefuseNotFitted("S_OH_CALLS_MID", a320, speech2));
+        Assert.Equal(new[] { FenixA320Definition.NotFittedMessage }, speech2.Interrupts);
+
+        var speech3 = new SpeechCapture();
+        Assert.False(FenixA320Definition.TryRefuseNotFitted("S_OH_PNEUMATIC_ECON_FLOW", a321, speech3));
+        Assert.Empty(speech3.All);
+    }
+
+    [Fact]
+    public void Unknown_variant_refuses_nothing()
+    {
+        var speech = new SpeechCapture();
+        foreach (var key in Panels.Values.SelectMany(p => p).Distinct())
+            Assert.False(FenixA320Definition.TryRefuseNotFitted(key, FenixVariant.Unknown, speech), key);
+        Assert.Empty(speech.All);
+    }
+
+    [Theory]
+    [InlineData("S_OH_PNEUMATIC_ECON_FLOW", 1)]
+    [InlineData("S_OH_FUEL_ACT", 0)]
+    public void New_latched_switches_are_handled_silently(string key, double value)
+    {
+        // The test host has no Microsoft.FlightSimulator.SimConnect.dll, so SetLVar cannot run even on a
+        // never-connected manager: the write goes through TryWriteLatchedSwitch with a recording writer.
+        var writes = new List<(string, double)>();
+        Assert.True(FenixA320Definition.TryWriteLatchedSwitch(key, value, (k, v) => writes.Add((k, v))));
+        Assert.Equal(new[] { (key, value) }, writes);
+    }
+
+    [Fact]
+    public void Other_keys_are_not_written_as_latched_switches()
+    {
+        var writes = new List<(string, double)>();
+        Assert.False(FenixA320Definition.TryWriteLatchedSwitch("S_OH_CALLS_MID", 1, (k, v) => writes.Add((k, v))));
+        Assert.False(FenixA320Definition.TryWriteLatchedSwitch("S_OH_FUEL_CENTER_2", 1, (k, v) => writes.Add((k, v))));
+        Assert.Empty(writes);
+    }
+
+
     [Theory]
     [InlineData(2)]
     [InlineData(3)]
