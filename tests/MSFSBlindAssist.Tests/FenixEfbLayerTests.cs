@@ -2,10 +2,11 @@
 // script that stamps roles, names and Tab stops on the page's own elements. CI runs xUnit and does not
 // run Node, so these source scans pin what must hold without the jsdom tests: the script keeps its
 // guard, never makes a request, removes an element or writes a value, never fires an event, changes a
-// class or text, moves the focus, adds a node or stores anything (it only adds attributes and key
-// handlers that call the page's own click, and that click is its only one), ships with the app, and is
-// injected before the first navigation. How the layer behaves on the page is tested offline in
-// tools/fenix-efb-test.
+// class or text, adds a node or stores anything (it only adds attributes and key handlers that call the
+// page's own click, and that click is its only one), moves the focus only from its key handler (the
+// runway condition's arrows, ruling R47), writes an id only as "msfsba-<n>" (ruling R46), ships with the
+// app, and is injected before the first navigation. How the layer behaves on the page is tested offline
+// in tools/fenix-efb-test.
 
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
@@ -51,8 +52,9 @@ public class FenixEfbLayerTests
     }
 
     // Ruling R35: the layer only adds role, aria-*, tabindex and key handlers. It never fires an event of its own,
-    // changes the page's classes or text, ticks a box, moves the focus, adds or moves a node, or keeps anything in
-    // storage. Scanned over the whole text, comments included: a comment that needs one of these words is reworded.
+    // changes the page's classes or text, ticks a box (it reads `checked`, never writes it), adds or moves a node, or
+    // keeps anything in storage. Scanned over the whole text, comments included: a comment that needs one of these
+    // words is reworded. (Moving the focus is pinned to its one place below, ruling R49.)
     [Theory]
     [InlineData("dispatchEvent(")]
     [InlineData("classList.add")]
@@ -62,23 +64,17 @@ public class FenixEfbLayerTests
     [InlineData("textContent =")]
     [InlineData("nodeValue =")]
     [InlineData(".checked =")]
-    [InlineData(".focus(")]
     [InlineData("appendChild")]
     [InlineData("insertBefore")]
     [InlineData("localStorage")]
-    public void The_script_never_fires_events_changes_classes_or_text_moves_focus_adds_nodes_or_stores_anything(string banned)
+    public void The_script_never_fires_events_changes_classes_or_text_adds_nodes_or_stores_anything(string banned)
     {
         Assert.DoesNotContain(banned, ReadScript());
     }
 
-    // The one press the layer makes is the page's own click, from its Enter / Space key handler: `.click(` occurs
-    // exactly once in the whole text, and that once is inside onButtonKey.
-    [Fact]
-    public void The_script_presses_only_through_the_pages_own_click_in_its_key_handler()
+    // The text of the key handler onButtonKey, from its opening brace to its closing one.
+    private static string KeyHandler(string script)
     {
-        string script = ReadScript();
-        Assert.Single(Regex.Matches(script, Regex.Escape(".click(")));
-
         Match signature = Regex.Match(script, @"function\s+onButtonKey\s*\(");
         Assert.True(signature.Success, "the key handler onButtonKey is not in the script");
         int open = script.IndexOf('{', signature.Index);
@@ -90,7 +86,49 @@ public class FenixEfbLayerTests
             else if (script[i] == '}' && --depth == 0) close = i;
         }
         Assert.True(close > open, "onButtonKey has no closing brace");
-        Assert.Contains(".click(", script.Substring(open, close - open + 1));
+        return script.Substring(open, close - open + 1);
+    }
+
+    // The one press the layer makes is the page's own click, from its key handler (Enter / Space on the control, or an
+    // arrow on the runway condition's next code): `.click(` occurs exactly once in the whole text, inside onButtonKey.
+    [Fact]
+    public void The_script_presses_only_through_the_pages_own_click_in_its_key_handler()
+    {
+        string script = ReadScript();
+        Assert.Single(Regex.Matches(script, Regex.Escape(".click(")));
+        Assert.Contains(".click(", KeyHandler(script));
+    }
+
+    // Ruling R49: the layer moves the focus in one place only, the runway condition's arrow keys (ruling R47), which
+    // press the next code and move to it: `.focus(` occurs exactly once in the whole text, inside onButtonKey, after
+    // its click.
+    [Fact]
+    public void The_script_moves_the_focus_only_from_its_key_handler()
+    {
+        string script = ReadScript();
+        Assert.Single(Regex.Matches(script, Regex.Escape(".focus(")));
+        string handler = KeyHandler(script);
+        Assert.Contains(".focus(", handler);
+        Assert.True(handler.IndexOf(".click(", StringComparison.Ordinal) < handler.IndexOf(".focus(", StringComparison.Ordinal),
+            "the focus moves to the code the arrow pressed, after pressing it");
+    }
+
+    // Ruling R49: the only ids the layer writes are its own, for the results grid's aria-owns (ruling R46): every
+    // setAttribute('id', ...) builds its value from the "msfsba-" prefix, no id property is assigned, and no helper is
+    // handed the id attribute to write.
+    [Fact]
+    public void The_script_writes_ids_only_with_the_msfsba_prefix()
+    {
+        string script = ReadScript();
+        MatchCollection writes = Regex.Matches(script, @"setAttribute\(\s*['""]id['""]\s*,\s*(?<value>[^)]*)\)");
+        Assert.NotEmpty(writes);
+        foreach (Match write in writes)
+        {
+            Assert.StartsWith("'msfsba-' +", write.Groups["value"].Value.Trim());
+        }
+        Assert.DoesNotMatch(new Regex(@"\.id\s*=(?!=)"), script);
+        Assert.DoesNotMatch(new Regex(@"(setAttr|ownState)\(\s*[^,()]+,\s*['""]id['""]"), script);
+        Assert.DoesNotMatch(new Regex(@"setAttributeNS\s*\("), script);
     }
 
     [Fact]
