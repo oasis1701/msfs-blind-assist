@@ -26,7 +26,15 @@ async function load(fixtureName, { layer = true } = {}) {
   const html = fs.readFileSync(file, 'utf8');
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: EFB_URL });
   const { window } = dom;
-  if (layer) window.eval(fs.readFileSync(LAYER, 'utf8'));
+  if (layer) {
+    try {
+      window.eval(fs.readFileSync(LAYER, 'utf8'));
+    } catch (err) {
+      // A layer that throws on load must not leave a live window (its timers and observer) behind.
+      window.close();
+      throw err;
+    }
+  }
   await turn();
   await turn();
   return window;

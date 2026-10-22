@@ -149,12 +149,41 @@ public class FenixEFBForm : Form
                 "window.addEventListener('keydown',function(e){" +
                 "if(e.key==='Escape'){window.chrome.webview.postMessage('msfsba-efb-close');}}," +
                 "true);");
+            // The accessibility layer (plan 03): registered with the document-created injection, so it
+            // is in place before the first page script runs and again for every new document. Read once,
+            // here; a missing file only costs the layer, never the page.
+            string? layer = ReadLayerScript();
+            if (layer != null)
+            {
+                await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(layer);
+            }
             _webViewReady = true;
             Navigate();
         }
         catch (Exception ex)
         {
             ShowError("The browser component could not start. " + ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// The layer script, copied next to the executable by the project file. Null (and a log line) when
+    /// it is missing or unreadable: the EFB then loads as the page is, which a screen reader cannot use.
+    /// </summary>
+    private static string? ReadLayerScript()
+    {
+        string path = Path.Combine(AppContext.BaseDirectory, "Resources", "fenix-efb-accessibility.js");
+        try
+        {
+            string text = File.ReadAllText(path);
+            if (!string.IsNullOrWhiteSpace(text)) return text;
+            Log.Warn("FenixEFB", $"Accessibility layer not loaded ({path}): the file is empty");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("FenixEFB", $"Accessibility layer not loaded ({path}): {ex.Message}");
+            return null;
         }
     }
 
