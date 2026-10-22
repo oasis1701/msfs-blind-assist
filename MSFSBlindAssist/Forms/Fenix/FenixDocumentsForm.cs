@@ -14,7 +14,7 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// procedures, QRH, the Fenix user guide, the pilot's own) in the EFB's folders and order, the gateway's search, and
 /// a reader that shows one document as an inert page (scripts off, every navigation but its own cancelled), with a
 /// plain-text fallback when WebView2 cannot run. Ctrl+P opens the documents the Fenix pinned, one after another.
-/// Keys: Enter opens, Ctrl+F search box, F6 document, tree, search box (Shift+F6 the reverse), F5 reload, Escape hides.
+/// Keys: Enter opens, Ctrl+F search box, F6 document, tree, search box (Shift+F6 the reverse), F5 reload, Ctrl+D pins or unpins, Escape hides.
 /// Before a document opens the reader shows a placeholder page, never a blank one.
 /// </summary>
 /// <remarks>
@@ -63,6 +63,7 @@ public sealed class FenixDocumentsForm : Form
     private int _openSequence;
     private int _searchSequence;
     private bool _loading;
+    private bool _pinning;
     private bool _started;
     private bool _statusIsReady;
     private bool _tornDown;
@@ -822,8 +823,76 @@ public sealed class FenixDocumentsForm : Form
         Keys.Shift | Keys.F6 => () => MovePane(-1, inDocument),
         Keys.Control | Keys.F => FocusSearch,
         Keys.Control | Keys.P => OpenNextPinned,
+        Keys.Control | Keys.D => () => TogglePin(inDocument),
         _ => null,
     };
+
+    // Ctrl+D: pins or unpins the selected document, or the open one when the key comes from inside the document.
+    // Any other node, or no open document, does nothing. This is the one write of the window: the Fenix's own
+    // pinned_documents setting, written as the EFB writes it.
+    private void TogglePin(bool inDocument)
+    {
+        if (IsDisposed || _pinning) return;
+        Control document = _fallbackShown ? _fallback : _reader;
+        string? path = inDocument || document.Focused
+            ? _openPath
+            : (_tree.SelectedNode?.Tag as DocumentTag)?.Path;
+        if (path == null) return;
+        _ = TogglePinAsync(path);
+    }
+
+    private async Task TogglePinAsync(string path)
+    {
+        if (_pinning) return;
+        _pinning = true;
+        CancellationToken ct = _cts.Token;
+        try
+        {
+            IReadOnlyList<FenixSetting> settings = await _data.GetSettingsAsync(ct);
+            if (IsDisposed) return;
+            IReadOnlyList<FenixPinnedDocument>? pins = FenixDocumentPins.FromSettings(settings);
+            if (pins == null)
+            {
+                Log.Debug(LogCategory, "pin: no answer");
+                _announcer.AnnounceImmediate(FenixDocumentTexts.NoAnswer);
+                return;
+            }
+
+            bool wantPinned = !pins.Any(p => string.Equals(p.Path, path, StringComparison.Ordinal));
+            IReadOnlyList<FenixPinnedDocument> updated = FenixDocumentPins.Toggle(pins, path);
+            var data = await _data.QueryAsync(FenixDocumentPins.SetSettingDocument, FenixDocumentPins.Variables(FenixDocumentPins.Serialize(updated)), ct);
+            if (IsDisposed) return;
+            if (!FenixDocumentPins.Succeeded(data))
+            {
+                Log.Debug(LogCategory, $"pin {path}: not accepted");
+                _announcer.AnnounceImmediate(FenixDocumentPins.NotAccepted);
+                return;
+            }
+
+            // Read back what the Fenix now holds (the watcher's own poll may be in flight and skip an explicit one).
+            IReadOnlyList<FenixPinnedDocument>? now = FenixDocumentPins.FromSettings(await _data.GetSettingsAsync(ct));
+            if (IsDisposed) return;
+            if (now == null)
+            {
+                Log.Debug(LogCategory, $"pin {path}: no read-back");
+                _announcer.AnnounceImmediate(FenixDocumentTexts.NoAnswer);
+                return;
+            }
+            bool pinnedNow = now.Any(p => string.Equals(p.Path, path, StringComparison.Ordinal));
+            Log.Debug(LogCategory, $"pin {path}: wanted {wantPinned}, now {pinnedNow}, {pins.Count} -> {now.Count} pins");
+            _announcer.AnnounceImmediate(pinnedNow == wantPinned ? FenixDocumentPins.ReadBack(path, pinnedNow) : FenixDocumentPins.NotAccepted);
+            await _watcher.PollOnceAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug(LogCategory, $"pin {path} failed: {ex.GetType().Name}: {ex.Message}");
+            if (!IsDisposed) _announcer.AnnounceImmediate(FenixDocumentPins.NotAccepted);
+        }
+        finally
+        {
+            _pinning = false;
+        }
+    }
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {

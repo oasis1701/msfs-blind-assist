@@ -69,6 +69,45 @@ public static class FenixDocumentPins
         return null;
     }
 
+    /// <summary>The Fenix EFB's own write of the setting (gql-operations.txt line 13); the one write of plan 07.</summary>
+    public const string SetSettingDocument = "mutation SetSetting($setSetting: SetSettingInput!) { settings { setSetting(setSetting: $setSetting) { success } } }";
+
+    public const string NotAccepted = "The Fenix did not accept the change.";
+
+    /// <summary>Every entry with the path (ordinal) is removed; with none, a new pin goes first (the EFB prepends).</summary>
+    public static IReadOnlyList<FenixPinnedDocument> Toggle(IReadOnlyList<FenixPinnedDocument> pins, string path)
+    {
+        if (pins.Any(p => string.Equals(p.Path, path, StringComparison.Ordinal)))
+            return pins.Where(p => !string.Equals(p.Path, path, StringComparison.Ordinal)).ToList();
+        var list = new List<FenixPinnedDocument>(pins.Count + 1) { new(path, null, null) };
+        list.AddRange(pins);
+        return list;
+    }
+
+    /// <summary>The EFB's JSON.stringify of the list: path, then matchIndex when set, then label when set; no spaces.</summary>
+    public static string Serialize(IReadOnlyList<FenixPinnedDocument> pins)
+    {
+        var sb = new System.Text.StringBuilder("[");
+        for (int i = 0; i < pins.Count; i++)
+        {
+            if (i > 0) sb.Append(',');
+            sb.Append("{\"path\":").Append(JsonConvert.ToString(pins[i].Path));
+            if (pins[i].MatchIndex is int m) sb.Append(",\"matchIndex\":").Append(m.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            if (pins[i].Label is string l) sb.Append(",\"label\":").Append(JsonConvert.ToString(l));
+            sb.Append('}');
+        }
+        return sb.Append(']').ToString();
+    }
+
+    public static object Variables(string serializedPins)
+        => new { setSetting = new { key = SettingKey, value = serializedPins, persist = true } };
+
+    public static bool Succeeded(JObject? data)
+        => data?["settings"]?["setSetting"]?["success"] is { Type: JTokenType.Boolean } s && (bool)s;
+
+    public static string ReadBack(string path, bool pinned)
+        => (pinned ? "Pinned: " : "Unpinned: ") + FenixDocumentNames.DisplayName(path) + ".";
+
     /// <summary>The pins whose path is in the document list, in order; the EFB drops the others from its Pinned section.</summary>
     public static IReadOnlyList<FenixPinnedDocument> Listed(IReadOnlyList<FenixPinnedDocument> pins, IReadOnlyDictionary<string, FenixDocumentItem> byPath)
     {

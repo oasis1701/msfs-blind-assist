@@ -1,6 +1,8 @@
 // Characterization tests for the Fenix documents window's pinned documents and the pin watcher.
 
 using MSFSBlindAssist.Services;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -45,6 +47,29 @@ public class FenixDocumentPinsTests
         Assert.Equal(2, changed); Assert.Equal(new[] { P(Smoke, 0), P(SpdBrk, 0) }, w.Current);
         await w.PollOnceAsync();                      // both removed
         Assert.Equal(3, changed); Assert.Empty(w.Current!);
+    }
+
+    [Fact] public void Toggle_prepends_or_removes_by_path()
+    {
+        var pins = new[] { P(SpdBrk, 0) };
+        Assert.Equal(new[] { P("fenix/Checklists.md"), P(SpdBrk, 0) }, FenixDocumentPins.Toggle(pins, "fenix/Checklists.md"));
+        Assert.Empty(FenixDocumentPins.Toggle(new[] { P(SpdBrk, 0), P(SpdBrk) }, SpdBrk));
+    }
+
+    [Theory] [InlineData("de-DE")] [InlineData("en-US")]
+    public void Serialize_writes_what_the_EFB_writes(string culture) => Assert.Equal(
+        "[{\"path\":\"fenix/QRH/BACK COVER/NORMAL CHECKLIST.md\"},{\"path\":\"fenix/ECAM/F__CTL/F__CTL_SPD_BRK_DISAGREE.md\",\"matchIndex\":0},{\"path\":\"fenix/Checklists.md\",\"label\":\"Mine\"}]",
+        TestCulture.Run(culture, () => FenixDocumentPins.Serialize(new[] { P("fenix/QRH/BACK COVER/NORMAL CHECKLIST.md"), P(SpdBrk, 0), new FenixPinnedDocument("fenix/Checklists.md", null, "Mine") })));
+
+    [Fact] public void Variables_persist_like_the_EFB()
+        => Assert.Equal("{\"setSetting\":{\"key\":\"pinned_documents\",\"value\":\"[]\",\"persist\":true}}",
+            JObject.FromObject(FenixDocumentPins.Variables("[]")).ToString(Formatting.None));
+
+    [Fact] public void Success_and_read_back()
+    {
+        Assert.True(FenixDocumentPins.Succeeded(JObject.Parse("{\"settings\":{\"setSetting\":{\"success\":true}}}")));
+        Assert.False(FenixDocumentPins.Succeeded(null));
+        Assert.Equal("Unpinned: F/CTL SPD BRK DISAGREE.", FenixDocumentPins.ReadBack(SpdBrk, false));
     }
 
     [Fact] public async Task No_answer_changes_nothing()
