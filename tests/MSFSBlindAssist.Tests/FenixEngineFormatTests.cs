@@ -19,9 +19,9 @@ public class FenixEngineFormatTests
         "Engine 1 EGT: 475 degrees C", "Engine 2 EGT: 474 degrees C",
         "Engine 1 N2: 62.2 percent", "Engine 2 N2: 62.4 percent",
         "Engine 1 Fuel Flow: 438 kilograms per hour", "Engine 2 Fuel Flow: 441 kilograms per hour",
-        "Engine 1 Oil Quantity: 14.4", "Engine 2 Oil Quantity: 14.3",
-        "Engine 1 Oil Pressure: 150", "Engine 2 Oil Pressure: 150",
-        "Engine 1 Oil Temperature: 118", "Engine 2 Oil Temperature: 117",
+        "Engine 1 Oil Quantity: 14.4 quarts", "Engine 2 Oil Quantity: 14.3 quarts",
+        "Engine 1 Oil Pressure: 150 psi", "Engine 2 Oil Pressure: 150 psi",
+        "Engine 1 Oil Temperature: 118 degrees C", "Engine 2 Oil Temperature: 117 degrees C",
         "Total Air Temperature: 17 degrees C", "Outside Air Temperature: 17 degrees C",
     };
 
@@ -82,9 +82,9 @@ public class FenixEngineFormatTests
         var hold = new FenixEngineDisplayHold();
         var low = Idle with { Engine2 = Idle.Engine2 with { OilTemperature = 116.49 } };
         var high = Idle with { Engine2 = Idle.Engine2 with { OilTemperature = 116.51 } };
-        Assert.Equal("Engine 2 Oil Temperature: 116", FenixEngineFormat.Rows(low, FenixEngineWeightUnit.Kilograms, hold)[15]);
-        Assert.Equal("Engine 2 Oil Temperature: 116", FenixEngineFormat.Rows(high, FenixEngineWeightUnit.Kilograms, hold)[15]);
-        Assert.Equal("Engine 2 Oil Temperature: 117", FenixEngineFormat.Rows(high, FenixEngineWeightUnit.Kilograms)[15]);
+        Assert.Equal("Engine 2 Oil Temperature: 116 degrees C", FenixEngineFormat.Rows(low, FenixEngineWeightUnit.Kilograms, hold)[15]);
+        Assert.Equal("Engine 2 Oil Temperature: 116 degrees C", FenixEngineFormat.Rows(high, FenixEngineWeightUnit.Kilograms, hold)[15]);
+        Assert.Equal("Engine 2 Oil Temperature: 117 degrees C", FenixEngineFormat.Rows(high, FenixEngineWeightUnit.Kilograms)[15]);
     }
 
     [Fact]
