@@ -4,6 +4,7 @@ using System.Linq;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.FirstOfficer.Fenix;
 using MSFSBlindAssist.FirstOfficer.Models;
+using MSFSBlindAssist.Services;
 using MSFSBlindAssist.SimConnect;
 using Xunit;
 
@@ -306,6 +307,40 @@ public class FenixReadbackValueTests
         // 27,000 lb = 12,247 kg -> 12,200; the thousands separator is the invariant comma.
         var read = Reader(new() { ["FUEL TOTAL QUANTITY WEIGHT"] = 27000 });
         Assert.Equal("12,200 kilograms", InCulture(culture, () => FenixStateEvaluator.FuelText(read)));
+    }
+
+    [Theory, MemberData(nameof(Cultures))]
+    public void Fuel_prefers_the_Fenixs_own_total(string culture)
+    {
+        // The Fenix total counts the extra centre tanks (capacity 23,342 kg on the ACT A321).
+        var read = Reader(new() { [FenixStateEvaluator.FuelTotalKgField] = 12_247, ["FUEL TOTAL QUANTITY WEIGHT"] = 99_999 });
+        Assert.Equal("12,200 kilograms", InCulture(culture, () => FenixStateEvaluator.FuelText(read)));
+    }
+
+    // A fake data-service subscription: remembers the callback the evaluator registered.
+    private sealed class FakeSubscription : System.IDisposable
+    {
+        public System.Action<string, FenixDataValue>? Callback;
+        public System.IDisposable Subscribe(IReadOnlyList<string> names, System.Action<string, FenixDataValue> callback)
+        {
+            Callback = callback;
+            return this;
+        }
+        public void Dispose() { }
+    }
+
+    [Theory, MemberData(nameof(Cultures))]
+    public void Fuel_line_reads_the_Fenix_total_pushed_by_its_data_service(string culture)
+    {
+        // The value arrives on a pool thread through the callback the fake subscription captured (FNX-2);
+        // the instance line reads it through the synthetic field, not only the static helper.
+        var fenix = new FakeSubscription();
+        var e = new FenixStateEvaluator();
+        e.AttachFenix(new object(), () => FenixVariant.Unknown, fenix.Subscribe);
+        fenix.Callback!(FenixFoLiveReadings.FuelTotalKgName,
+            new FenixDataValue(FenixValueKind.Number, 12_247, false, null, "12247"));
+
+        Assert.Equal("12,200 kilograms", InCulture(culture, () => e.FuelText()));
     }
 
     [Fact]

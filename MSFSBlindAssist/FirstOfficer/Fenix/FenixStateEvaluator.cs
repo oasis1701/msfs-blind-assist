@@ -38,6 +38,10 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
     /// the purser and does not.</summary>
     public const string CabinReadyField = "FO_CABIN_READY";
 
+    /// <summary>The Fenix's total fuel in kilograms from its data service, NaN until the service has said
+    /// (FNX-1). The Cockpit Preparation Checklist's fuel line reads it first; the stock weight is the fallback.</summary>
+    public const string FuelTotalKgField = "FO_FUEL_TOTAL_KG";
+
     private static readonly string[] PollFields =
     {
         // Electrical / APU
@@ -200,6 +204,8 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
             case "FO_ENG2_N2": value = EngineN2(2); return true;
             // The purser's cabin-ready report from the Fenix's data service: 1, 0, or NaN until it says.
             case CabinReadyField: value = _live.CabinReady; return true;
+            // The Fenix's total fuel in kilograms: NaN until the data service has said, then FuelText takes it.
+            case FuelTotalKgField: value = _live.FuelTotalKg; return true;
             // NaN until both N2 answers are in (either source): unknown is never "engines off" (the
             // power-up guard EPU_ENGINES_STOPPED and the Parking checklist's "Engines: OFF" read it).
             case "FO_ENGINES_OFF":
@@ -330,13 +336,21 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
         return AirbusReadbackFormat.Baro(0, read(inHg ? "N_FCU_EFIS1_BARO_INCH" : "N_FCU_EFIS1_BARO_HPA"), inHg);
     }
 
-    /// <summary>Total fuel in kilograms (the Airbus card's unit), from the stock weight in pounds.</summary>
+    /// <summary>Total fuel in kilograms (the Airbus card's unit): the Fenix's own total from its data
+    /// service first, since it counts the extra centre tanks (the ACT A321); the stock total weight in
+    /// pounds, converted, only while the Fenix total is unknown.</summary>
     public string? FuelText() => FuelText(GetValue);
 
     internal static string? FuelText(Func<string, double> read)
     {
-        double lbs = read("FUEL TOTAL QUANTITY WEIGHT");
-        return double.IsNaN(lbs) ? null : AirbusReadbackFormat.FuelQuantity(lbs * 0.45359237, pounds: false);
+        double kg = read(FuelTotalKgField);
+        if (double.IsNaN(kg))
+        {
+            double lbs = read("FUEL TOTAL QUANTITY WEIGHT");
+            if (double.IsNaN(lbs)) return null;
+            kg = lbs * 0.45359237;
+        }
+        return AirbusReadbackFormat.FuelQuantity(kg, pounds: false);
     }
 
     /// <summary>The landing autobrake read from the three lamps (LO / MED / MAX; none lit = off).</summary>
