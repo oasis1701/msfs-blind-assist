@@ -7,6 +7,8 @@ namespace MSFSBlindAssist.Services;
 /// <summary>One document the Fenix pins (the ECAM procedures it pins for alerts). <c>MatchIndex</c> and <c>Label</c> are optional.</summary>
 public sealed record FenixPinnedDocument(string Path, int? MatchIndex, string? Label);
 
+public enum FenixPinReadBack { Confirmed, Opposite, NoAnswer }
+
 /// <summary>The Fenix <c>pinned_documents</c> setting: reading it as the EFB's own parser does.</summary>
 public static class FenixDocumentPins
 {
@@ -107,6 +109,27 @@ public static class FenixDocumentPins
 
     public static string ReadBack(string path, bool pinned)
         => (pinned ? "Pinned: " : "Unpinned: ") + FenixDocumentNames.DisplayName(path) + ".";
+
+    /// <summary>
+    /// Re-reads the setting until the Fenix holds the wanted state of the path: its settings query lags the write by
+    /// up to about 2 s. Waits <paramref name="interval"/> between reads, at most <paramref name="attempts"/> reads.
+    /// Opposite when at least one read answered but never showed the wanted state; NoAnswer when none answered.
+    /// </summary>
+    public static async Task<FenixPinReadBack> AwaitStateAsync(
+        Func<CancellationToken, Task<IReadOnlyList<FenixSetting>>> readSettings, string path, bool wantPinned,
+        TimeSpan interval, int attempts, Func<TimeSpan, CancellationToken, Task> delay, CancellationToken ct)
+    {
+        bool answered = false;
+        for (int i = 0; i < attempts; i++)
+        {
+            if (i > 0) await delay(interval, ct);
+            var pins = FromSettings(await readSettings(ct));
+            if (pins == null) continue;
+            answered = true;
+            if (pins.Any(p => string.Equals(p.Path, path, StringComparison.Ordinal)) == wantPinned) return FenixPinReadBack.Confirmed;
+        }
+        return answered ? FenixPinReadBack.Opposite : FenixPinReadBack.NoAnswer;
+    }
 
     /// <summary>The pins whose path is in the document list, in order; the EFB drops the others from its Pinned section.</summary>
     public static IReadOnlyList<FenixPinnedDocument> Listed(IReadOnlyList<FenixPinnedDocument> pins, IReadOnlyDictionary<string, FenixDocumentItem> byPath)

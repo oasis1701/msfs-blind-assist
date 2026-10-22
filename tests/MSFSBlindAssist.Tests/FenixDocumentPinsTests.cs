@@ -72,6 +72,47 @@ public class FenixDocumentPinsTests
         Assert.Equal("Unpinned: F/CTL SPD BRK DISAGREE.", FenixDocumentPins.ReadBack(SpdBrk, false));
     }
 
+    static async Task<(FenixPinReadBack Result, int Reads, int Delays)> Await(string?[] answers, bool wantPinned, int attempts = 4)
+    {
+        int reads = 0, delays = 0;
+        var result = await FenixDocumentPins.AwaitStateAsync(
+            _ => Task.FromResult(Settings(answers[Math.Min(reads++, answers.Length - 1)])),
+            SpdBrk, wantPinned, TimeSpan.Zero, attempts, (_, _) => { delays++; return Task.CompletedTask; }, CancellationToken.None);
+        return (result, reads, delays);
+    }
+
+    [Fact] public async Task Read_back_waits_until_the_Fenix_shows_the_pin()
+    {
+        var r = await Await(new[] { "[]", "[]", Live }, wantPinned: true);
+        Assert.Equal((FenixPinReadBack.Confirmed, 3, 2), r);
+    }
+
+    [Fact] public async Task Read_back_gives_up_with_the_opposite_after_the_attempts()
+    {
+        var r = await Await(new[] { "[]" }, wantPinned: true);
+        Assert.Equal(FenixPinReadBack.Opposite, r.Result);
+        Assert.Equal(4, r.Reads);
+    }
+
+    [Fact] public async Task Read_back_without_a_pinned_documents_row_is_no_answer()
+    {
+        var r = await Await(new string?[] { null }, wantPinned: true);
+        Assert.Equal(FenixPinReadBack.NoAnswer, r.Result);
+        Assert.Equal(4, r.Reads);
+    }
+
+    [Fact] public async Task Read_back_of_an_unpin_waits_for_the_path_to_go()
+    {
+        var r = await Await(new[] { Live, "[]" }, wantPinned: false);
+        Assert.Equal((FenixPinReadBack.Confirmed, 2, 1), r);
+    }
+
+    [Fact] public async Task Read_back_confirmed_at_once_never_delays()
+    {
+        var r = await Await(new[] { Live }, wantPinned: true);
+        Assert.Equal((FenixPinReadBack.Confirmed, 1, 0), r);
+    }
+
     [Fact] public async Task No_answer_changes_nothing()
     {
         using var w = new FenixDocumentPinWatcher(_ => Task.FromResult(Settings(null)));

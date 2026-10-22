@@ -293,7 +293,9 @@ public sealed class FenixDocumentsForm : Form
             foreach (FenixDocumentNode node in FenixDocumentIndex.BuildTree(items)) _tree.Nodes.Add(MakeNode(node));
 
             TreeNode? select = keys != null ? FindByKeys(keys) : null;
-            if (select == null && first && FindHeader(PinnedHeader) is { Nodes.Count: > 0 } pinned) select = pinned.Nodes[0];
+            if (select == null && first && _listed.Count > 0 && FindHeader(PinnedHeader) is { Nodes.Count: > 0 } pinned) select = pinned.Nodes[0];
+            // With no pins the first node after the Pinned header (QRH) is selected, as before the header stayed.
+            if (select == null && first && _listed.Count == 0 && FindHeader(PinnedHeader) != null && _tree.Nodes.Count > 1) select = _tree.Nodes[1];
             select ??= _tree.Nodes.Count > 0 ? _tree.Nodes[0] : null;
             if (select != null) _tree.SelectedNode = select;
         }
@@ -422,8 +424,9 @@ public sealed class FenixDocumentsForm : Form
         _tree.BeginUpdate();
         try
         {
-            if (_listed.Count == 0)
+            if (_byPath == null || _watcher.Current == null)
             {
+                // No list or no answer from the Fenix yet: no Pinned node.
                 if (header != null)
                 {
                     header.Remove();
@@ -440,22 +443,34 @@ public sealed class FenixDocumentsForm : Form
                     _tree.Nodes.Insert(0, header);
                 }
                 SetText(header, headerText);
-                for (int i = 0; i < _listed.Count; i++)
+                if (_listed.Count == 0)
                 {
-                    FenixPinnedDocument pin = _listed[i];
-                    string text = FenixDocumentTexts.PinnedItem(pin.Path, pin.Label);
-                    var tag = new DocumentTag(pin.Path);
-                    if (i < header.Nodes.Count)
-                    {
-                        SetText(header.Nodes[i], text);
-                        if (!Equals(header.Nodes[i].Tag, tag)) header.Nodes[i].Tag = tag;
-                    }
-                    else
-                    {
-                        header.Nodes.Add(new TreeNode(text) { Tag = tag });
-                    }
+                    // One child that is not a document (no tag), like the empty-folder child.
+                    while (header.Nodes.Count > 0 && header.Nodes[0].Tag != null) header.Nodes.RemoveAt(0);
+                    if (header.Nodes.Count == 0) header.Nodes.Add(new TreeNode(FenixDocumentTexts.NoPins));
+                    while (header.Nodes.Count > 1) header.Nodes.RemoveAt(header.Nodes.Count - 1);
                 }
-                while (header.Nodes.Count > _listed.Count) header.Nodes.RemoveAt(header.Nodes.Count - 1);
+                else
+                {
+                    // Drop the "no pins" child (it has no tag) before the document children are matched by position.
+                    if (header.Nodes.Count > 0 && header.Nodes[0].Tag == null) header.Nodes.Clear();
+                    for (int i = 0; i < _listed.Count; i++)
+                    {
+                        FenixPinnedDocument pin = _listed[i];
+                        string text = FenixDocumentTexts.PinnedItem(pin.Path, pin.Label);
+                        var tag = new DocumentTag(pin.Path);
+                        if (i < header.Nodes.Count)
+                        {
+                            SetText(header.Nodes[i], text);
+                            if (!Equals(header.Nodes[i].Tag, tag)) header.Nodes[i].Tag = tag;
+                        }
+                        else
+                        {
+                            header.Nodes.Add(new TreeNode(text) { Tag = tag });
+                        }
+                    }
+                    while (header.Nodes.Count > _listed.Count) header.Nodes.RemoveAt(header.Nodes.Count - 1);
+                }
                 // Opened once, when it first appears (a node with no children cannot be); later the pilot's choice holds.
                 if (created) header.Expand();
                 if (selectedPath != null) _tree.SelectedNode = FindChild(header, selectedPath) ?? header;
@@ -869,18 +884,20 @@ public sealed class FenixDocumentsForm : Form
                 return;
             }
 
-            // Read back what the Fenix now holds (the watcher's own poll may be in flight and skip an explicit one).
-            IReadOnlyList<FenixPinnedDocument>? now = FenixDocumentPins.FromSettings(await _data.GetSettingsAsync(ct));
+            // Read back what the Fenix holds: its settings query lags the write by up to about 2 s, so re-read
+            // until it shows the change (the watcher's own poll may be in flight and skip an explicit one).
+            int reads = 0;
+            FenixPinReadBack outcome = await FenixDocumentPins.AwaitStateAsync(
+                async t => { reads++; return await _data.GetSettingsAsync(t); },
+                path, wantPinned, TimeSpan.FromMilliseconds(250), 16, Task.Delay, ct);
             if (IsDisposed) return;
-            if (now == null)
+            Log.Debug(LogCategory, $"pin {path}: wanted {wantPinned}, {outcome} after {reads} reads, {pins.Count} pins before");
+            _announcer.AnnounceImmediate(outcome switch
             {
-                Log.Debug(LogCategory, $"pin {path}: no read-back");
-                _announcer.AnnounceImmediate(FenixDocumentTexts.NoAnswer);
-                return;
-            }
-            bool pinnedNow = now.Any(p => string.Equals(p.Path, path, StringComparison.Ordinal));
-            Log.Debug(LogCategory, $"pin {path}: wanted {wantPinned}, now {pinnedNow}, {pins.Count} -> {now.Count} pins");
-            _announcer.AnnounceImmediate(pinnedNow == wantPinned ? FenixDocumentPins.ReadBack(path, pinnedNow) : FenixDocumentPins.NotAccepted);
+                FenixPinReadBack.Confirmed => FenixDocumentPins.ReadBack(path, wantPinned),
+                FenixPinReadBack.Opposite => FenixDocumentPins.NotAccepted,
+                _ => FenixDocumentTexts.NoAnswer,
+            });
             // Already announced: nothing below may speak.
             try
             {
