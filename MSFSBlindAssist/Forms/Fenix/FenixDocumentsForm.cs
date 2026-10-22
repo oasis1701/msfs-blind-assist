@@ -14,8 +14,8 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// procedures, QRH, the Fenix user guide, the pilot's own) in the EFB's folders and order, the gateway's search, and
 /// a reader that shows one document as an inert page (scripts off, every navigation but its own cancelled), with a
 /// plain-text fallback when WebView2 cannot run. Ctrl+P opens the documents the Fenix pinned, one after another.
-/// Keys: Enter opens, Ctrl+F search box, F6 / Shift+F6 next / previous of search box, tree and document, F5 reload,
-/// Escape hides.
+/// Keys: Enter opens, Ctrl+F search box, F6 / Shift+F6 between the tree and the document, F5 reload, Escape hides.
+/// Before a document opens the reader shows a placeholder page, never a blank one.
 /// </summary>
 /// <remarks>
 /// Every request is a GET awaited from a UI-thread handler, so its continuation resumes on the UI thread, and each
@@ -139,6 +139,8 @@ public sealed class FenixDocumentsForm : Form
             ScrollBars = ScrollBars.Vertical,
             Visible = false,
             AccessibleName = "Document",
+            // Until a document opens, the placeholder's title and hint, as the reader's placeholder page shows them.
+            Text = FenixDocumentTexts.NoDocumentTitle + "\r\n" + FenixDocumentTexts.NoDocumentHint,
             TabIndex = 1,
         };
         documentPane.Controls.Add(_fallback);
@@ -662,6 +664,22 @@ public sealed class FenixDocumentsForm : Form
         }
     }
 
+    // The page the reader shows while no document is open (the owner heard "document about:blank" there). It never
+    // takes the focus: only a document the pilot opens does.
+    private void ShowPlaceholder()
+    {
+        try
+        {
+            _focusReaderOnLoad = false;
+            _reader.CoreWebView2.NavigateToString(FenixDocumentPage.Placeholder(FenixDocumentTexts.NoDocumentTitle, FenixDocumentTexts.NoDocumentHint));
+        }
+        catch (Exception ex)
+        {
+            Log.Debug(LogCategory, $"reader could not show the placeholder: {ex.GetType().Name}; plain text instead");
+            ShowFallback();
+        }
+    }
+
     // ---- The reader -------------------------------------------------------------------------------
 
     protected override void OnLoad(EventArgs e)
@@ -695,7 +713,9 @@ public sealed class FenixDocumentsForm : Form
             // A browser-process death after a successful start raises only this event, never an exception here.
             core.ProcessFailed += OnProcessFailed;
             _readerReady = true;
+            // A document already waiting wins; otherwise the placeholder, so the reader never reads "about:blank".
             if (_pendingShow) ShowDocument(focus: true);
+            else if (_openPath == null) ShowPlaceholder();
         }
         catch (Exception ex)
         {
@@ -798,8 +818,8 @@ public sealed class FenixDocumentsForm : Form
     {
         Keys.Escape => () => { if (!IsDisposed && Visible) Close(); },
         Keys.F5 => () => { if (!IsDisposed) _ = LoadAsync(speak: true); },
-        Keys.F6 => () => MovePane(1, inDocument),
-        Keys.Shift | Keys.F6 => () => MovePane(-1, inDocument),
+        Keys.F6 => () => MovePane(inDocument),
+        Keys.Shift | Keys.F6 => () => MovePane(inDocument),
         Keys.Control | Keys.F => FocusSearch,
         Keys.Control | Keys.P => OpenNextPinned,
         _ => null,
@@ -830,16 +850,14 @@ public sealed class FenixDocumentsForm : Form
         SafeBeginInvoke(action);
     }
 
-    // F6 / Shift+F6: the next / previous of search box, tree and document; from anywhere else, the search box or the
-    // document.
-    private void MovePane(int step, bool inDocument)
+    // F6 and Shift+F6 both move between the tree and the document; from anywhere else (search box, Status, Close)
+    // they go to the tree. The search box is not in this order (owner, 2026-10-22): Ctrl+F reaches it.
+    private void MovePane(bool inDocument)
     {
         if (IsDisposed || !Visible) return;
         Control document = _fallbackShown ? _fallback : _reader;
-        Control[] panes = { _search, _tree, document };
-        int current = inDocument || document.Focused ? 2 : _search.Focused ? 0 : _tree.Focused ? 1 : -1;
-        int next = current < 0 ? (step > 0 ? 0 : 2) : (current + step + panes.Length) % panes.Length;
-        panes[next].Focus();
+        Control target = !inDocument && _tree.Focused ? document : _tree;
+        target.Focus();
     }
 
     private void FocusSearch()

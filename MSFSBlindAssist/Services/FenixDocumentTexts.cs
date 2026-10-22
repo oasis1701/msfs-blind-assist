@@ -16,6 +16,9 @@ public static class FenixDocumentTexts
     public const string NotListed = "This document is no longer in the Fenix's list. Press F5.";
     public const string PdfNotReadable = "This is a PDF. The Fenix shows PDF pages only as pictures, so MSFS Blind Assist cannot read it.";
     public const string NoPins = "No pinned documents.";
+    /// <summary>The reader's page (and the fallback's first line) before any document is open.</summary>
+    public const string NoDocumentTitle = "No document open";
+    public const string NoDocumentHint = "Choose a document in the list and press Enter.";
 
     private static string N(int n) => n.ToString(CultureInfo.InvariantCulture);
 

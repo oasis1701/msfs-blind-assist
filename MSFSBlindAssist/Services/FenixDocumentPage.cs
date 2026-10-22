@@ -52,13 +52,17 @@ public static class FenixDocumentPage
 
     /// <summary>The inert page: the policy is the first meta after the charset, the served markup lands in the body.</summary>
     public static string Build(string documentPath, string servedHtml)
-    {
-        string title = WebUtility.HtmlEncode(FenixDocumentNames.DisplayName(documentPath));
-        string body = Rewrite(servedHtml ?? "", documentPath, forText: false);
-        return "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+        => Page(FenixDocumentNames.DisplayName(documentPath), Rewrite(servedHtml ?? "", documentPath, forText: false));
+
+    /// <summary>The same inert page with a title and one paragraph of text (both encoded): what the reader shows before a document is open.</summary>
+    public static string Placeholder(string title, string text)
+        => Page(title, "<p>" + WebUtility.HtmlEncode(text ?? "") + "</p>");
+
+    // The skeleton both pages share: the policy is the first meta after the charset; the title is encoded here.
+    private static string Page(string title, string body)
+        => "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">"
             + "<meta http-equiv=\"Content-Security-Policy\" content=\"" + ContentSecurityPolicy + "\">"
-            + "<title>" + title + "</title><style>" + Style + "</style></head><body>" + body + "</body></html>";
-    }
+            + "<title>" + WebUtility.HtmlEncode(title ?? "") + "</title><style>" + Style + "</style></head><body>" + body + "</body></html>";
 
     /// <summary>The document as plain lines (non-empty, trimmed, joined with CRLF).</summary>
     public static string ToPlainText(string documentPath, string servedHtml)

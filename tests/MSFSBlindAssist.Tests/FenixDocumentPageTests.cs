@@ -85,6 +85,18 @@ public class FenixDocumentPageTests
             FenixDocumentPage.Build("fenix/QRH/IN FLIGHT PERFORMANCE/ALL ENGINES INOPERATIVE/OPTIMUM & MAXIMUM ALTITUDES.md", "<p>x</p>"));
     }
 
+    [Fact] public void Placeholder_is_an_inert_page_with_the_hint()
+    {
+        string page = FenixDocumentPage.Placeholder("No document open", "Choose a document in the list and press Enter.");
+        Assert.StartsWith("<!DOCTYPE html>", page);
+        Assert.Single(Regex.Matches(page, Regex.Escape("<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src http://127.0.0.1:8083; style-src 'unsafe-inline'\">")));
+        Assert.Contains("<title>No document open</title>", page);
+        Assert.Contains("<p>Choose a document in the list and press Enter.</p>", page);
+        Assert.DoesNotContain("<script", page, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(FenixDocumentPage.Notice, page);
+        Assert.Contains("<title>Fish &amp; chips</title>", FenixDocumentPage.Placeholder("Fish & chips", "x"));
+    }
+
     [Theory] [InlineData("de-DE")] [InlineData("en-US")]
     public void Plain_text_reads_the_procedure_in_order(string culture) => Assert.Equal(string.Join("\r\n",
         "F/CTL SPD BRK DISAGREE (amber)", "ANNUNCIATIONS", "Triggering Conditions:",
