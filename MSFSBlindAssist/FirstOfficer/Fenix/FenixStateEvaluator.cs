@@ -13,7 +13,8 @@ using MSFSBlindAssist.Utils.Logging;
 /// they are listed in OnRequestPollFields and polled onto the cache by the FO window's
 /// 1 s timer. Indicator lights (I_*) and S_FC_FLAPS are Continuous — cached automatically.
 /// A few values come from the Fenix's own data service instead (FenixFoLiveReadings), which
-/// <see cref="AttachFenix(FenixA320Definition?)"/> subscribes to.
+/// <see cref="AttachFenix(FenixA320Definition?)"/> subscribes to, or polls once a second for the
+/// engine N2 the subscription sends only once.
 ///
 /// Engine running is judged per engine on the Fenix's own N2 from its data service
 /// (FenixFoLiveReadings), NOT from Fenix L:vars. The stock TURB ENG N2 SimVars pushed in by the
@@ -105,11 +106,16 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
     // already running, one value on its way): it finds the generation moved on and is dropped, so it
     // can never refill readings the switch or detach just cleared. The data service never calls a
     // callback while holding one of its own locks, so Subscribe and Dispose under this lock cannot
-    // deadlock against a delivery waiting here.
+    // deadlock against a delivery waiting here. The poller below is the same: its Start only queues a
+    // task and its Dispose only cancels a token, and its deliveries are the ones waiting here.
     private readonly object _attachLock = new();
     private object? _fenixSource;
     private Func<FenixVariant>? _variantSource;
     private IDisposable? _subscription;
+    // The once-a-second N2 query. Delivers through the same generation check as the subscription: the
+    // poller drops an answer after its Dispose only on a best-effort basis, so the check is what
+    // guarantees a late N2 never refills readings a switch or detach just cleared.
+    private FenixDataPoller? _poller;
     private int _generation;
 
     /// <summary>Which Fenix is loaded, from the attached definition; <see cref="FenixVariant.Unknown"/>
@@ -139,15 +145,18 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
             return;
         }
         AttachFenix(definition.DataService, () => definition.Variant,
-            (names, onChange) => definition.DataService.Subscribe(names, onChange));
+            (names, onChange) => definition.DataService.Subscribe(names, onChange),
+            (names, ct) => definition.DataService.ReadManyAsync(names, ct));
     }
 
     /// <summary>The seam under <see cref="AttachFenix(FenixA320Definition?)"/>. The same source as last
-    /// time does nothing. A new source ends the old subscription, forgets its readings, takes the
-    /// variant and subscribes the six names; null ends it and returns the variant to Unknown. A null
-    /// <paramref name="subscribe"/> takes the variant only (tests).</summary>
+    /// time does nothing. A new source ends the old subscription and poll, forgets their readings, takes
+    /// the variant, subscribes the four streamed names and, given a <paramref name="read"/>, starts the
+    /// once-a-second poll of the two N2s through it; null ends them and returns the variant to Unknown.
+    /// A null <paramref name="subscribe"/> takes the variant only (tests), with no poll either.</summary>
     internal void AttachFenix(object? source, Func<FenixVariant>? variant,
-        Func<IReadOnlyList<string>, Action<string, FenixDataValue>, IDisposable>? subscribe)
+        Func<IReadOnlyList<string>, Action<string, FenixDataValue>, IDisposable>? subscribe,
+        Func<IReadOnlyList<string>, CancellationToken, Task<IReadOnlyDictionary<string, FenixDataValue>>>? read = null)
     {
         lock (_attachLock)
         {
@@ -156,12 +165,25 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
             int generation = ++_generation;
             _subscription?.Dispose();
             _subscription = null;
+            _poller?.Dispose();
+            _poller = null;
             _live.Clear();
             _fenixSource = source;
             _variantSource = source == null ? null : variant;
             if (source == null || subscribe == null) return;
 
-            _subscription = subscribe(FenixFoLiveReadings.Names, (name, value) => Deliver(generation, name, value));
+            // The subscription streams the running flags, the cabin signal and the fuel total, but sends
+            // an engine's N2 once when it opens and never again (measured live 2026-10-22: one value
+            // through a whole shutdown), so a frozen N2 would be judged as live. The two N2s are read by
+            // query instead, once a second, and arrive through the same generation check.
+            _subscription = subscribe(FenixFoLiveReadings.SubscribedNames,
+                (name, value) => Deliver(generation, name, value));
+            if (read != null)
+            {
+                _poller = new FenixDataPoller(FenixFoLiveReadings.PolledNames, read,
+                    (name, value) => Deliver(generation, name, value));
+                _poller.Start();
+            }
             Log.Info("FO", "Fenix First Officer: reading the Fenix's own engine, cabin and fuel values");
         }
     }
@@ -242,9 +264,10 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
     // ---- Engine N2: the Fenix's own value, stock as the per-engine fallback ----------------------
 
     /// <summary>The N2 the First Officer judges an engine by: the Fenix's own when it is known and
-    /// fresh (<see cref="FenixFoLiveReadings.N2"/> reads NaN past 5 s: a value older than that is not
-    /// trusted, whether the service stopped or only had nothing new to send, which is not measured),
-    /// else the stock value the window pushes each second, which is NaN until its first answer.</summary>
+    /// fresh, else the stock value the window pushes each second, which is NaN until its first answer.
+    /// The Fenix N2 is read by a once-a-second query (<see cref="FenixFoLiveReadings.PolledNames"/>), so
+    /// <see cref="FenixFoLiveReadings.N2"/> reads NaN past 5 s only when the polling stopped answering
+    /// (the gateway is down, the Fenix is not loaded), and while an engine is off (the query answers null).</summary>
     private double EngineN2(int engine)
     {
         double fenix = _live.N2(engine);

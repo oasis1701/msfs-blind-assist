@@ -5,18 +5,21 @@ namespace MSFSBlindAssist.FirstOfficer.Fenix;
 /// <summary>
 /// The six values the Fenix First Officer reads from the Fenix's own data service rather than from
 /// L:vars: both engines' N2 and running flag, the cabin-ready signal and the total fuel in kilograms.
-/// The service pushes them from a thread-pool thread (FNX-2), so they are stored here under one lock
-/// and read by the evaluator's synthetic fields; nothing in this class speaks.
+/// The service's subscription pushes four of them (<see cref="SubscribedNames"/>) and the evaluator
+/// polls the other two, the N2s (<see cref="PolledNames"/>), once a second: measured live (plan 05
+/// follow-up, 2026-10-22), a subscription sends an engine's N2 ONCE, when it opens, and never again
+/// (one value through a whole shutdown, 62.3 % to 5 %), while a query answers a fresh N2 every time.
+/// Both arrive from a thread-pool thread (FNX-2), so they are stored here under one lock and read by
+/// the evaluator's synthetic fields; nothing in this class speaks.
 ///
 /// A value the service has not sent, sent as unknown, or sent as the wrong kind reads NaN, never 0 or
-/// false (FNX-1). N2 also reads NaN once it is older than <see cref="N2StaleAfterMs"/>: a reading that
-/// stopped arriving (the service restarted, the socket is down) must not keep saying "running", so a
-/// value older than 5 s is not trusted and the stock N2 serves instead. Measured (plan 05, 2026-10-21,
-/// IAE A321 at idle): the Fenix N2 changed between reads (five reads spanned 62.31 to 62.44). Plan 09
-/// states the gateway's stream as 30-45 Hz but cites no measurement for the figure. Not measured: how
-/// often the service sends a value that does not change (a stopped engine, a dry crank), so a steady
-/// N2 may also go stale here and fall back to the stock value. The flags and the fuel are not aged:
-/// they keep their last value, on the assumption (not measured) that they change rarely.
+/// false (FNX-1); a polled N2 answered null (measured: an engine that is off) or "" is unknown too, and
+/// replaces the number before it. N2 also reads NaN once it is older than <see cref="N2StaleAfterMs"/>:
+/// a poll that stopped answering (the gateway is down, the Fenix is not loaded) must not leave the last
+/// number saying "running", so a value older than 5 s is not trusted and the stock N2 serves instead.
+/// The poll refreshes a steady N2 every second, so only a failing poll lets it go stale. The flags and
+/// the fuel are not aged: they keep their last value, on the assumption (not measured) that they
+/// change rarely.
 /// </summary>
 public sealed class FenixFoLiveReadings
 {
@@ -30,10 +33,26 @@ public sealed class FenixFoLiveReadings
     /// <summary>How long an N2 reading counts as current.</summary>
     public const long N2StaleAfterMs = 5_000;
 
-    /// <summary>Every name this class reads, for the data service subscription.</summary>
+    /// <summary>Every name this class reads: <see cref="SubscribedNames"/> and <see cref="PolledNames"/>
+    /// together. Neither the subscription nor the poll takes all six.</summary>
     public static IReadOnlyList<string> Names { get; } = Array.AsReadOnly(new[]
     {
         Engine1N2, Engine2N2, Engine1Running, Engine2Running, CabinReadyName, FuelTotalKgName,
+    });
+
+    /// <summary>The names the data service's subscription streams: both running flags (sent on change)
+    /// and the fuel total (sent every 2 s), measured live 2026-10-22, and the cabin-ready signal (not part
+    /// of that measurement; it is a flag, so assumed to be sent on change like the running flags).</summary>
+    public static IReadOnlyList<string> SubscribedNames { get; } = Array.AsReadOnly(new[]
+    {
+        Engine1Running, Engine2Running, CabinReadyName, FuelTotalKgName,
+    });
+
+    /// <summary>The names read by query once a second, because the subscription sends them once and never
+    /// again (measured live 2026-10-22): both engines' N2.</summary>
+    public static IReadOnlyList<string> PolledNames { get; } = Array.AsReadOnly(new[]
+    {
+        Engine1N2, Engine2N2,
     });
 
     private readonly Func<long> _clockMs;

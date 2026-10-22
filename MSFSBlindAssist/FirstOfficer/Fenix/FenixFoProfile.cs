@@ -28,10 +28,14 @@ public sealed class FenixFoProfile : IFoProfile<FenixActionExecutor, FenixStateE
 
     // The evaluator also reads the Fenix's own data service, through the Fenix definition SimConnectManager
     // holds as the current aircraft (MainForm sets it on load and on every switch). The FO window calls
-    // this at construction and on every reconnect; the subscription ends when the definition disposes
-    // its data service on a switch, which is also when MainForm disposes the FO window.
+    // this at construction and on every reconnect. The subscription ends when the definition disposes
+    // its data service on a switch, but the evaluator's once-a-second N2 poll does not end that way: it
+    // stops only when the evaluator is detached (SetExecutorSimConnect below).
+    private FenixStateEvaluator? _boundState;
+
     public void BindDataManager(FenixStateEvaluator state, SimConnectManager sc)
     {
+        _boundState = state;
         state.SetSimConnect(sc);
         state.AttachFenix(sc.CurrentAircraft as FenixA320Definition);
     }
@@ -40,6 +44,12 @@ public sealed class FenixFoProfile : IFoProfile<FenixActionExecutor, FenixStateE
     {
         exec.SetAnnouncer(_announcer);
         exec.SetSimConnect(sc);
+        // The FO window detaches the executor with null on a disconnect and when it closes (an aircraft
+        // switch closes it), and has no other teardown that reaches the evaluator. Without this the
+        // evaluator would go on polling the Fenix's gateway after both. A reconnect binds again, which
+        // attaches again, before it hands the executor the connection, so nothing is lost.
+        if (sc == null)
+            _boundState?.AttachFenix(null);
     }
 
     public List<FlowDefinition<FenixStateEvaluator>> BuildFlows()

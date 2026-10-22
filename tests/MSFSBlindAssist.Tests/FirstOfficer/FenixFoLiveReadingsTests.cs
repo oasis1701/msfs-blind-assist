@@ -153,6 +153,84 @@ public class FenixFoLiveReadingsTests
         }, FenixFoLiveReadings.Names);
     }
 
+    // N2 is measured to arrive over the subscription ONCE and never again (a whole shutdown, 62.3 % to
+    // 5 %, sent one value; plan 05 follow-up, 2026-10-22), so it is polled; the other four stream.
+    [Fact]
+    public void The_streamed_and_the_polled_names_together_are_the_six()
+    {
+        Assert.Equal(new[]
+        {
+            "aircraft.engines.1.running", "aircraft.engines.2.running",
+            "aircraft.communication.cids.cabinReady", "aircraft.fuel.total.amount.kg",
+        }, FenixFoLiveReadings.SubscribedNames);
+        Assert.Equal(new[] { "aircraft.engines.1.n2", "aircraft.engines.2.n2" }, FenixFoLiveReadings.PolledNames);
+
+        // Names stays every name the First Officer reads: no name added, none dropped (FNX-3).
+        Assert.Equal(FenixFoLiveReadings.Names.Order(),
+            FenixFoLiveReadings.SubscribedNames.Concat(FenixFoLiveReadings.PolledNames).Order());
+    }
+
+    [Fact]
+    public async Task Attach_subscribes_the_streamed_names_and_polls_N2()
+    {
+        var e = new FenixStateEvaluator();
+        var sub = new FakeSubscribe();
+        var read = new FenixFoFakeRead();
+        try
+        {
+            e.AttachFenix(new object(), () => A321, sub.Subscribe, read.Read);
+
+            Assert.Single(sub.Names);
+            Assert.Equal(FenixFoLiveReadings.SubscribedNames, sub.Names[0]);
+            await read.FirstReadStarted.WaitAsync(FenixFoFakeRead.Generous);   // the first read is immediate
+            Assert.Equal(FenixFoLiveReadings.PolledNames, read.Asked[0]);
+        }
+        finally
+        {
+            e.AttachFenix(null, null, null);   // ends the poll, which would otherwise outlive the test
+        }
+    }
+
+    [Fact]
+    public async Task Detaching_ends_the_poll_with_the_subscription()
+    {
+        var e = new FenixStateEvaluator();
+        var sub = new FakeSubscribe();
+        var read = FenixFoFakeRead.Held();      // in flight, so the token shows whether the poll was ended
+        e.AttachFenix(new object(), () => A321, sub.Subscribe, read.Read);
+        await read.FirstReadStarted.WaitAsync(FenixFoFakeRead.Generous);
+        Assert.False(read.Tokens[0].IsCancellationRequested);
+
+        e.AttachFenix(null, null, null);
+
+        Assert.True(sub.Handles[0].Disposed);
+        Assert.True(read.Tokens[0].IsCancellationRequested);
+    }
+
+    [Fact]
+    public async Task Attaching_the_same_source_again_keeps_one_poll()
+    {
+        var e = new FenixStateEvaluator();
+        var sub = new FakeSubscribe();
+        var read = FenixFoFakeRead.Held();
+        var source = new object();
+        try
+        {
+            e.AttachFenix(source, () => A321, sub.Subscribe, read.Read);
+            await read.FirstReadStarted.WaitAsync(FenixFoFakeRead.Generous);
+
+            // The FO window attaches at every bind and reconnect: the same source must not restart the poll.
+            e.AttachFenix(source, () => A321, sub.Subscribe, read.Read);
+
+            Assert.False(read.Tokens[0].IsCancellationRequested);
+            Assert.Single(sub.Names);
+        }
+        finally
+        {
+            e.AttachFenix(null, null, null);
+        }
+    }
+
     [Fact]
     public void Attach_subscribes_once_per_source_and_detaches_on_null()
     {
@@ -166,7 +244,7 @@ public class FenixFoLiveReadingsTests
         e.AttachFenix(sourceA, () => A321, sub.Subscribe);
 
         Assert.Single(sub.Names);
-        Assert.Equal(FenixFoLiveReadings.Names, sub.Names[0]);
+        Assert.Equal(FenixFoLiveReadings.SubscribedNames, sub.Names[0]);
         Assert.Equal(FenixAircraftType.A321, e.Variant.Type);
 
         e.AttachFenix(sourceB, () => A321, sub.Subscribe);

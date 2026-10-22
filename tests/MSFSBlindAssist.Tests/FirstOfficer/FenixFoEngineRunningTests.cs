@@ -140,6 +140,102 @@ public class FenixFoEngineRunningTests
         Assert.Equal(61.4, e.GetValue("FO_ENG1_N2"));
     }
 
+    // ---- N2 by a once-a-second poll --------------------------------------------------------------
+    // The Fenix's subscription sends N2 once and never again (measured 2026-10-22), so the evaluator
+    // polls it and judges by the polled value exactly as it did the streamed one. The fake read decides
+    // when each answer exists; the tests wait on the effect of an answer, never on time, and end by
+    // detaching, which ends the poll.
+
+    private static void WaitForN2(FenixStateEvaluator e, string field, double expected)
+        => FenixFoFakeRead.WaitUntil(() => e.GetValue(field) == expected, $"{field} reading {expected}");
+
+    [Fact]
+    public void A_polled_N2_reaches_the_engine_fields()
+    {
+        var e = new FenixStateEvaluator();
+        var answer = new TaskCompletionSource<IReadOnlyDictionary<string, FenixDataValue>>();
+        var read = new FenixFoFakeRead(answer.Task);
+        e.AttachFenix(new object(), () => FenixVariant.Unknown, new FakeSubscription().Subscribe, read.Read);
+        try
+        {
+            e.SetEngineN2(72.4, 72.4);     // the IAE's stock idle, 10 points above the Fenix's own
+
+            // The first read is out and unanswered: nothing of the Fenix's has arrived yet.
+            Assert.Equal(72.4, e.GetValue("FO_ENG1_N2"));
+
+            answer.SetResult(FenixFoFakeRead.N2(Num(62.3), Num(62.4)));
+            WaitForN2(e, "FO_ENG2_N2", 62.4);      // delivered in the names' order, so engine 1 is in too
+
+            Assert.Equal(62.3, e.GetValue("FO_ENG1_N2"));
+            Assert.True(e.GetValue("FO_ENG1_N2") >= FenixStateEvaluator.EngineRunningN2);
+        }
+        finally
+        {
+            e.AttachFenix(null, null, null);
+        }
+    }
+
+    // The service answers null for an engine that is off (measured), and "" when it is down or does not
+    // know the name (FNX-1): either is unknown, so the stock N2 serves and nothing reads 0 by mistake.
+    [Theory]
+    [InlineData(true)]      // JSON null
+    [InlineData(false)]     // "" / unknown
+    public void A_polled_unknown_N2_falls_back_to_stock(bool jsonNull)
+    {
+        var unknown = jsonNull ? FenixFoFakeRead.Null : FenixDataValue.Unknown;
+        var secondRead = new TaskCompletionSource<IReadOnlyDictionary<string, FenixDataValue>>();
+        // Read 1: both engines running. Read 2 (held until the test lets it go): the engines are off.
+        var read = new FenixFoFakeRead(Task.FromResult(FenixFoFakeRead.N2(Num(62.3), Num(62.4))), secondRead.Task);
+        var e = new FenixStateEvaluator();
+        e.AttachFenix(new object(), () => FenixVariant.Unknown, new FakeSubscription().Subscribe, read.Read);
+        try
+        {
+            e.SetEngineN2(0, 0);
+            WaitForN2(e, "FO_ENG2_N2", 62.4);
+            Assert.Equal(0, e.GetValue("FO_ENGINES_OFF"));      // the Fenix's number is what the guard reads
+
+            secondRead.SetResult(FenixFoFakeRead.N2(unknown, unknown));
+            WaitForN2(e, "FO_ENG1_N2", 0);                       // the stock value again, not NaN
+            WaitForN2(e, "FO_ENG2_N2", 0);
+
+            Assert.Equal(1, e.GetValue("FO_ENGINES_OFF"));
+        }
+        finally
+        {
+            e.AttachFenix(null, null, null);
+        }
+    }
+
+    // An answer the poll was still waiting for when the source changed: the old poll is cancelled, and
+    // the answer, if it still arrives, must not fill the readings of the source that replaced it.
+    [Fact]
+    public async Task A_poll_answer_after_a_switch_is_dropped()
+    {
+        var e = new FenixStateEvaluator();
+        var answer = new TaskCompletionSource<IReadOnlyDictionary<string, FenixDataValue>>();
+        var read = new FenixFoFakeRead(answer.Task);
+        e.AttachFenix(new object(), () => FenixVariant.Unknown, new FakeSubscription().Subscribe, read.Read);
+        await read.FirstReadStarted.WaitAsync(FenixFoFakeRead.Generous);
+        e.SetEngineN2(72.4, 72.4);
+        try
+        {
+            e.AttachFenix(new object(), () => FenixVariant.Unknown, new FakeSubscription().Subscribe);
+            Assert.True(read.Tokens[0].IsCancellationRequested);
+
+            answer.SetResult(FenixFoFakeRead.N2(Num(62.3), Num(62.4)));
+            // Nothing signals that something did NOT happen: give the late answer a moment to land. A
+            // slow machine can only make this pass trivially, never fail it.
+            await Task.Delay(200);
+
+            Assert.Equal(72.4, e.GetValue("FO_ENG1_N2"));
+            Assert.Equal(72.4, e.GetValue("FO_ENG2_N2"));
+        }
+        finally
+        {
+            e.AttachFenix(null, null, null);
+        }
+    }
+
     [Fact]
     public void Running_threshold_sits_between_starter_cut_out_and_both_measured_idles()
     {
