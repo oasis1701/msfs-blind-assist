@@ -1,12 +1,11 @@
 # First Officer for Fenix v3 Implementation Plan (plan 05)
 
-**Claimed by:** kn4iee (handed to robin24 and taken back the same day) · **Status:** in progress (code and reviews done 2026-10-22; in-sim checks remain, see "Owner-in-sim checks")
+**Claimed by:** kn4iee (handed to robin24 and taken back the same day) · **Status:** done (code, reviews and in-sim check 1 on 2026-10-22, follow-up Tasks 10-13 included; what is left is a listen-for list for the next flight, under "Owner-in-sim checks")
 
-> **Open after plan 09 (2026-10-22):** plan 09's check 1 measured the Fenix's own `aircraft.engines.{n}.running` flag
-> coming on when the start is complete (CFM: N2 59.2 %), about 4 s after this plan's 55 % N2 threshold. The FBW A32NX
-> and A330 First Officers already wait for their aircraft's own engine-on state (`FO_ENGn_RUNNING`). In-sim check 1
-> records the same edge on the IAE; then decide whether the start waits and "Engine n: running" lines use the flag (N2
-> 55 % as the fallback while it is unknown), with "stopped" staying on N2.
+> **Resolved 2026-10-22 (was open after plan 09):** plan 09 measured the Fenix's own `aircraft.engines.{n}.running`
+> flag coming on when the start is complete (CFM: N2 59.2 %, about 4 s after 55 %); in-sim check 1 measured it on the
+> IAE (N2 62.1 / 62.4 %, 6-7 s after 55 %). The start waits and "Engine n: running" lines now use the flag, as the FBW
+> A32NX and A330 do (`FO_ENGn_RUNNING`), N2 55 % the fallback; "stopped" stays on N2 (Task 12).
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -34,8 +33,8 @@ none of the names v3 renamed or removed (spec 1.1 to 1.5, 2.3).
 
 | # | Decision | Recommendation | Verified or assumed |
 |---|---|---|---|
-| O1 | Engine running/stopped source | The Fenix's own N2, per engine; stock `TURB ENG N2` only while that engine's Fenix value is unknown or more than 5 s old. Threshold stays 55 % for CFM and IAE (no per-family threshold) | Idle N2 **measured**: Fenix 59.3 % CFM A320 (spec 3), 62.3 % IAE A321 (above). Starter cut-out "about 50 % N2" **sourced** (Airbus instructor support, [manualslib p.22](https://www.manualslib.com/manual/1964928/Airbus-A320-Series.html?page=22)). Stock N2 on the IAE: 72.4 % at idle, identical on both engines (spec 3, **measured**); how stock N2 moves through an IAE start is **unmeasured**, in-sim check 1 logs it |
-| O2 | Engine-start wait | Raise `ES_ENG1_N2` / `ES_ENG2_N2` from 120 s to 180 s on every Fenix variant | The IAE FADEC dry-cranks 30 s before ignition and fuel on every auto start (**sourced**, same manualslib page); Fenix's own option `iae_crank_type` offers 30 or 50 s (`docs/fenix-v3/evidence/fenix-options-labels.tsv`). 180 s is **assumed** margin; in-sim check 1 times it |
+| O1 | Engine running/stopped source | The Fenix's own N2, per engine; stock `TURB ENG N2` only while that engine's Fenix value is unknown or more than 5 s old. Threshold stays 55 % for CFM and IAE (no per-family threshold) | Idle N2 **measured**: Fenix 59.3 % CFM A320 (spec 3), 62.3 % IAE A321 (above). Starter cut-out "about 50 % N2" **sourced** (Airbus instructor support, [manualslib p.22](https://www.manualslib.com/manual/1964928/Airbus-A320-Series.html?page=22)). Stock N2 on the IAE: 72.4 % at idle, identical on both engines (spec 3, **measured**); how stock N2 moves through an IAE start is **unmeasured**, in-sim check 1 logs it. **Outcome (2026-10-22, measured):** the subscription never streamed N2, so the FO had used stock all along; stock fell to 0 one second after master-off while the Fenix took about 20 s. Now: running is the Fenix's `running` flag (55 % N2 the fallback), stopped is the Fenix's N2 < 20 % read once a second, stock only while that is unknown or 5 s old (follow-up Tasks 10-12) |
+| O2 | Engine-start wait | Raise `ES_ENG1_N2` / `ES_ENG2_N2` from 120 s to 180 s on every Fenix variant | The IAE FADEC dry-cranks 30 s before ignition and fuel on every auto start (**sourced**, same manualslib page); Fenix's own option `iae_crank_type` offers 30 or 50 s (`docs/fenix-v3/evidence/fenix-options-labels.tsv`). 180 s is **assumed** margin; in-sim check 1 times it. **Outcome (2026-10-22, measured):** about 66 s per engine from master ON to running with the 30 s crank, so 180 s stays (a 50 s crank adds about 20 s, inferred) |
 | O3 | A321 PACK FLOW | On an A321 the Preflight write `PF_PACKFLOW` becomes a silent skip (no write, no "Already set" for a knob that is not there); its checklist line keeps reading the Fenix's system value. ECON FLOW is left to the Captain; no new reminder (a Captain step cannot be skipped silently per variant without a shared `FlowManager` change) | No PACK FLOW selector on the A321: **verified** (spec 3, package per-type panels). What the A321 SOP says for ECON FLOW: **assumed** "as required"; no public Airbus text found |
 | O4 | CABIN READY (v3: the purser sets it, a cockpit call only hurries the purser) | The read-back lines "Cabin: READY" (Line-up and Landing) get a live value: "reported ready" or "not reported". The CALL ALL steps and the flow shapes stay as they are | Changelog: **verified** (`docs/fenix-v3/evidence/web-research.md`, "CABIN READY changes"). Purser timing after the call: **unmeasured**, in-sim check 2. Alternative (a read-only cabin-ready check that delivers the line) needs edits to three shared A320-family tests: proposed in Handoff, not done here |
 | O5 | Fuel quantity line | Prefer the Fenix's own `aircraft.fuel.total.amount.kg`, stock weight as fallback | The Fenix total counts the ACTs: **inferred** from `total.capacity` 23,342 kg = wing and centre tanks plus 2 x 2,349 kg. Whether stock counts them: unmeasured; the Fenix's own value is the right one either way |
@@ -160,7 +159,7 @@ public void Takeoff_speeds_line_reads_the_native_perf_vars(string culture)
 **Interfaces:**
 - Consumes: Task 2's `_live.N2(n)`, `_live.Running(n)`; the base class's stock `Eng1N2` / `Eng2N2` (`LVarStateEvaluator.cs:83-84`, pushed by the window each second).
 - Produces: `FO_ENG{n}_N2` = `_live.N2(n)` when known, else the stock value; `FO_ENGINES_OFF` = `Both(FO_ENG1_N2, FO_ENG2_N2, both < 20)` on those resolved values (NaN while either is unknown, as today). `EngineRunningN2` stays 55.0. `internal const int EngineStartTimeoutSeconds = 180;` in `FenixFlowDefinitions`, used by both start waits. Every consumer follows without change: `EPU_ENGINES_STOPPED`, `SC_ENGINES_STOPPED`, `SD_ENGINES_STOPPED`, `ES_ENG{n}_RUN`, `PKC_ENGINES`, `NotParked`.
-- Diagnostic, no test: `private void TraceEngine(int engine, double fenixN2, double stockN2)`, called from the two `FO_ENG{n}_N2` reads, logs one `Log.Info("FO", …)` line when the source changes (Fenix or stock), or when Fenix N2 ≥ 55, stock N2 ≥ 55 or the running flag changes, for example `Fenix engine 1: Fenix N2 55.2 %, stock N2 68.0 %, running flag 1, source Fenix` (invariant culture; a lock guards the edge state, since the window timer and a flow read at the same time). In-sim check 1 reads these lines.
+- Diagnostic, no test (removed in follow-up Task 12 at the owner's request, ruling R11, once in-sim check 1 had measured the start): `private void TraceEngine(int engine, double fenixN2, double stockN2)`, called from the two `FO_ENG{n}_N2` reads, logs one `Log.Info("FO", …)` line when the source changes (Fenix or stock), or when Fenix N2 ≥ 55, stock N2 ≥ 55 or the running flag changes, for example `Fenix engine 1: Fenix N2 55.2 %, stock N2 68.0 %, running flag 1, source Fenix` (invariant culture; a lock guards the edge state, since the window timer and a flow read at the same time). In-sim check 1 reads these lines.
 
 - [x] **Step 1: Write the failing tests** in `FenixFoEngineRunningTests` (attach a fake subscription as in Task 2 and push values through its callback):
 
@@ -296,8 +295,8 @@ Why: `S_FCU_EFISn_BARO_STD` is the baro knob's push/pull counter, not a state: a
 ### Task 9: Hand back
 
 - [x] **Step 1:** Build the solution and run the whole suite: green. `git diff --name-only <base-sha>` lists only the files in "File structure", plus `FenixFlightPhaseMonitor.cs` (one comment; handoff request 9).
-- [ ] **Step 2:** Owner-in-sim checks below (stop and ask the owner; build only with MSFSBA closed, CORE-3).
-- [ ] **Step 3:** Fill in the results under "Handoff to plan 12" (measured values, decision outcomes) and hand back the branch. Done except the measured values, which wait for Step 2.
+- [x] **Step 2:** Owner-in-sim checks below (stop and ask the owner; build only with MSFSBA closed, CORE-3). Check 1 run 2026-10-22 (results under "Follow-up"); the rest became the listen-for list (owner, no further sim sessions).
+- [x] **Step 3:** Fill in the results under "Handoff to plan 12" (measured values, decision outcomes) and hand back the branch. Done 2026-10-22.
 
 ## Follow-up from in-sim check 1 (2026-10-22, IAE A321 with two ACTs, 30 s crank)
 
@@ -351,16 +350,16 @@ answer is dropped (generation) and the poller stops; (3) cold and dark: N2 unkno
   poll, then wait `interval`, so the first read is immediate and reads never overlap. The read's token is cancelled
   by Dispose.
 
-- [ ] **Step 1: Write the failing tests** (`FenixDataPollerTests`): `PollOnce_hands_each_answered_name_to_the_callback_in_order`
+- [x] **Step 1: Write the failing tests** (`FenixDataPollerTests`): `PollOnce_hands_each_answered_name_to_the_callback_in_order`
   (names a, b; answer a = Number 1, b = Unknown: callback gets a then b, b unknown); `PollOnce_swallows_a_failing_read`
   (read throws: no callback, no exception); `Start_polls_until_disposed` (interval 10 ms: at least 3 reads within 5 s;
   after Dispose and 200 ms, at most one more read started); `Reads_never_overlap` (a read held open by a gate: after
   200 ms with interval 1 ms, one read started); `Start_twice_runs_one_loop_and_Start_after_Dispose_never_reads`;
   `No_names_never_reads`; `Dispose_cancels_the_reads_token`.
-- [ ] **Step 2: Run them; they fail to compile.** `--filter "FullyQualifiedName~FenixDataPollerTests"`
-- [ ] **Step 3: Implement** the class as specified.
-- [ ] **Step 4: Run the class and the whole suite; all pass.**
-- [ ] **Step 5: Commit.** `feat(fenix): a data-service poller for values the subscription does not stream`
+- [x] **Step 2: Run them; they fail to compile.** `--filter "FullyQualifiedName~FenixDataPollerTests"`
+- [x] **Step 3: Implement** the class as specified.
+- [x] **Step 4: Run the class and the whole suite; all pass.**
+- [x] **Step 5: Commit.** `feat(fenix): a data-service poller for values the subscription does not stream`
 
 ### Task 11: The First Officer reads the Fenix's N2 once a second
 
@@ -375,16 +374,17 @@ answer is dropped (generation) and the poller stops; (3) cold and dark: N2 unkno
   subscribes `SubscribedNames`; with a `read`, starts a `FenixDataPoller(PolledNames, read, (n, v) => Deliver(generation, n, v))`;
   a switch or detach disposes the poller with the subscription. The public `AttachFenix(FenixA320Definition?)` passes
   `(names, ct) => definition.DataService.ReadManyAsync(names, ct)`. Comments say why N2 is polled (the measurement above).
-- [ ] **Step 1: Write the failing tests:** `Attach_subscribes_the_streamed_names_and_polls_N2` (the fake subscribe sees
+- [x] **Step 1: Write the failing tests:** `Attach_subscribes_the_streamed_names_and_polls_N2` (the fake subscribe sees
   `SubscribedNames`; a fake read is called with `PolledNames`); `A_polled_N2_reaches_the_engine_fields` (read answers
   62.3 / 62.4: `FO_ENG1_N2` 62.3 over stock 72.4 once the first read is in); `A_polled_null_N2_falls_back_to_stock`
-  (answer `Kind.Null`, stock 0: `FO_ENG1_N2` 0, `FO_ENGINES_OFF` 1); `A_poll_answer_after_a_switch_is_dropped` (a read
+  (answer `Kind.Null`, stock 0: `FO_ENG1_N2` 0, `FO_ENGINES_OFF` 1; shipped, after the final review, as
+  `A_polled_null_N2_falls_back_to_stock_at_once` beside `A_polled_N2_with_no_answer_keeps_the_last_number_until_it_is_stale`); `A_poll_answer_after_a_switch_is_dropped` (a read
   held open, then `AttachFenix(otherSource, …)`, then the read answers 62.3: `FO_ENG1_N2` is stock; the held read's
   token is cancelled). Update `Attach_subscribes_once_per_source_and_detaches_on_null` to `SubscribedNames`.
-- [ ] **Step 2: Run them; they fail.**
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run `FenixFo*`, `FoPollSilenceTests`, `FoEngineAndGroundGuardTests`, `FoCutGuardSweepTests` and the whole suite.**
-- [ ] **Step 5: Commit.** `fix(fo-fenix): read the Fenix's N2 once a second (the subscription sends it only once)`
+- [x] **Step 2: Run them; they fail.**
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run `FenixFo*`, `FoPollSilenceTests`, `FoEngineAndGroundGuardTests`, `FoCutGuardSweepTests` and the whole suite.**
+- [x] **Step 5: Commit.** `fix(fo-fenix): read the Fenix's N2 once a second (the subscription sends it only once)`
 
 ### Task 12: "Running" is the Fenix's own flag
 
@@ -399,15 +399,15 @@ answer is dropped (generation) and the poller stops; (3) cold and dark: N2 unkno
   `FO_ENG{n}_RUNNING` with `v => v > 0.5` (step ids, labels, timeout and Stop unchanged); both checklist lines read
   `FO_ENG{n}_RUNNING` with `v > 0.5`. "Stopped" (`FO_ENGINES_OFF`, N2 < 20 %) is unchanged. Comments give the measured
   flag (IAE 62.1 / 62.4 % at idle, 6-7 s after 55 %; CFM 59.2 %, about 4 s after, plan 09) and the A32NX precedent.
-- [ ] **Step 1: Write the failing tests:** `Running_is_the_Fenixs_own_flag_while_known` (flag true with N2 50 gives 1;
+- [x] **Step 1: Write the failing tests:** `Running_is_the_Fenixs_own_flag_while_known` (flag true with N2 50 gives 1;
   flag false with N2 62 gives 0); `Running_falls_back_to_N2_when_the_flag_is_unknown` (flag unknown: stock 61.4 gives 1,
   50 gives 0; both unknown gives NaN); `RunningValue` theory over those pairs; in `FenixFlowParityTests` the start
   waits read `FO_ENG{n}_RUNNING`, their condition holds at 1 and not at 0, and `ConditionFieldName` still equals the
   running line's `StateFieldName`.
-- [ ] **Step 2: Run; they fail.**
-- [ ] **Step 3: Implement**; remove `FenixFlowDefinitions.EngRunningN2` if nothing reads it.
-- [ ] **Step 4: Run `FenixFo*`, `FenixFlowParityTests`, `A320Family*`, the sweep and the whole suite.**
-- [ ] **Step 5: Commit.** `fix(fo-fenix): engine running is the Fenix's own flag, as on the A32NX (N2 55 % the fallback)`
+- [x] **Step 2: Run; they fail.**
+- [x] **Step 3: Implement**; remove `FenixFlowDefinitions.EngRunningN2` if nothing reads it.
+- [x] **Step 4: Run `FenixFo*`, `FenixFlowParityTests`, `A320Family*`, the sweep and the whole suite.**
+- [x] **Step 5: Commit.** `fix(fo-fenix): engine running is the Fenix's own flag, as on the A32NX (N2 55 % the fallback)`
 
 ### Task 13: The Engines window keeps its numbers fresh (plan 09 follow-up)
 
@@ -420,14 +420,31 @@ test `tests/MSFSBlindAssist.Tests/FenixEngineWindowTests.cs` (or the existing na
   `FenixDataPoller(FenixEngineNames.Polled, (n, ct) => _context.Data.ReadManyAsync(n, ct), _snapshot.Apply)` where it
   subscribes, and disposes it wherever it disposes `_subscription`. The running flag keeps coming from the
   subscription and the open/F5 read only.
-- [ ] **Step 1: Write the failing test** `Polled_is_every_value_but_the_running_flags` (16 names, none ending
+- [x] **Step 1: Write the failing test** `Polled_is_every_value_but_the_running_flags` (16 names, none ending
   `.running`, `All` order).
-- [ ] **Step 2: Run; it fails.**
-- [ ] **Step 3: Implement** the list and the window wiring (sim-facing: no unit test, CORE-5).
-- [ ] **Step 4: Run `FenixEngine*` and the whole suite.**
-- [ ] **Step 5: Commit.** `fix(fenix): the Engines window reads its numbers once a second (the subscription sends N2 only once)`
+- [x] **Step 2: Run; it fails.**
+- [x] **Step 3: Implement** the list and the window wiring (sim-facing: no unit test, CORE-5).
+- [x] **Step 4: Run `FenixEngine*` and the whole suite.**
+- [x] **Step 5: Commit.** `fix(fenix): the Engines window reads its numbers once a second (the subscription sends N2 only once)`
 
 ## Owner-in-sim checks (few, prioritised)
+
+**Status (2026-10-22):** check 1 was run on the IAE A321 with two ACTs (results under "Follow-up from in-sim check 1"),
+and check 2's takeoff-speeds, fuel and baro lines checked out. The owner has no time for more sim sessions, so what is
+left is this listen-for list for the next flight (no tools, no recording):
+1. **Engine Start:** after *"Engine 1 starting — waiting for the engine to stabilize"*, *"Engine 2 master: ON"* comes
+   once engine 1 has settled at idle (a few seconds later than before), and the flow ends *"Engine Start flow complete"*
+   with no *"Timed out"*.
+2. **Shutdown:** *"Waiting for: Engines stopped"* now takes about 20 seconds (the engines spinning down) before
+   *"Fuel pumps: ALL OFF"*; the flow ends *"Shutdown flow complete"*.
+3. **Engines window** (Ctrl+Shift+F, Engines) opened with an engine running: it says the engine is running (not "--"),
+   and N2 moves every second without F5. Note whether EGT, oil or fuel-flow rows flicker to "--" with an engine off.
+4. **Optional, cabin ready** (decided: the line stays as it is, handoff request 8): with the doors closed, after the
+   Line-up flow's cabin call, the Line-up Checklist's *"Cabin: READY"* changes to *"reported ready"* when the purser
+   reports, and the Landing Checklist's says *"not reported"* again after takeoff.
+Anything that sounds different: note what was said and when. Check 3 (A321 pack flow) stays optional.
+
+The original procedure, kept for reference (its `Fenix engine 1:` debug.log lines were removed with `TraceEngine`):
 
 Anyone with MSFS 2024 and the Fenix v3 can run these (the owner or a collaborator). Build `FenixV3` with MSFSBA closed
 (CORE-3), start MSFSBA, and load the **Fenix A321 IAE with ACTs** at a stand. The First Officer window is
@@ -474,21 +491,27 @@ Invoke-RestMethod -Uri http://127.0.0.1:8083/graphql -Method Post -ContentType '
 
 **Pilot-facing changes (guide: the First Officer part, `guide/first-officer.md`; plan 12 writes it):**
 - Fenix: the Before Start Checklist's *"Takeoff speeds and thrust: SET"* line now reads V1, VR, V2 and flex from the MCDU's PERF TAKEOFF page (it was silent unless the discontinued FenixQuartz tool ran), and *"not set"* until they are entered.
-- Fenix: Engine Start waits for the Fenix's own N2, which is right on IAE engines too, and allows up to 3 minutes per engine (the IAE cranks 30 or 50 seconds before it lights).
+- Fenix: Engine Start moves on to the next engine when the Fenix itself says the start is complete (right on CFM and IAE engines alike; it used to move on a few seconds early), and allows up to 3 minutes per engine (measured about 66 seconds on the IAE with its 30-second crank).
+- Fenix: Shutdown's *"Engines stopped"* now waits for the Fenix's own engines to spin down (about 20 seconds) before the fuel pumps go off; it used to pass a second after the masters went off.
+- Fenix: the Engines window (Ctrl+Shift+F, Engines) updates N2 and the other numbers every second; N2 used to stay at its value from when the window opened until F5.
 - Fenix A321: the Preflight flow no longer mentions the pack flow selector, which the A321 does not have; set its ECON FLOW button as you need it.
 - Fenix v3: the Line-up and Landing checklists' *"Cabin: READY"* lines say whether the cabin crew has reported (*"reported ready"* or *"not reported"*). In v3 the cabin call no longer makes the cabin ready; the purser reports when the cabin is ready.
 - Fenix: the Cockpit Preparation Checklist's fuel line uses the Fenix's own total, which counts the extra centre tanks.
 - Fenix: the Cockpit Preparation and Approach checklists' *"Baro reference: SET"* lines read standard or QNH from the EFIS's own QNH light, so they stay right after you pull and push the baro knob several times.
-- Changelog fragment (category `fix`), for example: "Fenix A320 family First Officer: the takeoff-speeds check reads your MCDU speeds again, engine start is judged on the Fenix's own engine readings (IAE engines no longer move on too early), the A321 skips the pack flow selector it does not have, the cabin-ready lines say whether the cabin crew has reported, and the baro reference line is right after you pull and push the baro knob."
+- Changelog fragment (category `fix`), for example: "Fenix A320 family First Officer: the takeoff-speeds check reads your MCDU speeds again, engine start and shutdown are judged on the Fenix's own engine readings (the next engine waits until the Fenix says the start is complete, and "Engines stopped" waits for the spool-down), the Engines window's numbers update every second, the A321 skips the pack flow selector it does not have, the cabin-ready lines say whether the cabin crew has reported, and the baro reference line is right after you pull and push the baro knob."
 
 **Proposed rule lines** (`.claude/rules/first-officer-airbus.md`, body 4,736 of 8,000 characters; these four add about 1,450; IDs provisional, renumber if plan 02 also proposes FOA lines; full text under `## FOA-13..16` in `docs/invariants/first-officer-airbus.md` from this plan's Owner decisions and sources, FOA-16's from Task 7):
 ```text
-- [FOA-13] The Fenix FO judges an engine running or stopped on the Fenix's own N2 (`FenixFoLiveReadings.N2`, data service), falling back per engine to stock N2 only while that value is unknown or 5 s old: stock N2 is a generic model (IAE idle 72 % vs the Fenix's 62 %). Running is 55 %: above the ~50 % starter cut-out, below both measured idles. Full: docs/invariants/first-officer-airbus.md#foa-13
+- [FOA-13] The Fenix FO judges an engine running on the Fenix's `running` flag (`FO_ENGn_RUNNING`, as the A32NX; N2 55 % while it is unknown) and stopped on the Fenix's N2 < 20 % read once a second (`FenixFoLiveReadings.PolledNames`); stock N2 only while that is unknown or 5 s old: it falls to 0 a second after master-off (measured 2026-10-22). Full: docs/invariants/first-officer-airbus.md#foa-13
 - [FOA-14] Fenix v3: a cockpit cabin call no longer sets CABIN READY, the virtual purser does. The FO reads `FenixStateEvaluator.CabinReadyField` only as the "Cabin: READY" lines' live value and never speaks cabin ready itself (the Fenix cabin window owns that announcement). Full: docs/invariants/first-officer-airbus.md#foa-14
 - [FOA-15] A Fenix FO step only some variants have gates on `FenixStateEvaluator.Variant` (the definition's detected variant), never on the config L:vars; on a variant without it the step's target provider returns null (FO-20's silent skip), and an unknown variant behaves as the A320 (the A321 has no PACK FLOW selector). Full: docs/invariants/first-officer-airbus.md#foa-15
 - [FOA-16] The Fenix FO reads baro STD from the EFIS QNH light (`I_FCU_EFIS1_QNH`: 0 STD, 1 QNH; `FenixStateEvaluator.BaroText`), never `S_FCU_EFIS1_BARO_STD`, the knob's push/pull counter (a pull adds 1, a push takes 1 away; it read 3 in STD, 2026-10-21). Full: docs/invariants/first-officer-airbus.md#foa-16
 ```
-(Lengths 399, 328, 375 and 309 characters, each under the 400 cap.)
+(Each under the 400 cap; FOA-13 rewritten after the follow-up.) And one for `.claude/rules/fenix-data.md` (full text under
+`## FNX-4` in `docs/invariants/fenix-data.md` from "Follow-up from in-sim check 1"):
+```text
+- [FNX-4] The Fenix `dataRefs` subscription is not a stream for every name: it sent `aircraft.engines.n.n2` once at open and never again, and errors on a value the Fenix has none for (measured 2026-10-22; EGT, flags and fuel do stream). A value that must stay fresh is read once a second with `FenixDataPoller`, never by the subscription alone. Full: docs/invariants/fenix-data.md#fnx-4
+```
 
 **Handoff requests:**
 1. **Order with plan 02: resolved.** Plan 02 keeps `FNX2PLD_speedV1/VR/V2` and deletes only the other 13 FenixQuartz definitions; plan 12 deletes the three after this plan's Task 1 is on `FenixV3`, so the two plans can land in either order.
@@ -498,10 +521,14 @@ Invoke-RestMethod -Uri http://127.0.0.1:8083/graphql -Method Post -ContentType '
 5. **Docs (`docs/first-officer.md`):** line 802 names the APU AVAIL lamp `_L` (the code and the 2026-09-04 measurement say `_U`, spec 2.4); add the v3 result of in-sim check 1. Replace "stock N2" wording for the Fenix (around line 76) with the Fenix's own N2 and the stock fallback. Line 8 makes two claims that are now wrong: that the Fenix exposes no V1/VR/V2 L:var outside the MCDU display (the FO reads `N_MISC_PERF_TO_V1/VR/V2`), and that baro STD is a directly readable per-side state written as 1/0 (it is a push/pull counter; plan 02 steps it, this plan reads the QNH light).
 6. **For plan 01, information only:** `system.numerical.N_CONFIG_AIRCRAFT_TYPE`, `_ENGINETYPE` and `_ACT_COUNT` read `""` on the data service today, so variant detection must stay on the L:vars, as plan 01 plans.
 7. **Not changed, for the record:** `Forms/FirstOfficer/FirstOfficerWindows.cs:38` could pass the definition to `FenixFoProfile` explicitly (as the FBW rows do); not needed, since `SimConnectManager.CurrentAircraft` serves.
-8. **Owner decides, after in-sim check 2: a "Cabin: READY" line can read Complete before the purser reports.** Both lines are Reminders (not auto-detected), and both get ticked whatever the purser reported: the Line-up cabin call step links `LUC_CABIN`, so a sent call ticks it (FO-6, `FenixFlowDefinitions.cs:419-420` → `FlowManager.cs:388-389`), and a finished Line-up or Landing flow ticks and latches every line of its group (FO-7, `ChecklistManager.cs:229-241`), which is the only way `LDC_MEMO_CABIN` gets ticked. So Checklist status can say *"Cabin: READY, not reported — Complete"*. Unlinking the call alone would not change it. Owner answer 15 (live value only; request 3 dropped) was given before this was known, so it is worth asking again: keep it, or adopt request 3's read-only check, which also needs the flag to clear after departure (check 2) or the Landing check would pass on the departure report.
+8. **Decided 2026-10-22 (kn4iee): keep as is.** A pilot presses the cabin call and carries on, then reads the purser's report on the checklist line, so the tick means "the call went out" and the live value says whether the cabin reported; request 3 stays dropped. The analysis that raised it: **a "Cabin: READY" line can read Complete before the purser reports.** Both lines are Reminders (not auto-detected), and both get ticked whatever the purser reported: the Line-up cabin call step links `LUC_CABIN`, so a sent call ticks it (FO-6, `FenixFlowDefinitions.cs:419-420` → `FlowManager.cs:388-389`), and a finished Line-up or Landing flow ticks and latches every line of its group (FO-7, `ChecklistManager.cs:229-241`), which is the only way `LDC_MEMO_CABIN` gets ticked. So Checklist status can say *"Cabin: READY, not reported — Complete"*. Unlinking the call alone would not change it. Owner answer 15 (live value only; request 3 dropped) was given before this was known, so it is worth asking again: keep it, or adopt request 3's read-only check, which also needs the flag to clear after departure (check 2) or the Landing check would pass on the departure report.
 9. **One file outside "File structure":** `FenixFlightPhaseMonitor.cs` (plan 05's, comment only): its class comment described the baro STD write as a direct state write; it now describes plan 02's counter step (`FenixActionExecutor.SetBaroStdBoth`).
 10. **Left as the plan says (O3), for the owner:** on an A321 the Preflight checklist line `PF_PACKFLOW` keeps its `CheckAction`; a hand-tick while the state is still unread would write the knob the A321 does not have (harmless: the name reads 1 and nothing moves).
 
-**Done (2026-10-22):** Tasks 1-8 plus a final-review fix wave, each reviewed, on `FenixV3`; full suite green (14,620 at the fix wave, baseline 14,558). Nothing was checked in the sim.
+11. **Plan 09's files changed by this plan (follow-up Task 13, approved by the owner):** `Services/FenixEngineNames.cs` (`Polled`) and `Forms/Fenix/FenixEnginesForm.cs` (a once-a-second poll of the 16 values that are not the running flags, started after the open read). Two comments there still say values stream at 30-45 Hz (`FenixEngineSnapshot.cs:33`, `FenixEngineWindowTests.cs:1`); correct them when touching those files. New file in plan 01's family: `Services/FenixDataPoller.cs`.
+12. **For the owner, outside this plan (speech flood):** on v3 the owner heard a flood of fuel, generator and other light announcements at engine and APU power changes, and "OverheadMisc Toilet, on" on its own at the gate. FenixV3 adds no announced name (registration capped 0, every change removes names), so v3 itself is likely moving more lights (cabin simulation, lights cycling on a power transfer), and the app speaks each change, as it always has. Deciding which lights to quiet or wait out (the Fenix definition, plan 02's file) needs a recording of the lights through a power change; not done (no further sim sessions).
+13. **Shared code, information only:** `FlowDefinition.Description`'s doc says it shows in a details panel; nothing reads it today (the Fenix Engine Start's still says "with N2 verification").
 
-**In-sim checks still needed after merge:** the three above, with their recorded numbers: the APU AVAIL legend on v3, the IAE start time, the Fenix-versus-stock N2 crossings and any `source stock` line during the crank, the purser's cabin-ready delay, and whether the cabin-ready flag clears after departure.
+**Done (2026-10-22):** Tasks 1-8 and a final-review fix wave (5c19168cb..54feca0ff), in-sim check 1 on the IAE A321, then follow-up Tasks 10-13 and their own final-review fix wave, each reviewed, on `FenixV3`; full suite green (14,703 at the end, baseline 14,558).
+
+**Not checked in the sim (the listen-for list above):** the new start and shutdown timing heard in a flow, the Engines window moving without F5, the purser's cabin-ready report (doors closed) and whether it clears after departure, the A321 pack-flow skip.
