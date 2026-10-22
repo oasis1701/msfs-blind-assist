@@ -130,7 +130,10 @@ public sealed class FenixDataPoller : IDisposable
 
     /// <summary>
     /// Cancels the loop and the read in flight (its token); a read already past its last await may still
-    /// finish, but its answer is dropped. Never throws; a second call does nothing.
+    /// finish. Its answer is dropped on a best-effort basis only: a cancel that lands between the check
+    /// before each callback and the callback itself lets that one value through, so a consumer guards
+    /// against a late value itself (the First Officer's evaluator does, by generation). Never throws; a
+    /// second call does nothing.
     /// </summary>
     public void Dispose()
     {

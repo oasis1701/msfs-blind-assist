@@ -26,13 +26,15 @@ public sealed class FenixFoProfile : IFoProfile<FenixActionExecutor, FenixStateE
 
     public FenixStateEvaluator CreateEvaluator() => new();
 
-    // The evaluator also reads the Fenix's own data service, through the Fenix definition SimConnectManager
-    // holds as the current aircraft (MainForm sets it on load and on every switch). The FO window calls
-    // this at construction and on every reconnect. The subscription ends when the definition disposes
-    // its data service on a switch, but the evaluator's once-a-second N2 poll does not end that way: it
-    // stops only when the evaluator is detached (SetExecutorSimConnect below).
+    // The evaluator the window last bound, kept so SetExecutorSimConnect below can detach it.
     private FenixStateEvaluator? _boundState;
 
+    // The evaluator also reads the Fenix's own data service, through the Fenix definition SimConnectManager
+    // holds as the current aircraft (MainForm sets it on load and on every switch). The FO window calls
+    // this at construction, on every show (Shift+C or the menu) and when MainForm raises
+    // OnSimConnectChanged (on a connect). The subscription ends when the definition disposes its data
+    // service on a switch, but the evaluator's once-a-second N2 poll does not end that way: it stops
+    // only when the evaluator is detached (SetExecutorSimConnect below).
     public void BindDataManager(FenixStateEvaluator state, SimConnectManager sc)
     {
         _boundState = state;
@@ -44,9 +46,13 @@ public sealed class FenixFoProfile : IFoProfile<FenixActionExecutor, FenixStateE
     {
         exec.SetAnnouncer(_announcer);
         exec.SetSimConnect(sc);
-        // The FO window detaches the executor with null on a disconnect and when it closes (an aircraft
-        // switch closes it), and has no other teardown that reaches the evaluator. Without this the
-        // evaluator would go on polling the Fenix's gateway after both. A reconnect binds again, which
+        // The window passes null from a bind made while the sim is disconnected (its construction, or a
+        // Shift+C or menu show before the connect) and from its Dispose (an aircraft switch, or app exit).
+        // Closing the window only hides it, and MainForm raises OnSimConnectChanged only on a connect
+        // (MainForm.AircraftSwitch.cs), so closing the window, or a disconnect, detaches nothing by itself:
+        // the poll runs on until the next bind made while disconnected or the Dispose (read from the code,
+        // not run in the sim). The window has no other teardown that reaches the evaluator, so without
+        // this it would go on polling the Fenix's gateway after the Dispose. A later connected bind
         // attaches again, before it hands the executor the connection, so nothing is lost.
         if (sc == null)
             _boundState?.AttachFenix(null);
