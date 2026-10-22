@@ -1,16 +1,20 @@
 namespace MSFSBlindAssist.Services;
 
 /// <summary>
-/// The 79 Fenix data-service names behind the Cabin window. Everything but the cargo doors, the door
-/// control names and the lavatory flush name is the Fenix 3.0.0.7426 FAP bundle's own data-name table
-/// (webpack module 3716, section "FAP data-name table", offsets 98092..100200:
+/// The 80 Fenix data-service names behind the Cabin window. Everything but the cargo doors, the door
+/// control names, the height above ground and the lavatory flush name is the Fenix 3.0.0.7426 FAP
+/// bundle's own data-name table (webpack module 3716, section "FAP data-name table", offsets 98092..100200:
 /// <c>cabinReady:"aircraft.communication.cids.cabinReady"</c>, <c>doors:"aircraft.communication.cids.door"</c>,
 /// <c>fapSpeakerVolume:"aircraft.communication.cids.fap.speakerVolume"</c>, and the rest). The door
 /// control names are the EFB's (<c>a.d1l={dataRef:"doors.control.d1l"...</c>, section "EFB door control
 /// names", offsets 34800..36600), as are the cargo doors (<c>dataRef:"doors.cargo.forward"</c>, same
 /// section) and the flags it greys their toggles on (<c>fwdCargoDoorMovement={dataRef:"fenix.doors.cargo.fwd.movement"</c>,
 /// sections "EFB cargo door movement", offsets 43600..44000, and "EFB cargo greyed while moving"; the
-/// aft flag's name is cut off in the excerpt and comes from plan 08's table). The
+/// aft flag's name is cut off in the excerpt and comes from plan 08's table). The height above ground is
+/// the EFB's too (EFB chunk 964 @33101: <c>aircraftAltitudeAboveGround={dataRef:"aircraft.altitude.aboveGround"</c>,
+/// a Float in feet; also in <c>docs/fenix-v3/evidence/efb-datarefs.txt</c>): its ground-services page,
+/// which holds the door and cargo toggles, shows them only while it is at most 100 and otherwise says
+/// "This section can only be used when on the ground" (EFB chunk 856 @50828, ruling R16). The
 /// lavatory flush name is the FAP's <c>`${n.t.lavatories}.${K.toLowerCase()}.${n.t.flushOperational}`</c>
 /// (section "Lavatory flush name, water/waste cautions, lavatory designations", offsets 83300..85700).
 /// Names from open sources only ([FNX-3]); an unknown name reads "" ([FNX-1]).
@@ -55,6 +59,9 @@ public static class FenixCabinNames
     public const string CargoBulk = "doors.cargo.bulk";
     public const string CargoFwdMoving = "fenix.doors.cargo.fwd.movement";
     public const string CargoAftMoving = "fenix.doors.cargo.aft.movement";
+
+    // The height the EFB's ground-services page guards the door and cargo toggles on (feet, ruling R16).
+    public const string AltitudeAboveGround = "aircraft.altitude.aboveGround";
 
     private const string DoorPrefix = "aircraft.communication.cids.door";
     private const string DoorPressurePrefix = "aircraft.communication.cids.doorPressure";
@@ -109,7 +116,8 @@ public static class FenixCabinNames
             WaterTank, WaterPreselect, WasteTank, WasteTankFull,
             VacuumGeneratorOperational, VacuumSystemPowered,
             WaterServicePanelOpen, WasteServicePanelOpen,
-            CargoForward, CargoAft, CargoBulk, CargoFwdMoving, CargoAftMoving
+            CargoForward, CargoAft, CargoBulk, CargoFwdMoving, CargoAftMoving,
+            AltitudeAboveGround
         };
         foreach (string key in DoorKeys)
         {

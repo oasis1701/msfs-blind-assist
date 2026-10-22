@@ -1053,7 +1053,8 @@ public class FenixCabinWindowTests
             }
         }.ToString(Formatting.None);
 
-    // The window over a fake gateway that accepts every write. Answering unless told not to.
+    // The window over a fake gateway that accepts every write. Answering unless told not to; an answering
+    // Fenix stands on the ground (0 ft above it), where the EFB offers its door and cargo toggles (R16).
     private sealed class ControlsRig : IDisposable
     {
         public SpeechCapture Speech { get; } = new();
@@ -1069,7 +1070,11 @@ public class FenixCabinWindowTests
             Gateway.Answer = () => WriteAnswer(accepted: true);
             if (layout != null)
                 typeof(FenixCabinForm).GetField("_layout", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(Form, layout);
-            if (answering) Form.Cache.Apply(FenixCabinNames.FapOperational, True);
+            if (answering)
+            {
+                Form.Cache.Apply(FenixCabinNames.FapOperational, True);
+                Form.Cache.Apply(FenixCabinNames.AltitudeAboveGround, Num(0));
+            }
             Form.Render();
         }
 
@@ -1484,6 +1489,78 @@ public class FenixCabinWindowTests
 
         Assert.Equal(0, rig.Gateway.Sent);
         Assert.Equal(rig.Speech.Interrupts, rig.Speech.All);
+    }
+
+    private const string OnlyOnTheGround = "Doors can only be opened or closed on the ground.";
+    private const string HeightNotKnown = "Height above ground is not known.";
+
+    [Fact]
+    public void Door_and_cargo_presses_refuse_above_100_feet_or_with_the_height_unknown()
+    {
+        // Ruling R16: the EFB shows its door and cargo toggles only while the height above ground is at most
+        // 100 ft. The check comes after the Fenix not answering and before an unknown or moving door.
+        using var rig = new ControlsRig();
+        FenixCabinForm form = rig.Form;
+        FenixCabinLayout layout = DefaultLayout();
+        Set(form,
+            (FenixCabinNames.DoorControl("d1l"), Num(0)),
+            (FenixCabinNames.CargoForward, False), (FenixCabinNames.CargoFwdMoving, False),
+            (FenixCabinNames.CargoAft, False), (FenixCabinNames.CargoAftMoving, True));
+        var expected = new List<string>();
+        void Presses(string line, string refusal)
+        {
+            SelectDoorLine(form, layout, line);
+            Click(DoorButton(form));
+            expected.Add(refusal);
+            Assert.Equal(expected, rig.Speech.Interrupts);
+        }
+
+        // 101 ft: a door, a cargo door, a door whose control is not known and a moving cargo door all refuse.
+        Set(form, (FenixCabinNames.AltitudeAboveGround, Num(101)));
+        SelectDoorLine(form, layout, "door.d1l");
+        // The button text does not change in flight.
+        Assert.Equal("&Open door 1 left", DoorButton(form).Text);
+        Presses("door.d1l", OnlyOnTheGround);
+        Presses("cargo.forward", OnlyOnTheGround);
+        Presses("door.d4r", OnlyOnTheGround);
+        Presses("cargo.aft", OnlyOnTheGround);
+        // A line with no control still says so.
+        Presses("slide.owl", "No door control for this line.");
+
+        // The Fenix answering without a height: not known (R14), not assumed on the ground.
+        Set(form, (FenixCabinNames.AltitudeAboveGround, FenixDataValue.Unknown));
+        Presses("door.d1l", HeightNotKnown);
+        Presses("cargo.forward", HeightNotKnown);
+        Presses("slide.owr", "No door control for this line.");
+        Assert.Equal(0, rig.Gateway.Sent);
+        Assert.Equal(rig.Speech.Interrupts, rig.Speech.All);
+
+        // 100 ft is the EFB's ground: the door and the cargo door write.
+        Set(form, (FenixCabinNames.AltitudeAboveGround, Num(100)));
+        SelectDoorLine(form, layout, "door.d1l");
+        Click(DoorButton(form));
+        WaitFor(() => rig.Gateway.Writes.Count == 1, "the door write");
+        AssertSent(rig.Gateway.Writes[0], new FenixCabinWrite(FenixCabinWriteKind.Int, FenixCabinNames.DoorControl("d1l"), 2));
+        SelectDoorLine(form, layout, "cargo.forward");
+        Click(DoorButton(form));
+        WaitFor(() => rig.Gateway.Writes.Count == 2, "the cargo write");
+        AssertSent(rig.Gateway.Writes[1], new FenixCabinWrite(FenixCabinWriteKind.Bool, FenixCabinNames.CargoForward, true));
+        Assert.Equal(expected, rig.Speech.Interrupts);
+    }
+
+    [Fact]
+    public void A_door_press_says_the_Fenix_is_not_answering_before_the_height()
+    {
+        // Nothing answered, so the height is not known either: the not-answering reason comes first (R13).
+        using var rig = new ControlsRig(answering: false);
+        SelectDoorLine(rig.Form, DefaultLayout(), "door.d1l");
+
+        Click(DoorButton(rig.Form));
+        SelectDoorLine(rig.Form, DefaultLayout(), "cargo.forward");
+        Click(DoorButton(rig.Form));
+
+        Assert.Equal(new[] { NotAnsweringText, NotAnsweringText }, rig.Speech.Interrupts);
+        Assert.Equal(0, rig.Gateway.Sent);
     }
 
     [Theory]

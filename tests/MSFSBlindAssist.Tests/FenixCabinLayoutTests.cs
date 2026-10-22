@@ -42,6 +42,7 @@ public class FenixCabinLayoutTests
     [InlineData(FenixCabinNames.CargoBulk, "doors.cargo.bulk")]
     [InlineData(FenixCabinNames.CargoFwdMoving, "fenix.doors.cargo.fwd.movement")]
     [InlineData(FenixCabinNames.CargoAftMoving, "fenix.doors.cargo.aft.movement")]
+    [InlineData(FenixCabinNames.AltitudeAboveGround, "aircraft.altitude.aboveGround")]
     public void Fixed_names_are_the_ones_the_FAP_and_EFB_use(string actual, string expected)
         => Assert.Equal(expected, actual);
 
@@ -67,13 +68,15 @@ public class FenixCabinLayoutTests
     [Fact]
     public void All_holds_every_name_once()
     {
-        Assert.Equal(79, FenixCabinNames.All.Count);
-        Assert.Equal(79, FenixCabinNames.All.Distinct().Count());
+        Assert.Equal(80, FenixCabinNames.All.Count);
+        Assert.Equal(80, FenixCabinNames.All.Distinct().Count());
         Assert.Contains(FenixCabinNames.CabinReady, FenixCabinNames.All);
         Assert.Contains(FenixCabinNames.CargoBulk, FenixCabinNames.All);
         Assert.Contains(FenixCabinNames.FapSpeakerVolume, FenixCabinNames.All);
         Assert.Contains(FenixCabinNames.LavatoryFlush("E"), FenixCabinNames.All);
         Assert.Contains(FenixCabinNames.DoorControl("d4r"), FenixCabinNames.All);
+        // Ruling R16: the height the EFB guards its door and cargo toggles on.
+        Assert.Contains(FenixCabinNames.AltitudeAboveGround, FenixCabinNames.All);
     }
 
     [Fact]

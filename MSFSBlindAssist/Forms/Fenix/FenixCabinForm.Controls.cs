@@ -8,9 +8,10 @@ namespace MSFSBlindAssist.Forms.Fenix;
 // Fenix is not answering." and "The Fenix did not accept that." itself.
 //
 // Every handler checks in this order (rulings R13, R14, R15): the Fenix not answering, an unknown value
-// (a press never writes from a value the window does not know), then the limits. Speech (CORE-7): a button
-// is read by its own text, so every press that writes reads its line back, which the reader cannot say:
-// the temperature, the water preselect and the door's state. The temperature and the preselect say
+// (a press never writes from a value the window does not know), then the limits; a door or cargo press
+// also needs the Fenix to say it is on the ground before its door's own state counts (R16). Speech
+// (CORE-7): a button is read by its own text, so every press that writes reads its line back, which the
+// reader cannot say: the temperature, the water preselect and the door's state. The temperature and the preselect say
 // "unchanged" when the line does not move; a door says nothing then.
 public sealed partial class FenixCabinForm
 {
@@ -26,6 +27,10 @@ public sealed partial class FenixCabinForm
 
     // A door takes its time to open or close: its read-back waits longer than the others.
     private static readonly TimeSpan DoorReadbackWindow = TimeSpan.FromSeconds(30);
+
+    // The EFB shows its door and cargo toggles while aircraft.altitude.aboveGround <= 100 (feet) and
+    // "This section can only be used when on the ground" above it (EFB chunk 856 @50828, ruling R16).
+    private const double GroundServiceMaxHeightFeet = 100;
 
     // A cargo door the Doors page can press: its line, door, open flag, movement flag (the bulk door has
     // none) and the name the button and the refusals use.
@@ -222,6 +227,8 @@ public sealed partial class FenixCabinForm
 
     // Opens or closes the door of the selected line, from what the Fenix says now (never from the button's
     // text, which may be a render behind). The read-back is the door's line, which says open or closed.
+    // Order: the Fenix not answering, a line without a control, the height (R16), then the door's own
+    // unknown or moving state.
     private void PressDoor()
     {
         if (!_cache.AnyKnown)
@@ -230,8 +237,16 @@ public sealed partial class FenixCabinForm
             return;
         }
         FenixCabinLine? line = SelectedDoorLine();
+        (string DataKey, string Name)? groundDoor = GroundDoorOf(line);
+        CargoControl? cargoDoor = CargoOf(line);
+        if (groundDoor == null && cargoDoor == null)
+        {
+            Refuse("No door control for this line.");
+            return;
+        }
+        if (RefuseOffTheGround()) return;
 
-        if (GroundDoorOf(line) is { } door)
+        if (groundDoor is { } door)
         {
             double? control = _cache.Number(FenixCabinNames.DoorControl(door.DataKey));
             if (control == null)
@@ -243,24 +258,38 @@ public sealed partial class FenixCabinForm
             return;
         }
 
-        if (CargoOf(line) is { } cargo)
+        CargoControl cargo = cargoDoor!;
+        bool? open = _cache.Bool(cargo.OpenFlag);
+        if (open == null)
         {
-            bool? open = _cache.Bool(cargo.OpenFlag);
-            if (open == null)
-            {
-                Refuse($"The {cargo.Name} state is not known.");
-                return;
-            }
-            // The EFB greys the toggle while the door moves.
-            if (cargo.MovingFlag != null && _cache.Bool(cargo.MovingFlag) == true)
-            {
-                Refuse($"The {cargo.Name} is moving.");
-                return;
-            }
-            _ = RunWriteAsync(FenixCabinWrites.CargoDoor(cargo.Door, !open.Value), cargo.LineKey, DoorReadbackWindow, speakIfUnchanged: false);
+            Refuse($"The {cargo.Name} state is not known.");
             return;
         }
+        // The EFB greys the toggle while the door moves.
+        if (cargo.MovingFlag != null && _cache.Bool(cargo.MovingFlag) == true)
+        {
+            Refuse($"The {cargo.Name} is moving.");
+            return;
+        }
+        _ = RunWriteAsync(FenixCabinWrites.CargoDoor(cargo.Door, !open.Value), cargo.LineKey, DoorReadbackWindow, speakIfUnchanged: false);
+    }
 
-        Refuse("No door control for this line.");
+    // True, after saying so, unless the Fenix says the aircraft is on the ground as the EFB counts it: its
+    // ground-services page offers the door and cargo toggles only while the height above ground is at most
+    // 100 ft (ruling R16). An unknown height is not assumed to be on the ground (R14).
+    private bool RefuseOffTheGround()
+    {
+        double? height = _cache.Number(FenixCabinNames.AltitudeAboveGround);
+        if (height == null)
+        {
+            Refuse("Height above ground is not known.");
+            return true;
+        }
+        if (height > GroundServiceMaxHeightFeet)
+        {
+            Refuse("Doors can only be opened or closed on the ground.");
+            return true;
+        }
+        return false;
     }
 }
