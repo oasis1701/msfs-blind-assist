@@ -144,7 +144,7 @@ Each area's rules load automatically when Claude reads its code; their full text
 | [visual-guidance.md](docs/visual-guidance.md) | Visual landing guidance (dual tone), hand fly, the liftoff handoff | visual-guidance |
 | [audio.md](docs/audio.md) | Which Windows audio endpoint guidance tones play on | audio-output |
 | [fenix-increment-decrement.md](docs/fenix-increment-decrement.md) | Fenix rotary encoders (RMP, FCU) | — |
-| [a32nx.md](docs/a32nx.md) | FlyByWire A32NX, Fenix A320, Headwind A330: panels, MCDU, DCDU, cockpit controls | a32nx-fenix, fcu-callouts, tcas-ra, a32nx-mcdu, fbw-arinc |
+| [a32nx.md](docs/a32nx.md) | FlyByWire A32NX, Fenix A320, Headwind A330: panels, MCDU, DCDU, cockpit controls | a32nx-fenix, fenix-data, fcu-callouts, tcas-ra, a32nx-mcdu, fbw-arinc |
 | [a380x.md](docs/a380x.md) | FlyByWire A380X: FCU/EFIS, MFD/MCDU, OANS/BTV, RMP, ECAM, checklists | a380-fcu, fcu-callouts, a380-coherent, a380-systems, a380-panels, tcas-ra, fbw-arinc |
 | [flypad.md](docs/flypad.md) | The shared FlyByWire flyPad EFB (A320 and A380) | flypad |
 | [pmdg-777.md](docs/pmdg-777.md) | PMDG 777: CDA switches, CDU indexing, System Display | pmdg-777 |
