@@ -1,5 +1,6 @@
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.FirstOfficer.Fenix;
 using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Aircraft;
@@ -91,6 +92,10 @@ public partial class FenixA320Definition : BaseAircraftDefinition
         VsReadout, VsDashedReadout,
         BaroHpaReadout, BaroInchReadout,
     };
+
+    /// <summary>The TO CONFIG watch's on-request twins (the button and both captain master lights),
+    /// read fresh by <see cref="FenixTakeoffConfigVerdict.WatchAsync"/>.</summary>
+    internal static readonly IReadOnlyList<string> TakeoffConfigReadoutVariables = FenixTakeoffConfigVerdict.FreshKeys;
 
     // ACP reception knobs ([VAR-1]): each knob's latch and its light are labelled from ONE
     // constant, the light with AcpLightSuffix, so the two never drift apart. Each latch also
@@ -8362,7 +8367,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
 
         // The readout twins ([A320-41]), copied from their originals so the two can never disagree
         // on the L:var or its units. An original that is missing fails here, at load.
-        foreach (string readoutKey in FcuReadoutVariables)
+        foreach (string readoutKey in FcuReadoutVariables.Concat(TakeoffConfigReadoutVariables))
         {
             var original = variables[readoutKey[..^ReadoutSuffix.Length]];
             variables[readoutKey] = new SimConnect.SimVarDefinition
@@ -10915,13 +10920,10 @@ public partial class FenixA320Definition : BaseAircraftDefinition
 
             if (varKey == "S_ECAM_TO" && value == 1)
             {
-                // TO CONFIG is a level-triggered test: hold longer so the FWC evaluates the config,
-                // announce the result (blind-pilot equivalent of the sighted "TO CONFIG NORMAL"),
-                // then RELEASE. Leaving it held was the stuck-at-1 bug that re-fired the takeoff-
-                // config check after landing (FWC phase 9) → the spurious CONFIG warning on rollout.
-                ExecuteButtonTransition("S_ECAM_TO", "ECAM TO CONFIG", simConnect, announcer,
-                    pressHoldMs: TakeoffConfigTestHoldMs,
-                    onHeld: () => AnnounceTakeoffConfigResult(simConnect, announcer));
+                // TO CONFIG is a level-triggered test, then RELEASED (leaving it held was the
+                // stuck-at-1 bug that re-fired the check after landing). The verdict is a watch of
+                // fresh reads from the observed press: v3 delays the master warning.
+                _ = RunTakeoffConfigTestAsync(simConnect, announcer);
                 return true;
             }
 
@@ -12056,6 +12058,11 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 return ReadoutLeg(ref isRequestingBaro, ref pendingBaroHpa, ref pendingBaroInch,
                     varName == BaroHpaReadout, value,
                     static (hpa, inch) => FormattableString.Invariant($"Altimeter: {hpa:0}, {inch:0.00}"));
+            // The TO CONFIG watch's fresh-read waiter already has the value; nothing is spoken.
+            case FenixTakeoffConfigVerdict.ButtonFreshKey
+                or FenixTakeoffConfigVerdict.MasterWarningFreshKey
+                or FenixTakeoffConfigVerdict.MasterCautionFreshKey:
+                return true;
         }
 
         // ========== Suppress baro announcements during set operation ==========
@@ -12534,13 +12541,6 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     /// </summary>
     private const int ButtonPressHoldMs = 200;
 
-    /// <summary>
-    /// Hold time (ms) for the TO CONFIG test button. Longer than the default because this test is
-    /// level-triggered (active only while held): the button must stay pressed long enough for the
-    /// FWC to evaluate the config and drive the master warning before we read the result and release.
-    /// </summary>
-    private const int TakeoffConfigTestHoldMs = 1500;
-
     // =========================================================================
     // Universal auto-AP engage (UniversalAutomationService)
     // =========================================================================
@@ -12588,12 +12588,9 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     /// </summary>
     /// <param name="pressHoldMs">How long to hold the button at 1 before releasing. Use a longer
     /// value for level-triggered tests whose result must be observed while held (e.g. TO CONFIG).</param>
-    /// <param name="onHeld">Optional callback invoked while the button is still held at 1, just
-    /// before the release — lets a caller read the resulting state (e.g. the master-warning outcome
-    /// of the TO CONFIG test) before the button is released and the level-triggered effect clears.</param>
     private void ExecuteButtonTransition(string varName, string displayName,
         SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer? announcer,
-        int pressHoldMs = ButtonPressHoldMs, Action? onHeld = null)
+        int pressHoldMs = ButtonPressHoldMs)
     {
         try
         {
@@ -12635,11 +12632,6 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                         {
                             if (simConnect != null && simConnect.IsConnected)
                             {
-                                // Read the resulting state while the button is still held (e.g. TO CONFIG
-                                // result). Gated on IsConnected so a disconnect mid-hold can't fire a
-                                // reassuring "Takeoff config normal." off a stale/zero cache.
-                                onHeld?.Invoke();
-
                                 Log.Debug("Fenix", $"Setting {varName} = 0 (Release after hold)");
                                 simConnect.SetLVar(varName, 0);
                                 Log.Debug("Fenix", $"ExecuteButtonTransition COMPLETE: {displayName}");
@@ -12667,36 +12659,35 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     }
 
     /// <summary>
-    /// Reads the master-warning outcome of a TO CONFIG test (while the test button is still held)
-    /// and announces it, so a blind pilot gets the same feedback a sighted pilot reads as
-    /// "TO CONFIG NORMAL". A good config is otherwise completely silent. On a bad config the
-    /// master warning is also flagged by the generic annunciator monitor; this adds the takeoff-
-    /// config context. Reads the cached I_MIP_MASTER_WARNING_CAPT and I_MIP_MASTER_CAUTION_CAPT
-    /// (Continuous + IsAnnounced).
+    /// The panel's ECAM TO CONFIG test: presses the button (held <c>HoldMs</c>, then released), and
+    /// speaks the shared <see cref="FenixTakeoffConfigVerdict"/> watch's verdict,
+    /// the same words the First Officer says. The watch reads fresh on-request twins of the button
+    /// and the two captain master lights, because v3 delays the master warning after the press and
+    /// a cached read said "normal" over a bad config. The button's 0 is written at once, so the
+    /// watch's first read sees it released before the press lands 200 ms later. Fail-safe: any lit
+    /// master light is "check", an unread one never "normal".
     /// </summary>
-    private void AnnounceTakeoffConfigResult(SimConnect.SimConnectManager simConnect,
-        Accessibility.ScreenReaderAnnouncer announcer)
+    private async Task RunTakeoffConfigTestAsync(SimConnect.SimConnectManager simConnect,
+        Accessibility.ScreenReaderAnnouncer? announcer)
     {
         try
         {
-            // Deliberately reads the SHARED master-warning latch, not a config-specific memo. Live
-            // L-var search (2026-07) confirmed the Fenix exposes NO TO-CONFIG-only indicator — every
-            // warning I_* var is a discrete system fault (fire/GPWS/master warn+caut/evac), so the
-            // master warning is the only available signal, and it IS driven by the test: press
-            // S_ECAM_TO=1 on a bad config raised I_MIP_MASTER_WARNING_CAPT 0->1, release cleared it.
-            // The fail-safe direction also matters: an already-active (unrelated) warning yields a
-            // conservative "check configuration" (never harmful), whereas disambiguating via a
-            // pre-press baseline delta would mask a genuinely-bad config behind a pre-existing
-            // warning as a DANGEROUS false "normal". The words (the master caution's amber faults,
-            // and never "normal" on an unread light) are the First Officer's too:
-            // FenixTakeoffConfigVerdict.
-            announcer?.AnnounceImmediate(MSFSBlindAssist.FirstOfficer.Fenix.FenixTakeoffConfigVerdict.Text(
-                simConnect?.GetCachedVariableValue(MSFSBlindAssist.FirstOfficer.Fenix.FenixTakeoffConfigVerdict.MasterWarningKey),
-                simConnect?.GetCachedVariableValue(MSFSBlindAssist.FirstOfficer.Fenix.FenixTakeoffConfigVerdict.MasterCautionKey)));
+            ExecuteButtonTransition(FenixTakeoffConfigVerdict.ButtonKey, "ECAM TO CONFIG",
+                simConnect, announcer, pressHoldMs: FenixTakeoffConfigVerdict.HoldMs);
+            // ReadFreshAsync returns null on a timeout or disconnect; a throw is made null too, so
+            // the watch (which has no try/catch around reads) always reaches a verdict.
+            string verdict = await FenixTakeoffConfigVerdict.WatchAsync(
+                async k =>
+                {
+                    try { return await simConnect.ReadFreshAsync(k, FenixTakeoffConfigVerdict.ReadTimeoutMs); }
+                    catch (Exception) { return null; }
+                },
+                FenixTakeoffConfigVerdict.PanelPressWait);
+            if (simConnect.IsConnected) announcer?.AnnounceImmediate(verdict);
         }
         catch (Exception ex)
         {
-            Log.Debug("Fenix", $"AnnounceTakeoffConfigResult error: {ex.Message}");
+            Log.Debug("Fenix", $"RunTakeoffConfigTestAsync error: {ex.Message}");
         }
     }
 

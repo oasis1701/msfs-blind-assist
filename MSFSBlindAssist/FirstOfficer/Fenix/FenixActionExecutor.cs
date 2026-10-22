@@ -55,13 +55,6 @@ public sealed class FenixActionExecutor : LVarActionExecutor
     /// <summary>AVAIL poll cadence — the FlowManager's WaitForCondition uses the same 1 s.</summary>
     private const int ApuAvailPollMs = 1000;
 
-    /// <summary>Hold time (ms) for the TO CONFIG test button. Longer than the default pulse
-    /// hold because the test is level-triggered (active only while held): the button must
-    /// stay pressed long enough for the FWC to evaluate the config and drive the master
-    /// warning before we read the result and release (matches the panel path's
-    /// FenixA320Definition.TakeoffConfigTestHoldMs).</summary>
-    private const int TakeoffConfigTestHoldMs = 1500;
-
     // The app announcer, injected by FenixFoProfile (FbwA380ActionExecutor precedent) —
     // used only for the TO CONFIG result readout; all step narration stays FlowManager's.
     private Accessibility.ScreenReaderAnnouncer? _announcer;
@@ -212,30 +205,41 @@ public sealed class FenixActionExecutor : LVarActionExecutor
 
     public Task<bool> Pulse(string lvar) => PulseAsync(lvar);
 
-    /// <summary>ECAM TO CONFIG test: press-hold-release with the result spoken while the
-    /// button is still held. The test is level-triggered — it simulates takeoff power and
-    /// checks the config only WHILE pressed — so the button is held 1.5 s for the FWC to
-    /// evaluate, the cached master-warning outcome is announced (the blind-pilot equivalent
-    /// of the sighted "TO CONFIG NORMAL", which is otherwise completely silent on a good
-    /// config), then the button is RELEASED. The release is what prevents the held test
-    /// re-firing against the landing config after touchdown (FWC phase 9 → spurious red
-    /// CONFIG + master-warning aural on rollout — the original stuck-button bug).</summary>
-    public Task<bool> TakeoffConfigTest()
-        => PulseAsync("S_ECAM_TO", TakeoffConfigTestHoldMs, AnnounceTakeoffConfigResult);
+    /// <summary>ECAM TO CONFIG test: press-hold-release, with the verdict spoken from the shared
+    /// <see cref="FenixTakeoffConfigVerdict"/> watch of fresh reads (v3 delays the master warning
+    /// after the press, so a cached read could say "normal" over a bad config). The test is
+    /// level-triggered, so the button is held <c>HoldMs</c> and then RELEASED, which prevents the
+    /// held test re-firing against the landing config after touchdown (the original stuck-button
+    /// bug). The watch starts BEFORE the pulse: the dispatch gate may delay the press, and the
+    /// watch must see the button released first.</summary>
+    public async Task<bool> TakeoffConfigTest()
+    {
+        var sc = Sc;
+        if (sc is not { IsConnected: true }) return false;
+        // ReadFreshAsync returns null on a timeout or disconnect; a throw is made null too, so the
+        // watch (which has no try/catch around reads) always reaches a verdict.
+        var watch = FenixTakeoffConfigVerdict.WatchAsync(
+            async k =>
+            {
+                try { return await sc.ReadFreshAsync(k, FenixTakeoffConfigVerdict.ReadTimeoutMs); }
+                catch (Exception) { return null; }
+            },
+            FenixTakeoffConfigVerdict.FirstOfficerPressWait);
+        bool pressed = await PulseAsync(FenixTakeoffConfigVerdict.ButtonKey, FenixTakeoffConfigVerdict.HoldMs);
+        string verdict = await watch;
+        if (pressed) AnnounceTakeoffConfigResult(sc, verdict);
+        return pressed;
+    }
 
-    /// <summary>Reads the outcome of the TO CONFIG test (while the button is still held) through
-    /// the manager that pressed it, and announces it in <see cref="FenixTakeoffConfigVerdict"/>'s
-    /// words, the same as the panel's TO CONFIG button (FenixA320Definition.AnnounceTakeoffConfigResult).
-    /// Fail-safe direction: an already-active unrelated warning or caution yields a conservative
-    /// "check" (never harmful); disambiguating via a pre-press baseline delta would mask a
-    /// genuinely-bad config behind a pre-existing warning as a DANGEROUS false "normal".</summary>
-    private void AnnounceTakeoffConfigResult(SimConnectManager sc)
+    /// <summary>Speaks the TO CONFIG verdict in <see cref="FenixTakeoffConfigVerdict"/>'s words, the
+    /// same as the panel's TO CONFIG button (FenixA320Definition.RunTakeoffConfigTestAsync), only
+    /// while the executor is still attached to the manager that pressed. Fail-safe direction: any
+    /// lit master light is a "check"; an unread one is never "normal".</summary>
+    private void AnnounceTakeoffConfigResult(SimConnectManager sc, string verdict)
     {
         try
         {
-            _announcer?.AnnounceImmediate(FenixTakeoffConfigVerdict.Text(
-                sc.GetCachedVariableValue(FenixTakeoffConfigVerdict.MasterWarningKey),
-                sc.GetCachedVariableValue(FenixTakeoffConfigVerdict.MasterCautionKey)));
+            if (sc.IsConnected && StillAttached(sc)) _announcer?.AnnounceImmediate(verdict);
         }
         catch (Exception ex)
         {
