@@ -1395,7 +1395,7 @@ public partial class MainForm
                 var btnVarDef = currentAircraft.GetVariables()[kvp.Key];
                 if (btnVarDef.StateVariable == varName)
                 {
-                    string stateLabel = $"{btnVarDef.DisplayName}: {(value != 0 ? "On" : "Off")}";
+                    string stateLabel = $"{btnVarDef.DisplayName}: {btnVarDef.DescribeStateLight(value)}";
                     stateBtn.Text = stateLabel;
                     stateBtn.AccessibleName = stateLabel;
                 }

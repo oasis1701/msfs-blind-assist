@@ -136,6 +136,21 @@ public class SimVarDefinition
     public string? StateVariable { get; set; }  // LVar name to read for actual button on/off state (e.g., I_ indicator for S_ switch buttons)
 
     /// <summary>
+    /// What a lit and a dark <see cref="StateVariable"/> mean, for a button whose light is not an ON
+    /// legend: the Fenix's ADR, IR, Bus Tie and Cockpit Door Video light their OFF legend (measured
+    /// 2026-10-22), so "On" for a lit light read backwards. Null (the default) keeps "On" / "Off".
+    /// Both MainForm label sites read them through <see cref="DescribeStateLight"/>.
+    /// </summary>
+    public string? StateLitText { get; set; }
+
+    /// <inheritdoc cref="StateLitText"/>
+    public string? StateDarkText { get; set; }
+
+    /// <summary>The button's state for a <see cref="StateVariable"/> value: any non-zero value is lit.</summary>
+    public string DescribeStateLight(double lightValue) =>
+        lightValue != 0 ? StateLitText ?? "On" : StateDarkText ?? "Off";
+
+    /// <summary>
     /// Variable KEYS this control's SPOKEN STATE depends on, for definitions that compose the
     /// state themselves through <see cref="Aircraft.IAircraftDefinition.TryDescribeControlState"/>
     /// (the TFDi MD-11: a button's legend lamps, its latching var and the DC-power gate).

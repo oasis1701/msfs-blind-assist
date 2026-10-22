@@ -383,7 +383,7 @@ public partial class MainForm
                 else if (!string.IsNullOrEmpty(varDef.StateVariable) && currentSimVarValues.ContainsKey(varDef.StateVariable))
                 {
                     double stateVal = currentSimVarValues[varDef.StateVariable];
-                    buttonText = $"{varDef.DisplayName}: {(stateVal != 0 ? "On" : "Off")}";
+                    buttonText = $"{varDef.DisplayName}: {varDef.DescribeStateLight(stateVal)}";
                 }
                 else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count >= 2 && currentSimVarValues.ContainsKey(varKey))
                 {

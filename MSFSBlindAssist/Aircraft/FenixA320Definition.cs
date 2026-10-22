@@ -1676,7 +1676,10 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_OH_ELEC_BUSTIE_L"
+                // Its one light is the OFF legend, dark at AUTO (Cockpit_Behavior.xml: one annunciator node)
+                StateVariable = "I_OH_ELEC_BUSTIE_L",
+                StateLitText = "Off",
+                StateDarkText = "Auto"
             },
             ["S_OH_ELEC_AC_ESS_FEED"] = new SimConnect.SimVarDefinition
             {
@@ -1805,7 +1808,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "Nav", [2] = "Att"}
             },
 
-            // ADR Buttons
+            // ADR Buttons. The lower light is the OFF legend, the upper FAULT (measured 2026-10-22:
+            // a press lit _L and switched ADR 1 off; _U lit during the self-test), so a lit _L is Off.
             ["S_OH_NAV_ADR1"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_OH_NAV_ADR1",
@@ -1813,7 +1817,9 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_OH_NAV_ADR1_L"
+                StateVariable = "I_OH_NAV_ADR1_L",
+                StateLitText = "Off",
+                StateDarkText = "On"
             },
             ["S_OH_NAV_ADR2"] = new SimConnect.SimVarDefinition
             {
@@ -1822,7 +1828,9 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_OH_NAV_ADR2_L"
+                StateVariable = "I_OH_NAV_ADR2_L",
+                StateLitText = "Off",
+                StateDarkText = "On"
             },
             ["S_OH_NAV_ADR3"] = new SimConnect.SimVarDefinition
             {
@@ -1831,10 +1839,12 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_OH_NAV_ADR3_L"
+                StateVariable = "I_OH_NAV_ADR3_L",
+                StateLitText = "Off",
+                StateDarkText = "On"
             },
 
-            // IR Push Buttons
+            // IR Push Buttons. As the ADRs: _L is the OFF legend (measured on IR 1, 2026-10-22).
             ["S_OH_NAV_IR1_SWITCH"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_OH_NAV_IR1_SWITCH",
@@ -1842,7 +1852,9 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_OH_NAV_IR1_SWITCH_L"
+                StateVariable = "I_OH_NAV_IR1_SWITCH_L",
+                StateLitText = "Off",
+                StateDarkText = "On"
             },
             ["S_OH_NAV_IR2_SWITCH"] = new SimConnect.SimVarDefinition
             {
@@ -1851,7 +1863,9 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_OH_NAV_IR2_SWITCH_L"
+                StateVariable = "I_OH_NAV_IR2_SWITCH_L",
+                StateLitText = "Off",
+                StateDarkText = "On"
             },
             ["S_OH_NAV_IR3_SWITCH"] = new SimConnect.SimVarDefinition
             {
@@ -1860,7 +1874,9 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_OH_NAV_IR3_SWITCH_L"
+                StateVariable = "I_OH_NAV_IR3_SWITCH_L",
+                StateLitText = "Off",
+                StateDarkText = "On"
             },
 
             // Display Selectors
@@ -4981,7 +4997,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             ["S_STANDBY_ATTITUDE_CAGE"] = new SimConnect.SimVarDefinition { Name = "S_STANDBY_ATTITUDE_CAGE", DisplayName = "Standby Attitude Cage", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Normal", [1] = "Caged"} },
             ["S_JUMPSEAT"] = new SimConnect.SimVarDefinition { Name = "S_JUMPSEAT", DisplayName = "Jumpseat", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Stowed", [1] = "Deployed"} },
             ["S_JUMPSEAT_HEADREST"] = new SimConnect.SimVarDefinition { Name = "S_JUMPSEAT_HEADREST", DisplayName = "Jumpseat Headrest", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Down", [1] = "Up"} },
-            ["S_PED_COCKPIT_DOOR_VIDEO"] = new SimConnect.SimVarDefinition { Name = "S_PED_COCKPIT_DOOR_VIDEO", DisplayName = "Cockpit Door Video", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, RenderAsButton = true, StateVariable = "I_OH_COCKPIT_DOOR_VIDEO" },
+            ["S_PED_COCKPIT_DOOR_VIDEO"] = new SimConnect.SimVarDefinition { Name = "S_PED_COCKPIT_DOOR_VIDEO", DisplayName = "Cockpit Door Video", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, RenderAsButton = true, StateVariable = "I_OH_COCKPIT_DOOR_VIDEO", StateLitText = "Off", StateDarkText = "On" },   // its one light is the OFF legend
             ["S_OXYGEN_MASK_COVER_CAPT"] = new SimConnect.SimVarDefinition { Name = "S_OXYGEN_MASK_COVER_CAPT", DisplayName = "Captain Oxygen Mask Cover", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Closed", [1] = "Open"} },
             ["S_OXYGEN_MASK_COVER_FO"] = new SimConnect.SimVarDefinition { Name = "S_OXYGEN_MASK_COVER_FO", DisplayName = "First Officer Oxygen Mask Cover", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Closed", [1] = "Open"} },
             // NOTE: S_OH_CALLS_EMER_Cover ("Calls Emergency Cover") is already defined+paneled in the overhead Calls panel — not re-added here.
@@ -12516,22 +12532,45 @@ public partial class FenixA320Definition : BaseAircraftDefinition
 
             }
 
-            // Announce final value
+            // Announce final value, both sides
             await System.Threading.Tasks.Task.Delay(500);
-            simConnect.RequestVariable("N_FCU_EFIS1_BARO_HPA");
-            simConnect.RequestVariable("N_FCU_EFIS1_BARO_INCH");
-            await System.Threading.Tasks.Task.Delay(300);
-            double? finalHpa = simConnect.GetCachedVariableValue("N_FCU_EFIS1_BARO_HPA");
-            double? finalInch = simConnect.GetCachedVariableValue("N_FCU_EFIS1_BARO_INCH");
-            if (finalHpa != null && finalInch != null)
+            foreach (var efis in efisIds)
             {
-                announcer.AnnounceImmediate(FormattableString.Invariant($"Altimeter set: {finalHpa.Value:0}, {finalInch.Value:0.00}"));
+                simConnect.RequestVariable($"N_FCU_EFIS{efis}_BARO_HPA");
+                simConnect.RequestVariable($"N_FCU_EFIS{efis}_BARO_INCH");
+            }
+            await System.Threading.Tasks.Task.Delay(300);
+            string? setText = AltimeterSetText(
+                simConnect.GetCachedVariableValue("N_FCU_EFIS1_BARO_HPA"),
+                simConnect.GetCachedVariableValue("N_FCU_EFIS1_BARO_INCH"),
+                simConnect.GetCachedVariableValue("N_FCU_EFIS2_BARO_HPA"),
+                simConnect.GetCachedVariableValue("N_FCU_EFIS2_BARO_INCH"));
+            if (setText != null)
+            {
+                announcer.AnnounceImmediate(setText);
             }
         }
         finally
         {
             isSettingBaro = false;
         }
+    }
+
+    /// <summary>
+    /// The read-back after <see cref="SetFCUBaro"/>, which sets both sides: one sentence when both
+    /// read alike as spoken ("Both altimeters set: 1015, 29.97."), else each side named, so a side
+    /// that missed the setting is heard (owner, 2026-10-22: keep both units, say both sides). Null
+    /// when neither side read.
+    /// </summary>
+    internal static string? AltimeterSetText(double? captHpa, double? captInch, double? foHpa, double? foInch)
+    {
+        string? capt = captHpa != null && captInch != null
+            ? FormattableString.Invariant($"{captHpa.Value:0}, {captInch.Value:0.00}") : null;
+        string? fo = foHpa != null && foInch != null
+            ? FormattableString.Invariant($"{foHpa.Value:0}, {foInch.Value:0.00}") : null;
+        if (capt == null && fo == null) return null;
+        if (capt == fo) return $"Both altimeters set: {capt}.";
+        return $"Captain altimeter {capt ?? "not read"}. First officer altimeter {fo ?? "not read"}.";
     }
 
     private void ShowFenixBaroWindow(
