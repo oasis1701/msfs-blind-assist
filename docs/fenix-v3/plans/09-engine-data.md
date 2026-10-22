@@ -1,6 +1,6 @@
 # Fenix Engine Data Implementation Plan (plan 09)
 
-**Claimed by:** danielw97 · **Status:** in progress (code, reviews and owner checks 1 and 2 done 2026-10-22; only Task 4 Step 6's window-handling checks remain, see "In-sim checks still needed")
+**Claimed by:** danielw97 · **Status:** done (code, reviews and every in-sim check passed 2026-10-22)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -74,9 +74,9 @@ Not engine values, noted only: the fuel and weight readouts (F, Shift+F, W, Shif
 
 ## Before you start
 
-- [ ] Branch from the base commit in `docs/fenix-v3/plans/00-index.md` ("Base commit for parallel work"): `git switch -c FenixV3-p09-engine-data <base-sha>`; an agent works in `.claude/worktrees/fenix-v3-p09`.
-- [ ] Read (Read tool, so rules load, CORE-16): `MSFSBlindAssist/Services/FenixDataService.cs`, `FenixDataValue.cs`, `FenixDataQueries.cs`, `MSFSBlindAssist/Forms/Fenix/FenixWindowRegistry.cs`, `MSFSBlindAssist/Aircraft/FenixA320Definition.Hooks.cs`, `MSFSBlindAssist/Aircraft/FenixVariant.cs` (plan 01's), `MSFSBlindAssist/Forms/HS787/HS787EicasForm.cs` (the window pattern), `MSFSBlindAssist/Forms/DisplayListBox.cs`, `tests/MSFSBlindAssist.Tests/TestCulture.cs`.
-- [ ] `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64` then `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64`: both green; note the test count.
+- [x] Branch from the base commit in `docs/fenix-v3/plans/00-index.md` ("Base commit for parallel work"): `git switch -c FenixV3-p09-engine-data <base-sha>`; an agent works in `.claude/worktrees/fenix-v3-p09`.
+- [x] Read (Read tool, so rules load, CORE-16): `MSFSBlindAssist/Services/FenixDataService.cs`, `FenixDataValue.cs`, `FenixDataQueries.cs`, `MSFSBlindAssist/Forms/Fenix/FenixWindowRegistry.cs`, `MSFSBlindAssist/Aircraft/FenixA320Definition.Hooks.cs`, `MSFSBlindAssist/Aircraft/FenixVariant.cs` (plan 01's), `MSFSBlindAssist/Forms/HS787/HS787EicasForm.cs` (the window pattern), `MSFSBlindAssist/Forms/DisplayListBox.cs`, `tests/MSFSBlindAssist.Tests/TestCulture.cs`.
+- [x] `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64` then `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64`: both green; note the test count.
 
 ---
 
@@ -95,7 +95,7 @@ Not engine values, noted only: the fuel and weight readouts (F, Shift+F, W, Shif
   - `public sealed record FenixEngineReading(FenixEngineValues Engine1, FenixEngineValues Engine2, double? TatC, double? OatC, long? LastUpdateTick)` with `public static readonly FenixEngineReading None`
   - `public sealed class FenixEngineSnapshot` with `public FenixEngineSnapshot(Func<long>? clock = null)` (default `() => Environment.TickCount64`), `public void Apply(string name, FenixDataValue value)` (any thread), `public FenixEngineReading Read()` (any thread)
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```csharp
 // Characterization tests for the Fenix engine data names and the snapshot the data-service
@@ -177,10 +177,10 @@ public class FenixEngineSnapshotTests
 }
 ```
 
-- [ ] **Step 2: Run them; they fail to compile.** `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64 --filter "FullyQualifiedName~FenixEngineSnapshotTests"`. Expected: build error CS0246/CS0103 (`FenixEngineSnapshot`, `FenixEngineNames` not found).
-- [ ] **Step 3: Implement both files.** `Apply`: map the name through a static `Dictionary<string, (int engine, FenixEngineField field)>` built from `All` (TAT/OAT as engine 0); ignore unmapped names; numeric fields take `Kind == Number` and a finite `Number`, `Running` takes `Kind == Bool`, anything else stores null; every mapped `Apply` sets `LastUpdateTick = clock()`. One `lock` guards the fields; `Read()` builds the records under it. Records give value equality (`None` must equal a fresh snapshot's `Read()`).
-- [ ] **Step 4: Run them; all pass.** Same command. Expected: 7 passed.
-- [ ] **Step 5: Commit.** `git add MSFSBlindAssist/Services/FenixEngineNames.cs MSFSBlindAssist/Services/FenixEngineSnapshot.cs tests/MSFSBlindAssist.Tests/FenixEngineSnapshotTests.cs` then `git commit -m "feat(fenix): engine data names and snapshot from the data service"`.
+- [x] **Step 2: Run them; they fail to compile.** `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64 --filter "FullyQualifiedName~FenixEngineSnapshotTests"`. Expected: build error CS0246/CS0103 (`FenixEngineSnapshot`, `FenixEngineNames` not found).
+- [x] **Step 3: Implement both files.** `Apply`: map the name through a static `Dictionary<string, (int engine, FenixEngineField field)>` built from `All` (TAT/OAT as engine 0); ignore unmapped names; numeric fields take `Kind == Number` and a finite `Number`, `Running` takes `Kind == Bool`, anything else stores null; every mapped `Apply` sets `LastUpdateTick = clock()`. One `lock` guards the fields; `Read()` builds the records under it. Records give value equality (`None` must equal a fresh snapshot's `Read()`).
+- [x] **Step 4: Run them; all pass.** Same command. Expected: 7 passed.
+- [x] **Step 5: Commit.** `git add MSFSBlindAssist/Services/FenixEngineNames.cs MSFSBlindAssist/Services/FenixEngineSnapshot.cs tests/MSFSBlindAssist.Tests/FenixEngineSnapshotTests.cs` then `git commit -m "feat(fenix): engine data names and snapshot from the data service"`.
 
 ### Task 2: Formatting, display hold and status
 
@@ -199,7 +199,7 @@ public class FenixEngineSnapshotTests
     - `public static IReadOnlyList<string> Rows(FenixEngineReading reading, FenixEngineWeightUnit unit, FenixEngineDisplayHold? hold = null)`
     - `public static string Status(string? variant, FenixEngineWeightUnit unit, bool unitFromFenix, long? lastUpdateTick, long nowTick)`
 
-- [ ] **Step 1: Write the failing tests.** `FenixEngineFormatTests` (header comment: the rows are the pilot's only view of the Fenix's engine gauges; spoken and brailled, so culture-proof):
+- [x] **Step 1: Write the failing tests.** `FenixEngineFormatTests` (header comment: the rows are the pilot's only view of the Fenix's engine gauges; spoken and brailled, so culture-proof):
 
 ```csharp
 private static readonly FenixEngineReading Idle = new(   // IAE A321 at idle, 2026-10-21 13:06
@@ -242,11 +242,11 @@ private static readonly string[] IdleKg =
   - `Tenths_use_a_tenth_of_the_band`: 22.448 → 22.4, 22.45 → 22.4, 22.47 → 22.5.
   - `Unknown_forgets_the_key`: 116.4 → 116, null → null, then 116.55 → 117 (fresh rounding).
   - `Keys_are_independent`: `Hold("a", 116.4, 0)` then `Hold("b", 116.7, 0)` → 116 and 117.
-- [ ] **Step 2: Run them; they fail to compile.** `dotnet test … --filter "FullyQualifiedName~FenixEngineFormatTests|FullyQualifiedName~FenixEngineDisplayHoldTests"`. Expected: build errors for the missing types.
-- [ ] **Step 3: Implement `FenixEngineDisplayHold`.** Per key keep the last shown value: null raw → remove the key, return null; no previous → shown = `Math.Round(raw, decimals, AwayFromZero)`; else if `|raw - shown| >= Band * 10^-decimals` → shown = that rounding; return shown.
-- [ ] **Step 4: Implement `FenixEngineFormat`.** `Number`: non-finite or null → `Unknown`; round with `AwayFromZero`; a result equal to 0 becomes `+0.0`; `ToString(decimals == 0 ? "0" : "0.0", CultureInfo.InvariantCulture)`. `Rows`: labels and units exactly as `IdleKg`; the decimals per field are Owner decision 2; when `hold` is given, each numeric passes through `hold.Hold(<row label>, value, decimals)` (fuel flow AFTER the pounds conversion); an unknown value is `"<label>: --"`. `Status`: with no `lastUpdateTick`, the waiting text alone; otherwise `"<variant>. "` (when non-null) + the unit sentence (`"Fuel flow in pounds per hour, the Fenix's weight unit."` or `"Fuel flow in kilograms per hour; the Fenix's weight unit could not be read."`, likewise for kilograms from the Fenix and pounds) + `" Values update every second; F5 reads them again."`, or, when `nowTick - lastUpdateTick > StaleMs`, `" No new values from the Fenix for more than 10 seconds; F5 reads them again."`.
-- [ ] **Step 5: Run them; all pass.** Expected: 18 passed (12 format + 6 hold).
-- [ ] **Step 6: Commit.** `git add` the four files; `git commit -m "feat(fenix): engine readout formatting, display hold and status"`.
+- [x] **Step 2: Run them; they fail to compile.** `dotnet test … --filter "FullyQualifiedName~FenixEngineFormatTests|FullyQualifiedName~FenixEngineDisplayHoldTests"`. Expected: build errors for the missing types.
+- [x] **Step 3: Implement `FenixEngineDisplayHold`.** Per key keep the last shown value: null raw → remove the key, return null; no previous → shown = `Math.Round(raw, decimals, AwayFromZero)`; else if `|raw - shown| >= Band * 10^-decimals` → shown = that rounding; return shown.
+- [x] **Step 4: Implement `FenixEngineFormat`.** `Number`: non-finite or null → `Unknown`; round with `AwayFromZero`; a result equal to 0 becomes `+0.0`; `ToString(decimals == 0 ? "0" : "0.0", CultureInfo.InvariantCulture)`. `Rows`: labels and units exactly as `IdleKg`; the decimals per field are Owner decision 2; when `hold` is given, each numeric passes through `hold.Hold(<row label>, value, decimals)` (fuel flow AFTER the pounds conversion); an unknown value is `"<label>: --"`. `Status`: with no `lastUpdateTick`, the waiting text alone; otherwise `"<variant>. "` (when non-null) + the unit sentence (`"Fuel flow in pounds per hour, the Fenix's weight unit."` or `"Fuel flow in kilograms per hour; the Fenix's weight unit could not be read."`, likewise for kilograms from the Fenix and pounds) + `" Values update every second; F5 reads them again."`, or, when `nowTick - lastUpdateTick > StaleMs`, `" No new values from the Fenix for more than 10 seconds; F5 reads them again."`.
+- [x] **Step 5: Run them; all pass.** Expected: 18 passed (12 format + 6 hold).
+- [x] **Step 6: Commit.** `git add` the four files; `git commit -m "feat(fenix): engine readout formatting, display hold and status"`.
 
 ### Task 3: Running announcements (removable, Owner decision 6 / Q1)
 
@@ -258,16 +258,16 @@ private static readonly string[] IdleKg =
 - Consumes: Task 1's `FenixEngineReading`.
 - Produces: `public sealed class FenixEngineRunningWatch` with `public IReadOnlyList<string> Observe(FenixEngineReading reading)`: the lines to speak, engine 1 first.
 
-- [ ] **Step 1: Write the failing tests.** Helper `static FenixEngineReading R(bool? e1, bool? e2) => FenixEngineReading.None with { Engine1 = FenixEngineValues.None with { Running = e1 }, Engine2 = FenixEngineValues.None with { Running = e2 } };`
+- [x] **Step 1: Write the failing tests.** Helper `static FenixEngineReading R(bool? e1, bool? e2) => FenixEngineReading.None with { Engine1 = FenixEngineValues.None with { Running = e1 }, Engine2 = FenixEngineValues.None with { Running = e2 } };`
   - `First_values_are_silent`: `Observe(R(true, false))` is empty.
   - `A_start_and_a_shutdown_are_spoken`: `R(true,false)` → `[]`; `R(true,true)` → `["Engine 2 running"]`; `R(false,true)` → `["Engine 1 stopped"]`.
   - `Both_in_one_tick_engine_1_first`: `R(false,false)` → `[]`; `R(true,true)` → `["Engine 1 running", "Engine 2 running"]`.
   - `A_dropout_does_not_respeak`: `R(true,true)` → `[]`; `R(null,null)` → `[]`; `R(true,true)` → `[]`.
   - `Unknown_first_then_known_is_a_baseline`: `R(null,null)` → `[]`; `R(true,false)` → `[]`.
-- [ ] **Step 2: Run; compile failure.** `--filter "FullyQualifiedName~FenixEngineRunningWatchTests"`.
-- [ ] **Step 3: Implement.** Keep the last KNOWN value per engine; a null never changes it; a known value that differs from a known previous gives `"Engine {n} running"` (now true) or `"Engine {n} stopped"` (now false).
-- [ ] **Step 4: Run; 5 passed.**
-- [ ] **Step 5: Commit.** `git commit -m "feat(fenix): engine running edges as spoken lines"` (the two files).
+- [x] **Step 2: Run; compile failure.** `--filter "FullyQualifiedName~FenixEngineRunningWatchTests"`.
+- [x] **Step 3: Implement.** Keep the last KNOWN value per engine; a null never changes it; a known value that differs from a known previous gives `"Engine {n} running"` (now true) or `"Engine {n} stopped"` (now false).
+- [x] **Step 4: Run; 5 passed.**
+- [x] **Step 5: Commit.** `git commit -m "feat(fenix): engine running edges as spoken lines"` (the two files).
 
 ### Task 4: The Engines window and its list entry
 
@@ -279,13 +279,13 @@ private static readonly string[] IdleKg =
 - Consumes (plan 01): `FenixWindowContext(FenixA320Definition Definition, FenixDataService Data, SimConnectManager SimConnect, ScreenReaderAnnouncer Announcer, Form Owner)`; `FenixWindowEntry(string Name, string Description, Action<FenixWindowContext> Open)`; the seam `static partial void AddEngineWindows(List<FenixWindowEntry> entries);` on `public static partial class FenixWindowRegistry`; `FenixA320Definition.ShowFenixWindow<T>(Func<T> factory, Action<T> show)` (reuse-if-open, closed and disposed on aircraft switch by `DisposeTrackedWindows`, `BaseAircraftDefinition.cs:1144-1176`); `FenixA320Definition.Variant` (`IsKnown`, `Describe()`); `FenixDataService.Subscribe(IReadOnlyList<string>, Action<string, FenixDataValue>) : IDisposable` (callbacks on a pool thread), `ReadManyAsync(IReadOnlyList<string>, CancellationToken)`, `GetSettingsAsync(CancellationToken)`. Tasks 1-3's types.
 - Produces: the list entry named `"Engines"` (plan 12's guide text); `public sealed class FenixEnginesForm : Form` with `public FenixEnginesForm(FenixWindowContext context)` and `public void ShowForm()`.
 
-- [ ] **Step 1: Write the failing tests** (`FenixEngineWindowTests`, header comment naming FNX-2 and the 30-45 Hz stream):
+- [x] **Step 1: Write the failing tests** (`FenixEngineWindowTests`, header comment naming FNX-2 and the 30-45 Hz stream):
   - `Registry_lists_the_Engines_window_once`: `var e = Assert.Single(FenixWindowRegistry.Build(), x => x.Name == "Engines");` and `Assert.Equal("N1, EGT, N2, fuel flow, oil and air temperatures, from the Fenix's own values", e.Description);`
   - `Engines_window_never_marshals_and_cleans_up` (source scan of `MSFSBlindAssist/Forms/Fenix/FenixEnginesForm.cs` via `ClaudeContextBudgetTests.RepoRoot()`, as `FenixDataServiceAddressTests.cs:16`): `DoesNotContain("BeginInvoke")`, `DoesNotContain("Invoke(")`, `Contains("FenixEngineNames.All")`, `Contains("Interval = 1000")`, `Contains("protected override void Dispose(bool disposing)")`.
   - `Engine_readouts_never_use_stock_engine_simvars`: for the form and every `MSFSBlindAssist/Services/FenixEngine*.cs`: no `"TURB ENG"`, `"GENERAL ENG"`, `"ENG EXHAUST"`, `"FUEL FLOW PPH"`, `"AMBIENT TEMPERATURE"`, `"localhost"`.
-- [ ] **Step 2: Run them; all three fail.** `dotnet test … --filter "FullyQualifiedName~FenixEngineWindowTests"`. Expected: `Registry_lists_the_Engines_window_once` fails (plan 01's `Build()` has no "Engines" entry yet); the two source scans fail with `FileNotFoundException` for `FenixEnginesForm.cs`.
-- [ ] **Step 3: Implement `FenixWindowRegistry.Engines.cs`** in the namespace `FenixWindowRegistry.cs` declares (expected `MSFSBlindAssist.Forms.Fenix`, as `FenixEFBForm.cs:6`): `static partial void AddEngineWindows(List<FenixWindowEntry> entries) => entries.Add(new FenixWindowEntry("Engines", "<the description above>", ctx => ctx.Definition.ShowFenixWindow(() => new FenixEnginesForm(ctx), f => f.ShowForm())));`
-- [ ] **Step 4: Implement `FenixEnginesForm`** following `HS787EicasForm.cs` (previous-window restore 16-17, 53-57, 62; `ShowForm` 60-71):
+- [x] **Step 2: Run them; all three fail.** `dotnet test … --filter "FullyQualifiedName~FenixEngineWindowTests"`. Expected: `Registry_lists_the_Engines_window_once` fails (plan 01's `Build()` has no "Engines" entry yet); the two source scans fail with `FileNotFoundException` for `FenixEnginesForm.cs`.
+- [x] **Step 3: Implement `FenixWindowRegistry.Engines.cs`** in the namespace `FenixWindowRegistry.cs` declares (expected `MSFSBlindAssist.Forms.Fenix`, as `FenixEFBForm.cs:6`): `static partial void AddEngineWindows(List<FenixWindowEntry> entries) => entries.Add(new FenixWindowEntry("Engines", "<the description above>", ctx => ctx.Definition.ShowFenixWindow(() => new FenixEnginesForm(ctx), f => f.ShowForm())));`
+- [x] **Step 4: Implement `FenixEnginesForm`** following `HS787EicasForm.cs` (previous-window restore 16-17, 53-57, 62; `ShowForm` 60-71):
   - Title `"Fenix engines"`; `KeyPreview = true`; about 520 x 440, centred, `FormBorderStyle.SizableToolWindow`, in the taskbar.
   - `DisplayListBox _list` (`Dock = Fill`, `AccessibleName = "Engine values"`, `TabIndex = 0`); `TextBox _status` (`ReadOnly`, `Multiline`, 2 lines high, `Dock = Bottom`, `AccessibleName = "Status"`, `TabIndex = 1`, VAT-13).
   - Fields: `FenixEngineSnapshot`, `FenixEngineDisplayHold`, `FenixEngineRunningWatch`, `IDisposable? _subscription`, `System.Windows.Forms.Timer _timer` (`Interval = 1000`), `FenixEngineWeightUnit _unit = Kilograms`, `bool _unitFromFenix`.
@@ -294,9 +294,9 @@ private static readonly string[] IdleKg =
   - `ShowForm()`: remember the foreground window; on the first call only, `RefreshNow()` and `_list.SelectedIndex = 0` (so the screen reader lands on a row, not an unselected list), then `_subscription = Data.Subscribe(FenixEngineNames.All, _snapshot.Apply)`, `_timer.Start()`, `_ = ReloadAsync(false)`; every call: `Show()`, `BringToFront()`, `Activate()`, `_list.Focus()` (the pilot's own open; the only focus calls in the form).
   - `ProcessCmdKey`: Escape → `Close()`; F5 when not auto-repeat (`(msg.LParam.ToInt64() & 0x40000000) == 0`, as `MainForm.Hotkeys.cs:829`) → `_ = ReloadAsync(true)`; both return true.
   - `FormClosing`: stop the timer, dispose the subscription, restore the previous window. `protected override void Dispose(bool disposing)`: the same teardown, idempotent, `_subscription.Dispose()` inside try/catch (the definition may already have disposed the service on aircraft switch).
-- [ ] **Step 5: Run the three tests, then the whole suite and the build.** `dotnet test … --filter "FullyQualifiedName~FenixEngineWindowTests"` (3 passed); `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64` (all green, baseline + 33: 7 + 18 + 5 + 3); `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64` (0 errors). `ClaudeContextBudgetTests` must stay green (the new files load `a32nx-fenix.md` and `fenix-data.md` through their `Fenix*` globs).
-- [ ] **Step 6: Manual check (app + sim with the Fenix loaded; reads only; if you have no sim, list it for the owner).** Close any running MSFSBA first (CORE-3). Press `[` then Ctrl+Shift+F, arrow to "Engines", Enter: the window opens on "Engine 1: running" (or "not running"); BA itself says nothing; values match a one-shot read (`query { dataRef { r0: dataRef(name: "aircraft.engines.1.n2") { value } r1: dataRef(name: "aircraft.engines.1.ff.kg") { value } } }` posted to `http://127.0.0.1:8083/graphql` from a scratch script outside the repo): N2 to 0.1, fuel flow equal to kg x 2.2046 when `weight_unit` is Pounds. Arrow down and wait 10 s on "Engine 2 Oil Temperature": the row stays still. F5 says "Engines refreshed". `[`, Ctrl+Shift+F, Engines again while open: the same window comes forward, no second window. Escape closes and focus returns. Switch the aircraft profile with the window open: it closes and nothing more is spoken.
-- [ ] **Step 7: Commit.** `git add` the three files; `git commit -m "feat(fenix): Engines window in the Fenix windows list"`.
+- [x] **Step 5: Run the three tests, then the whole suite and the build.** `dotnet test … --filter "FullyQualifiedName~FenixEngineWindowTests"` (3 passed); `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64` (all green, baseline + 33: 7 + 18 + 5 + 3); `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64` (0 errors). `ClaudeContextBudgetTests` must stay green (the new files load `a32nx-fenix.md` and `fenix-data.md` through their `Fenix*` globs).
+- [x] **Step 6: Manual check (app + sim with the Fenix loaded; reads only; if you have no sim, list it for the owner).** Close any running MSFSBA first (CORE-3). Press `[` then Ctrl+Shift+F, arrow to "Engines", Enter: the window opens on "Engine 1: running" (or "not running"); BA itself says nothing; values match a one-shot read (`query { dataRef { r0: dataRef(name: "aircraft.engines.1.n2") { value } r1: dataRef(name: "aircraft.engines.1.ff.kg") { value } } }` posted to `http://127.0.0.1:8083/graphql` from a scratch script outside the repo): N2 to 0.1, fuel flow equal to kg x 2.2046 when `weight_unit` is Pounds. Arrow down and wait 10 s on "Engine 2 Oil Temperature": the row stays still. F5 says "Engines refreshed". `[`, Ctrl+Shift+F, Engines again while open: the same window comes forward, no second window. Escape closes and focus returns. Switch the aircraft profile with the window open: it closes and nothing more is spoken.
+- [x] **Step 7: Commit.** `git add` the three files; `git commit -m "feat(fenix): Engines window in the Fenix windows list"`.
 
 ### Task 5: Hand back
 
@@ -338,14 +338,14 @@ private static readonly string[] IdleKg =
 
 **Deferred review minors** (final review, 0 Critical, 2 Important fixed, 5 Minor left for plan 12 to take or drop):
 1. Rows keep their last values, with no per-row stale marker, after the Fenix quits; only the status box says the values stopped.
-2. If the gateway pushes only on change, the status may say "No new values … for more than 10 seconds" in cold-and-dark, where nothing moves (in-sim check below).
+2. ~~If the gateway pushes only on change, the status may say "No new values … for more than 10 seconds" in cold-and-dark, where nothing moves.~~ (Not seen: cold and dark, batteries off, the status kept "Values update every second", 2026-10-22.)
 3. F5 pressed while the open-time reload is still running starts a second reload ("No engine data" spoken twice with the gateway down).
 4. "No engine data" is spoken when the HTTP read fails even if the subscription is already delivering values.
 5. `_unit` is assigned before the `IsDisposed` check in `ReloadAsync` (harmless).
 
-**Done in the sim (2026-10-22):** owner checks 1 and 2 (Evidence); the window opens from the list and its rows read well; Output O checked.
+**Done in the sim (2026-10-22, CFM A320):** owner checks 1 and 2 (Evidence); Output O checked; all of Task 4 Step 6: the window opens from the list and its rows read well, a focused row stays still for 10 s, F5 says "Engines refreshed", opening Engines again brings the same window forward, Escape closes and focus returns, switching the aircraft profile with the window open closes it with nothing spoken. Cold and dark (engines, APU and batteries off), the status read "Fenix A320, CFM engines. Fuel flow in kilograms per hour, the Fenix's weight unit. Values update every second; F5 reads them again."
 
-**In-sim checks still needed:** the rest of Task 4 Step 6: a focused row stays still for 10 s, F5 says "Engines refreshed", opening Engines again brings the same window forward, Escape closes and focus returns, and switching the aircraft profile with the window open closes it silently. Then, cold and dark (both engines off), the window open for 10 s: the status should keep "Values update every second", not "No new values" (deferred minor 2).
+**In-sim checks still needed:** none.
 
 ---
 
