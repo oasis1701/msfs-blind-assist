@@ -760,7 +760,12 @@ const SECOND_PASS = {
   'switcher': { handled: 11 + 6, listeners: 11 + 4, note: 'nine icons, home, chevron; behind them the three cards, Panel States and the two tab-bar arrows' },
   'my-flight': { handled: 6 + 2, listeners: 6, note: 'home, chevron, three cards, Panel States; the two tab-bar arrows' },
   'ground-services': { handled: 6 + 2 + 14, listeners: 6, note: 'home, chevron, three pushback arrows, Panel States; the two tab-bar arrows; 14 switches' },
-  'mass-balance': { handled: 3 + 2 + 4 + 4, listeners: 3, note: 'home, chevron, Panel States; the two tab-bar arrows; four boxes; four buttons' },
+  // The fuller capture of 2026-10-22 also holds the app switcher, closed (div.quick-move-buttons, hidden), with its
+  // nine icons: they are buttons as on the switcher capture, out of a screen reader's way while the page hides them.
+  'mass-balance': {
+    handled: 3 + 9 + 2 + 4 + 4, listeners: 3 + 9,
+    note: 'home, chevron, Panel States; the nine icons of the closed switcher; the two tab-bar arrows; four boxes; four buttons'
+  },
   'panel-states': { handled: 3 + 2 + 4 + 4 + 1, listeners: 3, note: 'as mass-balance, which shows behind the pop-up, plus the pop-up' }
 };
 for (const [fixture, expected] of Object.entries(SECOND_PASS)) {

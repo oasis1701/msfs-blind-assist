@@ -25,9 +25,16 @@ const TITLES = ['Fenix', 'Takeoff', 'Landing', 'Charts', 'Documents', 'Failures'
 // (home.html of 2026-10-22) has the tiles hidden, where jsdom (and a screen reader) meets nothing, and jsdom
 // loads no pictures to finish it. So the harness shows them as the page does a moment later, before the layer
 // runs; it changes nothing else, and nothing on a capture whose tiles are already shown.
+// The Mass and Balance tab's content is the same: the fuller mass-balance.html (2026-10-22, with the chart
+// picture and the seat map) caught its div.tab-content at visibility: hidden, where the capture of the same
+// screen before it had it visible and the owner's in-sim check heard its boxes. It is shown the same way.
+const SHOWN_LATER = ['#appContainer', 'app-mass-balance-tab > div.tab-content'];
 function present(window) {
-  const container = window.document.getElementById('appContainer');
-  if (container && container.style.visibility === 'hidden') container.style.visibility = 'visible';
+  for (const selector of SHOWN_LATER) {
+    for (const el of window.document.querySelectorAll(selector)) {
+      if (el.style.visibility === 'hidden') el.style.visibility = 'visible';
+    }
+  }
 }
 
 // Load fixtures/<fixtureName>.html into jsdom and, unless { layer: false }, evaluate the real
