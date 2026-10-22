@@ -12893,9 +12893,11 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     /// Moves a spring-loaded three-position switch (v3 model <c>Switch_3Position_Hold</c>: a written
     /// end stays held) to <paramref name="position"/>, then back to the middle (1) after
     /// <see cref="ButtonPressHoldMs"/>, as the real switch springs back when let go. Picking the
-    /// middle writes it and nothing more. The combo keeps showing the picked end until the panel is
-    /// reopened. Writes only while connected, through the same one-shot WinForms timer idiom as
-    /// <see cref="ExecuteButtonTransition"/>.
+    /// middle writes it and nothing more. After the return, one forced read re-syncs the open combo
+    /// to the middle ([MD11-27] pattern): WinForms ignores a same-index pick, so a combo left on the
+    /// picked end committed nothing on a second step the same way. <paramref name="lvar"/> is also the
+    /// panel's var key (every caller's key is its L:var name). Writes only while connected, through
+    /// the same one-shot WinForms timer idiom as <see cref="ExecuteButtonTransition"/>.
     /// </summary>
     private void PulseSpringSwitch(string lvar, double position, SimConnect.SimConnectManager simConnect)
     {
@@ -12910,7 +12912,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             // Return to the middle after the hold
             var returnTimer = new System.Windows.Forms.Timer();
             returnTimer.Interval = ButtonPressHoldMs;
-            returnTimer.Tick += (sender, e) =>
+            returnTimer.Tick += async (sender, e) =>
             {
                 returnTimer.Stop();
                 returnTimer.Dispose();
@@ -12921,6 +12923,9 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                     {
                         Log.Debug("Fenix", $"PulseSpringSwitch: {lvar} = 1 (return to middle)");
                         simConnect.SetLVar(lvar, 1);
+                        // Read after a gap, so the read is not answered before the write lands.
+                        await Task.Delay(ButtonReleaseGapMs);
+                        if (simConnect.IsConnected) simConnect.RequestVariable(lvar, forceUpdate: true);
                     }
                 }
                 catch (Exception ex)

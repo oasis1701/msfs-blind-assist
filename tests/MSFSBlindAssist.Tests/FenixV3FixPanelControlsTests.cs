@@ -228,6 +228,27 @@ public class FenixV3FixPanelControlsTests : IDisposable
     }
 
     [Fact]
+    public void A_spring_switch_combo_resyncs_to_the_middle()
+    {
+        // The combo kept showing the picked end after the spring-back, and WinForms ignores a same-index
+        // pick, so a second step the same way committed nothing. One forced read after the return write
+        // re-syncs it ([MD11-27] pattern), on the L:var each caller passes, which is the panel's var key.
+        foreach (var key in new[] { "S_OH_CARGO_DISC_1_OLD_LAYOUT", "S_OH_CARGO_DISC_2_OLD_LAYOUT", "S_DCDU1_DIM_BRT", "S_DCDU2_DIM_BRT" })
+        {
+            Assert.Equal(key, Vars[key].Name);
+            Assert.Contains($"PulseSpringSwitch(\"{key}\", value, simConnect)", Branch(key));
+        }
+
+        string body = FoFbwUnclaimedEventKeyTests.MethodBody(DefinitionPath, "PulseSpringSwitch");
+        int back = body.IndexOf("simConnect.SetLVar(lvar, 1);", StringComparison.Ordinal);
+        int read = body.IndexOf("simConnect.RequestVariable(lvar, forceUpdate: true);", StringComparison.Ordinal);
+        Assert.True(back >= 0, "the return-to-middle write is gone");
+        Assert.True(read > back, "the combo is not re-synced after the return write");
+        Assert.Single(Regex.Matches(body, Regex.Escape("RequestVariable(")));
+        Assert.Contains("if (simConnect.IsConnected) simConnect.RequestVariable(lvar, forceUpdate: true);", body);
+    }
+
+    [Fact]
     public void Positions_match_the_cockpit()
     {
         AssertValues("S_OH_PNEUMATIC_PRESS_MAN", (0, "Down"), (1, "Mid"), (2, "Up"));
