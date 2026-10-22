@@ -12,6 +12,16 @@ public partial class FenixA320Definition
     private const string CallsMidKey = "S_OH_CALLS_MID";
     private const string CallsExitKey = "S_OH_CALLS_EXIT";
 
+    internal const string ClockPanel = "Clock";
+    private const string HeadsetKey = "A320_Sound:Headset_On";
+    private const string ChrKey = "S_MIP_CLOCK_CHR";
+    private const string ChrRstKey = "S_MIP_CLOCK_RST";
+    private const string DateKey = "S_MIP_CLOCK_SET";
+    private const string EtKey = "S_MIP_CLOCK_ET";
+    private const string UtcKey = "S_MIP_CLOCK_UTC";
+    private const string IsisBaroPushKey = "S_MIP_ISFD_BARO_BUTTON";
+    private const string CargoTempKey = "A_OH_PNEUMATIC_CARGO_AFT_TEMP";
+
     // Registered with Add, never the indexer: a second registration of one key must fail at load.
     partial void AddVariantVariables(Dictionary<string, SimConnect.SimVarDefinition> variables)
     {
@@ -41,6 +51,26 @@ public partial class FenixA320Definition
             ValueDescriptions = OffOn,
         });
 
+        void Combo(string name, string label, Dictionary<double, string> values) => variables.Add(name,
+            new SimConnect.SimVarDefinition
+            {
+                Name = name,
+                DisplayName = label,
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = values,
+            });
+
+        // Task 5: cockpit controls the app did not offer (owner request 2026-10-21).
+        Combo(HeadsetKey, "Headset", OffOn);
+        Button(ChrKey, "Chronometer Start/Stop");
+        Button(ChrRstKey, "Chronometer Reset");
+        Button(DateKey, "Date");
+        Button(IsisBaroPushKey, "ISIS Baro Push");
+        Combo(EtKey, "Elapsed Time", new Dictionary<double, string> { [0] = "Run", [1] = "Stop", [2] = "Reset" });
+        Combo(UtcKey, "UTC Selector", new Dictionary<double, string> { [0] = "GPS", [1] = "Internal", [2] = "Set" });
+        Combo(CargoTempKey, "Aft Cargo Temperature", variables["A_OH_PNEUMATIC_AFT_TEMP"].ValueDescriptions!);
+
         Switch(EconFlowKey, EconFlowName);
         Switch(ActKey, ActPumpName);
         Button(CallsMidKey, "Calls Mid");
@@ -68,6 +98,45 @@ public partial class FenixA320Definition
         After(panels, "Calls", "S_OH_CALLS_FWD", CallsMidKey);
         After(panels, "Calls", CallsMidKey, CallsExitKey);
         After(panels, "Fuel", "S_OH_FUEL_CENTER_2", ActKey);
+
+        panels[ClockPanel] = new List<string> { ChrKey, ChrRstKey, EtKey, UtcKey, DateKey };
+        After(panels, "ISIS", "E_MIP_ISFD_BARO_DEC", IsisBaroPushKey);
+        After(panels, "Air Conditioning and Pressurization", "S_OH_PNEUMATIC_HOT_AIR_AFT_CARGO", CargoTempKey);
+        panels["Cockpit Other"].Add(HeadsetKey);
+    }
+
+    partial void AddVariantPanelStructure(Dictionary<string, List<string>> structure)
+    {
+        var list = structure["Main Instrument Panel"];
+        int i = list.IndexOf("Landing Gear");
+        if (i < 0)
+            throw new InvalidOperationException("Fenix \"Main Instrument Panel\" has no Landing Gear to place Clock after.");
+        list.Insert(i + 1, ClockPanel);
+    }
+
+    partial void AddVariantPanelDisplayVariables(Dictionary<string, List<string>> displayVariables)
+        => displayVariables[ClockPanel] = new List<string> { "N_MIP_CLOCK_CHRONO", "N_MIP_CLOCK_ELAPSED" };
+
+    // The FBW A320's Clock wording. The Fenix chronometer counts whole seconds, elapsed time whole minutes
+    // (measured 2026-10-21); a negative value is the blank display.
+    internal static string ChronometerText(double seconds)
+    {
+        if (seconds < 0) return "Reset";
+        int t = (int)seconds;
+        return $"{t / 60} minutes {t % 60} seconds";
+    }
+
+    internal static string ElapsedTimeText(double minutes)
+    {
+        if (minutes < 0) return "Reset";
+        int t = (int)minutes;
+        return $"{t / 60} hours {t % 60} minutes";
+    }
+
+    partial void TryVariantDisplayOverride(string varKey, double value, ref string? displayText)
+    {
+        if (varKey == "N_MIP_CLOCK_CHRONO") displayText = ChronometerText(value);
+        else if (varKey == "N_MIP_CLOCK_ELAPSED") displayText = ElapsedTimeText(value);
     }
 
     /// <summary>
@@ -96,7 +165,7 @@ public partial class FenixA320Definition
                 or "S_MIP_ISFD_RST" or "E_MIP_ISFD_BARO_INC" or "E_MIP_ISFD_BARO_DEC"
                 => variant.HasIsis != false,
             "S_STANDBY_ATTITUDE_CAGE" => variant.HasIsis != true,
-            "S_OH_PNEUMATIC_HOT_AIR_AFT_CARGO" => variant.HasCargoHeat != false,
+            "S_OH_PNEUMATIC_HOT_AIR_AFT_CARGO" or CargoTempKey => variant.HasCargoHeat != false,
             _ => true,
         };
     }
@@ -120,11 +189,14 @@ public partial class FenixA320Definition
         return true;
     }
 
-    // ECON FLOW and ACT PUMP hold their value (the model's latched-button template): one SetLVar write,
-    // nothing spoken. The writer is passed in so a test can see the write without a SimConnect.
+    // ECON FLOW and ACT PUMP hold their value (the model's latched-button template), and so do the headset,
+    // UTC selector, ET Run/Stop and the cargo knob: one SetLVar write, nothing spoken. ET Reset is not
+    // plain (the knob springs back, see HandleVariantUIVariableSet). The writer is passed in so a test can
+    // see the write without a SimConnect.
     internal static bool TryWriteLatchedSwitch(string varKey, double value, Action<string, double> write)
     {
-        if (varKey is not (EconFlowKey or ActKey)) return false;
+        if (varKey is not (EconFlowKey or ActKey or HeadsetKey or UtcKey or CargoTempKey or EtKey)) return false;
+        if (varKey == EtKey && value == 2) return false;
         write(varKey, value);
         return true;
     }
@@ -147,6 +219,26 @@ public partial class FenixA320Definition
 
         switch (varKey)
         {
+            case EtKey: // Reset (value 2): the real knob springs back to Stop, a written 2 stays 2.
+                simConnect.SetLVar(EtKey, 2);
+                var back = new System.Windows.Forms.Timer { Interval = ButtonPressHoldMs };
+                back.Tick += (_, _) =>
+                {
+                    back.Stop();
+                    back.Dispose();
+                    if (simConnect.IsConnected) simConnect.SetLVar(EtKey, 1);
+                };
+                if (simConnect.IsConnected) back.Start(); else back.Dispose();
+                handled = true;
+                break;
+            case ChrKey:
+            case ChrRstKey:
+            case DateKey:
+            case IsisBaroPushKey:
+                if (value == 1)
+                    ExecuteButtonTransition(varKey, varDef.DisplayName, simConnect, announcer, confirmPress: true);
+                handled = true;
+                break;
             case CallsMidKey:
             case CallsExitKey:
                 // Same as CALLS MECH/ALL/FWD/AFT: the press-release pulse, then "<name> pressed".

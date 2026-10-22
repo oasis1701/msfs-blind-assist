@@ -88,10 +88,124 @@ public class FenixVariantControlsTests
             Assert.DoesNotContain(key, all);
     }
 
+    [Fact]
+    public void New_cockpit_controls_are_registered()
+    {
+        void Check(string key, string label, bool button)
+        {
+            var v = Vars[key];
+            Assert.Equal(key, v.Name);
+            Assert.Equal(SimVarType.LVar, v.Type);
+            Assert.Equal(UpdateFrequency.OnRequest, v.UpdateFrequency);
+            Assert.Equal(label, v.DisplayName);
+            Assert.Equal(button, v.RenderAsButton);
+        }
+
+        Check("A320_Sound:Headset_On", "Headset", false);
+        Assert.Equal(new Dictionary<double, string> { [0] = "Off", [1] = "On" }, Vars["A320_Sound:Headset_On"].ValueDescriptions);
+        Check("S_MIP_CLOCK_CHR", "Chronometer Start/Stop", true);
+        Check("S_MIP_CLOCK_RST", "Chronometer Reset", true);
+        Check("S_MIP_CLOCK_SET", "Date", true);
+        Check("S_MIP_ISFD_BARO_BUTTON", "ISIS Baro Push", true);
+        Check("S_MIP_CLOCK_ET", "Elapsed Time", false);
+        Assert.Equal(new Dictionary<double, string> { [0] = "Run", [1] = "Stop", [2] = "Reset" }, Vars["S_MIP_CLOCK_ET"].ValueDescriptions);
+        Check("S_MIP_CLOCK_UTC", "UTC Selector", false);
+        Assert.Equal(new Dictionary<double, string> { [0] = "GPS", [1] = "Internal", [2] = "Set" }, Vars["S_MIP_CLOCK_UTC"].ValueDescriptions);
+        Check("A_OH_PNEUMATIC_CARGO_AFT_TEMP", "Aft Cargo Temperature", false);
+        Assert.Equal(Vars["A_OH_PNEUMATIC_AFT_TEMP"].ValueDescriptions, Vars["A_OH_PNEUMATIC_CARGO_AFT_TEMP"].ValueDescriptions);
+    }
+
+    [Fact]
+    public void New_controls_sit_where_the_aircraft_has_them()
+    {
+        var mip = Fenix.GetPanelStructure()["Main Instrument Panel"];
+        Assert.Equal(mip.IndexOf("Landing Gear") + 1, mip.IndexOf("Clock"));
+        Assert.Equal(new[] { "S_MIP_CLOCK_CHR", "S_MIP_CLOCK_RST", "S_MIP_CLOCK_ET", "S_MIP_CLOCK_UTC", "S_MIP_CLOCK_SET" },
+            Panels["Clock"]);
+        Assert.Equal(new[] { "N_MIP_CLOCK_CHRONO", "N_MIP_CLOCK_ELAPSED" }, Fenix.GetPanelDisplayVariables()["Clock"]);
+
+        var isis = Panels["ISIS"];
+        Assert.Equal(isis.IndexOf("E_MIP_ISFD_BARO_DEC") + 1, isis.IndexOf("S_MIP_ISFD_BARO_BUTTON"));
+        Assert.Equal("A320_Sound:Headset_On", Panels["Cockpit Other"][^1]);
+        var air = Panels[AirPanel];
+        int i = air.IndexOf("S_OH_PNEUMATIC_HOT_AIR_AFT_CARGO");
+        Assert.Equal(new[] { "S_OH_PNEUMATIC_HOT_AIR_AFT_CARGO", "A_OH_PNEUMATIC_CARGO_AFT_TEMP", "S_OH_PNEUMATIC_CARGO_AFT_ISOL_VALVE" },
+            air.Skip(i).Take(3));
+
+        var all = Panels.Values.SelectMany(p => p).ToList();
+        foreach (var key in new[] { "A320_Sound:Headset_On", "S_MIP_CLOCK_CHR", "S_MIP_CLOCK_RST", "S_MIP_CLOCK_SET",
+                     "S_MIP_CLOCK_ET", "S_MIP_CLOCK_UTC", "S_MIP_ISFD_BARO_BUTTON", "A_OH_PNEUMATIC_CARGO_AFT_TEMP" })
+            Assert.Single(all, k => k == key);
+        var structure = Fenix.GetPanelStructure().Values.SelectMany(p => p).ToHashSet();
+        foreach (var panel in Panels.Keys)
+            Assert.Contains(panel, structure);
+    }
+
+    [Fact]
+    public void Clock_display_texts_use_the_fbw_wording()
+    {
+        var old = System.Globalization.CultureInfo.CurrentCulture;
+        System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("de-DE");
+        try
+        {
+            Assert.Equal("Reset", FenixA320Definition.ChronometerText(-1));
+            Assert.Equal("0 minutes 0 seconds", FenixA320Definition.ChronometerText(0));
+            Assert.Equal("2 minutes 5 seconds", FenixA320Definition.ChronometerText(125));
+            Assert.Equal("Reset", FenixA320Definition.ElapsedTimeText(-1));
+            Assert.Equal("0 hours 2 minutes", FenixA320Definition.ElapsedTimeText(2));
+            Assert.Equal("2 hours 15 minutes", FenixA320Definition.ElapsedTimeText(135));
+
+            var fresh = new FenixA320Definition();
+            Assert.True(fresh.TryGetDisplayOverride("N_MIP_CLOCK_CHRONO", 125, out var t));
+            Assert.Equal("2 minutes 5 seconds", t);
+            Assert.True(fresh.TryGetDisplayOverride("N_MIP_CLOCK_ELAPSED", 135, out var e));
+            Assert.Equal("2 hours 15 minutes", e);
+            Assert.False(fresh.TryGetDisplayOverride("S_OH_ELEC_BAT1", 1, out _));
+        }
+        finally { System.Globalization.CultureInfo.CurrentCulture = old; }
+    }
+
+    [Fact]
+    public void Cargo_heat_controls_follow_the_livery()
+    {
+        var a321 = V(4, 1, 2, true, false, false, false);
+        AssertNotFitted(a321 with { HasCargoHeat = false }, "S_OH_PNEUMATIC_HOT_AIR_AFT_CARGO", "A_OH_PNEUMATIC_CARGO_AFT_TEMP");
+        AssertFitted(a321 with { HasCargoHeat = true }, "S_OH_PNEUMATIC_HOT_AIR_AFT_CARGO", "A_OH_PNEUMATIC_CARGO_AFT_TEMP");
+        AssertFitted(a321 with { HasCargoHeat = null }, "S_OH_PNEUMATIC_HOT_AIR_AFT_CARGO", "A_OH_PNEUMATIC_CARGO_AFT_TEMP");
+        foreach (bool? h in new bool?[] { false, true, null })
+            AssertFitted(a321 with { HasCargoHeat = h }, "S_OH_PNEUMATIC_CARGO_AFT_ISOL_VALVE");
+    }
+
+    [Theory]
+    [InlineData("A320_Sound:Headset_On", 1)]
+    [InlineData("S_MIP_CLOCK_UTC", 1)]
+    [InlineData("S_MIP_CLOCK_ET", 0)]
+    [InlineData("S_MIP_CLOCK_ET", 1)]
+    [InlineData("A_OH_PNEUMATIC_CARGO_AFT_TEMP", 0.3)]
+    public void New_switches_are_written_plainly(string key, double value)
+    {
+        var writes = new List<(string, double)>();
+        Assert.True(FenixA320Definition.TryWriteLatchedSwitch(key, value, (k, v) => writes.Add((k, v))));
+        Assert.Equal(new[] { (key, value) }, writes);
+    }
+
+    [Fact]
+    public void Elapsed_time_reset_and_buttons_are_not_plain_writes()
+    {
+        var writes = new List<(string, double)>();
+        Assert.False(FenixA320Definition.TryWriteLatchedSwitch("S_MIP_CLOCK_ET", 2, (k, v) => writes.Add((k, v))));
+        foreach (var b in new[] { "S_MIP_CLOCK_CHR", "S_MIP_CLOCK_RST", "S_MIP_CLOCK_SET", "S_MIP_ISFD_BARO_BUTTON" })
+            Assert.False(FenixA320Definition.TryWriteLatchedSwitch(b, 1, (k, v) => writes.Add((k, v))));
+        Assert.Empty(writes);
+    }
+
     [Theory]
     [InlineData(AirPanel)]
     [InlineData("Fuel")]
     [InlineData("Calls")]
+    [InlineData("Clock")]
+    [InlineData("ISIS")]
+    [InlineData("Cockpit Other")]
     public void Touched_panels_repeat_no_label(string panel)
     {
         var names = Panels[panel].Select(k => Vars[k].DisplayName).ToList();
