@@ -1378,11 +1378,12 @@ test('A_map_control_without_text_or_a_known_icon_and_an_airplane_button_without_
 
 // ---- The layer's own rules ----
 
-const FIXTURES = ['settings', 'failures', 'documents', 'charts', 'quick-settings'];
+const FIXTURES = ['settings', ...Object.keys(SETTINGS_SCREENS).filter(s => s !== 'settings'), 'failures', 'documents',
+  'charts', 'quick-settings'];
 
 // The layer writes attributes only: no node added or removed, no text changed, no value written.
 for (const fixture of FIXTURES) {
-  test('The_layer_writes_attributes_only_on_' + fixture.replace('-', '_'), async () => {
+  test('The_layer_writes_attributes_only_on_' + fixture.replace(/-/g, '_'), async () => {
     const bare = await load(fixture, { layer: false });
     const shape = window => ({
       text: window.document.body.textContent,
@@ -1427,8 +1428,30 @@ const SECOND_PASS = {
     note: 'home (the chevron is hidden here); nine home tiles; the slider; the airplane button; the backdrop that closes the pop-up'
   }
 };
+// The seven other Settings captures, counted from each capture by hand: the closed app switcher's icons, the badges
+// with text, the on/off options (each a checkbox and its switch), the three-dot buttons, the choice groups and their
+// choices, and the boxes. Each also has home, the chevron and the eight categories; the switches and the categories,
+// with home, the chevron and the switcher's icons, are the elements that take a key handler.
+const SETTINGS_PARTS = {
+  'settings-audio': { switcher: 9, badges: 8, toggles: 1, dots: 8, groups: 0, options: 0, boxes: 7 },
+  'settings-cabin': { switcher: 9, badges: 8, toggles: 6, dots: 8, groups: 2, options: 6, boxes: 0 },
+  'settings-connections': { switcher: 9, badges: 8, toggles: 0, dots: 8, groups: 3, options: 9, boxes: 4 },
+  'settings-ground-services': { switcher: 9, badges: 8, toggles: 8, dots: 8, groups: 0, options: 0, boxes: 0 },
+  'settings-misc': { switcher: 9, badges: 6, toggles: 4, dots: 6, groups: 2, options: 4, boxes: 1 },
+  'settings-printer': { switcher: 9, badges: 8, toggles: 2, dots: 8, groups: 0, options: 0, boxes: 5 },
+  'settings-realism': { switcher: 9, badges: 8, toggles: 3, dots: 8, groups: 5, options: 13, boxes: 0 }
+};
+for (const [fixture, p] of Object.entries(SETTINGS_PARTS)) {
+  SECOND_PASS[fixture] = {
+    handled: 2 + p.switcher + 8 + p.badges + 2 * p.toggles + p.dots + p.groups + p.options + p.boxes,
+    listeners: 2 + p.switcher + 8 + p.toggles,
+    note: 'home, chevron, ' + p.switcher + ' switcher icons, 8 categories, ' + p.badges + ' badges, ' + p.toggles +
+      ' checkboxes and switches, ' + p.dots + ' three-dot buttons, ' + p.groups + ' choice groups, ' + p.options +
+      ' choices, ' + p.boxes + ' boxes'
+  };
+}
 for (const [fixture, expected] of Object.entries(SECOND_PASS)) {
-  test('Second_pass_changes_nothing_on_' + fixture.replace('-', '_'), async () => {
+  test('Second_pass_changes_nothing_on_' + fixture.replace(/-/g, '_'), async () => {
     const { window, counts } = await loadCounting(fixture);
     try {
       const doc = window.document;
@@ -1465,6 +1488,13 @@ const ISOLATION = {
     ['article label.toggle', 'label.toggle[role=switch]', 5],
     ['span.settings-source', 'span.settings-source[aria-label]', 8]
   ],
+  // Audio has the boxes the box rule names (R50), next to one on/off option.
+  'settings-audio': [
+    ['input:not(', 'article input:not([type=checkbox])[aria-label]', 7],
+    ['article input[type=checkbox]', 'input[type=checkbox][aria-label]', 1],
+    ['article label.toggle', 'label.toggle[role=switch]', 1],
+    ['button.overflow-button', 'button.overflow-button[aria-label]', 8]
+  ],
   'failures': [
     ['manual-failure-ata-title', 'div.manual-failure-ata-title[role=button]', 20],
     ['manual-failure-item', 'button.manual-failure-item[aria-label]', 53],
@@ -1490,7 +1520,7 @@ const ISOLATION = {
 };
 for (const [fixture, cases] of Object.entries(ISOLATION)) {
   for (const [failing] of cases) {
-    test('A_failing_rule_does_not_skip_the_others_on_' + fixture.replace('-', '_') + '_when_' +
+    test('A_failing_rule_does_not_skip_the_others_on_' + fixture.replace(/-/g, '_') + '_when_' +
       failing.replace(/[^A-Za-z0-9]+/g, '_') + '_fails', async () => {
       const window = await load(fixture, { layer: false });
       const proto = window.Element.prototype;

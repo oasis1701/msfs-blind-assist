@@ -142,18 +142,28 @@ test('The_weight_and_balance_chart_keeps_only_its_limits_for_a_screen_reader', a
   try {
     const chart = window.document.getElementById('mainWandBCont');
     const text = el => squash(el.textContent);
-    const hidden = el => el.getAttribute('aria-hidden') === 'true';
-    const labels = chartLabels(chart);
-    assert.strictEqual(labels.length, 36, 'as captured: 27 ticks, "%MAC", five line captions, three limits');
-    const ticks = labels.filter(l => /^[\d.,]+$/.test(text(l)));
+    // The expected set, counted from the capture by the page's own classes (review minor 8: not by the rule's idea of a
+    // label): the top axis (its title "%MAC" and 18 ticks), the left axis (9 ticks) and the lines' texts (5 captions,
+    // 3 limits).
+    const byClass = cls => [...chart.children].filter(el => el.classList.contains(cls));
+    const top = byClass('text-numbers-top-in-graphics');
+    const left = byClass('text-numbers-left-in-graphics');
+    const lines = byClass('line-with-text');
+    assert.deepStrictEqual([top.length, left.length, lines.length], [19, 9, 8], 'as captured');
+    const ticks = [...top, ...left].filter(el => /^\d+$/.test(text(el)));
     assert.strictEqual(ticks.length, 27);
-    assert.ok(ticks.every(hidden), 'every tick is hidden');
-    const words = labels.filter(l => !ticks.includes(l) && !text(l).includes('='));
-    assert.deepStrictEqual(words.map(text),
-      ['Operational Limits', 'Take-Off Limits', 'Zfw limit', 'Zfw limit', 'Take-Off Limits', '%MAC']);
-    assert.ok(words.every(hidden), 'the axis title and the line captions are hidden');
-    assert.deepStrictEqual(labels.filter(l => !hidden(l)).map(text), LIMITS, 'the limits are read');
-    assert.ok(labels.every(l => !l.hasAttribute('role') && !l.hasAttribute('aria-label')), 'hidden or kept, nothing else');
+    assert.deepStrictEqual(top.filter(el => !ticks.includes(el)).map(text), ['%MAC']);
+    const limits = lines.filter(el => text(el).includes('='));
+    const captions = lines.filter(el => !limits.includes(el));
+    assert.deepStrictEqual(limits.map(text), LIMITS);
+    assert.deepStrictEqual(captions.map(text), ['Operational Limits', 'Take-Off Limits', 'Zfw limit', 'Zfw limit', 'Take-Off Limits']);
+    // Exactly these are hidden in the chart: its picture, the 27 ticks, "%MAC" and the 5 captions; the limits are read.
+    const expectedHidden = [window.document.getElementById('mainWandB'), ...top, ...left, ...captions];
+    const hiddenNow = [...chart.querySelectorAll('[aria-hidden=true]')];
+    assert.strictEqual(hiddenNow.length, expectedHidden.length);
+    assert.ok(expectedHidden.every(el => hiddenNow.includes(el)), 'each expected one is hidden');
+    assert.ok(limits.every(el => !el.hasAttribute('aria-hidden')), 'the limits are read');
+    assert.ok([...top, ...left, ...lines].every(l => !l.hasAttribute('role') && !l.hasAttribute('aria-label')), 'hidden or kept, nothing else');
 
     // The chart picture is hidden; the figures under the chart are values and stay readable.
     assert.strictEqual(window.document.getElementById('mainWandB').getAttribute('aria-hidden'), 'true');
@@ -163,7 +173,7 @@ test('The_weight_and_balance_chart_keeps_only_its_limits_for_a_screen_reader', a
     assert.ok(window.__msfsbaFenixEfb.textOf(figures).includes('43,839'), 'the live ZFW is read');
 
     // A label's text changes: what is hidden follows the text, not the label.
-    const mlw = labels.find(l => text(l) === 'MLW = 64,500KG');
+    const mlw = limits.find(l => text(l) === 'MLW = 64,500KG');
     mlw.firstChild.nodeValue = ' MLW ';
     await turns();
     assert.strictEqual(mlw.getAttribute('aria-hidden'), 'true');
