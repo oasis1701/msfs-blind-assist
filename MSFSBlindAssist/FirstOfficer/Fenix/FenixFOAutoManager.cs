@@ -4,8 +4,9 @@ namespace MSFSBlindAssist.FirstOfficer.Fenix;
 
 /// <summary>
 /// Fenix A320 flap-management placeholder. Gear and AP-engage moved to the universal
-/// UniversalAutomationService (2026-07). The Fenix exposes no V-speed L:vars, so there is
-/// no auto-flap schedule; AutoFlapsEnabled is stored but never acted on.
+/// UniversalAutomationService (2026-07). The Fenix does publish its takeoff V-speeds now
+/// (N_MISC_PERF_TO_*), but it has no flap schedule: FO-15 limits auto-flaps to the FBW jets
+/// and the A330, so AutoFlapsEnabled is stored but never acted on.
 /// </summary>
 public sealed class FenixFOAutoManager : IFoAutoManager
 {

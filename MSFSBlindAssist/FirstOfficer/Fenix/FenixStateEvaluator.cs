@@ -64,7 +64,7 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
         // listed too: nothing then depends on which batch they were registered in.
         "FUEL TOTAL QUANTITY WEIGHT", "S_OH_GPWS_LDG_FLAP3", "S_FCU_EFIS1_BARO_MODE",
         "N_FCU_EFIS1_BARO_HPA", "N_FCU_EFIS1_BARO_INCH",
-        "FNX2PLD_speedV1", "FNX2PLD_speedVR", "FNX2PLD_speedV2", "N_MISC_PERF_TO_FLEX",
+        "N_MISC_PERF_TO_V1", "N_MISC_PERF_TO_VR", "N_MISC_PERF_TO_V2", "N_MISC_PERF_TO_FLEX",
         "I_MIP_AUTOBRAKE_LO_L", "I_MIP_AUTOBRAKE_MED_L", "I_MIP_AUTOBRAKE_MAX_L",
     };
 
