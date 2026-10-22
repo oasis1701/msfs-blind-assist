@@ -13,13 +13,14 @@ namespace MSFSBlindAssist.FirstOfficer.Fenix;
 /// the evaluator's synthetic fields; nothing in this class speaks.
 ///
 /// A value the service has not sent, sent as unknown, or sent as the wrong kind reads NaN, never 0 or
-/// false (FNX-1); a polled N2 answered null (measured: an engine that is off) or "" is unknown too, and
-/// replaces the number before it. N2 also reads NaN once it is older than <see cref="N2StaleAfterMs"/>:
-/// a poll that stopped answering (the gateway is down, the Fenix is not loaded) must not leave the last
-/// number saying "running", so a value older than 5 s is not trusted and the stock N2 serves instead.
-/// The poll refreshes a steady N2 every second, so only a failing poll lets it go stale. The flags and
-/// the fuel are not aged: they keep their last value, on the assumption (not measured) that they
-/// change rarely.
+/// false (FNX-1). A polled N2 the Fenix answers null (measured: an engine that is off) replaces the
+/// number before it at once, and reads NaN. A read with no answer (the gateway is down, the Fenix is
+/// not loaded: every name comes back "") is not handed to this class by the evaluator's poll callback,
+/// so it leaves the last number in place. That number goes stale: N2 reads NaN once it is older than
+/// <see cref="N2StaleAfterMs"/>, because a poll that stopped answering must not leave the last number
+/// saying "running"; past 5 s it is not trusted and the stock N2 serves instead. The poll refreshes a
+/// steady N2 every second, so only a failing poll lets it go stale. The flags and the fuel are not aged:
+/// they keep their last value, on the assumption (not measured) that they change rarely.
 /// </summary>
 public sealed class FenixFoLiveReadings
 {

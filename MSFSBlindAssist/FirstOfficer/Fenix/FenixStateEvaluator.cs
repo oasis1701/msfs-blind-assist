@@ -183,8 +183,18 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
                 (name, value) => Deliver(generation, name, value));
             if (read != null)
             {
+                // A read the Fenix did not answer (the gateway is down, the name is unknown) reaches the
+                // callback as EmptyOrUnknown for every name: no answer, no news, so the last number stays
+                // and goes stale after 5 s (FenixFoLiveReadings.N2). Storing it would replace the number
+                // at once, and one failed read during a spool-down would hand the guards the stock N2,
+                // which is 0 within a second of master-off. A Fenix null is different: the Fenix itself
+                // says the engine is off (measured), so it is applied and replaces the number at once.
                 _poller = new FenixDataPoller(FenixFoLiveReadings.PolledNames, read,
-                    (name, value) => Deliver(generation, name, value));
+                    (name, value) =>
+                    {
+                        if (value.Kind != FenixValueKind.EmptyOrUnknown)
+                            Deliver(generation, name, value);
+                    });
                 _poller.Start();
             }
             Log.Info("FO", "Fenix First Officer: reading the Fenix's own engine, cabin and fuel values");
@@ -273,9 +283,11 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
     /// <summary>The N2 the First Officer judges an engine stopped by, and running by while the Fenix's
     /// flag is unknown: the Fenix's own when it is known and fresh, else the stock value the window
     /// pushes each second, which is NaN until its first answer.
-    /// The Fenix N2 is read by a once-a-second query (<see cref="FenixFoLiveReadings.PolledNames"/>), so
-    /// <see cref="FenixFoLiveReadings.N2"/> reads NaN past 5 s only when the polling stopped answering
-    /// (the gateway is down, the Fenix is not loaded), and while an engine is off (the query answers null).</summary>
+    /// The Fenix N2 is read by a once-a-second query (<see cref="FenixFoLiveReadings.PolledNames"/>). A
+    /// Fenix null (the query answers null for an engine that is off, measured) replaces the number at
+    /// once, so <see cref="FenixFoLiveReadings.N2"/> reads NaN and the stock value serves. A read with no
+    /// answer (the gateway is down, the Fenix is not loaded) leaves the last number in place, and it goes
+    /// stale after 5 s, when stock serves.</summary>
     private double EngineN2(int engine)
     {
         double fenix = _live.N2(engine);

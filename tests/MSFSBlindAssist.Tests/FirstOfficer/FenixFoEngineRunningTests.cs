@@ -176,14 +176,12 @@ public class FenixFoEngineRunningTests
         }
     }
 
-    // The service answers null for an engine that is off (measured), and "" when it is down or does not
-    // know the name (FNX-1): either is unknown, so the stock N2 serves and nothing reads 0 by mistake.
-    [Theory]
-    [InlineData(true)]      // JSON null
-    [InlineData(false)]     // "" / unknown
-    public void A_polled_unknown_N2_falls_back_to_stock(bool jsonNull)
+    // The service answers null for an engine that is off (measured 2026-10-22): the Fenix itself says
+    // there is no N2 to give, so the number it sent before is replaced at once and the stock N2 serves
+    // (it reads 0 within a second of a shutdown). Nothing reads 0 by mistake: the stock value, not NaN.
+    [Fact]
+    public void A_polled_null_N2_falls_back_to_stock_at_once()
     {
-        var unknown = jsonNull ? FenixFoFakeRead.Null : FenixDataValue.Unknown;
         var secondRead = new TaskCompletionSource<IReadOnlyDictionary<string, FenixDataValue>>();
         // Read 1: both engines running. Read 2 (held until the test lets it go): the engines are off.
         var read = new FenixFoFakeRead(Task.FromResult(FenixFoFakeRead.N2(Num(62.3), Num(62.4))), secondRead.Task);
@@ -195,10 +193,54 @@ public class FenixFoEngineRunningTests
             WaitForN2(e, "FO_ENG2_N2", 62.4);
             Assert.Equal(0, e.GetValue("FO_ENGINES_OFF"));      // the Fenix's number is what the guard reads
 
-            secondRead.SetResult(FenixFoFakeRead.N2(unknown, unknown));
+            secondRead.SetResult(FenixFoFakeRead.N2(FenixFoFakeRead.Null, FenixFoFakeRead.Null));
             WaitForN2(e, "FO_ENG1_N2", 0);                       // the stock value again, not NaN
             WaitForN2(e, "FO_ENG2_N2", 0);
 
+            Assert.Equal(1, e.GetValue("FO_ENGINES_OFF"));
+        }
+        finally
+        {
+            e.AttachFenix(null, null, null);
+        }
+    }
+
+    // A read with no answer (the gateway is down or does not know the name: "", FNX-1) is no news: the
+    // number the Fenix sent last stays, and ages like any other. Replacing it at once would let ONE
+    // failed read during a spool-down hand the guards the stock N2, which is 0 within a second of
+    // master-off while the Fenix's takes about 20 s, and "Engines stopped" would pass early. Past 5 s
+    // the number is not trusted any more and the stock N2 serves, so a gateway that stays down does not
+    // leave a frozen N2 judging the engines. The clock is the evaluator's own seam, so the 5 s need not be
+    // waited out.
+    [Fact]
+    public void A_polled_N2_with_no_answer_keeps_the_last_number_until_it_is_stale()
+    {
+        long nowMs = 0;
+        var secondRead = new TaskCompletionSource<IReadOnlyDictionary<string, FenixDataValue>>();
+        // Read 1: both engines turning. Read 2 (held until the test lets it go) and every read after it:
+        // no answer.
+        var read = new FenixFoFakeRead(Task.FromResult(FenixFoFakeRead.N2(Num(62.3), Num(62.4))), secondRead.Task);
+        var e = new FenixStateEvaluator(() => Interlocked.Read(ref nowMs));     // read on a pool thread
+        e.AttachFenix(new object(), () => FenixVariant.Unknown, new FakeSubscription().Subscribe, read.Read);
+        try
+        {
+            e.SetEngineN2(0, 0);                                // stock: stopped, as it reads after master-off
+            WaitForN2(e, "FO_ENG2_N2", 62.4);                   // received at t = 0
+            Assert.Equal(0, e.GetValue("FO_ENGINES_OFF"));
+
+            secondRead.SetResult(FenixFoFakeRead.N2(FenixDataValue.Unknown, FenixDataValue.Unknown));
+            // Nothing visible changes when a no-answer is handled correctly, so wait for the third read:
+            // the poller starts it only after it has handed the second answer on.
+            FenixFoFakeRead.WaitUntil(() => read.Asked.Length >= 3, "the third read");
+
+            Interlocked.Exchange(ref nowMs, 4_999);             // still fresh: the Fenix's number, not stock
+            Assert.Equal(62.3, e.GetValue("FO_ENG1_N2"));
+            Assert.Equal(62.4, e.GetValue("FO_ENG2_N2"));
+            Assert.Equal(0, e.GetValue("FO_ENGINES_OFF"));
+
+            Interlocked.Exchange(ref nowMs, 5_001);             // stale: stock serves
+            Assert.Equal(0, e.GetValue("FO_ENG1_N2"));
+            Assert.Equal(0, e.GetValue("FO_ENG2_N2"));
             Assert.Equal(1, e.GetValue("FO_ENGINES_OFF"));
         }
         finally
@@ -258,6 +300,29 @@ public class FenixFoEngineRunningTests
 
         Assert.Equal(1, e.GetValue("FO_ENG1_RUNNING"));
         Assert.Equal(0, e.GetValue("FO_ENG2_RUNNING"));
+    }
+
+    // Review focus 4, a shutdown: "running" goes false at master-off (the flag drops at once), but
+    // "stopped" waits for the Fenix's own N2 (about 20 s to fall below 20 %, measured) even though the
+    // stock N2 already reads 0.
+    [Fact]
+    public void A_shutdown_stops_running_at_master_off_and_stopped_waits_for_the_Fenix_N2()
+    {
+        var (e, fenix) = Attached();
+        fenix.Callback!(FenixFoLiveReadings.Engine1Running, Flag(false));
+        fenix.Callback!(FenixFoLiveReadings.Engine2Running, Flag(false));
+        fenix.Callback!(FenixFoLiveReadings.Engine1N2, Num(62.0));
+        fenix.Callback!(FenixFoLiveReadings.Engine2N2, Num(62.0));
+        e.SetEngineN2(0, 0);
+
+        Assert.Equal(0, e.GetValue("FO_ENG1_RUNNING"));
+        Assert.Equal(0, e.GetValue("FO_ENG2_RUNNING"));
+        Assert.Equal(0, e.GetValue("FO_ENGINES_OFF"));
+
+        // The Fenix's N2 spools down below 20 %: now, and only now, the engines are stopped.
+        fenix.Callback!(FenixFoLiveReadings.Engine1N2, Num(15.0));
+        fenix.Callback!(FenixFoLiveReadings.Engine2N2, Num(15.0));
+        Assert.Equal(1, e.GetValue("FO_ENGINES_OFF"));
     }
 
     [Fact]
