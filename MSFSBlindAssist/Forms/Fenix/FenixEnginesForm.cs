@@ -14,7 +14,9 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// The values stream at 30-45 Hz on a pool thread ([FNX-2]): the subscription callback writes only the
 /// lock-protected <see cref="FenixEngineSnapshot"/>, and a 1 s WinForms timer reads it into the list,
 /// so the form never marshals per update. The list is reconciled in place and the refresh never moves
-/// focus. While the window is open, the Fenix's running flag edges are spoken (plan 09, Q1).
+/// focus. While the window is open, the Fenix's running flag edges are spoken (plan 09, Q1). The
+/// subscription sends N2 only once, so a <see cref="FenixDataPoller"/> also reads every number but the
+/// running flag once a second, on the same pool-thread, store-only footing.
 /// </remarks>
 public sealed class FenixEnginesForm : Form
 {
@@ -31,6 +33,7 @@ public sealed class FenixEnginesForm : Form
     private DisplayListBox _list = null!;
     private TextBox _status = null!;
     private IDisposable? _subscription;
+    private FenixDataPoller? _poller;
     private FenixEngineWeightUnit _unit = FenixEngineWeightUnit.Kilograms;
     private bool _unitFromFenix;
     private bool _started;
@@ -90,6 +93,15 @@ public sealed class FenixEnginesForm : Form
             RefreshNow();
             if (_list.Items.Count > 0) _list.SelectedIndex = 0;
             _subscription = _context.Data.Subscribe(FenixEngineNames.All, _snapshot.Apply);
+            // The subscription sends N2 only once, when it opens (measured live, 2026-10-22: one value
+            // through a whole shutdown), so a subscription alone froze the N2 rows until F5. The numbers
+            // are also read by query once a second. Not the running flag: the subscription's is newer,
+            // and a stale polled one would speak a false "Engine n stopped". An unknown answer is
+            // stored as unknown (an engine that is off answers null; a gateway that stopped answering
+            // shows "--", not a frozen number) [FNX-1]. The poll runs on the thread pool and only stores.
+            _poller = new FenixDataPoller(FenixEngineNames.Polled,
+                (names, ct) => _context.Data.ReadManyAsync(names, ct), _snapshot.Apply);
+            _poller.Start();
             _timer.Start();
             _ = ReloadAsync(false);
         }
@@ -166,12 +178,15 @@ public sealed class FenixEnginesForm : Form
         return base.ProcessCmdKey(ref msg, keyData);
     }
 
-    // Stops the timer and ends the subscription; safe to call twice.
+    // Stops the timer, the poll and the subscription; safe to call twice.
     private void TearDown()
     {
         if (_tornDown) return;
         _tornDown = true;
         _timer.Stop();
+        // Never throws: a read still in flight is cancelled and its answer is dropped.
+        _poller?.Dispose();
+        _poller = null;
         try
         {
             // The definition may already have disposed the data service on an aircraft switch.

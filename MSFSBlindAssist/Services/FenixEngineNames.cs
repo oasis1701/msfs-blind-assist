@@ -28,6 +28,14 @@ public static class FenixEngineNames
     /// <summary>Engine 1's eight in <see cref="FenixEngineField"/> order, engine 2's eight, then TAT and OAT.</summary>
     public static IReadOnlyList<string> All { get; } = BuildAll();
 
+    /// <summary>
+    /// <see cref="All"/> without the two running flags, in the same order: the names the Engines window
+    /// polls once a second. The subscription sends N2 only once (measured live, 2026-10-22), so the
+    /// window reads the numbers by query too. The flag is left out because the subscription's is newer
+    /// (it arrives on change), and a stale polled one would speak a false "Engine n stopped".
+    /// </summary>
+    public static IReadOnlyList<string> Polled { get; } = BuildPolled();
+
     /// <summary>The data-service name of one engine's value; <paramref name="engine"/> is 1 or 2.</summary>
     public static string For(int engine, FenixEngineField field)
     {
@@ -47,6 +55,16 @@ public static class FenixEngineNames
             _ => throw new ArgumentOutOfRangeException(nameof(field), field, null)
         };
         return string.Create(CultureInfo.InvariantCulture, $"aircraft.engines.{engine}.{suffix}");
+    }
+
+    private static IReadOnlyList<string> BuildPolled()
+    {
+        var running = new HashSet<string>
+        {
+            For(1, FenixEngineField.Running),
+            For(2, FenixEngineField.Running)
+        };
+        return All.Where(name => !running.Contains(name)).ToList().AsReadOnly();
     }
 
     private static IReadOnlyList<string> BuildAll()

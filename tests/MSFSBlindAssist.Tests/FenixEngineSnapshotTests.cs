@@ -18,6 +18,16 @@ public class FenixEngineSnapshotTests
         Assert.DoesNotContain(FenixEngineNames.All, n => n.Contains("vibration"));
     }
 
+    [Fact]
+    public void Polled_is_every_value_but_the_running_flags()
+    {
+        // The window polls these once a second (the subscription sends N2 only once). The running flag is
+        // left out: the subscription's flag is newer, and a stale polled one would speak a false "stopped".
+        Assert.Equal(16, FenixEngineNames.Polled.Count);
+        Assert.DoesNotContain(FenixEngineNames.Polled, n => n.EndsWith(".running", StringComparison.Ordinal));
+        Assert.Equal(FenixEngineNames.All.Where(n => !n.EndsWith(".running", StringComparison.Ordinal)), FenixEngineNames.Polled);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(3)]
