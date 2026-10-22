@@ -19,6 +19,17 @@ const turns = async () => { await turn(); await turn(); };
 // The titles of the nine home tiles, in home order (the switcher's pictures take these names).
 const TITLES = ['Fenix', 'Takeoff', 'Landing', 'Charts', 'Documents', 'Failures', 'Settings', 'MCDU', 'FAP'];
 
+// The home screen keeps its tiles at visibility: hidden until their pictures have loaded: the page's
+// app-select-app-screen binds #appContainer's visibility to presentationReady, which it sets after
+// waitForImages and two animation frames (Fenix 3.0.0.7438 bundle). A capture taken before that moment
+// (home.html of 2026-10-22) has the tiles hidden, where jsdom (and a screen reader) meets nothing, and jsdom
+// loads no pictures to finish it. So the harness shows them as the page does a moment later, before the layer
+// runs; it changes nothing else, and nothing on a capture whose tiles are already shown.
+function present(window) {
+  const container = window.document.getElementById('appContainer');
+  if (container && container.style.visibility === 'hidden') container.style.visibility = 'visible';
+}
+
 // Load fixtures/<fixtureName>.html into jsdom and, unless { layer: false }, evaluate the real
 // layer in it. Returns the jsdom window. runScripts "outside-only" runs no script the fixture
 // carries (captures have none) and gives window.eval the jsdom realm, so a bare MutationObserver
@@ -32,6 +43,7 @@ async function load(fixtureName, { layer = true } = {}) {
   const html = fs.readFileSync(file, 'utf8');
   const dom = new JSDOM(html, { runScripts: 'outside-only', url: EFB_URL });
   const { window } = dom;
+  present(window);
   if (layer) {
     try {
       window.eval(fs.readFileSync(LAYER, 'utf8'));

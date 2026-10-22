@@ -53,9 +53,10 @@ test('Switcher_pictures_are_buttons_named_by_the_tile_titles_in_order', async ()
     const images = [...window.document.querySelectorAll('img.app-img')];
     assert.strictEqual(images.length, 9);
     images.forEach((img, i) => {
-      // The live parent is <div class="col noSel"><img class="app-img"><br></div>: it is the clickable thing.
+      // The live parent is <div class="col noSel"><img class="app-img"><br></div> (Angular adds its
+      // ng-star-inserted marker too): it is the clickable thing.
       const parent = img.parentElement;
-      assert.strictEqual(parent.className, 'col noSel', 'icon ' + i);
+      assert.ok(parent.classList.contains('col') && parent.classList.contains('noSel'), 'icon ' + i + ': ' + parent.className);
       assert.strictEqual(parent.getAttribute('role'), 'button', 'icon ' + i);
       assert.strictEqual(parent.tabIndex, 0, 'icon ' + i);
       assert.strictEqual(computeAccessibleName(parent), TITLES[i]);
@@ -64,6 +65,37 @@ test('Switcher_pictures_are_buttons_named_by_the_tile_titles_in_order', async ()
     });
   } finally {
     window.close();
+  }
+});
+
+// The switcher's pictures carry no text, so the layer names them from a constant list of the tile titles in
+// home order (R8). That is right only while the switcher shows the home tiles' own pictures in home order: the
+// live check of 2026-10-22 found exactly that, and both captures keep each picture's path, so this pins it.
+// A Fenix update that reorders the switcher (or the tiles) fails here.
+test('Switcher_pictures_are_the_home_tiles_pictures_in_home_order_and_each_takes_its_own_tiles_title', async () => {
+  let home = null;
+  let switcher = null;
+  try {
+    home = await load('home', { layer: false });
+    switcher = await load('switcher');
+    const tiles = [...home.document.querySelectorAll('#appContainer > div.appIcon')];
+    const tileSrcs = tiles.map(tile => tile.querySelector('img.app-img').getAttribute('src'));
+    assert.strictEqual(tiles.length, 9);
+    assert.ok(tileSrcs.every(src => typeof src === 'string' && src.startsWith('/assets/img/')),
+      'each home tile keeps its picture\'s path: ' + JSON.stringify(tileSrcs));
+    assert.strictEqual(new Set(tileSrcs).size, 9, 'nine different pictures');
+    assert.deepStrictEqual(tiles.map(tile => tile.querySelector('.appTitle').textContent.trim()), TITLES);
+
+    const icons = [...switcher.document.querySelectorAll('img.app-img')].filter(img => !img.closest('div.appIcon'));
+    assert.deepStrictEqual(icons.map(img => img.getAttribute('src')), tileSrcs, 'the switcher shows them in home order');
+    // So each switcher picture is named by the title of the home tile that shows the same picture.
+    for (const img of icons) {
+      const title = TITLES[tileSrcs.indexOf(img.getAttribute('src'))];
+      assert.strictEqual(computeAccessibleName(img.parentElement), title, img.getAttribute('src'));
+    }
+  } finally {
+    if (home) home.close();
+    if (switcher) switcher.close();
   }
 });
 

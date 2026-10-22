@@ -52,7 +52,10 @@ adds there is not part of it.
 The snippet removes every `<img>`. Put back, as bare elements where the picture stood (the layer
 needs the elements, not the pictures):
 
-- In `home` and `switcher`: one `<img class="app-img">` per app tile.
+- In `home` and `switcher`: each `<img class="app-img">` with its `src` path and nothing else, no
+  picture data, e.g. `<img class="app-img" src="/assets/img/fenixapp3.png">`. The paths show that the
+  switcher's pictures are the home tiles' own, in home order, which is what lets the layer name them from
+  the tile titles (`navigation.test.js` pins it).
 - In `quick-settings`: the airplane button's picture, as
   `<img class="quick-settings-btn-icon flight-mode-btn-icon" src="/assets/img/airplane.png">`
   (it is the button's only content; without it the button is empty).
@@ -75,3 +78,7 @@ value you find, keeping the element.
   file writer instead of `copy()`; the pictures above put back by the same script; no other change.
   Opening the screens pressed nothing that changes the aircraft (Panel States closed with Escape).
 - Credential search of `settings.html`: nothing found (its only text box is "Search settings").
+- `home` and `switcher` re-captured with the `src` paths: 2026-10-22, Fenix 3.0.0.7438, the same way.
+  The `home` capture caught the tiles before the page showed them (`#appContainer` at
+  `visibility: hidden`: the page shows the tiles once their pictures have loaded); `load.js` shows them
+  as the page does a moment later. A future capture of `home` is best taken once the tiles are on screen.
