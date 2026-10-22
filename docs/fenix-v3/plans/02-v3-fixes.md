@@ -1,6 +1,6 @@
 # Fenix v3 Fixes Implementation Plan (plan 02)
 
-**Claimed by:** oasis1701 · **Status:** in progress
+**Claimed by:** oasis1701 · **Status:** in progress (code and reviews done 2026-10-22; owner in-sim checks remain, see "In-sim checks still needed")
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -93,22 +93,24 @@ while (t := time.monotonic() - t0) < a.seconds:
 
 `NAMES` below = `system.switches.S_ECAM_TO system.indicators.I_MIP_MASTER_WARNING_CAPT system.indicators.I_MIP_MASTER_CAUTION_CAPT`.
 
-- [ ] **Step 1: Owner sets up.** Fenix loaded (any variant), on the ground, both engines running, parking brake set, the app running a build of `main` (unchanged TO CONFIG code), Fenix aircraft profile.
-- [ ] **Step 2: Bad config, three runs.** Owner: flap lever to 0 (Pedestal → Flight Controls → Flap lever: Up). Implementer starts `python -I fenix_probe.py --seconds 15 NAMES`; within 3 s the owner opens Pedestal → ECAM and presses **ECAM TO CONFIG**. Owner notes what the app says (today: "Takeoff config: check configuration." is right, "Takeoff config normal." is the bug). Between runs: press Main Instrument Panel → Warnings/Messages → **Master Warning Captain** and **Master Caution Captain** if lit, wait 5 s. Record per run: ms from `S_ECAM_TO=1` to the first lit master light, which light, ms from `S_ECAM_TO=0` (release) to the light going out (or "stays lit").
-- [ ] **Step 3: Good config, one run.** Owner: flaps 1, pitch trim set, V-speeds entered. Same probe and press. Record any light (expected: none) and what the app said.
+- [x] **Step 1: Owner sets up.** Fenix loaded (any variant), on the ground, both engines running, parking brake set, the app running a build of `main` (unchanged TO CONFIG code), Fenix aircraft profile.
+- [x] **Step 2: Bad config, three runs.** Owner: flap lever to 0 (Pedestal → Flight Controls → Flap lever: Up). Implementer starts `python -I fenix_probe.py --seconds 15 NAMES`; within 3 s the owner opens Pedestal → ECAM and presses **ECAM TO CONFIG**. Owner notes what the app says (today: "Takeoff config: check configuration." is right, "Takeoff config normal." is the bug). Between runs: press Main Instrument Panel → Warnings/Messages → **Master Warning Captain** and **Master Caution Captain** if lit, wait 5 s. Record per run: ms from `S_ECAM_TO=1` to the first lit master light, which light, ms from `S_ECAM_TO=0` (release) to the light going out (or "stays lit").
+- [x] **Step 3: Good config, one run.** Owner: flaps 1, pitch trim set, V-speeds entered. Same probe and press. Record any light (expected: none) and what the app said.
 - [ ] **Step 4: Only if no run in Step 2 lit any light in 15 s.** With the owner's spoken go-ahead to write: flaps 0 again, `python -I fenix_probe.py --seconds 15 --pulse system.switches.S_ECAM_TO --hold 5 NAMES` (a 5 s press through the data service). Record as in Step 2.
-- [ ] **Step 5: Fill the record.** `D` = the largest press-to-light time over the bad runs.
+- [x] **Step 5: Fill the record.** `D` = the largest press-to-light time over the bad runs.
 
   | Item | Value |
   |---|---|
-  | Bad runs: press→light ms (light) | ___ / ___ / ___ |
-  | Light still lit after release? | yes / no |
-  | Good run: any light? | ___ |
-  | What the `main` build said (bad / good) | ___ / ___ |
-  | `VerdictAfterMs` = D + 1000, rounded up to 100 | ___ |
-  | `HoldMs` = 1500 if the light stays lit after release, else `VerdictAfterMs` | ___ |
+  | Bad runs: press→light ms (light) | 1015 / 1009 / 809 (MASTER WARNING, captain and FO; a lit warning reads 2, not 1) |
+  | Light still lit after release? | yes: the warning goes out about 1 s after release (+1017, +974, +905 ms); MASTER CAUTION follows (about 0.5 s after release) and stays lit until reset |
+  | Good run: any light? | none (flaps 1, V1 130 / VR 135 / V2 135, trim set; watched 27 s after the press) |
+  | What the `main` build said (bad / good) | "Takeoff config normal." in all three / "Takeoff config normal." |
+  | `VerdictAfterMs` = D + 1000, rounded up to 100 | 2100 |
+  | `HoldMs` = 1500 if the light stays lit after release, else `VerdictAfterMs` | 1500 |
 
-- [ ] **Step 6: Decide.** Bad runs light a master light within 10 s and the good run lights nothing → continue (Tasks 7-8 use the two numbers). No light in any bad run (Steps 2 and 4) → STOP, ask owner question (a). A light on the good config → STOP, report to the owner. Tasks 2-6 do not depend on this and can proceed meanwhile.
+  Measured 2026-10-21 on Fenix 3.0.0.7426 (A320, engines running, parking brake set), with the app built from `FenixV3` 4e8dcd777 (TO CONFIG code unchanged from `main`). The probe polled every 150-200 ms, so times are detection to detection. Decision (Step 6): bad runs light a master light within 10 s and the good run lights nothing, so Tasks 7-8 use 1500 / 2100.
+
+- [x] **Step 6: Decide.** Bad runs light a master light within 10 s and the good run lights nothing → continue (Tasks 7-8 use the two numbers). No light in any bad run (Steps 2 and 4) → STOP, ask owner question (a). A light on the good config → STOP, report to the owner. Tasks 2-6 do not depend on this and can proceed meanwhile.
 
 ### Task 2: v3 renames and the dead FenixQuartz definitions
 
@@ -120,16 +122,16 @@ while (t := time.monotonic() - t0) < a.seconds:
 
 **Interfaces:** Produces the keys `B_ELEC_BUS_POWER_DC_SERVICE` and `I_OH_COCKPIT_DOOR_VIDEO` (used by plan 12's mute carry).
 
-- [ ] **Step 1: Write the failing tests.** In `FenixV3FixNamesTests` (`Vars = new FenixA320Definition().GetVariables()`):
+- [x] **Step 1: Write the failing tests.** In `FenixV3FixNamesTests` (`Vars = new FenixA320Definition().GetVariables()`):
   - `V3_name_is_registered_under_its_own_key_and_announced` `[Theory]` over `B_ELEC_BUS_POWER_DC_SERVICE`, `I_OH_COCKPIT_DOOR_VIDEO`, `I_OH_ELEC_COMMERCIAL_L`: `Assert.Equal(name, Vars[name].Name)`, `Continuous`, `IsAnnounced`.
   - `No_variable_reads_a_name_v3_removed` `[Theory]` over `B_ELEC_BUS_POWER_DC_SERIVICE`, `I_OH_DOOR_VIDEO`, `I_OH_ELEC_COMMERCIAL_U`: `Assert.DoesNotContain(Vars, kv => kv.Key == gone || kv.Value.Name == gone)`.
   - `Only_the_takeoff_speed_FenixQuartz_names_remain`: the ordinal-sorted `Name`s starting `FNX2PLD_` equal `{ "FNX2PLD_speedV1", "FNX2PLD_speedV2", "FNX2PLD_speedVR" }` (comment: plan 05 moves the First Officer off them, plan 12 deletes them).
   - In `SettingsSeedTests`: `Fenix_DefaultSilentVars_AreAllRegisteredFenixVariables`: every entry of `ExpectedDefaultSilentVars` is a key of `new FenixA320Definition().GetVariables()`.
-- [ ] **Step 2: Run them.** `--filter "FenixV3FixNamesTests|SettingsSeedTests"`. Expected: every DC SERVICE, door-video, `COMMERCIAL_U` and FenixQuartz case fails; the `COMMERCIAL_L` case and the seed fact pass for now.
-- [ ] **Step 3: Implement.** Rename key and `Name` of the DC SERVICE and door-video entries (display names unchanged). Delete `I_OH_ELEC_COMMERCIAL_U`; leave `_L` as it is. Delete the 13 `FNX2PLD_*` entries and `FNX2PLD_isisBaro`; above the three speed entries put one comment: FenixQuartz (discontinued, never installed here), read only by the First Officer until plan 05, plan 12 deletes them. Fix the "(20 variables)" header count. Confirm with `rg -n FNX2PLD MSFSBlindAssist tests` that only the three speed definitions, the First Officer (plan 05's files) and the `MainForm.Hotkeys.cs:524` comment remain.
-- [ ] **Step 4: Seed.** Run the seed fact: it now fails on `FNX2PLD_clockChr`. Delete line 240 of `SettingsManager.cs` and the matching line 214 of `ExpectedDefaultSilentVars` (now 7 entries); drop the FenixQuartz words from the doc comment. Existing users keep the two stale strings in their list: harmless, nothing matches them.
-- [ ] **Step 6: Run the whole suite.** Expected: all green.
-- [ ] **Step 7: Commit.** `fix(fenix): v3 renames (DC SERVICE, door video), drop COMMERCIAL upper and 13 dead FenixQuartz vars`
+- [x] **Step 2: Run them.** `--filter "FenixV3FixNamesTests|SettingsSeedTests"`. Expected: every DC SERVICE, door-video, `COMMERCIAL_U` and FenixQuartz case fails; the `COMMERCIAL_L` case and the seed fact pass for now.
+- [x] **Step 3: Implement.** Rename key and `Name` of the DC SERVICE and door-video entries (display names unchanged). Delete `I_OH_ELEC_COMMERCIAL_U`; leave `_L` as it is. Delete the 13 `FNX2PLD_*` entries and `FNX2PLD_isisBaro`; above the three speed entries put one comment: FenixQuartz (discontinued, never installed here), read only by the First Officer until plan 05, plan 12 deletes them. Fix the "(20 variables)" header count. Confirm with `rg -n FNX2PLD MSFSBlindAssist tests` that only the three speed definitions, the First Officer (plan 05's files) and the `MainForm.Hotkeys.cs:524` comment remain.
+- [x] **Step 4: Seed.** Run the seed fact: it now fails on `FNX2PLD_clockChr`. Delete line 240 of `SettingsManager.cs` and the matching line 214 of `ExpectedDefaultSilentVars` (now 7 entries); drop the FenixQuartz words from the doc comment. Existing users keep the two stale strings in their list: harmless, nothing matches them.
+- [x] **Step 6: Run the whole suite.** Expected: all green.
+- [x] **Step 7: Commit.** `fix(fenix): v3 renames (DC SERVICE, door video), drop COMMERCIAL upper and 13 dead FenixQuartz vars`
 
 ### Task 3: Generator 1 writes GEN 1
 
@@ -139,14 +141,14 @@ while (t := time.monotonic() - t0) < a.seconds:
 
 **Interfaces:** Consumes `FoFbwUnclaimedEventKeyTests.MethodBody(string sourcePath, string methodName)` (internal, block bodies only) and `ClaudeContextBudgetTests.RepoRoot()`.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - `Generator_1_reads_its_own_switch`: `Assert.Equal("S_OH_ELEC_GEN1", Vars["S_OH_ELEC_GEN1"].Name)`; `Assert.Equal("Generator 1", Vars["S_OH_ELEC_GEN1"].DisplayName)`.
   - `No_two_plain_panel_writes_share_an_lvar`: on `MethodBody(<repo>/MSFSBlindAssist/Aircraft/FenixA320Definition.cs, "HandleUIVariableSet")`, collect `if \(varKey == "([^"]+)"\)\s*\{\s*simConnect\.SetLVar\("([^"]+)", value\);` pairs, group keys by written name; every group has one key, except the allow-listed `A_FC_THROTTLE_LEFT_INPUT` → {`A_FC_THROTTLE_LEFT_INPUT`, `A_FC_THROTTLE_BOTH_INPUT`} (reason: "Both" moves both levers). Today it fails with `S_OH_ELEC_GEN1_LINE` written by `S_OH_ELEC_GEN1` and `S_OH_ELEC_GEN1_LINE`.
   - `Plain_panel_writes_match_their_variable_name`: for the same pairs, `Vars[key].Name == written`, except `A_FC_THROTTLE_BOTH_INPUT`. Passes today; it fails if someone fixes the write and not the `Name`.
-- [ ] **Step 2: Run.** `--filter FenixV3FixGeneratorTests`. Expected: 2 failures.
-- [ ] **Step 3: Implement.** `Name = "S_OH_ELEC_GEN1"`, drop the comment; handler `simConnect.SetLVar("S_OH_ELEC_GEN1", value);`. Checked, no change: Generator 2, APU Generator (`S_OH_ELEC_APU_GENERATOR`), Emergency Gen 1 Line, and every other ELEC switch match the package's names; the First Officer never writes a generator; the GEN 1 lights `I_OH_ELEC_GEN1_U/_L` are already defined (1468-1485).
-- [ ] **Step 4: Run the suite.** All green.
-- [ ] **Step 5: Commit.** `fix(fenix): Generator 1 operates GEN 1, not the EMER ELEC GEN 1 LINE button`
+- [x] **Step 2: Run.** `--filter FenixV3FixGeneratorTests`. Expected: 2 failures.
+- [x] **Step 3: Implement.** `Name = "S_OH_ELEC_GEN1"`, drop the comment; handler `simConnect.SetLVar("S_OH_ELEC_GEN1", value);`. Checked, no change: Generator 2, APU Generator (`S_OH_ELEC_APU_GENERATOR`), Emergency Gen 1 Line, and every other ELEC switch match the package's names; the First Officer never writes a generator; the GEN 1 lights `I_OH_ELEC_GEN1_U/_L` are already defined (1468-1485).
+- [x] **Step 4: Run the suite.** All green.
+- [x] **Step 5: Commit.** `fix(fenix): Generator 1 operates GEN 1, not the EMER ELEC GEN 1 LINE button`
 
 ### Task 4: Flight Control Computers panel
 
@@ -156,16 +158,16 @@ while (t := time.monotonic() - t0) < a.seconds:
 
 The first list's last element `"S_OH_FLT_CTL_FAC_2"` has no trailing comma; keep it so. (The DCDU Left list's `"S_DCDU1_PGDN",` before `// Print (1 button)` has its comma: checked, no defect.)
 
-- [ ] **Step 1: Write the failing tests** (`def = new FenixA320Definition()`):
+- [x] **Step 1: Write the failing tests** (`def = new FenixA320Definition()`):
   - `Overhead_computers_have_their_own_panel`: `def.GetPanelControls()["Flight Control Computers"]` equals `S_OH_FLT_CTL_ELAC_1, _ELAC_2, _SEC_1, _SEC_2, _SEC_3, _FAC_1, _FAC_2` in that order.
   - `Overhead_lists_the_computers_after_GPWS`: in `def.GetPanelStructure()["Overhead"]`, index of `"Flight Control Computers"` == index of `"GPWS"` + 1.
   - `Pedestal_flight_controls_are_unchanged`: `GetPanelControls()["Flight Controls"]` has 14 entries, first `S_MIP_PARKING_BRAKE`, last `S_FC_FO_INST_DISCONNECT`.
   - `Every_panel_is_in_a_section`: every key of `GetPanelControls()` is in some `GetPanelStructure()` list.
   - `BuildPanelControls_names_each_panel_once` (source scan): in the definition source between `BuildPanelControls()` and `AddVariantPanelControls(panels)` (plan 01's seam), the names captured by `\["([^"]+)"\]\s*=\s*new List<string>` are distinct. A C# indexer initializer keeps only the last of two equal keys, which is how the overhead list vanished.
-- [ ] **Step 2: Run.** `--filter FenixV3FixPanelTests`. Expected: the first two and the source scan fail.
-- [ ] **Step 3: Implement** the two edits above; keep the comment `// Flight Control Computers (7 controls)`. The controls are latched pushbuttons in the package and read 1 live, so the existing Off/On combos and `SetLVar` handlers (10458-10506) are right.
-- [ ] **Step 4: Run the suite: all green.**
-- [ ] **Step 5: Commit.** `fix(fenix): overhead ELAC/SEC/FAC get their own Flight Control Computers panel`
+- [x] **Step 2: Run.** `--filter FenixV3FixPanelTests`. Expected: the first two and the source scan fail.
+- [x] **Step 3: Implement** the two edits above; keep the comment `// Flight Control Computers (7 controls)`. The controls are latched pushbuttons in the package and read 1 live, so the existing Off/On combos and `SetLVar` handlers (10458-10506) are right.
+- [x] **Step 4: Run the suite: all green.**
+- [x] **Step 5: Commit.** `fix(fenix): overhead ELAC/SEC/FAC get their own Flight Control Computers panel`
 
 ### Task 5: Gravity gear, one sequenced control
 
@@ -183,7 +185,7 @@ The first list's last element `"S_OH_FLT_CTL_FAC_2"` has no trailing comma; keep
 - `public sealed class FenixA320GravityGearWalker(Action<string, double> write, Func<string, Task<double?>> readFresh, Func<TimeSpan, Task> delay)`: `bool IsRunning`; `Task<string> MoveAsync(bool extend)`.
   MoveAsync: if `IsRunning` → `"Gravity gear: crank already turning."`, no writes. Read `CrankKey`; unread → `"Gravity gear: no read-back, nothing moved."`, no writes. Extend: write `HandleKey` 1, delay `HandleSettleMs`, then each `CrankSteps(current, 3)` value to `CrankKey` with `StepIntervalMs` between. Stow: each `CrankSteps(current, 0)`, then write `HandleKey` 0 (the model lets the handle move only at crank 0). Finally read `CrankKey` again and return `Describe(it)`. No `ConfigureAwait(false)`: on the UI thread the writes stay there.
 
-- [ ] **Step 1: Write the failing tests** (fakes: `write` appends `(key, value)`; `readFresh` returns scripted values; `delay` returns `Task.CompletedTask`):
+- [x] **Step 1: Write the failing tests** (fakes: `write` appends `(key, value)`; `readFresh` returns scripted values; `delay` returns `Task.CompletedTask`):
   - `CrankSteps_cover_three_turns_on_the_grid`: `CrankSteps(0, 3)` has 60 values, first 0.05, last 3.0; `CrankSteps(3, 0)` has 60, first 2.95, last 0.0; `CrankSteps(1.5, 3)` has 30, first 1.55; `CrankSteps(3, 3)` is empty.
   - `DescriptionKey_maps_only_the_ends` `[Theory]`: 0→0, 0.02→0, 3→3, 2.98→3, 1.5→1.5.
   - `Extend_from_stowed_raises_the_handle_then_cranks_to_3`: reads 0 then 3; writes[0] == (`HandleKey`, 1), then 60 `CrankKey` writes rising to 3.0; result `"Gravity gear: cranked 3 turns."`.
@@ -193,22 +195,24 @@ The first list's last element `"S_OH_FLT_CTL_FAC_2"` has no trailing comma; keep
   - `A_second_request_while_turning_is_refused`: a `delay` that waits on a `TaskCompletionSource`; start `MoveAsync(true)`, then `MoveAsync(false)` returns `"Gravity gear: crank already turning."` and adds no write; complete the source, the first finishes.
   - `Partial_read_back_uses_a_point_under_sv_SE`: under `CultureInfo("sv-SE")`, `Describe(1.5)` == `"Gravity gear: crank at 1.5 turns."`.
   - `The_extension_control_is_stowed_or_extended` (definition): `Vars["S_HYD_GRAVITY_GEAR_EXTEND"]` has `ValueDescriptions` exactly {0: "Stowed", 3: "Extended"}, `DescriptionKeyFor(2.99)` == 3, `DescriptionKeyFor(1.5)` == 1.5; `GetPanelControls()["Cockpit Other"]` contains it and not `S_HYD_GRAVITY_GEAR_EXTEND_ROTATION`.
-- [ ] **Step 2: Run.** `--filter "FenixV3FixGravityGearTests|FenixV3FixNamesTests"`. Expected: compile failure (new types).
-- [ ] **Step 3: Implement** `FenixA320GravityGear.cs` per Interfaces, with a class comment citing the template and the live `""` for the handle.
-- [ ] **Step 4: Wire the definition.** Def 4947: `ValueDescriptions = {[0] = "Stowed", [3] = "Extended"}`, `ValueToDescriptionKey = FenixA320GravityGear.DescriptionKey` (OnRequest, display name unchanged). Delete def 4948, its "Cockpit Other" entry and both case labels 9382-9383. New branch: `if (varKey == FenixA320GravityGear.CrankKey) { _ = MoveGravityGearAsync(value >= FenixA320GravityGear.FullTurns / 2, simConnect, announcer); return true; }`. `private async Task MoveGravityGearAsync(bool extend, SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer? announcer)` keeps one `FenixA320GravityGearWalker` per definition (field `_gravityGearWalker`), whose delegates call the manager from the latest call (field `_gravityGearSim`): `SetLVar(k, v)`, `ReadFreshAsync(k, FenixA320GravityGear.ReadTimeoutMs)`, `Task.Delay`. Speak the result: refusals and "no read-back" with `AnnounceImmediate`, the completion read-back with `Announce` (it lands about 6 s after the pick). Wrap in try/catch → `Log.Debug("Fenix", …)`.
-- [ ] **Step 5: Run the suite: all green.**
-- [ ] **Step 6: Commit.** `fix(fenix): gravity gear is one control that raises the handle and cranks three turns`
+- [x] **Step 2: Run.** `--filter "FenixV3FixGravityGearTests|FenixV3FixNamesTests"`. Expected: compile failure (new types).
+- [x] **Step 3: Implement** `FenixA320GravityGear.cs` per Interfaces, with a class comment citing the template and the live `""` for the handle.
+- [x] **Step 4: Wire the definition.** Def 4947: `ValueDescriptions = {[0] = "Stowed", [3] = "Extended"}`, `ValueToDescriptionKey = FenixA320GravityGear.DescriptionKey` (OnRequest, display name unchanged). Delete def 4948, its "Cockpit Other" entry and both case labels 9382-9383. New branch: `if (varKey == FenixA320GravityGear.CrankKey) { _ = MoveGravityGearAsync(value >= FenixA320GravityGear.FullTurns / 2, simConnect, announcer); return true; }`. `private async Task MoveGravityGearAsync(bool extend, SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer? announcer)` keeps one `FenixA320GravityGearWalker` per definition (field `_gravityGearWalker`), whose delegates call the manager from the latest call (field `_gravityGearSim`): `SetLVar(k, v)`, `ReadFreshAsync(k, FenixA320GravityGear.ReadTimeoutMs)`, `Task.Delay`. Speak the result: refusals and "no read-back" with `AnnounceImmediate`, the completion read-back with `Announce` (it lands about 6 s after the pick). Wrap in try/catch → `Log.Debug("Fenix", …)`.
+- [x] **Step 5: Run the suite: all green.**
+- [x] **Step 6: Commit.** `fix(fenix): gravity gear is one control that raises the handle and cranks three turns`
 - [ ] **Step 7: Owner in sim (ground only: owner answer 2, no flight test).** Fenix on the ground, parked. Cockpit → Cockpit Other → **Gravity Gear Extension** → Extended. Expected after about 6 s: *"Gravity gear: cranked 3 turns."*, and a read-only data-service read of `system.switches.S_HYD_GRAVITY_GEAR_EXTEND` gives 3. Then choose Stowed: about 6 s later *"Gravity gear: crank stowed."* and the read gives 0. If the read does not reach 3: replace the per-step `SetLVar` with the template's own step through the calculator, `simConnect.ExecuteCalculatorCodeUnique("3 (L:S_HYD_GRAVITY_GEAR_EXTEND) 0.05 + min (>L:S_HYD_GRAVITY_GEAR_EXTEND)")` (stow: `"0 (L:S_HYD_GRAVITY_GEAR_EXTEND) 0.05 - max (>L:S_HYD_GRAVITY_GEAR_EXTEND)"`), and retest once; if that fails too, report to the owner. Whether 3 turns actually drops the gear in flight stays unproven: list it as a follow-up in the handoff.
 
 ### Task 6: AUTOLAND lights (measure, then follow)
 
 **Files:** Modify `MSFSBlindAssist/Aircraft/FenixA320Definition.cs` (782-799, only the two `Name` values, if Step 2 says so); modify `tests/MSFSBlindAssist.Tests/FenixV3FixNamesTests.cs`.
 
-- [ ] **Step 1: Owner in sim (ground, batteries on).** Implementer runs `python -I fenix_probe.py --seconds 20` with the six names `system.indicators.I_MIP_AUTOLAND_CAPT`, `_CAPT_U`, `_CAPT_L`, `I_MIP_AUTOLAND_FO`, `_FO_U`, `_FO_L` (full names). Owner: Overhead → Interior Lights → **Annunciator** → Test, wait 5 s, back to Bright. Record which names went to 1.
-- [ ] **Step 2: Decide.** The unsplit names lit → no code change; note it here and skip to Step 5. Only split names lit → the lit name is the new `Name` (prefer `_U` when both `_U` and `_L` lit); keys `I_MIP_AUTOLAND_CAPT` / `I_MIP_AUTOLAND_FO` stay, so `S_MIP_AUTOLAND_*`'s `StateVariable` and Ctrl+M mutes keep working. Nothing lit → no change; add "AUTOLAND during a real autoland warning" to the handoff in-sim list and skip to Step 5.
+- [x] **Step 1: Owner in sim (ground, batteries on).** Implementer runs `python -I fenix_probe.py --seconds 20` with the six names `system.indicators.I_MIP_AUTOLAND_CAPT`, `_CAPT_U`, `_CAPT_L`, `I_MIP_AUTOLAND_FO`, `_FO_U`, `_FO_L` (full names). Owner: Overhead → Interior Lights → **Annunciator** → Test, wait 5 s, back to Bright. Record which names went to 1.
+- [x] **Step 2: Decide.** The unsplit names lit → no code change; note it here and skip to Step 5. Only split names lit → the lit name is the new `Name` (prefer `_U` when both `_U` and `_L` lit); keys `I_MIP_AUTOLAND_CAPT` / `I_MIP_AUTOLAND_FO` stay, so `S_MIP_AUTOLAND_*`'s `StateVariable` and Ctrl+M mutes keep working. Nothing lit → no change; add "AUTOLAND during a real autoland warning" to the handoff in-sim list and skip to Step 5.
 - [ ] **Step 3: Test first.** `Autoland_lights_read_the_v3_name` `[Theory]` (`I_MIP_AUTOLAND_CAPT` → measured name, `I_MIP_AUTOLAND_FO` → measured name): `Vars[key].Name`; and `Vars["S_MIP_AUTOLAND_CAPT"].StateVariable == "I_MIP_AUTOLAND_CAPT"`. Run: fails.
 - [ ] **Step 4: Change the two `Name`s** (display names unchanged). Run the suite: green. Commit `fix(fenix): AUTOLAND lights read the v3 split legend`.
 - [ ] **Step 5: Owner check** (only after a change): Annunciator → Test. Expected among the lights: *"Glareshield Autoland Captain: On"* and *"Glareshield Autoland FO: On"*.
+
+**Record (2026-10-21, annunciator test, data-service probe):** all six names lit together for about 2.7 s (`I_MIP_AUTOLAND_CAPT`, `_CAPT_U`, `_CAPT_L`, `I_MIP_AUTOLAND_FO`, `_FO_U`, `_FO_L`; the FO pair about 110 ms before the captain's). The unsplit names light on v3, so Step 2 decided: no code change; Steps 3-5 do not apply. Whether a real autoland warning also lights the unsplit names stays an in-sim item (handoff).
 
 ### Task 7: TO CONFIG verdict over a time window (pure)
 
@@ -237,7 +241,7 @@ then: loop { t = clock() before the reads; w = read(MasterWarningFreshKey); c = 
 
 A caution does not end the watch early: a later warning outranks it. Times are taken before the read, so a sample is never counted as later than it was.
 
-- [ ] **Step 1: Write the failing tests** (a fake clock that `delay` advances; a scripted reader per key keyed on the fake time; `verdictAfter` = 2.5 s, `pressWait` = 3 s):
+- [x] **Step 1: Write the failing tests** (a fake clock that `delay` advances; a scripted reader per key keyed on the fake time; `verdictAfter` = 2.5 s, `pressWait` = 3 s):
   - `Decide` `[Theory]`: warning at 1.0 s among dark samples → check; caution only → caution; dark at 2.4 s only → no result; dark at 2.5 s → normal; (2.6 s, warning 0, caution null) → no result; empty → no result.
   - `A_warning_that_lights_late_is_still_caught`: edge at 0.4 s, warning lights at edge + 2.0 s → check.
   - `Normal_comes_only_after_the_verdict_time`: all dark → normal, and the fake clock at return ≥ edge + 2.5 s.
@@ -247,10 +251,10 @@ A caution does not end the watch early: a later warning outranks it. Times are t
   - `Caution_waits_for_a_late_warning`: caution at edge + 0.5 s, warning at edge + 1.5 s → check.
   - `Unread_lights_never_give_normal`: light reads return null → no result.
   - `The_hold_is_never_shorter_than_v2s`: `FenixTakeoffConfigVerdict.HoldMs >= 1500`.
-- [ ] **Step 2: Run.** `--filter FenixTakeoffConfigVerdictTests`. Expected: compile failure.
-- [ ] **Step 3: Implement** per Interfaces. Rewrite the class comment: v3's FWC delays MASTER WARN/CAUT (Fenix V3 changelog), so one cached read at 1.5 s could say "normal" over a bad config; the verdict is now a fresh-read watch from the observed press, still fail-safe (any light = check, unread = no result, never a pre-press baseline).
-- [ ] **Step 4: Run.** All `FenixTakeoffConfigVerdictTests` pass, the old seven included. Suite green.
-- [ ] **Step 5: Commit.** `fix(fenix): TO CONFIG verdict watches fresh reads until the v3 warning delay has passed`
+- [x] **Step 2: Run.** `--filter FenixTakeoffConfigVerdictTests`. Expected: compile failure.
+- [x] **Step 3: Implement** per Interfaces. Rewrite the class comment: v3's FWC delays MASTER WARN/CAUT (Fenix V3 changelog), so one cached read at 1.5 s could say "normal" over a bad config; the verdict is now a fresh-read watch from the observed press, still fail-safe (any light = check, unread = no result, never a pre-press baseline).
+- [x] **Step 4: Run.** All `FenixTakeoffConfigVerdictTests` pass, the old seven included. Suite green.
+- [x] **Step 5: Commit.** `fix(fenix): TO CONFIG verdict watches fresh reads until the v3 warning delay has passed`
 
 ### Task 8: TO CONFIG wiring (definition twins, panel button, First Officer)
 
@@ -265,18 +269,18 @@ A caution does not end the watch early: a later warning outranks it. Times are t
 - Produces on the definition: `internal static readonly IReadOnlyList<string> TakeoffConfigReadoutVariables = FenixTakeoffConfigVerdict.FreshKeys;` and `private async Task RunTakeoffConfigTestAsync(SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer? announcer)` (block body).
 - First Officer: `public async Task<bool> TakeoffConfigTest()` (block body) and `private void AnnounceTakeoffConfigResult(SimConnectManager sc, string verdict)`.
 
-- [ ] **Step 1: Constants.** Set `HoldMs` and `VerdictAfterMs` from Task 1's record; delete the TODO. (Task 1 must be done and must not have stopped.)
-- [ ] **Step 2: Write the failing tests** in `FenixTakeoffConfigWiringTests`:
+- [x] **Step 1: Constants.** Set `HoldMs` and `VerdictAfterMs` from Task 1's record; delete the TODO. (Task 1 must be done and must not have stopped.)
+- [x] **Step 2: Write the failing tests** in `FenixTakeoffConfigWiringTests`:
   - `Each_twin_is_a_one_off_read_of_its_original` `[Theory]` over `FenixTakeoffConfigVerdict.FreshKeys`: ends with `FenixA320Definition.ReadoutSuffix`; same `Name` and `Units` as the original key; `OnRequest`; `ExcludeFromMonitorManager`; `FreshReadPolicy.RouteRequest(def, false) == VarRequestRoute.DataDefinitionId` (as `FenixFcuReadoutTests` does).
   - `A_twin_answer_is_consumed_silently` `[Theory]` over the same keys: `def.ProcessSimVarUpdate(key, 1, speech)` is true and `speech.All` is empty (`SpeechCapture`).
   - `Panel_button_runs_the_shared_watch`: `MethodBody(definition, "RunTakeoffConfigTestAsync")` contains `FenixTakeoffConfigVerdict.WatchAsync(` and `pressHoldMs: FenixTakeoffConfigVerdict.HoldMs`; the `S_ECAM_TO` branch of `MethodBody(definition, "HandleUIVariableSet")` contains `RunTakeoffConfigTestAsync(simConnect, announcer)`; the definition source no longer contains `FenixTakeoffConfigVerdict.MasterWarningKey)`.
   - `First_Officer_runs_the_shared_watch`: `MethodBody(executor, "TakeoffConfigTest")` contains `FenixTakeoffConfigVerdict.WatchAsync(` and `PulseAsync(FenixTakeoffConfigVerdict.ButtonKey, FenixTakeoffConfigVerdict.HoldMs)`; `MethodBody(executor, "AnnounceTakeoffConfigResult")` contains `StillAttached(sc)` and not `GetCachedVariableValue`.
-- [ ] **Step 3: Run.** `--filter FenixTakeoffConfigWiringTests`. Expected: failures (no twins, old wiring).
-- [ ] **Step 4: Definition.** The twin loop iterates `FcuReadoutVariables.Concat(TakeoffConfigReadoutVariables)`. In the readout `switch` add `case FenixTakeoffConfigVerdict.ButtonFreshKey or FenixTakeoffConfigVerdict.MasterWarningFreshKey or FenixTakeoffConfigVerdict.MasterCautionFreshKey: return true;` (the fresh-read waiter already has the value; nothing is spoken). The `S_ECAM_TO` branch becomes `_ = RunTakeoffConfigTestAsync(simConnect, announcer); return true;`. `RunTakeoffConfigTestAsync`: first `ExecuteButtonTransition("S_ECAM_TO", "ECAM TO CONFIG", simConnect, announcer, pressHoldMs: FenixTakeoffConfigVerdict.HoldMs)` (it writes the 0 at once, so the watch's first read sees the release), then `await FenixTakeoffConfigVerdict.WatchAsync(k => simConnect.ReadFreshAsync(k, FenixTakeoffConfigVerdict.ReadTimeoutMs), FenixTakeoffConfigVerdict.PanelPressWait)`, then `if (simConnect.IsConnected) announcer?.AnnounceImmediate(text)`; try/catch → `Log.Debug("Fenix", …)`. Delete the old constant and method, and `onHeld`.
-- [ ] **Step 5: First Officer executor (this plan owns `FenixActionExecutor.cs` for the parallel phase; also delete the now-unused `TakeoffConfigTestHoldMs` and its comment, about :58-63).** `TakeoffConfigTest`: `var sc = Sc; if (sc is not { IsConnected: true }) return false;` start `var watch = FenixTakeoffConfigVerdict.WatchAsync(k => sc.ReadFreshAsync(k, FenixTakeoffConfigVerdict.ReadTimeoutMs), FenixTakeoffConfigVerdict.FirstOfficerPressWait);` (before the pulse: the gate may make the press wait, and the watch needs to see the button released first), `bool pressed = await PulseAsync(FenixTakeoffConfigVerdict.ButtonKey, FenixTakeoffConfigVerdict.HoldMs);`, `string verdict = await watch;`, `if (pressed) AnnounceTakeoffConfigResult(sc, verdict); return pressed;`. `AnnounceTakeoffConfigResult` speaks `verdict` with `AnnounceImmediate` only when `sc.IsConnected && StillAttached(sc)`; try/catch → `Log.Debug("FO", …)`. Update both doc comments (no "cached", no "1.5 s").
-- [ ] **Step 6: Build the solution and run the suite: all green.**
-- [ ] **Step 7: Commit.** `fix(fenix): panel and First Officer TO CONFIG read fresh twins through the shared watch`
-- [ ] **Step 8: Owner in sim (ground, engines running, parking brake set).** (1) Flaps 0, Pedestal → ECAM → **ECAM TO CONFIG**: within `VerdictAfterMs` *"Takeoff config: check configuration."*. (2) Flaps 1, trim and V-speeds set, same button: after about `VerdictAfterMs` *"Takeoff config normal."* (3) First Officer window (Output Shift+C), Taxi checklist, tick **Takeoff config test** with flaps 0: *"Takeoff config: check configuration."* A wrong verdict in any of the three: STOP and report with `debug.log`.
+- [x] **Step 3: Run.** `--filter FenixTakeoffConfigWiringTests`. Expected: failures (no twins, old wiring).
+- [x] **Step 4: Definition.** The twin loop iterates `FcuReadoutVariables.Concat(TakeoffConfigReadoutVariables)`. In the readout `switch` add `case FenixTakeoffConfigVerdict.ButtonFreshKey or FenixTakeoffConfigVerdict.MasterWarningFreshKey or FenixTakeoffConfigVerdict.MasterCautionFreshKey: return true;` (the fresh-read waiter already has the value; nothing is spoken). The `S_ECAM_TO` branch becomes `_ = RunTakeoffConfigTestAsync(simConnect, announcer); return true;`. `RunTakeoffConfigTestAsync`: first `ExecuteButtonTransition("S_ECAM_TO", "ECAM TO CONFIG", simConnect, announcer, pressHoldMs: FenixTakeoffConfigVerdict.HoldMs)` (it writes the 0 at once, so the watch's first read sees the release), then `await FenixTakeoffConfigVerdict.WatchAsync(k => simConnect.ReadFreshAsync(k, FenixTakeoffConfigVerdict.ReadTimeoutMs), FenixTakeoffConfigVerdict.PanelPressWait)`, then `if (simConnect.IsConnected) announcer?.AnnounceImmediate(text)`; try/catch → `Log.Debug("Fenix", …)`. Delete the old constant and method, and `onHeld`.
+- [x] **Step 5: First Officer executor (this plan owns `FenixActionExecutor.cs` for the parallel phase; also delete the now-unused `TakeoffConfigTestHoldMs` and its comment, about :58-63).** `TakeoffConfigTest`: `var sc = Sc; if (sc is not { IsConnected: true }) return false;` start `var watch = FenixTakeoffConfigVerdict.WatchAsync(k => sc.ReadFreshAsync(k, FenixTakeoffConfigVerdict.ReadTimeoutMs), FenixTakeoffConfigVerdict.FirstOfficerPressWait);` (before the pulse: the gate may make the press wait, and the watch needs to see the button released first), `bool pressed = await PulseAsync(FenixTakeoffConfigVerdict.ButtonKey, FenixTakeoffConfigVerdict.HoldMs);`, `string verdict = await watch;`, `if (pressed) AnnounceTakeoffConfigResult(sc, verdict); return pressed;`. `AnnounceTakeoffConfigResult` speaks `verdict` with `AnnounceImmediate` only when `sc.IsConnected && StillAttached(sc)`; try/catch → `Log.Debug("FO", …)`. Update both doc comments (no "cached", no "1.5 s").
+- [x] **Step 6: Build the solution and run the suite: all green.**
+- [x] **Step 7: Commit.** `fix(fenix): panel and First Officer TO CONFIG read fresh twins through the shared watch`
+- [x] **Step 8: Owner in sim (ground, engines running, parking brake set).** (1) Flaps 0, Pedestal → ECAM → **ECAM TO CONFIG**: within `VerdictAfterMs` *"Takeoff config: check configuration."*. (2) Flaps 1, trim and V-speeds set, same button: after about `VerdictAfterMs` *"Takeoff config normal."* (3) First Officer window (Output Shift+C), Taxi checklist, tick **Takeoff config test** with flaps 0: *"Takeoff config: check configuration."* A wrong verdict in any of the three: STOP and report with `debug.log`.
 
 ### Task 9: Take-off V-speed callouts on the shared machine (owner request, 2026-10-21)
 
@@ -292,12 +296,12 @@ Why: the Fenix is the only airframe still calling V1/rotate from `TakeoffAssistM
 - Consumes: `TakeoffVSpeedCallouts` (`ProcessSample`, `NeedsSamples`, `Compose`), `TakeoffCalloutKeys` (`IsMuted`, `IsVSpeedKey`, `Feed`), `UserSettings.FenixDisabledMonitorVariablesSet`.
 - Produces: `public static class FenixTakeoffCallouts` with `public const string IasKey = "FENIX_TAKEOFF_CALLOUT_IAS";`, `V1Key = "N_MISC_PERF_TO_V1"`, `VrKey = "N_MISC_PERF_TO_VR"`, `V2Key = "N_MISC_PERF_TO_V2"`, `public static readonly TakeoffCalloutKeys Keys`.
 
-- [ ] **Step 1: Check the Fenix plays no V-speed call of its own.** Search `<MSFS Community>\fnx-aircraft-320\SimObjects\Airplanes\FNX_32X\attachments\fnx\Part_Interior_Cockpit_CEO\sound\sound.xml` (and the common cockpit sound file) for a V1/rotate event. If the Fenix calls V1 itself, stop and ask the owner whether the app should still call it (the A380 note in TKO-5 is the precedent).
-- [ ] **Step 2: Write the failing tests** (pattern of `A320TakeoffCalloutsTests.cs`, under de-DE): `Keys_name_the_fenix_speed_rows` (feed key and the three `N_MISC_PERF_TO_*` keys); `Definition_registers_the_feed` (`AIRSPEED INDICATED`, knots, `Continuous`, `IsAnnounced`, `ExcludeFromBatch`, `HighFrequency`, `ExcludeFromMonitorManager`; and `TakeoffCalloutFeedKey == FenixTakeoffCallouts.IasKey`); `Speed_rows_read_not_set_below_1` (`NotSetBelow == 1` on all three); `Takeoff_assist_has_no_fenix_vspeed_code` (source scan: `TakeoffAssistManager.cs` and `MainForm.Hotkeys.cs` no longer mention `FenixVSpeeds` or `N_MISC_PERF_TO_V1`).
-- [ ] **Step 3: Run them; they fail.**
-- [ ] **Step 4: Implement** exactly as the A320 does, with the Fenix's keys and its mute set `FenixDisabledMonitorVariablesSet`: the feed branch first in `ProcessSimVarUpdate` (one `AnnounceImmediate` of `Compose`, skipped while `announcer.Suppressed`), `SIM_ON_GROUND` and the three speed keys PEEKED (fed to the machine, never consumed, so "MCDU V1 Speed: 140" is still spoken as it is entered), the arm dropped in both resets, never the speeds. Then delete the old Fenix path from `TakeoffAssistManager` and `MainForm.Hotkeys`.
-- [ ] **Step 5: Run the suite, including `TakeoffVSpeedCalloutsTests`, `TakeoffCalloutFeedTests` and `TakeoffCalloutKeysTests`; all green. Build.**
-- [ ] **Step 6: Commit.** `feat(fenix): take-off V1, Rotate and V2 on the shared callout machine (TKO-5)`
+- [x] **Step 1: Check the Fenix plays no V-speed call of its own.** Search `<MSFS Community>\fnx-aircraft-320\SimObjects\Airplanes\FNX_32X\attachments\fnx\Part_Interior_Cockpit_CEO\sound\sound.xml` (and the common cockpit sound file) for a V1/rotate event. If the Fenix calls V1 itself, stop and ask the owner whether the app should still call it (the A380 note in TKO-5 is the precedent).
+- [x] **Step 2: Write the failing tests** (pattern of `A320TakeoffCalloutsTests.cs`, under de-DE): `Keys_name_the_fenix_speed_rows` (feed key and the three `N_MISC_PERF_TO_*` keys); `Definition_registers_the_feed` (`AIRSPEED INDICATED`, knots, `Continuous`, `IsAnnounced`, `ExcludeFromBatch`, `HighFrequency`, `ExcludeFromMonitorManager`; and `TakeoffCalloutFeedKey == FenixTakeoffCallouts.IasKey`); `Speed_rows_read_not_set_below_1` (`NotSetBelow == 1` on all three); `Takeoff_assist_has_no_fenix_vspeed_code` (source scan: `TakeoffAssistManager.cs` and `MainForm.Hotkeys.cs` no longer mention `FenixVSpeeds` or `N_MISC_PERF_TO_V1`).
+- [x] **Step 3: Run them; they fail.**
+- [x] **Step 4: Implement** exactly as the A320 does, with the Fenix's keys and its mute set `FenixDisabledMonitorVariablesSet`: the feed branch first in `ProcessSimVarUpdate` (one `AnnounceImmediate` of `Compose`, skipped while `announcer.Suppressed`), `SIM_ON_GROUND` and the three speed keys PEEKED (fed to the machine, never consumed, so "MCDU V1 Speed: 140" is still spoken as it is entered), the arm dropped in both resets, never the speeds. Then delete the old Fenix path from `TakeoffAssistManager` and `MainForm.Hotkeys`.
+- [x] **Step 5: Run the suite, including `TakeoffVSpeedCalloutsTests`, `TakeoffCalloutFeedTests` and `TakeoffCalloutKeysTests`; all green. Build.**
+- [x] **Step 6: Commit.** `feat(fenix): take-off V1, Rotate and V2 on the shared callout machine (TKO-5)`
 - [ ] **Step 7: Owner in sim (with plan 05's takeoff-speeds check).** PERF TAKE OFF: enter V1 140, VR 142, V2 145; hear "MCDU V1 Speed: 140" etc. Take off with Takeoff Assist OFF: hear "V1", "Rotate", "V2" at those speeds (one utterance when two coincide). Clear a speed: hear "not set", not "0".
 
 ### Task 10: FCU vertical speed is silent while the window is dashed (collaborator report, 2026-10-21)
@@ -311,12 +315,12 @@ Why: in v3, `N_FCU_VS` carries the LIVE vertical speed even while the FCU V/S wi
 **Interfaces:**
 - Produces: `private double? _fcuVsDashed` (last `B_FCU_VERTICALSPEED_DASHED` seen; null until read) and `internal static bool FcuVsIsSilenced(double? dashed) => dashed == 1;`.
 
-- [ ] **Step 1: Check the whole of what you touch.** Find every place the Fenix shows or speaks `N_FCU_VS`: the panel display list (`GetPanelDisplayVariables`, :9329), the FCU/autopilot windows (`Forms/FenixA320/`), the V/S set path (`SetFCUVS`, :13103, which reads the cached `N_FCU_VS` as the starting point: a live value there while dashed changes the step count; note what it does today). Record the list in this task.
-- [ ] **Step 2: Write the failing tests** (constructing the definition and announcer as `FenixFcuReadoutTests.cs` does): `Vs_is_silent_while_dashed`: after `ProcessSimVarUpdate("B_FCU_VERTICALSPEED_DASHED", 1, a)`, `ProcessSimVarUpdate("N_FCU_VS", 3400, a)` returns true (consumed) and nothing is spoken; `Vs_speaks_when_shown`: after the flag reads 0, `N_FCU_VS` 1500 is not consumed (returns false, so the generic announcement speaks it); `Vs_speaks_before_the_flag_is_read`: with no flag read yet, `N_FCU_VS` is not consumed; `Dashed_flag_still_announces`: `ProcessSimVarUpdate("B_FCU_VERTICALSPEED_DASHED", 1, a)` returns false (peeked, never consumed, so "FCU VERTICAL SPEED DISPLAY: Dashed" is still heard); `FcuVsIsSilenced` is true only for exactly 1 (`null`, 0, `double.NaN` → false).
-- [ ] **Step 3: Run them; they fail.**
-- [ ] **Step 4: Implement.** In `ProcessSimVarUpdate`, after the readout `switch` (:12131): `if (varName == "B_FCU_VERTICALSPEED_DASHED") _fcuVsDashed = value;` (no return); `if (varName == "N_FCU_VS" && FcuVsIsSilenced(_fcuVsDashed)) return true;`. Reset `_fcuVsDashed` to null where the definition resets its announcement baselines (reconnect, `OnSimContextReset`), so a stale "dashed" never silences a fresh flight. If Step 1 finds the V/S on a panel display after all, do not change the display here: hand it to plan 12 (it should show "Dashed" while `FcuVsIsSilenced`, through plan 01's display hook). If `SetFCUVS` starts from a live value while dashed, note it in the handoff for the owner (do not change the set path here).
-- [ ] **Step 5: Run the suite; all green.**
-- [ ] **Step 6: Commit.** `fix(fenix): FCU vertical speed is silent while its window is dashed (v3 sends the live V/S)`
+- [x] **Step 1: Check the whole of what you touch.** Find every place the Fenix shows or speaks `N_FCU_VS`: the panel display list (`GetPanelDisplayVariables`, :9329), the FCU/autopilot windows (`Forms/FenixA320/`), the V/S set path (`SetFCUVS`, :13103, which reads the cached `N_FCU_VS` as the starting point: a live value there while dashed changes the step count; note what it does today). Record the list in this task.
+- [x] **Step 2: Write the failing tests** (constructing the definition and announcer as `FenixFcuReadoutTests.cs` does): `Vs_is_silent_while_dashed`: after `ProcessSimVarUpdate("B_FCU_VERTICALSPEED_DASHED", 1, a)`, `ProcessSimVarUpdate("N_FCU_VS", 3400, a)` returns true (consumed) and nothing is spoken; `Vs_speaks_when_shown`: after the flag reads 0, `N_FCU_VS` 1500 is not consumed (returns false, so the generic announcement speaks it); `Vs_speaks_before_the_flag_is_read`: with no flag read yet, `N_FCU_VS` is not consumed; `Dashed_flag_still_announces`: `ProcessSimVarUpdate("B_FCU_VERTICALSPEED_DASHED", 1, a)` returns false (peeked, never consumed, so "FCU VERTICAL SPEED DISPLAY: Dashed" is still heard); `FcuVsIsSilenced` is true only for exactly 1 (`null`, 0, `double.NaN` → false).
+- [x] **Step 3: Run them; they fail.**
+- [x] **Step 4: Implement.** In `ProcessSimVarUpdate`, after the readout `switch` (:12131): `if (varName == "B_FCU_VERTICALSPEED_DASHED") _fcuVsDashed = value;` (no return); `if (varName == "N_FCU_VS" && FcuVsIsSilenced(_fcuVsDashed)) return true;`. Reset `_fcuVsDashed` to null where the definition resets its announcement baselines (reconnect, `OnSimContextReset`), so a stale "dashed" never silences a fresh flight. If Step 1 finds the V/S on a panel display after all, do not change the display here: hand it to plan 12 (it should show "Dashed" while `FcuVsIsSilenced`, through plan 01's display hook). If `SetFCUVS` starts from a live value while dashed, note it in the handoff for the owner (do not change the set path here).
+- [x] **Step 5: Run the suite; all green.**
+- [x] **Step 6: Commit.** `fix(fenix): FCU vertical speed is silent while its window is dashed (v3 sends the live V/S)`
 - [ ] **Step 7: Owner or collaborator in sim.** A managed climb with the V/S window dashed: no "FCU VERTICAL SPEED" callouts for a minute. Pull the V/S knob: hear "FCU VERTICAL SPEED DISPLAY: Shown"; turn it: each new target is spoken. Push it: "…: Dashed", then silence again. Note the race: the first selected value at a pull may arrive just before the "Shown" flag and stay unspoken (the next turn speaks); acceptable, say so in the handoff.
 
 ### Task 11: Panel controls that move differently from the cockpit (panel check and live measurements, 2026-10-21)
@@ -348,29 +352,29 @@ Why: `docs/fenix-v3/evidence/panel-sweep.md` compared all 443 panel keys with th
 
 **Interfaces (produces):** `internal static string CounterStepCode(string lvar, int steps)`; `private void PulseSpringSwitch(string lvar, double position, SimConnect.SimConnectManager simConnect)`; the keys `S_FCU_EFIS1_BARO_PULL`, `S_FCU_EFIS1_BARO_PUSH`, `S_FCU_EFIS2_BARO_PULL`, `S_FCU_EFIS2_BARO_PUSH`.
 
-- [ ] **Step 1: Owner in sim (measure; owner's go-ahead for each write).**
+- [x] **Step 1: Owner in sim (measure; owner's go-ahead for each write).**
   - Thrust levers: engines at idle, parking brake set. Set `A_FC_THROTTLE_LEFT_INPUT` to 1 for 3 s and read `aircraft.engines.1.n1` and `L:A320_Engine_Reverser_Left`; then 0 for 3 s, read again; back to 2. Record which value gives full reverse.
   - Optional, a GNADIRS livery (or `adirs_type` GNADIRS for the session): turn `S_OH_NAV_SYS_DISP` 0 to 3 and note what the ADIRS display shows at each. Weather radar: `S_WR_MODE` 0 to 3, read the ND's radar mode (Alt+N, or a sighted helper).
   - INT/RAD: with vPilot or SayIntentions connected, hold `S_ASP_INTRAD` at 2 for 2 s: the radio transmits (RAD), or not.
   - Write the results into this task. If a label differs from decision 5 or 8, use the measured one.
-- [ ] **Step 2: Write the failing tests** in `FenixV3FixPanelControlsTests` (one definition instance, `GetVariables()`, `GetPanelControls()`; source scans with `FoFbwUnclaimedEventKeyTests.MethodBody` and `ClaudeContextBudgetTests.RepoRoot()`):
+- [x] **Step 2: Write the failing tests** in `FenixV3FixPanelControlsTests` (one definition instance, `GetVariables()`, `GetPanelControls()`; source scans with `FoFbwUnclaimedEventKeyTests.MethodBody` and `ClaudeContextBudgetTests.RepoRoot()`):
   - `Momentary_buttons_are_press_buttons`: each key in decision 1 is `RenderAsButton`, has no `ValueDescriptions`, and its `StateVariable` is the listed light (null for `S_WR_GCS`, `S_OH_SVCE_INT_OVRD` and `S_OH_LIGHTING_AVIONICS_COMPT`); in `HandleUIVariableSet`, each key's `if (varKey == "<key>")` block calls `ExecuteButtonTransition(` and not `SetLVar(`.
   - `Counters_step_from_the_sims_value`: `CounterStepCode("E_FCU_SPEED", 3)` == `"(L:E_FCU_SPEED) 3 + (>L:E_FCU_SPEED)"`, `(…, -2)` == `"(L:E_FCU_SPEED) 2 - (>L:E_FCU_SPEED)"`, both under `CultureInfo("sv-SE")`; the bodies of `IncrementCounter`, `DecrementCounter` and `JumpCounter` contain `CounterStepCode(` and `ExecuteCalculatorCodeUnique(`; the file no longer contains `rmpCounters`.
   - `Baro_std_is_a_pull_and_a_push`: the two EFIS panels list the four new keys and not `S_FCU_EFIS1_BARO_STD` / `S_FCU_EFIS2_BARO_STD`; the new keys are `RenderAsButton` with the labels in decision 3 and `Name` `S_FCU_EFISn_BARO_STD`; `I_FCU_EFIS1_QNH` and `_2_` stay `Continuous` and `IsAnnounced`; `SetBaroStdBoth`'s body contains `CounterStepCode(` and no `DispatchAsync("S_FCU_EFIS`.
   - `Spring_switches_return_to_the_middle`: Cargo Discharge 1/2 values exactly `{0:"Agent 2",1:"Rest",2:"Agent 1"}`, DCDU Brightness 1/2 `{0:"Dim",1:"Mid",2:"Bright"}`; their branches call `PulseSpringSwitch(`.
   - `Positions_match_the_cockpit`: Manual Vertical Speed `{0:"Down",1:"Mid",2:"Up"}`; System Display exactly four positions as decision 5; Image Selector exactly `{0:"WX",1:"WX+T",2:"TURB",3:"MAP"}`; Annunciator unchanged `{0:"Dim",1:"Bright",2:"Test"}` (pins the measurement).
   - `N1_mode_is_registered_once`: the definition source has `["S_OH_ENG_N1_MODE_1"]` and `["S_OH_ENG_N1_MODE_2"]` once each; each is `OnRequest` with labels "Engine N1 Mode 1" / "Engine N1 Mode 2".
-- [ ] **Step 3: Run them; they fail.** `--filter FenixV3FixPanelControlsTests`.
-- [ ] **Step 4: Implement decisions 1-7.** Keep every key name (pilots' Ctrl+M mutes are stored by key); only `S_FCU_EFISn_BARO_STD` leaves the panels, replaced by the pull/push keys.
-- [ ] **Step 5: Run the filter, then the whole suite; all pass. Build the solution.**
-- [ ] **Step 6: Commit.** `fix(fenix): momentary buttons press, counters step from the sim, baro pull/push, spring switches return, positions match the v3 cockpit`
+- [x] **Step 3: Run them; they fail.** `--filter FenixV3FixPanelControlsTests`.
+- [x] **Step 4: Implement decisions 1-7.** Keep every key name (pilots' Ctrl+M mutes are stored by key); only `S_FCU_EFISn_BARO_STD` leaves the panels, replaced by the pull/push keys.
+- [x] **Step 5: Run the filter, then the whole suite; all pass. Build the solution.**
+- [x] **Step 6: Commit.** `fix(fenix): momentary buttons press, counters step from the sim, baro pull/push, spring switches return, positions match the v3 cockpit`
 - [ ] **Step 7: Owner in sim (few).** (1) Restart the app mid-flight, then FCU Speed increase once from the panel: the speed goes up 1. (2) Overhead > Calls: press Calls Fwd once; the cabin chime sounds once and nothing stays held (not the Bus Tie: toggling it disturbs ground power). (3) Pull the left baro knob twice in the virtual cockpit, then the app's "EFIS Left Baro Pull (STD)": hear "EFIS1 BARO STD Status: STD"; "Push (QNH)": QNH. (4) Pressurization in MAN: Manual Vertical Speed "Up" opens the outflow valve; back to Mid and AUTO.
 
 ### Task 12: Hand back
 
 - [ ] **Step 1:** `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64` and the full suite: both green.
-- [ ] **Step 2:** `git diff --name-only <base-sha>` lists only: `FenixA320Definition.cs`, `FenixA320GravityGear.cs`, `FenixTakeoffCallouts.cs`, `FenixTakeoffConfigVerdict.cs`, `FenixActionExecutor.cs` (the take-off config members, the unused hold constant and `SetBaroStdBoth`), `TakeoffAssistManager.cs` (Fenix V-speed code removed), `MainForm.Hotkeys.cs` (its Fenix V-speed block), `SettingsManager.cs` (seed), `SettingsSeedTests.cs`, `FenixTakeoffConfigVerdictTests.cs`, and the new `FenixV3Fix*Tests.cs` (incl. `FenixV3FixFcuVsTests.cs`) / `FenixTakeoffConfigWiringTests.cs` / `FenixTakeoffCalloutsTests.cs`.
-- [ ] **Step 3:** Fill Task 1's and Task 6's records in this file, tick the boxes, and hand the "Handoff to plan 12" section below to the integrator.
+- [x] **Step 2:** `git diff --name-only <base-sha>` lists only: `FenixA320Definition.cs`, `FenixA320GravityGear.cs`, `FenixTakeoffCallouts.cs`, `FenixTakeoffConfigVerdict.cs`, `FenixActionExecutor.cs` (the take-off config members, the unused hold constant and `SetBaroStdBoth`), `TakeoffAssistManager.cs` (Fenix V-speed code removed), `MainForm.Hotkeys.cs` (its Fenix V-speed block), `SettingsManager.cs` (seed), `SettingsSeedTests.cs`, `FenixTakeoffConfigVerdictTests.cs`, and the new `FenixV3Fix*Tests.cs` (incl. `FenixV3FixFcuVsTests.cs`) / `FenixTakeoffConfigWiringTests.cs` / `FenixTakeoffCalloutsTests.cs`.
+- [x] **Step 3:** Fill Task 1's and Task 6's records in this file, tick the boxes, and hand the "Handoff to plan 12" section below to the integrator.
 
 ---
 
@@ -379,16 +383,18 @@ Why: `docs/fenix-v3/evidence/panel-sweep.md` compared all 443 panel keys with th
 ### Pilot-facing changes (for the guide and changelog, `fix` category)
 
 1. Fenix Overhead has a new **Flight Control Computers** panel: ELAC 1 and 2, SEC 1 to 3, FAC 1 and 2. They were never reachable before. Guide: `guide/airbus-aircraft.md` Fenix Overhead list (about line 237).
-2. **Gravity Gear Extension** (Cockpit → Cockpit Other) is now one control, Stowed or Extended. Extended raises the handle and turns the crank three times (about six seconds), then BA says "Gravity gear: cranked 3 turns."; Stowed turns it back and stows the handle. The separate "Gravity Gear Crank" is gone. Guide line 252 ("gravity gear extension and its crank").
+2. **Gravity Gear Extension** (Cockpit → Cockpit Other) is now one control, Stowed or Extended. Extended raises the handle and turns the crank three times (about seven seconds), then BA says "Gravity gear: cranked 3 turns."; Stowed turns it back and stows the handle ("Gravity gear: crank stowed."). The control keeps your pick while the crank turns; a second pick before it finishes is refused aloud ("Gravity gear: crank already turning."). The separate "Gravity Gear Crank" is gone. Guide line 252 ("gravity gear extension and its crank").
 3. **TO CONFIG** (panel key and First Officer) now waits for the Fenix warning computer's own delay: "Takeoff config normal." comes only after both master lights stayed dark that long (about `VerdictAfterMs`); a bad config is announced as soon as the light comes on. It can also say "Takeoff config: caution. Check the ECAM." and "Takeoff config: no result read. Check the ECAM." Guide line 314.
 4. **Generator 1** now switches GEN 1. It used to press the EMER ELEC GEN 1 LINE button.
-5. **Take-off calls:** the Fenix now calls "V1", "Rotate" and "V2" from the speeds on PERF TAKE OFF, followed live (enter or change them any time before the roll), whether or not Takeoff Assist is on; each call is muted with its speed row in Ctrl+M; a cleared speed is spoken as "not set". Guide: the Fenix part of the take-off callouts section.
+5. **Take-off calls:** the Fenix now calls "V1", "Rotate" and "V2" from the speeds on PERF TAKE OFF, followed live (enter or change them any time before the roll), whether or not Takeoff Assist is on; each call is muted with its speed row in Ctrl+M; a cleared speed is spoken as "not set". The Fenix's own warning computer also calls "V1" aloud (`FWC_V_ONE_L/_R` in its cockpit sound.xml), so V1 is heard twice: the owner chose to keep all three app calls (2026-10-22), as on the A380. Takeoff Assist no longer calls V1 or rotate on the Fenix (its 80 and 100 knots calls stay). Guide: the Fenix part of the take-off callouts section, and `guide/takeoff-climb-and-cruise.md:102`, `:132`, `:159`, which still say the Fenix calls come from Takeoff Assist.
 6. **FCU vertical speed:** no more callouts every second or two during a managed climb or descent; the V/S is spoken only while its window shows a selected value.
-7. On Fenix v3 these are announced again: the DC SERVICE bus, the cockpit door video light, and (if Task 6 changed them) the AUTOLAND lights. The COMMERCIAL upper-legend row and 13 FenixQuartz rows leave the Ctrl+M Monitor Manager (they never spoke).
+7. On Fenix v3 these are announced again: the DC SERVICE bus and the cockpit door video light (the AUTOLAND lights needed no change: Task 6). The COMMERCIAL upper-legend row and 13 FenixQuartz rows leave the Ctrl+M Monitor Manager (they never spoke).
 8. **Panel buttons that press:** Bus Tie, Service Interphone Override, Avionics Compartment Light, Cockpit Door Video, the radar's GCS, ACP PA Transmit and CALLS Mech/All/Fwd/Aft are now buttons you press once, like the real ones; the result is heard from the button's light where it has one. Before, "On" flipped the function whatever its state and "Off" did nothing.
 9. **FCU and baro knobs never jump:** after an app restart or a turn in the virtual cockpit, one step from the app moves one step the way you asked (it used to move by the difference, sometimes the wrong way).
 10. **Baro STD** is now "EFIS Left Baro Pull (STD)" and "Push (QNH)" (and Right), like the FCU knobs; the First Officer's baro setting works the same way.
-11. **Corrected panels:** Cargo Discharge picks Agent 1 or Agent 2 (before, "Off" fired agent 2); DCDU brightness takes one step per pick instead of ramping to the limit; Manual Vertical Speed Up and Down were reversed; ADIRS System Display has its four positions; the weather radar Image Selector reaches all four modes; Full Reverse on the thrust levers if Task 11 Step 1 confirms it.
+11. **Corrected panels:** Cargo Discharge picks Agent 1 or Agent 2 (before, "Off" fired agent 2); DCDU brightness takes one step per pick instead of ramping to the limit; Manual Vertical Speed Up and Down were reversed; ADIRS System Display has its four positions; the weather radar Image Selector reaches all four modes (both in the real selectors' order, not yet confirmed live). The thrust levers are unchanged: Task 11 Step 1 measured input 0 settling at near-idle reverse (N1 22.7), not full reverse.
+12. **N1 MODE** (Engine N1 Mode 1 and 2) is registered once, as an on-request switch like every other Fenix switch: a change made outside the app is no longer announced by the switch itself, and its two Ctrl+M rows are gone (the duplicate that won was the announced copy). Plan 06's N1 MODE lights announce the state.
+13. **Typed baro** (the baro dialog) leaves STD with a push step, so a typed QNH always ends in QNH, whatever the knob's count after cockpit pulls and pushes.
 
 ### Proposed rule lines (new Fenix rules go to `.claude/rules/fenix-data.md`, since a32nx-fenix.md is at its cap)
 
@@ -401,7 +407,7 @@ fenix-data.md's globs (plan 01) cover only the definition's partials, so plan 12
 - [FNX-?] A Fenix `Button_Momentary` control is a press button (`ExecuteButtonTransition`), never an Off/On combo: a held 1 flips the function once whatever its state and 0 does nothing (bus tie, measured 2026-10-21). A `Switch_3Position_Hold` end is written then released to the middle (`PulseSpringSwitch`). Full: docs/invariants/fenix-data.md#fnx-?
 ```
 
-All four are under 400 characters (the last two, Task 11's, with `?` for their numbers). Full text for `docs/invariants/fenix-data.md`: Task 1's record (FNX-4), this plan's template evidence (FNX-5) and Task 11's measurements (the last two). If Task 5's owner check needed the calculator fallback, FNX-5 says so instead of "steps".
+All four are under 400 characters (the last two, Task 11's, with `?` for their numbers). Full text for `docs/invariants/fenix-data.md`: Task 1's record (FNX-4), this plan's template evidence (FNX-5) and Task 11's measurements (the last two). Task 5's owner check (2026-10-22) needed no calculator fallback: the per-step `SetLVar` moved the crank (SimConnect read-back of the L:vars: handle 0 → 1, crank 0 → 3 in 0.05 steps in about 7 s, back to 0, handle 0 last). FNX-5's full text should add two measured facts: the data service's `system.switches.S_HYD_GRAVITY_GEAR_EXTEND` reads whole numbers (1, 0, 1 on the way up, 0 at the end) and never 3, so the check is the L:var read-back, not the data service; and, as MD11-8 for the MD-11's walked controls, the crank's deliveries are consumed while a move runs and one forced read re-syncs the panel combo when it ends (without it the walker's first read snapped the combo back to Stowed: found in the owner's check).
 
 ### Handoff requests (files plan 02 does not own)
 
@@ -415,12 +421,20 @@ All four are under 400 characters (the last two, Task 11's, with `?` for their n
 8. Follow-up, not built: an ISIS baro readout from `N_MIP_ISFD_BARO_HPA` / `_INCH` (decision 3), with plan 04's ISIS/standby work.
 9. Task 9 (take-off calls): mirror TKO-5 onto the Fenix definition, as a "Mirrored from takeoff-and-callouts.md" line in a rule file that loads on `FenixA320Definition.cs` but not on takeoff-and-callouts.md's own files (run `ClaudeContextBudgetTests` for a double load, e.g. on `FenixTakeoffCalloutsTests.cs`), and add the Fenix to TKO-5's full text in `docs/invariants/takeoff-and-callouts.md`.
 10. `docs/invariants/a32nx-fenix.md`, A320-3 and A320-4 full text: add the v3 measurement (Task 11): on 3.0.0.7426 a press-release pulse registers with holds of 50-200 ms and is missed at 20 ms (about one frame), so the 200 ms `ButtonPressHoldMs` stands.
-11. Note for plan 05 (its Task 7): the First Officer's baro STD state comes from `I_FCU_EFISn_QNH` (0 STD, 1 QNH), never the `S_FCU_EFISn_BARO_STD` counter, which is any number after cockpit pulls and pushes.
+11. Note for plan 05 (its Task 7): the First Officer's baro STD state comes from `I_FCU_EFISn_QNH` (0 STD, 1 QNH), never the `S_FCU_EFISn_BARO_STD` counter, which is any number after cockpit pulls and pushes. Now urgent: `FenixStateEvaluator.BaroText` (`FenixStateEvaluator.cs:179-180`) reads the raw counter as `std > 0.5`, and with this plan's relative steps the counter can be 0 while STD is selected.
+12. `MSFSBlindAssist/Forms/FenixA320/FenixBaroWindow.cs:179-180`: replace the absolute `SetLVar("S_FCU_EFISn_BARO_STD", isStd ? 1 : 0)` with a relative step, `simConnect.ExecuteCalculatorCodeUnique(FenixA320Definition.CounterStepCode($"S_FCU_EFIS{n}_BARO_STD", isStd ? 1 : -1))` (`CounterStepCode` is `internal static`, same assembly). Why: the counter acts on the difference, and the panel's Pull/Push and the First Officer now step it, so an absolute write can select the opposite mode (pull twice → counter 2 → "STD" writes 1, a decrease → QNH). Check: pull twice from the panel, then pick STD in the baro window: it stays STD.
+13. Docs: `docs/fenix-increment-decrement.md` (about :30-108 and :256) and `docs/QUICK-REFERENCE.md` (about :217-230) still teach the removed `rmpCounters` absolute count (measured wrong 2026-10-21): rewrite to `CounterStepCode` relative steps through `ExecuteCalculatorCodeUnique`. CLAUDE.md's "Fenix rotary encoders" row points at the first. Stale mentions: `FenixActionExecutor.cs:20` (class doc) and the comment at `tests/MSFSBlindAssist.Tests/FirstOfficer/FenixFcuAltitudePushTests.cs:19`.
+14. Guide (CORE-19): the Fenix FCU and baro knobs and the baro Pull/Push now step through the MobiFlight calculator channel (the FCU push/pull already did), so they need the MobiFlight WASM module like those.
+15. Plan 12 Task 2's file list: Task 9 also changed one line of `tests/MSFSBlindAssist.Tests/TakeoffCalloutFeedTests.cs` (it pinned the Fenix's null take-off feed key, which Task 9 replaces).
+16. `MSFSBlindAssist/Aircraft/FenixA320Definition.Hooks.cs:29` (plan 01, comment only): "Start runs from the first ProcessSimVarUpdate that instance receives" — the take-off IAS feed branch now returns first, so the start can come up to about a second later; plans 08 and 09 should not rely on the very first update.
+17. Item 5 is done already: Task 9 removed the whole Fenix V-speed block of `MainForm.Hotkeys.cs`, comment included.
+18. Owner decision (Task 10 Step 1): `SetFCUVS` (typed V/S) counts its steps from the cached `N_FCU_VS`, which is the LIVE V/S while the window is dashed; left unchanged. Two accepted races: the first selected value at a V/S pull may arrive before "Shown" and stay unspoken (the next turn speaks), and after a connect one live V/S may be spoken before the dashed flag arrives.
 
 ### In-sim checks still needed (owner, in this order)
 
-1. TO CONFIG measurement (Task 1), then the three verdict checks (Task 8 Step 8).
-2. Gravity gear on the ground (Task 5 Step 7: the crank reads 3, then 0). The real gear drop in flight stays unproven (follow-up).
-3. AUTOLAND with the annunciator test (Task 6 Steps 1 and 5); a real autoland warning only if the test lit nothing.
-4. One ground power-up pass: Overhead → Electrical → **Generator 1** Off then On with an engine running, hearing the "Electrical Generator 1 Upper/Lower" lights change; "ELEC BUS POWER DC SERVICE STATUS: Powered" at power-up; Overhead lists **Flight Control Computers**.
-5. Task 11 Step 1 (thrust-lever reverse with the engines at idle; optional GNADIRS SYS DISP and radar modes; INT/RAD by ear), then Step 7's four checks.
+1. DONE: TO CONFIG measurement (Task 1, 2026-10-21), then the three verdict checks (Task 8 Step 8, 2026-10-22): flaps 0 → "Takeoff config: check configuration." (warning lit within about 1 s), flaps 1 → "Takeoff config normal.", First Officer Taxi "Takeoff config test" with flaps 0 → the failure verdict. The panel's 200 ms press gap never beat the watch's first read in five presses.
+2. Gravity gear on the ground: the move itself is DONE (2026-10-22, see the FNX-5 note above). Still to check on the fixed build: picking Extended is heard as "Extended" and the control stays there, then "Gravity gear: cranked 3 turns." about 7 s later; Stowed, then "Gravity gear: crank stowed.". The real gear drop in flight stays unproven (follow-up).
+3. DONE: AUTOLAND with the annunciator test (Task 6, no change needed). A real autoland warning lighting the unsplit names stays unproven.
+4. Ground pass: **Generator 1** Off then On with an engine running is DONE (2026-10-22: `S_OH_ELEC_GEN1` 0 then 1, GEN 1 OFF light on then off, GEN 1 LINE untouched). Still: Overhead lists **Flight Control Computers** after GPWS; "ELEC BUS POWER DC SERVICE STATUS: Powered" at a power-up.
+5. Task 11 Step 1 DONE (thrust levers: no change). Not measured: ADIRS SYS DISP order (needs a GNADIRS livery), radar Image Selector modes (needs the ND read), INT/RAD (needs vPilot or SayIntentions). Then Step 7's four checks, plus: DCDU brightness Bright once = one step and the knob rests at Mid; type a QNH in the baro dialog while in STD → ends in QNH.
+6. One flight: Task 9 Step 7 (enter V1/VR/V2 → "MCDU V1 Speed: 140" etc.; take off with Takeoff Assist off → "V1", "Rotate", "V2"; clear a speed → "not set"; also listen whether the Fenix clears the speeds at liftoff: if it does, "V2" may be lost and "not set" spoken after liftoff), Task 10 Step 7 (managed climb silent; pull → "Shown", turns spoken; push → "Dashed"), Task 11 Step 7 (1) (restart the app mid-flight, FCU speed +1 once → up 1).
