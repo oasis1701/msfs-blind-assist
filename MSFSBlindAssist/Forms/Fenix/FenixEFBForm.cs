@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Forms.Fenix;
 
@@ -134,6 +135,9 @@ public class FenixEFBForm : Form
             s.AreDevToolsEnabled = false;
             s.IsZoomControlEnabled = false;
             _webView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
+            // Fires for in-page fragment changes too (IsNewDocument false), which is how the
+            // single-page EFB moves between its pages: the one hook that sees the MCDU and FAP.
+            _webView.CoreWebView2.SourceChanged += OnSourceChanged;
             _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
             // Escape from INSIDE the web content never reaches ProcessCmdKey (the
             // WebView2 browser process owns that focus), and the WinForms WebView2
@@ -174,6 +178,20 @@ public class FenixEFBForm : Form
         {
             Close();
         }
+    }
+
+    private void OnSourceChanged(object? sender, CoreWebView2SourceChangedEventArgs e)
+    {
+        // Fired on the UI thread. The MCDU and FAP pages cannot be read with a screen reader
+        // (decision 8): step back to the EFB home and say where the working windows are.
+        string source = _webView.CoreWebView2.Source;
+        FenixEfbRoute route = FenixEfbRoutes.Classify(source);
+        string? message = FenixEfbRoutes.DeadEndMessage(route);
+        if (message == null) return;
+
+        Log.Debug("FenixEFB", $"EFB page {source} is the unreadable {route}; back to the EFB home");
+        _webView.CoreWebView2.Navigate(EfbUrl);
+        _announcer.AnnounceImmediate(message);
     }
 
     private void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
