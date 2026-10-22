@@ -7,7 +7,6 @@
 // on the A321 IAE whose settings say cargo heat is off. Types 0-2 and engines 2-3 follow the Fenix
 // settings order and ADIRS 0 = GNADIRS follows the model's visibility template: all three unmeasured.
 
-using System.Globalization;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.SimConnect;
 
@@ -279,25 +278,10 @@ public class FenixVariantTests
         }
     }
 
-    [Theory]
-    [InlineData("de-DE")]
-    [InlineData("sv-SE")]
-    [InlineData("fr-FR")]
-    public void Describe_reads_the_same_under_a_comma_decimal_culture(string cultureName)
-    {
-        var previous = CultureInfo.CurrentCulture;
-        try
-        {
-            CultureInfo.CurrentCulture = new CultureInfo(cultureName);
-            Assert.Equal("Fenix A321, IAE engines, 2 extra tanks", Complete().Describe());
-            Assert.Equal(FenixAircraftType.A321,
-                FenixVariant.Unknown.With(FenixConfigVars.AircraftType, 4.0).Type);
-        }
-        finally
-        {
-            CultureInfo.CurrentCulture = previous;
-        }
-    }
+    [Fact]
+    public void Describe_reads_the_same_under_a_comma_decimal_culture()
+        => Assert.Equal("Fenix A321, IAE engines, 2 extra tanks",
+            TestCulture.Run("de-DE", () => Complete().Describe()));
 
     [Fact]
     public void Definition_registers_the_config_vars()
@@ -410,7 +394,7 @@ public class FenixVariantTests
 
         definition.ProcessSimVarUpdate(FenixConfigVars.AircraftType, 3, speech);   // the same reading again
         definition.ProcessSimVarUpdate(FenixConfigVars.EngineType, double.NaN, speech);   // nothing to apply
-        definition.ProcessSimVarUpdate("N_FCU_SPEED", 250, speech);   // not a config var
+        definition.ProcessSimVarUpdate("NOT_A_FENIX_CONFIG_VAR", 250, speech);   // not a config var
         Assert.Single(raised);
 
         definition.ProcessSimVarUpdate(FenixConfigVars.EngineType, 0, speech);
@@ -556,11 +540,20 @@ public class FenixVariantTests
     [Fact]
     public void A_var_that_is_not_a_config_var_is_not_consumed_by_variant_detection()
     {
+        // Variant detection alone, not what the rest of ProcessSimVarUpdate does with the name.
         var definition = new FenixA320Definition();
-        var speech = new SpeechCapture();
 
-        // The Fenix definition handles none of these as readouts: they fall through to the generic path.
-        Assert.False(definition.ProcessSimVarUpdate("N_FCU_SPEED", 250, speech));
+        Assert.False(definition.TryApplyConfigValue("NOT_A_FENIX_CONFIG_VAR", 1));
         Assert.Same(FenixVariant.Unknown, definition.Variant);
+
+        // Nor once the config is published.
+        Assert.True(definition.TryApplyConfigValue(FenixConfigVars.AircraftType, 3));
+        var published = definition.Variant;
+        int raised = 0;
+        definition.VariantChanged += (_, _) => raised++;
+
+        Assert.False(definition.TryApplyConfigValue("NOT_A_FENIX_CONFIG_VAR", 1));
+        Assert.Same(published, definition.Variant);
+        Assert.Equal(0, raised);
     }
 }

@@ -121,8 +121,8 @@ public partial class FenixA320Definition
     }
 
     // True for the eight config vars (consumed silently, also when the reading changes nothing), false for
-    // every other var, which carries on down ProcessSimVarUpdate.
-    private bool TryApplyConfigValue(string varName, double value)
+    // every other var, which carries on down ProcessSimVarUpdate. Internal for the tests.
+    internal bool TryApplyConfigValue(string varName, double value)
     {
         if (!ConfigVarNames.Contains(varName)) return false;
         // Not a finite number: nothing to apply (FenixVariant.With ignores it too), and the last good
