@@ -1541,7 +1541,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = OffOn
+                // The OFF legend, as S_OH_ELEC_BUS_TIE's state: spoken as the bus tie, not the lamp
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Auto", [1] = "Off", [2] = "Off"}
             },
             ["I_OH_ELEC_BAT2_U"] = new SimConnect.SimVarDefinition
             {
@@ -6668,7 +6669,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = OffOn
+                // The OFF legend, as S_PED_COCKPIT_DOOR_VIDEO's state: spoken as the video, not the lamp
+                ValueDescriptions = new Dictionary<double, string> {[0] = "On", [1] = "Off", [2] = "Off"}
             },
             ["I_OH_HYD_BLUE_PUMP_OVERRIDE_L"] = new SimConnect.SimVarDefinition
             {
@@ -12532,19 +12534,21 @@ public partial class FenixA320Definition : BaseAircraftDefinition
 
             }
 
-            // Announce final value, both sides
+            // Announce final value, both sides, from their NEXT deliveries: these are 1 Hz vars, so a
+            // plain request reads nothing new and the cache can predate the last correction step (as
+            // in the verify above), which would claim a side missed when it did not.
             await System.Threading.Tasks.Task.Delay(500);
-            foreach (var efis in efisIds)
+            string[] finalKeys =
             {
-                simConnect.RequestVariable($"N_FCU_EFIS{efis}_BARO_HPA");
-                simConnect.RequestVariable($"N_FCU_EFIS{efis}_BARO_INCH");
-            }
-            await System.Threading.Tasks.Task.Delay(300);
+                "N_FCU_EFIS1_BARO_HPA", "N_FCU_EFIS1_BARO_INCH", "I_FCU_EFIS1_QNH",
+                "N_FCU_EFIS2_BARO_HPA", "N_FCU_EFIS2_BARO_INCH", "I_FCU_EFIS2_QNH",
+            };
+            var finalReads = finalKeys.Select(k => simConnect.ReadFreshAsync(k, timeoutMs: 1500)).ToArray();
+            await System.Threading.Tasks.Task.WhenAll(finalReads);
+            double? Final(int i) => finalReads[i].Result ?? simConnect.GetCachedVariableValue(finalKeys[i]);
             string? setText = AltimeterSetText(
-                simConnect.GetCachedVariableValue("N_FCU_EFIS1_BARO_HPA"),
-                simConnect.GetCachedVariableValue("N_FCU_EFIS1_BARO_INCH"),
-                simConnect.GetCachedVariableValue("N_FCU_EFIS2_BARO_HPA"),
-                simConnect.GetCachedVariableValue("N_FCU_EFIS2_BARO_INCH"));
+                Final(0), Final(1), IsStdLight(Final(2)),
+                Final(3), Final(4), IsStdLight(Final(5)));
             if (setText != null)
             {
                 announcer.AnnounceImmediate(setText);
@@ -12559,19 +12563,25 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     /// <summary>
     /// The read-back after <see cref="SetFCUBaro"/>, which sets both sides: one sentence when both
     /// read alike as spoken ("Both altimeters set: 1015, 29.97."), else each side named, so a side
-    /// that missed the setting is heard (owner, 2026-10-22: keep both units, say both sides). Null
-    /// when neither side read.
+    /// that missed the setting is heard, a side whose push out of STD did not take included (owner,
+    /// 2026-10-22: keep both units, say both sides). Null when neither side read.
     /// </summary>
-    internal static string? AltimeterSetText(double? captHpa, double? captInch, double? foHpa, double? foInch)
+    internal static string? AltimeterSetText(double? captHpa, double? captInch, bool captStd,
+                                             double? foHpa, double? foInch, bool foStd)
     {
-        string? capt = captHpa != null && captInch != null
-            ? FormattableString.Invariant($"{captHpa.Value:0}, {captInch.Value:0.00}") : null;
-        string? fo = foHpa != null && foInch != null
-            ? FormattableString.Invariant($"{foHpa.Value:0}, {foInch.Value:0.00}") : null;
+        string? capt = AltimeterSide(captHpa, captInch, captStd);
+        string? fo = AltimeterSide(foHpa, foInch, foStd);
         if (capt == null && fo == null) return null;
-        if (capt == fo) return $"Both altimeters set: {capt}.";
+        if (capt == fo && !captStd) return $"Both altimeters set: {capt}.";
         return $"Captain altimeter {capt ?? "not read"}. First officer altimeter {fo ?? "not read"}.";
     }
+
+    private static string? AltimeterSide(double? hpa, double? inch, bool std) =>
+        std ? "still in STD"
+            : hpa != null && inch != null ? FormattableString.Invariant($"{hpa.Value:0}, {inch.Value:0.00}") : null;
+
+    /// <summary>I_FCU_EFISn_QNH reads 1 in QNH and 0 in STD; unread is not STD.</summary>
+    private static bool IsStdLight(double? qnhLight) => qnhLight is < 0.5;
 
     private void ShowFenixBaroWindow(
         SimConnect.SimConnectManager simConnect,

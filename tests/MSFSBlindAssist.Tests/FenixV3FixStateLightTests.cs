@@ -1,7 +1,9 @@
 // Fenix buttons whose state light is an OFF legend, and the altimeter read-back after a typed setting
 // (owner check of build 2, 2026-10-22). Measured live: pressing ADR 1 or IR 1 lights its lower legend and
-// switches it off; Bus Tie and Cockpit Door Video carry one OFF legend, dark in the normal state. MainForm
-// labelled every StateVariable button "On" when lit, so these read backwards ("ADR 1: On" with ADR 1 off).
+// switches it off; ADR 2/3 and IR 2/3 share their template. Bus Tie and Cockpit Door Video carry one
+// annunciator, dark in the normal state (the Fenix's Cockpit_Behavior.xml), read as the OFF legend until a
+// press confirms it in the sim. MainForm labelled every StateVariable button "On" when lit, so these read
+// backwards ("ADR 1: On" with ADR 1 off).
 
 using System.Globalization;
 using System.IO;
@@ -56,8 +58,18 @@ public class FenixV3FixStateLightTests : IDisposable
         Assert.Equal("Off", v.DescribeStateLight(0));
     }
 
+    [Theory]
+    [InlineData("S_OH_ELEC_BUS_TIE", "I_OH_ELEC_BUSTIE_L")]
+    [InlineData("S_PED_COCKPIT_DOOR_VIDEO", "I_OH_COCKPIT_DOOR_VIDEO")]
+    public void An_announced_off_legend_speaks_as_its_button_reads(string key, string light)
+    {
+        // The light is the only speech after a press; it must say what the button's label says.
+        foreach (double v in new[] { 0.0, 1.0, 2.0 })
+            Assert.Equal(Vars[key].DescribeStateLight(v), Vars[light].ValueDescriptions[v]);
+    }
+
     [Fact]
-    public void Only_the_measured_off_legend_buttons_change_their_words()
+    public void Only_the_off_legend_buttons_change_their_words()
     {
         var withTexts = Vars.Where(kv => kv.Value.StateLitText != null || kv.Value.StateDarkText != null)
             .Select(kv => kv.Key).OrderBy(k => k, StringComparer.Ordinal).ToArray();
@@ -79,24 +91,33 @@ public class FenixV3FixStateLightTests : IDisposable
     public void Both_altimeters_alike_are_spoken_once_for_both_sides()
     {
         Assert.Equal("Both altimeters set: 1015, 29.97.",
-            FenixA320Definition.AltimeterSetText(1015.0, 29.97, 1015.0, 29.97));
+            FenixA320Definition.AltimeterSetText(1015.0, 29.97, false, 1015.0, 29.97, false));
     }
 
     [Fact]
     public void Altimeters_that_differ_are_spoken_side_by_side()
     {
         Assert.Equal("Captain altimeter 1015, 29.97. First officer altimeter 1014, 29.94.",
-            FenixA320Definition.AltimeterSetText(1015.0, 29.97, 1014.0, 29.94));
+            FenixA320Definition.AltimeterSetText(1015.0, 29.97, false, 1014.0, 29.94, false));
     }
 
     [Fact]
     public void An_unread_side_is_named()
     {
         Assert.Equal("Captain altimeter 1015, 29.97. First officer altimeter not read.",
-            FenixA320Definition.AltimeterSetText(1015.0, 29.97, null, null));
+            FenixA320Definition.AltimeterSetText(1015.0, 29.97, false, null, null, false));
         Assert.Equal("Captain altimeter not read. First officer altimeter 1015, 29.97.",
-            FenixA320Definition.AltimeterSetText(null, 29.97, 1015.0, 29.97));
-        Assert.Null(FenixA320Definition.AltimeterSetText(null, null, null, null));
+            FenixA320Definition.AltimeterSetText(null, 29.97, false, 1015.0, 29.97, false));
+        Assert.Null(FenixA320Definition.AltimeterSetText(null, null, false, null, null, false));
+    }
+
+    [Fact]
+    public void A_side_left_in_std_is_named()
+    {
+        Assert.Equal("Captain altimeter 1015, 29.97. First officer altimeter still in STD.",
+            FenixA320Definition.AltimeterSetText(1015.0, 29.97, false, 1015.0, 29.97, true));
+        Assert.Equal("Captain altimeter still in STD. First officer altimeter still in STD.",
+            FenixA320Definition.AltimeterSetText(1013.0, 29.92, true, 1013.0, 29.92, true));
     }
 
     [Fact]
@@ -104,6 +125,6 @@ public class FenixV3FixStateLightTests : IDisposable
     {
         // 1016.25 hPa and 1015.8 both speak 1016; 30.009 and 30.011 both speak 30.01.
         Assert.Equal("Both altimeters set: 1016, 30.01.",
-            FenixA320Definition.AltimeterSetText(1016.25, 30.009, 1015.8, 30.011));
+            FenixA320Definition.AltimeterSetText(1016.25, 30.009, false, 1015.8, 30.011, false));
     }
 }
