@@ -4998,7 +4998,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             ["S_STANDBY_ATTITUDE_CAGE"] = new SimConnect.SimVarDefinition { Name = "S_STANDBY_ATTITUDE_CAGE", DisplayName = "Standby Attitude Cage", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Normal", [1] = "Caged"} },
             ["S_JUMPSEAT"] = new SimConnect.SimVarDefinition { Name = "S_JUMPSEAT", DisplayName = "Jumpseat", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Stowed", [1] = "Deployed"} },
             ["S_JUMPSEAT_HEADREST"] = new SimConnect.SimVarDefinition { Name = "S_JUMPSEAT_HEADREST", DisplayName = "Jumpseat Headrest", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Down", [1] = "Up"} },
-            ["S_PED_COCKPIT_DOOR_VIDEO"] = new SimConnect.SimVarDefinition { Name = "S_PED_COCKPIT_DOOR_VIDEO", DisplayName = "Cockpit Door Video", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, RenderAsButton = true, StateVariable = "I_OH_COCKPIT_DOOR_VIDEO", StateLitText = "Off", StateDarkText = "On" },   // its one light is the OFF legend
+            ["S_PED_COCKPIT_DOOR_VIDEO"] = new SimConnect.SimVarDefinition { Name = "S_PED_COCKPIT_DOOR_VIDEO", DisplayName = "Cockpit Door Video", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, RenderAsButton = true },   // no light of its own: I_OH_COCKPIT_DOOR_VIDEO is the overhead VIDEO pb's (measured 2026-10-22)
             ["S_OXYGEN_MASK_COVER_CAPT"] = new SimConnect.SimVarDefinition { Name = "S_OXYGEN_MASK_COVER_CAPT", DisplayName = "Captain Oxygen Mask Cover", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Closed", [1] = "Open"} },
             ["S_OXYGEN_MASK_COVER_FO"] = new SimConnect.SimVarDefinition { Name = "S_OXYGEN_MASK_COVER_FO", DisplayName = "First Officer Oxygen Mask Cover", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Closed", [1] = "Open"} },
             // NOTE: S_OH_CALLS_EMER_Cover ("Calls Emergency Cover") is already defined+paneled in the overhead Calls panel — not re-added here.
@@ -6669,7 +6669,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                // The OFF legend, as S_PED_COCKPIT_DOOR_VIDEO's state: spoken as the video, not the lamp
+                // The overhead VIDEO pb's OFF legend (S_OH_COCKPIT_DOOR_VIDEO 0 lights it, measured
+                // 2026-10-22): spoken as the video, not the lamp
                 ValueDescriptions = new Dictionary<double, string> {[0] = "On", [1] = "Off", [2] = "Off"}
             },
             ["I_OH_HYD_BLUE_PUMP_OVERRIDE_L"] = new SimConnect.SimVarDefinition
@@ -9383,10 +9384,12 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                     return true;
             }
 
-            // Cockpit door video: a momentary pushbutton (press and release).
+            // Cockpit door video (pedestal): a momentary pushbutton (press and release) with no light
+            // to read back (Cockpit_Behavior.xml gives it no annunciator; a press left the overhead
+            // VIDEO pb's light unchanged, 2026-10-22), so the press confirms itself (CORE-7).
             if (varKey == "S_PED_COCKPIT_DOOR_VIDEO" && value == 1)
             {
-                ExecuteButtonTransition("S_PED_COCKPIT_DOOR_VIDEO", "Cockpit Door Video", simConnect, announcer);
+                ExecuteButtonTransition("S_PED_COCKPIT_DOOR_VIDEO", varDef.DisplayName, simConnect, announcer, confirmPress: true);
                 return true;
             }
 

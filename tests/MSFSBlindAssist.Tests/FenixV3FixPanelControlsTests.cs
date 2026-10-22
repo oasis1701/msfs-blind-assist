@@ -57,7 +57,7 @@ public class FenixV3FixPanelControlsTests : IDisposable
         { "S_OH_ELEC_BUS_TIE", "S_OH_ELEC_BUSTIE", "I_OH_ELEC_BUSTIE_L" },
         { "S_OH_SVCE_INT_OVRD", "S_OH_SVCE_INT_OVRD", null },
         { "S_OH_LIGHTING_AVIONICS_COMPT", "S_OH_LIGHTING_AVIONICS_COMPT", null },
-        { "S_PED_COCKPIT_DOOR_VIDEO", "S_PED_COCKPIT_DOOR_VIDEO", "I_OH_COCKPIT_DOOR_VIDEO" },
+        { "S_PED_COCKPIT_DOOR_VIDEO", "S_PED_COCKPIT_DOOR_VIDEO", null },   // the overhead VIDEO pb owns the light
         { "S_WR_GCS", "S_WR_GCS", null },
         { "S_ASP_PA_SEND", "S_ASP_PA_SEND", "I_ASP_PA_SEND" },
         { "S_OH_CALLS_MECH", "S_OH_CALLS_MECH", null },

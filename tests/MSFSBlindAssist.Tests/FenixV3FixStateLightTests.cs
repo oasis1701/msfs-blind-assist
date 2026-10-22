@@ -1,9 +1,10 @@
 // Fenix buttons whose state light is an OFF legend, and the altimeter read-back after a typed setting
-// (owner check of build 2, 2026-10-22). Measured live: pressing ADR 1 or IR 1 lights its lower legend and
-// switches it off; ADR 2/3 and IR 2/3 share their template. Bus Tie and Cockpit Door Video carry one
-// annunciator, dark in the normal state (the Fenix's Cockpit_Behavior.xml), read as the OFF legend until a
-// press confirms it in the sim. MainForm labelled every StateVariable button "On" when lit, so these read
-// backwards ("ADR 1: On" with ADR 1 off).
+// (owner checks of builds 2 and 3, 2026-10-22). Measured live: pressing ADR 1 or IR 1 lights its lower
+// legend and switches it off; ADR 2/3 and IR 2/3 share their template. Bus Tie carries one annunciator,
+// dark in the normal state (the Fenix's Cockpit_Behavior.xml), read as the OFF legend until a press
+// confirms it in the sim. MainForm labelled every StateVariable button "On" when lit, so these read
+// backwards ("ADR 1: On" with ADR 1 off). The door video lamp is the overhead VIDEO pb's: VIDEO 0 lit
+// it and 1 put it out; the pedestal Cockpit Door Video button has no light (a press left it unchanged).
 
 using System.Globalization;
 using System.IO;
@@ -30,7 +31,6 @@ public class FenixV3FixStateLightTests : IDisposable
     public static TheoryData<string, string, string> OffLegendButtons => new()
     {
         { "S_OH_ELEC_BUS_TIE", "I_OH_ELEC_BUSTIE_L", "Auto" },
-        { "S_PED_COCKPIT_DOOR_VIDEO", "I_OH_COCKPIT_DOOR_VIDEO", "On" },
         { "S_OH_NAV_ADR1", "I_OH_NAV_ADR1_L", "On" },
         { "S_OH_NAV_ADR2", "I_OH_NAV_ADR2_L", "On" },
         { "S_OH_NAV_ADR3", "I_OH_NAV_ADR3_L", "On" },
@@ -58,14 +58,33 @@ public class FenixV3FixStateLightTests : IDisposable
         Assert.Equal("Off", v.DescribeStateLight(0));
     }
 
-    [Theory]
-    [InlineData("S_OH_ELEC_BUS_TIE", "I_OH_ELEC_BUSTIE_L")]
-    [InlineData("S_PED_COCKPIT_DOOR_VIDEO", "I_OH_COCKPIT_DOOR_VIDEO")]
-    public void An_announced_off_legend_speaks_as_its_button_reads(string key, string light)
+    [Fact]
+    public void The_bus_tie_lamp_speaks_as_its_button_reads()
     {
         // The light is the only speech after a press; it must say what the button's label says.
         foreach (double v in new[] { 0.0, 1.0, 2.0 })
-            Assert.Equal(Vars[key].DescribeStateLight(v), Vars[light].ValueDescriptions[v]);
+            Assert.Equal(Vars["S_OH_ELEC_BUS_TIE"].DescribeStateLight(v), Vars["I_OH_ELEC_BUSTIE_L"].ValueDescriptions[v]);
+    }
+
+    [Fact]
+    public void The_door_video_lamp_speaks_as_the_overhead_video_switch_reads()
+    {
+        // Measured: VIDEO Off (0) lights the lamp, VIDEO On (1) puts it out.
+        var video = Vars["S_OH_COCKPIT_DOOR_VIDEO"].ValueDescriptions;
+        var lamp = Vars["I_OH_COCKPIT_DOOR_VIDEO"].ValueDescriptions;
+        Assert.Equal(video[0], lamp[1]);
+        Assert.Equal(video[1], lamp[0]);
+        Assert.Equal("Off", lamp[2]);
+    }
+
+    [Fact]
+    public void The_pedestal_door_video_button_has_no_light_and_confirms_its_press()
+    {
+        var v = Vars["S_PED_COCKPIT_DOOR_VIDEO"];
+        Assert.True(v.RenderAsButton);
+        Assert.Null(v.StateVariable);
+        Assert.Null(v.StateLitText);
+        Assert.Null(v.StateDarkText);
     }
 
     [Fact]
