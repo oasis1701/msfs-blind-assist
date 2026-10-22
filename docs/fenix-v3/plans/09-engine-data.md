@@ -1,6 +1,6 @@
 # Fenix Engine Data Implementation Plan (plan 09)
 
-**Claimed by:** danielw97 · **Status:** in progress
+**Claimed by:** danielw97 · **Status:** in progress (code, reviews and owner checks 1 and 2 done 2026-10-22; only Task 4 Step 6's window-handling checks remain, see "In-sim checks still needed")
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -20,16 +20,16 @@
 2. **Precision:** N1 and N2 0.1 %, EGT 1 °C, fuel flow 1 unit per hour, oil quantity 0.1, oil pressure 1, oil temperature 1, TAT/OAT 1 °C. Invariant culture, ASCII minus, never "-0". Unknown is `--` (as P777-9 renders an unread PMDG field), never 0.
 3. **Calm refresh:** a 1 s WinForms timer; `DisplayListBox.SetLines` rewrites only changed rows; a display hold keeps a shown value until the raw value moves 0.6 of a display step away, so a value sitting on a rounding edge (116.49/116.51) does not rewrite its row every second. The refresh never calls `Focus` or `Activate`. As in every `DisplayListBox` window (E/WD, HS787 EICAS), a FOCUSED row whose value changes is re-read by the screen reader; during a start the focused N2 row reads about once a second. In cruise the hold keeps rows still.
 4. **Fuel flow unit** = the Fenix's own `weight_unit` setting (Kilograms or Pounds; `docs/fenix-v3/evidence/settings.tsv:141` reads Pounds on the owner's PC; the Fenix labels it "Select the unit for weight values throughout the aircraft", `fenix-options-labels.tsv:152`), read when the window opens and on F5. The published value is `ff.kg` (kilograms per hour: 441 against stock 482 kg/h at IAE idle, spec section 3); pounds = kg x 2.2046226218487757 (1 lb = 0.45359237 kg). If the setting cannot be read, kilograms, and the status says so.
-5. **Oil values without units** until in-sim check 2 reads the Fenix's own ENGINE page. The live values (quantity 14.4, pressure 150, temperature 118 on the IAE at idle) look like QT, PSI and °C, but nothing open says so; never invent a unit.
+5. **Oil values without units** until in-sim check 2 reads the Fenix's own ENGINE page. The live values (quantity 14.4, pressure 150, temperature 118 on the IAE at idle) look like QT, PSI and °C, but nothing open says so; never invent a unit. **Superseded 2026-10-22:** check 2 read QT, PSI and °C on the Fenix's SD ENGINE page; the rows now say "quarts", "psi" and "degrees C" (Q2, Task 5 Step 3).
 6. **Speech (CORE-7):** opening, arrowing and Escape speak nothing of ours (the screen reader reads the window and rows). F5 says "Engines refreshed" (precedent: "E W D refreshed", `MSFSBlindAssist/Forms/FbwEwdWindow.cs:85`; "Status display refreshed", `MainForm.Hotkeys.cs:831`). When the first read or an F5 finds no known value: "No engine data from the Fenix. Is the Fenix loaded?" (once per read). **Proposal:** while the window is open, the Fenix's own `running` flag edges are spoken, queued, as "Engine 2 running" / "Engine 2 stopped" (a background change the pilot did not directly trigger; baseline-first, so opening the window says nothing). Built as one removable piece (Task 3) so the owner can drop it.
 7. **No vibration row:** `aircraft.engines.{1,2}.vibration.n1` reads `""` on v3 (not published, measured below). No new hotkey (index: windows open from the list).
 
 **Questions only the owner can answer** (none blocks Tasks 1-2):
 
-- Q1. Keep the `running` announcements (window-only, as built), drop them, or ask plan 12 to make them always-on (a definition-owned watcher, with a Ctrl+M entry)? Decide after in-sim check 1, which shows WHEN in a start the Fenix sets `running`.
-- Q2. After in-sim check 2: which oil units to show ("quarts", "psi", "degrees C" are the A320 ENGINE page's QT/PSI/°C, if the Fenix's page shows those)?
+- Q1. Keep the `running` announcements (window-only, as built), drop them, or ask plan 12 to make them always-on (a definition-owned watcher, with a Ctrl+M entry)? Decide after in-sim check 1, which shows WHEN in a start the Fenix sets `running`. **Answered (owner, 2026-10-22): keep, window-only as built.** Check 1: the Fenix sets `running` when the start is complete (N2 59.2 %, at idle), the same moment its generator came on line; spoken once, not chatty. Always-on stays open for plan 12 (handoff 4).
+- Q2. After in-sim check 2: which oil units to show ("quarts", "psi", "degrees C" are the A320 ENGINE page's QT/PSI/°C, if the Fenix's page shows those)? **Answered (owner, 2026-10-22): "quarts", "psi", "degrees C"**, the Fenix SD ENGINE page's QT, PSI and °C.
 - Q3. Braille readers: one value per row (as built) or one row per parameter carrying both engines ("N2: 62.2, 62.4 percent")?
-- Q4. Output O on the Fenix speaks the sim's stock `AMBIENT TEMPERATURE`. If check 2 shows it differs from the Fenix's OAT row, should O speak the Fenix's value (handoff, not this plan)?
+- Q4. Output O on the Fenix speaks the sim's stock `AMBIENT TEMPERATURE`. If check 2 shows it differs from the Fenix's OAT row, should O speak the Fenix's value (handoff, not this plan)? **Answered (owner check, 2026-10-22): no change;** Output O matched the window's Outside Air Temperature.
 
 ## Global Constraints
 
@@ -56,6 +56,8 @@
 - Measured for this plan, 2026-10-21 13:06 local, read-only batched query, Fenix 3.0.0.7426, IAE A321 ("FenixA321 IAE", `engine_family` IaeV2500, `type_code` A321, `weight_unit` Pounds), both engines at idle: engine 1 / engine 2 `running` true / true, `n1` 22.448190078473196 / 22.445335864998796, `n2` 62.212353401252194 / 62.391407703690426, `egt` 475.38836459330855 / 474.14250676655524, `ff.kg` 437.8835188757868 / 440.70427092395045, `oil.pressure` 149.60090176687544 / 149.69811391994867, `oil.temperature` 117.83659509082182 / 116.73367427951749, `oil.quantity` 14.382028854544323 / 14.267072188538169, `vibration.n1` `""` / `""`; `aircraft.temperature.tat` 17.0724731445315, `.oat` 17.0685977935791. Three samples 0.4 s apart: every engine value moved in its third to fifth significant digit (oil temperature 2: 116.73, 116.62, 116.55), hence the display hold.
 - Newly non-null on v3: `docs/fenix-v3/evidence/live-findings.md:14`. Stock versus Fenix: spec section 3 (IAE idle: N1 30.9/22.4 %, N2 72.4/62.3 %, EGT 506/476 C, FF 482/441 kg/h; stock identical across engines) and `live-findings.md:34` (CFM: EGT 490/411, FF 404/287 kg/h).
 - The stock SimVars could not be re-read for a paired sample today (the simconnect MCP timed out); in-sim check 2 compares OAT against Output O instead.
+- **Owner check 1, 2026-10-22 12:25 local**, CFM A320 (C-FFWM), engine 2 started with the window open, data service logged every ~0.8 s: N2 leaves 0 at 12:25:00, fuel flow from about 24 % N2 (12:25:19), `running` false → true at 12:25:49.2 with N2 59.2 %, N1 18.1 %, EGT 410 °C; settled idle N2 59.0 %, N1 17.9 %, EGT 409 °C, fuel flow 290 kg/h. "Engine 2 running" was spoken once, when the start was complete (heard with the generator coming on line).
+- **Owner check 2, 2026-10-22**, same aircraft, engine 2 at idle. The AI reads (Alt+S, Alt+E) framed the captain's PFD and ND on v3, as plan 04 predicts, so the ENGINE page was read from a screenshot of instrument view index 8 (camera restored afterwards; `CAMERA VIEW TYPE AND INDEX MAX:2` = 19). Fenix screen against the data service: oil quantity 17.5 / 17.73 and 14.5 / 14.51 QT, oil pressure 0 / 0 and 34 / 33.85 PSI, oil temperature 15 / 14.97 and 30 / 31.76 °C, engine 2 fuel flow 300 / 289 KG/H (the E/WD shows steps of 20), TAT and SAT +15 / 14.97 °C. Output O matched the window's OAT.
 
 ## Stock engine SimVars on the Fenix outside the First Officer (survey, read-only)
 
@@ -298,9 +300,9 @@ private static readonly string[] IdleKg =
 
 ### Task 5: Hand back
 
-- [ ] **Step 1:** `git diff --name-only <base-sha>` lists only the 12 files of Tasks 1-4 (7 code, 5 tests), plus `docs/fenix-v3/plans/09-engine-data.md` if you ticked its boxes; build and full suite green.
-- [ ] **Step 2:** Fill in "Handoff to plan 12" below with what changed (Task 4 Step 6 results, the test count) then rebase onto `FenixV3` and push (index workflow, step 4).
-- [ ] **Step 3 (after the owner's in-sim check 2, only if the owner confirms units, Q2):** change the three oil suffixes in `FenixEngineFormat` and the six oil rows of `IdleKg` together (e.g. `"Engine 1 Oil Quantity: 14.4 quarts"`, `"Engine 1 Oil Pressure: 150 psi"`, `"Engine 1 Oil Temperature: 118 degrees C"`), run the suite, commit `feat(fenix): oil units measured on the Fenix ENGINE page`.
+- [x] **Step 1:** `git diff --name-only <base-sha>` lists only the 12 files of Tasks 1-4 (7 code, 5 tests), plus `docs/fenix-v3/plans/09-engine-data.md` if you ticked its boxes; build and full suite green.
+- [x] **Step 2:** Fill in "Handoff to plan 12" below with what changed (Task 4 Step 6 results, the test count) then rebase onto `FenixV3` and push (index workflow, step 4).
+- [x] **Step 3 (after the owner's in-sim check 2, only if the owner confirms units, Q2):** change the three oil suffixes in `FenixEngineFormat` and the six oil rows of `IdleKg` together (e.g. `"Engine 1 Oil Quantity: 14.4 quarts"`, `"Engine 1 Oil Pressure: 150 psi"`, `"Engine 1 Oil Temperature: 118 degrees C"`), run the suite, commit `feat(fenix): oil units measured on the Fenix ENGINE page`.
 
 ## Owner in-sim checks (few, prioritised)
 
@@ -310,7 +312,7 @@ private static readonly string[] IdleKg =
 ## Handoff to plan 12
 
 **Pilot-facing changes** (guide: the Fenix section of `guide/airbus-aircraft.md` near its displays text at line 218, and the hotkey appendix; changelog fragment, category `feature`):
-- Fenix: input mode, Ctrl+Shift+F, "Engines" opens a window with the Fenix's own engine readings, the same numbers its screens show: running or not, N1, EGT, N2, fuel flow (in the weight unit set in the Fenix EFB), oil quantity, pressure and temperature, total and outside air temperature. Values update every second; F5 reads them again and says "Engines refreshed"; Escape closes. While it is open BA says "Engine 1 running" or "Engine 1 stopped" when the Fenix's engine state changes (if the owner keeps it, Q1). Why: the sim's own engine values do not match the Fenix (an IAE A321 at idle: sim N1 30.9 % against the Fenix's 22.4 %).
+- Fenix: input mode, Ctrl+Shift+F, "Engines" opens a window with the Fenix's own engine readings, the same numbers its screens show: running or not, N1, EGT, N2, fuel flow (in the weight unit set in the Fenix EFB), oil quantity (quarts), pressure (psi) and temperature, total and outside air temperature. Values update every second; F5 reads them again and says "Engines refreshed"; Escape closes. While it is open BA says "Engine 1 running" or "Engine 1 stopped" when the Fenix's engine state changes (kept, Q1): "running" comes when the start is complete, not at light-up. Why: the sim's own engine values do not match the Fenix (an IAE A321 at idle: sim N1 30.9 % against the Fenix's 22.4 %).
 - Draft changelog line: "Fenix: a new Engines window (input mode, Ctrl+Shift+F, then Engines) reads N1, EGT, N2, fuel flow, oil and air temperatures straight from the Fenix, so the numbers match its own displays."
 
 **Proposed rule lines** (for `.claude/rules/fenix-data.md`; full text under `## FNX-?` in `docs/invariants/fenix-data.md` from this plan's Evidence and Owner decisions 3 and 6):
@@ -324,12 +326,26 @@ private static readonly string[] IdleKg =
 
 **Handoff requests:**
 1. ~~Rule globs~~ (Covered by plan 01: its fenix-data.md globs are final and include these files.)
-2. Output O on the Fenix (Q4): only if check 2 shows the stock `AMBIENT TEMPERATURE` differs from `aircraft.temperature.oat` by 1 °C or more, handle `HotkeyAction.ReadOutsideTemperature` in `FenixA320Definition.HandleHotkeyAction` with a `DataService.ReadAsync(FenixEngineNames.Oat)` read, falling back to the generic path when unknown (owner of that file: plan 02 / 12).
-3. Plan 05 (First Officer engine running): in-sim check 1 reports the Fenix N2 at the `running` edge and at idle. After merge, plan 05's own engine names can fold onto `FenixEngineNames.For(n, FenixEngineField.N2)` / `.Running` if they duplicate them.
+2. ~~Output O on the Fenix (Q4)~~ (Not needed: check 2 found Output O equal to the Fenix's OAT.)
+3. Plan 05 (First Officer engine running): check 1 measured the Fenix's `running` edge at N2 59.2 % and a CFM idle of 59.0 % (plan 05 measured 59.3 % CFM, 62.3 % IAE). Plan 05's 55 % N2 threshold would have called this start running about 4 s before the Fenix's own flag, while N2 was still climbing (56.2 % at 12:25:45.9, flag at 12:25:49.2). Not a defect; plan 05 may prefer `aircraft.engines.{n}.running` for "running" and keep N2 for "stopped". After merge, plan 05's own engine names can fold onto `FenixEngineNames.For(n, FenixEngineField.N2)` / `.Running` if they duplicate them.
 4. If the owner chooses always-on running announcements (Q1): implement plan 01's `StartEngineBackground` / `StopEngineBackground` seams in a new `MSFSBlindAssist/Aircraft/FenixA320Definition.Engines.cs` (owned by plan 09) holding a `FenixEngineSnapshot` + `FenixEngineRunningWatch`, and remove the window's own speaking. Only the Ctrl+M row (`UserSettings.FenixDisabledMonitorVariables`, monitor manager) stays a plan 12 handoff.
 5. Guide (plan 04 / 12): the AI E/WD read (Output Alt+E) stays for alerts; the guide can point pilots to the Engines window for exact engine numbers.
+6. Plan 04 (not claimed when measured): on v3, 2026-10-22, the owner's Alt+S and Alt+E framed the captain's PFD and ND, as plan 04 predicts. `CAMERA VIEW TYPE AND INDEX MAX:2` read 19. Instrument view index 8 framed the E/WD, the SD and the standby instruments whole, but **both NDs were clipped at its edges** (1920 x 1080), which is plan 04 Task 1 Step 5's "stop and ask the owner" case for Alt+N. Indices 6, 7, 9, 10 and 11 were not tried.
 
-**In-sim checks still needed:** Owner checks 1 and 2 above; Task 4 Step 6 if the implementer had no sim; Task 5 Step 3 after check 2.
+**Rulings made during the build** (both from the final review; plan text above is the pre-ruling design):
+- `ReloadAsync` applies a read to the snapshot only when at least one value is known, so a gateway that is down leaves the status on "Waiting for engine values…". Cost if wrong: after the Fenix quits mid-session, F5 keeps the last values on screen (the status says they stopped after 10 s) instead of blanking them.
+- `FenixEngineSnapshot` gained `Version` and `ApplyAllIfUnchangedSince`, and Task 1's `Last_update_follows_the_clock` became `Last_update_follows_known_values_only`: the plan stamped every apply, against its own Review Focus bullet 1. A read that a newer subscription push overtook never undoes it (97f49b49e).
+
+**Deferred review minors** (final review, 0 Critical, 2 Important fixed, 5 Minor left for plan 12 to take or drop):
+1. Rows keep their last values, with no per-row stale marker, after the Fenix quits; only the status box says the values stopped.
+2. If the gateway pushes only on change, the status may say "No new values … for more than 10 seconds" in cold-and-dark, where nothing moves (in-sim check below).
+3. F5 pressed while the open-time reload is still running starts a second reload ("No engine data" spoken twice with the gateway down).
+4. "No engine data" is spoken when the HTTP read fails even if the subscription is already delivering values.
+5. `_unit` is assigned before the `IsDisposed` check in `ReloadAsync` (harmless).
+
+**Done in the sim (2026-10-22):** owner checks 1 and 2 (Evidence); the window opens from the list and its rows read well; Output O checked.
+
+**In-sim checks still needed:** the rest of Task 4 Step 6: a focused row stays still for 10 s, F5 says "Engines refreshed", opening Engines again brings the same window forward, Escape closes and focus returns, and switching the aircraft profile with the window open closes it silently. Then, cold and dark (both engines off), the window open for 10 s: the status should keep "Values update every second", not "No new values" (deferred minor 2).
 
 ---
 
