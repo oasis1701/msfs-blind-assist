@@ -47,11 +47,17 @@ These 13 names are the explicit list in `sweep.test.js`. A missing capture fails
 "fixture missing"; the sweep never lists the fixtures folder, so a hand-made fixture another task
 adds there is not part of it.
 
-## Add back the pictures in `home` and `switcher`
+## Add back the pictures the layer keys on
 
-The snippet removes every `<img>`. In `home` and `switcher` only, put back one
-`<img class="app-img">` per app tile, where the picture stood (the layer needs the elements, not
-the pictures). The other fixtures need none.
+The snippet removes every `<img>`. Put back, as bare elements where the picture stood (the layer
+needs the elements, not the pictures):
+
+- In `home` and `switcher`: one `<img class="app-img">` per app tile.
+- In `quick-settings`: the airplane button's picture, as
+  `<img class="quick-settings-btn-icon flight-mode-btn-icon" src="/assets/img/airplane.png">`
+  (it is the button's only content; without it the button is empty).
+
+The other fixtures need none.
 
 ## Check `settings.html` for credentials
 
@@ -62,6 +68,10 @@ value you find, keeping the element.
 
 ## Captured:
 
-- Date: _to be filled in_
-- Fenix version: _to be filled in_
-- Aircraft: _to be filled in_
+- Date: 2026-10-22
+- Fenix version: 3.0.0.7438 (`query { settings { softwareVersion } }`)
+- Aircraft: A320-232 IAE (Fenix default units: kilograms, hPa)
+- How: the snippet's clone-and-strip run in the page through a debugger and posted to a local
+  file writer instead of `copy()`; the pictures above put back by the same script; no other change.
+  Opening the screens pressed nothing that changes the aircraft (Panel States closed with Escape).
+- Credential search of `settings.html`: nothing found (its only text box is "Search settings").
