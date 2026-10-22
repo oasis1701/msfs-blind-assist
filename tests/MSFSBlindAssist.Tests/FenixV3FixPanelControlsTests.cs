@@ -82,6 +82,40 @@ public class FenixV3FixPanelControlsTests : IDisposable
         Assert.DoesNotContain("SetLVar(", branch);
     }
 
+    // CORE-7: a press with no readable state confirms "<name> pressed" once, in the name the reader
+    // just spoke; a button with a light stays silent, its light speaks.
+    [Theory]
+    [MemberData(nameof(MomentaryButtons))]
+    public void Only_a_button_with_no_light_confirms_its_press(string key, string lvar, string? light)
+    {
+        string branch = Branch(key);
+        if (light == null)
+        {
+            Assert.Contains($"ExecuteButtonTransition(\"{lvar}\", varDef.DisplayName,", branch);
+            Assert.Contains("confirmPress: true", branch);
+        }
+        else
+        {
+            Assert.DoesNotContain("confirmPress", branch);
+        }
+    }
+
+    [Fact]
+    public void The_press_confirmation_speaks_once_as_the_press_is_sent()
+    {
+        Assert.DoesNotContain("confirmPress", Branch("S_OH_ELEC_BUS_TIE"));
+
+        string body = FoFbwUnclaimedEventKeyTests.MethodBody(DefinitionPath, "ExecuteButtonTransition");
+        int press = body.IndexOf("simConnect.SetLVar(varName, 1);", StringComparison.Ordinal);
+        int say = body.IndexOf("if (confirmPress) announcer?.Announce($\"{displayName} pressed\");", StringComparison.Ordinal);
+        int release = body.IndexOf("releaseTimer", StringComparison.Ordinal);
+        Assert.True(press >= 0, "the press write is gone");
+        // Right after the press write, inside its connected check, before the release is scheduled.
+        Assert.True(say > press && say < release, "the confirmation is not spoken with the press");
+        Assert.Equal("}", body.Substring(say).Split('\n')[1].Trim());
+        Assert.Single(Regex.Matches(body, "pressed\""));
+    }
+
     [Fact]
     public void Calls_emergency_is_not_a_press_button()
     {

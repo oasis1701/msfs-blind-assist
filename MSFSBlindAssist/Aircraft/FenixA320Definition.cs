@@ -10632,29 +10632,29 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             }
 
             // ========== CALLS PANEL CONTROLS ==========
-            // MECH, ALL, FWD and AFT are momentary pushbuttons (use ExecuteButtonTransition);
-            // EMER and its cover are combo boxes (use SetLVar).
+            // MECH, ALL, FWD and AFT are momentary pushbuttons (use ExecuteButtonTransition); with no
+            // light registered, each confirms its press (CORE-7). EMER and its cover are combo boxes (use SetLVar).
             if (varKey == "S_OH_CALLS_MECH" && value == 1)
             {
-                ExecuteButtonTransition("S_OH_CALLS_MECH", "Calls Mechanic", simConnect, announcer);
+                ExecuteButtonTransition("S_OH_CALLS_MECH", varDef.DisplayName, simConnect, announcer, confirmPress: true);
                 return true;
             }
 
             if (varKey == "S_OH_CALLS_ALL" && value == 1)
             {
-                ExecuteButtonTransition("S_OH_CALLS_ALL", "Calls All", simConnect, announcer);
+                ExecuteButtonTransition("S_OH_CALLS_ALL", varDef.DisplayName, simConnect, announcer, confirmPress: true);
                 return true;
             }
 
             if (varKey == "S_OH_CALLS_FWD" && value == 1)
             {
-                ExecuteButtonTransition("S_OH_CALLS_FWD", "Calls Forward", simConnect, announcer);
+                ExecuteButtonTransition("S_OH_CALLS_FWD", varDef.DisplayName, simConnect, announcer, confirmPress: true);
                 return true;
             }
 
             if (varKey == "S_OH_CALLS_AFT" && value == 1)
             {
-                ExecuteButtonTransition("S_OH_CALLS_AFT", "Calls Aft", simConnect, announcer);
+                ExecuteButtonTransition("S_OH_CALLS_AFT", varDef.DisplayName, simConnect, announcer, confirmPress: true);
                 return true;
             }
 
@@ -10808,16 +10808,17 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // Momentary pushbuttons (use ExecuteButtonTransition)
+            // Momentary pushbuttons (use ExecuteButtonTransition). Their lights stay dark on the ground,
+            // so no state is read and each confirms its press (CORE-7).
             if (varKey == "S_OH_SVCE_INT_OVRD" && value == 1)
             {
-                ExecuteButtonTransition("S_OH_SVCE_INT_OVRD", "Service Interphone Override", simConnect, announcer);
+                ExecuteButtonTransition("S_OH_SVCE_INT_OVRD", varDef.DisplayName, simConnect, announcer, confirmPress: true);
                 return true;
             }
 
             if (varKey == "S_OH_LIGHTING_AVIONICS_COMPT" && value == 1)
             {
-                ExecuteButtonTransition("S_OH_LIGHTING_AVIONICS_COMPT", "Avionics Compartment Light", simConnect, announcer);
+                ExecuteButtonTransition("S_OH_LIGHTING_AVIONICS_COMPT", varDef.DisplayName, simConnect, announcer, confirmPress: true);
                 return true;
             }
 
@@ -10855,10 +10856,10 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
-            // GCS pushbutton (momentary - use ExecuteButtonTransition)
+            // GCS pushbutton (momentary - use ExecuteButtonTransition); no light, so it confirms its press (CORE-7)
             if (varKey == "S_WR_GCS" && value == 1)
             {
-                ExecuteButtonTransition("S_WR_GCS", "GCS", simConnect, announcer);
+                ExecuteButtonTransition("S_WR_GCS", varDef.DisplayName, simConnect, announcer, confirmPress: true);
                 return true;
             }
 
@@ -12781,9 +12782,12 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     /// </summary>
     /// <param name="pressHoldMs">How long to hold the button at 1 before releasing. Use a longer
     /// value for level-triggered tests whose result must be observed while held (e.g. TO CONFIG).</param>
+    /// <param name="confirmPress">Speak "<paramref name="displayName"/> pressed" once as the press is
+    /// sent (CORE-7). Only for a button with no readable state: one with a light stays silent, the
+    /// light speaks. Pass the panel's DisplayName, the name the reader just spoke.</param>
     private void ExecuteButtonTransition(string varName, string displayName,
         SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer? announcer,
-        int pressHoldMs = ButtonPressHoldMs)
+        int pressHoldMs = ButtonPressHoldMs, bool confirmPress = false)
     {
         try
         {
@@ -12810,6 +12814,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                     {
                         Log.Debug("Fenix", $"Setting {varName} = 1 (Press)");
                         simConnect.SetLVar(varName, 1);
+                        if (confirmPress) announcer?.Announce($"{displayName} pressed");
                     }
 
                     // Phase 3: release (1 → 0) after the hold, so the button does not stay latched down.
