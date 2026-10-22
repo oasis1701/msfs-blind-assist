@@ -323,6 +323,164 @@ test('A_role_label_or_hidden_state_the_page_set_in_the_results_grid_is_never_ove
   }
 });
 
+// ---- The results grid keeps up with its rows (ruling R23) ----
+// A row that falls out of its label / value pair is let go of: what the layer wrote on it is taken back and
+// the label above is read again. A pairing is trusted only while its two rows still sit together; a row that
+// turns up between them (or anywhere) never shifts the pairs below it into a garbled name.
+
+const RESULT_NAMES = [
+  'V1: not computed', 'FLP RETR: F=---', 'STOP MARGIN: ----',
+  'VR: not computed', 'SLT RETR: S=---', 'TO SHIFT: [M] [ ]*',
+  'V2: not computed', 'CLEAN: O=---', 'FLAPS/THS: []/[ ]',
+  'TRANS ALT: ----', 'FLEX TO TEMP: []°',
+  'THR RED/ACC: ----/----', 'ENG OUT ACC: ----'
+];
+const imageNames = window => all(window, '.mcdu-screen [role=img]').map(el => el.getAttribute('aria-label'));
+const hiddenCount = window => all(window, '.mcdu-screen [aria-hidden=true]').length;
+// A cell the layer has not touched: none of the attributes it writes.
+const untouched = cell => ['role', 'aria-label', 'aria-hidden', 'data-msfsba'].every(a => !cell.hasAttribute(a));
+function makeRow(window, texts) {
+  const row = window.document.createElement('div');
+  row.className = 'row';
+  row.innerHTML = texts.map(t => '<div class="col-6"><div class="text-mcdu-small">' + t + '</div></div>').join('');
+  return row;
+}
+
+test('A_label_row_left_without_its_value_row_is_read_again_and_pairs_again_when_the_value_row_returns', async () => {
+  const window = await load('depperf');
+  try {
+    const screen = window.document.querySelector('.mcdu-screen');
+    const rows = rowsOf(window);
+    const last = rows[9];
+    const after = last.nextSibling;
+    assert.deepStrictEqual(imageNames(window), RESULT_NAMES);
+    assert.strictEqual(hiddenCount(window), 13);
+
+    // The page drops the last value row: its two labels have nothing under them.
+    screen.removeChild(last);
+    await turns();
+    const orphans = cellsOf(rows[8]);
+    assert.ok(orphans.every(untouched), 'the labels are not hidden, not images, not stamped');
+    assert.deepStrictEqual(orphans.map(textOf(window)), ['THR RED/ACC', 'ENG OUT ACC']);
+    assert.deepStrictEqual(imageNames(window), RESULT_NAMES.slice(0, 11), 'the other pairs carry on');
+    assert.strictEqual(hiddenCount(window), 11);
+
+    // The value row comes back: so do the names.
+    screen.insertBefore(last, after);
+    await turns();
+    assert.deepStrictEqual(imageNames(window), RESULT_NAMES);
+    assert.strictEqual(hiddenCount(window), 13);
+    assert.ok(orphans.every(c => c.getAttribute('aria-hidden') === 'true'));
+    assert.strictEqual(cellsOf(last)[0].getAttribute('aria-label'), 'THR RED/ACC: ----/----');
+  } finally {
+    window.close();
+  }
+});
+
+test('A_row_inserted_into_the_results_grid_never_garbles_a_name_and_a_pairing_it_breaks_is_withdrawn', async () => {
+  const window = await load('depperf');
+  try {
+    const screen = window.document.querySelector('.mcdu-screen');
+    const rows = rowsOf(window);
+
+    // Between two pairs, two columns wide like the pairs below it: every pair still holds, the new row is no pair.
+    const extra = makeRow(window, ['NOTE', 'HERE']);
+    screen.insertBefore(extra, rows[6]);
+    await turns();
+    assert.deepStrictEqual(imageNames(window), RESULT_NAMES);
+    assert.strictEqual(hiddenCount(window), 13);
+    assert.ok(cellsOf(extra).every(untouched));
+
+    // Between a label row and its value row, three columns wide like the pair it breaks: that pairing no
+    // longer holds and is withdrawn (VR, SLT RETR and TO SHIFT are plain labels and plain values again);
+    // nothing else changes and no name mixes the texts of two rows.
+    const between = makeRow(window, ['A', 'B', 'C']);
+    screen.insertBefore(between, rows[3]);
+    await turns();
+    for (const row of [rows[2], rows[3], between]) assert.ok(cellsOf(row).every(untouched));
+    assert.deepStrictEqual(imageNames(window), [...RESULT_NAMES.slice(0, 3), ...RESULT_NAMES.slice(6)]);
+    assert.strictEqual(hiddenCount(window), 10);
+    assert.ok(cellsOf(extra).every(untouched));
+
+    // Taken out again, the grid is as it was: every name is back.
+    screen.removeChild(between);
+    await turns();
+    assert.deepStrictEqual(imageNames(window), RESULT_NAMES);
+    assert.strictEqual(hiddenCount(window), 13);
+    screen.removeChild(extra);
+    await turns();
+    assert.deepStrictEqual(imageNames(window), RESULT_NAMES);
+    assert.strictEqual(hiddenCount(window), 13);
+  } finally {
+    window.close();
+  }
+});
+
+test('A_row_that_stops_being_a_value_row_is_released_and_a_new_pair_of_rows_is_read', async () => {
+  const window = await load('depperf');
+  try {
+    const screen = window.document.querySelector('.mcdu-screen');
+    const rows = rowsOf(window);
+    const [labelRow, valueRow] = [rows[2], rows[3]];
+
+    // The page takes the row class off the value row: it is not a row of the grid any more.
+    valueRow.className = 'not-a-row';
+    await turns();
+    assert.ok(cellsOf(valueRow).every(untouched), 'a stale image is not left behind');
+    assert.ok(cellsOf(labelRow).every(untouched), 'and its label is read again');
+    assert.deepStrictEqual(imageNames(window), [...RESULT_NAMES.slice(0, 3), ...RESULT_NAMES.slice(6)]);
+    valueRow.className = 'row';
+    await turns();
+    assert.deepStrictEqual(imageNames(window), RESULT_NAMES);
+
+    // A new pair of rows (a label row and its value row) is read as a pair, wherever the page puts it.
+    const newLabels = makeRow(window, ['ALT', 'SPD']);
+    const newValues = makeRow(window, ['350', '250']);
+    screen.insertBefore(newLabels, rows[4]);
+    screen.insertBefore(newValues, rows[4]);
+    await turns();
+    assert.deepStrictEqual(imageNames(window), [...RESULT_NAMES.slice(0, 6), 'ALT: 350', 'SPD: 250', ...RESULT_NAMES.slice(6)]);
+    assert.strictEqual(hiddenCount(window), 15);
+
+    // The page puts a fresh value row in place of one it dropped: the label pairs with it again.
+    const fresh = makeRow(window, ['FRESH', 'ROW']);
+    screen.replaceChild(fresh, rows[9]);
+    await turns();
+    assert.deepStrictEqual(imageNames(window).slice(-3), ['FLEX TO TEMP: []°', 'THR RED/ACC: FRESH', 'ENG OUT ACC: ROW']);
+  } finally {
+    window.close();
+  }
+});
+
+test('A_withdrawn_pairing_takes_back_only_what_the_layer_wrote', async () => {
+  const window = await load('depperf', { layer: false });
+  try {
+    const screen = window.document.querySelector('.mcdu-screen');
+    const rows = rowsOf(window);
+    const [vr, slt] = cellsOf(rows[3]);
+    const [vrLabel, sltLabel] = cellsOf(rows[2]);
+    vr.setAttribute('aria-label', 'Rotation speed');   // the page's own label on a value cell
+    vrLabel.setAttribute('aria-hidden', 'true');       // the page's own hidden state on a label
+    window.eval(fs.readFileSync(LAYER, 'utf8'));
+    await turns();
+    assert.strictEqual(vr.getAttribute('role'), 'img');
+    assert.strictEqual(slt.getAttribute('aria-label'), 'SLT RETR: S=---');
+    assert.strictEqual(sltLabel.getAttribute('aria-hidden'), 'true');
+
+    // The pairing is withdrawn: the layer's role, label and hidden state go, the page's stay.
+    screen.insertBefore(makeRow(window, ['A', 'B', 'C']), rows[3]);
+    await turns();
+    assert.strictEqual(vr.getAttribute('aria-label'), 'Rotation speed', 'the page\'s label is not taken back');
+    assert.strictEqual(vr.hasAttribute('role'), false, 'the layer\'s role is');
+    assert.strictEqual(vr.hasAttribute('data-msfsba'), false);
+    assert.ok(untouched(slt));
+    assert.strictEqual(vrLabel.getAttribute('aria-hidden'), 'true', 'the page\'s hidden state stays');
+    assert.strictEqual(sltLabel.hasAttribute('aria-hidden'), false, 'the layer\'s hidden state is taken back');
+  } finally {
+    window.close();
+  }
+});
+
 // ---- Landing ----
 
 const CONDITIONS = ['6 DRY', '5 GOOD', '4 GOOD/MED', '3 MED', '2 MED/POOR', '1 POOR'];

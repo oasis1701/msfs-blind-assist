@@ -4,6 +4,9 @@
 // text or a written value. It never overrides a page's own aria-hidden, aria-label or role, never gives a
 // disabled control a Tab stop, and takes back only its own Tab stops. (It does give tabindex 0 to an enabled
 // control the Tab key skips, one the page set to -1 too, and puts the page's own value back afterwards.)
+// Two more attributes it writes: a drop-down's aria-labelledby gets the drop-down's own id in front of the
+// page's list (the page's list goes back when the layer's label goes), and aria-hidden "true" goes only on
+// a results label whose value cell carries that label.
 // It runs in the top document only. Plain ES2017, no modules.
 (function () {
   if (window.__msfsbaFenixEfb) { return; }
@@ -47,6 +50,10 @@
   var expandedWritten = new WeakMap();
   // The aria-checked the layer wrote on a radio, the same way.
   var checkedWritten = new WeakMap();
+  // The results grid's pairs, as the layer made them: each label row's value row and each value row's label
+  // row. A pairing is kept while the two rows sit together (see readGrid).
+  var gridValueOf = new WeakMap();
+  var gridLabelOf = new WeakMap();
   // The aria-hidden "true" the layer wrote on a label the cell under it now carries.
   var hiddenWritten = new WeakSet();
   // The aria-labelledby a drop-down had before the layer put the drop-down's own id in front of it.
@@ -188,8 +195,8 @@
     release(el);
   }
 
-  // Writes a state the layer owns (aria-checked) only while it is the layer's own: a state the page set is
-  // never touched. A null value takes back the layer's own state (the way the switcher's chevron does).
+  // Writes a state the layer owns (aria-checked, aria-expanded) only while it is
+  // the layer's own: a state the page set is never touched. A null value takes back the layer's own state.
   function ownState(el, attr, value, store) {
     var existing = el.getAttribute(attr);
     var mine = store.get(el);
@@ -202,6 +209,15 @@
       setAttr(el, attr, value);
       store.set(el, value);
     }
+  }
+
+  // Whether the page's own icon inside an element says open ('true'), closed ('false') or neither (null):
+  // the classes of the icon when open and when closed. The page flips the class; the state follows it.
+  function iconState(el, openClass, closedClass) {
+    var icon = el.querySelector('i');
+    if (icon && icon.classList.contains(openClass)) { return 'true'; }
+    if (icon && icon.classList.contains(closedClass)) { return 'false'; }
+    return null;
   }
 
   // A radio button: a button with the radio role that says whether it is the checked one.
@@ -248,22 +264,7 @@
         restoreTab(arrow);
       } else {
         button(arrow, 'App switcher');
-        var icon = arrow.querySelector('i');
-        var expanded = null;
-        if (icon && icon.classList.contains('fa-chevron-up')) { expanded = 'true'; }
-        else if (icon && icon.classList.contains('fa-chevron-down')) { expanded = 'false'; }
-        var existing = arrow.getAttribute('aria-expanded');
-        var mine = expandedWritten.get(arrow);
-        var ours = mine !== undefined && existing === mine;
-        if (existing !== null && !ours) {
-          expandedWritten.delete(arrow); // the page's own state: not ours to change or take back
-        } else if (expanded !== null) {
-          setAttr(arrow, 'aria-expanded', expanded);
-          expandedWritten.set(arrow, expanded);
-        } else {
-          if (ours) { arrow.removeAttribute('aria-expanded'); }
-          expandedWritten.delete(arrow);
-        }
+        ownState(arrow, 'aria-expanded', iconState(arrow, 'fa-chevron-up', 'fa-chevron-down'), expandedWritten);
       }
     }
   });
@@ -626,18 +627,53 @@
     }
   }
 
+  // Lets go of a row that is not part of a pair: what the layer wrote on its cells is taken back and a label
+  // the layer hid is read again (never anything the page set).
+  function letGo(row) {
+    var cells = gridCells(row);
+    for (var i = 0; i < cells.length; i++) { release(cells[i]); unhide(cells[i]); }
+  }
+
+  // Pairs the rows of one results grid. The first time the layer sees two rows side by side that have no
+  // pairing yet, the first is a label row and the second its value row, and the pairing is kept. After that
+  // a row is read only with the row it was paired with, and only while the two still sit together: a row the
+  // page puts between them, or takes out from under the label, withdraws that pairing instead of shifting
+  // every pair below it into a garbled name. A pairing whose other row has left the grid is forgotten, so
+  // rows the page replaces pair up again. A row without a pair is let go of.
+  function readGrid(screen) {
+    var rows = [];
+    for (var child = screen.firstElementChild; child; child = child.nextElementSibling) {
+      if (child.classList.contains('row')) { rows.push(child); } else { letGo(child); }
+    }
+    for (var k = 0; k < rows.length; k++) {
+      var value = gridValueOf.get(rows[k]);
+      if (value !== undefined && rows.indexOf(value) === -1) { gridValueOf.delete(rows[k]); gridLabelOf.delete(value); }
+      var label = gridLabelOf.get(rows[k]);
+      if (label !== undefined && rows.indexOf(label) === -1) { gridLabelOf.delete(rows[k]); gridValueOf.delete(label); }
+    }
+    for (var r = 0; r < rows.length; ) {
+      var next = rows[r + 1];
+      var known = gridValueOf.has(rows[r]) || gridLabelOf.has(rows[r]);
+      if (!known && next && !gridValueOf.has(next) && !gridLabelOf.has(next)) {
+        gridValueOf.set(rows[r], next);
+        gridLabelOf.set(next, rows[r]);
+      }
+      if (next && gridValueOf.get(rows[r]) === next) {
+        readPair(rows[r], next);
+        r += 2;
+      } else {
+        letGo(rows[r]);
+        r += 1;
+      }
+    }
+  }
+
   // Takeoff: the results are the MCDU's take-off page, a title and then rows that alternate: a row of small
   // labels and, under it, a row of values. After Calculate the page changes the values in place; each pass
   // reads them again (name() keeps the label in step with the text).
   RULES.push(function (root) {
     var screens = root.querySelectorAll('.mcdu-screen');
-    for (var s = 0; s < screens.length; s++) {
-      var rows = [];
-      for (var row = screens[s].firstElementChild; row; row = row.nextElementSibling) {
-        if (row.classList.contains('row')) { rows.push(row); }
-      }
-      for (var r = 0; r + 1 < rows.length; r += 2) { readPair(rows[r], rows[r + 1]); }
-    }
+    for (var s = 0; s < screens.length; s++) { readGrid(screens[s]); }
   });
 
   // Landing: the runway condition is the group of exactly six items whose texts start 6 to 1 ("6 DRY" ...
