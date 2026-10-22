@@ -496,9 +496,12 @@ public sealed partial class FenixCabinForm : Form
     private IReadOnlyList<FenixCabinLine> SectionLines(FenixCabinSection section)
         => _lines.Where(line => line.Section == section).ToArray();
 
-    /// <summary>The text of the line with this key in the last render, or null when there is none.</summary>
-    private string? LineText(string key)
-        => _lines.FirstOrDefault(line => string.Equals(line.Key, key, StringComparison.Ordinal))?.Text;
+    /// <summary>
+    /// The line with this key as the values read now make it, or null when there is none: built fresh, not
+    /// taken from the last render, which can be up to 300 ms older than the values a press acts on.
+    /// </summary>
+    private FenixCabinLine? CurrentLine(string key)
+        => FenixCabinLines.Build(_cache, _pram, _layout).FirstOrDefault(line => string.Equals(line.Key, key, StringComparison.Ordinal));
 
     private void UpdateStatusControls()
     {
@@ -588,20 +591,21 @@ public sealed partial class FenixCabinForm : Form
     /// Sends one data-name write (<see cref="FenixCabinWrites"/>). While the Fenix does not answer nothing
     /// is sent and the pilot hears "The Fenix is not answering."; a write it refuses says "The Fenix did
     /// not accept that."; an accepted one with a <paramref name="readbackKey"/> waits
-    /// <paramref name="window"/> for that line to change (<see cref="FenixCabinReadback.Expect"/>). UI thread.
+    /// <paramref name="window"/> for that line to change (<see cref="FenixCabinReadback.Expect"/>): its
+    /// text, or with <paramref name="byState"/> only the part the press changes (R17). UI thread.
     /// The result is true when the Fenix accepted the write; a press that sends several stops at the first false.
     /// </summary>
-    private Task<bool> RunWriteAsync(FenixCabinWrite w, string? readbackKey, TimeSpan window, bool speakIfUnchanged)
-        => RunAsync(() => _context.Data.SendAsync(w), readbackKey, window, speakIfUnchanged, refreshPram: false);
+    private Task<bool> RunWriteAsync(FenixCabinWrite w, string? readbackKey, TimeSpan window, bool speakIfUnchanged, bool byState = false)
+        => RunAsync(() => _context.Data.SendAsync(w), readbackKey, window, speakIfUnchanged, byState, refreshPram: false);
 
     /// <summary>
     /// Sends one FAP audio mutation (<see cref="FenixCabinPram"/>), as <see cref="RunWriteAsync"/> sends a
     /// write, with a 5 s read-back window; once accepted, the audio state is read again at once.
     /// </summary>
     private Task<bool> RunMutationAsync(FenixCabinMutation m, string? readbackKey, bool speakIfUnchanged)
-        => RunAsync(() => _context.Data.SendAsync(m), readbackKey, ReadbackWindow, speakIfUnchanged, refreshPram: true);
+        => RunAsync(() => _context.Data.SendAsync(m), readbackKey, ReadbackWindow, speakIfUnchanged, byState: false, refreshPram: true);
 
-    private async Task<bool> RunAsync(Func<Task<bool>> send, string? readbackKey, TimeSpan window, bool speakIfUnchanged, bool refreshPram)
+    private async Task<bool> RunAsync(Func<Task<bool>> send, string? readbackKey, TimeSpan window, bool speakIfUnchanged, bool byState, bool refreshPram)
     {
         if (!_cache.AnyKnown)
         {
@@ -610,9 +614,10 @@ public sealed partial class FenixCabinForm : Form
             return false;
         }
 
-        // The line as the pilot had it at the press: a change from this text is the press's answer, also
-        // when the poll shows it before the write's own answer is back.
-        string? pressText = readbackKey == null ? null : LineText(readbackKey);
+        // The line as the pilot had it at the press, from the values the press acts on: a change from its
+        // text (or state) is the press's answer, also when the poll shows it before the write's own answer
+        // is back.
+        FenixCabinLine? pressLine = readbackKey == null ? null : CurrentLine(readbackKey);
         bool accepted;
         try
         {
@@ -634,7 +639,7 @@ public sealed partial class FenixCabinForm : Form
             return false;
         }
         if (readbackKey != null)
-            _readback.Expect(readbackKey, pressText, DateTime.UtcNow, window, speakIfUnchanged);
+            _readback.Expect(readbackKey, pressLine?.Text, DateTime.UtcNow, window, speakIfUnchanged, pressLine?.State, byState);
         if (refreshPram) RequestPramRefresh();
         return true;
     }

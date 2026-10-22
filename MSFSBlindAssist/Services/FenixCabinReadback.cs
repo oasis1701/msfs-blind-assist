@@ -13,12 +13,20 @@ namespace MSFSBlindAssist.Services;
 /// the window's end is still the press's answer. Not thread-safe: the window calls it on its UI thread
 /// only.
 /// </para>
+/// <para>
+/// Two ways to tell a change (ruling R17). Text mode, the default: any change of the line's text. State
+/// mode: a change of the line's <see cref="FenixCabinLine.State"/>, the part the press changes, so a door
+/// press is not answered by its slide disarming, a cargo press by "moving", or a temperature press by the
+/// measured air drifting. A null state is not settled yet (moving, unknown) and keeps the press waiting;
+/// once the state changes, the line's whole current text is said.
+/// </para>
 /// </summary>
 public sealed class FenixCabinReadback
 {
     private const string UnchangedSuffix = ", unchanged";
 
-    private sealed record Expectation(string Key, string? PressText, DateTime PressedAt, TimeSpan Window, bool SpeakIfUnchanged);
+    private sealed record Expectation(
+        string Key, string? PressText, DateTime PressedAt, TimeSpan Window, bool SpeakIfUnchanged, string? PressState, bool ByState);
 
     // In press order: a repeated press for a key leaves its old place and joins the end.
     private readonly List<Expectation> _pending = new();
@@ -29,8 +37,8 @@ public sealed class FenixCabinReadback
     /// </summary>
     /// <param name="key">The line's <see cref="FenixCabinLine.Key"/>.</param>
     /// <param name="currentText">
-    /// The line's text when it was pressed, or null when the line did not exist: then the first text that
-    /// appears for the key counts as a change.
+    /// The line's text when it was pressed, or null when the line did not exist: then, in text mode, the
+    /// first text that appears for the key counts as a change.
     /// </param>
     /// <param name="now">The time of the press.</param>
     /// <param name="window">How long to wait for the change: 5 s for most, 30 s for doors and cargo doors.</param>
@@ -38,16 +46,24 @@ public sealed class FenixCabinReadback
     /// True for the numeric presses (volume, temperature, preselect): when the window ends with the line
     /// unchanged or missing, say "&lt;text&gt;, unchanged". False for the others: end silently.
     /// </param>
-    public void Expect(string key, string? currentText, DateTime now, TimeSpan window, bool speakIfUnchanged)
+    /// <param name="currentState">
+    /// State mode only: the line's <see cref="FenixCabinLine.State"/> when it was pressed, or null when it
+    /// was not known: then the first state that appears counts as a change.
+    /// </param>
+    /// <param name="byState">
+    /// True to wait for the line's state rather than its text (state mode); false, the default, for text mode.
+    /// </param>
+    public void Expect(string key, string? currentText, DateTime now, TimeSpan window, bool speakIfUnchanged,
+        string? currentState = null, bool byState = false)
     {
         ArgumentException.ThrowIfNullOrEmpty(key);
 
         _pending.RemoveAll(expectation => string.Equals(expectation.Key, key, StringComparison.Ordinal));
-        _pending.Add(new Expectation(key, currentText, now, window, speakIfUnchanged));
+        _pending.Add(new Expectation(key, currentText, now, window, speakIfUnchanged, currentState, byState));
     }
 
     /// <summary>
-    /// What to say now, in press order: the new text of each expected line that changed, and the
+    /// What to say now, in press order: the current text of each expected line that changed, and the
     /// "unchanged" confirmation of each numeric press whose window has ended with its line unchanged or
     /// missing. Every expectation that spoke or timed out is dropped; the rest keep waiting.
     /// </summary>
@@ -61,15 +77,16 @@ public sealed class FenixCabinReadback
         var waiting = new List<Expectation>();
         foreach (Expectation expectation in _pending)
         {
-            string? current = TextOf(lines, expectation.Key);
-            if (current != null && !string.Equals(current, expectation.PressText, StringComparison.Ordinal))
+            FenixCabinLine? line = LineOf(lines, expectation.Key);
+            if (line != null && Changed(expectation, line))
             {
-                spoken.Add(current);
+                spoken.Add(line.Text);
             }
             else if (now - expectation.PressedAt >= expectation.Window)
             {
-                // The line is unchanged or missing here, so the press-time text is what it still says.
-                if (expectation.SpeakIfUnchanged && (current ?? expectation.PressText) is string text)
+                // The line is unchanged (or, in state mode, not settled) or missing here: what it says now,
+                // or the press-time text when it is gone.
+                if (expectation.SpeakIfUnchanged && (line?.Text ?? expectation.PressText) is string text)
                     spoken.Add(text + UnchangedSuffix);
             }
             else
@@ -83,12 +100,19 @@ public sealed class FenixCabinReadback
         return spoken.AsReadOnly();
     }
 
-    // The text of the first line with the key, or null when there is none.
-    private static string? TextOf(IReadOnlyList<FenixCabinLine> lines, string key)
+    // Text mode: the text differs from the press-time text. State mode: the state is settled (not null)
+    // and differs from the press-time state.
+    private static bool Changed(Expectation expectation, FenixCabinLine line)
+        => expectation.ByState
+            ? line.State != null && !string.Equals(line.State, expectation.PressState, StringComparison.Ordinal)
+            : !string.Equals(line.Text, expectation.PressText, StringComparison.Ordinal);
+
+    // The first line with the key, or null when there is none.
+    private static FenixCabinLine? LineOf(IReadOnlyList<FenixCabinLine> lines, string key)
     {
         foreach (FenixCabinLine line in lines)
         {
-            if (string.Equals(line.Key, key, StringComparison.Ordinal)) return line.Text;
+            if (string.Equals(line.Key, key, StringComparison.Ordinal)) return line;
         }
         return null;
     }

@@ -493,6 +493,76 @@ public class FenixCabinLinesTests
                 Data((FenixCabinNames.DoorPressure("d1l"), 900), (FenixCabinNames.SlidePressure("d1l"), 3500)), null, A321), "door.d1l"));
     }
 
+    // ---- The part of a line a press changes (ruling R17) ------------------------------------------
+
+    private static string? State(IReadOnlyList<FenixCabinLine> lines, string key) => Assert.Single(lines, l => l.Key == key).State;
+
+    [Fact]
+    public void Door_and_cargo_lines_carry_the_state_a_press_changes()
+        => TestCulture.Run("de-DE", () =>
+        {
+            // A door's own word, whatever its slide and pressure say; a cargo door open or closed, none while
+            // it moves or is unknown.
+            var data = Data(
+                (FenixCabinNames.Door("d1l"), false), (FenixCabinNames.Slide("d1l"), true),
+                (FenixCabinNames.Door("d1r"), true), (FenixCabinNames.Slide("d1r"), false),
+                (FenixCabinNames.Door("d4l"), ""), (FenixCabinNames.Slide("d4l"), true),
+                (FenixCabinNames.DoorPressure("d4r"), 900), (FenixCabinNames.Door("d4r"), false),
+                (FenixCabinNames.Slide("owl"), true),
+                (FenixCabinNames.CargoForward, true), (FenixCabinNames.CargoFwdMoving, false),
+                (FenixCabinNames.CargoAft, false), (FenixCabinNames.CargoAftMoving, true),
+                (FenixCabinNames.CargoBulk, false));
+            var lines = FenixCabinLines.Build(data, null, A320InPark);
+
+            Assert.Equal("closed", State(lines, "door.d1l"));
+            Assert.Equal("open", State(lines, "door.d1r"));
+            Assert.Null(State(lines, "door.d4l"));
+            Assert.Equal("closed", State(lines, "door.d4r"));
+            Assert.Equal("Door 4 right: closed, slide no data, check door pressure", Line(lines, "door.d4r"));
+            Assert.Null(State(lines, "slide.owl"));
+            Assert.Equal("open", State(lines, "cargo.forward"));
+            Assert.Equal("Aft cargo door: moving", Line(lines, "cargo.aft"));
+            Assert.Null(State(lines, "cargo.aft"));
+            Assert.Equal("closed", State(lines, "cargo.bulk"));
+
+            // Unknown cargo doors have none either.
+            var unknown = FenixCabinLines.Build(Data(), null, A320InPark);
+            Assert.Null(State(unknown, "cargo.forward"));
+            Assert.Null(State(unknown, "cargo.bulk"));
+            Assert.Null(State(unknown, "door.d1l"));
+            return 0;
+        });
+
+    [Fact]
+    public void Temperature_lines_carry_the_target_and_offset_and_no_other_line_has_a_state()
+        => TestCulture.Run("de-DE", () =>
+        {
+            var data = Live(
+                (FenixCabinNames.TempFwdAir, 24.4), (FenixCabinNames.TempFwdSelected, 24), (FenixCabinNames.TempFwdOffset, 0.5),
+                (FenixCabinNames.TempAftAir, 23.96), (FenixCabinNames.TempAftSelected, 22), (FenixCabinNames.TempAftOffset, -1.5));
+            var lines = FenixCabinLines.Build(data, LivePram, A321);
+
+            // Invariant, so a comma-decimal PC compares the same state: "24.5|0.5", never "24,5|0,5".
+            Assert.Equal("24.5|0.5", State(lines, "temp.forward"));
+            Assert.Equal("20.5|-1.5", State(lines, "temp.aft"));
+            // The measured air temperature is not part of it.
+            var warmer = FenixCabinLines.Build(Live(
+                (FenixCabinNames.TempFwdAir, 25.1), (FenixCabinNames.TempFwdSelected, 24), (FenixCabinNames.TempFwdOffset, 0.5)), LivePram, A321);
+            Assert.Equal("24.5|0.5", State(warmer, "temp.forward"));
+            Assert.Equal("24.0|0.0", State(FenixCabinLines.Build(Live(), LivePram, A321), "temp.aft"));
+
+            // Unknown selected temperature or offset: none.
+            Assert.Null(State(FenixCabinLines.Build(Live((FenixCabinNames.TempFwdOffset, "")), LivePram, A321), "temp.forward"));
+            Assert.Null(State(FenixCabinLines.Build(Live((FenixCabinNames.TempAftSelected, "")), LivePram, A321), "temp.aft"));
+
+            // Every other line leaves it null.
+            Assert.All(lines.Where(l => !l.Key.StartsWith("door.", StringComparison.Ordinal)
+                                        && !l.Key.StartsWith("cargo.", StringComparison.Ordinal)
+                                        && l.Key is not ("temp.forward" or "temp.aft")),
+                l => Assert.Null(l.State));
+            return 0;
+        });
+
     [Theory]
     [InlineData(2000.0, 2900.0, "check slide pressure")]
     [InlineData(900.0, 2900.0, "check slide pressure")]

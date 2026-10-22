@@ -2,7 +2,8 @@
 // resulting line once when it changes, or "<line>, unchanged" for the numeric presses (volume,
 // temperature, preselect), and nothing else, so it never repeats what the screen reader already says
 // (CORE-7). The caller passes the clock; there are no timers. The texts are the ones FenixCabinLines
-// builds (plan 08 Task 4): "Volume: 5", "Door 1 left: closed, slide armed".
+// builds (plan 08 Task 4): "Volume: 5", "Door 1 left: closed, slide armed". In state mode (ruling R17)
+// the press waits for the line's State (the part the press changes) rather than its whole text.
 
 using MSFSBlindAssist.Services;
 
@@ -257,6 +258,107 @@ public class FenixCabinReadbackTests
 
         Assert.Empty(readback.Collect(Lines(Volume("Volume: 5")), T0));
         Assert.Empty(readback.Collect(Lines(), T0 + Seconds(60)));
+    }
+
+    // ---- State mode (ruling R17): the press waits for the part of the line it changes -------------
+
+    private static FenixCabinLine Door1Left(string text, string? state) => new(FenixCabinSection.Doors, "door.d1l", text, state);
+    private static FenixCabinLine Cargo(string text, string? state) => new(FenixCabinSection.Doors, "cargo.forward", text, state);
+    private static FenixCabinLine Forward(string text, string? state) => new(FenixCabinSection.Temperature, "temp.forward", text, state);
+
+    [Fact]
+    public void A_state_change_speaks_the_whole_current_line_once()
+    {
+        var readback = new FenixCabinReadback();
+        readback.Expect("door.d1l", "Door 1 left: closed, slide armed", T0, Long, speakIfUnchanged: false,
+            currentState: "closed", byState: true);
+
+        Assert.Equal(["Door 1 left: open, slide disarmed"],
+            readback.Collect(Lines(Door1Left("Door 1 left: open, slide disarmed", "open")), T0 + Seconds(10)));
+        Assert.Empty(readback.Collect(Lines(Door1Left("Door 1 left: closed, slide disarmed", "closed")), T0 + Seconds(11)));
+    }
+
+    [Fact]
+    public void A_text_change_with_the_same_state_says_nothing()
+    {
+        // The slide disarms a poll before the door opens: not the press's answer.
+        var readback = new FenixCabinReadback();
+        readback.Expect("door.d1l", "Door 1 left: closed, slide armed", T0, Long, speakIfUnchanged: false,
+            currentState: "closed", byState: true);
+
+        Assert.Empty(readback.Collect(Lines(Door1Left("Door 1 left: closed, slide disarmed", "closed")), T0 + Seconds(1)));
+        Assert.Equal(["Door 1 left: open, slide disarmed"],
+            readback.Collect(Lines(Door1Left("Door 1 left: open, slide disarmed", "open")), T0 + Seconds(12)));
+
+        // A silent press whose state never changes ends silently, whatever its text did.
+        readback.Expect("door.d1l", "Door 1 left: open, slide disarmed", T0 + Seconds(20), Long, speakIfUnchanged: false,
+            currentState: "open", byState: true);
+        Assert.Empty(readback.Collect(Lines(Door1Left("Door 1 left: open, slide armed", "open")), T0 + Seconds(51)));
+        Assert.Empty(readback.Collect(Lines(Door1Left("Door 1 left: closed, slide armed", "closed")), T0 + Seconds(52)));
+    }
+
+    [Fact]
+    public void A_null_state_is_not_settled_and_the_later_settled_state_speaks()
+    {
+        // A cargo door goes closed, moving (no state), open: the answer is the open line, never "moving".
+        var readback = new FenixCabinReadback();
+        readback.Expect("cargo.forward", "Forward cargo door: closed", T0, Long, speakIfUnchanged: false,
+            currentState: "closed", byState: true);
+
+        Assert.Empty(readback.Collect(Lines(Cargo("Forward cargo door: moving", null)), T0 + Seconds(2)));
+        Assert.Empty(readback.Collect(Lines(Cargo("Forward cargo door: no data", null)), T0 + Seconds(4)));
+        Assert.Equal(["Forward cargo door: open"],
+            readback.Collect(Lines(Cargo("Forward cargo door: open", "open")), T0 + Seconds(15)));
+        Assert.Empty(readback.Collect(Lines(Cargo("Forward cargo door: moving", null)), T0 + Seconds(16)));
+    }
+
+    [Fact]
+    public void A_press_without_a_state_speaks_the_first_settled_state()
+    {
+        // As a missing press-time text in text mode: the first state that appears is the answer.
+        var readback = new FenixCabinReadback();
+        readback.Expect("temp.forward", "Forward zone: no data", T0, Short, speakIfUnchanged: true, currentState: null, byState: true);
+
+        Assert.Empty(readback.Collect(Lines(Forward("Forward zone: 24.0 degrees, target no data, offset no data", null)), T0 + Seconds(1)));
+        Assert.Equal(["Forward zone: 24.0 degrees, target 24.0 degrees, no offset"],
+            readback.Collect(Lines(Forward("Forward zone: 24.0 degrees, target 24.0 degrees, no offset", "24.0|0.0")), T0 + Seconds(2)));
+    }
+
+    [Fact]
+    public void An_unchanged_state_at_the_window_end_says_the_current_line_unchanged()
+    {
+        // Only the measured air temperature drifts: the target did not move, and the line as it reads now is said.
+        var readback = new FenixCabinReadback();
+        readback.Expect("temp.forward", "Forward zone: 24.0 degrees, target 24.0 degrees, no offset", T0, Short,
+            speakIfUnchanged: true, currentState: "24.0|0.0", byState: true);
+
+        Assert.Empty(readback.Collect(Lines(Forward("Forward zone: 24.3 degrees, target 24.0 degrees, no offset", "24.0|0.0")), T0 + Seconds(1)));
+        Assert.Equal(["Forward zone: 24.3 degrees, target 24.0 degrees, no offset, unchanged"],
+            readback.Collect(Lines(Forward("Forward zone: 24.3 degrees, target 24.0 degrees, no offset", "24.0|0.0")), T0 + Seconds(5)));
+        Assert.Empty(readback.Collect(Lines(Forward("Forward zone: 24.3 degrees, target 24.5 degrees, offset plus 0.5", "24.5|0.5")), T0 + Seconds(6)));
+    }
+
+    [Fact]
+    public void A_state_that_stays_unsettled_to_the_window_end_answers_by_the_unchanged_rule()
+    {
+        var readback = new FenixCabinReadback();
+        readback.Expect("temp.forward", "Forward zone: 24.0 degrees, target 24.0 degrees, no offset", T0, Short,
+            speakIfUnchanged: true, currentState: "24.0|0.0", byState: true);
+
+        Assert.Empty(readback.Collect(Lines(Forward("Forward zone: 24.0 degrees, target no data, offset no data", null)), T0 + Seconds(1)));
+        Assert.Equal(["Forward zone: 24.0 degrees, target no data, offset no data, unchanged"],
+            readback.Collect(Lines(Forward("Forward zone: 24.0 degrees, target no data, offset no data", null)), T0 + Seconds(5)));
+    }
+
+    [Fact]
+    public void Text_mode_ignores_the_state()
+    {
+        // The default mode: the line's text decides, as before state mode existed.
+        var readback = new FenixCabinReadback();
+        readback.Expect("door.d1l", "Door 1 left: closed, slide armed", T0, Long, speakIfUnchanged: false);
+
+        Assert.Equal(["Door 1 left: closed, slide disarmed"],
+            readback.Collect(Lines(Door1Left("Door 1 left: closed, slide disarmed", "closed")), T0 + Seconds(1)));
     }
 
     [Fact]

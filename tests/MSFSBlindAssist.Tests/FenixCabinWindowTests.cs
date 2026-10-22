@@ -1086,9 +1086,10 @@ public class FenixCabinWindowTests
     }
 
     // Each press that was accepted leaves a read-back expectation in the window: its line, the press-time
-    // text, how long to wait and whether to say "unchanged". Read from the window's own read-back object. A
-    // snapshot taken while an accepted press is being recorded on another thread is retried by the caller.
-    private static (string Key, string? PressText, TimeSpan Window, bool SpeakIfUnchanged)[] Expectations(FenixCabinForm form)
+    // text and state, how long to wait, whether to say "unchanged" and whether it waits for the line's state
+    // (R17) rather than its text. Read from the window's own read-back object. A snapshot taken while an
+    // accepted press is being recorded on another thread is retried by the caller.
+    private static (string Key, string? PressText, string? PressState, TimeSpan Window, bool SpeakIfUnchanged, bool ByState)[] Expectations(FenixCabinForm form)
     {
         BindingFlags instance = BindingFlags.Instance | BindingFlags.NonPublic;
         object readback = typeof(FenixCabinForm).GetField("_readback", instance)!.GetValue(form)!;
@@ -1099,13 +1100,15 @@ public class FenixCabinWindowTests
                 .Select(item => (
                     Key: (string)item.GetType().GetProperty("Key")!.GetValue(item)!,
                     PressText: (string?)item.GetType().GetProperty("PressText")!.GetValue(item),
+                    PressState: (string?)item.GetType().GetProperty("PressState")!.GetValue(item),
                     Window: (TimeSpan)item.GetType().GetProperty("Window")!.GetValue(item)!,
-                    SpeakIfUnchanged: (bool)item.GetType().GetProperty("SpeakIfUnchanged")!.GetValue(item)!))
+                    SpeakIfUnchanged: (bool)item.GetType().GetProperty("SpeakIfUnchanged")!.GetValue(item)!,
+                    ByState: (bool)item.GetType().GetProperty("ByState")!.GetValue(item)!))
                 .ToArray();
         }
         catch (InvalidOperationException)
         {
-            return Array.Empty<(string, string?, TimeSpan, bool)>();
+            return Array.Empty<(string, string?, string?, TimeSpan, bool, bool)>();
         }
     }
 
@@ -1125,6 +1128,10 @@ public class FenixCabinWindowTests
     // The text of the line with this key, as the window renders it for the A320.
     private static string? LineTextOf(FenixCabinForm form, string key)
         => FenixCabinLines.Build(form.Cache, null, DefaultLayout()).FirstOrDefault(line => line.Key == key)?.Text;
+
+    // The state of the line with this key (the part a press changes, R17), as the window builds it for the A320.
+    private static string? LineStateOf(FenixCabinForm form, string key)
+        => FenixCabinLines.Build(form.Cache, null, DefaultLayout()).FirstOrDefault(line => line.Key == key)?.State;
 
     [Fact]
     public void The_doors_temperature_and_water_pages_have_their_controls_named_for_the_reader()
@@ -1682,24 +1689,25 @@ public class FenixCabinWindowTests
     public void Each_press_waits_for_its_own_line_for_its_own_time()
     {
         // The read-back key and window of every press (and whether it says "unchanged"): 5 s and a spoken
-        // "unchanged" for the numbers, 30 s and silence for a door. The reset waits on both zones.
+        // "unchanged" for the numbers, 30 s and silence for a door. The reset waits on both zones. A door, a
+        // cargo door and a temperature wait for the part of the line they change (R17); the preselect for its text.
         var five = TimeSpan.FromSeconds(5);
         var thirty = TimeSpan.FromSeconds(30);
         FenixCabinLayout layout = DefaultLayout();
 
-        var cases = new (string Name, Action<FenixCabinForm> Press, (string Key, bool Unchanged, TimeSpan Window)[] Waits)[]
+        var cases = new (string Name, Action<FenixCabinForm> Press, (string Key, bool Unchanged, TimeSpan Window, bool ByState)[] Waits)[]
         {
-            ("Forward warmer", form => Click(TemperatureButton(form, ForwardWarmer)), new[] { ("temp.forward", true, five) }),
-            ("Forward cooler", form => Click(TemperatureButton(form, ForwardCooler)), new[] { ("temp.forward", true, five) }),
-            ("Aft warmer", form => Click(TemperatureButton(form, AftWarmer)), new[] { ("temp.aft", true, five) }),
-            ("Aft cooler", form => Click(TemperatureButton(form, AftCooler)), new[] { ("temp.aft", true, five) }),
-            ("Reset", form => Click(TemperatureButton(form, ResetTemperatures)), new[] { ("temp.forward", true, five), ("temp.aft", true, five) }),
-            ("Preselect up", form => Click(WaterButton(form, PreselectUp)), new[] { ("water.preselect", true, five) }),
-            ("Preselect down", form => Click(WaterButton(form, PreselectDown)), new[] { ("water.preselect", true, five) }),
-            ("Door", form => { SelectDoorLine(form, layout, "door.d1l"); Click(DoorButton(form)); }, new[] { ("door.d1l", false, thirty) }),
-            ("Forward cargo", form => { SelectDoorLine(form, layout, "cargo.forward"); Click(DoorButton(form)); }, new[] { ("cargo.forward", false, thirty) }),
-            ("Aft cargo", form => { SelectDoorLine(form, layout, "cargo.aft"); Click(DoorButton(form)); }, new[] { ("cargo.aft", false, thirty) }),
-            ("Bulk cargo", form => { SelectDoorLine(form, layout, "cargo.bulk"); Click(DoorButton(form)); }, new[] { ("cargo.bulk", false, thirty) })
+            ("Forward warmer", form => Click(TemperatureButton(form, ForwardWarmer)), new[] { ("temp.forward", true, five, true) }),
+            ("Forward cooler", form => Click(TemperatureButton(form, ForwardCooler)), new[] { ("temp.forward", true, five, true) }),
+            ("Aft warmer", form => Click(TemperatureButton(form, AftWarmer)), new[] { ("temp.aft", true, five, true) }),
+            ("Aft cooler", form => Click(TemperatureButton(form, AftCooler)), new[] { ("temp.aft", true, five, true) }),
+            ("Reset", form => Click(TemperatureButton(form, ResetTemperatures)), new[] { ("temp.forward", true, five, true), ("temp.aft", true, five, true) }),
+            ("Preselect up", form => Click(WaterButton(form, PreselectUp)), new[] { ("water.preselect", true, five, false) }),
+            ("Preselect down", form => Click(WaterButton(form, PreselectDown)), new[] { ("water.preselect", true, five, false) }),
+            ("Door", form => { SelectDoorLine(form, layout, "door.d1l"); Click(DoorButton(form)); }, new[] { ("door.d1l", false, thirty, true) }),
+            ("Forward cargo", form => { SelectDoorLine(form, layout, "cargo.forward"); Click(DoorButton(form)); }, new[] { ("cargo.forward", false, thirty, true) }),
+            ("Aft cargo", form => { SelectDoorLine(form, layout, "cargo.aft"); Click(DoorButton(form)); }, new[] { ("cargo.aft", false, thirty, true) }),
+            ("Bulk cargo", form => { SelectDoorLine(form, layout, "cargo.bulk"); Click(DoorButton(form)); }, new[] { ("cargo.bulk", false, thirty, true) })
         };
 
         foreach (var c in cases)
@@ -1708,9 +1716,10 @@ public class FenixCabinWindowTests
             Zones(rig.Form, 24, 0, 24, 0);
             Set(rig.Form,
                 (FenixCabinNames.WaterPreselect, Num(75)),
-                (FenixCabinNames.DoorControl("d1l"), Num(0)),
+                (FenixCabinNames.Door("d1l"), False), (FenixCabinNames.DoorControl("d1l"), Num(0)),
                 (FenixCabinNames.CargoForward, False), (FenixCabinNames.CargoAft, False), (FenixCabinNames.CargoBulk, False));
             string?[] before = c.Waits.Select(wait => LineTextOf(rig.Form, wait.Key)).ToArray();
+            string?[] beforeState = c.Waits.Select(wait => LineStateOf(rig.Form, wait.Key)).ToArray();
 
             c.Press(rig.Form);
 
@@ -1721,12 +1730,103 @@ public class FenixCabinWindowTests
             {
                 Assert.Equal(c.Waits[i].Window, waiting[i].Window);
                 Assert.Equal(c.Waits[i].Unchanged, waiting[i].SpeakIfUnchanged);
-                // The text of the line as the pilot had it at the press.
+                Assert.Equal(c.Waits[i].ByState, waiting[i].ByState);
+                // The text and state of the line as the pilot had it at the press.
                 Assert.Equal(before[i], waiting[i].PressText);
                 Assert.NotNull(waiting[i].PressText);
+                Assert.Equal(beforeState[i], waiting[i].PressState);
+                if (c.Waits[i].ByState) Assert.NotNull(waiting[i].PressState);
             }
             Assert.Empty(rig.Speech.All);
         }
+    }
+
+    [Fact]
+    public void A_press_takes_its_line_from_the_values_of_the_moment_not_the_last_render()
+    {
+        // The poll has applied a new offset that no render has shown yet (renders run every 300 ms): the press
+        // steps from it, so its read-back starts from it too, or the pending render would read as its answer.
+        using var rig = new ControlsRig();
+        Zones(rig.Form, 24, 0, 24, 0);
+        rig.Form.Cache.Apply(FenixCabinNames.TempFwdOffset, Num(0.5));
+
+        Click(TemperatureButton(rig.Form, ForwardWarmer));
+
+        WaitFor(() => rig.Gateway.Writes.Count == 1 && Expectations(rig.Form).Length == 1, "the forward press");
+        AssertSent(rig.Gateway.Writes[0], Float(FenixCabinNames.TempFwdOffset, 1.0));
+        var waiting = Assert.Single(Expectations(rig.Form));
+        Assert.Equal("Forward zone: 24.0 degrees, target 24.5 degrees, offset plus 0.5", waiting.PressText);
+        Assert.Equal("24.5|0.5", waiting.PressState);
+
+        // The render that shows the 0.5 the press started from is not its answer; the 1.0 is.
+        rig.Form.Render();
+        Tick(rig.Form);
+        Assert.Empty(rig.Speech.All);
+        Set(rig.Form, (FenixCabinNames.TempFwdOffset, Num(1.0)));
+        Tick(rig.Form);
+        Assert.Equal(new[] { "Forward zone: 24.0 degrees, target 25.0 degrees, offset plus 1.0" }, rig.Speech.All);
+    }
+
+    [Fact]
+    public void A_door_press_waits_for_the_door_not_its_slide()
+    {
+        // The slide disarms a poll before the door opens: that is not the press's answer, the door opening is,
+        // and the whole line is said then.
+        using var rig = new ControlsRig();
+        Set(rig.Form, (FenixCabinNames.Door("d1l"), False), (FenixCabinNames.Slide("d1l"), True), (FenixCabinNames.DoorControl("d1l"), Num(0)));
+        Click(DoorButton(rig.Form));
+        WaitFor(() => Expectations(rig.Form).Length == 1, "the door press");
+
+        Set(rig.Form, (FenixCabinNames.Slide("d1l"), False), (FenixCabinNames.DoorControl("d1l"), Num(1)));
+        Tick(rig.Form);
+        Assert.Empty(rig.Speech.All);
+
+        Set(rig.Form, (FenixCabinNames.Door("d1l"), True), (FenixCabinNames.DoorControl("d1l"), Num(2)));
+        Tick(rig.Form);
+        Assert.Equal(new[] { "Door 1 left: open, slide disarmed" }, rig.Speech.All);
+        Assert.Empty(Expectations(rig.Form));
+        Assert.Empty(rig.Speech.Interrupts);
+    }
+
+    [Fact]
+    public void A_cargo_press_says_the_open_line_never_moving()
+    {
+        using var rig = new ControlsRig();
+        Set(rig.Form, (FenixCabinNames.CargoForward, False), (FenixCabinNames.CargoFwdMoving, False));
+        SelectDoorLine(rig.Form, DefaultLayout(), "cargo.forward");
+        Click(DoorButton(rig.Form));
+        WaitFor(() => Expectations(rig.Form).Length == 1, "the cargo press");
+
+        // Moving, and the open flag turning while it moves: still waiting.
+        Set(rig.Form, (FenixCabinNames.CargoFwdMoving, True));
+        Tick(rig.Form);
+        Set(rig.Form, (FenixCabinNames.CargoForward, True));
+        Tick(rig.Form);
+        Assert.Empty(rig.Speech.All);
+
+        Set(rig.Form, (FenixCabinNames.CargoFwdMoving, False));
+        Tick(rig.Form);
+        Assert.Equal(new[] { "Forward cargo door: open" }, rig.Speech.All);
+        Assert.Empty(Expectations(rig.Form));
+    }
+
+    [Fact]
+    public void A_temperature_press_waits_for_the_target_not_the_air_temperature()
+    {
+        using var rig = new ControlsRig();
+        Zones(rig.Form, 24, 0, 24, 0);
+        Click(TemperatureButton(rig.Form, ForwardWarmer));
+        WaitFor(() => Expectations(rig.Form).Length == 1, "the forward press");
+
+        // The measured air temperature drifts: not the press's answer.
+        Set(rig.Form, (FenixCabinNames.TempFwdAir, Num(24.3)));
+        Tick(rig.Form);
+        Assert.Empty(rig.Speech.All);
+
+        Set(rig.Form, (FenixCabinNames.TempFwdOffset, Num(0.5)));
+        Tick(rig.Form);
+        Assert.Equal(new[] { "Forward zone: 24.3 degrees, target 24.5 degrees, offset plus 0.5" }, rig.Speech.All);
+        Assert.Empty(Expectations(rig.Form));
     }
 
     [Fact]

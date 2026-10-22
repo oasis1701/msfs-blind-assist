@@ -127,7 +127,8 @@ public sealed partial class FenixCabinForm
             Refuse($"{(forward ? "Forward" : "Aft")} zone is at its {(warmer ? "warmest" : "coolest")} setting.");
             return;
         }
-        _ = RunWriteAsync(write, forward ? ForwardTemperatureKey : AftTemperatureKey, ReadbackWindow, speakIfUnchanged: true);
+        // Waits for the zone's target and offset, not the measured air temperature (R17).
+        _ = RunWriteAsync(write, forward ? ForwardTemperatureKey : AftTemperatureKey, ReadbackWindow, speakIfUnchanged: true, byState: true);
     }
 
     // Both offsets back to zero, forward first. The first write the Fenix does not take ends the reset (it
@@ -148,7 +149,7 @@ public sealed partial class FenixCabinForm
         foreach (FenixCabinWrite write in FenixCabinWrites.ResetTemperatures())
         {
             string key = write.Name == FenixCabinNames.TempFwdOffset ? ForwardTemperatureKey : AftTemperatureKey;
-            if (!await RunWriteAsync(write, key, ReadbackWindow, speakIfUnchanged: true)) return;
+            if (!await RunWriteAsync(write, key, ReadbackWindow, speakIfUnchanged: true, byState: true)) return;
         }
     }
 
@@ -254,7 +255,8 @@ public sealed partial class FenixCabinForm
                 Refuse($"{door.Name} state is not known.");
                 return;
             }
-            _ = RunWriteAsync(FenixCabinWrites.DoorToggle(door.DataKey, control), line!.Key, DoorReadbackWindow, speakIfUnchanged: false);
+            // Waits for the door's own open or closed, not its slide (R17).
+            _ = RunWriteAsync(FenixCabinWrites.DoorToggle(door.DataKey, control), line!.Key, DoorReadbackWindow, speakIfUnchanged: false, byState: true);
             return;
         }
 
@@ -271,7 +273,8 @@ public sealed partial class FenixCabinForm
             Refuse($"The {cargo.Name} is moving.");
             return;
         }
-        _ = RunWriteAsync(FenixCabinWrites.CargoDoor(cargo.Door, !open.Value), cargo.LineKey, DoorReadbackWindow, speakIfUnchanged: false);
+        // Waits through "moving" for open or closed (R17).
+        _ = RunWriteAsync(FenixCabinWrites.CargoDoor(cargo.Door, !open.Value), cargo.LineKey, DoorReadbackWindow, speakIfUnchanged: false, byState: true);
     }
 
     // True, after saying so, unless the Fenix says the aircraft is on the ground as the EFB counts it: its

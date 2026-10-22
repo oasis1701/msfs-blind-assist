@@ -8,8 +8,12 @@ public enum FenixCabinSection { Status, Audio, Doors, Temperature, Water }
 /// <summary>
 /// One value as the pilot reads it: one ListBox line. <paramref name="Key"/> stays the same while the
 /// text changes (<c>door.d1l</c>, <c>audio.volume</c>), so the read-back and the forms find a line by it.
+/// <paramref name="State"/> is the part of the line a press changes, so a read-back can wait for it alone
+/// (ruling R17): a door's own <c>open</c> or <c>closed</c> (not its slide), a cargo door's <c>open</c> or
+/// <c>closed</c> (none while it moves), a zone's target and offset (<c>24.5|0.5</c>, invariant; not the
+/// measured air). Null when that part is not known, and on every other line.
 /// </summary>
-public sealed record FenixCabinLine(FenixCabinSection Section, string Key, string Text);
+public sealed record FenixCabinLine(FenixCabinSection Section, string Key, string Text, string? State = null);
 
 /// <summary>
 /// The last value the Fenix data service gave for each cabin name. Not thread-safe: the Cabin window
@@ -428,7 +432,10 @@ public static class FenixCabinLines
     // the slide list lacks, then the cargo doors.
     private static void AddDoors(List<FenixCabinLine> lines, FenixCabinData data, FenixCabinLayout layout)
     {
-        void Add(string key, string text) => lines.Add(new FenixCabinLine(FenixCabinSection.Doors, key, text));
+        void Add(string key, string text, string? state = null)
+            => lines.Add(new FenixCabinLine(FenixCabinSection.Doors, key, text, state));
+        void AddDoor(string door)
+            => Add("door." + FenixCabinLayout.DataKey(door), DoorLine(data, layout, door), DoorState(data, door));
 
         var listed = new HashSet<string>(StringComparer.Ordinal);
         foreach (string slide in layout.Slides)
@@ -436,16 +443,29 @@ public static class FenixCabinLines
             if (TryOverwing(slide, out _))
                 Add("slide." + FenixCabinLayout.DataKey(slide), $"{DoorName(slide)}: {ArmedState(data, slide)}");
             else if (layout.MainDoors.Contains(slide) && listed.Add(slide))
-                Add("door." + FenixCabinLayout.DataKey(slide), DoorLine(data, layout, slide));
+                AddDoor(slide);
         }
         foreach (string door in layout.MainDoors)
         {
             if (listed.Add(door))
-                Add("door." + FenixCabinLayout.DataKey(door), DoorLine(data, layout, door));
+                AddDoor(door);
         }
         foreach (CargoDoor door in CargoDoors(layout))
-            Add(door.Key, $"{door.Name}: {CargoState(data, door) ?? NoData}");
+        {
+            string? state = CargoState(data, door);
+            // A moving door has not settled: no state until it is open or closed.
+            Add(door.Key, $"{door.Name}: {state ?? NoData}", state is "open" or "closed" ? state : null);
+        }
     }
+
+    // A main door's own word, the part of its line a door press changes (R17); null when unknown.
+    private static string? DoorState(FenixCabinData data, string door)
+        => data.Bool(FenixCabinNames.Door(FenixCabinLayout.DataKey(door))) switch
+        {
+            true => "open",
+            false => "closed",
+            null => null
+        };
 
     private static string ArmedState(FenixCabinData data, string slide)
         => data.Bool(FenixCabinNames.Slide(FenixCabinLayout.DataKey(slide))) switch
@@ -527,15 +547,25 @@ public static class FenixCabinLines
 
     private static void AddTemperature(List<FenixCabinLine> lines, FenixCabinData data)
     {
-        void Add(string key, string text) => lines.Add(new FenixCabinLine(FenixCabinSection.Temperature, key, text));
+        void Add(string key, string text, string? state = null)
+            => lines.Add(new FenixCabinLine(FenixCabinSection.Temperature, key, text, state));
 
         if (TemperatureUnavailable(data)) Add("temp.available", "Temperature control: not available");
 
         Add("temp.forward", "Forward zone: "
-            + ZoneState(data, FenixCabinNames.TempFwdAir, FenixCabinNames.TempFwdSelected, FenixCabinNames.TempFwdOffset));
+                + ZoneState(data, FenixCabinNames.TempFwdAir, FenixCabinNames.TempFwdSelected, FenixCabinNames.TempFwdOffset),
+            ZoneSetting(data, FenixCabinNames.TempFwdSelected, FenixCabinNames.TempFwdOffset));
         Add("temp.aft", "Aft zone: "
-            + ZoneState(data, FenixCabinNames.TempAftAir, FenixCabinNames.TempAftSelected, FenixCabinNames.TempAftOffset));
+                + ZoneState(data, FenixCabinNames.TempAftAir, FenixCabinNames.TempAftSelected, FenixCabinNames.TempAftOffset),
+            ZoneSetting(data, FenixCabinNames.TempAftSelected, FenixCabinNames.TempAftOffset));
     }
+
+    // The part of a zone's line a temperature press changes (R17): the target and the offset, invariant
+    // ("24.5|0.5"), never the measured air temperature; null when either is unknown.
+    private static string? ZoneSetting(FenixCabinData data, string selectedName, string offsetName)
+        => data.Number(selectedName) is double selected && data.Number(offsetName) is double offset
+            ? Degrees(selected + offset) + "|" + Degrees(offset)
+            : null;
 
     private static string ZoneState(FenixCabinData data, string airName, string selectedName, string offsetName)
     {
