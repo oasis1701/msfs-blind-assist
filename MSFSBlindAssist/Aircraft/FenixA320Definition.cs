@@ -8216,6 +8216,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = OffOn
             },
+            // A lit master warning reads 2 on v3 (measured 2026-10-21, both sides): its own Off/On/On,
+            // never the shared OffOn. The cautions read 1 when lit.
             ["I_MIP_MASTER_WARNING_FO"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_MIP_MASTER_WARNING_FO",
@@ -8223,7 +8225,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = OffOn
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On", [2] = "On"}
             },
             ["I_MIP_MASTER_WARNING_CAPT_L"] = new SimConnect.SimVarDefinition
             {
@@ -8241,7 +8243,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = OffOn
+                ValueDescriptions = new Dictionary<double, string> {[0] = "Off", [1] = "On", [2] = "On"}   // lit = 2 on v3
             },
             ["I_MIP_MASTER_CAUTION_FO_L"] = new SimConnect.SimVarDefinition
             {

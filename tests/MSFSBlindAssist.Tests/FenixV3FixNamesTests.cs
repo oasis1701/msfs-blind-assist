@@ -34,6 +34,28 @@ public class FenixV3FixNamesTests
         Assert.DoesNotContain(Vars, kv => kv.Key == gone || kv.Value.Name == gone);
     }
 
+    // A lit master WARNING reads 2 on v3 (measured 2026-10-21), so the row speaks "On", never "2".
+    // The cautions read 1 when lit and keep the shared Off/On, which the warnings must not change.
+    [Theory]
+    [InlineData("I_MIP_MASTER_WARNING_CAPT")]
+    [InlineData("I_MIP_MASTER_WARNING_FO")]
+    public void A_lit_master_warning_reads_on(string key)
+    {
+        var values = Vars[key].ValueDescriptions.OrderBy(kv => kv.Key).Select(kv => (kv.Key, kv.Value)).ToArray();
+        Assert.Equal(new[] { (0.0, "Off"), (1.0, "On"), (2.0, "On") }, values);
+    }
+
+    [Theory]
+    [InlineData("I_MIP_MASTER_CAUTION_CAPT")]
+    [InlineData("I_MIP_MASTER_CAUTION_FO")]
+    [InlineData("I_MIP_MASTER_WARNING_CAPT_L")]
+    [InlineData("I_MIP_MASTER_WARNING_FO_L")]
+    public void The_other_master_lights_keep_off_and_on(string key)
+    {
+        var values = Vars[key].ValueDescriptions.OrderBy(kv => kv.Key).Select(kv => (kv.Key, kv.Value)).ToArray();
+        Assert.Equal(new[] { (0.0, "Off"), (1.0, "On") }, values);
+    }
+
     // Plan 05 moves the First Officer off the three take-off speeds, plan 12 deletes them.
     [Fact]
     public void Only_the_takeoff_speed_FenixQuartz_names_remain()
