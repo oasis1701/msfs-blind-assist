@@ -8,7 +8,8 @@
 // list (the page's list goes back when the layer's label goes); aria-hidden "true" goes on what a screen reader
 // does not need: decorative pictures and every picture with no alt, icon-font glyphs inside a control, the W&B
 // chart's picture and labels but its limits, the seat map; and the Takeoff results grid gets an aria-owns that
-// reads each label right before its value and every other child in its place.
+// reads each label right before its value and every other child in its place (an empty result is a picture
+// described as a "value").
 // Three exceptions to "attributes only", each a ruling's: ids for that aria-owns, written only on the cells it
 // lists and only as "msfsba-<n>" (an id the page set is used, never replaced; ruling R46); the runway
 // condition's roving Tab stop, whose arrow keys press the next code and move the focus to it (ruling R47); and
@@ -77,6 +78,8 @@
   // The aria-owns the layer wrote on a results grid (the way `written` keeps a label), and the id it wrote on each
   // element that list names (ruling R46). An id that is there and is not the one written is the page's.
   var ownsWritten = new WeakMap();
+  // The aria-roledescription the layer wrote on a "not computed" cell (ruling R57), the way `written` keeps a label.
+  var roleDescWritten = new WeakMap();
   var idWritten = new WeakMap();
   var idCount = 0;
   // What each results grid's list named on the last pass (ruling R53), so what the layer wrote on an element it no
@@ -342,6 +345,36 @@
   // Each rule is a function (root). Later tasks add their rules here; a rule that fails never stops the
   // others (pass() runs each in its own try/catch).
   var RULES = [];
+
+  // True when a <br> in the element is its own: not inside a button within it.
+  function holdsLineBreak(el) {
+    var breaks = el.querySelectorAll('br');
+    for (var i = 0; i < breaks.length; i++) {
+      if (breaks[i].parentElement.closest('button, [role=button]') === el) { return true; }
+    }
+    return false;
+  }
+
+  // Every screen: a button whose own content holds a <br> ("SYNC LIVE WX" after its glyph, "Resend<br>Loadsheet") is
+  // shown by NVDA over two lines, the first empty when a hidden glyph comes before the break. It is named by its own text,
+  // the <br> a space, so it is one item (ruling R56). The label is the layer's own: it follows the text and goes when the
+  // <br> or the text goes; a label the page gives is the page's. This rule runs first, so a rule below that names the
+  // same control (the home tiles, Mass and Balance's buttons) has the last word.
+  var lineButtons = [];
+  function nameByText(el) { name(el, textOf(el)); }
+  // The label and the stamp go; a control another rule made a button keeps its stamp (that rule writes it again).
+  function unnameText(el) {
+    name(el, '');
+    if (!pressable.has(el) && el.getAttribute(MARK) === '1') { el.removeAttribute(MARK); }
+  }
+  RULES.push(function (root) {
+    var candidates = root.querySelectorAll('button, [role=button]');
+    var found = [];
+    for (var i = 0; i < candidates.length; i++) {
+      if (holdsLineBreak(candidates[i]) && textOf(candidates[i])) { found.push(candidates[i]); }
+    }
+    lineButtons = followFound(found, lineButtons, nameByText, unnameText);
+  });
 
   // Home: each application tile is a div.appIcon holding a picture, a <br> and the title.
   RULES.push(function (root) {
@@ -696,14 +729,22 @@
   }
 
   // A value cell the MCDU has not worked out shows only yellow boxes, which a screen reader cannot say: it is one
-  // picture named "not computed", the only picture in the grid (ruling R46). A cell that holds a value, or has a
-  // role of the page's, is read as the page has it, and what the layer wrote on it is taken back.
+  // picture named "not computed", the only picture in the grid (ruling R46), described as a value so NVDA says "value",
+  // not "graphic" (ruling R57). A cell that holds a value, or has a role of the page's, is read as the page has it, and
+  // what the layer wrote on it is taken back.
   function notComputed(cell) {
     var role = cell.getAttribute('role');
     var empty = textOf(cell) === '' && cell.querySelector('.small-yellow-box') !== null;
-    if (!empty || (role && wroteRole.get(cell) !== role)) { release(cell); return; }
+    if (!empty || (role && wroteRole.get(cell) !== role)) { unpicture(cell); return; }
     giveRole(cell, 'img');
     name(cell, 'not computed');
+    ownState(cell, 'aria-roledescription', 'value', roleDescWritten);
+  }
+
+  // Takes back what notComputed wrote on a cell: its role description, role, label and stamp (never the page's own).
+  function unpicture(cell) {
+    ownState(cell, 'aria-roledescription', null, roleDescWritten);
+    release(cell);
   }
 
   // The id an element in the grid's list goes by (ruling R46): the page's own when it has one, else one the layer
@@ -729,10 +770,10 @@
     if (el.getAttribute('id') === mine) { el.removeAttribute('id'); }
   }
 
-  // Takes back what the layer wrote on an element of a results grid it no longer lists: its role, label, stamp and id
-  // (never anything the page set).
+  // Takes back what the layer wrote on an element of a results grid it no longer lists: its role description, role,
+  // label, stamp and id (never anything the page set).
   function letGo(el) {
-    release(el);
+    unpicture(el);
     dropId(el);
   }
 
@@ -791,7 +832,7 @@
         var labels = gridCells(labelRows[at]);
         var values = gridCells(valueRows[at]);
         for (var i = 0; i < labels.length; i++) {
-          release(labels[i]);
+          unpicture(labels[i]);
           notComputed(values[i]);
           listed.push(labels[i], values[i]);
         }

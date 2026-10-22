@@ -232,7 +232,7 @@ const TITLE = 'TAKE OFF RWY';
 // The output line under the grid is empty in the capture.
 const READING = [TITLE, ...PAIRS.flat(), ''];
 // The cells the layer has written nothing on.
-const untouched = cell => ['role', 'aria-label', 'aria-hidden', 'data-msfsba', 'id'].every(a => !cell.hasAttribute(a));
+const untouched = cell => ['role', 'aria-label', 'aria-roledescription', 'aria-hidden', 'data-msfsba', 'id'].every(a => !cell.hasAttribute(a));
 function makeRow(window, texts) {
   const row = window.document.createElement('div');
   row.className = 'row';
@@ -276,10 +276,13 @@ test('Takeoff_results_read_each_label_right_before_its_value_and_every_other_chi
     assert.deepStrictEqual(windowAll.filter(el => el.hasAttribute('id') && !el.id.startsWith('msfsba-')).map(el => el.id),
       bareAll.filter(el => el.hasAttribute('id')).map(el => el.id), 'the page\'s own ids are as they were');
 
-    // No picture but the three empty speeds, nothing hidden, no other name: the labels and values are read as text.
+    // No picture but the three empty speeds, nothing hidden, no other name: the labels and values are read as text. An
+    // empty speed is read as a value, not a graphic (R57: aria-roledescription "value").
     const pictures = all(window, '[role=img]');
     assert.deepStrictEqual(pictures, [1, 3, 5].map(r => cellsOf(rows[r])[0]), 'V1, VR and V2');
     assert.ok(pictures.every(p => p.getAttribute('aria-label') === 'not computed' && nameOf(p) === 'not computed'));
+    assert.ok(pictures.every(p => p.getAttribute('aria-roledescription') === 'value'));
+    assert.deepStrictEqual(all(window, '[aria-roledescription]'), pictures, 'nothing else gets one');
     assert.strictEqual(all(window, '.mcdu-screen [aria-hidden]').length, 0);
     assert.strictEqual(all(window, '.mcdu-screen [aria-label]').length, 3);
     // The grid gets its order and nothing else.
@@ -312,7 +315,8 @@ test('Takeoff_results_keep_their_order_when_Calculate_changes_them_in_place', as
     v1.firstElementChild.textContent = ' 143 ';
     await turns();
     assert.strictEqual(screen.getAttribute('aria-owns'), owns);
-    assert.ok(['role', 'aria-label', 'data-msfsba'].every(a => !v1.hasAttribute(a)));
+    assert.ok(['role', 'aria-label', 'aria-roledescription', 'data-msfsba'].every(a => !v1.hasAttribute(a)),
+      'the role, the label and the role description go together (R57)');
     assert.deepStrictEqual(reading(window).slice(0, 3), [TITLE, 'V1', '143']);
     // And the yellow boxes come back.
     v1.firstElementChild.textContent = '';
@@ -324,6 +328,7 @@ test('Takeoff_results_keep_their_order_when_Calculate_changes_them_in_place', as
     await turns();
     assert.strictEqual(v1.getAttribute('role'), 'img');
     assert.strictEqual(nameOf(v1), 'not computed');
+    assert.strictEqual(v1.getAttribute('aria-roledescription'), 'value');
     assert.strictEqual(screen.getAttribute('aria-owns'), owns);
 
     // A label's text changes: it is read as the page now has it, in its place.
@@ -389,6 +394,7 @@ test('A_role_label_hidden_state_or_id_the_page_set_in_the_results_grid_is_never_
 
     assert.strictEqual(v1.getAttribute('role'), 'status');
     assert.strictEqual(v1.hasAttribute('aria-label'), false, 'a cell with a role of the page\'s is not named');
+    assert.strictEqual(v1.hasAttribute('aria-roledescription'), false, 'nor described');
     assert.strictEqual(flp.getAttribute('aria-label'), 'Flap retraction speed');
     assert.strictEqual(stopLabel.getAttribute('aria-hidden'), 'true');
     // The page's id is the one listed for its cell, in its place; the layer writes none over it.
@@ -562,7 +568,7 @@ test('A_withdrawn_pairing_takes_back_only_what_the_layer_wrote', async () => {
     screen.insertBefore(makeRow(window, ['A', 'B', 'C']), rows[3]);
     await turns();
     assert.strictEqual(vr.getAttribute('aria-label'), 'Rotation speed', 'the page\'s label is not taken back');
-    assert.ok(['role', 'id', 'data-msfsba'].every(a => !vr.hasAttribute(a)), 'the layer\'s are');
+    assert.ok(['role', 'aria-roledescription', 'id', 'data-msfsba'].every(a => !vr.hasAttribute(a)), 'the layer\'s are');
     assert.ok(untouched(slt));
     assert.strictEqual(vrLabel.getAttribute('aria-hidden'), 'true', 'the page\'s hidden state stays');
     assert.strictEqual(sltLabel.id, 'slt-label', 'the page\'s id stays');
@@ -590,6 +596,7 @@ test('A_grid_that_stops_being_a_results_grid_gets_back_everything_the_layer_wrot
     assert.strictEqual(screen.hasAttribute('aria-owns'), false);
     assert.strictEqual(layerIds(window).length, 0);
     assert.strictEqual(all(window, '[role=img]').length, 0);
+    assert.strictEqual(all(window, '[aria-roledescription]').length, 0);
     // Everything in it is as the page has it (the grid itself carries only the class the test changed).
     assert.deepStrictEqual(subtree(screen).slice(1), asCaptured.slice(1));
     assert.deepStrictEqual([...screen.attributes].map(a => a.name), [...bareGrid.attributes].map(a => a.name));
@@ -1159,9 +1166,11 @@ test('Unlabeled_Landing_pictures_are_hidden_and_the_buttons_holding_them_keep_th
 
 // R41 (finding D): "SYNC LIVE WX" holds an icon-font glyph before its text, which a screen reader met as an unlabeled
 // line of its own. The glyph is hidden; the button keeps its text as its name. So is the intersection button's arrow.
-for (const [fixture, selector, glyphs] of [
-  ['depperf', 'button.btn-live-wx', ['i.fas.fa-chevron-down', 'i.fas.fa-cog', 'i.fas.fa-2x.fa-sync-alt', 'i.select-arrow.fas.fa-arrow-right']],
-  ['arrperf', 'button.arrival-btn-live-wx', ['i.fas.fa-chevron-down', 'i.fas.fa-cog', 'i.fas.fa-sync-alt']]
+// Takeoff's button also breaks its content with a <br> after the glyph, so NVDA still showed it over two lines, the
+// first empty: it is named by its own text (R56, below). Landing's has no <br> and keeps the page's text as its name.
+for (const [fixture, selector, glyphs, label] of [
+  ['depperf', 'button.btn-live-wx', ['i.fas.fa-chevron-down', 'i.fas.fa-cog', 'i.fas.fa-2x.fa-sync-alt', 'i.select-arrow.fas.fa-arrow-right'], 'SYNC LIVE WX'],
+  ['arrperf', 'button.arrival-btn-live-wx', ['i.fas.fa-chevron-down', 'i.fas.fa-cog', 'i.fas.fa-sync-alt'], null]
 ]) {
   test('The_SYNC_LIVE_WX_glyph_is_hidden_and_the_button_keeps_its_text_on_' + fixture, async () => {
     const bare = await load(fixture, { layer: false });
@@ -1170,7 +1179,8 @@ for (const [fixture, selector, glyphs] of [
       const sync = window.document.querySelector(selector);
       assert.strictEqual(sync.querySelector('i').getAttribute('aria-hidden'), 'true');
       assert.strictEqual(nameOf(sync), 'SYNC LIVE WX');
-      assert.strictEqual(sync.hasAttribute('aria-label'), false, 'the page\'s text is the name');
+      assert.strictEqual(sync.querySelector('br') !== null, label !== null, 'as captured');
+      assert.strictEqual(sync.getAttribute('aria-label'), label);
       // Only glyphs inside controls are hidden here (the wind arrows on Landing's results are in no control).
       assert.deepStrictEqual(hiddenByLayer(bare, window).filter(h => /^i[.#]/.test(h)), glyphs);
     } finally {
@@ -1179,6 +1189,72 @@ for (const [fixture, selector, glyphs] of [
     }
   });
 }
+
+// R56: a button whose own content holds a <br> is named by its own text, the <br> a space, so NVDA presents it as one
+// item. The label is the layer's own: it follows the text, goes when the <br> or the text goes, and a label the page
+// gives is the page's.
+test('A_button_whose_content_holds_a_line_break_is_named_by_its_own_text', async () => {
+  const window = await load('depperf');
+  try {
+    const doc = window.document;
+    const sync = doc.querySelector('button.btn-live-wx');
+    const br = sync.querySelector('br');
+    assert.strictEqual(sync.getAttribute('aria-label'), 'SYNC LIVE WX');
+    assert.strictEqual(sync.getAttribute('data-msfsba'), '1');
+    assert.ok(!sync.hasAttribute('role') && sync.getAttribute('tabindex') === '140', 'a real button: a name, nothing else');
+
+    // The <br> goes: the label goes with it; it comes back with the <br>.
+    sync.removeChild(br);
+    await turns();
+    assert.strictEqual(sync.hasAttribute('aria-label'), false);
+    assert.strictEqual(sync.hasAttribute('data-msfsba'), false);
+    sync.insertBefore(br, sync.lastChild);
+    await turns();
+    assert.strictEqual(sync.getAttribute('aria-label'), 'SYNC LIVE WX');
+
+    // The text changes: the label follows; the text goes: the label goes.
+    const text = [...sync.childNodes].find(n => n.nodeType === 3 && n.nodeValue.trim());
+    text.nodeValue = ' SYNC WEATHER ';
+    await turns();
+    assert.strictEqual(sync.getAttribute('aria-label'), 'SYNC WEATHER');
+    text.nodeValue = ' ';
+    await turns();
+    assert.strictEqual(sync.hasAttribute('aria-label'), false);
+
+    // A page's own label is never touched.
+    text.nodeValue = 'SYNC LIVE WX';
+    sync.setAttribute('aria-label', 'Live weather');
+    await turns();
+    assert.strictEqual(sync.getAttribute('aria-label'), 'Live weather');
+  } finally {
+    window.close();
+  }
+});
+
+test('Line_break_buttons_elsewhere_keep_the_names_they_had', async () => {
+  let mass = null;
+  let home = null;
+  let switcher = null;
+  try {
+    mass = await load('mass-balance');
+    const buttons = all(mass, 'div.action-button-cell > button');
+    assert.ok(buttons.every(b => b.querySelector('br')), 'as captured: each breaks its text');
+    assert.deepStrictEqual(buttons.map(nameOf), ['Reset All', 'Resend Loadsheet', 'Load Aircraft', 'SEND TO MCDU']);
+    assert.deepStrictEqual(buttons.map(b => b.getAttribute('aria-label')), ['Reset All', 'Resend Loadsheet', 'Load Aircraft', 'SEND TO MCDU']);
+    // The home tiles hold a <br> too and keep their titles; the switcher's icons hold one and no text, and keep the
+    // names R8 gives them.
+    home = await load('home');
+    assert.deepStrictEqual(all(home, '#appContainer > div.appIcon').map(nameOf),
+      ['Fenix', 'Takeoff', 'Landing', 'Charts', 'Documents', 'Failures', 'Settings', 'MCDU', 'FAP']);
+    switcher = await load('switcher');
+    assert.deepStrictEqual(all(switcher, 'img.app-img').map(img => nameOf(img.parentElement)),
+      ['Fenix', 'Takeoff', 'Landing', 'Charts', 'Documents', 'Failures', 'Settings', 'MCDU', 'FAP']);
+  } finally {
+    if (mass) mass.close();
+    if (home) home.close();
+    if (switcher) switcher.close();
+  }
+});
 
 // ---- The layer's own rules ----
 
@@ -1206,7 +1282,7 @@ for (const fixture of ['depperf', 'arrperf', 'arrperf-electrical']) {
 // A second pass finds everything handled already: nothing changes, no element gets a second listener, and
 // the elements that took a key handler are exactly the ones that are not real buttons or inputs.
 const SECOND_PASS = {
-  depperf: { handled: 2 + 12 + 3, listeners: 2, note: 'home, chevron; six boxes and six drop-downs; the three "not computed" speeds' },
+  depperf: { handled: 2 + 12 + 3 + 1, listeners: 2, note: 'home, chevron; six boxes and six drop-downs; the three "not computed" speeds; SYNC LIVE WX (R56)' },
   arrperf: { handled: 2 + 6 + 1 + 6 + 5 + 9, listeners: 2 + 6 + 5 + 9, note: 'home, chevron; six fields; the group and six radios; five options; nine procedures' },
   // The sub-page capture also holds the app switcher, closed, with its nine icons (as mass-balance does).
   'arrperf-electrical': { handled: 2 + 9 + 1 + 8, listeners: 2 + 9 + 1 + 8, note: 'home, chevron; the nine icons of the closed switcher; Back; eight tick boxes' }
