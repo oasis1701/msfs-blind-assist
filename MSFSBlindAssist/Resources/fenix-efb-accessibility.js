@@ -290,8 +290,10 @@
   }
 
   // A runway condition code: a radio that says whether it is the checked one, with the group's roving Tab stop
-  // (ruling R47): tabindex 0 on the group's one stop, -1 on the others, written over the page's own (30 to 35), which
-  // unradio puts back.
+  // (ruling R47): -1 on every code but the group's one stop, written over the page's own (30 to 35), which unradio puts
+  // back. The stop keeps its place in the page's Tab sequence (ruling R54): the Landing page orders its controls with
+  // positive tabindex values, which a browser visits before any 0, so the stop takes the code's own recorded tabindex
+  // when that was 0 or more, and 0 when the code had none (or a negative one).
   function rovingRadio(el, text, checked, stop) {
     pressableAs(el, text, 'radio');
     ownState(el, 'aria-checked', checked ? 'true' : 'false', checkedWritten);
@@ -300,7 +302,8 @@
       record = { original: el.getAttribute('tabindex'), wrote: null };
       rovingTab.set(el, record);
     }
-    record.wrote = stop ? '0' : '-1';
+    var own = record.original === null ? NaN : parseInt(record.original, 10);
+    record.wrote = stop ? (own >= 0 ? String(own) : '0') : '-1';
     setAttr(el, 'tabindex', record.wrote);
   }
 
@@ -806,7 +809,9 @@
 
   // The group is one Tab stop (ruling R47): the checked code, or the first one when none is checked; never a code the
   // page disables. The arrows move through the codes (see onButtonKey). A group that stops matching gets the page's
-  // own Tab stops back.
+  // own Tab stops back. A tabindex the page writes on a code while the group matches is overwritten by the next pass:
+  // that is what a roving Tab stop is (only one code may be a stop), so only a value the page wrote after the group
+  // stopped matching, or in the pass that withdraws it, is the page's to keep.
   RULES.push(function (root) {
     var groups = root.querySelectorAll('div.section-group');
     for (var i = 0; i < groups.length; i++) {

@@ -568,21 +568,22 @@ test('Runway_condition_is_a_radio_group_that_follows_the_page', async () => {
     assert.strictEqual(all(window, '[role=radiogroup]').length, 1);
     assert.strictEqual(all(window, '.section-item').length, 18, 'the capture has twelve other section-items: the six are not all of them');
 
-    // One Tab stop (R47): the checked radio, the others reached with the arrows.
-    assert.deepStrictEqual(items.map(i => i.getAttribute('tabindex')), ['0', '-1', '-1', '-1', '-1', '-1']);
+    // One Tab stop (R47): the checked radio, the others reached with the arrows. The stop keeps the code's own place
+    // in the page's Tab sequence, its own tabindex (R54: 6 DRY's is 30).
+    assert.deepStrictEqual(items.map(i => i.getAttribute('tabindex')), ['30', '-1', '-1', '-1', '-1', '-1']);
 
-    // The page moves section-selected to "3 MED": aria-checked and the Tab stop follow.
+    // The page moves section-selected to "3 MED": aria-checked and the Tab stop follow (3 MED's own is 33).
     items[0].classList.remove('section-selected');
     items[3].classList.add('section-selected');
     await turns();
     assert.deepStrictEqual(items.map(i => i.getAttribute('aria-checked')), ['false', 'false', 'false', 'true', 'false', 'false']);
-    assert.deepStrictEqual(items.map(i => i.getAttribute('tabindex')), ['-1', '-1', '-1', '0', '-1', '-1']);
+    assert.deepStrictEqual(items.map(i => i.getAttribute('tabindex')), ['-1', '-1', '-1', '33', '-1', '-1']);
     // And back, with a pass run by hand.
     items[3].classList.remove('section-selected');
     items[0].classList.add('section-selected');
     window.__msfsbaFenixEfb.pass();
     assert.deepStrictEqual(items.map(i => i.getAttribute('aria-checked')), ['true', 'false', 'false', 'false', 'false', 'false']);
-    assert.deepStrictEqual(items.map(i => i.getAttribute('tabindex')), ['0', '-1', '-1', '-1', '-1', '-1']);
+    assert.deepStrictEqual(items.map(i => i.getAttribute('tabindex')), ['30', '-1', '-1', '-1', '-1', '-1']);
 
     // Enter and Space press a radio through the page's own click, like every button.
     let clicks = 0;
@@ -627,7 +628,7 @@ test('The_radio_group_is_the_container_that_holds_exactly_the_six_codes_and_is_w
     await turns();
     assert.strictEqual(all(window, '[role=radio]').length, 6);
     assert.strictEqual(group.getAttribute('role'), 'radiogroup');
-    assert.deepStrictEqual(items.map(i => i.getAttribute('tabindex')), ['0', '-1', '-1', '-1', '-1', '-1']);
+    assert.deepStrictEqual(items.map(i => i.getAttribute('tabindex')), ['30', '-1', '-1', '-1', '-1', '-1']);
     // Withdrawn once more, the page's own Tab stops come back again, the dropped code's too.
     parent.removeChild(items[0]);
     await turns();
@@ -701,7 +702,7 @@ test('The_runway_condition_arrows_press_the_next_code_and_move_to_it_wrapping_ro
     items[0].classList.remove('section-selected');
     items[2].classList.add('section-selected');
     await turns();
-    assert.deepStrictEqual(items.map(i => i.getAttribute('tabindex')), ['0', '-1', '-1', '-1', '-1', '-1'],
+    assert.deepStrictEqual(items.map(i => i.getAttribute('tabindex')), ['30', '-1', '-1', '-1', '-1', '-1'],
       'the checked code is disabled: the first one that is not is the Tab stop');
   } finally {
     window.close();
@@ -761,6 +762,75 @@ test('A_runway_condition_tab_stop_the_page_changes_is_the_pages_when_the_group_i
     } finally {
       bare.close();
     }
+  } finally {
+    window.close();
+  }
+});
+
+// R54: a stop whose code has no Tab stop of the page's own (no tabindex, or a negative one) takes 0.
+test('A_runway_condition_stop_without_a_tab_stop_of_the_pages_takes_0', async () => {
+  const window = await load('arrperf', { layer: false });
+  try {
+    const codes = [...conditionItems(window)];
+    codes[2].removeAttribute('tabindex');
+    codes[4].setAttribute('tabindex', '-1');
+    window.eval(fs.readFileSync(LAYER, 'utf8'));
+    await turns();
+    codes[0].classList.remove('section-selected');
+    codes[2].classList.add('section-selected');
+    await turns();
+    assert.deepStrictEqual(codes.map(c => c.getAttribute('tabindex')), ['-1', '-1', '0', '-1', '-1', '-1']);
+    codes[2].classList.remove('section-selected');
+    codes[4].classList.add('section-selected');
+    await turns();
+    assert.deepStrictEqual(codes.map(c => c.getAttribute('tabindex')), ['-1', '-1', '-1', '-1', '0', '-1']);
+    // Withdrawn, each code has what the page gave it.
+    codes[0].parentElement.removeChild(codes[5]);
+    await turns();
+    assert.deepStrictEqual(codes.slice(0, 5).map(c => c.getAttribute('tabindex')), ['30', '31', null, '33', '-1']);
+  } finally {
+    window.close();
+  }
+});
+
+// The page's sequential Tab order as HTML defines it: elements with a positive tabindex first, in ascending order (equal
+// values in page order), then those with tabindex 0 and the natively focusable ones, in page order. A disabled control,
+// a hidden input and anything under the page's `hidden` attribute are left out; jsdom has no CSS, so nothing else is.
+function tabOrder(window) {
+  const focusable = [...window.document.querySelectorAll('*')].filter(el => {
+    if (el.closest('[hidden]') || el.disabled || el.tabIndex < 0) return false;
+    if (el.localName === 'input' && el.type === 'hidden') return false;
+    const natural = ['input', 'button', 'select', 'textarea'].includes(el.localName) ||
+      (el.localName === 'a' && el.hasAttribute('href'));
+    return natural || el.hasAttribute('tabindex');
+  });
+  const positive = focusable.filter(el => el.tabIndex > 0).sort((a, b) => a.tabIndex - b.tabIndex);
+  return [...positive, ...focusable.filter(el => el.tabIndex === 0)];
+}
+
+// R54: the Landing page orders its controls with positive tabindex values (ICAO CODE 10, RUNWAY 20, the codes 30 to 35,
+// the wind, temperature and pressure boxes 70 to 90 ...), and a browser visits positive values first. The runway
+// condition's one stop keeps the code's own value, so the group is reached right after RUNWAY, as it was before.
+test('The_runway_condition_is_reached_right_after_RUNWAY_in_the_Landing_Tab_order', async () => {
+  const window = await load('arrperf');
+  try {
+    const items = [...conditionItems(window)];
+    const [icao] = all(window, 'app-keyboard-input input');
+    const runway = window.document.querySelector('app-arrival mat-select');
+    let order = tabOrder(window);
+    assert.strictEqual(order[0], icao, 'ICAO CODE first');
+    assert.strictEqual(order[1], runway, 'then RUNWAY');
+    assert.strictEqual(order[2], items[0], 'then the runway condition, at its checked code');
+    assert.deepStrictEqual(items.map(i => order.includes(i)), [true, false, false, false, false, false], 'one stop');
+    assert.strictEqual(nameOf(order[2]), '6 DRY');
+
+    // The checked code moves: the stop moves with it, still right after RUNWAY.
+    items[0].classList.remove('section-selected');
+    items[3].classList.add('section-selected');
+    await turns();
+    order = tabOrder(window);
+    assert.strictEqual(order[order.indexOf(runway) + 1], items[3]);
+    assert.deepStrictEqual(items.map(i => order.includes(i)), [false, false, false, true, false, false]);
   } finally {
     window.close();
   }
