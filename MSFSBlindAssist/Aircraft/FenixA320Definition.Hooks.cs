@@ -173,6 +173,7 @@ public partial class FenixA320Definition
     // Each subscriber in turn: one that throws is logged, and the ones after it still hear the change.
     private void RaiseVariantChanged(FenixVariant variant)
     {
+        Log.Debug("Fenix", $"Variant: {variant}");
         if (VariantChanged is not { } handlers) return;
         foreach (EventHandler<FenixVariant> handler in handlers.GetInvocationList())
         {
