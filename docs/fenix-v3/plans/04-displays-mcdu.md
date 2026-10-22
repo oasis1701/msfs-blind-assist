@@ -134,7 +134,7 @@ The EFB window's address and status message are plan 03's Task 1 now. Numbering 
 
 **Interfaces:** Consumes `FenixMcduFormat.StripFormatCodes(string)`. The test has its own helper `static string[] Decode(string xml)`: `XDocument.Parse`, then title, the twelve `line` values and the scratchpad, each through `StripFormatCodes` (the same order as `FenixMCDUService.ParseDisplayXml`, 281-321). No production change for testability.
 
-- [ ] **Step 1: Write the MCDU MENU tests from today's capture** (identical on both sides, 2026-10-21 13:15). Fixture, verbatim:
+- [x] **Step 1: Write the MCDU MENU tests from today's capture** (identical on both sides, 2026-10-21 13:15). Fixture, verbatim:
   ```xml
   <root>
     <title>       MCDU MENU        </title>
@@ -156,7 +156,7 @@ The EFB window's address and status message are plan 03's Task 1 now. Numbering 
   - `Mcdu_menu_v3_lists_atsu_and_marks_the_active_fmgc`: decoded[0] `"       MCDU MENU        "`, [2] `"*<FMGC            CONFIG>"`, [4] `"<ATSU             MAINT>"`, [13] `"SELECT DESIRED SYSTEM   "`, every other line 24 spaces.
   - `Every_v3_capture_stays_on_the_24_column_grid` (Theory over every fixture in the file): each decoded string with `*` removed is exactly 24 characters.
   - `Every_v3_capture_uses_only_known_glyphs` (Theory): every character above U+007E in the raw XML is one of U+00A4, U+00A5, U+00A2, U+00A3 (the `SpecialChars` keys).
-- [ ] **Step 2: Run them; they pass** (characterization of today's behaviour). If one fails, that is a misread: go to Step 5.
+- [x] **Step 2: Run them; they pass** (characterization of today's behaviour). If one fails, that is a misread: go to Step 5. (2026-10-22: the six all-space lines decode to `""`, not 24 spaces: `XDocument.Parse` without `PreserveWhitespace` drops whitespace-only text, as `ParseDisplayXml` always has. Not a misread: the service fills missing lines with `""`, `SplitLine` pads to 24, the form trims line ends. The test pins `""` for those lines and the grid Theory skips empty lines; the `s`-prefixed blanks keep 24 spaces.)
 - [ ] **Step 3: Owner brings up three pages on MCDU 1 (captain)**, one at a time, saying "showing" each time: the **ARRIVAL** page for a destination with an RNAV (GPS) approach, approach list showing (for "RNV"); **PERF TAKE OFF** at the gate; **ATSU** (MCDU MENU, then LSK 2 left). After each, capture read-only:
   ```powershell
   $b = '{"query":"query { dataRef { r1: dataRef(name: \"aircraft.mcdu1.display\") { value } } }"}'
