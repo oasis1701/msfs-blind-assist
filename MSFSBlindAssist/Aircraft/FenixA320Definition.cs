@@ -12552,15 +12552,14 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     /// <summary>
     /// Adjusts the baro counter by the given delta using atomic RPN read-modify-write.
     /// This avoids an app-side count desyncing after aircraft reload by always reading the
-    /// actual sim counter value before modifying.
+    /// actual sim counter value before modifying. Uniquified (SIM-17): the ±1 verify correction
+    /// is the same string as a ±1 set, and MobiFlight drops an identical repeat.
     /// </summary>
     private void AdjustBaroCounter(string counterVar, int delta, SimConnect.SimConnectManager simConnect)
     {
         if (delta == 0) return;
 
-        string op = delta > 0 ? $"{delta} +" : $"{Math.Abs(delta)} -";
-        string rpn = $"(L:{counterVar}) {op} (>L:{counterVar})";
-        simConnect.ExecuteCalculatorCode(rpn);
+        simConnect.ExecuteCalculatorCodeUnique(CounterStepCode(counterVar, delta));
 
         Log.Debug("Fenix", $"AdjustBaroCounter: {counterVar} delta={delta}");
     }

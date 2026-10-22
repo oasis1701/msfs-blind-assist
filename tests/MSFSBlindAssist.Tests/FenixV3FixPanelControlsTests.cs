@@ -129,7 +129,9 @@ public class FenixV3FixPanelControlsTests : IDisposable
         Assert.Equal("(L:E_FCU_SPEED) 3 + (>L:E_FCU_SPEED)", FenixA320Definition.CounterStepCode("E_FCU_SPEED", 3));
         Assert.Equal("(L:E_FCU_SPEED) 2 - (>L:E_FCU_SPEED)", FenixA320Definition.CounterStepCode("E_FCU_SPEED", -2));
 
-        foreach (var helper in new[] { "IncrementCounter", "DecrementCounter", "JumpCounter" })
+        // AdjustBaroCounter too (the typed altimeter): a repeated identical ±1 correction is dropped by
+        // MobiFlight unless uniquified (SIM-17).
+        foreach (var helper in new[] { "IncrementCounter", "DecrementCounter", "JumpCounter", "AdjustBaroCounter" })
         {
             string body = FoFbwUnclaimedEventKeyTests.MethodBody(DefinitionPath, helper);
             Assert.Contains("CounterStepCode(", body);
