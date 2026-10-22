@@ -177,6 +177,38 @@ public class FenixFailureTextTests : IDisposable
     }
 
     [Fact]
+    public void Changes_with_four_say_one_more_change()
+    {
+        var cat = Fixture();
+        var next = cat;
+        foreach (FenixFailure f in cat.Chapters[0].AllFailures.Take(4))
+            next = next.With(f with { Failed = true });
+
+        Assert.Equal("Lavatory/Galley fan failed. CPC 1 failed. CPC 2 failed. And 1 more change.",
+            FenixFailureText.Changes(cat, next, null, Zone));
+    }
+
+    [Fact]
+    public void Changes_failed_in_both_reads_ignore_a_condition_change()
+    {
+        var cat = Fixture();
+        var fan = Fan(cat);
+        var before = cat.With(fan with { Condition = Cond(ias: 250), Failed = true });
+        var after = cat.With(fan with { Failed = true });
+        Assert.Null(FenixFailureText.Changes(before, after, null, Zone));
+    }
+
+    [Fact]
+    public void Changes_armed_in_both_reads_speak_a_new_condition()
+    {
+        var cat = Fixture();
+        var fan = Fan(cat);
+        var a = cat.With(fan with { Condition = Cond(ias: 250) });
+        var b = cat.With(fan with { Condition = Cond(ias: 300) });
+        Assert.Equal("Lavatory/Galley fan armed: above IAS 300.", FenixFailureText.Changes(a, b, null, Zone));
+    }
+
+    [Fact]
     public void Changes_ignore_ids_in_only_one_read()
     {
         var other = InlineCatalog("{\"id\":1,\"title\":\"T\",\"shortTitle\":\"T\",\"groups\":[{\"groupName\":\"G\",\"failures\":[{\"id\":\"F_NEW_ONE\",\"title\":\"New\",\"failed\":true}]}]}");

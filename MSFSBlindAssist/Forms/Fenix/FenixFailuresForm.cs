@@ -340,7 +340,7 @@ public sealed class FenixFailuresForm : Form
         if (answer != DialogResult.Yes || IsDisposed || _tornDown) return;
         if (_busy)
         {
-            _announcer.Announce("Still loading.");
+            _announcer.Announce("Still loading. Nothing was changed.");
             return;
         }
 
@@ -598,7 +598,9 @@ public sealed class FenixFailuresForm : Form
         }
         _searchDebounce.Stop();
         Rebuild(expandForFilter: true);
-        string matches = FenixFailureText.Matches(_viewIds.Count, SearchText);
+        string matches = SearchText.Length > 0
+            ? FenixFailureText.Matches(_viewIds.Count, SearchText)
+            : FenixFailureText.Shown(_viewIds.Count);
         _lastResult = matches;
         UpdateStatus();
         if (FirstFailureNode() is { } first)

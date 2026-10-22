@@ -122,7 +122,8 @@ public static class FenixFailureText
         foreach (FenixFailure now in after.Chapters.SelectMany(c => c.AllFailures))
         {
             if (now.Id == exceptId || !earlier.TryGetValue(now.Id, out FenixFailure? was)) continue;
-            if (was.State == now.State && ConditionKey(was, zone) == ConditionKey(now, zone)) continue;
+            if (was.State == now.State
+                && (now.State != FenixFailureState.Armed || ConditionKey(was, zone) == ConditionKey(now, zone))) continue;
 
             lines.Add(was.State == FenixFailureState.Armed && now.State == FenixFailureState.Failed
                 ? $"Failure triggered: {now.Title}."
@@ -131,7 +132,8 @@ public static class FenixFailureText
 
         if (lines.Count == 0) return null;
         if (lines.Count <= 3) return string.Join(" ", lines);
-        return string.Join(" ", lines.Take(3)) + $" And {Num(lines.Count - 3)} more changes.";
+        int extra = lines.Count - 3;
+        return string.Join(" ", lines.Take(3)) + (extra == 1 ? " And 1 more change." : $" And {Num(extra)} more changes.");
     }
 
     private static string? ConditionKey(FenixFailure f, TimeZoneInfo zone)
