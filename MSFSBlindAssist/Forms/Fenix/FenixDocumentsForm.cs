@@ -881,7 +881,16 @@ public sealed class FenixDocumentsForm : Form
             bool pinnedNow = now.Any(p => string.Equals(p.Path, path, StringComparison.Ordinal));
             Log.Debug(LogCategory, $"pin {path}: wanted {wantPinned}, now {pinnedNow}, {pins.Count} -> {now.Count} pins");
             _announcer.AnnounceImmediate(pinnedNow == wantPinned ? FenixDocumentPins.ReadBack(path, pinnedNow) : FenixDocumentPins.NotAccepted);
-            await _watcher.PollOnceAsync(ct);
+            // Already announced: nothing below may speak.
+            try
+            {
+                await _watcher.PollOnceAsync(ct);
+                if (IsDisposed) return;
+            }
+            catch (Exception ex)
+            {
+                Log.Debug(LogCategory, $"pin refresh failed: {ex.GetType().Name}");
+            }
         }
         catch (Exception ex)
         {
