@@ -79,10 +79,7 @@
   // The element's visible text: <br> and block boundaries are single spaces, runs of white space are
   // one space, trimmed; anything the page marks aria-hidden is left out.
   function textOf(el) {
-    if (!el) { return ''; }
-    var out = [];
-    collect(el, out, true);
-    return out.join('').replace(/\s+/g, ' ').trim();
+    return textWithout(el, null);
   }
 
   // The same, without the parts that match a selector (the badge inside a heading).
@@ -832,19 +829,32 @@
 
   // ---- Documents ----
 
-  // Documents: a folder's row and a file's row are bare divs the page clicks. The folder is named by its
-  // label, not by the two buttons beside it. The capture has no open / closed class on a folder (both icons
-  // are always there), so no aria-expanded is written: that would be a guess.
+  // Documents: a folder's row and a file's row are bare divs the page clicks, and each is a button. The
+  // capture has no open / closed class on a folder (both icons are always there), so no aria-expanded is
+  // written: that would be a guess. A row that holds controls of its own (a button, a box or a link: "My
+  // Documents" has "Open documents folder" and "Upload document") is not a button, because a control inside a
+  // button cannot be reached: its label is the button instead, and Enter on the label is a click on the text,
+  // which reaches the row's own handler. A row that gains or loses controls hands the button over; each time
+  // only the stamp the layer wrote on the element that no longer applies is taken back.
+  function documentRow(row, nameFromLabel) {
+    var label = row.querySelector('span.label');
+    if (row.querySelector('button, input, a[href]')) {
+      unbutton(row);
+      if (label) { button(label, textOf(label)); }
+    } else {
+      if (label) { unbutton(label); }
+      button(row, textOf(nameFromLabel && label ? label : row));
+    }
+  }
+
   RULES.push(function (root) {
     var folders = root.querySelectorAll('app-documents div.folder-name');
-    for (var i = 0; i < folders.length; i++) {
-      button(folders[i], textOf(folders[i].querySelector('.label') || folders[i]));
-    }
+    for (var i = 0; i < folders.length; i++) { documentRow(folders[i], true); }
   });
 
   RULES.push(function (root) {
     var files = root.querySelectorAll('app-documents div.file');
-    for (var i = 0; i < files.length; i++) { button(files[i], textOf(files[i])); }
+    for (var i = 0; i < files.length; i++) { documentRow(files[i], false); }
   });
 
   // Documents: the button on the edge of the list has no text and no title (ruling R21).
@@ -861,7 +871,8 @@
     for (var i = 0; i < items.length; i++) { button(items[i], textOf(items[i])); }
   });
 
-  // Charts: the zoom controls are icon fonts; each icon carries its own click (its parent holds both). The
+  // Charts: the zoom controls are icon fonts. The ids (mapZoomInBtn, mapZoomOutBtn) sit on the icons and their
+  // parent holds both, so each icon is the button (a capture cannot show where the page's listener is). The
   // names are owner decision 5's.
   var ZOOM = [['fa-plus-circle', 'Zoom in'], ['fa-minus-circle', 'Zoom out']];
   RULES.push(function (root) {
@@ -872,29 +883,46 @@
   });
 
   // Charts: the map controls are icon fonts too (ruling R15); the "World Map" item has its own text. The page
-  // marks the chosen item map-control-item-selected.
-  var MAP_ICONS = [['fa-cog', 'Map settings'], ['fa-moon', 'Dark map'], ['fa-sun', 'Light map']];
+  // marks the chosen item map-control-item-selected. The settings cog opens the settings and is not a choice
+  // (ruling R26): it is a button with no pressed state; the map modes and the two themes say which is chosen.
+  var MAP_ICONS = [['fa-cog', 'Map settings', false], ['fa-moon', 'Dark map', true], ['fa-sun', 'Light map', true]];
 
-  function mapControlName(item) {
+  // A map control's name, and whether it is a choice (one of several, the chosen one marked).
+  function mapControl(item) {
     var text = textOf(item);
-    if (text) { return text; }
     for (var k = 0; k < MAP_ICONS.length; k++) {
-      if (item.querySelector('i.' + MAP_ICONS[k][0])) { return MAP_ICONS[k][1]; }
+      if (item.querySelector('i.' + MAP_ICONS[k][0])) { return { name: text || MAP_ICONS[k][1], choice: MAP_ICONS[k][2] }; }
     }
-    return '';
+    return { name: text, choice: text !== '' };
   }
 
   RULES.push(function (root) {
     var items = root.querySelectorAll('app-charts-map div.map-control-item');
     for (var i = 0; i < items.length; i++) {
-      button(items[i], mapControlName(items[i]));
-      ownState(items[i], 'aria-pressed', items[i].classList.contains('map-control-item-selected') ? 'true' : 'false', pressedWritten);
+      var control = mapControl(items[i]);
+      button(items[i], control.name);
+      var chosen = items[i].classList.contains('map-control-item-selected') ? 'true' : 'false';
+      ownState(items[i], 'aria-pressed', control.choice ? chosen : null, pressedWritten);
     }
   });
 
-  // Quick settings: the airplane button holds only its picture (ruling R10).
+  // Charts: the list toggle on the edge of the sidebar is an empty div the page clicks (ruling R26; Documents'
+  // is "Toggle document list").
   RULES.push(function (root) {
-    var pictures = root.querySelectorAll('img[src*=airplane]');
+    var toggles = root.querySelectorAll('app-charts div.sidebar-toggle-btn');
+    for (var i = 0; i < toggles.length; i++) { button(toggles[i], 'Toggle chart list'); }
+  });
+
+  // Charts: the moving map is Leaflet's own focusable container (tabindex 0, no text). It only gets a name
+  // (ruling R24): Leaflet owns its keyboard, so no role, no Tab stop of ours and no key handler.
+  RULES.push(function (root) {
+    var maps = root.querySelectorAll('app-charts-map div.leaflet-container');
+    for (var i = 0; i < maps.length; i++) { name(maps[i], 'Moving map'); }
+  });
+
+  // Quick settings: the airplane button holds only its picture, found by its class or its file name (ruling R10).
+  RULES.push(function (root) {
+    var pictures = root.querySelectorAll('img.flight-mode-btn-icon, img[src*=airplane]');
     for (var i = 0; i < pictures.length; i++) {
       var holder = pictures[i].closest('button.quick-settings-btn');
       if (holder) { name(holder, 'Airplane mode'); }

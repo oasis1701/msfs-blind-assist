@@ -110,6 +110,9 @@ test('Settings_badges_and_the_pages_other_buttons_are_named_by_their_own_text', 
     assert.strictEqual(badges.length, 8);
     assert.deepStrictEqual(badges.map(nameOf), Array(8).fill('Default'));
     assert.ok(badges.every(b => b.getAttribute('role') === 'note' && b.getAttribute('tabindex') === '0'));
+    // textOf takes one argument: map passes the index as a second, and it is not a selector to leave out.
+    assert.strictEqual(window.__msfsbaFenixEfb.textOf.length, 1);
+    assert.deepStrictEqual(badges.map(window.__msfsbaFenixEfb.textOf), Array(8).fill('Default'));
 
     // The page's own labels and titles are the names; the layer adds none and stamps none.
     const view = all(window, 'button.toggle-button');
@@ -366,13 +369,18 @@ test('Documents_folders_and_files_are_buttons', async () => {
   const window = await load('documents');
   try {
     const folders = all(window, 'div.folder-name');
-    assert.deepStrictEqual(folders.map(nameOf), ['QRH', 'ECAM', 'User Guide', 'My Documents']);
+    assert.strictEqual(folders.length, 4);
+    const [qrh, ecam, guide, mine] = folders;
     const files = all(window, 'div.file');
+    assert.deepStrictEqual([qrh, ecam, guide].map(nameOf), ['QRH', 'ECAM', 'User Guide']);
     assert.deepStrictEqual(files.map(nameOf), ['Checklists', 'Delay Allocation Codes']);
-    for (const el of [...folders, ...files]) {
+    // A row with no controls of its own is the button. "My Documents" holds two buttons and a box (R27), so its
+    // label is the button instead (see the next test).
+    for (const el of [qrh, ecam, guide, ...files]) {
       assert.strictEqual(el.getAttribute('role'), 'button', nameOf(el));
       assert.strictEqual(el.tabIndex, 0, nameOf(el));
     }
+    assert.deepStrictEqual(layerStamp(mine), NO_STAMP);
 
     // The capture shows no open or closed state on a folder: every folder has both icons and none carries a
     // class that says which is shown. So no aria-expanded is written (it would be a guess). A Fenix update
@@ -380,19 +388,127 @@ test('Documents_folders_and_files_are_buttons', async () => {
     assert.ok(all(window, '.folder, .folder-name, app-document-tree-node').every(el => !/open|clos|expand|collaps/i.test(el.className)));
     assert.ok(folders.every(f => !f.hasAttribute('aria-expanded')));
     assert.ok(files.every(f => !f.hasAttribute('aria-expanded')));
+    assert.ok(all(window, 'span.label').every(l => !l.hasAttribute('aria-expanded')));
 
     // Enter and Space press them through the page's own click.
-    assert.deepStrictEqual(pressed(window, folders[1]), { caught: true, clicks: 1 });
+    assert.deepStrictEqual(pressed(window, ecam), { caught: true, clicks: 1 });
     assert.deepStrictEqual(pressed(window, files[0], ' '), { caught: true, clicks: 1 });
+  } finally {
+    window.close();
+  }
+});
 
-    // The two buttons inside My Documents keep their own titles and their own keys.
+// R27: a row that holds controls of its own is not a button (a control inside a button cannot be reached); the
+// text of the row is.
+test('A_documents_row_with_controls_of_its_own_makes_its_label_the_button', async () => {
+  const window = await load('documents');
+  try {
+    const mine = all(window, 'div.folder-name')[3];
+    const label = mine.querySelector('span.label');
+    assert.strictEqual(label.textContent, 'My Documents');
+    assert.strictEqual(label.getAttribute('role'), 'button');
+    assert.strictEqual(label.tabIndex, 0);
+    assert.strictEqual(nameOf(label), 'My Documents');
+    assert.deepStrictEqual(layerStamp(mine), NO_STAMP, 'the row has no role, no Tab stop, no name and no stamp');
+    assert.strictEqual(mine.getAttribute('aria-label'), null);
+
+    // The two buttons in the row keep their own titles and their own keys, and no element the layer made a
+    // button holds them (nor does the hidden file box).
     const icons = all(window, 'button.icon-btn');
     assert.deepStrictEqual(icons.map(nameOf), ['Open documents folder', 'Upload document']);
     for (const icon of icons) {
       assert.deepStrictEqual(layerStamp(icon), NO_STAMP);
+      assert.strictEqual(icon.closest('[role=button]'), null);
       assert.deepStrictEqual(pressed(window, icon), { caught: false, clicks: 0 });
     }
-    assert.strictEqual(folders[3].getAttribute('aria-label'), 'My Documents', 'not named from the buttons inside it');
+    assert.strictEqual(one(window, 'input[type=file]').closest('[role=button]'), null);
+    assert.strictEqual(all(window, '.folder-name [role=button], .file [role=button]').length, 1, 'only the label');
+
+    // Enter and Space on the label press once, as the label's own click.
+    assert.deepStrictEqual(pressed(window, label), { caught: true, clicks: 1 });
+    assert.deepStrictEqual(pressed(window, label, ' '), { caught: true, clicks: 1 });
+
+    // That click is the one a mouse click on the text makes: it bubbles to the row's own handler.
+    let rowClicks = 0;
+    mine.addEventListener('click', () => { rowClicks++; });
+    delete label.click;                   // the element's own click, not the stub of the lines above
+    assert.ok(press(window, label, { key: 'Enter' }).defaultPrevented);
+    assert.strictEqual(rowClicks, 1);
+  } finally {
+    window.close();
+  }
+});
+
+test('A_documents_row_that_gains_or_loses_controls_hands_the_button_over_and_takes_back_only_its_own_stamp', async () => {
+  const window = await load('documents');
+  try {
+    const doc = window.document;
+    const [qrh] = all(window, 'div.folder-name');
+    const [checklists] = all(window, 'div.file');
+    const qrhLabel = qrh.querySelector('span.label');
+    const fileLabel = checklists.querySelector('span.label');
+    assert.strictEqual(qrh.getAttribute('role'), 'button');
+    assert.strictEqual(checklists.getAttribute('role'), 'button');
+    assert.deepStrictEqual(layerStamp(qrhLabel), NO_STAMP);
+
+    // A button comes into the folder's row, a link into the file's: each row stops being a button (its Tab
+    // stop, role, name and stamp go) and its label is the button.
+    const inner = doc.createElement('button');
+    inner.title = 'Rename';
+    qrh.appendChild(inner);
+    const link = doc.createElement('a');
+    link.setAttribute('href', '#share');
+    link.textContent = 'Share';
+    checklists.appendChild(link);
+    await turns();
+    assert.deepStrictEqual(layerStamp(qrh), NO_STAMP);
+    assert.deepStrictEqual(layerStamp(checklists), NO_STAMP);
+    assert.deepStrictEqual([qrhLabel, fileLabel].map(el => el.getAttribute('role')), ['button', 'button']);
+    assert.deepStrictEqual([qrhLabel, fileLabel].map(nameOf), ['QRH', 'Checklists']);
+    assert.ok([qrhLabel, fileLabel].every(l => l.tabIndex === 0));
+    assert.deepStrictEqual(pressed(window, qrhLabel), { caught: true, clicks: 1 });
+    assert.deepStrictEqual(layerStamp(inner), NO_STAMP);
+
+    // The controls go (the test takes them out): the rows are the buttons again, the labels are not.
+    qrh.removeChild(inner);
+    checklists.removeChild(link);
+    await turns();
+    assert.deepStrictEqual([qrh, checklists].map(el => el.getAttribute('role')), ['button', 'button']);
+    assert.ok([qrh, checklists].every(el => el.tabIndex === 0));
+    assert.deepStrictEqual([qrh, checklists].map(nameOf), ['QRH', 'Checklists']);
+    assert.deepStrictEqual(layerStamp(qrhLabel), NO_STAMP);
+    assert.deepStrictEqual(layerStamp(fileLabel), NO_STAMP);
+    assert.strictEqual(qrhLabel.hasAttribute('tabindex'), false);
+    // A label whose button was withdrawn takes no key: its listener stays but the handler ignores it.
+    assert.deepStrictEqual(pressed(window, qrhLabel), { caught: false, clicks: 0 });
+    assert.deepStrictEqual(pressed(window, qrh), { caught: true, clicks: 1 });
+  } finally {
+    window.close();
+  }
+});
+
+test('A_role_or_label_the_page_gave_a_documents_row_or_its_label_is_kept', async () => {
+  const window = await load('documents', { layer: false });
+  try {
+    const [qrh, , , mine] = all(window, 'div.folder-name');
+    const label = mine.querySelector('span.label');
+    qrh.setAttribute('role', 'treeitem');
+    qrh.setAttribute('aria-label', 'Quick reference');
+    label.setAttribute('aria-label', 'My own documents');
+    window.eval(fs.readFileSync(LAYER, 'utf8'));
+    await turns();
+    assert.strictEqual(qrh.getAttribute('role'), 'treeitem');
+    assert.strictEqual(qrh.getAttribute('aria-label'), 'Quick reference');
+    assert.strictEqual(label.getAttribute('aria-label'), 'My own documents');
+    assert.strictEqual(label.getAttribute('role'), 'button');
+
+    // The folder gains a control: the layer takes back its Tab stop and stamp, never the page's role or label.
+    qrh.appendChild(window.document.createElement('input'));
+    await turns();
+    assert.strictEqual(qrh.getAttribute('role'), 'treeitem');
+    assert.strictEqual(qrh.getAttribute('aria-label'), 'Quick reference');
+    assert.strictEqual(qrh.hasAttribute('tabindex'), false);
+    assert.strictEqual(qrh.hasAttribute('data-msfsba'), false);
   } finally {
     window.close();
   }
@@ -422,16 +538,19 @@ test('The_documents_list_toggle_is_named_and_a_folder_name_follows_the_page', as
 // ---- Charts and quick settings ----
 
 test('Charts_and_quick_settings_controls_are_named', async () => {
-  const charts = await load('charts');
-  const quick = await load('quick-settings');
+  let charts = null;
+  let quick = null;
   try {
+    charts = await load('charts');
+    quick = await load('quick-settings');
     // The sidebar has three items as captured, all buttons named by their text.
     const sidebar = all(charts, 'div.navigraph-sidebar-item');
     assert.deepStrictEqual(sidebar.map(nameOf), ['My Flight', 'Route', 'Sync SimBrief']);
     assert.ok(sidebar.every(el => el.getAttribute('role') === 'button' && el.tabIndex === 0));
     assert.deepStrictEqual(pressed(charts, sidebar[1]), { caught: true, clicks: 1 });
 
-    // The zoom icons (R15 / owner decision 5): the icon itself carries the page's click, its parent holds both.
+    // The zoom icons (R15 / owner decision 5): the ids sit on the icons and their parent holds both, so each
+    // icon is the button (a capture cannot show where the page's listener is).
     const zoomIn = one(charts, '#mapZoomInBtn');
     const zoomOut = one(charts, '#mapZoomOutBtn');
     assert.deepStrictEqual([zoomIn, zoomOut].map(nameOf), ['Zoom in', 'Zoom out']);
@@ -449,13 +568,18 @@ test('Charts_and_quick_settings_controls_are_named', async () => {
     assert.deepStrictEqual(controls.map(c => c.querySelector('i') ? c.querySelector('i').className : ''),
       ['fas fa-cog', '', 'fas fa-moon', 'fas fa-sun']);
     assert.ok(controls.every(el => el.getAttribute('role') === 'button' && el.tabIndex === 0));
-    // aria-pressed follows the page's map-control-item-selected on each.
+    // aria-pressed follows the page's map-control-item-selected on the map mode and the two themes (R26). The
+    // settings cog opens the settings and is not a choice: it has none, whatever the page marks.
     assert.deepStrictEqual(controls.map(c => c.classList.contains('map-control-item-selected')), [false, true, false, false]);
-    assert.deepStrictEqual(controls.map(attr('aria-pressed')), ['false', 'true', 'false', 'false']);
+    assert.deepStrictEqual(controls.map(attr('aria-pressed')), [null, 'true', 'false', 'false']);
     controls[1].classList.toggle('map-control-item-selected', false);
     controls[2].classList.toggle('map-control-item-selected', true);
     await turns();
-    assert.deepStrictEqual(controls.map(attr('aria-pressed')), ['false', 'false', 'true', 'false']);
+    assert.deepStrictEqual(controls.map(attr('aria-pressed')), [null, 'false', 'true', 'false']);
+    controls[0].classList.toggle('map-control-item-selected', true);
+    await turns();
+    assert.deepStrictEqual(controls.map(attr('aria-pressed')), [null, 'false', 'true', 'false']);
+    controls[0].classList.toggle('map-control-item-selected', false);
 
     // The page's own buttons keep their text.
     assert.deepStrictEqual(all(charts, 'button.btn-default').map(nameOf), ['Navigraph', 'Reset']);
@@ -474,34 +598,50 @@ test('Charts_and_quick_settings_controls_are_named', async () => {
     assert.deepStrictEqual([settings, open].map(nameOf), ['Open settings', 'Open quick settings']);
     assert.ok([settings, open].every(b => b.getAttribute('data-msfsba') === null));
   } finally {
-    charts.close();
-    quick.close();
+    if (charts) charts.close();
+    if (quick) quick.close();
   }
 });
 
-test('Charts_controls_the_layer_has_no_name_for_stay_unnamed', async () => {
+// R24 and R26.
+test('The_moving_map_is_named_without_a_role_or_a_Tab_stop_of_ours_and_the_chart_list_toggle_is_a_button', async () => {
   const window = await load('charts');
   try {
-    // The map itself and the Charts list toggle have no text and no ruling: no name is made up for them.
+    // Leaflet owns the map's keyboard: the layer adds a name and nothing else (the page's tabindex 0 stays).
     const map = one(window, '#map-container');
-    const toggle = one(window, 'div.sidebar-toggle-btn');
-    for (const el of [map, toggle]) {
-      assert.strictEqual(el.hasAttribute('aria-label'), false, el.id || el.className);
-      assert.strictEqual(el.hasAttribute('role'), false);
-      assert.strictEqual(el.hasAttribute('data-msfsba'), false);
-    }
-    assert.strictEqual(nameOf(toggle), '');
+    assert.ok(map.classList.contains('leaflet-container'));
+    assert.strictEqual(nameOf(map), 'Moving map');
+    assert.strictEqual(map.getAttribute('aria-label'), 'Moving map');
+    assert.strictEqual(map.hasAttribute('role'), false);
+    assert.strictEqual(map.getAttribute('tabindex'), '0', 'the page\'s own, as captured');
+    assert.deepStrictEqual(pressed(window, map), { caught: false, clicks: 0 });
+    assert.deepStrictEqual(pressed(window, map, ' '), { caught: false, clicks: 0 });
     // Leaflet's own attribution links are named by their text.
     assert.deepStrictEqual(all(window, '.leaflet-control-attribution a').map(nameOf), ['Leaflet', 'Esri']);
+
+    // The list toggle is an empty div the page clicks: a button, like Documents' "Toggle document list".
+    const toggle = one(window, 'div.sidebar-toggle-btn');
+    assert.strictEqual(nameOf(toggle), 'Toggle chart list');
+    assert.strictEqual(toggle.getAttribute('role'), 'button');
+    assert.strictEqual(toggle.tabIndex, 0);
+    assert.deepStrictEqual(pressed(window, toggle), { caught: true, clicks: 1 });
+    assert.deepStrictEqual(pressed(window, toggle, ' '), { caught: true, clicks: 1 });
+
+    // A name the page gave the map is kept.
+    map.setAttribute('aria-label', 'World chart');
+    window.__msfsbaFenixEfb.pass();
+    assert.strictEqual(map.getAttribute('aria-label'), 'World chart');
   } finally {
     window.close();
   }
 });
 
 test('A_map_control_without_text_or_a_known_icon_and_an_airplane_button_without_its_picture_stay_unnamed', async () => {
-  const quick = await load('quick-settings');
-  const charts = await load('charts');
+  let quick = null;
+  let charts = null;
   try {
+    quick = await load('quick-settings');
+    charts = await load('charts');
     const doc = charts.document;
     const holder = doc.createElement('div');
     holder.innerHTML = '<div class="map-control-item"><i class="fas fa-globe"></i></div>' +
@@ -510,24 +650,37 @@ test('A_map_control_without_text_or_a_known_icon_and_an_airplane_button_without_
     await turns();
     const [unknown, labelled] = [...holder.children];
     assert.strictEqual(unknown.hasAttribute('aria-label'), false, 'no name from an icon the layer does not know');
+    assert.strictEqual(unknown.hasAttribute('aria-pressed'), false, 'and no choice made up for it');
     assert.strictEqual(unknown.getAttribute('role'), 'button', 'still a button with a Tab stop');
     assert.strictEqual(labelled.getAttribute('aria-label'), 'Layers', 'the page\'s own label stays');
+    assert.strictEqual(labelled.getAttribute('aria-pressed'), 'false', 'a theme item is a choice');
 
+    const toggles = one(quick, '.quick-settings-toggles');
     const bare = quick.document.createElement('button');
     bare.className = 'quick-settings-btn';
     bare.innerHTML = '<img class="quick-settings-btn-icon" src="/assets/img/globe.png">';
-    one(quick, '.quick-settings-toggles').appendChild(bare);
+    toggles.appendChild(bare);
     const own = quick.document.createElement('button');
     own.className = 'quick-settings-btn';
     own.setAttribute('aria-label', 'Flight mode');
     own.innerHTML = '<img class="quick-settings-btn-icon flight-mode-btn-icon" src="/assets/img/airplane.png">';
-    one(quick, '.quick-settings-toggles').appendChild(own);
+    toggles.appendChild(own);
+    // The picture is found by its class or by its file name (R10): either alone is enough.
+    const byClass = quick.document.createElement('button');
+    byClass.className = 'quick-settings-btn';
+    byClass.innerHTML = '<img class="quick-settings-btn-icon flight-mode-btn-icon" src="/assets/img/flight.png">';
+    toggles.appendChild(byClass);
+    const byName = quick.document.createElement('button');
+    byName.className = 'quick-settings-btn';
+    byName.innerHTML = '<img class="quick-settings-btn-icon" src="/assets/img/airplane-white.png">';
+    toggles.appendChild(byName);
     await turns();
     assert.strictEqual(bare.hasAttribute('aria-label'), false);
     assert.strictEqual(own.getAttribute('aria-label'), 'Flight mode', 'the page\'s own label stays');
+    assert.deepStrictEqual([byClass, byName].map(nameOf), ['Airplane mode', 'Airplane mode']);
   } finally {
-    quick.close();
-    charts.close();
+    if (quick) quick.close();
+    if (charts) charts.close();
   }
 });
 
@@ -568,8 +721,14 @@ const SECOND_PASS = {
     handled: 2 + 20 + 53 + 1, listeners: 2 + 20,
     note: 'home, chevron; twenty chapters; the 53 items that have a group title; the search box'
   },
-  'documents': { handled: 2 + 4 + 2 + 1, listeners: 2 + 4 + 2, note: 'home, chevron; four folders; two files; the list toggle' },
-  'charts': { handled: 2 + 3 + 2 + 4, listeners: 2 + 3 + 2 + 4, note: 'home, chevron; three sidebar items; two zoom icons; four map controls' },
+  'documents': {
+    handled: 2 + 4 + 2 + 1, listeners: 2 + 4 + 2,
+    note: 'home, chevron; three folder rows and the label of My Documents; two files; the list toggle'
+  },
+  'charts': {
+    handled: 2 + 3 + 2 + 4 + 1 + 1, listeners: 2 + 3 + 2 + 4 + 1,
+    note: 'home, chevron; three sidebar items; two zoom icons; four map controls; the list toggle; the map (a name only)'
+  },
   'quick-settings': {
     handled: 1 + 9 + 1 + 1, listeners: 1 + 9,
     note: 'home (the chevron is hidden here); nine home tiles; the slider; the airplane button'
@@ -612,14 +771,16 @@ const ISOLATION = {
     ['app-manual-failures app-keyboard-input', 'input[placeholder=search][aria-label]', 1]
   ],
   'documents': [
-    ['div.folder-name', 'div.folder-name[role=button]', 4],
+    ['div.folder-name', 'div.folder-name[role=button], span.label[role=button]', 4],
     ['div.file', 'div.file[role=button]', 2],
     ['button.sidebar-toggle-btn', 'button.sidebar-toggle-btn[aria-label]', 1]
   ],
   'charts': [
     ['div.navigraph-sidebar-item', 'div.navigraph-sidebar-item[role=button]', 3],
     ['div.chart-viewer-controls', '.chart-viewer-controls i[role=button]', 2],
-    ['div.map-control-item', 'div.map-control-item[role=button]', 4]
+    ['div.map-control-item', 'div.map-control-item[role=button]', 4],
+    ['div.sidebar-toggle-btn', 'div.sidebar-toggle-btn[role=button]', 1],
+    ['div.leaflet-container', '#map-container[aria-label="Moving map"]', 1]
   ],
   'quick-settings': [
     ['mat-slider', 'mat-slider[aria-label]', 1],
