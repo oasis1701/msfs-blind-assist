@@ -124,6 +124,29 @@ public partial class FenixA320Definition
         return text != null;
     }
 
+    // Opens a Fenix window as one of this definition's tracked windows: one per type, reused when it is
+    // already open, and closed by DisposeTrackedWindows when the pilot switches aircraft. Every window a
+    // FenixWindowRegistry entry opens goes through here, so none outlives the aircraft it controls.
+    public void ShowFenixWindow<T>(Func<T> factory, Action<T> show) where T : System.Windows.Forms.Form
+        => ShowTrackedWindow(factory, show);
+
+    // Ctrl+Shift+F (input mode): the "Fenix windows" list. Input mode ends first, as for every window a
+    // definition opens from a hotkey. The list is itself a tracked window, so a second press brings the open
+    // one forward, and an aircraft switch closes it. The registry and the context are built only when the
+    // list is created, not on that second press.
+    private void ShowFenixWindows(SimConnect.SimConnectManager simConnect,
+        Accessibility.ScreenReaderAnnouncer announcer,
+        System.Windows.Forms.Form parentForm,
+        Hotkeys.HotkeyManager hotkeyManager)
+    {
+        hotkeyManager.ExitInputHotkeyMode();
+        ShowFenixWindow(
+            () => new Forms.Fenix.FenixWindowsForm(
+                Forms.Fenix.FenixWindowRegistry.Build(),
+                new Forms.Fenix.FenixWindowContext(this, DataService, simConnect, announcer, parentForm)),
+            list => list.ShowForm());
+    }
+
     public override void OnSwitchedAway()
     {
         OnFenixSwitchedAway();

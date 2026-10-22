@@ -45,7 +45,10 @@ public partial class MainForm
             HotkeyAction.ToggleVatsimAnnouncements,
             // The Volanta window reads Volanta's web map and opens from Extras whether or not the
             // sim is connected; its hotkey must too.
-            HotkeyAction.ShowVolanta
+            HotkeyAction.ShowVolanta,
+            // The aircraft's window list opens before the sim connects, like the MCDU and EFB windows.
+            // An aircraft without one must still say so rather than "Not connected to simulator".
+            HotkeyAction.ShowAircraftWindows
         };
 
         // Guard clause: Block SimConnect-dependent actions if not fully connected
@@ -320,6 +323,11 @@ public partial class MainForm
                 {
                     announcer.AnnounceImmediate("The DCDU window is only available on the A32NX and the Headwind A330.");
                 }
+                break;
+            case HotkeyAction.ShowAircraftWindows:
+                // Reached only when the aircraft did not handle the key (today the Fenix A320 is the one
+                // aircraft with a window list). Say so: a silent key reads as a broken one.
+                announcer.AnnounceImmediate("This aircraft has no extra windows.");
                 break;
             case HotkeyAction.ShowOANS:
                 if (currentAircraft?.AircraftCode == "FBW_A380")

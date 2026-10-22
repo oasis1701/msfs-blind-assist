@@ -13216,6 +13216,13 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                                            System.Windows.Forms.Form parentForm,
                                            HotkeyManager hotkeyManager)
     {
+        // Ctrl+Shift+F (input mode): the Fenix windows list (FenixA320Definition.Hooks.cs).
+        if (action == HotkeyAction.ShowAircraftWindows)
+        {
+            ShowFenixWindows(simConnect, announcer, parentForm, hotkeyManager);
+            return true;
+        }
+
         // Handle display reading actions
         switch (action)
         {

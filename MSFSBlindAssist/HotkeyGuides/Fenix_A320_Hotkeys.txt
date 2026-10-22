@@ -199,6 +199,9 @@ EFB / Tablet:
              sim. (Note: in OUTPUT mode, Shift+T toggles trim announcements —
              this Shift+T is the INPUT-mode EFB window.)
 
+Fenix windows:
+  Ctrl+Shift+F  Fenix windows (cabin, engines, failures, options)
+
 Teleport:
   Shift+R    Runway Teleport
   Shift+G    Gate Teleport
