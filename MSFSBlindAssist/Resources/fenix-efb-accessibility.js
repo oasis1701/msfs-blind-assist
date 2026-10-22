@@ -46,10 +46,14 @@
   // presence means the layer wrote the 0. It is put back when the control stops being a button or is
   // disabled.
   var tabOriginal = new WeakMap();
-  // The aria-expanded the layer wrote on the app switcher's chevron (the way `written` keeps a label).
+  // The aria-expanded the layer wrote on the app switcher's chevron and on a failure chapter (the way
+  // `written` keeps a label).
   var expandedWritten = new WeakMap();
   // The aria-checked the layer wrote on a radio, the same way.
   var checkedWritten = new WeakMap();
+  // The aria-pressed it wrote on a Settings option and a map control, and the aria-current on a category.
+  var pressedWritten = new WeakMap();
+  var currentWritten = new WeakMap();
   // The results grid's pairs, as the layer made them: each label row's value row and each value row's label
   // row. A pairing is kept while the two rows sit together (see readGrid).
   var gridValueOf = new WeakMap();
@@ -59,15 +63,16 @@
   // The aria-labelledby a drop-down had before the layer put the drop-down's own id in front of it.
   var labelledbyWas = new WeakMap();
 
-  function collect(node, out, isRoot) {
+  // `skip`, when given, is a selector: an element below the root that matches it is left out.
+  function collect(node, out, isRoot, skip) {
     if (node.nodeType === 3) { out.push(node.nodeValue); return; }
     if (node.nodeType !== 1) { return; }
-    if (!isRoot && node.getAttribute('aria-hidden') === 'true') { return; }
+    if (!isRoot && (node.getAttribute('aria-hidden') === 'true' || (skip && node.matches(skip)))) { return; }
     var tag = (node.localName || '').toLowerCase();
     if (SKIP_TAGS.indexOf(' ' + tag + ' ') !== -1) { return; }
     var block = BLOCK_TAGS.indexOf(' ' + tag + ' ') !== -1;
     if (block) { out.push(' '); }
-    for (var child = node.firstChild; child; child = child.nextSibling) { collect(child, out, false); }
+    for (var child = node.firstChild; child; child = child.nextSibling) { collect(child, out, false, skip); }
     if (block) { out.push(' '); }
   }
 
@@ -77,6 +82,14 @@
     if (!el) { return ''; }
     var out = [];
     collect(el, out, true);
+    return out.join('').replace(/\s+/g, ' ').trim();
+  }
+
+  // The same, without the parts that match a selector (the badge inside a heading).
+  function textWithout(el, skip) {
+    if (!el) { return ''; }
+    var out = [];
+    collect(el, out, true, skip);
     return out.join('').replace(/\s+/g, ' ').trim();
   }
 
@@ -195,7 +208,7 @@
     release(el);
   }
 
-  // Writes a state the layer owns (aria-checked, aria-expanded) only while it is
+  // Writes a state the layer owns (aria-checked, aria-expanded, aria-pressed, aria-current) only while it is
   // the layer's own: a state the page set is never touched. A null value takes back the layer's own state.
   function ownState(el, attr, value, store) {
     var existing = el.getAttribute(attr);
@@ -717,6 +730,181 @@
   RULES.push(function (root) {
     var items = root.querySelectorAll('div.arrival-procedure-item');
     for (var i = 0; i < items.length; i++) { button(items[i], textOf(items[i])); }
+  });
+
+  // ---- Settings ----
+
+  // The setting an article is about: its heading without the "Default" / "Livery" badge inside it.
+  function settingName(article) {
+    var heading = article ? article.querySelector('.settings-name') : null;
+    return textWithout(heading, '.settings-source');
+  }
+
+  // Settings: a switch is a checkbox in a label with no text; it takes the name of its article's heading.
+  RULES.push(function (root) {
+    var boxes = root.querySelectorAll('app-settings2 article label.toggle > input[type=checkbox]');
+    for (var i = 0; i < boxes.length; i++) { name(boxes[i], settingName(boxes[i].closest('article'))); }
+  });
+
+  // Settings: the three dots hold no text; they say which setting's options they open.
+  RULES.push(function (root) {
+    var dots = root.querySelectorAll('app-settings2 article button.overflow-button');
+    for (var i = 0; i < dots.length; i++) {
+      var setting = settingName(dots[i].closest('article'));
+      name(dots[i], setting ? 'More options for ' + setting : '');
+    }
+  });
+
+  // Settings: an option is a real button named by its own text; it says whether it is the chosen one, as the
+  // page does with option--active.
+  RULES.push(function (root) {
+    var options = root.querySelectorAll('app-settings2 button.option');
+    for (var i = 0; i < options.length; i++) {
+      ownState(options[i], 'aria-pressed', options[i].classList.contains('option--active') ? 'true' : 'false', pressedWritten);
+    }
+  });
+
+  // Settings: the categories are list items the page clicks; each is a button, and the open one is the
+  // current page (the page marks it category--active).
+  RULES.push(function (root) {
+    var categories = root.querySelectorAll('app-settings2 li.category');
+    for (var i = 0; i < categories.length; i++) {
+      button(categories[i], textOf(categories[i]));
+      ownState(categories[i], 'aria-current', categories[i].classList.contains('category--active') ? 'page' : null, currentWritten);
+    }
+  });
+
+  // Settings: the "Default" / "Livery" badge has a Tab stop of the page's own (it shows a tooltip) and a text,
+  // but no role, so no screen reader reads it as anything. It is a note, named by its text.
+  RULES.push(function (root) {
+    var badges = root.querySelectorAll('app-settings2 span.settings-source');
+    for (var i = 0; i < badges.length; i++) {
+      var text = textOf(badges[i]);
+      if (text) {
+        giveRole(badges[i], 'note');
+        name(badges[i], text);
+      } else {
+        release(badges[i]);
+      }
+    }
+  });
+
+  // ---- Failures ----
+
+  // Failures: a chapter's title (ATA 21 ...) is a bare div the page opens and closes; its chevron points down
+  // while the chapter is open and right while it is closed.
+  RULES.push(function (root) {
+    var titles = root.querySelectorAll('app-manual-failures div.manual-failure-ata-title');
+    for (var i = 0; i < titles.length; i++) {
+      button(titles[i], textOf(titles[i]));
+      ownState(titles[i], 'aria-expanded', iconState(titles[i], 'fa-chevron-circle-down', 'fa-chevron-circle-right'), expandedWritten);
+    }
+  });
+
+  // The title of the group an item belongs to ("CPC", "Overheat"), or '' when its group has none.
+  function groupTitleOf(item) {
+    var group = item.closest('.manual-failure-group');
+    for (var child = group ? group.firstElementChild : null; child; child = child.nextElementSibling) {
+      if (child.classList.contains('manual-failure-group-title')) { return textOf(child); }
+    }
+    return '';
+  }
+
+  // Failures: an item says only its own part ("1", "Pack 1"); its name starts with its group's title ("CPC 1",
+  // "Overheat Pack 1"). An item in a group without a title is named by its own text, which the button already is.
+  RULES.push(function (root) {
+    var items = root.querySelectorAll('app-manual-failures button.manual-failure-item');
+    for (var i = 0; i < items.length; i++) {
+      var group = groupTitleOf(items[i]);
+      var text = textOf(items[i]);
+      name(items[i], group && text ? group + ' ' + text : '');
+    }
+  });
+
+  // Failures: the search box has no label; its placeholder is the only word the page gives it (Mass and
+  // Balance's boxes use theirs the same way).
+  RULES.push(function (root) {
+    var boxes = root.querySelectorAll('app-manual-failures app-keyboard-input input[placeholder]');
+    for (var i = 0; i < boxes.length; i++) {
+      name(boxes[i], boxes[i].getAttribute('placeholder').replace(/\s+/g, ' ').trim());
+    }
+  });
+
+  // ---- Documents ----
+
+  // Documents: a folder's row and a file's row are bare divs the page clicks. The folder is named by its
+  // label, not by the two buttons beside it. The capture has no open / closed class on a folder (both icons
+  // are always there), so no aria-expanded is written: that would be a guess.
+  RULES.push(function (root) {
+    var folders = root.querySelectorAll('app-documents div.folder-name');
+    for (var i = 0; i < folders.length; i++) {
+      button(folders[i], textOf(folders[i].querySelector('.label') || folders[i]));
+    }
+  });
+
+  RULES.push(function (root) {
+    var files = root.querySelectorAll('app-documents div.file');
+    for (var i = 0; i < files.length; i++) { button(files[i], textOf(files[i])); }
+  });
+
+  // Documents: the button on the edge of the list has no text and no title (ruling R21).
+  RULES.push(function (root) {
+    var toggles = root.querySelectorAll('app-documents button.sidebar-toggle-btn');
+    for (var i = 0; i < toggles.length; i++) { name(toggles[i], 'Toggle document list'); }
+  });
+
+  // ---- Charts and quick settings ----
+
+  // Charts: the sidebar's items are divs the page clicks, named by their text.
+  RULES.push(function (root) {
+    var items = root.querySelectorAll('app-navigraph-sidebar div.navigraph-sidebar-item');
+    for (var i = 0; i < items.length; i++) { button(items[i], textOf(items[i])); }
+  });
+
+  // Charts: the zoom controls are icon fonts; each icon carries its own click (its parent holds both). The
+  // names are owner decision 5's.
+  var ZOOM = [['fa-plus-circle', 'Zoom in'], ['fa-minus-circle', 'Zoom out']];
+  RULES.push(function (root) {
+    for (var k = 0; k < ZOOM.length; k++) {
+      var icons = root.querySelectorAll('div.chart-viewer-controls i.' + ZOOM[k][0]);
+      for (var i = 0; i < icons.length; i++) { button(icons[i], ZOOM[k][1]); }
+    }
+  });
+
+  // Charts: the map controls are icon fonts too (ruling R15); the "World Map" item has its own text. The page
+  // marks the chosen item map-control-item-selected.
+  var MAP_ICONS = [['fa-cog', 'Map settings'], ['fa-moon', 'Dark map'], ['fa-sun', 'Light map']];
+
+  function mapControlName(item) {
+    var text = textOf(item);
+    if (text) { return text; }
+    for (var k = 0; k < MAP_ICONS.length; k++) {
+      if (item.querySelector('i.' + MAP_ICONS[k][0])) { return MAP_ICONS[k][1]; }
+    }
+    return '';
+  }
+
+  RULES.push(function (root) {
+    var items = root.querySelectorAll('app-charts-map div.map-control-item');
+    for (var i = 0; i < items.length; i++) {
+      button(items[i], mapControlName(items[i]));
+      ownState(items[i], 'aria-pressed', items[i].classList.contains('map-control-item-selected') ? 'true' : 'false', pressedWritten);
+    }
+  });
+
+  // Quick settings: the airplane button holds only its picture (ruling R10).
+  RULES.push(function (root) {
+    var pictures = root.querySelectorAll('img[src*=airplane]');
+    for (var i = 0; i < pictures.length; i++) {
+      var holder = pictures[i].closest('button.quick-settings-btn');
+      if (holder) { name(holder, 'Airplane mode'); }
+    }
+  });
+
+  // Quick settings: the brightness slider is a mat-slider with a value and no name (ruling R10).
+  RULES.push(function (root) {
+    var sliders = root.querySelectorAll('mat-slider.brightness-popup-slider');
+    for (var i = 0; i < sliders.length; i++) { name(sliders[i], 'Brightness'); }
   });
 
   function pass() {
