@@ -237,11 +237,11 @@ public partial class FenixA320Definition
         return true;
     }
 
-    // ECON FLOW and ACT PUMP hold their value (the model's latched-button template), and so do the headset,
-    // UTC selector, ET Run/Stop and the cargo knob: one SetLVar write, nothing spoken. ET Reset is not
+    // The plain writes: ECON FLOW and ACT PUMP hold their value (the model's latched-button template), and so
+    // do the headset, UTC selector, ET Run/Stop and the cargo knob: one SetLVar write, nothing spoken. ET Reset is not
     // plain (the knob springs back, see HandleVariantUIVariableSet). The writer is passed in so a test can
     // see the write without a SimConnect.
-    internal static bool TryWriteLatchedSwitch(string varKey, double value, Action<string, double> write)
+    internal static bool TryWritePlain(string varKey, double value, Action<string, double> write)
     {
         if (varKey is not (EconFlowKey or ActKey or HeadsetKey or UtcKey or CargoTempKey or EtKey)) return false;
         if (varKey == EtKey && value == 2) return false;
@@ -259,7 +259,7 @@ public partial class FenixA320Definition
             return;
         }
 
-        if (TryWriteLatchedSwitch(varKey, value, simConnect.SetLVar))
+        if (TryWritePlain(varKey, value, simConnect.SetLVar))
         {
             handled = true;
             return;

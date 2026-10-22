@@ -185,7 +185,7 @@ public class FenixVariantControlsTests
     public void New_switches_are_written_plainly(string key, double value)
     {
         var writes = new List<(string, double)>();
-        Assert.True(FenixA320Definition.TryWriteLatchedSwitch(key, value, (k, v) => writes.Add((k, v))));
+        Assert.True(FenixA320Definition.TryWritePlain(key, value, (k, v) => writes.Add((k, v))));
         Assert.Equal(new[] { (key, value) }, writes);
     }
 
@@ -193,9 +193,9 @@ public class FenixVariantControlsTests
     public void Elapsed_time_reset_and_buttons_are_not_plain_writes()
     {
         var writes = new List<(string, double)>();
-        Assert.False(FenixA320Definition.TryWriteLatchedSwitch("S_MIP_CLOCK_ET", 2, (k, v) => writes.Add((k, v))));
+        Assert.False(FenixA320Definition.TryWritePlain("S_MIP_CLOCK_ET", 2, (k, v) => writes.Add((k, v))));
         foreach (var b in new[] { "S_MIP_CLOCK_CHR", "S_MIP_CLOCK_RST", "S_MIP_CLOCK_SET", "S_MIP_ISFD_BARO_BUTTON" })
-            Assert.False(FenixA320Definition.TryWriteLatchedSwitch(b, 1, (k, v) => writes.Add((k, v))));
+            Assert.False(FenixA320Definition.TryWritePlain(b, 1, (k, v) => writes.Add((k, v))));
         Assert.Empty(writes);
     }
 
@@ -329,9 +329,9 @@ public class FenixVariantControlsTests
     public void New_latched_switches_are_handled_silently(string key, double value)
     {
         // The test host has no Microsoft.FlightSimulator.SimConnect.dll, so SetLVar cannot run even on a
-        // never-connected manager: the write goes through TryWriteLatchedSwitch with a recording writer.
+        // never-connected manager: the write goes through TryWritePlain with a recording writer.
         var writes = new List<(string, double)>();
-        Assert.True(FenixA320Definition.TryWriteLatchedSwitch(key, value, (k, v) => writes.Add((k, v))));
+        Assert.True(FenixA320Definition.TryWritePlain(key, value, (k, v) => writes.Add((k, v))));
         Assert.Equal(new[] { (key, value) }, writes);
     }
 
@@ -339,8 +339,8 @@ public class FenixVariantControlsTests
     public void Other_keys_are_not_written_as_latched_switches()
     {
         var writes = new List<(string, double)>();
-        Assert.False(FenixA320Definition.TryWriteLatchedSwitch("S_OH_CALLS_MID", 1, (k, v) => writes.Add((k, v))));
-        Assert.False(FenixA320Definition.TryWriteLatchedSwitch("S_OH_FUEL_CENTER_2", 1, (k, v) => writes.Add((k, v))));
+        Assert.False(FenixA320Definition.TryWritePlain("S_OH_CALLS_MID", 1, (k, v) => writes.Add((k, v))));
+        Assert.False(FenixA320Definition.TryWritePlain("S_OH_FUEL_CENTER_2", 1, (k, v) => writes.Add((k, v))));
         Assert.Empty(writes);
     }
 
