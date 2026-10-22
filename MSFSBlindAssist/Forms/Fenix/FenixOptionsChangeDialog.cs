@@ -3,10 +3,11 @@ using MSFSBlindAssist.Services;
 namespace MSFSBlindAssist.Forms.Fenix;
 
 /// <summary>
-/// Asks what one Fenix option should be for this simulator session: a drop-down list of its choices, on the
-/// current value. The combo's accessible name carries the option and the session note, so there is no label
-/// for the reader to say twice. OK closes with <see cref="SelectedValue"/> set to the chosen choice's value;
-/// Cancel leaves it null. The dialog itself never writes: the Fenix options window confirms and sends.
+/// Asks what one Fenix option should be, for this simulator session (F2) or permanently (Shift+F2): a
+/// drop-down list of its choices, on the current value. The combo's accessible name carries the option and
+/// which of the two it is, so there is no label for the reader to say twice. OK closes with
+/// <see cref="SelectedValue"/> set to the chosen choice's value; Cancel leaves it null. The dialog itself
+/// never writes: the Fenix options window confirms and sends.
 /// </summary>
 public sealed class FenixOptionsChangeDialog : Form
 {
@@ -16,11 +17,12 @@ public sealed class FenixOptionsChangeDialog : Form
     /// <summary>The value of the chosen choice; set only when the dialog closes with OK.</summary>
     public string? SelectedValue { get; private set; }
 
-    public FenixOptionsChangeDialog(string optionLabel, IReadOnlyList<FenixOptionChoice> choices, string? currentValue)
+    public FenixOptionsChangeDialog(string optionLabel, IReadOnlyList<FenixOptionChoice> choices, string? currentValue,
+        bool permanent = false)
     {
         _choices = choices;
 
-        Text = "Change Fenix option";
+        Text = permanent ? "Make a Fenix option permanent" : "Change Fenix option";
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MinimizeBox = false;
@@ -43,7 +45,7 @@ public sealed class FenixOptionsChangeDialog : Form
         _combo = new ComboBox
         {
             DropDownStyle = ComboBoxStyle.DropDownList,
-            AccessibleName = $"{optionLabel}, for this simulator session",
+            AccessibleName = permanent ? $"{optionLabel}, permanent" : $"{optionLabel}, for this simulator session",
             Width = 280,
             TabIndex = tab++,
         };

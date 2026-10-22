@@ -6,16 +6,26 @@ namespace MSFSBlindAssist.Services;
 public sealed record FenixOptionChoice(string Value, string Label);
 
 /// <summary>
-/// What the Fenix options window may send when the pilot changes an option with F2, and the exact request.
-/// It is the Fenix EFB's own toggle (<c>setSettingUnchecked({key, value: String(value), persist: false})</c>):
-/// a session change, so the value resets when MSFS closes or the aircraft or livery changes. Only a writable
-/// on/off or choice option that is not a credential can change. Pure logic: no network, no state, no logging.
+/// What the Fenix options window may send when the pilot changes an option, and the exact requests.
+/// F2 is the Fenix EFB's own toggle (<c>setSettingUnchecked({key, value: String(value), persist: false})</c>):
+/// a session change, so the value resets when MSFS closes or the aircraft or livery changes. Shift+F2 and
+/// Ctrl+F2 are the EFB's per-option menu: "Set as user override" sends the same change with persist true, and
+/// "Reset to default" runs <c>setDefault(key)</c>, which the EFB enables only for an option whose value comes
+/// from the user or the session. Only a writable on/off or choice option that is not a credential can change.
+/// Pure logic: no network, no state, no logging.
 /// </summary>
 public static class FenixOptionEdits
 {
     /// <summary>The mutation the Fenix EFB runs for a change; the variables come from <see cref="Variables"/>.</summary>
     public const string SetSettingDocument =
         "mutation SetSetting($setSetting: SetSettingInput!) { settings { setSetting(setSetting: $setSetting) { success } } }";
+
+    /// <summary>
+    /// The mutation the Fenix EFB's "Reset to default" runs, for one option; the variables come from
+    /// <see cref="DefaultVariables"/>.
+    /// </summary>
+    public const string SetDefaultDocument =
+        "mutation SetDefault($key: String!) { settings { setDefault(key: $key) { success } } }";
 
     // The EFB hides this option (it has no row for it), so the app does not offer a change the EFB does not.
     private const string ChartsProviderKey = "charts_provider_type";
@@ -49,15 +59,31 @@ public static class FenixOptionEdits
     }
 
     /// <summary>
-    /// The variables of <see cref="SetSettingDocument"/>: the value is always a string, and <c>persist</c> is
-    /// always false, so the change lasts for this simulator session only.
+    /// True when the pilot can reset the option to the Fenix default: it can change at all
+    /// (<see cref="CanChange"/>) and the EFB's own rule holds, that its value comes from the user or the
+    /// session. A default, livery or unknown source has no change of the pilot's to reset.
     /// </summary>
-    public static object Variables(string key, string value)
-        => new { setSetting = new { key, value, persist = false } };
+    public static bool CanReset(FenixSetting s)
+        => CanChange(s) && FenixOptionCatalog.SourceKind(s.Source) is "user" or "session";
+
+    /// <summary>
+    /// The variables of <see cref="SetSettingDocument"/>: the value is always a string, and <c>persist</c> is
+    /// false unless the caller asks for a permanent change, so by default the change lasts for this simulator
+    /// session only.
+    /// </summary>
+    public static object Variables(string key, string value, bool persist = false)
+        => new { setSetting = new { key, value, persist } };
+
+    /// <summary>The variables of <see cref="SetDefaultDocument"/>: just the key.</summary>
+    public static object DefaultVariables(string key) => new { key };
 
     /// <summary>True only when the Fenix answered <c>settings.setSetting.success</c> as the JSON value true.</summary>
     public static bool Succeeded(JObject? data)
         => data?.SelectToken("settings.setSetting.success") is JValue { Type: JTokenType.Boolean } success && (bool)success;
+
+    /// <summary>True only when the Fenix answered <c>settings.setDefault.success</c> as the JSON value true.</summary>
+    public static bool DefaultSucceeded(JObject? data)
+        => data?.SelectToken("settings.setDefault.success") is JValue { Type: JTokenType.Boolean } success && (bool)success;
 
     /// <summary>True for the options that reshape the cockpit's panels, which the pilot confirms first.</summary>
     public static bool NeedsConfirm(FenixSetting s) => CockpitReshaping.Contains(s.Key, StringComparer.Ordinal);
@@ -65,6 +91,14 @@ public static class FenixOptionEdits
     /// <summary>The question asked before a cockpit-reshaping change.</summary>
     public static string ConfirmText(string optionLabel, string choiceLabel)
         => $"Change {optionLabel} to {choiceLabel}? This changes your cockpit panels until MSFS closes.";
+
+    /// <summary>The question asked before a permanent change.</summary>
+    public static string PermanentConfirmText(string optionLabel, string choiceLabel)
+        => $"Make {optionLabel} {choiceLabel} your permanent setting? It applies to every flight and livery until you change it.";
+
+    /// <summary>The question asked before a reset to the Fenix default.</summary>
+    public static string ResetConfirmText(string optionLabel)
+        => $"Reset {optionLabel} to the Fenix default?";
 
     /// <summary>
     /// Whether two option values are the same one: two on/off values match whatever their spelling ("True" is

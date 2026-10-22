@@ -85,15 +85,28 @@ public static class FenixOptionCatalog
     /// "user", and anything but livery, session or user is the default.
     /// </summary>
     public static string SourceText(string? source)
-    {
-        string kind = (source ?? "").ToLowerInvariant();
-        if (kind == "userfile") kind = "user";
-        return kind switch
+        => SourceKind(source) switch
         {
             "livery" => "This setting has been overridden by the current livery.",
             "session" => "This setting is overridden for the current simulator session and will reset when you close MSFS or change aircraft/livery.",
             "user" => "This setting has been overridden by you and will apply regardless of livery or Fenix defaults.",
             _ => "This setting is the default Fenix value."
+        };
+
+    /// <summary>
+    /// Where an option's value comes from, by the EFB's own normalisation (the one place it lives): lower case
+    /// (culture-invariant), "userfile" is "user", and anything but livery, session or user is "default".
+    /// Returns exactly "default", "livery", "session" or "user".
+    /// </summary>
+    internal static string SourceKind(string? source)
+    {
+        string kind = (source ?? "").ToLowerInvariant();
+        return kind switch
+        {
+            "livery" => "livery",
+            "session" => "session",
+            "user" or "userfile" => "user",
+            _ => "default"
         };
     }
 

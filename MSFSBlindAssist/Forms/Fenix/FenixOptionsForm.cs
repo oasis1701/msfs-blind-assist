@@ -11,7 +11,9 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// The "Fenix options" window (Fenix windows list, Ctrl+Shift+F in input mode): every Fenix EFB option with
 /// its value, as a tree of groups, the options that change how the app works first. Enter on an option speaks
 /// its details; F5 reads the options again and says how many changed; F2 changes an on/off or choice option
-/// for this simulator session only, as the Fenix EFB's own toggle does.
+/// for this simulator session only, as the Fenix EFB's own toggle does; Shift+F2 makes a change permanent and
+/// Ctrl+F2 resets an option the pilot (or the session) changed to the Fenix default, as the EFB's per-option
+/// menu does, each only after a Yes/No that defaults to No.
 /// </summary>
 /// <remarks>
 /// Every request is awaited from a UI-thread handler, so continuations resume on the UI thread; nothing runs on
@@ -19,8 +21,9 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// (<see cref="_loading"/>, <see cref="_changing"/>).
 /// A read that keeps every group and its options in the same order only rewrites the Text of the nodes, so
 /// NVDA's place in the tree holds; any other read rebuilds the tree and reselects the same option or group.
-/// A change is sent only for an option <see cref="FenixOptionEdits.CanChange"/> allows, with persist false,
-/// and what is spoken afterwards is what the Fenix reads back, never what was asked for.
+/// A change is sent only for an option <see cref="FenixOptionEdits.CanChange"/> allows, with persist false
+/// unless it is the pilot's confirmed permanent change, and what is spoken afterwards is what the Fenix reads
+/// back, never what was asked for. All three keys share one flow, so the read-back exists once.
 /// Nothing here logs an option's value: keys and counts only.
 /// </remarks>
 public sealed class FenixOptionsForm : Form
@@ -40,8 +43,12 @@ public sealed class FenixOptionsForm : Form
     // How long the Fenix gets to apply a change before it is read back a second time.
     private const int ReadBackRetryMilliseconds = 500;
 
-    // What F5 and F2 say while a read or a change is running.
+    // What F5 and the change keys say while a read or a change is running.
     private const string StillLoadingText = "Still loading.";
+
+    // What a change says when the Fenix refuses it, and when it was sent but no read could confirm it.
+    private const string NotAcceptedText = "The Fenix did not accept the change.";
+    private const string NotReadBackText = "Change sent, but the Fenix did not read it back. Press F5.";
 
     private readonly FenixDataService _data;
     private readonly ScreenReaderAnnouncer _announcer;
@@ -230,13 +237,19 @@ public sealed class FenixOptionsForm : Form
 
     // ---- Changes ----------------------------------------------------------------------------------
 
+    // What the pilot asked for: F2 a change for this simulator session, Shift+F2 a permanent one, Ctrl+F2 a
+    // reset to the Fenix default. All three are the EFB's own calls (its toggle and its per-option menu).
+    private enum ChangeKind { Session, Permanent, Reset }
+
     /// <summary>
-    /// F2: change the selected on/off or choice option for this simulator session. The pilot picks the new
-    /// value in a dialog; an option that reshapes the cockpit asks Yes or No first (No by default). The change
-    /// is sent as the EFB sends it, then the options are read again and what the Fenix reads back is spoken,
-    /// never what was asked for (CORE-7). Awaited on the UI thread, never throws.
+    /// F2, Shift+F2, Ctrl+F2: change the selected on/off or choice option for this simulator session, make
+    /// a change permanent, or reset the option to the Fenix default. F2 and Shift+F2 pick the new value in a
+    /// dialog; Shift+F2 and Ctrl+F2 always ask Yes or No first, and F2 does for an option that reshapes the
+    /// cockpit (No by default for all). Nothing is sent without a Yes. The request is sent as the EFB sends
+    /// it, then the options are read again and what the Fenix reads back is spoken, never what was asked for
+    /// (CORE-7). Awaited on the UI thread, never throws.
     /// </summary>
-    private async Task ChangeAsync()
+    private async Task ChangeAsync(ChangeKind kind)
     {
         if (IsDisposed || _tornDown) return;
         if (_loading || _changing)
@@ -258,47 +271,95 @@ public sealed class FenixOptionsForm : Form
         }
 
         string key = option.Key;
-        bool sent = false;
+        string label = FenixOptionCatalog.Label(key);
+        // The EFB enables "Reset to default" only for a value that comes from the user or the session.
+        if (kind == ChangeKind.Reset && !FenixOptionEdits.CanReset(option))
+        {
+            _announcer.AnnounceImmediate($"{label} has no change of yours to reset.");
+            return;
+        }
+
+        string what = Describe(kind);
         _changing = true;
         try
         {
-            string label = FenixOptionCatalog.Label(key);
-            IReadOnlyList<FenixOptionChoice> choices = FenixOptionEdits.Choices(option);
-
-            string? chosen;
-            using (var dialog = new FenixOptionsChangeDialog(label, choices, option.Value))
+            // The value to send, and how the pilot hears it; a reset sends no value.
+            string? chosen = null;
+            string choiceLabel = "";
+            if (kind != ChangeKind.Reset)
             {
-                if (dialog.ShowDialog(this) != DialogResult.OK) return;
-                chosen = dialog.SelectedValue;
+                IReadOnlyList<FenixOptionChoice> choices = FenixOptionEdits.Choices(option);
+                using (var dialog = new FenixOptionsChangeDialog(label, choices, option.Value, permanent: kind == ChangeKind.Permanent))
+                {
+                    if (dialog.ShowDialog(this) != DialogResult.OK) return;
+                    chosen = dialog.SelectedValue;
+                }
+                if (IsDisposed || _tornDown) return;
+                // The same value again changes nothing for the session: nothing is sent and nothing is spoken.
+                // A permanent change may be the current value (making it permanent), so it goes on to the question.
+                if (chosen == null || (kind == ChangeKind.Session && FenixOptionEdits.SameValue(chosen, option.Value))) return;
+                choiceLabel = choices.FirstOrDefault(c => string.Equals(c.Value, chosen, StringComparison.Ordinal))?.Label ?? chosen;
             }
-            if (IsDisposed || _tornDown) return;
-            // The same value again changes nothing: nothing is sent and nothing is spoken.
-            if (chosen == null || FenixOptionEdits.SameValue(chosen, option.Value)) return;
 
-            if (FenixOptionEdits.NeedsConfirm(option))
+            // The one question box: Yes sends, anything else sends nothing and says nothing; No is the default.
+            string? question = kind switch
             {
-                string choiceLabel = choices.FirstOrDefault(c => string.Equals(c.Value, chosen, StringComparison.Ordinal))?.Label ?? chosen;
-                DialogResult answer = MessageBox.Show(this, FenixOptionEdits.ConfirmText(label, choiceLabel), "Change Fenix option",
+                ChangeKind.Permanent => FenixOptionEdits.PermanentConfirmText(label, choiceLabel),
+                ChangeKind.Reset => FenixOptionEdits.ResetConfirmText(label),
+                _ => FenixOptionEdits.NeedsConfirm(option) ? FenixOptionEdits.ConfirmText(label, choiceLabel) : null,
+            };
+            if (question != null)
+            {
+                DialogResult answer = MessageBox.Show(this, question, ConfirmTitle(kind),
                     MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2);
                 if (IsDisposed || _tornDown || answer != DialogResult.Yes) return;
             }
 
-            Log.Debug(LogCategory, $"Setting change sent for {key}");
-            sent = true;
-            JObject? reply = await _data.QueryAsync(FenixOptionEdits.SetSettingDocument, FenixOptionEdits.Variables(key, chosen), _cts.Token);
+            if (kind == ChangeKind.Reset)
+                await SendAndReadBackAsync(key, what, FenixOptionEdits.SetDefaultDocument, FenixOptionEdits.DefaultVariables(key),
+                    FenixOptionEdits.DefaultSucceeded, sentValue: null);
+            else
+                await SendAndReadBackAsync(key, what, FenixOptionEdits.SetSettingDocument,
+                    FenixOptionEdits.Variables(key, chosen!, persist: kind == ChangeKind.Permanent),
+                    FenixOptionEdits.Succeeded, sentValue: chosen);
+        }
+        catch (OperationCanceledException)
+        {
+            // The window closed while the change was being asked for.
+        }
+        catch (Exception ex)
+        {
+            // Only before anything was sent: the send and the read-back report their own failures.
+            ReportFailure(key, what, ex, NotAcceptedText);
+        }
+        finally
+        {
+            _changing = false;
+        }
+    }
+
+    // Sends the request and, when the Fenix accepts it, reads the option back and speaks what the Fenix now
+    // has, never what was asked for. sentValue is the value a change asked for; a reset has none (the default
+    // is not known here), so whatever the Fenix reads back is the answer. A change gets one more look after a
+    // short wait when the first read differs, since the Fenix may take a moment to apply it. Never throws.
+    private async Task SendAndReadBackAsync(string key, string what, string document, object variables,
+        Func<JObject?, bool> accepted, string? sentValue)
+    {
+        try
+        {
+            Log.Debug(LogCategory, $"Setting {what} sent for {key}");
+            JObject? reply = await _data.QueryAsync(document, variables, _cts.Token);
             if (IsDisposed || _tornDown) return;
-            if (!FenixOptionEdits.Succeeded(reply))
+            if (!accepted(reply))
             {
-                Log.Debug(LogCategory, $"Setting change not accepted for {key}");
-                _announcer.AnnounceImmediate("The Fenix did not accept the change.");
+                Log.Debug(LogCategory, $"Setting {what} not accepted for {key}");
+                _announcer.AnnounceImmediate(NotAcceptedText);
                 return;
             }
 
-            // What the Fenix reads back is the answer. It may take a moment to apply a change, so a value that
-            // is not the one sent gets one more look before it is called kept.
             FenixSetting? now = Find(await ReadAndApplyAsync(speak: false), key);
             if (IsDisposed || _tornDown) return;
-            if (now != null && !FenixOptionEdits.SameValue(now.Value, chosen))
+            if (sentValue != null && now != null && !FenixOptionEdits.SameValue(now.Value, sentValue))
             {
                 await Task.Delay(ReadBackRetryMilliseconds, _cts.Token);
                 if (IsDisposed || _tornDown) return;
@@ -308,12 +369,12 @@ public sealed class FenixOptionsForm : Form
 
             if (now == null)
             {
-                Log.Debug(LogCategory, $"Setting change for {key} was not read back");
-                _announcer.AnnounceImmediate("Change sent, but the Fenix did not read it back. Press F5.");
+                Log.Debug(LogCategory, $"Setting {what} for {key} was not read back");
+                _announcer.AnnounceImmediate(NotReadBackText);
             }
-            else if (FenixOptionEdits.SameValue(now.Value, chosen))
+            else if (sentValue == null || FenixOptionEdits.SameValue(now.Value, sentValue))
             {
-                Log.Debug(LogCategory, $"Setting {key} reads back as sent");
+                Log.Debug(LogCategory, $"Setting {key} reads back as {(sentValue == null ? "reset" : "sent")}");
                 _announcer.AnnounceImmediate(FenixOptionCatalog.RowText(now));
             }
             else
@@ -324,28 +385,40 @@ public sealed class FenixOptionsForm : Form
         }
         catch (OperationCanceledException)
         {
-            // The window closed while the change was in flight.
+            // The window closed while the request was in flight.
         }
         catch (Exception ex)
         {
-            Log.Debug(LogCategory, $"Setting change for {key} failed: {ex.GetType().Name}: {ex.Message}");
-            // Never silent: a change that throws is reported like one that could not be completed.
-            if (!IsDisposed && !_tornDown)
-            {
-                try
-                {
-                    _announcer.AnnounceImmediate(sent
-                        ? "Change sent, but the Fenix did not read it back. Press F5."
-                        : "The Fenix did not accept the change.");
-                }
-                catch (Exception inner) { Log.Debug(LogCategory, $"Setting change report failed: {inner.GetType().Name}: {inner.Message}"); }
-            }
-        }
-        finally
-        {
-            _changing = false;
+            // The request was on its way: the Fenix may well have applied it.
+            ReportFailure(key, what, ex, NotReadBackText);
         }
     }
+
+    // Never silent: a change that throws is reported in the nearest ruled words. Logs the key and the
+    // exception, never a value.
+    private void ReportFailure(string key, string what, Exception ex, string spoken)
+    {
+        Log.Debug(LogCategory, $"Setting {what} for {key} failed: {ex.GetType().Name}: {ex.Message}");
+        if (IsDisposed || _tornDown) return;
+        try { _announcer.AnnounceImmediate(spoken); }
+        catch (Exception inner) { Log.Debug(LogCategory, $"Setting change report failed: {inner.GetType().Name}: {inner.Message}"); }
+    }
+
+    // How a kind of change reads in the log (keys and kinds only).
+    private static string Describe(ChangeKind kind) => kind switch
+    {
+        ChangeKind.Permanent => "permanent change",
+        ChangeKind.Reset => "reset",
+        _ => "change",
+    };
+
+    // The title of the question box for a kind of change; the permanent dialog carries the same title.
+    private static string ConfirmTitle(ChangeKind kind) => kind switch
+    {
+        ChangeKind.Permanent => "Make a Fenix option permanent",
+        ChangeKind.Reset => "Reset Fenix option",
+        _ => "Change Fenix option",
+    };
 
     // The option with this key in a read; null when there was no read or it lacks the key.
     private static FenixSetting? Find(IReadOnlyList<FenixSetting>? settings, string key)
@@ -552,10 +625,15 @@ public sealed class FenixOptionsForm : Form
                 if ((msg.LParam.ToInt64() & 0x40000000) == 0) _ = LoadAsync(speak: true);
                 return true;
             }
-            if (keyData == Keys.F2)
+            // F2 changes for this session, Shift+F2 makes a change permanent, Ctrl+F2 resets to the default.
+            ChangeKind? change = keyData == Keys.F2 ? ChangeKind.Session
+                : keyData == (Keys.Shift | Keys.F2) ? ChangeKind.Permanent
+                : keyData == (Keys.Control | Keys.F2) ? ChangeKind.Reset
+                : null;
+            if (change is { } kind)
             {
-                // Bit 30 again: holding F2 must not ask twice. Shift and Ctrl with F2 are not this key.
-                if ((msg.LParam.ToInt64() & 0x40000000) == 0) _ = ChangeAsync();
+                // Bit 30 again: holding the key must not ask twice.
+                if ((msg.LParam.ToInt64() & 0x40000000) == 0) _ = ChangeAsync(kind);
                 return true;
             }
         }
