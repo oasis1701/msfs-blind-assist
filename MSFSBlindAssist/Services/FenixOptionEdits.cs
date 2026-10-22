@@ -5,6 +5,19 @@ namespace MSFSBlindAssist.Services;
 /// <summary>One thing an option can be set to: the value the Fenix is sent, and how the pilot hears it.</summary>
 public sealed record FenixOptionChoice(string Value, string Label);
 
+/// <summary>What the pilot asked the options window for: F2, Shift+F2 or Ctrl+F2.</summary>
+public enum FenixChangeKind
+{
+    /// <summary>F2: change the option for this simulator session only.</summary>
+    Session,
+
+    /// <summary>Shift+F2: make a value the pilot's own, for every flight and livery.</summary>
+    Permanent,
+
+    /// <summary>Ctrl+F2: reset the option to the Fenix default.</summary>
+    Reset,
+}
+
 /// <summary>
 /// What the Fenix options window may send when the pilot changes an option, and the exact requests.
 /// F2 is the Fenix EFB's own toggle (<c>setSettingUnchecked({key, value: String(value), persist: false})</c>):
@@ -101,6 +114,24 @@ public static class FenixOptionEdits
         => $"Reset {optionLabel} to the Fenix default?";
 
     /// <summary>
+    /// Whether the Fenix has applied a request, judged on a read after it was accepted. A session change
+    /// applied when the option now reads the value that was sent; a permanent one also needs the value to
+    /// come from the user (a value the session or a livery overrides is not yet the pilot's own); a reset
+    /// applied when the option no longer reads as it did (a different value, or a different source: the
+    /// Fenix default may equal the old override) since the default itself is not known here. Two on/off
+    /// values match whatever their spelling. <paramref name="before"/> is the option as the pilot saw it
+    /// before the request; <paramref name="sentValue"/> is the value a change asked for.
+    /// </summary>
+    public static bool Applied(FenixChangeKind kind, FenixSetting before, string? sentValue, FenixSetting now)
+        => kind switch
+        {
+            FenixChangeKind.Session => SameValue(now.Value, sentValue),
+            FenixChangeKind.Permanent => SameValue(now.Value, sentValue) && FenixOptionCatalog.SourceKind(now.Source) == "user",
+            _ => !SameOrBothMissing(now.Value, before.Value)
+                 || FenixOptionCatalog.SourceKind(now.Source) != FenixOptionCatalog.SourceKind(before.Source),
+        };
+
+    /// <summary>
     /// Whether two option values are the same one: two on/off values match whatever their spelling ("True" is
     /// "true"), any other pair must match exactly. A missing value matches nothing.
     /// </summary>
@@ -111,6 +142,9 @@ public static class FenixOptionEdits
             ? x == y
             : string.Equals(a, b, StringComparison.Ordinal);
     }
+
+    // Two values that are the same one, or that are both missing (SameValue says a missing value matches nothing).
+    private static bool SameOrBothMissing(string? a, string? b) => (a is null && b is null) || SameValue(a, b);
 
     private static bool IsBoolean(FenixSetting s) => string.Equals(s.Type, "System.Boolean", StringComparison.Ordinal);
 

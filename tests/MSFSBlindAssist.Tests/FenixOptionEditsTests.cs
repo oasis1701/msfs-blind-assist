@@ -377,6 +377,78 @@ public class FenixOptionEditsTests
         Assert.Equal("false", dialog.SelectedValue);
     }
 
+    // ---- Has the Fenix applied it? (the read-back waits and tries again until it has) -----------------
+
+    static FenixSetting Opt(string? value, string? source) => S("encoder_acceleration_enabled", value, source: source);
+
+    [Theory]
+    [InlineData("false", "Internal", "true", "true", "Session", true)]   // the value sent is now read
+    [InlineData("false", "Internal", "true", "false", "Internal", false)] // still the old value
+    [InlineData("false", "Internal", "true", "True", "Session", true)]   // on/off spelling does not matter
+    [InlineData("true", "Internal", "false", "False", "Session", true)]
+    [InlineData("false", "Internal", "true", null, "Session", false)]    // no value read is not applied
+    public void A_session_change_is_applied_when_the_value_sent_is_read(string before, string beforeSource, string sent, string? now, string nowSource, bool applied)
+        => Assert.Equal(applied, FenixOptionEdits.Applied(FenixChangeKind.Session, Opt(before, beforeSource), sent, Opt(now, nowSource)));
+
+    [Fact] public void A_session_change_of_a_choice_matches_exactly()
+    {
+        var before = S("channel_spacing_type", "Khz25", "Enum", possible: new[] { "Khz25", "Khz8d33" });
+        Assert.True(FenixOptionEdits.Applied(FenixChangeKind.Session, before, "Khz8d33", S("channel_spacing_type", "Khz8d33", "Enum", possible: new[] { "Khz25", "Khz8d33" })));
+        Assert.False(FenixOptionEdits.Applied(FenixChangeKind.Session, before, "Khz8d33", S("channel_spacing_type", "khz8d33", "Enum", possible: new[] { "Khz25", "Khz8d33" })));
+        Assert.False(FenixOptionEdits.Applied(FenixChangeKind.Session, before, "Khz8d33", S("channel_spacing_type", "Khz25", "Enum", possible: new[] { "Khz25", "Khz8d33" })));
+    }
+
+    [Theory]
+    [InlineData("true", "UserFile", true)]
+    [InlineData("true", "user", true)]
+    [InlineData("True", "USERFILE", true)]
+    [InlineData("true", "Session", false)]    // the right value, but only for this session: not yet the pilot's own
+    [InlineData("true", "Internal", false)]
+    [InlineData("true", "Livery", false)]
+    [InlineData("true", null, false)]
+    [InlineData("false", "UserFile", false)]  // the user's, but not the value sent
+    [InlineData(null, "UserFile", false)]
+    public void A_permanent_change_is_applied_only_when_the_value_is_the_one_sent_and_comes_from_the_user(string? nowValue, string? nowSource, bool applied)
+        => Assert.Equal(applied, FenixOptionEdits.Applied(FenixChangeKind.Permanent, Opt("false", "Internal"), "true", Opt(nowValue, nowSource)));
+
+    [Fact] public void Making_the_current_value_permanent_is_applied_once_its_source_becomes_the_user()
+    {
+        // Shift+F2 on a value that is the default: the value never changes, only where it comes from.
+        FenixSetting before = Opt("true", "Internal");
+        Assert.False(FenixOptionEdits.Applied(FenixChangeKind.Permanent, before, "true", Opt("true", "Internal")));
+        Assert.True(FenixOptionEdits.Applied(FenixChangeKind.Permanent, before, "true", Opt("true", "UserFile")));
+    }
+
+    [Theory]
+    [InlineData("false", "UserFile", "true", "UserFile", true)]    // the value changed
+    [InlineData("true", "UserFile", "true", "Internal", true)]     // the default equals the old override: only the source changed
+    [InlineData("true", "Session", "true", "Internal", true)]
+    [InlineData("true", "UserFile", "true", "UserFile", false)]    // nothing has happened yet
+    [InlineData("true", "UserFile", "True", "user", false)]        // spelling of the value and of the source does not count
+    [InlineData("true", "Session", "True", "SESSION", false)]
+    [InlineData("false", "Session", "true", "Internal", true)]     // both changed
+    [InlineData(null, "UserFile", null, "UserFile", false)]        // no value before or after, same source
+    [InlineData(null, "UserFile", "true", "UserFile", true)]
+    public void A_reset_is_applied_when_the_value_or_the_source_is_no_longer_what_it_was(string? beforeValue, string? beforeSource, string? nowValue, string? nowSource, bool applied)
+        => Assert.Equal(applied, FenixOptionEdits.Applied(FenixChangeKind.Reset, Opt(beforeValue, beforeSource), null, Opt(nowValue, nowSource)));
+
+    [Fact] public void A_reset_of_a_choice_is_applied_on_a_different_value()
+    {
+        var before = S("channel_spacing_type", "Khz8d33", "Enum", possible: new[] { "Khz25", "Khz8d33" }, source: "UserFile");
+        Assert.True(FenixOptionEdits.Applied(FenixChangeKind.Reset, before, null,
+            S("channel_spacing_type", "Khz25", "Enum", possible: new[] { "Khz25", "Khz8d33" }, source: "UserFile")));
+        Assert.False(FenixOptionEdits.Applied(FenixChangeKind.Reset, before, null, before));
+    }
+
+    [Theory] [InlineData("de-DE")] [InlineData("sv-SE")] [InlineData("tr-TR")]
+    public void Applied_does_not_depend_on_the_PC_culture(string culture)
+    {
+        Assert.True(TestCulture.Run(culture, () => FenixOptionEdits.Applied(FenixChangeKind.Permanent, Opt("false", "Internal"), "true", Opt("TRUE", "USERFILE"))));
+        Assert.False(TestCulture.Run(culture, () => FenixOptionEdits.Applied(FenixChangeKind.Permanent, Opt("false", "Internal"), "true", Opt("true", "SESSION"))));
+        Assert.True(TestCulture.Run(culture, () => FenixOptionEdits.Applied(FenixChangeKind.Reset, Opt("true", "USERFILE"), null, Opt("true", "INTERNAL"))));
+        Assert.False(TestCulture.Run(culture, () => FenixOptionEdits.Applied(FenixChangeKind.Reset, Opt("true", "USERFILE"), null, Opt("True", "userfile"))));
+    }
+
     // ---- The window's source (sim-facing, so pinned by scans like Task 4's) ---------------------------
 
     static string FormSource() => File.ReadAllText(Path.Combine(ClaudeContextBudgetTests.RepoRoot(), "MSFSBlindAssist", "Forms", "Fenix", "FenixOptionsForm.cs"));
@@ -399,7 +471,7 @@ public class FenixOptionEditsTests
 
     [Fact] public void Only_a_permanent_change_persists_and_no_file_sends_an_all_options_write()
     {
-        Assert.Contains("persist: kind == ChangeKind.Permanent", FormSource());
+        Assert.Contains("persist: kind == FenixChangeKind.Permanent", FormSource());
         Assert.DoesNotContain("persist: true", FormSource());
         foreach (string file in OptionSources())
         {
@@ -409,11 +481,27 @@ public class FenixOptionEditsTests
         }
     }
 
+    [Fact] public void All_three_keys_read_back_through_one_path_that_waits_until_the_change_has_applied()
+    {
+        string form = FormSource();
+        // One shared send-and-read-back, judged by FenixOptionEdits.Applied for every kind, with one wait and
+        // one retry: no per-kind copy and no "nothing was sent" special case that speaks the first read.
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(form, @"private async Task SendAndReadBackAsync\("));
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(form, @"Task\.Delay\("));
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(form, @"FenixOptionEdits\.Applied\("));
+        Assert.Contains("Func<FenixSetting, bool> applied", form);
+        Assert.Contains("Fenix kept ", form);
+        Assert.DoesNotContain("sentValue == null", form);
+        Assert.DoesNotContain("sentValue != null", form);
+        // The three kinds are told apart only by what they send and by their applied test.
+        Assert.Contains("FenixOptionEdits.Applied(kind, option, chosen, now)", form);
+    }
+
     [Fact] public void Every_send_is_behind_a_Yes_with_No_as_the_default()
     {
         string form = FormSource();
         // One question box serves the session confirm, the permanent confirm and the reset confirm.
-        Assert.Equal(1, System.Text.RegularExpressions.Regex.Matches(form, @"MessageBox\.Show\(").Count);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(form, @"MessageBox\.Show\("));
         Assert.Contains("MessageBoxDefaultButton.Button2", form);
         Assert.DoesNotContain("MessageBoxDefaultButton.Button1", form);
         Assert.Contains("answer != DialogResult.Yes", form);
