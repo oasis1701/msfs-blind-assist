@@ -1,6 +1,6 @@
 # Fenix v3 EFB Window Implementation Plan (plan 03)
 
-**Claimed by:** robin24 · **Status:** in progress (code and reviews done 2026-10-22; owner in-sim checks remain, see "Owner in-sim checks")
+**Claimed by:** robin24 · **Status:** done (2026-10-22: code, reviews and the in-sim checks with NVDA, including a fix wave for what they found)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -206,8 +206,8 @@ Structures the layer keys on, read live in the same Chromium engine (the per-app
 ### Task 8: Owner in-sim checks and hand back
 
 - [x] **Step 1:** Build, both suites green; `git diff --name-only <base-sha>` lists only owned files. (2026-10-22: build 0 errors; C# 14,601 passed; Node 166/166; only plan 03's files and the one fenix-data.md glob.)
-- [ ] **Step 2:** Run the owner checks below with the owner (NVDA); record each heard phrase under "Results".
-- [ ] **Step 3:** Fill in the handoff section, set the **Status** line at the top of this file to "done", push.
+- [x] **Step 2:** Run the owner checks below with the owner (NVDA); record each heard phrase under "Results". (2026-10-22, robin24 with NVDA: all 7 passed; findings fixed and re-tested, see "Results".)
+- [x] **Step 3:** Fill in the handoff section, set the **Status** line at the top of this file to "done", push.
 
 ## Owner in-sim checks (few, prioritised)
 
@@ -229,7 +229,10 @@ Build from this branch; the Fenix loaded on the ground; NVDA running; app on the
 - The EFB's own MCDU and FAP pages can't be read with a screen reader: the window brings you back and tells you to use the MCDU window or the Fenix windows list.
 - The Charts map stays pictures only (it is announced as "Moving map").
 - The window's "not reachable" message says http://127.0.0.1:8083 and can be reached with Tab.
-- Changelog draft: "Fenix: the EFB window reads properly on Fenix v3 (switch and box names, selections, failure states, a Home key with Alt+Home), and leaves the unreadable MCDU and FAP pages for the app's own windows."
+- Settings: every on/off option is a switch named by its setting (the page hides its real check boxes); each "More options" button opens its menu ("Set as user override", "Reset to default") with the focus inside it, read right after the button, closed with Escape or "Close menu".
+- Landing: the runway condition is one Tab stop where the arrow keys pick the code; each system's page of faults has a "Back" button and the faults are check boxes. Takeoff's results read each label right before its value ("V1", "142"); an empty one says "not computed".
+- Escape closes an open menu, drop-down or the Panel States pop-up first; the next Escape closes the window.
+- Changelog draft: "Fenix: the EFB window reads properly on Fenix v3 (switch and box names, selections, failure states, Settings switches and option menus, a Home key with Alt+Home), and leaves the unreadable MCDU and FAP pages for the app's own windows."
 
 **Handoff requests:**
 - H1. `docs/invariants/a32nx-fenix.md` A320-40, last bullet: replace "Not covered by this rule: the Fenix EFB window (…)" with "The Fenix EFB window uses the same address (FNX rule below)."
@@ -241,10 +244,10 @@ Build from this branch; the Fenix loaded on the ground; NVDA running; app on the
 **Proposed rule lines** (`.claude/rules/fenix-data.md`, whose globs cover `Forms/Fenix/**` and, once this plan adds it with its script (line 36), `Resources/fenix-*.js`; next free FNX numbers; full texts from this plan's decisions and Evidence):
 ```text
 - [FNX-?] `FenixEFBForm` loads http://127.0.0.1:8083/?target=external#/efb, the target in the query before the #: a sim target (sim-capt, sim-fo, msfs2024-efb) swallows Tab and PageUp/PageDown/Home/End and drops focus 2 s after a click, and localhost pays the ::1 refusal ([A320-40]). Full: docs/invariants/fenix-data.md#fnx-?
-- [FNX-?] The EFB layer (fenix-efb-accessibility.js, injected by `FenixEFBForm`) only adds roles, names, states, Tab stops and Enter/Space to the page's own click: never a request, a removed element or a written value. Names come from the page's text; re-take the tools/fenix-efb-test captures after every Fenix update. Full: docs/invariants/fenix-data.md#fnx-?
+- [FNX-?] The EFB layer (fenix-efb-accessibility.js, injected by `FenixEFBForm`) only adds roles, aria-*, Tab stops and keys that call the page's own click(), plus msfsba- ids for aria-owns and one moveFocus; never a request, a moved node or a written value. Re-take the tools/fenix-efb-test captures and run the live check (capture.md) after every Fenix update. Full: docs/invariants/fenix-data.md#fnx-?
 ```
 
-**Follow-ups (not planned):** the top-bar status icons (signal, link) stay unnamed; a native readout of the takeoff results if the owner finds the grid slow to read; the EFB-side loading spinners (Documents' doc/search/tree loading, Charts' chart loading, the Takeoff/Landing METAR spinners) stay silent (the plan's notices exist only on the FAP pages, behind the dead-end catch); more captures to widen the tests: Takeoff after Calculate (row pairing), Landing with a procedure picked (no selected class in today's capture), Failures with a failed item open, Settings' other seven categories.
+**Follow-ups (not planned):** the top-bar status icons (signal, link) stay unnamed; a native readout of the takeoff results if the owner finds the grid slow to read; the EFB-side loading spinners (Documents' doc/search/tree loading, Charts' chart loading, the Takeoff/Landing METAR spinners) stay silent (the plan's notices exist only on the FAP pages, behind the dead-end catch); more captures to widen the tests: Takeoff after Calculate (row pairing), Landing with a fault ticked, Failures with a failed item open; jsdom has no CSS, so the live check in capture.md stays a manual step.
 
 ## Results
 
@@ -253,4 +256,7 @@ Build from this branch; the Fenix loaded on the ground; NVDA running; app on the
 - Offline: Node 166/166 (all 13 capture sweeps green); C# suite and build green (counts in the commit log). Branch commits: the Task 1-7 commits plus a final fix wave after a whole-branch review.
 - Live checks done during the work (built-in browser on the gateway, pressing nothing that changes the aircraft): the 13 captures; the app switcher's nine pictures are the home tiles' pictures in home order (so the tile-title names are right); a click on a My Flights side card's overlay only slides that card in (so the layer never presses a covered import zone); the page binds no keys on Landing's items or Documents' rows (so Enter presses once); the EFB keeps its tiles hidden until its layout runs on screen (the home capture's `visibility: hidden`).
 - Decisions taken beyond the plan (each recorded at the commit that made it): the layer exposes `{ pass, textOf }` for tests; starts when `<body>` exists and skips child frames; never overrides a page's own aria-hidden, aria-label or role, and takes back only what it wrote; refreshes its own names when the page's text changes; the sweep skips controls a screen reader never meets; result cells are `role="img"`; Material drop-downs are named by prefixing their own id to the page's `aria-labelledby`; the "App switcher" chevron, "Close quick settings", "Moving map", "Toggle document list", "Toggle chart list", "Map settings", "Dark map", "Light map" and "Show <card>" names; failure states in the name; the dead-end line speaks once per route within 1.5 s.
-- Owner in-sim checks 1-7: not yet run.
+- Owner in-sim checks 1-7 (robin24, NVDA, 2026-10-22): all passed, including the optional GPU toggle and pushback with Enter, and check 6 with the Fenix unloaded and reloaded through Retry.
+- What the checks found, all fixed in a fix wave and re-tested with NVDA the same day (re-tests passed): an unlabeled background picture first on every page and unlabeled top-bar icons; "clickable" wrappers around the quick settings button and the app views; Mass and Balance's %MAC chart numbers and seat map ("clickable" rows); "graphic" before each Takeoff result and an empty button before SYNC LIVE WX (an icon glyph and a line break); Landing's per-system fault pages with no way back; Settings' on/off options silent (the page hides its check boxes with display:none), icon-only buttons unnamed, option pictures read twice, and the "More options" menus out of reach.
+- Choices the owner made by ear on a test page: Takeoff results read each label right before its value (aria-owns); runway condition as one Tab stop with arrow keys; "role=none" on the clickable wrappers; an empty result as "not computed" with the role "value"; line-break buttons named by their text.
+- Lesson: jsdom cannot see CSS (display:none, visibility, icon-font names), so every screen was also checked live in Chromium with the layer injected; capture.md now documents that live check.
