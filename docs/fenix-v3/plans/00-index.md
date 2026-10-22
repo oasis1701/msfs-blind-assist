@@ -175,4 +175,4 @@ no changelog fragments and no guide edits until plan 12 opens the one pull reque
 
 ## Base commit for parallel work
 
-Plan 01 writes the `FenixV3` commit here when it lands: `<filled in by 01>`.
+Plan 01 writes the `FenixV3` commit here when it lands: `80a85744154707d6161b3756a238e811089c9a3c`.
