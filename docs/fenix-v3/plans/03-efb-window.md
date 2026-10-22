@@ -235,7 +235,7 @@ Build from this branch; the Fenix loaded on the ground; NVDA running; app on the
 - H3. `docs/a32nx.md`, the Fenix EFB section: no longer "already accessible"; the layer, the captures and how to re-take them after a Fenix update (`tools/fenix-efb-test/capture.md`); the dead ends.
 - H4. `docs/tooling.md` Node line: add `tools/fenix-efb-test/` to the jsdom harnesses.
 
-**Proposed rule lines** (`.claude/rules/fenix-data.md`, whose plan 01 globs cover `Forms/Fenix/**` and `Resources/fenix-*.js`; next free FNX numbers; full texts from this plan's decisions and Evidence):
+**Proposed rule lines** (`.claude/rules/fenix-data.md`, whose globs cover `Forms/Fenix/**` and, once this plan adds it with its script (line 36), `Resources/fenix-*.js`; next free FNX numbers; full texts from this plan's decisions and Evidence):
 ```text
 - [FNX-?] `FenixEFBForm` loads http://127.0.0.1:8083/?target=external#/efb, the target in the query before the #: a sim target (sim-capt, sim-fo, msfs2024-efb) swallows Tab and PageUp/PageDown/Home/End and drops focus 2 s after a click, and localhost pays the ::1 refusal ([A320-40]). Full: docs/invariants/fenix-data.md#fnx-?
 - [FNX-?] The EFB layer (fenix-efb-accessibility.js, injected by `FenixEFBForm`) only adds roles, names, states, Tab stops and Enter/Space to the page's own click: never a request, a removed element or a written value. Names come from the page's text; re-take the tools/fenix-efb-test captures after every Fenix update. Full: docs/invariants/fenix-data.md#fnx-?
