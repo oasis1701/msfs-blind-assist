@@ -4,7 +4,7 @@ namespace MSFSBlindAssist.Forms.Fenix;
 
 // The Cabin window's Doors, Temperature and Water pages (plan 08 Task 9): a value list with the buttons that
 // press the FAP's and the EFB's own controls. It plugs into the shell (FenixCabinForm.cs) through
-// BuildControlTabs and UpdateControlTabs and sends only through the shell's RunWriteAsync, which says "The
+// BuildControlTabs and UpdateControlLists and sends only through the shell's RunWriteAsync, which says "The
 // Fenix is not answering." and "The Fenix did not accept that." itself.
 //
 // Every handler checks in this order (rulings R13, R14, R15): the Fenix not answering, an unknown value
@@ -90,8 +90,9 @@ public sealed partial class FenixCabinForm
         return created;
     }
 
-    // On every render that is not held: the Doors button follows the Fenix's door and cargo values.
-    partial void UpdateControlTabs() => UpdateDoorButton();
+    // On every render, also while the controls are held (the shell calls it before the hold): the Doors button
+    // says what its press does, so it follows the Fenix's door and cargo values at once, as the list line does.
+    partial void UpdateControlLists() => UpdateDoorButton();
 
     // ---- Temperature ----------------------------------------------------------------------------
 

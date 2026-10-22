@@ -1266,6 +1266,34 @@ public class FenixCabinWindowTests
     }
 
     [Fact]
+    public void The_doors_button_follows_the_door_on_every_render_also_while_the_controls_are_held()
+    {
+        // A check box change holds the controls for a few seconds. The Doors list line follows the Fenix
+        // meanwhile, and so must the button: a press closes the door it reads "Close" for.
+        using var rig = new ControlsRig();
+        FenixCabinForm form = rig.Form;
+        Set(form,
+            (FenixCabinNames.CabinReadyAvailable, True), (FenixCabinNames.CabinReady, False),
+            (FenixCabinNames.DoorControl("d1l"), Num(0)));
+        Assert.Equal("&Open door 1 left", DoorButton(form).Text);
+
+        CabinReadyBox(rig.Form).Checked = true;
+        WaitFor(() => rig.Gateway.Writes.Count == 1, "the cabin ready write");
+
+        Set(form, (FenixCabinNames.Door("d1l"), True), (FenixCabinNames.DoorControl("d1l"), Num(2)));
+
+        // The hold is still on: the check box keeps the pilot's choice though the Fenix still says "no".
+        Assert.True(CabinReadyBox(form).Checked);
+        Assert.StartsWith("Door 1 left: open", (string)DoorsList(form).Items[0]!);
+        Assert.Equal("&Close door 1 left", DoorButton(form).Text);
+
+        Click(DoorButton(form));
+        WaitFor(() => rig.Gateway.Writes.Count == 2, "the door write");
+        AssertSent(rig.Gateway.Writes[1], new FenixCabinWrite(FenixCabinWriteKind.Int, FenixCabinNames.DoorControl("d1l"), 1));
+        Assert.Empty(rig.Speech.Interrupts);
+    }
+
+    [Fact]
     public void A_door_the_EFB_does_not_list_has_no_control_and_the_A321_has_all_eight()
     {
         // An A320 whose exits setting is double full-size has doors 2 and 3 in the cabin, but the EFB's A320

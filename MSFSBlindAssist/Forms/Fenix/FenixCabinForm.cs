@@ -121,8 +121,12 @@ public sealed partial class FenixCabinForm : Form
     /// <summary>Sets the Audio page's controls from <see cref="_pram"/>; called by the render with <see cref="_updatingControls"/> set.</summary>
     partial void UpdateAudioControls();
 
-    /// <summary>Sets the Doors, Temperature and Water pages' controls; called by the render with <see cref="_updatingControls"/> set.</summary>
-    partial void UpdateControlTabs();
+    /// <summary>
+    /// Sets what the Doors, Temperature and Water pages' presses act on (the Doors button's text); called by
+    /// every render, also while the controls are held, as <see cref="UpdateAudioLists"/> is: these pages have
+    /// no check box or combo that could flip back.
+    /// </summary>
+    partial void UpdateControlLists();
 
     // ---- Building -------------------------------------------------------------------------------
 
@@ -473,6 +477,7 @@ public sealed partial class FenixCabinForm : Form
 
         // The audio lists follow the Fenix on every render: a press acts on the entry the list shows.
         UpdateAudioLists();
+        UpdateControlLists();
 
         if (_controlsHeld) return;
         _updatingControls = true;
@@ -480,7 +485,6 @@ public sealed partial class FenixCabinForm : Form
         {
             UpdateStatusControls();
             UpdateAudioControls();
-            UpdateControlTabs();
         }
         finally
         {
