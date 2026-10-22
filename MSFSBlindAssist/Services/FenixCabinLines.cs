@@ -73,7 +73,9 @@ public sealed class FenixCabinData
 /// which we do not. The water and waste cautions and their order are the water store's <c>d.showIf</c>
 /// calls, the lavatory one with the details <c>LAV ${K}</c> and the waste-level one at <c>B&gt;30</c>
 /// ("Lavatory flush name, water/waste cautions, lavatory designations", offsets 83300..85700); each
-/// needs every value it reads known here, where the FAP starts from <c>vacuumSystemPowered:false</c>.
+/// fires here only on what known values prove (R11), where the FAP starts from
+/// <c>vacuumSystemPowered:false</c> and shows the vacuum caution before any data. "Cautions: none" needs
+/// a known caution input too (R10).
 /// A zone's target is <c>selectedTemperature+selectedOffset</c> ("Temperature shown / greyed", offsets
 /// 120700..123700), and temperature control is available only while the zone controller, the
 /// lavatory and galley extraction fan and the CIDS all run (<c>dataAvailable$</c>, "Temperature store",
@@ -174,8 +176,9 @@ public static class FenixCabinLines
     }
 
     /// <summary>
-    /// The FAP's water and waste cautions that hold, in the FAP's order. Each needs every value it reads
-    /// known; the lavatory caution names the layout's lavatories whose flush is known not operational.
+    /// The FAP's water and waste cautions that hold, in the FAP's order. Each fires only on what known
+    /// values prove, never on an unknown one: the vacuum caution on either value known false (the FAP's
+    /// <c>!B||!K</c>), the lavatory caution for the layout's lavatories whose flush is known not operational.
     /// </summary>
     public static IReadOnlyList<string> Cautions(FenixCabinData data, FenixCabinLayout layout)
     {
@@ -185,9 +188,8 @@ public static class FenixCabinLines
         var cautions = new List<string>();
         if (data.Bool(FenixCabinNames.WaterServicePanelOpen) == true)
             cautions.Add("Water service door open");
-        if (data.Bool(FenixCabinNames.VacuumSystemPowered) is bool powered
-            && data.Bool(FenixCabinNames.VacuumGeneratorOperational) is bool generator
-            && (!powered || !generator))
+        if (data.Bool(FenixCabinNames.VacuumSystemPowered) == false
+            || data.Bool(FenixCabinNames.VacuumGeneratorOperational) == false)
             cautions.Add("Vacuum system disabled on ground");
         if (data.Bool(FenixCabinNames.WasteServicePanelOpen) == true)
             cautions.Add("Vacuum system disabled: ground servicing");
@@ -353,18 +355,37 @@ public static class FenixCabinLines
         return $"Water {PercentOrNoData(water)}, waste {PercentOrNoData(waste)}";
     }
 
-    // The water and waste cautions, then each main door's pressure message.
+    // The water and waste cautions, then each main door's pressure message. "none" needs proof too (R10):
+    // nothing fires and at least one caution input is known; otherwise "no data".
     private static string CautionsSummary(FenixCabinData data, FenixCabinLayout layout)
     {
-        if (!data.AnyKnown) return "Cautions: " + NoData;
-
         var cautions = new List<string>(Cautions(data, layout));
         foreach (string door in layout.MainDoors)
         {
             if (DoorPressureMessage(data, door) is string message)
                 cautions.Add($"{DoorName(door)}: {message}");
         }
-        return cautions.Count == 0 ? "Cautions: none" : "Cautions: " + string.Join("; ", cautions);
+        if (cautions.Count > 0) return "Cautions: " + string.Join("; ", cautions);
+        return AnyCautionInputKnown(data, layout) ? "Cautions: none" : "Cautions: " + NoData;
+    }
+
+    // R10: a value some caution reads, known in its own kind: the water and waste tanks, waste tank full,
+    // the vacuum system and generator, either service panel, a flush of the layout's lavatories, or a
+    // listed main door's door or slide pressure.
+    private static bool AnyCautionInputKnown(FenixCabinData data, FenixCabinLayout layout)
+    {
+        string[] numbers = { FenixCabinNames.WaterTank, FenixCabinNames.WasteTank };
+        string[] flags =
+        {
+            FenixCabinNames.WasteTankFull, FenixCabinNames.VacuumSystemPowered, FenixCabinNames.VacuumGeneratorOperational,
+            FenixCabinNames.WaterServicePanelOpen, FenixCabinNames.WasteServicePanelOpen
+        };
+        IEnumerable<string> pressures = layout.MainDoors
+            .Select(FenixCabinLayout.DataKey)
+            .SelectMany(key => new[] { FenixCabinNames.DoorPressure(key), FenixCabinNames.SlidePressure(key) });
+
+        return numbers.Concat(pressures).Any(name => data.Number(name) != null)
+            || flags.Concat(layout.Lavatories.Select(FenixCabinNames.LavatoryFlush)).Any(name => data.Bool(name) != null);
     }
 
     private static void AddAudio(List<FenixCabinLine> lines, FenixCabinData data, FenixCabinPramState? pram)

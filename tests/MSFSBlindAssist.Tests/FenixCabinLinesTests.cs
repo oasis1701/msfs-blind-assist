@@ -549,11 +549,25 @@ public class FenixCabinLinesTests
     }
 
     [Fact]
-    public void Cautions_need_every_value_they_read_and_the_layout_lavatories()
+    public void Cautions_fire_on_what_known_values_prove_and_the_layout_lavatories()
     {
-        // The FAP starts with vacuumSystemPowered false and shows the caution before any data; we do not.
-        Assert.Empty(FenixCabinLines.Cautions(Data((FenixCabinNames.VacuumSystemPowered, false)), A321));
-        Assert.Empty(FenixCabinLines.Cautions(Data((FenixCabinNames.VacuumGeneratorOperational, false)), A321));
+        // R11: the FAP fires the vacuum caution on !powered || !generator, so one known false proves it.
+        // That false is real data from the Fenix, not the FAP store's starting default
+        // (vacuumSystemPowered:!1), which shows the caution before any data arrives.
+        const string Vacuum = "Vacuum system disabled on ground";
+        Assert.Equal(new[] { Vacuum }, FenixCabinLines.Cautions(Data((FenixCabinNames.VacuumSystemPowered, false)), A321));
+        Assert.Equal(new[] { Vacuum }, FenixCabinLines.Cautions(Data((FenixCabinNames.VacuumGeneratorOperational, false)), A321));
+        Assert.Equal(new[] { Vacuum }, FenixCabinLines.Cautions(
+            Data((FenixCabinNames.VacuumSystemPowered, false), (FenixCabinNames.VacuumGeneratorOperational, "")), A321));
+
+        // An unknown value alone never fires it (FNX-1).
+        Assert.Empty(FenixCabinLines.Cautions(new FenixCabinData(), A321));
+        Assert.Empty(FenixCabinLines.Cautions(
+            Data((FenixCabinNames.VacuumSystemPowered, ""), (FenixCabinNames.VacuumGeneratorOperational, "")), A321));
+        Assert.Empty(FenixCabinLines.Cautions(
+            Data((FenixCabinNames.VacuumSystemPowered, true), (FenixCabinNames.VacuumGeneratorOperational, "")), A321));
+        Assert.Empty(FenixCabinLines.Cautions(
+            Data((FenixCabinNames.VacuumSystemPowered, ""), (FenixCabinNames.VacuumGeneratorOperational, true)), A321));
 
         // The A319 (HighDensity) has lavatories A and D only: a false E is not its caution.
         var a319 = FenixCabinLayout.Resolve(FenixAircraftType.A319, null, null, null);
@@ -661,19 +675,66 @@ public class FenixCabinLinesTests
     [Fact]
     public void Unknown_values_inside_known_data_stay_unknown()
     {
-        // Known data elsewhere, but every cabin name "" (FNX-1): still no state and no caution. (The
-        // cautions summary follows its own rule, "no data" only while nothing at all is known.)
+        // Known data elsewhere, but every cabin name "" (FNX-1): still no state and no caution, and with
+        // no caution input known the cautions summary cannot say "none" either (R10).
         var data = Data((FenixCabinNames.FapOperational, true));
         foreach (string name in FenixCabinNames.All.Where(n => n != FenixCabinNames.FapOperational))
             data.Apply(name, FenixDataValue.FromJson(""));
         var lines = FenixCabinLines.Build(data, null, A321);
 
         Assert.Empty(FenixCabinLines.Cautions(data, A321));
+        Assert.Equal("Cautions: no data", Line(lines, "status.cautions"));
         Assert.Equal("Doors: no data", Line(lines, "status.doors"));
         Assert.Equal("Slides: no data", Line(lines, "status.slides"));
         Assert.Equal("Cargo doors: no data", Line(lines, "status.cargo"));
-        Assert.All(lines.Where(l => l.Key != "status.cautions"),
-            l => Assert.Matches(new Regex("^[^:]+: (no data|no status|no data from the Fenix)$"), l.Text));
+        Assert.All(lines, l => Assert.Matches(new Regex("^[^:]+: (no data|no status|no data from the Fenix)$"), l.Text));
+    }
+
+    // R10: "Cautions: none" needs one known caution input with nothing firing. Each row knows exactly one
+    // input (besides FapOperational, which no caution reads) at a value that fires nothing; the value is JSON.
+    public static TheoryData<string, string> CautionInputs => new()
+    {
+        { FenixCabinNames.WaterTank, "85" },
+        { FenixCabinNames.WasteTank, "5" },
+        { FenixCabinNames.WasteTankFull, "false" },
+        { FenixCabinNames.LavatoryFlush("M"), "true" },
+        { FenixCabinNames.VacuumSystemPowered, "true" },
+        { FenixCabinNames.VacuumGeneratorOperational, "true" },
+        { FenixCabinNames.WaterServicePanelOpen, "false" },
+        { FenixCabinNames.WasteServicePanelOpen, "false" },
+        { FenixCabinNames.DoorPressure("d3r"), "2000" },
+        { FenixCabinNames.SlidePressure("d3r"), "3500" }
+    };
+
+    [Theory]
+    [MemberData(nameof(CautionInputs))]
+    public void Cautions_none_needs_a_known_caution_input(string name, string json)
+    {
+        var data = Data((FenixCabinNames.FapOperational, true), (name, JToken.Parse(json)));
+        Assert.Equal("Cautions: none", Line(FenixCabinLines.Build(data, null, A321), "status.cautions"));
+    }
+
+    [Fact]
+    public void Cautions_summary_counts_only_inputs_of_the_layout_and_of_their_kind()
+    {
+        string Summary(FenixCabinLayout layout, params (string, JToken)[] values)
+            => Line(FenixCabinLines.Build(Data(values), null, layout), "status.cautions");
+
+        var a319 = FenixCabinLayout.Resolve(FenixAircraftType.A319, null, null, null);
+
+        // Values that are known but feed no caution of this airframe.
+        Assert.Equal("Cautions: no data", Summary(A321, (FenixCabinNames.CabinReady, false)));
+        Assert.Equal("Cautions: no data", Summary(a319, (FenixCabinNames.LavatoryFlush("E"), true)));
+        Assert.Equal("Cautions: no data", Summary(A320InPark, (FenixCabinNames.DoorPressure("d2l"), 2000)));
+        Assert.Equal("Cautions: no data", Summary(A320InPark, (FenixCabinNames.SlidePressure("owl"), 3500)));
+
+        // A caution input of the wrong kind is not known.
+        Assert.Equal("Cautions: no data", Summary(A321, (FenixCabinNames.WaterTank, "full")));
+        Assert.Equal("Cautions: no data", Summary(A321, (FenixCabinNames.WasteTankFull, 0)));
+
+        // A firing caution is listed as before.
+        Assert.Equal("Cautions: Vacuum system disabled on ground", Summary(A321, (FenixCabinNames.VacuumSystemPowered, false)));
+        Assert.Equal("Cautions: Door 1 left: check door pressure", Summary(A321, (FenixCabinNames.DoorPressure("d1l"), 900)));
     }
 
     // ---- Connection status ----------------------------------------------------------------------
