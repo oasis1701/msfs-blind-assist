@@ -28,6 +28,7 @@ public class FenixV3FixNamesTests
     [InlineData("B_ELEC_BUS_POWER_DC_SERIVICE")]
     [InlineData("I_OH_DOOR_VIDEO")]
     [InlineData("I_OH_ELEC_COMMERCIAL_U")]
+    [InlineData("S_HYD_GRAVITY_GEAR_EXTEND_ROTATION")]
     public void No_variable_reads_a_name_v3_removed(string gone)
     {
         Assert.DoesNotContain(Vars, kv => kv.Key == gone || kv.Value.Name == gone);
