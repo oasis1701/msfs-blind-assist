@@ -30,6 +30,15 @@ public class FenixDocumentPageTests
         Assert.True(page.IndexOf("<body>", StringComparison.Ordinal) < page.IndexOf("<script>", StringComparison.Ordinal));
     }
 
+    [Fact] public void Served_meta_tags_are_removed()
+    {
+        string page = FenixDocumentPage.Build("my-documents/x.md",
+            "<p>x</p><meta http-equiv=\"refresh\" content=\"0;url=http://example.com\"><META HTTP-EQUIV=\"Refresh\" content=\"0;url=https://example.com\">");
+        Assert.DoesNotContain("refresh", page, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("example.com", page, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(1, Regex.Matches(page, "Content-Security-Policy").Count);
+    }
+
     [Theory]
     [InlineData("3,4,5", "Flight phases: 3, 4, 5")]
     [InlineData("3a,4,5,7,8", "Flight phases: 3 + (a), 4, 5, 7, 8")]

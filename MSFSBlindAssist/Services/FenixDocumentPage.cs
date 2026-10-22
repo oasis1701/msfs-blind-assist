@@ -15,6 +15,7 @@ public static class FenixDocumentPage
 
     private const RegexOptions Opts = RegexOptions.CultureInvariant;
 
+    private static readonly Regex MetaTag = new("<meta\\b[^>]*>", Opts | RegexOptions.IgnoreCase);
     private static readonly Regex PhasesPicture = new(
         "<img\\b[^>]*\\bsrc=\"http://127\\.0\\.0\\.1:8083/fenix/documents/inhibit\\.png\\?phases=([^\"]*)\"[^>]*>", Opts);
     private static readonly Regex ChecklistLine = new(
@@ -80,8 +81,13 @@ public static class FenixDocumentPage
     // The order 1..6 matters: the colour rewrite runs after the checklist lines became plain markup.
     private static string Rewrite(string html, string documentPath, bool forText)
     {
+        // 0. Served meta tags go. A meta refresh in a pilot's own Markdown is the one navigation the policy
+        // cannot stop, and the reader would hand an http/https target to the default browser without a key
+        // press. The page's own charset and policy metas are added after the rewrite, so they stay.
+        string s = MetaTag.Replace(html, "");
+
         // 1. Flight phases: the EFB draws them as a picture.
-        string s = PhasesPicture.Replace(html, m => "<span class=\"phases\">Flight phases: " + PhaseList(m.Groups[1].Value) + "</span>");
+        s = PhasesPicture.Replace(s,m => "<span class=\"phases\">Flight phases: " + PhaseList(m.Groups[1].Value) + "</span>");
 
         // 2. Checklist lines: a tick box on the page, a plain line in the text.
         s = ChecklistLine.Replace(s, m =>
