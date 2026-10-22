@@ -69,4 +69,40 @@ public partial class FenixA320Definition
         After(panels, "Calls", CallsMidKey, CallsExitKey);
         After(panels, "Fuel", "S_OH_FUEL_CENTER_2", ActKey);
     }
+
+    /// <summary>
+    /// True unless the variant's own field for this control says the airframe lacks it. An unread field
+    /// (null, Unknown) never hides anything; a key the evidence table does not name is always fitted.
+    /// </summary>
+    internal static bool IsFitted(string varKey, FenixVariant variant)
+    {
+        if (varKey.StartsWith("S_OH_ADIRS_KEY_", StringComparison.Ordinal))
+            return variant.HasGnadirs != false;
+        if (varKey.StartsWith("S_DCDU1_", StringComparison.Ordinal))
+            return variant.HasDcdu != false;
+
+        return varKey switch
+        {
+            EconFlowKey or CallsMidKey or CallsExitKey
+                => variant.Type is FenixAircraftType.Unknown or FenixAircraftType.A321,
+            "S_OH_PNEUMATIC_PACK_FLOW" => variant.Type != FenixAircraftType.A321,
+            ActKey => variant.ActCount is null or > 0,
+            "S_OH_ENG_N1_MODE_1" or "S_OH_ENG_N1_MODE_2" => variant.Engine != FenixEngineFamily.Cfm56,
+            "S_OH_NAV_DATA_DISP" or "S_OH_NAV_SYS_DISP" => variant.HasGnadirs != false,
+            "S_OH_NAV_IR1_SWITCH" or "S_OH_NAV_IR2_SWITCH" or "S_OH_NAV_IR3_SWITCH"
+                => variant.HasGnadirs != true,
+            "S_DCDU2_DIM_BRT" => variant.HasDcdu != false,
+            "S_MIP_ISFD_BUGS" or "S_MIP_ISFD_LS" or "S_MIP_ISFD_PLUS" or "S_MIP_ISFD_MINUS"
+                or "S_MIP_ISFD_RST" or "E_MIP_ISFD_BARO_INC" or "E_MIP_ISFD_BARO_DEC"
+                => variant.HasIsis != false,
+            "S_STANDBY_ATTITUDE_CAGE" => variant.HasIsis != true,
+            "S_OH_PNEUMATIC_HOT_AIR_AFT_CARGO" => variant.HasCargoHeat != false,
+            _ => true,
+        };
+    }
+
+    partial void IsVariantControlVisible(string varKey, ref bool visible)
+    {
+        if (!IsFitted(varKey, Variant)) visible = false;
+    }
 }
