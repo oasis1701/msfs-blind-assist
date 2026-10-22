@@ -157,8 +157,11 @@ public static class FenixFlowDefinitions
                 s => s.IsOn("S_OH_PNEUMATIC_PACK_1") && s.IsOn("S_OH_PNEUMATIC_PACK_2")), "PF_PACKS"),
             Done(Skip(SW("PF_XBLEED", "Crossbleed: AUTO", "S_OH_PNEUMATIC_XBLEED_SELECTOR", 1),
                 s => s.IsPosition("S_OH_PNEUMATIC_XBLEED_SELECTOR", 1)), "PF_XBLEED"),
-            Done(Skip(SW("PF_PACKFLOW", "Pack flow: NORMAL", "S_OH_PNEUMATIC_PACK_FLOW", 1),
-                s => s.IsPosition("S_OH_PNEUMATIC_PACK_FLOW", 1)), "PF_PACKFLOW"),
+            // The A321's pneumatic panel has an ECON FLOW button and no PACK FLOW knob, and its system name
+            // still reads 1: the step passes silently there (FO-20) rather than claim the knob is set.
+            Done(Skip(Provider("PF_PACKFLOW", "Pack flow: NORMAL", "S_OH_PNEUMATIC_PACK_FLOW",
+                    s => s.HasPackFlowSelector ? 1 : null),
+                s => s.HasPackFlowSelector && s.IsPosition("S_OH_PNEUMATIC_PACK_FLOW", 1)), "PF_PACKFLOW"),
             Done(Skip(SW("PF_HOTAIR", "Hot air: ON", "S_OH_PNEUMATIC_HOT_AIR", 1),
                 s => s.IsOn("S_OH_PNEUMATIC_HOT_AIR")), "PF_HOTAIR"),
             Done(Skip(SW("PF_PRESSMODE", "Cabin pressure mode: AUTO", "S_OH_PNEUMATIC_PRESS_MODE", 1),

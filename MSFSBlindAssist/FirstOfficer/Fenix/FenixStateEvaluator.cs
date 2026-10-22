@@ -110,6 +110,10 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
         }
     }
 
+    /// <summary>False on the A321, which has no PACK FLOW selector (its pneumatic panel has an ECON FLOW
+    /// button instead). Every other variant has the knob, an unknown one included (as today's A320).</summary>
+    public bool HasPackFlowSelector => Variant.Type != FenixAircraftType.A321;
+
     /// <summary>Attaches to the Fenix definition whose data service feeds the readings (null detaches).
     /// Called at every FO window bind and reconnect, so attaching the same definition again does nothing.</summary>
     public void AttachFenix(FenixA320Definition? definition)
