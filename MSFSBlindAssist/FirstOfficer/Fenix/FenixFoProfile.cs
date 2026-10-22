@@ -1,4 +1,5 @@
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.FirstOfficer.Models;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.SimConnect;
@@ -8,7 +9,8 @@ namespace MSFSBlindAssist.FirstOfficer.Fenix;
 /// <summary>
 /// Fenix A320 First Officer profile — wires the shared generic FO engine + window to the
 /// Fenix concretes. Unlike the PMDG profiles there is no aircraft data manager: all state
-/// is plain L:vars, so BindDataManager just hands the evaluator the SimConnectManager.
+/// is plain L:vars, so BindDataManager hands the evaluator the SimConnectManager (and, for the few
+/// values only the Fenix's own data service has, the Fenix definition).
 /// </summary>
 public sealed class FenixFoProfile : IFoProfile<FenixActionExecutor, FenixStateEvaluator>
 {
@@ -24,8 +26,15 @@ public sealed class FenixFoProfile : IFoProfile<FenixActionExecutor, FenixStateE
 
     public FenixStateEvaluator CreateEvaluator() => new();
 
+    // The evaluator also reads the Fenix's own data service, through the Fenix definition SimConnectManager
+    // holds as the current aircraft (MainForm sets it on load and on every switch). The FO window calls
+    // this at construction and on every reconnect; the subscription ends when the definition disposes
+    // its data service on a switch, which is also when MainForm disposes the FO window.
     public void BindDataManager(FenixStateEvaluator state, SimConnectManager sc)
-        => state.SetSimConnect(sc);
+    {
+        state.SetSimConnect(sc);
+        state.AttachFenix(sc.CurrentAircraft as FenixA320Definition);
+    }
 
     public void SetExecutorSimConnect(FenixActionExecutor exec, SimConnectManager? sc)
     {

@@ -1,13 +1,18 @@
 namespace MSFSBlindAssist.FirstOfficer.Fenix;
 
+using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.FirstOfficer.Airbus;
 using MSFSBlindAssist.FirstOfficer.Generic;
+using MSFSBlindAssist.Services;
+using MSFSBlindAssist.Utils.Logging;
 
 /// <summary>
-/// Fenix A320 First Officer state evaluator. All aircraft state is plain L:vars read from
+/// Fenix A320 First Officer state evaluator. Aircraft state is plain L:vars read from
 /// the SimConnect cache. Nearly every Fenix S_/A_ control var is registered OnRequest, so
 /// they are listed in OnRequestPollFields and polled onto the cache by the FO window's
 /// 1 s timer. Indicator lights (I_*) and S_FC_FLAPS are Continuous — cached automatically.
+/// A few values come from the Fenix's own data service instead (FenixFoLiveReadings), which
+/// <see cref="AttachFenix(FenixA320Definition?)"/> subscribes to.
 ///
 /// Engine running is detected from the stock TURB ENG N2 SimVars pushed in by the form
 /// timer (RequestFOEngineN2 → SetEngineN2), NOT from Fenix L:vars: CFM56 idle N2 is
@@ -69,6 +74,81 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
     };
 
     public override IReadOnlyList<string> OnRequestPollFields => PollFields;
+
+    // ---- The Fenix's own data (engine N2 and running, cabin ready, total fuel) ------------------
+    // Read by the synthetic fields; private because the class is sealed.
+    private readonly FenixFoLiveReadings _live = new();
+
+    // Guards the attach state below AND every delivery into _live, so a delivery and a switch never
+    // interleave. The data service may still deliver a value after its handle is disposed (a callback
+    // already running, one value on its way): it finds the generation moved on and is dropped, so it
+    // can never refill readings the switch or detach just cleared. The data service never calls a
+    // callback while holding one of its own locks, so Subscribe and Dispose under this lock cannot
+    // deadlock against a delivery waiting here.
+    private readonly object _attachLock = new();
+    private object? _fenixSource;
+    private Func<FenixVariant>? _variantSource;
+    private IDisposable? _subscription;
+    private int _generation;
+
+    /// <summary>Which Fenix is loaded, from the attached definition; <see cref="FenixVariant.Unknown"/>
+    /// while none is attached or its config is not read yet (then the flows behave as today's A320).</summary>
+    public FenixVariant Variant
+    {
+        get
+        {
+            Func<FenixVariant>? read;
+            lock (_attachLock)
+                read = _variantSource;
+            return read?.Invoke() ?? FenixVariant.Unknown;
+        }
+    }
+
+    /// <summary>Attaches to the Fenix definition whose data service feeds the readings (null detaches).
+    /// Called at every FO window bind and reconnect, so attaching the same definition again does nothing.</summary>
+    public void AttachFenix(FenixA320Definition? definition)
+    {
+        if (definition == null)
+        {
+            AttachFenix(null, null, null);
+            return;
+        }
+        AttachFenix(definition.DataService, () => definition.Variant,
+            (names, onChange) => definition.DataService.Subscribe(names, onChange));
+    }
+
+    /// <summary>The seam under <see cref="AttachFenix(FenixA320Definition?)"/>. The same source as last
+    /// time does nothing. A new source ends the old subscription, forgets its readings, takes the
+    /// variant and subscribes the six names; null ends it and returns the variant to Unknown. A null
+    /// <paramref name="subscribe"/> takes the variant only (tests).</summary>
+    internal void AttachFenix(object? source, Func<FenixVariant>? variant,
+        Func<IReadOnlyList<string>, Action<string, FenixDataValue>, IDisposable>? subscribe)
+    {
+        lock (_attachLock)
+        {
+            if (ReferenceEquals(source, _fenixSource)) return;
+
+            int generation = ++_generation;
+            _subscription?.Dispose();
+            _subscription = null;
+            _live.Clear();
+            _fenixSource = source;
+            _variantSource = source == null ? null : variant;
+            if (source == null || subscribe == null) return;
+
+            _subscription = subscribe(FenixFoLiveReadings.Names, (name, value) => Deliver(generation, name, value));
+            Log.Info("FO", "Fenix First Officer: reading the Fenix's own engine, cabin and fuel values");
+        }
+    }
+
+    private void Deliver(int generation, string name, FenixDataValue value)
+    {
+        lock (_attachLock)
+        {
+            if (generation == _generation)
+                _live.Apply(name, value);
+        }
+    }
 
     protected override bool TryGetSyntheticValue(string field, out double value)
     {
