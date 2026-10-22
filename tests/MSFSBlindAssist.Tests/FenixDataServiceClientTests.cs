@@ -368,4 +368,59 @@ public class FenixDataServiceClientTests
         Assert.Contains("\"http://127.0.0.1:8083\"", source);
         Assert.Contains("\"ws://127.0.0.1:8083/graphql\"", source);
     }
+
+    // ---- No navigraph operation (the FNX-3 full text) -------------------------------------------
+
+    // The gateway's navigraph field returns the pilot's Navigraph access token and can disconnect
+    // their account; nothing in the app needs it. Comments are removed before the scan, so one may
+    // still say "never calls navigraph { … }" (two do); string literals are kept, since that is where
+    // a query would be written.
+    private static readonly Regex CommentOrString = new(
+        @"""(?:\\.|[^""\\\r\n])*""|//[^\r\n]*|/\*.*?\*/", RegexOptions.Singleline | RegexOptions.CultureInvariant);
+
+    // "navigraph" opening a selection or taking arguments, as a word of its own (or right after a
+    // "\n" escape in a query string). A settings key such as "navigraph_refresh_token" is not one.
+    private static readonly Regex NavigraphSelection = new(
+        @"(?i)(?:(?<![a-z0-9_])|(?<=\\[nrt]))navigraph\s*[{(]", RegexOptions.CultureInvariant);
+
+    private static bool SendsNavigraphOperation(string source)
+        => NavigraphSelection.IsMatch(CommentOrString.Replace(source, m => m.Value[0] == '"' ? m.Value : ""));
+
+    [Theory]
+    [InlineData("await QueryAsync(\"query { navigraph { accessToken } }\");", true)]
+    [InlineData("var q = \"mutation {\\n  navigraph(x: 1) { disconnect { success } } }\";", true)]
+    [InlineData("var q = \"query {\\nnavigraph { accessToken } }\";", true)]
+    [InlineData("var s = \"// navigraph { x }\";", true)]
+    [InlineData("// the service never calls navigraph { … }", false)]
+    [InlineData("/// <c>navigraph { ... }</c> queries", false)]
+    [InlineData("/* navigraph { } */ var x = 1;", false)]
+    [InlineData("var s = \"http://127.0.0.1:8083\"; // navigraph { }", false)]
+    [InlineData("var key = \"navigraph_refresh_token\";", false)]
+    [InlineData("var key = \"navigraph_navdata_mode\"; Foo(navigraph_navdata_mode);", false)]
+    [InlineData("token = GetNavigraphToken(1);", false)]
+    public void The_navigraph_scan_finds_a_selection_and_ignores_comments_and_settings_keys(string source, bool found)
+        => Assert.Equal(found, SendsNavigraphOperation(source));
+
+    [Fact]
+    public void No_Fenix_code_sends_a_navigraph_operation()
+    {
+        string root = ClaudeContextBudgetTests.RepoRoot();
+        string app = Path.Combine(root, "MSFSBlindAssist");
+        var files = new List<string>();
+        files.AddRange(Directory.GetFiles(Path.Combine(app, "Services"), "Fenix*.cs"));
+        files.AddRange(Directory.GetFiles(Path.Combine(app, "Aircraft"), "Fenix*.cs"));
+        foreach (string folder in Directory.GetDirectories(Path.Combine(app, "Forms"), "Fenix*"))
+            files.AddRange(Directory.GetFiles(folder, "*.cs", SearchOption.AllDirectories));
+        files.AddRange(Directory.GetFiles(Path.Combine(app, "FirstOfficer", "Fenix"), "*.cs", SearchOption.AllDirectories));
+
+        // The scan must really have the Fenix code in front of it.
+        foreach (string expected in new[] { "FenixDataService.cs", "FenixA320Definition.cs", "FenixWindowsForm.cs", "FenixStateEvaluator.cs" })
+            Assert.Contains(files, f => Path.GetFileName(f) == expected);
+
+        List<string> offenders = files.Where(f => SendsNavigraphOperation(File.ReadAllText(f)))
+            .Select(f => Path.GetRelativePath(root, f)).OrderBy(f => f, StringComparer.Ordinal).ToList();
+        Assert.True(offenders.Count == 0,
+            "The gateway's navigraph field returns the pilot's Navigraph access token and can disconnect their account, and "
+            + $"nothing in the app needs it (docs/invariants/fenix-data.md#fnx-3). Found a navigraph selection in: {string.Join(", ", offenders)}");
+    }
 }
