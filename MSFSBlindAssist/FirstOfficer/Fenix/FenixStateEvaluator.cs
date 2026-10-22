@@ -72,8 +72,8 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
         "A_FC_THROTTLE_LEFT_INPUT", "A_FC_THROTTLE_RIGHT_INPUT",
         // Transponder / TCAS
         "S_XPDR_MODE", "S_XPDR_OPERATION", "S_XPDR_ALTREPORTING", "S_TCAS_RANGE",
-        // Baro STD readback
-        "S_FCU_EFIS1_BARO_STD", "S_FCU_EFIS2_BARO_STD",
+        // Baro STD readback: the EFIS QNH lights (1 = QNH, 0 = STD), not the baro knobs' push/pull counters
+        "I_FCU_EFIS1_QNH", "I_FCU_EFIS2_QNH",
         // Wipers (safety check)
         "S_MISC_WIPER_CAPT", "S_MISC_WIPER_FO",
         // Weather radar
@@ -321,12 +321,16 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
                 ? 1.0 : 0.0;
 
     /// <summary>Captain-side baro: STD, else the value in the unit the EFIS shows
-    /// (S_FCU_EFIS1_BARO_MODE 0 = inHg, 1 = hPa). Null whenever an input is unknown.</summary>
+    /// (S_FCU_EFIS1_BARO_MODE 0 = inHg, 1 = hPa). Null whenever an input is unknown. STD is read from the
+    /// EFIS QNH light (I_FCU_EFIS1_QNH: 1 = QNH, 0 = STD, measured live 2026-10-21), never from the baro
+    /// knob's counter, which a pull adds 1 to and a push takes 1 from, so it holds any number after the
+    /// pilot's own pulls and pushes.</summary>
     public string? BaroText() => BaroText(GetValue);
 
     internal static string? BaroText(Func<string, double> read)
     {
-        double std = read("S_FCU_EFIS1_BARO_STD");
+        double qnhLight = read("I_FCU_EFIS1_QNH");
+        double std = double.IsNaN(qnhLight) ? double.NaN : qnhLight < 0.5 ? 1 : 0;
         if (double.IsNaN(std) || std > 0.5) return AirbusReadbackFormat.Baro(std, double.NaN, false);
         double mode = read("S_FCU_EFIS1_BARO_MODE");
         if (double.IsNaN(mode)) return null;

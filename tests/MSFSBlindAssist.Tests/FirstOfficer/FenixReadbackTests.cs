@@ -217,7 +217,7 @@ public class FenixReadbackTests
         var polled = new FenixStateEvaluator().OnRequestPollFields;
         foreach (var f in new[]
                  {
-                     "FUEL TOTAL QUANTITY WEIGHT", "S_OH_GPWS_LDG_FLAP3", "S_FCU_EFIS1_BARO_STD",
+                     "FUEL TOTAL QUANTITY WEIGHT", "S_OH_GPWS_LDG_FLAP3", "I_FCU_EFIS1_QNH",
                      "S_FCU_EFIS1_BARO_MODE", "N_FCU_EFIS1_BARO_HPA", "N_FCU_EFIS1_BARO_INCH",
                      "N_MISC_PERF_TO_V1", "N_MISC_PERF_TO_VR", "N_MISC_PERF_TO_V2", "N_MISC_PERF_TO_FLEX",
                      "I_MIP_AUTOBRAKE_LO_L", "I_MIP_AUTOBRAKE_MED_L", "I_MIP_AUTOBRAKE_MAX_L",
@@ -261,9 +261,10 @@ public class FenixReadbackValueTests
         => f => values.TryGetValue(f, out double v) ? v : double.NaN;
 
     [Theory, MemberData(nameof(Cultures))]
-    public void Baro_reads_standard_when_the_STD_flag_is_set(string culture)
+    public void Baro_reads_standard_when_the_QNH_light_is_off(string culture)
     {
-        var read = Reader(new() { ["S_FCU_EFIS1_BARO_STD"] = 1 });
+        // I_FCU_EFIS1_QNH: 1 = QNH, 0 = STD.
+        var read = Reader(new() { ["I_FCU_EFIS1_QNH"] = 0 });
         Assert.Equal("standard", InCulture(culture, () => FenixStateEvaluator.BaroText(read)));
     }
 
@@ -273,7 +274,7 @@ public class FenixReadbackValueTests
         // S_FCU_EFIS1_BARO_MODE 0 = inHg; N_FCU_EFIS1_BARO_INCH is the value in inHg (29.92, not 2992).
         var read = Reader(new()
         {
-            ["S_FCU_EFIS1_BARO_STD"] = 0, ["S_FCU_EFIS1_BARO_MODE"] = 0,
+            ["I_FCU_EFIS1_QNH"] = 1, ["S_FCU_EFIS1_BARO_MODE"] = 0,
             ["N_FCU_EFIS1_BARO_INCH"] = 29.921, ["N_FCU_EFIS1_BARO_HPA"] = 1013.2,
         });
         Assert.Equal("QNH 29.92", InCulture(culture, () => FenixStateEvaluator.BaroText(read)));
@@ -284,7 +285,7 @@ public class FenixReadbackValueTests
     {
         var read = Reader(new()
         {
-            ["S_FCU_EFIS1_BARO_STD"] = 0, ["S_FCU_EFIS1_BARO_MODE"] = 1,
+            ["I_FCU_EFIS1_QNH"] = 1, ["S_FCU_EFIS1_BARO_MODE"] = 1,
             ["N_FCU_EFIS1_BARO_INCH"] = 29.921, ["N_FCU_EFIS1_BARO_HPA"] = 1013.2,
         });
         Assert.Equal("QNH 1013", InCulture(culture, () => FenixStateEvaluator.BaroText(read)));
@@ -294,11 +295,11 @@ public class FenixReadbackValueTests
     public void Baro_is_null_whenever_an_input_is_unknown()
     {
         Assert.Null(FenixStateEvaluator.BaroText(Reader(new())));                                  // nothing read
-        Assert.Null(FenixStateEvaluator.BaroText(Reader(new() { ["S_FCU_EFIS1_BARO_STD"] = 0 }))); // unit unknown
+        Assert.Null(FenixStateEvaluator.BaroText(Reader(new() { ["I_FCU_EFIS1_QNH"] = 1 })));      // unit unknown
         Assert.Null(FenixStateEvaluator.BaroText(Reader(new()
-            { ["S_FCU_EFIS1_BARO_STD"] = 0, ["S_FCU_EFIS1_BARO_MODE"] = 1 })));                    // value unknown
+            { ["I_FCU_EFIS1_QNH"] = 1, ["S_FCU_EFIS1_BARO_MODE"] = 1 })));                         // value unknown
         Assert.Null(FenixStateEvaluator.BaroText(Reader(new()
-            { ["S_FCU_EFIS1_BARO_STD"] = 0, ["S_FCU_EFIS1_BARO_MODE"] = 0, ["N_FCU_EFIS1_BARO_HPA"] = 1013 })));
+            { ["I_FCU_EFIS1_QNH"] = 1, ["S_FCU_EFIS1_BARO_MODE"] = 0, ["N_FCU_EFIS1_BARO_HPA"] = 1013 })));
     }
 
     [Theory, MemberData(nameof(Cultures))]
