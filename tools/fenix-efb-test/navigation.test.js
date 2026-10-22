@@ -189,11 +189,13 @@ test('Second_pass_changes_nothing_on_the_switcher', async () => {
     assert.strictEqual(doc.documentElement.outerHTML, before);
     assert.deepStrictEqual(attributesOf(window), attributes);
 
-    // Nine icons, the home button and the chevron.
-    const handled = [...doc.querySelectorAll('[data-msfsba]')];
+    // Nine icons, the home button and the chevron. The capture also shows the Fenix app behind the switcher
+    // (its tab bar and My Flights cards); those are fenix-app.test.js's, which counts them on this capture.
+    const outside = el => !el.closest('app-fenix');
+    const handled = [...doc.querySelectorAll('[data-msfsba]')].filter(outside);
     assert.strictEqual(handled.length, 11);
     for (const el of handled) assert.strictEqual(counts.get(el), 1, 'one listener on ' + el.className);
-    assert.strictEqual(counts.size, 11, 'no other element got a listener');
+    assert.strictEqual([...counts.keys()].filter(outside).length, 11, 'no other element got a listener');
   } finally {
     window.close();
   }
