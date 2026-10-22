@@ -1,6 +1,19 @@
 # First Officer for Fenix v3 Implementation Plan (plan 05)
 
-**Claimed by:** kn4iee · **Status:** in progress (code and reviews done 2026-10-22; in-sim checks remain, see "Owner-in-sim checks")
+**Claimed by:** robin24 (the rest; Tasks 1-8 by kn4iee) · **Status:** in progress (code and reviews done 2026-10-22; in-sim checks remain, see "Owner-in-sim checks")
+
+> **Handed to robin24 (2026-10-22): what is left.** The code is on `FenixV3` (5c19168cb..54feca0ff, suite green);
+> nothing needs writing unless a check fails.
+> 1. Run the three "Owner-in-sim checks" below (Fenix A321 IAE with ACTs). The section says what the pilot presses and
+>    hears, and what a second reader records: by hand, or with Claude Code using the simconnect MCP and the PowerShell
+>    queries there.
+> 2. Write the numbers into "Handoff to plan 12": the APU AVAIL legend, the IAE start time and N2 crossings, any
+>    `source stock` line during the crank, the purser's delay, and whether cabin ready clears after departure. Then tick
+>    Task 9 Steps 2 and 3 and set Status to done.
+> 3. If a check fails: a reversed APU legend is plan 02's `FenixActionExecutor.ApuAvailField` (tell oasis1701); a
+>    `source stock` line during the crank, or a cabin-ready flag held after departure, is this plan's code
+>    (`FenixFoLiveReadings`, `FenixStateEvaluator`).
+> 4. Ask the owner handoff request 8: a "Cabin: READY" line can read Complete before the purser reports.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
