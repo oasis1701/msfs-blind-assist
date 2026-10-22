@@ -149,7 +149,7 @@ public class FenixEFBForm : Form
             // ProcessCmdKey still covers Escape on the error panel.
             await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
                 "window.addEventListener('keydown',function(e){" +
-                "if(e.key==='Escape'){window.chrome.webview.postMessage('msfsba-efb-close');}}," +
+                "if(e.key==='Escape'&&!document.querySelector('.cdk-overlay-pane > *')){window.chrome.webview.postMessage('msfsba-efb-close');}}," +
                 "true);");
             // The accessibility layer (plan 03): registered with the document-created injection, so it
             // is in place before the first page script runs and again for every new document. Read once,

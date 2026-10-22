@@ -395,6 +395,196 @@ test('A_role_name_or_state_the_page_gave_a_settings_switch_is_kept_and_the_layer
   }
 });
 
+// ---- Settings: the "More options" menus (ruling R58) ----
+// The three dots open a CDK overlay at the end of <body>: a transparent backdrop, then a pane holding div.overflow-menu
+// and its items. The focus stayed on the button, so the arrows and Tab moved on to the next setting and the menu seemed
+// empty. While a menu is open its button's container aria-owns the pane (the items are read right after the button),
+// the focus goes to the first item that is not disabled, and the backdrop is the button "Close menu"; when the menu
+// goes and the focus is lost, the focus goes back to the button.
+
+const MENU_ITEMS = ['Set as user override', 'Reset to default'];
+
+// The overlay of the open capture (backdrop, bounding box, pane, menu), to put into the closed capture as the page puts
+// it there when it opens the menu: the test adds and removes the nodes, the layer never does.
+async function openMenuMarkup(change = html => html) {
+  const open = await load('settings-overflow-open', { layer: false });
+  try {
+    return change(open.document.querySelector('div.app-overlay-container').innerHTML);
+  } finally {
+    open.close();
+  }
+}
+
+// Opens the first "More options" menu of the closed settings capture, as the page does, with its button focused first.
+async function openFirstMenu(window, markup) {
+  const origin = one(window, 'button.overflow-button');
+  origin.focus();
+  origin.setAttribute('aria-expanded', 'true');
+  one(window, 'div.app-overlay-container').innerHTML = markup;
+  await turns();
+  return origin;
+}
+
+test('An_open_More_options_menu_is_read_right_after_its_button', async () => {
+  const window = await load('settings-overflow-open');
+  try {
+    const origins = all(window, 'button.overflow-button[aria-expanded="true"]');
+    assert.strictEqual(origins.length, 1, 'as captured');
+    const container = origins[0].closest('div.settings-overflow');
+    const pane = one(window, '.cdk-overlay-pane');
+    assert.strictEqual(pane.id, 'cdk-overlay-0', 'the page\'s own id');
+    assert.strictEqual(container.getAttribute('aria-owns'), 'cdk-overlay-0', 'the pane is read right after the button');
+    assert.strictEqual(all(window, '[id^="msfsba-"]').length, 0, 'the page\'s id is used: none of the layer\'s');
+    assert.ok(['role', 'aria-label', 'tabindex', 'data-msfsba'].every(a => !pane.hasAttribute(a)), 'the pane gets no role');
+    const items = all(window, 'button.overflow-menu__item');
+    assert.deepStrictEqual(items.map(nameOf), MENU_ITEMS, 'the items keep their own text as their names');
+    assert.ok(items.every(i => !i.hasAttribute('aria-label')));
+    assert.strictEqual(nameOf(origins[0]), 'More options for A/C ESS Auto Switching');
+
+    // The backdrop is the menu's "Close menu" button: Enter and Space are its own click, as a mouse click outside is.
+    const backdrop = one(window, '.cdk-overlay-backdrop');
+    assert.strictEqual(backdrop.getAttribute('role'), 'button');
+    assert.strictEqual(backdrop.tabIndex, 0);
+    assert.strictEqual(nameOf(backdrop), 'Close menu');
+    assert.deepStrictEqual(pressed(window, backdrop), { caught: true, clicks: 1 });
+    assert.deepStrictEqual(pressed(window, backdrop, ' '), { caught: true, clicks: 1 });
+
+    // The menu was open when the layer first saw it: the focus is on its first item.
+    assert.strictEqual(window.document.activeElement, items[0]);
+  } finally {
+    window.close();
+  }
+});
+
+test('Opening_a_More_options_menu_takes_the_focus_to_its_first_item_and_closing_it_brings_it_back', async () => {
+  const markup = await openMenuMarkup();
+  const window = await load('settings');
+  try {
+    const doc = window.document;
+    const overlay = one(window, 'div.app-overlay-container');
+    const origin = await openFirstMenu(window, markup);
+    const container = origin.closest('div.settings-overflow');
+    const items = [...overlay.querySelectorAll('button.overflow-menu__item')];
+    const backdrop = overlay.querySelector('.cdk-overlay-backdrop');
+    assert.strictEqual(doc.activeElement, items[0], 'the focus is on the first item');
+    assert.strictEqual(container.getAttribute('aria-owns'), 'cdk-overlay-0');
+    assert.strictEqual(nameOf(backdrop), 'Close menu');
+
+    // The user moves within the menu: a later pass does not take the focus back to the first item.
+    items[1].focus();
+    window.__msfsbaFenixEfb.pass();
+    assert.strictEqual(doc.activeElement, items[1]);
+
+    // The page closes the menu (an item was chosen): the overlay goes and the button is collapsed. The focus, lost with
+    // the item, goes back to the button; what the layer wrote for the menu is taken back.
+    origin.setAttribute('aria-expanded', 'false');
+    overlay.innerHTML = '';
+    assert.strictEqual(doc.activeElement, doc.body, 'the focus is lost with the menu');
+    await turns();
+    assert.strictEqual(doc.activeElement, origin, 'and comes back to the button');
+    assert.strictEqual(container.hasAttribute('aria-owns'), false);
+    assert.deepStrictEqual(layerStamp(backdrop), NO_STAMP);
+    assert.strictEqual(all(window, '[id^="msfsba-"]').length, 0, 'no id is left behind');
+
+    // It opens again: the focus goes in again.
+    await openFirstMenu(window, markup);
+    assert.strictEqual(doc.activeElement, overlay.querySelector('button.overflow-menu__item'));
+  } finally {
+    window.close();
+  }
+});
+
+test('A_menu_that_closes_while_the_focus_is_elsewhere_leaves_the_focus_there', async () => {
+  const markup = await openMenuMarkup();
+  const window = await load('settings');
+  try {
+    const doc = window.document;
+    const origin = await openFirstMenu(window, markup);
+    // The user goes on to a category with the menu still open; then the page closes the menu.
+    const category = all(window, 'li.category')[1];
+    category.focus();
+    origin.setAttribute('aria-expanded', 'false');
+    one(window, 'div.app-overlay-container').innerHTML = '';
+    await turns();
+    assert.strictEqual(doc.activeElement, category, 'the focus is not lost: it stays where the user put it');
+  } finally {
+    window.close();
+  }
+});
+
+test('A_menu_pane_without_an_id_of_its_own_gets_one_of_the_layers_and_it_goes_with_the_menu', async () => {
+  const markup = await openMenuMarkup(html => html.replace(' id="cdk-overlay-0"', ''));
+  const window = await load('settings');
+  try {
+    const origin = await openFirstMenu(window, markup);
+    const pane = one(window, '.cdk-overlay-pane');
+    assert.ok(/^msfsba-\d+$/.test(pane.id), pane.id);
+    assert.strictEqual(origin.closest('div.settings-overflow').getAttribute('aria-owns'), pane.id);
+    origin.setAttribute('aria-expanded', 'false');
+    one(window, 'div.app-overlay-container').innerHTML = '';
+    await turns();
+    assert.strictEqual(pane.hasAttribute('id'), false, 'the layer\'s id is taken back');
+    assert.strictEqual(origin.closest('div.settings-overflow').hasAttribute('aria-owns'), false);
+  } finally {
+    window.close();
+  }
+});
+
+test('A_disabled_first_menu_item_is_passed_over', async () => {
+  const markup = await openMenuMarkup(html => html.replace('class="overflow-menu__item"', 'class="overflow-menu__item" disabled=""'));
+  const window = await load('settings');
+  try {
+    await openFirstMenu(window, markup);
+    const items = all(window, 'button.overflow-menu__item');
+    assert.strictEqual(items[0].disabled, true, 'the first item is disabled');
+    assert.strictEqual(window.document.activeElement, items[1]);
+  } finally {
+    window.close();
+  }
+});
+
+test('No_menu_is_followed_while_no_button_or_more_than_one_says_it_is_open', async () => {
+  const markup = await openMenuMarkup();
+  const window = await load('settings');
+  try {
+    const doc = window.document;
+    const [first, second] = all(window, 'button.overflow-button');
+    first.focus();
+    // The overlay appears but no button says it is expanded: the layer does nothing.
+    one(window, 'div.app-overlay-container').innerHTML = markup;
+    await turns();
+    const backdrop = one(window, '.cdk-overlay-backdrop');
+    assert.strictEqual(all(window, 'div.settings-overflow[aria-owns]').length, 0);
+    assert.deepStrictEqual(layerStamp(backdrop), NO_STAMP);
+    assert.strictEqual(doc.activeElement, first);
+    // Two say so: still nothing.
+    first.setAttribute('aria-expanded', 'true');
+    second.setAttribute('aria-expanded', 'true');
+    window.__msfsbaFenixEfb.pass();
+    assert.strictEqual(all(window, 'div.settings-overflow[aria-owns]').length, 0);
+    assert.deepStrictEqual(layerStamp(backdrop), NO_STAMP);
+    assert.strictEqual(doc.activeElement, first);
+    // One does: the menu is followed.
+    second.setAttribute('aria-expanded', 'false');
+    window.__msfsbaFenixEfb.pass();
+    assert.strictEqual(first.closest('div.settings-overflow').getAttribute('aria-owns'), 'cdk-overlay-0');
+    assert.strictEqual(doc.activeElement, one(window, 'button.overflow-menu__item'));
+  } finally {
+    window.close();
+  }
+});
+
+test('The_Panel_States_dialog_backdrop_is_not_a_menu', async () => {
+  const window = await load('panel-states');
+  try {
+    const backdrop = one(window, '.cdk-overlay-backdrop');
+    assert.ok(backdrop, 'the capture has the dialog\'s backdrop');
+    assert.deepStrictEqual(layerStamp(backdrop), NO_STAMP);
+  } finally {
+    window.close();
+  }
+});
+
 // Settings' text and password boxes (and Misc's picture upload box) have no label: their placeholder "Enter value" says
 // nothing of the setting. Each takes its article's setting name, as the switch and the three dots do.
 const SETTINGS_BOXES = {
@@ -1439,15 +1629,18 @@ const SETTINGS_PARTS = {
   'settings-ground-services': { switcher: 9, badges: 8, toggles: 8, dots: 8, groups: 0, options: 0, boxes: 0 },
   'settings-misc': { switcher: 9, badges: 6, toggles: 4, dots: 6, groups: 2, options: 4, boxes: 1 },
   'settings-printer': { switcher: 9, badges: 8, toggles: 2, dots: 8, groups: 0, options: 0, boxes: 5 },
-  'settings-realism': { switcher: 9, badges: 8, toggles: 3, dots: 8, groups: 5, options: 13, boxes: 0 }
+  'settings-realism': { switcher: 9, badges: 8, toggles: 3, dots: 8, groups: 5, options: 13, boxes: 0 },
+  // Aircraft with the first menu open: the menu's backdrop is the "Close menu" button (R58).
+  'settings-overflow-open': { switcher: 9, badges: 8, toggles: 5, dots: 8, groups: 3, options: 6, boxes: 0, backdrop: 1 }
 };
 for (const [fixture, p] of Object.entries(SETTINGS_PARTS)) {
+  const backdrop = p.backdrop || 0;
   SECOND_PASS[fixture] = {
-    handled: 2 + p.switcher + 8 + p.badges + 2 * p.toggles + p.dots + p.groups + p.options + p.boxes,
-    listeners: 2 + p.switcher + 8 + p.toggles,
+    handled: 2 + p.switcher + 8 + p.badges + 2 * p.toggles + p.dots + p.groups + p.options + p.boxes + backdrop,
+    listeners: 2 + p.switcher + 8 + p.toggles + backdrop,
     note: 'home, chevron, ' + p.switcher + ' switcher icons, 8 categories, ' + p.badges + ' badges, ' + p.toggles +
       ' checkboxes and switches, ' + p.dots + ' three-dot buttons, ' + p.groups + ' choice groups, ' + p.options +
-      ' choices, ' + p.boxes + ' boxes'
+      ' choices, ' + p.boxes + ' boxes, ' + backdrop + ' menu backdrop'
   };
 }
 for (const [fixture, expected] of Object.entries(SECOND_PASS)) {
@@ -1487,6 +1680,12 @@ const ISOLATION = {
     ['article input[type=checkbox]', 'input[type=checkbox][aria-label]', 5],
     ['article label.toggle', 'label.toggle[role=switch]', 5],
     ['span.settings-source', 'span.settings-source[aria-label]', 8]
+  ],
+  // The open menu (R58): the menu rule asks for the open button through '.settings-overflow' and for the menu through
+  // '.cdk-overlay-pane >', so the three-dot rule's needle is in its own query only.
+  'settings-overflow-open': [
+    ['.cdk-overlay-pane >', 'div.settings-overflow[aria-owns]', 1],
+    ['button.overflow-button', 'button.overflow-button[aria-label]', 8]
   ],
   // Audio has the boxes the box rule names (R50), next to one on/off option.
   'settings-audio': [

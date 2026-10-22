@@ -10,11 +10,13 @@
 // chart's picture and labels but its limits, the seat map; and the Takeoff results grid gets an aria-owns that
 // reads each label right before its value and every other child in its place (an empty result is a picture
 // described as a "value").
-// Three exceptions to "attributes only", each a ruling's: ids for that aria-owns, written only on the cells it
-// lists and only as "msfsba-<n>" (an id the page set is used, never replaced; ruling R46); the runway
-// condition's roving Tab stop, whose arrow keys press the next code and move the focus to it (ruling R47); and
-// one change listener on the document that only schedules a pass (a Settings switch's state is a checkbox
-// property the observer cannot see; ruling R40).
+// Four exceptions to "attributes only", each a ruling's: ids for aria-owns (the results grid's and an open Settings
+// "More options" menu's), written only on what it lists and only as "msfsba-<n>" (an id the page set is used,
+// never replaced; rulings R46, R58); the runway condition's roving Tab stop (rulings R47, R54); one focus helper,
+// moveFocus, the only place the focus moves: the runway condition's arrow keys press the next code and move to
+// it (R47), and a "More options" menu takes the focus to its first item when it opens and back to its button when
+// it closes with the focus (R58); and one change listener on the document that only schedules a pass (a Settings
+// switch's state is a checkbox property the observer cannot see; ruling R40).
 // It runs in the top document only. Plain ES2017, no modules.
 (function () {
   if (window.__msfsbaFenixEfb) { return; }
@@ -183,6 +185,13 @@
     return null;
   }
 
+  // The one place the layer moves the focus (rulings R47, R58): the runway condition's arrows take it to the code they
+  // pressed, and a Settings "More options" menu takes it to its first item when it opens and back to its button when it
+  // closes and the focus is lost. Nothing else moves it.
+  function moveFocus(el) {
+    el.focus();
+  }
+
   function onButtonKey(e) {
     try {
       var activate = e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar';
@@ -206,8 +215,8 @@
       // A held key presses once, as the page's own buttons do.
       if (e.repeat) { return; }
       chosen.click();
-      // The arrow takes the focus to the code it pressed, as in any radio group: the one focus move the layer makes.
-      if (chosen !== el) { chosen.focus(); }
+      // The arrow takes the focus to the code it pressed, as in any radio group.
+      if (chosen !== el) { moveFocus(chosen); }
     } catch (err) { /* never throw into the page */ }
   }
 
@@ -1013,6 +1022,74 @@
       name(dots[i], setting ? 'More options for ' + setting : '');
     }
   });
+
+  // Settings: a three-dot button opens its menu as a CDK overlay at the end of <body> (ruling R58): a backdrop, then a
+  // pane holding div.overflow-menu and its items. The focus stayed on the button and the items were read nowhere near
+  // it, so the menu seemed empty. The open menu: exactly one three-dot button the page marks expanded, in its
+  // div.settings-overflow, and exactly one overlay pane holding a menu; null when there are none or more than one. The
+  // pane's backdrop is the element just before the pane's host, where CDK puts it.
+  function openMenu(root) {
+    var marked = root.querySelectorAll('app-settings2 .settings-overflow [aria-expanded="true"]');
+    var origins = [];
+    for (var i = 0; i < marked.length; i++) {
+      if (marked[i].matches('button.overflow-button')) { origins.push(marked[i]); }
+    }
+    var menus = root.querySelectorAll('.cdk-overlay-pane > div.overflow-menu');
+    if (origins.length !== 1 || menus.length !== 1) { return null; }
+    var pane = menus[0].parentElement;
+    var host = pane.parentElement;
+    var backdrop = host ? host.previousElementSibling : null;
+    return {
+      pane: pane,
+      container: origins[0].closest('div.settings-overflow'),
+      origin: origins[0],
+      backdrop: backdrop && backdrop.classList.contains('cdk-overlay-backdrop') ? backdrop : null
+    };
+  }
+
+  // A menu's first item the page has not disabled, or null.
+  function firstItem(pane) {
+    var items = pane.querySelectorAll('button.overflow-menu__item');
+    for (var i = 0; i < items.length; i++) {
+      if (!isDisabled(items[i])) { return items[i]; }
+    }
+    return null;
+  }
+
+  // The open menu as the layer saw it on the last pass (its pane, its button's container, the button recorded when it
+  // opened, its backdrop), or null.
+  var menu = null;
+
+  // While a menu is open, its button's container aria-owns the pane (the page's own id, else one of the layer's), so the
+  // items are read right after the button, and the backdrop is the button "Close menu", whose click closes the menu as
+  // a mouse click outside does. When a menu opens the focus goes to its first item that is not disabled; when it closes
+  // and the focus is lost with it (on the page's body, or still in the emptied pane), the focus goes back to the button
+  // the layer recorded when the menu opened, if that is still on the page. What the layer wrote for a menu goes with it.
+  function followMenu(root) {
+    var now = openMenu(root);
+    var was = menu;
+    var opened = now !== null && (was === null || was.pane !== now.pane);
+    if (now && !opened) { now.origin = was.origin; }
+    if (was) {
+      if (!now || now.container !== was.container) { ownState(was.container, 'aria-owns', null, ownsWritten); }
+      if (!now || now.pane !== was.pane) { dropId(was.pane); }
+      if (was.backdrop && (!now || now.backdrop !== was.backdrop)) { unbutton(was.backdrop); }
+      var gone = !was.pane.isConnected || !was.pane.querySelector('div.overflow-menu');
+      var active = document.activeElement;
+      var lost = !active || active === document.body || was.pane.contains(active);
+      if (!now && gone && lost && was.origin.isConnected) { moveFocus(was.origin); }
+    }
+    if (now) {
+      ownState(now.container, 'aria-owns', ownId(now.pane), ownsWritten);
+      if (now.backdrop) { button(now.backdrop, 'Close menu'); }
+      if (opened) {
+        var first = firstItem(now.pane);
+        if (first) { moveFocus(first); }
+      }
+    }
+    menu = now;
+  }
+  RULES.push(followMenu);
 
   // A Settings choice's name: its label's text, else (a choice that is only a picture) the picture's alt.
   function optionName(option) {

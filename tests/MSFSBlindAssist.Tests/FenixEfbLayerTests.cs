@@ -3,10 +3,11 @@
 // run Node, so these source scans pin what must hold without the jsdom tests: the script keeps its
 // guard, never makes a request, removes an element or writes a value, never fires an event, changes a
 // class or text, adds a node or stores anything (it only adds attributes and key handlers that call the
-// page's own click, and that click is its only one), moves the focus only from its key handler (the
-// runway condition's arrows, ruling R47), writes an id only as "msfsba-<n>" (ruling R46), ships with the
-// app, and is injected before the first navigation. How the layer behaves on the page is tested offline
-// in tools/fenix-efb-test.
+// page's own click, and that click is its only one), moves the focus only through one helper called from
+// its key handler (the runway condition's arrows, ruling R47) and its "More options" menu rule (R58),
+// writes an id only as "msfsba-<n>" (rulings R46, R58), ships with the app, and is injected before the
+// first navigation, after the window's Escape listener, which leaves Escape to an open overlay (R58). How
+// the layer behaves on the page is tested offline in tools/fenix-efb-test.
 
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
@@ -72,11 +73,11 @@ public class FenixEfbLayerTests
         Assert.DoesNotContain(banned, ReadScript());
     }
 
-    // The text of the key handler onButtonKey, from its opening brace to its closing one.
-    private static string KeyHandler(string script)
+    // Where a named function's body lies in the script: from its opening brace to its closing one.
+    private static (int Open, int Close) FunctionSpan(string script, string name)
     {
-        Match signature = Regex.Match(script, @"function\s+onButtonKey\s*\(");
-        Assert.True(signature.Success, "the key handler onButtonKey is not in the script");
+        Match signature = Regex.Match(script, @"function\s+" + name + @"\s*\(");
+        Assert.True(signature.Success, $"the function {name} is not in the script");
         int open = script.IndexOf('{', signature.Index);
         int depth = 0;
         int close = -1;
@@ -85,7 +86,14 @@ public class FenixEfbLayerTests
             if (script[i] == '{') depth++;
             else if (script[i] == '}' && --depth == 0) close = i;
         }
-        Assert.True(close > open, "onButtonKey has no closing brace");
+        Assert.True(close > open, $"{name} has no closing brace");
+        return (open, close);
+    }
+
+    // The text of the key handler onButtonKey, from its opening brace to its closing one.
+    private static string KeyHandler(string script)
+    {
+        (int open, int close) = FunctionSpan(script, "onButtonKey");
         return script.Substring(open, close - open + 1);
     }
 
@@ -99,18 +107,56 @@ public class FenixEfbLayerTests
         Assert.Contains(".click(", KeyHandler(script));
     }
 
-    // Ruling R49: the layer moves the focus in one place only, the runway condition's arrow keys (ruling R47), which
-    // press the next code and move to it: `.focus(` occurs exactly once in the whole text, inside onButtonKey, after
-    // its click.
+    // Rulings R49 and R58: the layer moves the focus through one helper, moveFocus, which holds the script's only `.focus(`.
+    // It is called from two places only: the key handler (the runway condition's arrows, ruling R47, after pressing the
+    // code they move to) and the "More options" menu rule followMenu (into an opened menu, and back to its button when
+    // it closes and the focus is lost, ruling R58).
     [Fact]
-    public void The_script_moves_the_focus_only_from_its_key_handler()
+    public void The_script_moves_the_focus_only_through_its_one_helper_from_the_key_handler_and_the_menu_rule()
     {
         string script = ReadScript();
         Assert.Single(Regex.Matches(script, Regex.Escape(".focus(")));
+        (int helperOpen, int helperClose) = FunctionSpan(script, "moveFocus");
+        int focusAt = script.IndexOf(".focus(", StringComparison.Ordinal);
+        Assert.True(focusAt > helperOpen && focusAt < helperClose, "`.focus(` is inside moveFocus");
+
+        (int keyOpen, int keyClose) = FunctionSpan(script, "onButtonKey");
+        (int menuOpen, int menuClose) = FunctionSpan(script, "followMenu");
+        var calls = Regex.Matches(script, @"(?<!function\s)\bmoveFocus\(").Select(m => m.Index).ToList();
+        Assert.NotEmpty(calls);
+        foreach (int call in calls)
+        {
+            bool inKeyHandler = call > keyOpen && call < keyClose;
+            bool inMenuRule = call > menuOpen && call < menuClose;
+            Assert.True(inKeyHandler || inMenuRule, $"moveFocus is called at {call}, outside the key handler and the menu rule");
+        }
+        Assert.Contains(calls, c => c > keyOpen && c < keyClose);
+        Assert.Contains(calls, c => c > menuOpen && c < menuClose);
+
         string handler = KeyHandler(script);
-        Assert.Contains(".focus(", handler);
-        Assert.True(handler.IndexOf(".click(", StringComparison.Ordinal) < handler.IndexOf(".focus(", StringComparison.Ordinal),
-            "the focus moves to the code the arrow pressed, after pressing it");
+        Assert.True(handler.IndexOf(".click(", StringComparison.Ordinal) < handler.IndexOf("moveFocus(", StringComparison.Ordinal),
+            "the arrow moves the focus to the code it pressed, after pressing it");
+    }
+
+    // Ruling R58: Escape closes an open CDK overlay (a "More options" menu, the Panel States pop-up) before the window. The
+    // window's injected capture-phase listener posts the close message only when no overlay pane with content is open;
+    // otherwise Escape is the page's (CdkConnectedOverlay and MatDialog close on it).
+    [Fact]
+    public void The_window_leaves_Escape_to_an_open_overlay_and_closes_otherwise()
+    {
+        string source = ReadForm();
+        Match call = Regex.Match(source,
+            @"AddScriptToExecuteOnDocumentCreatedAsync\(\s*(?<literals>(""(?:[^""\\]|\\.)*""\s*\+?\s*)+)\)",
+            RegexOptions.Singleline);
+        Assert.True(call.Success, "the Escape listener's injection is not in the form");
+        string listener = string.Concat(Regex.Matches(call.Groups["literals"].Value, @"""((?:[^""\\]|\\.)*)""")
+            .Select(m => m.Groups[1].Value));
+        Assert.Contains("msfsba-efb-close", listener);
+        Assert.Single(Regex.Matches(listener, Regex.Escape("postMessage(")));
+        Assert.Matches(new Regex(
+            @"^window\.addEventListener\('keydown',function\(e\)\{" +
+            @"if\(e\.key==='Escape'&&!document\.querySelector\('\.cdk-overlay-pane > \*'\)\)\{" +
+            @"window\.chrome\.webview\.postMessage\('msfsba-efb-close'\);\}\},true\);$"), listener);
     }
 
     // Ruling R49: the only ids the layer writes are its own, for the results grid's aria-owns (ruling R46): every
