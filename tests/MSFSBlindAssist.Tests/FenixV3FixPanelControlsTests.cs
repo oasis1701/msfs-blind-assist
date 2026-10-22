@@ -143,6 +143,20 @@ public class FenixV3FixPanelControlsTests : IDisposable
     }
 
     [Fact]
+    public void Typed_baro_leaves_std_with_a_push_step()
+    {
+        // An absolute 0 is no change when the count already reads 0 (a push from QNH, then a pull):
+        // the side stayed in STD while the typed QNH went in.
+        string body = FoFbwUnclaimedEventKeyTests.MethodBody(DefinitionPath, "SetFCUBaro");
+        Assert.Contains("CounterStepCode($\"S_FCU_EFIS{efis}_BARO_STD\", -1)", body);
+        Assert.Contains("ExecuteCalculatorCodeUnique(", body);
+        Assert.DoesNotContain("SetLVar($\"S_FCU_EFIS{efis}_BARO_STD\"", body);
+
+        // Nothing in the definition writes the STD counter as an absolute value.
+        Assert.DoesNotMatch(@"SetLVar\(\$?""S_FCU_EFIS[^""]*_BARO_STD""", File.ReadAllText(DefinitionPath));
+    }
+
+    [Fact]
     public void Spring_switches_return_to_the_middle()
     {
         foreach (var key in new[] { "S_OH_CARGO_DISC_1_OLD_LAYOUT", "S_OH_CARGO_DISC_2_OLD_LAYOUT" })

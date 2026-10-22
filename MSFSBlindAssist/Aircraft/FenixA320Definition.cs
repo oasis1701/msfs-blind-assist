@@ -12425,11 +12425,13 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             string[] efisIds = { "1", "2" };
             foreach (var efis in efisIds)
             {
-                // Switch from STD to QNH if needed
+                // Switch from STD to QNH if needed: one push step from the sim's own count (the
+                // STD knob is a push/pull counter, any decrease selects QNH). An absolute 0 was no
+                // change when the count already read 0, and the side stayed in STD.
                 double? qnhStatus = simConnect.GetCachedVariableValue($"I_FCU_EFIS{efis}_QNH");
                 if (qnhStatus != null && qnhStatus.Value < 0.5)
                 {
-                    simConnect.SetLVar($"S_FCU_EFIS{efis}_BARO_STD", 0);
+                    simConnect.ExecuteCalculatorCodeUnique(CounterStepCode($"S_FCU_EFIS{efis}_BARO_STD", -1));
                     await System.Threading.Tasks.Task.Delay(750);
                 }
 
