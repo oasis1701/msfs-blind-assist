@@ -36,10 +36,11 @@ public static class FenixFlowDefinitions
     /// own N2, with stock as the fallback (FenixStateEvaluator.EngineN2).</summary>
     private const double EngRunningN2 = FenixStateEvaluator.EngineRunningN2;
 
-    /// <summary>How long each engine-start wait lets the engine spool before the flow stops. The IAE
-    /// FADEC dry-cranks about 30 s before ignition and fuel on every auto start (the Fenix option
-    /// iae_crank_type offers 30 or 50 s), so 120 s was too tight there; 180 s is margin, not a
-    /// measured start time.</summary>
+    /// <summary>How long each engine-start wait lets the engine spool before the flow stops. Sourced
+    /// (Airbus instructor notes, plan 05 O2): the IAE FADEC dry-cranks 30 s before ignition and fuel
+    /// on every auto start, and the Fenix option iae_crank_type offers 30 or 50 s of it. Assumed: 180 s
+    /// is margin over that (120 s was the old wait), not a measured start time; plan 05's in-sim check
+    /// times it.</summary>
     internal const int EngineStartTimeoutSeconds = 180;
 
     // [RADAR] Weather radar OFF/ON values — confirmed against the def's registered
@@ -410,8 +411,11 @@ public static class FenixFlowDefinitions
             // Advise the cabin crew: hit CALL ALL and release (momentary chime). The ONE cabin call
             // before takeoff, here at line-up since 2026-10-19 (owner; in Taxi from 2026-10-09).
             // In v3 the call only hurries the purser; it does not set CABIN READY. Linked to the
-            // Line-up Checklist's cabin line, which the pilot confirms: a call that could not be
-            // sent keeps that line open.
+            // Line-up Checklist's cabin line, a Reminder nothing auto-detects: the link ticks it
+            // when the call goes out (FO-6) and a call that could not be sent keeps it open. So the
+            // tick says the call was sent, not that the cabin is ready; the line's live value is the
+            // purser's own report and can still say "not reported" on a ticked line. Unlinking would
+            // not stop the tick: a finished flow ticks every line no step skipped (FO-7).
             Also(Done(SW("LU_CABIN", "Advise the cabin crew for takeoff (call all)", "CABIN_CALL_ALL", 1), "LU_CABIN"),
                 "LUC_CABIN"),
             // Also the Line-up Checklist's "TCAS: TA/RA" (FO-6).

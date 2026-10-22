@@ -661,8 +661,11 @@ public static class FenixChecklistDefinitions
         {
             Reminder("LUC_RUNWAY", "LINEUP_CL", "Takeoff runway: CONFIRMED"),
             // The takeoff memo's cabin line, here since the cabin call moved to the Line-up flow
-            // (owner, 2026-10-19; FOA-8). Still the pilot's to confirm; the live value is the
-            // purser's own report from the Fenix data service (v3), never the call we sent.
+            // (owner, 2026-10-19; FOA-8). A Reminder: nothing auto-detects it. The Line-up flow's call
+            // step LU_CABIN links it, so a call that went out ticks it (FO-6), and a finished flow ticks
+            // it whether or not the purser has reported (FO-7); the pilot can tick it too. The live
+            // value is the purser's own report from the Fenix data service (v3), never the call we
+            // sent, and can say "not reported" on a ticked line.
             Reminder("LUC_CABIN", "LINEUP_CL", "Cabin: READY", s => s.CabinReadyText()),
             Auto("LUC_TCAS", "LINEUP_CL", "TCAS: TA/RA",
                 "S_XPDR_MODE", v => Math.Abs(v - 2) < 0.5, action: null,
@@ -703,7 +706,9 @@ public static class FenixChecklistDefinitions
                 FenixGearConfirmation.DownField, v => v > 0.5, action: null),
             Auto("LDC_MEMO_SIGNS", "LANDING_CL", "Signs: ON",
                 "S_OH_SIGNS", v => v > 0.5, action: null),
-            // Same as LUC_CABIN: the pilot confirms, the live value is the purser's report.
+            // A Reminder like LUC_CABIN, with no flow step linked to it: the Landing flow's completion
+            // ticks it as it does every line no step delivers (FO-7), whatever the purser has reported,
+            // and the pilot can tick it too. The live value is the purser's report.
             Reminder("LDC_MEMO_CABIN", "LANDING_CL", "Cabin: READY", s => s.CabinReadyText()),
             Auto("LDC_MEMO_SPLRS", "LANDING_CL", "Spoilers: ARMED",
                 "A_FC_SPEEDBRAKE", v => Math.Abs(v) < 0.5, action: null),

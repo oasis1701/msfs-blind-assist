@@ -202,15 +202,15 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
             // Each engine's N2: the Fenix's own while it is fresh, the stock value otherwise.
             case "FO_ENG1_N2": value = EngineN2(1); return true;
             case "FO_ENG2_N2": value = EngineN2(2); return true;
-            // The purser's cabin-ready report from the Fenix's data service: 1, 0, or NaN until it says.
-            case CabinReadyField: value = _live.CabinReady; return true;
-            // The Fenix's total fuel in kilograms: NaN until the data service has said, then FuelText takes it.
-            case FuelTotalKgField: value = _live.FuelTotalKg; return true;
             // NaN until both N2 answers are in (either source): unknown is never "engines off" (the
             // power-up guard EPU_ENGINES_STOPPED and the Parking checklist's "Engines: OFF" read it).
             case "FO_ENGINES_OFF":
                 value = Both(GetValue("FO_ENG1_N2"), GetValue("FO_ENG2_N2"), (n1, n2) => n1 < 20 && n2 < 20);
                 return true;
+            // The purser's cabin-ready report from the Fenix's data service: 1, 0, or NaN until it says.
+            case CabinReadyField: value = _live.CabinReady; return true;
+            // The Fenix's total fuel in kilograms: NaN until the data service has said, then FuelText takes it.
+            case FuelTotalKgField: value = _live.FuelTotalKg; return true;
             // Something to carry the buses once the engine generators go (Shutdown's
             // SD_POWER_SOURCE): the APU AVAIL legend or external power's ON legend lit. Either lit
             // is enough; both dark is 0; anything unread is NaN.
@@ -236,9 +236,9 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
     // ---- Engine N2: the Fenix's own value, stock as the per-engine fallback ----------------------
 
     /// <summary>The N2 the First Officer judges an engine by: the Fenix's own when it is known and
-    /// fresh (<see cref="FenixFoLiveReadings.N2"/> reads NaN past 5 s, and the data service pushes on
-    /// change, so a flat value goes stale), else the stock value the window pushes each second,
-    /// which is NaN until its first answer.</summary>
+    /// fresh (<see cref="FenixFoLiveReadings.N2"/> reads NaN past 5 s: a value older than that is not
+    /// trusted, whether the service stopped or only had nothing new to send, which is not measured),
+    /// else the stock value the window pushes each second, which is NaN until its first answer.</summary>
     private double EngineN2(int engine)
     {
         double fenix = _live.N2(engine);

@@ -15,9 +15,9 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 /// <summary>
 /// In Fenix v3 the virtual purser reports the cabin ready; a cockpit cabin call only hurries the
 /// purser. So the Line-up and Landing checklists' "Cabin: READY" lines read the Fenix data
-/// service's own cabin-ready flag and speak "reported ready" or "not reported", and stay lines the
-/// pilot confirms. The flag arrives through the callback a fake subscription captured, as the data
-/// service would push it from its own thread (FNX-2).
+/// service's own cabin-ready flag and speak "reported ready" or "not reported", and stay Reminders
+/// (nothing auto-detects them from the report). The flag arrives through the callback a fake
+/// subscription captured, as the data service would push it from its own thread (FNX-2).
 /// </summary>
 public class FenixFoCabinReadyTests
 {
@@ -79,8 +79,10 @@ public class FenixFoCabinReadyTests
     [Theory, MemberData(nameof(CabinLines))]
     public void Cabin_lines_stay_pilot_confirmed_reminders(string id)
     {
-        // The purser's report is shown, never ticked for the pilot (FOA-8): no state field to
-        // auto-detect on and no action to run on a hand-tick.
+        // Reminders (FOA-8): the purser's report is only shown. There is no state field to
+        // auto-detect on and no action to run on a hand-tick. The lines can still be ticked: by the
+        // Line-up flow's call step, which links LUC_CABIN, and by a finished flow's sweep (FO-7,
+        // which also ticks LDC_MEMO_CABIN); that is not tested here.
         var item = Item(id);
         Assert.Equal(ChecklistItemType.CaptainReminder, item.Type);
         Assert.Null(item.StateFieldName);

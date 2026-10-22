@@ -5,14 +5,18 @@ namespace MSFSBlindAssist.FirstOfficer.Fenix;
 /// <summary>
 /// The six values the Fenix First Officer reads from the Fenix's own data service rather than from
 /// L:vars: both engines' N2 and running flag, the cabin-ready signal and the total fuel in kilograms.
-/// The service pushes them on change from a thread-pool thread (FNX-2), so they are stored here under
-/// one lock and read by the evaluator's synthetic fields; nothing in this class speaks.
+/// The service pushes them from a thread-pool thread (FNX-2), so they are stored here under one lock
+/// and read by the evaluator's synthetic fields; nothing in this class speaks.
 ///
 /// A value the service has not sent, sent as unknown, or sent as the wrong kind reads NaN, never 0 or
-/// false (FNX-1). N2 also reads NaN once it is older than <see cref="N2StaleAfterMs"/>: it moves every
-/// frame while an engine turns, so a reading that stopped arriving (the service restarted, the socket
-/// is down) must not keep saying "running". The flags and the fuel change rarely and are pushed on
-/// change, so they keep their last value.
+/// false (FNX-1). N2 also reads NaN once it is older than <see cref="N2StaleAfterMs"/>: a reading that
+/// stopped arriving (the service restarted, the socket is down) must not keep saying "running", so a
+/// value older than 5 s is not trusted and the stock N2 serves instead. Measured (plan 05, 2026-10-21,
+/// IAE A321 at idle): the Fenix N2 changed between reads (five reads spanned 62.31 to 62.44). Plan 09
+/// states the gateway's stream as 30-45 Hz but cites no measurement for the figure. Not measured: how
+/// often the service sends a value that does not change (a stopped engine, a dry crank), so a steady
+/// N2 may also go stale here and fall back to the stock value. The flags and the fuel are not aged:
+/// they keep their last value, on the assumption (not measured) that they change rarely.
 /// </summary>
 public sealed class FenixFoLiveReadings
 {

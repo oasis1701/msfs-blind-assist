@@ -43,8 +43,9 @@ public class FenixFlowParityTests
     }
 
     /// <summary>Each engine-start wait reads N2 (55 % or more; the Fenix idles at 59.3 % CFM, 62.3 %
-    /// IAE), stops the flow on a 180 s timeout (the IAE start takes longer than the old 120 s), and
-    /// completes its own "Engine n: running" line, which reads the same N2 field (FO-6).</summary>
+    /// IAE), stops the flow on a 180 s timeout, and completes its own "Engine n: running" line, which
+    /// reads the same N2 field (FO-6). The 180 s is assumed margin over the IAE's sourced 30 s dry
+    /// crank (the Fenix offers 30 or 50 s), not a measured start time; plan 05's in-sim check times it.</summary>
     [Theory]
     [InlineData(1)]
     [InlineData(2)]

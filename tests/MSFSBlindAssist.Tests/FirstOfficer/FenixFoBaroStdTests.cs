@@ -19,8 +19,9 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 /// </summary>
 public class FenixFoBaroStdTests
 {
-    // The knob's counter, spelled apart so this file does not name what the evaluator source no longer may.
+    // The two baro knobs' push/pull counters, which the baro line must not read; Counter is the captain's.
     private const string Counter = "S_FCU_EFIS1_BARO_STD";
+    private const string Counter2 = "S_FCU_EFIS2_BARO_STD";
     private const string Light1 = "I_FCU_EFIS1_QNH";
     private const string Light2 = "I_FCU_EFIS2_QNH";
 
@@ -113,8 +114,8 @@ public class FenixFoBaroStdTests
         var polled = new FenixStateEvaluator().OnRequestPollFields;
         Assert.Contains(Light1, polled);
         Assert.Contains(Light2, polled);
-        Assert.DoesNotContain("S_FCU_EFIS1_BARO_STD", polled);
-        Assert.DoesNotContain("S_FCU_EFIS2_BARO_STD", polled);
+        Assert.DoesNotContain(Counter, polled);
+        Assert.DoesNotContain(Counter2, polled);
 
         // Both lights are registered Continuous and announced, so the cache holds them.
         var vars = new FenixA320Definition().GetVariables();
@@ -132,7 +133,7 @@ public class FenixFoBaroStdTests
             FoFbwUnclaimedEventKeyTests.ExecutorSourcePath("Fenix", "FenixStateEvaluator.cs"));
         Assert.Contains("\"I_FCU_EFIS1_QNH\"", source);
         Assert.Contains("\"I_FCU_EFIS2_QNH\"", source);
-        Assert.DoesNotContain("S_FCU_EFIS1_BARO_STD", source);
-        Assert.DoesNotContain("S_FCU_EFIS2_BARO_STD", source);
+        Assert.DoesNotContain(Counter, source);
+        Assert.DoesNotContain(Counter2, source);
     }
 }
