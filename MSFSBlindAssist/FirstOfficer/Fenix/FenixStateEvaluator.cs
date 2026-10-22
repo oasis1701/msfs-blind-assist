@@ -92,7 +92,13 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
 
     // ---- The Fenix's own data (engine N2 and running, cabin ready, total fuel) ------------------
     // Read by the synthetic fields; private because the class is sealed.
-    private readonly FenixFoLiveReadings _live = new();
+    private readonly FenixFoLiveReadings _live;
+
+    public FenixStateEvaluator() => _live = new FenixFoLiveReadings();
+
+    /// <summary>Tests only: the monotonic clock (milliseconds) <see cref="FenixFoLiveReadings"/> ages its N2
+    /// readings by, so the 5 s staleness can be crossed without waiting it out.</summary>
+    internal FenixStateEvaluator(Func<long> clockMs) => _live = new FenixFoLiveReadings(clockMs);
 
     // Guards the attach state below AND every delivery into _live, so a delivery and a switch never
     // interleave. The data service may still deliver a value after its handle is disposed (a callback

@@ -93,6 +93,34 @@ public class FenixFoEngineRunningTests
         Assert.True(double.IsNaN(new FenixStateEvaluator().GetValue("FO_ENGINES_OFF")));
     }
 
+    // Review Focus 1: the gateway stops or restarts and its last answer freezes at 0 % while the stock
+    // model still shows both engines at idle. The Fenix value is what the guards read until it is 5 s
+    // old; after that it is not trusted and stock serves, so a frozen 0 never passes the power-up
+    // guard (EPU_ENGINES_STOPPED reads FO_ENGINES_OFF, FO-25) over engines that may be running. The
+    // clock is the evaluator's own seam for FenixFoLiveReadings, so the 5 s need not be waited out.
+    [Fact]
+    public void A_frozen_gateway_stops_reading_engines_off_once_the_Fenix_value_is_five_seconds_old()
+    {
+        long nowMs = 0;
+        var e = new FenixStateEvaluator(() => nowMs);
+        var fenix = new FakeSubscription();
+        e.AttachFenix(new object(), () => FenixVariant.Unknown, fenix.Subscribe);
+
+        fenix.Callback!(FenixFoLiveReadings.Engine1N2, Num(0.0));      // pushed at t = 0, then nothing more
+        fenix.Callback!(FenixFoLiveReadings.Engine2N2, Num(0.0));
+        e.SetEngineN2(62.0, 62.0);
+
+        nowMs = 4_999;                                                  // still fresh: the Fenix value, not stock
+        Assert.Equal(0.0, e.GetValue("FO_ENG1_N2"));
+        Assert.Equal(0.0, e.GetValue("FO_ENG2_N2"));
+        Assert.Equal(1, e.GetValue("FO_ENGINES_OFF"));
+
+        nowMs = 5_001;                                                  // stale: stock serves
+        Assert.Equal(62.0, e.GetValue("FO_ENG1_N2"));
+        Assert.Equal(62.0, e.GetValue("FO_ENG2_N2"));
+        Assert.Equal(0, e.GetValue("FO_ENGINES_OFF"));
+    }
+
     [Fact]
     public void Detaching_or_switching_source_returns_to_stock()
     {

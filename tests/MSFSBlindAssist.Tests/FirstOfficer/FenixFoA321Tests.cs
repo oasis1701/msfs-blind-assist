@@ -45,7 +45,7 @@ public class FenixFoA321Tests
     [InlineData(FenixAircraftType.A318)]
     [InlineData(FenixAircraftType.A319)]
     [InlineData(FenixAircraftType.A320)]
-    public void Other_variants_and_an_unknown_one_keep_pack_flow_normal(FenixAircraftType type)
+    public void A320_and_unknown_keep_pack_flow_normal(FenixAircraftType type)
     {
         var e = Attached(FenixVariant.Unknown with { Type = type });
         var step = PackFlowStep();

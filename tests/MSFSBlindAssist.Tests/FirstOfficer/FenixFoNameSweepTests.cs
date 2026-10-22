@@ -81,7 +81,9 @@ public class FenixFoNameSweepTests
                     if (item.StateFieldName != null) Probe($"{at} StateFieldName", () => state.GetValue(item.StateFieldName));
                     foreach (var field in item.AdditionalStateFields)
                         Probe($"{at} AdditionalStateFields", () => state.GetValue(field));
-                    if (item.LiveValue != null) Probe($"{at} ReadLiveValue", () => item.ReadLiveValue(state));
+                    // LiveValue itself, not ReadLiveValue: that one catches and logs a throw (a live value
+                    // must never cost the pilot a tick), which would hide it from the promise above.
+                    if (item.LiveValue != null) Probe($"{at} LiveValue", () => item.LiveValue(state));
                     if (item.LeaveAloneWhen != null) Probe($"{at} LeaveAloneWhen", () => item.LeaveAloneWhen(state));
                 }
         }
