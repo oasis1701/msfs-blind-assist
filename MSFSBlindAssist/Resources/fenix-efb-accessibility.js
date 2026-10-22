@@ -1,7 +1,7 @@
 // Fenix EFB accessibility layer, injected into the Fenix EFB web page by FenixEFBForm.
 // It only adds roles, names, states, Tab stops and key handlers that call the page's own click (and takes
-// back a name it wrote itself, and shows the two tab-bar arrows the page hides from a screen reader) --
-// never a request, a removed element, written text or a written value.
+// back what it wrote itself when the page moves on) -- never a request, a removed element, written text or
+// a written value, and never an override of a page's own aria-hidden, aria-label, role or tabindex.
 // It runs in the top document only. Plain ES2017, no modules.
 (function () {
   if (window.__msfsbaFenixEfb) { return; }
@@ -30,6 +30,18 @@
   // The aria-label the layer wrote on each element. A label that is there and is not the one written is
   // the page's, and the layer never touches it; the one it wrote it keeps in step with the text.
   var written = new WeakMap();
+
+  // The elements the layer currently treats as buttons. A key on any other element is not its business: a
+  // listener cannot be taken off an element, so a withdrawn one keeps its listener and the handler checks.
+  var pressable = new WeakSet();
+  // The elements whose role the layer wrote (a page's own role is never removed).
+  var wroteRole = new WeakSet();
+  // The tabindex an element had before the layer set it to 0: the attribute's text, or null for none. Its
+  // presence means the layer wrote the 0. It is put back when the control stops being a button or is
+  // disabled.
+  var tabOriginal = new WeakMap();
+  // The aria-expanded the layer wrote on the app switcher's chevron (the way `written` keeps a label).
+  var expandedWritten = new WeakMap();
 
   function collect(node, out, isRoot) {
     if (node.nodeType === 3) { out.push(node.nodeValue); return; }
@@ -82,10 +94,29 @@
     mark(el);
   }
 
+  // True when the page marks the control unavailable: aria-disabled "true", the disabled attribute or
+  // property, or Material's mat-tab-disabled class.
+  function isDisabled(el) {
+    return el.getAttribute('aria-disabled') === 'true' || el.hasAttribute('disabled') || el.disabled === true ||
+      el.classList.contains('mat-tab-disabled');
+  }
+
+  // Puts the tabindex back to what it was before the layer set it to 0 (none, or the page's own -1). A
+  // tabindex the page has changed since is the page's, and stays.
+  function restoreTab(el) {
+    if (!tabOriginal.has(el)) { return; }
+    var original = tabOriginal.get(el);
+    tabOriginal.delete(el);
+    if (el.getAttribute('tabindex') !== '0') { return; }
+    if (original === null) { el.removeAttribute('tabindex'); } else { el.setAttribute('tabindex', original); }
+  }
+
   function onButtonKey(e) {
     try {
       if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') { return; }
       if (e.altKey || e.ctrlKey || e.metaKey) { return; }
+      // A withdrawn element, or one the page has disabled, is not pressed and its keys stay the page's.
+      if (!pressable.has(e.currentTarget) || isDisabled(e.currentTarget)) { return; }
       var target = e.target;
       // Typing in a text box is never caught.
       var tag = target && target.localName ? target.localName.toLowerCase() : '';
@@ -100,16 +131,37 @@
 
   // Makes an element a button a keyboard and a screen reader can use: a role, a Tab stop, a name, and
   // Enter / Space calling the page's own click. A role or a label the page gave is kept; an element the
-  // Tab key skips (no tabindex, or a negative one) gets tabindex 0.
+  // Tab key skips (no tabindex, or a negative one) gets tabindex 0 -- unless the page marks it disabled,
+  // which is no Tab stop and takes no key (a tab stop the layer gave before is taken back).
   function button(el, text) {
-    if (!el.getAttribute('role')) { el.setAttribute('role', 'button'); }
-    if (el.tabIndex < 0) { el.setAttribute('tabindex', '0'); }
+    if (!el.getAttribute('role')) { el.setAttribute('role', 'button'); wroteRole.add(el); }
+    if (isDisabled(el)) {
+      restoreTab(el);
+    } else if (el.tabIndex < 0) {
+      tabOriginal.set(el, el.getAttribute('tabindex'));
+      el.setAttribute('tabindex', '0');
+    }
     name(el, text);
     mark(el);
+    pressable.add(el);
     if (!handled.has(el)) {
       handled.add(el);
       el.addEventListener('keydown', onButtonKey);
     }
+  }
+
+  // Takes back what button() gave an element, and only what the layer wrote itself: its role, its tab stop
+  // (put back to what it was), its label and its stamp. The listener stays; the handler ignores the element.
+  function unbutton(el) {
+    if (!pressable.has(el)) { return; }
+    pressable.delete(el);
+    if (wroteRole.has(el)) {
+      if (el.getAttribute('role') === 'button') { el.removeAttribute('role'); }
+      wroteRole.delete(el);
+    }
+    restoreTab(el);
+    name(el, '');
+    if (el.getAttribute(MARK) === '1') { el.removeAttribute(MARK); }
   }
 
   // Each rule is a function (root). Later tasks add their rules here; a rule that fails never stops the
@@ -133,23 +185,34 @@
 
   // Every app: the top bar's chevron opens the app switcher. It is a bare div and the only way to the
   // switcher. Where the page hides it (home, quick settings: class top-bar-slot-hidden, aria-hidden
-  // "true") it is no Tab stop, also if it was one a moment ago. While it is shown, the page's own icon says
-  // whether the switcher is open: the chevron points up while it is, down while it is closed.
+  // "true") it is no Tab stop, also if it was one a moment ago (the tab stop the layer gave is taken back).
+  // While it is shown, the page's own icon says whether the switcher is open: the chevron points up while
+  // it is, down while it is closed. That aria-expanded is the layer's own only while the layer wrote it: a
+  // state the page sets is never touched, and an icon the layer does not know takes back only its own.
   RULES.push(function (root) {
     var arrows = root.querySelectorAll('div.popup-arrow');
     for (var i = 0; i < arrows.length; i++) {
       var arrow = arrows[i];
       if (arrow.getAttribute('aria-hidden') === 'true' || arrow.classList.contains('top-bar-slot-hidden')) {
-        if (handled.has(arrow) && arrow.getAttribute('tabindex') === '0') { arrow.setAttribute('tabindex', '-1'); }
+        restoreTab(arrow);
       } else {
         button(arrow, 'App switcher');
         var icon = arrow.querySelector('i');
         var expanded = null;
         if (icon && icon.classList.contains('fa-chevron-up')) { expanded = 'true'; }
         else if (icon && icon.classList.contains('fa-chevron-down')) { expanded = 'false'; }
-        // An icon the layer does not know says nothing: a state it wrote before is taken back.
-        if (expanded !== null) { setAttr(arrow, 'aria-expanded', expanded); }
-        else if (arrow.hasAttribute('aria-expanded')) { arrow.removeAttribute('aria-expanded'); }
+        var existing = arrow.getAttribute('aria-expanded');
+        var mine = expandedWritten.get(arrow);
+        var ours = mine !== undefined && existing === mine;
+        if (existing !== null && !ours) {
+          expandedWritten.delete(arrow); // the page's own state: not ours to change or take back
+        } else if (expanded !== null) {
+          setAttr(arrow, 'aria-expanded', expanded);
+          expandedWritten.set(arrow, expanded);
+        } else {
+          if (ours) { arrow.removeAttribute('aria-expanded'); }
+          expandedWritten.delete(arrow);
+        }
       }
     }
   });
@@ -184,34 +247,55 @@
 
   // ---- The Fenix app: My Flights, Ground Services, Mass and Balance, Panel States ----
 
-  // The app's tab bar (Angular Material's nav bar). Its two paging arrows have no text. Material also hides
-  // them from a screen reader (aria-hidden "true"), and a hidden control has no name, so they are shown; they
-  // stay as the page has them otherwise (disabled when there is nothing to scroll, out of the Tab order, a
-  // real button that answers its own keys). The Panel States tab is a link with no href, so it has no role
-  // and a screen reader does not say it can be pressed: it becomes a button. The links that have an href
-  // are links already and are left alone.
+  // The app's tab bar (Angular Material's nav bar). Its two paging arrows have no text: they get their
+  // decision-5 names as a label. Material marks them aria-hidden "true" and the layer never overrides a
+  // page's own aria-hidden, so they keep it (a screen reader meets them only if the page ever shows them);
+  // they stay as the page has them otherwise (disabled when there is nothing to scroll, out of the Tab
+  // order, real buttons that answer their own keys). The Panel States tab is a link with no href, so it has
+  // no role and a screen reader does not say it can be pressed: it becomes a button. The links that have an
+  // href are links already and are left alone.
   RULES.push(function (root) {
     var arrows = root.querySelectorAll(
       '.mat-tab-nav-bar button.mat-tab-header-pagination-before, .mat-tab-nav-bar button.mat-tab-header-pagination-after');
     for (var i = 0; i < arrows.length; i++) {
       var before = arrows[i].classList.contains('mat-tab-header-pagination-before');
-      if (arrows[i].getAttribute('aria-hidden') === 'true') { arrows[i].setAttribute('aria-hidden', 'false'); }
       name(arrows[i], before ? 'Previous tabs' : 'Next tabs');
     }
     var links = root.querySelectorAll('.mat-tab-nav-bar a.mat-tab-link:not([href])');
     for (var j = 0; j < links.length; j++) { button(links[j], textOf(links[j])); }
   });
 
-  // My Flights: three cards (flight, route, weather), each with a zone that imports from SimBrief when
-  // pressed. The zone is a bare div whose text is the same on all three, so its name starts with the card's
-  // own title row ("A320 Flight", "Route", "Weather").
+  // The title row of the My Flights card holding an element ("A320 Flight", "Route", "Weather").
+  function cardTitle(card) {
+    return textOf(card ? card.querySelector('.slide-title') : null);
+  }
+
+  // My Flights: three cards (flight, route, weather) slide past each other; the page marks the one in front
+  // active-tab. Only the active card's import zone is offered: it imports from SimBrief when pressed, and
+  // its text is the same on all three, so its name starts with the card's title ("A320 Flight: Tap to
+  // import from simbrief"). A side card's zone is not a button, and one that stops being the active card's
+  // is withdrawn (what the layer wrote is taken back, nothing else).
   RULES.push(function (root) {
     var zones = root.querySelectorAll('div.import-sb-zone');
     for (var i = 0; i < zones.length; i++) {
-      var card = zones[i].closest('.slide-content') || zones[i].parentElement;
-      var heading = textOf(card ? card.querySelector('.slide-title') : null);
+      var card = zones[i].closest('.slide-content');
+      if (card && !card.classList.contains('active-tab')) { unbutton(zones[i]); continue; }
+      var heading = cardTitle(card || zones[i].parentElement);
       var text = textOf(zones[i]);
       button(zones[i], heading && text ? heading + ': ' + text : (heading || text));
+    }
+  });
+
+  // My Flights: a side card lies under a div.slide-prevent-click; pressing it slides that card to the front
+  // and imports nothing. It is the button "Show <card title>", and Enter is its own click. The page adds and
+  // removes the overlay itself (the active card has none); one that sits in an active card, or has no card
+  // title to name it by, is withdrawn.
+  RULES.push(function (root) {
+    var overlays = root.querySelectorAll('app-my-flight-tab .slide-prevent-click');
+    for (var i = 0; i < overlays.length; i++) {
+      var card = overlays[i].closest('.slide-content');
+      var heading = card && !card.classList.contains('active-tab') ? cardTitle(card) : '';
+      if (heading) { button(overlays[i], 'Show ' + heading); } else { unbutton(overlays[i]); }
     }
   });
 
@@ -317,14 +401,19 @@
     return m ? String(Math.round(Math.min(100, parseFloat(m[1])) * 100) / 100) : null;
   }
 
-  // Loading notices: the page's notice becomes a polite live region and its progress bar a progress bar with
-  // its value. A live region or a bar role the page set is the page's: a bar with another role is left alone.
+  // Loading notices: the page's notice becomes a polite live region (a live region the page set is the
+  // page's) ...
   RULES.push(function (root) {
     var notices = root.querySelectorAll('fap-notification');
     for (var i = 0; i < notices.length; i++) {
       if (!notices[i].getAttribute('aria-live')) { notices[i].setAttribute('aria-live', 'polite'); }
       mark(notices[i]);
     }
+  });
+
+  // ... and its progress bar a progress bar with its value. A bar the page gave another role is the page's
+  // and is left alone. A rule of its own, so a failure in the notice rule never skips the bars.
+  RULES.push(function (root) {
     var bars = root.querySelectorAll('fap-progress-bar');
     for (var j = 0; j < bars.length; j++) {
       var role = bars[j].getAttribute('role');
@@ -348,8 +437,9 @@
   }
 
   // One pass per 50 ms however many mutations arrive. The observer sees child-list changes, text changes
-  // (Angular updates a text node in place) and the class attribute, so the layer's own writes (role,
-  // aria-*, tabindex, data-msfsba: attributes, never text or nodes) never wake it.
+  // (Angular updates a text node in place), the class attribute and the two attributes a page disables a
+  // control with (aria-disabled, disabled), so the layer's own writes (role, aria-label and the other
+  // aria-* it writes, tabindex, data-msfsba: attributes, never text or nodes, never those two) never wake it.
   var timer = null;
   function schedule() {
     if (timer !== null) { return; }
@@ -365,7 +455,8 @@
       new MutationObserver(function () {
         try { schedule(); } catch (err) { /* never throw into the page */ }
       }).observe(document.body, {
-        childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class']
+        childList: true, subtree: true, characterData: true, attributes: true,
+        attributeFilter: ['class', 'aria-disabled', 'disabled']
       });
     } catch (err) { /* never throw into the page */ }
   }

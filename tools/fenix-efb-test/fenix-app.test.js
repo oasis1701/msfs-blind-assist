@@ -150,31 +150,155 @@ test('A_box_the_layer_cannot_place_in_a_table_is_named_by_what_the_page_gives_it
   }
 });
 
+// The three My Flights cards in page order, as captured: A320 Flight is the active card, Route sits to the
+// right and Weather to the left, each side card under a div.slide-prevent-click overlay.
+const cardsOf = window => all(window, 'app-my-flight-tab .slide-content');
+const zoneOf = card => card.querySelector('div.import-sb-zone');
+const overlayOf = card => card.querySelector('.slide-prevent-click');
+const IMPORT = ': Tap to import from simbrief';
+
+// What the layer writes on a pressable element. A withdrawn or never-stamped element carries none of it.
+const layerStamp = el => ({
+  role: el.getAttribute('role'),
+  tabindex: el.getAttribute('tabindex'),
+  label: el.getAttribute('aria-label'),
+  mark: el.getAttribute('data-msfsba')
+});
+const NO_STAMP = { role: null, tabindex: null, label: null, mark: null };
+
 test('My_flight_cards_are_buttons', async () => {
   const window = await load('my-flight');
   try {
-    const zones = all(window, 'div.import-sb-zone');
-    assert.strictEqual(zones.length, 3);
-    // The card title comes from the page's own title row; the zone's own text follows it.
-    assert.deepStrictEqual(zones.map(nameOf), [
-      'A320 Flight: Tap to import from simbrief',
-      'Route: Tap to import from simbrief',
-      'Weather: Tap to import from simbrief'
-    ]);
-    for (const zone of zones) {
-      assert.strictEqual(zone.getAttribute('role'), 'button');
-      assert.strictEqual(zone.tabIndex, 0);
-    }
+    const [flight, route, weather] = cardsOf(window);
+    assert.deepStrictEqual([flight, route, weather].map(c => c.className.match(/(active|right|left)-tab/)[0]),
+      ['active-tab', 'right-tab', 'left-tab'], 'the capture\'s cards');
+
+    // Only the active card's import zone is a button: the card title comes from the page's own title row,
+    // the zone's own text follows it.
+    const zone = zoneOf(flight);
+    assert.strictEqual(zone.getAttribute('role'), 'button');
+    assert.strictEqual(zone.tabIndex, 0);
+    assert.strictEqual(nameOf(zone), 'A320 Flight' + IMPORT);
+    // The side cards' zones are not offered: pressing a side card's zone is not how the page imports.
+    for (const card of [route, weather]) assert.deepStrictEqual(layerStamp(zoneOf(card)), NO_STAMP);
 
     let clicks = 0;
-    zones[0].click = () => { clicks++; };
-    assert.ok(press(window, zones[0], { key: 'Enter' }).defaultPrevented);
-    assert.ok(press(window, zones[0], { key: ' ' }).defaultPrevented);
+    zone.click = () => { clicks++; };
+    assert.ok(press(window, zone, { key: 'Enter' }).defaultPrevented);
+    assert.ok(press(window, zone, { key: ' ' }).defaultPrevented);
     assert.strictEqual(clicks, 2);
 
-    // The tab-bar arrows.
-    assert.strictEqual(nameOf(window.document.querySelector('button.mat-tab-header-pagination-before')), 'Previous tabs');
-    assert.strictEqual(nameOf(window.document.querySelector('button.mat-tab-header-pagination-after')), 'Next tabs');
+    // Each side card's overlay is the button that slides that card in (the page imports nothing there).
+    assert.strictEqual(overlayOf(flight), null, 'the active card has no overlay');
+    const overlays = [route, weather].map(overlayOf);
+    assert.deepStrictEqual(overlays.map(nameOf), ['Show Route', 'Show Weather']);
+    for (const overlay of overlays) {
+      assert.strictEqual(overlay.getAttribute('role'), 'button');
+      assert.strictEqual(overlay.tabIndex, 0);
+    }
+    let slides = 0;
+    overlays[0].click = () => { slides++; };
+    assert.ok(press(window, overlays[0], { key: 'Enter' }).defaultPrevented);
+    assert.strictEqual(slides, 1, 'Enter is the overlay\'s own click, as a mouse click is');
+
+    // The tab-bar arrows are named with a label (the page keeps them aria-hidden).
+    assert.strictEqual(window.document.querySelector('button.mat-tab-header-pagination-before').getAttribute('aria-label'), 'Previous tabs');
+    assert.strictEqual(window.document.querySelector('button.mat-tab-header-pagination-after').getAttribute('aria-label'), 'Next tabs');
+  } finally {
+    window.close();
+  }
+});
+
+// The cards move the way the page moves them: the classes change, and the page adds and removes the
+// overlay div itself (the active card has none). The test moves the existing overlay node; the layer never
+// does. The buttons must follow, the withdrawn ones must carry none of the layer's attributes, and nothing
+// gets a second listener.
+for (const how of ['the observer', 'a pass']) {
+  test('The_my_flight_buttons_follow_the_cards_when_they_move_by_' + how.replace(' ', '_'), async () => {
+    const { window, counts } = await loadCounting('my-flight');
+    try {
+      const settle = async () => { if (how === 'a pass') window.__msfsbaFenixEfb.pass(); else await turns(); };
+      const [flight, route, weather] = cardsOf(window);
+      const [flightZone, routeZone, weatherZone] = [flight, route, weather].map(zoneOf);
+      const routeOverlay = overlayOf(route);
+      const weatherOverlay = overlayOf(weather);
+      const retag = (card, from, to) => { card.classList.toggle(from, false); card.classList.toggle(to, true); };
+
+      // Step 1: the classes change; the overlay has not moved yet (Route is active and still has it).
+      retag(route, 'right-tab', 'active-tab');
+      retag(flight, 'active-tab', 'left-tab');
+      retag(weather, 'left-tab', 'right-tab');
+      await settle();
+      assert.strictEqual(routeZone.getAttribute('role'), 'button');
+      assert.strictEqual(routeZone.tabIndex, 0);
+      assert.strictEqual(nameOf(routeZone), 'Route' + IMPORT);
+      assert.deepStrictEqual(layerStamp(flightZone), NO_STAMP, 'A320 Flight\'s zone is withdrawn');
+      assert.deepStrictEqual(layerStamp(weatherZone), NO_STAMP);
+      assert.deepStrictEqual(layerStamp(routeOverlay), NO_STAMP, 'the active card\'s overlay is withdrawn');
+      assert.strictEqual(nameOf(weatherOverlay), 'Show Weather', 'Weather is still a side card');
+
+      // A key on an element whose stamp was withdrawn does nothing: its listener is still attached.
+      let clicks = 0;
+      flightZone.click = routeOverlay.click = () => { clicks++; };
+      for (const el of [flightZone, routeOverlay]) {
+        const event = press(window, el, { key: 'Enter' });
+        assert.ok(!event.defaultPrevented, 'nothing is caught on a withdrawn element');
+      }
+      assert.strictEqual(clicks, 0);
+
+      // Step 2: the page takes the overlay off the active card and puts one on the card that moved aside.
+      flight.querySelector('.container').insertBefore(routeOverlay, flight.querySelector('.container').firstChild);
+      await settle();
+      assert.strictEqual(routeOverlay.getAttribute('role'), 'button');
+      assert.strictEqual(routeOverlay.tabIndex, 0);
+      assert.strictEqual(nameOf(routeOverlay), 'Show A320 Flight');
+      assert.strictEqual(nameOf(weatherOverlay), 'Show Weather');
+      assert.ok(press(window, routeOverlay, { key: 'Enter' }).defaultPrevented);
+      assert.strictEqual(clicks, 1);
+      assert.deepStrictEqual(layerStamp(flightZone), NO_STAMP);
+
+      // Step 3: and back to the start.
+      retag(flight, 'left-tab', 'active-tab');
+      retag(route, 'active-tab', 'right-tab');
+      retag(weather, 'right-tab', 'left-tab');
+      route.querySelector('.container').insertBefore(routeOverlay, route.querySelector('.container').firstChild);
+      await settle();
+      assert.strictEqual(nameOf(flightZone), 'A320 Flight' + IMPORT);
+      assert.deepStrictEqual(layerStamp(routeZone), NO_STAMP);
+      assert.strictEqual(nameOf(routeOverlay), 'Show Route');
+
+      // No second listener on anything, however often the cards moved.
+      assert.ok(counts.size >= 5);
+      for (const [el, n] of counts) assert.strictEqual(n, 1, 'one listener on ' + el.localName + '.' + el.className);
+    } finally {
+      window.close();
+    }
+  });
+}
+
+test('A_page_that_sets_its_own_tab_stop_or_label_on_a_my_flight_element_keeps_it', async () => {
+  const window = await load('my-flight', { layer: false });
+  try {
+    const [flight, route] = cardsOf(window);
+    const zone = zoneOf(flight);
+    zone.setAttribute('tabindex', '-1');
+    zone.setAttribute('aria-label', 'Import from SimBrief');
+    const overlay = overlayOf(route);
+    overlay.setAttribute('role', 'link');
+    window.eval(fs.readFileSync(LAYER, 'utf8'));
+    await turns();
+    assert.strictEqual(zone.getAttribute('aria-label'), 'Import from SimBrief', 'the page\'s label stays');
+    assert.strictEqual(overlay.getAttribute('role'), 'link', 'the page\'s role stays');
+
+    // The cards move: the zone is withdrawn, and what is taken back is only what the layer wrote -- the
+    // tab stop it gave goes back to the page's own -1, the page's label stays.
+    flight.classList.toggle('active-tab', false);
+    flight.classList.toggle('left-tab', true);
+    await turns();
+    assert.strictEqual(zone.getAttribute('tabindex'), '-1');
+    assert.strictEqual(zone.getAttribute('aria-label'), 'Import from SimBrief');
+    assert.strictEqual(zone.hasAttribute('role'), false, 'the role the layer wrote is taken back');
+    assert.strictEqual(overlay.getAttribute('role'), 'link');
   } finally {
     window.close();
   }
@@ -186,20 +310,22 @@ for (const fixture of TAB_BAR_SCREENS) {
     try {
       const before = window.document.querySelector('button.mat-tab-header-pagination-before');
       const after = window.document.querySelector('button.mat-tab-header-pagination-after');
-      assert.strictEqual(nameOf(before), 'Previous tabs');
-      assert.strictEqual(nameOf(after), 'Next tabs');
-      // Material hides these two arrows from a screen reader (aria-hidden), and a hidden control has no
-      // name: the layer shows them. Everything else about them is the page's: still disabled, still out of
-      // the Tab order, no key handler of their own (a real button already answers Enter and Space).
+      assert.strictEqual(before.getAttribute('aria-label'), 'Previous tabs');
+      assert.strictEqual(after.getAttribute('aria-label'), 'Next tabs');
+      // Material hides these two arrows from a screen reader (aria-hidden) and the layer never overrides a
+      // page's own aria-hidden: they keep it and carry their decision-5 names as a label only. The rest is
+      // the page's too: still disabled, still out of the Tab order, no key handler of their own.
       for (const arrow of [before, after]) {
-        assert.notStrictEqual(arrow.getAttribute('aria-hidden'), 'true');
+        assert.strictEqual(arrow.getAttribute('aria-hidden'), 'true');
         assert.strictEqual(arrow.disabled, true);
         assert.strictEqual(arrow.getAttribute('tabindex'), '-1');
+        assert.strictEqual(arrow.hasAttribute('role'), false);
       }
 
       // The tab that opens the Panel States pop-up is a link with no href: a button, named by its text.
       const links = all(window, 'a.mat-tab-link');
       assert.deepStrictEqual(links.map(nameOf), ['My Flights', 'Ground Services', 'Mass And Balance', 'Panel States']);
+      assert.strictEqual(links.filter(a => !a.hasAttribute('href')).length, 1);
       const panel = links.find(a => !a.hasAttribute('href'));
       assert.strictEqual(panel.textContent.trim(), 'Panel States');
       assert.strictEqual(panel.getAttribute('role'), 'button');
@@ -318,6 +444,49 @@ for (const fixture of ['home', 'quick-settings']) {
   });
 }
 
+// The chevron's aria-expanded is the layer's own only when the layer wrote it (the way a label is).
+test('A_chevron_state_the_page_set_is_never_touched_and_the_one_the_layer_wrote_is_taken_back_alone', async () => {
+  const window = await load('my-flight', { layer: false });
+  try {
+    const arrow = window.document.querySelector('div.popup-arrow');
+    const icon = arrow.querySelector('i');
+    // The page set its own state before the layer ran.
+    arrow.setAttribute('aria-expanded', 'true');
+    window.eval(fs.readFileSync(LAYER, 'utf8'));
+    await turns();
+    assert.strictEqual(arrow.getAttribute('aria-expanded'), 'true', 'the page\'s state stays though the icon says closed');
+    icon.classList.toggle('fa-chevron-down', false);
+    icon.classList.toggle('fa-chevron-up', true);
+    await turns();
+    icon.setAttribute('class', 'fas fa-bars');
+    await turns();
+    assert.strictEqual(arrow.getAttribute('aria-expanded'), 'true', 'the page\'s state stays when the icon is unknown');
+
+    // The page takes its own state away: the layer writes its own from the icon from then on.
+    icon.setAttribute('class', 'fas fa-chevron-down');
+    arrow.removeAttribute('aria-expanded');
+    await turns();
+    assert.strictEqual(arrow.getAttribute('aria-expanded'), 'false');
+
+    // The page replaces the layer's state with its own: that one is the page's, not taken back.
+    arrow.setAttribute('aria-expanded', 'true');
+    icon.setAttribute('class', 'fas fa-bars');
+    await turns();
+    assert.strictEqual(arrow.getAttribute('aria-expanded'), 'true');
+
+    // The layer's own state goes when the icon becomes unknown.
+    arrow.removeAttribute('aria-expanded');
+    icon.setAttribute('class', 'fas fa-chevron-up');
+    await turns();
+    assert.strictEqual(arrow.getAttribute('aria-expanded'), 'true');
+    icon.setAttribute('class', 'fas fa-bars');
+    await turns();
+    assert.strictEqual(arrow.hasAttribute('aria-expanded'), false);
+  } finally {
+    window.close();
+  }
+});
+
 test('Loading_notices_are_spoken', async () => {
   const window = await load('notices');
   try {
@@ -391,6 +560,173 @@ test('A_notice_that_appears_later_is_spoken_too_and_the_pages_own_settings_stay'
     odd.querySelector('span.bar').setAttribute('style', 'width: 140%');
     window.__msfsbaFenixEfb.pass();
     assert.strictEqual(odd.getAttribute('aria-valuenow'), '100');
+  } finally {
+    window.close();
+  }
+});
+
+// The notice rule and the progress-bar rule are separate, so a throw in one never skips the other.
+test('A_failing_notice_rule_does_not_skip_the_progress_bar_rule_and_the_other_way_round', async () => {
+  const window = await load('notices');
+  try {
+    const doc = window.document;
+    const notices = all(window, 'fap-notification');
+    const bar = doc.querySelector('fap-progress-bar');
+    const proto = window.Element.prototype;
+    const original = proto.querySelectorAll;
+    const failOn = selector => {
+      proto.querySelectorAll = function (s) {
+        if (s === selector) throw new Error('boom');
+        return original.call(this, s);
+      };
+    };
+    try {
+      // The bars cannot be found: the notices still become live regions.
+      for (const n of notices) n.removeAttribute('aria-live');
+      failOn('fap-progress-bar');
+      assert.doesNotThrow(() => window.__msfsbaFenixEfb.pass());
+      assert.deepStrictEqual(notices.map(n => n.getAttribute('aria-live')), ['polite', 'polite', 'polite']);
+
+      // The notices cannot be found: the bar is still a progress bar.
+      for (const attr of ['role', 'aria-valuemin', 'aria-valuemax', 'aria-valuenow']) bar.removeAttribute(attr);
+      failOn('fap-notification');
+      assert.doesNotThrow(() => window.__msfsbaFenixEfb.pass());
+      assert.strictEqual(bar.getAttribute('role'), 'progressbar');
+      assert.strictEqual(bar.getAttribute('aria-valuenow'), '40');
+    } finally {
+      proto.querySelectorAll = original;
+    }
+  } finally {
+    window.close();
+  }
+});
+
+// A copy of the href-less Panel States tab (the capture's own markup), added to the tab bar before the layer
+// runs. Material gives its tab links a tabindex of their own, so the copy has the page's -1 (a tab the
+// Tab key skips) unless the test says otherwise; the layer gives it 0 when it is not disabled.
+async function loadWithPanelStatesCopy(attributes, text = 'Locked tab') {
+  const window = await load('my-flight', { layer: false });
+  const real = all(window, 'a.mat-tab-link').find(a => !a.hasAttribute('href'));
+  const copy = real.cloneNode(false);
+  copy.removeAttribute('id');
+  copy.removeAttribute('aria-disabled');
+  copy.setAttribute('tabindex', '-1');
+  copy.textContent = text;
+  for (const [name, value] of Object.entries(attributes)) copy.setAttribute(name, value);
+  real.parentElement.appendChild(copy);
+  window.eval(fs.readFileSync(LAYER, 'utf8'));
+  await turns();
+  return { window, copy };
+}
+
+function pressesNothing(window, el) {
+  let clicks = 0;
+  el.click = () => { clicks++; };
+  const event = press(window, el, { key: 'Enter' });
+  assert.ok(!event.defaultPrevented, 'a disabled control catches no key');
+  assert.strictEqual(press(window, el, { key: ' ' }).defaultPrevented, false);
+  assert.strictEqual(clicks, 0, 'a disabled control is not pressed');
+}
+
+for (const [how, attributes] of [
+  ['aria-disabled', { 'aria-disabled': 'true' }],
+  ['the disabled attribute', { disabled: '' }],
+  ['mat-tab-disabled', { class: 'mat-tab-link mat-focus-indicator app-nav-link mat-tab-disabled', 'aria-disabled': 'false' }]
+]) {
+  test('A_control_the_page_marks_disabled_gets_no_Tab_stop_and_no_key_by_' + how.replace(/[- ]/g, '_'), async () => {
+    const { window, copy } = await loadWithPanelStatesCopy(attributes);
+    try {
+      assert.strictEqual(copy.getAttribute('role'), 'button', 'still a button, named');
+      assert.strictEqual(copy.getAttribute('aria-label'), 'Locked tab');
+      assert.strictEqual(copy.getAttribute('tabindex'), '-1', 'the page\'s own -1: no Tab stop given');
+      pressesNothing(window, copy);
+    } finally {
+      window.close();
+    }
+  });
+}
+
+test('A_control_that_becomes_disabled_gets_back_the_tab_stop_it_had_and_gets_it_again_when_enabled', async () => {
+  const { window, copy } = await loadWithPanelStatesCopy({});
+  try {
+    // The page's own -1: the layer gives 0 and puts the -1 back when the control is disabled.
+    assert.strictEqual(copy.getAttribute('tabindex'), '0');
+    let clicks = 0;
+    copy.click = () => { clicks++; };
+    assert.ok(press(window, copy, { key: 'Enter' }).defaultPrevented);
+    assert.strictEqual(clicks, 1);
+
+    copy.setAttribute('aria-disabled', 'true');
+    await turns();
+    assert.strictEqual(copy.getAttribute('tabindex'), '-1', 'what it had before');
+    assert.strictEqual(copy.getAttribute('role'), 'button');
+    pressesNothing(window, copy);
+
+    copy.setAttribute('aria-disabled', 'false');
+    await turns();
+    assert.strictEqual(copy.getAttribute('tabindex'), '0');
+    copy.click = () => { clicks++; };
+    assert.ok(press(window, copy, { key: 'Enter' }).defaultPrevented);
+    assert.strictEqual(clicks, 2, 'pressable again');
+
+    // The same through the class the page toggles.
+    copy.classList.add('mat-tab-disabled');
+    await turns();
+    assert.strictEqual(copy.getAttribute('tabindex'), '-1');
+    pressesNothing(window, copy);
+    copy.classList.toggle('mat-tab-disabled', false);
+    await turns();
+    assert.strictEqual(copy.getAttribute('tabindex'), '0');
+
+    // And through the disabled attribute.
+    copy.setAttribute('disabled', '');
+    await turns();
+    assert.strictEqual(copy.getAttribute('tabindex'), '-1');
+    copy.removeAttribute('disabled');
+    await turns();
+    assert.strictEqual(copy.getAttribute('tabindex'), '0');
+
+    // A tab stop the page changes meanwhile is the page's: not put back over it.
+    copy.setAttribute('aria-disabled', 'true');
+    await turns();
+    copy.setAttribute('tabindex', '5');
+    copy.setAttribute('aria-disabled', 'false');
+    await turns();
+    assert.strictEqual(copy.getAttribute('tabindex'), '5');
+  } finally {
+    window.close();
+  }
+});
+
+test('A_control_with_no_tabindex_of_the_pages_gets_none_back_when_it_is_disabled', async () => {
+  // The home button is a bare div: no tabindex until the layer gives 0.
+  const window = await load('my-flight');
+  try {
+    const home = window.document.getElementById('homeButtonFree');
+    assert.strictEqual(home.getAttribute('tabindex'), '0');
+    home.setAttribute('aria-disabled', 'true');
+    await turns();
+    assert.strictEqual(home.hasAttribute('tabindex'), false, 'the attribute is gone, not set to a made-up value');
+    assert.strictEqual(home.getAttribute('role'), 'button');
+    pressesNothing(window, home);
+    home.removeAttribute('aria-disabled');
+    await turns();
+    assert.strictEqual(home.getAttribute('tabindex'), '0');
+  } finally {
+    window.close();
+  }
+});
+
+test('A_tab_stop_the_page_gave_is_left_alone_when_the_control_becomes_disabled', async () => {
+  // The capture's own Panel States tab has tabindex 0 from the page: the layer never wrote it.
+  const window = await load('my-flight');
+  try {
+    const panel = all(window, 'a.mat-tab-link').find(a => !a.hasAttribute('href'));
+    assert.strictEqual(panel.getAttribute('tabindex'), '0');
+    panel.setAttribute('aria-disabled', 'true');
+    await turns();
+    assert.strictEqual(panel.getAttribute('tabindex'), '0', 'the page\'s own tab stop');
+    pressesNothing(window, panel);
   } finally {
     window.close();
   }
