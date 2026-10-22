@@ -684,9 +684,11 @@ genuinely matters, because range and mode are set per side (`S_FCU_EFIS1_ND_MODE
 altimeter setting and in side-specific FD/AP annunciation. Owner's ruling, 2026-09-21.
 
 **Two prompts are Fenix-specific and must not be folded back into the shared ones.**
-`DisplayType.NDFenix` exists because the centre view frames BOTH NDs and the shared
-`DisplayType.ND` prompt says only "ONLY describe the Navigation Display" — ambiguous with two side
-by side — so it names the left-hand one. `DisplayType.StandbyFenix` exists because Fenix ships
+`DisplayType.NDFenix` exists because the shared `DisplayType.ND` prompt says only "ONLY describe
+the Navigation Display", and Alt+N's frame holds more than one display. On Fenix v3 Alt+N reads the
+captain's own view (index 7, owner 2026-10-22: the centre view clips both NDs), where the captain's
+PFD sits LEFT of the ND, so the prompt names the ND as the right-hand display; never "the left-hand
+one", which on v3 is the PFD. `DisplayType.StandbyFenix` exists because Fenix ships
 BOTH kinds of standby: this airframe has three round dial gauges (airspeed, altimeter with a
 Kollsman baro window, attitude) plus a DME/VOR indicator, other variants a single digital ISIS.
 The prompt identifies which is fitted and reports it, the way the PMDG 737's lower-DU prompt names
