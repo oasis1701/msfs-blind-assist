@@ -290,20 +290,73 @@ test('A_settings_switch_toggles_with_Enter_and_Space_and_says_its_new_state', as
   }
 });
 
-test('A_settings_switch_whose_checkbox_the_page_disables_has_no_Tab_stop_and_takes_no_key', async () => {
+// A switch whose checkbox the page disables is unavailable: it says so (aria-disabled, the layer's own, review minor 3),
+// has no Tab stop and takes no key; all of it comes back when the checkbox is enabled.
+test('A_settings_switch_whose_checkbox_the_page_disables_says_so_has_no_Tab_stop_and_takes_no_key', async () => {
   const window = await load('settings');
   try {
     const [label] = togglesOf(window);
     const box = label.querySelector('input');
+    assert.strictEqual(label.hasAttribute('aria-disabled'), false, 'enabled, as captured');
     box.setAttribute('disabled', '');
     await turns();
+    assert.strictEqual(label.getAttribute('aria-disabled'), 'true');
     assert.strictEqual(label.hasAttribute('tabindex'), false, 'no Tab stop: none was there before the layer');
     assert.strictEqual(label.getAttribute('role'), 'switch', 'still read');
     assert.deepStrictEqual(pressed(window, label), { caught: false, clicks: 0 });
+
+    // The checkbox is enabled again. Before the next pass the switch still carries the layer's aria-disabled, which is
+    // not the page's: the switch is not unavailable, and a key presses it.
     box.removeAttribute('disabled');
+    assert.strictEqual(label.getAttribute('aria-disabled'), 'true', 'no pass yet');
+    assert.deepStrictEqual(pressed(window, label), { caught: true, clicks: 1 });
     await turns();
+    assert.strictEqual(label.hasAttribute('aria-disabled'), false, 'the layer\'s own is taken back');
     assert.strictEqual(label.getAttribute('tabindex'), '0');
     assert.deepStrictEqual(pressed(window, label), { caught: true, clicks: 1 });
+  } finally {
+    window.close();
+  }
+});
+
+test('An_unavailable_state_the_page_gives_a_settings_switch_is_the_pages', async () => {
+  const window = await load('settings', { layer: false });
+  try {
+    const [first, second] = togglesOf(window);
+    first.setAttribute('aria-disabled', 'true');    // the page says the switch is unavailable
+    second.setAttribute('aria-disabled', 'false');  // the page says it is available, though its checkbox is not
+    second.querySelector('input').setAttribute('disabled', '');
+    window.eval(fs.readFileSync(LAYER, 'utf8'));
+    await turns();
+    assert.strictEqual(first.getAttribute('aria-disabled'), 'true');
+    assert.strictEqual(first.hasAttribute('tabindex'), false, 'the page\'s own unavailable state: no Tab stop');
+    assert.deepStrictEqual(pressed(window, first), { caught: false, clicks: 0 });
+    assert.strictEqual(second.getAttribute('aria-disabled'), 'false', 'the page\'s own, not overridden');
+    assert.strictEqual(second.hasAttribute('tabindex'), false, 'its checkbox is disabled: no Tab stop');
+    // The checkbox is enabled: the page's own states stay as the page set them.
+    second.querySelector('input').removeAttribute('disabled');
+    await turns();
+    assert.strictEqual(second.getAttribute('aria-disabled'), 'false');
+    assert.strictEqual(second.getAttribute('tabindex'), '0');
+    assert.strictEqual(first.getAttribute('aria-disabled'), 'true');
+  } finally {
+    window.close();
+  }
+});
+
+// Review minor 4: the switch rule is scoped to the articles, like its sibling rules; a toggle elsewhere in Settings is
+// not a switch of the layer's.
+test('A_toggle_outside_a_settings_article_is_not_made_a_switch', async () => {
+  const window = await load('settings');
+  try {
+    const stray = window.document.createElement('label');
+    stray.className = 'toggle';
+    stray.innerHTML = '<input type="checkbox"><span class="toggle-slider"></span>';
+    window.document.querySelector('app-settings2 .modern-app-content-toolbar').appendChild(stray);
+    await turns();
+    assert.deepStrictEqual(layerStamp(stray), NO_STAMP);
+    assert.strictEqual(stray.hasAttribute('aria-checked'), false);
+    assert.strictEqual(all(window, '[role=switch]').length, 5, 'the five in the articles');
   } finally {
     window.close();
   }
@@ -1405,10 +1458,11 @@ const ISOLATION = {
     ['app-settings2 button.option', 'button.option[aria-pressed]', 6],
     ['article button.option', 'div.option-grid[role=group]', 3],
     ['button.overflow-button', 'button.overflow-button[aria-label]', 8],
-    // The checkbox rule asks for 'app-settings2 article label.toggle > input', the switch rule for 'app-settings2
-    // label.toggle': each needle is in its own rule's query only.
-    ['label.toggle > input', 'input[type=checkbox][aria-label]', 5],
-    ['app-settings2 label.toggle', 'label.toggle[role=switch]', 5],
+    // The checkbox rule asks for 'app-settings2 article input[type=checkbox]', the switch rule for 'app-settings2 article
+    // label.toggle', the box rule for 'app-settings2 article input:not([type=checkbox])': each needle is in its own rule's
+    // query only.
+    ['article input[type=checkbox]', 'input[type=checkbox][aria-label]', 5],
+    ['article label.toggle', 'label.toggle[role=switch]', 5],
     ['span.settings-source', 'span.settings-source[aria-label]', 8]
   ],
   'failures': [

@@ -64,6 +64,8 @@
   var rovingTab = new WeakMap();
   // The codes of each container the layer treats as the runway condition, in page order: the arrows move along them.
   var rovingCodes = new WeakMap();
+  // The aria-disabled it wrote on a Settings switch whose checkbox the page disabled, the same way.
+  var disabledWritten = new WeakMap();
   // The aria-pressed it wrote on a Settings option and a map control, and the aria-current on a category and
   // on the selected Documents file.
   var pressedWritten = new WeakMap();
@@ -144,9 +146,10 @@
 
   // True when the page marks the control unavailable: aria-disabled "true", the disabled attribute or
   // property, or Material's mat-tab-disabled class. A label (a Settings switch) is as unavailable as the control it
-  // labels.
+  // labels. An aria-disabled the layer wrote itself (on such a switch) is not the page's word, and is not read here.
   function isDisabled(el) {
-    return el.getAttribute('aria-disabled') === 'true' || el.hasAttribute('disabled') || el.disabled === true ||
+    var aria = el.getAttribute('aria-disabled');
+    return (aria === 'true' && disabledWritten.get(el) !== aria) || el.hasAttribute('disabled') || el.disabled === true ||
       el.classList.contains('mat-tab-disabled') ||
       (el.localName === 'label' && !!el.control && el.control !== el && isDisabled(el.control));
   }
@@ -915,29 +918,43 @@
     return textWithout(heading, '.settings-source');
   }
 
-  // Settings: a switch is a checkbox in a label with no text; it takes the name of its article's heading.
+  // Settings: a switch is a checkbox in a label with no text (label.toggle); it takes the name of its article's heading.
   RULES.push(function (root) {
-    var boxes = root.querySelectorAll('app-settings2 article label.toggle > input[type=checkbox]');
-    for (var i = 0; i < boxes.length; i++) { name(boxes[i], settingName(boxes[i].closest('article'))); }
+    var boxes = root.querySelectorAll('app-settings2 article input[type=checkbox]');
+    for (var i = 0; i < boxes.length; i++) {
+      var holder = boxes[i].parentElement;
+      if (holder && holder.matches('label.toggle')) { name(boxes[i], settingName(boxes[i].closest('article'))); }
+    }
   });
 
   // Settings: an on/off option is a label holding that checkbox and a styled slider, and the page hides the checkbox
   // (display: none), so a screen reader never meets it. The label is the control (ruling R40): a switch named by the
   // setting, checked while the hidden checkbox is (its checked property), with a Tab stop, and Enter and Space as the
   // label's own click, which toggles the checkbox as a mouse click on the slider does. The checkbox keeps the name the
-  // rule above gives it; hidden by the page, it is not read twice. A label that loses its checkbox is let go of.
+  // rule above gives it; hidden by the page, it is not read twice. While the page disables the checkbox the switch says
+  // it is unavailable (aria-disabled, the layer's own) and has no Tab stop. A label that loses its checkbox or leaves the
+  // article is let go of: what the layer wrote on it is taken back.
+  function makeSwitch(label) {
+    var box = label.querySelector('input[type=checkbox]');
+    ownState(label, 'aria-disabled', isDisabled(box) ? 'true' : null, disabledWritten);
+    button(label, settingName(label.closest('article')), 'switch');
+    ownState(label, 'aria-checked', box.checked ? 'true' : 'false', checkedWritten);
+  }
+
+  function dropSwitch(label) {
+    ownState(label, 'aria-disabled', null, disabledWritten);
+    ownState(label, 'aria-checked', null, checkedWritten);
+    unbutton(label);
+  }
+
+  var switches = [];
   RULES.push(function (root) {
-    var labels = root.querySelectorAll('app-settings2 label.toggle');
+    var labels = root.querySelectorAll('app-settings2 article label.toggle');
+    var found = [];
     for (var i = 0; i < labels.length; i++) {
-      var box = labels[i].querySelector('input[type=checkbox]');
-      if (box) {
-        button(labels[i], settingName(labels[i].closest('article')), 'switch');
-        ownState(labels[i], 'aria-checked', box.checked ? 'true' : 'false', checkedWritten);
-      } else {
-        ownState(labels[i], 'aria-checked', null, checkedWritten);
-        unbutton(labels[i]);
-      }
+      if (labels[i].querySelector('input[type=checkbox]')) { found.push(labels[i]); }
     }
+    switches = followFound(found, switches, makeSwitch, dropSwitch);
   });
 
   // Settings: a text, password or file box in an article has no label of its own, and its placeholder ("Enter value")
@@ -1349,7 +1366,9 @@
   // One pass per 50 ms however many mutations arrive. The observer sees child-list changes, text changes
   // (Angular updates a text node in place), the class attribute and the two attributes a page disables a
   // control with (aria-disabled, disabled), so the layer's own writes (role, aria-label and the other
-  // aria-* it writes, tabindex, data-msfsba: attributes, never text or nodes, never those two) never wake it.
+  // aria-* it writes, tabindex, data-msfsba: attributes, never text or nodes, never `disabled`) do not wake it. The one
+  // exception is the aria-disabled it writes or takes back on a Settings switch whose checkbox the page disabled or
+  // enabled: that wakes one more pass, which writes nothing new.
   var timer = null;
   function schedule() {
     if (timer !== null) { return; }
