@@ -8,22 +8,9 @@ const fs = require('fs');
 const path = require('path');
 const { JSDOM } = require('jsdom');
 const { computeAccessibleName } = require('dom-accessibility-api');
-const { load } = require('./load');
-
-const LAYER = path.join(__dirname, '..', '..', 'MSFSBlindAssist', 'Resources', 'fenix-efb-accessibility.js');
-const TITLES = ['Fenix', 'Takeoff', 'Landing', 'Charts', 'Documents', 'Failures', 'Settings', 'MCDU', 'FAP'];
-
-// Two turns of 60 ms: the layer's pass runs 50 ms after a mutation (load.js does the same).
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-const turns = async () => { await sleep(60); await sleep(60); };
+const { load, loadCounting, press, turns, LAYER, TITLES } = require('./load');
 
 const tilesOf = window => [...window.document.querySelectorAll('#appContainer > div.appIcon')];
-
-function press(window, target, init) {
-  const event = new window.KeyboardEvent('keydown', Object.assign({ bubbles: true, cancelable: true }, init));
-  target.dispatchEvent(event);
-  return event;
-}
 
 // Errors the page would see: an exception thrown out of a timer or an observer callback.
 function collectErrors(window) {
@@ -235,18 +222,9 @@ test('Keys_press_buttons_but_not_text_boxes', async () => {
 });
 
 test('A_second_pass_adds_no_second_listener_and_changes_nothing', async () => {
-  const window = await load('core', { layer: false });
+  // Counts every listener the layer adds to an element, from its first pass on.
+  const { window, counts } = await loadCounting('core');
   try {
-    // Count every listener the layer adds to an element, from its first pass on.
-    const counts = new Map();
-    const original = window.EventTarget.prototype.addEventListener;
-    window.EventTarget.prototype.addEventListener = function (type, ...rest) {
-      if (this.nodeType === 1) counts.set(this, (counts.get(this) || 0) + 1);
-      return original.call(this, type, ...rest);
-    };
-    window.eval(fs.readFileSync(LAYER, 'utf8'));
-    await turns();
-
     const before = window.document.documentElement.outerHTML;
     window.__msfsbaFenixEfb.pass();
     window.__msfsbaFenixEfb.pass();

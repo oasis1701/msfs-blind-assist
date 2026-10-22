@@ -11,7 +11,13 @@ const EFB_URL = 'http://127.0.0.1:8083/?target=external#/efb';
 // mutation, so each turn waits 60 ms: the first lets the layer's first pass fire, the second lets
 // anything that pass changed (and the follow-up pass it schedules) settle before a test reads.
 const TURN_MS = 60;
-const turn = () => new Promise(resolve => setTimeout(resolve, TURN_MS));
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const turn = () => sleep(TURN_MS);
+// Two turns, as load() waits after the layer starts: for a test that changes the page and then reads.
+const turns = async () => { await turn(); await turn(); };
+
+// The titles of the nine home tiles, in home order (the switcher's pictures take these names).
+const TITLES = ['Fenix', 'Takeoff', 'Landing', 'Charts', 'Documents', 'Failures', 'Settings', 'MCDU', 'FAP'];
 
 // Load fixtures/<fixtureName>.html into jsdom and, unless { layer: false }, evaluate the real
 // layer in it. Returns the jsdom window. runScripts "outside-only" runs no script the fixture
@@ -35,9 +41,34 @@ async function load(fixtureName, { layer = true } = {}) {
       throw err;
     }
   }
-  await turn();
-  await turn();
+  await turns();
   return window;
 }
 
-module.exports = { load };
+// Loads a fixture WITHOUT the layer, wraps addEventListener to count every listener added to an
+// element, then evaluates the layer and lets its first pass settle. Returns { window, counts }.
+async function loadCounting(fixtureName) {
+  const window = await load(fixtureName, { layer: false });
+  const counts = new Map();
+  const original = window.EventTarget.prototype.addEventListener;
+  window.EventTarget.prototype.addEventListener = function (type, ...rest) {
+    if (this.nodeType === 1) counts.set(this, (counts.get(this) || 0) + 1);
+    return original.call(this, type, ...rest);
+  };
+  window.eval(fs.readFileSync(LAYER, 'utf8'));
+  await turns();
+  return { window, counts };
+}
+
+// Dispatches a keydown on the target and returns the event (so a test can read defaultPrevented).
+function press(window, target, init) {
+  const event = new window.KeyboardEvent('keydown', Object.assign({ bubbles: true, cancelable: true }, init));
+  target.dispatchEvent(event);
+  return event;
+}
+
+// Every attribute of every element, in document order: what "the same attributes" means.
+const attributesOf = window => [...window.document.querySelectorAll('*')]
+  .map(el => el.localName + ':' + [...el.attributes].map(a => a.name + '=' + a.value).join('|'));
+
+module.exports = { load, loadCounting, press, attributesOf, sleep, turns, LAYER, TITLES };

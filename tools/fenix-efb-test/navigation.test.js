@@ -4,42 +4,8 @@
 // are buttons with names, and a second pass changes nothing.
 const test = require('node:test');
 const assert = require('node:assert');
-const fs = require('fs');
-const path = require('path');
 const { computeAccessibleName } = require('dom-accessibility-api');
-const { load } = require('./load');
-
-const LAYER = path.join(__dirname, '..', '..', 'MSFSBlindAssist', 'Resources', 'fenix-efb-accessibility.js');
-const TITLES = ['Fenix', 'Takeoff', 'Landing', 'Charts', 'Documents', 'Failures', 'Settings', 'MCDU', 'FAP'];
-
-// Two turns of 60 ms: the layer's pass runs 50 ms after a mutation (load.js does the same).
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-const turns = async () => { await sleep(60); await sleep(60); };
-
-function press(window, target, init) {
-  const event = new window.KeyboardEvent('keydown', Object.assign({ bubbles: true, cancelable: true }, init));
-  target.dispatchEvent(event);
-  return event;
-}
-
-// Loads a capture WITHOUT the layer, wraps addEventListener to count every listener added to an
-// element, then evaluates the layer and lets its first pass settle.
-async function loadCounting(fixture) {
-  const window = await load(fixture, { layer: false });
-  const counts = new Map();
-  const original = window.EventTarget.prototype.addEventListener;
-  window.EventTarget.prototype.addEventListener = function (type, ...rest) {
-    if (this.nodeType === 1) counts.set(this, (counts.get(this) || 0) + 1);
-    return original.call(this, type, ...rest);
-  };
-  window.eval(fs.readFileSync(LAYER, 'utf8'));
-  await turns();
-  return { window, counts };
-}
-
-// Every attribute of every element, in document order: what "the same attributes" means.
-const attributesOf = window => [...window.document.querySelectorAll('*')]
-  .map(el => el.localName + ':' + [...el.attributes].map(a => a.name + '=' + a.value).join('|'));
+const { load, loadCounting, press, attributesOf, turns, TITLES } = require('./load');
 
 test('Home_tiles_are_named_buttons_and_the_quick_settings_button_keeps_its_own_name', async () => {
   const window = await load('home');
