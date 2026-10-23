@@ -34,11 +34,6 @@ public sealed partial class FenixCabinForm : Form
     private const int WM_KEYDOWN = 0x0100;
     private const string LogCategory = "FenixCabin";
 
-    // The Fenix settings the layout is resolved from (FenixCabinLayout.Resolve).
-    private const string ExitsSettingKey = "emergency_exits_type";
-    private const string VariantSettingKey = "aircraft_variant";
-    private const string SlideMessageSettingKey = "fap_slide_disarmed_message";
-
     private const string NotAnswering = "The Fenix is not answering.";
     private const string NotAccepted = "The Fenix did not accept that.";
 
@@ -333,9 +328,9 @@ public sealed partial class FenixCabinForm : Form
             if (_tornDown || IsDisposed) return;
             // An empty answer (the Fenix did not answer) keeps what an earlier read found.
             if (settings.Count == 0) return;
-            _exitsSetting = SettingValue(settings, ExitsSettingKey);
-            _variantSetting = SettingValue(settings, VariantSettingKey);
-            _slideMessageSetting = SettingValue(settings, SlideMessageSettingKey);
+            _exitsSetting = FenixCabinLayout.SettingValue(settings, FenixCabinLayout.ExitsSettingKey);
+            _variantSetting = FenixCabinLayout.SettingValue(settings, FenixCabinLayout.VariantSettingKey);
+            _slideMessageSetting = FenixCabinLayout.SettingValue(settings, FenixCabinLayout.SlideMessageSettingKey);
             ResolveLayout();
             MarkDirty();
         }
@@ -345,9 +340,6 @@ public sealed partial class FenixCabinForm : Form
             Log.Debug(LogCategory, $"Cabin settings read failed: {ex.GetType().Name}: {ex.Message}");
         }
     }
-
-    private static string? SettingValue(IReadOnlyList<FenixSetting> settings, string key)
-        => settings.FirstOrDefault(setting => string.Equals(setting.Key, key, StringComparison.Ordinal))?.Value;
 
     // Each resolve holds fresh lists, so a new layout is never compared with the old one: the render runs again.
     // The Doors button follows at once, not a render later: a door the new layout gives no control is never offered.

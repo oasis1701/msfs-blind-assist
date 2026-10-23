@@ -42,6 +42,13 @@ public sealed partial class FenixCabinForm
     // Visible, which says false for every control while its page or the window is not showing.
     private bool _doorButtonOffered;
 
+    /// <summary>
+    /// Where a door or cargo press marks its line as the pilot's own while its read-back waits (ruling R18): the
+    /// registry the app-wide door announcement reads, so the change is said once. A test gives the window its own.
+    /// </summary>
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    internal FenixCabinOwnPresses OwnPresses { get; set; } = FenixCabinOwnPresses.Shared;
+
     // ---- Building -------------------------------------------------------------------------------
 
     partial void BuildControlTabs(TabPage doors, TabPage temperature, TabPage water)
@@ -270,7 +277,7 @@ public sealed partial class FenixCabinForm
                 return;
             }
             // Waits for the door's own open or closed, not its slide (R17).
-            _ = RunWriteAsync(FenixCabinWrites.DoorToggle(door.DataKey, control), line!.Key, DoorReadbackWindow, speakIfUnchanged: false, byState: true);
+            _ = RunDoorWriteAsync(FenixCabinWrites.DoorToggle(door.DataKey, control), line!.Key);
             return;
         }
 
@@ -288,7 +295,22 @@ public sealed partial class FenixCabinForm
             return;
         }
         // Waits through "moving" for open or closed (R17).
-        _ = RunWriteAsync(FenixCabinWrites.CargoDoor(cargo.Door, !open.Value), cargo.Key, DoorReadbackWindow, speakIfUnchanged: false, byState: true);
+        _ = RunDoorWriteAsync(FenixCabinWrites.CargoDoor(cargo.Door, !open.Value), cargo.Key);
+    }
+
+    // A door or cargo write, read back by its line's state for the door's longer window (R17). The line is marked
+    // as the pilot's own press as the write goes (R18): the app-wide door announcement then leaves that door to
+    // this read-back for the read-back's whole window, so the change is said once. Marked before the send, so a
+    // poll that sees the door move before the write's answer is back stays quiet too; a write the Fenix refuses,
+    // or the window closing before the answer, withdraws the mark, and the change, if any, is still said.
+    private async Task RunDoorWriteAsync(FenixCabinWrite write, string lineKey)
+    {
+        FenixCabinOwnPresses presses = OwnPresses;
+        DateTime end = presses.Mark(lineKey, DateTime.UtcNow, DoorReadbackWindow);
+        if (await RunWriteAsync(write, lineKey, DoorReadbackWindow, speakIfUnchanged: false, byState: true))
+            presses.Mark(lineKey, DateTime.UtcNow, DoorReadbackWindow); // the read-back's window starts now
+        else
+            presses.Withdraw(lineKey, end);
     }
 
     // True, after saying so, unless the Fenix says the aircraft is on the ground as the EFB counts it: its

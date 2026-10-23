@@ -371,19 +371,35 @@ public static class FenixCabinLines
         return $"Water {PercentOrNoData(water)}, waste {PercentOrNoData(waste)}";
     }
 
-    // The water and waste cautions, then each main door's pressure message. "none" needs proof too (R10):
-    // nothing fires and at least one caution input is known; otherwise "no data".
-    private static string CautionsSummary(FenixCabinData data, FenixCabinLayout layout)
+    /// <summary>
+    /// What the Status page's "Cautions:" line lists, in its order: the water and waste cautions
+    /// (<see cref="Cautions"/>), then each main door's pressure message ("Door 4 right: check slide pressure").
+    /// Empty only when nothing fires and at least one caution input is known (R10); null when no caution input
+    /// is known, which the line reads as "no data". The app-wide cabin cautions say the same items.
+    /// </summary>
+    public static IReadOnlyList<string>? StatusCautions(FenixCabinData data, FenixCabinLayout layout)
     {
+        ArgumentNullException.ThrowIfNull(data);
+        ArgumentNullException.ThrowIfNull(layout);
+
         var cautions = new List<string>(Cautions(data, layout));
         foreach (string door in layout.MainDoors)
         {
             if (DoorPressureMessage(data, door) is string message)
                 cautions.Add($"{DoorName(door)}: {message}");
         }
-        if (cautions.Count > 0) return "Cautions: " + string.Join("; ", cautions);
-        return AnyCautionInputKnown(data, layout) ? "Cautions: none" : "Cautions: " + NoData;
+        if (cautions.Count == 0 && !AnyCautionInputKnown(data, layout)) return null;
+        return cautions.AsReadOnly();
     }
+
+    // "none" needs proof too (R10): nothing fires and at least one caution input is known; otherwise "no data".
+    private static string CautionsSummary(FenixCabinData data, FenixCabinLayout layout)
+        => StatusCautions(data, layout) switch
+        {
+            null => "Cautions: " + NoData,
+            { Count: 0 } => "Cautions: none",
+            var cautions => "Cautions: " + string.Join("; ", cautions)
+        };
 
     // R10: a value some caution reads, known in its own kind: the water and waste tanks, waste tank full,
     // the vacuum system and generator, either service panel, a flush of the layout's lavatories, or a
@@ -447,7 +463,7 @@ public static class FenixCabinLines
         void Add(string key, string text, string? state = null)
             => lines.Add(new FenixCabinLine(FenixCabinSection.Doors, key, text, state));
         void AddDoor(string door)
-            => Add("door." + FenixCabinLayout.DataKey(door), DoorLine(data, layout, door), DoorState(data, door));
+            => Add(DoorLineKey(door), DoorLine(data, layout, door), DoorState(data, door));
 
         var listed = new HashSet<string>(StringComparer.Ordinal);
         foreach (string slide in layout.Slides)
@@ -469,6 +485,9 @@ public static class FenixCabinLines
             Add(door.Key, $"{door.Name}: {state ?? NoData}", state is "open" or "closed" ? state : null);
         }
     }
+
+    /// <summary>A main door's Doors line key by its FAP designation: <c>1L</c> is <c>door.d1l</c>.</summary>
+    public static string DoorLineKey(string designation) => "door." + FenixCabinLayout.DataKey(designation);
 
     // A main door's own word, the part of its line a door press changes (R17); null when unknown.
     private static string? DoorState(FenixCabinData data, string door)
@@ -531,14 +550,29 @@ public static class FenixCabinLines
         new("cargo.bulk", "Bulk cargo door", "bulk", FenixCargoDoor.Bulk, FenixCabinNames.CargoBulk, null)
     });
 
-    private static IEnumerable<FenixCabinCargoDoor> CargoDoorsOf(FenixCabinLayout layout)
-        => CargoDoors.Where(door => door.Door != FenixCargoDoor.Bulk || layout.HasBulkCargo);
+    /// <summary>The cargo doors the layout's airframe has, in <see cref="CargoDoors"/> order: the bulk one only when it has one.</summary>
+    public static IEnumerable<FenixCabinCargoDoor> CargoDoorsOf(FenixCabinLayout layout)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        return CargoDoors.Where(door => door.Door != FenixCargoDoor.Bulk || layout.HasBulkCargo);
+    }
 
     // "moving" while the EFB's movement flag is true (the bulk door has none), else open or closed; null when unknown.
     private static string? CargoState(FenixCabinData data, FenixCabinCargoDoor door)
     {
         if (door.MovingFlag != null && data.Bool(door.MovingFlag) == true) return "moving";
         return data.Bool(door.OpenFlag) switch { true => "open", false => "closed", null => null };
+    }
+
+    /// <summary>
+    /// A cargo door's state once it has settled, by the same rule as its line: true open, false closed; null
+    /// while the EFB's movement flag says it moves, and when its open flag is not known ([FNX-1]).
+    /// </summary>
+    public static bool? SettledCargoOpen(FenixCabinData data, FenixCabinCargoDoor door)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        ArgumentNullException.ThrowIfNull(door);
+        return CargoState(data, door) switch { "open" => true, "closed" => false, _ => null };
     }
 
     /// <summary>

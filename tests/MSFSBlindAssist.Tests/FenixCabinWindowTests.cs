@@ -1914,6 +1914,69 @@ public class FenixCabinWindowTests
     }
 
     [Fact]
+    public void A_door_press_marks_its_line_as_the_pilots_own_for_the_read_back_window()
+    {
+        // R18: while a door or cargo press waits for its read-back, the app-wide door announcement leaves that
+        // door alone, so the change is said once. A press the Fenix refuses withdraws its mark at once.
+        foreach (string line in new[] { "door.d1l", "cargo.forward" })
+        {
+            using var rig = new ControlsRig();
+            var presses = new FenixCabinOwnPresses();
+            rig.Form.OwnPresses = presses;
+            Set(rig.Form, (FenixCabinNames.DoorControl("d1l"), Num(0)), (FenixCabinNames.CargoForward, False), (FenixCabinNames.CargoFwdMoving, False));
+            SelectDoorLine(rig.Form, DefaultLayout(), line);
+
+            DateTime before = DateTime.UtcNow;
+            Click(DoorButton(rig.Form));
+            WaitFor(() => Expectations(rig.Form).Length == 1, line);
+
+            Assert.True(presses.IsPending(line, DateTime.UtcNow), line);
+            Assert.True(presses.IsPending(line, before + TimeSpan.FromSeconds(29)), line);
+            Assert.False(presses.IsPending(line, DateTime.UtcNow + TimeSpan.FromSeconds(31)), line);
+            Assert.False(presses.IsPending(line == "door.d1l" ? "cargo.forward" : "door.d1l", DateTime.UtcNow));
+        }
+
+        using (var rig = new ControlsRig())
+        {
+            var presses = new FenixCabinOwnPresses();
+            rig.Form.OwnPresses = presses;
+            Set(rig.Form, (FenixCabinNames.DoorControl("d1l"), Num(0)));
+            rig.Gateway.Answer = () => WriteAnswer(accepted: false);
+
+            Click(DoorButton(rig.Form));
+
+            WaitFor(() => rig.Speech.Interrupts.Count == 1, "the refusal");
+            Assert.Equal(new[] { NotAcceptedText }, rig.Speech.Interrupts);
+            // The withdrawal follows the refusal on the press's own continuation.
+            WaitFor(() => !presses.IsPending("door.d1l", DateTime.UtcNow), "the mark withdrawn");
+        }
+
+        // A press refused before anything is sent marks nothing.
+        using (var rig = new ControlsRig())
+        {
+            var presses = new FenixCabinOwnPresses();
+            rig.Form.OwnPresses = presses;
+            Click(DoorButton(rig.Form));
+            Assert.Equal(new[] { "Door 1 left state is not known." }, rig.Speech.Interrupts);
+            Assert.False(presses.IsPending("door.d1l", DateTime.UtcNow));
+        }
+
+        // Unless a test gives it its own, the window marks the registry the app-wide announcements read.
+        using (var form = new FenixCabinForm(Context(new SpeechCapture())))
+            Assert.Same(FenixCabinOwnPresses.Shared, form.OwnPresses);
+    }
+
+    [Fact]
+    public void The_windows_read_back_is_never_muted_by_a_monitor_manager_row()
+    {
+        // CORE-7: the window confirms the pilot's own press once; the Ctrl+M cabin rows mute only the app-wide
+        // announcements, so no cabin form reads the mute list.
+        string text = CabinFormText();
+        Assert.DoesNotContain("DisabledMonitorVariables", text);
+        Assert.DoesNotContain("FenixCabinAnnouncements", text);
+    }
+
+    [Fact]
     public void A_bulk_cargo_door_has_no_movement_flag_to_wait_for()
     {
         using var rig = new ControlsRig();

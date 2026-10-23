@@ -4,7 +4,13 @@
 // disposal, a one-off read, and a SynchronizationContext that queues posts until RunAll(). No test builds a
 // FenixDataService or a FenixDataPoller (a live start would open a socket to 127.0.0.1:8083), so the
 // definition's wiring is checked by reading FenixA320Definition.Cabin.cs.
+//
+// Since the sim-fix wave (F2) the same monitor also says the doors, the slides and the cautions
+// (FenixCabinEvents), each kind mutable by its Ctrl+M row and the doors left to the Cabin window's read-back
+// while the pilot's own press is pending (FenixCabinOwnPresses). Those tests feed whole polls, every cabin
+// name in order as the poller hands them on, with a fake clock, a fake mute list and fake settings.
 
+using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Services;
 
 namespace MSFSBlindAssist.Tests;
@@ -299,28 +305,294 @@ public class FenixCabinReadyMonitorTests
         Assert.Equal("Cabin ready", FenixCabinReadyMonitor.SpokenText);
     }
 
+    // ---- The background announcements (sim-fix wave F2) -----------------------------------------
+
+    private static readonly DateTime T0 = new(2026, 10, 23, 12, 0, 0, DateTimeKind.Utc);
+
+    private sealed class FakeClock
+    {
+        public DateTime Now { get; set; } = T0;
+    }
+
+    // One poll as the poller hands it on: every cabin name in order, the given values, Unknown for the rest.
+    private static void SendPoll(FakeSource source, params (string Name, FenixDataValue Value)[] values)
+    {
+        var given = values.ToDictionary(v => v.Name, v => v.Value);
+        foreach (string name in FenixCabinNames.All)
+            source.Send(name, given.TryGetValue(name, out FenixDataValue value) ? value : Unknown);
+    }
+
+    private static (string, FenixDataValue)[] Slides(FenixDataValue value, params string[] keys)
+        => (keys.Length > 0 ? keys : new[] { "d1l", "d1r", "d4l", "d4r" }).Select(key => (FenixCabinNames.Slide(key), value)).ToArray();
+
+    private static (string, FenixDataValue)[] With(params (string, FenixDataValue)[][] parts) => parts.SelectMany(p => p).ToArray();
+
+    private static FenixSetting Setting(string key, string value)
+        => new(key, "Aircraft", value, Array.Empty<string>(), null, null, true);
+
+    [Fact]
+    public void Doors_slides_and_cautions_are_said_on_the_UI_context_once_per_poll()
+    {
+        var ui = new QueueContext();
+        var source = new FakeSource();
+        var spoken = new Spoken();
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, Reads(Unknown), ui, spoken.Add);
+
+        // The first poll is the silent baseline.
+        SendPoll(source, With(Slides(True), new[]
+        {
+            (CabinReady, False), (FenixCabinNames.Door("d1l"), False), (FenixCabinNames.WaterServicePanelOpen, False)
+        }));
+        ui.RunAll();
+        Assert.Empty(spoken.Texts);
+
+        // A poll is judged once, when its last name has come: nothing before that.
+        var changed = With(Slides(False), new[]
+        {
+            (CabinReady, True), (FenixCabinNames.Door("d1l"), True), (FenixCabinNames.WaterServicePanelOpen, True)
+        }).ToDictionary(v => v.Item1, v => v.Item2);
+        IReadOnlyList<string> names = FenixCabinNames.All;
+        for (int i = 0; i < names.Count - 1; i++)
+            source.Send(names[i], changed.TryGetValue(names[i], out FenixDataValue value) ? value : Unknown);
+        ui.RunAll();
+        Assert.Equal(["Cabin ready"], spoken.Texts);
+
+        source.Send(names[^1], Unknown);
+        Assert.Equal(["Cabin ready"], spoken.Texts);
+        ui.RunAll();
+        Assert.Equal(["Cabin ready", "Door 1 left open", "Slides disarmed", "Cabin caution: Water service door open"], spoken.Texts);
+
+        // The same values again: nothing more.
+        SendPoll(source, changed.Select(kv => (kv.Key, kv.Value)).ToArray());
+        ui.RunAll();
+        Assert.Equal(4, spoken.Texts.Count);
+    }
+
+    [Fact]
+    public void A_muted_kind_says_nothing_and_the_others_still_speak()
+    {
+        var ui = new QueueContext();
+        var source = new FakeSource();
+        var spoken = new Spoken();
+        var muted = new HashSet<string> { FenixCabinAnnouncements.DoorsKey, FenixCabinAnnouncements.CabinReadyKey };
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, Reads(Unknown), ui, spoken.Add, isMuted: muted.Contains);
+
+        SendPoll(source, With(Slides(True), new[] { (CabinReady, False), (FenixCabinNames.Door("d1l"), False), (FenixCabinNames.WasteTankFull, False) }));
+        SendPoll(source, With(Slides(False), new[] { (CabinReady, True), (FenixCabinNames.Door("d1l"), True), (FenixCabinNames.WasteTankFull, True) }));
+        ui.RunAll();
+        Assert.Equal(["Slides disarmed", "Cabin caution: Vacuum system disabled: waste tank full"], spoken.Texts);
+
+        // The mute list is read when the words are said: a row muted or unmuted after the poll counts at once.
+        SendPoll(source, With(Slides(True), new[] { (CabinReady, False), (FenixCabinNames.Door("d1l"), False), (FenixCabinNames.WasteTankFull, False) }));
+        SendPoll(source, With(Slides(True), new[] { (CabinReady, True), (FenixCabinNames.Door("d1l"), False), (FenixCabinNames.WasteTankFull, False) }));
+        muted.Remove(FenixCabinAnnouncements.DoorsKey);
+        muted.Remove(FenixCabinAnnouncements.CabinReadyKey);
+        muted.Add(FenixCabinAnnouncements.SlidesKey);
+        ui.RunAll();
+        Assert.Equal(
+            ["Slides disarmed", "Cabin caution: Vacuum system disabled: waste tank full", "Door 1 left closed", "Cabin ready"],
+            spoken.Texts);
+    }
+
+    [Fact]
+    public void A_door_the_pilot_pressed_is_left_to_the_windows_read_back_until_its_window_ends()
+    {
+        var ui = new QueueContext();
+        var source = new FakeSource();
+        var spoken = new Spoken();
+        var presses = new FenixCabinOwnPresses();
+        var clock = new FakeClock();
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, Reads(Unknown), ui, spoken.Add,
+            ownPresses: presses, clock: () => clock.Now);
+
+        (string, FenixDataValue)[] Doors(bool d1l, bool d4r, bool forward) => new[]
+        {
+            (FenixCabinNames.Door("d1l"), d1l ? True : False), (FenixCabinNames.Door("d4r"), d4r ? True : False),
+            (FenixCabinNames.CargoForward, forward ? True : False), (FenixCabinNames.CargoFwdMoving, False)
+        };
+        SendPoll(source, Doors(false, false, false));
+
+        // The pilot opens door 1 left and the forward cargo door from the Cabin window; door 4 right opens by
+        // itself. Only door 4 right is said here: the window reads its own presses back.
+        presses.Mark("door.d1l", T0, TimeSpan.FromSeconds(30));
+        presses.Mark("cargo.forward", T0, TimeSpan.FromSeconds(30));
+        clock.Now = T0 + TimeSpan.FromSeconds(5);
+        SendPoll(source, Doors(true, true, true));
+        ui.RunAll();
+        Assert.Equal(["Door 4 right open"], spoken.Texts);
+
+        // After the window: door 1 left closing is said, and the opening the window spoke is not said again.
+        clock.Now = T0 + TimeSpan.FromSeconds(31);
+        SendPoll(source, Doors(false, true, true));
+        ui.RunAll();
+        Assert.Equal(["Door 4 right open", "Door 1 left closed"], spoken.Texts);
+    }
+
+    [Fact]
+    public void A_door_change_after_a_press_window_has_ended_is_said()
+    {
+        var ui = new QueueContext();
+        var source = new FakeSource();
+        var spoken = new Spoken();
+        var presses = new FenixCabinOwnPresses();
+        var clock = new FakeClock();
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, Reads(Unknown), ui, spoken.Add,
+            ownPresses: presses, clock: () => clock.Now);
+        SendPoll(source, (FenixCabinNames.Door("d1l"), False));
+
+        // The read-back waited its 30 s and the door had not moved: when it does, it is said.
+        presses.Mark("door.d1l", T0, TimeSpan.FromSeconds(30));
+        clock.Now = T0 + TimeSpan.FromSeconds(30);
+        SendPoll(source, (FenixCabinNames.Door("d1l"), True));
+        ui.RunAll();
+        Assert.Equal(["Door 1 left open"], spoken.Texts);
+    }
+
+    [Fact]
+    public void The_variant_lays_the_cabin_out()
+    {
+        var source = new FakeSource();
+        var spoken = new Spoken();
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, Reads(Unknown), null, spoken.Add);
+
+        // Until the variant is known the cabin is the FAP's A320, which has no door 2.
+        SendPoll(source, (FenixCabinNames.Door("d2l"), False));
+        SendPoll(source, (FenixCabinNames.Door("d2l"), True));
+        Assert.Empty(spoken.Texts);
+
+        monitor.OnVariantChanged(FenixAircraftType.A321);
+        SendPoll(source, (FenixCabinNames.Door("d2l"), False));
+        Assert.Equal(["Door 2 left closed"], spoken.Texts);
+
+        // A monitor started on an A321 has door 2 from the start.
+        var a321Source = new FakeSource();
+        var a321Spoken = new Spoken();
+        using var a321 = new FenixCabinReadyMonitor(a321Source.Subscribe, Reads(Unknown), null, a321Spoken.Add, type: FenixAircraftType.A321);
+        SendPoll(a321Source, (FenixCabinNames.Door("d3r"), False));
+        SendPoll(a321Source, (FenixCabinNames.Door("d3r"), True));
+        Assert.Equal(["Door 3 right open"], a321Spoken.Texts);
+    }
+
+    [Fact]
+    public void The_settings_are_read_at_start_when_the_Fenix_starts_answering_and_on_a_variant_change()
+    {
+        var source = new FakeSource();
+        var spoken = new Spoken();
+        int reads = 0;
+        IReadOnlyList<FenixSetting> answer = Array.Empty<FenixSetting>();
+        Task<IReadOnlyList<FenixSetting>> ReadSettings()
+        {
+            Interlocked.Increment(ref reads);
+            return Task.FromResult(answer);
+        }
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, Reads(Unknown), null, spoken.Add, readSettings: ReadSettings);
+
+        // At start, before the Fenix answers: an empty answer keeps the A320's own layout.
+        Assert.Equal(1, reads);
+        SendPoll(source);
+        SendPoll(source);
+        Assert.Equal(1, reads);
+
+        // The Fenix starts answering: the settings are read again, once. This cabin has every door full size.
+        answer = new[] { Setting("emergency_exits_type", "DoubleFullsize") };
+        SendPoll(source, (FenixCabinNames.Door("d2l"), False));
+        Assert.Equal(2, reads);
+        SendPoll(source, (FenixCabinNames.Door("d2l"), False));
+        Assert.Equal(2, reads);
+        SendPoll(source, (FenixCabinNames.Door("d2l"), True));
+        Assert.Equal(["Door 2 left open"], spoken.Texts);
+
+        // Down and back: read again. A variant change: read again.
+        SendPoll(source);
+        SendPoll(source, (FenixCabinNames.Door("d2l"), True));
+        Assert.Equal(3, reads);
+        monitor.OnVariantChanged(FenixAircraftType.A320);
+        Assert.Equal(4, reads);
+
+        // An empty answer keeps what an earlier read found: door 2 is still there.
+        answer = Array.Empty<FenixSetting>();
+        monitor.OnVariantChanged(FenixAircraftType.A320);
+        SendPoll(source, (FenixCabinNames.Door("d2l"), False));
+        Assert.Equal(["Door 2 left open", "Door 2 left closed"], spoken.Texts);
+    }
+
+    [Fact]
+    public void Dispose_stops_the_background_announcements_too()
+    {
+        var ui = new QueueContext();
+        var source = new FakeSource();
+        var spoken = new Spoken();
+        var monitor = new FenixCabinReadyMonitor(source.Subscribe, Reads(Unknown), ui, spoken.Add);
+        SendPoll(source, (FenixCabinNames.Door("d1l"), False));
+        SendPoll(source, (FenixCabinNames.Door("d1l"), True));
+        Assert.Equal(1, ui.Pending);
+
+        monitor.Dispose();
+        ui.RunAll();
+        SendPoll(source, (FenixCabinNames.Door("d1l"), False));
+        ui.RunAll();
+
+        Assert.Empty(spoken.Texts);
+        Assert.Equal(0, ui.Pending);
+    }
+
+    [Fact]
+    public void A_closed_context_drops_the_background_announcements_without_throwing()
+    {
+        var source = new FakeSource();
+        var spoken = new Spoken();
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, Reads(Unknown), new ClosedContext(), spoken.Add);
+        SendPoll(source, (FenixCabinNames.Door("d1l"), False));
+
+        var thrown = Record.Exception(() => SendPoll(source, (FenixCabinNames.Door("d1l"), True)));
+
+        Assert.Null(thrown);
+        Assert.Empty(spoken.Texts);
+    }
+
     // ---- The definition's seams -----------------------------------------------------------------
+
+    private static string AppFile(params string[] parts)
+        => File.ReadAllText(Path.Combine(new[] { ClaudeContextBudgetTests.RepoRoot(), "MSFSBlindAssist" }.Concat(parts).ToArray()));
 
     [Fact]
     public void The_definition_starts_and_stops_the_monitor()
     {
-        string path = Path.Combine(
-            ClaudeContextBudgetTests.RepoRoot(), "MSFSBlindAssist", "Aircraft", "FenixA320Definition.Cabin.cs");
-        string source = File.ReadAllText(path);
+        string source = AppFile("Aircraft", "FenixA320Definition.Cabin.cs");
 
+        // The definition is passed for its variant (the layout) and its VariantChanged.
         string start = MethodBody(source, "partial void StartCabinBackground(");
-        Assert.Contains("FenixCabinReadyMonitor.Start(DataService, announcer)", start);
+        Assert.Contains("FenixCabinReadyMonitor.Start(DataService, announcer, this)", start);
 
         string stop = MethodBody(source, "partial void StopCabinBackground(");
         Assert.Contains("_cabinReadyMonitor?.Dispose()", stop);
         Assert.Contains("_cabinReadyMonitor = null", stop);
     }
 
+    [Fact]
+    public void The_app_wide_monitor_polls_every_cabin_name_and_reads_the_fenix_mute_list_and_the_shared_presses()
+    {
+        string start = MethodBody(AppFile("Services", "FenixCabinReadyMonitor.cs"), "public static FenixCabinReadyMonitor Start(");
+
+        // One poll for every kind (R3): every cabin name, through the data service's batched read.
+        Assert.Contains("new FenixDataPoller(FenixCabinNames.All, data.ReadManyAsync", start);
+        // The Ctrl+M mute list, as current right after a toggle (SettingsManager.Save rebuilds the set).
+        Assert.Contains("SettingsManager.Current.FenixDisabledMonitorVariablesSet.Contains(", start);
+        // The one registry the Cabin window marks its door presses in.
+        Assert.Contains("FenixCabinOwnPresses.Shared", start);
+        Assert.Contains("definition.VariantChanged +=", start);
+        Assert.Contains("data.GetSettingsAsync()", start);
+
+        // The window marks its door presses in that registry unless a test gives it its own.
+        string window = AppFile("Forms", "Fenix", "FenixCabinForm.Controls.cs");
+        Assert.Contains("OwnPresses { get; set; } = FenixCabinOwnPresses.Shared;", window);
+    }
+
     // The braces of the method whose declaration starts with `declaration`, inclusive.
     private static string MethodBody(string source, string declaration)
     {
         int at = source.IndexOf(declaration, StringComparison.Ordinal);
-        Assert.True(at >= 0, $"`{declaration}` is not in FenixA320Definition.Cabin.cs");
+        Assert.True(at >= 0, $"`{declaration}` is not in the file");
         int open = source.IndexOf('{', at);
         Assert.True(open >= 0, $"`{declaration}` has no body");
         Assert.DoesNotContain(";", source[at..open]);

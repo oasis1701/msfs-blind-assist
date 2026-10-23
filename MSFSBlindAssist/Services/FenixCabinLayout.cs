@@ -55,6 +55,13 @@ public sealed record FenixCabinLayout(
     bool HasBulkCargo,
     bool SlideInPark)
 {
+    /// <summary>The Fenix setting the exits type is read from (<see cref="Resolve"/>'s <c>emergencyExitsType</c>).</summary>
+    public const string ExitsSettingKey = "emergency_exits_type";
+    /// <summary>The Fenix setting the cabin variant is read from (<see cref="Resolve"/>'s <c>aircraftVariant</c>).</summary>
+    public const string VariantSettingKey = "aircraft_variant";
+    /// <summary>The Fenix setting the slide message is read from (<see cref="Resolve"/>'s <c>slideDisarmedMessage</c>).</summary>
+    public const string SlideMessageSettingKey = "fap_slide_disarmed_message";
+
     private const string SlideInParkMessage = "SlideInPark";
 
     private static readonly IReadOnlyList<string> CornerDoors = Designations("1L", "1R", "4L", "4R");
@@ -96,6 +103,13 @@ public sealed record FenixCabinLayout(
             Array.AsReadOnly(groundDoors),
             HasBulkCargo: type != FenixAircraftType.A319,
             SlideInPark: string.Equals(slideDisarmedMessage, SlideInParkMessage, StringComparison.Ordinal));
+    }
+
+    /// <summary>A setting's value from the Fenix settings API's rows (ordinal key), or null when it is not there.</summary>
+    public static string? SettingValue(IReadOnlyList<FenixSetting> settings, string key)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        return settings.FirstOrDefault(setting => string.Equals(setting.Key, key, StringComparison.Ordinal))?.Value;
     }
 
     /// <summary>
