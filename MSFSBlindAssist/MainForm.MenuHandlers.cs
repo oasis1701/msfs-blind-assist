@@ -25,19 +25,26 @@ public partial class MainForm
         {
             if (settingsForm.ShowDialog(this) == DialogResult.OK)
             {
-                // Reload database provider with new settings
-                RefreshDatabaseProvider();
+                // The window changes no settings: it verifies, or builds a database and reopens the
+                // connections itself (ReopenDatabaseConnections). It returns OK from every exit, Escape
+                // included, so reload here only when the active database changed since it was loaded
+                // (DatabaseSelector.CurrentStamp): closing it with nothing changed must not run the
+                // database-switch reset, which clears the landing exit plan and disarms the landing
+                // assist, rollout centerline cue included ([EXIT-11]).
+                bool reloaded = DatabaseSelector.CurrentStamp() != _loadedDatabaseStamp;
+                if (reloaded)
+                    RefreshDatabaseProvider();
 
-                // Announce the change
+                // Announce the change. After a reload, queued behind the reset's own "… off" and "Landing
+                // exit plan cleared." lines instead of cutting them off.
                 var status = DatabaseSelector.GetDatabaseStatus();
-                if (status.hasDatabase)
-                {
-                    announcer.AnnounceImmediate($"Database settings saved. Using {status.message}");
-                }
+                string text = status.hasDatabase
+                    ? $"Database settings saved. Using {status.message}"
+                    : $"Database settings saved. {status.message}";
+                if (reloaded)
+                    announcer.Announce(text);
                 else
-                {
-                    announcer.AnnounceImmediate($"Database settings saved. {status.message}");
-                }
+                    announcer.AnnounceImmediate(text);
             }
         }
     }
@@ -272,10 +279,20 @@ public partial class MainForm
         _appliedSceneryIndexEnabled = settings.SceneryIndexEnabled;
         _appliedTaxiAugmentEnabled = settings.TaxiAugmentEnabled;
 
+        // First Officer automation toggles — push the saved settings into the First Officer
+        // window, if one is open, so a change takes effect without reopening it (moved from the
+        // retired FOSettingsMenuItem_Click).
+        if (firstOfficerForm is { IsDisposed: false } foForm)
+            foForm.ApplySettings();
+
         // VATSIM: install or refresh the vPilot plugin and start/stop the pipe server.
         var vatsimInstall = vatsimService?.ApplySettings(settings);
         if (vatsimInstall != null)
             AnnounceVatsimInstallOutcome(vatsimInstall, atStartup: false);
+
+        // The rollout centerline cue setting arms or disarms the landing assist's rollout-only cue for the
+        // destination or exit plan already set; unchanged armings are left alone (RefreshRolloutCueArming).
+        RefreshRolloutCueArming();
 
         // Guidance tone output device, LAST: the takeoff-assist recreate above disposes and
         // replaces its centerline tone, so requesting the sweep before that block paid a full
@@ -373,6 +390,33 @@ public partial class MainForm
         }
     }
 
+    // Help, User Guide: the one-page guide bundled next to the exe, or the online guide when it is missing
+    // (HelpLinks). The screen reader has just read the menu item, so only the fallback, which it cannot say, is
+    // spoken (CORE-7).
+    private void UserGuideMenuItem_Click(object? sender, EventArgs e)
+    {
+        (string target, bool isBundled) = HelpLinks.ResolveGuide(AppContext.BaseDirectory, File.Exists);
+        if (!isBundled)
+            announcer.Announce("This copy of BA has no user guide in its folder. Opening the online guide.");
+        OpenInBrowser(target, "the user guide");
+    }
+
+    private void ProjectWebsiteMenuItem_Click(object? sender, EventArgs e)
+        => OpenInBrowser(HelpLinks.WebsiteUrl, "the project website");
+
+    private void OpenInBrowser(string target, string what)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(target) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            announcer.AnnounceImmediate($"Could not open {what}: {ex.Message}");
+            Log.Warn("MainForm", $"Opening {what} ({target}) failed: {ex.Message}");
+        }
+    }
+
     // One modeless Sim Performance window at a time: a second click brings the open one forward.
     // It opens whether or not the sim is connected — the rows say what is measurable (a sim
     // still loading shows its memory climbing before SimConnect answers) — and it releases its
@@ -389,6 +433,28 @@ public partial class MainForm
         simPerformanceForm = new SimPerformanceForm(simConnectManager);
         simPerformanceForm.FormClosed += (_, _) => simPerformanceForm = null;
         simPerformanceForm.Show(this);
+    }
+
+    // Extras > Volanta, or Shift+O in output mode: one modeless window at a time. It is its own
+    // top-level window, never owned by this one (the TCAS window's pattern), so the pilot can Alt+Tab
+    // between the two; a second click or press brings the open one forward. It opens whether or not the
+    // sim is connected (it can place traffic from Volanta's own position report) and owns the browser that
+    // reads Volanta's public web map, which it closes with the window. It names where each aircraft is from
+    // the same offline location data Output C reads.
+    private Forms.Volanta.VolantaLiveMapForm? volantaLiveMapForm;
+
+    private void VolantaMenuItem_Click(object? sender, EventArgs e) => OpenVolantaWindow();
+
+    private void OpenVolantaWindow()
+    {
+        if (volantaLiveMapForm is not { IsDisposed: false })
+        {
+            // vPilot's callsign, so the pilot's own VATSIM entry is never listed as traffic.
+            volantaLiveMapForm = new Forms.Volanta.VolantaLiveMapForm(simConnectManager, announcer, offlineLocationService,
+                () => vatsimService?.ConnectedCallsign);
+            volantaLiveMapForm.FormClosed += (_, _) => volantaLiveMapForm = null;
+        }
+        volantaLiveMapForm.ShowForm();
     }
 
     private void FMCSettingsMenuItem_Click(object? sender, EventArgs e)

@@ -122,6 +122,23 @@ public partial class TaxiGuidanceManager
     }
 
     /// <summary>
+    /// True when an on-route hold line is the one a landing-exit route passes while
+    /// LEAVING the runway it landed on — so "Crossing runway X" would be wrong. All three
+    /// must hold: the route is a landing-exit route; the hold line names the landed
+    /// runway (either end); and the hold line is further from that runway's centreline
+    /// than the aircraft (moving away from it). Every other crossing still announces —
+    /// another runway, any normal taxi route, and a hold line approached from outside.
+    /// </summary>
+    internal static bool IsVacatingLandedRunwayHold(
+        bool isLandingExitRoute, string? landedRunwayId, string holdShortName,
+        double aircraftLateralM, double holdLateralM)
+    {
+        if (!isLandingExitRoute || string.IsNullOrEmpty(landedRunwayId)) return false;
+        if (string.IsNullOrEmpty(holdShortName) || !RunwayDesignatorsMatch(holdShortName, landedRunwayId)) return false;
+        return holdLateralM > aircraftLateralM;
+    }
+
+    /// <summary>
     /// Projects the aircraft onto a route segment (equirectangular). Outputs the
     /// remaining along-track distance to the segment's END node
     /// (<paramref name="alongRemainingM"/>: positive = the node is still ahead in the
@@ -218,6 +235,104 @@ public partial class TaxiGuidanceManager
             _rolloutRunwayHeadingTrue);
         return !Navigation.RolloutExitGate.IsLaterallyClearOfRunway(
             lateralM, _rolloutRunway.Width);
+    }
+
+    /// <summary>Max travel from the arrival point before the ended-on-runway clearing
+    /// tone gives up — pathological data must never hold a tone forever. Matches the
+    /// vacate walk's own 400 m budget.</summary>
+    private const double CLEARING_MAX_TRAVEL_M = 400.0;
+
+    /// <summary>
+    /// True when the point is laterally clear of the LANDING runway's pavement band
+    /// (<see cref="IsWithinRolloutRunwayLaterally"/>) AND outside every runway
+    /// centerline corridor at the airport (half-width + <see cref="RUNWAY_CLEAR_MARGIN_M"/>).
+    /// The one shared answer to "has this position genuinely vacated the runway
+    /// system?" — used by the ended-on-runway clearing conclusion AND the backtrack
+    /// handoff/connection-node filter, which must agree: a "Runway vacated." claim
+    /// from one path must mean the same thing as the other's.
+    ///
+    /// Each runway is read through <see cref="Navigation.RunwayShape.For"/> (HLD-7), never
+    /// the start-row segment: at a displaced threshold the pavement runs hundreds of metres
+    /// past the start row (OMDB 12R: 761 m), and a segment test called that pavement clear.
+    /// The margin applies off the ends as well as the edges (<c>IsClearOfAt</c>).
+    /// </summary>
+    private bool IsClearOfAllRunwayCorridors(double lat, double lon)
+    {
+        if (IsWithinRolloutRunwayLaterally(lat, lon)) return false;
+        if (_graph != null)
+        {
+            foreach (var cl in _graph.RunwayCenterlines)
+            {
+                var shape = Navigation.RunwayShape.For(cl);
+                if (shape.IsDegenerate)
+                {
+                    // A collapsed row pair has no axis to project on: treat it as the point it is,
+                    // never as clear, or a pilot on that runway would be told "Off the runway".
+                    double perp = TaxiGraph.PerpendicularDistanceMetersStatic(
+                        lat, lon, cl.Lat1, cl.Lon1, cl.Lat2, cl.Lon2);
+                    if (perp <= cl.HalfWidthMeters + RUNWAY_CLEAR_MARGIN_M) return false;
+                    continue;
+                }
+                var (along, lateral) = shape.Project(lat, lon);
+                if (!shape.IsClearOfAt(along, lateral, RUNWAY_CLEAR_MARGIN_M))
+                    return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Per-frame drive for the ended-on-runway clearing phase (Arrived state,
+    /// <c>_arrivedRunwayClearing</c>): heading-hold on the cached exit direction so
+    /// "continue ahead until clear" is flyable by tone. Concludes with the normal
+    /// stop-and-hold closure once the aircraft is laterally clear of the landing
+    /// runway AND outside every runway centerline corridor; gives up honestly after
+    /// <see cref="CLEARING_MAX_TRAVEL_M"/> of travel.
+    /// </summary>
+    private void UpdateArrivedRunwayClearing(double lat, double lon, double headingTrue)
+    {
+        if (_arrivedClearingStartLat == 0.0 && _arrivedClearingStartLon == 0.0)
+        {
+            _arrivedClearingStartLat = lat;
+            _arrivedClearingStartLon = lon;
+        }
+
+        if (IsClearOfAllRunwayCorridors(lat, lon))
+        {
+            _arrivedRunwayClearing = false;
+            _steeringTone.Stop();
+            SpeakNow(
+                "Off the runway. Stop and hold position. " +
+                "Open the taxi planner to set a route to your gate.");
+            return;
+        }
+
+        double traveled = TaxiGraph.FastDistanceMeters(
+            _arrivedClearingStartLat, _arrivedClearingStartLon, lat, lon);
+        if (traveled > CLEARING_MAX_TRAVEL_M)
+        {
+            _arrivedRunwayClearing = false;
+            _steeringTone.Stop();
+            SpeakNow(
+                "Exit guidance ended. Check your position and use the taxi planner.");
+            return;
+        }
+
+        double target = _arrivedClearingBearingDeg == 360.0 ? 0.0 : _arrivedClearingBearingDeg;
+        double rawError = NormalizeAngle(target - headingTrue);
+        _smoothedHeadingError = _headingErrorInitialized
+            ? _smoothedHeadingError * (1 - HEADING_ERROR_FILTER_ALPHA) + rawError * HEADING_ERROR_FILTER_ALPHA
+            : rawError;
+        _headingErrorInitialized = true;
+        if (!_steeringToneSuppressed)
+        {
+            _steeringTone.Resume();
+            _steeringTone.UpdateHeadingErrorWithThresholds(
+                _smoothedHeadingError,
+                ROLLOUT_EXIT_TONE_SILENT_DEG,
+                ROLLOUT_EXIT_TONE_ACTIVATION_DEG,
+                ROLLOUT_EXIT_TONE_MAX_PAN_DEG);
+        }
     }
 
     /// <summary>

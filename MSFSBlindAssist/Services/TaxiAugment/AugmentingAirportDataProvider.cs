@@ -208,6 +208,22 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider, IAirpo
         return result;
     }
 
+    /// <summary>
+    /// Named holding points read off X-Plane's red signs for this airport (apt.dat only), from the
+    /// same per-ICAO cache; never triggers its own fetch. Deliberately a SEPARATE getter from
+    /// <see cref="GetNamedHoldingPoints"/>: a sign's position is approximate, so only the
+    /// Progressive Taxi hold-at list consumes these, and only for names no painted line carries.
+    /// </summary>
+    public List<SignHoldingPoint> GetSignHoldingPoints(string icao)
+    {
+        var result = new List<SignHoldingPoint>();
+        if (!Enabled) return result;
+        if (!_cache.TryLoad(icao, out var sources) || sources == null) return result;
+        foreach (var src in sources)
+            result.AddRange(src.SignHoldingPoints);
+        return result;
+    }
+
     // ── The enriching member ────────────────────────────────────────────────
     /// <summary>
     /// Returns taxi paths for the given airport, enriching unnamed segments with

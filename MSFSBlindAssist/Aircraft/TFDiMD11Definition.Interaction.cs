@@ -25,6 +25,14 @@ public partial class TFDiMD11Definition
     /// </summary>
     private string _lastFlapSpoken = string.Empty;
 
+    /// <summary>
+    /// What a First Officer flap walk's quiet window held back: the read-out recorded before it
+    /// first held one back (null while nothing is held), and the announcer that would have spoken
+    /// it. <see cref="EndFoFlapWalk"/> settles both when the walk ends.
+    /// </summary>
+    private string? _flapTextBeforeFoWalk;
+    private ScreenReaderAnnouncer? _flapFoWalkAnnouncer;
+
     // Speedbrake: the lever's travel (detents) and its pull (armed), see Md11SpeedbrakeSystem.
     private double _spdbrkRng = double.NaN;
     private double _spdbrkHandle = double.NaN;
@@ -175,7 +183,8 @@ public partial class TFDiMD11Definition
         if (string.Equals(text, _lastSpoilerSpoken, StringComparison.Ordinal)) return;
         bool first = _lastSpoilerSpoken.Length == 0;
         _lastSpoilerSpoken = text;
-        if (!first) announcer.Announce(text);
+        // A First Officer stow runs the lever 50 -> 0 through every detent; its flow already said so.
+        if (!first && !_gate.IsQuietFor(Md11SpeedbrakeSystem.LeverKey, Environment.TickCount64)) announcer.Announce(text);
     }
 
     /// <summary>The pull var: armed / disarmed / extended, baseline-first, spoken on a real change.</summary>
@@ -185,6 +194,8 @@ public partial class TFDiMD11Definition
         bool changed = !first && (int)Math.Round(handle) != (int)Math.Round(_spdbrkHandle);
         _spdbrkHandle = handle;
         if (first || !changed) return;
+        // Quiet after a First Officer click: its stow passes through 1 ("armed") on its way to 0.
+        if (_gate.IsQuietFor(Md11SpeedbrakeSystem.LeverKey, Environment.TickCount64)) return;
         var text = Md11SpeedbrakeSystem.DescribeArm(handle);
         if (text != null) announcer.Announce(text);
     }
@@ -363,8 +374,8 @@ public partial class TFDiMD11Definition
     /// two overlapping entries would interleave their digits into a code nobody typed; instead the
     /// second waits for the first to finish (read-back included) and then enters its own, so the
     /// transponder ends on the code typed last and each entry gets its own confirmation — a pilot
-    /// who corrects a typo with a quick second Set hears "Squawk 1200." then "Squawk 1207.". Only
-    /// ever touched on the UI thread (the panel's Set button).
+    /// who corrects a typo with a quick second entry hears "Squawk 1200." then "Squawk 1207.". Only
+    /// ever touched on the UI thread (Enter in the panel's squawk field).
     /// </summary>
     private Task _squawkEntries = Task.CompletedTask;
 
@@ -823,11 +834,14 @@ public partial class TFDiMD11Definition
     /// and re-announcing the landed value would double-speak every set — the global _uiSetEcho
     /// rule. But a walk that does NOT reach its target must say so, because on this aircraft the
     /// pilot has no gauge to check: a silently-failed selection would look identical to a
-    /// successful one.
+    /// successful one. What it says comes from a delivered read-back (<see cref="FailureSentenceAsync"/>):
+    /// a control that moved partway says where it stopped, never "did not move".
     /// </summary>
     private async Task SafeWalk(Func<Task<bool>> walk, Md11Control control, double target,
         SimConnectManager sim, ScreenReaderAnnouncer announcer, CancellationToken ct = default)
     {
+        // Where the control was before the walk, for the failure's "did not move" vs "stopped at".
+        var before = sim.GetCachedVariableValue(control.NodeId);
         try
         {
             var ok = await walk().ConfigureAwait(false);
@@ -847,7 +861,9 @@ public partial class TFDiMD11Definition
             if (!ok)
             {
                 Log.Debug("MD11", $"{control.NodeId}: failed to reach {target} (walk and direct write).");
-                OnUiThread(() => announcer.Announce(Md11WalkFailure.Sentence(control.DisplayLabel)));
+                var sentence = await FailureSentenceAsync(control, target, before, sim).ConfigureAwait(false);
+                if (ct.IsCancellationRequested) return;
+                if (sentence != null) OnUiThread(() => announcer.Announce(sentence));
             }
         }
         catch (OperationCanceledException)
@@ -868,6 +884,26 @@ public partial class TFDiMD11Definition
     }
 
     /// <summary>
+    /// The failed walk's words, decided on a DELIVERED read of where the control is now
+    /// (<see cref="Md11WalkFailure.AfterReadBack"/>): nothing at the target, "stopped at …" when it
+    /// moved partway from <paramref name="before"/>, else "did not move". With no delivery, or no
+    /// position words to compare, the sentence is the plain "did not move" it always was.
+    /// </summary>
+    private async Task<string?> FailureSentenceAsync(Md11Control control, double target, double? before,
+        SimConnectManager sim)
+    {
+        var label = control.DisplayLabel;
+        if (!GetVariables().TryGetValue(control.NodeId, out var def) || def.ValueDescriptions is not { } words)
+            return Md11WalkFailure.Sentence(label);
+        var after = await sim.ReadFreshAsync(control.NodeId, Md11SelectorWalker.FreshReadTimeoutMs).ConfigureAwait(false);
+        return Md11WalkFailure.AfterReadBack(label,
+            before is { } b ? def.DescriptionKeyFor(b) : null,
+            after is { } a ? def.DescriptionKeyFor(a) : null,
+            def.DescriptionKeyFor(target),
+            k => words.TryGetValue(k, out var w) ? w : null);
+    }
+
+    /// <summary>
     /// Sets a detented control by writing its state L:var directly through the calc path, then
     /// reading it back to confirm the write held. Returns true only if the value actually landed on
     /// the target detent — a wasm-owned output that reverts the write returns false, so the caller
@@ -878,8 +914,9 @@ public partial class TFDiMD11Definition
     /// <see cref="Md11DirectSet.FallbackNeverWrites"/> — the speedbrake lever's row reads the
     /// travel var while its map state var is the ground-spoiler pull (a detent written there
     /// blanked the Ground spoilers row), and the flap and gear levers' state vars are travel or
-    /// animation values, not command encodings. A refused control returns false and the caller
-    /// speaks the same "did not move" as always.
+    /// animation values, not command encodings — nor to a percent knob, whose direct write is
+    /// unmeasured (<see cref="Md11PercentKnob"/>). A refused control returns false and the caller
+    /// speaks its failure as always.
     /// </summary>
     private async Task<bool> TryDirectSetAsync(Md11Control control, double target, SimConnectManager sim)
     {
@@ -1342,9 +1379,46 @@ public partial class TFDiMD11Definition
         // wheel too, whose first sample may land after the lever's.
         bool complete = dial != null || _flaps.DetentFor(_flapRng)?.Dial != true;
 
+        string before = _lastFlapSpoken;
         var (speak, record) = Md11FlapSystem.ReadoutDecision(_lastFlapSpoken, text, complete);
         if (record) _lastFlapSpoken = text;
-        if (speak) announcer.Announce(text);
+        if (!speak) return;
+        // A First Officer flap move walks the handle through every detent between, and its flow
+        // already says where it is going: recorded, never spoken, inside its quiet window (the
+        // spoilers' rule above). The window was opened and never read here, so After Landing's walk
+        // from FULL spoke every detent on its way to UP over the flow's own step. Held back, not
+        // lost: a walk that stops short has its resting detent spoken when it ends (EndFoFlapWalk).
+        if (_gate.IsQuietFor(Md11FlapSystem.LeverKey, Environment.TickCount64))
+        {
+            _flapTextBeforeFoWalk ??= before;
+            _flapFoWalkAnnouncer = announcer;
+            return;
+        }
+        _flapTextBeforeFoWalk = null;
+        _flapFoWalkAnnouncer = null;
+        announcer.Announce(text);
+    }
+
+    /// <summary>
+    /// A First Officer flap walk is over (<see cref="EndFoActuation"/>). Reached, its flow step said
+    /// where the handle went: nothing is spoken. Stopped short — a lost wheel event, TFDi's gate at
+    /// 28 — the flow says only "Skipping", and every detent the walk passed was recorded quietly, so
+    /// the one the handle rests in would never be heard: it is spoken now, once, unless the handle is
+    /// back where the walk began, or still between detents (the delivery that lands it speaks, the
+    /// window being closed). Spoken outside ProcessSimVarUpdate, so it honours the Ctrl+M mute
+    /// itself (MD11-18).
+    /// </summary>
+    private void EndFoFlapWalk(bool reached)
+    {
+        var before = _flapTextBeforeFoWalk;
+        var announcer = _flapFoWalkAnnouncer;
+        _flapTextBeforeFoWalk = null;
+        _flapFoWalkAnnouncer = null;
+        if (reached || before == null || announcer == null || double.IsNaN(_flapRng)) return;
+        if (_flaps.DetentFor(_flapRng) == null) return;
+        if (string.Equals(_lastFlapSpoken, before, StringComparison.Ordinal)) return;
+        if (Settings.SettingsManager.Current.Md11DisabledMonitorVariablesSet.Contains(Md11FlapSystem.LeverKey)) return;
+        announcer.Announce(_lastFlapSpoken);
     }
 
     /// <summary>The thumbwheel's last sample, or null before the first — never a stand-in 0, which is a real 10°.</summary>

@@ -15,7 +15,6 @@ public partial class FenixAltitudeWindow : Form
 
     private Label altitudeLabel = null!;
     private TextBox altitudeTextBox = null!;
-    private Button setButton = null!;
     private Button altPushButton = null!;
     private Button altPullButton = null!;
     private Button closeButton = null!;
@@ -39,7 +38,7 @@ public partial class FenixAltitudeWindow : Form
     }
 
     /// <summary>
-    /// Shows the form and ensures it gets focus (like ChecklistForm pattern).
+    /// Shows the form and ensures it gets focus (the shared non-modal ShowForm pattern).
     /// </summary>
     public void ShowForm()
     {
@@ -84,18 +83,6 @@ public partial class FenixAltitudeWindow : Form
         };
         altitudeTextBox.KeyDown += AltitudeTextBox_KeyDown;
 
-        // Set Button
-        setButton = new Button
-        {
-            Text = "Set",
-            Location = new Point(270, 20),
-            Size = new Size(90, 30),
-            AccessibleName = "Set Altitude",
-            AccessibleDescription = "Set the entered altitude value",
-            TabIndex = 1
-        };
-        setButton.Click += async (s, e) => await HandleSetClick();
-
         // Altitude Push Button
         altPushButton = new Button
         {
@@ -136,12 +123,11 @@ public partial class FenixAltitudeWindow : Form
         // Add controls to form
         Controls.AddRange(new Control[]
         {
-            altitudeLabel, altitudeTextBox, setButton, altPushButton, altPullButton,
+            altitudeLabel, altitudeTextBox, altPushButton, altPullButton,
             closeButton
         });
 
         CancelButton = closeButton;
-        AcceptButton = setButton;
     }
 
     private void SetupAccessibility()
@@ -189,7 +175,7 @@ public partial class FenixAltitudeWindow : Form
             return System.Threading.Tasks.Task.CompletedTask;
         }
 
-        if (!double.TryParse(input, out double value))
+        if (!Utils.NumberParsing.TryParseTyped(input, out double value))
         {
             announcer.AnnounceImmediate("Invalid number format");
             altitudeTextBox.Focus();

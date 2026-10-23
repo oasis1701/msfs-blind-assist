@@ -16,8 +16,10 @@ public partial class FenixBaroWindow : Form
     private ComboBox baroModeCombo = null!;
     private ComboBox unitCombo = null!;
     private TextBox valueTextBox = null!;
-    private Button setButton = null!;
     private Button closeButton = null!;
+    // A set is on its way to the aircraft (it awaits the FCU): a second Enter is refused aloud,
+    // never queued, so the pilot knows to press it again once the first set ends.
+    private bool _settingBaro;
 
     private readonly FenixA320Definition aircraft;
     private readonly SimConnect.SimConnectManager simConnect;
@@ -124,18 +126,6 @@ public partial class FenixBaroWindow : Form
         };
         valueTextBox.KeyDown += ValueTextBox_KeyDown;
 
-        // Set Button
-        setButton = new Button
-        {
-            Text = "Set",
-            Location = new Point(190, 65),
-            Size = new Size(90, 30),
-            AccessibleName = "Set Altimeter",
-            AccessibleDescription = "Set the entered altimeter value",
-            TabIndex = 3
-        };
-        setButton.Click += async (s, e) => await HandleSetClick();
-
         // Close Button
         closeButton = new Button
         {
@@ -152,11 +142,10 @@ public partial class FenixBaroWindow : Form
         Controls.AddRange(new Control[]
         {
             modeLabel, baroModeCombo, unitLabel, unitCombo,
-            valueLabel, valueTextBox, setButton, closeButton
+            valueLabel, valueTextBox, closeButton
         });
 
         CancelButton = closeButton;
-        AcceptButton = setButton;
 
         UpdateControlState();
     }
@@ -198,7 +187,6 @@ public partial class FenixBaroWindow : Form
         bool isStd = baroModeCombo.SelectedIndex == 1;
         unitCombo.Enabled = !isStd;
         valueTextBox.Enabled = !isStd;
-        setButton.Enabled = !isStd;
     }
 
     private async void ValueTextBox_KeyDown(object? sender, KeyEventArgs e)
@@ -213,7 +201,14 @@ public partial class FenixBaroWindow : Form
 
     private async System.Threading.Tasks.Task HandleSetClick()
     {
-        if (!setButton.Enabled) return;
+        // STD disables the value box (UpdateControlState).
+        if (!valueTextBox.Enabled) return;
+        // A set already on its way blocks a second, aloud: a silent drop let a corrected value vanish.
+        if (_settingBaro)
+        {
+            announcer.AnnounceImmediate("Altimeter set in progress, press Enter again when it finishes");
+            return;
+        }
 
         string input = valueTextBox.Text.Trim();
 
@@ -244,7 +239,7 @@ public partial class FenixBaroWindow : Form
                 return;
             }
 
-            setButton.Enabled = false;
+            _settingBaro = true;
             try
             {
                 announcer.AnnounceImmediate($"Setting altimeter to {hpaValue}");
@@ -257,14 +252,13 @@ public partial class FenixBaroWindow : Form
             }
             finally
             {
-                setButton.Enabled = baroModeCombo.SelectedIndex != 1;
+                _settingBaro = false;
                 valueTextBox.SelectAll();
             }
         }
         else
         {
-            if (!double.TryParse(input, System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out double inHgValue))
+            if (!Utils.NumberParsing.TryParseTyped(input, out double inHgValue))
             {
                 announcer.AnnounceImmediate("Invalid number format");
                 valueTextBox.Focus();
@@ -280,7 +274,7 @@ public partial class FenixBaroWindow : Form
                 return;
             }
 
-            setButton.Enabled = false;
+            _settingBaro = true;
             try
             {
                 announcer.AnnounceImmediate($"Setting altimeter to {inHgValue:0.00}");
@@ -294,7 +288,7 @@ public partial class FenixBaroWindow : Form
             }
             finally
             {
-                setButton.Enabled = baroModeCombo.SelectedIndex != 1;
+                _settingBaro = false;
                 valueTextBox.SelectAll();
             }
         }

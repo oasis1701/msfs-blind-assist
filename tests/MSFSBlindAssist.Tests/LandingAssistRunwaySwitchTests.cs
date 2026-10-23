@@ -87,9 +87,10 @@ public class LandingAssistRunwaySwitchTests
     // PR #236 follow-up: one voice for "you are not on the runway you planned for".
     //
     // Both the manual landing assist and the landing-exit planner now notice a runway change and
-    // both say so, and at touchdown they say it a few hundredths of a second apart. The assist runs
-    // on the simulator's own frame rate and speaks as the wheels touch; the planner asks the
-    // simulator for a fresh position first and speaks just after, interrupting. So the assist's
+    // both say so, and at touchdown they say it up to about a second apart. The assist runs on the
+    // simulator's own frame rate and speaks as the wheels touch; the planner hears the touchdown
+    // from a once-a-second sample, asks the simulator for a fresh position and speaks after,
+    // interrupting. So the assist's
     // sentence was cut off mid-word — and on an approach flown with visual guidance, where the
     // assist stays silent through the flare, that cut-off sentence was the ONLY time the pilot
     // would have been told before the planner's own, longer sentence.

@@ -16,7 +16,6 @@ public class FBWA320BaroWindow : FBWA320FCUWindowBase
     private readonly ComboBox modeCombo;
     private readonly ComboBox unitCombo;
     private readonly TextBox valueTextBox;
-    private readonly Button setButton;
     private bool suppressUiEvents;
     private System.Windows.Forms.Timer? _modeTimer;
     // Set on every user-driven combo change. SeedFromSim skips re-seeding within
@@ -56,13 +55,10 @@ public class FBWA320BaroWindow : FBWA320FCUWindowBase
             AccessibleName = "Altimeter value", AccessibleDescription = "Enter altimeter value, Enter to set"
         };
         valueTextBox.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.Handled = true; e.SuppressKeyPress = true; HandleSet(); } };
-        setButton = new Button { Text = "Set", Location = new Point(190, 65), Size = new Size(90, 30), TabIndex = 3, AccessibleName = "Set Altimeter" };
-        setButton.Click += (s, e) => HandleSet();
         var closeButton = new Button { Text = "Close", Location = new Point(130, 130), Size = new Size(140, 35), TabIndex = 4, DialogResult = DialogResult.OK, AccessibleName = "Close" };
         closeButton.Click += (s, e) => Close();
 
-        Controls.AddRange(new Control[] { modeLabel, modeCombo, unitLabel, unitCombo, valueLabel, valueTextBox, setButton, closeButton });
-        AcceptButton = setButton;
+        Controls.AddRange(new Control[] { modeLabel, modeCombo, unitLabel, unitCombo, valueLabel, valueTextBox, closeButton });
         CancelButton = closeButton;
 
         SeedFromSim();
@@ -99,7 +95,6 @@ public class FBWA320BaroWindow : FBWA320FCUWindowBase
         bool std = modeCombo.SelectedIndex == 1;
         unitCombo.Enabled = !std;
         valueTextBox.Enabled = !std;
-        setButton.Enabled = !std;
     }
 
     private void ModeChanged(object? sender, EventArgs e)
@@ -128,9 +123,10 @@ public class FBWA320BaroWindow : FBWA320FCUWindowBase
 
     private void HandleSet()
     {
-        if (!setButton.Enabled) return;
+        // STD: the value box is disabled with the unit (UpdateControlState), so nothing is set.
+        if (!valueTextBox.Enabled) return;
         string input = valueTextBox.Text.Trim();
-        if (!double.TryParse(input, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double v))
+        if (!Utils.NumberParsing.TryParseTyped(input, out double v))
         { announcer.AnnounceImmediate("Invalid number format"); valueTextBox.SelectAll(); return; }
         bool inHg = unitCombo.SelectedIndex == 1;
         double hpa = inHg ? v * 33.8639 : v;

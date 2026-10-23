@@ -36,6 +36,7 @@ import os
 import re
 import sys
 from collections import Counter, defaultdict
+from fractions import Fraction
 
 import md11_paths
 
@@ -200,6 +201,158 @@ def temperature_positions(count):
     return out
 
 
+# The audio panels' receiver volume knobs (48: Captain, First Officer and Observer, 16 each) are TWO
+# controls on one node, and the template says so: TFDi_Design_MD11_Volume_Knob animates the knob's
+# ROTATION on its own node id and its PUSH on a second var (ANIM_NAME_PUSH, '..._VOL_BT'). The
+# wheel turns the level; the click pushes the receiver on or off. The tooltip reads both:
+#     Captain VHF2 Volume (%((L:..._VHF2_VOL_BT))%{if}%((L:..._VHF2_VOL_KB) 10 *)%!d!%%%{else}Disabled%{end})
+# so parse_tooltip's first-var rule handed the knob the PUSH as its state and found no positions:
+# MSFSBA showed every volume as a read-only 0 or 1 (the receiver on/off) with no way to turn it.
+# split_volume_knob makes the knob a level control on its own var and adds the push as a button.
+#
+# MEASURED on a live MD-11 (2026-10-15, cruise): each paced WHEEL_UP on the Captain VHF2 knob
+# moved MD11_PED_CPT_AUDIO_PNL_VHF2_VOL_KB up one unit, 0 -> 1 -> 2 ... 10, and clicks past 10
+# left it there; WHEEL_DOWN took it to 9. (Four clicks sent in one burst moved it two: the
+# CEVENT slot drops a burst, which is why Md11EventBus paces them.) Its LEFT_BUTTON_DOWN toggled
+# ..._VHF2_VOL_BT 0 -> 1 -> 0, and with it the sim's COM RECEIVE:2 (0 -> 1 -> 0), the
+# ..._VHF2_VOL_LT lamp, and COM VOLUME:2 = 90 percent at level 9: the tooltip's "level x 10
+# percent" is the receiver's real volume. The template's ANIM_LENGTH_KNOB is 10, the same range.
+VOLUME_KNOB_TEMPLATE = "TFDi_Design_MD11_Volume_Knob"
+VOLUME_KNOB_STEPS = 10
+
+# The three audio panels (node-id prefix, spoken seat) and the sixteen receivers each one has a
+# volume knob for, in panel order: the one copy every audio-panel rule below draws on.
+AUDIO_PANELS = (("MD11_PED_CPT_AUDIO_PNL", "Captain"), ("MD11_PED_FO_AUDIO_PNL", "First Officer"),
+                ("MD11_OBS_AUDIO_PNL", "Observer"))
+AUDIO_PANEL_PREFIXES = tuple(p for p, _ in AUDIO_PANELS)
+AUDIO_RECEIVERS = ("VHF1", "VHF2", "VHF3", "HF1", "HF2", "SAT", "INT", "CAB", "PA",
+                   "ILS1", "ILS2", "VOR1", "VOR2", "ADF1", "ADF2", "MKR")
+
+
+def volume_positions():
+    """Value map for a receiver volume knob: raw 0..10 -> "0%" ... "100%", TFDi's own tooltip words."""
+    return {str(raw): f"{raw * 10}%" for raw in range(VOLUME_KNOB_STEPS + 1)}
+
+
+def split_volume_knob(knob, push_var, tooltip, source):
+    """A receiver volume knob as (level knob, receiver button). Pure.
+
+    `knob` is the control collect() built from the block (state_var: the PUSH, the tooltip's first
+    var), `push_var` the block's ANIM_NAME_PUSH and `tooltip` its TOOLTIPID. The knob keeps its node
+    id and its wheel and becomes a level control: its own var, positions 0% ... 100%, flagged
+    `continuous` (its positions are samples of the level, see percent_knob_positions). The receiver is
+    a button keyed on the push var with the knob's click, a latch over that var (TFDi's tooltip reads
+    it: a proven latch, MD11-3) and the name "<seat> <source> Receiver"; its VOL lamp pairs to it by
+    the stem rule. Raises a ValueError naming `source` and the node when the tooltip is not the shape
+    this rule was measured on, rather than ship a level map over a var it does not describe.
+    """
+    nid = knob["node_id"]
+    flat = re.sub(r"\s+", " ", tooltip or "")
+    label = knob["label"] or ""
+    if (not push_var or knob["state_var"] != push_var or f"(L:{nid}) 10 *" not in flat
+            or not label.endswith(" Volume") or "LEFT_BUTTON_DOWN" not in knob["events"]):
+        raise ValueError(
+            f"{source}: {nid} is a {VOLUME_KNOB_TEMPLATE} whose tooltip, push var or events are not "
+            f"the measured shape (push var first, '(L:{nid}) 10 *' as the level, a label ending in "
+            f"' Volume', a click) -- teach split_volume_knob the new shape before regenerating")
+    events = dict(knob["events"])
+    click = events.pop("LEFT_BUTTON_DOWN")
+    level = dict(knob, state_var=nid, value_map=volume_positions(),
+                 num_states=VOLUME_KNOB_STEPS + 1, events=events, continuous=True)
+    receiver = dict(knob, node_id=push_var, kind="button",
+                    label=label[: -len(" Volume")] + " Receiver", label_source="curated",
+                    state_var=push_var, value_map={"1": "On", "0": "Off"}, num_states=2,
+                    events={"LEFT_BUTTON_DOWN": click})
+    return level, receiver
+
+
+# Lighting and display-brightness knobs whose tooltip prints their OWN var scaled to a percentage
+# and nothing else -- 'DU1 Brightness (%((L:MD11_PED_DU1_BRT_KB) 10 *)%!d!%%)' -- so the tooltip
+# names no positions and MSFSBA showed a read-only raw number. Twenty of them: the panel, flood
+# and circuit-breaker lights and the six DU brightness knobs (x10), the two briefcase lights (x5),
+# the two weather radar display brightness knobs (x100/72) and the three MCDU brightness knobs (x2,
+# which are no panel rows: the MCDU window owns them). The scale is the tooltip's; the STEP is not
+# in it, and was MEASURED (2026-10-15, cruise): one paced wheel click moved the circuit-breaker
+# panel, FGS panel and DU1 knobs by 0.5 (x10: 5 %), the Captain's briefcase light by 1 (x5: 5 %),
+# the Captain's weather radar brightness by 3.6 (x100/72: 5 %) and the left MCDU's by 2.5 (x2:
+# 5 %), every one 5 % of its scale, each put back afterwards. So the positions are 0 % ... 100 % in 5 % steps, raw =
+# percent / scale (a key that is not a terminating decimal stops the generator). The top of each
+# scale is where the tooltip reads 100 %; it agrees with each template's ANIM_LENGTH, and the clamp
+# itself was measured on the volume knobs only. The volume knobs step 10 % and are
+# split_volume_knob's; a percent knob on another template is not measured, so it is left alone.
+# Both kinds carry "continuous": true in the map: their positions are SAMPLES of a continuous
+# scale, so a reading can sit between them (the weather radar brightness read 39.60001), and
+# MSFSBA classifies a reading onto the nearest position (Md11PercentKnob) and keeps them off the
+# walk's unmeasured direct-write fallback (Md11DirectSet). The flag, never the words, says so.
+PERCENT_KNOB_TEMPLATES = {"TFDi_Design_MD11_Knob_Template", "TFDi_Design_MD11_Knob_Push"}
+PERCENT_KNOB_STEP = 5
+PERCENT_TOOLTIP_RE = re.compile(r".+? \(%\(\(L:(?P<var>[A-Za-z0-9_]+)\) (?P<rpn>[0-9 ./*]+)\)%!d!%%\)")
+
+
+def _percent_scale(rpn):
+    """The constant a bare '(L:var) <rpn>' multiplies the var by, as a Fraction, or None.
+
+    Only the two shapes TFDi uses: 'k *' and 'a b / *'."""
+    stack = []
+    tokens = rpn.split()
+    for i, tok in enumerate(tokens):
+        if re.fullmatch(r"\d+(\.\d+)?", tok):
+            stack.append(Fraction(tok))
+        elif tok == "/" and len(stack) >= 2:
+            b, a = stack.pop(), stack.pop()
+            stack.append(a / b)
+        elif tok == "*" and len(stack) == 1 and i == len(tokens) - 1:
+            return stack[0] if stack[0] > 0 else None
+        else:
+            return None
+    return None
+
+
+def _decimal_key(value):
+    """A Fraction as the shortest exact decimal string ("0.5", "3.6", "10"), or None when it does
+    not terminate."""
+    value = Fraction(value)
+    if value.denominator == 1:
+        return str(value.numerator)
+    for places in range(1, 7):
+        scaled = value * 10 ** places
+        if scaled.denominator == 1:
+            text = f"{scaled.numerator / 10 ** places:.{places}f}"
+            return text.rstrip("0").rstrip(".")
+    return None
+
+
+def percent_knob_positions(node_id, tooltip, template):
+    """{raw key: "N%"} for a percent knob (see PERCENT_KNOB_TEMPLATES), or None when the control is
+    not one: another template, or a tooltip that is not exactly its own var scaled to a percentage."""
+    if template not in PERCENT_KNOB_TEMPLATES or not tooltip:
+        return None
+    m = PERCENT_TOOLTIP_RE.fullmatch(re.sub(r"\s+", " ", tooltip.strip()))
+    if not m or m.group("var") != node_id:
+        return None
+    scale = _percent_scale(m.group("rpn"))
+    if scale is None:
+        return None
+    positions = {}
+    for pct in range(0, 101, PERCENT_KNOB_STEP):
+        key = _decimal_key(pct / scale)
+        if key is None:
+            raise ValueError(
+                f"{node_id}: {pct}% is no terminating raw value on the scale x{scale} -- a combo "
+                f"key must be exact; teach percent_knob_positions this scale before regenerating")
+        positions[key] = f"{pct}%"
+    return positions
+
+
+# The four FLIGHT NUMBER thumbwheels on the centre instrument panel: no tooltip at all, so no
+# positions. Each is one digit. MEASURED (2026-10-15): one WHEEL_UP on digit 1 moved
+# MD11_CTR_FLTNO1_SW 0 -> 1, WHEEL_DOWN took it back, and a further WHEEL_DOWN left it at 0 (no
+# wrap). The top digit is 9: the template animates var x 1.111 over ANIM_LENGTH 10.
+def digit_positions():
+    """Value map for a single-digit thumbwheel: raw 0..9 -> "0" ... "9"."""
+    return {str(d): str(d) for d in range(10)}
+
+
 CURATED = {
     "MD11_FLAP_LATCH": {
         "label": "Flaps/Slats",
@@ -251,6 +404,15 @@ CURATED = {
     # until a reader consumes `threshold` generically -- at which point this entry and that class
     # go together.
     "MD11_MIP_GEAR_SW": {"value_map": {"0": "Up", "1": "Down"}},
+    # The flight number thumbwheels (digit_positions).
+    **{f"MD11_CTR_FLTNO{n}_SW": {"value_map": digit_positions()} for n in (1, 2, 3, 4)},
+    # The passenger-load thumbwheels share ONE tooltip that reads all three digits
+    # ('%((L:..._100_...) 100 * (L:..._10_...) 10 * + (L:..._1_...) +)%!d!'), so the first-var rule
+    # gave the Tens and Units wheels the HUNDREDS var: both rows read the hundreds digit. Each wheel
+    # animates its own node id (ANIM_NAME), so that is its state. No positions: neither click moved
+    # the Units wheel on a live MD-11F (2026-10-15) -- the selector is likely inert on the
+    # freighter -- so a combo could not be proven, and the row stays a read-only digit.
+    **{f"MD11_OVHD_{n}_PAX_LOAD_SW": {"state_var": f"MD11_OVHD_{n}_PAX_LOAD_SW"} for n in (1, 10)},
 }
 
 # Guard covers TFDi's own XML does not link to the control they cover. The generator never infers
@@ -383,9 +545,13 @@ LAMP_LEGEND_OVERRIDES = {
     "MD11_OVHD_IRS_1_LT": "NAV_OFF", "MD11_OVHD_IRS_2_LT": "NAV_OFF", "MD11_OVHD_IRS_3_LT": "NAV_OFF",
     "MD11_THR_L_FUEL_LT": "FIRE", "MD11_THR_C_FUEL_LT": "FIRE", "MD11_THR_R_FUEL_LT": "FIRE",
     # Audio panel MIC / IDENT buttons light "MIC" / "IDENT", not "ON".
-    **{f"{p}_{r}_MIC_LT": "MIC" for p in ("MD11_PED_CPT_AUDIO_PNL", "MD11_PED_FO_AUDIO_PNL", "MD11_OBS_AUDIO_PNL")
+    **{f"{p}_{r}_MIC_LT": "MIC" for p in AUDIO_PANEL_PREFIXES
        for r in ("VHF1", "VHF2", "VHF3", "HF1", "HF2", "SAT", "INT", "CAB")},
-    **{f"{p}_IDENT_LT": "IDENT" for p in ("MD11_PED_CPT_AUDIO_PNL", "MD11_PED_FO_AUDIO_PNL", "MD11_OBS_AUDIO_PNL")},
+    **{f"{p}_IDENT_LT": "IDENT" for p in AUDIO_PANEL_PREFIXES},
+    # ...and the receiver lights "VOL": bare "<stem>_LT" lamps of the receiver buttons
+    # split_volume_knob adds. Every panel has these sixteen sources, but only the Observer's has a
+    # SAT one; a lamp the package lacks is never looked up.
+    **{f"{p}_{r}_VOL_LT": "VOL" for p in AUDIO_PANEL_PREFIXES for r in AUDIO_RECEIVERS},
 }
 # Spoken word for the overriding legends above that LEGEND_MEANINGS does not carry.
 LEGEND_MEANINGS.update({"UP": "Up", "STOW": "Stowed", "WARN": "Warning", "CAUT": "Caution", "A": "Selected",
@@ -507,12 +673,11 @@ STANDALONE_LAMPS = {
     "MD11_EXT_DOOR_CRG_MAIN_PWR_LT": ("Main Cargo Door PWR light", "On", "Off"),
     **{f"MD11_EXT_DOOR_PAXC_{d}_DISARM_LT": (f"Door {d} DISARM light", "On", "Off") for d in ("1L", "1R")},
     **{f"MD11_LTS_MAP_{n}": (f"Map Light {n}", "On", "Off") for n in (1, 2, 3)},
-    # Audio panel call lights (the MIC/VOL lights belong to their button/knob; these do not).
+    # Audio panel call lights (the MIC and VOL lights belong to their buttons; these do not).
     **{f"{p}_{r}_CALL_LT": (f"{seat} {r} CALL light", "On", "Off")
-       for p, seat in (("MD11_PED_CPT_AUDIO_PNL", "Captain"), ("MD11_PED_FO_AUDIO_PNL", "First Officer"), ("MD11_OBS_AUDIO_PNL", "Observer"))
+       for p, seat in AUDIO_PANELS
        for r in ("VHF1", "VHF2", "VHF3", "HF1", "HF2", "CAB")},
-    **{f"{p}_INT_MECH_LT": (f"{seat} MECH call light", "On", "Off")
-       for p, seat in (("MD11_PED_CPT_AUDIO_PNL", "Captain"), ("MD11_PED_FO_AUDIO_PNL", "First Officer"), ("MD11_OBS_AUDIO_PNL", "Observer"))},
+    **{f"{p}_INT_MECH_LT": (f"{seat} MECH call light", "On", "Off") for p, seat in AUDIO_PANELS},
     "MD11_PED_CPT_AUDIO_PNL_SAT_TEL_LT": ("Captain SAT TEL light", "On", "Off"),
     "MD11_PED_FO_AUDIO_PNL_SAT_TELL_LT": ("First Officer SAT TEL light", "On", "Off"),
     "MD11_OBS_AUDIO_PNL_SAT_TEL_LT": ("Observer SAT TEL light", "On", "Off"),
@@ -737,6 +902,11 @@ def finalize_controls(controls):
         curated_map = (CURATED.get(nid) or {}).get("value_map")
         if curated_map:
             c["value_map"] = dict(curated_map)
+            c["num_states"] = len(curated_map)   # the positions' count, as the percent knobs' is
+        # ...and a curated state var, for the same reason: the parsed one is written over it.
+        curated_var = (CURATED.get(nid) or {}).get("state_var")
+        if curated_var:
+            c["state_var"] = curated_var
         if c["label"]:
             c["label"] = speakable(c["label"])
 
@@ -1843,7 +2013,14 @@ def collect(pkg_dir):
                     stats["curated"] += 1
 
                 num_states = fields.get("NUM_STATES")
-                controls.append(
+                # A lighting or brightness knob whose tooltip is only its own var as a percentage
+                # gets measured 5 % positions (percent_knob_positions); TFDi's NUM_STATES says
+                # nothing about them, so the count is the positions'.
+                percent = None if value_map or composite else percent_knob_positions(
+                    node_id, fields.get("TOOLTIPID"), tmpl)
+                if percent:
+                    value_map, num_states = percent, str(len(percent))
+                control = (
                     {
                         "node_id": node_id,
                         "kind": kind,
@@ -1874,8 +2051,19 @@ def collect(pkg_dir):
                         # one field and cannot tell a curated link from a declared one.
                         "guard_id": fields.get("GUARD_ID") or CURATED_GUARDS.get(node_id),
                         "source": source,
+                        # Only on a percent knob: positions sampled from a continuous scale.
+                        **({"continuous": True} if percent else {}),
                     }
                 )
+                if tmpl == VOLUME_KNOB_TEMPLATE:
+                    # Two controls on one node: the level knob and the receiver push (see
+                    # split_volume_knob). The receiver is a button, counted as one.
+                    level, receiver = split_volume_knob(
+                        control, fields.get("ANIM_NAME_PUSH"), fields.get("TOOLTIPID"), source)
+                    controls.extend([level, receiver])
+                    stats["kind:button"] += 1
+                else:
+                    controls.append(control)
                 stats["kind:" + kind] += 1
 
     return controls, stats

@@ -30,7 +30,6 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     // One spelling, shared with the speed-brake callout's Ctrl+M lookup (DefAnnounceMuteSets).
     private const string Code = "IFLY_737MAX8";
     public override string AircraftCode => Code;
-    public override string? ChecklistFileName => "iFly_737MAX8_Checklist.txt";
 
     // Measured on the PMDG 737 and validated in-sim; same airframe class.
     public override double TaxiTurnLeadSeconds => 0.4;
@@ -57,6 +56,10 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     /// instance). Called on aircraft swap.</summary>
     public void Shutdown()
     {
+        // First, a fire test the First Officer is still holding goes back to neutral: the swap or
+        // exit that calls this has already detached the First Officer, whose own release comes
+        // after its hold (on an exit, never), and a switch left at OVHT/FIRE rings the bell on.
+        ReleaseHeldFireTest();
         if (_autopilotWindow != null && !_autopilotWindow.IsDisposed)
             _autopilotWindow.Dispose();
         _autopilotWindow = null;
@@ -74,6 +77,28 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         // announced over the next aircraft.
         _speedBrakeCallout.Dispose();
         Sdk.Dispose();
+    }
+
+    // 1 while the First Officer holds the OVHT/FIRE test switch (IFly737ActionExecutor's
+    // FIRE_TEST, a 2 s hold). The executor after its hold, or Shutdown, takes it: whichever
+    // comes first releases the switch, once.
+    private int _heldFireTest;
+
+    /// <summary>The First Officer is about to hold the fire test switch at OVHT/FIRE.</summary>
+    internal void NoteFireTestHeld() => System.Threading.Volatile.Write(ref _heldFireTest, 1);
+
+    /// <summary>True for the one caller that must release the held fire test; false when none
+    /// is held or it was already taken (Shutdown released it).</summary>
+    internal bool TakeHeldFireTest() => System.Threading.Interlocked.Exchange(ref _heldFireTest, 0) == 1;
+
+    /// <summary>Sends a fire test the First Officer still holds back to neutral, through its
+    /// registered Fire Test Release command. Nothing is spoken (an exit leaves nobody to hear
+    /// it, a swap is about the next aircraft); a release that did not go out is logged.</summary>
+    private void ReleaseHeldFireTest()
+    {
+        if (!TakeHeldFireTest() || !_writes.TryGetValue("BTN_FIRE_TEST_RELEASE", out var release)) return;
+        if (!Sdk.SendCommand(release.Command, release.Map?.Invoke(1) ?? 1, release.Value3))
+            MSFSBlindAssist.Utils.Logging.Log.Warn("ifly", "Shutdown: the held fire test was not released (no answer from the iFly plugin)");
     }
 
     // =========================================================================
@@ -708,8 +733,8 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 },
             };
         }
-        BrmLvar("IFLY_ENG1_BRM", "iFly737MAX_Lvar_ENG1_BRM_VAL", "Engine 1 Bowed Rotor Motoring");
-        BrmLvar("IFLY_ENG2_BRM", "iFly737MAX_Lvar_ENG2_BRM_VAL", "Engine 2 Bowed Rotor Motoring");
+        BrmLvar(Eng1BrmKey, "iFly737MAX_Lvar_ENG1_BRM_VAL", "Engine 1 Bowed Rotor Motoring");
+        BrmLvar(Eng2BrmKey, "iFly737MAX_Lvar_ENG2_BRM_VAL", "Engine 2 Bowed Rotor Motoring");
 
         // Indicated airspeed feed for the takeoff V-speed callouts ("V1" /
         // "Rotate" / "V2" — the iFly plays no native aural callouts, unlike the
@@ -1022,6 +1047,53 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         }
 
         return false;
+    }
+
+    // =========================================================================
+    // First Officer / universal-automation write path
+    // =========================================================================
+
+    /// <summary>Verified write path for the FO executor (approach B): resolves the
+    /// registered SimVarDefinition, suppresses the poll-echo announce of our own
+    /// write (NoteWindowWrite), and dispatches through HandleUIVariableSet — the
+    /// single place every iFly encoding trap lives. False = key not registered.
+    ///
+    /// ⚠ A TRUE return means only "the key is registered and the write was DISPATCHED" —
+    /// NOT "the plugin received/applied it". HandleUIVariableSet's Sw/SwD/NumSet/Btn branch
+    /// calls <c>Sdk.SendCommand</c> and, if that fails (plugin dead or absent), announces
+    /// "iFly plugin not responding" but still returns true. A caller that reads true as
+    /// "delivered" — as the FO executor's IsAvailable once did, before it started also
+    /// gating on <see cref="IFlySdkClient.IsReady"/> — will report a flow step complete for a
+    /// switch that never moved, and FlowManager/ChecklistManager will latch the containing
+    /// checklist group permanently complete on that false success.</summary>
+    public bool ApplyUIVariable(string varKey, double value,
+        SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        EnsureRegistered();
+        if (!_vars.TryGetValue(varKey, out var def)) return false;
+        NoteWindowWrite(varKey);
+        return HandleUIVariableSet(varKey, value, def, simConnect, announcer);
+    }
+
+    /// <summary>True when <paramref name="varKey"/> has a REAL write command registered —
+    /// either <see cref="_writes"/> (Sw/SwD/NumSet/Btn) or <see cref="_perValueWrites"/>
+    /// (SwPerValue) — as opposed to merely being a registered key at all. Closes the hole
+    /// Task 6's review found in the flow totality test: <see cref="ApplyUIVariable"/> (via
+    /// <see cref="HandleUIVariableSet"/>) returns TRUE for a registered but read-only key
+    /// (Annun/AnnunD/Disp — display-only, e.g. Hydraulic_Brake_Pressure_Status, a Disp field)
+    /// after merely speaking "X is a read-only indicator" and re-firing state, so a flow step
+    /// pointed at one resolves as "writable" under a membership-only check and then silently
+    /// does nothing in the sim. <see cref="SimConnect.SimVarDefinition.RenderAsReadOnlyStatus"/>
+    /// is NOT a substitute — that flag is only ever set true by the SwD path (a null `set`
+    /// command); Disp/Annun/AnnunD leave it false with no write command at all, which is exactly
+    /// the gap a mutation probe proved (pointing a step at Spoiler_Lever_Status passed the old
+    /// RenderAsReadOnlyStatus-based test; PR #261 has since given that field a real write,
+    /// FLTCTRL_SPOILER). Internal and decoupled from a live SDK — only needs registration,
+    /// same as <see cref="IFly737ActionExecutor.IsDeclaredPosition"/>.</summary>
+    internal bool HasWriteCommand(string varKey)
+    {
+        EnsureRegistered();
+        return _writes.ContainsKey(varKey) || _perValueWrites.ContainsKey(varKey);
     }
 
     /// <summary>Per-key latest-wins generation for the guarded double-send above
@@ -1703,6 +1775,12 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     // announce stale history — only a live edge speaks.
     private readonly Dictionary<string, bool> _lastBrmActive = new();
 
+    /// <summary>The keys of the engines' bowed-rotor-motoring L:vars (1 = active), on the
+    /// continuous batch, so the SimConnect cache holds them: the First Officer's engine-start
+    /// waits read them there (IFly737StateEvaluator.IsBowedRotorMotoring).</summary>
+    internal const string Eng1BrmKey = "IFLY_ENG1_BRM";
+    internal const string Eng2BrmKey = "IFLY_ENG2_BRM";
+
     // Takeoff V-speed announce baselines (key = var key). Absent key = baseline
     // not yet seen; the first read after launch/reconnect stays silent so speeds
     // already in the FMC don't replay — only a live entry/change speaks.
@@ -1848,6 +1926,68 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     // 2500 lost the race about half the time (PR #163 review).
     internal bool WindowEchoActive(string field) =>
         _windowWriteEcho.TryGetValue(field, out long t) && Environment.TickCount64 - t < 4000;
+
+    // =========================================================================
+    // Closed-loop auto-AP engage (universal First Officer / auto-engage service)
+    // =========================================================================
+
+    /// <summary>NG AFDS inhibits CMD engagement below 400 ft RA after takeoff — the
+    /// same airframe rule as the PMDG 737 (docs/first-officer.md). Do not lower.</summary>
+    public override int MinimumAutopilotEngageAltitudeAgl => 400;
+
+    /// <summary>Null (indeterminate) until the first SDK snapshot — a guessed false
+    /// would let the universal service's retry click disengage an engaged AP.
+    /// Engaged = any autopilot engage switch lit (<see cref="AutopilotEngagedIn"/>).</summary>
+    public override bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect)
+        => AutopilotEngagedIn(Sdk.IsReady ? Sdk.Snapshot : null);
+
+    /// <summary>The MCP's autopilot engage switches, CMD A, CMD B, CWS A and CWS B: 0-5
+    /// switch+light composites, lit when mod 3 &gt; 0. CMD alone was once read, so a CWS
+    /// autopilot the pilot engaged read "not engaged" and the universal auto-AP pressed CMD A
+    /// over it (the PMDG 737 reads its CMD and CWS annunciators the same way).</summary>
+    internal static readonly int[] AutopilotEngageOffsets =
+    {
+        IFlySdkOffsets.CMD_A_Switch_Status, IFlySdkOffsets.CMD_B_Switch_Status,
+        IFlySdkOffsets.CWS_A_Switch_Status, IFlySdkOffsets.CWS_B_Switch_Status,
+    };
+
+    /// <summary>Whether <paramref name="snap"/> shows an autopilot engaged; null with no
+    /// snapshot (the SDK not ready).</summary>
+    internal static bool? AutopilotEngagedIn(IFlySdkSnapshot? snap)
+        => snap is null ? null : AutopilotEngageOffsets.Any(offset => snap.ByteAt(offset) % 3 > 0);
+
+    /// <summary>Universal auto-AP-engage entry point. No-ops if an autopilot (CMD or CWS) is
+    /// already engaged, or not read yet, so a toggle-style press can't disconnect it.</summary>
+    public override void EngageAutopilot(SimConnect.SimConnectManager simConnect)
+    {
+        if (IsAutopilotEngaged(simConnect) != false) return; // never blind-click an engaged or unread AP
+        _ = EngageCmdAAsync(simConnect);
+    }
+
+    /// <summary>The CMD A sequence itself takes up to about 0.85 s (the SDK click, its 700 ms check, the
+    /// clickspot fallback): presses 3 s apart, so a retry never lands while the last one is still in
+    /// progress and toggles CMD A back off.</summary>
+    public override int AutopilotEngageRetryIntervalMs => ToggleAutopilotEngageRetryIntervalMs;
+
+    /// <summary>Never pressed on an unread snapshot (null): the service waits for a reading.</summary>
+    public override bool AutopilotEngageWaitsForState => true;
+
+    /// <summary>The autopilot window's verified CMD A engage mechanism (SDK click →
+    /// ~700 ms verify → cockpit-clickspot trigger replay fallback, press 7 / release 8
+    /// on L:VC_Automatic_Flight_trigger_VAL — from iFly737Max_INTERIOR.xml). The
+    /// window keeps its own richer two-way EngageClick (disengage + UI refresh);
+    /// this is the engage-only half for the FO/universal service.</summary>
+    internal async Task EngageCmdAAsync(SimConnect.SimConnectManager? simConnect)
+    {
+        bool Lit() => Sdk.Snapshot is { } s
+            && s.ByteAt(IFlySdkOffsets.CMD_A_Switch_Status) % 3 > 0;
+        if (!Sdk.SendCommand(IFlyKeyCommand.AUTOMATICFLIGHT_CMD_A)) return;
+        await Task.Delay(700);
+        if (Lit() || simConnect == null) return;
+        simConnect.SetLVar("VC_Automatic_Flight_trigger_VAL", 7);
+        await Task.Delay(150);
+        simConnect.SetLVar("VC_Automatic_Flight_trigger_VAL", 8);
+    }
 
     // Flattened SDK field-name -> (byte offset, Kind) map, built once from
     // IFlySdkFields.All using the SAME flattening IFlySdkClient.RaiseFieldEvents uses
@@ -2202,14 +2342,14 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         // Engine bowed rotor motoring (see the BrmLvar registration note): edge
         // announces only, both directions — the "complete" edge is the go-ahead
         // that the start sequence is moving again.
-        if (varName is "IFLY_ENG1_BRM" or "IFLY_ENG2_BRM")
+        if (varName is Eng1BrmKey or Eng2BrmKey)
         {
             bool active = value > 0.5;
             bool had = _lastBrmActive.TryGetValue(varName, out bool last);
             _lastBrmActive[varName] = active;
             if (had && active != last)
             {
-                string eng = varName == "IFLY_ENG1_BRM" ? "1" : "2";
+                string eng = varName == Eng1BrmKey ? "1" : "2";
                 announcer.Announce(active
                     ? $"Engine {eng} bowed rotor motoring"
                     : $"Engine {eng} bowed rotor motoring complete");
@@ -2837,13 +2977,12 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         isMach = false;
         value = 0;
         input = input.Trim().ToUpperInvariant();
-        if (input.StartsWith("M") || input.StartsWith("."))
+        if (input.StartsWith("M") || input.StartsWith(".") || input.StartsWith(","))
         {
             isMach = true;
             input = input.TrimStart('M');
         }
-        if (!double.TryParse(input, System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out value))
+        if (!Utils.NumberParsing.TryParseTyped(input, out value))
             return false;
         if (!isMach && value < 1.0) isMach = true; // "0.78"
         return true;
@@ -2985,8 +3124,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             "Altimeter Setting", "altimeter (hPa or inches)", "e.g. 1013 or 29.92", announcer,
             input =>
             {
-                if (!double.TryParse(input, System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out double v))
+                if (!Utils.NumberParsing.TryParseTyped(input, out double v))
                     return (false, "Enter a pressure like 1013 or 29.92");
                 if (v is >= 940 and <= 1090 || v is >= 27 and <= 32) return (true, "");
                 return (false, "Enter hPa (940-1090) or inches (27.00-32.00)");
@@ -2994,19 +3132,27 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             toggles,
             input =>
             {
-                if (!double.TryParse(input, System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out double v))
+                if (!Utils.NumberParsing.TryParseTyped(input, out double v))
                     return;
                 // The iFly SDK has no absolute baro-set command (INC/DEC only), and the
                 // aircraft tracks the stock Kohlsman value, so set it via the stock event
                 // (no index — sets altimeter 1; the iFly appears to track one Kohlsman for
-                // both sides — LIVE-VERIFY) (parameter = millibars * 16).
-                double mb = v >= 100 ? v : v * 33.8639; // inches → millibars
-                simConnect.SendEvent("KOHLSMAN_SET", (uint)Math.Round(mb * 16));
+                // both sides — LIVE-VERIFY).
+                simConnect.SendEvent("KOHLSMAN_SET", KohlsmanSetParameter(v));
                 // No AnnounceImmediate here — the monitored ALTIMETER_SETTING var (line ~1001)
                 // announces the confirmed value once SimConnect reads it back (PMDG pattern).
             });
         dialog.ShowCancelButton = false;
         dialog.Show(parentForm);
+    }
+
+    /// <summary>The stock KOHLSMAN_SET parameter (millibars × 16, rounded) for a pressure in
+    /// hectopascals (100 or more) or inches of mercury. The one computation for this dialog and
+    /// the First Officer's altimeters to standard (IFly737ActionExecutor.StandardKohlsmanParameter),
+    /// so the two cannot drift.</summary>
+    internal static uint KohlsmanSetParameter(double hpaOrInHg)
+    {
+        double mb = hpaOrInHg >= 100 ? hpaOrInHg : hpaOrInHg * 33.8639; // inches → millibars
+        return (uint)Math.Round(mb * 16);
     }
 }

@@ -405,12 +405,16 @@ public partial class FlyByWireA380Definition
         // state L:var (display mirror) AND fire the working indexed stock events:
         // nose takeoff = LIGHT LANDING:1, nose taxi = LIGHT TAXI:1 (TAXI:1 on for
         // both T.O. and Taxi, per the cockpit "allow TAXI LT with TO LT").
+        // These three light writes are unique per call (SIM-17): each string is byte-identical
+        // per state and MobiFlight drops a repeat, so an OFF after the pilot switched the light
+        // back on in the cockpit (the First Officer's Securing after After Takeoff's identical
+        // OFF) did nothing while the step reported it done.
         if (varKey == "NOSE_LIGHT")
         {
             int pos = (int)Math.Round(value);
             int takeoff = pos == 0 ? 1 : 0;
             int taxi = (pos == 0 || pos == 1) ? 1 : 0;
-            simConnect.ExecuteCalculatorCode(
+            simConnect.ExecuteCalculatorCodeUnique(
                 $"{pos} (>L:LIGHTING_LANDING_1) 1 {takeoff} (>K:2:LANDING_LIGHTS_SET) 1 {taxi} (>K:2:TAXI_LIGHTS_SET)");
             return true;
         }
@@ -419,13 +423,13 @@ public partial class FlyByWireA380Definition
         if (varKey == "LIGHT_RWY_TURNOFF")
         {
             int v = value > 0.5 ? 1 : 0;
-            simConnect.ExecuteCalculatorCode($"2 {v} (>K:2:TAXI_LIGHTS_SET) 3 {v} (>K:2:TAXI_LIGHTS_SET)");
+            simConnect.ExecuteCalculatorCodeUnique($"2 {v} (>K:2:TAXI_LIGHTS_SET) 3 {v} (>K:2:TAXI_LIGHTS_SET)");
             return true;
         }
         // Wing LANDING lights = indexed LIGHT LANDING:2 (nose takeoff is index 1).
         if (varKey == "LIGHT_LANDING")
         {
-            simConnect.ExecuteCalculatorCode($"2 {(value > 0.5 ? 1 : 0)} (>K:2:LANDING_LIGHTS_SET)");
+            simConnect.ExecuteCalculatorCodeUnique($"2 {(value > 0.5 ? 1 : 0)} (>K:2:LANDING_LIGHTS_SET)");
             return true;
         }
         // Seat-belt sign 3-position switch: On(0) / Auto(1) / Off(2). Write the switch

@@ -45,6 +45,7 @@ public class LandingExitPlanner
 
     // Touchdown detection state
     private bool _wasAirborne;
+    private Navigation.LahsoHold? _lahso;
     private bool _activatedThisLanding;
     // "Runway not identified" has been said for THIS plan. The plan itself survives that verdict
     // (LandingExitActivationPolicy), so without this latch a bounce or a touch-and-go would repeat
@@ -53,8 +54,9 @@ public class LandingExitPlanner
 
     // Minimum ground speed at on-ground transition for it to count as a real landing
     // rather than a teleport or taxi-onto-ground. Light aircraft touch down around
-    // 50 kt; below 40 kt is almost always a taxi start or teleport reload.
-    private const double LANDING_MIN_GS_KNOTS = 40.0;
+    // 50 kt; below 40 kt is almost always a taxi start or teleport reload. Internal: the
+    // landing assist's rollout-only cue never engages below it (LandingFlareAssistManager).
+    internal const double LANDING_MIN_GS_KNOTS = 40.0;
 
     // Diagnostic log so we can see why activation didn't fire when only the
     // "On ground" callout was heard at touchdown. Lives with every other MSFSBA
@@ -82,6 +84,44 @@ public class LandingExitPlanner
     public Runway? PendingRunway => _runway;
     public LandingExit? PendingExit => _exit;
 
+    /// <summary>Every runway end at the planned airport, captured with the plan (empty with none).</summary>
+    public IReadOnlyList<Runway> PendingAirportRunways => _airportRunways;
+
+    /// <summary>
+    /// Will this plan start exit guidance, and speak its touchdown sentence, at the next touchdown at
+    /// <paramref name="icao"/>? The landing assist's rollout cue stays silent at touchdown only then.
+    /// </summary>
+    public bool WillStartGuidanceAt(string icao)
+        => WillStartGuidance(HasPendingExit, _activatedThisLanding, _icao, icao);
+
+    /// <summary>
+    /// A plan starts guidance at a touchdown when it exists, has not already started it (a plan starts
+    /// guidance once; only a go-around re-arms it) and names that airport. Pure —
+    /// <c>LandingExitPlannerStartsGuidanceTests</c>.
+    /// </summary>
+    internal static bool WillStartGuidance(bool hasPendingExit, bool activatedThisLanding, string? planIcao, string icao)
+        => hasPendingExit && !activatedThisLanding
+           && string.Equals(planIcao, icao, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// True while this plan still has to decide the coming touchdown: it exists, has not started guidance, and has
+    /// seen the aircraft airborne. <see cref="ProcessGroundState"/> settles it on the touchdown's ground sample,
+    /// once guidance has started or "Runway not identified" was decided (both clear the airborne edge). The landing
+    /// assist holds its own touchdown sentence while this is true, so the two never talk over each other.
+    /// </summary>
+    public bool IsAwaitingTouchdown => AwaitsTouchdown(HasPendingExit, _wasAirborne, _activatedThisLanding);
+
+    /// <summary>Pure — <c>LandingExitPlannerStartsGuidanceTests</c>.</summary>
+    internal static bool AwaitsTouchdown(bool hasPendingExit, bool wasAirborne, bool activatedThisLanding)
+        => hasPendingExit && wasAirborne && !activatedThisLanding;
+
+    /// <summary>
+    /// Raised after <see cref="SetExit"/> and <see cref="Clear"/> change the plan, never by
+    /// <see cref="RearmAfterGoAround"/>, which keeps it. MainForm re-decides the landing assist's rollout
+    /// centerline cue from it (Navigation.RolloutCueArming): a plan arms the cue on its runway.
+    /// </summary>
+    public event EventHandler? PlanChanged;
+
     /// <summary>
     /// Captures a landing-exit selection. Call when the pilot picks an exit in the form.
     /// Keeps a reference to the pre-built graph so activation doesn't have to rebuild it,
@@ -94,13 +134,28 @@ public class LandingExitPlanner
         LandingExit exit,
         TaxiGraph graph,
         IReadOnlyList<Runway> airportRunways,
-        bool currentlyAirborne = true)
+        bool currentlyAirborne = true,
+        Navigation.LahsoHold? lahso = null)
     {
+        // Mid-rollout re-pick: when guidance is ALREADY rolling out on this
+        // runway, the pick is a live exit change ("turn right at Hotel" from
+        // tower on the roll), not a plan for the next landing — hand it to the
+        // active rollout and leave the pending-plan state alone. The manager
+        // returns false when it isn't in LandingRollout or the runway differs,
+        // and the normal arming below then runs unchanged.
+        if (!currentlyAirborne &&
+            _guidanceManager.TryRetargetActiveRolloutExit(exit, runway.RunwayID, lahso))
+        {
+            DiagLog($"SetExit routed to active rollout: exit='{exit.TaxiwayName}' runway={runway.RunwayID}");
+            return;
+        }
+
         _dataProvider = dataProvider;
         _icao = icao;
         _runway = runway;
         _exit = exit;
         _graph = graph;
+        _lahso = lahso;
         _airportRunways = airportRunways ?? Array.Empty<Runway>();
         _activatedThisLanding = false;
         _unidentifiedRunwayAnnounced = false;
@@ -129,9 +184,13 @@ public class LandingExitPlanner
 
         string dist = DistanceFormatter.FromFeet(exit.DistanceFromThresholdFeet, round: false);
         string name = string.IsNullOrEmpty(exit.TaxiwayName) ? "unnamed taxiway" : $"taxiway {exit.TaxiwayName}";
+        string lahsoNote = lahso == null ? "" :
+            $" Land and hold short of runway {lahso.CrossingRunwayId}: estimated hold point " +
+            $"{DistanceFormatter.FromFeet(lahso.StopFromThresholdFeet)} from the threshold.";
         _announcer.Announce(
             $"Landing exit planned: {name} at {icao} runway {runway.RunwayID}, " +
-            $"{dist} from threshold. Guidance will auto-start on touchdown.");
+            $"{dist} from threshold.{lahsoNote} Guidance will auto-start on touchdown.");
+        PlanChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Clears any pending selection without activating.</summary>
@@ -143,6 +202,7 @@ public class LandingExitPlanner
         _runway = null;
         _exit = null;
         _graph = null;
+        _lahso = null;
         _dataProvider = null;
         _airportRunways = Array.Empty<Runway>();
         _activatedThisLanding = false;
@@ -151,6 +211,7 @@ public class LandingExitPlanner
         // the clear can't trick the next plan into firing on a stale ground bit.
         _wasAirborne = false;
         if (had) _announcer.Announce("Landing exit plan cleared.");
+        PlanChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>
@@ -271,6 +332,12 @@ public class LandingExitPlanner
                 return true;
         }
     }
+
+    /// <summary>The planned land-and-hold-short, only when landing on the runway it was planned for.</summary>
+    private Navigation.LahsoHold? LahsoFor(Runway runway)
+        => _lahso != null && _runway != null
+           && string.Equals(runway.RunwayID, _runway.RunwayID, StringComparison.OrdinalIgnoreCase)
+            ? _lahso : null;
 
     /// <summary>
     /// The aircraft is on another runway, or the other end of the planned one: choose an exit on the
@@ -418,7 +485,7 @@ public class LandingExitPlanner
             _guidanceManager.BeginLandingRolloutNoGraph(
                 exit, runway.Heading, runway, allExits, lat, lon,
                 SettingsManager.Current, _graph, _dataProvider, _icao ?? "",
-                groundSpeedKnots, correction);
+                groundSpeedKnots, correction, LahsoFor(runway));
 
             _activatedThisLanding = true;
             return true;
@@ -426,7 +493,10 @@ public class LandingExitPlanner
 
         DiagLog($"ActivateGuidance LoadRoute OK, calling StartGuidance");
         _activatedThisLanding = true;
-        _guidanceManager.StartGuidance(SettingsManager.Current);
+        // Silent: the touchdown callout BeginLandingRollout speaks next is the instruction that matters,
+        // and StartGuidance's own "Taxiway A. Steering guidance active." named the route's FIRST taxiway,
+        // not the exit — on almost every landing (VirtualPilot 2026-09-18).
+        _guidanceManager.StartGuidance(SettingsManager.Current, announceStart: false);
 
         // Switch into landing-rollout mode: tone is paused, distance-based
         // callouts ("approaching high-speed exit Sierra-5, 1500 feet" /
@@ -442,7 +512,7 @@ public class LandingExitPlanner
         // through so the rollout can detect when the pilot starts the
         // turn off centerline.
         _guidanceManager.BeginLandingRollout(
-            exit, runway.Heading, runway, allExits, lat, lon, groundSpeedKnots, correction);
+            exit, runway.Heading, runway, allExits, lat, lon, groundSpeedKnots, correction, LahsoFor(runway));
         return true;
     }
 }

@@ -41,20 +41,10 @@ public static class RunwayLineupTarget
     public static Result Resolve(TaxiGraph graph, Runway rwy, IEnumerable<StartPosition>? startsForRunway,
                                  double? anchorLat, double? anchorLon)
     {
-        StartPosition? start = startsForRunway == null ? null
-            : TaxiGraph.PickFullLengthStart(startsForRunway, rwy.StartLat, rwy.StartLon, rwy.EndLat, rwy.EndLon);
-
-        double lineupLat, lineupLon;
-        if (start != null)
-        {
-            (lineupLat, lineupLon) = TaxiGraph.SnapStartToRunwayCenterline(
-                start.Latitude, start.Longitude, rwy.StartLat, rwy.StartLon, rwy.EndLat, rwy.EndLon);
-        }
-        else
-        {
-            lineupLat = rwy.StartLat;
-            lineupLon = rwy.StartLon;
-        }
+        // TaxiGraph.DepartureLineupPoint: PickFullLengthStart + SnapStartToRunwayCenterline, and a
+        // snapped point BEHIND the pavement edge kept only where taxi pavement reaches back to it
+        // (a starter extension) — otherwise moved forward to the edge (Taxi2Gate LFPG 09L).
+        var (lineupLat, lineupLon) = graph.DepartureLineupPoint(startsForRunway, rwy);
 
         double halfWidthM = (rwy.Width > 0 ? rwy.Width : FallbackRunwayWidthFeet) * 0.3048 / 2.0;
         var entry = graph.FindRunwayLineupEntryNode(

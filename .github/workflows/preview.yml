@@ -82,6 +82,12 @@ jobs:
       - name: Build
         run: dotnet build MSFSBlindAssist.sln -c Release -p:Version=${{ steps.version.outputs.VERSION }}
 
+      # The one-page user guide ships next to the exe, where Help, User Guide opens it
+      # (GUIDE-3). A guide problem only warns: the zip then falls back to the online guide.
+      - name: Build the one-page user guide
+        shell: bash
+        run: bash tools/user-guide-publish.sh bundle preview "${{ steps.version.outputs.VERSION }}"
+
       # Keep the Navdatareader version in sync with release.yml's identical step.
       # BUMPING THIS PIN REQUIRES re-deriving MSFSBlindAssist/Resources/navdatareader.cfg
       # from the new release's own config/navdatareader.cfg (re-copy stock, re-apply the
@@ -174,3 +180,12 @@ jobs:
           # which after the force-push above is `preview` itself — the generated list
           # would be nonsense. Our own notes are the whole body here.
           generate_release_notes: false
+
+      # The website's preview edition of the guide is built from main and names this preview's
+      # version, so ask it to rebuild once the preview above is published. Best-effort, as in
+      # release.yml: it never fails the preview.
+      - name: Ask the website to rebuild its guide
+        shell: bash
+        run: bash tools/user-guide-publish.sh refresh-site
+        env:
+          GH_TOKEN: ${{ secrets.SITE_PAGES_TOKEN }}

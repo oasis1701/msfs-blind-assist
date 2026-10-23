@@ -468,8 +468,11 @@ public class MobiFlightWasmModule : IDisposable
                 }
 
                 // PRIORITY 2: Only check for LED reads if we're NOT waiting for string L-vars
-                if (pendingStringLVarReads.Count == 0 && float.TryParse(response, out float value) && pendingLedReads.Count > 0)
+                // The WASM writes the number invariant; the PC's culture would refuse "1.000000" under sv-SE.
+                if (pendingStringLVarReads.Count == 0 && Utils.NumberParsing.TryParseExternal(response, out double parsed)
+                    && pendingLedReads.Count > 0)
                 {
+                    float value = (float)parsed;
                     // Find the most recent LED read request (within last 2 seconds)
                     var recentRead = pendingLedReads
                         .Where(kvp => DateTime.Now - kvp.Value < TimeSpan.FromSeconds(2))

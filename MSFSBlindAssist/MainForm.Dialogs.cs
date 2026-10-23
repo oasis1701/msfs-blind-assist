@@ -242,20 +242,20 @@ public partial class MainForm
                 // approach (instead of waiting until ILS guidance or the landing-exit planner opens).
                 _airportWarmUp?.AtDestination(dialog.SelectedAirport.ICAO);
 
-                // Manual-landing checkbox: arm (or clear) the flare/rollout assist for this
-                // destination. A re-selection WITHOUT the checkbox must disarm — the pilot's
-                // latest choice wins.
+                // The destination arms the landing assist (RefreshRolloutCueArming): the manual-landing
+                // checkbox adds the flare tones, and with RolloutCenterlineToneEnabled the rollout
+                // centerline cue is armed even without it. A re-selection always re-applies — the
+                // pilot's latest choice wins.
+                _rolloutCueDestination = new MSFSBlindAssist.Navigation.RolloutCueDestination(
+                    dialog.SelectedRunway, dialog.SelectedAirport.ICAO,
+                    airportDataProvider.GetRunways(dialog.SelectedAirport.ICAO), dialog.ManualLandingAssist,
+                    dialog.SelectedAirport);
+                _rolloutCueLatest = MSFSBlindAssist.Navigation.RolloutCueSource.Destination;
+                RefreshRolloutCueArming(force: true);
                 if (dialog.ManualLandingAssist)
-                {
-                    flareAssistManager.Arm(dialog.SelectedRunway, dialog.SelectedAirport,
-                        airportDataProvider.GetRunways(dialog.SelectedAirport.ICAO));
                     announcer.AnnounceImmediate($"Destination runway set: {dialog.SelectedAirport.ICAO} Runway {dialog.SelectedRunway.RunwayID}. Manual landing assist armed.");
-                }
                 else
-                {
-                    flareAssistManager.Disarm();
                     announcer.AnnounceImmediate($"Destination runway set: {dialog.SelectedAirport.ICAO} Runway {dialog.SelectedRunway.RunwayID}");
-                }
             }
         }
     }
@@ -278,28 +278,21 @@ public partial class MainForm
         dialog.ShowForm();
     }
 
-    private void ShowChecklistDialog()
+    private void ShowFirstOfficerFromHotkey()
     {
-        // Ensure output hotkey mode is deactivated before showing dialog
+        // Ensure output hotkey mode is deactivated before showing the window
         hotkeyManager.ExitOutputHotkeyMode();
 
-        // Shift+C opens this aircraft's static text checklist. An aircraft with none of its own
-        // opens nothing and says so: another aircraft's list must never pass for this one's.
-        // The A380's LIVE Electronic Checklist is on its own key, Ctrl+Shift+C
-        // (ShowChecklistECLDialog).
-        if (currentAircraft.ChecklistFileName is not { } checklistFileName)
+        // Shift+C opens this aircraft's First Officer window, checklists and flows (FO-24). An
+        // aircraft without one opens nothing and says so. The A380's LIVE Electronic Checklist
+        // stays on its own key, Ctrl+Shift+C (ShowChecklistECLDialog).
+        if (Forms.FirstOfficer.FirstOfficerWindows.NameFor(currentAircraft) == null)
         {
             announcer.AnnounceImmediate("No checklist for this aircraft.");
             return;
         }
 
-        if (checklistForm == null || checklistForm.IsDisposed)
-        {
-            checklistForm = new ChecklistForm(announcer, checklistFileName);
-        }
-
-        // Show the form (reuses same instance to preserve checkbox states)
-        checklistForm.ShowForm();
+        ShowFirstOfficerDialog();
     }
 
     // Ctrl+Shift+C on the A380: the LIVE Electronic Checklist (ECL) read from the
@@ -311,10 +304,10 @@ public partial class MainForm
 
         if (currentAircraft?.AircraftCode != "FBW_A380")
         {
-            // Point to Shift+C only where it opens something: on an aircraft with no checklist
-            // file it says "No checklist for this aircraft." (ShowChecklistDialog).
-            announcer.AnnounceImmediate(currentAircraft?.ChecklistFileName != null
-                ? "The live Electronic Checklist is only on the A380. Use Shift+C for the text checklist."
+            // Point to Shift+C only where it opens something: on an aircraft with no First
+            // Officer it says "No checklist for this aircraft." (ShowFirstOfficerFromHotkey).
+            announcer.AnnounceImmediate(Forms.FirstOfficer.FirstOfficerWindows.NameFor(currentAircraft) != null
+                ? "The live Electronic Checklist is only on the A380. Shift+C opens the First Officer."
                 : "The live Electronic Checklist is only on the A380.");
             return;
         }
@@ -536,6 +529,19 @@ public partial class MainForm
         }
         coherentEFBClient.SetActive(true);   // covers the already-visible re-Show path (no VisibleChanged)
         fbwEfbForm.ShowForm();
+    }
+
+    private void FirstOfficerMenuItem_Click(object? sender, EventArgs e) => ShowFirstOfficerDialog();
+
+    // The current aircraft's First Officer window, built once per aircraft by FirstOfficerWindows
+    // (FO-24: never a per-aircraft field, Show method or type test here). The aircraft swap
+    // disposes it, so a reopen after a swap builds the new aircraft's window.
+    private void ShowFirstOfficerDialog()
+    {
+        if (firstOfficerForm is not { IsDisposed: false })
+            firstOfficerForm = Forms.FirstOfficer.FirstOfficerWindows.Create(
+                currentAircraft, simConnectManager, announcer, MSFSBlindAssist.Settings.SettingsManager.Current);
+        firstOfficerForm?.ShowForm();
     }
 
     // PMDG 737/777 EFB tablet over the Coherent debugger — one client + window per

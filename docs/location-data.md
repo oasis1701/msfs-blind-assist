@@ -121,6 +121,15 @@ then sea (inside a named marine polygon) (LOC-6):
   lists share the tab's one Landmarks Range. Every range is capped at 310 miles or 500 km (the
   Coast Range at 1,000) where the lookups read it (`LocationQuerySettings.From`), so a larger
   value saved before the cap existed never makes a press scan a continent.
+- **Volanta traffic list** (`TrafficPlace`, docs/volanta.md): each aircraft's "Location:", the place C
+  would name without its distance, direction or coast: "Pike Lake, Wisconsin, United States", the
+  state and country alone with no town in range, or over water "over Lake Michigan, near Milwaukee,
+  Wisconsin, United States". `OfflineLocationService.GetPlaces` answers many positions in one read and
+  does no nearest-land or coast search beyond the shore band (VOL-8). With the window's "Report location to
+  nearest major city" ticked, `TrafficCityPlace` says the distance and direction from the nearest major city
+  instead ("92 miles west of Wichita, Kansas, United States"): `GetMajorCities` finds it with the GeoNames tab's
+  Minimum Population for Major Cities and Major Cities Range, as Location Info's list does, but never takes a
+  section of a city (GeoNames' PPLX: "East Village" in Manhattan), which that list still includes.
 
 Numbers are invariant everywhere (LOC-3).
 
@@ -133,8 +142,9 @@ Numbers are invariant everywhere (LOC-3).
   detector, retry budget, resume decision, disk space), `LocationPhrases`, `LocationDataStatusText`.
 - I/O: `LocationDataStore`, `LocationDataBuilder`, `LocationDataDownloader`, `OfflineLocationService`.
 - Callers: `MainForm.AnnounceNearestCity` (Output C and its timer), `MainForm.ShowLocationInfoDialog`,
-  `Forms/LocationInfoForm.cs`, `Forms/Settings/GeoNamesPanel.cs`, and the EFB's Airport Lookup
-  search (`ElectronicFlightBagForm`), which asks `OfflineLocationService.FindTowns` for the towns
+  `Forms/LocationInfoForm.cs`, `Forms/Settings/GeoNamesPanel.cs`, the Volanta window
+  (`Forms/Volanta/VolantaLiveMapForm.cs`, through `GetPlaces` and `GetMajorCities`), and the EFB's
+  Airport Lookup search (`ElectronicFlightBagForm`), which asks `OfflineLocationService.FindTowns` for the towns
   named what the pilot typed and lists the airports around them (`Database/AirportNameSearch.cs`):
   "Gothenburg" finds Landvetter, which the navdata files under "Goteborg". Towns only: their
   236,000 names are read and compared in 170 to 340 ms on the owner's PC, while a plain SQL name

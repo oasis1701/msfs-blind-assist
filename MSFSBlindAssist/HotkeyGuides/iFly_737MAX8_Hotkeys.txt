@@ -4,6 +4,7 @@ Application Navigation:
   Ctrl+1     Focus Sections List
   Ctrl+2     Focus Panels List
   Ctrl+3     Focus Status Display field of the current panel (refreshes it if empty)
+  F5         Refresh the current panel's Status Display now (it also updates itself live)
 
 Tip: Press the same bracket key again to cancel a mode you activated by accident.
 
@@ -93,6 +94,10 @@ Position:
                 In its Frequencies list, Enter tunes the selected frequency into COM 1 standby
                 and Shift+Enter tunes it straight into COM 1 active; COM 1 is read back to confirm.
 
+Traffic:
+  Shift+O    Open Volanta window (Volanta users and network pilots around you,
+             your Volanta friends and online ATC; also Extras > Volanta)
+
 AI Display Reading (needs an AI provider configured in Settings > AI tab):
   Alt+P      Describe the PFD (Primary Flight Display)
   Alt+N      Describe the ND (Navigation Display)
@@ -112,7 +117,7 @@ AI Display Reading (needs an AI provider configured in Settings > AI tab):
   does nothing.
 
 Checklists and EFB:
-  Shift+C    Open text checklist window (iFly 737 MAX8 normal procedures)
+  Shift+C    First Officer window (checklists and flows)
   Shift+E    Open Flight Planning EFB
 
 Monitoring:
@@ -153,8 +158,9 @@ MCP Value Windows:
              Disconnect.
   Ctrl+N     Set NAV Radios. Four fields pre-filled with the current values:
              NAV 1 / NAV 2 frequency (108.00 to 117.95) and course (0 to 359).
-             Set keys each frequency on the NAV control panel keypad, transfers
-             it active, and sets the MCP courses. Read back with N in output
+             Enter in any field applies all four: it keys each frequency on
+             the NAV control panel keypad, transfers it active, and sets the
+             MCP courses. Read back with N in output
              mode ("NAV 1 active 110.90 ILS, standby ..., course ...").
 
 The MCP panel (Glareshield section) also carries every mode button — CMD A/B,

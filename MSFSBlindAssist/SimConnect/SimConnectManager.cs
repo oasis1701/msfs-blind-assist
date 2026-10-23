@@ -435,6 +435,8 @@ public partial class SimConnectManager
     private string currentAircraftTitle = "";    // TITLE simvar value (aircraft.cfg [FLTSIM.N] title)
     /// <summary>The loaded aircraft's TITLE (e.g. "737-700 PAX BW SC"). Empty until aircraft detection completes.</summary>
     public string CurrentAircraftTitle => currentAircraftTitle;
+    /// <summary>The user aircraft's ATC ID (its tail number or callsign in the sim). Empty until read.</summary>
+    public string CurrentAircraftAtcId => currentAircraftAtcId;
     /// <summary>Extracted ICAO type designator for the current aircraft (e.g. "B77W"). Empty if not yet known.</summary>
     public string CurrentAircraftIcaoType { get; private set; } = "";
 
@@ -509,6 +511,21 @@ public partial class SimConnectManager
         // COM 1 active + standby, one-shot (RequestCom1Radio). 349: the first id past the
         // camera's rotating 341-348.
         REQUEST_COM1_RADIO = 349,
+        // IS SLEW ACTIVE and SIMULATION RATE, SIM_FRAME + CHANGED (SimConnectManager.SimState.cs).
+        REQUEST_SLEW_STATE = 350,
+        REQUEST_SIM_RATE = 351,
+        // FO background data requests — NOT announced by HandleSpecialAnnouncements
+        REQUEST_FO_ALTITUDE_AGL  = 380,
+        REQUEST_FO_AIRSPEED_IAS  = 381,
+        REQUEST_FO_ENG1_N2       = 382,
+        REQUEST_FO_ENG2_N2       = 383,
+        REQUEST_FO_CENTER_FUEL_LBS = 384,
+        // PMDG 777 FO only: the three stock gear-leg positions in one definition (Pmdg777GearConfirmation).
+        REQUEST_FO_GEAR_POSITIONS  = 385,
+        // Engine 3 N2 (RequestFOEngineN2): asked for every aircraft, read only by three-engine FO profiles (the MD-11).
+        REQUEST_FO_ENG3_N2       = 386,
+        // The stock GEAR HANDLE POSITION for the universal auto-gear (RequestFOGearHandle).
+        REQUEST_FO_GEAR_HANDLE   = 387,
         REQUEST_AI_TRAFFIC = 500,
         // The ground-traffic monitor's own by-type sweeps (same DEF_AI_TRAFFIC definition, a small
         // radius), on their OWN ids so a completion can never be confused with a TCAS or other
@@ -592,6 +609,17 @@ public partial class SimConnectManager
         // mis-cast. Pinned by CameraReadWaitersTests.
         DEF_CAMERA_VIEW = 341,
         DEF_COM1_RADIO = 349,
+        DEF_SLEW_STATE = 350,
+        DEF_SIM_RATE = 351,
+        // FO background data definitions — paired with REQUEST_FO_* IDs, NOT announced
+        DEF_FO_ALTITUDE_AGL = 380,
+        DEF_FO_AIRSPEED_IAS = 381,
+        DEF_FO_ENG1_N2 = 382,
+        DEF_FO_ENG2_N2 = 383,
+        DEF_FO_CENTER_FUEL_LBS = 384,
+        DEF_FO_GEAR_POSITIONS = 385,
+        DEF_FO_ENG3_N2 = 386,
+        DEF_FO_GEAR_HANDLE = 387,
         DEF_AI_TRAFFIC = 500,
         // KEEP 600-607 FREE: the ground-traffic sweeps' rotating request ids (DATA_REQUESTS
         // .REQUEST_GROUND_TRAFFIC), and this enum is a request-id namespace too.
@@ -610,7 +638,10 @@ public partial class SimConnectManager
         AircraftLoaded = 9000,
         // "Frame": once per rendered frame, subscribed only while the Sim Performance window is open
         // (SimConnectManager.FrameRate.cs).
-        Frame = 9001
+        Frame = 9001,
+        // Pause and flight-running state, always subscribed (SimConnectManager.SimState.cs).
+        PauseEx1 = 9002,
+        Sim = 9003
     }
 
 
@@ -1008,6 +1039,25 @@ public partial class SimConnectManager
         public double value;
     }
 
+    /// <summary>Two doubles read in one data definition (e.g. the FO center-fuel request's
+    /// tank gallons + fuel weight per gallon, multiplied at dispatch into pounds).</summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct DoubleValuePair
+    {
+        public double value1;
+        public double value2;
+    }
+
+    /// <summary>Three doubles read in one data definition (the FO gear request's left, center
+    /// and right gear-leg positions).</summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct DoubleValueTriple
+    {
+        public double value1;
+        public double value2;
+        public double value3;
+    }
+
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
     public struct FCUValueWithStatus
     {
@@ -1346,6 +1396,7 @@ public partial class SimConnectManager
                 simConnect.OnRecvException -= SimConnect_OnRecvException;
                 simConnect.OnRecvEventFilename -= SimConnect_OnRecvEventFilename;
                 simConnect.OnRecvEventFrame -= SimConnect_OnRecvEventFrame;
+                simConnect.OnRecvEvent -= SimConnect_OnRecvEvent;
 
                 Log.Debug("SimConnect", "Event handlers unregistered, disposing SimConnect...");
             }
@@ -1382,6 +1433,8 @@ public partial class SimConnectManager
         // The Frame subscription died with the handle; the consumer count survives so a reconnect re-arms it.
         _frameEventSubscribed = false;
         lock (forceUpdateVariables) { forceUpdateVariables.Clear(); }
+        // A cache-only poll the dead connection never answered must not suppress a delivery on the next.
+        _cacheOnlyPolls.Clear();
         _freshReads.FailAll();
         FailCameraViewRead();
         ecamStringData.Clear();

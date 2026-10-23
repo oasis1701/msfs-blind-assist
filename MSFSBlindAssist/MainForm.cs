@@ -44,6 +44,9 @@ public partial class MainForm : Form
     private HotkeyManager hotkeyManager = null!;
 
     private IAirportDataProvider? airportDataProvider;
+    // The database file as it was when airportDataProvider was loaded (DatabaseSelector.CurrentStamp):
+    // closing the Database Settings window reloads only when the file or the setting changed since.
+    private DatabaseStamp? _loadedDatabaseStamp;
 
     // Typed reference to the augmentation decorator so Phase 6 can call PrefetchAsync.
     private MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider? _augmentingProvider;
@@ -80,8 +83,6 @@ public partial class MainForm : Form
     private readonly Services.Geography.OfflineLocationService offlineLocationService =
         new(Services.Geography.LocationDataStore.Default);
 
-    private ChecklistForm? checklistForm;
-
     private FenixMonitorManagerForm? fenixMonitorManagerForm;
 
     private Forms.FBWA380.FBWA380MonitorManagerForm? fbwA380MonitorManagerForm;
@@ -105,6 +106,10 @@ public partial class MainForm : Form
     private MSFSBlindAssist.Services.FlyByWireMCDUService? flyByWireMCDUService;
 
     private System.Windows.Forms.Form? pmdgCDUForm;
+    /// <summary>The current aircraft's First Officer window (Shift+C, File → First Officer).
+    /// Built only by <see cref="Forms.FirstOfficer.FirstOfficerWindows.Create"/> (FO-24) and
+    /// disposed on every aircraft swap, so it always belongs to the loaded aircraft.</summary>
+    private Forms.FirstOfficer.IFirstOfficerWindow? firstOfficerForm;
 
     private Forms.FBWA380.FBWA380MCDUForm? fbwA380MCDUForm;
 
@@ -333,10 +338,11 @@ public partial class MainForm : Form
     // Periodic auto-refresh for the currently-shown Status Display box. SD-page content
     // (FOB, engine N1/N2, fuel per-tank, etc.) is an OnRequest snapshot — without this it
     // freezes at whatever it read when the panel opened and never reflects live changes.
-    // While a panel with a "_REFRESH_" button is shown, this ticks every few seconds and
+    // While a panel with a "_DISPLAY_" status list is shown, this ticks every second and
     // (a) rebuilds any snapshot SD content via OnDisplayPanelShown and (b) re-pulls the
     // panel's OnRequest display vars — silently (the "Loading..." placeholder only shows on
-    // the first empty populate, so the box updates in place with no flash).
+    // the first empty populate, so the box updates in place with no flash). F5 runs the same
+    // refresh at once (RefreshDisplayNow).
     private System.Windows.Forms.Timer? _sdAutoRefreshTimer;
 
     // Liftoff → Hand Fly handoff guard. The handoff is ARMED on the on-ground→
@@ -466,13 +472,6 @@ public partial class MainForm : Form
     private bool _buildingPanel = false;
 
     private Dictionary<string, double> displayValues = new Dictionary<string, double>();  // Store display values
-
-    private Dictionary<string, TaskCompletionSource<bool>>? pendingDisplayRequests = null;  // Track pending display requests
-
-    // The control to return focus to after a status-box refresh (F5). The async refresh
-    // moves focus onto the Refresh button; the F5 handler captures the status box here so
-    // refreshButton.Click can restore it — otherwise the blind user "lands elsewhere".
-    private Control? _refreshFocusReturn = null;
 
     private ConcurrentDictionary<string, bool> pendingStateAnnouncements = new ConcurrentDictionary<string, bool>();  // Track state announcement requests
 
@@ -716,10 +715,15 @@ public partial class MainForm : Form
         simConnectManager.SimulatorVersionDetected += OnSimulatorVersionDetected;
         simConnectManager.SimVarUpdated += OnSimVarUpdated;
         simConnectManager.ContinuousBatchDelivered += OnContinuousBatchDelivered;
+
+        // The universal (all-aircraft) auto-gear/AP service and its 1 Hz feed: MainForm.UniversalAutomation.cs.
+        InitializeUniversalAutomation();
         simConnectManager.QueuedEventDispatched += OnQueuedEventDispatched;
         simConnectManager.TakeoffRunwayReferenceSet += OnTakeoffRunwayReferenceSet;
         simConnectManager.AircraftIcaoTypeDetected += OnAircraftIcaoTypeDetected;
         simConnectManager.AircraftLoaded += OnAircraftLoaded;
+        simConnectManager.SimStateChanged += OnSimStateChanged;
+        simConnectManager.SimRateChanged += OnSimRateChanged;
         simConnectManager.ConnectionLost += OnConnectionLost;
 
         // Warm the GSX door-offset map in the background so docking sessions have
@@ -828,6 +832,9 @@ public partial class MainForm : Form
         // climb-out. Read on the position thread; the SIM_ON_GROUND handler writes it (a bool? field read).
         taxiGuidanceManager.OnGroundProvider = () => simConnectManager?.LastKnownOnGround;
 
+        // While the landing assist's rollout centerline cue runs, exit guidance pauses its own tone on the runway.
+        taxiGuidanceManager.CenterlineCueEngagedProvider = () => flareAssistManager?.IsRolloutEngaged ?? false;
+
         // Same token as the Where-Am-I graph, so a GSX publish re-letters the inferred concourses
         // too. Asked on every monitor sample, so it must stay as cheap as GateListVersion.
         surroundingsCache.VersionSupplier = GateListVersion;
@@ -865,20 +872,29 @@ public partial class MainForm : Form
         // Landing exit planner — watches for touchdown and auto-activates taxi guidance
         // to the pre-selected exit taxiway. Opens via MainForm menu / hotkey.
         landingExitPlanner = new LandingExitPlanner(announcer, taxiGuidanceManager);
+        // A landing exit plan arms the landing assist's rollout centerline cue on its runway.
+        landingExitPlanner.PlanChanged += OnLandingExitPlanChanged;
 
         // Manual-landing flare + rollout assist. Armed from the destination-runway
-        // dialog's checkbox; sleeps until on approach (see ProcessSlowSample gate).
-        // Delegates read live state so aircraft swaps and guidance-mode changes after
-        // arming are always honored.
+        // dialog's checkbox, and for the rollout centerline cue alone from a destination
+        // or landing exit plan (RefreshRolloutCueArming); sleeps until on approach (see
+        // ProcessSlowSample gate). Delegates read live state so aircraft swaps and
+        // guidance-mode changes after arming are always honored.
         flareAssistManager = new LandingFlareAssistManager(announcer,
             () => currentAircraft?.GetVisualGuidanceProfile()?.FlareAltitudeBiasFt ?? 12.0,
             () => visualGuidanceManager.IsActive,
-            () => taxiGuidanceManager.IsLandingExitRolloutGuidanceActive,
-            () => taxiGuidanceManager.IsLandingExitTaxiSteering,
-            // With a landing-exit plan pending, the planner leads its own touchdown sentence with
-            // the runway correction and interrupts — so the assist leaves the telling to it rather
-            // than having its own sentence cut off mid-word.
-            () => landingExitPlanner.HasPendingExit);
+            // The rollout cue and exit guidance share the tone: no speed end during a landing rollout, and
+            // silence while exit guidance owns the tone for the exit itself. One lock per frame.
+            () => taxiGuidanceManager.RolloutCueSnapshot,
+            // Whether the landing-exit planner holds a plan, and whether it will start exit guidance at the
+            // touchdown at a given airport: then the planner leads its own touchdown sentence with the runway
+            // correction and interrupts, so the assist leaves the telling to it rather than having its own
+            // sentence cut off mid-word. A plan for elsewhere starts nothing there (it says "Runway not
+            // identified" once), and one already used says nothing. A held sentence waits while the planner
+            // still has to decide the touchdown.
+            () => landingExitPlanner.HasPendingExit,
+            icao => landingExitPlanner.WillStartGuidanceAt(icao),
+            () => landingExitPlanner.IsAwaitingTouchdown);
         flareAssistManager.MonitoringRequestChanged += OnFlareAssistMonitoringRequestChanged;
         flareAssistManager.EngagedChanged += OnFlareAssistEngagedChanged;
         simConnectManager.FlareAssistDataReceived += (s, d) => flareAssistManager.ProcessFrame(d);
@@ -966,6 +982,7 @@ public partial class MainForm : Form
         // once below, through WithTaxiAugmentation — see its doc comment and ProviderWrapGuardTests.
         // (optional - navdata can be null if the database isn't built yet)
         var navdata = DatabaseSelector.SelectProvider();
+        _loadedDatabaseStamp = DatabaseSelector.CurrentStamp();
 
         // Built unconditionally: the buildings tier needs no base provider, so a database built
         // mid-session still gets it (a switch Clear()s the store, never rebuilds it).
@@ -1171,6 +1188,65 @@ public partial class MainForm : Form
     // consumed-once (+ the generic one value-matched), so a wider window does not eat
     // genuine later changes.
     private const int UiSetEchoSuppressMs = 3000;
+    // The landing assist's arming comes from two pilot choices (Navigation.RolloutCueArming): the destination
+    // runway dialog, whose manual-landing checkbox adds the flare tones, and the landing exit plan; with
+    // RolloutCenterlineToneEnabled either one arms the rollout centerline cue. _rolloutCueLatest is the choice
+    // made last, which wins when the two name different airports. _rolloutCueApplied is the arming in force.
+    // Each choice carries its own airport record: the dialog's, and the plan's, looked up once per plan.
+    private MSFSBlindAssist.Navigation.RolloutCueDestination? _rolloutCueDestination;
+    private MSFSBlindAssist.Navigation.RolloutCueExitPlan? _rolloutCueExitPlan;
+    private MSFSBlindAssist.Navigation.RolloutCueSource _rolloutCueLatest = MSFSBlindAssist.Navigation.RolloutCueSource.Destination;
+    private MSFSBlindAssist.Navigation.RolloutCueArmingDecision? _rolloutCueApplied;
+
+    private void OnLandingExitPlanChanged(object? sender, EventArgs e)
+    {
+        _rolloutCueExitPlan = landingExitPlanner.HasPendingExit
+            ? new MSFSBlindAssist.Navigation.RolloutCueExitPlan(landingExitPlanner.PendingRunway!,
+                landingExitPlanner.PendingIcao!, landingExitPlanner.PendingAirportRunways,
+                airportDataProvider?.GetAirport(landingExitPlanner.PendingIcao!))
+            : null;
+        if (_rolloutCueExitPlan != null)
+            _rolloutCueLatest = MSFSBlindAssist.Navigation.RolloutCueSource.ExitPlan;
+        RefreshRolloutCueArming();
+    }
+
+    /// <summary>
+    /// Re-decides the landing assist's arming from the destination choice, the exit plan and the setting
+    /// (RolloutCueArming.Decide) and applies it only when it changed, because arming stops a cue in progress;
+    /// <paramref name="force"/> re-applies a destination the pilot just chose even when unchanged, as the
+    /// destination dialog always did, and leaves the speaking to the dialog. Any other change that takes the
+    /// checkbox's flare tones away or brings them back says so (RolloutCueArming.ManualLandingChange), queued
+    /// behind the planner's own "Landing exit planned" or "Landing exit plan cleared".
+    /// </summary>
+    private void RefreshRolloutCueArming(bool force = false)
+    {
+        var decision = MSFSBlindAssist.Navigation.RolloutCueArming.Decide(
+            SettingsManager.Current.RolloutCenterlineToneEnabled, _rolloutCueDestination, _rolloutCueExitPlan,
+            _rolloutCueLatest);
+        if (!force && MSFSBlindAssist.Navigation.RolloutCueArming.SameArming(decision, _rolloutCueApplied)) return;
+
+        var before = _rolloutCueApplied;
+        if (decision?.Airport == null)
+        {
+            if (decision != null)
+                Log.Warn("LandingFlareAssist", $"Rollout cue not armed: airport {decision.Icao} not found in the database");
+            _rolloutCueApplied = null;
+            flareAssistManager.Disarm();
+        }
+        else
+        {
+            _rolloutCueApplied = decision;
+            flareAssistManager.Arm(decision.Runway, decision.Airport, decision.Runways, decision.IncludeFlare);
+        }
+
+        if (!force)
+        {
+            string? change = MSFSBlindAssist.Navigation.RolloutCueArming.ManualLandingChange(before, _rolloutCueApplied);
+            if (change != null)
+                announcer.Announce(change);
+        }
+    }
+
     // The flare assist only wants its SIM_FRAME feed while it is armed and on approach —
     // see LandingFlareAssistManager.ProcessSlowSample, which raises this at 1 Hz off
     // INDICATED_ALTITUDE. Running it for a whole flight would be pure waste.
@@ -1195,7 +1271,14 @@ public partial class MainForm : Form
 
     private void MarkUiSet(string? varName, double value)
     {
-        if (!string.IsNullOrEmpty(varName)) _uiSetEcho[varName] = (value, Environment.TickCount64);
+        if (string.IsNullOrEmpty(varName)) return;
+        long now = Environment.TickCount64;
+        _uiSetEcho[varName] = (value, now);
+        // A switch whose state comes back on a separate light (SimVarDefinition.UiEchoVariable)
+        // marks that light too: its change is the same echo the screen reader already spoke.
+        if (currentAircraft.GetVariables().TryGetValue(varName, out var def)
+            && !string.IsNullOrEmpty(def.UiEchoVariable))
+            _uiSetEcho[def.UiEchoVariable] = (value, now);
     }
 
     /// <summary>
@@ -1289,6 +1372,13 @@ public partial class MainForm : Form
         _warmUpAfterLoadTimer?.Stop();
         _warmUpAfterLoadTimer?.Dispose();
 
+        // The First Officer window: only an aircraft switch disposed it, so on exit its 1 s timer
+        // and a running flow kept going through Disconnect()'s DoEvents pump below, still able to
+        // speak and to send writes. Its Dispose cancels the flow and detaches the executor.
+        firstOfficerForm?.Dispose(); firstOfficerForm = null;
+
+        DisposeUniversalAutomation();
+
         // Clean up taxi guidance, docking guidance, and ground traffic monitor
         taxiGuidanceManager?.Dispose();
         dockingGuidanceManager?.Dispose();
@@ -1379,6 +1469,12 @@ public partial class MainForm : Form
         (currentAircraft as FlyByWireA380Definition)?.StopAllMotion();
         (currentAircraft as FlyByWireA320Definition)?.StopAllMotion();
         currentAircraft?.CancelDeferredFlush();
+        // The swap path's two other def hooks, which a quit never ran: the def's own timers that can
+        // still speak (OnSwitchedAway: the PMDG speed-brake settle call-out), and a held 737 warning
+        // test (stick shaker or overspeed clacker), released while the sim is still connected, or it
+        // kept sounding after MSFSBA had closed ([P737-6]).
+        (currentAircraft as BaseAircraftDefinition)?.OnSwitchedAway();
+        (currentAircraft as PMDG737Definition)?.ReleaseEngagedWarningTests(simConnectManager);
 
         // The MD-11 def owns the CEVENT pump and, during a hold-to-test's 3 s, a button the sim
         // still has pressed. Dispose it here — BEFORE Disconnect() — so its Dispose (which queues

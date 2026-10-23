@@ -109,6 +109,7 @@ public class FcuValueEntryUnparseableTests
     [InlineData("A32NX.FCU_HDG_SET")]
     [InlineData("A32NX.FCU_SPD_SET")]
     [InlineData("A32NX.FCU_ALT_SET")]
+    [InlineData("A32NX.FCU_VS_SET")]   // a refused "1,500" must not reach the handler as 0 (level off)
     public void The_a32nx_family_fcu_number_fields_take_an_unparseable_entry_as_NaN(string key)
     {
         // Opt-in per definition, so every other aircraft's _SET field still receives 0 as before.

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>VirtualPilot</AssemblyName>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <!-- Same benign WebView2/WindowsBase reference conflict the tests project
+         documents; repeated here for the ProjectReference to build clean. -->
+    <DefineConstants Condition="'$(MainApp)' == 'true'">$(DefineConstants);OLDAPP;MAINAPP</DefineConstants>
+    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\MSFSBlindAssist\MSFSBlindAssist.csproj" />
+  </ItemGroup>
+  <!-- frozen/ is a separate project (the same Program.cs against a frozen app build); runs/ is output. -->
+  <ItemGroup>
+    <Compile Remove="frozen/**;runs/**" />
+    <None Remove="frozen/**;runs/**" />
+  </ItemGroup>
+</Project>

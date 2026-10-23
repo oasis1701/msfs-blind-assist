@@ -289,6 +289,12 @@ public class PMDGNG3DataManager : IPMDGDataManager
     // Cache for derived-field values so we can detect change deltas
     // independently of PMDG's lying source fields. Keyed by the user-facing
     // varKey (e.g. "ELEC_GrdPwrSw"), value is the most recent derived bool.
+    //
+    // THREADING: guarded by _derivedLock. The snapshot pass writes on the UI
+    // thread, but GetFieldValue reads from the First Officer flow engine's
+    // WaitForCondition pool thread — unsynchronized Dictionary access across
+    // those would be a data race.
+    private readonly object _derivedLock = new();
     private readonly Dictionary<string, bool> _lastDerivedValues = new();
 
     /// <summary>
@@ -309,6 +315,11 @@ public class PMDGNG3DataManager : IPMDGDataManager
     ///                       NOT ELEC_annunGEN_BUS_OFF[X], the GEN OFF BUS
     ///                       light; never read the raw ELEC_GenSw bool.
     ///   - ENG_StartLever_X ⟵ FUEL_annunENG_VALVE_CLOSED[X] (see the body).
+    ///   - Each ACP VHF receiver button's key (Aircraft.Pmdg737AcpReceivers) ⟵
+    ///                       its bit in COMM_ReceiverSwitches[seat]. Not an
+    ///                       override: the bitmask keeps its own events. The
+    ///                       button names its key as its StateVariable, so its
+    ///                       label reads On or Off.
     /// </summary>
     private void RaiseDerivedFieldOverrides(PMDGNG3DataStruct newData, bool isFirstSnapshot)
     {
@@ -333,16 +344,24 @@ public class PMDGNG3DataManager : IPMDGDataManager
         bool lever1Run = fuelValveClosed.Length > 1 && fuelValveClosed[1] == 0;
         RaiseDerivedIfChanged("ENG_StartLever_0", lever0Run, isFirstSnapshot);
         RaiseDerivedIfChanged("ENG_StartLever_1", lever1Run, isFirstSnapshot);
+
+        foreach (var receiver in Aircraft.Pmdg737AcpReceivers.All)
+            RaiseDerivedIfChanged(receiver.Key,
+                Aircraft.Pmdg737AcpReceivers.IsOn(receiver, newData.COMM_ReceiverSwitches), isFirstSnapshot);
     }
 
     private void RaiseDerivedIfChanged(string fieldName, bool newVal, bool isFirstSnapshot)
     {
         bool fire = isFirstSnapshot;
-        if (!_lastDerivedValues.TryGetValue(fieldName, out bool prev) || prev != newVal)
-            fire = true;
-        _lastDerivedValues[fieldName] = newVal;
+        lock (_derivedLock)
+        {
+            if (!_lastDerivedValues.TryGetValue(fieldName, out bool prev) || prev != newVal)
+                fire = true;
+            _lastDerivedValues[fieldName] = newVal;
+        }
         if (fire)
         {
+            // Outside the lock — handlers must never run under _derivedLock.
             RaiseVariableChanged(fieldName, newVal ? 1.0 : 0.0, isFirstSnapshot);
         }
     }
@@ -499,9 +518,12 @@ public class PMDGNG3DataManager : IPMDGDataManager
         // the panel-refresh path at MainForm.cs:4640+ overwrites our
         // synthetic-event-populated cache with PMDG's lying value, and the
         // combo flips to ON.
-        if (_lastDerivedValues.TryGetValue(fieldName, out bool derived))
+        lock (_derivedLock)
         {
-            return derived ? 1.0 : 0.0;
+            if (_lastDerivedValues.TryGetValue(fieldName, out bool derived))
+            {
+                return derived ? 1.0 : 0.0;
+            }
         }
 
         object snapshotBox = _lastDataSnapshot;

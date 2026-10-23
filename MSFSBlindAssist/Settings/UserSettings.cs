@@ -147,6 +147,15 @@ public class UserSettings
         public bool TakeoffAssistEnableCallouts { get; set; } = true; // Enable speed callouts (80kt, 100kt, V1, rotate)
 
         /// <summary>
+        /// When true (default), a destination runway or a landing exit plan arms the landing assist's
+        /// rollout centerline cue on its own: Takeoff Assist's centerline tone and settings from touchdown
+        /// until exit guidance needs the tone for the exit, autolands included. The destination dialog's
+        /// manual-landing checkbox is independent of this and adds the flare tones. Added after an A300
+        /// autoland yawed off KSEA 16R at 90-70 kt with no cue (2026-10-15).
+        /// </summary>
+        public bool RolloutCenterlineToneEnabled { get; set; } = true;
+
+        /// <summary>
         /// When true (default), taxi guidance will automatically activate
         /// Takeoff Assist when the aircraft becomes lined up on the destination
         /// runway (lineup hysteresis met: heading less than 1 degree off,
@@ -260,6 +269,54 @@ public class UserSettings
         [JsonIgnore]
         public HashSet<string> FenixDisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
 
+        // First Officer (PMDG 777/737) automation.
+        // Gear management is split into two independent toggles: raise on the climb
+        // (positive rate) and lower on the descent (2000 ft AGL). The legacy single
+        // FOAutoGearEnabled flag is kept ONLY so old settings files still deserialize;
+        // SettingsManager.MigrateFOGearSplit seeds the two new flags from it once.
+        public bool FOAutoGearEnabled     { get; set; } = false;  // legacy — migrated, do not read directly
+        public bool FOAutoGearUpEnabled   { get; set; } = false;  // auto-raise gear on positive rate (climb)
+        public bool FOAutoGearDownEnabled { get; set; } = false;  // auto-lower gear at 2000 ft AGL (descent)
+        public bool FOAutoGearSplitMigrated { get; set; } = false; // one-time migration guard
+        public bool FOAutoFlapsEnabled    { get; set; } = false;
+        public bool FOAutoApEnabled       { get; set; } = false;
+
+        // Height (ft AGL) at which the FO auto-engages the autopilot on climbout —
+        // one global value shared by all four aircraft (default 350).
+        public int FOAutoApEngageAltitudeAgl { get; set; } = 350;
+
+        // Phase-monitor light automation: switch the landing (and nose, where fitted)
+        // lights at the 10,000 ft crossing. Default ON — matches the behavior before
+        // this toggle existed; a missing key in old settings files deserializes to it.
+        public bool FOAutoLights10kEnabled { get; set; } = true;
+
+        // Phase-monitor altimeter automation: STD climbing through the transition altitude,
+        // out of STD descending through the transition level. Default ON — matches the
+        // behavior before this toggle existed. Off, the FO only reminds (FO-23).
+        public bool FOAutoAltimetersEnabled { get; set; } = true;
+
+        // "Speak flow progress": a flow speaks each step as it goes. Default ON — the behavior
+        // before this toggle existed. Off, only the step-by-step lines go quiet; Captain actions,
+        // skips, timeouts, failures and "flow complete" still speak (FlowManager.SpeakProgress).
+        public bool FOSpeakFlowProgress { get; set; } = true;
+
+        // PMDG 737/777 center-tank fuel pump auto-management. Default OFF (F11): opt-in like
+        // every other FO automation, it actuates a safety-relevant switch and speaks unprompted,
+        // and it has a long defect history — it should not be on for users who never asked.
+        // Only the two PMDG jets act on it; other aircraft store-and-ignore.
+        public bool FOAutoCenterPumpsEnabled { get; set; } = false;
+
+        // Auto seat-belt-sign automation, actuated via each aircraft's own seatbelt control:
+        // 0 = Disabled (default), 1 = switch at the 10,000 ft crossing, 2 = off at Top of
+        // Climb / on at Top of Descent (vertical-speed profile). See FoSeatbeltMode.
+        public int FOAutoSeatbeltMode { get; set; } = 0;
+
+        /// <summary>737 GPWS self-test variant run by the First Officer preflight flow and
+        /// checklist tick: false = short test (quick press), true = long test (5 s hold).
+        /// Both panel buttons exist regardless; this only selects the flow/checklist variant.
+        /// Read at DISPATCH time by the 737 executor, so a change applies immediately.</summary>
+        public bool FOGpws737LongTest { get; set; } = false;
+
         // One-time seed marker (SettingsManager.SeedFenixMonitorDefaults). Two groups
         // are added to FenixDisabledMonitorVariables by default so they don't speak:
         //   * the raw-seconds clock counters (CLOCK CHRONO / CLOCK ELAPSED), which tick
@@ -269,6 +326,15 @@ public class UserSettings
         // All stay toggleable in the Ctrl+M monitor; this flag stops them being re-seeded
         // after the user deliberately re-enables one.
         public bool FenixMonitorDefaultsSeeded { get; set; } = false;
+
+        // One-time seed marker (SettingsManager.SeedPmdgMonitorDefaults). The 737's
+        // window-heat ON annunciators (ICE_annunON_0..3) are added to
+        // PMDGDisabledMonitorVariables by default: the window-heat controller cycles
+        // them thermostatically (especially on the ground), so every cycle spoke
+        // "Window N Heat On: on/off" with no switch moving. They stay toggleable in
+        // the PMDG Announcement Monitor; this flag stops re-seeding after a
+        // deliberate re-enable.
+        public bool PmdgMonitorDefaultsSeeded { get; set; } = false;
 
         // PMDG Announcement Monitor Settings — variable keys that the user has
         // unticked in PMDGAnnouncementMonitorForm. The MainForm continuous-

@@ -1,0 +1,229 @@
+---
+title: "User guide"
+---
+
+**Flying Microsoft Flight Simulator with a screen reader.**
+
+The guide is one page per chapter. On every chapter page the chapter title is the only heading at level 1, sections are level 2 and subsections level 3, so with a screen reader you can press H for the next heading, or 2 and 3 to move by level. Each chapter opens with an "In this chapter" list of links to its sections, and ends with links to the previous and next chapters. The contents below list every part and chapter, with each chapter's sections under it, so you can go straight to the section you want. Each part is a level-2 heading, so press 2 to move from part to part.
+
+If you would rather read straight through or search the whole guide at once, [the whole guide is also on one page](one-page.html). The same one-page guide comes with the app: in BA, open the Help menu and choose User Guide.
+
+## Part 1: Getting Started {#part-1-getting-started}
+
+1. [Welcome and How to Use This Guide](welcome.md)
+   - [What MSFS Blind Assist Is](welcome.md#gs-what-it-is)
+   - [Finding Your Way Around This Guide](welcome.md#gs-using-guide)
+2. [Getting Started](getting-started.md)
+   - [What You Need](getting-started.md#gs-requirements)
+   - [Installing](getting-started.md#install)
+   - [Your First Launch](getting-started.md#gs-first-launch)
+   - [The PMDG SDK Setup Check](getting-started.md#gs-pmdg-sdk)
+   - [The Navigation Database](getting-started.md#nav-database)
+   - [Connecting to the Simulator](getting-started.md#gs-connecting)
+   - [Choosing Your Aircraft](getting-started.md#gs-aircraft)
+   - [The Main Window](getting-started.md#main-window)
+   - [Output Mode and Input Mode](getting-started.md#hotkey-modes)
+   - [The Hotkey List](getting-started.md#gs-hotkey-list)
+   - [The Menus](getting-started.md#gs-menus)
+   - [The Settings Window](getting-started.md#settings-overview)
+   - [Updates](getting-started.md#gs-updates)
+   - [Logs and Getting Help](getting-started.md#logs-and-help)
+   - [Your First Ten Minutes](getting-started.md#gs-quick-start)
+
+## Part 2: Core Concepts {#part-2-core-concepts}
+
+1. [Core Concepts](core-concepts.md)
+   - [A Flight with BA, Start to Finish](core-concepts.md#concepts-story)
+   - [How BA Talks to You](core-concepts.md#core-speech)
+   - [Announcement Settings](core-concepts.md#core-announcement-settings)
+   - [Pause, Slew and Sim Rate](core-concepts.md#core-sim-state)
+   - [The Monitor Manager](core-concepts.md#monitor-manager)
+   - [Readout Hotkeys](core-concepts.md#readouts)
+   - [The Audio Language: What the Tones Mean](core-concepts.md#audio-language)
+   - [AI Display Reading and Scene Description](core-concepts.md#ai-display-reading)
+   - [Location Info and Nearest City](core-concepts.md#location-info)
+
+## Part 3: The First Officer {#part-first-officer}
+
+1. [The First Officer and Checklists](first-officer.md)
+   - [What it is](first-officer.md#what-it-is-13)
+   - [When to use it](first-officer.md#fo-when-to-use)
+   - [How to use it](first-officer.md#how-to-use-it-7)
+   - [The Flows tab](first-officer.md#fo-flows-tab)
+   - [The Checklists tab](first-officer.md#fo-checklists-tab)
+   - [Loading SimBrief](first-officer.md#fo-simbrief)
+   - [What you will hear](first-officer.md#fo-what-you-will-hear)
+   - [Settings](first-officer.md#fo-settings)
+   - [If something goes wrong](first-officer.md#fo-if-something-goes-wrong)
+
+## Part 4: Planning and Preflight {#part-3-planning-and-preflight}
+
+1. [Planning Your Flight](planning-your-flight.md)
+   - [Teleporting to a Runway or Gate](planning-your-flight.md#teleport)
+   - [SimBrief](planning-your-flight.md#simbrief)
+   - [The Flight Planning Window](planning-your-flight.md#flight-planning-efb)
+   - [The AI Route Briefing](planning-your-flight.md#planning-route-briefing)
+   - [Aircraft EFBs](planning-your-flight.md#aircraft-efb)
+   - [Flows and Checklists](planning-your-flight.md#checklists)
+   - [Tracking Waypoints](planning-your-flight.md#fix-tracking)
+   - [NAV Radios](planning-your-flight.md#planning-nav-radios)
+   - [FMC Settings](planning-your-flight.md#planning-fmc-settings)
+2. [Weather](weather.md)
+   - [Where BA Gets Its Weather](weather.md#wx-sources)
+   - [Wind: Output I](weather.md#wx-wind)
+   - [Outside Temperature: Output O](weather.md#wx-temperature)
+   - [The METAR Report Window](weather.md#wx-metar)
+   - [The Weather Radar](weather.md#weather-radar)
+   - [The Weather Radar without ActiveSky](weather.md#wx-radar-simulator)
+   - [The Weather Radar with ActiveSky](weather.md#wx-radar-activesky)
+   - [Weather Radar Troubleshooting](weather.md#wx-radar-troubleshooting)
+   - [ActiveSky](weather.md#activesky)
+   - [The Weather Settings Tab](weather.md#wx-settings)
+   - [Automatic Weather Announcements](weather.md#wx-announcements)
+   - [Cold Temperature Correction](weather.md#wx-cold-temperature)
+
+## Part 5: On the Ground {#part-4-on-the-ground}
+
+Part 5 is about the airport, from the gate to the runway and back: knowing where you are, [Taxi Guidance](taxi-guidance.md), [Ground Traffic](ground-traffic.md), and [Gates, GSX and Docking](gates-gsx-and-docking.md).
+
+1. [Knowing Where You Are](knowing-where-you-are.md)
+   - [Where Am I](knowing-where-you-are.md#where-am-i)
+   - [Look Around](knowing-where-you-are.md#where-look-around)
+   - [The Surroundings Window](knowing-where-you-are.md#surroundings)
+   - [Callouts While You Taxi](knowing-where-you-are.md#where-taxi-callouts)
+   - [The Off-the-Pavement Alerts](knowing-where-you-are.md#where-off-pavement)
+   - [Where the Names Come From](knowing-where-you-are.md#where-name-sources)
+   - [Settings for This Chapter](knowing-where-you-are.md#where-settings)
+   - [If Something Goes Wrong](knowing-where-you-are.md#where-troubleshooting)
+2. [Taxi Guidance](taxi-guidance.md)
+   - [How Taxi Guidance Works](taxi-guidance.md#taxi-overview)
+   - [Before You Start](taxi-guidance.md#taxi-before-you-start)
+   - [The Taxi Planner](taxi-guidance.md#taxi-planner)
+   - [Choosing Your Destination](taxi-guidance.md#taxi-destination-types)
+   - [Entering an ATC Clearance](taxi-guidance.md#taxi-clearances)
+   - [Worked Examples](taxi-guidance.md#taxi-examples)
+   - [Changing a Clearance on the Move](taxi-guidance.md#taxi-amend)
+   - [SayIntentions Taxi Import](taxi-guidance.md#taxi-sayintentions)
+   - [Progressive Taxi](taxi-guidance.md#taxi-progressive)
+   - [Calculating the Route](taxi-guidance.md#taxi-calculating)
+   - [Starting Guidance](taxi-guidance.md#taxi-starting)
+   - [The Steering Tone](taxi-guidance.md#taxi-tone)
+   - [Following the Guidance](taxi-guidance.md#taxi-following)
+   - [Hold Shorts and Continue](taxi-guidance.md#taxi-holds)
+   - [Runway Crossings](taxi-guidance.md#taxi-crossings)
+   - [Lining Up on the Runway](taxi-guidance.md#taxi-lineup)
+   - [Going Off Route and Recalculation](taxi-guidance.md#taxi-off-route)
+   - [Arriving at a Stand](taxi-guidance.md#taxi-gate-arrival)
+   - [Taxi Routes in the Route Briefing](taxi-guidance.md#taxi-briefing)
+   - [Hotkeys During Taxi](taxi-guidance.md#taxi-hotkeys)
+   - [Taxi Guidance Settings](taxi-guidance.md#taxi-settings)
+   - [Everything Taxi Guidance Says](taxi-guidance.md#taxi-callouts)
+   - [If Something Goes Wrong](taxi-guidance.md#taxi-troubleshooting)
+3. [Ground Traffic](ground-traffic.md)
+   - [When Ground Traffic Speaks](ground-traffic.md#traffic-when)
+   - [How Aircraft Are Named](ground-traffic.md#traffic-names)
+   - [The Proximity Callouts](ground-traffic.md#traffic-proximity)
+   - [Traffic on Your Route and Converging Traffic](ground-traffic.md#traffic-route)
+   - [The Departure Queue](ground-traffic.md#traffic-queue)
+   - [The Runway Watch](ground-traffic.md#traffic-runway-watch)
+   - [The Traffic Summary: Output Alt+G](ground-traffic.md#traffic-summary)
+   - [What Interrupts and What Waits](ground-traffic.md#traffic-priority)
+   - [Callout Quick Reference](ground-traffic.md#traffic-quick-reference)
+   - [Settings](ground-traffic.md#traffic-settings)
+   - [If Something Goes Wrong](ground-traffic.md#traffic-troubleshooting)
+4. [Gates, GSX and Docking](gates-gsx-and-docking.md)
+   - [Choosing a Stand](gates-gsx-and-docking.md#gsx-choosing-a-stand)
+   - [The Access GSX Window](gates-gsx-and-docking.md#gsx-access-window)
+   - [GSX Settings](gates-gsx-and-docking.md#gsx-settings)
+   - [What GSX Tells You](gates-gsx-and-docking.md#gsx-announcements)
+   - [Letting BA Prepare Your Stand in GSX](gates-gsx-and-docking.md#gsx-auto-select)
+   - [Docking Guidance](gates-gsx-and-docking.md#docking)
+
+## Part 6: Flying {#part-5-flying}
+
+1. [Takeoff, Climb and Cruise](takeoff-climb-and-cruise.md)
+   - [Takeoff Assist](takeoff-climb-and-cruise.md#takeoff-assist)
+   - [Takeoff Speed Callouts](takeoff-climb-and-cruise.md#takeoff-vspeed-callouts)
+   - [Autopilot Windows](takeoff-climb-and-cruise.md#autopilot-windows)
+   - [Hand Fly Mode](takeoff-climb-and-cruise.md#hand-fly)
+   - [Altitude Callouts](takeoff-climb-and-cruise.md#flying-altitude-callouts)
+   - [Other Automatic Callouts in Flight](takeoff-climb-and-cruise.md#flying-auto-callouts)
+   - [TCAS Traffic](takeoff-climb-and-cruise.md#tcas)
+2. [Approach and Landing](approach-and-landing.md)
+   - [Choosing a Destination Runway](approach-and-landing.md#destination-runway)
+   - [Approach Readouts](approach-and-landing.md#land-readouts)
+   - [Visual Guidance](approach-and-landing.md#visual-guidance)
+   - [Flare and Rollout Tones](approach-and-landing.md#flare-assist)
+   - [The Landing Exit Planner](approach-and-landing.md#landing-exit)
+   - [Everything the Rollout Says](approach-and-landing.md#land-rollout-callouts)
+   - [Landing Rate and G-Force](approach-and-landing.md#land-rate)
+
+## Part 7: Networks and Integrations {#part-6-networks-and-integrations}
+
+1. [Networks and Integrations](networks-and-integrations.md)
+   - [SayIntentions](networks-and-integrations.md#sayintentions)
+   - [VATSIM](networks-and-integrations.md#vatsim)
+   - [Volanta](networks-and-integrations.md#volanta)
+   - [ActiveSky](networks-and-integrations.md#integrations-activesky)
+   - [AI Providers](networks-and-integrations.md#integrations-ai)
+
+## Part 8: Aircraft Guides {#part-7-aircraft-guides}
+
+Everything you have read so far works in every aircraft. This part covers what changes in each one: how BA lays out its cockpit, the special windows it adds, its own callouts, and the quirks worth knowing before your first flight. The full key list for each aircraft is in the [Hotkey Reference](hotkey-reference.md) and in File, Hotkey List; the sections below pick out the highlights.
+
+These guides do not teach you to fly the aircraft itself. For engine starts, flows and speeds, use the maker's own documentation; the standard procedures it describes are exactly what you carry out through BA's panels. [General Flying Concepts](general-flying-concepts.md) gives a gentle overview of airliner flying.
+
+1. [Airbus Aircraft](airbus-aircraft.md)
+   - [FlyByWire A320neo (A32NX)](airbus-aircraft.md#airbus-a32nx)
+   - [Fenix A320 CEO](airbus-aircraft.md#airbus-fenix)
+   - [FlyByWire A380X](airbus-aircraft.md#airbus-a380)
+   - [Headwind A330-900neo](airbus-aircraft.md#airbus-a330)
+2. [Boeing Aircraft and the MD-11](boeing-aircraft-and-the-md-11.md)
+   - [PMDG 737 (NG3)](boeing-aircraft-and-the-md-11.md#boeing-pmdg737)
+   - [PMDG 777](boeing-aircraft-and-the-md-11.md#boeing-pmdg777)
+   - [HorizonSim 787-9](boeing-aircraft-and-the-md-11.md#boeing-hs787)
+   - [iFly 737 MAX8](boeing-aircraft-and-the-md-11.md#boeing-ifly737)
+   - [TFDi MD-11](boeing-aircraft-and-the-md-11.md#boeing-md11)
+
+## Part 9: General Flying Concepts {#part-8-general-flying-concepts}
+
+1. [General Flying Concepts](general-flying-concepts.md)
+   - [The Phases of a Flight](general-flying-concepts.md#concepts-phases)
+   - [Building a Listening Scan](general-flying-concepts.md#concepts-scan)
+   - [Automation: Who Is Flying the Aircraft?](general-flying-concepts.md#concepts-automation)
+   - [The Flight Mode Annunciator (FMA)](general-flying-concepts.md#concepts-fma)
+   - [Approach Types in Plain Terms](general-flying-concepts.md#concepts-approaches)
+   - [Stable Approach Basics](general-flying-concepts.md#concepts-stable)
+   - [ATC Basics](general-flying-concepts.md#concepts-atc)
+   - [Runway Safety for a Blind Pilot](general-flying-concepts.md#concepts-runway-safety)
+   - [Checklists](general-flying-concepts.md#concepts-checklists)
+   - [Where to Learn More](general-flying-concepts.md#concepts-learn-more)
+
+## Appendices {#appendices}
+
+1. [Tone Cheat Sheet](tone-cheat-sheet.md)
+2. [Glossary](glossary.md)
+3. [Troubleshooting and FAQ](troubleshooting-and-faq.md)
+   - [BA Is Silent, or Speech Sounds Wrong](troubleshooting-and-faq.md#trouble-speech)
+   - [Hotkeys Do Nothing](troubleshooting-and-faq.md#trouble-hotkeys)
+   - [BA Will Not Connect, or Uses the Wrong Aircraft](troubleshooting-and-faq.md#trouble-connect)
+   - [Cockpit Controls Do Not Respond (MobiFlight)](troubleshooting-and-faq.md#trouble-mobiflight)
+   - [PMDG: CDU Window or Readouts Are Empty](troubleshooting-and-faq.md#trouble-pmdg)
+   - [Airport or Runway Not Found: the Navigation Database](troubleshooting-and-faq.md#trouble-database)
+   - [A Taxi Route Will Not Calculate](troubleshooting-and-faq.md#trouble-taxi)
+   - [Tones Play on the Wrong Device, or Not at All](troubleshooting-and-faq.md#trouble-audio)
+   - [Updates](troubleshooting-and-faq.md#trouble-updates)
+   - [Sim Performance](troubleshooting-and-faq.md#gs-sim-performance)
+   - [Logs: What to Send When You Ask for Help](troubleshooting-and-faq.md#trouble-logs)
+   - [Frequently Asked Questions](troubleshooting-and-faq.md#trouble-faq)
+4. [Hotkey Reference](hotkey-reference.md)
+   - [Hotkeys on Every Aircraft](hotkey-reference.md#hk-general)
+   - [FlyByWire A320neo](hotkey-reference.md#hk-a32nx)
+   - [Fenix A320 CEO](hotkey-reference.md#hk-fenix)
+   - [FlyByWire A380X](hotkey-reference.md#hk-a380)
+   - [Headwind A330-900neo](hotkey-reference.md#hk-a330)
+   - [PMDG 737](hotkey-reference.md#hk-pmdg737)
+   - [PMDG 777](hotkey-reference.md#hk-pmdg777)
+   - [HorizonSim 787-9](hotkey-reference.md#hk-hs787)
+   - [iFly 737 MAX8](hotkey-reference.md#hk-ifly)
+   - [TFDi MD-11](hotkey-reference.md#hk-md11)
