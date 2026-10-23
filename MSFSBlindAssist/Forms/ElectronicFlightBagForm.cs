@@ -1957,7 +1957,7 @@ public partial class ElectronicFlightBagForm : Form
             // An aircraft switch closes the EFB, even with the list open.
             if (IsDisposed) return;
             if (picked != null)
-                ShowAirportLookupResult(picked.Airport);
+                ShowAirportLookupResult(picked.Airport, Task.FromResult(position));
             airportLookupIcaoTextBox.Focus();
         }
         catch (Exception ex)

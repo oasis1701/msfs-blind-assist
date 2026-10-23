@@ -266,9 +266,10 @@ internal sealed class OfflineLocationService
     /// <summary>
     /// For the EFB's Airport Lookup: every town (<see cref="LocationCategory.Town"/>, 500+ people or
     /// a seat of administration) whose whole name is <paramref name="query"/>, ignoring case and
-    /// accents (<see cref="SearchText.Fold"/>), most populous first. Villages are not read:
-    /// 4.9 million of them cost about 400 ms against about 50 ms for the 236,000 towns. Empty when
-    /// no usable database is installed.
+    /// accents (<see cref="SearchText.Fold"/>), most populous first. Villages are not read: a plain
+    /// scan of the 4.9 million of them with the towns took about 400 ms before any comparing, while
+    /// the 236,000 towns are read and compared in 170 to 340 ms. Empty when no usable database is
+    /// installed.
     /// </summary>
     internal List<TownMatch> FindTowns(string query, int max)
     {

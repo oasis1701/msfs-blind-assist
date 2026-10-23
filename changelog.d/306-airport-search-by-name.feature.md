@@ -1,5 +1,5 @@
 The Electronic Flight Bag's Airport Lookup can find an airport without its ICAO code. Type part
-of its name or city, such as "Landvetter", "Göteborg", "ohare" or "charles de gaulle", and press
+of its name or city, such as "Landvetter", "Zürich", "ohare" or "charles de gaulle", and press
 Enter. Case, accents and apostrophes don't matter. An exact code, or a single match, loads at
 once and is spoken; otherwise a list opens, best match first, and Enter loads the one you pick.
 With the offline location data installed, a town's name also finds the airports around it:

@@ -150,6 +150,20 @@ public sealed class AirportNameSearchTests
     }
 
     [Fact]
+    public void An_exact_ident_with_no_runway_opens_the_list_unless_it_is_the_only_match()
+    {
+        // MSFS 2024 navdata: MCO is a helipad named "Orlando International Airport"; Orlando's
+        // airport is KMCO, which contains the letters.
+        var helipad = A("MCO", "Orlando International Airport", "", 0, 28.4316, -81.3077);
+        var world = new[] { helipad, A("KMCO", "Orlando Intl", "", 12005, 28.4294, -81.3090) };
+        var results = AirportNameSearch.Rank("MCO", world);
+        Assert.Equal(new[] { "MCO", "KMCO" }, results.Select(r => r.Airport.Ident).ToArray());
+        Assert.Null(AirportNameSearch.DirectMatch(results));
+
+        Assert.Equal("MCO", AirportNameSearch.DirectMatch(AirportNameSearch.Rank("MCO", new[] { helipad }))?.Airport.Ident);
+    }
+
+    [Fact]
     public void One_result_loads_directly_and_several_by_name_open_the_list()
     {
         Assert.Equal("ESGG", AirportNameSearch.DirectMatch(AirportNameSearch.Rank("landvetter", World))?.Airport.Ident);

@@ -157,16 +157,19 @@ public static class AirportNameSearch
     }
 
     /// <summary>
-    /// The airport Enter loads at once, without the list: the only match, or an exact ident when no
-    /// other airport matches the whole text exactly. KATL loads though Metlakatla and Kitkatla
-    /// contain its letters; LIMA, Turin-Aeritalia's ident, opens the list because Lima, Peru is a
-    /// town. Null when the pilot should pick from the list (or nothing matched).
+    /// The airport Enter loads at once, without the list: the only match, or an exact ident with a
+    /// runway when no other airport matches the whole text exactly. KATL loads though Metlakatla and
+    /// Kitkatla contain its letters; LIMA, Turin-Aeritalia's ident, opens the list because Lima, Peru
+    /// is a town. A site with no runway loads only as the only match: on MSFS 2024, MCO is a helipad
+    /// named "Orlando International Airport", and the list puts KMCO beside it. Null when the pilot
+    /// should pick from the list (or nothing matched).
     /// </summary>
     public static AirportSearchResult? DirectMatch(IReadOnlyList<AirportSearchResult> results)
     {
         if (results.Count == 1)
             return results[0];
-        if (results.Count > 1 && results[0].Tier == AirportMatchTier.Ident && results[1].Tier != AirportMatchTier.Exact)
+        if (results.Count > 1 && results[0].Tier == AirportMatchTier.Ident && results[0].Airport.LongestRunwayFeet > 0 &&
+            results[1].Tier != AirportMatchTier.Exact)
             return results[0];
         return null;
     }
