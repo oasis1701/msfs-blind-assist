@@ -43,41 +43,73 @@ public class Md11FuelUnitsTests
     [Fact]
     public void Metric_PoundsKey_ConvertsTheKilogramsOnce()
         => Assert.Equal("Tank 1 26235, Tank 2 26235, Tank 3 26235, Auxiliary 0, Tail 0, Total 78705 pounds",
-            Md11FuelUnits.Describe(Readings(11900, 11900, 11900, 0, 0), 4, kilograms: false));
+            Md11FuelUnits.Describe(Readings(11900, 11900, 11900, 0, 0), 4, null, kilograms: false));
 
     [Fact]
     public void Metric_KilogramsKey_ReadsTheTanksAsTheyAre()
         => Assert.Equal("Tank 1 11900, Tank 2 11900, Tank 3 11900, Auxiliary 0, Tail 0, Total 35700 kilograms",
-            Md11FuelUnits.Describe(Readings(11900, 11900, 11900, 0, 0), 4, kilograms: true));
+            Md11FuelUnits.Describe(Readings(11900, 11900, 11900, 0, 0), 4, null, kilograms: true));
 
     [Fact]
     public void Imperial_PoundsKey_ReadsTheTanksAsTheyAre()
         => Assert.Equal("Tank 1 26200, Tank 2 26200, Tank 3 26200, Auxiliary 0, Tail 0, Total 78600 pounds",
-            Md11FuelUnits.Describe(Readings(26200, 26200, 26200, 0, 0), 5, kilograms: false));
+            Md11FuelUnits.Describe(Readings(26200, 26200, 26200, 0, 0), 5, null, kilograms: false));
 
     [Fact]
     public void Imperial_KilogramsKey_ConvertsThePounds()
         => Assert.Equal("Tank 1 11884, Tank 2 11884, Tank 3 11884, Auxiliary 0, Tail 0, Total 35652 kilograms",
-            Md11FuelUnits.Describe(Readings(26200, 26200, 26200, 0, 0), 5, kilograms: true));
+            Md11FuelUnits.Describe(Readings(26200, 26200, 26200, 0, 0), 5, null, kilograms: true));
 
     [Fact]
     public void UnknownUnit_ReadsNoNumber()
     {
-        Assert.Equal(Md11FuelUnits.UnitUnknown, Md11FuelUnits.Describe(Readings(11900, 11900, 11900, 0, 0), null, kilograms: false));
-        Assert.Equal(Md11FuelUnits.UnitUnknown, Md11FuelUnits.Describe(Readings(11900, 11900, 11900, 0, 0), 4.5, kilograms: true));
+        Assert.Equal(Md11FuelUnits.UnitUnknown, Md11FuelUnits.Describe(Readings(11900, 11900, 11900, 0, 0), null, null, kilograms: false));
+        Assert.Equal(Md11FuelUnits.UnitUnknown, Md11FuelUnits.Describe(Readings(11900, 11900, 11900, 0, 0), 4.5, null, kilograms: true));
     }
 
     [Fact]
     public void NoTankDelivered_SaysUnavailable_WhateverTheUnit()
     {
-        Assert.Equal(Md11FuelUnits.Unavailable, Md11FuelUnits.Describe(Readings(), 4, kilograms: false));
-        Assert.Equal(Md11FuelUnits.Unavailable, Md11FuelUnits.Describe(Readings(), null, kilograms: false));
+        Assert.Equal(Md11FuelUnits.Unavailable, Md11FuelUnits.Describe(Readings(), 4, null, kilograms: false));
+        Assert.Equal(Md11FuelUnits.Unavailable, Md11FuelUnits.Describe(Readings(), null, null, kilograms: false));
     }
 
     [Fact]
     public void ATankNeverDelivered_IsLeftOut()
         => Assert.Equal("Tank 1 100, Tank 3 100, Total 200 kilograms",
-            Md11FuelUnits.Describe(Readings(100, null, 100), 4, kilograms: true));
+            Md11FuelUnits.Describe(Readings(100, null, 100), 4, null, kilograms: true));
+
+    /// <summary>
+    /// The cold load measured on the PW (2026-10-23): every tank read 0 for about 20 s while the
+    /// sim already carried 142,579 lb. Those zeros are the aircraft not having published the tanks,
+    /// never an empty aircraft, so the keys say unavailable instead of "Total 0".
+    /// </summary>
+    [Fact]
+    public void AllTanksZero_WhileTheSimCarriesFuel_IsUnavailable()
+    {
+        Assert.Equal(Md11FuelUnits.Unavailable, Md11FuelUnits.Describe(Readings(0, 0, 0, 0, 0), 0, 142579, kilograms: false));
+        Assert.Equal(Md11FuelUnits.Unavailable, Md11FuelUnits.Describe(Readings(0, 0, 0, 0, 0), null, 142579, kilograms: true));
+    }
+
+    /// <summary>A truly empty aircraft, or one whose sim weight is unknown, still reads its zeros.</summary>
+    [Fact]
+    public void AllTanksZero_WithNoFuelInTheSim_IsSpoken()
+    {
+        const string zero = "Tank 1 0, Tank 2 0, Tank 3 0, Auxiliary 0, Tail 0, Total 0 pounds";
+        Assert.Equal(zero, Md11FuelUnits.Describe(Readings(0, 0, 0, 0, 0), 5, 0, kilograms: false));
+        Assert.Equal(zero, Md11FuelUnits.Describe(Readings(0, 0, 0, 0, 0), 5, 999, kilograms: false));    // under the bound
+        Assert.Equal(zero, Md11FuelUnits.Describe(Readings(0, 0, 0, 0, 0), 5, null, kilograms: false));   // no witness
+        Assert.Equal(zero, Md11FuelUnits.Describe(Readings(0, 0, 0, 0, 0), 5, double.NaN, kilograms: false));
+    }
+
+    /// <summary>One tank with fuel means the tanks are published: an empty aux and tail are real.</summary>
+    [Fact]
+    public void TanksUnpublished_NeedsEveryDeliveredTankAtZero()
+    {
+        Assert.False(Md11FuelUnits.TanksUnpublished(new double?[] { 26500, 26500, 26500, 0, 0 }, 79554));
+        Assert.False(Md11FuelUnits.TanksUnpublished(new double?[] { null, null, null, null, null }, 79554));
+        Assert.True(Md11FuelUnits.TanksUnpublished(new double?[] { 0, null, 0, 0, 0 }, 1000));
+    }
 
     [Fact]
     public void DescribeTank_NamesTheUnitOnlyWhenKnown()
@@ -98,7 +130,7 @@ public class Md11FuelUnitsTests
         {
             CultureInfo.CurrentCulture = new CultureInfo(culture);
             Assert.Equal("Tank 1 11884, Tank 2 11884, Tank 3 11884, Auxiliary 0, Tail 0, Total 35652 kilograms",
-                Md11FuelUnits.Describe(Readings(26200, 26200, 26200, 0, 0), 5, kilograms: true));
+                Md11FuelUnits.Describe(Readings(26200, 26200, 26200, 0, 0), 5, null, kilograms: true));
             Assert.Equal("11900 kilograms", Md11FuelUnits.DescribeTank(11900.4, false));
         }
         finally

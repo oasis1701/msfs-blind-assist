@@ -92,7 +92,10 @@ public static class Md11StatusRow
             case "MD11_OVHD_TANK_3_VAL":
             case "MD11_OVHD_TANK_AUX_VAL":
             case "MD11_OVHD_TANK_TAIL_VAL":
-                // In the EFB's weight unit, which the overhead shows too (Md11FuelUnits).
+                // In the EFB's weight unit, which the overhead shows too (Md11FuelUnits). Every tank
+                // at 0 while the sim carries fuel is the aircraft not having published them yet.
+                if (value == 0 && Md11FuelUnits.TanksUnpublished(Md11FuelUnits.Tanks.Select(t => read(t.Key)), read(Md11FuelUnits.SimFuelKey)))
+                    return "not available";
                 return Md11FuelUnits.DescribeTank(value, Md11FuelUnits.TanksInPounds(read(Md11FuelUnits.OptionsKey)));
 
             default:

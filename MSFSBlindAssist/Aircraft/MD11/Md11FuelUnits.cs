@@ -60,13 +60,43 @@ public static class Md11FuelUnits
     public const string UnitUnknown = "Fuel quantity unavailable, the aircraft has not reported its weight unit";
 
     /// <summary>
+    /// The sim's own fuel weight, in pounds: cache key. Read only to tell tanks the aircraft has not
+    /// published yet from empty ones (<see cref="TanksUnpublished"/>), never spoken.
+    /// </summary>
+    public const string SimFuelKey = "MD11_SIM_FUEL_TOTAL_POUNDS";
+    public const string SimFuelVar = "FUEL TOTAL QUANTITY WEIGHT";
+
+    /// <summary>
+    /// The sim fuel weight above which every tank reading 0 cannot be an empty aircraft. Well above
+    /// the readouts' 100-step resolution, so a nearly empty aircraft is never called unavailable.
+    /// </summary>
+    public const double UnpublishedMinSimPounds = 1000;
+
+    /// <summary>
+    /// True when the tank read-outs are the aircraft's not-yet-published zeros, not fuel: every tank
+    /// delivered reads 0 while the sim already carries fuel. MEASURED LIVE (2026-10-23, PW N831TD,
+    /// cold load): all tanks read 0 for about 20 s while <c>FUEL TOTAL QUANTITY WEIGHT</c> read
+    /// 142,579 lb, then 26,500 each against 79,554 lb. A 0 cannot be told from "not written" by the
+    /// var itself (an unwritten L:var reads 0), so the sim's weight is the only witness. Unknown sim
+    /// weight is no evidence: the zeros are then taken as read.
+    /// </summary>
+    public static bool TanksUnpublished(IEnumerable<double?> tanks, double? simPounds)
+    {
+        if (simPounds is not { } sim || double.IsNaN(sim) || sim < UnpublishedMinSimPounds) return false;
+        var delivered = tanks.Where(t => t != null).ToList();
+        return delivered.Count > 0 && delivered.All(t => t == 0);
+    }
+
+    /// <summary>
     /// The fuel keys' sentence: each tank read, then the total with its unit, all converted from
     /// the unit the tanks read in to the one asked for. A tank never delivered is left out; with
-    /// none delivered, or the unit unknown, the sentence says so and reads no number.
+    /// none delivered, the tanks not yet published, or the unit unknown, the sentence says so and
+    /// reads no number.
     /// </summary>
-    public static string Describe(IReadOnlyList<(string Name, double? Value)> tanks, double? options, bool kilograms)
+    public static string Describe(IReadOnlyList<(string Name, double? Value)> tanks, double? options, double? simPounds, bool kilograms)
     {
         if (!tanks.Any(t => t.Value != null)) return Unavailable;
+        if (TanksUnpublished(tanks.Select(t => t.Value), simPounds)) return Unavailable;
         if (TanksInPounds(options) is not { } tanksInPounds) return UnitUnknown;
 
         var parts = new List<string>(tanks.Count + 1);

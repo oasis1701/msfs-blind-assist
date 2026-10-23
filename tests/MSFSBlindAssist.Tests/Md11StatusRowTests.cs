@@ -103,6 +103,18 @@ public class Md11StatusRowTests
         Assert.Equal("11900", Md11StatusRow.Readout("MD11_OVHD_TANK_3_VAL", 11900, Garbled));   // no unit word, never a guess
     }
 
+    /// <summary>Every tank at 0 while the sim carries fuel: the aircraft has not published them yet.</summary>
+    [Fact]
+    public void Readout_TankRows_AreNotAvailableBeforeTheAircraftPublishesThem()
+    {
+        static double? Loading(string k) => k == Md11FuelUnits.SimFuelKey ? 142579 : k == Md11FuelUnits.OptionsKey ? 5 : k.StartsWith("MD11_OVHD_TANK_") ? 0 : null;
+        static double? Empty(string k) => k == Md11FuelUnits.SimFuelKey ? 0 : k == Md11FuelUnits.OptionsKey ? 5 : k.StartsWith("MD11_OVHD_TANK_") ? 0 : null;
+        static double? AuxOnly(string k) => k == "MD11_OVHD_TANK_1_VAL" ? 26500 : Loading(k);
+        Assert.Equal("not available", Md11StatusRow.Readout("MD11_OVHD_TANK_1_VAL", 0, Loading));
+        Assert.Equal("0 pounds", Md11StatusRow.Readout("MD11_OVHD_TANK_1_VAL", 0, Empty));
+        Assert.Equal("0 pounds", Md11StatusRow.Readout("MD11_OVHD_TANK_AUX_VAL", 0, AuxOnly));   // tank 1 has fuel: an empty aux is real
+    }
+
     [Fact]
     public void Readout_MinimumsRows_SayWhichModeTheyShow()
     {

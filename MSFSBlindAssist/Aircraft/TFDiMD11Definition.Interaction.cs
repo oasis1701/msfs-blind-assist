@@ -1289,6 +1289,9 @@ public partial class TFDiMD11Definition
         // The DC-power gate: consumed silently; the hook reads it from the cache.
         if (varName == DcPowerKey) return true;
 
+        // The sim's fuel weight: consumed silently; only the fuel read-outs read it, from the cache.
+        if (varName == Md11FuelUnits.SimFuelKey) return true;
+
         // Every lamp is handled here (owner state or standalone lit/dark) and consumed, so the
         // generic announce path never speaks a raw "X light: on" again.
         if (_byNodeId.TryGetValue(varName, out var ctrl) && ctrl.Kind == Md11Kinds.Annunciator)
@@ -1736,7 +1739,8 @@ public partial class TFDiMD11Definition
     private static void AnnounceFuel(SimConnectManager sim, ScreenReaderAnnouncer announcer, bool kilograms)
     {
         var readings = Md11FuelUnits.Tanks.Select(t => (t.Name, sim.GetCachedVariableValue(t.Key))).ToList();
-        announcer.AnnounceImmediate(Md11FuelUnits.Describe(readings, sim.GetCachedVariableValue(Md11FuelUnits.OptionsKey), kilograms));
+        announcer.AnnounceImmediate(Md11FuelUnits.Describe(readings, sim.GetCachedVariableValue(Md11FuelUnits.OptionsKey),
+            sim.GetCachedVariableValue(Md11FuelUnits.SimFuelKey), kilograms));
     }
 
     /// <summary>
