@@ -285,14 +285,23 @@ This tab sets the arrival airport and runway at the end of the plan. It works li
 
 ### The Airport Lookup tab {#the-airport-lookup-tab}
 
-This tab is a reference page for any airport in your navigation database.
+This tab is a reference page for any airport in your navigation database. You can find an airport by its ICAO code, or by part of its name or city.
 
-1. In **Airport Lookup ICAO**, type the airport's code. As soon as the fourth letter is in, the **Airport Information** box fills in, the **Airport Lookup Runways** list fills with the runways, and the first runway's details appear in the **Runway Information** box.
-2. Arrow through the runway list. The Runway Information box updates for each runway as you move.
-3. Tab to either information box and read it line by line with the arrow keys. Both boxes are read-only.
-4. The **Load** button reloads both boxes; you only need it if you want to refresh them.
+1. In **Airport Lookup ICAO**, type the airport's code. As soon as the fourth letter is in, the **Airport Information** box fills in, the **Airport Lookup Runways** list fills with the runways, and the first runway's details appear in the **Runway Information** box. Nothing is spoken: press Tab, and the first line of the Airport Information box gives the airport's code and name, for example "KATL, Hartsfield - Jackson Atlanta I". A code with no airport reads "Airport ROME not found in database."
+2. To search, type a code or part of an airport's name or city, and press Enter. Case, accents and apostrophes don't matter: "goteborg" finds "Göteborg" and "ohare" finds "Chicago-O'Hare". With several words, each must appear somewhere in the code, name or city. Letters in the middle of a word count too, so "LAX" finds KLAX.
+   - When what you typed is an airport's exact code, or only one airport matches, it loads at once and its code and name are spoken. KATL loads, even though other airports' names contain those letters.
+   - Otherwise a list opens, best match first, for example "2 airports match GÖTEBORG". Arrow to an airport and press Enter to load it, or press Escape to close the list; either way you are back in the field. The list shows at most 50 airports, and its title says when more matched: "50 of 70 airports match LONDON". An exact code also opens the list when another airport is named exactly what you typed, or a town is: "LIMA" lists Turin-Aeritalia, whose code it is, then the airports of Lima, Peru.
+   - When nothing matches, you hear "No airports match" and what you typed.
+3. The tab order is the field, Airport Information, the runway list, then Runway Information. Arrow through the runway list: the Runway Information box updates for each runway as you move.
+4. Read either information box line by line with the arrow keys. Both boxes are read-only.
 
-The **Airport Information** box is grouped under headings: basic information (ident and name), location (coordinates, elevation and magnetic variation), frequencies (Tower, ATIS, AWOS, ASOS and UNICOM), status (closed, military, add-on scenery), fuel, a count of facilities (gates, ramps, runways, approaches and so on), a runway summary, parking, the tower position, the transition altitude and level where the navigation data has them, and the scenery file the airport comes from.
+**Towns.** With the offline location data installed (see [Getting the location data](core-concepts.md#getting-the-location-data)), a town's name finds the airports around it, so "Gothenburg" lists Landvetter and Säve, each "11 nm from Gothenburg, Västra Götaland, Sweden". Each town adds up to 10 airfields within 30 nm, open ones and the longest runways first. A helipad is never added for a town; you find it by its own name or code. A town with no airfield within 30 nm lists its 3 nearest within 100 nm. When several towns share a name, the most populous comes first: "London" lists London, England, then London, Ontario, and so on. Only towns of 500 people or more are searched, and only by their whole name.
+
+**On MSFS 2024**, the navigation data has no city names, so a city is found only through an airport's own name ("Atlanta" finds Hartsfield - Jackson Atlanta) or through the location data. Without the location data installed, a search that finds nothing tells you: "Searching by city on MSFS 2024 needs the location data."
+
+**Distance from you.** When connected to the simulator, each line of the list, the spoken airport and the Airport Information box say how far the airport is from you and in which direction, for example "212 nm southwest". With the simulator closed they leave it out.
+
+The **Airport Information** box starts with the airport's code and name, then is grouped under headings: basic information (ident and name), from aircraft (the distance and direction, when connected), location (coordinates, elevation and magnetic variation), frequencies (Tower, ATIS, AWOS, ASOS and UNICOM), status (closed, military, add-on scenery), fuel, a count of facilities (gates, ramps, runways, approaches and so on), a runway summary, parking, the tower position, the transition altitude and level where the navigation data has them, and the scenery file the airport comes from.
 
 The **Runway Information** box starts with the ILS, if the runway has one (ident, frequency, localizer heading and width, glideslope angle and DME), then gives the dimensions, surface, true and magnetic heading, threshold position, displaced threshold, blast pad and overrun, pattern altitude and runway elevation, lighting, markings, whether the runway is used for take-off and landing, and any VASI or PAPI.
 

@@ -1,6 +1,5 @@
 using Microsoft.Data.Sqlite;
 using MSFSBlindAssist.Aircraft;
-using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Models;
 using MSFSBlindAssist.Settings;
 
@@ -55,6 +54,11 @@ internal sealed record LocationReport(WhereYouAre Where, PlaceHit? Nearest, Loca
 
 /// <summary>A city and where it is.</summary>
 internal sealed record CityPoint(string Name, string State, string Country, double Lat, double Lon);
+
+/// <summary>A town from <see cref="OfflineLocationService.FindTowns"/> whose name is what the pilot
+/// typed in the EFB's Airport Lookup: "Gothenburg" is GeoNames' name for the city the navdata calls
+/// "Goteborg".</summary>
+public sealed record TownMatch(string Name, string State, string Country, double Lat, double Lon, int Population);
 
 /// <summary>
 /// For the Volanta traffic list's major-city mode: the water or land at a position, and the nearest major
@@ -262,13 +266,13 @@ internal sealed class OfflineLocationService
     /// <summary>
     /// For the EFB's Airport Lookup: every town (<see cref="LocationCategory.Town"/>, 500+ people or
     /// a seat of administration) whose whole name is <paramref name="query"/>, ignoring case and
-    /// accents (<see cref="AirportNameSearch.Fold"/>), most populous first. Villages are not read:
+    /// accents (<see cref="SearchText.Fold"/>), most populous first. Villages are not read:
     /// 4.9 million of them cost about 400 ms against about 50 ms for the 236,000 towns. Empty when
     /// no usable database is installed.
     /// </summary>
     internal List<TownMatch> FindTowns(string query, int max)
     {
-        string folded = AirportNameSearch.Fold(query);
+        string folded = SearchText.Fold(query);
         if (folded.Length == 0 || !_store.IsAvailable) return new List<TownMatch>();
 
         return _store.Read(c =>
@@ -282,7 +286,7 @@ internal sealed class OfflineLocationService
                 while (r.Read())
                 {
                     string name = r.GetString(5);
-                    if (AirportNameSearch.Fold(name) != folded) continue;
+                    if (SearchText.Fold(name) != folded) continue;
                     var (lat, lon) = LocationGrid.Decode(r.GetInt32(0), r.GetInt32(1), r.GetInt32(2));
                     found.Add((name, lat, lon, r.GetInt32(3), r.GetInt32(4)));
                 }

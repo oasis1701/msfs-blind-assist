@@ -6,6 +6,7 @@
 using System.Globalization;
 using Microsoft.Data.Sqlite;
 using MSFSBlindAssist.Database;
+using MSFSBlindAssist.Services.Geography;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -46,10 +47,12 @@ public sealed class AirportNameSearchTests
     [InlineData("  Tokyo (Haneda) Intl ", "tokyo haneda intl")]
     [InlineData("Grønbæk", "gronbaek")]
     [InlineData("Straße", "strasse")]
+    [InlineData("Chicago-O'Hare Intl", "chicago ohare intl")]
+    [InlineData("St John’s Intl", "st johns intl")]
     [InlineData("", "")]
     [InlineData(null, "")]
     public void Fold_drops_case_accents_and_punctuation(string? input, string expected)
-        => Assert.Equal(expected, AirportNameSearch.Fold(input));
+        => Assert.Equal(expected, SearchText.Fold(input));
 
     [Fact]
     public void Fold_ignores_the_current_culture()
@@ -59,9 +62,9 @@ public sealed class AirportNameSearchTests
         {
             // Turkish lower-cases "I" to dotless "ı"; the fold must not.
             CultureInfo.CurrentCulture = new CultureInfo("tr-TR");
-            Assert.Equal("istanbul", AirportNameSearch.Fold("ISTANBUL"));
+            Assert.Equal("istanbul", SearchText.Fold("ISTANBUL"));
             CultureInfo.CurrentCulture = new CultureInfo("sv-SE");
-            Assert.Equal("goteborg", AirportNameSearch.Fold("GÖTEBORG"));
+            Assert.Equal("goteborg", SearchText.Fold("GÖTEBORG"));
         }
         finally
         {
@@ -79,6 +82,17 @@ public sealed class AirportNameSearchTests
         Assert.Equal(new[] { "ESGG", "ESGP" }, Idents("TEBORG"));
         Assert.Equal(new[] { "ESGG" }, Idents("landvetter"));
         Assert.Equal(new[] { "ESGP" }, Idents("save"));
+    }
+
+    [Fact]
+    public void A_name_with_an_apostrophe_is_found_without_it()
+    {
+        // MSFS 2024 navdata spells them "Chicago-O'Hare Intl" and "St John's Intl".
+        var world = new[] { A("KORD", "Chicago-O'Hare Intl", "", 13000), A("CYYT", "St John's Intl", "", 8500) };
+        string[] Found(string query) => AirportNameSearch.Rank(query, world).Select(r => r.Airport.Ident).ToArray();
+        Assert.Equal(new[] { "KORD" }, Found("ohare"));
+        Assert.Equal(new[] { "KORD" }, Found("O'Hare"));
+        Assert.Equal(new[] { "CYYT" }, Found("st johns"));
     }
 
     [Fact]
@@ -102,6 +116,48 @@ public sealed class AirportNameSearchTests
     }
 
     [Fact]
+    public void An_exact_ident_loads_directly_though_its_letters_appear_in_other_names()
+    {
+        // MSFS 2024 navdata: KATL's letters are inside Metlakatla and Kitkatla.
+        var world = new[]
+        {
+            A("KATL", "Hartsfield - Jackson Atlanta I", "", 12390, 33.6367, -84.4281),
+            A("MTM", "Metlakatla", "", 0, 55.1311, -131.5781),
+            A("CAP7", "Kitkatla Seaplane Base", "", 0, 53.8000, -130.4300),
+        };
+        var results = AirportNameSearch.Rank("katl", world);
+        Assert.Equal(3, results.Count);
+        Assert.Equal("KATL", AirportNameSearch.DirectMatch(results)?.Airport.Ident);
+    }
+
+    [Fact]
+    public void An_exact_ident_opens_the_list_when_another_airport_matches_the_whole_text()
+    {
+        // LIMA is Turin-Aeritalia's ident and Lima, Peru a town: the list, the ident first.
+        var world = new[]
+        {
+            A("LIMA", "Torino Aeritalia", "", 3000, 45.0861, 7.6033),
+            A("SPJC", "Jorge Chavez Intl", "", 11506, -12.0219, -77.1143),
+        };
+        var lima = new TownMatch("Lima", "Lima", "Peru", -12.0432, -77.0282, 7737002);
+        var results = AirportNameSearch.Rank("LIMA", world, new[] { lima });
+        Assert.Equal(new[] { "LIMA", "SPJC" }, results.Select(r => r.Airport.Ident).ToArray());
+        Assert.Null(AirportNameSearch.DirectMatch(results));
+
+        // So does an airport named exactly what was typed.
+        var named = AirportNameSearch.Rank("lima", new[] { world[0], A("XLIM", "Lima", "", 2000) });
+        Assert.Null(AirportNameSearch.DirectMatch(named));
+    }
+
+    [Fact]
+    public void One_result_loads_directly_and_several_by_name_open_the_list()
+    {
+        Assert.Equal("ESGG", AirportNameSearch.DirectMatch(AirportNameSearch.Rank("landvetter", World))?.Airport.Ident);
+        Assert.Null(AirportNameSearch.DirectMatch(AirportNameSearch.Rank("Göteborg", World)));
+        Assert.Null(AirportNameSearch.DirectMatch(AirportNameSearch.Rank("nowhere", World)));
+    }
+
+    [Fact]
     public void Closed_airports_rank_after_open_ones_in_the_same_tier()
     {
         var world = new[] { A("AAAA", "Old Field", "Town", 9000, closed: true), A("BBBB", "New Field", "Town", 3000) };
@@ -116,6 +172,38 @@ public sealed class AirportNameSearchTests
         Assert.Empty(AirportNameSearch.Rank("  - ", World));
         Assert.Empty(Idents("nowhere at all"));
     }
+
+    [Fact]
+    public void Search_counts_the_matches_the_limit_leaves_out()
+    {
+        var outcome = AirportNameSearch.Search("london", World, limit: 2);
+        Assert.Equal(new[] { "EGLL", "EGLC" }, outcome.Results.Select(r => r.Airport.Ident).ToArray());
+        Assert.Equal(4, outcome.TotalMatches);
+    }
+
+    [Fact]
+    public void The_list_title_says_when_matches_were_left_out()
+    {
+        var saved = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("de-DE");
+            Assert.Equal("50 of 1312 airports match LONDON", AirportNameSearch.ListTitle("LONDON", 50, 1312));
+            Assert.Equal("2 airports match GÖTEBORG", AirportNameSearch.ListTitle("GÖTEBORG", 2, 2));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = saved;
+        }
+    }
+
+    [Theory]
+    [InlineData("FS2024", false, "No airports match ROME. Searching by city on MSFS 2024 needs the location data.")]
+    [InlineData("fs2024", false, "No airports match ROME. Searching by city on MSFS 2024 needs the location data.")]
+    [InlineData("FS2024", true, "No airports match ROME")]
+    [InlineData("FS2020", false, "No airports match ROME")]
+    public void No_match_explains_city_search_on_MSFS_2024_without_location_data(string simulator, bool locationData, string expected)
+        => Assert.Equal(expected, AirportNameSearch.NoMatchMessage("ROME", simulator, locationData));
 
     [Fact]
     public void A_town_adds_its_airports_ranked_with_exact_city_matches()
@@ -159,6 +247,59 @@ public sealed class AirportNameSearchTests
         var town = new TownMatch("Remote", "", "", 0.0, 0.0, 700);
         var idents = AirportNameSearch.Rank("Remote", world, new[] { town }).Select(r => r.Airport.Ident).ToHashSet();
         Assert.Equal(new HashSet<string> { "AAA1", "AAA2", "AAA3" }, idents);
+    }
+
+    [Fact]
+    public void A_town_adds_its_ten_longest_open_runways_and_never_a_helipad()
+    {
+        // Half of MSFS 2024's airports have no runway: helipads at hospitals, shops, tunnels.
+        var world = Enumerable.Range(1, 12).Select(i => A($"FLD{i:00}", $"Field {i}", "", i * 1000, 51.5 + i * 0.01, -0.1))
+            .Append(A("CLSD", "Old Field", "", 20000, 51.52, -0.1, closed: true))
+            .Append(A("HELI1", "Harrods Heliport", "", 0, 51.50, -0.16))
+            .Append(A("HELI2", "Hospital Helipad", "", 0, 51.51, -0.12))
+            .ToList();
+        var town = new TownMatch("Bigcity", "", "", 51.5, -0.12, 9000000);
+        var idents = AirportNameSearch.Rank("Bigcity", world, new[] { town }).Select(r => r.Airport.Ident).ToArray();
+        Assert.Equal(Enumerable.Range(3, 10).Reverse().Select(i => $"FLD{i:00}").ToArray(), idents);
+
+        // A helipad is still found by its own name.
+        Assert.Equal(new[] { "HELI1" }, AirportNameSearch.Rank("harrods", world).Select(r => r.Airport.Ident).ToArray());
+    }
+
+    [Fact]
+    public void A_town_with_only_a_helipad_nearby_lists_its_nearest_runways()
+    {
+        var world = new[]
+        {
+            A("HELI", "Clinic Helipad", "", 0, 0.0, 0.1),   // 6 nm: not an airfield
+            A("AAA1", "One", "", 3000, 0.0, 0.6),            // 36 nm
+        };
+        var town = new TownMatch("Remote", "", "", 0.0, 0.0, 700);
+        Assert.Equal(new[] { "AAA1" },
+            AirportNameSearch.Rank("Remote", world, new[] { town }).Select(r => r.Airport.Ident).ToArray());
+    }
+
+    [Fact]
+    public void An_airport_near_two_towns_of_a_name_goes_with_the_larger()
+    {
+        // 25 nm from a city of 8 million, 10 nm from a town of 5,000 with the same name.
+        var airport = A("XXXX", "Between", "", 9000, 0.0, 0.0);
+        var big = new TownMatch("Samename", "", "Big", 0.0, 25 / 60.0, 8000000);
+        var small = new TownMatch("Samename", "", "Small", 0.0, -10 / 60.0, 5000);
+        var result = Assert.Single(AirportNameSearch.Rank("Samename", new[] { airport }, new[] { small, big }));
+        Assert.Same(big, result.NearTown);
+    }
+
+    [Fact]
+    public void An_airport_a_big_town_only_falls_back_to_goes_with_the_town_it_is_near()
+    {
+        // Nothing within 30 nm of the big town, so the airport (36 nm) is its fallback; it is 5 nm from the small town.
+        var airport = A("XXXX", "Near Small", "", 9000, 0.0, 0.6);
+        var big = new TownMatch("Samename", "", "Big", 0.0, 0.0, 8000000);
+        var small = new TownMatch("Samename", "", "Small", 0.0, 0.6 + 5 / 60.0, 5000);
+        var result = Assert.Single(AirportNameSearch.Rank("Samename", new[] { airport }, new[] { big, small }));
+        Assert.Same(small, result.NearTown);
+        Assert.InRange(result.TownDistanceNm, 4, 6);
     }
 
     [Fact]

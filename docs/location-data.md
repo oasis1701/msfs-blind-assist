@@ -139,7 +139,8 @@ Numbers are invariant everywhere (LOC-3).
 
 - Pure, unit-tested: `GeoNamesDumpLine`, `GeoNamesNameFiles`, `LocationFeatureCatalog`,
   `LocationGrid`, `LocationGeometry`, `NaturalEarthShapes`, `DownloadGuards` (progress gate, stall
-  detector, retry budget, resume decision, disk space), `LocationPhrases`, `LocationDataStatusText`.
+  detector, retry budget, resume decision, disk space), `LocationPhrases`, `LocationDataStatusText`,
+  `SearchText` (the name folding the EFB's airport search and `FindTowns` share).
 - I/O: `LocationDataStore`, `LocationDataBuilder`, `LocationDataDownloader`, `OfflineLocationService`.
 - Callers: `MainForm.AnnounceNearestCity` (Output C and its timer), `MainForm.ShowLocationInfoDialog`,
   `Forms/LocationInfoForm.cs`, `Forms/Settings/GeoNamesPanel.cs`, the Volanta window

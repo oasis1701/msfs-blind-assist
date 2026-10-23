@@ -3,10 +3,12 @@ using MSFSBlindAssist.Database;
 namespace MSFSBlindAssist.Forms;
 
 /// <summary>
-/// The list the EFB's Airport Lookup opens when a name or city search matches more than one
-/// airport: one line per airport ("ESGG, Landvetter, Goteborg"), best match first. Enter loads the
-/// selected airport, Escape closes without changing anything. With the aircraft's position each line
-/// ends with where the airport lies from it.
+/// The list the EFB's Airport Lookup opens when a search matches more than one airport and none
+/// loads at once (<see cref="AirportNameSearch.DirectMatch"/>): one line per airport ("ESGG,
+/// Landvetter, Goteborg"), best match first, under a title such as "50 of 312 airports match
+/// LONDON" (<see cref="AirportNameSearch.ListTitle"/>). Enter loads the selected airport, Escape
+/// closes without changing anything. With the aircraft's position each line ends with where the
+/// airport lies from it.
 /// </summary>
 public sealed class AirportSearchResultsForm : Form
 {
@@ -15,12 +17,12 @@ public sealed class AirportSearchResultsForm : Form
 
     public AirportSearchResult? SelectedAirport { get; private set; }
 
-    public AirportSearchResultsForm(string query, IReadOnlyList<AirportSearchResult> results,
+    public AirportSearchResultsForm(string title, IReadOnlyList<AirportSearchResult> results,
         (double Lat, double Lon)? aircraft)
     {
         _results = results;
 
-        Text = $"{results.Count} airports match {query}";
+        Text = title;
         Size = new Size(720, 360);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
