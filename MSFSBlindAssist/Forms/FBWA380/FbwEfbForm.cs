@@ -1155,6 +1155,7 @@ public class FbwEfbForm : Form
     if (page !== renderedPage) { list.innerHTML = ''; renderedPage = page; }   // page change → clean rebuild
 
     var els = payload.items || [];
+    var before = Array.prototype.slice.call(list.children);   // pre-render order, for focus rescue below
     var existing = {};
     for (var j = 0; j < list.children.length; j++) { var ck = list.children[j].getAttribute('data-key'); if (ck) existing[ck] = list.children[j]; }
 
@@ -1171,7 +1172,24 @@ public class FbwEfbForm : Form
       if (node !== ref) list.insertBefore(node, ref);    // move only if out of place
       prev = node;
     }
-    for (var gone in existing) { if (!used[gone]) list.removeChild(existing[gone]); }
+    // A removed node that held focus (a flyPad notice's Dismiss button the pilot just pressed, a
+    // notice that expired under the cursor) would drop focus to <body>, and the screen reader to
+    // an arbitrary place: move it to the control that followed it before this render, else the
+    // page heading. (The order is the pre-render one: the loop above has already moved survivors.)
+    var lostFocus = null;
+    for (var gone in existing) {
+      if (used[gone]) continue;
+      if (!lostFocus && existing[gone].contains(document.activeElement)) {
+        lostFocus = document.getElementById('pgttl');
+        for (var b = before.indexOf(existing[gone]) + 1; b < before.length; b++) {
+          if (!used[before[b].getAttribute('data-key')]) continue;
+          var bc = before[b].matches('button, a, input, select') ? before[b] : before[b].querySelector('button, a, input, select');
+          if (bc && !bc.disabled) { lostFocus = bc; break; }
+        }
+      }
+      list.removeChild(existing[gone]);
+    }
+    if (lostFocus) lostFocus.focus();
   };
 
   document.addEventListener('keydown', function (e) {
