@@ -100,7 +100,7 @@ Namespaces `MSFSBlindAssist.Services` and `MSFSBlindAssist.Forms.Fenix`. Tests: 
 
 `Humanize` is the EFB pipe, in order: `__` → a sentinel; `_+` → " "; `([a-z])-` → "$1 " (ordinal, lowercase ASCII only); `\s+` → " "; sentinel → "/"; trim; then `Regex.Replace(s, @"\b\w", m => m.Value.ToUpperInvariant(), RegexOptions.ECMAScript)` (JS word rules; never the PC's culture). `BuildTree`: drop a leading `fenix` segment; walk folders creating each at first sight (ordinal names); a file node per item (`Name = DisplayName(path)`); after the walk add an empty `my-documents` folder at the root if absent; each level lists its folders (first-seen order) then its files (list order). A folder node's `Name` is `Humanize(segment)`.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```csharp
 public class FenixDocumentCatalogTests
@@ -176,10 +176,10 @@ public class FenixDocumentCatalogTests
 }
 ```
 
-- [ ] **Step 2: Run them; they fail to compile.** `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64 --filter FenixDocumentCatalogTests`
-- [ ] **Step 3: Implement the three files** per Interfaces (Newtonsoft `JObject.Parse` inside try/catch for `Parse`).
-- [ ] **Step 4: Run them; all pass.**
-- [ ] **Step 5: Commit.** `git add` the four files; `git commit -m "feat(fenix): Fenix document names, list and tree as the EFB shows them (plan 07)"`
+- [x] **Step 2: Run them; they fail to compile.** `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64 --filter FenixDocumentCatalogTests`
+- [x] **Step 3: Implement the three files** per Interfaces (Newtonsoft `JObject.Parse` inside try/catch for `Parse`).
+- [x] **Step 4: Run them; all pass.**
+- [x] **Step 5: Commit.** `git add` the four files; `git commit -m "feat(fenix): Fenix document names, list and tree as the EFB shows them (plan 07)"`
 
 ### Task 2: Search results and the window's texts
 
@@ -215,7 +215,7 @@ public class FenixDocumentCatalogTests
 
 Numbers through `ToString(CultureInfo.InvariantCulture)`.
 
-- [ ] **Step 1: Write the failing tests.** Fixture: the first two live results for "SPD BRK", verbatim:
+- [x] **Step 1: Write the failing tests.** Fixture: the first two live results for "SPD BRK", verbatim:
 
 ```csharp
 const string SpdBrk = "[{\"path\":\"fenix/ECAM/F__CTL/F__CTL_SPD_BRK_FAULT.md\",\"title\":\"F__CTL_SPD_BRK_FAULT\",\"breadcrumb\":\"fenix > ECAM > F__CTL > F__CTL_SPD_BRK_FAULT\",\"snippet\":\"F CTL <b>SPD</b> <b>BRK</b> FAULT ANNUNCIATIONS Triggering Conditions Thi\u2026\",\"matchIndex\":8},"
@@ -245,10 +245,10 @@ public void Texts_read_the_same_everywhere(string culture) => TestCulture.Run(cu
 });
 ```
 
-- [ ] **Step 2: Run them; they fail to compile.** `… --filter FenixDocumentSearchTests`
-- [ ] **Step 3: Implement both files.**
-- [ ] **Step 4: Run them; all pass.**
-- [ ] **Step 5: Commit.** `git commit -m "feat(fenix): Fenix document search results and window texts (plan 07)"` (the three files).
+- [x] **Step 2: Run them; they fail to compile.** `… --filter FenixDocumentSearchTests`
+- [x] **Step 3: Implement both files.**
+- [x] **Step 4: Run them; all pass.**
+- [x] **Step 5: Commit.** `git commit -m "feat(fenix): Fenix document search results and window texts (plan 07)"` (the three files).
 
 ### Task 3: The inert reading page
 
@@ -270,8 +270,8 @@ Rewrites, applied to the served HTML in this order (regexes are ordinal, `RegexO
 
 Page: `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="{ContentSecurityPolicy}"><title>{WebUtility.HtmlEncode(DisplayName)}</title><style>…</style></head><body>{rewritten}</body></html>`. Style: as `ReleaseNotesHtml.cs:47-75` plus table cell borders, red and amber text for `.doc-color-red` / `.doc-color-amber` (light and dark), one checklist line per row. Adds no script. Plain text: rewrites 1-3, 5, 6 (text forms), then `<br\s*/?>` and the closing tags of `p div h1-h6 li tr summary details table blockquote` → newline, `</t[dh]>` → space, all other tags removed, `WebUtility.HtmlDecode`, split on `\n`, trim, drop empty lines.
 
-- [ ] **Step 1: Save the fixture.** With the Fenix loaded: `Invoke-WebRequest -Uri 'http://127.0.0.1:8083/fenix/documents/content/fenix/ECAM/F__CTL/F__CTL_SPD_BRK_DISAGREE.md' -OutFile tests/MSFSBlindAssist.Tests/Fixtures/fenix-document-spd-brk-disagree.json` (a GET; 1,689 bytes on 3.0.0.7426). Without the sim: write `{"html": <Appendix A as a JSON string>, "contentsList": []}`. Read it in tests with `File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "fenix-document-spd-brk-disagree.json"))` (copied by `tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj:40-42`).
-- [ ] **Step 2: Write the failing tests.**
+- [x] **Step 1: Save the fixture.** With the Fenix loaded: `Invoke-WebRequest -Uri 'http://127.0.0.1:8083/fenix/documents/content/fenix/ECAM/F__CTL/F__CTL_SPD_BRK_DISAGREE.md' -OutFile tests/MSFSBlindAssist.Tests/Fixtures/fenix-document-spd-brk-disagree.json` (a GET; 1,689 bytes on 3.0.0.7426). Without the sim: write `{"html": <Appendix A as a JSON string>, "contentsList": []}`. Read it in tests with `File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "fenix-document-spd-brk-disagree.json"))` (copied by `tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj:40-42`).
+- [x] **Step 2: Write the failing tests.**
 
 ```csharp
 const string Doc = "fenix/ECAM/F__CTL/F__CTL_SPD_BRK_DISAGREE.md";
@@ -353,10 +353,10 @@ public void Plain_text_reads_the_procedure_in_order(string culture) => Assert.Eq
 public void ParseHtml_without_html_is_null(string? json) => Assert.Null(FenixDocumentPage.ParseHtml(json));
 ```
 
-- [ ] **Step 3: Run them; they fail to compile.** `… --filter FenixDocumentPageTests`
-- [ ] **Step 4: Implement `FenixDocumentPage.cs`** per Interfaces and the rewrite list (one private `Rewrite(string html, bool forText)` shared by both outputs).
-- [ ] **Step 5: Run them; all pass.**
-- [ ] **Step 6: Commit.** `git commit -m "feat(fenix): inert reading page for Fenix documents (plan 07)"` (the three files).
+- [x] **Step 3: Run them; they fail to compile.** `… --filter FenixDocumentPageTests`
+- [x] **Step 4: Implement `FenixDocumentPage.cs`** per Interfaces and the rewrite list (one private `Rewrite(string html, bool forText)` shared by both outputs).
+- [x] **Step 5: Run them; all pass.**
+- [x] **Step 6: Commit.** `git commit -m "feat(fenix): inert reading page for Fenix documents (plan 07)"` (the three files).
 
 ### Task 4: Pins and the pin watcher
 
@@ -372,7 +372,7 @@ public void ParseHtml_without_html_is_null(string? json) => Assert.Null(FenixDoc
   - `public sealed class FenixDocumentPinWatcher : IDisposable` with `public static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2)`, `public FenixDocumentPinWatcher(Func<CancellationToken, Task<IReadOnlyList<FenixSetting>>> readSettings)`, `public IReadOnlyList<FenixPinnedDocument>? Current { get; }` (null until the first answer), `public event EventHandler? PinsChanged` (raised on the thread that runs the poll), `public void Start()` / `public void Stop()` (a `System.Windows.Forms.Timer`, created on first `Start`, which must run on the UI thread; a tick while a poll runs is skipped), `public Task PollOnceAsync(CancellationToken ct = default)`, `public void Dispose()` (stops, cancels, never throws).
   - Poll rule: `FromSettings` null → nothing changes. First answer → `Current` set, `PinsChanged`. Later answers → if the list differs (sequence of records), `Current` set and `PinsChanged`. It never speaks (owner answer D1). No `ConfigureAwait(false)`.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```csharp
 const string Live = "[{\"path\":\"fenix/ECAM/F__CTL/F__CTL_SPD_BRK_DISAGREE.md\",\"matchIndex\":0,\"label\":null}]";
@@ -424,10 +424,10 @@ public void Parse_keeps_only_well_formed_pins(string? value) => Assert.Empty(Fen
 }
 ```
 
-- [ ] **Step 2: Run them; they fail to compile.** `… --filter FenixDocumentPinsTests`
-- [ ] **Step 3: Implement both files** per Interfaces. Log only counts: `Log.Debug("FenixDocuments", $"pins: {n}")` (CORE-15).
-- [ ] **Step 4: Run them; all pass.**
-- [ ] **Step 5: Commit.** `git commit -m "feat(fenix): pinned Fenix documents and the pin watcher (plan 07)"` (the three files).
+- [x] **Step 2: Run them; they fail to compile.** `… --filter FenixDocumentPinsTests`
+- [x] **Step 3: Implement both files** per Interfaces. Log only counts: `Log.Debug("FenixDocuments", $"pins: {n}")` (CORE-15).
+- [x] **Step 4: Run them; all pass.**
+- [x] **Step 5: Commit.** `git commit -m "feat(fenix): pinned Fenix documents and the pin watcher (plan 07)"` (the three files).
 
 ### Task 5: The "Fenix documents" window and its registry entry
 
@@ -450,7 +450,7 @@ Window, title "Fenix documents", about 1100×760, `KeyPreview`; tab order: searc
 - **Status:** read-only `TextBox`, `AccessibleName = "Status"` (as `FirstOfficerForm.cs:1409-1415`).
 - **Speech, complete list (CORE-7):** `TooShort`, `NoResults`, `NoAnswer` (F5, search), `NotListed`, `PdfNotReadable`, `NotSent`, `NoPins`, `Refreshed` (F5), Task 6's read-back. Nothing for a new pin (owner answer D1). Logging: counts and paths only, `Log.Debug("FenixDocuments", …)`.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```csharp
 public class FenixDocumentsFormSourceTests
@@ -495,11 +495,11 @@ public class FenixDocumentsFormSourceTests
 }
 ```
 
-- [ ] **Step 2: Run them; they fail.** `… --filter FenixDocumentsFormSourceTests`
-- [ ] **Step 3: Implement the form and the registry partial** as above.
-- [ ] **Step 4: Run the whole suite and build; all green.**
-- [ ] **Step 5: Live check (sim up, Fenix loaded, app on the Fenix profile; reads only).** `[` Ctrl+Shift+F, "Fenix documents", Enter: the tree reads the pinned procedure (today "F/CTL SPD BRK DISAGREE, ECAM > F/CTL") or "QRH"; Tab to Status: "772 documents, …"; Ctrl+P: the document opens and the reader reads "F/CTL SPD BRK DISAGREE (amber)"; Escape, reopen: the same document; switch aircraft profile with the window open: it closes, no error in `%APPDATA%\MSFSBlindAssist\logs\debug.log`; with the Fenix not loaded, F5: "The Fenix did not answer. …". If the sim is not up, ask the owner to load the Fenix.
-- [ ] **Step 6: Commit.** `git commit -m "feat(fenix): Fenix documents window in the Fenix windows list (plan 07)"` (the three files).
+- [x] **Step 2: Run them; they fail.** `… --filter FenixDocumentsFormSourceTests`
+- [x] **Step 3: Implement the form and the registry partial** as above.
+- [x] **Step 4: Run the whole suite and build; all green.**
+- [x] **Step 5: Live check (sim up, Fenix loaded, app on the Fenix profile; reads only).** `[` Ctrl+Shift+F, "Fenix documents", Enter: the tree reads the pinned procedure (today "F/CTL SPD BRK DISAGREE, ECAM > F/CTL") or "QRH"; Tab to Status: "772 documents, …"; Ctrl+P: the document opens and the reader reads "F/CTL SPD BRK DISAGREE (amber)"; Escape, reopen: the same document; switch aircraft profile with the window open: it closes, no error in `%APPDATA%\MSFSBlindAssist\logs\debug.log`; with the Fenix not loaded, F5: "The Fenix did not answer. …". If the sim is not up, ask the owner to load the Fenix.
+- [x] **Step 6: Commit.** `git commit -m "feat(fenix): Fenix documents window in the Fenix windows list (plan 07)"` (the three files).
 
 ### Task 6 (D4 = yes): Pin and unpin with Ctrl+D
 
@@ -513,7 +513,7 @@ public class FenixDocumentsFormSourceTests
 
 Why toggle by path, not the EFB's exact match: the EFB compares path, matchIndex and label, so its pin icon on a document the gateway pinned (matchIndex 0) adds a second entry instead of removing it; one key that pins or unpins "this document" is what a pilot means. Race: the list is re-read with `GetSettingsAsync` immediately before the write, so only a pin the gateway adds in those few milliseconds could be lost (the EFB has the same window).
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```csharp
 [Fact] public void Toggle_prepends_or_removes_by_path()
@@ -540,11 +540,11 @@ public void Serialize_writes_what_the_EFB_writes(string culture) => Assert.Equal
 }
 ```
 
-- [ ] **Step 2: Run them; they fail to compile.**
-- [ ] **Step 3: Implement.** Ctrl+D on a file, pinned or result node, or in the document (the open path): `GetSettingsAsync` → `FromSettings` (null → speak `NoAnswer`) → `Toggle` → `QueryAsync(SetSettingDocument, Variables(Serialize(list)))`; `IsDisposed` check; not `Succeeded` → `AnnounceImmediate(NotAccepted)`; else `PollOnceAsync()` and speak `ReadBack(path, pinnedNow)` from what the Fenix now holds, `NotAccepted` when it holds the opposite (the read-back, CORE-7). Without D4, Ctrl+D does nothing.
-- [ ] **Step 4: Run the whole suite and build; all green.**
-- [ ] **Step 5: Owner step W1 (first write; owner present, sim up, on the ground).** In Fenix documents, QRH > BACK COVER > NORMAL CHECKLIST, Ctrl+D → "Pinned: NORMAL CHECKLIST."; the tree's Pinned node count goes up by one; the cockpit EFB's Documents app lists it under Pinned; Ctrl+D again → "Unpinned: NORMAL CHECKLIST.". Any other answer: stop, record it, do not push Task 6.
-- [ ] **Step 6: Commit.** `git commit -m "feat(fenix): pin and unpin Fenix documents from the documents window (plan 07)"`
+- [x] **Step 2: Run them; they fail to compile.**
+- [x] **Step 3: Implement.** Ctrl+D on a file, pinned or result node, or in the document (the open path): `GetSettingsAsync` → `FromSettings` (null → speak `NoAnswer`) → `Toggle` → `QueryAsync(SetSettingDocument, Variables(Serialize(list)))`; `IsDisposed` check; not `Succeeded` → `AnnounceImmediate(NotAccepted)`; else `PollOnceAsync()` and speak `ReadBack(path, pinnedNow)` from what the Fenix now holds, `NotAccepted` when it holds the opposite (the read-back, CORE-7). Without D4, Ctrl+D does nothing.
+- [x] **Step 4: Run the whole suite and build; all green.**
+- [x] **Step 5: Owner step W1 (first write; owner present, sim up, on the ground).** In Fenix documents, QRH > BACK COVER > NORMAL CHECKLIST, Ctrl+D → "Pinned: NORMAL CHECKLIST."; the tree's Pinned node count goes up by one; the cockpit EFB's Documents app lists it under Pinned; Ctrl+D again → "Unpinned: NORMAL CHECKLIST.". Any other answer: stop, record it, do not push Task 6.
+- [x] **Step 6: Commit.** `git commit -m "feat(fenix): pin and unpin Fenix documents from the documents window (plan 07)"`
 
 ### Task 7: (dropped, owner answer D1 = never, 2026-10-21)
 
@@ -569,34 +569,50 @@ Build from this branch; Fenix loaded, NVDA running, app on the Fenix profile.
 ## Handoff to plan 12
 
 **Pilot-facing changes** (guide: Fenix chapter, new section "Fenix documents"; changelog `feature`):
-- "Fenix windows" (`[` then Ctrl+Shift+F) lists "Fenix documents": the Fenix EFB's ECAM procedures, QRH, checklists, delay codes and user guide, by folder as in the EFB, searchable (Ctrl+F, type, Enter), read in a document your screen reader can move through by heading (H) and table (T); colours Fenix shows are said in words ("amber", "red"); the flight-phase picture is read as "Flight phases: 3, 4, 5"; checklist lines are tick boxes (D3) and every section starts expanded (D2); Ctrl+P opens the ECAM procedure the Fenix pinned for the latest alert; F6 moves between list and document; Escape hides the window.
-- D4: Ctrl+D pins or unpins a document, also in the cockpit EFB.
+- "Fenix windows" (`[` then Ctrl+Shift+F) lists "Fenix documents": the Fenix EFB's ECAM procedures, QRH, checklists, delay codes and user guide, by folder as in the EFB, searchable (Ctrl+F, type, Enter), read in a document your screen reader can move through by heading (H) and table (T); colours Fenix shows are said in words ("amber", "red"); the flight-phase picture is read as "Flight phases: 3, 4, 5"; checklist lines are tick boxes (D3) and every section starts expanded (D2); Ctrl+P opens the ECAM procedure the Fenix pinned for the latest alert; F6 moves between the document, the list and the search box (Shift+F6 backwards); Escape hides the window. The Pinned group is always at the top ("Pinned (0)" when nothing is pinned); before the first document the reader says "No document open". Say what PF and PM mean (Pilot Flying, Pilot Monitoring) where the guide mentions the QRH tables.
+- D4: Ctrl+D pins or unpins a document, also in the cockpit EFB; the read-back ("Pinned: …", "Unpinned: …") can take up to a few seconds because the Fenix shows the change late.
+- Known issue for the guide: the first document opened with Enter after the window opens may need one Tab before NVDA reads it (Results).
 - Your own Markdown documents go in the Fenix's documents folder (Fenix's guide: `C:\ProgramData\Fenix\EFB\Documents`) and appear under My Documents; PDFs are listed but cannot be read.
 - Changelog draft: "Fenix: the new Fenix documents window lets you browse, search and read the Fenix's ECAM procedures, QRH and user guide, and Control+P opens the procedure the Fenix pinned for the latest ECAM alert."
 
-**Proposed rule lines** (`.claude/rules/fenix-data.md`, whose plan 01 globs already cover these files; 393, 361 and 383 characters with `?`, one more each for a two-digit number; only declared code names are in backticks, as `ClaudeContextBudgetTests.RuleCodeNames` judges them):
+**Proposed rule lines** (`.claude/rules/fenix-data.md`, whose plan 01 globs already cover these files; 393, 361, 383 and 340 characters with `?`, one more each for a two-digit number; only declared code names are in backticks, as `ClaudeContextBudgetTests.RuleCodeNames` judges them):
 
 ```text
 - [FNX-?] `FenixDocumentsForm` shows a Fenix document only as the inert page `FenixDocumentPage.Build` makes (CSP default-src 'none', pictures only from http://127.0.0.1:8083) in a WebView2 with scripts off; it cancels every navigation but that page (http/https links go to the default browser). Never host the EFB's Documents app or any script there. Full: docs/invariants/fenix-data.md#fnx-?
 - [FNX-?] Fenix documents are read with GETs only (`FenixDocumentEndpoints`: list, search, content); never call /fenix/documents/OpenDocumentsFolder or the upload POST to /fenix/documents, which act on the pilot's PC. The one write is the pinned_documents setting, in the EFB's own JSON (`FenixDocumentPins.Serialize`). Full: docs/invariants/fenix-data.md#fnx-?
 - [FNX-?] Fenix document and folder names are the EFB's own (`FenixDocumentNames.Humanize`, its file-name pipe: double underscore to slash, underscore to space, words capitalised invariantly) and the tree keeps the EFB's order (`FenixDocumentIndex.BuildTree`: folders as first listed, then My Documents, then files); never re-sort or rename. Full: docs/invariants/fenix-data.md#fnx-?
+- [FNX-?] After a Fenix settings write (setSetting), the settings query can still return the old value for up to about 2 s (measured 2026-10-22 on 3.0.0.7438): read the value back with a bounded retry (`FenixDocumentPins.AwaitStateAsync`); never report a write as refused from the first read alone. Full: docs/invariants/fenix-data.md#fnx-?
 ```
 
-Full texts from this plan's Evidence and D1 (the gateway log lines and dates, the 772-document sweep, the bundle names). If D4 is declined, the second line ends after "pilot's PC." and says "It writes nothing.".
+Full texts from this plan's Evidence, D1 and Results (the gateway log lines and dates, the 772-document sweep, the bundle names, the W1 lag measurement). The first line's full text also says that served `<meta>` tags are replaced by a space before the rewrites (a refresh meta is the one navigation the CSP cannot stop; a space, so nested markup cannot rebuild one). If D4 is declined, the second line ends after "pilot's PC." and says "It writes nothing.".
 
 **Handoff requests:**
 - H1 (retired): there is no app-wide watcher (owner answer D1 = never).
 - H2 → `docs/a32nx.md`: a "Fenix documents" section: endpoints and shapes, the inert page and its rewrites, why WebView2 and not text, the pin lifecycle from the gateway log with what is unknown, what is left out and why.
 - H3 → plan 12 Task 6 step 1: the list also shows "Fenix documents". The guide points pilots here rather than to the EFB window's Documents app (plan 03 makes that app usable too, but without search on Enter or the pinned procedure key).
 - H4 (D4) → `FenixDocumentPins.SetSettingDocument` duplicates plan 11's `FenixOptionEdits.SetSettingDocument`: point one at the other once both are merged.
+- H5 → plan 11 (whoever claims it) and plan 12: the settings query lags `setSetting` by up to about 2 s (Results, W1). Plan 11 speaks "the value the Fenix reads back" (index answer 5), so a single read straight after the write reports the OLD value; retry as `FenixDocumentPins.AwaitStateAsync` does. H2's section also gets the lag, the wider Task 6 race and the first-open known issue.
+- H6 → `docs/development.md` (build traps): a new worktree lacks the git-ignored `Navdatareader-win-1.2.4` folder, so the app built there refuses to start ("navdatareader directory not found"); copy the folder from the main checkout to the worktree root (PostBuild then copies it into the output).
 
 **Follow-ups (not planned):** PDFs in My Documents (put one PDF in the Fenix's documents folder, read its `pdf` field in `GET /fenix/documents` and whether `GET /fenix/documents/asset/<path>` serves the file, then let WebView2's PDF viewer show it); `data-doc-link` cross-document links in pilots' own Markdown (`data-doc-path`, `data-doc-heading`; none in Fenix's 772); jumping to the search match (`matchIndex`); live list updates from the `documentUpdated` subscription.
 
-**In-sim checks still needed:** owner checks 1-3 (Task 5), 5 (W1, if D4).
+**In-sim checks still needed:** owner checks 1-3 and W1 passed (Results). Still open: unpin from inside the Pinned group itself (is "Unpinned: …" heard whole, or cut off by the tree moving the selection?); the final-review fixes as heard (the new status text; Ctrl+P while the Fenix does not answer). Without the sim (Task 5 Step 5's other half): the Fenix not loaded, open the window and F5: "The Fenix did not answer. …"; switch aircraft profile with the window open: it closes, no error in debug.log.
 
 ## Results
 
-(Filled in by the implementer: date, aircraft, each check's heard phrases, decisions taken.)
+2026-10-22, the owner (oasis1701) with NVDA, Fenix 3.0.0.7438, the app built from this plan's worktree.
+
+- **Live reads first** (GETs and one settings query): 772 documents, root order as in Evidence; "spd brk" 10 results in 0.39 s; F/CTL SPD BRK DISAGREE 1,689 bytes, the html of Appendix A plus a trailing newline and a non-empty `contentsList` (now the test fixture). `pinned_documents` was "[]" at 17:51; the gateway then auto-pinned FUEL AUTO FEED FAULT (`"matchIndex":0`) with the aircraft running.
+- **Check 1:** pass. The window opened on "FUEL AUTO FEED FAULT, ECAM > FUEL" (the first pinned item); Ctrl+P opened it. Finding O1: Tab from the tree before any document said "document about:blank"; fixed with a placeholder page "No document open" / "Choose a document in the list and press Enter." (recheck pass).
+- **Check 2:** pass completely (the results count, the result line, the "(amber)" title, H through the headings, "Flight phases: 3, 4, 5", tick boxes, "Type at least 3 characters to search.").
+- **Check 3:** pass (keys inside the document; Escape hides, reopening shows the same document). Owner decision O2: F6 runs document → list → search box → document and Shift+F6 the reverse, replacing the plan's search box → list → document (recheck pass).
+- **Check 4 (browse):** pass; T moves through the PF / PM tables. The owner asked what PF and PM are: the guide should say Pilot Flying / Pilot Monitoring, and that each line fills one of the two columns.
+- **W1 (D4):** the first run spoke "The Fenix did not accept the change." on every Ctrl+D although every pin and unpin took effect: `setSetting` answered success, but the settings query straight after still returned the old list and showed the new one 0.4-1.9 s later (debug.log 19:36:57-19:37:47). Fixed with a bounded read-back (every 250 ms, up to 16 reads, `FenixDocumentPins.AwaitStateAsync`). Repeat: "Pinned: NORMAL CHECKLIST.", "Unpinned: NORMAL CHECKLIST.", also from inside a document: pass. The cockpit EFB listing was not checked (owner: not needed).
+- **Owner request:** once the pins have been read, the Pinned node stays, as "Pinned (0)" with the child "No pinned documents." when nothing is pinned.
+- **Known issue, accepted by the owner (no workaround wanted):** the FIRST document opened with Enter after the window opens gets only "document" from NVDA and no browse mode until Tab; every later open is fine. Cause: the WebView2 control's `OnGotFocus` moves focus with `MoveFocus(Programmatic)`, which on a WebView2 that never had focus gives NVDA no usable document (NVDA log: "Error updating tree interceptor"); Tab uses `MoveFocus(Next)`, which works but lands on the first tabbable element, mid-document. A fix (the first focus by the Tab path plus a tabbable title heading) was designed and declined.
+- **D2, D3, D4** (pending in the index) were built as recommended and the owner tested each (sections open, tick boxes, Ctrl+D); recording the index answers is the owner's call.
+- **Rulings that change the plan text** (reviews): served `<meta>` tags are replaced by a space before the rewrites (a refresh meta is the one navigation the CSP cannot stop; a space, so nested markup cannot rebuild one); Ctrl+P speaks "The Fenix did not answer…" while the pins are unknown; the status text names every key ("… Enter opens, F6 moves between the document, the list and the search box, Control+F searches, Control+P opens the pinned document, Control+D pins or unpins, Escape closes."); JSON parsing keeps date-shaped strings as text.
+- **Task 6's race note:** the window is up to about 2 s (the settings lag), not a few milliseconds; whether the gateway's own auto pins lag the same way is not measured.
 
 ## Appendix A: the fixture document's `html` (served 2026-10-21, Fenix 3.0.0.7426)
 
