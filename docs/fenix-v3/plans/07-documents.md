@@ -1,6 +1,6 @@
 # Fenix Documents Window Implementation Plan (plan 07)
 
-**Claimed by:** oasis1701 · **Status:** in progress
+**Claimed by:** oasis1701 · **Status:** done (2026-10-22: code, reviews and the owner's in-sim checks 1-4 and W1; one known issue and the checks still open are under "Results" and "In-sim checks still needed")
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -552,9 +552,9 @@ No app-wide pin announcement. Numbering kept so the hand-back stays Task 8.
 
 ### Task 8: Hand back
 
-- [ ] **Step 1:** Full suite and solution build green; `git diff --name-only <base-sha>` lists only this plan's files and this file.
-- [ ] **Step 2:** Run the owner checks below with the owner; write each heard phrase under "Results" at the end of this file.
-- [ ] **Step 3:** Fill in the handoff section, set the **Status** line at the top of this file to "done", push.
+- [x] **Step 1:** Full suite and solution build green; `git diff --name-only <base-sha>` lists only this plan's files and this file.
+- [x] **Step 2:** Run the owner checks below with the owner; write each heard phrase under "Results" at the end of this file.
+- [x] **Step 3:** Fill in the handoff section, set the **Status** line at the top of this file to "done", push.
 
 ## Owner in-sim checks (few, prioritised)
 
