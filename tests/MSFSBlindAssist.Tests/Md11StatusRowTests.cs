@@ -59,8 +59,7 @@ public class Md11StatusRowTests
     [InlineData("MD11_ENG1_N1", 25.396, "25.4 percent")]
     [InlineData("MD11_ENG2_N1", 0, "0.0 percent")]
     [InlineData("MD11_ENG3_N1", 101.26, "101.3 percent")]
-    [InlineData("MD11_OVHD_TANK_1_VAL", 12000, "12000 pounds")]
-    [InlineData("MD11_OVHD_TANK_TAIL_VAL", 0, "0 pounds")]
+    [InlineData("MD11_OVHD_TANK_1_VAL", 12000, "12000")]      // weight unit never read: the number alone
     [InlineData("MD11_AFS_ALT", 36000, "36000 feet")]
     public void Readout_FormatsWithItsUnit(string key, double value, string expected)
         => Assert.Equal(expected, Md11StatusRow.Readout(key, value, None));
@@ -85,6 +84,21 @@ public class Md11StatusRowTests
     {
         Assert.Null(Md11StatusRow.Readout("MD11_AP_STATE", 1, None));   // ValueDescriptions: "AP 1"
         Assert.Null(Md11StatusRow.Readout("COM_ACTIVE_FREQUENCY:1", 135500, None));   // its own override
+    }
+
+    /// <summary>
+    /// The tank rows name the unit the overhead shows, which follows the EFB's weight unit
+    /// (Md11FuelUnits): bit 0 of the options bitmask, set for pounds. Issue #327: a metric
+    /// aircraft's rows said "pounds" for kilograms.
+    /// </summary>
+    [Fact]
+    public void Readout_TankRows_NameTheEfbWeightUnit()
+    {
+        static double? Imperial(string k) => k == Md11FuelUnits.OptionsKey ? 5 : null;
+        static double? Metric(string k) => k == Md11FuelUnits.OptionsKey ? 4 : null;
+        Assert.Equal("26200 pounds", Md11StatusRow.Readout("MD11_OVHD_TANK_1_VAL", 26200, Imperial));
+        Assert.Equal("11900 kilograms", Md11StatusRow.Readout("MD11_OVHD_TANK_2_VAL", 11900, Metric));
+        Assert.Equal("0 kilograms", Md11StatusRow.Readout("MD11_OVHD_TANK_TAIL_VAL", 0, Metric));
     }
 
     [Fact]

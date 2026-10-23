@@ -92,7 +92,8 @@ public static class Md11StatusRow
             case "MD11_OVHD_TANK_3_VAL":
             case "MD11_OVHD_TANK_AUX_VAL":
             case "MD11_OVHD_TANK_TAIL_VAL":
-                return $"{Whole(value)} pounds";
+                // In the EFB's weight unit, which the overhead shows too (Md11FuelUnits).
+                return Md11FuelUnits.DescribeTank(value, Md11FuelUnits.TanksInPounds(read(Md11FuelUnits.OptionsKey)));
 
             default:
                 return null;
