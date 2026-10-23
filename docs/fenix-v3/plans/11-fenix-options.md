@@ -1,6 +1,6 @@
 # Fenix Options Implementation Plan (plan 11)
 
-**Claimed by:** kn4iee · **Status:** code done and reviewed (2026-10-22, Tasks 1-6, subagent-driven, see "Rulings"); the owner's in-sim checks are open (Task 4 Step 5, E1, E2, M1-M4: "In-sim checks still needed")
+**Claimed by:** kn4iee · **Status:** done (2026-10-22: code, reviews and the owner's live checks with NVDA: the read check, E1 and E2 passed after the single read-back fix R25); M1-M4 are open, under "In-sim checks still needed"
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -436,7 +436,7 @@ public class FenixOptionsFormSourceTests
 - [x] **Step 2: Run them; they fail.** `… --filter FenixOptionsFormSourceTests`
 - [x] **Step 3: Implement the form and the registry partial** as above.
 - [x] **Step 4: Run the whole suite and build.** `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64` then `dotnet build MSFSBlindAssist.sln -c Debug -p:Platform=x64`; all green.
-- [ ] **Step 5: Live check (app built, sim up with the Fenix loaded, owner at the keyboard; reads only).** `[` then Ctrl+Shift+F, select "Fenix options", Enter: the reader says "Encoder Acceleration: Off" (or On); Tab twice: status "Fenix 3.0.0.7426: 149 options. F2 changes an on/off or choice option for this simulator session. Shift+F2 makes an option permanent. Ctrl+F2 resets your change to the Fenix default." on the IAE A321 (146 on the CFM A320; Task 5 and ruling R18 replaced the read-only sentence); Enter on a row speaks its note and description; F5 says "Refreshed, no changes."; Tab back, collapse and expand "Connections (…)": the Hoppie, Navigraph, Pushover and SimBrief rows say "set, hidden" or "not set" and no value appears in `%APPDATA%\MSFSBlindAssist\logs\debug.log`; switch to another aircraft profile with the window open: it closes, no error in debug.log. If the sim is not up, stop and ask the owner to load the Fenix.
+- [x] **Step 5: Live check (app built, sim up with the Fenix loaded, owner at the keyboard; reads only).** `[` then Ctrl+Shift+F, select "Fenix options", Enter: the reader says "Encoder Acceleration: Off" (or On); Tab twice: status "Fenix 3.0.0.7426: 149 options. F2 changes an on/off or choice option for this simulator session. Shift+F2 makes an option permanent. Ctrl+F2 resets your change to the Fenix default." on the IAE A321 (146 on the CFM A320; Task 5 and ruling R18 replaced the read-only sentence); Enter on a row speaks its note and description; F5 says "Refreshed, no changes."; Tab back, collapse and expand "Connections (…)": the Hoppie, Navigraph, Pushover and SimBrief rows say "set, hidden" or "not set" and no value appears in `%APPDATA%\MSFSBlindAssist\logs\debug.log`; switch to another aircraft profile with the window open: it closes, no error in debug.log. If the sim is not up, stop and ask the owner to load the Fenix.
 - [x] **Step 6: Commit.** `git commit -m "feat(fenix): Fenix options window in the Fenix windows list (plan 11)"` (the three files).
 
 ### Task 5 (D1 = b, decided by the owner 2026-10-21; index answer 5): Change an option for this session
@@ -496,7 +496,7 @@ public class FenixOptionsFormSourceTests
 - [x] **Step 2: Run them; they fail to compile.** `… --filter FenixOptionEditsTests`
 - [x] **Step 3: Implement.** F2 on an option node: `!CanChange` → speak "MSFS Blind Assist cannot change this option."; else show the dialog modally; on OK with a different value, if `NeedsConfirm`, a Yes/No box with `ConfirmText` and **No** as the default (pattern `MSFSBlindAssist/Forms/GateTeleportForm.cs:476-481`), No → nothing sent, nothing spoken; then `await _data.QueryAsync(SetSettingDocument, Variables(key, value))`, `if (IsDisposed) return;`; not `Succeeded` → speak "The Fenix did not accept the change."; else reload silently and speak the new `RowText` (a read-back, CORE-7), or `$"Fenix kept {RowText}."` when the re-read value is not the one sent. Status uses `changesAllowed: true`. Never log the value.
 - [x] **Step 4: Run the whole suite and build; all green.**
-- [ ] **Step 5: Owner step E1 (first write ever; owner present, sim up, on the ground).** In Fenix options on "Encoder Acceleration: Off": F2, choose On (the list is On, Off and opens on the current value, so Up arrow), Enter → "Encoder Acceleration: On"; Enter on the row → details end with the session sentence ("…will reset when you close MSFS or change aircraft/livery."); F2, Off, Enter → "Encoder Acceleration: Off". Any other answer: stop, record it, do not commit Task 5.
+- [x] **Step 5: Owner step E1 (first write ever; owner present, sim up, on the ground).** In Fenix options on "Encoder Acceleration: Off": F2, choose On (the list is On, Off and opens on the current value, so Up arrow), Enter → "Encoder Acceleration: On"; Enter on the row → details end with the session sentence ("…will reset when you close MSFS or change aircraft/livery."); F2, Off, Enter → "Encoder Acceleration: Off". Any other answer: stop, record it, do not commit Task 5.
 - [x] **Step 6: Commit.** `git commit -m "feat(fenix): change a Fenix option for this session from the options window (plan 11)"`
 
 ### Task 6 (owner request, 2026-10-21; index answer 19): permanent change and reset to the Fenix default
@@ -517,14 +517,14 @@ Why: the EFB's per-option menu (the unnamed "overflow" button after each option)
 - [x] **Step 3: Run them; they fail.**
 - [x] **Step 4: Implement.** Shift+F2 on an option that `CanChange`: the same dialog titled "Make a Fenix option permanent", its ComboBox named `$"{optionLabel}, permanent"`; then always a Yes/No box with `PermanentConfirmText`, **No** default; then `setSetting` with `persist: true`; read back as Task 5. Ctrl+F2: a Yes/No box with `ResetConfirmText`, **No** default; then `SetDefaultDocument` with the key; read back and speak the new `RowText`. A failure speaks "The Fenix did not accept the change." Never on a secret; never `setSettings` or `setDefaults` (all-option resets have no single-option EFB equivalent).
 - [x] **Step 5: Run the whole suite and build; all green.**
-- [ ] **Step 6: Owner step E2 (after E1).** Ruling R16: run it on "Printer: Auto Telex Messages: On" (at the Fenix default), not Encoder Acceleration, whose Off is the owner's own permanent setting that Ctrl+F2 would remove. Shift+F2, Down arrow to Off, Enter, Yes → "Printer: Auto Telex Messages: Off"; Enter on the row → details end "This setting has been overridden by you and will apply regardless of livery or Fenix defaults."; (optional) close and reopen MSFS: still Off; Ctrl+F2, Yes → "Printer: Auto Telex Messages: On", details end "This setting is the default Fenix value.". "Not made permanent: …" or "Not reset: …" means the Fenix read back something else: stop and record it.
+- [x] **Step 6: Owner step E2 (after E1).** Ruling R16: run it on "Printer: Auto Telex Messages: On" (at the Fenix default), not Encoder Acceleration, whose Off is the owner's own permanent setting that Ctrl+F2 would remove. Shift+F2, Down arrow to Off, Enter, Yes → "Printer: Auto Telex Messages: Off"; Enter on the row → details end "This setting has been overridden by you and will apply regardless of livery or Fenix defaults."; (optional) close and reopen MSFS: still Off; Ctrl+F2, Yes → "Printer: Auto Telex Messages: On", details end "This setting is the default Fenix value.". "Not made permanent: …" or "Not reset: …" means the Fenix read back something else: stop and record it.
 - [x] **Step 7: Commit.** `git commit -m "feat(fenix): make a Fenix option permanent or reset it to the default (plan 11)"`
 
 ### Task 7: Hand back
 
 - [x] **Step 1:** Full suite and solution build green; `git diff --name-only <base-sha>` lists only this plan's files.
 - [ ] **Step 2:** Ask the owner for M1-M4 (below; E1 first if D1 = b). Write each heard phrase into "Measurement results" at the end of this file, and mark which handoff (R1-R4) applies.
-- [ ] **Step 3:** Hand back the branch and this file's handoff section to plan 12.
+- [x] **Step 3:** Hand back the branch and this file's handoff section to plan 12.
 
 ## In-sim measurements (owner; prioritised; reads and the owner's own switch presses only)
 
@@ -608,11 +608,11 @@ Not measured (note only): `control_position_type` First Officer (ACP behaviour),
 - Reopening a minimized Fenix window leaves it minimized (also the Failures window and the windows list: shared code, not this plan's).
 - Smaller test gaps: `FenixOptionLabels.Parse`'s CRLF trim, a culture-dependent comparer, null or unparsable on/off and number rows; a reset where both the old and new value are missing counts as not changed.
 
-**In-sim checks still needed:** Task 4 Step 5; E1 (Task 5 Step 5); E2 (Task 6 Step 6, on "Printer: Auto Telex Messages"); M1-M4. Listen in E1 and E2 for a change read twice (NVDA reading the updated row and then the app's read-back, CORE-7), and press F2 on "Channel Spacing" once to hear the list open on "8.33 kHz" (Escape, nothing sent).
+**In-sim checks still needed:** M1-M4 (they decide the wording of the eleven notes and handoffs R1-R4). Done 2026-10-22: Task 4 Step 5, E1, E2 (see "Measurement results").
 
 ## Measurement results
 
-E1 (owner, 2026-10-22, NVDA): F2 on Encoder Acceleration changed it and the result was spoken, but heard twice (NVDA reading the updated row, then the app's read-back) → ruling R25; re-test after the fix. E2 and M1-M4: not run yet. Read live 2026-10-22 (read-only, Fenix 3.0.0.7426, the loaded aircraft: 146 options, the CFM A320 count): Boolean 73, Enum 42, String 19, Int32 11, Single 1; sources Internal 76, UserFile 41, Livery 28, Session 1; 25 keys without an EFB label (the hidden ones: type_code, engine_family, is_sharklet, the FAP volumes …) read through `Humanize`; no on/off or number option arrived empty; Encoder Acceleration reads "False" from the owner's own permanent setting (UserFile), EFIS Linking: Baro Independent and FD/LS off likewise.
+E1 (owner, 2026-10-22, NVDA): F2 on Encoder Acceleration changed it and the result was spoken, but heard twice (NVDA reading the updated row, then the app's read-back) → ruling R25; re-test after the fix (owner, 2026-10-22): the read check, E1 (Encoder Acceleration On, then Off) and E2 (Printer: Auto Telex Messages made permanent Off, then reset to On) all passed, each result heard once. M1-M4: not run yet. Read live 2026-10-22 (read-only, Fenix 3.0.0.7426, the loaded aircraft: 146 options, the CFM A320 count): Boolean 73, Enum 42, String 19, Int32 11, Single 1; sources Internal 76, UserFile 41, Livery 28, Session 1; 25 keys without an EFB label (the hidden ones: type_code, engine_family, is_sharklet, the FAP volumes …) read through `Humanize`; no on/off or number option arrived empty; Encoder Acceleration reads "False" from the owner's own permanent setting (UserFile), EFIS Linking: Baro Independent and FD/LS off likewise.
 
 ## Appendix A: option label extractor (run with `python -I`, on a bundle in its own folder)
 
