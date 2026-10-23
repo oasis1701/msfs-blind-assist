@@ -20,6 +20,8 @@ public class Md11FuelUnitsTests
     [InlineData(1.0, true)]
     [InlineData(0.0, false)]
     [InlineData(31.0, true)]    // every option bit set
+    [InlineData(32.0, false)]   // a bit TFDi might add later never costs the unit
+    [InlineData(33.0, true)]
     public void TanksInPounds_ReadsBitZero(double options, bool pounds)
         => Assert.Equal(pounds, Md11FuelUnits.TanksInPounds(options));
 
@@ -29,7 +31,7 @@ public class Md11FuelUnitsTests
     [InlineData(double.PositiveInfinity)]
     [InlineData(double.NegativeInfinity)]
     [InlineData(-1.0)]
-    [InlineData(32.0)]          // past the five bits the EFB defines
+    [InlineData(16777216.0)]    // 2^24: past the float-exact integers, so bit 0 cannot be trusted
     [InlineData(4.5)]           // not a bitmask
     public void TanksInPounds_RefusesWhatTheEfbNeverWrites(double options)
         => Assert.Null(Md11FuelUnits.TanksInPounds(options));

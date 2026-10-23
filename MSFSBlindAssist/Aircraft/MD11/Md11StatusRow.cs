@@ -100,7 +100,7 @@ public static class Md11StatusRow
         }
     }
 
-    private static string Whole(double v) => v.ToString("0", CultureInfo.InvariantCulture);
+    internal static string Whole(double v) => v.ToString("0", CultureInfo.InvariantCulture);
 
     private static bool Mode(Func<string, double?> read, string key) => (read(key) ?? 0) > 0.5;
 }

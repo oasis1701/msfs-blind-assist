@@ -1,5 +1,3 @@
-using System.Globalization;
-
 namespace MSFSBlindAssist.Aircraft.MD11;
 
 /// <summary>
@@ -29,8 +27,11 @@ public static class Md11FuelUnits
     /// <summary>Bit 0 of <see cref="OptionsKey"/>: set when the EFB's weight unit is Imperial.</summary>
     private const int PoundsBit = 1 << 0;
 
-    /// <summary>Exclusive bound of the bitmask: the EFB defines five bits.</summary>
-    private const int OptionsLimit = 1 << 5;
+    /// <summary>
+    /// Exclusive bound of a usable bitmask: the float-exact integers. The EFB defines five bits
+    /// today; a bit TFDi add later must not cost the weight unit, which is bit 0 whatever else is set.
+    /// </summary>
+    private const int OptionsLimit = 1 << 24;
 
     public const double KilogramsPerPound = 0.45359237;
 
@@ -91,7 +92,7 @@ public static class Md11FuelUnits
 
     private static string UnitWord(bool kilograms) => kilograms ? "kilograms" : "pounds";
 
-    private static string Whole(double v) => v.ToString("0", CultureInfo.InvariantCulture);
+    private static string Whole(double v) => Md11StatusRow.Whole(v);
 
     /// <summary>
     /// A Status Display tank row: the number the overhead shows, with the unit it shows it in.

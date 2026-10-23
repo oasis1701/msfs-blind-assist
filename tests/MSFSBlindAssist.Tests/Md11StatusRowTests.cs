@@ -99,6 +99,8 @@ public class Md11StatusRowTests
         Assert.Equal("26200 pounds", Md11StatusRow.Readout("MD11_OVHD_TANK_1_VAL", 26200, Imperial));
         Assert.Equal("11900 kilograms", Md11StatusRow.Readout("MD11_OVHD_TANK_2_VAL", 11900, Metric));
         Assert.Equal("0 kilograms", Md11StatusRow.Readout("MD11_OVHD_TANK_TAIL_VAL", 0, Metric));
+        static double? Garbled(string k) => k == Md11FuelUnits.OptionsKey ? 4.5 : null;
+        Assert.Equal("11900", Md11StatusRow.Readout("MD11_OVHD_TANK_3_VAL", 11900, Garbled));   // no unit word, never a guess
     }
 
     [Fact]
