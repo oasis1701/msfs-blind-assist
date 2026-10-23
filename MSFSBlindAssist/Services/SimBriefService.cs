@@ -880,6 +880,26 @@ public class SimBriefService
             ofp.LandingXw           = First(lda, "crosswind", "cross_wind", "xw");
         }
 
+        // ── TLR structured values ─────────────────────────────────────────────
+        // The same runway lengths and landing distances the TLR text prints, as fields. Feet: the
+        // TLR text labels them "FT", and they match it (YPDN-AYPY: LDA 9022, actual dry 3775).
+        var tlrTo  = doc.DocumentElement?.SelectSingleNode("tlr/takeoff");
+        var tlrLdg = doc.DocumentElement?.SelectSingleNode("tlr/landing");
+        foreach (XmlNode r in tlrTo?.SelectNodes("runway")?.Cast<XmlNode>() ?? Enumerable.Empty<XmlNode>())
+        {
+            string id = V(r, "identifier");
+            if (id.Length > 0) ofp.TlrTakeoffToraFt[id] = V(r, "length_tora");
+        }
+        foreach (XmlNode r in tlrLdg?.SelectNodes("runway")?.Cast<XmlNode>() ?? Enumerable.Empty<XmlNode>())
+        {
+            string id = V(r, "identifier");
+            if (id.Length > 0) ofp.TlrLandingLdaFt[id] = V(r, "length_lda");
+        }
+        ofp.TlrLdgActualDryFt   = V(tlrLdg, "distance_dry/actual_distance");
+        ofp.TlrLdgActualWetFt   = V(tlrLdg, "distance_wet/actual_distance");
+        ofp.TlrLdgFactoredDryFt = V(tlrLdg, "distance_dry/factored_distance");
+        ofp.TlrLdgFactoredWetFt = V(tlrLdg, "distance_wet/factored_distance");
+
         // ── Nav Log ───────────────────────────────────────────────────────────
         // Use doc.DocumentElement to scope to the top-level navlog only,
         // preventing alternate-route navlog fixes from being included.

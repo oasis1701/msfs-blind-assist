@@ -1292,7 +1292,8 @@ public class SimBriefPlannerForm : Form
         {
             sb.AppendLine();
             sb.AppendLine("─── Additional Info ──────────────────");
-            var (rwyLen, maxTowRwy) = TlrAcarsRunway(lines, rwy, isTakeoff: true);
+            var (textRwyLen, maxTowRwy) = TlrAcarsRunway(lines, rwy, isTakeoff: true);
+            string rwyLen = TlrPreferStructured(_ofp.TlrTakeoffToraFt.GetValueOrDefault(rwy), textRwyLen);
             if (!string.IsNullOrEmpty(rwyLen))
                 TlrRow(sb, "Runway length (TORA)", TlrFmtFt(rwyLen));
             // ASDA: SimBrief TLR doesn't separate TORA/TODA/ASDA; show runway length
@@ -1366,17 +1367,22 @@ public class SimBriefPlannerForm : Form
         {
             sb.AppendLine();
             sb.AppendLine("─── Additional Info ──────────────────");
-            var (rwyLen, maxLw) = TlrAcarsRunway(lines, rwy, isTakeoff: false);
+            var (textRwyLen, maxLw) = TlrAcarsRunway(lines, rwy, isTakeoff: false);
+            string rwyLen  = TlrPreferStructured(_ofp.TlrLandingLdaFt.GetValueOrDefault(rwy), textRwyLen);
+            string factDry = TlrPreferStructured(_ofp.TlrLdgFactoredDryFt, dist.FactDry);
+            string factWet = TlrPreferStructured(_ofp.TlrLdgFactoredWetFt, dist.FactWet);
+            string actDry  = TlrPreferStructured(_ofp.TlrLdgActualDryFt,   dist.ActDry);
+            string actWet  = TlrPreferStructured(_ofp.TlrLdgActualWetFt,   dist.ActWet);
             if (!string.IsNullOrEmpty(rwyLen))
                 TlrRow(sb, "Landing dist available", TlrFmtFt(rwyLen));
-            if (!string.IsNullOrEmpty(dist.FactDry))
-                TlrRow(sb, "Required (factored dry)", TlrFmtFt(dist.FactDry));
-            if (!string.IsNullOrEmpty(dist.FactWet))
-                TlrRow(sb, "Required (factored wet)", TlrFmtFt(dist.FactWet));
-            if (!string.IsNullOrEmpty(dist.ActDry))
-                TlrRow(sb, "Actual dry distance",    TlrFmtFt(dist.ActDry));
-            if (!string.IsNullOrEmpty(dist.ActWet))
-                TlrRow(sb, "Actual wet distance",    TlrFmtFt(dist.ActWet));
+            if (!string.IsNullOrEmpty(factDry))
+                TlrRow(sb, "Required (factored dry)", TlrFmtFt(factDry));
+            if (!string.IsNullOrEmpty(factWet))
+                TlrRow(sb, "Required (factored wet)", TlrFmtFt(factWet));
+            if (!string.IsNullOrEmpty(actDry))
+                TlrRow(sb, "Actual dry distance",    TlrFmtFt(actDry));
+            if (!string.IsNullOrEmpty(actWet))
+                TlrRow(sb, "Actual wet distance",    TlrFmtFt(actWet));
             if (!string.IsNullOrEmpty(maxLw))
                 TlrRow(sb, "Max regulated LW",       TlrFmtWt(maxLw, units));
         }
@@ -1699,15 +1705,16 @@ public class SimBriefPlannerForm : Form
         return v < 100 ? $"{rawQnh} inHg" : $"{rawQnh} hPa";
     }
 
-    private static string TlrFmtFt(string rawFt)
+    // The OFP's tlr fields when it has them, else what the TLR text table gave.
+    internal static string TlrPreferStructured(string? structured, string text) =>
+        string.IsNullOrEmpty(structured) ? text : structured;
+
+    // TLR runway lengths and landing distances are feet (the TLR text labels them "FT"), short
+    // ones included: never guess metres from a small value (a 3,775 ft landing distance is real).
+    internal static string TlrFmtFt(string rawFt)
     {
         if (string.IsNullOrEmpty(rawFt)) return "";
         if (!int.TryParse(rawFt, out int v)) return $"{rawFt} ft";
-        // SimBrief ACARS RUNWAYS table uses metres for European OFP formats.
-        // Commercial runways: 1500–4800 m, or 5000–15750 ft.
-        // A value < 5000 is almost certainly metres — convert to feet.
-        if (v > 0 && v < 5000)
-            return $"{(int)Math.Round(v * 3.28084):N0} ft";
         return $"{v:N0} ft";
     }
 
