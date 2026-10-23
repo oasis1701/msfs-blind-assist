@@ -566,7 +566,9 @@ Not measured (note only): `control_position_type` First Officer (ACP behaviour),
 - R12: wording the plan left open: "Select an option first." (F2, Shift+F2 or Ctrl+F2 on a group), "Still loading." (during a load or a change), "Change sent, but the Fenix did not read it back. Press F5.".
 - R13: rows and the change dialog share `FenixOptionCatalog.ChoiceLabel`; on/off values compare by `bool.TryParse` (the live Fenix sends "False").
 - R14 (replaces R9): Shift+F2 follows Task 6 Step 4: the change dialog, titled "Make a Fenix option permanent", opens on the current value, then always a Yes/No (so Enter then Yes is the EFB's "Set as user override"). Ctrl+F2 mirrors the EFB's rule: only for a user or session override, otherwise "{label} has no change of yours to reset.".
-- R15: Ctrl+F2 keeps F2's guard (on/off and choice options only), though the EFB also resets typed values. **Owner question:** allow resetting typed values such as Registration?
+- R15 (replaced by R24): Ctrl+F2 kept F2's guard (on/off and choice options only).
+- R24 (owner, 2026-10-22: yes): Ctrl+F2 resets any writable option that is not a credential or `charts_provider_type`, typed values such as Registration included, as the EFB's "Reset to default" does; F2 and Shift+F2 keep the on/off-and-choice limit (owner answer 5).
+- R25 (owner's E1, 2026-10-22: the read-back was heard twice): when the options list has focus and the changed row's text changes, NVDA reads the row, so the app does not repeat it (CORE-7); a result NVDA cannot say ("Not made permanent: …", a change that leaves the row text the same, F2 pressed outside the list) is still spoken.
 - R16: E2 runs on "Printer: Auto Telex Messages" (Task 6 Step 6).
 - R17: the read-back judges each kind with `FenixOptionEdits.Applied`: session = the value sent; permanent = the value sent and a user source; reset = the value or the source changed.
 - R18: the status sentence names F2, Shift+F2 and Ctrl+F2 (Task 3's text predates Task 6).
@@ -578,7 +580,7 @@ Not measured (note only): `control_position_type` First Officer (ACP behaviour),
 ## Handoff to plan 12
 
 **Pilot-facing changes.**
-- "Fenix windows" (`[` then Ctrl+Shift+F) lists "Fenix options": every option of the Fenix EFB with its value in Fenix's own words, grouped as in the EFB; the eleven that can change how the app works come first, each with a note (Enter speaks it, Tab shows it); F5 refreshes; Hoppie, Navigraph, Pushover and SimBrief credentials read "set, hidden". F2 changes an on/off or choice option until MSFS closes (a Yes/No first for the five options that reshape the cockpit); Shift+F2 makes an option permanent and Ctrl+F2 resets your change to the Fenix default, each after a Yes/No that defaults to No; the window speaks the value the Fenix reads back.
+- "Fenix windows" (`[` then Ctrl+Shift+F) lists "Fenix options": every option of the Fenix EFB with its value in Fenix's own words, grouped as in the EFB; the eleven that can change how the app works come first, each with a note (Enter speaks it, Tab shows it); F5 refreshes; Hoppie, Navigraph, Pushover and SimBrief credentials read "set, hidden". F2 changes an on/off or choice option until MSFS closes (a Yes/No first for the five options that reshape the cockpit); Shift+F2 makes an option permanent and Ctrl+F2 resets your change to the Fenix default (any option you or this session changed, typed ones included), each after a Yes/No that defaults to No; the screen reader reads the changed row, and the window speaks only what it cannot (for example "Not made permanent: …").
 - Guide (CORE-19): Fenix chapter, new section "Fenix options" (the three keys, the status line, credentials hidden); hotkey list unchanged (plan 01's key).
 - Changelog (`feature`): "Fenix: the new Fenix options window lists every Fenix EFB option with its value, tells you which ones change how MSFS Blind Assist works, and lets you change an on/off or choice option for this flight (F2), make it permanent (Shift+F2) or reset it to the Fenix default (Ctrl+F2)."
 - After M1-M4: update `FenixOptionNotes` copy (measured effect or "no effect, measured <date>").
@@ -588,7 +590,7 @@ Not measured (note only): `control_position_type` First Officer (ACP behaviour),
 ```text
 - [FNX-?] Fenix option secrets (`FenixOptionKeys.Secrets`: hoppie_key, navigraph_refresh_token, pushover_application_key, pushover_token, simbrief_id) match by EXACT key, never substring (a substring mask hid encoder_acceleration_enabled); `FenixOptionCatalog` never puts their value in a row, details, speech or a log. Full: docs/invariants/fenix-data.md#fnx-?
 - [FNX-?] Fenix option labels, descriptions and value labels are the EFB's own (`FenixOptionLabels`, scoped per option: "Realistic" differs between refuel rate and failure rate); a key or value without one falls back to `FenixOptionCatalog.Humanize` (the EFB's humanizeKey) or the raw value, never our own wording. Full: docs/invariants/fenix-data.md#fnx-?
-- [FNX-?] `FenixOptionEdits` changes one on/off or choice option at a time, as the EFB does: F2 session only (`persist: false`), Shift+F2 permanent (`persist: true`) and Ctrl+F2 `setDefault`, the last two always behind a Yes/No defaulting to No; never a secret, never `setSettings` or `setDefaults`; the read-back is spoken, never the request. Full: docs/invariants/fenix-data.md#fnx-?
+- [FNX-?] `FenixOptionEdits` changes one option at a time, as the EFB does: F2 session only (`persist: false`) and Shift+F2 permanent (`persist: true`) for on/off or choice options, Ctrl+F2 `setDefault` for any writable one; the last two always behind a Yes/No defaulting to No; never a secret, never `setSettings` or `setDefaults`; the re-read is the result, never the request. Full: docs/invariants/fenix-data.md#fnx-?
 ```
 
 **Handoff requests.**
@@ -610,7 +612,7 @@ Not measured (note only): `control_position_type` First Officer (ACP behaviour),
 
 ## Measurement results
 
-Not run yet. Read live 2026-10-22 (read-only, Fenix 3.0.0.7426, the loaded aircraft: 146 options, the CFM A320 count): Boolean 73, Enum 42, String 19, Int32 11, Single 1; sources Internal 76, UserFile 41, Livery 28, Session 1; 25 keys without an EFB label (the hidden ones: type_code, engine_family, is_sharklet, the FAP volumes …) read through `Humanize`; no on/off or number option arrived empty; Encoder Acceleration reads "False" from the owner's own permanent setting (UserFile), EFIS Linking: Baro Independent and FD/LS off likewise.
+E1 (owner, 2026-10-22, NVDA): F2 on Encoder Acceleration changed it and the result was spoken, but heard twice (NVDA reading the updated row, then the app's read-back) → ruling R25; re-test after the fix. E2 and M1-M4: not run yet. Read live 2026-10-22 (read-only, Fenix 3.0.0.7426, the loaded aircraft: 146 options, the CFM A320 count): Boolean 73, Enum 42, String 19, Int32 11, Single 1; sources Internal 76, UserFile 41, Livery 28, Session 1; 25 keys without an EFB label (the hidden ones: type_code, engine_family, is_sharklet, the FAP volumes …) read through `Humanize`; no on/off or number option arrived empty; Encoder Acceleration reads "False" from the owner's own permanent setting (UserFile), EFIS Linking: Baro Independent and FD/LS off likewise.
 
 ## Appendix A: option label extractor (run with `python -I`, on a bundle in its own folder)
 

@@ -449,7 +449,7 @@ public sealed class FenixOptionsForm : Form
     // Judged now, after the final re-read, not before it. A row that did not change (a current value made
     // permanent, a reset where only the source changed) is spoken, as the reader says nothing for it. Logs the
     // key only.
-    private void AnnounceAppliedRow(string key, FenixSetting applied, RowWatch watch)
+    private void AnnounceAppliedRow(string key, FenixSetting now, RowWatch watch)
     {
         TreeNode? node = _tree.SelectedNode;
         bool selectedIsThisOption = watch.OnThisOption && OptionKey(node) == key;
@@ -458,7 +458,7 @@ public sealed class FenixOptionsForm : Form
             Log.Debug(LogCategory, $"Setting {key} read-back left to the screen reader");
             return;
         }
-        string row = FenixOptionCatalog.RowText(applied);
+        string row = FenixOptionCatalog.RowText(now);
         _announcer.AnnounceImmediate(row);
     }
 
