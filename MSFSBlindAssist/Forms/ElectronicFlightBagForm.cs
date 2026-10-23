@@ -2020,7 +2020,7 @@ public partial class ElectronicFlightBagForm : Form
         string text = GetAirportDetailedInfo(icao, null, out bool found);
         if (!found || _simConnectManager?.IsConnected != true)
         {
-            airportInfoTextBox.Text = text;
+            SetLookupBoxText(airportInfoTextBox, text);
             return;
         }
         airportInfoTextBox.Clear();
@@ -2033,7 +2033,7 @@ public partial class ElectronicFlightBagForm : Form
         {
             var position = await positionTask;
             if (request != _airportInfoRequest || IsDisposed) return;
-            airportInfoTextBox.Text = GetAirportDetailedInfo(icao, position is { } p ? (p.Lat, p.Lon) : null, out _);
+            SetLookupBoxText(airportInfoTextBox, GetAirportDetailedInfo(icao, position is { } p ? (p.Lat, p.Lon) : null, out _));
         }
         catch (Exception ex)
         {
@@ -2063,13 +2063,13 @@ public partial class ElectronicFlightBagForm : Form
             }
             else
             {
-                runwayInfoTextBox.Text = "No runways found for this airport.";
+                SetLookupBoxText(runwayInfoTextBox, "No runways found for this airport.");
             }
         }
         catch (Exception ex)
         {
             airportLookupRunwaysListBox.Items.Clear();
-            runwayInfoTextBox.Text = $"Error loading runways: {ex.Message}";
+            SetLookupBoxText(runwayInfoTextBox, $"Error loading runways: {ex.Message}");
         }
     }
 
@@ -2081,12 +2081,23 @@ public partial class ElectronicFlightBagForm : Form
 
         try
         {
-            runwayInfoTextBox.Text = GetRunwayDetailedInfo(icao, selectedRunway.RunwayID);
+            SetLookupBoxText(runwayInfoTextBox, GetRunwayDetailedInfo(icao, selectedRunway.RunwayID));
         }
         catch (Exception ex)
         {
-            runwayInfoTextBox.Text = $"Error loading runway information: {ex.Message}";
+            SetLookupBoxText(runwayInfoTextBox, $"Error loading runway information: {ex.Message}");
         }
+    }
+
+    // Fills one of Airport Lookup's read-only boxes with the caret on its first line and nothing
+    // selected. Placing the caret also stops Windows Forms selecting the whole text the first time
+    // the box gets keyboard focus, which NVDA reads as "selected 1599 characters" instead of the
+    // first line (the airport's ident and name, EFB-12).
+    private static void SetLookupBoxText(TextBox box, string text)
+    {
+        box.Text = text;
+        box.SelectionStart = 0;
+        box.SelectionLength = 0;
     }
 
     /// <summary>The Airport Information text, its first line the ident and name. With the aircraft's
