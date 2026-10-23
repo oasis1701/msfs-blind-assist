@@ -135,6 +135,21 @@ public partial class TFDiMD11Definition
         v["MD11_OVHD_TANK_3_VAL"] = Export("MD11_OVHD_TANK_3_VAL", "Tank 3");
         v["MD11_OVHD_TANK_AUX_VAL"] = Export("MD11_OVHD_TANK_AUX_VAL", "Auxiliary tank");
         v["MD11_OVHD_TANK_TAIL_VAL"] = Export("MD11_OVHD_TANK_TAIL_VAL", "Tail tank");
+        // The tanks read in the EFB's weight unit, which only this undocumented bitmask carries
+        // (Md11FuelUnits). Silent and never a row: the tank rows and the fuel keys read its bit.
+        v[Md11FuelUnits.OptionsKey] = Export(Md11FuelUnits.OptionsKey, "EFB general options");
+        // The sim's own fuel weight, the only witness that all-zero tanks are not yet published
+        // (Md11FuelUnits.TanksUnpublished). Batched, consumed silently in ProcessSimVarUpdate.
+        v[Md11FuelUnits.SimFuelKey] = new SimVarDefinition
+        {
+            Name = Md11FuelUnits.SimFuelVar,
+            DisplayName = "Sim fuel weight",
+            Type = SimVarType.SimVar,
+            Units = "pounds",
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ExcludeFromMonitorManager = true,
+        };
 
         // ---- Flap system -------------------------------------------------------------
         // FLAPS_MOVING is announced: on an aircraft whose flap gauge cannot be read, "flaps
