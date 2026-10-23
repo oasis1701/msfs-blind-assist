@@ -266,11 +266,12 @@ public sealed class FenixActionExecutor : LVarActionExecutor
     public Task<bool> CabinCall(string lvar) => HoldAsync(lvar, CabinCallHoldMs);
 
     /// <summary>Open (true) or close (false) the physical cockpit door via
-    /// <c>S_COCKPIT_DOOR</c> (0 = closed, 1 = open). Live-verified 2026-07-05: a calc-path
-    /// write holds and drives the "Cockpit Door Open" indicator <c>I_PED_COCKPIT_DOOR_U</c>
-    /// 0↔1. Do NOT use the pedestal lock selector <c>S_PED_COCKPIT_DOOR</c> — it is a
-    /// spring-loaded UNLOCK/NORM/LOCK switch that rests at NORM(1), so an absolute write is
-    /// a no-op (1) or a momentary pulse that springs back (0) and never moves the door.</summary>
+    /// <c>S_COCKPIT_DOOR</c> (0 = closed, 1 = open). Live-verified 2026-07-05 and again on v3
+    /// (2026-10-23): a calc-path write holds and drives the pedestal OPEN light
+    /// <c>I_PED_COCKPIT_DOOR_U</c> and the overhead CTL upper light 0↔1. Do NOT use the pedestal
+    /// lock selector <c>S_PED_COCKPIT_DOOR</c>: a three-position UNLOCK(0)/NORM(1)/LOCK(2) switch
+    /// whose written position holds until written back (only the cockpit's mouse release returns it
+    /// to NORM), and neither end moves the door or lights anything (measured 2026-10-23).</summary>
     public Task<bool> SetCockpitDoor(bool open) => DispatchAsync("S_COCKPIT_DOOR", open ? 1 : 0);
 
     /// <summary>Set both EFIS baro references to STD (true) or QNH mode (false). Each side's baro

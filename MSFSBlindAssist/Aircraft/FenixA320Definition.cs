@@ -5001,7 +5001,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             ["S_STANDBY_ATTITUDE_CAGE"] = new SimConnect.SimVarDefinition { Name = "S_STANDBY_ATTITUDE_CAGE", DisplayName = "Standby Attitude Cage", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Normal", [1] = "Caged"} },
             ["S_JUMPSEAT"] = new SimConnect.SimVarDefinition { Name = "S_JUMPSEAT", DisplayName = "Jumpseat", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Stowed", [1] = "Deployed"} },
             ["S_JUMPSEAT_HEADREST"] = new SimConnect.SimVarDefinition { Name = "S_JUMPSEAT_HEADREST", DisplayName = "Jumpseat Headrest", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Down", [1] = "Up"} },
-            ["S_PED_COCKPIT_DOOR_VIDEO"] = new SimConnect.SimVarDefinition { Name = "S_PED_COCKPIT_DOOR_VIDEO", DisplayName = "Cockpit Door Video", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, RenderAsButton = true },   // no light of its own: I_OH_COCKPIT_DOOR_VIDEO is the overhead VIDEO pb's (measured 2026-10-22)
+            ["S_PED_COCKPIT_DOOR_VIDEO"] = new SimConnect.SimVarDefinition { Name = "S_PED_COCKPIT_DOOR_VIDEO", DisplayName = "Pedestal Video", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, RenderAsButton = true },   // no light of its own: I_OH_COCKPIT_DOOR_VIDEO is the overhead VIDEO pb's (measured 2026-10-22)
             ["S_OXYGEN_MASK_COVER_CAPT"] = new SimConnect.SimVarDefinition { Name = "S_OXYGEN_MASK_COVER_CAPT", DisplayName = "Captain Oxygen Mask Cover", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Closed", [1] = "Open"} },
             ["S_OXYGEN_MASK_COVER_FO"] = new SimConnect.SimVarDefinition { Name = "S_OXYGEN_MASK_COVER_FO", DisplayName = "First Officer Oxygen Mask Cover", Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, ValueDescriptions = new Dictionary<double, string> {[0] = "Closed", [1] = "Open"} },
             // NOTE: S_OH_CALLS_EMER_Cover ("Calls Emergency Cover") is already defined+paneled in the overhead Calls panel — not re-added here.
@@ -5692,21 +5692,23 @@ public partial class FenixA320Definition : BaseAircraftDefinition
 
             // ========== COCKPIT DOOR PANEL ==========
             // The door itself, as the First Officer closes it before start and opens it at shutdown
-            // (FenixActionExecutor.SetCockpitDoor; a model L:var, 0 closed / 1 open). Not announced: the
-            // pedestal "Cockpit Door Open" light (I_PED_COCKPIT_DOOR_U) already speaks a change.
+            // (FenixActionExecutor.SetCockpitDoor; a model L:var, 0 closed / 1 open, a write holds: measured
+            // 2026-10-23). It says itself when it moves (the First Officer's write, a click in the cockpit);
+            // a panel set is the combo's own echo (CORE-8). The two lights that only mirror it stay silent.
             ["S_COCKPIT_DOOR"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_COCKPIT_DOOR",
                 DisplayName = "Cockpit Door",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
             },
-            // VIDEO
+            // The overhead VIDEO pushbutton
             ["S_OH_COCKPIT_DOOR_VIDEO"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_OH_COCKPIT_DOOR_VIDEO",
-                DisplayName = "VIDEO",
+                DisplayName = "Overhead Video",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = OffOn
@@ -6723,13 +6725,13 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = OffOn
             },
+            // Lit while the cockpit door is open (measured 2026-10-23), so silent: S_COCKPIT_DOOR says the door.
             ["I_OH_DOOR_CTL_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_OH_DOOR_CTL_U",
                 DisplayName = "OverheadMisc Cockpit Door CTL Upper",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = OffOn
             },
             ["I_OH_DOOR_CTL_L"] = new SimConnect.SimVarDefinition
@@ -6792,19 +6794,20 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
             },
+            // The pedestal OPEN light: lit while the cockpit door is open (measured 2026-10-23), so silent:
+            // S_COCKPIT_DOOR says the door.
             ["I_PED_COCKPIT_DOOR_U"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_PED_COCKPIT_DOOR_U",
                 DisplayName = "PedestalMisc Cockpit Door Open (V2)",
                 Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 ValueDescriptions = OffOn
             },
             ["I_PED_COCKPIT_DOOR_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_PED_COCKPIT_DOOR_L",
-                DisplayName = "PedestalMisc Cockpit Door Fault (V2)",
+                DisplayName = "Cockpit Door Fault",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -8487,7 +8490,6 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 "Exterior Lights",
                 "Interior Lights",
                 "Voice Recorder",
-                "Cockpit Door",
                 "Oxygen",
                 "Evacuation",
                 "Calls",
@@ -8534,6 +8536,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
 
             ["Cockpit"] = new List<string>
             {
+                "Cockpit Door",
                 "Captain Seat",
                 "First Officer Seat",
                 "Windows and Shades",
@@ -8781,9 +8784,10 @@ public partial class FenixA320Definition : BaseAircraftDefinition
 
             ["Cockpit Door"] = new List<string>
             {
-                // Cockpit Door Controls (2 controls)
+                // The door, the overhead VIDEO pushbutton and the pedestal video button (3 controls)
                 "S_COCKPIT_DOOR",
-                "S_OH_COCKPIT_DOOR_VIDEO"
+                "S_OH_COCKPIT_DOOR_VIDEO",
+                "S_PED_COCKPIT_DOOR_VIDEO"
             },
 
             ["Signs"] = new List<string>
@@ -8905,7 +8909,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             ["First Officer Seat"] = new List<string> { "S_SEAT_HEIGHT_FO", "S_SEAT_DISTANCE_FO", "S_ARMREST_LEFT_FO", "S_ARMREST_RIGHT_FO" },
             ["Windows and Shades"] = new List<string> { "S_SUNSHADE_CAPT", "S_SUNSHADE_FO", "S_WINDOW_BLINDS_CAPT", "S_WINDOW_BLINDS_FO", "S_WINDOW_BLINDS_REAR_CAPT", "S_WINDOW_BLINDS_REAR_FO" },
             ["Standby Instruments"] = new List<string> { "S_STANDBY_COMPASS", "S_STANDBY_ATTITUDE_CAGE" },
-            ["Cockpit Other"] = new List<string> { "S_JUMPSEAT", "S_JUMPSEAT_HEADREST", "S_PED_COCKPIT_DOOR_VIDEO", "S_OXYGEN_MASK_COVER_CAPT", "S_OXYGEN_MASK_COVER_FO", "S_HYD_GRAVITY_GEAR_EXTEND", "S_DCDU2_DIM_BRT" },
+            ["Cockpit Other"] = new List<string> { "S_JUMPSEAT", "S_JUMPSEAT_HEADREST", "S_OXYGEN_MASK_COVER_CAPT", "S_OXYGEN_MASK_COVER_FO", "S_HYD_GRAVITY_GEAR_EXTEND", "S_DCDU2_DIM_BRT" },
 
             ["ECAM"] = new List<string>
             {
@@ -9367,6 +9371,19 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             bool handled = false;
             HandleVariantUIVariableSet(varKey, value, varDef, simConnect, announcer, ref handled);
             if (handled) return true;
+
+            // Opening the cockpit door and deploying the jumpseat block each other, as in the cockpit
+            // (FenixA320CockpitDoor): the other one is read first, then written or refused. Every pick is
+            // counted first, closing and stowing too, so a write still waiting for its read yields to a newer one.
+            if (FenixA320CockpitDoor.IsInterlocked(varKey))
+            {
+                int pick = _cockpitDoorPicks.Next(varKey);
+                if (FenixA320CockpitDoor.BlockingKey(varKey, value) is string blockingKey)
+                {
+                    _ = WriteUnlessBlockedAsync(varKey, value, pick, blockingKey, simConnect, announcer);
+                    return true;
+                }
+            }
 
             // ========== COCKPIT (seats, comfort, standby) ==========
             // All hold their written value; SetLVar routes through the MobiFlight calc path.
@@ -13012,6 +13029,57 @@ public partial class FenixA320Definition : BaseAircraftDefinition
         catch (Exception ex)
         {
             Log.Debug("Fenix", $"Error in {lvar} spring switch (first phase): {ex.Message}");
+        }
+    }
+
+    // How long the cockpit door / jumpseat interlock waits for a fresh read of the other control.
+    private const int CockpitDoorInterlockReadTimeoutMs = 1000;
+
+    // The pilot's picks of the door and the jumpseat (UI thread only), see WriteUnlessBlockedAsync.
+    private readonly FenixA320CockpitDoor.Picks _cockpitDoorPicks = new();
+
+    /// <summary>
+    /// Writes the cockpit door or the jumpseat unless the other one blocks it (<see cref="FenixA320CockpitDoor"/>).
+    /// The other is read where that is quick: the jumpseat (on request) answers a fresh read within a frame;
+    /// the door rides the 1 s batch, so its cache (at most a batch old) is read rather than waiting for the
+    /// next batch; an unread value never refuses. A newer pick of the same control made while this one waited
+    /// wins: this write and its refusal are dropped. A refusal speaks why (a validation message, CORE-7) and
+    /// forces a read of the refused control so its open combo goes back to what the sim shows; that read-back
+    /// is not spoken (the door's monitor sees an unchanged value; the on-request jumpseat is never announced).
+    /// Runs on the UI thread: every await resumes
+    /// there (no ConfigureAwait(false)).
+    /// </summary>
+    private async Task WriteUnlessBlockedAsync(string varKey, double value, int pick, string blockingKey,
+        SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        try
+        {
+            if (simConnect == null || !simConnect.IsConnected) return;
+
+            double? blocking = null;
+            if (simConnect.SupportsFreshReads(blockingKey))
+            {
+                try { blocking = await simConnect.ReadFreshAsync(blockingKey, CockpitDoorInterlockReadTimeoutMs); }
+                catch (Exception ex) { Log.Debug("Fenix", $"Interlock read of {blockingKey} failed: {ex.Message}"); }
+            }
+            blocking ??= simConnect.GetCachedVariableValue(blockingKey);
+
+            if (!_cockpitDoorPicks.IsLatest(varKey, pick)) return;   // the pilot has picked again meanwhile
+
+            string? refusal = FenixA320CockpitDoor.Refusal(varKey, value, blocking);
+            if (refusal == null)
+            {
+                if (simConnect.IsConnected) simConnect.SetLVar(varKey, value);
+                return;
+            }
+
+            Log.Debug("Fenix", $"{varKey} refused: {blockingKey} is set");
+            announcer.AnnounceImmediate(refusal);
+            if (simConnect.IsConnected) simConnect.RequestVariable(varKey, forceUpdate: true);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Fenix", $"Error setting {varKey}: {ex.Message}");
         }
     }
 
