@@ -74,9 +74,9 @@ public class FbwEfbForm : Form
     private List<EFBElement> _elements = new();
     private string _currentPage = "";
     private string _previousAnnouncedPage = "";
-    // Last alert/confirmation card text we spoke, so a popped-up alert announces once (not every poll);
-    // cleared when no alert is present so re-showing the same alert announces again.
-    private string _lastAnnouncedAlert = "";
+    // The alerts/confirmation cards spoken and still on screen (key, or text when keyless), so a
+    // popped-up alert announces once (not every poll) and again only after it has gone and returned.
+    private HashSet<string> _announcedAlerts = new();
 
     // Browser mode = WebView2 semantic document; otherwise the native list.
     private bool _useBrowser = true;
@@ -367,13 +367,19 @@ public class FbwEfbForm : Form
         // updated.") the moment it appears. The agent flags it kind 'alert'; the browser/list render
         // still SHOWS it (+ its OK button stays clickable), but a screen reader won't reliably speak
         // a dynamically-injected alert, so we announce it app-side — immediate (it interrupts), once
-        // per appearance. Cleared when the alert is gone so re-showing it speaks again.
-        var alert = _elements.FirstOrDefault(e => e.Kind == "alert" && !string.IsNullOrWhiteSpace(e.Text));
-        if (alert != null)
+        // per appearance. Forgotten when the alert is gone so re-showing it speaks again. The flyPad
+        // can list several at once (its error notices), each under its own key, so a repeat of the
+        // same error text under a new key speaks again; an alert without a key goes by its text.
+        var present = new HashSet<string>();
+        var fresh = new List<string>();
+        foreach (var e in _elements)
         {
-            if (alert.Text != _lastAnnouncedAlert) { _announcer.AnnounceImmediate(alert.Text); _lastAnnouncedAlert = alert.Text; }
+            if (e.Kind != "alert" || string.IsNullOrWhiteSpace(e.Text)) continue;
+            string id = string.IsNullOrEmpty(e.Key) ? e.Text : e.Key;
+            if (present.Add(id) && !_announcedAlerts.Contains(id)) fresh.Add(e.Text);
         }
-        else { _lastAnnouncedAlert = ""; }
+        _announcedAlerts = present;
+        if (fresh.Count > 0) _announcer.AnnounceImmediate(string.Join(". ", fresh));
 
         if (_useBrowser && !_webViewFailed)
         {

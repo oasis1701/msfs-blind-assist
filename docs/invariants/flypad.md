@@ -55,6 +55,18 @@ Moved 2026-10-08 from docs/invariants/a380-systems.md: the code is the flyPad ag
 
 Split from MD11-13 on 2026-10-09: one mechanism per ID. It is a flyPad rule because `FbwEfbForm` is the shell the flyPad, the PMDG EFB and the MD-11 EFB share.
 
+## FPD-11
+
+- FBW reports most flyPad failures through react-toastify pop-ups, each closed by its own `autoClose`: 250 ms, 750 ms, 1 s or 5 s (both bundles, 2026-10-23). A poll every ~400–600 ms misses the short ones and, before this rule, read the ones it caught as a plain text line plus an icon-only "close" button that nothing spoke, so a 5-second takeoff-calculation error came and went unheard. Read them ONLY through the agent's MutationObserver (`A.watchToasts`, installed with the agent, disconnecting a previous install's observer) and the notice list `A.noticeItems` prepends to every scrape, and skip the `.Toastify` subtree in both `enumerate` passes so nothing reads twice. An `error` notice stays (with a "Dismiss: <message>" button; the shell moves focus off it when it goes) until dismissed or until `A.notePress` sees the control that raised it pressed again; every other type is listed for `NOTICE_FLASH_MS`, long enough for a poll to carry it once. Notices are keyed (`notice:<id>`) so a repeat of the same text is a new notice the form speaks again; `CoherentEFBClient` forwards that `key`. Dismiss buttons use idx `A.NOTICE_IDX_BASE` + id, positive on purpose: `CoherentEFBClient.JsInt` formats with the current culture, whose minus sign may not be ASCII. Pinned by `tools/flypad-settings-test/notices.test.js`. → [flypad.md](../flypad.md)
+
+Added 2026-10-23 after a live session on the A320 and A380 flyPads (takeoff-weight error toast captured; bundles catalogued).
+
+## FPD-12
+
+- `A.inlineErrors` finds the page text FBW shows only while a problem exists by STRUCTURE: a visible heading carrying the `text-utility-red` token (the throttle page's deadzone warning, otherwise `visibility: hidden`), or, on the throttle-calibration page, an `h2` whose box also holds an `svg` (FBW's exclamation-circle icon beside the overlap message). Never by colour alone: the overlap `h2` is plain white `py-4 text-center`, identical to the harmless "Remember to configure MSFS to use Axis 1…" note, and red, amber and green also mark destructive buttons, ground-service states and the active ATC frequency. Never by English wording: FBW translates the message ("overlaps with" is `ErrorOverlapMsg`). FBW lists only the first overlap, so fixing it shows the next as a new notice; a dismissed one stays hidden only until FBW hides it. → [flypad.md](../flypad.md)
+
+Added 2026-10-23 with FPD-11; the exclamation icon is used nowhere else in the flyPad bundle.
+
 ## A380C-12
 
 - Never widen the flyPad Dashboard's column-first read order to other EFB pages without evidence a specific page is jumbled — a blind global split would break single-column pages. → [a380x.md](../a380x.md)
