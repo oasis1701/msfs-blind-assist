@@ -369,5 +369,72 @@ public class FenixCabinReadbackTests
         Assert.Throws<ArgumentNullException>(() => readback.Expect(null!, "Volume: 5", T0, Short, true));
         Assert.Throws<ArgumentException>(() => readback.Expect("", "Volume: 5", T0, Short, true));
         Assert.Throws<ArgumentNullException>(() => readback.Collect(null!, T0));
+        Assert.Throws<ArgumentNullException>(() => readback.CollectEnded(null!, T0));
+    }
+
+    // ---- Which expectation ended, and how (sim-fix wave, fix round 1: the own-press mark follows it) -----
+
+    [Fact]
+    public void Each_ended_expectation_is_reported_with_what_it_said_or_null_when_it_ended_silently()
+    {
+        // A door that answered, a door that timed out silently, a numeric press that answered "unchanged",
+        // and one still waiting, which is not reported.
+        var readback = new FenixCabinReadback();
+        readback.Expect("door.d1l", "Door 1 left: closed, slide armed", T0, Long, speakIfUnchanged: false, currentState: "closed", byState: true);
+        readback.Expect("door.d4r", "Door 4 right: closed, slide armed", T0, Long, speakIfUnchanged: false, currentState: "closed", byState: true);
+        readback.Expect("audio.volume", "Volume: 5", T0, Short, speakIfUnchanged: true);
+        readback.Expect("temp.forward", "Forward zone: 24.0 degrees, target 24.0 degrees, no offset", T0 + Seconds(28), Short, speakIfUnchanged: true);
+
+        var ended = readback.CollectEnded(Lines(
+                new FenixCabinLine(FenixCabinSection.Doors, "door.d1l", "Door 1 left: open, slide armed", "open"),
+                new FenixCabinLine(FenixCabinSection.Doors, "door.d4r", "Door 4 right: closed, slide armed", "closed"),
+                Volume("Volume: 5"),
+                Forward("Forward zone: 24.0 degrees, target 24.0 degrees, no offset")),
+            T0 + Seconds(30));
+
+        Assert.Equal(new[]
+        {
+            new FenixCabinReadbackEnd("door.d1l", "Door 1 left: open, slide armed"),
+            new FenixCabinReadbackEnd("door.d4r", null),
+            new FenixCabinReadbackEnd("audio.volume", "Volume: 5, unchanged")
+        }, ended);
+        Assert.True(readback.IsWaiting("temp.forward"));
+    }
+
+    [Fact]
+    public void Collect_says_exactly_what_collect_ended_reports_as_said()
+    {
+        static FenixCabinReadback Pressed(DateTime at)
+        {
+            var readback = new FenixCabinReadback();
+            readback.Expect("door.d1l", "Door 1 left: closed, slide armed", at, Long, speakIfUnchanged: false);
+            readback.Expect("audio.volume", "Volume: 5", at, Short, speakIfUnchanged: true);
+            return readback;
+        }
+        var lines = Lines(Door1Left("Door 1 left: open, slide armed"), Volume("Volume: 5"));
+
+        Assert.Equal(
+            Pressed(T0).CollectEnded(lines, T0 + Seconds(6)).Where(e => e.Text != null).Select(e => e.Text!).ToArray(),
+            Pressed(T0).Collect(lines, T0 + Seconds(6)));
+    }
+
+    [Fact]
+    public void A_key_is_waiting_from_its_press_until_its_expectation_ends()
+    {
+        var readback = new FenixCabinReadback();
+        Assert.False(readback.IsWaiting("door.d1l"));
+
+        readback.Expect("door.d1l", "Door 1 left: closed, slide armed", T0, Long, speakIfUnchanged: false, currentState: "closed", byState: true);
+        Assert.True(readback.IsWaiting("door.d1l"));
+        Assert.False(readback.IsWaiting("door.d1r"));
+
+        // Still waiting while the line has not changed; a repeated press keeps it waiting.
+        readback.CollectEnded(Lines(Door1Left("Door 1 left: closed, slide armed")), T0 + Seconds(10));
+        readback.Expect("door.d1l", "Door 1 left: closed, slide armed", T0 + Seconds(10), Long, speakIfUnchanged: false, currentState: "closed", byState: true);
+        Assert.True(readback.IsWaiting("door.d1l"));
+
+        // Ended silently at its window's end: no longer waiting.
+        readback.CollectEnded(Lines(Door1Left("Door 1 left: closed, slide armed")), T0 + Seconds(40));
+        Assert.False(readback.IsWaiting("door.d1l"));
     }
 }

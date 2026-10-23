@@ -298,19 +298,80 @@ public sealed partial class FenixCabinForm
         _ = RunDoorWriteAsync(FenixCabinWrites.CargoDoor(cargo.Door, !open.Value), cargo.Key);
     }
 
-    // A door or cargo write, read back by its line's state for the door's longer window (R17). The line is marked
-    // as the pilot's own press as the write goes (R18): the app-wide door announcement then leaves that door to
-    // this read-back for the read-back's whole window, so the change is said once. Marked before the send, so a
-    // poll that sees the door move before the write's answer is back stays quiet too; a write the Fenix refuses,
-    // or the window closing before the answer, withdraws the mark, and the change, if any, is still said.
+    // ---- The pilot's own door presses (ruling R18) --------------------------------------------------
+    //
+    // A door or cargo press marks its line in OwnPresses while this window can still say what the press did, so
+    // the app-wide door announcement leaves that door to the read-back and the change is said once, and no
+    // longer: from the press (before the send, so a poll that sees the door move before the write's answer is
+    // back stays quiet too) until the read-back ends. When the read-back speaks, the door stays held for
+    // OwnPressGrace only, the app-wide poll's lag; when it ends silently, the Fenix refuses the write, the send
+    // path throws, or the window closes first, the mark is withdrawn at once, and the change, if any, is the
+    // app-wide announcement's to say. The window's own marks are kept here (line key to the mark's end).
+
+    // The app-wide poll reads once a second: it can see a change up to a poll after the window has said it.
+    private static readonly TimeSpan OwnPressGrace = TimeSpan.FromSeconds(2);
+
+    // Guarded by itself: a press's continuation and the render tick share it (one thread in the app, two in tests).
+    private readonly Dictionary<string, DateTime> _ownMarks = new(StringComparer.Ordinal);
+
+    // A door or cargo write, read back by its line's state for the door's longer window (R17).
     private async Task RunDoorWriteAsync(FenixCabinWrite write, string lineKey)
     {
-        FenixCabinOwnPresses presses = OwnPresses;
-        DateTime end = presses.Mark(lineKey, DateTime.UtcNow, DoorReadbackWindow);
-        if (await RunWriteAsync(write, lineKey, DoorReadbackWindow, speakIfUnchanged: false, byState: true))
-            presses.Mark(lineKey, DateTime.UtcNow, DoorReadbackWindow); // the read-back's window starts now
-        else
-            presses.Withdraw(lineKey, end);
+        MarkOwnPress(lineKey, Clock());
+        bool accepted = false;
+        try
+        {
+            accepted = await RunWriteAsync(write, lineKey, DoorReadbackWindow, speakIfUnchanged: false, byState: true, ownPress: true);
+        }
+        finally
+        {
+            if (!accepted) ReleaseOwnPress(lineKey);
+        }
+    }
+
+    // Marks the line until the read-back's window ends, plus the grace; the read-back's own end ends it sooner.
+    private void MarkOwnPress(string lineKey, DateTime now)
+    {
+        lock (_ownMarks)
+            _ownMarks[lineKey] = OwnPresses.Mark(lineKey, now, DoorReadbackWindow + OwnPressGrace);
+    }
+
+    // A press that did not reach its read-back: its mark goes, unless an earlier press of the same door is still
+    // waiting for its own.
+    private void ReleaseOwnPress(string lineKey)
+    {
+        if (_readback.IsWaiting(lineKey)) return;
+        DateTime end;
+        lock (_ownMarks)
+        {
+            if (!_ownMarks.Remove(lineKey, out end)) return;
+        }
+        OwnPresses.Withdraw(lineKey, end);
+    }
+
+    // A read-back ended (the render tick): spoken, the door is held for the grace only; silent, its mark goes.
+    // A line without an own mark (a temperature, the preselect) is not a door press.
+    private void EndOwnPress(string lineKey, bool spoke, DateTime now)
+    {
+        DateTime end;
+        lock (_ownMarks)
+        {
+            if (!_ownMarks.Remove(lineKey, out end)) return;
+        }
+        if (spoke) OwnPresses.Mark(lineKey, now, OwnPressGrace);
+        else OwnPresses.Withdraw(lineKey, end);
+    }
+
+    // The window closes (TearDown): no read-back of its can speak any more.
+    private void WithdrawOwnPresses()
+    {
+        KeyValuePair<string, DateTime>[] marks;
+        lock (_ownMarks)
+        {
+            marks = _ownMarks.ToArray();
+            _ownMarks.Clear();
+        }
+        foreach ((string lineKey, DateTime end) in marks) OwnPresses.Withdraw(lineKey, end);
     }
 
     // True, after saying so, unless the Fenix says the aircraft is on the ground as the EFB counts it: its

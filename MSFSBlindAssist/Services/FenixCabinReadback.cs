@@ -1,6 +1,12 @@
 namespace MSFSBlindAssist.Services;
 
 /// <summary>
+/// An expectation that ended in <see cref="FenixCabinReadback.CollectEnded"/>: its line key, and what it said,
+/// or null when it ended silently (its window ended with the line unchanged and nothing to say).
+/// </summary>
+public sealed record FenixCabinReadbackEnd(string Key, string? Text);
+
+/// <summary>
 /// Decides what the Cabin window says after a press: the resulting line once when it changes, or for a
 /// numeric press (volume, temperature, preselect) a short "&lt;line&gt;, unchanged" when the window ends
 /// with nothing changed; any other press ends silently. It never says what the screen reader already
@@ -70,24 +76,34 @@ public sealed class FenixCabinReadback
     /// <param name="lines">The current lines of the window.</param>
     /// <param name="now">The current time.</param>
     public IReadOnlyList<string> Collect(IReadOnlyList<FenixCabinLine> lines, DateTime now)
+        => CollectEnded(lines, now).Where(end => end.Text != null).Select(end => end.Text!).ToArray();
+
+    /// <summary>
+    /// As <see cref="Collect"/>, but names every expectation that ended, in press order: with what it said,
+    /// or a null text when it ended silently. So the Cabin window learns when a door press's read-back can no
+    /// longer speak (<see cref="FenixCabinOwnPresses"/>).
+    /// </summary>
+    public IReadOnlyList<FenixCabinReadbackEnd> CollectEnded(IReadOnlyList<FenixCabinLine> lines, DateTime now)
     {
         ArgumentNullException.ThrowIfNull(lines);
 
-        var spoken = new List<string>();
+        var ended = new List<FenixCabinReadbackEnd>();
         var waiting = new List<Expectation>();
         foreach (Expectation expectation in _pending)
         {
             FenixCabinLine? line = LineOf(lines, expectation.Key);
             if (line != null && Changed(expectation, line))
             {
-                spoken.Add(line.Text);
+                ended.Add(new FenixCabinReadbackEnd(expectation.Key, line.Text));
             }
             else if (now - expectation.PressedAt >= expectation.Window)
             {
                 // The line is unchanged (or, in state mode, not settled) or missing here: what it says now,
                 // or the press-time text when it is gone.
-                if (expectation.SpeakIfUnchanged && (line?.Text ?? expectation.PressText) is string text)
-                    spoken.Add(text + UnchangedSuffix);
+                string? text = expectation.SpeakIfUnchanged && (line?.Text ?? expectation.PressText) is string current
+                    ? current + UnchangedSuffix
+                    : null;
+                ended.Add(new FenixCabinReadbackEnd(expectation.Key, text));
             }
             else
             {
@@ -97,8 +113,12 @@ public sealed class FenixCabinReadback
 
         _pending.Clear();
         _pending.AddRange(waiting);
-        return spoken.AsReadOnly();
+        return ended.AsReadOnly();
     }
+
+    /// <summary>True while a press of the line <paramref name="key"/> is waiting for its read-back.</summary>
+    public bool IsWaiting(string key)
+        => _pending.Exists(expectation => string.Equals(expectation.Key, key, StringComparison.Ordinal));
 
     // Text mode: the text differs from the press-time text. State mode: the state is settled (not null)
     // and differs from the press-time state.

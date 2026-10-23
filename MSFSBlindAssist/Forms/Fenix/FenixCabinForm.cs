@@ -282,7 +282,8 @@ public sealed partial class FenixCabinForm : Form
 
     // Stops the poll and both timers and lets go of the definition; safe to call twice. After it, an
     // answer still on its way changes nothing the pilot hears: the async paths check _tornDown, and a
-    // late polled value only marks a render that never runs.
+    // late polled value only marks a render that never runs. A door press whose read-back can now never
+    // speak hands its door back to the app-wide announcement (R18).
     private void TearDown()
     {
         if (_tornDown) return;
@@ -292,6 +293,7 @@ public sealed partial class FenixCabinForm : Form
         _poller = null;
         _renderTimer.Stop();
         _pramTimer.Stop();
+        WithdrawOwnPresses();
         if (_started) _context.Definition.VariantChanged -= OnVariantChanged;
     }
 
@@ -455,13 +457,25 @@ public sealed partial class FenixCabinForm : Form
                 }
             }
         }
-        // Every tick, so a numeric press whose window has ended answers "unchanged" at once.
-        foreach (string text in _readback.Collect(_lines, DateTime.UtcNow))
-            _context.Announcer.Announce(text);
+        // Every tick, so a numeric press whose window has ended answers "unchanged" at once. A door press's
+        // own-press mark ends with its read-back (R18).
+        DateTime now = Clock();
+        foreach (FenixCabinReadbackEnd end in _readback.CollectEnded(_lines, now))
+        {
+            if (end.Text != null) _context.Announcer.Announce(end.Text);
+            EndOwnPress(end.Key, spoke: end.Text != null, now);
+        }
     }
 
     /// <summary>For the tests: the values the window shows, as the poll applies them.</summary>
     internal FenixCabinData Cache => _cache;
+
+    /// <summary>
+    /// The time the read-backs and the door presses' own-press marks are kept by: <see cref="DateTime.UtcNow"/>,
+    /// the app-wide announcements' clock too. A test sets its own.
+    /// </summary>
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    internal Func<DateTime> Clock { get; set; } = () => DateTime.UtcNow;
 
     // Rebuilds every line, the status box, the lists and, unless the pilot has just changed one, the
     // controls. UI thread; never focuses, never speaks, never reads or writes the data service. Internal
@@ -600,8 +614,10 @@ public sealed partial class FenixCabinForm : Form
     /// text, or with <paramref name="byState"/> only the part the press changes (R17). UI thread.
     /// The result is true when the Fenix accepted the write; a press that sends several stops at the first false.
     /// </summary>
-    private Task<bool> RunWriteAsync(FenixCabinWrite w, string? readbackKey, TimeSpan window, bool speakIfUnchanged, bool byState = false)
-        => RunAsync(() => _context.Data.SendAsync(w), readbackKey, window, speakIfUnchanged, byState, refreshPram: false);
+    /// <param name="ownPress">A door or cargo press: its line's own-press mark is renewed for the read-back's
+    /// window as the expectation starts (R18).</param>
+    private Task<bool> RunWriteAsync(FenixCabinWrite w, string? readbackKey, TimeSpan window, bool speakIfUnchanged, bool byState = false, bool ownPress = false)
+        => RunAsync(() => _context.Data.SendAsync(w), readbackKey, window, speakIfUnchanged, byState, refreshPram: false, ownPress);
 
     /// <summary>
     /// Sends one FAP audio mutation (<see cref="FenixCabinPram"/>), as <see cref="RunWriteAsync"/> sends a
@@ -610,7 +626,8 @@ public sealed partial class FenixCabinForm : Form
     private Task<bool> RunMutationAsync(FenixCabinMutation m, string? readbackKey, bool speakIfUnchanged)
         => RunAsync(() => _context.Data.SendAsync(m), readbackKey, ReadbackWindow, speakIfUnchanged, byState: false, refreshPram: true);
 
-    private async Task<bool> RunAsync(Func<Task<bool>> send, string? readbackKey, TimeSpan window, bool speakIfUnchanged, bool byState, bool refreshPram)
+    private async Task<bool> RunAsync(Func<Task<bool>> send, string? readbackKey, TimeSpan window, bool speakIfUnchanged, bool byState, bool refreshPram,
+        bool ownPress = false)
     {
         if (!_cache.AnyKnown)
         {
@@ -644,7 +661,12 @@ public sealed partial class FenixCabinForm : Form
             return false;
         }
         if (readbackKey != null)
-            _readback.Expect(readbackKey, pressLine?.Text, DateTime.UtcNow, window, speakIfUnchanged, pressLine?.State, byState);
+        {
+            DateTime now = Clock();
+            // The mark first, so a tick never finds the expectation without it.
+            if (ownPress) MarkOwnPress(readbackKey, now);
+            _readback.Expect(readbackKey, pressLine?.Text, now, window, speakIfUnchanged, pressLine?.State, byState);
+        }
         if (refreshPram) RequestPramRefresh();
         return true;
     }

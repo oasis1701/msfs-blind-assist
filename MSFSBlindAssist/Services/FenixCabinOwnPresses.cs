@@ -7,10 +7,11 @@ namespace MSFSBlindAssist.Services;
 /// keys it (<c>door.d1l</c>, <c>cargo.forward</c>, the <see cref="FenixCabinEvent.LineKey"/> of a door event).
 /// </summary>
 /// <remarks>
-/// <para>The window marks a line as its write goes and keeps the mark for the read-back's whole window, also
-/// once the read-back has spoken: the announcement's own poll can see the change a second later than the
-/// window's, and would then say it again. A press the Fenix refuses, or whose window closes before its answer
-/// comes, withdraws its mark, so the change, if any, is still said once.</para>
+/// <para>The mark lives exactly as long as the window's read-back can still speak (ruling R18 as corrected in
+/// fix round 1): the window marks a line as its write goes; once the read-back has spoken it holds the line
+/// for a short grace only (the announcement's own poll can see the change a poll later than the window's, and
+/// would then say it again); a read-back that ends silently, a press the Fenix refuses, a send path that
+/// throws, or the window closing withdraws the mark at once, so the change, if any, is still said once.</para>
 /// <para>Thread-safe: the window marks on the UI thread, the announcement asks on a pool thread. Both pass
 /// <see cref="DateTime.UtcNow"/>; the tests pass their own clock.</para>
 /// </remarks>

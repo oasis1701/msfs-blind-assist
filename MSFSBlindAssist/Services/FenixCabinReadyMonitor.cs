@@ -59,8 +59,12 @@ public sealed class FenixCabinReadyEdge
 /// starts answering (no known value, then one), and on every variant change. An empty settings answer keeps
 /// what an earlier read found.</para>
 /// <para>A door or cargo door the pilot pressed in the Cabin window is left to the window's read-back while
-/// that waits (<see cref="FenixCabinOwnPresses"/>, ruling R18), so the change is said once. Its baseline still
-/// moves, so it is not said later either.</para>
+/// that can still speak (<see cref="FenixCabinOwnPresses"/>, ruling R18), so the change is said once. Its
+/// baseline still moves, so it is not said later either.</para>
+/// <para>After the Fenix has not answered for more than <see cref="OutageRebaseline"/> (every polled value
+/// unknown: the data service down, the Fenix reloading), the first values that answer again are a new silent
+/// baseline for all four kinds (ruling R23), so a second flight loaded in the same session is not read out as
+/// a burst of changes. A shorter outage, or a value unknown on its own, keeps the baseline.</para>
 /// <para>Values arrive on a thread-pool thread ([FNX-2]). What to say is posted to the UI
 /// <see cref="SynchronizationContext"/> captured by <see cref="Start"/>, inside a try/catch: a UI thread that
 /// is gone refuses the post with <see cref="InvalidOperationException"/> and the call is dropped ([A380C-6]).
@@ -76,12 +80,16 @@ public sealed class FenixCabinReadyMonitor : IDisposable
 
     private const string LogCategory = "FenixCabin";
 
+    /// <summary>How long the Fenix may not answer before its next answer is a new silent baseline (R23).</summary>
+    internal static readonly TimeSpan OutageRebaseline = TimeSpan.FromSeconds(10);
+
     // The last name of each poll: when it has come, the poll is whole and the other kinds are judged.
     private static readonly string LastPolledName = FenixCabinNames.All[^1];
 
     private readonly object _gate = new();
-    private readonly FenixCabinReadyEdge _edge = new();
-    private readonly FenixCabinEvents _events = new();
+    // Both replaced, under _gate, after a long outage (R23).
+    private FenixCabinReadyEdge _edge = new();
+    private FenixCabinEvents _events = new();
     // The values of the poll being handed on (Unknown included), under _gate.
     private readonly FenixCabinData _poll = new();
     private readonly SynchronizationContext? _ui;
@@ -104,6 +112,9 @@ public sealed class FenixCabinReadyMonitor : IDisposable
     private FenixCabinLayout _layout;
     // Whether the last whole poll had any known value; the settings are read again when it turns true.
     private bool _wasAnswering;
+    // When the Fenix last answered (a whole poll with a known value, or a known cabin-ready value after an
+    // outage); null before the first answer.
+    private DateTime? _lastAnsweredAt;
     // Settings reads, numbered as they start: an answer older than one already applied is dropped.
     private int _settingsStarted;
     private int _settingsApplied;
@@ -274,11 +285,22 @@ public sealed class FenixCabinReadyMonitor : IDisposable
             if (_disposed) return;
             _poll.Apply(name, value);
             if (string.Equals(name, FenixCabinNames.CabinReady, StringComparison.Ordinal))
+            {
+                // The first name of a poll: a known value back after a long outage starts the new baseline
+                // before the edge sees it.
+                if (value.IsKnown) RebaselineAfterLongOutage(_clock());
                 rose = _edge.Next(value);
+            }
             if (string.Equals(name, LastPolledName, StringComparison.Ordinal))
             {
-                events = WithoutOwnPresses(_events.Next(_poll, _layout));
+                DateTime now = _clock();
                 bool answering = _poll.AnyKnown;
+                if (answering)
+                {
+                    RebaselineAfterLongOutage(now);
+                    _lastAnsweredAt = now;
+                }
+                events = WithoutOwnPresses(_events.Next(_poll, _layout), now);
                 startedAnswering = answering && !_wasAnswering;
                 _wasAnswering = answering;
             }
@@ -288,11 +310,21 @@ public sealed class FenixCabinReadyMonitor : IDisposable
         if (startedAnswering) _ = ReadSettingsAsync();
     }
 
+    // Under _gate. R23: the Fenix answers again after more than OutageRebaseline without an answer, so what it
+    // says now is a new silent baseline for every kind: a fresh edge and fresh events. Once per outage: the
+    // answer time is set here, so the rest of the same poll does not start it again.
+    private void RebaselineAfterLongOutage(DateTime now)
+    {
+        if (_wasAnswering || _lastAnsweredAt is not DateTime last || now - last <= OutageRebaseline) return;
+        _edge = new FenixCabinReadyEdge();
+        _events = new FenixCabinEvents();
+        _lastAnsweredAt = now;
+    }
+
     // A door the pilot pressed in the Cabin window is the window's read-back's to say (R18).
-    private IReadOnlyList<FenixCabinEvent> WithoutOwnPresses(IReadOnlyList<FenixCabinEvent> events)
+    private IReadOnlyList<FenixCabinEvent> WithoutOwnPresses(IReadOnlyList<FenixCabinEvent> events, DateTime now)
     {
         if (events.Count == 0) return events;
-        DateTime now = _clock();
         return events.Where(e => e.LineKey == null || !_ownPresses.IsPending(e.LineKey, now)).ToArray();
     }
 

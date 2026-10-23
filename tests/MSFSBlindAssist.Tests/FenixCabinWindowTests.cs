@@ -1930,9 +1930,11 @@ public class FenixCabinWindowTests
             Click(DoorButton(rig.Form));
             WaitFor(() => Expectations(rig.Form).Length == 1, line);
 
+            // While the read-back waits; its 30 s plus the 2 s grace is only the ceiling, the read-back's end
+            // ends it sooner (the tests below).
             Assert.True(presses.IsPending(line, DateTime.UtcNow), line);
             Assert.True(presses.IsPending(line, before + TimeSpan.FromSeconds(29)), line);
-            Assert.False(presses.IsPending(line, DateTime.UtcNow + TimeSpan.FromSeconds(31)), line);
+            Assert.False(presses.IsPending(line, DateTime.UtcNow + TimeSpan.FromSeconds(33)), line);
             Assert.False(presses.IsPending(line == "door.d1l" ? "cargo.forward" : "door.d1l", DateTime.UtcNow));
         }
 
@@ -1964,6 +1966,144 @@ public class FenixCabinWindowTests
         // Unless a test gives it its own, the window marks the registry the app-wide announcements read.
         using (var form = new FenixCabinForm(Context(new SpeechCapture())))
             Assert.Same(FenixCabinOwnPresses.Shared, form.OwnPresses);
+    }
+
+    // ---- The own-press hold follows the read-back (fix round 1: R18 corrected) --------------------------
+
+    private static readonly DateTime T0 = new(2026, 10, 23, 12, 0, 0, DateTimeKind.Utc);
+
+    // The app-wide announcements on the same registry as the window, fed whole polls by hand; inline speech.
+    private sealed class Background : IDisposable
+    {
+        private Action<string, FenixDataValue>? _onValue;
+
+        public List<string> Spoken { get; } = new();
+        public DateTime Now { get; set; } = T0;
+        public FenixCabinReadyMonitor Monitor { get; }
+
+        public Background(FenixCabinOwnPresses presses)
+            => Monitor = new FenixCabinReadyMonitor(
+                onValue => { _onValue = onValue; return new Stop(); },
+                () => Task.FromResult(FenixDataValue.Unknown), null, Spoken.Add, ownPresses: presses, clock: () => Now);
+
+        // One poll: every cabin name in order, these values, Unknown for the rest.
+        public void Poll(params (string Name, FenixDataValue Value)[] values)
+        {
+            var given = values.ToDictionary(v => v.Name, v => v.Value);
+            foreach (string name in FenixCabinNames.All)
+                _onValue!(name, given.TryGetValue(name, out FenixDataValue value) ? value : FenixDataValue.Unknown);
+        }
+
+        public void Dispose() => Monitor.Dispose();
+
+        private sealed class Stop : IDisposable
+        {
+            public void Dispose() { }
+        }
+    }
+
+    // A rig whose window keeps the read-back and its marks by the given clock, on its own registry.
+    private static (ControlsRig Rig, FenixCabinOwnPresses Presses) OwnPressRig(Func<DateTime> clock)
+    {
+        var rig = new ControlsRig();
+        var presses = new FenixCabinOwnPresses();
+        rig.Form.OwnPresses = presses;
+        rig.Form.Clock = clock;
+        Set(rig.Form, (FenixCabinNames.Door("d1l"), False), (FenixCabinNames.Slide("d1l"), True), (FenixCabinNames.DoorControl("d1l"), Num(0)));
+        return (rig, presses);
+    }
+
+    [Fact]
+    public void Closing_the_window_before_its_read_back_speaks_hands_the_door_back_to_the_app_wide_announcement()
+    {
+        DateTime now = T0;
+        (ControlsRig rig, FenixCabinOwnPresses presses) = OwnPressRig(() => now);
+        using var background = new Background(presses);
+        background.Poll((FenixCabinNames.Door("d1l"), False));
+
+        Click(DoorButton(rig.Form));
+        WaitFor(() => Expectations(rig.Form).Length == 1, "the door press");
+        Assert.True(presses.IsPending("door.d1l", now));
+
+        // The pilot closes the window before the door has moved: its read-back can no longer speak.
+        rig.Dispose();
+        Assert.False(presses.IsPending("door.d1l", now));
+
+        // The door opens a few seconds later: the app-wide announcement says it.
+        now = background.Now = T0 + TimeSpan.FromSeconds(5);
+        background.Poll((FenixCabinNames.Door("d1l"), True));
+        Assert.Equal(new[] { "Door 1 left open" }, background.Spoken);
+    }
+
+    [Fact]
+    public void A_read_back_that_spoke_holds_its_door_only_for_the_grace()
+    {
+        DateTime now = T0;
+        (ControlsRig rig, FenixCabinOwnPresses presses) = OwnPressRig(() => now);
+        using (rig)
+        using (var background = new Background(presses))
+        {
+            background.Poll((FenixCabinNames.Door("d1l"), False));
+            Click(DoorButton(rig.Form));
+            WaitFor(() => Expectations(rig.Form).Length == 1, "the door press");
+
+            // The door opens at 4 s: the app-wide poll sees it first and leaves it to the read-back, which says it.
+            now = background.Now = T0 + TimeSpan.FromSeconds(4);
+            background.Poll((FenixCabinNames.Door("d1l"), True));
+            Set(rig.Form, (FenixCabinNames.Door("d1l"), True), (FenixCabinNames.DoorControl("d1l"), Num(2)));
+            Tick(rig.Form);
+            Assert.Equal(new[] { "Door 1 left: open, slide armed" }, rig.Speech.All);
+            Assert.Empty(background.Spoken);
+
+            // Held for a poll's lag only: about 2 s, not the rest of the 30 s.
+            Assert.True(presses.IsPending("door.d1l", now + TimeSpan.FromSeconds(1.9)));
+            Assert.False(presses.IsPending("door.d1l", now + TimeSpan.FromSeconds(2)));
+
+            // Another source closes it 3 s later: said by the app-wide announcement, the opening not again.
+            background.Now = now + TimeSpan.FromSeconds(3);
+            background.Poll((FenixCabinNames.Door("d1l"), False));
+            Assert.Equal(new[] { "Door 1 left closed" }, background.Spoken);
+        }
+    }
+
+    [Fact]
+    public void A_read_back_that_timed_out_silently_withdraws_its_mark_at_once()
+    {
+        DateTime now = T0;
+        (ControlsRig rig, FenixCabinOwnPresses presses) = OwnPressRig(() => now);
+        using (rig)
+        {
+            Click(DoorButton(rig.Form));
+            WaitFor(() => Expectations(rig.Form).Length == 1, "the door press");
+
+            // The door never moves: at the window's end the read-back ends silently and so does the mark,
+            // before its 32 s ceiling.
+            now = T0 + TimeSpan.FromSeconds(29);
+            Tick(rig.Form);
+            Assert.True(presses.IsPending("door.d1l", now));
+            now = T0 + TimeSpan.FromSeconds(30);
+            Tick(rig.Form);
+            Assert.Empty(Expectations(rig.Form));
+            Assert.False(presses.IsPending("door.d1l", now));
+            Assert.Empty(rig.Speech.All);
+        }
+    }
+
+    [Fact]
+    public void A_door_press_whose_send_path_throws_withdraws_its_mark()
+    {
+        // No announcer: the refusal of the refused write throws inside the send path. The mark must not outlive it.
+        var gateway = new AudioGateway { Answer = () => WriteAnswer(accepted: false) };
+        using var data = new FenixDataService(gateway);
+        using var form = new FenixCabinForm(new FenixWindowContext(null!, data, null!, null!, null!));
+        var presses = new FenixCabinOwnPresses();
+        form.OwnPresses = presses;
+        Set(form, (FenixCabinNames.FapOperational, True), (FenixCabinNames.AltitudeAboveGround, Num(0)), (FenixCabinNames.DoorControl("d1l"), Num(0)));
+
+        Click(DoorButton(form));
+
+        WaitFor(() => gateway.Writes.Count == 1, "the door write");
+        WaitFor(() => !presses.IsPending("door.d1l", DateTime.UtcNow), "the mark withdrawn");
     }
 
     [Fact]

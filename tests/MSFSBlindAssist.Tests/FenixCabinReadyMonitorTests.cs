@@ -516,6 +516,85 @@ public class FenixCabinReadyMonitorTests
         Assert.Equal(["Door 2 left open", "Door 2 left closed"], spoken.Texts);
     }
 
+    // ---- A long outage: a new silent baseline (ruling R23) ----------------------------------------
+
+    private static (string, FenixDataValue)[] Cabin(bool ready, bool doorOpen, bool armed, bool panelOpen)
+        => With(Slides(armed ? True : False), new[]
+        {
+            (CabinReady, ready ? True : False), (FenixCabinNames.Door("d1l"), doorOpen ? True : False),
+            (FenixCabinNames.WaterServicePanelOpen, panelOpen ? True : False)
+        });
+
+    private static (FenixCabinReadyMonitor Monitor, FakeSource Source, Spoken Spoken, FakeClock Clock) Outage()
+    {
+        var source = new FakeSource();
+        var spoken = new Spoken();
+        var clock = new FakeClock();
+        var monitor = new FenixCabinReadyMonitor(source.Subscribe, Reads(Unknown), null, spoken.Add, clock: () => clock.Now);
+        return (monitor, source, spoken, clock);
+    }
+
+    [Fact]
+    public void After_more_than_10_s_without_an_answer_the_first_answer_is_a_new_silent_baseline()
+    {
+        // A second flight loaded in the same session: everything differs, nothing of it is said.
+        var (monitor, source, spoken, clock) = Outage();
+        using (monitor)
+        {
+            SendPoll(source, Cabin(ready: false, doorOpen: false, armed: true, panelOpen: false));
+            clock.Now = T0 + TimeSpan.FromSeconds(1);
+            SendPoll(source);
+            clock.Now = T0 + TimeSpan.FromSeconds(6);
+            SendPoll(source);
+            clock.Now = T0 + TimeSpan.FromSeconds(10.5);
+            SendPoll(source, Cabin(ready: true, doorOpen: true, armed: false, panelOpen: true));
+            Assert.Empty(spoken.Texts);
+
+            // From the new baseline on, a change is said again, of every kind.
+            clock.Now = T0 + TimeSpan.FromSeconds(11.5);
+            SendPoll(source, Cabin(ready: false, doorOpen: false, armed: true, panelOpen: false));
+            clock.Now = T0 + TimeSpan.FromSeconds(12.5);
+            SendPoll(source, Cabin(ready: true, doorOpen: false, armed: true, panelOpen: true));
+            Assert.Equal(["Door 1 left closed", "Slides armed", "Cabin ready", "Cabin caution: Water service door open"], spoken.Texts);
+        }
+    }
+
+    [Fact]
+    public void An_outage_of_10_s_or_less_keeps_the_baseline()
+    {
+        var (monitor, source, spoken, clock) = Outage();
+        using (monitor)
+        {
+            SendPoll(source, Cabin(ready: false, doorOpen: false, armed: true, panelOpen: false));
+            clock.Now = T0 + TimeSpan.FromSeconds(1);
+            SendPoll(source);
+            clock.Now = T0 + TimeSpan.FromSeconds(10);
+            SendPoll(source, Cabin(ready: true, doorOpen: true, armed: false, panelOpen: true));
+
+            Assert.Equal(["Cabin ready", "Door 1 left open", "Slides disarmed", "Cabin caution: Water service door open"], spoken.Texts);
+        }
+    }
+
+    [Fact]
+    public void Polls_that_answer_anything_are_no_outage_however_long()
+    {
+        // 30 s of polls in which only one unrelated value answers: the door's baseline holds, its change is said.
+        var (monitor, source, spoken, clock) = Outage();
+        using (monitor)
+        {
+            SendPoll(source, Cabin(ready: false, doorOpen: false, armed: true, panelOpen: false));
+            for (int second = 5; second <= 30; second += 5)
+            {
+                clock.Now = T0 + TimeSpan.FromSeconds(second);
+                SendPoll(source, (FenixCabinNames.FapOperational, True));
+            }
+            clock.Now = T0 + TimeSpan.FromSeconds(31);
+            SendPoll(source, Cabin(ready: true, doorOpen: true, armed: true, panelOpen: false));
+
+            Assert.Equal(["Cabin ready", "Door 1 left open"], spoken.Texts);
+        }
+    }
+
     [Fact]
     public void Dispose_stops_the_background_announcements_too()
     {
