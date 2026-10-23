@@ -21,9 +21,13 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// (<see cref="_loading"/>, <see cref="_changing"/>).
 /// A read that keeps every group and its options in the same order only rewrites the Text of the nodes, so
 /// NVDA's place in the tree holds; any other read rebuilds the tree and reselects the same option or group.
-/// A change is sent only for an option <see cref="FenixOptionEdits.CanChange"/> allows, with persist false
-/// unless it is the pilot's confirmed permanent change, and what is spoken afterwards is what the Fenix reads
-/// back, never what was asked for. All three keys share one flow, so the read-back exists once.
+/// A change is sent only for an option <see cref="FenixOptionEdits.RefusalText"/> lets through (F2 and
+/// Shift+F2 an on/off or choice option, Ctrl+F2 any option the pilot or the session changed), with persist
+/// false unless it is the pilot's confirmed permanent change, and what is spoken afterwards is what the Fenix
+/// reads back, never what was asked for. All three keys share one flow, so the read-back exists once. The
+/// re-read rewrites the focused row's text in place, which the screen reader reads, so an applied change's
+/// row is spoken only when the reader will not have said it (<see cref="FenixOptionEdits.ScreenReaderReadsRow"/>,
+/// CORE-7).
 /// Nothing here logs an option's value: keys and counts only.
 /// </remarks>
 public sealed class FenixOptionsForm : Form
@@ -244,11 +248,11 @@ public sealed class FenixOptionsForm : Form
 
     /// <summary>
     /// F2, Shift+F2, Ctrl+F2: change the selected on/off or choice option for this simulator session, make
-    /// a change permanent, or reset the option to the Fenix default. F2 and Shift+F2 pick the new value in a
-    /// dialog; Shift+F2 and Ctrl+F2 always ask Yes or No first, and F2 does for an option that reshapes the
-    /// cockpit (No by default for all). Nothing is sent without a Yes. The request is sent as the EFB sends
-    /// it, then the options are read again and what the Fenix reads back is spoken, never what was asked for
-    /// (CORE-7). Awaited on the UI thread, never throws.
+    /// a change permanent, or (any option the pilot or the session changed) reset it to the Fenix default.
+    /// F2 and Shift+F2 pick the new value in a dialog; Shift+F2 and Ctrl+F2 always ask Yes or No first, and
+    /// F2 does for an option that reshapes the cockpit (No by default for all). Nothing is sent without a Yes.
+    /// The request is sent as the EFB sends it, then the options are read again and what the Fenix reads back
+    /// is spoken, never what was asked for (CORE-7). Awaited on the UI thread, never throws.
     /// </summary>
     private async Task ChangeAsync(FenixChangeKind kind)
     {
@@ -265,18 +269,14 @@ public sealed class FenixOptionsForm : Form
             _announcer.AnnounceImmediate("Select an option first.");
             return;
         }
-        if (!FenixOptionEdits.CanChange(option))
-        {
-            _announcer.AnnounceImmediate("MSFS Blind Assist cannot change this option.");
-            return;
-        }
 
         string key = option.Key;
         string label = FenixOptionCatalog.Label(key);
-        // The EFB enables "Reset to default" only for a value that comes from the user or the session.
-        if (kind == FenixChangeKind.Reset && !FenixOptionEdits.CanReset(option))
+        // F2 and Shift+F2 offer an on/off or choice option a value; Ctrl+F2 resets any option the EFB lets you
+        // write, but only a value that comes from the user or the session (the EFB's own rule).
+        if (FenixOptionEdits.RefusalText(kind, label, option) is { } refusal)
         {
-            _announcer.AnnounceImmediate($"{label} has no change of yours to reset.");
+            _announcer.AnnounceImmediate(refusal);
             return;
         }
 
@@ -358,6 +358,8 @@ public sealed class FenixOptionsForm : Form
         string what = Describe(kind);
         try
         {
+            // Just before the write: the row the reader is on, to tell afterwards whether the re-read changed it.
+            RowWatch watch = WatchRow(key);
             Log.Debug(LogCategory, $"Setting {what} sent for {key}");
             JObject? reply = await _data.QueryAsync(document, variables, _cts.Token);
             if (IsDisposed || _tornDown) return;
@@ -380,7 +382,7 @@ public sealed class FenixOptionsForm : Form
                 else if (applied(landed))
                 {
                     Log.Debug(LogCategory, $"Setting {key} reads back as {(kind == FenixChangeKind.Reset ? "reset" : "sent")} after no answer");
-                    _announcer.AnnounceImmediate(FenixOptionCatalog.RowText(landed));
+                    AnnounceAppliedRow(key, landed, watch);
                 }
                 else
                 {
@@ -414,7 +416,7 @@ public sealed class FenixOptionsForm : Form
             else if (applied(now))
             {
                 Log.Debug(LogCategory, $"Setting {key} reads back as {(kind == FenixChangeKind.Reset ? "reset" : "sent")}");
-                _announcer.AnnounceImmediate(FenixOptionCatalog.RowText(now));
+                AnnounceAppliedRow(key, now, watch);
             }
             else
             {
@@ -431,6 +433,33 @@ public sealed class FenixOptionsForm : Form
             // The request was on its way: the Fenix may well have applied it.
             ReportFailure(key, what, ex, NotReadBackText);
         }
+    }
+
+    // The row the screen reader is on when a write is about to be sent: whether the selected node is the
+    // option's own, and that node's text. The re-read rewrites that text in place, which NVDA reads.
+    private readonly record struct RowWatch(bool OnThisOption, string? TextBefore);
+
+    private RowWatch WatchRow(string key)
+        => OptionKey(_tree.SelectedNode) == key
+            ? new RowWatch(true, _tree.SelectedNode!.Text)
+            : new RowWatch(false, null);
+
+    // Speaks the option's row after an applied change, unless the screen reader has already said it (CORE-7):
+    // the tree has focus, its selected node is still this option's, and the re-read changed that node's text.
+    // Judged now, after the final re-read, not before it. A row that did not change (a current value made
+    // permanent, a reset where only the source changed) is spoken, as the reader says nothing for it. Logs the
+    // key only.
+    private void AnnounceAppliedRow(string key, FenixSetting applied, RowWatch watch)
+    {
+        TreeNode? node = _tree.SelectedNode;
+        bool selectedIsThisOption = watch.OnThisOption && OptionKey(node) == key;
+        if (FenixOptionEdits.ScreenReaderReadsRow(_tree.Focused, selectedIsThisOption, watch.TextBefore, node?.Text ?? ""))
+        {
+            Log.Debug(LogCategory, $"Setting {key} read-back left to the screen reader");
+            return;
+        }
+        string row = FenixOptionCatalog.RowText(applied);
+        _announcer.AnnounceImmediate(row);
     }
 
     // Never silent: a change that throws is reported in the nearest ruled words. Logs the key and the

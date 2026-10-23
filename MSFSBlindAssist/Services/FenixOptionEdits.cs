@@ -24,7 +24,8 @@ public enum FenixChangeKind
 /// a session change, so the value resets when MSFS closes or the aircraft or livery changes. Shift+F2 and
 /// Ctrl+F2 are the EFB's per-option menu: "Set as user override" sends the same change with persist true, and
 /// "Reset to default" runs <c>setDefault(key)</c>, which the EFB enables only for an option whose value comes
-/// from the user or the session. Only a writable on/off or choice option that is not a credential can change.
+/// from the user or the session, whatever its type. F2 and Shift+F2 change only a writable on/off or choice
+/// option that is not a credential; Ctrl+F2 resets any writable option that is not a credential.
 /// Pure logic: no network, no state, no logging.
 /// </summary>
 public static class FenixOptionEdits
@@ -47,15 +48,20 @@ public static class FenixOptionEdits
     private static readonly string[] CockpitReshaping = { "standby_type", "isis_type", "adirs_type", "acp_type", "dcdu_enabled" };
 
     /// <summary>
-    /// True when the option is writable, is not a credential, is not the Charts provider, and is an on/off
-    /// option or a choice with at least two values.
+    /// True when the EFB lets the option be written at all: it is writable, is not a credential and is not the
+    /// Charts provider (the EFB has no row for it). Any type of option: whether it can be given a value to
+    /// pick is <see cref="CanChange"/>.
+    /// </summary>
+    public static bool CanWrite(FenixSetting s)
+        => s.Writable && !FenixOptionCatalog.IsSecret(s.Key)
+           && !string.Equals(s.Key, ChartsProviderKey, StringComparison.Ordinal);
+
+    /// <summary>
+    /// True when the option is <see cref="CanWrite">writable</see> and is an on/off option or a choice with at
+    /// least two values: what F2 and Shift+F2 offer a value for.
     /// </summary>
     public static bool CanChange(FenixSetting s)
-    {
-        if (!s.Writable || FenixOptionCatalog.IsSecret(s.Key)) return false;
-        if (string.Equals(s.Key, ChartsProviderKey, StringComparison.Ordinal)) return false;
-        return IsBoolean(s) || (IsChoice(s) && s.PossibleValues.Count >= 2);
-    }
+        => CanWrite(s) && (IsBoolean(s) || (IsChoice(s) && s.PossibleValues.Count >= 2));
 
     /// <summary>
     /// What the option can be set to, as the EFB sends it: "true" or "false" for an on/off option (On first),
@@ -72,12 +78,13 @@ public static class FenixOptionEdits
     }
 
     /// <summary>
-    /// True when the pilot can reset the option to the Fenix default: it can change at all
-    /// (<see cref="CanChange"/>) and the EFB's own rule holds, that its value comes from the user or the
-    /// session. A default, livery or unknown source has no change of the pilot's to reset.
+    /// True when the pilot can reset the option to the Fenix default: it can be <see cref="CanWrite">written</see>
+    /// and the EFB's own rule holds, that its value comes from the user or the session. Any type of option,
+    /// a typed value (Registration) as well as an on/off or choice one, as the EFB's "Reset to default" does
+    /// (ruling R24). A default, livery or unknown source has no change of the pilot's to reset.
     /// </summary>
     public static bool CanReset(FenixSetting s)
-        => CanChange(s) && FenixOptionCatalog.SourceKind(s.Source) is "user" or "session";
+        => CanWrite(s) && FenixOptionCatalog.SourceKind(s.Source) is "user" or "session";
 
     /// <summary>
     /// The variables of <see cref="SetSettingDocument"/>: the value is always a string, and <c>persist</c> is
@@ -165,6 +172,35 @@ public static class FenixOptionEdits
 
     // Two values that are the same one, or that are both missing (SameValue says a missing value matches nothing).
     private static bool SameOrBothMissing(string? a, string? b) => (a is null && b is null) || FenixOptionCatalog.SameValue(a, b);
+
+    /// <summary>What the window says when the pilot presses a change key for an option that kind of change is not offered for.</summary>
+    internal const string CannotChangeText = "MSFS Blind Assist cannot change this option.";
+
+    /// <summary>
+    /// What the window says instead of acting when a key is pressed on an option, or null when the key may go
+    /// ahead. F2 and Shift+F2 need <see cref="CanChange"/> (an on/off or choice option); Ctrl+F2 needs only
+    /// <see cref="CanWrite"/>, then a change of the pilot's or the session's to reset (<see cref="CanReset"/>):
+    /// "cannot change" is said for an option the EFB does not let you write, "no change of yours" for one it
+    /// does but whose value is the default's or a livery's.
+    /// </summary>
+    internal static string? RefusalText(FenixChangeKind kind, string optionLabel, FenixSetting option)
+    {
+        if (kind != FenixChangeKind.Reset) return CanChange(option) ? null : CannotChangeText;
+        if (!CanWrite(option)) return CannotChangeText;
+        return CanReset(option) ? null : $"{optionLabel} has no change of yours to reset.";
+    }
+
+    /// <summary>
+    /// Whether the screen reader reads the option's row by itself after the change, so the app must not speak
+    /// it again (CORE-7). The re-read rewrites the text of the focused tree row in place and NVDA reads a
+    /// focused row whose text changes; that holds only while the options tree has focus, its selected node is
+    /// this option's, and its text is no longer what it was before the write (<paramref name="textBefore"/>,
+    /// null when that node was not this option's). When the text did not change the reader says nothing, and
+    /// the app speaks the row. Exact comparison, culture-invariant.
+    /// </summary>
+    internal static bool ScreenReaderReadsRow(bool treeHasFocus, bool selectedIsThisOption, string? textBefore, string textAfter)
+        => treeHasFocus && selectedIsThisOption && textBefore is not null
+           && !string.Equals(textBefore, textAfter, StringComparison.Ordinal);
 
     private static bool IsBoolean(FenixSetting s) => string.Equals(s.Type, "System.Boolean", StringComparison.Ordinal);
 

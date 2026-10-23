@@ -3,7 +3,9 @@
 // option that is not a credential, in the exact shape the Fenix EFB's own toggle sends (a string value,
 // persist false), and a Yes/No first for the options that reshape the cockpit. Shift+F2 makes a change
 // permanent (persist true) and Ctrl+F2 resets an option to the Fenix default, each only after a Yes/No
-// that defaults to No, and only for a change of the pilot's own (the EFB's own overflow menu).
+// that defaults to No, and only for a change of the pilot's own (the EFB's own overflow menu). Ctrl+F2 resets
+// a typed value too (ruling R24); F2 and Shift+F2 stay limited to on/off and choice options. A changed row
+// the screen reader reads by itself is not spoken again (ruling R25, CORE-7).
 using System.Reflection;
 using System.Windows.Forms;
 using MSFSBlindAssist.Forms.Fenix;
@@ -351,13 +353,146 @@ public class FenixOptionEditsTests
     public void Only_a_change_of_the_pilots_own_can_be_reset(string? source, bool canReset)
         => Assert.Equal(canReset, FenixOptionEdits.CanReset(S("encoder_acceleration_enabled", "true", source: source)));
 
-    [Fact] public void An_option_that_cannot_change_cannot_reset_whatever_its_source()
+    [Fact] public void An_option_the_EFB_does_not_let_you_write_cannot_reset_whatever_its_source()
     {
+        // Not writable, and the Charts provider (the EFB has no row for it), however they were overridden.
         Assert.False(FenixOptionEdits.CanReset(S("type_code", "A321", "Enum", "None", new[] { "A320", "A321" }, "UserFile", writable: false)));
-        Assert.False(FenixOptionEdits.CanReset(S("registration", "N1", "System.String", source: "UserFile")));
-        Assert.False(FenixOptionEdits.CanReset(S("printer_font_size", "10", "System.Single", "Printer", source: "Session")));
+        Assert.False(FenixOptionEdits.CanReset(S("registration", "N1", "System.String", source: "UserFile", writable: false)));
         Assert.False(FenixOptionEdits.CanReset(S("charts_provider_type", "Navigraph", "Enum", "Connections", new[] { "Navigraph", "Simulator" }, "UserFile")));
-        Assert.False(FenixOptionEdits.CanReset(S("channel_spacing_type", "Khz25", "Enum", possible: new[] { "Khz25" }, source: "Session")));
+        Assert.False(FenixOptionEdits.CanReset(S("charts_provider_type", "Navigraph", "Enum", "Connections", new[] { "Navigraph", "Simulator" }, "Session")));
+    }
+
+    // Ruling R24 (replaces R15): Ctrl+F2 resets a typed value too, as the EFB's "Reset to default" does: it
+    // checks only that the value is not synthetic, so any type of option the pilot or the session changed.
+    [Theory]
+    [InlineData("registration", "System.String", "UserFile")] [InlineData("registration", "System.String", "Session")]
+    [InlineData("default_acceleration_altitude_ft", "System.Int32", "UserFile")] [InlineData("default_acceleration_altitude_ft", "System.Int32", "Session")]
+    [InlineData("printer_font_size", "System.Single", "UserFile")] [InlineData("printer_font_size", "System.Single", "Session")]
+    [InlineData("registration", "System.String", "user")] [InlineData("registration", "System.String", "SESSION")]
+    public void A_typed_option_the_pilot_or_the_session_changed_can_be_reset(string key, string type, string source)
+        => Assert.True(FenixOptionEdits.CanReset(S(key, "10", type, source: source)));
+
+    [Theory]
+    [InlineData("registration", "System.String", "Internal")] [InlineData("registration", "System.String", "Livery")]
+    [InlineData("registration", "System.String", null)] [InlineData("registration", "System.String", "")]
+    [InlineData("default_acceleration_altitude_ft", "System.Int32", "Internal")] [InlineData("default_acceleration_altitude_ft", "System.Int32", "Livery")]
+    [InlineData("printer_font_size", "System.Single", "Default")] [InlineData("printer_font_size", "System.Single", null)]
+    public void A_typed_option_with_no_change_of_the_pilots_cannot_be_reset(string key, string type, string? source)
+        => Assert.False(FenixOptionEdits.CanReset(S(key, "10", type, source: source)));
+
+    [Fact] public void A_choice_with_one_value_can_be_reset_though_not_changed()
+    {
+        // CanChange wants two values to pick between; a reset picks nothing.
+        var one = S("channel_spacing_type", "Khz25", "Enum", possible: new[] { "Khz25" }, source: "Session");
+        Assert.False(FenixOptionEdits.CanChange(one));
+        Assert.True(FenixOptionEdits.CanReset(one));
+    }
+
+    [Fact] public void F2_and_Shift_F2_still_change_only_on_off_and_choice_options()
+    {
+        // R24 widens Ctrl+F2 only: a typed option, even one the pilot overrode, is not offered a value to pick.
+        Assert.False(FenixOptionEdits.CanChange(S("registration", "N1", "System.String", source: "UserFile")));
+        Assert.False(FenixOptionEdits.CanChange(S("default_acceleration_altitude_ft", "3000", "System.Int32", source: "UserFile")));
+        Assert.False(FenixOptionEdits.CanChange(S("printer_font_size", "10", "System.Single", "Printer", source: "Session")));
+    }
+
+    // ---- What the window says instead of acting (the F2, Shift+F2 and Ctrl+F2 guards) -------------------
+
+    const string CannotChange = "MSFS Blind Assist cannot change this option.";
+
+    static string? Refusal(FenixChangeKind kind, string label, FenixSetting option)
+        => TestCulture.Run("de-DE", () => FenixOptionEdits.RefusalText(kind, label, option));
+
+    [Theory] [InlineData(FenixChangeKind.Session)] [InlineData(FenixChangeKind.Permanent)]
+    public void F2_and_Shift_F2_refuse_a_typed_option(FenixChangeKind kind)
+        => Assert.Equal(CannotChange, Refusal(kind, "Registration", S("registration", "N1", "System.String", source: "UserFile")));
+
+    [Theory] [InlineData(FenixChangeKind.Session)] [InlineData(FenixChangeKind.Permanent)]
+    public void F2_and_Shift_F2_go_ahead_on_an_on_off_option_and_refuse_a_credential_or_a_locked_one(FenixChangeKind kind)
+    {
+        Assert.Null(Refusal(kind, "Encoder Acceleration", Encoder()));
+        Assert.Equal(CannotChange, Refusal(kind, "Hoppie Key", S("hoppie_key", "x", "Enum", "Connections", new[] { "a", "b" })));
+        Assert.Equal(CannotChange, Refusal(kind, "Type Code", S("type_code", "A321", "Enum", "None", new[] { "A320", "A321" }, writable: false)));
+    }
+
+    [Theory]
+    [InlineData("registration", "System.String", "UserFile")]
+    [InlineData("default_acceleration_altitude_ft", "System.Int32", "Session")]
+    [InlineData("printer_font_size", "System.Single", "UserFile")]
+    public void Ctrl_F2_goes_ahead_on_a_typed_option_the_pilot_changed(string key, string type, string source)
+        => Assert.Null(Refusal(FenixChangeKind.Reset, "Whatever", S(key, "10", type, source: source)));
+
+    [Fact] public void Ctrl_F2_on_an_option_with_no_change_of_the_pilots_says_so_with_its_label()
+    {
+        Assert.Equal("Registration has no change of yours to reset.",
+            Refusal(FenixChangeKind.Reset, "Registration", S("registration", "N1", "System.String", source: "Internal")));
+        Assert.Equal("Encoder Acceleration has no change of yours to reset.",
+            Refusal(FenixChangeKind.Reset, "Encoder Acceleration", S("encoder_acceleration_enabled", "true", source: "Livery")));
+        Assert.Equal("Printer Font Size has no change of yours to reset.",
+            Refusal(FenixChangeKind.Reset, "Printer Font Size", S("printer_font_size", "10", "System.Single", "Printer", source: null)));
+    }
+
+    [Fact] public void Ctrl_F2_on_a_credential_a_locked_option_or_the_Charts_provider_says_it_cannot_change_it()
+    {
+        // Before the source is looked at: these never reach "no change of yours".
+        Assert.Equal(CannotChange, Refusal(FenixChangeKind.Reset, "Hoppie Key", S("hoppie_key", "x", "System.String", "Connections", source: "UserFile")));
+        Assert.Equal(CannotChange, Refusal(FenixChangeKind.Reset, "Type Code", S("type_code", "A321", "Enum", "None", new[] { "A320", "A321" }, "Internal", writable: false)));
+        Assert.Equal(CannotChange, Refusal(FenixChangeKind.Reset, "Charts Provider", S("charts_provider_type", "Navigraph", "Enum", "Connections", new[] { "Navigraph", "Simulator" }, "UserFile")));
+    }
+
+    [Fact] public void An_option_can_be_written_unless_it_is_locked_a_credential_or_the_Charts_provider()
+    {
+        Assert.True(FenixOptionEdits.CanWrite(S("registration", "N1", "System.String")));
+        Assert.True(FenixOptionEdits.CanWrite(S("printer_font_size", "10", "System.Single", "Printer")));
+        Assert.True(FenixOptionEdits.CanWrite(Encoder()));
+        Assert.False(FenixOptionEdits.CanWrite(S("type_code", "A321", "Enum", "None", new[] { "A320", "A321" }, writable: false)));
+        Assert.False(FenixOptionEdits.CanWrite(S("hoppie_key", "x", "System.String", "Connections")));
+        Assert.False(FenixOptionEdits.CanWrite(S("charts_provider_type", "Navigraph", "Enum", "Connections", new[] { "Navigraph", "Simulator" })));
+    }
+
+    // ---- Ruling R25: a changed row the screen reader reads by itself is not spoken a second time (CORE-7) ----
+    // The re-read rewrites the focused tree row's text in place, which NVDA reads; speaking the same row again
+    // made the pilot hear it twice. It is spoken only when the reader will not have said it.
+
+    [Fact] public void A_changed_row_of_this_option_in_the_focused_tree_is_left_to_the_screen_reader()
+        => Assert.True(FenixOptionEdits.ScreenReaderReadsRow(true, true, "Encoder Acceleration: Off", "Encoder Acceleration: On"));
+
+    [Fact] public void A_row_whose_text_did_not_change_is_still_spoken()
+    {
+        // Making the current value permanent, or a reset where only the source changed: NVDA says nothing.
+        Assert.False(FenixOptionEdits.ScreenReaderReadsRow(true, true, "Encoder Acceleration: On", "Encoder Acceleration: On"));
+        Assert.False(FenixOptionEdits.ScreenReaderReadsRow(true, true, "", ""));
+    }
+
+    [Fact] public void A_row_is_spoken_when_the_tree_does_not_have_focus()
+    {
+        // F2 pressed from the Details box or Close: the reader is not on the row.
+        Assert.False(FenixOptionEdits.ScreenReaderReadsRow(false, true, "Encoder Acceleration: Off", "Encoder Acceleration: On"));
+    }
+
+    [Fact] public void A_row_is_spoken_when_the_selection_is_not_this_option()
+    {
+        // The pilot moved to another option or a group while the change was read back.
+        Assert.False(FenixOptionEdits.ScreenReaderReadsRow(true, false, "Encoder Acceleration: Off", "Encoder Acceleration: On"));
+        Assert.False(FenixOptionEdits.ScreenReaderReadsRow(false, false, "Encoder Acceleration: Off", "Encoder Acceleration: On"));
+    }
+
+    [Fact] public void A_row_is_spoken_when_its_text_before_the_write_is_not_known()
+        => Assert.False(FenixOptionEdits.ScreenReaderReadsRow(true, true, null, "Encoder Acceleration: On"));
+
+    [Fact] public void The_row_text_is_compared_exactly()
+    {
+        Assert.True(FenixOptionEdits.ScreenReaderReadsRow(true, true, "Registration: N1", "Registration: n1"));
+        Assert.True(FenixOptionEdits.ScreenReaderReadsRow(true, true, "Registration: N1", "Registration: N1 "));
+    }
+
+    [Theory] [InlineData("de-DE")] [InlineData("sv-SE")] [InlineData("tr-TR")]
+    public void Whether_the_reader_reads_the_row_does_not_depend_on_the_PC_culture(string culture)
+    {
+        // A number row as the window writes it (invariant "0.###"), compared under comma-decimal cultures.
+        Assert.True(TestCulture.Run(culture, () => FenixOptionEdits.ScreenReaderReadsRow(true, true, "Printer Font Size: 10.5", "Printer Font Size: 11")));
+        Assert.False(TestCulture.Run(culture, () => FenixOptionEdits.ScreenReaderReadsRow(true, true, "Printer Font Size: 10.5", "Printer Font Size: 10.5")));
+        Assert.True(TestCulture.Run(culture, () => FenixOptionEdits.ScreenReaderReadsRow(true, true, "I: ON", "I: on")));
     }
 
     [Theory]
@@ -517,6 +652,25 @@ public class FenixOptionEditsTests
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(form, @"private async Task SendAndReadBackAsync\("));
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(form, @"Task\.Delay\("));
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(form, @"FenixOptionEdits\.Applied\("));
+    }
+
+    [Fact] public void Ctrl_F2_is_not_stopped_by_the_on_off_and_choice_guard()
+    {
+        // R24: F2 and Shift+F2 are limited to an on/off or choice option (CanChange), Ctrl+F2 is not. The window
+        // asks FenixOptionEdits.RefusalText, which knows each key's guard, and never CanChange itself.
+        string form = FormSource();
+        Assert.DoesNotContain("CanChange(", form);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(form, @"FenixOptionEdits\.RefusalText\("));
+    }
+
+    [Fact] public void The_applied_read_back_is_spoken_only_through_the_one_screen_reader_check()
+    {
+        // R25: both places that speak an applied option's row (the read after no answer, the read after an
+        // accepted request) go through one helper that asks ScreenReaderReadsRow; nothing speaks a row directly.
+        string form = FormSource();
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(form, @"FenixOptionEdits\.ScreenReaderReadsRow\("));
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(form, @"AnnounceAppliedRow\(key,").Count);
+        Assert.DoesNotContain("AnnounceImmediate(FenixOptionCatalog.RowText(", form);
     }
 
     [Fact] public void Every_send_is_behind_a_Yes_with_No_as_the_default()
