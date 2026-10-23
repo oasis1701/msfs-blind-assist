@@ -122,9 +122,10 @@ public sealed partial class FenixCabinForm : Form
     partial void UpdateAudioControls();
 
     /// <summary>
-    /// Sets what the Doors, Temperature and Water pages' presses act on (the Doors button's text); called by
-    /// every render, also while the controls are held, as <see cref="UpdateAudioLists"/> is: these pages have
-    /// no check box or combo that could flip back.
+    /// Sets what the Doors, Temperature and Water pages' presses act on (the Doors button's text, or the button
+    /// hidden on a line without a door control); called by every render, also while the controls are held, as
+    /// <see cref="UpdateAudioLists"/> is (these pages have no check box or combo that could flip back), and by
+    /// every layout change.
     /// </summary>
     partial void UpdateControlLists();
 
@@ -349,8 +350,12 @@ public sealed partial class FenixCabinForm : Form
         => settings.FirstOrDefault(setting => string.Equals(setting.Key, key, StringComparison.Ordinal))?.Value;
 
     // Each resolve holds fresh lists, so a new layout is never compared with the old one: the render runs again.
+    // The Doors button follows at once, not a render later: a door the new layout gives no control is never offered.
     private void ResolveLayout()
-        => _layout = FenixCabinLayout.Resolve(_context.Definition.Variant.Type, _exitsSetting, _variantSetting, _slideMessageSetting);
+    {
+        _layout = FenixCabinLayout.Resolve(_context.Definition.Variant.Type, _exitsSetting, _variantSetting, _slideMessageSetting);
+        UpdateControlLists();
+    }
 
     // Raised on the UI thread when the loaded airframe changes. The settings are read again too: another
     // airframe in the same definition must not keep the previous one's doors and lavatories.

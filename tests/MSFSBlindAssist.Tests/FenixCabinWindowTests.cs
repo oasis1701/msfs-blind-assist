@@ -1140,6 +1140,16 @@ public class FenixCabinWindowTests
     private static ListBox TemperatureList(Form form) => PageList(TemperaturePage(form));
     private static ListBox WaterList(Form form) => PageList(WaterPage(form));
     private static Button DoorButton(Form form) => Descendants(DoorsPage(form)).OfType<Button>().Single();
+
+    // The Doors button, moved with its row into a holder that is visible itself, so that its Visible reads the
+    // button's own flag: a control of a window that was never shown reads as not visible. The window keeps
+    // driving it; take it once per form, after which DoorButton no longer finds it on the page.
+    private static Button DetachedDoorButton(Form form)
+    {
+        Button button = DoorButton(form);
+        new Panel().Controls.Add(button.Parent!);
+        return button;
+    }
     private static Button TemperatureButton(Form form, string text)
         => Descendants(TemperaturePage(form)).OfType<Button>().Single(button => button.Text == text);
     private static Button WaterButton(Form form, string text)
@@ -1152,7 +1162,6 @@ public class FenixCabinWindowTests
     private const string ResetTemperatures = "&Reset to the cockpit temperatures";
     private const string PreselectUp = "Preselect &up";
     private const string PreselectDown = "Preselect &down";
-    private const string NoDoorControlButton = "No door control for this line";
     private const string NotAcceptedText = "The Fenix did not accept that.";
 
     private static FenixDataValue Num(double value)
@@ -1287,9 +1296,10 @@ public class FenixCabinWindowTests
     {
         using var form = new FenixCabinForm(Context(new SpeechCapture()));
 
+        // The Doors button has no text until a line with a door control is selected, and is hidden until then.
         var pages = new (TabPage Page, string List, string[] Buttons)[]
         {
-            (DoorsPage(form), "Doors and slides", new[] { NoDoorControlButton }),
+            (DoorsPage(form), "Doors and slides", new[] { "" }),
             (TemperaturePage(form), "Cabin temperatures", new[] { ForwardWarmer, ForwardCooler, AftWarmer, AftCooler, ResetTemperatures }),
             (WaterPage(form), "Water and waste", new[] { PreselectUp, PreselectDown })
         };
@@ -1314,6 +1324,8 @@ public class FenixCabinWindowTests
             Assert.Equal(mnemonics.Length, mnemonics.Distinct().Count());
         }
         Assert.Empty(Descendants(DoorsPage(form)).OfType<CheckBox>());
+        // Nothing selected yet: no door to press, so no button in the tab order (F1).
+        Assert.False(DetachedDoorButton(form).Visible);
     }
 
     [Theory]
@@ -1358,12 +1370,13 @@ public class FenixCabinWindowTests
         });
 
     [Fact]
-    public void The_doors_button_says_what_the_selected_line_can_do()
+    public void The_doors_button_says_what_the_selected_line_can_do_and_is_hidden_where_there_is_no_control()
     {
         using var rig = new ControlsRig();
         FenixCabinForm form = rig.Form;
         FenixCabinLayout layout = DefaultLayout();
-        string ButtonText() => DoorButton(form).Text;
+        Button button = DetachedDoorButton(form);
+        string ButtonText() => button.Text;
 
         // The A320 lists its four corner doors, the overwing slides between them, and three cargo doors.
         Assert.Equal(
@@ -1373,6 +1386,7 @@ public class FenixCabinWindowTests
 
         // The list opens on Door 1 left, whose control the Fenix has not said.
         Assert.Equal(0, DoorsList(form).SelectedIndex);
+        Assert.True(button.Visible);
         Assert.Equal("&Open door 1 left", ButtonText());
 
         // Open (2) reads Close; armed (0) and disarmed (1) read Open; so does a control that stops being known.
@@ -1391,14 +1405,17 @@ public class FenixCabinWindowTests
         SelectDoorLine(form, layout, "door.d4r");
         Assert.Equal("&Close door 4 right", ButtonText());
 
-        // An overwing slide has no control to press.
+        // An overwing slide has no control to press: the button leaves the tab order (F1), on every render too.
         SelectDoorLine(form, layout, "slide.owl");
-        Assert.Equal(NoDoorControlButton, ButtonText());
+        Assert.False(button.Visible);
+        form.Render();
+        Assert.False(button.Visible);
         SelectDoorLine(form, layout, "slide.owr");
-        Assert.Equal(NoDoorControlButton, ButtonText());
+        Assert.False(button.Visible);
 
         // A cargo door: Open until the Fenix says it is open; a moving door keeps the word of its flag.
         SelectDoorLine(form, layout, "cargo.forward");
+        Assert.True(button.Visible);
         Assert.Equal("&Open the forward cargo door", ButtonText());
         Set(form, (FenixCabinNames.CargoForward, True));
         Assert.Equal("&Close the forward cargo door", ButtonText());
@@ -1416,10 +1433,16 @@ public class FenixCabinWindowTests
         Assert.Equal("&Open the bulk cargo door", ButtonText());
         Set(form, (FenixCabinNames.CargoBulk, True));
         Assert.Equal("&Close the bulk cargo door", ButtonText());
+        Assert.True(button.Visible);
 
         // No selection: nothing to press.
         DoorsList(form).SelectedIndex = -1;
-        Assert.Equal(NoDoorControlButton, ButtonText());
+        Assert.False(button.Visible);
+
+        // Back on a door: shown again with its own word.
+        SelectDoorLine(form, layout, "door.d4r");
+        Assert.True(button.Visible);
+        Assert.Equal("&Close door 4 right", ButtonText());
 
         // Setting the button is the render's doing, not the pilot's: nothing was said or sent.
         Assert.Empty(rig.Speech.All);
@@ -1462,35 +1485,65 @@ public class FenixCabinWindowTests
         FenixCabinLayout a320 = FenixCabinLayout.Resolve(MSFSBlindAssist.Aircraft.FenixAircraftType.A320, "DoubleFullsize", null, null);
         using (var rig = new ControlsRig(layout: a320))
         {
+            Button button = DetachedDoorButton(rig.Form);
             Set(rig.Form, (FenixCabinNames.DoorControl("d2l"), Num(2)), (FenixCabinNames.DoorControl("d1l"), Num(2)));
             SelectDoorLine(rig.Form, a320, "door.d1l");
-            Assert.Equal("&Close door 1 left", DoorButton(rig.Form).Text);
+            Assert.True(button.Visible);
+            Assert.Equal("&Close door 1 left", button.Text);
             SelectDoorLine(rig.Form, a320, "door.d2l");
 
-            Assert.Equal(NoDoorControlButton, DoorButton(rig.Form).Text);
-            Click(DoorButton(rig.Form));
-            Assert.Equal(new[] { "No door control for this line." }, rig.Speech.Interrupts);
+            // Hidden, so no key, click or mnemonic reaches it (F1). A press forced on it anyway says and sends nothing.
+            Assert.False(button.Visible);
+            Click(button);
+            Assert.Empty(rig.Speech.All);
             Assert.Equal(0, rig.Gateway.Sent);
         }
 
         FenixCabinLayout a321 = FenixCabinLayout.Resolve(MSFSBlindAssist.Aircraft.FenixAircraftType.A321, null, null, null);
         using (var rig = new ControlsRig(layout: a321))
         {
+            Button button = DetachedDoorButton(rig.Form);
             Set(rig.Form, (FenixCabinNames.DoorControl("d2l"), Num(2)), (FenixCabinNames.DoorControl("d3r"), Num(0)));
             SelectDoorLine(rig.Form, a321, "door.d2l");
-            Assert.Equal("&Close door 2 left", DoorButton(rig.Form).Text);
+            Assert.True(button.Visible);
+            Assert.Equal("&Close door 2 left", button.Text);
             SelectDoorLine(rig.Form, a321, "door.d3r");
-            Assert.Equal("&Open door 3 right", DoorButton(rig.Form).Text);
+            Assert.True(button.Visible);
+            Assert.Equal("&Open door 3 right", button.Text);
         }
+    }
+
+    [Fact]
+    public void A_layout_change_shows_or_hides_the_doors_button_before_the_next_render()
+    {
+        // The A321's door 2 left has a control; the airframe changes to an A320, which has no door 2: the button
+        // hides as the layout changes, not a render later, so a press never reaches a line it has no control for.
+        var gateway = new AudioGateway();
+        using var data = new FenixDataService(gateway);
+        var context = new FenixWindowContext(new MSFSBlindAssist.Aircraft.FenixA320Definition(), data, null!, new SpeechCapture(), null!);
+        using var form = new FenixCabinForm(context);
+        BindingFlags instance = BindingFlags.Instance | BindingFlags.NonPublic;
+        FenixCabinLayout a321 = FenixCabinLayout.Resolve(MSFSBlindAssist.Aircraft.FenixAircraftType.A321, null, null, null);
+        typeof(FenixCabinForm).GetField("_layout", instance)!.SetValue(form, a321);
+        form.Render();
+        Button button = DetachedDoorButton(form);
+        SelectDoorLine(form, a321, "door.d2l");
+        Assert.True(button.Visible);
+
+        // The definition's variant is still Unknown, which lays the cabin out as an A320.
+        typeof(FenixCabinForm).GetMethod("OnVariantChanged", instance)!
+            .Invoke(form, new object?[] { null, MSFSBlindAssist.Aircraft.FenixVariant.Unknown });
+
+        Assert.False(button.Visible);
     }
 
     [Fact]
     public void Every_press_on_the_new_pages_says_the_Fenix_is_not_answering_first_and_sends_nothing()
     {
-        // The Fenix down (R13): the same reason from every button, whatever else is wrong; the Doors list
-        // is on a line with no control, which would otherwise say so.
+        // The Fenix down (R13): the same reason from every button, whatever else is wrong; the Doors list is
+        // on a door whose height and control are not known either, which would otherwise say so.
         using var rig = new ControlsRig(answering: false);
-        SelectDoorLine(rig.Form, DefaultLayout(), "slide.owl");
+        SelectDoorLine(rig.Form, DefaultLayout(), "door.d1l");
         Button[] buttons = new[] { DoorsPage(rig.Form), TemperaturePage(rig.Form), WaterPage(rig.Form) }
             .SelectMany(page => Descendants(page).OfType<Button>())
             .ToArray();
@@ -1604,16 +1657,18 @@ public class FenixCabinWindowTests
     }
 
     [Fact]
-    public void Door_presses_refuse_an_unknown_state_a_moving_cargo_door_and_a_line_without_a_control()
+    public void Door_presses_refuse_an_unknown_state_and_a_moving_cargo_door()
     {
         using var rig = new ControlsRig();
         FenixCabinForm form = rig.Form;
         FenixCabinLayout layout = DefaultLayout();
+        Button button = DetachedDoorButton(form);
         var expected = new List<string>();
         void Presses(string line, string refusal)
         {
             SelectDoorLine(form, layout, line);
-            Click(DoorButton(form));
+            Assert.True(button.Visible, line);
+            Click(button);
             expected.Add(refusal);
             Assert.Equal(expected, rig.Speech.Interrupts);
         }
@@ -1635,12 +1690,17 @@ public class FenixCabinWindowTests
         Set(form, (FenixCabinNames.CargoAft, FenixDataValue.Unknown));
         Presses("cargo.aft", "The aft cargo door state is not known.");
 
-        // An overwing slide and no selection at all.
-        Presses("slide.owl", "No door control for this line.");
-        Presses("slide.owr", "No door control for this line.");
+        // An overwing slide and no selection at all: the button is hidden (F1), and a press forced on it anyway
+        // says nothing.
+        foreach (string line in new[] { "slide.owl", "slide.owr" })
+        {
+            SelectDoorLine(form, layout, line);
+            Assert.False(button.Visible, line);
+            Click(button);
+        }
         DoorsList(form).SelectedIndex = -1;
-        Click(DoorButton(form));
-        expected.Add("No door control for this line.");
+        Assert.False(button.Visible);
+        Click(button);
         Assert.Equal(expected, rig.Speech.Interrupts);
 
         Assert.Equal(0, rig.Gateway.Sent);
@@ -1658,6 +1718,7 @@ public class FenixCabinWindowTests
         using var rig = new ControlsRig();
         FenixCabinForm form = rig.Form;
         FenixCabinLayout layout = DefaultLayout();
+        Button button = DetachedDoorButton(form);
         Set(form,
             (FenixCabinNames.DoorControl("d1l"), Num(0)),
             (FenixCabinNames.CargoForward, False), (FenixCabinNames.CargoFwdMoving, False),
@@ -1666,7 +1727,9 @@ public class FenixCabinWindowTests
         void Presses(string line, string refusal)
         {
             SelectDoorLine(form, layout, line);
-            Click(DoorButton(form));
+            // In flight the button stays offered on a door or cargo line: the press says why it cannot act (F1).
+            Assert.True(button.Visible, line);
+            Click(button);
             expected.Add(refusal);
             Assert.Equal(expected, rig.Speech.Interrupts);
         }
@@ -1675,30 +1738,30 @@ public class FenixCabinWindowTests
         Set(form, (FenixCabinNames.AltitudeAboveGround, Num(101)));
         SelectDoorLine(form, layout, "door.d1l");
         // The button text does not change in flight.
-        Assert.Equal("&Open door 1 left", DoorButton(form).Text);
+        Assert.Equal("&Open door 1 left", button.Text);
         Presses("door.d1l", OnlyOnTheGround);
         Presses("cargo.forward", OnlyOnTheGround);
         Presses("door.d4r", OnlyOnTheGround);
         Presses("cargo.aft", OnlyOnTheGround);
-        // A line with no control still says so.
-        Presses("slide.owl", "No door control for this line.");
+        // A line with no control has no button, in flight as on the ground.
+        SelectDoorLine(form, layout, "slide.owl");
+        Assert.False(button.Visible);
 
         // The Fenix answering without a height: not known (R14), not assumed on the ground.
         Set(form, (FenixCabinNames.AltitudeAboveGround, FenixDataValue.Unknown));
         Presses("door.d1l", HeightNotKnown);
         Presses("cargo.forward", HeightNotKnown);
-        Presses("slide.owr", "No door control for this line.");
         Assert.Equal(0, rig.Gateway.Sent);
         Assert.Equal(rig.Speech.Interrupts, rig.Speech.All);
 
         // 100 ft is the EFB's ground: the door and the cargo door write.
         Set(form, (FenixCabinNames.AltitudeAboveGround, Num(100)));
         SelectDoorLine(form, layout, "door.d1l");
-        Click(DoorButton(form));
+        Click(button);
         WaitFor(() => rig.Gateway.Writes.Count == 1, "the door write");
         AssertSent(rig.Gateway.Writes[0], new FenixCabinWrite(FenixCabinWriteKind.Int, FenixCabinNames.DoorControl("d1l"), 2));
         SelectDoorLine(form, layout, "cargo.forward");
-        Click(DoorButton(form));
+        Click(button);
         WaitFor(() => rig.Gateway.Writes.Count == 2, "the cargo write");
         AssertSent(rig.Gateway.Writes[1], new FenixCabinWrite(FenixCabinWriteKind.Bool, FenixCabinNames.CargoForward, true));
         Assert.Equal(expected, rig.Speech.Interrupts);
@@ -1707,13 +1770,19 @@ public class FenixCabinWindowTests
     [Fact]
     public void A_door_press_says_the_Fenix_is_not_answering_before_the_height()
     {
-        // Nothing answered, so the height is not known either: the not-answering reason comes first (R13).
+        // Nothing answered, so the height is not known either: the not-answering reason comes first (R13). The
+        // button is offered all the same on a door or cargo line (F1), so the pilot hears why.
         using var rig = new ControlsRig(answering: false);
+        Button button = DetachedDoorButton(rig.Form);
         SelectDoorLine(rig.Form, DefaultLayout(), "door.d1l");
+        Assert.True(button.Visible);
+        Assert.Equal("&Open door 1 left", button.Text);
 
-        Click(DoorButton(rig.Form));
+        Click(button);
         SelectDoorLine(rig.Form, DefaultLayout(), "cargo.forward");
-        Click(DoorButton(rig.Form));
+        Assert.True(button.Visible);
+        Assert.Equal("&Open the forward cargo door", button.Text);
+        Click(button);
 
         Assert.Equal(new[] { NotAnsweringText, NotAnsweringText }, rig.Speech.Interrupts);
         Assert.Equal(0, rig.Gateway.Sent);

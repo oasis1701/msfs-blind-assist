@@ -13,6 +13,11 @@ namespace MSFSBlindAssist.Forms.Fenix;
 // (CORE-7): a button is read by its own text, so every press that writes reads its line back, which the
 // reader cannot say: the temperature, the water preselect and the door's state. The temperature and the preselect say
 // "unchanged" when the line does not move; a door says nothing then.
+//
+// The Doors button is offered only on a line it can press (owner, 2026-10-23): on an overwing slide, a door the
+// EFB does not list, or with nothing selected it is hidden, so it leaves the tab order and no key, click or
+// mnemonic reaches it. On a door or cargo line it stays offered in flight and while the Fenix does not answer:
+// the press then says why it cannot act.
 public sealed partial class FenixCabinForm
 {
     // The lines a press waits on (FenixCabinLines).
@@ -23,7 +28,6 @@ public sealed partial class FenixCabinForm
     private const string DoorLinePrefix = "door.";
 
     private const string TemperatureUnavailableText = "Temperature control is not available.";
-    private const string NoDoorControlText = "No door control for this line";
 
     // A door takes its time to open or close: its read-back waits longer than the others.
     private static readonly TimeSpan DoorReadbackWindow = TimeSpan.FromSeconds(30);
@@ -34,6 +38,9 @@ public sealed partial class FenixCabinForm
 
     private ListBox _doorsList = null!;
     private Button _doorButton = null!;
+    // Whether the Doors button was last offered (shown) or hidden. Tracked here, never read back from
+    // Visible, which says false for every control while its page or the window is not showing.
+    private bool _doorButtonOffered;
 
     // ---- Building -------------------------------------------------------------------------------
 
@@ -42,8 +49,10 @@ public sealed partial class FenixCabinForm
         // Each page's value list fills what its row of buttons, docked to the bottom, leaves. Buttons have
         // no AccessibleName (ruling R12): the reader reads their text, also while the Doors button's changes.
         _doorsList = AddLineList(doors, "Doors and slides");
-        _doorButton = AddButtonRow(doors, (NoDoorControlText, PressDoor))[0];
-        // The button says what the selected line can do, as soon as the pilot moves to it.
+        // No text and hidden until a line with a door control is selected (UpdateDoorButton).
+        _doorButton = AddButtonRow(doors, ("", PressDoor))[0];
+        _doorButton.Visible = false;
+        // The button says what the selected line can do, or leaves, as soon as the pilot moves to the line.
         _doorsList.SelectedIndexChanged += (_, _) => UpdateDoorButton();
 
         AddLineList(temperature, "Cabin temperatures");
@@ -84,8 +93,9 @@ public sealed partial class FenixCabinForm
         return created;
     }
 
-    // On every render, also while the controls are held (the shell calls it before the hold): the Doors button
-    // says what its press does, so it follows the Fenix's door and cargo values at once, as the list line does.
+    // On every render, also while the controls are held (the shell calls it before the hold), and on every layout
+    // change: the Doors button says what its press does, so it follows the Fenix's door and cargo values at once,
+    // as the list line does, and is never offered on a line the current layout gives no control.
     partial void UpdateControlLists() => UpdateDoorButton();
 
     // ---- Temperature ----------------------------------------------------------------------------
@@ -205,9 +215,10 @@ public sealed partial class FenixCabinForm
     // A name in mid-sentence: "Door 1 left" is "door 1 left", "Forward cargo door" is "forward cargo door".
     private static string Lower(string name) => char.ToLowerInvariant(name[0]) + name[1..];
 
-    // The Doors button's text for a line. Close when the Fenix says the door is open, Open otherwise, also
-    // when the value is unknown: the press then refuses instead of writing.
-    private string DoorButtonText(FenixCabinLine? line)
+    // The Doors button's text for a line, or null when the line has no door control (the button is hidden
+    // then). Close when the Fenix says the door is open, Open otherwise, also when the value is unknown: the
+    // press then refuses instead of writing.
+    private string? DoorButtonText(FenixCabinLine? line)
     {
         if (GroundDoorOf(line) is { } door)
         {
@@ -217,19 +228,24 @@ public sealed partial class FenixCabinForm
         }
         if (CargoOf(line) is { } cargo)
             return (_cache.Bool(cargo.OpenFlag) == true ? "&Close the " : "&Open the ") + Lower(cargo.Name);
-        return NoDoorControlText;
+        return null;
     }
 
+    // Shows the button with what its press does, or hides it on a line with no door control. A hidden button
+    // keeps its last text; nothing reads it until it is shown with a new one.
     private void UpdateDoorButton()
     {
-        string text = DoorButtonText(SelectedDoorLine());
-        if (_doorButton.Text != text) _doorButton.Text = text;
+        string? text = DoorButtonText(SelectedDoorLine());
+        if (text != null && _doorButton.Text != text) _doorButton.Text = text;
+        bool offered = text != null;
+        if (offered == _doorButtonOffered) return;
+        _doorButtonOffered = offered;
+        _doorButton.Visible = offered;
     }
 
     // Opens or closes the door of the selected line, from what the Fenix says now (never from the button's
     // text, which may be a render behind). The read-back is the door's line, which says open or closed.
-    // Order: the Fenix not answering, a line without a control, the height (R16), then the door's own
-    // unknown or moving state.
+    // Order: the Fenix not answering, the height (R16), then the door's own unknown or moving state.
     private void PressDoor()
     {
         if (!_cache.AnyKnown)
@@ -240,11 +256,9 @@ public sealed partial class FenixCabinForm
         FenixCabinLine? line = SelectedDoorLine();
         (string DataKey, string Name)? groundDoor = GroundDoorOf(line);
         FenixCabinCargoDoor? cargoDoor = CargoOf(line);
-        if (groundDoor == null && cargoDoor == null)
-        {
-            Refuse("No door control for this line.");
-            return;
-        }
+        // Not reachable from the window: the button is hidden on such a line (UpdateDoorButton runs on every
+        // selection, render and layout change), and a hidden button takes no key, click or mnemonic.
+        if (groundDoor == null && cargoDoor == null) return;
         if (RefuseOffTheGround()) return;
 
         if (groundDoor is { } door)
