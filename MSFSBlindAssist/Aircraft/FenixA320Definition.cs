@@ -5691,6 +5691,17 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             },
 
             // ========== COCKPIT DOOR PANEL ==========
+            // The door itself, as the First Officer closes it before start and opens it at shutdown
+            // (FenixActionExecutor.SetCockpitDoor; a model L:var, 0 closed / 1 open). Not announced: the
+            // pedestal "Cockpit Door Open" light (I_PED_COCKPIT_DOOR_U) already speaks a change.
+            ["S_COCKPIT_DOOR"] = new SimConnect.SimVarDefinition
+            {
+                Name = "S_COCKPIT_DOOR",
+                DisplayName = "Cockpit Door",
+                Type = SimConnect.SimVarType.LVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
+            },
             // VIDEO
             ["S_OH_COCKPIT_DOOR_VIDEO"] = new SimConnect.SimVarDefinition
             {
@@ -8770,7 +8781,8 @@ public partial class FenixA320Definition : BaseAircraftDefinition
 
             ["Cockpit Door"] = new List<string>
             {
-                // Cockpit Door Controls (1 control)
+                // Cockpit Door Controls (2 controls)
+                "S_COCKPIT_DOOR",
                 "S_OH_COCKPIT_DOOR_VIDEO"
             },
 
@@ -10558,6 +10570,13 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             }
 
             // ========== COCKPIT DOOR PANEL CONTROLS ==========
+            // The door: the same write as the First Officer's (FenixActionExecutor.SetCockpitDoor)
+            if (varKey == "S_COCKPIT_DOOR")
+            {
+                simConnect.SetLVar("S_COCKPIT_DOOR", value);
+                return true;
+            }
+
             // VIDEO
             if (varKey == "S_OH_COCKPIT_DOOR_VIDEO")
             {
