@@ -501,7 +501,8 @@ public sealed class FenixDocumentsForm : Form
         if (IsDisposed) return;
         if (_listed.Count == 0)
         {
-            _announcer.AnnounceImmediate(FenixDocumentTexts.NoPins);
+            // Pins unknown (the Fenix did not answer) is not the same as no pins.
+            _announcer.AnnounceImmediate(_watcher.Current == null ? FenixDocumentTexts.NoAnswer : FenixDocumentTexts.NoPins);
             return;
         }
         _pinCycle = (_pinCycle + 1) % _listed.Count;
@@ -864,7 +865,7 @@ public sealed class FenixDocumentsForm : Form
         try
         {
             IReadOnlyList<FenixSetting> settings = await _data.GetSettingsAsync(ct);
-            if (IsDisposed) return;
+            if (_tornDown || IsDisposed) return;
             IReadOnlyList<FenixPinnedDocument>? pins = FenixDocumentPins.FromSettings(settings);
             if (pins == null)
             {
@@ -876,7 +877,7 @@ public sealed class FenixDocumentsForm : Form
             bool wantPinned = !pins.Any(p => string.Equals(p.Path, path, StringComparison.Ordinal));
             IReadOnlyList<FenixPinnedDocument> updated = FenixDocumentPins.Toggle(pins, path);
             var data = await _data.QueryAsync(FenixDocumentPins.SetSettingDocument, FenixDocumentPins.Variables(FenixDocumentPins.Serialize(updated)), ct);
-            if (IsDisposed) return;
+            if (_tornDown || IsDisposed) return;
             if (!FenixDocumentPins.Succeeded(data))
             {
                 Log.Debug(LogCategory, $"pin {path}: not accepted");
@@ -890,7 +891,7 @@ public sealed class FenixDocumentsForm : Form
             FenixPinReadBack outcome = await FenixDocumentPins.AwaitStateAsync(
                 async t => { reads++; return await _data.GetSettingsAsync(t); },
                 path, wantPinned, TimeSpan.FromMilliseconds(250), 16, Task.Delay, ct);
-            if (IsDisposed) return;
+            if (_tornDown || IsDisposed) return;
             Log.Debug(LogCategory, $"pin {path}: wanted {wantPinned}, {outcome} after {reads} reads, {pins.Count} pins before");
             _announcer.AnnounceImmediate(outcome switch
             {
@@ -902,17 +903,22 @@ public sealed class FenixDocumentsForm : Form
             try
             {
                 await _watcher.PollOnceAsync(ct);
-                if (IsDisposed) return;
+                if (_tornDown || IsDisposed) return;
             }
             catch (Exception ex)
             {
                 Log.Debug(LogCategory, $"pin refresh failed: {ex.GetType().Name}");
             }
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The window is closing (Dispose cancels the token): nothing is spoken.
+            return;
+        }
         catch (Exception ex)
         {
             Log.Debug(LogCategory, $"pin {path} failed: {ex.GetType().Name}: {ex.Message}");
-            if (!IsDisposed) _announcer.AnnounceImmediate(FenixDocumentPins.NotAccepted);
+            if (!_tornDown && !IsDisposed) _announcer.AnnounceImmediate(FenixDocumentPins.NotAccepted);
         }
         finally
         {

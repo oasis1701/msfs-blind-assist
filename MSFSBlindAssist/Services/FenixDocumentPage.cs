@@ -88,10 +88,12 @@ public static class FenixDocumentPage
         // 0. Served meta tags go. A meta refresh in a pilot's own Markdown is the one navigation the policy
         // cannot stop, and the reader would hand an http/https target to the default browser without a key
         // press. The page's own charset and policy metas are added after the rewrite, so they stay.
-        string s = MetaTag.Replace(html, "");
+        // Each match becomes a space, not nothing: removing it could join its neighbours into a new meta
+        // ("<me<meta>ta ..."); with the space the leftover "<me ta ...>" is an inert unknown element.
+        string s = MetaTag.Replace(html, " ");
 
         // 1. Flight phases: the EFB draws them as a picture.
-        s = PhasesPicture.Replace(s,m => "<span class=\"phases\">Flight phases: " + PhaseList(m.Groups[1].Value) + "</span>");
+        s = PhasesPicture.Replace(s, m => "<span class=\"phases\">Flight phases: " + PhaseList(m.Groups[1].Value) + "</span>");
 
         // 2. Checklist lines: a tick box on the page, a plain line in the text.
         s = ChecklistLine.Replace(s, m =>

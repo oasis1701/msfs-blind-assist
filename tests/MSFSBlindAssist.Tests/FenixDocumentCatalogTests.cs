@@ -56,6 +56,9 @@ public class FenixDocumentCatalogTests
         Assert.Empty(FenixDocumentIndex.Parse("{\"items\":[]}")!);
     }
 
+    [Fact] public void Parse_keeps_a_date_shaped_path_as_text()
+        => Assert.Equal("2026-10-22", Assert.Single(FenixDocumentIndex.Parse("{\"items\":[{\"path\":\"2026-10-22\"}]}")!).Path);
+
     [Theory] [InlineData(null)] [InlineData("")] [InlineData("not json")] [InlineData("[]")] [InlineData("{\"items\":null}")]
     public void Parse_refuses_what_is_not_a_list(string? json) => Assert.Null(FenixDocumentIndex.Parse(json));
 

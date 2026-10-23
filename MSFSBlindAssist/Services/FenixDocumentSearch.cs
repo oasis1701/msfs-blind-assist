@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.RegularExpressions;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace MSFSBlindAssist.Services;
@@ -20,8 +21,9 @@ public static class FenixDocumentSearch
     public static IReadOnlyList<FenixDocumentSearchResult>? Parse(string? json)
     {
         if (string.IsNullOrWhiteSpace(json)) return null;
-        JToken root;
-        try { root = JToken.Parse(json); }
+        JToken? root;
+        // DateParseHandling.None: a date-shaped string stays a string.
+        try { root = JsonConvert.DeserializeObject<JToken>(json, new JsonSerializerSettings { DateParseHandling = DateParseHandling.None }); }
         catch (Exception) { return null; }
         if (root is not JArray array) return null;
 

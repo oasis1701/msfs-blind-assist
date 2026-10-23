@@ -20,12 +20,18 @@ public class FenixDocumentSearchTests
     [Theory] [InlineData(null)] [InlineData("{}")] [InlineData("oops")]
     public void No_answer_is_null(string? json) => Assert.Null(FenixDocumentSearch.Parse(json));
 
+    [Fact] public void A_date_shaped_snippet_stays_text()
+        => Assert.Equal("Checklists: 2026-10-22", FenixDocumentSearch.ResultText(
+            Assert.Single(FenixDocumentSearch.Parse("[{\"path\":\"fenix/Checklists.md\",\"snippet\":\"2026-10-22\"}]")!)));
+
     [Fact] public void Nothing_found_is_empty() => Assert.Empty(FenixDocumentSearch.Parse("[]")!);
 
     [Theory] [InlineData("de-DE")] [InlineData("en-US")]
     public void Texts_read_the_same_everywhere(string culture) => TestCulture.Run(culture, () =>
     {
-        Assert.Equal("772 documents, 1 pinned. Enter opens, F6 moves between the list and the document, Control+P opens the pinned document, Escape closes.", FenixDocumentTexts.Ready(772, 1));
+        Assert.Equal("772 documents, 1 pinned. Enter opens, F6 moves between the document, the list and the search box, Control+F searches, Control+P opens the pinned document, Control+D pins or unpins, Escape closes.", FenixDocumentTexts.Ready(772, 1));
+        Assert.Equal("Pinned (0)", FenixDocumentTexts.PinnedNode(0));
+        Assert.Equal("Pinned (12)", FenixDocumentTexts.PinnedNode(12));
         Assert.Equal("Refreshed: 1772 documents, 0 pinned.", FenixDocumentTexts.Refreshed(1772, 0));
         Assert.Equal("Search results for \"spd brk\" (10)", FenixDocumentTexts.ResultsNode("spd brk", 10));
         Assert.Equal("F/CTL SPD BRK DISAGREE, ECAM > F/CTL", FenixDocumentTexts.PinnedItem("fenix/ECAM/F__CTL/F__CTL_SPD_BRK_DISAGREE.md", null));

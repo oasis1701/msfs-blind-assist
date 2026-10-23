@@ -1,3 +1,4 @@
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace MSFSBlindAssist.Services;
@@ -24,10 +25,11 @@ public static class FenixDocumentIndex
     public static IReadOnlyList<FenixDocumentItem>? Parse(string? json)
     {
         if (string.IsNullOrWhiteSpace(json)) return null;
-        JObject root;
-        try { root = JObject.Parse(json); }
+        JToken? root;
+        // DateParseHandling.None: a date-shaped string stays a string.
+        try { root = JsonConvert.DeserializeObject<JToken>(json, new JsonSerializerSettings { DateParseHandling = DateParseHandling.None }); }
         catch (Exception) { return null; }
-        if (root["items"] is not JArray array) return null;
+        if (root is not JObject || root["items"] is not JArray array) return null;
 
         var items = new List<FenixDocumentItem>();
         foreach (var token in array)

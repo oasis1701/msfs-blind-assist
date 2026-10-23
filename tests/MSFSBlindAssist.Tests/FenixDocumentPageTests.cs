@@ -36,7 +36,13 @@ public class FenixDocumentPageTests
             "<p>x</p><meta http-equiv=\"refresh\" content=\"0;url=http://example.com\"><META HTTP-EQUIV=\"Refresh\" content=\"0;url=https://example.com\">");
         Assert.DoesNotContain("refresh", page, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("example.com", page, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(1, Regex.Matches(page, "Content-Security-Policy").Count);
+        Assert.Single(Regex.Matches(page, "Content-Security-Policy"));
+        Assert.Equal(2, Regex.Matches(page, "<meta\\b", RegexOptions.IgnoreCase).Count);
+
+        // Nested: removing the inner tag must not join "<me" and "ta ..." into a working meta.
+        string nested = FenixDocumentPage.Build("my-documents/x.md",
+            "<p>x</p><me<meta>ta http-equiv=\"refresh\" content=\"0;url=https://example.com\">");
+        Assert.Equal(2, Regex.Matches(nested, "<meta\\b", RegexOptions.IgnoreCase).Count);
     }
 
     [Theory]

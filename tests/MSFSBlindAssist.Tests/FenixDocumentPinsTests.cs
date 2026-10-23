@@ -54,7 +54,12 @@ public class FenixDocumentPinsTests
         var pins = new[] { P(SpdBrk, 0) };
         Assert.Equal(new[] { P("fenix/Checklists.md"), P(SpdBrk, 0) }, FenixDocumentPins.Toggle(pins, "fenix/Checklists.md"));
         Assert.Empty(FenixDocumentPins.Toggle(new[] { P(SpdBrk, 0), P(SpdBrk) }, SpdBrk));
+        Assert.Equal(new[] { P(Smoke, 0) }, FenixDocumentPins.Toggle(new[] { P(SpdBrk), P(Smoke, 0) }, SpdBrk));
     }
+
+    [Fact] public void Parse_keeps_a_date_shaped_label_as_text()
+        => Assert.Equal(new[] { new FenixPinnedDocument("fenix/Checklists.md", null, "2026-10-22T10:00:00") },
+            FenixDocumentPins.Parse("[{\"path\":\"fenix/Checklists.md\",\"label\":\"2026-10-22T10:00:00\"}]"));
 
     [Theory] [InlineData("de-DE")] [InlineData("en-US")]
     public void Serialize_writes_what_the_EFB_writes(string culture) => Assert.Equal(

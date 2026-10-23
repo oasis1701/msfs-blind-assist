@@ -23,7 +23,7 @@ public static class FenixDocumentTexts
     private static string N(int n) => n.ToString(CultureInfo.InvariantCulture);
 
     public static string Ready(int documents, int pinned)
-        => $"{N(documents)} documents, {N(pinned)} pinned. Enter opens, F6 moves between the list and the document, Control+P opens the pinned document, Escape closes.";
+        => $"{N(documents)} documents, {N(pinned)} pinned. Enter opens, F6 moves between the document, the list and the search box, Control+F searches, Control+P opens the pinned document, Control+D pins or unpins, Escape closes.";
 
     public static string Refreshed(int documents, int pinned)
         => $"Refreshed: {N(documents)} documents, {N(pinned)} pinned.";

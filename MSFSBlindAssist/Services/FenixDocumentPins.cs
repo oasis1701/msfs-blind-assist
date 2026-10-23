@@ -24,7 +24,8 @@ public static class FenixDocumentPins
         if (string.IsNullOrWhiteSpace(value)) return Array.Empty<FenixPinnedDocument>();
         try
         {
-            JToken root = JToken.Parse(value);
+            // DateParseHandling.None: a date-shaped label stays a string (Ctrl+D rewrites the whole setting).
+            JToken? root = JsonConvert.DeserializeObject<JToken>(value, new JsonSerializerSettings { DateParseHandling = DateParseHandling.None });
             if (root is not JArray array) return Array.Empty<FenixPinnedDocument>();
 
             var pins = new List<FenixPinnedDocument>();
