@@ -714,6 +714,9 @@ public class SimBriefService
         var prm = doc.SelectSingleNode("//params");
         string requestId = V(prm, "request_id");
         ofp.PlanId = requestId.Length > 0 ? requestId : V(prm, "time_generated");
+        // The pilot's weight unit for this plan (fuel, weights, nav log, TLR) lives in params,
+        // not general; the general object has no units field.
+        ofp.Units = V(prm, "units").ToUpperInvariant() is "KGS" or "KG" ? "kgs" : "lbs";
 
         // ── General ──────────────────────────────────────────────────────────
         var gen = doc.SelectSingleNode("//general");
@@ -735,7 +738,6 @@ public class SimBriefService
             ofp.Passengers      = V(gen, "passengers");
             ofp.AvgWindComp     = V(gen, "avg_wind_comp");
             ofp.AvgIsaDev       = V(gen, "avg_temp_dev");
-            ofp.Units           = V(gen, "units").ToUpperInvariant() is "KGS" or "KG" ? "kgs" : "lbs";
             ofp.StepClimbString = V(gen, "stepclimb_string");
         }
 

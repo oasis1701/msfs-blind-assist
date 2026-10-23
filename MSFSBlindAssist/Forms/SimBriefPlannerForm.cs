@@ -2,6 +2,7 @@ using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Controls;
 using MSFSBlindAssist.Models;
 using MSFSBlindAssist.Services;
+using MSFSBlindAssist.Utils;
 using TreeView = MSFSBlindAssist.Controls.NativeAccessibleTreeView;
 
 namespace MSFSBlindAssist.Forms;
@@ -1277,7 +1278,7 @@ public class SimBriefPlannerForm : Form
         TlrRow(sb, "Runway surface",  string.IsNullOrEmpty(surface) ? "" : surface);
         TlrRow(sb, "Wind",            TlrFmtWind(TlrV(vals, "PWIND")));
         TlrRow(sb, "OAT",             TlrV(vals, "POAT"),  "°C");
-        TlrRow(sb, "QNH",             TlrV(vals, "PQNH"),  " hPa");
+        TlrRow(sb, "QNH",             TlrFmtQnh(TlrV(vals, "PQNH")));
         TlrRow(sb, "Limiting factor", TlrFmtLimit(TlrV(vals, "LIMIT")));
         if (notes.Count > 0)
         {
@@ -1351,7 +1352,7 @@ public class SimBriefPlannerForm : Form
         TlrRow(sb, "Runway surface",   string.IsNullOrEmpty(surface) ? "" : surface);
         TlrRow(sb, "Wind",             TlrFmtWind(TlrV(vals, "PWIND")));
         TlrRow(sb, "OAT",              TlrV(vals, "POAT"), "°C");
-        TlrRow(sb, "QNH",              TlrV(vals, "PQNH"), " hPa");
+        TlrRow(sb, "QNH",              TlrFmtQnh(TlrV(vals, "PQNH")));
         TlrRow(sb, "Planned landing wt", TlrFmtWt(TlrV(vals, "PLDW"), units));
         TlrRow(sb, "Limiting factor",  TlrFmtLimit(TlrV(vals, "LIMIT")));
         if (notes.Count > 0)
@@ -1689,6 +1690,15 @@ public class SimBriefPlannerForm : Form
         return $"{displayed:N0} {units}";
     }
 
+    // TLR QNH is in the airport's own unit: one plan's TLR had "1011" at YPDN and "29.88" at
+    // AYPY. Told apart by size: every real QNH in inHg is under 100, every one in hPa above it.
+    internal static string TlrFmtQnh(string rawQnh)
+    {
+        if (string.IsNullOrEmpty(rawQnh)) return "";
+        if (!NumberParsing.TryParseExternal(rawQnh, out double v)) return rawQnh;
+        return v < 100 ? $"{rawQnh} inHg" : $"{rawQnh} hPa";
+    }
+
     private static string TlrFmtFt(string rawFt)
     {
         if (string.IsNullOrEmpty(rawFt)) return "";
@@ -1786,7 +1796,7 @@ public class SimBriefPlannerForm : Form
     private static string Wt(string raw, string units)
     {
         if (string.IsNullOrEmpty(raw)) return "";
-        // SimBrief returns fuel/weight in lbs; format with thousands separator
+        // In the plan's own weight unit (SimBriefOFP.Units); format with thousands separator
         if (int.TryParse(raw, out int v))
             return $"{v:N0} {units}";
         return $"{raw} {units}";
