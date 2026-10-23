@@ -703,12 +703,17 @@ public class SimBriefService
 
     /// <summary>
     /// Parses a SimBrief XML OFP document into a SimBriefOFP model.
-    /// All fields gracefully fall back to empty string if not present.
+    /// All fields gracefully fall back to empty string if not present. Internal for its tests.
     /// </summary>
-    private SimBriefOFP ParseFullOFP(XmlDocument doc)
+    internal SimBriefOFP ParseFullOFP(XmlDocument doc)
     {
         var ofp = new SimBriefOFP();
         string V(XmlNode? n, string child) => n?.SelectSingleNode(child)?.InnerText?.Trim() ?? "";
+
+        // ── Identity ─────────────────────────────────────────────────────────
+        var prm = doc.SelectSingleNode("//params");
+        string requestId = V(prm, "request_id");
+        ofp.PlanId = requestId.Length > 0 ? requestId : V(prm, "time_generated");
 
         // ── General ──────────────────────────────────────────────────────────
         var gen = doc.SelectSingleNode("//general");
@@ -843,9 +848,11 @@ public class SimBriefService
             // Field name for flaps varies across SimBrief OFP versions
             ofp.TakeoffFlaps    = First(toa, "flap_setting", "flaps", "flap", "takeoff_flap");
             ofp.TakeoffTrim     = First(toa, "trim", "stab_trim", "cg_trim");
-            ofp.TakeoffHw       = First(toa, "headwind", "head_wind", "hw");
-            ofp.TakeoffXw       = First(toa, "crosswind", "cross_wind", "xw");
-            ofp.PerfLimitFactor = First(toa, "limiting_factor", "limit", "perf_limit");
+            ofp.TakeoffHw           = First(toa, "headwind", "head_wind", "hw");
+            ofp.TakeoffXw           = First(toa, "crosswind", "cross_wind", "xw");
+            ofp.PerfLimitFactor     = First(toa, "limiting_factor", "limit", "perf_limit");
+            ofp.TakeoffEngineRating = First(toa, "engine_rating", "thrust_rating", "eng_rating", "derate", "rating");
+            ofp.TakeoffAssumedTemp  = First(toa, "assumed_oat", "assumed_temp", "flex_temp", "red_temp", "derate_temp", "assumed_temperature");
         }
 
         // ── Performance – Landing ─────────────────────────────────────────────

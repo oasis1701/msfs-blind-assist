@@ -435,6 +435,8 @@ public partial class TFDiMD11Definition
         _flapRng = double.NaN;
         _dialRaw = double.NaN;
         _lastFlapSpoken = string.Empty;
+        _flapTextBeforeFoWalk = null;           // a First Officer walk's held-back read-out belongs to the flight before
+        _flapFoWalkAnnouncer = null;
         _announceGeneration++;                  // nothing scheduled before the drop may speak after it
         _seedGate.Arm(KnownSeedValues());       // SeedFromCache runs when the deliveries say the cache is current and settled
     }

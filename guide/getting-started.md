@@ -235,7 +235,7 @@ To open the menu, press Alt, then use Right Arrow to reach Aircraft and Down Arr
 
 </div>
 
-Each aircraft has its own chapter in Part 7: see [Airbus Aircraft](airbus-aircraft.md) and [Boeing Aircraft and the MD-11](boeing-aircraft-and-the-md-11.md).
+Each aircraft has its own chapter in Part 8: see [Airbus Aircraft](airbus-aircraft.md) and [Boeing Aircraft and the MD-11](boeing-aircraft-and-the-md-11.md).
 
 ## The Main Window {#main-window}
 
@@ -434,6 +434,7 @@ Open the Settings window from the **File** menu, **Settings…**. It holds nearl
 | Audio | Which sound device BA's guidance tones play through. |
 | Hand Fly | Hand-flying feedback, visual guidance tones, Takeoff Assist and the rollout centreline tone. |
 | Taxi Guidance | The taxi steering tone, taxi callouts, distance units, docking guidance, online taxiway names, airport buildings, and SayIntentions taxi import. |
+| First Officer | The [First Officer](first-officer.md#fo-settings)'s automation (gear, flaps, autopilot, landing lights, altimeters, seat belt signs, center fuel pumps), the PMDG 737 GPWS test type, and whether flows speak each step. |
 | Updates | Release or preview builds, automatic update checks, the startup data check, and the version you are running. |
 
 </div>
@@ -520,6 +521,7 @@ If you want to try BA straight away, follow these steps. Each links to the secti
 7. Press \], hear *"output"*, then press A. BA reads your altitude. Try Output H for heading and Output S for airspeed.
 8. Switch to BA's window (Alt+Tab), press Ctrl+1, and arrow through the Sections list. Tab into the Panels list and then into a panel's controls to explore. Press Ctrl+3 to jump to a panel's Status Display.
 9. Open File, Hotkey List, and search for something you want to do.
+10. Press Output Shift+C to open the First Officer, if your aircraft has one. Press Ctrl+Tab to move between its Flows and Checklists tabs, and Escape to close it. See [The First Officer and Checklists](first-officer.md).
 
 When you are comfortable with those, read [Core Concepts](core-concepts.md) to learn what BA announces and what its tones mean, then follow the guide through [Planning Your Flight](planning-your-flight.md) and on to the ground.
 

@@ -338,4 +338,25 @@ public sealed class OfflineLocationServiceTests : IDisposable
     [Fact]
     public void Major_cities_for_traffic_need_the_database()
         => Assert.Null(new OfflineLocationService(_store).GetMajorCities(new[] { (38.55, -76.42) }, Miles));
+
+    [Fact]
+    public void FindTowns_matches_a_whole_town_name_in_any_case_with_its_area()
+    {
+        var service = Built();
+        var town = Assert.Single(service.FindTowns("BIGTOWN", 5));
+        Assert.Equal("Bigtown", town.Name);
+        Assert.Equal("Maryland", town.State);
+        Assert.Equal("United States", town.Country);
+        Assert.Equal(600000, town.Population);
+        Assert.InRange(town.Lat, 39.28, 39.30);
+        Assert.InRange(town.Lon, -76.62, -76.60);
+
+        Assert.Empty(service.FindTowns("big", 5));     // whole names only
+        Assert.Empty(service.FindTowns("Hamlet", 5));  // a village, not a town
+        Assert.Empty(service.FindTowns("Bayside Airport", 5)); // an airport, not a town
+    }
+
+    [Fact]
+    public void FindTowns_is_empty_without_a_database()
+        => Assert.Empty(new OfflineLocationService(_store).FindTowns("Bigtown", 5));
 }

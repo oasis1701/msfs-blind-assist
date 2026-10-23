@@ -4,7 +4,7 @@ title: "Planning Your Flight"
 
 <div class="guide-part" markdown="1">
 
-Chapter 1 of 2 in [Part 3: Planning and Preflight](index.md#part-3-planning-and-preflight) of the MSFS Blind Assist user guide.
+Chapter 1 of 2 in [Part 4: Planning and Preflight](index.md#part-3-planning-and-preflight) of the MSFS Blind Assist user guide.
 
 </div>
 
@@ -17,18 +17,18 @@ Chapter 1 of 2 in [Part 3: Planning and Preflight](index.md#part-3-planning-and-
 - [The Flight Planning Window](#flight-planning-efb)
 - [The AI Route Briefing](#planning-route-briefing)
 - [Aircraft EFBs](#aircraft-efb)
-- [Checklists](#checklists)
+- [Flows and Checklists](#checklists)
 - [Tracking Waypoints](#fix-tracking)
 - [NAV Radios](#planning-nav-radios)
 - [FMC Settings](#planning-fmc-settings)
 
 </nav>
 
-A typical routine before you push back: build or load a plan in SimBrief, open the Flight Planning window to check the route and procedures, ask for the AI briefing if you have an AI key, then work through the aircraft's checklist and EFB. Most of these tools read the [navigation database](getting-started.md#nav-database).
+A typical routine before you push back: build or load a plan in SimBrief, open the Flight Planning window to check the route and procedures, ask for the AI briefing if you have an AI key, then work through the aircraft's EFB and, with the First Officer, its flows and checklists. Most of these tools read the [navigation database](getting-started.md#nav-database).
 
 <div class="callout tip" role="note" markdown="1">
 
-**Tip:** The Flight Planning window, the SimBrief briefing and the checklist all work before BA has connected to the simulator, so you can plan while the sim is still loading.
+**Tip:** The Flight Planning window and the SimBrief briefing work before BA has connected to the simulator, and the First Officer window opens then too, so you can plan while the sim is still loading.
 
 </div>
 
@@ -285,14 +285,23 @@ This tab sets the arrival airport and runway at the end of the plan. It works li
 
 ### The Airport Lookup tab {#the-airport-lookup-tab}
 
-This tab is a reference page for any airport in your navigation database.
+This tab is a reference page for any airport in your navigation database. You can find an airport by its ICAO code, or by part of its name or city.
 
-1. In **Airport Lookup ICAO**, type the airport's code. As soon as the fourth letter is in, the **Airport Information** box fills in, the **Airport Lookup Runways** list fills with the runways, and the first runway's details appear in the **Runway Information** box.
-2. Arrow through the runway list. The Runway Information box updates for each runway as you move.
-3. Tab to either information box and read it line by line with the arrow keys. Both boxes are read-only.
-4. The **Load** button reloads both boxes; you only need it if you want to refresh them.
+1. In **Airport Lookup ICAO**, type the airport's code. As soon as the fourth letter is in, the **Airport Information** box fills in, the **Airport Lookup Runways** list fills with the runways, and the first runway's details appear in the **Runway Information** box. Nothing is spoken: press Tab, and the first line of the Airport Information box gives the airport's code and name, for example "KATL, Hartsfield - Jackson Atlanta I". A code with no airport reads "Airport ROME not found in database."
+2. To search, type a code or part of an airport's name or city, and press Enter. Case, accents and apostrophes don't matter: "Zürich" finds "Zurich" and "ohare" finds "Chicago-O'Hare". With several words, each must appear somewhere in the code, name or city. Letters in the middle of a word count too, so "LAX" finds KLAX.
+   - When what you typed is an airport's exact code, or only one airport matches, it loads at once and its code and name are spoken. KATL loads, even though other airports' names contain those letters. A code with no runway, usually a helipad's, loads at once only when nothing else matches: "MCO" on MSFS 2024 is a helipad named Orlando International Airport, so it opens the list, where you also find Orlando's KMCO.
+   - Otherwise a list opens, best match first, and its title says how many airports match. Arrow to an airport and press Enter to load it, or press Escape to close the list; either way you are back in the field. The list shows at most 50 airports, and its title says when more matched: "50 of 70 airports match LONDON". An exact code also opens the list when another airport is named exactly what you typed, or a town is: "LIMA" lists Turin-Aeritalia, whose code it is, then the airports of Lima, Peru.
+   - When nothing matches, you hear "No airports match" and what you typed.
+3. The tab order is the field, Airport Information, the runway list, then Runway Information. Arrow through the runway list: the Runway Information box updates for each runway as you move.
+4. Read either information box line by line with the arrow keys. Both boxes are read-only.
 
-The **Airport Information** box is grouped under headings: basic information (ident and name), location (coordinates, elevation and magnetic variation), frequencies (Tower, ATIS, AWOS, ASOS and UNICOM), status (closed, military, add-on scenery), fuel, a count of facilities (gates, ramps, runways, approaches and so on), a runway summary, parking, the tower position, the transition altitude and level where the navigation data has them, and the scenery file the airport comes from.
+**Towns.** With the offline location data installed (see [Getting the location data](core-concepts.md#getting-the-location-data)), a town's name finds the airports around it, so "Gothenburg" lists Landvetter and Säve, each "11 nm from Gothenburg, Västra Götaland, Sweden". Each town adds up to 10 airfields within 30 nm, open ones and the longest runways first. A helipad is never added for a town; you find it by its own name or code. A town with no airfield within 30 nm lists its 3 nearest within 100 nm. When several towns share a name, the most populous comes first: "London" lists London, England, then London, Ontario, and so on. Only towns of 500 people or more are searched, and only by their whole name.
+
+**On MSFS 2024**, the navigation data has no city names, so a city is found only through an airport's own name ("Atlanta" finds Hartsfield - Jackson Atlanta) or through the location data. Without the location data installed, a search that finds nothing tells you: "Searching by city on MSFS 2024 needs the location data."
+
+**Distance from you.** When connected to the simulator, each line of the list, the spoken airport and the Airport Information box say how far the airport is from you and in which direction, for example "212 nm southwest". With the simulator closed they leave it out.
+
+The **Airport Information** box starts with the airport's code and name, then is grouped under headings: basic information (ident and name), from aircraft (the distance and direction, when connected), location (coordinates, elevation and magnetic variation), frequencies (Tower, ATIS, AWOS, ASOS and UNICOM), status (closed, military, add-on scenery), fuel, a count of facilities (gates, ramps, runways, approaches and so on), a runway summary, parking, the tower position, the transition altitude and level where the navigation data has them, and the scenery file the airport comes from.
 
 The **Runway Information** box starts with the ILS, if the runway has one (ident, frequency, localizer heading and width, glideslope angle and DME), then gives the dimensions, surface, true and magnetic heading, threshold position, displaced threshold, blast pad and overrun, pattern altitude and runway elevation, lighting, markings, whether the runway is used for take-off and landing, and any VASI or PAPI.
 
@@ -493,29 +502,9 @@ The Fenix A320 and the iFly 737 MAX8 serve their tablets as real web sites on yo
 
 Both windows hide rather than close, so when you reopen them you are back on the page you left.
 
-## Checklists {#checklists}
+## Flows and Checklists {#checklists}
 
-### What it is {#what-it-is-13}
-
-Output Shift+C opens a text checklist for your aircraft, running from cockpit preparation to securing the aircraft at the end of the flight. On the FlyByWire A320, for example, its sections are Cockpit Preparation, MCDU and Performance Setup, Before Start, Engine Start, After Start, Taxi, Before Takeoff, Takeoff, Climb, Cruise, Descent Preparation, Approach and Landing, After Landing, Parking, and Securing the Aircraft.
-
-Text checklists are available for the FlyByWire A320, the Headwind A330, the FlyByWire A380X, the Fenix A320 and the iFly 737 MAX8. On an aircraft without one, BA says *"No checklist for this aircraft."* and opens nothing; it never opens another aircraft's checklist instead.
-
-<div class="callout note" role="note" markdown="1">
-
-**Note:** The A380X also has a live Electronic Checklist, read from the aircraft's own display and ticked by the aircraft's own sensing, on Output Ctrl+Shift+C. See [Airbus Aircraft](airbus-aircraft.md).
-
-</div>
-
-### How to use it {#how-to-use-it-7}
-
-1. Press Output Shift+C. The **Checklist** window opens where you left it last time.
-2. Each section is a checklist box named after the section. Press Tab to move to the next section and Shift+Tab to go back.
-3. Use Up Arrow and Down Arrow to read the items in a section.
-4. Press Space to tick an item as done, or to untick it.
-5. Press Escape to close the window. You go back to where you were, usually the simulator.
-
-The window is a reading and tick-off aid only. Ticking an item does not do anything in the aircraft; you still set every switch yourself, from BA's panels or the aircraft's own controls. Your ticks are remembered while BA is running, so you can close the checklist after Before Start and reopen it at Engine Start with your place kept.
+Before you push back, the First Officer (Output Shift+C) works the aircraft's flows and checklists with you. It has its own chapter: [The First Officer and Checklists](first-officer.md).
 
 ## Tracking Waypoints {#fix-tracking}
 
@@ -580,7 +569,7 @@ Press OK to save. BA says *"FMC settings saved"*, and the change takes effect at
 
 <nav class="guide-nav" aria-label="Guide chapters" markdown="1">
 
-- [Previous chapter: Core Concepts](core-concepts.md)
+- [Previous chapter: The First Officer and Checklists](first-officer.md)
 - [Next chapter: Weather](weather.md)
 - [Guide contents](index.md)
 

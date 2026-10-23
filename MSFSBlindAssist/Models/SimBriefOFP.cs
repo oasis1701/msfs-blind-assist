@@ -5,6 +5,17 @@ namespace MSFSBlindAssist.Models;
 /// </summary>
 public class SimBriefOFP
 {
+    // ── Identity ──────────────────────────────────────────────────────────────
+    /// <summary>SimBrief's id for this generated plan (params/request_id, else time_generated):
+    /// a regenerated plan, even for the same route, gets a new one. Empty when the OFP has neither.</summary>
+    public string PlanId            { get; set; } = "";
+
+    /// <summary>What tells two fetched plans apart: <see cref="PlanId"/>, or the route's
+    /// endpoints, flight number and cruise when the OFP carries no id.</summary>
+    public string IdentityKey => PlanId.Length > 0
+        ? PlanId
+        : $"{OriginIcao}|{DestIcao}|{FlightNumber}|{InitialAltitude}|{Route}";
+
     // ── General ───────────────────────────────────────────────────────────────
     public string AirlineIcao       { get; set; } = "";
     public string FlightNumber      { get; set; } = "";
@@ -96,6 +107,10 @@ public class SimBriefOFP
     public string TakeoffHw          { get; set; } = "";
     public string TakeoffXw          { get; set; } = "";
     public string PerfLimitFactor    { get; set; } = "";
+    /// <summary>Engine thrust rating from SimBrief TLR (e.g. "TO", "TO1", "TO2").</summary>
+    public string TakeoffEngineRating { get; set; } = "";
+    /// <summary>Assumed/flex OAT temperature for reduced thrust (e.g. "55" for 55°C). Empty if not set.</summary>
+    public string TakeoffAssumedTemp  { get; set; } = "";
 
     // ── Performance – En Route ────────────────────────────────────────────────
     public string ClimbIas           { get; set; } = "";

@@ -7,6 +7,7 @@ using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Navigation.Briefing;
 using MSFSBlindAssist.Services;
+using MSFSBlindAssist.Services.Geography;
 using MSFSBlindAssist.Services.SayIntentions;
 using MSFSBlindAssist.SimConnect;
 using MSFSBlindAssist.Settings;
@@ -76,8 +77,10 @@ public partial class ElectronicFlightBagForm : Form
 
     // Airport Lookup tab controls
     private TextBox airportLookupIcaoTextBox = null!;
+    private bool _settingAirportLookupIdent;
+    private bool _airportSearchRunning;
+    private int _airportInfoRequest;
     private ListBox airportLookupRunwaysListBox = null!;
-    private Button airportLookupLoadButton = null!;
     private TextBox airportInfoTextBox = null!;
     private TextBox runwayInfoTextBox = null!;
 
@@ -595,35 +598,24 @@ public partial class ElectronicFlightBagForm : Form
         var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(20) };
 
         // ICAO textbox
-        var icaoLabel = new Label { Text = "Airport ICAO:", Location = new Point(20, 20), Width = 200 };
+        var icaoLabel = new Label { Text = "Airport ICAO, name or city:", Location = new Point(20, 20), Width = 250 };
         airportLookupIcaoTextBox = new TextBox
         {
             Location = new Point(20, 45),
-            Width = 100,
+            Width = 250,
             CharacterCasing = CharacterCasing.Upper,
-            MaxLength = 4,
             AccessibleName = "Airport Lookup ICAO",
-            AccessibleDescription = "Enter airport ICAO code for lookup"
+            AccessibleDescription = "Enter an airport ICAO code, or type part of a name or city and press Enter to search"
         };
 
         // Runway listbox
-        var runwayLabel = new Label { Text = "Runways:", Location = new Point(20, 80), Width = 200 };
+        var runwayLabel = new Label { Text = "Runways:", Location = new Point(580, 80), Width = 200 };
         airportLookupRunwaysListBox = new ListBox
         {
-            Location = new Point(20, 105),
+            Location = new Point(580, 105),
             Size = new Size(200, 100),
             AccessibleName = "Airport Lookup Runways",
             AccessibleDescription = "Select runway for detailed information"
-        };
-
-        // Load button
-        airportLookupLoadButton = new Button
-        {
-            Text = "Load",
-            Location = new Point(20, 215),
-            Size = new Size(100, 30),
-            AccessibleName = "Load Airport and Runway Info",
-            AccessibleDescription = "Load detailed airport and runway information"
         };
 
         // Airport info textbox (left side)
@@ -655,10 +647,11 @@ public partial class ElectronicFlightBagForm : Form
         };
 
         panel.Controls.AddRange(new Control[] {
+            // Tab order: field, the airport (its first line reads its ident and name), then the
+            // runways (list, then the picked one). Enter in the field is the only search.
             icaoLabel, airportLookupIcaoTextBox,
-            runwayLabel, airportLookupRunwaysListBox,
-            airportLookupLoadButton,
             airportInfoLabel, airportInfoTextBox,
+            runwayLabel, airportLookupRunwaysListBox,
             runwayInfoLabel, runwayInfoTextBox
         });
         lookupTab.Controls.Add(panel);
@@ -745,8 +738,8 @@ public partial class ElectronicFlightBagForm : Form
 
         // Airport Lookup tab
         airportLookupIcaoTextBox.TextChanged += AirportLookupIcaoTextBox_TextChanged;
+        airportLookupIcaoTextBox.KeyDown += AirportLookupIcaoTextBox_KeyDown;
         airportLookupRunwaysListBox.SelectedIndexChanged += AirportLookupRunwaysListBox_SelectedIndexChanged;
-        airportLookupLoadButton.Click += AirportLookupLoadButton_Click;
 
         // Flight plan manager events
         _flightPlanManager.StatusChanged += (s, msg) => UpdateStatus(msg);
@@ -1886,6 +1879,8 @@ public partial class ElectronicFlightBagForm : Form
     // Airport Lookup tab handlers
     private void AirportLookupIcaoTextBox_TextChanged(object? sender, EventArgs e)
     {
+        if (_settingAirportLookupIdent) return;
+
         string icao = airportLookupIcaoTextBox.Text.Trim();
         if (icao.Length == 4)
         {
@@ -1893,18 +1888,165 @@ public partial class ElectronicFlightBagForm : Form
         }
         else
         {
+            _airportInfoRequest++; // a position answering late must not refill the cleared box
             airportLookupRunwaysListBox.Items.Clear();
             airportInfoTextBox.Clear();
             runwayInfoTextBox.Clear();
         }
     }
 
-    private void LoadRunwaysForAirportLookup(string icao)
+    private async void AirportLookupIcaoTextBox_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyCode != Keys.Enter) return;
+        e.Handled = true;
+        e.SuppressKeyPress = true;
+        await SearchAirportsAsync();
+    }
+
+    // Enter in the field: searches airports by ICAO, name or city (AirportNameSearch), plus the
+    // airports around a town of that name in the offline location data. An exact ident or the only
+    // match loads at once and is spoken (AirportNameSearch.DirectMatch); otherwise a list opens to
+    // pick from. Nothing matching is spoken. With the aircraft's position each line, and the spoken
+    // airport, ends with the distance from it; with the simulator closed they leave it out.
+    private async Task SearchAirportsAsync()
+    {
+        string query = airportLookupIcaoTextBox.Text.Trim();
+        if (_airportSearchRunning) return;
+        if (query.Length == 0)
+        {
+            _announcer.Announce("Enter an airport ICAO code, name or city first");
+            return;
+        }
+
+        string simulatorVersion = SettingsManager.Current.SimulatorVersion ?? "FS2020";
+        string dbPath = DatabasePathResolver.ResolveExistingDatabasePath(simulatorVersion);
+        if (!File.Exists(dbPath))
+        {
+            _announcer.Announce("Airport database not found");
+            return;
+        }
+
+        _airportSearchRunning = true;
+        try
+        {
+            var positionTask = ReadOwnPositionAsync();
+            var outcome = await Task.Run(() => FindAirports(query, dbPath));
+            if (IsDisposed) return;
+
+            var results = outcome.Results;
+            if (results.Count == 0)
+            {
+                _announcer.Announce(AirportNameSearch.NoMatchMessage(query, simulatorVersion, LocationDataStore.Default.IsAvailable));
+                return;
+            }
+
+            var position = await positionTask;
+            if (IsDisposed) return;
+            (double Lat, double Lon)? aircraft = position is { } p ? (p.Lat, p.Lon) : null;
+
+            if (AirportNameSearch.DirectMatch(results) is { } direct)
+            {
+                ShowAirportLookupResult(direct.Airport, Task.FromResult(position));
+                _announcer.Announce(AirportNameSearch.Describe(direct, aircraft));
+                return;
+            }
+
+            using var dialog = new AirportSearchResultsForm(
+                AirportNameSearch.ListTitle(query, results.Count, outcome.TotalMatches), results, aircraft);
+            var picked = dialog.ShowDialog(this) == DialogResult.OK ? dialog.SelectedAirport : null;
+            // An aircraft switch closes the EFB, even with the list open.
+            if (IsDisposed) return;
+            if (picked != null)
+                ShowAirportLookupResult(picked.Airport, Task.FromResult(position));
+            airportLookupIcaoTextBox.Focus();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("EFB", $"Airport search for '{query}' failed", ex);
+            if (!IsDisposed) _announcer.Announce("Airport search failed");
+        }
+        finally
+        {
+            _airportSearchRunning = false;
+        }
+    }
+
+    // Off the UI thread. The towns are optional: a broken location database means a search
+    // without them, never a failed one.
+    private static AirportSearchOutcome FindAirports(string query, string dbPath)
+    {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var airports = AirportNameSearch.ReadAirports(dbPath);
+        List<TownMatch> towns;
+        try
+        {
+            towns = new OfflineLocationService(LocationDataStore.Default).FindTowns(query, AirportNameSearch.TownLookupLimit);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("EFB", $"Town lookup for '{query}' failed, searching without towns: {ex.Message}");
+            towns = new List<TownMatch>();
+        }
+        var outcome = AirportNameSearch.Search(query, airports, towns);
+        Log.Debug("EFB", $"Airport search '{query}': {outcome.TotalMatches} matches among {airports.Count} airports and {towns.Count} towns in {watch.ElapsedMilliseconds} ms");
+        return outcome;
+    }
+
+    // Puts the found airport's ident in the field (the runway list reads it from there) and loads it
+    // without the field's 4-character auto-load, which would miss 3- and 5-character idents.
+    private void ShowAirportLookupResult(AirportSearchEntry airport, Task<OwnPosition?>? position = null)
+    {
+        _settingAirportLookupIdent = true;
+        try
+        {
+            airportLookupIcaoTextBox.Text = airport.Ident;
+        }
+        finally
+        {
+            _settingAirportLookupIdent = false;
+        }
+        airportLookupIcaoTextBox.SelectionStart = airportLookupIcaoTextBox.TextLength;
+        LoadRunwaysForAirportLookup(airport.Ident, position);
+    }
+
+    // Fills the Airport Information box once per airport: at once when the airport is not in the
+    // database or the simulator is not connected, otherwise with the FROM AIRCRAFT distance when the
+    // aircraft's position answers (at most OwnPositionTimeoutMs). Never refilled after that: new
+    // text puts the caret back on the first line and the screen reader loses its place. A newer
+    // airport, or typing past this one, wins.
+    private void ShowAirportInfo(string icao, Task<OwnPosition?>? position = null)
+    {
+        int request = ++_airportInfoRequest;
+        string text = GetAirportDetailedInfo(icao, null, out bool found);
+        if (!found || _simConnectManager?.IsConnected != true)
+        {
+            SetLookupBoxText(airportInfoTextBox, text);
+            return;
+        }
+        airportInfoTextBox.Clear();
+        _ = FillAirportInfoWithDistanceAsync(icao, request, position ?? ReadOwnPositionAsync());
+    }
+
+    private async Task FillAirportInfoWithDistanceAsync(string icao, int request, Task<OwnPosition?> positionTask)
+    {
+        try
+        {
+            var position = await positionTask;
+            if (request != _airportInfoRequest || IsDisposed) return;
+            SetLookupBoxText(airportInfoTextBox, GetAirportDetailedInfo(icao, position is { } p ? (p.Lat, p.Lon) : null, out _));
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("EFB", $"Airport information for {icao} failed: {ex.Message}");
+        }
+    }
+
+    private void LoadRunwaysForAirportLookup(string icao, Task<OwnPosition?>? position = null)
     {
         try
         {
             // Show airport info as soon as a complete ICAO is entered.
-            airportInfoTextBox.Text = GetAirportDetailedInfo(icao);
+            ShowAirportInfo(icao, position);
 
             var runways = _flightPlanManager.GetRunways(icao);
             airportLookupRunwaysListBox.Items.Clear();
@@ -1921,13 +2063,13 @@ public partial class ElectronicFlightBagForm : Form
             }
             else
             {
-                runwayInfoTextBox.Text = "No runways found for this airport.";
+                SetLookupBoxText(runwayInfoTextBox, "No runways found for this airport.");
             }
         }
         catch (Exception ex)
         {
             airportLookupRunwaysListBox.Items.Clear();
-            runwayInfoTextBox.Text = $"Error loading runways: {ex.Message}";
+            SetLookupBoxText(runwayInfoTextBox, $"Error loading runways: {ex.Message}");
         }
     }
 
@@ -1939,52 +2081,31 @@ public partial class ElectronicFlightBagForm : Form
 
         try
         {
-            runwayInfoTextBox.Text = GetRunwayDetailedInfo(icao, selectedRunway.RunwayID);
+            SetLookupBoxText(runwayInfoTextBox, GetRunwayDetailedInfo(icao, selectedRunway.RunwayID));
         }
         catch (Exception ex)
         {
-            runwayInfoTextBox.Text = $"Error loading runway information: {ex.Message}";
+            SetLookupBoxText(runwayInfoTextBox, $"Error loading runway information: {ex.Message}");
         }
     }
 
-    private void AirportLookupLoadButton_Click(object? sender, EventArgs e)
+    // Fills one of Airport Lookup's read-only boxes with the caret on its first line and nothing
+    // selected. Placing the caret also stops Windows Forms selecting the whole text the first time
+    // the box gets keyboard focus, which NVDA reads as "selected 1599 characters" instead of the
+    // first line (the airport's ident and name, EFB-12).
+    private static void SetLookupBoxText(TextBox box, string text)
     {
-        try
-        {
-            string icao = airportLookupIcaoTextBox.Text.Trim();
-            var selectedRunway = airportLookupRunwaysListBox.SelectedItem as Runway;
-
-            if (string.IsNullOrEmpty(icao))
-            {
-                MessageBox.Show("Please enter an airport ICAO code", "Invalid Selection",
-                              MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            // Load airport information
-            airportInfoTextBox.Text = GetAirportDetailedInfo(icao);
-
-            // Load runway information if a runway is selected
-            if (selectedRunway != null)
-            {
-                runwayInfoTextBox.Text = GetRunwayDetailedInfo(icao, selectedRunway.RunwayID);
-            }
-            else
-            {
-                runwayInfoTextBox.Text = "No runway selected";
-            }
-
-            UpdateStatus($"Loaded information for {icao}");
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Error loading airport information: {ex.Message}", "Error",
-                          MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
+        box.Text = text;
+        box.SelectionStart = 0;
+        box.SelectionLength = 0;
     }
 
-    private string GetAirportDetailedInfo(string icao)
+    /// <summary>The Airport Information text, its first line the ident and name. With the aircraft's
+    /// position it has a FROM AIRCRAFT section: where the airport lies from it ("212 nm southwest").
+    /// <paramref name="found"/> is false when the database has no such airport.</summary>
+    private string GetAirportDetailedInfo(string icao, (double Lat, double Lon)? aircraft, out bool found)
     {
+        found = false;
         var settings = SettingsManager.Current;
         string simulatorVersion = settings.SimulatorVersion ?? "FS2020";
         // Use the central resolver — checks the canonical MSFSBlindAssist\databases
@@ -2016,7 +2137,11 @@ public partial class ElectronicFlightBagForm : Form
                 {
                     if (reader.Read())
                     {
-                        sb.AppendLine($"AIRPORT INFORMATION - {FormatAirportText(reader["ident"])}");
+                        found = true;
+                        // The first line is what Tab from the field reads: "KATL, Hartsfield - Jackson Atlanta I".
+                        string name = reader["name"]?.ToString()?.Trim() ?? "";
+                        string ident = FormatAirportText(reader["ident"]);
+                        sb.AppendLine(name.Length > 0 ? $"{ident}, {name}" : ident);
                         sb.AppendLine();
 
                         // Basic Information
@@ -2031,6 +2156,13 @@ public partial class ElectronicFlightBagForm : Form
                         AppendAirportTextIfPresent(sb, "  FAA:          ", reader["faa"]);
                         AppendAirportTextIfPresent(sb, "  Local:        ", reader["local"]);
                         sb.AppendLine();
+
+                        if (aircraft is { } at && reader["laty"] is not DBNull && reader["lonx"] is not DBNull)
+                        {
+                            sb.AppendLine("FROM AIRCRAFT:");
+                            sb.AppendLine($"  Distance:     {AirportNameSearch.FromAircraft(at, Convert.ToDouble(reader["laty"], System.Globalization.CultureInfo.InvariantCulture), Convert.ToDouble(reader["lonx"], System.Globalization.CultureInfo.InvariantCulture))}");
+                            sb.AppendLine();
+                        }
 
                         // Location
                         sb.AppendLine("LOCATION:");

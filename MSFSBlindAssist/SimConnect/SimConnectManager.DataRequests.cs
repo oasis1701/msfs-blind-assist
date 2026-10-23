@@ -244,7 +244,31 @@ public partial class SimConnectManager
     /// <param name="varKey">The variable key to request</param>
     /// <param name="forceUpdate">If true, will always fire SimVarUpdated event even if value hasn't changed</param>
     public void RequestVariable(string varKey, bool forceUpdate = false)
-        => RequestVariable(varKey, forceUpdate, freshRequestId: null);
+    {
+        // Anyone else's read of a key with a cache-only poll in flight: the two answers come back
+        // under the one data-definition id and cannot be told apart, so the flag is dropped and
+        // the next answer is delivered as a normal one. Otherwise this caller's answer could be
+        // the one consumed as "cache-only" and swallowed when unchanged.
+        _cacheOnlyPolls.TryRemove(varKey, out _);
+        RequestVariable(varKey, forceUpdate, freshRequestId: null);
+    }
+
+    /// <summary>
+    /// A read that only keeps the cache current: the First Officer window's 1 Hz poll of its
+    /// OnRequest fields, which its evaluator reads through <see cref="GetCachedVariableValue"/>.
+    /// The answer updates the cache like any other, but fires SimVarUpdated only when the value
+    /// CHANGED (or a force-read is pending): every unchanged answer once re-ran MainForm's whole
+    /// SimVarUpdated pipeline, 45 to 100 times a second for the rest of the session once the window
+    /// had been opened. UI thread only (the FO window's timer), like the maps it reads.
+    /// </summary>
+    public void RequestVariableForCache(string varKey)
+    {
+        // The private overload, never the public one, which drops this very flag (another caller's
+        // read in flight). Cleared on reconnect and re-registration, so an unanswered poll never
+        // outlives its connection or aircraft.
+        if (variableDataDefinitions.ContainsKey(varKey)) _cacheOnlyPolls[varKey] = 0;
+        RequestVariable(varKey, forceUpdate: false, freshRequestId: null);
+    }
 
     /// <summary>
     /// <paramref name="freshRequestId"/>: a <see cref="ReadFreshAsync"/> issues its PERIOD.ONCE
@@ -441,6 +465,109 @@ public partial class SimConnectManager
             Log.Debug("SimConnect", $"Error requesting indicated airspeed: {ex.Message}");
         }
     }
+
+    // The First Officer's and the universal automation's background reads. Each definition is
+    // registered once per connection (RegisterFoBackgroundDefinitions, SC-12), so a request is a
+    // bare ONCE against it — never the per-call clear / re-add / re-register these once did.
+    private void RequestFoBackground(DATA_REQUESTS request, DATA_DEFINITIONS definition, string what)
+    {
+        if (!IsConnected || simConnect == null) return;
+        try
+        {
+            simConnect.RequestDataOnSimObject(request, definition, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error requesting {what}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Request AGL altitude for the First Officer background timer.
+    /// Fires SimVarUpdated with VarName "FO_ALTITUDE_AGL" — NOT announced by HandleSpecialAnnouncements.
+    /// </summary>
+    public void RequestFOAltitudeAGL()
+    {
+        if (CoalesceSampleRequest(ref _lastFoAglRequestMs)) return;
+        RequestFoBackground(DATA_REQUESTS.REQUEST_FO_ALTITUDE_AGL, DATA_DEFINITIONS.DEF_FO_ALTITUDE_AGL, "FO altitude AGL");
+    }
+
+    // Aircraft position, AGL and IAS are asked for every second by BOTH the First Officer window
+    // and the universal automation, and each answer reaches every subscriber: a second request
+    // within SampleCoalesceMs of the last is dropped, its answer being the one about to arrive (or
+    // just arrived). Every requester polls at 1 s or slower, so none is starved. Racy by design
+    // and harmless: at worst two requests go out, as before.
+    internal const long SampleCoalesceMs = 900;
+    private long _lastPositionRequestMs = long.MinValue / 2;
+    private long _lastFoAglRequestMs = long.MinValue / 2;
+    private long _lastFoIasRequestMs = long.MinValue / 2;
+
+    private static bool CoalesceSampleRequest(ref long lastMs)
+    {
+        long now = Environment.TickCount64;
+        if (IsCoalesced(System.Threading.Volatile.Read(ref lastMs), now)) return true;
+        System.Threading.Volatile.Write(ref lastMs, now);
+        return false;
+    }
+
+    /// <summary>A request at <paramref name="nowMs"/> repeats the one at <paramref name="lastMs"/>
+    /// (pure, for the tests).</summary>
+    internal static bool IsCoalesced(long lastMs, long nowMs) => nowMs - lastMs < SampleCoalesceMs;
+
+    /// <summary>
+    /// Request indicated airspeed for the First Officer background timer.
+    /// Fires SimVarUpdated with VarName "FO_AIRSPEED_IAS" — NOT announced by HandleSpecialAnnouncements.
+    /// </summary>
+    public void RequestFOAirspeedIndicated()
+    {
+        if (CoalesceSampleRequest(ref _lastFoIasRequestMs)) return;
+        RequestFoBackground(DATA_REQUESTS.REQUEST_FO_AIRSPEED_IAS, DATA_DEFINITIONS.DEF_FO_AIRSPEED_IAS, "FO airspeed IAS");
+    }
+
+    /// <summary>
+    /// Request every engine's N2 (1–3) for the First Officer background timer. The PMDG NG3 data
+    /// struct exposes no N1/N2, so the FO reads the stock TURB ENG N2 SimVars to reliably
+    /// tell "engine running" from "cold/unpowered" (the fuel-valve byte alone can't).
+    /// Fires SimVarUpdated with VarName "FO_ENG1_N2" / "FO_ENG2_N2" / "FO_ENG3_N2" (percent) — NOT announced.
+    /// Engine 3 (the TFDi MD-11's right-wing engine, the FIRST one TFDi starts) is requested for
+    /// every aircraft: a two-engine airframe answers 0, and the only consumer is an evaluator that
+    /// opts in through IFoEngine3N2Sink.
+    /// </summary>
+    public void RequestFOEngineN2()
+    {
+        RequestFoBackground(DATA_REQUESTS.REQUEST_FO_ENG1_N2, DATA_DEFINITIONS.DEF_FO_ENG1_N2, "FO engine 1 N2");
+        RequestFoBackground(DATA_REQUESTS.REQUEST_FO_ENG2_N2, DATA_DEFINITIONS.DEF_FO_ENG2_N2, "FO engine 2 N2");
+        RequestFoBackground(DATA_REQUESTS.REQUEST_FO_ENG3_N2, DATA_DEFINITIONS.DEF_FO_ENG3_N2, "FO engine 3 N2");
+    }
+
+    /// <summary>
+    /// Request the stock-sim center tank fuel quantity for the First Officer background timer
+    /// (iFly 737 MAX8: the SDK's fuel-gauge digit cells read blank all flight, so the FO's
+    /// center-pump logic reads the stock fuel system instead). One definition carrying
+    /// FUEL TANK CENTER QUANTITY (gallons) + FUEL WEIGHT PER GALLON (pounds), multiplied at
+    /// dispatch. Fires SimVarUpdated with VarName "FO_CENTER_FUEL_LBS" (pounds) — NOT announced.
+    /// </summary>
+    public void RequestFOCenterFuelLbs() =>
+        RequestFoBackground(DATA_REQUESTS.REQUEST_FO_CENTER_FUEL_LBS, DATA_DEFINITIONS.DEF_FO_CENTER_FUEL_LBS, "FO center fuel");
+
+    /// <summary>
+    /// Request the three stock gear-leg positions for the PMDG 777 First Officer's gear
+    /// confirmation (its SDK exposes no gear-indication lights). One definition carrying
+    /// GEAR LEFT / CENTER / RIGHT POSITION (percent — the unit the 777 System Display's Gear page
+    /// reads them in). Fires SimVarUpdated three times, VarName "FO_GEAR_LEFT_POS" /
+    /// "FO_GEAR_CENTER_POS" / "FO_GEAR_RIGHT_POS" (percent extended) — NOT announced.
+    /// </summary>
+    public void RequestFOGearPositions() =>
+        RequestFoBackground(DATA_REQUESTS.REQUEST_FO_GEAR_POSITIONS, DATA_DEFINITIONS.DEF_FO_GEAR_POSITIONS, "FO gear positions");
+
+    /// <summary>
+    /// Request the stock GEAR HANDLE POSITION (1 = down) for the universal auto-gear, so it never
+    /// lowers or raises a gear the pilot already moved and never announces a gear call it did
+    /// not make. Fires SimVarUpdated with VarName "FO_GEAR_HANDLE" — NOT announced.
+    /// </summary>
+    public void RequestFOGearHandle() =>
+        RequestFoBackground(DATA_REQUESTS.REQUEST_FO_GEAR_HANDLE, DATA_DEFINITIONS.DEF_FO_GEAR_HANDLE, "FO gear handle");
 
     public void RequestAirspeedTrue()
     {
@@ -650,6 +777,9 @@ public partial class SimConnectManager
     public void RequestAircraftPosition()
     {
         if (!IsConnected) return;
+        // A repeat within SampleCoalesceMs is dropped (see CoalesceSampleRequest): the First
+        // Officer window and the universal automation both ask every second.
+        if (CoalesceSampleRequest(ref _lastPositionRequestMs)) return;
 
         try
         {
