@@ -26,6 +26,11 @@ public partial class DestinationRunwayForm : Form
     private readonly string? _presetIcao;
     private readonly string? _presetRunwayId;
     private int _loadGeneration;
+    private bool _enterWhileLoading;
+
+    private const string TypedIcaoDescription = "Enter the 4-letter ICAO code for the destination airport";
+    private const string PrefilledIcaoDescription =
+        "Filled in from your destination or flight plan. Type to replace it, or press Enter for the runways.";
 
     public Runway? SelectedRunway { get; private set; }
     public Airport? SelectedAirport { get; private set; }
@@ -80,7 +85,7 @@ public partial class DestinationRunwayForm : Form
             CharacterCasing = CharacterCasing.Upper,
             MaxLength = 4,
             AccessibleName = "Airport ICAO Code",
-            AccessibleDescription = "Enter the 4-letter ICAO code for the destination airport"
+            AccessibleDescription = TypedIcaoDescription
         };
         icaoTextBox.TextChanged += IcaoTextBox_TextChanged;
         // A single-line TextBox doesn't claim Enter as an input key, so without this the
@@ -193,7 +198,7 @@ public partial class DestinationRunwayForm : Form
             if (_presetIcao is { Length: 4 })
             {
                 icaoTextBox.Text = _presetIcao;
-                icaoTextBox.SelectAll();
+                icaoTextBox.SelectAll(); // TextChanged has already set the prefilled description
             }
             icaoTextBox.Focus();
         };
@@ -202,6 +207,9 @@ public partial class DestinationRunwayForm : Form
     private void IcaoTextBox_TextChanged(object? sender, EventArgs e)
     {
         string icao = icaoTextBox.Text.Trim();
+        icaoTextBox.AccessibleDescription =
+            _presetIcao != null && string.Equals(icao, _presetIcao, StringComparison.OrdinalIgnoreCase)
+                ? PrefilledIcaoDescription : TypedIcaoDescription;
 
         if (icao.Length == 4)
         {
@@ -226,7 +234,30 @@ public partial class DestinationRunwayForm : Form
         else if (runwayListBox.Items.Count > 0)
             runwayListBox.Focus(); // RunwayListBox_Enter highlights the planned runway
         else
+        {
             _announcer.Announce(statusTextBox.Text); // nothing to move to: say why
+            // Still loading: move to the list once it arrives, so the pilot needn't guess
+            // when to press Enter again.
+            _enterWhileLoading = true;
+        }
+    }
+
+    /// <summary>
+    /// Speaks <paramref name="message"/> after the screen reader has read the focus change
+    /// that is happening now (the window opening, or the list taking focus). Announce queues
+    /// without interrupting, but NVDA and JAWS drop queued speech on a focus change, and they
+    /// handle that change in their own process, after our handler has already returned.
+    /// </summary>
+    private void AnnounceAfterFocus(string message)
+    {
+        // ponytail: fixed 500 ms, a judgement; tune here if a reader still talks over it.
+        var timer = new System.Windows.Forms.Timer { Interval = 500 };
+        timer.Tick += (s, e) =>
+        {
+            timer.Dispose();
+            if (!IsDisposed && !Disposing) _announcer.Announce(message);
+        };
+        timer.Start();
     }
 
     /// <summary>
@@ -252,7 +283,7 @@ public partial class DestinationRunwayForm : Form
         if (selection.Notice != null)
         {
             statusTextBox.Text = selection.Notice;
-            _announcer.Announce(selection.Notice);
+            AnnounceAfterFocus(selection.Notice); // behind the list's own focus readout
         }
     }
 
@@ -288,6 +319,11 @@ public partial class DestinationRunwayForm : Form
                 SelectedAirport = airport;
                 runwayListBox.Items.AddRange(runways.ToArray());
                 statusTextBox.Text = $"Found {runways.Count} runways for {airport.Name}";
+                if (_enterWhileLoading)
+                {
+                    _enterWhileLoading = false;
+                    runwayListBox.Focus();
+                }
                 return;
             }
         }
@@ -297,22 +333,24 @@ public partial class DestinationRunwayForm : Form
             failure = $"Error loading runways: {ex.Message}";
         }
 
+        _enterWhileLoading = false;
         statusTextBox.Text = failure;
-        _announcer.Announce(failure);
+        // At open, the result can arrive before the reader has read the window's focus
+        // change, which would drop it.
+        AnnounceAfterFocus(failure);
     }
 
     private void ClearRunways()
     {
         _loadGeneration++; // a load still in flight is for text the box no longer holds
+        _enterWhileLoading = false;
         runwayListBox.Items.Clear();
         SelectedRunway = null;
         SelectedAirport = null;
         selectButton.Enabled = false;
-
-        if (string.IsNullOrEmpty(icaoTextBox.Text))
-        {
-            statusTextBox.Text = "Enter an airport ICAO code to see available runways";
-        }
+        // Every time, not only when the box is empty: otherwise a discarded load leaves
+        // "Loading runways…" or an old "Selected Runway…", which Enter would then speak.
+        statusTextBox.Text = "Enter an airport ICAO code to see available runways";
     }
 
     private void RunwayListBox_SelectedIndexChanged(object? sender, EventArgs e)
