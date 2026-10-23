@@ -67,6 +67,7 @@ Each item: make the change, add or adjust its test, run the suite, commit per fi
 
 **Done on `FenixV3` outside the plans** (already in; listed for the changelog and Task 6)
 - Fenix gear dummies are not traffic (2026-10-23, `OwnAircraftFilter.IsAddOnHelperObject`, `OwnAircraftFilterTests`). The Fenix update of 2026-10-22 added `SimObjects/Misc/FNX_DUMMY`, an invisible "airplane" it spawns at its gear as nose-FNX, left-FNX and right-FNX. Ground traffic and TCAS took them for aircraft: "Stop, nose-FNX, Fenix very close, ahead, 25 feet." all through the taxi (186 lines in the owner's ground_traffic.log). Draft line for the `fix` fragment: "Taxiing the Fenix no longer brings constant "Stop, nose-FNX, Fenix very close" warnings: the Fenix's own hidden gear objects are no longer taken for traffic." Shared code, so every aircraft's sweep drops them; the guide never named them, so no guide change.
+- Fenix taxi-turn lead retuned for v3 (2026-10-23). Gentle turns keep 1.3 s (`TaxiTurnLeadSeconds`); the lead ramps to 2.4 s (`TaxiSharpTurnLeadSeconds`, new) between 30° and 60° of heading turned (`GuidanceGeometry.TurnLeadSeconds`), under a 45° ceiling (`TaxiTurnLeadMaxDegrees`, new). Both new settings default to the old behaviour (sharp lead = lead, ceiling 30°), so no other aircraft changes (`TaxiTurnLeadTests`). Measured from the owner's 22-23 October taxis (22 turns): gentle turns landed on the line, sharp turns at 14-22 kt rolled out a median 10.5° long, up to 38°; the measurement and the replay are in `docs/taxi-guidance.md`'s lead table. Guide: `guide/taxi-guidance.md#turns` now says the Fenix goes quiet earlier in a big turn. Draft line for the `improvement` fragment: "Taxiing the Fenix, the steering tone now goes quiet earlier in a big turn than in a small one, so 90-degree corners no longer swing you past the new taxiway, and gentle turns still roll out on the line."
 
 ### Task 3: Rules and their full text
 
@@ -109,7 +110,7 @@ Aircraft: a Fenix v3 A320 or A321 at a gate, cold and dark with ground power ava
 - [ ] 3. A bad TO CONFIG (flaps up) from the panel key: "Takeoff config: check configuration."; set flaps 1: "Takeoff config normal." after the measured delay.
 - [ ] 4. Alt+P: the AI describes the first officer's PFD (airspeed, altitude, FMA), not the centre panel.
 - [ ] 5. With a pre-update Ctrl+M mute on "ELEC BUS POWER DC SERVICE STATUS" (or a test settings file), the row stays muted.
-- [ ] 6. Taxi the Fenix with ground traffic on: no "Stop, nose-FNX, Fenix very close" (or left-FNX, right-FNX) warning, and `grep -i fnx ground_traffic.log` finds nothing new.
+- [ ] 6. Taxi the Fenix with ground traffic on: no "Stop, nose-FNX, Fenix very close" (or left-FNX, right-FNX) warning, and `grep -i fnx ground_traffic.log` finds nothing new. On the same taxi, follow the tone through a gentle turn (about 30-45°) and a 90° corner at a normal taxi speed, unwinding when it goes quiet: both roll out on the new taxiway, the 90° corner without the tone swinging to the other side and the gentle turn without it asking for more turn afterwards.
 - [ ] Record results in the PR description.
 
 ### Task 7: Remove the working documents

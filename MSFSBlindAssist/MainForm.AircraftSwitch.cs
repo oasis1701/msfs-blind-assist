@@ -852,6 +852,8 @@ public partial class MainForm
             newMd11.Attach(simConnectManager);
 
         taxiGuidanceManager.TurnLeadSeconds = newAircraft.TaxiTurnLeadSeconds;
+        taxiGuidanceManager.SharpTurnLeadSeconds = newAircraft.TaxiSharpTurnLeadSeconds;
+        taxiGuidanceManager.TurnLeadMaxDegrees = newAircraft.TaxiTurnLeadMaxDegrees;
 
         // Refresh aircraft-conditional menu items (FMC Settings is PMDG-only).
         UpdateAircraftSpecificMenuItems();

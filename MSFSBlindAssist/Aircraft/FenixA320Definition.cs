@@ -37,8 +37,19 @@ public partial class FenixA320Definition : BaseAircraftDefinition
         FlareTargetPitchDeg       = 6.0     // A320 FCTM: flare attitude ~+5–6°
     };
 
-    // Same airframe class as the FBW A320 — its measured 1.3 s used as proxy.
+    // Taxi-turn leads (see IAircraftDefinition.TaxiTurnLeadSeconds / TaxiSharpTurnLeadSeconds /
+    // TaxiTurnLeadMaxDegrees). MEASURED 2026-10-23 on Fenix v3 (KBUR, KATL, KBNA, KCLE; 22 turn
+    // rollouts, all flown on the old constant 1.3 s, itself a proxy from the FBW A320). Gentle
+    // turns (route turn under 60 deg) settled at a median +0.6 deg: 1.3 s stays their lead. Sharp
+    // turns settled a median 10.5 deg LONG, up to 38 deg: the aircraft kept yawing at full rate
+    // ~1 s after the tone centred and took 2-3.5 s to stop. Those turns had already swept 40-138
+    // deg when the tone centred and peaked at 15-25 deg/s, past where a 30 deg ceiling stops any
+    // lead growing. A replay of all 22 put this ramp (1.3 s rising to 2.4 s between 30 and 60 deg
+    // turned, ceiling 45 deg) at gentle +0.6 / sharp -1.8 deg median; a constant 1.8 s with 45 deg
+    // left gentle turns 5.7 deg short. Re-measure from telemetry.
     public override double TaxiTurnLeadSeconds => 1.3;
+    public override double TaxiSharpTurnLeadSeconds => 2.4;
+    public override double TaxiTurnLeadMaxDegrees => 45.0;
 
     // Private fields for FCU readout tracking
     private double? pendingHeadingValue = null;

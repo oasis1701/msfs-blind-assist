@@ -974,9 +974,11 @@ public partial class MainForm : Form
             PrepareRunwayProbeWarmUp = taxiGuidanceManager.PrepareRunwayShapeWarmUp,
         };
 
-        // Per-aircraft rollout-anticipation lead for the taxi steering tone
-        // (see IAircraftDefinition.TaxiTurnLeadSeconds).
+        // Per-aircraft rollout-anticipation leads for the taxi steering tone, and their ceiling
+        // (see IAircraftDefinition.TaxiTurnLeadSeconds / TaxiSharpTurnLeadSeconds / TaxiTurnLeadMaxDegrees).
         taxiGuidanceManager.TurnLeadSeconds = currentAircraft.TaxiTurnLeadSeconds;
+        taxiGuidanceManager.SharpTurnLeadSeconds = currentAircraft.TaxiSharpTurnLeadSeconds;
+        taxiGuidanceManager.TurnLeadMaxDegrees = currentAircraft.TaxiTurnLeadMaxDegrees;
 
         // Read the raw navdata provider into a LOCAL, not the field: the field is assigned exactly
         // once below, through WithTaxiAugmentation — see its doc comment and ProviderWrapGuardTests.

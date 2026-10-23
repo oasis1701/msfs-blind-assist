@@ -539,7 +539,13 @@ public partial class TaxiGuidanceManager : IDisposable
     // low-passed; only applied while actually yawing.
     // Cross-thread note: written by the UI thread on aircraft load/switch, read per-frame on the SimConnect thread WITHOUT _stateLock — benign (single aligned double, no coupled invariant). Do not couple a second field to it without taking the lock.
     public double TurnLeadSeconds { get; set; } = 1.2;
-    private const double TURN_LEAD_MAX_DEG = 30.0;
+    // The lead once a turn has swept past GuidanceGeometry.SHARP_TURN_RAMP_END_DEG
+    // (IAircraftDefinition.TaxiSharpTurnLeadSeconds; equal to TurnLeadSeconds on most aircraft),
+    // and the ceiling on the lead's contribution, degrees (TaxiTurnLeadMaxDegrees), both wired
+    // beside TurnLeadSeconds. Same cross-thread note; the three have no coupled invariant: a frame
+    // that reads one new and one old value only shapes the same bounded term differently once.
+    public double SharpTurnLeadSeconds { get; set; } = 1.2;
+    public double TurnLeadMaxDegrees { get; set; } = 30.0;
     private const double TURN_LEAD_MIN_RATE_DEG_SEC = 1.0;
     private const double YAW_RATE_FILTER_ALPHA = 0.3;
     // Taxiing-tone slew-rate limit (degrees of heading-error change per second).
@@ -2996,16 +3002,21 @@ public partial class TaxiGuidanceManager : IDisposable
         // Pan-direction settings (InvertPan / HardPan) are refreshed at the
         // top of UpdatePosition so they apply uniformly to taxiing, lining-up,
         // and runway-aligned phases.
+        // The lead grows with the heading this turn has already swept (gentle lead, then the
+        // sharp-turn lead past GuidanceGeometry.SHARP_TURN_RAMP_END_DEG); constant on an aircraft
+        // whose two leads are equal. Read by the tone and the "Straighten." cue alike.
+        double turnLead = GuidanceGeometry.TurnLeadSeconds(
+            _yawEpisodeTurnDeg, TurnLeadSeconds, SharpTurnLeadSeconds);
         if (!_steeringToneSuppressed)
         {
             // Rollout anticipation: only while genuinely yawing, so straight-line
             // sensor noise can't perturb the tone. Runway/gate lineup and docking
             // keep their own precision profiles — this applies to Taxiing only.
-            // TurnLeadSeconds is per-aircraft (0 = disabled).
-            double toneError = TurnLeadSeconds > 0.0
+            // The leads are per-aircraft (0 = disabled).
+            double toneError = turnLead > 0.0
                                && Math.Abs(_yawRateDegSec) >= TURN_LEAD_MIN_RATE_DEG_SEC
                 ? GuidanceGeometry.ProjectHeadingError(
-                      _smoothedHeadingError, _yawRateDegSec, TurnLeadSeconds, TURN_LEAD_MAX_DEG)
+                      _smoothedHeadingError, _yawRateDegSec, turnLead, TurnLeadMaxDegrees)
                 : _smoothedHeadingError;
             // Soften discontinuous target jumps (segment-skip on a sharp corner,
             // or a route recalc) into a smooth sweep — see SlewLimitToneError.
@@ -3023,7 +3034,7 @@ public partial class TaxiGuidanceManager : IDisposable
         // zero by DESIGN — without the straightness gate this would false-fire
         // inside every long curve), and the projected error crosses through
         // centre against the yaw direction: unwind NOW or overshoot.
-        if (TurnLeadSeconds > 0.0 && _yawEpisodeSign != 0 && !_straightenFiredThisEpisode
+        if (turnLead > 0.0 && _yawEpisodeSign != 0 && !_straightenFiredThisEpisode
             && Math.Abs(_yawRateDegSec) >= STRAIGHTEN_EPISODE_MIN_RATE_DEG_SEC
             && Math.Abs(_yawEpisodeTurnDeg) >= STRAIGHTEN_MIN_TURN_DEG)
         {
@@ -3034,7 +3045,7 @@ public partial class TaxiGuidanceManager : IDisposable
             if (Math.Abs(cumAhead) < STRAIGHTEN_AHEAD_STRAIGHT_DEG)
             {
                 double projected = GuidanceGeometry.ProjectHeadingError(
-                    _smoothedHeadingError, _yawRateDegSec, TurnLeadSeconds, TURN_LEAD_MAX_DEG);
+                    _smoothedHeadingError, _yawRateDegSec, turnLead, TurnLeadMaxDegrees);
                 // Crossed centre: projected error now on the OPPOSITE side of the
                 // yaw direction (turning right but projected error says left).
                 if (projected * _yawEpisodeSign <= 0)
