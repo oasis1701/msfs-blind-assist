@@ -1180,21 +1180,24 @@ public class FbwEfbForm : Form
     }
     // A removed node that held focus (a flyPad notice's Dismiss button the pilot just pressed, a
     // notice that expired under the cursor) would drop focus to <body>, and the screen reader to
-    // an arbitrary place: move it to the control that followed it before this render, else the
-    // page heading. (The order is the pre-render one: the loop above has already moved survivors.)
-    var lostFocus = null;
-    for (var gone in existing) {
-      if (used[gone]) continue;
-      if (!lostFocus && existing[gone].contains(document.activeElement)) {
-        lostFocus = document.getElementById('pgttl');
-        for (var b = before.indexOf(existing[gone]) + 1; b < before.length; b++) {
-          if (!used[before[b].getAttribute('data-key')]) continue;
-          var bc = before[b].matches('button, a, input, select') ? before[b] : before[b].querySelector('button, a, input, select');
-          if (bc && !bc.disabled) { lostFocus = bc; break; }
-        }
+    // an arbitrary place: move it to the first control now standing where it stood, else the page
+    // heading. Where it stood is just after the last node that came before it and survived
+    // (pre-render order: the loop above has already moved survivors), so a control rebuilt in its
+    // place (an unkeyed label change) takes the focus, not the control after it.
+    var lostFocus = null, holder = null;
+    for (var gone in existing) { if (!used[gone] && existing[gone].contains(document.activeElement)) { holder = existing[gone]; break; } }
+    if (holder) {
+      lostFocus = document.getElementById('pgttl');
+      var anchor = null;
+      for (var b = before.indexOf(holder) - 1; b >= 0; b--) { if (used[before[b].getAttribute('data-key')]) { anchor = before[b]; break; } }
+      for (var c = anchor ? anchor.nextSibling : list.firstChild; c; c = c.nextSibling) {
+        var gk = c.getAttribute('data-key');
+        if (existing[gk] && !used[gk]) continue;          // also leaving
+        var bc = c.matches('button, a, input, select') ? c : c.querySelector('button, a, input, select');
+        if (bc && !bc.disabled) { lostFocus = bc; break; }
       }
-      list.removeChild(existing[gone]);
     }
+    for (var gone2 in existing) { if (!used[gone2]) list.removeChild(existing[gone2]); }
     if (lostFocus) lostFocus.focus();
   };
 

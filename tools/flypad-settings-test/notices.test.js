@@ -3,7 +3,18 @@
 // MutationObserver however briefly they live, and the inline throttle-calibration errors.
 const { test } = require('node:test');
 const assert = require('node:assert');
+const fs = require('fs');
+const path = require('path');
 const { loadFixture } = require('./run');
+
+// The client re-installs over a LIVE agent after one slow scrape (an eval timeout reads as "agent
+// gone"), exactly as CoherentEFBClient.EnsureConnected does on the same socket.
+function reinstall(window) {
+  window.eval(fs.readFileSync(path.join(__dirname, '..', '..', 'MSFSBlindAssist', 'Resources', 'coherent-flypad-agent.js'), 'utf8'));
+  const A = window.__MSFSBA_FLYPAD;
+  A.isVisible = function (el) { return !!(el && el.getAttribute && el.getAttribute('data-vis') === '1'); };
+  return A;
+}
 
 // A toast exactly as FBW renders it (captured live from the A320 Performance page, trimmed).
 function toastHtml(type, text) {
@@ -65,6 +76,57 @@ test('pressing the control that raised the error again clears it (a retry)', asy
   assert.deepStrictEqual(notices(A), []);
 });
 
+test('a control with the same label elsewhere (Landing "Calculate") does not clear the Takeoff error', async () => {
+  const { window, A } = loadFixture('a320-index');
+  const takeoff = window.document.createElement('button');
+  takeoff.textContent = 'Calculate';
+  A.notePress(takeoff);
+  await flashToast(window, 'error', 'Beyond Takeoff Weight Limit - Max 19943 lb');
+  const landing = window.document.createElement('button');
+  landing.textContent = 'Calculate';
+  A.notePress(landing);
+  assert.strictEqual(notices(A).length, 2);
+});
+
+test('an error raised by a typed value belongs to that field, not to the button pressed before it', async () => {
+  const { window, A } = loadFixture('a320-index');
+  const tab = window.document.createElement('button');
+  tab.textContent = 'Takeoff';
+  A.notePress(tab);
+  const field = window.document.createElement('input');
+  field.setAttribute('data-fbw-efb-idx', '9999');
+  field.setAttribute('data-vis', '1');                    // visible, so the scrape stamps it
+  field.setAttribute('data-rect', '600,100,300,640');
+  window.document.getElementById('MSFS_REACT_MOUNT').appendChild(field);
+  assert.strictEqual(A.setValue(9999, 'EGLL'), 'ok');
+  await flashToast(window, 'error', 'OFP airport is invalid');
+  A.notePress(tab);
+  assert.strictEqual(notices(A).length, 2, 'the tab pressed earlier must not clear it');
+  A.setValue(Number(field.getAttribute('data-fbw-efb-idx')), 'EGKK');   // each scrape re-stamps idx
+  assert.deepStrictEqual(notices(A), [], 'typing into the field again is the retry');
+});
+
+test('a burst of passing toasts never pushes out an undismissed error', async () => {
+  const { window, A } = loadFixture('a320-index');
+  await flashToast(window, 'error', 'Could not fetch airport');
+  for (let i = 0; i < A.NOTICE_MAX + 2; i++) await flashToast(window, 'info', 'Preset ' + i + ' loaded');
+  assert.ok(notices(A).some((e) => e.text === 'Error: Could not fetch airport'));
+});
+
+test('a re-install over a live agent keeps its errors and its counter, and re-reads no open toast', async () => {
+  const { window, A } = loadFixture('a320-index');
+  await flashToast(window, 'error', 'Could not fetch airport');
+  window.document.querySelector('.Toastify').insertAdjacentHTML('beforeend', toastHtml('error', 'OFP airport is invalid'));
+  await new Promise((r) => setTimeout(r, 0));
+  const before = notices(A).map((e) => e.key);
+  const B = reinstall(window);
+  assert.deepStrictEqual(notices(B).map((e) => e.key), before, 'the notices, keys unchanged, survive');
+  window.document.querySelector('.Toastify').innerHTML = '';
+  await flashToast(window, 'error', 'Could not find OFP runway!');
+  const fresh = notices(B).find((e) => /runway/.test(e.text)).key;
+  assert.ok(!before.includes(fresh), 'a new error must not reuse a key the form has already spoken');
+});
+
 test('the same error raised again is a new notice under a new key, so it is spoken again', async () => {
   const { window, A } = loadFixture('a320-index');
   await flashToast(window, 'error', 'Could not find OFP runway!');
@@ -105,6 +167,13 @@ test('the throttle overlap reads as an error; the harmless note in the same kind
   addOverlap(window, 'Axis 1: Idle (-0.05) overlaps with Climb (-0.25)');
   assert.deepStrictEqual(notices(A).map((e) => e.kind + '|' + e.text),
     ['alert|Error: Axis 1: Idle (-0.05) overlaps with Climb (-0.25)', 'button|Dismiss: Axis 1: Idle (-0.05) overlaps with Climb (-0.25)']);
+});
+
+test('the overlap is found in a translated flyPad too: the page is known by structure, not its h1', () => {
+  const { window, A } = loadFixture('calibrate');
+  for (const h1 of window.document.querySelectorAll('h1')) h1.textContent = 'Achse 1 für Schub 1 + 2';
+  addOverlap(window, 'Achse 1: Leerlauf (-0.05) überschneidet sich mit Steigflug (-0.25)');
+  assert.strictEqual(notices(A).filter((e) => e.kind === 'alert').length, 1);
 });
 
 test('fixing the overlap removes the error by itself; the next overlap then appears as a new one', () => {

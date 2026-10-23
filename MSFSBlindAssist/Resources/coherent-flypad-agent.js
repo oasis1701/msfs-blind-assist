@@ -2449,7 +2449,7 @@
   A._noticeSeq = 0;
   A._inlineIds = {};        // inline error text -> id, while FBW shows it
   A._dismissedInline = {};  // inline error text -> true, until FBW hides it
-  A._lastPress = null;      // { label, at } of the last control the pilot pressed
+  A._lastPress = null;      // { node, at } of the last control the pilot pressed or set
 
   A.toastType = function (el) {
     var m = /(^|\s)Toastify__toast--([a-z]+)(\s|$)/.exec(A.cls(el));
@@ -2461,11 +2461,17 @@
     var text = clean((body || el).textContent);
     if (!text) return;
     var now = Date.now();
-    var origin = (A._lastPress && now - A._lastPress.at < 10000) ? A._lastPress.label : "";
+    var origin = (A._lastPress && now - A._lastPress.at < 10000) ? A._lastPress.node : null;
     var keep = [];
     for (var i = 0; i < A._notices.length; i++) if (A._notices[i].text !== text) keep.push(A._notices[i]);
     keep.push({ id: ++A._noticeSeq, type: A.toastType(el), text: text, at: now, origin: origin });
-    if (keep.length > A.NOTICE_MAX) keep.splice(0, keep.length - A.NOTICE_MAX);
+    // Over the cap, drop the oldest passing notice first: a burst of info toasts must not push out
+    // an error the pilot has not dismissed yet.
+    while (keep.length > A.NOTICE_MAX) {
+      var drop = 0;
+      for (var d = 0; d < keep.length - 1; d++) if (keep[d].type !== "error") { drop = d; break; }
+      keep.splice(drop, 1);
+    }
     A._notices = keep;
   };
 
@@ -2484,8 +2490,13 @@
 
   A.watchToasts = function () {
     if (typeof MutationObserver === "undefined" || !document.body) return;
-    var open = document.querySelectorAll(".Toastify__toast");
-    for (var i = 0; i < open.length; i++) A.captureToast(open[i]);
+    // A toast still on screen that a previous install already captured is not a new one.
+    var held = {}, open = document.querySelectorAll(".Toastify__toast");
+    for (var h = 0; h < A._notices.length; h++) held[A._notices[h].text] = true;
+    for (var i = 0; i < open.length; i++) {
+      var body = open[i].querySelector(".Toastify__toast-body");
+      if (!held[clean((body || open[i]).textContent)]) A.captureToast(open[i]);
+    }
     A._toastObs = new MutationObserver(A.onToastMutations);
     A._toastObs.observe(document.body, { childList: true, subtree: true });
   };
@@ -2493,11 +2504,11 @@
   // Inline error text FBW is showing now. A heading coloured text-utility-red is an error (the
   // deadzone warning); the throttle-calibration overlap is a plain h2, told apart from the
   // harmless "Remember to configure MSFS…" h2 in the same kind of box only by the
-  // exclamation-circle icon FBW renders beside it.
+  // exclamation-circle icon FBW renders beside it. The throttle page is known by the deadzone
+  // headings it always renders (hidden until needed), never by its translated h1.
   A.inlineErrors = function (root) {
     var out = [], seen = {};
-    var throttlePage = false, h1s = root.getElementsByTagName("h1");
-    for (var a = 0; a < h1s.length; a++) if (/^Axis\s+\d+\s+for\s+Throttle/i.test(clean(h1s[a].textContent))) { throttlePage = true; break; }
+    var throttlePage = root.querySelector("h2.text-utility-red") !== null;
     var hs = root.querySelectorAll("h1, h2, h3, h4, h5, h6");
     for (var i = 0; i < hs.length; i++) {
       var h = hs[i];
@@ -2557,16 +2568,16 @@
     return "ok";
   };
 
-  // A press of the control that raised an error is a retry: drop that error now, so a repeat
-  // failure arrives as a new notice (spoken again) and a success leaves none.
+  // A press (or a typed value) on the control that raised an error is a retry: drop that error
+  // now, so a repeat failure arrives as a new notice (spoken again) and a success leaves none.
+  // Matched by the node itself, never its label: the Takeoff and Landing pages both have a
+  // "Calculate". If FBW re-mounts the control, the retry no longer matches and Dismiss clears it.
   A.notePress = function (node) {
-    var label = clean(node.textContent);
-    A._lastPress = { label: label, at: Date.now() };
-    if (!label) return;
+    A._lastPress = { node: node, at: Date.now() };
     var keep = [];
     for (var i = 0; i < A._notices.length; i++) {
       var n = A._notices[i];
-      if (!(n.type === "error" && n.origin === label)) keep.push(n);
+      if (!(n.type === "error" && n.origin === node)) keep.push(n);
     }
     A._notices = keep;
   };
@@ -2625,8 +2636,9 @@
     var node = A.findByIdx(index);
     if (!node) return "missing";
     if (A.disabledFor(node)) return "disabled";
+    A.notePress(node);
     var kind = A.classify(node);
-    value = (value === null || value === undefined) ? "" : String(value);
+    value =(value === null || value === undefined) ? "" : String(value);
 
     if (kind === "checkbox" || kind === "toggle" || kind === "checkitem") {
       var want = value === "true";
@@ -2702,9 +2714,19 @@
     return "ok";
   };
 
-  // A re-install must not leave the previous agent's observer feeding a list nobody reads.
+  // A re-install must not leave the previous agent's observer feeding a list nobody reads. The
+  // client also re-installs over a LIVE agent after one slow scrape, so take over its notices and
+  // counter: dropping them loses errors the pilot has not dismissed, and restarting the counter
+  // reuses a key (notice:1) the form has already spoken, so the next error stays silent.
   var previous = window.__MSFSBA_FLYPAD;
   if (previous && previous._toastObs) { try { previous._toastObs.disconnect(); } catch (e) {} }
+  if (previous && previous._notices instanceof Array) {
+    A._notices = previous._notices;
+    A._noticeSeq = previous._noticeSeq || 0;
+    A._inlineIds = previous._inlineIds || {};
+    A._dismissedInline = previous._dismissedInline || {};
+    if (previous._lastPress && previous._lastPress.node) A._lastPress = previous._lastPress;
+  }
   A.watchToasts();
 
   window.__MSFSBA_FLYPAD = A;

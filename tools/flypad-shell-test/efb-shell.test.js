@@ -230,3 +230,13 @@ test('dismissing a focused notice moves focus to the next control, or the page h
   s.render('Performance', []);
   assert.strictEqual(s.window.document.activeElement.id, 'pgttl');
 });
+
+// A focused unkeyed button whose label changes is rebuilt as a new node in the same place: focus
+// goes to that rebuilt button, never to the control after it (Enter would then press the wrong one).
+test('a focused button rebuilt by a label change keeps the focus in its place', (t) => {
+  const s = loadShell(t);
+  s.render('Ground', [btn(1, 'Back'), btn(2, 'GPU Connect'), btn(3, 'Next')]);
+  s.buttonByLabel('GPU Connect').focus();
+  s.render('Ground', [btn(1, 'Back'), btn(2, 'GPU Disconnect'), btn(3, 'Next')]);
+  assert.strictEqual(s.window.document.activeElement, s.buttonByLabel('GPU Disconnect'));
+});
