@@ -65,6 +65,9 @@ Each item: make the change, add or adjust its test, run the suite, commit per fi
 - [ ] [09 H4, conditional on owner Q1 = always-on] the Ctrl+M row for the engine running announcements (monitor manager, `UserSettings.FenixDisabledMonitorVariables`).
 - [ ] [06 H5, after its in-sim check] `UiEchoVariable = "I_OH_PNEUMATIC_ECON_FLOW_L"` on ECON FLOW if its light only follows the switch; ACT PUMP labels from the read legends.
 
+**Done on `FenixV3` outside the plans** (already in; listed for the changelog and Task 6)
+- Fenix gear dummies are not traffic (2026-10-23, `OwnAircraftFilter.IsAddOnHelperObject`, `OwnAircraftFilterTests`). The Fenix update of 2026-10-22 added `SimObjects/Misc/FNX_DUMMY`, an invisible "airplane" it spawns at its gear as nose-FNX, left-FNX and right-FNX. Ground traffic and TCAS took them for aircraft: "Stop, nose-FNX, Fenix very close, ahead, 25 feet." all through the taxi (186 lines in the owner's ground_traffic.log). Draft line for the `fix` fragment: "Taxiing the Fenix no longer brings constant "Stop, nose-FNX, Fenix very close" warnings: the Fenix's own hidden gear objects are no longer taken for traffic." Shared code, so every aircraft's sweep drops them; the guide never named them, so no guide change.
+
 ### Task 3: Rules and their full text
 
 **Files:** `.claude/rules/fenix-data.md`, `docs/invariants/fenix-data.md`, `.claude/rules/first-officer-airbus.md`, `docs/invariants/first-officer-airbus.md`, `.claude/rules/ai-display.md`, `docs/invariants/ai-display.md`, `docs/invariants/a32nx-fenix.md` (A320-40 text), `CLAUDE.md`.
@@ -106,6 +109,7 @@ Aircraft: a Fenix v3 A320 or A321 at a gate, cold and dark with ground power ava
 - [ ] 3. A bad TO CONFIG (flaps up) from the panel key: "Takeoff config: check configuration."; set flaps 1: "Takeoff config normal." after the measured delay.
 - [ ] 4. Alt+P: the AI describes the first officer's PFD (airspeed, altitude, FMA), not the centre panel.
 - [ ] 5. With a pre-update Ctrl+M mute on "ELEC BUS POWER DC SERVICE STATUS" (or a test settings file), the row stays muted.
+- [ ] 6. Taxi the Fenix with ground traffic on: no "Stop, nose-FNX, Fenix very close" (or left-FNX, right-FNX) warning, and `grep -i fnx ground_traffic.log` finds nothing new.
 - [ ] Record results in the PR description.
 
 ### Task 7: Remove the working documents
