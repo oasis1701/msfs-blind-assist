@@ -114,9 +114,9 @@ behind it, or no use to a blind pilot).
 | 20 | 08 | FAP Set-Up page: loudspeaker volume and screen brightness? | Loudspeaker volume yes, brightness no | Add the loudspeaker volume; leave brightness out (owner, 2026-10-21; plan 08 Tasks 3 and 8) |
 | 21 | — | Datalink (CPDLC on the DCDU, ATSU, Virtual ACARS, printer): plan it now? | A plan 13 starting with a live Hoppie investigation | Leave until after FenixV3 (owner, 2026-10-21); plan 12 lists it as a follow-up |
 | 22 | 07 | D1: speak a newly pinned ECAM procedure app-wide ("ECAM procedure available: …")? | Yes, app-wide, always on | Never (owner, 2026-10-21): without the ECAM itself, readable only through AI display reads, the pins are a partial picture; not now. Plan 07 drops its Task 7; the window's Pinned list and Ctrl+P stay |
-| 23 | 07 | D2: open every collapsible section when a document opens? | Yes | pending |
-| 24 | 07 | D3: checklist lines as tick boxes? | Yes | pending |
-| 25 | 07 | D4: pin and unpin a document from the window (Ctrl+D), as the EFB does? | Yes (plan 07 Task 6) | pending |
+| 23 | 07 | D2: open every collapsible section when a document opens? | Yes | Yes (owner, 2026-10-22, after testing it in plan 07) |
+| 24 | 07 | D3: checklist lines as tick boxes? | Yes | Yes (owner, 2026-10-22, after testing it in plan 07) |
+| 25 | 07 | D4: pin and unpin a document from the window (Ctrl+D), as the EFB does? | Yes (plan 07 Task 6) | Yes (owner, 2026-10-22, after testing it in plan 07; W1 passed) |
 | 26 | 03 | Make the EFB window usable on v3 as its own plan, early in the order? | Yes | Yes, its own plan, towards the beginning (owner, 2026-10-21) |
 
 ## Workflow for one plan
