@@ -4493,6 +4493,46 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Crossfeed Valve Closed", [1] = "Crossfeed Valve Open" }
         },
+        // The SD FUEL page's center-to-inner transfer valves (FlyByWireCenterTransferValve):
+        // the CTR TK XFR buttons' valves 9/10 and the auto valves 11/12 as the SD reads them
+        // (0-1 open), and the junctions 4/5 whose option 2 is MANUAL routing. Pre-declared so the
+        // valves read as ratios, not the auto-register loop's "number".
+        ["FUELSYSTEM VALVE OPEN:9"] = new SimConnect.SimVarDefinition
+        {
+            Name = "FUELSYSTEM VALVE OPEN:9", DisplayName = "Left center transfer valve",
+            Type = SimConnect.SimVarType.SimVar, Units = "percent over 100",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
+        ["FUELSYSTEM VALVE OPEN:10"] = new SimConnect.SimVarDefinition
+        {
+            Name = "FUELSYSTEM VALVE OPEN:10", DisplayName = "Right center transfer valve",
+            Type = SimConnect.SimVarType.SimVar, Units = "percent over 100",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
+        ["FUELSYSTEM VALVE OPEN:11"] = new SimConnect.SimVarDefinition
+        {
+            Name = "FUELSYSTEM VALVE OPEN:11", DisplayName = "Left auto transfer valve",
+            Type = SimConnect.SimVarType.SimVar, Units = "percent over 100",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
+        ["FUELSYSTEM VALVE OPEN:12"] = new SimConnect.SimVarDefinition
+        {
+            Name = "FUELSYSTEM VALVE OPEN:12", DisplayName = "Right auto transfer valve",
+            Type = SimConnect.SimVarType.SimVar, Units = "percent over 100",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
+        ["FUELSYSTEM JUNCTION SETTING:4"] = new SimConnect.SimVarDefinition
+        {
+            Name = "FUELSYSTEM JUNCTION SETTING:4", DisplayName = "Left transfer junction",
+            Type = SimConnect.SimVarType.SimVar, Units = "number",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
+        ["FUELSYSTEM JUNCTION SETTING:5"] = new SimConnect.SimVarDefinition
+        {
+            Name = "FUELSYSTEM JUNCTION SETTING:5", DisplayName = "Right transfer junction",
+            Type = SimConnect.SimVarType.SimVar, Units = "number",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
         // Stock per-tank fuel quantities (gallons base unit) for the SD FUEL page — the
         // row formatter converts gallons → weight via FUEL WEIGHT PER GALLON and follows
         // the metric toggle. Pre-declared (not auto-registered) so the Units are gallons,
@@ -7151,7 +7191,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
     // auto-register pass), each selector defaults to controller 1 AND every candidate var
     // is still emitted as a hidden registration row, so whichever the live cache later
     // picks is already registered for OnRequest reads.
-    private List<(string label, string var, Func<double, string> fmt)> SdSystemRows(int page, Func<string, double?> cache = null!)
+    internal List<(string label, string var, Func<double, string> fmt)> SdSystemRows(int page, Func<string, double?> cache = null!)
     {
         // ARINC429 decoders — for vars FBW publishes as ARINC words (verified via
         // useArinc429Var in the fbw-a32nx SD source: APU N/EGT/LOW_FUEL_PRESSURE_FAULT,
@@ -7387,7 +7427,28 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             r.Add(("Left pump 2", "FUELSYSTEM PUMP ACTIVE:5", Running));
             r.Add(("Right pump 1", "FUELSYSTEM PUMP ACTIVE:3", Running));
             r.Add(("Right pump 2", "FUELSYSTEM PUMP ACTIVE:6", Running));
-            r.Add(("Center pump", "FUELSYSTEM PUMP ACTIVE:1", Running));
+            // Center-to-inner transfer valves, as the SD draws them (FlyByWireCenterTransferValve).
+            // Each row reads its CTR TK XFR button's valve and takes the auto valve, junction,
+            // button and MODE SEL from the cache; the null pass adds them as hidden rows so they
+            // are registered and force-read. They replace a "Center pump" row that read only the
+            // left jet pump, which neither the A32NX's SD nor the A339X's draws.
+            string CenterTransfer(double transferOpen, string autoValve, string junction, string button) =>
+                FlyByWireCenterTransferValve.Describe(cache?.Invoke(autoValve), transferOpen,
+                    cache?.Invoke(junction), cache?.Invoke(button), cache?.Invoke("A32NX_OVHD_FUEL_MODESEL_MANUAL"));
+            r.Add(("Left center transfer valve", "FUELSYSTEM VALVE OPEN:9",
+                v => CenterTransfer(v, "FUELSYSTEM VALVE OPEN:11", "FUELSYSTEM JUNCTION SETTING:4", "FUEL_PUMP_C1")));
+            r.Add(("Right center transfer valve", "FUELSYSTEM VALVE OPEN:10",
+                v => CenterTransfer(v, "FUELSYSTEM VALVE OPEN:12", "FUELSYSTEM JUNCTION SETTING:5", "FUEL_PUMP_C2")));
+            if (cache == null)
+            {
+                r.Add(("Left auto transfer valve", "FUELSYSTEM VALVE OPEN:11", _ => ""));
+                r.Add(("Right auto transfer valve", "FUELSYSTEM VALVE OPEN:12", _ => ""));
+                r.Add(("Left transfer junction", "FUELSYSTEM JUNCTION SETTING:4", _ => ""));
+                r.Add(("Right transfer junction", "FUELSYSTEM JUNCTION SETTING:5", _ => ""));
+                r.Add(("Left transfer button", "FUEL_PUMP_C1", _ => ""));
+                r.Add(("Right transfer button", "FUEL_PUMP_C2", _ => ""));
+                r.Add(("Fuel mode selector", "A32NX_OVHD_FUEL_MODESEL_MANUAL", _ => ""));
+            }
             r.Add(("Engine 1 LP valve", "FUELSYSTEM VALVE OPEN:1", OpenShut));
             r.Add(("Engine 2 LP valve", "FUELSYSTEM VALVE OPEN:2", OpenShut));
             r.Add(("Crossfeed valve", "FUELSYSTEM VALVE OPEN:3", OpenShut));
