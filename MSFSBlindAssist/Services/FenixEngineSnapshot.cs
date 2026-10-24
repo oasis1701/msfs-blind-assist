@@ -29,9 +29,11 @@ public sealed record FenixEngineReading(
 }
 
 /// <summary>
-/// The latest Fenix engine values. The data-service subscription callback writes into it on a pool
-/// thread ([FNX-2]) at 30-45 Hz and the Engines window's 1 s timer reads it on the UI thread, so the
-/// window never marshals per update. Thread-safe: one lock guards every field.
+/// The latest Fenix engine values. The data-service subscription callback (the running flags, and the
+/// numbers the Fenix pushes when they change) and a once-a-second <c>FenixDataPoller</c> read of the 16
+/// non-flag values (<c>FenixEngineNames.Polled</c>) write into it on pool threads ([FNX-2]); the Engines
+/// window's 1 s timer reads it on the UI thread, so the window never marshals per update. Thread-safe:
+/// one lock guards every field.
 /// </summary>
 public sealed class FenixEngineSnapshot
 {

@@ -26,8 +26,9 @@ public partial class FenixA320Definition
     partial void OnFenixSwitchedAway();
 
     // Background seams, one Start/Stop pair per plan (cabin: plan 08, engine: plan 09). Start runs once per
-    // definition instance, on the UI thread, from the first ProcessSimVarUpdate that instance receives; a
-    // sim reconnect keeps the instance, so Start does not run again then. Stop runs in OnSwitchedAway, on an
+    // definition instance, on the UI thread, from the first ProcessSimVarUpdate that gets past the take-off
+    // IAS feed (that branch returns first, so Start can come up to about a second after the instance's very
+    // first update); a sim reconnect keeps the instance, so Start does not run again then. Stop runs in OnSwitchedAway, on an
     // aircraft switch and on app quit. Every seam call is isolated: an exception from one is logged and the
     // others still run, so a later plan's failure never aborts the switch, the quit or the update.
     partial void StartCabinBackground(Accessibility.ScreenReaderAnnouncer announcer);

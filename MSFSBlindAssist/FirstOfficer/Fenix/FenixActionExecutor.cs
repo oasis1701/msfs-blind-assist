@@ -17,9 +17,10 @@ namespace MSFSBlindAssist.FirstOfficer.Fenix;
 /// through an atomic read-modify-write calculator string rather than an app-side counter:
 /// the def's panel (FenixA320Definition.HandleUIVariableSet, S_FCU_SPEED/HEADING/ALTITUDE_PUSH/PULL)
 /// ALSO writes these same L:vars via its own atomic RPN read-modify-write
-/// (AdjustFcuPushPullCounter) rather than its rmpCounters absolute counter — both writers
-/// now read the live sim value before modifying, so they stay coherent no matter which one
-/// fires. Both send through SimConnectManager.ExecuteCalculatorCodeUnique, whose "{seq} 0 *"
+/// (AdjustFcuPushPullCounter) rather than an app-side absolute counter — both writers
+/// read the live sim value before modifying, so they stay coherent no matter which one
+/// fires; the panel's knobs step the same way with FenixA320Definition.CounterStepCode.
+/// Both send through SimConnectManager.ExecuteCalculatorCodeUnique, whose "{seq} 0 *"
 /// prefix (a numeric no-op) comes from the manager's ONE counter, so MobiFlight's command
 /// channel — which coalesces two consecutive IDENTICAL calc strings — never drops a repeated
 /// push, even a panel push straight after an FO push (SIM-17; two private counters each

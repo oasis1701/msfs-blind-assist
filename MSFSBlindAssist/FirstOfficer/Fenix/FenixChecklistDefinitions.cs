@@ -300,9 +300,10 @@ public static class FenixChecklistDefinitions
                 "S_WR_PRED_WS", v => v > 0.5, (e, _) => e.Set("S_WR_PRED_WS", 1)),     // [RADAR]
             Auto("TX_XPDRAUTO", "TAXI", "Transponder: AUTO",
                 "S_XPDR_OPERATION", v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("S_XPDR_OPERATION", 1)),
-            // Level-triggered test: TakeoffConfigTest holds 1.5 s, announces the result
-            // ("Takeoff config normal." / "check configuration."), then RELEASES — a plain
-            // pulse left the button stuck at 1 and re-fired the config check after landing.
+            // Level-triggered test: TakeoffConfigTest presses and holds the button, RELEASES it (a plain
+            // pulse left the button stuck at 1 and re-fired the config check after landing), then waits
+            // for the warning computer's own delay (VerdictAfterMs) before announcing the result
+            // ("Takeoff config normal." / "check configuration.").
             ActionManual("TX_CONFIG", "TAXI", "Takeoff config test",
                 (e, _) => e.TakeoffConfigTest()),
         }

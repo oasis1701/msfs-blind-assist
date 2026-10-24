@@ -1,8 +1,10 @@
-// Pins the Engines window's shape. Fenix engine values stream at 30-45 Hz on a pool thread ([FNX-2]):
-// the form must never marshal per update (the callback writes only the snapshot, a 1 s timer reads
-// it), must dispose its subscription, and must read the Fenix's own values, never the stock engine
-// SimVars, which run a generic engine model on the Fenix. Source scans, because the stream and the
-// aircraft switch only show in the live sim.
+// Pins the Engines window's shape. Fenix engine values reach it on pool threads ([FNX-2]): the
+// subscription pushes the running flags (and some numbers) as they change, and a once-a-second poll
+// reads the 16 non-flag values (FenixEngineNames.Polled, FenixDataPoller). The form must never marshal
+// per update (the callbacks write only the snapshot, a 1 s timer reads it), must dispose its
+// subscription, and must read the Fenix's own values, never the stock engine SimVars, which run a
+// generic engine model on the Fenix. Source scans, because the stream and the aircraft switch only
+// show in the live sim.
 using MSFSBlindAssist.Forms.Fenix;
 
 namespace MSFSBlindAssist.Tests;
