@@ -72,8 +72,9 @@ public static class FenixDocumentPins
         return null;
     }
 
-    /// <summary>The Fenix EFB's own write of the setting (gql-operations.txt line 13); the one write of plan 07.</summary>
-    public const string SetSettingDocument = "mutation SetSetting($setSetting: SetSettingInput!) { settings { setSetting(setSetting: $setSetting) { success } } }";
+    /// <summary>The Fenix EFB's own write of the setting (gql-operations.txt line 13); the one write of plan 07.
+    /// The same mutation the options window sends, so <see cref="FenixOptionEdits.SetSettingDocument"/> is its one text.</summary>
+    public const string SetSettingDocument = FenixOptionEdits.SetSettingDocument;
 
     public const string NotAccepted = "The Fenix did not accept the change.";
 
