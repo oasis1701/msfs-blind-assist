@@ -12315,14 +12315,9 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             varName == "N_PED_RMP3_ACTIVE" || varName == "N_PED_RMP3_STDBY")
         {
             _lastAnnouncedValues.TryGetValue(varName, out double lastValue);
-            double freqMHz = value / 1000.0;
 
             if (lastValue > 0 && Math.Abs(value - lastValue) > 0.5)
-            {
-                string rmpNum = varName.Contains("RMP1") ? "RMP1" : varName.Contains("RMP2") ? "RMP2" : "RMP3";
-                string type = varName.Contains("ACTIVE") ? "active" : "standby";
-                announcer.Announce($"{rmpNum} {type} {freqMHz:F3}");
-            }
+                announcer.Announce(RmpFrequencyAnnouncement(varName, value));
             _lastAnnouncedValues[varName] = value;
             return true;
         }
@@ -12344,6 +12339,17 @@ public partial class FenixA320Definition : BaseAircraftDefinition
 
         // Call base implementation to handle common variables (e.g., altitude thousand-foot crossings)
         return base.ProcessSimVarUpdate(varName, value, announcer);
+    }
+
+    /// <summary>
+    /// "RMP1 active 132.475": a Fenix RMP frequency (<paramref name="kHz"/>, as the L:var stores it) as
+    /// MHz with three decimals. Invariant, so a comma-decimal Windows never speaks "132,475".
+    /// </summary>
+    internal static string RmpFrequencyAnnouncement(string varName, double kHz)
+    {
+        string rmpNum = varName.Contains("RMP1") ? "RMP1" : varName.Contains("RMP2") ? "RMP2" : "RMP3";
+        string type = varName.Contains("ACTIVE") ? "active" : "standby";
+        return FormattableString.Invariant($"{rmpNum} {type} {kHz / 1000.0:F3}");
     }
 
     /// <summary>
