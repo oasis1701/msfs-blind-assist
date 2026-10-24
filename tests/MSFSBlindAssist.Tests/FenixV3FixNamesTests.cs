@@ -56,12 +56,12 @@ public class FenixV3FixNamesTests
         Assert.Equal(new[] { (0.0, "Off"), (1.0, "On") }, values);
     }
 
-    // Plan 05 moves the First Officer off the three take-off speeds, plan 12 deletes them.
+    // FenixQuartz is discontinued and v3 does not feed it. The First Officer reads the take-off speeds
+    // from N_MISC_PERF_TO_* (plan 05), so the last three FNX2PLD_ names are gone too.
     [Fact]
-    public void Only_the_takeoff_speed_FenixQuartz_names_remain()
+    public void No_FenixQuartz_name_remains()
     {
-        var names = Vars.Values.Select(v => v.Name).Where(n => n.StartsWith("FNX2PLD_"))
-            .OrderBy(n => n, StringComparer.Ordinal).ToArray();
-        Assert.Equal(new[] { "FNX2PLD_speedV1", "FNX2PLD_speedV2", "FNX2PLD_speedVR" }, names);
+        Assert.DoesNotContain(Vars, kv => kv.Key.StartsWith("FNX2PLD_", StringComparison.Ordinal)
+                                          || kv.Value.Name.StartsWith("FNX2PLD_", StringComparison.Ordinal));
     }
 }

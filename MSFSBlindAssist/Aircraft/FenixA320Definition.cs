@@ -5909,36 +5909,6 @@ public partial class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
                 ValueDescriptions = new Dictionary<double, string> {[0] = "Up", [1] = "1", [2] = "2", [3] = "3", [4] = "Full"}
             },
-            // ========== FLIGHT INSTRUMENTATION (3 variables) ==========
-            // FenixQuartz (discontinued, never installed here): read only by the First Officer until
-            // plan 05 moves it off them; plan 12 deletes these three.
-            ["FNX2PLD_speedV1"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_speedV1",
-                DisplayName = "FNX320+FENIXQUARTZ TO-SPEEDS V1",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                Units = "knots",
-            },
-            ["FNX2PLD_speedVR"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_speedVR",
-                DisplayName = "FNX320+FENIXQUARTZ TO-SPEEDS VR",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                Units = "knots",
-            },
-            ["FNX2PLD_speedV2"] = new SimConnect.SimVarDefinition
-            {
-                Name = "FNX2PLD_speedV2",
-                DisplayName = "FNX320+FENIXQUARTZ TO-SPEEDS V2",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                Units = "knots",
-            },
 
             // ========== FUEL (16 variables) ==========
             ["I_OH_FUEL_RIGHT_2_U"] = new SimConnect.SimVarDefinition
