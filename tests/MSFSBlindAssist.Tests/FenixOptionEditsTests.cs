@@ -104,6 +104,24 @@ public class FenixOptionEditsTests
         Assert.Equal(key, (string?)setSetting["key"]);
     }
 
+    [Fact] public void Only_a_permanent_change_persists()
+    {
+        // Every kind is named, so a kind added later fails here until it is given an answer.
+        var persists = new Dictionary<FenixChangeKind, bool>
+        {
+            [FenixChangeKind.Session] = false,
+            [FenixChangeKind.Permanent] = true,
+            [FenixChangeKind.Reset] = false,
+        };
+        Assert.Equal(Enum.GetValues<FenixChangeKind>().Order(), persists.Keys.Order());
+        foreach (var (kind, expected) in persists)
+            Assert.True(expected == FenixOptionEdits.Persists(kind), $"{kind} should persist: {expected}");
+    }
+
+    [Fact] public void The_options_window_sends_persist_from_it()
+        => Assert.Contains("persist: FenixOptionEdits.Persists(kind)",
+            File.ReadAllText(Path.Combine(ClaudeContextBudgetTests.RepoRoot(), "MSFSBlindAssist", "Forms", "Fenix", "FenixOptionsForm.cs")));
+
     [Fact] public void The_mutation_is_the_one_the_EFB_runs()
         => Assert.Equal("mutation SetSetting($setSetting: SetSettingInput!) { settings { setSetting(setSetting: $setSetting) { success } } }",
             FenixOptionEdits.SetSettingDocument);

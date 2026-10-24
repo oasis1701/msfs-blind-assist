@@ -324,7 +324,7 @@ public sealed class FenixOptionsForm : Form
             else
             {
                 document = FenixOptionEdits.SetSettingDocument;
-                variables = FenixOptionEdits.Variables(key, chosen!, persist: kind == FenixChangeKind.Permanent);
+                variables = FenixOptionEdits.Variables(key, chosen!, persist: FenixOptionEdits.Persists(kind));
                 accepted = FenixOptionEdits.Succeeded;
             }
             await SendAndReadBackAsync(key, kind, document, variables, accepted,

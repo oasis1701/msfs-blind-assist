@@ -94,6 +94,12 @@ public static class FenixOptionEdits
     public static object Variables(string key, string value, bool persist = false)
         => new { setSetting = new { key, value, persist } };
 
+    /// <summary>
+    /// Whether a change is sent with <c>persist</c> true: only Shift+F2, making a value the pilot's own.
+    /// F2 is a session change, and a reset sends <see cref="SetDefaultDocument"/>, which has no such flag.
+    /// </summary>
+    public static bool Persists(FenixChangeKind kind) => kind == FenixChangeKind.Permanent;
+
     /// <summary>The variables of <see cref="SetDefaultDocument"/>: just the key.</summary>
     public static object DefaultVariables(string key) => new { key };
 
