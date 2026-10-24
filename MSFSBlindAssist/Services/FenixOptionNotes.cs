@@ -13,17 +13,19 @@ public static class FenixOptionNotes
             [FenixOptionKeys.EncoderAcceleration] = (
                 "When on, the app's Set heading, speed, altitude and vertical speed entries turn the FCU knob in small checked steps, so they land on the value you typed, a little more slowly. The altimeter entries are not affected. Measured 2026-10-24.",
                 null),
+            // Measured 2026-10-24 (Fenix 3.0.0.7454, A321 IAE): each of these four works either way, so none carries a
+            // tested value and the options window never warns about them.
             [FenixOptionKeys.EfisBaroLinking] = (
-                "The app sets the left and then the right altimeter. When linked, either knob moves both, so a set may land a step off. The app is tested with Independent.",
-                "Independent"),
+                "When linked, either altimeter knob moves the other side too. Measured 2026-10-24 with Linked Left+Right+Standby: the app's altimeter entries still land on the value you typed on both sides, and say so. Linked Left+Right was not measured separately.",
+                null),
             [FenixOptionKeys.FdLsSync] = (
-                "When on, pressing FD or LS on one side also switches the other side. The First Officer presses each side in turn, which may switch them back off. The app is tested with this off.",
-                "false"),
+                "When on, one press of FD or LS switches both sides. The First Officer checks the second side before it presses it, so its flows leave both on. Measured 2026-10-24.",
+                null),
             [FenixOptionKeys.ChannelSpacing] = (
-                "With 25 kHz, an 8.33 kHz frequency typed into the app's COM standby box may be changed to a 25 kHz channel. Listen to the frequency the RMP reads back.",
+                "With 25 kHz, the Fenix keeps the frequency you type into the app's COM standby box: 118.010 stayed 118.010. The app says what the RMP holds. Measured 2026-10-24.",
                 null),
             [FenixOptionKeys.FcuReadouts] = (
-                "Changes how the FCU windows are drawn. The app reads the FCU values, not the picture, so its FCU readouts should not change.",
+                "Changes how the FCU windows are drawn. The app reads the FCU values, not the picture, and its FCU readouts did not change with New. Measured 2026-10-24.",
                 null),
             [FenixOptionKeys.WeightUnit] = (
                 "The unit the MCDU, EFB and ECAM use for weights. The app's weight and fuel keys read the simulator and say their own unit, so they do not follow this option.",

@@ -127,7 +127,7 @@ public class FenixOptionCatalogTests
     {
         var lines = FenixOptionCatalog.DetailLines(S("efis_baro_linking_type", "Independent", "Enum", "Realism",
             new[] { "Independent", "LinkedWithStandby", "Linked" }, "UserFile"));
-        Assert.StartsWith("Effect on MSFS Blind Assist: The app sets the left and then the right altimeter.", lines[0]);
+        Assert.StartsWith("Effect on MSFS Blind Assist: When linked, either altimeter knob moves the other side too.", lines[0]);
         Assert.Equal("Links the EFIS barometer values between left EFIS, right EFIS and the standby instrument.", lines[1]);
         Assert.Equal("Choices: Independent, Linked Left+Right+Standby, Linked Left+Right.", lines[2]);
         Assert.Equal(4, lines.Count);

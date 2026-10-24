@@ -89,14 +89,55 @@ public class FenixOptionGroupingTests
         Assert.Equal(1, FenixOptionGrouping.CountChanged(new[] { S("a", "1"), S("b", "2") }, new[] { S("a", "1") }));
     }
 
-    [Fact] public void Untested_compares_booleans_not_their_spelling()
+    static FenixSetting[] Live(string key, string value)
+        => LiveEleven().Select(s => s.Key == key ? s with { Value = value } : s).ToArray();
+
+    [Fact] public void Untested_lists_the_option_the_app_has_a_tested_value_for_when_it_reads_as_something_else()
     {
-        FenixSetting[] FdLs(string value) => LiveEleven().Select(s => s.Key == "fd_ls_sync_enabled" ? s with { Value = value } : s).ToArray();
-        Assert.Empty(FenixOptionGrouping.Untested(FdLs("False")));
-        Assert.Empty(FenixOptionGrouping.Untested(FdLs("false")));
-        Assert.Equal(new[] { "EFIS Linking: FD/LS: On" }, FenixOptionGrouping.Untested(FdLs("True")));
+        // Control Position is the one option left with a tested value (Captain): its First Officer seat is unmeasured.
+        Assert.Empty(FenixOptionGrouping.Untested(LiveEleven()));
+        Assert.Equal(new[] { "Control Position: First Officer" }, FenixOptionGrouping.Untested(Live("control_position_type", "FirstOfficer")));
         // Only the options the app was tested with a value for can be listed; the others carry no tested value.
-        Assert.Empty(FenixOptionGrouping.Untested(LiveEleven().Select(s => s.Key == "weight_unit" ? s with { Value = "Kilograms" } : s).ToArray()));
+        Assert.Empty(FenixOptionGrouping.Untested(Live("weight_unit", "Kilograms")));
+    }
+
+    [Fact] public void The_four_options_measured_on_2026_10_24_work_either_way_and_are_never_warned_about()
+    {
+        // M2 to M4 and the FCU readouts: nothing the app does depends on their value, so no tested value.
+        foreach (string key in new[] { "efis_baro_linking_type", "fd_ls_sync_enabled", "channel_spacing_type", "fcu_readouts_type" })
+        {
+            Assert.Null(FenixOptionNotes.TestedValue(key));
+            Assert.Contains("Measured 2026-10-24", FenixOptionNotes.AppNote(key));
+        }
+        Assert.Empty(FenixOptionGrouping.Untested(Live("efis_baro_linking_type", "Linked")));
+        Assert.Empty(FenixOptionGrouping.Untested(Live("efis_baro_linking_type", "LinkedWithStandby")));
+        Assert.Empty(FenixOptionGrouping.Untested(Live("fd_ls_sync_enabled", "True")));
+        Assert.Empty(FenixOptionGrouping.Untested(Live("channel_spacing_type", "Khz25")));
+        Assert.Empty(FenixOptionGrouping.Untested(Live("fcu_readouts_type", "New")));
+        Assert.Equal("Captain", FenixOptionNotes.TestedValue("control_position_type"));
+    }
+
+    [Fact] public void The_measured_notes_say_what_the_owner_heard()
+    {
+        string baro = FenixOptionNotes.AppNote("efis_baro_linking_type")!;
+        Assert.Contains("still land on the value you typed on both sides", baro);
+        Assert.Contains("Linked Left+Right+Standby", baro);
+        Assert.Contains("Linked Left+Right was not measured separately", baro);
+        Assert.DoesNotContain("tested with Independent", baro);
+
+        string fdLs = FenixOptionNotes.AppNote("fd_ls_sync_enabled")!;
+        Assert.Contains("one press of FD or LS switches both sides", fdLs);
+        Assert.Contains("checks the second side before it presses it, so its flows leave both on", fdLs);
+        Assert.DoesNotContain("tested with this off", fdLs);
+
+        string spacing = FenixOptionNotes.AppNote("channel_spacing_type")!;
+        Assert.Contains("118.010 stayed 118.010", spacing);
+        Assert.Contains("says what the RMP holds", spacing);
+        Assert.DoesNotContain("may be changed", spacing);
+
+        string readouts = FenixOptionNotes.AppNote("fcu_readouts_type")!;
+        Assert.Contains("did not change with New", readouts);
+        Assert.DoesNotContain("should not change", readouts);
     }
 
     [Fact] public void Encoder_acceleration_on_is_no_longer_a_warning()
@@ -119,17 +160,18 @@ public class FenixOptionGroupingTests
         {
             "encoder_acceleration_enabled" => s with { Value = "True" },
             "efis_baro_linking_type" => s with { Value = "Linked" },
+            "control_position_type" => s with { Value = "FirstOfficer" },
             _ => s,
         }).ToList();
-        // Encoder Acceleration on is in the list but no longer warned about (FNX-20).
+        // Encoder Acceleration on and Baro Linked are in the list but not warned about (FNX-20; measured 2026-10-24).
         Assert.Equal("Fenix version unknown: 11 options. Read only: change options in the Fenix EFB. Not what MSFS Blind Assist is tested with: "
-            + "EFIS Linking: Baro: Linked Left+Right.", FenixOptionGrouping.StatusText(null, risky, false));
+            + "Control Position: First Officer.", FenixOptionGrouping.StatusText(null, risky, false));
         Assert.Equal("Fenix 3.0.0.7426: 11 options. F2 changes an on/off or choice option for this simulator session. "
             + "Shift+F2 makes an option permanent. Ctrl+F2 resets your change to the Fenix default.",
             FenixOptionGrouping.StatusText("3.0.0.7426", LiveEleven(), true));
         Assert.Equal("Fenix version unknown: 11 options. F2 changes an on/off or choice option for this simulator session. "
             + "Shift+F2 makes an option permanent. Ctrl+F2 resets your change to the Fenix default. "
-            + "Not what MSFS Blind Assist is tested with: EFIS Linking: Baro: Linked Left+Right.",
+            + "Not what MSFS Blind Assist is tested with: Control Position: First Officer.",
             FenixOptionGrouping.StatusText(null, risky, true));
         Assert.Equal("Refreshed, no changes.", FenixOptionGrouping.RefreshText(0));
         Assert.Equal("Refreshed, 1 option changed.", FenixOptionGrouping.RefreshText(1));
