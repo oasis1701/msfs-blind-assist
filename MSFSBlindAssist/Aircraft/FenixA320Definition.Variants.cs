@@ -161,7 +161,21 @@ public partial class FenixA320Definition
         if (i < 0)
             throw new InvalidOperationException("Fenix \"Main Instrument Panel\" has no Landing Gear to place Clock after.");
         list.Insert(i + 1, ClockPanel);
+
+        // A panel whose every control the loaded livery lacks is not listed (DCDU Left without a DCDU, ISIS
+        // with the round standby gauges), so a Tab through the section never stops on an empty panel. Built on
+        // every call, never cached: the answer follows the variant as it is read, and an unread field hides
+        // nothing ([FNX-11]). The section keys stay, so the sections list MainForm builds once never loses one.
+        // GetPanelControls is the base class's cached dictionary, not rebuilt here.
+        var controls = GetPanelControls();
+        foreach (var panels in structure.Values)
+            panels.RemoveAll(panel => controls.TryGetValue(panel, out var keys) && HasNoVisibleControl(keys));
     }
+
+    // True for a panel that has controls and shows none of them. A panel with no controls at all (a
+    // display-only one) is never hidden by this rule.
+    private bool HasNoVisibleControl(List<string> keys)
+        => keys.Count > 0 && !keys.Any(key => IsPanelControlVisible(key, null));
 
     partial void AddVariantPanelDisplayVariables(Dictionary<string, List<string>> displayVariables)
         => displayVariables[ClockPanel] = new List<string> { "N_MIP_CLOCK_CHRONO", "N_MIP_CLOCK_ELAPSED" };

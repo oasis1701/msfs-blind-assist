@@ -375,4 +375,183 @@ public class FenixVariantControlsTests
         foreach (var key in Panels.Values.SelectMany(p => p).Distinct())
             Assert.Equal(FenixA320Definition.IsFitted(key, ceo), FenixA320Definition.IsFitted(key, neo));
     }
+
+    // ---- Panels the livery leaves without a control are not listed (plan 12, handoff H2; owner, 2026-10-24) ----
+
+    // A definition that has read a Fenix's config L:vars, as the sim delivers them: the aircraft type gates the
+    // rest (TryApplyConfigValue), so the type goes first. B_CONFIG_STDBY 1 is the round standby gauges, 0 the
+    // ISIS; B_CONFIG_DCDU 0 is no DCDU.
+    private static FenixA320Definition Livery(double type = 3, double standby = 0, double dcdu = 1,
+        double engine = 0, double act = 0, double adirs = 1, double cargo = 1, double neo = 0)
+    {
+        var definition = new FenixA320Definition();
+        Assert.True(definition.TryApplyConfigValue(FenixConfigVars.AircraftType, type));
+        definition.TryApplyConfigValue(FenixConfigVars.EngineType, engine);
+        definition.TryApplyConfigValue(FenixConfigVars.ActCount, act);
+        definition.TryApplyConfigValue(FenixConfigVars.Standby, standby);
+        definition.TryApplyConfigValue(FenixConfigVars.Dcdu, dcdu);
+        definition.TryApplyConfigValue(FenixConfigVars.IsNeo, neo);
+        definition.TryApplyConfigValue(FenixConfigVars.Adirs, adirs);
+        definition.TryApplyConfigValue(FenixConfigVars.CargoHeat, cargo);
+        return definition;
+    }
+
+    private static List<(string Section, string Panel)> Listed(FenixA320Definition definition)
+        => definition.GetPanelStructure()
+            .SelectMany(section => section.Value.Select(panel => (section.Key, panel))).ToList();
+
+    [Fact]
+    public void An_unread_variant_lists_every_panel()
+    {
+        var fresh = new FenixA320Definition();
+        Assert.Same(FenixVariant.Unknown, fresh.Variant);
+        var structure = fresh.GetPanelStructure();
+
+        // The panels that can go are listed, in their place.
+        Assert.Contains("DCDU Left", structure["Pedestal"]);
+        Assert.Contains("ISIS", structure["Main Instrument Panel"]);
+        // Every panel with controls is listed, and every listed panel is a panel with controls.
+        var listed = structure.Values.SelectMany(p => p).ToHashSet();
+        Assert.True(listed.SetEquals(fresh.GetPanelControls().Keys),
+            "listed but without controls: " + string.Join(", ", listed.Except(fresh.GetPanelControls().Keys)) +
+            "; with controls but not listed: " + string.Join(", ", fresh.GetPanelControls().Keys.Except(listed)));
+
+        // A type with every other field unread hides nothing either (FNX-11: unknown means shown).
+        var typeOnly = new FenixA320Definition();
+        typeOnly.TryApplyConfigValue(FenixConfigVars.AircraftType, 4);
+        Assert.Equal(Listed(fresh), Listed(typeOnly));
+    }
+
+    [Fact]
+    public void A_livery_without_a_dcdu_does_not_list_DCDU_Left_and_keeps_the_rest_of_Pedestal_in_order()
+    {
+        var all = new FenixA320Definition().GetPanelStructure()["Pedestal"];
+        Assert.Equal(3, all.IndexOf("DCDU Left"));   // in the middle, so the order below means something
+
+        var noDcdu = Livery(dcdu: 0).GetPanelStructure()["Pedestal"];
+
+        Assert.DoesNotContain("DCDU Left", noDcdu);
+        Assert.Equal(all.Where(panel => panel != "DCDU Left"), noDcdu);
+    }
+
+    [Fact]
+    public void A_livery_with_a_dcdu_lists_DCDU_Left_in_its_place()
+    {
+        var all = new FenixA320Definition().GetPanelStructure()["Pedestal"];
+        Assert.Equal(all, Livery(dcdu: 1).GetPanelStructure()["Pedestal"]);
+    }
+
+    [Fact]
+    public void Analogue_standby_instruments_do_not_list_ISIS_but_Standby_Instruments_stays()
+    {
+        var all = new FenixA320Definition().GetPanelStructure();
+        var gauges = Livery(standby: 1).GetPanelStructure();
+
+        Assert.DoesNotContain("ISIS", gauges["Main Instrument Panel"]);
+        Assert.Equal(all["Main Instrument Panel"].Where(panel => panel != "ISIS"), gauges["Main Instrument Panel"]);
+        // The compass is on every livery, so the panel stays even though the attitude cage is its only variant control.
+        Assert.Equal(all["Cockpit"], gauges["Cockpit"]);
+        Assert.Contains("Standby Instruments", gauges["Cockpit"]);
+        // The attitude cage is what the round gauges add to it.
+        Assert.True(FenixA320Definition.IsFitted("S_STANDBY_ATTITUDE_CAGE", Livery(standby: 1).Variant));
+    }
+
+    [Fact]
+    public void The_ISIS_livery_lists_ISIS_and_Standby_Instruments()
+    {
+        var all = new FenixA320Definition().GetPanelStructure();
+        var isis = Livery(standby: 0).GetPanelStructure();
+
+        Assert.Contains("ISIS", isis["Main Instrument Panel"]);
+        Assert.Contains("Standby Instruments", isis["Cockpit"]);
+        Assert.Equal(all["Main Instrument Panel"], isis["Main Instrument Panel"]);
+    }
+
+    [Fact]
+    public void Only_DCDU_Left_and_ISIS_ever_go_and_each_goes_exactly_when_the_livery_lacks_its_equipment()
+    {
+        var all = Listed(new FenixA320Definition());
+
+        // Every combination of the config values that decide any control, on the airframes that differ.
+        foreach (double type in new[] { 3, 4 })
+        foreach (double engine in new[] { 0, 1 })
+        foreach (double act in new[] { 0, 2 })
+        foreach (double standby in new[] { 0, 1 })
+        foreach (double dcdu in new[] { 0, 1 })
+        foreach (double adirs in new[] { 0, 1 })
+        foreach (double cargo in new[] { 0, 1 })
+        {
+            var gone = all.Except(Listed(Livery(type, standby, dcdu, engine, act, adirs, cargo))).ToList();
+
+            var expected = new List<(string, string)>();
+            if (dcdu == 0) expected.Add(("Pedestal", "DCDU Left"));
+            if (standby == 1) expected.Add(("Main Instrument Panel", "ISIS"));
+            Assert.True(expected.OrderBy(p => p).SequenceEqual(gone.OrderBy(p => p)),
+                $"type {type} engine {engine} act {act} standby {standby} dcdu {dcdu} adirs {adirs} cargo {cargo}: " +
+                $"expected {string.Join(", ", expected)}, hidden {string.Join(", ", gone)}");
+        }
+    }
+
+    [Fact]
+    public void A_panel_is_listed_exactly_when_some_control_in_it_is_fitted()
+    {
+        // The rule itself, for every panel and for variants that hide different things.
+        var variants = new[]
+        {
+            Livery(type: 4, standby: 0, dcdu: 0, engine: 1, act: 2, adirs: 1, cargo: 0),
+            Livery(type: 3, standby: 1, dcdu: 1, engine: 0, act: 0, adirs: 0, cargo: 1),
+            Livery(type: 2, standby: 1, dcdu: 0, engine: 0, act: 0, adirs: 1, cargo: 0),
+        };
+        foreach (var definition in variants)
+        {
+            var controls = definition.GetPanelControls();
+            var listed = Listed(definition).Select(p => p.Panel).ToHashSet();
+            foreach (var (panel, keys) in controls)
+            {
+                bool anyFitted = keys.Any(key => definition.IsPanelControlVisible(key, null));
+                Assert.True(listed.Contains(panel) == anyFitted,
+                    $"{panel} is {(listed.Contains(panel) ? "listed" : "not listed")} but {(anyFitted ? "has" : "lacks")} a fitted control");
+            }
+        }
+    }
+
+    [Fact]
+    public void Hiding_a_panel_changes_the_list_only_never_the_sections_or_the_controls()
+    {
+        var fresh = new FenixA320Definition();
+        var bare = Livery(type: 3, standby: 1, dcdu: 0);
+
+        // The sections list is built once, from the keys, so none may go: Pedestal and Main Instrument Panel keep
+        // other panels today, and the key stays even if a section were ever emptied.
+        Assert.Equal(fresh.GetPanelStructure().Keys, bare.GetPanelStructure().Keys);
+        // The controls are the same dictionary whatever the variant: MainForm filters a panel's controls itself.
+        Assert.Equal(fresh.GetPanelControls().Keys, bare.GetPanelControls().Keys);
+        Assert.Equal(10, bare.GetPanelControls()["DCDU Left"].Count);
+        // GetPanelControls is cached by the base class and stays so.
+        Assert.Same(bare.GetPanelControls(), bare.GetPanelControls());
+    }
+
+    [Fact]
+    public void The_list_follows_the_variant_as_it_is_read_and_is_not_frozen_by_the_first_answer()
+    {
+        var definition = new FenixA320Definition();
+        Assert.Contains("DCDU Left", definition.GetPanelStructure()["Pedestal"]);
+
+        // The config arrives: no DCDU, round standby gauges.
+        definition.TryApplyConfigValue(FenixConfigVars.Dcdu, 0);
+        definition.TryApplyConfigValue(FenixConfigVars.Standby, 1);
+        definition.TryApplyConfigValue(FenixConfigVars.AircraftType, 3);
+        Assert.DoesNotContain("DCDU Left", definition.GetPanelStructure()["Pedestal"]);
+        Assert.DoesNotContain("ISIS", definition.GetPanelStructure()["Main Instrument Panel"]);
+
+        // One field flips: only its panel comes back.
+        definition.TryApplyConfigValue(FenixConfigVars.Dcdu, 1);
+        Assert.Contains("DCDU Left", definition.GetPanelStructure()["Pedestal"]);
+        Assert.DoesNotContain("ISIS", definition.GetPanelStructure()["Main Instrument Panel"]);
+
+        // The type back at 0 makes the variant Unknown again, and unknown means shown.
+        definition.TryApplyConfigValue(FenixConfigVars.AircraftType, 0);
+        Assert.Same(FenixVariant.Unknown, definition.Variant);
+        Assert.Contains("ISIS", definition.GetPanelStructure()["Main Instrument Panel"]);
+    }
 }
