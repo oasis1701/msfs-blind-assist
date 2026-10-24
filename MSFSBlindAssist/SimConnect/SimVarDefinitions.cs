@@ -126,6 +126,33 @@ public class SimVarDefinition
     /// stays value-matched, so a different change to the light inside the window still speaks.
     /// </summary>
     public string? UiEchoVariable { get; set; }
+
+    /// <summary>
+    /// Opt-in for a pushbutton whose press flips its own <see cref="StateVariable"/> light (the Fenix EFIS
+    /// FD and LS buttons: the light is the button's own "on" light). The panel relabels the button when the
+    /// light changes, so the screen reader already reads the button's new state; pressing it from the panel
+    /// marks the light in MainForm's UI-set echo gate with the value the press should leave
+    /// (<see cref="StateVariableAfterPress"/>), so the light's own announcement is not spoken after it
+    /// (CORE-7). The gate stays value-matched ([CORE-8], [CORE-9]): a change to the light from anywhere else
+    /// (the other side through a linking option, the First Officer, a click in the virtual cockpit) still speaks.
+    /// Default off: the buttons whose light is spoken after the press (Bus Tie) keep their announcement.
+    /// </summary>
+    public bool PressTogglesStateVariable { get; set; }
+
+    /// <summary>
+    /// The value <see cref="StateVariable"/> reads after a press of a <see cref="PressTogglesStateVariable"/>
+    /// button, from the value it read before (<paramref name="cached"/>): a lit light goes dark (0), a dark
+    /// one lights (1), as <see cref="DescribeStateLight"/> reads them. Null when the control does not opt in,
+    /// has no light, or the light has not been read (NaN is not read), so nothing is marked for a press whose
+    /// result is unknown.
+    /// </summary>
+    public double? StateVariableAfterPress(double? cached)
+    {
+        if (!PressTogglesStateVariable || string.IsNullOrEmpty(StateVariable)) return null;
+        if (cached is not double before || double.IsNaN(before)) return null;
+        return before != 0 ? 0 : 1;
+    }
+
     // Accessible SLIDER (WinForms TrackBar) for a continuous axis control (cockpit window/
     // sunshade/seat position, speedbrake handle, trims). The TrackBar is 0-100 and maps linearly
     // to [SliderMin, SliderMax]; on change MSFSBA writes the mapped value live (HandleUIVariableSet,

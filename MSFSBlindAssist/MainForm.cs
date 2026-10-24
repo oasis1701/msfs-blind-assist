@@ -1284,6 +1284,21 @@ public partial class MainForm : Form
     }
 
     /// <summary>
+    /// A panel press of a button that flips its own state light (SimVarDefinition.PressTogglesStateVariable:
+    /// the Fenix EFIS FD and LS buttons): marks the light with the value the press should leave, so the light's
+    /// change is not spoken after the screen reader read the button's new label (CORE-7). It rides the same
+    /// value-matched gate as a combo pick (CORE-8, CORE-9), so a change the pilot did not cause with this press
+    /// still speaks. Nothing is marked while disconnected (no press is sent) or while the light is unread.
+    /// </summary>
+    private void MarkStateLightEchoForPress(SimVarDefinition buttonDef)
+    {
+        if (simConnectManager is not { IsConnected: true } || string.IsNullOrEmpty(buttonDef.StateVariable)) return;
+        double? cached = currentSimVarValues.TryGetValue(buttonDef.StateVariable, out double lit) ? lit : null;
+        if (buttonDef.StateVariableAfterPress(cached) is double expected)
+            MarkUiSet(buttonDef.StateVariable, expected);
+    }
+
+    /// <summary>
     /// Public wrapper over <see cref="MarkUiSet"/> for hotkey windows that live outside
     /// MainForm (the PMDG Ctrl+P autopilot window) and set panel-monitored variables
     /// directly. Without it those windows triple-announce: the screen reader announces

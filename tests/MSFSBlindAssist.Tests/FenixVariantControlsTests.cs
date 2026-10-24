@@ -442,7 +442,7 @@ public class FenixVariantControlsTests
     }
 
     [Fact]
-    public void Analogue_standby_instruments_do_not_list_ISIS_but_Standby_Instruments_stays()
+    public void Analog_standby_instruments_do_not_list_ISIS_but_Standby_Instruments_stays()
     {
         var all = new FenixA320Definition().GetPanelStructure();
         var gauges = Livery(standby: 1).GetPanelStructure();

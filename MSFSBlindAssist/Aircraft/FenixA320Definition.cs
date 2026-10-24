@@ -129,6 +129,17 @@ public partial class FenixA320Definition : BaseAircraftDefinition
     private const string AcpAdf2Receive = "ACP ADF 2 Receive";
     private const string AcpPaReceive = "ACP PA Receive";
 
+    // The EFIS FD and LS buttons and their lamps ([VAR-1]'s pair rule: one constant for both). The lamp is the
+    // button's own "on" light, never a fault (measured 2026-10-24: at power-up both FD lamps read 1; one Left FD
+    // press set the Left lamp and left the Right one), so it is named as the button the pilot presses and
+    // says what the button reads: "EFIS Left LS: On". The lamps are announced variables, not panel controls
+    // ([VAR-6]). Each button opts in to PressTogglesStateVariable, so the lamp stays quiet after the pilot's
+    // own panel press (the reader reads the button's new label) and speaks any other change ([CORE-7]).
+    private const string EfisLeftFdName = "EFIS Left FD";
+    private const string EfisLeftLsName = "EFIS Left LS";
+    private const string EfisRightFdName = "EFIS Right FD";
+    private const string EfisRightLsName = "EFIS Right LS";
+
     // Shared ValueDescriptions dictionaries for the two exactly-identical patterns that
     // recur hundreds of times across this aircraft's ~500 switch/knob definitions below.
     // Safe to share a single instance: nothing in the codebase mutates a SimVarDefinition's
@@ -1280,7 +1291,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             ["I_FCU_EFIS2_LS"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_FCU_EFIS2_LS",
-                DisplayName = "EFIS 2 LS Fault",
+                DisplayName = EfisRightLsName,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1289,7 +1300,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             ["I_FCU_EFIS2_FD"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_FCU_EFIS2_FD",
-                DisplayName = "EFIS 2 FD Fault",
+                DisplayName = EfisRightFdName,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1343,7 +1354,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             ["I_FCU_EFIS1_LS"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_FCU_EFIS1_LS",
-                DisplayName = "EFIS 1 LS Fault",
+                DisplayName = EfisLeftLsName,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1352,7 +1363,7 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             ["I_FCU_EFIS1_FD"] = new SimConnect.SimVarDefinition
             {
                 Name = "I_FCU_EFIS1_FD",
-                DisplayName = "EFIS 1 FD Fault",
+                DisplayName = EfisLeftFdName,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -2891,20 +2902,22 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             ["S_FCU_EFIS1_FD_PRESS"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_FCU_EFIS1_FD_PRESS",
-                DisplayName = "EFIS Left FD",
+                DisplayName = EfisLeftFdName,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS1_FD"
+                StateVariable = "I_FCU_EFIS1_FD",
+                PressTogglesStateVariable = true
             },
             ["S_FCU_EFIS1_LS_PRESS"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_FCU_EFIS1_LS_PRESS",
-                DisplayName = "EFIS Left LS",
+                DisplayName = EfisLeftLsName,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS1_LS"
+                StateVariable = "I_FCU_EFIS1_LS",
+                PressTogglesStateVariable = true
             },
 
             // ========== EFIS RIGHT (16 variables) ==========
@@ -3043,20 +3056,22 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             ["S_FCU_EFIS2_FD_PRESS"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_FCU_EFIS2_FD_PRESS",
-                DisplayName = "EFIS Right FD",
+                DisplayName = EfisRightFdName,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS2_FD"
+                StateVariable = "I_FCU_EFIS2_FD",
+                PressTogglesStateVariable = true
             },
             ["S_FCU_EFIS2_LS_PRESS"] = new SimConnect.SimVarDefinition
             {
                 Name = "S_FCU_EFIS2_LS_PRESS",
-                DisplayName = "EFIS Right LS",
+                DisplayName = EfisRightLsName,
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
                 RenderAsButton = true,
-                StateVariable = "I_FCU_EFIS2_LS"
+                StateVariable = "I_FCU_EFIS2_LS",
+                PressTogglesStateVariable = true
             },
 
             // ========== FCU (23 variables) ==========
@@ -11755,13 +11770,13 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             // Flight Director & ILS Buttons (ExecuteButtonTransition)
             if (varKey == "S_FCU_EFIS1_FD_PRESS" && value == 1)
             {
-                ExecuteButtonTransition("S_FCU_EFIS1_FD", "EFIS Left FD", simConnect, announcer);
+                ExecuteButtonTransition("S_FCU_EFIS1_FD", EfisLeftFdName, simConnect, announcer);
                 return true;
             }
 
             if (varKey == "S_FCU_EFIS1_LS_PRESS" && value == 1)
             {
-                ExecuteButtonTransition("S_FCU_EFIS1_LS", "EFIS Left LS", simConnect, announcer);
+                ExecuteButtonTransition("S_FCU_EFIS1_LS", EfisLeftLsName, simConnect, announcer);
                 return true;
             }
 
@@ -11863,13 +11878,13 @@ public partial class FenixA320Definition : BaseAircraftDefinition
             // Flight Director & ILS Buttons (ExecuteButtonTransition)
             if (varKey == "S_FCU_EFIS2_FD_PRESS" && value == 1)
             {
-                ExecuteButtonTransition("S_FCU_EFIS2_FD", "EFIS Right FD", simConnect, announcer);
+                ExecuteButtonTransition("S_FCU_EFIS2_FD", EfisRightFdName, simConnect, announcer);
                 return true;
             }
 
             if (varKey == "S_FCU_EFIS2_LS_PRESS" && value == 1)
             {
-                ExecuteButtonTransition("S_FCU_EFIS2_LS", "EFIS Right LS", simConnect, announcer);
+                ExecuteButtonTransition("S_FCU_EFIS2_LS", EfisRightLsName, simConnect, announcer);
                 return true;
             }
 

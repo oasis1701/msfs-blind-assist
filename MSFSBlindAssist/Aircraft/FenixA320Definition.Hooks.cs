@@ -13,7 +13,8 @@ public partial class FenixA320Definition
     // Variant seams (FenixA320Definition.Variants.cs)
     partial void AddVariantVariables(Dictionary<string, SimConnect.SimVarDefinition> variables);
     partial void AddVariantPanelControls(Dictionary<string, List<string>> panels);
-    // Sections to their panel lists, after the main file builds them (the variant file adds the "Clock" panel).
+    // Sections to their panel lists, after the main file builds them (the variant file adds the "Clock" panel
+    // and drops the panels the loaded livery leaves without a control).
     partial void AddVariantPanelStructure(Dictionary<string, List<string>> structure);
     partial void AddVariantPanelDisplayVariables(Dictionary<string, List<string>> displayVariables);
     // Sets displayText to show that text in a panel display; leaves it null otherwise.

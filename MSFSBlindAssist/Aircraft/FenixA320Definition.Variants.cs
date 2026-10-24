@@ -9,6 +9,10 @@ public partial class FenixA320Definition
 
     private const string EconFlowKey = "S_OH_PNEUMATIC_ECON_FLOW";
     private const string ActKey = "S_OH_FUEL_ACT";
+    // The lights that only mirror their switch (measured 2026-10-24): each switch names its light as
+    // UiEchoVariable, so the light stays quiet after the pilot's own pick and speaks a change from elsewhere.
+    private const string EconFlowLowerLightKey = "I_OH_PNEUMATIC_ECON_FLOW_L";
+    private const string ActLowerLightKey = "I_OH_FUEL_ACT_L";
     private const string CallsMidKey = "S_OH_CALLS_MID";
     private const string CallsExitKey = "S_OH_CALLS_EXIT";
 
@@ -25,13 +29,14 @@ public partial class FenixA320Definition
     // Registered with Add, never the indexer: a second registration of one key must fail at load.
     partial void AddVariantVariables(Dictionary<string, SimConnect.SimVarDefinition> variables)
     {
-        void Switch(string name, string label) => variables.Add(name, new SimConnect.SimVarDefinition
+        void Switch(string name, string label, string echoLight) => variables.Add(name, new SimConnect.SimVarDefinition
         {
             Name = name,
             DisplayName = label,
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = OffOn,
+            UiEchoVariable = echoLight,
         });
         void Button(string name, string label) => variables.Add(name, new SimConnect.SimVarDefinition
         {
@@ -71,14 +76,16 @@ public partial class FenixA320Definition
         Combo(UtcKey, "UTC Selector", new Dictionary<double, string> { [0] = "GPS", [1] = "Internal", [2] = "Set" });
         Combo(CargoTempKey, "Aft Cargo Temperature", new Dictionary<double, string>(variables["A_OH_PNEUMATIC_AFT_TEMP"].ValueDescriptions!));
 
-        Switch(EconFlowKey, EconFlowName);
-        Switch(ActKey, ActPumpName);
+        Switch(EconFlowKey, EconFlowName, EconFlowLowerLightKey);
+        Switch(ActKey, ActPumpName, ActLowerLightKey);
         Button(CallsMidKey, "Calls Mid");
         Button(CallsExitKey, "Calls Exit");
 
-        Light("I_OH_PNEUMATIC_ECON_FLOW_L", EconFlowName + " Lower");
+        Light(EconFlowLowerLightKey, EconFlowName + " Lower");
+        // The upper ACT light never lit with the switch (measured 2026-10-24), and its legend is unknown: it keeps
+        // its position name and no echo ([FNX-7]).
         Light("I_OH_FUEL_ACT_U", ActPumpName + " Upper");
-        Light("I_OH_FUEL_ACT_L", ActPumpName + " Lower");
+        Light(ActLowerLightKey, ActPumpName + " Lower");
         Light("I_OH_ENG_N1_MODE_1_L", variables["S_OH_ENG_N1_MODE_1"].DisplayName + " Lower");
         Light("I_OH_ENG_N1_MODE_2_L", variables["S_OH_ENG_N1_MODE_2"].DisplayName + " Lower");
 
@@ -163,7 +170,7 @@ public partial class FenixA320Definition
         list.Insert(i + 1, ClockPanel);
 
         // A panel whose every control the loaded livery lacks is not listed (DCDU Left without a DCDU, ISIS
-        // with the round standby gauges), so a Tab through the section never stops on an empty panel. Built on
+        // with the round standby gauges), so the arrow keys through the panels list never stop on an empty panel. Built on
         // every call, never cached: the answer follows the variant as it is read, and an unread field hides
         // nothing ([FNX-11]). The section keys stay, so the sections list MainForm builds once never loses one.
         // GetPanelControls is the base class's cached dictionary, not rebuilt here.
