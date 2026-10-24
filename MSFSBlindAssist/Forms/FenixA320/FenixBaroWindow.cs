@@ -84,7 +84,11 @@ public partial class FenixBaroWindow : Form
         double? qnhValue = simConnect.GetCachedVariableValue("I_FCU_EFIS1_QNH");
         baroModeCombo.SelectedIndex = (qnhValue != null && qnhValue.Value > 0.5) ? 0 : 1;
 
-        baroModeCombo.SelectedIndexChanged += BaroModeCombo_SelectedIndexChanged;
+        // SelectionChangeCommitted fires only on the pilot's own pick. SelectedIndexChanged also fires
+        // on the assignment above and again when the handle is created (see MainForm.PanelBuilder.cs,
+        // where the same event sent phantom writes), so opening this window would step the knob: a
+        // pull to STD when the QNH light is unread and the combo defaults to STD.
+        baroModeCombo.SelectionChangeCommitted += BaroModeCombo_SelectionChangeCommitted;
 
         // Unit ComboBox
         var unitLabel = new Label
@@ -171,7 +175,7 @@ public partial class FenixBaroWindow : Form
         };
     }
 
-    private void BaroModeCombo_SelectedIndexChanged(object? sender, EventArgs e)
+    private void BaroModeCombo_SelectionChangeCommitted(object? sender, EventArgs e)
     {
         bool isStd = baroModeCombo.SelectedIndex == 1;
 
@@ -190,6 +194,10 @@ public partial class FenixBaroWindow : Form
         unitCombo.Enabled = !isStd;
         valueTextBox.Enabled = !isStd;
     }
+
+    // "Setting altimeter to 29.92": invariant, so a comma-decimal Windows never speaks "29,92".
+    internal static string SettingAltimeterAnnouncement(double inHg)
+        => FormattableString.Invariant($"Setting altimeter to {inHg:0.00}");
 
     private async void ValueTextBox_KeyDown(object? sender, KeyEventArgs e)
     {
@@ -279,7 +287,7 @@ public partial class FenixBaroWindow : Form
             _settingBaro = true;
             try
             {
-                announcer.AnnounceImmediate($"Setting altimeter to {inHgValue:0.00}");
+                announcer.AnnounceImmediate(SettingAltimeterAnnouncement(inHgValue));
                 double targetInHg = Math.Round(inHgValue, 2);
                 await aircraft.SetFCUBaro(null, targetInHg, simConnect, announcer);
             }

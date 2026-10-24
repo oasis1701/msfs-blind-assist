@@ -200,7 +200,7 @@ public class FenixV3FixPanelControlsTests : IDisposable
     {
         // The window's QNH/STD pick is a pull (+1) or a push (-1) from the sim's own count, as the
         // panel and the First Officer step it: an absolute write could select the wrong mode or nothing.
-        string body = FoFbwUnclaimedEventKeyTests.MethodBody(BaroWindowPath, "BaroModeCombo_SelectedIndexChanged");
+        string body = FoFbwUnclaimedEventKeyTests.MethodBody(BaroWindowPath, "BaroModeCombo_SelectionChangeCommitted");
         foreach (var n in new[] { "1", "2" })
             Assert.Contains($"CounterStepCode(\"S_FCU_EFIS{n}_BARO_STD\", isStd ? 1 : -1)", body);
         Assert.Contains("ExecuteCalculatorCodeUnique(", body);
