@@ -665,7 +665,7 @@ A configurable periodic ground-speed callout in `Services/GroundSpeedAnnouncer.c
 
 The first sample establishes the baseline silently (`lastAnnouncedBucket = -1` initially, updated with no announcement), and so does the first sample after the effective interval changes (a switch between the taxi and takeoff cadences, or a settings edit). While airborne the baseline is left FROZEN, not reset, so the first sample after touchdown announces the rollout speed at once. Speaks through plain, queued `Announce` (NOT `AnnounceImmediate`) and, living outside `TaxiGuidanceManager`, never touches the Repeat-Last buffer, so a fading "10 knots" callout doesn't displace the most recent actionable instruction.
 
-Active in every on-ground phase, whether or not taxi guidance is running — taxiing, lineup, the takeoff roll and the landing rollout — and silent while airborne; complements the takeoff-assist 80/100/V1/rotate callouts (which use absolute-speed thresholds while this fires at every multiple). Useful for monitoring SOP taxi-speed caps (10 kt turns, 30 kt straight) without pressing the GS hotkey, and for blind pilots tracking acceleration on the takeoff roll.
+Active in every on-ground phase, whether or not taxi guidance is running — taxiing, lineup, the takeoff roll and the landing rollout — and silent while airborne; complements the takeoff-assist 80 and 100 knot callouts (which use absolute-speed thresholds while this fires at every multiple; V1, Rotate and V2 come from each aircraft's `TakeoffVSpeedCallouts`). Useful for monitoring SOP taxi-speed caps (10 kt turns, 30 kt straight) without pressing the GS hotkey, and for blind pilots tracking acceleration on the takeoff roll.
 
 ### Speed-aware directives
 
