@@ -89,9 +89,9 @@ The FCU speed, heading, altitude and V/S, the EFIS 1 and 2 baro and the ISIS bar
 
 ### Typed values
 
-A typed FCU value (the Ctrl+S/H/A/V windows, `SetFCUSpeed`, `SetFCUHeading`, `SetFCUAltitude`, `SetFCUVS`) computes the number of steps from the cached `N_FCU_*` reading (a heading by the shortest way round, 340 to 20 is +40), sends them with one `JumpCounter`, waits for the readout to catch up and, if it missed, retries the remainder in batches of 10 with a frame between them (`SetFCUValueWithVerification`). The typed altimeter (Ctrl+B, `SetFCUBaro`) steps each EFIS baro counter by the delta from its cached reading and verifies with a fresh read. A typed QNH also leaves STD with a push step, so it always ends in QNH whatever the counter holds.
+A typed FCU value (the Ctrl+S/H/A/V windows, `SetFCUSpeed`, `SetFCUHeading`, `SetFCUAltitude`, `SetFCUVS`, all through `SetFcuKnobAsync`) is a closed loop, `FenixA320FcuKnobSet.RunAsync` ([FNX-20]): it reads the knob fresh through its on-request twin, works out the clicks to go (a heading by the shortest way round, 340 to 20 is +40), sends them with `JumpCounter`, waits, reads again and steps from what it reads. With the Fenix's Encoder Acceleration on (or unread) each write carries at most 20 clicks, 500 ms apart; with it off one write carries the whole difference. A knob that has not moved is never written again, the loop is bounded, and a set that ends off target says so once ("Altitude set to 7100, not 7000."). The typed altimeter (Ctrl+B, `SetFCUBaro`) steps each EFIS baro counter by the delta from its cached reading and verifies with a fresh read. A typed QNH also leaves STD with a push step, so it always ends in QNH whatever the counter holds.
 
-A Fenix option can disturb these: with `encoder_acceleration_enabled` on, the Fenix may turn a burst of clicks into bigger changes, and with `efis_baro_linking_type` linked either baro knob moves both sides. The app is tested with both off; the options window says so in its notes (see "Fenix options" in [a32nx.md](a32nx.md)), and the measured effect of each is pending (the results replace this sentence and the pending note under "Fenix options" in [a32nx.md](a32nx.md)).
+Two Fenix options touch these. `encoder_acceleration_enabled` on multiplies a large or quick turn of an FCU knob (measured 2026-10-24: one -80 click write took the altitude to the 100 ft floor; single writes of up to 20 clicks landed exactly), which is why the typed FCU values turn in checked 20-click steps ([FNX-20]); the baro knobs are not accelerated (-30 and +69 clicks in one write landed exactly). With `efis_baro_linking_type` linked either baro knob moves both sides; the app is tested with Independent, and that effect is still to be measured (the result replaces this sentence and the pending note under "Fenix options" in [a32nx.md](a32nx.md)).
 
 ## Key Concepts
 
@@ -115,7 +115,8 @@ A Pull when the baro is already in STD (or a Push when it is already in QNH) the
 
 ## Reference
 
-- `Aircraft/FenixA320Definition.cs`: `CounterStepCode`, `IncrementCounter`, `DecrementCounter`, `JumpCounter`, `AdjustFcuPushPullCounter`, `AdjustBaroCounter`, `SetFCUValueWithVerification`.
+- `Aircraft/FenixA320Definition.cs`: `CounterStepCode`, `IncrementCounter`, `DecrementCounter`, `JumpCounter`, `AdjustFcuPushPullCounter`, `AdjustBaroCounter`, `SetFcuKnobAsync`.
+- `Aircraft/FenixA320FcuKnobSet.cs`: the typed-value loop; `Services/FenixEncoderAcceleration.cs`: the option, read from the Fenix with a short cache.
 - `FirstOfficer/Fenix/FenixActionExecutor.cs`: `PushFcuManaged` and `SetBaroStdBoth` step the same counters the same way.
 - `Forms/FenixA320/FenixBaroWindow.cs`: the altimeter window's QNH/STD pick pulls or pushes the STD counters.
 - Pinned by `FenixV3FixPanelControlsTests` (`Counters_step_from_the_sims_value`, `Baro_std_is_a_pull_and_a_push`, `Typed_baro_leaves_std_with_a_push_step`, `Baro_window_mode_pick_steps_the_std_counter`) and `FenixFoBaroStdTests`.
