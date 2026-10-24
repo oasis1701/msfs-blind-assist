@@ -28,7 +28,7 @@ The last few minutes of a flight are the busiest. You need to know where the run
 
 ### What it is {#land-dest-what}
 
-The destination runway is the runway you tell BA you are going to land on. BA does not read it from your flight plan or your aircraft's FMS; you choose it yourself, in a small window. Once it is set, BA can measure your distance to it, give you an ILS report for it, fly Visual Guidance to it, and arm the landing tones for it.
+The destination runway is the runway you tell BA you are going to land on. BA never sets it on its own: you choose it yourself, in a small window. To save typing, the window suggests the arrival airport from your loaded flight plan, and its runway when the plan names one, and you confirm or change it. Once it is set, BA can measure your distance to it, give you an ILS report for it, fly Visual Guidance to it, and arm the landing tones for it.
 
 ### When to use it {#land-dest-when}
 
@@ -36,9 +36,9 @@ Set it as soon as you know your landing runway: at the top of descent, after lis
 
 ### How to use it {#land-dest-how}
 
-1. Press Input Shift+D. The **Select Destination Runway** window opens with the cursor in the **Airport ICAO Code** box.
-2. Type the four-letter ICAO code of the airport, for example EGLL. As soon as you type the fourth letter, BA loads that airport's runways. The status line says how many it found, for example *"Found 4 runways for London Heathrow"*. If the code is wrong, it says *"Airport EGXX not found in database"*.
-3. Press Enter. The cursor moves to the **Available Runways** list and the first runway is selected.
+1. Press Input Shift+D. The **Select Destination Runway** window opens with the cursor in the **Airport ICAO Code** box. If BA already knows your arrival airport — a destination you set earlier, or your loaded flight plan — the box is already filled in and that airport's runways are loaded; the filled-in code is selected, so typing simply replaces it.
+2. If the box is empty, or to use another airport, type its four-letter ICAO code, for example EGLL. As soon as you type the fourth letter, BA loads that airport's runways. The status line says how many it found, for example *"Found 4 runways for London Heathrow"*. If the code is wrong, BA says *"Airport EGXX not found in database"* out loud, and it says the same when a filled-in airport cannot be found. Pressing Enter when there are no runways to choose repeats that message. If you press Enter while the runways are still loading, the cursor moves to the list as soon as they arrive.
+3. Press Enter. The cursor moves to the **Available Runways** list with your planned runway selected when BA knows it, otherwise the first runway. If the planned runway is not in the airport's list, BA says so, for example: *"Runway 27R is not in this airport's runway list. Showing runway 09L instead — check the runway before you continue."*
 4. Arrow up and down through the list. Each runway reads with its length, width, surface and, if it has one, its ILS frequency and course, for example: "Runway 27L - 3660 m long, 50 m wide - Asphalt - ILS 109.50 (273°)". Distances follow your distance unit setting (see the Settings section below).
 5. If you want to hand-fly the flare with tones, Tab to the **Manual landing assist (adds flare tones)** checkbox and press Space to tick it. Leave it unticked for an approach you will fly on the autopilot or the ILS. The next section explains what it does.
 6. Press Enter (or Tab to **Select** and press Space). The window closes, focus goes back to the simulator, and BA confirms:
@@ -285,7 +285,7 @@ Plan your exit during the descent or approach, once you know your landing runway
 
 1. Press Input Shift+X. The **Landing Exit Planner** window opens.
 2. **Airport ICAO** (Alt+A): this is filled in for you from your destination runway or, if you have not set one, from your loaded flight plan. To use another airport, type its code and press Tab. While the airport loads, the status line reads, for example, *"EGLL: fetching taxiway names…"* and then *"EGLL: building taxi graph…"*.
-3. **Runway** (Alt+R): a list of runway directions, already set to your destination runway if you have one. If the runway BA was given is not in the list, it tells you, for example: *"Runway 27R is not in this airport's runway list. Showing runway 09L instead — check the runway before you plan an exit."*
+3. **Runway** (Alt+R): a list of runway directions, already set to your destination runway if you have one. If the runway BA was given is not in the list, it tells you, for example: *"Runway 27R is not in this airport's runway list. Showing runway 09L instead — check the runway before you continue."*
 4. When a runway is selected, BA tells you how many exits it found, for example *"6 exit options for runway 27L."* If some exits have no taxiway mapped clear of the runway in your database, it adds *"2 of them have no taxiway mapped clear of the runway."*
 5. **Exit taxiway** (Alt+E): arrow through the exits. They are listed in order of distance from the landing threshold, nearest first. BA pre-selects a sensible one: never a turnaround, and one that leads clear of the runway if there is one.
 6. If ATC has given you a land and hold short instruction (LAHSO), tick **Land and hold short (LA&HSO) of** (Alt+H) and choose the crossing runway you must stop before. Each choice reads like *"Runway 27 — hold point 1700 m from threshold (estimated)"*: BA estimates the stop point from the two runways' geometry, so treat it as a guide, not a painted line. Only runways that actually cross yours are listed. If your exit lies beyond that point, Plan Exit refuses it: *"Exit B9 is at 3200 metres, beyond the LAHSO hold point at 1700 metres. Pick an earlier exit or uncheck land and hold short."*
