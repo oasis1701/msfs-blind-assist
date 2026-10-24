@@ -1,7 +1,7 @@
 namespace MSFSBlindAssist.Aircraft;
 
-// Fenix v3 plan 06 (variants): the controls only some Fenix airframes have (spec 3, evidence table read
-// on 2026-10-21 from Fenix 3.0.0.7426), and hiding the existing controls the loaded variant lacks.
+// Fenix v3 variants: the controls only some Fenix airframes have (read from Fenix 3.0.0.7426 on
+// 2026-10-21), and hiding the existing controls the loaded variant lacks.
 public partial class FenixA320Definition
 {
     internal const string EconFlowName = "Econ Flow";
@@ -61,7 +61,7 @@ public partial class FenixA320Definition
                 ValueDescriptions = values,
             });
 
-        // Task 5: cockpit controls the app did not offer (owner request 2026-10-21).
+        // Cockpit controls the app did not offer (owner request 2026-10-21).
         Combo(HeadsetKey, "Headset", OffOn);
         Button(ChrKey, "Chronometer Start/Stop");
         Button(ChrRstKey, "Chronometer Reset");
@@ -86,7 +86,7 @@ public partial class FenixA320Definition
         VariantChanged += OnVariantKnown;
     }
 
-    // Task 4: the loaded variant is spoken once. The config values arrive one per ProcessSimVarUpdate call,
+    // The loaded variant is spoken once. The config values arrive one per ProcessSimVarUpdate call,
     // so VariantChanged fires several times in a row; speech waits for a 1 s quiet period, then compares the
     // sentence, so one load is spoken once and a field the sentence does not mention never re-speaks it.
     private const int VariantSpeechQuietMs = 1000;
@@ -102,7 +102,7 @@ public partial class FenixA320Definition
         return text == lastSpokenText ? null : text;
     }
 
-    // Raised on the UI thread (plan 01). Does not speak: it restarts the quiet-period timer.
+    // Raised on the UI thread. Does not speak: it restarts the quiet-period timer.
     private void OnVariantKnown(object? sender, FenixVariant variant)
     {
         if (_variantSpeechTimer == null)
@@ -190,7 +190,7 @@ public partial class FenixA320Definition
 
     /// <summary>
     /// True unless the variant's own field for this control says the airframe lacks it. An unread field
-    /// (null, Unknown) never hides anything; a key the evidence table does not name is always fitted.
+    /// (null, Unknown) never hides anything; a key not listed below is always fitted.
     /// </summary>
     internal static bool IsFitted(string varKey, FenixVariant variant)
     {

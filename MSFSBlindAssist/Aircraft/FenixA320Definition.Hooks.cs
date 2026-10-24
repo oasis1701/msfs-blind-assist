@@ -2,17 +2,17 @@ using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Aircraft;
 
-// Seams the Fenix v3 plans fill in from their own partial files. Each `partial void` is optional:
+// Seams the Fenix v3 work fills in from its own partial files. Each `partial void` is optional:
 // with no implementation its call compiles to nothing, so the definition behaves as it did before.
-//   Plan 06  FenixA320Definition.Variants.cs  variant, panel, display and visibility seams, OnFenixSwitchedAway
-//   Plan 08  FenixA320Definition.Cabin.cs     cabin background seams
-//   Plan 09  FenixA320Definition.Engines.cs   engine background seams
+//   FenixA320Definition.Variants.cs  variant, panel, display and visibility seams, OnFenixSwitchedAway
+//   FenixA320Definition.Cabin.cs     cabin background seams
+//   FenixA320Definition.Engines.cs   engine background seams
 public partial class FenixA320Definition
 {
-    // Variant seams (plan 06)
+    // Variant seams (FenixA320Definition.Variants.cs)
     partial void AddVariantVariables(Dictionary<string, SimConnect.SimVarDefinition> variables);
     partial void AddVariantPanelControls(Dictionary<string, List<string>> panels);
-    // Sections to their panel lists, after the main file builds them (plan 06 adds the "Clock" panel).
+    // Sections to their panel lists, after the main file builds them (the variant file adds the "Clock" panel).
     partial void AddVariantPanelStructure(Dictionary<string, List<string>> structure);
     partial void AddVariantPanelDisplayVariables(Dictionary<string, List<string>> displayVariables);
     // Sets displayText to show that text in a panel display; leaves it null otherwise.
@@ -22,15 +22,15 @@ public partial class FenixA320Definition
     partial void OnVariantSimVarUpdate(string varName, double value, Accessibility.ScreenReaderAnnouncer announcer,
         ref bool handled);
     partial void IsVariantControlVisible(string varKey, ref bool visible);
-    // C# allows one implementation, so plan 06 owns it.
+    // C# allows one implementation, so the variant file owns it.
     partial void OnFenixSwitchedAway();
 
-    // Background seams, one Start/Stop pair per plan (cabin: plan 08, engine: plan 09). Start runs once per
-    // definition instance, on the UI thread, from the first ProcessSimVarUpdate that gets past the take-off
-    // IAS feed (that branch returns first, so Start can come up to about a second after the instance's very
-    // first update); a sim reconnect keeps the instance, so Start does not run again then. Stop runs in OnSwitchedAway, on an
+    // Background seams, one Start/Stop pair each (cabin, engine). Start runs once per definition instance,
+    // on the UI thread, from the first ProcessSimVarUpdate that gets past the take-off IAS feed (that branch
+    // returns first, so Start can come up to about a second after the instance's very first update); a sim
+    // reconnect keeps the instance, so Start does not run again then. Stop runs in OnSwitchedAway, on an
     // aircraft switch and on app quit. Every seam call is isolated: an exception from one is logged and the
-    // others still run, so a later plan's failure never aborts the switch, the quit or the update.
+    // others still run, so one background's failure never aborts the switch, the quit or the update.
     partial void StartCabinBackground(Accessibility.ScreenReaderAnnouncer announcer);
     partial void StopCabinBackground();
     partial void StartEngineBackground(Accessibility.ScreenReaderAnnouncer announcer);
@@ -49,7 +49,7 @@ public partial class FenixA320Definition
     /// <summary>For the tests: whether this instance has run its background Start seams.</summary>
     internal bool BackgroundStarted => _backgroundStarted;
 
-    // Runs one later plan's seam: an exception from it is logged (CORE-15), never thrown at the caller.
+    // Runs one background seam: an exception from it is logged (CORE-15), never thrown at the caller.
     private static void RunSeam(string seam, Action call)
     {
         try
@@ -80,7 +80,7 @@ public partial class FenixA320Definition
     // Variant detection: which Fenix is loaded, read from the eight config L:vars (FenixConfigVars).
     // Variant stays Unknown until the aircraft type reads 1-4, then holds every reading so far and follows
     // each new one (the gate in TryApplyConfigValue); VariantChanged is raised, on the UI thread
-    // (ProcessSimVarUpdate's), only when the record changes. Later plans share this one answer.
+    // (ProcessSimVarUpdate's), only when the record changes. Other Fenix code shares this one answer.
     public FenixVariant Variant { get; private set; } = FenixVariant.Unknown;
     public event EventHandler<FenixVariant>? VariantChanged;
 
@@ -131,7 +131,7 @@ public partial class FenixA320Definition
         if (!double.IsFinite(value)) return true;
         _configReadings[varName] = value;
 
-        // The gate (ruling R14): SimConnect reads an L:var the Fenix has not written yet as 0, and 0 is a
+        // The gate: SimConnect reads an L:var the Fenix has not written yet as 0, and 0 is a
         // real value for seven of the eight (CFM, ISIS, GNADIRS, no DCDU, CEO, no cargo heat, no extra
         // tanks), so in the sim menu or while the Fenix loads they would claim all of those. An aircraft
         // type of 1-4 is the sign the Fenix has published its config: until it reads that, the readings
