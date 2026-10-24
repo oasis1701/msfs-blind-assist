@@ -1,6 +1,6 @@
 namespace MSFSBlindAssist.Forms.Fenix;
 
-// Plan 09: the Engines window in the "Fenix windows" list.
+// The Engines window in the "Fenix windows" list.
 public static partial class FenixWindowRegistry
 {
     static partial void AddEngineWindows(List<FenixWindowEntry> entries)

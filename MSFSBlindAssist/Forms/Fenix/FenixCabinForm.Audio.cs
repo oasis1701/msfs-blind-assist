@@ -3,13 +3,13 @@ using MSFSBlindAssist.Services;
 
 namespace MSFSBlindAssist.Forms.Fenix;
 
-// The Cabin window's Audio page (plan 08 Task 8): boarding music with its channel and volume, the prerecorded
+// The Cabin window's Audio page: boarding music with its channel and volume, the prerecorded
 // announcements and the memo they are queued in, the announcement set, and the FAP loudspeaker volume.
 // It plugs into the shell (FenixCabinForm.cs) through BuildAudioTab, UpdateAudioLists and UpdateAudioControls
 // and sends only through the shell's RunMutationAsync (the FAP's audio mutations) and RunWriteAsync (the
 // loudspeaker volume), which say "The Fenix is not answering." and "The Fenix did not accept that." themselves.
 //
-// Every handler checks in this order (rulings R13, R14): the Fenix not answering, an unknown value, then
+// Every handler checks in this order: the Fenix not answering, an unknown value, then
 // the limits. Speech (CORE-7): a check box, a combo and a list say their own state, so those presses have
 // no read-back; the volume, the announcement playing, the memo and the loudspeaker volume are what the
 // reader cannot say, so a press reads that line back.
@@ -56,8 +56,8 @@ public sealed partial class FenixCabinForm
         // order they are added to the page, the last one first: music (top), the lists, then the speaker row.
         AddLineList(page, "Audio status");
 
-        // Boarding music, its channel and its volume. No AccessibleName on the check box and the buttons
-        // (ruling R12): the reader reads their text. The labels carry the combos' mnemonics.
+        // Boarding music, its channel and its volume. No AccessibleName on the check box and the buttons:
+        // the reader reads their text. The labels carry the combos' mnemonics.
         _musicBox = new CheckBox { Text = "&Boarding music", AutoSize = true, TabIndex = 0 };
         _musicBox.CheckedChanged += OnMusicChanged;
 
@@ -273,7 +273,7 @@ public sealed partial class FenixCabinForm
     // ---- Refusals -------------------------------------------------------------------------------
 
     /// <summary>
-    /// True, after saying so, when no audio press can work: the Fenix is not answering (ruling R13, the
+    /// True, after saying so, when no audio press can work: the Fenix is not answering (the
     /// shell's not-answering message), or it answers without an audio state ("No audio data from the
     /// Fenix.", as the page's line reads "Audio: no data from the Fenix"). A press is never sent on a state
     /// the window does not have.
@@ -489,7 +489,7 @@ public sealed partial class FenixCabinForm
     // ---- FAP loudspeaker volume -----------------------------------------------------------------
 
     // One 5 percent step, from the volume the FAP Set-Up page shows. It does not need the audio state:
-    // the volume is its own data name. An unknown volume is not stepped from the FAP's assumed 100 (R14).
+    // the volume is its own data name. An unknown volume is not stepped from the FAP's assumed 100.
     private void StepSpeakerVolume(bool up)
     {
         if (!_cache.AnyKnown)

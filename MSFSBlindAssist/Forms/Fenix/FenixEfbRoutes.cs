@@ -5,16 +5,16 @@ internal enum FenixEfbRoute
 {
     /// <summary>The EFB itself (home, settings, the Fenix pages), or the gateway root: left alone.</summary>
     Efb,
-    /// <summary>The EFB's MCDU page: cannot be read with a screen reader (plan 03, decision 8).</summary>
+    /// <summary>The EFB's MCDU page: cannot be read with a screen reader.</summary>
     Mcdu,
-    /// <summary>The EFB's FAP page: cannot be read with a screen reader (plan 03, decision 8).</summary>
+    /// <summary>The EFB's FAP page: cannot be read with a screen reader.</summary>
     Fap,
     /// <summary>Anything else, including a page on another origin: left alone.</summary>
     Other,
 }
 
 /// <summary>
-/// Sorts the address the Fenix EFB window is on (plan 03, Owner decision 8). The window steps back
+/// Sorts the address the Fenix EFB window is on. The window steps back
 /// to the EFB home from the MCDU and FAP pages, which a screen reader cannot use, and says where the
 /// working windows are. Only the gateway's own origin (the one <see cref="FenixEFBForm.EfbUrl"/> names)
 /// can be anything but <see cref="FenixEfbRoute.Other"/>.
@@ -64,7 +64,7 @@ internal static class FenixEfbRoutes
     }
 
     /// <summary>
-    /// What to say when the window steps back from a dead end (decision 8, verbatim), or null for a
+    /// What to say when the window steps back from a dead end (the owner's wording, verbatim), or null for a
     /// route that needs no stepping back.
     /// </summary>
     internal static string? DeadEndMessage(FenixEfbRoute route) => route switch
@@ -78,7 +78,7 @@ internal static class FenixEfbRoutes
 }
 
 /// <summary>
-/// Decides whether a dead end the Fenix EFB window has just met is caught (ruling R33). The EFB's router may
+/// Decides whether a dead end the Fenix EFB window has just met is caught. The EFB's router may
 /// change the address twice on its way into the MCDU, so a second catch of the same route within
 /// <see cref="WindowMs"/> of the last catch does nothing: no second navigation, no second spoken line. A
 /// different dead end is always caught, and an ignored catch does not hold the gate shut any longer. Times are

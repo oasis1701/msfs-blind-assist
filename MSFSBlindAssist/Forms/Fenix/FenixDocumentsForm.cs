@@ -22,7 +22,7 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// one checks IsDisposed before it touches a control: the window is disposed on an aircraft switch
 /// (DisposeTrackedWindows) while a request may still be in flight. A newer open or search wins; an older answer is
 /// dropped. Escape and the close button only hide the window, which keeps the open document; the pin watcher polls
-/// only while the window is shown. Speech is only what plan 07 lists (CORE-7); everything else is what NVDA reads
+/// only while the window is shown. Speech is kept to what the screen reader cannot say (CORE-7); everything else is what NVDA reads
 /// from the focused control.
 /// </remarks>
 public sealed class FenixDocumentsForm : Form
@@ -392,7 +392,7 @@ public sealed class FenixDocumentsForm : Form
     // ---- Pins -------------------------------------------------------------------------------------
 
     // Raised on the UI thread (the watcher's timer, or a poll awaited here). Never throws: the timer's tick is async
-    // void, so an exception here would reach the app's ThreadException handler. Nothing is spoken for a new pin (D1).
+    // void, so an exception here would reach the app's ThreadException handler. Nothing is spoken for a new pin.
     private void OnPinsChanged(object? sender, EventArgs e)
     {
         if (IsDisposed) return;

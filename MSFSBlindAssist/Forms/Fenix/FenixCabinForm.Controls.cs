@@ -2,14 +2,14 @@ using MSFSBlindAssist.Services;
 
 namespace MSFSBlindAssist.Forms.Fenix;
 
-// The Cabin window's Doors, Temperature and Water pages (plan 08 Task 9): a value list with the buttons that
+// The Cabin window's Doors, Temperature and Water pages: a value list with the buttons that
 // press the FAP's and the EFB's own controls. It plugs into the shell (FenixCabinForm.cs) through
 // BuildControlTabs and UpdateControlLists and sends only through the shell's RunWriteAsync, which says "The
 // Fenix is not answering." and "The Fenix did not accept that." itself.
 //
-// Every handler checks in this order (rulings R13, R14, R15): the Fenix not answering, an unknown value
+// Every handler checks in this order: the Fenix not answering, an unknown value
 // (a press never writes from a value the window does not know), then the limits; a door or cargo press
-// also needs the Fenix to say it is on the ground before its door's own state counts (R16). Speech
+// also needs the Fenix to say it is on the ground before its door's own state counts. Speech
 // (CORE-7): a button is read by its own text, so every press that writes reads its line back, which the
 // reader cannot say: the temperature, the water preselect and the door's state. The temperature and the preselect say
 // "unchanged" when the line does not move; a door says nothing then.
@@ -33,7 +33,7 @@ public sealed partial class FenixCabinForm
     private static readonly TimeSpan DoorReadbackWindow = TimeSpan.FromSeconds(30);
 
     // The EFB shows its door and cargo toggles while aircraft.altitude.aboveGround <= 100 (feet) and
-    // "This section can only be used when on the ground" above it (EFB chunk 856 @50828, ruling R16).
+    // "This section can only be used when on the ground" above it (EFB chunk 856 @50828).
     private const double GroundServiceMaxHeightFeet = 100;
 
     private ListBox _doorsList = null!;
@@ -43,7 +43,7 @@ public sealed partial class FenixCabinForm
     private bool _doorButtonOffered;
 
     /// <summary>
-    /// Where a door or cargo press marks its line as the pilot's own while its read-back waits (ruling R18): the
+    /// Where a door or cargo press marks its line as the pilot's own while its read-back waits: the
     /// registry the app-wide door announcement reads, so the change is said once. A test gives the window its own.
     /// </summary>
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
@@ -54,7 +54,7 @@ public sealed partial class FenixCabinForm
     partial void BuildControlTabs(TabPage doors, TabPage temperature, TabPage water)
     {
         // Each page's value list fills what its row of buttons, docked to the bottom, leaves. Buttons have
-        // no AccessibleName (ruling R12): the reader reads their text, also while the Doors button's changes.
+        // no AccessibleName: the reader reads their text, also while the Doors button's changes.
         _doorsList = AddLineList(doors, "Doors and slides");
         // No text and hidden until a line with a door control is selected (UpdateDoorButton).
         _doorButton = AddButtonRow(doors, ("", PressDoor))[0];
@@ -133,7 +133,7 @@ public sealed partial class FenixCabinForm
             Refuse($"{(forward ? "Forward" : "Aft")} zone is at its {(warmer ? "warmest" : "coolest")} setting.");
             return;
         }
-        // Waits for the zone's target and offset, not the measured air temperature (R17).
+        // Waits for the zone's target and offset, not the measured air temperature.
         _ = RunWriteAsync(write, forward ? ForwardTemperatureKey : AftTemperatureKey, ReadbackWindow, speakIfUnchanged: true, byState: true);
     }
 
@@ -169,7 +169,7 @@ public sealed partial class FenixCabinForm
     // ---- Water ----------------------------------------------------------------------------------
 
     // One 25 percent step of the water preselect. An unknown preselect is not stepped from the FAP's assumed
-    // 100 (R14). The read-back speaks the line: "Water preselect: 75 percent".
+    // 100. The read-back speaks the line: "Water preselect: 75 percent".
     private void StepPreselect(bool up)
     {
         if (!_cache.AnyKnown)
@@ -252,7 +252,7 @@ public sealed partial class FenixCabinForm
 
     // Opens or closes the door of the selected line, from what the Fenix says now (never from the button's
     // text, which may be a render behind). The read-back is the door's line, which says open or closed.
-    // Order: the Fenix not answering, the height (R16), then the door's own unknown or moving state.
+    // Order: the Fenix not answering, the height, then the door's own unknown or moving state.
     private void PressDoor()
     {
         if (!_cache.AnyKnown)
@@ -276,7 +276,7 @@ public sealed partial class FenixCabinForm
                 Refuse($"{door.Name} state is not known.");
                 return;
             }
-            // Waits for the door's own open or closed, not its slide (R17).
+            // Waits for the door's own open or closed, not its slide.
             _ = RunDoorWriteAsync(FenixCabinWrites.DoorToggle(door.DataKey, control), line!.Key);
             return;
         }
@@ -294,11 +294,11 @@ public sealed partial class FenixCabinForm
             Refuse($"The {Lower(cargo.Name)} is moving.");
             return;
         }
-        // Waits through "moving" for open or closed (R17).
+        // Waits through "moving" for open or closed.
         _ = RunDoorWriteAsync(FenixCabinWrites.CargoDoor(cargo.Door, !open.Value), cargo.Key);
     }
 
-    // ---- The pilot's own door presses (ruling R18) --------------------------------------------------
+    // ---- The pilot's own door presses --------------------------------------------------
     //
     // A door or cargo press marks its line in OwnPresses while this window can still say what the press did, so
     // the app-wide door announcement leaves that door to the read-back and the change is said once, and no
@@ -314,7 +314,7 @@ public sealed partial class FenixCabinForm
     // Guarded by itself: a press's continuation and the render tick share it (one thread in the app, two in tests).
     private readonly Dictionary<string, DateTime> _ownMarks = new(StringComparer.Ordinal);
 
-    // A door or cargo write, read back by its line's state for the door's longer window (R17).
+    // A door or cargo write, read back by its line's state for the door's longer window.
     private async Task RunDoorWriteAsync(FenixCabinWrite write, string lineKey)
     {
         MarkOwnPress(lineKey, Clock());
@@ -376,7 +376,7 @@ public sealed partial class FenixCabinForm
 
     // True, after saying so, unless the Fenix says the aircraft is on the ground as the EFB counts it: its
     // ground-services page offers the door and cargo toggles only while the height above ground is at most
-    // 100 ft (ruling R16). An unknown height is not assumed to be on the ground (R14).
+    // 100 ft. An unknown height is not assumed to be on the ground.
     private bool RefuseOffTheGround()
     {
         double? height = _cache.Number(FenixCabinNames.AltitudeAboveGround);

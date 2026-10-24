@@ -1,6 +1,6 @@
 namespace MSFSBlindAssist.Forms.Fenix;
 
-// Plan 11: the Fenix options window in the "Fenix windows" list.
+// The Fenix options window in the "Fenix windows" list.
 public static partial class FenixWindowRegistry
 {
     static partial void AddOptionsWindows(List<FenixWindowEntry> entries)

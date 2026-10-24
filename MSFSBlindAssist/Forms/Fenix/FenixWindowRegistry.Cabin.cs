@@ -1,6 +1,6 @@
 namespace MSFSBlindAssist.Forms.Fenix;
 
-// Plan 08: the Cabin window (the flight attendant panel) in the "Fenix windows" list.
+// The Cabin window (the flight attendant panel) in the "Fenix windows" list.
 public static partial class FenixWindowRegistry
 {
     static partial void AddCabinWindows(List<FenixWindowEntry> entries)

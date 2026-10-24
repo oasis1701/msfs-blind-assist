@@ -10,7 +10,7 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// Hosts the Fenix A320 EFB web UI (http://127.0.0.1:8083/?target=external#/efb) in a
 /// WebView2.
 ///
-/// The v3 EFB page is NOT screen-reader accessible on its own (spec 8). This window
+/// The v3 EFB page is NOT screen-reader accessible on its own. This window
 /// adds the accessibility layer on top of the live page and catches its dead ends
 /// (pages a screen reader cannot use, a failed load) instead of leaving a blind user
 /// in them. The URL is reachable whenever the Fenix A320 is loaded in the sim.
@@ -22,10 +22,10 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// </summary>
 public class FenixEFBForm : Form
 {
-    // Plan 03, owner decision 1: the external target, named explicitly. The page's own
+    // The external target, named explicitly (the owner's decision). The page's own
     // target detection already falls back to external for WebView2; pinning it removes
     // that reliance (Tab and the paging keys reach the page, no simulated sleep).
-    // Decision 2: 127.0.0.1, never localhost ([A320-40]) - the gateway listens on IPv4
+    // 127.0.0.1, never localhost ([A320-40]) - the gateway listens on IPv4
     // only, and a client that tries ::1 first pays for the refusal on every new connection.
     internal const string EfbUrl = "http://127.0.0.1:8083/?target=external#/efb";
 
@@ -33,7 +33,7 @@ public class FenixEFBForm : Form
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     private readonly ScreenReaderAnnouncer _announcer;
-    // A dead end is caught once: the router may change the address twice on its way into the MCDU (R33).
+    // A dead end is caught once: the router may change the address twice on its way into the MCDU.
     private readonly FenixEfbDeadEndGate _deadEndGate = new();
 
     private WebView2 _webView = null!;
@@ -122,7 +122,7 @@ public class FenixEFBForm : Form
         Controls.Add(_errorPanel);
     }
 
-    // Names the address the window tried (decision 2), so the failure text says where it looked.
+    // Names the address the window tried, so the failure text says where it looked.
     internal const string NotReachableMessage =
         "Fenix EFB is not reachable at http://127.0.0.1:8083. " +
         "Make sure the Fenix A320 is fully loaded, then press Retry.";
@@ -147,13 +147,13 @@ public class FenixEFBForm : Form
             // So a tiny injected capture-phase listener posts a close message: Escape
             // closes the window, except while a CDK overlay pane with content is open
             // (a "More options" menu, a drop-down panel, the Panel States dialog), where
-            // the page's own overlay closes on Escape instead (ruling R58).
+            // the page's own overlay closes on Escape instead.
             // ProcessCmdKey still covers Escape on the error panel.
             await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
                 "window.addEventListener('keydown',function(e){" +
                 "if(e.key==='Escape'&&!document.querySelector('.cdk-overlay-pane > *')){window.chrome.webview.postMessage('msfsba-efb-close');}}," +
                 "true);");
-            // The accessibility layer (plan 03): registered with the document-created injection, so it
+            // The accessibility layer: registered with the document-created injection, so it
             // is in place before the first page script runs and again for every new document. Read once,
             // here; a missing file only costs the layer, never the page.
             string? layer = ReadLayerScript();
@@ -215,8 +215,8 @@ public class FenixEFBForm : Form
 
     private void OnSourceChanged(object? sender, CoreWebView2SourceChangedEventArgs e)
     {
-        // Fired on the UI thread. The MCDU and FAP pages cannot be read with a screen reader
-        // (decision 8): step back to the EFB home and say where the working windows are.
+        // Fired on the UI thread. The MCDU and FAP pages cannot be read with a screen reader:
+        // step back to the EFB home and say where the working windows are.
         string source = _webView.CoreWebView2.Source;
         FenixEfbRoute route = FenixEfbRoutes.Classify(source);
         string? message = FenixEfbRoutes.DeadEndMessage(route);

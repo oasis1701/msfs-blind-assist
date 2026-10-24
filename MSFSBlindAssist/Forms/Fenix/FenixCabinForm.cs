@@ -10,11 +10,11 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// attendant panel (FAP) shows and does, on five pages: Status, Audio, Doors, Temperature and Water. A
 /// read-only status box at the top says whether the Fenix answers and whether the cabin system has
 /// started; each page lists its values one per line. Ctrl+Tab moves between the pages, Escape closes.
-/// This file is the shell and the Status page; <c>FenixCabinForm.Audio.cs</c> (plan 08 Task 8) and
-/// <c>FenixCabinForm.Controls.cs</c> (Task 9) build the other pages through the partial methods below.
+/// This file is the shell and the Status page; <c>FenixCabinForm.Audio.cs</c> and
+/// <c>FenixCabinForm.Controls.cs</c> build the other pages through the partial methods below.
 /// </summary>
 /// <remarks>
-/// <para>Data: a <see cref="FenixDataPoller"/> reads every cabin name once a second (ruling R3: the data
+/// <para>Data: a <see cref="FenixDataPoller"/> reads every cabin name once a second (the data
 /// service's subscription does not stream every name). Its values arrive on a pool thread ([FNX-2]) and
 /// reach <see cref="_cache"/> through <see cref="SafeBeginInvoke"/> ([A380C-6]). Every value is applied,
 /// Unknown included, so a gateway that stops answering turns the lines to "no data" by itself ([FNX-1]).
@@ -101,10 +101,10 @@ public sealed partial class FenixCabinForm : Form
 
     // ---- Hooks for the other pages ----------------------------------------------------------------
 
-    /// <summary>Task 8 (<c>FenixCabinForm.Audio.cs</c>) builds the Audio page; called once, from the constructor.</summary>
+    /// <summary><c>FenixCabinForm.Audio.cs</c> builds the Audio page; called once, from the constructor.</summary>
     partial void BuildAudioTab(TabPage page);
 
-    /// <summary>Task 9 (<c>FenixCabinForm.Controls.cs</c>) builds the Doors, Temperature and Water pages; called once, from the constructor.</summary>
+    /// <summary><c>FenixCabinForm.Controls.cs</c> builds the Doors, Temperature and Water pages; called once, from the constructor.</summary>
     partial void BuildControlTabs(TabPage doors, TabPage temperature, TabPage water);
 
     /// <summary>
@@ -167,7 +167,7 @@ public sealed partial class FenixCabinForm : Form
         };
     }
 
-    // No AccessibleName (ruling R12): the reader reads the page's text.
+    // No AccessibleName: the reader reads the page's text.
     private TabPage AddPage(string text, FenixCabinSection section)
     {
         var page = new TabPage(text);
@@ -195,7 +195,7 @@ public sealed partial class FenixCabinForm : Form
     {
         _statusList = AddLineList(page, "Cabin status");
 
-        // No AccessibleName (ruling R12): the reader reads the check box's text.
+        // No AccessibleName: the reader reads the check box's text.
         _cabinReadyBox = new CheckBox { Text = "Cabin &ready", AutoSize = true, TabIndex = 0 };
         _cabinReadyBox.CheckedChanged += OnCabinReadyChanged;
 
@@ -283,7 +283,7 @@ public sealed partial class FenixCabinForm : Form
     // Stops the poll and both timers and lets go of the definition; safe to call twice. After it, an
     // answer still on its way changes nothing the pilot hears: the async paths check _tornDown, and a
     // late polled value only marks a render that never runs. A door press whose read-back can now never
-    // speak hands its door back to the app-wide announcement (R18).
+    // speak hands its door back to the app-wide announcement.
     private void TearDown()
     {
         if (_tornDown) return;
@@ -458,7 +458,7 @@ public sealed partial class FenixCabinForm : Form
             }
         }
         // Every tick, so a numeric press whose window has ended answers "unchanged" at once. A door press's
-        // own-press mark ends with its read-back (R18).
+        // own-press mark ends with its read-back.
         DateTime now = Clock();
         foreach (FenixCabinReadbackEnd end in _readback.CollectEnded(_lines, now))
         {
@@ -541,14 +541,14 @@ public sealed partial class FenixCabinForm : Form
     {
         if (_updatingControls) return;
         bool isChecked = _cabinReadyBox.Checked;
-        // The Fenix down first (R13): every control gives that reason, not the availability it cannot know.
+        // The Fenix down first: every control gives that reason, not the availability it cannot know.
         if (!_cache.AnyKnown)
         {
             SetCabinReadyBox(_cache.Bool(FenixCabinNames.CabinReady) == true);
             Refuse(NotAnswering);
             return;
         }
-        // The FAP greys its button unless the Fenix says cabin ready is available (D5); unknown is not.
+        // The FAP greys its button unless the Fenix says cabin ready is available; unknown is not.
         if (_cache.Bool(FenixCabinNames.CabinReadyAvailable) != true)
         {
             SetCabinReadyBox(_cache.Bool(FenixCabinNames.CabinReady) == true);
@@ -611,11 +611,11 @@ public sealed partial class FenixCabinForm : Form
     /// is sent and the pilot hears "The Fenix is not answering."; a write it refuses says "The Fenix did
     /// not accept that."; an accepted one with a <paramref name="readbackKey"/> waits
     /// <paramref name="window"/> for that line to change (<see cref="FenixCabinReadback.Expect"/>): its
-    /// text, or with <paramref name="byState"/> only the part the press changes (R17). UI thread.
+    /// text, or with <paramref name="byState"/> only the part the press changes. UI thread.
     /// The result is true when the Fenix accepted the write; a press that sends several stops at the first false.
     /// </summary>
     /// <param name="ownPress">A door or cargo press: its line's own-press mark is renewed for the read-back's
-    /// window as the expectation starts (R18).</param>
+    /// window as the expectation starts.</param>
     private Task<bool> RunWriteAsync(FenixCabinWrite w, string? readbackKey, TimeSpan window, bool speakIfUnchanged, bool byState = false, bool ownPress = false)
         => RunAsync(() => _context.Data.SendAsync(w), readbackKey, window, speakIfUnchanged, byState, refreshPram: false, ownPress);
 

@@ -9,8 +9,8 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// <summary>
 /// The Fenix "Failures" window (Fenix windows list, Ctrl+Shift+F in input mode): the Fenix's manual failures
 /// as a tree of ATA chapters, groups and failures, with search, a show filter, and Fail now, Arm and Clear.
-/// Every write asks Yes/No with No as the default (D1) and is confirmed once, from the gateway's reply. While
-/// the window is open it re-reads the catalog every 10 s and speaks changes it did not make (D4).
+/// Every write asks Yes/No with No as the default and is confirmed once, from the gateway's reply. While
+/// the window is open it re-reads the catalog every 10 s and speaks changes it did not make.
 /// </summary>
 /// <remarks>
 /// Every request is awaited from a UI-thread handler, so continuations resume on the UI thread; nothing runs on
@@ -117,7 +117,7 @@ public sealed class FenixFailuresForm : Form
         layout.Controls.Add(showLabel, 0, 1);
         layout.Controls.Add(_show, 1, 1);
 
-        // NativeAccessibleTreeView, never a plain tree (CORE-12); no check boxes (D2): a failure's state is in
+        // NativeAccessibleTreeView, never a plain tree (CORE-12); no check boxes: a failure's state is in
         // its text, and writes come only from the buttons.
         _tree = new NativeAccessibleTreeView
         {

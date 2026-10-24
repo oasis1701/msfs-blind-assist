@@ -1,6 +1,6 @@
 namespace MSFSBlindAssist.Forms.Fenix;
 
-// Plan 10: the Failures window in the "Fenix windows" list.
+// The Failures window in the "Fenix windows" list.
 public static partial class FenixWindowRegistry
 {
     static partial void AddFailureWindows(List<FenixWindowEntry> entries)

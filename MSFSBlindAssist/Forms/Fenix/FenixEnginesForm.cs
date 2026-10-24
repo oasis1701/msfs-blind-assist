@@ -16,7 +16,7 @@ namespace MSFSBlindAssist.Forms.Fenix;
 /// the subscription opens): its callback writes only the lock-protected <see cref="FenixEngineSnapshot"/>,
 /// and a 1 s WinForms timer reads it into the list, so the form never marshals per update. The list is
 /// reconciled in place and the refresh never moves focus. While the window is open, the Fenix's running
-/// flag edges are spoken (plan 09, Q1). Because N2 is sent only once, a <see cref="FenixDataPoller"/>,
+/// flag edges are spoken. Because N2 is sent only once, a <see cref="FenixDataPoller"/>,
 /// started after the open read, also reads every number but the running flag once a second, on the same
 /// pool-thread, store-only footing.
 /// </remarks>

@@ -23,15 +23,15 @@ public sealed record FenixWindowContext(
 public sealed record FenixWindowEntry(string Name, string Description, Action<FenixWindowContext> Open);
 
 /// <summary>
-/// The windows the "Fenix windows" list offers. Each Fenix v3 plan adds its own windows from its own
-/// partial file by implementing one of the optional seams below, so no plan edits another's, and a
+/// The windows the "Fenix windows" list offers. Each kind of window adds itself from its own
+/// partial file by implementing one of the optional seams below, so no window's file edits another's, and a
 /// seam nobody implements compiles to nothing (the list is then empty).
 /// <list type="bullet">
-/// <item>plan 09: <c>FenixWindowRegistry.Engines.cs</c>, <see cref="AddEngineWindows"/></item>
-/// <item>plan 08: <c>FenixWindowRegistry.Cabin.cs</c>, <see cref="AddCabinWindows"/></item>
-/// <item>plan 10: <c>FenixWindowRegistry.Failures.cs</c>, <see cref="AddFailureWindows"/></item>
-/// <item>plan 07: <c>FenixWindowRegistry.Documents.cs</c>, <see cref="AddDocumentWindows"/></item>
-/// <item>plan 11: <c>FenixWindowRegistry.Options.cs</c>, <see cref="AddOptionsWindows"/></item>
+/// <item>Engines: <c>FenixWindowRegistry.Engines.cs</c>, <see cref="AddEngineWindows"/></item>
+/// <item>Cabin: <c>FenixWindowRegistry.Cabin.cs</c>, <see cref="AddCabinWindows"/></item>
+/// <item>Failures: <c>FenixWindowRegistry.Failures.cs</c>, <see cref="AddFailureWindows"/></item>
+/// <item>Documents: <c>FenixWindowRegistry.Documents.cs</c>, <see cref="AddDocumentWindows"/></item>
+/// <item>Options: <c>FenixWindowRegistry.Options.cs</c>, <see cref="AddOptionsWindows"/></item>
 /// </list>
 /// A window opens through <see cref="FenixA320Definition.ShowFenixWindow{T}"/>, so it closes with the
 /// aircraft. Every <see cref="FenixWindowEntry.Name"/> must be unique (FenixWindowRegistryTests).

@@ -1,6 +1,6 @@
 namespace MSFSBlindAssist.Forms.Fenix;
 
-// Plan 07: the Fenix documents window in the "Fenix windows" list.
+// The Fenix documents window in the "Fenix windows" list.
 public static partial class FenixWindowRegistry
 {
     static partial void AddDocumentWindows(List<FenixWindowEntry> entries)
