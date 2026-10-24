@@ -191,6 +191,10 @@ public partial class FenixA320Definition
     private void EnsureFenixBackground(Accessibility.ScreenReaderAnnouncer announcer)
     {
         if (_backgroundStarted || !BackgroundSeamsEnabled) return;
+        // OnSwitchedAway disposed the data service for good: MainForm builds a new definition on every
+        // switch, so this instance is finished. On quit a late sim update can still arrive (Disconnect pumps
+        // messages for 500 ms); a background started now would poll an inert service until the app exits.
+        if (DataService.IsDisposed) return;
         _backgroundStarted = true;
         RunSeam(nameof(StartCabinBackground), () => StartCabinBackground(announcer));
         RunSeam(nameof(StartEngineBackground), () => StartEngineBackground(announcer));
