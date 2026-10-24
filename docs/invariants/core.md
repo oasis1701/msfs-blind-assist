@@ -65,6 +65,7 @@ A state read back after the press:
 - The A320's master warning and master caution buttons and its rudder-trim nudge buttons (`RUDDER_TRIM_LEFT`, `RUDDER_TRIM_RIGHT`), in `FlyByWireA320Definition.HandleUIVariableSet`, and so the Headwind A330's.
 - MainForm's fallback for a panel button no definition handles, at two sites in `MainForm.PanelBuilder.cs`.
 - The A380 chronometer combos `A32NX_CHRONO_TOGGLE` and `A32NX_CHRONO_RST` ("Chronometer start stop", "Chronometer reset") in `FlyByWireA380Definition.UiVariableSet.cs`, and the HS787's transponder "Ident" button (`HS787_XpndrIdent` in `HorizonSim787Definition.UiAndHotkeys.cs`).
+- The Fenix A320's press buttons with no light of their own (2026-10-22): GCS, Service Interphone Override, Avionics Compartment Light, CALLS Mech, All, Fwd, Aft, Mid and Exit, the clock's Chronometer Start/Stop, Chronometer Reset and Date, ISIS Baro Push, and the pedestal's Pedestal Video, through `ExecuteButtonTransition`'s `confirmPress` in `FenixA320Definition.cs` and `FenixA320Definition.Variants.cs`: once, as the press is sent. A Fenix press button with a light stays quiet, and its light speaks ([FNX-6]).
 
 An action combo or button whose selected value is only "Activate" or "Reset" says nothing of what happened, so it speaks what the action did, once:
 
