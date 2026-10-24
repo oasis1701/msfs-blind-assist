@@ -1,1 +1,1 @@
-The FlyByWire A320 and Headwind A330 System Display Fuel page now reads the left and right center transfer valves, open or closed, as the aircraft's own display shows them, in place of a center pump row that covered only one side.
+The FlyByWire A320 and Headwind A330 System Display Fuel page now reads the center and outer-tank transfer valves, open or closed, as the aircraft's own display shows them, in place of a center pump row that covered only one side.

@@ -56,19 +56,19 @@ public class A32nxCenterTransferValveTests : IDisposable
     [Fact]
     public void A_valve_at_1_percent_already_reads_open()
     {
-        Assert.Equal("open, amber", Describe(auto: 1, transfer: 0.01, Auto, On, manual: 0));
+        Assert.Equal("open, Amber", Describe(auto: 1, transfer: 0.01, Auto, On, manual: 0));
     }
 
     [Fact]
     public void A_partly_open_valve_in_auto_reads_amber()
     {
-        Assert.Equal("open, amber", Describe(auto: 1, transfer: 0.5, Auto, On, manual: 0));
+        Assert.Equal("open, Amber", Describe(auto: 1, transfer: 0.5, Auto, On, manual: 0));
     }
 
     [Fact]
     public void A_valve_at_99_percent_in_auto_is_not_yet_fully_open()
     {
-        Assert.Equal("open, amber", Describe(auto: 1, transfer: 0.99, Auto, On, manual: 0));
+        Assert.Equal("open, Amber", Describe(auto: 1, transfer: 0.99, Auto, On, manual: 0));
     }
 
     [Fact]
@@ -80,8 +80,8 @@ public class A32nxCenterTransferValveTests : IDisposable
     [Fact]
     public void An_open_valve_with_its_button_off_reads_amber_in_either_mode()
     {
-        Assert.Equal("open, amber", Describe(auto: 1, transfer: 1, Auto, Off, manual: 0));
-        Assert.Equal("open, amber", Describe(auto: 0, transfer: 1, Manual, Off, manual: 1));
+        Assert.Equal("open, Amber", Describe(auto: 1, transfer: 1, Auto, Off, manual: 0));
+        Assert.Equal("open, Amber", Describe(auto: 0, transfer: 1, Manual, Off, manual: 1));
     }
 
     [Fact]
@@ -94,9 +94,9 @@ public class A32nxCenterTransferValveTests : IDisposable
     }
 
     [Fact]
-    public void The_colour_follows_the_mode_selector_not_the_junction()
+    public void The_color_follows_the_mode_selector_not_the_junction()
     {
-        // The SD takes the routing from the junction but the colour from the MODE SEL L:var.
+        // The SD takes the routing from the junction but the color from the MODE SEL L:var.
         Assert.Equal("open", Describe(auto: 1, transfer: 0.5, Auto, On, manual: 1));
     }
 
@@ -115,12 +115,23 @@ public class A32nxCenterTransferValveTests : IDisposable
     }
 
     [Fact]
-    public void An_unread_button_or_mode_gives_no_colour_rather_than_a_guess()
+    public void An_unread_button_or_mode_gives_no_color_rather_than_a_guess()
     {
         Assert.Equal("open", Describe(auto: 1, transfer: 0.5, Auto, null, manual: 0));
         Assert.Equal("open", Describe(auto: 1, transfer: 0.5, Auto, On, null));
         // A button read as off settles amber without the mode.
-        Assert.Equal("open, amber", Describe(auto: 1, transfer: 0.5, Auto, Off, null));
+        Assert.Equal("open, Amber", Describe(auto: 1, transfer: 0.5, Auto, Off, null));
+    }
+
+    [Fact]
+    public void A_nan_input_reads_like_an_unread_one()
+    {
+        // MSFSBA reads a variable an airframe lacks back as NaN, which every comparison calls false.
+        Assert.Equal("--", Describe(auto: 1, transfer: double.NaN, Auto, On, manual: 0));
+        Assert.Equal("--", Describe(auto: 1, transfer: 1, double.NaN, On, manual: 0));
+        Assert.Equal("--", Describe(auto: double.NaN, transfer: 1, Auto, On, manual: 0));
+        Assert.Equal("open", Describe(auto: 1, transfer: 0.5, Auto, double.NaN, manual: 0));
+        Assert.Equal("open", Describe(auto: 1, transfer: 0.5, Auto, On, double.NaN));
     }
 }
 
@@ -194,17 +205,17 @@ public class A32nxSdFuelTransferRowsTests
     public void Each_side_reads_its_own_button(string airframe)
     {
         var def = New(airframe);
-        Assert.Equal(("open, amber", "open"), Read(def, With(("FUEL_PUMP_C1", 0))));
-        Assert.Equal(("open", "open, amber"), Read(def, With(("FUEL_PUMP_C2", 0))));
+        Assert.Equal(("open, Amber", "open"), Read(def, With(("FUEL_PUMP_C1", 0))));
+        Assert.Equal(("open", "open, Amber"), Read(def, With(("FUEL_PUMP_C2", 0))));
     }
 
     [Theory]
     [MemberData(nameof(Airframes))]
-    public void The_colour_reads_the_mode_selector(string airframe)
+    public void The_color_reads_the_mode_selector(string airframe)
     {
         var def = New(airframe);
         var partlyOpen = With(("FUELSYSTEM VALVE OPEN:9", 0.5), ("FUELSYSTEM VALVE OPEN:10", 0.5));
-        Assert.Equal(("open, amber", "open, amber"), Read(def, partlyOpen));
+        Assert.Equal(("open, Amber", "open, Amber"), Read(def, partlyOpen));
         partlyOpen["A32NX_OVHD_FUEL_MODESEL_MANUAL"] = 1;
         Assert.Equal(("open", "open"), Read(def, partlyOpen));
     }
@@ -242,9 +253,61 @@ public class A32nxSdFuelTransferRowsTests
         Assert.False(vars.ContainsKey("FUELSYSTEM PUMP ACTIVE:1"), "the dropped center pump row's var is still registered");
 
         // The refresh force-reads every row the null pass returns, hidden rows included, so the
-        // siblings a row reads from the cache must be among them.
+        // on-request siblings a row reads from the cache must be among them.
         var refreshed = def.SdSystemRows(8).Select(r => r.var).ToHashSet();
-        foreach (string input in BothOpen.Keys)
+        foreach (string input in OnRequestInputs)
             Assert.Contains(input, refreshed);
+
+        // The buttons and MODE SEL ride the continuous batch, so the cache always holds them: a
+        // force-read would only re-fire an unchanged value through MainForm every refresh tick.
+        foreach (string live in BatchInputs)
+        {
+            Assert.True(vars.TryGetValue(live, out var b), $"{live} is not registered");
+            Assert.Equal(MSFSBlindAssist.SimConnect.UpdateFrequency.Continuous, b!.UpdateFrequency);
+            Assert.True(b.IsAnnounced, $"{live} is not in the continuous batch");
+            Assert.DoesNotContain(live, refreshed);
+        }
+    }
+
+    private static readonly string[] OnRequestInputs =
+    {
+        "FUELSYSTEM VALVE OPEN:9", "FUELSYSTEM VALVE OPEN:10", "FUELSYSTEM VALVE OPEN:11", "FUELSYSTEM VALVE OPEN:12",
+        "FUELSYSTEM JUNCTION SETTING:4", "FUELSYSTEM JUNCTION SETTING:5",
+    };
+
+    private static readonly string[] BatchInputs = { "FUEL_PUMP_C1", "FUEL_PUMP_C2", "A32NX_OVHD_FUEL_MODESEL_MANUAL" };
+
+    [Theory]
+    [MemberData(nameof(Airframes))]
+    public void The_outer_to_inner_transfer_valves_read_open_or_closed(string airframe)
+    {
+        // Both SDs draw a transfer arrow from each outer tank while FUELSYSTEM VALVE OPEN:4 / :5 is set.
+        var def = New(airframe);
+        var cache = new Dictionary<string, double> { ["FUELSYSTEM VALVE OPEN:4"] = 1, ["FUELSYSTEM VALVE OPEN:5"] = 0 };
+        var rows = def.SdSystemRows(8, k => cache.TryGetValue(k, out double v) ? v : null);
+        string Text(string label)
+        {
+            var row = rows.Single(r => r.label == label);
+            return row.fmt(cache[row.var]);
+        }
+        Assert.Equal("open", Text("Left outer transfer valve"));
+        Assert.Equal("closed", Text("Right outer transfer valve"));
+
+        var vars = def.GetVariables();
+        foreach (string valve in new[] { "FUELSYSTEM VALVE OPEN:4", "FUELSYSTEM VALVE OPEN:5" })
+        {
+            Assert.True(vars.TryGetValue(valve, out var v), $"{valve} is not registered");
+            Assert.Equal("bool", v!.Units);
+            Assert.Equal(MSFSBlindAssist.SimConnect.SimVarType.SimVar, v.Type);
+        }
+    }
+
+    [Fact]
+    public void The_button_valve_is_not_named_as_the_whole_indication()
+    {
+        // Valve 9 / 10 is one half of the pair; the row of the same side names the indication.
+        var vars = new FlyByWireA320Definition().GetVariables();
+        Assert.Equal("Left center transfer button valve", vars["FUELSYSTEM VALVE OPEN:9"].DisplayName);
+        Assert.Equal("Right center transfer button valve", vars["FUELSYSTEM VALVE OPEN:10"].DisplayName);
     }
 }

@@ -13,7 +13,9 @@ namespace MSFSBlindAssist.Aircraft;
 /// button off, or in AUTO (the MODE SEL L:var, not the junction) while it is not fully open (over
 /// 99 %). Its XX fault symbol needs the valve both over 99 % and under 1 %, so it never shows, and
 /// a closed valve is never amber; the transfer arrow is drawn exactly when the valve is open, in
-/// the same colour, so it adds nothing to say.
+/// the same color, so it adds nothing to say. "Amber" is capitalized as the E/WD readout's color
+/// names are (<c>EWDMessageLookup.GetMessagePriority</c>). A NaN input (a variable the airframe
+/// lacks) counts as unread.
 ///
 /// FBW #10971 (acbfe58df) closes the auto valves when an inner tank falls below 1,651 gallons, so
 /// with an empty center tank this reads closed in AUTO although the button valve is open.
@@ -23,19 +25,21 @@ public static class FlyByWireCenterTransferValve
     public static string Describe(double? autoValveOpen, double? transferValveOpen, double? junctionSetting,
                                   double? buttonOn, double? modeSelectManual)
     {
-        if (transferValveOpen is not double transfer || junctionSetting is not double junction) return "--";
+        if (Read(transferValveOpen) is not double transfer || Read(junctionSetting) is not double junction) return "--";
 
         double position;
         if (junction > 1.5) position = transfer;
-        else if (autoValveOpen is double auto) position = auto > 0 ? transfer : 0;
+        else if (Read(autoValveOpen) is double auto) position = auto > 0 ? transfer : 0;
         else return "--";
 
         if (position < 0.01) return "closed";
 
-        // An unread sibling gives no colour rather than a guess; a button read as off settles it.
-        if (buttonOn is not double button) return "open";
-        if (button < 0.5) return "open, amber";
-        if (position > 0.99 || modeSelectManual is not double manual) return "open";
-        return manual > 0.5 ? "open" : "open, amber";
+        // An unread sibling gives no color rather than a guess; a button read as off settles it.
+        if (Read(buttonOn) is not double button) return "open";
+        if (button < 0.5) return "open, Amber";
+        if (position > 0.99 || Read(modeSelectManual) is not double manual) return "open";
+        return manual > 0.5 ? "open" : "open, Amber";
     }
+
+    private static double? Read(double? value) => value is double v && !double.IsNaN(v) ? v : null;
 }

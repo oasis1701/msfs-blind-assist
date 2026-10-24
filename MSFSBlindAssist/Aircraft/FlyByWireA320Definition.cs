@@ -4496,16 +4496,29 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         // The SD FUEL page's center-to-inner transfer valves (FlyByWireCenterTransferValve):
         // the CTR TK XFR buttons' valves 9/10 and the auto valves 11/12 as the SD reads them
         // (0-1 open), and the junctions 4/5 whose option 2 is MANUAL routing. Pre-declared so the
-        // valves read as ratios, not the auto-register loop's "number".
+        // valves read as ratios, not the auto-register loop's "number". Valves 4/5 are the
+        // outer-to-inner transfer valves, read as the SD reads them (bool), like the crossfeed.
+        ["FUELSYSTEM VALVE OPEN:4"] = new SimConnect.SimVarDefinition
+        {
+            Name = "FUELSYSTEM VALVE OPEN:4", DisplayName = "Left outer transfer valve",
+            Type = SimConnect.SimVarType.SimVar, Units = "bool",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
+        ["FUELSYSTEM VALVE OPEN:5"] = new SimConnect.SimVarDefinition
+        {
+            Name = "FUELSYSTEM VALVE OPEN:5", DisplayName = "Right outer transfer valve",
+            Type = SimConnect.SimVarType.SimVar, Units = "bool",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
         ["FUELSYSTEM VALVE OPEN:9"] = new SimConnect.SimVarDefinition
         {
-            Name = "FUELSYSTEM VALVE OPEN:9", DisplayName = "Left center transfer valve",
+            Name = "FUELSYSTEM VALVE OPEN:9", DisplayName = "Left center transfer button valve",
             Type = SimConnect.SimVarType.SimVar, Units = "percent over 100",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
         ["FUELSYSTEM VALVE OPEN:10"] = new SimConnect.SimVarDefinition
         {
-            Name = "FUELSYSTEM VALVE OPEN:10", DisplayName = "Right center transfer valve",
+            Name = "FUELSYSTEM VALVE OPEN:10", DisplayName = "Right center transfer button valve",
             Type = SimConnect.SimVarType.SimVar, Units = "percent over 100",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
@@ -7183,6 +7196,14 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         [8] = "Fuel", [9] = "Doors", [10] = "Engine", [11] = "Flight Controls"
     };
 
+    // The SD FUEL page's two center-to-inner transfer indications: the row label, the CTR TK XFR
+    // button's valve (the row's own var), the auto valve, the transfer junction and the button.
+    private static readonly (string Label, string ButtonValve, string AutoValve, string Junction, string Button)[] CenterTransferSides =
+    {
+        ("Left center transfer valve", "FUELSYSTEM VALVE OPEN:9", "FUELSYSTEM VALVE OPEN:11", "FUELSYSTEM JUNCTION SETTING:4", "FUEL_PUMP_C1"),
+        ("Right center transfer valve", "FUELSYSTEM VALVE OPEN:10", "FUELSYSTEM VALVE OPEN:12", "FUELSYSTEM JUNCTION SETTING:5", "FUEL_PUMP_C2"),
+    };
+
     // Per-system SD readout rows (decoded SimVars). Added one system at a time.
     // Instance (not static) so the FUEL rows can follow the metric toggle via WeightUser.
     // `cache` (optional) lets a page pick the ACTIVE source among redundant controllers
@@ -7429,26 +7450,26 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             r.Add(("Right pump 2", "FUELSYSTEM PUMP ACTIVE:6", Running));
             // Center-to-inner transfer valves, as the SD draws them (FlyByWireCenterTransferValve).
             // Each row reads its CTR TK XFR button's valve and takes the auto valve, junction,
-            // button and MODE SEL from the cache; the null pass adds them as hidden rows so they
-            // are registered and force-read. They replace a "Center pump" row that read only the
-            // left jet pump, which neither the A32NX's SD nor the A339X's draws.
-            string CenterTransfer(double transferOpen, string autoValve, string junction, string button) =>
-                FlyByWireCenterTransferValve.Describe(cache?.Invoke(autoValve), transferOpen,
-                    cache?.Invoke(junction), cache?.Invoke(button), cache?.Invoke("A32NX_OVHD_FUEL_MODESEL_MANUAL"));
-            r.Add(("Left center transfer valve", "FUELSYSTEM VALVE OPEN:9",
-                v => CenterTransfer(v, "FUELSYSTEM VALVE OPEN:11", "FUELSYSTEM JUNCTION SETTING:4", "FUEL_PUMP_C1")));
-            r.Add(("Right center transfer valve", "FUELSYSTEM VALVE OPEN:10",
-                v => CenterTransfer(v, "FUELSYSTEM VALVE OPEN:12", "FUELSYSTEM JUNCTION SETTING:5", "FUEL_PUMP_C2")));
-            if (cache == null)
+            // button and MODE SEL from the cache. The null pass adds the on-request auto valve and
+            // junction as hidden rows so they are registered and force-read; the buttons and MODE
+            // SEL ride the continuous batch, so the cache always holds them and a force-read would
+            // only re-fire them through MainForm. They replace a "Center pump" row that read only
+            // the left jet pump, which neither the A32NX's SD nor the A339X's draws.
+            foreach (var side in CenterTransferSides)
             {
-                r.Add(("Left auto transfer valve", "FUELSYSTEM VALVE OPEN:11", _ => ""));
-                r.Add(("Right auto transfer valve", "FUELSYSTEM VALVE OPEN:12", _ => ""));
-                r.Add(("Left transfer junction", "FUELSYSTEM JUNCTION SETTING:4", _ => ""));
-                r.Add(("Right transfer junction", "FUELSYSTEM JUNCTION SETTING:5", _ => ""));
-                r.Add(("Left transfer button", "FUEL_PUMP_C1", _ => ""));
-                r.Add(("Right transfer button", "FUEL_PUMP_C2", _ => ""));
-                r.Add(("Fuel mode selector", "A32NX_OVHD_FUEL_MODESEL_MANUAL", _ => ""));
+                r.Add((side.Label, side.ButtonValve, v => FlyByWireCenterTransferValve.Describe(
+                    cache?.Invoke(side.AutoValve), v, cache?.Invoke(side.Junction), cache?.Invoke(side.Button),
+                    cache?.Invoke("A32NX_OVHD_FUEL_MODESEL_MANUAL"))));
+                if (cache == null)
+                {
+                    r.Add((side.Label + " auto valve", side.AutoValve, _ => ""));
+                    r.Add((side.Label + " junction", side.Junction, _ => ""));
+                }
             }
+            // Outer-to-inner transfer: both SDs draw an arrow from each outer tank while valve 4 / 5
+            // is open (FBW Fuel.tsx; the A339X's sd.js reads the same two).
+            r.Add(("Left outer transfer valve", "FUELSYSTEM VALVE OPEN:4", OpenShut));
+            r.Add(("Right outer transfer valve", "FUELSYSTEM VALVE OPEN:5", OpenShut));
             r.Add(("Engine 1 LP valve", "FUELSYSTEM VALVE OPEN:1", OpenShut));
             r.Add(("Engine 2 LP valve", "FUELSYSTEM VALVE OPEN:2", OpenShut));
             r.Add(("Crossfeed valve", "FUELSYSTEM VALVE OPEN:3", OpenShut));
