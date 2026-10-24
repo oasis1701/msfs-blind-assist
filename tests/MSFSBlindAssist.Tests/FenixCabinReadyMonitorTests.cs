@@ -1,7 +1,7 @@
 // Characterization tests for the app-wide cabin-ready call (plan 08 Task 6): FenixCabinReadyEdge, the
 // known false-to-true change after a silent baseline, and FenixCabinReadyMonitor, which speaks it once on
 // the UI thread. The monitor is built with fakes: a source that captures the value callback and counts its
-// disposal, a one-off read, and a SynchronizationContext that queues posts until RunAll(). No test builds a
+// disposal, and a SynchronizationContext that queues posts until RunAll(). No test builds a
 // FenixDataService or a FenixDataPoller (a live start would open a socket to 127.0.0.1:8083), so the
 // definition's wiring is checked by reading FenixA320Definition.Cabin.cs.
 //
@@ -97,8 +97,6 @@ public class FenixCabinReadyMonitorTests
         }
     }
 
-    private static Func<Task<FenixDataValue>> Reads(FenixDataValue value) => () => Task.FromResult(value);
-
     private static bool[] Run(params FenixDataValue[] values)
     {
         var edge = new FenixCabinReadyEdge();
@@ -126,35 +124,6 @@ public class FenixCabinReadyMonitorTests
         Assert.Equal([false, true, false, false], Run(False, True, True, True));
     }
 
-    [Fact]
-    public void Seed_sets_the_baseline_once()
-    {
-        var edge = new FenixCabinReadyEdge();
-        edge.Seed(True);
-        Assert.False(edge.Next(True));
-
-        edge = new FenixCabinReadyEdge();
-        edge.Seed(False);
-        Assert.True(edge.Next(True));
-
-        // A value before the seed is the baseline; the seed is ignored then.
-        edge = new FenixCabinReadyEdge();
-        Assert.False(edge.Next(False));
-        edge.Seed(True);
-        Assert.True(edge.Next(True));
-
-        // Only the first Bool seed counts.
-        edge = new FenixCabinReadyEdge();
-        edge.Seed(True);
-        edge.Seed(False);
-        Assert.False(edge.Next(True));
-
-        // An unknown seed sets nothing: the first value is the silent baseline.
-        edge = new FenixCabinReadyEdge();
-        edge.Seed(Unknown);
-        Assert.False(edge.Next(True));
-    }
-
     // ---- The monitor ----------------------------------------------------------------------------
 
     [Fact]
@@ -163,8 +132,10 @@ public class FenixCabinReadyMonitorTests
         var ui = new QueueContext();
         var source = new FakeSource();
         var spoken = new Spoken();
-        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, Reads(False), ui, spoken.Add);
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, ui, spoken.Add);
 
+        // The first value is the silent baseline; the rise after it is the one that speaks.
+        source.Send(CabinReady, False);
         await Task.Run(() => source.Send(CabinReady, True));
 
         Assert.Empty(spoken.Texts);
@@ -178,8 +149,8 @@ public class FenixCabinReadyMonitorTests
         var ui = new QueueContext();
         var source = new FakeSource();
         var spoken = new Spoken();
-        // Already ready when the app connects: the seed is the silent baseline.
-        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, Reads(True), ui, spoken.Add);
+        // Already ready when the app connects: the first value is the silent baseline.
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, ui, spoken.Add);
 
         source.Send(CabinReady, True);
         source.Send(CabinReady, True);
@@ -188,39 +159,6 @@ public class FenixCabinReadyMonitorTests
 
         source.Send(CabinReady, False);
         source.Send(CabinReady, True);
-        source.Send(CabinReady, True);
-        ui.RunAll();
-        Assert.Equal(["Cabin ready"], spoken.Texts);
-    }
-
-    [Fact]
-    public async Task A_value_before_the_seed_is_the_baseline()
-    {
-        var ui = new QueueContext();
-        var source = new FakeSource();
-        var spoken = new Spoken();
-        var order = new List<string>();
-        var seed = new TaskCompletionSource<FenixDataValue>();
-        using var monitor = new FenixCabinReadyMonitor(
-            onValue => { order.Add("subscribe"); return source.Subscribe(onValue); },
-            () => { order.Add("read"); return seed.Task; },
-            ui,
-            spoken.Add);
-
-        // The source starts first, then the one-off read.
-        Assert.Equal(["subscribe", "read"], order);
-
-        // The source's first value beats the read: it is the silent baseline, and the late seed is ignored.
-        source.Send(CabinReady, True);
-        // Completed on a pool thread, which has no SynchronizationContext, the read's continuation (the
-        // seed) runs inline, so it has landed when Task.Run returns. On the test thread xUnit's context
-        // would send it to the pool and the asserts below could run first.
-        await Task.Run(() => seed.SetResult(False));
-        source.Send(CabinReady, True);
-        ui.RunAll();
-        Assert.Empty(spoken.Texts);
-
-        source.Send(CabinReady, False);
         source.Send(CabinReady, True);
         ui.RunAll();
         Assert.Equal(["Cabin ready"], spoken.Texts);
@@ -232,7 +170,7 @@ public class FenixCabinReadyMonitorTests
         var ui = new QueueContext();
         var source = new FakeSource();
         var spoken = new Spoken();
-        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, Reads(Unknown), ui, spoken.Add);
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, ui, spoken.Add);
 
         source.Send(CabinReadyAvailable, False);
         source.Send(CabinReadyAvailable, True);
@@ -252,8 +190,9 @@ public class FenixCabinReadyMonitorTests
         var ui = new QueueContext();
         var source = new FakeSource();
         var spoken = new Spoken();
-        var monitor = new FenixCabinReadyMonitor(source.Subscribe, Reads(False), ui, spoken.Add);
+        var monitor = new FenixCabinReadyMonitor(source.Subscribe, ui, spoken.Add);
 
+        source.Send(CabinReady, False);
         source.Send(CabinReady, True);
         Assert.Equal(1, ui.Pending);
 
@@ -279,7 +218,8 @@ public class FenixCabinReadyMonitorTests
     {
         var source = new FakeSource();
         var spoken = new Spoken();
-        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, Reads(False), new ClosedContext(), spoken.Add);
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, new ClosedContext(), spoken.Add);
+        source.Send(CabinReady, False);
 
         var thrown = Record.Exception(() => source.Send(CabinReady, True));
 
@@ -292,8 +232,9 @@ public class FenixCabinReadyMonitorTests
     {
         var source = new FakeSource();
         var spoken = new Spoken();
-        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, Reads(False), null, spoken.Add);
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, null, spoken.Add);
 
+        source.Send(CabinReady, False);
         source.Send(CabinReady, True);
 
         Assert.Equal(["Cabin ready"], spoken.Texts);
@@ -336,7 +277,7 @@ public class FenixCabinReadyMonitorTests
         var ui = new QueueContext();
         var source = new FakeSource();
         var spoken = new Spoken();
-        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, Reads(Unknown), ui, spoken.Add);
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe,ui, spoken.Add);
 
         // The first poll is the silent baseline.
         SendPoll(source, With(Slides(True), new[]
@@ -375,7 +316,7 @@ public class FenixCabinReadyMonitorTests
         var source = new FakeSource();
         var spoken = new Spoken();
         var muted = new HashSet<string> { FenixCabinAnnouncements.DoorsKey, FenixCabinAnnouncements.CabinReadyKey };
-        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, Reads(Unknown), ui, spoken.Add, isMuted: muted.Contains);
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe,ui, spoken.Add, isMuted: muted.Contains);
 
         SendPoll(source, With(Slides(True), new[] { (CabinReady, False), (FenixCabinNames.Door("d1l"), False), (FenixCabinNames.WasteTankFull, False) }));
         SendPoll(source, With(Slides(False), new[] { (CabinReady, True), (FenixCabinNames.Door("d1l"), True), (FenixCabinNames.WasteTankFull, True) }));
@@ -402,7 +343,7 @@ public class FenixCabinReadyMonitorTests
         var spoken = new Spoken();
         var presses = new FenixCabinOwnPresses();
         var clock = new FakeClock();
-        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, Reads(Unknown), ui, spoken.Add,
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe,ui, spoken.Add,
             ownPresses: presses, clock: () => clock.Now);
 
         (string, FenixDataValue)[] Doors(bool d1l, bool d4r, bool forward) => new[]
@@ -436,7 +377,7 @@ public class FenixCabinReadyMonitorTests
         var spoken = new Spoken();
         var presses = new FenixCabinOwnPresses();
         var clock = new FakeClock();
-        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, Reads(Unknown), ui, spoken.Add,
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe,ui, spoken.Add,
             ownPresses: presses, clock: () => clock.Now);
         SendPoll(source, (FenixCabinNames.Door("d1l"), False));
 
@@ -453,7 +394,7 @@ public class FenixCabinReadyMonitorTests
     {
         var source = new FakeSource();
         var spoken = new Spoken();
-        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, Reads(Unknown), null, spoken.Add);
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe,null, spoken.Add);
 
         // Until the variant is known the cabin is the FAP's A320, which has no door 2.
         SendPoll(source, (FenixCabinNames.Door("d2l"), False));
@@ -467,7 +408,7 @@ public class FenixCabinReadyMonitorTests
         // A monitor started on an A321 has door 2 from the start.
         var a321Source = new FakeSource();
         var a321Spoken = new Spoken();
-        using var a321 = new FenixCabinReadyMonitor(a321Source.Subscribe, Reads(Unknown), null, a321Spoken.Add, type: FenixAircraftType.A321);
+        using var a321 = new FenixCabinReadyMonitor(a321Source.Subscribe,null, a321Spoken.Add, type: FenixAircraftType.A321);
         SendPoll(a321Source, (FenixCabinNames.Door("d3r"), False));
         SendPoll(a321Source, (FenixCabinNames.Door("d3r"), True));
         Assert.Equal(["Door 3 right open"], a321Spoken.Texts);
@@ -485,7 +426,7 @@ public class FenixCabinReadyMonitorTests
             Interlocked.Increment(ref reads);
             return Task.FromResult(answer);
         }
-        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, Reads(Unknown), null, spoken.Add, readSettings: ReadSettings);
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe,null, spoken.Add, readSettings: ReadSettings);
 
         // At start, before the Fenix answers: an empty answer keeps the A320's own layout.
         Assert.Equal(1, reads);
@@ -530,7 +471,7 @@ public class FenixCabinReadyMonitorTests
         var source = new FakeSource();
         var spoken = new Spoken();
         var clock = new FakeClock();
-        var monitor = new FenixCabinReadyMonitor(source.Subscribe, Reads(Unknown), null, spoken.Add, clock: () => clock.Now);
+        var monitor = new FenixCabinReadyMonitor(source.Subscribe,null, spoken.Add, clock: () => clock.Now);
         return (monitor, source, spoken, clock);
     }
 
@@ -601,7 +542,7 @@ public class FenixCabinReadyMonitorTests
         var ui = new QueueContext();
         var source = new FakeSource();
         var spoken = new Spoken();
-        var monitor = new FenixCabinReadyMonitor(source.Subscribe, Reads(Unknown), ui, spoken.Add);
+        var monitor = new FenixCabinReadyMonitor(source.Subscribe,ui, spoken.Add);
         SendPoll(source, (FenixCabinNames.Door("d1l"), False));
         SendPoll(source, (FenixCabinNames.Door("d1l"), True));
         Assert.Equal(1, ui.Pending);
@@ -620,7 +561,7 @@ public class FenixCabinReadyMonitorTests
     {
         var source = new FakeSource();
         var spoken = new Spoken();
-        using var monitor = new FenixCabinReadyMonitor(source.Subscribe, Reads(Unknown), new ClosedContext(), spoken.Add);
+        using var monitor = new FenixCabinReadyMonitor(source.Subscribe,new ClosedContext(), spoken.Add);
         SendPoll(source, (FenixCabinNames.Door("d1l"), False));
 
         var thrown = Record.Exception(() => SendPoll(source, (FenixCabinNames.Door("d1l"), True)));

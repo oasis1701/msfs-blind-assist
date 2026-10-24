@@ -1984,7 +1984,7 @@ public class FenixCabinWindowTests
         public Background(FenixCabinOwnPresses presses)
             => Monitor = new FenixCabinReadyMonitor(
                 onValue => { _onValue = onValue; return new Stop(); },
-                () => Task.FromResult(FenixDataValue.Unknown), null, Spoken.Add, ownPresses: presses, clock: () => Now);
+                null, Spoken.Add, ownPresses: presses, clock: () => Now);
 
         // One poll: every cabin name in order, these values, Unknown for the rest.
         public void Poll(params (string Name, FenixDataValue Value)[] values)

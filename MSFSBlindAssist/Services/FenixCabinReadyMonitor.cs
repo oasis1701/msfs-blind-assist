@@ -17,14 +17,6 @@ public sealed class FenixCabinReadyEdge
     // The last Bool; null until the first one, the baseline.
     private bool? _last;
 
-    /// <summary>The value read once at start. It becomes the baseline only when there is none yet (a
-    /// value from the source may have arrived first) and it is a Bool.</summary>
-    public void Seed(FenixDataValue value)
-    {
-        if (_last == null && value.Kind == FenixValueKind.Bool)
-            _last = value.Bool;
-    }
-
     /// <summary>True only when a Bool true follows a known false. The first Bool is the baseline and
     /// returns false; a value that is not a Bool returns false and changes nothing.</summary>
     public bool Next(FenixDataValue value)
@@ -49,11 +41,11 @@ public sealed class FenixCabinReadyEdge
 /// <remarks>
 /// <para>The values come from one <see cref="FenixDataPoller"/> reading every cabin name
 /// (<see cref="FenixCabinNames.All"/>) once a second, not from the data service's subscription, which
-/// (measured live, 2026-10-22) does not stream every name. The source starts first, then one read seeds the
-/// cabin-ready baseline; if the source's first value arrives before that read, it is the baseline and the
-/// seed is ignored (<see cref="FenixCabinReadyEdge"/>). Cabin ready is judged on its own value as it comes;
-/// the other kinds once per poll, when its last name has come (the poller hands every name of each read on,
-/// in order, and the data service answers every name it is asked, Unknown included).</para>
+/// (measured live, 2026-10-22) does not stream every name. The poller's first read is immediate, so the
+/// source's first Bool is the silent cabin-ready baseline (<see cref="FenixCabinReadyEdge"/>); there is no
+/// separate seed read. Cabin ready is judged on its own value as it comes; the other kinds once per poll,
+/// when its last name has come (the poller hands every name of each read on, in order, and the data service
+/// answers every name it is asked, Unknown included).</para>
 /// <para>The layout (which doors, slides and lavatories) is resolved as the Cabin window resolves it: from
 /// the definition's variant and the Fenix's three cabin settings, read at start, again each time the Fenix
 /// starts answering (no known value, then one), and on every variant change. An empty settings answer keeps
@@ -136,7 +128,6 @@ public sealed class FenixCabinReadyMonitor : IDisposable
                 poller.Start();
                 return poller;
             },
-            () => data.ReadAsync(FenixCabinNames.CabinReady),
             SynchronizationContext.Current,
             announcer.Announce,
             // The live mute list: SettingsManager.Save rebuilds the set right after every Ctrl+M toggle.
@@ -155,7 +146,6 @@ public sealed class FenixCabinReadyMonitor : IDisposable
     /// <param name="subscribe">Starts the source of values with the callback (pool thread) and returns
     /// what stops it. Called first. It hands on every name of <see cref="FenixCabinNames.All"/> per read,
     /// in that order.</param>
-    /// <param name="readOnce">The one read that seeds the cabin-ready baseline, started after the source.</param>
     /// <param name="ui">Where the speech runs; null speaks on the calling thread.</param>
     /// <param name="speak">Says the text.</param>
     /// <param name="isMuted">Whether a kind's Ctrl+M row is unticked (<see cref="FenixCabinAnnouncements"/>),
@@ -166,7 +156,6 @@ public sealed class FenixCabinReadyMonitor : IDisposable
     /// <param name="readSettings">Reads the Fenix's settings; null: never read, so the layout is the airframe's own.</param>
     internal FenixCabinReadyMonitor(
         Func<Action<string, FenixDataValue>, IDisposable> subscribe,
-        Func<Task<FenixDataValue>> readOnce,
         SynchronizationContext? ui,
         Action<string> speak,
         Func<string, bool>? isMuted = null,
@@ -176,7 +165,6 @@ public sealed class FenixCabinReadyMonitor : IDisposable
         Func<Task<IReadOnlyList<FenixSetting>>>? readSettings = null)
     {
         ArgumentNullException.ThrowIfNull(subscribe);
-        ArgumentNullException.ThrowIfNull(readOnce);
         ArgumentNullException.ThrowIfNull(speak);
         _ui = ui;
         _speak = speak;
@@ -188,7 +176,6 @@ public sealed class FenixCabinReadyMonitor : IDisposable
         _layout = FenixCabinLayout.Resolve(type, null, null, null);
         // Every field OnValue reads is set before the source can call it.
         _source = subscribe(OnValue);
-        _ = SeedAsync(readOnce);
         _ = ReadSettingsAsync();
     }
 
@@ -219,23 +206,6 @@ public sealed class FenixCabinReadyMonitor : IDisposable
         _detach?.Invoke();
         _source.Dispose();
         Log.Debug(LogCategory, "Cabin monitor stopped");
-    }
-
-    private async Task SeedAsync(Func<Task<FenixDataValue>> readOnce)
-    {
-        try
-        {
-            FenixDataValue value = await readOnce().ConfigureAwait(false);
-            lock (_gate)
-            {
-                if (!_disposed) _edge.Seed(value);
-            }
-        }
-        catch (Exception ex)
-        {
-            // FenixDataService.ReadAsync answers Unknown rather than throw; once per monitor at most.
-            Log.Debug(LogCategory, $"Cabin-ready first read failed: {ex.GetType().Name}: {ex.Message}");
-        }
     }
 
     // One read of the Fenix's settings, on a pool thread: the layout follows its answer.
