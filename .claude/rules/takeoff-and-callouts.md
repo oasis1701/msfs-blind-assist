@@ -9,9 +9,11 @@ paths:
   - "MSFSBlindAssist/Aircraft/A380TakeoffCallouts.cs"
   - "MSFSBlindAssist/Aircraft/A320TakeoffCallouts.cs"
   - "MSFSBlindAssist/Aircraft/MD11/Md11TakeoffCallouts.cs"
+  - "MSFSBlindAssist/Aircraft/A300/A300TakeoffCallouts.cs"
   - "tests/MSFSBlindAssist.Tests/**/*AltitudeCallout*.cs"
   - "MSFSBlindAssist/Aircraft/IFly737MAXDefinition*.cs"
   - "MSFSBlindAssist/Aircraft/TFDiMD11Definition*.cs"
+  - "MSFSBlindAssist/Aircraft/IniA300Definition*.cs"
   - "MSFSBlindAssist/Forms/RunwayTeleportForm.cs"
   - "MSFSBlindAssist/MainForm.Announcers.cs"
 ---

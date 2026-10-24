@@ -356,6 +356,16 @@ public partial class MainForm
                     return; // Skip announcement for disabled variable
                 }
 
+                // Check if disabled in the A300 Monitor Manager (the base variables the A300
+                // announces on the generic path: ground state and the like). The glideslope
+                // call-out is spoken inside the base's ProcessSimVarUpdate, under the mute wrap
+                // above, so it never reaches this gate.
+                if (currentAircraft.AircraftCode == IniA300Definition.Code &&
+                    Settings.SettingsManager.Current.A300DisabledMonitorVariablesSet.Contains(e.VarName))
+                {
+                    return; // Skip announcement for disabled variable
+                }
+
                 // Check if disabled in the A380 Monitor Manager.
                 if (currentAircraft.AircraftCode == "FBW_A380" &&
                     Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(e.VarName))
@@ -2079,10 +2089,12 @@ public partial class MainForm
             if (sim == null || !sim.IsConnected) { announcer.AnnounceImmediate("Not connected to the simulator."); return; }
             if (currentAircraft?.StockComTuningRefusal is { } refusal) { announcer.AnnounceImmediate(refusal); return; }
 
+            NoteA300OwnCom1Tune();   // the read-back below says it: the A300's outside-change call-out stays quiet ([A300-29])
             sim.SendEvent(MSFSBlindAssist.Services.Com1Tuning.StandbySetEvent, (uint)frequencyHz);
             if (active)
             {
                 await Task.Delay(MSFSBlindAssist.Services.Com1Tuning.SwapGapMs);
+                NoteA300OwnCom1Tune();
                 sim.SendEvent(MSFSBlindAssist.Services.Com1Tuning.SwapEvent);
             }
 

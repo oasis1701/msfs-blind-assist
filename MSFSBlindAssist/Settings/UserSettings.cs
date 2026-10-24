@@ -401,6 +401,16 @@ public class UserSettings
         [JsonIgnore]
         public HashSet<string> Md11DisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
 
+        // Monitor Manager (Ctrl+M, A300MonitorManagerForm). Consulted in MainForm.OnSimVarUpdated
+        // when AircraftCode == "INI_A300" — at the generic gate AND via the Suppressed wrap
+        // (DefAnnounceMuteSets), because the A300 speaks its master lights and levers from INSIDE
+        // ProcessSimVarUpdate, where the generic gate never runs. Persisted across sessions.
+        public List<string> A300DisabledMonitorVariables { get; set; } = new List<string>();
+
+        /// <summary>Runtime-only HashSet sidecar of <see cref="A300DisabledMonitorVariables"/>. See <see cref="FenixDisabledMonitorVariablesSet"/>.</summary>
+        [JsonIgnore]
+        public HashSet<string> A300DisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
+
         // The MD-11 walker's learned step polarity (docs/md11.md §3): node ids whose step events run
         // INVERTED relative to the walker's conventional guess (left click / wheel up = increase).
         // Absent = conventional. Written the moment a wrong-way step teaches the walker, read on the
@@ -650,6 +660,7 @@ public class UserSettings
         A32NXDisabledMonitorVariablesSet = new HashSet<string>(A32NXDisabledMonitorVariables);
         IFlyDisabledMonitorVariablesSet = new HashSet<string>(IFlyDisabledMonitorVariables);
         Md11DisabledMonitorVariablesSet = new HashSet<string>(Md11DisabledMonitorVariables);
+        A300DisabledMonitorVariablesSet = new HashSet<string>(A300DisabledMonitorVariables);
     }
 
     /// <summary>

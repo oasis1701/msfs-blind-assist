@@ -31,7 +31,7 @@ Output Shift+C opens the **First Officer**, a crew member who works the flows an
 - **Flows** runs each phase's procedure for you, from powering up the aircraft to securing it. The First Officer sets its own switches, checks that each one really moved, and reminds you of the Captain's items.
 - **Checklists** holds the aircraft's normal checklists. A line ticks itself once the aircraft is in that state, and ticking a line yourself has the First Officer do it.
 
-The First Officer is on the PMDG 777 and 737, the iFly 737 MAX8, the Fenix A320, the FlyByWire A32NX and A380X, the Headwind A330-900neo and the TFDi MD-11. You can also open it from the File menu, where the **First Officer** item is named after your aircraft, for example "Fenix A320 First Officer". On any other aircraft the item is not there, and Output Shift+C says *"No checklist for this aircraft."* and opens nothing.
+The First Officer is on the PMDG 777 and 737, the iFly 737 MAX8, the Fenix A320, the FlyByWire A32NX and A380X, the Headwind A330-900neo, the TFDi MD-11 and the iniBuilds A300-600. You can also open it from the File menu, where the **First Officer** item is named after your aircraft, for example "Fenix A320 First Officer". On any other aircraft the item is not there, and Output Shift+C says *"No checklist for this aircraft."* and opens nothing.
 
 The First Officer never programs the MCDU, CDU or FMC: you still enter the flight plan and performance yourself. Items only the Captain can judge, such as the landing autobrake setting, are spoken as reminders and left to you.
 
@@ -66,7 +66,7 @@ The Flows tab has:
 
 To run a flow, select it in Available flows and press Enter, or Tab to Start Flow and press it. The First Officer works through the steps about two seconds apart. Pause / Resume holds the flow and continues it; Stop Flow ends it after the current step. Only one flow runs at a time.
 
-Before it switches anything that could stop an engine, a flow checks that it is safe. The power-up flows that check the engine controls (Electrical Power Up on the Fenix A320, A32NX, Headwind A330 and 777, Cockpit Preparation on the A380X and 777, and Power Up on the MD-11) and the 737 Preflights stop if an engine is running or the aircraft is in the air, and the shutdown, parking and securing flows stop unless the aircraft is on the ground. The securing flows also stop if an engine is still turning. A shutdown or parking flow cuts the engines first, then waits up to two minutes for them to spin down (*"Waiting for: Engines stopped"* when flow progress is spoken) before it switches the fuel pumps off. Either way you hear why.
+Before it switches anything that could stop an engine, a flow checks that it is safe. The power-up flows that check the engine controls (Electrical Power Up on the Fenix A320, A32NX, Headwind A330 and 777, Cockpit Preparation on the A380X and 777, and Power Up on the MD-11 and A300-600) and the 737 Preflights stop if an engine is running or the aircraft is in the air, and the shutdown, parking and securing flows stop unless the aircraft is on the ground. The securing flows also stop if an engine is still turning. A shutdown or parking flow cuts the engines first, then waits up to two minutes for them to spin down (*"Waiting for: Engines stopped"* when flow progress is spoken) before it switches the fuel pumps off. Either way you hear why.
 
 ## The Checklists tab {#fo-checklists-tab}
 

@@ -770,6 +770,8 @@ public class ClaudeContextBudgetTests
             "BRF-6 GetAssignedStatusAsync", "SI-30 ValidateDatabaseSimulatorMatch", "MD11-23 CalcPathVerdict.PilotWarning",
             "VAT-12 HotkeyAction.ToggleVatsimAnnouncements", "WX-10 HasOwnIcingAnnouncer",
             "DCK-19 UpdateHeadingErrorWithThresholds", "RTE-32 StartGuidance", "EXG-8 RefineForPlanner",
+            "A300-1 ExecuteCalculatorCodeUnique", "A300-7 Md11SeedGate",
+            "A300-17 ValueInputForm",
             "FOA-1 FlyByWireA320Definition.ApplyUIVariable",
             "FOA-8 ChecklistItem.LiveValue", "FOA-9 LiveValue", "FOB-1 IsReady", "FOB-2 PmdgSpeedBrakeLever.B777",
             "FOB-6 MOUSE_FLAG_LEFTSINGLE", "FOB-17 IFly737MAXDefinition.ApplyUIVariable",
@@ -779,6 +781,7 @@ public class ClaudeContextBudgetTests
             "DCK-17 CalculateCrossTrackError", "EXIT-1 LastKnownPosition", "EXIT-9 Runway.Length",
             "P777-14 RequestVariable", "STR-17 Runway.StartLat", "STR-17 StartLon", "SUR-4 GetNearbyAirportICAOs",
             "SUR-24 GetTaxiPaths", "SUR-1 TaxiGraph.Build", "SI-27 TaxiGraph",
+            "A300-1 SetLVar", "A300-17 ShowTrackedWindow",
             "FO-4 AnnounceImmediate", "FOB-2 FCTL_Speedbrake_Lever", "FOB-17 BARO_STD_Status",
         },
         ["named as the model the rule's code copies, or as a reader its change would break"] = new[]
@@ -805,7 +808,7 @@ public class ClaudeContextBudgetTests
         {
             "A320-10 SimVarDefinition.IsNotSet", "A380-2 RenderAsButton", "A380-10 RenderAsButton",
             "A380F-12 ExcludeFromBatch", "ARINC-2 ValueDescriptions", "MD11-11 ExcludeFromMonitorManager",
-            "MD11-22 SimVarDefinition.ValueToDescriptionKey", "FOA-6 IsAnnounced",
+            "MD11-22 SimVarDefinition.ValueToDescriptionKey", "A300-28 HighFrequency", "FOA-6 IsAnnounced",
         },
         ["a MainForm field declared in MainForm.cs and used by the partial the rule loads on"] = new[]
         {
@@ -820,7 +823,7 @@ public class ClaudeContextBudgetTests
         ["the same name, other code: the rule means a framework method, an enum value, a record parameter or a folder "
             + "the declaration index does not see"] = new[]
         {
-            "A380C-3 SendAsync", "TRF-3 IdentityKey", "HLD-11 HoldShort", "SUR-22 HoldShort",
+            "A380C-3 SendAsync", "TRF-3 IdentityKey", "HLD-11 HoldShort", "SUR-22 HoldShort", "GSX-5 AlreadyThere",
             "FOA-1 FirstOfficer", "FOA-3 FirstOfficer",
         },
     };

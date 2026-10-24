@@ -1,6 +1,7 @@
 // Characterization tests for pure-logic helpers in MSFSBlindAssist.SimConnect.SimConnectManager:
 //   - ExtractIcaoFromAtcModel(string?)  — Dispatch.cs, public static
 //   - UnpackWaypointName(double,double) — Dispatch.cs, promoted private -> internal for this suite
+//   - BuildConnectionIdentification     — Dispatch.cs, public static
 //
 // This is characterization, not spec verification: expected values were captured by running
 // the tests against the current implementation. If a literal ever disagrees with actual output,
@@ -44,6 +45,17 @@ public class SimConnectPureLogicTests
     [InlineData("1234567", "")] // digit-leading (fails letter-first) and too long
     public void ExtractIcao_pins_current_tiers(string? atcModel, string expected)
         => Assert.Equal(expected, SimConnectManager.ExtractIcaoFromAtcModel(atcModel));
+
+    // --- BuildConnectionIdentification (values the sim sent, debug.log 2026-10) ---
+
+    [Theory]
+    [InlineData("Airbus", "737", "ASXGS", "A300", " - ASXGS")]          // A300 placeholder airline
+    [InlineData("FedEx", "1234", "N123FE", "A300", " - FedEx 1234")]    // a real airline still speaks
+    [InlineData("", "737", "G-FENX", "ATCCOM.AC_MODEL A320.0.text", " - G-FENX")]
+    [InlineData("FlyByWire", "380", "FBWA380X", "A388", " - FlyByWire 380")]
+    public void ConnectionIdentification_skips_only_the_A300_placeholder(
+        string airline, string flight, string atcId, string atcModel, string expected)
+        => Assert.Equal(expected, SimConnectManager.BuildConnectionIdentification(airline, flight, atcId, atcModel));
 
     // --- UnpackWaypointName ----------------------------------------------------------
     //

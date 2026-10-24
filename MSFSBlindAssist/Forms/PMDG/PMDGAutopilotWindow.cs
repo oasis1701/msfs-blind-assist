@@ -30,7 +30,9 @@ public record SelectorRowDef(
 /// <summary>
 /// Shared Ctrl+P autopilot engage-cluster window for the PMDG 737 and 777. Aircraft-
 /// agnostic: it owns layout, refresh and lifecycle only, and is driven entirely by the
-/// row lists it is constructed with (built per aircraft by PMDGAutopilotRowBinder).
+/// row lists it is constructed with (built per aircraft by PMDGAutopilotRowBinder) and,
+/// optionally, a read-only status list (the A300 passes its FMA and FCU windows; the PMDG
+/// aircraft pass none and are unchanged).
 /// <para>
 /// No explicit announcements. The screen reader announces the click, and the label
 /// refresh means the new state reads on focus — the same contract as
@@ -50,6 +52,9 @@ public class PMDGAutopilotWindow : Form
 
     private readonly IReadOnlyList<ToggleButtonDef> _buttons;
     private readonly IReadOnlyList<SelectorRowDef> _selectors;
+    private readonly Func<IReadOnlyList<string>>? _status;
+    private readonly string _statusName;
+    private ListBox? _statusList;
     private readonly List<Button> _buttonControls = new();
     private readonly List<(SelectorRowDef Def, ComboBox Combo, double[] Values)> _selectorControls = new();
 
@@ -60,10 +65,14 @@ public class PMDGAutopilotWindow : Form
     public PMDGAutopilotWindow(
         string title,
         IReadOnlyList<ToggleButtonDef> buttons,
-        IReadOnlyList<SelectorRowDef> selectors)
+        IReadOnlyList<SelectorRowDef> selectors,
+        Func<IReadOnlyList<string>>? status = null,
+        string statusName = "Status")
     {
         _buttons = buttons;
         _selectors = selectors;
+        _status = status;
+        _statusName = statusName;
         BuildForm(title);
     }
 
@@ -76,7 +85,8 @@ public class PMDGAutopilotWindow : Form
         Activate();
         TopMost = true;
         TopMost = false;
-        if (_buttonControls.Count > 0) _buttonControls[0].Focus();
+        if (_statusList != null) _statusList.Focus();
+        else if (_buttonControls.Count > 0) _buttonControls[0].Focus();
         _refreshTimer.Start();
     }
 
@@ -96,6 +106,23 @@ public class PMDGAutopilotWindow : Form
         const int rowH = 48;
         int row = 15;
         int tab = 0;
+
+        // The optional status list: read-only lines the pilot arrows through, first in the tab order,
+        // updated in place (DisplayList) so a refresh never moves the reader's line.
+        if (_status != null)
+        {
+            _statusList = new ListBox
+            {
+                Location = new Point(col1, row),
+                Size = new Size(col2 + btnW - col1, 150),
+                IntegralHeight = false,
+                SelectionMode = SelectionMode.One,
+                AccessibleName = _statusName,
+                TabIndex = tab++,
+            };
+            Controls.Add(_statusList);
+            row += 160;
+        }
 
         // Buttons: two per row, filling left column then right.
         for (int i = 0; i < _buttons.Count; i++)
@@ -246,8 +273,15 @@ public class PMDGAutopilotWindow : Form
         });
     }
 
-    private void RefreshStates()
+    internal void RefreshStates()
     {
+        if (_statusList != null && _status != null)
+        {
+            DisplayList.UpdateInPlace(_statusList, _status());
+            if (_statusList.SelectedIndex < 0 && _statusList.Items.Count > 0)
+                _statusList.SelectedIndex = 0;
+        }
+
         for (int i = 0; i < _buttonControls.Count; i++)
         {
             string state = _buttons[i].GetCurrentState();

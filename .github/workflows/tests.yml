@@ -46,6 +46,12 @@ jobs:
       - name: MD-11 generator path tests (Python)
         run: python -m unittest discover -s tools/md11-gen -p "test_*.py" -v
 
+      # The A300 control-map generator and checklist converter (tools/a300-gen) are pure stdlib
+      # Python, tested against small fixtures in the aircraft's compiled behaviour format (the real
+      # files are iniBuilds' and cannot be in the repo).
+      - name: A300 generator tests (Python)
+        run: python -m unittest discover -s tools/a300-gen -p "test_*.py" -v
+
   efb-readers:
     name: EFB reader tests (jsdom)
     runs-on: ubuntu-latest
@@ -58,7 +64,7 @@ jobs:
         with:
           node-version: '20'
 
-      # The in-page EFB readers (the JS MSFSBA injects into the PMDG tablet and the TFDi MD-11 EFB)
+      # The in-page EFB readers (the JS MSFSBA injects into the PMDG tablet, the TFDi MD-11 EFB and the iniBuilds A300 tablet)
       # and the shared WebView2 shell's keyed reconcile (the flyPad shell mirror, whose baseLabel
       # rule FbwEfbForm shares across every EFB) are pure DOM logic, replayed under jsdom. Until
       # this job existed they only ran by hand, so a reader regression could reach a pilot unnoticed.
@@ -71,6 +77,12 @@ jobs:
 
       - name: PMDG EFB reader
         working-directory: tools/pmdg-efb-test
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+
+      - name: A300 tablet reader
+        working-directory: tools/a300-efb-test
         run: |
           npm ci --no-audit --no-fund
           npm test

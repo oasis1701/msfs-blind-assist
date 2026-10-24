@@ -242,6 +242,11 @@ public partial class MainForm
                     // MD-11 — all three MCDUs as text from the MD11MCDU client data area.
                     ShowMd11McduDialog();
                 }
+                else if (currentAircraft is IniA300Definition)
+                {
+                    // Both MCDUs as text from the aircraft's MCDU export.
+                    ShowA300McduDialog();
+                }
                 else if (currentAircraft?.AircraftCode == "A320" || currentAircraft?.AircraftCode == "HW_A330")
                 {
                     // The Headwind A330 MCDU is the same FBW instrument (the Coherent view
@@ -266,6 +271,10 @@ public partial class MainForm
                 else if (currentAircraft?.AircraftCode == "HS_787")
                 {
                     announcer.AnnounceImmediate("787 E F B not available.");
+                }
+                else if (currentAircraft is IniA300Definition)
+                {
+                    ShowA300EfbDialog();
                 }
                 else if (currentAircraft?.AircraftCode == "TFDI_MD11")
                 {

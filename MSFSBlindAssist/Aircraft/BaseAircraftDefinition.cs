@@ -1276,9 +1276,10 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// <summary>
     /// Format ETA as ": HH:MM:SS" given remaining distance in nautical miles
     /// and current ground speed in knots. Returns empty string at low ground
-    /// speed (taxi / ground) where the estimate is meaningless.
+    /// speed (taxi / ground) where the estimate is meaningless. Internal rather than protected so
+    /// the A300's route distances (A300RouteDistances), which are not a definition, say it the same way.
     /// </summary>
-    protected static string FormatEtaFromDistance(double distanceNm, double groundSpeedKnots)
+    internal static string FormatEtaFromDistance(double distanceNm, double groundSpeedKnots)
     {
         if (groundSpeedKnots < 30) return "";   // not airborne / too slow
         if (distanceNm <= 0) return "";

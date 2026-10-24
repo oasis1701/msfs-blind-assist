@@ -1,0 +1,1 @@
+The A300 control-map generator tests (Python) and the A300 tablet reader tests (jsdom) now run on every pull request, so an iniBuilds update or a reader change that would break the A300's panels or tablet is caught before it ships.

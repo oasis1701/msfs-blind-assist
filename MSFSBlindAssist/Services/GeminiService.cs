@@ -228,7 +228,11 @@ public class GeminiService : IAiProvider
         NDMd11,        // Captain's Navigation Display (TFDi MD-11) — instrument view 1
         EADMd11,       // Engine and Alert Display, the MD-11's EICAS (TFDi MD-11) — instrument view 1
         SDMd11,        // System Display, the page currently selected (TFDi MD-11) — instrument view 3
-        ISFDMd11       // Standby instrument on the forward pedestal (TFDi MD-11) — instrument view 4
+        ISFDMd11,      // Standby instrument on the forward pedestal (TFDi MD-11) — instrument view 4
+        PFDA300,       // Captain's Primary Flight Display (iniBuilds A300-600) — speed scale, no altitude tape
+        NDA300,        // Captain's Navigation Display (iniBuilds A300-600), below the PFD
+        WarningDisplayA300, // ECAM warning display, the left ECAM screen: warnings and memos, no engine gauges (iniBuilds A300-600)
+        SystemDisplayA300   // ECAM system display, the right ECAM screen: one system page (iniBuilds A300-600)
     }
 
     /// <summary>
@@ -646,6 +650,40 @@ Skip descriptions of layouts, diagrams and visual positioning. Skip normal colou
             DisplayType.ISFDMd11 => @"You are reading the standby instrument of a McDonnell Douglas MD-11 for a screen reader user — the small integrated standby flight display at the top centre of the forward pedestal, between the two MCDUs and above the autobrake selector, with its own attitude sphere, speed tape and altitude tape. The image may contain several displays. ONLY describe the standby instrument; ignore the MCDUs and the main panel displays.
 Report, one per line: pitch and bank only if unusual (otherwise say wings level); airspeed and the Mach number; altitude and the metric altitude in the box beside it if shown; the barometric setting (IN or HPA, or STD); heading at the bottom; and any flags or amber or red annunciations.
 Skip normal colours; only call out amber and red. Skip descriptions of instrument layout and positioning. Do not use markdown formatting. Do not explain what things mean. Just state the data.",
+
+            DisplayType.PFDA300 => @"You are reading the captain's Primary Flight Display (PFD) of an Airbus A300-600 for a screen reader user. The image shows part of the captain's instrument panel: two screens stacked one above the other, with round gauges around them. ONLY describe the PFD — the upper of the two screens, with the attitude display and a speed scale on its left. Ignore the navigation display below it and every round gauge (airspeed, altimeter, vertical speed, standby instruments, clock, DME and bearing indicators). This PFD has no altitude tape and no vertical speed scale: altitude and vertical speed are on the round instruments beside it, so do not report them. It may show the selected altitude from the flight control unit (for example FL310); report that as the selected altitude.
+The flight mode annunciator across the top of the PFD is the most important part: it is the only place the engaged autoflight modes are shown. Report it first, column by column from left to right, each word exactly as written (for example SPD, MACH, THR, RETARD, A/THR, SRS, P.CLB, P.DES, ALT, ALT*, V/S, G/S, NAV, HDG/S, HDG, LOC, LAND, FLARE, ROLLOUT), with any armed modes shown beneath in another colour, then the autopilot and flight director status (CMD 1, CMD 2, DUAL, FD).
+Then report, one per line:
+Airspeed: the current speed, the selected speed (SPD SEL) and any speed limits or markers on the scale.
+Pitch and bank, only if not near level (otherwise say wings level).
+Localizer and glideslope deviation, if an approach is displayed and they are not centred.
+Radio altitude, and the decision height (DH) if shown.
+Any flags or messages, such as ATT or SPD LIM, and any amber or red annunciation.
+Be extremely concise and direct. Skip descriptions of scales and positioning. Skip normal colours for flight data (green, white); only call out amber and red there. Do not use markdown formatting. Do not explain what things mean. Just state the data.",
+
+            DisplayType.NDA300 => @"You are reading the captain's Navigation Display (ND) of an Airbus A300-600 for a screen reader user. The image shows part of the captain's instrument panel: two screens stacked one above the other, with round gauges around them. ONLY describe the ND — the lower of the two screens, showing a compass arc or rose with the aircraft symbol. Ignore the PFD above it and every round gauge, including the bearing and DME indicators beside it.
+Report in this order, one item per line:
+Display mode (ROSE, ARC, MAP or PLAN) and the range in nautical miles.
+Heading or track at the top of the compass.
+Ground speed (GS) and true airspeed (TAS).
+Wind direction and speed.
+The active waypoint at the top right: its name, distance and time or ETA.
+Further waypoints along the route in order, if legible.
+Bearing pointers and the stations they point to (VOR, ADF) if shown.
+TCAS traffic: relative bearing, range and relative altitude of each symbol, and any TA or RA.
+Weather radar returns and terrain shading and their colours, if displayed.
+Any flags or messages, for example GPS PRIMARY LOST, and any amber or red text.
+Skip normal colours (green, white, magenta, cyan); only call out amber and red. Skip descriptions of map layout and symbology. Do not use markdown formatting. Do not explain what things mean. Just state the data.",
+
+            DisplayType.WarningDisplayA300 => @"You are reading the ECAM warning display of an Airbus A300-600 for a screen reader user — the left ECAM screen. The image shows the centre instrument panel: the warning display on the left, a block of round engine gauges in the middle, the ECAM system display on the right, and two MCDUs below. ONLY describe the warning display — the screen to the left of the round engine gauges. Ignore the engine gauges, the system display, the MCDUs and everything else. This screen has no engine gauges of its own.
+Read every line on it exactly as written, top to bottom, with its colour: red is a warning, amber is a caution, cyan lines are actions still to do, green or white lines are memos (under the title MEMO). Keep a warning's title and its action lines together, in the order shown. If there is no warning or caution, say ""No warnings"" and then read the memo lines.
+Then the values at the bottom of the screen, one per line: TAT, gross weight (GW), centre of gravity (CG), fuel temperature (FUEL TK) and total fuel (T.FUEL), with their units, as far as they are legible.
+Be extremely concise and direct. Skip descriptions of layout and positioning. Do not use markdown formatting. Do not explain what things mean. Just state the data.",
+
+            DisplayType.SystemDisplayA300 => @"You are reading the ECAM system display of an Airbus A300-600 for a screen reader user — the right ECAM screen, the large screen at the centre of the image, showing one system page. Ignore the round engine gauges at the left edge, the thrust rating panel and gear lever above, and everything else.
+First line: the page name, from its title or its content. The A300 shows one of these pages: ENG (secondary engine data), BLEED, COND (air conditioning), PRESS (pressurization), AC and DC (electrical), HYD (hydraulics), FUEL, APU, F/CTL (flight controls), DOOR, WHEEL (gear, brakes and tyres), or STATUS (inoperative systems and limitations).
+Then report every value with its unit and every system state, one per line: quantities, pressures, temperatures, voltages, frequencies, ON/OFF, OPEN/CLOSED, valve and pump positions, door states, and any messages on the page.
+Skip descriptions of layouts, diagrams and visual positioning. Skip normal colours (green, white, cyan); only call out amber and red. Do not use markdown formatting. Do not explain what things mean. Just state the data.",
 
             _ => "Report what you see on this display in plain text. No markdown formatting. No explanations. Just the data."
         };

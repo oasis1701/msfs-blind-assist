@@ -46,6 +46,7 @@ public static class DefAnnounceMuteSets
         "IFLY_737MAX8" => settings.IFlyDisabledMonitorVariablesSet,
         "TFDI_MD11" => settings.Md11DisabledMonitorVariablesSet,
         "FBW_A380" => settings.A380DisabledMonitorVariablesSet,
+        "INI_A300" => settings.A300DisabledMonitorVariablesSet,
         _ when aircraftCode.StartsWith("PMDG_", StringComparison.Ordinal) => settings.PMDGDisabledMonitorVariablesSet,
         _ => null,
     };

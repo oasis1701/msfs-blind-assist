@@ -70,4 +70,15 @@ public class EngineStartChecklistShapeTests
         Assert.Equal(new[] { "ES_E3_START", "ES_E3_FUEL", "ES_E1_START", "ES_E1_FUEL",
                              "ES_E2_START", "ES_E2_FUEL", "ES_ANTI_ICE" }, ids);
     }
+
+    // iniBuilds' own order: the ECAM engine page and START A first, then engine 2 before engine 1,
+    // each its starter then its fuel lever; the light-up and start-valve waits are flow-only.
+    [Fact]
+    public void A300_EngineStart_IsPageIgnitionThenStarterAndFuelLever_TwoThenOne()
+    {
+        var ids = MSFSBlindAssist.FirstOfficer.A300.A300FoChecklistDefinitions.Build()
+            .First(g => g.Id == "ENGINE_START").Items.Select(i => i.Id).ToList();
+        Assert.Equal(new[] { "ES_ECAM_ENG", "ES_IGNITION", "ES_STARTER_2", "ES_FUEL_2",
+                             "ES_STARTER_1", "ES_FUEL_1", "ES_CPT_ANTI_ICE" }, ids);
+    }
 }

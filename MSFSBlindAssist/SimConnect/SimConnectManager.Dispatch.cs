@@ -1332,24 +1332,29 @@ public partial class SimConnectManager
         return "";
     }
 
+    /// <summary>The " - {airline} {flight}" or " - {tail}" the connect announcement appends.</summary>
+    public static string BuildConnectionIdentification(string airline, string flightNumber, string atcId, string atcModel)
+    {
+        // The iniBuilds A300's airline is the placeholder "Airbus", which read as a type ("Airbus 737").
+        bool a300Placeholder = atcModel == "A300" && airline.Equals("Airbus", StringComparison.OrdinalIgnoreCase);
+
+        // Priority 1: Airline + Flight Number (for airline operations)
+        if (!a300Placeholder && !string.IsNullOrWhiteSpace(airline) && !string.IsNullOrWhiteSpace(flightNumber))
+            return $" - {airline} {flightNumber}";
+
+        // Priority 2: Tail number/registration (if it's not just the aircraft type)
+        if (!string.IsNullOrWhiteSpace(atcId) && !atcId.Contains("A32") && !atcId.Contains("A320"))
+            return $" - {atcId}";
+
+        // Priority 3: No identification available (just show aircraft type)
+        return "";
+    }
+
     private void CheckAircraftType(AircraftInfo info)
     {
         // Build smart identification string based on available ATC data
-        string identification = "";
-
-        // Priority 1: Airline + Flight Number (for airline operations)
-        if (!string.IsNullOrWhiteSpace(currentAircraftAirline) && !string.IsNullOrWhiteSpace(currentAircraftFlightNumber))
-        {
-            identification = $" - {currentAircraftAirline} {currentAircraftFlightNumber}";
-        }
-        // Priority 2: Tail number/registration (if it's not just the aircraft type)
-        else if (!string.IsNullOrWhiteSpace(currentAircraftAtcId) &&
-                 !currentAircraftAtcId.Contains("A32") &&
-                 !currentAircraftAtcId.Contains("A320"))
-        {
-            identification = $" - {currentAircraftAtcId}";
-        }
-        // Priority 3: No identification available (just show aircraft type)
+        string identification = BuildConnectionIdentification(
+            currentAircraftAirline, currentAircraftFlightNumber, currentAircraftAtcId, currentAircraftAtcModel);
 
         // Store aircraft dimensions
         AircraftWingSpan = info.wingSpan;
@@ -1640,5 +1645,8 @@ public partial class SimConnectManager
         // so the order relative to PMDG doesn't matter — the two never register overlapping ids
         // (the MD-11's are namespaced into 0x4D44xxxx).
         md11McduDataManager?.HandleClientData(data);
+
+        // The A300 MCDU feed claims only its own four request ids (namespaced 0x4133xxxx).
+        a300McduDataManager?.HandleClientData(data);
     }
 }
